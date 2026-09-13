@@ -175,13 +175,16 @@
     bool GameView::mpStep() {
         if (!mp_->poll()) { netError_ = mp_->error().empty() ? "disconnected" : mp_->error(); return false; }
         if (mp_->desynced()) { netError_ = mp_->desyncReason(); return false; }
-        if (!outbox_.empty()) {
-            // The server takes at most kCmdCapPerTick commands from one client per
-            // tick and DISCARDS the rest, so send at most that many and keep the
-            // remainder for the next step. Flushing the whole outbox lost everything
-            // past the cap without a word: ordering a selection bigger than 64 --
-            // a self-destruct, a move, an attack -- silently only moved the first 64.
-            // Spreading them costs a tick or two; dropping them was just wrong.
+        // Once per SIM TICK, not once per render step. The server drains at most
+        // kCmdCapPerTick from a client per tick, so a client running at 120fps
+        // against a 30Hz tick was offering four times the rate the server accepts
+        // and relying on the server's queue to absorb the difference -- which turns
+        // a big order into a backlog and, past the queue bound, into silent loss.
+        // Pacing here keeps an honest client inside the budget by construction and
+        // leaves the server queue as what it should be: a jitter buffer for network
+        // batching, not the mechanism.
+        if (!outbox_.empty() && netTick_ != lastSendTick_) {
+            lastSendTick_ = netTick_;
             const size_t n = std::min(outbox_.size(), size_t(tak::net::kCmdCapPerTick));
             if (n == outbox_.size()) { mp_->sendCommands(outbox_); outbox_.clear(); }
             else {

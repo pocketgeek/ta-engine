@@ -2058,6 +2058,7 @@ private:
     // occludes the unit. kHeightScale_/heightRef_ are lazily set by terrainLift.
     float wallOcclusionY(float wx, float wz);
     uint32_t netTick_ = 0;
+    uint32_t lastSendTick_ = ~0u;   // outbox flushes once per sim tick (server budget)
     std::string netError_;
     // --- Sim/render decouple: the sim worker thread (Stage B1c) ----------------------
     // The worker runs the heavy sim tick (apply commands/events + world_.tick + captureFrame)

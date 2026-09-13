@@ -79,11 +79,11 @@ constexpr uint32_t kMaxLeadTicks = 120;
 // a lagging player). Rebasing its deadline to `now` instead leaves the poll
 // timeout at 0, so the server spins at full CPU while making no progress.
 constexpr uint64_t kFlowRetryMs = 5;
-// How many over-budget commands one client may have waiting. A few ticks' worth:
+// How many commands one client may have waiting. A few ticks' worth:
 // enough that an honest burst (a big selection, or two render steps landing in one
 // server tick) always survives, small enough that a flooder cannot make the server
 // hold an unbounded queue on its behalf.
-constexpr size_t kCmdOverflowMax = 8 * size_t(kCmdCapPerTick);
+constexpr size_t kCmdQueueMax = 8 * size_t(kCmdCapPerTick);
 uint64_t kGraceMs = 300000;     // hold a dropped slot this long (5 min)
 uint64_t kPauseBudgetMs = 120000;  // total auto-pause a player may cause
 
@@ -126,19 +126,18 @@ struct Client {
     // each one's commands to the same pending list, so N messages buy N*cap
     // commands -- more sim work for everyone, and a bundle that can grow past
     // the 256 KiB frame limit every receiver enforces, disconnecting them.
-    // ~0u, not 0: the budget refreshes when this differs from the room tick, and a
-    // room's FIRST tick IS 0 -- initialising both to zero meant the refresh never
-    // fired there and every command issued on tick 0 was dropped.
-    uint32_t cmdTick = ~0u;      // tick cmdBudget refers to
-    int cmdBudget = 0;           // commands still accepted from this client this tick
-    // Commands past this tick's budget wait their turn instead of being thrown
-    // away. The cap is flood protection, and a legitimate client can exceed it
-    // through no fault of its own: it sends up to kCmdCapPerTick per RENDER step,
-    // so at 120fps against a 30Hz tick -- or whenever TCP hands the server two
-    // messages in one pass -- several honest batches land inside one server tick.
-    // Dropping them lost orders the client had already cleared from its outbox.
-    // Bounded, so a flooder still cannot buy unbounded queueing.
-    std::deque<Command> cmdOverflow;
+    // EVERY command from this client lands here on arrival, and the per-tick drain
+    // in closeTick is the ONLY thing that feeds a room's pending list. One queue,
+    // one budget, one scheduling rule.
+    //
+    // The first cut had two entry points -- accept up to the budget straight into
+    // r.pending, defer the rest here -- and that was wrong three ways at once: a
+    // command arriving next tick jumped ahead of older deferred ones (a stale Move
+    // overriding a newer Stop), reception and the drain each granted a fresh
+    // 64-command allowance so one client could put 128 in a tick, and the drain
+    // ignored TAK_SRV_DELAY so deferred commands outran delayed ones.
+    std::deque<Command> cmdQueue;
+    uint64_t cmdDropped = 0;     // past the queue cap; logged, not silent
     // Catch-up streaming. A resuming or spectating client needs every bundle
     // logged so far, which for a long game is far more than belongs in one
     // socket buffer -- pushing it all at once put the entire replay in memory
@@ -872,7 +871,8 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
                 // Host watches without a slot -- every capacity slot stays open (fill
                 // with AIs). The host still owns the room (add AIs, start).
                 room.spectators.push_back(c.id);
-                c.state = Client::InGame; c.roomId = room.id; c.slot = -1;
+                c.cmdQueue.clear();   // never inherit a previous room's queue
+            c.state = Client::InGame; c.roomId = room.id; c.slot = -1;
                 Writer jr; jr.u8(1); jr.u8(0xFF); jr.str("");   // ok, spectator
                 c.conn.send(Msg::JoinResult, jr);
             } else {
@@ -880,7 +880,8 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
                 room.slots[0].type = 1; room.slots[0].faction = 0; room.slots[0].color = 0;
                 room.slots[0].team = 0; room.slots[0].name = c.name;
                 room.slotClient[0] = int(c.id);
-                c.state = Client::InGame; c.roomId = room.id; c.slot = 0;
+                c.cmdQueue.clear();   // never inherit a previous room's queue
+            c.state = Client::InGame; c.roomId = room.id; c.slot = 0;
                 Writer jr; jr.u8(1); jr.u8(0); jr.str("");   // ok, slot 0
                 c.conn.send(Msg::JoinResult, jr);
             }
@@ -907,6 +908,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             room.slots[freeSlot].type = 1;
             room.slots[freeSlot].name = c.name;
             room.slotClient[freeSlot] = int(c.id);
+            c.cmdQueue.clear();   // never inherit a previous room's queue
             c.state = Client::InGame; c.roomId = room.id; c.slot = freeSlot;
             Writer jr; jr.u8(1); jr.u8(uint8_t(freeSlot)); jr.str("");
             c.conn.send(Msg::JoinResult, jr);
@@ -933,6 +935,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             room.slotDropped[slot] = false;
             room.slotToken[slot] = randToken();
             room.desyncFlagged.clear();   // fresh sim; old desync flags are stale
+            c.cmdQueue.clear();   // never inherit a previous room's queue
             c.state = Client::InGame; c.roomId = gid; c.slot = slot; c.loaded = true;
             // GameStarting rebuilds the client's world; then the whole bundle log
             // replays it up to now, after which it receives live bundles.
@@ -969,6 +972,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             // and holds nothing on disconnect. It just receives the stream.
             if (std::find(room.spectators.begin(), room.spectators.end(), c.id) == room.spectators.end())
                 room.spectators.push_back(c.id);
+            c.cmdQueue.clear();   // never inherit a previous room's queue
             c.state = Client::InGame; c.roomId = gid; c.slot = -1; c.loaded = true;
             // GameStarting (slot 0xFF = spectator) rebuilds the world; the whole
             // bundle log replays it to now, then live bundles stream via broadcast.
@@ -987,6 +991,11 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
 void Server::leaveRoom(Client& c, const char* reason) {
     Room* r = roomOf(c);
     if (!r) return;
+    // Queued commands are ROOM state living on a connection. Left behind, they
+    // drain into whatever game this connection joins next -- carrying the old
+    // player stamp and unit ids into a world where those ids mean something else.
+    c.cmdQueue.clear();
+    c.cmdDropped = 0;
     // A spectator just detaches from the stream -- no slot, nothing to forfeit.
     {
         auto& sp = r->spectators;
@@ -1319,24 +1328,19 @@ void Server::gameMsg(Client& c, const Frame& f) {
             if (!r->running) return;
             Reader rd(f.payload.data(), f.payload.size());
             uint32_t n = rd.u32();
-            if (c.cmdTick != r->tick) { c.cmdTick = r->tick; c.cmdBudget = kCmdCapPerTick; }
-            // Server-side input delay (TAK_SRV_DELAY=K, default 0): bucket incoming
-            // commands K ticks into the future instead of the very next tick, so a
-            // command never "just misses" a tick boundary. Costs K ticks of latency.
-            static const int srvDelay = [] {
-                const char* e = std::getenv("TAK_SRV_DELAY"); return e ? std::max(0, std::atoi(e)) : 0;
-            }();
             for (uint32_t i = 0; i < n && rd.ok; ++i) {
                 Command cmd = rd.cmd();
                 if (!rd.ok) break;
                 cmd.player = uint8_t(c.slot);   // server stamps ownership
-                if (c.cmdBudget <= 0) {         // over this tick's budget: defer
-                    if (c.cmdOverflow.size() < kCmdOverflowMax) c.cmdOverflow.push_back(cmd);
-                    continue;                   // past the backlog cap it IS dropped
+                if (c.cmdQueue.size() >= kCmdQueueMax) {
+                    if (++c.cmdDropped % 64 == 1)
+                        std::fprintf(stderr, "client %u: command queue full (%zu), "
+                                             "dropped %llu so far\n",
+                                     c.id, c.cmdQueue.size(),
+                                     (unsigned long long)c.cmdDropped);
+                    continue;
                 }
-                --c.cmdBudget;
-                if (srvDelay > 0) r->pendingAt[r->tick + uint32_t(srvDelay)].push_back(cmd);
-                else r->pending.push_back(cmd);
+                c.cmdQueue.push_back(cmd);
             }
             break;
         }
@@ -1458,21 +1462,24 @@ void Server::closeTick(Room& r) {
                 if (it == clients_.end() || !it->second->loaded) { r.nextTickMs = nowMs() + 100; return; }
             }
     }
-    // Deferred commands first: anything a client sent past last tick's budget gets
-    // this tick's allowance before anything new does, so a big order arrives in
-    // order and merely late rather than partially.
+    // The ONE place a client's commands enter a tick: strict FIFO, one budget per
+    // client per tick, and the same input-delay rule for all of them.
+    //
+    // Server-side input delay (TAK_SRV_DELAY=K, default 0) buckets commands K ticks
+    // into the future so one never "just misses" a tick boundary; costs K ticks of
+    // latency.
+    static const int srvDelay = [] {
+        const char* e = std::getenv("TAK_SRV_DELAY"); return e ? std::max(0, std::atoi(e)) : 0;
+    }();
     for (int i = 0; i < kMaxSlots; ++i) {
         if (r.slotClient[i] < 0) continue;
         auto ci = clients_.find(uint32_t(r.slotClient[i]));
         if (ci == clients_.end()) continue;
         Client& c = *ci->second;
-        if (c.cmdOverflow.empty()) continue;
-        c.cmdTick = r.tick;
-        c.cmdBudget = kCmdCapPerTick;
-        while (!c.cmdOverflow.empty() && c.cmdBudget > 0) {
-            r.pending.push_back(c.cmdOverflow.front());
-            c.cmdOverflow.pop_front();
-            --c.cmdBudget;
+        for (int taken = 0; taken < kCmdCapPerTick && !c.cmdQueue.empty(); ++taken) {
+            if (srvDelay > 0) r.pendingAt[r.tick + uint32_t(srvDelay)].push_back(c.cmdQueue.front());
+            else r.pending.push_back(c.cmdQueue.front());
+            c.cmdQueue.pop_front();
         }
     }
     // Server-hosted AI: each controller observes the referee world (state after
