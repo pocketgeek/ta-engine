@@ -842,8 +842,55 @@ private:
         return true;
     }
 
+    // Everything about a model piece that never changes: whether it draws at all,
+    // and its primitives' texture names folded to lower case. collect() used to
+    // work this out per piece and per primitive on EVERY unit EVERY frame -- two
+    // std::string allocations and a case fold each -- and then again for the
+    // shadow pass. At ~1500 units that is six figures of throwaway string work a
+    // frame for answers that were fixed when the model loaded.
+    struct PieceMeta {
+        bool skip = false;                  // ground plate / *off duplicate: draws nothing
+        std::vector<std::string> primTex;   // lowercased per primitive ("" = untextured)
+        std::vector<PieceMeta> children;    // 1:1 with Object::children
+    };
+    // The rules themselves, in ONE place, used both to precompute the tree and to
+    // answer for a model that has no cached tree (ghosts, portraits). A second copy
+    // of these predicates is how the cache and the live path would silently drift.
+    static void pieceMetaFor(const tak::tdo::Object& o, bool isRoot, PieceMeta& m) {
+        std::string oname = o.name;
+        std::transform(oname.begin(), oname.end(), oname.begin(), ::tolower);
+        auto ends = [&](const char* suf) {
+            size_t n = std::strlen(suf);
+            return oname.size() >= n && oname.compare(oname.size() - n, n, suf) == 0;
+        };
+        // Hidden pieces: ground-reference plates and deactivated-state duplicates
+        // (*off), which the game shows only via activation scripts we don't run. The
+        // model ROOT is always the flat base plate (AraGP, zonnull, or just the unit
+        // name like zontrain/zonharpy1) with the real model in its children, so its
+        // own primitives are skipped unconditionally.
+        m.skip = isRoot || ends("gp") || ends("null") || ends("off") ||
+                 oname.find("ground") != std::string::npos ||
+                 oname.find("gpoly") != std::string::npos ||
+                 oname.find("gpoint") != std::string::npos;
+        m.primTex.clear();
+        m.primTex.reserve(o.primitives.size());
+        for (const auto& p : o.primitives) {
+            std::string n = p.texture;
+            std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+            m.primTex.push_back(std::move(n));
+        }
+    }
+    // Precompute the whole tree for a model (once, at registration).
+    static void buildPieceMeta(const tak::tdo::Object& o, PieceMeta& m, bool isRoot = true) {
+        pieceMetaFor(o, isRoot, m);
+        m.children.resize(o.children.size());
+        for (size_t i = 0; i < o.children.size(); ++i)
+            buildPieceMeta(o.children[i], m.children[i], false);
+    }
+
     struct Visual {
         tak::tdo::Model model;
+        PieceMeta meta;   // precomputed once; see collect()
     };
     struct EffectAnim;   // defined below; Anim only needs the pointer type
     struct Anim {
@@ -1188,7 +1235,7 @@ private:
     std::vector<DrawOp> drawOps_;
     double profProjMs_ = 0, profSubmitMs_ = 0;   // TAK_PROF sub-phase timers (main thread)
     double profShadowMs_ = 0;   // the projected-silhouette pass, inside submit
-    long profUnits_ = 0;        // visible units, summed over the sampled frames
+    long profUnits_ = 0;        // visible units accumulated over the sampled frames
     long profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
     std::atomic<int64_t> profSimTicks_{0};        // sim-tick time in raw perf-counter ticks,
                                                   // accumulated by the worker, read/reset on main.
@@ -1318,7 +1365,7 @@ private:
     // The projected silhouette for one unit, into g.shadowVerts. Split out because
     // it is built alongside the body geometry on the worker pool.
     void buildUnitShadow(const UnitR& u, UnitGeom& g, const tak::tdo::Object& root,
-                         const Anim* anim, float facing, float zm,
+                         const PieceMeta& meta, const Anim* anim, float facing, float zm,
                          std::vector<Tri>& scratch);
     void buildUnitGeom(const UnitR& u, UnitGeom& g, std::vector<Tri>& scratch);
 
@@ -1374,7 +1421,7 @@ private:
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
                  bool mirror = false, bool isRoot = true, bool shadow = false,
-                 RadialExtent* ext = nullptr) {
+                 RadialExtent* ext = nullptr, const PieceMeta* meta = nullptr) {
         const tak::cob::PieceState* ps = pieceFor(anim, o.name);
         if (ps && !ps->visible) return;
         float rr[3];
@@ -1382,30 +1429,22 @@ private:
                                o.y + (ps ? ps->move[1] : 0),
                                o.z + (ps ? ps->move[2] : 0),
                                scriptRot(ps, rr));
-        // Hidden pieces: ground-reference plates and deactivated-state
-        // duplicates (*off), which the game shows only via activation scripts
-        // we don't run. The model ROOT is always the flat base plate (AraGP,
-        // zonnull, or just the unit name like zontrain/zonharpy1) with the real
-        // model in its children, so skip its own primitives unconditionally.
-        std::string oname = o.name;
-        std::transform(oname.begin(), oname.end(), oname.begin(), ::tolower);
-        auto ends = [&](const char* suf) {
-            size_t n = std::strlen(suf);
-            return oname.size() >= n && oname.compare(oname.size() - n, n, suf) == 0;
-        };
-        bool groundPlate = isRoot || ends("gp") || ends("null") || ends("off") ||
-                           oname.find("ground") != std::string::npos ||
-                           oname.find("gpoly") != std::string::npos ||
-                           oname.find("gpoint") != std::string::npos;
+        // Precomputed when the model was registered; computed here only for a model
+        // that has no cached tree (ghost previews, build-icon portraits). Same
+        // function either way.
+        PieceMeta local;
+        if (!meta) { pieceMetaFor(o, isRoot, local); meta = &local; }
+        const bool groundPlate = meta->skip;
         float cy = std::cos(heading), sy = std::sin(heading);
-        for (const auto& p : o.primitives) {
+        for (size_t pi = 0; pi < o.primitives.size(); ++pi) {
             if (groundPlate) break;
+            const auto& p = o.primitives[pi];
             if (p.indices.size() < 3) continue;
             SDL_Texture* tex = nullptr;
             const SDL_Rect* arect = nullptr;
-            if (!p.texture.empty()) {
-                std::string name = p.texture;
-                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            const std::string& name = pi < meta->primTex.size() ? meta->primTex[pi]
+                                                                : p.texture;
+            if (!name.empty()) {
                 auto rit = atlasRect_.find(name);
                 if (atlas && rit != atlasRect_.end()) {
                     tex = atlas;             // whole model shares one atlas texture
@@ -1421,6 +1460,58 @@ private:
                     }
                 }
             }
+            // Transform each of this primitive's vertices ONCE. The fan below
+            // visits vertex 0 in every triangle and each middle vertex twice, so
+            // doing the transform inside the triangle loop did it 3*(n-2) times
+            // for n vertices -- six transforms for a quad that needs four. The
+            // UVs still come from the fan position (retail maps a quad's corners
+            // to the four UV corners), so only the geometry is shared.
+            struct VOut { SDL_FPoint pos; float px, py, pz, d; bool ok; };
+            thread_local std::vector<VOut> vcache;
+            vcache.resize(p.indices.size());
+            for (size_t vi2 = 0; vi2 < p.indices.size(); ++vi2) {
+                VOut& vo = vcache[vi2];
+                size_t vi = size_t(p.indices[vi2]) * 3;
+                if (vi + 2 >= o.vertices.size()) { vo.ok = false; continue; }
+                vo.ok = true;
+                float w[3];
+                xf.apply(o.vertices[vi], o.vertices[vi + 1], o.vertices[vi + 2], w);
+                const float wx = mirror ? -w[0] : w[0];   // un-mirror Zhon models on X
+                const float rx = wx * cy + w[2] * sy;
+                const float rz = -wx * sy + w[2] * cy;
+                // TAK billboards lean back (+y and +z together); moving away (+z)
+                // reads upward on screen, adding to height. The coefficients are
+                // retail's own (icd 0x421dad): all of z, half of y.
+                const float ry = w[1] * kProjY + rz * kProjZ;
+                vo.px = rx; vo.py = w[1]; vo.pz = rz;
+                // Farthest first: depth from the camera goes as (z - 2y).
+                vo.d = rz * kSortZ - w[1] * kSortY;
+                if (ext) {
+                    // Pre-rotation x/z, so this is independent of `heading`.
+                    const float r = std::sqrt(wx * wx + w[2] * w[2]);
+                    const float base = -(w[1] * kProjY);   // the y term of -ry
+                    ext->maxR = std::max(ext->maxR, r);
+                    ext->minY = std::min(ext->minY, base - r * kProjZ);
+                    ext->maxY = std::max(ext->maxY, base + r * kProjZ);
+                    ext->any = true;
+                }
+                if (shadow) {
+                    // Lean by the light: the silhouette of the unit, not a disc
+                    // under it. Retail's shear is (+y/4, +y/4) in screen space
+                    // (0x4ec250 flag 1), i.e. down AND right.
+                    //
+                    // PLUS on both, and verify any change to these signs on a
+                    // GROUND unit. A flyer is the wrong test: its shadow also
+                    // carries the altitude term applied at the anchor, and that
+                    // term can outweigh and mask the vertex term, so a flyer probe
+                    // reports the sign of the wrong thing. It told me to negate x,
+                    // and negating x sent every ground unit's shadow leaning left.
+                    // With alt = 0 a ground unit isolates exactly this expression.
+                    vo.pos = {rx + kShadowLX * w[1], -(rz + kShadowLZ * w[1]) * kProjZ};
+                } else {
+                    vo.pos = {rx, -ry};
+                }
+            }
             for (size_t i = 1; i + 1 < p.indices.size(); ++i) {
                 size_t idx[3] = {0, i, i + 1};
                 Tri tri{};
@@ -1429,50 +1520,14 @@ private:
                 bool ok = true;
                 float px[3], py[3], pz[3];   // rotated model space, for the facing test
                 for (int k = 0; k < 3; ++k) {
-                    size_t vi = size_t(p.indices[idx[k]]) * 3;
-                    if (vi + 2 >= o.vertices.size()) { ok = false; break; }
-                    float w[3];
-                    xf.apply(o.vertices[vi], o.vertices[vi + 1], o.vertices[vi + 2], w);
-                    float wx = mirror ? -w[0] : w[0];   // un-mirror Zhon models on X
-                    float rx = wx * cy + w[2] * sy;
-                    float rz = -wx * sy + w[2] * cy;
-                    // TAK billboards lean back (+y and +z together); moving
-                    // away (+z) reads upward on screen, adding to height. The
-                    // coefficients are retail's own (icd 0x421dad): all of z,
-                    // half of y. `ct`/`st` still order the triangles within a
-                    // model, which is a sort key and not geometry.
-                    float ry = w[1] * kProjY + rz * kProjZ;
-                    // Farthest first: depth from the camera goes as (z - 2y).
-                    depth += rz * kSortZ - w[1] * kSortY;
-                    px[k] = rx; py[k] = w[1]; pz[k] = rz;
-                    if (ext) {
-                        // Pre-rotation x/z, so this is independent of `heading`.
-                        const float r = std::sqrt(wx * wx + w[2] * w[2]);
-                        const float base = -(w[1] * kProjY);   // the y term of -ry
-                        ext->maxR = std::max(ext->maxR, r);
-                        ext->minY = std::min(ext->minY, base - r * kProjZ);
-                        ext->maxY = std::max(ext->maxY, base + r * kProjZ);
-                        ext->any = true;
-                    }
-                    if (shadow) {
-                        // Lean by the light: the silhouette of the unit, not a
-                        // disc under it. Retail's shear is (+y/4, +y/4) in screen
-                        // space (0x4ec250 flag 1), i.e. down AND right.
-                        //
-                        // PLUS on both, and verify any change to these signs on a
-                        // GROUND unit. A flyer is the wrong test: its shadow also
-                        // carries the altitude term applied at the anchor, and
-                        // that term can outweigh and mask the vertex term, so a
-                        // flyer probe reports the sign of the wrong thing. It
-                        // told me to negate x, and negating x sent every ground
-                        // unit's shadow leaning left. With alt = 0 a ground unit
-                        // isolates exactly this expression.
-                        const float sxs = rx + kShadowLX * w[1];
-                        const float szs = rz + kShadowLZ * w[1];
-                        tri.v[k].position = {sxs, -szs * kProjZ};
-                    } else {
-                        tri.v[k].position = {rx, -ry};
-                    }
+                    const VOut& vo = vcache[idx[k]];
+                    if (!vo.ok) { ok = false; break; }
+                    px[k] = vo.px; py[k] = vo.py; pz[k] = vo.pz;
+                    depth += vo.d;
+                    tri.v[k].position = vo.pos;
+                    // The UV comes from the FAN POSITION, not the vertex: retail
+                    // maps a quad's four corners to the four UV corners, so a
+                    // vertex reused at another fan position takes a different one.
                     static const SDL_FPoint uv[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
                     SDL_FPoint c = uv[idx[k] & 3];
                     tri.v[k].tex_coord = arect
@@ -1530,8 +1585,11 @@ private:
                 out.push_back(tri);
             }
         }
-        for (const auto& c : o.children)
-            collect(out, atlas, c, xf, anim, heading, player, mirror, false, shadow, ext);
+        for (size_t ci = 0; ci < o.children.size(); ++ci) {
+            const PieceMeta* cm = (ci < meta->children.size()) ? &meta->children[ci] : nullptr;
+            collect(out, atlas, o.children[ci], xf, anim, heading, player, mirror, false,
+                    shadow, ext, cm);
+        }
     }
 
     // Walk the piece tree (exactly as collect(), but transform-only) to the named

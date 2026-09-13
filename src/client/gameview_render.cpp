@@ -195,7 +195,7 @@
         // Cycle lodestone/mana/fire crystal frames -- but only once a built glow-unit
         // is on screen, so a still-conjuring lodestone stays dark until it's finished.
         animateGlowTextures(builtGlow);
-        profUnits_ += long(visUnits_.size());
+        profUnits_ += long(visUnits_.size());   // so PROF ms/frame can be read per unit
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
             thread_local std::vector<Tri> scratch;
@@ -1554,7 +1554,8 @@
         bool mirror = false;
         SDL_Texture* atlas = (slot >= 0 && size_t(slot) < atlasTex_.size())
                                  ? atlasTex_[size_t(slot)] : nullptr;
-        collect(scratch, atlas, vt->second.model.root, base, anim, facing, u.player, mirror);
+        collect(scratch, atlas, vt->second.model.root, base, anim, facing, u.player, mirror,
+                true, false, nullptr, &vt->second.meta);
         std::stable_sort(scratch.begin(), scratch.end(),
                   [](const Tri& a, const Tri& b) { return a.depth > b.depth; });
         g.ax = ax; g.ay = ay;
@@ -1614,20 +1615,21 @@
         if (int(g.verts.size()) > runStart)
             g.runs.push_back({cur, int(g.verts.size()) - runStart});
 
-        buildUnitShadow(u, g, vt->second.model.root, anim, facing, zm, scratch);
+        buildUnitShadow(u, g, vt->second.model.root, vt->second.meta, anim, facing, zm, scratch);
     }
 
     // Reuses `scratch`: whatever the caller had in it is already consumed.
     void GameView::buildUnitShadow(const UnitR& u, UnitGeom& g,
-                                   const tak::tdo::Object& root, const Anim* anim,
-                                   float facing, float zm, std::vector<Tri>& scratch) {
+                                   const tak::tdo::Object& root, const PieceMeta& meta,
+                                   const Anim* anim, float facing, float zm,
+                                   std::vector<Tri>& scratch) {
         g.shadowVerts.clear();
         g.shadowLo = {1e30f, 1e30f};
         g.shadowHi = {-1e30f, -1e30f};
         if (u.underConstruction || !castsBlobShadow(u.type)) return;
         scratch.clear();
         collect(scratch, nullptr, root, Xform{}, anim, facing, u.player, false, true,
-                /*shadow=*/true);
+                /*shadow=*/true, nullptr, &meta);
         const float sx = g.ax + kShadowLX * g.alt * zm;
         const float sy = g.ay + (kProjY - kShadowLZ) * g.alt * zm;
         g.shadowVerts.reserve(scratch.size() * 3);

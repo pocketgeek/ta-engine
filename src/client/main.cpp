@@ -570,6 +570,18 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (shot.empty()) SDL_RenderSetVSync(ren, vsyncOn ? 1 : 0);
+    // Name the backend. A profile is only as meaningful as the renderer that
+    // produced it: under a headless/dummy video driver SDL falls back to its
+    // SOFTWARE rasteriser, where submit and present are CPU rasterisation and say
+    // nothing about a real GPU. Measuring there sent me to the wrong conclusion
+    // once already.
+    {
+        SDL_RendererInfo ri{};
+        if (SDL_GetRendererInfo(ren, &ri) == 0)
+            std::fprintf(stderr, "renderer: %s%s\n", ri.name ? ri.name : "?",
+                         (ri.flags & SDL_RENDERER_ACCELERATED) ? " (accelerated)"
+                                                               : " (SOFTWARE)");
+    }
 
     // ---- outer session loop: menu -> game -> menu (menu launches only) ----------
     // After a menu-launched session ends (a MAIN MENU button or post-game Escape),
@@ -1327,7 +1339,8 @@ int main(int argc, char** argv) {
                             "[proj=%.1f submit=%.1f (shadow=%.1f) other=%.1f] present=%.1f | units=%ld shverts=%ldk\n",
                             pFrames * 1000.0 / pAcc, pUpd / pFrames, sim / pFrames,
                             pDraw / pFrames, proj / pFrames, submit / pFrames,
-                            shadow / pFrames, (pDraw - proj - submit) / pFrames, pPres / pFrames, units / std::max(1, pFrames),
+                            shadow / pFrames, (pDraw - proj - submit) / pFrames, pPres / pFrames,
+                            units / std::max(1, pFrames),
                             shVerts / std::max(1, pFrames) / 1000);
                 std::fflush(stdout);
                 pUpd = pDraw = pPres = pAcc = 0; pFrames = 0;

@@ -1687,7 +1687,9 @@
         const std::string& typeId = type->id;
         if (!visuals_.count(typeId)) {
             try {
-                visuals_[typeId] = {tak::tdo::load(vread("objects3d/" + typeId + ".3do"))};
+                Visual v{tak::tdo::load(vread("objects3d/" + typeId + ".3do")), {}};
+                buildPieceMeta(v.model.root, v.meta);   // fixed for the model's life
+                visuals_[typeId] = std::move(v);
             } catch (const std::exception& e) {
                 std::fprintf(stderr, "no model for %s: %s\n", typeId.c_str(), e.what());
                 return;
