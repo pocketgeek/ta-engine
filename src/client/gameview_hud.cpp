@@ -1,4 +1,5 @@
 #include "client/gameview.h"
+#include "client/artscale.h"
 
 // Out-of-line GameView method definitions (hud concern), split from the
 // class body in gameview.h so editing a body recompiles only this translation
@@ -675,17 +676,13 @@
                 if (sq.frames.empty()) continue;
                 auto& f = sq.frames[0];
                 if (sq.name == "AidPanel" || sq.name == "MainPanel") {
-                    panelTex_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                                  SDL_TEXTUREACCESS_STATIC, f.width,
-                                                  f.height);
-                    SDL_UpdateTexture(panelTex_, nullptr, f.rgba.data(), f.width * 4);
+                    // panelW_/panelH_ keep the 1x LOGICAL size, which is what the HUD
+                    // lays out in -- so the texture being built at 2x is invisible here.
+                    panelTex_ = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
                     panelW_ = f.width;
                     panelH_ = f.height;
                 } else if (sq.name == "AidBotPanel" || sq.name == "BottomPanel") {
-                    botTex_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                                SDL_TEXTUREACCESS_STATIC, f.width,
-                                                f.height);
-                    SDL_UpdateTexture(botTex_, nullptr, f.rgba.data(), f.width * 4);
+                    botTex_ = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
                     botW_ = f.width;
                     botH_ = f.height;
                 }
@@ -719,11 +716,7 @@
                 if (sq.frames.empty()) return nullptr;
                 auto& f = sq.frames[size_t(frame)];
                 if (f.width == 0 || f.height == 0) return nullptr;
-                SDL_Texture* t = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                                   SDL_TEXTUREACCESS_STATIC, f.width,
-                                                   f.height);
-                SDL_UpdateTexture(t, nullptr, f.rgba.data(), f.width * 4);
-                SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+                SDL_Texture* t = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
                 return t;
             }
         } catch (const std::exception&) {}
@@ -781,12 +774,8 @@
                     for (int i = 0; i < 3; ++i) {
                         auto& f = sq.frames[size_t(idx[i])];
                         if (f.width == 0) continue;
-                        b.frames[i] = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                                        SDL_TEXTUREACCESS_STATIC,
-                                                        f.width, f.height);
-                        SDL_UpdateTexture(b.frames[i], nullptr, f.rgba.data(),
-                                          f.width * 4);
-                        SDL_SetTextureBlendMode(b.frames[i], SDL_BLENDMODE_BLEND);
+                        // b.w/b.h keep the 1x logical size the button lays out in.
+                        b.frames[i] = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
                         b.w = f.width;
                         b.h = f.height;
                     }
@@ -1403,10 +1392,7 @@
         for (const auto& path : paths) {
             try {
                 auto img = tak::jpeg::load(vread(path));
-                tex = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                        SDL_TEXTUREACCESS_STATIC, img.width, img.height);
-                SDL_UpdateTexture(tex, nullptr, img.rgba.data(), img.width * 4);
-                SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+                tex = tak::art::makeTexture(ren_, img.rgba, img.width, img.height);
                 break;
             } catch (const std::exception&) {}
         }

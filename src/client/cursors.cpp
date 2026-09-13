@@ -1,4 +1,5 @@
 #include "client/cursors.h"
+#include "client/artscale.h"
 #include "client/gpuvram.h"
 
 #include "gaf/gaf.h"
@@ -77,12 +78,16 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs) {
         if (it == byName.end()) continue;               // leave empty; draw() falls back
         for (const auto& fr : it->second->frames) {
             if (fr.width <= 0 || fr.height <= 0) continue;
-            SDL_Texture* t = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
-                                               SDL_TEXTUREACCESS_STATIC, fr.width, fr.height);
+            // Smoothing OFF keeps nearest, i.e. the crisp 1:1 retail pixel cursor. ON
+            // builds it at 2x and lets it resolve linearly, which matters here more than
+            // anywhere: the cursor is ~24px of 1999 art drawn at cursorScale on a 4K
+            // panel, so its stair-steps are the most visible in the game.
+            int fac = 1;
+            SDL_Texture* t = tak::art::makeTexture(ren, fr.rgba, fr.width, fr.height, &fac);
             if (!t) continue;
-            SDL_UpdateTexture(t, nullptr, fr.rgba.data(), fr.width * 4);
-            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-            SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);   // crisp 1:1 pixel cursor
+            if (fac == 1) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
+            // LOGICAL size stays the 1x frame: hotspot, offsets and the drawn size are
+            // all authored in those units, and the texture being 2x is invisible to them.
             anims_[i].push_back({t, fr.width, fr.height, fr.xoff, fr.yoff, fr.rgba});
         }
     }

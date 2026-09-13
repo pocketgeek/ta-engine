@@ -1,6 +1,7 @@
 #include "client/guiart.h"
 
 #include "client/gpuvram.h"
+#include "client/artscale.h"
 #include "hpi/hpi.h"
 
 namespace tak {
@@ -28,18 +29,14 @@ SDL_Texture* gafTexture(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::strin
             if (frame < 0 || size_t(frame) >= sq.frames.size()) frame = 0;
             auto& f = sq.frames[size_t(frame)];
             if (f.width == 0 || f.height == 0) return nullptr;
-            SDL_Texture* t = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
-                                             SDL_TEXTUREACCESS_STATIC, f.width, f.height);
-            if (!t) return nullptr;
+            // (texture built below, after the colour-key pass -- see makeTexture)
             // The cut-out is the palette's near-black entry (2,2,2 in loadingbg), not a
             // hard zero -- so key on a small threshold rather than exact black.
             if (keyBlack)
                 for (size_t i = 0; i + 3 < f.rgba.size(); i += 4)
                     if (f.rgba[i] <= 8 && f.rgba[i + 1] <= 8 && f.rgba[i + 2] <= 8)
                         f.rgba[i + 3] = 0;
-            SDL_UpdateTexture(t, nullptr, f.rgba.data(), f.width * 4);
-            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-            return t;
+            return tak::art::makeTexture(ren, f.rgba, f.width, f.height);
         }
     } catch (...) {}
     return nullptr;

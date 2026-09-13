@@ -16,6 +16,7 @@
 
 #include "campaign/campaign.h"
 #include "client/briefingscreen.h"
+#include "client/artscale.h"
 #include "client/resultscreen.h"
 #include "cob/vm.h"
 #include "crt/crt.h"
@@ -575,6 +576,10 @@ int main(int argc, char** argv) {
     // SOFTWARE rasteriser, where submit and present are CPU rasterisation and say
     // nothing about a real GPU. Measuring there sent me to the wrong conclusion
     // once already.
+    // Static-art smoothing is sampled ONCE here, before any art is built. Textures keep
+    // whatever factor they were built with, so a mid-session toggle must not be re-read
+    // per texture -- the Options row says RESTART for exactly this reason.
+    tak::art::setSmoothArt(settings.smoothArt);
     {
         SDL_RendererInfo ri{};
         if (SDL_GetRendererInfo(ren, &ri) == 0)

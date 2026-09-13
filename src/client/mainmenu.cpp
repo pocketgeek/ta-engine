@@ -1,4 +1,5 @@
 #include "client/mainmenu.h"
+#include "client/artscale.h"
 #include "client/gpuvram.h"
 
 #include "gaf/gaf.h"
@@ -90,6 +91,11 @@ struct Button {
     std::string name;
     SDL_Rect rect{};
     SDL_Texture* tex[3] = {nullptr, nullptr, nullptr};   // normal / hover / pressed
+    int texFac[3] = {1, 1, 1};   // 2 when smooth-art built that texture at 2x. Carried
+                                 // per texture, NOT read back off the global: the 2x
+                                 // allocation can fail under VRAM pressure and fall back
+                                 // to 1x, and laying out a 1x texture as if it were 2x
+                                 // would draw the button at half size.
     std::string sound;                                   // click sound (gui states)
     std::string tip;                                     // help caption (gui cmd)
     MainMenu::Choice action = MainMenu::Choice::None;
@@ -230,7 +236,8 @@ struct MainMenu::Impl {
     }
 
     // Turn a GAF sequence/frame into an SDL texture (same pipeline as the in-game HUD).
-    SDL_Texture* gafTex(const std::string& gafName, const std::string& seq, int frame) {
+    SDL_Texture* gafTex(const std::string& gafName, const std::string& seq, int frame,
+                        int* appliedFactor = nullptr) {
         if (gafName.empty() || seq.empty()) return nullptr;
         std::string base = gafName;
         if (base.size() >= 4 && base.substr(base.size() - 4) == ".gaf")
@@ -244,11 +251,7 @@ struct MainMenu::Impl {
                 if (sq.frames.empty()) return nullptr;
                 auto& f = sq.frames[size_t(frame)];
                 if (f.width == 0 || f.height == 0) return nullptr;
-                SDL_Texture* t = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
-                                                   SDL_TEXTUREACCESS_STATIC, f.width, f.height);
-                SDL_UpdateTexture(t, nullptr, f.rgba.data(), f.width * 4);
-                SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-                return t;
+                return tak::art::makeTexture(ren, f.rgba, f.width, f.height, appliedFactor);
             }
         } catch (...) {}
         return nullptr;
@@ -393,7 +396,8 @@ struct MainMenu::Impl {
             if (b.act == Choice::Options) bt.tip = "Settings";   // opens the SETTINGS menu now
             loadSfx(bt.sound);
             for (int i = 0; i < 3 && i < int(g->imgs.size()); ++i)
-                bt.tex[i] = gafTex(g->imgs[size_t(i)].gaf, g->imgs[size_t(i)].seq, g->imgs[size_t(i)].frame);
+                bt.tex[i] = gafTex(g->imgs[size_t(i)].gaf, g->imgs[size_t(i)].seq,
+                                   g->imgs[size_t(i)].frame, &bt.texFac[i]);
             buttons.push_back(std::move(bt));
         }
     }
@@ -445,13 +449,18 @@ struct MainMenu::Impl {
             }
         }
         for (auto& b : buttons) {
-            SDL_Texture* t = b.hover && b.tex[1] ? b.tex[1] : b.tex[0];
+            const int ti = (b.hover && b.tex[1]) ? 1 : 0;
+            SDL_Texture* t = b.tex[ti];
             if (!t) continue;
             // The button art is bigger than its gui hotspot rect and is authored to
             // exactly cover MainBG's button-footprint box; draw it at native size
             // from the gadget origin, not stretched to the (smaller) hotspot rect.
             int tw = 0, th = 0; SDL_QueryTexture(t, nullptr, nullptr, &tw, &th);
-            SDL_Rect nat{b.rect.x, b.rect.y, tw, th};
+            // The texture may have been built at 2x by the smooth-art option; the LAYOUT
+            // is in 1x gui units, so divide it back out. Without this the button art
+            // would silently render at double size with smoothing on.
+            const int fac = b.texFac[ti];
+            SDL_Rect nat{b.rect.x, b.rect.y, tw / fac, th / fac};
             SDL_FRect r = toScreen(nat, s, ox, oy);
             SDL_RenderCopyF(ren, t, nullptr, &r);
         }

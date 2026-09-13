@@ -28,6 +28,12 @@ struct Settings {
     float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..2.0
     bool  bilinear   = false;      // smooth (bilinear) terrain + feature scaling, like retail's option
     bool  treeSway   = true;       // trees sway in the wind (beyond-retail nicety; display-only)
+    bool  smoothArt  = false;      // edge-directed 2x upscale of the STATIC art (GUI,
+                                   // panels, backdrops, cursors) when it is built, so
+                                   // 1999 sprites do not show blocky stair-steps when
+                                   // magnified. Costs load time and VRAM, nothing per
+                                   // frame. Applied when the art is BUILT, so a change
+                                   // needs a restart to reach art already loaded.
     bool  unitShadows = true;      // projected unit shadows (retail Glide casts them; the
                                    // single largest cost in a crowded frame, so it is worth
                                    // being able to turn off on a slow machine)
@@ -101,7 +107,7 @@ struct Settings {
             && a.uiScale == b.uiScale && a.antiAlias == b.antiAlias
             && a.buildBarAlign == b.buildBarAlign && a.buildBarScale == b.buildBarScale
             && a.bilinear == b.bilinear && a.treeSway == b.treeSway
-            && a.unitShadows == b.unitShadows
+            && a.unitShadows == b.unitShadows && a.smoothArt == b.smoothArt
             && a.healthBars == b.healthBars
             && a.masterVol == b.masterVol && a.bgmVol == b.bgmVol && a.sfxVol == b.sfxVol
             && a.mouseZoomSpeed == b.mouseZoomSpeed && a.edgeScrollSpeed == b.edgeScrollSpeed

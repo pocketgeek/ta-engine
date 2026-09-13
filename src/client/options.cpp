@@ -244,6 +244,11 @@ void OptionsScreen::build(int channels) {
     // of a ~12ms draw at ~1180 visible units), which is worth a switch on a slow machine.
     toggle("UNIT SHADOWS", [&] { return s_.unitShadows ? 1.0f : 0.0f; },
            [&](float v) { s_.unitShadows = v > 0.5f; });
+    // Edge-directed 2x upscale of the static art, done when it is BUILT -- so it costs
+    // load time and VRAM and nothing per frame. Art already loaded keeps whatever it was
+    // built with, hence the caption.
+    toggle("SMOOTH GUI ART (RESTART)", [&] { return s_.smoothArt ? 1.0f : 0.0f; },
+           [&](float v) { s_.smoothArt = v > 0.5f; });
     toggle("TREES SWAY IN WIND", [&] { return s_.treeSway ? 1.0f : 0.0f; },
            [&](float v) { s_.treeSway = v > 0.5f; });
 

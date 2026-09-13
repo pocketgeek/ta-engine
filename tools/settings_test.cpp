@@ -54,6 +54,7 @@ int main() {
     flips("bilinear",        [](Settings& s) { s.bilinear = !s.bilinear; });
     flips("treeSway",        [](Settings& s) { s.treeSway = !s.treeSway; });
     flips("unitShadows",     [](Settings& s) { s.unitShadows = !s.unitShadows; });
+    flips("smoothArt",       [](Settings& s) { s.smoothArt = !s.smoothArt; });
     flips("healthBars",      [](Settings& s) { s.healthBars = (s.healthBars + 1) % 3; });
 
     // audio
@@ -128,6 +129,7 @@ int main() {
         cur.hotkeys["selectAll"] = "ctrl+a";
         // Preferences that must be RESET.
         cur.unitShadows = false;
+        cur.smoothArt = true;
         cur.masterVol = 7;
         cur.uiScale = 1.75f;
         cur.bilinear = true;
@@ -153,6 +155,7 @@ int main() {
 
         const Settings fresh{};
         reset("unitShadows",      d.unitShadows == fresh.unitShadows);
+        reset("smoothArt",        d.smoothArt == fresh.smoothArt);
         reset("masterVol",        d.masterVol == fresh.masterVol);
         reset("uiScale",          d.uiScale == fresh.uiScale);
         reset("bilinear",         d.bilinear == fresh.bilinear);
