@@ -248,7 +248,17 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 if (mci->second.footX > 0) t.footX = mci->second.footX;
                 if (mci->second.footZ > 0) t.footZ = mci->second.footZ;
             }
-            t.cruiseAlt = float(info->numberOr("cruisealt", 0)) / 4;
+            // RAW, no divisor. Retail adds cruisealt straight onto the terrain
+            // height byte to get the flyer's world Y (icd 0x4e42ee:
+            // `eax = groundHeight + cruisealt`, then <<16 into the unit's Y),
+            // so it is in the same units as the heightmap -- and our terrain
+            // lift already matches retail's height/2. The `/ 4` sitting here
+            // was an undocumented render fudge with no other reader (nothing in
+            // the sim consumes cruiseAlt), and it put flyers at a quarter of
+            // their height: 18.75px of lift for a cruisealt of 150 where retail
+            // gives 75. It also pulled every flyer's shadow four times too close,
+            // since the shadow offset is alt/4 off the same number.
+            t.cruiseAlt = float(info->numberOr("cruisealt", 0));
             t.bankScale = float(info->numberOr("bankscale", 0));
             t.canSetStance = int(info->numberOr("unitstandorders", 1)) != 0;
             {
