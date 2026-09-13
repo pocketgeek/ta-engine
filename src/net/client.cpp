@@ -58,11 +58,20 @@ bool MpClient::poll() {
         baseMs_ = b ? std::max(0, std::atoi(b)) : 0;
         lossPct_ = l ? std::clamp(std::atoi(l), 0, 100) : 0;
     }
-    if (!conn_.recv()) {
+    // recv() no longer fails on a clean close, so the frames that arrived alongside
+    // the FIN get drained BEFORE the connection is finished off. That matters here as
+    // well as on the server: a Reject sent immediately before the close used to be
+    // buffered and then thrown away, leaving only a bare "peer closed" to explain a
+    // rejection the server had actually spelled out.
+    const bool recvOk = conn_.recv();
+    Frame f;
+    if (recvOk)
+        while (conn_.poll(f)) { onFrame(f); if (!conn_.ok()) break; }
+    if (!recvOk || conn_.peerClosed()) {
         // Keep an existing reason (e.g. the server's Reject text): the socket
         // closing right after a Reject must not overwrite WHY with "peer closed".
         if (err_.empty()) {
-            err_ = conn_.error();
+            err_ = conn_.error().empty() ? std::string("peer closed") : conn_.error();
             // A close during the handshake (never Welcomed) is almost always a
             // version gate on a server too old to flush its Reject reason --
             // say so instead of a bare "peer closed".
@@ -73,8 +82,6 @@ bool MpClient::poll() {
         state_ = State::Done;
         return false;
     }
-    Frame f;
-    while (conn_.poll(f)) { onFrame(f); if (!conn_.ok()) break; }
     pumpDerive();          // the login's PBKDF2 finished on its worker: send the proof
     uint64_t now = nowMs();
     // Release any jitter-held bundles whose delay has elapsed.

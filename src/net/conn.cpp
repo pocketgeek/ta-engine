@@ -132,7 +132,14 @@ bool Conn::recv() {
         }
         long long n = ::recv(fd_, buf, sizeof buf, 0);
         if (n > 0) { rxBuf_.insert(rxBuf_.end(), buf, buf + n); got += size_t(n); continue; }
-        if (n == 0) { err_ = "peer closed"; return false; }
+        // EOF. Do NOT fail here: a peer that sends its last message and closes
+        // usually lands both in one segment, so this same call has already buffered
+        // a COMPLETE frame that returning false would throw away -- the caller bails
+        // out before its poll() drain. That silently lost a final LeaveGame, turning
+        // a deliberate departure into a disconnect and holding the slot for the whole
+        // grace period. Record the close, keep the bytes, and let the caller drain
+        // them and then check peerClosed().
+        if (n == 0) { peerClosed_ = true; break; }
         int e = sockErr();
         if (sockWouldBlock(e)) break;      // drained
         if (sockInterrupted(e)) continue;

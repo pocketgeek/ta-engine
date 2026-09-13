@@ -1424,6 +1424,8 @@ private:
     std::vector<uint8_t> visBack_;      // worker's target; swapped into vis_ when it lands
     std::thread visWorker_;
     bool visRunning_ = false;           // sim thread only: is visWorker_ joinable?
+    bool visHavePass_ = false;          // has a fog pass ever actually LANDED? (not: is
+                                        // vis_ allocated -- setTerrain pre-fills it)
     std::atomic<bool> visDone_{false};  // worker -> sim thread: result is ready
     void visGather();                   // serial: reads units_, fills visReveals_/visMisses_
     void visCompute();                  // worker: ray-march, demote, stamp into visBack_

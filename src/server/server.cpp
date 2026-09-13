@@ -1392,6 +1392,14 @@ void Server::gameMsg(Client& c, const Frame& f) {
             Reader rd(f.payload.data(), f.payload.size());
             uint32_t tk = rd.u32(); uint64_t h = rd.u64();
             if (!rd.ok) return;
+            // A report is only meaningful for a tick the server has actually CLOSED.
+            // Without this check `tk` is whatever the peer says: a future tick both
+            // advanced ackTick (so the client claimed flow-control progress it had not
+            // made) and allocated a r.hashes entry that consensus can never retire,
+            // because checkHashes() bails out while waiting for a second client that
+            // will never report a tick the server never emitted. Thousands of distinct
+            // fabricated ticks therefore grew the room forever.
+            if (tk > r->tick) break;   // not emitted yet -- ignore, do not ack
             if (tk > c.ackTick) c.ackTick = tk;   // flow control: this client is up to `tk`
             // SEATED clients only. A spectator's StateHash is a progress ACK and
             // nothing more -- it deliberately sends a trivial 0 rather than
@@ -1408,6 +1416,15 @@ void Server::gameMsg(Client& c, const Frame& f) {
             if (c.slot >= 0) {
                 r->hashes[tk][c.id] = h;
                 checkHashes(*r, tk);
+                // Retention bound that does NOT depend on consensus. checkHashes only
+                // trims once every live client has reported a tick, so one client
+                // reporting while another lags (or stops reporting entirely, without
+                // yet being dropped) leaves entries pinned indefinitely. Clients report
+                // every kHashPeriod ticks, so this window is generous in real time while
+                // still being finite. Oldest first -- the map is ordered by tick.
+                constexpr size_t kMaxHashTicks = 256;   // ~8500 ticks of slack at kHashPeriod
+                while (r->hashes.size() > kMaxHashTicks)
+                    r->hashes.erase(r->hashes.begin());
             }
             break;
         }
@@ -1717,6 +1734,9 @@ int Server::run() {
                 if (!c.conn.recv()) { dead.push_back(id); continue; }
                 Frame fr;
                 while (c.conn.poll(fr)) { onFrame(c, fr); if (!c.conn.ok()) break; }
+                // A clean close is only final once its trailing frames are drained
+                // above -- the last LeaveGame usually arrives in the same segment.
+                if (c.conn.peerClosed()) c.conn.fail("peer closed");
             }
             if (!c.conn.ok()) { dead.push_back(id); continue; }
             if (pfds[i].revents & POLLOUT) c.conn.flushWrite();

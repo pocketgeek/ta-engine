@@ -619,6 +619,13 @@ void World::setTerrain(const std::vector<uint8_t>& heights, int w, int h, int se
                        const std::vector<uint16_t>* features) {
     // The fog worker reads heights_; never let a reload pull the map out from under it.
     if (visRunning_) { visWorker_.join(); visRunning_ = false; visDone_.store(false); }
+    // EVERY cached LoS mask is a function of the terrain we are about to replace, and
+    // its contents are flat cell indices computed against the OLD visW_/visH_. Keeping
+    // them across a map change is not merely stale fog: load a smaller map and those
+    // indices address past the end of visBack_. The cache key is (sight, radar, cx, cz)
+    // with no terrain identity in it, so nothing else would ever invalidate them.
+    visMaskCache_.clear();
+    visHavePass_ = false;   // the next pass is a first pass again (see updateVisibility)
     seaLevel_ = seaLevel;
     heights_ = heights;   // keep raw heights for fog line-of-sight
     hW_ = w; hH_ = h;
@@ -3374,6 +3381,7 @@ void World::visPump() {
         visDone_.store(false, std::memory_order_relaxed);
         vis_.swap(visBack_);
         ++visGen_;   // renderer: fog content may have changed; re-upload once
+        visHavePass_ = true;
     }
 }
 
@@ -3385,8 +3393,14 @@ void World::updateVisibility() {
     // but would leave the opening frames (and a --shot capture) with an unpopulated fog
     // buffer -- the whole map dark. At world start there are only the handful of starting
     // units, so this one is cheap; it is the crowded steady state that needed the worker.
-    bool first = vis_.empty();
-    if (first) {
+    //
+    // The test is "have we ever PRODUCED a pass", not "is the buffer allocated": setTerrain
+    // pre-fills vis_ with zeros so the opening frames render fully fogged rather than fully
+    // bare, so vis_.empty() is already false by the time we first get here and the inline
+    // path never ran. The safeguard was dead code, and --shot only looked right because it
+    // waits seconds before capturing.
+    bool first = !visHavePass_;
+    if (vis_.empty()) {
         visW_ = nav_.width();
         visH_ = nav_.height();
         vis_.assign(size_t(visW_) * visH_, 0);
@@ -3399,6 +3413,7 @@ void World::updateVisibility() {
         visCompute();
         vis_.swap(visBack_);
         ++visGen_;
+        visHavePass_ = true;
         return;
     }
     visRunning_ = true;

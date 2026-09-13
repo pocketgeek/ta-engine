@@ -43,11 +43,17 @@ public:
     void send(Msg kind) { send(kind, std::vector<uint8_t>{}); }
 
     // Non-blocking I/O against the ready socket:
-    //  recv(): read available bytes into rxBuf_; false on peer close/error.
+    //  recv(): read available bytes into rxBuf_; false on ERROR only -- a clean peer
+    //          close returns true and sets peerClosed(), so the caller still drains the
+    //          frames that arrived with the FIN.
     //  poll(): pop the next complete frame (returns false if none buffered yet).
     //  flushWrite(): push queued bytes out; false on error. wantWrite() true
     //  while bytes remain (register POLLOUT).
     bool recv();
+    // Did the peer send EOF? recv() returns TRUE on a clean close so the caller can
+    // still drain whatever complete frames were buffered alongside the FIN; call this
+    // AFTER the poll() drain to finish the connection off. See recv() for why.
+    bool peerClosed() const { return peerClosed_; }
     bool poll(Frame& out);
     bool flushWrite();
     bool wantWrite() const { return txOff_ < txBuf_.size(); }
@@ -59,6 +65,7 @@ public:
 private:
     int fd_ = -1;
     std::string err_;
+    bool peerClosed_ = false;
     std::vector<uint8_t> rxBuf_;
     size_t rxOff_ = 0;
     std::vector<uint8_t> txBuf_;
