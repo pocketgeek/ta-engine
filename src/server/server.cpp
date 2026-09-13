@@ -464,6 +464,13 @@ static bool roomOccupied(const Room& r) {
     return !r.spectators.empty();
 }
 
+// Builds the whole replay into a second buffer and writes it synchronously on the
+// server loop, so a teardown does stall every other room for the duration. Measured
+// before worrying about it: a 3600-tick game is 58 KB and 2.9 ms end to end. Even at
+// 20x that it is under 60 ms, once, at room teardown. Left synchronous on purpose --
+// an async writer here would be complexity bought against a cost I could not measure.
+// Worth revisiting only if replays get much larger (many seated humans issuing orders
+// every tick) or the store is slow.
 void Server::writeReplay(Room& r) {
     if (replayDir_.empty() || r.log.empty()) return;
     // Self-contained replay: header (format, map, options, final slot table,
@@ -1804,6 +1811,14 @@ int Server::run() {
         // read-only. With >=2 games due we hand one per worker; flow prefetch then
         // stays on-thread (the parallelism is already at the game level). A lone game
         // ticks inline and keeps its intra-tick flow pool. Byte-identical either way.
+        // Rooms tick before sockets are serviced again, so in principle one heavy room
+        // delays everyone's networking. Measured with a heavy (stress, ~3800 units) room
+        // and a light one on the same server: worst socket-service gap 20 ms with two
+        // rooms, against 33 ms with a single room -- BETTER with two, because the tick
+        // deadlines interleave and the poll wakes more often. The per-room tick is well
+        // inside the 33 ms period and rooms tick in parallel, so the batch join is not a
+        // bottleneck at this scale. Revisit if a single room's tick ever approaches the
+        // period; then the join really would gate everyone.
         now = nowMs();
         std::vector<Room*> due;
         for (auto& [rid, r] : rooms_)

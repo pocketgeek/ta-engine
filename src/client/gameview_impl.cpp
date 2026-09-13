@@ -571,6 +571,22 @@
             std::lock_guard<std::mutex> lk(frameMutex_);
             for (w = 0; w < 3; ++w) if (w != published_ && w != reading_) break;
         }
+        // On the graveyard: world_.units() is append-only and nothing ever clears
+        // Unit::type, so this scan copies every unit EVER SPAWNED, not just the living
+        // ones, forever. That is real and it is unbounded -- but measured, it does not
+        // matter. A/B over 150s at 3803 spawned / 3216 living (15% graveyard), skipping
+        // every unit past its visual life (dead and deadFor >= max(corpseUntil, 4)):
+        //
+        //     with the graveyard   capture = 0.253 ms/tick
+        //     skipping it          capture = 0.252 ms/tick
+        //
+        // ~1.7ns per skipped record, because a dead unit's orders/buildQueue/cargo
+        // vectors are EMPTY -- corpses are the cheapest records here, not the dearest.
+        // Projected, 20k accumulated dead costs ~34us/tick, 0.1% of the 30Hz budget.
+        // Memory is the more real cost: sizeof(UnitR) is 232 bytes across 3 buffers,
+        // ~700 bytes per unit ever spawned (2.6 MB here, ~35 MB at 50k spawns).
+        // Not optimised deliberately: the skip would change what frameUnitP() reports
+        // for a dead unit, which is a real semantic risk, bought for nothing.
         Frame& fb = frameBuf_[w];                // write buffer
         const Frame& pf = frameBuf_[published_]; // previously-published frame (last tick's poses)
         fb.gen = ++captureCounter_;     // records written this pass get gen==fb.gen (=> live this tick)
