@@ -1595,20 +1595,35 @@ private:
                 }
                 if (!ok) continue;
                 if (shadow) {
-                    // NO BACKFACE CULL -- and this is the single biggest cost in the
-                    // frame, so it has been tested rather than assumed. Culling here
-                    // is worth a LOT: 706k -> 419k shadow vertices, the shadow pass
-                    // 4.8ms -> 2.6ms, and 50 -> 58 fps at ~1150 visible units.
+                    // NO BACKFACE CULL. This is the single biggest cost in a crowded
+                    // frame, so it has been measured three ways rather than assumed --
+                    // and the reason it cannot be culled is a property of the SHIPPED
+                    // MODELS, not of the projection.
                     //
-                    // It is still wrong. Rasterising every unit's shadow both ways in
-                    // one process and comparing coverage over 3,000,000 real unit
-                    // poses: culling loses 9.8% of the covered pixels, and 96.4% of
-                    // units lose some. A silhouette is the union of BOTH faces --
-                    // where a piece is a single-sided sheet (a flag, a cape, a thin
-                    // plate) the front face may not project there at all, so the
-                    // shadow tears. Nothing about that depends on how the silhouette
-                    // is composited, which is why it did not become viable when the
-                    // coverage mask was dropped.
+                    // Census over the loaded models: 1039 pieces, of which only 61 are
+                    // closed edge-manifold solids. 94% are OPEN single-sided sheets, and
+                    // they hold 95.7% of the triangles. An open sheet has no back face to
+                    // discard -- cull the one face it has and the shadow loses it
+                    // outright. There is barely any redundancy here to reclaim.
+                    //
+                    // Measured by rasterising each unit's shadow with and without a cull
+                    // and comparing coverage over ~3,000,000 real unit poses:
+                    //
+                    //   cull vs CAMERA dir (0,2,-1)  -> loses 9.8% of covered pixels,
+                    //                                   96.4% of units affected
+                    //   cull vs LIGHT  dir (-1,4,-1) -> loses 5.5%, 74.7% of units
+                    //
+                    // The light direction is the correct one for a shadow -- the
+                    // projection collapses along it, since a displacement (a,b,c) leaves
+                    // the shadow fixed iff a = -kShadowLX*b and c = -kShadowLZ*b -- and
+                    // halving the damage confirms that. It is still a tear. A
+                    // piece-aware cull (light-cull closed pieces, keep both faces on open
+                    // ones) would be exactly correct, and is not worth building: it can
+                    // only ever reach the 4.3% of triangles that sit in closed pieces.
+                    //
+                    // For the record, culling IS worth a lot in cost terms -- light-cull
+                    // gives 709k -> 445k vertices, shadow 3.2ms -> 2.1ms, 54 -> 62 fps.
+                    // The fidelity is what rules it out, not the speed.
                     //
                     // Opaque colour, not alpha: the level is a flat multiply and the
                     // batch is drawn with SDL_BLENDMODE_MOD. Retail's shadow has no

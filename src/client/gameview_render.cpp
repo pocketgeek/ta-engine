@@ -1,3 +1,4 @@
+#include <set>
 #include <functional>
 #include "client/gameview.h"
 
