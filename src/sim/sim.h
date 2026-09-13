@@ -513,7 +513,20 @@ struct Unit {
     float paralyzedFor = 0;// >0 = paralyzed (can't act, still takes damage)
     float selfDestructT = -1;// >=0 = self-destruct countdown (s) armed; -1 = not
     bool  cloaked = false; // currently invisible to enemies
-    bool  cloakOn = true;  // canCloak units: player wants to cloak (gates auto-cloak)
+    // OFF until ordered. Retail treats cloaking as a MISSION, not a spawn state:
+    // translate/unitmissions.tdf carries CLOAK and DECLOAK as separate mission
+    // codes, and the drain itself lives in the mission-handler block (icd
+    // 0x4011b0, picking cloakcostmoving over cloakcost by speed) alongside Build
+    // and SelfDestruct.
+    //
+    // Defaulting this ON quietly cost Taros its whole economy. tarnecro is the
+    // Taros MONARCH -- a starting unit -- with cancloak=1 and cloakcost=25, so it
+    // burned 25 mana/sec against an income of ~21 from the first second of every
+    // match: income 21 vs everyone else's 43, one lodestone to their four, and a
+    // treasury pinned at 0 that could never reach the ~121 needed to start
+    // another. The AI looked broken; it was solvent code starving on a drain it
+    // never asked for.
+    bool  cloakOn = false;  // canCloak units: player wants to cloak (CLOAK order)
     bool  active = true;   // onoffable units: false = powered down
     // Retail keeps TWO independent standing orders, and the single "stance" the
     // HUD shows is only a front-end that writes both (icd setter 0x5198a0):
