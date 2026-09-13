@@ -233,9 +233,18 @@ void OptionsScreen::build(int channels) {
 
     // GRAPHICS: how the scene is rendered (quality / performance trade-offs).
     section("GRAPHICS");
-    // Supersampling AA as a simple on/off; ON is 2x.
-    toggle("ANTI-ALIASING", [&] { return s_.antiAlias >= 2 ? 1.0f : 0.0f; },
-           [&](float v) { s_.antiAlias = v > 0.5f ? 2 : 0; });
+    // Supersampling AA. The 4x level was always implemented (main.cpp picks a 2.0x
+    // linear scale for it, against 1.4142x for 2x) but the row here was a TOGGLE that
+    // could only ever write 0 or 2, so it was unreachable without hand-editing the ini.
+    // Measured at 7680x2160 with ~1200 units: off 60 fps, 2x 57, 4x 57 -- the frame is
+    // geometry-bound, not fill-bound, so the bigger target is close to free. It is not
+    // free in VRAM (a 14336x4033 target is ~231 MB against ~133 MB for 2x), which is why
+    // it stays opt-in rather than becoming the default.
+    slider("ANTI-ALIASING", 0, 2, [&] { return float(s_.antiAlias >= 4 ? 2 : s_.antiAlias >= 2 ? 1 : 0); },
+           [&](float v) { const int l = std::clamp(int(v + 0.5f), 0, 2);
+                          s_.antiAlias = l >= 2 ? 4 : l >= 1 ? 2 : 0; },
+           [](float v) { int l = int(v + 0.5f);
+                         return std::string(l >= 2 ? "4X" : l >= 1 ? "2X" : "OFF"); });
     // Retail's video option: smooth terrain + feature scaling (off = crisp pixels).
     toggle("BILINEAR FILTERING", [&] { return s_.bilinear ? 1.0f : 0.0f; },
            [&](float v) { s_.bilinear = v > 0.5f; });

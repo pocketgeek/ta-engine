@@ -49,6 +49,7 @@ int main() {
     flips("maxFps",          [](Settings& s) { s.maxFps += 17; });
     flips("uiScale",         [](Settings& s) { s.uiScale += 0.25f; });
     flips("antiAlias",       [](Settings& s) { s.antiAlias = s.antiAlias ? 0 : 2; });
+    flips("antiAlias(4x)",   [](Settings& s) { s.antiAlias = 4; });
     flips("buildBarAlign",   [](Settings& s) { s.buildBarAlign = (s.buildBarAlign + 1) % 3; });
     flips("buildBarScale",   [](Settings& s) { s.buildBarScale += 0.25f; });
     flips("bilinear",        [](Settings& s) { s.bilinear = !s.bilinear; });

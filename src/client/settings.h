@@ -23,7 +23,7 @@ struct Settings {
     bool  vsync      = true;
     int   maxFps     = 60;         // frame cap when vsync is off; clamp 30..480
     float uiScale    = 1.0f;       // in-game HUD scale; 0.75..2.0 (1.0 = 100%)
-    int   antiAlias  = 0;          // scene supersampling: 0=off, 2=on (2x)
+    int   antiAlias  = 0;          // scene supersampling: 0=off, 2=2x, 4=4x
     int   buildBarAlign = 1;       // conjure/build icon row: 0=left, 1=center, 2=right
     float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..2.0
     bool  bilinear   = false;      // smooth (bilinear) terrain + feature scaling, like retail's option
