@@ -1574,10 +1574,16 @@
 
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
                             double& simMs, long& unitsDrawn, long& shadowVerts) {
-        projMs = profProjMs_; submitMs = profSubmitMs_; shadowMs = profShadowMs_;
-        unitsDrawn = profUnits_; shadowVerts = profShadowVerts_;
+        // Deltas since the last call -- the counters themselves are monotonic so that the
+        // per-frame TAK_SPIKES logger can take its own independent deltas off them.
+        projMs   = profProjMs_   - profProjPrev_;    profProjPrev_   = profProjMs_;
+        submitMs = profSubmitMs_ - profSubmitPrev_;  profSubmitPrev_ = profSubmitMs_;
+        shadowMs = profShadowMs_ - profShadowPrev_;  profShadowPrev_ = profShadowMs_;
+        unitsDrawn  = profUnits_       - profUnitsPrev_;       profUnitsPrev_       = profUnits_;
+        shadowVerts = profShadowVerts_ - profShadowVertsPrev_; profShadowVertsPrev_ = profShadowVerts_;
+        // profSimTicks_ is the sim WORKER's counter, exchanged (not delta'd): the spike
+        // logger never reads it, so it has only the one consumer.
         simMs = double(profSimTicks_.exchange(0)) * 1000.0 / double(SDL_GetPerformanceFrequency());
-        profProjMs_ = 0; profSubmitMs_ = 0; profShadowMs_ = 0; profUnits_ = 0; profShadowVerts_ = 0;   // profSimTicks_ reset via exchange above
     }
 
     void GameView::advance(float seconds) {

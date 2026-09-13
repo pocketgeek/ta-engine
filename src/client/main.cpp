@@ -1269,6 +1269,9 @@ int main(int argc, char** argv) {
         if (mapView) mapView->draw(w, h);
         if (modelView) modelView->draw(w, h, dt);
         double t1 = prof ? pnow() : 0;
+        // Hoisted out of the gameView block so the spike logger can report the REAL
+        // update (t1->t2) and draw (t2->t3) intervals separately.
+        double t2 = t1, t3 = t1;
         if (gameView) {
             // Real-time camera/audio every frame, BEFORE the sim step -- so pan,
             // edge-scroll, follow, shake and music stay smooth even when a net
@@ -1301,9 +1304,9 @@ int main(int argc, char** argv) {
                 gameView->animFrame(dt);
                 gameView->benchmarkSample();   // perf samples at each 10s milestone (no-op unless benchmarking)
             }
-            double t2 = prof ? pnow() : 0;
+            t2 = prof ? pnow() : 0;
             gameView->draw(w, h);
-            double t3 = prof ? pnow() : 0;
+            t3 = prof ? pnow() : 0;
             if (prof) { pUpd += t2 - t1; pDraw += t3 - t2; }
             // Feed the whole real frame time (dt = last frame's total incl. present)
             // to the sprite auto-tuner, so a GPU-bound full-model crowd triggers it.
@@ -1333,13 +1336,21 @@ int main(int argc, char** argv) {
             // Per-frame spike log. The PROF line below is a one-second AVERAGE, which
             // is exactly the wrong shape for a periodic hitch -- a 200ms stall twice a
             // second vanishes into a mean. This prints the frames that are outliers
-            // against a running median, with the phase breakdown, so the stall can be
+            // against a rolling baseline, with the phase breakdown, so the stall can be
             // attributed instead of guessed at.
+            //
+            // The phase boundaries here are the real ones, and were not always: this
+            // used to label t1-t0 (the ASSET-VIEWER draw, zero in a game) as "update"
+            // and then report t4-t1 as "draw" -- which swallowed the whole gameplay
+            // update. So a stall in the sim showed up as unattributed time inside
+            // "draw", and I went looking for it in the renderer. It was the fog pass.
             static const bool spikes = tak::devEnv("TAK_SPIKES") != nullptr;
             if (spikes) {
                 const double total = t5 - t0;
-                static double med = 16.0;
-                med += (total - med) * (total > med ? 0.02 : 0.20);   // slow up, fast down
+                // NOT a median -- an asymmetric EMA of recent frame times (rises slowly,
+                // falls fast) used purely as an outlier threshold. Named for what it is.
+                static double base = 16.0;
+                base += (total - base) * (total > base ? 0.02 : 0.20);
                 double pj = 0, sb = 0, sh = 0, tr = 0, fg = 0, fx = 0, hd = 0;
                 double at = 0, bd = 0;
                 if (gameView) { gameView->profPeek(pj, sb, sh);
@@ -1347,17 +1358,25 @@ int main(int argc, char** argv) {
                                 gameView->profOther2(at, bd); }
                 static double ppj = 0, psb = 0, psh = 0, ptr = 0, pfg = 0, pfx = 0, phd = 0;
                 static double pat = 0, pbd = 0;
-                if (total > med * 2.0 && total > 8.0)
-                    std::printf("SPIKE %6.1fms (median %5.1f) | update=%.1f draw=%.1f "
-                                "[proj=%.1f submit=%.1f shadow=%.1f | terrain=%.1f "
-                                "fog=%.1f fx=%.1f hud=%.1f atlas=%.1f body=%.1f rest=%.1f] "
-                                "present=%.1f | t=%.1fs\n",
-                                total, med, t1 - t0, t4 - t1,
-                                pj - ppj, sb - psb, sh - psh,
-                                tr - ptr, fg - pfg, fx - pfx, hd - phd, at - pat, bd - pbd,
-                                (t4 - t1) - (pj - ppj) - (sb - psb) - (tr - ptr) -
-                                    (fg - pfg) - (fx - pfx) - (hd - phd) - (at - pat) -
-                                    (bd - pbd),
+                // All of these counters are monotonic (see takeProf), so a plain
+                // difference is this frame's share.
+                const double dpj = pj - ppj, dsb = sb - psb, dsh = sh - psh;
+                const double dtr = tr - ptr, dfg = fg - pfg, dfx = fx - pfx;
+                const double dhd = hd - phd, dat = at - pat, dbd = bd - pbd;
+                // draw() partitions into terrain + atlas + proj + submit + fx + fog + hud
+                // + whatever is left. shadow and body are NESTED INSIDE submit (the submit
+                // timer opens before the shadow pass and closes after the body loop), so
+                // they are reported as detail and must NOT be subtracted again -- doing
+                // that double-counted body and made the residual read far too small.
+                const double drawMs = t3 - t2;
+                const double rest = drawMs - dtr - dat - dpj - dsb - dfx - dfg - dhd;
+                if (total > base * 2.0 && total > 8.0)
+                    std::printf("SPIKE %6.1fms (base %5.1f) | viewers=%.1f update=%.1f "
+                                "draw=%.1f [terrain=%.1f atlas=%.1f proj=%.1f submit=%.1f "
+                                "(shadow=%.1f body=%.1f) fx=%.1f fog=%.1f hud=%.1f "
+                                "rest=%.1f] present=%.1f | t=%.1fs\n",
+                                total, base, t1 - t0, t2 - t1, drawMs,
+                                dtr, dat, dpj, dsb, dsh, dbd, dfx, dfg, dhd, rest,
                                 t5 - t4, SDL_GetTicks64() / 1000.0);
                 ppj = pj; psb = sb; psh = sh; ptr = tr; pfg = fg; pfx = fx; phd = hd;
                 pat = at; pbd = bd;

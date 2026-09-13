@@ -1237,10 +1237,21 @@ private:
                     SDL_Texture* tex; int start, count; };   // seg if u&&f both null
     std::vector<CopyTask> copyTasks_;
     std::vector<DrawOp> drawOps_;
-    double profProjMs_ = 0, profSubmitMs_ = 0;   // TAK_PROF sub-phase timers (main thread)
+    // TAK_PROF sub-phase timers (main thread). ALL of these are MONOTONIC -- they only
+    // ever grow, and takeProf() returns the delta since its last call rather than zeroing
+    // them. They used to be reset in takeProf, which silently corrupted the TAK_SPIKES
+    // logger: that keeps its own previous totals to get a per-FRAME delta, so the frame
+    // after each one-second PROF line subtracted a large stale total from a freshly
+    // zeroed counter and printed negative phase times with the difference dumped into
+    // the residual. Two consumers at different cadences cannot share a resettable
+    // counter; monotonic plus per-consumer previous values is the shape that works.
+    double profProjMs_ = 0, profSubmitMs_ = 0;
     double profShadowMs_ = 0;   // the projected-silhouette pass, inside submit
     long profUnits_ = 0;        // visible units accumulated over the sampled frames
     long profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
+    // takeProf's own previous values, so it can report per-interval deltas.
+    double profProjPrev_ = 0, profSubmitPrev_ = 0, profShadowPrev_ = 0;
+    long profUnitsPrev_ = 0, profShadowVertsPrev_ = 0;
     // "other" broken out: a periodic hitch was traced into this bucket and there
     // was no way to say WHICH of terrain / fog / effects / HUD it was.
     double profTerrainMs_ = 0, profFogMs_ = 0, profFxMs_ = 0, profHudMs_ = 0;

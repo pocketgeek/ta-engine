@@ -3508,9 +3508,21 @@ void World::visCompute() {
         }
         for (size_t i = 0; i < mn; ++i) visMaskCache_[misses[i].key] = std::move(built[i]);
     }
-    // PASS 2 (parallel): stamp vis_[i]=2 for every revealer's cells (cached mask or circle
-    // fill). It only READS the now-warm cache and writes the constant 2, so overlapping
-    // writes from different threads store the SAME value -- a benign race, no locks needed.
+    // PASS 2 (parallel): stamp visBack_[i]=2 for every revealer's cells (cached mask or
+    // circle fill). It only READS the now-warm cache and writes the constant 2, and two
+    // threads can land on the same cell where reveal circles overlap.
+    //
+    // This used to claim that was "a benign race, no locks needed" because both threads
+    // store the same value. That is not a thing C++ says: concurrent non-atomic writes to
+    // the same object are a data race and therefore UB, no matter how equal the values --
+    // and it would trip any race detector pointed at this. Store through atomic_ref with
+    // relaxed ordering instead: on every target we build for, a relaxed 1-byte store is
+    // the same instruction as the plain one, so this is free at runtime and merely makes
+    // the guarantee real. Relaxed is enough because nothing ORDERS off these writes; the
+    // worker's join in visPump() is what publishes the finished buffer.
+    auto put = [&](size_t i) {
+        std::atomic_ref<uint8_t>(visBack_[i]).store(2, std::memory_order_relaxed);
+    };
     auto stamp = [&](size_t b, size_t e) {
         for (size_t i = b; i < e; ++i) {
             const Reveal& rv = reveals[i];
@@ -3520,13 +3532,13 @@ void World::visCompute() {
                         if (dx * dx + dz * dz > rv.r * rv.r) continue;
                         int x = rv.cx + dx, z = rv.cz + dz;
                         if (x < 0 || z < 0 || x >= visW_ || z >= visH_) continue;
-                        visBack_[size_t(z) * visW_ + x] = 2;
+                        put(size_t(z) * visW_ + x);
                     }
                 continue;
             }
             auto mi = visMaskCache_.find(rv.key);   // guaranteed present after pass 1
             if (mi != visMaskCache_.end())
-                for (uint32_t idx : mi->second) visBack_[idx] = 2;
+                for (uint32_t idx : mi->second) put(idx);
         }
     };
     size_t n = reveals.size();
