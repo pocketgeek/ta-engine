@@ -941,6 +941,13 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             // replays it up to now, after which it receives live bundles.
             Writer w; writeSlots(w, room);
             w.u8(uint8_t(slot)); w.u32(0x7a6b0000u + room.id); w.u64(room.slotToken[slot]);
+            // Where the HISTORY ends. The client must not send -- or treat its own
+            // commands coming back as acknowledgements -- until it has consumed
+            // every bundle logged before it rejoined. It cannot work that out
+            // locally: the replay is streamed in chunks paced by the socket, so its
+            // receive buffer legitimately runs dry BETWEEN chunks while history is
+            // still coming, and a buffer-depth guess releases the gate early.
+            w.u32(uint32_t(room.log.size()));
             c.conn.send(Msg::GameStarting, w);
             c.replaying = true; c.replayPos = 0;   // streamed below, paced by txPending()
             // Unpause if this was the player we were waiting on.
@@ -978,6 +985,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             // bundle log replays it to now, then live bundles stream via broadcast.
             Writer w; writeSlots(w, room);
             w.u8(0xFF); w.u32(0x7a6b0000u + room.id); w.u64(0);
+            w.u32(uint32_t(room.log.size()));   // replay boundary (see above)
             c.conn.send(Msg::GameStarting, w);
             c.replaying = true; c.replayPos = 0;   // streamed below, paced by txPending()
             std::fprintf(stderr, "game %u: client %u SPECTATING (replaying %zu ticks)\n",
@@ -1168,6 +1176,7 @@ void Server::tryStart(Client& c) {
         w.u8(uint8_t(i));                 // your slot
         w.u32(0x7a6b0000u + r->id);       // per-game RNG seed base
         w.u64(r->slotToken[i]);           // resume token
+        w.u32(0);                         // fresh game: no history to replay
         it->second->conn.send(Msg::GameStarting, w);
         it->second->loaded = false;
     }
@@ -1178,6 +1187,7 @@ void Server::tryStart(Client& c) {
         if (it == clients_.end()) continue;
         Writer w; writeSlots(w, *r);
         w.u8(0xFF); w.u32(0x7a6b0000u + r->id); w.u64(0);
+        w.u32(uint32_t(r->log.size()));   // replay boundary
         it->second->conn.send(Msg::GameStarting, w);
         it->second->loaded = true;
     }

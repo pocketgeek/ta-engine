@@ -17,7 +17,8 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 66;       // 66: cloak defaults OFF (retail CLOAK/DECLOAK are orders)
+constexpr uint32_t kNetVersion = 67;       // 67: GameStarting carries the replay boundary
+                                           // 66: cloak defaults OFF (retail CLOAK/DECLOAK are orders)
                                            // 65: reclaim and repair join the one queue;
                                            // reclaimQueue gone, repairs can stack
                                            // 64: ONE order queue -- builds are ordinary

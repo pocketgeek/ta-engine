@@ -381,6 +381,7 @@ void MpClient::onFrame(const Frame& f) {
             uint8_t mySlot = r.u8();
             startSeed_ = r.u32();
             resumeToken_ = r.u64();
+            replayTicks_ = r.u32();   // bundles logged before we joined (0 = none)
             // 0xFF marks a spectator (no slot); map it to -1.
             room_.mySlot = !r.ok ? keep : (mySlot == 0xFF ? -1 : int(mySlot));
             // Any 0xFF start is a spectator (a create-as-spectator host, or spectate()).

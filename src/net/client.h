@@ -116,6 +116,10 @@ public:
 
     const std::vector<GameInfo>& games() const { return games_; }
     const RoomView& room() const { return room_; }
+    // Ticks of HISTORY the server is replaying to us after a rejoin or spectate.
+    // The authoritative end of the replay: local buffer depth cannot tell history
+    // from a gap between chunks.
+    uint32_t replayTicks() const { return replayTicks_; }
     // Drain chat lines received since the last call (sender, text).
     std::vector<std::pair<std::string, std::string>> takeChat() { auto c = std::move(chat_); chat_.clear(); return c; }
 
@@ -187,6 +191,7 @@ private:
 
     uint64_t dataHash_ = 0;      // local gameplay-data fingerprint (sent in Hello)
     uint32_t startSeed_ = 0;
+    uint32_t replayTicks_ = 0;   // history the server replays after a rejoin/spectate
     std::array<bool, kMaxSlots> slotLoaded_{};   // per-slot "reported Loaded"
     uint64_t resumeToken_ = 0;
     bool rejoin_ = false;

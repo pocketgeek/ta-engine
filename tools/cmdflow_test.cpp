@@ -150,18 +150,37 @@ int main() {
     // THIS player's commands from before the disconnect. Those are history, not
     // acknowledgement. Counting them retires in-flight credit that nothing actually
     // took, reopening the window past what the server can hold.
+    //
+    // The replay arrives in CHUNKS (the server paces it against the socket), so the
+    // client's receive buffer runs dry BETWEEN chunks while history is still
+    // coming. That is what makes a local "my buffer is shallow" test wrong, and it
+    // is what this models -- the first version of this case just knew when history
+    // ended, which is the one thing production cannot know by itself.
     std::printf("\n[rejoin replay does not acknowledge live commands]\n");
     {
-        // Model: `replayOwn` historical commands of ours arrive as bundles while we
-        // also want to send new ones. `holdWhileReplaying` is the fix.
-        auto rejoin = [](bool holdWhileReplaying) {
+        // gate: 0 = buffer-depth heuristic (what we had), 1 = server-declared
+        // boundary (what we ship). Replay is delivered in chunks of `chunk` ticks
+        // with `gap` idle ticks between them, during which the buffer is empty.
+        auto rejoin = [](int gate, int chunk, int gap) {
+            const int replayTicks = 900;          // history the server will send
             int inFlight = 0, dropped = 0, credit = net::kCmdCapPerTick;
+            int outbox = 4000, replayed = 0, buffered = 0;
             std::deque<int> serverQueue;
-            int outbox = 4000, replayLeft = 3000;
-            for (uint32_t t = 0; t < 300; ++t) {
-                const bool replaying = replayLeft > 0;
+            bool holding = true;
+            for (uint32_t t = 0; t < 600; ++t) {
+                // Server feeds a chunk, then goes quiet for `gap` ticks.
+                const bool feeding = (int(t) % (chunk + gap)) < chunk;
+                if (feeding && replayed < replayTicks) { buffered += 1; }
+                // Client consumes one replayed bundle per tick.
+                int consumedHistory = 0;
+                if (buffered > 0) { --buffered; ++replayed; consumedHistory = 1; }
+
+                // Gate decides whether we may send.
+                if (gate == 0) holding = (buffered > 0);             // buffer depth
+                else           holding = (replayed < replayTicks);   // server boundary
+
                 credit = net::cmdSendCredit(credit, 1);
-                if (!(replaying && holdWhileReplaying)) {
+                if (!holding) {
                     const int n = std::min(outbox, net::cmdSendWindow(credit, inFlight));
                     for (int i = 0; i < n; ++i) {
                         if (serverQueue.size() >= size_t(net::kCmdQueueCap)) { ++dropped; continue; }
@@ -169,27 +188,31 @@ int main() {
                     }
                     outbox -= n; credit -= n; inFlight += n;
                 }
-                // The replayed log comes back as our own commands -- the false ack.
-                if (replaying) {
-                    const int replayed = std::min(replayLeft, net::kCmdCapPerTick);
-                    replayLeft -= replayed;
-                    if (!holdWhileReplaying)
-                        for (int i = 0; i < replayed && inFlight > 0; ++i) --inFlight;
-                    continue;   // the server is busy feeding history, draining nothing
-                }
-                for (int k = 0; k < net::kCmdCapPerTick && !serverQueue.empty(); ++k) {
-                    serverQueue.pop_front();
-                    if (inFlight > 0) --inFlight;
-                }
+                // A consumed HISTORICAL bundle carries our own old commands. If the
+                // gate let us send, those get miscounted as acknowledgements.
+                if (consumedHistory && !holding)
+                    for (int i = 0; i < net::kCmdCapPerTick && inFlight > 0; ++i) --inFlight;
+                // The server is busy replaying; it drains our new commands only once
+                // history is done.
+                if (replayed >= replayTicks)
+                    for (int k = 0; k < net::kCmdCapPerTick && !serverQueue.empty(); ++k) {
+                        serverQueue.pop_front();
+                        if (inFlight > 0) --inFlight;
+                    }
             }
             return dropped;
         };
-        check(rejoin(true) == 0,
-              "holding orders through catch-up loses nothing",
-              "dropped=" + std::to_string(rejoin(true)));
-        check(rejoin(false) > 0,
-              "...and counting replayed history as acks overruns the queue (counter-case)",
-              "dropped=" + std::to_string(rejoin(false)));
+        for (int gap : {1, 3, 8}) {
+            check(rejoin(1, 20, gap) == 0,
+                  "chunked replay, gap " + std::to_string(gap) +
+                      ": server boundary holds the gate",
+                  "dropped=" + std::to_string(rejoin(1, 20, gap)));
+            // Counter-case: the buffer-depth heuristic opens the gate in the gap
+            // between chunks, exactly the failure this boundary exists to prevent.
+            check(rejoin(0, 20, gap) > 0,
+                  "...and a buffer-depth guess opens it mid-replay (counter-case)",
+                  "dropped=" + std::to_string(rejoin(0, 20, gap)));
+        }
     }
 
     // Throughput floor: a low-fps client must still clear a big order about as fast

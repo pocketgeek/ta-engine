@@ -2062,6 +2062,7 @@ private:
     int cmdCredit_ = tak::net::kCmdCapPerTick;   // rate: commands we may send now
     int cmdInFlight_ = 0;   // window: sent, not yet seen back in a bundle
     bool cmdCatchUp_ = false;   // replaying a rejoin's bundle log: hold orders, ignore acks
+    uint32_t cmdReplayEnd_ = 0;  // server-declared tick where that history ends
     std::string netError_;
     // --- Sim/render decouple: the sim worker thread (Stage B1c) ----------------------
     // The worker runs the heavy sim tick (apply commands/events + world_.tick + captureFrame)

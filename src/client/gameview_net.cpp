@@ -337,11 +337,18 @@
         //
         // AFTER both drain paths, not inside one. There are two -- the immediate
         // drain (netDelay_ <= 0) and the jitter-buffered one -- and the default is
-        // the buffered one, so a check placed in the other branch never runs at all
-        // and a rejoined player stays locked out of issuing orders for the whole
-        // game. The test is also "down to the buffer's own reserve", NOT "empty":
-        // the adaptive buffer deliberately keeps netDelay_ bundles in hand.
-        if (cmdCatchUp_ && int(mp_->bufferedBundles()) <= std::max(netDelay_, 0)) {
+        // the buffered one, so a check placed in the other branch never ran at all
+        // and a rejoined player stayed locked out of issuing orders for the whole
+        // game.
+        //
+        // The gate is the SERVER'S boundary, not our buffer depth. Two local
+        // heuristics failed here: "buffered == 0" essentially never fires because
+        // the adaptive buffer keeps a reserve in hand, and "down to the reserve"
+        // cannot tell the end of history from a GAP BETWEEN REPLAY CHUNKS -- the
+        // replay is streamed in socket-paced chunks, so the buffer legitimately
+        // runs dry mid-history and the gate opened early, putting the false-
+        // acknowledgement bug straight back.
+        if (cmdCatchUp_ && netTick_ >= cmdReplayEnd_) {
             cmdCatchUp_ = false;
             if (tak::devEnv("TAK_NETLOG"))
                 std::fprintf(stderr, "catch-up complete at tick %u\n", netTick_);
@@ -580,7 +587,10 @@
             netTick_ = 0; outcome_ = 0; netError_.clear();
             // Replaying history from tick 0: hold our own orders and stop counting
             // acknowledgements until the log is spent (see cmdCatchUp_).
-            cmdCatchUp_ = true;
+            // The SERVER says where history ends; we do not guess (see
+            // Client::replayTicks and the gate below).
+            cmdReplayEnd_ = mp_->replayTicks();
+            cmdCatchUp_ = cmdReplayEnd_ > 0;
             cmdInFlight_ = 0;
             outbox_.clear();   // pre-disconnect orders are moot; the server dropped them
             startMpGame(mp_->startRoom(), mp_->startSeed());
