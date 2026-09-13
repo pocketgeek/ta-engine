@@ -1576,15 +1576,27 @@ private:
                 }
                 if (!ok) continue;
                 if (shadow) {
-                    // No cull: a silhouette is the union of both faces, and
-                    // culling half of it punches holes in the shape.
-                    // Opaque, because these go into a COVERAGE MASK that is
-                    // composited once. Per-triangle alpha stacks wherever the
-                    // silhouette folds over itself (a wing across a body) and
-                    // retail's shadow has no such structure: sampling a retail
-                    // shot gives 124/225, 106/192, 92/170 -- a flat multiply to
-                    // 0.55 everywhere, which is what its alloca'd span buffer
-                    // (0x4eda83, 0x5f08 bytes) buys. kShadowLevel is that 0.55.
+                    // NO BACKFACE CULL -- and this is the single biggest cost in the
+                    // frame, so it has been tested rather than assumed. Culling here
+                    // is worth a LOT: 706k -> 419k shadow vertices, the shadow pass
+                    // 4.8ms -> 2.6ms, and 50 -> 58 fps at ~1150 visible units.
+                    //
+                    // It is still wrong. Rasterising every unit's shadow both ways in
+                    // one process and comparing coverage over 3,000,000 real unit
+                    // poses: culling loses 9.8% of the covered pixels, and 96.4% of
+                    // units lose some. A silhouette is the union of BOTH faces --
+                    // where a piece is a single-sided sheet (a flag, a cape, a thin
+                    // plate) the front face may not project there at all, so the
+                    // shadow tears. Nothing about that depends on how the silhouette
+                    // is composited, which is why it did not become viable when the
+                    // coverage mask was dropped.
+                    //
+                    // Opaque colour, not alpha: the level is a flat multiply and the
+                    // batch is drawn with SDL_BLENDMODE_MOD. Retail's shadow has no
+                    // internal structure -- sampling a retail shot gives 124/225,
+                    // 106/192, 92/170, a flat multiply to 0.55 everywhere, which is
+                    // what its alloca'd span buffer (0x4eda83, 0x5f08 bytes) buys.
+                    // kShadowLevel is that 0.55.
                     for (int k = 0; k < 3; ++k) {
                         tri.v[k].color =
                             SDL_Color{kShadowLevel, kShadowLevel, kShadowLevel, 255};
