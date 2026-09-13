@@ -320,9 +320,69 @@
                 }
             }
         }
-        if (!shadowBatch_.empty())
-            SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
-                               int(shadowBatch_.size()), nullptr, 0);
+        // Composite the silhouettes through a COVERAGE MASK rather than drawing
+        // them straight onto the scene. Drawn directly, every triangle blends
+        // separately and the shadow darkens wherever the shape folds over itself
+        // -- a wing across a body, a sword across a cape -- which is the thing
+        // that read as wrong against retail. Retail rasterises the whole
+        // silhouette into one span buffer and blends it once, so a shadowed pixel
+        // is a flat 0.55 multiply no matter how many polygons covered it.
+        //
+        // White ground + grey coverage + one MOD blit reproduces exactly that.
+        if (!shadowBatch_.empty()) {
+            SDL_Texture* prev = SDL_GetRenderTarget(ren_);
+            int mw = 0, mh = 0;
+            if (prev) SDL_QueryTexture(prev, nullptr, nullptr, &mw, &mh);
+            else SDL_GetRendererOutputSize(ren_, &mw, &mh);
+            if (mw > 0 && mh > 0 &&
+                (!shadowMask_ || shadowMaskW_ != mw || shadowMaskH_ != mh)) {
+                if (shadowMask_) gpuvram::destroy(shadowMask_);
+                shadowMask_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA8888,
+                                              SDL_TEXTUREACCESS_TARGET, mw, mh);
+                shadowMaskW_ = mw; shadowMaskH_ = mh;
+                if (shadowMask_)
+                    SDL_SetTextureBlendMode(shadowMask_, SDL_BLENDMODE_MOD);
+            }
+            if (shadowMask_) {
+                // Only the batch's bounding box is touched. Clearing and blitting
+                // a whole 7680x2160 target twice a frame for a few hundred small
+                // silhouettes is most of the cost of this feature and none of the
+                // benefit; shadows cluster wherever the units are.
+                float lo_x = shadowBatch_[0].position.x, hi_x = lo_x;
+                float lo_y = shadowBatch_[0].position.y, hi_y = lo_y;
+                for (const SDL_Vertex& v : shadowBatch_) {
+                    lo_x = std::min(lo_x, v.position.x); hi_x = std::max(hi_x, v.position.x);
+                    lo_y = std::min(lo_y, v.position.y); hi_y = std::max(hi_y, v.position.y);
+                }
+                float rsx = 1.0f, rsy = 1.0f;
+                SDL_RenderGetScale(ren_, &rsx, &rsy);
+                SDL_Rect box{std::clamp(int(std::floor(lo_x * rsx)) - 1, 0, mw),
+                             std::clamp(int(std::floor(lo_y * rsy)) - 1, 0, mh),
+                             0, 0};
+                box.w = std::clamp(int(std::ceil(hi_x * rsx)) + 1, 0, mw) - box.x;
+                box.h = std::clamp(int(std::ceil(hi_y * rsy)) + 1, 0, mh) - box.y;
+                if (box.w > 0 && box.h > 0) {
+                    SDL_SetRenderTarget(ren_, shadowMask_);
+                    SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
+                    SDL_SetRenderDrawColor(ren_, 255, 255, 255, 255);  // MOD identity
+                    SDL_RenderSetScale(ren_, 1.0f, 1.0f);   // box is in pixels
+                    SDL_RenderFillRect(ren_, &box);
+                    SDL_RenderSetScale(ren_, rsx, rsy);
+                    SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
+                                       int(shadowBatch_.size()), nullptr, 0);
+                    SDL_SetRenderTarget(ren_, prev);
+                    // The mask holds pixel-space coverage (it was drawn under the
+                    // renderer's own scale), so composite it 1:1.
+                    SDL_RenderSetScale(ren_, 1.0f, 1.0f);
+                    SDL_RenderCopy(ren_, shadowMask_, &box, &box);
+                    SDL_RenderSetScale(ren_, rsx, rsy);
+                }
+                SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+            } else {   // no render target available: straight draw, stacking and all
+                SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
+                                   int(shadowBatch_.size()), nullptr, 0);
+            }
+        }
 
         // Pass 2: bodies (feature sprites + unit models) in depth order. Unit
         // models are accumulated into one batch and flushed only when the texture
@@ -1386,6 +1446,8 @@
         atlasTex_.clear();
         impostors_.clear();
         if (impAtlas_) { gpuvram::destroy(impAtlas_); impAtlas_ = nullptr; }
+        if (shadowMask_) { gpuvram::destroy(shadowMask_); shadowMask_ = nullptr; }
+        shadowMaskW_ = shadowMaskH_ = 0;
         impCurX_ = impCurY_ = impShelfH_ = 0;
     }
 
@@ -1911,38 +1973,10 @@
             SDL_Rect top{0, 0, outW, line};   // only pixels above the wall top show
             SDL_RenderSetClipRect(ren_, &top);
         }
-        // Ground shadow: the same projected silhouette pass 1 batches, drawn here
-        // for the units that route through drawUnit whole (occluded, conjuring,
-        // working, dancing). Same shear, so a unit does not change shadow when it
-        // picks up a build order and moves between the two paths.
-        if (u.type && !u.underConstruction && !u.corpsePhase && castsShadow(u.type)) {
-            const float facing =
-                (u.type->canMove || u.type->canFly) ? -u.heading : 0.0f;
-            shadowTris_.clear();
-            collect(shadowTris_, nullptr, vt->second.model.root, Xform{}, anim,
-                    facing, u.player, false, true, /*shadow=*/true);
-            // g.alt, not anim->altitude: a flyer with no live anim entry still
-            // flies, and the geometry builder gives it cruisealt. Reading the anim
-            // directly hands the shadow a 0 while the body rides its real height,
-            // which collapses the lean to nothing.
-            const float alt = g.alt;
-            const float sx = ax + kShadowLX * alt * zm;
-            // ay already carries the model's altitude lift, which is alt*kProjY
-            // up-screen. The shadow wants alt*kShadowLZ up from the GROUND point,
-            // so undo the larger lift and re-apply the smaller one: net alt/4 back
-            // DOWN from the body. (Pass 1 anchors on the ground and subtracts.)
-            const float sy = ay + (kProjY - kShadowLZ) * alt * zm;
-            shadowBatch_.clear();
-            for (const Tri& t : shadowTris_)
-                for (int k = 0; k < 3; ++k) {
-                    SDL_Vertex v = t.v[k];
-                    v.position = {sx + v.position.x * zm, sy + v.position.y * zm};
-                    shadowBatch_.push_back(v);
-                }
-            if (!shadowBatch_.empty())
-                SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
-                                   int(shadowBatch_.size()), nullptr, 0);
-        }
+        // No shadow here. Pass 1 batches EVERY casting unit, specials included,
+        // into the coverage mask and composites it once. Drawing a second one
+        // here would land on top of the composited mask and double-darken it --
+        // exactly the stacking the mask exists to prevent.
         // Disco dance floor: a pulsing, hue-cycling glow disc under a dancing monarch.
         if (dancing(u)) {
             float t = animClock_;

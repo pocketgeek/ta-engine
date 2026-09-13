@@ -957,6 +957,34 @@ Two wrong answers on the way, both worth naming:
     `arasword` carries the same plate while using a sprite. It is a footprint
     marker.
 
+### It is a flat multiply, not per-triangle alpha
+
+Retail's shadow is one uniform tone with no internal structure -- no darkening
+where a wing crosses a body. Sampling a retail screenshot gives shadowed/unshadowed
+ratios of 124/225, 106/192, 92/170: a flat multiply to **0.55**, equal on all
+three channels, so it multiplies the ground rather than blending toward a grey.
+
+That is what the rasteriser's `alloca` at `0x4eda83` is for -- 0x5f08 bytes of
+span/coverage buffer. The whole silhouette is rasterised into it and blended
+ONCE. Drawing the triangles individually with alpha instead stacks them wherever
+the silhouette folds over itself, which reads as obviously wrong next to retail.
+
+We reproduce it with a coverage mask: clear the batch's bounding box to white,
+draw every shadow triangle opaque at 0.55 grey with blending off, then composite
+that rect once with `SDL_BLENDMODE_MOD`. Bounding box, not full screen -- a
+7680x2160 clear and blit twice a frame is most of the cost and none of the gain.
+
+### The x shear is negated in our basis
+
+Retail's shadow is `(+y/4, +y/4)` from the body in screen space: down AND right.
+In our renderer that is `rx - kShadowLX*w[1]` and `rz + kShadowLZ*w[1]` -- MINUS
+on x -- because our `w[1]` runs opposite to retail's y (models are authored in
+the mirrored basis and the piece transform negates Y). Established by probe
+rather than by argument, since reasoning about the sign chain kept producing
+contradictions: temporarily setting `kShadowLX` to 2.0 smears every silhouette
+hard LEFT with `+` and hard right with `-`. The altitude term applied at the
+anchor is in screen space and is already the right way round.
+
 Shadow triangles skip the backface cull -- a silhouette is the union of both
 faces, and culling half of it punches holes. Anchor the shadow on the BODY
 anchor plus retail's delta, never on a re-derived ground point: flyers are

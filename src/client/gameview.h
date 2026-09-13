@@ -1425,6 +1425,12 @@ private:
     // silhouette equally in +x and +z -- down-and-right, as it does in retail.
     static constexpr float kShadowLX = 0.25f;
     static constexpr float kShadowLZ = 0.25f;
+    // How dark a shadowed pixel goes, as a multiply of the ground under it.
+    // 0.55 * 255; measured off a retail screenshot, identical on all three
+    // channels, so retail multiplies rather than blending toward a grey.
+    static constexpr Uint8 kShadowLevel = 140;
+    SDL_Texture* shadowMask_ = nullptr;       // coverage mask, composited once
+    int shadowMaskW_ = 0, shadowMaskH_ = 0;
 
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
@@ -1500,9 +1506,19 @@ private:
                     depth += rz * kSortZ - w[1] * kSortY;
                     px[k] = rx; py[k] = w[1]; pz[k] = rz;
                     if (shadow) {
-                        // Flatten onto the ground and lean by the light: the
-                        // silhouette of the unit, not a disc under it.
-                        const float sxs = rx + kShadowLX * w[1];
+                        // Lean by the light: the silhouette of the unit, not a
+                        // disc under it. Retail's shear is (+y/4, +y/4) in screen
+                        // space (0x4ec250 flag 1), i.e. down AND right.
+                        //
+                        // MINUS on x, plus on z, because our w[1] runs opposite
+                        // to retail's y here -- the models are authored in the
+                        // mirrored basis and the piece transform negates Y. Sign
+                        // established by probe, not by argument: temporarily
+                        // setting kShadowLX to 2.0 smeared every silhouette hard
+                        // to the LEFT with `+`, and hard to the right with `-`.
+                        // (The altitude term at the anchor is applied in screen
+                        // space and is already the right way round.)
+                        const float sxs = rx - kShadowLX * w[1];
                         const float szs = rz + kShadowLZ * w[1];
                         tri.v[k].position = {sxs, -szs * kProjZ};
                     } else {
@@ -1521,8 +1537,16 @@ private:
                 if (shadow) {
                     // No cull: a silhouette is the union of both faces, and
                     // culling half of it punches holes in the shape.
+                    // Opaque, because these go into a COVERAGE MASK that is
+                    // composited once. Per-triangle alpha stacks wherever the
+                    // silhouette folds over itself (a wing across a body) and
+                    // retail's shadow has no such structure: sampling a retail
+                    // shot gives 124/225, 106/192, 92/170 -- a flat multiply to
+                    // 0.55 everywhere, which is what its alloca'd span buffer
+                    // (0x4eda83, 0x5f08 bytes) buys. kShadowLevel is that 0.55.
                     for (int k = 0; k < 3; ++k) {
-                        tri.v[k].color = SDL_Color{0, 0, 0, 60};
+                        tri.v[k].color =
+                            SDL_Color{kShadowLevel, kShadowLevel, kShadowLevel, 255};
                         tri.v[k].tex_coord = {0, 0};
                     }
                     tri.tex = nullptr;
