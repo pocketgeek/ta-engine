@@ -1494,13 +1494,11 @@
         // surface, so the sink is added where the terrain lift is subtracted.
         // Zero on land and for every type that carries neither canhover nor floater.
         ay += waterSink(u.type, ix, iz) * zm;
-        // Sprite sheet: draw a moving/idle unit as one animated quad from the baked
-        // locomotion cycle. Attack/death poses keep the full 3D model (rare).
         scratch.clear();
         Xform base;
-        // (Altitude is applied to the screen anchor above, not here: a model-space
-        // translate did not agree with the impostor's screen-space one, so a flyer
-        // visibly jumped height as it crossed the LOD threshold.)
+        // (Altitude is applied to the screen anchor above, not here: applying it as
+        // a model-space translate disagreed with the screen-space anchor, so a
+        // flyer's height shifted depending on which path drew it.)
         // Bank and pitch the whole model (bankscale/pitchscale). Composed on the
         // BASE, before the piece tree, so the animation's own piece rotations ride
         // on top of the attitude rather than fighting it. Piece X and Y are negated

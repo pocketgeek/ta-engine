@@ -1,7 +1,7 @@
 #pragma once
 
 // GameView -- the in-world game client: rendering, input, the retail HUD, fog,
-// minimap, the COB animation VM host, sprite atlas, benchmark, lobby, and the
+// minimap, the COB animation VM host, benchmark, lobby, and the
 // server/replay glue. Extracted from client/main.cpp (which keeps only the app
 // shell: main(), the front-end loop, and local-server helpers). Client-only and
 // NOT part of the hashed sim. Kept at global scope so main() references it
@@ -1145,7 +1145,6 @@ private:
     };
     std::vector<const UnitR*> visUnits_;
     std::vector<SDL_Vertex> unitBatch_, shadowBatch_;   // cross-unit render batches
-    std::vector<Tri> shadowTris_;   // scratch for one unit's projected silhouette
     // Body pass assembled in parallel: plan offsets serially, scatter the vertex
     // copies across the pool, then replay the draw ops. Keeps depth order exact.
     std::vector<SDL_Vertex> bodyVerts_;
@@ -1255,14 +1254,8 @@ private:
     // so a mass simultaneous spawn streams in over ~a second instead of freezing one frame.
     static constexpr int kRegistrationsPerFrame = 64;
 
-    static int facingIndex(float heading, int n) {
-        int k = int(std::lround(heading / (2.0f * 3.14159265f) * float(n)));
-        k %= n; if (k < 0) k += n;
-        return k;
-    }
-
-    // Append two triangles for an axis-aligned quad (shared by shadow blobs and
-    // shadow sprites; uv is ignored when the batch is drawn untextured).
+    // Append two triangles for an axis-aligned quad (uv is ignored when the batch
+    // is drawn untextured).
     static void pushQuad(std::vector<SDL_Vertex>& b, float x, float y, float w,
                          float h, SDL_Color c) {
         SDL_Vertex tl{{x, y}, c, {0, 0}}, tr{{x + w, y}, c, {1, 0}},
@@ -1294,10 +1287,6 @@ private:
     // target), so it must run before the parallel geometry pass.
     SDL_Texture* atlasFor(int slot);
 
-    // A standalone COB VM for a type (no live unit), for baking sprites. onGet
-    // answers "healthy and moving" so locomotion scripts animate.
-    std::unique_ptr<tak::cob::Vm> loadTypeVm(const std::string& typeId,
-                                             std::vector<std::string>& names);
 
     // Project + transform one unit's model into screen-space, coloured vertex runs.
     // No SDL calls and only reads shared state (models/textures/heightmap/anim), so
@@ -1908,20 +1897,20 @@ private:
         return terrainLiftX(u.x, u.z);
     }
     // Screen-space height a flying unit is lifted by its own altitude. ONE
-    // definition, because there used to be three: the body applied altitude as a
-    // model-space translation, the distant impostor used alt*0.8 in screen space,
-    // and unitScreen (which drives picking and the marquee) used alt*0.8 on top of
-    // the per-pixel terrain lift rather than the flyer datum. A flyer was drawn in
-    // one place, boxed in a second and clicked in a third.
+    // definition, because there used to be several that disagreed: the body applied
+    // altitude as a model-space translation while unitScreen (which drives picking
+    // and the marquee) used alt*0.8 on top of the per-pixel terrain lift rather
+    // than the flyer datum -- so a flyer was drawn in one place and clicked in
+    // another.
     float altLift(const UnitR& u) {
         if (!u.type || !u.type->canFly) return 0.0f;
         auto it = anims_.find(u.id);
         float alt = it != anims_.end() ? it->second.altitude : u.type->cruiseAlt;
         // kProjY, because that is what the MODEL projection does with it: the
         // renderer lifts a piece by (localY + altitude) * kProjY (the effect
-        // anchor uses the same factor). unitScreen and the distant impostor had a
-        // hand-tuned 0.8 instead, so picking and the sprite disagreed by ~6% of
-        // the altitude even before the datum change.
+        // anchor uses the same factor). unitScreen had a hand-tuned 0.8 instead,
+        // so picking and the drawn unit disagreed by ~6% of the altitude even
+        // before the datum change.
         return alt * kProjY;
     }
     // The SMOOTHED datum for this flyer (Anim::groundY), falling back to the raw

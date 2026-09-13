@@ -78,7 +78,7 @@
         // Bilinear filtering (retail video option): smooth the terrain and the
         // standalone feature/shadow sprites. The packed model-texture atlas stays
         // NEAREST regardless (linear sampling would bleed neighbouring sprites),
-        // and fog/minimap/impostors are always linear by design.
+        // and fog/minimap are always linear by design.
         bilinear_ = s.bilinear;
         healthBars_ = std::clamp(s.healthBars, 0, 2);
         hotkeys_.load(s.hotkeys);                         // Options: rebindable hotkeys
@@ -2066,24 +2066,6 @@
     }
 
 
-    std::unique_ptr<tak::cob::Vm> GameView::loadTypeVm(const std::string& typeId,
-                                             std::vector<std::string>& names) {
-        std::string cobPath = "scripts/" + typeId + ".cob";
-        try {
-            auto cobFile = tak::cob::load(vread(cobPath), cobPath);
-            names.clear();
-            for (const auto& p : cobFile.pieces) {
-                std::string n = p;
-                std::transform(n.begin(), n.end(), n.begin(), ::tolower);
-                names.push_back(n);
-            }
-            auto vm = std::make_unique<tak::cob::Vm>(std::move(cobFile));
-            vm->onGet = [](int32_t v, const std::vector<int32_t>&) -> int32_t {
-                switch (v) { case 3: return 100; case 5: return 1; default: return 0; }
-            };
-            return vm;
-        } catch (const std::exception&) { return nullptr; }
-    }
 
     bool GameView::dancing(const UnitR& u) const {
         return isMonarchType(u.type) && u.disco;

@@ -38,8 +38,8 @@ public:
         fmt_ = wav.format;
         SDL_FreeWAV(buf);
         // Callback-driven, NOT queue-driven: the audio thread pulls chunks itself, so a
-        // long synchronous load on the main thread (map + sprite atlases when a game
-        // starts) can't starve the queue and stutter the BGM the way a per-frame poll()
+        // long synchronous load on the main thread (map + texture atlases when a
+        // game starts) can't starve the queue and stutter the BGM the way a poll()
         // did. Matches SoundBank's model.
         SDL_AudioSpec want = wav, have{};
         want.samples = 2048;             // ~46ms device buffer at 44.1kHz

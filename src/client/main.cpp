@@ -1185,8 +1185,8 @@ int main(int argc, char** argv) {
         // HUD and input all stay in 1x logical space, so nothing else has to change.
         // VRAM-safe: the target is allocated once and reused; if it can't be created
         // (VRAM pressure) we just fall back to no AA this frame. Baking runs at 1x
-        // BEFORE the scale is set (the lazy atlas/impostor bakes reset the scale
-        // themselves too, see their SetRenderTarget sites).
+        // BEFORE the scale is set (the lazy atlas bakes reset the scale themselves
+        // too, see their SetRenderTarget sites).
         float aaS = (settings.antiAlias == 4) ? 2.0f : (settings.antiAlias == 2) ? 1.4142f : 1.0f;
         // Cap the supersample target a safe margin below the GPU's texture/render
         // limit. A render target AT the max texture size misbehaves (renders/samples
