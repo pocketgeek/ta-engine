@@ -140,6 +140,25 @@ add_executable(cobanim_test tools/cobanim_test.cpp)
 target_link_libraries(retailgap_test PRIVATE tak-formats)
 target_link_libraries(pathsearch_test PRIVATE tak-formats)
 target_link_libraries(cobanim_test PRIVATE tak-formats)
+
+# ctest registration. Without this `ctest` reports "No tests were found", which
+# is how pathsearch_test and cobanim_test ended up protected by nothing but
+# someone remembering to run them.
+#
+# The split matters: the first group is self-contained and runs anywhere
+# (including CI), the second needs a real retail install, which is gitignored
+# and absent from CI by design. Configure with -DTAK_TEST_DATA=/path/to/install
+# to register those too.
+enable_testing()
+add_test(NAME detmath COMMAND detmath_test)
+add_test(NAME sim_driver_equiv COMMAND sim_driver_equiv_test)
+add_test(NAME pathsearch COMMAND pathsearch_test)
+add_test(NAME auth COMMAND authtest)
+set(TAK_TEST_DATA "" CACHE PATH "Retail install for the data-backed tests (optional)")
+if(TAK_TEST_DATA)
+    add_test(NAME cobanim COMMAND cobanim_test "${CMAKE_SOURCE_DIR}/assets/extracted/all/scripts")
+    add_test(NAME retailgap COMMAND retailgap_test "${TAK_TEST_DATA}")
+endif()
 target_link_libraries(footprobe PRIVATE tak-formats)
 
 # aitool bundles the AI (src/ai, otherwise server-only) so we can tune it headless.

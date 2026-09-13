@@ -15,7 +15,11 @@ on:
     paths:
       - 'src/sim/**'
       - 'src/ai/**'
+      - 'src/net/**'
+      - 'src/server/**'
       - 'tools/detmath_test.cpp'
+      - 'tools/pathsearch_test.cpp'
+      - 'tools/authtest.cpp'
       - 'tools/check-detmath.sh'
       - 'tools/check-determinism.sh'
       - '.github/workflows/determinism.yml'
@@ -23,7 +27,11 @@ on:
     paths:
       - 'src/sim/**'
       - 'src/ai/**'
+      - 'src/net/**'
+      - 'src/server/**'
       - 'tools/detmath_test.cpp'
+      - 'tools/pathsearch_test.cpp'
+      - 'tools/authtest.cpp'
       - 'tools/check-detmath.sh'
       - 'tools/check-determinism.sh'
       - '.github/workflows/determinism.yml'
@@ -71,3 +79,27 @@ jobs:
           cmake -B build -G Ninja
           cmake --build build --target sim_driver_equiv_test
           ./build/sim_driver_equiv_test
+
+  # The data-independent unit tests. These existed but nothing ran them: CI built
+  # only detmath and sim_driver_equiv, so the pathfinder's scheduler bounds and
+  # the account code were guarded by nobody remembering to run them locally.
+  #
+  # cobanim_test and retailgap_test are deliberately NOT here. They drive the
+  # real COBs and unit data from a retail install, which is gitignored and not
+  # present on a runner -- they stay local-only, registered with ctest when the
+  # build is configured with -DTAK_TEST_DATA.
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ cmake ninja-build libsdl2-dev zlib1g-dev libjpeg-dev
+      - name: Build + run
+        run: |
+          cmake -B build -G Ninja
+          cmake --build build --target pathsearch_test authtest
+          ./build/pathsearch_test
+          ./build/authtest

@@ -25,10 +25,12 @@
 using namespace tak;
 
 static int fails = 0;
+static int ran = 0;   // units actually exercised; 0 means the run proved nothing
 static void check(bool ok, const std::string& what, const std::string& detail = "") {
     std::printf("  [%s] %s%s\n", ok ? "PASS" : "FAIL", what.c_str(),
                 detail.empty() ? "" : (" -- " + detail).c_str());
     if (!ok) ++fails;
+    ++ran;
 }
 
 // How many times the unit re-issues BUGGER_OFF (unit value 19) over ~40s of
@@ -129,6 +131,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::printf("\n%s\n", fails ? "FAILED" : "ALL PASS");
+    // A run that skipped everything must NOT report success. The first wiring of
+    // this test pointed at a path with no COBs in it, every unit was skipped, and
+    // it printed ALL PASS -- a green test that proved nothing is worse than none.
+    if (!ran) {
+        std::printf("\nFAILED -- no COBs found under \"%s\"; nothing was tested\n",
+                    dir.c_str());
+        return 2;
+    }
+    std::printf("\n%s (%d checks)\n", fails ? "FAILED" : "ALL PASS", ran);
     return fails ? 1 : 0;
 }
