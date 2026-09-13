@@ -205,10 +205,13 @@
         animateGlowTextures(builtGlow);
         profAtlasMs_ += (double(SDL_GetPerformanceCounter()) - _atl0) /
                         (double(SDL_GetPerformanceFrequency()) / 1000.0);
-        const bool kNoShadow = !shadowsOnFrame_;
         profUnits_ += uint64_t(visUnits_.size());   // so PROF ms/frame can be read per unit
-        // Sample the shadow toggle HERE, on the main thread, before the workers launch.
+        // Sample the shadow toggle HERE, on the main thread, before the workers launch --
+        // and BEFORE deriving the draw gate from it. Reading the gate first used last
+        // frame's value, so switching shadows on built the geometry and then skipped
+        // submitting it for one frame.
         shadowsOnFrame_ = shadowsOn();
+        const bool kNoShadow = !shadowsOnFrame_;
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
             thread_local std::vector<Tri> scratch;

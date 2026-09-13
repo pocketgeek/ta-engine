@@ -85,12 +85,23 @@ struct Settings {
         return it == campaignCompleted.end() ? 0 : int(it->second.size());
     }
 
+    // EVERY field above belongs here -- this is a complete comparison of two Settings,
+    // with no field exempt. Which fields DEFAULTS should ignore is a separate question,
+    // and it is answered where it belongs, in Options::atDefaults(), by copying the
+    // exempt ones across before comparing.
+    //
+    // Leaving a field out here instead makes the DEFAULTS button go dead for anyone who
+    // changed only that field, since the UI then believes they are already at defaults.
+    // That shipped when unitShadows was added, and dataDir/dataManifest had the same
+    // hole. tools/settings_test.cpp flips each field in turn and fails if this does not
+    // notice, so the next addition is caught rather than shipped.
     friend bool operator==(const Settings& a, const Settings& b) {
         for (int i = 0; i < 8; ++i) if (a.chanGain[i] != b.chanGain[i]) return false;
         return a.fullscreen == b.fullscreen && a.vsync == b.vsync && a.maxFps == b.maxFps
             && a.uiScale == b.uiScale && a.antiAlias == b.antiAlias
             && a.buildBarAlign == b.buildBarAlign && a.buildBarScale == b.buildBarScale
             && a.bilinear == b.bilinear && a.treeSway == b.treeSway
+            && a.unitShadows == b.unitShadows
             && a.healthBars == b.healthBars
             && a.masterVol == b.masterVol && a.bgmVol == b.bgmVol && a.sfxVol == b.sfxVol
             && a.mouseZoomSpeed == b.mouseZoomSpeed && a.edgeScrollSpeed == b.edgeScrollSpeed
@@ -98,6 +109,7 @@ struct Settings {
             && a.hardwareCursor == b.hardwareCursor && a.smoothMotion == b.smoothMotion
             && a.playerName == b.playerName && a.accountName == b.accountName
             && a.lastMap == b.lastMap
+            && a.dataDir == b.dataDir && a.dataManifest == b.dataManifest
             && a.knownServers == b.knownServers
             && a.audioDevice == b.audioDevice
             && a.hotkeys == b.hotkeys

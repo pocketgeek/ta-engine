@@ -113,6 +113,12 @@ private:
         d.accountName = s_.accountName;
         d.lastMap = s_.lastMap;
         d.hotkeys = s_.hotkeys;     // hotkeys have their own reset (Hotkeys screen)
+        // The data root is configuration, not a preference: DEFAULTS preserves it (see
+        // the reset handler), so it must not count towards "are we at defaults" either --
+        // otherwise the button would stay lit forever for anyone whose data lives
+        // somewhere other than the default.
+        d.dataDir = s_.dataDir;
+        d.dataManifest = s_.dataManifest;
         return s_ == d;
     }
 
