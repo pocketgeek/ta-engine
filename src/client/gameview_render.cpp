@@ -2074,12 +2074,11 @@
         if (conjuring)
             sprinkleBuildFx(sideLower(), ax, ay, uFootW(), uFootH());
 
-        // A builder actively conjuring a site sparkles over ITSELF too (the worker end).
-        if (u.type && u.buildSiteId != 0) {
-            const auto* site = frameUnitP(u.buildSiteId);
-            if (site && site->buildBegun)
-                sprinkleBuildFx(sideLower(), ax, ay, uFootW(), uFootH());
-        }
+        // The BUILDER does not sparkle. Retail's build mission (0x401c20) plays
+        // the effect on [mission+0x16] -- the unit being built -- and on nothing
+        // else; the builder appears in that code only as the argument to a nano
+        // piece query whose result is discarded. The builder's own contribution
+        // is its StartBuilding animation, which we already run.
 
         // A reclaimer IN RANGE (the reclaim has really started -- range test mirrors
         // World::tickReclaim): sparkle the reclaimer AND the feature it is chewing on.

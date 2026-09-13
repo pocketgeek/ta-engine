@@ -1272,15 +1272,14 @@ itself and is faction-independent.
   * `MeleeAttack` was in our fire-animation fallback chain and is defined by
     ZERO of the 204 COBs -- it could only ever fail. Removed. The melee
     animation comes from MeleeControl, which Create starts.
-  * We call `walk` / `attack1` / `startbuild` etc. DIRECTLY, where retail lets
-    the script's own threads choose them off unit values. That is a real
-    architectural divergence, not yet addressed; it works because we answer the
-    movement-related ids, but it means a script whose logic we do not replicate
-    animates differently.
+  * "We call walk/attack1/startbuild DIRECTLY where retail lets the scripts
+    choose" -- OVERSTATED, corrected below. For `walk` it is false outright.
   * `QueryNanoPiece` -- RETRACTED, see below. I claimed our sparkle "does not
     originate where retail's does". It does. Chased it down and the opposite is
     true.
-  * Unit values 33, 46 and 30 are still answered with 0, unverified.
+  * Unit value 30 is still answered with 0. ONE use, in lifbird's FlightControl,
+    compared against -50; 0 takes the hover branch, which is the right look for
+    a bird at rest, but it has not been verified against the handler (0x4dc1f0).
 
 ## The build sparkle: QueryNanoPiece is vestigial (2026-09-12)
 
@@ -1319,6 +1318,47 @@ site (`gameview_render.cpp`, "the worker end"). The build mission emits only on
 the target -- the builder appears there solely as the argument to the discarded
 nano query. I have not removed ours, because one call site is thin evidence that
 no other path lights the builder up.
+
+## Following up the animation audit: two of my own claims were wrong (2026-09-12)
+
+**Unit value 33 is the signed TURN RATE, in 16-bit angle units.**
+SuperDynamicWheelSpinner (9 wheeled units) reads it, tests it against +910 and
+-910, and uses the sign to spin the two sides of the vehicle at different rates
+-- the differential of a vehicle in a turn. 910 is what fixes the scale: it is
+5 degrees in 16-bit angle units (65536/360*5 = 910.2). We now answer it from the
+snapshot's heading against its previous-tick heading. Verified by running
+aracan's real script: 2 distinct wheel rates going straight, 4 when turning.
+
+**Unit value 46 is "have I got a target".** Only HolsterControl (verbers,
+vercrus) reads it and only ever against 0 -- zero holsters the weapon, non-zero
+draws it. Retail's is `(unit+0x130 >> 20) & 3`; nothing reads the other bits.
+
+**The builder does not sparkle.** Removed. Retail's build mission plays the
+effect on the unit being BUILT and on nothing else; the builder's contribution
+is its StartBuilding animation. See the nano-piece section above.
+
+**RETRACTION: "we drive walk directly instead of letting the scripts choose".**
+This is false for every shipped unit. Our mover branch already hands off to the
+script's own threads when the COB has MoveWatcher / MeleeControl / DemonControl,
+and the number of shipped units that have a `walk` cycle but none of those three
+is ZERO. The direct-walk fallback is dead code against this data set. I wrote
+the claim from the call sites without checking which units could reach them.
+
+The rest of that claim is narrower than I made it sound:
+
+  * `attack1` / `fire` are FALLBACKS after `FireWeapon`, which is a real engine
+    entry point, and exactly one shipped unit (targarg) has attack1 without
+    FireWeapon.
+  * `startbuild` is called directly rather than through retail's
+    Activate -> RequestState -> Go chain. Visually equivalent: Go's contribution
+    is CALL startbuild (the doors, which we run) plus CALL OpenYard, and
+    OpenYard moves no piece -- it is the pathfinding yard handshake, which our
+    sim does not model. Deliberate, too: the direct call avoids a VM reset that
+    would kill a building's Create ambients (flags, smoke).
+
+The lesson for the next audit: "the engine calls X directly" is a claim about
+CALL SITES, and the question that matters is which units can actually reach
+them. Check the data before writing it down.
 
 ## Headless in-game screenshots (dev harness)
 

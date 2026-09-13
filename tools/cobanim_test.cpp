@@ -1,4 +1,9 @@
-// The build-yard handshake, run on the real shipped COBs.
+// Script-driven animation contracts, run on the real shipped COBs.
+//
+// Retail's engine barely drives animation: it calls Create, and the SCRIPT
+// starts control threads that poll GET_UNIT_VALUE and pick the animation. So
+// what has to be right is the engine's ANSWERS. Each case here pins one answer
+// by running the real script and observing what it does with it.
 //
 // A castle/factory opens its yard through a BLOCKING protocol (see aracastl
 // OpenYard): it sets unit value 18 (YARD_OPEN), then loops -- reading 18 and
@@ -12,6 +17,7 @@
 #include "cob/cob.h"
 #include "cob/vm.h"
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -52,6 +58,35 @@ static int buggerOffs(const std::string& path, int32_t yardGrant) {
     return count;
 }
 
+// Does the wheel spinner see a turn? SuperDynamicWheelSpinner reads unit value
+// 33, tests it against +-910, and spins the two sides of the vehicle at
+// different rates. Observed through the piece turn speeds it sets.
+static int wheelSides(const std::string& path, int32_t turnRate) {
+    cob::File f = cob::load(path);
+    cob::Vm vm(std::move(f), true);
+    vm.onGet = [&](int32_t id, const std::vector<int32_t>&) -> int32_t {
+        if (id == 33) return turnRate;
+        if (id == 29) return 100;          // at full speed, so the wheels turn
+        return 0;
+    };
+    vm.start("Create");
+    for (int i = 0; i < 120; ++i) vm.tick(1.0f / 30.0f);
+    // Distinct spin rates across the pieces = the differential engaged. Wheels
+    // are driven with SPIN, so the target rate is what carries it.
+    std::vector<float> rates;
+    for (const auto& ps : vm.pieces())
+        for (int ax = 0; ax < 3; ++ax)
+            if (std::fabs(ps.spinTarget[ax]) > 1e-4f) rates.push_back(ps.spinTarget[ax]);
+    int distinct = 0;
+    for (size_t i = 0; i < rates.size(); ++i) {
+        bool seen = false;
+        for (size_t j = 0; j < i; ++j)
+            if (std::fabs(rates[i] - rates[j]) < 1e-3f) { seen = true; break; }
+        if (!seen) ++distinct;
+    }
+    return distinct;
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) { std::printf("usage: cobyard_test <scripts-dir>\n"); return 2; }
     const std::string dir = argv[1];
@@ -76,6 +111,22 @@ int main(int argc, char** argv) {
         check(refused > 10,
               std::string(u) + ": refusing it retries for ever (counter-case)",
               "BUGGER_OFF issued " + std::to_string(refused) + "x in 40s");
+    }
+
+    std::printf("\n[wheels: unit value 33 is a SIGNED turn rate]\n");
+    {
+        const std::string path = dir + "/aracan.cob";
+        std::FILE* probe = std::fopen(path.c_str(), "rb");
+        if (!probe) std::printf("  [SKIP] aracan (not in this install)\n");
+        else {
+            std::fclose(probe);
+            const int straight = wheelSides(path, 0);
+            const int turning  = wheelSides(path, 2000);   // past the 910 threshold
+            check(turning > straight,
+                  "aracan: turning spins the two sides at different rates",
+                  "distinct wheel rates straight=" + std::to_string(straight) +
+                      " turning=" + std::to_string(turning));
+        }
     }
 
     std::printf("\n%s\n", fails ? "FAILED" : "ALL PASS");

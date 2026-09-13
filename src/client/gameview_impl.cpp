@@ -1828,9 +1828,33 @@
                     // of a unit blocking a yard; retail refuses only while one
                     // does, and we never set BUGGER_OFF in motion anyway.
                     case 18: return 1;                                 // YARD_OPEN
-                    // 33 (9 uses), 46 (2), 30 (1) are still unanswered -- see
-                    // docs/retail-engine.md. 0 has not been shown to be wrong for
-                    // those, but it has not been shown to be right either.
+                    case 33: {                                         // TURN RATE (signed)
+                        // SuperDynamicWheelSpinner (9 wheeled units) reads this,
+                        // tests it against +910 and -910, and uses the sign to
+                        // spin the wheels on the two sides at different rates --
+                        // the differential of a vehicle in a turn. 910 is 5
+                        // degrees in 16-bit angle units (65536/360*5 = 910.2),
+                        // which is what fixes the scale: angle units per tick.
+                        if (!su->seeded) return 0;
+                        float d = su->heading - su->ph;
+                        while (d >  3.14159265f) d -= 6.28318531f;   // shortest way round
+                        while (d < -3.14159265f) d += 6.28318531f;
+                        return int32_t(d * (65536.0f / 6.28318531f));
+                    }
+                    case 46: {                                         // HAS TARGET
+                        // HolsterControl (verbers, vercrus) only ever tests this
+                        // against 0: zero puts the weapon away, non-zero draws
+                        // it. Retail's is (unit+0x130 >> 20) & 3, a 2-bit state;
+                        // since nothing reads the other bits, "am I attacking
+                        // something" answers every shipped use.
+                        for (const auto& o : su->orders)
+                            if (o.targetId && !o.load && !o.guard) return 1;
+                        return 0;
+                    }
+                    // 30 is still unanswered: ONE use, in lifbird's FlightControl,
+                    // where it is compared against -50 and 0 takes the hover
+                    // branch -- which is the right look for a bird at rest. See
+                    // docs/retail-engine.md.
                     default: return 0;
                 }
             };
