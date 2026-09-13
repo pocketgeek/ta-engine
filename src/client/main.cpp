@@ -1358,6 +1358,24 @@ int main(int argc, char** argv) {
                                 gameView->profOther2(at, bd); }
                 static double ppj = 0, psb = 0, psh = 0, ptr = 0, pfg = 0, pfx = 0, phd = 0;
                 static double pat = 0, pbd = 0;
+                // These previous totals are function-static, but the counters they track
+                // belong to the GameView -- and returning to the menu and starting another
+                // game builds a FRESH GameView whose counters start at zero. Carrying the
+                // old game's totals across that boundary would make the first frame's
+                // deltas negative and inflate the residual. Re-baseline whenever the
+                // session changes, and treat any counter going backwards (a reset we did
+                // not anticipate) the same way rather than printing nonsense.
+                static const void* pSession = nullptr;
+                const bool restarted = (static_cast<const void*>(gameView.get()) != pSession) ||
+                                       pj < ppj || sb < psb || sh < psh || tr < ptr ||
+                                       fg < pfg || fx < pfx || hd < phd ||
+                                       at < pat || bd < pbd;
+                if (restarted) {
+                    pSession = gameView.get();
+                    ppj = pj; psb = sb; psh = sh; ptr = tr; pfg = fg; pfx = fx; phd = hd;
+                    pat = at; pbd = bd;
+                    base = total > 0 ? total : 16.0;   // baseline belongs to the session too
+                }
                 // All of these counters are monotonic (see takeProf), so a plain
                 // difference is this frame's share.
                 const double dpj = pj - ppj, dsb = sb - psb, dsh = sh - psh;
@@ -1370,7 +1388,7 @@ int main(int argc, char** argv) {
                 // that double-counted body and made the residual read far too small.
                 const double drawMs = t3 - t2;
                 const double rest = drawMs - dtr - dat - dpj - dsb - dfx - dfg - dhd;
-                if (total > base * 2.0 && total > 8.0)
+                if (!restarted && total > base * 2.0 && total > 8.0)
                     std::printf("SPIKE %6.1fms (base %5.1f) | viewers=%.1f update=%.1f "
                                 "draw=%.1f [terrain=%.1f atlas=%.1f proj=%.1f submit=%.1f "
                                 "(shadow=%.1f body=%.1f) fx=%.1f fog=%.1f hud=%.1f "
@@ -1384,15 +1402,16 @@ int main(int argc, char** argv) {
             pPres += t5 - t4;
             pAcc += t5 - t0; ++pFrames;
             if (pAcc >= 1000.0) {
-                double proj = 0, submit = 0, shadow = 0, sim = 0; long units = 0, shVerts = 0;
+                double proj = 0, submit = 0, shadow = 0, sim = 0;
+                uint64_t units = 0, shVerts = 0;
                 if (gameView) gameView->takeProf(proj, submit, shadow, sim, units, shVerts);
                 std::printf("PROF fps=%.0f | update=%.1f [sim=%.1f] draw=%.1f "
-                            "[proj=%.1f submit=%.1f (shadow=%.1f) other=%.1f] present=%.1f | units=%ld shverts=%ldk\n",
+                            "[proj=%.1f submit=%.1f (shadow=%.1f) other=%.1f] present=%.1f | units=%llu shverts=%lluk\n",
                             pFrames * 1000.0 / pAcc, pUpd / pFrames, sim / pFrames,
                             pDraw / pFrames, proj / pFrames, submit / pFrames,
                             shadow / pFrames, (pDraw - proj - submit) / pFrames, pPres / pFrames,
-                            units / std::max(1, pFrames),
-                            shVerts / std::max(1, pFrames) / 1000);
+                            (unsigned long long)(units / uint64_t(std::max(1, pFrames))),
+                            (unsigned long long)(shVerts / uint64_t(std::max(1, pFrames)) / 1000));
                 std::fflush(stdout);
                 pUpd = pDraw = pPres = pAcc = 0; pFrames = 0;
             }

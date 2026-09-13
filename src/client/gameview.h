@@ -774,7 +774,7 @@ public:
 
     // Fetch and reset the per-draw sub-phase timers (for TAK_PROF).
     void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs,
-                  long& unitsDrawn, long& shadowVerts);
+                  uint64_t& unitsDrawn, uint64_t& shadowVerts);
     // Current accumulators WITHOUT resetting, so a per-frame delta can be taken.
     void profPeek(double& projMs, double& submitMs, double& shadowMs) const {
         projMs = profProjMs_; submitMs = profSubmitMs_; shadowMs = profShadowMs_;
@@ -1247,11 +1247,16 @@ private:
     // counter; monotonic plus per-consumer previous values is the shape that works.
     double profProjMs_ = 0, profSubmitMs_ = 0;
     double profShadowMs_ = 0;   // the projected-silhouette pass, inside submit
-    long profUnits_ = 0;        // visible units accumulated over the sampled frames
-    long profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
+    // uint64_t, not long: these are MONOTONIC for the whole session now (so the spike
+    // logger can diff them independently of takeProf), and `long` is 32 bits on Windows.
+    // At ~700k shadow vertices a frame that signed counter overflows -- undefined
+    // behaviour, not just a wrong number -- about a minute into a game. The increments
+    // are unguarded by TAK_PROF, so it would have happened in ordinary play.
+    uint64_t profUnits_ = 0;        // visible units accumulated over the sampled frames
+    uint64_t profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
     // takeProf's own previous values, so it can report per-interval deltas.
     double profProjPrev_ = 0, profSubmitPrev_ = 0, profShadowPrev_ = 0;
-    long profUnitsPrev_ = 0, profShadowVertsPrev_ = 0;
+    uint64_t profUnitsPrev_ = 0, profShadowVertsPrev_ = 0;
     // "other" broken out: a periodic hitch was traced into this bucket and there
     // was no way to say WHICH of terrain / fog / effects / HUD it was.
     double profTerrainMs_ = 0, profFogMs_ = 0, profFxMs_ = 0, profHudMs_ = 0;

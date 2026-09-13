@@ -1573,7 +1573,7 @@
     }
 
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
-                            double& simMs, long& unitsDrawn, long& shadowVerts) {
+                            double& simMs, uint64_t& unitsDrawn, uint64_t& shadowVerts) {
         // Deltas since the last call -- the counters themselves are monotonic so that the
         // per-frame TAK_SPIKES logger can take its own independent deltas off them.
         projMs   = profProjMs_   - profProjPrev_;    profProjPrev_   = profProjMs_;

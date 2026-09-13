@@ -204,7 +204,7 @@
         profAtlasMs_ += (double(SDL_GetPerformanceCounter()) - _atl0) /
                         (double(SDL_GetPerformanceFrequency()) / 1000.0);
         static const bool kNoShadow = tak::devEnv("TAK_NOSHADOW") != nullptr;   // TEMP probe
-        profUnits_ += long(visUnits_.size());   // so PROF ms/frame can be read per unit
+        profUnits_ += uint64_t(visUnits_.size());   // so PROF ms/frame can be read per unit
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
             thread_local std::vector<Tri> scratch;
@@ -278,7 +278,7 @@
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         }
 
-        profShadowVerts_ += long(shadowBatch_.size());
+        profShadowVerts_ += uint64_t(shadowBatch_.size());
         profShadowMs_ += (double(SDL_GetPerformanceCounter()) - _sh0) / _ptFreq;
 
         const double _bdy0 = double(SDL_GetPerformanceCounter());
