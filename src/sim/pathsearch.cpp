@@ -292,47 +292,114 @@ PathSearch::Result PathSearch::step(const std::function<int(int, int)>& score,
     }
 }
 
+// Point a pool slot at this request and start its search there.
+void PathService::admit(int unitId, Entry& e, int slot) {
+    e.slot = slot;
+    e.cap = 0;
+    slotOwner_[size_t(slot)] = unitId;
+    PathSearch& ps = pool_[size_t(slot)];
+    // reset() only reallocates when the map size changed, so a slot that has
+    // already run a search on this map recycles its arrays for free.
+    ps.reset(e.mapW, e.mapH);
+    ps.unitId = unitId;
+    ps.start = e.start;
+    ps.goal = e.goal;
+    ps.cur = e.start;
+    ps.priority = e.priority;
+}
+
+void PathService::release(Entry& e) {
+    if (e.slot >= 0) slotOwner_[size_t(e.slot)] = -1;
+    e.slot = -1;
+}
+
 void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
                           int mapH, float goalX, float goalZ, bool priority) {
-    // Reuse the entry already sitting under this unit id if there is one: its
-    // search still owns per-cell scratch the right size for this map, and
-    // reset() will only bump a generation counter rather than reallocate.
     Entry& e = q_[unitId];
-    e.cap = 0;
-    e.search.reset(mapW, mapH);
-    e.search.unitId = unitId;
-    e.search.start = start;
-    e.search.goal = goal;
-    e.search.cur = start;
-    e.search.priority = priority;
+    const int slot = e.slot;      // keep the slot if this unit already holds one
+    e.start = start;
+    e.goal = goal;
+    e.mapW = mapW;
+    e.mapH = mapH;
     e.goalX = goalX;
     e.goalZ = goalZ;
     e.priority = priority;
+    e.cap = 0;
+    e.slot = -1;
+    // A re-request for a unit that is already searching restarts it in place,
+    // exactly as it did when every request owned its own search.
+    if (slot >= 0) admit(unitId, e, slot);
 }
 
 void PathService::cancel(int unitId) {
-    q_.erase(unitId);
+    auto it = q_.find(unitId);
+    if (it == q_.end()) return;
+    release(it->second);
+    q_.erase(it);
 }
 
 void PathService::tick(const std::function<int(int, int, int)>& score,
                        const std::function<void(int, const std::vector<PathCell>&,
                                                 float, float)>& done) {
     if (q_.empty()) return;
+    if (pool_.empty()) {
+        pool_.resize(kMaxActiveSearches);
+        slotOwner_.assign(kMaxActiveSearches, -1);
+    }
+
+    // ADMIT. Fill free slots from the queue, starting after the last unit id
+    // admitted and wrapping, so a low unit id that re-requests every tick cannot
+    // hold the pool against a higher one. Pure integer state in map order: every
+    // peer admits the same requests in the same order on the same tick.
+    int free = 0;
+    for (int owner : slotOwner_) if (owner < 0) ++free;
+    if (free > 0) {
+        int admitted = 0;
+        for (int pass = 0; pass < 2 && free > 0; ++pass) {
+            // pass 0: ids after the cursor. pass 1: wrap to the front.
+            auto it = pass == 0 ? q_.upper_bound(admitCursor_) : q_.begin();
+            const auto stop = pass == 0 ? q_.end() : q_.upper_bound(admitCursor_);
+            for (; it != stop && free > 0; ++it) {
+                Entry& e = it->second;
+                if (e.slot >= 0) continue;
+                int slot = -1;
+                for (size_t i = 0; i < slotOwner_.size(); ++i)
+                    if (slotOwner_[i] < 0) { slot = int(i); break; }
+                if (slot < 0) break;
+                admit(it->first, e, slot);
+                admitCursor_ = it->first;
+                ++admitted;
+                --free;
+            }
+        }
+        (void)admitted;
+    }
+
     // Count the two classes exactly as the scheduler does, then split the
     // budget: a flagged request is worth five ordinary ones (icd 0x4164fa).
+    // Only ACTIVE requests count -- a queued one is doing no work this tick, and
+    // counting it would hand the running searches a thinner slice for nothing.
     int a = 0, b = 0;
-    for (const auto& [id, e] : q_) (e.priority ? b : a) += 1;
+    for (const auto& [id, e] : q_) {
+        if (e.slot < 0) continue;
+        (e.priority ? b : a) += 1;
+    }
     const int share = a + 5 * b;
     if (share <= 0) return;
+    // share is bounded by the pool (at most 5*kMaxActiveSearches), so against a
+    // budget of 12000 the quantum never bottoms out at 1 and the budget holds as
+    // a real per-tick cap rather than a per-request floor.
     const int quantum = std::max(1, budget_ / share);
 
     std::vector<int> finished;
     for (auto& [id, e] : q_) {
+        if (e.slot < 0) continue;   // queued: no scratch, no work, waits its turn
         e.cap += quantum * (e.priority ? 5 : 1);
         auto sc = [&](int cx, int cz) { return score(id, cx, cz); };
-        const PathSearch::Result r = e.search.step(sc, e.cap);
+        PathSearch& ps = pool_[size_t(e.slot)];
+        const PathSearch::Result r = ps.step(sc, e.cap);
         if (r == PathSearch::Result::Arrived) {
-            done(id, e.search.out, e.goalX, e.goalZ);
+            done(id, ps.out, e.goalX, e.goalZ);
             finished.push_back(id);
         } else if (r == PathSearch::Result::Failed) {
             done(id, {}, e.goalX, e.goalZ);
@@ -340,7 +407,12 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
         }
         // Suspended: keep the entry, resume next tick with its state intact.
     }
-    for (int id : finished) q_.erase(id);
+    for (int id : finished) {
+        auto it = q_.find(id);
+        if (it == q_.end()) continue;
+        release(it->second);
+        q_.erase(it);
+    }
 }
 
 }   // namespace tak::sim

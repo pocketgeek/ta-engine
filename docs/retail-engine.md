@@ -381,6 +381,28 @@ returns. Otherwise the per-request quantum is
 so a flagged request gets FIVE TIMES the share. It zeroes `+0x165`, which is
 the work cap the search meters itself against, then iterates the players.
 
+**Where we deliberately depart** (2026-09-12): retail lets every pending request
+hold a live search. We cap the concurrent searches at `kMaxActiveSearches` (12)
+and queue the rest. Two reasons, neither of which costs throughput:
+
+  * The per-cell scratch is the expensive part of a search -- 10 bytes per map
+    cell, measured at 360 KiB on a 192x192 map -- so one search per pending
+    request makes memory a product of map area and how many units happen to be
+    ordered at once (~176 MB at 500 pending, on the referee and every client
+    alike). Only active searches hold scratch now, out of a reused pool.
+  * `quantum = max(1, budget / (A + 5B))` is not a cap. Once `A + 5B` exceeds
+    the budget every request still receives 1, so the total work per tick grows
+    without limit as requests pile up. Bounding the active set bounds `A + 5B`,
+    which is what makes the budget a cap.
+
+Throughput is unchanged because the budget is fixed either way: 100 searches at
+1/100th speed each and 12 at a time finish the whole set on the same tick.
+Bounding changes only the ORDER, and it improves early latencies. Admission
+rotates (`admitCursor_`) so a busy low unit id cannot starve a high one, and it
+is integer state walked in map order, so every peer admits the same requests on
+the same tick. This changes the sim hash ONLY in scenarios that exceed 12
+concurrent searches; the `--mpai` baseline is unaffected.
+
 **Per-request step** (`0x415b10`): runs one search step and switches on it --
 `-2` = failed (sets `+0x5c`), `-1` = not finished (charges 30 to the work
 counter `+0x48`, expands, retries via `0x414450` / `0x415f10`), `0` = done,

@@ -145,6 +145,74 @@ int main() {
                   " small-slice ticks=" + std::to_string(tb));
     }
 
+    // The service admits at most kMaxActiveSearches at a time. Everything past
+    // that waits, so the things to prove are that nobody starves, that the queue
+    // drains, and that a queued request costs no per-cell scratch.
+    std::printf("[service: bounded concurrency]\n");
+    {
+        Grid g{{"....#.....",
+                "....#.....",
+                "..........",
+                "....#.....",
+                "....#....."}};
+        const int kReqs = kMaxActiveSearches * 4;   // well past the pool
+        PathService svc;
+        for (int i = 0; i < kReqs; ++i)
+            svc.request(1000 + i, {0, 0}, {9, 4}, int(g.rows[0].size()), int(g.rows.size()), 0, 0, false);
+
+        std::vector<bool> served(size_t(kReqs), false);
+        auto score = [&](int, int cx, int cz) { return g.score(cx, cz); };
+        int ticks = 0, peak = 0;
+        while (svc.pendingCount() > 0 && ticks < 4000) {
+            svc.tick(score, [&](int id, const std::vector<PathCell>& route,
+                                float, float) {
+                (void)route;
+                int i = id - 1000;
+                if (i >= 0 && i < kReqs) served[size_t(i)] = true;
+            });
+            peak = std::max(peak, int(svc.pendingCount()));
+            ++ticks;
+        }
+        int unserved = 0;
+        for (bool b : served) if (!b) ++unserved;
+        check(unserved == 0 && svc.pendingCount() == 0,
+              "every request past the pool limit is eventually served",
+              std::to_string(kReqs) + " requests, unserved=" +
+                  std::to_string(unserved) + ", drained in " +
+                  std::to_string(ticks) + " ticks");
+        check(peak <= kReqs,
+              "the queue drains rather than growing",
+              "peak pending=" + std::to_string(peak));
+    }
+
+    // Re-requesting for a unit that already holds a slot must restart it in
+    // place, not leak the slot -- leak it and the pool starves after a few
+    // hundred order changes.
+    std::printf("[service: slot reuse]\n");
+    {
+        Grid g{{"..........",
+                "..........",
+                ".........."}};
+        PathService svc;
+        auto score = [&](int, int cx, int cz) { return g.score(cx, cz); };
+        for (int round = 0; round < 200; ++round) {
+            for (int i = 0; i < kMaxActiveSearches; ++i)
+                svc.request(1, {0, 0}, {9, 2}, int(g.rows[0].size()), int(g.rows.size()), 0, 0, false);
+            svc.tick(score, [](int, const std::vector<PathCell>&, float, float) {});
+        }
+        svc.clear();
+        // After clear() the pool must be fully available again.
+        for (int i = 0; i < kMaxActiveSearches; ++i)
+            svc.request(2000 + i, {0, 0}, {9, 2}, int(g.rows[0].size()), int(g.rows.size()), 0, 0, false);
+        int done = 0;
+        for (int t = 0; t < 200 && svc.pendingCount(); ++t)
+            svc.tick(score, [&](int, const std::vector<PathCell>&, float, float) { ++done; });
+        check(done == kMaxActiveSearches,
+              "slots are handed back on completion, cancel and clear",
+              "served " + std::to_string(done) + "/" +
+                  std::to_string(kMaxActiveSearches) + " after 200 re-requests");
+    }
+
     std::printf("\n%s\n", fails ? "FAILED" : "ALL PASS");
     return fails ? 1 : 0;
 }

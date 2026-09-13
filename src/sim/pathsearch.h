@@ -153,6 +153,35 @@ private:
 // times the share. Each search then runs until its slice is spent and resumes
 // next tick. Requests are keyed by unit id and visited in that order, so the
 // whole thing is deterministic and safe to run inside the lockstep sim.
+//
+// We depart from retail in ONE way: at most kMaxActiveSearches run at a time,
+// and the rest wait their turn. Two reasons, and neither costs throughput.
+//
+// MEMORY. The per-cell scratch is the expensive part of a PathSearch -- two
+// uint32 stamp arrays and two byte arrays, 10 bytes per map cell. That is
+// 360 KiB per search on a 192x192 map (measured), so one-search-per-pending-
+// request makes footprint a product of map area and how many units happen to be
+// ordered at once: ~176 MB for 500 pending, on the referee as well as every
+// client. Only the active searches now own scratch, and they own it in a POOL
+// that is reused, so a completed request hands its arrays to the next one
+// instead of freeing and reallocating them.
+//
+// BUDGET. `quantum = max(1, budget / share)` is not a cap: once share exceeds
+// the budget every request still gets 1, so total work per tick grows without
+// limit as requests pile up. Bounding the active set bounds `share`, which
+// makes the budget mean what it says.
+//
+// Throughput is unaffected because the budget is fixed either way: running 100
+// searches at 1/100th speed each and running them 12 at a time finish the whole
+// set at the same tick. Bounding only changes the ORDER -- and it improves the
+// early latencies, since a search that gets a real slice finishes in a tick or
+// two instead of all of them crawling together.
+//
+// Admission rotates (admitCursor_) rather than always starting at the lowest
+// unit id, so a busy low-numbered unit cannot starve a high-numbered one. The
+// cursor is an integer advanced in map order: deterministic, like the rest.
+inline constexpr int kMaxActiveSearches = 12;
+
 class PathService {
   public:
     void setBudget(int b) { budget_ = b > 0 ? b : kPathBudgetDefault; }
@@ -164,7 +193,11 @@ class PathService {
     void cancel(int unitId);
     bool pending(int unitId) const { return q_.find(unitId) != q_.end(); }
     size_t pendingCount() const { return q_.size(); }
-    void clear() { q_.clear(); }
+    void clear() {
+        q_.clear();
+        slotOwner_.assign(slotOwner_.size(), -1);   // hand every slot back
+        admitCursor_ = -1;
+    }
 
     // `score(unitId, cx, cz)` answers the per-cell query for that unit's
     // movement class. `done(unitId, route, goalX, goalZ)` receives a finished
@@ -174,14 +207,24 @@ class PathService {
                                        float, float)>& done);
 
   private:
+    // A queued request is just its parameters -- no per-cell scratch until it is
+    // admitted and handed a pool slot.
     struct Entry {
-        PathSearch search;
-        int cap = 0;            // icd +0x165: grows by the quantum each tick
+        PathCell start, goal;
+        int mapW = 0, mapH = 0;
         float goalX = 0, goalZ = 0;
         bool priority = false;
+        int slot = -1;          // index into pool_, or -1 while queued
+        int cap = 0;            // icd +0x165: grows by the quantum each tick
     };
     int budget_ = kPathBudgetDefault;
     std::map<int, Entry> q_;    // unit id order: deterministic
+    std::vector<PathSearch> pool_;    // the only owners of per-cell scratch
+    std::vector<int> slotOwner_;      // unit id in each slot, -1 = free
+    int admitCursor_ = -1;            // admit starting after this unit id
+
+    void admit(int unitId, Entry& e, int slot);
+    void release(Entry& e);
 };
 
 // Chebyshev distance in cells. Retail's 0x413e50 returns a distance the search
