@@ -79,6 +79,11 @@ constexpr uint32_t kMaxLeadTicks = 120;
 // a lagging player). Rebasing its deadline to `now` instead leaves the poll
 // timeout at 0, so the server spins at full CPU while making no progress.
 constexpr uint64_t kFlowRetryMs = 5;
+// How many over-budget commands one client may have waiting. A few ticks' worth:
+// enough that an honest burst (a big selection, or two render steps landing in one
+// server tick) always survives, small enough that a flooder cannot make the server
+// hold an unbounded queue on its behalf.
+constexpr size_t kCmdOverflowMax = 8 * size_t(kCmdCapPerTick);
 uint64_t kGraceMs = 300000;     // hold a dropped slot this long (5 min)
 uint64_t kPauseBudgetMs = 120000;  // total auto-pause a player may cause
 
@@ -121,8 +126,19 @@ struct Client {
     // each one's commands to the same pending list, so N messages buy N*cap
     // commands -- more sim work for everyone, and a bundle that can grow past
     // the 256 KiB frame limit every receiver enforces, disconnecting them.
-    uint32_t cmdTick = 0;        // tick cmdBudget refers to
+    // ~0u, not 0: the budget refreshes when this differs from the room tick, and a
+    // room's FIRST tick IS 0 -- initialising both to zero meant the refresh never
+    // fired there and every command issued on tick 0 was dropped.
+    uint32_t cmdTick = ~0u;      // tick cmdBudget refers to
     int cmdBudget = 0;           // commands still accepted from this client this tick
+    // Commands past this tick's budget wait their turn instead of being thrown
+    // away. The cap is flood protection, and a legitimate client can exceed it
+    // through no fault of its own: it sends up to kCmdCapPerTick per RENDER step,
+    // so at 120fps against a 30Hz tick -- or whenever TCP hands the server two
+    // messages in one pass -- several honest batches land inside one server tick.
+    // Dropping them lost orders the client had already cleared from its outbox.
+    // Bounded, so a flooder still cannot buy unbounded queueing.
+    std::deque<Command> cmdOverflow;
     // Catch-up streaming. A resuming or spectating client needs every bundle
     // logged so far, which for a long game is far more than belongs in one
     // socket buffer -- pushing it all at once put the entire replay in memory
@@ -1304,8 +1320,6 @@ void Server::gameMsg(Client& c, const Frame& f) {
             Reader rd(f.payload.data(), f.payload.size());
             uint32_t n = rd.u32();
             if (c.cmdTick != r->tick) { c.cmdTick = r->tick; c.cmdBudget = kCmdCapPerTick; }
-            if (n > uint32_t(c.cmdBudget)) n = uint32_t(c.cmdBudget);   // drop the excess
-            c.cmdBudget -= int(n);
             // Server-side input delay (TAK_SRV_DELAY=K, default 0): bucket incoming
             // commands K ticks into the future instead of the very next tick, so a
             // command never "just misses" a tick boundary. Costs K ticks of latency.
@@ -1316,6 +1330,11 @@ void Server::gameMsg(Client& c, const Frame& f) {
                 Command cmd = rd.cmd();
                 if (!rd.ok) break;
                 cmd.player = uint8_t(c.slot);   // server stamps ownership
+                if (c.cmdBudget <= 0) {         // over this tick's budget: defer
+                    if (c.cmdOverflow.size() < kCmdOverflowMax) c.cmdOverflow.push_back(cmd);
+                    continue;                   // past the backlog cap it IS dropped
+                }
+                --c.cmdBudget;
                 if (srvDelay > 0) r->pendingAt[r->tick + uint32_t(srvDelay)].push_back(cmd);
                 else r->pending.push_back(cmd);
             }
@@ -1438,6 +1457,23 @@ void Server::closeTick(Room& r) {
                 auto it = clients_.find(uint32_t(r.slotClient[i]));
                 if (it == clients_.end() || !it->second->loaded) { r.nextTickMs = nowMs() + 100; return; }
             }
+    }
+    // Deferred commands first: anything a client sent past last tick's budget gets
+    // this tick's allowance before anything new does, so a big order arrives in
+    // order and merely late rather than partially.
+    for (int i = 0; i < kMaxSlots; ++i) {
+        if (r.slotClient[i] < 0) continue;
+        auto ci = clients_.find(uint32_t(r.slotClient[i]));
+        if (ci == clients_.end()) continue;
+        Client& c = *ci->second;
+        if (c.cmdOverflow.empty()) continue;
+        c.cmdTick = r.tick;
+        c.cmdBudget = kCmdCapPerTick;
+        while (!c.cmdOverflow.empty() && c.cmdBudget > 0) {
+            r.pending.push_back(c.cmdOverflow.front());
+            c.cmdOverflow.pop_front();
+            --c.cmdBudget;
+        }
     }
     // Server-hosted AI: each controller observes the referee world (state after
     // tick-1) and appends its orders to this tick's bundle, exactly like a client.

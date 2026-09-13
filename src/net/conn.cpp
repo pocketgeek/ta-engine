@@ -69,6 +69,15 @@ bool Conn::connect(const std::string& host, uint16_t port, int timeoutMs) {
 }
 
 void Conn::send(Msg kind, const std::vector<uint8_t>& payload) {
+    // A receiver too slow to keep up must not be allowed to make us hold an
+    // unbounded queue on its behalf. Well above any legitimate burst (the replay
+    // stream paces itself at 256 KiB), so hitting this means the peer has stopped
+    // reading; the connection is failed and dropped by the caller.
+    constexpr size_t kMaxTxBacklog = 32u << 20;
+    if (txBuf_.size() - txOff_ > kMaxTxBacklog) {
+        err_ = "send backlog exceeded";
+        return;
+    }
     // frame = u32 len(payload+1) | u8 kind | payload
     uint32_t len = uint32_t(payload.size() + 1);
     for (int i = 0; i < 4; ++i) txBuf_.push_back(uint8_t(len >> (8 * i)));
@@ -77,6 +86,16 @@ void Conn::send(Msg kind, const std::vector<uint8_t>& payload) {
 }
 
 bool Conn::flushWrite() {
+    // Drop the part already on the wire rather than carrying it until the buffer
+    // happens to empty. A peer that drains partially and is topped up again --
+    // exactly what the paced replay stream does -- never reaches the empty state
+    // that used to be the only thing resetting this, so the consumed prefix grew
+    // even while the UNSENT backlog stayed inside its limit.
+    constexpr size_t kCompactAt = 1u << 20;          // 1 MiB of dead prefix
+    if (txOff_ >= kCompactAt && txOff_ * 2 >= txBuf_.size()) {
+        txBuf_.erase(txBuf_.begin(), txBuf_.begin() + long(txOff_));
+        txOff_ = 0;
+    }
     while (txOff_ < txBuf_.size()) {
         long long n = ::send(fd_, reinterpret_cast<const char*>(txBuf_.data() + txOff_),
                              int(txBuf_.size() - txOff_), MSG_NOSIGNAL);

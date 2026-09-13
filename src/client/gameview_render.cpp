@@ -102,7 +102,7 @@
         int vw = frameVisW();
         for (const auto& f : features_) {
             if (!f.tex) continue;   // burnt away to a stage with no art
-            if (!world_.featureAliveAt(f.x, f.z)) continue;   // reclaimed away by a builder
+            if (!f.aliveVis) continue;   // reclaimed away by a builder (snapshotted)
             int cx = int(f.x) / 16, cz = int(f.z) / 16;
             if (!noFog_ && !vis.empty() && (cx < 0 || cz < 0 || cx >= vw ||
                                  vis[size_t(cz) * vw + cx] == 0))
@@ -773,8 +773,19 @@
             float minx = std::min(rdX0_, mx), maxx = std::max(rdX0_, mx);
             float minz = std::min(rdZ0_, mz), maxz = std::max(rdZ0_, mz);
             SDL_SetRenderDrawColor(ren_, 255, 210, 90, 230);
-            for (const auto& f : world_.features()) {
-                if (!f.alive || f.x < minx || f.x > maxx || f.z < minz || f.z > maxz) continue;
+            // Copied under the lock: the worker can push_back a feature (a corpse)
+            // and reallocate this vector while we walk it.
+            struct FPos { float x, z; };
+            static std::vector<FPos> boxFeats;
+            boxFeats.clear();
+            {
+                std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+                if (useSimThread_) lk.lock();
+                for (const auto& f : world_.features())
+                    if (f.alive && f.x >= minx && f.x <= maxx && f.z >= minz && f.z <= maxz)
+                        boxFeats.push_back({f.x, f.z});
+            }
+            for (const auto& f : boxFeats) {
                 float fsx = (f.x - mapView_.offX()) * zm - terrainLiftX(f.x, f.z) * zm;
                 float fsy = (f.z - mapView_.offY()) * zm - terrainLift(f.x, f.z) * zm;
                 SDL_FRect m{fsx - 4, fsy - 4, 8, 8};
@@ -1688,6 +1699,13 @@
     void GameView::buildUnitGeom(const UnitR& u, UnitGeom& g, std::vector<Tri>& scratch) {
         g.verts.clear();
         g.runs.clear();
+        // With the body, not later: geometry slots are REUSED across units, and
+        // several paths below return early (an unstarted construction ghost, a
+        // missing type, a missing visual). Clearing the silhouette only in
+        // buildUnitShadow left the previous occupant's shadow in the slot, and the
+        // shadow pass submits whatever is there -- a ghost site would have drawn
+        // the shadow of whatever unit last used its slot.
+        g.shadowVerts.clear();
         g.canFly = u.type && u.type->canFly;
         if (u.underConstruction && !u.buildBegun) return;   // ghost drawn serially
         auto ut = unitType_.find(u.id);   // defensive: a throw here would abort
@@ -2066,8 +2084,17 @@
         // A reclaimer IN RANGE (the reclaim has really started -- range test mirrors
         // World::tickReclaim): sparkle the reclaimer AND the feature it is chewing on.
         if (u.type && u.reclaimId != 0) {
-            const auto* feat = world_.feature(u.reclaimId);
-            if (feat && feat->alive) {
+            // Copy, do not hold: world_.feature() hands back a pointer INTO the
+            // feature vector, which the worker can reallocate.
+            struct { bool ok = false; float x = 0, z = 0; int fx = 0, fz = 0; } fc;
+            {
+                std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+                if (useSimThread_) lk.lock();
+                if (const auto* f = world_.feature(u.reclaimId))
+                    fc = {f->alive, f->x, f->z, f->fx, f->fz};
+            }
+            const auto* feat = &fc;
+            if (fc.ok) {
                 float dxr = feat->x - u.x, dzr = feat->z - u.z;
                 float reach = 24.0f + 8.0f * float(std::max(feat->fx, feat->fz)) +
                               (u.type->buildDist > 0 ? u.type->buildDist : 0.0f);
@@ -2365,18 +2392,43 @@
         // int either: featureAt() hands back a pointer INTO the feature vector,
         // and area reclaim removes features, so the worker can reallocate that
         // vector under this loop.
-        std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
-        if (useSimThread_) lk.lock();
-        if (world_.featureTypes().empty()) return;
-        for (auto& fi : features_) {
-            const auto* sf = world_.featureAt(fi.x, fi.z);
-            if (!sf || sf->type < 0) continue;
-            if (fi.simType == -2) fi.simType = sf->type;       // first sight
-            else if (sf->type != fi.simType) {                  // burnt-stage swap
-                fi.simType = sf->type;
-                swapFeatureArt(fi, world_.featureTypes()[size_t(sf->type)].name);
+        // COPY under the lock, then do the visual work outside it. Holding
+        // simMutex_ across the whole scan meant the worker waited on art
+        // replacement, atlas lookups, texture loads and effect spawns -- the render
+        // thread already waits a tick for the worker, and this made the worker wait
+        // a full visual update back.
+        struct FeatSim { int type; bool burning; bool alive; };
+        static std::vector<FeatSim> simState;   // render-thread only; reused
+        simState.clear();
+        {
+            std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+            if (useSimThread_) lk.lock();
+            if (world_.featureTypes().empty()) return;
+            simState.reserve(features_.size());
+            for (const auto& fi : features_) {
+                const auto* sf = world_.featureAt(fi.x, fi.z);
+                simState.push_back(sf ? FeatSim{sf->type, sf->alive && sf->burn != 0,
+                                                sf->alive}
+                                      : FeatSim{-1, false, true});
             }
-            bool b = sf->alive && sf->burn != 0;
+            // The type NAMES are read below too, and featureTypes() is filled at map
+            // load and never mutated after -- but copy the ones we need anyway
+            // rather than reach back into world_ unlocked.
+            for (auto& st : simState)
+                if (st.type >= 0 && size_t(st.type) < world_.featureTypes().size())
+                    burnNames_[size_t(st.type)] = world_.featureTypes()[size_t(st.type)].name;
+        }
+        size_t fidx = 0;
+        for (auto& fi : features_) {
+            const FeatSim st = simState[fidx++];
+            fi.aliveVis = st.alive ? 1 : 0;   // what the draw loop reads
+            if (st.type < 0) continue;
+            if (fi.simType == -2) fi.simType = st.type;        // first sight
+            else if (st.type != fi.simType) {                   // burnt-stage swap
+                fi.simType = st.type;
+                swapFeatureArt(fi, burnNames_[size_t(st.type)]);
+            }
+            const bool b = st.burning;
             if (b && !fi.burnVis) {                             // ignition edge
                 auto di = featureDefs_.find(fi.name);
                 if (di != featureDefs_.end())
@@ -2402,9 +2454,23 @@
         }
         // Features the SIM created mid-game (corpses) get a visual instance on
         // first sight. No nav blocking here -- the sim owns corpse blocking.
-        for (const auto& sf : world_.features()) {
-            if (!sf.alive || sf.type < 0 || featInstIds_.count(sf.id)) continue;
-            addFeature(world_.featureTypes()[size_t(sf.type)].name, sf.x, sf.z, false);
+        // Same rule: copy under the lock, load art outside it (addFeature can pull
+        // a GAF off disk, which is not something to hold the sim behind).
+        struct NewFeat { int id; float x, z; std::string name; };
+        static std::vector<NewFeat> fresh;
+        fresh.clear();
+        {
+            std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+            if (useSimThread_) lk.lock();
+            for (const auto& sf : world_.features()) {
+                if (!sf.alive || sf.type < 0 || featInstIds_.count(sf.id)) continue;
+                if (size_t(sf.type) >= world_.featureTypes().size()) continue;
+                fresh.push_back({sf.id, sf.x, sf.z,
+                                 world_.featureTypes()[size_t(sf.type)].name});
+            }
+        }
+        for (const auto& sf : fresh) {
+            addFeature(sf.name, sf.x, sf.z, false);
             featInstIds_.insert(sf.id);   // even on art failure: don't retry every frame
         }
     }

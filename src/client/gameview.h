@@ -1467,6 +1467,7 @@ private:
     SDL_Texture* shadowMask_ = nullptr;       // coverage mask, composited once
     int shadowMaskW_ = 0, shadowMaskH_ = 0;
     SDL_FPoint shadowLo_{}, shadowHi_{};      // batch bounds, accumulated as built
+    std::unordered_map<size_t, std::string> burnNames_;   // feature type -> name, copied under the lock
 
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
@@ -2302,6 +2303,11 @@ private:
         std::string name;    // lowercase feature key (burn art + burnt-swap lookups)
         const FeatArt* burnArt = nullptr;   // seqnameburn playback (lazy, on ignition)
         uint8_t burnVis = 0; // sim says burning: draw burnArt + emit smoke
+        // Snapshotted once per frame in syncBurningFeatures, under simMutex_. The
+        // draw loop used to ask world_.featureAliveAt() per feature with no lock,
+        // and addFeature() does a push_back that can REALLOCATE the feature vector
+        // under that read -- a dangling read from the hot path, every frame.
+        uint8_t aliveVis = 1;
         int simType = -2;    // last-seen sim FeatType index (-2 = not yet synced)
         int simId = -1;      // cell-derived sim feature id (matches World's ids)
         float lastSmoke = 0; // animClock_ of the last smoke puff
