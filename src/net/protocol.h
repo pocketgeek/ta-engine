@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 68;       // 68: a path re-request for the same goal from
+constexpr uint32_t kNetVersion = 69;       // 69: that re-request also adopts the newer
+                                           //     exact destination (same cell, new point)
+                                           // 68: a path re-request for the same goal from
                                            //     the same cell no longer restarts the search
                                            // 67: GameStarting carries the replay boundary
                                            // 66: cloak defaults OFF (retail CLOAK/DECLOAK are orders)

@@ -335,6 +335,14 @@ void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
         const int dx = ex.start.x - start.x, dz = ex.start.z - start.z;
         if (ex.goal.x == goal.x && ex.goal.z == goal.z &&
             dx >= -1 && dx <= 1 && dz >= -1 && dz <= 1) {
+            // Keep the search's PROGRESS (cap, slot) but take the new request's exact
+            // destination. goalX/goalZ never enter the search -- it works in cells --
+            // they are carried through to done(), which installs them as the order's
+            // point. Holding the old pair meant a fresh move order to a different spot
+            // inside the SAME 16px cell silently walked to where the previous order
+            // had pointed.
+            ex.goalX = goalX;
+            ex.goalZ = goalZ;
             if (priority) ex.priority = true;   // may still be promoted
             return;
         }

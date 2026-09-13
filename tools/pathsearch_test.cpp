@@ -213,6 +213,72 @@ int main() {
                   std::to_string(kMaxActiveSearches) + " after 200 re-requests");
     }
 
+    // A re-request for the SAME goal from the SAME cell must not throw the running
+    // search away. The sim re-asks every kPathRetryTicks for a unit making no headway,
+    // and restarting each time meant a search that needed longer than that interval
+    // could never finish: measured in a 3300-unit battle, 19,985 requests produced 996
+    // completions and 1445 units sat permanently queued.
+    std::printf("[service: re-request keeps progress]\n");
+    {
+        Grid g;                                    // open field, big enough to take work
+        for (int z = 0; z < 24; ++z) g.rows.push_back(std::string(48, '.'));
+        auto score = [&](int, int cx, int cz) { return g.score(cx, cz); };
+        const int W = int(g.rows[0].size()), H = int(g.rows.size());
+
+        // Establish how long this search needs when left alone, with a small budget so
+        // it spans many ticks (the point is to re-ask while it is still running).
+        PathService base;
+        base.setBudget(40);
+        base.request(1, {0, 0}, {47, 23}, W, H, 0, 0, false);
+        int aloneTicks = 0; bool aloneDone = false;
+        for (int t = 0; t < 4000 && !aloneDone; ++t) {
+            base.tick(score, [&](int, const std::vector<PathCell>&, float, float) { aloneDone = true; });
+            ++aloneTicks;
+        }
+        check(aloneDone && aloneTicks > 4,
+              "the probe search spans several ticks (so re-asking can interrupt it)",
+              "finished in " + std::to_string(aloneTicks) + " ticks");
+
+        // Now re-ask every 3 ticks, as a stuck unit does. It must still finish.
+        PathService svc;
+        svc.setBudget(40);
+        bool done = false;
+        int ticks = 0;
+        for (; ticks < 4000 && !done; ++ticks) {
+            if (ticks % 3 == 0)
+                svc.request(1, {0, 0}, {47, 23}, W, H, 0, 0, false);   // same goal, same cell
+            svc.tick(score, [&](int, const std::vector<PathCell>&, float, float) { done = true; });
+        }
+        check(done, "a search re-asked every 3 ticks still completes",
+              done ? ("finished in " + std::to_string(ticks) + " ticks")
+                   : "never completed -- the re-request restarted it each time");
+    }
+
+    // ...but a re-request must still adopt the new EXACT destination. The search works
+    // in cells, so two different points inside one 16px cell are the same search -- yet
+    // goalX/goalZ ride along to the callback, which installs them as the order's point.
+    // Keeping the old pair sent the unit to the previous order's spot.
+    std::printf("[service: same-cell re-target updates the exact goal]\n");
+    {
+        Grid g;
+        for (int z = 0; z < 8; ++z) g.rows.push_back(std::string(12, '.'));
+        auto score = [&](int, int cx, int cz) { return g.score(cx, cz); };
+        const int W = int(g.rows[0].size()), H = int(g.rows.size());
+        PathService svc;
+        svc.setBudget(40);
+        svc.request(7, {0, 0}, {9, 5}, W, H, 150.0f, 90.0f, false);   // first order
+        svc.request(7, {0, 0}, {9, 5}, W, H, 158.0f, 82.0f, false);   // same cell, new point
+        float gotX = -1, gotZ = -1; bool done = false;
+        for (int t = 0; t < 4000 && !done; ++t)
+            svc.tick(score, [&](int, const std::vector<PathCell>&, float gx, float gz) {
+                gotX = gx; gotZ = gz; done = true;
+            });
+        check(done && gotX == 158.0f && gotZ == 82.0f,
+              "the finished route carries the NEWEST exact destination",
+              "got (" + std::to_string(gotX) + ", " + std::to_string(gotZ) +
+                  "), expected (158, 82)");
+    }
+
     std::printf("\n%s\n", fails ? "FAILED" : "ALL PASS");
     return fails ? 1 : 0;
 }
