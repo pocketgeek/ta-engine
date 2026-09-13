@@ -315,6 +315,30 @@ void PathService::release(Entry& e) {
 
 void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
                           int mapH, float goalX, float goalZ, bool priority) {
+    // A RE-REQUEST FOR THE SAME SEARCH LETS IT RUN. Everything below restarts the
+    // search from scratch (cap = 0), which is right when the question changed and
+    // ruinous when it did not: the sim re-asks every kPathRetryTicks (120 ticks, 4s)
+    // for any unit not making headway, while a saturated queue takes far longer than
+    // that to reach it. Measured at 3300 units: 1445 pending against 12 slots, average
+    // wait 490 ticks (~16s), so a starved unit reset its own search about four times
+    // before it could ever have finished -- 19,985 requests yielded 996 completions.
+    // It never got a route, and with no local obstacle avoidance in the steering,
+    // waiting for a route means walking straight at the goal into whatever is between.
+    //
+    // "The same search" is the same GOAL from ~the same PLACE. The start is allowed to
+    // drift a cell because a unit shuffling on the spot has not invalidated anything;
+    // move further than that and the old answer really is for a different question, so
+    // it restarts as before. A unit that is actually travelling is making headway and
+    // never reaches the retry path at all.
+    if (auto it = q_.find(unitId); it != q_.end()) {
+        Entry& ex = it->second;
+        const int dx = ex.start.x - start.x, dz = ex.start.z - start.z;
+        if (ex.goal.x == goal.x && ex.goal.z == goal.z &&
+            dx >= -1 && dx <= 1 && dz >= -1 && dz <= 1) {
+            if (priority) ex.priority = true;   // may still be promoted
+            return;
+        }
+    }
     Entry& e = q_[unitId];
     const int slot = e.slot;      // keep the slot if this unit already holds one
     e.start = start;
