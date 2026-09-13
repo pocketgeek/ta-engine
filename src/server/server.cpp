@@ -1326,9 +1326,23 @@ void Server::gameMsg(Client& c, const Frame& f) {
             Reader rd(f.payload.data(), f.payload.size());
             uint32_t tk = rd.u32(); uint64_t h = rd.u64();
             if (!rd.ok) return;
-            r->hashes[tk][c.id] = h;
             if (tk > c.ackTick) c.ackTick = tk;   // flow control: this client is up to `tk`
-            checkHashes(*r, tk);
+            // SEATED clients only. A spectator's StateHash is a progress ACK and
+            // nothing more -- it deliberately sends a trivial 0 rather than
+            // folding thousands of units into an FNV on the render thread every
+            // 0.4s (see gameview_net.cpp, which states outright that the server
+            // never desync-checks it). We were checking it anyway: the 0 landed
+            // in the consensus map, disagreed with the referee's canonical hash
+            // and dropped the spectator. Its first heartbeat carries ackTick 0,
+            // so every spectator died at tick 0 -- spectating was broken outright.
+            //
+            // Ignoring it is also the correct trust boundary: a spectator is
+            // non-authoritative by design (it holds nobody up in canAdvance), so
+            // it must not be able to vote on what the canonical state is either.
+            if (c.slot >= 0) {
+                r->hashes[tk][c.id] = h;
+                checkHashes(*r, tk);
+            }
             break;
         }
         default: break;
