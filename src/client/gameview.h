@@ -1419,8 +1419,6 @@ private:
     // 0.55 * 255; measured off a retail screenshot, identical on all three
     // channels, so retail multiplies rather than blending toward a grey.
     static constexpr Uint8 kShadowLevel = 140;
-    SDL_Texture* shadowMask_ = nullptr;       // coverage mask, composited once
-    int shadowMaskW_ = 0, shadowMaskH_ = 0;
     SDL_FPoint shadowLo_{}, shadowHi_{};      // batch bounds, accumulated as built
     std::unordered_map<size_t, std::string> burnNames_;   // feature type -> name, copied under the lock
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
+#include <thread>
 #include "sim/pathsearch.h"
 #include <cstdint>
 #include <deque>
@@ -1405,6 +1407,27 @@ private:
     // 11-66ms per fog pass. Display-only: never hashed, and the headless referee
     // (visPlayer_ < 0) skips the fog pass entirely.
     std::unordered_map<uint64_t, std::vector<uint32_t>> visMaskCache_;
+    // The fog pass runs ASYNCHRONOUSLY on a worker. At 3800 units it costs ~86ms, and on
+    // the 0.5s cadence below that was a stall you could feel twice a second -- the whole
+    // of it, measured: "SIMPHASE tick=88.6ms ... vis=86.0". Parallelising inside the pass
+    // (which it already does) cannot help, because the tick still waits for it.
+    // Splitting it instead: visGather() is serial and cheap and reads units_ on the sim
+    // thread; visCompute() is the expensive part and touches only the immutable heightmap
+    // plus its own back buffer, so it runs off-thread while the game keeps rendering. The
+    // result lands one pass late -- imperceptible against fog that already only moves at
+    // 2-4Hz, and free of lockstep risk because NOTHING here is hashed (the referee at
+    // visPlayer_ < 0 skips the pass, and every consumer of vis_ is client display code).
+    struct Reveal { int cx, cz, r, rRadar2; bool los; uint64_t key; };
+    struct Miss   { uint64_t key; int cx, cz, r, rRadar2; };
+    std::vector<Reveal> visReveals_;
+    std::vector<Miss>   visMisses_;
+    std::vector<uint8_t> visBack_;      // worker's target; swapped into vis_ when it lands
+    std::thread visWorker_;
+    bool visRunning_ = false;           // sim thread only: is visWorker_ joinable?
+    std::atomic<bool> visDone_{false};  // worker -> sim thread: result is ready
+    void visGather();                   // serial: reads units_, fills visReveals_/visMisses_
+    void visCompute();                  // worker: ray-march, demote, stamp into visBack_
+    void visPump();                     // sim thread: collect a finished pass, start the next
     // Bumped after every fog recompute so the renderer can skip re-uploading an
     // unchanged fog texture (vis_ changes at 4Hz; frames render far faster).
     uint32_t visGen_ = 0;

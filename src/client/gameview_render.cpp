@@ -250,75 +250,32 @@
             shadowBatch_.insert(shadowBatch_.end(), gsh.shadowVerts.begin(),
                                 gsh.shadowVerts.end());
         }
-        // Composite the silhouettes through a COVERAGE MASK rather than drawing
-        // them straight onto the scene. Drawn directly, every triangle blends
-        // separately and the shadow darkens wherever the shape folds over itself
-        // -- a wing across a body, a sword across a cape -- which is the thing
-        // that read as wrong against retail. Retail rasterises the whole
-        // silhouette into one span buffer and blends it once, so a shadowed pixel
-        // is a flat 0.55 multiply no matter how many polygons covered it.
+        // Draw the silhouettes straight onto the scene with a MULTIPLY blend.
         //
-        // White ground + grey coverage + one MOD blit reproduces exactly that.
+        // There used to be a coverage mask here: rasterise every shadow triangle into a
+        // full-screen render target, then composite it once, so a silhouette that folds
+        // over itself (a wing across a body) could not darken twice. That is what retail's
+        // span buffer buys. It was dropped because the per-frame render-target round trip
+        // is genuinely expensive at 2x AA on a 7680x2160 desktop -- a 133 MB texture
+        // cleared, drawn into and blitted back every frame, on an 8 GB card already
+        // driving that desktop.
+        //
+        // It was NOT the half-second hitch, though I said so at the time: removing the
+        // mask entirely left the stall untouched, same 0.5s period, same ~75ms. That was
+        // the fog pass (see visCompute in sim.cpp). The ablation that pinned it here
+        // compared spike COUNTS against a running median, which moves with the frame time
+        // the mask itself was inflating -- it measured the median, not the stall.
+        //
+        // MOD with the same 0.55 grey gets the level exactly right everywhere the
+        // silhouette does not overlap itself, which is most of it -- strictly closer to
+        // retail than the per-triangle ALPHA this originally used, where no part of the
+        // shadow was the right darkness. Where it does overlap it goes to 0.30 instead of
+        // 0.55, on a fold, which is the trade for losing the round trip.
         if (!shadowBatch_.empty() && !kNoShadow) {
-            SDL_Texture* prev = SDL_GetRenderTarget(ren_);
-            int mw = 0, mh = 0;
-            if (prev) SDL_QueryTexture(prev, nullptr, nullptr, &mw, &mh);
-            else SDL_GetRendererOutputSize(ren_, &mw, &mh);
-            // HALF RESOLUTION. The mask is a flat 55% multiply with no detail in it,
-            // so it does not need the scene's (supersampled) pixel count -- and at
-            // 2x AA on a 7680x2160 desktop the full-size version was a 133 MB render
-            // target cleared, drawn into and blitted back every frame, which is what
-            // the periodic hitch turned out to be.
-            static const int kMaskDiv = 2;
-            mw = (mw + kMaskDiv - 1) / kMaskDiv;
-            mh = (mh + kMaskDiv - 1) / kMaskDiv;
-            if (mw > 0 && mh > 0 &&
-                (!shadowMask_ || shadowMaskW_ != mw || shadowMaskH_ != mh)) {
-                if (shadowMask_) gpuvram::destroy(shadowMask_);
-                shadowMask_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA8888,
-                                              SDL_TEXTUREACCESS_TARGET, mw, mh);
-                shadowMaskW_ = mw; shadowMaskH_ = mh;
-                if (shadowMask_)
-                    SDL_SetTextureBlendMode(shadowMask_, SDL_BLENDMODE_MOD);
-            }
-            if (shadowMask_) {
-                // Only the batch's bounding box is touched. Clearing and blitting
-                // a whole 7680x2160 target twice a frame for a few hundred small
-                // silhouettes is most of the cost of this feature and none of the
-                // benefit; shadows cluster wherever the units are.
-                const float lo_x = shadowLo_.x, hi_x = shadowHi_.x;
-                const float lo_y = shadowLo_.y, hi_y = shadowHi_.y;
-                float rsx = 1.0f, rsy = 1.0f;
-                SDL_RenderGetScale(ren_, &rsx, &rsy);
-                const float msx = rsx / float(kMaskDiv), msy = rsy / float(kMaskDiv);
-                SDL_Rect box{std::clamp(int(std::floor(lo_x * msx)) - 1, 0, mw),
-                             std::clamp(int(std::floor(lo_y * msy)) - 1, 0, mh),
-                             0, 0};
-                box.w = std::clamp(int(std::ceil(hi_x * msx)) + 1, 0, mw) - box.x;
-                box.h = std::clamp(int(std::ceil(hi_y * msy)) + 1, 0, mh) - box.y;
-                if (box.w > 0 && box.h > 0) {
-                    SDL_SetRenderTarget(ren_, shadowMask_);
-                    SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
-                    SDL_SetRenderDrawColor(ren_, 255, 255, 255, 255);  // MOD identity
-                    SDL_RenderSetScale(ren_, 1.0f, 1.0f);   // box is in mask pixels
-                    SDL_RenderFillRect(ren_, &box);
-                    SDL_RenderSetScale(ren_, msx, msy);     // geometry -> mask space
-                    SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
-                                       int(shadowBatch_.size()), nullptr, 0);
-                    SDL_SetRenderTarget(ren_, prev);
-                    // The mask holds pixel-space coverage (it was drawn under the
-                    // renderer's own scale), so composite it 1:1.
-                    SDL_RenderSetScale(ren_, 1.0f, 1.0f);
-                    const SDL_Rect dst{box.x * kMaskDiv, box.y * kMaskDiv,
-                                       box.w * kMaskDiv, box.h * kMaskDiv};
-                    SDL_RenderCopy(ren_, shadowMask_, &box, &dst);
-                    SDL_RenderSetScale(ren_, rsx, rsy);
-                }
-                SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-            } else {   // no render target available: straight draw, stacking and all
-                SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
-                                   int(shadowBatch_.size()), nullptr, 0);
-            }
+            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_MOD);
+            SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
+                               int(shadowBatch_.size()), nullptr, 0);
+            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         }
 
         profShadowVerts_ += long(shadowBatch_.size());
@@ -1391,8 +1348,6 @@
     void GameView::invalidateRenderTargets() {
         for (SDL_Texture* t : atlasTex_) if (t) gpuvram::destroy(t);
         atlasTex_.clear();
-        if (shadowMask_) { gpuvram::destroy(shadowMask_); shadowMask_ = nullptr; }
-        shadowMaskW_ = shadowMaskH_ = 0;
     }
 
     void GameView::destroyGpuTextures() {
