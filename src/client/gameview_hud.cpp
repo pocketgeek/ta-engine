@@ -175,7 +175,7 @@
         }
 
     void GameView::drawCursorOverlay() {
-        if (!cursorsInit_) { cursorsInit_ = true; cursors_.load(ren_, vfs_); }
+        if (!cursorsInit_) { cursorsInit_ = true; cursors_.load(ren_, vfs_, settings_); }
         // A benchmark RUN is hands-off: hide the cursor entirely (OS + software). It
         // returns for the stats screen (benchStatsShown_) so DONE is clickable.
         if (benchmarkMode_ && !benchStatsShown_) {

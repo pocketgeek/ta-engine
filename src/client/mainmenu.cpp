@@ -900,16 +900,12 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
     // arrow on teardown -- both the menu and the game keep it hidden and draw a custom
     // cursor, so restoring on a transition only flashes the arrow during the next
     // screen's load; window destruction returns the desktop cursor at app exit.
+    // The menu owns its OWN CursorSet -- the game's warmCursors() does nothing for it --
+    // so this load must happen here, before the loop, and hand over the settings so the
+    // hardware reconstruction does not land on the first menu frame.
     if (!d_->cursorsInit_) {
         d_->cursorsInit_ = true;
-        d_->cursors_.load(d_->ren, d_->vfs);
-        // The menu owns its OWN CursorSet, so the game's warmCursors() does nothing for
-        // it. Reconstruct here, before the loop, or the first applyHardware() below does
-        // it mid-render -- ~105 ms at CURSOR SIZE 8, as a hitch on the first menu frame.
-        // Gated the same way: with hardware cursors off, the software path draws from
-        // textures makeTexture already upscaled and this work would go unread.
-        if (settings && settings->hardwareCursor)
-            d_->cursors_.precompute(settings->cursorScale);
+        d_->cursors_.load(d_->ren, d_->vfs, settings);
     }
     SDL_ShowCursor(d_->cursors_.ok() ? SDL_DISABLE : SDL_ENABLE);
 

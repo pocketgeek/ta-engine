@@ -131,7 +131,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                                Settings* settings, MenuMusic* music,
                                const ResultStats* stats) {
     CursorSet cursors;
-    cursors.load(ren, vfs);
+    cursors.load(ren, vfs, settings);
     SDL_ShowCursor(cursors.ok() ? SDL_DISABLE : SDL_ENABLE);
 
     SDL_PumpEvents();

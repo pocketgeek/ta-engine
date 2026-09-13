@@ -15,6 +15,8 @@
 
 namespace tak {
 
+struct Settings;   // client/settings.h -- only a pointer is needed here
+
 namespace hpi { class Vfs; }
 
 // The wired retail cursor set. Names map to cursors.gaf sequences in cursors.cpp. The
@@ -39,7 +41,17 @@ public:
 
     // Load anims/cursors.gaf + its palette through the VFS and bake per-frame textures.
     // Returns false if the assets are missing/unreadable (the caller keeps the OS arrow).
-    bool load(SDL_Renderer* ren, const hpi::Vfs& vfs);
+    // Load the art AND, when `settings` says hardware cursors are in use, reconstruct
+    // every frame for the size it will be drawn at.
+    //
+    // Taking settings here is the point. This used to be load()-then-remember-to-
+    // precompute, and there are FOUR CursorSet owners (the game, the main menu, the
+    // briefing screen, the result screen) -- so "remember to" silently missed whichever
+    // one nobody looked at. It missed the hardware path first, then the menu's copy.
+    // One call that cannot be got half-right is the fix; the two-call version was the
+    // bug. Pass the settings you will later draw with, from somewhere off the frame
+    // path, and the whole thing is handled.
+    bool load(SDL_Renderer* ren, const hpi::Vfs& vfs, const Settings* settings = nullptr);
     bool ok() const { return ok_; }
 
     // Draw `c` with its hotspot on the pixel (mouseX,mouseY) in renderer-output space.
@@ -76,19 +88,15 @@ public:
     // hardware mode off (so the software path can hide the arrow and draw its own).
     void releaseHardware();
 
-    // Build every frame's `smooth` for this draw scale: the expensive, tint-independent
-    // half of a smoothed hardware cursor. Call it from the LOADING phase (GameView does,
-    // via warmCursors) so it does not land in a rendered frame.
-    //
-    // It is not free and it is not automatic. load() deliberately does NOT call it --
-    // load() cannot know whether hardware cursors are even in use, and with them off the
-    // work buys nothing, since the software path draws from the textures instead.
-    // applyHardware() also calls it if CURSOR SIZE changes mid-session, and that one DOES
-    // run inside a frame: a one-off stall when you move the slider, which is the honest
-    // trade against re-reconstructing on every hover afterwards.
-    void precompute(int scale);
+
 
 private:
+    // The expensive, tint-independent half of a smoothed hardware cursor. Driven by
+    // load() (off the frame path) and by applyHardware() when CURSOR SIZE changes
+    // mid-session -- that one DOES run inside a frame: a one-off stall when the slider
+    // moves, against re-reconstructing on every hover for the rest of the session.
+    void precompute(int scale);
+
     struct Frame {
         SDL_Texture* tex = nullptr;
         int w = 0, h = 0, hx = 0, hy = 0;

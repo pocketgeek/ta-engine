@@ -83,7 +83,7 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
     }
 
     CursorSet cursors;
-    cursors.load(ren, vfs);
+    cursors.load(ren, vfs, settings);
     SDL_ShowCursor(cursors.ok() ? SDL_DISABLE : SDL_ENABLE);
 
     // Drop any click queued by the screen we came from (movie / picker fires on DOWN).

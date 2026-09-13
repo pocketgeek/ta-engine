@@ -1,6 +1,7 @@
 #include "client/cursors.h"
 
 #include "client/artscale.h"
+#include "client/settings.h"
 #include "client/gpuvram.h"
 
 #include "gaf/gaf.h"
@@ -54,7 +55,7 @@ CursorSet::~CursorSet() {
             if (f.tex) gpuvram::destroy(f.tex);
 }
 
-bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs) {
+bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs, const Settings* settings) {
     if (!ren) return false;
     std::vector<uint8_t> gafBytes, palBytes;
     try {
@@ -93,6 +94,10 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs) {
             anims_[i].push_back({t, fr.width, fr.height, fr.xoff, fr.yoff, fr.rgba});
         }
     }
+    // Reconstruct now, here, off the frame path -- but only for the HARDWARE cursor.
+    // The software path draws the textures above, which makeTexture has already
+    // upscaled, so this work would go unread there.
+    if (settings && settings->hardwareCursor) precompute(settings->cursorScale);
     // Need at least the normal pointer to justify taking over from the OS cursor.
     ok_ = !anims_[size_t(CursorId::Normal)].empty();
     return ok_;
