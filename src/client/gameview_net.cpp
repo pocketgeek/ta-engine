@@ -72,6 +72,8 @@
             missionFullVision_ = ms.fullVision;
             missionPreMapped_ = ms.preMapped;
             loadFeatures();
+            if (loadScreen_) loadScreen_->step("LOADING CURSORS", 35);
+            warmCursors();   // cursor art + hardware reconstruction, off the frame path
             // Per-mission unit restriction: missions/<stem>.tdf lists the unit ids this
             // mission allows; the human's conjure menu is filtered to it (UI only).
             missionAllowed_.clear();
@@ -149,6 +151,7 @@
         // setupMatch is authoritative for the sim; loadFeatures only re-adds the same
         // map's mana/nav idempotently (setTerrain already rebuilt the nav).
         loadFeatures();
+        warmCursors();   // cursor art + hardware reconstruction, off the frame path
         // client-only presentation
         localPlayer_ = room.mySlot < 0 ? 0 : room.mySlot;
         world_.setVisPlayer(localPlayer_);

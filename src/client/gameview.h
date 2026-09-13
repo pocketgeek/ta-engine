@@ -2693,6 +2693,18 @@ private:
     // Cycle the selection to the next owned unit (single-select stepping).
     void cycleNextUnit();
 
+    // Load the cursor art and, when the HARDWARE cursor is in use, reconstruct every
+    // frame for the size it will be drawn at -- during the LOADING phase.
+    //
+    // Otherwise the first drawCursorOverlay() does it, inside the first rendered frame:
+    // measured at CURSOR SIZE 8 that is ~105 ms of reconstruction landing on frame one.
+    // Gated on hardwareCursor because the software path draws from textures that
+    // makeTexture already upscaled, so the reconstruction would be pure waste there.
+    void warmCursors() {
+        if (!cursorsInit_) { cursorsInit_ = true; cursors_.load(ren_, vfs_); }
+        if (settings_ && settings_->hardwareCursor)
+            cursors_.precompute(settings_->cursorScale);
+    }
     void centerOn(int id);
 
     // Centre the camera on the average position of the live selected units.

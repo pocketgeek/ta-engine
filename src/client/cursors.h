@@ -76,6 +76,18 @@ public:
     // hardware mode off (so the software path can hide the arrow and draw its own).
     void releaseHardware();
 
+    // Build every frame's `smooth` for this draw scale: the expensive, tint-independent
+    // half of a smoothed hardware cursor. Call it from the LOADING phase (GameView does,
+    // via warmCursors) so it does not land in a rendered frame.
+    //
+    // It is not free and it is not automatic. load() deliberately does NOT call it --
+    // load() cannot know whether hardware cursors are even in use, and with them off the
+    // work buys nothing, since the software path draws from the textures instead.
+    // applyHardware() also calls it if CURSOR SIZE changes mid-session, and that one DOES
+    // run inside a frame: a one-off stall when you move the slider, which is the honest
+    // trade against re-reconstructing on every hover afterwards.
+    void precompute(int scale);
+
 private:
     struct Frame {
         SDL_Texture* tex = nullptr;
@@ -88,9 +100,7 @@ private:
         std::vector<uint8_t> smooth;
         int smoothScale = 0;         // 0 = not built
     };
-    // Build every frame's `smooth` for this draw scale. Called once at load (and again
-    // if CURSOR SIZE changes) so the work does not land inside a rendered frame.
-    void precompute(int scale);
+
     std::array<std::vector<Frame>, size_t(CursorId::Count)> anims_;
     bool ok_ = false;
     CursorId cur_ = CursorId::Count;   // != any real id, so the first draw seeds the clock

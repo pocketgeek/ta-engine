@@ -93,9 +93,6 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs) {
             anims_[i].push_back({t, fr.width, fr.height, fr.xoff, fr.yoff, fr.rgba});
         }
     }
-    // Reconstruct for the size we will actually draw at, here at load rather than on
-    // first hover. g_cursorScale is Settings::cursorScale, sampled at startup.
-    precompute(tak::art::g_cursorScale);
     // Need at least the normal pointer to justify taking over from the OS cursor.
     ok_ = !anims_[size_t(CursorId::Normal)].empty();
     return ok_;
