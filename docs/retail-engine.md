@@ -1277,11 +1277,48 @@ itself and is faction-independent.
     architectural divergence, not yet addressed; it works because we answer the
     movement-related ids, but it means a script whose logic we do not replicate
     animates differently.
-  * `QueryNanoPiece` is queried by retail's build mission (`0x401c20`) to get
-    the BUILDER's nano emitter piece. Our build sparkle is sprinkled over the
-    target footprint instead and never asks the script, so the effect does not
-    originate where retail's does.
+  * `QueryNanoPiece` -- RETRACTED, see below. I claimed our sparkle "does not
+    originate where retail's does". It does. Chased it down and the opposite is
+    true.
   * Unit values 33, 46 and 30 are still answered with 0, unverified.
+
+## The build sparkle: QueryNanoPiece is vestigial (2026-09-12)
+
+Retracting a claim I made in the animation audit above: that our build effect
+"originates in the wrong place" because retail queries the builder's nano piece
+and we do not. Chasing it down, retail queries that piece and THROWS THE ANSWER
+AWAY.
+
+The build mission is `0x401c20`. It does:
+
+    lea  eax,[ebp-0x18]
+    push eax ; push edi          edi = the BUILDER
+    call 0x4dd530                QueryNanoPiece -> piece -> 0x4dd250 -> world xyz
+    mov  ecx,[esi+0x16]          esi = the MISSION, +0x16 = the unit being built
+    push 0 ; push 1
+    mov  ecx,[ecx+0xc0]          ...its drawable
+    call 0x4eec20                play the effect ON THE TARGET
+
+`[ebp-0x18]` -- the nano piece's world position -- is written there and never
+read again anywhere in the function, and `0x4dd530` has no other caller. So the
+position is computed and discarded. This is TA-1997 vestigial: TA drew a
+nanolathe BEAM from that piece, TA:Kingdoms does not.
+
+What actually draws is `0x4eec20` -> `0x4f1430`, a rand-driven particle spawner
+run against the emitter hanging off the target's drawable (`+0x174`), one
+particle per build-mission tick, the mission rescheduling itself as it runs.
+`0x4eec20` is generic -- ten mission handlers use it -- so it is "play this
+drawable's effect", not a build-specific thing.
+
+So the sparkle belongs on the UNIT BEING BUILT, which is what we do. Building a
+builder-to-target beam would have been inventing an effect retail does not have,
+which is exactly what the retail-first rule exists to prevent.
+
+One real divergence remains, unverified: we sprinkle the BUILDER as well as the
+site (`gameview_render.cpp`, "the worker end"). The build mission emits only on
+the target -- the builder appears there solely as the argument to the discarded
+nano query. I have not removed ours, because one call site is thin evidence that
+no other path lights the builder up.
 
 ## Headless in-game screenshots (dev harness)
 
