@@ -240,6 +240,8 @@
         // draw their own shadow inside drawUnit in pass 2.)
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         const double _sh0 = double(SDL_GetPerformanceCounter());
+        airShadows_.clear();
+        airShadowOp_ = SIZE_MAX;
         // Draw each unit's shadow STRAIGHT from the buffer its worker filled, with a
         // MULTIPLY blend. One SDL_RenderGeometry per unit rather than one for everybody.
         //
@@ -278,6 +280,19 @@
                 if (gs < 0) continue;
                 const UnitGeom& gsh = geomPool_[size_t(gs)];
                 if (gsh.shadowVerts.empty()) continue;
+                // An AIRBORNE flyer's shadow falls on whatever is beneath it, so drawing
+                // it here -- before any body -- lets every ground unit and feature paint
+                // over it. Retail has no global shadow pre-pass at all: the Glide path
+                // emits each unit's shadow INSIDE that unit's draw (0x4ee700 -> 0x4ec720
+                // -> 0x4ec7b0 -> 0x4ede50 -> 0x4eda80), so a flyer drawn after the ground
+                // units drops its shadow on top of them. Hold these back and drain them
+                // between the ground bodies and the air bodies, which is where that same
+                // ordering puts them. items is already sorted ground-layer-then-air, so
+                // the boundary exists for free.
+                //
+                // Costs nothing: the vertices are identical, only their position in the
+                // draw order changes. Measured at ~1180 units, shadow 2.2 -> 2.3ms.
+                if (it.layer == 1) { airShadows_.push_back(&gsh); continue; }
                 profShadowVerts_ += uint64_t(gsh.shadowVerts.size());
                 // One colour and one texcoord at stride 0 -- SDL reads element 0 per
                 // vertex, so the flat grey costs nothing per vertex to store or read.
@@ -319,6 +334,13 @@
             segTex = nullptr;
         };
         for (const auto& it : items) {
+            // The ground -> air boundary is where the held-back flyer shadows go. Close
+            // the running segment so it lands on a real op boundary rather than inside a
+            // batched run.
+            if (it.layer == 1 && airShadowOp_ == SIZE_MAX && !airShadows_.empty()) {
+                closeSeg();
+                airShadowOp_ = drawOps_.size();
+            }
             if (it.f) {
                 closeSeg();
                 drawOps_.push_back({nullptr, it.f, nullptr, 0, 0});
@@ -350,7 +372,25 @@
                           bodyVerts_.begin() + t.dst);
             }
         });
-        for (const DrawOp& op : drawOps_) {
+        auto drainAirShadows = [&] {
+            if (airShadows_.empty()) return;
+            const double _as0 = double(SDL_GetPerformanceCounter());
+            static const SDL_Color kAirCol{kShadowLevel, kShadowLevel, kShadowLevel, 255};
+            static const float kAirUV[2] = {0.0f, 0.0f};
+            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_MOD);
+            for (const UnitGeom* gp : airShadows_) {
+                profShadowVerts_ += uint64_t(gp->shadowVerts.size());
+                SDL_RenderGeometryRaw(ren_, nullptr, &gp->shadowVerts[0].x,
+                                      int(sizeof(SDL_FPoint)), &kAirCol, 0, kAirUV, 0,
+                                      int(gp->shadowVerts.size()), nullptr, 0, 0);
+            }
+            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+            airShadows_.clear();
+            profShadowMs_ += (double(SDL_GetPerformanceCounter()) - _as0) / _ptFreq;
+        };
+        for (size_t opi = 0; opi < drawOps_.size(); ++opi) {
+            if (opi == airShadowOp_) drainAirShadows();
+            const DrawOp& op = drawOps_[opi];
             if (op.f) {
                 const auto& f = *op.f;
                 // Lift the decal onto the terrain relief just like a unit, so a mana
@@ -436,6 +476,12 @@
         }
         profSubmitMs_ += (double(SDL_GetPerformanceCounter()) - _st0) / _ptFreq;
 
+        // Safety drain: if the air layer produced no draw ops at all (every flyer
+        // special-cased or slotless), airShadowOp_ lands on drawOps_.size() and the loop
+        // above never reaches it -- which would silently drop those shadows rather than
+        // merely misorder them. drainAirShadows() clears as it goes, so this is a no-op
+        // when the boundary already fired.
+        drainAirShadows();
         profBodyMs_ += (double(SDL_GetPerformanceCounter()) - _bdy0) /
                        (double(SDL_GetPerformanceFrequency()) / 1000.0);
         // Ghosts of the local player's queued (shift) build orders.

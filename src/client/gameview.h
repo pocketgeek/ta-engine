@@ -1224,6 +1224,11 @@ private:
     }
     bool shadowsOnFrame_ = true;   // this frame's snapshot of the above
 
+    // Airborne flyers' shadows, held back from the shadow pass and drawn between the
+    // GROUND bodies and the AIR bodies -- see the shadow pass for why.
+    std::vector<const UnitGeom*> airShadows_;
+    size_t airShadowOp_ = SIZE_MAX;   // drawOps_ index to drain airShadows_ before
+
     std::vector<SDL_Vertex> unitBatch_, overlayBatch_;
     // Body pass assembled in parallel: plan offsets serially, scatter the vertex
     // copies across the pool, then replay the draw ops. Keeps depth order exact.
