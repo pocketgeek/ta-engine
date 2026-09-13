@@ -18,6 +18,7 @@
 #include "client/briefingscreen.h"
 #include "client/artscale.h"
 #include "client/videofilter.h"
+#include "client/runtimesettings.h"
 #include "client/resultscreen.h"
 #include "cob/vm.h"
 #include "crt/crt.h"
@@ -580,9 +581,7 @@ int main(int argc, char** argv) {
     // Static-art smoothing is sampled ONCE here, before any art is built. Textures keep
     // whatever factor they were built with, so a mid-session toggle must not be re-read
     // per texture -- the Options row says RESTART for exactly this reason.
-    tak::art::setSmoothArt(settings.smoothArt);
-    tak::art::setCursorFactor(settings.cursorScale);
-    tak::video::setDeblock(settings.videoDeblock);
+    tak::applyRuntimeSettings(settings);
     {
         SDL_RendererInfo ri{};
         if (SDL_GetRendererInfo(ren, &ri) == 0)

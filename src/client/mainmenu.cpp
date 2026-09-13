@@ -1,5 +1,6 @@
 #include "client/mainmenu.h"
 #include "client/videofilter.h"
+#include "client/runtimesettings.h"
 #include "client/artscale.h"
 #include "client/gpuvram.h"
 
@@ -1054,6 +1055,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                             [ren, music, settings, fsWas = settings->fullscreen,
                              vsWas = settings->vsync]() mutable {
                                 if (music) music->setVolume(settings->masterVol, settings->bgmVol);
+                                tak::applyRuntimeSettings(*settings);   // incl. DEFAULTS
                                 // onChange fires on EVERY control tweak (a volume-slider drag
                                 // fires it many times a second). ANY window/renderer reconfigure
                                 // here re-commits the Wayland surface -- which rescales it and
@@ -1296,9 +1298,11 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
             t = double(SDL_GetTicks64() - start) / 1000.0;
         const int want = int(t * fps);
         bool ended = false;
+        bool decoded = false;   // did THIS iteration produce a new frame?
         while (frame <= want) {
             if (!vid.nextFrame(rgba)) { ended = true; break; }
             ++frame;
+            decoded = true;
             if (meanBrightness(rgba, vw, vh) <= kBlackLevel) {
                 if (++blackRun >= kBlackEndFrames) { ended = true; break; }   // trailing black -> done
             } else {
@@ -1311,7 +1315,11 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
         if (adev && !apcm.empty()) { SDL_QueueAudio(adev, apcm.data(), Uint32(apcm.size()));
                                      queuedTotal += long(apcm.size()); }
         if (ended || rgba.empty()) break;
-        if (tak::video::g_deblock) tak::video::deblock(rgba, vw, vh, 3);
+        // ONLY a newly decoded frame. The clip runs at ~15 fps while this loop runs at
+        // display rate, so most iterations decode nothing and `rgba` is the frame already
+        // on screen -- filtering it again each time would smooth the same pixels over and
+        // over, and by an amount that depended on the machine's frame rate.
+        if (decoded && tak::video::g_deblock) tak::video::deblock(rgba, vw, vh, 3);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), vw * 4);
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);

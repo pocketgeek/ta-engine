@@ -1,4 +1,5 @@
 #include "client/gameview.h"
+#include "client/runtimesettings.h"
 
 // Out-of-line GameView method definitions (core concern), split from the
 // class body in gameview.h so editing a body recompiles only this translation
@@ -65,6 +66,11 @@
     }
 
     void GameView::applySettings(const tak::Settings& s) {
+        // Push the display options that render code reads from globals (smooth art,
+        // cursor factor, movie deblocking). This is GameView's one "settings changed"
+        // hook, so wiring it here reaches the Esc-menu Options and its DEFAULTS button
+        // without either of them having to know the globals exist.
+        tak::applyRuntimeSettings(s);
         sounds_.setMasterVolume(s.masterVol);
         sounds_.setMusicVolume(s.bgmVol);
         sounds_.setSfxVolume(s.sfxVol);
