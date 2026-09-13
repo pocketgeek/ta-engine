@@ -1494,7 +1494,8 @@ private:
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
                  bool mirror = false, bool isRoot = true, bool shadow = false,
-                 RadialExtent* ext = nullptr, const PieceMeta* meta = nullptr) {
+                 RadialExtent* ext = nullptr, const PieceMeta* meta = nullptr,
+                 bool shadowCull = false) {
         const tak::cob::PieceState* ps = pieceFor(anim, o.name);
         if (ps && !ps->visible) return;
         float rr[3];
@@ -1612,6 +1613,28 @@ private:
                 }
                 if (!ok) continue;
                 if (shadow) {
+                    // shadowCull: honour the BODY's cull for THIS unit. Off for living
+                    // units -- the measured reasons are below. On for CORPSES, where not
+                    // culling produces an artifact the no-cull rule never anticipated: a
+                    // body lying flat presents a large face PARALLEL to the projection
+                    // plane, so it projects at maximal area as a clean parallelogram --
+                    // and the body pass culls that same face, so the slab has no visible
+                    // object casting it. Reported from a screenshot as a square shadow
+                    // around some dead units; found as a single 4190px^2 shadow triangle
+                    // on corpses whose deadFor kept climbing.
+                    //
+                    // Culling a flat corpse cannot punch a meaningful hole: what survives
+                    // is the upward-facing surface, which is exactly what you can see of
+                    // it. The hole problem below is about UPRIGHT geometry.
+                    if (shadowCull) {
+                        const float cax = px[1]-px[0], cay = py[1]-py[0], caz = pz[1]-pz[0];
+                        const float cbx = px[2]-px[0], cby = py[2]-py[0], cbz = pz[2]-pz[0];
+                        const float cny = caz * cbx - cax * cbz;
+                        const float cnz = cax * cby - cay * cbx;
+                        float fc = cny * kSortY - cnz * kSortZ;
+                        if (mirror) fc = -fc;
+                        if (fc <= 0.0f) continue;
+                    }
                     // NO BACKFACE CULL. This is the single biggest cost in a crowded
                     // frame, so it has been measured three ways rather than assumed --
                     // and the reason it cannot be culled is a property of the SHIPPED
@@ -1687,7 +1710,7 @@ private:
         for (size_t ci = 0; ci < o.children.size(); ++ci) {
             const PieceMeta* cm = (ci < meta->children.size()) ? &meta->children[ci] : nullptr;
             collect(out, atlas, o.children[ci], xf, anim, heading, player, mirror, false,
-                    shadow, ext, cm);
+                    shadow, ext, cm, shadowCull);
         }
     }
 

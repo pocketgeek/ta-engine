@@ -1698,8 +1698,10 @@
         g.shadowVerts.clear();
         if (u.underConstruction || !castsBlobShadow(u.type)) return;
         scratch.clear();
+        // Corpses cull; living units do not. See the shadow branch in collect().
+        const bool corpseCull = !u.alive() && u.deadFor >= 0.0f;
         collect(scratch, nullptr, root, Xform{}, anim, facing, u.player, false, true,
-                /*shadow=*/true, nullptr, &meta);
+                /*shadow=*/true, nullptr, &meta, corpseCull);
         const float sx = g.ax + kShadowLX * g.alt * zm;
         const float sy = g.ay + (kProjY - kShadowLZ) * g.alt * zm;
         g.shadowVerts.reserve(scratch.size() * 3);
