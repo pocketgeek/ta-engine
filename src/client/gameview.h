@@ -895,6 +895,8 @@ private:
                                  // rotor loops), NO fly/land state machine: run Create + a
                                  // moving signal (setSFXoccupy/MoveRate), never reset()
         bool active = true;      // last active/door-open state (onoffable/gate swing edge)
+        bool cloaked = false;    // last sim cloak state (StartCloaking/StopCloaking edge)
+        bool hasCloakAnim = false;   // COB defines StartCloaking (araspy, npcheket)
         float gateNext = 0;      // animClock_ of the next gate proximity rescan (stagger)
         int windStamp = 0;       // last windGen_ this unit received (0 = never)
         bool hasMelee = false;   // has MoveWatcher/MeleeControl: the COB drives its own
@@ -1168,6 +1170,7 @@ private:
         int moveGate = 0;         // walk-cycle moving-flag static index (walkGateOf)
         bool hasWalk = false;     // has a walk/walk_legs/tread script (hasWalkCycle)
         bool hasMelee = false;    // has MoveWatcher/MeleeControl (retail self-driven gait)
+    bool hasCloakAnim = false;   // defines StartCloaking (araspy, npcheket)
         bool hasAim = false;      // has an AimWeapon script
         bool hasFlinch = false;   // has a HitByWeapon script
         bool hasWind = false;     // has a WindChange script

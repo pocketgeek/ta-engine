@@ -1466,6 +1466,16 @@
                     a.vm->start(u.active ? "Activate" : "Deactivate");
                 }
             }
+            // Cloak pose. StartCloaking/StopCloaking are real engine entry points
+            // (they appear in the icd's call-script-by-name sites alongside Create
+            // and Activate), and the two units that define them -- araspy and
+            // npcheket -- fold their pieces with MOVE_NOWs in the `cloak` script
+            // that StartCloaking starts. We were never calling either, so a
+            // cloaking spy just went transparent in its walking pose.
+            if (a.hasCloakAnim && u.cloaked != a.cloaked) {
+                a.cloaked = u.cloaked;
+                a.vm->start(u.cloaked ? "StartCloaking" : "StopCloaking");
+            }
             // (The VM itself is advanced in the parallel pass below.)
         }
 
@@ -1711,6 +1721,7 @@
                               cc.file->scriptIndex("MeleeControl") >= 0 ||
                               cc.file->scriptIndex("DemonControl") >= 0;   // tarcan (Rictus)
                 cc.hasAim = cc.file->scriptIndex("AimWeapon") >= 0;
+                cc.hasCloakAnim = cc.file->scriptIndex("StartCloaking") >= 0;
                 cc.hasFlinch = cc.file->scriptIndex("HitByWeapon") >= 0;
                 cc.hasWind = cc.file->scriptIndex("WindChange") >= 0;
                 cc.hasFlightSM = cc.file->scriptIndex("BeginFlight") >= 0;
@@ -1726,6 +1737,7 @@
             a.moveGate = ci->second.moveGate;
             a.hasWalk = ci->second.hasWalk;
             a.hasMelee = ci->second.hasMelee;
+            a.hasCloakAnim = ci->second.hasCloakAnim;
             a.hasAim = ci->second.hasAim;
             a.hasFlinch = ci->second.hasFlinch;
             a.hasWind = ci->second.hasWind;
