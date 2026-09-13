@@ -1094,12 +1094,16 @@
                     // over time. Single-weapon units keep the argless call (arg0=0).
                     int nw = u.type ? int(u.type->weapons.size()) : 1;
                     if (nw > 1) {
+                        // No "MeleeAttack" in the chain: ZERO of the 204 shipped
+                        // COBs define it, so that call could only ever fail. The
+                        // melee animation comes from MeleeControl, which Create
+                        // starts as a thread and which calls attack1 itself.
                         fa.vm->start("FireWeapon", {fa.fireSlot}) || fa.vm->start("attack1") ||
-                            fa.vm->start("fire") || fa.vm->start("MeleeAttack");
+                            fa.vm->start("fire");
                         fa.fireSlot = (fa.fireSlot + 1) % nw;
                     } else {
                         fa.vm->start("FireWeapon") || fa.vm->start("attack1") ||
-                            fa.vm->start("fire") || fa.vm->start("MeleeAttack");
+                            fa.vm->start("fire");
                     }
                     fa.walking = false;
                     fa.firing = true;
@@ -1802,9 +1806,31 @@
                                    : 0;
                     case 32: return su->veteran;                       // VETERAN LEVEL (StatusControl
                                                                        // swaps golden weapon pieces)
-                    // 18 YARD_OPEN, 33 turn-rate, 46 has-target: 0 is
-                    // benign/correct for the shipped uses (no roads in TAK maps;
-                    // yard treated clear).
+                    // YARD_OPEN. Returning 0 here is NOT benign, which is what
+                    // the old comment claimed -- it hangs the build yard. The
+                    // castle/factory protocol (aracastl OpenYard) is a blocking
+                    // handshake:
+                    //
+                    //     SET 18,1            request the yard open
+                    //   loop:
+                    //     GET 18; NOT; JUMP_IF_FALSE done    leave only on NONZERO
+                    //     SET 19,1            BUGGER_OFF: shove units out of the yard
+                    //     SLEEP 1500; SET 18,1; JUMP loop
+                    //
+                    // so 0 means "refused" and the script retries every 1.5s for
+                    // ever. And because Go CALLs startbuild then OpenYard, that
+                    // thread never returns -- the state machine never reaches
+                    // Stop/stopbuild, so the yard doors open and never close.
+                    // Measured with the COB VM on aracastl: one thread stuck for
+                    // ever above the ambient loops with 0, none with 1.
+                    //
+                    // We grant it unconditionally because our sim has no notion
+                    // of a unit blocking a yard; retail refuses only while one
+                    // does, and we never set BUGGER_OFF in motion anyway.
+                    case 18: return 1;                                 // YARD_OPEN
+                    // 33 (9 uses), 46 (2), 30 (1) are still unanswered -- see
+                    // docs/retail-engine.md. 0 has not been shown to be wrong for
+                    // those, but it has not been shown to be right either.
                     default: return 0;
                 }
             };

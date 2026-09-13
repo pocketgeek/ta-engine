@@ -1200,6 +1200,89 @@ per-cell scratch is generation-stamped instead of cleared (it was zeroing ~110KB
 per request), and the retry sweep does its cheap tests before the O(orders)
 `currentLeg` scan.
 
+## Unit animation: the engine drives very little of it (2026-09-12)
+
+Audited against the Glide renderer and the 204 shipped COBs. The headline is
+that retail's engine does NOT call the animations. It calls a small set of entry
+points, and the SCRIPT runs its own state machines from there.
+
+**How to enumerate the entry points.** `0x56c640` / `0x56c5c0` / `0x56c720` /
+`0x56c4a0` / `0x56c680` are call-script-by-name; scanning .text for a
+`push <string constant>` feeding any of them gives the authoritative list:
+
+    Create  Killed  Dying  HitByWeapon  Activate  Deactivate
+    StartBuilding  StopBuilding  StartCloaking  StopCloaking
+    AimWeapon  FireWeapon  TargetCleared  SetMaxReloadTime  MoveRate
+    TurnDirection  WindChange  setSFXoccupy  BeginFlight  BeginLanding
+    QueryWeapon  QueryBlood  QueryBuildInfo  QueryNanoPiece  QueryLandingPad
+    AimFrom  SweetSpot
+
+Note what is NOT there: `walk`, `attack1`, `death`, `startbuild`, `OpenYard`,
+`Go`, `Stop`. The strings "OpenYard", "CloseYard" and "Go" do not occur in the
+binary at all. Those are called BY THE SCRIPT. `Create` ends by starting the
+control threads (araarch: `START_SCRIPT 8/9/10` = MoveWatcher, MeleeControl,
+StatusControl), which poll unit values and pick the animation themselves --
+MeleeControl is the movement dispatcher, choosing walk_legs / walk_water /
+walk_road / walk from unit values 28 and 34.
+
+So a unit animates correctly only if `GET_UNIT_VALUE` answers correctly. That
+is the real contract, not the list of scripts we remember to call.
+
+**The getter table** is at `0x50d394`, dispatched at `0x50ceb0` as
+`index = id - 1`, valid 1..46, anything else returning 0. Ids the shipped
+scripts actually ask for, by use count:
+
+    17 (282)  29 (142)  28 (122)  32 (106)  34 (94)  4 (85)
+    18 (30)   33 (9)    27 (9)    46 (2)    30 (1)
+
+We answer 17, 29, 28, 32, 34, 4, 27 (plus 1, 6, 9, which nothing asks for).
+Still unanswered: 33, 46 (`(unit+0x130 >> 20) & 3`), 30.
+
+### The build yard was hung, and the comment said it was fine
+
+Id 18 is YARD_OPEN, used only by OpenYard/CloseYard -- the castle/factory build
+doors. It is a BLOCKING handshake (aracastl OpenYard):
+
+    SET 18,1                      request the yard
+  loop:
+    GET 18; NOT; JUMP_IF_FALSE done     leave only on NONZERO
+    SET 19,1                      BUGGER_OFF: shove units out of the yard
+    SLEEP 1500; SET 18,1; JUMP loop
+
+We answered 0, with a comment claiming that was "benign/correct ... yard treated
+clear". It is the opposite: 0 means REFUSED, so the script retries every 1.5s
+for ever. And `Go` CALLs startbuild (the doors) and then OpenYard, so that
+thread never returns and the state machine never reaches Stop/stopbuild -- the
+doors open and never close.
+
+Measured on the real COBs with our own VM (`tools/cobyard_test.cpp`): answering
+0 issues BUGGER_OFF 25-27 times in 40 simulated seconds and rises for ever;
+answering 1 issues it 0 times. We now grant it unconditionally, since our sim
+has no notion of a unit blocking a yard and we never act on BUGGER_OFF anyway.
+
+Two false starts worth recording, because both are easy to repeat: thread counts
+do NOT work as the test observable. A factory legitimately keeps a thread open
+while active (Creon's `Go` ends with `START_SCRIPT FactoryFun`, the machinery
+loop), and the deactivate path has a handshake of its own -- so "a thread is
+still running" flags healthy units. Counting BUGGER_OFF reads the protocol
+itself and is faction-independent.
+
+### Known remaining gaps
+
+  * `MeleeAttack` was in our fire-animation fallback chain and is defined by
+    ZERO of the 204 COBs -- it could only ever fail. Removed. The melee
+    animation comes from MeleeControl, which Create starts.
+  * We call `walk` / `attack1` / `startbuild` etc. DIRECTLY, where retail lets
+    the script's own threads choose them off unit values. That is a real
+    architectural divergence, not yet addressed; it works because we answer the
+    movement-related ids, but it means a script whose logic we do not replicate
+    animates differently.
+  * `QueryNanoPiece` is queried by retail's build mission (`0x401c20`) to get
+    the BUILDER's nano emitter piece. Our build sparkle is sprinkled over the
+    target footprint instead and never asks the script, so the effect does not
+    originate where retail's does.
+  * Unit values 33, 46 and 30 are still answered with 0, unverified.
+
 ## Headless in-game screenshots (dev harness)
 
 `--shot` alone captures the LOBBY and exits: it forces the dummy video driver and

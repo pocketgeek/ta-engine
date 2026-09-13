@@ -135,9 +135,11 @@ target_link_libraries(authrogue PRIVATE tak-formats)
 
 add_executable(retailgap_test tools/retailgap_test.cpp)
 add_executable(pathsearch_test tools/pathsearch_test.cpp)
+add_executable(cobyard_test tools/cobyard_test.cpp)
     add_executable(footprobe tools/footprobe.cpp)
 target_link_libraries(retailgap_test PRIVATE tak-formats)
 target_link_libraries(pathsearch_test PRIVATE tak-formats)
+target_link_libraries(cobyard_test PRIVATE tak-formats)
 target_link_libraries(footprobe PRIVATE tak-formats)
 
 # aitool bundles the AI (src/ai, otherwise server-only) so we can tune it headless.
