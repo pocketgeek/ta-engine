@@ -1,13 +1,21 @@
 name: Windows build
 run-name: Windows build · ${{ github.ref_name }}
 
-# Builds native Windows x64 (MSYS2/MinGW-w64) only on a version-bump tag (v*), or
-# on manual dispatch. Uploads a CI artifact + runs the determinism gate; on a tag
-# it also attaches the zipped bundle to the GitHub Release. (Per-commit sim checks
-# live in determinism.yml; the heavy platform builds run only when we cut a release.)
+# Builds native Windows x64 (MSYS2/MinGW-w64): uploads a CI artifact and runs the
+# determinism gate; on a tag it also attaches the zipped bundle to the GitHub Release.
+# (determinism.yml remains the fast, always-on sim gate.)
+
+# Runs on every push to main AS WELL AS on a version tag. It used to be tag-only,
+# to keep per-commit CI fast -- and that is how a std::atomic_ref that Apple's libc++
+# does not have sat broken in sim.cpp from the commit that introduced it until the
+# v0.6.5 tag tried to build it, with a green determinism gate the whole time. A
+# platform break is only cheap to fix while you still remember what caused it. The
+# release steps below stay guarded on a tag ref, so a main push builds and tests but
+# publishes nothing.
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 

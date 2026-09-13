@@ -1,8 +1,7 @@
 name: Linux packages
 run-name: Linux packages · ${{ github.ref_name }}
 
-# Builds native per-distro Linux packages only on a version-bump tag (v*), or on
-# manual dispatch: .debs for Ubuntu 22.04/24.04/26.04 + Debian 12/13, an .rpm for
+# Builds native per-distro Linux packages: .debs for Ubuntu 22.04/24.04/26.04 + Debian 12/13, an .rpm for
 # Fedora 44, and a pacman .pkg.tar.zst for Arch -- each compiled INSIDE that
 # distro's container so glibc and package metadata match the target. SDL2/jpeg/
 # zlib and the Bink FFmpeg are statically linked (built from source;
@@ -10,8 +9,17 @@ run-name: Linux packages · ${{ github.ref_name }}
 # self-contained. Every leg uploads a CI artifact; the release job attaches them
 # all to the GitHub Release on a tag.
 
+# Runs on every push to main AS WELL AS on a version tag. It used to be tag-only,
+# to keep per-commit CI fast -- and that is how a std::atomic_ref that Apple's libc++
+# does not have sat broken in sim.cpp from the commit that introduced it until the
+# v0.6.5 tag tried to build it, with a green determinism gate the whole time. A
+# platform break is only cheap to fix while you still remember what caused it. The
+# release steps below stay guarded on a tag ref, so a main push builds and tests but
+# publishes nothing.
+
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
