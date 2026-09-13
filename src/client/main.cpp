@@ -1295,7 +1295,6 @@ int main(int argc, char** argv) {
             if (prof) { pUpd += t2 - t1; pDraw += t3 - t2; }
             // Feed the whole real frame time (dt = last frame's total incl. present)
             // to the sprite auto-tuner, so a GPU-bound full-model crowd triggers it.
-            gameView->autoTuneSprites(dt * 1000.0f);
         }
         double t4 = prof ? pnow() : 0;
         if (aaOn) {   // downscale the supersampled frame onto the window
@@ -1322,15 +1321,13 @@ int main(int argc, char** argv) {
             pPres += t5 - t4;
             pAcc += t5 - t0; ++pFrames;
             if (pAcc >= 1000.0) {
-                double proj = 0, submit = 0, shadow = 0, sim = 0; long lod = 0, full = 0;
-                if (gameView) gameView->takeProf(proj, submit, shadow, sim, lod, full);
+                double proj = 0, submit = 0, shadow = 0, sim = 0;
+                if (gameView) gameView->takeProf(proj, submit, shadow, sim);
                 std::printf("PROF fps=%.0f | update=%.1f [sim=%.1f] draw=%.1f "
-                            "[proj=%.1f submit=%.1f (shadow=%.1f) other=%.1f] present=%.1f | "
-                            "impostor=%ld full=%ld\n",
+                            "[proj=%.1f submit=%.1f (shadow=%.1f) other=%.1f] present=%.1f\n",
                             pFrames * 1000.0 / pAcc, pUpd / pFrames, sim / pFrames,
                             pDraw / pFrames, proj / pFrames, submit / pFrames,
-                            shadow / pFrames, (pDraw - proj - submit) / pFrames, pPres / pFrames,
-                            lod / std::max(1, pFrames), full / std::max(1, pFrames));
+                            shadow / pFrames, (pDraw - proj - submit) / pFrames, pPres / pFrames);
                 std::fflush(stdout);
                 pUpd = pDraw = pPres = pAcc = 0; pFrames = 0;
             }

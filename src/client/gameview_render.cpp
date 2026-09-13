@@ -165,7 +165,6 @@
         // and building its vertex buffer); the render thread then only submits the
         // finished geometry, one texture-batched draw call per unit. Without this
         // the whole frame is single-threaded and pegs one core at large unit counts.
-        ++sprTick_;   // frame counter for sprite-page LRU (stamps SprPage.lastUse below)
         visUnits_.clear();
         geomIndex_.assign(front().units.size(), -1);   // id -> slot; -1 = not in view
                                                         // (front().units is id-indexed, sized to cover every live id)
@@ -196,44 +195,6 @@
         // Cycle lodestone/mana/fire crystal frames -- but only once a built glow-unit
         // is on screen, so a still-conjuring lodestone stays dark until it's finished.
         animateGlowTextures(builtGlow);
-        // Ensure an impostor sprite exists for every visible model when zoomed out
-        // enough that LOD may kick in (main thread; the parallel pass only reads it).
-        // Budgeted: a few NEW bakes per frame, so a first zoom-out over a mixed army
-        // spreads its render-target allocations/captures across frames instead of
-        // bursting them all into one already-slow frame (units not yet baked just
-        // draw as full models for a few more frames).
-        if (lodEnabled_ && mapView_.zoom() < kLodZoomGate) {
-            int budget = 2;
-            for (const auto* u : visUnits_) {
-                if (!u->type) continue;
-                auto key = std::make_pair(unitType_.at(u->id), colorSlot_[u->player & 7]);
-                if (impostors_.count(key)) continue;
-                if (budget-- <= 0) break;
-                ensureImpostor(key.first, key.second, u->type->canMove);
-            }
-        }
-        // Bake sprite sheets for visible models when sprite mode is on -- one NEW
-        // set per frame (each is kSprFacings x kSprFrames render-target captures).
-        if (spritesEnabled_) {
-            // Pass 1: mark every ON-SCREEN sprite set's page used THIS frame, so the LRU
-            // in newSprPage() never evicts a page whose sprites are still visible.
-            for (const auto* u : visUnits_) {
-                if (!u->type) continue;
-                auto sit = sprites_.find(std::make_pair(unitType_.at(u->id), colorSlot_[u->player & 7]));
-                if (sit != sprites_.end() && sit->second.ready && sit->second.page)
-                    for (auto& pg : sprPages_)
-                        if (pg.tex == sit->second.page) { pg.lastUse = sprTick_; break; }
-            }
-            // Pass 2: bake ONE new set this frame (spread the cost); a bake may evict a
-            // page NOT stamped above -- never a visible one, never the in-progress page.
-            for (const auto* u : visUnits_) {
-                if (!u->type) continue;
-                auto key = std::make_pair(unitType_.at(u->id), colorSlot_[u->player & 7]);
-                if (sprites_.count(key)) continue;
-                bakeSprites(key.first, key.second, u->type->canMove, u->type->canFly);
-                break;
-            }
-        }
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
             thread_local std::vector<Tri> scratch;
@@ -242,13 +203,6 @@
         });
         double _ptFreq = double(SDL_GetPerformanceFrequency()) / 1000.0;
         profProjMs_ += (double(SDL_GetPerformanceCounter()) - _pt0) / _ptFreq;
-        // Tally impostor vs full-model draws this frame (for TAK_PROF).
-        for (size_t _i = 0; _i < visUnits_.size(); ++_i) {
-            const auto& _g = geomPool_[_i];
-            if (_g.runs.empty()) continue;
-            if (impAtlas_ && _g.runs[0].first == impAtlas_) ++lodDrawn_;
-            else ++fullDrawn_;
-        }
         double _st0 = double(SDL_GetPerformanceCounter());
 
         // Is this unit drawn whole by drawUnit (needs clip rects / interleaved
@@ -1394,46 +1348,15 @@
         if (onAny) SDL_SetRenderTarget(ren_, prev);
     }
 
-    void GameView::autoTuneSprites(float frameMs) {
-        frameEma_ = frameEma_ * 0.85f + frameMs * 0.15f;
-        if (spriteMode_ == SPR_ON)  { spritesEnabled_ = true;  return; }
-        if (spriteMode_ == SPR_OFF) {
-            spritesEnabled_ = false;
-            if (!sprPages_.empty()) freeSpritePages();
-            return;
-        }
-        // AUTO. Sprites help only a real crowd, so gate both on frames slower than
-        // ~55fps (18ms) AND enough on-screen units -- that keeps a startup/asset
-        // hitch with few units from latching them on. A kept-up frame reads ~16.6ms
-        // (cap) or faster, so it can't reveal how much headroom a light scene has;
-        // turn sprites back off by crowd size (wide 64-on / 32-off gap = no flapping).
-        if (!spritesEnabled_) {
-            if (frameEma_ > 18.0f && visUnits_.size() >= 64) spritesEnabled_ = true;
-        } else if (visUnits_.size() < 32) {
-            spritesEnabled_ = false;
-            freeSpritePages();   // return the 64MB/page VRAM while sprites are off
-        }
-    }
-
     void GameView::invalidateRenderTargets() {
-        freeSpritePages();
         for (SDL_Texture* t : atlasTex_) if (t) gpuvram::destroy(t);
         atlasTex_.clear();
-        impostors_.clear();
-        if (impAtlas_) { gpuvram::destroy(impAtlas_); impAtlas_ = nullptr; }
         if (shadowMask_) { gpuvram::destroy(shadowMask_); shadowMask_ = nullptr; }
         shadowMaskW_ = shadowMaskH_ = 0;
-        impCurX_ = impCurY_ = impShelfH_ = 0;
-    }
-
-    void GameView::freeSpritePages() {
-        for (auto& p : sprPages_) if (p.tex) gpuvram::destroy(p.tex);
-        sprPages_.clear();
-        sprites_.clear();
     }
 
     void GameView::destroyGpuTextures() {
-        invalidateRenderTargets();   // sprite pages + colour atlases + impostor atlas
+        invalidateRenderTargets();   // colour atlases + the shadow mask
         auto kill = [](SDL_Texture*& t) { if (t) { gpuvram::destroy(t); t = nullptr; } };
         for (auto& [n, frames] : textures_)
             for (SDL_Texture* t : frames) if (t) gpuvram::destroy(t);
@@ -1535,167 +1458,6 @@
         return atlas;
     }
 
-    void GameView::bakeSprites(const std::string& typeId, int slot, bool canMove, bool canFly) {
-        AaScaleReset _sr(ren_);
-        auto key = std::make_pair(typeId, slot);
-        if (sprites_.count(key)) return;
-        // During an allocation backoff, don't reserve the key yet -- so the bake
-        // happens properly once VRAM pressure clears, instead of never.
-        if (gpuAllocBlocked()) return;
-        sprites_[key] = SpriteSet{};   // reserve (not ready)
-        auto vt = visuals_.find(typeId);
-        if (vt == visuals_.end()) return;
-        std::vector<std::string> names;
-        auto vm = loadTypeVm(typeId, names);
-        if (!vm) return;
-        Anim tmp;
-        tmp.pieceNames = &names;   // local to this bake; read-only while tmp is alive
-        tmp.vm = std::move(vm);
-        tmp.flyGate = flyGateOf(*tmp.vm);
-        tmp.moveGate = walkGateOf(tmp.vm->file());
-        bool hasWalk = hasWalkCycle(tmp.vm->file());
-        bool animated = canMove || canFly;
-        // (Re)start the locomotion animation from the top -- used before each bake
-        // attempt so a retry on a fresh page re-captures the same frames.
-        auto initAnim = [&] {
-            tmp.vm->reset();
-            if (canFly) { tmp.vm->setStatic(tmp.flyGate, 1); tmp.vm->start("fly");
-                          for (int s = 0; s < 8; ++s) tmp.vm->tick(1.0f / 30); }
-            else if (canMove && hasWalk) {
-                // Ground walk scripts gate their leg motion on their moving-flag
-                // static (walkGateOf: 0 for most, 3 for the Veruna monarch); without it
-                // walk_legs no-ops and every baked frame is the same standing pose. Set
-                // it, exactly as the live update loop does, so the bake captures a real
-                // walk cycle.
-                tmp.vm->setStatic(tmp.moveGate, 1);
-                tmp.vm->start("walk") || tmp.vm->start("walk_legs");
-            }
-            else {
-                // Static buildings AND mobile no-walk movers (ships' oars, wheeled
-                // vehicles' wheels/props): run the COB constructor exactly as registerUnit
-                // does for the live unit, then let it settle, so the bake reflects the same
-                // default piece visibility (e.g. the Death Totem's Create hides its
-                // vetskull* pieces) and captures a moving unit's ambient loop.
-                tmp.vm->start("Create");
-                for (int s = 0; s < 6; ++s) tmp.vm->tick(1.0f / 30);
-            }
-        };
-        // Advance the bake VM one step. A ground walk script is single-pass, so (like
-        // the live loop) re-invoke it once its thread ends, keeping the legs cycling
-        // across the whole bake window instead of freezing after the first pass.
-        auto stepVm = [&](float dt) {
-            tmp.vm->tick(dt);
-            if (canMove && !canFly && tmp.vm->threadCount() == 0) {
-                if (hasWalk) tmp.vm->start("walk") || tmp.vm->start("walk_legs");
-                else tmp.vm->start("Create");   // no-walk mover: keep its ambient loop going
-            }
-        };
-        SDL_Texture* atlas = atlasFor(slot);
-        // A page-allocation failure is transient (VRAM pressure) -- un-reserve the
-        // key so this type rebakes after the backoff, unlike the permanent
-        // no-COB/no-model reservations above.
-        if (sprPages_.empty() && !newSprPage()) { sprites_.erase(key); return; }
-        SpriteSet ss;
-        ss.frames = animated ? kSprFrames : 1;
-        std::vector<Tri> scratch;
-        SDL_Texture* prev = SDL_GetRenderTarget(ren_);
-        const float S = kImpScale, kPi = 3.14159265f;
-        // Estimate the real locomotion cycle length so the baked frames span one
-        // actual cycle (not a guessed 0.9s). TA locomotion scripts play once then
-        // hold, so the cycle = how long the pose keeps changing; if it never
-        // settles (a truly looping script) or settles instantly, fall back to 0.9s.
-        auto sig = [&] {
-            double s = 0;
-            for (const auto& pc : tmp.vm->pieces())
-                s += std::sin(pc.rot[0]) + std::sin(pc.rot[1]) + std::sin(pc.rot[2])
-                   + pc.move[0] + pc.move[1] + pc.move[2];
-            return float(s);
-        };
-        float period = 0.9f;
-        if (animated) {
-            initAnim();
-            const float dt = 1.0f / 60.0f;
-            float prev = sig();
-            int stable = 0;
-            for (float t = dt; t < 2.5f; t += dt) {
-                tmp.vm->tick(dt);   // no re-invoke: let one walk pass settle = the cycle
-                float s = sig();
-                if (std::fabs(s - prev) < 1e-4f) {
-                    if (++stable >= 6 && t - 6 * dt > 0.25f) { period = t - 6 * dt; break; }
-                } else stable = 0;
-                prev = s;
-            }
-            period = std::clamp(period, 0.3f, 2.0f);
-        }
-        bool atlasFull = false, pageAllocFailed = false;
-        SDL_Texture* target = sprPages_.back().tex;
-        // Capture the current VM pose at facing fi into a packed cell of `target`.
-        auto capture = [&](int fi, SDL_Rect& outR, SDL_FRect& outB) {
-            float heading = float(fi) / kSprFacings * 2.0f * kPi;
-            // Every mover, flyers included, faces -heading: with the piece X/Y
-            // negation the fly pose no longer needs a per-flyer 180 (retail has no
-            // flyer facing branch, root matrix 0x4ee620 identical for all units).
-            float facing = (canFly || canMove) ? -heading : 0.0f;
-            scratch.clear();
-            collect(scratch, atlas, vt->second.model.root, Xform{}, &tmp, facing, 0, false);
-            std::stable_sort(scratch.begin(), scratch.end(),
-                      [](const Tri& a, const Tri& b) { return a.depth > b.depth; });
-            float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-            for (auto& t : scratch)
-                for (int i = 0; i < 3; ++i) {
-                    minX = std::min(minX, t.v[i].position.x);
-                    minY = std::min(minY, t.v[i].position.y);
-                    maxX = std::max(maxX, t.v[i].position.x);
-                    maxY = std::max(maxY, t.v[i].position.y);
-                }
-            if (scratch.empty()) { minX = minY = 0; maxX = maxY = 1; }
-            const int pad = 2;
-            int w = std::clamp(int(std::ceil((maxX - minX) * S)) + 2 * pad, 2, 400);
-            int h = std::clamp(int(std::ceil((maxY - minY) * S)) + 2 * pad, 2, 400);
-            SprPage& pg = sprPages_.back();   // the in-progress bake target owns the cursor
-            if (pg.curX + w > sprAtlasDim_) { pg.curX = 0; pg.curY += pg.shelfH + 1; pg.shelfH = 0; }
-            if (pg.curY + h > sprAtlasDim_) { atlasFull = true; return; }
-            int rx = pg.curX, ry = pg.curY;
-            for (auto& t : scratch) {
-                SDL_Vertex v[3];
-                for (int i = 0; i < 3; ++i) {
-                    v[i] = t.v[i];
-                    v[i].position.x = (t.v[i].position.x - minX) * S + float(rx + pad);
-                    v[i].position.y = (t.v[i].position.y - minY) * S + float(ry + pad);
-                }
-                if (t.tex) SDL_RenderGeometry(ren_, t.tex, v, 3, nullptr, 0);
-            }
-            outR = SDL_Rect{rx, ry, w, h};
-            outB = SDL_FRect{minX - pad / S, minY - pad / S, w / S, h / S};
-            pg.curX += w + 1;
-            pg.shelfH = std::max(pg.shelfH, h);
-        };
-        // Bake all frames into the current page; if it overflows, start a fresh
-        // page and re-bake from the top (at most one retry -- a type that can't fit
-        // an empty page is left not-ready and just uses its full model).
-        for (int attempt = 0; attempt < 2; ++attempt) {
-            initAnim();
-            target = sprPages_.back().tex;
-            SDL_SetRenderTarget(ren_, target);
-            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-            atlasFull = false;
-            for (int k = 0; k < ss.frames && !atlasFull; ++k) {
-                if (k > 0) for (int s = 0; s < 4; ++s) stepVm(period / ss.frames / 4);
-                for (int fi = 0; fi < kSprFacings && !atlasFull; ++fi)
-                    capture(fi, ss.rect[fi][k], ss.bbox[fi][k]);
-            }
-            if (!atlasFull) { ss.page = target; break; }
-            if (attempt == 0 && !newSprPage()) { pageAllocFailed = true; break; }
-        }
-        SDL_SetRenderTarget(ren_, prev);
-        // Transient VRAM failure: un-reserve so the type rebakes after the backoff.
-        if (pageAllocFailed) { sprites_.erase(key); return; }
-        if (atlasFull || !ss.page) return;   // doesn't fit a fresh page -> full model
-        ss.period = period;
-        ss.ready = true;
-        sprites_[key] = ss;
-    }
-
     void GameView::buildUnitGeom(const UnitR& u, UnitGeom& g, std::vector<Tri>& scratch) {
         g.verts.clear();
         g.runs.clear();
@@ -1734,75 +1496,6 @@
         ay += waterSink(u.type, ix, iz) * zm;
         // Sprite sheet: draw a moving/idle unit as one animated quad from the baked
         // locomotion cycle. Attack/death poses keep the full 3D model (rare).
-        if (spritesEnabled_) {
-            auto sit = sprites_.find(std::make_pair(vt->first, slot));
-            // A grounded/idle unit shows a static frame (no flap); it only cycles
-            // the animation while airborne (flyers) or moving (ground). Attack/death
-            // poses keep the full 3D model.
-            bool grounded = (u.type && u.type->canFly) && !(anim && anim->airborne);
-            bool special = anim && (anim->dying || anim->firing);
-            if (sit != sprites_.end() && sit->second.ready && !special) {
-                const SpriteSet& ss = sit->second;
-                int fi = facingIndex((u.type && u.type->canMove) ? ih : 0.0f,
-                                     kSprFacings);
-                int frame = 0;
-                if (ss.frames > 1 && !grounded) {
-                    bool moving = (u.type && u.type->canFly) || u.moving();
-                    if (moving) {
-                        float rate = float(ss.frames) / std::max(0.05f, ss.period);
-                        frame = (int(animClock_ * rate) + u.id) % ss.frames;
-                    }
-                }
-                const SDL_Rect& r = ss.rect[fi][frame];
-                const SDL_FRect& bb = ss.bbox[fi][frame];
-                if (r.w > 2 && r.h > 2) {   // else falls to full model
-                    float alt = g.canFly ? (anim ? anim->altitude : u.type->cruiseAlt) : 0.0f;
-                    float qx = ax + bb.x * zm;
-                    float qy = ay + bb.y * zm;   // ay already carries the altitude lift
-                    float inv = 1.0f / float(sprAtlasDim_);
-                    pushQuadUV(g.verts, qx, qy, bb.w * zm, bb.h * zm,
-                               float(r.x) * inv, float(r.y) * inv,
-                               float(r.x + r.w) * inv, float(r.y + r.h) * inv,
-                               SDL_Color{255, 255, 255, 255});
-                    g.runs.push_back({ss.page, 6});
-                    g.ax = ax; g.ay = ay; g.alt = alt;
-                    g.occY = wallOcclusionY(u.x, u.z);
-                    // A sprite-drawn unit is still the unit: it casts.
-                    buildUnitShadow(u, g, vt->second.model.root, anim, -ih, zm, scratch);
-                    return;
-                }
-            }
-        }
-        // Level of detail: only when really zoomed out (zoom below the gate), draw a
-        // unit small enough on screen (< lodPx_ tall) as a cached impostor billboard
-        // instead of its model. At normal/close zoom every unit keeps full 3D.
-        if (lodEnabled_ && zm < kLodZoomGate) {
-            auto hit = modelH_.find(vt->first);
-            auto iit = impostors_.find(std::make_pair(vt->first, slot));
-            if (hit != modelH_.end() && iit != impostors_.end() && iit->second.ready
-                && hit->second * zm < lodPx_) {
-                const Impostor& imp = iit->second;
-                int f = facingIndex((u.type && u.type->canMove) ? ih : 0.0f, kFacings);
-                const SDL_Rect& r = imp.rect[f];
-                const SDL_FRect& bb = imp.bbox[f];
-                float alt = g.canFly ? (anim ? anim->altitude : u.type->cruiseAlt) : 0.0f;
-                float qx = ax + bb.x * zm;
-                float qy = ay + bb.y * zm;   // ay already carries the altitude lift
-                float inv = 1.0f / float(impAtlasDim_);
-                pushQuadUV(g.verts, qx, qy, bb.w * zm, bb.h * zm,
-                           float(r.x) * inv, float(r.y) * inv,
-                           float(r.x + r.w) * inv, float(r.y + r.h) * inv,
-                           SDL_Color{255, 255, 255, 255});
-                g.runs.push_back({impAtlas_, 6});
-                g.ax = ax; g.ay = ay; g.alt = alt;
-                g.occY = wallOcclusionY(u.x, u.z);
-                // Impostor: a few pixels across, where a silhouette cannot read.
-                // No shadow, and no full-model walk to build one.
-                g.shadowVerts.clear();
-                return;
-            }
-        }
-
         scratch.clear();
         Xform base;
         // (Altitude is applied to the screen anchor above, not here: a model-space

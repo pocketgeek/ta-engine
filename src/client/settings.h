@@ -24,8 +24,6 @@ struct Settings {
     int   maxFps     = 60;         // frame cap when vsync is off; clamp 30..480
     float uiScale    = 1.0f;       // in-game HUD scale; 0.75..2.0 (1.0 = 100%)
     int   antiAlias  = 0;          // scene supersampling: 0=off, 2=on (2x)
-    bool  lod        = true;       // distant-unit impostors (perf); on by default
-    int   spriteMode = 0;          // unit sprites: 0=auto, 1=on, 2=off
     int   buildBarAlign = 1;       // conjure/build icon row: 0=left, 1=center, 2=right
     float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..2.0
     bool  bilinear   = false;      // smooth (bilinear) terrain + feature scaling, like retail's option
@@ -88,7 +86,6 @@ struct Settings {
         for (int i = 0; i < 8; ++i) if (a.chanGain[i] != b.chanGain[i]) return false;
         return a.fullscreen == b.fullscreen && a.vsync == b.vsync && a.maxFps == b.maxFps
             && a.uiScale == b.uiScale && a.antiAlias == b.antiAlias
-            && a.lod == b.lod && a.spriteMode == b.spriteMode
             && a.buildBarAlign == b.buildBarAlign && a.buildBarScale == b.buildBarScale
             && a.bilinear == b.bilinear && a.treeSway == b.treeSway
             && a.healthBars == b.healthBars

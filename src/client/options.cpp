@@ -241,12 +241,6 @@ void OptionsScreen::build(int channels) {
            [&](float v) { s_.bilinear = v > 0.5f; });
     toggle("TREES SWAY IN WIND", [&] { return s_.treeSway ? 1.0f : 0.0f; },
            [&](float v) { s_.treeSway = v > 0.5f; });
-    // Distant-unit impostors (perf) and the unit-sprite mode -- were F8 / F10 in-game.
-    toggle("DISTANT IMPOSTORS", [&] { return s_.lod ? 1.0f : 0.0f; },
-           [&](float v) { s_.lod = v > 0.5f; });
-    slider("UNIT SPRITES", 0, 2, [&] { return float(s_.spriteMode); },
-           [&](float v) { s_.spriteMode = std::clamp(int(v + 0.5f), 0, 2); },
-           [](float v) { int l = int(v + 0.5f); return std::string(l >= 2 ? "OFF" : l >= 1 ? "ON" : "AUTO"); });
 
     // INTERFACE: on-screen HUD -- its size, and the game overlays.
     section("INTERFACE");

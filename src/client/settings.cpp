@@ -59,8 +59,6 @@ Settings loadSettings() {
         else if (key == "maxFps")          s.maxFps = asInt(30, 480);
         else if (key == "uiScale")         s.uiScale = asFloat(0.75f, 2.0f);
         else if (key == "antiAlias")       { int a = asInt(0, 4); s.antiAlias = (a >= 4) ? 4 : (a >= 2) ? 2 : 0; }
-        else if (key == "lod")             s.lod = asBool();
-        else if (key == "spriteMode")      s.spriteMode = asInt(0, 2);
         else if (key == "buildBarAlign")   s.buildBarAlign = asInt(0, 2);
         else if (key == "buildBarScale")   s.buildBarScale = asFloat(0.75f, 2.0f);
         else if (key == "bilinear")        s.bilinear = asBool();
@@ -121,8 +119,6 @@ bool saveSettings(const Settings& s) {
     o << "maxFps = " << s.maxFps << "\n";
     o << "uiScale = " << s.uiScale << "\n";
     o << "antiAlias = " << s.antiAlias << "\n";
-    o << "lod = " << (s.lod ? 1 : 0) << "\n";
-    o << "spriteMode = " << s.spriteMode << "\n";
     o << "buildBarAlign = " << s.buildBarAlign << "\n";
     o << "buildBarScale = " << s.buildBarScale << "\n";
     o << "bilinear = " << (s.bilinear ? 1 : 0) << "\n";

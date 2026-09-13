@@ -773,8 +773,7 @@ public:
     void prepare(int winW, int winH);
 
     // Fetch and reset the per-draw sub-phase timers (for TAK_PROF).
-    void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs,
-                  long& lod, long& full);
+    void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs);
 
     void draw(int winW, int winH);
 
@@ -1193,7 +1192,6 @@ private:
                                                   // accumulated by the worker, read/reset on main.
                                                   // Integer atomic -- portable (atomic<double>
                                                   // arithmetic isn't supported by Apple libc++).
-    long lodDrawn_ = 0, fullDrawn_ = 0;                 // impostor vs full-model counts
 
     // Texture atlas: every unit texture packed into one big texture per player-
     // colour slot, so a whole model (and a whole crowd of one player) shares a
@@ -1212,19 +1210,6 @@ private:
     // still-conjuring lodestone doesn't glow until it's finished.
     void animateGlowTextures(bool live);
 
-    // Level of detail: a unit smaller than kLodPx on screen is drawn as a single
-    // billboard quad sampling a pre-rendered impostor sprite (8 facings, cached
-    // per model+colour, packed into impAtlas_) instead of its full ~200-triangle
-    // model. That cuts the per-frame vertex count ~100x for a zoomed-out crowd --
-    // the thing that pins the render thread and the GPU at thousands of units.
-    static constexpr int kFacings = 16;  // facings for both impostors and sprites
-    struct Impostor {
-        SDL_Rect rect[kFacings];   // where each facing sits in impAtlas_
-        SDL_FRect bbox[kFacings];  // model's screen bbox at zoom 1 (offset from anchor)
-        bool ready = false;
-    };
-    std::map<std::pair<std::string, int>, Impostor> impostors_;  // (model, slot)
-    std::map<std::string, float> modelH_;    // model projected height (px @ zoom 1)
     // Per-type on-screen sprite box (offset from the draw anchor, px @ zoom 1), the
     // union over facings of the projected model bounds. Drives click-selection so a
     // click anywhere on the drawn unit (a tall building's roof, a body above its
@@ -1235,8 +1220,6 @@ private:
     // mid height, none of which survives unitHitBox's projection into screen space.
     struct RingBox { float halfX = 12.0f, halfZ = 12.0f, midY = 12.0f; };
     std::map<std::string, RingBox> ringBoxes_;
-    SDL_Texture* impAtlas_ = nullptr;
-    int impAtlasDim_ = 4096, impCurX_ = 0, impCurY_ = 0, impShelfH_ = 0;
     // After a failed GPU texture allocation (VRAM pressure), pause every bake /
     // atlas creation path for a few seconds instead of retrying next frame. The
     // bake paths run per visible unit per frame, so an un-cached failure becomes
@@ -1249,51 +1232,7 @@ private:
     // baked by MapView, participate too). These thin forwarders keep the call sites.
     bool gpuAllocBlocked() const { return gpuvram::blocked(); }
     void noteGpuAllocFail() { gpuvram::noteFail(); }
-    static constexpr float kImpScale = 2.0f;    // impostor render supersampling
 
-    // Sprite sheets: the locomotion animation (walk / fly) baked to a grid of
-    // frames x 8 facings per model+colour, so a unit draws as one animated quad
-    // instead of a live model -- the classic-RTS way to run thousands cheaply.
-    // Full-3D is kept for attack/death/build poses (rare, few at a time).
-    static constexpr int kSprFrames = 8;    // locomotion-cycle frames baked
-    static constexpr int kSprFacings = kFacings;  // 16 => ~22.5deg turn granularity
-    struct SpriteSet {
-        SDL_Rect rect[kSprFacings][kSprFrames];
-        SDL_FRect bbox[kSprFacings][kSprFrames];
-        SDL_Texture* page = nullptr;   // which sprite-atlas page holds this set
-        int frames = 1;      // 1 for static (buildings), kSprFrames for movers
-        float period = 0.9f; // real locomotion cycle length (s) the frames span
-        bool ready = false;
-    };
-    std::map<std::pair<std::string, int>, SpriteSet> sprites_;
-    // Sprite-atlas pages, 64 MiB each (4096x4096 RGBA). A hard LRU cap (kMaxSprPages)
-    // bounds their VRAM: when full, newSprPage() evicts the least-recently-DRAWN page
-    // instead of growing -- so a huge/diverse army can't run the GPU out of memory. Each
-    // page owns its own shelf-packing cursor so evicting one never corrupts another.
-    struct SprPage { SDL_Texture* tex = nullptr; uint64_t lastUse = 0; int curX = 0, curY = 0, shelfH = 0; };
-    std::vector<SprPage> sprPages_;
-    int sprAtlasDim_ = 4096;               // 4096 targets work everywhere
-    uint64_t sprTick_ = 0;                 // ++ once per frame; stamps SprPage.lastUse
-    static constexpr int kMaxSprPages = 8; // 512 MiB hard ceiling on sprite VRAM
-    // Sprite mode: AUTO (default) turns sprite sheets on only while the frame can't
-    // hold 60fps, off again once the crowd clears -- so units keep full 3D detail
-    // until the scene actually needs the cheaper representation. The Options menu
-    // picks AUTO/ON/OFF. spritesEnabled_ is the effective state auto-tune sets.
-    enum SpriteMode { SPR_AUTO, SPR_ON, SPR_OFF };
-    int spriteMode_ = SPR_AUTO;
-    bool spritesEnabled_ = false;  // effective state (managed by autoTuneSprites)
-    float frameEma_ = 12.0f;       // smoothed real frame time ms (drives auto sprites)
-public:
-    // Called once per frame with the whole frame's wall time (ms) -- the real cost
-    // INCLUDING the GPU present, since a big full-model crowd is GPU-bound and that
-    // cost never shows in CPU submit time (measuring update+draw alone missed it and
-    // the auto-switch never fired). Under the fps cap a kept-up frame reads ~16.6ms,
-    // so the on-threshold sits just above it; below-cap frames mean we're losing 60.
-    void autoTuneSprites(float frameMs);
-private:
-
-    // Allocate a fresh cleared sprite-atlas page. Returns false if it can't.
-    bool newSprPage();
 public:
     // SDL_RENDER_TARGETS_RESET / _DEVICE_RESET: on a driver or device reset, every
     // TEXTUREACCESS_TARGET texture silently loses its pixels while its handle stays
@@ -1308,26 +1247,10 @@ public:
     // fog, fonts). See the dtor comment: the renderer outlives the session.
     void destroyGpuTextures();
 private:
-    // Release the sprite-sheet pages (they're 64MB of VRAM each). Called when
-    // sprite mode turns off -- on a card shared with a huge desktop the memory
-    // matters more than the rebake cost, which is budgeted anyway -- and on a
-    // render-target reset, where the pixels are gone regardless.
-    // NOTE: the auto-tune call site runs between draw() (which queues batched
-    // SDL_RenderGeometry commands referencing these pages) and RenderPresent.
-    // That is safe because SDL_DestroyTexture flushes pending render commands
-    // that reference the texture (SDL >= 2.0.10) -- if draws ever bypass SDL's
-    // command queue, move the auto-tune free to before update() instead.
-    void freeSpritePages();
-public:
-private:
-    bool lodEnabled_ = true;    // distant impostors on by default; Options toggles
     int buildBarAlign_ = 1;     // conjure/build row: 0=left 1=center 2=right (Options)
     float buildBarScale_ = 1.0f;   // extra row scale on top of uiScale_ (Options)
     bool bilinear_ = false;     // smooth terrain/feature scaling (Options)
     int healthBars_ = 1;        // 0=off 1=damaged-only 2=always (Options)
-    float lodPx_ = 64.0f;                        // model shorter than this -> impostor
-    static constexpr float kLodZoomGate = 0.5f;  // LOD only when really zoomed out
-                                                 // (zoom below this); full 3D otherwise
     // Max NEW units the client registers (model/COB/anim VM + Create script) per frame,
     // so a mass simultaneous spawn streams in over ~a second instead of freezing one frame.
     static constexpr int kRegistrationsPerFrame = 64;
@@ -1361,15 +1284,6 @@ private:
         b.push_back(a); b.push_back(d); b.push_back(e);
         b.push_back(a); b.push_back(e); b.push_back(f);
     }
-    // Textured quad with explicit UV corners (for impostor billboards).
-    static void pushQuadUV(std::vector<SDL_Vertex>& b, float x, float y, float w,
-                           float h, float u0, float v0, float u1, float v1,
-                           SDL_Color c) {
-        SDL_Vertex tl{{x, y}, c, {u0, v0}}, tr{{x + w, y}, c, {u1, v0}},
-                   br{{x + w, y + h}, c, {u1, v1}}, bl{{x, y + h}, c, {u0, v1}};
-        b.push_back(tl); b.push_back(tr); b.push_back(br);
-        b.push_back(tl); b.push_back(br); b.push_back(bl);
-    }
 
     // Shelf-pack every loaded unit texture into a single atlas layout (rects are
     // shared across colour slots -- only the pixels differ). Called once, lazily.
@@ -1380,21 +1294,10 @@ private:
     // target), so it must run before the parallel geometry pass.
     SDL_Texture* atlasFor(int slot);
 
-    // Render a model's 8 facings into the impostor atlas once and cache the rects
-    // + per-facing bounding box. Main thread only (render target); must run before
-    // the parallel geometry pass reads it.
-    void ensureImpostor(const std::string& modelKey, int slot, bool canMove);
-
     // A standalone COB VM for a type (no live unit), for baking sprites. onGet
     // answers "healthy and moving" so locomotion scripts animate.
     std::unique_ptr<tak::cob::Vm> loadTypeVm(const std::string& typeId,
                                              std::vector<std::string>& names);
-
-    // Bake a model's locomotion cycle (walk / fly) into the sprite atlas: kSprFrames
-    // poses x 8 facings, at 2x native. Main thread only (render target); one-time
-    // per model+colour. A reserved not-ready entry is left if there's no COB so we
-    // don't retry every frame (that unit just keeps using its full model).
-    void bakeSprites(const std::string& typeId, int slot, bool canMove, bool canFly);
 
     // Project + transform one unit's model into screen-space, coloured vertex runs.
     // No SDL calls and only reads shared state (models/textures/heightmap/anim), so
@@ -1421,10 +1324,7 @@ private:
     bool headbanging(const UnitR& u) const;
 
     // The projected silhouette for one unit, into g.shadowVerts. Split out because
-    // the body has three LOD exits (full model, sprite atlas, impostor) and the
-    // shadow has to be emitted on two of them -- a sprite-drawn unit still looks
-    // like itself and still casts. Missing that is exactly how the first version
-    // of the worker-side build silently dropped every flyer's shadow.
+    // it is built alongside the body geometry on the worker pool.
     void buildUnitShadow(const UnitR& u, UnitGeom& g, const tak::tdo::Object& root,
                          const Anim* anim, float facing, float zm,
                          std::vector<Tri>& scratch);
@@ -2100,7 +2000,6 @@ private:
         double clientCpuPct = 0, serverCpuPct = 0;   // % of one core over the 5s interval
         size_t clientRss = 0, serverRss = 0;         // bytes
         size_t gpuBytes = 0;                         // tracked client texture VRAM (gpuvram)
-        int sprPages = 0;                            // live sprite-atlas pages (VRAM cap gauge)
         double gpuPct = -1;                          // whole-GPU utilization %, -1 = unknown
         size_t gpuSysUsed = 0;                       // whole-GPU VRAM used (all processes), bytes
         float fps = 0, simSpeed = 0;

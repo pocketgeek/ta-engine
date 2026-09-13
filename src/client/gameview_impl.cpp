@@ -73,8 +73,6 @@
         edgeScrollSpeed_ = s.edgeScrollSpeed;
         edgeScrollOn_ = s.edgeScroll;
         uiScale_ = s.uiScale;
-        lodEnabled_ = s.lod;                              // Options: distant impostors
-        spriteMode_ = std::clamp(s.spriteMode, 0, 2);     // Options: unit sprite mode
         buildBarAlign_ = std::clamp(s.buildBarAlign, 0, 2);   // Options: build-menu row
         buildBarScale_ = std::clamp(s.buildBarScale, 0.75f, 2.0f);
         // Bilinear filtering (retail video option): smooth the terrain and the
@@ -1575,11 +1573,10 @@
     }
 
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
-                            double& simMs, long& lod, long& full) {
+                            double& simMs) {
         projMs = profProjMs_; submitMs = profSubmitMs_; shadowMs = profShadowMs_;
         simMs = double(profSimTicks_.exchange(0)) * 1000.0 / double(SDL_GetPerformanceFrequency());
-        lod = lodDrawn_; full = fullDrawn_;
-        profProjMs_ = 0; profSubmitMs_ = 0; profShadowMs_ = 0; lodDrawn_ = 0; fullDrawn_ = 0;   // profSimTicks_ reset via exchange above
+        profProjMs_ = 0; profSubmitMs_ = 0; profShadowMs_ = 0;   // profSimTicks_ reset via exchange above
     }
 
     void GameView::advance(float seconds) {
@@ -2068,41 +2065,6 @@
         return nullptr;
     }
 
-    bool GameView::newSprPage() {
-        AaScaleReset _sr(ren_);
-        if (gpuAllocBlocked()) return false;   // don't retry a failed 64MB alloc per frame
-        const size_t pageBytes = size_t(sprAtlasDim_) * size_t(sprAtlasDim_) * 4;   // 64 MiB
-        // At the page ceiling OR over the global VRAM budget: evict the least-recently-
-        // DRAWN page (never the in-progress back() page) rather than allocate more. This
-        // is the hard cap -- a diverse 40k-unit army tops out at kMaxSprPages, not GBs.
-        while (int(sprPages_.size()) >= kMaxSprPages || !gpuvram::wouldFit(pageBytes)) {
-            int victim = -1; uint64_t oldest = UINT64_MAX;
-            for (int i = 0; i + 1 < int(sprPages_.size()); ++i)   // exclude back() (in-progress)
-                if (sprPages_[size_t(i)].lastUse < sprTick_ && sprPages_[size_t(i)].lastUse < oldest)
-                    { oldest = sprPages_[size_t(i)].lastUse; victim = i; }
-            if (victim < 0) return false;   // every page drawn this frame -> can't evict, refuse
-            SDL_Texture* vt = sprPages_[size_t(victim)].tex;
-            // Drop every SpriteSet that lived on the evicted page so none keeps a dangling
-            // page pointer; those keys rebake on demand (one/frame) when next visible.
-            for (auto it = sprites_.begin(); it != sprites_.end(); )
-                it = (it->second.page == vt) ? sprites_.erase(it) : std::next(it);
-            gpuvram::destroy(vt);
-            sprPages_.erase(sprPages_.begin() + victim);
-        }
-        SDL_Texture* t = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                           SDL_TEXTUREACCESS_TARGET, sprAtlasDim_, sprAtlasDim_);
-        if (!t) { noteGpuAllocFail(); return false; }
-        SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
-        SDL_Texture* p0 = SDL_GetRenderTarget(ren_);
-        SDL_SetRenderTarget(ren_, t);
-        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
-        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 0);
-        SDL_RenderClear(ren_);
-        SDL_SetRenderTarget(ren_, p0);
-        sprPages_.push_back(SprPage{t});   // fresh page, cursor at 0
-        return true;
-    }
 
     std::unique_ptr<tak::cob::Vm> GameView::loadTypeVm(const std::string& typeId,
                                              std::vector<std::string>& names) {
@@ -2369,9 +2331,22 @@
             // with the canmove=1/no-velocity FBI quirk -- so one pass). Positions are the
             // same @ zoom 1 as the sprite bake's bbox, so this box matches what's drawn.
             bool structure = isStructure(type);
-            int facings = structure ? 1 : kFacings;
+            // Sampled headings unioned into one box, because a mover looks
+            // different from every side and the box has to cover all of them. A
+            // structure never rotates, so one pass does it.
+            //
+            // This used to be kFacings, shared with the impostor and sprite bakes
+            // (both now gone) -- it is this function's constant alone. It could go
+            // entirely: rotating about Y sends each vertex (x,z) round a circle of
+            // radius r=hypot(x,z), so the exact union over ALL headings is
+            // x in [-R,R] and y in [-(y*kProjY) -+ R*kProjZ] with R the largest r,
+            // which one transform walk gives exactly and more cheaply than 16
+            // projections. Left as sampling for now: it is a change to what a click
+            // hits, which wants checking by hand rather than by screenshot.
+            constexpr int kHitBoxFacings = 16;
+            int facings = structure ? 1 : kHitBoxFacings;
             for (int k = 0; k < facings; ++k) {
-                float heading = float(k) / float(kFacings) * 2.0f * 3.14159265f;
+                float heading = float(k) / float(kHitBoxFacings) * 2.0f * 3.14159265f;
                 float facing = structure ? 0.0f : -heading;
                 scratch.clear();
                 collect(scratch, nullptr, vt->second.model.root, Xform{}, nullptr, facing, 0, false);
@@ -2741,15 +2716,6 @@
             gameSpeed_ = std::clamp(gameSpeed_ + (up ? 1 : -1), -10, 10);
             notice_ = "GAME SPEED " + std::string(gameSpeed_ > 0 ? "+" : "") +
                       std::to_string(gameSpeed_);
-            noticeTimer_ = 2;
-            return true;
-        }
-        // [ and ] tune the LOD size threshold live (raise it to make impostors
-        // engage at larger on-screen sizes / less zoom-out). Structural, not rebindable.
-        if (key == SDLK_LEFTBRACKET || key == SDLK_RIGHTBRACKET) {
-            lodPx_ = std::clamp(lodPx_ + (key == SDLK_RIGHTBRACKET ? 16.0f : -16.0f),
-                                16.0f, 400.0f);
-            notice_ = "LOD THRESHOLD " + std::to_string(int(lodPx_)) + "px";
             noticeTimer_ = 2;
             return true;
         }

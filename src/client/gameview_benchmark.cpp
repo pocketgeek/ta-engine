@@ -30,7 +30,6 @@
         s.fps = fps_;
         s.simSpeed = actualSpeed_;
         s.gpuBytes = gpuvram::bytes();       // client GPU texture memory (bounded by the cap)
-        s.sprPages = int(sprPages_.size());
         tak::proc::GpuSample gpu = tak::proc::gpuSample();   // whole-device util % + VRAM
         if (gpu.ok) {
             s.gpuPct = gpu.utilPct;
@@ -161,14 +160,13 @@
         sl(std::string("ANTI-ALIAS  ") + (settings_ && settings_->antiAlias ? "2X" : "OFF"));
         sl(std::string("BILINEAR    ") + (settings_ && settings_->bilinear ? "ON" : "OFF"));
         // GPU texture memory: the self-calibrating cap, and this run's peak usage/pages.
-        size_t gpuPeak = 0, sysPeak = 0; int pagePeak = 0;
+        size_t gpuPeak = 0, sysPeak = 0;
         for (const auto& s : benchSamples_) {
             if (s.gpuBytes > gpuPeak) gpuPeak = s.gpuBytes;
-            if (s.sprPages > pagePeak) pagePeak = s.sprPages;
             if (s.gpuSysUsed > sysPeak) sysPeak = s.gpuSysUsed;
         }
         std::snprintf(b, sizeof b, "GPU TEX CAP %zuMB", gpuvram::cap() >> 20); sl(b);
-        std::snprintf(b, sizeof b, "GPU PEAK    %zuMB  (%d SPRITE PAGES)", gpuPeak >> 20, pagePeak); sl(b);
+        std::snprintf(b, sizeof b, "GPU PEAK    %zuMB", gpuPeak >> 20); sl(b);
         if (sysPeak) {
             if (benchGpuTotal_) std::snprintf(b, sizeof b, "SYS VRAM    %zu / %zuMB PEAK", sysPeak >> 20, benchGpuTotal_ >> 20);
             else std::snprintf(b, sizeof b, "SYS VRAM    %zuMB PEAK", sysPeak >> 20);
