@@ -2130,9 +2130,7 @@ private:
     // unit's shadow: sized per unit (17.6 for a Monarch, 14.4 for a swordsman),
     // which is why a Monarch has a shadow in retail despite declaring no
     // `shadowart` in its FBI. Zero when the model has no such piece.
-    struct PlateBox { float halfX = 0, halfZ = 0; };
-    const PlateBox& unitPlateBox(const tak::sim::UnitType* type);
-    std::map<std::string, PlateBox> plateBoxes_;
+
 
     // Height-aware picking: invert the render lift so a click on elevated terrain
     // (a wall/plateau top, drawn lifted UP on screen) resolves to the cell whose

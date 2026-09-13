@@ -811,7 +811,7 @@ Vfs mountRetailRoot(const std::filesystem::path& root, OverridePolicy overrides)
 
     // Lowest precedence: loose music tracks, mapped under music/.
     if (fs::path music = findSub("Music"); !music.empty())
-        vfs.addLayer(MountSet(music, MountConfig{.includeLoose = true, .archiveExts = {}, .keep = {}}), "music/");
+        vfs.addLayer(MountSet(music, MountConfig{.includeLoose = true, .archiveExts = {}, .keep = {}, .archiveNames = {}}), "music/");
     // The base game + expansions: ONLY the canonical *.hpi archives in the root (no
     // loose files, and never a stray/unknown *.hpi), layered by the retail
     // newest-entry-date rule. maps.hpi and terrain.hpi ride in here too.
@@ -823,7 +823,7 @@ Vfs mountRetailRoot(const std::filesystem::path& root, OverridePolicy overrides)
     // map (kmap/... and cosmetic tiles the map ships) and drop any bundled gameplay
     // data -- otherwise one modded map would rewrite every game's unit roster.
     if (fs::path maps = findSub("Maps"); !maps.empty()) {
-        MountConfig cfg{true, {".kmp", ".hpi", ".ufo"}, {}};
+        MountConfig cfg{true, {".kmp", ".hpi", ".ufo"}, {}, {}};
         cfg.keep = [](const std::string& p) {
             return MountSet::key(p).rfind("kmap/", 0) == 0 || !affectsGameplay(p);
         };
@@ -834,7 +834,7 @@ Vfs mountRetailRoot(const std::filesystem::path& root, OverridePolicy overrides)
     // it cannot diverge between peers; Full mounts everything.
     if (overrides != OverridePolicy::None) {
         if (fs::path ov = findSub("overrides"); !ov.empty()) {
-            MountConfig cfg{true, {".hpi", ".ufo", ".kmp"}, {}};
+            MountConfig cfg{true, {".hpi", ".ufo", ".kmp"}, {}, {}};
             if (overrides == OverridePolicy::Cosmetic)
                 cfg.keep = [](const std::string& p) { return !affectsGameplay(p); };
             vfs.addLayer(MountSet(ov, std::move(cfg)), "");

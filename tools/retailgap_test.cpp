@@ -1099,7 +1099,7 @@ int main(int argc, char** argv) {
     }
 
     // ---- queued orders on ordinary mobile units -----------------------------
-    // A single player order can expand into a whole A* path, so the order queue
+    // A single player order can expand into a whole route, so the order queue
     // interleaves pathfinding waypoints with the goals the player actually asked
     // for. Anything that treats orders.back() as "the destination" therefore
     // deletes every leg the player lined up behind the current one.
@@ -1169,9 +1169,9 @@ int main(int argc, char** argv) {
             // against orders.back() -- the LAST queued leg. Send a unit out and
             // then back, and walking the first leg moves it AWAY from the last
             // one, so after ~2s it looks permanently stuck: the watchdog fires,
-            // A*-paths straight to the final leg, and the outbound leg is gone.
+            // routes straight to the final leg, and the outbound leg is gone.
             sim::World w2; freshWorld(w2);
-            const float homeX = 448, homeZ = 2624;   // open ground with a real A* route
+            const float homeX = 448, homeZ = 2624;   // open ground with a real route
             const float outX = 848, outZ = 2624;     // leg 1: east, AWAY from...
             const float backX = homeX, backZ = homeZ; // leg 2: ...back where we began
             int id2 = w2.spawn(sword, homeX, homeZ, 0, 0);

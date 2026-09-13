@@ -418,7 +418,7 @@ struct Order {
     float wait = 0;            // >0: hold position, counting down (SetMission "w N")
     bool waitAttack = false;   // hold until an enemy is in sight, then release (SetMission "wa")
     // Last waypoint of the order the PLAYER actually gave. One order can expand
-    // into a whole A* path, so the queue interleaves pathfinding waypoints with
+    // into a whole route, so the queue interleaves pathfinding waypoints with
     // real goals; this marks where each issued order ends. Display-only in the
     // sense that it changes no movement maths -- but the repath paths need it to
     // tell "the rest of this leg" from "everything queued behind it".
@@ -733,11 +733,6 @@ public:
     }
     bool hasRoads() const { return roads_ != nullptr; }
 
-    // A* in cell space (16px cells), with waypoint simplification. `foot` = the unit's
-    // footprint size in cells (1 = point). Returns world-space waypoints; empty if
-    // unreachable for a unit that size.
-    std::vector<Order> findPath(float x0, float z0, float x1, float z1, int foot = 1) const;
-
     // Line of sight: no blocked cell between the two world points, ignoring cells
     // within `skip0`/`skip1` cells of each endpoint — so a shooter or target's own
     // building footprint doesn't block the shot, but a wall between them does.
@@ -749,14 +744,6 @@ private:
     void rebuildClearance() const;
 
     std::vector<uint8_t> cells_;
-    // findPath scratch, reused across calls (a big map otherwise allocates + fills
-    // ~1.1MB per search). A cell's g/from are valid only when its stamp matches
-    // pathGen_, so "reset" is one counter bump. mutable like clear_ -- findPath is a
-    // logical-const query and the sim is single-threaded per world.
-    mutable std::vector<float> pathG_;
-    mutable std::vector<int> pathFrom_;
-    mutable std::vector<uint32_t> pathStamp_;
-    mutable uint32_t pathGen_ = 0;
     // clear_[c] = side of the largest all-walkable square whose min corner is c.
     // Lazily rebuilt (dirtied by block()); a foot-cell unit fits at corner c iff
     // clear_[c] >= foot. mutable so fits()/pathfinding can build it on demand.
@@ -1141,13 +1128,14 @@ public:
         return vis_[size_t(cz) * visW_ + cx] == 2;
     }
     // Move order; queue appends. A unit steers STRAIGHT at the front order's point --
-    // there is no local obstacle avoidance in the steering -- and the background A*
-    // routes around terrain by splicing its waypoints in as further order legs (see
-    // replaceLeg). This used to describe a shared flow field; that system is gone.
+    // there is no local obstacle avoidance in the steering -- and the background path
+    // search (retail's boundary tracer, sim/pathsearch.h, NOT an A*) routes around
+    // terrain by splicing its waypoints in as further order legs (see replaceLeg).
+    // This used to describe a shared flow field; that system is gone.
     void order(int unitId, float x, float z, bool queue);
 
     // ---- order-queue helpers ------------------------------------------------
-    // One issued order can expand into a whole A* path, so Unit::orders mixes
+    // One issued order can expand into a whole route, so Unit::orders mixes
     // pathfinding waypoints with the goals the player actually asked for. These
     // two exist because the repath/unstick paths used to read orders.back() as
     // "the destination" -- which is the LAST QUEUED leg, not the current one --

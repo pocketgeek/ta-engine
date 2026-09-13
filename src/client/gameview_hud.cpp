@@ -1047,8 +1047,11 @@
             // back. We had 1 and 2 the other way round for push buttons, so every order
             // button sat permanently in its pushed-in face and "lit up" to its normal
             // one on hover. Toggles were already right: a selected radio shows Pressed.
-            bool toggle = cmd == 'O' || cmd == 'D' || cmd == 'H' || cmd == 'K' ||
-                          cmd == 'k' || cmd == 'N' || cmd == 'F';
+            //
+            // There is deliberately no toggle/push branch below. A toggle wants Pressed
+            // while it is the SELECTED option and a push button wants it while ARMED,
+            // and `active` already means exactly that for each -- so the list of toggle
+            // letters that used to sit here had no reader and is gone.
             // An UPPERCASE order letter is the same order, marked unavailable for this
             // selection: draw the Disabled face and stay unclickable.
             bool disabled = cmd == 'M' || cmd == 'P' || cmd == 'G' || cmd == 'A';

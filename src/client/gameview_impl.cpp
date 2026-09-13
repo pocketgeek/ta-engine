@@ -1698,7 +1698,7 @@
         if (it == unitType_.end() || it->second == obj) return;
         if (!visuals_.count(obj)) {
             try {
-                visuals_[obj] = {tak::tdo::load(vread("objects3d/" + obj + ".3do"))};
+                visuals_[obj] = {tak::tdo::load(vread("objects3d/" + obj + ".3do")), {}};
             } catch (const std::exception&) { return; }   // no corpse mesh: keep pose
         }
         it->second = obj;
@@ -1711,7 +1711,7 @@
         if (it == unitType_.end() || it->second == vm) return;   // not drawn yet / done
         if (!visuals_.count(vm)) {
             try {
-                visuals_[vm] = {tak::tdo::load(vread("objects3d/" + vm + ".3do"))};
+                visuals_[vm] = {tak::tdo::load(vread("objects3d/" + vm + ".3do")), {}};
             } catch (const std::exception&) { return; }   // no promoted mesh: keep base
         }
         it->second = vm;   // draw the promoted mesh from now on
@@ -2382,30 +2382,6 @@
         return hitBoxes_.emplace(type->id, box).first->second;
     }
 
-    // The ground plate is the shadow. Retail's own sprite shadows (FBI shadowart)
-    // only cover 72 of the 94 mobile ground types -- Monarchs, gods and NPCs
-    // declare none -- yet they all have shadows in game, because the shadow is
-    // this quad in the model, not a sprite. We had been SKIPPING it as a
-    // non-visual marker and substituting a fixed 14x5 blob of our own.
-    const GameView::PlateBox& GameView::unitPlateBox(const tak::sim::UnitType* type) {
-        auto it = plateBoxes_.find(type->id);
-        if (it != plateBoxes_.end()) return it->second;
-        PlateBox box{};
-        auto vt = visuals_.find(type->id);
-        if (vt != visuals_.end()) {
-            const auto& root = vt->second.model.root;
-            // Only the root's own primitives: that is where the plate lives.
-            for (const auto& p : root.primitives) {
-                for (uint16_t vi : p.indices) {
-                    const size_t k = size_t(vi) * 3;
-                    if (k + 2 >= root.vertices.size()) continue;
-                    box.halfX = std::max(box.halfX, std::fabs(root.vertices[k]));
-                    box.halfZ = std::max(box.halfZ, std::fabs(root.vertices[k + 2]));
-                }
-            }
-        }
-        return plateBoxes_.emplace(type->id, box).first->second;
-    }
 
     const GameView::RingBox& GameView::unitRingBox(const tak::sim::UnitType* type) {
         auto it = ringBoxes_.find(type->id);

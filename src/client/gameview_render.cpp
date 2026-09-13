@@ -234,10 +234,15 @@
             return occluded || conjuring || working || dancing(u) || headbanging(u);
         };
 
-        // Pass 1: every normal unit's ground shadows, batched. Soft blobs go into
-        // one untextured triangle batch; FBI shadow sprites are batched per shadow
-        // texture. Drawn first so all shadows sit under all bodies. (Special units
-        // draw their own shadow inside drawUnit in pass 2.)
+        // Pass 1: every normal unit's shadow, as a projected silhouette of its model,
+        // one untextured MOD draw per unit. (It used to describe soft blobs and batched
+        // FBI shadow sprites; neither survives -- retail's Glide path projects the model
+        // and never uses the sprite art for units.)
+        //
+        // GROUND units only sit under all bodies. An airborne flyer's shadow is held
+        // back and drawn between the ground bodies and the air bodies, so it falls ON
+        // what is beneath it, which is where retail's per-unit draw order puts it.
+        // (Special units draw their own shadow inside drawUnit in pass 2.)
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         const double _sh0 = double(SDL_GetPerformanceCounter());
         airShadows_.clear();
@@ -1389,7 +1394,10 @@
         auto it = visuals_.find(typeId);
         if (it != visuals_.end()) return &it->second.model;
         try {
-            visuals_[typeId] = {tak::tdo::load(vread("objects3d/" + typeId + ".3do"))};
+            // meta{} on purpose: a ghost preview has no cached PieceMeta tree, and
+            // collect() computes the same answers live for exactly this case. Spelled
+            // out rather than left to aggregate initialisation so it reads as intent.
+            visuals_[typeId] = {tak::tdo::load(vread("objects3d/" + typeId + ".3do")), {}};
             return &visuals_[typeId].model;
         } catch (const std::exception&) {}
         return nullptr;
@@ -1738,10 +1746,8 @@
         }
         auto vt = visuals_.find(unitType_.at(u.id));
         if (vt == visuals_.end()) return;
-        const Anim* anim = nullptr;
-        auto at = anims_.find(u.id);
-        if (at != anims_.end()) anim = &at->second;
-
+        // No Anim lookup here any more: the pose was applied during the parallel
+        // projection below, so this function only submits the result.
         // The model projection (collect + sort + screen transform + colour) was
         // done for every visible unit in parallel on the worker pool this frame;
         // here we just look up the result and submit its draw calls.
@@ -1767,10 +1773,11 @@
             SDL_Rect top{0, 0, outW, line};   // only pixels above the wall top show
             SDL_RenderSetClipRect(ren_, &top);
         }
-        // No shadow here. Pass 1 batches EVERY casting unit, specials included,
-        // into the coverage mask and composites it once. Drawing a second one
-        // here would land on top of the composited mask and double-darken it --
-        // exactly the stacking the mask exists to prevent.
+        // No shadow here. Pass 1 already drew EVERY casting unit's shadow, specials
+        // included. Drawing a second one here would land on top of that and, under the
+        // MOD blend, darken it twice over. (This used to say the pass composited a
+        // coverage mask; the mask is gone, but the conclusion is unchanged -- one
+        // shadow per unit, drawn in pass 1.)
         // Disco dance floor: a pulsing, hue-cycling glow disc under a dancing monarch.
         if (dancing(u)) {
             float t = animClock_;
@@ -2943,7 +2950,7 @@
             float px = up->x, pz = up->z;                  // running position
             for (const auto& o : up->orders) {
                 // Only the ends of the player's own orders are line vertices; the
-                // A* waypoints between them are the navigator's business, exactly
+                // Route waypoints between them are the navigator's business, exactly
                 // as retail's order list held goals and not path nodes.
                 if (!o.goal) continue;
                 const float qx = o.x, qz = o.z;

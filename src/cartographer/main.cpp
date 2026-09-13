@@ -4,10 +4,17 @@
 // stack (hpi VFS, tnt loader, terrain compositor, MapView) so terrain looks
 // byte-identical to the game.
 //
-// Phase 0 skeleton: mount a retail install, open a .tnt map, render the terrain
-// with pan/zoom, and frame it in the editor chrome (menu bar + status bar).
-// Painting tools, the object model, property dialogs, and the trigger system
-// land in later phases.
+// Working today: mount a retail install, open/create a .tnt map (flat stamp or
+// the engine's procedural generator), render the terrain with pan/zoom in the
+// editor chrome, paint with the section-prefab stamp brush (sections.h), place
+// features (features.h) and units (units.h, via the shared tak::crt), and save.
+// triggers.h carries the RE'd condition/action opcode tables, so a rule can be
+// read and formatted; authoring them in a dialog, the remaining property
+// dialogs, and the HPI/.kmp bundle writer are still to come.
+//
+// (This said "Phase 0 skeleton ... painting tools, the object model, property
+// dialogs and the trigger system land in later phases" long after several of
+// those had landed.)
 
 #include <SDL.h>
 

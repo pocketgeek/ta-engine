@@ -515,11 +515,13 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             if (!roster.empty() && target > 0) {
                 int cols = 1;                                 // integer ceil(sqrt(target))
                 while (cols * cols < target) ++cols;
-                // Space units out so they don't start piled inside one another: at ~1.5
-                // per 32px nav cell the separation pass has only a handful of neighbours
-                // to push per unit, instead of the pathological ~4/cell (24-visit cap on
-                // every unit) that a tight 16px grid produced -- that was the whole
-                // initial separation spike, a pure spawn artifact.
+                // Space units out so they don't start piled inside one another. This was
+                // sized for the separation pass (~1.5 per 32px nav cell left it a handful
+                // of neighbours to push, against the pathological ~4/cell a tight 16px
+                // grid produced -- the whole initial separation spike, a pure spawn
+                // artifact). That pass is gone, and the spacing matters as much now for a
+                // different reason: bodies are solid and nothing pulls an overlap apart,
+                // so units spawned inside each other would simply stay that way.
                 const float spacing = 24.0f;
                 float x0 = mx - float(cols) * spacing * 0.5f; // centre the block on the start
                 float z0 = mz + spacing;                      // just south of the Monarch

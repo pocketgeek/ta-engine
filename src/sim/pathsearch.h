@@ -25,7 +25,10 @@
 // Reaching a cell flagged as the goal ends the search, and the route is
 // reconstructed by walking the breadcrumbs back (0x414450).
 //
-// NOT WIRED INTO THE SIM YET -- this is the algorithm and its test only.
+// This IS the sim's pathfinder. PathService below owns the queue, the bounded pool of
+// concurrent searches and the per-tick budget; World::requestPath feeds it and installs
+// finished routes as order legs (replaceLeg). The header used to end "NOT WIRED INTO
+// THE SIM YET", which was true only until it was.
 
 #include <cstdint>
 #include <functional>

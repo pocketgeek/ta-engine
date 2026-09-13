@@ -6,7 +6,7 @@
 
 _Cavedog's 1999 fantasy RTS — reborn in clean-room C++20 / SDL2, in the spirit of OpenRA and the Robot War Engine._
 
-[![version](https://img.shields.io/badge/version-0.6.0-c9a227?style=flat-square)](https://github.com/pocketgeek/tak-engine/releases)
+[![version](https://img.shields.io/badge/version-0.6.5-c9a227?style=flat-square)](https://github.com/pocketgeek/tak-engine/releases)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c?style=flat-square&logo=cplusplus&logoColor=white)](CMakeLists.txt)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20·%20Windows%20·%20macOS-4c8c4a?style=flat-square)](#download)
 [![multiplayer](https://img.shields.io/badge/multiplayer-deterministic%20lockstep-b03a2e?style=flat-square)](#multiplayer)
@@ -33,7 +33,7 @@ _Cavedog's 1999 fantasy RTS — reborn in clean-room C++20 / SDL2, in the spirit
   </tr>
 </table>
 
-<sub>Thousands of units on screen · deterministic lockstep MP · animated 3D-model sprites · a full retail-style HUD · a built-in benchmark · and, yes, dancing kings.</sub>
+<sub>Thousands of units on screen · deterministic lockstep MP · animated 3D models · a full retail-style HUD · a built-in benchmark · and, yes, dancing kings.</sub>
 
 </div>
 
@@ -42,7 +42,7 @@ _Cavedog's 1999 fantasy RTS — reborn in clean-room C++20 / SDL2, in the spirit
 A modern, cross-platform engine recreation for **Total Annihilation: Kingdoms**
 (Cavedog Entertainment, 1999), in the spirit of OpenRA and Robot War Engine.
 
-**Version 0.6.0** — reported by `takclient --version` and `takserver --version`
+**Version 0.6.5** — reported by `takclient --version` and `takserver --version`
 (and shown in the window title / server banner). The release version is set in
 one place, `project(... VERSION ...)` in `CMakeLists.txt`, and is separate from
 the multiplayer wire protocol version, which is gated independently at connect.
@@ -86,7 +86,7 @@ Every stage is complete:
 1. ~~**Format tooling**~~ — HPI v2, GAF/TAF, TNT, 3DO, COB, TDF/FBI/OTA, GAF
    fonts, WAV all parse.
 2. ~~**Asset viewer**~~ — `takclient map` / `takclient model` (textured, COB-animated).
-3. ~~**Simulation**~~ — movement, A* pathfinding, combat, mana economy,
+3. ~~**Simulation**~~ — movement, pathfinding, combat, mana economy,
    production, per-unit COB VMs, sound.
 4. ~~**Skirmish game**~~ — playable vs AI: fog of war, minimap, building
    placement, production, player colours, faction select, a classic HUD, and
@@ -102,22 +102,21 @@ Every stage is complete:
    paralyze) with immunities, cloaking, reclaim / resurrect /
    capture, `AdjustArmor`/`AdjustAttack` auras, terrain-class movement
    (`MOVEINFO.tdf` slope/water limits + water/road speed), radar sight,
-   line-of-sight firing, flow-field group movement, and a summonable-god economy.
+   line-of-sight firing, and a summonable-god economy.
 8. ~~**Effects & audio**~~ — real GAF/TAF explosion, splash, shockwave-ring,
    ground-fire and muzzle-flash effects; material-specific impact sounds; unit
    shadows; camera shake; positional/surround audio.
 9. ~~**Rendering at scale**~~ — thousands of units on screen, smoothly. The
    per-unit model projection runs across a worker pool; units are frustum-culled;
    each colour's textures are packed into one atlas so an army is a handful of
-   draw calls; and each unit's walk/fly cycle is baked to an **animated sprite
-   sheet** (16 facings, real cycle timing) drawn as a single quad — the classic
-   RTS trick — with the full 3D model kept for close-ups and attack/death poses.
-   The sim is O(n) (spatial-hash neighbour queries, staggered acquisition, parallel
-   flow-field building, crowd-adaptive work caps), so even battles of tens of
+   draw calls; unit shadows are projected and submitted as one geometry batch per
+   frame; and fog of war is computed off the sim thread. The sim is O(n)
+   (spatial-hash neighbour queries, staggered acquisition, a bounded pool of
+   concurrent path searches, crowd-adaptive work caps), so even battles of tens of
    thousands of units stay tractable. GPU texture memory is bounded by a
-   **self-calibrating VRAM budget** (LRU-evicting sprite atlas pages, terrain
-   working-set eviction, AA that steps down under pressure — it tightens itself
-   the moment an allocation fails), so a giant scene can't exhaust the card; and
+   **self-calibrating VRAM budget** (terrain working-set eviction, AA that steps
+   down under pressure — it tightens itself the moment an allocation fails), so a
+   giant scene can't exhaust the card; and
    terrain is **streamed** in chunks over a low-res overview, so map tiles never
    flash in as black squares.
 
@@ -264,12 +263,20 @@ needs-based build plan (economy → a factory → army). In a god-enabled match,
 whose priests (`attractsgods` units) have channelled enough mana favour manifests its
 **god** once the appear time passes.
 
-Audio (master / music / SFX volumes + per-speaker trim), display, camera, and
-rendering preferences — anti-aliasing, **bilinear filtering** (retail's
-smooth-scaling video option), the distance-impostor **LOD**, the **unit-sprite**
-mode, **health bars** (off / damaged / always), and the **build-menu alignment**
-(left / center / right) and **scale** — are set in the in-game **Options** screen
-(Esc → Options) and persisted per user.
+Audio (master / music / SFX volumes, per-speaker trim, output device), display,
+camera, and interface preferences are set in the in-game **Options** screen
+(Esc → Options) and persisted per user: anti-aliasing, **bilinear filtering**
+(retail's smooth-scaling video option), **unit shadows**, swaying trees,
+**health bars** (off / damaged / always), build-menu alignment and scale, UI
+scale, cursor size and **hardware cursor**, smooth motion, and edge scrolling.
+
+Two of those exist because the art is from 1999 and modern displays are not.
+**SMOOTH GUI ART** edge-directed-upscales the static interface art, faction
+backgrounds, cursors and fonts once at load (no per-frame cost; it says RESTART
+because already-built textures keep what they were built with), and **SMOOTH
+MOVIES** deblocks the Bink clips as they decode — smoothing across the 8×8
+transform seams only where the step looks like an artifact rather than an edge,
+which is the opposite of sharpening and the only thing that helps at 12× stretch.
 
 **Benchmark.** *Settings → Benchmark* runs a fixed, deterministic 8-AI
 free-for-all on Ulasem Arena at a chosen **intensity** — Low to *Extra Absurd*,
@@ -322,10 +329,9 @@ row, press the new key; right-click clears).
 | **Disco** 🪩 | **Shift+D** — your monarchs spin, bob, hue-cycle, and glow on a little dance floor for 10s, to a synthesised disco track that plays positionally from the monarch. Purely cosmetic, but synced over the lockstep so every player sees it. |
 | **Headbang** 🤘 | **Shift+H** — your monarchs headbang to a synthesised heavy-metal track (positional, from the monarch), nodding and flashing red on a mosh-pit glow for 10s. Also cosmetic and lockstep-synced. |
 
-Rendering keeps full 3D models until a real crowd can't hold 60 fps, then drops to
-cheaper animated sprites and back to 3D as the crowd clears; distant units use a cached
-billboard **LOD**. Both are automatic by default and adjustable in **Options** (*Unit
-Sprites* AUTO/ON/OFF, *Distant Impostors* on/off). Background music plays from the
+Units are drawn from their full 3D models throughout, with the per-unit projection
+spread across a worker pool and each colour's textures packed into a single atlas, so
+a large army still costs only a handful of draw calls. Background music plays from the
 faction soundtrack.
 
 ## Multiplayer
@@ -448,6 +454,18 @@ mounts only the art/sound tier). Cosmetic overrides never affect a multiplayer g
 and can differ between players; gameplay overrides (the `full` tier) change the data
 fingerprint, so under `full` every player must share the same ones.
 
+## Map editor
+
+`cartographer` is a clean-room port of the retail map editor (`Cartographer.exe`,
+Cavedog 1999), reverse-engineered by static analysis under the same rules as the
+engine. It shares the engine's VFS, TNT loader and terrain compositor, so what it
+draws is what the game draws. It opens and creates `.tnt` maps (a flat stamp or
+the engine's procedural generator), pans/zooms, paints with the retail
+section-prefab stamp brush, places features and units, and saves. The scenario
+trigger tables are reverse-engineered and rules can be read back; authoring them,
+the remaining property dialogs and the `.kmp` bundle writer are still to come.
+See `docs/cartographer-port.md`.
+
 ## Project layout
 
 | Path | Contents |
@@ -461,7 +479,7 @@ fingerprint, so under `full` every player must share the same ones.
 | `src/tdf/` | TDF/FBI/OTA text-config parsing |
 | `src/crt/` | `.crt` scenario/trigger parsing |
 | `src/campaign/` | campaign spine (`camps/*.tdf`) + in-sim mission/god-script runner |
-| `src/sim/` | deterministic simulation (movement, A* pathing, combat, economy) |
+| `src/sim/` | deterministic simulation (movement, pathfinding, combat, economy) |
 | `src/net/` | multiplayer wire format, framed TCP, client protocol |
 | `src/server/` | `takserver`, the headless lobby + lockstep relay |
 | `src/ai/` | the skirmish AI (server-portable; emits commands) |
@@ -469,6 +487,7 @@ fingerprint, so under `full` every player must share the same ones.
 | `src/util/` | shared helpers |
 | `src/gui/` | retail `.gui` HUD/gadget layout parsing |
 | `src/client/` | the SDL2 app (`takclient`: asset viewer + game) |
+| `src/cartographer/` | `cartographer`, a clean-room port of the retail map editor (in progress) |
 | `tools/` | CLI dev tools (`hpitool`, `gaftool`, `tnttool`, `modeltool`, `cobtool`, `tdftool`, `missiontool`, `biktool`, `aitool`) |
 | `docs/` | format notes + reverse-engineering findings (`retail-engine.md` = the `KINGDOMS.icd` disassembly) |
 

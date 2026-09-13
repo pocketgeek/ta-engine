@@ -91,7 +91,7 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs, const Settings* set
             if (fac == 1) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
             // LOGICAL size stays the 1x frame: hotspot, offsets and the drawn size are
             // all authored in those units, and the texture being 2x is invisible to them.
-            anims_[i].push_back({t, fr.width, fr.height, fr.xoff, fr.yoff, fr.rgba});
+            anims_[i].push_back({t, fr.width, fr.height, fr.xoff, fr.yoff, fr.rgba, {}, 0});
         }
     }
     // Reconstruct now, here, off the frame path -- but only for the HARDWARE cursor.

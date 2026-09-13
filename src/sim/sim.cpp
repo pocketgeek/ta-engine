@@ -924,108 +924,6 @@ bool NavGrid::losBetween(float wx0, float wz0, float wx1, float wz1,
     }
 }
 
-std::vector<Order> NavGrid::findPath(float wx0, float wz0, float wx1, float wz1, int foot) const {
-    constexpr int kCell = 16;
-    int sx = int(wx0) / kCell, sz = int(wz0) / kCell;
-    int tx = int(wx1) / kCell, tz = int(wz1) / kCell;
-    // Goal must fit the unit; the START only needs to be walkable (the unit is already
-    // there -- it may be momentarily in a spot too tight for a fresh placement).
-    if (!fits(tx, tz, foot) || !walkable(sx, sz)) return {};
-    // Straight-shot shortcut for point-size units only; a footprint unit needs the
-    // full A* since a clear centre-line can still clip a gap its body won't pass.
-    if (foot <= 1 && lineClear(sx, sz, tx, tz)) return {{wx1, wz1, 0}};
-
-    // A* over cells, octile heuristic. g/from live in generation-stamped scratch
-    // members (see sim.h): a cell is initialized iff its stamp equals this call's
-    // generation, so per-call setup is one counter bump instead of a ~1.1MB fill.
-    struct Node { float f; int idx; };
-    auto cmp = [](const Node& a, const Node& b) { return a.f > b.f; };
-    std::vector<Node> open;
-    const size_t n_ = size_t(w_) * h_;
-    if (pathStamp_.size() != n_) {
-        pathG_.assign(n_, 1e30f);
-        pathFrom_.assign(n_, -1);
-        pathStamp_.assign(n_, 0);
-        pathGen_ = 0;
-    }
-    if (++pathGen_ == 0) { pathStamp_.assign(n_, 0); pathGen_ = 1; }   // u32 wrap
-    auto gAt = [&](size_t i) -> float {
-        return pathStamp_[i] == pathGen_ ? pathG_[i] : 1e30f;
-    };
-    auto touch = [&](size_t i, float gv, int fromIdx) {
-        pathG_[i] = gv;
-        pathFrom_[i] = fromIdx;
-        pathStamp_[i] = pathGen_;
-    };
-    // Octile heuristic. With road preference active, off-road steps cost 1.2x
-    // while a base-rate h underestimates by up to 20% -- which made A* explore
-    // FAR more nodes (single 50ms searches on Two Castles). Weight h by the
-    // off-road factor on road maps: paths may be up to 20% suboptimal (they
-    // just prefer roads a little harder), but search cost returns to normal.
-    const float hw = roads_ ? 1.2f : 1.0f;
-    auto hcost = [&](int x, int z) {
-        float ax = float(std::abs(x - tx)), az = float(std::abs(z - tz));
-        return (std::max(ax, az) + 0.41421f * std::min(ax, az)) * hw;
-    };
-    int start = sz * w_ + sx, goal = tz * w_ + tx;
-    touch(size_t(start), 0, -1);
-    open.push_back({hcost(sx, sz), start});
-    static const int DX[8] = {1, -1, 0, 0, 1, 1, -1, -1};
-    static const int DZ[8] = {0, 0, 1, -1, 1, -1, 1, -1};
-    int expansions = 0;
-    while (!open.empty() && expansions++ < 400000) {
-        std::pop_heap(open.begin(), open.end(), cmp);
-        Node n = open.back();
-        open.pop_back();
-        if (n.idx == goal) break;
-        int cx = n.idx % w_, cz = n.idx / w_;
-        // Skip entries superseded by a later, cheaper push (their re-expansion is a
-        // pure no-op that only burns the expansion cap): recompute this node's best
-        // possible f from the CURRENT g -- the same float ops as at push time, so a
-        // non-stale entry compares exactly equal, never greater.
-        if (n.f > gAt(size_t(n.idx)) + hcost(cx, cz)) continue;
-        for (int d = 0; d < 8; ++d) {
-            int nx = cx + DX[d], nz = cz + DZ[d];
-            if (!fits(nx, nz, foot)) continue;
-            if (d >= 4 && (!fits(cx + DX[d], cz, foot) || !fits(cx, cz + DZ[d], foot)))
-                continue;   // no diagonal corner cutting
-            float step = d >= 4 ? 1.41421f : 1.0f;
-            int ni = nz * w_ + nx;
-            // Road preference: stepping onto a non-road cell costs 1.2x, so a
-            // parallel road is worth up to ~20% of detour. Roads keep the base
-            // cost, which leaves the octile heuristic admissible unchanged.
-            if (roads_ && !roadAt(nx, nz)) step *= 1.2f;
-            float ng = gAt(size_t(n.idx)) + step;
-            if (ng < gAt(size_t(ni))) {
-                touch(size_t(ni), ng, n.idx);
-                open.push_back({ng + hcost(nx, nz), ni});
-                std::push_heap(open.begin(), open.end(), cmp);
-            }
-        }
-    }
-    if (pathStamp_[size_t(goal)] != pathGen_ || pathFrom_[size_t(goal)] < 0) return {};
-
-    std::vector<std::pair<int, int>> cells;
-    for (int i = goal; i >= 0; i = pathFrom_[size_t(i)]) {
-        cells.push_back({i % w_, i / w_});
-        if (i == start) break;
-    }
-    std::reverse(cells.begin(), cells.end());
-
-    // Simplify: greedily skip waypoints with a clear straight line.
-    std::vector<Order> out;
-    size_t anchor = 0;
-    for (size_t i = 2; i < cells.size(); ++i) {
-        if (!lineClear(cells[anchor].first, cells[anchor].second, cells[i].first,
-                       cells[i].second)) {
-            anchor = i - 1;
-            out.push_back({cells[anchor].first * 16.0f + 8, cells[anchor].second * 16.0f + 8, 0});
-        }
-    }
-    out.push_back({wx1, wz1, 0});
-    return out;
-}
-
 
 
 
@@ -1097,12 +995,18 @@ void World::order(int unitId, float x, float z, bool queue) {
     }
     // Ground/water units steer STRAIGHT at the front order's point. There is no local
     // obstacle avoidance in the steering: going around terrain is entirely the job of
-    // the background A*, which splices its route in as further order legs.
+    // the background path search, which splices its route in as further order legs.
     //
-    // This said "steer by a shared flow field ... fall back to A* waypoints", which has
-    // not been true since the flow fields were removed -- A* is now the only mechanism,
-    // not the fallback. Left stale it is actively misleading: it sends anyone debugging
-    // a unit that walks into a cliff looking for a field that does not exist.
+    // That search is retail's ported boundary tracer (sim/pathsearch.h), NOT an A* --
+    // no open list, no heuristic; it marches at the goal and traces an obstacle's
+    // outline from both sides when blocked. It is the sim's ONLY pathfinder: the
+    // A* that used to route transports to their unload point resolved its grid with
+    // the same navFor() and bought nothing over the tracer, so it is gone.
+    //
+    // This comment said "steer by a shared flow field ... fall back to A* waypoints",
+    // and neither half survived: the flow fields are gone, and what replaced them is
+    // not an A* either. Left stale it sends anyone debugging a unit that walks into a
+    // cliff looking for two mechanisms that do not exist.
     // Snap the destination onto ground this unit can actually stand on. A click
     // on a mountain is a click on a cell no ground unit fits in: without this the
     // unit walks up to the cliff and shoves at it indefinitely, because the goal
@@ -1213,7 +1117,7 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
 
 // Reachability: can a body of this type get from (fx,fz) to (gx,gz) at all? The AI
 // scores targets with it and the movement watchdogs use it to give up on a leg
-// rather than run a full-grid A* that would scan the map before failing.
+// rather than run a whole-map search that would scan the grid before failing.
 // Deterministic -- the labelling is a pure function of the nav grid -- so the sim
 // may use it, not only the AI.
 bool World::pathExists(const UnitType* type, float gx, float gz, float fx, float fz) const {
@@ -1291,17 +1195,32 @@ void World::unloadAt(int transportId, float x, float z) {
     Unit* t = unit(transportId);
     if (!t || !t->alive() || t->cargo.empty()) return;
     t->orders.clear();
-    // Sail there through the transport's own domain, then disembark.
-    const NavGrid& grid = navFor(t->type);
-    if (!grid.empty()) {
-        auto path = grid.findPath(t->x, t->z, x, z, footCells(t->type));
-        for (size_t i = 0; i + 1 < path.size(); ++i) t->orders.push_back(path[i]);
-    }
+    // Sail there through the transport's own domain, then disembark: a move leg
+    // to the drop point, with the unload queued behind it.
+    //
+    // The move leg has to be its own order rather than routing the unload order
+    // itself, because replaceLeg rebuilds the current leg from path waypoints and
+    // carries only the leg's movement flags across -- an unload order used as the
+    // leg would come back as plain waypoints and the cargo would never leave. As
+    // a trailing order it is untouched (replaceLeg keeps everything queued behind
+    // the leg) and reaches the front once the move completes, where the tick
+    // dispatch hands it to tickTransport.
+    Order mv;
+    mv.x = x;
+    mv.z = z;
+    mv.goal = true;          // so currentLeg() picks THIS order as the leg to route
+    t->orders.push_back(mv);
     Order o;
     o.x = x;
     o.z = z;
     o.unload = true;
     t->orders.push_back(o);
+    // Same async boundary tracer every other move order uses. This used to call
+    // NavGrid::findPath -- a synchronous 400k-expansion A* on the sim thread, and
+    // the last caller of it. It resolved its grid with the same navFor(), so it
+    // bought nothing over the tracer that an ordinary move order on the same
+    // transport already went through; findPath is gone with it.
+    requestPath(*t, x, z);
 }
 
 void World::tickTransport(Unit& u, float dt) {
@@ -2345,8 +2264,12 @@ float World::bodyPenetration(const Unit& u, float nx, float nz) const {
             // overlaps a pair -- and a rule phrased on the deepest overlap freezes
             // the lot: nobody can reduce every overlap at once, so nobody moves,
             // and each frozen (speed 0) body then blocks its neighbours in turn.
-            // De-overlapping is the separation pass's job. The mover's job is the
-            // narrower one: never enter a body you are currently clear of.
+            // So the mover's job is the narrow one: never enter a body you are
+            // currently clear of. NOTHING pulls existing overlap apart any more --
+            // the separation pass that did was deleted with the move to retail's
+            // occupancy predicate, and the point of that change is that overlap
+            // barely forms in the first place (see the note further up). Do not
+            // re-read this as "something else will sort it out".
             if (std::min(sep - std::fabs(u.x - o->x), sep - std::fabs(u.z - o->z)) > 0.0f)
                 continue;
             float p = std::min(sep - std::fabs(nx - o->x), sep - std::fabs(nz - o->z));
@@ -3016,7 +2939,6 @@ void World::tickConstruction(Unit& b, float dt) {
             b.buildStuckD = gd; b.buildStuckT = 0;
         } else if ((b.buildStuckT += dt) > 8.0f) {
             b.buildStuckT = 0; b.buildStuckD = 1e30f;
-            int bid = b.id;
             // Drop an un-started ghost site (as cancelBuilds does) so its marker and
             // blocked footprint don't linger.
             if (!site->buildBegun) {
@@ -3061,10 +2983,8 @@ void World::tickConstruction(Unit& b, float dt) {
     if (site->hp >= site->type->maxHp) {
         site->hp = site->type->maxHp;
         site->underConstruction = false;
-        int bid = b.id;
         b.buildSiteId = 0;
         popBuildOrder(b);
-        
     }
 }
 
@@ -3662,7 +3582,7 @@ void World::tick(float dt) {
     if (g_phase) { _tk0 = std::chrono::steady_clock::now();
                    g_tcomb = 0;
                    g_visMs = g_burnMs = g_gridMs = 0; }
-    // Cap A* repaths per tick: a big group that jams while moving can trip the
+    // Cap repaths per tick: a big group that jams while moving can trip the
     // blocked/stuck watchdogs en masse, and hundreds of path searches in one tick
     // stall the sim. Deferred units retry a later tick. Deterministic (fixed budget,
     // unit-index order), so lockstep peers stay in sync.
@@ -4354,7 +4274,7 @@ void World::tick(float dt) {
             // in the RTTI, not points (docs/retail-engine.md). A FINAL goal therefore
             // completes on a circle wide enough to hold a body: 16px, or the unit's own
             // footprint if that is bigger, so a 4x4 trebuchet is not asked to stand on
-            // the same pixel a swordsman would. Intermediate A* waypoints keep the tight
+            // the same pixel a swordsman would. Intermediate route waypoints keep the tight
             // 3px so a route is actually followed.
             // (This was `o.flow ? 16 : 3`, which quietly became 3 for EVERY unit once the
             // retail-nav experiment stopped setting o.flow -- a whole group then fought
@@ -4425,7 +4345,7 @@ void World::tick(float dt) {
             if (dist < 2.0f * arcDist) target = 0;
             // Retail's stop-distance test measures to a DIFFERENT path point than the
             // arc test does, and we have only one `dist` (to the current order point).
-            // Feeding it both tests unguarded would stop the unit at every A* node, so
+            // Feeding it both tests unguarded would stop the unit at every route node, so
             // the stop test stays on the final leg, where our `dist` means what its
             // does.
             bool last = u.orders.size() == 1;
@@ -4483,7 +4403,7 @@ void World::tick(float dt) {
                         const Order& legEnd = u.orders[currentLeg(u.orders)];
                         float tx = legEnd.x, tz = legEnd.z;
                         // Check reachability BEFORE repathing: if this unit cannot get
-                        // there, give up rather than run a full-grid A* that scans the
+                        // there, give up rather than queue a search that scans the
                         // whole map before failing -- hundreds of units doing that is
                         // the sim stall. pathExists answers it from the component
                         // labelling (it read the flow field's reachable set when that
@@ -4553,7 +4473,7 @@ void World::tick(float dt) {
         // a long time re-asks the background pathfinder, and eventually abandons
         // the leg
         // or in the unit's own base without ever tripping the fully-blocked path, so a
-        // lone scout could sit forever. The A* route (which we know exists when the
+        // lone scout could sit forever. A traced route (which we know exists when the
         // goal is reachable) replaces the order and steers it around. Fliers and
         // target-locked (attack) orders are exempt; idle units reset the tracker.
         if (!u.type->canFly && !u.orders.empty()) {
@@ -4564,7 +4484,7 @@ void World::tick(float dt) {
                 // Progress is measured against the leg being walked NOW. Against
                 // orders.back() an out-and-back queue looks permanently stuck on
                 // its outbound leg -- it IS moving away from the final one -- so
-                // this fired after 2s, A*-routed straight to the last leg, and
+                // this fired after 2s, routed straight to the last leg, and
                 // deleted the leg the player was watching the unit walk.
                 const Order& legEnd = u.orders[currentLeg(u.orders)];
                 float gx = legEnd.x, gz = legEnd.z;
@@ -4614,10 +4534,12 @@ void World::tick(float dt) {
                     // pressing was being abandoned at 53%.
                     // "Wedged" has two shapes. Pressed against something and
                     // barely moving is one (stuckFor). The other is standing on
-                    // ground the unit does not fit on at all: the unstick pass
-                    // then nudges it toward legal ground every tick, that nudge
-                    // counts as movement and keeps resetting stuckFor, and the
-                    // unit wanders for ever while never reaching anything --
+                    // ground the unit does not fit on at all: back when the
+                    // unstick pass existed (deleted 2026-09-12, see the note at
+                    // the end of this file) it nudged such a unit toward legal
+                    // ground every tick, that nudge counted as movement and kept
+                    // resetting stuckFor, and the unit wandered for ever while
+                    // never reaching anything --
                     // measured 2426px of wandering in 60s with no arrival.
                     // No extra conditions. Not getting closer for this long IS
                     // the signal, whatever the unit is doing meanwhile -- wedged

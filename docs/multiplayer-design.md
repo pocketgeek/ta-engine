@@ -204,7 +204,8 @@ contract is stated, enforced, and narrow:
   tree + map; the server refuses mixed-data games with a readable error.
 - The AI's RNG is outside the sim and cannot desync the world — only its
   *commands* matter, and those are sequenced like everyone else's.
-- The flow-field pathfinding cache stays a **pure memo**: field content must
+- *(Historical — the flow fields are gone; the invariant is not.)* The
+  flow-field pathfinding cache stays a **pure memo**: field content must
   remain a function of (nav grid, goal, domain) only — never of when or
   whether it was built — because the server's AI queries build cache entries
   clients never build. `pathExists` stays query-only; cache access is

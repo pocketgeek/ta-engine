@@ -65,6 +65,15 @@ Grepped across the entire deterministic path (`sim.cpp`, `matchsetup.cpp`,
 or the COB VM, and that **COB/piece animation state is not in `stateHash`**
 (animation is cosmetic and out of scope).
 
+**This table is the original audit, not a live index.** It records which call
+sites drove the shim decision at the time it was taken; the line numbers have
+drifted since and the "flow field" entry names a system that no longer exists
+(steering now aims straight at the front order's point, and routing is the
+boundary tracer in `sim/pathsearch.h`). The verdicts still hold, and the live
+check is `tools/check-detmath.sh`, which fails the build on any direct libm
+transcendental in `src/sim/` — that, not this table, is what keeps the
+inventory complete.
+
 | Function | Sites | Where / what | Verdict |
 |---|---|---|---|
 | `sin` / `cos` | 6 | `sim.cpp:1744-45` & `:1809` (heading→move vector, stuck-nudge), `matchsetup.cpp:224` (start-ring fallback), `ai.cpp:125,152` (build-placement probes) | **SHIM** |

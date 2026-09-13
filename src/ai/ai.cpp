@@ -365,8 +365,11 @@ bool Controller::nearestEnemyStart(float cx, float cz, float& tx, float& tz) con
 }
 
 // Pool idle (non-builder) fighters; once a strike force has gathered (waveSize, per
-// difficulty), attack-move the whole group at one target so they share a flow field:
-// the nearest enemy it can SEE, else the nearest enemy start (marching on the base).
+// difficulty), attack-move the whole group at ONE target so the wave arrives together
+// rather than trickling in: the nearest enemy it can SEE, else the nearest enemy start
+// (marching on the base). The original reason given here was that one target let them
+// share a flow field; the flow fields are gone and paths are per-unit now, so arriving
+// as a group is the whole of it.
 // Also sends one early scout so the AI reveals + commits rather than turtling forever.
 std::pair<float, float> Controller::homeOf(const tak::sim::World& world) const {
     double sx = 0, sz = 0; int n = 0;
