@@ -1192,7 +1192,15 @@ private:
         // a ~208ms draw -- the whole submit phase -- because every unit walked its
         // model a second time on the main thread while the body walk was already
         // parallel. Same traversal, same pool, so it costs what the body costs.
-        std::vector<SDL_Vertex> shadowVerts;
+        // POSITIONS ONLY (8 bytes/vertex), not SDL_Vertex (20). Every shadow vertex
+        // carries the same flat grey and an unused texcoord, so storing them per-vertex
+        // was 12 bytes of identical data each -- ~8.5 MB a frame of pure duplication at
+        // this unit count. Submitted with SDL_RenderGeometryRaw passing ONE colour and
+        // ONE texcoord at stride 0, which makes SDL re-read element 0 for every vertex.
+        // Verified that stride 0 is accepted and pixel-identical on both the opengl and
+        // software backends; the validation lives in SDL_render.c above the backend, so
+        // it behaves the same for D3D/Metal too.
+        std::vector<SDL_FPoint> shadowVerts;
     };
     std::vector<const UnitR*> visUnits_;
     // unitBatch_: the cross-unit body batch. overlayBatch_: a reusable scratch vertex
@@ -1631,11 +1639,10 @@ private:
                     // 106/192, 92/170, a flat multiply to 0.55 everywhere, which is
                     // what its alloca'd span buffer (0x4eda83, 0x5f08 bytes) buys.
                     // kShadowLevel is that 0.55.
-                    for (int k = 0; k < 3; ++k) {
-                        tri.v[k].color =
-                            SDL_Color{kShadowLevel, kShadowLevel, kShadowLevel, 255};
-                        tri.v[k].tex_coord = {0, 0};
-                    }
+                    // No per-vertex colour or texcoord written here: buildUnitShadow
+                    // keeps POSITIONS ONLY and the flat grey is supplied once at
+                    // stride 0 when the geometry is submitted. Writing them per vertex
+                    // was filling ~8.5 MB a frame with the same two constants.
                     tri.tex = nullptr;
                     tri.depth = 0;
                     out.push_back(tri);

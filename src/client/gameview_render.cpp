@@ -276,8 +276,14 @@
                 const UnitGeom& gsh = geomPool_[size_t(gs)];
                 if (gsh.shadowVerts.empty()) continue;
                 profShadowVerts_ += uint64_t(gsh.shadowVerts.size());
-                SDL_RenderGeometry(ren_, nullptr, gsh.shadowVerts.data(),
-                                   int(gsh.shadowVerts.size()), nullptr, 0);
+                // One colour and one texcoord at stride 0 -- SDL reads element 0 per
+                // vertex, so the flat grey costs nothing per vertex to store or read.
+                static const SDL_Color kShCol{kShadowLevel, kShadowLevel, kShadowLevel, 255};
+                static const float kShUV[2] = {0.0f, 0.0f};
+                SDL_RenderGeometryRaw(ren_, nullptr,
+                                      &gsh.shadowVerts[0].x, int(sizeof(SDL_FPoint)),
+                                      &kShCol, 0, kShUV, 0,
+                                      int(gsh.shadowVerts.size()), nullptr, 0, 0);
             }
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         }
@@ -1634,11 +1640,9 @@
         const float sy = g.ay + (kProjY - kShadowLZ) * g.alt * zm;
         g.shadowVerts.reserve(scratch.size() * 3);
         for (const Tri& t : scratch)
-            for (int k = 0; k < 3; ++k) {
-                SDL_Vertex v = t.v[k];
-                v.position = {sx + v.position.x * zm, sy + v.position.y * zm};
-                g.shadowVerts.push_back(v);
-            }
+            for (int k = 0; k < 3; ++k)
+                g.shadowVerts.push_back({sx + t.v[k].position.x * zm,
+                                         sy + t.v[k].position.y * zm});
     }
 
     void GameView::drawUnit(const UnitR& u) {
