@@ -974,16 +974,22 @@ draw every shadow triangle opaque at 0.55 grey with blending off, then composite
 that rect once with `SDL_BLENDMODE_MOD`. Bounding box, not full screen -- a
 7680x2160 clear and blit twice a frame is most of the cost and none of the gain.
 
-### The x shear is negated in our basis
+### Probe the shear sign on a GROUND unit, never on a flyer
 
 Retail's shadow is `(+y/4, +y/4)` from the body in screen space: down AND right.
-In our renderer that is `rx - kShadowLX*w[1]` and `rz + kShadowLZ*w[1]` -- MINUS
-on x -- because our `w[1]` runs opposite to retail's y (models are authored in
-the mirrored basis and the piece transform negates Y). Established by probe
-rather than by argument, since reasoning about the sign chain kept producing
-contradictions: temporarily setting `kShadowLX` to 2.0 smears every silhouette
-hard LEFT with `+` and hard right with `-`. The altitude term applied at the
-anchor is in screen space and is already the right way round.
+In our renderer that is `rx + kShadowLX*w[1]` and `rz + kShadowLZ*w[1]` -- plus
+on both.
+
+The trap, which cost a wrong commit: a flyer's shadow carries TWO x terms, the
+per-vertex shear and the altitude offset applied at the anchor, and the altitude
+term can outweigh the vertex one. Probing the sign on flyers (set `kShadowLX` to
+2.0 and see which way the silhouettes smear) therefore reports the sign of the
+wrong term -- it said "negate x", and negating x sent every GROUND unit's shadow
+leaning left, which is what the player then saw.
+
+A ground unit has `alt = 0`, so it isolates the vertex expression exactly. Probe
+there. The exaggerated constant is still the right technique: with `+` a ground
+unit smears hard right, with `-` hard left, unambiguous in one screenshot.
 
 Shadow triangles skip the backface cull -- a silhouette is the union of both
 faces, and culling half of it punches holes. Anchor the shadow on the BODY

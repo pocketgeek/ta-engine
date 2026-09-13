@@ -1510,15 +1510,15 @@ private:
                         // disc under it. Retail's shear is (+y/4, +y/4) in screen
                         // space (0x4ec250 flag 1), i.e. down AND right.
                         //
-                        // MINUS on x, plus on z, because our w[1] runs opposite
-                        // to retail's y here -- the models are authored in the
-                        // mirrored basis and the piece transform negates Y. Sign
-                        // established by probe, not by argument: temporarily
-                        // setting kShadowLX to 2.0 smeared every silhouette hard
-                        // to the LEFT with `+`, and hard to the right with `-`.
-                        // (The altitude term at the anchor is applied in screen
-                        // space and is already the right way round.)
-                        const float sxs = rx - kShadowLX * w[1];
+                        // PLUS on both, and verify any change to these signs on a
+                        // GROUND unit. A flyer is the wrong test: its shadow also
+                        // carries the altitude term applied at the anchor, and
+                        // that term can outweigh and mask the vertex term, so a
+                        // flyer probe reports the sign of the wrong thing. It
+                        // told me to negate x, and negating x sent every ground
+                        // unit's shadow leaning left. With alt = 0 a ground unit
+                        // isolates exactly this expression.
+                        const float sxs = rx + kShadowLX * w[1];
                         const float szs = rz + kShadowLZ * w[1];
                         tri.v[k].position = {sxs, -szs * kProjZ};
                     } else {
