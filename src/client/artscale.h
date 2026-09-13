@@ -109,6 +109,39 @@ inline void upscale2x(const std::vector<uint8_t>& src, int w, int h,
     }
 }
 
+// Area-average resample from (sw,sh) to (dw,dh), in PREMULTIPLIED alpha.
+//
+// Used to land an upscaled image on an exact target size. The factor above is a power
+// of two while the cursor is drawn at an arbitrary integer scale, so the two rarely
+// divide evenly -- 4x source at CURSOR SIZE 3, say. Because the factor always OVERSHOOTS
+// the draw size, this is a downsample, which is where the antialiasing actually comes
+// from: several source pixels average into one destination pixel.
+inline void resample(const std::vector<uint8_t>& src, int sw, int sh,
+                     std::vector<uint8_t>& dst, int dw, int dh) {
+    dst.assign(size_t(dw) * size_t(dh) * 4, 0);
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
+    for (int dy = 0; dy < dh; ++dy) {
+        const int y0 = dy * sh / dh, y1 = std::max(y0 + 1, (dy + 1) * sh / dh);
+        for (int dx = 0; dx < dw; ++dx) {
+            const int x0 = dx * sw / dw, x1 = std::max(x0 + 1, (dx + 1) * sw / dw);
+            long r = 0, g = 0, b = 0, a = 0, n = 0;
+            for (int y = y0; y < y1 && y < sh; ++y)
+                for (int x = x0; x < x1 && x < sw; ++x) {
+                    const uint8_t* p = &src[(size_t(y) * size_t(sw) + size_t(x)) * 4];
+                    const long pa = p[3];
+                    r += long(p[0]) * pa; g += long(p[1]) * pa; b += long(p[2]) * pa;
+                    a += pa; ++n;
+                }
+            uint8_t* o = &dst[(size_t(dy) * size_t(dw) + size_t(dx)) * 4];
+            if (!n || !a) { o[0] = o[1] = o[2] = o[3] = 0; continue; }
+            o[0] = uint8_t(std::min<long>(255, r / a));
+            o[1] = uint8_t(std::min<long>(255, g / a));
+            o[2] = uint8_t(std::min<long>(255, b / a));
+            o[3] = uint8_t(a / n);
+        }
+    }
+}
+
 // ---- the one switch, and the texture helper ----------------------------------------
 //
 // Sampled ONCE at startup from Settings::smoothArt and then left alone. It must not be
@@ -125,6 +158,11 @@ inline void setSmoothArt(bool on) { g_smoothArt = on; }
 // cursor at 8x is ~240 KB, which is affordable for the dozen or so of them and would
 // not be on the unit atlas. Sampled once, like the switch above, so changing cursor
 // size mid-session rebuilds nothing until a restart.
+// NOTE this is the TEXTURE path's factor, and it deliberately lands near the drawn size
+// rather than overshooting. SDL minifies with a plain linear filter and no mipmaps, so a
+// big overshoot there would alias, not smooth. The HARDWARE cursor path is the opposite:
+// it downsamples in software with a proper box filter (resample above), so it overshoots
+// 2x on purpose. Same option, two different right answers.
 inline int g_cursorFactor = 2;
 inline void setCursorFactor(int cursorScale) {
     int f = 2;

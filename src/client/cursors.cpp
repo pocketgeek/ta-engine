@@ -135,19 +135,53 @@ void CursorSet::draw(SDL_Renderer* ren, CursorId c, int mouseX, int mouseY, int 
 
 namespace {
 
-// Bake one frame's RGBA into a scaled, tinted SDL_Cursor (nearest-neighbour, so the pixel
-// art stays crisp). Hotspot is scaled to match. Returns nullptr on failure.
+// Bake one frame's RGBA into a scaled, tinted SDL_Cursor. Hotspot is scaled to match.
+// Returns nullptr on failure.
+//
+// This is the HARDWARE cursor path (SDL_CreateColorCursor), and it does not go anywhere
+// near the textures the smooth-art option upscales -- it builds an OS cursor straight
+// from the 1x frame. It used to nearest-replicate every pixel `scale` times, so with
+// hardwareCursor on, smooth art changed the cursor not at all however it was set.
+//
+// Now, when smoothing is on: reconstruct the edges to a power-of-two factor that
+// OVERSHOOTS the drawn size, then area-average down onto the exact target. The
+// downsample is what antialiases. Smoothing off keeps the old nearest replication,
+// which is the crisp retail pixel cursor.
 SDL_Cursor* bakeCursor(const std::vector<uint8_t>& rgba, int w, int h, int hx, int hy,
                        int scale, SDL_Color tint) {
     if (rgba.size() < size_t(w) * size_t(h) * 4 || w <= 0 || h <= 0) return nullptr;
     SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, w * scale, h * scale, 32,
                                                     SDL_PIXELFORMAT_RGBA32);
     if (!s) return nullptr;
+    std::vector<uint8_t> smooth;
+    const uint8_t* base = rgba.data();
+    int bw = w, bh = h;
+    if (tak::art::g_smoothArt && scale > 1) {
+        std::vector<uint8_t> up;
+        tak::art::upscale2x(rgba, w, h, up);
+        int fw = w * 2, fh = h * 2;
+        // Overshoot to at least TWICE the drawn size, not merely up to it. At a
+        // power-of-two CURSOR SIZE, stopping at the drawn size makes the resample 1:1 --
+        // you get the reconstructed edges but no area-averaging, and at size 8 that still
+        // reads as "not antialiased". Going one doubling further guarantees several
+        // source pixels fall in every destination pixel, which is where the smoothing
+        // actually comes from. A 29x32 cursor at size 8 overshoots to 464x512, ~950 KB
+        // transient, for a dozen cursors built once.
+        while (fw / w < scale * 2 && fw < 4096) {
+            std::vector<uint8_t> nxt;
+            tak::art::upscale2x(up, fw, fh, nxt);
+            up.swap(nxt); fw *= 2; fh *= 2;
+        }
+        tak::art::resample(up, fw, fh, smooth, w * scale, h * scale);
+        base = smooth.data(); bw = w * scale; bh = h * scale;
+    }
     for (int y = 0; y < h * scale; ++y) {
         auto* dst = static_cast<uint8_t*>(s->pixels) + size_t(y) * s->pitch;
-        const uint8_t* srcRow = rgba.data() + size_t(y / scale) * w * 4;
         for (int x = 0; x < w * scale; ++x) {
-            const uint8_t* p = srcRow + size_t(x / scale) * 4;   // RGBA32 = R,G,B,A in memory
+            // Either 1:1 into the already-resampled buffer, or nearest into the 1x frame.
+            const uint8_t* p = (bw == w * scale)
+                ? base + (size_t(y) * size_t(bw) + size_t(x)) * 4
+                : base + (size_t(y / scale) * size_t(w) + size_t(x / scale)) * 4;
             dst[0] = uint8_t(p[0] * tint.r / 255);
             dst[1] = uint8_t(p[1] * tint.g / 255);
             dst[2] = uint8_t(p[2] * tint.b / 255);
@@ -155,6 +189,7 @@ SDL_Cursor* bakeCursor(const std::vector<uint8_t>& rgba, int w, int h, int hx, i
             dst += 4;
         }
     }
+    (void)bh;
     SDL_Cursor* cur = SDL_CreateColorCursor(s, hx * scale, hy * scale);
     SDL_FreeSurface(s);
     return cur;
