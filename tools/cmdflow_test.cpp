@@ -161,57 +161,71 @@ int main() {
         // gate: 0 = buffer-depth heuristic (what we had), 1 = server-declared
         // boundary (what we ship). Replay is delivered in chunks of `chunk` ticks
         // with `gap` idle ticks between them, during which the buffer is empty.
+        struct RJ { int dropped = 0, delivered = 0, outboxLeft = 0; bool unlocked = false;
+                    bool ordered = true; };
         auto rejoin = [](int gate, int chunk, int gap) {
-            const int replayTicks = 900;          // history the server will send
-            int inFlight = 0, dropped = 0, credit = net::kCmdCapPerTick;
-            int outbox = 4000, replayed = 0, buffered = 0;
+            const int replayTicks = 300;          // history the server will send
+            const int toSend = 1500;
+            RJ r;
+            int inFlight = 0, credit = net::kCmdCapPerTick;
+            int outbox = toSend, replayed = 0, buffered = 0, nextId = 0;
             std::deque<int> serverQueue;
+            std::vector<int> got;
             bool holding = true;
-            for (uint32_t t = 0; t < 600; ++t) {
-                // Server feeds a chunk, then goes quiet for `gap` ticks.
+            // Long enough to finish the replay AND drain everything after it --
+            // the first version of this ran out before the boundary was reached,
+            // so the correct-gate case passed by never sending at all.
+            for (uint32_t t = 0; t < 4000; ++t) {
                 const bool feeding = (int(t) % (chunk + gap)) < chunk;
-                if (feeding && replayed < replayTicks) { buffered += 1; }
-                // Client consumes one replayed bundle per tick.
+                if (feeding && replayed + buffered < replayTicks) ++buffered;
                 int consumedHistory = 0;
                 if (buffered > 0) { --buffered; ++replayed; consumedHistory = 1; }
 
-                // Gate decides whether we may send.
                 if (gate == 0) holding = (buffered > 0);             // buffer depth
                 else           holding = (replayed < replayTicks);   // server boundary
+                if (!holding) r.unlocked = true;
 
                 credit = net::cmdSendCredit(credit, 1);
                 if (!holding) {
                     const int n = std::min(outbox, net::cmdSendWindow(credit, inFlight));
                     for (int i = 0; i < n; ++i) {
-                        if (serverQueue.size() >= size_t(net::kCmdQueueCap)) { ++dropped; continue; }
-                        serverQueue.push_back(1);
+                        if (serverQueue.size() >= size_t(net::kCmdQueueCap)) { ++r.dropped; ++nextId; continue; }
+                        serverQueue.push_back(nextId++);
                     }
                     outbox -= n; credit -= n; inFlight += n;
                 }
-                // A consumed HISTORICAL bundle carries our own old commands. If the
-                // gate let us send, those get miscounted as acknowledgements.
                 if (consumedHistory && !holding)
                     for (int i = 0; i < net::kCmdCapPerTick && inFlight > 0; ++i) --inFlight;
-                // The server is busy replaying; it drains our new commands only once
-                // history is done.
                 if (replayed >= replayTicks)
                     for (int k = 0; k < net::kCmdCapPerTick && !serverQueue.empty(); ++k) {
+                        got.push_back(serverQueue.front());
                         serverQueue.pop_front();
                         if (inFlight > 0) --inFlight;
                     }
             }
-            return dropped;
+            r.delivered = int(got.size());
+            r.outboxLeft = outbox;
+            for (size_t i = 1; i < got.size(); ++i)
+                if (got[i] < got[i - 1]) { r.ordered = false; break; }
+            return r;
         };
         for (int gap : {1, 3, 8}) {
-            check(rejoin(1, 20, gap) == 0,
+            const RJ ok = rejoin(1, 20, gap);
+            check(ok.unlocked && ok.outboxLeft == 0 && ok.dropped == 0 &&
+                      ok.delivered == 1500 && ok.ordered,
                   "chunked replay, gap " + std::to_string(gap) +
-                      ": server boundary holds the gate",
-                  "dropped=" + std::to_string(rejoin(1, 20, gap)));
+                      ": gate unlocks, every queued order arrives in order",
+                  "unlocked=" + std::string(ok.unlocked ? "y" : "n") +
+                      " delivered=" + std::to_string(ok.delivered) +
+                      " outboxLeft=" + std::to_string(ok.outboxLeft) +
+                      " dropped=" + std::to_string(ok.dropped) +
+                      (ok.ordered ? "" : " ORDER BROKEN"));
             // Counter-case: the buffer-depth heuristic opens the gate in the gap
-            // between chunks, exactly the failure this boundary exists to prevent.
-            check(rejoin(0, 20, gap) > 0,
+            // between chunks, exactly the failure the boundary exists to prevent.
+            const RJ bad = rejoin(0, 20, gap);
+            check(bad.dropped > 0,
                   "...and a buffer-depth guess opens it mid-replay (counter-case)",
-                  "dropped=" + std::to_string(rejoin(0, 20, gap)));
+                  "dropped=" + std::to_string(bad.dropped));
         }
     }
 

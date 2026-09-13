@@ -1004,6 +1004,20 @@ void Server::leaveRoom(Client& c, const char* reason) {
     // player stamp and unit ids into a world where those ids mean something else.
     c.cmdQueue.clear();
     c.cmdDropped = 0;
+    // And the ones already SCHEDULED. With server input delay (TAK_SRV_DELAY > 0)
+    // a departing player's commands sit in pendingAt buckets several ticks out,
+    // which put them in bundles AFTER the replay boundary a rejoin is given -- so
+    // they arrived looking like acknowledgements for commands sent post-rejoin.
+    // A player who has just dropped should not have orders fire seconds later
+    // either. Safe to purge: nothing here has been bundled or broadcast yet, so
+    // every peer still agrees.
+    if (c.slot >= 0)
+        for (auto& [tick, cmds] : r->pendingAt)
+            cmds.erase(std::remove_if(cmds.begin(), cmds.end(),
+                                      [&](const Command& q) {
+                                          return int(q.player) == c.slot;
+                                      }),
+                       cmds.end());
     // A spectator just detaches from the stream -- no slot, nothing to forfeit.
     {
         auto& sp = r->spectators;
