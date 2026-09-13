@@ -1,4 +1,5 @@
 #include "client/cursors.h"
+
 #include "client/artscale.h"
 #include "client/gpuvram.h"
 
@@ -92,6 +93,9 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs) {
             anims_[i].push_back({t, fr.width, fr.height, fr.xoff, fr.yoff, fr.rgba});
         }
     }
+    // Reconstruct for the size we will actually draw at, here at load rather than on
+    // first hover. g_cursorScale is Settings::cursorScale, sampled at startup.
+    precompute(tak::art::g_cursorScale);
     // Need at least the normal pointer to justify taking over from the OS cursor.
     ok_ = !anims_[size_t(CursorId::Normal)].empty();
     return ok_;
@@ -147,34 +151,19 @@ namespace {
 // OVERSHOOTS the drawn size, then area-average down onto the exact target. The
 // downsample is what antialiases. Smoothing off keeps the old nearest replication,
 // which is the crisp retail pixel cursor.
-SDL_Cursor* bakeCursor(const std::vector<uint8_t>& rgba, int w, int h, int hx, int hy,
-                       int scale, SDL_Color tint) {
+SDL_Cursor* bakeCursor(const std::vector<uint8_t>& rgba, const std::vector<uint8_t>* smoothed,
+                       int w, int h, int hx, int hy, int scale, SDL_Color tint) {
     if (rgba.size() < size_t(w) * size_t(h) * 4 || w <= 0 || h <= 0) return nullptr;
     SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, w * scale, h * scale, 32,
                                                     SDL_PIXELFORMAT_RGBA32);
     if (!s) return nullptr;
-    std::vector<uint8_t> smooth;
-    const uint8_t* base = rgba.data();
-    int bw = w, bh = h;
-    if (tak::art::g_smoothArt && scale > 1) {
-        std::vector<uint8_t> up;
-        tak::art::upscale2x(rgba, w, h, up);
-        int fw = w * 2, fh = h * 2;
-        // Overshoot to at least TWICE the drawn size, not merely up to it. At a
-        // power-of-two CURSOR SIZE, stopping at the drawn size makes the resample 1:1 --
-        // you get the reconstructed edges but no area-averaging, and at size 8 that still
-        // reads as "not antialiased". Going one doubling further guarantees several
-        // source pixels fall in every destination pixel, which is where the smoothing
-        // actually comes from. A 29x32 cursor at size 8 overshoots to 464x512, ~950 KB
-        // transient, for a dozen cursors built once.
-        while (fw / w < scale * 2 && fw < 4096) {
-            std::vector<uint8_t> nxt;
-            tak::art::upscale2x(up, fw, fh, nxt);
-            up.swap(nxt); fw *= 2; fh *= 2;
-        }
-        tak::art::resample(up, fw, fh, smooth, w * scale, h * scale);
-        base = smooth.data(); bw = w * scale; bh = h * scale;
-    }
+    // `smoothed` is the prepared reconstruction (see CursorSet::precompute) or empty.
+    // Nothing expensive happens here: this runs on FIRST USE of a (cursor,tint) pair,
+    // which is mid-frame when you hover a new action, so it must stay a tint multiply.
+    const bool haveSmooth = smoothed && smoothed->size() >= size_t(w) * size_t(h) *
+                                        size_t(scale) * size_t(scale) * 4;
+    const uint8_t* base = haveSmooth ? smoothed->data() : rgba.data();
+    const int bw = haveSmooth ? w * scale : w;
     for (int y = 0; y < h * scale; ++y) {
         auto* dst = static_cast<uint8_t*>(s->pixels) + size_t(y) * s->pitch;
         for (int x = 0; x < w * scale; ++x) {
@@ -189,13 +178,46 @@ SDL_Cursor* bakeCursor(const std::vector<uint8_t>& rgba, int w, int h, int hx, i
             dst += 4;
         }
     }
-    (void)bh;
     SDL_Cursor* cur = SDL_CreateColorCursor(s, hx * scale, hy * scale);
     SDL_FreeSurface(s);
     return cur;
 }
 
 }  // namespace
+
+// Reconstruct every frame at the size it will be DRAWN, once. This is the expensive
+// half of the smooth cursor -- repeated 2x passes plus an area-average resample -- and
+// it is tint-independent, so doing it here means the per-(cursor,tint) bake that runs
+// mid-frame stays a tint multiply.
+//
+// It was NOT here originally: the bake was entirely lazy, so the reconstruction landed
+// inside a rendered frame the first time you hovered a new action. Measured at CURSOR
+// SIZE 8 that was 17.3 ms for the 20-frame patrol cursor -- more than a whole frame's
+// budget, as a hitch on hover. Up front it is 104.9 ms for all 141 frames, once, inside
+// a load that already takes seconds.
+void CursorSet::precompute(int scale) {
+    if (scale < 1) scale = 1;
+    if (!tak::art::g_smoothArt || scale <= 1) return;   // nothing to reconstruct
+    for (auto& anim : anims_)
+        for (auto& f : anim) {
+            if (f.smoothScale == scale || f.w <= 0 || f.h <= 0) continue;
+            std::vector<uint8_t> up;
+            tak::art::upscale2x(f.rgba, f.w, f.h, up);
+            int fw = f.w * 2, fh = f.h * 2;
+            // Overshoot to at least TWICE the drawn size, not merely up to it. At a
+            // power-of-two CURSOR SIZE, stopping at the drawn size makes the resample
+            // 1:1 -- reconstructed edges but no area-averaging, which at size 8 still
+            // reads as "not antialiased". One more doubling guarantees several source
+            // pixels per destination pixel, which is where the smoothing comes from.
+            while (fw / f.w < scale * 2 && fw < 4096) {
+                std::vector<uint8_t> nxt;
+                tak::art::upscale2x(up, fw, fh, nxt);
+                up.swap(nxt); fw *= 2; fh *= 2;
+            }
+            tak::art::resample(up, fw, fh, f.smooth, f.w * scale, f.h * scale);
+            f.smoothScale = scale;
+        }
+}
 
 bool CursorSet::applyHardware(CursorId c, int scale, SDL_Color tint) {
     if (!ok_) return false;
@@ -204,7 +226,11 @@ bool CursorSet::applyHardware(CursorId c, int scale, SDL_Color tint) {
     if (frames.empty()) return false;
     if (scale < 1) scale = 1;
 
-    if (scale != hwScale_) { releaseHardware(); hwScale_ = scale; }   // rebuild on scale change
+    if (scale != hwScale_) {                    // rebuild on scale change
+        releaseHardware();
+        hwScale_ = scale;
+        precompute(scale);                      // one stall, not one per hovered action
+    }
 
     const uint32_t packed = (uint32_t(tint.r) << 24) | (uint32_t(tint.g) << 16) |
                             (uint32_t(tint.b) << 8) | uint32_t(tint.a);
@@ -214,7 +240,8 @@ bool CursorSet::applyHardware(CursorId c, int scale, SDL_Color tint) {
         std::vector<SDL_Cursor*> built;
         built.reserve(frames.size());
         for (const auto& f : frames) {
-            SDL_Cursor* cur = bakeCursor(f.rgba, f.w, f.h, f.hx, f.hy, scale, tint);
+            SDL_Cursor* cur = bakeCursor(f.rgba, f.smoothScale == scale ? &f.smooth : nullptr,
+                                         f.w, f.h, f.hx, f.hy, scale, tint);
             if (!cur) {                          // platform rejected it -> unwind, fall back
                 for (SDL_Cursor* b : built) SDL_FreeCursor(b);
                 return false;

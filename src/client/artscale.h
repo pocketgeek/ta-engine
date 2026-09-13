@@ -33,6 +33,7 @@
 #include <SDL2/SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <vector>
@@ -120,24 +121,38 @@ inline void resample(const std::vector<uint8_t>& src, int sw, int sh,
                      std::vector<uint8_t>& dst, int dw, int dh) {
     dst.assign(size_t(dw) * size_t(dh) * 4, 0);
     if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return;
+    // Fractional coverage, not whole-pixel bins. The ratio is rarely integral -- an 8x
+    // reconstruction landing on CURSOR SIZE 3 is 8/3 -- and snapping each destination
+    // pixel to whole source pixels gives neighbours different footprints (2 columns
+    // here, 3 there), which shows up as uneven smoothing along an edge. Weighting the
+    // boundary pixels by how much of them the destination pixel actually covers makes
+    // every output pixel an equal-area average.
+    const double rx = double(sw) / double(dw), ry = double(sh) / double(dh);
     for (int dy = 0; dy < dh; ++dy) {
-        const int y0 = dy * sh / dh, y1 = std::max(y0 + 1, (dy + 1) * sh / dh);
+        const double sy0 = dy * ry, sy1 = sy0 + ry;
+        const int iy0 = int(sy0), iy1 = std::min(sh - 1, int(std::ceil(sy1)) - 1);
         for (int dx = 0; dx < dw; ++dx) {
-            const int x0 = dx * sw / dw, x1 = std::max(x0 + 1, (dx + 1) * sw / dw);
-            long r = 0, g = 0, b = 0, a = 0, n = 0;
-            for (int y = y0; y < y1 && y < sh; ++y)
-                for (int x = x0; x < x1 && x < sw; ++x) {
+            const double sx0 = dx * rx, sx1 = sx0 + rx;
+            const int ix0 = int(sx0), ix1 = std::min(sw - 1, int(std::ceil(sx1)) - 1);
+            double r = 0, g = 0, b = 0, a = 0, wsum = 0;
+            for (int y = iy0; y <= iy1; ++y) {
+                const double wy = std::min<double>(y + 1, sy1) - std::max<double>(y, sy0);
+                if (wy <= 0) continue;
+                for (int x = ix0; x <= ix1; ++x) {
+                    const double wx = std::min<double>(x + 1, sx1) - std::max<double>(x, sx0);
+                    if (wx <= 0) continue;
                     const uint8_t* p = &src[(size_t(y) * size_t(sw) + size_t(x)) * 4];
-                    const long pa = p[3];
-                    r += long(p[0]) * pa; g += long(p[1]) * pa; b += long(p[2]) * pa;
-                    a += pa; ++n;
+                    const double wgt = wx * wy, pa = double(p[3]) * wgt;
+                    r += double(p[0]) * pa; g += double(p[1]) * pa; b += double(p[2]) * pa;
+                    a += pa; wsum += wgt;
                 }
+            }
             uint8_t* o = &dst[(size_t(dy) * size_t(dw) + size_t(dx)) * 4];
-            if (!n || !a) { o[0] = o[1] = o[2] = o[3] = 0; continue; }
-            o[0] = uint8_t(std::min<long>(255, r / a));
-            o[1] = uint8_t(std::min<long>(255, g / a));
-            o[2] = uint8_t(std::min<long>(255, b / a));
-            o[3] = uint8_t(a / n);
+            if (wsum <= 0 || a <= 0) { o[0] = o[1] = o[2] = o[3] = 0; continue; }
+            o[0] = uint8_t(std::min(255.0, r / a + 0.5));
+            o[1] = uint8_t(std::min(255.0, g / a + 0.5));
+            o[2] = uint8_t(std::min(255.0, b / a + 0.5));
+            o[3] = uint8_t(std::min(255.0, a / wsum + 0.5));
         }
     }
 }
@@ -164,7 +179,9 @@ inline void setSmoothArt(bool on) { g_smoothArt = on; }
 // it downsamples in software with a proper box filter (resample above), so it overshoots
 // 2x on purpose. Same option, two different right answers.
 inline int g_cursorFactor = 2;
+inline int g_cursorScale = 1;     // the raw Settings::cursorScale, for precomputation
 inline void setCursorFactor(int cursorScale) {
+    g_cursorScale = cursorScale < 1 ? 1 : cursorScale;
     int f = 2;
     while (f < cursorScale && f < 8) f *= 2;
     g_cursorFactor = f;

@@ -81,7 +81,16 @@ private:
         SDL_Texture* tex = nullptr;
         int w = 0, h = 0, hx = 0, hy = 0;
         std::vector<uint8_t> rgba;   // kept (RGBA32) so hardware SDL_Cursors can be baked
+        // Smooth-art reconstruction of `rgba` at exactly w*smoothScale x h*smoothScale.
+        // Tint-INDEPENDENT, which is the whole point: the reconstruction is the expensive
+        // part and the tint is a multiply, so caching this shares the cost across every
+        // (cursor, tint) combination instead of paying it per combination.
+        std::vector<uint8_t> smooth;
+        int smoothScale = 0;         // 0 = not built
     };
+    // Build every frame's `smooth` for this draw scale. Called once at load (and again
+    // if CURSOR SIZE changes) so the work does not land inside a rendered frame.
+    void precompute(int scale);
     std::array<std::vector<Frame>, size_t(CursorId::Count)> anims_;
     bool ok_ = false;
     CursorId cur_ = CursorId::Count;   // != any real id, so the first draw seeds the clock
