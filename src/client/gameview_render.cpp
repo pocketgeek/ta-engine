@@ -292,6 +292,21 @@
                 //
                 // Costs nothing: the vertices are identical, only their position in the
                 // draw order changes. Measured at ~1180 units, shadow 2.2 -> 2.3ms.
+                //
+                // Only the AIRBORNE layer gets this treatment, and the reason is
+                // measured. Going the whole way -- emitting every unit's shadow inside
+                // its own draw, as retail does -- was prototyped for real and costs:
+                //
+                //     draw ops   6322 -> 8443  (+34%: 1095 shadow ops, and the body
+                //                               segments fragment 6271 -> 7297 because
+                //                               each flip has to close the running run)
+                //     present    5.7 -> 7.7ms  (the extra flushes, GPU side)
+                //     fps        57 -> 51      (-11% at ~1180 visible units)
+                //
+                // Eleven percent to let a GROUND unit's shadow fall on the unit behind
+                // it is not a trade worth making; the flyer case is where the effect is
+                // actually visible, and it costs nothing because it is ONE boundary
+                // rather than one per unit.
                 if (it.layer == 1) { airShadows_.push_back(&gsh); continue; }
                 profShadowVerts_ += uint64_t(gsh.shadowVerts.size());
                 // One colour and one texcoord at stride 0 -- SDL reads element 0 per
