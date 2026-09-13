@@ -1277,9 +1277,16 @@ itself and is faction-independent.
   * `QueryNanoPiece` -- RETRACTED, see below. I claimed our sparkle "does not
     originate where retail's does". It does. Chased it down and the opposite is
     true.
-  * Unit value 30 is still answered with 0. ONE use, in lifbird's FlightControl,
-    compared against -50; 0 takes the hover branch, which is the right look for
-    a bird at rest, but it has not been verified against the handler (0x4dc1f0).
+  * Unit value 30 is still answered with 0, and staying that way deliberately.
+    Its handler (`0x50d2e0` -> `0x4dc1f0`) is flyer-only: it bails unless
+    UnitDef+0x260 bit 0x800 (canfly) is set, then computes
+    `typeField * unit[+0x12b] / 16`, picking the type field (`+0x172` or
+    `+0x16e`) off a state bit -- a signed, scaled velocity of some kind. The
+    only consumer in the shipped data is ONE script in ONE unit (lifbird's
+    FlightControl), which compares it against -50 to pick a third animation
+    branch; 0 takes the hover branch, which is the right look for a bird at
+    rest. Not worth pinning down the exact quantity for one NPC bird's dive
+    pose, but that is the shape of it if it ever matters.
 
 ## The build sparkle: QueryNanoPiece is vestigial (2026-09-12)
 

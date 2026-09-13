@@ -268,75 +268,23 @@
         // texture. Drawn first so all shadows sit under all bodies. (Special units
         // draw their own shadow inside drawUnit in pass 2.)
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        const double _sh0 = double(SDL_GetPerformanceCounter());
         shadowBatch_.clear();
         shadowLo_ = {1e30f, 1e30f};
         shadowHi_ = {-1e30f, -1e30f};
+        // Concatenate what the workers already built. No model walking here.
         for (const auto& it : items) {
             if (!it.u) continue;
-            const auto& u = *it.u;
-            // PROJECTED SILHOUETTE. The unit's own triangles, flattened onto
-            // the ground and leaned away from it by the light -- which is why a
-            // shadow follows a Monarch's sword and cape instead of sitting under
-            // him as a disc.
-            //
-            // Two earlier attempts are worth naming. A fixed 14x5 blob was our
-            // own invention, the same size for every unit. The model's ground
-            // plate (AraGP, a flat unit-sized quad at y=0) looked like a better
-            // answer and is not one: it can only ever be a rectangle, and a
-            // silhouette is not.
-            if (u.alive() && !u.underConstruction && castsBlobShadow(u.type)) {
-                auto vt = visuals_.find(u.type->id);
-                // A unit whose BODY draws as an impostor must not walk its full
-                // model for a shadow: that inverts the LOD, making the cheap
-                // units the expensive ones. They are a few pixels across, where
-                // the silhouette cannot read anyway -- the sprite shadow path
-                // skipped them for the same reason, and retail has its own
-                // shadow LOD in ShadowScale.
-                int gsl = geomSlot(u.id);
-                const bool impostor =
-                    impAtlas_ && gsl >= 0 && !geomPool_[size_t(gsl)].runs.empty() &&
-                    geomPool_[size_t(gsl)].runs[0].first == impAtlas_;
-                if (vt != visuals_.end() && !impostor) {
-                    const Anim* anim = nullptr;
-                    if (auto at = anims_.find(u.id); at != anims_.end())
-                        anim = &at->second;
-                    const float facing =
-                        (u.type->canMove || u.type->canFly) ? -u.heading : 0.0f;
-                    shadowTris_.clear();
-                    collect(shadowTris_, nullptr, vt->second.model.root, Xform{},
-                            anim, facing, u.player, false, true, /*shadow=*/true);
-                    // Anchor on the BODY, not on a re-derived ground point, and
-                    // apply retail's delta. Both projections in 0x4ec250 start
-                    // from the same vertex, so the shadow is always exactly
-                    // (+y/4, +y/4) from the model in screen space -- and pinning
-                    // it to the body is the only way to stay true to that through
-                    // our own lift conventions. Re-deriving the ground point got
-                    // this wrong for flyers: they are exempt from the terrain
-                    // lift, so the shadow picked up a lift the body never had and
-                    // the horizontal lean cancelled out to nothing.
-                    int gs = geomSlot(u.id);
-                    if (gs < 0) continue;
-                    const UnitGeom& gsh = geomPool_[size_t(gs)];
-                    const float alt = gsh.alt;
-                    const float sx = gsh.ax + kShadowLX * alt * zm0;
-                    // ay carries alt*kProjY of up-screen lift; the shadow wants
-                    // only alt*kShadowLZ of it, so the difference comes back down.
-                    const float sy = gsh.ay + (kProjY - kShadowLZ) * alt * zm0;
-                    // Accumulate the composite bounds here rather than rescanning
-                    // the whole vertex buffer afterwards.
-                    for (const Tri& t : shadowTris_)
-                        for (int k = 0; k < 3; ++k) {
-                            SDL_Vertex v = t.v[k];
-                            v.position = {sx + v.position.x * zm0,
-                                          sy + v.position.y * zm0};
-                            shadowLo_.x = std::min(shadowLo_.x, v.position.x);
-                            shadowLo_.y = std::min(shadowLo_.y, v.position.y);
-                            shadowHi_.x = std::max(shadowHi_.x, v.position.x);
-                            shadowHi_.y = std::max(shadowHi_.y, v.position.y);
-                            shadowBatch_.push_back(v);
-                        }
-                }
-            }
+            const int gs = geomSlot(it.u->id);
+            if (gs < 0) continue;
+            const UnitGeom& gsh = geomPool_[size_t(gs)];
+            if (gsh.shadowVerts.empty()) continue;
+            shadowLo_.x = std::min(shadowLo_.x, gsh.shadowLo.x);
+            shadowLo_.y = std::min(shadowLo_.y, gsh.shadowLo.y);
+            shadowHi_.x = std::max(shadowHi_.x, gsh.shadowHi.x);
+            shadowHi_.y = std::max(shadowHi_.y, gsh.shadowHi.y);
+            shadowBatch_.insert(shadowBatch_.end(), gsh.shadowVerts.begin(),
+                                gsh.shadowVerts.end());
         }
         // Composite the silhouettes through a COVERAGE MASK rather than drawing
         // them straight onto the scene. Drawn directly, every triangle blends
@@ -397,6 +345,8 @@
                                    int(shadowBatch_.size()), nullptr, 0);
             }
         }
+
+        profShadowMs_ += (double(SDL_GetPerformanceCounter()) - _sh0) / _ptFreq;
 
         // Pass 2: bodies (feature sprites + unit models) in depth order. Unit
         // models are accumulated into one batch and flushed only when the texture
@@ -1799,6 +1749,8 @@
                     g.runs.push_back({ss.page, 6});
                     g.ax = ax; g.ay = ay; g.alt = alt;
                     g.occY = wallOcclusionY(u.x, u.z);
+                    // A sprite-drawn unit is still the unit: it casts.
+                    buildUnitShadow(u, g, vt->second.model.root, anim, -ih, zm, scratch);
                     return;
                 }
             }
@@ -1826,6 +1778,9 @@
                 g.runs.push_back({impAtlas_, 6});
                 g.ax = ax; g.ay = ay; g.alt = alt;
                 g.occY = wallOcclusionY(u.x, u.z);
+                // Impostor: a few pixels across, where a silhouette cannot read.
+                // No shadow, and no full-model walk to build one.
+                g.shadowVerts.clear();
                 return;
             }
         }
@@ -1947,6 +1902,34 @@
         }
         if (int(g.verts.size()) > runStart)
             g.runs.push_back({cur, int(g.verts.size()) - runStart});
+
+        buildUnitShadow(u, g, vt->second.model.root, anim, facing, zm, scratch);
+    }
+
+    // Reuses `scratch`: whatever the caller had in it is already consumed.
+    void GameView::buildUnitShadow(const UnitR& u, UnitGeom& g,
+                                   const tak::tdo::Object& root, const Anim* anim,
+                                   float facing, float zm, std::vector<Tri>& scratch) {
+        g.shadowVerts.clear();
+        g.shadowLo = {1e30f, 1e30f};
+        g.shadowHi = {-1e30f, -1e30f};
+        if (u.underConstruction || !castsBlobShadow(u.type)) return;
+        scratch.clear();
+        collect(scratch, nullptr, root, Xform{}, anim, facing, u.player, false, true,
+                /*shadow=*/true);
+        const float sx = g.ax + kShadowLX * g.alt * zm;
+        const float sy = g.ay + (kProjY - kShadowLZ) * g.alt * zm;
+        g.shadowVerts.reserve(scratch.size() * 3);
+        for (const Tri& t : scratch)
+            for (int k = 0; k < 3; ++k) {
+                SDL_Vertex v = t.v[k];
+                v.position = {sx + v.position.x * zm, sy + v.position.y * zm};
+                g.shadowLo.x = std::min(g.shadowLo.x, v.position.x);
+                g.shadowLo.y = std::min(g.shadowLo.y, v.position.y);
+                g.shadowHi.x = std::max(g.shadowHi.x, v.position.x);
+                g.shadowHi.y = std::max(g.shadowHi.y, v.position.y);
+                g.shadowVerts.push_back(v);
+            }
     }
 
     void GameView::drawUnit(const UnitR& u) {

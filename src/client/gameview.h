@@ -773,7 +773,8 @@ public:
     void prepare(int winW, int winH);
 
     // Fetch and reset the per-draw sub-phase timers (for TAK_PROF).
-    void takeProf(double& projMs, double& submitMs, double& simMs, long& lod, long& full);
+    void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs,
+                  long& lod, long& full);
 
     void draw(int winW, int winH);
 
@@ -1133,6 +1134,13 @@ private:
         std::vector<std::pair<SDL_Texture*, int>> runs; // (texture, vertex count)
         float ax = 0, ay = 0, occY = 0, alt = 0;
         bool canFly = false;
+        // The projected silhouette, built HERE (on the worker) rather than on the
+        // render thread. Measured at 1162 units: the serial version cost ~145ms of
+        // a ~208ms draw -- the whole submit phase -- because every unit walked its
+        // model a second time on the main thread while the body walk was already
+        // parallel. Same traversal, same pool, so it costs what the body costs.
+        std::vector<SDL_Vertex> shadowVerts;
+        SDL_FPoint shadowLo{}, shadowHi{};   // screen bounds of the above
     };
     std::vector<const UnitR*> visUnits_;
     std::vector<SDL_Vertex> unitBatch_, shadowBatch_;   // cross-unit render batches
@@ -1177,6 +1185,7 @@ private:
     std::vector<CopyTask> copyTasks_;
     std::vector<DrawOp> drawOps_;
     double profProjMs_ = 0, profSubmitMs_ = 0;   // TAK_PROF sub-phase timers (main thread)
+    double profShadowMs_ = 0;   // the projected-silhouette pass, inside submit
     std::atomic<int64_t> profSimTicks_{0};        // sim-tick time in raw perf-counter ticks,
                                                   // accumulated by the worker, read/reset on main.
                                                   // Integer atomic -- portable (atomic<double>
@@ -1408,6 +1417,14 @@ private:
     // ...or headbanging to heavy metal (a monarch whose player hit Shift+H)?
     bool headbanging(const UnitR& u) const;
 
+    // The projected silhouette for one unit, into g.shadowVerts. Split out because
+    // the body has three LOD exits (full model, sprite atlas, impostor) and the
+    // shadow has to be emitted on two of them -- a sprite-drawn unit still looks
+    // like itself and still casts. Missing that is exactly how the first version
+    // of the worker-side build silently dropped every flyer's shadow.
+    void buildUnitShadow(const UnitR& u, UnitGeom& g, const tak::tdo::Object& root,
+                         const Anim* anim, float facing, float zm,
+                         std::vector<Tri>& scratch);
     void buildUnitGeom(const UnitR& u, UnitGeom& g, std::vector<Tri>& scratch);
 
     // Sprinkle the faction build/summon nano-sparkle over a screen footprint centred at

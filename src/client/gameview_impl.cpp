@@ -1564,11 +1564,12 @@
         sounds_.setListener(mapView_.offX() + halfW, mapView_.offY() + halfH, halfW, halfH);
     }
 
-    void GameView::takeProf(double& projMs, double& submitMs, double& simMs, long& lod, long& full) {
-        projMs = profProjMs_; submitMs = profSubmitMs_;
+    void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
+                            double& simMs, long& lod, long& full) {
+        projMs = profProjMs_; submitMs = profSubmitMs_; shadowMs = profShadowMs_;
         simMs = double(profSimTicks_.exchange(0)) * 1000.0 / double(SDL_GetPerformanceFrequency());
         lod = lodDrawn_; full = fullDrawn_;
-        profProjMs_ = 0; profSubmitMs_ = 0; lodDrawn_ = 0; fullDrawn_ = 0;   // profSimTicks_ reset via exchange above
+        profProjMs_ = 0; profSubmitMs_ = 0; profShadowMs_ = 0; lodDrawn_ = 0; fullDrawn_ = 0;   // profSimTicks_ reset via exchange above
     }
 
     void GameView::advance(float seconds) {

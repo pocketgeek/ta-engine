@@ -1322,14 +1322,14 @@ int main(int argc, char** argv) {
             pPres += t5 - t4;
             pAcc += t5 - t0; ++pFrames;
             if (pAcc >= 1000.0) {
-                double proj = 0, submit = 0, sim = 0; long lod = 0, full = 0;
-                if (gameView) gameView->takeProf(proj, submit, sim, lod, full);
+                double proj = 0, submit = 0, shadow = 0, sim = 0; long lod = 0, full = 0;
+                if (gameView) gameView->takeProf(proj, submit, shadow, sim, lod, full);
                 std::printf("PROF fps=%.0f | update=%.1f [sim=%.1f] draw=%.1f "
-                            "[proj=%.1f submit=%.1f other=%.1f] present=%.1f | "
+                            "[proj=%.1f submit=%.1f (shadow=%.1f) other=%.1f] present=%.1f | "
                             "impostor=%ld full=%ld\n",
                             pFrames * 1000.0 / pAcc, pUpd / pFrames, sim / pFrames,
                             pDraw / pFrames, proj / pFrames, submit / pFrames,
-                            (pDraw - proj - submit) / pFrames, pPres / pFrames,
+                            shadow / pFrames, (pDraw - proj - submit) / pFrames, pPres / pFrames,
                             lod / std::max(1, pFrames), full / std::max(1, pFrames));
                 std::fflush(stdout);
                 pUpd = pDraw = pPres = pAcc = 0; pFrames = 0;
