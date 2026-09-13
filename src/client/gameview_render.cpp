@@ -282,7 +282,7 @@
             // plate (AraGP, a flat unit-sized quad at y=0) looked like a better
             // answer and is not one: it can only ever be a rectangle, and a
             // silhouette is not.
-            if (u.alive() && castsBlobShadow(u.type)) {
+            if (u.alive() && !u.underConstruction && castsBlobShadow(u.type)) {
                 auto vt = visuals_.find(u.type->id);
                 if (vt != visuals_.end()) {
                     const Anim* anim = nullptr;
@@ -293,10 +293,23 @@
                     shadowTris_.clear();
                     collect(shadowTris_, nullptr, vt->second.model.root, Xform{},
                             anim, facing, u.player, false, true, /*shadow=*/true);
-                    const float sx = (u.x - mapView_.offX()) * zm0
-                                     - terrainLiftX(u.x, u.z) * zm0;
-                    const float sy = (u.z - mapView_.offY()) * zm0
-                                     - terrainLift(u.x, u.z) * zm0;
+                    // Anchor on the BODY, not on a re-derived ground point, and
+                    // apply retail's delta. Both projections in 0x4ec250 start
+                    // from the same vertex, so the shadow is always exactly
+                    // (+y/4, +y/4) from the model in screen space -- and pinning
+                    // it to the body is the only way to stay true to that through
+                    // our own lift conventions. Re-deriving the ground point got
+                    // this wrong for flyers: they are exempt from the terrain
+                    // lift, so the shadow picked up a lift the body never had and
+                    // the horizontal lean cancelled out to nothing.
+                    int gs = geomSlot(u.id);
+                    if (gs < 0) continue;
+                    const UnitGeom& gsh = geomPool_[size_t(gs)];
+                    const float alt = gsh.alt;
+                    const float sx = gsh.ax + kShadowLX * alt * zm0;
+                    // ay carries alt*kProjY of up-screen lift; the shadow wants
+                    // only alt*kShadowLZ of it, so the difference comes back down.
+                    const float sy = gsh.ay + (kProjY - kShadowLZ) * alt * zm0;
                     for (const Tri& t : shadowTris_)
                         for (int k = 0; k < 3; ++k) {
                             SDL_Vertex v = t.v[k];
@@ -310,35 +323,6 @@
         if (!shadowBatch_.empty())
             SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
                                int(shadowBatch_.size()), nullptr, 0);
-        {   // FBI shadow sprites, batched by shadow texture (flush on change).
-            unitBatch_.clear();
-            SDL_Texture* st = nullptr;
-            auto flush = [&] {
-                if (!unitBatch_.empty() && st)   // null = failed shadow tex: skip
-                    SDL_RenderGeometry(ren_, st, unitBatch_.data(),
-                                       int(unitBatch_.size()), nullptr, 0);
-                unitBatch_.clear();
-            };
-            for (const auto& it : items) {
-                if (!it.u) continue;
-                const auto& u = *it.u;
-                int gslot = geomSlot(u.id);
-                if (gslot < 0) continue;
-                const UnitGeom& g = geomPool_[size_t(gslot)];
-                if (special(u, g) || !u.type || u.underConstruction) continue;
-                if (!castsShadow(u.type)) continue;   // noshadow / floater / building
-                // Impostor-sized units are too small for a ground shadow to read.
-                if (impAtlas_ && !g.runs.empty() && g.runs[0].first == impAtlas_) continue;
-                const ShadowTex* sh = shadowFor(u.type->shadowArt);
-                if (!sh) continue;
-                if (sh->tex != st) { flush(); st = sh->tex; }
-                float sox = (6.0f + g.alt * 0.5f) * zm0, soy = (3.0f + g.alt * 0.25f) * zm0;
-                pushQuad(unitBatch_, g.ax - sh->xoff * zm0 + sox,
-                         g.ay - sh->yoff * zm0 + soy, sh->w * zm0, sh->h * zm0,
-                         SDL_Color{255, 255, 255, 255});
-            }
-            flush();
-        }
 
         // Pass 2: bodies (feature sprites + unit models) in depth order. Unit
         // models are accumulated into one batch and flushed only when the texture
@@ -1927,17 +1911,37 @@
             SDL_Rect top{0, 0, outW, line};   // only pixels above the wall top show
             SDL_RenderSetClipRect(ren_, &top);
         }
-        // Ground shadow (FBI shadowart, from shadows.gaf): drawn under the model
-        // at the unit's ground point, nudged for the sun; a flyer's shadow sits
-        // further out and stays on the ground while the model rides its altitude.
+        // Ground shadow: the same projected silhouette pass 1 batches, drawn here
+        // for the units that route through drawUnit whole (occluded, conjuring,
+        // working, dancing). Same shear, so a unit does not change shadow when it
+        // picks up a build order and moves between the two paths.
         if (u.type && !u.underConstruction && !u.corpsePhase && castsShadow(u.type)) {
-            if (const ShadowTex* sh = shadowFor(u.type->shadowArt)) {
-                float alt = anim ? anim->altitude : 0.0f;
-                float sox = (6.0f + alt * 0.5f) * zm, soy = (3.0f + alt * 0.25f) * zm;
-                SDL_FRect dst{ax - sh->xoff * zm + sox, ay - sh->yoff * zm + soy,
-                              sh->w * zm, sh->h * zm};
-                SDL_RenderCopyF(ren_, sh->tex, nullptr, &dst);
-            }
+            const float facing =
+                (u.type->canMove || u.type->canFly) ? -u.heading : 0.0f;
+            shadowTris_.clear();
+            collect(shadowTris_, nullptr, vt->second.model.root, Xform{}, anim,
+                    facing, u.player, false, true, /*shadow=*/true);
+            // g.alt, not anim->altitude: a flyer with no live anim entry still
+            // flies, and the geometry builder gives it cruisealt. Reading the anim
+            // directly hands the shadow a 0 while the body rides its real height,
+            // which collapses the lean to nothing.
+            const float alt = g.alt;
+            const float sx = ax + kShadowLX * alt * zm;
+            // ay already carries the model's altitude lift, which is alt*kProjY
+            // up-screen. The shadow wants alt*kShadowLZ up from the GROUND point,
+            // so undo the larger lift and re-apply the smaller one: net alt/4 back
+            // DOWN from the body. (Pass 1 anchors on the ground and subtracts.)
+            const float sy = ay + (kProjY - kShadowLZ) * alt * zm;
+            shadowBatch_.clear();
+            for (const Tri& t : shadowTris_)
+                for (int k = 0; k < 3; ++k) {
+                    SDL_Vertex v = t.v[k];
+                    v.position = {sx + v.position.x * zm, sy + v.position.y * zm};
+                    shadowBatch_.push_back(v);
+                }
+            if (!shadowBatch_.empty())
+                SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
+                                   int(shadowBatch_.size()), nullptr, 0);
         }
         // Disco dance floor: a pulsing, hue-cycling glow disc under a dancing monarch.
         if (dancing(u)) {

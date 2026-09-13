@@ -1409,8 +1409,22 @@ private:
     // model space. A vertex at height y lands on the ground at
     // (x + kShadowLX*y, 0, z + kShadowLZ*y), which is what makes the silhouette
     // lean away from the unit instead of sitting under it as a disc.
-    static constexpr float kShadowLX = 0.55f;
-    static constexpr float kShadowLZ = 0.35f;
+    //
+    // Both are a quarter, straight out of the retail projection at 0x4ec250.
+    // That routine projects model vertices in 16.16 fixed point and takes a flag
+    // deciding which of two shears to apply:
+    //
+    //     model  (flag 0):  screen = ( x,         -z - y/2 )   <- our kProjY
+    //     shadow (flag 1):  screen = ( x + y/4,   -z - y/4 )
+    //
+    // 0x4ede50 passes 1 immediately before handing the geometry to the shadow
+    // rasteriser (0x4eda80, the one that bumps the "( %d shadow )" poly counter
+    // at 0x62a800); the normal model path passes 0 at 0x4ecf21. Shifting screen
+    // Y by -y/4 against a ground point that sits at -z is the same as pushing
+    // the ground point +y/4 in z, so in world terms the light leans the
+    // silhouette equally in +x and +z -- down-and-right, as it does in retail.
+    static constexpr float kShadowLX = 0.25f;
+    static constexpr float kShadowLZ = 0.25f;
 
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
@@ -1870,24 +1884,32 @@ private:
     // Buildings are NOT excluded here: two of them (npcflag, vermort) declare a
     // shadow sprite and retail draws it.
     static bool castsShadow(const tak::sim::UnitType* t) {
-        // canfly is retail's third exclusion and it is absolute: when a drawable is
-        // built (icd 0x4ee340-0x4ee372) the shadow art is installed only if the
-        // noshadow bit is clear AND UnitDef+0x260 bit 11 (canfly) is clear. So a
-        // flying unit never casts one, even though 24 of the 27 flying types
-        // declare `shadowgaf = shadows` in their FBI -- exactly the same shape as
-        // the five ships that carry a shadowart they never show.
-        return t && !t->noShadow && !t->floater && !t->canFly;
+        // Those two are the WHOLE test. The Glide shadow block reads the type and
+        // bails on exactly two bits of UnitDef+0x260: 0x2000000 (noshadow, the
+        // guard at 0x4ec8d8) and 0x80000 (floater, 0x4ecac6). There is no canfly
+        // bit test and no building test anywhere in it, so a flyer and a keep
+        // both cast.
+        //
+        // We DID exclude canfly once, on the strength of the drawable-build code
+        // at 0x4ee340, which installs shadow art only when noshadow and canfly
+        // are both clear. That reading was sound but it describes the SOFTWARE
+        // renderer's sprite shadow, a path the Glide renderer never takes for
+        // units -- which is why 24 flying types carry a `shadowgaf` that looked
+        // like dead data and is not.
+        return t && !t->noShadow && !t->floater;
     }
-    // The model's GROUND PLATE stands in for a unit with no FBI shadow sprite.
-    // Keyed off maxVel because the FBI `canmove` flag is set on 13 buildings too.
-    static bool castsBlobShadow(const tak::sim::UnitType* t) {
-        // Only where there is no FBI sprite to draw instead, or the unit would
-        // carry two shadows. 72 of the 94 mobile ground types declare a
-        // `shadowart`; the rest -- Monarchs, gods, NPCs -- fall back to the
-        // plate, which is why they are shadowed in retail all the same.
-        return castsShadow(t) && !isStructure(t) && !t->canFly &&
-               t->shadowArt.empty();
-    }
+    // EVERY unit that casts at all casts a projected silhouette -- there is no
+    // second kind of shadow in the Glide renderer we target. The shadow is emitted
+    // by the model draw itself (0x4ee700 -> 0x4ec720 -> 0x4ec7b0 -> 0x4ede50),
+    // which runs the same geometry through the shear at 0x4ec250 and hands it to
+    // a rasteriser that bumps the "( %d shadow )" poly counter. Nothing in that
+    // chain looks at `shadowart`.
+    //
+    // The FBI shadow sprites are the SOFTWARE renderer's cheaper answer, blitted
+    // from a subsystem (0x4ee310, reached only from 0x511d00) that never calls the
+    // model draw. So in Glide the 17 sequences in shadows.gaf go unused for units
+    // and the 104 types declaring `shadowart` get silhouettes like everyone else.
+    static bool castsBlobShadow(const tak::sim::UnitType* t) { return castsShadow(t); }
     // EVERYTHING on the map lifts onto the terrain relief by the same rule -- mobile
     // units, buildings, AND the feature decals (mana deposits, trees) -- so a mana
     // deposit sits at the height its heightmap claims and a lodestone/units built on

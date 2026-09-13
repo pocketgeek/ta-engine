@@ -875,22 +875,77 @@ one key per triangle cannot resolve. That is the real depth-buffer case, and it
 means taking models off `SDL_RenderGeometry` -- worth doing only if artifacts
 survive a correct key and a cull.
 
-## Unit shadows are PROJECTED SILHOUETTES (2026-09-12)
+## Unit shadows are PROJECTED SILHOUETTES -- and the Glide path is the one that matters (2026-09-12)
 
-Reported: units have no shadows, and a retail screenshot shows a Monarch plainly
-casting one that follows its sword.
+Reported: units have no shadows, then retail screenshots of an Aramon and a
+Taros Monarch on open sand, both plainly casting one, the Aramon shadow carrying
+the sword as a long thin streak. A blob cannot do that; a projection can.
 
-The FBI route is real but covers only part of the roster. `0x4c12b0` parses
-`shadowgaf` and `shadowart` and sets the type's shadow sequence at `+0x288` ONLY
-when BOTH keys are present -- no default, no fallback -- and `0x4ee35e` draws
-that sprite when it exists. But `araking` declares no `shadowart` in any of the
-16 archives, so the sprite path cannot be what shadows a Monarch. Of 94 mobile
-ground types, 72 declare a sprite and 22 -- Monarchs, gods, NPCs -- do not.
+**The renderer we target is Glide, not the software one.** The icd ships both,
+and they shadow units by completely different means. Chasing the software path
+first cost a full pass of wrong conclusions, so start here: `Glide3x.dll` is
+resolved by name at runtime (hence nothing in the import table), 83 entry points
+from a string block at `0x621fe0` into a driver object -- `grDrawTriangle` at
+`+0xbc`, `grCullMode` at `+0x120`, and so on, resolved by the stride of stores
+at `0x5b8617`.
 
-Those 22 are shadowed by PROJECTING THE MODEL: its triangles flattened onto the
-ground and leaned away by the light, so the silhouette carries the unit's actual
-shape, sword and cape included. That is what the screenshot shows and what a
-disc cannot reproduce.
+The giveaway that shadows are GEOMETRY, not sprites, is the renderer's own
+counter: `"Max polys rendered : %d ( %d shadow )"`. The shadow tally is the
+global `0x62a800`, incremented at `0x4edc67`, inside a rasteriser reached only
+from the model draw:
+
+    0x4ee700  draw unit
+      0x4ee620   build the piece rotation, walk the piece tree (0x4eea20) ONCE
+      0x4ec720 -> 0x4ec7b0 -> 0x4ede50 -> 0x4eda80   the shadow polys
+
+`0x4ede50` projects the same geometry through `0x4ec250` and hands it to the
+rasteriser. That routine is the whole answer. It works in 16.16 fixed point and
+takes a flag choosing between two shears:
+
+    ecx = -z,  edx = y,  esi = x                     (each >>16, sign-extended)
+    flag 0:  edx = y>>1;  ecx -= edx             ->  ( x,        -z - y/2 )
+    flag 1:  edx = y>>2;  esi += edx; ecx -= edx ->  ( x + y/4,  -z - y/4 )
+
+`0x4ecf21` passes 0 for the model; `0x4ede50` passes 1 for the shadow. So:
+
+  * Flag 0 independently re-derives our model projection and `kProjY = 0.5`.
+  * **The light constants are both a quarter**: `kShadowLX = kShadowLZ = 0.25`.
+    We shipped `0.55 / 0.35` first, fitted by eye to a screenshot; they were
+    wrong and are now read out of the binary.
+  * The shadow is NOT flattened to y=0. It is a second shear of the same
+    vertices, so a vertex sits exactly `(+y/4, +y/4)` from its own body vertex
+    in screen space -- down and to the right. A flyer at altitude A therefore
+    casts its silhouette A/4 right of and A/4 below its body, which is the
+    offset shadow every TA-engine flyer has.
+
+The exclusions are only two, both bits of `UnitDef+0x260`: `noshadow`
+(`0x2000000`, tested at `0x4ec8d8`) and `floater` (`0x80000`, at `0x4ecac6`).
+There is no `canfly` test and no building test, so flyers and keeps both cast.
+
+`ShadowScale` (a 0..3 setting at settings+0x19) maps to 1/2/4 at `0x4ecb83` and
+becomes the divisor `0x4ec250` applies to the projected coordinates -- a shadow
+resolution knob. `DrawShadows` is the bool at settings+0xf, reaching the draw as
+`gameState+0x19c70`.
+
+### The sprite shadows are the SOFTWARE renderer's answer
+
+`0x4c12b0` parses `shadowgaf` and `shadowart` and sets the type's shadow
+sequence at `+0x288` only when BOTH keys are present. There is no fallback: the
+4th argument of the key reader `0x5432c0` is a default string, but the default
+for `shadowart` is empty AND that path returns 0 (`0x543319`), so a missing key
+skips the store either way. `shadows.gaf` holds 17 sequences of 6-12 frames --
+pre-rendered directional blobs, one frame per facing.
+
+That art is blitted by `0x4ee310`, which is reached only from `0x511d00` and
+never from the model draw. **In Glide it is dead for units.** 104 of 203 unit
+FBIs declare a `shadowart` and none of them use it; `araking` declares only
+`shadowgaf = shadows` and no `shadowart`, which is exactly why the sprite path
+could never explain the Monarch.
+
+This also overturns an earlier, well-evidenced but software-only conclusion: we
+excluded `canfly` from casting because `0x4ee340` installs shadow art only when
+noshadow and canfly are both clear. True of the sprite; false of the renderer we
+target. The 24 flying types carrying a `shadowgaf` are not dead data.
 
 Two wrong answers on the way, both worth naming:
 
@@ -898,16 +953,17 @@ Two wrong answers on the way, both worth naming:
     alpha 70 effectively invisible.
   * The model's GROUND PLATE -- the flat untextured unit-sized quad every root
     carries (`AraGP`, +-17.6 for a Monarch, +-14.4 for a swordsman). It looks
-    like the answer, it is unit-sized, and it is still wrong: a rectangle cannot
-    be a silhouette. It is a footprint marker, not a shadow.
+    like the answer, and it is not: a rectangle cannot be a silhouette, and
+    `arasword` carries the same plate while using a sprite. It is a footprint
+    marker.
 
-The projection is `(x + 0.55y, 0, z + 0.35y)`: those two constants are a
-GUESS fitted to the screenshot, not read out of the binary, and they are the
-part of this most likely to be wrong. Shadow triangles skip the backface cull --
-a silhouette is the union of both faces, and culling half of it punches holes.
+Shadow triangles skip the backface cull -- a silhouette is the union of both
+faces, and culling half of it punches holes. Anchor the shadow on the BODY
+anchor plus retail's delta, never on a re-derived ground point: flyers are
+exempt from our terrain lift, so a ground-derived anchor picks up a lift the
+body never had and the horizontal lean cancels to nothing.
 
-Cost: the model is walked a second time for the units that use it. Only the 22
-plateless types pay, since the 72 with a sprite keep the sprite.
+Cost: every casting unit walks its model a second time.
 
 ## The projection is a SHEAR, not a tilt (2026-09-12)
 
