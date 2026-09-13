@@ -422,6 +422,7 @@ private:
     void broadcastLobby(Room& r);
     void broadcastRoom(Room& r, Msg kind, const Writer& w, uint32_t exceptClient = 0);
     Room* roomOf(Client& c) { auto it = rooms_.find(c.roomId); return it == rooms_.end() ? nullptr : &it->second; }
+    void dropPendingCommands(Client& c, Room& r);   // both disconnect paths
     void leaveRoom(Client& c, const char* reason);
     void tryStart(Client& c);
     void closeTick(Room& r);
@@ -996,28 +997,46 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
     }
 }
 
+// Everything a connection has in flight for a room, dropped in one place.
+//
+// Queued commands are ROOM state living on a CONNECTION: left behind they drain
+// into whatever game this connection joins next, carrying the old player stamp
+// and unit ids into a world where those ids mean something else.
+//
+// The SCHEDULED ones matter for a different reason. With server input delay
+// (TAK_SRV_DELAY > 0) a departing player's commands sit in pendingAt buckets
+// several ticks out, which puts them in bundles AFTER the replay boundary a
+// rejoin is handed -- so they arrive looking like acknowledgements for commands
+// sent after the rejoin. Safe to purge: nothing here has been bundled or
+// broadcast yet, so every peer still agrees. A player who just dropped should not
+// have orders fire seconds later in any case.
+//
+// Called from BOTH disconnect paths. It first lived only in leaveRoom, which a
+// seated player disconnecting from a running game never reaches -- that takes the
+// slot-preserving branch of dropClient, which is exactly the rejoin path this is
+// meant to protect. The fix ran everywhere except where it was needed.
+void Server::dropPendingCommands(Client& c, Room& r) {
+    c.cmdQueue.clear();
+    c.cmdDropped = 0;
+    if (c.slot < 0) return;
+    const int slot = c.slot;
+    size_t purged = 0;
+    for (auto& [tick, cmds] : r.pendingAt) {
+        const size_t before = cmds.size();
+        cmds.erase(std::remove_if(cmds.begin(), cmds.end(),
+                                  [slot](const Command& q) { return int(q.player) == slot; }),
+                   cmds.end());
+        purged += before - cmds.size();
+    }
+    if (purged)
+        std::fprintf(stderr, "game %u: slot %d detached -- purged %zu scheduled command(s)\n",
+                     r.id, slot, purged);
+}
+
 void Server::leaveRoom(Client& c, const char* reason) {
     Room* r = roomOf(c);
     if (!r) return;
-    // Queued commands are ROOM state living on a connection. Left behind, they
-    // drain into whatever game this connection joins next -- carrying the old
-    // player stamp and unit ids into a world where those ids mean something else.
-    c.cmdQueue.clear();
-    c.cmdDropped = 0;
-    // And the ones already SCHEDULED. With server input delay (TAK_SRV_DELAY > 0)
-    // a departing player's commands sit in pendingAt buckets several ticks out,
-    // which put them in bundles AFTER the replay boundary a rejoin is given -- so
-    // they arrived looking like acknowledgements for commands sent post-rejoin.
-    // A player who has just dropped should not have orders fire seconds later
-    // either. Safe to purge: nothing here has been bundled or broadcast yet, so
-    // every peer still agrees.
-    if (c.slot >= 0)
-        for (auto& [tick, cmds] : r->pendingAt)
-            cmds.erase(std::remove_if(cmds.begin(), cmds.end(),
-                                      [&](const Command& q) {
-                                          return int(q.player) == c.slot;
-                                      }),
-                       cmds.end());
+    dropPendingCommands(c, *r);
     // A spectator just detaches from the stream -- no slot, nothing to forfeit.
     {
         auto& sp = r->spectators;
@@ -1584,6 +1603,7 @@ void Server::dropClient(uint32_t id, const char* reason) {
         // with their resume token within the grace window. Auto-pause (budget
         // permitting) so nobody is fighting a frozen empire meanwhile.
         int s = c.slot;
+        dropPendingCommands(c, *r);   // the slot is HELD; its in-flight orders are not
         r->slotDropped[s] = true;
         r->slotClient[s] = -1;
         r->graceDeadline[s] = nowMs() + kGraceMs;
