@@ -1369,9 +1369,20 @@ private:
     SDL_FPoint shadowLo_{}, shadowHi_{};      // batch bounds, accumulated as built
     std::unordered_map<size_t, std::string> burnNames_;   // feature type -> name, copied under the lock
 
+    // The model's extent under ROTATION, gathered during the same walk that builds
+    // the geometry. Spinning a unit about Y sends each vertex (x,z) round a circle
+    // of radius hypot(x,z) and leaves y alone, so these three numbers describe the
+    // union of the unit's projected bounds over EVERY facing exactly -- see
+    // unitHitBox, which used to sample sixteen of them and union the results.
+    struct RadialExtent {
+        float maxR = 0;               // largest hypot(x,z): the screen-x half-width
+        float minY = 1e30f, maxY = -1e30f;   // screen y, over all headings
+        bool any = false;
+    };
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
-                 bool mirror = false, bool isRoot = true, bool shadow = false) {
+                 bool mirror = false, bool isRoot = true, bool shadow = false,
+                 RadialExtent* ext = nullptr) {
         const tak::cob::PieceState* ps = pieceFor(anim, o.name);
         if (ps && !ps->visible) return;
         float rr[3];
@@ -1442,6 +1453,15 @@ private:
                     // Farthest first: depth from the camera goes as (z - 2y).
                     depth += rz * kSortZ - w[1] * kSortY;
                     px[k] = rx; py[k] = w[1]; pz[k] = rz;
+                    if (ext) {
+                        // Pre-rotation x/z, so this is independent of `heading`.
+                        const float r = std::sqrt(wx * wx + w[2] * w[2]);
+                        const float base = -(w[1] * kProjY);   // the y term of -ry
+                        ext->maxR = std::max(ext->maxR, r);
+                        ext->minY = std::min(ext->minY, base - r * kProjZ);
+                        ext->maxY = std::max(ext->maxY, base + r * kProjZ);
+                        ext->any = true;
+                    }
                     if (shadow) {
                         // Lean by the light: the silhouette of the unit, not a
                         // disc under it. Retail's shear is (+y/4, +y/4) in screen
@@ -1519,7 +1539,7 @@ private:
             }
         }
         for (const auto& c : o.children)
-            collect(out, atlas, c, xf, anim, heading, player, mirror, false, shadow);
+            collect(out, atlas, c, xf, anim, heading, player, mirror, false, shadow, ext);
     }
 
     // Walk the piece tree (exactly as collect(), but transform-only) to the named

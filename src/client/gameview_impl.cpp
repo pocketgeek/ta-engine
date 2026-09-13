@@ -2323,33 +2323,25 @@
         SDL_FRect box{-12.0f, -28.0f, 24.0f, 30.0f};
         auto vt = visuals_.find(type->id);
         if (vt != visuals_.end()) {
-            float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
-            bool any = false;
             std::vector<Tri> scratch;
-            // Union the projected bounds over every facing (a mover looks different from
-            // each side; a STRUCTURE is drawn at a fixed facing -- and never rotates even
-            // with the canmove=1/no-velocity FBI quirk -- so one pass). Positions are the
-            // same @ zoom 1 as the sprite bake's bbox, so this box matches what's drawn.
-            bool structure = isStructure(type);
-            // Sampled headings unioned into one box, because a mover looks
-            // different from every side and the box has to cover all of them. A
-            // structure never rotates, so one pass does it.
+            // A STRUCTURE is drawn at a fixed facing -- and never rotates, even with
+            // the canmove=1/no-velocity FBI quirk -- so its bounds are just its
+            // projected vertices.
             //
-            // This used to be kFacings, shared with the impostor and sprite bakes
-            // (both now gone) -- it is this function's constant alone. It could go
-            // entirely: rotating about Y sends each vertex (x,z) round a circle of
-            // radius r=hypot(x,z), so the exact union over ALL headings is
-            // x in [-R,R] and y in [-(y*kProjY) -+ R*kProjZ] with R the largest r,
-            // which one transform walk gives exactly and more cheaply than 16
-            // projections. Left as sampling for now: it is a change to what a click
-            // hits, which wants checking by hand rather than by screenshot.
-            constexpr int kHitBoxFacings = 16;
-            int facings = structure ? 1 : kHitBoxFacings;
-            for (int k = 0; k < facings; ++k) {
-                float heading = float(k) / float(kHitBoxFacings) * 2.0f * 3.14159265f;
-                float facing = structure ? 0.0f : -heading;
-                scratch.clear();
-                collect(scratch, nullptr, vt->second.model.root, Xform{}, nullptr, facing, 0, false);
+            // A MOVER has to be covered from every side. That used to mean sampling
+            // sixteen headings and unioning the results, which is both approximate
+            // (an extreme falling between two samples is missed) and sixteen full
+            // projections. It is unnecessary: rotating about Y sends each vertex
+            // (x,z) round a circle of radius hypot(x,z) and leaves y untouched, so
+            // ONE walk that records those radii gives the union over ALL headings
+            // exactly -- x spans +-maxR, and y spans the per-vertex
+            // -(y*kProjY) -+ r*kProjZ. collect() gathers it as it goes, so there is
+            // still a single transform implementation rather than a copy of it here.
+            if (isStructure(type)) {
+                float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
+                bool any = false;
+                collect(scratch, nullptr, vt->second.model.root, Xform{}, nullptr,
+                        0.0f, 0, false);
                 for (const auto& t : scratch)
                     for (int i = 0; i < 3; ++i) {
                         minX = std::min(minX, t.v[i].position.x);
@@ -2358,8 +2350,15 @@
                         maxY = std::max(maxY, t.v[i].position.y);
                         any = true;
                     }
+                if (any) box = SDL_FRect{minX, minY, maxX - minX, maxY - minY};
+            } else {
+                RadialExtent ext;
+                collect(scratch, nullptr, vt->second.model.root, Xform{}, nullptr,
+                        0.0f, 0, false, true, false, &ext);
+                if (ext.any)
+                    box = SDL_FRect{-ext.maxR, ext.minY, 2.0f * ext.maxR,
+                                    ext.maxY - ext.minY};
             }
-            if (any) box = SDL_FRect{minX, minY, maxX - minX, maxY - minY};
         }
         return hitBoxes_.emplace(type->id, box).first->second;
     }
