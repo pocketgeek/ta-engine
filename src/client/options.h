@@ -107,20 +107,10 @@ private:
     // True when every setting DEFAULTS would reset already equals its default value
     // (playerName / accountName / lastMap are preserved by DEFAULTS, so they're
     // excluded).
-    bool atDefaults() const {
-        Settings d;
-        d.playerName = s_.playerName;
-        d.accountName = s_.accountName;
-        d.lastMap = s_.lastMap;
-        d.hotkeys = s_.hotkeys;     // hotkeys have their own reset (Hotkeys screen)
-        // The data root is configuration, not a preference: DEFAULTS preserves it (see
-        // the reset handler), so it must not count towards "are we at defaults" either --
-        // otherwise the button would stay lit forever for anyone whose data lives
-        // somewhere other than the default.
-        d.dataDir = s_.dataDir;
-        d.dataManifest = s_.dataManifest;
-        return s_ == d;
-    }
+    // "At defaults" and "what DEFAULTS does" are the same question, so they share one
+    // definition -- see tak::preferenceDefaults. They used to be two hand-maintained
+    // lists that kept drifting apart.
+    bool atDefaults() const { return s_ == tak::preferenceDefaults(s_); }
 
     SDL_Renderer* ren_;
     Settings& s_;

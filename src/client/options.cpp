@@ -411,21 +411,7 @@ bool OptionsScreen::input(const SDL_Event& e, int winW, int winH) {
         }
         if (in(defaultsRect_, mx, my)) {                            // reset to defaults
             if (atDefaults()) return false;         // already default -> disabled, ignore
-            std::string keepName = s_.playerName;   // not shown here -> preserve these
-            std::string keepAccount = s_.accountName;
-            std::string keepMap = s_.lastMap;
-            auto keepKeys = s_.hotkeys;             // hotkeys reset from their own screen
-            // The data root is configuration, not a preference: resetting preferences
-            // must not send someone back to the data-dir picker. (It was also missing
-            // from operator==, so DEFAULTS could not even tell it had been changed.)
-            std::string keepData = s_.dataDir, keepManifest = s_.dataManifest;
-            s_ = Settings{};
-            s_.dataDir = std::move(keepData);
-            s_.dataManifest = std::move(keepManifest);
-            s_.playerName = keepName;
-            s_.accountName = keepAccount;
-            s_.lastMap = keepMap;
-            s_.hotkeys = std::move(keepKeys);
+            s_ = tak::preferenceDefaults(s_);   // one definition, shared with atDefaults()
             dirty_ = true;
             if (onChange_) onChange_();
             return false;

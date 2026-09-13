@@ -127,4 +127,30 @@ Settings loadSettings();
 // Atomically write the config file. Returns false on I/O failure.
 bool saveSettings(const Settings&);
 
+// What DEFAULTS means, defined ONCE.
+//
+// A fresh Settings, with the fields that are not preferences carried across:
+//   * RECORDS of what the player has done -- campaign progress, remembered servers.
+//     Resetting an options screen must never delete those.
+//   * CONFIGURATION -- the data root and its manifest. Resetting preferences must not
+//     send someone back to the data-dir picker.
+//   * Identity and things with their own reset UI -- name, account, last map, hotkeys.
+//
+// This used to be two separate lists: one inline in the DEFAULTS click handler, one in
+// Options::atDefaults(). They have to agree, and three times they did not -- dataDir was
+// wiped by the reset, then campaignCompleted and knownServers were wiped too, each time
+// because a field was added to one list and not the other. One function, both callers.
+inline Settings preferenceDefaults(const Settings& cur) {
+    Settings d;
+    d.playerName = cur.playerName;
+    d.accountName = cur.accountName;
+    d.lastMap = cur.lastMap;
+    d.hotkeys = cur.hotkeys;                      // reset from the Hotkeys screen
+    d.dataDir = cur.dataDir;
+    d.dataManifest = cur.dataManifest;
+    d.campaignCompleted = cur.campaignCompleted;
+    d.knownServers = cur.knownServers;
+    return d;
+}
+
 }  // namespace tak

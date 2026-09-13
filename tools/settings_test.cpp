@@ -11,6 +11,10 @@
 // below flips exactly one field away from its default and asserts the comparison
 // notices. Adding a field to Settings without adding it here leaves it unguarded, so
 // keep the list in step with the struct -- that is the point of the test.
+//
+// "Every field" includes the CONTAINERS. The first version of this file said it covered
+// every field and quietly skipped knownServers, hotkeys and campaignCompleted, which is
+// how DEFAULTS-wipes-campaign-progress got past it.
 
 #include "client/settings.h"
 
@@ -74,6 +78,92 @@ int main() {
     flips("lastMap",         [](Settings& s) { s.lastMap = "Inner Circle"; });
     flips("dataDir",         [](Settings& s) { s.dataDir = "/somewhere/else"; });
     flips("dataManifest",    [](Settings& s) { s.dataManifest = "deadbeef"; });
+
+    // Container fields. The first version of this test skipped these while its header
+    // claimed to cover every field -- a coverage claim is worth no more than the cases
+    // behind it, and these three are exactly where DEFAULTS was destroying real user
+    // data (campaign progress and the server list).
+    flips("knownServers",    [](Settings& s) { s.knownServers.push_back("host:7777"); });
+    flips("hotkeys",         [](Settings& s) { s.hotkeys["selectAll"] = "ctrl+a"; });
+    flips("campaignCompleted", [](Settings& s) { s.campaignCompleted["aramon"].insert(3); });
+    // ...and a second entry in the same container, so a comparison that only checks
+    // emptiness rather than contents is caught too.
+    {
+        Settings a{}, b{};
+        a.campaignCompleted["aramon"].insert(1);
+        b.campaignCompleted["aramon"].insert(2);
+        const bool noticed = !(a == b);
+        std::printf("  %-22s %s\n", "campaign contents",
+                    noticed ? "ok" : "FAIL (compares size/emptiness only)");
+        if (!noticed) ++g_fail;
+    }
+    {
+        Settings a{}, b{};
+        a.knownServers.push_back("one:1");
+        b.knownServers.push_back("two:2");
+        const bool noticed = !(a == b);
+        std::printf("  %-22s %s\n", "server contents",
+                    noticed ? "ok" : "FAIL (compares size/emptiness only)");
+        if (!noticed) ++g_fail;
+    }
+
+    // ---- what DEFAULTS does ----
+    //
+    // operator== coverage alone would NOT have caught the bug this section exists for:
+    // DEFAULTS was erasing campaign progress and the remembered server list, and a
+    // comparison test cannot see that, because the erasure happened in the reset handler.
+    // preferenceDefaults() is now the single definition of the reset, so it can be tested
+    // directly.
+    {
+        std::printf("what DEFAULTS preserves vs resets:\n");
+        Settings cur{};
+        // Records and configuration that must SURVIVE a reset.
+        cur.campaignCompleted["aramon"].insert(4);
+        cur.knownServers.push_back("friend:7777");
+        cur.dataDir = "/games/kingdoms";
+        cur.dataManifest = "abc123";
+        cur.playerName = "curtis";
+        cur.accountName = "curtis";
+        cur.lastMap = "Inner Circle";
+        cur.hotkeys["selectAll"] = "ctrl+a";
+        // Preferences that must be RESET.
+        cur.unitShadows = false;
+        cur.masterVol = 7;
+        cur.uiScale = 1.75f;
+        cur.bilinear = true;
+
+        const Settings d = tak::preferenceDefaults(cur);
+        auto keep = [&](const char* what, bool ok) {
+            std::printf("  keeps %-18s %s\n", what, ok ? "ok" : "FAIL (destroyed by DEFAULTS)");
+            if (!ok) ++g_fail;
+        };
+        auto reset = [&](const char* what, bool ok) {
+            std::printf("  resets %-17s %s\n", what, ok ? "ok" : "FAIL (not reset)");
+            if (!ok) ++g_fail;
+        };
+        keep("campaign progress", d.campaignCompleted == cur.campaignCompleted &&
+                                  d.missionCompleted("aramon", 4));
+        keep("known servers",     d.knownServers == cur.knownServers);
+        keep("dataDir",           d.dataDir == cur.dataDir);
+        keep("dataManifest",      d.dataManifest == cur.dataManifest);
+        keep("playerName",        d.playerName == cur.playerName);
+        keep("accountName",       d.accountName == cur.accountName);
+        keep("lastMap",           d.lastMap == cur.lastMap);
+        keep("hotkeys",           d.hotkeys == cur.hotkeys);
+
+        const Settings fresh{};
+        reset("unitShadows",      d.unitShadows == fresh.unitShadows);
+        reset("masterVol",        d.masterVol == fresh.masterVol);
+        reset("uiScale",          d.uiScale == fresh.uiScale);
+        reset("bilinear",         d.bilinear == fresh.bilinear);
+
+        // And the two questions must agree: after a reset we ARE at defaults, which is
+        // the invariant that broke when the preserve list and atDefaults() diverged.
+        const bool agree = (d == tak::preferenceDefaults(d));
+        std::printf("  %-23s %s\n", "reset => atDefaults",
+                    agree ? "ok" : "FAIL (reset does not settle at defaults)");
+        if (!agree) ++g_fail;
+    }
 
     // CONTROL: two untouched defaults must compare EQUAL. Without this the whole file
     // would still pass if operator== were simply `return false`.
