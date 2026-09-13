@@ -1193,10 +1193,15 @@ private:
         // model a second time on the main thread while the body walk was already
         // parallel. Same traversal, same pool, so it costs what the body costs.
         std::vector<SDL_Vertex> shadowVerts;
-        SDL_FPoint shadowLo{}, shadowHi{};   // screen bounds of the above
     };
     std::vector<const UnitR*> visUnits_;
-    std::vector<SDL_Vertex> unitBatch_, shadowBatch_;   // cross-unit render batches
+    // unitBatch_: the cross-unit body batch. overlayBatch_: a reusable scratch vertex
+    // buffer for the flat-quad overlay passes -- order/waypoint markers, the two
+    // progress-bar passes in draw(), and the minimap unit dots in the HUD. It was called shadowBatch_ until unit shadows stopped
+    // being concatenated into one array and started drawing straight from each unit's
+    // own buffer; nothing shadow-related uses it now, and leaving the old name on it
+    // invites exactly the wrong inference.
+    std::vector<SDL_Vertex> unitBatch_, overlayBatch_;
     // Body pass assembled in parallel: plan offsets serially, scatter the vertex
     // copies across the pool, then replay the draw ops. Keeps depth order exact.
     std::vector<SDL_Vertex> bodyVerts_;
@@ -1442,7 +1447,6 @@ private:
     // 0.55 * 255; measured off a retail screenshot, identical on all three
     // channels, so retail multiplies rather than blending toward a grey.
     static constexpr Uint8 kShadowLevel = 140;
-    SDL_FPoint shadowLo_{}, shadowHi_{};      // batch bounds, accumulated as built
     std::unordered_map<size_t, std::string> burnNames_;   // feature type -> name, copied under the lock
 
     // The model's extent under ROTATION, gathered during the same walk that builds

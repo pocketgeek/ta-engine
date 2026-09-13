@@ -421,7 +421,7 @@
         };
         // All unit dots batched into one draw call (per-unit FillRect + colour
         // set was thousands of state changes a frame at large unit counts).
-        shadowBatch_.clear();
+        overlayBatch_.clear();
         for (const UnitR* _up : front().live) { const UnitR& u = *_up;
             if (!u.alive() || u.embarked() || !u.type) continue;
             // A spectator (noFog_) sees every unit on the radar; a player sees only
@@ -429,11 +429,11 @@
             if (!noFog_ && !alliedToLocal(u.player) && !cellVisibleR(u.x, u.z)) continue;
             SDL_FPoint p = toMini(u.x, u.z);
             SDL_Color tc = playerColor(u.player);
-            pushQuad(shadowBatch_, p.x - 1.5f, p.y - 1.5f, 3, 3, tc);
+            pushQuad(overlayBatch_, p.x - 1.5f, p.y - 1.5f, 3, 3, tc);
         }
-        if (!shadowBatch_.empty())
-            SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
-                               int(shadowBatch_.size()), nullptr, 0);
+        if (!overlayBatch_.empty())
+            SDL_RenderGeometry(ren_, nullptr, overlayBatch_.data(),
+                               int(overlayBatch_.size()), nullptr, 0);
         // Camera view rectangle.
         float zm = mapView_.zoom();
         SDL_FPoint a = toMini(mapView_.offX(), mapView_.offY());
