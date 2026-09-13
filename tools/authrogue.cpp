@@ -145,6 +145,11 @@ void serveOnce(int listenFd, Attack attack, std::atomic<bool>* done) {
             }
         }
         c.flushWrite();
+        // recv() no longer returns false on a clean close -- it keeps the frames that
+        // arrived with the FIN and reports the close here -- so this loop has to ask.
+        // Without it a client that hangs up just spins until the 20s deadline and
+        // stalls srv.join() for the whole of it.
+        if (c.peerClosed()) break;
         if (!any) std::this_thread::sleep_for(std::chrono::milliseconds(2));
         if (!c.ok()) break;
     }

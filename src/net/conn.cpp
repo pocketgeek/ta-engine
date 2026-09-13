@@ -24,7 +24,8 @@ Conn& Conn::operator=(Conn&& o) noexcept {
         fd_ = o.fd_; err_ = std::move(o.err_);
         rxBuf_ = std::move(o.rxBuf_); rxOff_ = o.rxOff_;
         txBuf_ = std::move(o.txBuf_); txOff_ = o.txOff_;
-        o.fd_ = -1; o.rxOff_ = o.txOff_ = 0;
+        peerClosed_ = o.peerClosed_;   // part of the socket's state, like err_
+        o.fd_ = -1; o.rxOff_ = o.txOff_ = 0; o.peerClosed_ = false;
     }
     return *this;
 }

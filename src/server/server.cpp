@@ -1399,7 +1399,10 @@ void Server::gameMsg(Client& c, const Frame& f) {
             // because checkHashes() bails out while waiting for a second client that
             // will never report a tick the server never emitted. Thousands of distinct
             // fabricated ticks therefore grew the room forever.
-            if (tk > r->tick) break;   // not emitted yet -- ignore, do not ack
+            // r->tick is the NEXT tick to close, so the newest tick actually emitted is
+            // r->tick - 1 and ">=" is the right test. (It also reads correctly at
+            // r->tick == 0, where nothing has been emitted and every report is bogus.)
+            if (tk >= r->tick) break;   // not emitted yet -- ignore, do not ack
             if (tk > c.ackTick) c.ackTick = tk;   // flow control: this client is up to `tk`
             // SEATED clients only. A spectator's StateHash is a progress ACK and
             // nothing more -- it deliberately sends a trivial 0 rather than
