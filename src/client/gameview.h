@@ -1266,7 +1266,7 @@ private:
     // Feature sync: the sim-side state of each visual feature, refreshed only when
     // World::featGeneration() moves. A member rather than a function-static so a new
     // game cannot inherit the previous one's array.
-    struct FeatSim { int type; bool burning; bool alive; };
+    struct FeatSim { int type; bool burning; bool alive; int fx, fz; };
     std::vector<FeatSim> featSimState_;
     uint32_t lastFeatGen_ = UINT32_MAX;   // != any real generation, so the first sync runs
 
@@ -2372,6 +2372,10 @@ private:
         // and addFeature() does a push_back that can REALLOCATE the feature vector
         // under that read -- a dangling read from the hot path, every frame.
         uint8_t aliveVis = 1;
+        // Footprint, snapshotted alongside aliveVis. Constant per feature, but it lives
+        // in the SIM's Feature, and the reclaim cursor needs it every frame to size its
+        // pick radius -- so it is copied here rather than read live. See hoverCursor.
+        int fx = 1, fz = 1;
         int simType = -2;    // last-seen sim FeatType index (-2 = not yet synced)
         int simId = -1;      // cell-derived sim feature id (matches World's ids)
         float lastSmoke = 0; // animClock_ of the last smoke puff

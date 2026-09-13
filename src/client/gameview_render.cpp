@@ -2111,8 +2111,8 @@
             for (const auto& fi : features_) {
                 const auto* sf = world_.featureAt(fi.x, fi.z);
                 simState.push_back(sf ? FeatSim{sf->type, sf->alive && sf->burn != 0,
-                                                sf->alive}
-                                      : FeatSim{-1, false, true});
+                                                sf->alive, sf->fx, sf->fz}
+                                      : FeatSim{-1, false, true, 1, 1});
             }
             // The type NAMES are read below too, and featureTypes() is filled at map
             // load and never mutated after -- but copy the ones we need anyway
@@ -2127,6 +2127,7 @@
         for (auto& fi : features_) {
             const FeatSim st = simState[fidx++];
             fi.aliveVis = st.alive ? 1 : 0;   // what the draw loop reads
+            fi.fx = st.fx; fi.fz = st.fz;     // what the reclaim cursor picks with
             if (st.type < 0) continue;
             if (fi.simType == -2) fi.simType = st.type;        // first sight
             else if (st.type != fi.simType) {                   // burnt-stage swap

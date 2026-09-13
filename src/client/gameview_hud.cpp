@@ -108,11 +108,17 @@
             // there) reclaims just that one -- retail's single Reclaim.
             if (enemy < 0 && haveReclaimer()) {
                 int fid = 0; bool fhit = false; float bestF = 1e18f;
-                for (const auto& f : world_.features()) {
-                    if (!f.alive) continue;
-                    float dx = f.x - wx, dz = f.z - wz, d = dx * dx + dz * dz;
-                    float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
-                    if (d < r * r && d < bestF) { bestF = d; fid = f.id; fhit = true; }
+                {   // Live read: the worker can reallocate this vector under us. One-shot
+                    // on a click, so the lock costs nothing worth measuring -- unlike the
+                    // per-frame cursor scan above, which uses the render-side snapshot.
+                    std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+                    if (useSimThread_) lk.lock();
+                    for (const auto& f : world_.features()) {
+                        if (!f.alive) continue;
+                        float dx = f.x - wx, dz = f.z - wz, d = dx * dx + dz * dz;
+                        float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
+                        if (d < r * r && d < bestF) { bestF = d; fid = f.id; fhit = true; }
+                    }
                 }
                 // Corpses / statues / rubble under the click too (negative id).
                 for (const UnitR* _cp : front().live) {
@@ -283,8 +289,16 @@
 
             // A reclaimable feature under the pointer (reclaimer selected) -> broom.
             if (haveReclaimer()) {
-                for (const auto& f : world_.features()) {
-                    if (!f.alive) continue;
+                // RENDER-SIDE snapshot, not world_.features(). This runs every frame (and
+                // again under hardware-cursor mode), and the sim worker both mutates
+                // feature fields and push_backs corpses onto that vector -- a reallocation
+                // under this loop, not merely a torn read. features_ is ours, and
+                // syncBurningFeatures keeps aliveVis and the footprint current under the
+                // lock. Locking here instead would be correct but would put a per-frame
+                // simMutex_ wait back into the HUD, which is what the feature-sync
+                // generation counter just removed.
+                for (const auto& f : features_) {
+                    if (!f.aliveVis) continue;
                     float dx = f.x - wx, dz = f.z - wz;
                     float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
                     if (dx * dx + dz * dz < r * r) return tak::CursorId::Reclaim;
@@ -484,11 +498,15 @@
         if (cmd == 'c') {   // clear/reclaim: reclaim the feature under the cursor
             if (!haveReclaimer()) return;
             int fid = 0; bool fhit = false; float bestF = 1e18f;
-            for (const auto& f : world_.features()) {
-                if (!f.alive) continue;
-                float dx = f.x - wx, dz = f.z - wz, d = dx * dx + dz * dz;
-                float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
-                if (d < r * r && d < bestF) { bestF = d; fid = f.id; fhit = true; }
+            {   // Live read under the lock: one-shot on an armed order (see above).
+                std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+                if (useSimThread_) lk.lock();
+                for (const auto& f : world_.features()) {
+                    if (!f.alive) continue;
+                    float dx = f.x - wx, dz = f.z - wz, d = dx * dx + dz * dz;
+                    float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
+                    if (d < r * r && d < bestF) { bestF = d; fid = f.id; fhit = true; }
+                }
             }
             // Corpses / statues / rubble under the click too (negative id).
             for (const UnitR* _cp : front().live) {

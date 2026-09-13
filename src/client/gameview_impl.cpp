@@ -158,10 +158,15 @@
         float minx = std::min(x0, x1), maxx = std::max(x0, x1);
         float minz = std::min(z0, z1), maxz = std::max(z0, z1);
         std::vector<std::pair<float, int>> targets;
-        for (const auto& f : world_.features()) {
-            if (!f.alive || f.x < minx || f.x > maxx || f.z < minz || f.z > maxz) continue;
-            float dx = f.x - b->x, dz = f.z - b->z;
-            targets.push_back({dx * dx + dz * dz, f.id});
+        {   // Live read under the lock: one-shot on the drag release, and the worker can
+            // reallocate this vector (corpse push_back) under the scan.
+            std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+            if (useSimThread_) lk.lock();
+            for (const auto& f : world_.features()) {
+                if (!f.alive || f.x < minx || f.x > maxx || f.z < minz || f.z > maxz) continue;
+                float dx = f.x - b->x, dz = f.z - b->z;
+                targets.push_back({dx * dx + dz * dz, f.id});
+            }
         }
         // Corpses, statues and building rubble in the box too (negative id =
         // dead-unit record -- see World::reclaim).
