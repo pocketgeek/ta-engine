@@ -134,6 +134,19 @@ int main(int argc, char** argv) {
                     std::printf("      UC %s#%d hp=%.0f%% cost=%.0f btime=%.0f\n",
                                 u.type->id.c_str(), u.id, 100.f * u.hp / std::max(u.type->maxHp, 1.f),
                                 u.type->buildCost, u.type->buildTime);
+                // Producer eligibility, mirroring Controller::tick's own test. A
+                // builder is only offered work when it is idle AND siteless, so a
+                // faction with few builders that are always on a site can never
+                // train anything -- which is what a "stalled" economy looks like
+                // from outside.
+                if (u.type->isBuilder && !u.type->isStructure())
+                    std::printf("      cand %s#%d uc=%d orders=%zu site=%d -> %s\n",
+                                u.type->id.c_str(), u.id, int(u.underConstruction),
+                                u.orders.size(), u.buildSiteId,
+                                (!u.underConstruction && u.orders.empty() && u.buildSiteId == 0)
+                                    ? "PRODUCER" : "busy"),
+                    std::printf("           menu(%s) = %zu entries\n", u.type->id.c_str(),
+                                reg.buildable(u.type->id).size());
                 if (u.type->isBuilder && (u.buildSiteId || !u.buildQueue.empty() || u.repeatType)) {
                     std::string q;
                     for (const auto* qt : u.buildQueue) if (qt) q += qt->id + " ";

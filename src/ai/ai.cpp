@@ -1,5 +1,7 @@
 #include "ai/ai.h"
 
+#include <cstdlib>
+
 #include "hpi/hpi.h"
 #include "sim/detmath.h"
 #include <algorithm>
@@ -165,7 +167,7 @@ int Controller::desire(BuildCat c, const Needs& n) const {
 // difficulty-scaled limit. Returns nullptr if nothing worth building is affordable now.
 const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
                                                    const tak::sim::Unit& producer,
-                                                   const Needs& needs) {
+                                                   const Needs& needs, int excludeCats) {
     const auto& menu = registry_.buildable(producer.type->id);
     const auto& me = world.player(player_);
     float income = me.income / std::max(me.manaMult, 1.0f);   // plan against base income
@@ -196,7 +198,31 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
     for (const auto& id : menu) {
         const auto* ut = registry_.find(id);
         if (usable(ut) <= 0) continue;
+        if (ut && (excludeCats & (1 << int(categoryOf(ut))))) continue;
         best = std::max(best, desire(categoryOf(ut), needs));
+    }
+    // TAK_AI_PICK: why a producer chose nothing. A stalled economy is almost always
+    // "every menu entry scored 0", and this says which gate did it.
+    static const bool kPickLog = std::getenv("TAK_AI_PICK") != nullptr;
+    if (kPickLog && best <= 0) {
+        std::fprintf(stderr, "    pick %s: nothing usable (mana=%.0f income=%.0f)\n",
+                     producer.type->id.c_str(), world.player(player_).mana, income);
+        for (const auto& id : menu) {
+            const auto* ut = registry_.find(id);
+            if (!ut) { std::fprintf(stderr, "      %-9s MISSING from registry\n", id.c_str()); continue; }
+            auto wi = profile_.weight.find(ut->id);
+            const int w = wi == profile_.weight.end() ? -1 : wi->second;
+            auto ci = needs.counts.find(ut);
+            const int have = ci == needs.counts.end() ? 0 : ci->second;
+            auto li = profile_.limit.find(ut->id);
+            const int lim = li == profile_.limit.end() ? -1 : li->second;
+            const float secs = ut->buildTime / std::max(producer.type->workerTime, 1.0f);
+            std::fprintf(stderr, "      %-9s w=%d lim=%d have=%d cost=%.0f btime=%.0f "
+                                 "afford=%s cat=%d usable=%d\n",
+                         ut->id.c_str(), w, lim, have, ut->buildCost, ut->buildTime,
+                         (world.player(player_).mana + income * secs >= ut->buildCost) ? "Y" : "N",
+                         int(categoryOf(ut)), usable(ut));
+        }
     }
     if (best <= 0) return nullptr;   // nothing needed is affordable -> wait (no spiral)
     // Pass 2: weighted-random among the usable entries in that top category.
@@ -206,6 +232,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
         const auto* ut = registry_.find(id);
         int w = usable(ut);
         if (w <= 0 || desire(categoryOf(ut), needs) != best) continue;
+        if (ut && (excludeCats & (1 << int(categoryOf(ut))))) continue;
         total += w;
         if (rand(total) < w) chosen = ut;   // reservoir sample
     }
@@ -215,7 +242,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
 // Turn a pick into a command: a factory (keep/castle) trains a mobile unit; a
 // mobile builder places a structure or conjures a mobile unit near itself. The
 // placement spot is probed against the (const) world, then issued as a Build.
-void Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
+bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
                          const tak::sim::UnitType* pick, const CommandSink& sink) {
     if (pick->isStructure()) {                  // structure
         if (!p.type->isStructure() && p.type->isBuilder) {
@@ -227,21 +254,36 @@ void Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
             float ox = p.x, oz = p.z;
             if (p.type->commander) { auto h = homeOf(world); ox = h.first; oz = h.second; }
             float x, z;
-            if (placeSite(world, pick, ox, oz, x, z))
+            if (placeSite(world, pick, ox, oz, x, z)) {
                 emit(sink, tak::net::Cmd::Build, p.id, pick->id, x, z);
+                return true;
+            } else {
+                static const bool kPickLog = std::getenv("TAK_AI_PICK") != nullptr;
+                if (kPickLog)
+                    std::fprintf(stderr, "    NO SITE: %s#%d cannot site %s near (%.0f,%.0f)\n",
+                                 p.type->id.c_str(), p.id, pick->id.c_str(), ox, oz);
+            }
         }
+        return false;
     } else if (p.type->isStructure()) {         // factory trains mobile
         emit(sink, tak::net::Cmd::Train, p.id, pick->id, 0, 0);
+        return true;
     } else if (p.type->isBuilder) {             // mobile builder conjures mobile
         for (float r = 40; r < 170; r += 20)
             for (float a = 0; a < 6.28f; a += 0.6f) {
                 float x = p.x + detmath::cos(a) * r, z = p.z + detmath::sin(a) * r;
                 if (world.canPlace(pick, x, z)) {
                     emit(sink, tak::net::Cmd::Build, p.id, pick->id, x, z);
-                    return;
+                    return true;
                 }
             }
+        static const bool kPickLog = std::getenv("TAK_AI_PICK") != nullptr;
+        if (kPickLog)
+            std::fprintf(stderr, "    NO SPOT: %s#%d at (%.0f,%.0f) cannot place %s "
+                                 "anywhere in r=40..170\n",
+                         p.type->id.c_str(), p.id, p.x, p.z, pick->id.c_str());
     }
+    return false;
 }
 
 // Find a build site for the AI: lodestones go on the nearest free mana deposit
@@ -456,10 +498,23 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
             if (acted >= dp_.producersPerThink) break;
             const auto* p = world.unit(pid);
             if (!p || !p->alive()) continue;
-            if (const auto* pick = weightedPick(world, *p, needs)) {
-                produce(world, *p, pick, sink);
-                if (p->type && p->type->commander) commanderActed = true;
-                ++acted;
+            // Retry in the next-best category when a pick cannot be acted on.
+            // Without this a producer whose top category is unproducible burns its
+            // turn silently, every think, for ever: measured on Zhon, all three
+            // producers picked a lodestone 153 times in 240s with every mana
+            // deposit already taken, emitted nothing, and banked 6875 mana while
+            // building no army at all. One category per attempt, so the worst case
+            // is one pass over the five.
+            int exclude = 0;
+            for (int attempt = 0; attempt < 5; ++attempt) {
+                const auto* pick = weightedPick(world, *p, needs, exclude);
+                if (!pick) break;
+                if (produce(world, *p, pick, sink)) {
+                    if (p->type && p->type->commander) commanderActed = true;
+                    ++acted;
+                    break;
+                }
+                exclude |= 1 << int(categoryOf(pick));
             }
         }
     // Keep the Monarch safe: when it's idle (no build this think, no order, no site)

@@ -127,9 +127,15 @@ private:
     Needs assessNeeds(const tak::sim::World&) const;
     BuildCat categoryOf(const tak::sim::UnitType*) const;
     int   desire(BuildCat, const Needs&) const;
+    // `excludeCats` is a bitmask of 1<<int(BuildCat): categories already tried and
+    // found unproducible this think, so the pick falls through to the next best.
     const tak::sim::UnitType* weightedPick(const tak::sim::World&,
-                                           const tak::sim::Unit& producer, const Needs&);
-    void produce(const tak::sim::World&, const tak::sim::Unit& producer,
+                                           const tak::sim::Unit& producer, const Needs&,
+                                           int excludeCats = 0);
+    // True if an order was actually emitted. False means the pick could not be
+    // acted on (no build site, nowhere to conjure) -- the caller then retries in
+    // another category rather than burning the producer's turn on it.
+    bool produce(const tak::sim::World&, const tak::sim::Unit& producer,
                  const tak::sim::UnitType* pick, const CommandSink&);
     bool placeSite(const tak::sim::World&, const tak::sim::UnitType*, float nx, float nz,
                    float& outX, float& outZ) const;
