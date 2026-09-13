@@ -83,7 +83,8 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs) {
             // anywhere: the cursor is ~24px of 1999 art drawn at cursorScale on a 4K
             // panel, so its stair-steps are the most visible in the game.
             int fac = 1;
-            SDL_Texture* t = tak::art::makeTexture(ren, fr.rgba, fr.width, fr.height, &fac);
+            SDL_Texture* t = tak::art::makeTexture(ren, fr.rgba, fr.width, fr.height, &fac,
+                                                   tak::art::g_cursorFactor);
             if (!t) continue;
             if (fac == 1) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
             // LOGICAL size stays the 1x frame: hotspot, offsets and the drawn size are

@@ -580,6 +580,7 @@ int main(int argc, char** argv) {
     // whatever factor they were built with, so a mid-session toggle must not be re-read
     // per texture -- the Options row says RESTART for exactly this reason.
     tak::art::setSmoothArt(settings.smoothArt);
+    tak::art::setCursorFactor(settings.cursorScale);
     {
         SDL_RendererInfo ri{};
         if (SDL_GetRendererInfo(ren, &ri) == 0)

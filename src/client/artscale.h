@@ -118,6 +118,20 @@ inline void upscale2x(const std::vector<uint8_t>& src, int w, int h,
 inline bool g_smoothArt = false;
 inline void setSmoothArt(bool on) { g_smoothArt = on; }
 
+// The factor the CURSORS are built at, sampled from Settings::cursorScale at startup.
+// Cursors are magnified up to 8x by that setting, and a source that still has to be
+// magnified stays soft -- overshooting so the draw DOWNSAMPLES is what makes the edge
+// crisp as well as smooth. Rounded up to a power of two and clamped to [2,8]; a 29x32
+// cursor at 8x is ~240 KB, which is affordable for the dozen or so of them and would
+// not be on the unit atlas. Sampled once, like the switch above, so changing cursor
+// size mid-session rebuilds nothing until a restart.
+inline int g_cursorFactor = 2;
+inline void setCursorFactor(int cursorScale) {
+    int f = 2;
+    while (f < cursorScale && f < 8) f *= 2;
+    g_cursorFactor = f;
+}
+
 // Upload `rgba` as a texture, edge-directed-upscaled 2x when smoothing is on.
 //
 // `appliedFactor` reports what actually happened, and callers that derive LAYOUT from
@@ -125,8 +139,15 @@ inline void setSmoothArt(bool on) { g_smoothArt = on; }
 // texture size, so without this the art would silently render twice as large. It is an
 // out-param rather than a global read because the 2x allocation can fail under VRAM
 // pressure and fall back to 1x, and only the call itself knows which it got.
+// `want` is the upscale factor to aim for: 2, 4 or 8, reached by repeated 2x passes.
+// 2 suits GUI art, which is drawn at roughly its authored size. Cursors ask for more,
+// because cursorScale magnifies them up to 8x and a source that still has to be
+// MAGNIFIED is soft -- overshooting so the draw DOWNSAMPLES is what makes an edge
+// crisp as well as smooth. They are a few hundred pixels each, so it is affordable
+// there and would not be on the unit atlas.
 inline SDL_Texture* makeTexture(SDL_Renderer* ren, const std::vector<uint8_t>& rgba,
-                                int w, int h, int* appliedFactor = nullptr) {
+                                int w, int h, int* appliedFactor = nullptr,
+                                int want = 2) {
     if (appliedFactor) *appliedFactor = 1;
     if (w <= 0 || h <= 0) return nullptr;
     // Cap the source size: past this the art is already big enough that the blockiness
@@ -135,13 +156,19 @@ inline SDL_Texture* makeTexture(SDL_Renderer* ren, const std::vector<uint8_t>& r
         rgba.size() >= size_t(w) * size_t(h) * 4) {
         std::vector<uint8_t> up;
         upscale2x(rgba, w, h, up);
+        int fw = w * 2, fh = h * 2;
+        for (int f = 2; f < want && fw <= 2048 && fh <= 2048; f *= 2) {
+            std::vector<uint8_t> nxt;
+            upscale2x(up, fw, fh, nxt);
+            up.swap(nxt); fw *= 2; fh *= 2;
+        }
         if (SDL_Texture* t = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
-                                             SDL_TEXTUREACCESS_STATIC, w * 2, h * 2)) {
-            SDL_UpdateTexture(t, nullptr, up.data(), w * 2 * 4);
+                                             SDL_TEXTUREACCESS_STATIC, fw, fh)) {
+            SDL_UpdateTexture(t, nullptr, up.data(), fw * 4);
             // Linear, so the 2x data resolves smoothly at whatever size it is drawn.
             SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
             SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-            if (appliedFactor) *appliedFactor = 2;
+            if (appliedFactor) *appliedFactor = fw / w;
             return t;
         }
         // VRAM said no: fall through and build it at 1x rather than losing the art.
