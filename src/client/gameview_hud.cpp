@@ -298,7 +298,13 @@
                 // simMutex_ wait back into the HUD, which is what the feature-sync
                 // generation counter just removed.
                 for (const auto& f : features_) {
-                    if (!f.aliveVis) continue;
+                    // hasSim, NOT just aliveVis. features_ holds every VISUAL feature,
+                    // including decoration with no sim feature behind it (shoreline
+                    // waves and the like); the snapshot reports those alive so they keep
+                    // drawing. Testing aliveVis alone put the broom over scenery that no
+                    // click could reclaim -- world_.features(), which this replaced, only
+                    // ever contained real sim features.
+                    if (!f.hasSim || !f.aliveVis) continue;
                     float dx = f.x - wx, dz = f.z - wz;
                     float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
                     if (dx * dx + dz * dz < r * r) return tak::CursorId::Reclaim;

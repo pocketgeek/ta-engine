@@ -1266,7 +1266,11 @@ private:
     // Feature sync: the sim-side state of each visual feature, refreshed only when
     // World::featGeneration() moves. A member rather than a function-static so a new
     // game cannot inherit the previous one's array.
-    struct FeatSim { int type; bool burning; bool alive; int fx, fz; };
+    // hasSim: is there a SIM feature under this visual instance at all? Decorative
+    // instances (shoreline waves and the like) have none, and the snapshot's fallback
+    // deliberately reports them alive so they keep RENDERING. That must not be confused
+    // with "reclaimable" -- see hoverCursor.
+    struct FeatSim { int type; bool burning; bool alive; int fx, fz; bool hasSim; };
     std::vector<FeatSim> featSimState_;
     uint32_t lastFeatGen_ = UINT32_MAX;   // != any real generation, so the first sync runs
 
@@ -2376,6 +2380,11 @@ private:
         // in the SIM's Feature, and the reclaim cursor needs it every frame to size its
         // pick radius -- so it is copied here rather than read live. See hoverCursor.
         int fx = 1, fz = 1;
+        // Does a SIM feature back this instance? Decoration does not, and decoration is
+        // still drawn (aliveVis stays 1 for it) -- so picking must test THIS, not
+        // aliveVis. Conflating the two made the broom cursor appear over scenery that no
+        // click could ever reclaim.
+        uint8_t hasSim = 0;
         int simType = -2;    // last-seen sim FeatType index (-2 = not yet synced)
         int simId = -1;      // cell-derived sim feature id (matches World's ids)
         float lastSmoke = 0; // animClock_ of the last smoke puff
