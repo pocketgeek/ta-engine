@@ -239,6 +239,11 @@ void OptionsScreen::build(int channels) {
     // Retail's video option: smooth terrain + feature scaling (off = crisp pixels).
     toggle("BILINEAR FILTERING", [&] { return s_.bilinear ? 1.0f : 0.0f; },
            [&](float v) { s_.bilinear = v > 0.5f; });
+    // Projected unit shadows. Retail's Glide path casts these, so ON is the faithful
+    // setting -- but it is the largest single cost in a crowded frame (measured ~3.2ms
+    // of a ~12ms draw at ~1180 visible units), which is worth a switch on a slow machine.
+    toggle("UNIT SHADOWS", [&] { return s_.unitShadows ? 1.0f : 0.0f; },
+           [&](float v) { s_.unitShadows = v > 0.5f; });
     toggle("TREES SWAY IN WIND", [&] { return s_.treeSway ? 1.0f : 0.0f; },
            [&](float v) { s_.treeSway = v > 0.5f; });
 

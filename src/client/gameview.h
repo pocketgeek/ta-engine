@@ -1201,6 +1201,21 @@ private:
     // being concatenated into one array and started drawing straight from each unit's
     // own buffer; nothing shadow-related uses it now, and leaving the old name on it
     // invites exactly the wrong inference.
+    // Are projected unit shadows on? The Options toggle, with a dev-only TAK_NOSHADOW
+    // override. Gates the BUILD as well as the draw -- skipping only the draw would still
+    // pay to emit ~700k vertices nobody looks at.
+    //
+    // Sampled ONCE per frame on the main thread into shadowsOnFrame_, and the workers
+    // read that. They must not read settings_ directly: the Options UI writes that bool
+    // from another thread, and "it is only a bool" is not a defence -- concurrent
+    // non-atomic access is a data race whatever the type. Writing it before the parallel
+    // geometry pass dispatches makes it happens-before every worker read.
+    bool shadowsOn() const {
+        static const bool envOff = tak::devEnv("TAK_NOSHADOW") != nullptr;
+        return !envOff && (!settings_ || settings_->unitShadows);
+    }
+    bool shadowsOnFrame_ = true;   // this frame's snapshot of the above
+
     std::vector<SDL_Vertex> unitBatch_, overlayBatch_;
     // Body pass assembled in parallel: plan offsets serially, scatter the vertex
     // copies across the pool, then replay the draw ops. Keeps depth order exact.

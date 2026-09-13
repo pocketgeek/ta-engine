@@ -28,6 +28,9 @@ struct Settings {
     float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..2.0
     bool  bilinear   = false;      // smooth (bilinear) terrain + feature scaling, like retail's option
     bool  treeSway   = true;       // trees sway in the wind (beyond-retail nicety; display-only)
+    bool  unitShadows = true;      // projected unit shadows (retail Glide casts them; the
+                                   // single largest cost in a crowded frame, so it is worth
+                                   // being able to turn off on a slow machine)
     int   healthBars = 1;          // unit health bars: 0=off, 1=only when damaged, 2=always
 
     // ---- audio (0..256, matching SoundBank's internal scale) ----

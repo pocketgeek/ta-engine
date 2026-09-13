@@ -204,8 +204,10 @@
         animateGlowTextures(builtGlow);
         profAtlasMs_ += (double(SDL_GetPerformanceCounter()) - _atl0) /
                         (double(SDL_GetPerformanceFrequency()) / 1000.0);
-        static const bool kNoShadow = tak::devEnv("TAK_NOSHADOW") != nullptr;   // TEMP probe
+        const bool kNoShadow = !shadowsOnFrame_;
         profUnits_ += uint64_t(visUnits_.size());   // so PROF ms/frame can be read per unit
+        // Sample the shadow toggle HERE, on the main thread, before the workers launch.
+        shadowsOnFrame_ = shadowsOn();
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
             thread_local std::vector<Tri> scratch;
@@ -1607,7 +1609,14 @@
         if (int(g.verts.size()) > runStart)
             g.runs.push_back({cur, int(g.verts.size()) - runStart});
 
-        buildUnitShadow(u, g, vt->second.model.root, vt->second.meta, anim, facing, zm, scratch);
+        // Skip the BUILD too when shadows are off, not just the draw -- otherwise the
+        // toggle saves the 3.2ms submit but still pays to walk the model and emit ~700k
+        // vertices nobody looks at, which is most of the point of switching it off.
+        if (shadowsOnFrame_)
+            buildUnitShadow(u, g, vt->second.model.root, vt->second.meta, anim, facing,
+                            zm, scratch);
+        else
+            g.shadowVerts.clear();
     }
 
     // Reuses `scratch`: whatever the caller had in it is already consumed.

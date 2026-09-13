@@ -63,6 +63,7 @@ Settings loadSettings() {
         else if (key == "buildBarScale")   s.buildBarScale = asFloat(0.75f, 2.0f);
         else if (key == "bilinear")        s.bilinear = asBool();
         else if (key == "treeSway")        s.treeSway = asBool();
+        else if (key == "unitShadows")     s.unitShadows = asBool();
         else if (key == "healthBars")      s.healthBars = asInt(0, 2);
         else if (key == "masterVol")       s.masterVol = asInt(0, 256);
         else if (key == "bgmVol")          s.bgmVol = asInt(0, 256);
@@ -123,6 +124,7 @@ bool saveSettings(const Settings& s) {
     o << "buildBarScale = " << s.buildBarScale << "\n";
     o << "bilinear = " << (s.bilinear ? 1 : 0) << "\n";
     o << "treeSway = " << (s.treeSway ? 1 : 0) << "\n";
+    o << "unitShadows = " << (s.unitShadows ? 1 : 0) << "\n";
     o << "healthBars = " << s.healthBars << "\n";
     o << "masterVol = " << s.masterVol << "\n";
     o << "bgmVol = " << s.bgmVol << "\n";
