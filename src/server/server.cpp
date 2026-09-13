@@ -111,6 +111,14 @@ struct Client {
     uint64_t lastPingMs = 0;
     bool loaded = false;
     uint32_t ackTick = 0;   // latest tick this client reported a hash for (flow control)
+    // kCmdCapPerTick is a per-TICK budget, so it has to be tracked per client
+    // across messages. Clamping each message independently caps nothing: the
+    // server drains every readable message before closing the tick and appends
+    // each one's commands to the same pending list, so N messages buy N*cap
+    // commands -- more sim work for everyone, and a bundle that can grow past
+    // the 256 KiB frame limit every receiver enforces, disconnecting them.
+    uint32_t cmdTick = 0;        // tick cmdBudget refers to
+    int cmdBudget = 0;           // commands still accepted from this client this tick
 };
 
 // pausePlayer sentinel for a player-REQUESTED pause: distinct from any real slot,
@@ -1275,7 +1283,9 @@ void Server::gameMsg(Client& c, const Frame& f) {
             if (!r->running) return;
             Reader rd(f.payload.data(), f.payload.size());
             uint32_t n = rd.u32();
-            if (n > uint32_t(kCmdCapPerTick)) n = kCmdCapPerTick;   // drop the excess
+            if (c.cmdTick != r->tick) { c.cmdTick = r->tick; c.cmdBudget = kCmdCapPerTick; }
+            if (n > uint32_t(c.cmdBudget)) n = uint32_t(c.cmdBudget);   // drop the excess
+            c.cmdBudget -= int(n);
             // Server-side input delay (TAK_SRV_DELAY=K, default 0): bucket incoming
             // commands K ticks into the future instead of the very next tick, so a
             // command never "just misses" a tick boundary. Costs K ticks of latency.

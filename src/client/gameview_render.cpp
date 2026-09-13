@@ -269,6 +269,8 @@
         // draw their own shadow inside drawUnit in pass 2.)
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         shadowBatch_.clear();
+        shadowLo_ = {1e30f, 1e30f};
+        shadowHi_ = {-1e30f, -1e30f};
         for (const auto& it : items) {
             if (!it.u) continue;
             const auto& u = *it.u;
@@ -284,7 +286,17 @@
             // silhouette is not.
             if (u.alive() && !u.underConstruction && castsBlobShadow(u.type)) {
                 auto vt = visuals_.find(u.type->id);
-                if (vt != visuals_.end()) {
+                // A unit whose BODY draws as an impostor must not walk its full
+                // model for a shadow: that inverts the LOD, making the cheap
+                // units the expensive ones. They are a few pixels across, where
+                // the silhouette cannot read anyway -- the sprite shadow path
+                // skipped them for the same reason, and retail has its own
+                // shadow LOD in ShadowScale.
+                int gsl = geomSlot(u.id);
+                const bool impostor =
+                    impAtlas_ && gsl >= 0 && !geomPool_[size_t(gsl)].runs.empty() &&
+                    geomPool_[size_t(gsl)].runs[0].first == impAtlas_;
+                if (vt != visuals_.end() && !impostor) {
                     const Anim* anim = nullptr;
                     if (auto at = anims_.find(u.id); at != anims_.end())
                         anim = &at->second;
@@ -310,11 +322,17 @@
                     // ay carries alt*kProjY of up-screen lift; the shadow wants
                     // only alt*kShadowLZ of it, so the difference comes back down.
                     const float sy = gsh.ay + (kProjY - kShadowLZ) * alt * zm0;
+                    // Accumulate the composite bounds here rather than rescanning
+                    // the whole vertex buffer afterwards.
                     for (const Tri& t : shadowTris_)
                         for (int k = 0; k < 3; ++k) {
                             SDL_Vertex v = t.v[k];
                             v.position = {sx + v.position.x * zm0,
                                           sy + v.position.y * zm0};
+                            shadowLo_.x = std::min(shadowLo_.x, v.position.x);
+                            shadowLo_.y = std::min(shadowLo_.y, v.position.y);
+                            shadowHi_.x = std::max(shadowHi_.x, v.position.x);
+                            shadowHi_.y = std::max(shadowHi_.y, v.position.y);
                             shadowBatch_.push_back(v);
                         }
                 }
@@ -348,12 +366,8 @@
                 // a whole 7680x2160 target twice a frame for a few hundred small
                 // silhouettes is most of the cost of this feature and none of the
                 // benefit; shadows cluster wherever the units are.
-                float lo_x = shadowBatch_[0].position.x, hi_x = lo_x;
-                float lo_y = shadowBatch_[0].position.y, hi_y = lo_y;
-                for (const SDL_Vertex& v : shadowBatch_) {
-                    lo_x = std::min(lo_x, v.position.x); hi_x = std::max(hi_x, v.position.x);
-                    lo_y = std::min(lo_y, v.position.y); hi_y = std::max(hi_y, v.position.y);
-                }
+                const float lo_x = shadowLo_.x, hi_x = shadowHi_.x;
+                const float lo_y = shadowLo_.y, hi_y = shadowHi_.y;
                 float rsx = 1.0f, rsy = 1.0f;
                 SDL_RenderGetScale(ren_, &rsx, &rsy);
                 SDL_Rect box{std::clamp(int(std::floor(lo_x * rsx)) - 1, 0, mw),
@@ -2362,6 +2376,15 @@
     // Per-frame sync of sim burning state onto the visual features: ignition
     // starts the seqnameburn playback + smoke, burn-out swaps to the burnt art.
     void GameView::syncBurningFeatures() {
+        // Takes simMutex_: this runs on the RENDER thread but reads live world_
+        // state the worker mutates. gameview.h documents the invariant -- the
+        // render side reads the published snapshot, and any remaining live read
+        // locks -- and this was the one place breaking it. Not a benign torn
+        // int either: featureAt() hands back a pointer INTO the feature vector,
+        // and area reclaim removes features, so the worker can reallocate that
+        // vector under this loop.
+        std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
+        if (useSimThread_) lk.lock();
         if (world_.featureTypes().empty()) return;
         for (auto& fi : features_) {
             const auto* sf = world_.featureAt(fi.x, fi.z);

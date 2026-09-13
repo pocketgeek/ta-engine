@@ -1431,6 +1431,7 @@ private:
     static constexpr Uint8 kShadowLevel = 140;
     SDL_Texture* shadowMask_ = nullptr;       // coverage mask, composited once
     int shadowMaskW_ = 0, shadowMaskH_ = 0;
+    SDL_FPoint shadowLo_{}, shadowHi_{};      // batch bounds, accumulated as built
 
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
