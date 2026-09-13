@@ -175,17 +175,24 @@
     bool GameView::mpStep() {
         if (!mp_->poll()) { netError_ = mp_->error().empty() ? "disconnected" : mp_->error(); return false; }
         if (mp_->desynced()) { netError_ = mp_->desyncReason(); return false; }
-        // Once per SIM TICK, not once per render step. The server drains at most
-        // kCmdCapPerTick from a client per tick, so a client running at 120fps
-        // against a 30Hz tick was offering four times the rate the server accepts
-        // and relying on the server's queue to absorb the difference -- which turns
-        // a big order into a backlog and, past the queue bound, into silent loss.
-        // Pacing here keeps an honest client inside the budget by construction and
-        // leaves the server queue as what it should be: a jitter buffer for network
-        // batching, not the mechanism.
-        if (!outbox_.empty() && netTick_ != lastSendTick_) {
+        // Send at the rate the server DRAINS (kCmdCapPerTick per sim tick), metered
+        // by elapsed ticks rather than by frames. Two earlier versions of this were
+        // both frame-coupled: flushing the whole outbox every render step offered
+        // far more than the server accepts, and flushing one batch per step still
+        // tied throughput to the frame rate in the other direction -- at 10fps that
+        // is 640 commands/sec against a server willing to take 1920.
+        //
+        // Credit saturates at kCmdQueueCap, exactly the queue the server keeps, so
+        // an honest client can never have more outstanding than the server can hold:
+        // overflow stops being reachable without the loss being the client's own
+        // doing. See cmdSendCredit.
+        if (netTick_ != lastSendTick_) {
+            cmdCredit_ = tak::net::cmdSendCredit(cmdCredit_, netTick_ - lastSendTick_);
             lastSendTick_ = netTick_;
-            const size_t n = std::min(outbox_.size(), size_t(tak::net::kCmdCapPerTick));
+        }
+        if (!outbox_.empty() && cmdCredit_ > 0) {
+            const size_t n = std::min(outbox_.size(), size_t(cmdCredit_));
+            cmdCredit_ -= int(n);
             if (n == outbox_.size()) { mp_->sendCommands(outbox_); outbox_.clear(); }
             else {
                 mp_->sendCommands({outbox_.begin(), outbox_.begin() + n});

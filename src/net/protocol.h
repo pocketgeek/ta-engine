@@ -98,6 +98,26 @@ constexpr int kHashPeriod = 30;            // ticks between StateHash reports; t
 // a bigger batch over several ticks -- otherwise ordering a large selection
 // silently loses everything past the cap. Shared here so the two cannot drift.
 constexpr int kCmdCapPerTick = 64;
+// How many commands the server will hold for one client that has run ahead of the
+// drain. The client's send credit is capped at exactly this, which is what makes
+// overflow unreachable for an honest client: it can never have more outstanding
+// than the server can hold, whatever its frame rate or how its uplink batches.
+constexpr int kCmdQueueCap = 8 * kCmdCapPerTick;
+
+// Commands a client may send after `ticks` sim ticks have passed, carrying `have`
+// unspent credit. Shared so the two sides cannot drift: the server drains
+// kCmdCapPerTick per tick, so credit accrues at exactly that rate and saturates at
+// the queue the server keeps.
+//
+// Crediting by ELAPSED TICKS rather than per call is the point. Gating on "once
+// per tick" still let the frame rate set the throughput -- one batch per rendered
+// frame, so at 10fps a client offered 640 commands/sec against a server willing to
+// take 1920, and a 2000-unit order crawled out over three seconds while a Stop
+// issued behind it waited its turn.
+inline int cmdSendCredit(int have, uint32_t ticks) {
+    const long long c = (long long)have + (long long)ticks * kCmdCapPerTick;
+    return int(c > kCmdQueueCap ? kCmdQueueCap : c);
+}
 
 // Message kinds. Lobby and game messages share one stream per connection.
 enum class Msg : uint8_t {

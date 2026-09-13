@@ -83,7 +83,7 @@ constexpr uint64_t kFlowRetryMs = 5;
 // enough that an honest burst (a big selection, or two render steps landing in one
 // server tick) always survives, small enough that a flooder cannot make the server
 // hold an unbounded queue on its behalf.
-constexpr size_t kCmdQueueMax = 8 * size_t(kCmdCapPerTick);
+constexpr size_t kCmdQueueMax = size_t(tak::net::kCmdQueueCap);
 uint64_t kGraceMs = 300000;     // hold a dropped slot this long (5 min)
 uint64_t kPauseBudgetMs = 120000;  // total auto-pause a player may cause
 
