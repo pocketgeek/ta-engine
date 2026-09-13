@@ -642,6 +642,18 @@
         fb.projectiles = world_.projectiles();   // sim push_back/erase each tick -> must copy
         fb.storms = world_.storms();             // ditto: the viewer draws these
         fb.hits = world_.hits();                  // weapon impacts this tick (cleared next tick)
+        // ...and queue them for the render as well, so impacts survive a skipped
+        // snapshot (see hitQueue_). Oldest out first when the renderer is so far
+        // behind that the queue fills.
+        if (!fb.hits.empty()) {
+            std::lock_guard<std::mutex> hq(hitQueueMutex_);
+            for (const auto& h : fb.hits) {
+                if (hitQueue_.size() >= kMaxPendingHits) hitQueue_.pop_front();
+                hitQueue_.push_back(h);
+            }
+        }
+        fb.shakeReq = world_.shakeRequest();       // copied under the worker's lock
+        fb.soundReq = world_.soundRequest();       // ditto (carries a std::string)
         fb.winningTeam = world_.winningTeam();
         fb.gameTick = world_.tickCount();
         // Fog snapshot: copy world_.vis_ into this buffer only when THIS buffer's fog is stale
@@ -736,12 +748,12 @@
         }
         // A mission script asking for a camera shake: fire on the sequence edge.
         if (newTick_) {
-            const auto& sr = world_.shakeRequest();
+            const auto& sr = front().shakeReq;     // snapshot, not live world_
             if (sr.seq != shakeSeqSeen_) { shakeSeqSeen_ = sr.seq; triggerShake(sr.mag, sr.dur); }
             // Scripted mission VO. The name is a bare wav ("monsara1.wav"); play it
             // unpositioned, as narration rather than a world sound. A few of the
             // named lines are simply absent from this install -- skip those.
-            const auto& qr = world_.soundRequest();
+            const auto& qr = front().soundReq;     // snapshot, not live world_
             if (qr.seq != soundSeqSeen_) {
                 soundSeqSeen_ = qr.seq;
                 std::string n = qr.name;
@@ -750,7 +762,15 @@
                 if (!n.empty() && sounds_.has(n)) sounds_.play(n);
             }
         }
-        if (newTick_) for (const auto& h : frameHits()) {
+        // Drained, not gated on newTick_: the whole point is to pick up impacts
+        // from ticks whose snapshots the render never saw.
+        std::vector<tak::sim::World::HitFx> hitsToShow;
+        {
+            std::lock_guard<std::mutex> hq(hitQueueMutex_);
+            hitsToShow.assign(hitQueue_.begin(), hitQueue_.end());
+            hitQueue_.clear();
+        }
+        for (const auto& h : hitsToShow) {
             // Instant-hit weapons (FBI type = Line of Sight) spawn no projectile, so
             // nothing was ever drawn for them -- the Aramon King's Thunder, the Creon
             // tasers, the Zhon lightning and a dozen more fired completely INVISIBLY.
@@ -2446,6 +2466,9 @@
             {
                 std::unique_lock<std::mutex> lk(inboxMutex_);
                 inboxCv_.wait(lk, [&]{ return simQuit_.load() || !simInbox_.empty(); });
+                // Cancelled: drop whatever is queued. The tick in flight (if any)
+                // already finished above, so the world is left on a tick boundary.
+                if (simCancel_.load()) { simInbox_.clear(); return; }
                 if (simInbox_.empty()) return;   // quit signalled and nothing left to process
                 job = std::move(simInbox_.front());
                 simInbox_.pop_front();
@@ -2473,9 +2496,13 @@
         simThread_ = std::thread([this]{ simWorkerLoop(); });
     }
 
-    void GameView::stopSimThread() {
+    void GameView::stopSimThread(bool drain) {
         if (!useSimThread_) return;
-        { std::lock_guard<std::mutex> lk(inboxMutex_); simQuit_ = true; }
+        {
+            std::lock_guard<std::mutex> lk(inboxMutex_);
+            if (!drain) { simCancel_ = true; simInbox_.clear(); }
+            simQuit_ = true;
+        }
         inboxCv_.notify_one();
         if (simThread_.joinable()) simThread_.join();
         useSimThread_ = false;

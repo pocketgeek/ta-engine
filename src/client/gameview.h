@@ -141,7 +141,8 @@ public:
     // menu loops reuse it), so anything not destroyed here leaks REAL VRAM and
     // gpuvram budget across sessions -- a few benchmark runs used to pin the
     // budget and starve terrain-chunk uploads (map stuck at the low-res underlay).
-    ~GameView() { stopSimThread(); resetMinimap(); destroyGpuTextures(); }
+    // Interactive teardown: cancel, do not drain (see simCancel_).
+    ~GameView() { stopSimThread(/*drain=*/false); resetMinimap(); destroyGpuTextures(); }
 
     GameView(SDL_Renderer* ren, tak::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, tak::hpi::OverridePolicy policy,
@@ -578,7 +579,9 @@ public:
     void renderBenchmarkStats(int winW, int winH);
     // Flush + join the sim worker (drains any pending simInbox_ ticks first). For the headless
     // harness to call before reading the final world hash, so it reflects every processed tick.
-    void shutdownSim() { stopSimThread(); }
+    // Drains: the headless harness needs the final world hash to reflect every
+    // tick it pushed, so this one waits for the backlog on purpose.
+    void shutdownSim() { stopSimThread(/*drain=*/true); }
     // Dev --keytest helper: pick an own unit (builder preferred) + live count from the render
     // SNAPSHOT, so the harness never iterates live world_.units() while the worker ticks.
     std::pair<int, size_t> keytestPickOwnUnit() const;
@@ -728,6 +731,18 @@ public:
     bool cellVisibleR(float x, float z) const;
     // More snapshot accessors mirroring the World calls the render used to make directly.
     const std::vector<tak::sim::World::HitFx>& frameHits() const { return front().hits; }
+    // Impacts are ONE-SHOT and the sim clears them every tick, while the render
+    // only ever sees the newest published snapshot. Whenever the sim outruns the
+    // renderer -- replay catch-up, or simply a frame rate under the 30 Hz tick --
+    // whole snapshots are skipped and their impacts went with them: silently no
+    // sound, no bolt, no effect for those hits. So the worker also appends them
+    // here, and the render drains this instead, which survives skipped frames.
+    // Bounded: a renderer that has fallen catastrophically behind drops the
+    // OLDEST rather than growing without limit, since stale impacts are the ones
+    // least worth drawing.
+    static constexpr size_t kMaxPendingHits = 4096;
+    std::mutex hitQueueMutex_;
+    std::deque<tak::sim::World::HitFx> hitQueue_;
     int frameWinningTeam() const { return front().winningTeam; }
     // world_.discoActive/headbangActive(p) == players_[p].{disco,headbang}Left > 0.
     bool frameDiscoActive(int p) const { return framePlayer(p).discoLeft > 0; }
@@ -2042,6 +2057,10 @@ private:
     std::mutex outboxMutex_;
     std::deque<HashJob> simOutbox_;     // worker -> main: {tick, hash} to send to the server
     std::atomic<bool> simQuit_{false};
+    // Quit WITHOUT draining: abandon whatever ticks are still queued instead of
+    // simulating them all first. Leaving a game mid-replay-catchup can otherwise
+    // queue thousands of ticks, and the join waits for every one of them.
+    std::atomic<bool> simCancel_{false};
     std::atomic<uint32_t> simProcessedTick_{0};   // last tick the worker finished (backlog/ack)
     bool useSimThread_ = false;         // true while the worker is running for this game
     bool wantSimThread_ = false;        // decided once per game (see mpStep)
@@ -2074,7 +2093,7 @@ private:
     // The worker: pop bundles FIFO, simulate under simMutex_, hand back the state hash.
     void simWorkerLoop();
     void startSimThread();
-    void stopSimThread();
+    void stopSimThread(bool drain);
     // canPlace reads live world_ (units_, which the worker resizes on spawn/death, plus the
     // nav grid), so it can't run lock-free while the worker ticks. Take simMutex_ for the
     // read. Placement-UX only and rare (a ghost while positioning a building), so the brief

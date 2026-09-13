@@ -104,4 +104,10 @@ struct Frame {
     uint64_t tickMs = 0;                 // wall-clock of this tick (for interpolation)
     float tickDurMs = 1000.0f / 30.0f;
     uint32_t gen = 0;                    // capture generation (UnitR.gen == this => live this tick)
+    // Mission-script one-shots, SNAPSHOTTED rather than read live. The render
+    // thread used to reach into world_.shakeRequest()/soundRequest() directly,
+    // which races the worker -- and soundRequest carries a std::string, so that
+    // is a torn read of a heap pointer, not just a stale float.
+    tak::sim::World::ShakeReq shakeReq;
+    tak::sim::World::SoundReq soundReq;
 };

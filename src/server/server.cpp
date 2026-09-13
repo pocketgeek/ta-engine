@@ -75,6 +75,10 @@ using tak::net::kCmdCapPerTick;
 // instead of desyncing or being dropped. Generous enough not to throttle normal play
 // (hashes are reported every kHashPeriod ticks, plus the client's jitter buffer).
 constexpr uint32_t kMaxLeadTicks = 120;
+// How long to wait before re-checking a room that is flow-controlled (waiting on
+// a lagging player). Rebasing its deadline to `now` instead leaves the poll
+// timeout at 0, so the server spins at full CPU while making no progress.
+constexpr uint64_t kFlowRetryMs = 5;
 uint64_t kGraceMs = 300000;     // hold a dropped slot this long (5 min)
 uint64_t kPauseBudgetMs = 120000;  // total auto-pause a player may cause
 
@@ -119,6 +123,16 @@ struct Client {
     // the 256 KiB frame limit every receiver enforces, disconnecting them.
     uint32_t cmdTick = 0;        // tick cmdBudget refers to
     int cmdBudget = 0;           // commands still accepted from this client this tick
+    // Catch-up streaming. A resuming or spectating client needs every bundle
+    // logged so far, which for a long game is far more than belongs in one
+    // socket buffer -- pushing it all at once put the entire replay in memory
+    // and handed one client an unbounded write queue. Instead we hold a cursor
+    // and feed it as the buffer drains. Every live bundle is appended to r.log
+    // too, so the cursor catches up to the present by itself; until it does,
+    // this client is skipped by the live TickBundle broadcast so the stream
+    // cannot go out of order.
+    bool replaying = false;
+    size_t replayPos = 0;        // next index into Room::log to send
 };
 
 // pausePlayer sentinel for a player-REQUESTED pause: distinct from any real slot,
@@ -779,13 +793,19 @@ void Server::broadcastRoom(Room& r, Msg kind, const Writer& w, uint32_t exceptCl
         uint32_t cid = uint32_t(r.slotClient[i]);
         if (cid == exceptClient) continue;
         auto it = clients_.find(cid);
-        if (it != clients_.end()) it->second->conn.send(kind, w);
+        // A client still streaming catch-up gets its bundles from the log cursor
+        // instead; sending the live one now would land it ahead of the history.
+        if (it != clients_.end() &&
+            !(kind == Msg::TickBundle && it->second->replaying))
+            it->second->conn.send(kind, w);
     }
     // Spectators receive the same stream (bundles, chat, pause/resume, status).
     for (uint32_t cid : r.spectators) {
         if (cid == exceptClient) continue;
         auto it = clients_.find(cid);
-        if (it != clients_.end()) it->second->conn.send(kind, w);
+        if (it != clients_.end() &&
+            !(kind == Msg::TickBundle && it->second->replaying))
+            it->second->conn.send(kind, w);
     }
 }
 
@@ -903,7 +923,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             Writer w; writeSlots(w, room);
             w.u8(uint8_t(slot)); w.u32(0x7a6b0000u + room.id); w.u64(room.slotToken[slot]);
             c.conn.send(Msg::GameStarting, w);
-            for (const auto& bundle : room.log) c.conn.send(Msg::TickBundle, bundle);
+            c.replaying = true; c.replayPos = 0;   // streamed below, paced by txPending()
             // Unpause if this was the player we were waiting on.
             if (room.paused && room.pausePlayer == slot) {
                 room.pauseBudgetMs[slot] -= std::min(room.pauseBudgetMs[slot], nowMs() - room.pauseStartMs);
@@ -939,7 +959,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             Writer w; writeSlots(w, room);
             w.u8(0xFF); w.u32(0x7a6b0000u + room.id); w.u64(0);
             c.conn.send(Msg::GameStarting, w);
-            for (const auto& bundle : room.log) c.conn.send(Msg::TickBundle, bundle);
+            c.replaying = true; c.replayPos = 0;   // streamed below, paced by txPending()
             std::fprintf(stderr, "game %u: client %u SPECTATING (replaying %zu ticks)\n",
                          room.id, c.id, room.log.size());
             break;
@@ -1551,8 +1571,19 @@ int Server::run() {
         // Timeout = time until the soonest running room's next tick (or 1s idle).
         uint64_t now = nowMs();
         uint64_t soonest = now + 1000;
+        // Only rooms ELIGIBLE to tick may pull the poll deadline in. A paused room
+        // is skipped by the tick loop below but its nextTickMs still slides into
+        // the past, so counting it here pinned the timeout at 0 and span the
+        // server at full CPU for as long as the pause lasted -- and a manual
+        // pause has no expiry, so that is indefinite.
         for (auto& [rid, r] : rooms_)
-            if (r.running && r.nextTickMs < soonest) soonest = r.nextTickMs;
+            if (r.running && !r.paused && r.nextTickMs < soonest) soonest = r.nextTickMs;
+        // A client still streaming catch-up needs servicing regardless of the
+        // tick clock -- otherwise resuming into a PAUSED game would feed it one
+        // chunk per idle second, since a paused room no longer pulls the
+        // deadline in.
+        for (const auto& [id, c] : clients_)
+            if (c->replaying && now + 10 < soonest) soonest = now + 10;
         int timeout = int(soonest > now ? soonest - now : 0);
 
         int n = TAK_POLL(pfds.data(), (unsigned)pfds.size(), timeout);
@@ -1655,7 +1686,10 @@ int Server::run() {
             if (r.running && !r.paused && r.nextTickMs <= now) due.push_back(&r);
         auto tickRoom = [&](Room& r) {
             while (r.nextTickMs <= now) {
-                if (!canAdvance(r)) { r.nextTickMs = now; break; }   // pace to the slowest
+                // Pace to the slowest. Back off a few ms rather than rebasing to
+                // `now`: an immediate deadline makes the poll above return at
+                // once, so the server would spin until the laggard acked.
+                if (!canAdvance(r)) { r.nextTickMs = now + kFlowRetryMs; break; }
                 closeTick(r);
             }
         };
@@ -1665,6 +1699,23 @@ int Server::run() {
             tickPool_.run(due.size(), [&](size_t i) { tickRoom(*due[i]); });
         else
             for (Room* rp : due) tickRoom(*rp);
+        // Feed catch-up streams. A client resuming or spectating takes its
+        // history from the room log a chunk at a time, only topping up when its
+        // write buffer has drained, so a long game cannot put its whole replay
+        // into one socket buffer. The log keeps growing with live bundles, so
+        // reaching the end IS being caught up -- at which point the live
+        // broadcast takes over.
+        constexpr size_t kReplayChunkBytes = 256u << 10;
+        for (auto& [id, c] : clients_) {
+            if (!c->replaying) continue;
+            auto rit = rooms_.find(c->roomId);
+            if (rit == rooms_.end()) { c->replaying = false; continue; }
+            const auto& log = rit->second.log;
+            while (c->replayPos < log.size() &&
+                   c->conn.txPending() < kReplayChunkBytes)
+                c->conn.send(Msg::TickBundle, log[c->replayPos++]);
+            if (c->replayPos >= log.size()) c->replaying = false;
+        }
         // Flush all pending writes (bundles just queued) + keepalive + timeouts.
         now = nowMs();
         for (auto& [id, c] : clients_) {

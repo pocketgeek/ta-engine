@@ -51,6 +51,10 @@ public:
     bool poll(Frame& out);
     bool flushWrite();
     bool wantWrite() const { return txOff_ < txBuf_.size(); }
+    // Bytes still queued for this peer. Callers feeding a large backlog (the
+    // resume/spectate replay) use this to pace themselves instead of pushing the
+    // whole thing into memory at once.
+    size_t txPending() const { return txBuf_.size() - txOff_; }
 
 private:
     int fd_ = -1;

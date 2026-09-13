@@ -91,9 +91,28 @@ bool Conn::flushWrite() {
 
 bool Conn::recv() {
     char buf[16384];
+    // Two bounds, because this loop used to run until the socket blocked with no
+    // limit on either time or memory. A peer that keeps writing can keep it
+    // spinning, which both grows rxBuf_ without limit and starves every other
+    // connection in the same service pass.
+    //
+    // kRecvPassBytes is fairness: take a bounded bite and come back next pass
+    // (poll reports the socket readable again, so nothing is lost).
+    // kMaxRxBacklog is the hard cap. Frame validation happens in poll(), AFTER
+    // buffering, so without this a peer can queue far more than one frame's
+    // worth of unvalidated bytes. Well above kMaxFrame so a legitimate maximum
+    // frame plus a partial next one always fits.
+    constexpr size_t kRecvPassBytes = 1u << 20;    // 1 MiB serviced per pass
+    constexpr size_t kMaxRxBacklog  = 1u << 22;    // 4 MiB unread -> peer is abusive
+    size_t got = 0;
     for (;;) {
+        if (got >= kRecvPassBytes) break;          // yield to the other sockets
+        if (rxBuf_.size() - rxOff_ > kMaxRxBacklog) {
+            err_ = "receive backlog exceeded";
+            return false;
+        }
         long long n = ::recv(fd_, buf, sizeof buf, 0);
-        if (n > 0) { rxBuf_.insert(rxBuf_.end(), buf, buf + n); continue; }
+        if (n > 0) { rxBuf_.insert(rxBuf_.end(), buf, buf + n); got += size_t(n); continue; }
         if (n == 0) { err_ = "peer closed"; return false; }
         int e = sockErr();
         if (sockWouldBlock(e)) break;      // drained
