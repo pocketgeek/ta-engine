@@ -3459,13 +3459,18 @@ void World::visCompute() {
     // This used to claim that was "a benign race, no locks needed" because both threads
     // store the same value. That is not a thing C++ says: concurrent non-atomic writes to
     // the same object are a data race and therefore UB, no matter how equal the values --
-    // and it would trip any race detector pointed at this. Store through atomic_ref with
-    // relaxed ordering instead: on every target we build for, a relaxed 1-byte store is
-    // the same instruction as the plain one, so this is free at runtime and merely makes
-    // the guarantee real. Relaxed is enough because nothing ORDERS off these writes; the
+    // and it would trip any race detector pointed at this. Do a relaxed atomic store
+    // instead: on every target we build for, a relaxed 1-byte store is the same
+    // instruction as the plain one, so this is free at runtime and merely makes the
+    // guarantee real. Relaxed is enough because nothing ORDERS off these writes; the
     // worker's join in visPump() is what publishes the finished buffer.
+    //
+    // Not std::atomic_ref, which is the obvious spelling and does not exist in Apple's
+    // libc++ -- it broke the macOS release build and nothing local caught it, since
+    // libstdc++ has had it since GCC 10. __atomic_store_n is the same store and is
+    // available on both compilers we build with.
     auto put = [&](size_t i) {
-        std::atomic_ref<uint8_t>(visBack_[i]).store(2, std::memory_order_relaxed);
+        __atomic_store_n(&visBack_[i], uint8_t(2), __ATOMIC_RELAXED);
     };
     auto stamp = [&](size_t b, size_t e) {
         for (size_t i = b; i < e; ++i) {
