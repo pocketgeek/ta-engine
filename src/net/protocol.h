@@ -106,17 +106,36 @@ constexpr int kCmdQueueCap = 8 * kCmdCapPerTick;
 
 // Commands a client may send after `ticks` sim ticks have passed, carrying `have`
 // unspent credit. Shared so the two sides cannot drift: the server drains
-// kCmdCapPerTick per tick, so credit accrues at exactly that rate and saturates at
-// the queue the server keeps.
+// kCmdCapPerTick per tick, so credit accrues at exactly that rate.
 //
 // Crediting by ELAPSED TICKS rather than per call is the point. Gating on "once
 // per tick" still let the frame rate set the throughput -- one batch per rendered
 // frame, so at 10fps a client offered 640 commands/sec against a server willing to
 // take 1920, and a 2000-unit order crawled out over three seconds while a Stop
 // issued behind it waited its turn.
+//
+// This is a RATE limit and nothing more. It does NOT bound how much is in flight:
+// over a 16-tick uplink stall a client spends and re-accrues, sending 1024 while
+// the server's 512 queue sees none of it, and half is dropped when the stall
+// clears. Outstanding is bounded separately, by cmdSendWindow below.
 inline int cmdSendCredit(int have, uint32_t ticks) {
     const long long c = (long long)have + (long long)ticks * kCmdCapPerTick;
     return int(c > kCmdQueueCap ? kCmdQueueCap : c);
+}
+
+// How many commands may be sent right now given `inFlight` already sent but not
+// yet seen coming back, and `credit` from the rate limiter above. The window is
+// the server's queue, so a client physically cannot overrun it however long its
+// uplink stalls.
+//
+// The acknowledgement is free and already on the wire: this is a lockstep relay,
+// so the server broadcasts each tick's bundle to EVERY peer including the sender.
+// A client's own commands coming back in a bundle are proof the server took them.
+// No new message, no version bump.
+inline int cmdSendWindow(int credit, int inFlight) {
+    const int room = kCmdQueueCap - inFlight;
+    const int n = credit < room ? credit : room;
+    return n > 0 ? n : 0;
 }
 
 // Message kinds. Lobby and game messages share one stream per connection.

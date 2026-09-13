@@ -190,9 +190,15 @@
             cmdCredit_ = tak::net::cmdSendCredit(cmdCredit_, netTick_ - lastSendTick_);
             lastSendTick_ = netTick_;
         }
-        if (!outbox_.empty() && cmdCredit_ > 0) {
-            const size_t n = std::min(outbox_.size(), size_t(cmdCredit_));
+        // Rate AND window: the credit above says how fast, cmdInFlight_ says how
+        // much may be outstanding. Without the window the rate limiter alone let a
+        // stalled uplink accumulate 1024 unacknowledged commands against a 512
+        // queue, and the server dropped the difference when they all landed.
+        const int sendable = tak::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
+        if (!outbox_.empty() && sendable > 0) {
+            const size_t n = std::min(outbox_.size(), size_t(sendable));
             cmdCredit_ -= int(n);
+            cmdInFlight_ += int(n);
             if (n == outbox_.size()) { mp_->sendCommands(outbox_); outbox_.clear(); }
             else {
                 mp_->sendCommands({outbox_.begin(), outbox_.begin() + n});
@@ -213,6 +219,13 @@
         tak::net::Bundle bd;
         int drained = 0;
         auto simTick = [&] {
+            // Our own commands coming back in this bundle are the server's
+            // acknowledgement that it took them (lockstep relays every tick to
+            // every peer, sender included). That is what retires in-flight credit.
+            if (int ms = mp_->room().mySlot; ms >= 0) {
+                for (const auto& c : bd.cmds)
+                    if (int(c.player) == ms && cmdInFlight_ > 0) --cmdInFlight_;
+            }
             if (useSimThread_) {
                 // Hand this tick's bundle to the sim worker (FIFO == lockstep tick order).
                 // world_ is simulated there; the state hash comes back via simOutbox_ and is

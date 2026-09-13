@@ -30,11 +30,18 @@ static void check(bool ok, const std::string& what, const std::string& detail = 
 struct Result { int sent = 0, got = 0, dropped = 0; bool ordered = true; };
 
 // fps: client render steps per second, against a 30Hz sim tick.
-// batchTicks: uplink holds messages this many ticks, then delivers them together.
+// stallAt/stallFor: a delivery BLACKOUT -- nothing reaches the server for that many
+//   ticks, then everything held is released on ONE tick. The first version of this
+//   test added a constant offset to each message's delivery time instead, which is
+//   latency, not batching: it shifted the stream while preserving its spacing, so
+//   it never released a burst and could not fail. That is precisely the case the
+//   rate limiter alone could not survive.
 // burst: commands issued at once (a big selection order).
+// windowed: apply the in-flight window (the fix) as well as the rate credit.
 // frameCoupled models the OLD rule -- one kCmdCapPerTick batch per RENDER STEP,
 // no credit for elapsed ticks -- so the test can show it catches what it claims to.
-static Result run(int fps, int batchTicks, int burst, int ticks, bool frameCoupled = false) {
+static Result run(int fps, int stallAt, int stallFor, int burst, int ticks,
+                  bool frameCoupled = false, bool windowed = true) {
     Result r;
     std::deque<int> outbox;                 // client-side, ids in issue order
     for (int i = 0; i < burst; ++i) outbox.push_back(i);
@@ -43,6 +50,7 @@ static Result run(int fps, int batchTicks, int burst, int ticks, bool frameCoupl
     int credit = net::kCmdCapPerTick;
     uint32_t lastSendTick = 0;
     std::deque<std::pair<int, std::vector<int>>> wire;   // (deliverTick, commands)
+    int inFlight = 0;
     std::deque<int> serverQueue;
     std::vector<int> received;
 
@@ -62,13 +70,17 @@ static Result run(int fps, int batchTicks, int burst, int ticks, bool frameCoupl
                 credit = net::cmdSendCredit(credit, t - lastSendTick);
                 lastSendTick = t;
             }
-            if (outbox.empty() || credit <= 0) continue;
-            const int n = int(outbox.size()) < credit ? int(outbox.size()) : credit;
+            const int sendable = windowed ? net::cmdSendWindow(credit, inFlight) : credit;
+            if (outbox.empty() || sendable <= 0) continue;
+            const int n = int(outbox.size()) < sendable ? int(outbox.size()) : sendable;
             std::vector<int> msg;
             for (int i = 0; i < n; ++i) { msg.push_back(outbox.front()); outbox.pop_front(); }
             credit -= n;
+            inFlight += n;
             r.sent += n;
-            wire.push_back({int(t) + batchTicks, std::move(msg)});
+            // Held for the whole blackout, then released together on one tick.
+            const bool stalled = stallFor > 0 && int(t) >= stallAt && int(t) < stallAt + stallFor;
+            wire.push_back({stalled ? stallAt + stallFor : int(t), std::move(msg)});
         }
 
         // Uplink delivery (several messages can land together after a stall).
@@ -80,10 +92,12 @@ static Result run(int fps, int batchTicks, int burst, int ticks, bool frameCoupl
             wire.pop_front();
         }
 
-        // Server drain: FIFO, one budget per tick.
+        // Server drain: FIFO, one budget per tick. The drained commands go into the
+        // tick bundle the server broadcasts, which is the client's acknowledgement.
         for (int taken = 0; taken < net::kCmdCapPerTick && !serverQueue.empty(); ++taken) {
             received.push_back(serverQueue.front());
             serverQueue.pop_front();
+            if (inFlight > 0) --inFlight;
         }
     }
     r.got = int(received.size());
@@ -98,33 +112,51 @@ int main() {
     // ticks, so throughput collapsed even though the server was willing to take more.
     for (int fps : {5, 10, 30, 60, 120, 240}) {
         const int burst = 2000, ticks = 400;
-        Result r = run(fps, 0, burst, ticks);
+        Result r = run(fps, 0, 0, burst, ticks);
         check(r.dropped == 0 && r.ordered && r.got == r.sent,
               "fps=" + std::to_string(fps) + ": nothing lost, order held",
               "sent=" + std::to_string(r.sent) + " delivered=" + std::to_string(r.got) +
                   " dropped=" + std::to_string(r.dropped) +
                   (r.ordered ? "" : " ORDER BROKEN"));
     }
-    // A stalled uplink that delivers many batches at once -- the case the server
-    // queue exists for.
-    for (int batch : {1, 4, 8, 16}) {
-        Result r = run(60, batch, 2000, 400);
-        check(r.dropped == 0 && r.ordered,
-              "uplink batching " + std::to_string(batch) + " ticks: nothing lost",
-              "sent=" + std::to_string(r.sent) + " dropped=" + std::to_string(r.dropped) +
+    // The real case: a delivery BLACKOUT, then every held message released on one
+    // tick. The rate limiter alone cannot survive this -- it re-accrues through the
+    // stall and hands the server more than its queue holds.
+    for (int stall : {4, 8, 16, 32}) {
+        // The blackout has to start while the order is still FLOWING -- begin it
+        // after the burst has drained and the client has nothing to send, and the
+        // stall proves nothing (the first cut of this test did exactly that).
+        Result r = run(60, 2, stall, 4000, 500);
+        check(r.dropped == 0 && r.ordered && r.got == r.sent,
+              "uplink blackout of " + std::to_string(stall) +
+                  " ticks then a burst release: nothing lost",
+              "sent=" + std::to_string(r.sent) + " delivered=" + std::to_string(r.got) +
+                  " dropped=" + std::to_string(r.dropped) +
                   (r.ordered ? "" : " ORDER BROKEN"));
+        // Control: the same blackout WITHOUT the in-flight window must lose
+        // commands, or this test is not measuring the fix.
+        // Only assert the counter-case where a stall can actually overrun the
+        // queue: below that the rate limiter alone is enough, and demanding a
+        // failure there would be asserting a bug rather than a property.
+        if (stall * net::kCmdCapPerTick > net::kCmdQueueCap) {
+            Result un = run(60, 2, stall, 4000, 500, false, false);
+            check(un.dropped > 0,
+                  "...and the rate limiter alone loses them (counter-case)",
+                  "unwindowed dropped=" + std::to_string(un.dropped) +
+                      ", windowed dropped 0");
+        }
     }
     // Throughput floor: a low-fps client must still clear a big order about as fast
     // as the server can take it, not fps*64 per second.
     {
-        Result lo = run(5, 0, 4000, 120), hi = run(120, 0, 4000, 120);
+        Result lo = run(5, 0, 0, 4000, 120), hi = run(120, 0, 0, 4000, 120);
         check(lo.got * 100 >= hi.got * 90,
               "throughput does not track frame rate",
               "5fps delivered " + std::to_string(lo.got) + ", 120fps " +
                   std::to_string(hi.got) + " in 4s");
         // Control: the rule this replaced MUST fail that check, else the check is
         // measuring nothing.
-        Result oldLo = run(5, 0, 4000, 120, true), oldHi = run(120, 0, 4000, 120, true);
+        Result oldLo = run(5, 0, 0, 4000, 120, true), oldHi = run(120, 0, 0, 4000, 120, true);
         check(oldLo.got * 100 < oldHi.got * 90,
               "...and the frame-coupled rule it replaced would fail that",
               "old rule: 5fps " + std::to_string(oldLo.got) + " vs 120fps " +
