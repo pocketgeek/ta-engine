@@ -195,7 +195,7 @@
         // stalled uplink accumulate 1024 unacknowledged commands against a 512
         // queue, and the server dropped the difference when they all landed.
         const int sendable = tak::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
-        if (!outbox_.empty() && sendable > 0) {
+        if (!outbox_.empty() && sendable > 0 && !cmdCatchUp_) {
             const size_t n = std::min(outbox_.size(), size_t(sendable));
             cmdCredit_ -= int(n);
             cmdInFlight_ += int(n);
@@ -222,10 +222,18 @@
             // Our own commands coming back in this bundle are the server's
             // acknowledgement that it took them (lockstep relays every tick to
             // every peer, sender included). That is what retires in-flight credit.
-            if (int ms = mp_->room().mySlot; ms >= 0) {
-                for (const auto& c : bd.cmds)
-                    if (int(c.player) == ms && cmdInFlight_ > 0) --cmdInFlight_;
-            }
+            //
+            // NOT during a rejoin replay. Catch-up feeds the whole bundle log back,
+            // including this player's commands from BEFORE the disconnect -- history,
+            // not acknowledgement. Counting those retired commands we had only just
+            // sent, reopening the send window past what the server can hold. We send
+            // nothing while catching up anyway (see cmdCatchUp_), so there is nothing
+            // legitimate to retire here.
+            if (!cmdCatchUp_)
+                if (int ms = mp_->room().mySlot; ms >= 0) {
+                    for (const auto& c : bd.cmds)
+                        if (int(c.player) == ms && cmdInFlight_ > 0) --cmdInFlight_;
+                }
             if (useSimThread_) {
                 // Hand this tick's bundle to the sim worker (FIFO == lockstep tick order).
                 // world_ is simulated there; the state hash comes back via simOutbox_ and is
@@ -322,6 +330,23 @@
             // reserve). One count per starved frame.
             ++netBenchFrames_;
             if (drained < budget && !mp_->haveBundle(netTick_)) ++netBenchStalls_;
+        }
+        // Caught up: the replayed log is spent and what arrives now is live. Reset the
+        // window rather than trust a count accumulated across the reconnect -- the
+        // server cleared this connection's queue when we left.
+        //
+        // AFTER both drain paths, not inside one. There are two -- the immediate
+        // drain (netDelay_ <= 0) and the jitter-buffered one -- and the default is
+        // the buffered one, so a check placed in the other branch never runs at all
+        // and a rejoined player stays locked out of issuing orders for the whole
+        // game. The test is also "down to the buffer's own reserve", NOT "empty":
+        // the adaptive buffer deliberately keeps netDelay_ bundles in hand.
+        if (cmdCatchUp_ && int(mp_->bufferedBundles()) <= std::max(netDelay_, 0)) {
+            cmdCatchUp_ = false;
+            if (tak::devEnv("TAK_NETLOG"))
+                std::fprintf(stderr, "catch-up complete at tick %u\n", netTick_);
+            cmdInFlight_ = 0;
+            cmdCredit_ = tak::net::kCmdCapPerTick;
         }
         // Send the worker's finished per-tick state hashes to the server (lockstep desync
         // check + flow-control ack). Drained here on the main thread -- mp_ has a single owner.
@@ -553,6 +578,11 @@
             mp_->clearRejoin();
             world_.resetForReplay();
             netTick_ = 0; outcome_ = 0; netError_.clear();
+            // Replaying history from tick 0: hold our own orders and stop counting
+            // acknowledgements until the log is spent (see cmdCatchUp_).
+            cmdCatchUp_ = true;
+            cmdInFlight_ = 0;
+            outbox_.clear();   // pre-disconnect orders are moot; the server dropped them
             startMpGame(mp_->startRoom(), mp_->startSeed());
             if (spec) {
                 spectating_ = true;   // watch-only: no fog, no control, no resume

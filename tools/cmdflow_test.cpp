@@ -146,6 +146,52 @@ int main() {
                       ", windowed dropped 0");
         }
     }
+    // Rejoin catch-up: the server feeds back the whole bundle log, which contains
+    // THIS player's commands from before the disconnect. Those are history, not
+    // acknowledgement. Counting them retires in-flight credit that nothing actually
+    // took, reopening the window past what the server can hold.
+    std::printf("\n[rejoin replay does not acknowledge live commands]\n");
+    {
+        // Model: `replayOwn` historical commands of ours arrive as bundles while we
+        // also want to send new ones. `holdWhileReplaying` is the fix.
+        auto rejoin = [](bool holdWhileReplaying) {
+            int inFlight = 0, dropped = 0, credit = net::kCmdCapPerTick;
+            std::deque<int> serverQueue;
+            int outbox = 4000, replayLeft = 3000;
+            for (uint32_t t = 0; t < 300; ++t) {
+                const bool replaying = replayLeft > 0;
+                credit = net::cmdSendCredit(credit, 1);
+                if (!(replaying && holdWhileReplaying)) {
+                    const int n = std::min(outbox, net::cmdSendWindow(credit, inFlight));
+                    for (int i = 0; i < n; ++i) {
+                        if (serverQueue.size() >= size_t(net::kCmdQueueCap)) { ++dropped; continue; }
+                        serverQueue.push_back(1);
+                    }
+                    outbox -= n; credit -= n; inFlight += n;
+                }
+                // The replayed log comes back as our own commands -- the false ack.
+                if (replaying) {
+                    const int replayed = std::min(replayLeft, net::kCmdCapPerTick);
+                    replayLeft -= replayed;
+                    if (!holdWhileReplaying)
+                        for (int i = 0; i < replayed && inFlight > 0; ++i) --inFlight;
+                    continue;   // the server is busy feeding history, draining nothing
+                }
+                for (int k = 0; k < net::kCmdCapPerTick && !serverQueue.empty(); ++k) {
+                    serverQueue.pop_front();
+                    if (inFlight > 0) --inFlight;
+                }
+            }
+            return dropped;
+        };
+        check(rejoin(true) == 0,
+              "holding orders through catch-up loses nothing",
+              "dropped=" + std::to_string(rejoin(true)));
+        check(rejoin(false) > 0,
+              "...and counting replayed history as acks overruns the queue (counter-case)",
+              "dropped=" + std::to_string(rejoin(false)));
+    }
+
     // Throughput floor: a low-fps client must still clear a big order about as fast
     // as the server can take it, not fps*64 per second.
     {
