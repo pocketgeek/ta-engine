@@ -132,7 +132,8 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                                const ResultStats* stats) {
     CursorSet cursors;
     cursors.load(ren, vfs, settings);
-    SDL_ShowCursor(cursors.ok() ? SDL_DISABLE : SDL_ENABLE);
+    // Decided per frame below (hardware -> shown, software -> hidden and drawn).
+    if (!cursors.ok()) SDL_ShowCursor(SDL_ENABLE);
 
     SDL_PumpEvents();
     SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
@@ -307,8 +308,17 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
         button(cancelTex, cancelR, cancelHover, "MENU");
         button(okTex, okR, okHover, "GO");
 
-        if (cursors.ok())
-            cursors.draw(ren, CursorId::Normal, mx, my, settings ? settings->cursorScale : 1);
+        // Honour the hardware-cursor option here too -- see BriefingScreen.
+        if (cursors.ok()) {
+            const int sc = settings ? settings->cursorScale : 1;
+            if (settings && settings->hardwareCursor &&
+                cursors.applyHardware(CursorId::Normal, sc)) {
+                SDL_ShowCursor(SDL_ENABLE);
+            } else {
+                SDL_ShowCursor(SDL_DISABLE);
+                cursors.draw(ren, CursorId::Normal, mx, my, sc);
+            }
+        }
         if (const char* sp = devEnv("TAK_SHOT_RESULT")) {
             std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
             if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_ABGR8888, px.data(), w * 4) == 0)

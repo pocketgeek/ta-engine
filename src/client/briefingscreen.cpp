@@ -84,7 +84,9 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
 
     CursorSet cursors;
     cursors.load(ren, vfs, settings);
-    SDL_ShowCursor(cursors.ok() ? SDL_DISABLE : SDL_ENABLE);
+    // Cursor visibility is decided per frame below (hardware -> shown, software ->
+    // hidden and drawn), so only the no-art case is settled here.
+    if (!cursors.ok()) SDL_ShowCursor(SDL_ENABLE);
 
     // Drop any click queued by the screen we came from (movie / picker fires on DOWN).
     SDL_PumpEvents();
@@ -174,9 +176,19 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
         button(backRect, "BACK", false);
         button(beginRect, "BEGIN MISSION", true);
 
+        // Honour the hardware-cursor option here too. This screen used to always draw
+        // the software cursor, which ignored the setting -- and once load() began
+        // preparing hardware frames it also meant reconstructing frames nothing read.
         if (cursors.ok()) {
-            int mx = 0, my = 0; SDL_GetMouseState(&mx, &my);
-            cursors.draw(ren, CursorId::Normal, mx, my, settings ? settings->cursorScale : 1);
+            const int sc = settings ? settings->cursorScale : 1;
+            if (settings && settings->hardwareCursor &&
+                cursors.applyHardware(CursorId::Normal, sc)) {
+                SDL_ShowCursor(SDL_ENABLE);
+            } else {
+                SDL_ShowCursor(SDL_DISABLE);
+                int mx = 0, my = 0; SDL_GetMouseState(&mx, &my);
+                cursors.draw(ren, CursorId::Normal, mx, my, sc);
+            }
         }
         // Debug: TAK_SHOT_BRIEFING captures one frame for tests, then begins.
         if (const char* sp = tak::devEnv("TAK_SHOT_BRIEFING")) {
