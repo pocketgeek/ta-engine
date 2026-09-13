@@ -775,6 +775,10 @@ public:
     // Fetch and reset the per-draw sub-phase timers (for TAK_PROF).
     void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs,
                   long& unitsDrawn, long& shadowVerts);
+    // Current accumulators WITHOUT resetting, so a per-frame delta can be taken.
+    void profPeek(double& projMs, double& submitMs, double& shadowMs) const {
+        projMs = profProjMs_; submitMs = profSubmitMs_; shadowMs = profShadowMs_;
+    }
 
     void draw(int winW, int winH);
 
@@ -1237,6 +1241,18 @@ private:
     double profShadowMs_ = 0;   // the projected-silhouette pass, inside submit
     long profUnits_ = 0;        // visible units accumulated over the sampled frames
     long profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
+    // "other" broken out: a periodic hitch was traced into this bucket and there
+    // was no way to say WHICH of terrain / fog / effects / HUD it was.
+    double profTerrainMs_ = 0, profFogMs_ = 0, profFxMs_ = 0, profHudMs_ = 0;
+    double profAtlasMs_ = 0, profBodyMs_ = 0;
+  public:
+    void profOther(double& terrain, double& fog, double& fx, double& hud) const {
+        terrain = profTerrainMs_; fog = profFogMs_; fx = profFxMs_; hud = profHudMs_;
+    }
+    void profOther2(double& atlas, double& body) const {
+        atlas = profAtlasMs_; body = profBodyMs_;
+    }
+  private:
     std::atomic<int64_t> profSimTicks_{0};        // sim-tick time in raw perf-counter ticks,
                                                   // accumulated by the worker, read/reset on main.
                                                   // Integer atomic -- portable (atomic<double>

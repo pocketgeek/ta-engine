@@ -1330,6 +1330,38 @@ int main(int argc, char** argv) {
         SDL_RenderPresent(ren);
         if (prof) {
             double t5 = pnow();
+            // Per-frame spike log. The PROF line below is a one-second AVERAGE, which
+            // is exactly the wrong shape for a periodic hitch -- a 200ms stall twice a
+            // second vanishes into a mean. This prints the frames that are outliers
+            // against a running median, with the phase breakdown, so the stall can be
+            // attributed instead of guessed at.
+            static const bool spikes = tak::devEnv("TAK_SPIKES") != nullptr;
+            if (spikes) {
+                const double total = t5 - t0;
+                static double med = 16.0;
+                med += (total - med) * (total > med ? 0.02 : 0.20);   // slow up, fast down
+                double pj = 0, sb = 0, sh = 0, tr = 0, fg = 0, fx = 0, hd = 0;
+                double at = 0, bd = 0;
+                if (gameView) { gameView->profPeek(pj, sb, sh);
+                                gameView->profOther(tr, fg, fx, hd);
+                                gameView->profOther2(at, bd); }
+                static double ppj = 0, psb = 0, psh = 0, ptr = 0, pfg = 0, pfx = 0, phd = 0;
+                static double pat = 0, pbd = 0;
+                if (total > med * 2.0 && total > 8.0)
+                    std::printf("SPIKE %6.1fms (median %5.1f) | update=%.1f draw=%.1f "
+                                "[proj=%.1f submit=%.1f shadow=%.1f | terrain=%.1f "
+                                "fog=%.1f fx=%.1f hud=%.1f atlas=%.1f body=%.1f rest=%.1f] "
+                                "present=%.1f | t=%.1fs\n",
+                                total, med, t1 - t0, t4 - t1,
+                                pj - ppj, sb - psb, sh - psh,
+                                tr - ptr, fg - pfg, fx - pfx, hd - phd, at - pat, bd - pbd,
+                                (t4 - t1) - (pj - ppj) - (sb - psb) - (tr - ptr) -
+                                    (fg - pfg) - (fx - pfx) - (hd - phd) - (at - pat) -
+                                    (bd - pbd),
+                                t5 - t4, SDL_GetTicks64() / 1000.0);
+                ppj = pj; psb = sb; psh = sh; ptr = tr; pfg = fg; pfx = fx; phd = hd;
+                pat = at; pbd = bd;
+            }
             pPres += t5 - t4;
             pAcc += t5 - t0; ++pFrames;
             if (pAcc >= 1000.0) {

@@ -89,7 +89,12 @@
         SDL_Rect worldClip{0, 0, mvw, winH};
         SDL_RenderSetClipRect(ren_, &worldClip);
         mapView_.setUnderlay(miniTex_);   // low-res gap filler (null until the overview bakes)
-        mapView_.draw(mvw, winH);
+        {
+            const double _t0 = double(SDL_GetPerformanceCounter());
+            mapView_.draw(mvw, winH);
+            profTerrainMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
+                              (double(SDL_GetPerformanceFrequency()) / 1000.0);
+        }
         float zm0 = mapView_.zoom();
 
         // Painter list: features and units together, sorted by map z. Lives in a
@@ -181,6 +186,7 @@
             : 1.0f;
         // Build the texture atlas for every colour slot in view (main thread; the
         // parallel pass below only reads the finished atlas pointers).
+        const double _atl0 = double(SDL_GetPerformanceCounter());
         bool builtGlow = false;
         uint32_t atlasSeen = 0;   // build each in-view colour slot's atlas ONCE, not per unit
         for (const auto* u : visUnits_) {
@@ -195,6 +201,9 @@
         // Cycle lodestone/mana/fire crystal frames -- but only once a built glow-unit
         // is on screen, so a still-conjuring lodestone stays dark until it's finished.
         animateGlowTextures(builtGlow);
+        profAtlasMs_ += (double(SDL_GetPerformanceCounter()) - _atl0) /
+                        (double(SDL_GetPerformanceFrequency()) / 1000.0);
+        static const bool kNoShadow = tak::devEnv("TAK_NOSHADOW") != nullptr;   // TEMP probe
         profUnits_ += long(visUnits_.size());   // so PROF ms/frame can be read per unit
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
@@ -250,11 +259,19 @@
         // is a flat 0.55 multiply no matter how many polygons covered it.
         //
         // White ground + grey coverage + one MOD blit reproduces exactly that.
-        if (!shadowBatch_.empty()) {
+        if (!shadowBatch_.empty() && !kNoShadow) {
             SDL_Texture* prev = SDL_GetRenderTarget(ren_);
             int mw = 0, mh = 0;
             if (prev) SDL_QueryTexture(prev, nullptr, nullptr, &mw, &mh);
             else SDL_GetRendererOutputSize(ren_, &mw, &mh);
+            // HALF RESOLUTION. The mask is a flat 55% multiply with no detail in it,
+            // so it does not need the scene's (supersampled) pixel count -- and at
+            // 2x AA on a 7680x2160 desktop the full-size version was a 133 MB render
+            // target cleared, drawn into and blitted back every frame, which is what
+            // the periodic hitch turned out to be.
+            static const int kMaskDiv = 2;
+            mw = (mw + kMaskDiv - 1) / kMaskDiv;
+            mh = (mh + kMaskDiv - 1) / kMaskDiv;
             if (mw > 0 && mh > 0 &&
                 (!shadowMask_ || shadowMaskW_ != mw || shadowMaskH_ != mh)) {
                 if (shadowMask_) gpuvram::destroy(shadowMask_);
@@ -273,25 +290,28 @@
                 const float lo_y = shadowLo_.y, hi_y = shadowHi_.y;
                 float rsx = 1.0f, rsy = 1.0f;
                 SDL_RenderGetScale(ren_, &rsx, &rsy);
-                SDL_Rect box{std::clamp(int(std::floor(lo_x * rsx)) - 1, 0, mw),
-                             std::clamp(int(std::floor(lo_y * rsy)) - 1, 0, mh),
+                const float msx = rsx / float(kMaskDiv), msy = rsy / float(kMaskDiv);
+                SDL_Rect box{std::clamp(int(std::floor(lo_x * msx)) - 1, 0, mw),
+                             std::clamp(int(std::floor(lo_y * msy)) - 1, 0, mh),
                              0, 0};
-                box.w = std::clamp(int(std::ceil(hi_x * rsx)) + 1, 0, mw) - box.x;
-                box.h = std::clamp(int(std::ceil(hi_y * rsy)) + 1, 0, mh) - box.y;
+                box.w = std::clamp(int(std::ceil(hi_x * msx)) + 1, 0, mw) - box.x;
+                box.h = std::clamp(int(std::ceil(hi_y * msy)) + 1, 0, mh) - box.y;
                 if (box.w > 0 && box.h > 0) {
                     SDL_SetRenderTarget(ren_, shadowMask_);
                     SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
                     SDL_SetRenderDrawColor(ren_, 255, 255, 255, 255);  // MOD identity
-                    SDL_RenderSetScale(ren_, 1.0f, 1.0f);   // box is in pixels
+                    SDL_RenderSetScale(ren_, 1.0f, 1.0f);   // box is in mask pixels
                     SDL_RenderFillRect(ren_, &box);
-                    SDL_RenderSetScale(ren_, rsx, rsy);
+                    SDL_RenderSetScale(ren_, msx, msy);     // geometry -> mask space
                     SDL_RenderGeometry(ren_, nullptr, shadowBatch_.data(),
                                        int(shadowBatch_.size()), nullptr, 0);
                     SDL_SetRenderTarget(ren_, prev);
                     // The mask holds pixel-space coverage (it was drawn under the
                     // renderer's own scale), so composite it 1:1.
                     SDL_RenderSetScale(ren_, 1.0f, 1.0f);
-                    SDL_RenderCopy(ren_, shadowMask_, &box, &box);
+                    const SDL_Rect dst{box.x * kMaskDiv, box.y * kMaskDiv,
+                                       box.w * kMaskDiv, box.h * kMaskDiv};
+                    SDL_RenderCopy(ren_, shadowMask_, &box, &dst);
                     SDL_RenderSetScale(ren_, rsx, rsy);
                 }
                 SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
@@ -304,6 +324,7 @@
         profShadowVerts_ += long(shadowBatch_.size());
         profShadowMs_ += (double(SDL_GetPerformanceCounter()) - _sh0) / _ptFreq;
 
+        const double _bdy0 = double(SDL_GetPerformanceCounter());
         // Pass 2: bodies (feature sprites + unit models) in depth order. Unit
         // models are accumulated into one batch and flushed only when the texture
         // changes or a feature/special unit interrupts the run -- so a crowd of one
@@ -447,6 +468,8 @@
         }
         profSubmitMs_ += (double(SDL_GetPerformanceCounter()) - _st0) / _ptFreq;
 
+        profBodyMs_ += (double(SDL_GetPerformanceCounter()) - _bdy0) /
+                       (double(SDL_GetPerformanceFrequency()) / 1000.0);
         // Ghosts of the local player's queued (shift) build orders.
         for (const UnitR* _up : front().live) {
             const UnitR& u = *_up;
@@ -697,11 +720,21 @@
                                     sy - p.vz * 0.035f * zm + (t < 0.5f ? 2.5f : -2.5f) * zm);
             }
         }
-        drawParticles();
-        drawEffects();
-        drawUnitFx();
+        {
+            const double _t0 = double(SDL_GetPerformanceCounter());
+            drawParticles();
+            drawEffects();
+            drawUnitFx();
+            profFxMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
+                         (double(SDL_GetPerformanceFrequency()) / 1000.0);
+        }
 
-        drawFog();
+        {
+            const double _t0 = double(SDL_GetPerformanceCounter());
+            drawFog();
+            profFogMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
+                          (double(SDL_GetPerformanceFrequency()) / 1000.0);
+        }
         if (buildDrag_ && placing_) {
             float mx, mz;
             pickWorld(mouseX_, mouseY_, mx, mz);
@@ -1078,7 +1111,12 @@
         float stripH = spectating_ ? float(winH) : float(winH) - barH();
         SDL_FRect panelStrip{float(mvw), 0, float(winW - mvw), stripH};
         SDL_RenderFillRectF(ren_, &panelStrip);
-        drawMinimap(winW, winH);
+        {
+            const double _t0 = double(SDL_GetPerformanceCounter());
+            drawMinimap(winW, winH);
+            profHudMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
+                          (double(SDL_GetPerformanceFrequency()) / 1000.0);
+        }
         if (!spectating_) {
             renderGui(winW, winH);
             drawPanel(winW, winH);
