@@ -28,6 +28,11 @@ struct Settings {
     float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..2.0
     bool  bilinear   = false;      // smooth (bilinear) terrain + feature scaling, like retail's option
     bool  treeSway   = true;       // trees sway in the wind (beyond-retail nicety; display-only)
+    bool  videoDeblock = false;    // deblock the Bink clips before upload. They are
+                                   // 640x360 and get stretched ~12x on a wide display,
+                                   // which magnifies every 8x8 compression seam into a
+                                   // visible line. ~0.3ms per frame against a 66ms
+                                   // budget at 15fps; nothing scales with window size.
     bool  smoothArt  = false;      // edge-directed 2x upscale of the STATIC art (GUI,
                                    // panels, backdrops, cursors) when it is built, so
                                    // 1999 sprites do not show blocky stair-steps when
@@ -108,6 +113,7 @@ struct Settings {
             && a.buildBarAlign == b.buildBarAlign && a.buildBarScale == b.buildBarScale
             && a.bilinear == b.bilinear && a.treeSway == b.treeSway
             && a.unitShadows == b.unitShadows && a.smoothArt == b.smoothArt
+            && a.videoDeblock == b.videoDeblock
             && a.healthBars == b.healthBars
             && a.masterVol == b.masterVol && a.bgmVol == b.bgmVol && a.sfxVol == b.sfxVol
             && a.mouseZoomSpeed == b.mouseZoomSpeed && a.edgeScrollSpeed == b.edgeScrollSpeed

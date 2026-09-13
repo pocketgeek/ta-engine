@@ -17,6 +17,7 @@
 #include "campaign/campaign.h"
 #include "client/briefingscreen.h"
 #include "client/artscale.h"
+#include "client/videofilter.h"
 #include "client/resultscreen.h"
 #include "cob/vm.h"
 #include "crt/crt.h"
@@ -581,6 +582,7 @@ int main(int argc, char** argv) {
     // per texture -- the Options row says RESTART for exactly this reason.
     tak::art::setSmoothArt(settings.smoothArt);
     tak::art::setCursorFactor(settings.cursorScale);
+    tak::video::setDeblock(settings.videoDeblock);
     {
         SDL_RendererInfo ri{};
         if (SDL_GetRendererInfo(ren, &ri) == 0)

@@ -1,4 +1,5 @@
 #include "client/mainmenu.h"
+#include "client/videofilter.h"
 #include "client/artscale.h"
 #include "client/gpuvram.h"
 
@@ -287,6 +288,10 @@ struct MainMenu::Impl {
     // ---- door video state machine --------------------------------------------
 
     void setDoorTex(Door& d) {
+        // Exactly once per DECODED frame: setDoorTex is only ever called straight after a
+        // successful nextFrame(). Filtering at the upload instead would re-filter a held
+        // frame every time it was re-uploaded, smearing it a little more each pass.
+        if (tak::video::g_deblock) tak::video::deblock(d.rgba, d.vw, d.vh, 3);
         if (d.vw <= 0 || d.vh <= 0 || d.rgba.empty()) return;
         if (!d.vtex) {
             d.vtex = gpuvram::create(ren, SDL_PIXELFORMAT_ABGR8888,
@@ -840,6 +845,7 @@ void MainMenu::setConnectError(const std::string& msg) { d_->pendingConnectError
 
 MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverOut,
                                MenuMusic* music, Settings* settings) {
+    if (settings) tak::video::setDeblock(settings->videoDeblock);
     int w = 0, h = 0;
     SDL_GetRendererOutputSize(d_->ren, &w, &h);
 
@@ -1305,6 +1311,7 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
         if (adev && !apcm.empty()) { SDL_QueueAudio(adev, apcm.data(), Uint32(apcm.size()));
                                      queuedTotal += long(apcm.size()); }
         if (ended || rgba.empty()) break;
+        if (tak::video::g_deblock) tak::video::deblock(rgba, vw, vh, 3);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), vw * 4);
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);

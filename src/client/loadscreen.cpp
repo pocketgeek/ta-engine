@@ -1,4 +1,5 @@
 #include "client/loadscreen.h"
+#include "client/videofilter.h"
 
 #include <algorithm>
 #include <cstring>
@@ -119,6 +120,7 @@ std::filesystem::path findMovie(const std::string& name) {
 LoadScreen::LoadScreen(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::string& mapName,
                        Settings* settings)
     : ren_(ren), vfs_(&vfs), settings_(settings), map_(mapName) {
+    if (settings_) tak::video::setDeblock(settings_->videoDeblock);
     const Geom& g = geom(vfs);
     bg_ = gafTexture(ren, vfs, g.bgGaf, g.bgSeq, 0, /*keyBlack=*/true);
     const char* drv = SDL_GetCurrentVideoDriver();
@@ -223,6 +225,11 @@ void LoadScreen::draw() {
         while (movieFrame_ < want) {
             if (!movie_.nextFrame(movieRgba_)) { movie_.rewind(); movieStartMs_ = SDL_GetTicks64();
                                                  movieFrame_ = -1; want = 0; continue; }
+            // Filter the freshly DECODED frame only. The upload below runs every frame,
+            // including ones where no new frame was decoded, so filtering there would
+            // smear a held frame progressively.
+            if (tak::video::g_deblock)
+                tak::video::deblock(movieRgba_, movie_.width(), movie_.height(), 3);
             ++movieFrame_;
         }
         if (!movieRgba_.empty())

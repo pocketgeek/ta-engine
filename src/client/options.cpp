@@ -258,6 +258,11 @@ void OptionsScreen::build(int channels) {
     // built with, hence the caption.
     toggle("SMOOTH GUI ART (RESTART)", [&] { return s_.smoothArt ? 1.0f : 0.0f; },
            [&](float v) { s_.smoothArt = v > 0.5f; });
+    // Deblock the Bink clips. Unlike the art option this is a PER-FRAME filter, but the
+    // clips are 640x360 at 15 fps so it is ~0.3 ms against a 66 ms budget, and it takes
+    // effect on the next clip rather than needing a restart.
+    toggle("SMOOTH MOVIES", [&] { return s_.videoDeblock ? 1.0f : 0.0f; },
+           [&](float v) { s_.videoDeblock = v > 0.5f; });
     toggle("TREES SWAY IN WIND", [&] { return s_.treeSway ? 1.0f : 0.0f; },
            [&](float v) { s_.treeSway = v > 0.5f; });
 
