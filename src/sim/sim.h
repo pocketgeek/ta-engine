@@ -707,10 +707,10 @@ public:
     // Backed by a lazily-built clearance grid, so O(1). Footprint-aware pathing and
     // steering use this so a 4x4 unit never routes through a 1-cell gap and wedges.
     bool fits(int cx, int cz, int foot) const;
-    // Force the lazy clearance grid up to date NOW. The parallel flow-field
-    // prefetch calls this before handing the grid to worker threads, so they
-    // only ever READ it (fits() would otherwise rebuild the mutable cache
-    // concurrently from several threads).
+    // Force the lazy clearance grid up to date NOW, so a caller that will only READ
+    // the grid afterwards cannot trip fits() into rebuilding the mutable cache
+    // underneath it. components() calls this before its flood fill; it was added for
+    // the flow-field prefetch, which handed the grid to worker threads and is gone.
     void ensureClearance() const { if (clearDirty_) rebuildClearance(); }
     bool empty() const { return cells_.empty(); }
     int width() const { return w_; }
@@ -1093,15 +1093,14 @@ public:
     // Monarch-expendable rule (net GameOptions): when FALSE, losing your Monarch
     // (a commander unit) loses you the game even if other units survive.
     void setMonarchExpendable(bool e) { monarchExpendable_ = e; }
-    // Run flow-field prefetch on the calling thread only (no worker pool). The server
-    // sets this on a referee World when it ticks several games IN PARALLEL: the
-    // parallelism is already at the game level, so a per-game nested flow pool would
-    // just oversubscribe. A lone game (SP, or the client's own sim) leaves it off and
-    // keeps the intra-tick flow parallelism. Never affects results -- purely how the
-    // (identical) flow builds are scheduled.
-    // The server ticks several games at once and puts the parallelism at the GAME
-    // level, so a room's sim must not spawn its own workers. Also honoured by the
-    // fog/visibility passes (it was serialFlow_ when flow fields honoured it too).
+    // Keep this World's intra-tick work on the calling thread (no worker pool). The
+    // server sets it on a referee World when it ticks several games IN PARALLEL: the
+    // parallelism is already at the game level, so a per-game nested pool would just
+    // oversubscribe. A lone game (SP, or the client's own sim) leaves it off.
+    //
+    // It was named serialFlow_ and gated the flow-field prefetch; the flow fields are
+    // gone, and today the only thing it gates is the fog/visibility pass (see
+    // updateVisibility/visCompute). Never affects results -- purely scheduling.
     void setSerialThreads(bool s) { serialThreads_ = s; }
     // Deterministic digest of sim state, for lockstep sync checking.
     uint64_t stateHash() const;
@@ -1141,9 +1140,10 @@ public:
         if (cx < 0 || cz < 0 || cx >= visW_ || cz >= visH_) return false;
         return vis_[size_t(cz) * visW_ + cx] == 2;
     }
-    // Move order; queue appends. Ground units steer by a shared flow field
-    // toward (x,z) (crowd-friendly); flyers and unreachable goals fall back to
-    // A* waypoints.
+    // Move order; queue appends. A unit steers STRAIGHT at the front order's point --
+    // there is no local obstacle avoidance in the steering -- and the background A*
+    // routes around terrain by splicing its waypoints in as further order legs (see
+    // replaceLeg). This used to describe a shared flow field; that system is gone.
     void order(int unitId, float x, float z, bool queue);
 
     // ---- order-queue helpers ------------------------------------------------
@@ -1178,9 +1178,11 @@ public:
         return false;
     }
     void attackMove(int unitId, float x, float z, bool queue);
-    // Can a unit of `type` at (fx,fz) actually reach goal (gx,gz)? (flow-field
-    // connectivity). Lets the AI pick a REACHABLE target instead of one that's
-    // merely nearest in a straight line but walled off (army would stall/pile).
+    // Can a unit of `type` at (fx,fz) actually reach goal (gx,gz)? Answered from
+    // footprint-aware COMPONENT labelling (one flood fill per grid+footprint, see
+    // components()), not from a distance field -- the flow-field version cost ~40ms a
+    // call and was the per-second AI hitch. Lets the AI pick a REACHABLE target
+    // instead of one merely nearest in a straight line but walled off.
     bool pathExists(const UnitType* type, float gx, float gz, float fx, float fz) const;
     void patrol(int unitId, float x, float z);
     // Queue a patrol waypoint (SetMission "p X Y"): like a move but the completed
@@ -1280,14 +1282,17 @@ private:
     void tickHealAuras();           // AdjustJoy passive repair aura (1 Hz)
     void updateVisibility();
 
-    // Return a flow field toward world (gx,gz) over `type`'s nav grid, built and
-    // cached on first use (keyed by goal cell + domain). Cleared when the nav
-    // grid changes (a building is placed or removed). nullptr if unbuildable.
-    // const: the flow field is a PURE MEMO of (nav grid, goal, domain) -- content
-    // never depends on when/whether it was built -- so building a cache entry the
-    // AI needs (on the server, where clients don't) cannot perturb sim state. The
-    // cache is therefore mutable and this is a logical-const query. Single-threaded
-    // per world (not safe to call off the sim thread). See docs/multiplayer-design.md.
+    // Connected-component labelling of a nav grid for one footprint, built on first
+    // use and reused until the grid's walkability version moves.
+    //
+    // const with a mutable cache, and that is a correctness argument rather than a
+    // convenience: the labelling is a PURE MEMO of (nav grid, footprint) -- its content
+    // never depends on when or whether it was built -- so the server-side AI populating
+    // an entry that clients never ask for cannot perturb sim state. Single-threaded per
+    // world. See docs/multiplayer-design.md.
+    //
+    // (This paragraph documented flowField(), which is gone; the const-memo reasoning is
+    // what survived it, and it applies to this cache for the same reason.)
     struct CompGrid { uint64_t ver = 0; int w = 0, h = 0; std::vector<int32_t> label; };
     mutable std::map<std::pair<const NavGrid*, int>, CompGrid> compCache_;
     const CompGrid* components(const NavGrid& g, int foot) const;

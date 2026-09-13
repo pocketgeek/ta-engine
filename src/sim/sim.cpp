@@ -1095,10 +1095,14 @@ void World::order(int unitId, float x, float z, bool queue) {
         markGoal();
         return;
     }
-    // Ground/water units steer by a shared flow field toward the goal, so a
-    // crowd sent to the same point spreads and flows around obstacles instead of
-    // funnelling single-file into a corner. Only fall back to A* waypoints when
-    // no field can be built or the goal is unreachable from here.
+    // Ground/water units steer STRAIGHT at the front order's point. There is no local
+    // obstacle avoidance in the steering: going around terrain is entirely the job of
+    // the background A*, which splices its route in as further order legs.
+    //
+    // This said "steer by a shared flow field ... fall back to A* waypoints", which has
+    // not been true since the flow fields were removed -- A* is now the only mechanism,
+    // not the fallback. Left stale it is actively misleading: it sends anyone debugging
+    // a unit that walks into a cliff looking for a field that does not exist.
     // Snap the destination onto ground this unit can actually stand on. A click
     // on a mountain is a click on a cell no ground unit fits in: without this the
     // unit walks up to the cliff and shoves at it indefinitely, because the goal
@@ -2210,7 +2214,8 @@ void World::captureUnit(Unit& t, int newPlayer) {
 
 // Stamp every PARKED ground unit into the occupancy layer. O(n), one cell each:
 // our movers are all one nav cell, and this deliberately does NOT go through
-// NavGrid::block, whose clearance DP and flow invalidation would be ruinous at a
+// NavGrid::block, whose clearance DP and cache invalidation (it bumps the grid
+// version, staling every component labelling over it) would be ruinous at a
 // per-tick cadence. Rebuilt wholesale in unit-index order so the last writer on a
 // contested cell is the same on every peer.
 void World::blockCells(int cx, int cz, int w, int h, bool blocked) {
@@ -4000,11 +4005,11 @@ void World::tick(float dt) {
         uint32_t live = 0;
         for (const auto& u : units_) if (u.alive() && u.type) ++live;
         acqStride_ = std::clamp<uint32_t>(4 + live / 700, 4, 16);
-        // Flow-goal quantization coarsens with the crowd too: 2x2 cell blocks normally,
-        // up to 8x8 in a massive battle. Fewer distinct goal blocks means far fewer
-        // full-map flow-field builds per tick (the dominant cost at 10k+ units), at the
-        // price of homing onto a coarser goal centre before steering to the exact order
-        // point -- imperceptible at that scale. Deterministic (live count).
+        // (Goal quantization used to coarsen with the crowd here as well -- 2x2 cell
+        // blocks up to 8x8 -- so that fewer distinct goal blocks meant fewer full-map
+        // flow-field builds per tick, which was the dominant cost at 10k+ units. Both
+        // the quantization and the flow fields are gone; only acqStride_ above
+        // survives. Deterministic: it keys off the live count.)
     }
 
 
@@ -4341,9 +4346,10 @@ void World::tick(float dt) {
             float dx = o.x - u.x, dz = o.z - u.z;
             float dist = std::sqrt(dx * dx + dz * dz);
             if (o.guard && dist <= 70.0f) continue;   // in escort position
-            // Flow-field orders complete a little short of the goal so a crowd
-            // sharing one destination settles into a blob (spread by separation)
-            // instead of every unit fighting for the exact same point.
+            // A FINAL move goal completes a little short, so a crowd sharing one
+            // destination settles into a blob (spread by separation) instead of every
+            // unit fighting for the exact same point. (Described as "flow-field orders"
+            // when the arrival radius came from the field; it is the o.goal flag now.)
             // Retail move goals are AREAS -- NavGoalCircle / NavGoalRect / NavGoalRing
             // in the RTTI, not points (docs/retail-engine.md). A FINAL goal therefore
             // completes on a circle wide enough to hold a body: 16px, or the unit's own
@@ -4476,11 +4482,12 @@ void World::tick(float dt) {
                         // deleted every leg in front of it.
                         const Order& legEnd = u.orders[currentLeg(u.orders)];
                         float tx = legEnd.x, tz = legEnd.z;
-                        // The flow field (built for this goal) already holds the
-                        // reachable set. If this unit can't reach the goal, give up
-                        // rather than run a full-grid A* that scans the whole map
-                        // before failing -- hundreds of units doing that is the sim
-                        // stall. Only repath when reachable, and within the budget.
+                        // Check reachability BEFORE repathing: if this unit cannot get
+                        // there, give up rather than run a full-grid A* that scans the
+                        // whole map before failing -- hundreds of units doing that is
+                        // the sim stall. pathExists answers it from the component
+                        // labelling (it read the flow field's reachable set when that
+                        // existed). Only repath when reachable, and within the budget.
                         bool onWalkable = g.walkable(int(u.x) / 16, int(u.z) / 16);
                         if (onWalkable && !pathExists(u.type, tx, tz, u.x, u.z))
                             dropLeg(u);      // give up THIS leg; honour the rest
