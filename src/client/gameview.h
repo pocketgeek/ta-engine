@@ -773,7 +773,8 @@ public:
     void prepare(int winW, int winH);
 
     // Fetch and reset the per-draw sub-phase timers (for TAK_PROF).
-    void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs);
+    void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs,
+                  long& unitsDrawn, long& shadowVerts);
 
     void draw(int winW, int winH);
 
@@ -1187,6 +1188,8 @@ private:
     std::vector<DrawOp> drawOps_;
     double profProjMs_ = 0, profSubmitMs_ = 0;   // TAK_PROF sub-phase timers (main thread)
     double profShadowMs_ = 0;   // the projected-silhouette pass, inside submit
+    long profUnits_ = 0;        // visible units, summed over the sampled frames
+    long profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
     std::atomic<int64_t> profSimTicks_{0};        // sim-tick time in raw perf-counter ticks,
                                                   // accumulated by the worker, read/reset on main.
                                                   // Integer atomic -- portable (atomic<double>

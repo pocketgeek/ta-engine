@@ -1573,10 +1573,11 @@
     }
 
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
-                            double& simMs) {
+                            double& simMs, long& unitsDrawn, long& shadowVerts) {
         projMs = profProjMs_; submitMs = profSubmitMs_; shadowMs = profShadowMs_;
+        unitsDrawn = profUnits_; shadowVerts = profShadowVerts_;
         simMs = double(profSimTicks_.exchange(0)) * 1000.0 / double(SDL_GetPerformanceFrequency());
-        profProjMs_ = 0; profSubmitMs_ = 0; profShadowMs_ = 0;   // profSimTicks_ reset via exchange above
+        profProjMs_ = 0; profSubmitMs_ = 0; profShadowMs_ = 0; profUnits_ = 0; profShadowVerts_ = 0;   // profSimTicks_ reset via exchange above
     }
 
     void GameView::advance(float seconds) {

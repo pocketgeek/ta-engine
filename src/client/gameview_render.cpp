@@ -195,6 +195,7 @@
         // Cycle lodestone/mana/fire crystal frames -- but only once a built glow-unit
         // is on screen, so a still-conjuring lodestone stays dark until it's finished.
         animateGlowTextures(builtGlow);
+        profUnits_ += long(visUnits_.size());
         double _pt0 = double(SDL_GetPerformanceCounter());
         pool_.parallelFor(visUnits_.size(), [this](size_t b, size_t e) {
             thread_local std::vector<Tri> scratch;
@@ -300,6 +301,7 @@
             }
         }
 
+        profShadowVerts_ += long(shadowBatch_.size());
         profShadowMs_ += (double(SDL_GetPerformanceCounter()) - _sh0) / _ptFreq;
 
         // Pass 2: bodies (feature sprites + unit models) in depth order. Unit
