@@ -1,6 +1,7 @@
 #include "client/font.h"
 
 #include "client/gpuvram.h"
+#include "client/artscale.h"
 #include "gaf/gaf.h"
 #include "hpi/hpi.h"
 
@@ -22,10 +23,11 @@ Font::Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPa
         g.h = f.height;
         g.yoff = f.yoff;
         if (f.width > 0 && f.height > 0) {
-            g.tex = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
-                                      SDL_TEXTUREACCESS_STATIC, f.width, f.height);
-            SDL_UpdateTexture(g.tex, nullptr, f.rgba.data(), f.width * 4);
-            SDL_SetTextureBlendMode(g.tex, SDL_BLENDMODE_BLEND);
+            // g.w/g.h stay the 1x LOGICAL size -- draw(), advance(), width() and
+            // vbounds() are all in those units, so a 2x texture is invisible to layout.
+            // Glyphs are the smallest art in the game (a few px tall) and the HUD
+            // magnifies them, so they stair-step as badly as anything.
+            g.tex = tak::art::makeTexture(ren, f.rgba, f.width, f.height);
         }
         glyphs_[i] = g;
     }
