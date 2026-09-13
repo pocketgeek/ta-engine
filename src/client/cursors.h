@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace tak {
@@ -118,6 +119,13 @@ private:
     // frame, built for hwScale_. hwSet_ is the currently-applied cursor (skip redundant
     // SDL_SetCursor); hwCur_/hwStartMs_ drive the animation clock in hardware mode.
     std::unordered_map<uint64_t, std::vector<SDL_Cursor*>> hw_;
+    // Keys whose bake the platform REFUSED. Without this a rejected cursor is retried
+    // every frame -- allocating a surface, tinting it and calling SDL_CreateColorCursor
+    // for each frame of the animation, all to fail again. GameView latched that itself
+    // (hwCursorFailed_), but the main menu and the briefing/result screens did not, so
+    // the retry belongs here where every owner gets it. Cleared by releaseHardware(),
+    // since a different CURSOR SIZE may well be accepted.
+    std::unordered_set<uint64_t> hwFailed_;
     int hwScale_ = 0;                  // scale the cache was built for (0 = empty)
     SDL_Cursor* hwSet_ = nullptr;
     CursorId hwCur_ = CursorId::Count;

@@ -237,6 +237,8 @@ bool CursorSet::applyHardware(CursorId c, int scale, SDL_Color tint) {
     const uint32_t packed = (uint32_t(tint.r) << 24) | (uint32_t(tint.g) << 16) |
                             (uint32_t(tint.b) << 8) | uint32_t(tint.a);
     const uint64_t key = (uint64_t(c) << 32) | packed;
+    if (hwFailed_.count(key)) return false;   // already refused at this scale -- do not
+                                              // rebuild it every frame to fail again
     auto it = hw_.find(key);
     if (it == hw_.end()) {                       // lazily bake this (cursor,tint) set
         std::vector<SDL_Cursor*> built;
@@ -246,6 +248,7 @@ bool CursorSet::applyHardware(CursorId c, int scale, SDL_Color tint) {
                                          f.w, f.h, f.hx, f.hy, scale, tint);
             if (!cur) {                          // platform rejected it -> unwind, fall back
                 for (SDL_Cursor* b : built) SDL_FreeCursor(b);
+                hwFailed_.insert(key);           // and remember, so this is not retried
                 return false;
             }
             built.push_back(cur);
@@ -268,6 +271,7 @@ void CursorSet::releaseHardware() {
         for (SDL_Cursor* c : kv.second)
             if (c) SDL_FreeCursor(c);
     hw_.clear();
+    hwFailed_.clear();   // a different scale may be accepted where this one was not
     hwScale_ = 0;
     hwSet_ = nullptr;
     hwCur_ = CursorId::Count;
