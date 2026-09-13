@@ -387,6 +387,10 @@
                           bodyVerts_.begin() + t.dst);
             }
         });
+        // The deferred air shadows run INSIDE the body window but belong to the shadow
+        // phase. Time them separately and back them out below, or body and shadow both
+        // report the same work.
+        double airShadowMs = 0;
         auto drainAirShadows = [&] {
             if (airShadows_.empty()) return;
             const double _as0 = double(SDL_GetPerformanceCounter());
@@ -401,7 +405,9 @@
             }
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             airShadows_.clear();
-            profShadowMs_ += (double(SDL_GetPerformanceCounter()) - _as0) / _ptFreq;
+            const double ms = (double(SDL_GetPerformanceCounter()) - _as0) / _ptFreq;
+            profShadowMs_ += ms;
+            airShadowMs += ms;
         };
         for (size_t opi = 0; opi < drawOps_.size(); ++opi) {
             if (opi == airShadowOp_) drainAirShadows();
@@ -489,15 +495,18 @@
                                    op.count, nullptr, 0);
             }
         }
+        // Fallback drain: if the air layer produced no draw ops at all (every flyer
+        // special-cased or slotless), airShadowOp_ lands on drawOps_.size() and the replay
+        // loop never reaches it -- which would silently DROP those shadows rather than
+        // merely misorder them. drainAirShadows() clears as it goes, so this is a no-op
+        // when the boundary already fired. It sits BEFORE the submit timer closes so that
+        // every air-shadow draw falls inside the same phase as the rest of them.
+        drainAirShadows();
         profSubmitMs_ += (double(SDL_GetPerformanceCounter()) - _st0) / _ptFreq;
 
-        // Safety drain: if the air layer produced no draw ops at all (every flyer
-        // special-cased or slotless), airShadowOp_ lands on drawOps_.size() and the loop
-        // above never reaches it -- which would silently drop those shadows rather than
-        // merely misorder them. drainAirShadows() clears as it goes, so this is a no-op
-        // when the boundary already fired.
-        drainAirShadows();
-        profBodyMs_ += (double(SDL_GetPerformanceCounter()) - _bdy0) /
+        // Air shadows ran inside this window but belong to the shadow phase; back them
+        // out so body and shadow do not both report the same work.
+        profBodyMs_ += -airShadowMs + (double(SDL_GetPerformanceCounter()) - _bdy0) /
                        (double(SDL_GetPerformanceFrequency()) / 1000.0);
         // Ghosts of the local player's queued (shift) build orders.
         for (const UnitR* _up : front().live) {
@@ -1698,8 +1707,17 @@
         g.shadowVerts.clear();
         if (u.underConstruction || !castsBlobShadow(u.type)) return;
         scratch.clear();
-        // Corpses cull; living units do not. See the shadow branch in collect().
-        const bool corpseCull = !u.alive() && u.deadFor >= 0.0f;
+        // Only a body that is actually LYING FLAT culls. See the shadow branch in
+        // collect() for why this must not widen: the cull tears UPRIGHT single-sided
+        // geometry, which is why living units keep both faces.
+        //
+        // "Dead" alone was too broad, and wrongly covered two upright cases:
+        //   * the death ANIMATION (deadFor < 4) -- still standing or mid-fall;
+        //   * STATUES -- a petrified or frozen body stays upright, and its corpsePhase
+        //     starts at deadFor >= 0, so "dead" caught it from the very first frame.
+        // corpsePhase && !corpseStatue is exactly "finished falling, lying on the
+        // ground", which is the only case the flat-face artifact arises in.
+        const bool corpseCull = u.corpsePhase && !u.corpseStatue;
         collect(scratch, nullptr, root, Xform{}, anim, facing, u.player, false, true,
                 /*shadow=*/true, nullptr, &meta, corpseCull);
         const float sx = g.ax + kShadowLX * g.alt * zm;

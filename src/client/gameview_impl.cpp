@@ -625,6 +625,7 @@
             s.severity = u.severity;
             s.corpseFeat = u.corpseStatue >= 0 ? u.corpseStatue
                                                : world_.corpseTypeOf(u.type);
+            s.corpseStatue = u.corpseStatue >= 0;
             s.speed = u.speed; s.justFired = u.justFired; s.justBuilt = u.justBuilt;
             s.disco = world_.discoActive(u.player);
             s.headbang = world_.headbangActive(u.player);
