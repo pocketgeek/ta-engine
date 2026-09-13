@@ -2085,10 +2085,15 @@
         // replacement, atlas lookups, texture loads and effect spawns -- the render
         // thread already waits a tick for the worker, and this made the worker wait
         // a full visual update back.
-        struct FeatSim { int type; bool burning; bool alive; };
-        static std::vector<FeatSim> simState;   // render-thread only; reused
-        simState.clear();
-        {
+        // Only the LOCKED scans below are gated on the generation counter -- the apply
+        // loop after them still runs every frame, because that is what keeps burning
+        // features emitting smoke on their own timer. Skipping the whole function when
+        // nothing changed would have silently stopped the fire effects.
+        std::vector<FeatSim>& simState = featSimState_;
+        const uint32_t featGen = world_.featGeneration();   // atomic; no lock needed
+        const bool featDirty = featGen != lastFeatGen_ || simState.size() != features_.size();
+        if (featDirty) {
+            simState.clear();
             std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
             if (useSimThread_) lk.lock();
             if (world_.featureTypes().empty()) return;
@@ -2105,7 +2110,9 @@
             for (auto& st : simState)
                 if (st.type >= 0 && size_t(st.type) < world_.featureTypes().size())
                     burnNames_[size_t(st.type)] = world_.featureTypes()[size_t(st.type)].name;
+            lastFeatGen_ = featGen;
         }
+        if (simState.size() != features_.size()) return;   // nothing synced yet
         size_t fidx = 0;
         for (auto& fi : features_) {
             const FeatSim st = simState[fidx++];
@@ -2147,7 +2154,10 @@
         struct NewFeat { int id; float x, z; std::string name; };
         static std::vector<NewFeat> fresh;
         fresh.clear();
-        {
+        // Adding a feature bumps the generation, so when it has not moved there is by
+        // construction nothing new to find here either -- and this scan walks the whole
+        // SIM feature list under the lock, which is the more expensive of the two.
+        if (featDirty) {
             std::unique_lock<std::mutex> lk(simMutex_, std::defer_lock);
             if (useSimThread_) lk.lock();
             for (const auto& sf : world_.features()) {

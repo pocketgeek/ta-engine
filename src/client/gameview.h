@@ -1235,6 +1235,13 @@ private:
     struct CopyTask { int geom, src, count, dst; };
     struct DrawOp { const UnitR* u; const FeatureInst* f;
                     SDL_Texture* tex; int start, count; };   // seg if u&&f both null
+    // Feature sync: the sim-side state of each visual feature, refreshed only when
+    // World::featGeneration() moves. A member rather than a function-static so a new
+    // game cannot inherit the previous one's array.
+    struct FeatSim { int type; bool burning; bool alive; };
+    std::vector<FeatSim> featSimState_;
+    uint32_t lastFeatGen_ = UINT32_MAX;   // != any real generation, so the first sync runs
+
     std::vector<CopyTask> copyTasks_;
     std::vector<DrawOp> drawOps_;
     // TAK_PROF sub-phase timers (main thread). ALL of these are MONOTONIC -- they only

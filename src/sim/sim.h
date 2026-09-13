@@ -1121,6 +1121,15 @@ public:
     // Force a player to count as defeated regardless of its unit count (a
     // scenario Victory/Defeat action); respected by updateOutcome, hashed.
     void forceDefeat(int player);
+    // Bumped whenever a feature's DISPLAY-RELEVANT state changes: added, ignited,
+    // swapped to a burnt stage, or reclaimed away. The renderer's feature sync used to
+    // take simMutex_ and rescan every feature every frame to discover changes that, in
+    // a measured 45s run, happened on 0% of frames -- ~1ms of pure lock WAIT per frame
+    // (the scan itself was 0.012ms). Reading this atomic costs nothing and needs no
+    // lock, so the scan only runs when there is something to find. Display-only:
+    // deliberately NOT part of stateHash, and nothing in the sim reads it.
+    uint32_t featGeneration() const { return featGen_.load(std::memory_order_acquire); }
+
     // Fog of war for the local player over 16px cells: 0 hidden, 1 explored, 2 visible.
     const std::vector<uint8_t>& visibility() const { return vis_; }
     uint32_t visGeneration() const { return visGen_; }   // bumps on each fog recompute
@@ -1395,6 +1404,9 @@ private:
     std::vector<int> gHead_, gNext_;
     int gW_ = 0, gH_ = 0;
     float gCell_ = 32.0f, gOx_ = 0, gOz_ = 0;
+
+    std::atomic<uint32_t> featGen_{0};   // see featGeneration()
+    void bumpFeatGen() { featGen_.fetch_add(1, std::memory_order_release); }
 
     std::vector<uint8_t> vis_;
     int visPlayer_ = 0;

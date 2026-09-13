@@ -2670,6 +2670,7 @@ void World::addFeature(int id, float x, float z, float manaYield, float work,
               std::max(work, 1.0f), std::max(work, 1.0f), blocks, true};
     f.type = type;
     features_.push_back(f);
+    bumpFeatGen();   // a new feature needs a visual instance
 }
 
 const Feature* World::feature(int id) const {
@@ -2702,6 +2703,7 @@ static constexpr int kBurnTicks = 150;
 // burn-out, featuredead on destruction; retail places the replacement neutral
 // -- our features carry no owner). newType < 0 = the feature is simply gone.
 void World::swapFeature(Feature& f, int newType) {
+    bumpFeatGen();   // burnt-stage swap (or removal): art changes
     f.burn = 0;
     f.dmg = 0;
     if (f.blocks)   // old stage's footprint frees first
@@ -2728,6 +2730,7 @@ void World::igniteFeature(Feature& f) {
         std::fprintf(stderr, "ignite %s at %.0f,%.0f (spark %d)\n",
                      ft.name.c_str(), f.x, f.z, ft.sparkTicks);
     f.burn = 1;
+    bumpFeatGen();   // ignition edge: flame overlay + smoke start
     // Retail spread timer: sparktime30/2 + rand(sparktime30/2), one LCG draw.
     int half = std::max(ft.sparkTicks / 2, 1);
     f.spreadIn = half + burnRand(half);
@@ -2885,6 +2888,7 @@ void World::tickReclaim(Unit& b, float dt) {
         f.manaYield * (d / f.workFull) * players_[size_t(b.player)].manaMult;   // drip (income-cheat scaled)
     if (f.work <= 0) {
         f.alive = false;
+        bumpFeatGen();   // reclaimed away: stop drawing it
         if (f.blocks) {   // free the ground cells it occupied (setupMatch blocked nav_)
             blockCells(int(f.x) / 16 - f.fx / 2, int(f.z) / 16 - f.fz / 2, f.fx, f.fz, false);
         }
