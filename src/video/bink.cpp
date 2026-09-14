@@ -289,14 +289,23 @@ bool BinkVideo::nextFrame(std::vector<uint8_t>& rgba) {
             // rather than assumed, so a build that DOES write it keeps its own pixels.
             //
             // The obvious-looking fix is SWS_ACCURATE_RND, which does make the column
-            // get written -- but it is not a rounding tweak here, it moves the whole
-            // conversion onto a different chroma path. Measured on frame 0 of KNIGHT4,
-            // over the columns both variants write: BILINEAR on the bundled build vs on
-            // the system build agree to a max delta of 2, while adding ACCURATE_RND
-            // shifts the picture by up to 75 (system) / 83 (bundled) -- and the two
-            // ACCURATE_RND outputs do not even agree with each other (37). That trades a
-            // one-pixel edge for a whole-image colour change, in the one part of this
-            // file whose colour handling has already been re-litigated twice (above).
+            // get written -- but it is not a rounding tweak here, and it is NOT a colour
+            // fix either. Recomputing BT.601 by hand from the raw yuv420p planes of
+            // KNIGHT4 frame 0 and scoring both variants against it settles what each one
+            // actually is:
+            //
+            //            vs hand BT.601 + NEAREST chroma   vs hand BT.601 + BILINEAR chroma
+            //   BILINEAR          mean 1.00, max 2                  mean 1.48, max 51
+            //   +ACCURATE_RND     mean 1.26, max 62                 mean 0.97, max 25
+            //
+            // Both are correct BT.601 with the SAME matrix and the same expanding range
+            // (the frames report color_range=MPEG, matching the note above). The only
+            // thing the flag changes is chroma UPSAMPLING: nearest vs interpolated. Our
+            // current path is an essentially exact nearest-chroma decode -- max delta 2
+            // from hand-computed truth -- so there is no colour error here to fix, and
+            // nearest is what a 1999 software Bink decoder did. If smoother chroma is
+            // ever wanted it is a deliberate look change belonging behind the SMOOTH
+            // MOVIES option, not something to switch on while chasing an edge artifact.
             if (fw >= 2) {
                 const size_t last = size_t(fw - 1) * 4, prev = size_t(fw - 2) * 4;
                 bool skipped = true;
