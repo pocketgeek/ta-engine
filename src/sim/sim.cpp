@@ -1551,10 +1551,29 @@ void World::attack(int unitId, int targetId, bool queue) {
 }
 
 float Weapon::damageVs(const UnitType* t) const {
+    // A per-category DAMAGE entry is a MULTIPLIER on `default`, not a damage figure.
+    // This returned the entry directly, which is how the Barracks became unkillable:
+    // arakeep is damagecategory=factory, the Crusades swordsman declares factory=0.5,
+    // and 0.5 was read as half a hit point. Against 17162 HP with healtime=1.25 (0.8
+    // HP/s of regen) the building out-healed a besieging army by three orders of
+    // magnitude -- every arrow visibly connecting, the health bar never moving.
+    //
+    // The data says multiplier plainly once you look at all of it. Across both
+    // datasets the values cluster on 0.04/0.08/0.2/0.25/0.5/0.75/1.1/1.25/1.5/2/3 --
+    // 0.25 and 0.5 alone are 129 of the 249 entries in unitscb. Read as absolute
+    // damage those are fractions of one HP, i.e. every override in the game would
+    // mean "this weapon does nothing", which is not a balance system. Read as
+    // multipliers they are exactly the expected table: siege weapons strong against
+    // structures (arasmith factory=2.0, fort=2.0), infantry weak against them
+    // (factory=0.5), an assassin devastating against soft targets (araspy human=6,
+    // tier1=6), anti-air multiplied against flyers (verball airship=4). The clincher
+    // is npcemen, a campaign duellist with buri=100 against Lord Buriash (2940 HP):
+    // as a multiplier that is the scripted one-shot kill the mission wants, as
+    // absolute damage it is 100 and the duel takes thirty hits.
     if (t && !dmgVs.empty())
         for (const auto& c : t->categories) {
             auto it = dmgVs.find(c);
-            if (it != dmgVs.end()) return it->second;
+            if (it != dmgVs.end()) return damage * it->second;
         }
     return damage;
 }

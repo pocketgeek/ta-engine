@@ -1761,6 +1761,84 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ---- per-category damage is a MULTIPLIER ------------------------------
+    //
+    // A DAMAGE entry other than `default` scales the base figure; it is not the
+    // damage itself. Read as absolute it makes the units that declare one nearly
+    // invulnerable, because the overrides are fractions: the Crusades Barracks
+    // (arakeep, damagecategory=factory, 17162 HP, healtime=1.25) against a swordsman
+    // declaring factory=0.5 took 0.5 damage a swing and regenerated 0.8 HP/s, so a
+    // besieging army could not out-damage its own regen. Reported from a real game as
+    // "barracks doesn't seem to be killable".
+    std::printf("\n[per-category damage multiplier]\n");
+    {
+        // The contract itself, on values rather than on shipped data. Spot-checking a
+        // real unit is fragile here for a reason worth recording: the first version of
+        // this test used aradrag's dragon=2, which sits on WEAPON2 (Fire Ball) while
+        // `type->weapon` is WEAPON1 (Fire Breath) -- so it failed against CORRECT code
+        // and looked like a second bug. The scaling rule is what matters; the siege
+        // below covers the shipped data.
+        sim::UnitType tgt{};
+        tgt.categories = {"factory", "aramon"};
+        sim::Weapon w{};
+        w.damage = 360;
+        check(w.damageVs(&tgt) == 360.0f, "no override -> base damage");
+        w.dmgVs["factory"] = 0.5f;
+        check(w.damageVs(&tgt) == 180.0f,
+              "a 0.5 override HALVES the base, it is not 0.5 damage",
+              std::to_string(w.damageVs(&tgt)));
+        w.dmgVs["factory"] = 2.0f;
+        check(w.damageVs(&tgt) == 720.0f, "a 2.0 override doubles it",
+              std::to_string(w.damageVs(&tgt)));
+        w.dmgVs["factory"] = 0.0f;
+        check(w.damageVs(&tgt) == 0.0f, "a 0 override still means immune",
+              std::to_string(w.damageVs(&tgt)));
+        w.dmgVs.clear();
+        w.dmgVs["naval"] = 0.25f;      // a category this target does not carry
+        check(w.damageVs(&tgt) == 360.0f, "an override for another category is ignored");
+    }
+    {
+        // The reported case, end to end: the Crusades Barracks must die to a besieging
+        // force. A behavioural check, because the arithmetic above would still pass if
+        // regen quietly out-paced the result.
+        sim::TypeRegistry cbreg;
+        sim::setupRegistry(cbreg, vfs, /*crusades=*/true);
+        const sim::UnitType* keep  = cbreg.find("arakeep");
+        const sim::UnitType* sword = cbreg.find("arasword");
+        if (!keep || !sword || sword->weapon.damage <= 0) {
+            std::printf("  (no crusades data; skipped)\n");
+        } else {
+            check(sword->weapon.damageVs(keep) > 1.0f,
+                  "a Crusades swordsman does real damage to a factory",
+                  std::to_string(sword->weapon.damageVs(keep)) + " per hit");
+            sim::World w;
+            sim::MatchConfig cfg;
+            cfg.vfs = &vfs;
+            cfg.mapPath = kMap;
+            cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
+            cfg.slots[0].team = 0; cfg.slots[1].team = 1;
+            sim::setupMatch(w, cbreg, cfg);
+            const float kx = 1200, kz = 1200;
+            const int kid = w.spawn(keep, kx, kz, 0, 0);
+            for (int i = 0; i < 12; ++i) {
+                const int id = w.spawn(sword, kx + (i % 4) * 24 - 140,
+                                       kz + (i / 4) * 24 - 40, 0, 1);
+                w.attack(id, kid, false);
+            }
+            int diedAt = -1;
+            for (int sec = 0; sec < 180 && diedAt < 0; ++sec) {
+                tick(w, 1.0f);
+                const sim::Unit* k = w.unit(kid);
+                if (!k || !k->alive()) diedAt = sec + 1;
+            }
+            // Generous bound: the assertion is "a siege makes progress", not a balance
+            // figure. Unfixed this survives indefinitely (17162 -> 16615 over 600s).
+            check(diedAt > 0, "12 swordsmen can destroy a Barracks",
+                  diedAt > 0 ? "died at t=" + std::to_string(diedAt) + "s"
+                             : "SURVIVED 180s of siege");
+        }
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASS",
                 failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
