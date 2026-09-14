@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 79;       // 79: route shortcuts respect parked bodies;
+constexpr uint32_t kNetVersion = 80;       // 80: the SEARCH refuses to route through a
+                                           //     parked body (it is solid to the mover)
+                                           // 79: route shortcuts respect parked bodies;
                                            //     spawn claims use the centred footprint
                                            // 78: benchmark/stress fills reserve whole
                                            //     footprints and stop at map capacity

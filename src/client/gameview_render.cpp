@@ -2940,10 +2940,11 @@
     // as end-marker-only -- and only the first few selected units get beads, which
     // is what keeps a 200-unit selection from turning the map into soup.
     //
-    // One deliberately dropped: retail drew the whole overlay only while SHIFT was
-    // physically held (0x4fcc46 polls GetAsyncKeyState(VK_SHIFT)). Here the line is
-    // simply on for the current selection, which is what makes a queue visible at
-    // the moment you build it.
+    // SHIFT-GATED, as retail had it: the overlay is drawn only while shift is
+    // physically held (0x4fcc46 polls GetAsyncKeyState(VK_SHIFT)). This was dropped
+    // once, on the argument that an always-on line shows a queue at the moment you
+    // build it -- but shift is already the key you are holding WHILE you build one,
+    // so the line is there exactly when it is wanted and out of the way otherwise.
     //
     // Ownership is gated even though retail did not bother: our click-select has no
     // owner filter, and the render snapshot carries every unit's orders, so drawing
@@ -2951,6 +2952,9 @@
     // enemy intent.
     void GameView::drawOrderTrails(int mvw, int winH) {
         if (selection_.empty() || !cursors_.ok()) return;
+        // Held right now -- polled rather than tracked through key events, so it is
+        // right even if focus changed while the key was down.
+        if (!(SDL_GetModState() & KMOD_SHIFT)) return;
         const float zm = mapView_.zoom();
         const float kSpacing = 48.0f;          // world units, straight off retail
         // At low zoom the beads would overlap into a smear (48 world units is only

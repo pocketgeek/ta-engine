@@ -1190,42 +1190,31 @@ bool World::lineOpen(const UnitType* t, int selfId, int x0, int z0, int x1, int 
     // must be genuinely clear -- ground or road, not merely "passable".
     int dx = std::abs(x1 - x0), dz = -std::abs(z1 - z0);
     int sx = x0 < x1 ? 1 : -1, sz = z0 < z1 ? 1 : -1, err = dx + dz;
-    // How many OCCUPIED cells a shortcut may cross. Terrain is never crossed at any
-    // setting; this is only about parked bodies.
+    // How many OCCUPIED cells a shortcut may cross. Terrain is never crossed.
     //
-    // The reviewed concern was real -- shortcutting on terrain alone (NavGrid::lineFits)
-    // can straighten a route back through the very crowd the trace went around, and the
-    // mover has no local avoidance to get out of it. But refusing EVERY occupied cell
-    // overcorrects badly, because in a crowd almost every line touches one. Measured on
-    // 24 units converging on one point past a plateau:
+    // ONE, and the reason is worth reading before changing it, because the obvious
+    // measurement gives the wrong answer. The search now refuses to route through a
+    // parked body (see the score callback in tick()), so a traced route genuinely goes
+    // AROUND a standing crowd -- and a shortcut that straightens back through it puts
+    // the mover right back where it jams. Measured on a wall of parked bodies 1-4 cells
+    // deep, with that search in place:
     //
-    //   tolerance 0 (refuse any)   20/24 arrive, 3449 course changes
-    //   tolerance 2                20/24 arrive, 3449
-    //   tolerance 6                23/24 arrive, 1089
-    //   unlimited (terrain only)   23/24 arrive, 1089
+    //   tolerance 1   all four walls passed, 1262-1288 travelled (1100 straight-line)
+    //   tolerance 6   walls 1 and 2 STUCK -- thin enough to fit inside the budget
     //
-    // 6 is the knee AND ties the unlimited result -- no shortcut here crosses more than
-    // six bodies -- so it costs nothing measurable while still refusing to cut through
-    // a genuinely deep crowd, which is the case the concern is about.
+    // Earlier, with the OLD search -- which routed through parked bodies because
+    // kCellOccupied equals kCellThreshold -- a strict shortcut measured WORSE than a
+    // loose one, and 6 was chosen on that evidence. That result was an artifact: the
+    // only routes available then went through the crowd, so refusing them left nothing.
+    // Once the search was fixed the ordering reversed. A tuning number is only as good
+    // as the thing it was tuned against.
     //
-    // WHAT THIS DOES NOT FIX, and it is worth knowing before reaching for it again: a
-    // unit sent through a standing WALL of parked bodies gets stuck against it no
-    // matter what this is set to. Measured on a line of parked units 1-8 cells deep --
-    //
-    //   no shortcut at all   STUCK (travelled 2524 / 3605 for 1 / 2 cells deep)
-    //   tolerance 0          STUCK (2524 / 3605 -- identical to no shortcut)
-    //   tolerance 6          STUCK (2515 / 2515)
-    //
-    // -- so the shortcut is not the cause and tightening it is not the cure. The cause
-    // is upstream in cellScore: kCellOccupied EQUALS kCellThreshold, so a parked body
-    // is passable-but-costly to the SEARCH (retail's model; every icd call site
-    // compares against 4). The tracer therefore routes THROUGH a line of parked units
-    // rather than around it, because doing so is legal by its own scoring -- and then
-    // the mover, for which bodies are solid, stops dead. Fixing that means changing how
-    // the search grades a parked body, which is a real behaviour change: a unit would
-    // then refuse to path through its own idle army, and in a packed base might not
-    // path at all. Not something to slip in behind a shortcut tweak.
-    constexpr int kShortcutOccupied = 6;
+    // Not zero: the GOAL cell is routinely occupied -- ordering a unit to where
+    // something already stands is an ordinary thing to do -- and the search's goal
+    // exemption does not apply here. One cell lets the last hop reach it without
+    // letting a shortcut cross a wall. Zero measures identically on arrivals and
+    // marginally worse on travel.
+    constexpr int kShortcutOccupied = 1;
     int budget = kShortcutOccupied;
     auto ok = [&](int x, int z) {
         const int sc = cellScore(t, x, z, selfId);
@@ -3925,6 +3914,11 @@ void World::tickProduction(Unit& u, float dt) {
     }
 }
 
+// How close to the start or the goal a parked body stops blocking the search. Two
+// cells: measured against 4 and 8 on a 24-unit convergence, 2 is the only one where
+// every unit arrives (24/24 in 246s; 4 and 8 both stall at 23/24 and time out).
+constexpr int kParkedFreeCells = 2;
+
 void World::tick(float dt) {
     ++tickCounter_;
     {
@@ -4203,8 +4197,41 @@ void World::tick(float dt) {
     if (pathService_) paths_.tick(
         [&](int unitId, int cx, int cz) {
             const Unit* u = unit(unitId);
-            return u && u->type ? cellScore(u->type, cx, cz, unitId)
-                                : int(kCellImpassable);
+            if (!u || !u->type) return int(kCellImpassable);
+            const int sc = cellScore(u->type, cx, cz, unitId);
+            if (sc != kCellOccupied) return sc;   // terrain or clear: unchanged
+            // A PARKED BODY BLOCKS THE SEARCH.
+            //
+            // cellScore grades one kCellOccupied, which EQUALS kCellThreshold --
+            // retail's model, where every icd call site compares against 4, so a
+            // parked body is passable-but-costly. That is why a unit ordered through
+            // a standing crowd walked into it and stopped: the tracer routed straight
+            // through, because doing so was legal by its own scoring, and the mover --
+            // for which bodies are solid and which has no local avoidance -- had
+            // nowhere to go. Measured before this: a wall of parked units 1-8 cells
+            // deep stopped the mover dead every time, and no amount of tightening the
+            // route SHORTCUT helped, because the shortcut was never the cause.
+            //
+            // Retail fidelity is knowingly traded here. Retail's mover nudges its way
+            // past a body; ours cannot, so a cost the original could afford to ignore
+            // is a wall for us.
+            //
+            // Two exemptions, and the change does not work without them:
+            //   * near the START, or a unit standing inside its own idle army could
+            //     not path OUT of it -- every neighbouring cell would be blocked;
+            //   * near the GOAL, or ordering units onto ground where anything already
+            //     stands would fail to route at all, which is most move orders in a
+            //     base.
+            const int ux = int(u->x) / 16, uz = int(u->z) / 16;
+            if (std::max(std::abs(cx - ux), std::abs(cz - uz)) <= kParkedFreeCells)
+                return sc;
+            if (!u->orders.empty()) {
+                const Order& leg = u->orders[currentLeg(u->orders)];
+                const int gx = int(leg.x) / 16, gz = int(leg.z) / 16;
+                if (std::max(std::abs(cx - gx), std::abs(cz - gz)) <= kParkedFreeCells)
+                    return sc;
+            }
+            return int(kCellImpassable);
         },
         [&](int unitId, const std::vector<PathCell>& route, float gx, float gz) {
             Unit* u = unit(unitId);
