@@ -699,6 +699,14 @@ public:
         if (cx < 0 || cz < 0 || cx >= w_ || cz >= h_) return false;
         return cells_[size_t(cz) * size_t(w_) + size_t(cx)] != 0;
     }
+#ifndef NDEBUG
+    // Debug-only: checksum of this grid's own cells, for locating a nav divergence.
+    uint64_t debugCellsHash() const {
+        uint64_t h = 1469598103934665603ULL;
+        for (uint8_t c : cells_) { h ^= c; h *= 1099511628211ULL; }
+        return h;
+    }
+#endif
     bool walkable(int cx, int cz) const {
         if (cx < 0 || cz < 0 || cx >= w_ || cz >= h_) return false;
         size_t i = size_t(cz) * size_t(w_) + size_t(cx);
@@ -1114,6 +1122,24 @@ public:
     void setSerialThreads(bool s) { serialThreads_ = s; }
     // Deterministic digest of sim state, for lockstep sync checking.
     uint64_t stateHash() const;
+#ifndef NDEBUG
+    // Debug-only divergence locator, and the first thing to reach for when the referee
+    // reports a desync. TAK_HASHTRACE="lo:hi" dumps a PER-COMPONENT checksum every tick
+    // in [lo,hi]: units (position / hp / orders / misc), projectiles, effects, storms,
+    // players, features, the burn and fire RNG streams, and -- deliberately -- the nav
+    // overlay and grid cells, which stateHash does NOT fold.
+    //
+    // stateHash() collapses the world to one number, which says THAT two peers disagree
+    // but not about what. Run both peers with this set, diff the two logs, and the first
+    // differing column names the component and the tick. That is how the viewer-writes-
+    // to-nav_ desync was found: every column matched except `ord`, and `nav` had differed
+    // since tick 1 while `obst` never did -- which pointed straight at the grid rather
+    // than at anything the checksum covers.
+    //
+    // Costs a full-world fold per traced tick, so it early-outs before doing any work
+    // when unset. Never read by the sim -- pure observation.
+    void hashTrace() const;
+#endif
 
     // Campaign mission: an optional in-sim "god" script + win/lose rules
     // (src/sim/mission.h). Ticked inside tick(), and folded into stateHash().

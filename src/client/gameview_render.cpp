@@ -2119,7 +2119,7 @@
         return featureArt_[key].tex ? &featureArt_[key] : nullptr;
     }
 
-    bool GameView::addFeature(const std::string& rawName, float x, float z, bool blockNav) {
+    bool GameView::addFeature(const std::string& rawName, float x, float z) {
         loadFeatureDefs();
         std::string key = rawName;
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);
@@ -2150,16 +2150,15 @@
         // Standing Stones sharing the category are just ruins around it.
         inst.glowy = inst.mana && di->second.numberOr("animating", 0) != 0;
         features_.push_back(inst);
-        // Retail nav-blocking: ordinary obstacle features AND the static Standing
-        // Stones (blocking=1) block; only the glowy Sacred Stone centre stays
-        // walkable, so a lodestone can build on it. (Standing Stones default to
-        // blocking; the centre has no blocking field, so it never blocks.)
-        bool blocks = !inst.glowy && (!inst.mana || di->second.numberOr("blocking", 0) != 0);
-        if (blockNav && blocks) {
-            int fx = int(di->second.numberOr("footprintx", 1));
-            int fz = int(di->second.numberOr("footprintz", 1));
-            world_.nav().block(int(x) / 16 - fx / 2, int(z) / 16 - fz / 2, fx, fz, true);
-        }
+        // NO NAV BLOCKING HERE. Feature blocking belongs to the SIM, and
+        // registerMapFeatures/setupMatch already does it -- into the shared obst_
+        // overlay, with this exact rule and footprint. Doing it again here wrote to
+        // nav_.cells_, a layer the REFEREE never touches because it never runs the
+        // viewer, so the client's ground grid gained blockers the server's lacked
+        // from load. nav_ is what losBetween reads, so auto-acquisition saw different
+        // line-of-sight on the two peers, picked different targets, and desynced
+        // (a Cannoneer at tick 252 of an 8-AI stress game -- one unit in 15215).
+        // Movement never noticed because it uses the per-class grids, not nav_.
         return true;
     }
 
@@ -2278,7 +2277,7 @@
             }
         }
         for (const auto& sf : fresh) {
-            addFeature(sf.name, sf.x, sf.z, false);
+            addFeature(sf.name, sf.x, sf.z);
             featInstIds_.insert(sf.id);   // even on art failure: don't retry every frame
         }
     }
@@ -2295,7 +2294,7 @@
             for (int cx = 0; cx < map.width; ++cx) {
                 uint16_t v = map.features[size_t(cz) * map.width + cx];
                 if (v >= names.size()) continue;
-                if (addFeature(names[v], float(cx) * 16 + 8, float(cz) * 16 + 8, true))
+                if (addFeature(names[v], float(cx) * 16 + 8, float(cz) * 16 + 8))
                     ++placed;
             }
         std::printf("features: %d placed\n", placed);
@@ -2335,11 +2334,9 @@
             manaSpots_.push_back({float(a.first.first / a.second),
                                   float(a.first.second / a.second)});
         world_.setManaSpots(manaSpots_);
-        // Standing Stones block nav, but a large one can reach the glowy centre;
-        // keep every deposit buildable by carving the 2x2 lodestone footprint
-        // clear at each spot (canPlace tests exactly these cells).
-        for (const auto& [sx, sz] : manaSpots_)
-            world_.nav().block(int(sx) / 16 - 1, int(sz) / 16 - 1, 2, 2, false);
+        // The 2x2 lodestone carve at each deposit is likewise the SIM's job and is
+        // already done there (matchsetup, same geometry, into obst_). Repeating it
+        // against nav_ desynced the client from the referee -- see addFeature above.
         std::printf("mana deposits: %zu (from %zu features)\n",
                     manaSpots_.size(), raw.size());
         addShorelineWaves();
@@ -2350,8 +2347,8 @@
         // (Athri Cay: 34 sprites on a 480x480 map, 4-15 cells off the coast in
         // strings 10-18 cells apart along SOME stretches -- never a continuous
         // surf rim; some maps have zero). Generated maps have no author, so
-        // scatter them retail-style here. Display only: addFeature(...,
-        // blockNav=false) is a render instance with no nav/mana/sim effect.
+        // scatter them retail-style here. Display only: addFeature is a render
+        // instance with no nav/mana/sim effect (nav blocking lives in the sim).
         if (!tak::mapgen::isGeneratedMapId(mapPath_)) return;   // authored maps ship their own
         const auto& map = mapView_.map();
         const int W = map.width, H = map.height, sea = map.seaLevel;
@@ -2438,7 +2435,7 @@
                 else v = ddz >= 0 ? 1 : 13;
                 char nm[24];
                 std::snprintf(nm, sizeof nm, "%sWave%02d", wp.c_str(), v);
-                if (addFeature(nm, float(cx) * 16 + 8, float(cz) * 16 + 8, false)) ++placed;
+                if (addFeature(nm, float(cx) * 16 + 8, float(cz) * 16 + 8)) ++placed;
             }
         std::printf("offshore waves: %d placed (%sWave)\n", placed, wp.c_str());
     }

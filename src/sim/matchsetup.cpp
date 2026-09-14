@@ -274,15 +274,24 @@ struct FeatTypeInterner {
 };
 }  // namespace
 
-// Register the map's obstacle features into the sim world (reclaim + burning),
-// exactly as setupMatch's placement loop does -- for the client's LOCAL harness
-// and mission paths, which build their worlds without setupMatch. Nav blocking
-// is NOT done here (those paths already block via their own feature placement).
-void registerMapFeatures(World& world, const tak::tnt::Map& map, const hpi::Vfs& vfs,
-                         const TypeRegistry* reg) {
-    auto defs = loadFeatureDefs(vfs);
-    FeatTypeInterner types(defs);
-    if (!map.featureNames.empty())
+
+// ONE feature-plane walk, shared by setupMatch and registerMapFeatures.
+//
+// These were two near-identical loops, and the duplication is exactly how they
+// drifted: setupMatch blocked features into the nav overlay, registerMapFeatures
+// did not, and the paths that use the latter (campaign missions, CRT scenarios,
+// the local harness) leaned on the VIEWER to block instead -- from
+// GameView::loadFeatures, which wrote to nav_.cells_. The referee never runs the
+// viewer, so its ground grid lacked those blockers and losBetween disagreed,
+// which desynced auto-acquisition. Blocking belongs here, in the sim, where both
+// peers run it; having one function makes it impossible for the two to diverge
+// again.
+static void scanFeaturePlane(World& world, const tak::tnt::Map& map,
+                             const std::unordered_map<std::string, FeatDef>& defs,
+                             FeatTypeInterner& types,
+                             std::vector<std::pair<float, float>>& rawMana,
+                             std::vector<std::pair<float, float>>& rawAll) {
+    if (map.featureNames.empty()) return;
     for (int cz = 0; cz < map.height; ++cz)
         for (int cx = 0; cx < map.width; ++cx) {
             uint16_t v = map.features[size_t(cz) * map.width + cx];
@@ -291,14 +300,79 @@ void registerMapFeatures(World& world, const tak::tnt::Map& map, const hpi::Vfs&
             std::transform(key.begin(), key.end(), key.begin(), ::tolower);
             auto di = defs.find(key);
             if (di == defs.end()) continue;
+            float x = float(cx) * 16 + 8, z = float(cz) * 16 + 8;
+            if (di->second.mana) {
+                rawAll.push_back({x, z});
+                if (di->second.glowy) rawMana.push_back({x, z});   // buildable centre
+            }
+            // Retail nav-blocking: obstacle features + static Standing Stones
+            // (blocking=1) block; only the glowy Sacred Stone centre stays clear.
+            if (!di->second.glowy && (!di->second.mana || di->second.blocking != 0)) {
+                int fx = di->second.fx, fz = di->second.fz;
+                world.blockCells(int(x) / 16 - fx / 2, int(z) / 16 - fz / 2, fx, fz, true);
+            }
+            // Reclaimable obstacle features (trees/rocks/houses) enter the sim so a
+            // mobile builder can clear them for mana -- and flamable ones so dragonfire
+            // can burn them (World::tickBurning). The id is derived from the cell, so
+            // every peer records the identical feature.
             if ((di->second.reclaimable || di->second.flamable) && !di->second.mana) {
-                float x = float(cx) * 16 + 8, z = float(cz) * 16 + 8;
-                float work = std::max(di->second.energy, 60.0f);
+                float work = std::max(di->second.energy, 60.0f);   // rocks (energy 0) still take a beat
                 world.addFeature(cz * map.width + cx, x, z, di->second.energy, work,
                                  di->second.fx, di->second.fz, di->second.blocking != 0,
                                  types.intern(key));
             }
         }
+}
+
+// Cluster the mana features into deposits, publish them, and carve each one clear.
+// Also shared: the carve is nav state, so a path that registers features without it
+// would let Standing Stones make their own deposit unbuildable.
+static void installManaSpots(World& world,
+                             std::vector<std::pair<float, float>> rawMana,
+                             const std::vector<std::pair<float, float>>& rawAll) {
+    // The buildable spot is the glowing Sacred Stone centre, not the ring of static
+    // Standing Stones (both are category=mana). Fallback: a deposit with no glowy
+    // centre in the data uses its category=mana features instead.
+    if (rawMana.empty()) rawMana = rawAll;
+    std::vector<int> par(rawMana.size());
+    for (size_t i = 0; i < par.size(); ++i) par[i] = int(i);
+    std::function<int(int)> find = [&](int a) {
+        while (par[size_t(a)] != a) { par[size_t(a)] = par[size_t(par[size_t(a)])]; a = par[size_t(a)]; }
+        return a;
+    };
+    const float link2 = 60.0f * 60.0f;
+    for (size_t i = 0; i < rawMana.size(); ++i)
+        for (size_t j = i + 1; j < rawMana.size(); ++j) {
+            float dx = rawMana[i].first - rawMana[j].first, dz = rawMana[i].second - rawMana[j].second;
+            if (dx * dx + dz * dz < link2) par[size_t(find(int(i)))] = find(int(j));
+        }
+    std::map<int, std::pair<std::pair<double, double>, int>> acc;
+    for (size_t i = 0; i < rawMana.size(); ++i) {
+        auto& a = acc[find(int(i))];
+        a.first.first += rawMana[i].first; a.first.second += rawMana[i].second; ++a.second;
+    }
+    std::vector<std::pair<float, float>> manaSpots;
+    for (auto& [root, a] : acc)
+        manaSpots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
+    world.setManaSpots(manaSpots);
+    // Standing Stones block nav, but a large one can reach the glowy centre; keep
+    // every deposit buildable by carving the 2x2 lodestone footprint clear at each
+    // spot (canPlace tests exactly these cells).
+    for (const auto& [sx, sz] : manaSpots)
+        world.blockCells(int(sx) / 16 - 1, int(sz) / 16 - 1, 2, 2, false);
+}
+
+// Register the map's obstacle features into the sim world (reclaim + burning),
+// exactly as setupMatch's placement loop does -- for the client's LOCAL harness
+// and mission paths, which build their worlds without setupMatch. Nav blocking
+// is NOT done here (those paths already block via their own feature placement).
+void registerMapFeatures(World& world, const tak::tnt::Map& map, const hpi::Vfs& vfs,
+                         const TypeRegistry* reg) {
+    auto defs = loadFeatureDefs(vfs);
+    FeatTypeInterner types(defs);
+    std::vector<std::pair<float, float>> rawMana, rawAll;
+    scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
+    installManaSpots(world, rawMana, rawAll);
     if (reg)
         for (const auto& [tid, ut] : reg->types()) {
             if (!ut.corpse.empty()) {
@@ -355,38 +429,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     FeatTypeInterner types(defs);
     auto featTypeIdx = [&](const std::string& nm) { return types.intern(nm); };
     std::vector<std::pair<float, float>> rawMana, rawAll;
-    if (!map.featureNames.empty()) {
-        for (int cz = 0; cz < map.height; ++cz)
-            for (int cx = 0; cx < map.width; ++cx) {
-                uint16_t v = map.features[size_t(cz) * map.width + cx];
-                if (v >= map.featureNames.size()) continue;
-                std::string key = map.featureNames[v];
-                std::transform(key.begin(), key.end(), key.begin(), ::tolower);
-                auto di = defs.find(key);
-                if (di == defs.end()) continue;
-                float x = float(cx) * 16 + 8, z = float(cz) * 16 + 8;
-                if (di->second.mana) {
-                    rawAll.push_back({x, z});
-                    if (di->second.glowy) rawMana.push_back({x, z});   // buildable centre
-                }
-                // Retail nav-blocking: obstacle features + static Standing Stones
-                // (blocking=1) block; only the glowy Sacred Stone centre stays clear.
-                if (!di->second.glowy && (!di->second.mana || di->second.blocking != 0)) {
-                    int fx = di->second.fx, fz = di->second.fz;
-                    world.blockCells(int(x) / 16 - fx / 2, int(z) / 16 - fz / 2, fx, fz, true);
-                }
-                // Reclaimable obstacle features (trees/rocks/houses) enter the sim so
-                // a mobile builder can clear them for mana -- and flamable ones so
-                // dragonfire can burn them (World::tickBurning). The id is derived
-                // from the cell, so every peer records the identical feature.
-                if ((di->second.reclaimable || di->second.flamable) && !di->second.mana) {
-                    float work = std::max(di->second.energy, 60.0f);   // rocks (energy 0) still take a beat
-                    world.addFeature(cz * map.width + cx, x, z, di->second.energy, work,
-                                     di->second.fx, di->second.fz, di->second.blocking != 0,
-                                     featTypeIdx(key));
-                }
-            }
-    }
+    scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
     // Corpse defs: every unit type's FBI corpse= feature (and its chains) joins
     // the table so death can mint corpse records without art/def lookups later.
     for (const auto& [tid, ut] : reg.types()) {
@@ -398,37 +441,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             world.mapStatue(&ut, featTypeIdx(ut.stoneFeat), featTypeIdx(ut.frozenFeat));
     }
     world.setFeatureTypes(std::move(types.table));
-    // The buildable spot is the glowing Sacred Stone centre, not the ring of
-    // static Standing Stones (both are category=mana). Fallback: a deposit with
-    // no glowy centre in the data uses its category=mana features instead.
-    if (rawMana.empty()) rawMana = rawAll;
-    // Cluster mana features (union-find, 60px link) -> one deposit per cluster.
-    std::vector<int> par(rawMana.size());
-    for (size_t i = 0; i < par.size(); ++i) par[i] = int(i);
-    std::function<int(int)> find = [&](int a) {
-        while (par[size_t(a)] != a) { par[size_t(a)] = par[size_t(par[size_t(a)])]; a = par[size_t(a)]; }
-        return a;
-    };
-    const float link2 = 60.0f * 60.0f;
-    for (size_t i = 0; i < rawMana.size(); ++i)
-        for (size_t j = i + 1; j < rawMana.size(); ++j) {
-            float dx = rawMana[i].first - rawMana[j].first, dz = rawMana[i].second - rawMana[j].second;
-            if (dx * dx + dz * dz < link2) par[size_t(find(int(i)))] = find(int(j));
-        }
-    std::map<int, std::pair<std::pair<double, double>, int>> acc;
-    for (size_t i = 0; i < rawMana.size(); ++i) {
-        auto& a = acc[find(int(i))];
-        a.first.first += rawMana[i].first; a.first.second += rawMana[i].second; ++a.second;
-    }
-    std::vector<std::pair<float, float>> manaSpots;
-    for (auto& [root, a] : acc)
-        manaSpots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
-    world.setManaSpots(manaSpots);
-    // Standing Stones block nav, but a large one can reach the glowy centre; keep
-    // every deposit buildable by carving the 2x2 lodestone footprint clear at each
-    // spot (must match the viewer's loadFeatures so SP and MP agree).
-    for (const auto& [sx, sz] : manaSpots)
-        world.blockCells(int(sx) / 16 - 1, int(sz) / 16 - 1, 2, 2, false);
+    installManaSpots(world, rawMana, rawAll);
 
     // Players + teams.
     world.setPlayerCount(int(cfg.slots.size()));

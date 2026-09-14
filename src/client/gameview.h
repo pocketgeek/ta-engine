@@ -2515,7 +2515,7 @@ private:
     void syncBurningFeatures();
 
     // Place one feature instance by definition name; returns success.
-    bool addFeature(const std::string& rawName, float x, float z, bool blockNav);
+    bool addFeature(const std::string& rawName, float x, float z);
 
     void loadFeatures();
     // Scatter retail wave sprites along the coast (display only; see the impl).

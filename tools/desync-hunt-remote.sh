@@ -28,7 +28,15 @@
 # usage: tools/desync-hunt-remote.sh [--host H] [--minutes N] [--jobs N] [--validate]
 set -u
 
-HOST="tak.pgnet.us"
+# HOSTS: "name:jobs:weight". WEIGHT picks which runs a box is allowed to take --
+# `heavy` boxes get everything, `light` boxes only the runs that stay small.
+#
+# vpn3 has 2 cores and 3.9GB against tak's 32 and 31GB, so it gets 2 concurrent jobs
+# and NONE of the stress/benchmark configurations: those field 5k-15k units per game,
+# and three of them at once would push a 3.9GB box into swap, which does not fail
+# cleanly -- it just makes a run crawl and look like a stall. Sizing down is what keeps
+# a small box's results trustworthy rather than merely finishing.
+HOSTS_SPEC="${TAK_HOSTS:-tak.pgnet.us:10:heavy vpn3.pgnet.us:2:light}"
 RUSER="pocket_geek"
 RDATA="/home/pocket_geek/tak_data"
 RREPLAY="/home/pocket_geek/tak_replay"
@@ -39,7 +47,7 @@ JOBS=12
 VALIDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --host)     HOST="$2"; shift 2;;
+    --hosts)    HOSTS_SPEC="$2"; shift 2;;
     --minutes)  MINUTES="$2"; shift 2;;
     --jobs)     JOBS="$2"; shift 2;;
     --data)     LDATA="$2"; shift 2;;
@@ -54,13 +62,16 @@ CLIENT=./build-dbg/takclient
 OUT="${TMPDIR:-/tmp}/desync-remote-$$"; mkdir -p "$OUT"
 CTL="$OUT/ctl-%C"
 SSH=(ssh -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o BatchMode=yes)
-rsh() { "${SSH[@]}" "$RUSER@$HOST" "$@"; }
-
 PORT_BASE=7900
-cleanup() { rsh 'pkill -x takserver 2>/dev/null; true' >/dev/null 2>&1 || true; }
+cleanup() {
+  for hspec in $HOSTS_SPEC; do
+    "${SSH[@]}" "$RUSER@${hspec%%:*}" 'pkill -x takserver 2>/dev/null; true' >/dev/null 2>&1 || true
+  done
+}
 trap cleanup EXIT INT TERM
 
-echo "desync hunt (remote referee on $HOST): ${MINUTES}m per run, ${JOBS} parallel"
+echo "desync hunt: ${MINUTES}m per run"
+echo "hosts: $HOSTS_SPEC"
 echo "logs: $OUT"
 
 # Run table. Each entry: NAME|MAP|ENVS|FLAGS|SEAT
@@ -74,50 +85,53 @@ echo "logs: $OUT"
 # A human run ENDS when that player's team is eliminated (outcome_ != 0 stops the drain),
 # so these are usually shorter than the clock allows. That is reported, not hidden.
 RUNS=(
-  "h-baseline|Ulasem Arena||human"
-  "h-gods|Ulasem Arena|TAK_GODS=1||human"
-  "h-crusades|Ulasem Arena||--crusades|human"
-  "h-stress|Ulasem Arena|TAK_STRESS=1||human"
-  "h-absurd|Ulasem Arena|TAK_AI_LEVEL=4||human"
-  "h-fog-explored|Ulasem Arena|TAK_FOG=1||human"
-  "h-fog-full|Ulasem Arena|TAK_FOG=2||human"
-  "h-unitcap|Ulasem Arena|TAK_UNITCAP=5000||human"
-  "h-cramped|Inner Circle|TAK_GODS=1||human"
-  "h-naval|Aibel's Seaport|||human"
-  "h-naval-crus|Aibel's Seaport||--crusades|human"
-  "h-lake|Lake Lokken|TAK_STRESS=1||human"
-  "h-random-starts|Sand River Plain|TAK_RANDOM_STARTS=1||human"
-  "h-monarch-exp|Ulasem Arena|TAK_MONARCH_EXPENDABLE=1 TAK_GODS=1||human"
-  "h-overrides-full|Ulasem Arena|||--overrides full|human"
-  "h-everything|Tarosian Plain|TAK_GODS=1 TAK_STRESS=1 TAK_AI_LEVEL=4 TAK_FOG=1|--crusades|human"
-  "h-speed-1x|Ulasem Arena|TAK_SPEED=10||human"
-  "h-two-castles|Two Castles|TAK_GODS=1|--crusades|human"
-  "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch"
-  "w-allai-bench|Ulasem Arena|TAK_BENCH=3||watch"
+  "h-baseline|Ulasem Arena|||human|light"
+  "h-gods|Ulasem Arena|TAK_GODS=1||human|light"
+  "h-crusades|Ulasem Arena||--crusades|human|light"
+  "h-stress|Ulasem Arena|TAK_STRESS=1||human|heavy"
+  "h-absurd|Ulasem Arena|TAK_AI_LEVEL=4||human|light"
+  "h-fog-explored|Ulasem Arena|TAK_FOG=1||human|light"
+  "h-fog-full|Ulasem Arena|TAK_FOG=2||human|light"
+  "h-unitcap|Ulasem Arena|TAK_UNITCAP=5000||human|light"
+  "h-cramped|Inner Circle|TAK_GODS=1||human|light"
+  "h-naval|Aibel's Seaport|||human|light"
+  "h-naval-crus|Aibel's Seaport||--crusades|human|light"
+  "h-lake|Lake Lokken|TAK_STRESS=1||human|heavy"
+  "h-random-starts|Sand River Plain|TAK_RANDOM_STARTS=1||human|light"
+  "h-monarch-exp|Ulasem Arena|TAK_MONARCH_EXPENDABLE=1 TAK_GODS=1||human|light"
+  "h-overrides-full|Ulasem Arena|||--overrides full|human|light"
+  "h-everything|Tarosian Plain|TAK_GODS=1 TAK_STRESS=1 TAK_AI_LEVEL=4 TAK_FOG=1|--crusades|human|heavy"
+  "h-speed-1x|Ulasem Arena|TAK_SPEED=10||human|light"
+  "h-two-castles|Two Castles|TAK_GODS=1|--crusades|human|light"
+  "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch|heavy"
+  "w-allai-bench|Ulasem Arena|TAK_BENCH=3||watch|heavy"
 )
 
 SPEED_DEFAULT="TAK_SPEED=40"
 
 run_one() {
-  local idx="$1" spec="$2"
-  local name map envs flags seat
+  local host="$1" idx="$2" spec="$3"
+  local name map envs flags seat weight
   name="${spec%%|*}"; spec="${spec#*|}"
   map="${spec%%|*}";  spec="${spec#*|}"
   envs="${spec%%|*}"; spec="${spec#*|}"
-  flags="${spec%%|*}"; seat="${spec##*|}"
+  flags="${spec%%|*}"; spec="${spec#*|}"
+  seat="${spec%%|*}"; weight="${spec##*|}"
   local port=$((PORT_BASE + idx)) seed=$((2000 + idx))
   local clog="$OUT/$name.client.log"
+  local SSHH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
+  rsh1() { "${SSHH[@]}" "$RUSER@$host" "$@"; }
 
   # Start the referee on the remote. No --local and no tunnel: this is a LAN, so the
   # client reaches it over a real NIC, which is the point of running it remotely.
-  rsh "nohup $RBIN --port $port --data $RDATA --replaydir $RREPLAY --no-auth \
-       --seed $seed >/tmp/tak-srv-$port.log 2>&1 & sleep 1" >/dev/null 2>&1
+  rsh1 "nohup $RBIN --port $port --data $RDATA --replaydir $RREPLAY --no-auth \
+        --seed $seed >/tmp/tak-srv-$port.log 2>&1 & sleep 1" >/dev/null 2>&1
   local up=0
   for _ in $(seq 60); do
-    rsh "grep -q listening /tmp/tak-srv-$port.log 2>/dev/null" && { up=1; break; }
+    rsh1 "grep -q listening /tmp/tak-srv-$port.log 2>/dev/null" && { up=1; break; }
     sleep 2
   done
-  [ "$up" = "1" ] || { echo "FAIL $name: remote server never came up (port $port)"; return 1; }
+  [ "$up" = "1" ] || { echo "FAIL $name ($host): remote server never came up (port $port)"; return 1; }
 
   # SEAT: watch -> spectator (TAK_MP_WATCH=1, 8 AIs). human -> a real player slot with
   # 7 AIs alongside, which is what makes the referee compare hashes at all.
@@ -128,12 +142,12 @@ run_one() {
   # shellcheck disable=SC2086
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $seatenv $SPEED_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
-      --server "$HOST" --serverport "$port" --mphost --time "$secs" $flags \
+      --server "$host" --serverport "$port" --mphost --time "$secs" $flags \
       >"$clog" 2>&1
   local rc=$?
 
-  rsh "cp /tmp/tak-srv-$port.log $OUT/ 2>/dev/null; pkill -f \"takserver --port $port\" 2>/dev/null; true" >/dev/null 2>&1
-  rsh "cat /tmp/tak-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null
+  rsh1 "cat /tmp/tak-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null
+  rsh1 "pkill -f \"takserver --port $port\" 2>/dev/null; true" >/dev/null 2>&1
 
   local hit=""
   grep -qi "DESYNCED"        "$OUT/$name.server.log" 2>/dev/null && hit="${hit}DESYNC "
@@ -142,43 +156,70 @@ run_one() {
   local done_line; done_line=$(grep -E "mp-headless done" "$clog" | tail -1)
   [ -z "$done_line" ] && hit="${hit}no-completion(rc=$rc) "
 
-  if [ -n "$hit" ]; then echo "HIT  $name [seat=$seat seed=$seed map=$map $envs $flags] -- $hit"
+  if [ -n "$hit" ]; then echo "HIT  $name @$host [seat=$seat seed=$seed map=$map $envs $flags] -- $hit"
                          echo "     $done_line"
-  else echo "ok   $name [seat=$seat seed=$seed] -- $done_line"; fi
+  else echo "ok   $name @$host [seat=$seat seed=$seed] -- $done_line"; fi
 }
-export -f run_one
-export OUT CLIENT LDATA MINUTES PORT_BASE SPEED_DEFAULT HOST RUSER RDATA RREPLAY RBIN SPEED_DEFAULT
-export -f rsh 2>/dev/null || true
 
 # --validate: plant a KNOWN divergence and require the referee to catch it. If this
 # does not report DESYNC, the sweep's verdict is worthless and we stop rather than
-# hand back a "clean" result from a detector that never fires.
+# hand back a "clean" result from a detector that never fires. Runs on the FIRST host.
 if [ "$VALIDATE" = "1" ]; then
-  echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) =="
-  port=7890; seed=999
-  rsh "nohup $RBIN --port $port --data $RDATA --no-auth --seed $seed >/tmp/tak-val.log 2>&1 & sleep 1" >/dev/null 2>&1
-  for _ in $(seq 60); do rsh "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
+  vhost="${HOSTS_SPEC%%:*}"; vhost="${vhost%% *}"
+  echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
+  VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
+  "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 & sleep 1" >/dev/null 2>&1
+  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 TAK_FAKE_DESYNC=900 \
       timeout -k 30 400 $CLIENT game "Ulasem Arena" --data "$LDATA" \
-      --server "$HOST" --serverport "$port" --mphost --time 120 >"$OUT/validate.client.log" 2>&1
-  rsh "cat /tmp/tak-val.log" >"$OUT/validate.server.log" 2>/dev/null
-  rsh 'pkill -x takserver 2>/dev/null; true' >/dev/null 2>&1
+      --server "$vhost" --serverport 7890 --mphost --time 120 >"$OUT/validate.client.log" 2>&1
+  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-val.log" >"$OUT/validate.server.log" 2>/dev/null
+  "${VSSH[@]}" "$RUSER@$vhost" 'pkill -x takserver 2>/dev/null; true' >/dev/null 2>&1
   if grep -qi "DESYNCED" "$OUT/validate.server.log"; then
     echo "   PASS -- referee reported: $(grep -i DESYNCED "$OUT/validate.server.log" | head -1)"
   else
     echo "   FAIL -- planted desync NOT detected. The sweep cannot prove anything; stopping." >&2
-    echo "   server log: $OUT/validate.server.log" >&2
     exit 1
   fi
 fi
 
-i=0
-for spec in "${RUNS[@]}"; do
-  run_one "$i" "$spec" &
-  i=$((i + 1))
-  while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do sleep 5; done
+# Dispatch. Each host drains its own queue at its own concurrency, so a 2-core box
+# never gates a 32-core one: the small host simply takes fewer, lighter runs and
+# finishes when it finishes.
+idx=0
+declare -a HOST_PIDS=()
+for hspec in $HOSTS_SPEC; do
+  hname="${hspec%%:*}"; rest="${hspec#*:}"
+  hjobs="${rest%%:*}"; hweight="${rest##*:}"
+  # Partition the table: a `light` host takes only light runs; a `heavy` host takes
+  # everything it is handed. Indices stay globally unique so ports never collide.
+  mine=(); myidx=()
+  j=0
+  for spec in "${RUNS[@]}"; do
+    w="${spec##*|}"
+    take=0
+    if [ "$hweight" = "heavy" ]; then
+      # heavy box takes the heavy runs plus whatever light ones are left over
+      [ "$w" = "heavy" ] && take=1
+    else
+      [ "$w" = "light" ] && take=1
+    fi
+    [ "$take" = "1" ] && { mine+=("$spec"); myidx+=("$j"); }
+    j=$((j + 1))
+  done
+  echo "-> $hname: ${#mine[@]} runs, ${hjobs} at a time ($hweight)"
+  (
+    k=0
+    for spec in "${mine[@]}"; do
+      run_one "$hname" "${myidx[$k]}" "$spec" &
+      k=$((k + 1))
+      while [ "$(jobs -rp | wc -l)" -ge "$hjobs" ]; do sleep 5; done
+    done
+    wait
+  ) &
+  HOST_PIDS+=($!)
 done
-wait
+for pid in "${HOST_PIDS[@]}"; do wait "$pid"; done
 
 echo
 echo "==== SUMMARY ===="

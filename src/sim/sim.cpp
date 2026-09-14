@@ -3921,6 +3921,9 @@ constexpr int kParkedFreeCells = 2;
 
 void World::tick(float dt) {
     ++tickCounter_;
+#ifndef NDEBUG
+    hashTrace();   // TAK_HASHTRACE=lo:hi -- per-component dump, EVERY tick on both peers
+#endif
     {
         auto _b = std::chrono::steady_clock::now();
         tickBurning();   // feature fire: spread + burn-out (deterministic, hashed)
@@ -5208,6 +5211,92 @@ void World::tick(float dt) {
         scenario_->step(*this, dt);
     }
 }
+
+#ifndef NDEBUG
+// See sim.h. Recomputes the same quantities stateHash() folds, but grouped, so a
+// mismatch can be attributed to a component instead of a 64-bit number.
+void World::hashTrace() const {
+    static bool init = false, on = false;
+    static uint32_t lo = 0, hi = 0;
+    if (!init) {
+        init = true;
+        if (const char* e = std::getenv("TAK_HASHTRACE")) {
+            unsigned a = 0, b = 0;
+            if (std::sscanf(e, "%u:%u", &a, &b) == 2) { lo = a; hi = b; on = true; }
+        }
+    }
+    if (!on || tickCounter_ < lo || tickCounter_ > hi) return;
+
+    auto fnv = [](uint64_t h, uint64_t v) {
+        for (int i = 0; i < 8; ++i) { h ^= (v >> (i * 8)) & 0xFF; h *= 1099511628211ULL; }
+        return h;
+    };
+    auto bits = [](float f) { uint32_t b; std::memcpy(&b, &f, 4); return uint64_t(b); };
+    const uint64_t seed = 1469598103934665603ULL;
+
+    uint64_t hUnitPos = seed, hUnitHp = seed, hUnitOrd = seed, hUnitMisc = seed;
+    uint64_t aliveN = 0;
+    for (const auto& u : units_) {
+        if (u.alive()) ++aliveN;
+        hUnitPos  = fnv(fnv(fnv(hUnitPos, u.id), bits(u.x)), bits(u.z));
+        hUnitPos  = fnv(hUnitPos, bits(u.heading));
+        hUnitHp   = fnv(fnv(hUnitHp, u.id), bits(u.hp));
+        hUnitOrd  = fnv(fnv(hUnitOrd, u.id), u.orders.size());
+        if (!u.orders.empty()) {
+            const Order& o = u.orders.front();
+            hUnitOrd = fnv(fnv(fnv(hUnitOrd, uint32_t(o.targetId)), bits(o.x)), bits(o.z));
+        }
+        hUnitMisc = fnv(fnv(hUnitMisc, u.id), uint64_t(u.alive() ? 1 : 0));
+        hUnitMisc = fnv(hUnitMisc, uint64_t(u.veteran));
+        for (float rl : u.reloads) hUnitMisc = fnv(hUnitMisc, bits(rl));
+        hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(u.stance)));
+        hUnitMisc = fnv(hUnitMisc, uint64_t(u.moveState) * 3 + uint64_t(u.fireState));
+        hUnitMisc = fnv(hUnitMisc, uint64_t((u.cloakOn ? 1u : 0u) | (u.active ? 2u : 0u)));
+        hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(u.repairId)));
+        hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(int32_t(u.squad))));
+    }
+    uint64_t hProj = fnv(seed, projectiles_.size());
+    for (const auto& p : projectiles_)
+        hProj = fnv(fnv(fnv(hProj, uint32_t(p.fromPlayer)), bits(p.x)), bits(p.z));
+    uint64_t hEff = fnv(seed, pendingEffects_.size());
+    for (const auto& e : pendingEffects_)
+        hEff = fnv(fnv(fnv(fnv(hEff, uint32_t(e.player)), bits(e.x)), bits(e.z)), bits(e.at));
+    uint64_t hStorm = fnv(fnv(seed, uint32_t(stormSeq_)), storms_.size());
+    for (const auto& s : storms_)
+        hStorm = fnv(fnv(fnv(fnv(hStorm, uint32_t(s.player)), bits(s.x)), bits(s.z)), bits(s.left));
+    uint64_t hPlayers = seed;
+    for (const auto& t : players_)
+        hPlayers = fnv(fnv(fnv(hPlayers, bits(t.mana)), bits(t.godFavor)), uint32_t(t.team));
+    uint64_t fAlive = 0, fWork = 0;
+    for (const auto& f : features_)
+        if (f.alive) { ++fAlive; fWork ^= (bits(f.work) << 1) ^ uint64_t(uint32_t(f.id)); }
+    uint64_t hFeat = fnv(fnv(seed, fAlive), fWork);
+    // The nav overlay + grid cells drive losBetween, which gates target acquisition --
+    // but NEITHER is folded into stateHash, so a divergence here is invisible to the
+    // referee until it changes a decision seconds later.
+    uint64_t hObst = seed;
+    for (uint8_t o : obst_) hObst = fnv(hObst, o);
+    // nav_ is built from (heights, seaLevel, limits); obst_'s occlusion pass reads
+    // heights ONLY -- so heights-vs-seaLevel is exactly the split that would leave
+    // obst_ matching while nav_ diverges.
+    uint64_t hHeights = seed;
+    for (uint8_t v : heights_) hHeights = fnv(hHeights, v);
+    const uint64_t hNav = nav_.debugCellsHash();
+
+    std::fprintf(stderr,
+        "HASHTRACE t=%u units=%zu alive=%llu pos=%016llx hp=%016llx ord=%016llx misc=%016llx "
+        "proj=%016llx(%zu) eff=%016llx storm=%016llx play=%016llx feat=%016llx burn=%llu fire=%u obst=%016llx nav=%016llx hgt=%016llx sea=%d hw=%d hh=%d\n",
+        tickCounter_, units_.size(), (unsigned long long)aliveN,
+        (unsigned long long)hUnitPos, (unsigned long long)hUnitHp,
+        (unsigned long long)hUnitOrd, (unsigned long long)hUnitMisc,
+        (unsigned long long)hProj, projectiles_.size(),
+        (unsigned long long)hEff, (unsigned long long)hStorm,
+        (unsigned long long)hPlayers, (unsigned long long)hFeat,
+        (unsigned long long)burnRng_, fireRng_,
+        (unsigned long long)hObst, (unsigned long long)hNav,
+        (unsigned long long)hHeights, seaLevel_, hW_, hH_);
+}
+#endif
 
 uint64_t World::stateHash() const {
     // FNV-1a over the quantities that must agree between lockstep peers.
