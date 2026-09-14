@@ -917,9 +917,20 @@ int main(int argc, char** argv) {
                              rf.error.empty() ? "" : " -- ", rf.error.c_str());
                 return 1;
             }
-            // A campaign recording resolves no map: setupMission builds its own world.
+            // A campaign recording's terrain is the MISSION's own map. setupMission
+            // builds the world, but GameView still constructs a MapView from mapPath
+            // and reads it immediately -- leaving it empty for a mission threw before
+            // playback ever started. (setupMission requires exactly this file, so if
+            // it is missing the recording cannot be replayed at all.)
             std::string mapPath;
-            if (rf.mission.empty()) {
+            if (!rf.mission.empty()) {
+                mapPath = "missions/" + rf.mission + ".tnt";
+                if (!vfs.has(mapPath)) {
+                    std::fprintf(stderr, "replay: mission '%s' not in this data\n",
+                                 rf.mission.c_str());
+                    return 1;
+                }
+            } else {
                 mapPath = tak::hpi::findMap(vfs, rf.mapId);
                 if (mapPath.empty()) {
                     std::fprintf(stderr, "replay: map '%s' not found\n", rf.mapId.c_str());
@@ -929,6 +940,10 @@ int main(int argc, char** argv) {
             // Replay under the tier the game was recorded at (startReplay rebinds the vfs).
             auto rpol = tak::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
             if (rpol != pol) vfs = tak::hpi::mountRetailRoot(dataRoot, rpol);
+            // Fingerprint the data NOW, while we still own the vfs: it is moved into
+            // the view below, and hashing the moved-from husk afterwards reported a
+            // mismatch against every recording.
+            const uint64_t myDataHash = tak::hpi::gameplayHash(vfs);
             gameView = std::make_unique<GameView>(ren, std::move(vfs), mapPath, dataRoot, rpol,
                                                   false, false, false, /*bare=*/true, "ara", "tar",
                                                   rf.crusades);
@@ -943,7 +958,7 @@ int main(int argc, char** argv) {
             // different simulation, and the whole point of recording the hash was to
             // say so rather than let playback diverge in silence.
             if (rf.dataHash) {
-                const uint64_t mine = tak::hpi::gameplayHash(vfs);
+                const uint64_t mine = myDataHash;
                 if (mine != rf.dataHash)
                     std::fprintf(stderr,
                         "replay: WARNING -- recorded on gameplay data %016llx, yours is "
@@ -1052,10 +1067,14 @@ int main(int argc, char** argv) {
     if (gameView && gameView->replayMode() && tak::devEnv("TAK_REPLAY_VERIFY")) {
         while (gameView->replayTick() < gameView->replayLength())
             gameView->replayStep(10.0f);   // guard caps to 64 ticks/call
-        std::fprintf(stderr, "replay done: tick=%zu hash=%016llx units=%zu\n",
+        std::fprintf(stderr, "replay done: tick=%zu hash=%016llx units=%zu%s\n",
                      gameView->replayTick(), (unsigned long long)gameView->worldHashPublic(),
-                     gameView->aliveUnits());
-        return 0;
+                     gameView->aliveUnits(),
+                     gameView->replayDiverged() ? " DIVERGED" : "");
+        // FAIL when playback did not reproduce the recording. This returned 0
+        // unconditionally, so an automated verify passed a recording it had just
+        // detected diverging from -- the one thing the mode exists to catch.
+        return gameView->replayDiverged() ? 1 : 0;
     }
     if (gameView && mp && mpHeadless) {
         std::string mapId = std::filesystem::path(args[0]).stem().string();

@@ -1207,6 +1207,24 @@ bool World::lineOpen(const UnitType* t, int selfId, int x0, int z0, int x1, int 
     // 6 is the knee AND ties the unlimited result -- no shortcut here crosses more than
     // six bodies -- so it costs nothing measurable while still refusing to cut through
     // a genuinely deep crowd, which is the case the concern is about.
+    //
+    // WHAT THIS DOES NOT FIX, and it is worth knowing before reaching for it again: a
+    // unit sent through a standing WALL of parked bodies gets stuck against it no
+    // matter what this is set to. Measured on a line of parked units 1-8 cells deep --
+    //
+    //   no shortcut at all   STUCK (travelled 2524 / 3605 for 1 / 2 cells deep)
+    //   tolerance 0          STUCK (2524 / 3605 -- identical to no shortcut)
+    //   tolerance 6          STUCK (2515 / 2515)
+    //
+    // -- so the shortcut is not the cause and tightening it is not the cure. The cause
+    // is upstream in cellScore: kCellOccupied EQUALS kCellThreshold, so a parked body
+    // is passable-but-costly to the SEARCH (retail's model; every icd call site
+    // compares against 4). The tracer therefore routes THROUGH a line of parked units
+    // rather than around it, because doing so is legal by its own scoring -- and then
+    // the mover, for which bodies are solid, stops dead. Fixing that means changing how
+    // the search grades a parked body, which is a real behaviour change: a unit would
+    // then refuse to path through its own idle army, and in a packed base might not
+    // path at all. Not something to slip in behind a shortcut tweak.
     constexpr int kShortcutOccupied = 6;
     int budget = kShortcutOccupied;
     auto ok = [&](int x, int z) {
