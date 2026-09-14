@@ -43,6 +43,15 @@ OUTDIR=$(git rev-parse --git-path codex-reviews 2>/dev/null) || exit 0
 mkdir -p "$OUTDIR" || exit 0
 OUT="$OUTDIR/$SHA.md"
 
+# Never clobber a finished review. Re-running this by hand (or an amend landing on the
+# same short sha) used to truncate the file and start over, destroying a completed
+# report -- which happened: a 30KB review became 1.2KB because the script was run again
+# to test something unrelated. A finished review is evidence; keep it.
+if [ -s "$OUT" ] && grep -q '^finished: ' "$OUT" 2>/dev/null; then
+  printf 'codex review %s: already reviewed -- %s\n' "$SHA" "$OUT" >&2
+  exit 0
+fi
+
 # Model: the account default is gpt-6-astra, but pin it so a later change to
 # ~/.codex/config.toml cannot silently alter what reviews this repo. TAK_REVIEW_MODEL
 # overrides for a one-off.
@@ -98,8 +107,22 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 fi
 
 PATCHFILE="$OUTDIR/$SHA.autofix.patch"
-codex exec -s workspace-write -c model="$MODEL" - >>"$OUT" 2>&1 <<PROMPT
-A code review of commit $SHA reported the findings below. Fix them in the working
+
+# GENERATE THE FIX IN AN ISOLATED WORKTREE, never in yours.
+#
+# The obvious version -- let it edit your tree, and `git checkout -- .` if the gate
+# fails -- is a data-loss bug. The tree is checked clean at the start, but generating a
+# fix takes MINUTES: start editing during that window and the rollback discards your
+# work along with the fix, because `checkout -- .` reverts everything, not just what
+# the fix touched. A throwaway worktree at the reviewed commit removes the whole class
+# of problem: nothing can touch your files until a patch has been produced and vetted.
+WT=$(mktemp -d "${TMPDIR:-/tmp}/tak-autofix-XXXXXX") || exit 0
+cleanup_wt() { git worktree remove --force "$WT" >/dev/null 2>&1 || rm -rf "$WT"; }
+trap cleanup_wt EXIT
+git worktree add --detach "$WT" "$FULL" >/dev/null 2>&1 || { rm -rf "$WT"; exit 0; }
+
+codex exec -s workspace-write -c model="$MODEL" -C "$WT" - >>"$OUT" 2>&1 <<PROMPT
+A code review of commit $SHA reported the findings below. Fix them in this working
 tree. Change only what the findings require: no refactoring, no unrelated edits, no
 new features. Do not commit anything. If a finding is wrong, leave that code alone
 and say so rather than changing it.
@@ -107,11 +130,25 @@ and say so rather than changing it.
 $(cat "$OUT")
 PROMPT
 
-if git diff --quiet 2>/dev/null && [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+# Capture the COMPLETE change set, tracked and untracked alike. `git diff` alone misses
+# a file the fix ADDED, so the patch would be incomplete and the revert would strand it.
+( cd "$WT" && git add -A >/dev/null 2>&1 && git diff --cached --binary ) >"$PATCHFILE" 2>/dev/null
+if [ ! -s "$PATCHFILE" ]; then
   printf 'codex autofix %s: no changes made\n' "$SHA" >&2
+  rm -f "$PATCHFILE"; exit 0
+fi
+
+# Your tree must STILL be clean -- minutes have passed since the first check. If you
+# have started working, the patch is left on disk rather than applied underneath you.
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  printf 'codex autofix %s: tree became dirty while fixing; patch NOT applied: %s\n' \
+         "$SHA" "$PATCHFILE" >&2
   exit 0
 fi
-git diff >"$PATCHFILE" 2>/dev/null   # gate 4: save it BEFORE anything can revert it
+git apply --index "$PATCHFILE" >/dev/null 2>&1 || {
+  printf 'codex autofix %s: patch did not apply cleanly; kept at %s\n' "$SHA" "$PATCHFILE" >&2
+  git reset >/dev/null 2>&1; exit 0
+}
 
 # Gate 2: it has to BUILD and PASS THE TESTS.
 #
@@ -131,8 +168,14 @@ if [ -z "$_gate_fail" ]; then
          "$SHA" "$OUT" "$PATCHFILE" >&2
   printf '  left UNCOMMITTED in your working tree; `git checkout -- .` discards it\n' >&2
 else
-  git checkout -- . 2>/dev/null
+  # Revert ONLY what the patch touched. `git checkout -- .` would also throw away any
+  # work started since, and would leave files the patch ADDED behind. The patch was
+  # applied with --index, so reversing it against the index removes both.
+  git apply --index --reverse "$PATCHFILE" >/dev/null 2>&1 || true
+  git reset >/dev/null 2>&1
   printf 'codex autofix %s: REVERTED -- %s failed. Patch kept at %s\n' \
          "$SHA" "$_gate_fail" "$PATCHFILE" >&2
+  # Rebuild so the tree is not left holding objects from the reverted attempt.
+  cmake --build build-dbg >/dev/null 2>&1; cmake --build build >/dev/null 2>&1
 fi
 exit 0
