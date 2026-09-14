@@ -478,6 +478,15 @@
                 benchmarkMode_ = true;                         // (forces watch + 8 AI + cap 8 + Ulasem below)
             }
             if (const char* uc = tak::devEnv("TAK_UNITCAP")) o.unitCap = uint16_t(std::atoi(uc));
+            // The remaining room options, as headless knobs. Without these a harness
+            // could not reach the code they gate -- and GODS in particular is where a
+            // desync has already hidden once: summoning used to run only on the client,
+            // so the referee's world ran a unit short from the first god onward. A
+            // desync hunt that cannot turn gods on cannot find that class of bug.
+            if (tak::devEnv("TAK_GODS")) o.gods = 1;
+            if (tak::devEnv("TAK_RANDOM_STARTS")) o.randomStarts = 1;
+            if (tak::devEnv("TAK_MONARCH_EXPENDABLE")) o.monarchExpendable = 1;
+            if (tak::devEnv("TAK_FORFEIT_SELFDESTRUCT")) o.forfeitSelfDestruct = 1;
             // TAK_FOG=0|1|2 forces the room's fog rule (not explored / explored /
             // full vision) so the setting can be tested end to end without driving
             // the lobby by hand.
