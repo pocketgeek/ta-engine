@@ -105,8 +105,24 @@ PIDFILE="$OUT/started-servers"
 : >"$PIDFILE"
 note_server() { printf '%s\t%s\n' "$1" "$2" >>"$PIDFILE"; }
 
+# Files moved aside on a remote for the negative test, as "host<TAB>path<TAB>backup".
+# Recorded BEFORE the move and restored by cleanup() however we exit -- an interrupted
+# run must not leave a host missing a gameplay override, or every later full-tier run
+# there fails for a reason that has nothing to do with what it is testing.
+MOVEDFILE="$OUT/moved-aside"
+: >"$MOVEDFILE"
+restore_moved() {
+  [ -s "$MOVEDFILE" ] || return 0
+  while IFS=$'\t' read -r _h _orig _bak; do
+    [ -n "$_h" ] || continue
+    "${SSH[@]}" "$RUSER@$_h" "[ -f '$_bak' ] && mv -f '$_bak' '$_orig'; true" >/dev/null 2>&1 || true
+  done <"$MOVEDFILE"
+  : >"$MOVEDFILE"
+}
+
 cleanup() {
   rm -f "${TAK_SWEEP_SNAPSHOT:-}" 2>/dev/null || true
+  restore_moved
   [ -s "$PIDFILE" ] || return 0
   local hosts; hosts=$(cut -f1 "$PIDFILE" | sort -u)
   for h in $hosts; do
@@ -482,50 +498,58 @@ if [ "$VALIDATE" = "1" ]; then
   fi
 
   # SECOND SAFETY NET: a client whose gameplay data differs from the host's must be
-  # REJECTED AT LOAD, not allowed in to desync ten minutes later. Once the same
-  # override exists everywhere, nothing in a normal sweep produces a mismatch any
-  # more, so this manufactures one -- a data dir of symlinks to the real install with
-  # ONE gameplay value changed, which costs nothing and leaves the shared dir alone.
+  # REJECTED AT LOAD, not let in to desync ten minutes later.
+  #
+  # The mismatch is made by MOVING THE HOST'S OVERRIDE ASIDE, not by handing the client
+  # doctored data. That tests strictly more: if the server were silently ignoring the
+  # override file, removing it would change nothing and the client would be admitted --
+  # so a PASS here also proves the host was really reading it. The file goes back
+  # immediately afterwards, and cleanup() restores it however this exits.
   echo "== validating the gameplay-override mismatch rejection on $vhost =="
-  NEG="$OUT/negdata"; rm -rf "$NEG"; mkdir -p "$NEG/overrides/units"
-  for _e in "$LDATA"/*; do
-    [ "$(basename "$_e")" = overrides ] && continue
-    ln -s "$(realpath "$_e")" "$NEG/$(basename "$_e")" 2>/dev/null || true
-  done
-  if [ -d "$LDATA/overrides" ]; then
-    for _e in "$LDATA"/overrides/*; do
-      [ "$(basename "$_e")" = units ] && continue
-      ln -s "$(realpath "$_e")" "$NEG/overrides/$(basename "$_e")" 2>/dev/null || true
-    done
-  fi
-  # A gameplay file the host cannot match. Derived from the real override when there is
-  # one, otherwise minted from the retail FBI, so this works either way.
-  if [ -f "$LDATA/overrides/units/arasword.fbi" ]; then
-    sed 's/maxdamage = [0-9]*;/maxdamage = 4242;/' "$LDATA/overrides/units/arasword.fbi" \
-      >"$NEG/overrides/units/arasword.fbi"
+  _ovr="$RDATA/overrides/units/arasword.fbi"
+  _bak="$_ovr.negtest-bak"
+  if ! "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" 2>/dev/null; then
+    echo "   SKIP -- $vhost has no gameplay override to remove, so there is no"
+    echo "           positive baseline to make a mismatch against."
   else
-    ./build/hpitool cat "$LDATA"/V3Rocket.hpi units/arasword.fbi 2>/dev/null \
-      | sed 's/maxdamage = [0-9]*;/maxdamage = 4242;/' >"$NEG/overrides/units/arasword.fbi"
+    # Record the move BEFORE making it: a crash between the two must still restore.
+    printf '%s\t%s\t%s\n' "$vhost" "$_ovr" "$_bak" >>"$MOVEDFILE"
+    "${VSSH[@]}" "$RUSER@$vhost" "mv -f '$_ovr' '$_bak'" >/dev/null 2>&1
+    if "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" 2>/dev/null; then
+      echo "   FAIL -- could not move the host override aside; stopping." >&2; exit 1
+    fi
+
+    "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7891 --data $RDATA --no-auth --seed 999 >/tmp/tak-neg.log 2>&1 </dev/null & echo \$!" >/dev/null 2>&1
+    for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-neg.log 2>/dev/null" && break; sleep 2; done
+    env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 \
+        timeout -k 20 180 $CLIENT game "Ulasem Arena" --data "$LDATA" \
+        --server "$vhost" --serverport 7891 --mphost --time 60 --overrides full \
+        >"$OUT/negative.client.log" 2>&1
+    "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-neg.log" >"$OUT/negative.server.log" 2>/dev/null
+    "${VSSH[@]}" "$RUSER@$vhost" "ps -o pid,args -C takserver --no-headers | awk '/7891/{print \$1}' | xargs -r kill" >/dev/null 2>&1
+
+    _rejected=0
+    grep -qi "override mismatch" "$OUT/negative.server.log" "$OUT/negative.client.log" 2>/dev/null && _rejected=1
+
+    # PUT IT BACK before judging, so a failure cannot leave the host altered.
+    restore_moved
+    if ! "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" 2>/dev/null; then
+      echo "   FAIL -- the host override was NOT restored. Fix $vhost before running" >&2
+      echo "           anything else: $_bak" >&2
+      exit 1
+    fi
+
+    if [ "$_rejected" = "1" ]; then
+      echo "   PASS -- $(grep -ohi 'rejected at load.*' "$OUT/negative.server.log" | head -1)"
+      echo "           (host override removed and restored; the server was reading it)"
+    else
+      echo "   FAIL -- a client with gameplay data the host lacks was NOT rejected." >&2
+      echo "           Either the check is broken or the host never read its override;" >&2
+      echo "           that client would have desynced mid-game. Stopping." >&2
+      exit 1
+    fi
   fi
 
-  "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7891 --data $RDATA --no-auth --seed 999 >/tmp/tak-neg.log 2>&1 </dev/null & echo \$!" >/dev/null 2>&1
-  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-neg.log 2>/dev/null" && break; sleep 2; done
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 \
-      timeout -k 20 180 $CLIENT game "Ulasem Arena" --data "$NEG" \
-      --server "$vhost" --serverport 7891 --mphost --time 60 --overrides full \
-      >"$OUT/negative.client.log" 2>&1
-  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-neg.log" >"$OUT/negative.server.log" 2>/dev/null
-  "${VSSH[@]}" "$RUSER@$vhost" "ps -o pid,args -C takserver --no-headers | awk '/7891/{print \$1}' | xargs -r kill" >/dev/null 2>&1
-  if grep -qi "override mismatch" "$OUT/negative.server.log" "$OUT/negative.client.log" 2>/dev/null; then
-    echo "   PASS -- $(grep -ohi 'rejected at load.*' "$OUT/negative.server.log" | head -1)"
-  else
-    echo "   FAIL -- a client with DIFFERENT gameplay data was not rejected. That client" >&2
-    echo "           would have desynced mid-game instead; stopping." >&2
-    exit 1
-  fi
-
-  # --validate-only: prove the safety nets fire, then stop. Checking them should not
-  # cost a full sweep -- and a gate nobody can afford to run is a gate that rots.
   if [ "$VALONLY" = "1" ]; then echo "both gates passed"; exit 0; fi
 fi
 
