@@ -522,6 +522,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     const int claimW = std::max(world.nav().width(), 1);
     const int claimH = std::max(world.nav().height(), 1);
     std::vector<uint8_t> claimBits(size_t(claimW) * size_t(claimH), 0);
+    // Floor division by 16: a body can extend left of x=0, where C's truncation would
+    // round the wrong way and claim the wrong cell.
+    auto floorDiv16 = [](int v) { return v >= 0 ? v / 16 : -((-v + 15) / 16); };
     auto claimedAt = [&](int x, int z) {
         if (x < 0 || z < 0 || x >= claimW || z >= claimH) return true;   // off-map = taken
         return claimBits[size_t(z) * size_t(claimW) + size_t(x)] != 0;
@@ -540,13 +543,25 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         // a footprint, so with MIXED sizes two disjoint claims could still describe
         // overlapping bodies -- a size-2 and a size-4 two cells apart passed the check
         // while actually overlapping.
-        const int ox = nx - foot / 2, oz = nz - foot / 2;
-        for (int dz = 0; dz < foot; ++dz)
-            for (int dx = 0; dx < foot; ++dx)
-                if (claimedAt(ox + dx, oz + dz)) return false;
-        for (int dz = 0; dz < foot; ++dz)
-            for (int dx = 0; dx < foot; ++dx)
-                claimBits[size_t(oz + dz) * size_t(claimW) + size_t(ox + dx)] = 1;
+        // Claim the cells the BODY ACTUALLY COVERS, not a foot x foot block.
+        //
+        // A snapped unit sits at the CENTRE of cell nx (ux = nx*16 + 8) with half-width
+        // foot*8, so an EVEN footprint straddles half a cell on each side and touches
+        // foot+1 cells. Claiming only foot of them let two disjoint claims describe
+        // bodies that overlap: a size-2 and a size-3 could end up 32px apart needing 40.
+        // Every overlapping pair in the benchmark fill was mixed-size for exactly this
+        // reason -- 857 of them over 3140 units, invisible until the test that was
+        // supposed to catch them stopped halving its own threshold.
+        const int hs = foot * 8;
+        const int lox = floorDiv16(nx * 16 + 8 - hs), hix = floorDiv16(nx * 16 + 8 + hs - 1);
+        const int loz = floorDiv16(nz * 16 + 8 - hs), hiz = floorDiv16(nz * 16 + 8 + hs - 1);
+        for (int z = loz; z <= hiz; ++z)
+            for (int x = lox; x <= hix; ++x)
+                if (claimedAt(x, z)) return false;
+        for (int z = loz; z <= hiz; ++z)
+            for (int x = lox; x <= hix; ++x)
+                if (x >= 0 && z >= 0 && x < claimW && z < claimH)
+                    claimBits[size_t(z) * size_t(claimW) + size_t(x)] = 1;
         return true;
     };
     int sweepCursor = 0;   // global fallback scan position (see snapSpawn)

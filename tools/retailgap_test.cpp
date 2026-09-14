@@ -1746,9 +1746,15 @@ int main(int argc, char** argv) {
                 for (size_t a = 0; a < bodies.size(); ++a)
                     for (size_t b = a + 1; b < bodies.size(); ++b) {
                         const float need =
+                            // Each body's half-width is max(footX,footZ)*8 -- exactly what
+                            // World::bodyPenetration uses -- so two bodies must be the SUM
+                            // of those apart. An extra *0.5f here halved the requirement and
+                            // passed two 2x2 units 16px apart when they need 32: the very
+                            // case the comment above describes. A check that cannot fail on
+                            // the bug it documents is worse than no check.
                             (float(std::max(bodies[a]->type->footX, bodies[a]->type->footZ)) +
                              float(std::max(bodies[b]->type->footX, bodies[b]->type->footZ)))
-                            * 8.0f * 0.5f;
+                            * 8.0f;
                         const float dx = bodies[a]->x - bodies[b]->x;
                         const float dz = bodies[a]->z - bodies[b]->z;
                         if (std::sqrt(dx * dx + dz * dz) < need) ++pairs;

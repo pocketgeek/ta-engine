@@ -488,11 +488,19 @@ void GameView::autoplayStep() {
 
     // Collect this player's mobile units. Stable order (units_ is append-only and
     // identical on every peer), so indexing into it is reproducible.
+    //
+    // UNDER simMutex_: with TAK_SIM_THREAD the worker mutates world_ while this runs on
+    // the main thread, and a spawn that reallocates units_ invalidates the iteration
+    // outright -- not a torn read, a crash. Every other live-world_ read from this
+    // thread (canPlace) takes the same lock; this one has to as well.
     std::vector<int> mine;
-    for (const auto& u : world_.units())
-        if (u.alive() && u.type && int(u.player) == localPlayer_ && u.type->maxVel > 0 &&
-            !u.embarked() && !u.underConstruction)
-            mine.push_back(u.id);
+    {
+        std::lock_guard<std::mutex> lk(simMutex_);
+        for (const auto& u : world_.units())
+            if (u.alive() && u.type && int(u.player) == localPlayer_ && u.type->maxVel > 0 &&
+                !u.embarked() && !u.underConstruction)
+                mine.push_back(u.id);
+    }
     if (mine.empty()) return;
 
     // Order a handful at a time: one unit per order is too thin to collide with

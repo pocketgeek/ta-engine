@@ -4280,14 +4280,29 @@ void World::tick(float dt) {
             std::vector<PathCell> pulled;
             if (!ng.empty()) {
                 PathCell at{int(u->x) / 16, int(u->z) / 16};
+                // The FIRST hop is tested from the unit's exact position as well as from
+                // its cell. lineOpen walks cell to cell, which discards where inside the
+                // cell the body actually stands -- so a unit near a cell edge could be
+                // handed a shortcut whose real movement segment clips a cell the
+                // cell-centred walk never visited, introducing a collision into a route
+                // that had avoided it. Cheap to rule out: losBetween is the same
+                // Bresenham in WORLD space, so ask it about the actual segment too.
+                // (Only the first hop needs it; later hops start from a waypoint, which
+                // is a cell centre by construction.)
+                const int halfFoot = std::max(u->type->footX, u->type->footZ) / 2;
+                bool firstHop = true;
                 size_t from = 0;
                 while (from < route.size() && pulled.size() < 64) {
                     size_t take = from;
                     for (size_t j = route.size(); j-- > from;)
-                        if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z)) {
+                        if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z) &&
+                            (!firstHop ||
+                             ng.losBetween(u->x, u->z, float(route[j].x) * 16 + 8,
+                                           float(route[j].z) * 16 + 8, halfFoot, halfFoot))) {
                             take = j;
                             break;
                         }
+                    firstHop = false;
                     pulled.push_back(route[take]);
                     at = route[take];
                     if (take + 1 >= route.size()) break;
