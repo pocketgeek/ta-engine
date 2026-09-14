@@ -692,7 +692,13 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             // occupies -- footprints here run 2x2 to 4x4, so counting cells alone would
             // overstate it several-fold.
             mapCapacity = capacityFor(roster);
-            const int players = std::max(1, int(cfg.slots.size()));
+            // Divide by the players who ACTUALLY SPAWN, not the slot-vector length.
+            // Both client and server size that vector to maxSlot + 1, so a lobby with
+            // gaps (say players in slots 0 and 7) counts 8 and hands each of the two a
+            // quarter of what the map can hold -- reserving room for six armies that
+            // never arrive, and quietly shrinking every stress and benchmark run on a
+            // capacity-limited map.
+            const int players = std::max(1, used);
             target = std::min(target, std::max(1, mapCapacity / players));
             if (!roster.empty() && target > 0) {
                 int cols = 1;                                 // integer ceil(sqrt(target))

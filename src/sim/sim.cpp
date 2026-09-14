@@ -1504,8 +1504,26 @@ void World::patrol(int unitId, float x, float z) {
     if (u->type->isStructure()) {
         // The rally patrols between the building and the clicked point: a unit off the
         // line walks out and then loops, which is what a patrol rally means.
+        //
+        // The return leg stops just OUTSIDE the producer, not at its centre. A building
+        // occupies its whole footprint, so a return waypoint on its own position is a
+        // cell no ground unit can stand in: produced units walked to the clicked point
+        // and then pushed against the factory instead of looping, until the
+        // no-headway watchdog discarded the leg. Step out along the patrol line by the
+        // building's half-width plus a cell, which is the direction they are coming
+        // back from anyway.
+        float rx = u->x, rz = u->z;
+        {
+            const float dx = x - u->x, dz = z - u->z;
+            const float len = detmath::len(dx, dz);
+            if (len > 1.0f) {
+                const float out = float(std::max(u->type->footX, u->type->footZ)) * 8.0f + 16.0f;
+                rx = u->x + dx / len * out;
+                rz = u->z + dz / len * out;
+            }
+        }
         Order b{x, z, 0};   b.patrol = true; b.attackMove = true;
-        Order a{u->x, u->z, 0}; a.patrol = true; a.attackMove = true;
+        Order a{rx, rz, 0}; a.patrol = true; a.attackMove = true;
         setRally(*u, b, /*queue=*/false);
         setRally(*u, a, /*queue=*/true);
         return;

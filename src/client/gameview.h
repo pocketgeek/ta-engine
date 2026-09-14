@@ -420,6 +420,13 @@ public:
             const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
             for (int i = 0; i < n; ++i) {
                 std::string fkSide = sides[i % 5];
+                // Gods are resolved in setupMatch, which this harness does not call, so
+                // godType stayed null here. World::summonReadyGods marks the summon
+                // HANDLED before checking it (a player with nothing on the map must not
+                // bank one), so a null type does not defer the god -- it consumes the
+                // favour and spawns nothing, permanently. Resolve it the same way
+                // setupMatch does.
+                world_.player(i).godType = registry_.find(fkSide + "god");
                 const FactionKit& fk = kit(fkSide);
                 float mx = spots[size_t(i)].first, mz = spots[size_t(i)].second;
                 int mon = spawn(fk.monarch, mx, mz, 0, i);
