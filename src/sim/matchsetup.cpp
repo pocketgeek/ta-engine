@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <set>
 #include <unordered_map>
 
 #include "hpi/hpi.h"
@@ -485,6 +486,57 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // Benchmark: a gradual ramp -- each faction spawns 1 unit every 1/spawnsPerSec seconds
     // for 60s (=1800 ticks). Intensity level (cfg.benchmark 1..5) sets the count; stage k
     // fires at tick (k+1)*1800/N via integer math so every peer agrees. Units filled below.
+    // Both block layouts below are BLIND grids -- a fixed lattice centred on the start
+    // spot -- and World::spawn does no terrain check at all, so a unit whose lattice
+    // point lands in a lake, on a cliff face or inside a blocked footprint is simply
+    // placed there. Measured on Ulasem with 8 players: 4.5% of benchmark units at
+    // intensity Low, 7.2% at Extra Absurd, and 20.5% of a stress-test fill -- one unit
+    // in five starting somewhere it cannot stand. They cannot walk out (a blocked cell
+    // is blocked in both directions), so they sit there for the whole run, which both
+    // looks wrong and quietly makes the benchmark measure a different thing than it
+    // claims to: a fifth of the army is inert.
+    //
+    // So each lattice point gets snapped to the nearest cell the unit can actually
+    // occupy. `claimed` stops the snap from stacking bodies: without it, everything
+    // that lands in the same lake converges on the one shoreline cell nearest it, and
+    // bodies are solid with nothing to pull an overlap apart. Deterministic -- a fixed
+    // ring scan over the nav grid, and a claim set filled in a fixed order -- so every
+    // peer lays out the identical army and lockstep holds.
+    std::set<std::pair<int, int>> claimed;
+    // How far a snap may look, in cells. Generous on purpose: `claimed` makes units
+    // compete for cells, so the radius has to hold the whole block, not just clear the
+    // nearest lake. A radius-r disc holds about pi*r^2 cells before terrain takes its
+    // cut, and the first attempt at 24 (~1810) quietly ran out against a 1900-unit
+    // stress fill, leaving 2.4% of the army in terrain anyway -- the exhaustion looked
+    // exactly like a terrain limit, and was not. 96 leaves 1 unit of 15208 misplaced.
+    //
+    // It costs nothing to be generous here: the ring scan returns the instant it finds
+    // a cell, so a wide bound is only ever walked by the units that genuinely need it.
+    // Measured over the whole 8-player setup, 24 vs 96 is 3.98s vs 4.08s -- noise. A
+    // formula that sized the radius to the unit count was written first and deleted:
+    // it was more code, and slower to converge on the right answer than the constant.
+    constexpr int kSnapCells = 96;
+    auto snapSpawn = [&](const UnitType* t, float& ux, float& uz) {
+        if (!t || t->canFly) return;              // flyers are fine over anything
+        const NavGrid& g = world.navFor(t);
+        if (g.empty()) return;
+        const int foot = std::clamp(std::max(t->footX, t->footZ), 1, 15);
+        const int cx = int(ux) / 16, cz = int(uz) / 16;
+        for (int r = 0; r <= kSnapCells; ++r)
+            for (int j = -r; j <= r; ++j)
+                for (int i = -r; i <= r; ++i) {
+                    if (std::max(std::abs(i), std::abs(j)) != r) continue;   // ring only
+                    const int nx = cx + i, nz = cz + j;
+                    if (!g.fits(nx, nz, foot)) continue;
+                    if (!claimed.insert({nx, nz}).second) continue;          // taken
+                    ux = float(nx) * 16 + 8;
+                    uz = float(nz) * 16 + 8;
+                    return;
+                }
+        // Nothing within range: leave the point alone rather than drop the unit. Better
+        // a badly placed unit than a benchmark that silently spawns fewer than it says.
+    };
+
     const int kBenchSpawns = benchmarkSpawns(cfg.benchmark);   // 0 when off
     std::vector<BenchStage> benchPlan;
     if (kBenchSpawns > 0) {
@@ -529,6 +581,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     const UnitType* t = roster[size_t(k) % roster.size()];
                     float ux = x0 + float(k % cols) * spacing;
                     float uz = z0 + float(k / cols) * spacing;
+                    snapSpawn(t, ux, uz);   // the lattice ignores terrain; this does not
                     world.spawn(t, ux, uz, 0, i);
                 }
             }
@@ -546,11 +599,16 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 float x0 = mx - float(cols) * spacing * 0.5f;   // centre the block on the start
                 float z0 = mz - float(cols) * spacing * 0.5f;
                 // One unit per stage (each 0.25s tick), cycling the roster, on a grid cell.
-                for (int s = 0; s < kBenchSpawns; ++s)
-                    benchPlan[size_t(s)].units.push_back(
-                        {roster[size_t(s) % roster.size()],
-                         x0 + float(s % cols) * spacing,
-                         z0 + float(s / cols) * spacing, i});
+                // Snapped at PLAN time, not spawn time: the plan is built identically on
+                // every peer here, whereas snapping during the run would have to agree
+                // about a world that has moved on.
+                for (int s = 0; s < kBenchSpawns; ++s) {
+                    const UnitType* t = roster[size_t(s) % roster.size()];
+                    float ux = x0 + float(s % cols) * spacing;
+                    float uz = z0 + float(s / cols) * spacing;
+                    snapSpawn(t, ux, uz);
+                    benchPlan[size_t(s)].units.push_back({t, ux, uz, i});
+                }
             }
         }
     }

@@ -1682,6 +1682,85 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ---- benchmark / stress placement --------------------------------------
+    //
+    // Both lay their armies on a blind lattice centred on each start spot, and
+    // World::spawn does no terrain check, so a lattice point in a lake or on a cliff
+    // used to put a unit there permanently -- it cannot walk out of a cell it could
+    // not walk into. Measured on Ulasem with 8 players before the snap: 7.2% of a
+    // top-intensity benchmark and 20.5% of a stress fill. That is not only ugly; it
+    // quietly changes what the benchmark measures, since a fifth of the army is inert.
+    //
+    // A few stragglers are tolerable (a start spot can genuinely be hemmed in), so
+    // this asserts a rate, not zero. It is set well below what the bug produced and
+    // well above what the fix leaves, so it catches a regression without being
+    // brittle about map details.
+    std::printf("\n[benchmark / stress unit placement]\n");
+    {
+        auto misplaced = [&](sim::MatchConfig cfg) {
+            cfg.vfs = &vfs;
+            cfg.mapPath = kMap;
+            cfg.slots.resize(8);
+            for (int i = 0; i < 8; ++i) {
+                cfg.slots[size_t(i)].used = true;
+                cfg.slots[size_t(i)].team = i;
+                cfg.slots[size_t(i)].faction = i % 5;
+            }
+            sim::World w;
+            sim::setupMatch(w, reg, cfg);
+            int total = 0, bad = 0;
+            for (const auto& u : w.units()) {
+                if (!u.alive() || !u.type || u.type->canFly) continue;
+                ++total;
+                const int foot = std::clamp(std::max(u.type->footX, u.type->footZ), 1, 15);
+                if (!w.navFor(u.type).fits(int(u.x) / 16, int(u.z) / 16, foot)) ++bad;
+            }
+            return std::pair<int, int>{bad, total};
+        };
+        {
+            sim::MatchConfig cfg;
+            cfg.stressTest = true;
+            cfg.unitCap = 2000;
+            auto [bad, total] = misplaced(cfg);
+            check(total > 1000, "the stress fill actually spawned an army",
+                  std::to_string(total) + " units");
+            check(total && bad * 100 / total < 3,
+                  "stress-test units start on terrain they can occupy",
+                  std::to_string(bad) + "/" + std::to_string(total) + " misplaced");
+        }
+        {
+            // Intensity 5 = the densest plan. setupMatch only BUILDS the plan, so tick
+            // the 60s out to get the staged spawns on the map.
+            sim::MatchConfig cfg;
+            cfg.benchmark = 5;
+            cfg.vfs = &vfs;
+            cfg.mapPath = kMap;
+            cfg.slots.resize(8);
+            for (int i = 0; i < 8; ++i) {
+                cfg.slots[size_t(i)].used = true;
+                cfg.slots[size_t(i)].team = i;
+                cfg.slots[size_t(i)].faction = i % 5;
+            }
+            sim::World w;
+            sim::setupMatch(w, reg, cfg);
+            for (int i = 0; i < 1800; ++i) w.tick(1.0f / 30.0f);
+            int total = 0, bad = 0;
+            for (const auto& u : w.units()) {
+                if (!u.alive() || !u.type || u.type->canFly) continue;
+                ++total;
+                const int foot = std::clamp(std::max(u.type->footX, u.type->footZ), 1, 15);
+                if (!w.navFor(u.type).fits(int(u.x) / 16, int(u.z) / 16, foot)) ++bad;
+            }
+            // Lower bar than the stress fill: this one has fought for 60s first, and
+            // a smaller map kills faster (841 of the spawns survive on Inner Circle).
+            check(total > 500, "the benchmark plan actually spawned an army",
+                  std::to_string(total) + " units");
+            check(total && bad * 100 / total < 3,
+                  "benchmark units start on terrain they can occupy",
+                  std::to_string(bad) + "/" + std::to_string(total) + " misplaced");
+        }
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASS",
                 failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

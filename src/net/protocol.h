@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 72;       // 72: replacing a unit's orders cancels its
+constexpr uint32_t kNetVersion = 73;       // 73: benchmark/stress spawns snap to terrain
+                                           //     the unit can actually occupy
+                                           // 72: replacing a unit's orders cancels its
                                            //     pending search; the unload approach
                                            //     must be REACHABLE, not just fit
                                            // 71: an unload approaches the nearest cell
