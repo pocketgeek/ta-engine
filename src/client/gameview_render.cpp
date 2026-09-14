@@ -1594,7 +1594,17 @@
             base = Xform{}.then(0.0f, alt, 0.0f, att);
         }
         // Flyers face -heading exactly like ground movers (no flyer facing branch).
-        float facing = (u.type && (u.type->canMove || u.type->canFly)) ? -ih : 0.0f;
+        // A STRUCTURE never turns, so it draws at a fixed facing -- and the test for
+        // "is it a structure" is isStructure() (maxVel <= 0), NEVER canMove. This read
+        // canMove, which is the exact trap CLAUDE.md warns about: 13 types declare
+        // canmove=1 with no velocity and no bmcode (the Keep, the Barracks, both
+        // Cabals, the Sea Fort, the walls...). They took the MOVER branch, and since
+        // startBuild spawns every structure at heading pi they were drawn at -pi --
+        // turned 180 degrees. On a factory that puts the stone build pad on the far
+        // side of the building from where retail has it, which is how this was
+        // reported. The hit box already used isStructure(), so the body and the box
+        // disagreed for those 13 as well.
+        float facing = isStructure(u.type) ? 0.0f : -ih;
         // Disco emote: a dancing monarch spins, bobs and hue-cycles. Local wall-time
         // (animClock_) drives the smooth motion; world_.discoActive() (a synced sim
         // timer) gates it. Pure client-side eye-candy -- nothing here is hashed.
@@ -2493,6 +2503,9 @@
         if (vt == visuals_.end()) return nullptr;
         SDL_Texture* atlas = atlasFor(slot);
         std::vector<Tri> scratch;
+        // `canMove` here is the CALLER's word for "show it turned a little", not the
+        // FBI flag -- see the call sites, which pass isStructure(). A build icon is a
+        // portrait, so the 3/4 turn is a presentation choice, not a facing.
         float facing = canMove ? -0.6f : 0.0f;   // slight 3/4 turn reads as a portrait
         collect(scratch, atlas, vt->second.model.root, Xform{}, nullptr, facing, 0, false);
         if (scratch.empty()) return nullptr;

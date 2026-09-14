@@ -1892,6 +1892,36 @@ int main(int argc, char** argv) {
         check(!w.player(1).godSummoned, "a player without favour gets nothing");
     }
 
+    // ---- canMove is not a structure test ------------------------------------
+    //
+    // CLAUDE.md's standing gotcha, with the data behind it. 13 shipped types declare
+    // canmove=1 with no velocity and no bmcode, so canMove comes out TRUE for things
+    // that are plainly buildings. The renderer's facing test used to read canMove, so
+    // those 13 took the mover branch -- and since startBuild spawns every structure at
+    // heading pi, they were drawn at -pi, turned 180 degrees. On a factory that puts
+    // the stone build pad on the opposite side from retail, which is how it was
+    // reported ("stone pad is to the north instead of to the south").
+    //
+    // This pins the DATA half: as long as a shipped type is a structure while
+    // reporting canMove, isStructure() is the only safe discriminator and any code
+    // that reaches for canMove to answer "is it a building" is wrong.
+    std::printf("\n[canMove is not a structure test]\n");
+    {
+        int trap = 0;
+        bool keepIsTrap = false;
+        for (const auto& [id, t] : reg.types())
+            if (t.isStructure() && (t.canMove || t.canFly)) {
+                ++trap;
+                if (id == "arakeep") keepIsTrap = true;
+            }
+        check(trap > 0, "shipped types report canMove while having no velocity",
+              std::to_string(trap) + " of them");
+        check(keepIsTrap, "the Barracks is one of them (the reported case)");
+        const sim::UnitType* keep = reg.find("arakeep");
+        check(keep && keep->isStructure(),
+              "and isStructure() still answers correctly for it");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASS",
                 failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

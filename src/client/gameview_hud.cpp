@@ -1697,7 +1697,10 @@
                 SDL_FRect rb{r.x - 1, r.y - 1, r.w + 2, r.h + 2};
                 SDL_RenderFillRectF(ren_, &rb);
                 SDL_Texture* ic = iconFor(bt->id);
-                if (!ic) ic = modelIconTex(bt->id, colorSlot_[localPlayer_ & 7], bt->canMove);
+                // isStructure(), not the canmove flag: a Barracks icon should sit
+                // square like the building it is, not turned like a soldier.
+                if (!ic) ic = modelIconTex(bt->id, colorSlot_[localPlayer_ & 7],
+                                           !isStructure(bt));
                 if (ic) SDL_RenderCopyF(ren_, ic, nullptr, &r);
                 else {
                     SDL_SetRenderDrawColor(ren_, 60, 55, 50, 255);

@@ -1747,7 +1747,8 @@ private:
         if (vt == visuals_.end() || !u.type) return false;
         float m[3];
         if (!pieceModelOrigin(vt->second.model.root, &a, Xform{}, pieceName, m)) return false;
-        float facing = (u.type->canMove || u.type->canFly) ? -u.heading : 0.0f;
+        // isStructure(), not canMove -- see the identical test in the draw path.
+        float facing = isStructure(u.type) ? 0.0f : -u.heading;
         float cy = std::cos(facing), sy = std::sin(facing);
         float rx = m[0] * cy + m[2] * sy;
         float rz = -m[0] * sy + m[2] * cy;
