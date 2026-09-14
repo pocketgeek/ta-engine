@@ -12,7 +12,10 @@
 #
 # HOW A DESYNC IS DETECTED. The server refs its own sim and compares every client's
 # reported hash against it (Server::checkHashes), logging "client N DESYNCED at tick
-# T". "REFEREE SUSPECT" is the opposite finding -- every client agrees and the SERVER
+# T". That comparison only happens when a HUMAN SLOT IS SEATED -- checkHashes returns
+# on entry when `live == 0`, and a spectator sends a zero hash by design -- so every
+# run here seats the client as a player (7 AIs + 1 human). An all-spectator sweep
+# reports "no desyncs" having compared nothing at all. "REFEREE SUSPECT" is the opposite finding -- every client agrees and the SERVER
 # is the odd one out. Both are failures here and both are grepped for; a run that
 # ends any way other than cleanly is also reported, because a crash or a dropped
 # connection hides whatever it was about to tell us.
@@ -115,12 +118,21 @@ run_one() {
     echo "FAIL $name: server never came up" ; kill "$spid" 2>/dev/null; return 1
   fi
 
-  # TAK_MP_WATCH + --mphost = the host takes NO slot and seats 8 AIs, so all eight
-  # players are AI and every one of them is server-driven. TAK_MP_AIS=8 asks for the
-  # full table (TAK_BENCH forces 8 on its own).
+  # THE CLIENT MUST TAKE A PLAYER SLOT. Server::checkHashes counts SEATED HUMAN slots
+  # and returns immediately when there are none:
+  #     if (int(it->second.size()) < live || live == 0) return;
+  # and a spectator sends a literal 0 for its hash by design (gameview_net.cpp:
+  # `isSpectator() ? 0 : world_.stateHash()`) because that field is a progress ack,
+  # not a checksum. So --mphost WITH TAK_MP_WATCH=1 -- eight AIs watched by a
+  # spectator -- compares NOTHING, and this script used to report "no desyncs" for
+  # runs in which no two simulation states were ever compared. That is a worse
+  # outcome than a failure: it looks like evidence.
+  #
+  # 7 AIs + this client seated as the 8th player keeps the table full AND gives the
+  # referee a real hash to check every kHashPeriod ticks.
   local secs=$((MINUTES * 60))
   # shellcheck disable=SC2086
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_WATCH=1 TAK_MP_AIS=8 $SPEED_DEFAULT $envs \
+  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 $SPEED_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$DATA" \
       --server 127.0.0.1 --serverport "$port" --mphost --time "$secs" $flags \
       >"$clog" 2>&1
@@ -136,6 +148,7 @@ run_one() {
   done_line=$(grep -E "mp-headless done" "$clog" | tail -1)
   [ -z "$done_line" ] && hit="${hit}no-completion(rc=$rc) "
   echo "$done_line" | grep -q "err=none" || [ -z "$done_line" ] || hit="${hit}err "
+  [ "$rc" = "0" ] || hit="${hit}rc=$rc "
 
   echo "$done_line" | grep -q "end=concluded" && \
     echo "     note: $name ended early -- a team won before the ${MINUTES}m clock"
