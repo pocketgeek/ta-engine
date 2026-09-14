@@ -275,7 +275,41 @@ bool BinkVideo::nextFrame(std::vector<uint8_t>& rgba) {
             if (av_image_alloc(dst, dstLines, fw, fh, AV_PIX_FMT_RGBA, 32) < 0) {
                 av_frame_unref(d_->frame); return false;
             }
+            // Zero it FIRST. av_image_alloc hands back uninitialized heap, and at the
+            // doors' ODD widths (GIRL 155, KNIGHT 221) swscale's unscaled yuv420p->rgba
+            // converter leaves the final column untouched -- measured against the
+            // bundled FFmpeg n7.1.1 the releases ship: exactly one column per frame,
+            // 194 of 194 rows on GIRL4, 250 of 250 on KNIGHT4. The copy below then put
+            // that heap garbage straight into the texture, which is the corrupt right
+            // edge reported on macOS and Windows. It never showed on a Linux dev build
+            // because a system FFmpeg (9.x here) writes the column.
+            std::memset(dst[0], 0, size_t(dstLines[0]) * size_t(fh));
             sws_scale(d_->sws, d_->frame->data, d_->frame->linesize, 0, fh, dst, dstLines);
+            // ...then clamp the edge if this build really did skip that column. Detected
+            // rather than assumed, so a build that DOES write it keeps its own pixels.
+            //
+            // The obvious-looking fix is SWS_ACCURATE_RND, which does make the column
+            // get written -- but it is not a rounding tweak here, it moves the whole
+            // conversion onto a different chroma path. Measured on frame 0 of KNIGHT4,
+            // over the columns both variants write: BILINEAR on the bundled build vs on
+            // the system build agree to a max delta of 2, while adding ACCURATE_RND
+            // shifts the picture by up to 75 (system) / 83 (bundled) -- and the two
+            // ACCURATE_RND outputs do not even agree with each other (37). That trades a
+            // one-pixel edge for a whole-image colour change, in the one part of this
+            // file whose colour handling has already been re-litigated twice (above).
+            if (fw >= 2) {
+                const size_t last = size_t(fw - 1) * 4, prev = size_t(fw - 2) * 4;
+                bool skipped = true;
+                for (int y = 0; y < fh && skipped; ++y) {
+                    const uint8_t* px = dst[0] + size_t(y) * size_t(dstLines[0]) + last;
+                    if (px[0] || px[1] || px[2] || px[3]) skipped = false;
+                }
+                if (skipped)
+                    for (int y = 0; y < fh; ++y) {
+                        uint8_t* row = dst[0] + size_t(y) * size_t(dstLines[0]);
+                        std::memcpy(row + last, row + prev, 4);
+                    }
+            }
             rgba.assign(size_t(fw) * size_t(fh) * 4, 0);
             for (int y = 0; y < fh; ++y)
                 std::memcpy(rgba.data() + size_t(y) * size_t(fw) * 4,
