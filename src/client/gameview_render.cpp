@@ -2643,10 +2643,23 @@
         float maxLy = float(255 - std::max(heightRef_, 0)) * kHeightScale_;
         float maxLx = float(255 - std::max(heightRef_, 0)) * kHeightScaleX_;
         float ox = mapView_.offX(), oy = mapView_.offY();
+        // A SKIRT of quads past the map edge. The terrain is a FLAT mosaic -- relief
+        // is painted into the tile art -- while this mesh is deliberately lifted, so
+        // that the cleared area follows a unit up a hill. Over a plateau the lifted
+        // fog therefore rides UP off the ground it is supposed to cover, and at the
+        // map's own edge there is no next row of quads to cover the band it vacated:
+        // the result is fog that thins or disappears along the bottom, worst where
+        // the bottom of the map is high ground. Reported exactly that way.
+        //
+        // The skirt is as deep as the largest lift the map can produce, so whatever
+        // the relief displaces is still covered. Its quads sample the edge cell's
+        // visibility (clamped tex coords below), which is the right answer: they
+        // cover ground the player can see only because the edge cell is visible.
+        const int skirt = int(std::max(maxLy, maxLx) / 16.0f) + 2;
         int gx0 = std::clamp(int(ox / 16) - 1, 0, w);
-        int gx1 = std::clamp(int((ox + winW_ / zm + maxLx) / 16) + 2, 0, w);
+        int gx1 = std::clamp(int((ox + winW_ / zm + maxLx) / 16) + 2, 0, w + skirt);
         int gz0 = std::clamp(int(oy / 16) - 1, 0, h);
-        int gz1 = std::clamp(int((oy + winH_ / zm + maxLy) / 16) + 2, 0, h);
+        int gz1 = std::clamp(int((oy + winH_ / zm + maxLy) / 16) + 2, 0, h + skirt);
         // One height sample per grid CORNER, shared by all four adjacent quads.
         // vert() used to pay two independent bilinear samples per corner PER QUAD
         // (terrainLift + terrainLiftX each re-sampling), 8 samples per cell -- at a
@@ -2664,7 +2677,11 @@
             SDL_Vertex v;
             v.position = {(wx - ox) * zm - ha * kHeightScaleX_ * zm,
                           (wz - oy) * zm - ha * kHeightScale_ * zm};
-            v.tex_coord = {float(gx) / float(w), float(gz) / float(h)};
+            // POSITION runs past the edge (the skirt); the texture lookup does not --
+            // clamp it so a skirt quad repeats the edge cell's fog instead of sampling
+            // outside the texture.
+            v.tex_coord = {float(std::min(gx, w)) / float(w),
+                           float(std::min(gz, h)) / float(h)};
             v.color = {255, 255, 255, 255};
             return v;
         };
