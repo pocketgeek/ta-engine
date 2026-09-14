@@ -141,8 +141,13 @@ struct MainMenu::Impl {
     // The SETTINGS menu overlay -- the lower-right menu button opens THIS (OPTIONS / CONTROLS)
     // instead of jumping straight into Options, mirroring the in-game Esc GAME MENU.
     bool settingsMenu_ = false;
-    SDL_FRect setBtnRect_[3]{};        // [0]=OPTIONS, [1]=CONTROLS, [2]=BENCHMARK (set each render)
+    SDL_FRect setBtnRect_[4]{};        // OPTIONS / CONTROLS / BENCHMARK / LOAD REPLAY (set each render)
     bool benchMenu_ = false;          // benchmark intensity submenu (opened from SETTINGS)
+    bool replayMenu_ = false;         // replay picker (opened from SETTINGS)
+    int replayScroll_ = 0;            // first listed row
+    std::vector<std::string> replayFiles_;   // full paths, newest first
+    std::string chosenReplay_;
+    SDL_FRect replayBtnRect_[10]{};   // one per listed row (set each render)
     SDL_FRect benchBtnRect_[6]{};      // LOW..EXTRA ABSURD hit-rects (set each render)
     int chosenBenchmark_ = 0;         // picked benchmark level 1..6 (0 = none)
 
@@ -743,7 +748,7 @@ struct MainMenu::Impl {
         SDL_FRect dim{0, 0, float(winW), float(winH)};
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 150);
         SDL_RenderFillRectF(ren, &dim);
-        const int nBtn = 3;
+        const int nBtn = 4;
         const float bw = 320, bh = 54, gap = 16, pad = 34, titlePx = 3.2f;
         const float titleH = 7 * titlePx + 22;
         const float pw = bw + pad * 2;
@@ -757,7 +762,7 @@ struct MainMenu::Impl {
         shadowText("SETTINGS", px0 + (pw - tw("SETTINGS", titlePx)) / 2, py0 + pad, titlePx, {235, 225, 180, 255});
         int mx = 0, my = 0; SDL_GetMouseState(&mx, &my);
         { float lx, ly; SDL_RenderWindowToLogical(ren, mx, my, &lx, &ly); mx = int(lx); my = int(ly); }
-        const char* labels[nBtn] = {"OPTIONS", "CONTROLS", "BENCHMARK"};
+        const char* labels[nBtn] = {"OPTIONS", "CONTROLS", "BENCHMARK", "LOAD REPLAY"};
         float by = py0 + pad + titleH;
         for (int i = 0; i < nBtn; ++i) {
             SDL_FRect r{px0 + pad, by, bw, bh};
@@ -775,6 +780,87 @@ struct MainMenu::Impl {
     }
 
     // Benchmark intensity submenu: 5 spawn-rate levels. Records benchBtnRect_ for run().
+    // Scan the user's config directory for saved replays, newest first. That is where
+    // every human player's client writes its own .takrep (see saveReplayFile) -- beside
+    // settings.ini -- so the picker lists exactly what this machine has recorded.
+    void scanReplays() {
+        replayFiles_.clear();
+        replayScroll_ = 0;
+        std::string dir = tak::settingsPath();
+        const size_t cut = dir.find_last_of("/\\");
+        if (cut == std::string::npos) return;
+        dir.erase(cut + 1);
+        std::vector<std::pair<std::filesystem::file_time_type, std::string>> found;
+        std::error_code ec;
+        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+            if (ec) break;
+            if (!e.is_regular_file(ec)) continue;
+            if (e.path().extension() != ".takrep") continue;
+            found.push_back({e.last_write_time(ec), e.path().string()});
+        }
+        // Newest first: the replay you just played is the one you want to watch.
+        std::sort(found.begin(), found.end(),
+                  [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (auto& f : found) replayFiles_.push_back(std::move(f.second));
+    }
+
+    // The replay picker. Same shape as the benchmark submenu, but its rows come from
+    // the filesystem, so it scrolls and can be empty.
+    void renderReplayMenu(int winW, int winH) {
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_FRect dim{0, 0, float(winW), float(winH)};
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 150);
+        SDL_RenderFillRectF(ren, &dim);
+        const int kRows = 10;
+        const int shown = std::min(kRows, int(replayFiles_.size()) - replayScroll_);
+        const int nBtn = std::max(1, shown);
+        const float bw = 620, bh = 44, gap = 10, pad = 34, titlePx = 3.2f;
+        const float titleH = 7 * titlePx + 22;
+        const float pw = bw + pad * 2;
+        const float ph = pad * 2 + titleH + nBtn * bh + (nBtn - 1) * gap + 28;
+        const float px0 = (winW - pw) / 2, py0 = (winH - ph) / 2;
+        SDL_FRect panel{px0, py0, pw, ph};
+        SDL_SetRenderDrawColor(ren, 26, 28, 36, 240); SDL_RenderFillRectF(ren, &panel);
+        SDL_SetRenderDrawColor(ren, 120, 130, 160, 255); SDL_RenderDrawRectF(ren, &panel);
+        auto tw = [](const std::string& t, float px) { return t.empty() ? 0.0f : (t.size() * 6.0f - 1.0f) * px; };
+        shadowText("LOAD REPLAY", px0 + (pw - tw("LOAD REPLAY", titlePx)) / 2, py0 + pad,
+                   titlePx, {235, 225, 180, 255});
+        int mx = 0, my = 0; SDL_GetMouseState(&mx, &my);
+        { float lx, ly; SDL_RenderWindowToLogical(ren, mx, my, &lx, &ly); mx = int(lx); my = int(ly); }
+        for (auto& r : replayBtnRect_) r = SDL_FRect{0, 0, 0, 0};
+        float by = py0 + pad + titleH;
+        if (replayFiles_.empty()) {
+            // Say WHERE they would be, so an empty list is an answer rather than a dead end.
+            const std::string m1 = "NO REPLAYS SAVED YET";
+            const std::string m2 = "FINISH A GAME AND ITS REPLAY IS SAVED AUTOMATICALLY";
+            blockText(m1, px0 + (pw - tw(m1, 2.2f)) / 2, by + 6, 2.2f, {225, 215, 175, 255});
+            blockText(m2, px0 + (pw - tw(m2, 1.5f)) / 2, by + 34, 1.5f, {150, 155, 175, 255});
+        }
+        for (int i = 0; i < shown; ++i) {
+            const std::string& full = replayFiles_[size_t(replayScroll_ + i)];
+            SDL_FRect r{px0 + pad, by, bw, bh};
+            replayBtnRect_[i] = r;
+            bool hot = mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+            SDL_SetRenderDrawColor(ren, hot ? 90 : 60, hot ? 110 : 66, hot ? 150 : 86, 255);
+            SDL_RenderFillRectF(ren, &r);
+            SDL_SetRenderDrawColor(ren, hot ? 180 : 90, hot ? 200 : 100, hot ? 240 : 130, 255);
+            SDL_RenderDrawRectF(ren, &r);
+            std::string name = std::filesystem::path(full).stem().string();
+            std::transform(name.begin(), name.end(), name.begin(),
+                           [](unsigned char c) { return char(std::toupper(c)); });
+            float lpx = 1.9f;
+            if (tw(name, lpx) > bw - 20) name = name.substr(0, size_t((bw - 20) / (6 * lpx)));
+            blockText(name, r.x + 12, r.y + (bh - 7 * lpx) / 2, lpx, {228, 232, 242, 255});
+            by += bh + gap;
+        }
+        std::string foot = "ESC - BACK";
+        if (int(replayFiles_.size()) > kRows)
+            foot += "     WHEEL - SCROLL  (" + std::to_string(replayScroll_ + 1) + "-" +
+                    std::to_string(replayScroll_ + shown) + " OF " +
+                    std::to_string(replayFiles_.size()) + ")";
+        shadowText(foot, px0 + pad, by + 2, 1.8f, {150, 155, 175, 255});
+    }
+
     void renderBenchMenu(int winW, int winH) {
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         SDL_FRect dim{0, 0, float(winW), float(winH)};
@@ -1079,6 +1165,10 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                         d_->settingsMenu_ = false;
                         d_->hotkeys_ = std::make_unique<HotkeysScreen>(ren, *settings,
                             [] {}, [settings] { saveSettings(*settings); });
+                    } else if (hit(d_->setBtnRect_[3])) {   // LOAD REPLAY -> the picker
+                        d_->settingsMenu_ = false;
+                        d_->scanReplays();                 // rescan on every open
+                        d_->replayMenu_ = true;
                     } else if (hit(d_->setBtnRect_[2])) {   // BENCHMARK -> intensity submenu
                         d_->settingsMenu_ = false;
                         d_->benchMenu_ = true;
@@ -1086,6 +1176,31 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                 }
                 continue;
             }
+            if (d_->replayMenu_) {   // replay picker
+                if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+                    d_->replayMenu_ = false;
+                    d_->settingsMenu_ = true;   // back to SETTINGS, not out of the menu
+                } else if (e.type == SDL_MOUSEWHEEL) {
+                    const int maxTop = std::max(0, int(d_->replayFiles_.size()) - 10);
+                    d_->replayScroll_ = std::clamp(d_->replayScroll_ - e.wheel.y, 0, maxTop);
+                } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                    float fx = float(e.button.x), fy = float(e.button.y);
+                    auto hit = [&](const SDL_FRect& r) {
+                        return r.w > 0 && fx >= r.x && fx <= r.x + r.w && fy >= r.y && fy <= r.y + r.h;
+                    };
+                    for (int i = 0; i < 10; ++i)
+                        if (hit(d_->replayBtnRect_[i])) {
+                            const size_t k = size_t(d_->replayScroll_ + i);
+                            if (k >= d_->replayFiles_.size()) break;
+                            d_->chosenReplay_ = d_->replayFiles_[k];
+                            d_->replayMenu_ = false;
+                            d_->flushSfx(w, h);
+                            return Choice::Replay;
+                        }
+                }
+                continue;
+            }
+
             if (d_->benchMenu_) {   // benchmark intensity submenu (LOW..ABSURD)
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) { d_->benchMenu_ = false; }
                 else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
@@ -1172,6 +1287,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
         d_->render(w, h);
         if (d_->serverSelect) d_->renderServerSelect(w, h);
         if (d_->settingsMenu_) d_->renderSettingsMenu(w, h);
+        if (d_->replayMenu_) d_->renderReplayMenu(w, h);
         if (d_->benchMenu_) d_->renderBenchMenu(w, h);
         if (d_->options_) d_->options_->render(w, h);
         if (d_->hotkeys_) d_->hotkeys_->render(w, h);   // above Options
@@ -1203,6 +1319,7 @@ void MainMenu::clearPassword() { tak::crypto::wipe(d_->loginPass); }
 
 int MainMenu::chosenBenchmarkLevel() const { return d_->chosenBenchmark_; }
 const std::string& MainMenu::chosenCampaign() const { return d_->chosenCampaign_; }
+const std::string& MainMenu::chosenReplay() const { return d_->chosenReplay_; }
 
 void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const char* nameLower) {
     if (!video::BinkVideo::available() || install.empty() || !ren) return;

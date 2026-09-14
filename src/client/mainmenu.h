@@ -19,7 +19,8 @@ struct Settings;
 
 class MainMenu {
 public:
-    enum class Choice { None, SinglePlayer, Campaign, Multiplayer, Options, Benchmark, Credits, Exit };
+    enum class Choice { None, SinglePlayer, Campaign, Multiplayer, Options, Benchmark,
+                        Credits, Replay, Exit };
 
     // ren: the app renderer. vfs: the mounted retail root (for guis/anims). install:
     // the retail install dir on disk (the door .bik videos are loose files under
@@ -55,6 +56,8 @@ public:
 
     // After run() returns Choice::Benchmark, the picked intensity level (1=Low..5=Absurd).
     int chosenBenchmarkLevel() const;
+    // Full path of the .takrep the user picked (Choice::Replay). Empty otherwise.
+    const std::string& chosenReplay() const;
 
     // Play a fullscreen intro clip (Movies/<nameLower>, e.g. "logo.bik") once, scaled
     // to fill the window (letterboxed, linear-filtered). Returns when the clip ends or

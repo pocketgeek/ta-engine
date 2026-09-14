@@ -705,6 +705,15 @@ int main(int argc, char** argv) {
                 loginPass = menu.chosenPassword();
                 menu.clearPassword();
             }
+            // SETTINGS -> LOAD REPLAY. Routed through the ordinary replay launch below
+            // by setting the mode here, so the menu path and the debug CLI share one
+            // implementation -- and so a RELEASE build can watch replays at all, which
+            // it otherwise could not: the `replay` CLI keyword is debug-only.
+            if (choice == tak::MainMenu::Choice::Replay) {
+                mode = "replay";
+                args.clear();
+                args.push_back(menu.chosenReplay());
+            }
             if (choice == tak::MainMenu::Choice::Benchmark) {
                 benchmarkLevel = menu.chosenBenchmarkLevel();
                 if (benchmarkLevel < 1 || benchmarkLevel > tak::sim::kBenchLevels) benchmarkLevel = 3;   // safety default = High
@@ -720,11 +729,14 @@ int main(int argc, char** argv) {
         if (choice != tak::MainMenu::Choice::SinglePlayer &&
             choice != tak::MainMenu::Choice::Multiplayer &&
             choice != tak::MainMenu::Choice::Benchmark &&
+            choice != tak::MainMenu::Choice::Replay &&
             !(choice == tak::MainMenu::Choice::Campaign && !campaignStem.empty())) {
             quitApp = true; break;   // exit / options (or campaign with no pick) -> leave the app
         }
         benchmarkLaunch = (choice == tak::MainMenu::Choice::Benchmark);
-        mode = "game";
+        // A replay picked from the menu already set mode/args above, and must not be
+        // overwritten with "game" here.
+        if (choice != tak::MainMenu::Choice::Replay) mode = "game";
         if (args.empty()) args.push_back("athri cay");   // TODO: map picker (SP battle menu)
         if (choice == tak::MainMenu::Choice::Multiplayer) {
             std::string sv = menuServer.empty() ? std::string("127.0.0.1") : menuServer;
