@@ -9,14 +9,23 @@
 #include <vector>
 
 #include "net/client.h"        // tak::net::Bundle (+ transitively net/protocol.h)
+#include "net/replayhdr.h"     // the shared .takrep header + ReplayCheck
 #include "sim/matchsetup.h"    // tak::sim::MatchConfig
 
 struct ReplayFile {
     std::string mapId;
+    std::string mission;          // campaign mission stem ("" = skirmish)
+    std::string engineVersion;    // build that recorded it
+    std::string error;            // why a load was refused (shown to the user)
     bool crusades = false;
     uint8_t overridePolicy = 1;   // override tier the recorded game ran under
+    uint32_t formatVersion = 0, protocolVersion = 0;
+    uint64_t dataHash = 0;        // gameplay data the recording ran on
     tak::sim::MatchConfig cfg;
     std::vector<tak::net::Bundle> bundles;
+    // (tick, hash) from the ORIGINAL game, so playback can be checked against what
+    // actually happened rather than against another rerun of itself.
+    std::vector<tak::net::ReplayCheck> checks;
 };
 
 // Load a .takrep (header + tick bundles). Returns false on a malformed file.

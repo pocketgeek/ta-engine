@@ -43,6 +43,7 @@
 #include "tdf/tdf.h"
 #include "net/conn.h"
 #include "net/protocol.h"
+#include "net/replayhdr.h"
 #include "sim/matchsetup.h"
 #include "sim/sim.h"
 #include "version.h"
@@ -167,6 +168,12 @@ struct Room {
     bool priv = false;             // private (single-player): hidden from the game list
     int cap = kMaxSlots;            // map capacity (from the host's CreateGame)
     uint64_t createdMs = 0;
+    // Per-game RNG seed, broadcast in GameStarting so every peer derives the same
+    // arrangement from it. Rolled per ROOM rather than computed from the room id: a
+    // single-player game launches a fresh private server, whose ids restart at 1, so
+    // `0x7a6b0000 + id` handed every SP game the identical seed -- and "Random Start
+    // Locations" then dealt the identical "random" layout every single time.
+    uint32_t seed = 0;
     // running state
     uint32_t tick = 0;                          // next tick to close
     std::vector<Command> pending;               // commands for the next tick
@@ -268,6 +275,11 @@ private:
 class Server {
 public:
     void setReplayDir(const std::string& d) { replayDir_ = d; }
+    // Pin every game's RNG seed (--seed). Games are otherwise seeded randomly, which
+    // is what makes "Random Start Locations" actually random -- but it also makes a
+    // harness run unrepeatable, and the headless --mpai check exists precisely to
+    // produce the same state hash twice. Not for a real server.
+    void setFixedSeed(uint32_t v) { fixedSeed_ = v; }
     void setNoAuth() { requireAuth_ = false; }
     void setLoopbackOnly() { loopbackOnly_ = true; }
     // Load (or start) the account file. Returns false with `err` set if it exists
@@ -374,6 +386,7 @@ private:
         return (crusades && ds.haveCb) ? ds.regCb : ds.reg;
     }
     std::string replayDir_;
+    uint32_t fixedSeed_ = 0;           // --seed: 0 = roll one per game
     int listenFd_ = -1;
     uint32_t nextClientId_ = 1, nextRoomId_ = 1;
     std::unordered_map<uint32_t, std::unique_ptr<Client>> clients_;
@@ -469,24 +482,41 @@ static bool roomOccupied(const Room& r) {
 // every tick) or the store is slow.
 void Server::writeReplay(Room& r) {
     if (replayDir_.empty() || r.log.empty()) return;
-    // Self-contained replay: header (format, map, options, final slot table,
-    // seed) + every tick bundle. A viewer can rebuild the world and play it back.
-    Writer w;
-    for (char ch : {'T', 'A', 'K', 'R'}) w.u8(uint8_t(ch));
-    w.u32(5);                 // replay format (5: + stressTest u8; 4: + monarchExpendable u8; 3: + unitCap u32; 2: + overridePolicy)
-    w.u32(kNetVersion);
-    w.str(r.mapId);
-    w.u8(r.opts.crusades); w.u8(r.opts.gods); w.u8(r.opts.forfeitSelfDestruct);
-    w.u8(r.opts.overridePolicy);
-    w.u32(r.opts.unitCap); w.u8(r.opts.monarchExpendable); w.u8(r.opts.stressTest);
-    w.u32(0x7a6b0000u + r.id);
-    w.u8(uint8_t(kMaxSlots));
+    // Self-contained replay: header (see net/replayhdr.h -- one definition, shared
+    // with the client writer and the loader), every tick bundle, then the referee's
+    // recorded hash checkpoints. A viewer can rebuild the world, play it back, and
+    // compare its own hashes against what actually happened.
+    tak::net::ReplayHeader h;
+    h.mapId = r.mapId;
+    h.mission = r.mission;
+    h.engineVersion = tak::kVersion;
+    h.crusades = r.opts.crusades;
+    h.gods = r.opts.gods;
+    h.forfeitSelfDestruct = r.opts.forfeitSelfDestruct;
+    h.overridePolicy = r.opts.overridePolicy;
+    h.unitCap = r.opts.unitCap;
+    h.monarchExpendable = r.opts.monarchExpendable;
+    h.stressTest = r.opts.stressTest;
+    h.randomStarts = r.opts.randomStarts;
+    h.benchmark = uint8_t(r.opts.benchmark);
+    h.seed = r.seed;
+    h.dataHash = dataFor(r.opts.overridePolicy).hash;
     for (int i = 0; i < kMaxSlots; ++i) {
         const SlotInfo& s = r.startSlots[i];   // start config, not the forfeited end state
-        w.u8(s.type); w.u8(s.faction); w.u8(s.color); w.u8(s.team);
+        h.slotType[i] = s.type;
+        h.slotFaction[i] = s.faction;
+        h.slotColor[i] = s.color;
+        h.slotTeam[i] = s.team;
+        h.slotAiLevel[i] = s.aiLevel;
     }
+    Writer w;
+    tak::net::writeReplayHeader(w, h);
     w.u32(uint32_t(r.log.size()));
     for (const auto& b : r.log) { w.u32(uint32_t(b.size())); w.b.insert(w.b.end(), b.begin(), b.end()); }
+    // The referee's hash trail. Two identical reruns only prove the reruns agree;
+    // this is what lets a replay say where it diverged from the real game.
+    w.u32(uint32_t(r.refHash.size()));
+    for (const auto& [tk, hs] : r.refHash) { w.u32(tk); w.u64(hs); }
     std::string path = replayDir_ + "/game-" + std::to_string(r.id) + "-" +
                        std::to_string(r.createdMs) + ".takrep";
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
@@ -864,6 +894,10 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             room.cap = cap;
             room.hostId = c.id;
             room.createdMs = nowMs();
+            // Roll this game's seed here, once. It is broadcast in GameStarting, so
+            // every peer and the referee derive the same arrangement from it -- it
+            // just must not be a function of the room id (see Room::seed).
+            room.seed = fixedSeed_ ? fixedSeed_ : uint32_t(randToken());
             // Open slots up to the map capacity, close the rest (the map has no
             // start position for them).
             for (int i = 0; i < kMaxSlots; ++i) {
@@ -944,7 +978,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             // GameStarting rebuilds the client's world; then the whole bundle log
             // replays it up to now, after which it receives live bundles.
             Writer w; writeSlots(w, room);
-            w.u8(uint8_t(slot)); w.u32(0x7a6b0000u + room.id); w.u64(room.slotToken[slot]);
+            w.u8(uint8_t(slot)); w.u32(room.seed); w.u64(room.slotToken[slot]);
             // Where the HISTORY ends. The client must not send -- or treat its own
             // commands coming back as acknowledgements -- until it has consumed
             // every bundle logged before it rejoined. It cannot work that out
@@ -988,7 +1022,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             // GameStarting (slot 0xFF = spectator) rebuilds the world; the whole
             // bundle log replays it to now, then live bundles stream via broadcast.
             Writer w; writeSlots(w, room);
-            w.u8(0xFF); w.u32(0x7a6b0000u + room.id); w.u64(0);
+            w.u8(0xFF); w.u32(room.seed); w.u64(0);
             w.u32(uint32_t(room.log.size()));   // replay boundary (see above)
             c.conn.send(Msg::GameStarting, w);
             c.replaying = true; c.replayPos = 0;   // streamed below, paced by txPending()
@@ -1164,7 +1198,7 @@ void Server::tryStart(Client& c) {
                         if (ms.slotPos[j].first == 0.0f && ms.slotPos[j].second == 0.0f) continue;
                         enemyStarts.push_back(ms.slotPos[j]);
                     }
-                    r->ai.emplace_back(slot, *r->reg, prof, 0x7a6b0000u + r->id + uint32_t(slot),
+                    r->ai.emplace_back(slot, *r->reg, prof, r->seed + uint32_t(slot),
                                        tak::ai::Difficulty::Normal, std::move(enemyStarts));
                 }
                 if (!ms.aiSlots.empty())
@@ -1185,7 +1219,7 @@ void Server::tryStart(Client& c) {
             cfg.stressTest = r->opts.stressTest != 0;
             cfg.benchmark = r->opts.benchmark;
             cfg.randomStarts = r->opts.randomStarts != 0;
-            cfg.startSeed = 0x7a6b0000u + r->id;   // the seed sent in GameStarting
+            cfg.startSeed = r->seed;   // the seed sent in GameStarting
             cfg.slots.resize(size_t(maxSlot + 1));
             for (int i = 0; i <= maxSlot; ++i) {
                 const auto& s = r->slots[i];
@@ -1215,7 +1249,7 @@ void Server::tryStart(Client& c) {
                         enemyStarts.push_back(slotPos[size_t(j)]);
                     }
                     auto diff = tak::ai::difficultyFromLevel(r->slots[i].aiLevel);
-                    r->ai.emplace_back(i, *r->reg, aiProfile_, 0x7a6b0000u + r->id,
+                    r->ai.emplace_back(i, *r->reg, aiProfile_, r->seed,
                                        diff, std::move(enemyStarts));
                 }
         }
@@ -1230,7 +1264,7 @@ void Server::tryStart(Client& c) {
         if (it == clients_.end()) continue;
         Writer w; writeSlots(w, *r);
         w.u8(uint8_t(i));                 // your slot
-        w.u32(0x7a6b0000u + r->id);       // per-game RNG seed base
+        w.u32(r->seed);       // per-game RNG seed base
         w.u64(r->slotToken[i]);           // resume token
         w.u32(0);                         // fresh game: no history to replay
         it->second->conn.send(Msg::GameStarting, w);
@@ -1242,7 +1276,7 @@ void Server::tryStart(Client& c) {
         auto it = clients_.find(sid);
         if (it == clients_.end()) continue;
         Writer w; writeSlots(w, *r);
-        w.u8(0xFF); w.u32(0x7a6b0000u + r->id); w.u64(0);
+        w.u8(0xFF); w.u32(r->seed); w.u64(0);
         w.u32(uint32_t(r->log.size()));   // replay boundary
         it->second->conn.send(Msg::GameStarting, w);
         it->second->loaded = true;
@@ -1898,12 +1932,15 @@ int main(int argc, char** argv) {
     uint16_t port = 7677;
     std::string dataRoot, replayDir;
     std::string accountsPath = "takserver-accounts.conf";
+    uint32_t fixedSeed = 0;
     bool noAuth = false, loopbackOnly = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--port") && i + 1 < argc) port = uint16_t(std::atoi(argv[++i]));
         else if (!std::strcmp(argv[i], "--data") && i + 1 < argc) dataRoot = argv[++i];
         else if (!std::strcmp(argv[i], "--replaydir") && i + 1 < argc) replayDir = argv[++i];
         else if (!std::strcmp(argv[i], "--accounts") && i + 1 < argc) accountsPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--seed") && i + 1 < argc)
+            fixedSeed = uint32_t(std::strtoul(argv[++i], nullptr, 0));
         else if (!std::strcmp(argv[i], "--no-auth")) noAuth = true;
         else if (!std::strcmp(argv[i], "--local")) loopbackOnly = true;
         else if (!std::strcmp(argv[i], "--version") || !std::strcmp(argv[i], "-v")) {
@@ -1917,6 +1954,9 @@ int main(int argc, char** argv) {
                         "  --data is REQUIRED: it is what the referee sim and the\n"
                         "  server-hosted AI players read. There is no relay-only mode.\n"
                         "  --replaydir writes a .takrep replay file per finished game.\n"
+                        "  --seed N pins every game's RNG seed, so a headless run is\n"
+                        "  repeatable. Games are otherwise seeded randomly (which is what\n"
+                        "  makes Random Start Locations differ game to game).\n"
                         "  --accounts is the account file (default takserver-accounts.conf).\n"
                         "  Players sign in with a name and password; an unused name is\n"
                         "  registered on the spot. No password is stored or transmitted --\n"
@@ -1943,6 +1983,7 @@ int main(int argc, char** argv) {
     }
     Server s(port, dataRoot);
     if (!replayDir.empty()) s.setReplayDir(replayDir);
+    if (fixedSeed) s.setFixedSeed(fixedSeed);
     if (loopbackOnly) s.setLoopbackOnly();
     if (noAuth) {
         s.setNoAuth();

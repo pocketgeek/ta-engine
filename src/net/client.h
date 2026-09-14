@@ -17,6 +17,7 @@
 #include "net/auth.h"
 #include "net/conn.h"
 #include "net/protocol.h"
+#include "net/replayhdr.h"
 
 namespace tak::net {
 
@@ -139,8 +140,13 @@ public:
     // A rejoining client is sent the whole backlog before the live stream, and a
     // spectator likewise, so a recording that starts late still ends up complete.
     const std::vector<std::vector<uint8_t>>& replayLog() const { return replayLog_; }
-    void startRecording() { recording_ = true; replayLog_.clear(); }
-    void stopRecording() { recording_ = false; replayLog_.clear(); }
+    // The (tick, hash) pairs this client reported while playing. Recorded alongside
+    // the bundles so a replay can be checked against the game AS PLAYED: two
+    // identical reruns only prove the reruns agree with each other.
+    const std::vector<ReplayCheck>& hashLog() const { return hashLog_; }
+    uint64_t dataHash() const { return dataHash_; }
+    void startRecording() { recording_ = true; replayLog_.clear(); hashLog_.clear(); }
+    void stopRecording() { recording_ = false; replayLog_.clear(); hashLog_.clear(); }
     bool recording() const { return recording_; }
     // Slot table as it was when the game STARTED. The live room_.slots mutates as
     // players forfeit or drop, and a replay has to rebuild the world the game began
@@ -209,6 +215,7 @@ private:
     uint64_t dataHash_ = 0;      // local gameplay-data fingerprint (sent in Hello)
     uint32_t startSeed_ = 0;
     std::vector<std::vector<uint8_t>> replayLog_;   // raw TickBundle payloads (recording)
+    std::vector<ReplayCheck> hashLog_;              // (tick, hash) we reported
     bool recording_ = false;
     SlotInfo startSlots_[kMaxSlots] = {};
     uint32_t replayTicks_ = 0;   // history the server replays after a rejoin/spectate

@@ -911,7 +911,10 @@ int main(int argc, char** argv) {
             // takclient replay <file.takrep> --data <retail-root>
             ReplayFile rf;
             if (!loadReplayFile(args[0], rf)) {
-                std::fprintf(stderr, "replay: cannot read %s\n", args[0].c_str());
+                // The loader refuses a file it cannot replay faithfully rather than
+                // simulating a different game in silence. Say WHY when it knows.
+                std::fprintf(stderr, "replay: cannot read %s%s%s\n", args[0].c_str(),
+                             rf.error.empty() ? "" : " -- ", rf.error.c_str());
                 return 1;
             }
             std::string mapPath = tak::hpi::findMap(vfs, rf.mapId);
@@ -922,8 +925,12 @@ int main(int argc, char** argv) {
             gameView = std::make_unique<GameView>(ren, std::move(vfs), mapPath, dataRoot, rpol,
                                                   false, false, false, /*bare=*/true, "ara", "tar",
                                                   rf.crusades);
-            std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks%s\n", args[0].c_str(),
-                         rf.mapId.c_str(), rf.bundles.size(), rf.crusades ? " (Crusades)" : "");
+            std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks%s (format %u, "
+                         "recorded by %s, %zu hash checkpoints)\n", args[0].c_str(),
+                         rf.mapId.c_str(), rf.bundles.size(),
+                         rf.crusades ? " (Crusades)" : "", rf.formatVersion,
+                         rf.engineVersion.empty() ? "an older build" : rf.engineVersion.c_str(),
+                         rf.checks.size());
             gameView->startReplay(rf.cfg, std::move(rf.bundles));
         } else if (mode == "map" && !args.empty() && !dataRoot.empty()) {
             // A "~gen1~" id is a random-map recipe MapView builds in memory; a plain

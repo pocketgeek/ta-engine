@@ -540,6 +540,9 @@ void MpClient::sendCommands(const std::vector<Command>& cmds) {
 }
 
 void MpClient::sendHash(uint32_t tick, uint64_t hash) {
+    // Keep our own trail while recording, so the replay carries what this client
+    // actually computed at each checkpoint.
+    if (recording_) hashLog_.push_back({tick, hash});
     Writer w; w.u32(tick); w.u64(hash);
     send(Msg::StateHash, w);
 }
