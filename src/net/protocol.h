@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 75;       // 75: the SIM summons gods (the client did,
+constexpr uint32_t kNetVersion = 76;       // 76: factory output spawns/rallies to FREE
+                                           //     spots; buildings hold rally orders
+                                           // 75: the SIM summons gods (the client did,
                                            //     the referee never did -> desync)
                                            // 74: per-category DAMAGE is a multiplier
                                            //     on default, not absolute damage

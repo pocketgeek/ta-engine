@@ -975,13 +975,30 @@ void World::dropLeg(Unit& u) {
     u.goalStuckT = 0;
 }
 
+// A move/attack/patrol order aimed at a PRODUCTION BUILDING sets its rally instead:
+// the building cannot go anywhere itself, but the units it makes can. Returns true
+// when the order was consumed as a rally, so the caller stops there.
+//
+// The orders are stored raw and never enter the mover -- see Unit::rally. `queue`
+// appends, so a player can lay out "move here, then fight-move there, then patrol"
+// and every unit off the line follows the whole plan.
+bool World::setRally(Unit& u, const Order& o, bool queue) {
+    if (!u.type || !u.type->producesUnits()) return false;
+    if (!queue) u.rally.clear();
+    u.rally.push_back(o);
+    u.rally.back().goal = true;          // each issued rally step is its own leg
+    if (u.rally.size() > 32) u.rally.erase(u.rally.begin());   // bound it
+    return true;
+}
+
 void World::order(int unitId, float x, float z, bool queue) {
     Unit* u = unit(unitId);
     // isStructure(), NOT canMove: the Keep and both Taros/Veruna walls declare
     // canmove=1 with no velocity (the CLAUDE.md gotcha). Gating on canMove let a
     // BUILDING accept a move order -- it could not go anywhere, but the mover still
     // turned its heading toward the goal, so you could spin a keep by right-clicking.
-    if (!u || !u->alive() || !u->type || u->type->isStructure()) return;
+    if (!u || !u->alive() || !u->type) return;
+    if (u->type->isStructure()) { setRally(*u, Order{x, z, 0}, queue); return; }
     if (!queue) u->orders.clear();
     auto markGoal = [&] {
         if (u->orders.empty()) return;
@@ -1383,7 +1400,13 @@ void World::attackMove(int unitId, float x, float z, bool queue) {
     // canmove=1 with no velocity (the CLAUDE.md gotcha). Gating on canMove let a
     // BUILDING accept a move order -- it could not go anywhere, but the mover still
     // turned its heading toward the goal, so you could spin a keep by right-clicking.
-    if (!u || !u->alive() || !u->type || u->type->isStructure()) return;
+    if (!u || !u->alive() || !u->type) return;
+    if (u->type->isStructure()) {
+        Order o{x, z, 0};
+        o.attackMove = true;
+        setRally(*u, o, queue);
+        return;
+    }
     size_t before = queue ? u->orders.size() : 0;
     order(unitId, x, z, queue);
     for (size_t i = before; i < u->orders.size(); ++i) u->orders[i].attackMove = true;
@@ -1395,7 +1418,16 @@ void World::patrol(int unitId, float x, float z) {
     // canmove=1 with no velocity (the CLAUDE.md gotcha). Gating on canMove let a
     // BUILDING accept a move order -- it could not go anywhere, but the mover still
     // turned its heading toward the goal, so you could spin a keep by right-clicking.
-    if (!u || !u->alive() || !u->type || u->type->isStructure()) return;
+    if (!u || !u->alive() || !u->type) return;
+    if (u->type->isStructure()) {
+        // The rally patrols between the building and the clicked point: a unit off the
+        // line walks out and then loops, which is what a patrol rally means.
+        Order b{x, z, 0};   b.patrol = true; b.attackMove = true;
+        Order a{u->x, u->z, 0}; a.patrol = true; a.attackMove = true;
+        setRally(*u, b, /*queue=*/false);
+        setRally(*u, a, /*queue=*/true);
+        return;
+    }
     u->orders.clear();
     cancelPath(*u);          // the route for the replaced orders is not this patrol's
     Order a;
@@ -1412,7 +1444,14 @@ void World::patrolTo(int unitId, float x, float z, bool queue) {
     // canmove=1 with no velocity (the CLAUDE.md gotcha). Gating on canMove let a
     // BUILDING accept a move order -- it could not go anywhere, but the mover still
     // turned its heading toward the goal, so you could spin a keep by right-clicking.
-    if (!u || !u->alive() || !u->type || u->type->isStructure()) return;
+    if (!u || !u->alive() || !u->type) return;
+    if (u->type->isStructure()) {
+        Order o{x, z, 0};
+        o.patrol = true;
+        o.attackMove = true;
+        setRally(*u, o, queue);
+        return;
+    }
     size_t before = queue ? u->orders.size() : 0;
     order(unitId, x, z, queue);
     // Mark every waypoint of this move as a looping, engage-en-route patrol leg; a
@@ -1543,7 +1582,16 @@ void World::setSquad(int unitId, int squad) {
 
 void World::attack(int unitId, int targetId, bool queue) {
     Unit* u = unit(unitId);
-    if (!u || !u->alive() || !u->type || u->type->weapon.damage <= 0) return;
+    if (!u || !u->alive() || !u->type) return;
+    // A production building sends its OUTPUT at the target rather than shooting it
+    // itself -- and it may well have no weapon, so this is checked before the
+    // weapon gate below.
+    if (u->type->isStructure() && u->type->producesUnits()) {
+        Order o{0, 0, targetId};
+        setRally(*u, o, queue);
+        return;
+    }
+    if (u->type->weapon.damage <= 0) return;
     if (!queue) u->orders.clear();
     u->orders.push_back({0, 0, targetId});
     u->orders.back().goal = true;                 // an attack order IS its own leg
@@ -3656,6 +3704,42 @@ void World::summonReadyGods() {
     }
 }
 
+// Nearest point to (fx,fz) that a `t`-sized body fits in AND nothing is standing on.
+// Returns false (leaving out* at the requested point) when the whole neighbourhood is
+// taken, so the caller can decide whether to wait or to proceed anyway.
+bool World::exitSpot(const UnitType* t, float fx, float fz, float& outX, float& outZ) const {
+    outX = fx;
+    outZ = fz;
+    if (!t) return false;
+    const NavGrid& g = navFor(t);
+    if (g.empty()) return false;
+    const int foot = footCells(t);
+    // Clearance to keep from the nearest body: our own half-width plus a little, so
+    // the spot is somewhere this unit can actually come to rest.
+    const float clr = float(std::max(t->footX, t->footZ)) * 8.0f + 10.0f;
+    const int cx = int(fx) / 16, cz = int(fz) / 16;
+    for (int r = 0; r <= 12; ++r)
+        for (int j = -r; j <= r; ++j)
+            for (int i = -r; i <= r; ++i) {
+                if (std::max(std::abs(i), std::abs(j)) != r) continue;   // ring only
+                const int nx = cx + i, nz = cz + j;
+                if (!g.fits(nx, nz, foot)) continue;
+                const float wx = float(nx) * 16 + 8, wz = float(nz) * 16 + 8;
+                bool taken = false;
+                forEachNear(wx, wz, clr, [&](int idx) {
+                    const Unit& e = units_[size_t(idx)];
+                    if (!e.alive() || !e.type) return;
+                    const float dx = e.x - wx, dz = e.z - wz;
+                    if (dx * dx + dz * dz < clr * clr) taken = true;
+                });
+                if (taken) continue;
+                outX = wx;
+                outZ = wz;
+                return true;
+            }
+    return false;
+}
+
 void World::tickProduction(Unit& u, float dt) {
     if (u.underConstruction || u.buildQueue.empty()) return;
     const UnitType* t = u.buildQueue.front();
@@ -3685,25 +3769,58 @@ void World::tickProduction(Unit& u, float dt) {
     // a rally point. Hold it until that tile is clear so a repeat/queued build
     // doesn't stack units on top of each other -- but never wait forever (2.5s cap)
     // if the exit is jammed.
-    float sx = u.x, sz = u.z + float(u.type->footZ) * 8 + 20;
-    float r = std::max(t->footX, t->footZ) * 8.0f + 8.0f;
-    bool clear = true;
-    forEachNear(sx, sz, r, [&](int idx) {
-        const Unit& e = units_[size_t(idx)];
-        if (!e.alive() || e.id == u.id) return;
-        float dx = e.x - sx, dz = e.z - sz;
-        if (dx * dx + dz * dz < r * r) clear = false;
-    });
-    if (!clear && u.buildProgress < total + 2.5f) {
-        u.buildProgress += dt;   // waiting for the tile to clear (no mana spent)
+    // The exit tile, and the spot the unit will actually EMERGE on. Both used to be
+    // the one fixed tile just south of the footprint: production waited up to 2.5s for
+    // it to clear and then spawned there anyway, so a factory running continuously
+    // stacked bodies on one another. Search for a free spot instead, and only fall
+    // back to waiting when the whole neighbourhood is genuinely full.
+    const float ex = u.x, ez = u.z + float(u.type->footZ) * 8 + 20;
+    float sx = ex, sz = ez;
+    const bool haveSpot = exitSpot(t, ex, ez, sx, sz);
+    if (!haveSpot && u.buildProgress < total + 2.5f) {
+        u.buildProgress += dt;   // nowhere to put it yet (no mana spent)
         return;
     }
     u.buildProgress = 0;
     u.buildQueue.erase(u.buildQueue.begin());
-    // spawn() may reallocate units_, invalidating `u`; capture the id and re-fetch.
     int producerId = u.id, player = u.player;
+    // spawn() may reallocate units_, invalidating `u`; capture the id and re-fetch.
     int id = spawn(t, sx, sz, 3.14159f, player);
-    order(id, sx + float((id % 5) - 2) * 22, sz + 60, false);
+    // Then walk it clear of the exit, to a spot that is free RIGHT NOW -- computed
+    // after the spawn, so it also avoids the unit we just put down.
+    //
+    // This used to be `order(id, sx + ((id % 5) - 2) * 22, sz + 60, false)`: a fan of
+    // five fixed points keyed on the unit id. With five lanes and no memory of what is
+    // already standing there, the sixth unit out of a factory was ordered onto the
+    // exact spot the first was still occupying. Bodies are solid and the steering has
+    // no local avoidance (that is the router's job, and the router cannot route INTO
+    // an occupied cell either), so it pushed at its own countryman for ever. The
+    // no-headway watchdog does not save it: replaceLeg resets the tracker and the
+    // router re-issues about once a second, so the tracker can never build up (see the
+    // KNOWN LIMITATION note on replaceLeg). Reported as "built units always try to go
+    // to the same spot, forever", which is exactly what it did.
+    //
+    // Deterministic: a fixed outward ring scan over the nav grid and the unit grid,
+    // both of which every peer builds identically.
+    float gx = sx, gz = sz + 60.0f;
+    if (exitSpot(t, gx, gz, gx, gz)) order(id, gx, gz, false);
+    // ...then hand it the factory's RALLY plan, queued behind that step. A production
+    // building accepts move / fight-move / patrol / attack orders (and queues them) --
+    // it cannot act on them itself, so they describe what its OUTPUT should do. The
+    // step above still runs first so the unit clears the doorway before setting off.
+    if (const Unit* pb = unit(producerId))
+        for (const Order& ro : pb->rally) {
+            Unit* nu = unit(id);
+            if (!nu) break;
+            // A targeted rally (attack) whose target is already dead is skipped rather
+            // than handed over as an order pointing at nothing.
+            if (ro.targetId) {
+                const Unit* tg = unit(ro.targetId);
+                if (!tg || !tg->alive()) continue;
+            }
+            nu->orders.push_back(ro);
+            nu->orders.back().issuedTick = tickCounter_;
+        }
     if (Unit* pu = unit(producerId)) {
         pu->justBuilt = id;
         // Auto-join: a squad-member producer's new MOBILE unit joins its squad.

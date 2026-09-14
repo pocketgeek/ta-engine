@@ -203,6 +203,10 @@ struct UnitType {
     float maxHp = 100;
     bool canMove = false;
     bool isBuilder = false;
+    // Can this type train units (and therefore hold a rally)? Set for any builder
+    // structure; used to decide whether a move/attack/patrol order on a BUILDING
+    // means "set the rally" rather than "do nothing".
+    bool producesUnits() const { return isBuilder && isStructure(); }
     bool commander = false;   // FBI commander=1: the faction's Monarch (loss condition)
     // Buildings vs mobile units: the reliable test is maxVel. The FBI `canmove`
     // flag is set on some buildings too (e.g. the Keep, or the Taros Hell), so a
@@ -571,6 +575,13 @@ struct Unit {
     int inTransport = 0;   // id of carrying transport, 0 = none
     std::vector<int> cargo;
     std::vector<Order> orders;
+    // RALLY orders for a production building: what the units it makes should do once
+    // they have walked clear of the exit. Kept OUT of `orders` on purpose -- a
+    // structure must never enter the mover (it has no velocity, but the mover still
+    // turns a unit's heading toward its goal, which is how right-clicking used to spin
+    // a keep). Nothing reads this but tickProduction, which copies it onto each new
+    // unit. Move, attack, fight-move and patrol all land here, and they queue.
+    std::vector<Order> rally;
     // Production (buildings with a build tree).
     std::vector<const UnitType*> buildQueue;
     float buildProgress = 0;   // seconds of work done on queue front
@@ -1265,6 +1276,13 @@ private:
     void applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fromId, Unit* primary);
 
     void tickProduction(Unit& u, float dt);
+    // Where a newly produced unit is sent: the nearest free, occupiable spot to the
+    // factory's exit. See the definition -- the fixed five-point fan it replaced is
+    // what made units walk at each other for ever.
+    bool exitSpot(const UnitType* t, float fx, float fz, float& outX, float& outZ) const;
+    // Route a move/attack/patrol order aimed at a production BUILDING into its rally.
+    // True when it was consumed that way. See the definition.
+    static bool setRally(Unit& u, const Order& o, bool queue);
     void tickTransport(Unit& u, float dt);
     // How close a transport must be to its drop point to disembark. Shared by
     // tickTransport (which enforces it) and unloadAt (which has to approach within
