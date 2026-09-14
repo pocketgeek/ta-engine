@@ -188,6 +188,13 @@ struct Room {
     const tak::sim::TypeRegistry* reg = nullptr;   // the balance this game uses
     std::vector<tak::ai::Controller> ai;        // one per AI slot
     std::map<uint32_t, uint64_t> refHash;       // tick -> referee hash (bounded ring)
+    // The replay's hash trail, kept SEPARATELY from refHash. refHash is a ring pruned
+    // to 300 entries because desync checking only ever looks a few ticks back -- but
+    // writing the replay from it meant a long game shipped checkpoints for its last
+    // few seconds and nothing else, so a divergence early on could not be located,
+    // which is the one thing the trail is for. This is append-only and sampled
+    // coarsely: an hour at 30Hz costs a few thousand entries, about 40KB.
+    std::vector<std::pair<uint32_t, uint64_t>> replayChecks;
     bool refSuspect = false;                    // referee itself suspected desynced
     int8_t missionOutcomeSent = 0;              // campaign result already broadcast (0 = none)
     // durability (M5): the full bundle log for reconnect/replay, per-slot resume
@@ -515,8 +522,8 @@ void Server::writeReplay(Room& r) {
     for (const auto& b : r.log) { w.u32(uint32_t(b.size())); w.b.insert(w.b.end(), b.begin(), b.end()); }
     // The referee's hash trail. Two identical reruns only prove the reruns agree;
     // this is what lets a replay say where it diverged from the real game.
-    w.u32(uint32_t(r.refHash.size()));
-    for (const auto& [tk, hs] : r.refHash) { w.u32(tk); w.u64(hs); }
+    w.u32(uint32_t(r.replayChecks.size()));
+    for (const auto& [tk, hs] : r.replayChecks) { w.u32(tk); w.u64(hs); }
     std::string path = replayDir_ + "/game-" + std::to_string(r.id) + "-" +
                        std::to_string(r.createdMs) + ".takrep";
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
@@ -1646,8 +1653,15 @@ void Server::closeTick(Room& r) {
         for (const auto& cmd : r.pending) tak::sim::applyCommand(*r.ref, *r.reg, cmd);
         for (const auto& e : r.pendingEvents) tak::sim::applyEvent(*r.ref, e);
         r.ref->tick(1.0f / kServerHz);
-        if (r.tick % uint32_t(kHashPeriod) == 0)
-            r.refHash[r.tick] = r.ref->stateHash();
+        if (r.tick % uint32_t(kHashPeriod) == 0) {
+            const uint64_t h = r.ref->stateHash();
+            r.refHash[r.tick] = h;
+            // Keep a coarser, UNPRUNED copy for the replay file (see Room::replayChecks).
+            // One every 10 hash periods -- fine enough to bracket a divergence, cheap
+            // enough to carry for a whole game.
+            if (!replayDir_.empty() && (r.tick / uint32_t(kHashPeriod)) % 10 == 0)
+                r.replayChecks.emplace_back(r.tick, h);
+        }
         // bound the ring
         while (r.refHash.size() > 300) r.refHash.erase(r.refHash.begin());
         // Campaign win/lose: the referee's mission runner is authoritative -- announce

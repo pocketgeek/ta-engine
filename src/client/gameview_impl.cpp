@@ -273,7 +273,17 @@
         if (!paused_ && replayTick_ < replayBundles_.size()) {
             replayAdvance(dt);
         }
-        cosmeticStep(dt);
+        // ...but with the SIM'S time, not the wall clock. Two things follow from that:
+        //
+        //   paused  -> zero. The pass still has to RUN (registration lives in it), but
+        //              real elapsed time would keep particles moving, expire effects and
+        //              rings and drift flyer altitude in a scene that is supposed to be
+        //              frozen. Zero registers without animating.
+        //   playing -> dt * speedMult(), because replayAdvance advances the sim by
+        //              exactly that. Unscaled dt made effects outlive combat by the
+        //              speed factor -- ten times longer at 10x playback, and expiring
+        //              too fast when slowed.
+        cosmeticStep(paused_ ? 0.0f : dt * speedMult());
     }
 
     void GameView::replayAdvance(float dt) {

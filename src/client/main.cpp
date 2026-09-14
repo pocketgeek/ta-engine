@@ -1123,6 +1123,13 @@ int main(int argc, char** argv) {
     if (gameView && gameView->replayMode() && tak::devEnv("TAK_REPLAY_VERIFY")) {
         while (gameView->replayTick() < gameView->replayLength())
             gameView->replayStep(10.0f);   // guard caps to 64 ticks/call
+        // PIN THE SNAPSHOT FIRST. captureFrame alternates buffers without moving
+        // renderReadIdx_, and this loop never calls beginFrame, so framedUnits() would
+        // read buffer 0 -- not the buffer just published. A replay consumed in a single
+        // step then reported framed=0 having published its units perfectly, and a
+        // longer one reported a stale count: the diagnostic would accuse playback of
+        // exactly the bug it exists to detect.
+        gameView->beginFrame();
         // `framed` is the published snapshot's unit count -- what the renderer would
         // draw. It is reported next to the world count because they answer different
         // questions, and a mode that simulates without publishing shows units=N
