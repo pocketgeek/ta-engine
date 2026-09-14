@@ -60,7 +60,10 @@ Settings loadSettings() {
         else if (key == "uiScale")         s.uiScale = asFloat(0.75f, 2.0f);
         else if (key == "antiAlias")       { int a = asInt(0, 4); s.antiAlias = (a >= 4) ? 4 : (a >= 2) ? 2 : 0; }
         else if (key == "buildBarAlign")   s.buildBarAlign = asInt(0, 2);
-        else if (key == "buildBarScale")   s.buildBarScale = asFloat(0.75f, 2.0f);
+        // 4.0, matching the slider and GameView. This still said 2.0 when the slider
+        // went to 400%, so 300-400% survived until the next restart and then silently
+        // snapped back to 200%.
+        else if (key == "buildBarScale")   s.buildBarScale = asFloat(0.75f, 4.0f);
         else if (key == "bilinear")        s.bilinear = asBool();
         else if (key == "treeSway")        s.treeSway = asBool();
         else if (key == "unitShadows")     s.unitShadows = asBool();

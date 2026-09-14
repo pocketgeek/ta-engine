@@ -30,7 +30,8 @@
         const size_t cut = dir.find_last_of("/\\");
         if (cut == std::string::npos) return;
         dir.erase(cut + 1);
-        const std::string path = saveReplayFile(dir, *mp_, uint64_t(std::time(nullptr)));
+        const std::string path = saveReplayFile(dir, *mp_, uint64_t(std::time(nullptr)),
+                                                gameDataHash());
         if (!path.empty()) {
             std::fprintf(stderr, "replay: wrote %s (%zu ticks)\n",
                          path.c_str(), mp_->replayLog().size());

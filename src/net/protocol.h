@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 78;       // 78: benchmark/stress fills reserve whole
+constexpr uint32_t kNetVersion = 79;       // 79: route shortcuts respect parked bodies;
+                                           //     spawn claims use the centred footprint
+                                           // 78: benchmark/stress fills reserve whole
                                            //     footprints and stop at map capacity
                                            // 77: traced routes are string-pulled from
                                            //     the unit's CURRENT cell before install

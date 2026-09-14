@@ -45,5 +45,8 @@ bool loadReplayFile(const std::string& path, ReplayFile& out);
 // `dir` is the user's config directory (settingsPath()'s folder), so replays live
 // beside settings.ini rather than in whatever the working directory happened to be.
 // Returns the written path, or empty on failure.
+// `gameplayHash` is the fingerprint of the data the GAME ran on (the client's
+// gameDataHash(), what it reports at Loaded) -- NOT the pure-retail handshake hash,
+// which differs under a Full-tier override.
 std::string saveReplayFile(const std::string& dir, const tak::net::MpClient& mp,
-                           uint64_t stampMs);
+                           uint64_t stampMs, uint64_t gameplayHash);

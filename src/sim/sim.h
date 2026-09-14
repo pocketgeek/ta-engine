@@ -1195,6 +1195,11 @@ public:
     // call and was the per-second AI hitch. Lets the AI pick a REACHABLE target
     // instead of one merely nearest in a straight line but walled off.
     bool pathExists(const UnitType* type, float gx, float gz, float fx, float fz) const;
+    // Is the straight line between two cells clear for this unit RIGHT NOW -- terrain
+    // and parked bodies alike? Stricter than the search's own passability. See the
+    // definition; it is what keeps a route shortcut from cutting back through the
+    // crowd the route just went around.
+    bool lineOpen(const UnitType* t, int selfId, int x0, int z0, int x1, int z1) const;
     void patrol(int unitId, float x, float z);
     // Queue a patrol waypoint (SetMission "p X Y"): like a move but the completed
     // order re-queues at the back, so a chain of these loops the unit through them.

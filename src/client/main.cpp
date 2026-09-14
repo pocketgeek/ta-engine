@@ -917,8 +917,15 @@ int main(int argc, char** argv) {
                              rf.error.empty() ? "" : " -- ", rf.error.c_str());
                 return 1;
             }
-            std::string mapPath = tak::hpi::findMap(vfs, rf.mapId);
-            if (mapPath.empty()) { std::fprintf(stderr, "replay: map '%s' not found\n", rf.mapId.c_str()); return 1; }
+            // A campaign recording resolves no map: setupMission builds its own world.
+            std::string mapPath;
+            if (rf.mission.empty()) {
+                mapPath = tak::hpi::findMap(vfs, rf.mapId);
+                if (mapPath.empty()) {
+                    std::fprintf(stderr, "replay: map '%s' not found\n", rf.mapId.c_str());
+                    return 1;
+                }
+            }
             // Replay under the tier the game was recorded at (startReplay rebinds the vfs).
             auto rpol = tak::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
             if (rpol != pol) vfs = tak::hpi::mountRetailRoot(dataRoot, rpol);
@@ -931,7 +938,20 @@ int main(int argc, char** argv) {
                          rf.crusades ? " (Crusades)" : "", rf.formatVersion,
                          rf.engineVersion.empty() ? "an older build" : rf.engineVersion.c_str(),
                          rf.checks.size());
-            gameView->startReplay(rf.cfg, std::move(rf.bundles));
+            // VERIFY the data before replaying it. The recording carries the
+            // fingerprint of the gameplay data it ran on; different data means a
+            // different simulation, and the whole point of recording the hash was to
+            // say so rather than let playback diverge in silence.
+            if (rf.dataHash) {
+                const uint64_t mine = tak::hpi::gameplayHash(vfs);
+                if (mine != rf.dataHash)
+                    std::fprintf(stderr,
+                        "replay: WARNING -- recorded on gameplay data %016llx, yours is "
+                        "%016llx. Playback will diverge from the recording.\n",
+                        (unsigned long long)rf.dataHash, (unsigned long long)mine);
+            }
+            gameView->setReplayChecks(std::move(rf.checks));
+            gameView->startReplay(rf.cfg, std::move(rf.bundles), rf.mission);
         } else if (mode == "map" && !args.empty() && !dataRoot.empty()) {
             // A "~gen1~" id is a random-map recipe MapView builds in memory; a plain
             // name resolves to a real .tnt in the mounted data.
@@ -1594,7 +1614,8 @@ int main(int argc, char** argv) {
             break;
         }
         tak::ResultStats st = gameView->resultStats();   // read before the sim is freed
-        killLocalServer(); mp.reset(); gameView.reset();   // free the mission before the movie/modal
+        // gameView BEFORE mp: ~GameView saves the replay, which reads the net client.
+        killLocalServer(); gameView.reset(); mp.reset();   // free the mission before the movie/modal
         if (oc > 0) {
             // Cinematics on victory: a per-mission "post<stem>" cutscene (retail ships
             // one after Book of Darien mission 24), then the campaign's ending credits
@@ -1619,13 +1640,12 @@ int main(int argc, char** argv) {
         // so both buttons come back to the front end.
         int oc = gameView->outcomePublic();
         tak::ResultStats st = gameView->resultStats();
-        killLocalServer(); mp.reset(); gameView.reset();
+        killLocalServer(); gameView.reset(); mp.reset();   // view first: it saves the replay
         tak::ResultScreen::run(ren, vfs, oc > 0, "", false, &settings, &menuMusic, &st);
     }
     // Session ended: tear down any single-player local server, then either loop back
     // to the menu or exit the app.
     killLocalServer();
-    mp.reset();
     // Destroy the session's views NOW (not at scope end below): the renderer is
     // reused across sessions, so their GPU textures must be freed before the next
     // session budgets against gpuvram. The log line is the leak canary -- healthy
@@ -1634,6 +1654,10 @@ int main(int argc, char** argv) {
     // could no longer upload (map stuck at the low-res underlay).
     gameView.reset();
     mapView.reset();
+    // ...and only THEN the net client. ~GameView writes this player's replay, which
+    // reads the client's recorded bundles -- destroying the client first left the
+    // destructor reading freed memory on any quit before the result landed.
+    mp.reset();
     std::fprintf(stderr, "gpu: %zu MiB in %zu textures tracked after session teardown (cap %zu MiB)\n",
                  gpuvram::bytes() >> 20, gpuvram::count(), gpuvram::cap() >> 20);
     // Clear the in-game minimum-window-size constraint (set per game at the build-icon

@@ -223,11 +223,31 @@
     }
 
     void GameView::startReplay(tak::sim::MatchConfig cfg,
-                     std::vector<tak::net::Bundle> bundles) {
+                     std::vector<tak::net::Bundle> bundles,
+                     const std::string& mission) {
         // Read through this view's own VFS (we own it), not a caller pointer.
         cfg.vfs = &vfs_;
         cfg.mapPath = mapPath_;
-        auto spots = tak::sim::setupMatch(world_, registry_, cfg);
+        std::vector<std::pair<float, float>> spots;
+        if (!mission.empty()) {
+            // A CAMPAIGN recording rebuilds the mission -- its placements and its
+            // in-sim script -- exactly as the game did. Replaying it through
+            // setupMatch produced a plain skirmish on the mission's map: none of the
+            // placed units, none of the scripting, so the recorded commands landed in
+            // a world that had nothing to do with the one they came from. The
+            // recorded mission stem is new in format 6; before it, the loader could
+            // not have known.
+            missionStem_ = mission;
+            int human = 0;
+            tak::sim::MissionSetup ms;
+            if (tak::sim::setupMission(world_, registry_, vfs_, mission, human, &ms))
+                spots = ms.slotPos;
+            else
+                std::fprintf(stderr, "replay: mission '%s' not in this data\n",
+                             mission.c_str());
+        } else {
+            spots = tak::sim::setupMatch(world_, registry_, cfg);
+        }
         replayBundles_ = std::move(bundles);
         replayMode_ = true;
         noFog_ = true;             // a spectator sees the whole map
@@ -250,6 +270,29 @@
             for (const auto& e : bd.events) applyEvent(e);
             world_.tick(1.0f / 30.0f);
             ++replayTick_;
+            // COMPARE against what the original game computed at this tick. Recording
+            // the checkpoints was only half of it -- playback printed the count and
+            // checked nothing, so a replay that diverged still ran happily to the end
+            // and looked like a faithful reproduction. Report the FIRST divergence and
+            // then stop reporting: after the first, every later tick differs too and
+            // the rest is noise.
+            if (replayCheckAt_ < replayChecks_.size()) {
+                const auto& ck = replayChecks_[replayCheckAt_];
+                if (ck.tick + 1 == uint32_t(replayTick_)) {
+                    ++replayCheckAt_;
+                    const uint64_t mine = world_.stateHash();
+                    if (mine != ck.hash && !replayDiverged_) {
+                        replayDiverged_ = true;
+                        std::fprintf(stderr,
+                            "replay: DIVERGED at tick %u -- recorded %016llx, replayed "
+                            "%016llx\n", ck.tick, (unsigned long long)ck.hash,
+                            (unsigned long long)mine);
+                        postNotice("REPLAY DIVERGED FROM THE RECORDING", 8);
+                    }
+                } else if (ck.tick + 1 < uint32_t(replayTick_)) {
+                    ++replayCheckAt_;   // checkpoint we stepped past; keep in step
+                }
+            }
             replayAccum_ -= 1.0f / 30.0f;
             ++guard;
         }
@@ -578,10 +621,12 @@
                 if (!teamAlive) outcome_ = -1;
             }
         }
-        // The result just landed: write this player's own copy of the replay. Doing
-        // it here (rather than only on teardown) means the file exists the moment the
-        // banner appears, so it survives a crash or a kill on the way out.
-        if (outcome_ != 0) saveNetReplay();
+        // The result just landed: ask for this player's replay to be written. REQUEST,
+        // not write -- simStep runs on the sim worker, while the net client appends to
+        // its recorded bundles and hashes from the main thread. Serializing those
+        // vectors from here would read them while they grow. The main thread picks
+        // this up (see cosmeticStep) and does the work.
+        if (outcome_ != 0) replayWanted_.store(true, std::memory_order_relaxed);
         captureFrame();   // snapshot post-tick unit state for the render (poses + read fields)
     }
 
@@ -763,6 +808,10 @@
         // on the main thread while the sim worker ticks. One-tick EVENTS (impacts, justFired)
         // are gated on newTick_ so they fire once per published tick even if cosmeticStep is
         // called more than once against the same pinned snapshot.
+        // Deferred replay write, requested by the sim thread when the result landed.
+        // Done HERE because this runs on the main thread, which is the only one that
+        // may read the net client's recorded bundles while it is still connected.
+        if (replayWanted_.exchange(false, std::memory_order_relaxed)) saveNetReplay();
         const bool newTick_ = (front().gen != lastCosmeticGen_);
         lastCosmeticGen_ = front().gen;
         // Weapon impacts this tick: play each weapon's soundhitclass, picking the

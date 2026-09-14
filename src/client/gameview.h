@@ -614,9 +614,17 @@ public:
 
     // ---- replay playback (.takrep) ----------------------------------------
     // Build the world from a recorded match config and feed it the bundle log.
+    // `mission` non-empty replays a CAMPAIGN recording: the world is rebuilt with
+    // setupMission (placements + script), not as a skirmish on the same map.
     void startReplay(tak::sim::MatchConfig cfg,
-                     std::vector<tak::net::Bundle> bundles);
+                     std::vector<tak::net::Bundle> bundles,
+                     const std::string& mission = {});
     bool replayMode() const { return replayMode_; }
+    // (tick, hash) checkpoints from the ORIGINAL game. replayStep compares each one
+    // as it passes it, so playback can say WHERE it stopped matching what happened
+    // rather than merely running to the end and looking plausible.
+    void setReplayChecks(std::vector<tak::net::ReplayCheck> c) { replayChecks_ = std::move(c); }
+    bool replayDiverged() const { return replayDiverged_; }
     // Advance playback by `dt` (real seconds), scaled by the game-speed control;
     // Pause freezes it. Applies each recorded bundle then ticks the world.
     void replayStep(float dt);
@@ -1898,6 +1906,13 @@ public:
 private:
     bool replayMode_ = false;                     // playing a recorded .takrep
     bool replaySaved_ = false;                    // this game's replay already written
+    std::vector<tak::net::ReplayCheck> replayChecks_;   // recorded (tick, hash) trail
+    size_t replayCheckAt_ = 0;                    // next checkpoint to compare
+    bool replayDiverged_ = false;                 // reported once, then stays quiet
+    // Set by the SIM thread when the result lands; the MAIN thread does the writing.
+    // The net client's recorded bundles and hashes are appended from the main thread,
+    // so serializing them off-thread would read a growing vector.
+    std::atomic<bool> replayWanted_{false};
     std::vector<tak::net::Bundle> replayBundles_;
     size_t replayTick_ = 0;
     float replayAccum_ = 0;

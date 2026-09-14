@@ -63,6 +63,11 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
     out.cfg.slots.resize(size_t(maxUsed + 1));
     uint32_t nticks = r.u32();
     if (!r.ok) return false;
+    // Bound the count by what is actually LEFT in the file before reserving. A count is
+    // just four bytes a corrupt file can set to anything, and reserving on trust turns
+    // a truncated 200-byte replay into a multi-gigabyte allocation that throws where
+    // the caller expects a clean false. Each bundle costs at least its 4-byte length.
+    if (uint64_t(nticks) * 4 > uint64_t(r.end - r.p)) return false;
     out.bundles.reserve(nticks);
     for (uint32_t t = 0; t < nticks; ++t) {
         uint32_t len = r.u32();
@@ -89,6 +94,7 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
     if (fmt >= 6) {
         uint32_t nchecks = r.u32();
         if (!r.ok) return false;
+        if (uint64_t(nchecks) * 12 > uint64_t(r.end - r.p)) return false;   // u32 + u64 each
         out.checks.reserve(nchecks);
         for (uint32_t i = 0; i < nchecks; ++i) {
             tak::net::ReplayCheck c;
@@ -102,7 +108,7 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
 }
 
 std::string saveReplayFile(const std::string& dir, const tak::net::MpClient& mp,
-                           uint64_t stampMs) {
+                           uint64_t stampMs, uint64_t gameplayHash) {
     const auto& log = mp.replayLog();
     if (dir.empty() || log.empty()) return {};
     const tak::net::RoomView& room = mp.room();
@@ -122,7 +128,11 @@ std::string saveReplayFile(const std::string& dir, const tak::net::MpClient& mp,
     h.randomStarts = room.opts.randomStarts;
     h.benchmark = uint8_t(room.opts.benchmark);
     h.seed = mp.startSeed();
-    h.dataHash = mp.dataHash();
+    // The hash of the data this GAME ran on, at its override tier -- not the
+    // pure-retail fingerprint the handshake uses. Under a Full-tier game the two
+    // differ, and it is the effective one a replay has to be checked against. The
+    // server's writer already records that; this recorded the handshake hash.
+    h.dataHash = gameplayHash;
     for (int i = 0; i < tak::net::kMaxSlots; ++i) {
         h.slotType[i] = slots[i].type;
         h.slotFaction[i] = slots[i].faction;

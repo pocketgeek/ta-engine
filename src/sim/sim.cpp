@@ -1176,6 +1176,59 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
 // rather than run a whole-map search that would scan the grid before failing.
 // Deterministic -- the labelling is a pure function of the nav grid -- so the sim
 // may use it, not only the AI.
+bool World::lineOpen(const UnitType* t, int selfId, int x0, int z0, int x1, int z1) const {
+    // Can this unit travel the straight line between two CELLS without meeting
+    // anything it cannot get past? Used to shortcut a traced route.
+    //
+    // Stricter than the SEARCH's own rule on purpose. cellScore grades a parked body
+    // as kCellOccupied, which equals kCellThreshold -- passable, just expensive -- so
+    // the trace prefers to go around one but is allowed through. The MOVER has no such
+    // latitude: bodies are solid and there is no local avoidance, so a unit sent
+    // through a parked crowd simply stops in it. Shortcutting on terrain alone
+    // (NavGrid::lineFits) therefore undid exactly the detours the trace had just made
+    // around parked troops, and put the mover back where it would jam. Here a cell
+    // must be genuinely clear -- ground or road, not merely "passable".
+    int dx = std::abs(x1 - x0), dz = -std::abs(z1 - z0);
+    int sx = x0 < x1 ? 1 : -1, sz = z0 < z1 ? 1 : -1, err = dx + dz;
+    // How many OCCUPIED cells a shortcut may cross. Terrain is never crossed at any
+    // setting; this is only about parked bodies.
+    //
+    // The reviewed concern was real -- shortcutting on terrain alone (NavGrid::lineFits)
+    // can straighten a route back through the very crowd the trace went around, and the
+    // mover has no local avoidance to get out of it. But refusing EVERY occupied cell
+    // overcorrects badly, because in a crowd almost every line touches one. Measured on
+    // 24 units converging on one point past a plateau:
+    //
+    //   tolerance 0 (refuse any)   20/24 arrive, 3449 course changes
+    //   tolerance 2                20/24 arrive, 3449
+    //   tolerance 6                23/24 arrive, 1089
+    //   unlimited (terrain only)   23/24 arrive, 1089
+    //
+    // 6 is the knee AND ties the unlimited result -- no shortcut here crosses more than
+    // six bodies -- so it costs nothing measurable while still refusing to cut through
+    // a genuinely deep crowd, which is the case the concern is about.
+    constexpr int kShortcutOccupied = 6;
+    int budget = kShortcutOccupied;
+    auto ok = [&](int x, int z) {
+        const int sc = cellScore(t, x, z, selfId);
+        if (sc < kCellThreshold) return false;         // terrain: never
+        if (sc <= kCellOccupied && --budget < 0) return false;   // too many bodies
+        return true;
+    };
+    for (int guard = 0; guard < 8192; ++guard) {
+        if (!ok(x0, z0)) return false;
+        if (x0 == x1 && z0 == z1) return true;
+        const int e2 = 2 * err;
+        const bool stepX = e2 >= dz, stepZ = e2 <= dx;
+        // A diagonal step passes between two cells; both must be clear, matching the
+        // movers' refusal to cut a corner.
+        if (stepX && stepZ && (!ok(x0 + sx, z0) || !ok(x0, z0 + sz))) return false;
+        if (stepX) { err += dz; x0 += sx; }
+        if (stepZ) { err += dx; z0 += sz; }
+    }
+    return false;
+}
+
 bool World::pathExists(const UnitType* type, float gx, float gz, float fx, float fz) const {
     // Answered from connectivity, not a distance field. This used to build a full-map
     // Dijkstra (~40ms) for a single yes/no, and that WAS the per-second AI hitch:
@@ -4176,7 +4229,6 @@ void World::tick(float dt) {
             // while the search was in flight -- which used to reconnect the route behind
             // the unit and send it backtracking.
             const NavGrid& ng = navFor(u->type);
-            const int ufoot = footCells(u->type);
             std::vector<PathCell> pulled;
             if (!ng.empty()) {
                 PathCell at{int(u->x) / 16, int(u->z) / 16};
@@ -4184,7 +4236,7 @@ void World::tick(float dt) {
                 while (from < route.size() && pulled.size() < 64) {
                     size_t take = from;
                     for (size_t j = route.size(); j-- > from;)
-                        if (ng.lineFits(at.x, at.z, route[j].x, route[j].z, ufoot)) {
+                        if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z)) {
                             take = j;
                             break;
                         }

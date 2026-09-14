@@ -521,12 +521,19 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // line. Measured on Inner Circle with 8 players: 19059 overlapping pairs with
     // centre-cell claims.
     auto claimFoot = [&](int nx, int nz, int foot) {
+        // CENTRED, like everything else that reasons about a footprint: NavGrid::fits
+        // and World::cellScore both take (cx,cz) as the body's centre and work from
+        // cx - foot/2. Claiming [nx, nx+foot) instead offset every reservation by half
+        // a footprint, so with MIXED sizes two disjoint claims could still describe
+        // overlapping bodies -- a size-2 and a size-4 two cells apart passed the check
+        // while actually overlapping.
+        const int ox = nx - foot / 2, oz = nz - foot / 2;
         for (int dz = 0; dz < foot; ++dz)
             for (int dx = 0; dx < foot; ++dx)
-                if (claimedAt(nx + dx, nz + dz)) return false;
+                if (claimedAt(ox + dx, oz + dz)) return false;
         for (int dz = 0; dz < foot; ++dz)
             for (int dx = 0; dx < foot; ++dx)
-                claimBits[size_t(nz + dz) * size_t(claimW) + size_t(nx + dx)] = 1;
+                claimBits[size_t(oz + dz) * size_t(claimW) + size_t(ox + dx)] = 1;
         return true;
     };
     int sweepCursor = 0;   // global fallback scan position (see snapSpawn)
