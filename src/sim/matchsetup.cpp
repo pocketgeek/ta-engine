@@ -2,6 +2,7 @@
 
 #include "sim/detmath.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -552,6 +553,18 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         ++spot;
         world.spawn(monarch, mx, mz, 0, i);
         world.player(i).mana = cfg.startMana;
+        // Resolve this player's god now, while the registry is in hand. The sim
+        // summons it itself (World::summonReadyGods) and has no registry of its own;
+        // the client used to do the lookup AND the summon, which is what desynced it
+        // from the referee. Derived from the monarch's side rather than the slot's
+        // faction index so a side-less or modded monarch simply has no god instead of
+        // summoning another faction's.
+        if (monarch && !monarch->side.empty()) {
+            std::string side = monarch->side;
+            std::transform(side.begin(), side.end(), side.begin(),
+                           [](unsigned char c) { return char(std::tolower(c)); });
+            world.player(i).godType = reg.find(side + "god");
+        }
 
         // Stress test: fill this player to ~95% of the unit cap with its faction's
         // combat units right now, so an all-AI game starts under a heavy sim load.

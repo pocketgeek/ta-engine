@@ -1084,7 +1084,10 @@ private:
     void registerUnit(int id, const tak::sim::UnitType* type);
 
     // Manifest player `t`'s faction god at its army's centre (once favour fills).
-    void summonGod(int t);
+    // One announcement per player, for the god the SIM summoned. Not sim state: it
+    // only gates a HUD notice, and a spectator/rejoin that arrives after a summon
+    // simply does not announce it.
+    std::array<bool, 8> godAnnounced_{};
 
     int spawn(const std::string& typeId, float x, float z, float heading, int player);
 

@@ -456,11 +456,19 @@
             rem -= step;
         }
         profSimTicks_ += int64_t(SDL_GetPerformanceCounter()) - _sim0;
-        // God economy: once a player's favour fills after the appear time, its
-        // faction's god manifests among its forces.
+        // God economy: the SIM summons gods now (World::summonReadyGods, called from
+        // tick), so all this does is announce one. It used to do the summoning here,
+        // which meant the spawn happened on every client and never on the referee --
+        // the server's world ran one unit short from the first summon onward and the
+        // hashes split for the rest of the match.
         if (world_.godsEnabled())
             for (int t = 0; t < world_.numPlayers(); ++t)
-                if (world_.godReady(t)) summonGod(t);
+                if (world_.player(t).godSummoned && !godAnnounced_[size_t(t) & 7]) {
+                    godAnnounced_[size_t(t) & 7] = true;
+                    if (!hudFont_.ok()) continue;
+                    postNotice(t == localPlayer_ ? "YOUR GOD HAS ANSWERED"
+                                                 : "AN ENEMY GOD RISES", 6);
+                }
         // Scenario (.crt) "Display" actions: surface the sim runner's messages as
         // HUD notices for the viewing player. Drained on the sim thread (same as
         // scenario step, so no race on its queue); postNotice defers to main.
@@ -1968,24 +1976,6 @@
             };
         }
         unitType_[id] = typeId;
-    }
-
-    void GameView::summonGod(int t) {
-        float cx = 0, cz = 0; int n = 0; std::string side;
-        for (const auto& u : world_.units())
-            if (u.alive() && u.player == t && u.type && !u.underConstruction) {
-                cx += u.x; cz += u.z; ++n;
-                if (side.empty() && !u.type->side.empty()) side = u.type->side;
-            }
-        world_.player(t).godSummoned = true;   // mark handled regardless
-        if (!n || side.empty()) return;
-        std::transform(side.begin(), side.end(), side.begin(), ::tolower);
-        const auto* god = registry_.find(side + "god");
-        if (!god) return;
-        int id = spawn(side + "god", cx / n, cz / n, 3.14159f, t);
-        (void)id;
-        if (t == localPlayer_ && hudFont_.ok()) postNotice("YOUR GOD HAS ANSWERED", 6);
-        else if (hudFont_.ok()) postNotice("AN ENEMY GOD RISES", 6);
     }
 
     int GameView::spawn(const std::string& typeId, float x, float z, float heading, int player) {

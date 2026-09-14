@@ -1839,6 +1839,59 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ---- gods are summoned BY THE SIM ---------------------------------------
+    //
+    // This was the client's job: GameView::simStep polled godReady() and ran its own
+    // summonGod() after ticking. The headless referee has no GameView, so it never
+    // summoned anything -- from the first god onward the server's world held one
+    // fewer unit than every client's and the hashes split for the rest of the match.
+    // A desync arriving tens of minutes in, with nothing in the command stream to
+    // explain it (observed at tick 39780).
+    //
+    // So the test is deliberately about WHERE the work happens, not whether a god
+    // can appear: tick a bare World, with nobody driving it but tick() itself, and
+    // require the god to show up anyway. Any future move back out of the sim fails
+    // here regardless of how correct the relocated code is.
+    std::printf("\n[gods are summoned by the sim, not the client]\n");
+    {
+        sim::World w;
+        sim::MatchConfig cfg;
+        cfg.vfs = &vfs;
+        cfg.mapPath = kMap;
+        cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
+        cfg.slots[0].team = 0; cfg.slots[1].team = 1;
+        cfg.slots[0].faction = 0; cfg.slots[1].faction = 1;
+        cfg.slots[0].used = true; cfg.slots[1].used = true;   // else setupMatch skips them
+        cfg.gods = true;
+        sim::setupMatch(w, reg, cfg);
+        check(w.godsEnabled(), "the match enabled gods");
+        check(w.player(0).godType != nullptr,
+              "setup resolved the player's god type (the sim cannot look it up)");
+
+        const size_t before = w.units().size();
+        // Fill the favour directly rather than waiting for priests to channel it:
+        // the economy that FILLS it is not what broke.
+        w.enableGods(0.0f);
+        w.player(0).godFavor = 1e9f;
+        check(w.godReady(0), "player 0 is ready for its god");
+
+        tick(w, 0.2f);                       // nothing but World::tick runs here
+
+        check(!w.godReady(0), "the readiness is consumed");
+        check(w.player(0).godSummoned, "and the player is marked summoned");
+        check(w.units().size() == before + 1,
+              "ticking the world ALONE summoned the god",
+              std::to_string(before) + " -> " + std::to_string(w.units().size()));
+        bool isGod = false;
+        for (const auto& u : w.units())
+            if (u.alive() && u.player == 0 && u.type && u.type->id.size() > 3 &&
+                u.type->id.substr(u.type->id.size() - 3) == "god") isGod = true;
+        check(isGod, "and the new unit is player 0's god");
+        // The other player, with no favour, must NOT have one -- otherwise a test
+        // that counted units would pass on a sim that summoned indiscriminately.
+        check(!w.player(1).godSummoned, "a player without favour gets nothing");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASS",
                 failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

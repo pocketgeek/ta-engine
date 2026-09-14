@@ -774,6 +774,11 @@ struct Player {
     // after the gods' appear time, the faction's god can manifest (once).
     float godFavor = 0;
     bool  godSummoned = false;
+    // The unit this player's god manifests as, resolved once at setup (matchsetup).
+    // The sim summons it itself and therefore must not need a TypeRegistry to find
+    // it: summoning used to live in the CLIENT, which had one, and that is exactly
+    // why it desynced -- see summonReadyGods().
+    const UnitType* godType = nullptr;
     int   kills = 0;     // enemy units this player has destroyed (F4 overlay)
     // End-of-game scoreboard counters (retail's victory/defeat screen columns).
     // Derived from hashed events and incremented in exactly one place each, so they
@@ -1059,6 +1064,9 @@ public:
         return false;
     }
     static constexpr float kGodFavorNeeded = 3000.0f;
+    // Manifest the god of every player whose favour has filled. Called from tick(),
+    // so the referee and every client run it on the same step from the same state.
+    void summonReadyGods();
     bool godReady(int t) const {
         return godsEnabled_ && !players_[size_t(t)].godSummoned &&
                clock_ >= godAppearTime_ && players_[size_t(t)].godFavor >= kGodFavorNeeded;

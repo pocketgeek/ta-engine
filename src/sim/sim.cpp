@@ -3633,6 +3633,29 @@ void World::visCompute() {
     }
 }
 
+void World::summonReadyGods() {
+    if (!godsEnabled_) return;
+    for (size_t t = 0; t < players_.size(); ++t) {
+        if (!godReady(int(t))) continue;
+        // The god appears among the player's forces: the centroid of everything it
+        // has standing. Accumulated in unit order over a container every peer builds
+        // identically, so the sum -- and therefore the spawn point -- is bit-identical.
+        float cx = 0, cz = 0;
+        int n = 0;
+        for (const auto& u : units_)
+            if (u.alive() && u.player == int(t) && u.type && !u.underConstruction) {
+                cx += u.x;
+                cz += u.z;
+                ++n;
+            }
+        // Mark it handled either way: a player with nothing left on the map does not
+        // get to bank the summon until it rebuilds.
+        players_[t].godSummoned = true;
+        if (!n || !players_[t].godType) continue;
+        spawn(players_[t].godType, cx / float(n), cz / float(n), 3.14159f, int(t));
+    }
+}
+
 void World::tickProduction(Unit& u, float dt) {
     if (u.underConstruction || u.buildQueue.empty()) return;
     const UnitType* t = u.buildQueue.front();
@@ -3797,6 +3820,14 @@ void World::tick(float dt) {
             if (godPriests[t] > 0)
                 players_[t].godFavor = std::min(kGodFavorNeeded,
                     players_[t].godFavor + std::max(players_[t].income, 20.0f) * dt);
+
+    // ...and once it has filled, the god manifests. This has to happen HERE, in the
+    // shared sim, and used to happen in the client instead (GameView::simStep polled
+    // godReady() and called its own summonGod()). The referee never did it, so from
+    // the first summon the server's world held one fewer unit than every client's and
+    // the hashes split for the rest of the match -- a desync arriving tens of minutes
+    // in, with nothing in the command stream to explain it.
+    summonReadyGods();
 
     // Index-based: tickProduction can spawn a trained unit, reallocating
     // units_ and invalidating any range-for iterator over it.

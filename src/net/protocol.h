@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 74;       // 74: per-category DAMAGE is a multiplier
+constexpr uint32_t kNetVersion = 75;       // 75: the SIM summons gods (the client did,
+                                           //     the referee never did -> desync)
+                                           // 74: per-category DAMAGE is a multiplier
                                            //     on default, not absolute damage
                                            // 73: benchmark/stress spawns snap to terrain
                                            //     the unit can actually occupy
