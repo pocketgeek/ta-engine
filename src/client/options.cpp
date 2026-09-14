@@ -278,7 +278,7 @@ void OptionsScreen::build(int channels) {
            [&](float v) { s_.buildBarAlign = std::clamp(int(v + 0.5f), 0, 2); },
            [](float v) { int l = int(v + 0.5f); return std::string(l >= 2 ? "RIGHT" : l >= 1 ? "CENTER" : "LEFT"); });
     // Extra scale for the build icon row, applied ON TOP of UI SCALE (same range).
-    slider("BUILD MENU SCALE", 0.75f, 2.0f, [&] { return s_.buildBarScale; },
+    slider("BUILD MENU SCALE", 0.75f, 4.0f, [&] { return s_.buildBarScale; },
            [&](float v) { s_.buildBarScale = v; }, [](float v) { return pctOf(v, 1); });
 
     section("CAMERA");

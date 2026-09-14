@@ -1509,6 +1509,13 @@
         y += lh;
         for (int t = 0; t < np; ++t) {
             if (!board && cnt[t] == 0) continue;
+            // A slot nobody ever occupied has never spawned anything -- not even a
+            // Monarch, which every real player gets at setup. Those used to be listed
+            // on the F4 board as defeated, so an 8-slot game with 3 players showed five
+            // phantom opponents marked OUT. Skip them entirely; `built` is the end-of-
+            // game spawn counter, so a real player is >= 1 from the first tick and a
+            // player who has since been wiped out still shows (correctly) as OUT.
+            if (framePlayer(t).built == 0 && cnt[t] == 0) continue;
             bool dead = framePlayer(t).defeated;
             SDL_Color c = playerColor(t);
             if (dead) { c.r /= 2; c.g /= 2; c.b /= 2; }   // dim a knocked-out player
@@ -1671,9 +1678,32 @@
             int n = int(menu.size());
             // Row size: the bar height (already uiScale-scaled) times the user's
             // extra BUILD MENU SCALE, so the row can grow independently of the HUD.
+            float bScale = buildBarScale_;   // effective scale after the fit clamp below
             float iconSz = (float(barH()) - 10.0f) * buildBarScale_;
             float gap = 6.0f * buildBarScale_;
             float rowW = n > 0 ? (n - 1) * (iconSz + gap) + iconSz : 0;
+            // BUILD MENU SCALE goes to 400%, which is more than a wide menu can spend
+            // on a narrow window: 13 icons at 4x is several thousand pixels. Rather
+            // than let the row run off the screen (where the icons are unreachable),
+            // shrink it to whatever actually fits and keep the requested scale as a
+            // ceiling. The same clamp covers the vertical: the row sits above the
+            // command bar, so it must not grow past the space over it.
+            if (n > 0) {
+                const float availW = float(winW) - 20.0f;
+                const float availH = std::max(bar.y - 10.0f, 24.0f);
+                float fit = 1.0f;
+                if (rowW > availW) fit = std::min(fit, availW / rowW);
+                if (iconSz > availH) fit = std::min(fit, availH / iconSz);
+                if (fit < 1.0f) {
+                    iconSz *= fit;
+                    gap *= fit;
+                    rowW = (n - 1) * (iconSz + gap) + iconSz;
+                }
+                // Everything drawn INSIDE an icon (the +++ badge, the queue count, the
+                // tooltip) is sized from the scale too, so it has to follow the clamp
+                // or a shrunken icon gets full-size furniture spilling out of it.
+                bScale = buildBarScale_ * fit;
+            }
             float x0 = buildBarAlign_ == 1 ? (float(winW) - rowW) / 2.0f
                      : buildBarAlign_ == 2 ? float(winW) - rowW - 10.0f
                                            : 10.0f;
@@ -1713,40 +1743,40 @@
                 SDL_RenderDrawRectF(ren_, &r);
                 // Infinite-build marker: bright +++ over the repeating unit's icon.
                 if (b->repeatType == bt) {
-                    float px = 2.8f * buildBarScale_;   // badges track the row scale
+                    float px = 2.8f * bScale;   // badges track the row scale
                     float pw = blockWidth("+++", px);
                     SDL_SetRenderDrawColor(ren_, 0, 0, 0, 180);
-                    SDL_FRect pb{r.x + (r.w - pw) / 2 - 3, r.y + 4 * buildBarScale_,
-                                 pw + 6, 22 * buildBarScale_};
+                    SDL_FRect pb{r.x + (r.w - pw) / 2 - 3, r.y + 4 * bScale,
+                                 pw + 6, 22 * bScale};
                     SDL_RenderFillRectF(ren_, &pb);
-                    blockText("+++", r.x + (r.w - pw) / 2, r.y + 7 * buildBarScale_, px,
+                    blockText("+++", r.x + (r.w - pw) / 2, r.y + 7 * bScale, px,
                               {120, 255, 130, 255});
                 }
                 // Queued-count badge (bottom-right of the icon): how many are queued.
                 if (int qc = frameQueuedCount(b->id, bt)) {
                     char num[8];
                     std::snprintf(num, sizeof num, "%d", qc);
-                    float px = 2.2f * buildBarScale_, nw = blockWidth(num, px);
+                    float px = 2.2f * bScale, nw = blockWidth(num, px);
                     SDL_SetRenderDrawColor(ren_, 0, 0, 0, 205);
-                    SDL_FRect nb{r.x + r.w - nw - 7 * buildBarScale_,
-                                 r.y + r.h - 21 * buildBarScale_,
-                                 nw + 7 * buildBarScale_, 20 * buildBarScale_};
+                    SDL_FRect nb{r.x + r.w - nw - 7 * bScale,
+                                 r.y + r.h - 21 * bScale,
+                                 nw + 7 * bScale, 20 * bScale};
                     SDL_RenderFillRectF(ren_, &nb);
-                    blockText(num, r.x + r.w - nw - 4 * buildBarScale_,
-                              r.y + r.h - 18 * buildBarScale_, px, {255, 235, 140, 255});
+                    blockText(num, r.x + r.w - nw - 4 * bScale,
+                              r.y + r.h - 18 * bScale, px, {255, 235, 140, 255});
                 }
                 if (hot) {
                     char tip[80];
                     std::snprintf(tip, sizeof tip, "%s  %d MANA", bt->name.c_str(),
                                   int(bt->buildCost));
-                    float px = 2.0f * buildBarScale_;
+                    float px = 2.0f * bScale;
                     float tw = blockWidth(tip, px);
                     float tipx = std::clamp(r.x + iconSz / 2 - tw / 2, 6.0f, winW - tw - 6);
                     SDL_SetRenderDrawColor(ren_, 0, 0, 0, 210);
-                    SDL_FRect tb{tipx - 6, iconY - 28 * buildBarScale_,
-                                 tw + 12, 26 * buildBarScale_};
+                    SDL_FRect tb{tipx - 6, iconY - 28 * bScale,
+                                 tw + 12, 26 * bScale};
                     SDL_RenderFillRectF(ren_, &tb);
-                    blockText(tip, tipx, iconY - 24 * buildBarScale_, px, {255, 240, 190, 255});
+                    blockText(tip, tipx, iconY - 24 * bScale, px, {255, 240, 190, 255});
                 }
                 iconRects_.push_back({r, bt});
                 x += iconSz + gap;
@@ -1756,7 +1786,7 @@
                 std::snprintf(q, sizeof q, "TRAINING %s (%zu)",
                               b->buildQueue.front()->name.c_str(),
                               b->buildQueue.size());
-                blockText(q, x0, iconY - 24 * buildBarScale_, 1.8f * buildBarScale_,
+                blockText(q, x0, iconY - 24 * bScale, 1.8f * bScale,
                           {160, 210, 255, 255});
             }
         }

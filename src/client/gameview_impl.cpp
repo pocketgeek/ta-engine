@@ -80,7 +80,7 @@
         edgeScrollOn_ = s.edgeScroll;
         uiScale_ = s.uiScale;
         buildBarAlign_ = std::clamp(s.buildBarAlign, 0, 2);   // Options: build-menu row
-        buildBarScale_ = std::clamp(s.buildBarScale, 0.75f, 2.0f);
+        buildBarScale_ = std::clamp(s.buildBarScale, 0.75f, 4.0f);
         // Bilinear filtering (retail video option): smooth the terrain and the
         // standalone feature/shadow sprites. The packed model-texture atlas stays
         // NEAREST regardless (linear sampling would bleed neighbouring sprites),

@@ -25,7 +25,7 @@ struct Settings {
     float uiScale    = 1.0f;       // in-game HUD scale; 0.75..2.0 (1.0 = 100%)
     int   antiAlias  = 0;          // scene supersampling: 0=off, 2=2x, 4=4x
     int   buildBarAlign = 1;       // conjure/build icon row: 0=left, 1=center, 2=right
-    float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..2.0
+    float buildBarScale = 1.0f;    // extra scale on the build icon row, ON TOP of uiScale; 0.75..4.0
     bool  bilinear   = false;      // smooth (bilinear) terrain + feature scaling, like retail's option
     bool  treeSway   = true;       // trees sway in the wind (beyond-retail nicety; display-only)
     bool  videoDeblock = false;    // deblock the Bink clips before upload. They are
