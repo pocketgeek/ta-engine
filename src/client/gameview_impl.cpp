@@ -261,7 +261,22 @@
     }
 
     void GameView::replayStep(float dt) {
-        if (paused_ || replayTick_ >= replayBundles_.size()) return;
+        // The early return used to sit HERE, which quietly broke the last snapshot:
+        // captureFrame only publishes the buffer, while the registration that makes a
+        // unit drawable happens in cosmeticStep (it walks front().live and calls
+        // registerUnit). Stop calling cosmeticStep and any unit that FIRST appears in
+        // the final snapshot is never registered -- so a replay consumed in one frame
+        // still renders an empty map, which is exactly the bug this was meant to fix.
+        // Publishing and registering are two steps and both have to keep running.
+        //
+        // Pausing is the same story: a paused replay still has to draw what it froze on.
+        if (!paused_ && replayTick_ < replayBundles_.size()) {
+            replayAdvance(dt);
+        }
+        cosmeticStep(dt);
+    }
+
+    void GameView::replayAdvance(float dt) {
         replayAccum_ += dt * speedMult();
         int guard = 0;
         bool advanced = false;
@@ -304,7 +319,6 @@
         // stayed empty, and playback drew the terrain with none of the recorded
         // armies on it. Effects follow the same snapshot, so cosmeticStep comes after.
         if (advanced) captureFrame();
-        cosmeticStep(dt);
     }
 
     size_t GameView::aliveUnits() const {

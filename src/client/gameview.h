@@ -628,6 +628,9 @@ public:
     // Advance playback by `dt` (real seconds), scaled by the game-speed control;
     // Pause freezes it. Applies each recorded bundle then ticks the world.
     void replayStep(float dt);
+    // Advance playback only. replayStep wraps this and ALWAYS runs cosmeticStep after
+    // it, including once playback has finished -- see the note there.
+    void replayAdvance(float dt);
     size_t replayTick() const { return replayTick_; }
     size_t replayLength() const { return replayBundles_.size(); }
 

@@ -147,6 +147,8 @@ struct MainMenu::Impl {
     int replayScroll_ = 0;            // first listed row
     std::vector<std::string> replayFiles_;   // full paths, newest first
     std::string chosenReplay_;
+    std::string pendingReplayError;   // set via setReplayError before run()
+    std::string replayError_;         // shown on the picker
     SDL_FRect replayBtnRect_[10]{};   // one per listed row (set each render)
     SDL_FRect benchBtnRect_[6]{};      // LOW..EXTRA ABSURD hit-rects (set each render)
     int chosenBenchmark_ = 0;         // picked benchmark level 1..6 (0 = none)
@@ -853,6 +855,14 @@ struct MainMenu::Impl {
             blockText(name, r.x + 12, r.y + (bh - 7 * lpx) / 2, lpx, {228, 232, 242, 255});
             by += bh + gap;
         }
+        if (!replayError_.empty()) {
+            std::string e = replayError_;
+            std::transform(e.begin(), e.end(), e.begin(),
+                           [](unsigned char c) { return char(std::toupper(c)); });
+            if (tw(e, 1.6f) > pw - pad * 2) e = e.substr(0, size_t((pw - pad * 2) / (6 * 1.6f)));
+            blockText(e, px0 + (pw - tw(e, 1.6f)) / 2, by + 2, 1.6f, {235, 130, 110, 255});
+            by += 22;
+        }
         std::string foot = "ESC - BACK";
         if (int(replayFiles_.size()) > kRows)
             foot += "     WHEEL - SCROLL  (" + std::to_string(replayScroll_ + 1) + "-" +
@@ -929,6 +939,7 @@ MainMenu::MainMenu(SDL_Renderer* ren, const hpi::Vfs& vfs, std::string install)
 MainMenu::~MainMenu() { delete d_; }
 
 void MainMenu::setConnectError(const std::string& msg) { d_->pendingConnectError = msg; }
+void MainMenu::setReplayError(const std::string& msg) { d_->pendingReplayError = msg; }
 
 MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverOut,
                                MenuMusic* music, Settings* settings) {
@@ -1008,6 +1019,14 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
         d_->openServerSelect(settings);
         d_->serverError = d_->pendingConnectError;
         d_->pendingConnectError.clear();
+    }
+    // Same idea for a refused replay: land back on the PICKER with the reason, not at
+    // a bare menu and certainly not in the server dialog.
+    if (!d_->pendingReplayError.empty()) {
+        d_->scanReplays();
+        d_->replayMenu_ = true;
+        d_->replayError_ = d_->pendingReplayError;
+        d_->pendingReplayError.clear();
     }
 
     Uint64 prev = SDL_GetPerformanceCounter();
@@ -1193,6 +1212,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                             const size_t k = size_t(d_->replayScroll_ + i);
                             if (k >= d_->replayFiles_.size()) break;
                             d_->chosenReplay_ = d_->replayFiles_[k];
+                            d_->replayError_.clear();
                             d_->replayMenu_ = false;
                             d_->flushSfx(w, h);
                             return Choice::Replay;

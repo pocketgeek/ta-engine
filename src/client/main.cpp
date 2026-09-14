@@ -643,6 +643,7 @@ int main(int argc, char** argv) {
     // MainMenu::run). Playing both back to back at startup was wrong.
     if (fromMenu && shot.empty()) tak::MainMenu::playIntro(ren, dataRoot);
     std::string menuConnectError;   // failed MP connect -> shown when the menu reopens
+    std::string menuReplayError;    // refused replay -> shown on the picker when it reopens
     for (;;) {
     if (tak::termRequested()) { quitApp = true; break; }   // SIGTERM/SIGINT between sessions
     if (fromMenu) { serverHost = launchServerHost;
@@ -690,6 +691,10 @@ int main(int argc, char** argv) {
             if (!menuConnectError.empty()) {   // reopen the dropdown with the error
                 menu.setConnectError(menuConnectError);
                 menuConnectError.clear();
+            }
+            if (!menuReplayError.empty()) {    // reopen the PICKER with the error
+                menu.setReplayError(menuReplayError);
+                menuReplayError.clear();
             }
             choice = menu.run(shot, &menuServer, &menuMusic, &settings);
             if (choice == tak::MainMenu::Choice::Campaign) {
@@ -929,7 +934,7 @@ int main(int argc, char** argv) {
             auto replayFailed = [&](const std::string& why) {
                 std::fprintf(stderr, "replay: cannot read %s%s%s\n", args[0].c_str(),
                              why.empty() ? "" : " -- ", why.c_str());
-                if (fromMenu) menuConnectError = why.empty() ? "cannot read that replay" : why;
+                if (fromMenu) menuReplayError = why.empty() ? "cannot read that replay" : why;
             };
             if (!loadReplayFile(args[0], rf)) {
                 replayFailed(rf.error);
@@ -942,34 +947,37 @@ int main(int argc, char** argv) {
             // playback ever started. (setupMission requires exactly this file, so if
             // it is missing the recording cannot be replayed at all.)
             std::string mapPath;
+            const auto rpol0 = tak::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
+            tak::hpi::Vfs probeVfs = tak::hpi::mountRetailRoot(dataRoot, rpol0);
             if (!rf.mission.empty()) {
                 mapPath = "missions/" + rf.mission + ".tnt";
-                if (!vfs.has(mapPath)) {
+                if (!probeVfs.has(mapPath)) {
                     replayFailed("mission '" + rf.mission + "' is not in this game data");
                     if (fromMenu) continue;
                     return 1;
                 }
             } else {
-                mapPath = tak::hpi::findMap(vfs, rf.mapId);
+                mapPath = tak::hpi::findMap(probeVfs, rf.mapId);
                 if (mapPath.empty()) {
                     replayFailed("map '" + rf.mapId + "' is not in this game data");
                     if (fromMenu) continue;
                     return 1;
                 }
             }
-            // Replay under the tier the game was recorded at (startReplay rebinds the vfs).
+            // Replay under the tier the game was RECORDED at, in a mount of its own.
+            // Remounting the outer `vfs` instead left it at the replay's tier while
+            // `pol` still named the session's, so the two disagreed from then on: watch
+            // a None-tier replay and then a Full-tier one and the second would be
+            // hashed against None-tier data while its viewer loaded Full -- a mismatch
+            // warning about nothing. The outer vfs and pol are now untouched, and
+            // everything the replay does -- resolve, hash, construct -- uses this one.
             auto rpol = tak::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
-            if (rpol != pol) vfs = tak::hpi::mountRetailRoot(dataRoot, rpol);
-            // Fingerprint the data NOW, while we still own the vfs: it is moved into
-            // the view below, and hashing the moved-from husk afterwards reported a
-            // mismatch against every recording.
-            const uint64_t myDataHash = tak::hpi::gameplayHash(vfs);
+            tak::hpi::Vfs rvfs = std::move(probeVfs);   // already mounted at the replay's tier
+            const uint64_t myDataHash = tak::hpi::gameplayHash(rvfs);
             // From the menu, hand the view its OWN mount and leave the outer vfs
             // intact -- the front-end still needs it when playback ends, and the
             // ordinary game launch does exactly this for the same reason.
-            gameView = std::make_unique<GameView>(ren,
-                                                  fromMenu ? tak::hpi::mountRetailRoot(dataRoot, rpol)
-                                                           : std::move(vfs),
+            gameView = std::make_unique<GameView>(ren, std::move(rvfs),
                                                   mapPath, dataRoot, rpol,
                                                   false, false, false, /*bare=*/true, "ara", "tar",
                                                   rf.crusades);

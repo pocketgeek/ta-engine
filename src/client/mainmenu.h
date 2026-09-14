@@ -58,6 +58,11 @@ public:
     int chosenBenchmarkLevel() const;
     // Full path of the .takrep the user picked (Choice::Replay). Empty otherwise.
     const std::string& chosenReplay() const;
+    // Show `msg` on the replay picker when the menu next opens, and open the picker.
+    // Deliberately NOT setConnectError: that one reopens the server/account dialog,
+    // so routing a replay failure through it answered "this recording is too old"
+    // with a multiplayer login prompt.
+    void setReplayError(const std::string& msg);
 
     // Play a fullscreen intro clip (Movies/<nameLower>, e.g. "logo.bik") once, scaled
     // to fill the window (letterboxed, linear-filtered). Returns when the clip ends or
