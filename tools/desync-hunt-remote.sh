@@ -28,6 +28,26 @@
 # usage: tools/desync-hunt-remote.sh [--host H] [--minutes N] [--jobs N] [--validate]
 set -u
 
+# RUN FROM A SNAPSHOT, NOT FROM THE LIVE FILE -- and do it before ANY argument is
+# consumed, so the re-exec forwards them intact. bash reads a script incrementally from
+# disk, so editing this file mid-sweep makes the shell resume at a byte offset that now
+# holds different text: that produced "line 376: to: command not found", re-entered the
+# dispatch loop so all 20 runs reported twice, and cost a 45-minute sweep. A sweep runs
+# long enough that wanting to edit it is normal, so make editing safe rather than rely
+# on remembering not to.
+if [ -z "${TAK_SWEEP_SNAPSHOT:-}" ]; then
+  _snap=$(mktemp "${TMPDIR:-/tmp}/desync-hunt-remote.XXXXXX.sh")
+  cat "$0" >"$_snap"; chmod +x "$_snap"
+  export TAK_SWEEP_SNAPSHOT="$_snap"
+  exec "$_snap" "$@"
+fi
+# NOTE: no `trap ... EXIT` here. The cleanup() registered further down would REPLACE
+# it -- bash traps do not accumulate -- so the snapshot is removed inside cleanup()
+# instead. Sweep up anything an earlier run leaked (a SIGPIPE death, from piping the
+# output into grep or head, skips traps entirely). The snapshot cannot be unlinked
+# early: bash is still reading the script from that path.
+find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'desync-hunt-remote.*.sh' -mmin +120 -delete 2>/dev/null || true
+
 # HOSTS: "name:jobs:weight". WEIGHT picks which runs a box is allowed to take --
 # `heavy` boxes get everything, `light` boxes only the runs that stay small.
 #
@@ -66,10 +86,14 @@ done
 CLIENT=./build-dbg/takclient
 [ -x "$CLIENT" ] || { echo "build-dbg/takclient missing" >&2; exit 2; }
 
+
 OUT="${TMPDIR:-/tmp}/desync-remote-$$"; mkdir -p "$OUT"
 CTL="$OUT/ctl-%C"
 SSH=(ssh -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o BatchMode=yes)
-PORT_BASE=7900
+# Two sweeps running at once would otherwise fight over the same ports: the table is
+# indexed from PORT_BASE, so a second invocation hands its clients the first one's
+# referees. Overridable rather than fixed.
+PORT_BASE="${TAK_PORT_BASE:-7900}"
 # Every referee this run starts is recorded here as "host<TAB>pid", and cleanup kills
 # exactly those. `pkill -x takserver` would kill every server owned by the account --
 # a concurrent sweep, or somebody's live game. A test harness must not be able to take
@@ -80,6 +104,7 @@ PIDFILE="$OUT/started-servers"
 note_server() { printf '%s\t%s\n' "$1" "$2" >>"$PIDFILE"; }
 
 cleanup() {
+  rm -f "${TAK_SWEEP_SNAPSHOT:-}" 2>/dev/null || true
   [ -s "$PIDFILE" ] || return 0
   local hosts; hosts=$(cut -f1 "$PIDFILE" | sort -u)
   for h in $hosts; do
@@ -99,6 +124,24 @@ echo "desync hunt: ${MINUTES}m per run"
 echo "hosts: $HOSTS_SPEC"
 echo "logs: $OUT"
 
+# Run table. Each entry: NAME|MAP|ENVS|FLAGS|SEAT|WEIGHT[|HUMANS]
+#
+# HUMANS (default 1) is how many SEATED PLAYERS the run uses. Two or more is not a
+# bigger version of one -- it reaches code one human cannot:
+#
+#   * REFEREE SUSPECT is gated on `live >= 2` (server.cpp): with a single client there
+#     is no consensus to appeal with, so that whole branch is unreachable. This script
+#     greps for the string; until now it could never have been produced.
+#   * One human only ever proves client-agrees-with-referee. TWO independent client
+#     sims agreeing with EACH OTHER is the property a real match depends on, and it is
+#     what catches a divergence the referee happens to share.
+#   * canAdvance paces to the slowest of several humans, and the tick-0 load gate waits
+#     for every seated human. Both are no-ops with one.
+#
+# The host seats its AIs in the TOP slots ("leaving the low slots for human joiners"),
+# joiners come in with --mpjoin, and TAK_MP_WAIT holds the start until the table is
+# full -- so N humans means TAK_MP_AIS=(8-N) and TAK_MP_WAIT=8.
+#
 # Run table. Each entry: NAME|MAP|ENVS|FLAGS|SEAT
 #   SEAT=human -> the local client takes a PLAYER slot (7 AIs + 1 human). Its hash is
 #                 compared against the referee every kHashPeriod ticks. This is the only
@@ -128,6 +171,14 @@ RUNS=(
   "h-everything|Tarosian Plain|TAK_GODS=1 TAK_STRESS=1 TAK_AI_LEVEL=4 TAK_FOG=1|--crusades|human|heavy"
   "h-speed-1x|Ulasem Arena|TAK_SPEED=10||human|light"
   "h-two-castles|Two Castles|TAK_GODS=1|--crusades|human|light"
+  # --- multi-human: two independent client sims, compared to each other and to the
+  # referee. These are the only entries that can reach the live>=2 consensus logic.
+  "2h-baseline|Ulasem Arena|||human|light|2"
+  "2h-gods|Ulasem Arena|TAK_GODS=1||human|light|2"
+  "2h-crusades|Tarosian Plain||--crusades|human|light|2"
+  "2h-stress|Ulasem Arena|TAK_STRESS=1||human|heavy|2"
+  "3h-baseline|Ulasem Arena|||human|light|3"
+  "4h-gods|Ulasem Arena|TAK_GODS=1||human|light|4"
   "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch|heavy"
   "w-allai-bench|Ulasem Arena|TAK_BENCH=3||watch|heavy"
 )
@@ -140,8 +191,8 @@ SPEED_DEFAULT="TAK_SPEED=40"
 # quietly tests the wrong configuration is worse than one that fails.
 for _spec in "${RUNS[@]}"; do
   _n=$(awk -F'|' '{print NF}' <<<"$_spec")
-  if [ "$_n" != "6" ]; then
-    echo "BAD RUN TABLE ENTRY ($_n fields, want 6 -- name|map|envs|flags|seat|weight):" >&2
+  if [ "$_n" != "6" ] && [ "$_n" != "7" ]; then
+    echo "BAD RUN TABLE ENTRY ($_n fields, want 6 or 7 -- name|map|envs|flags|seat|weight[|humans]):" >&2
     echo "  $_spec" >&2
     exit 2
   fi
@@ -149,12 +200,16 @@ done
 
 run_one() {
   local host="$1" idx="$2" spec="$3"
-  local name map envs flags seat weight
+  local name map envs flags seat weight humans
   name="${spec%%|*}"; spec="${spec#*|}"
   map="${spec%%|*}";  spec="${spec#*|}"
   envs="${spec%%|*}"; spec="${spec#*|}"
   flags="${spec%%|*}"; spec="${spec#*|}"
-  seat="${spec%%|*}"; weight="${spec##*|}"
+  seat="${spec%%|*}"; spec="${spec#*|}"
+  weight="${spec%%|*}"
+  # HUMANS is optional; a 6-field entry means one seated player.
+  if [ "$spec" = "$weight" ]; then humans=1; else humans="${spec#*|}"; fi
+  case "$humans" in ''|*[!0-9]*) humans=1;; esac
   local port=$((PORT_BASE + idx)) seed=$((2000 + idx))
   local clog="$OUT/$name.client.log"
   local SSHH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
@@ -175,7 +230,10 @@ run_one() {
 
   # SEAT: watch -> spectator (TAK_MP_WATCH=1, 8 AIs). human -> a real player slot with
   # 7 AIs alongside, which is what makes the referee compare hashes at all.
-  local seatenv="TAK_MP_AIS=7"
+  # Seat the table. N humans -> (8-N) AIs, and the host waits for a full 8 before
+  # starting so the joiners are actually in the game rather than racing its first tick.
+  local nai=$((8 - humans))
+  local seatenv="TAK_MP_AIS=$nai TAK_MP_WAIT=8"
   [ "$seat" = "watch" ] && seatenv="TAK_MP_WATCH=1 TAK_MP_AIS=8"
 
   local secs=$((MINUTES * 60))
@@ -183,8 +241,25 @@ run_one() {
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $seatenv $SPEED_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
       --server "$host" --serverport "$port" --mphost --time "$secs" $flags \
-      >"$clog" 2>&1
-  local rc=$?
+      >"$clog" 2>&1 &
+  local hostpid=$!
+
+  # Joiners take the low slots. Give the host a moment to create the room first --
+  # joining before the game exists just burns the list-poll.
+  local jpids=() j
+  if [ "$humans" -gt 1 ]; then
+    sleep 8
+    for ((j = 2; j <= humans; j++)); do
+      # shellcheck disable=SC2086
+      env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $SPEED_DEFAULT $envs \
+          timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
+          --server "$host" --serverport "$port" --mpjoin --time "$secs" $flags \
+          >"$OUT/$name.client$j.log" 2>&1 &
+      jpids+=($!)
+    done
+  fi
+  wait "$hostpid"; local rc=$?
+  for j in "${jpids[@]}"; do wait "$j" || true; done
 
   # STOP THE REFEREE BEFORE READING ITS LOG. It keeps writing as the client goes away
   # ("client N dropped", "game ended"), so fetching while it runs and then measuring
@@ -220,6 +295,37 @@ run_one() {
   grep -qi "REFEREE SUSPECT" "$OUT/$name.server.log" 2>/dev/null && hit="${hit}REFEREE-SUSPECT "
   grep -qi "desync"          "$clog" 2>/dev/null && hit="${hit}client-desync "
   local done_line; done_line=$(grep -E "mp-headless done" "$clog" | tail -1)
+
+  # EVERY EXTRA HUMAN MUST FINISH CLEANLY TOO -- a joiner that died or errored would
+  # otherwise be invisible, since only the host's line is parsed above.
+  #
+  # ON COMPARING CLIENT HASHES DIRECTLY: only do it when the clients stopped on the
+  # SAME TICK. They frequently do not -- the headless loop drains a BATCH of bundles
+  # per frame and breaks once netTick passes the limit, so eight clients asked for 5400
+  # ticks stopped at 5419, 5431, 5436 and 5438. Those hashes describe different world
+  # states and differ for entirely healthy reasons; comparing them reports a desync
+  # that is not there (it did exactly that on the first all-human run).
+  #
+  # Cross-client agreement is not lost by skipping it: the referee compares EVERY
+  # client at MATCHING ticks, so A==referee and B==referee at tick T gives A==B at T.
+  # The one case that transitivity misses -- all clients agreeing with each other but
+  # not the referee -- is precisely what REFEREE SUSPECT detects, and that is grepped
+  # for above. So the tick-aligned comparison here is a bonus check, not the mechanism.
+  if [ "$humans" -gt 1 ]; then
+    local h1 hn t1 tn jl
+    h1=$(grep -oE 'hash=[0-9a-f]+' "$clog" | tail -1)
+    t1=$(grep -oE 'tick=[0-9]+' "$clog" | tail -1)
+    for ((j = 2; j <= humans; j++)); do
+      jl="$OUT/$name.client$j.log"
+      grep -q "mp-headless done" "$jl" 2>/dev/null || { hit="${hit}client$j-no-completion "; continue; }
+      grep -q "err=none" "$jl" 2>/dev/null || hit="${hit}client$j-error "
+      hn=$(grep -oE 'hash=[0-9a-f]+' "$jl" | tail -1)
+      tn=$(grep -oE 'tick=[0-9]+' "$jl" | tail -1)
+      if [ "$t1" = "$tn" ] && [ -n "$t1" ]; then
+        [ "$h1" = "$hn" ] || hit="${hit}client-mismatch@$t1(1=$h1 $j=$hn) "
+      fi
+    done
+  fi
   [ -z "$done_line" ] && hit="${hit}no-completion "
   [ "$rc" = "0" ] || hit="${hit}rc=$rc "
   # err= carries the client's own verdict ("peer closed", "desync detected", ...).
@@ -269,7 +375,10 @@ NH=${#H_NAME[@]}
 
 declare -a ASSIGN=()
 for j in "${!RUNS[@]}"; do
-  w="${RUNS[$j]##*|}"
+  # Field 6 is the weight. NOT ${...##*|} -- the optional 7th (humans) field would make
+  # that read "2" as a weight, and a heavy run would quietly become eligible for a
+  # small host. Position, not last-field convenience.
+  w=$(cut -d'|' -f6 <<<"${RUNS[$j]}")
   best=-1
   for ((h = 0; h < NH; h++)); do
     # Capability check: only a heavy host may take a heavy run. Everything else is fair
@@ -307,7 +416,11 @@ if [ "$DRYRUN" = "1" ]; then
   for ((h = 0; h < NH; h++)); do
     printf -- "-> %s: %d runs, %s at a time (%s)\n" "${H_NAME[$h]}" "${H_COUNT[$h]}" "${H_JOBS[$h]}" "${H_WEIGHT[$h]}"
     for j in "${!RUNS[@]}"; do
-      [ "${ASSIGN[$j]}" = "$h" ] && printf -- "     %s (%s)\n" "$(cut -d'|' -f1 <<<"${RUNS[$j]}")" "${RUNS[$j]##*|}"
+      if [ "${ASSIGN[$j]}" = "$h" ]; then
+        _w=$(cut -d'|' -f6 <<<"${RUNS[$j]}")
+        _hn=$(cut -d'|' -f7 <<<"${RUNS[$j]}"); [ -n "$_hn" ] || _hn=1
+        printf -- "     %-18s %-6s %s human(s)\n" "$(cut -d'|' -f1 <<<"${RUNS[$j]}")" "$_w" "$_hn"
+      fi
     done
   done
   echo "placed $_placed of ${#RUNS[@]} runs"
