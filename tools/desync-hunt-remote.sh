@@ -50,6 +50,7 @@ LDATA="assets/game"
 MINUTES=45
 JOBS=12
 VALIDATE=0
+DRYRUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --hosts)    HOSTS_SPEC="$2"; shift 2;;
@@ -57,6 +58,7 @@ while [ $# -gt 0 ]; do
     --jobs)     JOBS="$2"; shift 2;;
     --data)     LDATA="$2"; shift 2;;
     --validate) VALIDATE=1; shift;;
+    --dry-run)  DRYRUN=1; shift;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -68,9 +70,27 @@ OUT="${TMPDIR:-/tmp}/desync-remote-$$"; mkdir -p "$OUT"
 CTL="$OUT/ctl-%C"
 SSH=(ssh -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o BatchMode=yes)
 PORT_BASE=7900
+# Every referee this run starts is recorded here as "host<TAB>pid", and cleanup kills
+# exactly those. `pkill -x takserver` would kill every server owned by the account --
+# a concurrent sweep, or somebody's live game. A test harness must not be able to take
+# down what it is testing alongside. (This bit during development: a stray pkill in a
+# monitor killed servers out from under a running sweep and cost two confused runs.)
+PIDFILE="$OUT/started-servers"
+: >"$PIDFILE"
+note_server() { printf '%s\t%s\n' "$1" "$2" >>"$PIDFILE"; }
+
 cleanup() {
-  for hspec in $HOSTS_SPEC; do
-    "${SSH[@]}" "$RUSER@${hspec%%:*}" 'pkill -x takserver 2>/dev/null; true' >/dev/null 2>&1 || true
+  [ -s "$PIDFILE" ] || return 0
+  local hosts; hosts=$(cut -f1 "$PIDFILE" | sort -u)
+  for h in $hosts; do
+    local pids; pids=$(awk -v h="$h" -F'\t' '$1==h {printf "%s ", $2}' "$PIDFILE")
+    [ -n "$pids" ] || continue
+    # Confirm each pid is still OUR takserver before signalling: pids get recycled, and
+    # killing a stranger because a number came round again is the same class of bug.
+    "${SSH[@]}" "$RUSER@$h" "for p in $pids; do \
+         c=\$(cat /proc/\$p/comm 2>/dev/null); \
+         [ \"\$c\" = takserver ] && kill \$p 2>/dev/null; \
+       done; true" >/dev/null 2>&1 || true
   done
 }
 trap cleanup EXIT INT TERM
@@ -142,8 +162,10 @@ run_one() {
 
   # Start the referee on the remote. No --local and no tunnel: this is a LAN, so the
   # client reaches it over a real NIC, which is the point of running it remotely.
-  rsh1 "nohup $RBIN --port $port --data $RDATA --replaydir $RREPLAY --no-auth \
-        --seed $seed >/tmp/tak-srv-$port.log 2>&1 & sleep 1" >/dev/null 2>&1
+  local spid
+  spid=$(rsh1 "nohup $RBIN --port $port --data $RDATA --replaydir $RREPLAY --no-auth \
+         --seed $seed >/tmp/tak-srv-$port.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
+  [ -n "$spid" ] && note_server "$host" "$spid"
   local up=0
   for _ in $(seq 60); do
     rsh1 "grep -q listening /tmp/tak-srv-$port.log 2>/dev/null" && { up=1; break; }
@@ -165,14 +187,28 @@ run_one() {
   local rc=$?
 
   rsh1 "cat /tmp/tak-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null
-  rsh1 "pkill -f \"takserver --port $port\" 2>/dev/null; true" >/dev/null 2>&1
+  # Kill THIS run's referee by pid, not by pattern: a pattern match would also hit a
+  # concurrent sweep, and pkill -x would hit every server on the account.
+  [ -n "$spid" ] && rsh1 "kill $spid 2>/dev/null; true" >/dev/null 2>&1
 
+  # THE VERDICT. A run only passes if it actually ran: the completion line alone is
+  # not enough, because a client that lost its connection still prints one. A real
+  # example from this harness: "tick=0 hash=... units=0 err=peer closed" -- a run that
+  # never ticked once, next to a referee log with no complaints in it, which reads as
+  # a pass if you only check that the line exists. Require the exit status, the error
+  # field, and a server log we actually retrieved.
   local hit=""
   grep -qi "DESYNCED"        "$OUT/$name.server.log" 2>/dev/null && hit="${hit}DESYNC "
   grep -qi "REFEREE SUSPECT" "$OUT/$name.server.log" 2>/dev/null && hit="${hit}REFEREE-SUSPECT "
   grep -qi "desync"          "$clog" 2>/dev/null && hit="${hit}client-desync "
   local done_line; done_line=$(grep -E "mp-headless done" "$clog" | tail -1)
-  [ -z "$done_line" ] && hit="${hit}no-completion(rc=$rc) "
+  [ -z "$done_line" ] && hit="${hit}no-completion "
+  [ "$rc" = "0" ] || hit="${hit}rc=$rc "
+  # err= carries the client's own verdict ("peer closed", "desync detected", ...).
+  [ -n "$done_line" ] && { echo "$done_line" | grep -q "err=none" || hit="${hit}client-error "; }
+  # No server log means we cannot say what the referee saw, so we must not claim it
+  # saw nothing wrong.
+  [ -s "$OUT/$name.server.log" ] || hit="${hit}no-server-log "
 
   if [ -n "$hit" ]; then echo "HIT  $name @$host [seat=$seat seed=$seed map=$map $envs $flags] -- $hit"
                          echo "     $done_line"
@@ -186,13 +222,14 @@ if [ "$VALIDATE" = "1" ]; then
   vhost="${HOSTS_SPEC%%:*}"; vhost="${vhost%% *}"
   echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
   VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
-  "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 & sleep 1" >/dev/null 2>&1
+  vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
+  [ -n "$vpid" ] && note_server "$vhost" "$vpid"
   for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 TAK_FAKE_DESYNC=900 \
       timeout -k 30 400 $CLIENT game "Ulasem Arena" --data "$LDATA" \
       --server "$vhost" --serverport 7890 --mphost --time 120 >"$OUT/validate.client.log" 2>&1
   "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-val.log" >"$OUT/validate.server.log" 2>/dev/null
-  "${VSSH[@]}" "$RUSER@$vhost" 'pkill -x takserver 2>/dev/null; true' >/dev/null 2>&1
+  [ -n "$vpid" ] && "${VSSH[@]}" "$RUSER@$vhost" "kill $vpid 2>/dev/null; true" >/dev/null 2>&1
   if grep -qi "DESYNCED" "$OUT/validate.server.log"; then
     echo "   PASS -- referee reported: $(grep -i DESYNCED "$OUT/validate.server.log" | head -1)"
   else
@@ -204,34 +241,89 @@ fi
 # Dispatch. Each host drains its own queue at its own concurrency, so a 2-core box
 # never gates a 32-core one: the small host simply takes fewer, lighter runs and
 # finishes when it finishes.
-idx=0
-declare -a HOST_PIDS=()
+# DISPATCH. Assign every run to exactly one host, then let each host drain its own
+# queue at its own concurrency.
+#
+# The previous version PARTITIONED by weight -- heavy hosts took only heavy runs,
+# light hosts only light -- so configuring a single heavy host silently skipped every
+# light case, and the sweep reported on a fraction of its table without saying so. A
+# skipped test that never announces itself is indistinguishable from a passing one.
+#
+# The rule is a capability, not a partition: a HEAVY run needs a heavy host; a LIGHT
+# run will go anywhere. Runs are placed on the eligible host with the lowest projected
+# load (assigned / jobs), so a big box absorbs the bulk without starving a small one.
+H_NAME=(); H_JOBS=(); H_WEIGHT=(); H_COUNT=()
 for hspec in $HOSTS_SPEC; do
-  hname="${hspec%%:*}"; rest="${hspec#*:}"
-  hjobs="${rest%%:*}"; hweight="${rest##*:}"
-  # Partition the table: a `light` host takes only light runs; a `heavy` host takes
-  # everything it is handed. Indices stay globally unique so ports never collide.
-  mine=(); myidx=()
-  j=0
-  for spec in "${RUNS[@]}"; do
-    w="${spec##*|}"
-    take=0
-    if [ "$hweight" = "heavy" ]; then
-      # heavy box takes the heavy runs plus whatever light ones are left over
-      [ "$w" = "heavy" ] && take=1
-    else
-      [ "$w" = "light" ] && take=1
+  H_NAME+=("${hspec%%:*}")
+  _rest="${hspec#*:}"
+  H_JOBS+=("${_rest%%:*}")
+  H_WEIGHT+=("${_rest##*:}")
+  H_COUNT+=(0)
+done
+NH=${#H_NAME[@]}
+[ "$NH" -gt 0 ] || { echo "no hosts configured" >&2; exit 2; }
+
+declare -a ASSIGN=()
+for j in "${!RUNS[@]}"; do
+  w="${RUNS[$j]##*|}"
+  best=-1
+  for ((h = 0; h < NH; h++)); do
+    # Capability check: only a heavy host may take a heavy run. Everything else is fair
+    # game for any host.
+    if [ "$w" = "heavy" ] && [ "${H_WEIGHT[$h]}" != "heavy" ]; then continue; fi
+    if [ "$best" -lt 0 ]; then best=$h; continue; fi
+    # Lower projected load wins: (count+1)/jobs, compared by cross-multiplication so
+    # this stays integer arithmetic.
+    if [ $(( (H_COUNT[h] + 1) * H_JOBS[best] )) -lt $(( (H_COUNT[best] + 1) * H_JOBS[h] )) ]; then
+      best=$h
     fi
-    [ "$take" = "1" ] && { mine+=("$spec"); myidx+=("$j"); }
-    j=$((j + 1))
   done
-  echo "-> $hname: ${#mine[@]} runs, ${hjobs} at a time ($hweight)"
+  if [ "$best" -lt 0 ]; then
+    echo "NO HOST CAN RUN '$(cut -d'|' -f1 <<<"${RUNS[$j]}")' (weight=$w)." >&2
+    echo "Configure at least one host with weight 'heavy', or drop the run." >&2
+    exit 2
+  fi
+  ASSIGN[$j]=$best
+  H_COUNT[$best]=$(( H_COUNT[best] + 1 ))
+done
+
+# Every run must be placed. Refuse to start a sweep that would quietly cover less than
+# its table.
+_placed=0
+for ((h = 0; h < NH; h++)); do _placed=$(( _placed + H_COUNT[h] )); done
+[ "$_placed" = "${#RUNS[@]}" ] || {
+  echo "assignment covered $_placed of ${#RUNS[@]} runs -- refusing to run a partial sweep" >&2
+  exit 2
+}
+
+# --dry-run: print the assignment and stop. Lets the placement rules be checked
+# without starting 20 games -- which is how "a single heavy host silently skips every
+# light run" should have been caught before it shipped.
+if [ "$DRYRUN" = "1" ]; then
+  for ((h = 0; h < NH; h++)); do
+    printf -- "-> %s: %d runs, %s at a time (%s)\n" "${H_NAME[$h]}" "${H_COUNT[$h]}" "${H_JOBS[$h]}" "${H_WEIGHT[$h]}"
+    for j in "${!RUNS[@]}"; do
+      [ "${ASSIGN[$j]}" = "$h" ] && printf -- "     %s (%s)\n" "$(cut -d'|' -f1 <<<"${RUNS[$j]}")" "${RUNS[$j]##*|}"
+    done
+  done
+  echo "placed $_placed of ${#RUNS[@]} runs"
+  exit 0
+fi
+
+declare -a HOST_PIDS=()
+for ((h = 0; h < NH; h++)); do
+  mine=(); myidx=()
+  for j in "${!RUNS[@]}"; do
+    [ "${ASSIGN[$j]}" = "$h" ] && { mine+=("${RUNS[$j]}"); myidx+=("$j"); }
+  done
+  echo "-> ${H_NAME[$h]}: ${#mine[@]} runs, ${H_JOBS[$h]} at a time (${H_WEIGHT[$h]})"
+  [ "${#mine[@]}" -gt 0 ] || continue
   (
     k=0
     for spec in "${mine[@]}"; do
-      run_one "$hname" "${myidx[$k]}" "$spec" &
+      run_one "${H_NAME[$h]}" "${myidx[$k]}" "$spec" &
       k=$((k + 1))
-      while [ "$(jobs -rp | wc -l)" -ge "$hjobs" ]; do sleep 5; done
+      while [ "$(jobs -rp | wc -l)" -ge "${H_JOBS[$h]}" ]; do sleep 5; done
     done
     wait
   ) &
