@@ -747,6 +747,10 @@ public:
     // Line of sight: no blocked cell between the two world points, ignoring cells
     // within `skip0`/`skip1` cells of each endpoint — so a shooter or target's own
     // building footprint doesn't block the shot, but a wall between them does.
+    // Can a `foot`-cell body travel the straight line between two CELLS without
+    // being stopped? Used to shortcut a traced route (see the path-install code).
+    bool lineFits(int x0, int z0, int x1, int z1, int foot) const;
+
     bool losBetween(float wx0, float wz0, float wx1, float wz1,
                     int skip0 = 0, int skip1 = 0) const;
 

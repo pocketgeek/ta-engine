@@ -101,3 +101,7 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   `docs/model-rendering-plan.md`.
 - Match the surrounding code's style, naming, and comment density. C++20.
 - Put temporary/scratch files in the system temp dir, never in the repo.
+- **Run long or blocking commands in the background** (`run_in_background=true`):
+  dev servers, watch tasks, builds, test suites, the headless `--mpai` harness.
+  Prefer backgrounding over waiting whenever the command does not have to finish
+  before the next step.

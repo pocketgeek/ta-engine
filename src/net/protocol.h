@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 76;       // 76: factory output spawns/rallies to FREE
+constexpr uint32_t kNetVersion = 77;       // 77: traced routes are string-pulled from
+                                           //     the unit's CURRENT cell before install
+                                           // 76: factory output spawns/rallies to FREE
                                            //     spots; buildings hold rally orders
                                            // 75: the SIM summons gods (the client did,
                                            //     the referee never did -> desync)

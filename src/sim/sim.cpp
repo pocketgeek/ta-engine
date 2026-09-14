@@ -903,6 +903,28 @@ bool NavGrid::lineClear(int x0, int z0, int x1, int z1) const {
     }
 }
 
+bool NavGrid::lineFits(int x0, int z0, int x1, int z1, int foot) const {
+    // Like lineClear, but asks whether a body of `foot` cells FITS at every cell the
+    // line crosses -- and, on a diagonal step, at both cells it passes between, so a
+    // shortcut can never squeeze a body through a corner the mover would be stopped by
+    // (the movers themselves refuse diagonal corner-cutting; see the step loop in the
+    // search). Integer Bresenham, so it is exact and identical on every peer.
+    int dx = std::abs(x1 - x0), dz = -std::abs(z1 - z0);
+    int sx = x0 < x1 ? 1 : -1, sz = z0 < z1 ? 1 : -1, err = dx + dz;
+    for (int guard = 0; guard < 8192; ++guard) {
+        if (!fits(x0, z0, foot)) return false;
+        if (x0 == x1 && z0 == z1) return true;
+        const int e2 = 2 * err;
+        const bool stepX = e2 >= dz, stepZ = e2 <= dx;
+        if (stepX && stepZ) {   // diagonal: both orthogonal neighbours must fit too
+            if (!fits(x0 + sx, z0, foot) || !fits(x0, z0 + sz, foot)) return false;
+        }
+        if (stepX) { err += dz; x0 += sx; }
+        if (stepZ) { err += dx; z0 += sz; }
+    }
+    return false;
+}
+
 bool NavGrid::losBetween(float wx0, float wz0, float wx1, float wz1,
                          int skip0, int skip1) const {
     if (empty()) return true;
@@ -4133,13 +4155,53 @@ void World::tick(float dt) {
             const bool reachedGoal =
                 !route.empty() && route.back().x == int(gx) / 16 &&
                 route.back().z == int(gz) / 16;
+            // SHORTCUT the traced route before installing it ("string pulling").
+            //
+            // The tracer emits a waypoint at every change of direction, and a march
+            // across open ground alternates orthogonal and diagonal steps -- so a
+            // completely unobstructed trip came back as a staircase of ~one waypoint
+            // per cell, hit the 64-waypoint cap before reaching the goal, and made the
+            // unit visibly jink at every one of them (the mover aims within 3px of an
+            // intermediate waypoint). Going around an obstacle had the same problem in
+            // the large: the trace hugs the outline, so a unit followed the far side of
+            // a plateau instead of cutting the corner once it was past.
+            //
+            // Keep only the waypoints that are actually needed: from where we are, take
+            // the FARTHEST waypoint still reachable in a straight line this body fits
+            // through, jump to it, repeat. Scanning from the end means open ground
+            // costs one test and collapses to a single waypoint.
+            //
+            // Starting from the unit's CURRENT cell (not the cell it occupied when the
+            // search was requested) also drops the waypoints it has already walked past
+            // while the search was in flight -- which used to reconnect the route behind
+            // the unit and send it backtracking.
+            const NavGrid& ng = navFor(u->type);
+            const int ufoot = footCells(u->type);
+            std::vector<PathCell> pulled;
+            if (!ng.empty()) {
+                PathCell at{int(u->x) / 16, int(u->z) / 16};
+                size_t from = 0;
+                while (from < route.size() && pulled.size() < 64) {
+                    size_t take = from;
+                    for (size_t j = route.size(); j-- > from;)
+                        if (ng.lineFits(at.x, at.z, route[j].x, route[j].z, ufoot)) {
+                            take = j;
+                            break;
+                        }
+                    pulled.push_back(route[take]);
+                    at = route[take];
+                    if (take + 1 >= route.size()) break;
+                    from = take + 1;
+                }
+            }
+            const std::vector<PathCell>& useRoute = pulled.empty() ? route : pulled;
             std::vector<Order> path;
-            path.reserve(route.size());
-            for (size_t i = 0; i < route.size(); ++i) {
+            path.reserve(useRoute.size());
+            for (size_t i = 0; i < useRoute.size(); ++i) {
                 Order o;
-                o.x = float(route[i].x) * 16.0f + 8.0f;
-                o.z = float(route[i].z) * 16.0f + 8.0f;
-                if (i + 1 == route.size() && reachedGoal) { o.x = gx; o.z = gz; }
+                o.x = float(useRoute[i].x) * 16.0f + 8.0f;
+                o.z = float(useRoute[i].z) * 16.0f + 8.0f;
+                if (i + 1 == useRoute.size() && reachedGoal) { o.x = gx; o.z = gz; }
                 path.push_back(o);
             }
             // A route clipped at 64 waypoints stops short of where the player
