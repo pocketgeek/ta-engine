@@ -186,10 +186,28 @@ run_one() {
       >"$clog" 2>&1
   local rc=$?
 
-  rsh1 "cat /tmp/tak-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null
-  # Kill THIS run's referee by pid, not by pattern: a pattern match would also hit a
-  # concurrent sweep, and pkill -x would hit every server on the account.
-  [ -n "$spid" ] && rsh1 "kill $spid 2>/dev/null; true" >/dev/null 2>&1
+  # STOP THE REFEREE BEFORE READING ITS LOG. It keeps writing as the client goes away
+  # ("client N dropped", "game ended"), so fetching while it runs and then measuring
+  # the source compares a snapshot against a file that has since grown -- which reads
+  # as a truncated transfer when nothing went wrong. Kill first, then read a file with
+  # no writer.
+  #
+  # Kill by pid, not by pattern: a pattern would also hit a concurrent sweep on the
+  # same port, and pkill -x would hit every server on the account.
+  if [ -n "$spid" ]; then
+    rsh1 "kill $spid 2>/dev/null; for _ in 1 2 3 4 5 6 7 8 9 10; do
+            [ -d /proc/$spid ] || break; sleep 0.5; done; true" >/dev/null 2>&1
+  fi
+
+  # Fetch the referee log and KEEP THE TRANSFER'S EXIT STATUS. A dropped ssh yields a
+  # short file, and "the file is not empty" would accept a truncated copy whose missing
+  # tail is exactly where a late desync line would have been. Absence of evidence here
+  # is not evidence of absence -- it is a failed download. The size cross-check catches
+  # a transfer that ended early without a nonzero status.
+  local fetchrc=0 remote_sz local_sz
+  rsh1 "cat /tmp/tak-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null || fetchrc=$?
+  remote_sz=$(rsh1 "stat -c%s /tmp/tak-srv-$port.log 2>/dev/null || echo -1" 2>/dev/null | tr -d '\r')
+  local_sz=$(stat -c%s "$OUT/$name.server.log" 2>/dev/null || echo -2)
 
   # THE VERDICT. A run only passes if it actually ran: the completion line alone is
   # not enough, because a client that lost its connection still prints one. A real
@@ -206,41 +224,27 @@ run_one() {
   [ "$rc" = "0" ] || hit="${hit}rc=$rc "
   # err= carries the client's own verdict ("peer closed", "desync detected", ...).
   [ -n "$done_line" ] && { echo "$done_line" | grep -q "err=none" || hit="${hit}client-error "; }
-  # No server log means we cannot say what the referee saw, so we must not claim it
-  # saw nothing wrong.
+  # No server log -- or a partial one -- means we cannot say what the referee saw, so
+  # we must not claim it saw nothing wrong.
   [ -s "$OUT/$name.server.log" ] || hit="${hit}no-server-log "
+  [ "$fetchrc" = "0" ] || hit="${hit}server-log-fetch-failed(rc=$fetchrc) "
+  [ "$remote_sz" = "$local_sz" ] || hit="${hit}server-log-truncated($local_sz/$remote_sz) "
+
+  # A spectator run compares NOTHING (checkHashes returns on `live == 0`, and the
+  # spectator sends a zero hash by design), so its clean finish is a flow-control
+  # result, not a determinism one. Label it rather than let "ok" imply verification.
+  # TAK_BENCH forces spectator mode too, whatever the seat says.
+  local nohash=0
+  [ "$seat" = "watch" ] && nohash=1
+  case "$envs" in *TAK_BENCH*) nohash=1;; esac
 
   if [ -n "$hit" ]; then echo "HIT  $name @$host [seat=$seat seed=$seed map=$map $envs $flags] -- $hit"
                          echo "     $done_line"
+  elif [ "$nohash" = "1" ]; then
+    echo "flow $name @$host [seat=$seat seed=$seed] -- NO HASH COMPARISON -- $done_line"
   else echo "ok   $name @$host [seat=$seat seed=$seed] -- $done_line"; fi
 }
 
-# --validate: plant a KNOWN divergence and require the referee to catch it. If this
-# does not report DESYNC, the sweep's verdict is worthless and we stop rather than
-# hand back a "clean" result from a detector that never fires. Runs on the FIRST host.
-if [ "$VALIDATE" = "1" ]; then
-  vhost="${HOSTS_SPEC%%:*}"; vhost="${vhost%% *}"
-  echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
-  VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
-  vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
-  [ -n "$vpid" ] && note_server "$vhost" "$vpid"
-  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 TAK_FAKE_DESYNC=900 \
-      timeout -k 30 400 $CLIENT game "Ulasem Arena" --data "$LDATA" \
-      --server "$vhost" --serverport 7890 --mphost --time 120 >"$OUT/validate.client.log" 2>&1
-  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-val.log" >"$OUT/validate.server.log" 2>/dev/null
-  [ -n "$vpid" ] && "${VSSH[@]}" "$RUSER@$vhost" "kill $vpid 2>/dev/null; true" >/dev/null 2>&1
-  if grep -qi "DESYNCED" "$OUT/validate.server.log"; then
-    echo "   PASS -- referee reported: $(grep -i DESYNCED "$OUT/validate.server.log" | head -1)"
-  else
-    echo "   FAIL -- planted desync NOT detected. The sweep cannot prove anything; stopping." >&2
-    exit 1
-  fi
-fi
-
-# Dispatch. Each host drains its own queue at its own concurrency, so a 2-core box
-# never gates a 32-core one: the small host simply takes fewer, lighter runs and
-# finishes when it finishes.
 # DISPATCH. Assign every run to exactly one host, then let each host drain its own
 # queue at its own concurrency.
 #
@@ -310,6 +314,38 @@ if [ "$DRYRUN" = "1" ]; then
   exit 0
 fi
 
+# Validation runs AFTER the dry-run exit on purpose: --dry-run must have no side
+# effects at all. It used to sit ahead of the assignment, so `--dry-run --validate`
+# started a real referee and a real client before printing a plan and stopping -- a
+# flag whose whole point is "show me what you would do" quietly doing something.
+#
+# --validate: plant a KNOWN divergence and require the referee to catch it. If this
+# does not report DESYNC, the sweep's verdict is worthless and we stop rather than
+# hand back a "clean" result from a detector that never fires. Runs on the FIRST host.
+if [ "$VALIDATE" = "1" ]; then
+  vhost="${HOSTS_SPEC%%:*}"; vhost="${vhost%% *}"
+  echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
+  VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
+  vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
+  [ -n "$vpid" ] && note_server "$vhost" "$vpid"
+  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
+  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 TAK_FAKE_DESYNC=900 \
+      timeout -k 30 400 $CLIENT game "Ulasem Arena" --data "$LDATA" \
+      --server "$vhost" --serverport 7890 --mphost --time 120 >"$OUT/validate.client.log" 2>&1
+  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-val.log" >"$OUT/validate.server.log" 2>/dev/null
+  [ -n "$vpid" ] && "${VSSH[@]}" "$RUSER@$vhost" "kill $vpid 2>/dev/null; true" >/dev/null 2>&1
+  if grep -qi "DESYNCED" "$OUT/validate.server.log"; then
+    echo "   PASS -- referee reported: $(grep -i DESYNCED "$OUT/validate.server.log" | head -1)"
+  else
+    echo "   FAIL -- planted desync NOT detected. The sweep cannot prove anything; stopping." >&2
+    exit 1
+  fi
+fi
+
+# Dispatch. Each host drains its own queue at its own concurrency, so a 2-core box
+# never gates a 32-core one: the small host simply takes fewer, lighter runs and
+# finishes when it finishes.
+
 declare -a HOST_PIDS=()
 for ((h = 0; h < NH; h++)); do
   mine=(); myidx=()
@@ -338,6 +374,8 @@ echo "==== SUMMARY ===="
 # one line that matters.
 hits=$(grep -rlEi "DESYNCED|REFEREE SUSPECT" "$OUT" 2>/dev/null | grep -v "/validate\." | sed "s|$OUT/||" | sort -u)
 if [ -n "$hits" ]; then echo "DESYNCS FOUND in:"; echo "$hits"; else echo "no desyncs reported"; fi
+echo "note: runs marked 'flow' seated no human, so no hashes were compared in them --"
+echo "      they cover flow control only and prove nothing about determinism."
 echo "runs that did not complete:"
 for f in "$OUT"/*.client.log; do
   grep -q "mp-headless done" "$f" 2>/dev/null || echo "  $(basename "$f")"

@@ -74,8 +74,8 @@ RUNS=(
   "ai-absurd|Ulasem Arena|TAK_AI_LEVEL=4|"
   "ai-passive|Ulasem Arena|TAK_AI_LEVEL=0|"
   "speed-4x|Ulasem Arena|TAK_SPEED=40|"
-  "bench-high|Ulasem Arena|TAK_BENCH=3|"
-  "bench-absurd|Ulasem Arena|TAK_BENCH=6|"
+  "flow-bench-high|Ulasem Arena|TAK_BENCH=3|"
+  "flow-bench-absurd|Ulasem Arena|TAK_BENCH=6|"
   "cramped|Inner Circle||"
   "cramped-stress|Inner Circle|TAK_STRESS=1|"
   "naval|Aibel's Seaport||"
@@ -130,6 +130,16 @@ run_one() {
   #
   # 7 AIs + this client seated as the 8th player keeps the table full AND gives the
   # referee a real hash to check every kHashPeriod ticks.
+  # TAK_BENCH FORCES SPECTATOR MODE, whatever TAK_MP_AIS says:
+  #     bool watch = (autoMode == 1 && devEnv("TAK_MP_WATCH")) || benchmarkMode_;
+  # so a benchmark run seats no human, the referee's checkHashes returns on `live == 0`
+  # and the client sends a zero hash anyway. These cases CANNOT detect a desync. They
+  # are kept because they are still worth running -- thousands of units exercise the
+  # all-AI flow-control path in canAdvance, which is where a server-side wedge lived --
+  # but they are labelled so their "ok" is never mistaken for a verified simulation.
+  local flowonly=0
+  case "$envs" in *TAK_BENCH*) flowonly=1;; esac
+
   local secs=$((MINUTES * 60))
   # shellcheck disable=SC2086
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 $SPEED_DEFAULT $envs \
@@ -155,6 +165,9 @@ run_one() {
   if [ -n "$hit" ]; then
     echo "HIT  $name [seed=$seed map=$map $envs $flags] -- $hit"
     echo "     $done_line"
+  elif [ "$flowonly" = "1" ]; then
+    # Not "ok": nothing was compared. Say so on the line itself.
+    echo "flow $name [seed=$seed] -- NO HASH COMPARISON (benchmark forces spectator) -- $done_line"
   else
     echo "ok   $name [seed=$seed] -- $done_line"
   fi
@@ -178,6 +191,8 @@ if [ -n "$hits" ]; then
 else
   echo "no desyncs in any run"
 fi
+echo "note: benchmark cases (TAK_BENCH) run as spectators and compare NO hashes --"
+echo "      they cover flow control only; their result is not a determinism result."
 echo "runs that did not finish cleanly:"
 for f in "$OUT"/*.client.log; do
   grep -q "err=none" "$f" 2>/dev/null || echo "  $(basename "$f")"
