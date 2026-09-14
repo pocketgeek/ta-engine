@@ -2577,7 +2577,7 @@
                 for (const auto& c : job.bundle.cmds) apply(c);
                 for (const auto& e : job.bundle.events) applyEvent(e);
                 simStep(1.0f / 30.0f);   // world_.tick + captureFrame (publishes a snapshot)
-                if (job.wantHash) hash = job.spectator ? 0 : world_.stateHash();
+                if (job.wantHash) hash = reportedHash(job.spectator, job.tick);
             }
             if (job.wantHash) {
                 std::lock_guard<std::mutex> lk(outboxMutex_);

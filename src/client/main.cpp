@@ -1137,16 +1137,31 @@ int main(int argc, char** argv) {
             gameView->beginFrame();
             bool cont = gameView->mpAutoStep(mpHeadless, mapId, crusades);
             gameView->endFrame();
-            if (!cont || int(gameView->netTick()) >= limitTicks) break;
+            // The game ENDING is an exit condition, not just the clock running out.
+            // Once a team wins, simStep stops draining bundles (the drain loop is
+            // gated on outcome_ == 0), so netTick_ freezes and the tick limit below
+            // is never reached -- this loop would spin on SDL_Delay forever. Worse,
+            // a frozen spectator stops acking, and the server, pacing an all-AI room
+            // to its slowest consumer, parks exactly kMaxLeadTicks past that stale
+            // ack and holds the room open with nobody left to end it. A 32-run desync
+            // sweep lost 16 runs to that wedge (each alive 5h+ for a 65-minute cap)
+            // and starved 5 more that never got a job slot.
+            if (!cont || gameView->outcomePublic() != 0) break;
+            if (int(gameView->netTick()) >= limitTicks) break;
             SDL_Delay(bench ? 16 : 2);   // ~60 fps for the benchmark
         }
         // Flush + join the worker so the final world hash reflects every pushed tick (no read
         // race against a still-running worker). No-op when inline.
         gameView->shutdownSim();
-        std::fprintf(stderr, "mp-headless done: tick=%u hash=%016llx units=%zu err=%s\n",
+        // Report WHY the run stopped, not just where. A game that concluded at tick
+        // 20k and one that ran the clock out both used to print the same line, so a
+        // short run was indistinguishable from a stall.
+        const int endOutcome = gameView->outcomePublic();
+        std::fprintf(stderr, "mp-headless done: tick=%u hash=%016llx units=%zu err=%s end=%s\n",
                      gameView->netTick(), (unsigned long long)gameView->worldHashPublic(),
                      gameView->aliveUnits(),
-                     gameView->netError().empty() ? "none" : gameView->netError().c_str());
+                     gameView->netError().empty() ? "none" : gameView->netError().c_str(),
+                     endOutcome != 0 ? "concluded" : "timelimit");
         if (mpHeadless == 8)
             std::fprintf(stderr, "mission %s outcome=%d (%s)\n", missionStem.c_str(),
                          gameView->missionOutcomePublic(),

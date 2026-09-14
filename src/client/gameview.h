@@ -639,6 +639,21 @@ public:
     // Did this game resolve, and how? +1 win, -1 loss, 0 still running. Unlike
     // missionOutcomePublic this also covers a skirmish/MP last-team-standing result.
     int outcomePublic() const { return outcome_; }
+    // The hash this client REPORTS to the referee. A spectator's is never checked --
+    // Server::checkHashes returns immediately when no human slot is seated -- so it
+    // sends a cheap 0 instead of folding thousands of units into an FNV every period.
+    //
+    // TAK_FAKE_DESYNC=TICK is fault injection: from that tick on, this client reports
+    // a deliberately WRONG hash. It exists so a desync hunt can prove its own detector
+    // FIRES. A sweep that has never caught a planted divergence has not been shown
+    // capable of catching a real one -- which is exactly how a 32-run sweep of
+    // spectator-only games came back "clean" while comparing nothing at all.
+    uint64_t reportedHash(bool spectator, uint32_t tick) {
+        if (spectator) return 0;
+        uint64_t h = world_.stateHash();
+        if (fakeDesyncTick_ && tick >= fakeDesyncTick_) h ^= 0x9e3779b97f4a7c15ull;
+        return h;
+    }
     // The end-of-game statistics table, in slot order. Read from the render frame
     // (not live world_), so it is safe to call after the sim thread has stopped.
     tak::ResultStats resultStats() const;
@@ -3153,6 +3168,13 @@ private:
     SoundClasses soundClasses_;
     uint32_t salt_ = 0;
     std::atomic<int> outcome_{0};   // 0 = playing, 1 = victory, -1 = defeat (worker writes, main reads)
+    // TAK_FAKE_DESYNC=TICK: report a wrong hash from this tick on (see reportedHash).
+    // Debug-only -- devEnv reads no environment at all in a release build, so this is
+    // constant 0 there and the branch folds away.
+    uint32_t fakeDesyncTick_ = [] {
+        const char* e = tak::devEnv("TAK_FAKE_DESYNC");
+        return e ? uint32_t(std::strtoul(e, nullptr, 0)) : 0u;
+    }();
     bool sawTeam_[tak::sim::kMaxPlayers] = {};   // teams that have ever fielded a unit
     // Dev-only N-player free-for-all / teams harness (TAK_FFA=N[,teams]); the
     // real lobby (multiplayer M3) replaces it. When >0, an AI Controller drives

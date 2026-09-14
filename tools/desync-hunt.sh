@@ -121,11 +121,11 @@ run_one() {
   local secs=$((MINUTES * 60))
   # shellcheck disable=SC2086
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_WATCH=1 TAK_MP_AIS=8 $SPEED_DEFAULT $envs \
-      timeout $((secs + 300)) $CLIENT game "$map" --data "$DATA" \
+      timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$DATA" \
       --server 127.0.0.1 --serverport "$port" --mphost --time "$secs" $flags \
       >"$clog" 2>&1
   local rc=$?
-  sleep 2; kill "$spid" 2>/dev/null; wait "$spid" 2>/dev/null
+  sleep 2; kill "$spid" 2>/dev/null; sleep 1; kill -9 "$spid" 2>/dev/null; wait "$spid" 2>/dev/null
 
   # The verdict. Anything other than a clean finish is worth a human look.
   local hit=""
@@ -137,6 +137,8 @@ run_one() {
   [ -z "$done_line" ] && hit="${hit}no-completion(rc=$rc) "
   echo "$done_line" | grep -q "err=none" || [ -z "$done_line" ] || hit="${hit}err "
 
+  echo "$done_line" | grep -q "end=concluded" && \
+    echo "     note: $name ended early -- a team won before the ${MINUTES}m clock"
   if [ -n "$hit" ]; then
     echo "HIT  $name [seed=$seed map=$map $envs $flags] -- $hit"
     echo "     $done_line"

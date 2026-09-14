@@ -285,7 +285,7 @@
                 // an all-AI room has no seated players to form a consensus). A spectator's
                 // hash is a progress ACK only, so skip the O(units) stateHash for it.
                 if (netTick_ % uint32_t(tak::net::kHashPeriod) == 0)
-                    mp_->sendHash(netTick_, mp_->isSpectator() ? 0 : world_.stateHash());
+                    mp_->sendHash(netTick_, reportedHash(mp_->isSpectator(), netTick_));
             }
             ++netTick_;
             ++drained;
