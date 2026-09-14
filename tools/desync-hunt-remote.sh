@@ -111,13 +111,26 @@ note_server() { printf '%s\t%s\n' "$1" "$2" >>"$PIDFILE"; }
 # there fails for a reason that has nothing to do with what it is testing.
 MOVEDFILE="$OUT/moved-aside"
 : >"$MOVEDFILE"
+# Keep a record until its file is VERIFIABLY back. Clearing the list regardless of
+# whether the restore worked destroys the only thing that could retry it: an ssh drop
+# mid-restore would leave the shared install missing a gameplay override and no record
+# that it ever moved. Entries that fail are kept, so the EXIT trap tries again, and the
+# failure is propagated rather than swallowed.
 restore_moved() {
   [ -s "$MOVEDFILE" ] || return 0
+  local _left="$MOVEDFILE.retry" _rc=0
+  : >"$_left"
   while IFS=$'\t' read -r _h _orig _bak; do
     [ -n "$_h" ] || continue
-    "${SSH[@]}" "$RUSER@$_h" "[ -f '$_bak' ] && mv -f '$_bak' '$_orig'; true" >/dev/null 2>&1 || true
+    # Restore, then CONFIRM: "mv exited 0" over ssh is not proof the file is there.
+    if "${SSH[@]}" "$RUSER@$_h" "[ -f '$_bak' ] && mv -f '$_bak' '$_orig'; [ -f '$_orig' ]" >/dev/null 2>&1; then
+      continue
+    fi
+    printf '%s\t%s\t%s\n' "$_h" "$_orig" "$_bak" >>"$_left"
+    _rc=1
   done <"$MOVEDFILE"
-  : >"$MOVEDFILE"
+  mv -f "$_left" "$MOVEDFILE"
+  return $_rc
 }
 
 cleanup() {
@@ -508,9 +521,34 @@ if [ "$VALIDATE" = "1" ]; then
   echo "== validating the gameplay-override mismatch rejection on $vhost =="
   _ovr="$RDATA/overrides/units/arasword.fbi"
   _bak="$_ovr.negtest-bak"
-  if ! "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" 2>/dev/null; then
-    echo "   SKIP -- $vhost has no gameplay override to remove, so there is no"
-    echo "           positive baseline to make a mismatch against."
+  # An unreachable host must NOT read as "no override": that would skip the gate for a
+  # connectivity fault and still report a pass.
+  if ! "${VSSH[@]}" "$RUSER@$vhost" "true" >/dev/null 2>&1; then
+    echo "   FAIL -- cannot reach $vhost to run the mismatch gate; stopping." >&2; exit 1
+  fi
+  _haveovr=0
+  "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" >/dev/null 2>&1 && _haveovr=1
+  _negdata="$LDATA"
+
+  if [ "$_haveovr" = "0" ]; then
+    # NO SKIPPING. With no host override there is nothing to remove, but the gate still
+    # has to run -- so manufacture the mismatch on the CLIENT side: a data dir of
+    # symlinks to the real install plus one changed gameplay value. Weaker than the
+    # removal test (it cannot also prove the host reads its override, there being none)
+    # but it still proves the rejection fires, which is what the gate is for.
+    echo "   (host has no override; manufacturing the mismatch client-side instead)"
+    _negdata="$OUT/negdata"; rm -rf "$_negdata"; mkdir -p "$_negdata/overrides/units"
+    for _e in "$LDATA"/*; do
+      [ "$(basename "$_e")" = overrides ] && continue
+      ln -s "$(realpath "$_e")" "$_negdata/$(basename "$_e")" 2>/dev/null || true
+    done
+    ./build/hpitool cat "$LDATA"/V3Rocket.hpi units/arasword.fbi 2>/dev/null \
+      | sed 's/maxdamage = [0-9]*;/maxdamage = 4242;/' >"$_negdata/overrides/units/arasword.fbi"
+    if [ ! -s "$_negdata/overrides/units/arasword.fbi" ]; then
+      echo "   FAIL -- could not build a mismatching data dir, so the rejection gate" >&2
+      echo "           cannot be exercised; stopping rather than reporting a pass." >&2
+      exit 1
+    fi
   else
     # Record the move BEFORE making it: a crash between the two must still restore.
     printf '%s\t%s\t%s\n' "$vhost" "$_ovr" "$_bak" >>"$MOVEDFILE"
@@ -518,11 +556,13 @@ if [ "$VALIDATE" = "1" ]; then
     if "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" 2>/dev/null; then
       echo "   FAIL -- could not move the host override aside; stopping." >&2; exit 1
     fi
+  fi
+  {
 
     "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7891 --data $RDATA --no-auth --seed 999 >/tmp/tak-neg.log 2>&1 </dev/null & echo \$!" >/dev/null 2>&1
     for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-neg.log 2>/dev/null" && break; sleep 2; done
     env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 \
-        timeout -k 20 180 $CLIENT game "Ulasem Arena" --data "$LDATA" \
+        timeout -k 20 180 $CLIENT game "Ulasem Arena" --data "$_negdata" \
         --server "$vhost" --serverport 7891 --mphost --time 60 --overrides full \
         >"$OUT/negative.client.log" 2>&1
     "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-neg.log" >"$OUT/negative.server.log" 2>/dev/null
@@ -532,23 +572,32 @@ if [ "$VALIDATE" = "1" ]; then
     grep -qi "override mismatch" "$OUT/negative.server.log" "$OUT/negative.client.log" 2>/dev/null && _rejected=1
 
     # PUT IT BACK before judging, so a failure cannot leave the host altered.
-    restore_moved
-    if ! "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" 2>/dev/null; then
-      echo "   FAIL -- the host override was NOT restored. Fix $vhost before running" >&2
-      echo "           anything else: $_bak" >&2
-      exit 1
+    # PUT IT BACK before judging, so a failing test cannot also leave the host altered.
+    # restore_moved now returns non-zero and KEEPS its record when a restore fails.
+    if [ "$_haveovr" = "1" ]; then
+      if ! restore_moved; then
+        echo "   FAIL -- could not restore the host override. cleanup() will retry on" >&2
+        echo "           exit; if that also fails, fix $vhost by hand: $_bak" >&2
+        exit 1
+      fi
+      if ! "${VSSH[@]}" "$RUSER@$vhost" "[ -f '$_ovr' ]" >/dev/null 2>&1; then
+        echo "   FAIL -- the host override was NOT restored. Fix $vhost before running" >&2
+        echo "           anything else: $_bak" >&2
+        exit 1
+      fi
     fi
 
     if [ "$_rejected" = "1" ]; then
       echo "   PASS -- $(grep -ohi 'rejected at load.*' "$OUT/negative.server.log" | head -1)"
-      echo "           (host override removed and restored; the server was reading it)"
+      [ "$_haveovr" = "1" ] && \
+        echo "           (host override removed and restored; the server was reading it)"
     else
       echo "   FAIL -- a client with gameplay data the host lacks was NOT rejected." >&2
       echo "           Either the check is broken or the host never read its override;" >&2
       echo "           that client would have desynced mid-game. Stopping." >&2
       exit 1
     fi
-  fi
+  }
 
   if [ "$VALONLY" = "1" ]; then echo "both gates passed"; exit 0; fi
 fi
