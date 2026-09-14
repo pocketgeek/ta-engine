@@ -17,7 +17,9 @@
 
 namespace tak::net {
 
-constexpr uint32_t kNetVersion = 70;       // 70: a transport unload routes through the
+constexpr uint32_t kNetVersion = 71;       // 71: an unload approaches the nearest cell
+                                           //     the transport FITS, within unload range
+                                           // 70: a transport unload routes through the
                                            //     path service instead of an inline A*
                                            // 69: that re-request also adopts the newer
                                            //     exact destination (same cell, new point)

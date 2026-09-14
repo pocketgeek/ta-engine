@@ -1258,6 +1258,15 @@ private:
 
     void tickProduction(Unit& u, float dt);
     void tickTransport(Unit& u, float dt);
+    // How close a transport must be to its drop point to disembark. Shared by
+    // tickTransport (which enforces it) and unloadAt (which has to approach within
+    // it) -- they disagreed once and the boat pushed at the shore instead of
+    // unloading, so the number lives in one place.
+    static constexpr float kUnloadRange = 150.0f;
+    // Nearest point within kUnloadRange of (x,z) that this transport fits in, in its
+    // own movement domain. False when there is none -- then there is nothing sensible
+    // to approach. See unloadAt.
+    bool approachCell(const Unit& t, float x, float z, float& outX, float& outZ) const;
     void tickConstruction(Unit& u, float dt);
     // Orphaned conjure (no builder worked it this tick): bleed HP at its build
     // rate, then vanish with no corpse.

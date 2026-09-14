@@ -1195,32 +1195,91 @@ void World::unloadAt(int transportId, float x, float z) {
     Unit* t = unit(transportId);
     if (!t || !t->alive() || t->cargo.empty()) return;
     t->orders.clear();
-    // Sail there through the transport's own domain, then disembark: a move leg
-    // to the drop point, with the unload queued behind it.
+    // Sail within unloading range of the drop point, then disembark.
     //
-    // The move leg has to be its own order rather than routing the unload order
-    // itself, because replaceLeg rebuilds the current leg from path waypoints and
-    // carries only the leg's movement flags across -- an unload order used as the
-    // leg would come back as plain waypoints and the cargo would never leave. As
-    // a trailing order it is untouched (replaceLeg keeps everything queued behind
-    // the leg) and reaches the front once the move completes, where the tick
-    // dispatch hands it to tickTransport.
-    Order mv;
-    mv.x = x;
-    mv.z = z;
-    mv.goal = true;          // so currentLeg() picks THIS order as the leg to route
-    t->orders.push_back(mv);
+    // The drop point is normally LAND -- that is the whole point of the order -- and a
+    // boat can never stand on it, so the approach cannot aim at it. tickTransport
+    // unloads from kUnloadRange away; the approach has to end somewhere the transport
+    // actually fits, inside that range.
+    //
+    // Getting this wrong is what the first version of this function did after the
+    // inline A* came out: it queued a move goal AT the drop point. A final move goal
+    // completes within max(16px, footprint) of its point, so a boat would push at
+    // unreachable ground for ever -- or until some watchdog dropped the leg -- while
+    // standing well inside the range it could have unloaded from. The old A* hid this
+    // by accident: it required the GOAL to fit the unit, so a land drop point simply
+    // returned no path and the order list was the bare unload, governed by
+    // tickTransport's range check. That accident was the real behaviour, and it has
+    // to survive the A*'s removal.
+    //
+    // Three cases, in order:
+    //   1. Already in range -- no approach at all; the unload fires on the next tick.
+    //   2. A cell the transport fits, within range of the drop point -- approach that,
+    //      routed by the tracer like any other move.
+    //   3. Nothing suitable (a drop point far inland, a landlocked lake) -- no approach
+    //      leg, exactly as before: sail straight at it and let the range check decide.
+    //      An unreachable approach leg would be strictly worse than none.
+    const float ddx = x - t->x, ddz = z - t->z;
+    const bool inRange = ddx * ddx + ddz * ddz <= kUnloadRange * kUnloadRange;
+    if (!inRange) {
+        float ax = 0, az = 0;
+        if (approachCell(*t, x, z, ax, az)) {
+            // The approach leg has to be its own order rather than routing the unload
+            // order itself: replaceLeg rebuilds the current leg from route waypoints
+            // and carries only the leg's movement flags across, so an unload order used
+            // as the leg would come back as plain waypoints with the flag gone and the
+            // cargo would never leave. As a trailing order it is untouched (replaceLeg
+            // keeps everything queued behind the leg) and reaches the front once the
+            // approach completes, where the tick dispatch hands it to tickTransport.
+            Order mv;
+            mv.x = ax;
+            mv.z = az;
+            mv.goal = true;      // so currentLeg() picks THIS order as the leg to route
+            t->orders.push_back(mv);
+        }
+    }
     Order o;
     o.x = x;
     o.z = z;
     o.unload = true;
     t->orders.push_back(o);
-    // Same async boundary tracer every other move order uses. This used to call
-    // NavGrid::findPath -- a synchronous 400k-expansion A* on the sim thread, and
-    // the last caller of it. It resolved its grid with the same navFor(), so it
-    // bought nothing over the tracer that an ordinary move order on the same
-    // transport already went through; findPath is gone with it.
-    requestPath(*t, x, z);
+    // Route the approach with the same async boundary tracer every other move order
+    // uses. This used to call NavGrid::findPath -- a synchronous 400k-expansion A* on
+    // the sim thread, and the last caller of it. It resolved its grid with the same
+    // navFor(), so it bought nothing over the tracer that an ordinary move order on the
+    // same transport already went through; findPath is gone with it. No approach leg
+    // means nothing to route.
+    if (t->orders.size() > 1) requestPath(*t, t->orders.front().x, t->orders.front().z);
+}
+
+// The nearest point the transport can actually sit in, within kUnloadRange of the drop
+// point. Spirals out in cell rings from the drop cell so the first hit is the closest,
+// which keeps the boat as near the shore as its own grid allows; bounded by the range
+// because a cell outside it is no use -- arriving there would not satisfy the unload.
+// Deterministic: a fixed scan order over a deterministic grid.
+bool World::approachCell(const Unit& t, float x, float z, float& outX, float& outZ) const {
+    const NavGrid& g = navFor(t.type);
+    if (g.empty()) return false;
+    const int foot = footCells(t.type);
+    const int cx = int(x) / 16, cz = int(z) / 16;
+    const int maxR = int(kUnloadRange) / 16;      // rings beyond this cannot be in range
+    for (int r = 0; r <= maxR; ++r) {
+        for (int j = -r; j <= r; ++j)
+            for (int i = -r; i <= r; ++i) {
+                if (std::max(std::abs(i), std::abs(j)) != r) continue;   // ring only
+                const int nx = cx + i, nz = cz + j;
+                if (!g.fits(nx, nz, foot)) continue;
+                const float wx = float(nx) * 16 + 8, wz = float(nz) * 16 + 8;
+                // Ring distance is Chebyshev; the range test is Euclidean, so a corner
+                // of the last ring can still fall outside it. Check the real distance.
+                const float dx = wx - x, dz = wz - z;
+                if (dx * dx + dz * dz > kUnloadRange * kUnloadRange) continue;
+                outX = wx;
+                outZ = wz;
+                return true;
+            }
+    }
+    return false;
 }
 
 void World::tickTransport(Unit& u, float dt) {
@@ -1250,7 +1309,7 @@ void World::tickTransport(Unit& u, float dt) {
     }
     // unload: sail close to the point, then place cargo on nearby land.
     float dx = o.x - u.x, dz = o.z - u.z;
-    if (dx * dx + dz * dz > 150 * 150) return;   // keep sailing
+    if (dx * dx + dz * dz > kUnloadRange * kUnloadRange) return;   // keep sailing
     int cx = int(o.x) / 16, cz = int(o.z) / 16;
     for (int id : u.cargo) {
         Unit* c = unit(id);
