@@ -142,7 +142,19 @@ public:
     // gpuvram budget across sessions -- a few benchmark runs used to pin the
     // budget and starve terrain-chunk uploads (map stuck at the low-res underlay).
     // Interactive teardown: cancel, do not drain (see simCancel_).
-    ~GameView() { stopSimThread(/*drain=*/false); resetMinimap(); destroyGpuTextures(); }
+    ~GameView() {
+        stopSimThread(/*drain=*/false);
+        // Last chance: a player who quit, conceded or was dropped before the game
+        // was decided still gets the replay of what they played.
+        saveNetReplay();
+        resetMinimap();
+        destroyGpuTextures();
+    }
+    // Write this client's recorded replay into the user's config directory (beside
+    // settings.ini). Once per game -- called both when the result lands and from the
+    // destructor, whichever happens first. A no-op when nothing was recorded, which
+    // covers single-player-vs-nobody, spectators, and replay playback itself.
+    void saveNetReplay();
 
     GameView(SDL_Renderer* ren, tak::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, tak::hpi::OverridePolicy policy,
@@ -1885,6 +1897,7 @@ public:
     int netDelay() const { return netDelay_; }
 private:
     bool replayMode_ = false;                     // playing a recorded .takrep
+    bool replaySaved_ = false;                    // this game's replay already written
     std::vector<tak::net::Bundle> replayBundles_;
     size_t replayTick_ = 0;
     float replayAccum_ = 0;

@@ -385,12 +385,21 @@ void MpClient::onFrame(const Frame& f) {
             missionOutcome_ = 0;   // fresh game/replay
             slotLoaded_.fill(false);
 
+            // Snapshot the starting slot table for a replay header, before forfeits
+            // and drops rewrite the live one.
+            for (int i = 0; i < kMaxSlots; ++i) startSlots_[i] = room_.slots[i];
             uint8_t mySlot = r.u8();
             startSeed_ = r.u32();
             resumeToken_ = r.u64();
             replayTicks_ = r.u32();   // bundles logged before we joined (0 = none)
             // 0xFF marks a spectator (no slot); map it to -1.
             room_.mySlot = !r.ok ? keep : (mySlot == 0xFF ? -1 : int(mySlot));
+            // Record a replay if we are PLAYING this game. Started here rather than
+            // when the view sets up, because the backlog a rejoin/spectate receives
+            // arrives immediately after this message -- any later and the recording
+            // would be missing its first ticks. Spectators (slot -1) do not record:
+            // the request is that each human PLAYER keeps its own copy.
+            if (room_.mySlot >= 0) startRecording(); else stopRecording();
             // Any 0xFF start is a spectator (a create-as-spectator host, or spectate()).
             spectator_ = expectingSpectate_ || (r.ok && mySlot == 0xFF);
             // Route EVERY spectator through the "set up before the state branches" path
@@ -414,6 +423,10 @@ void MpClient::onFrame(const Frame& f) {
         case Msg::Pause: paused_ = true; break;
         case Msg::Resume: paused_ = false; break;
         case Msg::TickBundle: {
+            // Record the payload VERBATIM, before parsing: the server logs this exact
+            // buffer, so replaying our copy reproduces the game bit-for-bit. Parsing
+            // and re-serializing would risk a format drift between the two writers.
+            if (recording_) replayLog_.push_back(f.payload);
             uint32_t tk = r.u32();
             Bundle bd;
             uint32_t nc = r.u32();

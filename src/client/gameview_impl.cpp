@@ -578,6 +578,10 @@
                 if (!teamAlive) outcome_ = -1;
             }
         }
+        // The result just landed: write this player's own copy of the replay. Doing
+        // it here (rather than only on teardown) means the file exists the moment the
+        // banner appears, so it survives a crash or a kill on the way out.
+        if (outcome_ != 0) saveNetReplay();
         captureFrame();   // snapshot post-tick unit state for the render (poses + read fields)
     }
 

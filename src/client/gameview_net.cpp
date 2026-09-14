@@ -1,3 +1,4 @@
+#include <ctime>
 #include "client/gameview.h"
 
 // Out-of-line GameView method definitions (net concern), split from the
@@ -20,7 +21,27 @@
         mp_ = mp;
     }
 
+    void GameView::saveNetReplay() {
+        if (replaySaved_ || !mp_ || !mp_->recording() || mp_->replayLog().empty()) return;
+        replaySaved_ = true;
+        // Beside settings.ini: settingsPath() is <prefdir>/settings.ini, so trim the
+        // file name off rather than rebuilding the platform path by hand.
+        std::string dir = tak::settingsPath();
+        const size_t cut = dir.find_last_of("/\\");
+        if (cut == std::string::npos) return;
+        dir.erase(cut + 1);
+        const std::string path = saveReplayFile(dir, *mp_, uint64_t(std::time(nullptr)));
+        if (!path.empty()) {
+            std::fprintf(stderr, "replay: wrote %s (%zu ticks)\n",
+                         path.c_str(), mp_->replayLog().size());
+            postNotice("REPLAY SAVED", 5);
+        } else {
+            std::fprintf(stderr, "replay: could not write into %s\n", dir.c_str());
+        }
+    }
+
     void GameView::startMpGame(const tak::net::RoomView& room, uint32_t seed) {
+        replaySaved_ = false;   // a fresh game gets a fresh recording
         int maxSlot = 0;
         for (int i = 0; i < tak::net::kMaxSlots; ++i)
             if (room.slots[i].type == 1 || room.slots[i].type == 2) maxSlot = i;

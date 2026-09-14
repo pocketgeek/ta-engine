@@ -129,6 +129,23 @@ public:
     bool starting() const { return state_ == State::Starting; }
     const RoomView& startRoom() const { return room_; }   // final slots
     uint32_t startSeed() const { return startSeed_; }
+    // ---- replay recording -------------------------------------------------
+    //
+    // Every TickBundle payload this client received, in tick order, byte-for-byte as
+    // the server broadcast it -- which is the SAME buffer the server appends to its
+    // own replay log, so a client-written .takrep is identical to a server-written
+    // one. Filled only while recording (see startRecording).
+    //
+    // A rejoining client is sent the whole backlog before the live stream, and a
+    // spectator likewise, so a recording that starts late still ends up complete.
+    const std::vector<std::vector<uint8_t>>& replayLog() const { return replayLog_; }
+    void startRecording() { recording_ = true; replayLog_.clear(); }
+    void stopRecording() { recording_ = false; replayLog_.clear(); }
+    bool recording() const { return recording_; }
+    // Slot table as it was when the game STARTED. The live room_.slots mutates as
+    // players forfeit or drop, and a replay has to rebuild the world the game began
+    // with, so the header needs this rather than the current table.
+    const SlotInfo* startSlots() const { return startSlots_; }
     // Has this slot reported its map/data loaded? Broadcast by the server as each
     // peer reports in, so the loading screen can show who the game is waiting on.
     bool slotLoaded(int slot) const {
@@ -191,6 +208,9 @@ private:
 
     uint64_t dataHash_ = 0;      // local gameplay-data fingerprint (sent in Hello)
     uint32_t startSeed_ = 0;
+    std::vector<std::vector<uint8_t>> replayLog_;   // raw TickBundle payloads (recording)
+    bool recording_ = false;
+    SlotInfo startSlots_[kMaxSlots] = {};
     uint32_t replayTicks_ = 0;   // history the server replays after a rejoin/spectate
     std::array<bool, kMaxSlots> slotLoaded_{};   // per-slot "reported Loaded"
     uint64_t resumeToken_ = 0;

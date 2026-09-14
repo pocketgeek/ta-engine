@@ -60,3 +60,43 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
     }
     return true;
 }
+
+std::string saveReplayFile(const std::string& dir, const tak::net::MpClient& mp,
+                           uint64_t stampMs) {
+    const auto& log = mp.replayLog();
+    if (dir.empty() || log.empty()) return {};
+    const tak::net::RoomView& room = mp.room();
+    using tak::net::Writer;
+    Writer w;
+    // Header, field for field as Server::writeReplay lays it out. Keep the two in
+    // step: loadReplayFile reads exactly this, and a client file and a server file
+    // for the same game should be byte-identical.
+    for (char ch : {'T', 'A', 'K', 'R'}) w.u8(uint8_t(ch));
+    w.u32(5);                 // replay format (see Server::writeReplay for history)
+    w.u32(tak::net::kNetVersion);
+    w.str(room.mapId);
+    w.u8(room.opts.crusades); w.u8(room.opts.gods); w.u8(room.opts.forfeitSelfDestruct);
+    w.u8(room.opts.overridePolicy);
+    w.u32(room.opts.unitCap); w.u8(room.opts.monarchExpendable); w.u8(room.opts.stressTest);
+    w.u32(mp.startSeed());
+    w.u8(uint8_t(tak::net::kMaxSlots));
+    const tak::net::SlotInfo* slots = mp.startSlots();
+    for (int i = 0; i < tak::net::kMaxSlots; ++i) {
+        const tak::net::SlotInfo& s = slots[i];
+        w.u8(s.type); w.u8(s.faction); w.u8(s.color); w.u8(s.team);
+    }
+    w.u32(uint32_t(log.size()));
+    for (const auto& b : log) {
+        w.u32(uint32_t(b.size()));
+        w.b.insert(w.b.end(), b.begin(), b.end());
+    }
+    // Named by the game and a timestamp, so several replays coexist and a rerun of
+    // the same game does not overwrite the earlier one.
+    std::string path = dir + "game-" + std::to_string(room.id) + "-" +
+                       std::to_string(stampMs) + ".takrep";
+    FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f) return {};
+    const bool ok = std::fwrite(w.b.data(), 1, w.b.size(), f) == w.b.size();
+    std::fclose(f);
+    return ok ? path : std::string();
+}

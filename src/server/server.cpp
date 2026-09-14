@@ -277,22 +277,20 @@ public:
         return accounts_.load(path, &err);
     }
     size_t accountCount() const { return accounts_.size(); }
+    // `dataRoot` is never empty -- main() refuses to start without --data.
     Server(uint16_t port, const std::string& dataRoot) : port_(port), dataRoot_(dataRoot) {
-        if (!dataRoot_.empty()) {
-            // The referee reads the retail install directly, per the ROOM's override
-            // tier. Build the pure-retail set eagerly (the connection-level Hello
-            // check + the common none/cosmetic game); the Full set is built lazily
-            // the first time a Full game starts.
-            buildDataSet(retail_, tak::hpi::OverridePolicy::None);
-            aiProfile_ = tak::ai::loadProfile(retail_.vfs);
-            aiNames_ = loadAiNames(retail_.vfs);
-            haveCb_ = retail_.haveCb;
-            haveData_ = true;
-            std::fprintf(stderr, "takserver: loaded game data from %s (referee sim + AI enabled%s), "
-                         "retail gameplay hash %016llx\n",
-                         dataRoot_.c_str(), haveCb_ ? ", +Crusades" : "",
-                         (unsigned long long)retail_.hash);
-        }
+        // The referee reads the retail install directly, per the ROOM's override
+        // tier. Build the pure-retail set eagerly (the connection-level Hello
+        // check + the common none/cosmetic game); the Full set is built lazily
+        // the first time a Full game starts.
+        buildDataSet(retail_, tak::hpi::OverridePolicy::None);
+        aiProfile_ = tak::ai::loadProfile(retail_.vfs);
+        aiNames_ = loadAiNames(retail_.vfs);
+        haveCb_ = retail_.haveCb;
+        std::fprintf(stderr, "takserver: loaded game data from %s (referee sim + AI%s), "
+                     "retail gameplay hash %016llx\n",
+                     dataRoot_.c_str(), haveCb_ ? ", +Crusades" : "",
+                     (unsigned long long)retail_.hash);
     }
     int run();
 
@@ -315,9 +313,7 @@ private:
         bool built = false;
     };
     DataSet retail_, full_;            // none/cosmetic use retail_; full uses full_
-    uint64_t relayHash_ = 0;           // pure-relay: the first client's hash (peers must match)
-    bool relayHashSet_ = false;
-    bool haveData_ = false, haveCb_ = false;
+    bool haveCb_ = false;
     tak::ai::Profile aiProfile_;
     // Per-mission build profiles (ai/<name>.txt), cached by name -- a Controller
     // holds a reference to its Profile, so these must outlive the room.
@@ -528,12 +524,13 @@ void Server::handshake(Client& c, const Frame& f) {
     }
     // Gameplay-data agreement: every peer must feed its sim byte-identical gameplay
     // data (verifies the retail files are unmodified, and that Full-override players
-    // share the same overrides). With --data we hold the canonical referee hash;
-    // as a pure relay we adopt the first client's and hold the rest to it.
+    // share the same overrides). The referee's own hash is the authority -- there is
+    // no relay mode adopting the first client's any more, which could only ever hold
+    // peers to whatever the earliest arrival happened to have.
     // The Hello hash is the client's PURE-RETAIL gameplay fingerprint (mounted with
     // no overrides), so the base game files must match regardless of anyone's
     // override tier. (Full-tier gameplay overrides are checked per game at Loaded.)
-    uint64_t want = haveData_ ? retail_.hash : (relayHashSet_ ? relayHash_ : dataHash);
+    const uint64_t want = retail_.hash;
     if (dataHash != want) {
         char msg[128];
         std::snprintf(msg, sizeof msg,
@@ -546,7 +543,6 @@ void Server::handshake(Client& c, const Frame& f) {
                      c.id, (unsigned long long)dataHash, (unsigned long long)want);
         return;
     }
-    if (!haveData_ && !relayHashSet_) { relayHash_ = dataHash; relayHashSet_ = true; }
     if (requireAuth_) {
         // The name in the Hello is only a suggestion and is discarded: on a server
         // with accounts, who you are is the account you prove, not what you typed.
@@ -1094,10 +1090,24 @@ void Server::tryStart(Client& c) {
         if (s.type == 1 && !s.ready) return;             // a human isn't ready
         if (s.color < 10) { if (usedColor[s.color]) return; usedColor[s.color] = true; }
     }
-    // AI slots require the server to have game data (referee sim).
-    bool anyAi = false;
-    for (int i = 0; i < kMaxSlots; ++i) if (r->slots[i].type == 2) anyAi = true;
-    if (anyAi && !haveData_) return;   // can't host AI without --data
+    // The referee is MANDATORY, so resolve what it needs before committing to run.
+    // Failing here used to leave r->ref null and the game carried on as a relay --
+    // silently giving up the canonical hash and, for a mission, the strategic AI.
+    // A game that cannot be refereed does not start; the host is told why.
+    DataSet& dataSet = dataFor(r->opts.overridePolicy);
+    const bool wantMission = !r->mission.empty();
+    std::string mapResolved = wantMission ? std::string()
+                                          : tak::hpi::findMap(dataSet.vfs, r->mapId);
+    if (!wantMission && mapResolved.empty()) {
+        char msg[192];
+        std::snprintf(msg, sizeof msg,
+                      "the server has no map '%s' in its game data, so it cannot "
+                      "referee this game", r->mapId.c_str());
+        sendReject(c, msg);
+        std::fprintf(stderr, "game %u: refusing to start -- map '%s' not in server data\n",
+                     r->id, r->mapId.c_str());
+        return;
+    }
     r->running = true;
     r->tick = 0;
     r->nextTickMs = nowMs();
@@ -1107,15 +1117,13 @@ void Server::tryStart(Client& c) {
     // Everything the referee reads comes from the data set for THIS game's override
     // tier (retail for none/cosmetic, full for full), so the referee's sim matches
     // the clients that adopted the same tier.
-    DataSet* ds = haveData_ ? &dataFor(r->opts.overridePolicy) : nullptr;
-    const bool isMission = !r->mission.empty();
+    DataSet* ds = &dataSet;
+    const bool isMission = wantMission;
     // A campaign mission builds its own world (placements + the in-sim god script) and
-    // needs no map id; a skirmish resolves its map by name.
-    std::string mapPath = (ds && !isMission) ? tak::hpi::findMap(ds->vfs, r->mapId) : std::string();
-    if (haveData_ && !isMission && mapPath.empty())
-        std::fprintf(stderr, "takserver: map '%s' not found in data; no referee sim\n",
-                     r->mapId.c_str());
-    if (ds && (isMission || !mapPath.empty())) {
+    // needs no map id; a skirmish resolves its map by name (resolved above, where a
+    // failure refuses the start).
+    const std::string& mapPath = mapResolved;
+    {
         r->reg = &registryFor(r->opts.crusades != 0, r->opts.overridePolicy);
         r->ref = std::make_unique<tak::sim::World>();
         r->ref->setVisPlayer(-1);   // headless referee: no fog pass
@@ -1125,9 +1133,17 @@ void Server::tryStart(Client& c) {
             int human = 0;
             tak::sim::MissionSetup ms;
             if (!tak::sim::setupMission(*r->ref, *r->reg, ds->vfs, r->mission, human, &ms)) {
-                std::fprintf(stderr, "takserver: mission '%s' not found; no referee sim\n",
-                             r->mission.c_str());
+                // Same rule as a missing map: no referee, no game.
+                char msg[192];
+                std::snprintf(msg, sizeof msg,
+                              "the server has no mission '%s' in its game data, so it "
+                              "cannot referee this game", r->mission.c_str());
+                sendReject(c, msg);
+                std::fprintf(stderr, "game %u: refusing to start -- mission '%s' not in "
+                             "server data\n", r->id, r->mission.c_str());
                 r->ref.reset();
+                r->running = false;
+                return;
             } else {
                 // Give every "strategic opponent" a brain. The mission script places
                 // and choreographs units, but nothing made those bases BUILD or
@@ -1334,7 +1350,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
             // here, before the first tick, instead of desyncing mid-game.
             Reader rd(f.payload.data(), f.payload.size());
             uint64_t clientHash = rd.u64();
-            if (haveData_ && rd.ok && clientHash != 0) {
+            if (rd.ok && clientHash != 0) {
                 uint64_t want = dataFor(r->opts.overridePolicy).hash;
                 if (clientHash != want) {
                     char msg[176];
@@ -1451,34 +1467,32 @@ void Server::checkHashes(Room& r, uint32_t tick) {
         if (r.slots[i].type == 1 && r.slotClient[i] >= 0) ++live;
     if (int(it->second.size()) < live || live == 0) return;
 
-    // The canonical hash: the referee's for this tick if we ran a referee sim,
-    // else the clients' majority (relay-only mode).
-    bool haveRef = r.ref && r.refHash.count(tick);
-    uint64_t canon = 0;   // set from the referee hash or the client majority below
-    if (haveRef) {
-        canon = r.refHash[tick];
-        // Referee suspicion needs a client CONSENSUS to appeal against the server
-        // sim: with >=2 clients all agreeing with each other but NOT the referee,
-        // the server sim is the odd one out (a server bug) -- don't punish the
-        // clients. With a single client there is no consensus, so the referee is
-        // authoritative and a lone disagreeing client is simply desynced.
-        if (live >= 2) {
-            std::map<uint64_t, int> ctally;
-            for (auto& [cid, h] : it->second) ++ctally[h];
-            if (ctally.size() == 1 && it->second.begin()->second != canon && !r.refSuspect) {
-                r.refSuspect = true;
-                std::fprintf(stderr, "game %u: REFEREE SUSPECT at tick %u -- all %d clients agree "
-                                     "with each other but disagree with the server sim; not dropping.\n",
-                             r.id, tick, live);
-            }
+    // The canonical hash is the REFEREE's. A game only runs if a referee was built
+    // (tryStart refuses otherwise), so there is always one; the ring just may not
+    // hold this tick yet, in which case wait rather than judging anybody.
+    //
+    // The client-majority branch that used to sit here belonged to the relay-only
+    // mode and is gone with it. It was never a good judge anyway: with two clients
+    // it had no majority to find, and with a modded pair against one honest client
+    // it would convict the honest one.
+    if (!r.refHash.count(tick)) return;
+    const uint64_t canon = r.refHash[tick];
+    // Referee suspicion needs a client CONSENSUS to appeal against the server
+    // sim: with >=2 clients all agreeing with each other but NOT the referee,
+    // the server sim is the odd one out (a server bug) -- don't punish the
+    // clients. With a single client there is no consensus, so the referee is
+    // authoritative and a lone disagreeing client is simply desynced.
+    if (live >= 2) {
+        std::map<uint64_t, int> ctally;
+        for (auto& [cid, h] : it->second) ++ctally[h];
+        if (ctally.size() == 1 && it->second.begin()->second != canon && !r.refSuspect) {
+            r.refSuspect = true;
+            std::fprintf(stderr, "game %u: REFEREE SUSPECT at tick %u -- all %d clients agree "
+                                 "with each other but disagree with the server sim; not dropping.\n",
+                         r.id, tick, live);
         }
-        if (r.refSuspect) { r.hashes.erase(r.hashes.begin(), std::next(it)); return; }
-    } else {
-        std::map<uint64_t, int> tally;
-        for (auto& [cid, h] : it->second) ++tally[h];
-        int best = -1;
-        for (auto& [h, cnt] : tally) if (cnt > best) { best = cnt; canon = h; }
     }
+    if (r.refSuspect) { r.hashes.erase(r.hashes.begin(), std::next(it)); return; }
     for (auto& [cid, h] : it->second) {
         if (h != canon && !r.desyncFlagged[cid]) {
             r.desyncFlagged[cid] = true;
@@ -1554,7 +1568,9 @@ void Server::closeTick(Room& r) {
     }
     // Server-hosted AI: each controller observes the referee world (state after
     // tick-1) and appends its orders to this tick's bundle, exactly like a client.
-    if (r.ref) {
+    // A running room always has a referee -- tryStart refuses to start a game it
+    // cannot referee -- so this is unconditional.
+    {
         static const bool kAiPhase = std::getenv("TAK_AIPHASE") != nullptr;
         auto _a0 = std::chrono::steady_clock::now();
         for (auto& ctl : r.ai)
@@ -1592,7 +1608,7 @@ void Server::closeTick(Room& r) {
     // Advance the referee sim by this same bundle, then record its canonical hash --
     // but only at the ticks clients actually REPORT (kHashPeriod): hashing every
     // tick burned ~8ms/s per 2000-unit room on hashes that were never read.
-    if (r.ref) {
+    {
         for (const auto& cmd : r.pending) tak::sim::applyCommand(*r.ref, *r.reg, cmd);
         for (const auto& e : r.pendingEvents) tak::sim::applyEvent(*r.ref, e);
         r.ref->tick(1.0f / kServerHz);
@@ -1895,11 +1911,11 @@ int main(int argc, char** argv) {
             return 0;
         }
         else if (!std::strcmp(argv[i], "--help")) {
-            std::printf("usage: takserver [--port N] [--data <retail-install-dir>]\n"
+            std::printf("usage: takserver --data <retail-install-dir> [--port N]\n"
                         "                 [--replaydir <dir>] [--accounts <file>]\n"
                         "                 [--no-auth] [--local]\n"
-                        "  --data enables the referee sim + server-hosted AI; without it the\n"
-                        "  server is a pure relay (clients cross-check hashes among themselves).\n"
+                        "  --data is REQUIRED: it is what the referee sim and the\n"
+                        "  server-hosted AI players read. There is no relay-only mode.\n"
                         "  --replaydir writes a .takrep replay file per finished game.\n"
                         "  --accounts is the account file (default takserver-accounts.conf).\n"
                         "  Players sign in with a name and password; an unused name is\n"
@@ -1910,6 +1926,20 @@ int main(int argc, char** argv) {
                         "  --local binds loopback only, so nothing off this machine connects.\n");
             return 0;
         }
+    }
+    // --data is mandatory. The server used to run without it as a pure relay, with
+    // the clients cross-checking hashes among themselves; that mode is gone. It gave
+    // up the canonical referee hash (so a lone client could not be told apart from a
+    // desynced one), it could not host AI players at all, and it made a whole second
+    // set of paths that no shipped configuration exercised -- single-player launches
+    // its private server with --data, and so does every harness.
+    if (dataRoot.empty()) {
+        std::fprintf(stderr,
+            "takserver: --data <retail-install-dir> is required.\n"
+            "  It is what the referee sim and the AI players read. Point it at a\n"
+            "  TA:Kingdoms install (the folder holding the root *.hpi and Maps/).\n"
+            "  Run with --help for the full usage.\n");
+        return 1;
     }
     Server s(port, dataRoot);
     if (!replayDir.empty()) s.setReplayDir(replayDir);
