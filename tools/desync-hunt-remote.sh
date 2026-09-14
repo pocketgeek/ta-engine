@@ -104,7 +104,7 @@ RUNS=(
   "h-lake|Lake Lokken|TAK_STRESS=1||human|heavy"
   "h-random-starts|Sand River Plain|TAK_RANDOM_STARTS=1||human|light"
   "h-monarch-exp|Ulasem Arena|TAK_MONARCH_EXPENDABLE=1 TAK_GODS=1||human|light"
-  "h-overrides-full|Ulasem Arena|||--overrides full|human|light"
+  "h-overrides-full|Ulasem Arena||--overrides full|human|light"
   "h-everything|Tarosian Plain|TAK_GODS=1 TAK_STRESS=1 TAK_AI_LEVEL=4 TAK_FOG=1|--crusades|human|heavy"
   "h-speed-1x|Ulasem Arena|TAK_SPEED=10||human|light"
   "h-two-castles|Two Castles|TAK_GODS=1|--crusades|human|light"
@@ -113,6 +113,19 @@ RUNS=(
 )
 
 SPEED_DEFAULT="TAK_SPEED=40"
+
+# Validate the table before running anything. An entry with the wrong field count
+# shifts every field right: --overrides full once landed in the SEAT slot, so the run
+# never mounted the overrides it was named for and still reported "ok". A sweep that
+# quietly tests the wrong configuration is worse than one that fails.
+for _spec in "${RUNS[@]}"; do
+  _n=$(awk -F'|' '{print NF}' <<<"$_spec")
+  if [ "$_n" != "6" ]; then
+    echo "BAD RUN TABLE ENTRY ($_n fields, want 6 -- name|map|envs|flags|seat|weight):" >&2
+    echo "  $_spec" >&2
+    exit 2
+  fi
+done
 
 run_one() {
   local host="$1" idx="$2" spec="$3"
@@ -228,7 +241,10 @@ for pid in "${HOST_PIDS[@]}"; do wait "$pid"; done
 
 echo
 echo "==== SUMMARY ===="
-hits=$(grep -rlEi "DESYNCED|REFEREE SUSPECT" "$OUT" 2>/dev/null | sed "s|$OUT/||" | sort -u)
+# Exclude validate.* -- it contains a DELIBERATELY planted desync, so including it
+# made every --validate run end with "DESYNCS FOUND", which trains you to ignore the
+# one line that matters.
+hits=$(grep -rlEi "DESYNCED|REFEREE SUSPECT" "$OUT" 2>/dev/null | grep -v "/validate\." | sed "s|$OUT/||" | sort -u)
 if [ -n "$hits" ]; then echo "DESYNCS FOUND in:"; echo "$hits"; else echo "no desyncs reported"; fi
 echo "runs that did not complete:"
 for f in "$OUT"/*.client.log; do
