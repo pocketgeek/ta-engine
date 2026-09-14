@@ -173,9 +173,11 @@ RUNS=(
   "h-two-castles|Two Castles|TAK_GODS=1|--crusades|human|light"
   # --- multi-human: two independent client sims, compared to each other and to the
   # referee. These are the only entries that can reach the live>=2 consensus logic.
+  # ALL ON AN 8-SEAT MAP: these hold the start until the table is full (TAK_MP_WAIT),
+  # and a map with fewer start positions can never fill it.
   "2h-baseline|Ulasem Arena|||human|light|2"
   "2h-gods|Ulasem Arena|TAK_GODS=1||human|light|2"
-  "2h-crusades|Tarosian Plain||--crusades|human|light|2"
+  "2h-crusades|Ulasem Arena||--crusades|human|light|2"
   "2h-stress|Ulasem Arena|TAK_STRESS=1||human|heavy|2"
   "3h-baseline|Ulasem Arena|||human|light|3"
   "4h-gods|Ulasem Arena|TAK_GODS=1||human|light|4"
@@ -230,10 +232,21 @@ run_one() {
 
   # SEAT: watch -> spectator (TAK_MP_WATCH=1, 8 AIs). human -> a real player slot with
   # 7 AIs alongside, which is what makes the referee compare hashes at all.
-  # Seat the table. N humans -> (8-N) AIs, and the host waits for a full 8 before
-  # starting so the joiners are actually in the game rather than racing its first tick.
+  # Seat the table. N humans -> (8-N) AIs.
+  #
+  # TAK_MP_WAIT IS ONLY SAFE WHEN THE MAP REALLY HAS 8 SEATS. A room holds as many slots
+  # as the map has start positions (mpCapacity clamps 2..8), so on a smaller map `ready`
+  # can never reach 8 and the host waits for a table that cannot exist -- the game never
+  # starts and the run burns its whole timeout. Hardcoding TAK_MP_WAIT=8 did exactly
+  # that to every run on Inner Circle, Two Castles, Aibel's Seaport, Lake Lokken and
+  # Tarosian Plain: seven runs, no "starting with N players" line between them.
+  #
+  # A single human needs no wait at all: the AIs seat immediately and the host is ready,
+  # so the default (any 2 ready) starts the game correctly on a map of any size. Only a
+  # multi-human run has to hold for joiners, and those are pinned to 8-seat maps.
   local nai=$((8 - humans))
-  local seatenv="TAK_MP_AIS=$nai TAK_MP_WAIT=8"
+  local seatenv="TAK_MP_AIS=$nai"
+  [ "$humans" -gt 1 ] && seatenv="TAK_MP_AIS=$nai TAK_MP_WAIT=8"
   [ "$seat" = "watch" ] && seatenv="TAK_MP_WATCH=1 TAK_MP_AIS=8"
 
   local secs=$((MINUTES * 60))
