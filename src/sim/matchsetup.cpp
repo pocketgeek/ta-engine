@@ -503,7 +503,54 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // bodies are solid with nothing to pull an overlap apart. Deterministic -- a fixed
     // ring scan over the nav grid, and a claim set filled in a fixed order -- so every
     // peer lays out the identical army and lockstep holds.
-    std::set<std::pair<int, int>> claimed;
+    // Cells already spoken for by a placed body. A flat bitmap over the nav grid, not
+    // a std::set: the ring scan below can touch tens of thousands of cells per unit on
+    // a crowded map, and a set lookup per cell made setup take minutes.
+    const int claimW = std::max(world.nav().width(), 1);
+    const int claimH = std::max(world.nav().height(), 1);
+    std::vector<uint8_t> claimBits(size_t(claimW) * size_t(claimH), 0);
+    auto claimedAt = [&](int x, int z) {
+        if (x < 0 || z < 0 || x >= claimW || z >= claimH) return true;   // off-map = taken
+        return claimBits[size_t(z) * size_t(claimW) + size_t(x)] != 0;
+    };
+    // Reserve a whole FOOTPRINT, never a centre cell. fits(x,z,foot) asks about the
+    // square [x,x+foot) x [z,z+foot), so that is what a body occupies and that is what
+    // has to be claimed. Reserving only {nx,nz} was not overlap protection at all: two
+    // 2x2 units could take adjacent cells 16px apart while needing 32, which is exactly
+    // where snapping packs them -- along a shoreline, where the free cells are a thin
+    // line. Measured on Inner Circle with 8 players: 19059 overlapping pairs with
+    // centre-cell claims.
+    auto claimFoot = [&](int nx, int nz, int foot) {
+        for (int dz = 0; dz < foot; ++dz)
+            for (int dx = 0; dx < foot; ++dx)
+                if (claimedAt(nx + dx, nz + dz)) return false;
+        for (int dz = 0; dz < foot; ++dz)
+            for (int dx = 0; dx < foot; ++dx)
+                claimBits[size_t(nz + dz) * size_t(claimW) + size_t(nx + dx)] = 1;
+        return true;
+    };
+    int sweepCursor = 0;   // global fallback scan position (see snapSpawn)
+    int mapCapacity = -1;  // bodies this map can hold, computed once (see capacityFor)
+    // How many bodies of `roster`'s typical size this map can hold, minus 5% slack so
+    // the snap is never scraping the last few free cells. Walkable AREA divided by what
+    // a roster unit actually occupies -- footprints here run 2x2 to 4x4, so counting
+    // cells alone would overstate capacity several-fold.
+    auto capacityFor = [&](const std::vector<const UnitType*>& roster) {
+        if (mapCapacity >= 0 || roster.empty()) return mapCapacity;
+        long walkable = 0;
+        const NavGrid& g0 = world.navFor(roster.front());
+        for (int z = 0; z < g0.height(); ++z)
+            for (int x = 0; x < g0.width(); ++x)
+                if (g0.fits(x, z, 1)) ++walkable;
+        long footArea = 0;
+        for (const UnitType* t : roster) {
+            const int fo = std::clamp(std::max(t->footX, t->footZ), 1, 15);
+            footArea += long(fo) * long(fo);
+        }
+        const long meanFoot = std::max<long>(1, footArea / long(roster.size()));
+        mapCapacity = int((walkable / meanFoot) * 95 / 100);
+        return mapCapacity;
+    };
     // How far a snap may look, in cells. Generous on purpose: `claimed` makes units
     // compete for cells, so the radius has to hold the whole block, not just clear the
     // nearest lake. A radius-r disc holds about pi*r^2 cells before terrain takes its
@@ -518,9 +565,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // it was more code, and slower to converge on the right answer than the constant.
     constexpr int kSnapCells = 96;
     auto snapSpawn = [&](const UnitType* t, float& ux, float& uz) {
-        if (!t || t->canFly) return;              // flyers are fine over anything
+        if (!t || t->canFly) return true;         // flyers are fine over anything
         const NavGrid& g = world.navFor(t);
-        if (g.empty()) return;
+        if (g.empty()) return true;
         const int foot = std::clamp(std::max(t->footX, t->footZ), 1, 15);
         const int cx = int(ux) / 16, cz = int(uz) / 16;
         for (int r = 0; r <= kSnapCells; ++r)
@@ -529,13 +576,31 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     if (std::max(std::abs(i), std::abs(j)) != r) continue;   // ring only
                     const int nx = cx + i, nz = cz + j;
                     if (!g.fits(nx, nz, foot)) continue;
-                    if (!claimed.insert({nx, nz}).second) continue;          // taken
+                    if (!claimFoot(nx, nz, foot)) continue;                  // taken
                     ux = float(nx) * 16 + 8;
                     uz = float(nz) * 16 + 8;
-                    return;
+                    return true;
                 }
-        // Nothing within range: leave the point alone rather than drop the unit. Better
-        // a badly placed unit than a benchmark that silently spawns fewer than it says.
+        // Nothing free within kSnapCells of where this unit wanted to be. Sweep a
+        // GLOBAL cursor for the next free spot anywhere rather than giving up or
+        // dropping the body on top of someone. The cursor only moves forward, so the
+        // whole fill costs one pass over the grid however many units ask.
+        for (; sweepCursor < claimW * claimH; ++sweepCursor) {
+            const int nx = sweepCursor % claimW, nz = sweepCursor / claimW;
+            if (!g.fits(nx, nz, foot)) continue;
+            if (!claimFoot(nx, nz, foot)) continue;
+            ux = float(nx) * 16 + 8;
+            uz = float(nz) * 16 + 8;
+            return true;
+        }
+        return false;                             // the map really is full
+    };
+    // The Monarch is placed before any of this and was never reserved, so a snapped
+    // unit could be sent to stand on top of it. Claim its square up front.
+    auto claimMonarch = [&](const UnitType* t, float ux, float uz) {
+        if (!t || t->canFly) return;
+        const int foot = std::clamp(std::max(t->footX, t->footZ), 1, 15);
+        claimFoot(int(ux) / 16, int(uz) / 16, foot);
     };
 
     const int kBenchSpawns = benchmarkSpawns(cfg.benchmark);   // 0 when off
@@ -552,6 +617,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         assigned.push_back({mx, mz});
         ++spot;
         world.spawn(monarch, mx, mz, 0, i);
+        claimMonarch(monarch, mx, mz);   // nothing else may be snapped onto it
         world.player(i).mana = cfg.startMana;
         // Resolve this player's god now, while the registry is in hand. The sim
         // summons it itself (World::summonReadyGods) and has no registry of its own;
@@ -577,6 +643,22 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 if (t->domain != UnitType::Domain::Water) roster.push_back(t);
             int cap = cfg.unitCap > 0 ? cfg.unitCap : 1000;   // unlimited -> a sane default
             int target = (cap * 95) / 100;
+            // ...but never more than the MAP can hold. The fill used to ask for 95% of
+            // the cap per player regardless -- 15200 bodies at cap 2000 with 8 players,
+            // on an Inner Circle that holds about 12000 -- and the excess had nowhere
+            // legal to go: it ended up either in terrain (permanently stuck, because a
+            // body cannot walk out of a cell it could not walk into) or inside another
+            // body. There is no placement that satisfies both once it is
+            // over-subscribed, so do not over-subscribe: take 95% of real capacity and
+            // leave the last 5% as slack, so the snap is never scraping the last few
+            // cells on the map.
+            //
+            // Capacity is the walkable area divided by what a roster unit actually
+            // occupies -- footprints here run 2x2 to 4x4, so counting cells alone would
+            // overstate it several-fold.
+            mapCapacity = capacityFor(roster);
+            const int players = std::max(1, int(cfg.slots.size()));
+            target = std::min(target, std::max(1, mapCapacity / players));
             if (!roster.empty() && target > 0) {
                 int cols = 1;                                 // integer ceil(sqrt(target))
                 while (cols * cols < target) ++cols;
@@ -594,7 +676,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     const UnitType* t = roster[size_t(k) % roster.size()];
                     float ux = x0 + float(k % cols) * spacing;
                     float uz = z0 + float(k / cols) * spacing;
-                    snapSpawn(t, ux, uz);   // the lattice ignores terrain; this does not
+                    // The lattice ignores terrain; this does not. False means the map
+                    // is genuinely full -- stop rather than stack the remainder.
+                    if (!snapSpawn(t, ux, uz)) break;
                     world.spawn(t, ux, uz, 0, i);
                 }
             }
@@ -607,7 +691,18 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             for (const UnitType* t : reg.combatUnits(monarch->side))
                 if (t->domain != UnitType::Domain::Water) roster.push_back(t);
             if (!roster.empty()) {
-                int cols = 1; while (cols * cols < kBenchSpawns) ++cols;   // ceil(sqrt(240)) = 16
+                // Cap the plan at what the map can hold, exactly as the stress fill
+                // does. Intensity 5 asks for 960 units per player -- 7680 across 8 --
+                // and Inner Circle holds about 3100 bodies of this roster's footprint,
+                // so most of the top intensities were queueing units that had nowhere
+                // legal to stand. The RAMP is what the benchmark measures, so this
+                // shortens it rather than thinning it: the run still spawns at the
+                // chosen rate, it just stops once the map is full.
+                mapCapacity = capacityFor(roster);
+                const int players = std::max(1, int(cfg.slots.size()));
+                const int myShare = std::max(1, mapCapacity / players);
+                const int plan = std::min(kBenchSpawns, myShare);
+                int cols = 1; while (cols * cols < plan) ++cols;   // ceil(sqrt(plan))
                 const float spacing = 40.0f;
                 float x0 = mx - float(cols) * spacing * 0.5f;   // centre the block on the start
                 float z0 = mz - float(cols) * spacing * 0.5f;
@@ -615,11 +710,11 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 // Snapped at PLAN time, not spawn time: the plan is built identically on
                 // every peer here, whereas snapping during the run would have to agree
                 // about a world that has moved on.
-                for (int s = 0; s < kBenchSpawns; ++s) {
+                for (int s = 0; s < plan; ++s) {
                     const UnitType* t = roster[size_t(s) % roster.size()];
                     float ux = x0 + float(s % cols) * spacing;
                     float uz = z0 + float(s / cols) * spacing;
-                    snapSpawn(t, ux, uz);
+                    if (!snapSpawn(t, ux, uz)) break;   // map full: stop, do not stack
                     benchPlan[size_t(s)].units.push_back({t, ux, uz, i});
                 }
             }

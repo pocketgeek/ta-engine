@@ -1697,7 +1697,7 @@ int main(int argc, char** argv) {
     // brittle about map details.
     std::printf("\n[benchmark / stress unit placement]\n");
     {
-        auto misplaced = [&](sim::MatchConfig cfg) {
+        auto misplaced = [&](sim::MatchConfig cfg, sim::World& w) {
             cfg.vfs = &vfs;
             cfg.mapPath = kMap;
             cfg.slots.resize(8);
@@ -1706,7 +1706,6 @@ int main(int argc, char** argv) {
                 cfg.slots[size_t(i)].team = i;
                 cfg.slots[size_t(i)].faction = i % 5;
             }
-            sim::World w;
             sim::setupMatch(w, reg, cfg);
             int total = 0, bad = 0;
             for (const auto& u : w.units()) {
@@ -1721,12 +1720,43 @@ int main(int argc, char** argv) {
             sim::MatchConfig cfg;
             cfg.stressTest = true;
             cfg.unitCap = 2000;
-            auto [bad, total] = misplaced(cfg);
+            sim::World w;
+            auto [bad, total] = misplaced(cfg, w);
             check(total > 1000, "the stress fill actually spawned an army",
                   std::to_string(total) + " units");
             check(total && bad * 100 / total < 3,
                   "stress-test units start on terrain they can occupy",
                   std::to_string(bad) + "/" + std::to_string(total) + " misplaced");
+            // Terrain fit is only half of it: the snap also has to stop two bodies
+            // being placed inside one another. `claimed` reserves a whole FOOTPRINT,
+            // because reserving a centre cell let two 2x2 units take adjacent cells
+            // 16px apart while needing 32 -- and the snap packs units exactly where
+            // that bites, along a shoreline where the free cells are a thin line.
+            //
+            // ZERO is the bar, not a rate, and it is reachable because the fill no
+            // longer over-subscribes: it asks for at most 95% of what the map can
+            // actually hold. Before, on this map, it asked for 15200 bodies on room
+            // for ~3300 and produced 19059 overlapping pairs -- the excess had nowhere
+            // legal to go, so it went into terrain or into another body.
+            long pairs = 0;
+            {
+                std::vector<const sim::Unit*> bodies;
+                for (const auto& u : w.units())
+                    if (u.alive() && u.type && !u.type->canFly) bodies.push_back(&u);
+                for (size_t a = 0; a < bodies.size(); ++a)
+                    for (size_t b = a + 1; b < bodies.size(); ++b) {
+                        const float need =
+                            (float(std::max(bodies[a]->type->footX, bodies[a]->type->footZ)) +
+                             float(std::max(bodies[b]->type->footX, bodies[b]->type->footZ)))
+                            * 8.0f * 0.5f;
+                        const float dx = bodies[a]->x - bodies[b]->x;
+                        const float dz = bodies[a]->z - bodies[b]->z;
+                        if (std::sqrt(dx * dx + dz * dz) < need) ++pairs;
+                    }
+            }
+            check(pairs == 0, "and no two of them are placed inside each other",
+                  std::to_string(pairs) + " overlapping pairs over " +
+                      std::to_string(total) + " units");
         }
         {
             // Intensity 5 = the densest plan. setupMatch only BUILDS the plan, so tick
@@ -1751,9 +1781,12 @@ int main(int argc, char** argv) {
                 const int foot = std::clamp(std::max(u.type->footX, u.type->footZ), 1, 15);
                 if (!w.navFor(u.type).fits(int(u.x) / 16, int(u.z) / 16, foot)) ++bad;
             }
-            // Lower bar than the stress fill: this one has fought for 60s first, and
-            // a smaller map kills faster (841 of the spawns survive on Inner Circle).
-            check(total > 500, "the benchmark plan actually spawned an army",
+            // Much lower bar than the stress fill, for two reasons: this one has
+            // fought for 60s first, and on a CRAMPED map the plan is capped at what
+            // the map can hold. Inner Circle holds ~3300 bodies while intensity 5 asks
+            // for 7680, so the cap binds hard here -- on Ulasem Arena, which is what
+            // Benchmark actually runs, capacity is ~49000 and nothing is capped at all.
+            check(total > 150, "the benchmark plan actually spawned an army",
                   std::to_string(total) + " units");
             check(total && bad * 100 / total < 3,
                   "benchmark units start on terrain they can occupy",
