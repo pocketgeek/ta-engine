@@ -31,12 +31,17 @@ set -u
 # HOSTS: "name:jobs:weight". WEIGHT picks which runs a box is allowed to take --
 # `heavy` boxes get everything, `light` boxes only the runs that stay small.
 #
-# vpn3 has 2 cores and 3.9GB against tak's 32 and 31GB, so it gets 2 concurrent jobs
-# and NONE of the stress/benchmark configurations: those field 5k-15k units per game,
-# and three of them at once would push a 3.9GB box into swap, which does not fail
-# cleanly -- it just makes a run crawl and look like a stall. Sizing down is what keeps
-# a small box's results trustworthy rather than merely finishing.
-HOSTS_SPEC="${TAK_HOSTS:-tak.pgnet.us:10:heavy vpn3.pgnet.us:2:light}"
+# vpn3 has 2 cores and 3.9GB against tak's 32 and 31GB, so it takes NONE of the
+# stress/benchmark configurations: those field 5k-15k units per game, and enough of
+# them at once would push a small box into swap, which does not fail cleanly -- it
+# just makes a run crawl and look like a stall, the same false signal that cost hours
+# when a wedged client looked like a slow one.
+#
+# The job count is MEASURED, not guessed: a light referee holds ~67MB RSS and 2 of
+# them left the box at 0.13 load, so 6 fits in well under 500MB of 3.9GB with CPU to
+# spare. An earlier guess of 2 was over-cautious by 3x and would have turned 3 waves
+# into 8 for no reason -- the clients run here, so a remote box only carries referees.
+HOSTS_SPEC="${TAK_HOSTS:-tak.pgnet.us:10:heavy vpn3.pgnet.us:6:light}"
 RUSER="pocket_geek"
 RDATA="/home/pocket_geek/tak_data"
 RREPLAY="/home/pocket_geek/tak_replay"
