@@ -1016,6 +1016,23 @@ int main(int argc, char** argv) {
             mapView = std::make_unique<MapView>(ren, vfs, mapPath);
         } else if (mode == "game" && !args.empty() && !dataRoot.empty()) {
             std::string mapPath = tak::hpi::findMap(vfs, args[0]);
+#ifndef NDEBUG
+            // Campaign missions live under missions/, which findMap does not search --
+            // it covers Maps/ and kmap/, the skirmish namespaces, and the campaign
+            // runner hands MapView a path directly rather than looking one up by name.
+            // That left --mpmission unable to launch the very maps it exists to drive,
+            // so the mission path had no automated coverage at all: a change to the
+            // sim's feature/nav setup could regress campaigns with nothing to catch it.
+            // Resolve a mission stem here, in the debug harness only, rather than
+            // widening a lookup the whole engine shares.
+            if (mapPath.empty() && mpHeadless == 8) {
+                std::string mstem = args[0];
+                if (mstem.size() > 4 && mstem.substr(mstem.size() - 4) == ".tnt")
+                    mstem = mstem.substr(0, mstem.size() - 4);
+                std::string mpath = "missions/" + mstem + ".tnt";
+                if (vfs.has(mpath)) mapPath = mpath;
+            }
+#endif
             if (mapPath.empty()) { std::fprintf(stderr, "map '%s' not found in %s\n", args[0].c_str(), dataRoot.c_str()); return 1; }
             // A multiplayer client builds the world from the server's GameStarting
             // later, so it constructs "bare" (no single-player 2-monarch spawn).
