@@ -71,6 +71,7 @@ MINUTES=45
 JOBS=12
 VALIDATE=0
 DRYRUN=0
+VALONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --hosts)    HOSTS_SPEC="$2"; shift 2;;
@@ -79,6 +80,7 @@ while [ $# -gt 0 ]; do
     --data)     LDATA="$2"; shift 2;;
     --validate) VALIDATE=1; shift;;
     --dry-run)  DRYRUN=1; shift;;
+    --validate-only) VALIDATE=1; VALONLY=1; shift;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -478,6 +480,53 @@ if [ "$VALIDATE" = "1" ]; then
     echo "   FAIL -- planted desync NOT detected. The sweep cannot prove anything; stopping." >&2
     exit 1
   fi
+
+  # SECOND SAFETY NET: a client whose gameplay data differs from the host's must be
+  # REJECTED AT LOAD, not allowed in to desync ten minutes later. Once the same
+  # override exists everywhere, nothing in a normal sweep produces a mismatch any
+  # more, so this manufactures one -- a data dir of symlinks to the real install with
+  # ONE gameplay value changed, which costs nothing and leaves the shared dir alone.
+  echo "== validating the gameplay-override mismatch rejection on $vhost =="
+  NEG="$OUT/negdata"; rm -rf "$NEG"; mkdir -p "$NEG/overrides/units"
+  for _e in "$LDATA"/*; do
+    [ "$(basename "$_e")" = overrides ] && continue
+    ln -s "$(realpath "$_e")" "$NEG/$(basename "$_e")" 2>/dev/null || true
+  done
+  if [ -d "$LDATA/overrides" ]; then
+    for _e in "$LDATA"/overrides/*; do
+      [ "$(basename "$_e")" = units ] && continue
+      ln -s "$(realpath "$_e")" "$NEG/overrides/$(basename "$_e")" 2>/dev/null || true
+    done
+  fi
+  # A gameplay file the host cannot match. Derived from the real override when there is
+  # one, otherwise minted from the retail FBI, so this works either way.
+  if [ -f "$LDATA/overrides/units/arasword.fbi" ]; then
+    sed 's/maxdamage = [0-9]*;/maxdamage = 4242;/' "$LDATA/overrides/units/arasword.fbi" \
+      >"$NEG/overrides/units/arasword.fbi"
+  else
+    ./build/hpitool cat "$LDATA"/V3Rocket.hpi units/arasword.fbi 2>/dev/null \
+      | sed 's/maxdamage = [0-9]*;/maxdamage = 4242;/' >"$NEG/overrides/units/arasword.fbi"
+  fi
+
+  "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7891 --data $RDATA --no-auth --seed 999 >/tmp/tak-neg.log 2>&1 </dev/null & echo \$!" >/dev/null 2>&1
+  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-neg.log 2>/dev/null" && break; sleep 2; done
+  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 \
+      timeout -k 20 180 $CLIENT game "Ulasem Arena" --data "$NEG" \
+      --server "$vhost" --serverport 7891 --mphost --time 60 --overrides full \
+      >"$OUT/negative.client.log" 2>&1
+  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-neg.log" >"$OUT/negative.server.log" 2>/dev/null
+  "${VSSH[@]}" "$RUSER@$vhost" "ps -o pid,args -C takserver --no-headers | awk '/7891/{print \$1}' | xargs -r kill" >/dev/null 2>&1
+  if grep -qi "override mismatch" "$OUT/negative.server.log" "$OUT/negative.client.log" 2>/dev/null; then
+    echo "   PASS -- $(grep -ohi 'rejected at load.*' "$OUT/negative.server.log" | head -1)"
+  else
+    echo "   FAIL -- a client with DIFFERENT gameplay data was not rejected. That client" >&2
+    echo "           would have desynced mid-game instead; stopping." >&2
+    exit 1
+  fi
+
+  # --validate-only: prove the safety nets fire, then stop. Checking them should not
+  # cost a full sweep -- and a gate nobody can afford to run is a gate that rots.
+  if [ "$VALONLY" = "1" ]; then echo "both gates passed"; exit 0; fi
 fi
 
 # Dispatch. Each host drains its own queue at its own concurrency, so a 2-core box
