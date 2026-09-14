@@ -1058,6 +1058,23 @@ void World::order(int unitId, float x, float z, bool queue) {
 // Queue a background path for `u` toward (x,z). Flyers ignore the ground, and a
 // goal a couple of cells away is not worth a search -- the straight segment
 // already covers it.
+// Drop any path search still queued for this unit. Call it wherever a unit's order
+// list is REPLACED wholesale and nothing immediately re-requests, because a search
+// outlives the orders that asked for it: the PathService keys on the unit id, not on
+// the order it came from.
+//
+// A stale route is not merely wasted work. When it lands, replaceLeg() rebuilds the
+// current leg out of its waypoints -- and currentLeg() falls through to the LAST order
+// when nothing carries `goal`, so for a bare command list the leg it rewrites is the
+// command itself. replaceLeg carries only movement flags across, so `load` and `unload`
+// are dropped: the transport quietly stops being a transport and drives off along a
+// route to wherever it was going before. Both were reachable by changing your mind
+// while a route was in flight.
+void World::cancelPath(Unit& u) {
+    paths_.cancel(u.id);
+    pathRetryAt_.erase(u.id);
+}
+
 void World::requestPath(Unit& u, float x, float z) {
     if (!pathService_) return;
     pathRetryAt_.erase(u.id);   // a new order deserves a fresh attempt
@@ -1185,6 +1202,7 @@ void World::loadInto(int unitId, int transportId) {
         if (const Unit* c = unit(id)) used += c->type ? c->type->transportSize : 1;
     if (used + u->type->transportSize > t->type->transportCap) return;
     u->orders.clear();
+    cancelPath(*u);          // a route for the orders just discarded would eat the load
     Order o;
     o.targetId = transportId;
     o.load = true;
@@ -1195,6 +1213,9 @@ void World::unloadAt(int transportId, float x, float z) {
     Unit* t = unit(transportId);
     if (!t || !t->alive() || t->cargo.empty()) return;
     t->orders.clear();
+    // A search for the orders just discarded is still queued, and cases 1 and 3 below
+    // re-request nothing -- so it would land on the bare unload and rewrite it.
+    cancelPath(*t);
     // Sail within unloading range of the drop point, then disembark.
     //
     // The drop point is normally LAND -- that is the whole point of the order -- and a
@@ -1252,23 +1273,47 @@ void World::unloadAt(int transportId, float x, float z) {
     if (t->orders.size() > 1) requestPath(*t, t->orders.front().x, t->orders.front().z);
 }
 
-// The nearest point the transport can actually sit in, within kUnloadRange of the drop
-// point. Spirals out in cell rings from the drop cell so the first hit is the closest,
-// which keeps the boat as near the shore as its own grid allows; bounded by the range
-// because a cell outside it is no use -- arriving there would not satisfy the unload.
-// Deterministic: a fixed scan order over a deterministic grid.
+// The nearest point the transport can actually sit in AND get to, within kUnloadRange
+// of the drop point. Spirals out in cell rings from the drop cell so the first hit is
+// the closest, which keeps the boat as near the shore as its own grid allows; bounded
+// by the range because a cell outside it is no use -- arriving there would not satisfy
+// the unload. Deterministic: a fixed scan order over a deterministic grid.
+//
+// Fitting is NOT reaching, and the ring order makes the difference bite. A landlocked
+// pond on the far side of the drop point is water the boat fits in, so an unfiltered
+// scan accepts it -- and because the pond can easily sit nearer the drop point than the
+// open sea, it is found FIRST and a perfectly good coastal cell one ring further out is
+// never considered. The boat then has an approach it can never reach. So candidates are
+// filtered by the same component labelling pathExists() answers from (cached per
+// grid+footprint, so this costs a lookup, not a search).
 bool World::approachCell(const Unit& t, float x, float z, float& outX, float& outZ) const {
     const NavGrid& g = navFor(t.type);
     if (g.empty()) return false;
     const int foot = footCells(t.type);
     const int cx = int(x) / 16, cz = int(z) / 16;
     const int maxR = int(kUnloadRange) / 16;      // rings beyond this cannot be in range
+    // The transport's own component. Its cell is normally occupiable, but a boat can be
+    // mid-nudge or on a cell its footprint no longer fits; fall back to accepting any
+    // fitting cell rather than refusing to unload at all.
+    const CompGrid* cg = components(g, foot);
+    int32_t here = -1;
+    if (cg && !cg->label.empty()) {
+        const int tx = std::clamp(int(t.x) / 16, 0, cg->w - 1);
+        const int tz = std::clamp(int(t.z) / 16, 0, cg->h - 1);
+        here = cg->label[size_t(tz) * size_t(cg->w) + size_t(tx)];
+    }
+    auto reachable = [&](int nx, int nz) {
+        if (here < 0 || !cg || cg->label.empty()) return true;   // no labelling to use
+        if (nx < 0 || nz < 0 || nx >= cg->w || nz >= cg->h) return false;
+        return cg->label[size_t(nz) * size_t(cg->w) + size_t(nx)] == here;
+    };
     for (int r = 0; r <= maxR; ++r) {
         for (int j = -r; j <= r; ++j)
             for (int i = -r; i <= r; ++i) {
                 if (std::max(std::abs(i), std::abs(j)) != r) continue;   // ring only
                 const int nx = cx + i, nz = cz + j;
                 if (!g.fits(nx, nz, foot)) continue;
+                if (!reachable(nx, nz)) continue;   // fits, but not from here
                 const float wx = float(nx) * 16 + 8, wz = float(nz) * 16 + 8;
                 // Ring distance is Chebyshev; the range test is Euclidean, so a corner
                 // of the last ring can still fall outside it. Check the real distance.
@@ -1352,6 +1397,7 @@ void World::patrol(int unitId, float x, float z) {
     // turned its heading toward the goal, so you could spin a keep by right-clicking.
     if (!u || !u->alive() || !u->type || u->type->isStructure()) return;
     u->orders.clear();
+    cancelPath(*u);          // the route for the replaced orders is not this patrol's
     Order a;
     a.x = u->x; a.z = u->z; a.patrol = true; a.attackMove = true;
     Order b;
@@ -1417,6 +1463,7 @@ void World::stop(int unitId) {
     Unit* u = unit(unitId);
     if (!u) return;
     u->orders.clear();
+    cancelPath(*u);          // stop means stop: do not finish routing where it was going
     // Stop also halts a conjurer: cancel the infinite loop and drain the queue.
     u->repeatType = nullptr;
     u->buildQueue.clear();
