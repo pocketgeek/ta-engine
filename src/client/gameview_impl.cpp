@@ -264,6 +264,7 @@
         if (paused_ || replayTick_ >= replayBundles_.size()) return;
         replayAccum_ += dt * speedMult();
         int guard = 0;
+        bool advanced = false;
         while (replayAccum_ >= 1.0f / 30.0f && replayTick_ < replayBundles_.size() && guard < 64) {
             const auto& bd = replayBundles_[replayTick_];
             for (const auto& c : bd.cmds) apply(c);
@@ -295,7 +296,15 @@
             }
             replayAccum_ -= 1.0f / 30.0f;
             ++guard;
+            advanced = true;
         }
+        // PUBLISH what we just simulated, exactly as update() does for a live game
+        // (simStep ends with captureFrame, then cosmeticStep runs). replayStep did
+        // neither, so front() was never filled: the render reads front().live, which
+        // stayed empty, and playback drew the terrain with none of the recorded
+        // armies on it. Effects follow the same snapshot, so cosmeticStep comes after.
+        if (advanced) captureFrame();
+        cosmeticStep(dt);
     }
 
     size_t GameView::aliveUnits() const {

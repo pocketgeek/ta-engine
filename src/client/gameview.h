@@ -640,6 +640,11 @@ public:
     // (not live world_), so it is safe to call after the sim thread has stopped.
     tak::ResultStats resultStats() const;
     size_t aliveUnits() const;
+    // Units in the PUBLISHED render snapshot. Not the same question as aliveUnits(),
+    // which reads the world: this is what the renderer would actually draw, and it is
+    // zero when a mode simulates without publishing -- which is exactly how replay
+    // playback managed to show an empty map (replayStep never called captureFrame).
+    size_t framedUnits() const { return front().live.size(); }
 
     // Drive one iteration of the multiplayer lobby + game. autoMode: 0 = don't
     // auto-drive the lobby (a real UI will), 1 = auto-host (create + start at 2+

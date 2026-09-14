@@ -922,11 +922,18 @@ int main(int argc, char** argv) {
         if (mode == "replay" && !args.empty() && !dataRoot.empty()) {
             // takclient replay <file.takrep> --data <retail-root>
             ReplayFile rf;
-            if (!loadReplayFile(args[0], rf)) {
-                // The loader refuses a file it cannot replay faithfully rather than
-                // simulating a different game in silence. Say WHY when it knows.
+            // A refusal is normal, not fatal: the picker lists every .takrep it finds,
+            // including ones recorded under an older protocol, and the loader rightly
+            // turns those away. From the MENU that has to reopen the menu with the
+            // reason; only a command-line launch has nowhere to go but out.
+            auto replayFailed = [&](const std::string& why) {
                 std::fprintf(stderr, "replay: cannot read %s%s%s\n", args[0].c_str(),
-                             rf.error.empty() ? "" : " -- ", rf.error.c_str());
+                             why.empty() ? "" : " -- ", why.c_str());
+                if (fromMenu) menuConnectError = why.empty() ? "cannot read that replay" : why;
+            };
+            if (!loadReplayFile(args[0], rf)) {
+                replayFailed(rf.error);
+                if (fromMenu) continue;      // back to the front-end, error shown
                 return 1;
             }
             // A campaign recording's terrain is the MISSION's own map. setupMission
@@ -938,14 +945,15 @@ int main(int argc, char** argv) {
             if (!rf.mission.empty()) {
                 mapPath = "missions/" + rf.mission + ".tnt";
                 if (!vfs.has(mapPath)) {
-                    std::fprintf(stderr, "replay: mission '%s' not in this data\n",
-                                 rf.mission.c_str());
+                    replayFailed("mission '" + rf.mission + "' is not in this game data");
+                    if (fromMenu) continue;
                     return 1;
                 }
             } else {
                 mapPath = tak::hpi::findMap(vfs, rf.mapId);
                 if (mapPath.empty()) {
-                    std::fprintf(stderr, "replay: map '%s' not found\n", rf.mapId.c_str());
+                    replayFailed("map '" + rf.mapId + "' is not in this game data");
+                    if (fromMenu) continue;
                     return 1;
                 }
             }
@@ -956,9 +964,20 @@ int main(int argc, char** argv) {
             // the view below, and hashing the moved-from husk afterwards reported a
             // mismatch against every recording.
             const uint64_t myDataHash = tak::hpi::gameplayHash(vfs);
-            gameView = std::make_unique<GameView>(ren, std::move(vfs), mapPath, dataRoot, rpol,
+            // From the menu, hand the view its OWN mount and leave the outer vfs
+            // intact -- the front-end still needs it when playback ends, and the
+            // ordinary game launch does exactly this for the same reason.
+            gameView = std::make_unique<GameView>(ren,
+                                                  fromMenu ? tak::hpi::mountRetailRoot(dataRoot, rpol)
+                                                           : std::move(vfs),
+                                                  mapPath, dataRoot, rpol,
                                                   false, false, false, /*bare=*/true, "ara", "tar",
                                                   rf.crusades);
+            gameView->applySettings(settings);   // audio / camera / UI-scale prefs
+            gameView->setSettings(&settings);    // Options edits + persists them
+            // Watching a replay must not be a one-way trip: without this the in-game
+            // menu has no MAIN MENU entry and the only way out is quitting the app.
+            if (fromMenu) gameView->setCanReturnToMenu();
             std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks%s (format %u, "
                          "recorded by %s, %zu hash checkpoints)\n", args[0].c_str(),
                          rf.mapId.c_str(), rf.bundles.size(),
@@ -1079,9 +1098,13 @@ int main(int argc, char** argv) {
     if (gameView && gameView->replayMode() && tak::devEnv("TAK_REPLAY_VERIFY")) {
         while (gameView->replayTick() < gameView->replayLength())
             gameView->replayStep(10.0f);   // guard caps to 64 ticks/call
-        std::fprintf(stderr, "replay done: tick=%zu hash=%016llx units=%zu%s\n",
+        // `framed` is the published snapshot's unit count -- what the renderer would
+        // draw. It is reported next to the world count because they answer different
+        // questions, and a mode that simulates without publishing shows units=N
+        // framed=0, which is what an empty-looking playback looks like from here.
+        std::fprintf(stderr, "replay done: tick=%zu hash=%016llx units=%zu framed=%zu%s\n",
                      gameView->replayTick(), (unsigned long long)gameView->worldHashPublic(),
-                     gameView->aliveUnits(),
+                     gameView->aliveUnits(), gameView->framedUnits(),
                      gameView->replayDiverged() ? " DIVERGED" : "");
         // FAIL when playback did not reproduce the recording. This returned 0
         // unconditionally, so an automated verify passed a recording it had just
