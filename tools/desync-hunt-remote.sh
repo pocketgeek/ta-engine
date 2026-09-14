@@ -179,6 +179,18 @@ RUNS=(
   "2h-gods|Ulasem Arena|TAK_GODS=1||human|light|2"
   "2h-crusades|Ulasem Arena||--crusades|human|light|2"
   "2h-stress|Ulasem Arena|TAK_STRESS=1||human|heavy|2"
+  # ORDER-ISSUING humans (TAK_AUTOPLAY). Everything above has its humans standing
+  # still, so several clients landing commands on the SAME tick -- the ordinary case in
+  # a real match, and where the server's per-tick command buffer interleaves them -- is
+  # never exercised. These do that.
+  #
+  # They are CONSENSUS tests, not golden-hash tests: the server assigns a command the
+  # tick it arrives on, so the same seed legitimately produces a different hash each
+  # run. Judge them by "all clients and the referee agreed", never by comparing a hash
+  # against a previous sweep.
+  "2h-orders|Ulasem Arena|TAK_AUTOPLAY=10||human|light|2"
+  "2h-orders-stress|Ulasem Arena|TAK_AUTOPLAY=20 TAK_STRESS=1||human|heavy|2"
+  "4h-orders|Ulasem Arena|TAK_AUTOPLAY=15||human|light|4"
   "3h-baseline|Ulasem Arena|||human|light|3"
   "4h-gods|Ulasem Arena|TAK_GODS=1||human|light|4"
   "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch|heavy"
@@ -502,6 +514,9 @@ hits=$(grep -rlEi "DESYNCED|REFEREE SUSPECT" "$OUT" 2>/dev/null | grep -v "/vali
 if [ -n "$hits" ]; then echo "DESYNCS FOUND in:"; echo "$hits"; else echo "no desyncs reported"; fi
 echo "note: runs marked 'flow' seated no human, so no hashes were compared in them --"
 echo "      they cover flow control only and prove nothing about determinism."
+echo "note: TAK_AUTOPLAY runs issue live commands, so the server buckets them by the"
+echo "      tick they ARRIVE on and the same seed gives a different hash each run."
+echo "      They prove consensus, not reproducibility -- do not diff their hashes."
 echo "runs that did not complete:"
 for f in "$OUT"/*.client.log; do
   grep -q "mp-headless done" "$f" 2>/dev/null || echo "  $(basename "$f")"

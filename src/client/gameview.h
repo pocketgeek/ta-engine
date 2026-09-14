@@ -686,6 +686,32 @@ public:
 
     // One lockstep step: returns false while stalled waiting for the peer.
     uint32_t netTick() const { return netTick_; }
+#ifndef NDEBUG
+    // TAK_AUTOPLAY=N -- a headless human issues roughly N orders per 10 seconds of
+    // game time, so a multi-client run exercises the COMMAND path instead of eight
+    // players standing still. Without it a headless human seats itself and never
+    // orders anything, so several clients issuing orders on the same tick -- the
+    // ordinary case in a real match, and the one that interleaves in the server's
+    // per-tick command buffer -- is never tested at all.
+    //
+    // LOCKSTEP IS PRESERVED, REPRODUCIBILITY IS NOT. An order is a COMMAND, relayed by
+    // the server and applied on every peer from the same bundle, so every client in a
+    // game agrees no matter that each chose its orders locally -- measured: two
+    // order-issuing clients finished a game on the same tick with the same hash and no
+    // referee complaint.
+    //
+    // But the same seed does NOT give the same hash twice. Scheduling off the sim tick
+    // makes the client's DECISION deterministic; the server still assigns the tick a
+    // command EXECUTES on from when its packet arrives (Server::closeTick drains
+    // cmdQueue into whichever tick is open), and that is wall-clock dependent. Two runs
+    // of the same seed came back c575c6d0a9b8600d and a383346ec1473201.
+    //
+    // That is correct for real play -- human input arrives when it arrives -- so it is
+    // not a bug to fix here. It does mean an autoplay run is a CONSENSUS test, not a
+    // golden-hash test: use it to prove clients agree with each other and the referee,
+    // never to compare a hash against a previous run.
+    void autoplayStep();
+#endif
     tak::sim::World& worldRef() { return world_; }
     void selectOnly(int id) { if (spectating_) return; selection_.clear(); selection_.push_back(id); }
 
@@ -2203,6 +2229,10 @@ private:
     // occludes the unit. kHeightScale_/heightRef_ are lazily set by terrainLift.
     float wallOcclusionY(float wx, float wz);
     uint32_t netTick_ = 0;
+#ifndef NDEBUG
+    uint32_t autoplayNext_ = 0;    // next sim tick an autoplay order is due
+    uint32_t autoplayRng_ = 0;     // per-player stream; seeded from slot + game seed
+#endif
     uint32_t lastSendTick_ = 0;     // tick the send credit was last accrued for
     int cmdCredit_ = tak::net::kCmdCapPerTick;   // rate: commands we may send now
     int cmdInFlight_ = 0;   // window: sent, not yet seen back in a bundle

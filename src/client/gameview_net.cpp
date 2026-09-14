@@ -460,6 +460,60 @@
         return true;
     }
 
+#ifndef NDEBUG
+// See gameview.h. Issues ordinary Move / AttackMove orders through GameView::issue,
+// so they travel the real path -- outbox -> sendCommands -> server -> bundle -> every
+// peer -- rather than being applied locally, which would desync by construction.
+void GameView::autoplayStep() {
+    static const int rate = [] {
+        const char* e = tak::devEnv("TAK_AUTOPLAY");
+        return e ? std::clamp(std::atoi(e), 0, 60) : 0;
+    }();
+    if (!rate || spectating_ || replayMode_ || localPlayer_ < 0) return;
+    if (netTick_ < autoplayNext_) return;
+
+    // Seed once, from the slot and the game seed: same game + same slot -> same order
+    // stream, so a run reproduces. Different slots diverge, which is the point --
+    // eight players pulling in different directions is what interleaves commands.
+    if (autoplayRng_ == 0)
+        autoplayRng_ = uint32_t(localPlayer_ + 1) * 2654435761u ^
+                       ((mp_ ? mp_->startSeed() : 0u) * 2246822519u) ^ 0x9e3779b9u;
+    auto rnd = [&] {
+        autoplayRng_ = autoplayRng_ * 1664525u + 1013904223u;
+        return autoplayRng_ >> 8;
+    };
+
+    // Schedule the NEXT order off the tick clock, never the wall clock.
+    autoplayNext_ = netTick_ + std::max(1u, 300u / uint32_t(rate));
+
+    // Collect this player's mobile units. Stable order (units_ is append-only and
+    // identical on every peer), so indexing into it is reproducible.
+    std::vector<int> mine;
+    for (const auto& u : world_.units())
+        if (u.alive() && u.type && int(u.player) == localPlayer_ && u.type->maxVel > 0 &&
+            !u.embarked() && !u.underConstruction)
+            mine.push_back(u.id);
+    if (mine.empty()) return;
+
+    // Order a handful at a time: one unit per order is too thin to collide with
+    // another client's commands in the same tick, which is the thing being tested.
+    const int batch = 1 + int(rnd() % 4);
+    const float w = float(mapView_.map().width) * 16.0f;
+    const float h = float(mapView_.map().height) * 16.0f;
+    for (int i = 0; i < batch; ++i) {
+        tak::net::Command c;
+        c.unitId = mine[rnd() % mine.size()];
+        c.x = float(rnd() % uint32_t(w > 32 ? w - 32 : 32)) + 16.0f;
+        c.z = float(rnd() % uint32_t(h > 32 ? h - 32 : 32)) + 16.0f;
+        // Mostly plain moves, some attack-moves: attack-move drives acquisition and
+        // combat, which is where the sim has the most state to disagree about.
+        c.kind = (rnd() % 4 == 0) ? tak::net::Cmd::AttackMove : tak::net::Cmd::Move;
+        c.queue = 0;
+        issue(c);
+    }
+}
+#endif
+
     bool GameView::mpAutoStep(int autoMode, const std::string& mapId, bool crusades) {
         using S = tak::net::MpClient::State;
         if (!mp_->poll()) { netError_ = mp_->error(); return false; }
@@ -658,6 +712,9 @@
             }
             mpSetupDone_ = true;
         } else if (st == S::InGame) {
+#ifndef NDEBUG
+            autoplayStep();   // TAK_AUTOPLAY: headless humans that actually give orders
+#endif
             return mpStep();
         }
         return true;
