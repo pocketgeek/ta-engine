@@ -4480,11 +4480,17 @@ void World::tick(float dt) {
                     // cost 14,368 candidate checks against the 2,080 maximum before it.
                     // The nearest few are what this fallback is for -- a waypoint further
                     // out than that would have been inside the window already.
+                    // RELATIVE TO `from`, i.e. the NEAREST waypoints -- not the ones
+                    // just below the far-end window. Bounding it the other way scanned
+                    // indices 184..191 of a 256-entry route and never looked at the
+                    // immediate successors at all, so the one case this fallback exists
+                    // for -- an obstacle leaving only the next waypoint or two visible --
+                    // was the exact case it could not see. The route was then declared
+                    // broken and re-requested indefinitely, stranding the unit.
                     constexpr size_t kNearFallback = 8;
-                    const size_t nearStop =
-                        scanFrom - from > kNearFallback ? scanFrom - kNearFallback : from;
+                    const size_t nearEnd = std::min(scanFrom, from + kNearFallback);
                     if (!found && scanFrom > from)
-                        for (size_t j = scanFrom; j-- > nearStop;)
+                        for (size_t j = nearEnd; j-- > from;)
                             if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z) &&
                                 (!firstHop ||
                                  ng.segmentFits(u->x, u->z, float(route[j].x) * 16 + 8,
