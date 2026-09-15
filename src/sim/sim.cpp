@@ -4583,13 +4583,30 @@ void World::tick(float dt) {
             auto it = abandoned_.find(u.id);
             if (it == abandoned_.end()) continue;
             AbandonedGoal& rec = it->second;
-            if (rec.tries >= kAbandonRetries) continue;
+            // RETIRE A RECORD THAT CAN NEVER BE USED AGAIN. Leaving it to fail its own
+            // test every tick keeps abandoned_ non-empty, and abandoned_ non-empty is
+            // what runs the sweep above -- so a single spent record meant this loop
+            // walked every unit in the game, every tick, for the rest of the match.
+            if (rec.tries >= kAbandonRetries ||
+                tickCounter_ - rec.atTick > kAbandonExpiry) {
+                abandoned_.erase(it);
+                continue;
+            }
             if (tickCounter_ - rec.atTick < kAbandonRetryTicks) continue;
             // Only if it can actually get there from where it now stands. Re-issuing a
             // genuinely unreachable goal is what the give-up exists to prevent -- the
             // unit would walk at a mountain and grind at it again.
+            //
+            // A failed check does NOT spend the attempt. It used to: ++tries came first,
+            // so a goal still blocked at the ten-second mark -- a crowd that has not
+            // dispersed yet, which is the ordinary case -- burned the single retry
+            // without an order ever being issued. "One more look" became "one more
+            // check". Wait another interval instead; kAbandonExpiry bounds the waiting.
+            if (!pathExists(u.type, rec.x, rec.z, u.x, u.z)) {
+                rec.atTick = tickCounter_;
+                continue;
+            }
             ++rec.tries;
-            if (!pathExists(u.type, rec.x, rec.z, u.x, u.z)) continue;
             const bool atk = rec.attackMove, pat = rec.patrol;
             abandonRetry_ = true;          // this one re-issue is not a new player order
             order(u.id, rec.x, rec.z, /*queue=*/false);
@@ -4805,6 +4822,15 @@ void World::tick(float dt) {
                     }
                 }
             }
+            // Drop this unit's per-unit pathfinding state. Ids are never reused, so a
+            // dead unit's entries can never match anything again -- they would simply
+            // accumulate for the rest of the match. abandoned_ matters most: it gates a
+            // per-tick sweep over every unit, so stale entries there cost real work
+            // rather than just memory.
+            pathRetryAt_.erase(u.id);
+            abandoned_.erase(u.id);
+            pathDetours_.erase(u.id);
+            pathUseAStar_.erase(u.id);
             u.deadFor = 0; u.orders.clear(); u.speed = 0; continue;
         }
 

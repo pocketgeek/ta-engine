@@ -1728,6 +1728,11 @@ private:
     bool abandonRetry_ = false;
     static constexpr uint32_t kAbandonRetryTicks = 300;   // 10s before a second look
     static constexpr int kAbandonRetries = 1;             // ...and only one of them
+    // A record that can never be used again must be REMOVED, not left to fail its own
+    // test for ever: `abandoned_` gates a per-tick sweep over every unit, so one spent
+    // record keeps that sweep running for the rest of the game. The expiry covers the
+    // goal that simply never becomes reachable.
+    static constexpr uint32_t kAbandonExpiry = 30 * 120;   // 2 minutes
     // When to stop using the cheap tracer for a unit and reach for the bounded planner.
     //
     // The trigger is EXCESSIVE DETOUR, not repeated failure. Measured on a serpentine:
