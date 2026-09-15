@@ -34,8 +34,10 @@ review_one() {
     local sha="$1"
     local short; short=$(git rev-parse --short "$sha")
     local out="$OUTDIR/$short.md"
-    # Resumable: a finished review is evidence, never redone or overwritten.
-    if [ -s "$out" ] && grep -q '^finished: ' "$out" 2>/dev/null; then
+    # Resumable, but only past SUCCESSES. The footer is written whatever codex
+    # returned, so matching "finished:" alone cached a failed review as done and it was
+    # never retried -- a rate-limit blip would silently leave a hole in a release gate.
+    if [ -s "$out" ] && grep -q '^finished: .*exit: 0$' "$out" 2>/dev/null; then
         echo "  skip $short (already reviewed)"; return 0
     fi
     local parent; parent=$(git rev-parse --verify -q "$sha^") || { echo "  skip $short (root)"; return 0; }
@@ -74,9 +76,13 @@ echo
 echo "==== FINDINGS ACROSS $BASE..HEAD ===="
 # Severity first: a P1 in a release range is the thing to see, whichever commit it is.
 for sev in P1 P2 P3; do
-    for f in "$OUTDIR"/*.md; do
+    # ONLY the commits asked for. Iterating the whole directory mixed in reviews of
+    # commits outside the range -- including ones from the post-commit hook -- so a
+    # release gate reported findings against work it had not been asked about.
+    for sha_full in "${SHAS[@]}"; do
+        sha=$(git rev-parse --short "$sha_full")
+        f="$OUTDIR/$sha.md"
         [ -f "$f" ] || continue
-        sha=$(basename "$f" .md)
         grep -hE "^\s*-\s*\[$sev\]" "$f" 2>/dev/null | sort -u | while read -r line; do
             printf '%s  %s\n' "$sha" "$line"
         done
