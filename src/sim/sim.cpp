@@ -1168,6 +1168,7 @@ void World::order(int unitId, float x, float z, bool queue) {
 void World::cancelPath(Unit& u) {
     paths_.cancel(u.id);
     pathRetryAt_.erase(u.id);
+    abandoned_.erase(u.id);   // a new destination is not a retry of the old one
     // A new destination earns the cheap tracer again. This deliberately does NOT live in
     // requestPath: that is also the once-a-second re-anchor, so clearing there wiped the
     // detour history on every re-ask and the fallback could never accumulate -- the
@@ -4537,6 +4538,25 @@ void World::tick(float dt) {
     //
     // Staggered by unit id so the queue does not spike on one tick, and driven
     // off the tick counter, so it stays identical on every peer.
+    // SECOND LOOK at a unit the progress watchdog left idle. Nothing else ever will:
+    // the sweep below skips units with no orders, so a dropped final leg is permanent.
+    if (pathService_ && !nav_.empty() && !abandoned_.empty()) {
+        for (auto& u : units_) {
+            if (!u.alive() || u.embarked() || !u.type || !u.orders.empty()) continue;
+            if (u.type->canFly || u.type->isStructure() || !u.type->canMove) continue;
+            auto it = abandoned_.find(u.id);
+            if (it == abandoned_.end()) continue;
+            AbandonedGoal& rec = it->second;
+            if (rec.tries >= kAbandonRetries) continue;
+            if (tickCounter_ - rec.atTick < kAbandonRetryTicks) continue;
+            // Only if it can actually get there from where it now stands. Re-issuing a
+            // genuinely unreachable goal is what the give-up exists to prevent -- the
+            // unit would walk at a mountain and grind at it again.
+            ++rec.tries;
+            if (!pathExists(u.type, rec.x, rec.z, u.x, u.z)) continue;
+            order(u.id, rec.x, rec.z, /*queue=*/false);
+        }
+    }
     if (pathService_ && !nav_.empty()) {
         for (auto& u : units_) {
             if (!u.alive() || u.embarked() || !u.type) continue;
@@ -4842,7 +4862,7 @@ void World::tick(float dt) {
         // several early exits -- escorting, arriving, handing an order to a builder --
         // and a value only ever cleared on the movement path would survive all of them
         // and leave a unit reading as jammed long after it stopped trying to move.
-        if (u.jamT > 0.0f) u.jamT = std::max(0.0f, u.jamT - dt);
+        if (u.jamT > 0.0f) u.jamT = std::max(0.0f, u.jamT - dt * 0.25f);
         // A build order that has reached the front claims its ground NOW, before
         // the builder has walked anywhere. Waiting until arrival would leave the
         // spot unreserved for the whole walk, so two builders sent to the same
@@ -4951,6 +4971,75 @@ void World::tick(float dt) {
             float maxTurn = u.type->turnRate * dt;
             u.heading += std::clamp(diff, -maxTurn, maxTurn);
 
+            // PROGRESS, NOT DISPLACEMENT, over a sliding window. See Unit::jamT.
+            {
+                const float wdx = o.x - u.jamRefX, wdz = o.z - u.jamRefZ;
+                const float nd = detmath::len(o.x - u.x, o.z - u.z);
+                if (wdx * wdx + wdz * wdz > 1.0f) {     // new waypoint -> new window
+                    u.jamRefX = o.x; u.jamRefZ = o.z;
+                    u.jamRef = nd; u.jamWin = 0;
+                } else {
+                    u.jamWin += dt;
+                    if (u.jamWin >= kJamWindow) {
+                        const float gained = u.jamRef - nd;
+                        const float want = float(std::max(u.type->footX, u.type->footZ)) * 8.0f;
+                        if (gained >= want) u.jamT = 0; else u.jamT += kJamWindow;
+                        u.jamRef = nd;
+                        u.jamWin = 0;
+                    }
+                }
+            }
+
+            // ASYMMETRIC YIELD.
+            //
+            // Two units meeting head-on each try to walk through the other, and neither
+            // gives way, so both slide sideways for ever. The existing sideways dodge is
+            // SYMMETRIC -- both units dodge, each picking a side -- and making it fire
+            // more often measurably made things worse (arrival 32/32 -> 29/32 on opposing
+            // columns): two units stepping aside together is not a yield, it is more
+            // perturbation.
+            //
+            // A yield has to be one-sided. When a stalled unit finds an opposing one
+            // right in front of it, the LOWER unit id stands aside and the higher one
+            // proceeds. Lower-id-yields is a total order, so exactly one of any pair
+            // yields, on every peer, with no tie-break and no randomness.
+            //
+            // The hold is BOUNDED. A unit that yields until the way is clear can wait for
+            // ever if the other never passes, and a stranded unit is the one outcome this
+            // whole exercise treats as a regression.
+            if (u.yieldCool > 0.0f) u.yieldCool -= dt;
+            if (u.yieldT > 0.0f) {
+                u.yieldT -= dt;
+                u.speed = 0.0f;       // stand aside: let the other one through
+                if (u.yieldT <= 0.0f) {
+                    u.yieldCool = kYieldCool;   // ...and cannot be asked again just yet
+                    u.jamT = 0;                 // give the fresh attempt a clean slate
+                }
+                continue;
+            }
+            if (u.jamT >= kJamHoldsCell) {
+                const float ahead = float(std::max(u.type->footX, u.type->footZ)) * 16.0f;
+                const float fx = detmath::sin(u.heading), fz = detmath::cos(u.heading);
+                for (const auto& other : units_) {
+                    if (other.id >= u.id || !other.alive() || other.embarked()) continue;
+                    if (!other.type || other.type->canFly || other.type->isStructure()) continue;
+                    // Only yield to something we are nose-to-nose with: close, in front,
+                    // and coming the other way.
+                    const float rx = other.x - u.x, rz = other.z - u.z;
+                    if (rx * rx + rz * rz > ahead * ahead * 4.0f) continue;
+                    if (rx * fx + rz * fz <= 0.0f) continue;          // not in front
+                    const float ofx = detmath::sin(other.heading), ofz = detmath::cos(other.heading);
+                    if (fx * ofx + fz * ofz >= -0.5f) continue;       // not opposed
+                    // `other.id < u.id`, so THIS unit is the higher id -- it proceeds and
+                    // the other one yields. Mark the other, not ourselves.
+                    Unit* give = unit(other.id);
+                    if (give && give->yieldT <= 0.0f && give->yieldCool <= 0.0f) {
+                        give->yieldT = kYieldHold;
+                    }
+                    break;
+                }
+            }
+
             // Brake into the waypoint if it's the last one; slow for big turns.
             float target = u.type->maxVel;
             // Formation pacing: a pure-move member keeps to the group's slowest speed,
@@ -5038,11 +5127,10 @@ void World::tick(float dt) {
                 // Track whether the unit ACTUALLY displaced, not whether it was told to.
                 // Sliding along one axis still counts as headway; only the fully blocked
                 // branch below is a jam. See Unit::jamT.
-                if (free(u.x + mx, u.z + mz)) { u.x += mx; u.z += mz; u.jamT = 0; }
-                else if (free(u.x + mx, u.z)) { u.x += mx; u.jamT = 0; }
-                else if (free(u.x, u.z + mz)) { u.z += mz; u.jamT = 0; }
+                if (free(u.x + mx, u.z + mz)) { u.x += mx; u.z += mz; }
+                else if (free(u.x + mx, u.z)) { u.x += mx; }
+                else if (free(u.x, u.z + mz)) { u.z += mz; }
                 else {
-                    u.jamT += 2.0f * dt;   // net +dt against the per-tick decay above
                     // Fully blocked (a wall dead-ahead the straight path clipped):
                     // stop and repath around it toward the final destination, so
                     // the unit routes around instead of wedging permanently.
@@ -5225,7 +5313,20 @@ void World::tick(float dt) {
                     // is none of those, and wandered 2426px in 60s without ever
                     // arriving. Retail stops: ordered at a mountain it walks as
                     // close as it can and comes to rest.
-                    if (u.goalStuckT > kGoalGiveUpSecs) dropLeg(u);
+                    if (u.goalStuckT > kGoalGiveUpSecs) {
+                        // Remember where it was going BEFORE dropping, and only when this
+                        // is the last thing it has to do: a unit with more orders queued
+                        // carries on and needs no rescue. See World::abandoned_.
+                        const float ax = u.orders.back().x, az = u.orders.back().z;
+                        const bool wasLast = currentLeg(u.orders) + 1 >= u.orders.size();
+                        dropLeg(u);
+                        if (wasLast && u.orders.empty()) {
+                            auto& rec = abandoned_[u.id];
+                            if (rec.tries < kAbandonRetries) {
+                                rec.x = ax; rec.z = az; rec.atTick = tickCounter_;
+                            }
+                        }
+                    }
                 }
             } else {
                 u.goalStuckD = 1e30f; u.goalStuckT = 0;

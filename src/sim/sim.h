@@ -493,10 +493,41 @@ struct Unit {
     // search, which meant a stationary jam read as traffic under way and searches
     // cheerfully planned routes through the middle of it.
     //
-    // Measured from actual displacement, so it says what is true rather than what was
-    // commanded. It deliberately does NOT make every moving unit an obstacle: a body that
-    // is still making headway, however slowly, stays transparent to searches.
+    // Measured from ADVANCEMENT TOWARD THE WAYPOINT over a sliding window, not from raw
+    // displacement. A unit blocked in the direction it needs but free sideways slides
+    // along the other axis indefinitely: the mover's per-axis fallback keeps it moving,
+    // so by displacement it is making headway while it goes nowhere. Traced on two
+    // columns meeting head-on, one unit over 3600 ticks:
+    //
+    //   full move (both axes)   367
+    //   slid along X only         0
+    //   slid along Z only      3233      <- 90% of ticks
+    //   fully blocked             0      <- never once, so jamT stayed 0.00
+    //
+    // It sat at the same x for 100 seconds, 579px from a goal it pointed straight at.
+    //
+    // A SLIDING WINDOW, not a best-ever distance. "Has it beaten its closest approach"
+    // marks a unit jammed permanently once it passes that point -- arrived units
+    // included -- and a crowd of permanent obstacles makes everyone else re-plan around
+    // them continuously: on an EMPTY field that drove the search count from 410 to
+    // 168,802. "Has it closed any distance lately" answers the question and forgets.
+    //
+    // It deliberately does NOT make every moving unit an obstacle: a body still closing
+    // on its waypoint, however slowly, stays transparent to searches.
     float jamT = 0;
+    float jamRef = 0;                 // distance to the waypoint when the window opened
+    float jamWin = 0;                 // seconds the window has been open
+    float jamRefX = 0, jamRefZ = 0;   // the waypoint that distance refers to
+    // Asymmetric yield (see the yield block in the mover): >0 while this unit is standing
+    // aside to let an opposing one through, counting down.
+    float yieldT = 0;
+    // ...and a cooldown after one, during which it cannot be asked to yield again.
+    // Without it, "the lower id yields" starves the low ids outright: a unit facing a
+    // stream of higher-id units is re-yielded the moment each hold expires and never
+    // moves again. Measured -- opposing columns fell from 32/32 arriving to 20/32, with
+    // the survivors travelling an almost perfect straight line, which is the shape of a
+    // rule that works beautifully for whoever wins it.
+    float yieldCool = 0;
     float goalStuckT = 0;           // seconds a point-destination move has not gotten closer
     float goalStuckD = 1e30f;       // best (closest) squared distance to that goal so far
     float buildStuckT = 0;          // seconds a builder has approached its site with no progress
@@ -900,7 +931,10 @@ public:
     // through this, so it sees exactly what the mover will.
     // Seconds of zero displacement before a commanded mover counts as holding its
     // cell against a search. See World::unitHoldsCell.
-    static constexpr float kJamHoldsCell = 0.5f;
+    static constexpr float kJamHoldsCell = 1.5f;
+    static constexpr float kJamWindow = 1.0f;
+    static constexpr float kYieldHold = 1.2f;
+    static constexpr float kYieldCool = 4.0f;
     bool unitHoldsCell(const Unit& u) const;
     int cellScore(const UnitType* t, int cx, int cz, int selfId) const;
 
@@ -1660,6 +1694,21 @@ private:
     // leaves it for units that can actually be helped. Deterministic: keyed by
     // unit id off the tick counter.
     static constexpr uint32_t kPathFailBackoff = 150;   // 5s
+    // A unit whose FINAL leg the progress watchdog dropped is left with no orders, and
+    // nothing ever looks at an idle unit again -- the periodic re-request loop skips
+    // them outright. Giving up is usually right (ordered at a mountain, retail walks as
+    // close as it can and comes to rest), but it is also reached by units that were
+    // merely DELAYED in a crowd, and those stop for good several hundred pixels short.
+    //
+    // Measured: opposing columns drops ~30 legs either way, yet a unit whose dropped leg
+    // happened to be its last never arrives. So this is a bounded second look, not a
+    // repeal of the give-up: remember where it was going, wait, and re-issue ONCE if the
+    // destination is actually reachable from where it now stands. Bounded because
+    // unbounded retrying is the wandering the watchdog exists to stop.
+    struct AbandonedGoal { float x = 0, z = 0; uint32_t atTick = 0; int tries = 0; };
+    std::unordered_map<int, AbandonedGoal> abandoned_;
+    static constexpr uint32_t kAbandonRetryTicks = 300;   // 10s before a second look
+    static constexpr int kAbandonRetries = 1;             // ...and only one of them
     // When to stop using the cheap tracer for a unit and reach for the bounded planner.
     //
     // The trigger is EXCESSIVE DETOUR, not repeated failure. Measured on a serpentine:
