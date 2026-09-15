@@ -5083,10 +5083,21 @@ void World::tick(float dt) {
                 // where it had previously completed 2248 ticks. The grid answers the same
                 // question in the same fixed order, so the yield still resolves
                 // identically on every peer.
+                // THE LOWEST QUALIFYING ID, not the first the grid happens to hand back.
+                //
+                // The scan this replaced walked units_ FORWARDS and took the first
+                // qualifying candidate -- and units_ is in id order, so that was always
+                // the lowest-id one. forEachNear visits cells spatially and, within a
+                // cell, in reverse insertion order, so "first match" is the LATER-spawned
+                // unit. That is not merely a different choice: the candidate is then
+                // tested for its yield cooldown and the search stops either way, so
+                // picking a cooled-down unit means NOBODY yields where somebody would
+                // have. Taking the minimum id restores the original selection exactly
+                // while keeping the query local.
                 int giveId = -1;
                 forEachNear(u.x, u.z, ahead * 2.0f, [&](int idx) {
-                    if (giveId >= 0) return;                 // first match wins, as before
                     const Unit& other = units_[size_t(idx)];
+                    if (giveId >= 0 && other.id >= giveId) return;   // already have a lower
                     if (other.id >= u.id || !other.alive() || other.embarked()) return;
                     if (!other.type || other.type->canFly || other.type->isStructure()) return;
                     // Only yield to something we are nose-to-nose with: close, in front,
