@@ -91,21 +91,24 @@ target_compile_definitions(tak-formats PUBLIC TAK_VERSION="${PROJECT_VERSION}")
 # zero. This is what tells those apart from a real divergence.
 #
 # The release version cannot serve here: it changes a handful of times a year, while
-# the simulation changes daily. Dirty trees are marked, because an uncommitted edit
-# means the commit id no longer describes what is running.
-find_package(Git QUIET)
-set(TAK_BUILD_ID "unknown")
-if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-  execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always --dirty --abbrev=12
-                  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-                  OUTPUT_VARIABLE TAK_BUILD_ID OUTPUT_STRIP_TRAILING_WHITESPACE
-                  ERROR_QUIET)
-  if(TAK_BUILD_ID STREQUAL "")
-    set(TAK_BUILD_ID "unknown")
-  endif()
-endif()
-message(STATUS "Build id: ${TAK_BUILD_ID}")
-target_compile_definitions(tak-formats PUBLIC TAK_BUILD_ID="${TAK_BUILD_ID}")
+# the simulation changes daily.
+#
+# REGENERATED EVERY BUILD, never at configure time. Capturing it during cmake means a
+# commit followed by an incremental build ships the PREVIOUS commit's id -- a stale
+# fingerprint that would let the sweep's gate pass a mismatched pair, which is the
+# whole failure it exists to prevent.
+set(TAK_BUILD_ID_H "${CMAKE_BINARY_DIR}/generated/tak_build_id.h")
+add_custom_target(tak_build_id ALL
+    BYPRODUCTS "${TAK_BUILD_ID_H}"
+    COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${TAK_BUILD_ID_H}
+            -P "${CMAKE_SOURCE_DIR}/cmake/BuildId.cmake"
+    COMMENT "Stamping build id")
+# Seed it now so the first configure leaves a header to compile against.
+execute_process(COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${TAK_BUILD_ID_H}
+                        -P "${CMAKE_SOURCE_DIR}/cmake/BuildId.cmake")
+target_include_directories(tak-formats PUBLIC "${CMAKE_BINARY_DIR}/generated")
+add_dependencies(tak-formats tak_build_id)
+target_compile_definitions(tak-formats PUBLIC TAK_HAVE_BUILD_ID_H=1)
 
 # Windows sockets: src/net (in tak-formats) uses Winsock2 -- link ws2_32 so it
 # propagates to takclient and takserver. No-op on POSIX.

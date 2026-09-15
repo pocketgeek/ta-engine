@@ -16,6 +16,9 @@
 // with every commit, which is what makes it useful for the thing kVersion cannot do:
 // telling two peers whether they are running the same simulation. A "-dirty" suffix
 // means uncommitted changes, so the id no longer fully describes what is running.
+#if defined(TAK_HAVE_BUILD_ID_H)
+#include "tak_build_id.h"   // generated per build; see cmake/BuildId.cmake
+#endif
 #ifndef TAK_BUILD_ID
 #define TAK_BUILD_ID "unknown"
 #endif
