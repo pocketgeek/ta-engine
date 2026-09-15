@@ -59,7 +59,9 @@ static std::vector<Edit> makeEdits(uint32_t seed, int n, int W, int H) {
         // Clear something already placed about a third of the time, so merges happen
         // against real geometry rather than empty ground.
         if (!out.empty() && r.range(0, 2) == 0) {
-            const Edit& prev = out[size_t(r.range(0, int(out.size()) - 1))];
+            // BY VALUE: the push_back below can reallocate `out`, and a reference into
+            // it would dangle for the re-close append that follows.
+            const Edit prev = out[size_t(r.range(0, int(out.size()) - 1))];
             out.push_back({prev.x, prev.z, prev.w, prev.h, false});
             // ...and half the time close it again straight away. Re-closing what was
             // just opened is the shape that catches a split check which compares raw
