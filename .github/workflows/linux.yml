@@ -69,7 +69,11 @@ jobs:
       - name: Install build deps (dnf)
         if: matrix.family == 'rpm'
         run: |
+          # libstdc++-static: Fedora splits libstdc++.a out, and without it the
+          # -static-libstdc++ probe in CMakeLists fails and the binary keeps a
+          # libstdc++.so.6 dependency -- which is exactly what the static gate rejects.
           dnf -y install cmake ninja-build gcc-c++ git make rpm-build nasm pkgconf \
+            libstdc++-static \
             tar gzip zstd xz \
             alsa-lib-devel pulseaudio-libs-devel pipewire-devel dbus-devel \
             libX11-devel libXext-devel libXcursor-devel libXi-devel libXrandr-devel \
@@ -125,6 +129,25 @@ jobs:
           # package time with "file INSTALL cannot find build/<target>" -- which is
           # exactly how 0.6.0 broke when cartographer joined those rules.
           cmake --build build --target takclient takserver cartographer
+
+      # Windows and macOS each gate on their binaries being static; Linux did not, and it
+      # is the platform where a leak is most costly: CPack derives package dependencies
+      # from what the binary links (SHLIBDEPS/AUTOREQ), so an SDL2 or libstdc++ that
+      # quietly went dynamic becomes an install-time requirement on every user's machine.
+      # libc/libm are expected -- glibc's NSS and SDL2's backends are dlopen'd, so a
+      # fully static binary could not resolve a host or open a window.
+      - name: Verify fully static (only libc/libm linked)
+        run: |
+          ldd build/takclient build/takserver || true
+          leaked=$(ldd build/takclient build/takserver \
+            | awk '/=>/{print $1}' | sort -u \
+            | grep -vE '^(libc|libm|libdl|libpthread|librt)\.so|^linux-vdso|^/lib64/ld-' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::takclient/takserver link non-libc shared libraries:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "OK: only libc/libm linked -- as static as a Linux build can usefully be"
 
       - name: Package (.deb)
         if: matrix.family == 'deb'

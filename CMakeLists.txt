@@ -115,9 +115,60 @@ target_compile_definitions(tak-formats PUBLIC TAK_HAVE_BUILD_ID_H=1)
 if(WIN32)
   # bcrypt: BCryptGenRandom, the OS CSPRNG behind crypto::randomBytes.
   target_link_libraries(tak-formats PUBLIC ws2_32 bcrypt)
-  # Fold the GCC/C++ runtime into each .exe so a Windows box needs no MinGW DLLs
-  # (only SDL2/jpeg/zlib remain, shipped alongside). -static also pulls winpthread.
+  # Fold the GCC/C++ runtime into each .exe so a Windows box needs no MinGW DLLs.
+  # -static also pulls winpthread. SDL2/jpeg/zlib are static too (TAK_STATIC_LIBS), so
+  # nothing is shipped alongside -- windows.yml gates on the .exe importing no
+  # SDL2/jpeg/zlib/FFmpeg DLL at all. (This comment used to say those three were still
+  # shipped as DLLs, which stopped being true when that gate went in.)
   add_link_options(-static-libgcc -static-libstdc++ -static)
+endif()
+
+# Linux: fold the C++ runtime in too. SDL2/jpeg/zlib and the Bink FFmpeg are already
+# static (TAK_STATIC_LIBS / TAK_STATIC_FFMPEG), which left libstdc++/libgcc_s/libatomic
+# as the only non-libc dependencies -- and they are the ones that tie a package to the
+# distro that built it, which is why the release matrix carries a per-distro tag and a
+# gcc-12 variant.
+#
+# NOT -static. glibc resolves hosts through NSS modules it dlopens (the netcode calls
+# getaddrinfo), and SDL2 deliberately dlopens its X11/Wayland/audio backends; a fully
+# static binary would either fail to resolve or fail to open a window. libc and libm stay
+# shared on purpose. This is the most static a Linux build can usefully be.
+# Each flag is TESTED before it is used, rather than assumed: -static-libstdc++ needs
+# libstdc++.a, which several distros split into a separate package (Fedora's
+# libstdc++-static, and it is absent by default). Adding the flag blind turns a missing
+# package into "cannot find -lstdc++" at link time, so a developer without it could no
+# longer build at all. Tested, it simply stays dynamic there and the CI gate -- which
+# installs the package -- is what holds the release to the static result.
+if(UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  include(CheckCXXSourceCompiles)
+  function(tak_try_link_flag flag var)
+    set(CMAKE_REQUIRED_LINK_OPTIONS ${flag})
+    check_cxx_source_compiles("#include <string>\n#include <atomic>\nint main(){std::string s(\"x\");std::atomic<double> d{0};return int(s.size())+int(d.load());}" ${var})
+    set(${var} "${${var}}" PARENT_SCOPE)
+  endfunction()
+  # A MISSING STATIC ARCHIVE IS A HARD FAILURE, not a quiet downgrade. Falling back to
+  # the shared runtime produces a binary that looks fine, passes every test, and then
+  # refuses to start on any machine whose libstdc++ is older than the build box -- the
+  # exact failure this is meant to prevent, discovered by a user rather than by CI. The
+  # probe exists to name the missing package, not to excuse it.
+  tak_try_link_flag("-static-libgcc" TAK_HAVE_STATIC_LIBGCC)
+  tak_try_link_flag("-static-libstdc++" TAK_HAVE_STATIC_LIBSTDCXX)
+  if(NOT TAK_HAVE_STATIC_LIBGCC OR NOT TAK_HAVE_STATIC_LIBSTDCXX)
+    message(FATAL_ERROR
+      "The static C++ runtime is missing, so this build would depend on the host's "
+      "libstdc++ version.\n"
+      "  Fedora/RHEL:  sudo dnf install libstdc++-static\n"
+      "  Debian/Ubuntu: sudo apt install libstdc++-*-dev  (ships libstdc++.a)\n"
+      "  Arch:          already in the gcc package\n"
+      "  Alpine:        apk add libstdc++-dev\n"
+      "(-static-libgcc=${TAK_HAVE_STATIC_LIBGCC} -static-libstdc++=${TAK_HAVE_STATIC_LIBSTDCXX})")
+  endif()
+  add_link_options(-static-libgcc -static-libstdc++)
+  # NOTE: libatomic is deliberately NOT handled here. add_link_options() places flags
+  # BEFORE the object files, so a -Bstatic,-latomic there is processed while nothing has
+  # referenced an atomic symbol yet and contributes nothing -- the plain -latomic that
+  # FFmpeg's pkg-config adds AFTER the objects then binds the shared library anyway. It
+  # is pinned where it is actually needed instead, inside the FFmpeg link group below.
 endif()
 
 # Determinism: the simulation (src/sim) must produce bit-identical results across
@@ -298,8 +349,18 @@ if(FFMPEG_FOUND)
     else()
       # --start/--end-group resolves the circular FFmpeg archives regardless of order
       # (GNU ld / MinGW).
+      #
+      # FFmpeg's .pc files list a bare -latomic, which resolves to libatomic.so and is
+      # the last non-libc dependency left once libstdc++ is static. Swap it for the
+      # archive HERE, where it sits after the objects that need it -- the one position
+      # where asking for the static form actually takes effect.
+      set(_ff_ldflags ${FFMPEG_STATIC_LDFLAGS})
+      if(UNIX AND NOT APPLE)
+        list(TRANSFORM _ff_ldflags REPLACE "^-latomic$"
+             "-Wl,--push-state,-Bstatic,-latomic,--pop-state")
+      endif()
       target_link_libraries(tak_ffmpeg INTERFACE
-        -Wl,--start-group ${FFMPEG_STATIC_LDFLAGS} -Wl,--end-group)
+        -Wl,--start-group ${_ff_ldflags} -Wl,--end-group)
     endif()
     message(STATUS "FFmpeg: STATIC Bink-only build from ${TAK_FFMPEG_PREFIX}")
   else()
