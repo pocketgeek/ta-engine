@@ -1455,6 +1455,7 @@ private:
     float buildBarScale_ = 1.0f;   // extra row scale on top of uiScale_ (Options)
     bool bilinear_ = false;     // smooth terrain/feature scaling (Options)
     int healthBars_ = 1;        // 0=off 1=damaged-only 2=always (Options)
+    bool statsPanel_ = true;    // Options: live readout in the dead strip under the minimap
     // Max NEW units the client registers (model/COB/anim VM + Create script) per frame,
     // so a mass simultaneous spawn streams in over ~a second instead of freezing one frame.
     static constexpr int kRegistrationsPerFrame = 64;
@@ -2439,6 +2440,15 @@ private:
     SDL_FRect guiBarRect(const tak::gui::Gadget& g) const;
 
     SDL_FRect minimapRect(int winW, int winH) const;
+
+    // Fill the otherwise-black strip between the minimap and the command panel with a
+    // live readout (fps, ping, sim speed, unit counts, clock, memory). How much room is
+    // there depends on the window height, the map aspect (the minimap is as tall as the
+    // map is), and UI SCALE -- so nothing here assumes a fixed number of rows: it
+    // measures the gap, fits as many rows from a priority-ordered list as will go, and
+    // draws nothing when even one row would not fit. Display only; reads the render
+    // snapshot, never the live world. Toggled by Settings::statsPanel.
+    void drawStatsPanel(int winW, int winH);
     // Retail's full-screen radar (TAB). It is the SAME radar, drawn at a bigger
     // rect: the setter (icd 0x4f9ce0) flips one bool and recomputes the radar
     // rectangle from the 126x126 corner box to the whole world viewport, then

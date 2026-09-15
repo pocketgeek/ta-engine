@@ -43,6 +43,13 @@ struct Settings {
                                    // single largest cost in a crowded frame, so it is worth
                                    // being able to turn off on a slow machine)
     int   healthBars = 1;          // unit health bars: 0=off, 1=only when damaged, 2=always
+    bool  statsPanel = true;       // fill the dead space under the minimap with a live
+                                   // readout (fps, ping, unit counts, memory). The strip
+                                   // between the minimap and the command panel is plain
+                                   // black at every resolution; how MUCH of it there is
+                                   // depends on window height and UI scale, so the panel
+                                   // shows only as many rows as actually fit and draws
+                                   // nothing at all when the gap is too small.
 
     // ---- audio (0..256, matching SoundBank's internal scale) ----
     int   masterVol  = 256;        // global gain over everything
@@ -114,7 +121,7 @@ struct Settings {
             && a.bilinear == b.bilinear && a.treeSway == b.treeSway
             && a.unitShadows == b.unitShadows && a.smoothArt == b.smoothArt
             && a.videoDeblock == b.videoDeblock
-            && a.healthBars == b.healthBars
+            && a.healthBars == b.healthBars && a.statsPanel == b.statsPanel
             && a.masterVol == b.masterVol && a.bgmVol == b.bgmVol && a.sfxVol == b.sfxVol
             && a.mouseZoomSpeed == b.mouseZoomSpeed && a.edgeScrollSpeed == b.edgeScrollSpeed
             && a.edgeScroll == b.edgeScroll && a.cursorScale == b.cursorScale

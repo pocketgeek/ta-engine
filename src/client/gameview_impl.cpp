@@ -87,6 +87,7 @@
         // and fog/minimap are always linear by design.
         bilinear_ = s.bilinear;
         healthBars_ = std::clamp(s.healthBars, 0, 2);
+        statsPanel_ = s.statsPanel;                       // Options: minimap-strip readout
         hotkeys_.load(s.hotkeys);                         // Options: rebindable hotkeys
         mapView_.setBilinear(s.bilinear);
         SDL_ScaleMode fm = s.bilinear ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;

@@ -1,5 +1,9 @@
 #include "client/gameview.h"
 #include "client/artscale.h"
+#include "client/gpuvram.h"
+#include "client/statsfit.h"
+#include "net/protocol.h"
+#include "util/procmetrics.h"
 
 // Out-of-line GameView method definitions (hud concern), split from the
 // class body in gameview.h so editing a body recompiles only this translation
@@ -417,6 +421,139 @@
             miniPix_ = std::move(pix);
             miniReady_ = true;
         });
+    }
+
+    void GameView::drawStatsPanel(int winW, int winH) {
+        if (!statsPanel_ || !hudFont_.ok()) return;
+
+        // WHERE THE GAP IS. The right strip holds the minimap at the top and the command
+        // panel at the bottom; everything between them is the black space this fills.
+        // Both edges move: the minimap is as tall as the map's aspect makes it, and the
+        // command panel is anchored to the bottom bar and scaled by guiS(). So measure
+        // them rather than assuming a layout -- a hard-coded gap would overlap the
+        // command panel on a tall map, or float in mid-strip on a wide one.
+        const float pad = std::max(4.0f, 6.0f * uiScale_);
+        float x0 = float(mapViewW(winW)) + pad;
+        float x1 = float(winW) - pad;
+        // TAB (full-screen radar) moves the minimap out of the strip entirely and over
+        // the world viewport, so the strip is free all the way to the top.
+        float top = pad;
+        if (!fsRadar_) {
+            SDL_FRect mr = minimapRect(winW, winH);
+            top = mr.y + mr.h + 2 + pad;
+        }
+        // Bottom edge: the top of the command panel art when a GUI is loaded, else the
+        // bottom bar. A spectator gets neither, so the strip runs to the window edge.
+        float bot = spectating_ ? float(winH) - pad : float(winH) - barH() - pad;
+        if (!spectating_) {
+            int mi = guiIdx("UnitMenu");
+            if (mi >= 0 && mi < int(gui_.gadgets.size()))
+                bot = guiCmdRect(gui_.gadgets[size_t(mi)]).y - pad;
+        }
+        float availW = x1 - x0, availH = bot - top;
+        if (availW <= 8 || availH <= 4) return;
+
+        // WHAT TO SHOW, most useful first. Rows are dropped from the END of this list,
+        // so the ordering is the priority ordering: frame rate before link quality before
+        // counts before process stats.
+        //
+        // Labels are kept to the width budget below (<=5 chars) and values to <=7, which
+        // is what lets the type size stay put instead of resizing when a value gains a
+        // digit.
+        struct Row { const char* label; std::string value; };
+        std::vector<Row> rows;
+        char b[48];
+
+        std::snprintf(b, sizeof b, "%.0f", fps_ + 0.5f);
+        rows.push_back({"FPS", b});
+
+        if (mp_) {
+            std::snprintf(b, sizeof b, "%.0f MS", netRttMs());
+            rows.push_back({"PING", b});
+        }
+        if (actualSpeed_ > 0) {
+            std::snprintf(b, sizeof b, "%.2fX", actualSpeed_);
+            rows.push_back({"SIM", b});
+        }
+
+        // One pass over the render snapshot for both counts -- the live world is never
+        // touched here (the sim worker owns it; this is display only).
+        int mine = 0, all = 0;
+        for (const UnitR* up : front().live) {
+            if (!up->alive() || !up->type) continue;
+            ++all;
+            if (up->player == localPlayer_) ++mine;
+        }
+        if (!spectating_) {
+            std::snprintf(b, sizeof b, "%d", mine);
+            rows.push_back({"YOURS", b});
+        }
+        std::snprintf(b, sizeof b, "%d", all);
+        rows.push_back({"UNITS", b});
+
+        // Game clock from the snapshot's tick, not wall time: a paused or catching-up
+        // client should show the clock the SIM is at, which is what a player comparing
+        // notes with anyone else in the game means by "how long in are we".
+        uint32_t secs = front().gameTick / uint32_t(tak::net::kServerHz);
+        std::snprintf(b, sizeof b, "%u:%02u", secs / 60, secs % 60);
+        rows.push_back({"TIME", b});
+
+        if (!spectating_) {
+            std::snprintf(b, sizeof b, "%d", framePlayer(localPlayer_).kills);
+            rows.push_back({"KILLS", b});
+        }
+
+        // Process stats. proc::sample() reads /proc (or the OS equivalent) so it is NOT
+        // free per frame -- sample it once a second and reuse. Doing this per frame was
+        // measurable on the very machines whose frame rate the panel exists to report.
+        static uint32_t memAt = 0;
+        static size_t memRss = 0;
+        uint32_t now = SDL_GetTicks();
+        if (memRss == 0 || now - memAt > 1000) {
+            tak::proc::Sample ps = tak::proc::sample(0);
+            if (ps.ok) memRss = ps.rssBytes;
+            memAt = now;
+        }
+        if (memRss) {
+            std::snprintf(b, sizeof b, "%zu MB", memRss >> 20);
+            rows.push_back({"MEM", b});
+        }
+        std::snprintf(b, sizeof b, "%zu MB", gpuvram::bytes() >> 20);
+        rows.push_back({"VID", b});
+
+        // The block font the mana readout uses (5x7 cells, blockWidth = chars * 6 * px),
+        // so the panel matches the HUD it sits in rather than introducing a second face.
+        //
+        // The size is FIXED -- it tracks the UI SCALE option and nothing else. Resizing
+        // the window does not grow or shrink the readout; it only changes how many rows
+        // there is room for. 2.2 is the largest that still clears the narrowest the strip
+        // ever gets: cmdPanelW never goes below miniSize()+12 (= 180*uiScale + 12), and
+        // both that floor and this scale track uiScale, so the budget clears it at every
+        // UI SCALE setting rather than only at the default.
+        // Budget: 5 label + 1 gap + 7 value characters.
+        constexpr int kColBudget = 13;
+        const float px = 2.2f * uiScale_;
+        const tak::hud::StatsFit fit =
+            tak::hud::fitStats(int(rows.size()), availW, availH, kColBudget,
+                               /*glyphW=*/6.0f, /*glyphH=*/7.0f, px,
+                               // Breathing room between rows. The gap under the minimap
+                               // runs to hundreds of pixels while nine rows need barely a
+                               // hundred, so there is room to spare -- and this only ever
+                               // feeds the HEIGHT fit, never the type size.
+                               /*rowPad=*/6.0f * uiScale_);
+        if (!fit.visible) return;
+        rows.resize(size_t(fit.rows));
+
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        const SDL_Color mc{200, 215, 255, 255};   // the mana readout's colour
+        float y = top;
+        for (const auto& r : rows) {
+            blockText(r.label, x0, y, px, mc);
+            // Values right-align against the strip edge so the digits form a column and a
+            // changing number does not shuffle the ones above it sideways.
+            blockText(r.value, x1 - blockWidth(r.value, px), y, px, mc);
+            y += fit.rowH;
+        }
     }
 
     void GameView::drawMinimap(int winW, int winH) {

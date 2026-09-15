@@ -273,6 +273,14 @@ void OptionsScreen::build(int channels) {
     slider("HEALTH BARS", 0, 2, [&] { return float(s_.healthBars); },
            [&](float v) { s_.healthBars = std::clamp(int(v + 0.5f), 0, 2); },
            [](float v) { int l = int(v + 0.5f); return std::string(l >= 2 ? "ALWAYS" : l >= 1 ? "DAMAGED" : "OFF"); });
+    // The right-hand strip between the minimap and the command panel is dead black
+    // space at every resolution. This fills it with a live readout. It is sized to the
+    // gap rather than assuming one: on a short window, or at a large UI SCALE, there is
+    // room for only the first row or two, and for none at all below that -- so the panel
+    // drops rows from the bottom of its priority list and disappears entirely rather
+    // than overlapping the command panel.
+    toggle("STATS PANEL", [&] { return s_.statsPanel ? 1.0f : 0.0f; },
+           [&](float v) { s_.statsPanel = v > 0.5f; });
     // Where the in-game conjure/build icon row sits along the bottom of the screen.
     slider("BUILD MENU", 0, 2, [&] { return float(s_.buildBarAlign); },
            [&](float v) { s_.buildBarAlign = std::clamp(int(v + 0.5f), 0, 2); },

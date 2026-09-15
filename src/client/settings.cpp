@@ -70,6 +70,7 @@ Settings loadSettings() {
         else if (key == "smoothArt")       s.smoothArt = asBool();
         else if (key == "videoDeblock")    s.videoDeblock = asBool();
         else if (key == "healthBars")      s.healthBars = asInt(0, 2);
+        else if (key == "statsPanel")      s.statsPanel = asBool();
         else if (key == "masterVol")       s.masterVol = asInt(0, 256);
         else if (key == "bgmVol")          s.bgmVol = asInt(0, 256);
         else if (key == "sfxVol")          s.sfxVol = asInt(0, 256);
@@ -133,6 +134,7 @@ bool saveSettings(const Settings& s) {
     o << "smoothArt = " << (s.smoothArt ? 1 : 0) << "\n";
     o << "videoDeblock = " << (s.videoDeblock ? 1 : 0) << "\n";
     o << "healthBars = " << s.healthBars << "\n";
+    o << "statsPanel = " << (s.statsPanel ? 1 : 0) << "\n";
     o << "masterVol = " << s.masterVol << "\n";
     o << "bgmVol = " << s.bgmVol << "\n";
     o << "sfxVol = " << s.sfxVol << "\n";

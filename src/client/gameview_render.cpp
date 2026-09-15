@@ -1165,6 +1165,9 @@
             drawPanel(winW, winH);
             drawObjectivesPanel(winW, winH);
         }
+        // After the command panel: the readout fills the strip BETWEEN the two, and it
+        // measures the panel's drawn position to find its own bottom edge.
+        drawStatsPanel(winW, winH);
         if (showCounts_) drawUnitCounts(winW);
         if (showHDebug_) drawHDebug();
 

@@ -58,6 +58,7 @@ int main() {
     flips("smoothArt",       [](Settings& s) { s.smoothArt = !s.smoothArt; });
     flips("videoDeblock",    [](Settings& s) { s.videoDeblock = !s.videoDeblock; });
     flips("healthBars",      [](Settings& s) { s.healthBars = (s.healthBars + 1) % 3; });
+    flips("statsPanel",      [](Settings& s) { s.statsPanel = !s.statsPanel; });
 
     // audio
     flips("masterVol",       [](Settings& s) { s.masterVol -= 11; });
