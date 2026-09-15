@@ -1224,12 +1224,22 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
     cg.label.assign(size_t(w) * size_t(h), -1);
     static const int dcx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
     static const int dcz[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+    // Evaluate the footprint predicate ONCE per cell. The fill asks "does a body of
+    // this size fit here?" from every adjacent cell, so each cell was tested about
+    // eight times over, and fits() is not free: for foot > 1 it re-checks the dirty
+    // flag, bounds-checks, and indexes the clearance grid. One flat pass up front
+    // turns ~8*w*h fits() calls into w*h of them plus byte loads -- measured 7.49ms
+    // -> 5.66ms per relabel on the Ulasem 8-AI benchmark (853 relabels either way).
+    std::vector<uint8_t> ok(size_t(w) * size_t(h));
+    for (int z = 0; z < h; ++z)
+        for (int x = 0; x < w; ++x)
+            ok[size_t(z) * size_t(w) + size_t(x)] = g.fits(x, z, foot) ? 1 : 0;
     std::vector<int> stack;
     int32_t next = 0;
     for (int z0 = 0; z0 < h; ++z0)
         for (int x0 = 0; x0 < w; ++x0) {
             size_t seed = size_t(z0) * size_t(w) + size_t(x0);
-            if (cg.label[seed] != -1 || !g.fits(x0, z0, foot)) continue;
+            if (cg.label[seed] != -1 || !ok[seed]) continue;
             const int32_t id = next++;
             cg.label[seed] = id;
             stack.push_back(int(seed));
@@ -1253,7 +1263,8 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
                 bool orth[4];
                 for (int k = 0; k < 4; ++k) {
                     const int nx = cx + dcx[k], nz = cz + dcz[k];
-                    orth[k] = nx >= 0 && nz >= 0 && nx < w && nz < h && g.fits(nx, nz, foot);
+                    orth[k] = nx >= 0 && nz >= 0 && nx < w && nz < h &&
+                              ok[size_t(nz) * size_t(w) + size_t(nx)];
                 }
                 for (int k = 0; k < 8; ++k) {
                     int nx = cx + dcx[k], nz = cz + dcz[k];
@@ -1261,7 +1272,7 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
                     if (k < 4) {
                         if (!orth[k]) continue;
                     } else {
-                        if (!g.fits(nx, nz, foot)) continue;
+                        if (!ok[size_t(nz) * size_t(w) + size_t(nx)]) continue;
                         // dcx[k] is +/-1 and dcz[k] is +/-1: the two orthogonal steps
                         // that make up this diagonal are entries (dcx[k]>0?0:1) and
                         // (dcz[k]>0?2:3) of the table above.
