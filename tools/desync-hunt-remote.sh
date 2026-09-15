@@ -26,6 +26,7 @@
 # mismatch unambiguous -- a real logic bug rather than a cross-toolchain artifact.
 #
 # usage: tools/desync-hunt-remote.sh [--host H] [--minutes N] [--jobs N] [--validate]
+#        [--only NAME[,NAME...]]
 set -u
 
 # RUN FROM A SNAPSHOT, NOT FROM THE LIVE FILE -- and do it before ANY argument is
@@ -81,6 +82,7 @@ while [ $# -gt 0 ]; do
     --validate) VALIDATE=1; shift;;
     --dry-run)  DRYRUN=1; shift;;
     --validate-only) VALIDATE=1; VALONLY=1; shift;;
+    --only)     ONLY="$2"; shift 2;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -91,7 +93,22 @@ CLIENT=./build-dbg/takclient
 
 OUT="${TMPDIR:-/tmp}/desync-remote-$$"; mkdir -p "$OUT"
 CTL="$OUT/ctl-%C"
-SSH=(ssh -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o BatchMode=yes)
+# -n on EVERY ssh here (stdin from /dev/null) is load-bearing, not tidiness. Without it
+# ssh inherits the loop's stdin and DRAINS it, so a `while read` loop that runs ssh in its
+# body processes its FIRST entry and then finds the input exhausted -- the remaining hosts
+# are silently skipped, the loop body never runs for them, and nothing reports a failure
+# because no code ran to fail.
+#
+# That cost five rounds of misdiagnosis here. Teardown left the second host shaped every
+# single time while the first was always clean, and it looked like a WireGuard-specific
+# race because that host happened to be the tunnel one. It was alphabetical: the registry
+# is sorted, ssh ate the rest of the pipe after the first line, and the second host's
+# entry was never read. The same bug was sitting in restore_moved, where it meant only the
+# first host's override file was ever put back.
+#
+# No ssh call in this script feeds anything on stdin, so -n is safe everywhere and stops
+# the next loop anyone adds from inheriting the same trap.
+SSH=(ssh -n -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o BatchMode=yes)
 # Two sweeps running at once would otherwise fight over the same ports: the table is
 # indexed from PORT_BASE, so a second invocation hands its clients the first one's
 # referees. Overridable rather than fixed.
@@ -113,6 +130,11 @@ note_server() { printf '%s\t%s\n' "$1" "$2" >>"$PIDFILE"; }
 # there fails for a reason that has nothing to do with what it is testing.
 MOVEDFILE="$OUT/moved-aside"
 : >"$MOVEDFILE"
+# Interfaces this sweep has shaped, as "host<TAB>iface", so cleanup can unshape them
+# even when the worker that applied the shaping never got to run its own teardown.
+SHAPEDFILE="$OUT/shaped-ifaces"
+: >"$SHAPEDFILE"
+NETEM_EXPIRY="${TAK_NETEM_EXPIRY:-1800}"   # remote self-revert, seconds
 # Keep a record until its file is VERIFIABLY back. Clearing the list regardless of
 # whether the restore worked destroys the only thing that could retry it: an ssh drop
 # mid-restore would leave the shared install missing a gameplay override and no record
@@ -135,9 +157,98 @@ restore_moved() {
   return $_rc
 }
 
+# Every descendant of a pid, deepest first. pgrep -P walks the actual parent links, so
+# this matches on PROCESS ANCESTRY, never on a command string -- a pattern match here
+# would find this script itself, and the sweep would kill its own cleanup.
+descendants() {
+  local p; for p in $(pgrep -P "$1" 2>/dev/null); do descendants "$p"; echo "$p"; done
+}
+
+# Stop the per-host worker subshells BEFORE unshaping. On an interrupt only the top-level
+# script gets the signal -- the workers are background jobs and carry on -- so unshaping
+# first just races them: cleanup removes the qdisc, a worker that is mid-run installs it
+# again, and the host is left shaped with the sweep already gone. (Observed exactly that:
+# one host clean, the other still shaped after a mid-flight interrupt.)
+reap_workers() {
+  local pids="" p
+  for p in "${HOST_PIDS[@]:-}"; do
+    [ -n "$p" ] || continue
+    pids="$pids $(descendants "$p") $p"
+  done
+  [ -n "${pids// /}" ] || return 0
+  kill $pids 2>/dev/null || true
+  local i; for i in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 $pids 2>/dev/null || break
+    sleep 0.5
+  done
+  kill -9 $pids 2>/dev/null || true
+}
+
 cleanup() {
   rm -f "${TAK_SWEEP_SNAPSHOT:-}" 2>/dev/null || true
+  reap_workers
   restore_moved
+  # Unshape anything this sweep shaped. The per-run teardown handles the normal case;
+  # this catches a worker that was killed before it could.
+  # UNSHAPE WHAT THIS SWEEP SHAPED.
+  #
+  # The bug that made this necessary was NOT a race, though it looked like one for five
+  # rounds: ssh inherits the `while read` loop's stdin and drains the pipe, so the body
+  # ran for the first registry entry and never for the second. The second host stayed
+  # shaped and nothing warned, because no code ran to warn. `ssh -n` (set on every ssh in
+  # this script) is the actual fix; everything below is about not LYING when it fails.
+  #
+  # Cleanup gets its OWN ssh options rather than the shared mux: it runs at exit, when the
+  # ControlMaster may already be going away, and a cleanup that blocks forever on a dead
+  # mux socket is as bad as one that skips a host. Connect timeouts and keepalives bound
+  # it; no multiplexing means it does not depend on a socket that is being torn down.
+  local CLEANSSH=(ssh -n -T -o BatchMode=yes -o ControlMaster=no -o ControlPath=none
+                  -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2)
+  if [ -s "${SHAPEDFILE:-/nonexistent}" ]; then
+    sort -u "$SHAPEDFILE" | while IFS=$'\t' read -r _h _if; do
+      [ -n "$_h" ] && [ -n "$_if" ] || continue
+      # The interface name is interpolated into a remote shell command; keep it to the
+      # characters an interface can actually have.
+      case "$_if" in *[!A-Za-z0-9_.:-]*)
+        echo "WARN cleanup: refusing odd interface name '$_if' on $_h" >&2; continue ;;
+      esac
+      _streak=0
+      for _try in 1 2 3 4 5 6 7 8; do
+        "${CLEANSSH[@]}" "$RUSER@$_h" "sudo -n /usr/sbin/tc qdisc del dev '$_if' root" >/dev/null 2>&1 || true
+        sleep 1
+        # POSITIVE PROOF ONLY. `ssh "tc show | grep -q netem"` returns non-zero both when
+        # the interface is clean and when the ssh could not run at all, so testing its
+        # status counts an unreachable host as a cleaned one. Read the OUTPUT instead, and
+        # treat "could not read it" as not-clean.
+        #
+        # And check for the harness's own `prio` root as well as netem: deleting the root
+        # takes the whole tree, so if only netem is gone the delete did not do what it was
+        # supposed to, and the leftover root is still ours to remove.
+        if _out=$("${CLEANSSH[@]}" "$RUSER@$_h" "LC_ALL=C /usr/sbin/tc qdisc show dev '$_if' && echo __TCOK__" 2>/dev/null); then
+          case "$_out" in
+            *__TCOK__*)
+              case "$_out" in
+                *netem*|*"qdisc prio 1:"*) _streak=0 ;;
+                *) _streak=$((_streak + 1)); [ "$_streak" -ge 2 ] && break ;;
+              esac ;;
+            *) _streak=0 ;;    # ran, but not the output we expect -- unknown, not clean
+          esac
+        else
+          _streak=0            # query failed -- unknown, NOT proof of clean
+        fi
+      done
+      if [ "$_streak" -lt 2 ]; then
+        echo "WARN cleanup: $_h still shaped on $_if -- clear it by hand" >&2
+        printf '%s\t%s\n' "$_h" "$_if" >>"$SHAPEDFILE.unclean"
+      fi
+    done
+    # Surface a teardown failure in the sweep's OWN result, not only in a log line that
+    # scrolls past. A harness that leaves a host shaped has to say so where it is seen.
+    if [ -s "$SHAPEDFILE.unclean" ]; then
+      echo "CLEANUP FAILED -- these interfaces are still shaped:" >&2
+      sort -u "$SHAPEDFILE.unclean" | sed 's/^/  /' >&2
+    fi
+  fi
   [ -s "$PIDFILE" ] || return 0
   local hosts; hosts=$(cut -f1 "$PIDFILE" | sort -u)
   for h in $hosts; do
@@ -151,6 +262,7 @@ cleanup() {
        done; true" >/dev/null 2>&1 || true
   done
 }
+HOST_PIDS=()
 trap cleanup EXIT INT TERM
 
 echo "desync hunt: ${MINUTES}m per run"
@@ -248,6 +360,25 @@ RUNS=(
 
 SPEED_DEFAULT="TAK_SPEED=40"
 
+# --only name[,name...] keeps just those runs. For working on ONE behaviour (the latency
+# shaping and its teardown, say) without sitting through the other 30-odd runs first.
+#
+# It fails loudly on a name that matches nothing. A filter that silently selects an empty
+# set would run a sweep of zero runs and report no failures -- and that is exactly how
+# this got tested wrong: an invented `TAK_ONLY=...` that this script never read was passed
+# twice, and both runs quietly executed the FULL sweep while appearing to be targeted.
+if [ -n "${ONLY:-}" ]; then
+  _keep=()
+  for _spec in "${RUNS[@]}"; do
+    _name=${_spec%%|*}
+    case ",$ONLY," in *",$_name,"*) _keep+=("$_spec");; esac
+  done
+  [ "${#_keep[@]}" -gt 0 ] || {
+    echo "--only '$ONLY' matched none of the ${#RUNS[@]} runs" >&2; exit 2; }
+  RUNS=("${_keep[@]}")
+  echo "--only '$ONLY': ${#RUNS[@]} run(s) selected"
+fi
+
 # Validate the table before running anything. An entry with the wrong field count
 # shifts every field right: --overrides full once landed in the SEAT slot, so the run
 # never mounted the overrides it was named for and still reported "ok". A sweep that
@@ -280,7 +411,7 @@ run_one() {
   # never used at all. The fallback is what hid it: those runs still passed. Only the
   # loss runs, which the relay cannot do, surfaced it by skipping. (Second time in this
   # file: the build-id gate had the same shape with VSSH.)
-  local SSHH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
+  local SSHH=(ssh -n -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)  # -n: see SSH above
   rsh1() { "${SSHH[@]}" "$RUSER@$host" "$@"; }
 
   # LATENCY SHAPING. TAK_RTT / TAK_JITTER ride in the ENVS column rather than adding
@@ -310,7 +441,10 @@ run_one() {
     # run's 500ms, and whichever teardown fired last decided whether anything was left
     # behind at all -- which is how a sweep finished with netem still applied to vpn3.
     # Unshaped runs are unaffected and stay parallel; only shaped ones queue.
-    exec 9>"$OUT/netem.$host.lock"
+    # Lock in a FIXED place, not under $OUT: that path carries this sweep's pid, so two
+    # sweeps against the same host took different locks, fought over the one interface
+    # and each could tear down the other's shaping.
+    exec 9>"${TMPDIR:-/tmp}/tak-netem.$host.lock"
     flock 9
     if rsh1 "sudo -n /usr/sbin/tc -V >/dev/null 2>&1"; then
       # SHAPE THE INTERFACE THAT ROUTES TO THIS CLIENT, detected per host -- never a
@@ -329,11 +463,25 @@ run_one() {
       # invisible -- leaving no choice but to shape the whole interface, which slows ssh
       # to that host and everything else it is doing. Shaping the NIC would only be
       # right if WireGuard's own behaviour under loss were what was being tested.
+      # ASK THE HOST WHICH ADDRESS WE ARRIVE FROM. `hostname -I` gives this machine's
+      # first address, which on a multihomed client need not be the source used to reach
+      # THIS host -- and routing the wrong address back can install netem on an
+      # interface the game never touches, after which the qdisc check happily passes
+      # while every packet runs unshaped. $SSH_CLIENT is what the host actually sees.
+      local myaddr; myaddr=$(rsh1 'echo $SSH_CLIENT' 2>/dev/null | awk '{print $1}')
+      [ -n "$myaddr" ] || myaddr="$MYIP"
       local iface="${TAK_NETEM_IFACE:-}"
-      [ -n "$iface" ] || iface=$(rsh1 "ip -o route get $MYIP 2>/dev/null | grep -oE 'dev [a-z0-9]+' | head -1 | cut -d' ' -f2")
+      [ -n "$iface" ] || iface=$(rsh1 "ip -o route get $myaddr 2>/dev/null | grep -oE 'dev [a-z0-9]+' | head -1 | cut -d' ' -f2")
       if [ -z "$iface" ]; then
-        echo "SKIP $name ($host): cannot determine the interface back to $MYIP"; flock -u 9; return 0
+        echo "SKIP $name ($host): cannot determine the interface back to $myaddr"; flock -u 9; return 0
       fi
+      # Record BEFORE touching the interface, and arm a remote expiry. If this worker is
+      # killed -- interrupt, timeout, the sweep stopped -- neither shaping_down call is
+      # reached, and without a record the top-level cleanup has no idea the host was ever
+      # shaped. Sweeps get interrupted constantly; a host left permanently latent is the
+      # worst outcome here, because everything afterwards just looks inexplicably slow.
+      printf '%s\t%s\n' "$host" "$iface" >>"$SHAPEDFILE"
+      rsh1 "nohup sh -c 'sleep ${NETEM_EXPIRY}; sudo /usr/sbin/tc qdisc del dev $iface root' >/dev/null 2>&1 </dev/null &" >/dev/null 2>&1
       rsh1 "sudo /usr/sbin/tc qdisc del dev $iface root 2>/dev/null
             sudo /usr/sbin/tc qdisc add dev $iface root handle 1: prio bands 3 \
                  priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
@@ -639,7 +787,7 @@ if [ "$VALIDATE" = "1" ]; then
   #
   # A mismatch is a hard stop rather than a warning. A sweep whose verdict cannot
   # distinguish "the engine diverged" from "you forgot to deploy" is reporting noise.
-  VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
+  VSSH=(ssh -n -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)  # -n: see SSH above
   echo "== validating that $vhost runs the same source as this client =="
   _cbuild=$($CLIENT --version 2>/dev/null | grep -oE 'build [^)]+' | cut -d' ' -f2)
   _sbuild=$("${VSSH[@]}" "$RUSER@$vhost" "$RBIN --version" 2>/dev/null | grep -oE 'build [^)]+' | cut -d' ' -f2)
@@ -773,7 +921,6 @@ fi
 # never gates a 32-core one: the small host simply takes fewer, lighter runs and
 # finishes when it finishes.
 
-declare -a HOST_PIDS=()
 for ((h = 0; h < NH; h++)); do
   mine=(); myidx=()
   for j in "${!RUNS[@]}"; do
