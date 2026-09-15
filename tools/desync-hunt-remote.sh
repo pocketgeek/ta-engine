@@ -543,6 +543,7 @@ if [ "$VALIDATE" = "1" ]; then
   #
   # A mismatch is a hard stop rather than a warning. A sweep whose verdict cannot
   # distinguish "the engine diverged" from "you forgot to deploy" is reporting noise.
+  VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
   echo "== validating that $vhost runs the same source as this client =="
   _cbuild=$($CLIENT --version 2>/dev/null | grep -oE 'build [^)]+' | cut -d' ' -f2)
   _sbuild=$("${VSSH[@]}" "$RUSER@$vhost" "$RBIN --version" 2>/dev/null | grep -oE 'build [^)]+' | cut -d' ' -f2)
@@ -565,7 +566,6 @@ if [ "$VALIDATE" = "1" ]; then
   esac
 
 echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
-  VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
   vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
   [ -n "$vpid" ] && note_server "$vhost" "$vpid"
   for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
@@ -670,7 +670,7 @@ echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on 
     fi
   }
 
-  if [ "$VALONLY" = "1" ]; then echo "both gates passed"; exit 0; fi
+  if [ "$VALONLY" = "1" ]; then echo "all gates passed (build id, desync detector, override mismatch)"; exit 0; fi
 fi
 
 # Dispatch. Each host drains its own queue at its own concurrency, so a 2-core box
