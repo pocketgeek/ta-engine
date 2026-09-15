@@ -998,7 +998,12 @@
                         v && v->alive() && v->type) {
                         int dtype = (h.weapon && h.weapon->status !=
                                      tak::sim::Weapon::Status::None) ? 4 : 0;
-                        bool rot = v->type->canFly || v->type->canMove;
+                        // isStructure(), not canMove: drawUnit locks a structure's
+                        // yaw to 0, and the Barracks declares canmove=1 with no
+                        // velocity (the CLAUDE.md gotcha), so canMove said "rotates"
+                        // for a body rendered fixed -- putting every bearing 180 deg
+                        // out on a building that spawns at heading pi.
+                        bool rot = !v->type->isStructure();
                         float ang = std::atan2(h.fromX - v->x, h.fromZ - v->z) -
                                     (rot ? v->heading : 0.0f);
                         fi->second.vm->start("HitByWeapon",
@@ -1038,7 +1043,9 @@
                 int moving = 0, stalled = 0, ordered = 0;
                 for (const UnitR* _up : front().live) {
                     const UnitR& u = *_up;
-                    if (!u.alive() || !u.type || !u.type->canMove || u.type->canFly ||
+                    // isStructure() again: canMove would count the Barracks as a
+                    // ground mover that never moves, i.e. permanently "stalled".
+                    if (!u.alive() || !u.type || u.type->isStructure() || u.type->canFly ||
                         u.orders.empty() || u.orders.front().targetId != 0) continue;
                     ordered++;
                     if (u.speed > 3.0f) moving++; else stalled++;
@@ -1432,7 +1439,7 @@
                         // Structures render yaw-locked (facing 0 in drawUnit) even
                         // though the sim turns their heading toward the target --
                         // aim against the RENDERED facing, not the sim heading.
-                        bool rotates = u.type->canFly || u.type->canMove;
+                        bool rotates = !u.type->isStructure();   // see HitByWeapon above
                         float rel = std::atan2(t->x - u.x, t->z - u.z) -
                                     (rotates ? u.heading : 0.0f);
                         while (rel > kTau / 2) rel -= kTau;
@@ -1470,7 +1477,7 @@
             if (a.hasWind && a.windStamp != windGen_) {
                 a.windStamp = windGen_;
                 constexpr float kTau = 6.2831853f;
-                bool rotates = u.type->canFly || u.type->canMove;
+                bool rotates = !u.type->isStructure();   // see HitByWeapon above
                 float w = windHeading_ - (rotates ? u.heading : 0.0f);
                 while (w > kTau / 2) w -= kTau;
                 while (w < -kTau / 2) w += kTau;

@@ -564,7 +564,27 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     claimBits[size_t(z) * size_t(claimW) + size_t(x)] = 1;
         return true;
     };
-    int sweepCursor = 0;   // global fallback scan position (see snapSpawn)
+    // Fallback scan position, PER (footprint, nav grid) -- not one shared cursor.
+    //
+    // The cursor is forward-only so the whole fill costs one pass over the grid rather
+    // than a rescan per unit. Sharing it across sizes made that correctness-visible: a
+    // 4x4 body advances the cursor past every gap only a 2x2 would fit in, and a later
+    // 2x2 whose local search fails cannot go back for them -- so its player's fill
+    // stopped early on a map that still had room. One cursor per size and domain keeps
+    // the single-pass cost (there are only a handful of distinct sizes) without one
+    // roster entry consuming another's space.
+    //
+    // Grids are identified by FIRST-SEEN ORDER, not by pointer value: snapSpawn is
+    // called in a deterministic order on every peer, so the indices match, whereas
+    // pointer values would not.
+    std::vector<const NavGrid*> sweepGrids;
+    std::map<std::pair<int, int>, int> sweepCursors;
+    auto sweepGridIdx = [&](const NavGrid* g) {
+        for (size_t i = 0; i < sweepGrids.size(); ++i)
+            if (sweepGrids[i] == g) return int(i);
+        sweepGrids.push_back(g);
+        return int(sweepGrids.size() - 1);
+    };
     int mapCapacity = -1;  // bodies this map can hold, computed once (see capacityFor)
     // How many bodies of `roster`'s typical size this map can hold, minus 5% slack so
     // the snap is never scraping the last few free cells. Walkable AREA divided by what
@@ -620,6 +640,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         // GLOBAL cursor for the next free spot anywhere rather than giving up or
         // dropping the body on top of someone. The cursor only moves forward, so the
         // whole fill costs one pass over the grid however many units ask.
+        int& sweepCursor = sweepCursors[{foot, sweepGridIdx(&g)}];
         for (; sweepCursor < claimW * claimH; ++sweepCursor) {
             const int nx = sweepCursor % claimW, nz = sweepCursor / claimW;
             if (!g.fits(nx, nz, foot)) continue;

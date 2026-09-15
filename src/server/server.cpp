@@ -445,7 +445,7 @@ private:
     bool canAdvance(const Room& r) const;   // false = wait for a lagging player (flow control)
     void checkHashes(Room& r, uint32_t tick);
     void dropClient(uint32_t id, const char* reason);
-    void writeSlots(Writer& w, Room& r);
+    void writeSlots(Writer& w, Room& r, bool fromStart = false);
     void writeReplay(Room& r);
 };
 
@@ -809,7 +809,13 @@ static uint16_t clampUnitCap(uint16_t v) {
     return 2000;
 }
 
-void Server::writeSlots(Writer& w, Room& r) {
+// `fromStart` writes the table the game BEGAN with instead of the live one. A
+// rejoining client replays the whole bundle log from tick 0, so it must rebuild the
+// world from the START configuration: hand it the current table and a slot closed
+// since (a forfeit, or a drop that ran out its budget) reads as unused, so that
+// player's opening units never spawn and the rebuilt world diverges from the game it
+// is rejoining -- and any replay that client saves records the wrong match.
+void Server::writeSlots(Writer& w, Room& r, bool fromStart) {
     w.u32(r.id);
     w.str(r.name);
     w.str(r.mapId);
@@ -821,7 +827,7 @@ void Server::writeSlots(Writer& w, Room& r) {
     w.u8(r.opts.randomStarts);
     w.u32(r.hostId);
     for (int i = 0; i < kMaxSlots; ++i) {
-        const SlotInfo& s = r.slots[i];
+        const SlotInfo& s = (fromStart && r.running) ? r.startSlots[i] : r.slots[i];
         w.u8(s.type); w.u8(s.faction); w.u8(s.color); w.u8(s.team); w.u8(s.ready);
         w.u8(s.aiLevel);
         w.str(s.name);
@@ -983,8 +989,9 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             c.cmdQueue.clear();   // never inherit a previous room's queue
             c.state = Client::InGame; c.roomId = gid; c.slot = slot; c.loaded = true;
             // GameStarting rebuilds the client's world; then the whole bundle log
-            // replays it up to now, after which it receives live bundles.
-            Writer w; writeSlots(w, room);
+            // replays it up to now, after which it receives live bundles. Because that
+            // rebuild starts at tick 0, it needs the START slot table -- see writeSlots.
+            Writer w; writeSlots(w, room, /*fromStart=*/true);
             w.u8(uint8_t(slot)); w.u32(room.seed); w.u64(room.slotToken[slot]);
             // Where the HISTORY ends. The client must not send -- or treat its own
             // commands coming back as acknowledgements -- until it has consumed
@@ -1028,7 +1035,9 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             c.state = Client::InGame; c.roomId = gid; c.slot = -1; c.loaded = true;
             // GameStarting (slot 0xFF = spectator) rebuilds the world; the whole
             // bundle log replays it to now, then live bundles stream via broadcast.
-            Writer w; writeSlots(w, room);
+            // Same reason as the rejoin above: that rebuild starts at tick 0, so it
+            // needs the START table, not one with mid-game forfeits already applied.
+            Writer w; writeSlots(w, room, /*fromStart=*/true);
             w.u8(0xFF); w.u32(room.seed); w.u64(0);
             w.u32(uint32_t(room.log.size()));   // replay boundary (see above)
             c.conn.send(Msg::GameStarting, w);
