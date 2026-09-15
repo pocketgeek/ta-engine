@@ -3550,6 +3550,31 @@ void World::tickAbilities(float dt) {
     struct Revive { const UnitType* type; float x, z; int player; bool animate; };
     std::vector<Revive> revives;
     const float kR = 56.0f;
+
+    // COLLECT THE CORPSES ONCE, not once per caster.
+    //
+    // The inner loop below used to walk all of units_ for EVERY idle caster -- and most
+    // builders can reclaim, so an idle base makes a lot of casters. Measured at 3,722
+    // units: a mean of 546,000 unit visits per tick and a peak of 1,296,823, against
+    // 245,000 for the whole of combat acquisition at its own peak. It is O(casters x N),
+    // so at 15k units it is roughly 20M visits a tick -- the same shape as the O(n^2)
+    // that dropped a stress client at tick 151.
+    //
+    // The spatial grid cannot answer this: it holds only ALIVE units, deliberately, and
+    // corpses are dead. One ordered pass collects them instead, so the inner loop walks
+    // corpses rather than the whole army.
+    //
+    // ASCENDING UNIT ID IS PRESERVED -- units_ is scanned in order, so candidates are
+    // considered in exactly the sequence the nested loop used, and "first eligible wins"
+    // still picks the same corpse. `retire()` mutates corpses as casters claim them, and
+    // the eligibility re-check inside the loop still runs, so a corpse taken by an
+    // earlier caster is skipped by a later one exactly as before.
+    corpseIdx_.clear();
+    for (size_t j = 0; j < units_.size(); ++j)
+        if (isCorpse(units_[j])) corpseIdx_.push_back(uint32_t(j));
+    // Nothing to raise or reclaim: every caster's scan is guaranteed empty.
+    if (corpseIdx_.empty()) return;
+
     for (size_t i = 0; i < units_.size(); ++i) {
         Unit& u = units_[i];
         if (!u.alive() || !u.type || u.underConstruction || u.incapacitated() ||
@@ -3584,10 +3609,11 @@ void World::tickAbilities(float dt) {
             continue;
         }
 
-        // Corpses are dead (not in the spatial grid), so scan directly.
-        for (size_t j = 0; j < units_.size(); ++j) {
+        // Corpses only -- collected once above, in ascending unit id.
+        for (uint32_t ci : corpseIdx_) {
+            const size_t j = size_t(ci);
             Unit& c = units_[j];
-            if (j == i || !isCorpse(c)) continue;
+            if (j == i || !isCorpse(c)) continue;   // re-check: an earlier caster may have taken it
             float dx = c.x - u.x, dz = c.z - u.z;
             if (dx * dx + dz * dz > kR * kR) continue;
             const FeatType* cd = corpseDef(c);

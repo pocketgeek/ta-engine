@@ -1733,6 +1733,9 @@ private:
         int tries = 0;
     };
     std::unordered_map<int, AbandonedGoal> abandoned_;
+    // Indices into units_ of the bodies eligible to be raised or reclaimed this tick,
+    // in ascending unit id. Rebuilt once per corpse pass; see the note there.
+    std::vector<uint32_t> corpseIdx_;
     // Set only while the rescue sweep re-issues an order, so order() can tell an
     // internal retry from a player picking a new destination.
     bool abandonRetry_ = false;
