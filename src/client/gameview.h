@@ -2423,11 +2423,22 @@ private:
     // left of it so the panel never draws over the world.
     int panelW() const { return miniSize() + int(20 * uiScale_); }   // fallback width (no GUI loaded)
 
-    // Scale from the retail 640x480 GUI space to screen pixels. Authored at 640x480;
-    // we scale by height so the panel art keeps its aspect (winH/480 is true retail
-    // scale -- the /700 divisor keeps the HUD from dominating high-res displays while
-    // holding retail proportions and button alignment).
-    float guiS() const { return uiScale_ * (winH_ > 0 ? winH_ : 480) / 700.0f; }
+    // Scale from the retail 640x480 GUI space to screen pixels. Authored at 640x480, so
+    // the art keeps its aspect and the buttons stay aligned at any scale.
+    //
+    // The size is FIXED: it follows the UI SCALE option and nothing else. It used to be
+    // uiScale_ * winH/700, which meant the command panel -- the shield medallion, the
+    // mana orb, every order button -- grew and shrank as the window was resized, so the
+    // HUD was a different size in a window than it was fullscreen. The rest of the HUD
+    // was already window-independent (miniSize() and barH() are both uiScale_ only), so
+    // this was also the one piece that disagreed with the others about how big the
+    // interface is.
+    //
+    // kHudBase is where that old formula landed at 1080p, so a 1080p display sees the
+    // same HUD as before; every other display now gets that same size rather than one
+    // scaled by its height, and UI SCALE is the single knob that changes it.
+    static constexpr float kHudBase = 1080.0f / 700.0f;
+    float guiS() const { return uiScale_ * kHudBase; }
     // Width of the right-hand command-panel strip (the retail UnitMenu is 128 wide in
     // 640-space); never narrower than the minimap.
     int cmdPanelW() const;
