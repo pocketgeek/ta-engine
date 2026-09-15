@@ -5045,6 +5045,20 @@ void World::tick(float dt) {
                     Order done = o;
                     u.orders.erase(u.orders.begin());
                     if (done.patrol) u.orders.push_back(done);
+                    // ARRIVING ENDS THE ESCALATION. pathUseAStar_ is set when the cheap
+                    // tracer hands this unit repeatedly long routes, and it was only ever
+                    // cleared by cancelPath -- i.e. by a genuinely new order. So a unit
+                    // that escalated in a serpentine kept the bounded planner for the
+                    // rest of its life, including for later trips across open ground
+                    // where the tracer answers in one test and A* expands a region.
+                    //
+                    // The escalation is a property of a TRIP, not of a unit. Completing
+                    // the goal ends the trip, so the next one earns a fresh cheap attempt
+                    // and re-escalates by the same evidence if the terrain warrants it.
+                    if (done.goal) {
+                        pathUseAStar_.erase(u.id);
+                        pathDetours_.erase(u.id);
+                    }
                 }
                 continue;
             }
