@@ -96,6 +96,8 @@ SSH=(ssh -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o Ba
 # indexed from PORT_BASE, so a second invocation hands its clients the first one's
 # referees. Overridable rather than fixed.
 PORT_BASE="${TAK_PORT_BASE:-7900}"
+# Shaping interface is DETECTED per host (see run_one); this only overrides it.
+MYIP=$(hostname -I 2>/dev/null | awk '{print $1}')
 # Every referee this run starts is recorded here as "host<TAB>pid", and cleanup kills
 # exactly those. `pkill -x takserver` would kill every server owned by the account --
 # a concurrent sweep, or somebody's live game. A test harness must not be able to take
@@ -236,6 +238,8 @@ RUNS=(
   "net-rtt100|Ulasem Arena|TAK_RTT=100||human|light"
   "net-jitter|Ulasem Arena|TAK_RTT=100 TAK_JITTER=30||human|light"
   "net-rtt500|Ulasem Arena|TAK_RTT=500||human|light"
+  "net-loss1|Ulasem Arena|TAK_RTT=100 TAK_LOSS=1||human|light"
+  "net-loss3-orders|Ulasem Arena|TAK_RTT=100 TAK_LOSS=3 TAK_AUTOPLAY=15||human|light"
   "net-orders100|Ulasem Arena|TAK_RTT=100 TAK_AUTOPLAY=15||human|light"
   "net-2h-rtt100|Ulasem Arena|TAK_RTT=100 TAK_AUTOPLAY=15||human|light|2"
   "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch|heavy"
@@ -270,6 +274,14 @@ run_one() {
   if [ "$spec" = "$weight" ]; then humans=1; else humans="${spec#*|}"; fi
   case "$humans" in ''|*[!0-9]*) humans=1;; esac
   local port=$((PORT_BASE + idx)) seed=$((2000 + idx))
+  # Defined HERE, before anything calls it. It was defined 50 lines further down, so the
+  # netem capability probe ran against an undefined function, took the failure branch and
+  # silently fell back to the relay -- every "shaped" run was the relay, and netem was
+  # never used at all. The fallback is what hid it: those runs still passed. Only the
+  # loss runs, which the relay cannot do, surfaced it by skipping. (Second time in this
+  # file: the build-id gate had the same shape with VSSH.)
+  local SSHH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
+  rsh1() { "${SSHH[@]}" "$RUSER@$host" "$@"; }
 
   # LATENCY SHAPING. TAK_RTT / TAK_JITTER ride in the ENVS column rather than adding
   # positional fields -- a wider spec is how --overrides full once ended up in the seat
@@ -281,21 +293,75 @@ run_one() {
   # lead its slowest consumer by more than kMaxLeadTicks, and a spectator heartbeats to
   # keep that fed. Measured: flat 4x through 100ms, 3.41x at 500ms, no desync at any of
   # them -- the knee is where the round trip starts eating the 120-tick lead window.
-  local rtt=0 jit=0 thost="$host" tport="$port" proxypid=""
+  local rtt=0 jit=0 loss=0 thost="$host" tport="$port" proxypid="" shaped_netem="" shaped_iface=""
   case "$envs" in *TAK_RTT=*)    rtt=$(printf '%s' "$envs" | grep -oE 'TAK_RTT=[0-9]+' | cut -d= -f2);; esac
   case "$envs" in *TAK_JITTER=*) jit=$(printf '%s' "$envs" | grep -oE 'TAK_JITTER=[0-9]+' | cut -d= -f2);; esac
-  envs=$(printf '%s' "$envs" | sed -E 's/TAK_(RTT|JITTER)=[0-9]+//g')
-  if [ "${rtt:-0}" != "0" ] || [ "${jit:-0}" != "0" ]; then
-    local pport=$((PORT_BASE + 200 + idx))
-    python3 tools/netdelay.py --listen "$pport" --to "$host:$port" \
-            --rtt "${rtt:-0}" --jitter "${jit:-0}" >/dev/null 2>&1 &
-    proxypid=$!
-    sleep 2
-    thost=127.0.0.1; tport="$pport"
+  case "$envs" in *TAK_LOSS=*)   loss=$(printf '%s' "$envs" | grep -oE 'TAK_LOSS=[0-9.]+' | cut -d= -f2);; esac
+  envs=$(printf '%s' "$envs" | sed -E 's/TAK_(RTT|JITTER|LOSS)=[0-9.]+//g')
+
+  if [ "${rtt:-0}" != "0" ] || [ "${jit:-0}" != "0" ] || [ "${loss:-0}" != "0" ]; then
+    # PREFER NETEM. It delays real packets and can DROP them; the relay delays a TCP
+    # byte stream and structurally cannot lose anything, so a loss run is only
+    # meaningful under netem. Fall back to the relay when the host has no passwordless
+    # tc -- but never silently pretend a loss figure was applied.
+    # ONE SHAPED RUN PER HOST AT A TIME. netem is per-INTERFACE state, not per-run: a
+    # second `tc qdisc add` on the same device replaces the first. With several jobs in
+    # flight on one host, a run asking for 50ms could silently be handed a concurrent
+    # run's 500ms, and whichever teardown fired last decided whether anything was left
+    # behind at all -- which is how a sweep finished with netem still applied to vpn3.
+    # Unshaped runs are unaffected and stay parallel; only shaped ones queue.
+    exec 9>"$OUT/netem.$host.lock"
+    flock 9
+    if rsh1 "sudo -n /usr/sbin/tc -V >/dev/null 2>&1"; then
+      # SHAPE THE INTERFACE THAT ROUTES TO THIS CLIENT, detected per host -- never a
+      # hardcoded name. tak answers over its LAN port; vpn3 answers through a WireGuard
+      # tunnel (wg0) whose packets then leave via enp1s0. A fixed name would have run tc
+      # against a device that does not exist there, and since tc's output is silenced
+      # the run would have gone ahead UNSHAPED and reported a clean pass for a latency
+      # test containing no latency.
+      #
+      # THE TUNNEL, NOT THE NIC UNDER IT. Measured, both give the same thing at the far
+      # end -- 113.9ms on wg0 against 113.6ms on enp1s0 over a 13.9ms baseline -- because
+      # the game rides the tunnel either way, and a dropped plaintext packet loses the
+      # same TCP segment as its dropped carrier. What differs is blast radius: on the
+      # tunnel the traffic is plaintext, so it can be filtered down to the game's own
+      # port, while on the physical NIC it is encapsulated and the inner port is
+      # invisible -- leaving no choice but to shape the whole interface, which slows ssh
+      # to that host and everything else it is doing. Shaping the NIC would only be
+      # right if WireGuard's own behaviour under loss were what was being tested.
+      local iface="${TAK_NETEM_IFACE:-}"
+      [ -n "$iface" ] || iface=$(rsh1 "ip -o route get $MYIP 2>/dev/null | grep -oE 'dev [a-z0-9]+' | head -1 | cut -d' ' -f2")
+      if [ -z "$iface" ]; then
+        echo "SKIP $name ($host): cannot determine the interface back to $MYIP"; flock -u 9; return 0
+      fi
+      rsh1 "sudo /usr/sbin/tc qdisc del dev $iface root 2>/dev/null
+            sudo /usr/sbin/tc qdisc add dev $iface root handle 1: prio bands 3 \
+                 priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+            _a='delay ${rtt:-0}ms'
+            [ '${jit:-0}' != '0' ] && _a=\"\$_a ${jit}ms distribution normal\"
+            [ '${loss:-0}' != '0' ] && _a=\"\$_a loss ${loss}%\"
+            sudo /usr/sbin/tc qdisc add dev $iface parent 1:3 handle 30: netem \$_a
+            sudo /usr/sbin/tc filter add dev $iface protocol ip parent 1:0 prio 3 \
+                 u32 match ip sport $port 0xffff flowid 1:3" >/dev/null 2>&1
+      # CONFIRM IT TOOK. Every tc call above is silenced, so a failure at any step would
+      # otherwise leave the run unshaped and indistinguishable from a passing one.
+      if ! rsh1 "/usr/sbin/tc qdisc show dev $iface | grep -q netem"; then
+        echo "SKIP $name ($host): netem did not apply on $iface"; flock -u 9; return 0
+      fi
+      shaped_netem="$host"; shaped_iface="$iface"
+    elif [ "${loss:-0}" != "0" ]; then
+      echo "SKIP $name ($host): TAK_LOSS needs netem, and sudo tc is not available there"
+      flock -u 9; return 0
+    else
+      local pport=$((PORT_BASE + 200 + idx))
+      python3 tools/netdelay.py --listen "$pport" --to "$host:$port" \
+              --rtt "${rtt:-0}" --jitter "${jit:-0}" >/dev/null 2>&1 &
+      proxypid=$!
+      sleep 2
+      thost=127.0.0.1; tport="$pport"
+    fi
   fi
   local clog="$OUT/$name.client.log"
-  local SSHH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
-  rsh1() { "${SSHH[@]}" "$RUSER@$host" "$@"; }
 
   # Start the referee on the remote. No --local and no tunnel: this is a LAN, so the
   # client reaches it over a real NIC, which is the point of running it remotely.
@@ -308,7 +374,36 @@ run_one() {
     rsh1 "grep -q listening /tmp/tak-srv-$port.log 2>/dev/null" && { up=1; break; }
     sleep 2
   done
-  [ "$up" = "1" ] || { echo "FAIL $name ($host): remote server never came up (port $port)"; return 1; }
+  # Kill the relay on THIS path too. It is started before the readiness check, and an
+  # early return skipped the teardown further down -- so a failed server start leaked a
+  # listener that outlived the sweep. The next run on that port then cannot bind, or
+  # worse, silently connects through the stale one. (Observed: two leaked relays.)
+  # ONE teardown, reachable from EVERY exit. It previously sat inside the readiness
+  # FAILURE branch below, so unshaping only happened when the server failed to start --
+  # on the normal path netem was simply left applied, and the "confirm it is gone" check
+  # never ran either, which is why a whole sweep reported zero warnings while both hosts
+  # ended up shaped. A cleanup that only runs on the error path is not cleanup.
+  shaping_down() {
+    [ -n "$proxypid" ] && kill "$proxypid" 2>/dev/null
+    if [ -n "$shaped_netem" ]; then
+      rsh1 "sudo /usr/sbin/tc qdisc del dev $shaped_iface root 2>/dev/null; true" >/dev/null 2>&1
+      # Confirm, then retry once. Leaving netem on would silently apply this run's
+      # latency to every later run on that host -- including ones that are not latency
+      # tests, which would then be measuring a link nobody configured.
+      if rsh1 "/usr/sbin/tc qdisc show dev $shaped_iface | grep -q netem"; then
+        echo "WARN $name ($host): netem NOT removed from $shaped_iface -- retrying"
+        rsh1 "sudo /usr/sbin/tc qdisc del dev $shaped_iface root 2>/dev/null; true" >/dev/null 2>&1
+        rsh1 "/usr/sbin/tc qdisc show dev $shaped_iface | grep -q netem" && \
+          echo "WARN $name ($host): STILL shaped -- clear $shaped_iface by hand"
+      fi
+      shaped_netem=""
+    fi
+    flock -u 9 2>/dev/null || true
+  }
+
+  [ "$up" = "1" ] || {
+      shaping_down
+      echo "FAIL $name ($host): remote server never came up (port $port)"; return 1; }
 
   # SEAT: watch -> spectator (TAK_MP_WATCH=1, 8 AIs). human -> a real player slot with
   # 7 AIs alongside, which is what makes the referee compare hashes at all.
@@ -353,6 +448,7 @@ run_one() {
   fi
   wait "$hostpid"; local rc=$?
   for j in "${jpids[@]}"; do wait "$j" || true; done
+  shaping_down          # the normal path -- this is the one that was missing
 
   # STOP THE REFEREE BEFORE READING ITS LOG. It keeps writing as the client goes away
   # ("client N dropped", "game ended"), so fetching while it runs and then measuring

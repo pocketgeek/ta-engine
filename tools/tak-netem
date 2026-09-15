@@ -54,7 +54,13 @@ case "${1:-}" in
       # control this one, so the full figure is applied here and the other direction is
       # native. State it plainly rather than let the number be misread.
       $TC qdisc del dev "$IFACE" root 2>/dev/null
-      $TC qdisc add dev "$IFACE" root handle 1: prio || die "prio qdisc failed"
+      # EXPLICIT PRIOMAP. The default prio map routes several priorities -- including
+      # bulk traffic -- into band 3, which is where netem hangs: unfiltered traffic
+      # would then be delayed and dropped too, breaking the isolation this helper
+      # promises. Send every unmatched priority to band 2 (1:2, unshaped) and let the
+      # port filters be the only thing that selects 1:3.
+      $TC qdisc add dev "$IFACE" root handle 1: prio bands 3 \
+          priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 || die "prio qdisc failed"
       netem_args="delay ${rtt}ms"
       [ "$jit" != "0" ] && netem_args="$netem_args ${jit}ms distribution normal"
       [ "$loss" != "0" ] && netem_args="$netem_args loss ${loss}%"

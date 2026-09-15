@@ -31,28 +31,57 @@ import sys
 
 
 async def pump(reader, writer, delay_s, jitter_s, rng):
-    """Copy reader -> writer, holding each chunk for delay +/- jitter."""
+    """Copy reader -> writer, holding each chunk for delay +/- jitter.
+
+    READING AND DELIVERY ARE SEPARATE TASKS. Doing both in one loop -- read, sleep,
+    write, read again -- does not model a delay, it models a stall: bytes arriving
+    during the sleep are not even read until the previous chunk has been delivered, and
+    then wait a further full delay. At 250ms one way, chunks arriving at 0 and 50ms
+    would leave at 250 and 500ms instead of 250 and 300ms, so the relay silently
+    becomes a bandwidth limiter and the latency numbers measured through it are its own
+    batching rather than the engine's behaviour.
+
+    The reader timestamps each chunk on arrival and queues it; the writer sleeps until
+    each chunk is due. Ordering still holds, because the queue is FIFO and each due
+    time is clamped to at least the previous one.
+    """
     loop = asyncio.get_running_loop()
-    next_ok = 0.0     # monotonic time the previous chunk was scheduled for
-    try:
+    q = asyncio.Queue()
+    next_ok = 0.0
+
+    async def read_side():
+        try:
+            while True:
+                data = await reader.read(65536)
+                if not data:
+                    break
+                nonlocal next_ok
+                d = delay_s
+                if jitter_s:
+                    d += rng.uniform(-jitter_s, jitter_s)
+                    if d < 0:
+                        d = 0.0
+                # Stamp when it ARRIVED plus its delay -- not when we get round to it.
+                due = max(loop.time() + d, next_ok)
+                next_ok = due
+                await q.put((due, data))
+        finally:
+            await q.put(None)
+
+    async def write_side():
         while True:
-            data = await reader.read(65536)
-            if not data:
+            item = await q.get()
+            if item is None:
                 break
-            d = delay_s
-            if jitter_s:
-                d += rng.uniform(-jitter_s, jitter_s)
-                if d < 0:
-                    d = 0.0
-            # Never schedule before the chunk ahead: a TCP stream delivered out of
-            # order is corruption, not latency.
-            due = max(loop.time() + d, next_ok)
-            next_ok = due
+            due, data = item
             wait = due - loop.time()
             if wait > 0:
                 await asyncio.sleep(wait)
             writer.write(data)
             await writer.drain()
+
+    try:
+        await asyncio.gather(read_side(), write_side())
     except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
         pass
     finally:
@@ -88,8 +117,10 @@ async def main():
     a = ap.parse_args()
 
     host, _, port = a.to.rpartition(":")
-    delay_s = (a.rtt / 2.0) / 1000.0        # half each way
-    jitter_s = (a.jitter / 2.0) / 1000.0
+    delay_s = (a.rtt / 2.0) / 1000.0        # RTT is a round trip: half in each direction
+    # Jitter is documented as +/- per direction, so it is NOT halved -- doing so made
+    # --jitter 30 behave as +/-15ms and quietly understate what was being tested.
+    jitter_s = a.jitter / 1000.0
     rng = random.Random(a.seed)
     stats = {"conns": 0}
 
