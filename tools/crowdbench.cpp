@@ -53,6 +53,7 @@ struct Tracked {
     float px = 0, pz = 0;
     float arrivedAt = -1;     // reached its assigned spot (seconds, -1 = never)
     float arrivedArea = -1;   // reached the ordered AREA around the centre
+    float areaR = 0;          // that area's radius, from the DESTINATION's own geometry
 };
 
 struct Result {
@@ -68,6 +69,26 @@ Result run(const std::string& name, World& w, std::vector<Tracked>& group, float
            float arriveR = 70.0f) {
     const float dt = 1.0f / 30.0f;
     const int steps = int(seconds / dt);
+    // THE AREA IS THE DESTINATION'S OWN GEOMETRY, not a number scaled off the tracked
+    // population. The radius used to grow with the WHOLE group even when that group held
+    // two separate destinations -- 223.6px for columns, where a final move goal actually
+    // completes within 16px -- so units stalled hundreds of pixels from their orders
+    // counted as arrivals and the stranding this benchmark exists to catch was hidden.
+    //
+    // A crowd that legitimately packs around one point occupies a disc: N bodies of width
+    // w fill a radius of about w*sqrt(N)/2. That plus the sim's own completion radius is
+    // the area a correctly-arrived member can be standing in, and nothing wider.
+    for (auto& g : group) {
+        const Unit* u = w.unit(g.id);
+        int sharing = 0;
+        for (const auto& o : group) {
+            const float ddx = o.gx - g.gx, ddz = o.gz - g.gz;
+            if (ddx * ddx + ddz * ddz <= 64.0f * 64.0f) ++sharing;
+        }
+        const float body = u && u->type
+            ? float(std::max(u->type->footX, u->type->footZ)) * 16.0f : 32.0f;
+        g.areaR = std::max(16.0f, body * 0.5f) + body * std::sqrt(float(sharing)) * 0.5f;
+    }
     for (auto& g : group) {
         const Unit* u = w.unit(g.id);
         // MEASURE AGAINST THE SPOT THE UNIT WAS ASSIGNED, not the pixel the order named.
@@ -104,8 +125,7 @@ Result run(const std::string& name, World& w, std::vector<Tracked>& group, float
             // while giving each a precise spot it may not settle on (hurting the second).
             if (g.arrivedArea < 0) {
                 const float dx = u->x - g.cx, dz = u->z - g.cz;
-                const float areaR = arriveR + 0.6f * float(group.size()) * 8.0f;
-                if (std::sqrt(dx * dx + dz * dz) < areaR) g.arrivedArea = t;
+                if (std::sqrt(dx * dx + dz * dz) < g.areaR) g.arrivedArea = t;
             }
         }
     }
@@ -119,11 +139,16 @@ Result run(const std::string& name, World& w, std::vector<Tracked>& group, float
         if (g.arrivedArea >= 0) ++r.arrivedArea;
         if (g.straight > 1.0f) { ratioSum += g.travelled / g.straight; ++ratioN; }
     }
+    // PERCENTILES OF THE GROUP, not of the units that happened to make it. Ranking only
+    // the arrivals means a run where one unit of 32 arrives reports that unit's time as
+    // both t50 and t95 -- so a change that strands the other 31 shows BETTER arrival
+    // times than one that lands everybody. The milestone is simply not reached when too
+    // few arrive, and saying so is the honest answer.
     std::sort(times.begin(), times.end());
-    if (!times.empty()) {
-        r.t50 = times[times.size() / 2];
-        r.t95 = times[size_t(float(times.size() - 1) * 0.95f)];
-    }
+    const size_t need50 = size_t(group.size()) / 2;          // rank of the median member
+    const size_t need95 = size_t(float(group.size() - 1) * 0.95f);
+    if (times.size() > need50) r.t50 = times[need50];
+    if (times.size() > need95) r.t95 = times[need95];
     r.travelRatio = ratioN ? ratioSum / float(ratioN) : 0;
     r.work = w.pathStats().workSpent();
     r.completions = w.pathStats().completions();

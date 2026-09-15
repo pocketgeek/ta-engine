@@ -137,6 +137,13 @@ struct PathSearch {
     static constexpr uint8_t kGoal = 0x4;     // icd tests bit 0x4 to stop
     static constexpr uint8_t kSeen = 0x8;
     static constexpr uint8_t kScore5 = 0x40;
+    // A* only: this cell has been EXPANDED. Improving a cell's cost pushes a second heap
+    // entry without removing the first, so the same cell pops more than once -- and each
+    // pop was counted against the visit limit. With the limit set to one expansion per
+    // cell, duplicates exhausted it and REACHABLE GOALS FAILED: a 30x30 grid with a wall
+    // and occupied cells gave up after 901 expansions and reached the goal at 957 once
+    // the limit was raised. Closing a cell makes the per-cell bound mean what it says.
+    static constexpr uint8_t kClosed = 0x10;
 
     // Size the scratch to the map and clear the search. Call once per request.
     void reset(int mapW, int mapH);

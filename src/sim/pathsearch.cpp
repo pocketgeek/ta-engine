@@ -279,6 +279,12 @@ PathSearch::Result PathSearch::step(const std::function<int(int, int)>& score,
             const int32_t ci = aStarPop();
             if (ci < 0) { phase = Phase::Failed; return Result::Failed; }
             const int cx = int(ci) % w_, cz = int(ci) / w_;
+            // A stale duplicate of a cell already expanded: drop it WITHOUT counting.
+            // Counting it spends the per-cell budget twice over on one cell.
+            const size_t ciU = size_t(ci);
+            touch(ciU);
+            if (flag_[ciU] & kClosed) break;
+            flag_[ciU] = uint8_t(flag_[ciU] | kClosed);
             ++visited;
             if (cx == goal.x && cz == goal.z) {
                 phase = Phase::Done;
@@ -632,6 +638,18 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
         std::vector<Finished> finished;
         for (auto& [id, e] : q_) {
             if (e.slot < 0 || e.ranAt == tickNo_) continue;
+            // THE BUDGET IS CHECKED HERE, not only between rounds. The quantum is
+            // computed once per round from what was left at the START of it, and
+            // completions are charged as they happen -- so the searches later in the same
+            // round were still handed a full slice from a budget already spent. Measured:
+            // 12 open-ground requests at 952 search + 540 completion work each charged
+            // 17,904 against a 12,000 budget. A cap that can be overrun by half again is
+            // not a cap, and the whole point of bounding this is that a big order becomes
+            // a short queue rather than a frame spike.
+            //
+            // Leaving the entry unmarked means it simply waits: next tick it is first in
+            // line with its state intact.
+            if (spent >= budget_) break;
             e.ranAt = tickNo_;
             e.cap += quantum * (e.priority ? 5 : 1);
             auto sc = [&](int cx, int cz) { return score(id, cx, cz); };

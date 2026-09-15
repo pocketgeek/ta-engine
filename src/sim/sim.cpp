@@ -4473,8 +4473,18 @@ void World::tick(float dt) {
                     // this the window would turn "I only looked at the far ones" into
                     // "nothing connects", and a perfectly walkable route would be thrown
                     // away and re-requested.
+                    //
+                    // BOUNDED TOO. Scanning everything the window excluded makes the two
+                    // loops together equivalent to the unrestricted scan the window was
+                    // added to prevent: with the raw cap at 256, 64 retained hops could
+                    // cost 14,368 candidate checks against the 2,080 maximum before it.
+                    // The nearest few are what this fallback is for -- a waypoint further
+                    // out than that would have been inside the window already.
+                    constexpr size_t kNearFallback = 8;
+                    const size_t nearStop =
+                        scanFrom - from > kNearFallback ? scanFrom - kNearFallback : from;
                     if (!found && scanFrom > from)
-                        for (size_t j = scanFrom; j-- > from;)
+                        for (size_t j = scanFrom; j-- > nearStop;)
                             if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z) &&
                                 (!firstHop ||
                                  ng.segmentFits(u->x, u->z, float(route[j].x) * 16 + 8,

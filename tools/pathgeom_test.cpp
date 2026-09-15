@@ -175,6 +175,38 @@ int main() {
         }
     }
 
+    // A* MUST NOT SPEND ITS PER-CELL BUDGET TWICE ON ONE CELL. Improving a cell's cost
+    // pushes a second heap entry without removing the first, so the cell pops more than
+    // once -- and every pop was counted against a limit of one expansion per cell. On a
+    // grid with a wall and scattered bodies that exhausted the limit and a REACHABLE goal
+    // failed, which is the worst way for a bounded planner to be wrong: it looks like
+    // "no route exists" and the caller believes it.
+    {
+        const int N = 30;
+        auto sc = [&](int x, int z) {
+            if (x < 0 || z < 0 || x >= N || z >= N) return 0;
+            if (x == 15 && z < 25) return 0;                          // wall, gap at the foot
+            if (((x * 7 + z * 13) % 11) == 0) return kCellOccupied;   // scattered bodies
+            return kCellGround;
+        };
+        PathSearch ps;
+        ps.reset(N, N);
+        ps.start = {2, 2}; ps.goal = {27, 27}; ps.cur = ps.start;
+        ps.useAStar = true;
+        PathSearch::Result r = PathSearch::Result::Suspended;
+        for (int t = 0; t < 20000 && r == PathSearch::Result::Suspended; ++t) {
+            int cap = 1 << 28;
+            r = ps.step(sc, cap);
+        }
+        char detail[96];
+        std::snprintf(detail, sizeof detail, "%d expansions of a %d limit, %zu corners",
+                      ps.visited, N * N, ps.out.size());
+        check(r == PathSearch::Result::Arrived,
+              "A* reaches a reachable goal without duplicates eating its budget", detail);
+        check(ps.visited <= N * N,
+              "...and never expands more cells than the grid has", detail);
+    }
+
     std::printf(fails ? "pathgeom_test: %d FAILED\n" : "pathgeom_test: all passed\n", fails);
     return fails ? 1 : 0;
 }
