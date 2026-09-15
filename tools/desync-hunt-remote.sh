@@ -258,7 +258,11 @@ cleanup() {
           _streak=0            # query failed -- unknown, NOT proof of clean
         fi
       done
-      "${CLEANSSH[@]}" "$RUSER@$_h" "rm -f '$NETEM_OWNER.$_if'" >/dev/null 2>&1 || true
+      # Same rule as shaping_down: the claim is what keeps the remote watchdog willing to
+      # retry, so it is only given up on a confirmed-clean interface.
+      if [ "$_streak" -ge 2 ]; then
+        "${CLEANSSH[@]}" "$RUSER@$_h" "rm -f '$NETEM_OWNER.$_if'" >/dev/null 2>&1 || true
+      fi
       flock -u 8 2>/dev/null || true
       if [ "$_streak" -lt 2 ]; then
         echo "WARN cleanup: $_h still shaped on $_if -- clear it by hand" >&2
@@ -517,7 +521,14 @@ run_one() {
       local token="$$-$name-$RANDOM"
       shaped_token="$token"
       printf '%s\t%s\t%s\n' "$host" "$iface" "$token" >>"$SHAPEDFILE"
-      rsh1 "echo '$token' > '$NETEM_OWNER.$iface'" >/dev/null 2>&1
+      # CONFIRM THE CLAIM BEFORE SHAPING. If this write silently fails, shaping still
+      # goes on -- and now NEITHER recovery path works: the watchdog finds no matching
+      # token and declines, and exit cleanup sees a mismatch and skips the interface. The
+      # ownership file is what makes recovery possible, so a host must never end up shaped
+      # without one. Read it back rather than trusting the exit status.
+      if [ "$(rsh1 "echo '$token' > '$NETEM_OWNER.$iface' 2>/dev/null; cat '$NETEM_OWNER.$iface' 2>/dev/null" 2>/dev/null)" != "$token" ]; then
+        echo "SKIP $name ($host): could not claim $iface for shaping"; flock -u 9; return 0
+      fi
       rsh1 "nohup sh -c 'sleep ${NETEM_EXPIRY}
             [ \"\$(cat \"$NETEM_OWNER.$iface\" 2>/dev/null)\" = \"$token\" ] || exit 0
             sudo /usr/sbin/tc qdisc del dev $iface root 2>/dev/null
@@ -578,17 +589,24 @@ run_one() {
       # Confirm, then retry once. Leaving netem on would silently apply this run's
       # latency to every later run on that host -- including ones that are not latency
       # tests, which would then be measuring a link nobody configured.
+      local _clean=1
       if rsh1 "/usr/sbin/tc qdisc show dev $shaped_iface | grep -q netem"; then
         echo "WARN $name ($host): netem NOT removed from $shaped_iface -- retrying"
         rsh1 "sudo /usr/sbin/tc qdisc del dev $shaped_iface root 2>/dev/null; true" >/dev/null 2>&1
-        rsh1 "/usr/sbin/tc qdisc show dev $shaped_iface | grep -q netem" && \
+        if rsh1 "/usr/sbin/tc qdisc show dev $shaped_iface | grep -q netem"; then
           echo "WARN $name ($host): STILL shaped -- clear $shaped_iface by hand"
+          _clean=0
+        fi
       fi
-      # Drop the ownership claim LAST, once the interface is actually clear: while it is
-      # still there the watchdog would fire on our behalf if we died mid-teardown, and
-      # once it is gone neither the watchdog nor another sweep's cleanup can touch what
-      # the next run installs here.
-      rsh1 "rm -f '$NETEM_OWNER.$shaped_iface'" >/dev/null 2>&1
+      # Release the ownership claim ONLY once the interface is confirmed clear. Dropping
+      # it here unconditionally disarmed the watchdog in exactly the case it exists for:
+      # teardown had just reported STILL shaped, and removing the claim meant the timer
+      # would decline to retry. While the claim stands the watchdog will finish the job
+      # for us; once it is gone, neither it nor another sweep's cleanup can touch what the
+      # next run installs here.
+      if [ "$_clean" = "1" ]; then
+        rsh1 "rm -f '$NETEM_OWNER.$shaped_iface'" >/dev/null 2>&1
+      fi
       shaped_netem=""; shaped_token=""
     fi
     flock -u 9 2>/dev/null || true
