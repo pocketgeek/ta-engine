@@ -4592,7 +4592,7 @@ void World::tick(float dt) {
                 abandoned_.erase(it);
                 continue;
             }
-            if (tickCounter_ - rec.atTick < kAbandonRetryTicks) continue;
+            if (tickCounter_ - rec.probeAt < kAbandonRetryTicks) continue;
             // Only if it can actually get there from where it now stands. Re-issuing a
             // genuinely unreachable goal is what the give-up exists to prevent -- the
             // unit would walk at a mountain and grind at it again.
@@ -4603,7 +4603,7 @@ void World::tick(float dt) {
             // without an order ever being issued. "One more look" became "one more
             // check". Wait another interval instead; kAbandonExpiry bounds the waiting.
             if (!pathExists(u.type, rec.x, rec.z, u.x, u.z)) {
-                rec.atTick = tickCounter_;
+                rec.probeAt = tickCounter_;   // wait again -- but the EXPIRY still runs
                 continue;
             }
             ++rec.tries;
@@ -5433,6 +5433,7 @@ void World::tick(float dt) {
                                 rec.x = ax; rec.z = az;
                                 rec.attackMove = aAtk; rec.patrol = aPat;
                                 rec.atTick = tickCounter_;
+                                rec.probeAt = tickCounter_;
                             }
                         }
                     }

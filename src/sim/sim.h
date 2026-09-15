@@ -1719,7 +1719,17 @@ private:
     struct AbandonedGoal {
         float x = 0, z = 0;
         bool attackMove = false, patrol = false;
+        // TWO timestamps, deliberately. `atTick` is when the goal was abandoned and
+        // never moves, so the expiry below is measured from a fixed point. `probeAt` is
+        // when the retry last looked, and moves on every deferral.
+        //
+        // One field cannot do both jobs: deferring a retry by pushing the single
+        // timestamp forward means the expiry is always measured from the last probe and
+        // can never elapse, so a permanently unreachable goal lives for ever, keeps
+        // abandoned_ non-empty -- which is what runs the per-tick sweep -- and pays a
+        // pathExists check every interval until the match ends.
         uint32_t atTick = 0;
+        uint32_t probeAt = 0;
         int tries = 0;
     };
     std::unordered_map<int, AbandonedGoal> abandoned_;
