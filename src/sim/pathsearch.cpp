@@ -619,7 +619,17 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
         if (remaining <= 0) break;             // the budget is a real cap
         const int quantum = std::max(1, remaining / share);
 
-        std::vector<int> finished;
+        // THE CALLBACK IS NOT INVOKED WHILE THE QUEUE IS BEING WALKED.
+        //
+        // `done` installs the route, and installing a route can ask for another one --
+        // a route that no longer connects to its unit requests a repair. That reaches
+        // back into request()/cancel() and mutates q_ underneath this very loop, which
+        // segfaulted the moment a crowd made repairs common (a crowd is exactly when it
+        // matters). Collect the finished searches, finish walking the queue, release the
+        // slots, and only then hand the routes over -- so a callback is free to queue
+        // whatever it likes.
+        struct Finished { int id; std::vector<PathCell> route; float gx, gz; };
+        std::vector<Finished> finished;
         for (auto& [id, e] : q_) {
             if (e.slot < 0 || e.ranAt == tickNo_) continue;
             e.ranAt = tickNo_;
@@ -635,24 +645,24 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
                 // smooths it, and that cost belongs to this tick's budget.
                 spent += kWorkCompleteBase + kWorkPerCorner * int(ps.out.size());
                 ++completions_;
-                done(id, ps.out, e.goalX, e.goalZ);
-                finished.push_back(id);
+                finished.push_back({id, ps.out, e.goalX, e.goalZ});
             } else if (r == PathSearch::Result::Failed) {
                 spent += kWorkCompleteBase;
                 ++failures_;
-                done(id, {}, e.goalX, e.goalZ);
-                finished.push_back(id);
+                finished.push_back({id, {}, e.goalX, e.goalZ});
             }
             // Suspended: keep the entry, resume next tick with its state intact.
         }
         // Hand the slots back NOW rather than at the end of the tick, so the next round
         // can use them. This is the whole point of the loop.
-        for (int id : finished) {
-            auto it = q_.find(id);
+        for (const Finished& f : finished) {
+            auto it = q_.find(f.id);
             if (it == q_.end()) continue;
             release(it->second);
             q_.erase(it);
         }
+        // Queue walked, slots free: now it is safe for a callback to re-enter.
+        for (const Finished& f : finished) done(f.id, f.route, f.gx, f.gz);
         if (finished.empty()) break;   // no slot freed -> a refill round would do nothing
     }
 }

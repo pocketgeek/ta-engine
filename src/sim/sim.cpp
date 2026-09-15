@@ -4491,11 +4491,14 @@ void World::tick(float dt) {
                     from = take + 1;
                 }
                 if (routeBroken) {
-                    // Re-ask from where the unit actually is now. The existing re-request
-                    // path below does the same thing when a search fails outright, so a
-                    // route that cannot be connected is treated the same as one that was
-                    // never found -- rather than being installed and walked into.
-                    requestPath(*u, gx, gz);
+                    // Re-ask from where the unit actually is now -- but BACKED OFF, the
+                    // same as an outright failure. Repairing immediately is a feedback
+                    // loop: a crowded route fails to connect, the repair produces another
+                    // route through the same crowd, that fails too, and the search count
+                    // runs away. Measured at its worst, 480,000 searches in one scenario
+                    // against a baseline of 402, and travel twice as long -- the churn
+                    // costs far more than the broken route it was avoiding.
+                    pathRetryAt_[unitId] = tickCounter_ + kPathFailBackoff;
                     return;
                 }
             }
