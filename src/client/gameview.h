@@ -1456,6 +1456,11 @@ private:
     bool bilinear_ = false;     // smooth terrain/feature scaling (Options)
     int healthBars_ = 1;        // 0=off 1=damaged-only 2=always (Options)
     bool statsPanel_ = true;    // Options: live readout in the dead strip under the minimap
+    // Animation stall gate (see animFrame): the sim tick last observed, and when it
+    // last CHANGED. Animation freezes when the sim clock stops, so a network stall looks
+    // paused instead of leaving units walking on the spot.
+    uint32_t animLastTick_ = 0;
+    uint64_t animAdvanceMs_ = 0;
     // Max NEW units the client registers (model/COB/anim VM + Create script) per frame,
     // so a mass simultaneous spawn streams in over ~a second instead of freezing one frame.
     static constexpr int kRegistrationsPerFrame = 64;

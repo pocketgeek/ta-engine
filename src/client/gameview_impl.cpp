@@ -1616,6 +1616,36 @@
 
     void GameView::animFrame(float realDt) {
         if (paused_) return;
+        // A game can also stop dead without anyone touching the pause key: when bundles
+        // stop arriving a net game simply produces no ticks. Everything ELSE already
+        // holds still when that happens -- unit positions clamp to the newest pose
+        // (interpAlpha_), and cosmeticStep runs only for ticks actually drained -- but
+        // the animation VM is deliberately decoupled from the tick rate so that the walk
+        // cycle stays smooth between 30Hz ticks, and that decoupling meant it kept
+        // playing through a stall: legs walking on the spot, wheels turning, rotors
+        // spinning, while the world stood frozen. Freeze it on the same event, so a
+        // stalled game reads as stopped rather than broken.
+        //
+        // Measured from when the SIM CLOCK last moved, NOT from the age of the newest
+        // snapshot. front() is pinned for the whole frame, so the snapshot is always at
+        // least one frame old, and an age test would call a healthy client on a slow
+        // machine permanently stalled at any frame rate below the threshold.
+        // Only once the game is actually running. Before the first tick lands -- loading,
+        // the lobby, the pre-game hold -- gameTick sits at 0 and never "advances", which
+        // the gate below would read as a stall and freeze on, then visibly un-freeze the
+        // moment the first tick arrived. There is nothing to stall yet at tick 0.
+        const uint64_t nowMs = SDL_GetTicks64();
+        if (front().gameTick == 0) { animAdvanceMs_ = nowMs; animLastTick_ = 0; }
+        else if (front().gameTick != animLastTick_ || animAdvanceMs_ == 0) {
+            animLastTick_ = front().gameTick;
+            animAdvanceMs_ = nowMs;
+        }
+        // Scaled by the tick interval rather than a flat millisecond figure: game speed
+        // changes how long a tick takes, and a fixed threshold would read a deliberately
+        // slowed game as a permanent stall. The floor keeps ordinary jitter from
+        // flickering the animation off and on.
+        const float stallMs = std::max(250.0f, front().tickDurMs * 6.0f);
+        if (float(nowMs - animAdvanceMs_) > stallMs) return;
         float dt = realDt * animSpeed();
         vmTick_.clear();
         for (auto& [id, a] : anims_) {
