@@ -224,6 +224,20 @@ RUNS=(
   "4h-orders|Ulasem Arena|TAK_AUTOPLAY=15||human|light|4"
   "3h-baseline|Ulasem Arena|||human|light|3"
   "4h-gods|Ulasem Arena|TAK_GODS=1||human|light|4"
+  # --- over a LATENT link. TAK_RTT/TAK_JITTER put a delaying relay in front of the
+  # server (tools/netdelay.py); the client is otherwise unchanged. These exercise the
+  # adaptive jitter buffer, the kMaxLeadTicks flow-control window and -- with orders in
+  # flight -- command bucketing by arrival tick, none of which do anything on a LAN.
+  #
+  # The order-issuing ones are CONSENSUS tests twice over: live commands already make a
+  # run unreproducible, and latency changes which tick each command lands on, so two
+  # runs legitimately differ. Judge them by "everyone agreed", never by hash.
+  "net-rtt50|Ulasem Arena|TAK_RTT=50||human|light"
+  "net-rtt100|Ulasem Arena|TAK_RTT=100||human|light"
+  "net-jitter|Ulasem Arena|TAK_RTT=100 TAK_JITTER=30||human|light"
+  "net-rtt500|Ulasem Arena|TAK_RTT=500||human|light"
+  "net-orders100|Ulasem Arena|TAK_RTT=100 TAK_AUTOPLAY=15||human|light"
+  "net-2h-rtt100|Ulasem Arena|TAK_RTT=100 TAK_AUTOPLAY=15||human|light|2"
   "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch|heavy"
   "w-allai-bench|Ulasem Arena|TAK_BENCH=3||watch|heavy"
 )
@@ -256,6 +270,29 @@ run_one() {
   if [ "$spec" = "$weight" ]; then humans=1; else humans="${spec#*|}"; fi
   case "$humans" in ''|*[!0-9]*) humans=1;; esac
   local port=$((PORT_BASE + idx)) seed=$((2000 + idx))
+
+  # LATENCY SHAPING. TAK_RTT / TAK_JITTER ride in the ENVS column rather than adding
+  # positional fields -- a wider spec is how --overrides full once ended up in the seat
+  # slot and silently tested nothing. They are stripped before the client sees them:
+  # they configure a relay in front of the server, not the game.
+  #
+  # Every run so far has been sub-millisecond LAN, which leaves the latency-sensitive
+  # machinery untested: netDelay_ sizes itself from measured RTT, the server may not
+  # lead its slowest consumer by more than kMaxLeadTicks, and a spectator heartbeats to
+  # keep that fed. Measured: flat 4x through 100ms, 3.41x at 500ms, no desync at any of
+  # them -- the knee is where the round trip starts eating the 120-tick lead window.
+  local rtt=0 jit=0 thost="$host" tport="$port" proxypid=""
+  case "$envs" in *TAK_RTT=*)    rtt=$(printf '%s' "$envs" | grep -oE 'TAK_RTT=[0-9]+' | cut -d= -f2);; esac
+  case "$envs" in *TAK_JITTER=*) jit=$(printf '%s' "$envs" | grep -oE 'TAK_JITTER=[0-9]+' | cut -d= -f2);; esac
+  envs=$(printf '%s' "$envs" | sed -E 's/TAK_(RTT|JITTER)=[0-9]+//g')
+  if [ "${rtt:-0}" != "0" ] || [ "${jit:-0}" != "0" ]; then
+    local pport=$((PORT_BASE + 200 + idx))
+    python3 tools/netdelay.py --listen "$pport" --to "$host:$port" \
+            --rtt "${rtt:-0}" --jitter "${jit:-0}" >/dev/null 2>&1 &
+    proxypid=$!
+    sleep 2
+    thost=127.0.0.1; tport="$pport"
+  fi
   local clog="$OUT/$name.client.log"
   local SSHH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
   rsh1() { "${SSHH[@]}" "$RUSER@$host" "$@"; }
@@ -296,7 +333,7 @@ run_one() {
   # shellcheck disable=SC2086
   env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $seatenv $SPEED_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
-      --server "$host" --serverport "$port" --mphost --time "$secs" $flags \
+      --server "$thost" --serverport "$tport" --mphost --time "$secs" $flags \
       >"$clog" 2>&1 &
   local hostpid=$!
 
@@ -309,7 +346,7 @@ run_one() {
       # shellcheck disable=SC2086
       env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $SPEED_DEFAULT $envs \
           timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
-          --server "$host" --serverport "$port" --mpjoin --time "$secs" $flags \
+          --server "$thost" --serverport "$tport" --mpjoin --time "$secs" $flags \
           >"$OUT/$name.client$j.log" 2>&1 &
       jpids+=($!)
     done
@@ -325,6 +362,7 @@ run_one() {
   #
   # Kill by pid, not by pattern: a pattern would also hit a concurrent sweep on the
   # same port, and pkill -x would hit every server on the account.
+  [ -n "$proxypid" ] && kill "$proxypid" 2>/dev/null
   if [ -n "$spid" ]; then
     rsh1 "kill $spid 2>/dev/null; for _ in 1 2 3 4 5 6 7 8 9 10; do
             [ -d /proc/$spid ] || break; sleep 0.5; done; true" >/dev/null 2>&1

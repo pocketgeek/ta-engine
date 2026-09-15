@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# tak-netem -- the ONLY privileged operation the test harness needs on a server host.
+#
+# Install root-owned at /usr/local/sbin/tak-netem and grant exactly this one command in
+# sudoers. Granting `tc` itself would hand over every traffic-control operation on every
+# interface; this restricts it to: shape the game ports on one interface, clear, show.
+#
+#   sudo tak-netem apply <rtt_ms> <jitter_ms> [loss_pct]
+#   sudo tak-netem clear
+#        tak-netem show                 # no privilege needed
+#
+# WHY A PORT FILTER AND NOT THE ROOT QDISC. `tc qdisc add dev ens18 root netem delay
+# 100ms` delays EVERYTHING, including the ssh session being used to run it -- which
+# makes the box painful to work on and the mistake hard to undo. Only the game ports
+# are shaped; ssh and everything else stay at native speed.
+#
+# EGRESS, BY SOURCE PORT. netem shapes outbound traffic, and the direction that matters
+# for lockstep is server -> client (bundle delivery), so the filter matches the server's
+# SOURCE port.
+#
+# SELF-REVERTING. An `apply` schedules its own removal after AUTO_REVERT seconds. A
+# harness that dies mid-run, or a dropped connection, must not leave a host permanently
+# shaped -- the next person to use it would see "the network is slow" with no clue why.
+# Re-applying restarts the clock; `clear` cancels it.
+set -u
+
+IFACE="${TAK_NETEM_IFACE:-ens18}"
+PORT_LO="${TAK_NETEM_PORT_LO:-7890}"
+PORT_HI="${TAK_NETEM_PORT_HI:-7960}"
+AUTO_REVERT="${TAK_NETEM_REVERT:-900}"     # seconds
+TC=/usr/sbin/tc
+STAMP=/run/tak-netem.active
+
+die() { echo "tak-netem: $*" >&2; exit 2; }
+num() { case "$1" in ''|*[!0-9.]*) die "not a number: $1";; esac; }
+
+case "${1:-}" in
+  show)
+      exec $TC -s qdisc show dev "$IFACE"
+      ;;
+  clear)
+      [ "$(id -u)" = 0 ] || die "must run as root (use sudo)"
+      $TC qdisc del dev "$IFACE" root 2>/dev/null
+      rm -f "$STAMP"
+      echo "tak-netem: cleared on $IFACE"
+      exit 0
+      ;;
+  apply)
+      [ "$(id -u)" = 0 ] || die "must run as root (use sudo)"
+      rtt="${2:-}"; jit="${3:-0}"; loss="${4:-0}"
+      [ -n "$rtt" ] || die "usage: tak-netem apply <rtt_ms> <jitter_ms> [loss_pct]"
+      num "$rtt"; num "$jit"; num "$loss"
+      # Half the round trip in each direction would need shaping on both hosts; we only
+      # control this one, so the full figure is applied here and the other direction is
+      # native. State it plainly rather than let the number be misread.
+      $TC qdisc del dev "$IFACE" root 2>/dev/null
+      $TC qdisc add dev "$IFACE" root handle 1: prio || die "prio qdisc failed"
+      netem_args="delay ${rtt}ms"
+      [ "$jit" != "0" ] && netem_args="$netem_args ${jit}ms distribution normal"
+      [ "$loss" != "0" ] && netem_args="$netem_args loss ${loss}%"
+      # shellcheck disable=SC2086
+      $TC qdisc add dev "$IFACE" parent 1:3 handle 30: netem $netem_args \
+          || die "netem failed (is sch_netem available?)"
+      p="$PORT_LO"
+      while [ "$p" -le "$PORT_HI" ]; do
+          $TC filter add dev "$IFACE" protocol ip parent 1:0 prio 3 \
+              u32 match ip sport "$p" 0xffff flowid 1:3 2>/dev/null
+          p=$((p + 1))
+      done
+      date +%s >"$STAMP"
+      # Self-revert: detached, and it checks the stamp so a LATER apply (which rewrites
+      # the stamp) is not torn down by an earlier timer.
+      mine=$(cat "$STAMP")
+      ( sleep "$AUTO_REVERT"
+        [ "$(cat "$STAMP" 2>/dev/null)" = "$mine" ] || exit 0
+        $TC qdisc del dev "$IFACE" root 2>/dev/null; rm -f "$STAMP"
+      ) >/dev/null 2>&1 &
+      echo "tak-netem: $IFACE ports $PORT_LO-$PORT_HI: ${rtt}ms jitter ${jit}ms loss ${loss}% (egress only; reverts in ${AUTO_REVERT}s)"
+      exit 0
+      ;;
+  *)
+      echo "usage: tak-netem apply <rtt_ms> <jitter_ms> [loss_pct] | clear | show" >&2
+      exit 2
+      ;;
+esac
