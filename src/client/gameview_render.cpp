@@ -1410,6 +1410,11 @@
         AaScaleReset _sr(ren_);   // bakes render at 1:1 even when whole-frame AA is on
         if (animatedTex_.empty()) return;
         int frame = live ? int(animClock_ * 4.0f) : 0;   // ~4 fps
+        // Nothing to do until the ~4fps index actually moves (or an atlas was
+        // rebuilt). The atlases hold last frame's pixels, which are still correct.
+        if (!glowDirty_ && frame == glowFrame_) return;
+        glowFrame_ = frame;
+        glowDirty_ = false;
         SDL_Texture* prev = SDL_GetRenderTarget(ren_);
         bool onAny = false;
         for (SDL_Texture* atlas : atlasTex_) {
@@ -1440,6 +1445,7 @@
     void GameView::invalidateRenderTargets() {
         for (SDL_Texture* t : atlasTex_) if (t) gpuvram::destroy(t);
         atlasTex_.clear();
+        glowDirty_ = true;   // whatever was painted died with the atlases
     }
 
     void GameView::destroyGpuTextures() {
@@ -1542,6 +1548,7 @@
         SDL_SetRenderTarget(ren_, prev);
         SDL_SetTextureScaleMode(atlas, SDL_ScaleModeNearest);   // no atlas edge bleed
         atlasTex_[slot] = atlas;
+        glowDirty_ = true;   // fresh atlas: its animated regions are unpainted
         return atlas;
     }
 

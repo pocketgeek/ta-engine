@@ -1404,6 +1404,13 @@ private:
     std::unordered_map<std::string, SDL_Rect> atlasRect_;  // name -> content rect
     int atlasW_ = 0, atlasH_ = 0;
     std::vector<SDL_Texture*> atlasTex_;   // per colour slot; nullptr until built
+    // animateGlowTextures() advances at ~4fps but used to repaint every atlas on
+    // EVERY frame -- at 240Hz that is ~60 redundant repaints per visible change,
+    // each one a render-target switch (a pipeline flush) plus a fill+copy per
+    // animated region. These remember what is already painted; glowDirty_ forces a
+    // repaint when an atlas is (re)built underneath us.
+    int glowFrame_ = -1;
+    bool glowDirty_ = true;
     bool atlasLaidOut_ = false;
     std::set<std::string> animatedTex_;    // multi-frame glow textures (cycle over time)
 
@@ -1946,6 +1953,12 @@ private:
     int winW_ = 0, winH_ = 0;   // last-known window size (for centering/culling)
     tak::net::MpClient* mp_ = nullptr;
     std::vector<tak::net::Command> outbox_;   // local orders to send to the server
+    // Index of the first UNSENT command in outbox_. The send path is rate- and
+    // window-limited, so it usually ships a prefix and keeps the rest; erasing that
+    // prefix shifted every survivor down, making a full drain O(B^2/b) for B queued
+    // commands sent b at a time. Advancing a head costs nothing; outbox_ is
+    // compacted when the head passes the halfway mark, so the drain is O(B).
+    size_t outboxHead_ = 0;
     uint64_t mpListMs_ = 0, mpFirstListMs_ = 0;   // auto-join: ListGames timing
     uint64_t mpSlowSinceMs_ = 0;                  // when the replay backlog went deep
     // Client-side jitter/receive buffer (ON by default; TAK_NET_DELAY overrides:

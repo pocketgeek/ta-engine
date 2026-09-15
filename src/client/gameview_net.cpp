@@ -220,14 +220,27 @@
         // stalled uplink accumulate 1024 unacknowledged commands against a 512
         // queue, and the server dropped the difference when they all landed.
         const int sendable = tak::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
-        if (!outbox_.empty() && sendable > 0 && !cmdCatchUp_) {
-            const size_t n = std::min(outbox_.size(), size_t(sendable));
+        const size_t pending = outbox_.size() - outboxHead_;
+        if (pending > 0 && sendable > 0 && !cmdCatchUp_) {
+            const size_t n = std::min(pending, size_t(sendable));
             cmdCredit_ -= int(n);
             cmdInFlight_ += int(n);
-            if (n == outbox_.size()) { mp_->sendCommands(outbox_); outbox_.clear(); }
-            else {
-                mp_->sendCommands({outbox_.begin(), outbox_.begin() + n});
-                outbox_.erase(outbox_.begin(), outbox_.begin() + n);
+            const auto first = outbox_.begin() + ptrdiff_t(outboxHead_);
+            if (n == pending && outboxHead_ == 0) {
+                mp_->sendCommands(outbox_);          // whole buffer, no copy
+                outbox_.clear();
+                outboxHead_ = 0;
+            } else {
+                mp_->sendCommands({first, first + ptrdiff_t(n)});
+                outboxHead_ += n;
+                if (outboxHead_ == outbox_.size()) {  // fully drained
+                    outbox_.clear();
+                    outboxHead_ = 0;
+                } else if (outboxHead_ > outbox_.size() / 2 && outboxHead_ > 64) {
+                    // Amortised compaction: each command moves at most once.
+                    outbox_.erase(outbox_.begin(), outbox_.begin() + ptrdiff_t(outboxHead_));
+                    outboxHead_ = 0;
+                }
             }
         }
         // Decide once whether to run the sim on its own worker thread. On for interactive
@@ -689,6 +702,7 @@ void GameView::autoplayStep() {
             cmdCatchUp_ = cmdReplayEnd_ > 0;
             cmdInFlight_ = 0;
             outbox_.clear();   // pre-disconnect orders are moot; the server dropped them
+            outboxHead_ = 0;
             startMpGame(mp_->startRoom(), mp_->startSeed());
             if (spec) {
                 spectating_ = true;   // watch-only: no fog, no control, no resume
