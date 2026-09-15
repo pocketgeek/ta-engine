@@ -158,6 +158,14 @@ struct Weapon {
     // Per-target-category damage overrides (DAMAGE keys other than `default`),
     // keyed by lowercased category token (e.g. "monarch", "dragon", "fort").
     std::map<std::string, float> dmgVs;
+    // The same overrides with the category token INTERNED to an int, in the string
+    // map's order so precedence is identical. damageVs() is the hottest lookup in the
+    // sim -- measured 29k-245k of them a tick -- and walking a string-keyed red-black
+    // tree per candidate is a poor way to answer it. Built once, at load, and never
+    // mutated afterwards: the server ticks several rooms in parallel over ONE shared
+    // TypeRegistry, so a lazily-filled cache here would be a data race, and a race in
+    // hashed state is a desync rather than merely a bug.
+    std::vector<std::pair<int, float>> dmgVsIds;
     WeaponFx fx = WeaponFx::Arrow;
     // Damage this weapon deals to a unit of type `t` (category override, else base).
     float damageVs(const UnitType* t) const;
@@ -225,6 +233,7 @@ struct UnitType {
     // Lowercased target-category tokens (from FBI category/damagecategory/tedclass),
     // matched against a weapon's per-category damage overrides.
     std::vector<std::string> categories;
+    std::vector<int> catIds;    // `categories`, interned; same order (see Weapon::dmgVsIds)
     float sight = 180;        // px (FBI sightdistance)
     bool canFly = false;
     // bankscale / pitchscale: how hard this flyer rolls into a turn and pitches
@@ -392,11 +401,20 @@ public:
     // Full type table in deterministic (name-sorted) order -- corpse interning
     // walks it so every peer builds identical FeatType indices.
     const std::map<std::string, UnitType>& types() const { return types_; }
+    // Category token -> small int. Assigned while walking types_ in its name-sorted
+    // order, so every peer interns the same tokens to the same ids.
+    int categoryId(const std::string& tok) const {
+        auto it = catIds_.find(tok);
+        return it == catIds_.end() ? -1 : it->second;
+    }
     const std::vector<std::string>& buildable(const std::string& builderId) const;
     // Mobile, armed combat units of a faction `side` ("ARA".."CRE"), in a fixed
     // (name-sorted) order so every peer builds the same stress-test army. Excludes
     // structures, builders, the Monarch, and anything with no weapon.
     std::vector<const UnitType*> combatUnits(const std::string& side) const;
+    // Intern every category token and resolve the per-weapon overrides against it.
+    // Called once after loading; idempotent.
+    void internCategories();
     // Largest build menu of any builder (drives the minimum window width so the
     // whole icon row always fits at full size -- some Crusades menus reach 13).
     std::size_t maxBuildMenu() const {
@@ -406,6 +424,7 @@ public:
     }
 
 private:
+    std::map<std::string, int> catIds_;
     std::map<std::string, UnitType> types_;
     std::set<std::string> canonicalTypes_;   // ids whose defining .fbi filename == objectname
     std::map<std::string, std::vector<std::string>> buildTree_;
@@ -787,6 +806,14 @@ public:
     // scores road cells 7 vs 6 (icd 0x508527). `roads` must outlive the grid and
     // match its dimensions (World::roads_; null = no preference).
     void markClearanceDirty() { clearDirty_ = true; ++version_; }
+    // A cell in the SHARED obstacle overlay changed. Every grid reads that overlay
+    // through walkable(), so each one's clearance needs refreshing -- but only over
+    // the band the edit can reach, exactly as block() does for a grid's own cells.
+    // World::blockCells used to markClearanceDirty() here instead, which made every
+    // building placement re-run a full w*h clearance DP on EVERY grid. The win is
+    // asymptotic (bounded rect vs whole map) rather than one you can see in a
+    // profile today -- the sim is far from the frame budget at -O2.
+    void overlayChanged(int cx, int cz, int w, int h);
     // Bumped on every walkability edit (own cells or the shared overlay), so caches
     // derived from this grid can tell when they have gone stale.
     uint64_t version() const { return version_; }

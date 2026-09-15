@@ -493,6 +493,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // Skip malformed definitions rather than fail the registry.
         }
     }
+    // Intern here rather than asking callers to remember: loadDir is called once per
+    // archive (unitscb then units) and this rebuilds from scratch each time, so it is
+    // idempotent and cannot be left stale by a second load.
+    internCategories();
     // Fix up cross-type references now that every unit is in the table
     // (animatetype=MONGHOUL names another unit the animator raises).
     for (auto& [id, t] : types_)
@@ -820,6 +824,14 @@ void NavGrid::rebuildClearance() const {
 // rect can influence: the rect itself plus kClearMax cells down-left (the DP reads
 // up-right neighbours, and saturation stops the influence beyond that band). Same
 // order and arithmetic as the full rebuild, so the result is bit-identical to it.
+void NavGrid::overlayChanged(int cx, int cz, int w, int h) {
+    ++version_;   // walkability changed: component caches over this grid are stale
+    if (!clearDirty_ && !clear_.empty())
+        updateClearanceRect(cx, cz, w, h);
+    else
+        clearDirty_ = true;
+}
+
 void NavGrid::updateClearanceRect(int cx, int cz, int w, int h) const {
     int x0 = std::max(0, cx - int(kClearMax));
     int z0 = std::max(0, cz - int(kClearMax));
@@ -1224,13 +1236,38 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
             while (!stack.empty()) {
                 int idx = stack.back(); stack.pop_back();
                 int cx = idx % w, cz = idx / w;
+                // The four ORTHOGONAL fits are computed once and reused. The
+                // diagonal corner-cut rule asks about exactly those same cells, so
+                // the original loop tested each of them twice -- up to sixteen
+                // fits() calls per cell popped instead of eight.
+                //
+                // Strictly less work, but do not expect it to show up in a profile:
+                // at -O2 the whole sim costs ~26ms across 1800 ticks, so a relabel
+                // is already lost in the noise. (It IS visible in an -O0 debug
+                // build, which is what mislead an earlier pass into calling this a
+                // 100ms stall -- measure optimisations on the build users run.)
+                //
+                // dcx/dcz index 0..3 are +x,-x,+z,-z; 4..7 are the diagonals, each
+                // the combination of two of those. Same predicate, same traversal
+                // order, same labels -- only the redundant calls go.
+                bool orth[4];
+                for (int k = 0; k < 4; ++k) {
+                    const int nx = cx + dcx[k], nz = cz + dcz[k];
+                    orth[k] = nx >= 0 && nz >= 0 && nx < w && nz < h && g.fits(nx, nz, foot);
+                }
                 for (int k = 0; k < 8; ++k) {
                     int nx = cx + dcx[k], nz = cz + dcz[k];
                     if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
-                    if (!g.fits(nx, nz, foot)) continue;
-                    if (k >= 4 && (!g.fits(cx + dcx[k], cz, foot) ||
-                                   !g.fits(cx, cz + dcz[k], foot)))
-                        continue;                    // no diagonal corner-cutting
+                    if (k < 4) {
+                        if (!orth[k]) continue;
+                    } else {
+                        if (!g.fits(nx, nz, foot)) continue;
+                        // dcx[k] is +/-1 and dcz[k] is +/-1: the two orthogonal steps
+                        // that make up this diagonal are entries (dcx[k]>0?0:1) and
+                        // (dcz[k]>0?2:3) of the table above.
+                        if (!orth[dcx[k] > 0 ? 0 : 1] || !orth[dcz[k] > 0 ? 2 : 3])
+                            continue;                // no diagonal corner-cutting
+                    }
                     size_t ni = size_t(nz) * size_t(w) + size_t(nx);
                     if (cg.label[ni] != -1) continue;
                     cg.label[ni] = id;
@@ -1769,6 +1806,40 @@ void World::attack(int unitId, int targetId, bool queue) {
     u->orders.back().issuedTick = tickCounter_;
 }
 
+
+// Intern every category token to a small int and resolve each weapon's overrides
+// against it. Done ONCE after loading, never afterwards: several rooms tick in
+// parallel over one shared registry, so anything lazily written here would race.
+//
+// Deterministic: types_ is a name-sorted std::map and dmgVs a string-keyed map, so
+// both are walked in the same order on every peer and the same token always gets the
+// same id. Order within a weapon's override list is preserved, which is what keeps
+// category precedence identical -- damageVs returns the FIRST category that matches.
+void TypeRegistry::internCategories() {
+    catIds_.clear();
+    auto idOf = [&](const std::string& tok) {
+        auto it = catIds_.find(tok);
+        if (it != catIds_.end()) return it->second;
+        const int id = int(catIds_.size());
+        catIds_.emplace(tok, id);
+        return id;
+    };
+    for (auto& [name, t] : types_) {
+        t.catIds.clear();
+        t.catIds.reserve(t.categories.size());
+        for (const auto& c : t.categories) t.catIds.push_back(idOf(c));
+    }
+    // Weapon overrides resolve against the SAME table. A token no type ever declares
+    // interns here too rather than being dropped: it simply never matches, exactly as
+    // the string lookup never matched it.
+    for (auto& [name, t] : types_)
+        for (auto& w : t.weapons) {
+            w.dmgVsIds.clear();
+            w.dmgVsIds.reserve(w.dmgVs.size());
+            for (const auto& [k, v] : w.dmgVs) w.dmgVsIds.emplace_back(idOf(k), v);
+        }
+}
+
 float Weapon::damageVs(const UnitType* t) const {
     // A per-category DAMAGE entry is a MULTIPLIER on `default`, not a damage figure.
     // This returned the entry directly, which is how the Barracks became unkillable:
@@ -1789,6 +1860,16 @@ float Weapon::damageVs(const UnitType* t) const {
     // is npcemen, a campaign duellist with buri=100 against Lord Buriash (2940 HP):
     // as a multiplier that is the scripted one-shot kill the mission wants, as
     // absolute damage it is 100 and the duel takes thirty hits.
+    if (t && !dmgVsIds.empty()) {
+        // Integer compares over two short vectors, instead of a string-keyed tree walk
+        // per candidate. Same traversal order, so the same category wins.
+        for (int c : t->catIds)
+            for (const auto& [k, v] : dmgVsIds)
+                if (k == c) return damage * v;
+        return damage;
+    }
+    // Fallback for a registry that was never interned (tools, tests): the original
+    // lookup, so behaviour does not depend on whether internCategories() ran.
     if (t && !dmgVs.empty())
         for (const auto& c : t->categories) {
             auto it = dmgVs.find(c);
@@ -2494,10 +2575,11 @@ void World::blockCells(int cx, int cz, int w, int h, bool blocked) {
     if (!any) return;
     // Every grid reads the same overlay, so they all need their clearance redone
     // over the touched band. markDirty is cheap; the DP is lazy.
-    nav_.markClearanceDirty();
-    navWater_.markClearanceDirty();
-    navHover_.markClearanceDirty();
-    for (auto& g : navClasses_) g.markClearanceDirty();
+    const int rw = x1 - x0 + 1, rh = z1 - z0 + 1;
+    nav_.overlayChanged(x0, z0, rw, rh);
+    navWater_.overlayChanged(x0, z0, rw, rh);
+    navHover_.overlayChanged(x0, z0, rw, rh);
+    for (auto& g : navClasses_) g.overlayChanged(x0, z0, rw, rh);
 }
 
 void World::blockFoot(const UnitType& t, float x, float z, bool blocked) {
