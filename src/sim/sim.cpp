@@ -4370,10 +4370,25 @@ void World::tick(float dt) {
                 bool firstHop = true;
                 size_t from = 0;
                 bool routeBroken = false;   // nothing from here validated -- see below
+                // BOUND THE SCAN. Reconstruction may now hand back up to kRawRouteCap
+                // corners rather than 64, and this loop is O(corners^2) in the worst
+                // case -- a route so twisty that each waypoint can only reach its
+                // immediate successor. On open ground the very first test (the farthest
+                // waypoint) succeeds, so the common case is one test per hop and the
+                // longer route costs nothing; the window only exists so the pathological
+                // case cannot turn a cheap completion into a spike.
+                //
+                // Scanning the LAST kScanWindow candidates keeps the property that
+                // matters -- take the farthest waypoint still reachable -- while capping
+                // the work per hop.
+                constexpr size_t kScanWindow = 64;
                 while (from < route.size() && pulled.size() < 64) {
                     size_t take = from;
                     bool found = false;
-                    for (size_t j = route.size(); j-- > from;)
+                    const size_t scanEnd = route.size();
+                    const size_t scanFrom =
+                        scanEnd - from > kScanWindow ? scanEnd - kScanWindow : from;
+                    for (size_t j = scanEnd; j-- > scanFrom;)
                         if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z) &&
                             (!firstHop ||
                              ng.segmentFits(u->x, u->z, float(route[j].x) * 16 + 8,
@@ -4388,6 +4403,22 @@ void World::tick(float dt) {
                     // the connection the checks above refused. It is reachable whenever
                     // the world moved under a search that was already in flight: the unit
                     // walked on, or an obstacle appeared across the route.
+                    // The window may have skipped past the only reachable waypoints (a
+                    // twisty route where just the next one or two are visible), so fall
+                    // back to the near end before concluding the route is broken. Without
+                    // this the window would turn "I only looked at the far ones" into
+                    // "nothing connects", and a perfectly walkable route would be thrown
+                    // away and re-requested.
+                    if (!found && scanFrom > from)
+                        for (size_t j = scanFrom; j-- > from;)
+                            if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z) &&
+                                (!firstHop ||
+                                 ng.segmentFits(u->x, u->z, float(route[j].x) * 16 + 8,
+                                                float(route[j].z) * 16 + 8, footC))) {
+                                take = j;
+                                found = true;
+                                break;
+                            }
                     if (!found) {
                         // Nothing at all reachable from where we stand: the route does not
                         // connect to the unit any more. Keep whatever leg it is walking and

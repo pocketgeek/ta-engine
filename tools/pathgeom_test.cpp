@@ -136,6 +136,45 @@ int main() {
         check(!g.segmentFits(8, 104, 184, 104, 3), "a 3-cell body does not");
     }
 
+    // THE 64-CORNER CAP MUST NOT EAT THE DESTINATION. A goal that is neither cardinal
+    // nor 45 degrees makes the march alternate two directions, so every step is a
+    // direction change and every one becomes a corner -- a staircase whose length grows
+    // with the trip. Reconstruction used to truncate that to 64 BEFORE the world smoothed
+    // it, so the route ended at a fixed (64,32) however far away the goal was:
+    //
+    //   160x160 -> goal (159,79)   route ended (64,32)   95,47 cells discarded
+    //
+    // Every one of those corners is on open ground, so smoothing collapses the whole trip
+    // to a single segment -- the cap only ever bit because it was applied first.
+    {
+        for (int n : {80, 160, 220}) {
+            const int gx = n - 1, gz = (n - 1) / 2;
+            auto sc = [&](int x, int z) {
+                return (x < 0 || z < 0 || x >= n || z >= n) ? 0 : kCellGround;
+            };
+            PathSearch ps;
+            ps.reset(n, n);
+            ps.start = {0, 0}; ps.goal = {gx, gz}; ps.cur = ps.start;
+            PathSearch::Result r = PathSearch::Result::Suspended;
+            for (int t = 0; t < 8000 && r == PathSearch::Result::Suspended; ++t) {
+                int cap = 1 << 28;
+                r = ps.step(sc, cap);
+            }
+            const bool atGoal = r == PathSearch::Result::Arrived && !ps.out.empty() &&
+                                ps.out.back().x == gx && ps.out.back().z == gz;
+            char what[96];
+            std::snprintf(what, sizeof what,
+                          "a %dx%d open staircase still ends at its destination", n, n);
+            char detail[96];
+            if (ps.out.empty())
+                std::snprintf(detail, sizeof detail, "no route");
+            else
+                std::snprintf(detail, sizeof detail, "%zu corners, ends (%d,%d), goal (%d,%d)",
+                              ps.out.size(), ps.out.back().x, ps.out.back().z, gx, gz);
+            check(atGoal, what, detail);
+        }
+    }
+
     std::printf(fails ? "pathgeom_test: %d FAILED\n" : "pathgeom_test: all passed\n", fails);
     return fails ? 1 : 0;
 }

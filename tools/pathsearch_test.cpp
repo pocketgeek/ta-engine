@@ -183,6 +183,42 @@ int main() {
         check(peak <= kReqs,
               "the queue drains rather than growing",
               "peak pending=" + std::to_string(peak));
+        // CHEAP REQUESTS MUST NOT COST A TICK EACH. A slot freed by a search that
+        // finished early is refilled within the same tick while work budget remains, so
+        // throughput is limited by the BUDGET rather than by the pool size. Before that,
+        // this same case took four ticks: exactly kMaxActiveSearches per tick however
+        // trivial the searches were, with ~7% of the budget spent.
+        check(ticks <= 2,
+              "cheap requests are not rationed to one pool-full per tick",
+              std::to_string(kReqs) + " served in " + std::to_string(ticks) + " tick(s)");
+    }
+
+    // ...and the budget is still a REAL cap. Refilling slots must not turn into
+    // admitting everything: enough cheap requests still have to spill into a second
+    // tick, or the per-tick budget has stopped meaning anything and a big order becomes
+    // a frame spike instead of a short queue.
+    {
+        Grid g{{"..........",
+                "..........",
+                "..........",
+                "..........",
+                ".........."}};
+        PathService svc;
+        const int kMany = 400;
+        for (int i = 0; i < kMany; ++i)
+            svc.request(5000 + i, {0, 0}, {9, 4}, int(g.rows[0].size()), int(g.rows.size()), 0, 0, false);
+        auto score = [&](int, int cx, int cz) { return g.score(cx, cz); };
+        int firstTick = 0, ticks = 0;
+        while (svc.pendingCount() > 0 && ticks < 4000) {
+            int served = 0;
+            svc.tick(score, [&](int, const std::vector<PathCell>&, float, float) { ++served; });
+            if (ticks == 0) firstTick = served;
+            ++ticks;
+        }
+        check(firstTick < kMany && ticks > 1,
+              "the per-tick budget still bounds how much is served",
+              std::to_string(firstTick) + " of " + std::to_string(kMany) +
+                  " in the first tick, " + std::to_string(ticks) + " ticks total");
     }
 
     // Re-requesting for a unit that already holds a slot must restart it in

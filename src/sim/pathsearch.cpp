@@ -108,7 +108,7 @@ void PathSearch::buildRoute() {
     for (auto it = rev.rbegin(); it != rev.rend(); ++it)
         if (out.empty() || out.back().x != it->x || out.back().z != it->z)
             out.push_back(*it);
-    if (out.size() > 64) out.resize(64);
+    if (out.size() > kRawRouteCap) out.resize(kRawRouteCap);
 }
 
 // Has `c` landed back on the straight line from `org` to the goal? Retail
@@ -394,71 +394,102 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
         slotOwner_.assign(kMaxActiveSearches, -1);
     }
 
-    // ADMIT. Fill free slots from the queue, starting after the last unit id
-    // admitted and wrapping, so a low unit id that re-requests every tick cannot
-    // hold the pool against a higher one. Pure integer state in map order: every
-    // peer admits the same requests in the same order on the same tick.
-    int free = 0;
-    for (int owner : slotOwner_) if (owner < 0) ++free;
-    if (free > 0) {
-        int admitted = 0;
-        for (int pass = 0; pass < 2 && free > 0; ++pass) {
-            // pass 0: ids after the cursor. pass 1: wrap to the front.
-            auto it = pass == 0 ? q_.upper_bound(admitCursor_) : q_.begin();
-            const auto stop = pass == 0 ? q_.end() : q_.upper_bound(admitCursor_);
-            for (; it != stop && free > 0; ++it) {
-                Entry& e = it->second;
-                if (e.slot >= 0) continue;
-                int slot = -1;
-                for (size_t i = 0; i < slotOwner_.size(); ++i)
-                    if (slotOwner_[i] < 0) { slot = int(i); break; }
-                if (slot < 0) break;
-                admit(it->first, e, slot);
-                admitCursor_ = it->first;
-                ++admitted;
-                --free;
+    ++tickNo_;
+
+    // ADMIT, RUN, THEN REFILL WHILE BUDGET REMAINS.
+    //
+    // This used to admit once, run the admitted set, and release finished slots at the
+    // end -- so a slot freed by a search that completed early sat idle for the rest of
+    // the tick no matter how much work budget was left. Throughput was pinned at
+    // kMaxActiveSearches per tick regardless of how cheap the searches were. Measured on
+    // trivial requests: one costs 72 work, so 12 slots spend 864 of the 12000 budget --
+    // 7.2% used -- while 48 requests still took four ticks and 96 took eight.
+    //
+    // (The comment above kMaxActiveSearches argued throughput was unaffected by bounding
+    // the pool. That holds when searches are expensive enough to consume their slice; it
+    // does not hold for cheap ones, which finish far inside their quantum and leave the
+    // rest of the budget unusable until the next tick.)
+    //
+    // Now a completion frees its slot immediately and the freed slot is refilled from the
+    // queue while integer budget remains. Two properties are preserved deliberately:
+    //
+    //   * ADMISSION ORDER. Still the rotating cursor over unit-id order, so every peer
+    //     admits the same requests in the same sequence on the same tick.
+    //   * ONE SLICE PER TICK. A search that suspends is NOT run again this tick -- only
+    //     newly admitted requests run in a refill round. Re-running suspended searches
+    //     would change their pacing, which is hashed state.
+    int spent = 0;
+    for (int round = 0; round < kMaxActiveSearches + 1; ++round) {
+        // Fill every free slot from the queue, starting after the last unit id admitted
+        // and wrapping, so a low unit id that re-requests every tick cannot hold the pool
+        // against a higher one.
+        int free = 0;
+        for (int owner : slotOwner_) if (owner < 0) ++free;
+        if (free > 0) {
+            for (int pass = 0; pass < 2 && free > 0; ++pass) {
+                auto it = pass == 0 ? q_.upper_bound(admitCursor_) : q_.begin();
+                const auto stop = pass == 0 ? q_.end() : q_.upper_bound(admitCursor_);
+                for (; it != stop && free > 0; ++it) {
+                    Entry& e = it->second;
+                    if (e.slot >= 0) continue;
+                    int slot = -1;
+                    for (size_t i = 0; i < slotOwner_.size(); ++i)
+                        if (slotOwner_[i] < 0) { slot = int(i); break; }
+                    if (slot < 0) break;
+                    admit(it->first, e, slot);
+                    admitCursor_ = it->first;
+                    --free;
+                }
             }
         }
-        (void)admitted;
-    }
 
-    // Count the two classes exactly as the scheduler does, then split the
-    // budget: a flagged request is worth five ordinary ones (icd 0x4164fa).
-    // Only ACTIVE requests count -- a queued one is doing no work this tick, and
-    // counting it would hand the running searches a thinner slice for nothing.
-    int a = 0, b = 0;
-    for (const auto& [id, e] : q_) {
-        if (e.slot < 0) continue;
-        (e.priority ? b : a) += 1;
-    }
-    const int share = a + 5 * b;
-    if (share <= 0) return;
-    // share is bounded by the pool (at most 5*kMaxActiveSearches), so against a
-    // budget of 12000 the quantum never bottoms out at 1 and the budget holds as
-    // a real per-tick cap rather than a per-request floor.
-    const int quantum = std::max(1, budget_ / share);
-
-    std::vector<int> finished;
-    for (auto& [id, e] : q_) {
-        if (e.slot < 0) continue;   // queued: no scratch, no work, waits its turn
-        e.cap += quantum * (e.priority ? 5 : 1);
-        auto sc = [&](int cx, int cz) { return score(id, cx, cz); };
-        PathSearch& ps = pool_[size_t(e.slot)];
-        const PathSearch::Result r = ps.step(sc, e.cap);
-        if (r == PathSearch::Result::Arrived) {
-            done(id, ps.out, e.goalX, e.goalZ);
-            finished.push_back(id);
-        } else if (r == PathSearch::Result::Failed) {
-            done(id, {}, e.goalX, e.goalZ);
-            finished.push_back(id);
+        // Count the two classes exactly as the scheduler does, then split what is LEFT of
+        // the budget: a flagged request is worth five ordinary ones (icd 0x4164fa). Only
+        // entries that have not yet had a slice this tick count -- a queued one is doing
+        // no work, and one that already ran is finished for this tick.
+        int a = 0, b = 0;
+        for (const auto& [id, e] : q_) {
+            if (e.slot < 0 || e.ranAt == tickNo_) continue;
+            (e.priority ? b : a) += 1;
         }
-        // Suspended: keep the entry, resume next tick with its state intact.
-    }
-    for (int id : finished) {
-        auto it = q_.find(id);
-        if (it == q_.end()) continue;
-        release(it->second);
-        q_.erase(it);
+        const int share = a + 5 * b;
+        if (share <= 0) break;                 // nothing left to run
+        const int remaining = budget_ - spent;
+        if (remaining <= 0) break;             // the budget is a real cap
+        const int quantum = std::max(1, remaining / share);
+
+        std::vector<int> finished;
+        for (auto& [id, e] : q_) {
+            if (e.slot < 0 || e.ranAt == tickNo_) continue;
+            e.ranAt = tickNo_;
+            e.cap += quantum * (e.priority ? 5 : 1);
+            auto sc = [&](int cx, int cz) { return score(id, cx, cz); };
+            PathSearch& ps = pool_[size_t(e.slot)];
+            const int workBefore = ps.work;
+            const PathSearch::Result r = ps.step(sc, e.cap);
+            spent += ps.work - workBefore;
+            if (r == PathSearch::Result::Arrived) {
+                // Charge the completion BEFORE handing the route over: the callback
+                // smooths it, and that cost belongs to this tick's budget.
+                spent += kWorkCompleteBase + kWorkPerCorner * int(ps.out.size());
+                done(id, ps.out, e.goalX, e.goalZ);
+                finished.push_back(id);
+            } else if (r == PathSearch::Result::Failed) {
+                spent += kWorkCompleteBase;
+                done(id, {}, e.goalX, e.goalZ);
+                finished.push_back(id);
+            }
+            // Suspended: keep the entry, resume next tick with its state intact.
+        }
+        // Hand the slots back NOW rather than at the end of the tick, so the next round
+        // can use them. This is the whole point of the loop.
+        for (int id : finished) {
+            auto it = q_.find(id);
+            if (it == q_.end()) continue;
+            release(it->second);
+            q_.erase(it);
+        }
+        if (finished.empty()) break;   // no slot freed -> a refill round would do nothing
     }
 }
 

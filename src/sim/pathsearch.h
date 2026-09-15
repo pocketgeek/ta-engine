@@ -65,6 +65,16 @@ inline constexpr int kWorkWaypoint = 30;
 // +0x225 with 0x2ee0), before the quality percentage scales it.
 inline constexpr int kPathBudgetDefault = 12000;
 
+// What a COMPLETION costs, charged against the same per-tick budget as the search
+// itself. Finishing is not free: reconstruction walks the breadcrumbs and the caller
+// then smooths the route, and the smoothing is superlinear in the corner count. Leaving
+// it unaccounted was survivable while only one batch of searches could finish per tick;
+// once freed slots are refilled within the tick, an unaccounted completion cost would
+// let a tick admit many cheap searches and then pay for all of their completions at
+// once -- trading a queue delay for a frame spike, which is not an improvement.
+inline constexpr int kWorkCompleteBase = 64;
+inline constexpr int kWorkPerCorner = 4;
+
 struct PathCell {
     int x = 0, z = 0;
 };
@@ -183,6 +193,29 @@ private:
 // Admission rotates (admitCursor_) rather than always starting at the lowest
 // unit id, so a busy low-numbered unit cannot starve a high-numbered one. The
 // cursor is an integer advanced in map order: deterministic, like the rest.
+// How many corners RECONSTRUCTION may hand back. This is NOT the navigator's
+// 64-waypoint limit -- that still applies to the route actually installed (see the
+// shortcut in World). The two were the same number, and that was the bug: the raw
+// trace was truncated to 64 BEFORE the world smoothed it, so a trip across open
+// ground lost its destination to a staircase that smoothing collapses to a single
+// segment.
+//
+// Measured on an open-ground staircase (a goal that is neither cardinal nor 45
+// degrees makes the march alternate two directions, so every step is a corner):
+//
+//   grid      raw corners   truncated route ended   goal        discarded
+//   80x80        79           (64,32)               (79,39)      15,7 cells
+//   160x160     159           (64,32)               (159,79)     95,47 cells
+//   220x220     219           (64,32)               (219,109)   155,77 cells
+//
+// The cut is at a FIXED distance however far the goal is, and every one of those
+// corners is on open ground -- so smoothing first reduces the whole trip to one
+// segment and the cap never engages at all.
+//
+// 256 covers a full-width staircase on the largest maps we ship while still
+// bounding reconstruction. Beyond it the route is genuinely partial, which
+// reachedGoal already detects and handles.
+inline constexpr size_t kRawRouteCap = 256;
 inline constexpr int kMaxActiveSearches = 12;
 
 class PathService {
@@ -200,6 +233,7 @@ class PathService {
         q_.clear();
         slotOwner_.assign(slotOwner_.size(), -1);   // hand every slot back
         admitCursor_ = -1;
+        tickNo_ = 0;
     }
 
     // `score(unitId, cx, cz)` answers the per-cell query for that unit's
@@ -219,7 +253,9 @@ class PathService {
         bool priority = false;
         int slot = -1;          // index into pool_, or -1 while queued
         int cap = 0;            // icd +0x165: grows by the quantum each tick
+        uint64_t ranAt = 0;     // tick this entry last got a slice (see the refill loop)
     };
+    uint64_t tickNo_ = 0;       // monotonic, integer: tells "already ran this tick" apart
     int budget_ = kPathBudgetDefault;
     std::map<int, Entry> q_;    // unit id order: deterministic
     std::vector<PathSearch> pool_;    // the only owners of per-cell scratch
