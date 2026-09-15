@@ -1214,6 +1214,207 @@ void World::requestPath(Unit& u, float x, float z) {
 // the same adjacency the movers use (8-neighbour, fits(), no diagonal corner-cut),
 // so "same component" means a body of this size can actually walk between them. Rebuilt
 // only when the grid's walkability version moves; one fill serves every goal.
+// Blocking cells can only SPLIT components, never merge them -- so if no split
+// happened, every existing label is still correct and the only edit needed is to clear
+// the cells that stopped fitting. Proving "no split" does not need the whole map: take
+// the cells that stopped fitting, look at the still-fitting cells around them, and ask
+// whether cells that shared a label before still reach one another WITHOUT crossing the
+// edit. If they do, any route that ran through the edit can be rerouted locally, so
+// global connectivity is unchanged. If the local search cannot show it (the reroute may
+// exist but leave the window, or the corridor really was severed), we give up and let
+// the next query rebuild from scratch -- conservative, never wrong.
+//
+// The window has to cover every cell whose fits() answer the edit can move. fits(cx,cz)
+// reads clearance at (cx-off, cz-off), and a blocked cell perturbs clearance up to
+// kClearMax cells up-left of it, so the reach is kClearMax + foot in each direction.
+// Padded by one and clamped to the map.
+bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
+                                int x0, int z0, int x1, int z1) const {
+    const int w = g.width(), h = g.height();
+    if (cg.w != w || cg.h != h || cg.label.empty()) return false;
+    const int off = foot / 2;
+    const int margin = int(kClearMax) + foot + 2;
+    const int wx0 = std::max(0, x0 - margin), wz0 = std::max(0, z0 - margin);
+    const int wx1 = std::min(w - 1, x1 + off + 2), wz1 = std::min(h - 1, z1 + off + 2);
+    if (wx1 < wx0 || wz1 < wz0) return false;
+    const int ww = wx1 - wx0 + 1, wh = wz1 - wz0 + 1;
+
+    // Current fits() over the window, once per cell (see components() for why).
+    std::vector<uint8_t> okw(size_t(ww) * size_t(wh));
+    for (int z = wz0; z <= wz1; ++z)
+        for (int x = wx0; x <= wx1; ++x)
+            okw[size_t(z - wz0) * size_t(ww) + size_t(x - wx0)] = g.fits(x, z, foot) ? 1 : 0;
+    auto okAt = [&](int x, int z) -> bool {
+        if (x < wx0 || z < wz0 || x > wx1 || z > wz1) return false;   // outside: unknown
+        return okw[size_t(z - wz0) * size_t(ww) + size_t(x - wx0)] != 0;
+    };
+    auto labelAt = [&](int x, int z) -> int32_t {
+        return cg.label[size_t(z) * size_t(w) + size_t(x)];
+    };
+
+    // Cells that stopped fitting. A cell that STARTED fitting means this was not a pure
+    // block after all (or the entry was already stale) -- bail rather than guess.
+    std::vector<int> removed;
+    for (int z = wz0; z <= wz1; ++z)
+        for (int x = wx0; x <= wx1; ++x) {
+            const bool had = labelAt(x, z) >= 0, has = okAt(x, z);
+            if (had && !has) removed.push_back(int(size_t(z) * size_t(w) + size_t(x)));
+            else if (!had && has) return false;
+        }
+    if (removed.empty()) return true;   // nothing this footprint can even notice
+
+    static const int dcx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int dcz[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+    // Same connectivity rule as the full fill, including the no-corner-cutting test.
+    auto stepOk = [&](int cx, int cz, int k) -> bool {
+        const int nx = cx + dcx[k], nz = cz + dcz[k];
+        if (!okAt(nx, nz)) return false;
+        if (k >= 4 && (!okAt(cx + dcx[k], cz) || !okAt(cx, cz + dcz[k]))) return false;
+        return true;
+    };
+
+    // Still-passable cells touching the edit: these carry the connectivity that the
+    // removed cells used to provide.
+    std::vector<int> boundary;
+    for (int idx : removed) {
+        const int cx = idx % w, cz = idx / w;
+        for (int k = 0; k < 8; ++k) {
+            const int nx = cx + dcx[k], nz = cz + dcz[k];
+            if (okAt(nx, nz)) boundary.push_back(int(size_t(nz) * size_t(w) + size_t(nx)));
+        }
+    }
+    if (boundary.empty()) {          // the edit was self-contained: just clear it
+        for (int idx : removed) cg.label[size_t(idx)] = -1;
+        return true;
+    }
+
+    // Flood the still-passable cells inside the window, so each boundary cell gets a
+    // LOCAL component id. A cell that touches the window edge is marked "escapes": its
+    // component may continue outside, where we cannot see it, so it cannot be used to
+    // prove connectivity either way.
+    std::vector<int32_t> loc(size_t(ww) * size_t(wh), -1);
+    std::vector<uint8_t> escapes;
+    std::vector<int> stack;
+    int32_t nloc = 0;
+    for (int idx : boundary) {
+        const int bx = idx % w, bz = idx / w;
+        if (loc[size_t(bz - wz0) * size_t(ww) + size_t(bx - wx0)] != -1) continue;
+        const int32_t id = nloc++;
+        escapes.push_back(0);
+        loc[size_t(bz - wz0) * size_t(ww) + size_t(bx - wx0)] = id;
+        stack.push_back(idx);
+        while (!stack.empty()) {
+            const int cur = stack.back(); stack.pop_back();
+            const int cx = cur % w, cz = cur / w;
+            if (cx == wx0 || cz == wz0 || cx == wx1 || cz == wz1) escapes[size_t(id)] = 1;
+            for (int k = 0; k < 8; ++k) {
+                if (!stepOk(cx, cz, k)) continue;
+                const int nx = cx + dcx[k], nz = cz + dcz[k];
+                int32_t& l = loc[size_t(nz - wz0) * size_t(ww) + size_t(nx - wx0)];
+                if (l != -1) continue;
+                l = id;
+                stack.push_back(int(size_t(nz) * size_t(w) + size_t(nx)));
+            }
+        }
+    }
+
+    // Cells that shared a label before the edit must still share a local component. If
+    // two of them landed in different local components, the edit may have split them --
+    // unless BOTH components escape the window, in which case they might still rejoin
+    // outside and we simply cannot tell. Either way: give up, rebuild fully.
+    std::map<int32_t, int32_t> firstLoc;   // pre-edit label -> local component
+    for (int idx : boundary) {
+        const int bx = idx % w, bz = idx / w;
+        const int32_t pre = labelAt(bx, bz);
+        if (pre < 0) continue;
+        const int32_t lc = loc[size_t(bz - wz0) * size_t(ww) + size_t(bx - wx0)];
+        auto it = firstLoc.find(pre);
+        if (it == firstLoc.end()) firstLoc.emplace(pre, lc);
+        else if (it->second != lc) return false;   // possible split -- do it properly
+    }
+
+    for (int idx : removed) cg.label[size_t(idx)] = -1;
+    return true;
+}
+
+// Clearing cells can only MERGE components, so unlike a block there is nothing to
+// prove -- but the merge must not cost a relabel. Newly passable cells take an adjacent
+// component's id (or a fresh one if they stand alone), and any OTHER components they now
+// touch are united with it in the alias table. Two cells are in the same component iff
+// their roots match, which is the only thing either caller asks.
+bool World::tryIncrementalUnblock(const NavGrid& g, int foot, CompGrid& cg,
+                                  int x0, int z0, int x1, int z1) const {
+    const int w = g.width(), h = g.height();
+    if (cg.w != w || cg.h != h || cg.label.empty()) return false;
+    const int off = foot / 2;
+    const int margin = int(kClearMax) + foot + 2;
+    const int wx0 = std::max(0, x0 - margin), wz0 = std::max(0, z0 - margin);
+    const int wx1 = std::min(w - 1, x1 + off + 2), wz1 = std::min(h - 1, z1 + off + 2);
+    if (wx1 < wx0 || wz1 < wz0) return false;
+    const int ww = wx1 - wx0 + 1, wh = wz1 - wz0 + 1;
+
+    std::vector<uint8_t> okw(size_t(ww) * size_t(wh));
+    for (int z = wz0; z <= wz1; ++z)
+        for (int x = wx0; x <= wx1; ++x)
+            okw[size_t(z - wz0) * size_t(ww) + size_t(x - wx0)] = g.fits(x, z, foot) ? 1 : 0;
+    auto okAt = [&](int x, int z) -> bool {
+        if (x < wx0 || z < wz0 || x > wx1 || z > wz1)
+            return x >= 0 && z >= 0 && x < w && z < h && g.fits(x, z, foot);
+        return okw[size_t(z - wz0) * size_t(ww) + size_t(x - wx0)] != 0;
+    };
+
+    // Cells that became passable. A cell that STOPPED fitting means this was not a pure
+    // unblock -- bail and let the next query rebuild.
+    std::vector<int> added;
+    for (int z = wz0; z <= wz1; ++z)
+        for (int x = wx0; x <= wx1; ++x) {
+            const bool had = cg.label[size_t(z) * size_t(w) + size_t(x)] >= 0;
+            const bool has = okAt(x, z);
+            if (!had && has) added.push_back(int(size_t(z) * size_t(w) + size_t(x)));
+            else if (had && !has) return false;
+        }
+    if (added.empty()) return true;
+
+    static const int dcx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int dcz[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+    auto stepOk = [&](int cx, int cz, int k) -> bool {
+        const int nx = cx + dcx[k], nz = cz + dcz[k];
+        if (!okAt(nx, nz)) return false;
+        if (k >= 4 && (!okAt(cx + dcx[k], cz) || !okAt(cx, cz + dcz[k]))) return false;
+    return true;
+    };
+
+    // Ascending cell order, so the ids handed out do not depend on iteration accidents.
+    // Two passes: give every new cell an id first (neighbouring new cells can then adopt
+    // each other's), then unite across every passable step.
+    for (int idx : added) {
+        const int cx = idx % w, cz = idx / w;
+        int32_t take = -1;
+        for (int k = 0; k < 8; ++k) {
+            if (!stepOk(cx, cz, k)) continue;
+            const int nx = cx + dcx[k], nz = cz + dcz[k];
+            const int32_t nl = cg.label[size_t(nz) * size_t(w) + size_t(nx)];
+            if (nl >= 0) { take = cg.root(nl); break; }
+        }
+        if (take < 0) {                       // an island of its own
+            take = int32_t(cg.alias.size());
+            cg.alias.push_back(take);
+        }
+        cg.label[size_t(idx)] = take;
+    }
+    for (int idx : added) {
+        const int cx = idx % w, cz = idx / w;
+        const int32_t mine = cg.label[size_t(idx)];
+        for (int k = 0; k < 8; ++k) {
+            if (!stepOk(cx, cz, k)) continue;
+            const int nx = cx + dcx[k], nz = cz + dcz[k];
+            const int32_t nl = cg.label[size_t(nz) * size_t(w) + size_t(nx)];
+            if (nl >= 0) cg.unite(mine, nl);
+        }
+    }
+    return true;
+}
+
 const World::CompGrid* World::components(const NavGrid& g, int foot) const {
     if (g.empty()) return nullptr;
     auto& cg = compCache_[{&g, foot}];
@@ -1222,6 +1423,7 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
     const int w = g.width(), h = g.height();
     cg.ver = g.version(); cg.w = w; cg.h = h;
     cg.label.assign(size_t(w) * size_t(h), -1);
+    cg.alias.clear();   // a fresh labelling needs no aliasing: every id is its own root
     static const int dcx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
     static const int dcz[8] = {0, 0, 1, -1, 1, -1, 1, -1};
     // Evaluate the footprint predicate ONCE per cell. The fill asks "does a body of
@@ -1241,6 +1443,7 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
             size_t seed = size_t(z0) * size_t(w) + size_t(x0);
             if (cg.label[seed] != -1 || !ok[seed]) continue;
             const int32_t id = next++;
+            cg.alias.push_back(id);          // identity; unblock edits may union later
             cg.label[seed] = id;
             stack.push_back(int(seed));
             while (!stack.empty()) {
@@ -1370,7 +1573,7 @@ bool World::pathExists(const UnitType* type, float gx, float gz, float fx, float
     auto labelAt = [&](float wx, float wz) -> int32_t {
         int cx = int(wx) / 16, cz = int(wz) / 16;
         if (cx < 0 || cz < 0 || cx >= w || cz >= h) return -1;
-        return cg->label[size_t(cz) * size_t(w) + size_t(cx)];
+        return cg->root(cg->label[size_t(cz) * size_t(w) + size_t(cx)]);
     };
     // Nearest label to a point whose own cell has none: spiral out to the first cell
     // a body of this size fits in. Used for BOTH ends -- see below.
@@ -1384,7 +1587,7 @@ bool World::pathExists(const UnitType* type, float gx, float gz, float fx, float
                     int nx = cx + i, nz = cz + j;
                     if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
                     int32_t l = cg->label[size_t(nz) * size_t(w) + size_t(nx)];
-                    if (l >= 0) return l;
+                    if (l >= 0) return cg->root(l);
                 }
         return -1;
     };
@@ -1518,12 +1721,12 @@ bool World::approachCell(const Unit& t, float x, float z, float& outX, float& ou
     if (cg && !cg->label.empty()) {
         const int tx = std::clamp(int(t.x) / 16, 0, cg->w - 1);
         const int tz = std::clamp(int(t.z) / 16, 0, cg->h - 1);
-        here = cg->label[size_t(tz) * size_t(cg->w) + size_t(tx)];
+        here = cg->root(cg->label[size_t(tz) * size_t(cg->w) + size_t(tx)]);
     }
     auto reachable = [&](int nx, int nz) {
         if (here < 0 || !cg || cg->label.empty()) return true;   // no labelling to use
         if (nx < 0 || nz < 0 || nx >= cg->w || nz >= cg->h) return false;
-        return cg->label[size_t(nz) * size_t(cg->w) + size_t(nx)] == here;
+        return cg->root(cg->label[size_t(nz) * size_t(cg->w) + size_t(nx)]) == here;
     };
     for (int r = 0; r <= maxR; ++r) {
         for (int j = -r; j <= r; ++j)
@@ -2587,10 +2790,30 @@ void World::blockCells(int cx, int cz, int w, int h, bool blocked) {
     // Every grid reads the same overlay, so they all need their clearance redone
     // over the touched band. markDirty is cheap; the DP is lazy.
     const int rw = x1 - x0 + 1, rh = z1 - z0 + 1;
+    // Which cached labellings are CURRENT right now: only those may be carried across
+    // the edit incrementally. Captured before the version bump below invalidates them.
+    std::vector<std::pair<std::pair<const NavGrid*, int>, uint64_t>> fresh;
+    for (auto& [key, cg] : compCache_)
+        if (key.first && cg.ver == key.first->version()) fresh.emplace_back(key, cg.ver);
+
     nav_.overlayChanged(x0, z0, rw, rh);
     navWater_.overlayChanged(x0, z0, rw, rh);
     navHover_.overlayChanged(x0, z0, rw, rh);
     for (auto& g : navClasses_) g.overlayChanged(x0, z0, rw, rh);
+
+    // A pure block can only split components, and a split is provable locally -- so most
+    // building placements need not throw away a whole-map labelling that costs ~5.7ms to
+    // rebuild. Entries that cannot be proven safe keep their old (now stale) version and
+    // get rebuilt by the next query, exactly as before.
+    for (const auto& [key, oldVer] : fresh) {
+        auto it = compCache_.find(key);
+        if (it == compCache_.end() || it->second.ver != oldVer) continue;
+        const NavGrid* g = key.first;
+        const bool carried = blocked
+            ? tryIncrementalBlock(*g, key.second, it->second, x0, z0, x1, z1)
+            : tryIncrementalUnblock(*g, key.second, it->second, x0, z0, x1, z1);
+        if (carried) it->second.ver = g->version();   // carried across the edit
+    }
 }
 
 void World::blockFoot(const UnitType& t, float x, float z, bool blocked) {

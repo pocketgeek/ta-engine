@@ -1457,9 +1457,45 @@ private:
     //
     // (This paragraph documented flowField(), which is gone; the const-memo reasoning is
     // what survived it, and it applies to this cache for the same reason.)
-    struct CompGrid { uint64_t ver = 0; int w = 0, h = 0; std::vector<int32_t> label; };
+    // `alias` is a union-find over label ids, and it is what lets an UNBLOCK edit skip
+    // the whole-map relabel. Unblocking can only ever MERGE components, and merging by
+    // rewriting one component's cells is O(map); merging two ids is O(1). Cells keep
+    // whatever id they were first given and root() resolves it, so two cells are in the
+    // same component iff root(a) == root(b) -- which is the ONLY question either caller
+    // asks. Never compare raw labels.
+    struct CompGrid {
+        uint64_t ver = 0; int w = 0, h = 0;
+        std::vector<int32_t> label;
+        std::vector<int32_t> alias;   // id -> parent id; identity after a full build
+        int32_t root(int32_t id) const {
+            if (id < 0) return id;
+            while (id < int32_t(alias.size()) && alias[size_t(id)] != id) id = alias[size_t(id)];
+            return id;
+        }
+        void unite(int32_t a, int32_t b) {
+            a = root(a); b = root(b);
+            if (a < 0 || b < 0 || a == b) return;
+            // Lower id wins, so the outcome does not depend on argument order.
+            if (a < b) alias[size_t(b)] = a; else alias[size_t(a)] = b;
+        }
+    };
     mutable std::map<std::pair<const NavGrid*, int>, CompGrid> compCache_;
     const CompGrid* components(const NavGrid& g, int foot) const;
+    // Fast path for a walkability edit that only BLOCKS cells. Blocking can only ever
+    // SPLIT a component, never merge one, and a split is provable locally: if every
+    // still-passable cell around the edit that shared a label still reaches the others
+    // without crossing the edit, then any route that used those cells can be rerouted
+    // around them, so every label stays correct and only the cells that stopped fitting
+    // need clearing to -1. Returns false when it cannot prove that (the edit may have
+    // severed a corridor), leaving the entry stale for a full relabel.
+    bool tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
+                             int x0, int z0, int x1, int z1) const;
+    // The mirror of the above for an edit that only CLEARS cells. Unblocking can only
+    // merge components, never split one, so there is nothing to prove: give each newly
+    // passable cell a label (an adjacent component's, or a fresh id if it stands alone)
+    // and unite whatever components it now bridges. Always succeeds.
+    bool tryIncrementalUnblock(const NavGrid& g, int foot, CompGrid& cg,
+                               int x0, int z0, int x1, int z1) const;
     // A SEPARATE cache for non-sim queries (pathExists, which only the server-side
     // AI calls). Keeping it apart is not an optimisation, it is a correctness
     // requirement: the AI runs on ONE peer, so letting its questions insert into and
