@@ -1293,20 +1293,17 @@ bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
     // component may continue outside, where we cannot see it, so it cannot be used to
     // prove connectivity either way.
     std::vector<int32_t> loc(size_t(ww) * size_t(wh), -1);
-    std::vector<uint8_t> escapes;
     std::vector<int> stack;
     int32_t nloc = 0;
     for (int idx : boundary) {
         const int bx = idx % w, bz = idx / w;
         if (loc[size_t(bz - wz0) * size_t(ww) + size_t(bx - wx0)] != -1) continue;
         const int32_t id = nloc++;
-        escapes.push_back(0);
         loc[size_t(bz - wz0) * size_t(ww) + size_t(bx - wx0)] = id;
         stack.push_back(idx);
         while (!stack.empty()) {
             const int cur = stack.back(); stack.pop_back();
             const int cx = cur % w, cz = cur / w;
-            if (cx == wx0 || cz == wz0 || cx == wx1 || cz == wz1) escapes[size_t(id)] = 1;
             for (int k = 0; k < 8; ++k) {
                 if (!stepOk(cx, cz, k)) continue;
                 const int nx = cx + dcx[k], nz = cz + dcz[k];
@@ -1318,14 +1315,23 @@ bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
         }
     }
 
-    // Cells that shared a label before the edit must still share a local component. If
-    // two of them landed in different local components, the edit may have split them --
-    // unless BOTH components escape the window, in which case they might still rejoin
-    // outside and we simply cannot tell. Either way: give up, rebuild fully.
-    std::map<int32_t, int32_t> firstLoc;   // pre-edit label -> local component
+    // Cells that shared a component before the edit must still share a local one. If two
+    // of them landed in different local components the edit may have split them -- or a
+    // reroute may exist outside the window where this search cannot see it. Either way
+    // we cannot prove safety, so give up and rebuild fully.
+    // Group by ROOT, not by raw label. After an unblock merge two cells can share a
+    // component while still carrying the different ids they were first given; grouping
+    // by raw label would see two unrelated ids, find each trivially self-consistent,
+    // and conclude nothing was severed -- leaving the cache asserting a connection the
+    // edit just cut. Reachability would then depend on whether a passage had ever been
+    // open, which is history, not geometry. (Found by review; reproduced by opening and
+    // re-closing a gate in a full-width wall in ONE blockCells call each way. Closing it
+    // in three calls hides the bug, because then cells sharing a raw label straddle the
+    // split and the check trips for the wrong reason.)
+    std::map<int32_t, int32_t> firstLoc;   // pre-edit component root -> local component
     for (int idx : boundary) {
         const int bx = idx % w, bz = idx / w;
-        const int32_t pre = labelAt(bx, bz);
+        const int32_t pre = cg.root(labelAt(bx, bz));
         if (pre < 0) continue;
         const int32_t lc = loc[size_t(bz - wz0) * size_t(ww) + size_t(bx - wx0)];
         auto it = firstLoc.find(pre);

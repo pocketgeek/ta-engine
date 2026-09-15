@@ -146,9 +146,24 @@ int main() {
         check(!after, "wall across the full width: NOT reachable (fast path must refuse)");
         // Punching a hole back through must MERGE the two halves again -- the union-find
         // path, queried with a warm cache so the incremental route is the one under test.
-        for (int z = H / 2; z < H / 2 + 3; ++z) w.blockCells(W / 2, z, 4, 1, false);
+        w.blockCells(W / 2, H / 2, 4, 3, false);
         const bool healed = w.pathExists(&t, 32.0f, 32.0f, float(W * 16 - 32), float(H * 16 - 32));
         check(healed, "gate reopened in that wall: reachable again (unblock must merge)");
+        // ...and CLOSING it again must sever them again. This is the case that makes
+        // the alias table dangerous: after the merge above, the two halves share a ROOT
+        // but their cells still carry the raw ids they were first given. A split check
+        // that groups boundary cells by raw label sees two unrelated ids, finds each
+        // trivially self-consistent, and concludes nothing was severed -- leaving the
+        // cache claiming the halves are still joined. Reachability would then depend on
+        // whether a gate had ever been open, which is history, not geometry.
+        // ONE call each way, deliberately. Closing the gate in three separate calls
+        // leaves cells that share a raw label on both sides of the split, so the check
+        // trips for the wrong reason and the bug hides. Opening and closing in a single
+        // call puts a clean merged boundary exactly where the split lands, which is the
+        // case that caught it.
+        w.blockCells(W / 2, H / 2, 4, 3, true);
+        const bool resevered = w.pathExists(&t, 32.0f, 32.0f, float(W * 16 - 32), float(H * 16 - 32));
+        check(!resevered, "gate closed again: NOT reachable (split check must resolve aliases)");
     }
 
     std::printf(bad || g_fail ? "navincr_test: FAILURES\n" : "navincr_test: all passed\n");
