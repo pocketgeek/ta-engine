@@ -762,6 +762,21 @@ public:
     bool losBetween(float wx0, float wz0, float wx1, float wz1,
                     int skip0 = 0, int skip1 = 0) const;
 
+    // Can a `foot`-cell body travel the straight line between two WORLD points?
+    //
+    // Unlike lineFits (cell centre to cell centre) and losBetween (which converts its
+    // world endpoints to cells immediately and then walks cell centres), this keeps the
+    // sub-cell position of both endpoints and visits EVERY cell the real segment passes
+    // through. That difference is not cosmetic: a cell-centred walk is a different line
+    // from the one the unit actually travels, and it can skip a cell the body will cross.
+    // (15,1) -> (24,56) passes through cell (1,0); the cell-to-cell Bresenham between the
+    // same endpoints' cells never visits it, so an obstacle sitting there was invisible to
+    // validation and the unit was handed a shortcut straight into it.
+    //
+    // Exact and integer: a supercover DDA in world units with cross-multiplied
+    // comparisons, so it makes the same decisions bit-for-bit on every peer.
+    bool segmentFits(float wx0, float wz0, float wx1, float wz1, int foot) const;
+
 private:
     bool lineClear(int x0, int z0, int x1, int z1) const;
     void rebuildClearance() const;

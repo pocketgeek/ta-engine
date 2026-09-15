@@ -126,6 +126,21 @@ bool PathSearch::onGoalLine(PathCell org, PathCell c) const {
     return false;
 }
 
+// Is a step from `c` in direction `d` one the MOVER will actually make?
+//
+// For a cardinal step, the destination cell is the whole question. For a DIAGONAL, the
+// body passes between the two orthogonal neighbours, and the movers refuse to cut that
+// corner -- as does lineFits, which validates the shortcut afterwards. The search used to
+// ask only about the destination, so it could plan a diagonal squeeze between two blocked
+// cells: the mover then stalls at the corner it will not cut, and the shortcut validation
+// rejects the very connection the search had just committed to. Planning a move that two
+// later stages both refuse is worse than planning a longer one.
+static bool stepLegal(const std::function<int(int, int)>& score, PathCell c, int d) {
+    if (kDirX[d] == 0 || kDirZ[d] == 0) return true;   // cardinal: nothing to squeeze past
+    return score(c.x + kDirX[d], c.z) >= kCellThreshold &&
+           score(c.x, c.z + kDirZ[d]) >= kCellThreshold;
+}
+
 // One step of a boundary trace. `rot` is +1 for the cursor sweeping one way
 // round the obstacle and -1 for its twin: retail runs BOTH at once (icd
 // 0x414c52 rotates by -2/-3, 0x414e23 by +2/+3) and takes whichever regains
@@ -138,7 +153,7 @@ bool PathSearch::traceStep(const std::function<int(int, int)>& score,
         const PathCell n{c.x + kDirX[probe], c.z + kDirZ[probe]};
         const int s = score(n.x, n.z);
         ++visited;
-        if (s >= kCellThreshold) {
+        if (s >= kCellThreshold && stepLegal(score, c, probe)) {
             c = n;
             d = probe;
             mark(c, probe, s);
@@ -197,7 +212,7 @@ PathSearch::Result PathSearch::step(const std::function<int(int, int)>& score,
             ++visited;
             const int s = score(n.x, n.z);
             bool giveUp = false;
-            if (s < kCellThreshold) {
+            if (s < kCellThreshold || !stepLegal(score, cur, d)) {
                 giveUp = true;
             } else if (s == kCellOccupied) {
                 if (nOccupied >= 3) giveUp = true; else ++nOccupied;

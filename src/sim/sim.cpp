@@ -925,6 +925,62 @@ bool NavGrid::lineFits(int x0, int z0, int x1, int z1, int foot) const {
     return false;
 }
 
+// Floor-divide by the 16-unit cell size. A plain `/ 16` truncates toward zero, so
+// every coordinate in the first cell left of the origin would land in cell 0 along
+// with the first cell right of it.
+static inline int navCellOf(int world) { return world >= 0 ? world / 16 : -((-world + 15) / 16); }
+
+bool NavGrid::segmentFits(float wx0, float wz0, float wx1, float wz1, int foot) const {
+    if (empty()) return true;
+
+    // Integer world units. The sub-CELL position is what this exists to preserve;
+    // sub-unit precision buys nothing here and integers keep the DDA exact.
+    const int ix0 = int(wx0), iz0 = int(wz0), ix1 = int(wx1), iz1 = int(wz1);
+    int cx = navCellOf(ix0), cz = navCellOf(iz0);
+    const int ex = navCellOf(ix1), ez = navCellOf(iz1);
+
+    if (!fits(cx, cz, foot)) return false;
+    if (cx == ex && cz == ez) return true;
+
+    const int dx = ix1 - ix0, dz = iz1 - iz0;
+    const int stepX = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+    const int stepZ = dz > 0 ? 1 : (dz < 0 ? -1 : 0);
+    const long long adx = dx < 0 ? -dx : dx, adz = dz < 0 ? -dz : dz;
+
+    // Distance to the first cell boundary on each axis, as a numerator over |d|.
+    // Leaving them as a fraction (rather than dividing) keeps this in integers.
+    long long tx = 0, tz = 0;
+    if (stepX > 0)      tx = (long long)((cx + 1) * 16 - ix0);
+    else if (stepX < 0) tx = (long long)(ix0 - cx * 16);
+    if (stepZ > 0)      tz = (long long)((cz + 1) * 16 - iz0);
+    else if (stepZ < 0) tz = (long long)(iz0 - cz * 16);
+
+    for (int guard = 0; guard < 8192; ++guard) {
+        if (cx == ex && cz == ez) return true;
+        // Which boundary comes first? Compare tx/adx against tz/adz by cross-
+        // multiplying, so no division and no float rounding enters the decision.
+        const bool moveX = stepX != 0 && (stepZ == 0 || tx * adz < tz * adx);
+        const bool moveZ = stepZ != 0 && (stepX == 0 || tz * adx < tx * adz);
+        if (!moveX && !moveZ) {
+            // Exactly through a corner. The body passes between two cells, and both
+            // must admit it -- the same rule the movers enforce and lineFits applies
+            // on a diagonal, so a shortcut cannot squeeze through a corner the unit
+            // would be stopped by.
+            if (!fits(cx + stepX, cz, foot) || !fits(cx, cz + stepZ, foot)) return false;
+            cx += stepX; cz += stepZ;
+            tx += 16; tz += 16;
+        } else if (moveX) {
+            cx += stepX;
+            tx += 16;
+        } else {
+            cz += stepZ;
+            tz += 16;
+        }
+        if (!fits(cx, cz, foot)) return false;
+    }
+    return false;
+}
+
 bool NavGrid::losBetween(float wx0, float wz0, float wx1, float wz1,
                          int skip0, int skip1) const {
     if (empty()) return true;
@@ -4298,33 +4354,63 @@ void World::tick(float dt) {
             std::vector<PathCell> pulled;
             if (!ng.empty()) {
                 PathCell at{int(u->x) / 16, int(u->z) / 16};
-                // The FIRST hop is tested from the unit's exact position as well as from
-                // its cell. lineOpen walks cell to cell, which discards where inside the
-                // cell the body actually stands -- so a unit near a cell edge could be
-                // handed a shortcut whose real movement segment clips a cell the
+                // The FIRST hop is tested from the unit's EXACT position, not from its
+                // cell. lineOpen walks cell centre to cell centre, which discards where
+                // inside the cell the body actually stands -- so a unit near a cell edge
+                // could be handed a shortcut whose real movement segment clips a cell the
                 // cell-centred walk never visited, introducing a collision into a route
-                // that had avoided it. Cheap to rule out: losBetween is the same
-                // Bresenham in WORLD space, so ask it about the actual segment too.
-                // (Only the first hop needs it; later hops start from a waypoint, which
-                // is a cell centre by construction.)
-                const int halfFoot = std::max(u->type->footX, u->type->footZ) / 2;
+                // that had avoided it.
+                //
+                // segmentFits is the check for that, and losBetween was NOT: it converts
+                // both world endpoints to cells on entry and then walks cell centres, so
+                // it answers about the same cell-to-cell line lineOpen already walked and
+                // the sub-cell position it was given is thrown away. segmentFits keeps it
+                // and visits every cell the real segment crosses.
+                const int footC = footCells(u->type);
                 bool firstHop = true;
                 size_t from = 0;
+                bool routeBroken = false;   // nothing from here validated -- see below
                 while (from < route.size() && pulled.size() < 64) {
                     size_t take = from;
+                    bool found = false;
                     for (size_t j = route.size(); j-- > from;)
                         if (lineOpen(u->type, unitId, at.x, at.z, route[j].x, route[j].z) &&
                             (!firstHop ||
-                             ng.losBetween(u->x, u->z, float(route[j].x) * 16 + 8,
-                                           float(route[j].z) * 16 + 8, halfFoot, halfFoot))) {
+                             ng.segmentFits(u->x, u->z, float(route[j].x) * 16 + 8,
+                                            float(route[j].z) * 16 + 8, footC))) {
                             take = j;
+                            found = true;
                             break;
                         }
+                    // NEVER INSTALL A SEGMENT THAT FAILED VALIDATION. `take` starts at
+                    // `from`, so without this the loop appended route[from] even when
+                    // every candidate had just been rejected -- handing the unit exactly
+                    // the connection the checks above refused. It is reachable whenever
+                    // the world moved under a search that was already in flight: the unit
+                    // walked on, or an obstacle appeared across the route.
+                    if (!found) {
+                        // Nothing at all reachable from where we stand: the route does not
+                        // connect to the unit any more. Keep whatever leg it is walking and
+                        // ask for a repair rather than installing a broken one.
+                        if (pulled.empty()) { routeBroken = true; break; }
+                        // Otherwise keep the valid prefix and stop shortcutting here; the
+                        // destination is appended below, so the leg still ends where it
+                        // should.
+                        break;
+                    }
                     firstHop = false;
                     pulled.push_back(route[take]);
                     at = route[take];
                     if (take + 1 >= route.size()) break;
                     from = take + 1;
+                }
+                if (routeBroken) {
+                    // Re-ask from where the unit actually is now. The existing re-request
+                    // path below does the same thing when a search fails outright, so a
+                    // route that cannot be connected is treated the same as one that was
+                    // never found -- rather than being installed and walked into.
+                    requestPath(*u, gx, gz);
+                    return;
                 }
             }
             const std::vector<PathCell>& useRoute = pulled.empty() ? route : pulled;
@@ -4914,12 +5000,28 @@ void World::tick(float dt) {
                         // that keeps re-colliding eventually picks opposite sides,
                         // and the choice stays deterministic.
                         float s = ((u.id ^ int(tickCounter_ >> 5)) & 1) ? 1.0f : -1.0f;
-                        for (float d : {20.0f, 34.0f}) {
-                            if (free(u.x + px * s * d, u.z + pz * s * d)) {
-                                u.x += px * s * d * 0.5f; u.z += pz * s * d * 0.5f; break;
+                        // VALIDATE THE MOVE THAT IS ACTUALLY MADE. This used to test
+                        // clearance at distance d and then move d/2, so the point it
+                        // checked was never the point it moved to: the far end could be
+                        // clear while the halfway point -- where the unit actually landed
+                        // -- was inside a body or a wall, which is how a unit "escaping" a
+                        // jam could shove itself into one.
+                        //
+                        // Check the real endpoint, and the swept segment as well: a short
+                        // hop that starts and ends clear can still cross a blocked cell in
+                        // between, and this is a teleport rather than a steered move, so
+                        // nothing else will catch that.
+                        const int footC = footCells(u.type);
+                        auto reachable = [&](float nx, float nz) {
+                            return free(nx, nz) &&
+                                   (g.empty() || g.segmentFits(u.x, u.z, nx, nz, footC));
+                        };
+                        for (float d : {10.0f, 17.0f}) {
+                            if (reachable(u.x + px * s * d, u.z + pz * s * d)) {
+                                u.x += px * s * d; u.z += pz * s * d; break;
                             }
-                            if (free(u.x - px * s * d, u.z - pz * s * d)) {
-                                u.x -= px * s * d * 0.5f; u.z -= pz * s * d * 0.5f; break;
+                            if (reachable(u.x - px * s * d, u.z - pz * s * d)) {
+                                u.x -= px * s * d; u.z -= pz * s * d; break;
                             }
                         }
                         // Guard emptiness: the fully-blocked branch above may have
