@@ -582,12 +582,14 @@ int main(int argc, char** argv) {
     // whatever factor they were built with, so a mid-session toggle must not be re-read
     // per texture -- the Options row says RESTART for exactly this reason.
     tak::applyRuntimeSettings(settings);
+    bool renAccelerated = false;
     {
         SDL_RendererInfo ri{};
-        if (SDL_GetRendererInfo(ren, &ri) == 0)
+        if (SDL_GetRendererInfo(ren, &ri) == 0) {
+            renAccelerated = (ri.flags & SDL_RENDERER_ACCELERATED) != 0;
             std::fprintf(stderr, "renderer: %s%s\n", ri.name ? ri.name : "?",
-                         (ri.flags & SDL_RENDERER_ACCELERATED) ? " (accelerated)"
-                                                               : " (SOFTWARE)");
+                         renAccelerated ? " (accelerated)" : " (SOFTWARE)");
+        }
     }
 
     // ---- outer session loop: menu -> game -> menu (menu launches only) ----------
@@ -1361,6 +1363,15 @@ int main(int argc, char** argv) {
         // VRAM-cap integration: the AA supersample target is a big optional texture
         // (up to ~230 MiB at 4K). Under memory pressure drop it entirely and release it;
         // otherwise step the scale down until the target fits the remaining budget.
+        // Supersampling is for a GPU. On the SOFTWARE rasteriser the target is a
+        // CPU-side surface and every pixel of it is rasterised by hand: measured at
+        // 614-1154 ms per frame with 4X against ~3 ms with it off, a ~200x penalty for
+        // smoothing nobody can see at one frame per second. It also CRASHES -- SDL's
+        // software blitter runs off the end of a surface when a render target is
+        // switched mid-frame with a supersample target bound (SIGSEGV in SDL_BlitCopy
+        // via SW_RunCommandQueue, reproduced reliably at 4X and never with AA off).
+        // Neither reason needs the other: do not supersample without acceleration.
+        if (!renAccelerated) { aaS = 1.0f; if (aaTex) { gpuvram::destroy(aaTex); aaTex = nullptr; aaW = aaH = 0; } }
         if (gpuvram::blocked()) { aaS = 1.0f; if (aaTex) { gpuvram::destroy(aaTex); aaTex = nullptr; aaW = aaH = 0; } }
         while (aaS > 1.0f && w > 0 && h > 0 &&
                !gpuvram::wouldFit(size_t(w * aaS) * size_t(h * aaS) * 4))
@@ -1387,6 +1398,10 @@ int main(int argc, char** argv) {
             else if (aaOn)
                 std::fprintf(stderr, "AA: %dX active -- %dx%d supersample target\n",
                              settings.antiAlias, int(w * aaS), int(h * aaS));
+            else if (!renAccelerated)
+                std::fprintf(stderr, "AA: %dX requested but OFF -- no accelerated renderer "
+                                     "(supersampling a software rasteriser is ~200x slower)\n",
+                             settings.antiAlias);
             else
                 std::fprintf(stderr, "AA: %dX requested but INACTIVE (alloc failed?): %s\n",
                              settings.antiAlias, SDL_GetError());
