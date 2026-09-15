@@ -41,14 +41,21 @@ void PathSearch::reset(int mapW, int mapH) {
     // routes legitimately fail rather than costing unbounded work.
     visitLimit = (mapW + mapH) * 20;
     const size_t n = size_t(w_) * size_t(h_);
-    if (resized || stamp_.size() != n) {
+    // gStamp_ is in this test too: a pool slot that had already run a search at this map
+    // size takes the fast path, and testing only stamp_ left the A* arrays empty on every
+    // recycled slot -- an out-of-range write the moment the planner ran on one.
+    if (resized || stamp_.size() != n || gStamp_.size() != n) {
         stamp_.assign(n, 0);
         walkStamp_.assign(n, 0);
         flag_.assign(n, 0);
         from_.assign(n, 0);
+        gStamp_.assign(n, 0);
+        gScore_.assign(n, 0);
         gen_ = walkGen_ = 0;
     }
     ++gen_;   // every cell is now stale, i.e. empty -- no clearing needed
+    open_.clear();
+    openF_.clear();
     phase = Phase::Init;
     best = 0;
     visited = 0;
@@ -164,6 +171,93 @@ bool PathSearch::traceStep(const std::function<int(int, int)>& score,
     }
 }
 
+
+// ---- bounded, resumable A* -------------------------------------------------------
+//
+// Reuses the tracer's scratch and its step/quantum contract, so it suspends and resumes
+// on tick boundaries exactly like the tracer and is charged from the same budget.
+//
+// DETERMINISM. The heap is ordered by f-score with the CELL INDEX as the tie-break, so
+// equal-cost cells always come out in the same order on every peer. An ordering that
+// depended on insertion order or on float arithmetic would make two peers expand cells in
+// different orders and return different routes -- a desync that would only show up in
+// difficult terrain, which is the worst kind to chase.
+
+void PathSearch::aStarPush(int32_t cell, int32_t f) {
+    open_.push_back(cell);
+    openF_.push_back(f);
+    size_t i = open_.size() - 1;
+    while (i > 0) {
+        const size_t parent = (i - 1) / 2;
+        const bool less = openF_[i] < openF_[parent] ||
+                          (openF_[i] == openF_[parent] && open_[i] < open_[parent]);
+        if (!less) break;
+        std::swap(open_[i], open_[parent]);
+        std::swap(openF_[i], openF_[parent]);
+        i = parent;
+    }
+}
+
+int32_t PathSearch::aStarPop() {
+    if (open_.empty()) return -1;
+    const int32_t top = open_.front();
+    open_.front() = open_.back();
+    openF_.front() = openF_.back();
+    open_.pop_back();
+    openF_.pop_back();
+    size_t i = 0;
+    for (;;) {
+        const size_t l = 2 * i + 1, r = l + 1;
+        size_t best = i;
+        auto better = [&](size_t a, size_t b) {
+            return openF_[a] < openF_[b] || (openF_[a] == openF_[b] && open_[a] < open_[b]);
+        };
+        if (l < open_.size() && better(l, best)) best = l;
+        if (r < open_.size() && better(r, best)) best = r;
+        if (best == i) break;
+        std::swap(open_[i], open_[best]);
+        std::swap(openF_[i], openF_[best]);
+        i = best;
+    }
+    return top;
+}
+
+// Octile distance in the same 10/14 units the expansion uses: exact for an 8-grid with
+// those costs, so the heuristic is admissible and A* returns a genuinely shortest route.
+static inline int32_t octile(int dx, int dz) {
+    dx = dx < 0 ? -dx : dx;
+    dz = dz < 0 ? -dz : dz;
+    const int lo = dx < dz ? dx : dz, hi = dx < dz ? dz : dx;
+    return int32_t(14 * lo + 10 * (hi - lo));
+}
+
+void PathSearch::buildAStarRoute() {
+    // Same contract as buildRoute: corners in travel order, direction changes only.
+    out.clear();
+    std::vector<PathCell> rev;
+    PathCell c = goal;
+    int lastDir = -1;
+    ++walkGen_;
+    for (int guard = 0; guard < 8192; ++guard) {
+        if (c.x == start.x && c.z == start.z) break;
+        const size_t i = size_t(c.z) * size_t(w_) + size_t(c.x);
+        if (!seen(i) || !(flag_[i] & kSeen)) break;
+        if (walkStamp_[i] == walkGen_) break;
+        walkStamp_[i] = walkGen_;
+        const int d = from_[i] & 7;
+        if (d != lastDir) { rev.push_back(c); lastDir = d; }
+        const PathCell p{c.x - kDirX[d], c.z - kDirZ[d]};
+        if (!inside(p) || (p.x == c.x && p.z == c.z)) break;
+        c = p;
+    }
+    if (rev.empty() || rev.front().x != goal.x || rev.front().z != goal.z)
+        rev.insert(rev.begin(), goal);
+    for (auto it = rev.rbegin(); it != rev.rend(); ++it)
+        if (out.empty() || out.back().x != it->x || out.back().z != it->z)
+            out.push_back(*it);
+    if (out.size() > kRawRouteCap) out.resize(kRawRouteCap);
+}
+
 PathSearch::Result PathSearch::step(const std::function<int(int, int)>& score,
                                     int quantum) {
     if (w_ <= 0) return Result::Failed;     // reset() was never called
@@ -177,6 +271,47 @@ PathSearch::Result PathSearch::step(const std::function<int(int, int)>& score,
         }
 
         switch (phase) {
+        // The bounded planner. Selected per request (useAStar) when the tracer has
+        // already shown it cannot serve this trip well -- see the trigger in World.
+        case Phase::AStar: {
+            work += kWorkTraceStep;     // charged like a trace step, same budget
+            if (open_.empty()) { phase = Phase::Failed; return Result::Failed; }
+            const int32_t ci = aStarPop();
+            if (ci < 0) { phase = Phase::Failed; return Result::Failed; }
+            const int cx = int(ci) % w_, cz = int(ci) / w_;
+            ++visited;
+            if (cx == goal.x && cz == goal.z) {
+                phase = Phase::Done;
+                buildAStarRoute();
+                return Result::Arrived;
+            }
+            const size_t gi = size_t(ci);
+            const int32_t gHere = (gStamp_[gi] == gen_) ? gScore_[gi] : 0;
+            for (int d = 0; d < 8; ++d) {
+                const int nx = cx + kDirX[d], nz = cz + kDirZ[d];
+                if (nx < 0 || nz < 0 || nx >= w_ || nz >= h_) continue;
+                const int sc = score(nx, nz);
+                if (sc < kCellThreshold) continue;
+                // Same corner rule as the tracer and the movers: no diagonal squeeze.
+                if (!stepLegal(score, PathCell{cx, cz}, d)) continue;
+                const bool diag = kDirX[d] != 0 && kDirZ[d] != 0;
+                // An occupied cell is passable-but-costly, exactly as it is for the
+                // tracer -- so A* prefers to go round a crowd but will still route
+                // through one rather than declare a goal unreachable.
+                const int32_t stepCost = (diag ? 14 : 10) + (sc == kCellOccupied ? 40 : 0);
+                const int32_t ng = gHere + stepCost;
+                const size_t ni = size_t(nz) * size_t(w_) + size_t(nx);
+                const bool fresh = gStamp_[ni] != gen_;
+                if (!fresh && ng >= gScore_[ni]) continue;
+                gStamp_[ni] = gen_;
+                gScore_[ni] = ng;
+                touch(ni);
+                from_[ni] = uint8_t(d);
+                flag_[ni] = uint8_t(flag_[ni] | kSeen);
+                aStarPush(int32_t(ni), ng + octile(goal.x - nx, goal.z - nz));
+            }
+            break;
+        }
         case Phase::Init: {
             if (!inside(start) || !inside(goal)) {
                 phase = Phase::Failed;
@@ -191,6 +326,29 @@ PathSearch::Result PathSearch::step(const std::function<int(int, int)>& score,
                 const size_t gi = size_t(goal.z) * size_t(w_) + size_t(goal.x);
                 touch(gi);
                 flag_[gi] |= kGoal;
+            }
+            if (useAStar) {
+                // A* NEEDS ITS OWN BOUND. The tracer's limit is (w+h)*20 -- fine for a
+                // bug algorithm that follows one outline, hopeless for a planner that
+                // expands outward: on a 200x200 serpentine it failed 90 of 112 searches
+                // against that limit and nobody arrived at all.
+                //
+                // The natural bound for A* is one expansion per cell, which is what an
+                // admissible heuristic and a closed set give you anyway. It is still a
+                // hard bound -- and a cheaper one than it looks: 40k expansions at
+                // kWorkTraceStep is ~360k work, against the 3.5M the tracer spent losing
+                // its way round the same maze.
+                visitLimit = w_ * h_;
+                // Seed the open set with the start and hand over. Everything else --
+                // suspend/resume, the work budget -- is shared with the tracer, so the
+                // planner still cannot run away with a tick.
+                const size_t si = size_t(start.z) * size_t(w_) + size_t(start.x);
+                touch(si);
+                gStamp_[si] = gen_;
+                gScore_[si] = 0;
+                aStarPush(int32_t(si), octile(goal.x - start.x, goal.z - start.z));
+                phase = Phase::AStar;
+                break;
             }
             if (best == 0) { phase = Phase::Done; buildRoute(); return Result::Arrived; }
             if (score(start.x, start.z) < kCellThreshold) {
@@ -321,6 +479,7 @@ void PathService::admit(int unitId, Entry& e, int slot) {
     ps.goal = e.goal;
     ps.cur = e.start;
     ps.priority = e.priority;
+    ps.useAStar = e.useAStar;
 }
 
 void PathService::release(Entry& e) {
@@ -329,7 +488,7 @@ void PathService::release(Entry& e) {
 }
 
 void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
-                          int mapH, float goalX, float goalZ, bool priority) {
+                          int mapH, float goalX, float goalZ, bool priority, bool useAStar) {
     // A RE-REQUEST FOR THE SAME SEARCH LETS IT RUN. Everything below restarts the
     // search from scratch (cap = 0), which is right when the question changed and
     // ruinous when it did not: the sim re-asks every kPathRetryTicks (120 ticks, 4s)
@@ -371,6 +530,7 @@ void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
     e.goalX = goalX;
     e.goalZ = goalZ;
     e.priority = priority;
+    e.useAStar = useAStar;
     e.cap = 0;
     e.slot = -1;
     // A re-request for a unit that is already searching restarts it in place,
@@ -437,6 +597,7 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
                         if (slotOwner_[i] < 0) { slot = int(i); break; }
                     if (slot < 0) break;
                     admit(it->first, e, slot);
+                    ++requests_;
                     admitCursor_ = it->first;
                     --free;
                 }
@@ -478,6 +639,7 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
                 finished.push_back(id);
             } else if (r == PathSearch::Result::Failed) {
                 spent += kWorkCompleteBase;
+                ++failures_;
                 done(id, {}, e.goalX, e.goalZ);
                 finished.push_back(id);
             }

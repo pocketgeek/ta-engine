@@ -1168,6 +1168,13 @@ void World::order(int unitId, float x, float z, bool queue) {
 void World::cancelPath(Unit& u) {
     paths_.cancel(u.id);
     pathRetryAt_.erase(u.id);
+    // A new destination earns the cheap tracer again. This deliberately does NOT live in
+    // requestPath: that is also the once-a-second re-anchor, so clearing there wiped the
+    // detour history on every re-ask and the fallback could never accumulate -- the
+    // trigger fired and was forgotten within the same second, and the benchmark showed
+    // not a single number moving.
+    pathDetours_.erase(u.id);
+    pathUseAStar_.erase(u.id);
 }
 
 void World::requestPath(Unit& u, float x, float z) {
@@ -1180,7 +1187,8 @@ void World::requestPath(Unit& u, float x, float z) {
     const PathCell to{int(x) / 16, int(z) / 16};
     if (pathDist(from, to) < 3) { paths_.cancel(u.id); return; }
     paths_.request(u.id, from, to, g.width(), g.height(), x, z,
-                   /*priority=*/u.type->commander);
+                   /*priority=*/u.type->commander,
+                   /*useAStar=*/pathUseAStar_.count(u.id) != 0);
 }
 
 // Label the connected components of the cells a `foot`-wide unit can occupy, using
@@ -4334,10 +4342,37 @@ void World::tick(float dt) {
             Unit* u = unit(unitId);
             if (route.empty()) {           // failed: back off before retrying
                 pathRetryAt_[unitId] = tickCounter_ + kPathFailBackoff;
+                // Repeated failure is the OTHER trigger. It is rare in practice (2 of 710
+                // searches on the serpentine), which is why it is not the only one.
+                if (++pathDetours_[unitId] >= kDetoursBeforeAStar)
+                    pathUseAStar_.insert(unitId);
                 return;
             }
             pathRetryAt_.erase(unitId);
             if (!u || !u->alive() || u->orders.empty()) return;
+            // DETOUR WATCH. Compare the route the tracer just produced against the
+            // straight line to the goal. A route far longer than the crow flies is the
+            // tracer doing what a bug algorithm does -- following an outline it keeps
+            // re-meeting -- and it is the signal that this trip wants the planner.
+            // Repeated, because one long route is often perfectly correct (rounding a
+            // lake); several in a row for the same unit is not.
+            {
+                float routeLen = 0;
+                float px = u->x, pz = u->z;
+                for (const PathCell& c : route) {
+                    const float wx = float(c.x) * 16 + 8, wz = float(c.z) * 16 + 8;
+                    routeLen += std::sqrt((wx - px) * (wx - px) + (wz - pz) * (wz - pz));
+                    px = wx; pz = wz;
+                }
+                const float straight = std::sqrt((gx - u->x) * (gx - u->x) +
+                                                 (gz - u->z) * (gz - u->z));
+                if (straight > 160.0f && routeLen > straight * kDetourTrigger) {
+                    if (++pathDetours_[unitId] >= kDetoursBeforeAStar)
+                        pathUseAStar_.insert(unitId);
+                } else {
+                    pathDetours_.erase(unitId);
+                }
+            }
             // Only the leg this search was issued for; anything queued behind
             // it stays untouched.
             // Snap the final waypoint to the caller's exact goal ONLY when the
