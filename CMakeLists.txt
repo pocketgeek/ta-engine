@@ -83,6 +83,30 @@ target_link_libraries(tak-formats PUBLIC ZLIB::ZLIB JPEG::JPEG)
 # tak-formats -- one source of truth, set by project(... VERSION ...) above.
 target_compile_definitions(tak-formats PUBLIC TAK_VERSION="${PROJECT_VERSION}")
 
+# SOURCE fingerprint, separate from the release version. Two peers must run the same
+# SIMULATION CODE to stay in lockstep, and nothing checked that: the gameplay-data hash
+# covers data, kNetVersion covers the wire format, and neither moves when sim behaviour
+# changes. A test server left one commit behind produced five "desyncs" that were
+# nothing of the sort -- the placement code differed, so the worlds differed from tick
+# zero. This is what tells those apart from a real divergence.
+#
+# The release version cannot serve here: it changes a handful of times a year, while
+# the simulation changes daily. Dirty trees are marked, because an uncommitted edit
+# means the commit id no longer describes what is running.
+find_package(Git QUIET)
+set(TAK_BUILD_ID "unknown")
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+  execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always --dirty --abbrev=12
+                  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                  OUTPUT_VARIABLE TAK_BUILD_ID OUTPUT_STRIP_TRAILING_WHITESPACE
+                  ERROR_QUIET)
+  if(TAK_BUILD_ID STREQUAL "")
+    set(TAK_BUILD_ID "unknown")
+  endif()
+endif()
+message(STATUS "Build id: ${TAK_BUILD_ID}")
+target_compile_definitions(tak-formats PUBLIC TAK_BUILD_ID="${TAK_BUILD_ID}")
+
 # Windows sockets: src/net (in tak-formats) uses Winsock2 -- link ws2_32 so it
 # propagates to takclient and takserver. No-op on POSIX.
 if(WIN32)

@@ -1743,6 +1743,9 @@ int Server::run() {
     if (listenFd_ < 0) { std::fprintf(stderr, "takserver: %s on port %u\n", err.c_str(), port_); return 1; }
     std::fprintf(stderr, "takserver %s listening on %s port %u (protocol v%u)\n",
                  tak::kVersion, loopbackOnly_ ? "loopback" : "all interfaces", port_, kNetVersion);
+    // Build id on its own line: the harness greps it to refuse a server built from
+    // different source than the client, which otherwise looks exactly like a desync.
+    std::fprintf(stderr, "takserver: build %s\n", tak::kBuildId);
     if (requireAuth_)
         std::fprintf(stderr, "takserver: accounts required -- %zu in %s\n",
                      accounts_.size(), accounts_.path().c_str());
@@ -1967,7 +1970,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--no-auth")) noAuth = true;
         else if (!std::strcmp(argv[i], "--local")) loopbackOnly = true;
         else if (!std::strcmp(argv[i], "--version") || !std::strcmp(argv[i], "-v")) {
-            std::printf("takserver (TAK engine) %s\n", tak::kVersion);
+            std::printf("takserver (TAK engine) %s (build %s)\n", tak::kVersion, tak::kBuildId);
             return 0;
         }
         else if (!std::strcmp(argv[i], "--help")) {

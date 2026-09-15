@@ -339,7 +339,7 @@ static void resolveDataDir(std::string& dataRoot, tak::Settings& settings, bool 
 int main(int argc, char** argv) {
     SDL_SetMainReady();   // we defined SDL_MAIN_HANDLED; tell SDL our main is ready
     if (argc >= 2 && (!std::strcmp(argv[1], "--version") || !std::strcmp(argv[1], "-v"))) {
-        std::printf("takclient (TAK engine) %s\n", tak::kVersion);
+        std::printf("takclient (TAK engine) %s (build %s)\n", tak::kVersion, tak::kBuildId);
         return 0;
     }
     if (argc >= 2 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {

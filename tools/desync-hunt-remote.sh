@@ -531,7 +531,40 @@ fi
 # hand back a "clean" result from a detector that never fires. Runs on the FIRST host.
 if [ "$VALIDATE" = "1" ]; then
   vhost="${HOSTS_SPEC%%:*}"; vhost="${vhost%% *}"
-  echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
+    # THIRD GATE: the server must be built from the SAME SOURCE as the client.
+  #
+  # Two peers only stay in lockstep if they run the same simulation code, and nothing
+  # else here checks that: the gameplay-data hash covers data, kNetVersion covers the
+  # wire format, and neither moves when sim behaviour changes. A test server one commit
+  # behind produced five "desyncs" that were nothing of the sort -- its placement code
+  # differed, so the worlds differed from tick zero, and two of them came back as
+  # REFEREE SUSPECT because both clients agreed against it. Hours went into chasing an
+  # engine bug that did not exist.
+  #
+  # A mismatch is a hard stop rather than a warning. A sweep whose verdict cannot
+  # distinguish "the engine diverged" from "you forgot to deploy" is reporting noise.
+  echo "== validating that $vhost runs the same source as this client =="
+  _cbuild=$($CLIENT --version 2>/dev/null | grep -oE 'build [^)]+' | cut -d' ' -f2)
+  _sbuild=$("${VSSH[@]}" "$RUSER@$vhost" "$RBIN --version" 2>/dev/null | grep -oE 'build [^)]+' | cut -d' ' -f2)
+  if [ -z "$_cbuild" ] || [ -z "$_sbuild" ]; then
+    echo "   FAIL -- could not read a build id (client='$_cbuild' server='$_sbuild')." >&2
+    echo "           Rebuild both; without it a stale server reads as a desync." >&2
+    exit 1
+  fi
+  if [ "$_cbuild" != "$_sbuild" ]; then
+    echo "   FAIL -- server and client are built from DIFFERENT SOURCE." >&2
+    echo "           client: $_cbuild" >&2
+    echo "           server: $_sbuild   ($vhost)" >&2
+    echo "           Redeploy before sweeping; any desync reported now would be this." >&2
+    exit 1
+  fi
+  case "$_cbuild" in
+    *-dirty) echo "   PASS -- both at $_cbuild"
+             echo "           (note: -dirty, so the id does not fully describe what is running)";;
+    *)       echo "   PASS -- both at $_cbuild";;
+  esac
+
+echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
   VSSH=(ssh -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)
   vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
   [ -n "$vpid" ] && note_server "$vhost" "$vpid"

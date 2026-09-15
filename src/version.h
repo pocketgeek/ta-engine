@@ -12,6 +12,15 @@
 #define TAK_VERSION "0.0.0-dev"
 #endif
 
+// The SOURCE fingerprint (git describe --always --dirty). Unlike kVersion this moves
+// with every commit, which is what makes it useful for the thing kVersion cannot do:
+// telling two peers whether they are running the same simulation. A "-dirty" suffix
+// means uncommitted changes, so the id no longer fully describes what is running.
+#ifndef TAK_BUILD_ID
+#define TAK_BUILD_ID "unknown"
+#endif
+
 namespace tak {
 inline constexpr const char* kVersion = TAK_VERSION;
+inline constexpr const char* kBuildId = TAK_BUILD_ID;
 }
