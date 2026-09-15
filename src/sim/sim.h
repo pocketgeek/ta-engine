@@ -482,6 +482,20 @@ struct Unit {
     float repathLeft = 0;   // chase steering repath countdown
     float stuckFor = 0;     // seconds wanting to move but making no progress
     float stuckX = 0, stuckZ = 0;   // position when the stuck timer last reset
+    // Seconds this unit has been COMMANDED to move and been unable to displace at all.
+    //
+    // This is not the same thing as `speed`, and the difference matters to the
+    // pathfinder. A fully blocked mover is deliberately NOT stopped -- retail clamps its
+    // speed rather than zeroing it, so it keeps pressing and resumes the instant the way
+    // clears -- so a wedged unit carries a positive `speed` while displacing nothing.
+    // Occupancy asked `speed == 0` to decide whether a body holds a cell against a
+    // search, which meant a stationary jam read as traffic under way and searches
+    // cheerfully planned routes through the middle of it.
+    //
+    // Measured from actual displacement, so it says what is true rather than what was
+    // commanded. It deliberately does NOT make every moving unit an obstacle: a body that
+    // is still making headway, however slowly, stays transparent to searches.
+    float jamT = 0;
     float goalStuckT = 0;           // seconds a point-destination move has not gotten closer
     float goalStuckD = 1e30f;       // best (closest) squared distance to that goal so far
     float buildStuckT = 0;          // seconds a builder has approached its site with no progress
@@ -876,11 +890,17 @@ public:
     void setTerrain(const std::vector<uint8_t>& heights, int w, int h, int seaLevel,
                     const std::vector<uint16_t>* features = nullptr);
     NavGrid& nav() { return nav_; }
+    // Observational pathfinder counters (never hashed) -- for benchmarks.
+    const PathService& pathStats() const { return paths_; }
 
     // Retail's per-cell query for one unit's movement class (icd 0x4139d0 ->
     // 0x413c80): impassable below the threshold, 4 when a parked body holds the
     // cell, 6 ordinary ground, 7 road. The pathfinder scores every candidate
     // through this, so it sees exactly what the mover will.
+    // Seconds of zero displacement before a commanded mover counts as holding its
+    // cell against a search. See World::unitHoldsCell.
+    static constexpr float kJamHoldsCell = 0.5f;
+    bool unitHoldsCell(const Unit& u) const;
     int cellScore(const UnitType* t, int cx, int cz, int selfId) const;
 
     // Enable retail's background pathfinder for this world (default off).

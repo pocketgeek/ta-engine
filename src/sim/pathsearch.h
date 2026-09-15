@@ -222,6 +222,8 @@ class PathService {
   public:
     void setBudget(int b) { budget_ = b > 0 ? b : kPathBudgetDefault; }
     int budget() const { return budget_; }
+    uint64_t workSpent() const { return workSpent_; }      // observational; see workSpent_
+    uint64_t completions() const { return completions_; }
 
     // Queue a search. Replaces any request already outstanding for this unit.
     void request(int unitId, PathCell start, PathCell goal, int mapW, int mapH,
@@ -256,6 +258,12 @@ class PathService {
         uint64_t ranAt = 0;     // tick this entry last got a slice (see the refill loop)
     };
     uint64_t tickNo_ = 0;       // monotonic, integer: tells "already ran this tick" apart
+    // OBSERVATIONAL ONLY -- never read by the scheduler, never hashed. Exists so a
+    // benchmark can report what a crowd actually costs the pathfinder instead of
+    // guessing from tick counts.
+    uint64_t workSpent_ = 0;
+    uint64_t completions_ = 0;
+
     int budget_ = kPathBudgetDefault;
     std::map<int, Entry> q_;    // unit id order: deterministic
     std::vector<PathSearch> pool_;    // the only owners of per-cell scratch

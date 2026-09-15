@@ -70,6 +70,50 @@ static float runWall(int thick) {
     return -1.0f;
 }
 
+// A wall of units that are all COMMANDED to move into a dead end, so every one of them
+// is wedged: they carry a positive speed (the mover clamps a blocked unit rather than
+// stopping it, so it resumes the instant the way clears) while displacing nothing.
+//
+// Occupancy used to ask `speed == 0` to decide whether a body holds its cell against a
+// search. By that test this crowd is "traffic under way", so searches plan straight
+// through the middle of a jam that nothing can pass. jamT measures actual displacement
+// and sees it for what it is.
+static bool jammedCrowdHoldsItsCells() {
+    const int W = 160, H = 160;
+    World w;
+    w.setVisPlayer(-1);
+    w.setTerrain(std::vector<uint8_t>(size_t(W) * size_t(H), 100), W, H, /*seaLevel=*/20);
+    w.setPathService(true);
+    UnitType s = soldier();
+    // A dense block packed against a wall of other bodies: ordered to push south-west
+    // into each other, so they jam rather than park.
+    std::vector<int> ids;
+    for (int t = 0; t < 6; ++t)
+        for (int k = 0; k < 10; ++k)
+            ids.push_back(w.spawn(&s, 800.0f + float(k) * 24.0f, 900.0f + float(t) * 24.0f, 0, 1));
+    // Everyone is told to move onto the same spot, which nobody can reach: the pile
+    // wedges itself.
+    for (int id : ids) w.order(id, 820, 920, /*queue=*/false);
+    for (int i = 0; i < 30 * 6; ++i) w.tick(1.0f / 30.0f);
+
+    // The class that matters is the INTERSECTION: bodies that hold their cell by
+    // displacement while still carrying a positive speed. Those are exactly the ones the
+    // old `speed == 0` test called "under way" and let searches route through.
+    int missedByOldTest = 0, parked = 0;
+    for (int id : ids) {
+        const Unit* u = w.unit(id);
+        if (!u || !u->alive()) continue;
+        const bool holdsNow = u->speed == 0.0f || u->jamT >= World::kJamHoldsCell;
+        const bool holdsOld = u->speed == 0.0f;
+        if (u->speed == 0.0f) ++parked;
+        if (holdsNow && !holdsOld) ++missedByOldTest;
+    }
+    std::printf("    %zu bodies: %d parked, %d wedged-but-moving "
+                "(invisible to the old speed==0 test)\n",
+                ids.size(), parked, missedByOldTest);
+    return missedByOldTest > 0;
+}
+
 int main() {
     std::printf("pathblock_test\n");
     std::printf("a unit routes around a wall of parked bodies:\n");
@@ -113,6 +157,10 @@ int main() {
         }
         check(close, "a unit still reaches a destination others are standing on");
     }
+
+    std::printf("a jammed crowd is not mistaken for traffic:\n");
+    check(jammedCrowdHoldsItsCells(),
+          "wedged movers are detected by displacement, not commanded speed");
 
     std::printf(g_fail ? "pathblock_test: %d FAILURE(S)\n" : "pathblock_test: all passed\n",
                 g_fail);

@@ -2608,13 +2608,33 @@ float World::bodyPenetration(const Unit& u, float nx, float nz) const {
     return worst;
 }
 
+// Does this body hold its cell against a search?
+//
+// Parked is the obvious case. The other is a mover that is COMMANDED to move and cannot:
+// the mover deliberately keeps such a unit's speed positive so it resumes the instant the
+// way clears, so `speed` cannot distinguish a jam from traffic. jamT measures actual
+// displacement and does.
+//
+// The threshold matters in both directions. Too short and a body momentarily in contact
+// with another becomes an obstacle, every route around it churns, and the crowd
+// re-plans itself into a worse jam -- which is why this deliberately does NOT treat
+// every moving unit as solid. Long enough that only a settled jam counts.
+bool World::unitHoldsCell(const Unit& u) const {
+    return u.speed == 0.0f || u.jamT >= kJamHoldsCell;
+}
+
 int World::cellScore(const UnitType* t, int cx, int cz, int selfId) const {
     const NavGrid& g = navFor(t);
     const int foot = footCells(t);
     if (!g.empty() && !g.fits(cx, cz, foot)) return kCellImpassable;
     if (occW_ > 0) {
-        // Only PARKED bodies hold a cell against a search, matching the mover:
-        // a unit under way is something to fall in behind, not a wall.
+        // Only STATIONARY bodies hold a cell against a search, matching the mover: a unit
+        // under way is something to fall in behind, not a wall.
+        //
+        // "Stationary" is not `speed == 0`. A fully blocked mover keeps a positive speed
+        // by design (it presses rather than stopping, so it resumes the moment the way
+        // clears), so a wedged crowd read as traffic and searches planned straight
+        // through the jam -- routing units into the one place they could not pass.
         const int x0 = cx - foot / 2, z0 = cz - foot / 2;
         for (int j = 0; j < foot; ++j)
             for (int i = 0; i < foot; ++i) {
@@ -2623,7 +2643,7 @@ int World::cellScore(const UnitType* t, int cx, int cz, int selfId) const {
                 const int32_t o = occ_[size_t(z) * size_t(occW_) + size_t(x)];
                 if (o == 0 || o == selfId) continue;
                 const Unit* u = unit(o);
-                if (u && u->alive() && u->speed == 0.0f) return kCellOccupied;
+                if (u && u->alive() && unitHoldsCell(*u)) return kCellOccupied;
             }
     }
     if (!g.empty() && g.roadAt(cx, cz)) return kCellRoad;
@@ -2652,7 +2672,7 @@ void World::rebuildOccupancy() {
             if (!u.alive() || u.embarked() || !u.type) continue;
             if (u.type->canFly || u.type->isStructure()) continue;   // structures are in nav_
             if (u.underConstruction) continue;
-            if ((u.speed == 0.0f) != wantParked) continue;
+            if (unitHoldsCell(u) != wantParked) continue;
             // Stamp the whole footprint, centre-anchored to match NavGrid::fits.
             int f = footCells(u.type);
             int cx = int(u.x) / 16 - f / 2, cz = int(u.z) / 16 - f / 2;
@@ -4778,6 +4798,13 @@ void World::tick(float dt) {
         }
         // Frozen / petrified / paralyzed: the unit is inert this tick.
         if (u.incapacitated()) { u.speed = 0; continue; }
+        // Jam tracker DECAYS every tick and is topped up only while the mover is
+        // genuinely stuck (see the fully-blocked branch). Decaying here rather than
+        // clearing it inside the movement code makes it self-correcting: the mover has
+        // several early exits -- escorting, arriving, handing an order to a builder --
+        // and a value only ever cleared on the movement path would survive all of them
+        // and leave a unit reading as jammed long after it stopped trying to move.
+        if (u.jamT > 0.0f) u.jamT = std::max(0.0f, u.jamT - dt);
         // A build order that has reached the front claims its ground NOW, before
         // the builder has walked anywhere. Waiting until arrival would leave the
         // spot unreserved for the whole walk, so two builders sent to the same
@@ -4970,10 +4997,14 @@ void World::tick(float dt) {
                     // rather than the cells they happen to be stamped into.
                     return bodyPenetration(u, nx, nz) <= 0.0f;
                 };
-                if (free(u.x + mx, u.z + mz)) { u.x += mx; u.z += mz; }
-                else if (free(u.x + mx, u.z)) { u.x += mx; }
-                else if (free(u.x, u.z + mz)) { u.z += mz; }
+                // Track whether the unit ACTUALLY displaced, not whether it was told to.
+                // Sliding along one axis still counts as headway; only the fully blocked
+                // branch below is a jam. See Unit::jamT.
+                if (free(u.x + mx, u.z + mz)) { u.x += mx; u.z += mz; u.jamT = 0; }
+                else if (free(u.x + mx, u.z)) { u.x += mx; u.jamT = 0; }
+                else if (free(u.x, u.z + mz)) { u.z += mz; u.jamT = 0; }
                 else {
+                    u.jamT += 2.0f * dt;   // net +dt against the per-tick decay above
                     // Fully blocked (a wall dead-ahead the straight path clipped):
                     // stop and repath around it toward the final destination, so
                     // the unit routes around instead of wedging permanently.

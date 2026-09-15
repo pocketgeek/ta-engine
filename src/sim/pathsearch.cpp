@@ -468,10 +468,12 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
             const int workBefore = ps.work;
             const PathSearch::Result r = ps.step(sc, e.cap);
             spent += ps.work - workBefore;
+            workSpent_ += uint64_t(ps.work - workBefore);
             if (r == PathSearch::Result::Arrived) {
                 // Charge the completion BEFORE handing the route over: the callback
                 // smooths it, and that cost belongs to this tick's budget.
                 spent += kWorkCompleteBase + kWorkPerCorner * int(ps.out.size());
+                ++completions_;
                 done(id, ps.out, e.goalX, e.goalZ);
                 finished.push_back(id);
             } else if (r == PathSearch::Result::Failed) {
