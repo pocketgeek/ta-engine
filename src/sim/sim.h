@@ -1705,8 +1705,20 @@ private:
     // repeal of the give-up: remember where it was going, wait, and re-issue ONCE if the
     // destination is actually reachable from where it now stands. Bounded because
     // unbounded retrying is the wandering the watchdog exists to stop.
-    struct AbandonedGoal { float x = 0, z = 0; uint32_t atTick = 0; int tries = 0; };
+    // The flags matter as much as the coordinates: the watchdog drops attack-move and
+    // patrol legs too, and reviving one as a plain move is a player-visible change of
+    // command -- a rescued attack-move stops engaging on the way, a rescued patrol stops
+    // looping. Carry what the order was, not just where it pointed.
+    struct AbandonedGoal {
+        float x = 0, z = 0;
+        bool attackMove = false, patrol = false;
+        uint32_t atTick = 0;
+        int tries = 0;
+    };
     std::unordered_map<int, AbandonedGoal> abandoned_;
+    // Set only while the rescue sweep re-issues an order, so order() can tell an
+    // internal retry from a player picking a new destination.
+    bool abandonRetry_ = false;
     static constexpr uint32_t kAbandonRetryTicks = 300;   // 10s before a second look
     static constexpr int kAbandonRetries = 1;             // ...and only one of them
     // When to stop using the cheap tracer for a unit and reach for the bounded planner.

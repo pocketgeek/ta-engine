@@ -1077,6 +1077,12 @@ void World::order(int unitId, float x, float z, bool queue) {
     // turned its heading toward the goal, so you could spin a keep by right-clicking.
     if (!u || !u->alive() || !u->type) return;
     if (u->type->isStructure()) { setRally(*u, Order{x, z, 0}, queue); return; }
+    // A NEW DESTINATION RETIRES AN ABANDONED ONE. order() does not go through
+    // cancelPath, so clearing the rescue record only there left it live: the player
+    // picks somewhere else, that move finishes, the retry delay expires, and the rescue
+    // sweep walks the unit back to the destination they had already replaced. The
+    // internal re-issue below sets abandonRetry_ so it does not retire its own record.
+    if (!abandonRetry_) abandoned_.erase(u->id);
     if (!queue) u->orders.clear();
     auto markGoal = [&] {
         if (u->orders.empty()) return;
@@ -4383,7 +4389,9 @@ void World::tick(float dt) {
             // between -- it gets blocked, re-asks, gets another clipped route,
             // and ping-pongs. Measured: a unit oscillating between two points
             // 2426px of travel later, having never arrived.
-            const bool reachedGoal =
+            // Whether the RAW trace reached the goal cell. Note this is not the
+            // question the order-building loop below needs -- see reachedGoal.
+            const bool traceReachedGoal =
                 !route.empty() && route.back().x == int(gx) / 16 &&
                 route.back().z == int(gz) / 16;
             // SHORTCUT the traced route before installing it ("string pulling").
@@ -4504,6 +4512,18 @@ void World::tick(float dt) {
                 }
             }
             const std::vector<PathCell>& useRoute = pulled.empty() ? route : pulled;
+            // ASK THE ROUTE WE ARE ACTUALLY INSTALLING, not the one we started from.
+            //
+            // Shortcutting can stop early -- a hop fails validation and the valid prefix
+            // is kept -- so a trace that DID reach the goal can yield a route that does
+            // not. Reading the raw trace here then made the loop below overwrite the last
+            // VALIDATED waypoint with the distant goal: the one safe intermediate point
+            // discarded, and the unit aimed straight across the obstacle whose rejection
+            // truncated the route in the first place. Exactly the class of bug the
+            // validation exists to prevent, reintroduced at the truncation path.
+            const bool reachedGoal =
+                traceReachedGoal && !useRoute.empty() &&
+                useRoute.back().x == int(gx) / 16 && useRoute.back().z == int(gz) / 16;
             std::vector<Order> path;
             path.reserve(useRoute.size());
             for (size_t i = 0; i < useRoute.size(); ++i) {
@@ -4554,7 +4574,18 @@ void World::tick(float dt) {
             // unit would walk at a mountain and grind at it again.
             ++rec.tries;
             if (!pathExists(u.type, rec.x, rec.z, u.x, u.z)) continue;
+            const bool atk = rec.attackMove, pat = rec.patrol;
+            abandonRetry_ = true;          // this one re-issue is not a new player order
             order(u.id, rec.x, rec.z, /*queue=*/false);
+            abandonRetry_ = false;
+            // Restore what the order WAS. order() issues a plain move, so without this a
+            // rescued attack-move would walk past enemies it was told to engage and a
+            // rescued patrol would stop looping -- the unit would come back doing
+            // something the player never asked for.
+            if (!u.orders.empty()) {
+                u.orders.back().attackMove = atk;
+                u.orders.back().patrol = pat;
+            }
         }
     }
     if (pathService_ && !nav_.empty()) {
@@ -5317,13 +5348,17 @@ void World::tick(float dt) {
                         // Remember where it was going BEFORE dropping, and only when this
                         // is the last thing it has to do: a unit with more orders queued
                         // carries on and needs no rescue. See World::abandoned_.
-                        const float ax = u.orders.back().x, az = u.orders.back().z;
+                        const Order& lost = u.orders.back();
+                        const float ax = lost.x, az = lost.z;
+                        const bool aAtk = lost.attackMove, aPat = lost.patrol;
                         const bool wasLast = currentLeg(u.orders) + 1 >= u.orders.size();
                         dropLeg(u);
                         if (wasLast && u.orders.empty()) {
                             auto& rec = abandoned_[u.id];
                             if (rec.tries < kAbandonRetries) {
-                                rec.x = ax; rec.z = az; rec.atTick = tickCounter_;
+                                rec.x = ax; rec.z = az;
+                                rec.attackMove = aAtk; rec.patrol = aPat;
+                                rec.atTick = tickCounter_;
                             }
                         }
                     }
