@@ -135,6 +135,8 @@ MOVEDFILE="$OUT/moved-aside"
 SHAPEDFILE="$OUT/shaped-ifaces"
 : >"$SHAPEDFILE"
 NETEM_EXPIRY="${TAK_NETEM_EXPIRY:-1800}"   # remote self-revert, seconds
+# Remote file naming who currently owns an interface's shaping (see run_one).
+NETEM_OWNER="/tmp/tak-netem-owner"
 # Keep a record until its file is VERIFIABLY back. Clearing the list regardless of
 # whether the restore worked destroys the only thing that could retry it: an ssh drop
 # mid-restore would leave the shared install missing a gameplay override and no record
@@ -205,8 +207,27 @@ cleanup() {
   local CLEANSSH=(ssh -n -T -o BatchMode=yes -o ControlMaster=no -o ControlPath=none
                   -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2)
   if [ -s "${SHAPEDFILE:-/nonexistent}" ]; then
-    sort -u "$SHAPEDFILE" | while IFS=$'\t' read -r _h _if; do
+    sort -u "$SHAPEDFILE" | while IFS=$'\t' read -r _h _if _tok; do
       [ -n "$_h" ] && [ -n "$_if" ] || continue
+      # TAKE THE SAME LOCK THE RUNS TAKE, and only unshape what is still OURS. Without
+      # this, cleanup walks a HISTORICAL registry and deletes unconditionally: a second
+      # sweep that legitimately acquired the interface after our shaping_down released it
+      # would have its live shaping torn out from under it, and -- netem being verified
+      # only at setup -- would then run unshaped and report a pass. That is the same
+      # silent-pass failure this whole file keeps being about, so cleanup has to honour
+      # the serialisation the runs use rather than bypassing it.
+      #
+      # -w so a stuck peer cannot wedge our exit; if the lock cannot be had, fall through
+      # and let the ownership check below be the guard.
+      exec 8>"${TMPDIR:-/tmp}/tak-netem.$_h.lock"
+      flock -w 30 8 2>/dev/null || true
+      if [ -n "$_tok" ]; then
+        _owner=$("${CLEANSSH[@]}" "$RUSER@$_h" "cat '$NETEM_OWNER.$_if' 2>/dev/null" 2>/dev/null || true)
+        if [ -n "$_owner" ] && [ "$_owner" != "$_tok" ]; then
+          flock -u 8 2>/dev/null || true
+          continue    # someone else owns this interface now -- not ours to clear
+        fi
+      fi
       # The interface name is interpolated into a remote shell command; keep it to the
       # characters an interface can actually have.
       case "$_if" in *[!A-Za-z0-9_.:-]*)
@@ -237,6 +258,8 @@ cleanup() {
           _streak=0            # query failed -- unknown, NOT proof of clean
         fi
       done
+      "${CLEANSSH[@]}" "$RUSER@$_h" "rm -f '$NETEM_OWNER.$_if'" >/dev/null 2>&1 || true
+      flock -u 8 2>/dev/null || true
       if [ "$_streak" -lt 2 ]; then
         echo "WARN cleanup: $_h still shaped on $_if -- clear it by hand" >&2
         printf '%s\t%s\n' "$_h" "$_if" >>"$SHAPEDFILE.unclean"
@@ -424,7 +447,7 @@ run_one() {
   # lead its slowest consumer by more than kMaxLeadTicks, and a spectator heartbeats to
   # keep that fed. Measured: flat 4x through 100ms, 3.41x at 500ms, no desync at any of
   # them -- the knee is where the round trip starts eating the 120-tick lead window.
-  local rtt=0 jit=0 loss=0 thost="$host" tport="$port" proxypid="" shaped_netem="" shaped_iface=""
+  local rtt=0 jit=0 loss=0 thost="$host" tport="$port" proxypid="" shaped_netem="" shaped_iface="" shaped_token=""
   case "$envs" in *TAK_RTT=*)    rtt=$(printf '%s' "$envs" | grep -oE 'TAK_RTT=[0-9]+' | cut -d= -f2);; esac
   case "$envs" in *TAK_JITTER=*) jit=$(printf '%s' "$envs" | grep -oE 'TAK_JITTER=[0-9]+' | cut -d= -f2);; esac
   case "$envs" in *TAK_LOSS=*)   loss=$(printf '%s' "$envs" | grep -oE 'TAK_LOSS=[0-9.]+' | cut -d= -f2);; esac
@@ -480,8 +503,25 @@ run_one() {
       # reached, and without a record the top-level cleanup has no idea the host was ever
       # shaped. Sweeps get interrupted constantly; a host left permanently latent is the
       # worst outcome here, because everything afterwards just looks inexplicably slow.
-      printf '%s\t%s\n' "$host" "$iface" >>"$SHAPEDFILE"
-      rsh1 "nohup sh -c 'sleep ${NETEM_EXPIRY}; sudo /usr/sbin/tc qdisc del dev $iface root' >/dev/null 2>&1 </dev/null &" >/dev/null 2>&1
+      #
+      # OWNERSHIP TOKEN. The expiry below, and the exit cleanup, must only ever remove
+      # THIS run's shaping. An unscoped timer is worse than no timer: it fires 1800s
+      # later regardless, so it would delete whatever qdisc happens to be on the
+      # interface by then -- a LATER run's shaping -- and since netem is verified only at
+      # setup, that run would sail on unshaped and report a pass. A run of its own that
+      # outlived the timer would lose its shaping the same way.
+      #
+      # So the owner file is the authority: the watchdog and the cleanup both re-read it
+      # and act only if it still names them. Teardown removes the file, which makes any
+      # surviving watchdog a no-op without having to hunt the process down.
+      local token="$$-$name-$RANDOM"
+      shaped_token="$token"
+      printf '%s\t%s\t%s\n' "$host" "$iface" "$token" >>"$SHAPEDFILE"
+      rsh1 "echo '$token' > '$NETEM_OWNER.$iface'" >/dev/null 2>&1
+      rsh1 "nohup sh -c 'sleep ${NETEM_EXPIRY}
+            [ \"\$(cat \"$NETEM_OWNER.$iface\" 2>/dev/null)\" = \"$token\" ] || exit 0
+            sudo /usr/sbin/tc qdisc del dev $iface root 2>/dev/null
+            rm -f \"$NETEM_OWNER.$iface\"' >/dev/null 2>&1 </dev/null &" >/dev/null 2>&1
       rsh1 "sudo /usr/sbin/tc qdisc del dev $iface root 2>/dev/null
             sudo /usr/sbin/tc qdisc add dev $iface root handle 1: prio bands 3 \
                  priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
@@ -544,7 +584,12 @@ run_one() {
         rsh1 "/usr/sbin/tc qdisc show dev $shaped_iface | grep -q netem" && \
           echo "WARN $name ($host): STILL shaped -- clear $shaped_iface by hand"
       fi
-      shaped_netem=""
+      # Drop the ownership claim LAST, once the interface is actually clear: while it is
+      # still there the watchdog would fire on our behalf if we died mid-teardown, and
+      # once it is gone neither the watchdog nor another sweep's cleanup can touch what
+      # the next run installs here.
+      rsh1 "rm -f '$NETEM_OWNER.$shaped_iface'" >/dev/null 2>&1
+      shaped_netem=""; shaped_token=""
     fi
     flock -u 9 2>/dev/null || true
   }
