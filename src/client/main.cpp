@@ -1231,8 +1231,14 @@ int main(int argc, char** argv) {
                 gameView->invalidateRenderTargets();
             // 'S' grabs a screenshot in the asset viewers; in game it is the
             // Stop hotkey (Keys.TDF LOWER_S), handled by GameView::input.
-            if (!gameView && e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_s)
-                screenshot(ren, kWinW, kWinH, "takclient_shot.png");
+            // Capture at the CURRENT output size, not the default window constants --
+            // the window is resizable (and may be fullscreen), so kWinW/kWinH go stale
+            // the moment it is dragged, and the grab then reads the wrong rectangle.
+            if (!gameView && e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_s) {
+                int sw, sh;
+                SDL_GetRendererOutputSize(ren, &sw, &sh);
+                screenshot(ren, sw, sh, "takclient_shot.png");
+            }
             int ww, wh;
             SDL_GetRendererOutputSize(ren, &ww, &wh);
             // Mouse events arrive in window points; the renderer (and all our
@@ -1681,8 +1687,58 @@ int main(int argc, char** argv) {
                         shotArmed = false;   // let the key land, then arm on the next pass
                     }
                 } else {
-                    screenshot(ren, w, h, shot);
-                    running = false;
+#ifndef NDEBUG
+                    // TAK_SHOT_SIZES="WxH;WxH;..." captures the SAME running session at
+                    // each size in turn, resizing the live window between captures. That
+                    // is deliberately not the same test as launching once per size with
+                    // --winsize: it is the only way to exercise a LIVE resize, where any
+                    // layout that cached geometry from an earlier frame keeps drawing at
+                    // the old size. Output goes to <shot-stem>.WxH.png.
+                    static std::vector<std::pair<int, int>> shotSizes = [] {
+                        std::vector<std::pair<int, int>> v;
+                        if (const char* e = tak::devEnv("TAK_SHOT_SIZES")) {
+                            std::string acc(e);
+                            size_t p0 = 0;
+                            while (p0 <= acc.size()) {
+                                size_t sep = acc.find(';', p0);
+                                std::string one = acc.substr(p0, sep == std::string::npos ? std::string::npos : sep - p0);
+                                if (size_t x = one.find('x'); x != std::string::npos)
+                                    v.push_back({std::atoi(one.c_str()), std::atoi(one.c_str() + x + 1)});
+                                if (sep == std::string::npos) break;
+                                p0 = sep + 1;
+                            }
+                        }
+                        return v;
+                    }();
+                    static size_t sizeIdx = 0;
+                    static int settle = 0;
+                    if (sizeIdx < shotSizes.size()) {
+                        SDL_Window* win = SDL_RenderGetWindow(ren);
+                        auto [sw, sh] = shotSizes[sizeIdx];
+                        if (settle == 0) {
+                            if (win) SDL_SetWindowSize(win, sw, sh);
+                            settle = 3;          // let the resize reach the renderer
+                            shotArmed = false;
+                        } else if (--settle > 0) {
+                            shotArmed = false;   // still settling
+                        } else {
+                            int ow, oh;
+                            SDL_GetRendererOutputSize(ren, &ow, &oh);
+                            std::string base = shot;
+                            if (size_t dot = base.rfind('.'); dot != std::string::npos)
+                                base = base.substr(0, dot);
+                            screenshot(ren, ow, oh,
+                                       base + "." + std::to_string(ow) + "x" + std::to_string(oh) + ".png");
+                            ++sizeIdx;
+                            if (sizeIdx < shotSizes.size()) shotArmed = false;   // next size
+                            else running = false;
+                        }
+                    } else
+#endif
+                    {
+                        screenshot(ren, w, h, shot);
+                        running = false;
+                    }
                 }
             }
         }
