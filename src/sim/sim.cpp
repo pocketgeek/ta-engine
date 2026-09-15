@@ -4976,12 +4976,21 @@ void World::tick(float dt) {
             // then release to the next order (usually an attack).
             u.speed = std::max(0.0f, u.speed - u.type->brake * dt);
             float sight = u.type->sight > 0 ? u.type->sight : 200.0f;
+            // THROUGH THE SPATIAL GRID. This scanned every unit in the world, for every
+            // ambushing unit, every tick -- O(n^2) in the number of ambushers, and a
+            // mission that sets "wa" on a large force pays it on the referee as well as
+            // on every client. The grid holds ALL alive units, buildings included
+            // (rebuildGrid), so this is the same set, merely visited by locality; the
+            // exact distance test below is unchanged and the answer is a bool, so
+            // iteration order cannot affect it.
             bool threat = false;
-            for (const auto& e : units_)
-                if (e.alive() && !e.embarked() && e.type && !allied(e.player, u.player)) {
-                    float dx = e.x - u.x, dz = e.z - u.z;
-                    if (dx * dx + dz * dz <= sight * sight) { threat = true; break; }
-                }
+            forEachNear(u.x, u.z, sight, [&](int idx) {
+                if (threat) return;
+                const Unit& e = units_[size_t(idx)];
+                if (!e.alive() || e.embarked() || !e.type || allied(e.player, u.player)) return;
+                const float dx = e.x - u.x, dz = e.z - u.z;
+                if (dx * dx + dz * dz <= sight * sight) threat = true;
+            });
             if (threat) u.orders.erase(u.orders.begin());
         } else {
             const Order& o = u.orders.front();
@@ -5067,23 +5076,34 @@ void World::tick(float dt) {
             if (u.jamT >= kJamHoldsCell) {
                 const float ahead = float(std::max(u.type->footX, u.type->footZ)) * 16.0f;
                 const float fx = detmath::sin(u.heading), fz = detmath::cos(u.heading);
-                for (const auto& other : units_) {
-                    if (other.id >= u.id || !other.alive() || other.embarked()) continue;
-                    if (!other.type || other.type->canFly || other.type->isStructure()) continue;
+                // THROUGH THE SPATIAL GRID, not a scan of every unit in the world. The
+                // scan that was here ran once per JAMMED unit over the whole army: O(n^2),
+                // invisible in a 32-unit benchmark and fatal at scale -- the 15k-unit
+                // stress run fell so far behind that the server dropped it at tick 151,
+                // where it had previously completed 2248 ticks. The grid answers the same
+                // question in the same fixed order, so the yield still resolves
+                // identically on every peer.
+                int giveId = -1;
+                forEachNear(u.x, u.z, ahead * 2.0f, [&](int idx) {
+                    if (giveId >= 0) return;                 // first match wins, as before
+                    const Unit& other = units_[size_t(idx)];
+                    if (other.id >= u.id || !other.alive() || other.embarked()) return;
+                    if (!other.type || other.type->canFly || other.type->isStructure()) return;
                     // Only yield to something we are nose-to-nose with: close, in front,
                     // and coming the other way.
                     const float rx = other.x - u.x, rz = other.z - u.z;
-                    if (rx * rx + rz * rz > ahead * ahead * 4.0f) continue;
-                    if (rx * fx + rz * fz <= 0.0f) continue;          // not in front
+                    if (rx * rx + rz * rz > ahead * ahead * 4.0f) return;
+                    if (rx * fx + rz * fz <= 0.0f) return;          // not in front
                     const float ofx = detmath::sin(other.heading), ofz = detmath::cos(other.heading);
-                    if (fx * ofx + fz * ofz >= -0.5f) continue;       // not opposed
-                    // `other.id < u.id`, so THIS unit is the higher id -- it proceeds and
-                    // the other one yields. Mark the other, not ourselves.
-                    Unit* give = unit(other.id);
-                    if (give && give->yieldT <= 0.0f && give->yieldCool <= 0.0f) {
+                    if (fx * ofx + fz * ofz >= -0.5f) return;       // not opposed
+                    giveId = other.id;
+                });
+                // `giveId < u.id`, so THIS unit is the higher id -- it proceeds and the
+                // other one yields. Mark the other, not ourselves.
+                if (giveId >= 0) {
+                    Unit* give = unit(giveId);
+                    if (give && give->yieldT <= 0.0f && give->yieldCool <= 0.0f)
                         give->yieldT = kYieldHold;
-                    }
-                    break;
                 }
             }
 
