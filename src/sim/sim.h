@@ -935,6 +935,13 @@ public:
     static constexpr float kJamWindow = 1.0f;
     static constexpr float kYieldHold = 1.2f;
     static constexpr float kYieldCool = 4.0f;
+    // How often a jammed unit LOOKS for someone to yield to. Once it is jammed, asking
+    // every tick buys nothing: the yield it would issue has already been issued, and the
+    // recipient carries a cooldown. The hold is 1.2s (36 ticks), so checking every 8 is
+    // ample -- and in a 14k-unit melee the difference is 14k spatial queries a tick
+    // against a couple of thousand. Staggered by unit id, the same way the path retry
+    // sweep spreads its work, so the cost does not land on one tick.
+    static constexpr uint32_t kYieldScanTicks = 8;
     bool unitHoldsCell(const Unit& u) const;
     int cellScore(const UnitType* t, int cx, int cz, int selfId) const;
 

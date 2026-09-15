@@ -5073,7 +5073,8 @@ void World::tick(float dt) {
                 }
                 continue;
             }
-            if (u.jamT >= kJamHoldsCell) {
+            if (u.jamT >= kJamHoldsCell &&
+                (tickCounter_ + uint32_t(u.id)) % kYieldScanTicks == 0) {
                 const float ahead = float(std::max(u.type->footX, u.type->footZ)) * 16.0f;
                 const float fx = detmath::sin(u.heading), fz = detmath::cos(u.heading);
                 // THROUGH THE SPATIAL GRID, not a scan of every unit in the world. The
