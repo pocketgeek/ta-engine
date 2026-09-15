@@ -61,6 +61,23 @@ static std::vector<Edit> makeEdits(uint32_t seed, int n, int W, int H) {
         if (!out.empty() && r.range(0, 2) == 0) {
             const Edit& prev = out[size_t(r.range(0, int(out.size()) - 1))];
             out.push_back({prev.x, prev.z, prev.w, prev.h, false});
+            // ...and half the time close it again straight away. Re-closing what was
+            // just opened is the shape that catches a split check which compares raw
+            // labels instead of roots: the clear merges two components whose cells keep
+            // different ids, and the re-block then severs them exactly along that seam.
+            // Without this the random sequences ran a real P1 bug for a whole session
+            // without once tripping it.
+            if (r.range(0, 1) == 0) out.push_back({prev.x, prev.z, prev.w, prev.h, true});
+            continue;
+        }
+        // A wall that SPANS the map, occasionally. The bounded walls below dent
+        // connectivity; only a full span actually severs it into two components, which
+        // is the precondition for a later clear to MERGE two components and a re-block
+        // to sever them again. Without this the generator could open and close gates all
+        // day without ever exercising a real merge.
+        if (r.range(0, 11) == 0) {
+            if (r.range(0, 1) == 0) out.push_back({0, r.range(2, H - 5), W, 3, true});
+            else                    out.push_back({r.range(2, W - 5), 0, 3, H, true});
             continue;
         }
         const int kind = r.range(0, 9);

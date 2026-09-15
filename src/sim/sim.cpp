@@ -3894,8 +3894,14 @@ void World::tickAbilities(float dt) {
     corpseIdx_.clear();
     for (size_t j = 0; j < units_.size(); ++j)
         if (isCorpse(units_[j])) corpseIdx_.push_back(uint32_t(j));
-    // Nothing to raise or reclaim: every caster's scan is guaranteed empty.
-    if (corpseIdx_.empty()) return;
+    // No early return when the list is empty, deliberately. The per-caster loop below
+    // does more than search for corpses: it also DROPS a channel whose target has gone
+    // (interrupted, out of range, or decomposed). Returning here skipped that, so if the
+    // last corpse decomposed under a channeling caster its reviveTarget survived, and
+    // the caster then spent the tick the next corpse appeared clearing the stale target
+    // instead of acquiring. Only the SEARCH is guaranteed to have no work, and with an
+    // empty corpseIdx_ that inner loop is already a no-op -- so the walk stays O(n),
+    // which is the whole point of collecting the corpses once. (Found by review.)
 
     for (size_t i = 0; i < units_.size(); ++i) {
         Unit& u = units_[i];
