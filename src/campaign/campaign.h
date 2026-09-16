@@ -55,4 +55,9 @@ std::vector<Campaign> loadCampaigns(const hpi::Vfs& vfs);
 // file is absent. Shared by the briefing screen and the in-game objectives panel.
 std::vector<std::string> loadObjectives(const hpi::Vfs& vfs, const std::string& stem);
 
+// Parse a TA briefing file's text (camps/briefs/*.txt) into display lines:
+// colour markup removed, the id and END lines dropped, blank lines kept as
+// paragraph breaks. Exposed so the format can be pinned without an install.
+std::vector<std::string> parseTaBriefing(const std::string& text);
+
 }  // namespace ta

@@ -487,6 +487,26 @@ Kingdoms repeats the stem in `missionname`, so reading the stem from there worke
 campaign resolved to nothing. The stem comes from `missionfile`; `missionname` is
 a display title in TA, and is left to `translate/missions.tdf` in Kingdoms.
 
+**Briefing text** comes through too — all **175** missions, where before the fix
+below only 70 did. TA keeps it in `camps/briefs/<brief>.txt`, named by the
+mission's own `.ota` (`brief=ArmCampaign1`), as prose rather than Kingdoms'
+bulleted `missions/<stem>.txt`. Two details:
+
+- The `brief` key **sometimes carries the extension and sometimes does not** —
+  the campaign missions write `brief=ArmCampaign1`, the Battle Tactics scenarios
+  `brief=I09Brief.txt`. Appending `.txt` unconditionally asked for
+  `I09Brief.txt.txt`, which is why only the campaign proper had any text.
+- Colour runs are written `&X … &`: the **opening** delimiter carries a
+  one-letter colour and the closing one does not. Across the 50 shipped brief
+  files the opens are exactly R (38), Y (31) and G (13) and the closes are the
+  other 82 occurrences — they balance — so stripping only the `&` leaves the
+  letter glued to the text ("RExpect Core patrols").
+
+AC01's briefing is also an independent confirmation of the win/lose split: *"Take
+your units to the Gate and secure it. Our Commander must return safely or we are
+lost."* — `MoveUnitToRadius` as the victory, the Gate's destruction as the defeat,
+which is exactly what the two objective arrays say.
+
 `setupMission` now takes the TA path when `maps/<stem>.ota` places units, and
 falls back to the Kingdoms arrangement (`missions/` + a `.cob` god script + a
 `.crt`) otherwise, so a Kingdoms install still runs. AC01 loads: 34 units over 2

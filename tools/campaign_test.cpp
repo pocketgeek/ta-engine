@@ -118,6 +118,48 @@ int main() {
               "nor is a header with no missions");
     }
 
+    // --- TA briefing text -----------------------------------------------------
+    // camps/briefs/<brief>.txt. Prose, not a bullet list, with an id line, an END
+    // line, and inline colour runs written `&X ... &` -- the OPENING delimiter
+    // carries a one-letter colour and the closing one does not, so dropping only
+    // the '&' leaves the letter glued to the text ("RExpect Core patrols").
+    {
+        const std::string brief =
+            "MISSION 1.0001ARME\r\n"
+            "Establish a guard detail around the Galactic Gate.\r\n"
+            "\r\n"
+            "&Y*PRIORITY CRITICAL*&\r\n"
+            "Core waits in ambush near the Gate.\r\n"
+            "\r\n"
+            "INFO FEED\r\n"
+            "The Gate is north. &RExpect Core patrols.&\r\n"
+            "\r\n"
+            "END\r\n";
+        auto b = ta::parseTaBriefing(brief);
+        check(!b.empty(), "a TA briefing parses");
+        if (b.size() >= 7) {
+            eqs(b[0], "Establish a guard detail around the Galactic Gate.",
+                "the MISSION id line is dropped and the objective leads");
+            eqs(b[1], "", "a blank line is kept as a paragraph break");
+            eqs(b[2], "*PRIORITY CRITICAL*",
+                "a colour run loses its markup AND its colour letter");
+            eqs(b[6], "The Gate is north. Expect Core patrols.",
+                "...including a run that opens mid-line");
+        }
+        for (const auto& l : b) {
+            check(l.find('&') == std::string::npos, "no '&' survives");
+            break;   // one representative check, not one per line
+        }
+        check(b.empty() || b.back() != "END", "the END terminator is dropped");
+        check(b.empty() || !b.back().empty(), "and trailing blank lines are trimmed");
+    }
+    {
+        // Nothing to show, and nothing that looks like content.
+        check(ta::parseTaBriefing("").empty(), "empty briefing text yields nothing");
+        check(ta::parseTaBriefing("MISSION 2.0002CORE\r\nEND\r\n").empty(),
+              "a briefing with only an id and END yields nothing");
+    }
+
     std::printf(g_fail ? "campaign_test: %d FAILURE(S)\n" : "campaign_test: all passed\n",
                 g_fail);
     return g_fail ? 1 : 0;

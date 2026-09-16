@@ -6,6 +6,8 @@
 
 #include "hpi/hpi.h"
 #include "tdf/tdf.h"
+#include "tnt/ota.h"
+#include "util/strcase.h"
 
 namespace ta {
 namespace {
@@ -94,11 +96,92 @@ bool parseCampaignText(const std::string& text, const std::string& file, Campaig
     return !out.missions.empty();
 }
 
+// TA's briefing text: `camps/briefs/<brief>.txt`, where <brief> is named by the
+// mission's own .ota (`brief=ArmCampaign1`). The file is prose rather than a
+// bullet list, and carries three things a reader has to handle:
+//
+//   * a `MISSION 1.0001ARME` id line at the top, and an `END` line at the bottom
+//   * inline colour runs written `&Y...&` / `&R...&` (yellow for the priority
+//     banner, red for a warning), which are markup and not content
+//
+// Kingdoms instead shipped `missions/<stem>.txt` as a plain bulleted list, which
+// is what the parser below handles. Both are returned as a list of lines.
+std::string taBriefPath(const hpi::Vfs& vfs, const std::string& stem) {
+    const std::string ota = "maps/" + stem + ".ota";
+    if (!vfs.has(ota)) return {};
+    try {
+        auto b = vfs.read(ota);
+        tnt::Scenario sc = tnt::Scenario::parse(std::string(b.begin(), b.end()));
+        if (sc.brief.empty()) return {};
+        // The key sometimes carries the extension and sometimes does not: the
+        // campaign missions write `brief=ArmCampaign1` while the Battle Tactics
+        // scenarios write `brief=I09Brief.txt`. Appending unconditionally asks
+        // for "I09Brief.txt.txt" and finds nothing, which is why only the
+        // campaign proper had briefing text.
+        std::string name = sc.brief;
+        if (!ta::iendsWith(name, ".txt")) name += ".txt";
+        const std::string p = "camps/briefs/" + name;
+        if (vfs.has(p)) return p;
+    } catch (const std::exception&) {}
+    return {};
+}
+
+std::vector<std::string> parseTaBriefing(const std::string& raw) {
+    std::vector<std::string> out;
+    const std::string& bytes = raw;
+
+    // Strip the colour markup, drop the id and END lines, and keep the rest as
+    // paragraphs -- blank lines separate them and are preserved as empty
+    // entries so a caller can lay the briefing out.
+    //
+    // A colour run is written `&X ... &`: the OPENING delimiter carries a
+    // one-letter colour and the closing one does not. Dropping only the '&'
+    // characters leaves that letter glued to the text ("RExpect Core
+    // patrols"). Across the 50 shipped brief files the opens are exactly R,
+    // Y and G -- 38, 31 and 13 of them -- and the closes are the other 82
+    // occurrences, so the two sides balance and the rule is simply: '&'
+    // followed by one of those letters consumes both, any other '&' consumes
+    // itself.
+    std::string text;
+    text.reserve(bytes.size());
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        const char c = char(bytes[i]);
+        if (c == '&') {
+        const char n = i + 1 < bytes.size() ? char(bytes[i + 1]) : '\0';
+        if (n == 'R' || n == 'Y' || n == 'G') ++i;   // opening: eat the colour too
+        continue;
+        }
+        if (c != '\r') text += c;
+    }
+    std::string line;
+    bool first = true;
+    auto push = [&] {
+        size_t b = line.find_last_not_of(" \t");
+        std::string t = b == std::string::npos ? std::string() : line.substr(0, b + 1);
+        const bool isId = first && t.rfind("MISSION ", 0) == 0;
+        first = false;
+        if (isId) { line.clear(); return; }
+        if (t == "END") { line.clear(); return; }
+        out.push_back(t);
+        line.clear();
+    };
+    for (char c : text) {
+        if (c == '\n') push();
+        else line += c;
+    }
+    push();
+    while (!out.empty() && out.back().empty()) out.pop_back();
+    return out;
+}
+
 std::vector<std::string> loadObjectives(const hpi::Vfs& vfs, const std::string& stem) {
     std::vector<std::string> out;
-    std::string path = "missions/" + stem + ".txt";
+    std::string path = taBriefPath(vfs, stem);
+    const bool taBrief = !path.empty();
+    if (!taBrief) path = "missions/" + stem + ".txt";
     if (!vfs.has(path)) return out;
     std::vector<uint8_t> bytes = vfs.read(path);
+    if (taBrief) return parseTaBriefing(std::string(bytes.begin(), bytes.end()));
     std::string cur;
     auto flush = [&] {
         size_t a = cur.find_first_not_of(" \t");
