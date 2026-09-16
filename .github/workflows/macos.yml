@@ -87,8 +87,23 @@ jobs:
           plutil -lint "$APPDIR/Contents/Info.plist"
           codesign --force --deep -s - "$APPDIR"
           ln -s /Applications dist-dmg/Applications
-          hdiutil create -volname "TA Engine" -srcfolder dist-dmg -ov -format UDZO \
-            "ta-engine-$VERSION-macos-arm64.dmg"
+          # hdiutil intermittently fails with "Resource busy" on the hosted
+          # runners -- it races its own background disk-arbitration, and the whole
+          # workflow then fails on a packaging step that has nothing to do with
+          # the build (seen on 2a823c2, where the bundle was created, linted and
+          # signed first). Retry a few times with a short backoff before giving up.
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "TA Engine" -srcfolder dist-dmg -ov -format UDZO \
+                 "ta-engine-$VERSION-macos-arm64.dmg"; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "hdiutil create failed $attempt times -- giving up" >&2
+              exit 1
+            fi
+            echo "hdiutil create failed (attempt $attempt), retrying in 10s" >&2
+            sleep 10
+          done
           hdiutil verify "ta-engine-$VERSION-macos-arm64.dmg"
 
       # The zip carries the SAME .app (launch that from Finder -- no Terminal)
