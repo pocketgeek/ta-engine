@@ -1791,6 +1791,12 @@ private:
     std::vector<std::pair<float, float>> metalSpots_;
     MapEconomy mapEcon_;
     std::vector<float> metal_;   // per-cell richness; see metalAt()
+    // Scratch for the economy tick: the finished, active units that pay a standing
+    // MetalUse/EnergyUse, held back from the bulk income pass so each can be billed
+    // individually against the running balance. A member (not a local) purely to
+    // keep the per-tick allocation out of the hot path; it carries nothing between
+    // ticks and is never hashed.
+    std::vector<Unit*> upkeepUnits_;
     // Wind: a clamped random walk, re-rolled on an expiring countdown, exactly as
     // retail does it (TotalA.exe 0x4787a5). Both are hashed -- they feed income.
     int wind_ = 0;

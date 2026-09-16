@@ -219,6 +219,29 @@ int main(int argc, char** argv) {
     }
     check(kingdomsy == 0, "no type carries a Kingdoms mogrium income/storage");
 
+    // --- Negative EnergyUse is PRODUCTION -------------------------------------
+    // Both sides' Solar Collector states its whole output as "EnergyUse=-20;
+    // EnergyMake=0". Nothing downstream should ever see a negative use: read as a
+    // drain, a negative total made the entire base's upkeep free; ignored, solar
+    // panels produced nothing and neither side had a first energy building that
+    // worked. This is the one place the normalisation can be checked against the
+    // shipped data rather than a synthetic type.
+    for (const char* id : {"armsolar", "corsolar"}) {
+        const auto* t = reg.find(id);
+        check(t != nullptr, std::string(id) + " is in the registry");
+        if (!t) continue;
+        check(t->energyUse == 0,
+              std::string(id) + " exposes no negative energy use");
+        check(t->energyMake >= 20.0f,
+              std::string(id) + " earns its 20/sec through energyMake");
+    }
+    int negUse = 0;
+    for (const auto& [id, t] : reg.types()) {
+        (void)id;
+        if (t.energyUse < 0 || t.metalUse < 0) ++negUse;
+    }
+    check(negUse == 0, "no type exposes a negative standing use at all");
+
     std::printf(g_fail ? "unitdata_test: %d FAILURE(S)\n" : "unitdata_test: all passed\n",
                 g_fail);
     return g_fail ? 1 : 0;

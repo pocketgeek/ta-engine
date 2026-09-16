@@ -339,8 +339,24 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.buildCostEnergy = float(info->numberOr("buildcostenergy", 0));
             t.metalMake = float(info->numberOr("metalmake", 0));
             t.energyMake = float(info->numberOr("energymake", 0));
-            t.metalUse = float(info->numberOr("metaluse", 0));
-            t.energyUse = float(info->numberOr("energyuse", 0));
+            // A NEGATIVE use is production. This is not a quirk of one file: the
+            // Solar Collector is how both sides get their first energy, and
+            // ARMSOLAR/CORSOLAR state their entire 20/sec output as
+            // "EnergyUse=-20; EnergyMake=0". Read as a drain it is worse than
+            // useless -- a negative total drain made the whole base's upkeep free
+            // -- and read as nothing at all it leaves solar panels producing
+            // nothing, which is what was happening. Fold it into the make side so
+            // every consumer downstream sees one model of who earns what.
+            // Measured over the Commander Pack: 2 of 272 types (both solars) use
+            // the negative form, and none does so for metal.
+            {
+                float mu = float(info->numberOr("metaluse", 0));
+                float eu = float(info->numberOr("energyuse", 0));
+                if (mu < 0) { t.metalMake += -mu; mu = 0; }
+                if (eu < 0) { t.energyMake += -eu; eu = 0; }
+                t.metalUse = mu;
+                t.energyUse = eu;
+            }
             t.metalStorage = float(info->numberOr("metalstorage", 0));
             t.energyStorage = float(info->numberOr("energystorage", 0));
             t.extractsMetal = float(info->numberOr("extractsmetal", 0));
@@ -4557,6 +4573,11 @@ void World::tick(float dt) {
         tm.energy.buildDrain = tm.energy.spentThisTick * inv;
         tm.metal.spentThisTick = tm.energy.spentThisTick = 0;
     }
+    // Storage, and the income/drain of everything that pays no standing upkeep.
+    // Units that DO pay upkeep are held back for the metered pass further down:
+    // their output is conditional on their bill being paid, so it cannot be
+    // accumulated before the balance is known.
+    upkeepUnits_.clear();
     for (auto& u : units_) {
         if (!u.alive() || !u.type || u.underConstruction) continue;
         auto& tm = players_[size_t(u.player)];
@@ -4567,16 +4588,21 @@ void World::tick(float dt) {
         // consumes nothing -- that is the whole point of the toggle, and it is
         // how a player survives an energy stall.
         if (!u.active) continue;
+        if (t->metalUse > 0 || t->energyUse > 0) {
+            // Still counts toward the DISPLAYED drain, so the HUD shows what the
+            // base is asking for rather than only what it managed to pay.
+            tm.metal.drain += t->metalUse;
+            tm.energy.drain += t->energyUse;
+            upkeepUnits_.push_back(&u);
+            continue;
+        }
         tm.metal.income += t->metalMake + t->makesMetal;
         tm.energy.income += t->energyMake;
-        tm.metal.drain += t->metalUse;
-        tm.energy.drain += t->energyUse;
         if (t->extractsMetal > 0)
             tm.metal.income += extractorYield(u);
         // Wind and tidal are MAP properties, not unit constants: a wind farm on a
         // becalmed map earns nothing, which is why retail maps advertise their
         // wind range in the .ota.
-        // Wind and tidal are rated against the MAP, not fixed per unit.
         if (t->windGenerator > 0)
             tm.energy.income += std::min(t->windGenerator, windSpeed());
         if (t->tidalGenerator > 0)
@@ -4587,19 +4613,55 @@ void World::tick(float dt) {
         tm.energy.income *= tm.incomeMult;
     }
 
-    // Apply income, then the standing drain.
-    // Standing drain (a unit's own EnergyUse/MetalUse) settles in bulk: retail
-    // bills each unit separately through the same all-or-nothing primitive, and
-    // the difference only shows in which units go dark first when a base browns
-    // out. Worth revisiting alongside the on/off toggle.
-    auto settle = [&](Resource& r) {
-        r.cur += r.income * dt;
-        float want = r.drain * dt;
-        if (want <= 0) return;
-        if (r.cur >= want) { r.cur -= want; return; }
-        r.cur = 0;
-    };
-    for (auto& tm : players_) { settle(tm.metal); settle(tm.energy); }
+    // Apply the unconditional income first, so the metered pass below has a real
+    // balance to bill against.
+    for (auto& tm : players_) {
+        tm.metal.cur += tm.metal.income * dt;
+        tm.energy.cur += tm.energy.income * dt;
+    }
+
+    // Standing upkeep, billed PER UNIT and all-or-nothing -- the rule retail uses,
+    // and the one that makes an energy stall bite. A metal maker is the clearest
+    // case: it converts energy into metal, so a maker that cannot pay its
+    // EnergyUse this tick must not produce. Settling the drain in bulk instead
+    // (cap the payment at whatever is left, then credit every unit's output in
+    // full) handed the player free metal for the whole duration of a stall, which
+    // is precisely the situation the stall is supposed to punish.
+    //
+    // Order is the unit list, which is creation order: the same on every peer, so
+    // which units go dark first is deterministic rather than an artefact of the
+    // iteration. A unit that cannot pay simply produces and consumes nothing this
+    // tick; it is not switched off, and it pays again the moment there is income
+    // for it, so a base recovering from a brownout comes back by itself.
+    for (Unit* up : upkeepUnits_) {
+        Unit& u = *up;
+        const UnitType* t = u.type;
+        auto& tm = players_[size_t(u.player)];
+        const float wantM = t->metalUse * dt, wantE = t->energyUse * dt;
+        if (tm.metal.cur < wantM || tm.energy.cur < wantE) continue;   // browned out
+        tm.metal.cur -= wantM;
+        tm.energy.cur -= wantE;
+        // What this unit earns, by the same rules as the unmetered pass above.
+        float earnM = t->metalMake + t->makesMetal;
+        float earnE = t->energyMake;
+        if (t->extractsMetal > 0) earnM += extractorYield(u);
+        if (t->windGenerator > 0) earnE += std::min(t->windGenerator, windSpeed());
+        if (t->tidalGenerator > 0) earnE += t->tidalGenerator * mapEcon_.tidalStrength;
+        earnM *= tm.incomeMult;
+        earnE *= tm.incomeMult;
+        tm.metal.cur += earnM * dt;
+        tm.energy.cur += earnE * dt;
+        // Report what it actually earned, so the HUD's income figure matches the
+        // balance's behaviour instead of promising output that browned out. The
+        // figure is already incomeMult-scaled at this point (the loop above ran),
+        // so these are added scaled too.
+        tm.metal.income += earnM;
+        tm.energy.income += earnE;
+    }
+    for (auto& tm : players_) {
+        tm.metal.cur = std::max(0.0f, tm.metal.cur);
+        tm.energy.cur = std::max(0.0f, tm.energy.cur);
+    }
 
     // Allied sharing: a resource that would overflow one player's cap flows to
     // teammates with headroom, so a maxed-out ally feeds the team instead of
