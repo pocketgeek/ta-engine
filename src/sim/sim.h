@@ -1059,6 +1059,10 @@ public:
     float windSpeed() const { return float(wind_); }
     // Metal per second an extractor on this unit's footprint yields.
     float extractorYield(const Unit& u) const;
+    // The same figure for a PROSPECTIVE extractor at (x,z) -- what one would earn
+    // if built there. Same formula, so a planner weighing a site cannot drift
+    // from what the site will actually pay.
+    float extractorYieldAt(const UnitType& t, float x, float z) const;
     // A wind generator's output at the current wind speed. Retail normalises the
     // speed against a fixed 5000 and MULTIPLIES the unit's rating by it; see the
     // note on the implementation, which is not what the field names suggest.

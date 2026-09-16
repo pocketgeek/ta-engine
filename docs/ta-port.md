@@ -407,6 +407,44 @@ puts the two starts on opposite sides of open water, so nothing built so far can
 reach the other player. Testing whether the AI *fights* needs a land-connected
 map, and is the next thing to measure rather than something to infer from here.
 
+### What a metal-poor map showed
+
+Running the same AI on **The Pass** — all land, so a fair combat test — instead
+exposed two more things.
+
+It built **eight extractors and stayed at +1.3 metal/sec**. The Pass declares
+`SurfaceMetal=3` and places no metal feature at all, so a 3x3 mex there earns
+`9 x (3+1) x 0.001` = 0.036/sec and takes over twenty minutes to repay its own 50
+metal. (That `SurfaceMetal` is a per-cell *richness* is settled in
+[`retail-engine-ta.md`](retail-engine-ta.md) by the extremes: Metal Heck, TA's
+all-metal map, declares 255 and places no metal feature either.) The planner now
+asks `World::extractorYieldAt` what a site would actually pay — the same function
+that will pay it — and declines ground that never repays the building. Coast To
+Coast is untouched by that rule, byte for byte; The Pass stops throwing metal
+away.
+
+And then it built **nothing at all** for five minutes, sitting on ~1000 of each
+resource. `TA_AI_PICK` named it: `armlab ... afford=Y usable=0`. The store rule
+above was testing "does this declare a storage field", and **nearly every TA
+building carries a small buffer** — a Kbot Lab declares `MetalStorage=100` and
+`EnergyStorage=100` — so it had classified every *factory* as a store and refused
+to build one unless the player happened to be near their cap. Scoped to the
+economy categories, both maps reach production: Coast To Coast 5 extractors,
++6.1/sec and an Aircraft Plant at 300 s; The Pass a Kbot Lab inside 45 s.
+
+The lesson is the one the diagnostics exist for: a rule keyed on a *field being
+present* rather than on what the thing is FOR will quietly catch everything that
+happens to carry the field.
+
+With both fixed, The Pass at 300 s answers the question Coast To Coast could not:
+
+> `units=9 kills=2 p0-metal=23(+1.0/s) p0-energy=1100(+25.9/s)`
+> `p0 mix: armpwx3,armcomx1,armlabx1,armmstorx1`
+
+A Kbot Lab, three Peewees out of it, and **kills** — the whole chain, economy to
+factory to army to contact, on an AI that six commits earlier built four
+buildings and never moved off the Commander's own +1.0 metal/sec.
+
 The middle two are the sort of thing a single-resource planner cannot see: a
 metal *store* produces nothing but shares a category with the things that do, and
 a metal *maker* burns 60 energy/sec for 1 metal/sec, so built without that

@@ -3473,18 +3473,27 @@ float World::windEnergy(const UnitType& t) const {
 // of lookups and gives the same answer for a static map. See
 // docs/retail-engine-ta.md.
 float World::extractorYield(const Unit& u) const {
-    if (!u.type || u.type->extractsMetal <= 0) return 0;
-    const int cx = int(u.x) / 16, cz = int(u.z) / 16;
-    const int fx = std::max(1, u.type->footX), fz = std::max(1, u.type->footZ);
+    return u.type ? extractorYieldAt(*u.type, u.x, u.z) : 0.0f;
+}
+
+float World::extractorYieldAt(const UnitType& t, float x, float z) const {
+    if (t.extractsMetal <= 0) return 0;
+    const int cx = int(x) / 16, cz = int(z) / 16;
+    const int fx = std::max(1, t.footX), fz = std::max(1, t.footZ);
     float total = 0;
     for (int dz = 0; dz < fz; ++dz)
         for (int dx = 0; dx < fx; ++dx) {
             float cell = metalAt(cx + dx - fx / 2, cz + dz - fz / 2);
-            // Cells with no patch still carry the map's background richness.
+            // Cells with no patch still carry the map's background richness --
+            // the .ota's SurfaceMetal. That it is a RICHNESS and not a patch
+            // count is settled by the extremes: Metal Heck, TA's all-metal map,
+            // declares SurfaceMetal=255 and places no metal feature at all, while
+            // Coast To Coast declares 5 and scatters ArchMetal patches. A map with
+            // a low figure and no patches really is poor ground.
             if (cell <= 0) cell = mapEcon_.surfaceMetal;
             total += cell + 1.0f;
         }
-    return total * u.type->extractsMetal;
+    return total * t.extractsMetal;
 }
 
 void World::setFeatureTypes(std::vector<FeatType> t) {

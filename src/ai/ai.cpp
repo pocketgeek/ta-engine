@@ -391,7 +391,16 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
         // nowhere near using -- the AI was building metal storage while earning
         // +1/sec. Worth it only when the resource is actually capping out and
         // being thrown away.
-        {
+        //
+        // Scoped by CATEGORY, not by "has a storage field". Nearly every TA
+        // building carries a small buffer -- a Kbot Lab declares MetalStorage=100
+        // and EnergyStorage=100 -- so testing the field alone classified every
+        // FACTORY as a store and refused to build one unless the player happened
+        // to be near its cap. That is exactly what happened: the AI sat on a
+        // metal-poor map at 74% of cap with ~1000 of each resource and built
+        // nothing at all for five minutes.
+        const BuildCat cat = categoryOf(ut);
+        if (cat == BuildCat::Economy || cat == BuildCat::Power) {
             const bool storesMetal = ut->metalStorage > 0 && ut->extractsMetal <= 0 &&
                                      ut->makesMetal <= 0 && ut->metalMake <= 0;
             const bool storesEnergy = ut->energyStorage > 0 && ut->energyMake <= 0 &&
@@ -530,15 +539,29 @@ bool Controller::placeSite(const ta::sim::World& world, const ta::sim::UnitType*
     // earning nothing. Prefer the nearest free patch; if every patch is taken or
     // blocked, fall through and build it on open ground rather than giving up,
     // because "no free metal left" must not stall the whole build order.
-    if (t->extractsMetal > 0.0f && world.hasMetalSpots()) {
-        float bestD = 1e18f;
-        bool found = false;
-        for (const auto& [sx, sz] : world.metalSpots()) {
-            if (!world.canPlace(t, sx, sz)) continue;   // taken or blocked
-            float dx = sx - nx, dz = sz - nz, d = dx * dx + dz * dz;
-            if (d < bestD) { bestD = d; outX = sx; outZ = sz; found = true; }
+    if (t->extractsMetal > 0.0f) {
+        if (world.hasMetalSpots()) {
+            float bestD = 1e18f;
+            bool found = false;
+            for (const auto& [sx, sz] : world.metalSpots()) {
+                if (!world.canPlace(t, sx, sz)) continue;   // taken or blocked
+                float dx = sx - nx, dz = sz - nz, d = dx * dx + dz * dz;
+                if (d < bestD) { bestD = d; outX = sx; outZ = sz; found = true; }
+            }
+            if (found) return true;
         }
-        if (found) return true;
+        // No free patch. Off-patch ground still pays the map's background
+        // richness, which on a rich map (Metal Heck declares SurfaceMetal=255) is
+        // worth having and on a poor one is not: The Pass declares 3, where a mex
+        // earns 0.04 metal/sec and would take over twenty minutes to repay its own
+        // 50 metal. The AI built eight of them there and stayed on +1.3/sec, the
+        // Commander's own trickle. So ask what the ground would actually pay, by
+        // the same function that will pay it, and decline ground that never
+        // repays the building.
+        constexpr float kPaybackSeconds = 300.0f;
+        const float yield = world.extractorYieldAt(*t, nx, nz);
+        if (t->buildCostMetal > 0.0f && yield * kPaybackSeconds < t->buildCostMetal)
+            return false;
     }
     for (float r = 70; r < 340; r += 30)
         for (float a = 0; a < 6.28f; a += 0.5f) {

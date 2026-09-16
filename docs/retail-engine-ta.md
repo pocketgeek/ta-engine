@@ -86,6 +86,44 @@ Checked against the engine: ARMMEX (`ExtractsMetal=0.001`, 3x3) on a `metal=127`
 patch gives **1.152 metal/s**, which our `World::extractorYield` now reproduces
 exactly.
 
+### Where the per-cell metal byte comes from — and what `SurfaceMetal` is
+
+The cell lookup the formula calls (`0x481550`) resolves `13 * (z*width + x) +
+[global+0x14287]`, so the map is an array of **13-byte cells** and metal is
+byte **+7** of one. That byte is not in the `.tnt`: every byte of all 96 shipped
+maps is accounted for by the planes we read (the only gaps are the tile plane's
+16-byte alignment padding), `MapAttr`'s fourth byte is zero on every cell of
+every map, and only `.tnt` and `.ota` ship per map. So it is **painted at load**.
+
+`SurfaceMetal` (the string is at `0x504b24`, read at `0x4366b8` into map
+`+0xd30`) is the background **richness** of a cell with no metal feature on it,
+and this is settled by the extremes rather than by the name:
+
+| map | SurfaceMetal | metal features placed |
+| --- | --- | --- |
+| Metal Heck | **255** | **none** |
+| Lava Alley | 20 | none |
+| Coast To Coast | 5 | 10 (ArchMetal1/2/3) |
+| The Pass | 3 | none |
+
+Metal Heck is TA's all-metal map and places not one metal feature — it is metal
+everywhere *because* its background is the maximum byte. Coast To Coast is the
+opposite arrangement: a poor background with rich patches scattered on it.
+
+So a map with a low figure and no patches really is poor ground, and the numbers
+follow: a 3x3 ARMMEX yields `9 x (3+1) x 0.001` = **0.036 metal/sec** on The Pass,
+against `9 x (187+1) x 0.001` = **1.69** on an ArchMetal1 patch and `9 x 256 x
+0.001` = **2.30** on Metal Heck. The AI was building eight extractors on The Pass
+and staying at +1.3 metal/sec — the Commander's own trickle — which is what sent
+us looking here.
+
+**Not established:** `+0xd30` is also read at `0x40c166`, immediately after a
+`rand(255)`, and at `0x40a5ec` where it is multiplied by the map's width and
+height and doubled. Both look like a *density* being used to scatter something at
+load. Whether that is the metal painting itself, feature scattering, or something
+else is unresolved — what the table above pins down is how the figure behaves at
+the two extremes, not the routine that applies it.
+
 **Correcting an earlier reading in this document.** The tick site at `0x401486`
 loads `ExtractsMetal` only to compare it with `0.0`, and I wrote that up as
 "`ExtractsMetal` is a predicate, not a multiplier". That was right about *that*
