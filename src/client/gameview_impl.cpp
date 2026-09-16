@@ -482,6 +482,21 @@
         int a = spawn(shooter, cx - 40, cz, 1.57f, 0);
         int e = spawn(victim, cx + 90, cz, -1.57f, 1);
         world_.attack(a, e, false);
+        // KNOWN LIMITATION, measured: these staged pairs do NOT actually engage.
+        // Probing every unit's HP across both players shows zero combat damage in
+        // this harness -- the only deaths are the two killed outright by the hp=0
+        // writes below. The units are fine on paper: armpw carries its EMG at
+        // range 180 against a corak 130 away, both sides are armed, and
+        // world_.allied(0,1) is false, so they are enemies. Neither ever sets
+        // justFired.
+        //
+        // Target acquisition is gated on losBetween, which is driven by the nav
+        // overlay (see the stateHash comment in sim.cpp), so the likely cause is
+        // the local harness's world setup rather than the combat code -- the MP
+        // path, which is how the game is actually played, fights perfectly well
+        // (an all-AI match on The Pass concludes with kills). Not chased further.
+        // What this harness IS good for: spawning a scene, the outright kills
+        // that exercise wrecks and reclaim, and the feature-ignition case.
         // 2. A tower auto-acquiring something off-axis: the turret must swing to
         //    face it, which is the aim pipeline's heading sign.
         if (tower) {
@@ -1105,6 +1120,64 @@
         for (const UnitR* _up : front().live) {
             const UnitR& u = *_up;
             if (u.justBuilt && !birthFx_.count(u.justBuilt)) birthFx_[u.justBuilt] = 0.0f;
+            // `unitcomplete` -- retail labels it "Nanolathe Complete" (id 8 in
+            // TotalA.exe's event table).
+            //
+            // Driven off the underConstruction EDGE, not `justBuilt`: justBuilt
+            // is flagged only on a FACTORY that emitted a unit, so a builder
+            // finishing a structure -- most of what a commander does -- never set
+            // it and the sound never played.
+            //
+            // The PRODUCER reports it, not the thing produced. That is measured,
+            // not assumed: only 12 sound classes define `unitcomplete` and every
+            // one is a producer -- building, airplant, kbotplant, shipyard,
+            // tankplant, arm_com. Voicing the finished unit instead asked
+            // arm_solar for a sound it does not have, and fell back to the tone.
+            // So remember who was lathing each site while it was still going up.
+            if (u.type && u.player == localPlayer_) {
+                // `underattack` (id 2, labelled "Under Attack"). Keyed on this
+                // unit's HP DROPPING, not on a hit record: a hit carries
+                // victimId only for a direct strike -- it is 0 for a ground or
+                // splash impact -- and splash damage is exactly the case a
+                // player wants warning about. Every one of the 120 sound classes
+                // defines this event, so any unit can report it.
+                //
+                // RATE-LIMITED, and the interval is MINE, not retail's. The
+                // event table gives this a second numeric column of 20 where
+                // most events carry 0..4, which reads like a repeat cooldown --
+                // but the units of that column were never established, so this
+                // reproduces the intent, not the number.
+                if (u.alive()) {
+                    auto hs = hpSeen_.find(u.id);
+                    if (hs != hpSeen_.end() && u.hp < hs->second - 0.5f &&
+                        ta::devEnv("TA_SNDLOG")) {
+                        static int n = 0;
+                        if (n++ < 5)
+                            std::fprintf(stderr, "damage: unit %d (%s) p%d %.0f -> %.0f\n",
+                                         u.id, u.type->id.c_str(), u.player,
+                                         double(hs->second), double(u.hp));
+                    }
+                    if (hs != hpSeen_.end() && u.hp < hs->second - 0.5f) {
+                        constexpr float kUnderAttackGap = 8.0f;   // seconds, ours
+                        if (animClock_ - lastUnderAttack_ >= kUnderAttackGap) {
+                            lastUnderAttack_ = animClock_;
+                            voice(u.id, "underattack");
+                        }
+                    }
+                    hpSeen_[u.id] = u.hp;
+                } else {
+                    hpSeen_.erase(u.id);
+                }
+                if (u.buildSiteId) siteBuilder_[u.buildSiteId] = u.id;
+                const bool wasBuilding = builtVoiceSeen_.count(u.id) != 0;
+                if (u.underConstruction) builtVoiceSeen_.insert(u.id);
+                else if (wasBuilding) {
+                    builtVoiceSeen_.erase(u.id);
+                    auto sb = siteBuilder_.find(u.id);
+                    if (u.alive() && sb != siteBuilder_.end()) voice(sb->second, "unitcomplete");
+                    siteBuilder_.erase(u.id);
+                }
+            }
         }
         for (auto it = birthFx_.begin(); it != birthFx_.end();) {
             const auto* bu = frameUnitP(it->first);

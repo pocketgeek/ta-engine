@@ -2692,6 +2692,16 @@ private:
 
     // The per-faction conjure/build effect animation (TAF), keyed by side.
     std::map<std::string, std::vector<SDL_Texture*>> buildFx_;
+    float lastUnderAttack_ = -100.0f;   // wall-clock gate for the "Under Attack" warning
+    // Unit ids seen under construction, for the completion edge that fires the
+    // `unitcomplete` voice. Deliberately NOT the mission hook's `building_`:
+    // that one erases on the same edge, so two consumers sharing it would each
+    // steal transitions from the other.
+    std::set<int> builtVoiceSeen_;
+    std::map<int, int> siteBuilder_;    // site id -> the unit lathing it, so the
+                                        // PRODUCER reports "Nanolathe Complete".
+    std::unordered_map<int, float> hpSeen_;   // last seen HP of our units, for the
+                                              // damage edge behind "Under Attack".
 
     void loadBuildFx();
 

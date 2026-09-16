@@ -1051,6 +1051,60 @@ virtual clock outruns the corpse window. A corpse is only in `corpsePhase` betwe
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.
 
+### Two more of retail's 23 sound events
+
+The RE table (`docs/retail-engine-ta.md`) showed the engine triggering 4 of
+retail's 23 events. Two more are wired, and the pair are verified to *different
+standards* — worth distinguishing rather than reporting both as done.
+
+**`unitcomplete` — verified firing.** Retail labels it "Nanolathe Complete".
+Two corrections on the way there:
+
+* `justBuilt` is the wrong hook. It is flagged only on a FACTORY that emitted a
+  unit, so a builder finishing a structure — most of what a commander does —
+  never set it. The `underConstruction` completion edge covers both.
+* The PRODUCER reports, not the thing produced. Measured: only 12 sound classes
+  define `unitcomplete` and every one is a producer (`building`, `airplant`,
+  `kbotplant`, `shipyard`, `tankplant`, `arm_com`). Voicing the finished unit
+  asked `arm_solar` for a sound it does not have and fell back to the tone. So
+  the client remembers which unit was lathing each site.
+
+Observed in a real game: `unit 1 class 'arm_com' event 'unitcomplete' ->
+kcarmmov`, matching `[ARM_COM] unitcomplete=kcarmmov` exactly, and firing 3-4
+times per AI match.
+
+**`underattack` — wired, input verified, NOT observed firing.** Keyed on a local
+unit's HP dropping rather than on a hit record: a hit carries `victimId` only
+for a direct strike (it is 0 for a ground or splash impact), and splash is
+exactly the case a player wants warning about. The tracker demonstrably sees
+every local unit each frame and records its HP. But no harness available here
+delivers incoming damage to the local player — `--firetest` produces no combat
+damage at all (below), and two all-AI matches on The Pass were won without the
+local side being hit — so the event has never actually been heard. That is a
+weaker claim than `unitcomplete` and is not being dressed up as equal.
+
+Its rate limit (8 s) is **ours, not retail's**. The event table gives
+`underattack` a second numeric column of 20 where most events carry 0..4, which
+reads like a repeat cooldown, but that column's meaning was never established.
+
+### `--firetest` stages a scene, not a fight
+
+Correcting an over-claim made when it was converted from Kingdoms. That commit
+said it stages a fight where "a shooter kills a target, so the death leaves a TA
+wreck". **The staged pairs never engage.** Probing every unit's HP across both
+players shows zero combat damage; the only deaths are the two units killed
+outright by direct `hp = 0` writes. The wreck-rendering work verified against
+this harness is still sound — those corpses were real — but they came from the
+scripted kills, not from combat.
+
+The units are fine on paper: `armpw` carries its EMG at range 180 against a
+`corak` 130 away, both sides armed, `world_.allied(0,1)` false. Neither ever
+sets `justFired`. Target acquisition is gated on `losBetween`, which the nav
+overlay drives, so the likely cause is the local harness's world setup rather
+than the combat code — the MP path fights perfectly well, concluding all-AI
+matches with kills. Not chased further; recorded so the next person does not
+trust the harness for combat.
+
 ### Does the AI fight? Yes — and a tuning "fix" that measured as noise
 
 The AI-economy section above ends by saying that testing whether the AI *fights*
