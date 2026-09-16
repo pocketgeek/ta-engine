@@ -49,83 +49,39 @@ uint32_t fractal(uint64_t seed, int cx, int cz, int span) {
     return (a * 7 + b * 3) / 10;   // 70% coarse + 30% fine
 }
 
-// Per-world ground + sea terrain section JPG keys (terrain/<key:08x>.jpg), verified
-// present in terrain.hpi, plus each section's VALID wallpaper period in 32px tiles.
-// Ground fills are seamless across their whole grid (16x16; Zhon's is 256px = 8x8).
-// The sea JPGs are 512px but only PARTLY art: Aramon/Taros/Zhon carry a 5x5 block
-// of flat dark-teal water in the top-left corner and pure-black padding elsewhere
-// (only Veruna's dgsea fills all 16x16) -- wallpapering them %16 sampled ~90%
-// padding, which is what made generated water look black.
-struct WorldArt { uint32_t ground, sea; uint8_t groundK, seaK; };
+// Per-world ground + sea PALETTE RAMPS.
+//
+// Kingdoms maps referenced shared terrain art by key, so a generator only had to
+// pick a key. TA maps carry their own tile library, so there is no shared art to
+// point at -- a generated map has to bring its own pixels. This synthesizes a
+// small library by dithering between two ends of a palette ramp with the same
+// integer noise the heightfield uses (so it stays byte-identical across peers).
+//
+// Ramp ends are indices into the retail palette (palettes/PALETTE.PAL): its green
+// ramp starts at 32 and its blue ramp around 97. The result is textured ground
+// and water rather than flat colour -- but it is NOT retail art. Generating maps
+// that look hand-painted means drawing tiles from worlds.hpi, which is a
+// milestone of its own; see docs/ta-port.md.
+struct WorldArt { uint8_t groundLo, groundHi, seaLo, seaHi; };
 constexpr std::array<WorldArt, kMapTypes> kWorldArt = {{
-    {0x868a8222u, 0x0c2e64b2u, 16, 5},    // Aramon: grass / asea
-    {0xca4200f8u, 0xb8524a38u, 16, 5},    // Taros:  low_ground / taros_sea
-    // Veruna: sandy-cay land (a0863a34, dunes/sand -- what the Coast Sandy kit's
-    // land edges blend into, Athri Cay style) over dgsea (full-art teal sea).
-    {0xa0863a34u, 0x9a5c5436u, 16, 16},
-    {0x9bb50b09u, 0x59f53dfdu, 8, 5},     // Zhon:   jungletile80 (256px) / H2OTILE
-    // Creon (Iron Plague, IPData.hpi): green turf fill mined from the takx19-26
-    // mission maps (their other big fill, 93c585b7, is city cobblestone). Every
-    // shipped Creon map is DRY -- IP never used a Creon deep-sea fill -- so water
-    // borrows Veruna's dgsea (full 16x16 teal). CreWave01-16 exist for shores.
-    {0x814dddc1u, 0x9a5c5436u, 16, 16},   // Creon:  turf / (Veruna sea stand-in)
+    {32, 47, 97, 104},    // temperate: green ramp / blue ramp
+    {40, 47, 97, 104},    // arid: darker, browner end of the same ramp
+    {33, 42, 99, 106},    // coastal
+    {34, 45, 98, 105},    // jungle
+    {36, 46, 97, 104},    // alt
 }};
 
-// ---- coast prefab kits ---------------------------------------------------------
-// Retail coastlines are whole hand-painted 512px prefab SECTIONS (plain TNT files
-// in sections.hpi / IPSections.hpi: one terrain key, an identity col/row tile
-// grid, an authored bank heightfield, sometimes beach features). The generator
-// lays its coastline out on the section grid and stamps these whole -- that is
-// where retail's big sweeping curves come from. Role order below: straights with
-// water N/S/E/W of the piece; outer bends (water wraps NW/NE/SE/SW around a land
-// tip); inner pockets (water only in the NW/NE/SW/SE corner).
-enum ShoreRole { kRN, kRS, kRE, kRW, kONW, kONE, kOSE, kOSW, kINW, kINE, kISW, kISE, kRoles };
-struct ShoreKit {
-    const char* dir;
-    const char* name[kRoles];
-    const char* var[3];   // interchangeable cosmetic variants, picked by position
-    const char* ext;
-};
-constexpr std::array<ShoreKit, kMapTypes> kShoreKit = {{
-    {"Sections/Aramon/Coast Sandy/",
-     {"ascoast01", "ascoast02", "ascoast03", "ascoast04", "ascoast05", "ascoast06",
-      "ascoast07", "ascoast08", "ascoast12", "ascoast11", "ascoast09", "ascoast10"},
-     {"a_80", "b_80", "c_80"}, ".TNT"},
-    {"Sections/Taros/Coast Sandy/",
-     {"n", "s", "e", "w", "nw", "ne", "se", "sw", "nwe", "nee", "swe", "see"},
-     {"01", "02", "03"}, ".TNT"},
-    {"Sections/Veruna/Coast Sandy/",
-     {"n", "s", "e", "w", "nw", "ne", "se", "sw", "n_w", "e_n", "s_w", "e_s"},
-     {"01", "02", "03"}, ".TNT"},
-    // Zhon uses the JUNGLE palette's coast kit so the land edges blend into the
-    // jungletile ground fill (plain "Coast Sandy" is for its sand-flat palette).
-    {"Sections/Zhon/Coast Sandy Jungle/",
-     {"n", "s", "e", "w", "1nw", "1ne", "1se", "1sw", "2nw", "2ne", "2sw", "2se"},
-     {"1", "2", "3"}, ".TNT"},
-    {"sections/creon/shores/",
-     {"n", "s", "e", "w", "nw", "ne", "se", "sw", "n_w", "e_n", "s_w", "e_s"},
-     {"01", "02", "03"}, ".tnt"},
-}};
+// How many dithered variants of each class the generated library holds. Enough
+// that wallpapering does not read as an obvious repeat; small enough that the
+// library stays a few KB.
+constexpr int kVariants = 8;
 
-// Marching case (bit0 NW, bit1 NE, bit2 SW, bit3 SE wet) -> kit role, -1 = none.
-constexpr int kCaseRole[16] = {
-    -1,     // 0  all dry
-    kINW,   // 1  water pocket NW
-    kINE,   // 2  water pocket NE
-    kRN,    // 3  water north
-    kISW,   // 4  water pocket SW
-    kRW,    // 5  water west
-    -1,     // 6  diagonal pinch (cleaned away)
-    kONW,   // 7  only SE dry: water wraps NW
-    kISE,   // 8  water pocket SE
-    -1,     // 9  diagonal pinch (cleaned away)
-    kRE,    // 10 water east
-    kONE,   // 11 only SW dry: water wraps NE
-    kRS,    // 12 water south
-    kOSW,   // 13 only NE dry: water wraps SW
-    kOSE,   // 14 only NW dry: water wraps SE
-    -1,     // 15 all wet
-};
+// NOTE: the Kingdoms generator stamped whole hand-painted coastline SECTIONS out
+// of sections.hpi here, which is where its big sweeping shores came from. TA ships
+// no equivalent -- its authoring art lives in worlds.hpi in a different form -- so
+// the prefab kit and its stamping pass are gone rather than left to silently
+// resolve nothing. Coastlines are currently whatever the heightfield makes them.
+
 
 // Retail authoring levels the coast prefabs assume: {seaLevel, flat land level}.
 // Aramon + Creon kits are authored at land 80 (river-map style, sea 40); the
@@ -273,6 +229,10 @@ Params sanitize(Params p) {
 }
 
 Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
+    // Unused since the coast-prefab pass went: nothing is read from the install
+    // any more. Kept in the signature because sourcing real tiles from worlds.hpi
+    // is the next step for this generator and will want it straight back.
+    (void)vfs;
     Params p = sanitize(raw);
     Result r;
     ta::tnt::Map& m = r.map;
@@ -369,83 +329,38 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
         m.heights.swap(tmp);
     }
 
-    // ---- terrain tiles: fills, then whole coast prefabs -----------------------------
-    // Land/water sections WALLPAPER the world's ground/sea fill (col=bx%K,row=by%K;
-    // K = the fill's VALID art region, see kWorldArt). Shoreline sections are then
-    // stamped whole from the world's Coast Sandy prefab kit: tiles, the authored
-    // bank HEIGHTS (overwriting the placeholder -- this is what puts the sim
-    // waterline exactly on the painted shoreline), and any beach features the
-    // prefab carries.
+    // ---- terrain tiles: synthesize a library, then wallpaper it -------------------
+    // A TA map owns its art, so build the tile library first: kVariants dithered
+    // tiles per class, ground then sea. Dither uses the same integer lattice noise
+    // as the heightfield -- no floats anywhere, so every peer generates the
+    // identical bytes.
     const WorldArt art = kWorldArt[p.mapType];
-    const int kGround = art.groundK, kSea = art.seaK;
+    m.numTiles = kVariants * 2;
+    m.tileGfx.assign(size_t(m.numTiles) * ta::tnt::kTileBytes, 0);
+    for (int t = 0; t < m.numTiles; ++t) {
+        bool sea = t >= kVariants;
+        uint8_t lo = sea ? art.seaLo : art.groundLo;
+        uint8_t hi = sea ? art.seaHi : art.groundHi;
+        uint8_t* px = &m.tileGfx[size_t(t) * ta::tnt::kTileBytes];
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x) {
+                // Offset the lattice per variant so the variants differ, and
+                // sample at tile-local coordinates so each tile is self-contained.
+                uint32_t n = latticeVal(p.seed ^ (uint64_t(t) << 24), x, y);
+                px[y * 32 + x] = uint8_t(lo + (n * uint32_t(hi - lo + 1)) / 256u);
+            }
+    }
+
     size_t blocks = size_t(m.blocksX) * m.blocksY;
-    m.tileKeys.resize(blocks);
-    m.tileCols.resize(blocks);
-    m.tileRows.resize(blocks);
+    m.tiles.assign(blocks, 0);
     for (int by = 0; by < m.blocksY; ++by)
         for (int bx = 0; bx < m.blocksX; ++bx) {
             size_t i = size_t(by) * m.blocksX + bx;
-            int c = scase(bx >> 4, by >> 4);
-            bool water = (c == 15);   // shore blocks get stamped; fill land-ish meanwhile
-            m.tileKeys[i] = water ? art.sea : art.ground;
-            int K = water ? kSea : kGround;
-            m.tileCols[i] = uint8_t(bx % K);
-            m.tileRows[i] = uint8_t(by % K);
+            bool water = (scase(bx >> 4, by >> 4) == 15);
+            int variant = int(latticeVal(p.seed ^ 0x71a7e, bx, by) % uint32_t(kVariants));
+            m.tiles[i] = uint16_t((water ? kVariants : 0) + variant);
         }
     m.features.assign(size_t(W) * H, 0xFFFF);
-
-    // Prefab loader: cached per path, tolerant of a missing variant (falls back to
-    // the next; a fully missing piece leaves the fill -- same files on every peer,
-    // so the fallback is byte-identical too).
-    const ShoreKit& kit = kShoreKit[p.mapType];
-    std::map<std::string, std::unique_ptr<ta::tnt::Map>> pieceCache;
-    auto loadPiece = [&](int role, uint64_t vh) -> const ta::tnt::Map* {
-        for (int attempt = 0; attempt < 3; ++attempt) {
-            int v = int((vh + uint64_t(attempt)) % 3);
-            std::string path = std::string(kit.dir) + kit.name[role] + kit.var[v] + kit.ext;
-            auto it = pieceCache.find(path);
-            if (it == pieceCache.end()) {
-                std::unique_ptr<ta::tnt::Map> pm;
-                try {
-                    auto d = vfs.read(path);
-                    auto loaded = ta::tnt::Map::load(d, path);
-                    if (loaded.width == 32 && loaded.height == 32)
-                        pm = std::make_unique<ta::tnt::Map>(std::move(loaded));
-                } catch (const std::exception&) {}
-                it = pieceCache.emplace(std::move(path), std::move(pm)).first;
-            }
-            if (it->second) return it->second.get();
-        }
-        return nullptr;
-    };
-    struct PendingFeat { int cx, cz; std::string name; };
-    std::vector<PendingFeat> prefabFeats;
-    for (int sy = 0; sy < SH; ++sy)
-        for (int sx = 0; sx < SW; ++sx) {
-            int role = kCaseRole[scase(sx, sy)];
-            if (role < 0) continue;
-            uint64_t vh = p.seed ^ (uint64_t(sy) * 1000003u + uint64_t(sx) * 7919u);
-            const ta::tnt::Map* pc = loadPiece(role, splitmix(vh));   // vh is advanced in place
-            if (!pc) continue;
-            // heights + features: 32x32 cells at (sx*32, sy*32)
-            for (int z = 0; z < 32; ++z)
-                for (int x = 0; x < 32; ++x) {
-                    int cx = sx * 32 + x, cz = sy * 32 + z;
-                    m.heights[size_t(cz) * W + cx] = pc->heights[size_t(z) * 32 + x];
-                    uint16_t fi = pc->features[size_t(z) * 32 + x];
-                    if (fi != 0xFFFF && fi < pc->featureNames.size())
-                        prefabFeats.push_back({cx, cz, pc->featureNames[fi]});
-                }
-            // tiles: 16x16 blocks at (sx*16, sy*16)
-            for (int bz = 0; bz < 16; ++bz)
-                for (int bxl = 0; bxl < 16; ++bxl) {
-                    size_t bi = size_t(sy * 16 + bz) * m.blocksX + (sx * 16 + bxl);
-                    size_t pi = size_t(bz) * 16 + bxl;
-                    m.tileKeys[bi] = pc->tileKeys[pi];
-                    m.tileCols[bi] = pc->tileCols[pi];
-                    m.tileRows[bi] = pc->tileRows[pi];
-                }
-        }
 
     // ---- start positions: N spread around a ring, snapped to the nearest solid
     //      land, kept off the edges. Deterministic (integer compass table) -------
@@ -491,11 +406,6 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
         m.featureNames.emplace_back(nm);
         return uint16_t(m.featureNames.size() - 1);
     };
-    // The stamped coast prefabs' own features (beach rocks etc.) go in first, with
-    // their names remapped into this map's table; their cells are claimed below so
-    // the procedural scatter avoids them.
-    for (const auto& pf : prefabFeats)
-        m.features[size_t(pf.cz) * W + pf.cx] = featIdx(pf.name);
     auto nearStart = [&](int cx, int cz, int pad) {
         for (auto& [sx, sz] : r.starts) {
             int dx = cx - sx, dz = cz - sz;
@@ -508,8 +418,6 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
     // claims its footprint (centred on the anchor, matching the sim's nav blocking)
     // so later features avoid it.
     std::vector<uint8_t> claim(size_t(W) * H, 0);
-    for (const auto& pf : prefabFeats)   // prefab features block the scatter
-        claim[size_t(pf.cz) * W + pf.cx] = 1;
     auto fits = [&](int cx, int cz, int fx, int fz) {
         for (int dz = 0; dz < fz; ++dz)
             for (int dx = 0; dx < fx; ++dx) {

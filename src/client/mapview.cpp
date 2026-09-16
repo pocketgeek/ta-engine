@@ -15,56 +15,67 @@ ta::tnt::Map MapView::genOrLoad(const ta::hpi::Vfs& vfs, const std::string& mapP
 
 MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& mapPath)
     : ren_(ren), map_(genOrLoad(vfs, mapPath)), comp_(vfs) {
-    secWorker_ = std::thread([this] { sectionWorkerLoop(); });
-    queueAllSections();
+    buildAtlas();
 }
 
 MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, ta::tnt::Map map)
     : ren_(ren), map_(std::move(map)), comp_(vfs) {
-    secWorker_ = std::thread([this] { sectionWorkerLoop(); });
-    queueAllSections();
+    buildAtlas();
 }
 
-MapView::~MapView() {
-    {
-        std::lock_guard<std::mutex> lk(secMu_);
-        secStop_ = true;
+MapView::~MapView() { destroyAtlas(); }
+
+void MapView::destroyAtlas() {
+    // The renderer outlives the session, so skipping this leaks the map's terrain
+    // texture (and its gpuvram budget) on every menu->game->menu loop.
+    if (atlas_) gpuvram::destroy(atlas_);
+    atlas_ = nullptr;
+    atlasCols_ = atlasW_ = atlasH_ = 0;
+    tileBatch_.clear();
+}
+
+void MapView::buildAtlas() {
+    destroyAtlas();
+    const int n = map_.numTiles;
+    if (n <= 0) return;
+
+    // Near-square grid, so the atlas stays well inside any sane max-texture
+    // limit: even a 4096-tile map lands at 64x64 tiles = 2048x2048 px.
+    atlasCols_ = int(std::ceil(std::sqrt(double(n))));
+    int rows = (n + atlasCols_ - 1) / atlasCols_;
+    atlasW_ = atlasCols_ * kBlock;
+    atlasH_ = rows * kBlock;
+
+    // Expand every tile through the palette into one RGBA image.
+    std::vector<uint8_t> px(size_t(atlasW_) * atlasH_ * 4, 0);
+    const auto& pal = comp_.palette();
+    for (int t = 0; t < n; ++t) {
+        const uint8_t* src = map_.tile(t);
+        if (!src) continue;
+        int ox = (t % atlasCols_) * kBlock, oy = (t / atlasCols_) * kBlock;
+        for (int y = 0; y < kBlock; ++y) {
+            uint8_t* dst = &px[(size_t(oy + y) * atlasW_ + ox) * 4];
+            for (int x = 0; x < kBlock; ++x) {
+                const uint8_t* c = pal.rgba[src[y * kBlock + x]];
+                dst[x * 4 + 0] = c[0]; dst[x * 4 + 1] = c[1];
+                dst[x * 4 + 2] = c[2]; dst[x * 4 + 3] = 255;
+            }
+        }
     }
-    secCv_.notify_all();
-    if (secWorker_.joinable()) secWorker_.join();
-    // Free the section textures: the renderer outlives the session, so skipping
-    // this leaked the map's terrain textures (and gpuvram budget) on every
-    // menu->game->menu loop.
-    for (auto& [k, s] : sections_) if (s.tex) gpuvram::destroy(s.tex);
+
+    if (!gpuvram::wouldFit(px.size())) return;   // underlay carries the view
+    atlas_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
+                             atlasW_, atlasH_);
+    if (!atlas_) { gpuvram::noteFail(); atlasCols_ = atlasW_ = atlasH_ = 0; return; }
+    SDL_UpdateTexture(atlas_, nullptr, px.data(), atlasW_ * 4);
+    SDL_SetTextureScaleMode(atlas_, bilinear_ ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
+    tileBatchDirty_ = true;
 }
 
 void MapView::reload(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
-    // Quiesce the decode worker first: it reads map_, which is about to be swapped.
-    {
-        std::unique_lock<std::mutex> lk(secMu_);
-        decodeQueue_.clear();
-        secCv_.wait(lk, [this] { return !secBusy_; });
-        decoded_.clear();      // stale decodes queued against the OLD map
-        secPending_.clear();
-    }
-    for (auto& [k, s] : sections_) if (s.tex) gpuvram::destroy(s.tex);
-    sections_.clear();
-    tileBatch_.clear();
-    tileBatchDirty_ = true;
-    builtZoom_ = -1;   // force a rebuild against the new map
     map_ = genOrLoad(vfs, mapPath);
-    queueAllSections();
-}
-
-void MapView::queueAllSections() {
-    // The map references a handful of section JPGs (Two Castles: 27). Collect
-    // the unique keys and hand them to the decode worker; each becomes one GPU
-    // texture. Deduped via secPending_.
-    std::set<uint32_t> keys(map_.tileKeys.begin(), map_.tileKeys.end());
-    std::lock_guard<std::mutex> lk(secMu_);
-    for (uint32_t k : keys)
-        if (secPending_.insert(k).second) decodeQueue_.push_back(k);
-    secCv_.notify_all();
+    builtZoom_ = -1;          // force a batch rebuild against the new map
+    buildAtlas();             // also clears the batch and the old texture
 }
 
 void MapView::input(const SDL_Event& e) {
@@ -110,26 +121,12 @@ void MapView::clampOffset(int winW, int winH) {
 }
 
 void MapView::ensureChunks(int winW, int winH) {
-    // (Kept name: the call sites are unchanged.) Adopt any sections the worker
-    // decoded since last frame; that's all the per-frame texture work now --
-    // there is no per-view streaming/eviction. The map's whole section set
-    // (~7 MiB) is resident once decoded, resolution-independent.
+    // (Kept name: the call sites are unchanged.) There is no per-frame texture
+    // work left -- the tile atlas is built once at map load and stays resident,
+    // resolution-independent -- so this just keeps the view on the map.
     clampOffset(winW, winH);
-    uploadReadySections();
 }
 
-void MapView::finishChunks() {
-    // Screenshot path: block until every section is decoded AND uploaded.
-    {
-        std::unique_lock<std::mutex> lk(secMu_);
-        secCv_.wait(lk, [this] { return decodeQueue_.empty() && !secBusy_; });
-    }
-    for (;;) {
-        uploadReadySections();
-        std::lock_guard<std::mutex> lk(secMu_);
-        if (decoded_.empty()) break;
-    }
-}
 
 void MapView::rebuildTileBatch(int winW, int winH) {
     for (auto& [t, v] : tileBatch_) v.clear();   // keep per-texture capacity
@@ -148,21 +145,19 @@ void MapView::rebuildTileBatch(int winW, int winH) {
         float y1 = float(std::lround(((by + 1) * kBlock - offY_) * zoom_));
         for (int bx = b0x; bx <= b1x; ++bx) {
             size_t b = size_t(by) * mapW + bx;
-            auto si = sections_.find(map_.tileKeys[b]);
-            if (si == sections_.end() || !si->second.tex) continue;  // underlay shows
-            const Section& s = si->second;
-            // Tile crop within the section (retail wraps col/row by the JPG size).
-            int sx = (map_.tileCols[b] * kBlock) % std::max(s.w, 1);
-            int sy = (map_.tileRows[b] * kBlock) % std::max(s.h, 1);
+            int t = map_.tiles[b];
+            if (!atlas_ || t < 0 || t >= map_.numTiles) continue;   // underlay shows
+            int sx = (t % atlasCols_) * kBlock, sy = (t / atlasCols_) * kBlock;
             // Half-texel inset: bilinear at the quad edge then samples exactly the
             // tile's own edge texel, never the neighbour -- seam-free without a
-            // baked gutter. Clamp for the rare non-32-multiple section.
-            float u0 = (sx + 0.5f) / s.w, v0 = (sy + 0.5f) / s.h;
-            float u1 = (std::min(sx + kBlock, s.w) - 0.5f) / s.w;
-            float v1 = (std::min(sy + kBlock, s.h) - 0.5f) / s.h;
+            // baked gutter. Matters more here than with sections, because every
+            // tile in the atlas has a different tile on all four sides.
+            float u0 = (sx + 0.5f) / atlasW_, v0 = (sy + 0.5f) / atlasH_;
+            float u1 = (sx + kBlock - 0.5f) / atlasW_;
+            float v1 = (sy + kBlock - 0.5f) / atlasH_;
             float x0 = float(std::lround((bx * kBlock - offX_) * zoom_));
             float x1 = float(std::lround(((bx + 1) * kBlock - offX_) * zoom_));
-            auto& vb = tileBatch_[s.tex];
+            auto& vb = tileBatch_[atlas_];
             SDL_Vertex tl{{x0, y0}, white, {u0, v0}};
             SDL_Vertex tr{{x1, y0}, white, {u1, v0}};
             SDL_Vertex br{{x1, y1}, white, {u1, v1}};
@@ -179,8 +174,9 @@ void MapView::rebuildTileBatch(int winW, int winH) {
 void MapView::draw(int winW, int winH) {
     clampOffset(winW, winH);
 
-    // Underlay first: stretch the overview across the whole map's screen rect. Tiles
-    // draw on top at full detail; not-yet-uploaded sections fall back to this.
+    // Underlay first: stretch the overview across the whole map's screen rect.
+    // Tiles draw on top at full detail; if the atlas could not be uploaded (VRAM
+    // pressure), this is what the player sees.
     if (underlay_) {
         int mapW = map_.blocksX * kBlock, mapH = map_.blocksY * kBlock;
         int ux0 = int(std::lround((0 - offX_) * zoom_)), uy0 = int(std::lround((0 - offY_) * zoom_));
@@ -202,70 +198,9 @@ void MapView::draw(int winW, int winH) {
 
 void MapView::setBilinear(bool b) {
     bilinear_ = b;
-    for (auto& [k, s] : sections_)
-        if (s.tex) SDL_SetTextureScaleMode(s.tex, b ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
+    if (atlas_) SDL_SetTextureScaleMode(atlas_, b ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
 }
 
 void MapView::setZoomSpeed(float m) { zoomSpeed_ = std::clamp(m, 0.25f, 4.0f); }
 
-void MapView::uploadReadySections() {
-    std::vector<uint32_t> ready;
-    {
-        std::lock_guard<std::mutex> lk(secMu_);
-        ready.swap(decoded_);
-    }
-    // A whole map is ~27 sections; upload a few per frame so a cold start never
-    // hitches, and never start the VRAM-exhaustion storm. Deferred keys stay in
-    // decoded_ (re-queued below) and upload once there's room.
-    constexpr size_t kUploadBudget = 3;
-    size_t n = 0;
-    std::vector<uint32_t> deferred;
-    for (uint32_t key : ready) {
-        if (sections_.count(key)) continue;   // already uploaded
-        const ta::jpeg::Image* img = nullptr;
-        try { img = &comp_.sectionImage(key); } catch (const std::exception&) {
-            sections_[key] = {};   // absent JPG: remember so we never retry it
-            continue;
-        }
-        if (n >= kUploadBudget) { deferred.push_back(key); continue; }
-        if (gpuvram::blocked() ||
-            !gpuvram::wouldFit(size_t(img->width) * img->height * 4)) {
-            deferred.push_back(key); continue;
-        }
-        SDL_Texture* t = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
-                                           SDL_TEXTUREACCESS_STATIC, img->width, img->height);
-        if (!t) { gpuvram::noteFail(); deferred.push_back(key); continue; }
-        SDL_UpdateTexture(t, nullptr, img->rgba.data(), img->width * 4);
-        SDL_SetTextureScaleMode(t, bilinear_ ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
-        sections_[key] = {t, img->width, img->height};
-        tileBatchDirty_ = true;   // a new section can fill in visible tiles
-        ++n;
-        static const bool kLog = std::getenv("TA_TERRAINLOG") != nullptr;
-        if (kLog)
-            std::fprintf(stderr, "terrain: section %08x %dx%d uploaded; %zu total, gpu=%zuMiB\n",
-                         key, img->width, img->height, sections_.size(),
-                         gpuvram::bytes() >> 20);
-    }
-    if (!deferred.empty()) {
-        std::lock_guard<std::mutex> lk(secMu_);
-        for (uint32_t k : deferred) decoded_.push_back(k);
-    }
-}
 
-void MapView::sectionWorkerLoop() {
-    std::unique_lock<std::mutex> lk(secMu_);
-    for (;;) {
-        secCv_.wait(lk, [this] { return secStop_ || !decodeQueue_.empty(); });
-        if (secStop_) return;
-        uint32_t key = decodeQueue_.front();
-        decodeQueue_.pop_front();
-        secBusy_ = true;
-        lk.unlock();
-        // Decode into the Compositor cache (the heavy JPEG work, once per section).
-        try { comp_.sectionImage(key); } catch (const std::exception&) { /* absent */ }
-        lk.lock();
-        secBusy_ = false;
-        decoded_.push_back(key);
-        secCv_.notify_all();   // reload()/finishChunks() may be waiting
-    }
-}

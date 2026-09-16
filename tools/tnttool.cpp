@@ -96,26 +96,71 @@ int main(int argc, char** argv) {
                                  r.seaLevel == m.seaLevel);
             ok &= eq("heights", r.heights == m.heights);
             ok &= eq("features", r.features == m.features);
-            ok &= eq("tileKeys", r.tileKeys == m.tileKeys);
-            ok &= eq("tileCols", r.tileCols == m.tileCols);
-            ok &= eq("tileRows", r.tileRows == m.tileRows);
+            ok &= eq("tiles", r.tiles == m.tiles);
+            ok &= eq("tileGfx", r.numTiles == m.numTiles && r.tileGfx == m.tileGfx);
             ok &= eq("featureNames", r.featureNames == m.featureNames);
             ok &= eq("minimap", r.minimapW == m.minimapW && r.minimapH == m.minimapH &&
                                 r.minimap == m.minimap);
-            ok &= eq("overview", r.overviewW == m.overviewW && r.overviewH == m.overviewH &&
-                                 r.overview == m.overview);
+            // Byte identity is the real bar: field equality would still pass if
+            // save() laid the sections out somewhere retail never would.
+            std::ifstream orig(argv[2], std::ios::binary);
+            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(orig)),
+                                      std::istreambuf_iterator<char>());
+            // Byte identity is the real bar -- field equality would still pass if
+            // save() laid the sections out somewhere retail never would. The one
+            // exception is the tile plane's 16-byte alignment gap: retail leaves
+            // it UNINITIALISED. Most shipped maps happen to have zeros there, but
+            // Coast To Coast carries stale bytes, so reproducing it exactly would
+            // mean reproducing the contents of Cavedog's write buffer. Nothing
+            // reads those bytes, so they are excluded and everything else must
+            // match to the byte.
+            auto hw = [&](const std::vector<uint8_t>& v, int word) {
+                size_t o = size_t(word) * 4;
+                return uint32_t(v[o] | (v[o+1] << 8) | (v[o+2] << 16) | (uint32_t(v[o+3]) << 24));
+            };
+            std::vector<uint8_t> cmp = bytes;
+            auto ignore = [&](size_t beg, size_t end) {
+                if (end > beg && end <= cmp.size() && end <= raw.size())
+                    std::copy(raw.begin() + beg, raw.begin() + end, cmp.begin() + beg);
+            };
+            ignore(hw(cmp, 3) + size_t(m.blocksX) * m.blocksY * 2, hw(cmp, 4));
+            // The other uninitialised region: each feature-name record is a u32
+            // index plus a 128-byte NAME BUFFER, and retail writes the whole
+            // buffer after strcpy-ing the name into it. Every record in a map
+            // carries the same trailing bytes -- values like 0xbff7xxxx, i.e.
+            // leaked stack addresses -- so what is past each NUL is a snapshot of
+            // Cavedog's stack, not data. Compared up to the NUL only.
+            for (size_t i = 0; i < m.featureNames.size(); ++i) {
+                size_t rec = hw(cmp, 8) + i * 132;
+                ignore(rec + 4 + m.featureNames[i].size() + 1, rec + 132);
+            }
+            bool same = raw == cmp;
+            if (!same) {
+                size_t i = 0, n = std::min(raw.size(), cmp.size());
+                while (i < n && raw[i] == cmp[i]) ++i;
+                std::cout << "  first difference at offset " << i << " (0x" << std::hex
+                          << i << std::dec << "): orig=" << int(i < raw.size() ? raw[i] : 0)
+                          << " ours=" << int(i < cmp.size() ? cmp[i] : 0)
+                          << "; sizes " << raw.size() << " vs " << cmp.size() << "\n";
+            }
+            ok &= eq("byte-identical (bar the alignment gap)", same);
             std::cout << (ok ? "ROUNDTRIP OK (" : "ROUNDTRIP FAILED (")
                       << bytes.size() << " bytes)\n";
             return ok ? 0 : 1;
         } else if (cmd == "info") {
             std::cout << m.width << "x" << m.height << " cells ("
                       << m.width * 16 << "x" << m.height * 16 << " px)\n";
-            std::set<uint32_t> keys(m.tileKeys.begin(), m.tileKeys.end());
-            std::cout << "terrain JPGs: " << keys.size() << " distinct\n";
-            size_t feats = 0;
-            for (auto f : m.features)
-                if (f != 0xFFFF) ++feats;
-            std::cout << "feature cells: " << feats << "\n";
+            std::set<uint16_t> used(m.tiles.begin(), m.tiles.end());
+            std::cout << "tiles: " << m.numTiles << " in library, " << used.size()
+                      << " referenced\n";
+            std::cout << "sea level: " << m.seaLevel << "\n";
+            size_t feats = 0, covered = 0;
+            for (auto f : m.features) {
+                if (f == ta::tnt::kFeatureCovered) ++covered;
+                else if (f != ta::tnt::kNoFeature) ++feats;
+            }
+            std::cout << "features: " << feats << " placed (" << covered
+                      << " covered cells), " << m.featureNames.size() << " named\n";
             std::cout << "minimap: " << m.minimapW << "x" << m.minimapH << "\n";
         } else if (cmd == "render" && argc >= 5) {
             // render <map.tnt> <retail-install-dir> <out.png>

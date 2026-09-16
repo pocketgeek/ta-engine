@@ -7,54 +7,85 @@
 
 namespace ta::tnt {
 
-// TAK TNT map format (version 0x4000), reverse-engineered from the GOG data.
-// A map is W x H cells of 16px. Terrain graphics come from *content-addressed*
-// JPG section images in terrain.hpi (terrain/<hexkey>.jpg): the map carries,
-// per 32px block (W/2 x H/2 grid), a u32 JPG key plus column/row bytes
-// selecting the 32px piece of that JPG.
+// Total Annihilation's TNT map format (version 0x2000), read out of the retail
+// maps and cross-checked so that every byte of the file is accounted for.
 //
-// Header (u32 little-endian):
-//   0: version (0x4000)      1: width in cells      2: height in cells
-//   3: unknown               4: -> heights (1 B/cell)
-//   5: -> features (u16/cell, 0xFFFF = none)   6,7: unknown
-//   8: -> jpg keys (u32/block)   9: -> columns (1 B/block)
-//  10: -> rows (1 B/block)      11: -> minimap {u32 w, u32 h, w*h bytes}
-//  12: -> overview image {u32 w, u32 h, w*h bytes}
+// A map is W x H cells of 16px. Terrain art is a TILE LIBRARY carried inside the
+// .tnt itself: `numTiles` 32x32 8-bit indexed tiles, with one u16 index per 32px
+// tile position. (Kingdoms later replaced this with content-addressed truecolour
+// JPG sections in a shared terrain archive -- see the 0x4000 notes in git
+// history. Nothing but the name survives between the two.)
+//
+// Header, 16 little-endian u32 words:
+//    0: version (0x2000)
+//    1: width in 16px cells        2: height in 16px cells
+//    3: -> tile indices  (u16 per 32px tile, (W/2) x (H/2))
+//    4: -> MapAttr       (4 bytes per 16px CELL -- see below)
+//    5: -> tile graphics (numTiles * 1024 bytes)
+//    6: numTiles                   7: number of feature names
+//    8: -> feature names (132 bytes each: u32 index + 128-byte name)
+//    9: sea level (cells at or below this are water)
+//   10: -> minimap {u32 w, u32 h, w*h bytes}
+//   11: unknown (1 in every retail map seen)
+//   12-15: zero padding
+//
+// MapAttr, per 16px cell, is { u8 height; u16 feature; u8 unused } -- note the
+// u16 is UNALIGNED at offset 1, which is why it cannot be read as a struct.
+// Confirmed against real cells rather than inferred: a cell carrying feature
+// index 1 reads [86, 1, 0, 0].
+//
+// Word 8's table is named "tile anims" in some third-party format notes; it is
+// not. It is the FEATURE name table -- Coast To Coast's 19 entries are
+// ArchMetal1/2/3, Palm01-06 and Frond01-07, and every index the feature plane
+// uses resolves inside it.
+
+// Feature-plane sentinels. A normal value indexes Map::featureNames.
+constexpr uint16_t kNoFeature = 0xFFFF;
+// The cell is inside a multi-cell feature whose ANCHOR cell holds the real
+// index. Retail TA stores this in the file; Kingdoms instead derived the same
+// state at load time, which is the one place the two formats' spare feature
+// values genuinely diverge. A 3x3 metal patch is one anchor plus eight of these.
+constexpr uint16_t kFeatureCovered = 0xFFFE;
+
+constexpr int kTileBytes = 32 * 32;   // one 8-bit indexed tile
 
 struct Map {
     int width = 0, height = 0;       // in 16px cells
-    int seaLevel = 0;                // heights below this are water
-    int blocksX = 0, blocksY = 0;    // in 32px blocks (width/2, height/2)
+    int seaLevel = 0;                // cells at or below this are water
+    int blocksX = 0, blocksY = 0;    // in 32px tiles (width/2, height/2)
 
-    std::vector<uint8_t> heights;    // width*height
-    // Per-cell feature plane. Normal values index featureNames; retail also
-    // packs per-cell ATTRIBUTES in as special values (icd map loader 0x50f0f0):
-    //   0xFFFF = empty
-    //   0xFFFB = ROAD cell (roadmultiplier speed bonus, COB walk_road gait;
-    //            retail converts it to a cell flag at load)
-    //   0xFFFC = hard BLOCKER (impassable + no building; under wall/gate art)
-    //   0xFFFD / 0xFFFE never appear in files -- retail generates them at
-    //   runtime (border margin / covered-by-multi-cell-feature).
+    std::vector<uint8_t> heights;    // width*height (MapAttr byte 0)
+    // Per-cell feature plane: an index into featureNames, or one of the
+    // sentinels above. This doubles as TA's METAL map -- a metal patch is just a
+    // feature (ArchMetal1/2/3), so an extractor's yield is a property of the
+    // feature under its footprint rather than of a separate density plane.
     std::vector<uint16_t> features;  // width*height
-    std::vector<uint32_t> tileKeys;  // blocksX*blocksY
-    std::vector<uint8_t> tileCols;   // blocksX*blocksY
-    std::vector<uint8_t> tileRows;   // blocksX*blocksY
+    std::vector<uint16_t> tiles;     // blocksX*blocksY: index into the tile library
+    std::vector<uint8_t> tileGfx;    // numTiles * kTileBytes, 8-bit palette indices
+    int numTiles = 0;
 
     int minimapW = 0, minimapH = 0;
-    std::vector<uint8_t> minimap;    // 8-bit indexed (small, header word 11; 126x126)
-    int overviewW = 0, overviewH = 0;
-    std::vector<uint8_t> overview;   // 8-bit indexed (large, header word 12; per-block)
-    std::vector<std::string> featureNames;   // indexed by feature-layer values
+    std::vector<uint8_t> minimap;    // 8-bit indexed (252x252 in retail maps)
+    std::vector<std::string> featureNames;   // indexed by feature-plane values
+
+    // Pointer to tile `index`'s 1024 bytes, or nullptr if out of range. Callers
+    // composite terrain through this rather than indexing tileGfx themselves --
+    // a map can reference a tile the library does not hold.
+    const uint8_t* tile(int index) const {
+        if (index < 0 || index >= numTiles) return nullptr;
+        size_t off = size_t(index) * kTileBytes;
+        return off + kTileBytes <= tileGfx.size() ? &tileGfx[off] : nullptr;
+    }
 
     static Map load(const std::filesystem::path& file);
     // Parse from an in-memory buffer (a VFS-resolved archive entry). `origin`
     // names the source in error messages.
     static Map load(const std::vector<uint8_t>& d, const std::string& origin = "<memory>");
 
-    // Serialize to the retail TNT byte layout (version 0x4000). Round-trips a
-    // loaded map (Cartographer save format, RE'd from Cartographer.exe 0x41ba70):
-    // 52-byte header + heights/features/feature-names/keys/cols/rows/small- and
-    // large-minimap sections in that physical order. See docs/cartographer-port.md.
+    // Serialize back to the retail TNT byte layout. Emits the planes in the
+    // physical order retail writes them (tiles, MapAttr, tile graphics, feature
+    // names, minimap), so a load->save round trip is byte-identical for a map
+    // that came in unmodified.
     std::vector<uint8_t> save() const;
 };
 

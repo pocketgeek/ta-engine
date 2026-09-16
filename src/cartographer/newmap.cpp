@@ -88,18 +88,11 @@ void generateMinimaps(ta::tnt::Map& map, ta::terrain::Compositor& comp,
     if (map.blocksX <= 0 || map.blocksY <= 0) return;
     std::vector<uint8_t> grid = blockColourGrid(map, comp);
 
-    // Small minimap: retail's fixed 126x126.
-    map.minimapW = 126; map.minimapH = 126;
-    map.minimap = indexedMinimap(grid, map.blocksX, map.blocksY, 126, 126, pal);
-
-    // Large overview: fit the map aspect into a ~430px box (retail's exact dims
-    // are a computed thumbnail scale; this matches its ballpark and always loads).
-    int longSide = std::max(map.blocksX, map.blocksY);
-    float scale = longSide > 0 ? 430.0f / longSide : 1.0f;
-    int ow = std::max(1, int(map.blocksX * scale));
-    int oh = std::max(1, int(map.blocksY * scale));
-    map.overviewW = ow; map.overviewH = oh;
-    map.overview = indexedMinimap(grid, map.blocksX, map.blocksY, ow, oh, pal);
+    // TA maps carry ONE minimap, 252x252 in every shipped map. (Kingdoms added a
+    // second, larger overview image; there is no header slot for it here, so the
+    // generator emits only this.)
+    map.minimapW = 252; map.minimapH = 252;
+    map.minimap = indexedMinimap(grid, map.blocksX, map.blocksY, 252, 252, pal);
 }
 
 void resizeMap(ta::tnt::Map& map, ta::terrain::Compositor& comp,
@@ -110,14 +103,13 @@ void resizeMap(ta::tnt::Map& map, ta::terrain::Compositor& comp,
     size_t ncells = size_t(nw) * nh, nblocks = size_t(nbx) * nby;
 
     uint8_t fillH = uint8_t(map.seaLevel + 22);   // flat land for new area
-    uint32_t fk = map.tileKeys.empty() ? 0 : map.tileKeys[0];
-    uint8_t fc = map.tileCols.empty() ? 0 : map.tileCols[0];
-    uint8_t fr = map.tileRows.empty() ? 0 : map.tileRows[0];
+    // New area borrows the map's first tile. The library itself is untouched by a
+    // resize -- only the index plane is rebuilt -- so indices stay valid.
+    uint16_t fillTile = map.tiles.empty() ? 0 : map.tiles[0];
 
     std::vector<uint8_t> h(ncells, fillH);
-    std::vector<uint16_t> ft(ncells, 0xFFFF);
-    std::vector<uint32_t> tk(nblocks, fk);
-    std::vector<uint8_t> tc(nblocks, fc), tr(nblocks, fr);
+    std::vector<uint16_t> ft(ncells, ta::tnt::kNoFeature);
+    std::vector<uint16_t> tk(nblocks, fillTile);
 
     int cw = std::min(map.width, nw), ch = std::min(map.height, nh);
     for (int y = 0; y < ch; ++y)
@@ -129,12 +121,12 @@ void resizeMap(ta::tnt::Map& map, ta::terrain::Compositor& comp,
     for (int y = 0; y < cby; ++y)
         for (int x = 0; x < cbx; ++x) {
             size_t s = size_t(y) * map.blocksX + x, d = size_t(y) * nbx + x;
-            tk[d] = map.tileKeys[s]; tc[d] = map.tileCols[s]; tr[d] = map.tileRows[s];
+            tk[d] = map.tiles[s];
         }
 
     map.width = nw; map.height = nh; map.blocksX = nbx; map.blocksY = nby;
     map.heights = std::move(h); map.features = std::move(ft);
-    map.tileKeys = std::move(tk); map.tileCols = std::move(tc); map.tileRows = std::move(tr);
+    map.tiles = std::move(tk);
     generateMinimaps(map, comp, pal);
 }
 
@@ -164,10 +156,8 @@ ta::tnt::Map newBlankMap(const ta::hpi::Vfs& vfs, SectionLibrary& sections,
     size_t cells = size_t(m.width) * m.height;
     size_t blocks = size_t(m.blocksX) * m.blocksY;
     m.heights.assign(cells, uint8_t(m.seaLevel + 22));   // flat land above water
-    m.features.assign(cells, 0xFFFF);
-    m.tileKeys.assign(blocks, 0);
-    m.tileCols.assign(blocks, 0);
-    m.tileRows.assign(blocks, 0);
+    m.features.assign(cells, ta::tnt::kNoFeature);
+    m.tiles.assign(blocks, 0);
 
     // Tile the fill section across the whole map (it carries flat heights + art).
     for (int by = 0; by < m.blocksY; by += sec->blocksY)

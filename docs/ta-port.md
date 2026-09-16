@@ -109,25 +109,32 @@ the file is accounted for — 16 little-endian u32 words, then the planes:
   use the spare range differently.
 - The fourth byte is 0 across every cell of this map, so its meaning is still open.
 
-**The metal map is not in here.** Every byte of the file is accounted for by the
-table above, a map directory holds only `.tnt` + `.ota`, and the `MapAttr` spare
-byte is uniformly zero. So per-cell metal is either derived from the tile
-graphics or computed from the `.ota` schema's `SurfaceMetal`/`MohoMetal` — which
-is a question for dynamic analysis of `TotalA.exe` rather than more guessing.
+**Where the metal map lives — answered.** There is no separate metal plane, and
+there does not need to be: word 8's table is the FEATURE name table, and metal
+patches are *features*. Coast To Coast's 19 names are `ArchMetal1/2/3`,
+`Palm01-06` and `Frond01-07`, and its 10 `ArchMetal` placements are each a 3x3
+block — one anchor cell holding the index, the other eight holding `0xFFFE`.
+
+So an extractor's yield is a property of the feature under its footprint, not of
+a density field. What the `.ota` schema's `SurfaceMetal`/`MohoMetal` contribute
+on top of that is still open, and is a question for dynamic analysis.
 
 `terrain::Compositor` is written entirely against the JPG path and gets replaced.
 `tnt::Map`'s *consumers* (14 files) mostly touch `heights` / `features` /
 `width` / `height`, so keeping that surface stable contains the blast radius to
 the loader and the compositor.
 
-`src/tnt/mapgen.cpp` (the procedural generator, 36 KB) emits TAK-format maps and
-has to be retargeted at the TA tile set too.
+`src/tnt/mapgen.cpp` (the procedural generator) is ported but **not faithful**:
+it synthesizes a small dithered tile library from palette ramps, because a TA map
+must bring its own pixels and there is no shared art to point at. Drawing real
+tiles from `worlds.hpi` is outstanding. Its Kingdoms coastline-prefab pass is
+deleted rather than left to resolve nothing.
 
-### ⬜ New: the metal map
-
-TA's `.tnt` carries a per-cell **metal density** plane that has no Kingdoms
-counterpart — it is what makes an extractor's income a property of *where* it is
-built. New data, new sim input, new minimap overlay.
+`cartographer`'s stamp brush is ported and now interns tiles by content (a tile
+index means nothing outside the map that owns the library). Its section palette
+comes up empty on a TA install: TA's prefabs live in `worlds.hpi` under the same
+`sections/<World>/<Category>/` layout, but in a `.sct` container (version 2)
+that is not a TNT and is not decoded yet.
 
 ## 3. Simulation — the delta
 
@@ -241,7 +248,7 @@ Each milestone ends green: builds, `ctest` passes, determinism gate agrees.
 | 0 | **Fork + rebrand.** ✅ done — 137 targets, 17/17, golden hash agrees. | no |
 | 1 | **HPI v1**: header, obfuscation, LZ77. ✅ done — 21 synthetic checks, then validated against the real install: **30 archives, 7,890 files extracted, zero failures.** | no |
 | 2 | **Mount a real install**: VFS over `.hpi`/`.ufo`/`.ccx`/`.gp3`. ✅ done — extension-ranked mount resolves `gamedata/SIDEDATA.TDF` → `totala1.hpi`. | done |
-| 3 | **Formats**: confirm 3DO/GAF/COB against real assets; rewrite TNT + compositor; metal map. | **yes** |
+| 3 | **Formats**: 3DO/GAF/COB confirmed; TNT + compositor rewritten. ✅ done — all 96 shipped maps round-trip **byte-identically**, and real maps render. | done |
 | 4 | **Unit data**: FBI/TDF/weapons/`SIDEDATA`/`MOVEINFO` → `UnitType`. `tdftool` dumps it. | **yes** |
 | 5 | **Two-resource economy** + stall + nanolathe construction. | yes |
 | 6 | **Skirmish playable**: ARM vs CORE, AI, HUD. | yes |
