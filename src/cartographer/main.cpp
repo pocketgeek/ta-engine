@@ -68,9 +68,11 @@ FreshMap buildFreshMap(const ta::hpi::Vfs& vfs, cart::SectionLibrary& sections,
     FreshMap out;
     if (random) {
         ta::mapgen::Params gp;
-        static const char* kW[] = {"aramon", "taros", "veruna", "zhon", "creon"};
-        gp.mapType = ta::mapgen::Aramon;
-        for (uint8_t i = 0; i < 5; ++i) if (world == kW[i]) gp.mapType = i;
+        // The generator's world list is the six that ship terrain SECTIONS, in a
+        // fixed order (it is part of the "~gen1~" map id). A world outside that
+        // set -- TA declares many more for features alone -- has no tile art to
+        // generate from, and worldType falls back to the first.
+        gp.mapType = ta::mapgen::worldType(world);
         gp.widthCells = uint16_t(wUnits * 32);
         gp.heightCells = uint16_t(hUnits * 32);
         gp.players = 4;
@@ -78,7 +80,10 @@ FreshMap buildFreshMap(const ta::hpi::Vfs& vfs, cart::SectionLibrary& sections,
         auto res = ta::mapgen::generate(ta::mapgen::sanitize(gp), vfs);
         out.map = std::move(res.map);
         int n = 1;
-        for (auto& [sx, sz] : res.starts) out.starts.push_back({n++, sx, sz});
+        // mapgen reports start positions in CELLS; StartPos (and the .ota) are
+        // in world units, so convert here rather than at every use.
+        for (auto& [sx, sz] : res.starts)
+            out.starts.push_back({n++, sx * 16 + 8, sz * 16 + 8});
     } else {
         out.map = cart::newBlankMap(vfs, sections, comp, world, wUnits, hUnits);
     }
@@ -94,7 +99,8 @@ void fillRect(SDL_Renderer* r, int x, int y, int w, int h, Uint8 cr, Uint8 cg, U
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::string dataRoot, mapName, outDir = ".", exportPath, bundlePath, stampName, newWorld = "aramon", shotPath;
+    std::string dataRoot, mapName, outDir = ".", exportPath, bundlePath, stampName,
+        newWorld = "archipelago", shotPath;
     int stampBX = 0, stampBY = 0, newW = 0, newH = 0;
     bool randomTerrain = false;   // --random: generate procedural terrain for --new
     for (int i = 1; i < argc; ++i) {
@@ -181,12 +187,18 @@ int main(int argc, char** argv) {
         cart::SectionLibrary nsections;
         nsections.scan(vfs, newWorld);
         ta::terrain::Compositor ncomp(vfs);
-        ta::tnt::Map nm = cart::newBlankMap(vfs, nsections, ncomp, newWorld, newW, newH);
+        // Through buildFreshMap, so --random works here too. This called
+        // newBlankMap directly and silently ignored --random, which made the
+        // documented "--new ... --random --save" combination produce a flat map.
+        FreshMap nfm = buildFreshMap(vfs, nsections, ncomp, newWorld, newW, newH,
+                                     randomTerrain);
+        ta::tnt::Map nm = std::move(nfm.map);
         if (nm.width == 0) {
             std::fprintf(stderr, "new: no sections for world '%s'\n", newWorld.c_str());
             return 1;
         }
         ta::tnt::Scenario nsc;
+        nsc.starts = nfm.starts;
         nsc.kingdom = newWorld;
         nsc.missionName = mapName.empty() ? "Untitled" : mapName;
         nsc.sizeW = newW; nsc.sizeH = newH;
@@ -549,8 +561,8 @@ int main(int argc, char** argv) {
     // Start position whose marker is near screen (mx,my), or -1.
     auto startAt = [&](int mx, int my) -> int {
         for (int i = 0; i < int(scenario.starts.size()); ++i) {
-            float sx = kPaletteW + (scenario.starts[i].xpos * 16.0f - mapView.offX()) * mapView.zoom();
-            float sy = kMenuH + (scenario.starts[i].zpos * 16.0f - mapView.offY()) * mapView.zoom();
+            float sx = kPaletteW + (float(scenario.starts[i].xpos) - mapView.offX()) * mapView.zoom();
+            float sy = kMenuH + (float(scenario.starts[i].zpos) - mapView.offY()) * mapView.zoom();
             if (std::abs(sx - mx) <= 10 && std::abs(sy - my) <= 10) return i;
         }
         return -1;
@@ -1143,7 +1155,7 @@ int main(int argc, char** argv) {
                             used = false;
                             for (auto& s : scenario.starts) if (s.number == num) used = true;
                         }
-                        scenario.starts.push_back({num - 1, cx, cz}); dirty = true;
+                        scenario.starts.push_back({num - 1, cx * 16 + 8, cz * 16 + 8}); dirty = true;
                         draggingStart = int(scenario.starts.size()) - 1;
                     }
                 }
@@ -1212,8 +1224,8 @@ int main(int argc, char** argv) {
                 } else if (draggingStart >= 0) {
                     int cx, cz;   // drag a start marker to a new cell
                     if (mouseCell(e.motion.x, e.motion.y, cx, cz)) {
-                        scenario.starts[size_t(draggingStart)].xpos = cx;
-                        scenario.starts[size_t(draggingStart)].zpos = cz; dirty = true;
+                        scenario.starts[size_t(draggingStart)].xpos = cx * 16 + 8;
+                        scenario.starts[size_t(draggingStart)].zpos = cz * 16 + 8; dirty = true;
                     }
                 }
             } else if (e.type == SDL_MOUSEMOTION && (e.motion.state & SDL_BUTTON_RMASK)) {
@@ -1309,8 +1321,8 @@ int main(int argc, char** argv) {
         // Start-position markers (drawn in canvas-local coords: gold diamonds
         // with the StartPos number). Off-map ones simply fall outside.
         for (int i = 0; i < int(scenario.starts.size()); ++i) {
-            float sx = (scenario.starts[i].xpos * 16.0f - mapView.offX()) * mapView.zoom();
-            float sy = (scenario.starts[i].zpos * 16.0f - mapView.offY()) * mapView.zoom();
+            float sx = (float(scenario.starts[i].xpos) - mapView.offX()) * mapView.zoom();
+            float sy = (float(scenario.starts[i].zpos) - mapView.offY()) * mapView.zoom();
             if (sx < -12 || sy < -12 || sx > canvasW + 12 || sy > canvasH + 12) continue;
             SDL_Vertex d[4] = {
                 {{sx, sy - 9}, {255, 205, 70, 255}, {0, 0}},

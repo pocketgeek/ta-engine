@@ -1,5 +1,10 @@
 #include "tnt/mapgen.h"
 
+#include "gaf/gaf.h"
+#include "sct/sct.h"
+#include "tdf/tdf.h"
+#include "util/strcase.h"
+
 #include "hpi/hpi.h"   // coast prefab sections are read through the VFS
 
 #include <algorithm>
@@ -49,163 +54,172 @@ uint32_t fractal(uint64_t seed, int cx, int cz, int span) {
     return (a * 7 + b * 3) / 10;   // 70% coarse + 30% fine
 }
 
-// Per-world ground + sea PALETTE RAMPS.
+// ---- terrain art -------------------------------------------------------------
 //
 // Kingdoms maps referenced shared terrain art by key, so a generator only had to
-// pick a key. TA maps carry their own tile library, so there is no shared art to
-// point at -- a generated map has to bring its own pixels. This synthesizes a
-// small library by dithering between two ends of a palette ramp with the same
-// integer noise the heightfield uses (so it stays byte-identical across peers).
+// pick a key. A TA map carries its own tile library, so a generated map has to
+// bring its own pixels -- and the only source of real ones is the world's prefab
+// SECTIONS in worlds.hpi, which are the same 32px tiles the shipped maps are
+// built from. harvestTiles() pulls a ground and a water set out of them.
 //
-// Ramp ends are indices into the retail palette (palettes/PALETTE.PAL): its green
-// ramp starts at 32 and its blue ramp around 97. The result is textured ground
-// and water rather than flat colour -- but it is NOT retail art. Generating maps
-// that look hand-painted means drawing tiles from worlds.hpi, which is a
-// milestone of its own; see docs/ta-port.md.
-struct WorldArt { uint8_t groundLo, groundHi, seaLo, seaHi; };
-constexpr std::array<WorldArt, kMapTypes> kWorldArt = {{
-    {32, 47, 97, 104},    // temperate: green ramp / blue ramp
-    {40, 47, 97, 104},    // arid: darker, browner end of the same ramp
-    {33, 42, 99, 106},    // coastal
-    {34, 45, 98, 105},    // jungle
-    {36, 46, 97, 104},    // alt
-}};
+// Classifying a harvested tile as ground or water: the section container records
+// no sea level, so the split has to come from the art. Mean BLUE DOMINANCE --
+// blue minus the greater of red and green, over the tile's pixels through
+// palettes/PALETTE.PAL -- separates them cleanly. Checked against ground truth
+// taken from the shipped maps (a tile whose four cells all sit >=6 below that
+// map's sea level is water, all >=6 above it is ground): water averages 149 on
+// that measure and ground 30, and a threshold of 35 classifies 99.7% of water and
+// 99.0% of ground correctly over ~54k labelled tiles.
+constexpr int kWaterBlueDominance = 35;
 
-// How many dithered variants of each class the generated library holds. Enough
-// that wallpapering does not read as an obvious repeat; small enough that the
-// library stays a few KB.
+// How many distinct tiles of each class to harvest. Enough that wallpapering does
+// not read as an obvious repeat; small enough that the library stays a few KB.
 constexpr int kVariants = 8;
 
-// NOTE: the Kingdoms generator stamped whole hand-painted coastline SECTIONS out
-// of sections.hpi here, which is where its big sweeping shores came from. TA ships
-// no equivalent -- its authoring art lives in worlds.hpi in a different form -- so
-// the prefab kit and its stamping pass are gone rather than left to silently
-// resolve nothing. Coastlines are currently whatever the heightfield makes them.
+// Fallback ramp ends (indices into palettes/PALETTE.PAL) for an install whose
+// sections are missing or unreadable. Dithered noise is not retail art, but a
+// generator that produces a blank map is worse than one that produces a plain one.
+struct RampArt { uint8_t groundLo, groundHi, seaLo, seaHi; };
+constexpr RampArt kFallbackRamp = {32, 47, 97, 104};
 
-
-// Retail authoring levels the coast prefabs assume: {seaLevel, flat land level}.
-// Aramon + Creon kits are authored at land 80 (river-map style, sea 40); the
-// three sea worlds at land 62 (sea 58). Measured from the shipped prefabs/maps.
+// Authoring sea/land levels per world, measured from the shipped maps: each map
+// was assigned a world by looking its features up in features/**/*.tdf (which
+// declare `world=`), then its own sea level and the 75th percentile of its land
+// heights were taken, and the median across that world's maps is what is listed.
+//
+// `land` is floored at sea+16. Archipelago's measured pair is 85/86 -- its maps
+// really are flat sand a single height unit above the waterline -- and a
+// generator building land one unit proud of the sea produces a map that is all
+// shoreline and no ground to stand on.
 struct WorldLevels { uint8_t sea, land; };
 constexpr std::array<WorldLevels, kMapTypes> kLevels = {{
-    {40, 80}, {58, 62}, {58, 62}, {58, 62}, {40, 80},
+    {85, 101},   // Archipelago  (measured 85 / 86, floored)
+    {45,  86},   // GreenWorld   (measured 45 / 86)
+    {24,  98},   // Lava         (measured 24 / 98)
+    {55,  87},   // Mars         (measured 55 / 87)
+    {75, 139},   // Metal        (measured 75 / 139)
+    { 0,  55},   // Moon         (measured  0 / 55 -- no water at all)
 }};
 
-// Per-world doodad + mana palette (names verified in features/<world>/*.tdf).
-// Trees (category=trees) and rocks (category=rocks) are reclaimable obstacles --
-// we vary across ALL the art variants so no one type repeats. A mana deposit is a
-// glowing Sacred Stone centre (XxxManaNN, category=Mana + animating=1 -- the
-// buildable spot the sim harvests) ringed by static Standing Stones (XxxHengeNN,
-// "ruins"), exactly as the shipped maps lay them out. Rocks are ordered small->big
-// so placement can bias toward the little ones. The sim skips names it can't
-// resolve, so an over-long list is harmless.
-struct Span { const char* const* p; int n; };
-struct WorldFeatures {
-    Span trees, rocks;
-    std::array<const char*, 3> sacred;   // weak, medium, strong (sacredsite 1.0/1.5/2.0)
-};
-
-constexpr const char* kAraTree[] = {"AraTree01", "AraTree02", "AraTree03", "AraTree04", "AraTree05",
-                                    "AraTree06", "AraTree07", "AraTree08", "AraTree09", "AraTree10"};
-constexpr const char* kAraRock[] = {"AraRock01", "AraRock02", "AraRock03", "AraRock04",
-                                    "AraRock05", "AraRock06", "AraRock07"};
-
-constexpr const char* kTarTree[] = {"TarTree01", "TarTree02", "TarTree03", "TarTree04", "TarTree05",
-                                    "TarTree06", "TarTree07", "TarTree08", "TarTree09"};
-constexpr const char* kTarRock[] = {"TarRock07", "TarRock06", "TarRock05", "TarRock04",
-                                    "TarRock03", "TarRock02", "TarRock01"};   // small->big
-
-constexpr const char* kVerTree[] = {"VerTree01", "VerTree02", "VerTree03", "VerTree04", "VerTree05",
-                                    "VerTree06", "VerTree07", "VerTree08", "VerTree09"};
-constexpr const char* kVerRock[] = {"VeRock01", "VeRock02", "VeRock05", "VeRock07",
-                                    "VeRock04", "VeRock03", "VeRock06"};   // small->big
-
-constexpr const char* kZonTree[] = {"ZonTree01", "ZonTree02", "ZonTree03",
-                                    "ZonTree04", "ZonTree05", "ZonTree06"};
-constexpr const char* kZonRock[] = {"ZonRock07", "ZonRock06", "ZonRock05", "ZonRock04",
-                                    "ZonRock03", "ZonRock02", "ZonRock01"};   // small->big
-
-// Creon (Iron Plague): features/creon/*.tdf in IPData.hpi.
-constexpr const char* kCreTree[] = {"CreTree01", "CreTree02", "CreTree03", "CreTree04", "CreTree05",
-                                    "CreTree06", "CreTree07", "CreTree08", "CreTree09"};
-constexpr const char* kCreRock[] = {"CRERock12", "CRERock07", "CRERock09", "CRERock10", "CRERock11",
-                                    "CRERock02", "CRERock03", "CRERock04", "CRERock06", "CRERock05",
-                                    "CRERock13", "CRERock01", "CRERock08"};   // small->big
-
-constexpr std::array<WorldFeatures, kMapTypes> kWorldFeat = {{
-    {{kAraTree, 10}, {kAraRock, 7},  {{"AraMana01", "AraMana02", "AraMana03"}}},
-    {{kTarTree, 9},  {kTarRock, 7},  {{"TarMana01", "TarMana02", "TarMana03"}}},
-    {{kVerTree, 9},  {kVerRock, 7},  {{"VerMana01", "VerMana02", "VerMana03"}}},
-    {{kZonTree, 6},  {kZonRock, 7},  {{"ZonMana01", "ZonMana02", "ZonMana03"}}},
-    {{kCreTree, 9},  {kCreRock, 13},  {{"CReMana01", "CREMana02", "CREMana03"}}},
+// The world's name as it appears in the data (sections/<name>/, features/<name>/).
+// VFS keys are lowercased, so these are matched case-insensitively.
+constexpr std::array<const char*, kMapTypes> kWorldName = {{
+    "archipelago", "greenworld", "lava", "mars", "metal", "moon",
 }};
 
-// ---- mana-deposit henge rings --------------------------------------------------
-// Mined from ALL 101 shipped maps (1207 deposits, 3230 henges): each henge
-// variant is an ARC SEGMENT authored for ONE compass slot at a canonical anchor
-// offset from the sacred stone (3-6 cells -- tighter than our old 5-8 scatter).
-// A retail deposit is ONE sacred stone + 2-4 henges from DISTINCT slots
-// (canonical trio NW+NE+S where the world has it), each at its variant's
-// canonical offset with +-1 cell of jitter (+-2 on Zhon, the loosest world).
-// Weights are the shipped occurrence counts.
-enum RingSlot { rN, rNE, rE, rSE, rS, rSW, rW, rNW };
-struct RingPiece { const char* name; int8_t dx, dz; uint8_t slot; uint8_t w; };
-struct RingSpec {
-    const RingPiece* p; int n;
-    uint8_t cnt[6];      // cumulative % thresholds: ring size k when roll < cnt[k]
-    int8_t jitter;       // +- cells around the canonical offset
-    uint8_t order[8];    // slot preference order (canonical trio first)
+// The feature palette is DISCOVERED from features/<world>/*.tdf rather than
+// listed here. Kingdoms' names were predictable enough to hardcode (AraTree01..10,
+// AraRock01..07, AraMana01..03 per house); TA's are not -- each world names its
+// own art freely, and there are far more worlds than the six that ship sections.
+// Reading the TDFs also means a mod's features appear without a code change.
+//
+// Names are sorted, so the list is identical on every peer with the same install.
+struct WorldPalette {
+    std::vector<std::string> trees, rocks, metal;
+    bool usable() const { return !trees.empty() || !rocks.empty() || !metal.empty(); }
 };
-constexpr RingPiece kAraRing[] = {
-    {"AraHenge01", -4, -4, rNW, 95}, {"AraHenge08", -5, -4, rNW, 47},
-    {"AraHenge09", +3, -3, rNE, 89}, {"AraHenge02", +3, -3, rNE, 61},
-    {"AraHenge05", +3, -4, rNE, 19}, {"AraHenge03", +4, -1, rE, 17},
-    {"AraHenge07", -1, +6, rS, 117}, {"AraHenge04",  0, +5, rS, 56},
-    {"AraHenge06", -5, -1, rW, 49},
+
+// Harvest distinct 32x32 tiles from a world's prefab sections, split into ground
+// and water by blue dominance. Sections are visited in sorted VFS order and tiles
+// within one in index order, so the result is identical on every peer with the
+// same install. Stops as soon as both classes are full, which is typically the
+// first section or two.
+struct Harvest {
+    std::vector<uint8_t> ground, water;   // kVariants * kTileBytes each, when full
+    int nGround = 0, nWater = 0;
 };
-constexpr RingPiece kTarRing[] = {
-    {"TarHenge09", -4, -3, rNW, 135}, {"TarHenge01", -4, -4, rNW, 25},
-    {"TarHenge02", -1, -4, rN, 47},   {"TarHenge10", +1, -5, rN, 38},
-    {"TarHenge11", +4, -3, rNE, 137}, {"TarHenge04", +3, -3, rNE, 33},
-    {"TarHenge05", +4,  0, rE, 59},   {"TarHenge06", +3, +3, rSE, 38},
-    {"TarHenge12", +3, +3, rSE, 19},  {"TarHenge13",  0, +5, rS, 156},
-    {"TarHenge14", -4, +3, rSW, 62},  {"TarHenge08", -4,  0, rW, 28},
-    {"TarHenge03", -5,  0, rW, 15},   {"TarHenge07", -7, +2, rW, 11},
-};
-constexpr RingPiece kVerRing[] = {
-    {"VerHenge10", -4, -3, rNW, 68},  {"VerHenge01b", -5, -4, rNW, 38},
-    {"VerHenge01", -6, -4, rNW, 26},  {"VerHenge02", -1, -5, rN, 36},
-    {"VerHenge11", +3, -2, rNE, 72},  {"VerHenge04", +3, -3, rNE, 24},
-    {"VerHenge05b", +4, 0, rE, 31},   {"VerHenge05", +4,  0, rE, 24},
-    {"VerHenge09", -1, +4, rS, 102},  {"VerHenge07",  0, +4, rS, 19},
-    {"VerHenge08", -4, +2, rSW, 54},
-};
-constexpr RingPiece kZonRing[] = {
-    {"ZonHenge02", -3, -5, rNW, 46},  {"ZonHenge01", -4, -4, rNW, 25},
-    {"ZonHenge10", -4, -3, rNW, 16},  {"ZonHenge06",  0, -5, rN, 41},
-    {"ZonHenge03", +2, -5, rN, 36},   {"ZonHenge07", +3, -4, rNE, 34},
-    {"ZonHenge04", +5,  0, rE, 31},   {"ZonHenge05", +3, +2, rSE, 48},
-    {"ZonHenge09", +1, +4, rS, 49},   {"ZonHenge11", -6, +4, rSW, 41},
-    {"ZonHenge08", -5, +1, rW, 40},
-};
-constexpr RingPiece kCreRing[] = {
-    {"CREHenge17", -1, -5, rN, 18},   {"CREHenge16", -3, -4, rN, 9},
-    {"CREHenge22", +3, -4, rNE, 16},  {"CREHenge21", +4, -2, rNE, 9},
-    {"CREHenge23", +4, -3, rNE, 8},   {"CREHenge09", +4, +1, rE, 7},
-    {"CREHenge14",  0, +5, rS, 11},   {"CREHenge07",  0, +4, rS, 7},
-    {"CREHenge15", -3, +4, rSW, 21},  {"CREHenge05", -3, +3, rSW, 10},
-    {"CREHenge19", -5, +1, rW, 32},   {"CREHenge11", -6, -1, rW, 7},
-    {"CREHenge06", -3, -5, rNW, 7},   {"CREHenge03", -5, -4, rNW, 6},
-};
-constexpr std::array<RingSpec, kMapTypes> kRing = {{
-    // cnt: shipped ring-size distribution (cumulative %); order: canonical first.
-    {kAraRing, 9,  {0, 0, 30, 93, 100, 100}, 1, {rNW, rNE, rS, rW, rE, rSW, rN, rSE}},
-    {kTarRing, 14, {0, 0, 23, 67, 88, 100},  1, {rNW, rNE, rS, rSW, rE, rN, rW, rSE}},
-    {kVerRing, 11, {0, 19, 58, 94, 99, 100}, 1, {rNW, rNE, rS, rSW, rN, rE, rW, rSE}},
-    {kZonRing, 11, {0, 5, 24, 66, 91, 100},  2, {rNW, rSE, rN, rSW, rW, rNE, rE, rS}},
-    // 21% of shipped Creon deposits are BARE (no ring at all) -- reproduced.
-    {kCreRing, 14, {21, 27, 71, 96, 100, 100}, 1, {rW, rN, rNE, rSW, rS, rE, rNW, rSE}},
-}};
+
+Harvest harvestTiles(const ta::hpi::Vfs& vfs, const std::string& world) {
+    Harvest h;
+    ta::gaf::Palette pal;
+    try {
+        pal = ta::gaf::Palette::fromBytes(vfs.read("palettes/PALETTE.PAL"),
+                                          "palettes/PALETTE.PAL");
+    } catch (const std::exception&) {
+        return h;   // no palette, no classification -- caller falls back
+    }
+    const std::string root = "sections/" + world + "/";
+    // Distinct by content, so a section's many repeats of one tile count once.
+    std::vector<uint64_t> seen;
+    auto hashTile = [](const uint8_t* t) {
+        uint64_t x = 1469598103934665603ULL;
+        for (int i = 0; i < ta::tnt::kTileBytes; ++i)
+            x = (x ^ t[i]) * 1099511628211ULL;
+        return x;
+    };
+    for (const std::string& path : vfs.list("sections")) {
+        if (h.nGround >= kVariants && h.nWater >= kVariants) break;
+        std::string lo = path;
+        std::transform(lo.begin(), lo.end(), lo.begin(), ::tolower);
+        if (lo.rfind(root, 0) != 0 || !ta::sct::isSectionPath(lo)) continue;
+        ta::tnt::Map sec;
+        try { sec = ta::sct::load(vfs.read(path), path); }
+        catch (const std::exception&) { continue; }
+        for (int t = 0; t < sec.numTiles; ++t) {
+            if (h.nGround >= kVariants && h.nWater >= kVariants) break;
+            const uint8_t* px = sec.tile(t);
+            if (!px) continue;
+            uint64_t sig = hashTile(px);
+            if (std::find(seen.begin(), seen.end(), sig) != seen.end()) continue;
+            seen.push_back(sig);
+            // Mean colour of the tile, then blue dominance.
+            long r = 0, g = 0, b = 0;
+            for (int i = 0; i < ta::tnt::kTileBytes; ++i) {
+                const auto& c = pal.rgba[px[i]];
+                r += c[0]; g += c[1]; b += c[2];
+            }
+            const long n = ta::tnt::kTileBytes;
+            const long dom = b / n - std::max(r / n, g / n);
+            const bool water = dom > kWaterBlueDominance;
+            if (water && h.nWater < kVariants) {
+                h.water.insert(h.water.end(), px, px + ta::tnt::kTileBytes);
+                ++h.nWater;
+            } else if (!water && h.nGround < kVariants) {
+                h.ground.insert(h.ground.end(), px, px + ta::tnt::kTileBytes);
+                ++h.nGround;
+            }
+        }
+    }
+    return h;
+}
+
+// Read the world's feature palette out of features/<world>/*.tdf (plus the shared
+// "all worlds" set), split by the category each def declares. Sorted, so every
+// peer with the same install builds the same list in the same order.
+WorldPalette discoverFeatures(const ta::hpi::Vfs& vfs, const std::string& world) {
+    WorldPalette wp;
+    for (const std::string& path : vfs.list("features")) {
+        if (!ta::iendsWith(path, ".tdf")) continue;
+        std::string lo = path;
+        std::transform(lo.begin(), lo.end(), lo.begin(), ::tolower);
+        ta::tdf::Node root;
+        try { auto b = vfs.read(path); root = ta::tdf::parseText(std::string(b.begin(), b.end()), path); }
+        catch (const std::exception&) { continue; }
+        for (const auto& key : root.childOrder) {
+            const auto* def = root.child(key);
+            if (!def) continue;
+            std::string w = def->valueOr("world", "");
+            std::transform(w.begin(), w.end(), w.begin(), ::tolower);
+            // A def's own `world=` decides, not the directory it sits in: the
+            // shared "all worlds" files declare allworlds, and a few worlds'
+            // features live outside a directory named after them.
+            const bool shared = w == "allworlds" || w == "allworld";
+            if (w != world && !shared) continue;
+            std::string cat = def->valueOr("category", "");
+            std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
+            // The section name IS the feature name the map plane refers to.
+            if (cat == "trees") wp.trees.push_back(key);
+            else if (cat == "rocks") wp.rocks.push_back(key);
+            // Metal patches are the world's own, never the shared set: a shared
+            // metal feature would put the wrong world's art on the map.
+            else if (cat == "metal" && !shared) wp.metal.push_back(key);
+        }
+    }
+    std::sort(wp.trees.begin(), wp.trees.end());
+    std::sort(wp.rocks.begin(), wp.rocks.end());
+    std::sort(wp.metal.begin(), wp.metal.end());
+    return wp;
+}
 
 // Even compass directions (integer, scaled by 1000) for start-position rings.
 constexpr std::array<std::pair<int, int>, 8> kCompass = {{
@@ -215,8 +229,26 @@ constexpr std::array<std::pair<int, int>, 8> kCompass = {{
 
 }  // namespace
 
+const char* worldName(uint8_t mapType) {
+    return kWorldName[mapType < kMapTypes ? mapType : 0];
+}
+
+uint8_t worldType(const std::string& name) {
+    std::string lo = name;
+    std::transform(lo.begin(), lo.end(), lo.begin(), ::tolower);
+    for (uint8_t i = 0; i < kMapTypes; ++i)
+        if (lo == kWorldName[i]) return i;
+    return Archipelago;
+}
+
+void worldLevels(uint8_t mapType, uint8_t& sea, uint8_t& land) {
+    const WorldLevels& lv = kLevels[mapType < kMapTypes ? mapType : 0];
+    sea = lv.sea;
+    land = lv.land;
+}
+
 Params sanitize(Params p) {
-    if (p.mapType >= kMapTypes) p.mapType = Aramon;
+    if (p.mapType >= kMapTypes) p.mapType = Archipelago;
     // Even cells, multiples of 32 (a 512px section unit), 128..768 cells/side.
     auto fix = [](uint16_t v) -> uint16_t {
         int u = std::clamp(int(v) / 32, 4, 24);   // 4..24 section-units
@@ -329,26 +361,35 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
         m.heights.swap(tmp);
     }
 
-    // ---- terrain tiles: synthesize a library, then wallpaper it -------------------
-    // A TA map owns its art, so build the tile library first: kVariants dithered
-    // tiles per class, ground then sea. Dither uses the same integer lattice noise
-    // as the heightfield -- no floats anywhere, so every peer generates the
-    // identical bytes.
-    const WorldArt art = kWorldArt[p.mapType];
+    // ---- terrain tiles: harvest a library, then wallpaper it ------------------
+    // A TA map owns its art, so build the tile library first: kVariants tiles per
+    // class, ground then sea. They are REAL tiles, lifted out of this world's
+    // prefab sections, so a generated map is painted with the same pixels the
+    // shipped maps are. If the sections cannot be read (a stripped install), fall
+    // back to dithering a palette ramp with the same integer lattice noise the
+    // heightfield uses -- not retail art, but a plain map beats a blank one.
+    const Harvest harvest = harvestTiles(vfs, kWorldName[p.mapType]);
+    const bool realArt = harvest.nGround >= kVariants && harvest.nWater >= kVariants;
     m.numTiles = kVariants * 2;
     m.tileGfx.assign(size_t(m.numTiles) * ta::tnt::kTileBytes, 0);
-    for (int t = 0; t < m.numTiles; ++t) {
-        bool sea = t >= kVariants;
-        uint8_t lo = sea ? art.seaLo : art.groundLo;
-        uint8_t hi = sea ? art.seaHi : art.groundHi;
-        uint8_t* px = &m.tileGfx[size_t(t) * ta::tnt::kTileBytes];
-        for (int y = 0; y < 32; ++y)
-            for (int x = 0; x < 32; ++x) {
-                // Offset the lattice per variant so the variants differ, and
-                // sample at tile-local coordinates so each tile is self-contained.
-                uint32_t n = latticeVal(p.seed ^ (uint64_t(t) << 24), x, y);
-                px[y * 32 + x] = uint8_t(lo + (n * uint32_t(hi - lo + 1)) / 256u);
-            }
+    if (realArt) {
+        std::copy(harvest.ground.begin(), harvest.ground.end(), m.tileGfx.begin());
+        std::copy(harvest.water.begin(), harvest.water.end(),
+                  m.tileGfx.begin() + size_t(kVariants) * ta::tnt::kTileBytes);
+    } else {
+        for (int t = 0; t < m.numTiles; ++t) {
+            const bool sea = t >= kVariants;
+            const uint8_t lo = sea ? kFallbackRamp.seaLo : kFallbackRamp.groundLo;
+            const uint8_t hi = sea ? kFallbackRamp.seaHi : kFallbackRamp.groundHi;
+            uint8_t* px = &m.tileGfx[size_t(t) * ta::tnt::kTileBytes];
+            for (int y = 0; y < 32; ++y)
+                for (int x = 0; x < 32; ++x) {
+                    // Offset the lattice per variant so the variants differ, and
+                    // sample at tile-local coordinates so each tile is self-contained.
+                    uint32_t n = latticeVal(p.seed ^ (uint64_t(t) << 24), x, y);
+                    px[y * 32 + x] = uint8_t(lo + (n * uint32_t(hi - lo + 1)) / 256u);
+                }
+        }
     }
 
     size_t blocks = size_t(m.blocksX) * m.blocksY;
@@ -398,7 +439,7 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
     // and doodads (varied trees + rocks by density). Anchor cell holds the feature
     // index; a local claim-map reserves footprints so nothing overlaps. All draws
     // come from one integer PRNG in a fixed order => byte-identical on every peer.
-    const WorldFeatures& wf = kWorldFeat[p.mapType];
+    const WorldPalette wp = discoverFeatures(vfs, kWorldName[p.mapType]);
     m.featureNames.clear();
     auto featIdx = [&](const std::string& nm) -> uint16_t {
         for (size_t i = 0; i < m.featureNames.size(); ++i)
@@ -426,7 +467,7 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
             }
         return true;
     };
-    auto place = [&](int cx, int cz, const char* nm, int fx, int fz) {
+    auto place = [&](int cx, int cz, const std::string& nm, int fx, int fz) {
         m.features[size_t(cz) * W + cx] = featIdx(nm);
         for (int dz = 0; dz < fz; ++dz)
             for (int dx = 0; dx < fx; ++dx) {
@@ -436,8 +477,16 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
     };
     uint64_t frng = p.seed ^ 0x5eed1234abcdULL;
 
-    // One mana deposit: a Sacred Stone centre (weak most common) ringed by 2..5
-    // Standing Stones -- the "mana ruins" the shipped maps cluster around each spot.
+    // One metal patch. TA's is a single 3x3 feature -- ArchMetal1/2/3 and each
+    // world's equivalents -- and nothing else: no ring, no centre-plus-ruins
+    // arrangement. (Kingdoms' mana deposit was a Sacred Stone centre ringed by
+    // arc-segment Standing Stones at canonical compass offsets, reproduced here
+    // from the shipped maps; TA has no analogue, so that whole apparatus is gone
+    // rather than left placing features no TA install can resolve.)
+    //
+    // The variant is drawn uniformly from the world's metal features, which are
+    // its richness tiers: ArchMetal1/2/3 carry metal=187/373/746, so a uniform
+    // draw is what gives a map a mix of poor and rich patches.
     std::vector<std::pair<int, int>> depots;
     auto okDepot = [&](int cx, int cz, int minSp) {
         for (auto& [dx0, dz0] : depots) {
@@ -447,42 +496,10 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
         return true;
     };
     auto placeDeposit = [&](int cx, int cz) {
-        // Sacred stone tier at the shipped 01:02:03 mix (223:446:537 of 1206).
-        uint32_t sr = uint32_t(splitmix(frng) % 1206);
-        int tier = sr < 223 ? 0 : (sr < 669 ? 1 : 2);
-        place(cx, cz, wf.sacred[size_t(tier)], 2, 2);
+        if (wp.metal.empty()) return;
+        const std::string& nm = wp.metal[size_t(splitmix(frng) % wp.metal.size())];
+        place(cx, cz, nm, 3, 3);
         depots.push_back({cx, cz});
-        // Ring the stone the retail way (see kRing): draw the ring size from the
-        // world's shipped distribution, walk the slot-preference order (skipping
-        // a slot ~12% of the time for variety when spares remain), and place each
-        // slot's arc-segment variant at its canonical offset + jitter. A henge
-        // whose spot doesn't fit is simply omitted, as retail maps do.
-        const RingSpec& rs = kRing[p.mapType];
-        int roll = int(splitmix(frng) % 100), want = 5;
-        for (int k = 0; k < 6; ++k) if (roll < rs.cnt[k]) { want = k; break; }
-        uint64_t skipBits = splitmix(frng);
-        int placedH = 0, remaining = 0;
-        bool slotHas[8] = {};
-        for (int i = 0; i < rs.n; ++i) slotHas[rs.p[i].slot] = true;
-        for (int oi = 0; oi < 8; ++oi) if (slotHas[rs.order[oi]]) ++remaining;
-        for (int oi = 0; oi < 8 && placedH < want; ++oi) {
-            int slot = rs.order[oi];
-            if (!slotHas[slot]) continue;
-            --remaining;
-            if (remaining >= want - placedH && ((skipBits >> oi) & 7) == 0)
-                continue;   // variety: occasionally pass over a canonical slot
-            int total = 0;
-            for (int i = 0; i < rs.n; ++i) if (rs.p[i].slot == slot) total += rs.p[i].w;
-            int pickW = int(splitmix(frng) % uint64_t(total));
-            const RingPiece* pc = nullptr;
-            for (int i = 0; i < rs.n; ++i)
-                if (rs.p[i].slot == slot) { if ((pickW -= rs.p[i].w) < 0) { pc = &rs.p[i]; break; } }
-            int jr = rs.jitter;
-            int hx = cx + pc->dx + int(splitmix(frng) % uint64_t(2 * jr + 1)) - jr;
-            int hz = cz + pc->dz + int(splitmix(frng) % uint64_t(2 * jr + 1)) - jr;
-            ++placedH;   // the slot is consumed even if the piece doesn't fit
-            if (fits(hx, hz, 3, 3)) place(hx, hz, pc->name, 3, 3);
-        }
     };
     // Try to drop a deposit within [rmin,rmax] cells of (tx,tz), on spaced land.
     auto tryDepositNear = [&](int tx, int tz, int rmin, int rmax) {
@@ -493,7 +510,7 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
             if (d2 < rmin * rmin || d2 > rmax * rmax) continue;
             int cx = tx + dx, cz = tz + dz;
             if (cx < 3 || cz < 3 || cx >= W - 3 || cz >= H - 3) continue;
-            if (!isLand(cx, cz) || !fits(cx, cz, 2, 2) || !okDepot(cx, cz, 18)) continue;
+            if (!isLand(cx, cz) || !fits(cx, cz, 3, 3) || !okDepot(cx, cz, 18)) continue;
             placeDeposit(cx, cz);
             return true;
         }
@@ -505,11 +522,11 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
         for (int placed = 0, t = 0; placed < 3 && t < 12; ++t)
             if (tryDepositNear(sx, sz, 16, 44)) ++placed;
     int area = W * H;
-    int scatter = std::clamp(area / std::max(1, 22000 - int(p.manaDensity) * 70), 0, 48);
+    int scatter = std::clamp(area / std::max(1, 22000 - int(p.metalDensity) * 70), 0, 48);
     for (int placed = 0, tries = 0; placed < scatter && tries < scatter * 200 + 400; ++tries) {
         int cx = int(splitmix(frng) % uint64_t(W)), cz = int(splitmix(frng) % uint64_t(H));
         if (cx < 3 || cz < 3 || cx >= W - 3 || cz >= H - 3) continue;
-        if (!isLand(cx, cz) || nearStart(cx, cz, 14) || !fits(cx, cz, 2, 2) || !okDepot(cx, cz, 22))
+        if (!isLand(cx, cz) || nearStart(cx, cz, 14) || !fits(cx, cz, 3, 3) || !okDepot(cx, cz, 22))
             continue;
         placeDeposit(cx, cz);
         ++placed;
@@ -525,13 +542,15 @@ Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
         for (int cx = 0; cx < W; ++cx) {
             uint64_t roll = splitmix(frng);   // one draw per cell (keeps order deterministic)
             if (!isLand(cx, cz) || claim[size_t(cz) * W + cx] || nearStart(cx, cz, 6)) continue;
-            if (int(roll % 10000) < treeThresh) {          // tree (any variant)
-                const char* nm = wf.trees.p[(roll >> 24) % uint64_t(wf.trees.n)];
+            if (!wp.trees.empty() && int(roll % 10000) < treeThresh) {
+                const std::string& nm = wp.trees[(roll >> 24) % wp.trees.size()];
                 if (fits(cx, cz, 2, 2)) place(cx, cz, nm, 2, 2);
-            } else if (int((roll >> 13) % 10000) < rockThresh) {   // rock (small-biased)
-                int a = int((roll >> 24) % uint64_t(wf.rocks.n));
-                int b = int((roll >> 33) % uint64_t(wf.rocks.n));
-                if (fits(cx, cz, 3, 3)) place(cx, cz, wf.rocks.p[std::min(a, b)], 3, 3);
+            } else if (!wp.rocks.empty() && int((roll >> 13) % 10000) < rockThresh) {
+                // Small-biased: min of two draws. The list is sorted by name, which
+                // for TA's rock art runs small->big within a world's numbering.
+                size_t a = (roll >> 24) % wp.rocks.size();
+                size_t b = (roll >> 33) % wp.rocks.size();
+                if (fits(cx, cz, 3, 3)) place(cx, cz, wp.rocks[std::min(a, b)], 3, 3);
             }
         }
     return r;
@@ -572,7 +591,7 @@ std::string encodeMapId(const Params& pin) {
     b.push_back(char(p.players));
     b.push_back(char(p.treeDensity));
     b.push_back(char(p.rockDensity));
-    b.push_back(char(p.manaDensity));
+    b.push_back(char(p.metalDensity));
     b.push_back(char(p.waterDensity));
     b.push_back(char(p.reliefDensity));
     return std::string(kMagic) + toHex(b);
@@ -600,13 +619,13 @@ Params decodeMapId(const std::string& id) {
         if (p.formatVer >= 2 && raw.size() >= 21) {
             p.treeDensity = u8(16);
             p.rockDensity = u8(17);
-            p.manaDensity = u8(18);
+            p.metalDensity = u8(18);
             p.waterDensity = u8(19);
             p.reliefDensity = u8(20);
         } else {   // v1 ids: one doodad slider drove both, no relief control
             p.treeDensity = u8(16);
             p.rockDensity = uint8_t(std::min(255, int(u8(16)) * 3 / 4));
-            p.manaDensity = u8(17);
+            p.metalDensity = u8(17);
             p.waterDensity = u8(18);
             p.reliefDensity = 128;
         }
@@ -616,7 +635,8 @@ Params decodeMapId(const std::string& id) {
 
 std::string friendlyLabel(const Params& pin) {
     Params p = sanitize(pin);
-    static const char* kNames[kMapTypes] = {"Aramon", "Taros", "Veruna", "Zhon", "Creon"};
+    static const char* kNames[kMapTypes] = {"Archipelago", "GreenWorld", "Lava",
+                                            "Mars", "Metal", "Moon"};
     int u = p.widthCells / 32, v = p.heightCells / 32;
     // ASCII only: the lobby draws this with the 5x7 block font, which has no glyph
     // for a middot and would render each byte of one as a blank.

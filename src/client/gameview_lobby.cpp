@@ -290,7 +290,7 @@ std::string mapDisplayName(const std::string& id) {
         switch (i) {
             case 0: genParams_.treeDensity = v; break;
             case 1: genParams_.rockDensity = v; break;
-            case 2: genParams_.manaDensity = v; break;
+            case 2: genParams_.metalDensity = v; break;
             case 3: genParams_.waterDensity = v; break;
             default: genParams_.reliefDensity = v; break;
         }
@@ -515,7 +515,7 @@ std::string mapDisplayName(const std::string& id) {
         };
         slider(0, "TREES", genParams_.treeDensity);
         slider(1, "ROCKS", genParams_.rockDensity);
-        slider(2, "MANA SPOTS", genParams_.manaDensity);
+        slider(2, "METAL PATCHES", genParams_.metalDensity);
         slider(3, "WATER", genParams_.waterDensity);
         slider(4, "HILLS  (plateaus & ramps)", genParams_.reliefDensity);
         lbBtn(px, py, 140, kRowH, "RE-ROLL SEED", true, [this] {

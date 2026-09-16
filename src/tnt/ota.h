@@ -12,7 +12,12 @@ namespace ta::tnt {
 
 struct StartPos {
     int number = 1;      // StartPos<number> (1-based)
-    int xpos = 0, zpos = 0;   // in CELLS (16px); world px = *16
+    // In WORLD units, the same space unit positions use -- NOT cells. Retail
+    // writes e.g. XPos=3010 on a 210-cell (3360-unit) wide map. This was
+    // documented as cells with "world px = *16", the Kingdoms convention, and a
+    // reader that scaled by 16 put every start tens of thousands of units off the
+    // map; setupMatch then fell back to spreading players around the map centre.
+    int xpos = 0, zpos = 0;
 };
 
 struct Scenario {
@@ -21,18 +26,26 @@ struct Scenario {
         "Copyright 1998 Cavedog Entertainment. All rights reserved.";
     std::string missionName;
     std::string missionDescription;
-    std::string kingdom;              // lowercase world: aramon/taros/veruna/zhon
+    // Lowercase world name (archipelago/greenworld/lava/mars/metal/moon...).
+    // Retail's own .ota files do NOT carry this -- it is ours, written so a map we
+    // generate remembers which world's art it was built from. Absent, callers fall
+    // back to the first world the install ships.
+    std::string kingdom;
     int sizeW = 0, sizeH = 0;         // in Units (cells>>5); OTA "size = W x H"
     std::string useOnlyUnits;         // "<name>.tdf", or empty when unrestricted
     bool hasScenario = false;
     // TA economy inputs. These live in the GlobalHeader (tidal/solar/wind/gravity)
     // and in the per-schema block (SurfaceMetal/MohoMetal), and are what make the
     // same wind farm a power station on one map and scenery on another.
+    // Defaults are the MEDIANS of the shipped maps, so a map created here plays
+    // like a retail one instead of arriving becalmed and metal-less: across TA's
+    // own .ota files, SurfaceMetal 5, MohoMetal 40, MaxWindSpeed 3500 and
+    // TidalStrength 0 (most maps have no tide at all; the ones that do run 15-25).
     float tidalStrength = 0;
-    float solarStrength = 0;
-    float minWindSpeed = 0, maxWindSpeed = 0;
-    float gravity = 0;
-    float surfaceMetal = 0, mohoMetal = 0;
+    float solarStrength = 20;
+    float minWindSpeed = 0, maxWindSpeed = 3500;
+    float gravity = 112;
+    float surfaceMetal = 5, mohoMetal = 40;
     int   lineOfSight = 0;   // TA's LoS mode option
 
     std::string mapType = "Network 1";

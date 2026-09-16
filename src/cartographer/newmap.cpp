@@ -1,5 +1,7 @@
 #include "cartographer/newmap.h"
 
+#include "tnt/mapgen.h"
+
 #include "cartographer/sections.h"
 #include "hpi/hpi.h"
 #include "terrain/terrain.h"
@@ -152,10 +154,15 @@ ta::tnt::Map newBlankMap(const ta::hpi::Vfs& vfs, SectionLibrary& sections,
     m.height = std::max(1, hUnits) * 32;
     m.blocksX = m.width / 2;
     m.blocksY = m.height / 2;
-    m.seaLevel = (world == "aramon") ? 40 : 58;   // sidedata waterheight per side
+    // The world's own authoring levels, from the generator's measured table --
+    // not a local copy. (This read `(world == "aramon") ? 40 : 58`, a Kingdoms
+    // pair that gave every TA world the same wrong waterline.)
+    uint8_t seaLv = 58, landLv = 80;
+    ta::mapgen::worldLevels(ta::mapgen::worldType(world), seaLv, landLv);
+    m.seaLevel = seaLv;
     size_t cells = size_t(m.width) * m.height;
     size_t blocks = size_t(m.blocksX) * m.blocksY;
-    m.heights.assign(cells, uint8_t(m.seaLevel + 22));   // flat land above water
+    m.heights.assign(cells, landLv);   // flat land at the world's plateau height
     m.features.assign(cells, ta::tnt::kNoFeature);
     m.tiles.assign(blocks, 0);
 
