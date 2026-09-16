@@ -16,6 +16,7 @@
 #include "tdf/sidedata.h"
 #include "sim/matchsetup.h"
 #include "sim/sim.h"
+#include "ai/ai.h"
 
 #include <cstdio>
 #include <string>
@@ -241,6 +242,47 @@ int main(int argc, char** argv) {
         if (t.energyUse < 0 || t.metalUse < 0) ++negUse;
     }
     check(negUse == 0, "no type exposes a negative standing use at all");
+
+    // --- the AI's factory appetite -------------------------------------------
+    // The economy ladder is stated in "one factory's worth of income" rather than
+    // a raw number, and that quantity is DERIVED from this install. It replaced a
+    // hardcoded 20, which is a Kingdoms mana figure: TA's metal runs an order of
+    // magnitude smaller, and Coast To Coast has ten metal patches for BOTH
+    // players, so 20/sec is not reachable on it at all -- the AI's switch to
+    // production ended up gated on running out of economy to build rather than on
+    // earning enough to run a factory. So the derived figure has to land in the
+    // band the early game actually plays in, or the same failure returns wearing
+    // a different constant.
+    {
+        ta::ai::Profile prof;
+        ta::ai::Controller ai(0, reg, prof, 1, ta::ai::Difficulty::Normal, {});
+        const float draw = ai.factoryAppetite();
+        std::printf("      (measured factory appetite: %.2f metal/sec)\n", double(draw));
+        check(draw > 2.0f && draw < 10.0f,
+              "the factory appetite lands in TA's tier-1 band, not Kingdoms' magnitudes");
+
+        // ...and it should agree with the labs the opening actually builds from.
+        // A Kbot Lab's is buildCostMetal * workerTime / buildTime, averaged over
+        // its menu; the derived median must sit near that, not near an advanced
+        // shipyard's (16/sec) or an aircraft plant's (1.4/sec).
+        const auto* lab = reg.find("armlab");
+        check(lab != nullptr, "armlab resolves");
+        if (lab && lab->workerTime > 0) {
+            double sum = 0; int n = 0;
+            for (const auto& id : reg.buildable("armlab")) {
+                const auto* m = reg.find(id);
+                if (!m || m->buildTime <= 0 || m->buildCostMetal <= 0 || m->isStructure())
+                    continue;
+                sum += double(m->buildCostMetal) * lab->workerTime / m->buildTime;
+                ++n;
+            }
+            const double labDraw = n ? sum / n : 0;
+            std::printf("      (armlab draws %.2f metal/sec over %d menu entries)\n",
+                        labDraw, n);
+            check(n > 0 && draw > labDraw * 0.5 && draw < labDraw * 2.0,
+                  "and is within a factor of two of a Kbot Lab's own draw");
+        }
+    }
 
     // --- commandfire: the weapons that only fire when ordered -----------------
     // WEAPONS.TDF marks exactly eight: both Disintegrators (the Commander's

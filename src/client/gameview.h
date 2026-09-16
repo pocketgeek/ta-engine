@@ -631,6 +631,44 @@ public:
     // (not live world_), so it is safe to call after the sim thread has stopped.
     ta::ResultStats resultStats() const;
     size_t aliveUnits() const;
+    // Total kills across all players. The headless harness reports it so a run
+    // can say whether the AIs actually FOUGHT: "units=43" alone cannot
+    // distinguish two armies grinding each other down from two that built up
+    // peacefully and never met. Not hashed (Player::kills is not either).
+    // Player 0's economy, for the headless harness. "units=" and "kills=" say
+    // what was built and whether it fought; neither says whether the economy is
+    // GROWING, which is the thing an AI build-up actually bottlenecks on.
+    void economySnapshot(float& metal, float& metalIncome,
+                         float& energy, float& energyIncome) const {
+        const auto& p = world_.player(0);
+        metal = p.metal.cur;   metalIncome = p.metal.income;
+        energy = p.energy.cur; energyIncome = p.energy.income;
+    }
+    // Player 0's unit mix, most numerous first -- "units=25" does not say whether
+    // that is an army, a solar farm, or twenty-five of one building.
+    std::string unitMix(size_t top = 6) const {
+        std::map<std::string, int> n;
+        for (const auto& u : world_.units())
+            if (u.alive() && u.player == 0 && u.type) ++n[u.type->id];
+        std::vector<std::pair<int, std::string>> v;
+        for (const auto& [id, c] : n) v.push_back({c, id});
+        std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
+            return a.first != b.first ? a.first > b.first : a.second < b.second;
+        });
+        std::string out;
+        for (size_t i = 0; i < v.size() && i < top; ++i) {
+            if (!out.empty()) out += ',';
+            out += v[i].second + "x" + std::to_string(v[i].first);
+        }
+        return out.empty() ? "-" : out;
+    }
+    int totalKills() const {
+        int k = 0;
+        // numPlayers(), not kMaxPlayers: players_ is sized by setPlayerCount to
+        // the slots a match actually uses, so the constant walks off the end.
+        for (int i = 0; i < world_.numPlayers(); ++i) k += world_.player(i).kills;
+        return k;
+    }
     // Units in the PUBLISHED render snapshot. Not the same question as aliveUnits(),
     // which reads the world: this is what the renderer would actually draw, and it is
     // zero when a mode simulates without publishing -- which is exactly how replay

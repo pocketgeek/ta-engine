@@ -110,7 +110,13 @@ DiffParams paramsFor(Difficulty d);
 
 // What a buildable unit is FOR, derived from its UnitType (faction-agnostic) so the
 // planner can balance an army instead of drawing types blindly. See Controller::categoryOf.
-enum class BuildCat { Economy, Factory, Builder, Army, Defense };
+// TA has TWO resources, and which one is scarce decides what to build next. The
+// planner inherited a single Economy category from Kingdoms' one-resource mana
+// economy, which made a metal extractor one interchangeable draw out of eleven
+// economy buildings on the Commander's menu -- so an AI could (and did) run for
+// five minutes on +1.0 metal/sec, the Commander's own trickle, while its energy
+// climbed past +55. Metal and power are scored separately.
+enum class BuildCat { Economy, Power, Factory, Builder, Army, Defense };
 
 // The empire's current shape, assessed once per think. The planner compares these to
 // simple targets to decide which category a producer should build next -- so the AI
@@ -122,12 +128,25 @@ struct Needs {
     // Own live units per type, filled in the same assessNeeds pass -- weightedPick's
     // limit checks read this instead of re-scanning all units per menu entry.
     std::unordered_map<const ta::sim::UnitType*, int> counts;
-    int   economy = 0;         // count: income/storage structures
+    int   economy = 0;         // count: METAL income/storage structures
+    int   power = 0;           // count: energy producers
+    // The second resource. `income` above is metal, which is what the factory
+    // ladder is denominated in; these say whether energy is the binding
+    // constraint instead.
+    float energyIncome = 0, energyDrain = 0, energyStock = 0;
+    // Stock vs capacity, for the storage rule in weightedPick: a store is worth
+    // building only when the resource is actually capping out and being wasted.
+    float metalStock = 0, metalCap = 1, energyCap = 1;
     int   factories = 0;       // count: structures that train units
     int   builders = 0;        // count: mobile builders (incl. the Commander)
     int   army = 0;            // count: mobile combatants
     int   builderCap = 2;      // stop making builders past this (a handful, not a horde)
     int   desiredFactories = 1;// how many factories the current income wants to feed
+    // Metal per second ONE factory draws while producing flat out, measured from
+    // the registry (see Controller::factoryAppetite). The economy thresholds are
+    // stated in this unit, so they hold for either game's magnitudes rather than
+    // being numbers copied from one of them.
+    float factoryDraw = 1.0f;
 };
 
 // Sink for the commands a Controller decides to issue this tick. Offline this
@@ -148,6 +167,14 @@ public:
     // Reads `world` (never mutates it) and emits any orders through `sink`.
     void tick(const ta::sim::World& world, uint32_t simTick, const CommandSink& sink);
 
+
+    // Metal/sec one factory consumes running flat out -- the median over what the
+    // registry's producers can actually build. Computed once and cached: it
+    // depends only on the type data, which does not change during a match.
+    // Public because it is the unit the economy thresholds are stated in, and a
+    // data-backed test checks the figure this install yields is sane.
+    float factoryAppetite() const;
+
 private:
     // --- deterministic RNG (retail-style LCG) --------------------------------
     int rand(int n) {
@@ -159,6 +186,7 @@ private:
     // Needs-based build planner: assess the empire, score each category against its
     // target, and let a producer build the most-needed thing its menu offers.
     Needs assessNeeds(const ta::sim::World&) const;
+    mutable float factoryDraw_ = 0.0f;   // 0 = not yet computed
     BuildCat categoryOf(const ta::sim::UnitType*) const;
     int   desire(BuildCat, const Needs&) const;
     // `excludeCats` is a bitmask of 1<<int(BuildCat): categories already tried and

@@ -354,6 +354,66 @@ Current baseline, Coast To Coast, 2 AI, 120 s of simulated time:
 Three seeds spanning 9..12 on identical code is the point: a single run landing on
 9 or on 12 says nothing about a change on its own.
 
+The harness line also reports `kills=`, because `units=` alone cannot tell two
+armies grinding each other down from two that built up peacefully and never met —
+and at 120 s on this map it is still `kills=0`, so that figure is measuring
+build-up only.
+
+**A hash that does not move is a result too.** Re-running these three seeds after
+the AI's economy ladder was rebased onto a measured factory appetite reproduced
+all three world hashes *byte for byte*, at 120 s **and** at 300 s. That is worth
+recording rather than quietly re-running at a length that flatters the change —
+and it is what sent the investigation to the real constraint below.
+
+### What the AI's economy was actually doing
+
+The harness line reports `p0-metal=` and `p0-energy=` with their rates, and a
+`p0 mix:` line of the most numerous unit types, because `units=` answers neither
+"is the economy growing" nor "growing on which resource". Against those:
+
+> `units=8 p0-metal=630(+1.0/s) p0-energy=0(+45.0/s)`
+> `p0 mix: armcomx1,armlltx1,armsolarx1,armwinx1`
+
+Metal pinned at **+1.0/sec** — the Commander's own `MetalMake=1`, and nothing
+else — for the whole match, while energy climbed past +55. **The AI never built a
+metal extractor.** No threshold was stopping it: the planner had a single
+`Economy` category, inherited from Kingdoms' one-resource mana economy, so an
+extractor was one interchangeable draw among the eleven economy buildings on the
+Commander's menu and simply lost the dice most of the time. Three fixes, each
+measured on the same fixed seed:
+
+| | metal rate @60 s | mix |
+| --- | --- | --- |
+| before | +1.0/s | commander, LLT, solar, wind |
+| split metal vs power | +2.9/s | **2× mex**, 2× storage, commander, solar |
+| + storage gated on capping out | +2.2/s | mex, maker, storage, commander, solar |
+| + makers gated on spare energy | **+5.0/s** | **4× mex**, commander, storage |
+
+A fourth followed from watching the same seed at 300 s: metal had reached
++6.1/sec, past the threshold for a first factory, and the AI still built none. The
+energy rule was treating a low energy *stock* as urgency, and a stock near zero
+while income exceeds drain just means construction is spending it — which is what
+it is for. That pinned power at priority 96, above Factory's 90, for ever. A
+stall is `income < drain` and nothing else. With that corrected, seed 11 at 300 s:
+
+> `units=16 p0-metal=1227(+6.1/s) p0-energy=538(+55.0/s)`
+> `p0 mix: armmexx4,armradx2,armcomx1,`**`armlabx1`**`,armmstorx1,armsolarx1`
+
+— four extractors, a power base, and a Kbot Lab: the first factory to appear in
+any of these runs, against +1.0/sec and no extractor at all before.
+
+`kills=` is still 0 throughout. That is the map, not the planner: Coast To Coast
+puts the two starts on opposite sides of open water, so nothing built so far can
+reach the other player. Testing whether the AI *fights* needs a land-connected
+map, and is the next thing to measure rather than something to infer from here.
+
+The middle two are the sort of thing a single-resource planner cannot see: a
+metal *store* produces nothing but shares a category with the things that do, and
+a metal *maker* burns 60 energy/sec for 1 metal/sec, so built without that
+surplus it never produces at all (upkeep is billed per unit, all or nothing) and
+is pure spent metal. Retail's own profile damps makers to weight 0.1, which makes
+that unlikely; gating them on the energy to run them makes it correct.
+
 ## 6. Open questions, pending the retail data
 
 Answers come from the install itself and from analysing `TotalA.exe` — static

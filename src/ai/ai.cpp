@@ -195,11 +195,17 @@ BuildCat Controller::categoryOf(const ta::sim::UnitType* t) const {
         // test the Kingdoms mogrium fields (income/storage), which are zero on
         // every TA unit -- so solar collectors, wind farms, extractors and storage
         // all classified as DEFENSE and the AI never built an economy at all.
-        if (t->metalMake > 0 || t->energyMake > 0 ||
-            t->metalStorage > 0 || t->energyStorage > 0 ||
-            t->extractsMetal > 0 || t->makesMetal > 0 ||
-            t->windGenerator > 0 || t->tidalGenerator > 0)
+        // METAL side first: an extractor, a metal maker, or metal storage. A
+        // metal maker burns energy to make metal, so it belongs here even though
+        // it is an energy CONSUMER -- what it produces is what the planner is
+        // choosing between.
+        if (t->extractsMetal > 0 || t->makesMetal > 0 || t->metalMake > 0 ||
+            t->metalStorage > 0)
             return BuildCat::Economy;
+        // ENERGY side: solar, wind, tidal, fusion, and energy storage.
+        if (t->energyMake > 0 || t->windGenerator > 0 || t->tidalGenerator > 0 ||
+            t->energyStorage > 0)
+            return BuildCat::Power;
         return BuildCat::Defense;
     }
     if (t->isBuilder) {
@@ -222,24 +228,97 @@ BuildCat Controller::categoryOf(const ta::sim::UnitType* t) const {
 }
 
 // Count the empire by category and set the targets the planner steers toward.
+// Metal/sec one factory draws producing flat out. For each producer in the
+// registry, each menu entry costs `buildCostMetal` and takes `buildTime /
+// workerTime` seconds, so it draws `buildCostMetal * workerTime / buildTime`
+// while it is being made; average over a producer's menu, then over producers.
+//
+// This exists so the economy thresholds below can be expressed in FACTORIES
+// rather than in a raw resource figure. They were raw -- "bootstrap income until
+// it reaches 20, then 25 + 20 per factory" -- and those are Kingdoms mana
+// numbers, set against a 1700-mana keep. TA's metal runs an order of magnitude
+// smaller: this install measures a median factory draw of about 5 metal/sec
+// (a Kbot Lab 4.6), and a metal extractor on a patch earns about 1.15. Coast To
+// Coast has ten metal patches for BOTH players, so 20/sec is not reachable on it
+// at all.
+//
+// The effect was not that the AI never built a factory -- it eventually did,
+// because a category only yields when its entries stop being USABLE, so economy
+// had to saturate (limits reached, no sites left) before anything else could win
+// the pick. It was that the switch to production was gated on running out of
+// economy to build rather than on earning enough to run a factory, which is a
+// different and much later moment.
+float Controller::factoryAppetite() const {
+    if (factoryDraw_ > 0.0f) return factoryDraw_;
+    std::vector<float> perProducer;
+    for (const auto& [id, t] : registry_.types()) {
+        if (t.workerTime <= 0.0f) continue;
+        const auto& menu = registry_.buildable(id);
+        if (menu.empty()) continue;
+        double sum = 0;
+        int n = 0;
+        for (const auto& mid : menu) {
+            const auto* m = registry_.find(mid);
+            if (!m || m->buildTime <= 0.0f || m->buildCostMetal <= 0.0f) continue;
+            if (m->isStructure()) continue;   // a factory's appetite is its UNITS
+            sum += double(m->buildCostMetal) * double(t.workerTime) / double(m->buildTime);
+            ++n;
+        }
+        if (n > 0) perProducer.push_back(float(sum / n));
+    }
+    // The MEDIAN, not the mean. Across TA's 21 producers the figure runs 1.4
+    // (aircraft plant) to 16.2 (advanced shipyard); the mean comes out 6.7, which
+    // the advanced yards drag above anything the early game faces, while the
+    // median lands at 5.6 -- inside the tier-1 band the opening actually builds
+    // from (Kbot Lab 4.6, Vehicle Plant 5.2-6.2). Sorting also makes the result
+    // independent of the registry's hash-map iteration order.
+    if (perProducer.empty()) return factoryDraw_ = 1.0f;
+    std::sort(perProducer.begin(), perProducer.end());
+    factoryDraw_ = perProducer[perProducer.size() / 2];
+    // A data set whose producers all price at zero still has to yield something
+    // usable; 1.0 degenerates the thresholds to "one factory per point of income".
+    if (!(factoryDraw_ > 0.0f)) factoryDraw_ = 1.0f;
+    // Report it once: it sets the whole economy ladder, and it is derived from
+    // the install's data rather than written down, so it is worth being able to
+    // see what this data set actually yielded.
+    if (std::getenv("TA_AI_PICK"))
+        std::fprintf(stderr, "ai: factory appetite %.2f metal/sec (median of %zu producers)\n",
+                     double(factoryDraw_), perProducer.size());
+    return factoryDraw_;
+}
+
 Needs Controller::assessNeeds(const ta::sim::World& world) const {
     Needs n;
     const auto& me = world.player(player_);
     n.income = me.metal.income / std::max(me.incomeMult, 1.0f);   // ignore an Absurd AI's cheat
+    n.energyIncome = me.energy.income / std::max(me.incomeMult, 1.0f);
+    n.energyDrain = me.energy.drain;
+    n.energyStock = me.energy.cur;
+    n.metalStock = me.metal.cur;
+    n.metalCap = std::max(1.0f, me.metal.storage);
+    n.energyCap = std::max(1.0f, me.energy.storage);
     for (const auto& u : world.units()) {
         if (!u.alive() || u.player != player_ || !u.type) continue;
         ++n.counts[u.type];
         switch (categoryOf(u.type)) {
             case BuildCat::Economy:  ++n.economy;   break;
+            case BuildCat::Power:    ++n.power;     break;
             case BuildCat::Factory:  ++n.factories; break;
             case BuildCat::Builder:  ++n.builders;  break;
             case BuildCat::Army:     ++n.army;      break;
             case BuildCat::Defense:  break;
         }
     }
-    // One factory per ~40 income so production can actually spend what we earn; a couple
-    // of mobile builders is plenty (more just spiral the economy). Hard/Absurd run hotter.
-    n.desiredFactories = std::clamp(int(n.income / 40.0f) + 1, 1, 8);
+    // One factory per factory's-worth of income, so production can actually spend
+    // what we earn; a couple of mobile builders is plenty (more just spiral the
+    // economy). Hard/Absurd run hotter.
+    n.factoryDraw = factoryAppetite();
+    // How many factories the income can actually FEED. No "+1": the economy
+    // ladder below already refuses to build the first factory until income
+    // covers one factory's draw, so adding one here would ask for a second
+    // factory the moment the first became affordable and keep production
+    // permanently one ahead of the economy paying for it.
+    n.desiredFactories = std::clamp(int(n.income / n.factoryDraw), 1, 8);
     n.builderCap = (diff_ == Difficulty::Hard || diff_ == Difficulty::Absurd) ? 3 : 2;
     return n;
 }
@@ -250,10 +329,32 @@ Needs Controller::assessNeeds(const ta::sim::World& world) const {
 int Controller::desire(BuildCat c, const Needs& n) const {
     switch (c) {
         case BuildCat::Economy:
-            // Bootstrap income BEFORE the pricey first factory -- building a 1700-mana
-            // keep out of the opening treasury with no income starves everything after.
-            if (n.income < 20.0f) return 95;
-            return n.income < 25.0f + 20.0f * n.factories ? 60 : 0; // sustain the factories
+            // METAL. Bootstrap income BEFORE the first factory -- building one out
+            // of the opening treasury with no income starves everything after it.
+            // The thresholds are in FACTORIES' worth of income (see
+            // factoryAppetite), not a raw figure, so they mean the same thing
+            // whatever the game's resource magnitudes are.
+            if (n.income < n.factoryDraw) return 95;
+            // Then keep earning enough to feed what we have plus one more.
+            return n.income < n.factoryDraw * float(n.factories + 1) ? 60 : 0;
+        case BuildCat::Power:
+            // ENERGY, scored against the base's OWN demand rather than a target
+            // figure: what "enough power" means depends entirely on what has been
+            // built. Urgent while the base cannot pay its standing drain (that is
+            // the stall -- extractors and makers stop producing), then a steady
+            // second priority with some headroom for what is about to be built,
+            // then nothing.
+            // A genuine stall is income below the standing DRAIN. A low stock is
+            // not: energy sitting near zero while income exceeds drain just means
+            // construction is spending it, which is what it is for. Treating the
+            // stock as urgency pinned this at 96 forever -- above Factory's 90 --
+            // so an AI earning +105 energy/sec against ~20 of drain still refused
+            // to build a factory, because it was permanently "short of energy".
+            if (n.energyIncome < n.energyDrain) return 96;
+            // Headroom: construction itself costs energy, and every TA building
+            // costs several times more energy than metal, so an economy that
+            // exactly covers its standing drain still cannot build anything.
+            return n.energyIncome < n.energyDrain * 1.5f + 20.0f ? 55 : 0;
         case BuildCat::Factory:
             if (n.factories == 0) return 90;                        // then: some production
             return n.factories < n.desiredFactories ? 70 : 0;       // scale with income
@@ -285,6 +386,29 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
         const Plan& plan = profile_.forDifficulty(diff_);
         int w = profileWeight(plan, *ut);
         if (w <= 0) return 0;
+        // A pure STORE produces nothing. It shares its category with the things
+        // that do, so a uniform draw spends real income on capacity the player is
+        // nowhere near using -- the AI was building metal storage while earning
+        // +1/sec. Worth it only when the resource is actually capping out and
+        // being thrown away.
+        {
+            const bool storesMetal = ut->metalStorage > 0 && ut->extractsMetal <= 0 &&
+                                     ut->makesMetal <= 0 && ut->metalMake <= 0;
+            const bool storesEnergy = ut->energyStorage > 0 && ut->energyMake <= 0 &&
+                                      ut->windGenerator <= 0 && ut->tidalGenerator <= 0;
+            if (storesMetal && needs.metalStock < needs.metalCap * 0.8f) return 0;
+            if (storesEnergy && needs.energyStock < needs.energyCap * 0.8f) return 0;
+        }
+        // A metal MAKER converts energy into metal and is worth building only
+        // with the energy to run it -- TA's costs 60/sec for 1 metal/sec. Built
+        // without that surplus it simply never produces (upkeep is billed per
+        // unit, all or nothing), so it is pure spent metal. The AI did exactly
+        // that: a maker on +25 energy/sec against a base already drawing more
+        // than it earned. Retail's own profile damps makers to weight 0.1, which
+        // makes it unlikely; this makes it correct.
+        if (ut->makesMetal > 0.0f && ut->energyUse > 0.0f &&
+            needs.energyIncome - needs.energyDrain < ut->energyUse)
+            return 0;
         int lim = profileLimit(plan, *ut);
         if (lim == 0) return 0;      // an explicit `limit <x> 0` means never build x
         if (lim > 0) {
@@ -311,8 +435,11 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
     // "every menu entry scored 0", and this says which gate did it.
     static const bool kPickLog = std::getenv("TA_AI_PICK") != nullptr;
     if (kPickLog && best <= 0) {
-        std::fprintf(stderr, "    pick %s: nothing usable (metal=%.0f income=%.0f)\n",
-                     producer.type->id.c_str(), world.player(player_).metal.cur, income);
+        std::fprintf(stderr,
+                     "    pick %s: nothing usable (metal=%.0f income=%.1f "
+                     "factory-draw=%.1f want=%d have=%d)\n",
+                     producer.type->id.c_str(), world.player(player_).metal.cur, income,
+                     double(needs.factoryDraw), needs.desiredFactories, needs.factories);
         for (const auto& id : menu) {
             const auto* ut = registry_.find(id);
             if (!ut) { std::fprintf(stderr, "      %-9s MISSING from registry\n", id.c_str()); continue; }

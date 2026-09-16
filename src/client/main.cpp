@@ -1180,11 +1180,20 @@ int main(int argc, char** argv) {
         // 20k and one that ran the clock out both used to print the same line, so a
         // short run was indistinguishable from a stall.
         const int endOutcome = gameView->outcomePublic();
-        std::fprintf(stderr, "mp-headless done: tick=%u hash=%016llx units=%zu err=%s end=%s\n",
+        // `kills` distinguishes two armies grinding each other down from two that
+        // built up peacefully and never met -- "units=43" alone cannot, and that
+        // is the question a skirmish harness is usually being asked.
+        float em = 0, emi = 0, ee = 0, eei = 0;
+        gameView->economySnapshot(em, emi, ee, eei);
+        std::fprintf(stderr,
+                     "mp-headless done: tick=%u hash=%016llx units=%zu kills=%d "
+                     "p0-metal=%.0f(+%.1f/s) p0-energy=%.0f(+%.1f/s) err=%s end=%s\n",
                      gameView->netTick(), (unsigned long long)gameView->worldHashPublic(),
-                     gameView->aliveUnits(),
+                     gameView->aliveUnits(), gameView->totalKills(),
+                     double(em), double(emi), double(ee), double(eei),
                      gameView->netError().empty() ? "none" : gameView->netError().c_str(),
                      endOutcome != 0 ? "concluded" : "timelimit");
+        std::fprintf(stderr, "mp-headless p0 mix: %s\n", gameView->unitMix().c_str());
         if (mpHeadless == 8)
             std::fprintf(stderr, "mission %s outcome=%d (%s)\n", missionStem.c_str(),
                          gameView->missionOutcomePublic(),

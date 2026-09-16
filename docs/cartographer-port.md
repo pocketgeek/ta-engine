@@ -6,6 +6,13 @@ are reverse-engineered from the retail binary by **static analysis only** — sa
 rules as the engine (`docs/retail-engine.md`): never copy its code or ship the
 binary/its assets; reimplement observed behaviour.
 
+> **Read this as a record of the KINGDOMS editor, not of ours.** Everything below
+> describes `Cartographer.exe` and the formats *it* works in, and is still
+> accurate about that binary. Our `cartographer` now targets **TA**, where
+> several of those specifics differ — see
+> [What differs in the TA build](#what-differs-in-the-ta-build) at the end before
+> treating any file-format detail here as current.
+
 ## What it is (from the PE)
 
 MFC + DirectDraw + COMCTL32 GUI app, 4 sections, imagebase 0x400000:
@@ -268,3 +275,22 @@ TXT 0x41c4e0 · CRT 0x40d8d0 · bundle 0x418b80. GetCell 0x419120 · SectionStam
 - Pending deep RE (for later phases): minimap-generation exact downsample;
   HPI/.kmp bundle writer; whether the loader consumes UnitRecord 0x224/0x228
   (type cache) or re-derives from objectName (almost certainly the latter).
+
+## What differs in the TA build
+
+Our editor targets TA, and these parts of the Kingdoms record above do **not**
+carry over. Each was found by running the tool against a real install.
+
+| Above (Kingdoms) | TA |
+| --- | --- |
+| Prefabs are `sections/<world>/<cat>/*.tnt` | `.sct` containers, two versions with different plane orders — decoded in `src/sct/`, see `docs/ta-port.md` |
+| A prefab cell is `{tileKey u32, col u8, row u8}` into shared art | A `u16` index into the **map's own** tile library, so a stamp must intern tiles by content |
+| Tiles come from `terrain/<hexkey>.jpg` + `sections.hpi` | The map carries its tiles; `worlds.hpi` carries the prefabs |
+| `.ota` nests `[Map Data]` | `[Schema N]`, and the economy figures live in the schema |
+| `.ota` `XPos`/`ZPos` are cells | **World units** (retail writes `XPos=3010` on a 3360-wide map) |
+| Worlds are the five houses | The six that ship sections: Archipelago, GreenWorld, Lava, Mars, Metal, Moon — and the editor reads the list off the `sections/` tree rather than holding one |
+| "WRITER still to build (phase 4)" | The `.ota` writer exists, and now also emits the economy keys it had been parsing but never writing |
+
+A section is still a prefab stamped on a grid, and `stampSection` is still
+format-independent — it works between any two loaded maps, which is why the
+`.sct` decoder produces a `tnt::Map` rather than a type of its own.
