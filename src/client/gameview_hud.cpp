@@ -1290,8 +1290,11 @@ char taPanelCommand(const std::string& name) {
     // a separate on and off button.
     if (t == "ONOFF")   return 't';
     if (t == "CLOAK")   return 'y';
-    // Still unwired: BLAST (the Commander's D-gun, which needs its own weapon
-    // path) and the ORDERS/BUILD panel tabs.
+    // BLAST arms the selection's command-fire weapon (the Commander's D-gun, a
+    // bomber's bombs, a silo's missile) and then takes an attack target, which is
+    // what "fires only when ordered" means in practice.
+    if (t == "BLAST")   return 'b';
+    // Still unwired: the ORDERS/BUILD panel tabs.
     return 0;
 }
 }  // namespace
@@ -1366,6 +1369,9 @@ char taPanelCommand(const std::string& name) {
             else if (cmd == 'k') active = selFront && !selFront->cloakOn;
             else if (cmd == 'N') active = selFront && selFront->active;
             else if (cmd == 'F') active = selFront && !selFront->active;
+            else if (cmd == 'b')
+                active = selFront && selFront->type &&
+                         selFront->type->slotIsCommandFire(selFront->weaponSlot);
             else if (cmd == 't') active = selFront && selFront->active;
             else if (cmd == 'y') active = selFront && selFront->cloakOn;
             // The cycles light while the axis is away from "free" (roam / fire at
@@ -1550,6 +1556,23 @@ char taPanelCommand(const std::string& name) {
                 int next = (cur + 1) % 3;
                 issuePerUnit(cmd == 'v' ? ta::net::Cmd::MoveState
                                         : ta::net::Cmd::FireState, next);
+            } else if (cmd == 'b') {
+                // Arm the command-fire weapon on every selected unit that has one
+                // (the slot differs per type -- the Commander's Disintegrator is
+                // Weapon3, a bomber's bomb is Weapon1), then hand the player the
+                // attack cursor. selectWeapon skips a unit without that slot.
+                for (int id : selection_) {
+                    const UnitR* su = frameUnitP(id);
+                    if (!su || !su->type) continue;
+                    const int slot = su->type->commandFireSlot();
+                    if (slot < 0) continue;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::SetWeapon;
+                    c.unitId = id;
+                    c.targetId = slot;
+                    issue(c);
+                }
+                pendingCmd_ = 'a';
             } else if (cmd == 't' || cmd == 'y') {
                 // Toggle, off the front selection for the same reason.
                 const UnitR* u = !selection_.empty() ? frameUnitP(selection_.front())

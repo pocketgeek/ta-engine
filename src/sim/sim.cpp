@@ -97,6 +97,7 @@ Weapon parseWeaponNode(const tdf::Node* w) {
                       ? int((wp.projVel + 479.0f) / 480.0f) : 1;
     if (wp.subSteps < 1) wp.subSteps = 1;
     wp.noLead = w->numberOr("dontleadtargets", 0) != 0;
+    wp.commandFire = w->numberOr("commandfire", 0) != 0;
     wp.gravityAdj = float(w->numberOr("gravityadjustment", 1.0));
     wp.lobPreferred = w->numberOr("lobpreferred", 0) != 0;
     wp.melee = lower(w->valueOr("type", "")) == "melee";
@@ -2618,7 +2619,7 @@ void World::tickCombat(Unit& u, float dt) {
         // unit whose move order forbids leaving has no use for it -- it should
         // acquire only what it can already shoot, or it would lock onto something
         // it will never reach and then drop it again next tick.
-        float ar = u.type->maxRange() + (u.moveState == 0 ? 0.0f : 90.0f);
+        float ar = u.type->maxAutoRange() + (u.moveState == 0 ? 0.0f : 90.0f);
         int best = 0;
         float bestD = ar * ar;
         // fireatwillrandom: spread fire across whatever is in range instead of
@@ -2744,7 +2745,12 @@ void World::tickCombat(Unit& u, float dt) {
     // Approach on the reach this unit actually fights at: the selected weapon for a
     // switcher, the longest of them when they all fire.
     const Weapon* sel = slot < int(u.type->weapons.size()) ? &u.type->weapons[slot] : nullptr;
-    float best = allWeapons ? u.type->maxRange() : (sel ? sel->range : u.type->maxRange());
+    // An AUTO-acquired target is fought with the weapons this unit fires unbidden;
+    // an explicit order may use a command-fire weapon (the D-gun, a bomb, a nuke).
+    const bool ordered = !u.orders.empty() && !u.orders.front().autoTarget;
+    float best = allWeapons
+                     ? (ordered ? u.type->maxRange() : u.type->maxAutoRange())
+                     : (sel ? sel->range : u.type->maxRange());
     // Range is to the target's footprint EDGE, not its centre. A building's centre is
     // deep inside a blocked footprint, so a centre-distance check leaves a short-range
     // attacker grinding the edge (never "in range") or a flyer buried inside it. For a
@@ -2832,7 +2838,13 @@ void World::tickCombat(Unit& u, float dt) {
     };
     if (!u.type->weapons.empty()) {
         if (allWeapons)
-            for (int sl = 0; sl < int(u.type->weapons.size()); ++sl) tryFire(sl);
+            for (int sl = 0; sl < int(u.type->weapons.size()); ++sl) {
+                // A command-fire weapon never goes off on its own: a bomber that
+                // drifted over an enemy does not drop, and a silo does not launch
+                // at whatever it happens to see. Only an explicit order releases it.
+                if (!ordered && u.type->slotIsCommandFire(sl)) continue;
+                tryFire(sl);
+            }
         else if (sel)
             tryFire(slot);
     }

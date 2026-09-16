@@ -43,6 +43,12 @@ struct Weapon {
     float edge = 1;          // edgeeffectiveness: damage fraction at the aoe edge
     float aimTol = 0.1f;     // aimtolerance in radians: how close to on-target to fire
     bool ballistic = false;  // FBI weapon type = Ballistic (lobbed arc, not flat)
+    // WEAPONS.TDF commandfire=1: this weapon fires ONLY on an explicit player
+    // order, never by auto-acquisition. Eight weapons carry it -- both sides'
+    // Disintegrator (the Commander's D-gun), all four bombs, the nuclear missile
+    // and CRBLMSSL. Without it a bomber auto-drops on whatever it drifts over and
+    // a silo launches its nuke at the first thing it sees.
+    bool commandFire = false;
     // FBI weapon type = "Line of Sight": a sustained hitscan beam (the drake's
     // Fire Breath), NOT a lobbed shot. Damage lands instantly along the sightline
     // and the flame stream is a client-side emitter driven by emitTime -- there is
@@ -402,6 +408,26 @@ struct UnitType {
         float r = 0;
         for (const auto& w : weapons) r = std::max(r, w.range);
         return r;
+    }
+    // The reach this unit fights at UNBIDDEN. Command-fire weapons are excluded:
+    // they never auto-acquire, so counting their range here would have a silo
+    // chasing targets across the map on the strength of a missile it will not
+    // fire, and a Commander acquiring at D-gun range.
+    float maxAutoRange() const {
+        float r = 0;
+        for (const auto& w : weapons) if (!w.commandFire) r = std::max(r, w.range);
+        return r;
+    }
+    // Is `slot` a weapon the player has to order explicitly?
+    bool slotIsCommandFire(int slot) const {
+        return slot >= 0 && slot < int(weapons.size()) && weapons[size_t(slot)].commandFire;
+    }
+    // The first command-fire weapon's slot, or -1. This is what retail's BLAST
+    // button arms.
+    int commandFireSlot() const {
+        for (size_t i = 0; i < weapons.size(); ++i)
+            if (weapons[i].commandFire) return int(i);
+        return -1;
     }
     // Does this unit lob? A lobbing weapon takes the high ballistic arc, which is
     // precisely how a mortar or catapult puts its shell behind a wall -- so a

@@ -242,6 +242,35 @@ int main(int argc, char** argv) {
     }
     check(negUse == 0, "no type exposes a negative standing use at all");
 
+    // --- commandfire: the weapons that only fire when ordered -----------------
+    // WEAPONS.TDF marks exactly eight: both Disintegrators (the Commander's
+    // D-gun), the four bombs, the nuclear missile and CRBLMSSL. Without the flag
+    // a bomber auto-drops on whatever it drifts over, a silo launches at the first
+    // thing it sees, and the Commander's acquisition radius becomes D-gun range.
+    {
+        const auto* dis = reg.weapon("ARM_DISINTEGRATOR");
+        check(dis != nullptr, "ARM_DISINTEGRATOR is in the weapon table");
+        check(dis && dis->commandFire, "and is marked command-fire");
+        const auto* laser = reg.weapon("ARMCOMLASER");
+        check(laser != nullptr, "ARMCOMLASER is too");
+        check(laser && !laser->commandFire,
+              "but the Commander's ordinary laser is NOT command-fire");
+
+        const auto* com = reg.find("armcom");
+        check(com != nullptr, "armcom resolves");
+        if (com) {
+            const int slot = com->commandFireSlot();
+            check(slot >= 0, "the Commander has a command-fire weapon for BLAST to arm");
+            check(slot >= 0 && com->slotIsCommandFire(slot),
+                  "and that slot reports itself as command-fire");
+            // The D-gun outranges the laser, so the two ranges must differ -- this
+            // is what makes counting it in the auto radius a real mistake.
+            check(com->maxAutoRange() < com->maxRange(),
+                  "the Commander's unbidden reach is SHORTER than its full reach");
+            check(slot != 0, "and it is not the default weapon, so it is never armed by accident");
+        }
+    }
+
     std::printf(g_fail ? "unitdata_test: %d FAILURE(S)\n" : "unitdata_test: all passed\n",
                 g_fail);
     return g_fail ? 1 : 0;
