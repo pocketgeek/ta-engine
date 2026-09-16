@@ -186,8 +186,10 @@ public:
         sounds_.init(vfs_);
         soundClasses_.load(vfs_);   // music is started per-state by manageMusic()
         sideData_ = ta::tdf::SideData::load(vfs_);
-        loadPanel(side_);
+        // GUI first: the panel art's sequence name comes from the .gui's root
+        // (`panel=`), so loading the panel before it had nothing to look for.
         loadGui(side_);
+        loadPanel(side_);
 
         if (mission) {
             world_.setTerrain(mapView_.map().heights, mapView_.map().width,
@@ -2437,6 +2439,8 @@ private:
     // command panel is anchored to the bottom-right corner, so the ButtonPanel art
     // and its buttons share one transform and stay aligned at any scale.
     SDL_FRect guiCmdRect(const ta::gui::Gadget& g) const;
+    // Where the command panel lands on screen, from the .gui root's own rect.
+    SDL_FRect guiPanelRect() const;
     // Map a SIDEDATA panel rect (retail 640x480 space) into the TOP strip.
     // Anchored top-right on the same scale as the command panel, so the two stay
     // aligned with each other at any window size.

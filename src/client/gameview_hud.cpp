@@ -353,12 +353,32 @@
         return std::max(miniSize() + 12, int(128 * guiS()) + 8);
     }
 
-    SDL_FRect GameView::guiCmdRect(const ta::gui::Gadget& g) const {
+    SDL_FRect GameView::guiPanelRect() const {
+        // TA's command panel is a VERTICAL strip down the left edge -- ARMPAN is
+        // 128x352 and its root gadget sits at (0,128) in 640x480 space, i.e. flush
+        // left and flush bottom. (Kingdoms' was a horizontal bar along the bottom,
+        // which is why the panel texture used to be sliced into rows and tiled
+        // across the screen.)
         float s = guiS();
-        // 640-space y=480 (screen bottom in retail) maps just above our info bar so
-        // the command panel and the existing bottom bar don't overlap.
-        float baseY = winH_ - barH();
-        return {winW_ - (640 - g.x) * s, baseY - (480 - g.y) * s, g.w * s, g.h * s};
+        float w = 128, h = 352, x = 0, y = 128;
+        if (!gui_.gadgets.empty()) {
+            const auto& r = gui_.gadgets[0];
+            if (r.w > 0 && r.h > 0) { w = float(r.w); h = float(r.h); x = float(r.x); y = float(r.y); }
+        }
+        // Anchor to the edges the root is nearest, so a differently-placed panel
+        // (a mod, or CORE's if it ever differed) still lands correctly.
+        float sx = x * s;
+        float sy = winH_ - (480 - y) * s;
+        return {sx, sy, w * s, h * s};
+    }
+
+    SDL_FRect GameView::guiCmdRect(const ta::gui::Gadget& g) const {
+        // Gadget coordinates are relative to the PANEL, not the screen: ARMORDERS
+        // sits at (3,4) inside a panel that starts at y=128. Treating them as
+        // screen coordinates put every button in the top-left corner.
+        float s = guiS();
+        SDL_FRect p = guiPanelRect();
+        return {p.x + g.x * s, p.y + g.y * s, g.w * s, g.h * s};
     }
 
     const ta::tdf::Side* GameView::localSide() const {
@@ -819,37 +839,68 @@
         return true;
     }
 
+namespace {
+// TA's whole interface art lives in one shared GAF, addressed by sequence name.
+constexpr const char* kCommonGui = "anims/commongui.gaf";
+
+// Sequence names in the GAF and gadget names in the .gui agree on spelling but
+// not always on case.
+bool ieqName(const std::string& a, const std::string& b) {
+    return a.size() == b.size() &&
+           std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+               return std::tolower(static_cast<unsigned char>(x)) ==
+                      std::tolower(static_cast<unsigned char>(y));
+           });
+}
+}  // namespace
+
     void GameView::loadPanel(const std::string& side) {
-        std::string base = "anims/" + side + "ingame";
+        (void)side;
+        // TA keeps the whole interface in ONE shared GAF, anims/commongui.gaf,
+        // and addresses it BY NAME: the command panel is the sequence the .gui's
+        // root names in `panel=` (ARMPAN / CORPAN, 128x352 -- exactly GADGET0's
+        // rect), and every button's art is the sequence named after the gadget
+        // itself. So there is nothing to hardcode and nothing per-side to guess.
+        //
+        // (Kingdoms instead had a per-side "<side>ingame.gaf" with fixed sequence
+        // names -- MainPanel, BottomPanel -- which is why this used to look for a
+        // file a TA install does not have.)
+        if (gui_.panel.empty()) return;
         try {
-            auto pal = ta::gaf::Palette::fromBytes(vread(base + ".pcx"), base + ".pcx");
-            for (auto& sq : ta::gaf::load(vread(base + ".gaf"), pal, -1, base + ".gaf")) {
-                if (sq.frames.empty()) continue;
+            auto pal = guiPalette("commongui");
+            for (auto& sq : ta::gaf::load(vread(kCommonGui), pal, -1, kCommonGui)) {
+                if (sq.frames.empty() || !ieqName(sq.name, gui_.panel)) continue;
                 auto& f = sq.frames[0];
-                if (sq.name == "AidPanel" || sq.name == "MainPanel") {
-                    // panelW_/panelH_ keep the 1x LOGICAL size, which is what the HUD
-                    // lays out in -- so the texture being built at 2x is invisible here.
-                    panelTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
-                    panelW_ = f.width;
-                    panelH_ = f.height;
-                } else if (sq.name == "AidBotPanel" || sq.name == "BottomPanel") {
-                    botTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
-                    botW_ = f.width;
-                    botH_ = f.height;
-                }
+                // panelW_/panelH_ keep the 1x LOGICAL size, which is what the HUD
+                // lays out in -- so the texture being built at 2x is invisible here.
+                panelTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                panelW_ = f.width;
+                panelH_ = f.height;
+                break;
             }
         } catch (const std::exception&) {}
     }
 
     ta::gaf::Palette GameView::guiPalette(const std::string& gaf) {
+        // A GAF-specific palette wins where one exists (Kingdoms shipped
+        // anims/<gaf>.pcx alongside each; TA ships none, so this is a no-op there).
         std::string pp = "anims/" + gaf + ".pcx";
         try {
             return ta::gaf::Palette::fromBytes(vread(pp), pp);
         } catch (const std::exception&) {}
-        try {
-            return ta::gaf::Palette::fromBytes(vread("palettes/guipal.pal"),
-                                                "palettes/guipal.pal");
-        } catch (const std::exception&) {}
+        // Then the GAME palette. TA's interface art is indexed against the same
+        // palette as everything else -- its indices sit in the standard 4-step
+        // ramps (60-63, 92-95, 124-127) that PALETTE.PAL defines, and the terrain
+        // already renders correctly through it.
+        //
+        // GUIPAL.PAL is NOT that palette despite the name: it maps those same
+        // indices to unrelated saturated colours (62 -> orange, 95 -> pure green),
+        // which turned the command panel into confetti.
+        for (const char* p : {"palettes/palette.pal", "palettes/guipal.pal"}) {
+            try {
+                return ta::gaf::Palette::fromBytes(vread(p), p);
+            } catch (const std::exception&) {}
+        }
         return {};
     }
 
@@ -896,11 +947,26 @@
             return;
         }
         guiTex_.resize(gui_.gadgets.size());
-        for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
-            const auto& g = gui_.gadgets[i];
-            for (const auto& im : g.imgs)
-                guiTex_[i].push_back(loadGuiFrame(im.gaf, im.seq, im.frame));
-        }
+        // Button art is addressed by the gadget's own NAME in the shared GAF --
+        // ARMORDERS, ARMMOVE, ARMATTACK -- with one frame per state (normal /
+        // hover / pressed). Load the GAF once and index it, rather than reopening
+        // and re-decoding an 880 KB file for each of ~19 gadgets.
+        try {
+            auto pal = guiPalette("commongui");
+            auto seqs = ta::gaf::load(vread(kCommonGui), pal, -1, kCommonGui);
+            for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
+                const auto& g = gui_.gadgets[i];
+                if (g.name.empty()) continue;
+                for (auto& sq : seqs) {
+                    if (!ieqName(sq.name, g.name)) continue;
+                    for (auto& f : sq.frames)
+                        guiTex_[i].push_back(f.width && f.height
+                            ? ta::art::makeTexture(ren_, f.rgba, f.width, f.height)
+                            : nullptr);
+                    break;
+                }
+            }
+        } catch (const std::exception&) {}
         if (ta::devEnv("TA_GUIDEBUG")) {
             std::fprintf(stderr, "== %s: %zu gadgets ==\n", path.c_str(),
                          gui_.gadgets.size());
@@ -1160,6 +1226,13 @@
         if (gui_.gadgets.empty()) { drawOrderColumn(winW, winH); return; }
         guiBtnRects_.clear();
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+
+        // The panel plate itself, under every gadget: TA names it in the .gui root
+        // (panel=ARMPAN) and it is one 128x352 image, not a tiled strip.
+        if (panelTex_) {
+            SDL_FRect pr = guiPanelRect();
+            SDL_RenderCopyF(ren_, panelTex_, nullptr, &pr);
+        }
 
         // Command panel background. ButtonPanel frame 0 is the idle dragon medallion;
         // frame 1 is the button-slot panel shown while a unit is selected (retail swaps
@@ -1773,12 +1846,6 @@
                 for (int x = 0; x < winW; x += botW_) {
                     SDL_Rect dst{x, winH - barH(), botW_, barH()};
                     SDL_RenderCopy(ren_, botTex_, nullptr, &dst);
-                }
-            } else if (panelTex_) {
-                for (int x = 0; x < winW; x += panelW_) {
-                    SDL_Rect src{0, 40, panelW_, barH()};
-                    SDL_Rect dst{x, winH - barH(), panelW_, barH()};
-                    SDL_RenderCopy(ren_, panelTex_, &src, &dst);
                 }
             } else {
                 SDL_SetRenderDrawColor(ren_, 42, 38, 34, 255);
