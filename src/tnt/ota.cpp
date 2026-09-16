@@ -17,6 +17,12 @@ Scenario Scenario::parse(const std::string& text) {
     s.kingdom = gh->valueOr("kingdom", "");
     s.useOnlyUnits = gh->valueOr("useonlyunits", "");
     s.hasScenario = gh->numberOr("hasscenario", 0) != 0;
+    s.tidalStrength = float(gh->numberOr("tidalstrength", 0));
+    s.solarStrength = float(gh->numberOr("solarstrength", 0));
+    s.minWindSpeed = float(gh->numberOr("minwindspeed", 0));
+    s.maxWindSpeed = float(gh->numberOr("maxwindspeed", 0));
+    s.gravity = float(gh->numberOr("gravity", 0));
+    s.lineOfSight = int(gh->numberOr("lineofsight", 0));
     // size = "W x H" (Units)
     if (const std::string* sz = gh->value("size"))
         std::sscanf(sz->c_str(), "%d x %d", &s.sizeW, &s.sizeH);
@@ -24,6 +30,10 @@ Scenario Scenario::parse(const std::string& text) {
     if (md) {
         s.mapType = md->valueOr("type", s.mapType);
         s.aiProfile = md->valueOr("aiprofile", s.aiProfile);
+        // Metal richness is a per-SCHEMA property: the same map can offer a
+        // different economy per game type.
+        s.surfaceMetal = float(md->numberOr("surfacemetal", 0));
+        s.mohoMetal = float(md->numberOr("mohometal", 0));
         if (const ta::tdf::Node* sp = md->child("specials")) {
             // [special0], [special1], ... each with specialwhat/XPos/ZPos.
             for (const std::string& nm : sp->childOrder) {

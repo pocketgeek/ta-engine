@@ -145,6 +145,35 @@ void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs, bool crusades) {
     reg.loadBuildTree(vfs, "canbuild");
 }
 
+// Read the map's economy inputs out of its .ota. Wind, tide and metal richness
+// are map properties in TA, so a generator's output is worthless without them.
+ta::sim::MapEconomy parseMapEconomy(const hpi::Vfs& vfs, const std::string& mapPath) {
+    ta::sim::MapEconomy e;
+    std::filesystem::path ota = mapPath;
+    ota.replace_extension(".ota");
+    std::string otaPath = ota.generic_string();
+    if (!vfs.has(otaPath)) return e;
+    try {
+        auto b = vfs.read(otaPath);
+        auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
+        const auto* gh = root.child("globalheader");
+        if (!gh) return e;
+        e.tidalStrength = float(gh->numberOr("tidalstrength", 0));
+        e.minWind = float(gh->numberOr("minwindspeed", 0));
+        e.maxWind = float(gh->numberOr("maxwindspeed", 0));
+        // Metal richness is per-SCHEMA. Take the first schema: the lobby has no
+        // schema picker yet, and every shipped map's schemas agree on metal.
+        for (const auto& name : gh->childOrder) {
+            const auto* sc = gh->child(name);
+            if (!sc || name.rfind("schema", 0) != 0) continue;
+            e.surfaceMetal = float(sc->numberOr("surfacemetal", 0));
+            e.mohoMetal = float(sc->numberOr("mohometal", 0));
+            break;
+        }
+    } catch (const std::exception&) {}
+    return e;
+}
+
 std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
                                                          const std::string& mapPath) {
     std::vector<std::pair<float, float>> out;
@@ -188,7 +217,11 @@ struct FeatDef { bool mana = false; bool glowy = false; int blocking = 0; int fx
                  bool isStone = false; bool isFrozen = false;
                  bool indestructible = false;
                  float hp = 0; std::string dead;
-                 std::string object; };
+                 std::string object;
+                 // TA: metal= is the reclaim metal yield, and on a category=metal
+                 // feature it is also the per-cell richness an extractor draws.
+                 float metal = 0; bool isMetal = false;
+};
 
 std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
     std::unordered_map<std::string, FeatDef> defs;
@@ -213,7 +246,12 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     d.fx = int(node.numberOr("footprintx", 1));
                     d.fz = int(node.numberOr("footprintz", 1));
                     d.reclaimable = int(node.numberOr("reclaimable", 0));
-                    d.energy = float(node.numberOr("energy", 0));   // reclaim mana yield
+                    d.energy = float(node.numberOr("energy", 0));   // reclaim energy yield
+                    // TA: metal= is both the reclaim metal yield and, on a
+                    // category=metal feature, the per-cell richness an extractor
+                    // built over it draws from. There is no separate metal plane.
+                    d.metal = float(node.numberOr("metal", 0));
+                    d.isMetal = (cat == "metal");
                     d.flamable = node.numberOr("flamable", 0) != 0;
                     d.hasBurnAnim = !node.valueOr("seqnameburn", "").empty();
                     d.spreadChance = int(node.numberOr("spreadchance", 0));
@@ -256,6 +294,8 @@ struct FeatTypeInterner {
         t.spreadChance = di->second.spreadChance;
         t.sparkTicks = di->second.sparkTicks;
         t.energy = di->second.energy;
+        t.metal = di->second.metal;
+        t.isMetal = di->second.isMetal;
         t.fx = di->second.fx; t.fz = di->second.fz;
         t.blocking = di->second.blocking != 0;
         t.decomposeTicks = di->second.decomposeTicks;
@@ -317,7 +357,8 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             // every peer records the identical feature.
             if ((di->second.reclaimable || di->second.flamable) && !di->second.mana) {
                 float work = std::max(di->second.energy, 60.0f);   // rocks (energy 0) still take a beat
-                world.addFeature(cz * map.width + cx, x, z, di->second.energy, work,
+                world.addFeature(cz * map.width + cx, x, z, di->second.energy,
+                                 di->second.metal, work,
                                  di->second.fx, di->second.fz, di->second.blocking != 0,
                                  types.intern(key));
             }
@@ -447,19 +488,8 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     world.setPlayerCount(int(cfg.slots.size()));
     for (int i = 0; i < int(cfg.slots.size()); ++i) {
         world.setTeam(i, cfg.slots[i].team);
-        world.player(i).manaMult = cfg.slots[i].manaMult;   // Absurd AI = 2x income
+        world.player(i).incomeMult = cfg.slots[i].manaMult;   // Absurd AI = 2x income
     }
-    // Gods: read the appear time from gods.tdf so every peer derives it the same.
-    float godSec = 1e9f;   // 1e9 => never manifests (gods off)
-    if (cfg.gods) {
-        try {
-            auto gb = vfs.read("gamedata/gods.tdf");
-            auto g = ta::tdf::parseText(std::string(gb.begin(), gb.end()), "gamedata/gods.tdf");
-            if (const auto* tm = g.child("TIMING"))
-                godSec = float(tm->numberOr("AppearTimeMin", 30.0)) * 60.0f;
-        } catch (const std::exception&) {}
-    }
-    world.enableGods(godSec);
     world.setUnitCap(cfg.unitCap);
     world.setMonarchExpendable(cfg.monarchExpendable);
 
@@ -467,6 +497,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     int used = 0;
     for (auto& s : cfg.slots) if (s.used) ++used;
     auto starts = generated ? genStarts : parseStartPositions(vfs, cfg.mapPath);
+    // Wind/tide/metal come off the same .ota. A generated map has none, so its
+    // economy stays at the defaults (no wind, no tide, no background metal).
+    if (!generated) world.setMapEconomy(parseMapEconomy(vfs, cfg.mapPath));
     float cx = map.blocksX * 16.0f, cz = map.blocksY * 16.0f;
     std::vector<std::pair<float, float>> spots = starts;
     // Benchmark: ignore the map's (few) start positions and spread all factions evenly
@@ -674,19 +707,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         ++spot;
         world.spawn(monarch, mx, mz, 0, i);
         claimMonarch(monarch, mx, mz);   // nothing else may be snapped onto it
-        world.player(i).mana = cfg.startMana;
-        // Resolve this player's god now, while the registry is in hand. The sim
-        // summons it itself (World::summonReadyGods) and has no registry of its own;
-        // the client used to do the lookup AND the summon, which is what desynced it
-        // from the referee. Derived from the monarch's side rather than the slot's
-        // faction index so a side-less or modded monarch simply has no god instead of
-        // summoning another faction's.
-        if (monarch && !monarch->side.empty()) {
-            std::string side = monarch->side;
-            std::transform(side.begin(), side.end(), side.begin(),
-                           [](unsigned char c) { return char(std::tolower(c)); });
-            world.player(i).godType = reg.find(side + "god");
-        }
+        world.player(i).metal.cur = cfg.startMana;
+        world.player(i).energy.cur = cfg.startMana;
+
 
         // Stress test: fill this player to ~95% of the unit cap with its faction's
         // combat units right now, so an all-AI game starts under a heavy sim load.

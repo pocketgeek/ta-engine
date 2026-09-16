@@ -159,8 +159,11 @@ bool ScenarioScript::evalCond(World& w, int player, const ta::crt::Rule& c) {
             uint32_t roll = uint32_t((rng_ >> 33) % 100);
             return int(roll) < toInt(s[0]);
         }
-        case 24: return w.player(player).mana < float(toInt(s[0]));   // Resources < v
-        case 25: return w.player(player).mana > float(toInt(s[0]));   // Resources > v
+        // "Resources" in a .crt means the one Kingdoms pool. TA has two, so these
+        // read METAL -- the scarcer of the pair and the one a scenario author
+        // gating on "resources" would have meant.
+        case 24: return w.player(player).metal.cur < float(toInt(s[0]));
+        case 25: return w.player(player).metal.cur > float(toInt(s[0]));
         default: return false;
     }
 }
@@ -218,10 +221,16 @@ void ScenarioScript::runAction(World& w, int player, int group, const ta::crt::R
                         w.order(u.id, dx, dz, false);
             }
             break;
-        case 16: w.player(player).storage = float(toInt(s[0])); break;         // resource limit
-        case 17: w.player(player).mana = float(toInt(s[0])); break;            // resources = v
-        case 18: w.player(player).mana += float(toInt(s[0])); break;           // add v
-        case 19: w.player(player).mana = std::max(0.0f, w.player(player).mana - float(toInt(s[0]))); break;
+        case 16: w.player(player).metal.storage = float(toInt(s[0]));          // resource limit
+                 w.player(player).energy.storage = float(toInt(s[0])); break;
+        case 17: w.player(player).metal.cur = float(toInt(s[0]));               // resources = v
+                 w.player(player).energy.cur = float(toInt(s[0])); break;
+        case 18: w.player(player).metal.cur += float(toInt(s[0]));              // add v
+                 w.player(player).energy.cur += float(toInt(s[0])); break;
+        case 19: w.player(player).metal.cur =
+                     std::max(0.0f, w.player(player).metal.cur - float(toInt(s[0])));
+                 w.player(player).energy.cur =
+                     std::max(0.0f, w.player(player).energy.cur - float(toInt(s[0]))); break;
         case 20: break;                                                        // resources normal (no-op)
         case 21: forceDefeatOthers(w, player); break;                          // Victory me + teammates
         case 22: forceDefeatTeam(w, player, true); break;                      // Defeat me + teammates

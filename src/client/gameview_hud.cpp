@@ -1244,11 +1244,11 @@
         int cb = guiIdx("CrystalBall");
         if (cb >= 0) {
             const PlayerR& tm = framePlayer(localPlayer_);
-            float cap = std::max(tm.storage, 100.0f);
+            float cap = std::max(tm.metal.storage, 100.0f);
             SDL_FRect orb = guiCmdRect(gui_.gadgets[cb]);
             if (!guiTex_[cb].empty()) {
                 int nf = int(guiTex_[cb].size());
-                float frac = std::clamp(tm.mana / cap, 0.0f, 1.0f);
+                float frac = std::clamp(tm.metal.cur / cap, 0.0f, 1.0f);
                 int fr = std::clamp(int(frac * float(nf - 1) + 0.5f), 0, nf - 1);
                 if (guiTex_[cb][size_t(fr)])
                     SDL_RenderCopyF(ren_, guiTex_[cb][size_t(fr)], nullptr, &orb);
@@ -1264,7 +1264,7 @@
             SDL_SetRenderDrawColor(ren_, 70, 62, 44, 255);
             SDL_RenderDrawRectF(ren_, &mbox);
             char nums[32];
-            std::snprintf(nums, sizeof nums, "%d/%d", int(tm.mana), int(cap));
+            std::snprintf(nums, sizeof nums, "%d/%d", int(tm.metal.cur), int(cap));
             float px = std::max(1.4f, mbox.h / 20.0f);
             float gap = 3, lineH = 7 * px;
             // Shrink to fit both lines within the recess (H and V).
@@ -1296,7 +1296,7 @@
             }
             float ipx = std::max(1.5f, orb.h / 24.0f);
             char inb[16], outb[16];
-            std::snprintf(inb, sizeof inb, "+%d", int(tm.income + 0.5f));
+            std::snprintf(inb, sizeof inb, "+%d", int(tm.metal.income + 0.5f));
             std::snprintf(outb, sizeof outb, "-%d", int(expend + 0.5f));
             float iy = orb.y + orb.h * 0.5f - 3.5f * ipx;
             blockText(inb, orb.x - blockWidth(inb, ipx) - 5, iy, ipx, {150, 225, 150, 255});
@@ -1676,7 +1676,7 @@
             blockText(s, nameX, y, px, c);
             if (showMana) {   // current mana + income, e.g. "1234 +18"
                 const PlayerR& pl = framePlayer(t);
-                std::snprintf(buf, sizeof buf, "%d +%d", int(pl.mana), int(pl.income));
+                std::snprintf(buf, sizeof buf, "%d +%d", int(pl.metal.cur), int(pl.metal.income));
                 blockText(buf, colMana, y, hx, c);
             }
             std::snprintf(buf, sizeof buf, "%d", cnt[t]);
@@ -1936,10 +1936,10 @@
             shade(manaX - 8, 200);
             SDL_Color txt{0, 0, 0, 255};
             blockText("MANA", manaX, bar.y + 9, 2.0f, txt);
-            std::snprintf(buf, sizeof buf, "%d/%d", int(tm.mana),
-                          int(std::max(tm.storage, 100.0f)));
+            std::snprintf(buf, sizeof buf, "%d/%d", int(tm.metal.cur),
+                          int(std::max(tm.metal.storage, 100.0f)));
             blockText(buf, manaX, bar.y + 30, 2.3f, txt);
-            std::snprintf(buf, sizeof buf, "+%d/SEC", int(tm.income));
+            std::snprintf(buf, sizeof buf, "+%d/SEC", int(tm.metal.income));
             blockText(buf, manaX, bar.y + 52, 1.8f, txt);
         }
     }

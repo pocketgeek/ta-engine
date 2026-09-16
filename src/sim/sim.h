@@ -223,11 +223,65 @@ struct UnitType {
     bool isStructure() const { return maxVel <= 0.0f; }
     float buildDist = 0;    // FBI builddistance: how far a builder reaches to build
     bool onMana = false;    // must be built on a mana deposit (yardmap 'S'), e.g. lodestones
-    float buildCost = 0;    // mana
+    // Kingdoms' single-resource cost. TA has no such key; this is bridged from
+    // buildCostMetal at load so the existing (still Kingdoms) economy keeps
+    // running on TA data until the two-resource economy lands. See ta-port.md.
+    float buildCost = 0;
     float buildTime = 0;    // work units; seconds = buildTime / builder workerTime
     float workerTime = 1;
     float income = 0;       // mana/sec (mogriumincome)
     float storage = 0;      // mana cap contribution (mogriumstorage)
+
+    // --- TA economy (FBI) ----------------------------------------------------
+    // Metal and energy are independent: separate income, drain and storage cap,
+    // and not interchangeable. Every one of these is a plain per-second rate
+    // except the costs (totals) and the storage contributions (caps).
+    float buildCostMetal = 0;    // BuildCostMetal
+    float buildCostEnergy = 0;   // BuildCostEnergy
+    float metalMake = 0;         // MetalMake: metal/sec produced while active
+    float energyMake = 0;        // EnergyMake
+    float metalUse = 0;          // MetalUse: metal/sec consumed while active
+    float energyUse = 0;         // EnergyUse
+    float metalStorage = 0;      // MetalStorage: added to the player's metal cap
+    float energyStorage = 0;     // EnergyStorage
+    // ExtractsMetal: this is a metal extractor. Its yield is a property of the
+    // map FEATURE under its footprint -- TA has no metal density plane; metal
+    // patches are ArchMetal* features. See docs/ta-port.md.
+    float extractsMetal = 0;
+    float makesMetal = 0;        // MakesMetal: flat metal/sec (moho/metal makers)
+    // Both are RATINGS, not flags: ARMWIN carries WindGenerator=30 and ARMTIDE
+    // TidalGenerator=1. Output is the map's wind/tide crossed with the rating,
+    // which is why a wind farm is worthless on a becalmed map.
+    float tidalGenerator = 0;    // TidalGenerator, against the .ota TidalStrength
+    float windGenerator = 0;     // WindGenerator, against the .ota min/max wind
+
+    // --- TA sensors ----------------------------------------------------------
+    // Kingdoms folded radar into the sight radius; TA keeps four distinct
+    // layers, and the two "jam" radii SUBTRACT coverage from enemies rather
+    // than adding it.
+    float sonar = 0;             // SonarDistance: underwater detection
+    float radarJam = 0;          // RadarDistanceJam
+    float sonarJam = 0;          // SonarDistanceJam
+
+    // --- TA unit traits ------------------------------------------------------
+    // TA names a weapon from the shared weapon tables; Kingdoms instead inlined
+    // an [EXPLODEAS] section in the FBI (parsed into the `explodeAs` Weapon
+    // below). Both shapes are read -- these hold the TA names, resolved against
+    // the weapon registry once it is loaded.
+    std::string explodeAsName;       // ExplodeAs: weapon fired on death
+    std::string selfDestructAsName;  // SelfDestructAs: fired on manual destruct
+    bool  canDGun = false;       // candgun: the commander's disintegrator
+    bool  kamikaze = false;      // kamikaze
+    float kamikazeDist = 0;      // kamikazedistance
+    bool  stealth = false;       // stealth: invisible to radar (not to sight)
+    bool  isAirBase = false;     // isairbase: aircraft may land/rearm here
+    bool  amphibious = false;    // amphibious: may traverse the sea floor
+    bool  immuneToParalyzer = false;
+    bool  shootMe = false;       // ShootMe: a valid auto-target at all
+    bool  noAutoFire = false;    // NoAutoFire: never fires without an explicit order
+    int   antiWeapons = 0;       // antiweapons: intercepts incoming missiles
+    float damageModifier = 1;    // damagemodifier: scales damage this unit takes
+
     int footX = 1, footZ = 1;
     std::string yardMap;      // footX*footZ chars; 'o' blocks, '.'/'c' passable
     // Lowercased target-category tokens (from FBI category/damagecategory/tedclass),
@@ -331,7 +385,6 @@ struct UnitType {
     // the Crossbowman, Musketeer and Cannoneer): a rank of them sprays a crowd
     // instead of every last one focusing the same closest body.
     bool fireAtWillRandom = false;
-    bool  attractsGods = false;   // attractsgods: priest channels god favour
     // weaponswitching: this unit carries ONE active weapon at a time, picked by the
     // player. Without it, a multi-weapon unit fires every weapon independently.
     bool  weaponSwitching = false;
@@ -681,7 +734,13 @@ struct FeatType {
     int  spreadChance = 0;   // TDF spreadchance (percent)
     int  sparkTicks = 0;     // TDF sparktime * 30 (retail stores seconds*30)
     int  burntType = -1;     // TDF featureburnt -> index into the same table
-    float energy = 0;        // reclaim yield of this stage
+    float energy = 0;        // TDF energy= : energy yielded by a full reclaim
+    // TDF metal= : metal yielded by a full reclaim AND, for a `category=metal`
+    // feature, the per-cell richness an extractor built over it draws from.
+    // TA has no separate metal-density plane -- metal patches ARE features
+    // (ArchMetal1/2/3, metal=127 on a 3x3 footprint). See docs/ta-port.md.
+    float metal = 0;
+    bool  isMetal = false;   // TDF category=metal
     int  fx = 1, fz = 1;
     bool blocking = false;
     // Corpse defs (features/corpses/*_dead.tdf): how long the body lies there
@@ -701,7 +760,8 @@ struct Feature {
     int   id = 0;          // cz*terrainWidth + cx: position-derived, peer-identical
     float x = 0, z = 0;
     int   fx = 1, fz = 1;  // footprint cells (for the nav unblock on removal)
-    float manaYield = 0;   // total mana granted over a full reclaim (FBI `energy`)
+    float energyYield = 0;  // energy granted over a full reclaim (TDF `energy`)
+    float metalYield = 0;   // metal granted over a full reclaim (TDF `metal`)
     float work = 0;        // remaining reclaim work; consumed to 0
     float workFull = 1;    // initial work (for the proportional mana drip)
     bool  blocks = false;  // occupied the nav grid
@@ -872,24 +932,31 @@ private:
 // Block/unblock a building's yardmap-aware footprint on a nav grid.
 void blockFootprint(NavGrid& nav, const UnitType& t, float x, float z, bool blocked);
 
+// TA's economy is TWO independent resources. They are not interchangeable: a
+// build draws both, and running out of either stalls it.
+struct Resource {
+    float cur = 0;
+    float income = 0;    // per second, recomputed each tick from alive units
+    float drain = 0;     // per second, likewise
+    float storage = 0;   // cap, recomputed each tick
+    // Stall factor for THIS tick, 0..1. When demand outruns supply TA does not
+    // halt consumers, it slows every one of them by the same fraction -- which is
+    // what makes a stalled base crawl rather than stop dead. Recomputed each tick
+    // and read by every consumer (construction, repair, cloaking, metal makers).
+    float share = 1.0f;
+};
+
+// Starting stock and the base cap every player has before any storage is built.
+// (Retail's "limited resources" default; the unlimited option lifts the cap.)
+constexpr float kBaseStorage = 1000.0f;
+
 struct Player {
-    float mana = 500;
-    float storage = 0;   // recomputed each tick from alive units
-    float income = 0;
+    Resource metal, energy;
     // Income multiplier (1.0 = normal). Only ever != 1 for an Absurd-difficulty AI,
-    // set once at match setup and applied to every mana source. Constant per game and
-    // its effect lands in `mana` (which IS hashed), so it need not be hashed itself,
-    // but every peer must set it identically or their mana diverges.
-    float manaMult = 1.0f;
-    // God economy: priests (attractsgods) channel mana into favour; once it fills
-    // after the gods' appear time, the faction's god can manifest (once).
-    float godFavor = 0;
-    bool  godSummoned = false;
-    // The unit this player's god manifests as, resolved once at setup (matchsetup).
-    // The sim summons it itself and therefore must not need a TypeRegistry to find
-    // it: summoning used to live in the CLIENT, which had one, and that is exactly
-    // why it desynced -- see summonReadyGods().
-    const UnitType* godType = nullptr;
+    // set once at match setup and applied to every income source. Constant per game
+    // and its effect lands in the resource pools (which ARE hashed), so it need not
+    // be hashed itself, but every peer must set it identically or they diverge.
+    float incomeMult = 1.0f;
     int   kills = 0;     // enemy units this player has destroyed (F4 overlay)
     // End-of-game scoreboard counters (retail's victory/defeat screen columns).
     // Derived from hashed events and incremented in exactly one place each, so they
@@ -917,6 +984,15 @@ struct Player {
     // Cosmetic "headbang" emote (Shift+H): seconds this player's monarchs headbang to
     // heavy metal. Same deal as discoLeft -- synced by Cmd::Headbang, not hashed.
     float headbangLeft = 0;
+};
+
+// Map economy inputs, straight off the .ota schema. These are why the same wind
+// farm is a power station on one map and scenery on another.
+struct MapEconomy {
+    float tidalStrength = 0;
+    float minWind = 0, maxWind = 0;
+    float surfaceMetal = 0;   // background metal where no metal feature sits
+    float mohoMetal = 0;      // what a deep ("moho") extractor reaches
 };
 
 // Max simultaneous players/teams (the retail map ceiling is 8 start positions).
@@ -949,6 +1025,17 @@ public:
     void setTerrain(const std::vector<uint8_t>& heights, int w, int h, int seaLevel,
                     const std::vector<uint16_t>* features = nullptr);
     NavGrid& nav() { return nav_; }
+
+    // --- Economy inputs -------------------------------------------------------
+    // Set once at match setup from the map's .ota. Hashed indirectly: it feeds
+    // income, so every peer must set it identically.
+    void setMapEconomy(const MapEconomy& e) { mapEcon_ = e; }
+    const MapEconomy& mapEconomy() const { return mapEcon_; }
+    // Current wind, oscillating between the map's min and max. Deterministic:
+    // driven by the world clock through detmath, never by wall time.
+    float windSpeed() const;
+    // Metal per second an extractor on this unit's footprint yields.
+    float extractorYield(const Unit& u) const;
     // Observational pathfinder counters (never hashed) -- for benchmarks.
     const PathService& pathStats() const { return paths_; }
 
@@ -1055,7 +1142,7 @@ public:
     const std::vector<std::pair<float, float>>& manaSpots() const { return manaSpots_; }
     // Reclaimable features (trees/rocks/houses). Populated only by setupMatch (the
     // one deterministic per-peer walk); never from the viewer. See struct Feature.
-    void addFeature(int id, float x, float z, float manaYield, float work,
+    void addFeature(int id, float x, float z, float energyYield, float metalYield, float work,
                     int fx, int fz, bool blocks, int type = -1);
     const std::vector<Feature>& features() const { return features_; }
     const Feature* feature(int id) const;                 // by id, nullptr if none
@@ -1163,22 +1250,14 @@ public:
         return players_[size_t(a)].team == players_[size_t(b)].team;
     }
 
-    // God economy (gamedata/Gods.tdf). Enable it, then a player whose god favour
-    // fills after `appearSec` may manifest its god — the viewer polls godReady().
-    void enableGods(float appearSec) { godsEnabled_ = true; godAppearTime_ = appearSec; }
-    bool godsEnabled() const { return godsEnabled_; }
-
-    // Per-player unit limit: production and new builds stall a player once it has
-    // this many live units (0 = unlimited). Set at match start (from the lobby).
-    // The count it tests (Player::unitCount) is deterministic, so all peers agree.
+    // Per-player cap on live units (a lobby option). 0 = unlimited.
     void setUnitCap(int c) { unitCap_ = c; }
     int unitCap() const { return unitCap_; }
     bool atUnitCap(int player) const {
         return unitCap_ > 0 && player >= 0 && player < int(players_.size()) &&
                players_[size_t(player)].unitCount >= unitCap_;
     }
-    // FBI `totalallowed`: a per-player cap on LIVE units of one type (the five
-    // dragons, the five gods and the Aerial Juggernaut ship 1). Retail refuses to
+    // FBI `totalallowed`: a per-player cap on LIVE units of one type. Retail refuses to
     // finish a conjure that would exceed it, so a player fields only one. Counts
     // units under construction too, so queuing two dragons can't sneak both out.
     bool atTypeCap(int player, const UnitType* t) const {
@@ -1189,14 +1268,6 @@ public:
                 ++n >= t->totalAllowed)
                 return true;
         return false;
-    }
-    static constexpr float kGodFavorNeeded = 3000.0f;
-    // Manifest the god of every player whose favour has filled. Called from tick(),
-    // so the referee and every client run it on the same step from the same state.
-    void summonReadyGods();
-    bool godReady(int t) const {
-        return godsEnabled_ && !players_[size_t(t)].godSummoned &&
-               clock_ >= godAppearTime_ && players_[size_t(t)].godFavor >= kGodFavorNeeded;
     }
 
     // Win/defeat, computed sim-side so every lockstep peer agrees on the same
@@ -1698,6 +1769,7 @@ private:
     std::vector<uint8_t> forcedDefeat_;        // scenario Victory/Defeat: forced-defeated slots
     std::vector<int> justDied_;                // unit ids that died this tick (mission/scenario hook)
     std::vector<std::pair<float, float>> manaSpots_;
+    MapEconomy mapEcon_;
     std::vector<Feature> features_;             // reclaimable map features
     std::vector<FeatType> featTypes_;           // per-type burn data (setup-time, static)
     std::unordered_map<const UnitType*, int> corpseType_;   // unit -> corpse FeatType
@@ -1765,9 +1837,8 @@ private:
     bool monarchExpendable_ = true;      // default: Monarch is just a unit (net option overrides)
     bool serialThreads_ = false;
     std::vector<uint8_t> hadMonarch_;   // per-player: ever fielded a Monarch (for the loss rule)
-    bool godsEnabled_ = false;
     int unitCap_ = 0;                 // per-player live-unit limit (0 = unlimited)
-    float godAppearTime_ = 1e9f, clock_ = 0;
+    float clock_ = 0;
     uint32_t tickCounter_ = 0;   // ticks elapsed; staggers per-unit auto-acquisition
     std::vector<BenchStage> benchPlan_;   // benchmark staged spawns (executed in tick)
     size_t benchCursor_ = 0;              // next unexecuted stage

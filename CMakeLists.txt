@@ -235,6 +235,7 @@ add_executable(statsfit_test tools/statsfit_test.cpp)
 add_executable(settings_test tools/settings_test.cpp)
 add_executable(hpi1_test tools/hpi1_test.cpp)
 add_executable(tnt_test tools/tnt_test.cpp)
+add_executable(unitdata_test tools/unitdata_test.cpp)
     add_executable(footprobe tools/footprobe.cpp)
 target_link_libraries(retailgap_test PRIVATE ta-formats)
 target_link_libraries(navblock_test PRIVATE ta-formats)
@@ -256,6 +257,7 @@ target_link_libraries(statsfit_test PRIVATE ta-formats)
 target_link_libraries(settings_test PRIVATE ta-formats)
 target_link_libraries(hpi1_test PRIVATE ta-formats)
 target_link_libraries(tnt_test PRIVATE ta-formats)
+target_link_libraries(unitdata_test PRIVATE ta-formats)
 
 # ctest registration. Without this `ctest` reports "No tests were found", which
 # is how pathsearch_test and cobanim_test ended up protected by nothing but
@@ -289,6 +291,7 @@ set(TA_TEST_DATA "" CACHE PATH "Retail install for the data-backed tests (option
 if(TA_TEST_DATA)
     add_test(NAME cobanim COMMAND cobanim_test "${CMAKE_SOURCE_DIR}/assets/extracted/all/scripts")
     add_test(NAME retailgap COMMAND retailgap_test "${TA_TEST_DATA}")
+    add_test(NAME unitdata COMMAND unitdata_test "${TA_TEST_DATA}")
     add_test(NAME navblock COMMAND navblock_test "${TA_TEST_DATA}")
 endif()
 target_link_libraries(footprobe PRIVATE ta-formats)

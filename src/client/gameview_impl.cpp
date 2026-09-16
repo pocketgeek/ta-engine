@@ -533,19 +533,6 @@
             rem -= step;
         }
         profSimTicks_ += int64_t(SDL_GetPerformanceCounter()) - _sim0;
-        // God economy: the SIM summons gods now (World::summonReadyGods, called from
-        // tick), so all this does is announce one. It used to do the summoning here,
-        // which meant the spawn happened on every client and never on the referee --
-        // the server's world ran one unit short from the first summon onward and the
-        // hashes split for the rest of the match.
-        if (world_.godsEnabled())
-            for (int t = 0; t < world_.numPlayers(); ++t)
-                if (world_.player(t).godSummoned && !godAnnounced_[size_t(t) & 7]) {
-                    godAnnounced_[size_t(t) & 7] = true;
-                    if (!hudFont_.ok()) continue;
-                    postNotice(t == localPlayer_ ? "YOUR GOD HAS ANSWERED"
-                                                 : "AN ENEMY GOD RISES", 6);
-                }
         // Scenario (.crt) "Display" actions: surface the sim runner's messages as
         // HUD notices for the viewing player. Drained on the sim thread (same as
         // scenario step, so no race on its queue); postNotice defers to main.
@@ -750,10 +737,10 @@
         for (int p = 0; p < fb.numPlayers && p < int(fb.players.size()); ++p) {
             const auto& pl = world_.player(p);
             PlayerR& r = fb.players[size_t(p)];
-            r.mana = pl.mana; r.storage = pl.storage; r.income = pl.income;
-            r.godFavor = pl.godFavor; r.kills = pl.kills; r.unitCount = pl.unitCount;
+            r.metal = pl.metal; r.energy = pl.energy;
+            r.kills = pl.kills; r.unitCount = pl.unitCount;
             r.built = pl.built; r.losses = pl.losses; r.defeatedAt = pl.defeatedAt;
-            r.team = pl.team; r.defeated = pl.defeated; r.godSummoned = pl.godSummoned;
+            r.team = pl.team; r.defeated = pl.defeated;
             r.discoLeft = pl.discoLeft; r.headbangLeft = pl.headbangLeft;
         }
         fb.projectiles = world_.projectiles();   // sim push_back/erase each tick -> must copy

@@ -119,7 +119,7 @@ BuildCat Controller::categoryOf(const ta::sim::UnitType* t) const {
 Needs Controller::assessNeeds(const ta::sim::World& world) const {
     Needs n;
     const auto& me = world.player(player_);
-    n.income = me.income / std::max(me.manaMult, 1.0f);   // ignore an Absurd AI's cheat
+    n.income = me.metal.income / std::max(me.incomeMult, 1.0f);   // ignore an Absurd AI's cheat
     for (const auto& u : world.units()) {
         if (!u.alive() || u.player != player_ || !u.type) continue;
         ++n.counts[u.type];
@@ -170,7 +170,7 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
                                                    const Needs& needs, int excludeCats) {
     const auto& menu = registry_.buildable(producer.type->id);
     const auto& me = world.player(player_);
-    float income = me.income / std::max(me.manaMult, 1.0f);   // plan against base income
+    float income = me.metal.income / std::max(me.incomeMult, 1.0f);   // plan against base income
     // A menu entry the AI may build right now: has a positive weight, is under its
     // limit, and savings + income over its build time cover the cost (so a builder
     // never traps itself on a site the mana runs dry beneath).
@@ -189,7 +189,7 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
         }
         if (ut->buildTime > 0) {
             float secs = ut->buildTime / std::max(producer.type->workerTime, 1.0f);
-            if (me.mana + income * secs < ut->buildCost) return 0;
+            if (me.metal.cur + income * secs < ut->buildCostMetal) return 0;
         }
         return w;
     };
@@ -206,7 +206,7 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
     static const bool kPickLog = std::getenv("TA_AI_PICK") != nullptr;
     if (kPickLog && best <= 0) {
         std::fprintf(stderr, "    pick %s: nothing usable (mana=%.0f income=%.0f)\n",
-                     producer.type->id.c_str(), world.player(player_).mana, income);
+                     producer.type->id.c_str(), world.player(player_).metal.cur, income);
         for (const auto& id : menu) {
             const auto* ut = registry_.find(id);
             if (!ut) { std::fprintf(stderr, "      %-9s MISSING from registry\n", id.c_str()); continue; }
@@ -219,8 +219,8 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
             const float secs = ut->buildTime / std::max(producer.type->workerTime, 1.0f);
             std::fprintf(stderr, "      %-9s w=%d lim=%d have=%d cost=%.0f btime=%.0f "
                                  "afford=%s cat=%d usable=%d\n",
-                         ut->id.c_str(), w, lim, have, ut->buildCost, ut->buildTime,
-                         (world.player(player_).mana + income * secs >= ut->buildCost) ? "Y" : "N",
+                         ut->id.c_str(), w, lim, have, ut->buildCostMetal, ut->buildTime,
+                         (world.player(player_).metal.cur + income * secs >= ut->buildCostMetal) ? "Y" : "N",
                          int(categoryOf(ut)), usable(ut));
         }
     }
@@ -410,11 +410,11 @@ void Controller::sendWaves(const ta::sim::World& world, uint32_t simTick,
     // The "big push" army scales with mana INCOME: a rich economy masses a large army
     // before it commits, a lean one strikes with less. So a strong AI stops trickling
     // its units into the enemy and instead builds an overwhelming force. A tapped-out
-    // economy (little mana, little income) attacks with what it has rather than turtle.
+    // economy (little metal, little income) attacks with what it has rather than turtle.
     const auto& me = world.player(player_);
-    float income = me.income / std::max(me.manaMult, 1.0f);   // ignore an Absurd cheat
+    float income = me.metal.income / std::max(me.incomeMult, 1.0f);   // ignore an Absurd cheat
     int bigPush = std::clamp(dp_.waveSize + int(income * 0.25f), dp_.waveSize, 60);
-    bool tapped = me.mana < 200.0f && me.income < 40.0f;
+    bool tapped = me.metal.cur < 200.0f && me.metal.income < 40.0f;
 
     if (int(idle.size()) >= bigPush || tapped) {
         // Commit the army -- but cap commands per think so a huge force (a near-cap
@@ -491,7 +491,7 @@ void Controller::tick(const ta::sim::World& world, uint32_t simTick,
     // never finish -- the "produces units then gets stuck" failure. Let the in-flight
     // ones finish (income flows into them) before starting the next.
     bool throttle = false;
-    if (world.player(player_).mana < 50.0f)
+    if (world.player(player_).metal.cur < 50.0f)
         for (const auto& u : world.units())
             if (u.player == player_ && u.alive() && u.underConstruction) { throttle = true; break; }
     int acted = 0;

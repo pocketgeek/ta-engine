@@ -120,13 +120,13 @@ int main(int argc, char** argv) {
                     minDist = std::min(minDist, d);
                 }
             }
-        mana = w.player(1).mana; income = w.player(1).income;
+        mana = w.player(1).metal.cur; income = w.player(1).metal.income;
         std::string s;
         for (const auto& [id, n] : comp) { s += id + ":" + std::to_string(n) + " "; }
         // storage too: a treasury pinned near zero can be a spending problem OR a
         // CAP problem, and the two want opposite fixes.
         std::printf("t=%3ds  income=%.0f mana=%.0f/%.0f  army=%d closest-to-enemy=%.0f  | %s\n",
-                    t, income, mana, w.player(1).storage, army, army ? minDist : -1, s.c_str());
+                    t, income, mana, w.player(1).metal.storage, army, army ? minDist : -1, s.c_str());
         if (std::getenv("TA_AI_ECON")) {
             // Where is the income going? Dump every under-construction site and every
             // builder's job so we can see a stalled/over-expensive build freezing the economy.

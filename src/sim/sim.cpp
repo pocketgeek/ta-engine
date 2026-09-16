@@ -74,6 +74,28 @@ void TypeRegistry::loadMoveInfo(const hpi::Vfs& vfs, const std::string& path) {
     } catch (const std::exception&) {}   // no MOVEINFO -> units keep FBI defaults
 }
 
+namespace {
+
+// Draw `frac` of a type's FULL build cost (frac == 1 is the whole unit) from a
+// player, taking metal and energy together. Returns the fraction actually paid,
+// which is less than `frac` when either resource is short: TA slows a starved
+// build rather than pausing it, so callers credit work in proportion to the
+// return value rather than treating this as a yes/no.
+float spendBuild(Player& p, const UnitType& t, float frac) {
+    if (frac <= 0) return 0;
+    const float m = t.buildCostMetal * frac, e = t.buildCostEnergy * frac;
+    float got = 1.0f;
+    if (m > 0) got = std::min(got, p.metal.cur / m);
+    if (e > 0) got = std::min(got, p.energy.cur / e);
+    got = std::clamp(got, 0.0f, 1.0f);
+    if (got <= 0) return 0;
+    p.metal.cur -= m * got;
+    p.energy.cur -= e * got;
+    return frac * got;
+}
+
+}  // namespace
+
 void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
     for (const std::string& path : vfs.list(prefix)) {
         if (lower(std::filesystem::path(path).extension().string()) != ".fbi") continue;
@@ -118,11 +140,51 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.maxHp = float(info->numberOr("maxdamage", 100));
             t.isBuilder = info->numberOr("builder", 0) != 0;
             t.commander = info->numberOr("commander", 0) != 0;   // the Monarch
-            t.buildCost = float(info->numberOr("buildcost", 0));
             t.buildTime = float(info->numberOr("buildtime", 0));
             t.workerTime = float(info->numberOr("workertime", 1));
             t.income = float(info->numberOr("mogriumincome", 0));
             t.storage = float(info->numberOr("mogriumstorage", 0));
+
+            // --- TA economy ---------------------------------------------------
+            t.buildCostMetal = float(info->numberOr("buildcostmetal", 0));
+            t.buildCostEnergy = float(info->numberOr("buildcostenergy", 0));
+            t.metalMake = float(info->numberOr("metalmake", 0));
+            t.energyMake = float(info->numberOr("energymake", 0));
+            t.metalUse = float(info->numberOr("metaluse", 0));
+            t.energyUse = float(info->numberOr("energyuse", 0));
+            t.metalStorage = float(info->numberOr("metalstorage", 0));
+            t.energyStorage = float(info->numberOr("energystorage", 0));
+            t.extractsMetal = float(info->numberOr("extractsmetal", 0));
+            t.makesMetal = float(info->numberOr("makesmetal", 0));
+            // Ratings, not flags -- ARMWIN carries WindGenerator=30. Reading these
+            // as booleans flattened every wind farm to 1.
+            t.tidalGenerator = float(info->numberOr("tidalgenerator", 0));
+            t.windGenerator = float(info->numberOr("windgenerator", 0));
+            // Bridge to the Kingdoms economy still driving the sim: a TA FBI has
+            // no `buildcost`, so without this every TA unit would cost nothing and
+            // build instantly. Metal is the scarcer of the two in practice, so it
+            // is the better single-number stand-in. Goes away with the economy.
+            t.buildCost = float(info->numberOr("buildcost", t.buildCostMetal));
+
+            // --- TA sensors ---------------------------------------------------
+            t.sonar = float(info->numberOr("sonardistance", 0));
+            t.radarJam = float(info->numberOr("radardistancejam", 0));
+            t.sonarJam = float(info->numberOr("sonardistancejam", 0));
+
+            // --- TA unit traits -----------------------------------------------
+            t.explodeAsName = lower(info->valueOr("explodeas", ""));
+            t.selfDestructAsName = lower(info->valueOr("selfdestructas", ""));
+            t.canDGun = info->numberOr("candgun", 0) != 0;
+            t.kamikaze = info->numberOr("kamikaze", 0) != 0;
+            t.kamikazeDist = float(info->numberOr("kamikazedistance", 0));
+            t.stealth = info->numberOr("stealth", 0) != 0;
+            t.isAirBase = info->numberOr("isairbase", 0) != 0;
+            t.amphibious = info->numberOr("amphibious", 0) != 0;
+            t.immuneToParalyzer = info->numberOr("immunetoparalyzer", 0) != 0;
+            t.shootMe = info->numberOr("shootme", 0) != 0;
+            t.noAutoFire = info->numberOr("noautofire", 0) != 0;
+            t.antiWeapons = int(info->numberOr("antiweapons", 0));
+            t.damageModifier = float(info->numberOr("damagemodifier", 1));
             t.footX = int(info->numberOr("footprintx", 1));
             t.footZ = int(info->numberOr("footprintz", 1));
             {
@@ -142,8 +204,12 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.canTransport = info->numberOr("cantransport", 0) != 0;
             // Prefer the size-based capacity when present (it caps summed
             // transportsize, which is what we compare); else the plain count.
+            // TA spells the count transportmaxunits (and transmaxunits in four
+            // files); Kingdoms used transportsizecapacity/transportcapacity.
             t.transportCap = int(info->numberOr("transportsizecapacity",
-                                                info->numberOr("transportcapacity", 0)));
+                                 info->numberOr("transportcapacity",
+                                 info->numberOr("transportmaxunits",
+                                 info->numberOr("transmaxunits", 0)))));
             t.transportDist = float(info->numberOr("transportdistance", 0));
             t.buildDist = float(info->numberOr("builddistance", 0));
             t.soundClass = lower(info->valueOr("soundcategory",
@@ -172,6 +238,12 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // that actually drive behaviour, and its ABSENCE is a distinct case --
             // the sentinel default 3 falls through to standingmoveorder /
             // standingfireorder (both default 2), i.e. roam + fire at will.
+            // Standing orders. TA states them directly -- StandingMoveOrder and
+            // StandingFireOrder -- and gates each on a separate "may this unit
+            // have that stance at all" flag (mobilestandorders / firestandorders).
+            // Kingdoms replaced the pair with a single composite standingunitorder
+            // front-end, which no TA file carries; it is still read first so a
+            // Kingdoms-era override behaves.
             {
                 int suo = int(info->numberOr("standingunitorder", 3));
                 if (suo == 2)      { t.defaultMove = 1; t.defaultFire = 2; }
@@ -181,6 +253,12 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                     t.defaultMove = uint8_t(int(info->numberOr("standingmoveorder", 2)) & 3);
                     t.defaultFire = uint8_t(int(info->numberOr("standingfireorder", 2)) & 3);
                 }
+                // Retail's per-stance gates. Kingdoms folded both into one
+                // unitstandorders bit; TA splits them, so a unit may be allowed a
+                // move stance and not a fire stance (and 297 of 815 are).
+                t.canSetStance = info->numberOr("mobilestandorders",
+                                 info->numberOr("firestandorders",
+                                 info->numberOr("unitstandorders", 1))) != 0;
             }
             t.waterMult = float(info->numberOr("watermultiplier",
                                 info->numberOr("watermultipliser", 1)));
@@ -202,7 +280,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.noVeteran = info->numberOr("noveteran", 0) != 0;
             t.maxMana = float(info->numberOr("maxmana", 0));
             t.manaRegen = float(info->numberOr("manarechargerate", 0));
-            t.canReclaim = info->numberOr("canreclaim", 0) != 0;
+            // TA spells it "canreclamate"; Kingdoms dropped the extra syllable.
+            // Accept both so a Kingdoms-era override still reads.
+            t.canReclaim = info->numberOr("canreclamate",
+                                          info->numberOr("canreclaim", 0)) != 0;
             t.canResurrect = info->numberOr("canresurrect", 0) != 0;
             t.canCapture = info->numberOr("cancapture", 0) != 0;
             t.canCloak = info->numberOr("cancloak", 0) != 0;
@@ -211,7 +292,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.minCloakDist = float(info->numberOr("mincloakdistance", 0));
             // Boolean in retail too: the parser does `and eax,1`.
             t.fireAtWillRandom = (int(info->numberOr("fireatwillrandom", 0)) & 1) != 0;
-            t.attractsGods = info->numberOr("attractsgods", 0) != 0;
             t.weaponSwitching = info->numberOr("weaponswitching", 0) != 0;
             t.onOffable = info->numberOr("onoffable", 0) != 0;
             t.activateWhenBuilt = info->numberOr("activatewhenbuilt", 1) != 0;
@@ -3277,10 +3357,57 @@ void World::assist(int builderId, int siteId, bool queue) {
     order(builderId, site->x, site->z + float(site->type->footZ) * 8 + 24, queue);
 }
 
-void World::addFeature(int id, float x, float z, float manaYield, float work,
-                       int fx, int fz, bool blocks, int type) {
+// Wind oscillates between the map's advertised min and max. Deterministic by
+// construction: driven by the world clock through detmath, never wall time, and
+// folded into income which IS hashed.
+//
+// NOTE: the period here is a plausible stand-in, not a figure read out of the
+// retail binary -- how fast retail varies wind, and whether it interpolates or
+// steps, is still open. See docs/ta-port.md.
+float World::windSpeed() const {
+    const float lo = mapEcon_.minWind, hi = mapEcon_.maxWind;
+    if (hi <= lo) return lo;
+    // ~40s period; +1 then halve maps sin's [-1,1] onto [0,1].
+    float t = (detmath::sin(clock_ * 0.157f) + 1.0f) * 0.5f;
+    return lo + (hi - lo) * t;
+}
+
+// An extractor's yield is a property of the map FEATURES under its footprint --
+// TA has no metal-density plane, metal patches ARE features (ArchMetal*, which
+// carry `metal=` and `category=metal`). Cells with no metal feature fall back to
+// the map's background SurfaceMetal.
+//
+// NOTE: the combining rule -- sum the per-cell richness over the footprint, then
+// scale by ExtractsMetal -- reproduces the right order of magnitude (ARMMEX's
+// ExtractsMetal=0.001 over a 3x3 patch of metal=127 gives ~1.14 metal/s) but has
+// not been confirmed against the retail binary. See docs/ta-port.md.
+float World::extractorYield(const Unit& u) const {
+    if (!u.type || u.type->extractsMetal <= 0) return 0;
+    const int cx = int(u.x) / 16, cz = int(u.z) / 16;
+    const int fx = std::max(1, u.type->footX), fz = std::max(1, u.type->footZ);
+    float total = 0;
+    for (int dz = 0; dz < fz; ++dz)
+        for (int dx = 0; dx < fx; ++dx) {
+            int x = cx + dx - fx / 2, z = cz + dz - fz / 2;
+            if (x < 0 || z < 0 || terW_ <= 0 || x >= terW_) continue;
+            float cell = mapEcon_.surfaceMetal;
+            // A multi-cell metal patch stores its index on the ANCHOR cell only
+            // (the rest carry tnt::kFeatureCovered), so this finds the richness
+            // wherever the anchor happens to sit under the footprint.
+            if (const Feature* f = feature(z * terW_ + x))
+                if (f->alive && f->type >= 0 && size_t(f->type) < featTypes_.size()) {
+                    const FeatType& ft = featTypes_[size_t(f->type)];
+                    if (ft.isMetal) cell = ft.metal;
+                }
+            total += cell;
+        }
+    return total * u.type->extractsMetal;
+}
+
+void World::addFeature(int id, float x, float z, float energyYield, float metalYield,
+                       float work, int fx, int fz, bool blocks, int type) {
     featureIdx_[id] = features_.size();
-    Feature f{id, x, z, fx, fz, manaYield,
+    Feature f{id, x, z, fx, fz, energyYield, metalYield,
               std::max(work, 1.0f), std::max(work, 1.0f), blocks, true};
     f.type = type;
     features_.push_back(f);
@@ -3331,7 +3458,8 @@ void World::swapFeature(Feature& f, int newType) {
     if (f.blocks)
         blockCells(int(f.x) / 16 - f.fx / 2, int(f.z) / 16 - f.fz / 2,
                    f.fx, f.fz, true);
-    f.manaYield = nt.energy;
+    f.energyYield = nt.energy;
+    f.metalYield = nt.metal;
     f.work = f.workFull = std::max(nt.energy, 60.0f);
 }
 
@@ -3460,10 +3588,12 @@ void World::tickReclaim(Unit& b, float dt) {
         float step = kReclaimRate * dt;
         // Proportional drip against the INITIAL work (= max(energy,60), set at
         // death). Shipped corpse defs all have energy 0, so this grants nothing.
-        if (cd && cd->energy > 0 && c->corpseWork > 0)
-            players_[size_t(b.player)].mana +=
-                cd->energy * std::min(step, c->corpseWork) /
-                std::max(cd->energy, 60.0f);
+        if (cd && c->corpseWork > 0 && (cd->energy > 0 || cd->metal > 0)) {
+            Player& rp = players_[size_t(b.player)];
+            float frac = std::min(step, c->corpseWork) / std::max(cd->energy, 60.0f);
+            rp.metal.cur = std::min(rp.metal.storage, rp.metal.cur + cd->metal * frac);
+            rp.energy.cur = std::min(rp.energy.storage, rp.energy.cur + cd->energy * frac);
+        }
         c->corpseWork -= step;
         if (c->corpseWork <= 0) {
             c->deadFor = 1000.0f;   // consumed
@@ -3498,8 +3628,12 @@ void World::tickReclaim(Unit& b, float dt) {
     b.heading += turn;
     float d = std::min(f.work, kReclaimRate * dt);
     f.work -= d;
-    players_[size_t(b.player)].mana +=
-        f.manaYield * (d / f.workFull) * players_[size_t(b.player)].manaMult;   // drip (income-cheat scaled)
+    {   // Drip both resources in proportion to the work chipped off.
+        Player& rp = players_[size_t(b.player)];
+        float frac = (d / f.workFull) * rp.incomeMult;
+        rp.metal.cur = std::min(rp.metal.storage, rp.metal.cur + f.metalYield * frac);
+        rp.energy.cur = std::min(rp.energy.storage, rp.energy.cur + f.energyYield * frac);
+    }
     if (f.work <= 0) {
         f.alive = false;
         bumpFeatGen();   // reclaimed away: stop drawing it
@@ -3563,10 +3697,9 @@ void World::tickRepair(Unit& b, float dt) {
                             b.type->turnInPlaceRate * dt);
     float total = t->type->buildTime / std::max(b.type->workerTime, 0.01f);
     Player& tm = players_[size_t(b.player)];
-    float cost = t->type->buildCost * dt / std::max(total, 0.01f);
-    if (tm.mana < cost) return;   // can't afford: pause the repair
-    tm.mana -= cost;
-    t->hp = std::min(t->type->maxHp, t->hp + t->type->maxHp * dt / std::max(total, 0.01f));
+    float paid = spendBuild(tm, *t->type, dt / std::max(total, 0.01f));
+    if (paid <= 0) return;   // nothing affordable this tick: the repair stalls
+    t->hp = std::min(t->type->maxHp, t->hp + t->type->maxHp * paid);
     if (t->hp >= t->type->maxHp) endRepair();   // mended: on to the next order
 }
 
@@ -3661,10 +3794,9 @@ void World::tickConstruction(Unit& b, float dt) {
     if (gInstantBuild) {
         site->hp = site->type->maxHp;   // finishes this tick, free
     } else {
-        float cost = site->type->buildCost * dt / std::max(total, 0.01f);
-        if (tm.mana < cost) return;
-        tm.mana -= cost;
-        site->hp += site->type->maxHp * 0.95f * dt / std::max(total, 0.01f);
+        float paid = spendBuild(tm, *site->type, dt / std::max(total, 0.01f));
+        if (paid <= 0) return;   // starved: the site holds where it is
+        site->hp += site->type->maxHp * 0.95f * paid;
     }
     if (site->hp >= site->type->maxHp) {
         site->hp = site->type->maxHp;
@@ -3786,12 +3918,9 @@ void World::tickHealAuras() {
                 // pool. Charge for the repair actually done instead.
                 float need = 1.0f - e.hp / std::max(e.type->maxHp, 1.0f);
                 prog = std::min(prog, need);
-                float cost = e.type->buildCost * prog;
-                if (cost > tm.mana) {   // short on mana: heal proportionally less
-                    prog *= tm.mana / std::max(cost, 1e-6f);
-                    cost = tm.mana;
-                }
-                tm.mana -= cost;
+                // Short on either resource: heal proportionally less, rather
+                // than billing the whole pulse for a sliver of repair.
+                prog = spendBuild(tm, *e.type, prog);
                 e.hp = std::min(e.type->maxHp, e.hp + e.type->maxHp * prog);
             });
         }
@@ -3923,11 +4052,9 @@ void World::tickAbilities(float dt) {
             if (dx * dx + dz * dz > kR * kR * 4) { u.reviveTarget = 0; continue; }
             bool animate = u.reviveMode == 2;
             const UnitType* out = animate ? u.type->animateType : c->type;
-            float totalMana = out->buildCost * (animate ? 0.3f : 1.0f);
-            float inc = totalMana * dt / std::max(u.reviveTotal, 0.01f);
             Player& tm = players_[size_t(u.player)];
-            if (tm.mana < inc) continue;   // starved: the channel stalls, not drops
-            tm.mana -= inc;
+            float frac = (animate ? 0.3f : 1.0f) * dt / std::max(u.reviveTotal, 0.01f);
+            if (spendBuild(tm, *out, frac) <= 0) continue;   // starved: the channel stalls
             u.reviveLeft -= dt;
             if (u.reviveLeft <= 0) {
                 revives.push_back({out, c->x, c->z, u.player, animate});
@@ -3968,9 +4095,9 @@ void World::tickAbilities(float dt) {
                              0.5f);
                 break;
             } else if (u.type->canReclaim && cd->reclaimable) {
-                // Retail yield = the corpse def's energy -- 0 for every shipped
-                // corpse. You reclaim bodies to DENY resurrection, not for mana.
-                players_[size_t(u.player)].mana += cd->energy;
+                Player& rp = players_[size_t(u.player)];
+                rp.energy.cur = std::min(rp.energy.storage, rp.energy.cur + cd->energy);
+                rp.metal.cur = std::min(rp.metal.storage, rp.metal.cur + cd->metal);
                 retire(c);
             }
         }
@@ -4226,29 +4353,6 @@ void World::visCompute() {
     }
 }
 
-void World::summonReadyGods() {
-    if (!godsEnabled_) return;
-    for (size_t t = 0; t < players_.size(); ++t) {
-        if (!godReady(int(t))) continue;
-        // The god appears among the player's forces: the centroid of everything it
-        // has standing. Accumulated in unit order over a container every peer builds
-        // identically, so the sum -- and therefore the spawn point -- is bit-identical.
-        float cx = 0, cz = 0;
-        int n = 0;
-        for (const auto& u : units_)
-            if (u.alive() && u.player == int(t) && u.type && !u.underConstruction) {
-                cx += u.x;
-                cz += u.z;
-                ++n;
-            }
-        // Mark it handled either way: a player with nothing left on the map does not
-        // get to bank the summon until it rebuilds.
-        players_[t].godSummoned = true;
-        if (!n || !players_[t].godType) continue;
-        spawn(players_[t].godType, cx / float(n), cz / float(n), 3.14159f, int(t));
-    }
-}
-
 // Nearest point to (fx,fz) that a `t`-sized body fits in AND nothing is standing on.
 // Returns false (leaving out* at the requested point) when the whole neighbourhood is
 // taken, so the caller can decide whether to wait or to proceed anyway.
@@ -4290,16 +4394,17 @@ void World::tickProduction(Unit& u, float dt) {
     const UnitType* t = u.buildQueue.front();
     float total = t->buildTime / std::max(u.type->workerTime, 0.01f);
     Player& tm = players_[size_t(u.player)];
-    // Accumulate work (spending mana) until complete. Once complete, buildProgress
+    // Accumulate work (paying for it) until complete. Once complete, buildProgress
     // holds at `total` and grows only as a wait timer below.
     if (u.buildProgress < total) {
         if (gInstantBuild) {
             u.buildProgress = total;   // finishes this tick, free
         } else {
-            float cost = t->buildCost * dt / std::max(total, 0.01f);
-            if (tm.mana < cost) return;   // stalled: no mana
-            tm.mana -= cost;
-            u.buildProgress += dt;
+            // A stalled factory does not halt -- it advances by whatever fraction
+            // of this tick's slice the player could actually pay for.
+            float paid = spendBuild(tm, *t, dt / std::max(total, 0.01f));
+            if (paid <= 0) return;
+            u.buildProgress += paid * std::max(total, 0.01f);
         }
         if (u.buildProgress < total) return;   // not done yet
     }
@@ -4440,64 +4545,92 @@ void World::tick(float dt) {
         if (tm.headbangLeft > 0) tm.headbangLeft = std::max(0.0f, tm.headbangLeft - dt);
     }
 
-    // Economy: recompute income/storage, apply income.
-    for (auto& tm : players_) { tm.income = 0; tm.storage = 0; }
-    std::vector<int> godPriests(players_.size(), 0);
+    // ---- Economy -------------------------------------------------------------
+    // Two independent resources. Recompute income/drain/storage from the living,
+    // FINISHED units (a half-built generator must not pay out yet), then apply
+    // them, then work out this tick's stall factors.
+    for (auto& tm : players_) {
+        tm.metal.income = tm.metal.drain = 0;
+        tm.energy.income = tm.energy.drain = 0;
+        tm.metal.storage = tm.energy.storage = kBaseStorage;
+    }
     for (auto& u : units_) {
-        // A unit under construction contributes no economy until it finishes -- a
-        // half-built lodestone must not add its mana income or storage capacity yet.
         if (!u.alive() || !u.type || u.underConstruction) continue;
         auto& tm = players_[size_t(u.player)];
-        tm.income += u.type->income;
-        tm.storage += u.type->storage;
-        if (u.type->attractsGods) godPriests[size_t(u.player)]++;
+        const UnitType* t = u.type;
+        tm.metal.storage += t->metalStorage;
+        tm.energy.storage += t->energyStorage;
+        // An "onoffable" unit that the player has switched off produces and
+        // consumes nothing -- that is the whole point of the toggle, and it is
+        // how a player survives an energy stall.
+        if (!u.active) continue;
+        tm.metal.income += t->metalMake + t->makesMetal;
+        tm.energy.income += t->energyMake;
+        tm.metal.drain += t->metalUse;
+        tm.energy.drain += t->energyUse;
+        if (t->extractsMetal > 0)
+            tm.metal.income += extractorYield(u);
+        // Wind and tidal are MAP properties, not unit constants: a wind farm on a
+        // becalmed map earns nothing, which is why retail maps advertise their
+        // wind range in the .ota.
+        // Wind and tidal are rated against the MAP, not fixed per unit.
+        if (t->windGenerator > 0)
+            tm.energy.income += std::min(t->windGenerator, windSpeed());
+        if (t->tidalGenerator > 0)
+            tm.energy.income += t->tidalGenerator * mapEcon_.tidalStrength;
     }
-    // Difficulty income cheat: scale the summed income so the boost flows through the
-    // mana accrual below, allied surplus sharing, and god-favour alike. manaMult is 1
-    // for everyone but an Absurd AI, so this is an exact no-op (x1.0) otherwise.
-    for (auto& tm : players_) tm.income *= tm.manaMult;
-    // Apply income, then share the economy across allies: mana that would
-    // overflow a player's storage flows to teammates that still have headroom,
-    // so a maxed-out ally feeds the team instead of wasting mogrium. It is truly
-    // wasted only when the whole team is capped. Deterministic -- collected and
-    // handed out in player-index order. A solo/FFA player (a team of one) has no
-    // teammate to receive the surplus, so this reduces exactly to the old clamp.
-    for (auto& tm : players_) tm.mana += tm.income * dt;
-    const int np = int(players_.size());
-    auto cap = [&](int i) { return std::max(players_[size_t(i)].storage, 100.0f); };
-    bool teamDone[kMaxPlayers] = {};
-    for (int lead = 0; lead < np; ++lead) {
-        int team = players_[size_t(lead)].team;
-        if (team < 0 || team >= kMaxPlayers || teamDone[team]) continue;
-        teamDone[team] = true;
-        float pool = 0;   // surplus above caps, gathered from the whole team
-        for (int i = 0; i < np; ++i)
-            if (players_[size_t(i)].team == team && players_[size_t(i)].mana > cap(i)) {
-                pool += players_[size_t(i)].mana - cap(i);
-                players_[size_t(i)].mana = cap(i);
-            }
-        for (int i = 0; i < np && pool > 0; ++i)
-            if (players_[size_t(i)].team == team) {
-                float give = std::min(cap(i) - players_[size_t(i)].mana, pool);
-                if (give > 0) { players_[size_t(i)].mana += give; pool -= give; }
-            }
-        // Any pool left (every member capped) is wasted, as before.
+    for (auto& tm : players_) {
+        tm.metal.income *= tm.incomeMult;
+        tm.energy.income *= tm.incomeMult;
     }
-    // God favour: a player's priests channel its mana income into favour while any
-    // is present; it fills toward kGodFavorNeeded, then godReady() lets the god come.
-    if (godsEnabled_)
-        for (size_t t = 0; t < players_.size(); ++t)
-            if (godPriests[t] > 0)
-                players_[t].godFavor = std::min(kGodFavorNeeded,
-                    players_[t].godFavor + std::max(players_[t].income, 20.0f) * dt);
 
-    // ...and once it has filled, the god manifests. This has to happen HERE, in the
-    // shared sim, and used to happen in the client instead (GameView::simStep polled
-    // godReady() and called its own summonGod()). The referee never did it, so from
-    // the first summon the server's world held one fewer unit than every client's and
-    // the hashes split for the rest of the match -- a desync arriving tens of minutes
-    // in, with nothing in the command stream to explain it.
-    summonReadyGods();
+    // Apply income and drain, then derive the stall factor. `share` is what every
+    // consumer scales its work by for the NEXT tick: 1 while supply covers demand,
+    // and the fraction actually affordable once it does not.
+    //
+    // NOTE: proportional scaling is the documented community understanding of
+    // TA's stall, not something read out of the retail binary yet -- whether the
+    // real curve is strictly proportional or stepped is still open. See
+    // docs/ta-port.md.
+    auto settle = [&](Resource& r) {
+        r.cur += r.income * dt;
+        float want = r.drain * dt;
+        if (want <= 0) { r.share = 1.0f; return; }
+        if (r.cur >= want) { r.cur -= want; r.share = 1.0f; return; }
+        r.share = r.cur > 0 ? r.cur / want : 0.0f;
+        r.cur = 0;
+    };
+    for (auto& tm : players_) { settle(tm.metal); settle(tm.energy); }
+
+    // Allied sharing: a resource that would overflow one player's cap flows to
+    // teammates with headroom, so a maxed-out ally feeds the team instead of
+    // wasting it. Truly wasted only when the whole team is capped. Deterministic
+    // -- collected and handed out in player-index order. A team of one reduces
+    // exactly to a clamp.
+    const int np = int(players_.size());
+    auto shareOut = [&](Resource Player::*which) {
+        bool teamDone[kMaxPlayers] = {};
+        for (int lead = 0; lead < np; ++lead) {
+            int team = players_[size_t(lead)].team;
+            if (team < 0 || team >= kMaxPlayers || teamDone[team]) continue;
+            teamDone[team] = true;
+            float pool = 0;
+            for (int i = 0; i < np; ++i) {
+                if (players_[size_t(i)].team != team) continue;
+                Resource& r = players_[size_t(i)].*which;
+                if (r.cur > r.storage) { pool += r.cur - r.storage; r.cur = r.storage; }
+            }
+            for (int i = 0; i < np && pool > 0; ++i) {
+                if (players_[size_t(i)].team != team) continue;
+                Resource& r = players_[size_t(i)].*which;
+                float give = std::min(r.storage - r.cur, pool);
+                if (give > 0) { r.cur += give; pool -= give; }
+            }
+        }
+    };
+    shareOut(&Player::metal);
+    shareOut(&Player::energy);
+
 
     // Index-based: tickProduction can spawn a trained unit, reallocating
     // units_ and invalidating any range-for iterator over it.
@@ -5268,7 +5401,8 @@ void World::tick(float dt) {
             });
             float cost = (u.speed > 3.0f ? u.type->cloakCostMove : u.type->cloakCost) * dt;
             Player& tm = players_[size_t(u.player)];
-            if (!enemyNear && tm.mana >= cost) { tm.mana -= cost; u.cloaked = true; }
+            // TA's CloakCost/CloakCostMoving are an ENERGY drain.
+            if (!enemyNear && tm.energy.cur >= cost) { tm.energy.cur -= cost; u.cloaked = true; }
             else u.cloaked = false;
         } else if (u.cloaked) {
             u.cloaked = false;   // toggled off (or no longer a cloaker): decloak now
@@ -6191,8 +6325,8 @@ uint64_t World::stateHash() const {
         mixf(s.jitX); mixf(s.jitZ); mixf(s.nextVary);
     }
     for (const auto& t : players_) {
-        mixf(t.mana);
-        mixf(t.godFavor);
+        mixf(t.metal.cur);
+        mixf(t.energy.cur);
         // Team assignment drives sim behaviour (splash/acquire/auras) but is set
         // from setup -- fold it in so a lobby/config mismatch faults immediately
         // as a desync instead of diverging mysteriously.

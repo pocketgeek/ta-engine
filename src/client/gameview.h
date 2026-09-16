@@ -175,14 +175,6 @@ public:
                          vfs_.list("unitscb").empty() ? " -- NOT FOUND" : "");
         // God economy timing (gamedata/gods.tdf). TA_GODTIME overrides the
         // appear time (seconds) for testing; otherwise use AppearTimeMin minutes.
-        try {
-            auto g = vtdf("gamedata/gods.tdf");
-            if (const auto* tm = g.child("TIMING")) {
-                float appear = float(tm->numberOr("AppearTimeMin", 30.0)) * 60.0f;
-                if (const char* e = ta::devEnv("TA_GODTIME")) appear = std::stof(e);
-                world_.enableGods(appear);
-            }
-        } catch (const std::exception&) {}
         loadTextures();
         mapView_.setZoom(0.9f);
         try {
@@ -426,14 +418,14 @@ public:
                 // bank one), so a null type does not defer the god -- it consumes the
                 // favour and spawns nothing, permanently. Resolve it the same way
                 // setupMatch does.
-                world_.player(i).godType = registry_.find(fkSide + "god");
                 const FactionKit& fk = kit(fkSide);
                 float mx = spots[size_t(i)].first, mz = spots[size_t(i)].second;
                 int mon = spawn(fk.monarch, mx, mz, 0, i);
                 if (i == 0) { playerMonarchId_ = mon; builderId_ = mon; }
                 for (int s = 0; s < 4; ++s)
                     spawn(fk.squad[s % 4], mx + (s % 2) * 26 - 13, mz - 50 + (s / 2) * 26, 0, i);
-                world_.player(i).mana = 2800;
+                world_.player(i).metal.cur = 2800;
+                world_.player(i).energy.cur = 2800;
             }
             ffaPlayers_ = n;
             for (auto& u : world_.units()) {
@@ -451,11 +443,11 @@ public:
         playerMonarchId_ = spawn(pk.monarch, px, pz, pFace, 0);
         builderId_ = playerMonarchId_;
         aiMonarchId_ = spawn(ak.monarch, ax, az, aFace, 1);
-        // Enough mogrium to bootstrap the opening: a handful of lodestones for
-        // income and the start of a keep, without being able to skip economy
-        // and rush one to completion.
-        world_.player(0).mana = 2800;
-        world_.player(1).mana = 2800;
+        // Enough of both to bootstrap the opening -- some economy and the start
+        // of a factory -- without being able to skip economy and rush one to
+        // completion.
+        world_.player(0).metal.cur = world_.player(0).energy.cur = 2800;
+        world_.player(1).metal.cur = world_.player(1).energy.cur = 2800;
         if (demo) {
             // Showcase: skip the slow build-up and pit two ready armies at the
             // start positions against each other.

@@ -46,13 +46,13 @@ int main() {
 
     // Adding a feature must move it: the renderer has to notice a new feature to give
     // it a visual instance at all.
-    w.addFeature(1, 100.0f, 100.0f, 10.0f, 5.0f, 1, 1, false, -1);
+    w.addFeature(1, 100.0f, 100.0f, 10.0f, 0.0f, 5.0f, 1, 1, false, -1);
     const uint32_t afterOne = w.featGeneration();
     check(afterOne != atStart, "adding a feature bumps the generation");
     check(w.features().size() == 1, "and the feature is actually there");
 
     // Distinct adds must be distinguishable, not collapsed into one edge.
-    w.addFeature(2, 200.0f, 200.0f, 10.0f, 5.0f, 1, 1, false, -1);
+    w.addFeature(2, 200.0f, 200.0f, 10.0f, 0.0f, 5.0f, 1, 1, false, -1);
     check(w.featGeneration() != afterOne, "a second add bumps it again");
 
     // ...and ticking after the adds must go quiet again, so the sync settles back to

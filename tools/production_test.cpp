@@ -82,7 +82,7 @@ static void outputDoesNotJam() {
     World& w = *makeWorld(128, 128);
     UnitType fac = factoryType(), sol = soldierType();
     const int fid = w.spawn(&fac, 1000, 1000, 0, 0);
-    w.player(0).mana = 1e9f;
+    w.player(0).metal.cur = 1e9f;
     w.train(fid, &sol, 24);
     run(w, 180.0f);
 
@@ -140,7 +140,7 @@ static void rallyIsAdopted() {
     check(!sol.producesUnits(), "an ordinary unit cannot");
 
     const int fid = w.spawn(&fac, 600, 600, 0, 0);
-    w.player(0).mana = 1e9f;
+    w.player(0).metal.cur = 1e9f;
     w.train(fid, &sol, 6);                       // queue production FIRST...
     w.order(fid, 1600, 600, /*queue=*/false);    // ...then a two-step rally
     w.attackMove(fid, 1600, 200, /*queue=*/true);
@@ -182,7 +182,7 @@ static void rallyReplaces() {
     World& w = *makeWorld(160, 160);
     UnitType fac = factoryType(), sol = soldierType();
     const int fid = w.spawn(&fac, 600, 600, 0, 0);
-    w.player(0).mana = 1e9f;
+    w.player(0).metal.cur = 1e9f;
     w.order(fid, 1600, 600, false);
     w.order(fid, 300, 1400, false);              // unqueued: replaces, not appends
     check(w.unit(fid)->rally.size() == 1, "an unqueued rally order replaces the plan",

@@ -1097,17 +1097,17 @@
         // isn't a player -- no personal mana readout.
         if (!panelTex_ && !spectating_) {
             const PlayerR& tm = framePlayer(localPlayer_);
-            float cap = std::max(tm.storage, 100.0f);
+            float cap = std::max(tm.metal.storage, 100.0f);
             SDL_FRect bg{10, 10, 180, 12};
             SDL_SetRenderDrawColor(ren_, 20, 20, 30, 230);
             SDL_RenderFillRectF(ren_, &bg);
-            SDL_FRect fg{12, 12, 176 * std::clamp(tm.mana / cap, 0.0f, 1.0f), 8};
+            SDL_FRect fg{12, 12, 176 * std::clamp(tm.metal.cur / cap, 0.0f, 1.0f), 8};
             SDL_SetRenderDrawColor(ren_, 80, 200, 255, 255);
             SDL_RenderFillRectF(ren_, &fg);
             if (hudFont_.ok() && !panelTex_) {
                 char buf[96];
-                std::snprintf(buf, sizeof buf, "MANA %d/%d  +%d", int(tm.mana), int(cap),
-                              int(tm.income));
+                std::snprintf(buf, sizeof buf, "MANA %d/%d  +%d", int(tm.metal.cur), int(cap),
+                              int(tm.metal.income));
                 hudFont_.draw(ren_, buf, 198, 21, 1.5f, {170, 225, 255, 255});
                 if (!selection_.empty()) {
                     const auto* u = frameUnitP(selection_.front());

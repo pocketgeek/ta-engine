@@ -249,8 +249,8 @@ Each milestone ends green: builds, `ctest` passes, determinism gate agrees.
 | 1 | **HPI v1**: header, obfuscation, LZ77. ✅ done — 21 synthetic checks, then validated against the real install: **30 archives, 7,890 files extracted, zero failures.** | no |
 | 2 | **Mount a real install**: VFS over `.hpi`/`.ufo`/`.ccx`/`.gp3`. ✅ done — extension-ranked mount resolves `gamedata/SIDEDATA.TDF` → `totala1.hpi`. | done |
 | 3 | **Formats**: 3DO/GAF/COB confirmed; TNT + compositor rewritten. ✅ done — all 96 shipped maps round-trip **byte-identically**, and real maps render. | done |
-| 4 | **Unit data**: FBI/TDF/weapons/`SIDEDATA`/`MOVEINFO` → `UnitType`. `tdftool` dumps it. | **yes** |
-| 5 | **Two-resource economy** + stall + nanolathe construction. | yes |
+| 4 | **Unit data**: FBI → `UnitType`. ✅ done — key set surveyed across all 815 shipped FBIs; 278 types load, ARM 137 / CORE 141, checked against real values by `unitdata_test`. Weapons and `SIDEDATA` still to come. | done |
+| 5 | **Two-resource economy**: metal+energy, stall, map-driven wind/tidal/metal. 🔨 sim side done; HUD shows metal only, and the Kingdoms mechanics still need removing. | in progress |
 | 6 | **Skirmish playable**: ARM vs CORE, AI, HUD. | yes |
 | 7 | **Sensors** (radar/sonar/jammer), water layer, air depth. | yes |
 | 8 | **Campaigns** + Battle Tactics missions. | yes |
@@ -268,7 +268,14 @@ copy nothing**.
 - Exact metal-extraction income formula. The inputs are now known: the map's
   per-cell metal plane, the FBI `ExtractsMetal`, and the `.ota` schema's
   `SurfaceMetal` / `MohoMetal`. The combining rule is not.
-- The stall curve: is the slowdown strictly proportional, or stepped?
+- The stall curve: is the slowdown strictly proportional, or stepped? Implemented
+  proportionally (`Resource::share`), which is the community understanding.
+- The extractor formula. Implemented as *sum the per-cell richness under the
+  footprint, scale by `ExtractsMetal`*, which gives the right order of magnitude
+  (ARMMEX's `0.001` over a 3x3 patch of `metal=127` → ~1.14 metal/s) but is not
+  confirmed against the binary.
+- How fast retail varies wind between the map's min and max, and whether it
+  interpolates or steps. Currently a ~40s oscillation through `detmath`.
 - Wind income's cadence and interpolation between the `.ota`'s `minwindspeed`
   and `maxwindspeed` (Ashap Plateau: 0 and 4000).
 - Whether `.ccx`/`.gp3` sit at fixed priorities or fall through to mount order.
