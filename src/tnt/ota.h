@@ -20,6 +20,65 @@ struct StartPos {
     int xpos = 0, zpos = 0;
 };
 
+// A unit the .ota places on the map. Campaign missions state their whole opening
+// board this way -- AC01 carries 103 of these across its three difficulty schemas.
+// Coordinates are WORLD units, like StartPos.
+struct PlacedUnit {
+    std::string unitName;      // FBI id, e.g. "ARMFAV"
+    std::string ident;         // the mission script's handle for it; often empty
+    int xpos = 0, ypos = 0, zpos = 0;
+    int player = 0;            // .ota player number (1-based in the file)
+    int healthPercent = 100;
+    int angle = 0;             // heading, TA's 0..65535 turn units
+    int kills = 0;             // veterancy it starts with
+};
+
+// One [Schema N] block. In a CAMPAIGN mission the schema is the DIFFICULTY --
+// AC01 ships Easy / Medium / Hard, each with its own board -- not the player
+// count, which is what a skirmish map's schemas vary. Both forms carry the
+// economy figures, so they live here rather than on Scenario.
+struct Schema {
+    std::string type;          // "Easy"/"Medium"/"Hard", or "Network 1" on a skirmish map
+    std::string aiProfile;     // ai/<name>.txt for this schema's opponents
+    float surfaceMetal = 0, mohoMetal = 0;
+    // Opening treasuries. The asymmetry is the difficulty knob: AC01 Easy gives
+    // the human 1000 of each and the computer 100.
+    float humanMetal = 0, humanEnergy = 0;
+    float computerMetal = 0, computerEnergy = 0;
+    std::vector<StartPos> starts;
+    std::vector<PlacedUnit> units;
+};
+
+// A mission's objectives, as TA states them: plain GlobalHeader keys rather than
+// a script or a trigger file. Surveyed across all 272 shipped .ota files; the
+// count after each is how many declare it.
+struct Objectives {
+    bool allUnitsKilled = false;        // 163 -- kill everything hostile
+    bool commanderKilled = false;       // 123 -- kill the enemy Commander
+    bool destroyAllUnits = false;       //  90
+    bool killAllMobileUnits = false;    //   9
+    std::string allUnitsKilledOfType;   //  52 -- e.g. ARMGATE
+    std::string killAllOfType;          //  40
+    std::string killUnitType;           //  32
+    std::string captureUnitType;        //  32
+    std::string unitTypeKilled;         //  18
+    std::string buildUnitType;          //   8
+    bool deathTimerRunsOut = false;     //  21 -- survive the clock
+    // MoveUnitToRadius=<type>, x, z, r (18) -- get a unit of `type` (ANYTYPE for
+    // any) within `radius` of (x,z). AC01's is "ANYTYPE, 992, 656, 64".
+    bool hasMoveToRadius = false;
+    std::string moveToType;
+    int moveToX = 0, moveToZ = 0, moveToRadius = 0;
+    // Anything declared at all? A skirmish map declares none of these.
+    bool any() const {
+        return allUnitsKilled || commanderKilled || destroyAllUnits ||
+               killAllMobileUnits || deathTimerRunsOut || hasMoveToRadius ||
+               !allUnitsKilledOfType.empty() || !killAllOfType.empty() ||
+               !killUnitType.empty() || !captureUnitType.empty() ||
+               !unitTypeKilled.empty() || !buildUnitType.empty();
+    }
+};
+
 struct Scenario {
     // Cartographer emits this constant; community tools vary, so it round-trips.
     std::string copyright =
@@ -51,6 +110,40 @@ struct Scenario {
     std::string mapType = "Network 1";
     std::string aiProfile = "DEFAULT";
     std::vector<StartPos> starts;
+
+    // --- campaign mission fields ---------------------------------------------
+    // Present on every shipped .ota (all 272 carry the header keys); a skirmish
+    // map simply leaves the mission-specific ones empty. See docs/ta-port.md.
+    std::string planet;          // "Green planet"
+    std::string missionHint;     // hint text file
+    std::string brief;           // briefing script id
+    std::string narration;       // voiceover id
+    std::string glamour;         // the still shown behind the briefing
+    bool  lavaWorld = false;
+    int   killMul = 0;           // score weighting
+    int   timeMul = 0;
+    int   maxUnits = 0;          // per-player cap this mission imposes (0 = none)
+    bool  waterDoesDamage = false;
+    float waterDamage = 0;
+    bool  noSeaLevelTrigger = false;
+    int   mapping = 0;
+    Objectives objectives;
+    // Every [Schema N], in file order. A campaign mission's are its difficulties.
+    std::vector<Schema> schemas;
+    // The schema a difficulty name selects, or the first, or nullptr if none.
+    const Schema* schemaFor(const std::string& type) const;
+    // Does this .ota describe a campaign MISSION rather than a skirmish map?
+    //
+    // PLACED UNITS, and nothing else. Measured over all 272 shipped .ota files:
+    // 177 place units and 95 do not, and none places units without also carrying
+    // the mission metadata. The tempting tests do not work -- every one of the 272
+    // carries a `brief` key, and an ordinary skirmish map declares `allUnitsKilled`
+    // and `destroyAllUnits` too, those being how a normal game is won. Coast To
+    // Coast reads as a mission on either of those.
+    bool isMission() const {
+        for (const auto& s : schemas) if (!s.units.empty()) return true;
+        return false;
+    }
 
     // Parse an .ota (GlobalHeader TDF). Missing fields keep their defaults.
     static Scenario parse(const std::string& text);
