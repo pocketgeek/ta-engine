@@ -361,6 +361,20 @@
         return {winW_ - (640 - g.x) * s, baseY - (480 - g.y) * s, g.w * s, g.h * s};
     }
 
+    const ta::tdf::Side* GameView::localSide() const {
+        if (const auto* s = sideData_.side(side_)) return s;
+        return sideData_.sides.empty() ? nullptr : &sideData_.sides[0];
+    }
+
+    SDL_FRect GameView::guiTopRect(const ta::tdf::PanelRect& r) const {
+        // Same right-anchored 640-space scale the command panel uses, but pinned
+        // to the TOP of the window: TA's resource readout is a strip along the top
+        // edge, where Kingdoms put a mana orb at the command panel's foot.
+        float s = guiS();
+        return {winW_ - (640 - float(r.x1)) * s, float(r.y1) * s,
+                float(r.x2 - r.x1) * s, float(r.y2 - r.y1) * s};
+    }
+
     SDL_FRect GameView::guiBarRect(const ta::gui::Gadget& g) const {
         float vs = float(barH()) / 49.0f;   // 49-tall retail bar -> barH() px
         float barTop = winH_ - barH();
@@ -1238,69 +1252,80 @@
             }
         }
 
-        // Mana panel at the command-panel foot: the orb is a MANA BULB (its 24 frames
-        // are liquid-fill levels, picked by mana fraction); "MANA X/Y" sits in a box
-        // above it, with +income to the orb's left and -expenditure to its right.
-        int cb = guiIdx("CrystalBall");
-        if (cb >= 0) {
-            const PlayerR& tm = framePlayer(localPlayer_);
-            float cap = std::max(tm.metal.storage, 100.0f);
-            SDL_FRect orb = guiCmdRect(gui_.gadgets[cb]);
-            if (!guiTex_[cb].empty()) {
-                int nf = int(guiTex_[cb].size());
-                float frac = std::clamp(tm.metal.cur / cap, 0.0f, 1.0f);
-                int fr = std::clamp(int(frac * float(nf - 1) + 0.5f), 0, nf - 1);
-                if (guiTex_[cb][size_t(fr)])
-                    SDL_RenderCopyF(ren_, guiTex_[cb][size_t(fr)], nullptr, &orb);
+        drawResourceStrip();
+    }
+
+    // TA's resource readout. Every coordinate here comes from SIDEDATA.TDF rather
+    // than being chosen: the file states exact rects for both bars, their current
+    // and maximum numbers, and the per-second production/consumption figures. The
+    // bar colours are the side's own palette indices (energycolor/metalcolor).
+    void GameView::drawResourceStrip() {
+        const ta::tdf::Side* sd = localSide();
+        if (!sd) return;   // no SIDEDATA: draw nothing rather than guess a layout
+        const PlayerR& tm = framePlayer(localPlayer_);
+
+        const auto& pal = mapView_.compositor().palette();
+        auto palCol = [&](int idx) {
+            const uint8_t* c = pal.rgba[uint8_t(idx)];
+            return SDL_Color{c[0], c[1], c[2], 255};
+        };
+
+        // One resource: a filled bar, "cur" over it, the cap at its right end, and
+        // the +make / -use pair flanking it.
+        auto drawOne = [&](const char* bar, const char* num, const char* maxN,
+                           const char* zero, const char* made, const char* used,
+                           const ta::sim::Resource& r, SDL_Color col) {
+            if (const auto* br = sd->panel(bar)) {
+                SDL_FRect box = guiTopRect(*br);
+                // A zero-height rect in SIDEDATA is an anchor, not a box; give the
+                // bar a visible minimum so it does not vanish at small scales.
+                if (box.h < 2) box.h = std::max(2.0f, 3 * guiS());
+                SDL_SetRenderDrawColor(ren_, 8, 8, 8, 235);
+                SDL_RenderFillRectF(ren_, &box);
+                float frac = r.storage > 0 ? std::clamp(r.cur / r.storage, 0.0f, 1.0f) : 0.0f;
+                SDL_FRect fill{box.x, box.y, box.w * frac, box.h};
+                SDL_SetRenderDrawColor(ren_, col.r, col.g, col.b, 255);
+                SDL_RenderFillRectF(ren_, &fill);
+                SDL_SetRenderDrawColor(ren_, 70, 62, 44, 255);
+                SDL_RenderDrawRectF(ren_, &box);
             }
-            // "MANA" over "X/Y", both centred (H and V) in the panel's black HelpText
-            // recess above the orb.
-            int pmi = guiIdx("UnitMenu"), hti = guiIdx("HelpText");
-            SDL_FRect panel = pmi >= 0 ? guiCmdRect(gui_.gadgets[pmi]) : orb;
-            SDL_FRect mbox = hti >= 0 ? guiCmdRect(gui_.gadgets[hti])
-                                      : SDL_FRect{panel.x + 6, orb.y - 60, panel.w - 12, 52};
-            SDL_SetRenderDrawColor(ren_, 8, 8, 8, 235);
-            SDL_RenderFillRectF(ren_, &mbox);
-            SDL_SetRenderDrawColor(ren_, 70, 62, 44, 255);
-            SDL_RenderDrawRectF(ren_, &mbox);
-            char nums[32];
-            std::snprintf(nums, sizeof nums, "%d/%d", int(tm.metal.cur), int(cap));
-            float px = std::max(1.4f, mbox.h / 20.0f);
-            float gap = 3, lineH = 7 * px;
-            // Shrink to fit both lines within the recess (H and V).
-            while (px > 1.0f && (2 * lineH + gap > mbox.h - 4 ||
-                                 blockWidth(nums, px) > mbox.w - 6)) {
-                px -= 0.1f; lineH = 7 * px;
-            }
-            float y0 = mbox.y + (mbox.h - (2 * lineH + gap)) * 0.5f;
-            SDL_Color mc{200, 215, 255, 255};
-            float w1 = blockWidth("MANA", px), w2 = blockWidth(nums, px);
-            blockText("MANA", mbox.x + (mbox.w - w1) * 0.5f, y0, px, mc);
-            blockText(nums, mbox.x + (mbox.w - w2) * 0.5f, y0 + lineH + gap, px, mc);
-            // +income / -expenditure (conjure + repair drain, computed here) flanking orb.
-            float expend = 0;
-            for (const UnitR* _up : front().live) { const UnitR& un = *_up;
-                if (un.player != localPlayer_ || !un.alive() || !un.type) continue;
-                if (un.buildSiteId)
-                    if (const auto* st = frameUnitP(un.buildSiteId);
-                        st && st->type && st->underConstruction) {
-                        float total = st->type->buildTime / std::max(un.type->workerTime, 0.01f);
-                        expend += st->type->buildCost / std::max(total, 0.01f);
-                    }
-                if (un.repairId)
-                    if (const auto* t2 = frameUnitP(un.repairId);
-                        t2 && t2->type && t2->hp < t2->type->maxHp) {
-                        float total = t2->type->buildTime / std::max(un.type->workerTime, 0.01f);
-                        expend += t2->type->buildCost / std::max(total, 0.01f);
-                    }
-            }
-            float ipx = std::max(1.5f, orb.h / 24.0f);
-            char inb[16], outb[16];
-            std::snprintf(inb, sizeof inb, "+%d", int(tm.metal.income + 0.5f));
-            std::snprintf(outb, sizeof outb, "-%d", int(expend + 0.5f));
-            float iy = orb.y + orb.h * 0.5f - 3.5f * ipx;
-            blockText(inb, orb.x - blockWidth(inb, ipx) - 5, iy, ipx, {150, 225, 150, 255});
-            blockText(outb, orb.x + orb.w + 5, iy, ipx, {230, 160, 150, 255});
+            float px = std::max(1.0f, guiS() * 1.2f);
+            char buf[32];
+            auto at = [&](const char* name, const char* text, SDL_Color c, bool rightAlign) {
+                const auto* pr = sd->panel(name);
+                if (!pr) return;
+                SDL_FRect a = guiTopRect(*pr);
+                float w = blockWidth(text, px);
+                blockText(text, rightAlign ? a.x - w : a.x, a.y, px, c);
+            };
+            std::snprintf(buf, sizeof buf, "%d", int(r.cur));
+            at(num, buf, {235, 225, 180, 255}, false);
+            std::snprintf(buf, sizeof buf, "%d", int(r.storage));
+            at(maxN, buf, {180, 175, 150, 255}, false);
+            at(zero, "0", {180, 175, 150, 255}, true);
+            // Retail shows the RATES here, which is what a player actually steers
+            // by -- a metal bar sitting still at half full says nothing about
+            // whether the base is about to stall.
+            std::snprintf(buf, sizeof buf, "+%d", int(r.income + 0.5f));
+            at(made, buf, {150, 225, 150, 255}, false);
+            // Standing drain PLUS what construction is drawing this tick -- a
+            // base building flat out is spending, and a figure that ignored it
+            // would read zero while the player stalled.
+            std::snprintf(buf, sizeof buf, "-%d", int(r.drain + r.buildDrain + 0.5f));
+            at(used, buf, {230, 160, 150, 255}, false);
+        };
+
+        drawOne("METALBAR", "METALNUM", "METALMAX", "METAL0",
+                "METALPRODUCED", "METALCONSUMED", tm.metal, palCol(sd->metalColor));
+        drawOne("ENERGYBAR", "ENERGYNUM", "ENERGYMAX", "ENERGY0",
+                "ENERGYPRODUCED", "ENERGYCONSUMED", tm.energy, palCol(sd->energyColor));
+
+        // Unit count and elapsed time share the strip in retail.
+        if (const auto* pr = sd->panel("TOTALUNITS")) {
+            SDL_FRect a = guiTopRect(*pr);
+            char buf[32];
+            std::snprintf(buf, sizeof buf, "%d", tm.unitCount);
+            blockText(buf, a.x, a.y, std::max(1.0f, guiS() * 1.2f), {235, 225, 180, 255});
         }
     }
 

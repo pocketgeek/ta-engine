@@ -92,6 +92,8 @@ float spendBuild(Player& p, const UnitType& t, float frac) {
     if (got <= 0) return 0;
     p.metal.cur -= m * got;
     p.energy.cur -= e * got;
+    p.metal.spentThisTick += m * got;
+    p.energy.spentThisTick += e * got;
     return frac * got;
 }
 
@@ -4394,6 +4396,12 @@ void World::tick(float dt) {
         tm.metal.income = tm.metal.drain = 0;
         tm.energy.income = tm.energy.drain = 0;
         tm.metal.storage = tm.energy.storage = kBaseStorage;
+        // Roll last tick's construction spend into a per-second figure for the
+        // HUD, then start a fresh accumulator.
+        float inv = dt > 0 ? 1.0f / dt : 0.0f;
+        tm.metal.buildDrain = tm.metal.spentThisTick * inv;
+        tm.energy.buildDrain = tm.energy.spentThisTick * inv;
+        tm.metal.spentThisTick = tm.energy.spentThisTick = 0;
     }
     for (auto& u : units_) {
         if (!u.alive() || !u.type || u.underConstruction) continue;

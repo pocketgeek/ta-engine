@@ -30,6 +30,7 @@
 #include "tdf/tdf.h"
 #include "tdo/tdo.h"
 #include "terrain/terrain.h"
+#include "tdf/sidedata.h"
 #include "tnt/tnt.h"
 #include "tnt/mapgen.h"
 #include "util/png.h"
@@ -189,6 +190,7 @@ public:
         loadBuildFx();
         sounds_.init(vfs_);
         soundClasses_.load(vfs_);   // music is started per-state by manageMusic()
+        sideData_ = ta::tdf::SideData::load(vfs_);
         loadPanel(side_);
         loadGui(side_);
 
@@ -1865,11 +1867,13 @@ private:
 public:
     uint8_t overridePolicy() const { return uint8_t(policy_); }
 private:
-    std::string side_ = "ara";
+    // gamedata/SIDEDATA.TDF: sides, their commanders, and the HUD panel layout.
+    ta::tdf::SideData sideData_;
+    std::string side_ = "arm";
     // Retail loading screen. Alive from the start of world setup until the first
     // tick lands, so the plate covers both our own load and the wait on peers.
     std::unique_ptr<ta::LoadScreen> loadScreen_;
-    std::string aiSide_ = "tar";   // single-player: the AI opponent's faction
+    std::string aiSide_ = "core";   // single-player: the AI opponent's side
     // Faction name -> wire index (0 ara, 1 tar, 2 ver, 3 zon, 4 cre).
     static uint8_t facIdx(const std::string& s) {
         const char* n[5] = {"ara", "tar", "ver", "zon", "cre"};
@@ -2446,6 +2450,15 @@ private:
     // command panel is anchored to the bottom-right corner, so the ButtonPanel art
     // and its buttons share one transform and stay aligned at any scale.
     SDL_FRect guiCmdRect(const ta::gui::Gadget& g) const;
+    // Map a SIDEDATA panel rect (retail 640x480 space) into the TOP strip.
+    // Anchored top-right on the same scale as the command panel, so the two stay
+    // aligned with each other at any window size.
+    SDL_FRect guiTopRect(const ta::tdf::PanelRect& r) const;
+    // TA's resource readout: the metal and energy bars, their numbers and caps,
+    // and the production/consumption figures -- all positioned from SIDEDATA.
+    void drawResourceStrip();
+    // The local player's side, or nullptr if SIDEDATA had nothing to say.
+    const ta::tdf::Side* localSide() const;
 
     // Screen rect for a bottom-bar gadget (the retail InfoPanel occupies 640-space
     // y 431..480). The whole bar layout is scaled uniformly to our barH()-tall bar and

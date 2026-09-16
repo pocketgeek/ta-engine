@@ -915,6 +915,14 @@ struct Resource {
     // what makes a stalled base crawl rather than stop dead. Recomputed each tick
     // and read by every consumer (construction, repair, cloaking, metal makers).
     float share = 1.0f;
+    // Per-second draw from CONSTRUCTION and repair, which does not go through
+    // `drain`: a build pays through spendBuild as it progresses rather than
+    // declaring a standing rate. Purely for the HUD's consumption figure, which
+    // would otherwise read as though a base building flat out were spending
+    // nothing. Derived from hashed state and reset every tick, so it is
+    // deterministic but NOT folded into stateHash -- same treatment as `kills`.
+    float buildDrain = 0;
+    float spentThisTick = 0;   // accumulator behind buildDrain
 };
 
 // Starting stock and the base cap every player has before any storage is built.
