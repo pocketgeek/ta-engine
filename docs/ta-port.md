@@ -1043,6 +1043,50 @@ virtual clock outruns the corpse window. A corpse is only in `corpsePhase` betwe
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.
 
+### Does the AI fight? Yes — and a tuning "fix" that measured as noise
+
+The AI-economy section above ends by saying that testing whether the AI *fights*
+needs a land-connected map. With The Pass's metal now visible, it does fight:
+900 s, all-AI, seed 1 — **`kills=3`, `end=concluded`**, the game reaching a
+decision at tick 14184 rather than running out the clock, with the third wave
+retargeting to a spotted enemy instead of the start position. Every earlier
+`kills=0` in this document was a starved AI on a map it could not fund, not a
+planner that refuses to attack.
+
+Getting there needed `TA_AI_WAVE=1`, which reports why the army did or did not
+march. "The AI never attacks" has at least four causes that look identical from
+outside — a difficulty that never commits, nothing mobile to send, no known
+target, still mustering — and the tally separates them. (`NO TARGET` never fired
+once: the server populates enemy starts correctly.)
+
+**The part worth recording is the change that did NOT survive measurement.** The
+`tapped` shortcut (`metal < 200 && income < 40`) exists so a dead economy strikes
+with what it has rather than turtling. It has no minimum-force floor, so on a
+merely-poor map the condition holds all game and the AI commits each unit the
+moment it is built — textbook piecemeal feeding, and exactly what the raid path
+below it guards against with its own home-core reserve. Adding a floor of
+`max(2, raidSize)` did change the shape, from 8 single-unit waves to 3 waves of
+three.
+
+It changed nothing else. Same seed, same map, 900 s:
+
+| | commits | kills | concluded | units |
+|---|---|---|---|---|
+| no floor | 8 x 1 unit | 3 | t=13660 | 17 |
+| with floor | 3 x 3 units | 3 | t=14184 | 18 |
+
+Same kills, and the dribble concluded *marginally sooner*. So the floor was
+reverted. One map and one seed cannot prove a floor is wrong in general — on a
+richer map with defended bases, grouping should start to matter — but they are
+enough to show there was no measured case for it here, and a tuning change with
+no evidence behind it is a guess with a comment attached. The diagnostic stays
+so the question can be re-opened with data.
+
+A caution for anyone re-running this: at 300 s neither arm measures combat at
+all. The first wave commits around tick 8700 of 9000 and never arrives, so both
+arms report `kills=0` and the comparison is empty. That very nearly produced the
+opposite conclusion here.
+
 ### `useonlyunits` is already right — a measured NON-finding
 
 Recorded because it looks like an obvious gap and is not, and because checking

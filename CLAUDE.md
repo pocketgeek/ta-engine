@@ -126,7 +126,9 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   exercises a few dozen defs of 1644, so a clean load proves little on its own —
   the audit is what surfaced the HPI precedence bug (`docs/ta-port.md` §2).
   `TA_FXLOG=1` reports the nanolathe beam's builder, site and endpoints, and
-  `TA_SNDLOG=1` reports sound-class coverage plus every `voice()` lookup.
+  `TA_SNDLOG=1` reports sound-class coverage plus every `voice()` lookup, and
+  `TA_AI_WAVE=1` (on the SERVER) says why the AI's army did or did not march --
+  no target, nothing mobile, still mustering, or committing.
 - Asset-inspection CLIs (in `tools/`, built into `build/`): `hpitool`, `tnttool`,
   `gaftool`, `tdftool`, `cobtool`, `modeltool`, plus the `cartographer` map editor.
   Use them to verify claims about the shipped data instead of guessing.

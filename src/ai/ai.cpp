@@ -658,15 +658,40 @@ void Controller::sendWaves(const ta::sim::World& world, uint32_t simTick,
             sx += u.x; sz += u.z;
             if (!atype && !u.type->canFly) atype = u.type;
         }
-    if (idle.empty()) return;
+    // TA_AI_WAVE: why the army did or did not march. "The AI never attacks" has
+    // several quite different causes -- a difficulty that never commits, nothing
+    // mobile to send, no target known, or still mustering -- and they are
+    // indistinguishable from the outside, where all you see is kills=0.
+    static const bool kWaveLog = std::getenv("TA_AI_WAVE") != nullptr;
+    if (idle.empty()) {
+        if (kWaveLog) {
+            static uint32_t lastEmpty = 0;
+            if (simTick - lastEmpty > 300) {
+                lastEmpty = simTick;
+                std::fprintf(stderr, "wave p%d t=%u: nothing mobile to send\n",
+                             player_, simTick);
+            }
+        }
+        return;
+    }
     float cx = float(sx / idle.size()), cz = float(sz / idle.size());
 
     // Objective: the nearest enemy we can actually SEE, else march on the nearest
     // known enemy base (which draws us forward and into its defenders).
     float tx = 0, tz = 0;
     if (!nearestVisibleEnemy(world, cx, cz, atype, tx, tz) &&
-        !nearestEnemyStart(cx, cz, tx, tz))
+        !nearestEnemyStart(cx, cz, tx, tz)) {
+        if (kWaveLog) {
+            static uint32_t lastNoTgt = 0;
+            if (simTick - lastNoTgt > 300) {
+                lastNoTgt = simTick;
+                std::fprintf(stderr, "wave p%d t=%u: %zu idle but NO TARGET "
+                                     "(%zu enemy starts known)\n",
+                             player_, simTick, idle.size(), enemyStarts_.size());
+            }
+        }
         return;   // nothing seen and no known base to march on -> hold
+    }
 
     // The "big push" army scales with mana INCOME: a rich economy masses a large army
     // before it commits, a lean one strikes with less. So a strong AI stops trickling
@@ -675,6 +700,21 @@ void Controller::sendWaves(const ta::sim::World& world, uint32_t simTick,
     const auto& me = world.player(player_);
     float income = me.metal.income / std::max(me.incomeMult, 1.0f);   // ignore an Absurd cheat
     int bigPush = std::clamp(dp_.waveSize + int(income * 0.25f), dp_.waveSize, 60);
+    // `tapped` lets a dead economy strike with what it has instead of turtling
+    // for an army it can never afford. It has NO minimum-force floor, so on a map
+    // that is merely poor the condition holds all game and the AI commits each
+    // unit the moment it is built.
+    //
+    // That looks wrong and measures fine, which is why the floor that was here
+    // is gone. On The Pass (4 metal patches, all-AI, seed 1, 900s) the dribble
+    // sends 8 single-unit waves and the grouped version 3 waves of three; both
+    // end the game at kills=3, and the DRIBBLE concludes marginally sooner
+    // (t=13660 against t=14184). One map and one seed cannot show a floor is
+    // wrong in general -- but they do show there is no measured case for adding
+    // one here, and a tuning change with no evidence behind it is just a guess
+    // with a comment. TA_AI_WAVE=1 reports these decisions if you want to
+    // re-measure on a richer, more defended map, which is where grouping should
+    // start to matter.
     bool tapped = me.metal.cur < 200.0f && me.metal.income < 40.0f;
 
     if (int(idle.size()) >= bigPush || tapped) {
@@ -685,6 +725,10 @@ void Controller::sendWaves(const ta::sim::World& world, uint32_t simTick,
         // field. kMaxWaveCmds keeps even several coincident AIs well under the cap.
         constexpr int kMaxWaveCmds = 256;
         int n = std::min(int(idle.size()), kMaxWaveCmds);
+        if (kWaveLog)
+            std::fprintf(stderr, "wave p%d t=%u: COMMIT %d units -> (%.0f,%.0f) "
+                                 "[bigPush=%d tapped=%d]\n",
+                         player_, simTick, n, double(tx), double(tz), bigPush, int(tapped));
         for (int i = 0; i < n; ++i)
             emit(sink, ta::net::Cmd::AttackMove, idle[size_t(i)], "", tx, tz);
         lastRaidTick_ = simTick;      // let the freshly-built stragglers regroup, don't raid next
