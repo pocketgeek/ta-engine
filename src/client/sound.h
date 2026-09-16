@@ -647,11 +647,30 @@ private:
     std::vector<int> lfeMono_;   // per-callback mono accumulator (reused, no hot alloc)
 };
 
-// Sound classes: gamedata/soundclasses/*.tdf map a class to event ->
-// candidate WAV names.
+// Sound classes: a unit's FBI `SoundCategory` -> event -> candidate WAV names.
+//
+// The two games ship this in DIFFERENT SHAPES, and only the Kingdoms one was
+// read, so on TA every class map came back empty and `pick` returned null for
+// every unit: no unit ever acknowledged an order or a selection with its voice,
+// they only ever produced the fallback click tone.
+//
+//   Kingdoms  gamedata/soundclasses/*.tdf, NESTED and weighted --
+//             [CLASS] { [event] { wav=weight; wav=weight; } }
+//   TA        gamedata/SOUND.TDF, ONE file, FLAT and unweighted --
+//             [ARM_KBOT] { select1=kbarmsel; ok1=kbarmmov; arrived1=kbarmstp; }
+//             (31 KB, 120 classes; gamedata/soundclasses/ does not exist)
+//
+// The EVENT NAMES differ too. TA spells them select1 / ok1 / arrived1 / cant1 /
+// underattack / working / build / count0..5 / canceldestruct, while the call
+// sites here ask for select / move / attack / guard. The aliases below bridge
+// that. They are inferred from the key names and from the WAVs they point at
+// (ARM_KBOT: select1=kbarmsel, ok1=kbarmmov, arrived1=kbarmstp -- select, move,
+// stop), NOT read out of the binary; the mapping of the three ORDER events onto
+// TA's single `ok1` is the part most worth re-checking if it ever matters.
 class SoundClasses {
 public:
     void load(const ta::hpi::Vfs& vfs) {
+        loadTaSoundTdf(vfs);
         try {
             for (const std::string& path : vfs.list("gamedata/soundclasses")) {
                 // Case-INSENSITIVE: TA ships both cases (features/archi/METAL.TDF next to
@@ -679,6 +698,55 @@ public:
                 } catch (const std::exception&) {}
             }
         } catch (const std::exception&) {}
+    }
+
+    // TA: one flat gamedata/SOUND.TDF. Every scalar key in a class section is an
+    // event with a single candidate; TA carries no weights, so each is 1.0.
+    void loadTaSoundTdf(const ta::hpi::Vfs& vfs) {
+        static const std::pair<const char*, const char*> kAlias[] = {
+            {"select1", "select"},     // selected
+            {"ok1", "move"},           // order acknowledged -- TA has ONE ack sound,
+            {"ok1", "attack"},         // so every order event maps onto it
+            {"ok1", "guard"},
+            {"arrived1", "arrived"},   // reached the destination
+            {"cant1", "cant"},         // order refused
+        };
+        for (const char* path : {"gamedata/SOUND.TDF", "gamedata/sound.tdf"}) {
+            if (!vfs.has(path)) continue;
+            try {
+                auto sb = vfs.read(path);
+                auto root = ta::tdf::parseText(std::string(sb.begin(), sb.end()), path);
+                for (const auto& clsName : root.childOrder) {
+                    auto& cls = classes_[clsName];
+                    const auto& node = root.children.at(clsName);
+                    for (const auto& [ev, wav] : node.values) {
+                        if (wav.empty()) continue;
+                        cls[ev].push_back({wav, 1.0f});
+                        for (const auto& [from, to] : kAlias)
+                            if (ev == from) cls[to].push_back({wav, 1.0f});
+                    }
+                }
+            } catch (const std::exception&) {}
+            break;   // the VFS already resolved the case; one file is the whole set
+        }
+    }
+
+    // One-line audit of what actually loaded, for the failure mode this class
+    // had: a silently empty map reads exactly like "this unit has no voice".
+    std::string summary() const {
+        size_t events = 0, wavs = 0;
+        for (const auto& [c, evs] : classes_)
+            for (const auto& [e, list] : evs) { ++events; wavs += list.size(); }
+        char buf[160];
+        std::snprintf(buf, sizeof buf,
+                      "sound classes: %zu classes, %zu events, %zu candidates",
+                      classes_.size(), events, wavs);
+        return buf;
+    }
+    // Does this class answer this event? (audit/diagnostic only)
+    bool has(const std::string& cls, const std::string& event) const {
+        auto ci = classes_.find(cls);
+        return ci != classes_.end() && ci->second.count(event) != 0;
     }
 
     const std::string* pick(const std::string& cls, const std::string& event,

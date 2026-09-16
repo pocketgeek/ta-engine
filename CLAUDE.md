@@ -122,7 +122,8 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   instead of only the ones the map placed, and names the ones that fail. A map
   exercises a few dozen defs of 1644, so a clean load proves little on its own —
   the audit is what surfaced the HPI precedence bug (`docs/ta-port.md` §2).
-  `TA_FXLOG=1` reports the nanolathe beam's builder, site and endpoints.
+  `TA_FXLOG=1` reports the nanolathe beam's builder, site and endpoints, and
+  `TA_SNDLOG=1` reports sound-class coverage plus every `voice()` lookup.
 - Asset-inspection CLIs (in `tools/`, built into `build/`): `hpitool`, `tnttool`,
   `gaftool`, `tdftool`, `cobtool`, `modeltool`, plus the `cartographer` map editor.
   Use them to verify claims about the shipped data instead of guessing.

@@ -768,6 +768,45 @@ What is genuinely worth recording:
   line, because a map load never exercises a corpse def and so proves nothing
   about it.
 
+### No unit ever spoke
+
+`SoundClasses::load` read `gamedata/soundclasses/*.tdf` — the Kingdoms layout,
+NESTED and weighted: `[CLASS] { [event] { wav=weight; } }`. A TA install has no
+such directory at all (0 files); it ships **one flat `gamedata/SOUND.TDF`**,
+31 KB, 120 classes, `[ARM_KBOT] { select1=kbarmsel; ok1=kbarmmov; … }`. So every
+class map came back empty, `pick` returned null for every unit, and no unit ever
+acknowledged a selection or an order with its voice — they only ever produced
+the fallback click tone.
+
+The EVENT NAMES differ too. TA spells them `select1` / `ok1` / `arrived1` /
+`cant1` / `underattack` / `working` / `build` / `count0..5` / `canceldestruct`,
+while the call sites ask for `select` / `move` / `attack` / `guard`. The loader
+now registers both the TA key and an alias. The aliases are inferred from the
+key names and the WAVs they point at (`ARM_KBOT`: `select1=kbarmsel`,
+`ok1=kbarmmov`, `arrived1=kbarmstp` — select, move, stop), **not read from the
+binary**; mapping all three order events onto TA's single `ok1` is the part most
+worth re-checking.
+
+Measured after: 120 classes, 1930 events. **267 of 278 unit types resolve a
+class** (267 answer `select`, 196 answer `move` — the difference is buildings,
+which have no `ok1`). Before: none of them did.
+
+The 11 that resolve nothing are all explained by the shipped data, not by the
+engine:
+
+* **6 declare `SoundCategory=none` outright** — `armdrag`, `cordrag`,
+  `armfdrag`, `corfdrag`, `armfort`, `corfort`: dragon's teeth and forts, inert
+  walls that correctly have no voice.
+* **5 are typos in Cavedog's data.** `SOUND.TDF` is itself inconsistent about
+  the CORE prefix — it defines `COR_KBOT`, `COR_MEX` and `CORE_TANK` — and these
+  five FBIs name the other spelling: `corfast`, `corfhlt` and `corspy` ask for
+  `core_kbot`, `cormex` for `core_mex`, `corsent` for `cor_tank`. No section
+  answers, so **those five are voiceless in retail too**. Not papered over here:
+  a forgiving COR_/CORE_ fallback would hand them voices the real game does not.
+
+`TA_SNDLOG=1` reports the class/event totals, the coverage line above, and each
+`voice()` lookup with what it resolved.
+
 ### The lobby map preview was blank for every TA map
 
 Same shape of fault again, and it took two independent fixes because it was

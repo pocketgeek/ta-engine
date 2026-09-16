@@ -171,6 +171,26 @@ public:
         loadBuildFx();
         sounds_.init(vfs_);
         soundClasses_.load(vfs_);   // music is started per-state by manageMusic()
+        if (ta::devEnv("TA_SNDLOG")) {
+            std::fprintf(stderr, "%s\n", soundClasses_.summary().c_str());
+            // Coverage: how many unit types actually resolve a voice. A class map
+            // that parsed fine can still answer nothing if SoundCategory and the
+            // section names disagree, which is invisible in play.
+            int types = 0, withClass = 0, matched = 0, canSelect = 0, canMove = 0;
+            for (const auto& [tid, ut] : registry_.types()) {
+                ++types;
+                if (ut.soundClass.empty()) continue;
+                ++withClass;
+                if (!soundClasses_.has(ut.soundClass, "select1") &&
+                    !soundClasses_.has(ut.soundClass, "ok1")) continue;
+                ++matched;
+                if (soundClasses_.has(ut.soundClass, "select")) ++canSelect;
+                if (soundClasses_.has(ut.soundClass, "move")) ++canMove;
+            }
+            std::fprintf(stderr, "  %d unit types, %d name a SoundCategory, %d resolve a "
+                                 "class (%d answer 'select', %d answer 'move')\n",
+                         types, withClass, matched, canSelect, canMove);
+        }
         sideData_ = ta::tdf::SideData::load(vfs_);
         // Both of these read SIDEDATA, so neither can precede it. And the GUI
         // comes before the panel: the panel art's sequence name is the .gui

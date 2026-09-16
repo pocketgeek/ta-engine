@@ -3320,6 +3320,10 @@
         const std::string* wav = nullptr;
         if (u && u->type && !u->type->soundClass.empty())
             wav = soundClasses_.pick(u->type->soundClass, event, salt_++);
+        if (ta::devEnv("TA_SNDLOG"))
+            std::fprintf(stderr, "voice: unit %d class '%s' event '%s' -> %s\n", unitId,
+                         u && u->type ? u->type->soundClass.c_str() : "?", event.c_str(),
+                         wav ? wav->c_str() : "(nothing -- falling back to the tone)");
         auto isTone = [](const std::string& w) {
             return w.size() >= 4 &&
                    std::tolower((unsigned char)w[0]) == 't' &&
