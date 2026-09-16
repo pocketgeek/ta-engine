@@ -4089,8 +4089,11 @@ bool World::sightClear(int ux, int uz, float eyeH, int tx, int tz) const {
     // if its ground rises above the straight eye->target sight line at that point.
     // Terrain must rise this far ABOVE the sight line to block it. Tuned (with the
     // eye height below) so walls/hills/cliffs cast shadows but small rock clutter
-    // does not -- on athri cay real walls are height 60-220, so an obstacle must
-    // clear ~eye+margin ~= 56 to block. Live-tunable via TA_FOG_MARGIN.
+    // does not. TA's heights are on the same 0..255 byte scale this was tuned
+    // against (measured across the shipped maps: Coast To Coast 0..195, Etorrep
+    // Glacier 3..251, Fox Holes 46..251, with land sitting near 85-90 against a
+    // sea level of 75-85), so real relief clears the ~eye+margin ~= 56 needed to
+    // block while clutter does not. Live-tunable via TA_FOG_MARGIN.
     static float MARGIN = [] {
         const char* e = std::getenv("TA_FOG_MARGIN"); return e ? float(std::atof(e)) : 16.0f;
     }();

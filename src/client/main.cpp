@@ -339,7 +339,7 @@ static void resolveDataDir(std::string& dataRoot, ta::Settings& settings, bool a
 int main(int argc, char** argv) {
     SDL_SetMainReady();   // we defined SDL_MAIN_HANDLED; tell SDL our main is ready
     if (argc >= 2 && (!std::strcmp(argv[1], "--version") || !std::strcmp(argv[1], "-v"))) {
-        std::printf("taclient (TAK engine) %s (build %s)\n", ta::kVersion, ta::kBuildId);
+        std::printf("taclient (TA engine) %s (build %s)\n", ta::kVersion, ta::kBuildId);
         return 0;
     }
     if (argc >= 2 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {
@@ -368,7 +368,7 @@ int main(int argc, char** argv) {
     // build has no hidden switches -- the game is configured through the menu + Options.
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--version" || a == "-v") { std::printf("taclient (TAK engine) %s\n", ta::kVersion); return 0; }
+        if (a == "--version" || a == "-v") { std::printf("taclient (TA engine) %s\n", ta::kVersion); return 0; }
         if (a == "--help" || a == "-h") { std::printf("usage: taclient --data <retail-install-dir>\n"); return 0; }
         if (a == "--data") { ++i; continue; }   // its value is consumed by the parser below
         std::fprintf(stderr,
@@ -664,13 +664,13 @@ int main(int argc, char** argv) {
     if (!pendingCampaign.empty()) {
         campaignStem = pendingCampaign; campaignId = pendingCampaignId;
         pendingCampaign.clear(); pendingCampaignId.clear();
-        if (args.empty()) args.push_back("athri cay");
+        if (args.empty()) args.push_back("Coast To Coast");
     }
     // Direct launch into a mission (`--campaign <stem>`): same host path as a menu
     // pick, resolving the campaign id so a win still advances persisted progress.
     if (!cliCampaign.empty()) {
         campaignStem = cliCampaign;
-        if (args.empty()) args.push_back("athri cay");   // GameView needs a map; the mission overrides it
+        if (args.empty()) args.push_back("Coast To Coast");   // GameView needs a map; the mission overrides it
         for (const auto& c : ta::loadCampaigns(vfs)) {
             for (const auto& m : c.missions)
                 if (m.stem == campaignStem) { campaignId = c.id; break; }
@@ -742,7 +742,7 @@ int main(int argc, char** argv) {
         // A replay picked from the menu already set mode/args above, and must not be
         // overwritten with "game" here.
         if (choice != ta::MainMenu::Choice::Replay) mode = "game";
-        if (args.empty()) args.push_back("athri cay");   // TODO: map picker (SP battle menu)
+        if (args.empty()) args.push_back("Coast To Coast");   // TODO: map picker (SP battle menu)
         if (choice == ta::MainMenu::Choice::Multiplayer) {
             std::string sv = menuServer.empty() ? std::string("127.0.0.1") : menuServer;
             rememberServer = sv;   // remembered (as picked/typed) if the connect succeeds

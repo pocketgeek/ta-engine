@@ -28,13 +28,16 @@ bool inRect(const SDL_FRect& r, float x, float y) {
 
 struct Rect { float x = 0, y = 0, w = 0, h = 0; };
 
-// The victory/defeat plates are one layout with a different background per faction.
-// These are the shipped rects (victoryara.gui / defeat.gui); the .gui is still parsed
-// at runtime so an override that moves a column moves ours too.
+// TA's end-of-game screen is guis/ENDMULTI.GUI (skirmish and multiplayer) or
+// guis/ENDMSN.GUI (a campaign mission). Retail's version is spare: a full-screen
+// HEADER with NO panel art, an OK button, and a RESULT line that holds the
+// victory/defeat banner from anims/ENDMSN.GAF. The per-player stats table below
+// is ours, not retail's -- it is laid out in the empty space above RESULT, and
+// its default rects are used only for gadgets TA's .gui does not declare.
 struct Geom {
-    Rect menuBtn{69, 407, 39, 51};
-    Rect okBtn{534, 407, 39, 51};
-    Rect title{149, 398, 342, 56};
+    Rect menuBtn{69, 414, 115, 40};
+    Rect okBtn{479, 414, 115, 40};    // ENDMULTI's OK
+    Rect title{178, 179, 272, 26};    // ENDMULTI's RESULT
     Rect help{209, 454, 221, 25};
     // Column rects come from the FIRST row's gadgets; later rows just step by `pitch`.
     Rect logo{81, 72, 17, 17};
@@ -47,17 +50,19 @@ struct Geom {
     float headY = 40, pitch = 22;
     int maxRows = 8;
     std::string bgGaf, bgSeq, btnGaf;
+    // The victory/defeat word art (anims/ENDMSN.GAF). These are small banners
+    // (129x29 and 101x29), not a full-screen plate -- TA has no per-side plate at
+    // all, so the background stays empty and this is drawn over the title rect.
+    std::string bannerGaf, bannerSeq;
 };
 
-// The per-faction victory plate, then the shared defeat plate.
-const char* kVictoryGui[5] = {"victoryara", "victorytar", "victoryver",
-                              "victoryzon", "victorycre"};
-
-Geom loadGeom(const hpi::Vfs& vfs, bool victory, int faction) {
+// `faction` no longer selects art: TA has one end screen for both sides.
+Geom loadGeom(const hpi::Vfs& vfs, bool victory) {
     Geom g;
-    std::string path = "guis/" +
-                       std::string(victory ? kVictoryGui[std::clamp(faction, 0, 4)] : "defeat") +
-                       ".gui";
+    // One screen for both outcomes: TA distinguishes them with the banner, not
+    // with a different .gui. (Campaign missions use ENDMSN.GUI, which carries the
+    // same HEADER/OK pair plus its own mission-select furniture.)
+    std::string path = "guis/ENDMULTI.GUI";
     try {
         gui::Gui ui = gui::parse(vfs.read(path), path);
         auto take = [&](const char* n, Rect& r) {
@@ -65,8 +70,8 @@ Geom loadGeom(const hpi::Vfs& vfs, bool victory, int faction) {
                 r = {float(w->x), float(w->y), float(w->w), float(w->h)};
         };
         take("MainMenu", g.menuBtn);
-        take("Proceed", g.okBtn);
-        take("Static0", g.title);
+        take("OK", g.okBtn);
+        take("RESULT", g.title);
         take("HelpText", g.help);
         take("Logo", g.logo);
         take("PlayerName", g.name);
@@ -88,15 +93,16 @@ Geom loadGeom(const hpi::Vfs& vfs, bool victory, int faction) {
             g.bgGaf = im.gaf;
             g.bgSeq = im.seq;
         }
-        if (const gui::Gadget* b = ui.find("Proceed"); b && !b->imgs.empty())
+        if (const gui::Gadget* b = ui.find("OK"); b && !b->imgs.empty())
             g.btnGaf = b->imgs[0].gaf;
     } catch (...) {}
-    if (g.bgGaf.empty()) {
-        static const char* kPlate[5] = {"TAKVAramonScreen", "TAKVTarosScreen", "TAKVVerunaScreen",
-                                        "TAKVZhonScreen", "TAKVCreonScreen"};
-        g.bgGaf = victory ? kPlate[std::clamp(faction, 0, 4)] : "takdefeatscreen";
-        g.bgSeq = victory ? "VictoryBG" : "DefeatBG";
-    }
+    // No background fallback. TA ships no full-screen end plate -- ENDMULTI's
+    // HEADER declares `panel=;` -- so an empty bgGaf is the correct outcome here
+    // and the renderer draws its own dark panel. (This used to fall back to five
+    // Kingdoms plate names, none of which exist in a TA install, so the lookup
+    // simply failed every time.)
+    g.bannerGaf = "ENDMSN";
+    g.bannerSeq = victory ? "victory" : "defeat";
     if (g.btnGaf.empty()) g.btnGaf = g.bgGaf;
     return g;
 }
@@ -138,9 +144,9 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     SDL_PumpEvents();
     SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
 
-    int faction = stats ? stats->faction : 0;
-    Geom g = loadGeom(vfs, victory, faction);
+    Geom g = loadGeom(vfs, victory);
     SDL_Texture* bg = gafTexture(ren, vfs, g.bgGaf, g.bgSeq, 0);
+    SDL_Texture* banner = gafTexture(ren, vfs, g.bannerGaf, g.bannerSeq, 0);
     SDL_Texture* okTex[3] = {};
     SDL_Texture* cancelTex[3] = {};
     for (int i = 0; i < 3; ++i) {
@@ -155,6 +161,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     if (!head.ok()) head = body;
     auto freeAll = [&] {
         if (bg) gpuvram::destroy(bg);
+        if (banner) gpuvram::destroy(banner);
         for (int i = 0; i < 3; ++i) {
             if (okTex[i]) gpuvram::destroy(okTex[i]);
             if (cancelTex[i]) gpuvram::destroy(cancelTex[i]);
@@ -212,9 +219,19 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             SDL_FRect r = lay.rect(0, 0, 640, 480);
             SDL_RenderCopyF(ren, bg, nullptr, &r);
         } else {
-            // No plate art: keep the old dark panel so the screen still reads.
+            // TA's own end screen has no plate; keep a dark panel so it reads.
             SDL_SetRenderDrawColor(ren, 12, 13, 18, 255);
             SDL_RenderClear(ren);
+        }
+        // The VICTORY / DEFEAT word art, centred in the RESULT rect at its own
+        // size (it is a small banner, so stretching it to the rect would blur it).
+        if (banner) {
+            int bw = 0, bh = 0;
+            SDL_QueryTexture(banner, nullptr, nullptr, &bw, &bh);
+            SDL_FRect r = lay.rect(g.title.x + (g.title.w - float(bw)) / 2,
+                                   g.title.y + (g.title.h - float(bh)) / 2,
+                                   float(bw), float(bh));
+            SDL_RenderCopyF(ren, banner, nullptr, &r);
         }
 
         const SDL_Color gold{236, 214, 160, 255};
@@ -267,10 +284,14 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             text(head, title, where, gold);
         }
 
-        // Title band ("Victory"/"Defeat") in the decorative face the .gui names for it,
-        // sized to fill the band. The mission name (campaign only) sits just above it.
+        // Title band ("Victory"/"Defeat"). Retail states this as ART (the ENDMSN
+        // banner drawn above), so this typeset version is the FALLBACK for an
+        // install whose anims/ENDMSN.GAF is missing -- drawing both would stack
+        // the word on top of itself in the same rect. The mission name (campaign
+        // only) sits just above the band either way.
         {
             const char* big = victory ? "Victory" : "Defeat";
+            if (!banner) {
             // decorativesm's cell is 25x29 but its glyphs hang below the baseline, so
             // scale to a little under the band height or the word laps the help line.
             float sc = deco.ok() ? lay.scale * (g.title.h / 40.0f) : lay.scale * 1.6f;
@@ -286,6 +307,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             float y = lay.py(g.title.y) + (g.title.h * lay.scale - th) / 2 - top;
             if (tf.ok()) tf.draw(ren, big, x, y, sc, gold);
             else drawBlockText(ren, big, x, lay.py(g.title.y), sc * 2, gold);
+            }
             if (!title.empty() && stats) {
                 float tsc = lay.scale;
                 float ttw = body.ok() ? float(body.width(title, tsc)) : blockTextWidth(title, tsc);

@@ -130,7 +130,7 @@ jobs:
   # cobanim_test and retailgap_test are deliberately NOT here. They drive the
   # real COBs and unit data from a retail install, which is gitignored and not
   # present on a runner -- they stay local-only, registered with ctest when the
-  # build is configured with -DTAK_TEST_DATA.
+  # build is configured with -DTA_TEST_DATA.
   unit-tests:
     runs-on: ubuntu-latest
     steps:

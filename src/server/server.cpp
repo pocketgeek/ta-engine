@@ -1965,7 +1965,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--no-auth")) noAuth = true;
         else if (!std::strcmp(argv[i], "--local")) loopbackOnly = true;
         else if (!std::strcmp(argv[i], "--version") || !std::strcmp(argv[i], "-v")) {
-            std::printf("taserver (TAK engine) %s (build %s)\n", ta::kVersion, ta::kBuildId);
+            std::printf("taserver (TA engine) %s (build %s)\n", ta::kVersion, ta::kBuildId);
             return 0;
         }
         else if (!std::strcmp(argv[i], "--help")) {

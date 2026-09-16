@@ -273,7 +273,7 @@ target_link_libraries(unitdata_test PRIVATE ta-formats)
 #
 # The split matters: the first group is self-contained and runs anywhere
 # (including CI), the second needs a real retail install, which is gitignored
-# and absent from CI by design. Configure with -DTAK_TEST_DATA=/path/to/install
+# and absent from CI by design. Configure with -DTA_TEST_DATA=/path/to/install
 # to register those too.
 enable_testing()
 add_test(NAME detmath COMMAND detmath_test)
