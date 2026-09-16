@@ -63,7 +63,17 @@ Scenario Scenario::parse(const std::string& text) {
         o.commanderKilled = gh->numberOr("commanderkilled", 0) != 0;
         o.destroyAllUnits = gh->numberOr("destroyallunits", 0) != 0;
         o.killAllMobileUnits = gh->numberOr("killallmobileunits", 0) != 0;
+        o.killEnemyCommander = gh->numberOr("killenemycommander", 0) != 0;
+        o.victoryTimerRunsOut = gh->numberOr("victorytimerrunsout", 0) != 0;
         o.deathTimerRunsOut = gh->numberOr("deathtimerrunsout", 0) != 0;
+        if (const std::string* v = gh->value("anyunitpassesx")) {
+            o.hasAnyUnitPassesX = true;
+            o.anyUnitPassesX = std::atoi(v->c_str());
+        }
+        if (const std::string* v = gh->value("anyunitpassesz")) {
+            o.hasAnyUnitPassesZ = true;
+            o.anyUnitPassesZ = std::atoi(v->c_str());
+        }
         o.allUnitsKilledOfType = gh->valueOr("allunitskilledoftype", "");
         o.killAllOfType = gh->valueOr("killalloftype", "");
         o.killUnitType = gh->valueOr("killunittype", "");

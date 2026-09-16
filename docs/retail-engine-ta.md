@@ -356,18 +356,51 @@ unit reaches them: a survey of all 815 FBIs in the Commander Pack finds no
 Kingdoms mechanic — which is still right for retail behaviour, but it is TA
 vestigial code rather than something TA never had.
 
-## Mission objectives — the shape, not yet the semantics
+## Mission objectives — solved, including the win/lose split
 
 A mission's objectives are `.ota` GlobalHeader keys, and the engine turns them
-into a **list of small polymorphic objects** rather than evaluating a fixed set of
-flags. One factory at `0x48e000`-`0x48e8xx` walks the keys in a fixed order; for
-each it calls the get-int reader (`0x4c46c0`), and when the key is present and
-non-zero it `new`s an object of a per-key size, writes a per-key vtable pointer,
-and appends it to an array whose count lives at `[ebp+0x40]`.
+into **two lists of small polymorphic objects**. One factory at `0x48e000`
+-`0x48e9xx` walks the keys in a fixed order; for each it calls the get-int reader
+(`0x4c46c0`), and when the key is present it `new`s an object of a per-key size,
+writes a per-key vtable, and appends it to one of two arrays on the owning object:
 
-Resolved so far, by walking that factory:
+| | array | count |
+| --- | --- | --- |
+| **victory** | `[this + 0x00]` | `[this + 0x40]` |
+| **defeat** | `[this + 0x44]` | `[this + 0x84]` |
 
-| key | object size | vtable |
+Sixteen pointers each. **Which array a key lands in is the win/lose split**, and
+it is not guessable from the names:
+
+| victory — what the player does | defeat — what is done to them |
+| --- | --- |
+| `KillEnemyCommander` (7) | `CommanderKilled` (123) |
+| `DestroyAllUnits` (90) | `AllUnitsKilled` (163) |
+| `KillAllMobileUnits` (9) | `AllUnitsKilledOfType` (52) |
+| `KillAllOfType` (40) | `UnitTypeKilled` (18) |
+| `KillUnitType` (32) | `DeathTimerRunsOut` (21) |
+| `CaptureUnitType` (32) | `AnyUnitPassesX` (2) |
+| `BuildUnitType` (8) | `AnyUnitPassesZ` (1) |
+| `VictoryTimerRunsOut` (4) | |
+| `MoveUnitToRadius` (18) | |
+
+(Counts are how many of the 272 shipped `.ota` files declare each.)
+
+Two pairs would trap anyone reading the names. `CommanderKilled` and
+`KillEnemyCommander` are **different keys on opposite lists** — the common one,
+123 missions, is the defeat. And `AllUnitsKilledOfType` is a defeat: AC01 declares
+`AllUnitsKilledOfType=ARMGATE` and the only ARMGATE on that map belongs to the
+PLAYER, so the key means *protect the gate*. Reading it as a victory inverts the
+mission.
+
+### The objects
+
+Six vtable slots. Slots 1-3 are event hooks that most types leave as the shared
+no-op `ret 4` (`0x48ea10`/`0x48ea20`/`0x48ea30`); slot 0 is the "is it satisfied"
+query, whose shared implementation (`0x48ea00`) is just `return this->+4`, a
+cached flag the hooks set.
+
+| key | size | vtable |
 | --- | --- | --- |
 | `AllUnitsKilled` | `0x10` | `0x4fd800` |
 | `DestroyAllUnits` | `0x0c` | `0x4fd948` |
@@ -376,17 +409,12 @@ Resolved so far, by walking that factory:
 | `MoveUnitToRadius` | `0x40` | `0x4fd830` |
 | `DeathTimerRunsOut` | `0x10` | `0x4fd7a8` |
 
-The typed keys — `BuildUnitType` (`0x48e106`), `CaptureUnitType` (`0x48e197`),
-`KillUnitType` (`0x48e2a3`), `KillAllOfType`, `AllUnitsKilledOfType`
-(`0x48e726`), `UnitTypeKilled` — are built by the same factory but store a unit
-name before the vtable, so their sizes and vtables are not in the table above.
-
-**What is NOT established: whether a given key is a WIN or a LOSE condition.**
-That lives in each vtable's methods and has not been read. It matters, and the
-obvious reading is not safe: AC01 declares `AllUnitsKilledOfType=ARMGATE`, and the
-only ARMGATE on that map belongs to the PLAYER — so at least some of these keys
-describe a defeat. Anyone implementing evaluation should start from the vtables
-above rather than from the key names.
+`CommanderKilled` is the clearest worked example: it overrides slot 1 (the
+unit-died hook) at `0x48f6b0`, which takes the dead unit, reads its def at
+`+0x92`, looks up the owner's commander name out of a per-player table, compares
+the two by string, and on a match sets its cached flag. `AllUnitsKilled`
+overrides slot 0 instead and computes on demand -- assume satisfied, then walk
+the live-unit list and clear the flag if anything still qualifies.
 
 ## Open questions
 

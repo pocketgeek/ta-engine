@@ -51,33 +51,57 @@ struct Schema {
 };
 
 // A mission's objectives, as TA states them: plain GlobalHeader keys rather than
-// a script or a trigger file. Surveyed across all 272 shipped .ota files; the
-// count after each is how many declare it.
+// a script or a trigger file.
+//
+// They split into WIN and LOSE, and the engine keeps them as two separate lists
+// -- the factory at TotalA.exe 0x48e000 appends to an array at [this+0] counted
+// at [this+0x40] for one and [this+0x44] counted at [this+0x84] for the other
+// (see docs/retail-engine-ta.md). The split is not guessable from the names
+// alone, and getting it backwards inverts the mission: AC01 declares
+// `AllUnitsKilledOfType=ARMGATE` and the only ARMGATE on that map is the
+// PLAYER'S -- it is an instruction to protect the gate, not to destroy one.
+//
+// The count after each key is how many of the 272 shipped .ota files declare it.
 struct Objectives {
-    bool allUnitsKilled = false;        // 163 -- kill everything hostile
-    bool commanderKilled = false;       // 123 -- kill the enemy Commander
+    // ---- WIN: things the player does -------------------------------------
     bool destroyAllUnits = false;       //  90
     bool killAllMobileUnits = false;    //   9
-    std::string allUnitsKilledOfType;   //  52 -- e.g. ARMGATE
+    bool killEnemyCommander = false;    //   7
+    bool victoryTimerRunsOut = false;   //   4 -- survive to the clock
     std::string killAllOfType;          //  40
     std::string killUnitType;           //  32
     std::string captureUnitType;        //  32
-    std::string unitTypeKilled;         //  18
     std::string buildUnitType;          //   8
-    bool deathTimerRunsOut = false;     //  21 -- survive the clock
     // MoveUnitToRadius=<type>, x, z, r (18) -- get a unit of `type` (ANYTYPE for
     // any) within `radius` of (x,z). AC01's is "ANYTYPE, 992, 656, 64".
     bool hasMoveToRadius = false;
     std::string moveToType;
     int moveToX = 0, moveToZ = 0, moveToRadius = 0;
-    // Anything declared at all? A skirmish map declares none of these.
-    bool any() const {
-        return allUnitsKilled || commanderKilled || destroyAllUnits ||
-               killAllMobileUnits || deathTimerRunsOut || hasMoveToRadius ||
-               !allUnitsKilledOfType.empty() || !killAllOfType.empty() ||
+
+    // ---- LOSE: things done to the player ---------------------------------
+    bool allUnitsKilled = false;        // 163 -- all of YOURS
+    bool commanderKilled = false;       // 123 -- YOUR commander
+    bool deathTimerRunsOut = false;     //  21
+    std::string allUnitsKilledOfType;   //  52 -- e.g. protect ARMGATE
+    std::string unitTypeKilled;         //  18
+    // An enemy crossing a line on the map.
+    bool hasAnyUnitPassesX = false;     //   2
+    int  anyUnitPassesX = 0;
+    bool hasAnyUnitPassesZ = false;     //   1
+    int  anyUnitPassesZ = 0;
+
+    bool anyWin() const {
+        return destroyAllUnits || killAllMobileUnits || killEnemyCommander ||
+               victoryTimerRunsOut || hasMoveToRadius || !killAllOfType.empty() ||
                !killUnitType.empty() || !captureUnitType.empty() ||
-               !unitTypeKilled.empty() || !buildUnitType.empty();
+               !buildUnitType.empty();
     }
+    bool anyLose() const {
+        return allUnitsKilled || commanderKilled || deathTimerRunsOut ||
+               hasAnyUnitPassesX || hasAnyUnitPassesZ ||
+               !allUnitsKilledOfType.empty() || !unitTypeKilled.empty();
+    }
+    bool any() const { return anyWin() || anyLose(); }
 };
 
 struct Scenario {

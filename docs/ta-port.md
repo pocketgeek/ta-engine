@@ -485,10 +485,13 @@ switched off. Under the per-unit all-or-nothing billing established in
 opening 1000 energy in about a third of a second and then simply never pays
 again. Whether retail charges a campaign gate at all is not established here.
 
-Objectives are parsed but **not yet evaluated**. Note when that is done that they
-are not all *win* conditions: AC01 declares `AllUnitsKilledOfType=ARMGATE` and the
-only ARMGATE on the map belongs to the player, so at least some of these keys
-describe a LOSS.
+Objectives are parsed, **win and lose separately**, but not yet evaluated. The
+split is settled in [`retail-engine-ta.md`](retail-engine-ta.md): the engine keeps
+two arrays on the mission object and which one a key lands in is its meaning. It
+is not guessable from the names — `CommanderKilled` (123 missions) is the DEFEAT
+and `KillEnemyCommander` (7) the victory, two different keys on opposite lists,
+and `AllUnitsKilledOfType=ARMGATE` in AC01 means *protect* the gate, the only one
+on that map being the player's.
 
 ## 6. Open questions, pending the retail data
 

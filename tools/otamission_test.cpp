@@ -225,14 +225,51 @@ int main() {
         // Objectives, including the packed one.
         const auto& o = s.objectives;
         check(o.any(), "the mission declares objectives");
-        check(o.allUnitsKilled, "AllUnitsKilled");
-        eqs(o.allUnitsKilledOfType, "ARMGATE", "AllUnitsKilledOfType names its unit");
         check(o.hasMoveToRadius, "MoveUnitToRadius is recognised");
         eqs(o.moveToType, "ANYTYPE", "...its type field");
         eqi(o.moveToX, 992, "its X");
         eqi(o.moveToZ, 656, "its Z");
         eqi(o.moveToRadius, 64, "and its radius, from one comma-separated value");
         check(!o.commanderKilled, "an objective it does not declare stays off");
+
+        // THE WIN/LOSE SPLIT. AC01 declares AllUnitsKilled and
+        // AllUnitsKilledOfType=ARMGATE, and BOTH are defeat conditions -- the only
+        // ARMGATE on that map belongs to the player, so the key means "protect the
+        // gate". Classifying either as a win inverts the mission.
+        check(o.allUnitsKilled, "AllUnitsKilled parses");
+        eqs(o.allUnitsKilledOfType, "ARMGATE", "AllUnitsKilledOfType names its unit");
+        check(o.anyLose(), "...and both count as LOSE conditions");
+        check(o.hasMoveToRadius && o.anyWin(),
+              "while MoveUnitToRadius is the WIN condition");
+        // Declaring only defeat conditions must not read as declaring a victory.
+        {
+            auto d = ta::tnt::Scenario::parse(
+                "[GlobalHeader]\n{\nCommanderKilled=1;\nAllUnitsKilled=1;\n"
+                "DeathTimerRunsOut=1;\nUnitTypeKilled=ARMCOM;\n}\n");
+            check(d.objectives.anyLose(), "a lose-only mission has defeat conditions");
+            check(!d.objectives.anyWin(), "...and no victory conditions at all");
+        }
+        // ...and the mirror: the win-side keys, including the two the first pass
+        // at this missed entirely (KillEnemyCommander is a separate key from
+        // CommanderKilled, and sits on the other list).
+        {
+            auto w = ta::tnt::Scenario::parse(
+                "[GlobalHeader]\n{\nKillEnemyCommander=1;\nVictoryTimerRunsOut=1;\n"
+                "DestroyAllUnits=1;\nKillAllOfType=CORGATE;\nBuildUnitType=ARMLAB;\n"
+                "CaptureUnitType=CORCOM;\nAnyUnitPassesX=1200;\n}\n");
+            check(w.objectives.killEnemyCommander, "KillEnemyCommander parses");
+            check(w.objectives.victoryTimerRunsOut, "VictoryTimerRunsOut parses");
+            eqs(w.objectives.killAllOfType, "CORGATE", "KillAllOfType");
+            eqs(w.objectives.buildUnitType, "ARMLAB", "BuildUnitType");
+            eqs(w.objectives.captureUnitType, "CORCOM", "CaptureUnitType");
+            check(w.objectives.anyWin(), "all of those are WIN conditions");
+            check(!w.objectives.commanderKilled,
+                  "KillEnemyCommander does NOT set CommanderKilled -- different keys, "
+                  "different lists");
+            check(w.objectives.hasAnyUnitPassesX && w.objectives.anyUnitPassesX == 1200,
+                  "AnyUnitPassesX parses its line");
+            check(w.objectives.anyLose(), "...and is a LOSE condition");
+        }
     }
 
     // --- a skirmish map is NOT a mission --------------------------------------
