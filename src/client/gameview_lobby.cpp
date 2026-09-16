@@ -40,7 +40,7 @@ std::string mapDisplayName(const std::string& id) {
         // already offset to this panel); RenderClear would ignore the viewport.
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         float cx = winW / 2.0f;
-        const char* title = singlePlayer_ ? "SINGLE PLAYER VS AI" : "TA:KINGDOMS  MULTIPLAYER";
+        const char* title = singlePlayer_ ? "SINGLE PLAYER VS AI" : "TOTAL ANNIHILATION  MULTIPLAYER";
         blockText(title, cx - blockWidth(title, 2.6f) / 2, 24, 2.6f, {210, 200, 150, 255});
         if (!mp_) return;
         auto st = mp_->state();
@@ -566,7 +566,8 @@ std::string mapDisplayName(const std::string& id) {
             std::mt19937 rng(uint32_t(SDL_GetTicks64()) ^ (room.id * 2654435761u));
             for (int i = 0; i < ta::net::kMaxSlots; ++i)
                 if (room.slots[i].type == 0)   // open capacity slot
-                    mp_->setSlot(i, 2, uint8_t(rng() % 5), uint8_t(i), uint8_t(i), 1, aiLevelEnv());
+                    mp_->setSlot(i, 2, uint8_t(rng() % uint32_t(factionCount())), uint8_t(i), uint8_t(i), 1,
+                                 aiLevelEnv());
             specAutoSeated_ = true;
         }
         // slot table
@@ -618,7 +619,8 @@ std::string mapDisplayName(const std::string& id) {
             blockText(factionName(s.faction), x + 260, y + 8, 1.6f, {200, 205, 215, 255});
             if (canEdit) { SDL_FRect fb{x + 260, y + 6, 90, 18};
                 lobbyHots_.push_back({fb, [this, i] { const auto& s2 = mpRoom().slots[i];
-                    mp_->setSlot(i, s2.type, (s2.faction + 1) % 5, s2.color, s2.team, s2.ready, s2.aiLevel); }}); }
+                    mp_->setSlot(i, s2.type, uint8_t((s2.faction + 1) % factionCount()),
+                                 s2.color, s2.team, s2.ready, s2.aiLevel); }}); }
             colorSwatch(x + 360, y + 5, 20, s.color, canEdit ? std::function<void()>([this, i] {
                 // Cycle to the next colour NOT already held by another used slot --
                 // landing on a taken colour just blocked READY, which was a trap.

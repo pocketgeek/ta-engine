@@ -1095,22 +1095,30 @@
                                int(overlayBatch_.size()), nullptr, 0);
         }
 
-        // Player mana bar top left (legacy; only without the bottom bar). A spectator
-        // isn't a player -- no personal mana readout.
+        // Top-left economy bars (fallback; only without the retail panel art). A
+        // spectator is not a player, so it gets no personal readout. TWO bars now:
+        // metal over energy, because a TA player stalls on either.
         if (!panelTex_ && !spectating_) {
             const PlayerR& tm = framePlayer(localPlayer_);
-            float cap = std::max(tm.metal.storage, 100.0f);
-            SDL_FRect bg{10, 10, 180, 12};
-            SDL_SetRenderDrawColor(ren_, 20, 20, 30, 230);
-            SDL_RenderFillRectF(ren_, &bg);
-            SDL_FRect fg{12, 12, 176 * std::clamp(tm.metal.cur / cap, 0.0f, 1.0f), 8};
-            SDL_SetRenderDrawColor(ren_, 80, 200, 255, 255);
-            SDL_RenderFillRectF(ren_, &fg);
+            auto resBar = [&](const ta::sim::Resource& r, float y, SDL_Color col) {
+                float cap = std::max(r.storage, 100.0f);
+                SDL_FRect bg{10, y, 180, 10};
+                SDL_SetRenderDrawColor(ren_, 20, 20, 30, 230);
+                SDL_RenderFillRectF(ren_, &bg);
+                SDL_FRect fg{12, y + 2, 176 * std::clamp(r.cur / cap, 0.0f, 1.0f), 6};
+                SDL_SetRenderDrawColor(ren_, col.r, col.g, col.b, 255);
+                SDL_RenderFillRectF(ren_, &fg);
+            };
+            resBar(tm.metal, 10, {210, 210, 215, 255});    // metal: pale steel
+            resBar(tm.energy, 24, {235, 205, 90, 255});    // energy: amber
             if (hudFont_.ok() && !panelTex_) {
                 char buf[96];
-                std::snprintf(buf, sizeof buf, "MANA %d/%d  +%d", int(tm.metal.cur), int(cap),
-                              int(tm.metal.income));
-                hudFont_.draw(ren_, buf, 198, 21, 1.5f, {170, 225, 255, 255});
+                std::snprintf(buf, sizeof buf, "M %d/%d %+d   E %d/%d %+d",
+                              int(tm.metal.cur), int(tm.metal.storage),
+                              int(tm.metal.income - tm.metal.drain - tm.metal.buildDrain),
+                              int(tm.energy.cur), int(tm.energy.storage),
+                              int(tm.energy.income - tm.energy.drain - tm.energy.buildDrain));
+                hudFont_.draw(ren_, buf, 198, 14, 1.5f, {200, 215, 235, 255});
                 if (!selection_.empty()) {
                     const auto* u = frameUnitP(selection_.front());
                     if (u && u->alive() && u->type) {

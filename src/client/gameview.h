@@ -2903,9 +2903,16 @@ private:
 
     // ==================== interactive multiplayer lobby ====================
 
-    static const char* factionName(int f) {
-        static const char* n[5] = {"ARAMON", "TAROS", "VERUNA", "ZHON", "CREON"};
-        return n[f % 5];
+    // The side's own name, out of SIDEDATA -- so a lobby slot reads ARM or CORE,
+    // and a modded install with different sides labels itself correctly. (This was
+    // a hardcoded list of Kingdoms' five houses, which is why every slot in a TA
+    // game announced itself as ARAMON.)
+    const char* factionName(int f) const {
+        if (sideData_.sides.empty()) return "?";
+        return sideData_.sides[size_t(f) % sideData_.sides.size()].name.c_str();
+    }
+    int factionCount() const {
+        return sideData_.sides.empty() ? 1 : int(sideData_.sides.size());
     }
     // Lobby design size (logical). The lobby always lays out at exactly this size and
     // is scaled to fit + centred in the window (lobbyScale_ / lobbyOffX_/Y_), so it

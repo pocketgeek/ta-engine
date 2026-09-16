@@ -1946,19 +1946,22 @@
             }
         }
 
-        // Bottom-RIGHT: mana -- only on our own bar. The retail GUI bar draws the mana
-        // readout at the command-panel foot around the orb (renderGui) instead.
+        // Bottom-RIGHT: the economy, on our own bar only. This is the fallback for
+        // when the retail GUI panel art is unavailable -- with it, drawResourceStrip
+        // puts the same figures where SIDEDATA says they go.
         if (!guiBar) {
             const PlayerR& tm = framePlayer(localPlayer_);
-            float manaX = float(winW) - 192;
-            shade(manaX - 8, 200);
+            float rx = float(winW) - 210;
+            shade(rx - 8, 218);
             SDL_Color txt{0, 0, 0, 255};
-            blockText("MANA", manaX, bar.y + 9, 2.0f, txt);
-            std::snprintf(buf, sizeof buf, "%d/%d", int(tm.metal.cur),
-                          int(std::max(tm.metal.storage, 100.0f)));
-            blockText(buf, manaX, bar.y + 30, 2.3f, txt);
-            std::snprintf(buf, sizeof buf, "+%d/SEC", int(tm.metal.income));
-            blockText(buf, manaX, bar.y + 52, 1.8f, txt);
+            auto line = [&](const char* label, const ta::sim::Resource& r, float dy) {
+                blockText(label, rx, bar.y + dy, 1.7f, txt);
+                std::snprintf(buf, sizeof buf, "%d/%d  %+d", int(r.cur), int(r.storage),
+                              int(r.income - r.drain - r.buildDrain));
+                blockText(buf, rx + 52, bar.y + dy, 1.7f, txt);
+            };
+            line("METAL", tm.metal, 10);
+            line("ENRGY", tm.energy, 32);
         }
     }
 
