@@ -189,13 +189,12 @@ int testSimEquivalence(const std::string& mapArg, const std::string& dataRoot) {
         return 0;
     }
     ta::sim::TypeRegistry reg;
-    ta::sim::setupRegistry(reg, vfs, /*crusades=*/false);
+    ta::sim::setupRegistry(reg, vfs);
 
     ta::sim::MatchConfig cfg;
     cfg.vfs = &vfs;
     cfg.mapPath = mapPath;
     cfg.slots = {{true, 0, 0}, {true, 1, 1}};   // 2 players, FFA
-    cfg.gods = false;
     cfg.startMana = 2800;
 
     ta::sim::World A, B;                        // separate instances -- never alias

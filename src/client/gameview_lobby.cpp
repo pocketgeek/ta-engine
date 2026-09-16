@@ -308,10 +308,6 @@ std::string mapDisplayName(const std::string& id) {
             lbField(x, y, 260, "PASSWORD (optional)", createPass_, 2); y += 46;
         }
         blockText(std::string("MAP: ") + mapDisplayName(mpMapId_), x, y, 1.8f, {180, 185, 195, 255}); y += 30;
-        lbBtn(x, y, 170, 26, createCrusades_ ? "CRUSADES: ON" : "CRUSADES: OFF", true,
-              [this] { createCrusades_ = !createCrusades_; }); y += 34;
-        lbBtn(x, y, 170, 26, createGods_ ? "GODS: ON" : "GODS: OFF", true,
-              [this] { createGods_ = !createGods_; }); y += 34;
         // When OFF, losing your Monarch loses the game (retail commander rule); ON
         // makes the Monarch just another unit.
         lbBtn(x, y, 240, 26, createMonarchExp_ ? "MONARCH EXPENDABLE: ON"
@@ -353,7 +349,7 @@ std::string mapDisplayName(const std::string& id) {
         // BROWSER (MP only) sits just left of CREATE.
         const float by = kLobbyH - 40, bw = 120;
         lbBtn(kLobbyW - x - bw, by, bw, 30, "CREATE", !createName_.empty(), [this] {
-            ta::net::GameOptions o; o.crusades = createCrusades_ ? 1 : 0; o.gods = createGods_ ? 1 : 0;
+            ta::net::GameOptions o;
             o.overridePolicy = createOverride_;
             o.monarchExpendable = createMonarchExp_ ? 1 : 0;
             o.fogExplored = std::min<uint8_t>(createFog_, 2);

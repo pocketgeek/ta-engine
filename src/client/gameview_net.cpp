@@ -71,14 +71,8 @@
         // may differ from how this client was launched. Remount to the room's tier
         // (so gameplay overrides -- or their absence -- match the referee) and
         // rebuild the registry, so our world and hash agree with the server's
-        // referee. remountPolicy already rebuilds the registry for the current
-        // crusades setting; handle a crusades-only change separately.
+        // referee. remountPolicy rebuilds the registry for the room's tier.
         remountPolicy(room.opts.overridePolicy);
-        if ((room.opts.crusades != 0) != crusades_) {
-            crusades_ = room.opts.crusades != 0;
-            registry_ = ta::sim::TypeRegistry{};
-            ta::sim::setupRegistry(registry_, vfs_, crusades_);
-        }
         // Campaign mission: build the SAME world the referee did. setupMission is
         // deterministic (terrain + placed units + the in-sim god script), so our sim,
         // the referee, and every peer stay byte-identical -- the mission runs in
@@ -141,7 +135,6 @@
         ta::sim::MatchConfig cfg;
         cfg.vfs = &vfs_;
         cfg.mapPath = mapPath_;
-        cfg.gods = room.opts.gods != 0;
         cfg.unitCap = room.opts.unitCap;
         cfg.monarchExpendable = room.opts.monarchExpendable != 0;
         cfg.stressTest = room.opts.stressTest != 0;
@@ -535,13 +528,13 @@ void GameView::autoplayStep() {
 }
 #endif
 
-    bool GameView::mpAutoStep(int autoMode, const std::string& mapId, bool crusades) {
+    bool GameView::mpAutoStep(int autoMode, const std::string& mapId) {
         using S = ta::net::MpClient::State;
         if (!mp_->poll()) { netError_ = mp_->error(); return false; }
         S st = mp_->state();
         if (st == S::Done) { if (netError_.empty()) netError_ = mp_->error(); return false; }
         if (st == S::Lobby && (autoMode == 1 || autoMode == 4 || autoMode == 7 || autoMode == 8)) {
-            ta::net::GameOptions o; o.crusades = crusades ? 1 : 0;
+            ta::net::GameOptions o;
             o.overridePolicy = uint8_t(policy_);   // room tier = this host's launch tier
             // TA_SPEED: set the game speed in tenths (10 = 1x) for headless timing
             // tests -- re-cadences the server without touching the (deterministic) sim.
@@ -553,12 +546,8 @@ void GameView::autoplayStep() {
                 benchmarkMode_ = true;                         // (forces watch + 8 AI + cap 8 + Ulasem below)
             }
             if (const char* uc = ta::devEnv("TA_UNITCAP")) o.unitCap = uint16_t(std::atoi(uc));
-            // The remaining room options, as headless knobs. Without these a harness
-            // could not reach the code they gate -- and GODS in particular is where a
-            // desync has already hidden once: summoning used to run only on the client,
-            // so the referee's world ran a unit short from the first god onward. A
-            // desync hunt that cannot turn gods on cannot find that class of bug.
-            o.gods = ta::devFlag("TA_GODS") ? 1 : 0;
+            // The remaining room options, as headless knobs: without these a
+            // harness could not reach the code they gate.
             o.randomStarts = ta::devFlag("TA_RANDOM_STARTS") ? 1 : 0;
             o.monarchExpendable = ta::devFlag("TA_MONARCH_EXPENDABLE") ? 1 : 0;
             o.forfeitSelfDestruct = ta::devFlag("TA_FORFEIT_SELFDESTRUCT") ? 1 : 0;
@@ -600,7 +589,7 @@ void GameView::autoplayStep() {
             if (SDL_GetTicks64() - mpListMs_ > 300) { mp_->listGames(); mpListMs_ = SDL_GetTicks64(); }
             if (!mp_->games().empty()) mp_->joinGame(mp_->games().front().id, "");
             else if (autoMode == 3 && mpListMs_ && SDL_GetTicks64() - mpFirstListMs_ > 800) {
-                ta::net::GameOptions o; o.crusades = crusades ? 1 : 0;
+                ta::net::GameOptions o;
             o.overridePolicy = uint8_t(policy_);   // room tier = this host's launch tier
                 mp_->createGame(mapId, "", mapId, o, mpCapacity());
             }

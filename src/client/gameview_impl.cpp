@@ -2237,7 +2237,7 @@
         policy_ = pol;
         vfs_ = ta::hpi::mountRetailRoot(installRoot_, pol);
         registry_ = ta::sim::TypeRegistry{};
-        ta::sim::setupRegistry(registry_, vfs_, crusades_);
+        ta::sim::setupRegistry(registry_, vfs_);
     }
 
     float GameView::birthProgress(int id) const {

@@ -305,11 +305,9 @@ public:
         buildDataSet(retail_, ta::hpi::OverridePolicy::None);
         aiProfile_ = ta::ai::loadProfile(retail_.vfs);
         aiNames_ = loadAiNames(retail_.vfs);
-        haveCb_ = retail_.haveCb;
-        std::fprintf(stderr, "taserver: loaded game data from %s (referee sim + AI%s), "
+        std::fprintf(stderr, "taserver: loaded game data from %s (referee sim + AI), "
                      "retail gameplay hash %016llx\n",
-                     dataRoot_.c_str(), haveCb_ ? ", +Crusades" : "",
-                     (unsigned long long)retail_.hash);
+                     dataRoot_.c_str(), (unsigned long long)retail_.hash);
     }
     int run();
 
@@ -322,17 +320,15 @@ private:
     bool loopbackOnly_ = false;
     ta::srv::AccountStore accounts_;
     ta::srv::LoginThrottle throttle_;
-    // A mounted data set at one override tier: the VFS, its base + Crusades
-    // registries, and the gameplay-data fingerprint peers are held to.
+    // A mounted data set at one override tier: the VFS, its unit registry, and
+    // the gameplay-data fingerprint peers are held to.
     struct DataSet {
         ta::hpi::Vfs vfs;
-        ta::sim::TypeRegistry reg, regCb;
-        bool haveCb = false;
+        ta::sim::TypeRegistry reg;
         uint64_t hash = 0;
         bool built = false;
     };
     DataSet retail_, full_;            // none/cosmetic use retail_; full uses full_
-    bool haveCb_ = false;
     ta::ai::Profile aiProfile_;
     // Per-mission build profiles (ai/<name>.txt), cached by name -- a Controller
     // holds a reference to its Profile, so these must outlive the room.
@@ -373,11 +369,7 @@ private:
     }
     void buildDataSet(DataSet& ds, ta::hpi::OverridePolicy pol) {
         ds.vfs = ta::hpi::mountRetailRoot(dataRoot_, pol);
-        ta::sim::setupRegistry(ds.reg, ds.vfs, false);
-        if (!ds.vfs.list("unitscb").empty()) {
-            ta::sim::setupRegistry(ds.regCb, ds.vfs, true);
-            ds.haveCb = true;
-        }
+        ta::sim::setupRegistry(ds.reg, ds.vfs);
         ds.hash = ta::hpi::gameplayHash(ds.vfs);
         ds.built = true;
     }
@@ -388,10 +380,7 @@ private:
                                                     : ta::hpi::OverridePolicy::None);
         return ds;
     }
-    const ta::sim::TypeRegistry& registryFor(bool crusades, uint8_t policy) {
-        DataSet& ds = dataFor(policy);
-        return (crusades && ds.haveCb) ? ds.regCb : ds.reg;
-    }
+    const ta::sim::TypeRegistry& registryFor(uint8_t policy) { return dataFor(policy).reg; }
     std::string replayDir_;
     uint32_t fixedSeed_ = 0;           // --seed: 0 = roll one per game
     int listenFd_ = -1;
@@ -497,8 +486,6 @@ void Server::writeReplay(Room& r) {
     h.mapId = r.mapId;
     h.mission = r.mission;
     h.engineVersion = ta::kVersion;
-    h.crusades = r.opts.crusades;
-    h.gods = r.opts.gods;
     h.forfeitSelfDestruct = r.opts.forfeitSelfDestruct;
     h.overridePolicy = r.opts.overridePolicy;
     h.unitCap = r.opts.unitCap;
@@ -820,7 +807,7 @@ void Server::writeSlots(Writer& w, Room& r, bool fromStart) {
     w.str(r.name);
     w.str(r.mapId);
     w.str(r.mission);
-    w.u8(r.opts.crusades); w.u8(r.opts.gods); w.u8(r.opts.forfeitSelfDestruct);
+    w.u8(r.opts.forfeitSelfDestruct);
     w.u8(r.opts.overridePolicy);
     w.u8(r.opts.speed); w.u8(r.opts.speedUnlock); w.u32(r.opts.unitCap); w.u8(r.opts.monarchExpendable);
     w.u8(r.opts.stressTest); w.u8(r.opts.fogExplored); w.u8(r.opts.benchmark);
@@ -877,7 +864,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
         case Msg::CreateGame: {
             Reader r(f.payload.data(), f.payload.size());
             std::string name = r.str(), pass = r.str(), mapId = r.str(), mission = r.str();
-            GameOptions o; o.crusades = r.u8(); o.gods = r.u8(); o.forfeitSelfDestruct = r.u8();
+            GameOptions o; o.forfeitSelfDestruct = r.u8();
             o.overridePolicy = r.u8();
             o.speed = r.u8(); o.speedUnlock = r.u8();
             if (o.speed < 1) o.speed = 10;
@@ -1174,7 +1161,7 @@ void Server::tryStart(Client& c) {
     // failure refuses the start).
     const std::string& mapPath = mapResolved;
     {
-        r->reg = &registryFor(r->opts.crusades != 0, r->opts.overridePolicy);
+        r->reg = &registryFor(r->opts.overridePolicy);
         r->ref = std::make_unique<ta::sim::World>();
         r->ref->setVisPlayer(-1);   // headless referee: no fog pass
         if (isMission) {
@@ -1229,7 +1216,6 @@ void Server::tryStart(Client& c) {
             ta::sim::MatchConfig cfg;
             cfg.vfs = &ds->vfs;
             cfg.mapPath = mapPath;
-            cfg.gods = r->opts.gods != 0;
             cfg.unitCap = r->opts.unitCap;
             cfg.monarchExpendable = r->opts.monarchExpendable != 0;
             cfg.stressTest = r->opts.stressTest != 0;
@@ -1369,7 +1355,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
         case Msg::SetGameOptions: {
             if (r->hostId != c.id) return;   // host only
             Reader rd(f.payload.data(), f.payload.size());
-            GameOptions o; o.crusades = rd.u8(); o.gods = rd.u8(); o.forfeitSelfDestruct = rd.u8();
+            GameOptions o; o.forfeitSelfDestruct = rd.u8();
             o.overridePolicy = rd.u8(); o.speed = rd.u8(); o.speedUnlock = rd.u8();
             o.unitCap = clampUnitCap(uint16_t(rd.u32())); o.monarchExpendable = rd.u8() ? 1 : 0;
             o.stressTest = rd.u8() ? 1 : 0;

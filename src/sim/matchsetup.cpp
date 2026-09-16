@@ -144,12 +144,7 @@ std::vector<std::string> sideCommanders(const hpi::Vfs& vfs) {
     return sideCommandersImpl(vfs);
 }
 
-void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs, bool crusades) {
-    // `crusades` is a Kingdoms balance overlay (unitscb/canbuildcb) that has no
-    // TA counterpart and no data to load. The flag is still threaded through the
-    // lobby, the wire protocol and the replay header, so it is removed in its own
-    // pass rather than half-unpicked here.
-    (void)crusades;
+void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs) {
     reg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
     // The VFS already merges base + the expansions + the patch + community units
     // into one namespace, resolved by retail newest-date precedence, so a single
@@ -887,7 +882,6 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     cfg.vfs = &vfs;
     cfg.mapPath = base + ".tnt";
     cfg.slots = slots;                 // no used slots -> setupMatch spawns no monarchs
-    cfg.gods = false;
     cfg.unitCap = int(gh->numberOr("maxunits", 500));
     setupMatch(world, reg, cfg);       // terrain + features + player teams
     if (gh->numberOr("waterdoesdamage", 0) != 0)

@@ -35,11 +35,9 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
     }
     out.mapId = h.mapId;
     out.mission = h.mission;
-    out.crusades = h.crusades != 0;
     out.overridePolicy = h.overridePolicy;
     out.dataHash = h.dataHash;
     out.engineVersion = h.engineVersion;
-    out.cfg.gods = h.gods != 0;
     out.cfg.unitCap = uint16_t(h.unitCap);
     out.cfg.monarchExpendable = h.monarchExpendable != 0;
     out.cfg.stressTest = h.stressTest != 0;
@@ -118,8 +116,6 @@ std::string saveReplayFile(const std::string& dir, const ta::net::MpClient& mp,
     h.mapId = room.mapId;
     h.mission = room.mission;
     h.engineVersion = ta::kVersion;
-    h.crusades = room.opts.crusades;
-    h.gods = room.opts.gods;
     h.forfeitSelfDestruct = room.opts.forfeitSelfDestruct;
     h.overridePolicy = room.opts.overridePolicy;
     h.unitCap = room.opts.unitCap;

@@ -34,8 +34,6 @@ static ReplayHeader sample() {
     h.mapId = "Inner Circle";
     h.mission = "camp03";
     h.engineVersion = "9.9.9";
-    h.crusades = 1;
-    h.gods = 1;
     h.forfeitSelfDestruct = 1;
     h.overridePolicy = 2;
     h.unitCap = 1234;

@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
 
     hpi::Vfs vfs = hpi::mountRetailRoot(dataRoot);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, false);
+    sim::setupRegistry(reg, vfs);
     ai::Profile profile = ai::loadProfile(vfs);
 
     // 2-player 1v1: slot 0 = idle human (Aramon), slot 1 = the AI under test (Taros).

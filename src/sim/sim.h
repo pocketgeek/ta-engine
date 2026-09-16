@@ -390,8 +390,7 @@ struct UnitType {
     // (Kamikaze Rat's 320-radius blast, Grenadier/Fire Demon/Balloon death pops).
     Weapon explodeAs;
     bool hasExplodeAs = false;
-    // totalallowed: per-player cap on LIVE units of this type (dragons/gods/
-    // juggernaut carry 1). 0 = unlimited.
+    // totalallowed: per-player cap on LIVE units of this type. 0 = unlimited.
     int totalAllowed = 0;
     float maxRange() const {
         float r = 0;
@@ -453,7 +452,7 @@ public:
     // Called once after loading; idempotent.
     void internCategories();
     // Largest build menu of any builder (drives the minimum window width so the
-    // whole icon row always fits at full size -- some Crusades menus reach 13).
+    // whole icon row always fits at full size -- the widest menus reach 19).
     std::size_t maxBuildMenu() const {
         std::size_t m = 0;
         for (const auto& [id, list] : buildTree_) m = std::max(m, list.size());

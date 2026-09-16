@@ -388,7 +388,7 @@ int main(int argc, char** argv) {
             argStart = 2;
         }
     }
-    std::string shot, cobPath, anim, joinAddr, side = "ara", aiSide = "tar";
+    std::string shot, cobPath, anim, joinAddr, side = "arm", aiSide = "core";
     // model mode: --statics <bitmask> seeds the VM's static slots (bit i -> static i).
     // Walk/attack scripts gate on an "am I moving" static whose SLOT differs per unit.
     uint32_t staticMask = 1;
@@ -415,7 +415,6 @@ int main(int argc, char** argv) {
     [[maybe_unused]] bool doMarch = false, testbuild = false, misstest = false,
         creon = false, guardtest = false, lodetest = false,
         soundtest = false;
-    bool crusades = false;
     float lookX = 0, lookZ = 0;
     std::vector<std::string> args;
     for (int i = argStart; i < argc; ++i) {
@@ -451,7 +450,6 @@ int main(int argc, char** argv) {
         }
         else if (a == "--maxfps" && i + 1 < argc) maxFps = std::atoi(argv[++i]);
         else if (a == "--novsync") noVsync = true;
-        else if (a == "--crusades") crusades = true;
 
 
         else if (a == "--lodeunit" && i + 1 < argc) lodeUnitName = argv[++i];
@@ -981,17 +979,16 @@ int main(int argc, char** argv) {
             // ordinary game launch does exactly this for the same reason.
             gameView = std::make_unique<GameView>(ren, std::move(rvfs),
                                                   mapPath, dataRoot, rpol,
-                                                  false, false, false, /*bare=*/true, "ara", "tar",
-                                                  rf.crusades);
+                                                  false, false, false, /*bare=*/true, "arm", "core");
             gameView->applySettings(settings);   // audio / camera / UI-scale prefs
             gameView->setSettings(&settings);    // Options edits + persists them
             // Watching a replay must not be a one-way trip: without this the in-game
             // menu has no MAIN MENU entry and the only way out is quitting the app.
             if (fromMenu) gameView->setCanReturnToMenu();
-            std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks%s (format %u, "
+            std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks (format %u, "
                          "recorded by %s, %zu hash checkpoints)\n", args[0].c_str(),
                          rf.mapId.c_str(), rf.bundles.size(),
-                         rf.crusades ? " (Crusades)" : "", rf.formatVersion,
+                         rf.formatVersion,
                          rf.engineVersion.empty() ? "an older build" : rf.engineVersion.c_str(),
                          rf.checks.size());
             // VERIFY the data before replaying it. The recording carries the
@@ -1045,7 +1042,7 @@ int main(int argc, char** argv) {
                                                   mapPath, dataRoot, pol, demo,
                                                   scenario, missionFlag,
                                                   navy || amphib || firetest || facetest || mp,
-                                                  side, aiSide, crusades);
+                                                  side, aiSide);
             gameView->applySettings(settings);   // audio / camera / UI-scale prefs
             gameView->setSettings(&settings);     // in-game Options edits + persists these
             if (mp) {
@@ -1161,7 +1158,7 @@ int main(int argc, char** argv) {
             // Pin the snapshot for the iteration (mirrors the interactive render loop), so
             // cosmeticStep's front() reads can't tear against the worker under TA_SIM_THREAD.
             gameView->beginFrame();
-            bool cont = gameView->mpAutoStep(mpHeadless, mapId, crusades);
+            bool cont = gameView->mpAutoStep(mpHeadless, mapId);
             gameView->endFrame();
             // The game ENDING is an exit condition, not just the clock running out.
             // Once a team wins, simStep stops draining bundles (the drain loop is
@@ -1448,7 +1445,7 @@ int main(int argc, char** argv) {
                 (void)netAccum;
                 // autoOv (computed once per session above) drives the lobby: 0 =
                 // UI-driven, 1 = auto-host, etc. TA_MPAUTO can override it.
-                gameView->mpAutoStep(autoOv, serverMapId, crusades);
+                gameView->mpAutoStep(autoOv, serverMapId);
             } else {
                 gameView->update(dt);
             }

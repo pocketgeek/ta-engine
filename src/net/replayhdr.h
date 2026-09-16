@@ -39,7 +39,7 @@ struct ReplayHeader {
     std::string mapId;
     std::string mission;          // campaign mission stem ("" = skirmish)
     std::string engineVersion;    // ta::kVersion of the build that recorded it
-    uint8_t crusades = 0, gods = 0, forfeitSelfDestruct = 0;
+    uint8_t forfeitSelfDestruct = 0;
     uint8_t overridePolicy = 1;
     uint32_t unitCap = 0;
     uint8_t monarchExpendable = 0, stressTest = 0, randomStarts = 0;
@@ -64,8 +64,6 @@ inline void writeReplayHeader(Writer& w, const ReplayHeader& h) {
     w.u32(kReplayFormat);
     w.u32(kNetVersion);
     w.str(h.mapId);
-    w.u8(h.crusades);
-    w.u8(h.gods);
     w.u8(h.forfeitSelfDestruct);
     w.u8(h.overridePolicy);
     w.u32(h.unitCap);
@@ -96,8 +94,6 @@ inline bool readReplayHeader(Reader& r, ReplayHeader& h, uint32_t& fmt, uint32_t
     proto = r.u32();
     if (!r.ok || fmt == 0 || fmt > kReplayFormat) return false;
     h.mapId = r.str();
-    h.crusades = r.u8();
-    h.gods = r.u8();
     h.forfeitSelfDestruct = r.u8();
     if (fmt >= 2) h.overridePolicy = r.u8();
     h.unitCap = 0;                       // fmt<3 ran without a unit cap

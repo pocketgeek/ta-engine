@@ -37,8 +37,6 @@ struct MatchConfig {
     const hpi::Vfs* vfs = nullptr;  // the retail-root read-path (shared by peers)
     std::string mapPath;            // VFS path to the map .tnt (.ota sibling = start pos)
     std::vector<MatchSlot> slots;   // index = player; sized to the player count
-    bool gods = false;
-    float godAppearSec = 1800;      // when gods may manifest (if enabled)
     float startMana = 2800;
     int unitCap = 2000;             // per-player live-unit limit (0 = unlimited)
     bool monarchExpendable = true;  // false = losing your Monarch loses the game
@@ -77,10 +75,10 @@ inline const char* benchmarkLevelInterval(int level) {
 // engine's. Empty if the install has no readable SIDEDATA.
 std::vector<std::string> sideCommanders(const hpi::Vfs& vfs);
 
-// Load the unit registry from the VFS: MOVEINFO, units, canbuild -- with the
-// Crusades overlay loaded first (it wins). Iron Plague and community units are
-// already merged into the "units"/"canbuild" namespaces by the VFS. Deterministic.
-void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs, bool crusades);
+// Load the unit registry from the VFS: MOVEINFO, then every unit, then the build
+// tree out of SIDEDATA. The VFS has already merged base + expansions + patch +
+// community units into one namespace by retail precedence. Deterministic.
+void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs);
 
 // Start positions from the map's .ota (world pixels), ordered by StartPos index.
 std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,

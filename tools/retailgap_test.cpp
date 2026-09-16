@@ -1811,7 +1811,7 @@ int main(int argc, char** argv) {
         // force. A behavioural check, because the arithmetic above would still pass if
         // regen quietly out-paced the result.
         sim::TypeRegistry cbreg;
-        sim::setupRegistry(cbreg, vfs, /*crusades=*/true);
+        sim::setupRegistry(cbreg, vfs);
         const sim::UnitType* keep  = cbreg.find("arakeep");
         const sim::UnitType* sword = cbreg.find("arasword");
         if (!keep || !sword || sword->weapon.damage <= 0) {

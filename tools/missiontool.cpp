@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     }
 
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, /*crusades=*/false);
+    sim::setupRegistry(reg, vfs);
 
     // ---- full load via setupMission, then run through World::tick ----
     sim::World w;

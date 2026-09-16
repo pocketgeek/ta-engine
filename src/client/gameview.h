@@ -159,20 +159,16 @@ public:
     GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, ta::hpi::OverridePolicy policy,
              bool demo, bool scenario, bool mission,
-             bool bare, const std::string& side = "ara", const std::string& aiSide = "tar",
-             bool crusades = false)
+             bool bare, const std::string& side = "ara", const std::string& aiSide = "tar")
         // (side_ initialized below before loadPanel uses it; vfs_ must precede
         //  mapView_ in the member list so the Compositor can borrow it)
         : ren_(ren), vfs_(std::move(vfs)), mapView_(ren, vfs_, mapPath),
           installRoot_(installRoot), policy_(policy),
-          mapPath_(mapPath), crusades_(crusades), side_(side), aiSide_(aiSide) {
+          mapPath_(mapPath), side_(side), aiSide_(aiSide) {
         // Unit registry: MOVEINFO + units + canbuild (+ Crusades overlay first).
         // The VFS merges base + Iron Plague + community data into one namespace,
         // precedence resolved by the retail newest-date rule.
-        ta::sim::setupRegistry(registry_, vfs_, crusades_);
-        if (crusades_)
-            std::fprintf(stderr, "balance: Crusades (unitscb/canbuildcb)%s\n",
-                         vfs_.list("unitscb").empty() ? " -- NOT FOUND" : "");
+        ta::sim::setupRegistry(registry_, vfs_);
         // God economy timing (gamedata/gods.tdf). TA_GODTIME overrides the
         // appear time (seconds) for testing; otherwise use AppearTimeMin minutes.
         loadTextures();
@@ -674,7 +670,7 @@ public:
         return uint8_t(v < 0 ? 0 : v > 4 ? 4 : v);
     }
 
-    bool mpAutoStep(int autoMode, const std::string& mapId, bool crusades);
+    bool mpAutoStep(int autoMode, const std::string& mapId);
 
     void applyEvent(const ta::net::Event& e) { ta::sim::applyEvent(world_, e); }
 
@@ -1869,7 +1865,6 @@ private:
 public:
     uint8_t overridePolicy() const { return uint8_t(policy_); }
 private:
-    bool crusades_ = false; // which balance registry_ currently holds
     std::string side_ = "ara";
     // Retail loading screen. Alive from the start of world setup until the first
     // tick lands, so the plate covers both our own load and the wait on peers.

@@ -836,8 +836,9 @@ bool affectsGameplay(const std::string& path) {
         // form (below), so an art-only override hashes identically while a
         // sim-key edit still faults the version gate instead of desyncing.
         if (k.find("weapons/") != std::string::npos) return true;
-        if (k.find("moveinfo") != std::string::npos || k.find("sidedata") != std::string::npos ||
-            k.find("gods") != std::string::npos)
+        // SIDEDATA is gameplay: it names each side's commander and the whole
+        // build tree, so an edit changes what every player can make.
+        if (k.find("moveinfo") != std::string::npos || k.find("sidedata") != std::string::npos)
             return true;
         return false;
     }

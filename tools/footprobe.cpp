@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
     auto vfs = hpi::mountRetailRoot(argv[1], hpi::OverridePolicy::None);
     sim::TypeRegistry reg;
     reg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
-    sim::setupRegistry(reg, vfs, false);
+    sim::setupRegistry(reg, vfs);
     std::vector<std::string> maps;
     for (int i = 2; i < argc; ++i) maps.push_back(argv[i]);
     if (maps.empty()) maps = {"Inner Circle", "Athri Cay", "Ulasem Arena"};
