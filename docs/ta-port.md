@@ -200,13 +200,38 @@ proportional to what it was carrying.
 - **Air layer depth**: landing pads, fuel, proper transports, `VTOL` vs fixed-wing.
 - **Kamikaze, self-destruct, `ExplodeAs`/`SelfDestructAs`** weapon-driven deaths.
 
-### 🗑 Kingdoms-only sim features to drop
+### 🗑 Kingdoms-only sim features — removed
 
-Gods and god favour (`attractsgods`), the mana-per-shot caster economy, status
-weapons (freeze / petrify / paralyze) and their immunities, resurrect, crusades.
-Some of these (status weapons, resurrect) are worth keeping as **dormant
-data-driven paths** rather than deletions — nothing in TA's retail data sets
-them, so they cost nothing and they keep the door open for mods.
+Taken out rather than left dormant. An earlier draft of this document argued for
+keeping the unused paths "for mods"; that was wrong. Nothing in TA's data reaches
+them, so they would have been untested code that still has to compile, still has
+to be reasoned about in every refactor, and still shows up in every grep.
+
+| Removed | |
+| --- | --- |
+| ✅ Gods | favour, priests (`attractsgods`), appear time, `summonReadyGods`, the client announcer |
+| ✅ The single mana pool | `Player::mana`/`storage`/`income` → `Resource metal, energy` |
+| ✅ Per-unit caster pools | `maxmana`, `manarechargerate`, `manapershot`, the recharge tick |
+| ✅ Veterancy | `veteranmodel`, `noveteran`, `xp`/`veteran`, `vetMul()`, the gold tint, the HUD pips |
+| ✅ Petrify & freeze | statue deaths, `stone=`/`frozen=` features, `cantbestoned`/`cantbefrozen` |
+| ✅ Mind control | and the charm roll that scaled off the victim's veterancy |
+| ✅ Resurrect & animate | the whole revive channel, and corpse `resurrectable` |
+| ✅ Mana deposits | Sacred Stones → TA metal patches (`category=metal`) |
+
+**Paralyze stayed**, because it is not a Kingdoms mechanic: TA's paralyzer is
+damage type 4 (the Core Contingency Immobilizer) and 8 shipped types carry
+`ImmuneToParalyzer` against it.
+
+Still to remove: the monarch/house vocabulary, and crusades.
+
+`tools/retailgap_test.cpp` is the casualty of all this. It is 1903 lines of
+Kingdoms regression coverage whose ~50 unit lookups are all `ara*`/`tar*`/
+`ver*`/`zon*` types, each section guarded by `if (reg.find(...))` — so against a
+TA install it runs to completion, asserts nothing, and reports success. It now
+bails loudly instead. The behaviours it covers (queued orders, stances, VTOL
+standby, area reclaim, self-destruct, per-category damage,
+`canMove`-vs-structure) all matter for TA, so the scaffold is kept and the gate
+comes off section by section as each is re-pointed at TA units.
 
 ## 4. TAK extras to preserve
 
