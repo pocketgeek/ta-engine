@@ -13,11 +13,14 @@ namespace ta {
 namespace hpi { class Vfs; }
 
 struct CampaignMission {
-    std::string stem;       // "takmission01_mt" -- the bundle stem (missionname)
-    std::string otaFile;    // "takmission01_mt.ota" (missionfile, informational)
-    // The chapter's real name, from translate/missions.tdf (base) or
-    // translate/ipmissions.tdf (Iron Plague): "All Hell Broken Loose". Empty when
-    // the stem has no entry, and the UI then falls back to "MISSION n".
+    // The file stem, taken from `missionfile` -- "AC01" in TA, "takmission01_mt"
+    // in Kingdoms. NOT `missionname`, which is a different thing in the two games.
+    std::string stem;
+    std::string otaFile;    // "AC01.ota" / "takmission01_mt.ota" (missionfile)
+    // The chapter's name. TA states it inline in the campaign file
+    // ("1: A Hero Returns"); Kingdoms leaves it to translate/missions.tdf, which
+    // the caller fills in afterwards. Empty when neither supplies one, and the UI
+    // then falls back to "MISSION n".
     std::string title;
 };
 
@@ -37,6 +40,11 @@ struct Campaign {
 
 // Load one campaign from its `camps/*.tdf` VFS path. Returns false if absent/empty.
 bool loadCampaign(const hpi::Vfs& vfs, const std::string& file, Campaign& out);
+
+// The same, straight from the .tdf text, so the mission-stem rule can be pinned
+// in CI without a retail install. `file` names the source (it also supplies the
+// campaign's id and display title, which come from the filename).
+bool parseCampaignText(const std::string& text, const std::string& file, Campaign& out);
 
 // Every `camps/*.tdf` in the VFS, ordered for display: Book of Darien, then The Iron
 // Plague, then the alt-ending branch, then any others alphabetically.

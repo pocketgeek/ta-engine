@@ -57,7 +57,11 @@ int rankOf(const std::string& id) {
 bool loadCampaign(const hpi::Vfs& vfs, const std::string& file, Campaign& out) {
     if (!vfs.has(file)) return false;
     std::vector<uint8_t> bytes = vfs.read(file);
-    tdf::Node root = tdf::parseText(std::string(bytes.begin(), bytes.end()), file);
+    return parseCampaignText(std::string(bytes.begin(), bytes.end()), file, out);
+}
+
+bool parseCampaignText(const std::string& text, const std::string& file, Campaign& out) {
+    tdf::Node root = tdf::parseText(text, file);
 
     out = Campaign{};
     out.file = file;
@@ -72,8 +76,19 @@ bool loadCampaign(const hpi::Vfs& vfs, const std::string& file, Campaign& out) {
         if (!m) break;
         CampaignMission cm;
         cm.otaFile = m->valueOr("missionfile", "");
-        cm.stem = m->valueOr("missionname", "");
-        if (cm.stem.empty() && !cm.otaFile.empty()) cm.stem = stemOf(cm.otaFile);
+        // The STEM comes from `missionfile`, which is the actual file in both
+        // games ("AC01.ota", "takmission01_mt.ota"). `missionname` is NOT
+        // interchangeable with it: in TA it is the chapter's DISPLAY title --
+        // "1: A Hero Returns" -- so using it as a stem asked the VFS for a file
+        // by that name and every TA campaign came up empty. Kingdoms happened to
+        // repeat the stem there, which is why it worked.
+        if (!cm.otaFile.empty()) cm.stem = stemOf(cm.otaFile);
+        const std::string declaredName = m->valueOr("missionname", "");
+        if (cm.stem.empty()) cm.stem = declaredName;        // no missionfile: fall back
+        // TA states the title inline; Kingdoms leaves it to translate/missions.tdf,
+        // which the caller fills in afterwards. Only take it when it is not just
+        // the stem repeated.
+        if (declaredName != cm.stem) cm.title = declaredName;
         if (!cm.stem.empty()) out.missions.push_back(std::move(cm));
     }
     return !out.missions.empty();

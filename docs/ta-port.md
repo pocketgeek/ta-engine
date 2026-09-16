@@ -471,6 +471,22 @@ Two things are load-bearing and were read off the data:
   campaign missions: player 1 owns the campaign's own side and player 2 the
   enemy. AC01's player 1 holds ARMFAV/ARMPW/ARMGATE and player 2 the CORAK/CORFAV.
 
+The **campaign spine** resolves too: all **175 missions across 13 campaigns** —
+ARM and CORE at 25 each, both Core Contingency twelves, all eight Battle Tactics
+sets and the Krogoth Encounter — now find their `.tnt` and `.ota`. The blocker was
+one key. Each `[MISSIONn]` lists both `missionfile` and `missionname`, and they do
+not mean the same thing:
+
+| | `missionfile` | `missionname` |
+| --- | --- | --- |
+| TA | `AC01.ota` | `1: A Hero Returns` |
+| Kingdoms | `takmission01_mt.ota` | `takmission01_mt` |
+
+Kingdoms repeats the stem in `missionname`, so reading the stem from there worked
+— and silently asked a TA install for a file called "1: A Hero Returns". Every TA
+campaign resolved to nothing. The stem comes from `missionfile`; `missionname` is
+a display title in TA, and is left to `translate/missions.tdf` in Kingdoms.
+
 `setupMission` now takes the TA path when `maps/<stem>.ota` places units, and
 falls back to the Kingdoms arrangement (`missions/` + a `.cob` god script + a
 `.crt`) otherwise, so a Kingdoms install still runs. AC01 loads: 34 units over 2
