@@ -33,7 +33,7 @@ enum class Act {
     Move, Attack, FightMove, Patrol, Guard, Stop, Heal, Load, Unload, ClearOrders,
     CycleWeapon, NextUnit, TrackSelection,
     ToggleCloak, ToggleGate,
-    SelectAll, SelectSameType, SelectOnScreen, SelectMonarch,
+    SelectAll, SelectSameType, SelectOnScreen, SelectCommander,
     SelectBuilders, SelectFactory, SelectMelee, SelectMagic, SelectBoats,
     SelectBallistic, SelectTroops, SelectArmed, SelectOnScreenType, SelectFlying,
     SelfDestruct,

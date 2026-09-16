@@ -478,7 +478,7 @@ void MissionScript::evalConditions(World& w, float) {
                 break;
             case Cond::VictoryTimerRunsOut: met = clock_ >= c.a; break;
             case Cond::CommanderKilled: {
-                // Losing your MONARCH, not your last soldier. 15 missions use this,
+                // Losing your COMMANDER, not your last soldier. 15 missions use this,
                 // and treating it as "all units dead" meant a mission whose whole
                 // premise is protecting its hero only ended when the last straggler
                 // fell. Arms once the commander has actually been placed.

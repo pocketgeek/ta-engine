@@ -95,7 +95,7 @@ int main() {
         check(sane, "...and the route it hands back is a real path", got);
     }
 
-    std::printf("[a body in the way -- the Monarch case]\n");
+    std::printf("[a body in the way -- the Commander case]\n");
     {
         Grid g{{"..........",
                 "..........",

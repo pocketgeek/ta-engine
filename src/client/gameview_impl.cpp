@@ -16,11 +16,11 @@
         for (int p = 0; p < 8 && p < world_.numPlayers(); ++p) {
             bool on = frameDiscoActive(p);
             if (on) {
-                // Centroid of this player's (visible) dancing monarchs.
+                // Centroid of this player's (visible) dancing commanders.
                 float cx = 0, cz = 0; int n = 0;
                 for (const UnitR* _up : front().live) {
                     const UnitR& u = *_up;
-                    if (u.player != p || !u.alive() || !isMonarchType(u.type)) continue;
+                    if (u.player != p || !u.alive() || !isCommanderType(u.type)) continue;
                     if (!alliedToLocal(p) && !noFog_ && !cellVisibleR(u.x, u.z)) continue;
                     cx += u.x; cz += u.z; ++n;
                 }
@@ -41,7 +41,7 @@
                 float cx = 0, cz = 0; int n = 0;
                 for (const UnitR* _up : front().live) {
                     const UnitR& u = *_up;
-                    if (u.player != p || !u.alive() || !isMonarchType(u.type)) continue;
+                    if (u.player != p || !u.alive() || !isCommanderType(u.type)) continue;
                     if (!alliedToLocal(p) && !noFog_ && !cellVisibleR(u.x, u.z)) continue;
                     cx += u.x; cz += u.z; ++n;
                 }
@@ -2029,7 +2029,7 @@
                     a.flyGate = flyGateOf(*a.vm);
                     // Start in the folded landed pose, not the wings-spread rest
                     // pose, so a flyer that spawns idle and never takes off (e.g. the
-                    // Monarch at game start) doesn't sit in a T-pose.
+                    // Commander at game start) doesn't sit in a T-pose.
                     a.vm->start("land");
                 }
             } else if (isStructure(type) || !a.hasWalk || a.hasMelee) {
@@ -2206,11 +2206,11 @@
 
 
     bool GameView::dancing(const UnitR& u) const {
-        return isMonarchType(u.type) && u.disco;
+        return isCommanderType(u.type) && u.disco;
     }
 
     bool GameView::headbanging(const UnitR& u) const {
-        return isMonarchType(u.type) && u.headbang;
+        return isCommanderType(u.type) && u.headbang;
     }
 
     void GameView::sprinkleBuildFx(const std::string& sideLower, float cx, float cy, float fpw, float fph) {
@@ -2896,15 +2896,15 @@
             case ta::Act::SelectOnScreen:
                 selectOwned([this](const UnitR& u){ return onScreen(u); });
                 return true;
-            case ta::Act::SelectMonarch: {   // select the Monarch and track it
-                const auto* m = playerMonarchId_ >= 0 ? frameUnitP(playerMonarchId_) : nullptr;
+            case ta::Act::SelectCommander: {   // select the Commander and track it
+                const auto* m = playerCommanderId_ >= 0 ? frameUnitP(playerCommanderId_) : nullptr;
                 if (m && m->alive()) {
-                    selection_ = {playerMonarchId_};
+                    selection_ = {playerCommanderId_};
                     trackSel_ = true;
                     centerOnSelection();
-                    voice(playerMonarchId_, "select");
+                    voice(playerCommanderId_, "select");
                 } else {
-                    notice_ = "NO MONARCH"; noticeTimer_ = 2;
+                    notice_ = "NO COMMANDER"; noticeTimer_ = 2;
                 }
                 return true;
             }
@@ -2937,7 +2937,7 @@
                     return false;
                 });
                 return true;
-            case ta::Act::SelectTroops:   // mobile armed, no navy, not the Monarch
+            case ta::Act::SelectTroops:   // mobile armed, no navy, not the Commander
                 selectOwned([](const UnitR& u){
                     if (!u.type->canMove || u.type->commander) return false;
                     if (u.type->domain == ta::sim::UnitType::Domain::Water) return false;
@@ -2945,7 +2945,7 @@
                     return false;
                 });
                 return true;
-            case ta::Act::SelectArmed:    // anything with a weapon except the Monarch
+            case ta::Act::SelectArmed:    // anything with a weapon except the Commander
                 selectOwned([](const UnitR& u){
                     if (u.type->commander) return false;
                     for (const auto& w : u.type->weapons) if (w.damage > 0) return true;

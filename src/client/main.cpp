@@ -1034,7 +1034,7 @@ int main(int argc, char** argv) {
 #endif
             if (mapPath.empty()) { std::fprintf(stderr, "map '%s' not found in %s\n", args[0].c_str(), dataRoot.c_str()); return 1; }
             // A multiplayer client builds the world from the server's GameStarting
-            // later, so it constructs "bare" (no single-player 2-monarch spawn).
+            // later, so it constructs "bare" (no single-player 2-commander spawn).
             // When looping back to the menu, keep this function's vfs alive for the
             // next session (+ its findMap); hand the game its own fresh mount.
             gameView = std::make_unique<GameView>(ren,

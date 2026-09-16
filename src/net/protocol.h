@@ -269,8 +269,8 @@ struct GameOptions {
     // Per-player unit limit (production/build halts a player at this many live units).
     // One of 250/500/1000/2000/5000; 2000 default. Serialised as u32.
     uint16_t unitCap = 2000;
-    // When 0 (default) losing your Monarch loses the game; 1 makes it just a unit.
-    uint8_t monarchExpendable = 0;
+    // When 0 (default) losing your Commander loses the game; 1 makes it just a unit.
+    uint8_t commanderExpendable = 0;
     // Stress test (SP all-AI spectate): 1 = spawn each AI at ~95% of the unit cap in
     // its faction's combat units the moment the game starts, to load-test the sim.
     uint8_t stressTest = 0;

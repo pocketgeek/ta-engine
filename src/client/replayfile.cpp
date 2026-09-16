@@ -39,7 +39,7 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
     out.dataHash = h.dataHash;
     out.engineVersion = h.engineVersion;
     out.cfg.unitCap = uint16_t(h.unitCap);
-    out.cfg.monarchExpendable = h.monarchExpendable != 0;
+    out.cfg.commanderExpendable = h.commanderExpendable != 0;
     out.cfg.stressTest = h.stressTest != 0;
     out.cfg.randomStarts = h.randomStarts != 0;
     out.cfg.benchmark = h.benchmark;
@@ -119,7 +119,7 @@ std::string saveReplayFile(const std::string& dir, const ta::net::MpClient& mp,
     h.forfeitSelfDestruct = room.opts.forfeitSelfDestruct;
     h.overridePolicy = room.opts.overridePolicy;
     h.unitCap = room.opts.unitCap;
-    h.monarchExpendable = room.opts.monarchExpendable;
+    h.commanderExpendable = room.opts.commanderExpendable;
     h.stressTest = room.opts.stressTest;
     h.randomStarts = room.opts.randomStarts;
     h.benchmark = uint8_t(room.opts.benchmark);

@@ -15,7 +15,7 @@ namespace ta::tdf {
 //
 //   * The SIDES themselves ([SIDE0] ARM, [SIDE1] CORE) and, crucially, each
 //     one's starting `commander=`. Kingdoms had no equivalent -- its five
-//     monarchs were a hardcoded table in the engine -- so reading this is what
+//     MONARCHS were a hardcoded table in the engine -- so reading this is what
 //     lets the side roster come from the data instead of from source.
 //   * The BUILD TREE, under [CANBUILD] as one block per builder with
 //     `canbuild1..N=UNIT` in menu order. Kingdoms instead used a directory of

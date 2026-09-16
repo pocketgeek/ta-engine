@@ -489,7 +489,7 @@ void Server::writeReplay(Room& r) {
     h.forfeitSelfDestruct = r.opts.forfeitSelfDestruct;
     h.overridePolicy = r.opts.overridePolicy;
     h.unitCap = r.opts.unitCap;
-    h.monarchExpendable = r.opts.monarchExpendable;
+    h.commanderExpendable = r.opts.commanderExpendable;
     h.stressTest = r.opts.stressTest;
     h.randomStarts = r.opts.randomStarts;
     h.benchmark = uint8_t(r.opts.benchmark);
@@ -809,7 +809,7 @@ void Server::writeSlots(Writer& w, Room& r, bool fromStart) {
     w.str(r.mission);
     w.u8(r.opts.forfeitSelfDestruct);
     w.u8(r.opts.overridePolicy);
-    w.u8(r.opts.speed); w.u8(r.opts.speedUnlock); w.u32(r.opts.unitCap); w.u8(r.opts.monarchExpendable);
+    w.u8(r.opts.speed); w.u8(r.opts.speedUnlock); w.u32(r.opts.unitCap); w.u8(r.opts.commanderExpendable);
     w.u8(r.opts.stressTest); w.u8(r.opts.fogExplored); w.u8(r.opts.benchmark);
     w.u8(r.opts.randomStarts);
     w.u32(r.hostId);
@@ -869,7 +869,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
             o.speed = r.u8(); o.speedUnlock = r.u8();
             if (o.speed < 1) o.speed = 10;
             o.unitCap = clampUnitCap(uint16_t(r.u32()));
-            o.monarchExpendable = r.u8() ? 1 : 0;
+            o.commanderExpendable = r.u8() ? 1 : 0;
             o.stressTest = r.u8() ? 1 : 0;
             // THREE-state, not a bool: 0 = not explored, 1 = explored, 2 = full
             // vision. Decoding it as `? 1 : 0` silently folded FULL VISION back to
@@ -1217,7 +1217,7 @@ void Server::tryStart(Client& c) {
             cfg.vfs = &ds->vfs;
             cfg.mapPath = mapPath;
             cfg.unitCap = r->opts.unitCap;
-            cfg.monarchExpendable = r->opts.monarchExpendable != 0;
+            cfg.commanderExpendable = r->opts.commanderExpendable != 0;
             cfg.stressTest = r->opts.stressTest != 0;
             cfg.benchmark = r->opts.benchmark;
             cfg.randomStarts = r->opts.randomStarts != 0;
@@ -1357,7 +1357,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
             Reader rd(f.payload.data(), f.payload.size());
             GameOptions o; o.forfeitSelfDestruct = rd.u8();
             o.overridePolicy = rd.u8(); o.speed = rd.u8(); o.speedUnlock = rd.u8();
-            o.unitCap = clampUnitCap(uint16_t(rd.u32())); o.monarchExpendable = rd.u8() ? 1 : 0;
+            o.unitCap = clampUnitCap(uint16_t(rd.u32())); o.commanderExpendable = rd.u8() ? 1 : 0;
             o.stressTest = rd.u8() ? 1 : 0;
             o.fogExplored = std::min<uint8_t>(rd.u8(), 2);   // 0/1/2, see CreateGame
             o.benchmark = rd.u8();

@@ -308,11 +308,11 @@ std::string mapDisplayName(const std::string& id) {
             lbField(x, y, 260, "PASSWORD (optional)", createPass_, 2); y += 46;
         }
         blockText(std::string("MAP: ") + mapDisplayName(mpMapId_), x, y, 1.8f, {180, 185, 195, 255}); y += 30;
-        // When OFF, losing your Monarch loses the game (retail commander rule); ON
-        // makes the Monarch just another unit.
-        lbBtn(x, y, 240, 26, createMonarchExp_ ? "MONARCH EXPENDABLE: ON"
-                                               : "MONARCH EXPENDABLE: OFF", true,
-              [this] { createMonarchExp_ = !createMonarchExp_; }); y += 34;
+        // When OFF, losing your Commander loses the game (retail commander rule); ON
+        // makes the Commander just another unit.
+        lbBtn(x, y, 240, 26, createCommanderExp_ ? "COMMANDER EXPENDABLE: ON"
+                                               : "COMMANDER EXPENDABLE: OFF", true,
+              [this] { createCommanderExp_ = !createCommanderExp_; }); y += 34;
         // SP only: spectate mode -- you take no slot and just watch the AIs fight.
         // Seat AIs in the slots below, then START.
         if (singlePlayer_) {
@@ -351,7 +351,7 @@ std::string mapDisplayName(const std::string& id) {
         lbBtn(kLobbyW - x - bw, by, bw, 30, "CREATE", !createName_.empty(), [this] {
             ta::net::GameOptions o;
             o.overridePolicy = createOverride_;
-            o.monarchExpendable = createMonarchExp_ ? 1 : 0;
+            o.commanderExpendable = createCommanderExp_ ? 1 : 0;
             o.fogExplored = std::min<uint8_t>(createFog_, 2);
             // Stress test only applies to an all-AI spectate game.
             o.stressTest = (singlePlayer_ && spSpectate_ && createStressTest_) ? 1 : 0;

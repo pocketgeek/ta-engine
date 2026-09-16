@@ -37,7 +37,7 @@ static ReplayHeader sample() {
     h.forfeitSelfDestruct = 1;
     h.overridePolicy = 2;
     h.unitCap = 1234;
-    h.monarchExpendable = 1;
+    h.commanderExpendable = 1;
     h.stressTest = 1;
     h.randomStarts = 1;
     h.benchmark = 4;
@@ -76,7 +76,7 @@ int main() {
         check(out.benchmark == in.benchmark, "benchmark intensity (the staged spawns)");
         check(out.dataHash == in.dataHash, "gameplay data hash");
         check(out.unitCap == in.unitCap, "unitCap");
-        check(out.monarchExpendable == in.monarchExpendable, "monarchExpendable");
+        check(out.commanderExpendable == in.commanderExpendable, "commanderExpendable");
         check(out.stressTest == in.stressTest, "stressTest");
         check(out.overridePolicy == in.overridePolicy, "overridePolicy");
         bool slotsOk = true;

@@ -328,7 +328,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                                 * kCobAngle * kTick;
             t.maxHp = float(info->numberOr("maxdamage", 100));
             t.isBuilder = info->numberOr("builder", 0) != 0;
-            t.commander = info->numberOr("commander", 0) != 0;   // the Monarch
+            t.commander = info->numberOr("commander", 0) != 0;   // the Commander
             t.buildTime = float(info->numberOr("buildtime", 0));
             t.workerTime = float(info->numberOr("workertime", 1));
             t.income = float(info->numberOr("mogriumincome", 0));
@@ -2671,7 +2671,7 @@ void World::tickCombat(Unit& u, float dt) {
                    ? 0 : std::clamp(u.weaponSlot, 0, int(u.type->weapons.size()) - 1);
     // Which weapon(s) this unit fights with. Retail splits multi-weapon units in
     // two, on the FBI `weaponswitching` flag (unitdef+0x264 bit 26):
-    //   weaponswitching=1 (24 units, incl. every Monarch and dragon) -- ONE active
+    //   weaponswitching=1 (24 units, incl. every Commander and dragon) -- ONE active
     //     weapon at a time, chosen by the PLAYER from the command panel and held
     //     until switched. There is no cleverness: it starts on WEAPON1 and stays
     //     there. (An earlier pass here had the sim auto-pick the biggest usable
@@ -4483,7 +4483,7 @@ void World::tick(float dt) {
     hits_.clear();   // per-tick weapon impacts (drained by the viewer for sounds/fx)
     clock_ += dt;    // wall-clock since the match started (for god timing)
     // Cosmetic disco emote countdown (Shift+D). Deterministic across peers but not
-    // hashed -- drives client-side monarch dancing only.
+    // hashed -- drives client-side commander dancing only.
     for (auto& tm : players_) {
         if (tm.discoLeft > 0) tm.discoLeft = std::max(0.0f, tm.discoLeft - dt);
         if (tm.headbangLeft > 0) tm.headbangLeft = std::max(0.0f, tm.headbangLeft - dt);
@@ -5963,7 +5963,7 @@ void World::tick(float dt) {
     // they touch. The FBI `damage` is a PER-TICK rate, not a per-hit figure -- the
     // Tornado's 50 is 1500/sec inside its small radius (it wears a unit down over
     // its 9 seconds), while a god vortex's 12500 is simply death to stand in, which
-    // its `monarch = 0.01` row scales back so a Monarch has a few seconds to escape.
+    // its `commander = 0.01` row scales back so a Commander has a few seconds to escape.
     for (size_t i = 0; i < storms_.size();) {
         Storm& s = storms_[i];
         if (!s.w) { storms_.erase(storms_.begin() + std::ptrdiff_t(i)); continue; }
@@ -6308,25 +6308,25 @@ int World::updateOutcome() {
     // alive counts, then per-team. This runs on every sim (referee included),
     // so all peers conclude win/defeat on the same tick.
     std::vector<int> aliveByPlayer(players_.size(), 0);
-    // Living Monarch (commander unit) per player, for the monarch-loss rule.
-    std::vector<int> monarchByPlayer(players_.size(), 0);
+    // Living Commander (commander unit) per player, for the commander-loss rule.
+    std::vector<int> commanderByPlayer(players_.size(), 0);
     for (const auto& u : units_)
         if (u.alive() && u.type &&
             u.player >= 0 && u.player < int(players_.size())) {
             ++aliveByPlayer[size_t(u.player)];
-            if (u.type->commander) ++monarchByPlayer[size_t(u.player)];
+            if (u.type->commander) ++commanderByPlayer[size_t(u.player)];
         }
-    if (hadMonarch_.size() != players_.size()) hadMonarch_.assign(players_.size(), 0);
+    if (hadCommander_.size() != players_.size()) hadCommander_.assign(players_.size(), 0);
     for (int p = 0; p < int(players_.size()); ++p) {
-        if (monarchByPlayer[size_t(p)] > 0) hadMonarch_[size_t(p)] = 1;
-        // No living units OR -- when the Monarch is NOT expendable -- a player who
-        // once fielded a Monarch has now lost it. Both are deterministic and computed
+        if (commanderByPlayer[size_t(p)] > 0) hadCommander_[size_t(p)] = 1;
+        // No living units OR -- when the Commander is NOT expendable -- a player who
+        // once fielded a Commander has now lost it. Both are deterministic and computed
         // identically on every peer + the referee, so win/defeat agree in lockstep.
-        bool monarchDead = !monarchExpendable_ && hadMonarch_[size_t(p)] &&
-                           monarchByPlayer[size_t(p)] == 0;
+        bool commanderDead = !commanderExpendable_ && hadCommander_[size_t(p)] &&
+                           commanderByPlayer[size_t(p)] == 0;
         bool forced = p < int(forcedDefeat_.size()) && forcedDefeat_[size_t(p)];
         bool wasDefeated = players_[size_t(p)].defeated;
-        players_[size_t(p)].defeated = (aliveByPlayer[size_t(p)] == 0) || monarchDead || forced;
+        players_[size_t(p)].defeated = (aliveByPlayer[size_t(p)] == 0) || commanderDead || forced;
         // Stamp the moment of elimination once, for the end-of-game "Time" column.
         if (!wasDefeated && players_[size_t(p)].defeated) players_[size_t(p)].defeatedAt = clock_;
         players_[size_t(p)].unitCount = aliveByPlayer[size_t(p)];   // re-sync the cap count
@@ -6335,8 +6335,8 @@ int World::updateOutcome() {
     // Count DISTINCT teams that still have a living unit (robust to any team id,
     // not just 0..n-1): a surviving player counts its team once -- the first time
     // that team appears among survivors. If exactly one team remains it wins.
-    // A player counts as surviving only if NOT defeated -- so a monarch-loss
-    // elimination (units still alive but the Monarch is dead) removes them from the
+    // A player counts as surviving only if NOT defeated -- so a commander-loss
+    // elimination (units still alive but the Commander is dead) removes them from the
     // running just like being wiped out.
     int survivingTeam = -1, survivingCount = 0;
     for (int p = 0; p < int(players_.size()); ++p) {

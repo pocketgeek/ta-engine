@@ -90,7 +90,7 @@ struct Needs {
     std::unordered_map<const ta::sim::UnitType*, int> counts;
     int   economy = 0;         // count: income/storage structures
     int   factories = 0;       // count: structures that train units
-    int   builders = 0;        // count: mobile builders (incl. the Monarch)
+    int   builders = 0;        // count: mobile builders (incl. the Commander)
     int   army = 0;            // count: mobile combatants
     int   builderCap = 2;      // stop making builders past this (a handful, not a horde)
     int   desiredFactories = 1;// how many factories the current income wants to feed
@@ -147,7 +147,7 @@ private:
     bool nearestEnemyStart(float cx, float cz, float& tx, float& tz) const;
     void sendWaves(const ta::sim::World&, uint32_t simTick, const CommandSink&);
     // The AI's home: the centroid of its own buildings (its base). Used to keep the
-    // Monarch anchored near home for safety instead of wandering to distant builds.
+    // Commander anchored near home for safety instead of wandering to distant builds.
     std::pair<float, float> homeOf(const ta::sim::World&) const;
 
     // A fighter is free to be committed to a wave when it's idle or only doing a plain

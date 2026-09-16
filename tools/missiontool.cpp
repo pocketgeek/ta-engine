@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     int human = 0;
     if (!sim::setupMission(w, reg, vfs, stem, human)) return 1;
     std::printf("=== %s ===\n", stem.c_str());
-    std::printf("placed+monarchs: %zu units at load\n", w.units().size());
+    std::printf("placed+commanders: %zu units at load\n", w.units().size());
     tick(w, 2.0f);   // run Start + settle
     std::printf("after 2s: units=%zu  NPCEMEN=%d ARASWORD=%d  outcome=%d\n",
                 w.units().size(), countType(w, "npcemen"), countType(w, "arasword"), w.missionOutcome());

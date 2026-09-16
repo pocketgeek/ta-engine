@@ -55,7 +55,7 @@ struct Weapon {
     //                   Tracking Arrow, Ball Lightning, dragon fireballs).
     //   Remote Effect-- the effect materialises AT THE TARGET POINT after
     //                   `buildUp`, then fades over `decay` (23: Earthquakes,
-    //                   monarch waves, god spells, Area Mind Control).
+    //                   commander waves, god spells, Area Mind Control).
     //   Wandering    -- a roaming storm entity that drifts for `duration`
     //                   (4: Tornado, Fire/Water Vortex, Hurricane).
     //   Dropped    -- a bomb RELEASED from a flyer: it falls to the ground under
@@ -151,7 +151,7 @@ struct Weapon {
     float shakeDur = 0;         // shakeduration: seconds the shake lasts
     bool  fireStarter = false;  // firestarter: leaves ground fire at the impact
     // Per-target-category damage overrides (DAMAGE keys other than `default`),
-    // keyed by lowercased category token (e.g. "monarch", "dragon", "fort").
+    // keyed by lowercased category token (e.g. "commander", "dragon", "fort").
     std::map<std::string, float> dmgVs;
     // The same overrides with the category token INTERNED to an int, in the string
     // map's order so precedence is identical. damageVs() is the hottest lookup in the
@@ -211,7 +211,7 @@ struct UnitType {
     // structure; used to decide whether a move/attack/patrol order on a BUILDING
     // means "set the rally" rather than "do nothing".
     bool producesUnits() const { return isBuilder && isStructure(); }
-    bool commander = false;   // FBI commander=1: the faction's Monarch (loss condition)
+    bool commander = false;   // FBI commander=1: the faction's Commander (loss condition)
     // Buildings vs mobile units: the reliable test is maxVel. The FBI `canmove`
     // flag is set on some buildings too (e.g. the Keep, or the Taros Hell), so a
     // canMove building would otherwise be mistaken for a mobile builder.
@@ -453,7 +453,7 @@ public:
     const std::vector<std::string>& buildable(const std::string& builderId) const;
     // Mobile, armed combat units of a faction `side` ("ARA".."CRE"), in a fixed
     // (name-sorted) order so every peer builds the same stress-test army. Excludes
-    // structures, builders, the Monarch, and anything with no weapon.
+    // structures, builders, the Commander, and anything with no weapon.
     std::vector<const UnitType*> combatUnits(const std::string& side) const;
     // Intern every category token and resolve the per-weapon overrides against it.
     // Called once after loading; idempotent.
@@ -626,7 +626,7 @@ struct Unit {
     // and SelfDestruct.
     //
     // Defaulting this ON quietly cost Taros its whole economy. tarnecro is the
-    // Taros MONARCH -- a starting unit -- with cancloak=1 and cloakcost=25, so it
+    // A cloaking starting unit with cloakcost=25, so it
     // burned 25 mana/sec against an income of ~21 from the first second of every
     // match: income 21 vs everyone else's 43, one lodestone to their four, and a
     // treasury pinned at 0 that could never reach the ~121 needed to start
@@ -958,12 +958,12 @@ struct Player {
     int   team = 0;
     bool  defeated = false;   // no living units; set by the sim's win check
     float defeatedAt = -1;    // world clock when `defeated` first went true (-1 = still in)
-    // Cosmetic "disco" emote (Shift+D): seconds this player's monarchs keep
+    // Cosmetic "disco" emote (Shift+D): seconds this player's commanders keep
     // dancing. Set by a lockstep Cmd::Disco so every peer agrees on the timing,
     // but it drives client-side eye-candy only and is NOT folded into stateHash
     // (like vis_).
     float discoLeft = 0;
-    // Cosmetic "headbang" emote (Shift+H): seconds this player's monarchs headbang to
+    // Cosmetic "headbang" emote (Shift+H): seconds this player's commanders headbang to
     // heavy metal. Same deal as discoLeft -- synced by Cmd::Headbang, not hashed.
     float headbangLeft = 0;
 };
@@ -1120,11 +1120,11 @@ public:
     // conjuring it (e.g. reviving a decaying site). Resumes at THIS builder's
     // rate from the site's current HP. The caller checks the build tree.
     void assist(int builderId, int siteId, bool queue = false);
-    // Cosmetic emote: make `player`'s monarchs dance for 10s (Cmd::Disco). Not
+    // Cosmetic emote: make `player`'s commanders dance for 10s (Cmd::Disco). Not
     // hashed -- purely for the viewer. discoActive() gates the client animation.
     void startDisco(int player);
     bool discoActive(int player) const;
-    // Cosmetic emote: make `player`'s monarchs headbang for 10s (Cmd::Headbang).
+    // Cosmetic emote: make `player`'s commanders headbang for 10s (Cmd::Headbang).
     void startHeadbang(int player);
     bool headbangActive(int player) const;
     bool canPlace(const UnitType* type, float x, float z) const;
@@ -1285,9 +1285,9 @@ public:
     // Fog-of-war memory (client display only, never hashed): true = a seen cell stays
     // EXPLORED (dimmed) when it leaves sight; false = NOT EXPLORED -- it reverts to dark.
     void setFogExplored(bool e) { fogExplored_ = e; }
-    // Monarch-expendable rule (net GameOptions): when FALSE, losing your Monarch
+    // Commander-expendable rule (net GameOptions): when FALSE, losing your Commander
     // (a commander unit) loses you the game even if other units survive.
-    void setMonarchExpendable(bool e) { monarchExpendable_ = e; }
+    void setCommanderExpendable(bool e) { commanderExpendable_ = e; }
     // Keep this World's intra-tick work on the calling thread (no worker pool). The
     // server sets it on a referee World when it ticks several games IN PARALLEL: the
     // parallelism is already at the game level, so a per-game nested pool would just
@@ -1819,7 +1819,7 @@ private:
     std::vector<DeathBlast> deathBlasts_;
     // Remote Effect (FBI type=Remote Effect): the effect materialises at the AIMED
     // GROUND POINT after `builduptime`, then applies its damage/status/conversion
-    // once over areaofeffect. Earthquakes, monarch waves, god spells, Area Mind
+    // once over areaofeffect. Earthquakes, commander waves, god spells, Area Mind
     // Control. Lives across ticks, so it IS hashed.
     struct PendingEffect {
         const Weapon* w = nullptr;
@@ -1842,9 +1842,9 @@ private:
         return v;
     }();
     int winningTeam_ = -1;
-    bool monarchExpendable_ = true;      // default: Monarch is just a unit (net option overrides)
+    bool commanderExpendable_ = true;      // default: Commander is just a unit (net option overrides)
     bool serialThreads_ = false;
-    std::vector<uint8_t> hadMonarch_;   // per-player: ever fielded a Monarch (for the loss rule)
+    std::vector<uint8_t> hadCommander_;   // per-player: ever fielded a Commander (for the loss rule)
     int unitCap_ = 0;                 // per-player live-unit limit (0 = unlimited)
     float clock_ = 0;
     uint32_t tickCounter_ = 0;   // ticks elapsed; staggers per-unit auto-acquisition

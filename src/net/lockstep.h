@@ -19,7 +19,7 @@ enum class Cmd : uint8_t {
                    // (Train also carries a count in targetId; 0 => 1)
     Assist,        // unitId (a mobile builder) resumes/assists conjuring the
                    // existing construction site targetId (revives a decaying one)
-    Disco,         // cosmetic emote: player's monarchs dance for 10s (Shift+D).
+    Disco,         // cosmetic emote: player's commanders dance for 10s (Shift+D).
                    // Synced via lockstep so all peers see it; affects no sim state.
     Reclaim,       // mobile builder unitId reclaims feature targetId for mana
                    // (right-click-drag issues one per feature in the box, queue=1)
@@ -29,7 +29,7 @@ enum class Cmd : uint8_t {
     SetActive,     // onOffable unitId: targetId != 0 powers on, 0 powers down
     Repair,        // mobile builder unitId repairs damaged friendly targetId (restores
                    // HP at its build rate, draining mana)
-    Headbang,      // cosmetic emote: player's monarchs headbang to metal 10s (Shift+H)
+    Headbang,      // cosmetic emote: player's commanders headbang to metal 10s (Shift+H)
     SetSquad,      // assign unitId to a control squad: targetId = 0 none, +N group N,
                    // -N formation N (N=1..10). A unit is in exactly one squad; formations
                    // move at their slowest member's speed and their stragglers rejoin.

@@ -105,7 +105,7 @@
             localPlayer_ = human;
             world_.setVisPlayer(localPlayer_);
             for (auto& u : world_.units())
-                if (u.player == localPlayer_ && u.type) { playerMonarchId_ = u.id; builderId_ = u.id; break; }
+                if (u.player == localPlayer_ && u.type) { playerCommanderId_ = u.id; builderId_ = u.id; break; }
             if (!missionAllowed_.empty())
                 std::fprintf(stderr, "mission %s: conjure menu restricted to %zu allowed unit types\n",
                              room.mission.c_str(), missionAllowed_.size());
@@ -126,7 +126,7 @@
         // this session's launch map. Point mapPath_ at it AND reload the render terrain
         // (mapView_), so the rendered map, the local sim, and the referee all agree.
         // Without this, picking a non-default map drew the launch map's terrain under a
-        // different map's sim -- phantom water, a monarch out in it, and misaligned fog.
+        // different map's sim -- phantom water, a commander out in it, and misaligned fog.
         if (std::string rp = ta::hpi::findMap(vfs_, room.mapId); !rp.empty()) mapPath_ = rp;
         resetMinimap();   // its thread reads the map being swapped
         loadScreen_->step("LOADING TERRAIN", 30);
@@ -136,7 +136,7 @@
         cfg.vfs = &vfs_;
         cfg.mapPath = mapPath_;
         cfg.unitCap = room.opts.unitCap;
-        cfg.monarchExpendable = room.opts.monarchExpendable != 0;
+        cfg.commanderExpendable = room.opts.commanderExpendable != 0;
         cfg.stressTest = room.opts.stressTest != 0;
         cfg.benchmark = room.opts.benchmark;
         cfg.randomStarts = room.opts.randomStarts != 0;
@@ -179,7 +179,7 @@
                                                              // wasted-visibility work is skipped too
         if (benchmarkMode_) benchmarkBaseline();             // t=0 baseline for the perf samples
         for (auto& u : world_.units())
-            if (u.player == localPlayer_ && u.type) { playerMonarchId_ = u.id; builderId_ = u.id; break; }
+            if (u.player == localPlayer_ && u.type) { playerCommanderId_ = u.id; builderId_ = u.id; break; }
         const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
         side_ = sides[room.slots[localPlayer_].faction % 5];
         loadScreen_->step("LOADING INTERFACE", 90);
@@ -549,7 +549,7 @@ void GameView::autoplayStep() {
             // The remaining room options, as headless knobs: without these a
             // harness could not reach the code they gate.
             o.randomStarts = ta::devFlag("TA_RANDOM_STARTS") ? 1 : 0;
-            o.monarchExpendable = ta::devFlag("TA_MONARCH_EXPENDABLE") ? 1 : 0;
+            o.commanderExpendable = ta::devFlag("TA_COMMANDER_EXPENDABLE") ? 1 : 0;
             o.forfeitSelfDestruct = ta::devFlag("TA_FORFEIT_SELFDESTRUCT") ? 1 : 0;
             // TA_FOG=0|1|2 forces the room's fog rule (not explored / explored /
             // full vision) so the setting can be tested end to end without driving

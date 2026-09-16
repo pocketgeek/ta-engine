@@ -79,27 +79,33 @@ void Controller::emit(const CommandSink& sink, ta::net::Cmd kind, int unitId,
     sink(c);
 }
 
-// What is this unit FOR? Derived purely from its stats, so it works for every faction:
-//   Economy  - a structure that makes/holds mana (lodestone, mana storage)
-//   Factory  - a structure that trains units (keep, castle, hell), OR a mobile
-//              production creature (Zhon's Beast Handlers/Tamers/Lords -- Zhon has
-//              NO static factories, its creatures ARE the production line)
-//   Defense  - any other structure (towers, walls)
-//   Builder  - a mobile unit that builds/expands (Monarch, mason, priest, arabuild)
-//   Army     - any other mobile unit (the combatants)
+// What is this unit FOR? Derived purely from its stats, so it works for any side
+// and any mod:
+//   Economy  - a structure that makes or holds either resource: solar, wind,
+//              tidal, metal extractors, metal makers, storage
+//   Factory  - a structure that builds units, OR a mobile producer
+//   Defense  - any other structure (towers, walls, radar)
+//   Builder  - a mobile unit that builds and expands (the commander, construction
+//              units)
+//   Army     - any other mobile unit
 BuildCat Controller::categoryOf(const ta::sim::UnitType* t) const {
     if (t->isStructure()) {
         if (!registry_.buildable(t->id).empty()) return BuildCat::Factory;
-        if (t->income > 0 || t->storage > 0) return BuildCat::Economy;
+        // Every way a TA building can contribute to the economy. This used to
+        // test the Kingdoms mogrium fields (income/storage), which are zero on
+        // every TA unit -- so solar collectors, wind farms, extractors and storage
+        // all classified as DEFENSE and the AI never built an economy at all.
+        if (t->metalMake > 0 || t->energyMake > 0 ||
+            t->metalStorage > 0 || t->energyStorage > 0 ||
+            t->extractsMetal > 0 || t->makesMetal > 0 ||
+            t->windGenerator > 0 || t->tidalGenerator > 0)
+            return BuildCat::Economy;
         return BuildCat::Defense;
     }
     if (t->isBuilder) {
-        // A mobile builder whose menu is DOMINATED by mobile combat units is really a
-        // factory (Zhon's tamers train armies), not an economy/expansion builder. A
-        // mobile CONSTRUCTOR (arabuild: mostly buildings) or a Monarch (the base
-        // builder) stays a Builder. Without this, every Zhon producer landed in the
-        // builder bucket -- capped at 2-3 -- so the Zhon AI built one Beast Handler
-        // and then stalled with nothing left it wanted to make.
+        // A mobile builder whose menu is DOMINATED by mobile combat units is really
+        // a factory, not an economy/expansion builder. A mobile CONSTRUCTOR (mostly
+        // buildings) or the commander stays a Builder.
         if (!t->commander) {
             int combat = 0, structs = 0;
             for (const auto& id : registry_.buildable(t->id)) {
@@ -246,9 +252,9 @@ bool Controller::produce(const ta::sim::World& world, const ta::sim::Unit& p,
                          const ta::sim::UnitType* pick, const CommandSink& sink) {
     if (pick->isStructure()) {                  // structure
         if (!p.type->isStructure() && p.type->isBuilder) {
-            // The Monarch builds relative to HOME, not wherever it has drifted -- so a
+            // The Commander builds relative to HOME, not wherever it has drifted -- so a
             // lodestone goes on the nearest deposit to the BASE and other structures
-            // ring the base, keeping the Monarch near home instead of trekking across
+            // ring the base, keeping the Commander near home instead of trekking across
             // the map (where losing it can lose the game). Other builders build where
             // they stand.
             float ox = p.x, oz = p.z;
@@ -380,7 +386,7 @@ std::pair<float, float> Controller::homeOf(const ta::sim::World& world) const {
         if (u.type->commander && !haveKing) { kx = u.x; kz = u.z; haveKing = true; }
     }
     if (n) return {float(sx / n), float(sz / n)};   // centroid of my buildings
-    if (haveKing) return {kx, kz};                  // no buildings yet: anchor on the Monarch
+    if (haveKing) return {kx, kz};                  // no buildings yet: anchor on the Commander
     return {0.0f, 0.0f};
 }
 
@@ -477,7 +483,7 @@ void Controller::tick(const ta::sim::World& world, uint32_t simTick,
             producers.push_back(u.id);                        // idle factory
     }
     // Round-robin who acts when the per-think cap is smaller than the producer count
-    // (Easy caps at 1): otherwise the lowest-id producer -- the Monarch -- takes the
+    // (Easy caps at 1): otherwise the lowest-id producer -- the Commander -- takes the
     // only slot every think, so it keeps building economy and the factories never get
     // to train an army. Rotating by the think index gives each producer its turn.
     if (!producers.empty() && dp_.producersPerThink < int(producers.size())) {
@@ -520,9 +526,9 @@ void Controller::tick(const ta::sim::World& world, uint32_t simTick,
                 exclude |= 1 << int(categoryOf(pick));
             }
         }
-    // Keep the Monarch safe: when it's idle (no build this think, no order, no site)
+    // Keep the Commander safe: when it's idle (no build this think, no order, no site)
     // and has strayed beyond a leash of home, walk it back to the base. Losing the
-    // Monarch can lose the game (Monarch Expendable), so it must not sit exposed out
+    // Commander can lose the game (Commander Expendable), so it must not sit exposed out
     // in the field. A plain Move (not AttackMove) -- it retreats, it doesn't hunt.
     for (const auto& u : world.units()) {
         if (!u.alive() || u.player != player_ || !u.type || !u.type->commander) continue;

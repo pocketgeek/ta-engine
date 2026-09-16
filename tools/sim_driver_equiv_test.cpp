@@ -171,8 +171,8 @@ int testSortDeterminism() {
 
 // ---- Part 2: real-world sim equivalence (needs game data) -----------------
 
-// The monarch (first alive unit) of each player, in player order.
-std::vector<int> monarchs(const ta::sim::World& w, int players) {
+// The commander (first alive unit) of each player, in player order.
+std::vector<int> commanders(const ta::sim::World& w, int players) {
     std::vector<int> ids(size_t(players), 0);
     for (const auto& u : w.units())
         if (u.alive() && u.type && u.player >= 0 && u.player < players && ids[size_t(u.player)] == 0)
@@ -208,9 +208,9 @@ int testSimEquivalence(const std::string& mapArg, const std::string& dataRoot) {
         std::printf("sim-equivalence: FAIL -- setupMatch not deterministic (hash differs at tick 0)\n");
         return 1;
     }
-    auto mon = monarchs(A, 2);
+    auto mon = commanders(A, 2);
     if (!mon[0] || !mon[1]) {
-        std::printf("sim-equivalence: SKIP (no monarch spawned)\n");
+        std::printf("sim-equivalence: SKIP (no commander spawned)\n");
         return 0;
     }
 

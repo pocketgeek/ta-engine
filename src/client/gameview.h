@@ -110,7 +110,7 @@ class GameView {
 public:
     // TA's opening force is the COMMANDER and nothing else -- no starting squad,
     // no free production building. Kingdoms handed each of its five houses a
-    // hardcoded kit (monarch + keep + lodestone + builder + a four-unit squad);
+    // hardcoded kit (commander + keep + lodestone + builder + a four-unit squad);
     // there is nothing to hardcode here, because SIDEDATA names the commander and
     // the player builds the rest.
     const char* sideCommander(const std::string& sideName) const {
@@ -340,7 +340,7 @@ public:
         loadFeatures();
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
 
-        // Each side starts with only its Monarch, dropped on the map's real
+        // Each side starts with only its Commander, dropped on the map's real
         // start positions (from the .ota). Pick the two furthest-apart spots
         // so the player and the AI begin on opposite sides.
         auto starts = parseStartPositions();
@@ -360,10 +360,10 @@ public:
         } else if (starts.size() == 1) {
             px = starts[0].first; pz = starts[0].second;
         }
-        // Camera opens on the player's Monarch.
+        // Camera opens on the player's Commander.
         mapView_.setOffset(px - 640 / 0.9f, pz - 400 / 0.9f);
         // Dev harness: TA_FFA=N or TA_FFA=N,t0.t1.t2... sets up an N-player
-        // game (each on its own team unless a team list is given), one monarch +
+        // game (each on its own team unless a team list is given), one commander +
         // a small army per player at N start positions, all AI-driven. Verifies
         // the 8-player / team / shared-vision / win-condition paths before the
         // real lobby exists. (multiplayer M1)
@@ -400,7 +400,7 @@ public:
                         : sideData_.sides[size_t(i) % sideData_.sides.size()].name;
                 float mx = spots[size_t(i)].first, mz = spots[size_t(i)].second;
                 int mon = spawn(sideCommander(sideName), mx, mz, 0, i);
-                if (i == 0) { playerMonarchId_ = mon; builderId_ = mon; }
+                if (i == 0) { playerCommanderId_ = mon; builderId_ = mon; }
                 world_.player(i).metal.cur = 2800;
                 world_.player(i).energy.cur = 2800;
             }
@@ -415,9 +415,9 @@ public:
         // Commanders face one another.
         float pFace = std::atan2(ax - px, az - pz);
         float aFace = std::atan2(px - ax, pz - az);
-        playerMonarchId_ = spawn(sideCommander(side), px, pz, pFace, 0);
-        builderId_ = playerMonarchId_;
-        aiMonarchId_ = spawn(sideCommander(aiSide), ax, az, aFace, 1);
+        playerCommanderId_ = spawn(sideCommander(side), px, pz, pFace, 0);
+        builderId_ = playerCommanderId_;
+        aiCommanderId_ = spawn(sideCommander(aiSide), ax, az, aFace, 1);
         // Enough of both to bootstrap the opening -- some economy and the start
         // of a factory -- without being able to skip economy and rush one to
         // completion.
@@ -465,7 +465,7 @@ public:
     bool headbangWas_[8] = {};    // ...and the headbang state
 
     // On the rising edge of a player's disco (Shift+D), play the 10s disco loop as a
-    // positional SFX from each of that player's dancing monarchs (enemies only if in
+    // positional SFX from each of that player's dancing commanders (enemies only if in
     // view). It runs alongside the faction music -- a dance-floor track from the unit.
     void discoSound();
 
@@ -554,7 +554,7 @@ public:
     // Esc during a run: end the benchmark now. If the sim has started, record a closing
     // sample at the current second and show the stats screen; otherwise bail to the menu.
     void stopBenchmark();
-    // Benchmark flythrough: each 10s leg tracks one AI's monarch (leg 0 -> AI1 .. leg 7 ->
+    // Benchmark flythrough: each 10s leg tracks one AI's commander (leg 0 -> AI1 .. leg 7 ->
     // AI8), starting fully zoomed out and zooming in across the leg, then cutting to the
     // next. Camera only -- view state is never hashed. Called each frame during the run.
     void benchmarkCamera(float dt, int winW, int winH);
@@ -577,7 +577,7 @@ public:
 
     // Set up the world for a multiplayer match from the server's final slot
     // table: one player per used slot (sim player index == slot), teams/colours
-    // per slot, a monarch spawned at a start position each, seeded starting mana.
+    // per slot, a commander spawned at a start position each, seeded starting mana.
     void startMpGame(const ta::net::RoomView& room, uint32_t seed);
 
     // One networked frame: pump the connection, send this frame's local orders,
@@ -1083,7 +1083,7 @@ private:
     // The static index a unit's WALK cycle gates its piece motion on -- the client's
     // state machine sets this to 1 while moving so the walk script actually animates.
     // Most ground units (araking/tarnecro/zonlord) read static 0, but a HOVER unit
-    // like the Veruna monarch (vermage) reads static 3 -- retail's MoveWatcher thread
+    // like the Veruna commander (vermage) reads static 3 -- retail's MoveWatcher thread
     // (which we don't run) fills it. The enabling gate is the FIRST PUSH_STATIC before
     // the walk script's first JUMP_IF_FALSE; decode forward to it, since a few units
     // (e.g. the Taros tarmind) front-load a loop-counter setup before the gate.
@@ -1476,9 +1476,9 @@ private:
     // it is safe to run for many units at once on the worker pool. drawUnit() then
     // just submits g.runs. `scratch` is a reusable per-thread triangle buffer.
     // The commander -- the only thing that disco-dances. Kingdoms matched against
-    // a hardcoded list of its five monarchs; TA reads the flag the FBI already
+    // a hardcoded list of its five MONARCHS; TA reads the flag the FBI already
     // carries, so a modded side's commander dances too.
-    static bool isMonarchType(const ta::sim::UnitType* t) {
+    static bool isCommanderType(const ta::sim::UnitType* t) {
         return t && t->commander;
     }
     // Fully-saturated hue wheel -> RGB, hue in [0,1). Drives the disco tint & floor.
@@ -1490,9 +1490,9 @@ private:
         auto cl = [](float v) { return Uint8(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
         return SDL_Color{cl(r), cl(g), cl(b), 255};
     }
-    // Is this unit currently disco-dancing (a monarch whose player hit Shift+D)?
+    // Is this unit currently disco-dancing (a commander whose player hit Shift+D)?
     bool dancing(const UnitR& u) const;
-    // ...or headbanging to heavy metal (a monarch whose player hit Shift+H)?
+    // ...or headbanging to heavy metal (a commander whose player hit Shift+H)?
     bool headbanging(const UnitR& u) const;
 
     // The projected silhouette for one unit, into g.shadowVerts. Split out because
@@ -1975,7 +1975,7 @@ private:
     // the room is set up -- the host could previously only change it after the
     // game already existed. Default matches GameOptions::fogExplored.
     uint8_t createFog_ = 1;
-    bool createMonarchExp_ = false;   // create dialog: Monarch Expendable (default OFF = monarch matters)
+    bool createCommanderExp_ = false;   // create dialog: Commander Expendable (default OFF = commander matters)
     bool createStressTest_ = false;   // SP spectate: spawn ~95% of each AI's unit cap at start
     // One selectable map plus the attributes the picker can sort by, read once from
     // the map's .ota GlobalHeader (a tiny text file -- no need to decompress the TNT).
@@ -2199,8 +2199,8 @@ private:
     const RingBox& unitRingBox(const ta::sim::UnitType* type);
     // Half-extent of the model's GROUND PLATE -- the flat untextured quad at
     // y = 0 that every TAK unit's root carries (AraGP and friends). It is the
-    // unit's shadow: sized per unit (17.6 for a Monarch, 14.4 for a swordsman),
-    // which is why a Monarch has a shadow in retail despite declaring no
+    // unit's shadow: sized per unit (17.6 for a Commander, 14.4 for a swordsman),
+    // which is why a Commander has a shadow in retail despite declaring no
     // `shadowart` in its FBI. Zero when the model has no such piece.
 
 
@@ -2328,7 +2328,7 @@ public:
     uint32_t soundSeqSeen_ = 0;   // last mission PLAY_SOUND sequence acted on
 private:
     int keepId_ = -1, aiKeepId_ = -1, builderId_ = -1;
-    int playerMonarchId_ = -1, aiMonarchId_ = -1;
+    int playerCommanderId_ = -1, aiCommanderId_ = -1;
     const ta::sim::UnitType* placing_ = nullptr;
     float mouseX_ = -1, mouseY_ = -1;   // -1 until the first real mouse motion, so
                                         // edge-scroll can't fire from a (0,0) default

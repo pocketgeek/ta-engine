@@ -349,7 +349,7 @@ int main(int argc, char** argv) {
                   std::to_string(ticksWithDamage) + " ticks dealt damage");
         }
 
-        // Mind control: the Mind Mage converts an eligible enemy; a Monarch is immune.
+        // Mind control: the Mind Mage converts an eligible enemy; a Commander is immune.
         const sim::UnitType* mage = reg.find("tarmind");
         if (mage && prey && !mage->weapons.empty()) {
             sim::World w; freshWorld(w);
@@ -365,7 +365,7 @@ int main(int argc, char** argv) {
             check(converted, "the Mind Mage CONVERTED an enemy swordsman to its side");
         }
 
-        // A Monarch must be IMMUNE (its DAMAGE category is zeroed) -- and must not
+        // A Commander must be IMMUNE (its DAMAGE category is zeroed) -- and must not
         // be silently damaged by the 1-point nominal damage either.
         const sim::UnitType* king = reg.find("araking");
         if (mage && king) {
@@ -379,7 +379,7 @@ int main(int argc, char** argv) {
                 const sim::Unit* v = w.unit(royal);
                 if (v && v->alive() && v->player == 0) { stolen = true; break; }
             }
-            check(!stolen, "a Monarch resists mind control (commander gate)");
+            check(!stolen, "a Commander resists mind control (commander gate)");
         }
 
     }
@@ -470,7 +470,7 @@ int main(int argc, char** argv) {
             // Elsin carries weaponswitching, so retail holds him on ONE weapon --
             // the one the player picked (WEAPON1 by default). An earlier pass here
             // had the sim auto-pick the biggest usable weapon, which made every
-            // Monarch, dragon and caster markedly stronger than retail.
+            // Commander, dragon and caster markedly stronger than retail.
             check(king->weaponSwitching, "araking carries weaponswitching");
             check(autoN == 1, "Elsin holds ONE weapon (the player's pick), like retail",
                   std::to_string(autoN) + " of 3 used");
@@ -1410,7 +1410,7 @@ int main(int argc, char** argv) {
         breg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
         breg.loadDir(vfs, "units/");
         breg.loadBuildTree(vfs);
-        const sim::UnitType* mon = breg.find("zonhunt");   // the Zhon monarch; a flyer
+        const sim::UnitType* mon = breg.find("zonhunt");   // the Zhon commander; a flyer
         const auto& menu = breg.buildable("zonhunt");
         check(mon && mon->isBuilder && !menu.empty(), "zonhunt is a builder with a menu");
         if (mon && !menu.empty()) {

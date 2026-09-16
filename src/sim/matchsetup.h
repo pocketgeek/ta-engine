@@ -3,7 +3,7 @@
 // SDL-free match setup shared by the taclient client and the taserver referee
 // sim (docs/multiplayer-design.md, M4). Both must build a BIT-IDENTICAL initial
 // world -- same terrain, feature nav-blocking, mana deposits, players, teams,
-// and monarch spawns -- so their state hashes agree in lockstep.
+// and commander spawns -- so their state hashes agree in lockstep.
 
 #include <string>
 #include <utility>
@@ -39,7 +39,7 @@ struct MatchConfig {
     std::vector<MatchSlot> slots;   // index = player; sized to the player count
     float startMana = 2800;
     int unitCap = 2000;             // per-player live-unit limit (0 = unlimited)
-    bool monarchExpendable = true;  // false = losing your Monarch loses the game
+    bool commanderExpendable = true;  // false = losing your Commander loses the game
     bool stressTest = false;        // spawn each player at ~95% of the unit cap in combat
                                     // units at setup (SP all-AI load test)
     // Random Start Locations: shuffle which start position each slot takes, so a

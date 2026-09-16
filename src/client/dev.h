@@ -13,7 +13,7 @@ namespace ta {
 
 // Boolean form of devEnv. Reads the VALUE, so a harness can turn a flag OFF by setting
 // it to 0 -- which matters the moment any of these becomes a default-on knob: the
-// presence test these all used meant TA_MONARCH_EXPENDABLE=0 switched the option ON,
+// presence test these all used meant TA_COMMANDER_EXPENDABLE=0 switched the option ON,
 // which is exactly what someone writing a control case would type. Unset is `def`.
 inline bool devFlag(const char* name, bool def = false);
 

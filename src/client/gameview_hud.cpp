@@ -1829,7 +1829,7 @@ char taPanelCommand(const std::string& name) {
         for (int t = 0; t < np; ++t) {
             if (!board && cnt[t] == 0) continue;
             // A slot nobody ever occupied has never spawned anything -- not even a
-            // Monarch, which every real player gets at setup. Those used to be listed
+            // Commander, which every real player gets at setup. Those used to be listed
             // on the F4 board as defeated, so an 8-slot game with 3 players showed five
             // phantom opponents marked OUT. Skip them entirely; `built` is the end-of-
             // game spawn counter, so a real player is >= 1 from the first tick and a

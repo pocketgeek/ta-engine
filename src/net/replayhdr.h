@@ -42,7 +42,7 @@ struct ReplayHeader {
     uint8_t forfeitSelfDestruct = 0;
     uint8_t overridePolicy = 1;
     uint32_t unitCap = 0;
-    uint8_t monarchExpendable = 0, stressTest = 0, randomStarts = 0;
+    uint8_t commanderExpendable = 0, stressTest = 0, randomStarts = 0;
     uint8_t benchmark = 0;        // benchmark intensity (0 = off)
     uint32_t seed = 0;
     uint64_t dataHash = 0;        // hpi::gameplayHash of the data the game ran on
@@ -67,7 +67,7 @@ inline void writeReplayHeader(Writer& w, const ReplayHeader& h) {
     w.u8(h.forfeitSelfDestruct);
     w.u8(h.overridePolicy);
     w.u32(h.unitCap);
-    w.u8(h.monarchExpendable);
+    w.u8(h.commanderExpendable);
     w.u8(h.stressTest);
     w.u32(h.seed);
     // --- format 6 ---
@@ -98,8 +98,8 @@ inline bool readReplayHeader(Reader& r, ReplayHeader& h, uint32_t& fmt, uint32_t
     if (fmt >= 2) h.overridePolicy = r.u8();
     h.unitCap = 0;                       // fmt<3 ran without a unit cap
     if (fmt >= 3) h.unitCap = r.u32();
-    h.monarchExpendable = 1;             // fmt<4 ran monarch-expendable
-    if (fmt >= 4) h.monarchExpendable = r.u8();
+    h.commanderExpendable = 1;             // fmt<4 ran commander-expendable
+    if (fmt >= 4) h.commanderExpendable = r.u8();
     if (fmt >= 5) h.stressTest = r.u8();
     h.seed = r.u32();
     if (fmt >= 6) {

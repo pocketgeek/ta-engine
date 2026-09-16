@@ -508,7 +508,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         world.player(i).incomeMult = cfg.slots[i].manaMult;   // Absurd AI = 2x income
     }
     world.setUnitCap(cfg.unitCap);
-    world.setMonarchExpendable(cfg.monarchExpendable);
+    world.setCommanderExpendable(cfg.commanderExpendable);
 
     // Assign the used slots to start positions (ring fallback if the map has too few).
     int used = 0;
@@ -701,9 +701,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         }
         return false;                             // the map really is full
     };
-    // The Monarch is placed before any of this and was never reserved, so a snapped
+    // The Commander is placed before any of this and was never reserved, so a snapped
     // unit could be sent to stand on top of it. Claim its square up front.
-    auto claimMonarch = [&](const UnitType* t, float ux, float uz) {
+    auto claimCommander = [&](const UnitType* t, float ux, float uz) {
         if (!t || t->canFly) return;
         const int foot = std::clamp(std::max(t->footX, t->footZ), 1, 15);
         claimFoot(int(ux) / 16, int(uz) / 16, foot);
@@ -723,16 +723,16 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         // The side's commander, straight out of SIDEDATA. A slot pointing past
         // the side list (a stale lobby, a modded install with fewer sides) falls
         // back to side 0 rather than spawning nothing.
-        const UnitType* monarch = nullptr;
+        const UnitType* commander = nullptr;
         if (!commanders.empty()) {
             size_t si = size_t(cfg.slots[i].faction) % commanders.size();
-            monarch = reg.find(commanders[si]);
+            commander = reg.find(commanders[si]);
         }
         float mx = spots[size_t(spot)].first, mz = spots[size_t(spot)].second;
         assigned.push_back({mx, mz});
         ++spot;
-        world.spawn(monarch, mx, mz, 0, i);
-        claimMonarch(monarch, mx, mz);   // nothing else may be snapped onto it
+        world.spawn(commander, mx, mz, 0, i);
+        claimCommander(commander, mx, mz);   // nothing else may be snapped onto it
         world.player(i).metal.cur = cfg.startMana;
         world.player(i).energy.cur = cfg.startMana;
 
@@ -741,10 +741,10 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         // combat units right now, so an all-AI game starts under a heavy sim load.
         // Deterministic: fixed roster (name-sorted), round-robin, grid placement --
         // every peer builds the identical army, so lockstep holds.
-        if (cfg.stressTest && monarch) {
+        if (cfg.stressTest && commander) {
             // Land+air combat units only (exclude Water-domain so no boats spawn on land).
             std::vector<const UnitType*> roster;
-            for (const UnitType* t : reg.combatUnits(monarch->side))
+            for (const UnitType* t : reg.combatUnits(commander->side))
                 if (t->domain != UnitType::Domain::Water) roster.push_back(t);
             int cap = cfg.unitCap > 0 ? cfg.unitCap : 1000;   // unlimited -> a sane default
             int target = (cap * 95) / 100;
@@ -782,7 +782,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 // so units spawned inside each other would simply stay that way.
                 const float spacing = 24.0f;
                 float x0 = mx - float(cols) * spacing * 0.5f; // centre the block on the start
-                float z0 = mz + spacing;                      // just south of the Monarch
+                float z0 = mz + spacing;                      // just south of the Commander
                 for (int k = 0; k < target; ++k) {
                     const UnitType* t = roster[size_t(k) % roster.size()];
                     float ux = x0 + float(k % cols) * spacing;
@@ -797,9 +797,9 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         // Benchmark: append this faction's staged units (land+air combat only -- Water-
         // domain excluded, so no boats on land) to the plan, on a deterministic grid
         // centred on the start. Same roster/order/grid on every peer -> lockstep.
-        if (cfg.benchmark && monarch) {
+        if (cfg.benchmark && commander) {
             std::vector<const UnitType*> roster;
-            for (const UnitType* t : reg.combatUnits(monarch->side))
+            for (const UnitType* t : reg.combatUnits(commander->side))
                 if (t->domain != UnitType::Domain::Water) roster.push_back(t);
             if (!roster.empty()) {
                 // Cap the plan at what the map can hold, exactly as the stress fill
@@ -832,7 +832,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         }
     }
     if (cfg.benchmark) world.setBenchmarkPlan(std::move(benchPlan), 1800);   // end at tick 1800 (60s)
-    // Block the (structure) footprints just spawned. Monarchs move, so this is a
+    // Block the (structure) footprints just spawned. Commanders move, so this is a
     // no-op today, but it mirrors the client and covers any non-mover spawns.
     for (auto& u : world.units()) {
         // isStructure (maxVel <= 0), not canMove: see the note in World::startBuild --
@@ -880,7 +880,7 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
         int slot = int(slots.size());
         otaToWorld[n] = slot;
         MatchSlot s;
-        s.used = false;   // no monarch spawn -- units come from [Map Data][units]
+        s.used = false;   // no commander spawn -- units come from [Map Data][units]
         s.team = def.find("opponent") != std::string::npos ? 1 : 0;
         for (int f = 0; f < 5; ++f) if (def.find(kingdoms[f]) != std::string::npos) s.faction = f;
         slots.push_back(s);
@@ -900,7 +900,7 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     MatchConfig cfg;
     cfg.vfs = &vfs;
     cfg.mapPath = base + ".tnt";
-    cfg.slots = slots;                 // no used slots -> setupMatch spawns no monarchs
+    cfg.slots = slots;                 // no used slots -> setupMatch spawns no commanders
     cfg.unitCap = int(gh->numberOr("maxunits", 500));
     setupMatch(world, reg, cfg);       // terrain + features + player teams
     if (gh->numberOr("waterdoesdamage", 0) != 0)

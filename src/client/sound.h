@@ -173,7 +173,7 @@ public:
     }
 
     // Move the world source of any currently-playing copies of `name` (e.g. keep the
-    // disco pinned to a monarch that walks off). setListener re-pans from the new point.
+    // disco pinned to a commander that walks off). setListener re-pans from the new point.
     void repositionWorld(const std::string& name, float x, float z) {
         if (!dev_) return;
         std::string n = name;

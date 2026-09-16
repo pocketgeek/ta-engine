@@ -72,9 +72,9 @@
         float zIn = std::max(zOut * 2.5f, 1.6f);  // a clear close-up, comfortably above zOut
         float z = zOut + (zIn - zOut) * p;
         mapView_.setZoom(z);
-        // Track this leg's AI monarch (player == leg) from the render snapshot.
+        // Track this leg's AI commander (player == leg) from the render snapshot.
         for (const UnitR* u : front().live)
-            if (u && u->player == leg && isMonarchType(u->type)) {
+            if (u && u->player == leg && isCommanderType(u->type)) {
                 mapView_.setOffset(u->x - winW * 0.5f / z, u->z - winH * 0.5f / z);
                 break;
             }

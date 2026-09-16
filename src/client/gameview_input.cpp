@@ -255,7 +255,7 @@
             dragging_ = false;
             // Screen-space marquee: a unit is boxed by where it's DRAWN (terrain lift
             // + flyer altitude), not its flat ground cell -- else a lifted/airborne
-            // unit (e.g. the flying Monarch) escapes a box drawn around its sprite.
+            // unit (e.g. the flying Commander) escapes a box drawn around its sprite.
             uint16_t selMod = SDL_GetModState();
             bool addSel = (selMod & KMOD_SHIFT) != 0;   // Shift: add to the selection
             bool subSel = (selMod & KMOD_CTRL) != 0;    // Ctrl:  remove from it
@@ -266,7 +266,7 @@
             if (isClick) {
                 // Pick the unit nearest the cursor in SCREEN space (matching the
                 // render lift + flyer altitude), so a unit on a lifted wall top or a
-                // Monarch cruising overhead is selected where it's drawn.
+                // Commander cruising overhead is selected where it's drawn.
                 float ccx = (dragX0_ + dragX1_) / 2, ccy = (dragY0_ + dragY1_) / 2;
                 int hit = -1;
                 float best = 1e30f;

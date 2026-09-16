@@ -18,7 +18,7 @@
         winW_ = winW;
         winH_ = winH;
         manageMusic();
-        discoSound();     // fire the disco track from a monarch when its player starts dancing
+        discoSound();     // fire the disco track from a commander when its player starts dancing
         headbangSound();  // ...and the metal track on headbang
         // The loading plate owns the screen from world setup until the first tick,
         // so the wait on the other players isn't a frozen lobby frame. It presents
@@ -1625,7 +1625,7 @@
         // reported. The hit box already used isStructure(), so the body and the box
         // disagreed for those 13 as well.
         float facing = isStructure(u.type) ? 0.0f : -ih;
-        // Disco emote: a dancing monarch spins, bobs and hue-cycles. Local wall-time
+        // Disco emote: a dancing commander spins, bobs and hue-cycles. Local wall-time
         // (animClock_) drives the smooth motion; world_.discoActive() (a synced sim
         // timer) gates it. Pure client-side eye-candy -- nothing here is hashed.
         bool disco = dancing(u);
@@ -1798,7 +1798,7 @@
         // MOD blend, darken it twice over. (This used to say the pass composited a
         // coverage mask; the mask is gone, but the conclusion is unchanged -- one
         // shadow per unit, drawn in pass 1.)
-        // Disco dance floor: a pulsing, hue-cycling glow disc under a dancing monarch.
+        // Disco dance floor: a pulsing, hue-cycling glow disc under a dancing commander.
         if (dancing(u)) {
             float t = animClock_;
             SDL_Color dc = discoHue(t * 0.8f + 0.5f);   // offset from the body tint
