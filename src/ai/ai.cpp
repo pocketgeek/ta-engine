@@ -12,28 +12,128 @@
 
 namespace ta::ai {
 
+// Parse a decimal weight into HUNDREDTHS without going through floating point:
+// the profile is read on the server, whose picks drive commands every peer then
+// applies, so the text must land on the same integer everywhere. Accepts "2",
+// "0.2", ".1", "1.25"; extra decimals are truncated. Returns false for a token
+// that is not a number at all (retail ships `Limit ARMSABO` with no value).
+static bool parseHundredths(const std::string& s, int& out) {
+    size_t i = 0;
+    bool neg = false;
+    if (i < s.size() && (s[i] == '+' || s[i] == '-')) neg = s[i++] == '-';
+    int whole = 0, frac = 0, fracDigits = 0;
+    bool anyDigit = false;
+    for (; i < s.size() && s[i] >= '0' && s[i] <= '9'; ++i) {
+        anyDigit = true;
+        if (whole < 1000000) whole = whole * 10 + (s[i] - '0');
+    }
+    if (i < s.size() && s[i] == '.') {
+        ++i;
+        for (; i < s.size() && s[i] >= '0' && s[i] <= '9'; ++i) {
+            anyDigit = true;
+            if (fracDigits < 2) { frac = frac * 10 + (s[i] - '0'); ++fracDigits; }
+        }
+    }
+    if (!anyDigit || i != s.size()) return false;
+    while (fracDigits < 2) { frac *= 10; ++fracDigits; }
+    out = whole * 100 + frac;
+    if (neg) out = -out;
+    return true;
+}
+
+const Plan& Profile::forDifficulty(Difficulty d) const {
+    // Five difficulties over three shipped plans. Passive is Easy that never
+    // attacks and Absurd is Hard with an income cheat, so both share their
+    // sibling's build plan -- the difference between them lives in DiffParams.
+    switch (d) {
+        case Difficulty::Passive:
+        case Difficulty::Easy:   return easy;
+        case Difficulty::Hard:
+        case Difficulty::Absurd: return hard;
+        case Difficulty::Normal:
+        default:                 return medium;
+    }
+}
+
 Profile loadProfile(const ta::hpi::Vfs& vfs, const std::string& name) {
-    Profile prof;
-    // Campaign missions name their own build profile in the .ota (`aiprofile=`),
-    // and retail ships a dozen of them (ai/mission18.txt, ai/takx07.txt...) tuned
-    // for that mission's opposition. Fall back to default.txt when the named one
-    // is absent -- most missions just say DEFAULT.
+    // Campaign missions and maps name their own build profile (the .ota's
+    // `aiprofile=`), and retail ships a dozen of them (ai/Metal.txt,
+    // ai/SeaBattle.TXT...) tuned for that map's shape. Fall back to DEFAULT.TXT
+    // when the named one is absent.
     std::string path = "ai/" + name + ".txt";
     if (name.empty() || !vfs.has(path)) path = "ai/default.txt";
-    if (!vfs.has(path)) return prof;
+    if (!vfs.has(path)) return Profile{};
     auto b = vfs.read(path);
-    std::istringstream f(std::string(b.begin(), b.end()));
-    std::string kw, unit;
-    int v;
+    return parseProfile(std::string(b.begin(), b.end()));
+}
+
+Profile parseProfile(const std::string& text) {
+    Profile prof;
+    std::istringstream f(text);
+
+    // Lines before the first `plan` apply to EVERY plan: the base game's
+    // DEFAULT.TXT states its six global weight tweaks and `limit special 10`
+    // that way, then narrows per difficulty below.
+    Plan* targets[3] = {&prof.easy, &prof.medium, &prof.hard};
+    int nTargets = 3;
+
     for (std::string line; std::getline(f, line);) {
-        if (line.size() < 2 || line[0] == '/') continue;
+        // Strip the comment tail and any stray CR before tokenising, so a line
+        // written `weight armrl 2 // encourage rockets` still parses.
+        if (size_t c = line.find("//"); c != std::string::npos) line.resize(c);
         std::istringstream ss(line);
-        if (!(ss >> kw >> unit >> v)) continue;
+        std::string kw, unit, val;
+        if (!(ss >> kw)) continue;
+        std::transform(kw.begin(), kw.end(), kw.begin(), ::tolower);
+        if (kw == "plan") {
+            if (!(ss >> unit)) continue;
+            std::transform(unit.begin(), unit.end(), unit.begin(), ::tolower);
+            if (unit == "easy")        { targets[0] = &prof.easy;   nTargets = 1; }
+            else if (unit == "medium") { targets[0] = &prof.medium; nTargets = 1; }
+            else if (unit == "hard")   { targets[0] = &prof.hard;   nTargets = 1; }
+            continue;
+        }
+        if (kw != "weight" && kw != "limit") continue;
+        if (!(ss >> unit >> val)) continue;   // `Limit ARMSABO` (no value) ships in MISSIONS.TXT
         std::transform(unit.begin(), unit.end(), unit.begin(), ::tolower);
-        if (kw == "weight") prof.weight[unit] = v;
-        else if (kw == "limit") prof.limit[unit] = v;
+        int v = 0;
+        if (!parseHundredths(val, v)) continue;
+        for (int i = 0; i < nTargets; ++i) {
+            if (kw == "weight") targets[i]->weight[unit] = v;
+            // A limit is a whole number of units; the file never writes a
+            // fractional one, so drop the hundredths scaling here.
+            else                targets[i]->limit[unit] = v / 100;
+        }
     }
     return prof;
+}
+
+// Resolve `t` against `plan`, trying its unit id first and then each of its FBI
+// category tags. A unit-id entry is the author being specific about this exact
+// unit, so it wins outright rather than compounding with its categories.
+int profileWeight(const Plan& plan, const ta::sim::UnitType& t) {
+    if (auto it = plan.weight.find(t.id); it != plan.weight.end()) return it->second;
+    // Categories compound: ARMCK is `arm` (0.2, a blanket damper retail applies to
+    // both sides) and `constr` (3, the role boost), and retail's behaviour -- a
+    // steady trickle of construction units rather than none or a swarm -- only
+    // falls out if those multiply to 0.6 rather than either one winning alone.
+    long w = kWeightOne;
+    for (const auto& c : t.categories) {
+        auto it = plan.weight.find(c);
+        if (it != plan.weight.end()) w = w * it->second / kWeightOne;
+    }
+    return int(std::clamp<long>(w, 0, 1000000));
+}
+
+int profileLimit(const Plan& plan, const ta::sim::UnitType& t) {
+    if (auto it = plan.limit.find(t.id); it != plan.limit.end()) return it->second;
+    int lim = -1;
+    for (const auto& c : t.categories) {
+        auto it = plan.limit.find(c);
+        if (it == plan.limit.end()) continue;
+        lim = lim < 0 ? it->second : std::min(lim, it->second);
+    }
+    return lim;
 }
 
 DiffParams paramsFor(Difficulty d) {
@@ -182,12 +282,12 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
     // never traps itself on a site the mana runs dry beneath).
     auto usable = [&](const ta::sim::UnitType* ut) -> int {
         if (!ut) return 0;
-        auto wi = profile_.weight.find(ut->id);
-        int w = wi == profile_.weight.end() ? 0 : wi->second;
+        const Plan& plan = profile_.forDifficulty(diff_);
+        int w = profileWeight(plan, *ut);
         if (w <= 0) return 0;
-        auto li = profile_.limit.find(ut->id);
-        int lim = li == profile_.limit.end() ? -1 : li->second;
-        if (lim >= 0) {
+        int lim = profileLimit(plan, *ut);
+        if (lim == 0) return 0;      // an explicit `limit <x> 0` means never build x
+        if (lim > 0) {
             auto ci = needs.counts.find(ut);
             if ((ci == needs.counts.end() ? 0 : ci->second) >=
                 std::max(1, lim * dp_.limitScale / 100))
@@ -211,17 +311,16 @@ const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
     // "every menu entry scored 0", and this says which gate did it.
     static const bool kPickLog = std::getenv("TA_AI_PICK") != nullptr;
     if (kPickLog && best <= 0) {
-        std::fprintf(stderr, "    pick %s: nothing usable (mana=%.0f income=%.0f)\n",
+        std::fprintf(stderr, "    pick %s: nothing usable (metal=%.0f income=%.0f)\n",
                      producer.type->id.c_str(), world.player(player_).metal.cur, income);
         for (const auto& id : menu) {
             const auto* ut = registry_.find(id);
             if (!ut) { std::fprintf(stderr, "      %-9s MISSING from registry\n", id.c_str()); continue; }
-            auto wi = profile_.weight.find(ut->id);
-            const int w = wi == profile_.weight.end() ? -1 : wi->second;
+            const Plan& plan = profile_.forDifficulty(diff_);
+            const int w = profileWeight(plan, *ut);
             auto ci = needs.counts.find(ut);
             const int have = ci == needs.counts.end() ? 0 : ci->second;
-            auto li = profile_.limit.find(ut->id);
-            const int lim = li == profile_.limit.end() ? -1 : li->second;
+            const int lim = profileLimit(plan, *ut);
             const float secs = ut->buildTime / std::max(producer.type->workerTime, 1.0f);
             std::fprintf(stderr, "      %-9s w=%d lim=%d have=%d cost=%.0f btime=%.0f "
                                  "afford=%s cat=%d usable=%d\n",

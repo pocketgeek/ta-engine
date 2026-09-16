@@ -849,6 +849,27 @@ void World::setTerrain(const std::vector<uint8_t>& heights, int w, int h, int se
             int d = seaLevel - int(heights[size_t(z) * w + x]);
             depth_[size_t(z) * w + x] = uint8_t(std::clamp(d, 0, 255));
         }
+    // TA_TERRAIN: why a map refuses buildings. Placement and pathing both bottom
+    // out in the nav grids, and when those come back near-empty the symptom is
+    // silent -- an AI that picks a building every think and sites none of it, with
+    // no error. Report what the terrain actually yielded.
+    if (std::getenv("TA_TERRAIN")) {
+        long walk = 0, wet = 0, blocked = 0, steep = 0;
+        for (int z = 0; z < h; ++z)
+            for (int x = 0; x < w; ++x) {
+                if (nav_.walkable(x, z)) ++walk;
+                if (depth_[size_t(z) * w + x] > 0) ++wet;
+                if (obst_[size_t(z) * w + x]) ++blocked;
+                if (slope_[size_t(z) * w + x] > 30) ++steep;
+            }
+        const long n = long(w) * h;
+        std::fprintf(stderr,
+            "terrain: %dx%d sea=%d  ground-walkable %ld/%ld (%.1f%%)  "
+            "water %.1f%%  occluded %.1f%%  slope>30 %.1f%%\n",
+            w, h, seaLevel, walk, n, 100.0 * double(walk) / double(n),
+            100.0 * double(wet) / double(n), 100.0 * double(blocked) / double(n),
+            100.0 * double(steep) / double(n));
+    }
     // Fog starts FULLY UNEXPLORED the moment terrain exists: before this, vis_ was
     // allocated lazily by the first updateVisibility (0.25s into the sim), and an
     // empty vis_ makes drawFog skip and cellVisible() report everything visible --
@@ -3100,7 +3121,26 @@ void World::rebuildGrid() {
     }
 }
 
+// TA_PLACE: which test refused a building site. Placement failure is the most
+// silent failure mode in the sim -- an AI that picks a building every think and
+// sites none of it looks exactly like an AI with an empty build menu -- so the
+// rejection reason is worth being able to ask for.
+#define TA_PLACE_NO(reason)                                                        \
+    do {                                                                           \
+        if (kPlaceLog)                                                             \
+            std::fprintf(stderr,                                                   \
+                "    canPlace %s at (%.0f,%.0f) cell(%d,%d) foot %dx%d: NO -- %s"   \
+                " [class grid %s; legacy ground %s]\n",                             \
+                type->id.c_str(), double(x), double(z),                            \
+                int(x) / 16 - type->footX / 2, int(z) / 16 - type->footZ / 2,       \
+                type->footX, type->footZ, reason,                                   \
+                navFor(type).walkable(int(x) / 16, int(z) / 16) ? "ok" : "blocked",  \
+                nav_.walkable(int(x) / 16, int(z) / 16) ? "ok" : "blocked");         \
+        return false;                                                              \
+    } while (0)
+
 bool World::canPlace(const UnitType* type, float x, float z) const {
+    static const bool kPlaceLog = std::getenv("TA_PLACE") != nullptr;
     if (!type) return false;
     // Lodestones must sit on a mana deposit — but only on maps that have any
     // (deposit-less maps let them build on open ground). And only ONE lodestone
@@ -3113,7 +3153,7 @@ bool World::canPlace(const UnitType* type, float x, float z) const {
             float d = dx * dx + dz * dz;
             if (d < best) { best = d; spot = int(i); }
         }
-        if (spot < 0) return false;   // not on any deposit
+        if (spot < 0) TA_PLACE_NO("not on a metal deposit");
         float sx = manaSpots_[size_t(spot)].first, sz = manaSpots_[size_t(spot)].second;
         // One lodestone per deposit. Some Sacred Stones register as two adjacent
         // spots (~22-40px apart); a 44px exclusion merges those into one deposit
@@ -3121,7 +3161,7 @@ bool World::canPlace(const UnitType* type, float x, float z) const {
         for (const auto& u : units_) {
             if (!u.alive() || !u.type || !u.type->onMana) continue;
             float dx = u.x - sx, dz = u.z - sz;
-            if (dx * dx + dz * dz < 44.0f * 44.0f) return false;   // deposit taken
+            if (dx * dx + dz * dz < 44.0f * 44.0f) TA_PLACE_NO("deposit already taken");
         }
     }
     // Check the domain-appropriate grid so water units (Kraken) require water
@@ -3144,11 +3184,11 @@ bool World::canPlace(const UnitType* type, float x, float z) const {
             for (int i = 0; i < type->footX; ++i) {
                 char c = type->yardMap[size_t(j) * type->footX + i];
                 if (c == 'w' || c == 'W') {
-                    if (!navWater_.walkable(cx + i, cz + j)) return false;   // slipway needs water
+                    if (!navWater_.walkable(cx + i, cz + j)) TA_PLACE_NO("slipway cell not water");
                 } else if (c == '.' || c == ' ') {
                     continue;                                                // not part of the footprint
                 } else if (!nav_.walkable(cx + i, cz + j)) {
-                    return false;                                           // land base needs land
+                    TA_PLACE_NO("land base cell not walkable");
                 }
             }
     } else if (!type->yardMap.empty()) {
@@ -3162,21 +3202,23 @@ bool World::canPlace(const UnitType* type, float x, float z) const {
             for (int i = 0; i < type->footX; ++i) {
                 char c = type->yardMap[size_t(j) * type->footX + i];
                 if (c == '.' || c == ' ') continue;
-                if (!grid.walkable(cx + i, cz + j)) return false;
+                if (!grid.walkable(cx + i, cz + j)) TA_PLACE_NO("yardmap cell not walkable");
             }
     } else {
         for (int j = 0; j < type->footZ; ++j)
             for (int i = 0; i < type->footX; ++i)
-                if (!grid.walkable(cx + i, cz + j)) return false;
+                if (!grid.walkable(cx + i, cz + j)) TA_PLACE_NO("footprint cell not walkable");
     }
     for (const auto& u : units_) {
         if (!u.alive()) continue;
         float dx = u.x - x, dz = u.z - z;
         float min = 16.0f * float(std::max(type->footX, type->footZ)) / 2 + 12;
-        if (dx * dx + dz * dz < min * min) return false;
+        if (dx * dx + dz * dz < min * min) TA_PLACE_NO("too close to an existing unit");
     }
     return true;
 }
+
+#undef TA_PLACE_NO
 
 bool World::clearableForPlacement(const UnitType* type, float x, float z,
                                   std::vector<int>& out) const {

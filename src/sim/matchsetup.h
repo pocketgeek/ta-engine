@@ -84,6 +84,12 @@ void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs);
 std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
                                                          const std::string& mapPath);
 
+// Parse the same start positions straight from .ota text, so the file's nesting
+// ([GlobalHeader][Schema N][specials]) and its WORLD-unit coordinates can be
+// pinned in CI without a retail install.
+std::vector<std::pair<float, float>> parseStartPositionsText(
+    const std::string& text, const std::string& origin = "<memory>");
+
 // Build the world for a match. Idempotent w.r.t. terrain (setTerrain rebuilds the
 // nav grid), so it may run after a client has already loaded the map for render.
 // Returns the start position assigned to each USED slot, in slot order (for the

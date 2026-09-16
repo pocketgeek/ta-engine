@@ -194,12 +194,26 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
     ota.replace_extension(".ota");
     std::string otaPath = ota.generic_string();
     if (!vfs.has(otaPath)) return out;
+    auto b = vfs.read(otaPath);
+    return parseStartPositionsText(std::string(b.begin(), b.end()), otaPath);
+}
+
+std::vector<std::pair<float, float>> parseStartPositionsText(const std::string& text,
+                                                             const std::string& origin) {
+    std::vector<std::pair<float, float>> out;
     try {
-        auto b = vfs.read(otaPath);
-        auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
+        auto root = ta::tdf::parseText(text, origin);
         const auto* gh = root.child("globalheader");
-        const auto* md = gh ? gh->child("map data") : nullptr;
-        const auto* sp = md ? md->child("specials") : nullptr;
+        if (!gh) return out;
+        // Start positions live PER SCHEMA: [GlobalHeader][Schema N][specials]
+        // [specialN]{ specialwhat=StartPosK; XPos; ZPos }. Take the first schema
+        // that declares any, matching parseMapEconomy's walk just above.
+        const ta::tdf::Node* sp = nullptr;
+        for (const auto& name : gh->childOrder) {
+            const auto* sc = gh->child(name);
+            if (!sc || name.rfind("schema", 0) != 0) continue;
+            if (const auto* cand = sc->child("specials")) { sp = cand; break; }
+        }
         if (!sp) return out;
         std::map<int, std::pair<float, float>> byIndex;
         for (const auto& name : sp->childOrder) {
@@ -209,8 +223,15 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
             if (what.rfind("StartPos", 0) != 0 && what.rfind("startpos", 0) != 0) continue;
             int n = std::atoi(what.c_str() + 8);
             if (n <= 0) continue;
-            byIndex[n] = {float(s->numberOr("xpos", 0) * 16),
-                          float(s->numberOr("zpos", 0) * 16)};
+            // XPos/ZPos are already WORLD units, not cells. Scaling them by 16
+            // (the Kingdoms convention) put every start position tens of thousands
+            // of pixels off the map, so setupMatch fell back to spreading players
+            // around the map centre -- which on a coastal map like Coast To Coast
+            // drops both Commanders in open ocean. Every building then fails to
+            // site, and an AI that cannot place anything looks identical to one
+            // with an empty build menu.
+            byIndex[n] = {float(s->numberOr("xpos", 0)),
+                          float(s->numberOr("zpos", 0))};
         }
         for (auto& [n, pos] : byIndex) out.push_back(pos);
     } catch (const std::exception&) {}

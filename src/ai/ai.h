@@ -23,17 +23,51 @@
 
 namespace ta::ai {
 
-// The retail AI profile (ai/default.txt): per-unit build weight and hard limit.
-// weight = probability share in the weighted-random build pick; limit = hard cap
-// (-1 = unlimited). Missing weight => the AI never builds that unit.
-struct Profile {
-    std::unordered_map<std::string, int> weight, limit;
+// Build weights are FIXED-POINT HUNDREDTHS. 100 (== 1.0) is the weight of a unit
+// the profile never mentions, which is the load-bearing rule of TA's format: the
+// file states ADJUSTMENTS to a flat default, not the whole table. Reading a
+// missing entry as "weight 0" instead makes every unlisted unit unbuildable --
+// and since ai/DEFAULT.TXT names only ~90 of the ~270 units, an AI parsed that
+// way sits on its Commander and builds nothing at all, with no error anywhere.
+// (defined below, next to paramsFor -- forward-declared so Profile can select a plan)
+enum class Difficulty : uint8_t;
+
+constexpr int kWeightOne = 100;
+
+// One difficulty's slice of a profile. A key is either a UNIT ID or one of the
+// FBI `Category=` tags that unit declares -- retail makes no distinction between
+// the two, so `Weight CONSTR 3` boosts every construction unit and `Weight
+// ARMMAKR 0.25` damps one. Both live in the same map and are resolved by
+// profileWeight() / profileLimit() below.
+struct Plan {
+    std::unordered_map<std::string, int> weight;  // hundredths; absent => kWeightOne
+    std::unordered_map<std::string, int> limit;   // absent => unlimited; 0 => never build
 };
 
-// Parse ai/default.txt from the runtime VFS (base + IP merged). One file covers
-// every faction. Never throws; a missing file yields an empty profile (the AI
-// then builds nothing).
+// The retail AI profile (ai/DEFAULT.TXT and the per-map/per-mission variants).
+// The file is divided into `plan easy` / `plan medium` / `plan hard` sections;
+// anything stated BEFORE the first `plan` line applies to all three (which is how
+// the base game's DEFAULT.TXT states its six global weights).
+struct Profile {
+    Plan easy, medium, hard;
+    const Plan& forDifficulty(Difficulty d) const;
+};
+
+// Parse an ai/*.txt profile from the runtime VFS. One file covers both sides.
+// Never throws; a missing file yields an all-default profile, which is a playable
+// AI rather than a paralysed one.
 Profile loadProfile(const ta::hpi::Vfs& vfs, const std::string& name = "default");
+
+// Parse profile text directly (what loadProfile does once it has the bytes), so
+// the format's rules can be pinned without a retail install on the runner.
+Profile parseProfile(const std::string& text);
+
+// Resolve a unit's weight/limit against a plan: an entry under the unit's own id
+// wins outright, otherwise every matching category applies. Weights MULTIPLY (a
+// unit is typically damped by its side's 0.2 and boosted back by its role's 3),
+// and limits take the TIGHTEST match, because a cap is a cap.
+int profileWeight(const Plan& plan, const ta::sim::UnitType& t);
+int profileLimit(const Plan& plan, const ta::sim::UnitType& t);   // -1 = unlimited
 
 // Opponent skill, loosely modelled on retail's easy/normal/hard. It scales HOW the
 // AI plays (economy pace, army size before it commits, aggression, reaction rate)
