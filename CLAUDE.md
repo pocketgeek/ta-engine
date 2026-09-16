@@ -109,7 +109,7 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   (Coast To Coast, 2 AI, 120 s: 12 / 11 / 9 for seeds 11 / 22 / 33), so a
   before/after figure from a single unseeded run measures the seed, not the change.
   See `docs/ta-port.md` §5a.
-- `ctest` in either build dir runs the suite (28 tests). The data-backed
+- `ctest` in either build dir runs the suite (29 tests). The data-backed
   `unitdata_test` needs an install: `./build-dbg/unitdata_test ~/ta_install`.
 - Debug-only diagnostics for the failure modes that are otherwise SILENT:
   `TA_TERRAIN=1` (what a loaded map yielded: walkable fraction, water, slope),

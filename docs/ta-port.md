@@ -298,13 +298,37 @@ Two TA behaviours have no Kingdoms analogue and are new logic:
 
 Also new: **ally resource sharing** and the share/ratio sliders.
 
-### 🟠 Construction: nanolathe
+### ✅ Construction: nanolathe — done
 
 Kingdoms builders place a building and it appears. TA builders *stream* a unit
 into existence, several can assist one job, and build power is additive with
-metal/energy drawn continuously at a rate set by `WorkerTime / BuildTime`. The
-existing `buildTime`/`workerTime` fields are the right shape; the tick logic is
-not.
+metal/energy drawn continuously at a rate set by `WorkerTime / BuildTime`.
+
+This entry sat at 🟠 ("the tick logic is not [the right shape]") after the tick
+logic had in fact been written, which is its own small lesson about trusting a
+status line over the code. `tools/nanolathe_test.cpp` now pins the behaviour, so
+the claim is checkable rather than asserted — twelve checks, all passing, on a
+synthetic world (no retail data, so CI runs it):
+
+* a lone builder takes `buildTime / workerTime` seconds (3000/300 = 10 s, not
+  3000 and not 300);
+* **a second builder assisting halves it** — build power adds rather than the
+  two re-targeting or fighting over the site;
+* the job still costs ONE unit's metal and energy however many builders worked
+  it (paying per builder would double an assisted job);
+* the cost is drawn continuously — half spent at the half-way point, not billed
+  on completion;
+* a starved job HOLDS: `spendBuild` is all-or-nothing, so an empty treasury
+  makes no progress rather than free progress or a cancelled site;
+* an abandoned site decays at the rate it was being built and vanishes, leaving
+  no wreck — it was never finished.
+
+What is NOT done is the nanolathe BEAM. There is no construction-beam rendering
+at all: `loadBuildFx` still reads Kingdoms' `aramonbuild_4444.taf` /
+`tarosbuild` / `verunabuild` sparkle sheets, none of which exist in a TA
+install, so every load throws, `buildFx_` stays empty and `sprinkleBuildFx`
+returns immediately. The sim streams the unit up correctly; nothing draws the
+lathe.
 
 ### ✅ Sides: four Houses become two — done
 
