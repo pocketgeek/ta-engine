@@ -175,19 +175,52 @@ std::string mapDisplayName(const std::string& id) {
         std::vector<uint8_t> d;
         try { d = vfs_.read(tntPath); } catch (...) { return; }
         if (d.size() < 52) return;
+        // The map's own minimap art. **Header field 10**, which is where a TA TNT
+        // (version 0x2000) keeps its minimap pointer -- see src/tnt/tnt.cpp,
+        // `pMinimap = u32(&d[40])`. This used to read fields 12 then 11, the
+        // Kingdoms hi-res overview and minimap, and on TA both are invalid: every
+        // shipped map answers field 10 with a good 252x252 image and fields 11
+        // and 12 with garbage the bounds checks reject. So the preview gave up
+        // here and the map picker showed NOTHING for any map.
         int w = 0, h = 0; const uint8_t* idx = nullptr;
-        if (!tntIndexedImage(d, 12, w, h, idx) && !tntIndexedImage(d, 11, w, h, idx)) return;
+        if (!tntIndexedImage(d, 10, w, h, idx)) return;
         std::string ota = readOta(tntPath);
+        // `kingdom=` is a Kingdoms field naming a per-kingdom palette; a TA .ota
+        // has none and a TA install ships no <kingdom>.pcx, so this resolves to
+        // the empty name and kingdomPalette hands back the one game palette.
+        // (The old fallback asked for "aramon", which does not exist here
+        // either, so even had the image been found there was no palette.)
         const std::vector<uint8_t>* pal = kingdomPalette(otaField(ota, "kingdom"));
-        if (!pal) pal = kingdomPalette("aramon");   // maps without a kingdom get a default
+        if (!pal) pal = kingdomPalette(std::string());
         if (!pal) return;
-        std::vector<uint8_t> rgba(size_t(w) * h * 4);
-        for (size_t i = 0; i < size_t(w) * h; ++i) {
-            uint8_t p = idx[i];
-            if (p == 9) { rgba[i * 4 + 3] = 0; continue; }   // retail's transparent index
-            const uint8_t* c = &(*pal)[size_t(p) * 4];
-            rgba[i * 4 + 0] = c[0]; rgba[i * 4 + 1] = c[1]; rgba[i * 4 + 2] = c[2]; rgba[i * 4 + 3] = 255;
-        }
+        // A TA minimap is ALWAYS 252x252 and the map occupies the top-left of it,
+        // proportional to its own aspect, with the rest filled by palette index
+        // **100**. Measured across the shipped maps: a 450x392 map uses 252x216,
+        // 386x264 uses 252x168, 194x296 uses 168x252, and a near-square 386x392
+        // fills all 252x252. Drawing the padding would letterbox every
+        // non-square map in grey, so crop to the used region. (Index 9 is the
+        // KINGDOMS transparent index and means nothing here.)
+        constexpr uint8_t kPadIndex = 100;
+        int useW = 0, useH = 0;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+                if (idx[size_t(y) * w + x] != kPadIndex) {
+                    if (x + 1 > useW) useW = x + 1;
+                    if (y + 1 > useH) useH = y + 1;
+                }
+        if (useW <= 0 || useH <= 0) { useW = w; useH = h; }   // all padding: show it all
+        std::vector<uint8_t> rgba(size_t(useW) * useH * 4);
+        for (int y = 0; y < useH; ++y)
+            for (int x = 0; x < useW; ++x) {
+                uint8_t p = idx[size_t(y) * w + x];
+                size_t o = (size_t(y) * useW + x) * 4;
+                if (p == kPadIndex) { rgba[o + 3] = 0; continue; }
+                const uint8_t* c = &(*pal)[size_t(p) * 4];
+                rgba[o + 0] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = 255;
+            }
+        w = useW; h = useH;
+        if (ta::devEnv("TA_LOBBY"))
+            std::fprintf(stderr, "map preview: %dx%d built for '%s'\n", w, h, tntPath.c_str());
         mapPreviewTex_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
         if (!mapPreviewTex_) return;
         SDL_SetTextureBlendMode(mapPreviewTex_, SDL_BLENDMODE_BLEND);

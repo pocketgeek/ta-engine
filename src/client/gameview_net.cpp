@@ -820,8 +820,27 @@ void GameView::autoplayStep() {
         }
     }
 
+    // The palette a map preview is drawn through.
+    //
+    // Kingdoms keeps one per KINGDOM (palettes/aramon.pcx, named by the .ota's
+    // `kingdom=`). TA has neither: its .ota carries no kingdom field, and its
+    // palettes/ holds exactly one game palette (PALETTE.PAL) plus the GUI's --
+    // no <kingdom>.pcx at all. So on a TA install the lookup returned null, the
+    // caller's "aramon" fallback returned null too, and the preview builder gave
+    // up before creating a texture: the lobby map picker showed NO preview for
+    // any map. An empty name now means "this data set has no per-kingdom
+    // palettes", which is the TA case, and resolves to the one game palette.
     const std::vector<uint8_t>* GameView::kingdomPalette(const std::string& kingdom) {
-        if (kingdom.empty()) return nullptr;
+        if (kingdom.empty()) {
+            auto gt = kingdomPals_.find("");
+            if (gt == kingdomPals_.end()) {
+                std::vector<uint8_t> rgba;
+                if (const ta::gaf::Palette* gp = gamePalette())
+                    rgba.assign(&gp->rgba[0][0], &gp->rgba[0][0] + 256 * 4);
+                gt = kingdomPals_.emplace(std::string(), std::move(rgba)).first;
+            }
+            return gt->second.empty() ? nullptr : &gt->second;
+        }
         auto it = kingdomPals_.find(kingdom);
         if (it == kingdomPals_.end()) {
             std::vector<uint8_t> rgba;

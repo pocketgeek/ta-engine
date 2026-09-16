@@ -768,6 +768,36 @@ What is genuinely worth recording:
   line, because a map load never exercises a corpse def and so proves nothing
   about it.
 
+### The lobby map preview was blank for every TA map
+
+Same shape of fault again, and it took two independent fixes because it was
+broken twice over.
+
+1. **Wrong header field.** The preview read TNT header field 12, then 11 — the
+   Kingdoms hi-res overview and minimap. A TA TNT (version `0x2000`) keeps its
+   minimap pointer at byte 40, i.e. **field 10** (`src/tnt/tnt.cpp`,
+   `pMinimap = u32(&d[40])`). Probed across the shipped maps: field 10 gives a
+   good 252x252 image on every one, and fields 11 and 12 give pointers the
+   bounds checks reject. So the preview returned before doing anything.
+2. **No palette.** Even with the image, it asked for `palettes/<kingdom>.pcx`
+   named by the `.ota`'s `kingdom=`, falling back to `"aramon"`. A TA `.ota`
+   carries no `kingdom=` and a TA install ships no `<kingdom>.pcx` — its
+   `palettes/` holds one game palette (`PALETTE.PAL`) plus the GUI's. Both
+   lookups returned null and the builder gave up again.
+
+A third thing had to be measured rather than assumed: a TA minimap is **always**
+252x252, with the map in the top-left proportional to its own aspect and the
+remainder filled with palette index **100**. Measured: a 450x392 map uses
+252x216, 386x264 uses 252x168, 194x296 uses 168x252, and a near-square 386x392
+fills the whole 252x252. Drawing the padding would letterbox every non-square
+map in grey, so the preview crops to the used region. (Index 9, which the old
+code treated as transparent, is the KINGDOMS transparent index and means nothing
+here.)
+
+Verified by reproducing the pipeline standalone against the install: Coast To
+Coast yields `252x252 -> cropped 252x142` and renders as a recognisable
+coastline.
+
 ### The local harnesses were spawning nothing
 
 The staged-combat harness was still a Kingdoms scene: it spawned `araarch`,
