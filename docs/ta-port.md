@@ -563,6 +563,14 @@ puts the two starts on opposite sides of open water, so nothing built so far can
 reach the other player. Testing whether the AI *fights* needs a land-connected
 map, and is the next thing to measure rather than something to infer from here.
 
+(That test was itself blocked until recently, which is worth knowing before
+setting it up. The obvious land-connected candidate, The Pass, was one of the 38
+maps whose metal the engine could not see at all — see "38 of 197 maps had no
+extractable metal" below — so an AI there never got past its commander's
+trickle. It builds extractors and a factory there now. Nothing in this section
+is affected: Coast To Coast's patches are `category=metal` and were always
+found.)
+
 ### What a metal-poor map showed
 
 Running the same AI on **The Pass** — all land, so a fair combat test — instead
@@ -854,6 +862,18 @@ fell back to that background richness, so a 3x3 extractor scored
 `(3 + 1) x 9 = 36`. On a `RockMetal3` patch it now scores
 `(223 + 1) x 9 = 2016` — **56x** the metal, which is the difference between a
 mex being worth building and not.
+
+Confirmed end to end on the AI, same seed and map, 60 s of the all-AI harness
+(`TA_MP_WATCH=1 TA_MP_AIS=2`), which is the harness where p0 is itself an AI:
+
+| | units | p0 metal | p0 built |
+|---|---|---|---|
+| before | 5 | +1.0/s | `armap`, `armcom` — **no extractor at all** |
+| after | 9 | +3.0/s | `armmex` x2, `armcom`, `armmstor`, `armvp` |
+
+The AI was not failing to *want* extractors; there was nowhere worth putting
+one, so it spent its metal on an aircraft plant instead and stalled at the
+commander's trickle.
 
 **The obvious rule is the wrong one, and it is worth saying why.** `metal > 0`
 looks like the natural test and would be badly wrong: **232 of the 254
