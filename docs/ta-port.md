@@ -314,8 +314,9 @@ are collected in [`docs/retail-engine-ta.md`](retail-engine-ta.md).
   `yield = ExtractsMetal × Σ(cellMetal + 1)` over the footprint. The `+1` per
   cell is why a TA mex off a patch trickles rather than sitting dead, and it is
   implemented.
-- How fast retail varies wind between the map's min and max, and whether it
-  interpolates or steps. Currently a ~40s oscillation through `detmath`.
+- ~~Wind's cadence and interpolation~~ — **solved**, see
+  `docs/retail-engine-ta.md`: a clamped ±2 random walk re-rolled every 0..62
+  ticks. It steps, never interpolates, and is implemented.
 - Wind income's cadence and interpolation between the `.ota`'s `minwindspeed`
   and `maxwindspeed` (Ashap Plateau: 0 and 4000).
 - Whether `.ccx`/`.gp3` sit at fixed priorities or fall through to mount order.

@@ -144,8 +144,38 @@ setting rather than anything data-driven.
   dark (`PANELSIDE` peaks at luminance 36) while `STAR` and parts of `PANELTOP`
   are bright, so the darkness is the art, not a decode or palette error.
 
+## Wind — solved
+
+From the tick at `0x4787a5`. `[0x51e654]` is the current wind and `[0x51e670]` a
+countdown, both globals:
+
+```
+if (--countdown > 0) return;      ; most ticks do nothing at all
+wind += rand() % 5 - 2;           ; a +/-2 random walk
+wind = clamp(wind, minWind, maxWind);
+countdown = rand() % 63;          ; next change in 0..62 ticks
+```
+
+So wind **steps and never interpolates**, and it *wanders* rather than sweeping:
+two maps with identical min/max feel different because the walk spends its time
+near wherever it started. Implemented in `World::tickWind`, drawing on the sim's
+own RNG and folded into the state hash, because it feeds energy income.
+
+Our first attempt was a smooth ~40s sine between the two bounds — the same
+numbers describing a different mechanic.
+
+## The map header's own defaults
+
+The loader at `0x483793` validates each `.ota` field and substitutes a default
+when it is missing or the file predates version `0x2000`:
+
+| Field | Map offset | Default |
+| --- | --- | --- |
+| `minwindspeed` | `+0xd34` (int) | from the caller |
+| `maxwindspeed` | `+0xd38` (int) | from the caller |
+| `gravity` | `+0xd3c` (int) | `0x1fdb` (8155), after scaling by two constants |
+| `tidalstrength` | `+0xd40` (float) | `0.5` |
+
 ## Open questions
 
 - The stall curve: is a starved consumer slowed strictly proportionally?
-- How fast wind varies between the `.ota`'s `minwindspeed` and `maxwindspeed`,
-  and whether it interpolates or steps.

@@ -3256,19 +3256,27 @@ void World::assist(int builderId, int siteId, bool queue) {
     order(builderId, site->x, site->z + float(site->type->footZ) * 8 + 24, queue);
 }
 
-// Wind oscillates between the map's advertised min and max. Deterministic by
-// construction: driven by the world clock through detmath, never wall time, and
-// folded into income which IS hashed.
+// Wind, exactly as retail steps it (TotalA.exe 0x4787a5-0x47880a):
 //
-// NOTE: the period here is a plausible stand-in, not a figure read out of the
-// retail binary -- how fast retail varies wind, and whether it interpolates or
-// steps, is still open. See docs/ta-port.md.
-float World::windSpeed() const {
-    const float lo = mapEcon_.minWind, hi = mapEcon_.maxWind;
-    if (hi <= lo) return lo;
-    // ~40s period; +1 then halve maps sin's [-1,1] onto [0,1].
-    float t = (detmath::sin(clock_ * 0.157f) + 1.0f) * 0.5f;
-    return lo + (hi - lo) * t;
+//   if (--countdown > 0) return;              // nothing happens most ticks
+//   wind += rand() % 5 - 2;                   // a +/-2 random walk...
+//   wind = clamp(wind, minWind, maxWind);     // ...clamped to the map's range
+//   countdown = rand() % 63;                  // next change in 0..62 ticks
+//
+// So wind STEPS and never interpolates, and it wanders rather than sweeping:
+// two maps with the same min/max feel different because the walk spends its
+// time wherever it started. An earlier version of this used a smooth ~40s
+// sine, which is a different mechanic wearing the same numbers.
+//
+// Hashed: it feeds energy income, so every peer must walk it identically --
+// which is why it draws from the sim's own RNG and not from the clock.
+void World::tickWind() {
+    if (--windTimer_ > 0) return;
+    wind_ += burnRand(5) - 2;
+    int lo = int(mapEcon_.minWind), hi = int(mapEcon_.maxWind);
+    if (hi < lo) std::swap(lo, hi);
+    wind_ = std::clamp(wind_, lo, hi);
+    windTimer_ = burnRand(63);
 }
 
 // An extractor's yield, as retail computes it (TotalA.exe 0x437880-0x4378e6):
@@ -4414,6 +4422,8 @@ void World::tick(float dt) {
         if (tm.discoLeft > 0) tm.discoLeft = std::max(0.0f, tm.discoLeft - dt);
         if (tm.headbangLeft > 0) tm.headbangLeft = std::max(0.0f, tm.headbangLeft - dt);
     }
+
+    tickWind();
 
     // ---- Economy -------------------------------------------------------------
     // Two independent resources. Recompute income/drain/storage from the living,
@@ -6176,6 +6186,8 @@ uint64_t World::stateHash() const {
         // than as a mystery divergence seconds later.
         mixf(s.jitX); mixf(s.jitZ); mixf(s.nextVary);
     }
+    mix(uint64_t(uint32_t(wind_)));
+    mix(uint64_t(uint32_t(windTimer_)));
     for (const auto& t : players_) {
         mixf(t.metal.cur);
         mixf(t.energy.cur);

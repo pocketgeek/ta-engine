@@ -1008,11 +1008,20 @@ public:
     // --- Economy inputs -------------------------------------------------------
     // Set once at match setup from the map's .ota. Hashed indirectly: it feeds
     // income, so every peer must set it identically.
-    void setMapEconomy(const MapEconomy& e) { mapEcon_ = e; }
+    void setMapEconomy(const MapEconomy& e) {
+        mapEcon_ = e;
+        // Start the walk in the middle of the map's range rather than at zero:
+        // a becalmed opening on a windy map would otherwise be an artefact of
+        // where we chose to begin, not of the map.
+        int lo = int(e.minWind), hi = int(e.maxWind);
+        if (hi < lo) std::swap(lo, hi);
+        wind_ = lo + (hi - lo) / 2;
+        windTimer_ = 1;
+    }
     const MapEconomy& mapEconomy() const { return mapEcon_; }
-    // Current wind, oscillating between the map's min and max. Deterministic:
-    // driven by the world clock through detmath, never by wall time.
-    float windSpeed() const;
+    // Current wind. NOT a smooth curve: retail steps it by a random walk (see
+    // tickWind and docs/retail-engine-ta.md). Hashed sim state.
+    float windSpeed() const { return float(wind_); }
     // Metal per second an extractor on this unit's footprint yields.
     float extractorYield(const Unit& u) const;
     // Per-cell metal richness, derived from the map's metal FEATURES at load.
@@ -1761,6 +1770,11 @@ private:
     std::vector<std::pair<float, float>> manaSpots_;
     MapEconomy mapEcon_;
     std::vector<float> metal_;   // per-cell richness; see metalAt()
+    // Wind: a clamped random walk, re-rolled on an expiring countdown, exactly as
+    // retail does it (TotalA.exe 0x4787a5). Both are hashed -- they feed income.
+    int wind_ = 0;
+    int windTimer_ = 0;
+    void tickWind();
     std::vector<Feature> features_;             // reclaimable map features
     std::vector<FeatType> featTypes_;           // per-type burn data (setup-time, static)
     std::unordered_map<const UnitType*, int> corpseType_;   // unit -> corpse FeatType
