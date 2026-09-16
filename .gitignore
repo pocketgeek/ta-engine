@@ -65,8 +65,13 @@ third_party/
 # Server-local account store (no passwords in it, but it is server state).
 taserver-accounts.conf
 
-# TA retail data / binary (reverse-engineering only, never committed)
+# TA retail data / binary (reverse-engineering only, never committed).
+# Both spellings: the install normally lives outside the repo, but a copy or a
+# symlink dropped inside it must not be committable either. (`ta_data/` was the
+# only name listed here, and the install this was developed against is
+# `ta_install/` -- so the guard named a directory that does not exist.)
 ta_data/
+ta_install/
 TotalA.exe
 *.ufo
 *.ccx
