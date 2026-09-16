@@ -28,9 +28,9 @@ These are the reason the fork is worth doing. None of it is Kingdoms-specific.
 | ✅ `src/sim/detmath` | The determinism shim and its cross-build golden-hash gate. Contract is unchanged. |
 | ✅ `src/sim/pathsearch` | A*, the nav grid, the bounded search scheduler, incremental relabelling. TA's movement classes plug into the same `NavGrid`. |
 | ✅ `src/util/`, `src/gui/`, `src/video/` | Helpers, `.gui` gadget layout (TA uses the same format), Bink decode for menu clips. |
-| ✅ `src/tdo/` | **3DO is already classic-TA version 1.** The loader says so in its own header comment. Zero work expected. |
-| ✅ `src/gaf/` | Already decodes GAF encodings 0 (raw) and 1 (RLE) — the classic-TA pair. TAF's 4/5 become dead code to delete, not port. |
-| ✅ `src/tdf/` | TDF/FBI/OTA is the same line-oriented `[section]{key=value;}` text format in both games. |
+| ✅ `src/tdo/` | **3DO is already classic-TA version 1** — *verified*: `modeltool` reads `ARMCOM.3DO` with its full piece tree (pelvis → torso → biggun / nanolath / head) and 25 textures. Zero work. |
+| ✅ `src/gaf/` | Already decodes GAF encodings 0 (raw) and 1 (RLE) — the classic-TA pair. *Verified*: `gaftool` lists `ARMINT.GAF` against the retail `PALETTE.PAL`. TAF's 4/5 become dead code to delete, not port. |
+| ✅ `src/tdf/` | TDF/FBI/OTA is the same line-oriented `[section]{key=value;}` text format in both games. *Verified* on `SIDEDATA.TDF`, `ARMCOM.FBI` and map `.ota`s. |
 | ✅ CI + test harness | All four workflows, the 17 ctest targets, the static-link gates, the 7-distro packaging matrix. Renamed, not redesigned. |
 
 ## 2. Asset pipeline — the delta
@@ -60,13 +60,18 @@ not a new mechanism.
 
 ### 🟡 COB (`src/cob/`)
 
-**Already accepts version 4** — TA's version — next to TAK's 6 (`cob.cpp:44`).
-The opcode set is shared. Expect header-word-layout fixes and TA-only opcodes,
-not a port.
+**Already accepts version 4** — TA's version — next to TAK's 6 (`cob.cpp:44`),
+and the opcode set is shared. *Verified*: `cobtool` reads `ARMCOM.COB` — 20
+scripts (`Create`, `StartMoving`, `QueryNanoPiece`, `AimFromPrimary`,
+`StartBuilding`, …), 14 pieces, 1821 code words. Downgraded from 🟡 to ✅ on the
+evidence; expect at most TA-only opcode gaps found by running scripts, not a port.
 
 ### 🔴 TNT + terrain (`src/tnt/`, `src/terrain/`)
 
 The one genuine rewrite. The two games' map formats share a name and nothing else:
+
+Header confirmed against `maps/Coast to Coast.tnt`: version `0x2000`, 210×126
+cells.
 
 | | TAK (0x4000) | TA (0x2000) |
 | --- | --- | --- |
@@ -199,8 +204,8 @@ Each milestone ends green: builds, `ctest` passes, determinism gate agrees.
 | # | Milestone | Gated on retail data? |
 | --- | --- | --- |
 | 0 | **Fork + rebrand.** ✅ done — 137 targets, 17/17, golden hash agrees. | no |
-| 1 | **HPI v1**: header, obfuscation, LZ77. Synthetic-archive unit tests. | no (tests are synthetic) |
-| 2 | **Mount a real install**: VFS over `.hpi`/`.ufo`/`.ccx`/`.gp3`, `hpitool` reads it. | **yes** |
+| 1 | **HPI v1**: header, obfuscation, LZ77. ✅ done — 21 synthetic checks, then validated against the real install: **30 archives, 7,890 files extracted, zero failures.** | no |
+| 2 | **Mount a real install**: VFS over `.hpi`/`.ufo`/`.ccx`/`.gp3`. ✅ done — extension-ranked mount resolves `gamedata/SIDEDATA.TDF` → `totala1.hpi`. | done |
 | 3 | **Formats**: confirm 3DO/GAF/COB against real assets; rewrite TNT + compositor; metal map. | **yes** |
 | 4 | **Unit data**: FBI/TDF/weapons/`SIDEDATA`/`MOVEINFO` → `UnitType`. `tdftool` dumps it. | **yes** |
 | 5 | **Two-resource economy** + stall + nanolathe construction. | yes |
@@ -218,10 +223,32 @@ Answers to these come from the install itself and from static analysis of
 `TotalA.exe`, under the same rules as `docs/retail-engine.md`: **observe only,
 copy nothing**.
 
-- Exact metal-extraction income formula (map density × `ExtractsMetal` × the
-  `.ota` `MaxMetal`?).
+- Exact metal-extraction income formula. The inputs are now known: the map's
+  per-cell metal plane, the FBI `ExtractsMetal`, and the `.ota` schema's
+  `SurfaceMetal` / `MohoMetal`. The combining rule is not.
 - The stall curve: is the slowdown strictly proportional, or stepped?
-- Wind income's update cadence and interpolation.
-- Whether TA's COB header is a 13-word v4 as the current parser assumes.
-- Whether `.ccx`/`.gp3` participate in the same newest-date precedence as
-  `.hpi`/`.ufo`, or sit at fixed priorities.
+- Wind income's cadence and interpolation between the `.ota`'s `minwindspeed`
+  and `maxwindspeed` (Ashap Plateau: 0 and 4000).
+- Whether `.ccx`/`.gp3` sit at fixed priorities or fall through to mount order.
+  Currently moot — v1 records carry no date, so every collision ties — but it
+  decides what happens when a `.ufo` mod and a `.ccx` ship the same path.
+- ~~Whether TA's COB header is a 13-word v4~~ — answered, it parses.
+
+### The install, as it actually is
+
+Confirmed contents of the GOG Commander Pack root (all HPI v1):
+
+| Archives | |
+| --- | --- |
+| base | `totala1.hpi` (units, scripts, sounds, gamedata), `totala2.hpi` (maps), `totala3.hpi`, `totala4.hpi` |
+| patch 3.1 | `rev31.gp3` |
+| Core Contingency | `ccdata.ccx`, `ccmaps.ccx`, `ccmiss.ccx` |
+| Battle Tactics | `btdata.ccx`, `btmaps.ccx`, `tactics1-8.hpi` |
+| other | `worlds.hpi`, and 11 shipped `.ufo` mods (Fark, Flea, Scarab, Necro, …) |
+
+Plus `TotalA.exe` (1.15 MB) for static analysis, and `camps/`, `Bitmaps/`,
+`music/`, `Data/` as loose directories.
+
+The `.ota` schemas also answer where the economy's map inputs live:
+`tidalstrength`, `solarstrength`, `minwindspeed`/`maxwindspeed`, `gravity`,
+`SurfaceMetal`, `MohoMetal`, `lineofsight`, `killmul`.
