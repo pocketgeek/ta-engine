@@ -880,7 +880,15 @@
                 if (t) gpuvram::destroy(t);
         guiTex_.clear();
         gui_ = {};
-        std::string path = "guis/" + side + "ingame.gui";
+        // TA names the in-game command panel "<SIDE>GEN.GUI" (ARMGEN / CORGEN),
+        // keyed on the side's unit-id PREFIX rather than its name -- so CORE's is
+        // CORGEN, not COREGEN. Kingdoms used "<side>ingame.gui", which is why a TA
+        // install used to report two missing GUIs and fall back to the bare HUD.
+        std::string prefix = side;
+        if (const auto* sd = sideData_.side(side))
+            prefix = sd->namePrefix;
+        for (char& c : prefix) c = char(std::tolower(static_cast<unsigned char>(c)));
+        std::string path = "guis/" + prefix + "gen.gui";
         try {
             gui_ = ta::gui::parse(vread(path), path);
         } catch (const std::exception& e) {

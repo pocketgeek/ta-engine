@@ -1,5 +1,8 @@
 #include "gui/gui.h"
 
+#include "tdf/tdf.h"
+
+#include <algorithm>
 #include <cctype>
 #include <stdexcept>
 
@@ -7,140 +10,79 @@ namespace ta::gui {
 
 namespace {
 
-// Token reader over the raw byte stream. Two token kinds: signed decimal ints, and
-// length-prefixed strings ("<int L> <one ws> <L bytes>", extended to the next
-// whitespace to repair one mis-authored shipped file that under-counts a length).
-struct Reader {
-    const uint8_t* d;
-    size_t n, i = 0;
-    const std::string& origin;
-
-    Reader(const std::vector<uint8_t>& bytes, const std::string& o)
-        : d(bytes.data()), n(bytes.size()), origin(o) {}
-
-    static bool ws(uint8_t c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
-    void skipws() { while (i < n && ws(d[i])) ++i; }
-    bool eof() { skipws(); return i >= n; }
-
-    int rint() {
-        skipws();
-        size_t s = i;
-        while (i < n && !ws(d[i])) ++i;
-        if (i == s) throw std::runtime_error("gui: int expected @" + origin);
-        return std::stoi(std::string(reinterpret_cast<const char*>(d + s), i - s));
-    }
-    std::string rstr() {
-        int L = rint();
-        if (L <= 0) return {};
-        if (i < n && ws(d[i])) ++i;
-        size_t j = i + size_t(L);
-        if (j > n) j = n;
-        while (j < n && !ws(d[j])) ++j;   // extend past an under-counted length
-        std::string v(reinterpret_cast<const char*>(d + i), j - i);
-        i = j;
-        return v;
-    }
-    // True if the next tokens are the BASE-GADGET signature `2 <8 ints> 3`.
-    bool commonAhead() {
-        size_t save = i;
-        bool ok = false;
-        try {
-            if (rint() == 2) {
-                for (int k = 0; k < 8; ++k) rint();
-                ok = (rint() == 3);
-            }
-        } catch (...) { ok = false; }
-        i = save;
-        return ok;
-    }
-};
-
-// Consume the type-specific STYLE-PREFIX between "<type> <ver>" and the BASE-GADGET.
-void readPrefix(Reader& r, int gtype) {
-    if (gtype == 1 || gtype == 2) return;         // Dialog root / Panel: no prefix
-    if (gtype == 21) {                            // EditBox: has an embedded string
-        r.rint(); r.rint();
-        r.rstr();
-        for (int k = 0; k < 10; ++k) r.rint();
-        for (int k = 0; k < 5; ++k) r.rint();     // colour 1
-        for (int k = 0; k < 5; ++k) r.rint();     // colour 2
-        r.rint();                                 // marker 1
-        return;
-    }
-    // Generic: numeric prefix -- consume ints until the COMMON block begins.
-    int guard = 0;
-    while (!r.commonAhead()) {
-        r.rint();
-        if (++guard > 64) throw std::runtime_error("gui: prefix runaway @" + r.origin);
-    }
-}
-
-Gadget parseGadget(Reader& r) {
-    Gadget g;
-    g.type = r.rint();
-    g.ver = r.rint();
-    readPrefix(r, g.type);
-    if (r.rint() != 2) throw std::runtime_error("gui: COMMON tag @" + r.origin);
-    g.x = r.rint(); g.y = r.rint(); g.w = r.rint(); g.h = r.rint();
-    for (int k = 0; k < 4; ++k) r.rint();          // flags
-    if (r.rint() != 3) throw std::runtime_error("gui: colour tag @" + r.origin);
-    g.ca = uint8_t(r.rint()); g.cr = uint8_t(r.rint());
-    g.cg = uint8_t(r.rint()); g.cb = uint8_t(r.rint());
-    if (r.rint() != 1) throw std::runtime_error("gui: cursor tag @" + r.origin);
-    r.rstr(); r.rstr();                            // cursor gaf/seq
-    if (r.rint() != 1) throw std::runtime_error("gui: font tag @" + r.origin);
-    r.rstr();                                      // font
-    g.name = r.rstr();
-    r.rint();                                      // p
-    r.rint();                                      // q (== image count)
-    int ni = r.rint();
-    for (int k = 0; k < ni; ++k) {
-        ImgRef im;
-        r.rint();                                  // tag (1)
-        im.gaf = r.rstr();
-        im.seq = r.rstr();
-        im.frame = r.rint();
-        im.flags = r.rint();
-        g.imgs.push_back(std::move(im));
-    }
-    int nt = r.rint();
-    for (int k = 0; k < nt; ++k) {
-        r.rint();                                  // tag (2)
-        r.rint();                                  // align
-        g.texts.push_back(r.rstr());
-    }
-    int ns = r.rint();
-    for (int k = 0; k < ns; ++k) {
-        r.rint();                                  // tag (1)
-        g.states.push_back(r.rstr());
-    }
-    r.rint();                                      // cmd tag (2)
-    r.rint();                                      // cmd align (0)
-    g.cmd = r.rstr();
-    r.rint();                                      // trailing id
-    return g;
+bool ieq(const std::string& a, const std::string& b) {
+    return a.size() == b.size() &&
+           std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
+               return std::tolower(static_cast<unsigned char>(x)) ==
+                      std::tolower(static_cast<unsigned char>(y));
+           });
 }
 
 }  // namespace
 
 const Gadget* Gui::find(const std::string& name) const {
-    auto ieq = [](const std::string& a, const std::string& b) {
-        if (a.size() != b.size()) return false;
-        for (size_t k = 0; k < a.size(); ++k)
-            if (std::tolower((unsigned char)a[k]) != std::tolower((unsigned char)b[k]))
-                return false;
-        return true;
-    };
     for (const auto& g : gadgets)
         if (ieq(g.name, name)) return &g;
     return nullptr;
 }
 
 Gui parse(const std::vector<uint8_t>& bytes, const std::string& origin) {
-    Reader r(bytes, origin);
-    Gui gui;
-    while (!r.eof()) gui.gadgets.push_back(parseGadget(r));
-    return gui;
+    tdf::Node root = tdf::parseText(std::string(bytes.begin(), bytes.end()), origin);
+
+    Gui out;
+    // Gadgets are numbered, and the numbering is the z/declaration order -- so walk
+    // the indices rather than root.childOrder, which would be fine here but would
+    // put GADGET10 next to GADGET1 if the file ever declared them out of sequence.
+    for (int i = 0;; ++i) {
+        const tdf::Node* gn = root.child("gadget" + std::to_string(i));
+        if (!gn) break;
+        const tdf::Node* cn = gn->child("common");
+        if (!cn) continue;   // a gadget with no COMMON block has no geometry to use
+
+        Gadget g;
+        g.type = int(cn->numberOr("id", 0));
+        g.assoc = int(cn->numberOr("assoc", 0));
+        g.name = cn->valueOr("name", "");
+        g.x = int(cn->numberOr("xpos", 0));
+        g.y = int(cn->numberOr("ypos", 0));
+        g.w = int(cn->numberOr("width", 0));
+        g.h = int(cn->numberOr("height", 0));
+        g.attribs = int(cn->numberOr("attribs", 0));
+        g.commonAttribs = int(cn->numberOr("commonattribs", 0));
+        g.colorF = int(cn->numberOr("colorf", 0));
+        g.colorB = int(cn->numberOr("colorb", 0));
+        g.textureNumber = int(cn->numberOr("texturenumber", 0));
+        g.fontNumber = int(cn->numberOr("fontnumber", 0));
+        g.active = cn->numberOr("active", 1) != 0;
+
+        // Type-specific keys sit beside COMMON, not inside it.
+        g.quickKey = int(gn->numberOr("quickkey", 0));
+        g.grayedOut = gn->numberOr("grayedout", 0) != 0;
+        g.stages = int(gn->numberOr("stages", 0));
+        g.status = int(gn->numberOr("status", 0));
+        g.text = gn->valueOr("text", "");
+        g.help = gn->valueOr("help", "");
+        g.filename = gn->valueOr("filename", "");
+        g.range = int(gn->numberOr("range", 0));
+        g.thick = int(gn->numberOr("thick", 0));
+        g.knobPos = int(gn->numberOr("knobpos", 0));
+        g.knobSize = int(gn->numberOr("knobsize", 0));
+        g.maxChars = int(gn->numberOr("maxchars", 0));
+        g.itemHeight = int(gn->numberOr("itemheight", 0));
+
+        if (i == 0) {
+            out.panel = gn->valueOr("panel", "");
+            out.totalGadgets = int(gn->numberOr("totalgadgets", 0));
+        }
+        out.gadgets.push_back(std::move(g));
+    }
+
+    // A file with no GADGET0 is not a TA .gui -- most likely a Kingdoms-era binary
+    // token stream, which would otherwise parse to an empty Gui and be reported as
+    // a screen with no controls rather than as the wrong format.
+    if (out.gadgets.empty())
+        throw std::runtime_error(origin + ": no [GADGET0] -- not a TA .gui");
+    return out;
 }
 
 }  // namespace ta::gui

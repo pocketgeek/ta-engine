@@ -21,7 +21,10 @@ T clampv(T v, T lo, T hi) { return std::max(lo, std::min(hi, v)); }
 }  // namespace
 
 std::string settingsPath() {
-    char* base = SDL_GetPrefPath("TAKengine", "TAKingdoms");
+    // Settings, replays and the remembered data folder live here. Renamed off the
+    // Kingdoms path: a TA install's config has no business landing in the sibling
+    // engine's directory, where the two would overwrite each other's settings.ini.
+    char* base = SDL_GetPrefPath("TAengine", "TotalAnnihilation");
     if (!base) return {};
     std::string p = std::string(base) + "settings.ini";
     SDL_free(base);

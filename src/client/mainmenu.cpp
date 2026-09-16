@@ -104,15 +104,14 @@ struct Button {
     bool hover = false;
 };
 
-// A menu gadget's click sound is the first ".wav" entry in its gui state strings
-// (the others are "Default" or empty). Case-insensitive on the extension.
+// Kingdoms' .gui gadgets carried per-state strings, one of which named the
+// button's click sound. TA's do not -- the format has no such field at all (no
+// shipped .gui uses one), and its UI sounds come from the sound tables instead.
+// Left as a hook returning nothing rather than deleted, because the caller's
+// "this gadget has its own sound" branch is still the right shape once those
+// tables are wired up.
 inline std::string clickSound(const gui::Gadget& g) {
-    for (const auto& s : g.states) {
-        if (s.size() < 4) continue;
-        std::string ext = s.substr(s.size() - 4);
-        for (char& c : ext) c = char(std::tolower((unsigned char)c));
-        if (ext == ".wav") return s;
-    }
+    (void)g;
     return {};
 }
 
