@@ -1,51 +1,49 @@
 <div align="center">
 
-# ⚔️ TAK Engine
+# ⚙️ TA Engine
 
-**A modern, cross-platform re-creation of _Total Annihilation: Kingdoms_**
+**A modern, cross-platform re-creation of _Total Annihilation_**
 
-_Cavedog's 1999 fantasy RTS — reborn in clean-room C++20 / SDL2, in the spirit of OpenRA and the Robot War Engine._
+_Cavedog's 1997 RTS — rebuilt in clean-room C++20 / SDL2, in the spirit of OpenRA and the Robot War Engine._
 
-[![version](https://img.shields.io/badge/version-0.6.5-c9a227?style=flat-square)](https://github.com/pocketgeek/ta-engine/releases)
+[![version](https://img.shields.io/badge/version-0.6.7-c9a227?style=flat-square)](https://github.com/pocketgeek/ta-engine/releases)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c?style=flat-square&logo=cplusplus&logoColor=white)](CMakeLists.txt)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20·%20Windows%20·%20macOS-4c8c4a?style=flat-square)](#download)
 [![multiplayer](https://img.shields.io/badge/multiplayer-deterministic%20lockstep-b03a2e?style=flat-square)](#multiplayer)
 [![license](https://img.shields.io/badge/license-GPL--3.0-6c3483?style=flat-square)](LICENSE)
 
-<br>
-
-<img src="docs/img/title.jpg" width="70%" alt="TAK Engine — the retail three-door front-end, rebuilt from scratch">
-
-<br><br>
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/img/ingame.jpg" alt="The built-in 8-AI benchmark in flight: a monarch on the battlefield, thousands of units in play, a live scoreboard and the run countdown"></td>
-    <td width="50%"><img src="docs/img/gameplay.jpg" alt="A skirmish in progress — a monarch, its keep and an army, under the retail command HUD"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/img/benchmark.jpg" alt="The benchmark results screen: per-10s CPU, memory, frame rate, sim speed, GPU utilisation and VRAM for client and server"></td>
-    <td width="50%"><img src="docs/img/lobby.jpg" alt="The multiplayer / single-player lobby: 8 slots, teams, colours, factions, unit cap and speed options"></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/img/disco.jpg" height="260" alt="A monarch dancing on a glowing disco floor"><br><em>Monarchs can disco… <code>Shift+D</code></em></td>
-    <td align="center"><img src="docs/img/headbang.jpg" height="260" alt="A monarch headbanging in a red mosh-pit glow"><br><em>…and headbang to synth-metal. <code>Shift+H</code></em></td>
-  </tr>
-</table>
-
-<sub>Thousands of units on screen · deterministic lockstep MP · animated 3D models · a full retail-style HUD · a built-in benchmark · and, yes, dancing kings.</sub>
-
 </div>
 
 ---
 
-A modern, cross-platform engine recreation for **Total Annihilation: Kingdoms**
-(Cavedog Entertainment, 1999), in the spirit of OpenRA and Robot War Engine.
+An engine recreation for **Total Annihilation** (Cavedog Entertainment, 1997) —
+the **Commander Pack**: the base game plus *The Core Contingency* and *Battle
+Tactics*.
 
-**Version 0.6.5** — reported by `taclient --version` and `taserver --version`
-(and shown in the window title / server banner). The release version is set in
-one place, `project(... VERSION ...)` in `CMakeLists.txt`, and is separate from
-the multiplayer wire protocol version, which is gated independently at connect.
+> **Work in progress.** This is a fork of
+> [tak-engine](https://github.com/pocketgeek/tak-engine), a finished engine for
+> TA's sequel *Total Annihilation: Kingdoms*, being retargeted at TA itself.
+> The asset pipeline reads real TA data today; the simulation is still
+> Kingdoms'. **It does not play Total Annihilation yet.**
+>
+> [`docs/ta-port.md`](docs/ta-port.md) is the map of what is done, what is left,
+> and why. Short version:
+>
+> | | |
+> | --- | --- |
+> | ✅ **HPI v1** | all 30 archives of the Commander Pack, 7,890 files, zero failures |
+> | ✅ **3DO · GAF · COB · TDF** | already classic-TA compatible; verified against real assets |
+> | ✅ **TNT + terrain** | all 96 shipped maps round-trip byte-identically, and render |
+> | 🔨 **Unit data, economy, sim** | next: metal+energy, nanolathe building, ARM vs CORE |
+
+Much of the retained engine's behaviour was cross-checked against the retail
+*Kingdoms* binary; the same treatment of TA's `TotalA.exe` is how the remaining
+gameplay questions get settled. See `docs/retail-engine.md`.
+
+> **This project contains no game content.** You must own the original game
+> (e.g. the GOG *Total Annihilation: Commander Pack*); the engine reads its
+> install directory directly (see **Game data**), and any local copy of that
+> content stays gitignored.
 
 ### Download
 
@@ -199,38 +197,34 @@ a release is just
 
 ## Game data
 
-Point the engine straight at a **retail install directory** — no extraction
-step. Pass it with `--data`, or just launch `taclient` with no arguments: it
-pops up a **native folder picker** ("choose your TA:Kingdoms install"), checks
-the folder actually holds the game data, and **remembers it** (saved in config,
-re-validated each launch) so you're only asked once. It reads the shipped
-archives and folders in place:
+Point the engine at a **retail install directory** — no extraction step. Pass it
+with `--data`, or launch with no arguments and pick it in the folder picker
+(remembered in config, re-validated each launch).
 
 ```
 <install>/
-  *.hpi              the shipped archives (data, terrain, maps, sections,
-                     english, the IP* Iron Plague expansion, community packs…)
-  Maps/              downloadable maps as *.kmp (each an HPI) + loose maps
-  Music/             track*.wav soundtrack
-  overrides/         YOUR overrides -- loose files or *.hpi/*.kmp, highest priority
+  totala1.hpi        base game: units, scripts, sounds, gamedata
+  totala2.hpi        maps
+  totala3.hpi  totala4.hpi
+  rev31.gp3          the 3.1 patch
+  ccdata.ccx  ccmaps.ccx  ccmiss.ccx     The Core Contingency
+  btdata.ccx  btmaps.ccx  tactics1-8.hpi Battle Tactics
+  worlds.hpi         map-editor section art
+  *.ufo              mods (the shipped Fark/Flea/Scarab/... packs, and yours)
 ```
 
-Only the **canonical** retail archives in the install root are read — the base
-game, the Iron Plague expansion (`IP*.hpi`), and the official map/rocket packs;
-any other `*.hpi` dropped in the root (and all loose files there) is ignored. Maps
-come from `maps.hpi` and the `Maps/*.kmp`, music from `Music/`, and anything in
-`overrides/` wins over everything. A small **authenticity manifest** of those root
-archives is recorded with the folder and recomputed each launch; a moved or
-unreadable install re-opens the folder picker.
+**Archive precedence.** All four extensions are the same HPI v1 container, and
+the extension is the rank: `.hpi` (base), then `.ccx` (expansions), `.gp3`
+(patch), `.ufo` (mods) — later groups override earlier ones, each group
+alphabetical. Within a group, the copy whose archive entry carries the newest
+date wins, with ties keeping the earlier mount. (HPI v1 entries carry no
+timestamp, so in practice every v1-vs-v1 collision is a tie and extension order
+decides.) A loose file on disk beats everything.
 
-**HPI precedence.** The retail game shipped each update as a new HPI/UFO that
-superseded older copies of a file, and the engine reproduces the exact rule
-(reverse-engineered from `KINGDOMS.icd`): a loose file wins; otherwise, across all
-`*.hpi` then `*.ufo`, the copy whose archive entry has the **newest date** wins
-(ties keep the earlier-mounted). So dropping a newer patch archive (e.g.
-`V3Rocket.hpi`) into the install Just Works. `hpitool where <dir> <path>` shows
-which archive a file resolves to; the offline `hpitool merge` still bakes a flat
-tree if you want one.
+Unlike the Kingdoms engine this forked from, there is **no filename whitelist** —
+archives are mounted by extension, which is what retail does, so an official pack
+or a mod you drop in simply works. `hpitool where <dir> <path>` shows which
+archive wins a path; `hpitool merge` bakes a flat tree if you want one.
 
 ## Playing
 
@@ -475,10 +469,10 @@ See `docs/cartographer-port.md`.
 
 | Path | Contents |
 | --- | --- |
-| `src/hpi/` | HPI archive reader (TAK's revised format vs. classic TA) |
+| `src/hpi/` | HPI archive reader (classic TA v1 + Kingdoms' v2) |
 | `src/gaf/` | GAF/TAF sprite, animation, and font decoding |
 | `src/video/` | `.bik` (Bink Video) decoding for the menu door clips (FFmpeg-backed) |
-| `src/tnt/` | TNT map decoding |
+| `src/tnt/` | TNT map decoding (TA's 0x2000 tile-library format) + the procedural generator |
 | `src/tdo/` | 3DO model loading |
 | `src/cob/` | COB script bytecode VM (unit animation/scripting) |
 | `src/tdf/` | TDF/FBI/OTA text-config parsing |
@@ -488,21 +482,21 @@ See `docs/cartographer-port.md`.
 | `src/net/` | multiplayer wire format, framed TCP, client protocol |
 | `src/server/` | `taserver`, the headless lobby + lockstep relay |
 | `src/ai/` | the skirmish AI (server-portable; emits commands) |
-| `src/terrain/` | terrain / palette handling |
+| `src/terrain/` | terrain compositing from the map's tile library, through the game palette |
 | `src/util/` | shared helpers |
 | `src/gui/` | retail `.gui` HUD/gadget layout parsing |
 | `src/client/` | the SDL2 app (`taclient`: asset viewer + game) |
 | `src/cartographer/` | `cartographer`, a clean-room port of the retail map editor (in progress) |
 | `tools/` | CLI dev tools (`hpitool`, `gaftool`, `tnttool`, `modeltool`, `cobtool`, `tdftool`, `missiontool`, `biktool`, `aitool`) |
-| `docs/` | format notes + reverse-engineering findings (`retail-engine.md` = the `KINGDOMS.icd` disassembly) |
+| `docs/` | format notes + RE findings. **`ta-port.md` = the TAK→TA port map**; `retail-engine.md` = the Kingdoms disassembly the retained engine was built against |
 
 ## License
 
 TAK Engine is free software, licensed under the **GNU General Public License,
 version 3 or later** (`GPL-3.0-or-later`) — see [`LICENSE`](LICENSE) for the full
-text. Copyright © 2026 the TAK Engine authors.
+text. Copyright © 2026 the TA Engine authors.
 
 This covers the engine's own source code only. It grants no rights to *Total
-Annihilation: Kingdoms* itself: Cavedog's game code, data, and art remain their
-owners' property; this project ships none of them and reads them only from a copy
-you already own (see **Game data**).
+Annihilation* itself: Cavedog's game code, data, and art remain their owners'
+property; this project ships none of them and reads them only from a copy you
+already own (see **Game data**).
