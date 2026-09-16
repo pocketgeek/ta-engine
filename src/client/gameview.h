@@ -3230,6 +3230,20 @@ private:
                                animClock_, cls.c_str(), anim.c_str(), ea->frames.size());
         return true;
     }
+    // Play one named effect animation ("file:sequence" or a bare name), reporting
+    // whether its art was there -- the caller falls back to particles if not.
+    // spawnEffect() above picks a random variant from a CLASS; TA names the art
+    // on the weapon directly, so there is no class to pick from.
+    bool spawnEffectNamed(const std::string& anim, float x, float z, float alt = 0) {
+        if (anim.empty()) return false;
+        const EffectAnim* ea = effectFor(anim);
+        if (!ea) return false;
+        effects_.push_back({ea, x, z, 0.0f, 0.0f, 0.0f, 1, alt});
+        static const bool kLog = ta::devEnv("TA_FXLOG") != nullptr;
+        if (kLog) std::fprintf(stderr, "t=%.2f effect anim '%s' (%zu frames)\n",
+                               animClock_, anim.c_str(), ea->frames.size());
+        return true;
+    }
     void updateEffects(float dt);
     // A shockwave ring: `sprites` copies of an effect anim arranged around a
     // circle that expands from the centre to maxR over `dur` (TAK radiusart).

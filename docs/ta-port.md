@@ -839,6 +839,33 @@ A build whose FFmpeg lacks the decoder degrades rather than breaks:
 `avcodec_find_decoder` returns null, `decodeToS16` returns empty, and the player
 logs `music: cannot decode …` instead of crashing.
 
+### Impacts drew particles instead of the authored explosion art
+
+`Weapon::explosionClass` is parsed from `explosionclass`, which a Kingdoms
+weapon resolves through `gamedata/explosions/explosions.tdf` into a list of
+effect animations. **A TA install has neither**: `gamedata/` holds 13 files and
+`gamedata/explosions/` does not exist, and across the 620 weapon sections
+`explosionclass` appears **0** times. TA names the art on the weapon instead —
+`explosiongaf=<file>` plus `explosionart=<sequence>`, 297 sections — with a
+matching water pair.
+
+So `explosionClass` was always empty and every impact fell through to
+`spawnImpact`, the procedural-particle fallback. Not invisible, which is why it
+went unnoticed: just never the real thing.
+
+`Weapon::explosionAnim` / `waterExplosionAnim` now carry TA's pair in the
+client's existing `"file:sequence"` form, which `effectFor` already understood,
+and the impact path tries them before the class lookup and the particles. The
+Kingdoms class path is left in place beneath, so nothing regresses for data that
+does declare one.
+
+Measured after, with `TA_FXLOG=1`: a fight over land plays `fx:explode5` (26) and
+`fx:explode2` (3); over water, `fx:h2o` (12 frames). Zero impacts fell through to
+the class path or the particles.
+
+Display-only and never hashed — `check-determinism` still agrees on golden
+`ab1ef54ae324bd0e`.
+
 ### Weapons fired in silence
 
 Same file, a second failure. The sim parses a weapon's impact sound from

@@ -154,6 +154,15 @@ struct Weapon {
     std::string wanderStart, wanderLoop, wanderEnd;
     std::string explosionClass;       // explosionclass: impact effect (gamedata/explosions)
     std::string waterExplosionClass;  // waterexplosionclass: impact effect over water
+    // TA names its impact art on the WEAPON instead: explosiongaf=<file> plus
+    // explosionart=<sequence> (and the water pair). There is no
+    // gamedata/explosions/ in a TA install and no weapon declares
+    // explosionclass, so the two fields above are always empty there and every
+    // impact fell back to procedural particles instead of the authored art.
+    // Stored in the client's "file:sequence" form, ready for effectFor().
+    // Display only, never hashed.
+    std::string explosionAnim;
+    std::string waterExplosionAnim;
     // Area-effect shockwave rings emitted at this weapon's impact.
     std::string radiusArt[3];   // radiusart0..2: expanding-ring effect anims
     int   ringCount = 0;        // ringcount: how many rings

@@ -961,7 +961,17 @@
                                              : h.weapon->explosionClass;
                 // Lift the blast onto an airborne target (shooting down a flyer).
                 float tAlt = flyerAltAt(h.x, h.z) * 0.8f;
-                if (!spawnEffect(cls, h.x, h.z, tAlt)) spawnImpact(*h.weapon, h.x, h.z, tAlt);
+                // TA names the art on the weapon (explosiongaf + explosionart);
+                // Kingdoms names a CLASS resolved through gamedata/explosions.
+                // Try the weapon's own art first -- on TA it is the only one
+                // there is, and without it every impact drew particles.
+                const std::string& anim = (world_.isWater(h.x, h.z) &&
+                                           !h.weapon->waterExplosionAnim.empty())
+                                              ? h.weapon->waterExplosionAnim
+                                              : h.weapon->explosionAnim;
+                if (!spawnEffectNamed(anim, h.x, h.z, tAlt) &&
+                    !spawnEffect(cls, h.x, h.z, tAlt))
+                    spawnImpact(*h.weapon, h.x, h.z, tAlt);
             }
             // Weapon area-effect: expanding shockwave rings (radiusart, staggered
             // by ringdelay) and ground fire (firestarter) at the impact.

@@ -203,6 +203,14 @@ Weapon parseWeaponNode(const tdf::Node* w) {
     wp.wanderEnd = lower(w->valueOr("wanderendart", ""));
     wp.explosionClass = lower(w->valueOr("explosionclass", ""));
     wp.waterExplosionClass = lower(w->valueOr("waterexplosionclass", ""));
+    // TA's per-weapon impact art: "<explosiongaf>:<explosionart>".
+    auto animPair = [&](const char* gafKey, const char* artKey) {
+        std::string gaf = lower(w->valueOr(gafKey, ""));
+        std::string art = lower(w->valueOr(artKey, ""));
+        return (gaf.empty() || art.empty()) ? std::string() : gaf + ":" + art;
+    };
+    wp.explosionAnim = animPair("explosiongaf", "explosionart");
+    wp.waterExplosionAnim = animPair("waterexplosiongaf", "waterexplosionart");
     wp.radiusArt[0] = lower(w->valueOr("radiusart0", ""));
     wp.radiusArt[1] = lower(w->valueOr("radiusart1", ""));
     wp.radiusArt[2] = lower(w->valueOr("radiusart2", ""));
