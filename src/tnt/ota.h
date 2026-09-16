@@ -29,7 +29,8 @@ struct PlacedUnit {
     int xpos = 0, ypos = 0, zpos = 0;
     int player = 0;            // .ota player number (1-based in the file)
     int healthPercent = 100;
-    int angle = 0;             // heading, TA's 0..65535 turn units
+    int angle = 0;             // heading in DEGREES (0..359); measured across the
+                               // whole shipped corpus -- 282 distinct values, max 359
     int kills = 0;             // veterancy it starts with
 };
 

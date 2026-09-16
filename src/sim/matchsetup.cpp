@@ -3,6 +3,7 @@
 #include "util/strcase.h"
 
 #include "tdf/sidedata.h"
+#include "tnt/ota.h"
 
 #include "sim/detmath.h"
 #include <algorithm>
@@ -870,8 +871,163 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     return assigned;
 }
 
+// TA's campaign missions: a map's .ota under maps/, carrying its opening board as
+// placed units inside a per-DIFFICULTY schema and its objectives as header keys.
+// See ta::tnt::Scenario and docs/ta-port.md; the Kingdoms path below is a
+// different arrangement entirely (missions/ + a .cob god script + a .crt).
+static bool setupMissionTA(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
+                           const std::string& stem, const tnt::Scenario& sc,
+                           const std::string& difficulty, int& humanOut,
+                           MissionSetup* out) {
+    const tnt::Schema* schema = sc.schemaFor(difficulty);
+    if (!schema) return false;
+
+    // .ota player numbers are 1-based and the HUMAN is player 1 -- checked across
+    // all 51 shipped ARM and CORE campaign missions, where player 1 owns the
+    // campaign's own side and player 2 the enemy. Map them to compact 0-based
+    // world slots, keeping 1 -> 0 so the human is slot 0.
+    int maxPlayer = 1;
+    for (const auto& u : schema->units) maxPlayer = std::max(maxPlayer, u.player);
+    const int nSlots = std::clamp(maxPlayer, 1, kMaxPlayers);
+    auto mapPlayer = [&](int otaP) { return std::clamp(otaP - 1, 0, nSlots - 1); };
+    humanOut = 0;
+
+    std::vector<MatchSlot> slots;
+    slots.resize(size_t(nSlots));
+    for (int i = 0; i < nSlots; ++i) {
+        slots[size_t(i)].used = false;       // no commander spawn: the .ota places the board
+        slots[size_t(i)].faction = 0;
+        // The human and everyone else are on opposing teams. A mission with more
+        // than two players puts them all against the human, which is what the
+        // shipped ones do.
+        slots[size_t(i)].team = i == 0 ? 0 : 1;
+    }
+
+    MatchConfig cfg;
+    cfg.vfs = &vfs;
+    cfg.mapPath = "maps/" + stem + ".tnt";
+    cfg.slots = slots;
+    cfg.unitCap = sc.maxUnits > 0 ? sc.maxUnits : 500;
+    setupMatch(world, reg, cfg);            // terrain + features + teams
+    if (sc.waterDoesDamage) world.setWaterDamage(sc.waterDamage);
+
+    // The schema's economy, which is where a mission's difficulty actually lives:
+    // the same board with a different treasury on each side.
+    MapEconomy econ = world.mapEconomy();
+    econ.surfaceMetal = schema->surfaceMetal;
+    econ.mohoMetal = schema->mohoMetal;
+    world.setMapEconomy(econ);
+    for (int i = 0; i < nSlots; ++i) {
+        Player& p = world.player(i);
+        p.metal.cur  = i == 0 ? schema->humanMetal  : schema->computerMetal;
+        p.energy.cur = i == 0 ? schema->humanEnergy : schema->computerEnergy;
+    }
+
+    // The board. Positions are WORLD units (not cells, unlike the Kingdoms form)
+    // and Angle is in DEGREES -- 282 distinct values across the whole shipped
+    // corpus, maximum 359.
+    int spawned = 0;
+    for (const auto& pu : schema->units) {
+        std::string name = pu.unitName;
+        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+        const UnitType* t = reg.find(name);
+        if (!t) continue;                   // a type this install lacks: skip, don't fail
+        const int player = mapPlayer(pu.player);
+        const float ang = float(pu.angle) * (3.14159265f / 180.0f);
+        const int id = world.spawn(t, float(pu.xpos), float(pu.zpos), ang, player);
+        if (id < 0) continue;
+        ++spawned;
+        if (Unit* su = world.unit(id))
+            if (pu.healthPercent > 0 && pu.healthPercent < 100)
+                su->hp = su->type->maxHp * float(pu.healthPercent) / 100.0f;
+        // PlacedUnit::kills is deliberately NOT applied: TA has no veterancy (the
+        // Kingdoms engine's kills-to-levels ladder has no TA counterpart), so the
+        // field is carried by the parser for fidelity and has nothing to act on.
+    }
+
+    if (out) {
+        out->aiProfile = schema->aiProfile;
+        // lineofsight=0 means the mission is played revealed; mapping=1 starts the
+        // terrain explored with units still fogged.
+        out->fullVision = sc.lineOfSight == 0;
+        out->preMapped = sc.mapping != 0;
+        // Every non-human slot that owns something gets a brain, and its centroid
+        // is where its units actually are.
+        out->slotPos.assign(size_t(kMaxPlayers), {0.0f, 0.0f});
+        std::vector<int> n(size_t(kMaxPlayers), 0);
+        for (const auto& u : world.units()) {
+            if (!u.alive() || u.player < 0 || u.player >= kMaxPlayers) continue;
+            out->slotPos[size_t(u.player)].first += u.x;
+            out->slotPos[size_t(u.player)].second += u.z;
+            ++n[size_t(u.player)];
+        }
+        for (size_t i = 0; i < out->slotPos.size(); ++i)
+            if (n[i] > 0) {
+                out->slotPos[i].first /= float(n[i]);
+                out->slotPos[i].second /= float(n[i]);
+            }
+        for (int i = 1; i < nSlots; ++i)
+            if (n[size_t(i)] > 0) out->aiSlots.push_back(i);
+    }
+
+    std::fprintf(stderr,
+                 "setupMission: TA '%s' [%s] -- %d units placed over %d players, "
+                 "human=slot 0, profile=%s\n",
+                 stem.c_str(), schema->type.c_str(), spawned, nSlots,
+                 schema->aiProfile.empty() ? "(none)" : schema->aiProfile.c_str());
+    return spawned > 0;
+}
+
+std::string missionMapPath(const hpi::Vfs& vfs, const std::string& stem) {
+    const std::string ta = "maps/" + stem + ".tnt";
+    if (vfs.has(ta)) return ta;
+    const std::string tak = "missions/" + stem + ".tnt";
+    if (vfs.has(tak)) return tak;
+    return {};
+}
+
+std::vector<std::string> missionAllowedUnits(const hpi::Vfs& vfs, const std::string& stem) {
+    std::vector<std::string> out;
+    auto readInto = [&](const std::string& path) {
+        if (!vfs.has(path)) return false;
+        try {
+            auto b = vfs.read(path);
+            tdf::Node root = tdf::parseText(std::string(b.begin(), b.end()), path);
+            for (const auto& name : root.childOrder) out.push_back(name);
+        } catch (const std::exception&) {}
+        return !out.empty();
+    };
+    // TA: the .ota names the file, and it sits under camps/useonly/.
+    const std::string ota = "maps/" + stem + ".ota";
+    if (vfs.has(ota)) {
+        try {
+            auto b = vfs.read(ota);
+            tnt::Scenario sc = tnt::Scenario::parse(std::string(b.begin(), b.end()));
+            if (!sc.useOnlyUnits.empty() &&
+                readInto("camps/useonly/" + sc.useOnlyUnits))
+                return out;
+        } catch (const std::exception&) {}
+    }
+    readInto("missions/" + stem + ".tdf");   // Kingdoms
+    return out;
+}
+
 bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                   const std::string& stem, int& humanOut, MissionSetup* out) {
+    // TA first: maps/<stem>.ota placing units. Falls through to the Kingdoms
+    // arrangement (missions/<stem>.ota + .cob + .crt) when that is what is there,
+    // so a Kingdoms install still runs.
+    {
+        const std::string taOta = "maps/" + stem + ".ota";
+        const std::string taTnt = "maps/" + stem + ".tnt";
+        if (vfs.has(taOta) && vfs.has(taTnt)) {
+            auto b = vfs.read(taOta);
+            tnt::Scenario sc = tnt::Scenario::parse(std::string(b.begin(), b.end()));
+            if (sc.isMission())
+                return setupMissionTA(world, reg, vfs, stem, sc, /*difficulty=*/"",
+                                      humanOut, out);
+        }
+    }
     const std::string base = "missions/" + stem;
     // The .cob is OPTIONAL: 11 of the 74 shipped missions (takmission05_dh --
     // chapter 5 of Book of Darien! -- 07/23/28/40_ph/dh and takx07/10/12/14/15/17)

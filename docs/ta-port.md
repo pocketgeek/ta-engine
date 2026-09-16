@@ -452,6 +452,44 @@ surplus it never produces at all (upkeep is billed per unit, all or nothing) and
 is pure spent metal. Retail's own profile damps makers to weight 0.1, which makes
 that unlikely; gating them on the energy to run them makes it correct.
 
+## 5b. Campaign missions
+
+A TA mission is a map's `.ota` under `maps/`, not a separate file type: extra
+GlobalHeader keys, the opening board as placed units inside each schema, and the
+objectives as plain keys. `camps/Arm Campaign.tdf` lists them (`missionfile=
+AC01.ota`), and `camps/useonly/<name>.tdf` restricts the build menu — the `.ota`
+names that file in `useonlyunits=`.
+
+Two things are load-bearing and were read off the data:
+
+- **A schema is a DIFFICULTY.** AC01 ships Easy / Medium / Hard, each with its
+  own board and its own opening treasuries (Easy gives the human 1000 metal
+  against the computer's 100; Hard reverses it). A skirmish map's schemas vary
+  the *player count* instead, so a reader written for one silently mis-serves the
+  other — reading only the first schema locks the campaign to Easy.
+- **`.ota` player 1 is the human.** Checked across all 51 shipped ARM and CORE
+  campaign missions: player 1 owns the campaign's own side and player 2 the
+  enemy. AC01's player 1 holds ARMFAV/ARMPW/ARMGATE and player 2 the CORAK/CORFAV.
+
+`setupMission` now takes the TA path when `maps/<stem>.ota` places units, and
+falls back to the Kingdoms arrangement (`missions/` + a `.cob` god script + a
+`.crt`) otherwise, so a Kingdoms install still runs. AC01 loads: 34 units over 2
+players on Easy, the enemy gets a brain from the schema's `aiprofile=MISSIONS`,
+the conjure menu restricts to its 14 allowed types, and the two sides fight.
+
+**Open, and flagged rather than papered over.** The Galactic Gate the player owns
+in AC01 declares `EnergyUse=3000` and is not `onoffable` — six unit types carry
+an upkeep at or above 100, and the two gates are the only ones that cannot be
+switched off. Under the per-unit all-or-nothing billing established in
+[`retail-engine-ta.md`](retail-engine-ta.md), the gate drains the mission's
+opening 1000 energy in about a third of a second and then simply never pays
+again. Whether retail charges a campaign gate at all is not established here.
+
+Objectives are parsed but **not yet evaluated**. Note when that is done that they
+are not all *win* conditions: AC01 declares `AllUnitsKilledOfType=ARMGATE` and the
+only ARMGATE on the map belongs to the player, so at least some of these keys
+describe a LOSS.
+
 ## 6. Open questions, pending the retail data
 
 Answers come from the install itself and from analysing `TotalA.exe` — static

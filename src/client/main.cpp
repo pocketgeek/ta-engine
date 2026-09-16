@@ -950,8 +950,8 @@ int main(int argc, char** argv) {
             const auto rpol0 = ta::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
             ta::hpi::Vfs probeVfs = ta::hpi::mountRetailRoot(dataRoot, rpol0);
             if (!rf.mission.empty()) {
-                mapPath = "missions/" + rf.mission + ".tnt";
-                if (!probeVfs.has(mapPath)) {
+                mapPath = ta::sim::missionMapPath(probeVfs, rf.mission);
+                if (mapPath.empty()) {
                     replayFailed("mission '" + rf.mission + "' is not in this game data");
                     if (fromMenu) continue;
                     return 1;
@@ -1028,8 +1028,8 @@ int main(int argc, char** argv) {
                 std::string mstem = args[0];
                 if (mstem.size() > 4 && mstem.substr(mstem.size() - 4) == ".tnt")
                     mstem = mstem.substr(0, mstem.size() - 4);
-                std::string mpath = "missions/" + mstem + ".tnt";
-                if (vfs.has(mpath)) mapPath = mpath;
+                std::string mpath = ta::sim::missionMapPath(vfs, mstem);
+                if (!mpath.empty()) mapPath = mpath;
             }
 #endif
             if (mapPath.empty()) { std::fprintf(stderr, "map '%s' not found in %s\n", args[0].c_str(), dataRoot.c_str()); return 1; }

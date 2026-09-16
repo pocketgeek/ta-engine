@@ -122,4 +122,16 @@ struct MissionSetup {
 bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                   const std::string& stem, int& humanOut, MissionSetup* out = nullptr);
 
+// Where a mission's map lives: `maps/<stem>.tnt` in TA, `missions/<stem>.tnt` in
+// Kingdoms. Empty when the install has neither. Callers that build the world need
+// the same answer setupMission reached, so they ask rather than assume.
+std::string missionMapPath(const hpi::Vfs& vfs, const std::string& stem);
+
+// The unit ids a mission restricts the player's build menu to (UI only; the sim
+// does not enforce it). TA names the file in its .ota -- `useonlyunits=AC01.tdf`,
+// resolved under `camps/useonly/` -- where Kingdoms used `missions/<stem>.tdf`.
+// Both files are the same shape: one empty `[UNITID]` section per allowed unit.
+// Empty when the mission restricts nothing.
+std::vector<std::string> missionAllowedUnits(const hpi::Vfs& vfs, const std::string& stem);
+
 }  // namespace ta::sim

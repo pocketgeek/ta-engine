@@ -101,7 +101,7 @@ static const char* kMission = R"OTA([GlobalHeader]
 				ZPos=1500;
 				Player=2;
 				HealthPercentage=55;
-				Angle=32768;
+				Angle=180;
 				Kills=3;
 				}
 			}
@@ -214,7 +214,9 @@ int main() {
             const auto& u1 = s.schemas[0].units[1];
             eqs(u1.ident, "thegate", "a unit's script handle parses");
             eqi(u1.healthPercent, 55, "a damaged unit's health");
-            eqi(u1.angle, 32768, "its heading");
+            // DEGREES, 0..359 -- measured across every Angle in the shipped
+            // .ota corpus: 282 distinct values, max 359, none above.
+            eqi(u1.angle, 180, "its heading, in degrees");
             eqi(u1.kills, 3, "and the veterancy it starts with");
             eqi(s.schemas[0].units[0].healthPercent, 100,
                 "a unit that states no health defaults to full");

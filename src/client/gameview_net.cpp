@@ -78,7 +78,10 @@
         // the referee, and every peer stay byte-identical -- the mission runs in
         // lockstep with no relayed actions. See docs/campaign-design.md.
         if (!room.mission.empty()) {
-            mapPath_ = "missions/" + room.mission + ".tnt";
+            // maps/<stem>.tnt in TA, missions/<stem>.tnt in Kingdoms -- ask,
+            // rather than assume, so this agrees with the world setupMission
+            // actually built.
+            mapPath_ = ta::sim::missionMapPath(vfs_, room.mission);
             resetMinimap();   // its thread reads the map being swapped
             loadScreen_->step("LOADING TERRAIN", 30);
             mapView_.reload(vfs_, mapPath_);
@@ -92,12 +95,7 @@
             warmCursors();   // cursor art + hardware reconstruction, off the frame path
             // Per-mission unit restriction: missions/<stem>.tdf lists the unit ids this
             // mission allows; the human's conjure menu is filtered to it (UI only).
-            missionAllowed_.clear();
-            if (std::string tdfp = "missions/" + room.mission + ".tdf"; vfs_.has(tdfp)) {
-                std::vector<uint8_t> tb = vfs_.read(tdfp);
-                ta::tdf::Node root = ta::tdf::parseText(std::string(tb.begin(), tb.end()), tdfp);
-                for (const auto& [name, node] : root.children) { (void)node; missionAllowed_.push_back(name); }
-            }
+            missionAllowed_ = ta::sim::missionAllowedUnits(vfs_, room.mission);
             missionObjectives_ = ta::loadObjectives(vfs_, room.mission);   // in-game panel
             showObjectives_ = true;
             // The player commands the mission's human player; for the common case its
