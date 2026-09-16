@@ -1,6 +1,8 @@
 #include <map>
 #include "client/modelview.h"
 
+#include "util/strcase.h"
+
 #include "client/gpuvram.h"
 #include "gaf/gaf.h"
 
@@ -97,7 +99,9 @@ void ModelView::loadTextures(const std::string& texDir, const std::string& palet
         catch (const std::exception&) {}
     }
     for (const auto& e : std::filesystem::directory_iterator(texDir)) {
-        if (e.path().extension() != ".gaf") continue;
+        // Case-insensitive: TA ships .GAF in upper case, and a case-sensitive
+        // test here loaded zero textures and rendered every model flat grey.
+        if (!ta::iendsWith(e.path().filename().string(), ".gaf")) continue;
         std::string stem = e.path().stem().string();
         std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
         const ta::gaf::Palette* pal = &fallback;

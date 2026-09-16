@@ -1,4 +1,6 @@
 #include "client/gameview.h"
+
+#include "util/strcase.h"
 #include "client/runtimesettings.h"
 
 // Out-of-line GameView method definitions (core concern), split from the
@@ -2090,20 +2092,34 @@
     }
 
     void GameView::loadTextures() {
-        // Faction texture banks use their own palettes (palettes/<side>_textures.pcx).
-        // The VFS merges base + Iron Plague (cre) texture GAFs into one namespace.
+        // TA indexes every unit texture against the ONE game palette. Kingdoms
+        // instead gave each faction its own bank with its own
+        // palettes/<side>_textures.pcx, and this used to bail outright when
+        // ara_textures.pcx was missing -- which is every TA install, so it loaded
+        // ZERO textures and every unit rendered flat grey with no error anywhere.
+        //
+        // The per-side banks are still read where they exist (a Kingdoms-shaped
+        // override), but they are now an override on top of the game palette
+        // rather than a precondition.
         std::map<std::string, ta::gaf::Palette> pals;
         for (const char* side : {"ara", "tar", "ver", "zon", "aid", "cre"}) {
             std::string pp = std::string("palettes/") + side + "_textures.pcx";
             try { if (vfs_.has(pp)) pals[side] = ta::gaf::Palette::fromBytes(vread(pp), pp); }
             catch (const std::exception&) {}
         }
-        if (!pals.count("ara")) return;   // no palettes available
+        ta::gaf::Palette base{};
+        bool haveBase = false;
+        for (const char* p : {"palettes/palette.pal", "palettes/guipal.pal"}) {
+            try { base = ta::gaf::Palette::fromBytes(vread(p), p); haveBase = true; break; }
+            catch (const std::exception&) {}
+        }
+        if (!haveBase && pals.count("ara")) { base = pals.at("ara"); haveBase = true; }
+        if (!haveBase) return;   // nothing to colour textures with
         for (const std::string& path : vfs_.list("textures")) {
-            if (std::filesystem::path(path).extension() != ".gaf") continue;
+            if (!ta::iendsWith(path, ".gaf")) continue;
             std::string stem = std::filesystem::path(path).stem().string();
             std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
-            const auto* pal = &pals.at("ara");
+            const auto* pal = &base;
             auto pit = pals.find(stem.substr(0, 3));
             if (pit != pals.end()) pal = &pit->second;
             try {

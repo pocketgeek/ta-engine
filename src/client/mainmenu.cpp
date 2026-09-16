@@ -1,4 +1,6 @@
 #include "client/mainmenu.h"
+
+#include "util/strcase.h"
 #include "client/videofilter.h"
 #include "client/runtimesettings.h"
 #include "client/artscale.h"
@@ -796,7 +798,7 @@ struct MainMenu::Impl {
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             if (ec) break;
             if (!e.is_regular_file(ec)) continue;
-            if (e.path().extension() != ".tarep") continue;
+            if (!ta::iendsWith(e.path().filename().string(), ".tarep")) continue;
             found.push_back({e.last_write_time(ec), e.path().string()});
         }
         // Newest first: the replay you just played is the one you want to watch.
