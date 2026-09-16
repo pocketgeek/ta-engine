@@ -358,8 +358,7 @@ struct FeatTypeInterner {
 static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                              const std::unordered_map<std::string, FeatDef>& defs,
                              FeatTypeInterner& types,
-                             std::vector<std::pair<float, float>>& rawMana,
-                             std::vector<std::pair<float, float>>& rawAll) {
+                             std::vector<std::pair<float, float>>& metalFeatures) {
     if (map.featureNames.empty()) return;
     for (int cz = 0; cz < map.height; ++cz)
         for (int cx = 0; cx < map.width; ++cx) {
@@ -375,8 +374,7 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             // a build spot -- and unlike Kingdoms' Sacred Stones there is no separate
             // "glowy centre": the whole 3x3 is the spot and all of it stays walkable.
             if (di->second.isMetal) {
-                rawAll.push_back({x, z});
-                rawMana.push_back({x, z});
+                metalFeatures.push_back({x, z});
             }
             // Nav-blocking: obstacle features block; a metal patch never does --
             // units walk over metal, and an extractor is built on top of it.
@@ -411,39 +409,41 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
 // Cluster the mana features into deposits, publish them, and carve each one clear.
 // Also shared: the carve is nav state, so a path that registers features without it
 // would let Standing Stones make their own deposit unbuildable.
-static void installManaSpots(World& world,
-                             std::vector<std::pair<float, float>> rawMana,
-                             const std::vector<std::pair<float, float>>& rawAll) {
-    // The buildable spot is the glowing Sacred Stone centre, not the ring of static
-    // Standing Stones (both are category=mana). Fallback: a deposit with no glowy
-    // centre in the data uses its category=mana features instead.
-    if (rawMana.empty()) rawMana = rawAll;
-    std::vector<int> par(rawMana.size());
+// Collapse the map's category=metal features into one spot per PATCH. A TA metal
+// patch is drawn as several adjacent features (a 3x3 ArchMetal is one anchor cell
+// plus its covered neighbours, and patches often sit in clusters), so the raw
+// feature centres are not the thing an extractor wants to be told about -- their
+// cluster centroid is.
+static void installMetalSpots(World& world,
+                              std::vector<std::pair<float, float>> raw) {
+    std::vector<int> par(raw.size());
     for (size_t i = 0; i < par.size(); ++i) par[i] = int(i);
     std::function<int(int)> find = [&](int a) {
         while (par[size_t(a)] != a) { par[size_t(a)] = par[size_t(par[size_t(a)])]; a = par[size_t(a)]; }
         return a;
     };
     const float link2 = 60.0f * 60.0f;
-    for (size_t i = 0; i < rawMana.size(); ++i)
-        for (size_t j = i + 1; j < rawMana.size(); ++j) {
-            float dx = rawMana[i].first - rawMana[j].first, dz = rawMana[i].second - rawMana[j].second;
+    for (size_t i = 0; i < raw.size(); ++i)
+        for (size_t j = i + 1; j < raw.size(); ++j) {
+            float dx = raw[i].first - raw[j].first, dz = raw[i].second - raw[j].second;
             if (dx * dx + dz * dz < link2) par[size_t(find(int(i)))] = find(int(j));
         }
     std::map<int, std::pair<std::pair<double, double>, int>> acc;
-    for (size_t i = 0; i < rawMana.size(); ++i) {
+    for (size_t i = 0; i < raw.size(); ++i) {
         auto& a = acc[find(int(i))];
-        a.first.first += rawMana[i].first; a.first.second += rawMana[i].second; ++a.second;
+        a.first.first += raw[i].first; a.first.second += raw[i].second; ++a.second;
     }
-    std::vector<std::pair<float, float>> manaSpots;
+    std::vector<std::pair<float, float>> metalSpots;
     for (auto& [root, a] : acc)
-        manaSpots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
-    world.setManaSpots(manaSpots);
-    // Standing Stones block nav, but a large one can reach the glowy centre; keep
-    // every deposit buildable by carving the 2x2 lodestone footprint clear at each
-    // spot (canPlace tests exactly these cells).
-    for (const auto& [sx, sz] : manaSpots)
-        world.blockCells(int(sx) / 16 - 1, int(sz) / 16 - 1, 2, 2, false);
+        metalSpots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
+    world.setMetalSpots(metalSpots);
+    // Keep every patch buildable. TA's metal features do not block nav themselves
+    // (ArchMetal* declare no blocking), but a tree or rock overlapping the patch
+    // can, and a patch an extractor cannot be placed on is a patch the map may as
+    // well not have. Carve the extractor footprint (3x3) clear at each centre --
+    // the cells canPlace tests.
+    for (const auto& [sx, sz] : metalSpots)
+        world.blockCells(int(sx) / 16 - 1, int(sz) / 16 - 1, 3, 3, false);
 }
 
 // Register the map's obstacle features into the sim world (reclaim + burning),
@@ -454,9 +454,9 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
                          const TypeRegistry* reg) {
     auto defs = loadFeatureDefs(vfs);
     FeatTypeInterner types(defs);
-    std::vector<std::pair<float, float>> rawMana, rawAll;
-    scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
-    installManaSpots(world, rawMana, rawAll);
+    std::vector<std::pair<float, float>> metalFeatures;
+    scanFeaturePlane(world, map, defs, types, metalFeatures);
+    installMetalSpots(world, metalFeatures);
     if (reg)
         for (const auto& [tid, ut] : reg->types()) {
             if (!ut.corpse.empty()) {
@@ -509,8 +509,8 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // First-seen order over the row-major cell walk = identical on every peer.
     FeatTypeInterner types(defs);
     auto featTypeIdx = [&](const std::string& nm) { return types.intern(nm); };
-    std::vector<std::pair<float, float>> rawMana, rawAll;
-    scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
+    std::vector<std::pair<float, float>> metalFeatures;
+    scanFeaturePlane(world, map, defs, types, metalFeatures);
     // Corpse defs: every unit type's FBI corpse= feature (and its chains) joins
     // the table so death can mint corpse records without art/def lookups later.
     for (const auto& [tid, ut] : reg.types()) {
@@ -520,7 +520,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         }
     }
     world.setFeatureTypes(std::move(types.table));
-    installManaSpots(world, rawMana, rawAll);
+    installMetalSpots(world, metalFeatures);
 
     // Players + teams.
     world.setPlayerCount(int(cfg.slots.size()));

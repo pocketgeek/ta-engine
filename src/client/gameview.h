@@ -2540,7 +2540,9 @@ private:
     };
     std::vector<FeatureInst> features_;
     std::unordered_set<int> featInstIds_;   // sim ids with a visual inst (dynamic adds)
-    std::vector<std::pair<float, float>> manaSpots_;   // Sacred Stone deposits
+    // Metal patch centres (category=metal features), world px -- handed to the
+    // sim so the AI can put its extractors on metal.
+    std::vector<std::pair<float, float>> metalSpots_;
 
     struct FeatArt {
         SDL_Texture* tex = nullptr;

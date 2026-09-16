@@ -397,15 +397,21 @@ bool Controller::produce(const ta::sim::World& world, const ta::sim::Unit& p,
 bool Controller::placeSite(const ta::sim::World& world, const ta::sim::UnitType* t,
                            float nx, float nz, float& outX, float& outZ) const {
     if (!t) return false;
-    if (t->onMana && world.hasManaSpots()) {
+    // An extractor belongs ON metal. TA does not require it -- a mex is legal
+    // anywhere -- but off a patch it yields almost nothing, so an AI that sited
+    // them by the generic ring probe below built a base full of extractors
+    // earning nothing. Prefer the nearest free patch; if every patch is taken or
+    // blocked, fall through and build it on open ground rather than giving up,
+    // because "no free metal left" must not stall the whole build order.
+    if (t->extractsMetal > 0.0f && world.hasMetalSpots()) {
         float bestD = 1e18f;
         bool found = false;
-        for (const auto& [sx, sz] : world.manaSpots()) {
+        for (const auto& [sx, sz] : world.metalSpots()) {
             if (!world.canPlace(t, sx, sz)) continue;   // taken or blocked
             float dx = sx - nx, dz = sz - nz, d = dx * dx + dz * dz;
             if (d < bestD) { bestD = d; outX = sx; outZ = sz; found = true; }
         }
-        return found;
+        if (found) return true;
     }
     for (float r = 70; r < 340; r += 30)
         for (float a = 0; a < 6.28f; a += 0.5f) {

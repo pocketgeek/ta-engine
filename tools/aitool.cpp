@@ -56,15 +56,15 @@ int main(int argc, char** argv) {
     float ex = enemyStarts.empty() ? 0 : enemyStarts[0].first;
     float ez = enemyStarts.empty() ? 0 : enemyStarts[0].second;
 
-    // How many mana deposits exist, and how many are near the AI's start (a rough
+    // How many metal patches exist, and how many are near the AI's start (a rough
     // proxy for how much economy it can build).
     int nearAi = 0;
-    for (const auto& [sx, sz] : w.manaSpots()) {
+    for (const auto& [sx, sz] : w.metalSpots()) {
         float dx = sx - spots[1].first, dz = sz - spots[1].second;
         if (dx * dx + dz * dz < 900.f * 900.f) ++nearAi;
     }
-    std::printf("map mana spots: %zu total, %d within 900px of the AI start\n",
-                w.manaSpots().size(), nearAi);
+    std::printf("map metal patches: %zu total, %d within 900px of the AI start\n",
+                w.metalSpots().size(), nearAi);
     // Is the enemy base reachable by ground from the AI base? (a common attack blocker)
     const sim::UnitType* ground = reg.find("tarknigh");
     if (ground)

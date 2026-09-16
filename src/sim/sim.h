@@ -217,7 +217,6 @@ struct UnitType {
     // canMove building would otherwise be mistaken for a mobile builder.
     bool isStructure() const { return maxVel <= 0.0f; }
     float buildDist = 0;    // FBI builddistance: how far a builder reaches to build
-    bool onMana = false;    // must be built on a mana deposit (yardmap 'S'), e.g. lodestones
     // Kingdoms' single-resource cost. TA has no such key; this is bridged from
     // buildCostMetal at load so the existing (still Kingdoms) economy keeps
     // running on TA data until the two-resource economy lands. See ta-port.md.
@@ -1135,13 +1134,18 @@ public:
     // this is a query for the UI, and it changes no sim state.
     bool clearableForPlacement(const UnitType* type, float x, float z,
                                std::vector<int>& out) const;
-    // Mana deposit ("Sacred Stone") spots, in world px. Lodestones (onMana)
-    // can only be built on one, but only when the map actually has any.
-    void setManaSpots(std::vector<std::pair<float, float>> spots) {
-        manaSpots_ = std::move(spots);
+    // Metal patch centres, in world px -- the anchor cell of each category=metal
+    // feature (ArchMetal1/2/3 and friends). TA places no RESTRICTION on where an
+    // extractor may go: a mex is legal on bare rock, it just yields almost
+    // nothing there (see extractorYield/metalAt). So these are a preference, used
+    // by the AI to put its extractors somewhere worth having them, not a rule
+    // enforced by canPlace. (Kingdoms was the other way round -- a lodestone was
+    // only legal ON a deposit -- which is the rule this replaced.)
+    void setMetalSpots(std::vector<std::pair<float, float>> spots) {
+        metalSpots_ = std::move(spots);
     }
-    bool hasManaSpots() const { return !manaSpots_.empty(); }
-    const std::vector<std::pair<float, float>>& manaSpots() const { return manaSpots_; }
+    bool hasMetalSpots() const { return !metalSpots_.empty(); }
+    const std::vector<std::pair<float, float>>& metalSpots() const { return metalSpots_; }
     // Reclaimable features (trees/rocks/houses). Populated only by setupMatch (the
     // one deterministic per-peer walk); never from the viewer. See struct Feature.
     void addFeature(int id, float x, float z, float energyYield, float metalYield, float work,
@@ -1770,7 +1774,7 @@ private:
     std::unique_ptr<ScenarioScript> scenario_; // optional .crt trigger runner
     std::vector<uint8_t> forcedDefeat_;        // scenario Victory/Defeat: forced-defeated slots
     std::vector<int> justDied_;                // unit ids that died this tick (mission/scenario hook)
-    std::vector<std::pair<float, float>> manaSpots_;
+    std::vector<std::pair<float, float>> metalSpots_;
     MapEconomy mapEcon_;
     std::vector<float> metal_;   // per-cell richness; see metalAt()
     // Wind: a clamped random walk, re-rolled on an expiring countdown, exactly as

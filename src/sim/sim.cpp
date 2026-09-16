@@ -379,17 +379,8 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             {
                 std::string ym = info->valueOr("yardmap", "");
                 std::erase_if(ym, [](char c) { return c == ' ' || c == '\t'; });
-                // A stray 'S' (not a full footprint map) marks a lodestone that
-                // must sit on a mana deposit.
-                t.onMana = ym.find('S') != std::string::npos ||
-                           ym.find('s') != std::string::npos;
                 if (int(ym.size()) == t.footX * t.footZ) t.yardMap = ym;
             }
-            // Every lodestone (Lodestone / Divine Lodestone) must sit on a mana
-            // deposit, even ones whose FBI omits the 'S' yardmap (e.g. crelode).
-            if (t.id.find("lode") != std::string::npos ||
-                t.id.find("mana") != std::string::npos)
-                t.onMana = true;
             t.canTransport = info->numberOr("cantransport", 0) != 0;
             // Prefer the size-based capacity when present (it caps summed
             // transportsize, which is what we compare); else the plain count.
@@ -3142,28 +3133,13 @@ void World::rebuildGrid() {
 bool World::canPlace(const UnitType* type, float x, float z) const {
     static const bool kPlaceLog = std::getenv("TA_PLACE") != nullptr;
     if (!type) return false;
-    // Lodestones must sit on a mana deposit — but only on maps that have any
-    // (deposit-less maps let them build on open ground). And only ONE lodestone
-    // per deposit: reject if another already occupies the target deposit.
-    if (type->onMana && !manaSpots_.empty()) {
-        int spot = -1;
-        float best = 24.0f * 24.0f;
-        for (size_t i = 0; i < manaSpots_.size(); ++i) {
-            float dx = manaSpots_[i].first - x, dz = manaSpots_[i].second - z;
-            float d = dx * dx + dz * dz;
-            if (d < best) { best = d; spot = int(i); }
-        }
-        if (spot < 0) TA_PLACE_NO("not on a metal deposit");
-        float sx = manaSpots_[size_t(spot)].first, sz = manaSpots_[size_t(spot)].second;
-        // One lodestone per deposit. Some Sacred Stones register as two adjacent
-        // spots (~22-40px apart); a 44px exclusion merges those into one deposit
-        // so a second lodestone can't squeeze onto the same stone.
-        for (const auto& u : units_) {
-            if (!u.alive() || !u.type || !u.type->onMana) continue;
-            float dx = u.x - sx, dz = u.z - sz;
-            if (dx * dx + dz * dz < 44.0f * 44.0f) TA_PLACE_NO("deposit already taken");
-        }
-    }
+    // NO metal-patch restriction here. TA lets an extractor be built anywhere;
+    // siting it off metal is a waste, not an illegal move, and the yield comes
+    // from the ground beneath it (extractorYield/metalAt). Enforcing "must be
+    // built on a deposit" is the Kingdoms lodestone rule, which TA has no
+    // equivalent of: no TA yardmap even contains the 'S' that marked it (the
+    // shipped set is exactly C, c, o, w and y), and ARMMEX is a plain
+    // "ooooooooo" like any other 3x3 building.
     // Check the domain-appropriate grid so water units (Kraken) require water
     // and land units require land, rather than always testing the ground grid.
     const NavGrid& grid = navFor(type);

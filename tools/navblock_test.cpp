@@ -126,30 +126,31 @@ int main(int argc, char** argv) {
     check(walkFingerprint(wReg, cols, rows) == walkFingerprint(wMatch, cols, rows),
           "and the same passability cell for cell");
 
-    // ---- 3. mana deposits stay buildable -------------------------------------
-    // Standing Stones block, but the 2x2 lodestone footprint at each deposit centre is
-    // carved back out so a lodestone can still be placed. Losing that carve is a quiet
-    // failure -- the map simply stops being playable as designed.
-    std::printf("[mana deposits stay buildable]\n");
-    const auto& spots = wReg.manaSpots();
+    // ---- 3. metal patches stay buildable -------------------------------------
+    // An extractor's 3x3 footprint is carved clear at every patch centre, so a
+    // tree or rock overlapping the patch cannot make it unbuildable. Losing that
+    // carve is a quiet failure -- the map keeps its metal but the metal stops
+    // being reachable, and the only symptom is a poorer economy.
+    std::printf("[metal patches stay buildable]\n");
+    const auto& spots = wReg.metalSpots();
     if (spots.empty()) {
-        std::printf("  (this map has no mana deposits; skipped)\n");
+        std::printf("  (this map has no metal patches; skipped)\n");
     } else {
         int clear = 0;
         for (const auto& [sx, sz] : spots) {
             int cx = int(sx) / 16 - 1, cz = int(sz) / 16 - 1;
             bool all = true;
-            for (int j = 0; j < 2; ++j)
-                for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 3; ++j)
+                for (int i = 0; i < 3; ++i)
                     if (!wReg.nav().walkable(cx + i, cz + j)) all = false;
             if (all) ++clear;
         }
         check(clear == int(spots.size()),
-              "every deposit's 2x2 lodestone footprint is carved clear",
+              "every patch's 3x3 extractor footprint is carved clear",
               std::to_string(clear) + "/" + std::to_string(spots.size()));
-        check(spots.size() == wMatch.manaSpots().size(),
-              "and both paths find the same deposits",
-              std::to_string(spots.size()) + " vs " + std::to_string(wMatch.manaSpots().size()));
+        check(spots.size() == wMatch.metalSpots().size(),
+              "and both paths find the same patches",
+              std::to_string(spots.size()) + " vs " + std::to_string(wMatch.metalSpots().size()));
     }
 
     std::printf(failures ? "\nFAILED (%d)\n" : "\nall passed\n", failures);

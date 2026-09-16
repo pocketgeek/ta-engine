@@ -2347,16 +2347,16 @@
             auto& a = acc[find(int(i))];
             a.first.first += raw[i].first; a.first.second += raw[i].second; ++a.second;
         }
-        manaSpots_.clear();
+        metalSpots_.clear();
         for (auto& [root, a] : acc)
-            manaSpots_.push_back({float(a.first.first / a.second),
+            metalSpots_.push_back({float(a.first.first / a.second),
                                   float(a.first.second / a.second)});
-        world_.setManaSpots(manaSpots_);
+        world_.setMetalSpots(metalSpots_);
         // The 2x2 lodestone carve at each deposit is likewise the SIM's job and is
         // already done there (matchsetup, same geometry, into obst_). Repeating it
         // against nav_ desynced the client from the referee -- see addFeature above.
-        std::printf("mana deposits: %zu (from %zu features)\n",
-                    manaSpots_.size(), raw.size());
+        std::printf("metal patches: %zu (from %zu features)\n",
+                    metalSpots_.size(), raw.size());
         addShorelineWaves();
     }
 
