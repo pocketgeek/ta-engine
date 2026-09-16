@@ -1294,7 +1294,18 @@ char taPanelCommand(const std::string& name) {
     // bomber's bombs, a silo's missile) and then takes an attack target, which is
     // what "fires only when ordered" means in practice.
     if (t == "BLAST")   return 'b';
-    // Still unwired: the ORDERS/BUILD panel tabs.
+    // The panel tabs. Retail swaps the panel's own contents between the order
+    // grid and the build grid; this engine draws the build menu as a separate row
+    // (a TAK feature, with its own position and scale preferences), so the tabs
+    // show and hide THAT and light to say which view is current. Moving the build
+    // icons into the panel proper would be the fully faithful arrangement and
+    // would retire the row along with its preferences -- a deliberate choice, not
+    // something to slide in here.
+    // 'q' and 'B': 'O' already means the Offensive stance on the other panel
+    // path, and a tab that silently reposted a stance order would be worse than a
+    // dead button.
+    if (t == "ORDERS")  return 'q';
+    if (t == "BUILD")   return 'B';
     return 0;
 }
 
@@ -1312,12 +1323,18 @@ char taPanelCommand(const std::string& name) {
 // naming. A command with no rule here is always available.
 enum class CmdState { Enabled, Disabled };
 
+// Which panel tab is showing. File-local: it is pure view state, touches no sim
+// state and is never hashed or sent.
+bool gBuildTabOn = true;
+
 // Is this button showing its PRESSED face? A toggle or a cycle is pressed while
 // it is the selected/held option; a push order is pressed while it is ARMED and
 // waiting for the player to click a target.
 bool taButtonArmedFor(char cmd, const UnitR* u, char pendingCmd) {
     if (!u || !u->type) return false;
     switch (cmd) {
+        case 'q': return !gBuildTabOn;                   // ORDERS is the current view
+        case 'B': return gBuildTabOn;                    // BUILD is
         case 't': return u->active;                      // powered on
         case 'y': return u->cloakOn;                     // cloaking
         case 'b': return u->type->slotIsCommandFire(u->weaponSlot);   // D-gun armed
@@ -1358,6 +1375,8 @@ CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
             return mobile && t.canSetMoveState ? CmdState::Enabled : CmdState::Disabled;
         case 'f':                               // fire-order cycle
             return armed && t.canSetFireState ? CmdState::Enabled : CmdState::Disabled;
+        case 'B':                               // BUILD tab: only for a builder
+            return t.isBuilder ? CmdState::Enabled : CmdState::Disabled;
         default:
             return CmdState::Enabled;           // STOP, and anything unmodelled
     }
@@ -1648,6 +1667,8 @@ CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
                 int next = (cur + 1) % 3;
                 issuePerUnit(cmd == 'v' ? ta::net::Cmd::MoveState
                                         : ta::net::Cmd::FireState, next);
+            } else if (cmd == 'q' || cmd == 'B') {
+                gBuildTabOn = (cmd == 'B');
             } else if (cmd == 'b') {
                 // Arm the command-fire weapon on every selected unit that has one
                 // (the slot differs per type -- the Commander's Disintegrator is
@@ -2139,7 +2160,7 @@ CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
         // a user preference (Options "BUILD MENU": left / centered / right).
         iconRects_.clear();
         const auto* b = selectedBuilder();
-        if (b) {
+        if (b && gBuildTabOn) {
             const auto menu = conjureMenu(b->type->id);   // mission-filtered
             int n = int(menu.size());
             // Row size: the bar height (already uiScale-scaled) times the user's

@@ -329,6 +329,31 @@ Each milestone ends green: builds, `ctest` passes, determinism gate agrees.
 Milestone 1 is the only substantial piece that can be finished before the retail
 data lands, so it goes first.
 
+## 5a. Measuring the AI build-up — use a fixed seed
+
+`taserver --seed <n>` pins the per-game seed; without it the server rolls a fresh
+one per game (`randToken()`), and two runs of the *same* binary on the same map
+produce different world hashes and different unit counts. A headless run is
+otherwise fully deterministic: with `--seed` fixed, repeated runs reproduce the
+world hash exactly.
+
+This matters because `units=` at a fixed wall time is the obvious progress metric
+and it is **noisy across seeds by a factor of two or more**. Numbers quoted from a
+single unseeded run — including some in this repo's earlier commit messages, which
+compared before/after economy changes that way — carry seed variance, not just the
+change under test. Compare across the same fixed seeds, or not at all.
+
+Current baseline, Coast To Coast, 2 AI, 120 s of simulated time:
+
+| seed | units |
+| --- | --- |
+| 11 | 12 |
+| 22 | 11 |
+| 33 | 9 |
+
+Three seeds spanning 9..12 on identical code is the point: a single run landing on
+9 or on 12 says nothing about a change on its own.
+
 ## 6. Open questions, pending the retail data
 
 Answers come from the install itself and from analysing `TotalA.exe` — static
