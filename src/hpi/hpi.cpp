@@ -279,10 +279,13 @@ void walkV1(const std::vector<uint8_t>& dir, uint32_t recordOff,
         // v2 uses compressedSize==0 to mean "stored"; keep that invariant so the
         // Vfs and the tools do not have to know which version they are holding.
         f.compressedSize = f.compression ? 1 : 0;
-        // v1 file records carry no timestamp. The Vfs resolves same-path
-        // collisions by newest date, so leaving these all 0 makes that a tie,
-        // and a tie keeps the earlier-mounted archive -- which is the mount
-        // order, exactly the fallback retail uses when dates are equal.
+        // v1 file records carry no timestamp -- the record is offset, size,
+        // compression and nothing else. So EVERY v1 entry's date is 0 and every
+        // collision between two of them is a tie, which means for TA (v1 only)
+        // the date rule never decides anything and mount order decides all of
+        // it. MountSet therefore breaks a tie in favour of the LATER mount, so
+        // the expansions and the 3.1 patch override the base game rather than
+        // the other way round; see the tie comment there for the measurement.
         f.date = 0;
         out.push_back(std::move(f));
     }
@@ -650,8 +653,34 @@ MountSet::MountSet(const std::filesystem::path& dir, MountConfig cfg)
         archiveFiles_.insert(archiveFiles_.end(), group.begin(), group.end());
     }
 
-    // Mount each; resolve conflicts by newest entry date (a strict '>' keeps the
-    // earlier mount on a tie, matching the retail 'jae' comparison).
+    // Mount each; resolve conflicts by newest entry date, and on a TIE let the
+    // LATER-mounted archive win.
+    //
+    // The tie half is what matters for TA, because TA has no dates at all: it
+    // ships HPI **v1**, whose 9-byte file record is offset/size/compression and
+    // carries no timestamp (see walkV1) -- so every TA entry's date is 0 and
+    // every comparison between two of them is a tie. With the strict '>' this
+    // used to be, a tie kept the FIRST mount, and the first group is `.hpi`:
+    // the base game therefore beat Core Contingency, Battle Tactics AND the 3.1
+    // patch on every path all four ship. Measured on a Commander Pack install,
+    // that silently shadowed 1082 files whose expansion/patch copy DIFFERS from
+    // the base -- 471 unit FBIs, 329 anims, 105 guis, 24 scripts, 15 gamedata,
+    // 15 weapons among them.
+    //
+    // The shipped data settles which way is right on its own: base totala1.hpi
+    // declares `features/lava/VENTS.TDF` [Lavavent003] with `seqname=tvent03`,
+    // a sequence that does not exist in anims/lavastuff2.gaf (it has tvent001..
+    // tvent010). ccdata.ccx, btdata.ccx and rev31.gp3 all carry the same file
+    // with `seqname=tvent003`, which does exist. Retail draws that vent, so
+    // retail cannot be resolving this in the base's favour -- and a patch that
+    // lost every conflict to the thing it patches would do nothing at all.
+    //
+    // Flipping the tie is safe inside the base group: across all thirteen root
+    // .hpi archives exactly ONE path collides with differing content, and it is
+    // `installres/install.inf` -- an installer leftover, not game data.
+    //
+    // For an archive that DOES carry dates (HPI v2), the date still dominates;
+    // only the tie changed.
     for (const auto& file : archiveFiles_) {
         int idx = int(archives_.size());
         try {
@@ -664,7 +693,7 @@ MountSet::MountSet(const std::filesystem::path& dir, MountConfig cfg)
             if (cfg_.keep && !cfg_.keep(e.path)) continue;   // filtered (e.g. cosmetic tier)
             std::string k = key(e.path);
             auto it = map_.find(k);
-            if (it == map_.end() || e.date > it->second.entry.date)
+            if (it == map_.end() || e.date >= it->second.entry.date)
                 map_[k] = Win{idx, e};
         }
     }
@@ -939,8 +968,13 @@ uint64_t gameplayHash(const Vfs& vfs) {
 // does -- no whitelist, and a new official pack drops in and works.
 //
 // NOTE: the relative rank of .ccx and .gp3 is asserted from the community
-// modding record, not yet confirmed against the retail binary. It only matters
-// where an expansion and the patch ship the same path. See docs/ta-port.md.
+// modding record, not yet confirmed against the retail binary. Its reach is
+// bounded and small, which is measured rather than hoped: btdata.ccx and
+// ccdata.ccx disagree on 112 paths, but rev31.gp3 (the 3.1 patch, mounted last
+// either way) ships 87 of them and so decides them whatever the .ccx order is.
+// The 25 left over are ALL in anims/ -- cosmetic GAF art, no gameplay data. So
+// on a full Commander Pack install this ordering cannot change what the sim
+// computes. See docs/ta-port.md.
 const std::vector<std::string> kRootArchiveExts = {".hpi", ".ccx", ".gp3", ".ufo"};
 
 // Lowercased filenames present in the install root (regular files only).

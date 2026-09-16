@@ -2328,6 +2328,27 @@
             }
         std::printf("features: %d/%d placed (%zu defs; %d no def, %d no art)\n",
                     placed, wanted, featureDefs_.size(), noDef, noArt);
+        // TA_FEATART=audit: prime EVERY def's art, not just the ones this map
+        // placed. A map exercises a few dozen defs; the wreck defs (*_dead /
+        // *_heap, 432 of the 1644) are only ever reached when something dies, so
+        // a clean map load says nothing about whether they can draw. This sweeps
+        // the whole table once and reports what fails, by kind.
+        if (const char* fa = ta::devEnv("TA_FEATART"); fa && std::string(fa) == "audit") {
+            int okArt = 0, failArt = 0, objOnly = 0, objFail = 0;
+            for (const auto& [name, def] : featureDefs_) {
+                const bool isObj = !def.valueOr("object", "").empty() &&
+                                   def.valueOr("filename", "").empty() &&
+                                   def.valueOr("seqname", "").empty();
+                if (isObj) ++objOnly;
+                if (featureArtFor(def)) ++okArt;
+                else { ++failArt; if (isObj) ++objFail;
+                       std::printf("featart audit: NO ART %s (%s)\n", name.c_str(),
+                                   isObj ? "object" : "gaf"); }
+            }
+            std::printf("featart audit: %d/%zu defs have art (%d fail; %d are object= "
+                        "models, %d of those fail)\n",
+                        okArt, featureDefs_.size(), failArt, objOnly, objFail);
+        }
         // Register the Sacred Stone deposits so lodestones can only build on
         // them (and the AI knows where to put them). The buildable spot is the
         // GLOWING centre (animated Sacred Stone) -- NOT the ring of static

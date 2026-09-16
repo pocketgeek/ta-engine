@@ -508,6 +508,27 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             std::string mc = lower(info->valueOr("movementclass", ""));
             if (mc.rfind("water", 0) == 0) t.domain = UnitType::Domain::Water;
             else if (mc.rfind("hover", 0) == 0) t.domain = UnitType::Domain::Hover;
+            // A STRUCTURE has no movement class, so nothing above puts it anywhere
+            // but the ground grid -- yet 32 TA buildings declare their own
+            // MinWaterDepth and belong in the water.
+            //
+            // 24 of those are SHORELINE buildings (shipyards and the like) whose
+            // yardmap carries 'w' slipway cells, and canPlace already gives those
+            // their own branch. The other 8 are FULLY SUBMERGED -- both sides'
+            // underwater metal extractor, energy store, metal store and fusion
+            // plant -- and carry a plain "ooooooooo" yardmap, so they fell to the
+            // generic footprint test against the GROUND grid. Water is not
+            // walkable there, so they were refused on water; and being water
+            // buildings they are refused on land too. They could not be built
+            // anywhere, on any map.
+            //
+            // This stayed hidden because the base game's build menus never offer
+            // them: it took fixing the HPI precedence (see src/hpi/hpi.cpp) for
+            // the expansion menus that DO list them to reach the engine at all.
+            if (mc.empty() && info->numberOr("minwaterdepth", 0) > 0) {
+                t.minWaterDepth = info->numberOr("minwaterdepth", 0);
+                t.domain = UnitType::Domain::Water;
+            }
             // Inherit terrain limits from the MOVEINFO movement class (the real
             // source of slope/water limits; most FBIs don't carry their own).
             if (auto mci = moveClasses_.find(mc); mci != moveClasses_.end()) {

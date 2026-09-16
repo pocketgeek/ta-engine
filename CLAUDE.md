@@ -97,6 +97,12 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   prints `mp-headless done: tick=... hash=... units=...`. `--mpai` hosts against one
   server-run AI instead; `TA_MP_WATCH` + `TA_MP_AIS=N` makes it an all-AI game the
   host only watches.
+- **Under `--mpai` the `p0-*` figures are the IDLE HUMAN slot**, not the AI: p0 is
+  the headless client, which builds nothing by design, so `p0 mix: armcomx1` and a
+  flat `p0-metal` are the expected result and not a regression. Only the total
+  `units=` reflects AI behaviour there. Use `TA_MP_WATCH=1 TA_MP_AIS=N` when you
+  want p0 itself to be an AI. Run ONE harness at a time, too — two runs sharing a
+  port kill each other's server and end `err=peer closed` mid-game.
 - **`--seed` is REQUIRED for any comparison.** Without it the server rolls a fresh
   seed per game, and two runs of the SAME binary give different hashes and
   different `units=`. That count is noisy across seeds by more than a factor of two
@@ -111,7 +117,11 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   chose nothing — set it on the SERVER, which is where the AI runs),
   `TA_LOBBY=1` (the create/seat/start handshake — set it on BOTH the client and
   the server; a campaign launch that lands in a plain skirmish shows up here as a
-  room reporting `mission=''`), `TA_FEATART=1` (why a feature drew nothing).
+  room reporting `mission=''`), and `TA_FEATART=1` (why a feature drew nothing).
+  `TA_FEATART=audit` goes further: it primes EVERY feature def's art at map load
+  instead of only the ones the map placed, and names the ones that fail. A map
+  exercises a few dozen defs of 1644, so a clean load proves little on its own —
+  the audit is what surfaced the HPI precedence bug (`docs/ta-port.md` §2).
 - Asset-inspection CLIs (in `tools/`, built into `build/`): `hpitool`, `tnttool`,
   `gaftool`, `tdftool`, `cobtool`, `modeltool`, plus the `cartographer` map editor.
   Use them to verify claims about the shipped data instead of guessing.

@@ -430,6 +430,63 @@ int main() {
         std::filesystem::remove(path);
     }
 
+    // --- archive precedence: a later group must override an earlier one -------
+    {
+        // This guards a bug that was live and completely silent. TA is HPI v1,
+        // and a v1 file record carries NO timestamp -- so every entry's date is
+        // 0 and every same-path collision between two v1 archives is a tie. The
+        // mount resolved collisions with a strict '>' on the date, which handed
+        // every tie to the FIRST-mounted archive; the first extension group is
+        // `.hpi`, so the base game beat ccdata.ccx, btdata.ccx and rev31.gp3 on
+        // every path they share. On a Commander Pack install that shadowed 1082
+        // files whose expansion copy differs -- 471 unit FBIs among them, and
+        // the Commander's own build menu and D-gun damage with them.
+        //
+        // Synthetic archives on purpose: this has to run on CI, where no retail
+        // data exists. What it pins is the RULE, which is where the bug was.
+        auto dir = std::filesystem::temp_directory_path() / "ta_hpi_prec_test";
+        std::filesystem::remove_all(dir);
+        std::filesystem::create_directories(dir);
+        auto put = [&](const char* name, const char* body) {
+            InFile f{"gamedata/thing.tdf", {}, 0, {}};
+            f.data.assign(body, body + std::strlen(body));
+            auto bytes = buildV1({f}, 0);
+            std::ofstream o(dir / name, std::ios::binary);
+            o.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+        };
+        // Same path in all four groups, each naming itself.
+        put("base.hpi", "hpi");
+        put("expansion.ccx", "ccx");
+        put("patch.gp3", "gp3");
+        put("mod.ufo", "ufo");
+        {
+            ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(dir, ta::hpi::OverridePolicy::None);
+            check(textOf(vfs.read("gamedata/thing.tdf")) == "ufo",
+                  "precedence: .ufo (last group) wins over .gp3/.ccx/.hpi");
+        }
+        // Drop the layers from the top and the next one down must take over --
+        // an ordering check, not just a "something wins" check.
+        std::filesystem::remove(dir / "mod.ufo");
+        {
+            ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(dir, ta::hpi::OverridePolicy::None);
+            check(textOf(vfs.read("gamedata/thing.tdf")) == "gp3",
+                  "precedence: the .gp3 patch then wins over .ccx and .hpi");
+        }
+        std::filesystem::remove(dir / "patch.gp3");
+        {
+            ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(dir, ta::hpi::OverridePolicy::None);
+            check(textOf(vfs.read("gamedata/thing.tdf")) == "ccx",
+                  "precedence: the .ccx expansion then wins over the base .hpi");
+        }
+        std::filesystem::remove(dir / "expansion.ccx");
+        {
+            ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(dir, ta::hpi::OverridePolicy::None);
+            check(textOf(vfs.read("gamedata/thing.tdf")) == "hpi",
+                  "precedence: the base .hpi is used when it is all there is");
+        }
+        std::filesystem::remove_all(dir);
+    }
+
     std::printf(g_fail ? "hpi1_test: %d FAILURE(S)\n" : "hpi1_test: all passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

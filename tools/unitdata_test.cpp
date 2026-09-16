@@ -19,6 +19,7 @@
 #include "ai/ai.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 using ta::sim::TypeRegistry;
@@ -46,6 +47,15 @@ int main(int argc, char** argv) {
     std::printf("unitdata_test\n");
 
     ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(argv[1]);
+    // Is this a Commander Pack (base + Core Contingency + Battle Tactics) or a
+    // plain base install? It decides several of the numbers below, because the
+    // expansions REDEFINE them -- and because the engine now lets them, which it
+    // did not always: with no timestamps in HPI v1 every collision is a tie, and
+    // a tie used to keep the first-mounted archive, so the base `.hpi` beat
+    // ccdata.ccx / btdata.ccx / rev31.gp3 on all 1082 paths where their content
+    // differs. Asserting the base values unconditionally is what let that stand.
+    const bool cc = std::filesystem::exists(std::filesystem::path(argv[1]) / "ccdata.ccx");
+    std::printf("  install: %s\n", cc ? "Commander Pack (expansions present)" : "base only");
     // Go through setupRegistry rather than calling the loaders by hand: the
     // ORDER matters (weapons before units, or every unit loads unarmed) and a
     // test that reproduces the order itself would not catch getting it wrong.
@@ -144,9 +154,13 @@ int main(int argc, char** argv) {
         // as x1 plus three zeros.
         const ta::tdf::PanelRect* mb = armS ? armS->panel("METALBAR") : nullptr;
         const ta::tdf::PanelRect* eb = armS ? armS->panel("ENERGYBAR") : nullptr;
-        check(mb && mb->x1 == 218 && mb->y1 == 11 && mb->x2 == 339 && mb->y2 == 13,
+        // Core Contingency moves and widens both bars: y 11->12, and the right
+        // edge out by six pixels (METALBAR 339->345, ENERGYBAR 592->598).
+        check(mb && mb->x1 == 218 && mb->y1 == (cc ? 12 : 11) && mb->x2 == (cc ? 345 : 339) &&
+                  mb->y2 == (cc ? 14 : 13),
               "ARM METALBAR rect reads all four coordinates");
-        check(eb && eb->x1 == 471 && eb->y1 == 11 && eb->x2 == 592 && eb->y2 == 13,
+        check(eb && eb->x1 == 471 && eb->y1 == (cc ? 12 : 11) && eb->x2 == (cc ? 598 : 592) &&
+                  eb->y2 == (cc ? 14 : 13),
               "ARM ENERGYBAR rect likewise");
         check(armS && armS->panels.size() > 25, "the whole panel table is read");
 
@@ -156,7 +170,12 @@ int main(int argc, char** argv) {
         check(it != sd.canBuild.end(), "ARMCOM has a build menu");
         if (it != sd.canBuild.end()) {
             const auto& m = it->second;
-            check(m.size() == 12, "ARMCOM offers 12 buildings");
+            // The base Commander's menu is 12 entries; Core Contingency extends
+            // every builder's menu (sidedata.tdf goes from 283 canbuild lines to
+            // 474), which takes the Commander from 12 entries to 19 -- the
+            // extra seven being its naval and underwater construction. The
+            // first six and the Kbot Lab keep their places either way.
+            check(m.size() == (cc ? 19u : 12u), "ARMCOM's build menu is the expected length");
             check(m.size() > 6 && m[0] == "armsolar" && m[5] == "armmakr" &&
                   m[6] == "armlab",
                   "and in canbuild1..N order, not lexicographic");
@@ -192,10 +211,15 @@ int main(int argc, char** argv) {
         if (com) {
             check(com->weapons.size() == 2, "armcom carries two weapons");
             // Weapon1 = the laser, Weapon3 = ARM_DISINTEGRATOR, the D-gun. Its
-            // 5500 damage is the single most recognisable number in the game.
+            // 5500 damage is the single most recognisable number in the game --
+            // until Core Contingency raised it to 30000.
             if (com->weapons.size() == 2) {
                 near(com->weapons[0].damage, 60, "armcom W1 is the J7 Laser");
-                near(com->weapons[1].damage, 5500, "armcom W3 is the Disintegrator");
+                // The D-gun: 5500 damage in the base game, raised to 30000 by
+                // Core Contingency. (The engine served the base number even on a
+                // Commander Pack install until the HPI tie-break was fixed.)
+                near(com->weapons[1].damage, cc ? 30000 : 5500,
+                     "armcom W3 is the Disintegrator");
                 near(com->weapons[1].range, 240, "...at D-gun range");
             }
         }

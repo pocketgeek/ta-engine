@@ -52,11 +52,113 @@ What v1 adds over v2:
 - A flat `{nameOffset, dataOffset, flag}` directory rather than v2's separate
   name/dir blocks.
 
-TA also spreads its data across **four extensions** — `.hpi`, `.ufo` (mods),
-`.ccx` (Core Contingency), `.gp3` (Battle Tactics / patches) — all the same
-container. The VFS already layers `.hpi` then `.ufo` by newest-entry-date; `.ccx`
-and `.gp3` slot into that same precedence chain, so this is a mount-list change,
-not a new mechanism.
+TA also spreads its data across **four extensions** — `.hpi` (base game),
+`.ccx` (**both** expansions: `ccdata.ccx`/`ccmaps.ccx`/`ccmiss.ccx` for Core
+Contingency, `btdata.ccx`/`btmaps.ccx` for Battle Tactics), `.gp3` (the 3.1
+patch, `rev31.gp3`) and `.ufo` (mods) — all the same container, mounted in that
+order so a later group overrides an earlier one.
+
+#### The tie-break, and why it silently disabled both expansions
+
+Slotting the new extensions into the existing precedence chain was **not**
+enough, and the reason is worth recording because the failure was completely
+invisible.
+
+The chain resolved a same-path collision by newest entry date, with a strict
+`>` so that a tie kept the FIRST-mounted archive. That rule was inherited from
+Kingdoms, and **it cannot decide anything on TA data**: an HPI v1 file record is
+nine bytes — offset, size, compression — and carries *no timestamp at all*. So
+every TA entry's date is 0, every collision is a tie, every tie went to the
+first mount, and the first group is `.hpi`. The base game therefore beat
+`ccdata.ccx`, `btdata.ccx` and the 3.1 patch `rev31.gp3` on every path all of
+them ship.
+
+Measured on a Commander Pack install, that shadowed **1082 files whose
+expansion/patch copy differs from the base** (a further 626 were byte-identical,
+and 2430 expansion files were new paths and so came through fine):
+
+| dir | shadowed | dir | shadowed |
+|---|---|---|---|
+| `units` | 471 | `textures` | 30 |
+| `anims` | 329 | `scripts` | 24 |
+| `guis` | 105 | `features` | 22 |
+| `unitpics` | 41 | `gamedata` | 15 |
+| `weapons` | 15 | `ai` | 12 |
+
+Three measurements make the consequences concrete, and each is a thing a player
+would notice:
+
+* `gamedata/sidedata.tdf` goes from **283 `canbuild` lines in the base to 474**
+  in all three expansion archives. The Commander's own menu goes from 12 entries
+  to 19 — the extra seven are its naval and underwater construction. The
+  expansion units themselves loaded fine (their FBIs are new paths, not
+  collisions), but **every builder's menu was the pre-expansion one, so much of
+  the added roster could not actually be built**.
+* `ARM_DISINTEGRATOR` (the D-gun) is `default=5500` in the base and **`30000` in
+  all three expansion archives**. The engine was firing the base number.
+* Base `features/lava/VENTS.TDF` declares `[Lavavent003]` with
+  `seqname=tvent03`, **a sequence that does not exist** in `anims/lavastuff2.gaf`
+  (which has `tvent001`..`tvent010`); all three expansion archives carry
+  `seqname=tvent003`, which does. This one is decisive on its own: retail draws
+  that vent, so retail is not resolving the collision in the base's favour, and
+  a patch that lost every conflict to the file it patches would do nothing.
+
+The fix is one character — `>` becomes `>=`, so a tie goes to the LATER mount —
+but it only became findable because the whole-table feature-art audit (§5c) put
+a number on something that had always been reported as fine. It is safe inside
+the base group too: across all thirteen root `.hpi` archives exactly **one** path
+collides with differing content, `installres/install.inf`, an installer leftover.
+
+An archive that does carry dates (HPI v2) is unaffected — the date still
+dominates and only the tie changed.
+
+With the tie flipped, the *group order* now decides every collision, which makes
+the one unverified assumption in that order worth bounding. The rank of `.ccx`
+against `.gp3` comes from the community modding record, not from `TotalA.exe`.
+Measured, its reach is small: `btdata.ccx` and `ccdata.ccx` disagree on 112
+paths, but `rev31.gp3` — mounted last on either reading — ships 87 of them and
+therefore decides those regardless. The remaining **25 are all in `anims/`**:
+cosmetic GAF art, no gameplay data. So on a full Commander Pack install this
+assumption cannot change what the simulation computes; confirming it against the
+binary would only settle which of two art variants is drawn.
+
+#### Water-only structures, and what the AI harness did and did not show
+
+Letting the expansion menus through exposed a second defect. 32 TA structures
+declare their own `MinWaterDepth`; 24 of those are shoreline buildings whose
+yardmap carries `w` slipway cells, which `canPlace` already has a branch for.
+The other **8 are fully submerged** — both sides' underwater metal extractor,
+energy store, metal store and fusion plant — and carry a plain `ooooooooo`
+yardmap, so they fell through to the generic footprint test. That test uses
+`navFor(type)`, and a structure has no `movementclass`, so they were checked
+against the GROUND grid: refused over water (not walkable) and refused on land
+(they are water buildings). **They could not be built anywhere, on any map.**
+The fix reads the structure's own `MinWaterDepth` and gives it
+`Domain::Water`, which is all `navFor` needs; `canPlace` is untouched.
+
+The AI harness is worth a word of caution here, because it misled this work
+once. Under `--mpai` the `p0-*` figures in the `mp-headless` line belong to the
+**idle human slot**, not to the AI — so "p0 built nothing" is the expected
+result, not a regression, and only the total `units=` says anything about AI
+behaviour. Measured on Coast To Coast at 60 s over seeds 1/2/3:
+
+| build | s1 | s2 | s3 |
+|---|---|---|---|
+| before the HPI and water fixes | 6 | 6 | 6 |
+| with both | 5 | 4 | 6 |
+
+Those totals include p0's lone commander. The spreads overlap and the gap is
+inside the seed noise §5a documents, so this says only that nothing broke — it
+is NOT evidence either way about whether the expansion roster helps or hurts the
+build-up. A longer horizon would be needed for that; the 300 s runs attempted
+here were repeatedly invalidated by concurrent harness processes sharing a port
+(`err=peer closed` partway through), so they are not reported.
+
+**This is why `unitdata_test` now branches on whether `ccdata.ccx` is present.**
+Its numbers were honestly measured, but measured from the base archive, which is
+what the engine was serving; asserting them unconditionally is part of what let
+the bug stand. It now expects the base values on a base install and the
+expansion values on a Commander Pack.
 
 ### 🟡 COB (`src/cob/`)
 
@@ -574,6 +676,40 @@ passes `isRoot=false` from `featureModelArt` only; unit rendering is untouched.
 
 Measured after: AC01 places `360/360 (1644 defs; 0 no def, 0 no art)`, and the
 skirmish path is unchanged at `120/120`.
+
+A map only ever exercises a few dozen of the 1644 defs, though, so a clean load
+proves very little. `TA_FEATART=audit` primes **every** def at map load instead
+and names what fails — which is how the HPI precedence bug in §2 was found: the
+audit reported `1643/1644`, and the single hold-out was the `Lavavent003` whose
+base-archive `seqname` does not exist. With precedence fixed it reports
+`1644/1644 defs have art (0 fail; 432 are object= models, 0 of those fail)`.
+
+### Still open: a wreck draws as the unit, not as its wreck model
+
+The art is now reachable, but nothing uses it for corpses yet. `drawUnit`
+resolves its model as `visuals_.find(unitType_.at(u.id))` for the whole corpse
+phase, so a dead unit is drawn as its own (intact) body lying flat. That is the
+Kingdoms shape, where a corpse IS the unit's body — and it is why the flat-face
+cull in `buildUnitShadow` is keyed on `corpsePhase`.
+
+TA models wreckage separately, and the data is complete: **228 of 278 unit types
+declare `Corpse=`, and all 228 resolve to a feature def carrying `object=` and a
+`.3do` that exists** (161 of those chain on to a further `featuredead` heap
+stage). The wreck models are visibly not the live ones — `corvp` is 46 prims in
+a `base` piece plus children, `corvp_dead` is a single 67-prim `base`; they also
+use dedicated `wreck*`/`noise*` textures no live unit references.
+
+Two things that a first attempt will trip over, both already measured here:
+
+* those wreck models are **single-piece**, so they hit the same root-plate skip
+  §5c describes — they need `isRoot=false` too;
+* the model projection runs on the worker pool, while `ghostModel` mutates
+  `visuals_` and loads textures, so a corpse's art has to be primed on the main
+  thread (the pattern `loadFeatures` already uses: copy under the lock, load art
+  outside it) rather than resolved inside the parallel path.
+
+The `TA_FEATART=audit` sweep confirms the art itself is not the obstacle: all
+432 `object=` defs, wrecks included, produce a texture.
 
 ## 6. Open questions, pending the retail data
 
