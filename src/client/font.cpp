@@ -2,11 +2,13 @@
 
 #include "client/gpuvram.h"
 #include "client/artscale.h"
+#include "fnt/fnt.h"
 #include "gaf/gaf.h"
 #include "hpi/hpi.h"
 
 #include <algorithm>
 #include <filesystem>
+#include <vector>
 
 Font::Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPath) {
     std::filesystem::path pcx = gafPath;
@@ -32,6 +34,37 @@ Font::Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPat
         glyphs_[i] = g;
     }
     ok_ = true;
+}
+
+Font Font::fromFnt(SDL_Renderer* ren, const ta::hpi::Vfs& vfs,
+                   const std::string& fntPath) {
+    Font f;
+    ta::fnt::Font src;
+    try {
+        src = ta::fnt::parse(vfs.read(fntPath), fntPath);
+    } catch (const std::exception&) {
+        return f;   // not there / not a .FNT: caller falls back on ok()
+    }
+    for (int c = 0; c < 256; ++c) {
+        const ta::fnt::Glyph& g = src.glyphs[c];
+        if (!g.present || g.width <= 0 || src.height <= 0) continue;
+        // White with the mask in alpha, so draw()'s tint decides the colour --
+        // which is what retail does too, picking it from the gadget's `colorf`.
+        std::vector<uint8_t> rgba(size_t(g.width) * size_t(src.height) * 4, 0);
+        for (size_t i = 0; i < g.bits.size(); ++i) {
+            uint8_t* px = &rgba[i * 4];
+            px[0] = px[1] = px[2] = 255;
+            px[3] = g.bits[i] ? 255 : 0;
+        }
+        Glyph out;
+        out.w = g.width;
+        out.h = src.height;
+        out.yoff = 0;   // .FNT glyphs share one baseline; there is no per-glyph offset
+        out.tex = ta::art::makeTexture(ren, rgba, g.width, src.height);
+        f.glyphs_[c] = out;
+    }
+    f.ok_ = true;
+    return f;
 }
 
 int Font::width(const std::string& text, float scale) const {

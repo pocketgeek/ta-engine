@@ -854,6 +854,33 @@ bool ieqName(const std::string& a, const std::string& b) {
 }
 }  // namespace
 
+    void GameView::loadFonts() {
+        // TA ships .FNT; SIDEDATA names two per side. `fontgui` is the button
+        // face (ARMBUTT/CORBUTT) and `font` the general one (CONSOLE), and both
+        // are stems -- the file is fonts/<stem>.FNT.
+        auto tryFnt = [&](const std::string& stem) {
+            return stem.empty() ? Font()
+                                : Font::fromFnt(ren_, vfs_, "fonts/" + stem + ".fnt");
+        };
+        const ta::tdf::Side* sd = localSide();
+        if (sd) {
+            hudFont_ = tryFnt(sd->font);
+            if (!hudFont_.ok()) hudFont_ = tryFnt(sd->fontGui);
+            statFont_ = tryFnt(sd->fontGui);
+            if (!statFont_.ok()) statFont_ = hudFont_;
+        }
+        // Last resorts, in case SIDEDATA named nothing usable. Every TA install
+        // has these two.
+        if (!hudFont_.ok()) hudFont_ = tryFnt("console");
+        if (!statFont_.ok()) statFont_ = tryFnt("smlfont");
+        // There is no big display font in TA's set; reuse the general one rather
+        // than leaving headline text undrawn.
+        bigFont_ = hudFont_;
+        if (!hudFont_.ok())
+            std::fprintf(stderr, "font load: no usable .FNT found (tried %s / %s)\n",
+                         sd ? sd->font.c_str() : "-", sd ? sd->fontGui.c_str() : "-");
+    }
+
     void GameView::loadPanel(const std::string& side) {
         (void)side;
         // TA keeps the whole interface in ONE shared GAF, anims/commongui.gaf,

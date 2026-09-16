@@ -165,29 +165,17 @@ public:
         // The VFS merges base + Iron Plague + community data into one namespace,
         // precedence resolved by the retail newest-date rule.
         ta::sim::setupRegistry(registry_, vfs_);
-        // God economy timing (gamedata/gods.tdf). TA_GODTIME overrides the
-        // appear time (seconds) for testing; otherwise use AppearTimeMin minutes.
         loadTextures();
         mapView_.setZoom(0.9f);
-        try {
-            hudFont_ = Font(ren_, vfs_, "fonts/bodfontbody.gaf");
-            bigFont_ = Font(ren_, vfs_, "fonts/font48.gaf");
-            // A plain, legible font for the HUD stat readouts.
-            try { statFont_ = Font(ren_, vfs_, "fonts/b_times new roman (100b).gaf"); }
-            catch (const std::exception&) {
-                try { statFont_ = Font(ren_, vfs_, "fonts/ig_times new roman (100).gaf"); }
-                catch (const std::exception&) {}
-            }
-        } catch (const std::exception& e) {
-            std::fprintf(stderr, "font load: %s\n", e.what());
-        }
         loadOrderButtons();
         loadBuildFx();
         sounds_.init(vfs_);
         soundClasses_.load(vfs_);   // music is started per-state by manageMusic()
         sideData_ = ta::tdf::SideData::load(vfs_);
-        // GUI first: the panel art's sequence name comes from the .gui's root
-        // (`panel=`), so loading the panel before it had nothing to look for.
+        // Both of these read SIDEDATA, so neither can precede it. And the GUI
+        // comes before the panel: the panel art's sequence name is the .gui
+        // root's `panel=`, so loading the panel first had nothing to look for.
+        loadFonts();
         loadGui(side_);
         loadPanel(side_);
 
@@ -2441,6 +2429,10 @@ private:
     SDL_FRect guiCmdRect(const ta::gui::Gadget& g) const;
     // Where the command panel lands on screen, from the .gui root's own rect.
     SDL_FRect guiPanelRect() const;
+    // Load the HUD fonts. TA's are .FNT and NAMED BY THE DATA -- SIDEDATA gives
+    // the side its `font=` and `fontgui=` -- so which font the HUD uses is the
+    // install's choice, not a constant in here.
+    void loadFonts();
     // Map a SIDEDATA panel rect (retail 640x480 space) into the TOP strip.
     // Anchored top-right on the same scale as the command panel, so the two stay
     // aligned with each other at any window size.

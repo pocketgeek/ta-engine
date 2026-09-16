@@ -1,8 +1,16 @@
 #pragma once
 
-// Bitmap font loaded from a GAF sequence (one frame per glyph), drawn with
-// per-glyph vertical offsets. Extracted from client/main.cpp; kept at global
-// scope so its existing unqualified use sites there are unchanged.
+// Bitmap font. Two sources, because the two games store fonts differently:
+//
+//   * a GAF sequence, one frame per glyph, with per-glyph vertical offsets
+//     (Kingdoms);
+//   * a TA `.FNT` -- a packed 1-bit-per-pixel format (see src/fnt/fnt.h).
+//
+// A .FNT glyph is a coverage MASK with no colour of its own, so it is built as
+// white-with-alpha and takes the tint draw() already applies.
+//
+// Extracted from client/main.cpp; kept at global scope so its existing
+// unqualified use sites there are unchanged.
 
 #include <SDL.h>
 
@@ -14,6 +22,11 @@ class Font {
 public:
     Font() = default;
     Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPath);
+    // Load a TA .FNT (e.g. "fonts/ARMBUTT.FNT"). Returns an unusable Font rather
+    // than throwing if the file is missing or will not parse, so a caller can
+    // simply test ok() and fall back.
+    static Font fromFnt(SDL_Renderer* ren, const ta::hpi::Vfs& vfs,
+                        const std::string& fntPath);
 
     bool ok() const { return ok_; }
 
