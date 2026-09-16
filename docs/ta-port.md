@@ -684,32 +684,60 @@ audit reported `1643/1644`, and the single hold-out was the `Lavavent003` whose
 base-archive `seqname` does not exist. With precedence fixed it reports
 `1644/1644 defs have art (0 fail; 432 are object= models, 0 of those fail)`.
 
-### Still open: a wreck draws as the unit, not as its wreck model
+### Wreck models: already working, and how that was got wrong
 
-The art is now reachable, but nothing uses it for corpses yet. `drawUnit`
-resolves its model as `visuals_.find(unitType_.at(u.id))` for the whole corpse
-phase, so a dead unit is drawn as its own (intact) body lying flat. That is the
-Kingdoms shape, where a corpse IS the unit's body — and it is why the flat-face
-cull in `buildUnitShadow` is keyed on `corpsePhase`.
+An earlier revision of this section claimed corpses drew as the intact unit
+lying flat and listed it as an open gap. **That was wrong**, and the way it went
+wrong is the point: `drawUnit` resolves its model as
+`visuals_.find(unitType_.at(u.id))`, which reads like the live type — but
+`maybeSwapCorpseModel` (`gameview_impl.cpp`) REPOINTS `unitType_[id]` at the
+corpse feature's `object=` model when a body finishes dying, so that lookup has
+already become the wreck. Reading the resolution site without following what
+mutates its input produced a confident claim about a gap that did not exist.
 
-TA models wreckage separately, and the data is complete: **228 of 278 unit types
-declare `Corpse=`, and all 228 resolve to a feature def carrying `object=` and a
-`.3do` that exists** (161 of those chain on to a further `featuredead` heap
-stage). The wreck models are visibly not the live ones — `corvp` is 46 prims in
-a `base` piece plus children, `corvp_dead` is a single 67-prim `base`; they also
-use dedicated `wreck*`/`noise*` textures no live unit references.
+Measured, on a staged kill: `corpse model swap: unit 7 (corak) -> wreck 3do
+'corak_dead'`, and the projection then collects **46 triangles** from it. The
+same number comes out with the root-skip argument either way, because the
+swapped visual carries an EMPTY `PieceMeta` map rather than a null one, and
+`collect` only computes the skip live when it is handed no meta at all. So the
+`isRoot` trap that §5c hit through `featureModelArt` does not arise here.
 
-Two things that a first attempt will trip over, both already measured here:
+What is genuinely worth recording:
 
-* those wreck models are **single-piece**, so they hit the same root-plate skip
-  §5c describes — they need `isRoot=false` too;
-* the model projection runs on the worker pool, while `ghostModel` mutates
-  `visuals_` and loads textures, so a corpse's art has to be primed on the main
-  thread (the pattern `loadFeatures` already uses: copy under the lock, load art
-  outside it) rather than resolved inside the parallel path.
+* `corak_dead` is a single piece -- `deadak`, 38 prims, no children -- against
+  live `corak`'s 1-prim `ground` root with children. TA wreck models are
+  standalone, and they use dedicated `wreck*`/`noise*` textures no live unit
+  references.
+* **228 of 278 unit types declare `Corpse=`, and all 228 resolve** to a feature
+  def with `object=` and a `.3do` that loads (161 chain on to a further
+  `featuredead` heap stage). `TA_FEATART=audit` now reports this as a second
+  line, because a map load never exercises a corpse def and so proves nothing
+  about it.
 
-The `TA_FEATART=audit` sweep confirms the art itself is not the obstacle: all
-432 `object=` defs, wrecks included, produce a texture.
+### `--firetest` was spawning nothing
+
+The staged-combat harness was still a Kingdoms scene: it spawned `araarch`,
+`tararch`, `vertower`, `tardrag`, `zonbasil` and `tarpries`, and checked
+basilisk petrification and a necromancer raising a ghoul from a corpse. **None
+of those unit ids exist in a TA install and none of those mechanics exist in
+TA**, so `spawn` found nothing every time and the flag did nothing at all —
+silently, because a missing id is not an error there.
+
+Rebuilt around the checks that still mean something: a shooter kills a target so
+the death leaves a TA wreck, a tower auto-acquires something off-axis (the aim
+pipeline's heading sign), splash beside a flamable feature ignites it, one unit
+is killed outright and left alone so a wreck persists to be looked at, and a
+builder is sent to reclaim another. Units are chosen by probing the registry
+(`armpw`/`corak`/... ) rather than hard-coded, so a data set with different
+sides still stages a fight instead of silently staging nothing. The camera is
+pinned too — follow mode re-centres on moving friendlies every tick and drags
+the view off the scene, and off a wreck, which does not move.
+
+One harness property to know before using it to look at deaths: the virtual
+clock outruns the corpse window. A corpse is only in `corpsePhase` between
+`deadFor` 4 and its decompose time, and at `--time 30` the first rendered frame
+already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
+window.
 
 ## 6. Open questions, pending the retail data
 

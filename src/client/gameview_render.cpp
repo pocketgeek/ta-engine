@@ -134,8 +134,16 @@
                 static float lastLog = -10;
                 if (kCorpLog && animClock_ >= lastLog + 2.0f) {
                     lastLog = animClock_;
-                    std::fprintf(stderr, "corpse draw: id=%d %s at world %.0f,%.0f screen %.0f,%.0f\n",
-                                 r.id, r.type->id.c_str(), r.x, r.z,
+                    auto ct = unitType_.find(r.id);
+                    const bool swapped = ct != unitType_.end() && ct->second != r.type->id;
+                    // Says whether maybeSwapCorpseModel has repointed this body at
+                    // its own wreck 3DO yet, which is the thing most worth knowing
+                    // when a corpse looks wrong.
+                    std::fprintf(stderr, "corpse draw: id=%d %s wreck=%s at world %.0f,%.0f "
+                                         "screen %.0f,%.0f\n",
+                                 r.id, r.type->id.c_str(),
+                                 swapped ? ct->second.c_str() : "(none -- drawing the body)",
+                                 r.x, r.z,
                                  (r.x - mapView_.offX()) * zm0, (r.z - mapView_.offY()) * zm0);
                 }
             }
@@ -2348,6 +2356,27 @@
             std::printf("featart audit: %d/%zu defs have art (%d fail; %d are object= "
                         "models, %d of those fail)\n",
                         okArt, featureDefs_.size(), failArt, objOnly, objFail);
+            // Corpse models: the wreck 3DO a unit leaves behind, resolved the
+            // same way maybeSwapCorpseModel does it. These are only reached when
+            // something DIES, so no map load exercises them and a clean feature
+            // audit says nothing about them -- hence auditing the resolution here.
+            int withCorpse = 0, corpseOk = 0, corpseNoDef = 0, corpseNoObj = 0, corpseNo3do = 0;
+            for (const auto& [tid, ut] : registry_.types()) {
+                if (ut.corpse.empty()) continue;
+                ++withCorpse;
+                std::string ck = ut.corpse;
+                std::transform(ck.begin(), ck.end(), ck.begin(), ::tolower);
+                auto ci = featureDefs_.find(ck);
+                if (ci == featureDefs_.end()) { ++corpseNoDef; continue; }
+                std::string obj = ci->second.valueOr("object", "");
+                if (obj.empty()) { ++corpseNoObj; continue; }
+                std::transform(obj.begin(), obj.end(), obj.begin(), ::tolower);
+                if (!ghostModel(obj)) { ++corpseNo3do; continue; }
+                ++corpseOk;
+            }
+            std::printf("corpse audit: %d/%d unit types with Corpse= resolve to a wreck "
+                        "3DO (%d no def, %d def without object=, %d model missing)\n",
+                        corpseOk, withCorpse, corpseNoDef, corpseNoObj, corpseNo3do);
         }
         // Register the Sacred Stone deposits so lodestones can only build on
         // them (and the AI knows where to put them). The buildable spot is the

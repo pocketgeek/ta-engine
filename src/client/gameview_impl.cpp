@@ -446,20 +446,50 @@
         mapView_.setOffset(cx - 640 / mapView_.zoom(), cz - 400 / mapView_.zoom());
     }
 
+    // --firetest: a small staged fight, for watching combat and what it leaves
+    // behind. This was a KINGDOMS scene -- it spawned araarch/tararch/vertower/
+    // tardrag/zonbasil/tarpries and checked basilisk petrification and a
+    // necromancer raising a ghoul. None of those unit ids exist in a TA install
+    // and none of those mechanics exist in TA, so on this fork the harness
+    // silently spawned NOTHING and the flag did nothing at all.
+    //
+    // Rebuilt from the checks that still mean something here:
+    //   * a shooter kills a target, so the death leaves a TA WRECK (its own
+    //     *_dead 3DO, not the body lying flat -- see primeCorpseModel);
+    //   * a builder is sent to reclaim a fresh wreck (TA wrecks are reclaimable
+    //     for metal), which must consume it;
+    //   * splash beside a flamable feature must ignite it.
     void GameView::fireTest() {
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
-        int a = spawn("araarch", cx - 40, cz, 1.57f, 0);
-        int e = spawn("tararch", cx + 200, cz, -1.57f, 1);
+        // Pick by SIDE rather than hard-coding arm*/cor*: a data set that ships
+        // different sides still stages a fight instead of spawning nothing, which
+        // is the failure this harness just had.
+        auto pick = [&](std::initializer_list<const char*> ids) -> const char* {
+            for (const char* id : ids)
+                if (registry_.find(id)) return id;
+            return nullptr;
+        };
+        const char* shooter = pick({"armpw", "corak", "armham", "corthud"});
+        const char* victim  = pick({"corak", "armpw", "corthud", "armham"});
+        const char* tower   = pick({"armllt", "corllt"});
+        const char* builder = pick({"armck", "corck", "armcv", "corcv"});
+        if (!shooter || !victim) {
+            std::fprintf(stderr, "firetest: no usable combat units in this data set\n");
+            return;
+        }
+        // 1. Straight kill -> a wreck. Close enough that it happens promptly.
+        int a = spawn(shooter, cx - 40, cz, 1.57f, 0);
+        int e = spawn(victim, cx + 90, cz, -1.57f, 1);
         world_.attack(a, e, false);
-        // Aim-pipeline check: a Veruna watch tower (5-TURN AimWeapon) with an
-        // enemy off-axis to its north-east -- the turret must visibly swing to
-        // face it (auto-acquire), proving the AimWeapon heading sign.
-        int tw = spawn("vertower", cx - 40, cz + 220, 0.0f, 0);
-        int zm = spawn("tarzom", cx + 160, cz + 100, -1.57f, 1);
-        world_.attack(tw, zm, false);   // explicit order: aim runs even without LOS
-        // Feature-burning check: park a victim right beside a flamable feature
-        // and have a dragon breathe on it -- the splash must ignite the tree
-        // (spread + burnt swap then follow on their own).
+        // 2. A tower auto-acquiring something off-axis: the turret must swing to
+        //    face it, which is the aim pipeline's heading sign.
+        if (tower) {
+            int tw = spawn(tower, cx - 40, cz + 220, 0.0f, 0);
+            int zm = spawn(victim, cx + 160, cz + 100, -1.57f, 1);
+            world_.attack(tw, zm, false);   // explicit order: aim runs without LOS
+        }
+        // 3. Ignition: park a victim beside a flamable feature and shoot it, so
+        //    the splash lights the feature (spread + burnt swap follow on their own).
         float tx = cx + 60, tz = cz - 60;
         for (const auto& ft : world_.features())
             if (ft.alive && ft.type >= 0 &&
@@ -467,26 +497,30 @@
                 float ddx = ft.x - cx, ddz = ft.z - cz;
                 if (ddx * ddx + ddz * ddz < 400 * 400) { tx = ft.x + 20; tz = ft.z; break; }
             }
-        int dr = spawn("tardrag", tx - 260, tz - 40, 1.57f, 1);
-        int ar = spawn("araarch", tx, tz, -1.57f, 0);
-        world_.attack(dr, ar, false);
-        // Statue-death check: the Basilisk's gaze petrifies -- the victim must
-        int bs = spawn("zonbasil", tx - 120, tz + 90, 1.57f, 1);
-        int vic = spawn("arabow", tx + 40, tz + 90, -1.57f, 0);
-        world_.attack(bs, vic, false);
-        // Ordered corpse-reclaim check: a builder is sent (negative target id)
-        // to consume a fresh corpse -- the body must vanish when it arrives.
-        int rcv = spawn("arasword", cx - 200, cz + 120, 0.0f, 0);
-        if (auto* rd = world_.unit(rcv)) rd->hp = 0;   // dies this tick, normal corpse
-        int rcb = spawn("arabuild", cx - 250, cz + 160, 1.57f, 0);
-        world_.reclaim(rcb, -rcv, false);
-        // Animate check: an idle necromancer beside the (soon) archer corpse
-        // must channel and raise a Ghoul from it. Hold-fire stance so it never
-        // auto-acquires (the channel needs it order-free).
-        int nec = spawn("tarpries", tx + 30, tz - 40, -1.57f, 1);
-        if (auto* np = world_.unit(nec)) np->stance = 2;
-        // Watch the burn, not the tower: centre the camera on the target tree.
-        mapView_.setOffset(tx - 640 / mapView_.zoom(), tz - 400 / mapView_.zoom());
+        int burner = spawn(shooter, tx - 120, tz - 40, 1.57f, 1);
+        int bvic   = spawn(victim, tx, tz, -1.57f, 0);
+        world_.attack(burner, bvic, false);
+        // 4. A wreck left ALONE, right where the camera looks. Killed outright so
+        //    it does not depend on the fight landing enough shots, and not
+        //    reclaimed, so it stays through its decompose time -- this is the one
+        //    to watch to see a TA wreck model drawn rather than the body.
+        {
+            int dead = spawn(victim, cx + 20, cz + 40, 0.8f, 1);
+            if (auto* d = world_.unit(dead)) d->hp = 0;
+        }
+        // 5. Ordered wreck-reclaim: kill one outright and send a builder at it
+        //    (negative target id). The wreck must be consumed when it arrives.
+        if (builder) {
+            int rcv = spawn(victim, cx - 200, cz + 120, 0.0f, 0);
+            if (auto* rd = world_.unit(rcv)) rd->hp = 0;   // dies this tick, normal wreck
+            int rcb = spawn(builder, cx - 250, cz + 160, 1.57f, 0);
+            world_.reclaim(rcb, -rcv, false);
+        }
+        // Watch the fight, not the edge of the map -- and PIN the camera. Follow
+        // mode re-centres on moving friendly units every tick, which drags the
+        // view off the staged scene (and off the wreck, which does not move).
+        follow_ = false;
+        mapView_.setOffset(cx - 640 / mapView_.zoom(), cz - 400 / mapView_.zoom());
     }
 
     void GameView::lodeTest() {
@@ -1819,6 +1853,9 @@
                 visuals_[obj] = {ta::tdo::load(vread("objects3d/" + obj + ".3do")), {}};
             } catch (const std::exception&) { return; }   // no corpse mesh: keep pose
         }
+        if (ta::devEnv("TA_BURNLOG"))
+            std::fprintf(stderr, "corpse model swap: unit %d (%s) -> wreck 3do '%s'\n",
+                         u.id, u.type->id.c_str(), obj.c_str());
         it->second = obj;
     }
 
