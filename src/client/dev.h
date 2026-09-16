@@ -11,6 +11,12 @@
 
 namespace tak {
 
+// Boolean form of devEnv. Reads the VALUE, so a harness can turn a flag OFF by setting
+// it to 0 -- which matters the moment any of these becomes a default-on knob: the
+// presence test these all used meant TAK_MONARCH_EXPENDABLE=0 switched the option ON,
+// which is exactly what someone writing a control case would type. Unset is `def`.
+inline bool devFlag(const char* name, bool def = false);
+
 inline const char* devEnv(const char* name) {
 #ifdef NDEBUG
     (void)name;
@@ -18,6 +24,12 @@ inline const char* devEnv(const char* name) {
 #else
     return std::getenv(name);
 #endif
+}
+
+inline bool devFlag(const char* name, bool def) {
+    const char* v = devEnv(name);
+    if (!v || !*v) return def;
+    return !(v[0] == '0' && v[1] == '\0');
 }
 
 }  // namespace tak

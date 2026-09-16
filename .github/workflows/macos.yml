@@ -53,10 +53,10 @@ jobs:
 
       - name: Configure + build
         # FIND_FRAMEWORK=LAST keeps FindJPEG off Mono.framework's ancient libjpeg; the
-        # vendored static zlib/jpeg/SDL2 (TAK_STATIC_LIBS) are found via the prefix.
+        # vendored static zlib/jpeg/SDL2 are found via the prefix (always static).
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAK_STATIC_FFMPEG=ON \
-            -DTAK_STATIC_LIBS=ON -DCMAKE_FIND_FRAMEWORK=LAST
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_FRAMEWORK=LAST
           cmake --build build --target takclient takserver detmath_test sim_driver_equiv_test
 
       - name: Verify fully static (only system libs/frameworks linked)
@@ -117,8 +117,8 @@ jobs:
       # TAK_* env hooks, and the headless --mp* harness.
       - name: Configure + build (debug)
         run: |
-          cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTAK_STATIC_FFMPEG=ON \
-            -DTAK_STATIC_LIBS=ON -DCMAKE_FIND_FRAMEWORK=LAST
+          cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_FIND_FRAMEWORK=LAST
           cmake --build build-debug --target takclient takserver
 
       - name: Bundle + zip (debug)

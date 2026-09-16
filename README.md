@@ -140,26 +140,31 @@ FFmpeg **statically into `takclient`**, so the door videos just play on a stock
 system with nothing to install. It stays optional either way: with no FFmpeg
 decoder at all, the doors fall back to their static GAF art.
 
-Building from source, pick one:
+Building from source, the static FFmpeg is **required** -- there is no dynamic
+link and no no-video build:
 
-- **Bundled static FFmpeg (`-DTAK_STATIC_FFMPEG=ON`) — what the releases use.**
-  Build the minimal Bink-only FFmpeg once and link it *into* the binary, so it
-  decodes the door videos with **no runtime FFmpeg at all**:
+```sh
+./tools/build-ffmpeg-bink.sh           # -> third_party/ffmpeg-bink (static, ~+1 MB)
+./tools/build-static-deps.sh           # -> third_party/static-deps (zlib/libjpeg/SDL2)
+cmake -B build -G Ninja && cmake --build build
+```
 
-  ```sh
-  ./tools/build-ffmpeg-bink.sh           # -> third_party/ffmpeg-bink (static, ~+1 MB)
-  cmake -B build -G Ninja -DTAK_STATIC_FFMPEG=ON
-  cmake --build build
-  ```
+Both only need running once; configure fails with the command to run if either
+is missing. The Bink path is pure LGPL (no GPL codecs pulled in), and
+`TAK_FFMPEG_PREFIX` / `TAK_STATIC_DEPS_PREFIX` override where they live.
 
-  The Bink path is pure LGPL (no GPL codecs pulled in). `TAK_FFMPEG_PREFIX`
-  overrides where the static install lives.
+The system `libavcodec` is never used. That is deliberate twice over: stock
+Fedora's `libavcodec-free` omits the Bink decoder entirely, so a successful
+build would not mean the videos play; and its `pkg-config` files were the last
+route by which a shared `libatomic` could re-enter an otherwise static binary.
 
-- **System FFmpeg (the plain-`cmake` default, without that flag).** Configure
-  finds `libavcodec`/`libavformat`/… via `pkg-config` and links them dynamically.
-  The catch: the build's `libavcodec` must actually contain the Bink decoder.
-  Stock Fedora's `libavcodec-free` does **not**; install RPM Fusion's `ffmpeg`
-  (or `libavcodec-freeworld`) for it.
+**Everything is linked statically** -- zlib, libjpeg-turbo, SDL2, the Bink
+FFmpeg, and the C++ runtime (`libstdc++`/`libgcc`/`libatomic`). A Linux binary
+links `libc` and `libm` and nothing else; Windows needs no DLLs at all; macOS
+links only system frameworks. There is no switch for this, because a dynamic
+build would be a configuration nobody ships and everybody tests. CI gates on it
+per platform. (SDL2 still `dlopen`s its X11/Wayland/audio backends at runtime --
+that is SDL's design, not a link-time choice.)
 
 ### Cross-platform builds
 

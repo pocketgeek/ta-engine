@@ -2,7 +2,7 @@
 #
 # Build static archives of zlib, libjpeg-turbo and SDL2 from source, into a prefix that
 # CMake links statically into the tak-engine binaries (see CMakeLists.txt,
-# -DTAK_STATIC_LIBS=ON). This lets the shipped binaries carry these libs internally so a
+# always, unconditionally). This lets the shipped binaries carry these libs internally so a
 # host needs no matching libz / libjpeg / libSDL2 shared library installed -- handy for the
 # release zips and for pinning known-good versions.
 #
@@ -92,4 +92,4 @@ else
 fi
 
 echo "static-deps: done -> $PREFIX (zlib + libjpeg-turbo + SDL2 static archives)"
-echo "  configure the engine with: cmake -B build -G Ninja -DTAK_STATIC_LIBS=ON"
+echo "  the engine links these automatically: cmake -B build -G Ninja"

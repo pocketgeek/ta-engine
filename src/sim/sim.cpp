@@ -1231,7 +1231,7 @@ void World::requestPath(Unit& u, float x, float z) {
 bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
                                 int x0, int z0, int x1, int z1) const {
     const int w = g.width(), h = g.height();
-    if (cg.w != w || cg.h != h || cg.label.empty()) return false;
+    if (cg.w != w || cg.h != h || cg.raw_.empty()) return false;
     const int off = foot / 2;
     const int margin = int(kClearMax) + foot + 2;
     const int wx0 = std::max(0, x0 - margin), wz0 = std::max(0, z0 - margin);
@@ -1249,7 +1249,7 @@ bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
         return okw[size_t(z - wz0) * size_t(ww) + size_t(x - wx0)] != 0;
     };
     auto labelAt = [&](int x, int z) -> int32_t {
-        return cg.label[size_t(z) * size_t(w) + size_t(x)];
+        return cg.raw_[size_t(z) * size_t(w) + size_t(x)];
     };
 
     // Cells that stopped fitting. A cell that STARTED fitting means this was not a pure
@@ -1284,7 +1284,7 @@ bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
         }
     }
     if (boundary.empty()) {          // the edit was self-contained: just clear it
-        for (int idx : removed) cg.label[size_t(idx)] = -1;
+        for (int idx : removed) cg.raw_[size_t(idx)] = -1;
         return true;
     }
 
@@ -1339,7 +1339,7 @@ bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
         else if (it->second != lc) return false;   // possible split -- do it properly
     }
 
-    for (int idx : removed) cg.label[size_t(idx)] = -1;
+    for (int idx : removed) cg.raw_[size_t(idx)] = -1;
     return true;
 }
 
@@ -1351,7 +1351,7 @@ bool World::tryIncrementalBlock(const NavGrid& g, int foot, CompGrid& cg,
 bool World::tryIncrementalUnblock(const NavGrid& g, int foot, CompGrid& cg,
                                   int x0, int z0, int x1, int z1) const {
     const int w = g.width(), h = g.height();
-    if (cg.w != w || cg.h != h || cg.label.empty()) return false;
+    if (cg.w != w || cg.h != h || cg.raw_.empty()) return false;
     const int off = foot / 2;
     const int margin = int(kClearMax) + foot + 2;
     const int wx0 = std::max(0, x0 - margin), wz0 = std::max(0, z0 - margin);
@@ -1374,7 +1374,7 @@ bool World::tryIncrementalUnblock(const NavGrid& g, int foot, CompGrid& cg,
     std::vector<int> added;
     for (int z = wz0; z <= wz1; ++z)
         for (int x = wx0; x <= wx1; ++x) {
-            const bool had = cg.label[size_t(z) * size_t(w) + size_t(x)] >= 0;
+            const bool had = cg.raw_[size_t(z) * size_t(w) + size_t(x)] >= 0;
             const bool has = okAt(x, z);
             if (!had && has) added.push_back(int(size_t(z) * size_t(w) + size_t(x)));
             else if (had && !has) return false;
@@ -1399,22 +1399,22 @@ bool World::tryIncrementalUnblock(const NavGrid& g, int foot, CompGrid& cg,
         for (int k = 0; k < 8; ++k) {
             if (!stepOk(cx, cz, k)) continue;
             const int nx = cx + dcx[k], nz = cz + dcz[k];
-            const int32_t nl = cg.label[size_t(nz) * size_t(w) + size_t(nx)];
+            const int32_t nl = cg.raw_[size_t(nz) * size_t(w) + size_t(nx)];
             if (nl >= 0) { take = cg.root(nl); break; }
         }
         if (take < 0) {                       // an island of its own
             take = int32_t(cg.alias.size());
             cg.alias.push_back(take);
         }
-        cg.label[size_t(idx)] = take;
+        cg.raw_[size_t(idx)] = take;
     }
     for (int idx : added) {
         const int cx = idx % w, cz = idx / w;
-        const int32_t mine = cg.label[size_t(idx)];
+        const int32_t mine = cg.raw_[size_t(idx)];
         for (int k = 0; k < 8; ++k) {
             if (!stepOk(cx, cz, k)) continue;
             const int nx = cx + dcx[k], nz = cz + dcz[k];
-            const int32_t nl = cg.label[size_t(nz) * size_t(w) + size_t(nx)];
+            const int32_t nl = cg.raw_[size_t(nz) * size_t(w) + size_t(nx)];
             if (nl >= 0) cg.unite(mine, nl);
         }
     }
@@ -1428,7 +1428,7 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
     g.ensureClearance();
     const int w = g.width(), h = g.height();
     cg.ver = g.version(); cg.w = w; cg.h = h;
-    cg.label.assign(size_t(w) * size_t(h), -1);
+    cg.raw_.assign(size_t(w) * size_t(h), -1);
     cg.alias.clear();   // a fresh labelling needs no aliasing: every id is its own root
     static const int dcx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
     static const int dcz[8] = {0, 0, 1, -1, 1, -1, 1, -1};
@@ -1447,10 +1447,10 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
     for (int z0 = 0; z0 < h; ++z0)
         for (int x0 = 0; x0 < w; ++x0) {
             size_t seed = size_t(z0) * size_t(w) + size_t(x0);
-            if (cg.label[seed] != -1 || !ok[seed]) continue;
+            if (cg.raw_[seed] != -1 || !ok[seed]) continue;
             const int32_t id = next++;
             cg.alias.push_back(id);          // identity; unblock edits may union later
-            cg.label[seed] = id;
+            cg.raw_[seed] = id;
             stack.push_back(int(seed));
             while (!stack.empty()) {
                 int idx = stack.back(); stack.pop_back();
@@ -1489,8 +1489,8 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
                             continue;                // no diagonal corner-cutting
                     }
                     size_t ni = size_t(nz) * size_t(w) + size_t(nx);
-                    if (cg.label[ni] != -1) continue;
-                    cg.label[ni] = id;
+                    if (cg.raw_[ni] != -1) continue;
+                    cg.raw_[ni] = id;
                     stack.push_back(int(ni));
                 }
             }
@@ -1574,12 +1574,12 @@ bool World::pathExists(const UnitType* type, float gx, float gz, float fx, float
     if (grid.empty()) return false;
     const int foot = type ? std::clamp(std::max(type->footX, type->footZ), 1, 15) : 1;
     const CompGrid* cg = components(grid, foot);
-    if (!cg || cg->label.empty()) return false;
+    if (!cg || cg->empty()) return false;
     const int w = cg->w, h = cg->h;
     auto labelAt = [&](float wx, float wz) -> int32_t {
         int cx = int(wx) / 16, cz = int(wz) / 16;
         if (cx < 0 || cz < 0 || cx >= w || cz >= h) return -1;
-        return cg->root(cg->label[size_t(cz) * size_t(w) + size_t(cx)]);
+        return cg->componentAt(cx, cz);
     };
     // Nearest label to a point whose own cell has none: spiral out to the first cell
     // a body of this size fits in. Used for BOTH ends -- see below.
@@ -1592,8 +1592,8 @@ bool World::pathExists(const UnitType* type, float gx, float gz, float fx, float
                     if (std::max(std::abs(i), std::abs(j)) != r) continue;
                     int nx = cx + i, nz = cz + j;
                     if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
-                    int32_t l = cg->label[size_t(nz) * size_t(w) + size_t(nx)];
-                    if (l >= 0) return cg->root(l);
+                    int32_t l = cg->componentAt(nx, nz);
+                    if (l >= 0) return l;
                 }
         return -1;
     };
@@ -1724,15 +1724,15 @@ bool World::approachCell(const Unit& t, float x, float z, float& outX, float& ou
     // fitting cell rather than refusing to unload at all.
     const CompGrid* cg = components(g, foot);
     int32_t here = -1;
-    if (cg && !cg->label.empty()) {
+    if (cg && !cg->empty()) {
         const int tx = std::clamp(int(t.x) / 16, 0, cg->w - 1);
         const int tz = std::clamp(int(t.z) / 16, 0, cg->h - 1);
-        here = cg->root(cg->label[size_t(tz) * size_t(cg->w) + size_t(tx)]);
+        here = cg->componentAt(tx, tz);
     }
     auto reachable = [&](int nx, int nz) {
-        if (here < 0 || !cg || cg->label.empty()) return true;   // no labelling to use
+        if (here < 0 || !cg || cg->empty()) return true;   // no labelling to use
         if (nx < 0 || nz < 0 || nx >= cg->w || nz >= cg->h) return false;
-        return cg->root(cg->label[size_t(nz) * size_t(cg->w) + size_t(nx)]) == here;
+        return cg->componentAt(nx, nz) == here;
     };
     for (int r = 0; r <= maxR; ++r) {
         for (int j = -r; j <= r; ++j)

@@ -14,32 +14,36 @@ endif()
 
 add_compile_options(-Wall -Wextra)
 
-# --- Optional: statically link vendored zlib / libjpeg / SDL2 -----------------
-# -DTAK_STATIC_LIBS=ON links the static archives built by tools/build-static-deps.sh into
-# TAK_STATIC_DEPS_PREFIX, so the binaries carry zlib/libjpeg/SDL2 internally -- no matching
-# shared library needed at runtime, and the versions are pinned. (SDL2 still dlopens its
-# X11/Wayland/audio backends, so THOSE system libs must still be present.) Default OFF is
-# the normal system-shared build.
-option(TAK_STATIC_LIBS "Statically link vendored zlib/libjpeg/SDL2 (tools/build-static-deps.sh)" OFF)
+# --- zlib / libjpeg / SDL2 are ALWAYS linked statically ------------------------
+# There is no switch for this. A dynamic build was only ever useful for bisecting a
+# system-library bug, and keeping the option around meant the shipped configuration was
+# not the one anyone built locally -- the shape of bug that reaches users. The binaries
+# carry zlib/libjpeg/SDL2 internally, at pinned versions. (SDL2 still dlopens its
+# X11/Wayland/audio backends, so THOSE system libs are still needed at runtime; that is
+# SDL's design and not something linking can change.)
 set(TAK_STATIC_DEPS_PREFIX "${CMAKE_SOURCE_DIR}/third_party/static-deps"
     CACHE PATH "Install prefix of the vendored static zlib/libjpeg/SDL2")
-if(TAK_STATIC_LIBS)
-  set(ZLIB_USE_STATIC_LIBS ON)              # FindZLIB honours this (CMake >= 3.24)
-  if(EXISTS "${TAK_STATIC_DEPS_PREFIX}/lib" OR EXISTS "${TAK_STATIC_DEPS_PREFIX}/lib64")
-    # Vendored archives built by tools/build-static-deps.sh (Linux, macOS).
-    list(PREPEND CMAKE_PREFIX_PATH "${TAK_STATIC_DEPS_PREFIX}")
-    set(ZLIB_ROOT "${TAK_STATIC_DEPS_PREFIX}")
-    set(JPEG_ROOT "${TAK_STATIC_DEPS_PREFIX}")   # only the .a lives there -> found static
-    message(STATUS "Static libs: vendored from ${TAK_STATIC_DEPS_PREFIX}")
-  else()
-    # No vendored prefix: use the toolchain's own static archives (e.g. MSYS2/MinGW ships
-    # libz.a/libjpeg.a/libSDL2.a alongside the import libs). Prefer .a over the .dll.a
-    # import libs so find_package resolves the static ones; SDL2::SDL2-static links static.
-    if(WIN32)
-      set(CMAKE_FIND_LIBRARY_SUFFIXES .a .dll.a ${CMAKE_FIND_LIBRARY_SUFFIXES})
-    endif()
-    message(STATUS "Static libs: from the toolchain's static archives")
-  endif()
+set(ZLIB_USE_STATIC_LIBS ON)                # FindZLIB honours this (CMake >= 3.24)
+if(EXISTS "${TAK_STATIC_DEPS_PREFIX}/lib" OR EXISTS "${TAK_STATIC_DEPS_PREFIX}/lib64")
+  # Vendored archives built by tools/build-static-deps.sh (Linux, macOS).
+  list(PREPEND CMAKE_PREFIX_PATH "${TAK_STATIC_DEPS_PREFIX}")
+  set(ZLIB_ROOT "${TAK_STATIC_DEPS_PREFIX}")
+  set(JPEG_ROOT "${TAK_STATIC_DEPS_PREFIX}")   # only the .a lives there -> found static
+  message(STATUS "Static libs: vendored from ${TAK_STATIC_DEPS_PREFIX}")
+elseif(WIN32)
+  # MSYS2/MinGW ships libz.a/libjpeg.a/libSDL2.a alongside the import libs. Prefer .a
+  # over the .dll.a so find_package resolves the static ones.
+  set(CMAKE_FIND_LIBRARY_SUFFIXES .a .dll.a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+  message(STATUS "Static libs: from the toolchain's static archives")
+else()
+  # Falling through here would silently find the system's SHARED SDL2 and produce a
+  # dynamically linked binary that looks fine locally and fails the release gate -- or
+  # worse, ships. Say what to run instead.
+  message(FATAL_ERROR
+    "The vendored static libraries are missing: ${TAK_STATIC_DEPS_PREFIX}\n"
+    "  Build them once with:  ./tools/build-static-deps.sh\n"
+    "(zlib, libjpeg-turbo and SDL2 are always linked statically; there is no dynamic "
+    "build to fall back to.)")
 endif()
 
 # --- Format libraries (no external dependencies) ------------------------------
@@ -116,15 +120,15 @@ if(WIN32)
   # bcrypt: BCryptGenRandom, the OS CSPRNG behind crypto::randomBytes.
   target_link_libraries(tak-formats PUBLIC ws2_32 bcrypt)
   # Fold the GCC/C++ runtime into each .exe so a Windows box needs no MinGW DLLs.
-  # -static also pulls winpthread. SDL2/jpeg/zlib are static too (TAK_STATIC_LIBS), so
+  # -static also pulls winpthread. SDL2/jpeg/zlib are always static too, so
   # nothing is shipped alongside -- windows.yml gates on the .exe importing no
   # SDL2/jpeg/zlib/FFmpeg DLL at all. (This comment used to say those three were still
   # shipped as DLLs, which stopped being true when that gate went in.)
   add_link_options(-static-libgcc -static-libstdc++ -static)
 endif()
 
-# Linux: fold the C++ runtime in too. SDL2/jpeg/zlib and the Bink FFmpeg are already
-# static (TAK_STATIC_LIBS / TAK_STATIC_FFMPEG), which left libstdc++/libgcc_s/libatomic
+# Linux: fold the C++ runtime in too. SDL2/jpeg/zlib and the Bink FFmpeg are always
+# static, which left libstdc++/libgcc_s/libatomic
 # as the only non-libc dependencies -- and they are the ones that tie a package to the
 # distro that built it, which is why the release matrix carries a per-distro tag and a
 # gcc-12 variant.
@@ -291,82 +295,80 @@ target_link_libraries(aitool PRIVATE tak-formats)
 
 option(TAK_BUILD_CLIENT "Build the SDL2 client (asset viewer + game)" ON)
 
-# Optional FFmpeg for decoding the retail Bink (.bik) menu videos. When present,
-# the main menu plays the door hover videos; when absent, it falls back to the GAF
-# door art. libavcodec carries a clean-room Bink decoder (LGPL).
+# FFmpeg decodes the retail Bink (.bik) menu videos -- libavcodec carries a clean-room
+# Bink decoder (LGPL). It is ALWAYS the minimal Bink-only static build from
+# tools/build-ffmpeg-bink.sh; there is no dynamic link and no no-video build.
 #
-# Two ways to get it:
-#   * Default: link the system FFmpeg dynamically (pkg-config). Needs a build whose
-#     libavcodec includes the Bink decoder (stock Fedora's libavcodec-free does NOT;
-#     RPM Fusion's does).
-#   * -DTAK_STATIC_FFMPEG=ON: statically link a MINIMAL, Bink-only FFmpeg built by
-#     tools/build-ffmpeg-bink.sh, so the shipped binary needs no runtime FFmpeg at all.
-#     TAK_FFMPEG_PREFIX overrides where that static install lives.
-option(TAK_STATIC_FFMPEG "Statically link a minimal Bink-only FFmpeg (tools/build-ffmpeg-bink.sh)" OFF)
+# The system libavcodec is never consulted, which is deliberate twice over: stock
+# Fedora's libavcodec-free omits the Bink decoder entirely (so "it built" would not mean
+# "videos play"), and its .pc files were the last place a shared libatomic could sneak
+# back into an otherwise static binary. TAK_FFMPEG_PREFIX overrides where the static
+# install lives.
 set(TAK_FFMPEG_PREFIX "" CACHE PATH "Install prefix of the static Bink-only FFmpeg")
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-  if(TAK_STATIC_FFMPEG)
-    if(NOT TAK_FFMPEG_PREFIX)
-      set(TAK_FFMPEG_PREFIX "${CMAKE_SOURCE_DIR}/third_party/ffmpeg-bink")
-    endif()
+  if(NOT TAK_FFMPEG_PREFIX)
+    set(TAK_FFMPEG_PREFIX "${CMAKE_SOURCE_DIR}/third_party/ffmpeg-bink")
+  endif()
+  if(EXISTS "${TAK_FFMPEG_PREFIX}/lib/pkgconfig")
     set(ENV{PKG_CONFIG_PATH} "${TAK_FFMPEG_PREFIX}/lib/pkgconfig")
     # Order high-level -> low-level so the static archives resolve left-to-right.
     pkg_check_modules(FFMPEG libavformat libavcodec libswscale libswresample libavutil)
   else()
-    pkg_check_modules(FFMPEG IMPORTED_TARGET libavcodec libavformat libavutil libswscale libswresample)
+    message(FATAL_ERROR
+      "The static Bink-only FFmpeg is missing: ${TAK_FFMPEG_PREFIX}\n"
+      "  Build it once with:  ./tools/build-ffmpeg-bink.sh\n"
+      "(FFmpeg is always linked statically; there is no dynamic build and no "
+      "no-video build to fall back to.)")
   endif()
+else()
+  message(FATAL_ERROR "pkg-config is required to locate the static Bink-only FFmpeg")
 endif()
 
-# One INTERFACE target both takclient and biktool link, hiding the static/dynamic split.
+# One INTERFACE target both takclient and biktool link.
 if(FFMPEG_FOUND)
   add_library(tak_ffmpeg INTERFACE)
   target_compile_definitions(tak_ffmpeg INTERFACE TAK_HAVE_FFMPEG)
-  if(TAK_STATIC_FFMPEG)
-    target_include_directories(tak_ffmpeg INTERFACE ${FFMPEG_STATIC_INCLUDE_DIRS})
-    if(APPLE)
-      # pkg-config lists macOS frameworks as the two tokens "-framework" "CoreVideo";
-      # a plain link-libraries list would turn the bare "CoreVideo" into -lCoreVideo
-      # (ld: library 'CoreVideo' not found). Re-pair each into a SHELL: link option so
-      # both tokens reach the linker intact, and link the -L/-l rest normally. (Apple's
-      # ld is multi-pass, so the circular archives need no --start-group.)
-      set(_ff_rest "")
-      list(LENGTH FFMPEG_STATIC_LDFLAGS _ff_n)
-      set(_ff_i 0)
-      while(_ff_i LESS _ff_n)
-        list(GET FFMPEG_STATIC_LDFLAGS ${_ff_i} _ff_tok)
-        if(_ff_tok STREQUAL "-framework")
-          math(EXPR _ff_i "${_ff_i}+1")
-          list(GET FFMPEG_STATIC_LDFLAGS ${_ff_i} _ff_fw)
-          target_link_options(tak_ffmpeg INTERFACE "SHELL:-framework ${_ff_fw}")
-        else()
-          list(APPEND _ff_rest "${_ff_tok}")
-        endif()
+  target_include_directories(tak_ffmpeg INTERFACE ${FFMPEG_STATIC_INCLUDE_DIRS})
+  if(APPLE)
+    # pkg-config lists macOS frameworks as the two tokens "-framework" "CoreVideo";
+    # a plain link-libraries list would turn the bare "CoreVideo" into -lCoreVideo
+    # (ld: library 'CoreVideo' not found). Re-pair each into a SHELL: link option so
+    # both tokens reach the linker intact, and link the -L/-l rest normally. (Apple's
+    # ld is multi-pass, so the circular archives need no --start-group.)
+    set(_ff_rest "")
+    list(LENGTH FFMPEG_STATIC_LDFLAGS _ff_n)
+    set(_ff_i 0)
+    while(_ff_i LESS _ff_n)
+      list(GET FFMPEG_STATIC_LDFLAGS ${_ff_i} _ff_tok)
+      if(_ff_tok STREQUAL "-framework")
         math(EXPR _ff_i "${_ff_i}+1")
-      endwhile()
-      target_link_libraries(tak_ffmpeg INTERFACE ${_ff_rest})
-    else()
-      # --start/--end-group resolves the circular FFmpeg archives regardless of order
-      # (GNU ld / MinGW).
-      #
-      # FFmpeg's .pc files list a bare -latomic, which resolves to libatomic.so and is
-      # the last non-libc dependency left once libstdc++ is static. Swap it for the
-      # archive HERE, where it sits after the objects that need it -- the one position
-      # where asking for the static form actually takes effect.
-      set(_ff_ldflags ${FFMPEG_STATIC_LDFLAGS})
-      if(UNIX AND NOT APPLE)
-        list(TRANSFORM _ff_ldflags REPLACE "^-latomic$"
-             "-Wl,--push-state,-Bstatic,-latomic,--pop-state")
+        list(GET FFMPEG_STATIC_LDFLAGS ${_ff_i} _ff_fw)
+        target_link_options(tak_ffmpeg INTERFACE "SHELL:-framework ${_ff_fw}")
+      else()
+        list(APPEND _ff_rest "${_ff_tok}")
       endif()
-      target_link_libraries(tak_ffmpeg INTERFACE
-        -Wl,--start-group ${_ff_ldflags} -Wl,--end-group)
-    endif()
-    message(STATUS "FFmpeg: STATIC Bink-only build from ${TAK_FFMPEG_PREFIX}")
+      math(EXPR _ff_i "${_ff_i}+1")
+    endwhile()
+    target_link_libraries(tak_ffmpeg INTERFACE ${_ff_rest})
   else()
-    target_link_libraries(tak_ffmpeg INTERFACE PkgConfig::FFMPEG)
-    message(STATUS "FFmpeg: system (dynamic) — Bink (.bik) menu videos enabled.")
+    # --start/--end-group resolves the circular FFmpeg archives regardless of order
+    # (GNU ld / MinGW).
+    #
+    # FFmpeg's .pc files list a bare -latomic, which resolves to libatomic.so and is
+    # the last non-libc dependency left once libstdc++ is static. Swap it for the
+    # archive HERE, where it sits after the objects that need it -- the one position
+    # where asking for the static form actually takes effect.
+    set(_ff_ldflags ${FFMPEG_STATIC_LDFLAGS})
+    if(UNIX AND NOT APPLE)
+      list(TRANSFORM _ff_ldflags REPLACE "^-latomic$"
+           "-Wl,--push-state,-Bstatic,-latomic,--pop-state")
+    endif()
+    target_link_libraries(tak_ffmpeg INTERFACE
+      -Wl,--start-group ${_ff_ldflags} -Wl,--end-group)
   endif()
+  message(STATUS "FFmpeg: STATIC Bink-only build from ${TAK_FFMPEG_PREFIX}")
 endif()
 
 if(TAK_BUILD_CLIENT)
@@ -380,10 +382,10 @@ if(TAK_BUILD_CLIENT)
       # the benchmark's device-wide GPU% (no public per-process stat on macOS).
       target_link_libraries(takclient PRIVATE "-framework IOKit" "-framework CoreFoundation")
     endif()
-    # The vendored static SDL2 (TAK_STATIC_LIBS) exposes SDL2::SDL2-static (with its
+    # The vendored static SDL2 exposes SDL2::SDL2-static (with its
     # transitive -ldl/-lm/-lpthread etc. baked into the target); the system SDL2 exposes
     # SDL2::SDL2. We provide our own main (SDL_MAIN_HANDLED), so SDL2main is never needed.
-    if(TAK_STATIC_LIBS AND TARGET SDL2::SDL2-static)
+    if(TARGET SDL2::SDL2-static)
       set(_tak_sdl2 SDL2::SDL2-static)
     else()
       set(_tak_sdl2 SDL2::SDL2)
@@ -447,8 +449,8 @@ target_link_libraries(cobtool PRIVATE tak-formats)
 # One source of truth for both package families. Build, then from the build dir:
 #   cpack -G DEB   -> tak-engine-<version>-amd64.deb   (sudo apt install ./tak-engine-*-amd64.deb)
 #   cpack -G RPM   -> tak-engine-<version>-x86_64.rpm  (sudo dnf install ./tak-engine-*-x86_64.rpm)
-# The release CI builds these with -DTAK_STATIC_LIBS=ON, so SDL2/jpeg/zlib (and the Bink
-# FFmpeg) are baked in -- SHLIBDEPS/AUTOREQ below then auto-detect only the C/C++ runtime.
+# Every build bakes SDL2/jpeg/zlib and the Bink FFmpeg in, so SHLIBDEPS/AUTOREQ below
+# auto-detect only the C runtime.
 # SDL2 still dlopens its X11/Wayland/audio backends, which every desktop that can run the
 # game already has; those are not declared (they aren't link-time deps of a static SDL2).
 if(UNIX AND NOT APPLE)

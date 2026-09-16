@@ -71,11 +71,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # zlib/libjpeg/SDL2 and the Bink FFmpeg are ALWAYS linked statically -- there is no
+      # dynamic build to fall back to -- so even these test-only jobs need the vendored
+      # archives. The -dev packages are still installed because SDL2 is built from source
+      # here and needs its backend headers. Cached, so only the first run pays for it.
       - name: Install build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            g++ cmake ninja-build libsdl2-dev zlib1g-dev libjpeg-dev
+            g++ cmake ninja-build nasm pkg-config git make curl ca-certificates \
+            libstdc++-*-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libgl1-mesa-dev libegl1-mesa-dev
+      - name: Cache static FFmpeg (Bink)
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-ubuntu-latest-n7.1.1
+      - name: Build static FFmpeg (Bink)
+        run: ./tools/build-ffmpeg-bink.sh
+      - name: Cache static deps (zlib/libjpeg/SDL2)
+        uses: actions/cache@v4
+        with:
+          path: third_party/static-deps
+          key: static-deps-ubuntu-latest-zlib1.3.1-jpeg3.0.4-sdl2.32.10
+      - name: Build static deps (zlib/libjpeg/SDL2)
+        run: ./tools/build-static-deps.sh
       - name: Build + run the driver-equivalence test
         run: |
           cmake -B build -G Ninja
@@ -94,11 +117,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # zlib/libjpeg/SDL2 and the Bink FFmpeg are ALWAYS linked statically -- there is no
+      # dynamic build to fall back to -- so even these test-only jobs need the vendored
+      # archives. The -dev packages are still installed because SDL2 is built from source
+      # here and needs its backend headers. Cached, so only the first run pays for it.
       - name: Install build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            g++ cmake ninja-build libsdl2-dev zlib1g-dev libjpeg-dev
+            g++ cmake ninja-build nasm pkg-config git make curl ca-certificates \
+            libstdc++-*-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libgl1-mesa-dev libegl1-mesa-dev
+      - name: Cache static FFmpeg (Bink)
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-ubuntu-latest-n7.1.1
+      - name: Build static FFmpeg (Bink)
+        run: ./tools/build-ffmpeg-bink.sh
+      - name: Cache static deps (zlib/libjpeg/SDL2)
+        uses: actions/cache@v4
+        with:
+          path: third_party/static-deps
+          key: static-deps-ubuntu-latest-zlib1.3.1-jpeg3.0.4-sdl2.32.10
+      - name: Build static deps (zlib/libjpeg/SDL2)
+        run: ./tools/build-static-deps.sh
       - name: Build + run
         run: |
           cmake -B build -G Ninja

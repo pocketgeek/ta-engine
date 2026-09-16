@@ -62,6 +62,27 @@ echo "desync hunt: ${MINUTES}m per run, ${JOBS} in parallel, logs in $OUT"
 # deliberately stays at 1x as a control, in case the cadence itself ever matters.
 SPEED_DEFAULT="TAK_SPEED=40"
 
+# MONARCH EXPENDABLE BY DEFAULT, to buy back some of the sweep's lost game time.
+# With it off (the wire default) losing your Monarch loses the game, and 14 of 30 runs
+# concluded before the clock at a mean of 8,760 ticks against the 36,000 they were given.
+# The time lost is the valuable kind: a game that ends early never reaches the late-game
+# state where armies are large and the map is built out, which is where the nav stalls
+# lived and where a desync is likeliest to hide.
+#
+# HOW MUCH this buys is NOT the 1.5x a first pass suggested -- that assumed every early
+# finish was a Monarch death. Measured instead: Blood and Roses (the case that ended at
+# 4,027) runs 7,386 -> 7,971 ticks, +8%, and still concludes long before the clock, so
+# those games are ending mostly by elimination rather than sudden death. Inner Circle at
+# one seed showed no difference at all (identical hash), the option never having come
+# into play. Kept anyway because the direction is guaranteed: with it on a team dies only
+# when everything it owns is dead, a strict superset of the sudden-death condition, so a
+# run can only get longer or stay the same. Never shorter.
+#
+# Two runs below deliberately set it back to 0: the monarch-death win condition is sim
+# logic in its own right (updateOutcome reading hadMonarch_), and a spectator whose game
+# ended once wedged the referee, so "the game concludes" must stay covered.
+MONARCH_DEFAULT="TAK_MONARCH_EXPENDABLE=1"
+
 RUNS=(
   "baseline|Ulasem Arena||"
   "crusades|Ulasem Arena||--crusades"
@@ -77,6 +98,7 @@ RUNS=(
   "flow-bench-high|Ulasem Arena|TAK_BENCH=3|"
   "flow-bench-absurd|Ulasem Arena|TAK_BENCH=6|"
   "cramped|Inner Circle||"
+  "cramped-sudden-death|Inner Circle|TAK_MONARCH_EXPENDABLE=0|"
   "cramped-stress|Inner Circle|TAK_STRESS=1|"
   "naval|Aibel's Seaport||"
   "naval-crusades|Aibel's Seaport||--crusades"
@@ -87,7 +109,7 @@ RUNS=(
   "gods-random-starts|Ulasem Arena|TAK_GODS=1 TAK_RANDOM_STARTS=1|"
   "gods-cramped|Inner Circle|TAK_GODS=1|"
   "gods-crusades|Rift of Grief|TAK_GODS=1|--crusades"
-  "monarch-expendable|Ulasem Arena|TAK_MONARCH_EXPENDABLE=1 TAK_GODS=1|"
+  "monarch-sudden-death|Ulasem Arena|TAK_MONARCH_EXPENDABLE=0 TAK_GODS=1|"
   "forfeit-selfdestruct|Ulasem Arena|TAK_FORFEIT_SELFDESTRUCT=1|"
   "random-starts|Sand River Plain|TAK_RANDOM_STARTS=1|"
   "speed-1x-control|Ulasem Arena|TAK_SPEED=10|"
@@ -142,7 +164,7 @@ run_one() {
 
   local secs=$((MINUTES * 60))
   # shellcheck disable=SC2086
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 $SPEED_DEFAULT $envs \
+  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 $SPEED_DEFAULT $MONARCH_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$DATA" \
       --server 127.0.0.1 --serverport "$port" --mphost --time "$secs" $flags \
       >"$clog" 2>&1
@@ -173,7 +195,7 @@ run_one() {
   fi
 }
 export -f run_one
-export OUT CLIENT SERVER DATA MINUTES PORT_BASE SPEED_DEFAULT
+export OUT CLIENT SERVER DATA MINUTES PORT_BASE SPEED_DEFAULT MONARCH_DEFAULT
 
 i=0
 for spec in "${RUNS[@]}"; do

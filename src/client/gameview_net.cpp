@@ -546,7 +546,7 @@ void GameView::autoplayStep() {
             // TAK_SPEED: set the game speed in tenths (10 = 1x) for headless timing
             // tests -- re-cadences the server without touching the (deterministic) sim.
             if (const char* sp = tak::devEnv("TAK_SPEED")) o.speed = uint8_t(std::clamp(std::atoi(sp), 1, 40));
-            if (tak::devEnv("TAK_STRESS")) o.stressTest = 1;   // headless: spawn ~95% cap per AI
+            o.stressTest = tak::devFlag("TAK_STRESS") ? 1 : 0;   // headless: spawn ~95% cap per AI
             if (const char* be = tak::devEnv("TAK_BENCH")) {   // headless: benchmark run
                 int lv = std::atoi(be);                        // TAK_BENCH=<level 1..6>, default High
                 benchmarkLevel_ = (lv >= 1 && lv <= tak::sim::kBenchLevels) ? lv : 3;
@@ -558,10 +558,10 @@ void GameView::autoplayStep() {
             // desync has already hidden once: summoning used to run only on the client,
             // so the referee's world ran a unit short from the first god onward. A
             // desync hunt that cannot turn gods on cannot find that class of bug.
-            if (tak::devEnv("TAK_GODS")) o.gods = 1;
-            if (tak::devEnv("TAK_RANDOM_STARTS")) o.randomStarts = 1;
-            if (tak::devEnv("TAK_MONARCH_EXPENDABLE")) o.monarchExpendable = 1;
-            if (tak::devEnv("TAK_FORFEIT_SELFDESTRUCT")) o.forfeitSelfDestruct = 1;
+            o.gods = tak::devFlag("TAK_GODS") ? 1 : 0;
+            o.randomStarts = tak::devFlag("TAK_RANDOM_STARTS") ? 1 : 0;
+            o.monarchExpendable = tak::devFlag("TAK_MONARCH_EXPENDABLE") ? 1 : 0;
+            o.forfeitSelfDestruct = tak::devFlag("TAK_FORFEIT_SELFDESTRUCT") ? 1 : 0;
             // TAK_FOG=0|1|2 forces the room's fog rule (not explored / explored /
             // full vision) so the setting can be tested end to end without driving
             // the lobby by hand.

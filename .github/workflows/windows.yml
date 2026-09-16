@@ -60,10 +60,10 @@ jobs:
         run: ./tools/build-ffmpeg-bink.sh
 
       - name: Configure + build
-        # -DTAK_STATIC_LIBS=ON links MSYS2's static libSDL2.a/libjpeg.a/libz.a (SDL2::SDL2-static
+        # links MSYS2's static libSDL2.a/libjpeg.a/libz.a (SDL2::SDL2-static
         # + the WIN32 -static flag) so the .exe is fully self-contained -- no bundled DLLs.
         run: |
-          cmake -B build -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DTAK_STATIC_FFMPEG=ON -DTAK_STATIC_LIBS=ON
+          cmake -B build -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target takclient takserver detmath_test sim_driver_equiv_test
 
       - name: Verify fully static (no SDL2/jpeg/zlib/ffmpeg DLL imports)
@@ -113,7 +113,7 @@ jobs:
       # TAK_* env hooks, and the headless --mp* harness.
       - name: Configure + build (debug)
         run: |
-          cmake -B build-debug -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug -DTAK_STATIC_FFMPEG=ON -DTAK_STATIC_LIBS=ON
+          cmake -B build-debug -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug
           cmake --build build-debug --target takclient takserver
 
       - name: Bundle (exes + required DLLs) + zip (debug)

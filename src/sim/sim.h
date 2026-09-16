@@ -1465,7 +1465,34 @@ private:
     // asks. Never compare raw labels.
     struct CompGrid {
         uint64_t ver = 0; int w = 0, h = 0;
-        std::vector<int32_t> label;
+
+        // ASK THROUGH THESE. The stored ids are NOT comparable: an unblock merges two
+        // components by uniting their ids rather than rewriting a map of cells, so two
+        // cells can share a component while still carrying the different ids they were
+        // first given. A raw `==` is right until the first merge and silently wrong
+        // afterwards -- reachability would start depending on whether a passage had ever
+        // been open, which is history, not geometry.
+        //
+        // That is not hypothetical: the comment alone did not prevent it. The incremental
+        // split check compared raw ids and shipped, and a reopened-then-reclosed passage
+        // stayed "open" until review caught it (navincr_test covers it now). Hence the
+        // raw vector is private and the id never leaves this struct resolved.
+        int32_t componentAt(int x, int z) const {          // -1 where nothing fits
+            if (x < 0 || z < 0 || x >= w || z >= h) return -1;
+            return root(raw_[size_t(z) * size_t(w) + size_t(x)]);
+        }
+        bool passableAt(int x, int z) const {
+            return x >= 0 && z >= 0 && x < w && z < h &&
+                   raw_[size_t(z) * size_t(w) + size_t(x)] >= 0;
+        }
+        bool empty() const { return raw_.empty(); }
+
+    private:
+        // Only components() and the two incremental updaters assign ids; everything else
+        // goes through componentAt(). friend rather than public so the unresolved id has
+        // no route out of this struct.
+        friend class World;
+        std::vector<int32_t> raw_;
         std::vector<int32_t> alias;   // id -> parent id; identity after a full build
         int32_t root(int32_t id) const {
             if (id < 0) return id;
