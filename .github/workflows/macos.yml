@@ -72,7 +72,7 @@ jobs:
       - name: Project version
         run: echo "VERSION=$(grep -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | head -1 | awk '{print $2}')" >> "$GITHUB_ENV"
 
-      # Drag-and-drop disk image: a "TAK Engine.app" bundle (Finder-launchable
+      # Drag-and-drop disk image: a "TA Engine.app" bundle (Finder-launchable
       # with NO Terminal window -- only .app bundles get that; a bare Unix binary
       # double-clicked in Finder always opens Terminal) plus an /Applications
       # symlink, packed with hdiutil. Ad-hoc codesigned so Apple Silicon will run
@@ -80,14 +80,14 @@ jobs:
       # notarization identity).
       - name: App bundle + DMG
         run: |
-          APPDIR="dist-dmg/TAK Engine.app"
+          APPDIR="dist-dmg/TA Engine.app"
           mkdir -p "$APPDIR/Contents/MacOS"
           cp build/taclient build/taserver "$APPDIR/Contents/MacOS/"
           sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APPDIR/Contents/Info.plist"
           plutil -lint "$APPDIR/Contents/Info.plist"
           codesign --force --deep -s - "$APPDIR"
           ln -s /Applications dist-dmg/Applications
-          hdiutil create -volname "TAK Engine" -srcfolder dist-dmg -ov -format UDZO \
+          hdiutil create -volname "TA Engine" -srcfolder dist-dmg -ov -format UDZO \
             "ta-engine-$VERSION-macos-arm64.dmg"
           hdiutil verify "ta-engine-$VERSION-macos-arm64.dmg"
 
@@ -96,7 +96,7 @@ jobs:
       - name: Bundle + zip
         run: |
           mkdir -p dist-macos
-          cp -R "dist-dmg/TAK Engine.app" dist-macos/
+          cp -R "dist-dmg/TA Engine.app" dist-macos/
           cp build/taclient build/taserver dist-macos/
           (cd dist-macos && zip -ry "../taclient-$VERSION-macos-arm64.zip" .)
 
@@ -151,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --title "TAK Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || true
+            --title "TA Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || true
           gh release upload "$GITHUB_REF_NAME" \
             "taclient-$VERSION-macos-arm64.zip" taclient-macos-arm64-debug.zip \
             "ta-engine-$VERSION-macos-arm64.dmg" \

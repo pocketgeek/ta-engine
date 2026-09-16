@@ -89,7 +89,7 @@ jobs:
             | while read -r dll; do cp "$dll" dist-win/; done
           (cd dist-win && zip -r "../taclient-$VERSION-windows-x64.zip" .)
 
-      # Proper installer (NSIS via CPack): installs into Program Files\TAK Engine
+      # Proper installer (NSIS via CPack): installs into Program Files\TA Engine
       # with Start-menu shortcuts + an uninstaller. Same static binaries as the zip.
       - name: Build installer (NSIS)
         run: |
@@ -150,7 +150,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY `
-            --title "TAK Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag 2>$null
+            --title "TA Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag 2>$null
           $zip = "taclient-$($env:VERSION)-windows-x64.zip"
           $setup = Get-ChildItem build\ta-engine-*-setup.exe | Select-Object -First 1
           gh release upload $env:GITHUB_REF_NAME `

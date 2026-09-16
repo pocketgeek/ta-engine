@@ -1,4 +1,4 @@
-# TAK Engine Arch package. The CI (linux.yml, arch matrix leg) compiles the
+# TA Engine Arch package. The CI (linux.yml, arch matrix leg) compiles the
 # binaries first (cmake --build build --target taclient taserver, with the
 # static SDL2/jpeg/zlib + Bink FFmpeg baked in) and stamps @VERSION@; makepkg
 # here only packages the prebuilt binaries -- so every distro leg shares one

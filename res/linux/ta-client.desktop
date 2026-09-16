@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=TAK Engine
+Name=TA Engine
 GenericName=Real-Time Strategy
 Comment=Clean-room engine recreation of Total Annihilation: Kingdoms
 Exec=taclient

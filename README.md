@@ -22,26 +22,24 @@ Tactics*.
 
 > **Work in progress.** This is a fork of
 > [tak-engine](https://github.com/pocketgeek/tak-engine), a finished engine for
-> TA's sequel *Total Annihilation: Kingdoms*, being retargeted at TA itself.
-> The asset pipeline reads real TA data today; the simulation is still
-> Kingdoms'. **It does not play Total Annihilation yet.**
+> TA's sequel *Total Annihilation: Kingdoms*, retargeted at TA itself.
 >
-> [`docs/ta-port.md`](docs/ta-port.md) is the map of what is done, what is left,
-> and why. Short version:
->
-> | | |
-> | --- | --- |
-> | ✅ **HPI v1** | all 30 archives of the Commander Pack, 7,890 files, zero failures |
-> | ✅ **3DO · GAF · COB · TDF** | already classic-TA compatible; verified against real assets |
-> | ✅ **TNT + terrain** | all 96 shipped maps round-trip byte-identically, and render |
-> | 🔨 **Unit data, economy, sim** | next: metal+energy, nanolathe building, ARM vs CORE |
+> It reads a real Commander Pack install, and an ARM-vs-CORE skirmish runs:
+> economy, construction and combat, on the shipped maps with their own art and
+> features. What is **not** finished is parity — the long tail of per-unit and
+> per-weapon behaviour, TA's campaign data, and retail's in-panel build grid. See
+> **[Status](#status)** below and [`docs/ta-port.md`](docs/ta-port.md) for the
+> detail.
 
-Much of the retained engine's behaviour was cross-checked against the retail
-*Kingdoms* binary; the same treatment of TA's `TotalA.exe` is how the remaining
-gameplay questions get settled. See `docs/retail-engine.md`.
+Behaviour is cross-checked against the retail binary rather than guessed at.
+[`docs/retail-engine-ta.md`](docs/retail-engine-ta.md) holds the TA findings read
+out of `TotalA.exe` — extractor yield, the wind formula, the economy stall, the
+standing-order pair — and `docs/retail-engine.md` the older *Kingdoms*
+disassembly (`KINGDOMS.icd`) the inherited engine was built against.
 
-> **This project contains no game content.** You must own the original game
-> (e.g. the GOG *Total Annihilation: Commander Pack*); the engine reads its
+> **This project contains no game content.** You must own the original game —
+> the GOG *Total Annihilation: Commander Pack* (base + *The Core Contingency* +
+> *Battle Tactics*) is what this is developed against. The engine reads its
 > install directory directly (see **Game data**), and any local copy of that
 > content stays gitignored.
 
@@ -51,7 +49,7 @@ Latest pre-built binaries (self-contained; you still supply your own retail game
 data — see **Game data**):
 
 - **Windows x64** — the `ta-engine-<version>-windows-x64-setup.exe` installer (Start-menu shortcuts + uninstaller), or the plain `taclient-<version>-windows-x64.zip`
-- **macOS (Apple Silicon)** — the `ta-engine-<version>-macos-arm64.dmg` disk image (drag *TAK Engine* to Applications; right-click → Open the first time), or `taclient-<version>-macos-arm64.zip` (contains the same *TAK Engine.app* — launch that, not the bare `taclient`, or Finder opens a Terminal window)
+- **macOS (Apple Silicon)** — the `ta-engine-<version>-macos-arm64.dmg` disk image (drag *TA Engine* to Applications; right-click → Open the first time), or `taclient-<version>-macos-arm64.zip` (contains the same *TA Engine.app* — launch that, not the bare `taclient`, or Finder opens a Terminal window)
 - **Ubuntu 22.04 / 24.04 / 26.04** — `ta-engine-<version>-ubuntu<rel>-amd64.deb`, then `sudo apt install ./ta-engine-*.deb`
 - **Debian 12 / 13** — `ta-engine-<version>-debian<rel>-amd64.deb`, then `sudo apt install ./ta-engine-*.deb`
 - **Fedora 44** — `ta-engine-<version>-fedora44-x86_64.rpm`, then `sudo dnf install ./ta-engine-*.rpm`
@@ -68,55 +66,53 @@ libjpeg and zlib are linked **statically** (and the Bink FFmpeg too), so the pac
 are self-contained — they pull only base system libraries, nothing extra to install.
 They appear once the first tagged release finishes building.
 
-> **This project contains no game content.** You must own the original game
-> (e.g. the GOG release of *Total Annihilation: Kingdoms + The Iron Plague*); the
-> engine reads its install directory directly (see **Game data**), and any local
-> copy of that content stays gitignored.
-
-Much of the behaviour was cross-checked by disassembling the retail engine
-(`KINGDOMS.icd`); see `docs/retail-engine.md` for the findings (class model,
-config schema, and the veterancy/build formulas read out of the binary).
-
 ## Status
 
-Every stage is complete:
+Two things are true at once, and it helps to keep them apart.
 
-1. ~~**Format tooling**~~ — HPI v2, GAF/TAF, TNT, 3DO, COB, TDF/FBI/OTA, GAF
-   fonts, WAV all parse.
-2. ~~**Asset viewer**~~ — `taclient map` / `taclient model` (textured, COB-animated).
-3. ~~**Simulation**~~ — movement, pathfinding, combat, mana economy,
-   production, per-unit COB VMs, sound.
-4. ~~**Skirmish game**~~ — playable vs AI: fog of war, minimap, building
-   placement, production, player colours, faction select, a classic HUD, and
-   `Keys.TDF` hotkeys.
-5. ~~**Campaign**~~ — mission loading via `.ota`/`.cob` with the `MAP_COMMAND`
-   scripting API and `.crt` scenario/trigger parsing.
-6. ~~**Multiplayer**~~ — client–server deterministic lockstep for up to 8
-   players/teams, cross-build deterministic. See [Multiplayer](#multiplayer).
-7. ~~**Combat & unit depth**~~ — the FBI/weapon data is driven faithfully: HP
-   regen, veterancy (kills → +10 %/level attack·armour·reload, gold sheen,
-   promoted `veteranmodel`), per-unit mana pools & mana-per-shot, area-of-effect
-   splash + per-target-category damage, status weapons (freeze / petrify /
-   paralyze) with immunities, cloaking, reclaim / resurrect /
-   capture, `AdjustArmor`/`AdjustAttack` auras, terrain-class movement
-   (`MOVEINFO.tdf` slope/water limits + water/road speed), radar sight,
-   line-of-sight firing, and a summonable-god economy.
-8. ~~**Effects & audio**~~ — real GAF/TAF explosion, splash, shockwave-ring,
-   ground-fire and muzzle-flash effects; material-specific impact sounds; unit
-   shadows; camera shake; positional/surround audio.
-9. ~~**Rendering at scale**~~ — thousands of units on screen, smoothly. The
-   per-unit model projection runs across a worker pool; units are frustum-culled;
-   each colour's textures are packed into one atlas so an army is a handful of
-   draw calls; unit shadows are projected and submitted as one geometry batch per
-   frame; and fog of war is computed off the sim thread. The sim is O(n)
-   (spatial-hash neighbour queries, staggered acquisition, a bounded pool of
-   concurrent path searches, crowd-adaptive work caps), so even battles of tens of
-   thousands of units stay tractable. GPU texture memory is bounded by a
-   **self-calibrating VRAM budget** (terrain working-set eviction, AA that steps
-   down under pressure — it tightens itself the moment an allocation fails), so a
-   giant scene can't exhaust the card; and
-   terrain is **streamed** in chunks over a low-res overview, so map tiles never
-   flash in as black squares.
+**The engine** arrived complete, from `tak-engine`, and none of it is being
+rewritten:
+
+- **Simulation** — movement, A* pathfinding with terrain-class limits
+  (`MOVEINFO.tdf` slope/water, water/road speed), combat, production, per-unit
+  COB VMs, radar and line-of-sight firing.
+- **Combat depth** — HP regen, veterancy, area-of-effect splash with
+  per-target-category damage, status weapons and immunities, cloaking, reclaim /
+  resurrect / capture, `AdjustArmor`/`AdjustAttack` auras.
+- **Multiplayer** — client–server deterministic lockstep for up to 8
+  players/teams, cross-build deterministic, with replay and spectate. See
+  [Multiplayer](#multiplayer).
+- **Campaign runner** — `.ota`/`.cob` missions with the `MAP_COMMAND` scripting
+  API and `.crt` scenario/trigger parsing.
+- **Effects & audio** — GAF/TAF explosion, splash, shockwave and muzzle effects;
+  material-specific impact sounds; shadows; camera shake; positional audio.
+- **Rendering at scale** — thousands of units on screen: parallel model
+  projection, frustum culling, per-colour texture atlases, batched shadows, fog
+  off the sim thread, an O(n) sim (spatial-hash neighbours, staggered
+  acquisition, bounded concurrent path searches), a self-calibrating VRAM budget,
+  and streamed terrain.
+
+**The TA conversion** is what this fork is doing: replacing every place the two
+games disagree. Where a Kingdoms assumption survives, it is an unfinished
+conversion rather than a feature — and the ones that hurt were the *quiet* ones,
+a plausible reading of a field name that the data contradicts.
+
+| | |
+| --- | --- |
+| ✅ **Assets** | HPI v1 (all 30 archives, 7,890 files); TNT `0x2000` + terrain (all 96 maps round-trip byte-identically); 3DO · GAF · COB · TDF already classic-TA; `.FNT` fonts; TA's TDF `.gui`; `.sct` section prefabs |
+| ✅ **Game data** | `SIDEDATA.TDF` sides, commanders and the `[CANBUILD]` build tree; unit/weapon data incl. `commandfire`; map features and metal patches |
+| ✅ **Economy** | two resources, extractor yield and the wind formula read out of `TotalA.exe`, solar/tidal, storage, per-unit all-or-nothing upkeep and the stall |
+| ✅ **Skirmish loop** | ARM vs CORE, construction, the TA command panel from `<side>gen.gui` with real art and retail's availability rules, both standing-order axes |
+| ✅ **Map tools** | `cartographer` on TA's six section worlds; the generator harvests real tile art from `worlds.hpi` prefabs |
+| 🔨 **Unit behaviour** | parity work beyond the above — the long tail of per-unit and per-weapon detail |
+| 🔨 **Campaign** | the mission runner is inherited and works, but no shipped TA `.ota` uses the `playerN` role key it expects; TA's campaign data needs its own pass |
+| 🔨 **Retail HUD shape** | the build menu is this engine's own row rather than retail's in-panel grid (the `ORDERS`/`BUILD` tabs switch it) |
+
+An AI-vs-AI skirmish runs end to end headlessly — economy, construction, combat —
+and is reproducible run-to-run given `--seed`. See
+[`docs/ta-port.md`](docs/ta-port.md) for what each line above actually involved,
+and §5a there before quoting any before/after number: the unit count at a fixed
+time varies by more than a factor of two across seeds.
 
 ## Building
 
@@ -488,11 +484,11 @@ See `docs/cartographer-port.md`.
 | `src/client/` | the SDL2 app (`taclient`: asset viewer + game) |
 | `src/cartographer/` | `cartographer`, a clean-room port of the retail map editor (in progress) |
 | `tools/` | CLI dev tools (`hpitool`, `gaftool`, `tnttool`, `modeltool`, `cobtool`, `tdftool`, `missiontool`, `biktool`, `aitool`) |
-| `docs/` | format notes + RE findings. **`ta-port.md` = the TAK→TA port map**; `retail-engine.md` = the Kingdoms disassembly the retained engine was built against |
+| `docs/` | format notes + RE findings. **`ta-port.md` = the TAK→TA port map** (what is converted, what is left); **`retail-engine-ta.md` = the `TotalA.exe` findings**; `retail-engine.md` = the older Kingdoms disassembly the inherited engine was built against |
 
 ## License
 
-TAK Engine is free software, licensed under the **GNU General Public License,
+TA Engine is free software, licensed under the **GNU General Public License,
 version 3 or later** (`GPL-3.0-or-later`) — see [`LICENSE`](LICENSE) for the full
 text. Copyright © 2026 the TA Engine authors.
 
