@@ -33,6 +33,14 @@ enum class Cmd : uint8_t {
     SetSquad,      // assign unitId to a control squad: targetId = 0 none, +N group N,
                    // -N formation N (N=1..10). A unit is in exactly one squad; formations
                    // move at their slowest member's speed and their stragglers rejoin.
+    // Appended at the END: the enum's numbering is the wire encoding, so a new
+    // value inserted mid-list would renumber every command after it.
+    MoveState,     // set unitId's MOVE standing order: targetId 0 hold position /
+                   // 1 maneuver / 2 roam (retail's MOVEORD button)
+    FireState,     // set unitId's FIRE standing order: targetId 0 hold fire /
+                   // 1 return fire / 2 fire at will (retail's FIREORD button).
+                   // Stance writes both axes at once and cannot express "return
+                   // fire" at all; these two reach the states it cannot.
 };
 
 struct Command {

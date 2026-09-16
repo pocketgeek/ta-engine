@@ -345,6 +345,13 @@ struct UnitType {
     // "mobile and armed" happened to give the same answer; this is the flag retail
     // actually consults, so a unit that breaks that coincidence still behaves.
     bool canSetStance = true;
+    // Retail gates the two standing orders SEPARATELY: mobilestandorders says the
+    // player may change this unit's move state, firestandorders its fire state.
+    // Of the Commander Pack's 272 unit types, 8 end up with the two gates
+    // differing, so folding them into one flag either offers a control retail
+    // withholds on those units or withholds one it offers.
+    bool canSetMoveState = true;   // FBI mobilestandorders
+    bool canSetFireState = true;   // FBI firestandorders
     float waterMult = 1;      // watermultiplier: speed factor in shallow water
     float roadMult = 1.2f;    // roadmultiplier: on-road speed factor. Retail's FBI
                               // parser defaults it to 16.16 0x13333 (~1.2) -- icd
@@ -1425,6 +1432,13 @@ public:
     void setStance(int unitId, int stance); // combat stance 0=offensive/1=defensive/2=passive
     void setCloak(int unitId, bool on);     // canCloak unit: enable/disable cloaking
     void setActive(int unitId, bool on);    // onOffable unit: power on/off
+    // The two standing orders retail actually exposes (its MOVEORD / FIREORD
+    // buttons), each gated on its own FBI flag. setStance above is the composite
+    // front-end that writes both at once and can only reach three of the nine
+    // combinations; these reach the rest -- including fire state 1, "return
+    // fire", which the composite can never produce.
+    void setMoveState(int unitId, int v);   // 0 hold position, 1 maneuver, 2 roam
+    void setFireState(int unitId, int v);   // 0 hold fire, 1 return fire, 2 fire at will
     void setSquad(int unitId, int squad);   // control squad: 0 none, +N group N, -N formation N
     // Attack order on an enemy unit.
     void attack(int unitId, int targetId, bool queue);

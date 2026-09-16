@@ -1276,8 +1276,22 @@ char taPanelCommand(const std::string& name) {
     if (t == "REPAIR")  return 'r';
     if (t == "LOAD")    return 'l';
     if (t == "UNLOAD")  return 'u';
-    // Not wired yet: CAPTURE, CLOAK, ONOFF, BLAST (the commander's D-gun),
-    // FIREORD/MOVEORD (the stance cycles) and the ORDERS/BUILD panel tabs.
+    // CAPTURE is an attack order: the sim converts the target when the attacker
+    // has cancapture and the target is not cantbecaptured (see the canConvert
+    // path), so retail's separate button is the same cursor with a narrower
+    // meaning rather than a separate order.
+    if (t == "CAPTURE") return 'a';
+    // Retail's two standing-order buttons. Each CYCLES its own axis (the sim
+    // keeps moveState and fireState independently); the composite stance buttons
+    // stay available and keep writing both at once.
+    if (t == "MOVEORD") return 'v';
+    if (t == "FIREORD") return 'f';
+    // Toggles, as retail draws them -- one button showing the current state, not
+    // a separate on and off button.
+    if (t == "ONOFF")   return 't';
+    if (t == "CLOAK")   return 'y';
+    // Still unwired: BLAST (the Commander's D-gun, which needs its own weapon
+    // path) and the ORDERS/BUILD panel tabs.
     return 0;
 }
 }  // namespace
@@ -1352,6 +1366,13 @@ char taPanelCommand(const std::string& name) {
             else if (cmd == 'k') active = selFront && !selFront->cloakOn;
             else if (cmd == 'N') active = selFront && selFront->active;
             else if (cmd == 'F') active = selFront && !selFront->active;
+            else if (cmd == 't') active = selFront && selFront->active;
+            else if (cmd == 'y') active = selFront && selFront->cloakOn;
+            // The cycles light while the axis is away from "free" (roam / fire at
+            // will), which is what retail's pressed face means on these: the unit
+            // is being held back from something it would otherwise do.
+            else if (cmd == 'v') active = selFront && selFront->moveState != 2;
+            else if (cmd == 'f') active = selFront && selFront->fireState != 2;
             else if (cmd != 's')
                 active = pendingCmd_ == cmd;
             // Retail's Gadget image slots are NOT (normal, hover, grey). Its per-class
@@ -1519,6 +1540,23 @@ char taPanelCommand(const std::string& name) {
                 issuePerUnit(ta::net::Cmd::Cloak, cmd == 'K' ? 1 : 0);
             } else if (cmd == 'N' || cmd == 'F') {
                 issuePerUnit(ta::net::Cmd::SetActive, cmd == 'N' ? 1 : 0);
+            } else if (cmd == 'v' || cmd == 'f') {
+                // Cycle the axis. The step is read off the FRONT selection and then
+                // applied to the whole selection, so a mixed selection converges on
+                // one state instead of each unit stepping to a different one.
+                const UnitR* u = !selection_.empty() ? frameUnitP(selection_.front())
+                                                     : nullptr;
+                int cur = !u ? 2 : (cmd == 'v' ? u->moveState : u->fireState);
+                int next = (cur + 1) % 3;
+                issuePerUnit(cmd == 'v' ? ta::net::Cmd::MoveState
+                                        : ta::net::Cmd::FireState, next);
+            } else if (cmd == 't' || cmd == 'y') {
+                // Toggle, off the front selection for the same reason.
+                const UnitR* u = !selection_.empty() ? frameUnitP(selection_.front())
+                                                     : nullptr;
+                bool on = cmd == 't' ? (u && u->active) : (u && u->cloakOn);
+                issuePerUnit(cmd == 't' ? ta::net::Cmd::SetActive : ta::net::Cmd::Cloak,
+                             on ? 0 : 1);
             } else {
                 pendingCmd_ = cmd;
             }

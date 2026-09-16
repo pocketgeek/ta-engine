@@ -17,7 +17,8 @@
 
 namespace ta::net {
 
-constexpr uint32_t kNetVersion = 81;       // 81: GameOptions drops `crusades` and `gods`
+constexpr uint32_t kNetVersion = 82;       // 82: Cmd::MoveState / Cmd::FireState
+                                           // 81: GameOptions drops `crusades` and `gods`
                                            //     -- both Kingdoms-only, and neither has
                                            //     any TA data behind it
                                            // 80: the SEARCH refuses to route through a

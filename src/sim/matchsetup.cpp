@@ -120,6 +120,12 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         case Cmd::Stance:
             if (owns(c.unitId)) world.setStance(c.unitId, c.targetId);
             break;
+        case Cmd::MoveState:
+            if (owns(c.unitId)) world.setMoveState(c.unitId, c.targetId);
+            break;
+        case Cmd::FireState:
+            if (owns(c.unitId)) world.setFireState(c.unitId, c.targetId);
+            break;
         case Cmd::Cloak:
             if (owns(c.unitId)) world.setCloak(c.unitId, c.targetId != 0);
             break;

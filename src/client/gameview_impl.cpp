@@ -694,6 +694,7 @@
             s.id = u.id; s.type = u.type; s.player = u.player;
             s.hp = u.hp; s.deadFor = u.deadFor;
             s.inTransport = u.inTransport; s.squad = u.squad; s.stance = u.stance;
+            s.moveState = u.moveState; s.fireState = u.fireState;
             s.weaponSlot = u.weaponSlot;
             s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
             s.cloaked = u.cloaked; s.cloakOn = u.cloakOn; s.active = u.active;

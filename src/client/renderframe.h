@@ -34,6 +34,11 @@ struct UnitR {
     int inTransport = 0;
     int8_t squad = 0;
     int stance = 1;
+    // The two axes the stance is derived from, carried separately so the panel's
+    // MOVEORD/FIREORD buttons can show and cycle each on its own -- the derived
+    // stance cannot distinguish "return fire" from "fire at will".
+    uint8_t moveState = 2;
+    uint8_t fireState = 2;
     int weaponSlot = 0;
     bool underConstruction = false, buildBegun = false;
     bool cloaked = false, cloakOn = true, active = true;

@@ -430,10 +430,19 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 }
                 // Retail's per-stance gates. Kingdoms folded both into one
                 // unitstandorders bit; TA splits them, so a unit may be allowed a
-                // move stance and not a fire stance (and 297 of 815 are).
-                t.canSetStance = info->numberOr("mobilestandorders",
-                                 info->numberOr("firestandorders",
-                                 info->numberOr("unitstandorders", 1))) != 0;
+                // move stance and not a fire stance. Measured over the Commander
+                // Pack's 272 unit types, the two gates end up differing on 8 once
+                // the unitstandorders fallback is applied -- few, but they are
+                // real units, and folding the pair would get every one of them
+                // wrong in one direction or the other.
+                // unitstandorders is the Kingdoms-era composite; TA states the two
+                // separately, so read each with the composite as its fallback.
+                const double uso = info->numberOr("unitstandorders", 1);
+                t.canSetMoveState = info->numberOr("mobilestandorders", uso) != 0;
+                t.canSetFireState = info->numberOr("firestandorders", uso) != 0;
+                // The composite stance button needs both axes to be writable,
+                // since it sets both.
+                t.canSetStance = t.canSetMoveState || t.canSetFireState;
             }
             t.waterMult = float(info->numberOr("watermultiplier",
                                 info->numberOr("watermultipliser", 1)));
@@ -2101,6 +2110,27 @@ void World::setStance(int unitId, int stance) {
         case 1: u->moveState = 0; u->fireState = 2; break;   // Defensive
         default: u->moveState = 0; u->fireState = 0; break;  // Passive
     }
+}
+
+// Re-derive the displayed stance from the two axes -- whichever button retail
+// would light up. Keeps setStance and the per-axis setters agreeing about what
+// the HUD shows (and about what the state hash folds in).
+static void reStance(Unit& u) {
+    u.stance = u.fireState == 0 ? 2 : (u.moveState == 0 ? 1 : 0);
+}
+
+void World::setMoveState(int unitId, int v) {
+    Unit* u = unit(unitId);
+    if (!u || !u->alive() || !u->type || !u->type->canSetMoveState) return;
+    u->moveState = uint8_t(std::clamp(v, 0, 2));
+    reStance(*u);
+}
+
+void World::setFireState(int unitId, int v) {
+    Unit* u = unit(unitId);
+    if (!u || !u->alive() || !u->type || !u->type->canSetFireState) return;
+    u->fireState = uint8_t(std::clamp(v, 0, 2));
+    reStance(*u);
 }
 
 void World::setCloak(int unitId, bool on) {
