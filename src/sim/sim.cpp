@@ -6214,7 +6214,8 @@ void World::hashTrace() const {
         hStorm = fnv(fnv(fnv(fnv(hStorm, uint32_t(s.player)), bits(s.x)), bits(s.z)), bits(s.left));
     uint64_t hPlayers = seed;
     for (const auto& t : players_)
-        hPlayers = fnv(fnv(fnv(hPlayers, bits(t.mana)), bits(t.godFavor)), uint32_t(t.team));
+        hPlayers = fnv(fnv(fnv(hPlayers, bits(t.metal.cur)), bits(t.energy.cur)),
+                       uint32_t(t.team));
     uint64_t fAlive = 0, fWork = 0;
     for (const auto& f : features_)
         if (f.alive) { ++fAlive; fWork ^= (bits(f.work) << 1) ^ uint64_t(uint32_t(f.id)); }
