@@ -6,7 +6,8 @@
 # shipped taclient play the door videos with NO runtime FFmpeg dependency, so a
 # stock distro (whose libavcodec-free lacks the Bink decoder) needs nothing extra.
 #
-# Only the Bink demuxer + bink/binkaudio decoders + swscale/swresample are enabled, so
+# Only the Bink and MP3 demuxers + bink/binkaudio/mp3 decoders + swscale/swresample
+# are enabled, so
 # no GPL codecs and no external media libraries are pulled in -- the result is pure
 # LGPL, which is fine to static-link into an open-source, rebuildable binary.
 #
@@ -44,6 +45,11 @@ cross_args=()
 [ -n "${TARGET_ARCH:-}" ]  && cross_args+=("--arch=$TARGET_ARCH")
 [ -n "${CC:-}" ]           && cross_args+=("--cc=$CC")
 
+# NOTE FOR ANYONE CHANGING THE ENABLED CODECS: this script SKIPS the build when
+# the prefix already exists, and CI restores that prefix from a cache keyed by
+# FFmpeg version. So adding a codec here without bumping `ffmpeg-bink-*` in
+# .github/workflows/*.yml restores the OLD libraries, skips the rebuild, and
+# produces a green build whose decoder is quietly missing.
 cd "$SRC"
 ./configure \
   --prefix="$PREFIX" \
@@ -54,8 +60,9 @@ cd "$SRC"
   --disable-videotoolbox --disable-audiotoolbox --disable-avfoundation \
   --disable-coreimage --disable-appkit --disable-securetransport \
   --enable-swscale --enable-swresample \
-  --enable-demuxer=bink \
-  --enable-decoder=bink,binkaudio_dct,binkaudio_rdft \
+  --enable-demuxer=bink,mp3 \
+  --enable-decoder=bink,binkaudio_dct,binkaudio_rdft,mp3 \
+  --enable-parser=mpegaudio \
   ${cross_args[@]+"${cross_args[@]}"}   # 3.2-safe empty-array expansion (macOS ships Bash 3.2)
 
 make -j"$JOBS"

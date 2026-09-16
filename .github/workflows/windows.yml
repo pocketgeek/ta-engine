@@ -55,7 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/ffmpeg-bink
-          key: ffmpeg-bink-windows-x64-n7.1.1
+          key: ffmpeg-bink-windows-x64-n7.1.1-mp3
       - name: Build static FFmpeg (Bink)
         run: ./tools/build-ffmpeg-bink.sh
 

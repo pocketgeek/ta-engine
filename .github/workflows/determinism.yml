@@ -107,7 +107,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/ffmpeg-bink
-          key: ffmpeg-bink-ubuntu-latest-n7.1.1
+          key: ffmpeg-bink-ubuntu-latest-n7.1.1-mp3
       - name: Build static FFmpeg (Bink)
         run: ./tools/build-ffmpeg-bink.sh
       - name: Cache static deps (zlib/libjpeg/SDL2)
@@ -153,7 +153,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: third_party/ffmpeg-bink
-          key: ffmpeg-bink-ubuntu-latest-n7.1.1
+          key: ffmpeg-bink-ubuntu-latest-n7.1.1-mp3
       - name: Build static FFmpeg (Bink)
         run: ./tools/build-ffmpeg-bink.sh
       - name: Cache static deps (zlib/libjpeg/SDL2)

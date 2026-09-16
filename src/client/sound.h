@@ -13,6 +13,7 @@
 
 #include "client/options.h"   // ta::detectOutputChannels / ta::openAudioDevice
 #include "hpi/hpi.h"          // ta::hpi::Vfs
+#include "video/audiodec.h"   // ta::audiodec::decodeToS16 (TA's .mp3 music)
 #include "tdf/tdf.h"          // ta::tdf::parseText (SoundClasses::load)
 
 #include <algorithm>
@@ -546,10 +547,25 @@ public:
         std::vector<int> want = tracks;
         if (want.empty())
             for (int i = 1; i <= 20; ++i) want.push_back(i);
+        // TWO layouts. Kingdoms ships music/track<N>.wav, which SDL loads
+        // directly. TA ships music/<N>.mp3 -- 18 tracks numbered 0..17 on a GOG
+        // install -- which SDL cannot decode at all, so this found nothing and
+        // the game played no music whatsoever ("music: 0 faction tracks").
+        // MP3s go through ta::audiodec (the vendored FFmpeg, shared with Bink).
         for (int n : want) {
-            std::string path = "music/track" + std::to_string(n) + ".wav";
-            if (vfs.has(path)) playlist_.push_back(path);
+            std::string wav = "music/track" + std::to_string(n) + ".wav";
+            if (vfs.has(wav)) { playlist_.push_back(wav); continue; }
+            std::string mp3 = "music/" + std::to_string(n) + ".mp3";
+            if (vfs.has(mp3)) playlist_.push_back(mp3);
         }
+        // TA numbers from 0 and the caller's track ids are 1-based, so a request
+        // for 1..20 misses 0.mp3 entirely; pick it up when nothing else claimed
+        // it. (Harmless where the file does not exist.)
+        if (std::string zero = "music/0.mp3";
+            vfs.has(zero) && !want.empty() &&
+            std::find(playlist_.begin(), playlist_.end(), zero) == playlist_.end() &&
+            want.size() > 1)
+            playlist_.push_back(zero);
         std::fprintf(stderr, "music: %zu faction tracks, audio=%s\n", playlist_.size(),
                      dev_ ? "yes" : "NO DEVICE");
         if (!playlist_.empty() && dev_) {
@@ -592,21 +608,40 @@ private:
         Uint32 len = 0;
         std::vector<uint8_t> raw;
         if (vfs_) { try { raw = vfs_->read(playlist_[idx]); } catch (const std::exception&) {} }
-        SDL_RWops* rw = raw.empty() ? nullptr : SDL_RWFromConstMem(raw.data(), int(raw.size()));
-        if (!rw || !SDL_LoadWAV_RW(rw, 1, &spec, &buf, &len)) {
-            std::fprintf(stderr, "music: LoadWAV failed: %s\n", SDL_GetError());
-            return;
+        // Anything SDL cannot load itself (TA's .mp3) is decoded through the
+        // vendored FFmpeg first, then handed to the same conversion below.
+        std::vector<int16_t> decoded;
+        if (!ta::iendsWith(playlist_[idx], ".wav")) {
+            ta::audiodec::Pcm p = ta::audiodec::decodeToS16(raw, playlist_[idx]);
+            if (!p.ok()) {
+                std::fprintf(stderr, "music: cannot decode %s\n", playlist_[idx].c_str());
+                return;
+            }
+            decoded = std::move(p.samples);
+            spec.format = AUDIO_S16SYS;
+            spec.channels = Uint8(p.channels);
+            spec.freq = p.rate;
+            buf = reinterpret_cast<Uint8*>(decoded.data());
+            len = Uint32(decoded.size() * sizeof(int16_t));
+        } else {
+            SDL_RWops* rw = raw.empty() ? nullptr
+                                        : SDL_RWFromConstMem(raw.data(), int(raw.size()));
+            if (!rw || !SDL_LoadWAV_RW(rw, 1, &spec, &buf, &len)) {
+                std::fprintf(stderr, "music: LoadWAV failed: %s\n", SDL_GetError());
+                return;
+            }
         }
+        const bool sdlOwnsBuf = decoded.empty();
         SDL_AudioCVT cvt;
         if (SDL_BuildAudioCVT(&cvt, spec.format, spec.channels, spec.freq, AUDIO_S16SYS,
                               1, 11025) < 0) {
             std::fprintf(stderr, "music: BuildAudioCVT failed: %s\n", SDL_GetError());
-            SDL_FreeWAV(buf);
+            if (sdlOwnsBuf) SDL_FreeWAV(buf);
             return;
         }
         std::vector<uint8_t> work(size_t(len) * size_t(std::max(cvt.len_mult, 1)));
         std::memcpy(work.data(), buf, len);
-        SDL_FreeWAV(buf);
+        if (sdlOwnsBuf) SDL_FreeWAV(buf);   // the decoded vector frees itself
         cvt.buf = work.data();
         cvt.len = int(len);
         if (cvt.needed && SDL_ConvertAudio(&cvt) != 0) {

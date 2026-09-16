@@ -807,6 +807,38 @@ engine:
 `TA_SNDLOG=1` reports the class/event totals, the coverage line above, and each
 `voice()` lookup with what it resolved.
 
+### The game played no music at all
+
+`startMusic` looked for `music/track<N>.wav` — Kingdoms' layout, which SDL loads
+directly. TA ships **`music/<N>.mp3`**: 18 tracks numbered 0..17 on a GOG
+install, in a format SDL cannot decode. So the playlist came back empty
+(`music: 0 faction tracks`) and the game was silent from the menu onward.
+
+Rather than add a second media dependency, this reuses the FFmpeg already
+vendored and static-linked for the Bink menu videos: the build now enables the
+mp3 demuxer/decoder alongside bink, and `src/video/audiodec.cpp` decodes a whole
+file to interleaved S16 through the same avformat → avcodec → swresample path
+`BinkVideo` uses for binkaudio. It feeds memory, not a path, because music comes
+through the VFS. Whole-file decode is deliberate: a track is a couple of minutes
+of stereo, decoded once when it starts, and streaming would buy memory this does
+not need at the cost of a decode thread feeding the mixer callback.
+
+Measured after: `music: 18 faction tracks, audio=yes` / `now playing
+music/3.mp3`.
+
+**A trap worth knowing before touching the codec list.**
+`tools/build-ffmpeg-bink.sh` SKIPS the build when its prefix already exists, and
+CI restores that prefix from a cache keyed by FFmpeg *version*. Enabling a codec
+without also bumping `ffmpeg-bink-*` in `.github/workflows/*.yml` therefore
+restores the OLD libraries, skips the rebuild, and produces a **green build
+whose decoder is quietly missing** — the exact silent-success pattern this
+section of the document keeps describing. All five key occurrences were bumped
+with the change, and the script now says so at the configure call.
+
+A build whose FFmpeg lacks the decoder degrades rather than breaks:
+`avcodec_find_decoder` returns null, `decodeToS16` returns empty, and the player
+logs `music: cannot decode …` instead of crashing.
+
 ### Weapons fired in silence
 
 Same file, a second failure. The sim parses a weapon's impact sound from
