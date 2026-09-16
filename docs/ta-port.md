@@ -300,19 +300,23 @@ data lands, so it goes first.
 
 ## 6. Open questions, pending the retail data
 
-Answers to these come from the install itself and from static analysis of
-`TotalA.exe`, under the same rules as `docs/retail-engine.md`: **observe only,
-copy nothing**.
+Answers come from the install itself and from analysing `TotalA.exe` — static
+reading plus Unicorn emulation of individual routines — under the same rules:
+**observe only, copy nothing**, and the harness lives outside the repo. Findings
+are collected in [`docs/retail-engine-ta.md`](retail-engine-ta.md).
 
 - Exact metal-extraction income formula. The inputs are now known: the map's
   per-cell metal plane, the FBI `ExtractsMetal`, and the `.ota` schema's
   `SurfaceMetal` / `MohoMetal`. The combining rule is not.
 - The stall curve: is the slowdown strictly proportional, or stepped? Implemented
   proportionally (`Resource::share`), which is the community understanding.
-- The extractor formula. Implemented as *sum the per-cell richness under the
-  footprint, scale by `ExtractsMetal`*, which gives the right order of magnitude
-  (ARMMEX's `0.001` over a 3x3 patch of `metal=127` → ~1.14 metal/s) but is not
-  confirmed against the binary.
+- The extractor formula. **Partly answered by `docs/retail-engine-ta.md`:**
+  `ExtractsMetal` is a *predicate* in retail, not a multiplier — it is loaded
+  once, compared against 0.0, and never multiplied. The yield is a float cached
+  on the unit (`+0x58`) and the tick just adds it, so retail evaluates the
+  footprint once at placement rather than per tick. Our version reproduces the
+  right order of magnitude but not that shape. Where `+0x58` is written, and
+  whether the magnitude matters at all, is still open.
 - How fast retail varies wind between the map's min and max, and whether it
   interpolates or steps. Currently a ~40s oscillation through `detmath`.
 - Wind income's cadence and interpolation between the `.ota`'s `minwindspeed`
