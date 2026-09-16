@@ -2001,6 +2001,10 @@ private:
     size_t replayTick_ = 0;
     float replayAccum_ = 0;
     bool mpReadied_ = false, mpStarted_ = false, mpSetupDone_ = false;
+    // The auto lobby driver has sent its CreateGame. Without this it re-sends on
+    // every poll until the room state arrives, because the state it keys off
+    // (S::Lobby) does not change until then -- two creates per launch.
+    bool mpCreateSent_ = false;
     // interactive lobby UI state
     enum class LobbyScreen { Browser, Create } lobbyScreen_ = LobbyScreen::Browser;
     bool menuRequested_ = false;   // set by a MAIN MENU action -> main() returns to the front-end
@@ -2806,6 +2810,10 @@ private:
     // the Zhon trapdoor spider (zonspide) -- a base-game creature the Crusades
     // balance made buildable -- so without this its slot would be an empty box.
     SDL_Texture* modelIconTex(const std::string& id, int slot, bool canMove);
+    // Art for a feature def that names a 3DO `object=` instead of a GAF sequence
+    // (wreckage, dragon's teeth -- 420 of TA's 1632 feature defs). Rendered once
+    // into a texture sized to the model, so it feeds the same sprite pipeline.
+    FeatArt* featureModelArt(const std::string& object);
 
     // The selected builder (any builder in the selection).
     const UnitR* selectedBuilder();

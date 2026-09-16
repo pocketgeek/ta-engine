@@ -1122,18 +1122,38 @@ void Server::leaveRoom(Client& c, const char* reason) {
 }
 
 void Server::tryStart(Client& c) {
+    const bool trace = std::getenv("TA_LOBBY") != nullptr;
+    if (trace) std::fprintf(stderr, "tryStart: entered (client %u)\n", c.id);
     Room* r = roomOf(c);
-    if (!r || r->hostId != c.id || r->running) return;
+    if (!r || r->hostId != c.id || r->running) {
+        if (trace)
+            std::fprintf(stderr, "tryStart: refused (room=%d host=%d running=%d)\n",
+                         int(r != nullptr), r ? int(r->hostId == c.id) : -1,
+                         r ? int(r->running) : -1);
+        return;
+    }
     // Validate: >=2 used slots, every human ready, unique colors among used slots.
     // A campaign mission is exempt from the 2-player minimum: its opponents are the
     // mission script's units, not lobby slots, so one seated human is enough.
-    if (r->mission.empty() && r->usedSlots() < 2) return;
+    if (r->mission.empty() && r->usedSlots() < 2) {
+        if (trace) std::fprintf(stderr, "tryStart: refused -- no mission and <2 slots\n");
+        return;
+    }
     bool usedColor[10] = {};
     for (int i = 0; i < kMaxSlots; ++i) {
         const SlotInfo& s = r->slots[i];
         if (s.type != 1 && s.type != 2) continue;
-        if (s.type == 1 && !s.ready) return;             // a human isn't ready
-        if (s.color < 10) { if (usedColor[s.color]) return; usedColor[s.color] = true; }
+        if (s.type == 1 && !s.ready) {
+            if (trace) std::fprintf(stderr, "tryStart: refused -- slot %d human not ready\n", i);
+            return;
+        }
+        if (s.color < 10) {
+            if (usedColor[s.color]) {
+                if (trace) std::fprintf(stderr, "tryStart: refused -- colour clash slot %d\n", i);
+                return;
+            }
+            usedColor[s.color] = true;
+        }
     }
     // The referee is MANDATORY, so resolve what it needs before committing to run.
     // Failing here used to leave r->ref null and the game carried on as a relay --

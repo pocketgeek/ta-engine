@@ -2062,7 +2062,16 @@
         std::string file = def.valueOr("filename", "");
         std::string seq = def.valueOr(seqKey, "");
         std::string seqShad = def.valueOr(shadKey, "");
-        if (seq.empty()) return nullptr;   // e.g. a def without seqnameburn
+        if (seq.empty()) {
+            // No GAF sequence. A def that names a 3DO `object=` instead is a MODEL
+            // feature -- wreckage, dragon's teeth -- and has art after all; only
+            // the base sequence has a model equivalent, so a burn/reclaim variant
+            // still resolves to nothing.
+            if (std::string obj = def.valueOr("object", "");
+                !obj.empty() && std::string(seqKey) == "seqname")
+                return featureModelArt(obj);
+            return nullptr;   // e.g. a def without seqnameburn
+        }
         std::string key = file + "|" + seq;
         auto it = featureArt_.find(key);
         if (it != featureArt_.end()) return it->second.tex ? &it->second : nullptr;
@@ -2505,6 +2514,98 @@
         } catch (const std::exception&) {}
         icons_[typeId] = tex;
         return tex;
+    }
+
+    // Feature art for a def that names a 3DO OBJECT rather than a GAF sequence.
+    //
+    // A quarter of TA's feature defs are this shape -- 420 of 1632 -- and they are
+    // overwhelmingly the `*_dead` and `*_heap` wreckage every destroyed unit leaves,
+    // plus the dragon's teeth that wall off a map. featureArtFor only understood
+    // `filename` + `seqname`, so all of them drew NOTHING: a battlefield kept no
+    // wreckage and AC01's ten Dragon's Teeth were invisible (that mission reported
+    // "350/360 placed, 10 no art").
+    //
+    // Rendered once per object into a texture sized to the model's own bounds, so
+    // the result drops straight into the existing sprite pipeline -- same
+    // FeatureInst, same blit, same shadow slot -- rather than needing a second draw
+    // path through the world renderer.
+    GameView::FeatArt* GameView::featureModelArt(const std::string& object) {
+        AaScaleReset _sr(ren_);
+        std::string id = object;
+        std::transform(id.begin(), id.end(), id.begin(), ::tolower);
+        auto it = featureArt_.find("3do|" + id);
+        if (it != featureArt_.end()) return it->second.tex ? &it->second : nullptr;
+        FeatArt& a = featureArt_["3do|" + id];   // cache the attempt either way
+        if (gpuAllocBlocked()) { featureArt_.erase("3do|" + id); return nullptr; }
+        const bool trace = ta::devEnv("TA_FEATART") != nullptr;
+        if (!ghostModel(id)) {
+            if (trace) std::fprintf(stderr, "featart %s: no 3do\n", id.c_str());
+            return nullptr;
+        }
+        auto vt = visuals_.find(id);
+        if (vt == visuals_.end()) return nullptr;
+        // Slot 0's atlas: wreckage is neutral, not a player's colour.
+        SDL_Texture* atlas = atlasFor(0);
+        std::vector<Tri> scratch;
+        // isRoot=FALSE on purpose. collect() skips a model root's own primitives,
+        // because a unit's root IS a flat ground-reference plate -- armcom's and
+        // armpw's are a single 4-vertex quad. A feature's model is standalone and
+        // often ONE piece: armdrag (the Dragon's Teeth) is a root named "base"
+        // carrying all 37 of its primitives and no children at all, so the root
+        // skip threw the whole model away and the feature drew nothing.
+        collect(scratch, atlas, vt->second.model.root, Xform{}, nullptr, 0.0f, 0,
+                /*mirror=*/false, /*isRoot=*/false);
+        if (scratch.empty()) {
+            if (trace)
+                std::fprintf(stderr, "featart %s: no geometry (atlas=%p)\n",
+                             id.c_str(), (void*)atlas);
+            // An atlas that is not built yet is a TRANSIENT failure -- features load
+            // before the texture atlases do -- so un-cache and let it retry.
+            if (!atlas) featureArt_.erase("3do|" + id);
+            return nullptr;
+        }
+        std::stable_sort(scratch.begin(), scratch.end(),
+                         [](const Tri& x, const Tri& y) { return x.depth > y.depth; });
+        float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
+        for (auto& t : scratch)
+            for (int i = 0; i < 3; ++i) {
+                minX = std::min(minX, t.v[i].position.x);
+                minY = std::min(minY, t.v[i].position.y);
+                maxX = std::max(maxX, t.v[i].position.x);
+                maxY = std::max(maxY, t.v[i].position.y);
+            }
+        const int w = std::clamp(int(std::ceil(maxX - minX)) + 2, 1, 512);
+        const int h = std::clamp(int(std::ceil(maxY - minY)) + 2, 1, 512);
+        SDL_Texture* tgt = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
+                                           SDL_TEXTUREACCESS_TARGET, w, h);
+        if (!tgt) { noteGpuAllocFail(); featureArt_.erase("3do|" + id); return nullptr; }
+        SDL_SetTextureBlendMode(tgt, SDL_BLENDMODE_BLEND);
+        SDL_Texture* prev = SDL_GetRenderTarget(ren_);
+        SDL_SetRenderTarget(ren_, tgt);
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
+        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 0);
+        SDL_RenderClear(ren_);
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        for (auto& t : scratch) {
+            SDL_Vertex v[3];
+            for (int i = 0; i < 3; ++i) {
+                v[i] = t.v[i];
+                v[i].position.x = t.v[i].position.x - minX + 1.0f;
+                v[i].position.y = t.v[i].position.y - minY + 1.0f;
+            }
+            SDL_RenderGeometry(ren_, t.tex, v, 3, nullptr, 0);
+        }
+        SDL_SetRenderTarget(ren_, prev);
+        a.tex = tgt;
+        a.w = w; a.h = h;
+        // The model is built around its own origin, so the anchor is where that
+        // origin ended up inside the texture -- the same convention the GAF path
+        // takes from the frame's authored offset.
+        a.xoff = int(-minX) + 1;
+        a.yoff = int(-minY) + 1;
+        a.frames.push_back(tgt);
+        a.fgeom.push_back({w, h, a.xoff, a.yoff});
+        return &a;
     }
 
     SDL_Texture* GameView::modelIconTex(const std::string& id, int slot, bool canMove) {

@@ -538,6 +538,43 @@ so it reads a TA header unchanged. Three keys the shipped TA data uses were
 missing and are now implemented: `CaptureUnitType` (32 missions),
 `BuildUnitType` (8) and `AnyUnitPasses{X,Z}` (3).
 
+## 5c. Feature art: 432 of 1644 defs are 3DO models, not GAF sequences
+
+TAK's features are all sprites: a `.gaf` file plus a sequence name. The loader
+took that as the only shape, so `featureArtFor` returned nothing whenever a def
+named neither, and those features were placed in the sim but never drawn.
+
+Counting every top-level section in `features/**/*.tdf` across the merged
+archives (`*.hpi`, `*.ufo`, `*.ccx`, `*.gp3`) gives **1644 unique defs, which
+is exactly the count the engine's own loader reports** — so the corpus below is
+the same set the engine sees. Of those, **432 (26%) carry `object=<3do>` and
+neither `filename=` nor `seqname=`**; 424 of the 432 are the `*_dead` /
+`*_heap` wreckage every unit leaves behind, and the remaining 8 are standalone
+props like `DragonsTeeth` (`object=armdrag`). So all unit wreckage drew
+nothing, and AC01 reported `10 no art` before the count was understood.
+
+(Counting this requires a CASE-INSENSITIVE file match: TA ships
+`features/archi/METAL.TDF` alongside `features/all worlds/DragonsTeeth.tdf`,
+and a case-sensitive `*.tdf` sweep silently drops 22 files and 338 defs — the
+same trap the loader itself hit, which is why it uses `ta::iendsWith`.)
+
+`GameView::featureModelArt()` renders such a model ONCE into a texture sized to
+its own bounds and feeds it into the existing `FeatArt`/`FeatureInst` sprite
+pipeline, so placement, sorting and shadows are unchanged — only the source of
+the pixels differs.
+
+One TAK assumption had to be scoped to make it work. `pieceMetaFor` sets
+`m.skip = isRoot || ...`: in Kingdoms a model's root IS a flat ground-reference
+plate, and `modeltool info` confirms that holds for TA units too (armcom's and
+armpw's roots are a single 4-vertex quad with the real geometry in children).
+It does NOT hold for a feature model, which is standalone and often a single
+piece: **armdrag is a root named `base` carrying all 37 of its primitives with
+no children at all**, so the root skip discarded the entire model. The fix
+passes `isRoot=false` from `featureModelArt` only; unit rendering is untouched.
+
+Measured after: AC01 places `360/360 (1644 defs; 0 no def, 0 no art)`, and the
+skirmish path is unchanged at `120/120`.
+
 ## 6. Open questions, pending the retail data
 
 Answers come from the install itself and from analysing `TotalA.exe` — static

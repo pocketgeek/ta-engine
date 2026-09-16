@@ -671,9 +671,19 @@ int main(int argc, char** argv) {
     if (!cliCampaign.empty()) {
         campaignStem = cliCampaign;
         if (args.empty()) args.push_back("Coast To Coast");   // GameView needs a map; the mission overrides it
+        // Case-insensitive: the campaign file spells its missions AC01.ota while a
+        // player types --campaign ac01 (or AC01), and the stem we store is
+        // lowercased. An exact compare matched neither.
+        auto ieq = [](const std::string& a, const std::string& b) {
+            if (a.size() != b.size()) return false;
+            for (size_t i = 0; i < a.size(); ++i)
+                if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i]))
+                    return false;
+            return true;
+        };
         for (const auto& c : ta::loadCampaigns(vfs)) {
             for (const auto& m : c.missions)
-                if (m.stem == campaignStem) { campaignId = c.id; break; }
+                if (ieq(m.stem, campaignStem)) { campaignId = c.id; campaignStem = m.stem; break; }
             if (!campaignId.empty()) break;
         }
     }

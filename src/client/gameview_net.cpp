@@ -529,7 +529,8 @@ void GameView::autoplayStep() {
         if (!mp_->poll()) { netError_ = mp_->error(); return false; }
         S st = mp_->state();
         if (st == S::Done) { if (netError_.empty()) netError_ = mp_->error(); return false; }
-        if (st == S::Lobby && (autoMode == 1 || autoMode == 4 || autoMode == 7 || autoMode == 8)) {
+        if (st == S::Lobby && !mpCreateSent_ &&
+            (autoMode == 1 || autoMode == 4 || autoMode == 7 || autoMode == 8)) {
             ta::net::GameOptions o;
             o.overridePolicy = uint8_t(policy_);   // room tier = this host's launch tier
             // TA_SPEED: set the game speed in tenths (10 = 1x) for headless timing
@@ -568,6 +569,12 @@ void GameView::autoplayStep() {
             uint8_t cap = (autoMode == 8 || benchmarkMode_) ? ta::net::kMaxSlots : mpCapacity();
             // Exact stem match (findMap): the map file is "ulasem arena.tnt".
             std::string createMap = benchmarkMode_ ? std::string("Ulasem Arena") : mapId;
+            if (ta::devEnv("TA_LOBBY"))
+                std::fprintf(stderr, "lobby: create autoMode=%d map='%s' mission='%s' "
+                                     "priv=%d watch=%d cap=%d\n",
+                             autoMode, createMap.c_str(), mission.c_str(),
+                             int(priv), int(watch), int(cap));
+            mpCreateSent_ = true;
             mp_->createGame(benchmarkMode_ ? "Benchmark" : (priv ? "Single Player" : "headless"),
                             "", createMap, o, cap, watch, priv, mission);
         } else if (st == S::Lobby && autoMode == 5) {
@@ -608,14 +615,29 @@ void GameView::autoplayStep() {
                     mp_->setSlot(k, 2, uint8_t(k % nSides), uint8_t(k), uint8_t(k), 1,
                                  aiLevelEnv());
                 mpReadied_ = true;
-            } else if (autoMode == 8 && r.mySlot >= 0) {
+            } else if (autoMode == 8) {
+                if (ta::devEnv("TA_LOBBY"))
+                    std::fprintf(stderr, "lobby: inRoom autoMode=8 mySlot=%d mission='%s'\n",
+                                 r.mySlot, r.mission.c_str());
+                // WAIT for the room to actually report our mission. JoinResult
+                // moves us to InRoom and carries only the slot; the mission
+                // arrives in the LobbyState that follows it. Acting in that gap
+                // seats up and starts a MISSION-LESS game -- which is what a
+                // campaign launch did: the room came back with mission='' and the
+                // player landed in a plain skirmish on the placeholder map.
+                if (r.mySlot < 0 || r.mission.empty()) return true;
+                {
                 // Campaign mission: seat the human ready and start; the mission's own
                 // script drives the enemies (no skirmish AI slots).
                 mp_->setSlot(r.mySlot, 1, facIdx(side_), uint8_t(r.mySlot),
                              uint8_t(r.mySlot), 1);
                 mp_->startGame();
+                if (ta::devEnv("TA_LOBBY"))
+                    std::fprintf(stderr, "lobby: sent StartGame for mission '%s'\n",
+                                 r.mission.c_str());
                 mpStarted_ = true;
                 mpReadied_ = true;
+                }
             } else if (autoMode == 7 && r.mySlot >= 0) {
                 // Single-player: seat self UNREADY and hand off to the interactive
                 // Room, where the player adds one or more AI opponents, then readies

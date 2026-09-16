@@ -103,12 +103,15 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   (Coast To Coast, 2 AI, 120 s: 12 / 11 / 9 for seeds 11 / 22 / 33), so a
   before/after figure from a single unseeded run measures the seed, not the change.
   See `docs/ta-port.md` §5a.
-- `ctest` in either build dir runs the suite (25 tests). The data-backed
+- `ctest` in either build dir runs the suite (28 tests). The data-backed
   `unitdata_test` needs an install: `./build-dbg/unitdata_test ~/ta_install`.
 - Debug-only diagnostics for the failure modes that are otherwise SILENT:
   `TA_TERRAIN=1` (what a loaded map yielded: walkable fraction, water, slope),
   `TA_PLACE=1` (which test refused a building site), `TA_AI_PICK=1` (why a producer
-  chose nothing — set it on the SERVER, which is where the AI runs).
+  chose nothing — set it on the SERVER, which is where the AI runs),
+  `TA_LOBBY=1` (the create/seat/start handshake — set it on BOTH the client and
+  the server; a campaign launch that lands in a plain skirmish shows up here as a
+  room reporting `mission=''`), `TA_FEATART=1` (why a feature drew nothing).
 - Asset-inspection CLIs (in `tools/`, built into `build/`): `hpitool`, `tnttool`,
   `gaftool`, `tdftool`, `cobtool`, `modeltool`, plus the `cartographer` map editor.
   Use them to verify claims about the shipped data instead of guessing.
