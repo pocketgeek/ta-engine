@@ -54,31 +54,63 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt-get update
-          # Build tools + the SDL2 backend -dev headers needed to BUILD a static
-          # SDL2 with its X11/Wayland/audio drivers (the libs themselves are
-          # built from source below).
-          apt-get install -y --no-install-recommends \
-            cmake ninja-build g++ git make dpkg-dev nasm pkg-config file \
-            curl ca-certificates xz-utils \
-            libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev \
-            libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
-            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
-            libgl1-mesa-dev libegl1-mesa-dev
+          # RETRIED, with a fresh `apt-get update` each time. The Ubuntu mirrors
+          # rotate: a package can be superseded between the index this runner
+          # fetched and the pool it then downloads from, and apt fails the whole
+          # step with a 404 on a file its own index just named. Seen as
+          #   E: Failed to fetch .../libsqlite3-0_3.45.1-1ubuntu2.8_amd64.deb 404
+          # on a run whose only change was a C++ source file. Re-running update
+          # picks up the new index and the same install succeeds.
+          install_deps() {
+            apt-get update
+            # Build tools + the SDL2 backend -dev headers needed to BUILD a static
+            # SDL2 with its X11/Wayland/audio drivers (the libs themselves are
+            # built from source below).
+            apt-get install -y --no-install-recommends \
+              cmake ninja-build g++ git make dpkg-dev nasm pkg-config file \
+              curl ca-certificates xz-utils \
+              libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev \
+              libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
+              libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+              libgl1-mesa-dev libegl1-mesa-dev
+          }
+          for attempt in 1 2 3; do
+            if install_deps; then break; fi
+            if [ "$attempt" = "3" ]; then
+              echo "apt failed three times -- not a mirror hiccup" >&2
+              exit 1
+            fi
+            echo "apt attempt $attempt failed (stale mirror index?); retrying" >&2
+            sleep $((attempt * 15))
+          done
           if [ "${{ matrix.cxx12 }}" = "true" ]; then apt-get install -y g++-12; fi
       - name: Install build deps (dnf)
         if: matrix.family == 'rpm'
         run: |
-          # libstdc++-static: Fedora splits libstdc++.a out, and without it the
-          # -static-libstdc++ probe in CMakeLists fails and the binary keeps a
-          # libstdc++.so.6 dependency -- which is exactly what the static gate rejects.
-          dnf -y install cmake ninja-build gcc-c++ git make rpm-build nasm pkgconf \
-            libstdc++-static \
-            tar gzip zstd xz \
-            alsa-lib-devel pulseaudio-libs-devel pipewire-devel dbus-devel \
-            libX11-devel libXext-devel libXcursor-devel libXi-devel libXrandr-devel \
-            libXfixes-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel \
-            wayland-protocols-devel libdecor-devel mesa-libGL-devel mesa-libEGL-devel
+          # Retried for the same reason as the apt step above: distro mirrors
+          # rotate, and a metadata/pool mismatch fails the install on a run whose
+          # only change was a source file. --refresh forces fresh metadata.
+          install_deps() {
+            # libstdc++-static: Fedora splits libstdc++.a out, and without it the
+            # -static-libstdc++ probe in CMakeLists fails and the binary keeps a
+            # libstdc++.so.6 dependency -- exactly what the static gate rejects.
+            dnf -y --refresh install cmake ninja-build gcc-c++ git make rpm-build nasm pkgconf \
+              libstdc++-static \
+              tar gzip zstd xz \
+              alsa-lib-devel pulseaudio-libs-devel pipewire-devel dbus-devel \
+              libX11-devel libXext-devel libXcursor-devel libXi-devel libXrandr-devel \
+              libXfixes-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel \
+              wayland-protocols-devel libdecor-devel mesa-libGL-devel mesa-libEGL-devel
+          }
+          for attempt in 1 2 3; do
+            if install_deps; then break; fi
+            if [ "$attempt" = "3" ]; then
+              echo "dnf failed three times -- not a mirror hiccup" >&2
+              exit 1
+            fi
+            echo "dnf attempt $attempt failed (stale mirror metadata?); retrying" >&2
+            sleep $((attempt * 15))
+          done
       - name: Install build deps (pacman)
         if: matrix.family == 'arch'
         run: |
