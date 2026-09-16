@@ -7,7 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace tak::cob {
+namespace ta::cob {
 
 namespace {
 
@@ -210,4 +210,4 @@ std::string disassemble(const File& f, int script) {
     return out.str();
 }
 
-} // namespace tak::cob
+} // namespace ta::cob

@@ -1374,14 +1374,14 @@ the menu path shoots before the game starts. To capture a real in-game frame use
 the auto-lobby driver plus a delayed capture, all with the DEBUG binary:
 
 ```sh
-TAK_MPAUTO=4 TAK_SHOT_MS=35000 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  ./build-dbg/takclient game "Inner Circle" --data <install> --shot out.png
+TA_MPAUTO=4 TA_SHOT_MS=35000 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  ./build-dbg/taclient game "Inner Circle" --data <install> --shot out.png
 ```
 
-- `TAK_MPAUTO=4` drives the lobby the way `--mpai` does, but through the
+- `TA_MPAUTO=4` drives the lobby the way `--mpai` does, but through the
   INTERACTIVE (rendering) loop instead of the headless one. Without it the client
   sits at NOT READY forever and the shot is a lobby frame.
-- `TAK_SHOT_MS=<ms>` delays the capture by wall-clock ms (default is 3 frames).
-- Add `TAK_STRESS=1` to spawn each AI at ~95% of the unit cap for instant mass
+- `TA_SHOT_MS=<ms>` delays the capture by wall-clock ms (default is 3 frames).
+- Add `TA_STRESS=1` to spawn each AI at ~95% of the unit cap for instant mass
   combat -- the quickest way to see projectile art, beams and storms on screen.
 - No real window is needed; the dummy driver renders correctly.

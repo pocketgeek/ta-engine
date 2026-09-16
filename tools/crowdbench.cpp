@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 

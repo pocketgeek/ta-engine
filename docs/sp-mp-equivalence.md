@@ -10,8 +10,8 @@ Single-player (offline, immediate apply, in-process AI) and multiplayer
 (server-sequenced bundles, referee AI) both reach the world only through the
 same shared functions:
 
-- `tak::sim::setupMatch` — builds the initial world (`matchsetup.h`)
-- `tak::sim::applyCommand` / `applyEvent` — apply every order/event
+- `ta::sim::setupMatch` — builds the initial world (`matchsetup.h`)
+- `ta::sim::applyCommand` / `applyEvent` — apply every order/event
 - `World::tick` — the simulation step
 
 `GameView::apply` is a one-line wrapper over `applyCommand` used by *both* paths,

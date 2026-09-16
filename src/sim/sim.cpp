@@ -17,16 +17,16 @@
 #include <atomic>
 #include <thread>
 
-namespace tak::sim {
+namespace ta::sim {
 
 
 bool gInstantBuild = false;
 
-// TAK_PHASE sim profiler globals (zero cost when unset). The accumulators are
+// TA_PHASE sim profiler globals (zero cost when unset). The accumulators are
 // thread_local: the server may tick several games in parallel, one World::tick per
 // thread, so each thread accumulates (and prints) its own room's timing -- both
 // race-free and correctly attributed.
-static const bool g_phase = getenv("TAK_PHASE") != nullptr;
+static const bool g_phase = getenv("TA_PHASE") != nullptr;
 static double g_visMs = 0, g_burnMs = 0, g_gridMs = 0;   // finer "other" split
 static thread_local double g_tcomb = 0;
 
@@ -2173,7 +2173,7 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
                     e.hp = 0;
                     e.deathType = freeze ? 15 : 14;
                     e.speed = 0;
-                    static const bool kStatLog = std::getenv("TAK_BURNLOG") != nullptr;
+                    static const bool kStatLog = std::getenv("TA_BURNLOG") != nullptr;
                     if (kStatLog)
                         std::fprintf(stderr, "statue kill: %s %s at %.0f,%.0f\n",
                                      e.type->id.c_str(), freeze ? "frozen" : "stoned",
@@ -2246,7 +2246,7 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         hurt(e, scale);
         ++splashed;
     });
-    static const bool kLog = std::getenv("TAK_SPLASHLOG") != nullptr;
+    static const bool kLog = std::getenv("TA_SPLASHLOG") != nullptr;
     if (splashed && kLog)
         std::fprintf(stderr, "splash %s aoe=%.0f hit %d extra\n",
                      w.name.c_str(), r, splashed);
@@ -3339,7 +3339,7 @@ void World::igniteFeature(Feature& f) {
     if (f.burn || !f.alive || f.type < 0) return;
     const FeatType& ft = featTypes_[size_t(f.type)];
     if (!ft.flamable || !ft.hasBurnAnim) return;
-    static const bool kBurnLog = std::getenv("TAK_BURNLOG") != nullptr;
+    static const bool kBurnLog = std::getenv("TA_BURNLOG") != nullptr;
     if (kBurnLog)
         std::fprintf(stderr, "ignite %s at %.0f,%.0f (spark %d)\n",
                      ft.name.c_str(), f.x, f.z, ft.sparkTicks);
@@ -3405,7 +3405,7 @@ void World::reclaim(int builderId, int featureId, bool queue) {
         int ct = c->corpseStatue >= 0 ? c->corpseStatue : corpseTypeOf(c->type);
         if (ct < 0 || !featTypes_[size_t(ct)].reclaimable) return;
         tx = c->x; tz = c->z;
-        static const bool kRcLog = std::getenv("TAK_BURNLOG") != nullptr;
+        static const bool kRcLog = std::getenv("TA_BURNLOG") != nullptr;
         if (kRcLog)
             std::fprintf(stderr, "corpse-reclaim ORDER: b%d -> %s (%d)\n",
                          builderId, c->type->id.c_str(), -featureId);
@@ -3471,7 +3471,7 @@ void World::tickReclaim(Unit& b, float dt) {
                 c->corpseBlocks = false;
                 blockFoot(*c->type, c->x, c->z, false);
             }
-            static const bool kRecLog = std::getenv("TAK_BURNLOG") != nullptr;
+            static const bool kRecLog = std::getenv("TA_BURNLOG") != nullptr;
             if (kRecLog)
                 std::fprintf(stderr, "corpse reclaimed: %s at %.0f,%.0f\n",
                              c->type->id.c_str(), c->x, c->z);
@@ -3981,7 +3981,7 @@ void World::tickAbilities(float dt) {
         // creature rises at FULL health (icd 0x420666-0x4206ba).
         if (Unit* nu = unit(id))
             if (!r.animate) nu->hp = std::max(nu->type->maxHp * 0.1f, 1.0f);
-        static const bool kRevLog = std::getenv("TAK_BURNLOG") != nullptr;
+        static const bool kRevLog = std::getenv("TA_BURNLOG") != nullptr;
         if (kRevLog)
             std::fprintf(stderr, "%s: %s for p%d at %.0f,%.0f\n",
                          r.animate ? "animate" : "resurrect",
@@ -4001,9 +4001,9 @@ bool World::sightClear(int ux, int uz, float eyeH, int tx, int tz) const {
     // Terrain must rise this far ABOVE the sight line to block it. Tuned (with the
     // eye height below) so walls/hills/cliffs cast shadows but small rock clutter
     // does not -- on athri cay real walls are height 60-220, so an obstacle must
-    // clear ~eye+margin ~= 56 to block. Live-tunable via TAK_FOG_MARGIN.
+    // clear ~eye+margin ~= 56 to block. Live-tunable via TA_FOG_MARGIN.
     static float MARGIN = [] {
-        const char* e = std::getenv("TAK_FOG_MARGIN"); return e ? float(std::atof(e)) : 16.0f;
+        const char* e = std::getenv("TA_FOG_MARGIN"); return e ? float(std::atof(e)) : 16.0f;
     }();
     int steps = int(D);
     for (int i = 1; i < steps; ++i) {
@@ -4121,9 +4121,9 @@ void World::visCompute() {
     std::vector<Miss>&   misses  = visMisses_;
     // Eye above the unit's ground cell: sees over small bumps, not over real
     // walls/hills. Paired with the sight-line MARGIN in sightClear so small rock
-    // clutter stops casting fog shadows. Live-tunable via TAK_FOG_EYE.
+    // clutter stops casting fog shadows. Live-tunable via TA_FOG_EYE.
     static float EYE = [] {
-        const char* e = std::getenv("TAK_FOG_EYE"); return e ? float(std::atof(e)) : 40.0f;
+        const char* e = std::getenv("TA_FOG_EYE"); return e ? float(std::atof(e)) : 40.0f;
     }();
     // Demote last pass's visible cells: to EXPLORED (1, dimmed but remembered) normally, or
     // straight to hidden (0) when fog memory is off, so they go dark again once out of sight.
@@ -4385,7 +4385,7 @@ constexpr int kParkedFreeCells = 2;
 void World::tick(float dt) {
     ++tickCounter_;
 #ifndef NDEBUG
-    hashTrace();   // TAK_HASHTRACE=lo:hi -- per-component dump, EVERY tick on both peers
+    hashTrace();   // TA_HASHTRACE=lo:hi -- per-component dump, EVERY tick on both peers
 #endif
     {
         auto _b = std::chrono::steady_clock::now();
@@ -5126,7 +5126,7 @@ void World::tick(float dt) {
                 // (raising a statue un-petrifies the unit).
                 u.corpseStatue = u.stonedFor > 0 ? statueTypeOf(u.type, false)
                               : u.frozenFor > 0 ? statueTypeOf(u.type, true) : -1;
-                static const bool kStatLog2 = std::getenv("TAK_BURNLOG") != nullptr;
+                static const bool kStatLog2 = std::getenv("TA_BURNLOG") != nullptr;
                 if (kStatLog2 && (u.stonedFor > 0 || u.frozenFor > 0))
                     std::fprintf(stderr, "statue edge: %s statue=%d stoned=%.1f\n",
                                  u.type->id.c_str(), u.corpseStatue, u.stonedFor);
@@ -5538,7 +5538,7 @@ void World::tick(float dt) {
                 if (u.type->roadMult != 1.0f &&
                     onRoad(u.x, u.z, u.type->footX, u.type->footZ)) {
                     target *= u.type->roadMult;
-                    static const bool kRoadLog = std::getenv("TAK_ROADLOG") != nullptr;
+                    static const bool kRoadLog = std::getenv("TA_ROADLOG") != nullptr;
                     if (kRoadLog) {
                         static int logged = 0;
                         if (logged < 5)
@@ -5934,7 +5934,7 @@ void World::tick(float dt) {
         s.left -= dt;
         if (s.left <= 0.0f) { storms_.erase(storms_.begin() + std::ptrdiff_t(i)); continue; }
         const Storm hit = s;   // applyHit walks/kills units_; copy what we need
-        static const bool kStormLog = std::getenv("TAK_STORMLOG") != nullptr;
+        static const bool kStormLog = std::getenv("TA_STORMLOG") != nullptr;
         if (kStormLog) std::fprintf(stderr, "storm t=%u at %.0f,%.0f jit=%.1f,%.1f left=%.1f\n",
                                     tickCounter_, hit.x, hit.z, hit.jitX, hit.jitZ, hit.left);
         applyHit(*hit.w, hit.x, hit.z, hit.player, hit.fromId, nullptr);
@@ -5998,8 +5998,8 @@ void World::tick(float dt) {
         auto _end = std::chrono::steady_clock::now();
         double tsep = std::chrono::duration<double,std::milli>(_end-_sep0).count();
         double ttot = std::chrono::duration<double,std::milli>(_end-_tk0).count();
-        static double thr = getenv("TAK_PHASE_MS") ? atof(getenv("TAK_PHASE_MS")) : 15.0;
-        if (ttot > thr) {   // only report a stall (threshold tunable via TAK_PHASE_MS)
+        static double thr = getenv("TA_PHASE_MS") ? atof(getenv("TA_PHASE_MS")) : 15.0;
+        if (ttot > thr) {   // only report a stall (threshold tunable via TA_PHASE_MS)
             int alive = 0; for (auto& u : units_) if (u.alive()) ++alive;
             // flow= and path= used to sit here; the flow fields and the inline
             // A* are both gone, so the counters were always zero.
@@ -6034,7 +6034,7 @@ void World::hashTrace() const {
     static uint32_t lo = 0, hi = 0;
     if (!init) {
         init = true;
-        if (const char* e = std::getenv("TAK_HASHTRACE")) {
+        if (const char* e = std::getenv("TA_HASHTRACE")) {
             unsigned a = 0, b = 0;
             if (std::sscanf(e, "%u:%u", &a, &b) == 2) { lo = a; hi = b; on = true; }
         }
@@ -6294,4 +6294,4 @@ int World::updateOutcome() {
     return winningTeam_;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

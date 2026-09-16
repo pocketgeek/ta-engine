@@ -8,10 +8,10 @@
     bool GameView::inLobbyPhase() const {
         if (!mp_ || mpSetupDone_) return false;
         auto s = mp_->state();
-        return s == tak::net::MpClient::State::Connecting ||
-               s == tak::net::MpClient::State::Lobby ||
-               s == tak::net::MpClient::State::InRoom ||
-               s == tak::net::MpClient::State::Done;
+        return s == ta::net::MpClient::State::Connecting ||
+               s == ta::net::MpClient::State::Lobby ||
+               s == ta::net::MpClient::State::InRoom ||
+               s == ta::net::MpClient::State::Done;
     }
 
     int GameView::geomSlot(int id) const {
@@ -24,8 +24,8 @@ namespace {
 // the label mapgen already provides ("Random 16x16 4P Aramon"); a real map's id is
 // its name and passes through.
 std::string mapDisplayName(const std::string& id) {
-    if (!tak::mapgen::isGeneratedMapId(id)) return id;
-    return tak::mapgen::friendlyLabel(tak::mapgen::decodeMapId(id));
+    if (!ta::mapgen::isGeneratedMapId(id)) return id;
+    return ta::mapgen::friendlyLabel(ta::mapgen::decodeMapId(id));
 }
 }  // namespace
 
@@ -44,11 +44,11 @@ std::string mapDisplayName(const std::string& id) {
         blockText(title, cx - blockWidth(title, 2.6f) / 2, 24, 2.6f, {210, 200, 150, 255});
         if (!mp_) return;
         auto st = mp_->state();
-        if (st == tak::net::MpClient::State::Connecting) {
+        if (st == ta::net::MpClient::State::Connecting) {
             blockText("connecting to server...", cx - 120, winH / 2.0f, 2.0f, {200, 200, 210, 255});
             return;
         }
-        if (st == tak::net::MpClient::State::Done) {
+        if (st == ta::net::MpClient::State::Done) {
             // Connection over (server closed / rejected us / timed out): say WHY --
             // MpClient preserves the server's Reject reason (e.g. "protocol version
             // mismatch (server 28 / client 29)") -- and give the player a way OUT.
@@ -72,7 +72,7 @@ std::string mapDisplayName(const std::string& id) {
                   [this] { menuRequested_ = true; });
             return;
         }
-        if (st == tak::net::MpClient::State::InRoom) drawRoom(winW, winH);
+        if (st == ta::net::MpClient::State::InRoom) drawRoom(winW, winH);
         else if (lobbyScreen_ == LobbyScreen::Create) drawCreate(winW, winH);
         else drawBrowser(winW, winH);
     }
@@ -123,14 +123,14 @@ std::string mapDisplayName(const std::string& id) {
 
     void GameView::buildMapList() {
         mapList_.clear();
-        for (auto& [name, path] : tak::hpi::listMaps(vfs_)) {
+        for (auto& [name, path] : ta::hpi::listMaps(vfs_)) {
             MapInfo mi; mi.name = name; mi.path = path;
             std::filesystem::path op = path; op.replace_extension(".ota");
             std::string otaPath = op.generic_string();
             if (vfs_.has(otaPath)) {
                 try {
                     auto b = vfs_.read(otaPath);
-                    auto root = tak::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
+                    auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
                     if (const auto* gh = root.child("globalheader")) {
                         mi.players = int(gh->numberOr("numplayers", 0));
                         std::string sz = gh->valueOr("size", "");   // e.g. "16 x 16"
@@ -140,7 +140,7 @@ std::string mapDisplayName(const std::string& id) {
                 } catch (const std::exception&) {}
             }
             if (mi.players == 0)   // .ota had no numplayers: count the start positions
-                mi.players = int(tak::sim::parseStartPositions(vfs_, path).size());
+                mi.players = int(ta::sim::parseStartPositions(vfs_, path).size());
             mapList_.push_back(std::move(mi));
         }
         sortMapList();
@@ -171,7 +171,7 @@ std::string mapDisplayName(const std::string& id) {
         mapPreviewW_ = mapPreviewH_ = 0;
         mapPreviewDims_.clear();
         if (tntPath.empty()) return;
-        if (tak::mapgen::isGeneratedMapId(tntPath)) { buildGenPreview(tntPath); return; }
+        if (ta::mapgen::isGeneratedMapId(tntPath)) { buildGenPreview(tntPath); return; }
         std::vector<uint8_t> d;
         try { d = vfs_.read(tntPath); } catch (...) { return; }
         if (d.size() < 52) return;
@@ -203,7 +203,7 @@ std::string mapDisplayName(const std::string& id) {
         if (size.empty()) size = std::to_string(u32(4) / 32) + " x " + std::to_string(u32(8) / 32);
         std::string players = otaField(ota, "numplayers");
         if (players.empty()) {
-            int n = int(tak::sim::parseStartPositions(vfs_, tntPath).size());
+            int n = int(ta::sim::parseStartPositions(vfs_, tntPath).size());
             if (n > 0) players = std::to_string(n);
         }
         mapPreviewDims_ = size + (players.empty() ? "" : "   " + players + " PLAYER");
@@ -212,17 +212,17 @@ std::string mapDisplayName(const std::string& id) {
     void GameView::buildGenPreview(const std::string& id) {
         // Roll the map from the seed (cheap integer-only work) and paint a downsampled
         // height/water map with feature + start markers, so the sliders preview live.
-        tak::mapgen::Params gp = tak::mapgen::decodeMapId(id);
-        tak::mapgen::Result g = tak::mapgen::generate(gp, vfs_);
-        const tak::tnt::Map& m = g.map;
+        ta::mapgen::Params gp = ta::mapgen::decodeMapId(id);
+        ta::mapgen::Result g = ta::mapgen::generate(gp, vfs_);
+        const ta::tnt::Map& m = g.map;
         const int W = m.width, H = m.height, sea = m.seaLevel;
         if (W <= 0 || H <= 0 || m.heights.size() < size_t(W) * H) return;
         const int cap = 192, mx = std::max(W, H);
         const int TW = std::max(1, W * cap / mx), TH = std::max(1, H * cap / mx);
         // World-flavoured land tint (loosely matches each world's ground section art).
-        static const uint8_t landRGB[tak::mapgen::kMapTypes][3] = {
+        static const uint8_t landRGB[ta::mapgen::kMapTypes][3] = {
             {74, 118, 58}, {112, 84, 54}, {200, 172, 148}, {46, 92, 46}, {34, 80, 60}};
-        const uint8_t* lc = landRGB[gp.mapType % tak::mapgen::kMapTypes];
+        const uint8_t* lc = landRGB[gp.mapType % ta::mapgen::kMapTypes];
         std::vector<uint8_t> rgba(size_t(TW) * TH * 4, 255);
         auto put = [&](int tx, int ty, uint8_t r, uint8_t gg, uint8_t b) {
             if (tx < 0 || ty < 0 || tx >= TW || ty >= TH) return;
@@ -277,8 +277,8 @@ std::string mapDisplayName(const std::string& id) {
     }
 
     void GameView::applyGenParams() {
-        genParams_ = tak::mapgen::sanitize(genParams_);
-        mpMapId_ = tak::mapgen::encodeMapId(genParams_);
+        genParams_ = ta::mapgen::sanitize(genParams_);
+        mpMapId_ = ta::mapgen::encodeMapId(genParams_);
         mapPath_ = mpMapId_;   // generated: the id IS the path (findMap returns it as-is)
     }
 
@@ -353,7 +353,7 @@ std::string mapDisplayName(const std::string& id) {
         // BROWSER (MP only) sits just left of CREATE.
         const float by = kLobbyH - 40, bw = 120;
         lbBtn(kLobbyW - x - bw, by, bw, 30, "CREATE", !createName_.empty(), [this] {
-            tak::net::GameOptions o; o.crusades = createCrusades_ ? 1 : 0; o.gods = createGods_ ? 1 : 0;
+            ta::net::GameOptions o; o.crusades = createCrusades_ ? 1 : 0; o.gods = createGods_ ? 1 : 0;
             o.overridePolicy = createOverride_;
             o.monarchExpendable = createMonarchExp_ ? 1 : 0;
             o.fogExplored = std::min<uint8_t>(createFog_, 2);
@@ -389,7 +389,7 @@ std::string mapDisplayName(const std::string& id) {
         float lx = 400, hy = 90;
         blockText("SELECT MAP", lx, hy, 1.8f, {200, 205, 220, 255});
         // Toggle between the map list and the random-map generator.
-        bool gen = tak::mapgen::isGeneratedMapId(mpMapId_);
+        bool gen = ta::mapgen::isGeneratedMapId(mpMapId_);
         lbBtn(lx + 176, hy - 2, 164, 22, gen ? "PICK AN EXISTING MAP" : "GENERATE RANDOM MAP", true,
               [this, gen] {
                   if (gen) { mpMapId_.clear(); mapPath_.clear(); }  // drop back to the list
@@ -476,7 +476,7 @@ std::string mapDisplayName(const std::string& id) {
 
       } else {
         // ---- random-map params panel (replaces the list) --------------------------
-        static const char* kTypeName[tak::mapgen::kMapTypes] = {"ARAMON", "TAROS", "VERUNA", "ZHON", "CREON"};
+        static const char* kTypeName[ta::mapgen::kMapTypes] = {"ARAMON", "TAROS", "VERUNA", "ZHON", "CREON"};
         static const int kSizes[] = {8, 12, 16, 20, 24};   // section-units (x32 cells) per side
         // One rhythm for the whole panel: every control is kRowH tall and every gap
         // is kGap. The rows used to step by 30, 30, 36 and then 44, so the buttons
@@ -485,8 +485,8 @@ std::string mapDisplayName(const std::string& id) {
         const float kRowH = 24, kGap = 8, kBtnW = 300;
         const float kSliderH = 32;   // label (11) + 7 + bar (14)
         float px = lx, py = hy + 46;   // aligns with the map list's box top
-        lbBtn(px, py, kBtnW, kRowH, std::string("TYPE:  ") + kTypeName[genParams_.mapType % tak::mapgen::kMapTypes],
-              true, [this] { genParams_.mapType = uint8_t((genParams_.mapType + 1) % tak::mapgen::kMapTypes);
+        lbBtn(px, py, kBtnW, kRowH, std::string("TYPE:  ") + kTypeName[genParams_.mapType % ta::mapgen::kMapTypes],
+              true, [this] { genParams_.mapType = uint8_t((genParams_.mapType + 1) % ta::mapgen::kMapTypes);
                              applyGenParams(); }); py += kRowH + kGap;
         int curU = genParams_.widthCells / 32;
         char szl[48]; std::snprintf(szl, sizeof szl, "SIZE:  %d x %d", curU, curU);
@@ -568,14 +568,14 @@ std::string mapDisplayName(const std::string& id) {
         // (specAutoSeated_), so the host can still tweak/close slots afterwards.
         if (singlePlayer_ && spSpectate_ && host && room.mySlot < 0 && !specAutoSeated_) {
             std::mt19937 rng(uint32_t(SDL_GetTicks64()) ^ (room.id * 2654435761u));
-            for (int i = 0; i < tak::net::kMaxSlots; ++i)
+            for (int i = 0; i < ta::net::kMaxSlots; ++i)
                 if (room.slots[i].type == 0)   // open capacity slot
                     mp_->setSlot(i, 2, uint8_t(rng() % 5), uint8_t(i), uint8_t(i), 1, aiLevelEnv());
             specAutoSeated_ = true;
         }
         // slot table
         const char* typeName[4] = {"OPEN", "HUMAN", "AI", "CLOSED"};
-        for (int i = 0; i < tak::net::kMaxSlots; ++i) {
+        for (int i = 0; i < ta::net::kMaxSlots; ++i) {
             const auto& s = room.slots[i];
             bool mine = (i == room.mySlot);
             SDL_FRect row{x, y, winW - 320.0f, 30};
@@ -632,7 +632,7 @@ std::string mapDisplayName(const std::string& id) {
                 for (int step = 1; step <= 10; ++step) {
                     uint8_t cand = uint8_t((s2.color + step) % 10);
                     bool taken = false;
-                    for (int k = 0; k < tak::net::kMaxSlots; ++k)
+                    for (int k = 0; k < ta::net::kMaxSlots; ++k)
                         if (k != i && (r2.slots[k].type == 1 || r2.slots[k].type == 2) &&
                             r2.slots[k].color == cand) { taken = true; break; }
                     if (!taken) { next = cand; break; }
@@ -642,7 +642,7 @@ std::string mapDisplayName(const std::string& id) {
             blockText(tm, x + 392, y + 8, 1.8f, {200, 205, 215, 255});
             if (canEdit) { SDL_FRect teb{x + 392, y + 6, 34, 18};
                 lobbyHots_.push_back({teb, [this, i] { const auto& s2 = mpRoom().slots[i];
-                    mp_->setSlot(i, s2.type, s2.faction, s2.color, uint8_t((s2.team + 1) % tak::net::kMaxSlots), s2.ready, s2.aiLevel); }}); }
+                    mp_->setSlot(i, s2.type, s2.faction, s2.color, uint8_t((s2.team + 1) % ta::net::kMaxSlots), s2.ready, s2.aiLevel); }}); }
             if (s.type == 1 && !singlePlayer_) {   // SP: the player is always ready, no column
                 SDL_Color rc = s.ready ? SDL_Color{130, 230, 140, 255} : SDL_Color{120, 125, 135, 255};
                 blockText(s.ready ? "READY" : "NOT READY", x + 440, y + 8, 1.6f, rc);

@@ -5,7 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace tak::tnt {
+namespace ta::tnt {
 
 namespace {
 
@@ -170,4 +170,4 @@ std::vector<uint8_t> Map::save() const {
     return d;
 }
 
-} // namespace tak::tnt
+} // namespace ta::tnt

@@ -10,9 +10,9 @@
 #include <sstream>
 #include <vector>
 
-namespace tak::ai {
+namespace ta::ai {
 
-Profile loadProfile(const tak::hpi::Vfs& vfs, const std::string& name) {
+Profile loadProfile(const ta::hpi::Vfs& vfs, const std::string& name) {
     Profile prof;
     // Campaign missions name their own build profile in the .ota (`aiprofile=`),
     // and retail ships a dozen of them (ai/mission18.txt, ai/takx07.txt...) tuned
@@ -54,7 +54,7 @@ DiffParams paramsFor(Difficulty d) {
     }
 }
 
-Controller::Controller(int player, const tak::sim::TypeRegistry& registry,
+Controller::Controller(int player, const ta::sim::TypeRegistry& registry,
                        const Profile& profile, uint32_t seed, Difficulty difficulty,
                        std::vector<std::pair<float, float>> enemyStarts)
     : player_(player), registry_(registry), profile_(profile),
@@ -67,9 +67,9 @@ Controller::Controller(int player, const tak::sim::TypeRegistry& registry,
       rng_(seed), diff_(difficulty), dp_(paramsFor(difficulty)),
       enemyStarts_(std::move(enemyStarts)) {}
 
-void Controller::emit(const CommandSink& sink, tak::net::Cmd kind, int unitId,
+void Controller::emit(const CommandSink& sink, ta::net::Cmd kind, int unitId,
                       const std::string& type, float x, float z) const {
-    tak::net::Command c;
+    ta::net::Command c;
     c.kind = kind;
     c.player = uint8_t(player_);
     c.unitId = unitId;
@@ -87,7 +87,7 @@ void Controller::emit(const CommandSink& sink, tak::net::Cmd kind, int unitId,
 //   Defense  - any other structure (towers, walls)
 //   Builder  - a mobile unit that builds/expands (Monarch, mason, priest, arabuild)
 //   Army     - any other mobile unit (the combatants)
-BuildCat Controller::categoryOf(const tak::sim::UnitType* t) const {
+BuildCat Controller::categoryOf(const ta::sim::UnitType* t) const {
     if (t->isStructure()) {
         if (!registry_.buildable(t->id).empty()) return BuildCat::Factory;
         if (t->income > 0 || t->storage > 0) return BuildCat::Economy;
@@ -116,7 +116,7 @@ BuildCat Controller::categoryOf(const tak::sim::UnitType* t) const {
 }
 
 // Count the empire by category and set the targets the planner steers toward.
-Needs Controller::assessNeeds(const tak::sim::World& world) const {
+Needs Controller::assessNeeds(const ta::sim::World& world) const {
     Needs n;
     const auto& me = world.player(player_);
     n.income = me.income / std::max(me.manaMult, 1.0f);   // ignore an Absurd AI's cheat
@@ -165,8 +165,8 @@ int Controller::desire(BuildCat c, const Needs& n) const {
 // (desire()), then a weighted-random draw WITHIN that category (profile weights, for
 // variety + retail flavour). A candidate must be affordable to finish and under its
 // difficulty-scaled limit. Returns nullptr if nothing worth building is affordable now.
-const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
-                                                   const tak::sim::Unit& producer,
+const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
+                                                   const ta::sim::Unit& producer,
                                                    const Needs& needs, int excludeCats) {
     const auto& menu = registry_.buildable(producer.type->id);
     const auto& me = world.player(player_);
@@ -174,7 +174,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
     // A menu entry the AI may build right now: has a positive weight, is under its
     // limit, and savings + income over its build time cover the cost (so a builder
     // never traps itself on a site the mana runs dry beneath).
-    auto usable = [&](const tak::sim::UnitType* ut) -> int {
+    auto usable = [&](const ta::sim::UnitType* ut) -> int {
         if (!ut) return 0;
         auto wi = profile_.weight.find(ut->id);
         int w = wi == profile_.weight.end() ? 0 : wi->second;
@@ -201,9 +201,9 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
         if (ut && (excludeCats & (1 << int(categoryOf(ut))))) continue;
         best = std::max(best, desire(categoryOf(ut), needs));
     }
-    // TAK_AI_PICK: why a producer chose nothing. A stalled economy is almost always
+    // TA_AI_PICK: why a producer chose nothing. A stalled economy is almost always
     // "every menu entry scored 0", and this says which gate did it.
-    static const bool kPickLog = std::getenv("TAK_AI_PICK") != nullptr;
+    static const bool kPickLog = std::getenv("TA_AI_PICK") != nullptr;
     if (kPickLog && best <= 0) {
         std::fprintf(stderr, "    pick %s: nothing usable (mana=%.0f income=%.0f)\n",
                      producer.type->id.c_str(), world.player(player_).mana, income);
@@ -226,7 +226,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
     }
     if (best <= 0) return nullptr;   // nothing needed is affordable -> wait (no spiral)
     // Pass 2: weighted-random among the usable entries in that top category.
-    const tak::sim::UnitType* chosen = nullptr;
+    const ta::sim::UnitType* chosen = nullptr;
     int total = 0;
     for (const auto& id : menu) {
         const auto* ut = registry_.find(id);
@@ -242,8 +242,8 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
 // Turn a pick into a command: a factory (keep/castle) trains a mobile unit; a
 // mobile builder places a structure or conjures a mobile unit near itself. The
 // placement spot is probed against the (const) world, then issued as a Build.
-bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
-                         const tak::sim::UnitType* pick, const CommandSink& sink) {
+bool Controller::produce(const ta::sim::World& world, const ta::sim::Unit& p,
+                         const ta::sim::UnitType* pick, const CommandSink& sink) {
     if (pick->isStructure()) {                  // structure
         if (!p.type->isStructure() && p.type->isBuilder) {
             // The Monarch builds relative to HOME, not wherever it has drifted -- so a
@@ -255,10 +255,10 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
             if (p.type->commander) { auto h = homeOf(world); ox = h.first; oz = h.second; }
             float x, z;
             if (placeSite(world, pick, ox, oz, x, z)) {
-                emit(sink, tak::net::Cmd::Build, p.id, pick->id, x, z);
+                emit(sink, ta::net::Cmd::Build, p.id, pick->id, x, z);
                 return true;
             } else {
-                static const bool kPickLog = std::getenv("TAK_AI_PICK") != nullptr;
+                static const bool kPickLog = std::getenv("TA_AI_PICK") != nullptr;
                 if (kPickLog)
                     std::fprintf(stderr, "    NO SITE: %s#%d cannot site %s near (%.0f,%.0f)\n",
                                  p.type->id.c_str(), p.id, pick->id.c_str(), ox, oz);
@@ -266,18 +266,18 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
         }
         return false;
     } else if (p.type->isStructure()) {         // factory trains mobile
-        emit(sink, tak::net::Cmd::Train, p.id, pick->id, 0, 0);
+        emit(sink, ta::net::Cmd::Train, p.id, pick->id, 0, 0);
         return true;
     } else if (p.type->isBuilder) {             // mobile builder conjures mobile
         for (float r = 40; r < 170; r += 20)
             for (float a = 0; a < 6.28f; a += 0.6f) {
                 float x = p.x + detmath::cos(a) * r, z = p.z + detmath::sin(a) * r;
                 if (world.canPlace(pick, x, z)) {
-                    emit(sink, tak::net::Cmd::Build, p.id, pick->id, x, z);
+                    emit(sink, ta::net::Cmd::Build, p.id, pick->id, x, z);
                     return true;
                 }
             }
-        static const bool kPickLog = std::getenv("TAK_AI_PICK") != nullptr;
+        static const bool kPickLog = std::getenv("TA_AI_PICK") != nullptr;
         if (kPickLog)
             std::fprintf(stderr, "    NO SPOT: %s#%d at (%.0f,%.0f) cannot place %s "
                                  "anywhere in r=40..170\n",
@@ -289,7 +289,7 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
 // Find a build site for the AI: lodestones go on the nearest free mana deposit
 // (when the map has any), everything else probes outward from the builder.
 // Returns true and the chosen (outX,outZ) if a spot was found.
-bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitType* t,
+bool Controller::placeSite(const ta::sim::World& world, const ta::sim::UnitType* t,
                            float nx, float nz, float& outX, float& outZ) const {
     if (!t) return false;
     if (t->onMana && world.hasManaSpots()) {
@@ -313,8 +313,8 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
 // Nearest enemy the group at (cx,cz) can SEE (some AI unit within sight/radar of it)
 // AND can actually REACH (flow connectivity), scanning closest-first. Fog: the AI
 // never targets a unit it hasn't spotted; reachability keeps it off walled-in foes.
-bool Controller::nearestVisibleEnemy(const tak::sim::World& world, float cx, float cz,
-                                     const tak::sim::UnitType* atype,
+bool Controller::nearestVisibleEnemy(const ta::sim::World& world, float cx, float cz,
+                                     const ta::sim::UnitType* atype,
                                      float& tx, float& tz) const {
     // My eyes: each own unit reveals a radius of max(sight, radar) around itself.
     struct Eye { float x, z, r2; };
@@ -371,7 +371,7 @@ bool Controller::nearestEnemyStart(float cx, float cz, float& tx, float& tz) con
 // share a flow field; the flow fields are gone and paths are per-unit now, so arriving
 // as a group is the whole of it.
 // Also sends one early scout so the AI reveals + commits rather than turtling forever.
-std::pair<float, float> Controller::homeOf(const tak::sim::World& world) const {
+std::pair<float, float> Controller::homeOf(const ta::sim::World& world) const {
     double sx = 0, sz = 0; int n = 0;
     float kx = 0, kz = 0; bool haveKing = false;
     for (const auto& u : world.units()) {
@@ -384,12 +384,12 @@ std::pair<float, float> Controller::homeOf(const tak::sim::World& world) const {
     return {0.0f, 0.0f};
 }
 
-void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
+void Controller::sendWaves(const ta::sim::World& world, uint32_t simTick,
                            const CommandSink& sink) {
     if (!dp_.attack) return;   // Passive: never marches out; units defend in place.
     std::vector<int> idle;
     double sx = 0, sz = 0;
-    const tak::sim::UnitType* atype = nullptr;
+    const ta::sim::UnitType* atype = nullptr;
     for (auto& u : world.units())
         if (u.alive() && u.player == player_ && u.type && !u.type->isStructure() &&
             !u.type->isBuilder && waveFree(u)) {
@@ -425,7 +425,7 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
         constexpr int kMaxWaveCmds = 256;
         int n = std::min(int(idle.size()), kMaxWaveCmds);
         for (int i = 0; i < n; ++i)
-            emit(sink, tak::net::Cmd::AttackMove, idle[size_t(i)], "", tx, tz);
+            emit(sink, ta::net::Cmd::AttackMove, idle[size_t(i)], "", tx, tz);
         lastRaidTick_ = simTick;      // let the freshly-built stragglers regroup, don't raid next
         scouted_ = true;
         return;
@@ -444,13 +444,13 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
     if (firstProbe || canRaid) {
         int party = firstProbe && !canRaid ? 1 : dp_.raidSize;   // opening scout is a lone unit
         for (int i = 0; i < party && i < int(idle.size()); ++i)
-            emit(sink, tak::net::Cmd::AttackMove, idle[size_t(i)], "", tx, tz);
+            emit(sink, ta::net::Cmd::AttackMove, idle[size_t(i)], "", tx, tz);
         scouted_ = true;
         lastRaidTick_ = simTick;
     }
 }
 
-void Controller::tick(const tak::sim::World& world, uint32_t simTick,
+void Controller::tick(const ta::sim::World& world, uint32_t simTick,
                       const CommandSink& sink) {
     // Think cadence (per difficulty), staggered by player so several AIs don't all
     // fire on the same tick. Sim-tick driven so a --mpai run is repeatable. Hard
@@ -532,10 +532,10 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
         float dx = u.x - h.first, dz = u.z - h.second;
         constexpr float kHomeLeash = 520.0f;   // ~a third of a small map's span
         if (dx * dx + dz * dz > kHomeLeash * kHomeLeash)
-            emit(sink, tak::net::Cmd::Move, u.id, "", h.first, h.second);
+            emit(sink, ta::net::Cmd::Move, u.id, "", h.first, h.second);
         break;
     }
     sendWaves(world, simTick, sink);
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::terrain {
+namespace ta::terrain {
 
 // Composites TNT map terrain from the content-addressed section JPGs the VFS
 // resolves as terrain/<hexkey>.jpg (from terrain.hpi). Each 32px map block
@@ -47,4 +47,4 @@ private:
     std::map<uint32_t, jpeg::Image> cache_;   // key -> decoded section (lazy)
 };
 
-} // namespace tak::terrain
+} // namespace ta::terrain

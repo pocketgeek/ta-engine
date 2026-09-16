@@ -15,12 +15,12 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Cheat: when true, construction and production complete instantly and cost no
-// mana (set via the takclient `--cheat` flag).
+// mana (set via the taclient `--cheat` flag).
 extern bool gInstantBuild;
 
 // Unit stats loaded from .fbi files. Velocities are in map pixels per
@@ -1151,7 +1151,7 @@ public:
     // Assign a player's team, clamped to a valid team id [0, numPlayers). Teams
     // are 0..n-1 by construction; keeping them in range is the invariant that the
     // outcome check and the viewer's per-team arrays rely on -- so the sim owns
-    // it rather than trusting setup (a lobby, or the TAK_FFA dev harness).
+    // it rather than trusting setup (a lobby, or the TA_FFA dev harness).
     void setTeam(int player, int team) {
         if (player < 0 || player >= numPlayers()) return;
         players_[size_t(player)].team = std::clamp(team, 0, numPlayers() - 1);
@@ -1228,7 +1228,7 @@ public:
     uint64_t stateHash() const;
 #ifndef NDEBUG
     // Debug-only divergence locator, and the first thing to reach for when the referee
-    // reports a desync. TAK_HASHTRACE="lo:hi" dumps a PER-COMPONENT checksum every tick
+    // reports a desync. TA_HASHTRACE="lo:hi" dumps a PER-COMPONENT checksum every tick
     // in [lo,hi]: units (position / hp / orders / misc), projectiles, effects, storms,
     // players, features, the burn and fire RNG streams, and -- deliberately -- the nav
     // overlay and grid cells, which stateHash does NOT fold.
@@ -1883,4 +1883,4 @@ private:
     int nextId_ = 1;
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

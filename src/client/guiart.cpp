@@ -4,7 +4,7 @@
 #include "client/artscale.h"
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 gaf::Palette guiPalette(const hpi::Vfs& vfs, const std::string& gafName) {
     std::string pp = "anims/" + gafName + ".pcx";
@@ -36,10 +36,10 @@ SDL_Texture* gafTexture(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::strin
                 for (size_t i = 0; i + 3 < f.rgba.size(); i += 4)
                     if (f.rgba[i] <= 8 && f.rgba[i + 1] <= 8 && f.rgba[i + 2] <= 8)
                         f.rgba[i + 3] = 0;
-            return tak::art::makeTexture(ren, f.rgba, f.width, f.height);
+            return ta::art::makeTexture(ren, f.rgba, f.width, f.height);
         }
     } catch (...) {}
     return nullptr;
 }
 
-}  // namespace tak
+}  // namespace ta

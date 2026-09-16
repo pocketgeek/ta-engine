@@ -30,13 +30,13 @@ struct Geom {
     std::string bgGaf = "genericdialogue", bgSeq = "GenericBG";
 };
 
-const Geom& geom(const tak::hpi::Vfs& vfs) {
+const Geom& geom(const ta::hpi::Vfs& vfs) {
     static Geom g = [&] {
         Geom r;
         try {
-            tak::gui::Gui ui = tak::gui::parse(vfs.read("guis/unitinfo.gui"), "guis/unitinfo.gui");
+            ta::gui::Gui ui = ta::gui::parse(vfs.read("guis/unitinfo.gui"), "guis/unitinfo.gui");
             auto take = [&](const char* n, Rect& out) {
-                if (const tak::gui::Gadget* w = ui.find(n))
+                if (const ta::gui::Gadget* w = ui.find(n))
                     out = {float(w->x), float(w->y), float(w->w), float(w->h)};
             };
             take("UnitInfo", r.dialog);   // the root gadget shares the title's name
@@ -72,7 +72,7 @@ const Geom& geom(const tak::hpi::Vfs& vfs) {
 
 // Pick the unit whose info to show, retail's way: the conjure/build icon under the
 // cursor wins, else the first selected unit. Returns nullptr if neither yields one.
-const tak::sim::UnitType* GameView::unitInfoSubject() const {
+const ta::sim::UnitType* GameView::unitInfoSubject() const {
     int mx = 0, my = 0;
     SDL_GetMouseState(&mx, &my);
     for (const auto& [r, bt] : iconRects_)
@@ -91,11 +91,11 @@ void GameView::toggleUnitInfo() {
 
 void GameView::drawUnitInfo(int winW, int winH) {
     if (!unitInfoType_) return;
-    const tak::sim::UnitType* t = unitInfoType_;
+    const ta::sim::UnitType* t = unitInfoType_;
     const Geom& g = geom(vfs_);
-    tak::GuiLayout lay(winW, winH);
+    ta::GuiLayout lay(winW, winH);
 
-    if (!unitInfoBg_) unitInfoBg_ = tak::gafTexture(ren_, vfs_, g.bgGaf, g.bgSeq, 0);
+    if (!unitInfoBg_) unitInfoBg_ = ta::gafTexture(ren_, vfs_, g.bgGaf, g.bgSeq, 0);
     SDL_FRect dlg = lay.rect(g.dialog.x, g.dialog.y, g.dialog.w, g.dialog.h);
     SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
     if (unitInfoBg_) {
@@ -124,8 +124,8 @@ void GameView::drawUnitInfo(int winW, int winH) {
         if (unitInfoIcon_) { gpuvram::destroy(unitInfoIcon_); unitInfoIcon_ = nullptr; }
         std::string up = t->id;
         for (char& c : up) c = char(std::toupper((unsigned char)c));
-        unitInfoIcon_ = tak::gafTexture(ren_, vfs_, "buildbuttons", up, 0);
-        if (!unitInfoIcon_) unitInfoIcon_ = tak::gafTexture(ren_, vfs_, "buildbuttons", t->id, 0);
+        unitInfoIcon_ = ta::gafTexture(ren_, vfs_, "buildbuttons", up, 0);
+        if (!unitInfoIcon_) unitInfoIcon_ = ta::gafTexture(ren_, vfs_, "buildbuttons", t->id, 0);
         unitInfoIconFor_ = t->id;
     }
     if (unitInfoIcon_) {
@@ -161,7 +161,7 @@ void GameView::drawUnitInfo(int winW, int winH) {
     // The OK button: retail art if it's there, a plain plate otherwise.
     SDL_FRect ok = lay.rect(g.ok.x, g.ok.y, g.ok.w, g.ok.h);
     unitInfoOkRect_ = ok;
-    if (!unitInfoOk_) unitInfoOk_ = tak::gafTexture(ren_, vfs_, g.bgGaf, "OkButtons", 0);
+    if (!unitInfoOk_) unitInfoOk_ = ta::gafTexture(ren_, vfs_, g.bgGaf, "OkButtons", 0);
     if (unitInfoOk_) {
         SDL_RenderCopyF(ren_, unitInfoOk_, nullptr, &ok);
     } else {

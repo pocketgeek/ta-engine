@@ -9,7 +9,7 @@
 #include <sstream>
 #include <string>
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -173,4 +173,4 @@ bool saveSettings(const Settings& s) {
     return std::rename(tmp.c_str(), path.c_str()) == 0;
 }
 
-}  // namespace tak
+}  // namespace ta

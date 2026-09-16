@@ -64,14 +64,14 @@ jobs:
         # + the WIN32 -static flag) so the .exe is fully self-contained -- no bundled DLLs.
         run: |
           cmake -B build -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target takclient takserver detmath_test sim_driver_equiv_test
+          cmake --build build --target taclient taserver detmath_test sim_driver_equiv_test
 
       - name: Verify fully static (no SDL2/jpeg/zlib/ffmpeg DLL imports)
         run: |
-          imports=$(objdump -p build/takclient.exe | awk '/DLL Name:/{print tolower($3)}')
+          imports=$(objdump -p build/taclient.exe | awk '/DLL Name:/{print tolower($3)}')
           echo "$imports"
           if echo "$imports" | grep -qE 'sdl2|jpeg|zlib|libz|libpng|avcodec|avformat|swscale|swresample|avutil'; then
-            echo "::error::takclient.exe still imports a non-static media DLL -- not fully static"; exit 1
+            echo "::error::taclient.exe still imports a non-static media DLL -- not fully static"; exit 1
           fi
           echo "OK: no SDL2/jpeg/zlib/ffmpeg DLL imports -- fully static"
 
@@ -81,54 +81,54 @@ jobs:
       - name: Bundle (exes + required DLLs) + zip
         run: |
           mkdir -p dist-win
-          cp build/takclient.exe build/takserver.exe dist-win/
+          cp build/taclient.exe build/taserver.exe dist-win/
           # Safety net: copy any non-system DLL still imported (should be none now that
           # SDL2/jpeg/zlib are static; graceful if a target ends up dynamic anyway).
-          ldd build/takclient.exe build/takserver.exe \
+          ldd build/taclient.exe build/taserver.exe \
             | awk '/mingw64\/bin/ {print $3}' | sort -u \
             | while read -r dll; do cp "$dll" dist-win/; done
-          (cd dist-win && zip -r "../takclient-$VERSION-windows-x64.zip" .)
+          (cd dist-win && zip -r "../taclient-$VERSION-windows-x64.zip" .)
 
       # Proper installer (NSIS via CPack): installs into Program Files\TAK Engine
       # with Start-menu shortcuts + an uninstaller. Same static binaries as the zip.
       - name: Build installer (NSIS)
         run: |
           (cd build && cpack -G NSIS)
-          ls -l build/tak-engine-*-setup.exe
+          ls -l build/ta-engine-*-setup.exe
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-windows-x64
+          name: taclient-windows-x64
           path: dist-win/
 
       - name: Upload CI artifact (installer)
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-windows-x64-setup
-          path: build/tak-engine-*-setup.exe
+          name: ta-engine-windows-x64-setup
+          path: build/ta-engine-*-setup.exe
 
       # Debug build: the release binaries are hardened (only --data/--version, no env
       # vars), so ship an unhardened DEBUG bundle for devs who need the CLI flags,
-      # TAK_* env hooks, and the headless --mp* harness.
+      # TA_* env hooks, and the headless --mp* harness.
       - name: Configure + build (debug)
         run: |
           cmake -B build-debug -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-debug --target takclient takserver
+          cmake --build build-debug --target taclient taserver
 
       - name: Bundle (exes + required DLLs) + zip (debug)
         run: |
           mkdir -p dist-win-debug
-          cp build-debug/takclient.exe build-debug/takserver.exe dist-win-debug/
-          ldd build-debug/takclient.exe build-debug/takserver.exe \
+          cp build-debug/taclient.exe build-debug/taserver.exe dist-win-debug/
+          ldd build-debug/taclient.exe build-debug/taserver.exe \
             | awk '/mingw64\/bin/ {print $3}' | sort -u \
             | while read -r dll; do cp "$dll" dist-win-debug/; done
-          (cd dist-win-debug && zip -r ../takclient-windows-x64-debug.zip .)
+          (cd dist-win-debug && zip -r ../taclient-windows-x64-debug.zip .)
 
       - name: Upload CI artifact (debug)
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-windows-x64-debug
+          name: taclient-windows-x64-debug
           path: dist-win-debug/
 
       - name: Determinism gate (cross-platform parity)
@@ -151,8 +151,8 @@ jobs:
         run: |
           gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY `
             --title "TAK Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag 2>$null
-          $zip = "takclient-$($env:VERSION)-windows-x64.zip"
-          $setup = Get-ChildItem build\tak-engine-*-setup.exe | Select-Object -First 1
+          $zip = "taclient-$($env:VERSION)-windows-x64.zip"
+          $setup = Get-ChildItem build\ta-engine-*-setup.exe | Select-Object -First 1
           gh release upload $env:GITHUB_REF_NAME `
-            $zip takclient-windows-x64-debug.zip $setup.FullName `
+            $zip taclient-windows-x64-debug.zip $setup.FullName `
             --repo $env:GITHUB_REPOSITORY --clobber

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::tdf {
+namespace ta::tdf {
 
 // TDF: the TA-family text config format used by .fbi (units), .tdf, .ota
 // (maps), .gui files. Nested [SECTION] { key=value; ... } blocks.
@@ -27,4 +27,4 @@ struct Node {
 Node parse(const std::filesystem::path& file);
 Node parseText(const std::string& text, const std::string& originName = "<memory>");
 
-} // namespace tak::tdf
+} // namespace ta::tdf

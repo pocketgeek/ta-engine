@@ -25,7 +25,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace tak::hpi {
+namespace ta::hpi {
 
 namespace {
 
@@ -698,12 +698,12 @@ uint64_t gameplayHash(const Vfs& vfs) {
             featFiles[k] = p;
         }
         for (const auto& [k, p] : featFiles) {
-            tak::tdf::Node root;
+            ta::tdf::Node root;
             try {
                 auto b = vfs.read(p);
-                root = tak::tdf::parseText(std::string(b.begin(), b.end()), p);
+                root = ta::tdf::parseText(std::string(b.begin(), b.end()), p);
             } catch (const std::exception&) { continue; }   // loader skips it too
-            std::map<std::string, const tak::tdf::Node*> secs;   // sorted sections
+            std::map<std::string, const ta::tdf::Node*> secs;   // sorted sections
             for (const auto& n : root.childOrder) {
                 std::string lo = n;
                 for (char& c : lo) c = char(std::tolower(static_cast<unsigned char>(c)));
@@ -867,7 +867,7 @@ std::vector<std::pair<std::string, std::string>> listMaps(const Vfs& vfs) {
 std::string findMap(const Vfs& vfs, const std::string& name) {
     // A "~gen1~" random-map id carries its recipe, not a file -- resolve it to itself
     // so every call site (client, server referee, MP lobby) generates in memory.
-    if (tak::mapgen::isGeneratedMapId(name)) return name;
+    if (ta::mapgen::isGeneratedMapId(name)) return name;
     std::string want = name;
     // Accept either a bare name or a name with a .tnt suffix.
     if (want.size() > 4) {
@@ -889,4 +889,4 @@ std::string findMap(const Vfs& vfs, const std::string& name) {
     return {};
 }
 
-} // namespace tak::hpi
+} // namespace ta::hpi

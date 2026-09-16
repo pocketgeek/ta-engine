@@ -12,7 +12,7 @@
 #include <iostream>
 #include <fstream>
 
-using tak::tdo::Object;
+using ta::tdo::Object;
 
 static void printTree(const Object& o, int depth) {
     std::cout << std::string(size_t(depth) * 2, ' ') << (o.name.empty() ? "(unnamed)" : o.name)
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     }
     std::string cmd = argv[1];
     try {
-        auto m = tak::tdo::load(argv[2]);
+        auto m = ta::tdo::load(argv[2]);
 
         if (cmd == "info") {
             printTree(m.root, 0);
@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
                     auto [x1, y1] = toPx(poly[(i + 1) % poly.size()]);
                     drawLine(img, W, H, x0, y0, x1, y1);
                 }
-            tak::png::write(argv[3], W, H, img);
+            ta::png::write(argv[3], W, H, img);
             std::cout << "wrote " << argv[3] << " (" << polys.size() << " polys)\n";
         } else {
             std::cerr << "unknown command\n";

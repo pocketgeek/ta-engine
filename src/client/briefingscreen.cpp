@@ -17,7 +17,7 @@
 #include "client/dev.h"
 #include "client/appquit.h"
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -58,7 +58,7 @@ struct BriefingVo {
 
 bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::string& stem,
                          const std::string& title, Settings* settings, MenuMusic* music) {
-    std::vector<std::string> objectives = tak::loadObjectives(vfs, stem);
+    std::vector<std::string> objectives = ta::loadObjectives(vfs, stem);
 
     // Play the mission's briefing VO if the install ships one (only some missions do).
     BriefingVo vo;
@@ -67,7 +67,7 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
         SDL_AudioSpec spec{};
         Uint32 len = 0;
         if (SDL_LoadWAV_RW(SDL_RWFromConstMem(wav.data(), int(wav.size())), 1, &spec, &vo.buf, &len)) {
-            vo.dev = tak::openAudioDevice(0, &spec, nullptr, 0);
+            vo.dev = ta::openAudioDevice(0, &spec, nullptr, 0);
             int gain = settings ? std::clamp(settings->masterVol * settings->sfxVol * 128 / (256 * 256), 0, 128) : 128;
             if (vo.dev && gain > 0) {
                 if (gain < 128) {   // scale to the user's volume
@@ -93,7 +93,7 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
     SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
 
     for (;;) {
-        if (tak::termRequested()) return false;   // SIGTERM/SIGINT -> abort to shutdown
+        if (ta::termRequested()) return false;   // SIGTERM/SIGINT -> abort to shutdown
         int w = 0, h = 0;
         SDL_GetRendererOutputSize(ren, &w, &h);
         float u = std::clamp(std::min(w / 1280.0f, h / 720.0f), 1.0f, 3.0f);
@@ -190,8 +190,8 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
                 cursors.draw(ren, CursorId::Normal, mx, my, sc);
             }
         }
-        // Debug: TAK_SHOT_BRIEFING captures one frame for tests, then begins.
-        if (const char* sp = tak::devEnv("TAK_SHOT_BRIEFING")) {
+        // Debug: TA_SHOT_BRIEFING captures one frame for tests, then begins.
+        if (const char* sp = ta::devEnv("TA_SHOT_BRIEFING")) {
             std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
             if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_ABGR8888, px.data(), w * 4) == 0)
                 png::write(sp, w, h, px);
@@ -205,4 +205,4 @@ bool BriefingScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::stri
     }
 }
 
-}  // namespace tak
+}  // namespace ta

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::tdo {
+namespace ta::tdo {
 
 // 3DO model format (shared with classic TA, version 1). A model is a tree
 // of objects, each with vertices (s32 fixed-point, 1/65536 units), textured
@@ -36,4 +36,4 @@ Model load(const std::filesystem::path& file);
 // Parse from an in-memory buffer (a VFS-resolved archive entry).
 Model load(const std::vector<uint8_t>& d);
 
-} // namespace tak::tdo
+} // namespace ta::tdo

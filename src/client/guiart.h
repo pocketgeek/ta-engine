@@ -11,9 +11,9 @@
 
 #include "gaf/gaf.h"
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak {
+namespace ta {
 
 // Palette for `anims/<gaf>.gaf`: its sibling .pcx if present, else the shared GUI
 // palette. Returns an empty palette if neither loads (art then simply doesn't draw).
@@ -51,4 +51,4 @@ struct GuiLayout {
     }
 };
 
-}  // namespace tak
+}  // namespace ta

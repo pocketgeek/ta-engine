@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <vector>
 
-namespace tak::jpeg {
+namespace ta::jpeg {
 
 struct Image {
     int width = 0, height = 0;
@@ -14,4 +14,4 @@ struct Image {
 // Decode from an in-memory buffer (a VFS-resolved archive entry).
 Image load(const std::vector<uint8_t>& d);
 
-} // namespace tak::jpeg
+} // namespace ta::jpeg

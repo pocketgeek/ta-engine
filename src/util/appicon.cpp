@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 
-namespace tak::appicon {
+namespace ta::appicon {
 
 namespace {
 
@@ -222,4 +222,4 @@ std::vector<uint8_t> render(Kind kind, int size) {
     return out;
 }
 
-} // namespace tak::appicon
+} // namespace ta::appicon

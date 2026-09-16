@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace tak::net {
+namespace ta::net {
 
 // Player command wire format, shared by the client and server and reused by the
 // sim's applyCommand(). This was originally the payload of a 2-peer TCP lockstep
@@ -45,4 +45,4 @@ struct Command {
     char type[16] = {};   // unit type id for Train/Build
 };
 
-} // namespace tak::net
+} // namespace ta::net

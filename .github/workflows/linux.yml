@@ -128,7 +128,7 @@ jobs:
           # Every target the Linux install() rules reference, or cpack fails at
           # package time with "file INSTALL cannot find build/<target>" -- which is
           # exactly how 0.6.0 broke when cartographer joined those rules.
-          cmake --build build --target takclient takserver cartographer
+          cmake --build build --target taclient taserver cartographer
 
       # Windows and macOS each gate on their binaries being static; Linux did not, and it
       # is the platform where a leak is most costly: CPack derives package dependencies
@@ -138,12 +138,12 @@ jobs:
       # fully static binary could not resolve a host or open a window.
       - name: Verify fully static (only libc/libm linked)
         run: |
-          ldd build/takclient build/takserver || true
-          leaked=$(ldd build/takclient build/takserver \
+          ldd build/taclient build/taserver || true
+          leaked=$(ldd build/taclient build/taserver \
             | awk '/=>/{print $1}' | sort -u \
             | grep -vE '^(libc|libm|libdl|libpthread|librt)\.so|^linux-vdso|^/lib64/ld-' || true)
           if [ -n "$leaked" ]; then
-            echo "::error::takclient/takserver link non-libc shared libraries:"
+            echo "::error::taclient/taserver link non-libc shared libraries:"
             echo "$leaked"
             exit 1
           fi
@@ -153,14 +153,14 @@ jobs:
         if: matrix.family == 'deb'
         run: |
           (cd build && cpack -G DEB)
-          dpkg-deb -I build/tak-engine-*.deb   # show control + auto deps
-          mkdir -p dist && cp build/tak-engine-*.deb dist/
+          dpkg-deb -I build/ta-engine-*.deb   # show control + auto deps
+          mkdir -p dist && cp build/ta-engine-*.deb dist/
       - name: Package (.rpm)
         if: matrix.family == 'rpm'
         run: |
           (cd build && cpack -G RPM)
-          rpm -qp --requires build/tak-engine-*.rpm
-          mkdir -p dist && cp build/tak-engine-*.rpm dist/
+          rpm -qp --requires build/ta-engine-*.rpm
+          mkdir -p dist && cp build/ta-engine-*.rpm dist/
       - name: Package (.pkg.tar.zst)
         if: matrix.family == 'arch'
         run: |
@@ -170,26 +170,26 @@ jobs:
           useradd -m builder
           chown -R builder: .
           su builder -c 'cd packaging/arch && makepkg -f --nodeps'
-          pacman -Qip packaging/arch/tak-engine-*.pkg.tar.zst
-          mkdir -p dist && cp packaging/arch/tak-engine-*.pkg.tar.zst dist/
+          pacman -Qip packaging/arch/ta-engine-*.pkg.tar.zst
+          mkdir -p dist && cp packaging/arch/ta-engine-*.pkg.tar.zst dist/
 
       # Debug tarball from the oldest-glibc leg only: the release binaries are
       # hardened (only --data/--version, no env vars), so devs get an unhardened
-      # DEBUG build with the CLI flags, TAK_* env hooks, and the --mp* harness.
+      # DEBUG build with the CLI flags, TA_* env hooks, and the --mp* harness.
       - name: Build + tar the debug binaries
         if: matrix.debug == true
         run: |
           export CC=gcc-12 CXX=g++-12
           cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-debug --target takclient takserver
+          cmake --build build-debug --target taclient taserver
           mkdir -p dist-linux-debug
-          cp build-debug/takclient build-debug/takserver dist-linux-debug/
-          tar -C dist-linux-debug -czf dist/tak-engine-linux-x64-debug.tar.gz .
+          cp build-debug/taclient build-debug/taserver dist-linux-debug/
+          tar -C dist-linux-debug -czf dist/ta-engine-linux-x64-debug.tar.gz .
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-${{ matrix.tag }}
+          name: ta-engine-${{ matrix.tag }}
           path: dist/*
 
   release:
@@ -200,7 +200,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          pattern: tak-engine-*
+          pattern: ta-engine-*
           merge-multiple: true
           path: dist
       - name: Create release + upload packages

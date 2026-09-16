@@ -24,7 +24,7 @@ command -v codex >/dev/null 2>&1 || { echo "codex not installed" >&2; exit 2; }
 
 OUTDIR=$(git rev-parse --git-path codex-reviews)
 mkdir -p "$OUTDIR"
-MODEL="${TAK_REVIEW_MODEL:-gpt-6-astra}"
+MODEL="${TA_REVIEW_MODEL:-gpt-6-astra}"
 
 mapfile -t SHAS < <(git rev-list --reverse "$BASE..HEAD")
 echo "reviewing ${#SHAS[@]} commits since $BASE, $JOBS at a time, model $MODEL"
@@ -42,7 +42,7 @@ review_one() {
     fi
     local parent; parent=$(git rev-parse --verify -q "$sha^") || { echo "  skip $short (root)"; return 0; }
 
-    local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/tak-review-XXXXXX")
+    local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/ta-review-XXXXXX")
     if ! git worktree add --detach "$wt" "$sha" >/dev/null 2>&1; then
         rm -rf "$wt"; echo "  FAIL $short (worktree)"; return 1
     fi

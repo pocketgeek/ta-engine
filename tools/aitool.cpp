@@ -16,7 +16,7 @@
 #include <map>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 
 int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: aitool <install> [map] [passive|easy|normal|hard|absurd] [seconds]\n"); return 2; }
@@ -42,13 +42,13 @@ int main(int argc, char** argv) {
     cfg.vfs = &vfs;
     cfg.mapPath = hpi::findMap(vfs, map);
     if (cfg.mapPath.empty()) { std::fprintf(stderr, "aitool: map '%s' not found\n", map.c_str()); return 1; }
-    // Slot 0 = opponent (idle, or a 2nd AI under TAK_2AI), slot 1 = the AI under test.
+    // Slot 0 = opponent (idle, or a 2nd AI under TA_2AI), slot 1 = the AI under test.
     // Both carry the difficulty's income multiplier so an Absurd test is fair either way.
-    // TAK_FACTION=0..4 (ara/tar/ver/zon/cre) sets the AI-under-test's faction (default
+    // TA_FACTION=0..4 (ara/tar/ver/zon/cre) sets the AI-under-test's faction (default
     // 1 = Taros) so each faction's AI can be exercised.
     float mm = ai::incomeMultFor(diff);
     int fac = 1;
-    if (const char* fe = std::getenv("TAK_FACTION")) fac = std::clamp(std::atoi(fe), 0, 4);
+    if (const char* fe = std::getenv("TA_FACTION")) fac = std::clamp(std::atoi(fe), 0, 4);
     cfg.slots = {{true, 0, 0, mm}, {true, fac, 1, mm}};
     auto spots = sim::setupMatch(w, reg, cfg);
     std::vector<std::pair<float, float>> enemyStarts;
@@ -74,10 +74,10 @@ int main(int argc, char** argv) {
 
     // Controlled path test: spawn a knight at the AI base, order it straight at the
     // enemy base, and watch it travel -- isolates long-range nav from the AI logic.
-    if (std::getenv("TAK_PATHTEST")) {
+    if (std::getenv("TA_PATHTEST")) {
         const sim::UnitType* kt = reg.find("tarknigh");
         int id = w.spawn(kt, spots[1].first, spots[1].second, 0, 1);
-        bool am = std::getenv("TAK_PATHTEST_MOVE") == nullptr;   // default: attackMove (what the AI uses)
+        bool am = std::getenv("TA_PATHTEST_MOVE") == nullptr;   // default: attackMove (what the AI uses)
         if (am) w.attackMove(id, ex, ez, false); else w.order(id, ex, ez, false);
         std::printf("PATHTEST (%s): knight %d from (%.0f,%.0f) -> (%.0f,%.0f)\n",
                     am ? "attackMove" : "move", id, spots[1].first, spots[1].second, ex, ez);
@@ -95,11 +95,11 @@ int main(int argc, char** argv) {
     }
 
     ai::Controller ctl(1, reg, profile, 0x1234, diff, enemyStarts);
-    // TAK_2AI: put a second AI on player 0 (instead of an idle opponent) so we can see
+    // TA_2AI: put a second AI on player 0 (instead of an idle opponent) so we can see
     // whether two active AIs actually fight -- the realistic case.
     std::vector<std::pair<float, float>> starts0;
     if (!spots.empty()) starts0.push_back(spots[1]);   // AI-1's base is AI-0's enemy
-    bool twoAi = std::getenv("TAK_2AI") != nullptr;
+    bool twoAi = std::getenv("TA_2AI") != nullptr;
     ai::Controller ctl0(0, reg, profile, 0x5678, diff, starts0);
     std::map<int, int> cmdCount;   // Cmd kind -> count
     auto sink = [&](const net::Command& c) {
@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
         // CAP problem, and the two want opposite fixes.
         std::printf("t=%3ds  income=%.0f mana=%.0f/%.0f  army=%d closest-to-enemy=%.0f  | %s\n",
                     t, income, mana, w.player(1).storage, army, army ? minDist : -1, s.c_str());
-        if (std::getenv("TAK_AI_ECON")) {
+        if (std::getenv("TA_AI_ECON")) {
             // Where is the income going? Dump every under-construction site and every
             // builder's job so we can see a stalled/over-expensive build freezing the economy.
             for (const auto& u : w.units()) {
@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        if (std::getenv("TAK_AI_UNITS"))
+        if (std::getenv("TA_AI_UNITS"))
             for (const auto& u : w.units())
                 if (u.alive() && u.player == 1 && u.type && u.type->canMove && !u.type->isBuilder) {
                     float d = std::sqrt((u.x - ex) * (u.x - ex) + (u.z - ez) * (u.z - ez));

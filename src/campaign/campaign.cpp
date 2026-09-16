@@ -7,7 +7,7 @@
 #include "hpi/hpi.h"
 #include "tdf/tdf.h"
 
-namespace tak {
+namespace ta {
 namespace {
 
 // "camps/Book Of Darien.tdf" -> "book of darien"
@@ -164,4 +164,4 @@ std::vector<Campaign> loadCampaigns(const hpi::Vfs& vfs) {
     return camps;
 }
 
-}  // namespace tak
+}  // namespace ta

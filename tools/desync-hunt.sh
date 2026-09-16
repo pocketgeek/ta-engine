@@ -40,8 +40,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-CLIENT=./build-dbg/takclient
-SERVER=./build-dbg/takserver
+CLIENT=./build-dbg/taclient
+SERVER=./build-dbg/taserver
 [ -x "$CLIENT" ] && [ -x "$SERVER" ] || { echo "build-dbg binaries missing -- cmake --build build-dbg" >&2; exit 2; }
 
 OUT="${TMPDIR:-/tmp}/desync-hunt-$$"
@@ -54,13 +54,13 @@ echo "desync hunt: ${MINUTES}m per run, ${JOBS} in parallel, logs in $OUT"
 #
 # Maps are varied too -- Ulasem is roomy (placement never caps), Inner Circle is
 # cramped (it does), and the water maps exercise transports and naval pathing.
-# Every run is cadenced at 4x (TAK_SPEED=40) unless it overrides it. The harness is
+# Every run is cadenced at 4x (TA_SPEED=40) unless it overrides it. The harness is
 # WALL-CLOCK paced, not CPU bound -- a 24-core box sat at 0.68 load running one game --
 # so the limit on how much game time a hunt covers is the clock, not the machine.
 # Speed re-cadences how fast ticks are ISSUED; the per-tick dt is fixed and the sim is
 # bit-identical either way, so this buys 4x the coverage for nothing. One run below
 # deliberately stays at 1x as a control, in case the cadence itself ever matters.
-SPEED_DEFAULT="TAK_SPEED=40"
+SPEED_DEFAULT="TA_SPEED=40"
 
 # MONARCH EXPENDABLE BY DEFAULT, to buy back some of the sweep's lost game time.
 # With it off (the wire default) losing your Monarch loses the game, and 14 of 30 runs
@@ -81,42 +81,42 @@ SPEED_DEFAULT="TAK_SPEED=40"
 # Two runs below deliberately set it back to 0: the monarch-death win condition is sim
 # logic in its own right (updateOutcome reading hadMonarch_), and a spectator whose game
 # ended once wedged the referee, so "the game concludes" must stay covered.
-MONARCH_DEFAULT="TAK_MONARCH_EXPENDABLE=1"
+MONARCH_DEFAULT="TA_MONARCH_EXPENDABLE=1"
 
 RUNS=(
   "baseline|Ulasem Arena||"
   "crusades|Ulasem Arena||--crusades"
-  "gods|Ulasem Arena|TAK_GODS=1|"
-  "stress|Ulasem Arena|TAK_STRESS=1|"
-  "unitcap-250|Ulasem Arena|TAK_UNITCAP=250|"
-  "unitcap-5000|Ulasem Arena|TAK_UNITCAP=5000|"
-  "fog-explored|Ulasem Arena|TAK_FOG=1|"
-  "fog-full|Ulasem Arena|TAK_FOG=2|"
-  "ai-absurd|Ulasem Arena|TAK_AI_LEVEL=4|"
-  "ai-passive|Ulasem Arena|TAK_AI_LEVEL=0|"
-  "speed-4x|Ulasem Arena|TAK_SPEED=40|"
-  "flow-bench-high|Ulasem Arena|TAK_BENCH=3|"
-  "flow-bench-absurd|Ulasem Arena|TAK_BENCH=6|"
+  "gods|Ulasem Arena|TA_GODS=1|"
+  "stress|Ulasem Arena|TA_STRESS=1|"
+  "unitcap-250|Ulasem Arena|TA_UNITCAP=250|"
+  "unitcap-5000|Ulasem Arena|TA_UNITCAP=5000|"
+  "fog-explored|Ulasem Arena|TA_FOG=1|"
+  "fog-full|Ulasem Arena|TA_FOG=2|"
+  "ai-absurd|Ulasem Arena|TA_AI_LEVEL=4|"
+  "ai-passive|Ulasem Arena|TA_AI_LEVEL=0|"
+  "speed-4x|Ulasem Arena|TA_SPEED=40|"
+  "flow-bench-high|Ulasem Arena|TA_BENCH=3|"
+  "flow-bench-absurd|Ulasem Arena|TA_BENCH=6|"
   "cramped|Inner Circle||"
-  "cramped-sudden-death|Inner Circle|TAK_MONARCH_EXPENDABLE=0|"
-  "cramped-stress|Inner Circle|TAK_STRESS=1|"
+  "cramped-sudden-death|Inner Circle|TA_MONARCH_EXPENDABLE=0|"
+  "cramped-stress|Inner Circle|TA_STRESS=1|"
   "naval|Aibel's Seaport||"
   "naval-crusades|Aibel's Seaport||--crusades"
-  "lake|Lake Lokken|TAK_STRESS=1|"
+  "lake|Lake Lokken|TA_STRESS=1|"
   "overrides-full|Ulasem Arena||--overrides full"
-  "crusades-absurd|Tarosian Plain|TAK_AI_LEVEL=4|--crusades"
-  "everything|Tarosian Plain|TAK_GODS=1 TAK_STRESS=1 TAK_AI_LEVEL=4 TAK_FOG=1|--crusades"
-  "gods-random-starts|Ulasem Arena|TAK_GODS=1 TAK_RANDOM_STARTS=1|"
-  "gods-cramped|Inner Circle|TAK_GODS=1|"
-  "gods-crusades|Rift of Grief|TAK_GODS=1|--crusades"
-  "monarch-sudden-death|Ulasem Arena|TAK_MONARCH_EXPENDABLE=0 TAK_GODS=1|"
-  "forfeit-selfdestruct|Ulasem Arena|TAK_FORFEIT_SELFDESTRUCT=1|"
-  "random-starts|Sand River Plain|TAK_RANDOM_STARTS=1|"
-  "speed-1x-control|Ulasem Arena|TAK_SPEED=10|"
+  "crusades-absurd|Tarosian Plain|TA_AI_LEVEL=4|--crusades"
+  "everything|Tarosian Plain|TA_GODS=1 TA_STRESS=1 TA_AI_LEVEL=4 TA_FOG=1|--crusades"
+  "gods-random-starts|Ulasem Arena|TA_GODS=1 TA_RANDOM_STARTS=1|"
+  "gods-cramped|Inner Circle|TA_GODS=1|"
+  "gods-crusades|Rift of Grief|TA_GODS=1|--crusades"
+  "monarch-sudden-death|Ulasem Arena|TA_MONARCH_EXPENDABLE=0 TA_GODS=1|"
+  "forfeit-selfdestruct|Ulasem Arena|TA_FORFEIT_SELFDESTRUCT=1|"
+  "random-starts|Sand River Plain|TA_RANDOM_STARTS=1|"
+  "speed-1x-control|Ulasem Arena|TA_SPEED=10|"
   "overrides-cosmetic|Ulasem Arena||--overrides cosmetic"
-  "blood-and-roses|Blood and Roses|TAK_GODS=1 TAK_STRESS=1|"
-  "two-castles|Two Castles|TAK_GODS=1|--crusades"
-  "everything-2|Lake Lokken|TAK_GODS=1 TAK_STRESS=1 TAK_RANDOM_STARTS=1 TAK_AI_LEVEL=4 TAK_FOG=2|--crusades"
+  "blood-and-roses|Blood and Roses|TA_GODS=1 TA_STRESS=1|"
+  "two-castles|Two Castles|TA_GODS=1|--crusades"
+  "everything-2|Lake Lokken|TA_GODS=1 TA_STRESS=1 TA_RANDOM_STARTS=1 TA_AI_LEVEL=4 TA_FOG=2|--crusades"
 )
 [ "$QUICK" = "1" ] && RUNS=("${RUNS[@]:0:4}")
 
@@ -145,26 +145,26 @@ run_one() {
   #     if (int(it->second.size()) < live || live == 0) return;
   # and a spectator sends a literal 0 for its hash by design (gameview_net.cpp:
   # `isSpectator() ? 0 : world_.stateHash()`) because that field is a progress ack,
-  # not a checksum. So --mphost WITH TAK_MP_WATCH=1 -- eight AIs watched by a
+  # not a checksum. So --mphost WITH TA_MP_WATCH=1 -- eight AIs watched by a
   # spectator -- compares NOTHING, and this script used to report "no desyncs" for
   # runs in which no two simulation states were ever compared. That is a worse
   # outcome than a failure: it looks like evidence.
   #
   # 7 AIs + this client seated as the 8th player keeps the table full AND gives the
   # referee a real hash to check every kHashPeriod ticks.
-  # TAK_BENCH FORCES SPECTATOR MODE, whatever TAK_MP_AIS says:
-  #     bool watch = (autoMode == 1 && devEnv("TAK_MP_WATCH")) || benchmarkMode_;
+  # TA_BENCH FORCES SPECTATOR MODE, whatever TA_MP_AIS says:
+  #     bool watch = (autoMode == 1 && devEnv("TA_MP_WATCH")) || benchmarkMode_;
   # so a benchmark run seats no human, the referee's checkHashes returns on `live == 0`
   # and the client sends a zero hash anyway. These cases CANNOT detect a desync. They
   # are kept because they are still worth running -- thousands of units exercise the
   # all-AI flow-control path in canAdvance, which is where a server-side wedge lived --
   # but they are labelled so their "ok" is never mistaken for a verified simulation.
   local flowonly=0
-  case "$envs" in *TAK_BENCH*) flowonly=1;; esac
+  case "$envs" in *TA_BENCH*) flowonly=1;; esac
 
   local secs=$((MINUTES * 60))
   # shellcheck disable=SC2086
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 $SPEED_DEFAULT $MONARCH_DEFAULT $envs \
+  env TA_HEADLESS=1 SDL_VIDEODRIVER=dummy TA_MP_AIS=7 $SPEED_DEFAULT $MONARCH_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$DATA" \
       --server 127.0.0.1 --serverport "$port" --mphost --time "$secs" $flags \
       >"$clog" 2>&1
@@ -213,7 +213,7 @@ if [ -n "$hits" ]; then
 else
   echo "no desyncs in any run"
 fi
-echo "note: benchmark cases (TAK_BENCH) run as spectators and compare NO hashes --"
+echo "note: benchmark cases (TA_BENCH) run as spectators and compare NO hashes --"
 echo "      they cover flow control only; their result is not a determinism result."
 echo "runs that did not finish cleanly:"
 for f in "$OUT"/*.client.log; do

@@ -16,20 +16,20 @@ std::string lower(std::string s) {
 }
 } // namespace
 
-void FeatureLibrary::scan(const tak::hpi::Vfs& vfs, const std::string& world) {
+void FeatureLibrary::scan(const ta::hpi::Vfs& vfs, const std::string& world) {
     refs_.clear();
     spriteCache_.clear();
     const std::string dirs[] = {"features/" + lower(world), "features/all worlds"};
     for (const std::string& dir : dirs) {
         for (const std::string& path : vfs.list(dir)) {
             if (std::filesystem::path(lower(path)).extension() != ".tdf") continue;
-            tak::tdf::Node root;
+            ta::tdf::Node root;
             try {
                 auto d = vfs.read(path);
-                root = tak::tdf::parseText(std::string(d.begin(), d.end()), path);
+                root = ta::tdf::parseText(std::string(d.begin(), d.end()), path);
             } catch (const std::exception&) { continue; }
             for (const std::string& sec : root.childOrder) {
-                const tak::tdf::Node* n = root.child(sec);
+                const ta::tdf::Node* n = root.child(sec);
                 if (!n) continue;
                 FeatureRef r;
                 r.name = sec;   // childOrder is already lowercased
@@ -54,25 +54,25 @@ const FeatureRef* FeatureLibrary::byName(const std::string& name) const {
     return nullptr;
 }
 
-const FeatSprite* FeatureLibrary::sprite(const tak::hpi::Vfs& vfs, const FeatureRef& r) {
+const FeatSprite* FeatureLibrary::sprite(const ta::hpi::Vfs& vfs, const FeatureRef& r) {
     auto it = spriteCache_.find(r.name);
     if (it != spriteCache_.end()) return &it->second;
     FeatSprite fs;
     // Palette: <world>_features.pcx, else <world>.pcx, else aramon_features.
     const std::string palCands[] = {r.world + "_features.pcx", r.world + ".pcx",
                                      "aramon_features.pcx"};
-    tak::gaf::Palette pal{};
+    ta::gaf::Palette pal{};
     bool havePal = false;
     for (const std::string& c : palCands) {
         try {
-            pal = tak::gaf::Palette::fromBytes(vfs.read("palettes/" + c), c);
+            pal = ta::gaf::Palette::fromBytes(vfs.read("palettes/" + c), c);
             havePal = true; break;
         } catch (const std::exception&) {}
     }
     if (havePal) {
         try {
             std::string gp = "anims/" + r.filename + ".gaf";
-            for (auto& sq : tak::gaf::load(vfs.read(gp), pal, -1, gp)) {
+            for (auto& sq : ta::gaf::load(vfs.read(gp), pal, -1, gp)) {
                 if (!lower(sq.name).empty() && lower(sq.name) == r.seqname &&
                     !sq.frames.empty() && sq.frames[0].width > 0) {
                     const auto& fr = sq.frames[0];

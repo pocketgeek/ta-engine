@@ -5,7 +5,7 @@
 #include <cstring>
 #include <utility>
 
-namespace tak::net {
+namespace ta::net {
 
 void setupSocket(int fd) {
     int one = 1;
@@ -55,7 +55,7 @@ bool Conn::connect(const std::string& host, uint16_t port, int timeoutMs) {
         else if (sockInProgress(sockErr())) {
             pollfd pf{};
             pf.fd = fd; pf.events = POLLOUT;
-            if (TAK_POLL(&pf, 1, timeoutMs) > 0 && (pf.revents & POLLOUT)) {
+            if (TA_POLL(&pf, 1, timeoutMs) > 0 && (pf.revents & POLLOUT)) {
                 int se = 0; socklen_t sl = sizeof se;
                 getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&se), &sl);
                 if (se == 0) { connected = true; fd_ = fd; }
@@ -221,4 +221,4 @@ std::string peerAddress(int fd) {
     return s;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

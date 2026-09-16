@@ -12,8 +12,8 @@
 
 #include <SDL.h>
 
-#include "terrain/terrain.h"   // tak::terrain::Compositor (by-value member)
-#include "tnt/tnt.h"           // tak::tnt::Map (by-value member)
+#include "terrain/terrain.h"   // ta::terrain::Compositor (by-value member)
+#include "tnt/tnt.h"           // ta::tnt::Map (by-value member)
 
 #include <condition_variable>
 #include <cstdint>
@@ -26,19 +26,19 @@
 #include <utility>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 class MapView {
 public:
-    MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& mapPath);
+    MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& mapPath);
     // Construct directly from an in-memory map (e.g. the editor's fresh/blank map).
-    MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, tak::tnt::Map map);
+    MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, ta::tnt::Map map);
     ~MapView();
 
     // Swap in a different map (discarding cached chunk textures). The compositor's
     // decoded-tile cache is content-addressed by tile key, so it stays valid. Used at
     // game start so the render terrain matches the map the sim actually loaded.
-    void reload(const tak::hpi::Vfs& vfs, const std::string& mapPath);
+    void reload(const ta::hpi::Vfs& vfs, const std::string& mapPath);
 
     void input(const SDL_Event& e);
 
@@ -71,17 +71,17 @@ public:
     float offX() const { return offX_; }
     float offY() const { return offY_; }
     float zoom() const { return zoom_; }
-    tak::terrain::Compositor& compositor() { return comp_; }
+    ta::terrain::Compositor& compositor() { return comp_; }
     void setZoom(float z) { zoom_ = z; }
     void setOffset(float x, float y) { offX_ = x; offY_ = y; }
     void setZoomSpeed(float m);
-    const tak::tnt::Map& map() const { return map_; }
+    const ta::tnt::Map& map() const { return map_; }
 
     // --- Editing (Cartographer) ------------------------------------------------
     // Mutable terrain access: edit map().tileKeys/tileCols/tileRows/heights/
     // features, then call tilesEdited() so any newly-referenced section textures
     // decode+upload and the tile-quad batch rebuilds next frame.
-    tak::tnt::Map& editMap() { return map_; }
+    ta::tnt::Map& editMap() { return map_; }
     void tilesEdited() { queueAllSections(); tileBatchDirty_ = true; }
 
 private:
@@ -89,7 +89,7 @@ private:
 
     // Load a real map from the VFS, OR -- when mapPath is a "~gen1~" random-map id --
     // build it procedurally in memory (client & server share the deterministic gen).
-    static tak::tnt::Map genOrLoad(const tak::hpi::Vfs& vfs, const std::string& mapPath);
+    static ta::tnt::Map genOrLoad(const ta::hpi::Vfs& vfs, const std::string& mapPath);
 
     // Collect the map's unique section keys and queue them for decode.
     void queueAllSections();
@@ -99,8 +99,8 @@ private:
     void sectionWorkerLoop();
 
     SDL_Renderer* ren_;
-    tak::tnt::Map map_;
-    tak::terrain::Compositor comp_;
+    ta::tnt::Map map_;
+    ta::terrain::Compositor comp_;
 
     // Terrain rendering: each referenced section JPG is uploaded ONCE as a GPU
     // texture (~7 MiB for a whole map, resolution-independent -- the old 512px

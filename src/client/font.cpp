@@ -8,12 +8,12 @@
 #include <algorithm>
 #include <filesystem>
 
-Font::Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPath) {
+Font::Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPath) {
     std::filesystem::path pcx = gafPath;
     pcx.replace_extension(".pcx");
-    auto pal = tak::gaf::Palette::fromBytes(vfs.read(pcx.generic_string()),
+    auto pal = ta::gaf::Palette::fromBytes(vfs.read(pcx.generic_string()),
                                             pcx.generic_string());
-    auto seqs = tak::gaf::load(vfs.read(gafPath), pal, -1, gafPath);
+    auto seqs = ta::gaf::load(vfs.read(gafPath), pal, -1, gafPath);
     if (seqs.empty()) return;
     auto& frames = seqs[0].frames;
     for (size_t i = 0; i < frames.size() && i < 256; ++i) {
@@ -27,7 +27,7 @@ Font::Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPa
             // vbounds() are all in those units, so a 2x texture is invisible to layout.
             // Glyphs are the smallest art in the game (a few px tall) and the HUD
             // magnifies them, so they stair-step as badly as anything.
-            g.tex = tak::art::makeTexture(ren, f.rgba, f.width, f.height);
+            g.tex = ta::art::makeTexture(ren, f.rgba, f.width, f.height);
         }
         glyphs_[i] = g;
     }

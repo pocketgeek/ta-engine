@@ -44,30 +44,30 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
   editing code, rebuild **whichever binary you actually run** — a stale build
   silently shows old behaviour (this has caused confusion). Rebuild both if unsure.
 - **After a `src/sim`, `src/net`, or `src/ai` change, rebuild ALL targets:**
-  `cmake --build build` (no `--target`). Those live in the shared `tak-formats`
+  `cmake --build build` (no `--target`). Those live in the shared `ta-formats`
   static lib, which is baked into each executable at link time — so `--target
-  takclient` alone leaves a **stale `takserver`** (its referee sim then disagrees
+  taclient` alone leaves a **stale `taserver`** (its referee sim then disagrees
   with the freshly-built clients and trips the referee-suspect check). Building
-  all targets relinks `takclient` AND `takserver` together.
-- **Release vs debug CLI.** A RELEASE `build/takclient` is hardened: it accepts ONLY
-  `--data <dir>` and `--version` (`--help` prints that), reads NO `TAK_*` env vars, and
+  all targets relinks `taclient` AND `taserver` together.
+- **Release vs debug CLI.** A RELEASE `build/taclient` is hardened: it accepts ONLY
+  `--data <dir>` and `--version` (`--help` prints that), reads NO `TA_*` env vars, and
   always launches the front-end menu — every mode keyword (`game`/`map`/`replay`/`model`),
   gameplay/dev/test flag, and env hook is `#ifndef NDEBUG` (see `src/client/dev.h` for the
   env wrapper). So all the CLI-driven flows below need the DEBUG `build-dbg/` binaries.
-- Play (debug build): `./build-dbg/takclient game "<map name>" --data <retail-install-dir> [--side X --aiside Y]`
+- Play (debug build): `./build-dbg/taclient game "<map name>" --data <retail-install-dir> [--side X --aiside Y]`
   — the engine reads a retail install directly (root `*.hpi` + `Maps/` + `Music/`
   + `overrides/`); maps are referenced by NAME, resolved via the VFS. `--overrides
   none|cosmetic|full` picks which of `overrides/` are mounted. README lists all options.
-  (A release `build/takclient --data <dir>` plays the same games through the menu.)
-- Headless determinism / smoke test — DEBUG binaries (the harness flags + `TAK_HEADLESS`
+  (A release `build/taclient --data <dir>` plays the same games through the menu.)
+- Headless determinism / smoke test — DEBUG binaries (the harness flags + `TA_HEADLESS`
   are debug-only). The server needs `--data` to run the referee + AI, and enforces a
   gameplay-data hash, so client and server must point at the same install. **A server
   now requires an account login by default** — pass `--no-auth` for a harness run (or
   give the client `--user NAME --pass PASSWORD`; an unused name registers itself). The
   server takes a couple seconds to mount + load, so wait for its "listening" line
   before the client:
-  `./build-dbg/takserver --port 7677 --data <install> --no-auth --seed 1 &` then
-  `TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy ./build-dbg/takclient game "<map>" --data <install> --server 127.0.0.1 --serverport 7677 --mpai --time 60` —
+  `./build-dbg/taserver --port 7677 --data <install> --no-auth --seed 1 &` then
+  `TA_HEADLESS=1 SDL_VIDEODRIVER=dummy ./build-dbg/taclient game "<map>" --data <install> --server 127.0.0.1 --serverport 7677 --mpai --time 60` —
   prints a state `hash=`. **`--seed` is required for a repeatable hash**: a game is
   otherwise seeded randomly (so Random Start Locations differ game to game), and the
   harness exists to produce the same hash twice. (Debug and release sims are
@@ -80,7 +80,7 @@ cmake -B build -G Ninja && cmake --build build      # Release -> ./build/*
 
 - `src/sim/` — deterministic sim (movement, A* nav, combat, economy). The
   authority for gameplay state; guard determinism carefully here.
-- `src/client/main.cpp` — the SDL2 app (`takclient`): rendering + input, and the
+- `src/client/main.cpp` — the SDL2 app (`taclient`): rendering + input, and the
   **COB animation VM runs here**, so animation never affects the sim hash.
 - `src/net/` + `src/server/` — client-server MP (lockstep relay, referee,
   server-run AI). `src/ai/` — the skirmish AI (emits commands).

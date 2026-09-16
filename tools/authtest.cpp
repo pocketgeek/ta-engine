@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 

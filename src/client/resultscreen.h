@@ -13,7 +13,7 @@
 
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 class MenuMusic;
 struct Settings;
@@ -52,4 +52,4 @@ public:
                             const ResultStats* stats = nullptr);
 };
 
-}  // namespace tak
+}  // namespace ta

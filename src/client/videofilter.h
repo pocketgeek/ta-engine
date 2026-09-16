@@ -27,7 +27,7 @@
 #include <cstdlib>
 #include <vector>
 
-namespace tak::video {
+namespace ta::video {
 
 // On/off, sampled from Settings::videoDeblock. A global for the same reason
 // art::g_smoothArt is one: the door-video path (MainMenu::setDoorTex) has no settings
@@ -70,4 +70,4 @@ inline void deblock(std::vector<uint8_t>& px, int w, int h, int strength) {
             filterLine(at(x, y - 2), at(x, y - 1), at(x, y), at(x, y + 1));
 }
 
-}  // namespace tak::video
+}  // namespace ta::video

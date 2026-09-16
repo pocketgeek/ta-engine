@@ -21,7 +21,7 @@
 #include <string_view>
 #include <vector>
 
-namespace tak::crypto {
+namespace ta::crypto {
 
 constexpr size_t kHashLen = 32;   // SHA-256 output
 constexpr size_t kBlockLen = 64;  // SHA-256 block
@@ -118,4 +118,4 @@ inline std::string toHex(const std::vector<uint8_t>& v) { return toHex(v.data(),
 void wipe(void* p, size_t len);
 void wipe(std::string& s);
 
-}  // namespace tak::crypto
+}  // namespace ta::crypto

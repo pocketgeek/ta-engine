@@ -1,7 +1,7 @@
 #pragma once
 
 // Wire protocol for the client-server multiplayer (docs/multiplayer-design.md).
-// A central takserver relays a server-sequenced deterministic lockstep: clients
+// A central taserver relays a server-sequenced deterministic lockstep: clients
 // send commands, the server assigns them to ticks and broadcasts one TickBundle
 // per tick. This header is shared by the server and the client.
 //
@@ -15,7 +15,7 @@
 
 #include "net/lockstep.h"   // Command / Cmd (the 35-byte command wire format is reused)
 
-namespace tak::net {
+namespace ta::net {
 
 constexpr uint32_t kNetVersion = 80;       // 80: the SEARCH refuses to route through a
                                            //     parked body (it is solid to the mover)
@@ -358,4 +358,4 @@ struct Reader {
     Command cmd();
 };
 
-}  // namespace tak::net
+}  // namespace ta::net

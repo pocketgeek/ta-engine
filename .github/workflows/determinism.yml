@@ -64,7 +64,7 @@ jobs:
   # the same sim state whether applied directly (single-player) or transported
   # through the multiplayer wire format first. Guards a serialization bug or a
   # sim-affecting side effect added to one driver path. Needs a real build
-  # (links tak-formats), so it runs the data-independent checks only -- the
+  # (links ta-formats), so it runs the data-independent checks only -- the
   # deeper data-backed leg needs the (gitignored) game assets. See
   # docs/sp-mp-equivalence.md.
   sim-equiv:

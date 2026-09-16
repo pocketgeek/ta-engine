@@ -5,7 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace tak::gaf {
+namespace ta::gaf {
 
 namespace {
 
@@ -252,4 +252,4 @@ std::vector<Sequence> load(const std::vector<uint8_t>& d, const Palette& pal,
     return out;
 }
 
-} // namespace tak::gaf
+} // namespace ta::gaf

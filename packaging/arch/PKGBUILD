@@ -1,14 +1,14 @@
 # TAK Engine Arch package. The CI (linux.yml, arch matrix leg) compiles the
-# binaries first (cmake --build build --target takclient takserver, with the
+# binaries first (cmake --build build --target taclient taserver, with the
 # static SDL2/jpeg/zlib + Bink FFmpeg baked in) and stamps @VERSION@; makepkg
 # here only packages the prebuilt binaries -- so every distro leg shares one
 # build recipe. Run from this directory: makepkg -f.
-pkgname=tak-engine
+pkgname=ta-engine
 pkgver=@VERSION@
 pkgrel=1
 pkgdesc="Clean-room engine recreation of Total Annihilation: Kingdoms"
 arch=('x86_64')
-url="https://github.com/pocketgeek/tak-engine"
+url="https://github.com/pocketgeek/ta-engine"
 license=('GPL-3.0-or-later')
 # Statically linked SDL2/libjpeg/zlib/FFmpeg -> only the C/C++ runtime is a
 # hard dependency. SDL2 dlopens its video/audio backends at runtime.
@@ -21,7 +21,7 @@ optdepends=('libx11: X11 video backend'
 options=('!debug')
 
 package() {
-  install -Dm755 "$startdir/../../build/takclient" "$pkgdir/usr/bin/takclient"
-  install -Dm755 "$startdir/../../build/takserver" "$pkgdir/usr/bin/takserver"
+  install -Dm755 "$startdir/../../build/taclient" "$pkgdir/usr/bin/taclient"
+  install -Dm755 "$startdir/../../build/taserver" "$pkgdir/usr/bin/taserver"
   install -Dm644 "$startdir/../../LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

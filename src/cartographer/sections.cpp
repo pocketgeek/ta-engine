@@ -7,7 +7,7 @@
 
 namespace cart {
 
-void SectionLibrary::scan(const tak::hpi::Vfs& vfs, const std::string& world) {
+void SectionLibrary::scan(const ta::hpi::Vfs& vfs, const std::string& world) {
     sections_.clear();
     cache_.clear();
     std::string root = "sections/" + world + "/";   // VFS keys are lowercased
@@ -29,19 +29,19 @@ void SectionLibrary::scan(const tak::hpi::Vfs& vfs, const std::string& world) {
     });
 }
 
-const tak::tnt::Map* SectionLibrary::load(const tak::hpi::Vfs& vfs, const std::string& path) {
+const ta::tnt::Map* SectionLibrary::load(const ta::hpi::Vfs& vfs, const std::string& path) {
     auto it = cache_.find(path);
     if (it != cache_.end()) return &it->second;
     try {
         auto d = vfs.read(path);
-        auto m = tak::tnt::Map::load(d, path);
+        auto m = ta::tnt::Map::load(d, path);
         return &cache_.emplace(path, std::move(m)).first->second;
     } catch (const std::exception&) {
         return nullptr;
     }
 }
 
-bool stampSection(tak::tnt::Map& map, const tak::tnt::Map& section, int bx, int by) {
+bool stampSection(ta::tnt::Map& map, const ta::tnt::Map& section, int bx, int by) {
     if (bx + section.blocksX <= 0 || by + section.blocksY <= 0 ||
         bx >= map.blocksX || by >= map.blocksY)
         return false;

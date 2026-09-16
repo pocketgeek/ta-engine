@@ -7,7 +7,7 @@
 // Working today: mount a retail install, open/create a .tnt map (flat stamp or
 // the engine's procedural generator), render the terrain with pan/zoom in the
 // editor chrome, paint with the section-prefab stamp brush (sections.h), place
-// features (features.h) and units (units.h, via the shared tak::crt), and save.
+// features (features.h) and units (units.h, via the shared ta::crt), and save.
 // triggers.h carries the RE'd condition/action opcode tables, so a rule can be
 // read and formatted; authoring them in a dialog, the remaining property
 // dialogs, and the HPI/.kmp bundle writer are still to come.
@@ -59,23 +59,23 @@ constexpr int kUIScale = 4;
 // procedural terrain from the engine's map generator (the "~gen1~" generator the
 // lobby uses -- coastlines, relief, trees/rocks/mana, and start positions).
 struct FreshMap {
-    tak::tnt::Map map;
-    std::vector<tak::tnt::StartPos> starts;   // only for random terrain
+    ta::tnt::Map map;
+    std::vector<ta::tnt::StartPos> starts;   // only for random terrain
 };
-FreshMap buildFreshMap(const tak::hpi::Vfs& vfs, cart::SectionLibrary& sections,
-                       tak::terrain::Compositor& comp, const std::string& world,
+FreshMap buildFreshMap(const ta::hpi::Vfs& vfs, cart::SectionLibrary& sections,
+                       ta::terrain::Compositor& comp, const std::string& world,
                        int wUnits, int hUnits, bool random) {
     FreshMap out;
     if (random) {
-        tak::mapgen::Params gp;
+        ta::mapgen::Params gp;
         static const char* kW[] = {"aramon", "taros", "veruna", "zhon", "creon"};
-        gp.mapType = tak::mapgen::Aramon;
+        gp.mapType = ta::mapgen::Aramon;
         for (uint8_t i = 0; i < 5; ++i) if (world == kW[i]) gp.mapType = i;
         gp.widthCells = uint16_t(wUnits * 32);
         gp.heightCells = uint16_t(hUnits * 32);
         gp.players = 4;
         gp.seed = uint64_t(SDL_GetPerformanceCounter());   // new layout each call
-        auto res = tak::mapgen::generate(tak::mapgen::sanitize(gp), vfs);
+        auto res = ta::mapgen::generate(ta::mapgen::sanitize(gp), vfs);
         out.map = std::move(res.map);
         int n = 1;
         for (auto& [sx, sz] : res.starts) out.starts.push_back({n++, sx, sz});
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
     if (dataRoot.empty()) {
         std::error_code ec;
         std::filesystem::path here = std::filesystem::current_path(ec);
-        if (!ec && tak::hpi::validInstall(here, nullptr)) {
+        if (!ec && ta::hpi::validInstall(here, nullptr)) {
             dataRoot = here.string();
             std::fprintf(stderr, "data: using the local directory %s\n", dataRoot.c_str());
         }
@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
         ("Cartographer -- " + mapName).c_str(), SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED, 1280 * kUIScale, 800 * kUIScale, SDL_WINDOW_RESIZABLE);
     {   // Application icon: the compass-rose badge (src/util/appicon).
-        std::vector<uint8_t> ic = tak::appicon::render(tak::appicon::Kind::Cartographer, 64);
+        std::vector<uint8_t> ic = ta::appicon::render(ta::appicon::Kind::Cartographer, 64);
         if (SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(
                 ic.data(), 64, 64, 32, 64 * 4, SDL_PIXELFORMAT_RGBA32)) {
             SDL_SetWindowIcon(win, s);
@@ -167,9 +167,9 @@ int main(int argc, char** argv) {
 
     // Mount the retail install exactly like the engine (loose + *.hpi, retail
     // precedence). The Vfs must outlive the MapView (it borrows it by ref).
-    tak::hpi::Vfs vfs;
+    ta::hpi::Vfs vfs;
     try {
-        vfs = tak::hpi::mountRetailRoot(dataRoot, tak::hpi::OverridePolicy::Full);
+        vfs = ta::hpi::mountRetailRoot(dataRoot, ta::hpi::OverridePolicy::Full);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "mount %s: %s\n", dataRoot.c_str(), e.what());
         return 1;
@@ -180,13 +180,13 @@ int main(int argc, char** argv) {
     if (newW > 0 && newH > 0 && !exportPath.empty()) {
         cart::SectionLibrary nsections;
         nsections.scan(vfs, newWorld);
-        tak::terrain::Compositor ncomp(vfs);
-        tak::tnt::Map nm = cart::newBlankMap(vfs, nsections, ncomp, newWorld, newW, newH);
+        ta::terrain::Compositor ncomp(vfs);
+        ta::tnt::Map nm = cart::newBlankMap(vfs, nsections, ncomp, newWorld, newW, newH);
         if (nm.width == 0) {
             std::fprintf(stderr, "new: no sections for world '%s'\n", newWorld.c_str());
             return 1;
         }
-        tak::tnt::Scenario nsc;
+        ta::tnt::Scenario nsc;
         nsc.kingdom = newWorld;
         nsc.missionName = mapName.empty() ? "Untitled" : mapName;
         nsc.sizeW = newW; nsc.sizeH = newH;
@@ -214,10 +214,10 @@ int main(int argc, char** argv) {
     // without --save) starts a fresh blank map instead -- mapPath stays empty so
     // there are no sibling scenario files to load.
     std::string mapPath;
-    tak::tnt::Scenario scenario;
+    ta::tnt::Scenario scenario;
     std::unique_ptr<MapView> mapViewPtr;
     if (!mapName.empty()) {
-        for (const auto& [name, path] : tak::hpi::listMaps(vfs)) {
+        for (const auto& [name, path] : ta::hpi::listMaps(vfs)) {
             std::string lo = name;
             for (char& c : lo) c = char(std::tolower((unsigned char)c));
             std::string want = mapName;
@@ -234,12 +234,12 @@ int main(int argc, char** argv) {
         std::string otaPath = mapPath.substr(0, mapPath.rfind('.')) + ".ota";
         try {
             auto b = vfs.read(otaPath);
-            scenario = tak::tnt::Scenario::parse(std::string(b.begin(), b.end()));
+            scenario = ta::tnt::Scenario::parse(std::string(b.begin(), b.end()));
         } catch (const std::exception&) { /* no .ota: keep defaults */ }
     } else {
         int fw = newW > 0 ? newW : 8, fh = newH > 0 ? newH : 8;
         cart::SectionLibrary ns; ns.scan(vfs, newWorld);
-        tak::terrain::Compositor nc(vfs);
+        ta::terrain::Compositor nc(vfs);
         FreshMap fm = buildFreshMap(vfs, ns, nc, newWorld, fw, fh, randomTerrain);
         if (fm.map.width == 0) {
             std::fprintf(stderr, "new: could not build terrain for world '%s'\n", newWorld.c_str());
@@ -274,7 +274,7 @@ int main(int argc, char** argv) {
     // rules, regions, and custom types the unit tool doesn't edit. `units` is
     // the editor's working view (map pixels); `scen` is everything else.
     std::string crtPath = mapPath.substr(0, mapPath.rfind('.')) + ".crt";
-    tak::crt::Scenario scen = cart::loadScenario(vfs, crtPath);
+    ta::crt::Scenario scen = cart::loadScenario(vfs, crtPath);
     std::vector<cart::PlacedUnit> units = cart::toPlaced(scen);
     bool unitsEdited = false;
 
@@ -347,7 +347,7 @@ int main(int argc, char** argv) {
         auto bytesOf = [](const std::string& s) {
             return std::vector<uint8_t>(s.begin(), s.end());
         };
-        std::vector<tak::hpi::PackFile> pf;
+        std::vector<ta::hpi::PackFile> pf;
         pf.push_back({dir + base + ".tnt", mapView.map().save()});
         if (!useOnly.empty()) {
             std::vector<std::string> types(useOnly.begin(), useOnly.end());
@@ -361,7 +361,7 @@ int main(int argc, char** argv) {
         pf.push_back({dir + base + ".txt", bytesOf(scenario.missionDescription.empty()
                                                        ? scenario.missionName
                                                        : scenario.missionDescription)});
-        std::vector<uint8_t> kmp = tak::hpi::pack(pf);
+        std::vector<uint8_t> kmp = ta::hpi::pack(pf);
         return writeFile(kmpPath, kmp.data(), kmp.size());
     };
 
@@ -386,7 +386,7 @@ int main(int argc, char** argv) {
     auto stampByName = [&](const std::string& name, int bx, int by) -> bool {
         for (const auto& s : sections.list())
             if (s.name == name) {
-                const tak::tnt::Map* sec = sections.load(vfs, s.path);
+                const ta::tnt::Map* sec = sections.load(vfs, s.path);
                 if (sec && cart::stampSection(mapView.editMap(), *sec, bx, by)) {
                     mapView.tilesEdited();
                     edited = true; dirty = true;
@@ -458,8 +458,8 @@ int main(int argc, char** argv) {
         auto it = thumbs.find(path);
         if (it != thumbs.end()) return it->second;
         SDL_Texture* t = nullptr;
-        if (const tak::tnt::Map* sec = sections.load(vfs, path)) {
-            tak::jpeg::Image img = mapView.compositor().renderMap(*sec);
+        if (const ta::tnt::Map* sec = sections.load(vfs, path)) {
+            ta::jpeg::Image img = mapView.compositor().renderMap(*sec);
             if (img.width > 0 && img.height > 0) {
                 t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
                                       SDL_TEXTUREACCESS_STATIC, img.width, img.height);
@@ -476,7 +476,7 @@ int main(int argc, char** argv) {
     auto stampAtMouse = [&](int mx, int my, int w, int h) {
         if (selected < 0 || mx < kPaletteW) return;   // palette side, not the canvas
         const auto& s = sections.list()[size_t(selected)];
-        const tak::tnt::Map* sec = sections.load(vfs, s.path);
+        const ta::tnt::Map* sec = sections.load(vfs, s.path);
         if (!sec || sec->blocksX <= 0) return;
         // Canvas-local -> world -> block, snapped to the section's own size so
         // sections tile cleanly.
@@ -571,7 +571,7 @@ int main(int argc, char** argv) {
     int mN = 0;                              // active field count
     int mfocus = 0;
     int editUnit = -1;                       // UNITS: index being edited (M_UNIT)
-    tak::crt::Rule* editRule = nullptr;      // M_RULE: rule whose params are edited
+    ta::crt::Rule* editRule = nullptr;      // M_RULE: rule whose params are edited
     std::vector<std::string> mMsg;           // M_MESSAGE: wrapped text lines
     SDL_Rect mBox[kMaxFields]{}, mOK{}, mCancel{}, mQuit{};   // render-computed hit rects
     // Pop a message box (word-wrapped to ~46 cols) — used by Check Map.
@@ -662,12 +662,12 @@ int main(int argc, char** argv) {
         mapView.tilesEdited();
         mapView.setOffset(0, 0);
         world = wld;
-        scenario = tak::tnt::Scenario{};
+        scenario = ta::tnt::Scenario{};
         scenario.kingdom = wld; scenario.sizeW = wu; scenario.sizeH = hu;
         scenario.missionName = nm;
         scenario.starts = std::move(fm.starts);
         mapName = nm;
-        units.clear(); scen = tak::crt::Scenario{}; useOnly.clear();
+        units.clear(); scen = ta::crt::Scenario{}; useOnly.clear();
         selected = sections.list().empty() ? -1 : 0;
         selectedFeat = features.list().empty() ? -1 : 0;
         paletteScroll = 0;
@@ -714,7 +714,7 @@ int main(int argc, char** argv) {
     };
     // Open the param editor for a condition/action rule (fields = its opcode's
     // parameters, in slot order).
-    auto openRuleEditor = [&](tak::crt::Rule* r, bool isAction) {
+    auto openRuleEditor = [&](ta::crt::Rule* r, bool isAction) {
         const auto& defs = isAction ? cart::actionDefs() : cart::conditionDefs();
         int op = std::clamp(r->opcode, 0, int(defs.size()) - 1);
         const auto& params = defs[size_t(op)].params;
@@ -768,10 +768,10 @@ int main(int argc, char** argv) {
     SDL_Rect rRuleList{}, rCondList{}, rActList{}, rPickList{};   // render-computed
     SDL_Rect rPrevP{}, rNextP{}, rAddRule{}, rDelRule{}, rAddCond{}, rDelCond{},
              rAddAct{}, rDelAct{}, rScrDone{}, rPickCancel{};
-    auto scrGroups = [&]() -> std::vector<tak::crt::RuleGroup>& {
+    auto scrGroups = [&]() -> std::vector<ta::crt::RuleGroup>& {
         return scen.players[size_t(scrPlayer)];
     };
-    auto curGroup = [&]() -> tak::crt::RuleGroup* {
+    auto curGroup = [&]() -> ta::crt::RuleGroup* {
         auto& gs = scrGroups();
         return (scrGroup >= 0 && scrGroup < int(gs.size())) ? &gs[size_t(scrGroup)] : nullptr;
     };
@@ -928,9 +928,9 @@ int main(int argc, char** argv) {
                         if (cart::pointIn(mx, my, rPickCancel)) pickOpen = false;
                         else if (cart::pointIn(mx, my, rPickList)) {
                             int row = (my - rPickList.y + pickScroll) / kRow;
-                            tak::crt::RuleGroup* g = curGroup();
+                            ta::crt::RuleGroup* g = curGroup();
                             if (g && row >= 0 && row < int(defs.size())) {
-                                tak::crt::Rule r; r.opcode = row;
+                                ta::crt::Rule r; r.opcode = row;
                                 for (size_t i = 0; i < defs[size_t(row)].params.size() && i < 5; ++i)
                                     r.slot[i] = cart::defaultParam(defs[size_t(row)].params[i]);
                                 if (pickAction) { g->actions.push_back(r); scrActSel = int(g->actions.size()) - 1; dirty = true; }
@@ -942,7 +942,7 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 auto& gs = scrGroups();
-                tak::crt::RuleGroup* g = curGroup();
+                ta::crt::RuleGroup* g = curGroup();
                 if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
                     scriptOpen = false;
                 } else if (e.type == SDL_MOUSEWHEEL) {
@@ -1419,7 +1419,7 @@ int main(int argc, char** argv) {
             constexpr int kRow = 12;
             SDL_Rect ct = cart::drawPanel(ren, w, h, 780, 520, "SCENARIO SCRIPTING");
             auto& gs = scen.players[size_t(scrPlayer)];
-            tak::crt::RuleGroup* g = curGroup();
+            ta::crt::RuleGroup* g = curGroup();
             // Header row: player nav, rule count, Done.
             rPrevP = cart::drawButton(ren, ct.x, ct.y, 18, 14, "<", false);
             cart::drawText(ren, "PLAYER " + std::to_string(scrPlayer), ct.x + 24, ct.y + 3, 1, 220, 224, 235);
@@ -1454,7 +1454,7 @@ int main(int argc, char** argv) {
             }
             SDL_RenderSetClipRect(ren, nullptr);
             // Conditions + actions of the selected group.
-            auto drawRules = [&](const SDL_Rect& area, int scroll, const std::vector<tak::crt::Rule>* rules,
+            auto drawRules = [&](const SDL_Rect& area, int scroll, const std::vector<ta::crt::Rule>* rules,
                                  bool isAct, int selRow) {
                 if (!rules) return;
                 SDL_RenderSetClipRect(ren, &area);
@@ -1592,7 +1592,7 @@ int main(int argc, char** argv) {
             std::vector<uint8_t> px(size_t(ow) * oh * 4);
             if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_RGBA32,
                                      px.data(), ow * 4) == 0) {
-                tak::png::write(shotPath, ow, oh, px);
+                ta::png::write(shotPath, ow, oh, px);
                 std::fprintf(stderr, "shot %s (%dx%d)\n", shotPath.c_str(), ow, oh);
             }
             running = false;

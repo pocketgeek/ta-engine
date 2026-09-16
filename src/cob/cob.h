@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::cob {
+namespace ta::cob {
 
 // COB unit-script bytecode (TAK version 6; same opcode set as TA's v4 with
 // a 13-word header). Scripts animate 3DO pieces by name.
@@ -41,4 +41,4 @@ File load(const std::vector<uint8_t>& d, const std::string& origin = "<memory>")
 // Disassemble one script (by index) to text.
 std::string disassemble(const File& f, int script);
 
-} // namespace tak::cob
+} // namespace ta::cob

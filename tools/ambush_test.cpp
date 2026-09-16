@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int fails = 0;
 static void check(bool ok, const std::string& what, const std::string& detail = {}) {

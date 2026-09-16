@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 std::string lower(std::string s) {
@@ -19,7 +19,7 @@ int toInt(const std::string& s) { return std::atoi(s.c_str()); }
 float cellToWorld(float cell) { return cell * 16.0f + 8.0f; }
 }  // namespace
 
-ScenarioScript::ScenarioScript(const tak::crt::Scenario& scen, const TypeRegistry& reg,
+ScenarioScript::ScenarioScript(const ta::crt::Scenario& scen, const TypeRegistry& reg,
                                int viewPlayer, int maxPlayer, int mapWCells, int mapHCells)
     : reg_(reg), view_(viewPlayer), maxPlayer_(std::max(1, maxPlayer)),
       mapW_(mapWCells), mapH_(mapHCells), regions_(scen.regions) {
@@ -44,7 +44,7 @@ const UnitType* ScenarioScript::findType(const std::string& name) const {
     return reg_.find(lower(name));
 }
 
-const tak::crt::Region* ScenarioScript::region(const std::string& name) const {
+const ta::crt::Region* ScenarioScript::region(const std::string& name) const {
     std::string want = lower(name);
     if (want.empty() || want == "anywhere") return nullptr;   // whole map
     for (const auto& r : regions_)
@@ -53,7 +53,7 @@ const tak::crt::Region* ScenarioScript::region(const std::string& name) const {
 }
 
 bool ScenarioScript::inRegion(World&, float x, float z, const std::string& loc) const {
-    const tak::crt::Region* r = region(loc);
+    const ta::crt::Region* r = region(loc);
     int cx = int(x / 16.0f), cz = int(z / 16.0f);
     if (!r) return cx >= 0 && cz >= 0 && cx < mapW_ && cz < mapH_;   // whole map
     int lox = std::min(r->x1, r->x2), hix = std::max(r->x1, r->x2);
@@ -62,7 +62,7 @@ bool ScenarioScript::inRegion(World&, float x, float z, const std::string& loc) 
 }
 
 void ScenarioScript::regionCenter(const std::string& loc, float& x, float& z) const {
-    const tak::crt::Region* r = region(loc);
+    const ta::crt::Region* r = region(loc);
     if (!r) { x = cellToWorld(float(mapW_) * 0.5f); z = cellToWorld(float(mapH_) * 0.5f); return; }
     x = cellToWorld(float(r->x1 + r->x2) * 0.5f);
     z = cellToWorld(float(r->z1 + r->z2) * 0.5f);
@@ -101,7 +101,7 @@ void ScenarioScript::forceDefeatTeam(World& w, int player, bool allies) {
 }
 
 // -------- conditions (opcode space per the RE table) --------
-bool ScenarioScript::evalCond(World& w, int player, const tak::crt::Rule& c) {
+bool ScenarioScript::evalCond(World& w, int player, const ta::crt::Rule& c) {
     const auto& s = c.slot;
     PState& ps = state_[size_t(player)];
     switch (c.opcode) {
@@ -166,7 +166,7 @@ bool ScenarioScript::evalCond(World& w, int player, const tak::crt::Rule& c) {
 }
 
 // -------- actions (independent opcode space) --------
-void ScenarioScript::runAction(World& w, int player, int group, const tak::crt::Rule& a) {
+void ScenarioScript::runAction(World& w, int player, int group, const ta::crt::Rule& a) {
     const auto& s = a.slot;
     PState& ps = state_[size_t(player)];
     switch (a.opcode) {
@@ -309,4 +309,4 @@ void ScenarioScript::foldHash(uint64_t& h) const {
     }
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

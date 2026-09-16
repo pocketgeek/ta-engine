@@ -14,9 +14,9 @@
 #include <vector>
 
 #include "hpi/hpi.h"
-#include "client/options.h"   // tak::openAudioDevice (routes to the chosen device)
+#include "client/options.h"   // ta::openAudioDevice (routes to the chosen device)
 
-namespace tak {
+namespace ta {
 
 class MenuMusic {
 public:
@@ -47,7 +47,7 @@ public:
         want.userdata = this;
         pos_ = 0;                        // set before the device unpauses (callback reads it)
         openWant_ = want;                // kept so reopen() can re-open on a new device
-        dev_ = tak::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
+        dev_ = ta::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
         if (!dev_) { src_.clear(); return; }
         silence_ = have.silence;
         track_ = track;
@@ -62,7 +62,7 @@ public:
         SDL_CloseAudioDevice(dev_);      // stops + joins the callback thread; pos_ is preserved
         dev_ = 0;
         SDL_AudioSpec have{};
-        dev_ = tak::openAudioDevice(0, &openWant_, &have, 0);
+        dev_ = ta::openAudioDevice(0, &openWant_, &have, 0);
         if (!dev_) { src_.clear(); track_ = -1; return; }
         silence_ = have.silence;
         SDL_PauseAudioDevice(dev_, 0);
@@ -127,4 +127,4 @@ private:
     int track_ = -1;
 };
 
-}  // namespace tak
+}  // namespace ta

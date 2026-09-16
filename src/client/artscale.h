@@ -40,7 +40,7 @@
 
 #include "client/gpuvram.h"
 
-namespace tak::art {
+namespace ta::art {
 
 // Are two RGBA pixels close enough to count as "the same colour" for edge detection?
 // Alpha is weighted hardest: a transparent/opaque boundary IS the silhouette edge, and
@@ -237,4 +237,4 @@ inline SDL_Texture* makeTexture(SDL_Renderer* ren, const std::vector<uint8_t>& r
     return t;
 }
 
-}  // namespace tak::art
+}  // namespace ta::art

@@ -10,7 +10,7 @@
 #include <atomic>
 #include <csignal>
 
-namespace tak {
+namespace ta {
 
 inline std::atomic<bool> g_termRequested{false};
 
@@ -23,4 +23,4 @@ inline void installSignalHandlers() {
     std::signal(SIGINT, handler);
 }
 
-}  // namespace tak
+}  // namespace ta

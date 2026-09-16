@@ -4,12 +4,12 @@
 
 #include <cstdio>
 
-namespace tak::tnt {
+namespace ta::tnt {
 
 Scenario Scenario::parse(const std::string& text) {
     Scenario s;
-    tak::tdf::Node root = tak::tdf::parseText(text, "<ota>");
-    const tak::tdf::Node* gh = root.child("globalheader");
+    ta::tdf::Node root = ta::tdf::parseText(text, "<ota>");
+    const ta::tdf::Node* gh = root.child("globalheader");
     if (!gh) return s;
     s.copyright = gh->valueOr("copyright", s.copyright);
     s.missionName = gh->valueOr("missionname", "");
@@ -20,14 +20,14 @@ Scenario Scenario::parse(const std::string& text) {
     // size = "W x H" (Units)
     if (const std::string* sz = gh->value("size"))
         std::sscanf(sz->c_str(), "%d x %d", &s.sizeW, &s.sizeH);
-    const tak::tdf::Node* md = gh->child("map data");
+    const ta::tdf::Node* md = gh->child("map data");
     if (md) {
         s.mapType = md->valueOr("type", s.mapType);
         s.aiProfile = md->valueOr("aiprofile", s.aiProfile);
-        if (const tak::tdf::Node* sp = md->child("specials")) {
+        if (const ta::tdf::Node* sp = md->child("specials")) {
             // [special0], [special1], ... each with specialwhat/XPos/ZPos.
             for (const std::string& nm : sp->childOrder) {
-                const tak::tdf::Node* one = sp->child(nm);
+                const ta::tdf::Node* one = sp->child(nm);
                 if (!one) continue;
                 std::string what = one->valueOr("specialwhat", "");
                 if (what.rfind("StartPos", 0) != 0 && what.rfind("startpos", 0) != 0)
@@ -83,4 +83,4 @@ std::string Scenario::write() const {
     return o;
 }
 
-} // namespace tak::tnt
+} // namespace ta::tnt

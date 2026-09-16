@@ -1,4 +1,4 @@
-// takserver: the central multiplayer server (docs/multiplayer-design.md, M3).
+// taserver: the central multiplayer server (docs/multiplayer-design.md, M3).
 //
 // A single-threaded poll loop hosts a lobby and any number of games. Each game
 // is a server-sequenced deterministic lockstep: clients send commands, the
@@ -48,7 +48,7 @@
 #include "sim/sim.h"
 #include "version.h"
 
-using namespace tak::net;
+using namespace ta::net;
 
 namespace {
 
@@ -69,7 +69,7 @@ constexpr uint64_t kTimeoutMs = 15000;    // drop a silent seated player after t
 constexpr uint64_t kSpectatorTimeoutMs = 120000;
 // per-client command cap per tick lives in protocol.h: the CLIENT has to know it
 // too, so it can spread a big batch instead of having the excess discarded here.
-using tak::net::kCmdCapPerTick;
+using ta::net::kCmdCapPerTick;
 // The server never runs more than this many ticks ahead of the slowest seated human
 // player: a player whose machine can't sustain the game speed gracefully SLOWS the
 // whole match to what it can handle (the actual speed drops below the requested one)
@@ -84,7 +84,7 @@ constexpr uint64_t kFlowRetryMs = 5;
 // enough that an honest burst (a big selection, or two render steps landing in one
 // server tick) always survives, small enough that a flooder cannot make the server
 // hold an unbounded queue on its behalf.
-constexpr size_t kCmdQueueMax = size_t(tak::net::kCmdQueueCap);
+constexpr size_t kCmdQueueMax = size_t(ta::net::kCmdQueueCap);
 uint64_t kGraceMs = 300000;     // hold a dropped slot this long (5 min)
 uint64_t kPauseBudgetMs = 120000;  // total auto-pause a player may cause
 
@@ -136,7 +136,7 @@ struct Client {
     // command arriving next tick jumped ahead of older deferred ones (a stale Move
     // overriding a newer Stop), reception and the drain each granted a fresh
     // 64-command allowance so one client could put 128 in a tick, and the drain
-    // ignored TAK_SRV_DELAY so deferred commands outran delayed ones.
+    // ignored TA_SRV_DELAY so deferred commands outran delayed ones.
     std::deque<Command> cmdQueue;
     uint64_t cmdDropped = 0;     // past the queue cap; logged, not silent
     // Catch-up streaming. A resuming or spectating client needs every bundle
@@ -184,9 +184,9 @@ struct Room {
     std::map<uint32_t, std::map<uint32_t, uint64_t>> hashes;
     std::map<uint32_t, bool> desyncFlagged;     // clientId -> already told
     // referee sim (server-side, drives server-hosted AI + a canonical hash)
-    std::unique_ptr<tak::sim::World> ref;
-    const tak::sim::TypeRegistry* reg = nullptr;   // the balance this game uses
-    std::vector<tak::ai::Controller> ai;        // one per AI slot
+    std::unique_ptr<ta::sim::World> ref;
+    const ta::sim::TypeRegistry* reg = nullptr;   // the balance this game uses
+    std::vector<ta::ai::Controller> ai;        // one per AI slot
     std::map<uint32_t, uint64_t> refHash;       // tick -> referee hash (bounded ring)
     // The replay's hash trail, kept SEPARATELY from refHash. refHash is a ring pruned
     // to 300 entries because desync checking only ever looks a few ticks back -- but
@@ -302,11 +302,11 @@ public:
         // tier. Build the pure-retail set eagerly (the connection-level Hello
         // check + the common none/cosmetic game); the Full set is built lazily
         // the first time a Full game starts.
-        buildDataSet(retail_, tak::hpi::OverridePolicy::None);
-        aiProfile_ = tak::ai::loadProfile(retail_.vfs);
+        buildDataSet(retail_, ta::hpi::OverridePolicy::None);
+        aiProfile_ = ta::ai::loadProfile(retail_.vfs);
         aiNames_ = loadAiNames(retail_.vfs);
         haveCb_ = retail_.haveCb;
-        std::fprintf(stderr, "takserver: loaded game data from %s (referee sim + AI%s), "
+        std::fprintf(stderr, "taserver: loaded game data from %s (referee sim + AI%s), "
                      "retail gameplay hash %016llx\n",
                      dataRoot_.c_str(), haveCb_ ? ", +Crusades" : "",
                      (unsigned long long)retail_.hash);
@@ -320,35 +320,35 @@ private:
     // or LAN server (single-player launches one of those).
     bool requireAuth_ = true;
     bool loopbackOnly_ = false;
-    tak::srv::AccountStore accounts_;
-    tak::srv::LoginThrottle throttle_;
+    ta::srv::AccountStore accounts_;
+    ta::srv::LoginThrottle throttle_;
     // A mounted data set at one override tier: the VFS, its base + Crusades
     // registries, and the gameplay-data fingerprint peers are held to.
     struct DataSet {
-        tak::hpi::Vfs vfs;
-        tak::sim::TypeRegistry reg, regCb;
+        ta::hpi::Vfs vfs;
+        ta::sim::TypeRegistry reg, regCb;
         bool haveCb = false;
         uint64_t hash = 0;
         bool built = false;
     };
     DataSet retail_, full_;            // none/cosmetic use retail_; full uses full_
     bool haveCb_ = false;
-    tak::ai::Profile aiProfile_;
+    ta::ai::Profile aiProfile_;
     // Per-mission build profiles (ai/<name>.txt), cached by name -- a Controller
     // holds a reference to its Profile, so these must outlive the room.
-    std::map<std::string, tak::ai::Profile> missionProfiles_;
-    const tak::ai::Profile& missionProfile(const tak::hpi::Vfs& vfs, const std::string& name) {
+    std::map<std::string, ta::ai::Profile> missionProfiles_;
+    const ta::ai::Profile& missionProfile(const ta::hpi::Vfs& vfs, const std::string& name) {
         auto it = missionProfiles_.find(name);
         if (it != missionProfiles_.end()) return it->second;
-        return missionProfiles_.emplace(name, tak::ai::loadProfile(vfs, name)).first->second;
+        return missionProfiles_.emplace(name, ta::ai::loadProfile(vfs, name)).first->second;
     }
     std::vector<std::string> aiNames_;   // retail's gamedata/ainames.tdf pool
 
-    static std::vector<std::string> loadAiNames(const tak::hpi::Vfs& vfs) {
+    static std::vector<std::string> loadAiNames(const ta::hpi::Vfs& vfs) {
         std::vector<std::string> out;
         try {
             auto b = vfs.read("gamedata/ainames.tdf");
-            auto root = tak::tdf::parseText(std::string(b.begin(), b.end()), "ainames.tdf");
+            auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), "ainames.tdf");
             if (const auto* sec = root.child("AI_NAMES"))
                 for (const auto& [k, v] : sec->values)
                     if (!v.empty()) out.push_back(v);
@@ -371,24 +371,24 @@ private:
         static std::mt19937 rng{std::random_device{}()};
         r.slots[slot].name = *avail[rng() % avail.size()];
     }
-    void buildDataSet(DataSet& ds, tak::hpi::OverridePolicy pol) {
-        ds.vfs = tak::hpi::mountRetailRoot(dataRoot_, pol);
-        tak::sim::setupRegistry(ds.reg, ds.vfs, false);
+    void buildDataSet(DataSet& ds, ta::hpi::OverridePolicy pol) {
+        ds.vfs = ta::hpi::mountRetailRoot(dataRoot_, pol);
+        ta::sim::setupRegistry(ds.reg, ds.vfs, false);
         if (!ds.vfs.list("unitscb").empty()) {
-            tak::sim::setupRegistry(ds.regCb, ds.vfs, true);
+            ta::sim::setupRegistry(ds.regCb, ds.vfs, true);
             ds.haveCb = true;
         }
-        ds.hash = tak::hpi::gameplayHash(ds.vfs);
+        ds.hash = ta::hpi::gameplayHash(ds.vfs);
         ds.built = true;
     }
     // The data set a game runs under, by its override policy (0/1 = retail, 2 = full).
     DataSet& dataFor(uint8_t policy) {
         DataSet& ds = (policy == 2) ? full_ : retail_;
-        if (!ds.built) buildDataSet(ds, policy == 2 ? tak::hpi::OverridePolicy::Full
-                                                    : tak::hpi::OverridePolicy::None);
+        if (!ds.built) buildDataSet(ds, policy == 2 ? ta::hpi::OverridePolicy::Full
+                                                    : ta::hpi::OverridePolicy::None);
         return ds;
     }
-    const tak::sim::TypeRegistry& registryFor(bool crusades, uint8_t policy) {
+    const ta::sim::TypeRegistry& registryFor(bool crusades, uint8_t policy) {
         DataSet& ds = dataFor(policy);
         return (crusades && ds.haveCb) ? ds.regCb : ds.reg;
     }
@@ -413,7 +413,7 @@ private:
     // are policed differently.
     std::string ipKeyFor(const Client& c) const { return "ip:" + c.peer; }
     static std::string userKeyFor(const std::string& user) {
-        return "user:" + tak::auth::foldUsername(user);
+        return "user:" + ta::auth::foldUsername(user);
     }
     // Milliseconds the caller must refuse for, or 0 to proceed.
     uint64_t loginLocked(const Client& c, const std::string& user, uint64_t now) const {
@@ -428,7 +428,7 @@ private:
                      c.id, c.peer.c_str(), (unsigned long long)wait);
     }
     void sendWelcome(Client& c);
-    void sendAuthResult(Client& c, AuthStatus st, const tak::crypto::Digest* sig,
+    void sendAuthResult(Client& c, AuthStatus st, const ta::crypto::Digest* sig,
                         const std::string& msg);
     void lobbyMsg(Client& c, const Frame& f);
     void gameMsg(Client& c, const Frame& f);
@@ -451,7 +451,7 @@ private:
 
 // A running game is abandoned once nobody is left to watch it. Normally that means
 // no human slot has a live or held (dropped-within-grace) client. A game created by
-// a SPECTATOR host to watch the AIs fight (single-player spectate / TAK_MP_WATCH) has
+// a SPECTATOR host to watch the AIs fight (single-player spectate / TA_MP_WATCH) has
 // NO human slots at all, so it also stays alive while a spectator is connected and at
 // least one AI is still playing -- otherwise the server would tear it down the instant
 // it started.
@@ -493,10 +493,10 @@ void Server::writeReplay(Room& r) {
     // with the client writer and the loader), every tick bundle, then the referee's
     // recorded hash checkpoints. A viewer can rebuild the world, play it back, and
     // compare its own hashes against what actually happened.
-    tak::net::ReplayHeader h;
+    ta::net::ReplayHeader h;
     h.mapId = r.mapId;
     h.mission = r.mission;
-    h.engineVersion = tak::kVersion;
+    h.engineVersion = ta::kVersion;
     h.crusades = r.opts.crusades;
     h.gods = r.opts.gods;
     h.forfeitSelfDestruct = r.opts.forfeitSelfDestruct;
@@ -517,7 +517,7 @@ void Server::writeReplay(Room& r) {
         h.slotAiLevel[i] = s.aiLevel;
     }
     Writer w;
-    tak::net::writeReplayHeader(w, h);
+    ta::net::writeReplayHeader(w, h);
     w.u32(uint32_t(r.log.size()));
     for (const auto& b : r.log) { w.u32(uint32_t(b.size())); w.b.insert(w.b.end(), b.begin(), b.end()); }
     // The referee's hash trail. Two identical reruns only prove the reruns agree;
@@ -525,7 +525,7 @@ void Server::writeReplay(Room& r) {
     w.u32(uint32_t(r.replayChecks.size()));
     for (const auto& [tk, hs] : r.replayChecks) { w.u32(tk); w.u64(hs); }
     std::string path = replayDir_ + "/game-" + std::to_string(r.id) + "-" +
-                       std::to_string(r.createdMs) + ".takrep";
+                       std::to_string(r.createdMs) + ".tarep";
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
         std::fwrite(w.b.data(), 1, w.b.size(), f);
         std::fclose(f);
@@ -598,7 +598,7 @@ void Server::sendWelcome(Client& c) {
     std::fprintf(stderr, "client %u '%s' joined lobby\n", c.id, c.name.c_str());
 }
 
-void Server::sendAuthResult(Client& c, AuthStatus st, const tak::crypto::Digest* sig,
+void Server::sendAuthResult(Client& c, AuthStatus st, const ta::crypto::Digest* sig,
                             const std::string& msg) {
     Writer w;
     w.u8(uint8_t(st));
@@ -617,7 +617,7 @@ void Server::authMsg(Client& c, const Frame& f) {
     if (f.kind == Msg::AuthBegin) {
         if (c.pendAuth.challenged) { sendReject(c, "duplicate login"); c.conn.fail("dup auth"); return; }
         std::string user = r.str();
-        std::vector<uint8_t> cnonce = r.bytes(tak::auth::kNonceLen);
+        std::vector<uint8_t> cnonce = r.bytes(ta::auth::kNonceLen);
         if (!r.ok) { sendReject(c, "malformed login"); c.conn.fail("bad auth"); return; }
 
         // Rate-limit on BOTH the name and the address, so neither hammering one
@@ -626,8 +626,8 @@ void Server::authMsg(Client& c, const Frame& f) {
         // endpoint being used to sweep for which usernames exist.
         if (uint64_t wait = loginLocked(c, user, now)) { sendThrottled(c, wait); return; }
         std::string why;
-        if (!tak::auth::validUsername(user, &why)) {
-            throttle_.fail(ipKeyFor(c), now, tak::srv::LoginThrottle::kAddress);
+        if (!ta::auth::validUsername(user, &why)) {
+            throttle_.fail(ipKeyFor(c), now, ta::srv::LoginThrottle::kAddress);
             sendAuthResult(c, AuthStatus::BadUsername, nullptr, why);
             return;
         }
@@ -636,13 +636,13 @@ void Server::authMsg(Client& c, const Frame& f) {
         c.pendAuth.user = user;
         c.pendAuth.clientNonce = std::move(cnonce);
         try {
-            c.pendAuth.serverNonce = tak::crypto::randomVec(tak::auth::kNonceLen);
+            c.pendAuth.serverNonce = ta::crypto::randomVec(ta::auth::kNonceLen);
         } catch (const std::exception& e) {
-            std::fprintf(stderr, "takserver: %s\n", e.what());
+            std::fprintf(stderr, "taserver: %s\n", e.what());
             sendAuthResult(c, AuthStatus::ServerError, nullptr, "the server cannot sign you in");
             return;
         }
-        const tak::srv::Account* a = accounts_.find(user);
+        const ta::srv::Account* a = accounts_.find(user);
         if (a) {
             c.pendAuth.newAccount = false;
             c.pendAuth.salt = a->cred.salt;
@@ -653,11 +653,11 @@ void Server::authMsg(Client& c, const Frame& f) {
             // ours, not the client's, so a client cannot register with a weak or
             // shared one.
             c.pendAuth.newAccount = true;
-            c.pendAuth.iters = tak::auth::kPbkdf2Iters;
+            c.pendAuth.iters = ta::auth::kPbkdf2Iters;
             try {
-                c.pendAuth.salt = tak::crypto::randomVec(tak::auth::kSaltLen);
+                c.pendAuth.salt = ta::crypto::randomVec(ta::auth::kSaltLen);
             } catch (const std::exception& e) {
-                std::fprintf(stderr, "takserver: %s\n", e.what());
+                std::fprintf(stderr, "taserver: %s\n", e.what());
                 sendAuthResult(c, AuthStatus::ServerError, nullptr, "the server cannot sign you in");
                 return;
             }
@@ -676,7 +676,7 @@ void Server::authMsg(Client& c, const Frame& f) {
         if (!c.pendAuth.challenged || c.pendAuth.newAccount) {
             sendReject(c, "unexpected login proof"); c.conn.fail("bad auth"); return;
         }
-        std::vector<uint8_t> proofBytes = r.bytes(tak::crypto::kHashLen);
+        std::vector<uint8_t> proofBytes = r.bytes(ta::crypto::kHashLen);
         if (!r.ok) { sendReject(c, "malformed login proof"); c.conn.fail("bad auth"); return; }
         // Check the lock HERE too, not just at AuthBegin. A guesser that opens a
         // hundred connections first, collects a hundred challenges, and only then
@@ -687,18 +687,18 @@ void Server::authMsg(Client& c, const Frame& f) {
             c.pendAuth.challenged = false;
             return;
         }
-        const tak::srv::Account* a = accounts_.find(c.pendAuth.user);
+        const ta::srv::Account* a = accounts_.find(c.pendAuth.user);
         if (!a) { sendAuthResult(c, AuthStatus::BadPassword, nullptr, "that account no longer exists"); return; }
 
-        tak::crypto::Digest proof{};
+        ta::crypto::Digest proof{};
         std::memcpy(proof.data(), proofBytes.data(), proof.size());
-        std::vector<uint8_t> am = tak::auth::authMessage(c.pendAuth.user, c.pendAuth.clientNonce,
+        std::vector<uint8_t> am = ta::auth::authMessage(c.pendAuth.user, c.pendAuth.clientNonce,
                                                     c.pendAuth.serverNonce, a->cred.salt,
                                                     a->cred.iters);
         const std::string ipKey = ipKeyFor(c), userKey = userKeyFor(c.pendAuth.user);
-        if (!tak::auth::verifyClientProof(a->cred, am, proof)) {
-            throttle_.fail(ipKey, now, tak::srv::LoginThrottle::kAddress);
-            throttle_.fail(userKey, now, tak::srv::LoginThrottle::kAccount);
+        if (!ta::auth::verifyClientProof(a->cred, am, proof)) {
+            throttle_.fail(ipKey, now, ta::srv::LoginThrottle::kAddress);
+            throttle_.fail(userKey, now, ta::srv::LoginThrottle::kAccount);
             sendAuthResult(c, AuthStatus::BadPassword, nullptr, "that password is not right");
             std::fprintf(stderr, "client %u (%s) failed sign-in for '%s'\n",
                          c.id, c.peer.c_str(), a->name.c_str());
@@ -711,12 +711,12 @@ void Server::authMsg(Client& c, const Frame& f) {
         // with one valid account a reset button for their own failure record,
         // to be pressed between guesses at somebody else's.
         throttle_.succeed(userKey);
-        tak::crypto::Digest sig = tak::auth::serverSignature(a->cred.serverKey, am);
+        ta::crypto::Digest sig = ta::auth::serverSignature(a->cred.serverKey, am);
         c.account = a->name;
         c.name = a->name;
         std::string err;
         if (!accounts_.noteLogin(a->name, &err))
-            std::fprintf(stderr, "takserver: could not record login: %s\n", err.c_str());
+            std::fprintf(stderr, "taserver: could not record login: %s\n", err.c_str());
         sendAuthResult(c, AuthStatus::Ok, &sig, "signed in");
         std::fprintf(stderr, "client %u (%s) signed in as '%s'\n",
                      c.id, c.peer.c_str(), c.name.c_str());
@@ -728,8 +728,8 @@ void Server::authMsg(Client& c, const Frame& f) {
         if (!c.pendAuth.challenged || !c.pendAuth.newAccount) {
             sendReject(c, "unexpected registration"); c.conn.fail("bad auth"); return;
         }
-        std::vector<uint8_t> stored = r.bytes(tak::crypto::kHashLen);
-        std::vector<uint8_t> serverKey = r.bytes(tak::crypto::kHashLen);
+        std::vector<uint8_t> stored = r.bytes(ta::crypto::kHashLen);
+        std::vector<uint8_t> serverKey = r.bytes(ta::crypto::kHashLen);
         if (!r.ok) { sendReject(c, "malformed registration"); c.conn.fail("bad auth"); return; }
 
         // Registration is the one unauthenticated operation that WRITES, and each
@@ -738,9 +738,9 @@ void Server::authMsg(Client& c, const Frame& f) {
         // it per address on the same escalating curve as a failed password.
         const std::string ipKey = ipKeyFor(c);
         if (uint64_t wait = throttle_.lockedFor(ipKey, now)) { sendThrottled(c, wait); return; }
-        throttle_.fail(ipKey, now, tak::srv::LoginThrottle::kAddress);
+        throttle_.fail(ipKey, now, ta::srv::LoginThrottle::kAddress);
 
-        tak::auth::Credential cred;
+        ta::auth::Credential cred;
         cred.iters = c.pendAuth.iters;
         cred.salt = c.pendAuth.salt;
         std::memcpy(cred.storedKey.data(), stored.data(), cred.storedKey.size());
@@ -753,7 +753,7 @@ void Server::authMsg(Client& c, const Frame& f) {
             bool taken = accounts_.find(c.pendAuth.user) != nullptr;
             sendAuthResult(c, taken ? AuthStatus::NameTaken : AuthStatus::ServerError, nullptr,
                            taken ? "that name was just taken -- pick another" : err);
-            std::fprintf(stderr, "takserver: registration of '%s' failed: %s\n",
+            std::fprintf(stderr, "taserver: registration of '%s' failed: %s\n",
                          c.pendAuth.user.c_str(), err.c_str());
             c.pendAuth.challenged = false;
             return;
@@ -764,10 +764,10 @@ void Server::authMsg(Client& c, const Frame& f) {
         // the sign-in path. The client can then demand a valid signature for BOTH
         // outcomes instead of having to trust an unsigned "Created" -- which a
         // machine posing as the server would otherwise use to skip the check.
-        std::vector<uint8_t> am = tak::auth::authMessage(c.pendAuth.user, c.pendAuth.clientNonce,
+        std::vector<uint8_t> am = ta::auth::authMessage(c.pendAuth.user, c.pendAuth.clientNonce,
                                                          c.pendAuth.serverNonce, c.pendAuth.salt,
                                                          c.pendAuth.iters);
-        tak::crypto::Digest sig = tak::auth::serverSignature(cred.serverKey, am);
+        ta::crypto::Digest sig = ta::auth::serverSignature(cred.serverKey, am);
         // A registration that got this far is not a failed attempt.
         throttle_.succeed(userKeyFor(c.pendAuth.user));
         sendAuthResult(c, AuthStatus::Created, &sig, "new account created");
@@ -1057,7 +1057,7 @@ void Server::lobbyMsg(Client& c, const Frame& f) {
 // and unit ids into a world where those ids mean something else.
 //
 // The SCHEDULED ones matter for a different reason. With server input delay
-// (TAK_SRV_DELAY > 0) a departing player's commands sit in pendingAt buckets
+// (TA_SRV_DELAY > 0) a departing player's commands sit in pendingAt buckets
 // several ticks out, which puts them in bundles AFTER the replay boundary a
 // rejoin is handed -- so they arrive looking like acknowledgements for commands
 // sent after the rejoin. Safe to purge: nothing here has been bundled or
@@ -1108,7 +1108,7 @@ void Server::leaveRoom(Client& c, const char* reason) {
             // Voluntary leave mid-game = immediate forfeit (sequenced event so the
             // sim disposes the units in lockstep).
             r->slots[c.slot].type = 3;
-            r->pendingEvents.push_back({tak::net::Event::Kind::Leave, uint8_t(c.slot)});
+            r->pendingEvents.push_back({ta::net::Event::Kind::Leave, uint8_t(c.slot)});
         }
     }
     uint32_t rid = r->id;
@@ -1147,7 +1147,7 @@ void Server::tryStart(Client& c) {
     DataSet& dataSet = dataFor(r->opts.overridePolicy);
     const bool wantMission = !r->mission.empty();
     std::string mapResolved = wantMission ? std::string()
-                                          : tak::hpi::findMap(dataSet.vfs, r->mapId);
+                                          : ta::hpi::findMap(dataSet.vfs, r->mapId);
     if (!wantMission && mapResolved.empty()) {
         char msg[192];
         std::snprintf(msg, sizeof msg,
@@ -1175,14 +1175,14 @@ void Server::tryStart(Client& c) {
     const std::string& mapPath = mapResolved;
     {
         r->reg = &registryFor(r->opts.crusades != 0, r->opts.overridePolicy);
-        r->ref = std::make_unique<tak::sim::World>();
+        r->ref = std::make_unique<ta::sim::World>();
         r->ref->setVisPlayer(-1);   // headless referee: no fog pass
         if (isMission) {
             // The client builds the SAME world (setupMission is deterministic), so the
             // referee and every peer stay in lockstep.
             int human = 0;
-            tak::sim::MissionSetup ms;
-            if (!tak::sim::setupMission(*r->ref, *r->reg, ds->vfs, r->mission, human, &ms)) {
+            ta::sim::MissionSetup ms;
+            if (!ta::sim::setupMission(*r->ref, *r->reg, ds->vfs, r->mission, human, &ms)) {
                 // Same rule as a missing map: no referee, no game.
                 char msg[192];
                 std::snprintf(msg, sizeof msg,
@@ -1204,7 +1204,7 @@ void Server::tryStart(Client& c) {
                 // lockstep is unaffected. A "passive neutral" gets nothing: it is
                 // scenery. Mana income is deliberately NOT multiplied here -- a
                 // mission is balanced around its placements, not a skirmish curve.
-                const tak::ai::Profile& prof =
+                const ta::ai::Profile& prof =
                     ms.aiProfile.empty() ? aiProfile_
                                          : missionProfile(ds->vfs, ms.aiProfile);
                 for (int slot : ms.aiSlots) {
@@ -1215,10 +1215,10 @@ void Server::tryStart(Client& c) {
                         enemyStarts.push_back(ms.slotPos[j]);
                     }
                     r->ai.emplace_back(slot, *r->reg, prof, r->seed + uint32_t(slot),
-                                       tak::ai::Difficulty::Normal, std::move(enemyStarts));
+                                       ta::ai::Difficulty::Normal, std::move(enemyStarts));
                 }
                 if (!ms.aiSlots.empty())
-                    std::fprintf(stderr, "takserver: mission '%s' -- %zu strategic AI player(s)%s\n",
+                    std::fprintf(stderr, "taserver: mission '%s' -- %zu strategic AI player(s)%s\n",
                                  r->mission.c_str(), ms.aiSlots.size(),
                                  ms.aiProfile.empty() ? "" : (" profile=" + ms.aiProfile).c_str());
             }
@@ -1226,7 +1226,7 @@ void Server::tryStart(Client& c) {
             int maxSlot = 0;
             for (int i = 0; i < kMaxSlots; ++i)
                 if (r->slots[i].type == 1 || r->slots[i].type == 2) maxSlot = i;
-            tak::sim::MatchConfig cfg;
+            ta::sim::MatchConfig cfg;
             cfg.vfs = &ds->vfs;
             cfg.mapPath = mapPath;
             cfg.gods = r->opts.gods != 0;
@@ -1242,10 +1242,10 @@ void Server::tryStart(Client& c) {
                 // Absurd AI slots earn double income (incomeMultFor); derived from the
                 // shared aiLevel so the client mirror sets the same factor (lockstep).
                 float mm = s.type == 2
-                    ? tak::ai::incomeMultFor(tak::ai::difficultyFromLevel(s.aiLevel)) : 1.0f;
+                    ? ta::ai::incomeMultFor(ta::ai::difficultyFromLevel(s.aiLevel)) : 1.0f;
                 cfg.slots[size_t(i)] = {s.type == 1 || s.type == 2, s.faction % 5, s.team, mm};
             }
-            auto spots = tak::sim::setupMatch(*r->ref, *r->reg, cfg);
+            auto spots = ta::sim::setupMatch(*r->ref, *r->reg, cfg);
             // setupMatch returns start positions in USED-slot order; remap to slot index.
             std::vector<std::pair<float, float>> slotPos(size_t(maxSlot + 1), {0.f, 0.f});
             for (int i = 0, k = 0; i <= maxSlot; ++i)
@@ -1264,7 +1264,7 @@ void Server::tryStart(Client& c) {
                         if (r->ref->allied(i, j)) continue;
                         enemyStarts.push_back(slotPos[size_t(j)]);
                     }
-                    auto diff = tak::ai::difficultyFromLevel(r->slots[i].aiLevel);
+                    auto diff = ta::ai::difficultyFromLevel(r->slots[i].aiLevel);
                     r->ai.emplace_back(i, *r->reg, aiProfile_, r->seed,
                                        diff, std::move(enemyStarts));
                 }
@@ -1599,11 +1599,11 @@ void Server::closeTick(Room& r) {
     // The ONE place a client's commands enter a tick: strict FIFO, one budget per
     // client per tick, and the same input-delay rule for all of them.
     //
-    // Server-side input delay (TAK_SRV_DELAY=K, default 0) buckets commands K ticks
+    // Server-side input delay (TA_SRV_DELAY=K, default 0) buckets commands K ticks
     // into the future so one never "just misses" a tick boundary; costs K ticks of
     // latency.
     static const int srvDelay = [] {
-        const char* e = std::getenv("TAK_SRV_DELAY"); return e ? std::max(0, std::atoi(e)) : 0;
+        const char* e = std::getenv("TA_SRV_DELAY"); return e ? std::max(0, std::atoi(e)) : 0;
     }();
     for (int i = 0; i < kMaxSlots; ++i) {
         if (r.slotClient[i] < 0) continue;
@@ -1621,15 +1621,15 @@ void Server::closeTick(Room& r) {
     // A running room always has a referee -- tryStart refuses to start a game it
     // cannot referee -- so this is unconditional.
     {
-        static const bool kAiPhase = std::getenv("TAK_AIPHASE") != nullptr;
+        static const bool kAiPhase = std::getenv("TA_AIPHASE") != nullptr;
         auto _a0 = std::chrono::steady_clock::now();
         for (auto& ctl : r.ai)
             ctl.tick(*r.ref, r.tick, [&r](const Command& c) { r.pending.push_back(c); });
         if (kAiPhase) {
             double ms = std::chrono::duration<double, std::milli>(
                             std::chrono::steady_clock::now() - _a0).count();
-            static double thr = std::getenv("TAK_AIPHASE_MS")
-                                    ? atof(std::getenv("TAK_AIPHASE_MS")) : 8.0;
+            static double thr = std::getenv("TA_AIPHASE_MS")
+                                    ? atof(std::getenv("TA_AIPHASE_MS")) : 8.0;
             if (ms > thr)
                 std::fprintf(stderr, "AIPHASE tick=%u ai=%.1fms controllers=%zu\n",
                              r.tick, ms, r.ai.size());
@@ -1659,8 +1659,8 @@ void Server::closeTick(Room& r) {
     // but only at the ticks clients actually REPORT (kHashPeriod): hashing every
     // tick burned ~8ms/s per 2000-unit room on hashes that were never read.
     {
-        for (const auto& cmd : r.pending) tak::sim::applyCommand(*r.ref, *r.reg, cmd);
-        for (const auto& e : r.pendingEvents) tak::sim::applyEvent(*r.ref, e);
+        for (const auto& cmd : r.pending) ta::sim::applyCommand(*r.ref, *r.reg, cmd);
+        for (const auto& e : r.pendingEvents) ta::sim::applyEvent(*r.ref, e);
         r.ref->tick(1.0f / kServerHz);
         if (r.tick % uint32_t(kHashPeriod) == 0) {
             const uint64_t h = r.ref->stateHash();
@@ -1740,17 +1740,17 @@ void Server::onFrame(Client& c, const Frame& f) {
 int Server::run() {
     std::string err;
     listenFd_ = listenOn(port_, err, loopbackOnly_);
-    if (listenFd_ < 0) { std::fprintf(stderr, "takserver: %s on port %u\n", err.c_str(), port_); return 1; }
-    std::fprintf(stderr, "takserver %s listening on %s port %u (protocol v%u)\n",
-                 tak::kVersion, loopbackOnly_ ? "loopback" : "all interfaces", port_, kNetVersion);
+    if (listenFd_ < 0) { std::fprintf(stderr, "taserver: %s on port %u\n", err.c_str(), port_); return 1; }
+    std::fprintf(stderr, "taserver %s listening on %s port %u (protocol v%u)\n",
+                 ta::kVersion, loopbackOnly_ ? "loopback" : "all interfaces", port_, kNetVersion);
     // Build id on its own line: the harness greps it to refuse a server built from
     // different source than the client, which otherwise looks exactly like a desync.
-    std::fprintf(stderr, "takserver: build %s\n", tak::kBuildId);
+    std::fprintf(stderr, "taserver: build %s\n", ta::kBuildId);
     if (requireAuth_)
-        std::fprintf(stderr, "takserver: accounts required -- %zu in %s\n",
+        std::fprintf(stderr, "taserver: accounts required -- %zu in %s\n",
                      accounts_.size(), accounts_.path().c_str());
     else
-        std::fprintf(stderr, "takserver: NO ACCOUNTS REQUIRED (--no-auth)%s\n",
+        std::fprintf(stderr, "taserver: NO ACCOUNTS REQUIRED (--no-auth)%s\n",
                      loopbackOnly_ ? "" : " -- anyone who can reach this port can play");
 
     // Hoisted out of the loop so their capacity persists across wakeups (this loop
@@ -1790,7 +1790,7 @@ int Server::run() {
             if (c->replaying && now + 10 < soonest) soonest = now + 10;
         int timeout = int(soonest > now ? soonest - now : 0);
 
-        int n = TAK_POLL(pfds.data(), (unsigned)pfds.size(), timeout);
+        int n = TA_POLL(pfds.data(), (unsigned)pfds.size(), timeout);
         if (n < 0) { if (sockInterrupted(sockErr())) continue; break; }
 
         throttle_.expire(now);   // forget hosts that have long since behaved
@@ -1843,7 +1843,7 @@ int Server::run() {
                 if (!forfeit) continue;
                 r.slotDropped[i] = false;
                 r.slots[i].type = 3;   // slot closed; the player is out
-                r.pendingEvents.push_back({tak::net::Event::Kind::Forfeit, uint8_t(i)});
+                r.pendingEvents.push_back({ta::net::Event::Kind::Forfeit, uint8_t(i)});
                 std::fprintf(stderr, "game %u: player %d FORFEIT (grace/budget expired)\n", rid, i);
                 if (r.paused && r.pausePlayer == i) {
                     r.paused = false; r.pausePlayer = -1; r.nextTickMs = now;
@@ -1953,11 +1953,11 @@ int Server::run() {
 
 int main(int argc, char** argv) {
     // Test overrides for the reconnect timers (seconds).
-    if (const char* g = std::getenv("TAK_GRACE_MS")) kGraceMs = uint64_t(std::atoll(g));
-    if (const char* b = std::getenv("TAK_PAUSE_BUDGET_MS")) kPauseBudgetMs = uint64_t(std::atoll(b));
+    if (const char* g = std::getenv("TA_GRACE_MS")) kGraceMs = uint64_t(std::atoll(g));
+    if (const char* b = std::getenv("TA_PAUSE_BUDGET_MS")) kPauseBudgetMs = uint64_t(std::atoll(b));
     uint16_t port = 7677;
     std::string dataRoot, replayDir;
-    std::string accountsPath = "takserver-accounts.conf";
+    std::string accountsPath = "taserver-accounts.conf";
     uint32_t fixedSeed = 0;
     bool noAuth = false, loopbackOnly = false;
     for (int i = 1; i < argc; ++i) {
@@ -1970,20 +1970,20 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--no-auth")) noAuth = true;
         else if (!std::strcmp(argv[i], "--local")) loopbackOnly = true;
         else if (!std::strcmp(argv[i], "--version") || !std::strcmp(argv[i], "-v")) {
-            std::printf("takserver (TAK engine) %s (build %s)\n", tak::kVersion, tak::kBuildId);
+            std::printf("taserver (TAK engine) %s (build %s)\n", ta::kVersion, ta::kBuildId);
             return 0;
         }
         else if (!std::strcmp(argv[i], "--help")) {
-            std::printf("usage: takserver --data <retail-install-dir> [--port N]\n"
+            std::printf("usage: taserver --data <retail-install-dir> [--port N]\n"
                         "                 [--replaydir <dir>] [--accounts <file>]\n"
                         "                 [--no-auth] [--local]\n"
                         "  --data is REQUIRED: it is what the referee sim and the\n"
                         "  server-hosted AI players read. There is no relay-only mode.\n"
-                        "  --replaydir writes a .takrep replay file per finished game.\n"
+                        "  --replaydir writes a .tarep replay file per finished game.\n"
                         "  --seed N pins every game's RNG seed, so a headless run is\n"
                         "  repeatable. Games are otherwise seeded randomly (which is what\n"
                         "  makes Random Start Locations differ game to game).\n"
-                        "  --accounts is the account file (default takserver-accounts.conf).\n"
+                        "  --accounts is the account file (default taserver-accounts.conf).\n"
                         "  Players sign in with a name and password; an unused name is\n"
                         "  registered on the spot. No password is stored or transmitted --\n"
                         "  see src/net/auth.h.\n"
@@ -2001,7 +2001,7 @@ int main(int argc, char** argv) {
     // its private server with --data, and so does every harness.
     if (dataRoot.empty()) {
         std::fprintf(stderr,
-            "takserver: --data <retail-install-dir> is required.\n"
+            "taserver: --data <retail-install-dir> is required.\n"
             "  It is what the referee sim and the AI players read. Point it at a\n"
             "  TA:Kingdoms install (the folder holding the root *.hpi and Maps/).\n"
             "  Run with --help for the full usage.\n");
@@ -2018,7 +2018,7 @@ int main(int argc, char** argv) {
         if (!s.loadAccounts(accountsPath, err)) {
             // Refuse to start rather than come up looking like a server with
             // accounts while actually having none of them.
-            std::fprintf(stderr, "takserver: %s\n", err.c_str());
+            std::fprintf(stderr, "taserver: %s\n", err.c_str());
             return 1;
         }
     }

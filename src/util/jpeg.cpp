@@ -8,7 +8,7 @@
 #include <iterator>
 #include <stdexcept>
 
-namespace tak::jpeg {
+namespace ta::jpeg {
 
 namespace {
 
@@ -62,4 +62,4 @@ Image load(const std::vector<uint8_t>& d) {
     return img;
 }
 
-} // namespace tak::jpeg
+} // namespace ta::jpeg

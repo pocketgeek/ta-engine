@@ -20,9 +20,9 @@
 #include "client/guiart.h"
 #include "video/bink.h"
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak {
+namespace ta {
 
 struct Settings;
 
@@ -79,4 +79,4 @@ private:
     bool headless_ = false;
 };
 
-}  // namespace tak
+}  // namespace ta

@@ -2,14 +2,14 @@
 
 // Campaign spine: the ordered list of missions in a `camps/<name>.tdf` and a small
 // controller for progression (current index, win -> next / lose -> retry). SDL-free
-// and data-only, so it lives in tak-formats and is testable headless. The actual
+// and data-only, so it lives in ta-formats and is testable headless. The actual
 // mission run happens elsewhere (setupMission + the server); this just picks which
 // mission and tracks how far the player has got. See docs/campaign-design.md.
 
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 namespace hpi { class Vfs; }
 
 struct CampaignMission {
@@ -47,4 +47,4 @@ std::vector<Campaign> loadCampaigns(const hpi::Vfs& vfs);
 // file is absent. Shared by the briefing screen and the in-game objectives panel.
 std::vector<std::string> loadObjectives(const hpi::Vfs& vfs, const std::string& stem);
 
-}  // namespace tak
+}  // namespace ta

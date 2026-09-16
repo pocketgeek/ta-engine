@@ -2,8 +2,8 @@
 #
 # Build a MINIMAL, static, LGPL FFmpeg that can decode the retail door videos
 # (Bink1 / "BIKf") and nothing else, then install it to a prefix that CMake links
-# statically into takclient (always -- see CMakeLists.txt). This lets a
-# shipped takclient play the door videos with NO runtime FFmpeg dependency, so a
+# statically into taclient (always -- see CMakeLists.txt). This lets a
+# shipped taclient play the door videos with NO runtime FFmpeg dependency, so a
 # stock distro (whose libavcodec-free lacks the Bink decoder) needs nothing extra.
 #
 # Only the Bink demuxer + bink/binkaudio decoders + swscale/swresample are enabled, so

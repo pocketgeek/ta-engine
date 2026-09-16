@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 
-namespace tak::mapgen {
+namespace ta::mapgen {
 
 namespace {
 
@@ -272,10 +272,10 @@ Params sanitize(Params p) {
     return p;
 }
 
-Result generate(const Params& raw, const tak::hpi::Vfs& vfs) {
+Result generate(const Params& raw, const ta::hpi::Vfs& vfs) {
     Params p = sanitize(raw);
     Result r;
-    tak::tnt::Map& m = r.map;
+    ta::tnt::Map& m = r.map;
     const int W = p.widthCells, H = p.heightCells;
     m.width = W; m.height = H;
     m.blocksX = W / 2; m.blocksY = H / 2;
@@ -398,19 +398,19 @@ Result generate(const Params& raw, const tak::hpi::Vfs& vfs) {
     // the next; a fully missing piece leaves the fill -- same files on every peer,
     // so the fallback is byte-identical too).
     const ShoreKit& kit = kShoreKit[p.mapType];
-    std::map<std::string, std::unique_ptr<tak::tnt::Map>> pieceCache;
-    auto loadPiece = [&](int role, uint64_t vh) -> const tak::tnt::Map* {
+    std::map<std::string, std::unique_ptr<ta::tnt::Map>> pieceCache;
+    auto loadPiece = [&](int role, uint64_t vh) -> const ta::tnt::Map* {
         for (int attempt = 0; attempt < 3; ++attempt) {
             int v = int((vh + uint64_t(attempt)) % 3);
             std::string path = std::string(kit.dir) + kit.name[role] + kit.var[v] + kit.ext;
             auto it = pieceCache.find(path);
             if (it == pieceCache.end()) {
-                std::unique_ptr<tak::tnt::Map> pm;
+                std::unique_ptr<ta::tnt::Map> pm;
                 try {
                     auto d = vfs.read(path);
-                    auto loaded = tak::tnt::Map::load(d, path);
+                    auto loaded = ta::tnt::Map::load(d, path);
                     if (loaded.width == 32 && loaded.height == 32)
-                        pm = std::make_unique<tak::tnt::Map>(std::move(loaded));
+                        pm = std::make_unique<ta::tnt::Map>(std::move(loaded));
                 } catch (const std::exception&) {}
                 it = pieceCache.emplace(std::move(path), std::move(pm)).first;
             }
@@ -425,7 +425,7 @@ Result generate(const Params& raw, const tak::hpi::Vfs& vfs) {
             int role = kCaseRole[scase(sx, sy)];
             if (role < 0) continue;
             uint64_t vh = p.seed ^ (uint64_t(sy) * 1000003u + uint64_t(sx) * 7919u);
-            const tak::tnt::Map* pc = loadPiece(role, splitmix(vh));   // vh is advanced in place
+            const ta::tnt::Map* pc = loadPiece(role, splitmix(vh));   // vh is advanced in place
             if (!pc) continue;
             // heights + features: 32x32 cells at (sx*32, sy*32)
             for (int z = 0; z < 32; ++z)
@@ -716,4 +716,4 @@ std::string friendlyLabel(const Params& pin) {
            std::to_string(int(p.players)) + "P " + kNames[p.mapType];
 }
 
-}  // namespace tak::mapgen
+}  // namespace ta::mapgen

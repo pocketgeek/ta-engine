@@ -27,9 +27,9 @@ int main() { std::printf("conn_test: skipped (no socketpair on Windows)\n"); ret
 #include <sys/socket.h>
 #include <unistd.h>
 
-using tak::net::Conn;
-using tak::net::Frame;
-using tak::net::Msg;
+using ta::net::Conn;
+using ta::net::Frame;
+using ta::net::Msg;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what) {

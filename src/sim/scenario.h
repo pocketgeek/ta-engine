@@ -2,7 +2,7 @@
 
 // Deterministic in-sim runner for a map's `.crt` scenario triggers: the
 // per-player groups of conditions + actions (26 + 26 opcodes) reverse-
-// engineered from Cartographer.exe and stored/round-tripped by tak::crt.
+// engineered from Cartographer.exe and stored/round-tripped by ta::crt.
 // Like MissionScript it is built on every peer from identical data, ticked
 // inside World::tick, and folded into stateHash, so its flag/timer state,
 // spawns, and win/lose stay in lockstep. Display actions push cosmetic
@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 class World;
 class TypeRegistry;
@@ -31,7 +31,7 @@ public:
     // viewPlayer: the local human's slot (for message filtering; -1 = show all).
     // maxPlayer: number of world slots (scenario .crt players are clamped into it).
     // mapWCells/mapHCells: map size in 16px cells (for "Anywhere"/whole-map).
-    ScenarioScript(const tak::crt::Scenario& scen, const TypeRegistry& reg,
+    ScenarioScript(const ta::crt::Scenario& scen, const TypeRegistry& reg,
                    int viewPlayer, int maxPlayer, int mapWCells, int mapHCells);
 
     bool active() const { return !players_.empty(); }
@@ -58,13 +58,13 @@ private:
     };
 
     // ---- evaluation ----
-    bool evalCond(World& w, int player, const tak::crt::Rule& c);
-    void runAction(World& w, int player, int group, const tak::crt::Rule& a);
+    bool evalCond(World& w, int player, const ta::crt::Rule& c);
+    void runAction(World& w, int player, int group, const ta::crt::Rule& a);
     int countControl(World& w, int player, const UnitType* t, const std::string& loc) const;
 
     // ---- parameter helpers ----
     const UnitType* findType(const std::string& name) const;
-    const tak::crt::Region* region(const std::string& name) const;   // nullptr => whole map
+    const ta::crt::Region* region(const std::string& name) const;   // nullptr => whole map
     bool inRegion(World& w, float x, float z, const std::string& loc) const;
     void regionCenter(const std::string& loc, float& x, float& z) const;
     int parsePlayer(const std::string& s) const;   // "Player N"->N-1, "All..."->-1
@@ -75,11 +75,11 @@ private:
     int view_;
     int maxPlayer_;
     int mapW_ = 0, mapH_ = 0;   // cells
-    std::vector<std::vector<tak::crt::RuleGroup>> players_;   // rules, clamped to maxPlayer_
+    std::vector<std::vector<ta::crt::RuleGroup>> players_;   // rules, clamped to maxPlayer_
     std::vector<std::vector<uint8_t>> disabled_;              // per player/group
     std::vector<std::vector<uint8_t>> fired_;                 // per player/group: edge latch
     std::vector<PState> state_;
-    std::vector<tak::crt::Region> regions_;
+    std::vector<ta::crt::Region> regions_;
     std::vector<Msg> pending_;
     float clock_ = 0;
     uint32_t ticks_ = 0;
@@ -88,4 +88,4 @@ private:
     bool started_ = false;
 };
 
-}  // namespace tak::sim
+}  // namespace ta::sim

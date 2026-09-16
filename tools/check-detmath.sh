@@ -2,7 +2,7 @@
 # Determinism guard for the simulation. The deterministic sim path must not call
 # libm transcendentals directly: sin/cos/tan/atan2/atan/asin/acos/hypot/pow/exp/
 # log are NOT correctly-rounded, so each platform's libm may differ in the last
-# bit and break cross-build lockstep. Route trig through tak::detmath instead.
+# bit and break cross-build lockstep. Route trig through ta::detmath instead.
 # (std::sqrt and std::fmod are fine -- correctly rounded / exact.)
 # See docs/detmath-scope.md.
 #
@@ -24,7 +24,7 @@ if [ -n "$hits" ]; then
     echo "$hits"
     echo
     echo "These are not correctly-rounded and break cross-build lockstep."
-    echo "Route through tak::detmath (src/sim/detmath.h). See docs/detmath-scope.md."
+    echo "Route through ta::detmath (src/sim/detmath.h). See docs/detmath-scope.md."
     exit 1
 fi
 echo "OK: no direct libm transcendentals in the sim path."

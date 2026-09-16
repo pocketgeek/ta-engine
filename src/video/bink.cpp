@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstring>
 
-#ifdef TAK_HAVE_FFMPEG
+#ifdef TA_HAVE_FFMPEG
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -16,9 +16,9 @@ extern "C" {
 }
 #endif
 
-namespace tak::video {
+namespace ta::video {
 
-#ifdef TAK_HAVE_FFMPEG
+#ifdef TA_HAVE_FFMPEG
 
 struct BinkVideo::Impl {
     std::vector<uint8_t> data;      // owned .bik bytes, demuxed in place
@@ -380,4 +380,4 @@ void BinkVideo::rewind() {}
 
 #endif
 
-}  // namespace tak::video
+}  // namespace ta::video

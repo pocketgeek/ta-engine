@@ -1,6 +1,6 @@
 #include "net/protocol.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // The 35-byte Command wire format, matching the classic lockstep layout.
 void Writer::cmd(const Command& c) {
@@ -29,4 +29,4 @@ Command Reader::cmd() {
     return c;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

@@ -9,7 +9,7 @@
 #include <cstring>
 #include <map>
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -438,7 +438,7 @@ bool OptionsScreen::input(const SDL_Event& e, int winW, int winH) {
         }
         if (in(defaultsRect_, mx, my)) {                            // reset to defaults
             if (atDefaults()) return false;         // already default -> disabled, ignore
-            s_ = tak::preferenceDefaults(s_);   // one definition, shared with atDefaults()
+            s_ = ta::preferenceDefaults(s_);   // one definition, shared with atDefaults()
             dirty_ = true;
             if (onChange_) onChange_();
             return false;
@@ -620,4 +620,4 @@ void OptionsScreen::render(int winW, int winH) {
     }
 }
 
-}  // namespace tak
+}  // namespace ta

@@ -21,12 +21,12 @@
 #include "tnt/tnt.h"
 #include "tnt/mapgen.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 const char* const kMonarchs[5] = {"araking", "tarnecro", "vermage", "zonhunt", "cresage"};
 
-void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command& c) {
-    using tak::net::Cmd;
+void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command& c) {
+    using ta::net::Cmd;
     auto owns = [&](int id) {
         const auto* u = world.unit(id);
         return u && u->player == int(c.player);
@@ -125,7 +125,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command
     }
 }
 
-void applyEvent(World& world, const tak::net::Event& e) {
+void applyEvent(World& world, const ta::net::Event& e) {
     int p = e.player;
     if (p < 0 || p >= world.numPlayers()) return;
     for (auto& u : world.units())
@@ -154,7 +154,7 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
     if (!vfs.has(otaPath)) return out;
     try {
         auto b = vfs.read(otaPath);
-        auto root = tak::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
+        auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
         const auto* gh = root.child("globalheader");
         const auto* md = gh ? gh->child("map data") : nullptr;
         const auto* sp = md ? md->child("specials") : nullptr;
@@ -197,7 +197,7 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
             if (std::filesystem::path(path).extension() != ".tdf") continue;
             try {
                 auto fb = vfs.read(path);
-                auto root = tak::tdf::parseText(std::string(fb.begin(), fb.end()), path);
+                auto root = ta::tdf::parseText(std::string(fb.begin(), fb.end()), path);
                 for (const auto& n : root.childOrder) {
                     std::string k = n;
                     std::transform(k.begin(), k.end(), k.begin(), ::tolower);
@@ -239,7 +239,7 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
 }
 struct FeatTypeInterner {
     const std::unordered_map<std::string, FeatDef>& defs;
-    std::vector<tak::sim::FeatType> table;
+    std::vector<ta::sim::FeatType> table;
     std::unordered_map<std::string, int> byName;
     explicit FeatTypeInterner(const std::unordered_map<std::string, FeatDef>& d) : defs(d) {}
     int intern(const std::string& nm) {
@@ -249,7 +249,7 @@ struct FeatTypeInterner {
         if (di == defs.end()) return -1;
         int idx = int(table.size());
         byName[nm] = idx;                  // reserve BEFORE recursing (cycle guard)
-        tak::sim::FeatType t;
+        ta::sim::FeatType t;
         t.name = nm;
         t.flamable = di->second.flamable;
         t.hasBurnAnim = di->second.hasBurnAnim;
@@ -286,7 +286,7 @@ struct FeatTypeInterner {
 // which desynced auto-acquisition. Blocking belongs here, in the sim, where both
 // peers run it; having one function makes it impossible for the two to diverge
 // again.
-static void scanFeaturePlane(World& world, const tak::tnt::Map& map,
+static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                              const std::unordered_map<std::string, FeatDef>& defs,
                              FeatTypeInterner& types,
                              std::vector<std::pair<float, float>>& rawMana,
@@ -366,7 +366,7 @@ static void installManaSpots(World& world,
 // exactly as setupMatch's placement loop does -- for the client's LOCAL harness
 // and mission paths, which build their worlds without setupMatch. Nav blocking
 // is NOT done here (those paths already block via their own feature placement).
-void registerMapFeatures(World& world, const tak::tnt::Map& map, const hpi::Vfs& vfs,
+void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& vfs,
                          const TypeRegistry* reg) {
     auto defs = loadFeatureDefs(vfs);
     FeatTypeInterner types(defs);
@@ -391,16 +391,16 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     const hpi::Vfs& vfs = *cfg.vfs;
     // A "~gen1~" mapPath is a random-map recipe: generate it in memory (identically
     // on client and referee -- the params ride the mapId, generation is integer-only).
-    const bool generated = tak::mapgen::isGeneratedMapId(cfg.mapPath);
+    const bool generated = ta::mapgen::isGeneratedMapId(cfg.mapPath);
     std::vector<std::pair<float, float>> genStarts;
-    tak::tnt::Map map;
+    ta::tnt::Map map;
     if (generated) {
-        auto g = tak::mapgen::generate(tak::mapgen::decodeMapId(cfg.mapPath), vfs);
+        auto g = ta::mapgen::generate(ta::mapgen::decodeMapId(cfg.mapPath), vfs);
         map = std::move(g.map);
         for (auto& [scx, scz] : g.starts)   // cell -> px, matching parseStartPositions
             genStarts.push_back({float(scx * 16), float(scz * 16)});
     } else {
-        map = tak::tnt::Map::load(vfs.read(cfg.mapPath), cfg.mapPath);
+        map = ta::tnt::Map::load(vfs.read(cfg.mapPath), cfg.mapPath);
     }
     world.setTerrain(map.heights, map.width, map.height, map.seaLevel, &map.features);
     // One nav grid per distinct movement-limit tuple, as retail bakes one per class.
@@ -454,7 +454,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     if (cfg.gods) {
         try {
             auto gb = vfs.read("gamedata/gods.tdf");
-            auto g = tak::tdf::parseText(std::string(gb.begin(), gb.end()), "gamedata/gods.tdf");
+            auto g = ta::tdf::parseText(std::string(gb.begin(), gb.end()), "gamedata/gods.tdf");
             if (const auto* tm = g.child("TIMING"))
                 godSec = float(tm->numberOr("AppearTimeMin", 30.0)) * 60.0f;
         } catch (const std::exception&) {}
@@ -953,4 +953,4 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     return true;
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

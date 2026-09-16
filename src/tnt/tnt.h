@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::tnt {
+namespace ta::tnt {
 
 // TAK TNT map format (version 0x4000), reverse-engineered from the GOG data.
 // A map is W x H cells of 16px. Terrain graphics come from *content-addressed*
@@ -58,4 +58,4 @@ struct Map {
     std::vector<uint8_t> save() const;
 };
 
-} // namespace tak::tnt
+} // namespace ta::tnt

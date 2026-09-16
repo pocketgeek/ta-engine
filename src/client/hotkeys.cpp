@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <sstream>
 
-namespace tak {
+namespace ta {
 
 const std::vector<HotkeyDef>& hotkeyDefs() {
     // key chords use SDL keycodes; sections group the config screen.
@@ -132,4 +132,4 @@ void setChordOverride(std::map<std::string, std::string>& overrides, Act a, KeyC
     overrides[d.id] = c.bound() ? chordName(c) : "NONE";
 }
 
-}  // namespace tak
+}  // namespace ta

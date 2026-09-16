@@ -4,9 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace tak::sim {
+namespace ta::sim {
 
-static const bool g_pathDbg = getenv("TAK_PATHDBG") != nullptr;
+static const bool g_pathDbg = getenv("TA_PATHDBG") != nullptr;
 
 int pathDist(PathCell a, PathCell b) {
     return std::max(std::abs(a.x - b.x), std::abs(a.z - b.z));
@@ -685,4 +685,4 @@ void PathService::tick(const std::function<int(int, int, int)>& score,
     }
 }
 
-}   // namespace tak::sim
+}   // namespace ta::sim

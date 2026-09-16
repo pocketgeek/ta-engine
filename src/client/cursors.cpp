@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -85,8 +85,8 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs, const Settings* set
             // anywhere: the cursor is ~24px of 1999 art drawn at cursorScale on a 4K
             // panel, so its stair-steps are the most visible in the game.
             int fac = 1;
-            SDL_Texture* t = tak::art::makeTexture(ren, fr.rgba, fr.width, fr.height, &fac,
-                                                   tak::art::g_cursorFactor);
+            SDL_Texture* t = ta::art::makeTexture(ren, fr.rgba, fr.width, fr.height, &fac,
+                                                   ta::art::g_cursorFactor);
             if (!t) continue;
             if (fac == 1) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
             // LOGICAL size stays the 1x frame: hotspot, offsets and the drawn size are
@@ -199,12 +199,12 @@ SDL_Cursor* bakeCursor(const std::vector<uint8_t>& rgba, const std::vector<uint8
 // a load that already takes seconds.
 void CursorSet::precompute(int scale) {
     if (scale < 1) scale = 1;
-    if (!tak::art::g_smoothArt || scale <= 1) return;   // nothing to reconstruct
+    if (!ta::art::g_smoothArt || scale <= 1) return;   // nothing to reconstruct
     for (auto& anim : anims_)
         for (auto& f : anim) {
             if (f.smoothScale == scale || f.w <= 0 || f.h <= 0) continue;
             std::vector<uint8_t> up;
-            tak::art::upscale2x(f.rgba, f.w, f.h, up);
+            ta::art::upscale2x(f.rgba, f.w, f.h, up);
             int fw = f.w * 2, fh = f.h * 2;
             // Overshoot to at least TWICE the drawn size, not merely up to it. At a
             // power-of-two CURSOR SIZE, stopping at the drawn size makes the resample
@@ -213,10 +213,10 @@ void CursorSet::precompute(int scale) {
             // pixels per destination pixel, which is where the smoothing comes from.
             while (fw / f.w < scale * 2 && fw < 4096) {
                 std::vector<uint8_t> nxt;
-                tak::art::upscale2x(up, fw, fh, nxt);
+                ta::art::upscale2x(up, fw, fh, nxt);
                 up.swap(nxt); fw *= 2; fh *= 2;
             }
-            tak::art::resample(up, fw, fh, f.smooth, f.w * scale, f.h * scale);
+            ta::art::resample(up, fw, fh, f.smooth, f.w * scale, f.h * scale);
             f.smoothScale = scale;
         }
 }
@@ -278,4 +278,4 @@ void CursorSet::releaseHardware() {
     SDL_SetCursor(SDL_GetDefaultCursor());   // don't leave a freed cursor active
 }
 
-}  // namespace tak
+}  // namespace ta

@@ -5,7 +5,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace tak::tdo {
+namespace ta::tdo {
 
 namespace {
 
@@ -110,4 +110,4 @@ std::vector<std::string> Model::textures() const {
     return {s.begin(), s.end()};
 }
 
-} // namespace tak::tdo
+} // namespace ta::tdo

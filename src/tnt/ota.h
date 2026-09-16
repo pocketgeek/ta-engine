@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::tnt {
+namespace ta::tnt {
 
 // A map's .ota scenario "GlobalHeader" -- metadata + start positions, the TDF
 // text file Cartographer writes alongside the .tnt (writer RE'd from
@@ -35,4 +35,4 @@ struct Scenario {
     std::string write() const;
 };
 
-} // namespace tak::tnt
+} // namespace ta::tnt

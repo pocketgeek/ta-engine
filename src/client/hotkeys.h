@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 // Modifier bits we model (normalized from SDL's left/right KMOD_* pairs).
 enum : uint16_t { HK_CTRL = 1, HK_SHIFT = 2, HK_ALT = 4 };
@@ -78,4 +78,4 @@ private:
 KeyChord effectiveChord(const std::map<std::string, std::string>& overrides, Act a);
 void setChordOverride(std::map<std::string, std::string>& overrides, Act a, KeyChord c);
 
-}  // namespace tak
+}  // namespace ta

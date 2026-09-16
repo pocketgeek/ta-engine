@@ -35,7 +35,7 @@
 #include <map>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Cell grades from retail's passability query (icd 0x4139d0 -> 0x413c80 ->
 // 0x4db640). Every call site in the original compares against 4, so a cell
@@ -318,4 +318,4 @@ int pathDist(PathCell a, PathCell b);
 // Delta -> one of the 8 directions (icd 0x415040).
 int pathDirFromDelta(int dx, int dz);
 
-}   // namespace tak::sim
+}   // namespace ta::sim

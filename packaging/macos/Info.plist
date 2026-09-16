@@ -9,9 +9,9 @@
     <key>CFBundleDisplayName</key>
     <string>TAK Engine</string>
     <key>CFBundleIdentifier</key>
-    <string>us.pgnet.tak-engine</string>
+    <string>us.pgnet.ta-engine</string>
     <key>CFBundleExecutable</key>
-    <string>takclient</string>
+    <string>taclient</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>

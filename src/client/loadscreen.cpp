@@ -19,7 +19,7 @@
 #include "gui/gui.h"
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -120,7 +120,7 @@ std::filesystem::path findMovie(const std::string& name) {
 LoadScreen::LoadScreen(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::string& mapName,
                        Settings* settings)
     : ren_(ren), vfs_(&vfs), settings_(settings), map_(mapName) {
-    if (settings_) tak::video::setDeblock(settings_->videoDeblock);
+    if (settings_) ta::video::setDeblock(settings_->videoDeblock);
     const Geom& g = geom(vfs);
     bg_ = gafTexture(ren, vfs, g.bgGaf, g.bgSeq, 0, /*keyBlack=*/true);
     const char* drv = SDL_GetCurrentVideoDriver();
@@ -177,7 +177,7 @@ void LoadScreen::present() {
     SDL_SetRenderTarget(ren_, nullptr);
     SDL_RenderSetScale(ren_, 1.0f, 1.0f);
     draw();
-    if (const char* sp = devEnv("TAK_SHOT_LOAD")) {
+    if (const char* sp = devEnv("TA_SHOT_LOAD")) {
         int w = 0, h = 0;
         SDL_GetRendererOutputSize(ren_, &w, &h);
         std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
@@ -228,8 +228,8 @@ void LoadScreen::draw() {
             // Filter the freshly DECODED frame only. The upload below runs every frame,
             // including ones where no new frame was decoded, so filtering there would
             // smear a held frame progressively.
-            if (tak::video::g_deblock)
-                tak::video::deblock(movieRgba_, movie_.width(), movie_.height(), 3);
+            if (ta::video::g_deblock)
+                ta::video::deblock(movieRgba_, movie_.width(), movie_.height(), 3);
             ++movieFrame_;
         }
         if (!movieRgba_.empty())
@@ -290,4 +290,4 @@ void LoadScreen::draw() {
     (void)settings_;
 }
 
-}  // namespace tak
+}  // namespace ta

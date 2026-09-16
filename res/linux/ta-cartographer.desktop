@@ -4,6 +4,6 @@ Name=Cartographer
 GenericName=Map Editor
 Comment=Map editor for the TAK engine
 Exec=cartographer
-Icon=tak-cartographer
+Icon=ta-cartographer
 Terminal=false
 Categories=Game;Development;

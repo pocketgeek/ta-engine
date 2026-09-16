@@ -1,8 +1,8 @@
 #pragma once
 
 // Cartographer's placed-unit layer. Units live in the map's binary .crt, read
-// and written through the SHARED tak::crt module (the same one takclient/
-// takserver link). This holds the editor's working view (PlacedUnit, in map
+// and written through the SHARED ta::crt module (the same one taclient/
+// taserver link). This holds the editor's working view (PlacedUnit, in map
 // pixels) plus load/convert/save helpers that preserve the parts of the .crt
 // the unit tool doesn't touch (custom types, trigger rules, regions).
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 namespace cart {
 
@@ -29,24 +29,24 @@ struct PlacedUnit {
 
 // Parse a map's .crt in full (units + rules + regions + custom types). Empty
 // Scenario (version 0) if the .crt is absent or invalid.
-tak::crt::Scenario loadScenario(const tak::hpi::Vfs& vfs, const std::string& crtPath);
+ta::crt::Scenario loadScenario(const ta::hpi::Vfs& vfs, const std::string& crtPath);
 
 // The editor's working unit list, from a parsed Scenario (cells -> map pixels).
-std::vector<PlacedUnit> toPlaced(const tak::crt::Scenario& s);
+std::vector<PlacedUnit> toPlaced(const ta::crt::Scenario& s);
 
 // Serialize the map's .crt: replace `base`'s unit list with `units` (map pixels
 // -> cells), keeping base's custom types, trigger rules, and regions intact.
-std::vector<uint8_t> saveScenario(tak::crt::Scenario base,
+std::vector<uint8_t> saveScenario(ta::crt::Scenario base,
                                   const std::vector<PlacedUnit>& units);
 
 // Sorted UPPERCASE unit-type names from every units/*.fbi (for the palette/combo).
-std::vector<std::string> unitTypeNames(const tak::hpi::Vfs& vfs);
+std::vector<std::string> unitTypeNames(const ta::hpi::Vfs& vfs);
 
 // Use-only unit restriction. The map's <name>.tdf (referenced by the OTA
 // `useonlyunits=<name>.tdf`) lists the allowed types, one `[TYPE] {}` section
 // each. loadUseOnly returns them UPPERCASE; writeUseOnly emits the retail
 // `[TYPE]\t{}` CRLF format. An empty list means "no restriction".
-std::vector<std::string> loadUseOnly(const tak::hpi::Vfs& vfs, const std::string& tdfPath);
+std::vector<std::string> loadUseOnly(const ta::hpi::Vfs& vfs, const std::string& tdfPath);
 std::string writeUseOnly(const std::vector<std::string>& types);
 
 } // namespace cart

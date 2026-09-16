@@ -8,7 +8,7 @@ substrate underneath it is kept.
 ## 1. Goals
 
 - **Client–server topology.** All clients make one outbound TCP connection to a
-  central server (`takserver`) reachable on the LAN or internet. Everything —
+  central server (`taserver`) reachable on the LAN or internet. Everything —
   lobby, game traffic — is proxied through it. No NAT traversal or port
   forwarding on any player's side.
 - **Up to 8 players per game**, any mix of humans and AIs.
@@ -53,9 +53,9 @@ the stress keys are disabled in networked games.
 ## 3. Architecture overview
 
 ```
-   takclient (client)  ─┐
-   takclient (client)  ─┼─ TCP ──►  takserver ── per-game: GameRoom
-   takclient (client)  ─┘             │  ├─ command sequencer (tick authority)
+   taclient (client)  ─┐
+   taclient (client)  ─┼─ TCP ──►  taserver ── per-game: GameRoom
+   taclient (client)  ─┘             │  ├─ command sequencer (tick authority)
                                     │  ├─ headless World (referee + AI host)
                                     │  ├─ ai::Controller per AI slot
                                     │  └─ bundle log (reconnect + replay)
@@ -124,7 +124,7 @@ is pure pacing — the same bundles play in the same order, so every sim and has
 stays byte-identical (`mpStep()` in `src/client/main.cpp`).
 
 Two refinements make it self-tuning:
-- **Auto-sizing** (the default; `TAK_NET_DELAY` overrides — `0` disables the
+- **Auto-sizing** (the default; `TA_NET_DELAY` overrides — `0` disables the
   buffer, a positive integer pins a fixed depth): an active RTT probe (one
   ping/sec) plus a decaying-max of the measured bundle-arrival jitter size the
   reserve each frame — `clamp(2 + max(kJit, kRtt), 2, 16)` bundles — so a clean
@@ -141,9 +141,9 @@ render frame in `cameraFrame(dt)`, independent of the sim, so input feel is neve
 coupled to link latency.
 
 *Test harness.* A synthetic link model injects receive delay on the client with
-no server needed: `TAK_NET_BASE_MS` (constant one-way), `TAK_NET_JITTER_MS`
-(uniform 0..N added), `TAK_NET_LOSS_PCT` (probability of a ~2·base retransmit
-spike). `TAK_NETBENCH=1` runs the headless client at a fixed 60 fps and reports
+no server needed: `TA_NET_BASE_MS` (constant one-way), `TA_NET_JITTER_MS`
+(uniform 0..N added), `TA_NET_LOSS_PCT` (probability of a ~2·base retransmit
+spike). `TA_NETBENCH=1` runs the headless client at a fixed 60 fps and reports
 `delay`, measured `rtt`, frames, and starved-frame `stalls`. Measured over 15 s
 of an `--mpai` game, the servo cuts stalls roughly 10–12× on lossy links
 (base60+jit60+loss5%: 28.2% → 2.3%; base80+jit120+loss10%: 61.2% → 6.0%) while
@@ -218,7 +218,7 @@ contract is stated, enforced, and narrow:
   visibility pass entirely (the AI is omniscient and nothing on the server
   renders).
 
-## 4. The server (`takserver`)
+## 4. The server (`taserver`)
 
 A new headless binary. Needs the same game data as clients (it runs the sim
 and the AI): point it at the extracted data directory. No SDL, no rendering —
@@ -407,7 +407,7 @@ The skirmish AI (~200 lines in `GameView`, `main.cpp:2926–3131`) moves to a
 new module, one `ai::Controller` per AI player:
 
 ```cpp
-namespace tak::ai {
+namespace ta::ai {
   Profile loadProfile(path);              // parses ai/default.txt weight/limit
   class Controller {
     Controller(int player, const sim::TypeRegistry&, const Profile&, uint32_t seed);
@@ -440,7 +440,7 @@ Single-player keeps working identically: `GameView` instantiates local
 Controllers feeding `apply()` — same behavior, and it proves the sink
 interface before the server exists.
 
-## 8. Client changes (`takclient`)
+## 8. Client changes (`taclient`)
 
 - **Server browser** (new screen or `--server <addr>` entry): game list with
   name, map, players/capacity, lobby/running state, lock icon; create-game
@@ -455,7 +455,7 @@ interface before the server exists.
   banners); chat overlay.
 - The `--host`/`--join` peer mode is removed once the server path works
   (`net::Session` retired); `--server`, `--name` added. LAN play = run
-  `takserver` on any machine on the LAN.
+  `taserver` on any machine on the LAN.
 
 ## 9. Maps, capacity, colors (retail facts)
 
@@ -510,7 +510,7 @@ Each lands independently, keeps single-player green, and is verifiable.
   `apply()`; sim-tick cadence; seeded RNG; delete GameView AI. *Verify: fixed
   seed ⇒ bit-identical `stateHash` sequence across two runs; behavior parity
   with pre-extraction AI.*
-- **M3 — Server + protocol, humans only.** `takserver` lobby (create/list/
+- **M3 — Server + protocol, humans only.** `taserver` lobby (create/list/
   join/password/slots/chat/kick/start), sequencer, **TickBundle with the event
   section and the log header from day one**, referee sim + suspicion rule,
   hash ring, server hardening (§5), client browser + lobby screens; retire
@@ -534,7 +534,7 @@ Each lands independently, keeps single-player green, and is verifiable.
 
 ## 12. Testing strategy
 
-- **Headless client mode** (`takclient --headless-net`) so CI can run N scripted
+- **Headless client mode** (`taclient --headless-net`) so CI can run N scripted
   clients + server on one machine and assert every hash matches to game end.
 - **Replay determinism:** every CI game's log re-run must reproduce the final
   hash — this also guards single-player AI determinism.

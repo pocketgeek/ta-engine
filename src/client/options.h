@@ -1,7 +1,7 @@
 #pragma once
 
 // A self-contained Options overlay, hosted by BOTH the main menu (MainMenu) and the
-// in-game Esc menu (GameView). It edits a tak::Settings live and calls onChange()
+// in-game Esc menu (GameView). It edits a ta::Settings live and calls onChange()
 // after every change so the host can apply it (audio / window / camera). It owns no
 // game state; volumes/speeds/scale are all local display prefs (never hashed).
 
@@ -14,7 +14,7 @@
 
 #include "client/settings.h"
 
-namespace tak {
+namespace ta {
 
 // The process-wide output-channel count (1/2/4/6/8) of the chosen device (or the
 // system default), probed once and cached. Shared by SoundBank (which requests it) and
@@ -108,9 +108,9 @@ private:
     // (playerName / accountName / lastMap are preserved by DEFAULTS, so they're
     // excluded).
     // "At defaults" and "what DEFAULTS does" are the same question, so they share one
-    // definition -- see tak::preferenceDefaults. They used to be two hand-maintained
+    // definition -- see ta::preferenceDefaults. They used to be two hand-maintained
     // lists that kept drifting apart.
-    bool atDefaults() const { return s_ == tak::preferenceDefaults(s_); }
+    bool atDefaults() const { return s_ == ta::preferenceDefaults(s_); }
 
     SDL_Renderer* ren_;
     Settings& s_;
@@ -132,4 +132,4 @@ private:
     SDL_FRect defaultsRect_{}, saveRect_{}, backRect_{};   // footer buttons (filled by layout())
 };
 
-}  // namespace tak
+}  // namespace ta

@@ -36,8 +36,8 @@ float narrowestStrip(float uiScale) {
     return 180.0f * uiScale + 12.0f - 2.0f * std::max(4.0f, 6.0f * uiScale);
 }
 
-tak::hud::StatsFit fit(float w, float h, int rows = 9, float uiScale = 0.75f) {
-    return tak::hud::fitStats(rows, w, h, kBudget, kGlyphW, kGlyphH, pxFor(uiScale),
+ta::hud::StatsFit fit(float w, float h, int rows = 9, float uiScale = 0.75f) {
+    return ta::hud::fitStats(rows, w, h, kBudget, kGlyphW, kGlyphH, pxFor(uiScale),
                               /*rowPad=*/6.0f * uiScale);
 }
 

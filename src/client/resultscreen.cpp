@@ -18,7 +18,7 @@
 #include "client/settings.h"
 #include "gui/gui.h"
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -319,7 +319,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                 cursors.draw(ren, CursorId::Normal, mx, my, sc);
             }
         }
-        if (const char* sp = devEnv("TAK_SHOT_RESULT")) {
+        if (const char* sp = devEnv("TA_SHOT_RESULT")) {
             std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
             if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_ABGR8888, px.data(), w * 4) == 0)
                 png::write(sp, w, h, px);
@@ -336,4 +336,4 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     }
 }
 
-}  // namespace tak
+}  // namespace ta

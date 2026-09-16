@@ -20,7 +20,7 @@
 
 #include <cstdio>
 
-using tak::sim::World;
+using ta::sim::World;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what) {

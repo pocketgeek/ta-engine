@@ -18,8 +18,8 @@ int main(int argc, char** argv) {
     }
     std::string cmd = argv[1];
     try {
-        auto pal = tak::gaf::Palette::load(argv[3]);
-        auto seqs = tak::gaf::load(argv[2], pal);
+        auto pal = ta::gaf::Palette::load(argv[3]);
+        auto seqs = ta::gaf::load(argv[2], pal);
 
         if (cmd == "list") {
             for (const auto& s : seqs) {
@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
                     const auto& fr = s.frames[f];
                     if (fr.width == 0 || fr.height == 0) continue;
                     auto out = outDir / (s.name + "_" + std::to_string(f) + ".png");
-                    tak::png::write(out, fr.width, fr.height, fr.rgba);
+                    ta::png::write(out, fr.width, fr.height, fr.rgba);
                     ++count;
                 }
             }

@@ -7,7 +7,7 @@
 // methods stay inline in the header. Grouping is by name heuristic.
 
     std::vector<std::pair<float, float>> GameView::parseStartPositions() const {
-        return tak::sim::parseStartPositions(vfs_, mapPath_);
+        return ta::sim::parseStartPositions(vfs_, mapPath_);
     }
 
     void GameView::discoSound() {
@@ -65,12 +65,12 @@
         else sounds_.startMusic(vfs_, factionMusicTracks(side_));
     }
 
-    void GameView::applySettings(const tak::Settings& s) {
+    void GameView::applySettings(const ta::Settings& s) {
         // Push the display options that render code reads from globals (smooth art,
         // cursor factor, movie deblocking). This is GameView's one "settings changed"
         // hook, so wiring it here reaches the Esc-menu Options and its DEFAULTS button
         // without either of them having to know the globals exist.
-        tak::applyRuntimeSettings(s);
+        ta::applyRuntimeSettings(s);
         sounds_.setMasterVolume(s.masterVol);
         sounds_.setMusicVolume(s.bgmVol);
         sounds_.setSfxVolume(s.sfxVol);
@@ -99,7 +99,7 @@
 
     void GameView::openOptions() {
         if (!settings_) return;
-        options_ = std::make_unique<tak::OptionsScreen>(ren_, *settings_,
+        options_ = std::make_unique<ta::OptionsScreen>(ren_, *settings_,
             [this, fsWas = settings_->fullscreen, vsWas = settings_->vsync]() mutable {
                 applySettings(*settings_);
                 // Only touch the window/renderer when that display setting actually changed
@@ -190,8 +190,8 @@
         std::sort(targets.begin(), targets.end());
         bool first = true;
         for (auto& [d, fid] : targets) {
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Reclaim;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Reclaim;
             c.unitId = builderId;
             c.targetId = fid;
             c.queue = uint8_t((first && !queue) ? 0 : 1);   // first clears, rest append
@@ -216,15 +216,15 @@
         return { pick >= 0 ? pick : any, front().live.size() };
     }
 
-    void GameView::issue(tak::net::Command c) {
+    void GameView::issue(ta::net::Command c) {
         if (replayMode_ || spectating_) return;   // watch-only: can't order units
         c.player = uint8_t(localPlayer_);
         if (mp_) outbox_.push_back(c);
         else apply(c);
     }
 
-    void GameView::startReplay(tak::sim::MatchConfig cfg,
-                     std::vector<tak::net::Bundle> bundles,
+    void GameView::startReplay(ta::sim::MatchConfig cfg,
+                     std::vector<ta::net::Bundle> bundles,
                      const std::string& mission) {
         // Read through this view's own VFS (we own it), not a caller pointer.
         cfg.vfs = &vfs_;
@@ -240,14 +240,14 @@
             // not have known.
             missionStem_ = mission;
             int human = 0;
-            tak::sim::MissionSetup ms;
-            if (tak::sim::setupMission(world_, registry_, vfs_, mission, human, &ms))
+            ta::sim::MissionSetup ms;
+            if (ta::sim::setupMission(world_, registry_, vfs_, mission, human, &ms))
                 spots = ms.slotPos;
             else
                 std::fprintf(stderr, "replay: mission '%s' not in this data\n",
                              mission.c_str());
         } else {
-            spots = tak::sim::setupMatch(world_, registry_, cfg);
+            spots = ta::sim::setupMatch(world_, registry_, cfg);
         }
         replayBundles_ = std::move(bundles);
         replayMode_ = true;
@@ -339,15 +339,15 @@
     // Build the end-of-game statistics table from the last render frame. Rows follow
     // slot order so the table reads the same for everyone in a multiplayer game; a
     // player still standing when the game ended is timed at the full match length.
-    tak::ResultStats GameView::resultStats() const {
-        tak::ResultStats st;
+    ta::ResultStats GameView::resultStats() const {
+        ta::ResultStats st;
         const Frame& f = front();
         st.matchSec = int(f.gameTick / 30);
         static const char* kSides[5] = {"ara", "tar", "ver", "zon", "cre"};
         for (int i = 0; i < 5; ++i) if (side_ == kSides[i]) st.faction = i;
         for (int p = 0; p < f.numPlayers && p < int(f.players.size()); ++p) {
             const PlayerR& pr = f.players[size_t(p)];
-            tak::ResultRow row;
+            ta::ResultRow row;
             row.name = !playerName_[p & 7].empty() ? playerName_[p & 7]
                                                    : "PLAYER " + std::to_string(p + 1);
             row.colorSlot = colorSlot_[p & 7];
@@ -509,8 +509,8 @@
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
         for (auto& u : world_.units())
             if (u.player == localPlayer_ && u.type && u.type->canMove) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::AttackMove;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::AttackMove;
                 c.unitId = u.id;
                 c.x = cx + dx;
                 c.z = cz + dz;
@@ -829,7 +829,7 @@
         return f.vis[size_t(cz) * f.visW + cx] == 2;
     }
 
-    int GameView::frameQueuedCount(int builderId, const tak::sim::UnitType* type) const {
+    int GameView::frameQueuedCount(int builderId, const ta::sim::UnitType* type) const {
         const UnitR* b = frameUnitP(builderId);
         if (!b || !type) return 0;
         int n = 0;
@@ -885,7 +885,7 @@
         }
         // Drained, not gated on newTick_: the whole point is to pick up impacts
         // from ticks whose snapshots the render never saw.
-        std::vector<tak::sim::World::HitFx> hitsToShow;
+        std::vector<ta::sim::World::HitFx> hitsToShow;
         {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
             hitsToShow.assign(hitQueue_.begin(), hitQueue_.end());
@@ -901,13 +901,13 @@
             // draws an emitter, not a bolt -- and we already draw its flame. Excluding
             // it here stops a drake's breath coming with a spurious lightning streak.
             if (h.weapon && h.weapon->beam && !h.weapon->melee &&
-                h.weapon->fx != tak::sim::WeaponFx::Fire &&
+                h.weapon->fx != ta::sim::WeaponFx::Fire &&
                 (noFog_ || cellVisibleR(h.x, h.z))) {
                 BeamFx b;
                 b.x1 = h.fromX; b.z1 = h.fromZ;
                 b.x2 = h.x;     b.z2 = h.z;
                 b.alt1 = unitAltById(h.weapon ? 0 : 0) * 0.0f;   // set below
-                b.lightning = h.weapon->fx == tak::sim::WeaponFx::Lightning;
+                b.lightning = h.weapon->fx == ta::sim::WeaponFx::Lightning;
                 for (int i = 0; i < 3; ++i) {
                     b.inner[i] = h.weapon->inner[i];
                     b.middle[i] = h.weapon->middle[i];
@@ -928,7 +928,7 @@
             // ordinary impact path meant 30 generic dust bursts and 30 hit sounds a
             // second, each one a dozen-plus particles. The storm's own animation and
             // its one-shot cast sound carry it instead.
-            if (h.weapon && h.weapon->kind == tak::sim::Weapon::Kind::Wandering) continue;
+            if (h.weapon && h.weapon->kind == ta::sim::Weapon::Kind::Wandering) continue;
             if (h.weapon && !h.weapon->soundHit.empty()) {
                 const std::string& body = h.target ? h.target->bodyType : std::string("default");
                 const std::string* wav = soundClasses_.pick(h.weapon->soundHit, body, salt_++);
@@ -998,7 +998,7 @@
                     if (const UnitR* v = frameUnitP(h.victimId);
                         v && v->alive() && v->type) {
                         int dtype = (h.weapon && h.weapon->status !=
-                                     tak::sim::Weapon::Status::None) ? 4 : 0;
+                                     ta::sim::Weapon::Status::None) ? 4 : 0;
                         // isStructure(), not canMove: drawUnit locks a structure's
                         // yaw to 0, and the Barracks declares canmove=1 with no
                         // velocity (the CLAUDE.md gotcha), so canMove said "rotates"
@@ -1037,7 +1037,7 @@
         updateParticles(dt);
         updateEffects(dt);
         updateRings(dt);
-        if (tak::devEnv("TAK_STUCKSTAT")) {   // crowd-jam diagnostic
+        if (ta::devEnv("TA_STUCKSTAT")) {   // crowd-jam diagnostic
             static float acc = 0; acc += dt;
             if (acc >= 2.0f) {
                 acc = 0;
@@ -1122,7 +1122,7 @@
             else if (u.corpsePhase) maybeSwapCorpseModel(u);
             auto it = anims_.find(u.id);
             if (u.justFired && newTick_ && u.type) {
-                using Fx = tak::sim::WeaponFx;
+                using Fx = ta::sim::WeaponFx;
                 const auto& w = u.type->weapon;
                 // Generic firing sounds are a stand-in for units whose COB carries no
                 // PLAY_SOUND of its own; units with script audio (attack swooshes,
@@ -1457,7 +1457,7 @@
                                 ok = a.vm->start("AimWeapon", {h16, 0, ws});
                         else
                             ok = a.vm->start("AimWeapon", {h16, 0, 1});
-                        static const bool kAimLog = tak::devEnv("TAK_AIMLOG") != nullptr;
+                        static const bool kAimLog = ta::devEnv("TA_AIMLOG") != nullptr;
                         if (kAimLog)
                             std::fprintf(stderr, "aim u%d tgt%d rel=%.2f h16=%d ok=%d\n",
                                          u.id, tgt, rel, h16, int(ok));
@@ -1735,7 +1735,7 @@
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
                             double& simMs, uint64_t& unitsDrawn, uint64_t& shadowVerts) {
         // Deltas since the last call -- the counters themselves are monotonic so that the
-        // per-frame TAK_SPIKES logger can take its own independent deltas off them.
+        // per-frame TA_SPIKES logger can take its own independent deltas off them.
         projMs   = profProjMs_   - profProjPrev_;    profProjPrev_   = profProjMs_;
         submitMs = profSubmitMs_ - profSubmitPrev_;  profSubmitPrev_ = profSubmitMs_;
         shadowMs = profShadowMs_ - profShadowPrev_;  profShadowPrev_ = profShadowMs_;
@@ -1830,7 +1830,7 @@
         if (it == unitType_.end() || it->second == obj) return;
         if (!visuals_.count(obj)) {
             try {
-                visuals_[obj] = {tak::tdo::load(vread("objects3d/" + obj + ".3do")), {}};
+                visuals_[obj] = {ta::tdo::load(vread("objects3d/" + obj + ".3do")), {}};
             } catch (const std::exception&) { return; }   // no corpse mesh: keep pose
         }
         it->second = obj;
@@ -1843,17 +1843,17 @@
         if (it == unitType_.end() || it->second == vm) return;   // not drawn yet / done
         if (!visuals_.count(vm)) {
             try {
-                visuals_[vm] = {tak::tdo::load(vread("objects3d/" + vm + ".3do")), {}};
+                visuals_[vm] = {ta::tdo::load(vread("objects3d/" + vm + ".3do")), {}};
             } catch (const std::exception&) { return; }   // no promoted mesh: keep base
         }
         it->second = vm;   // draw the promoted mesh from now on
     }
 
-    void GameView::registerUnit(int id, const tak::sim::UnitType* type) {
+    void GameView::registerUnit(int id, const ta::sim::UnitType* type) {
         const std::string& typeId = type->id;
         if (!visuals_.count(typeId)) {
             try {
-                Visual v{tak::tdo::load(vread("objects3d/" + typeId + ".3do")), {}};
+                Visual v{ta::tdo::load(vread("objects3d/" + typeId + ".3do")), {}};
                 buildPieceMeta(v.model.root, v.meta);   // fixed for the model's life
                 visuals_[typeId] = std::move(v);
             } catch (const std::exception& e) {
@@ -1871,8 +1871,8 @@
             if (ci == cobCache_.end()) {
                 std::string cobPath = "scripts/" + typeId + ".cob";
                 CobCache cc;
-                cc.file = std::make_shared<const tak::cob::File>(
-                    tak::cob::load(vread(cobPath), cobPath));
+                cc.file = std::make_shared<const ta::cob::File>(
+                    ta::cob::load(vread(cobPath), cobPath));
                 for (const auto& p : cc.file->pieces) {
                     std::string n = p;
                     std::transform(n.begin(), n.end(), n.begin(), ::tolower);
@@ -1922,7 +1922,7 @@
             // sim's initial u.active (= activateWhenBuilt) so a unit built inactive
             // doesn't fire a spurious Deactivate the first frame it's seen.
             a.active = a.hasGateDoors ? false : (type ? type->activateWhenBuilt : true);
-            a.vm = std::make_unique<tak::cob::Vm>(ci->second.file);
+            a.vm = std::make_unique<ta::cob::Vm>(ci->second.file);
             // TA COB unit-state queries answered from the sim.
             int unitId = id;
             a.vm->onGet = [this, unitId](int32_t valId,
@@ -2121,10 +2121,10 @@
     void GameView::loadTextures() {
         // Faction texture banks use their own palettes (palettes/<side>_textures.pcx).
         // The VFS merges base + Iron Plague (cre) texture GAFs into one namespace.
-        std::map<std::string, tak::gaf::Palette> pals;
+        std::map<std::string, ta::gaf::Palette> pals;
         for (const char* side : {"ara", "tar", "ver", "zon", "aid", "cre"}) {
             std::string pp = std::string("palettes/") + side + "_textures.pcx";
-            try { if (vfs_.has(pp)) pals[side] = tak::gaf::Palette::fromBytes(vread(pp), pp); }
+            try { if (vfs_.has(pp)) pals[side] = ta::gaf::Palette::fromBytes(vread(pp), pp); }
             catch (const std::exception&) {}
         }
         if (!pals.count("ara")) return;   // no palettes available
@@ -2136,7 +2136,7 @@
             auto pit = pals.find(stem.substr(0, 3));
             if (pit != pals.end()) pal = &pit->second;
             try {
-                for (auto& seq : tak::gaf::load(vread(path), *pal, 5, path)) {
+                for (auto& seq : ta::gaf::load(vread(path), *pal, 5, path)) {
                     if (seq.frames.empty()) continue;
                     std::string name = seq.name;
                     std::transform(name.begin(), name.end(), name.begin(), ::tolower);
@@ -2207,7 +2207,7 @@
         }
     }
 
-    const tak::cob::PieceState* GameView::pieceFor(const Anim* a, const std::string& objName) const {
+    const ta::cob::PieceState* GameView::pieceFor(const Anim* a, const std::string& objName) const {
         if (!a || !a->vm || !a->pieceNames) return nullptr;
         std::string n = objName;
         std::transform(n.begin(), n.end(), n.begin(), ::tolower);
@@ -2250,9 +2250,9 @@
             }
     }
 
-    tak::tdf::Node GameView::vtdf(const std::string& p) const {
+    ta::tdf::Node GameView::vtdf(const std::string& p) const {
         auto b = vfs_.read(p);
-        return tak::tdf::parseText(std::string(b.begin(), b.end()), p);
+        return ta::tdf::parseText(std::string(b.begin(), b.end()), p);
     }
 
     std::string GameView::mapSibling(const char* ext) const {
@@ -2261,12 +2261,12 @@
     }
 
     void GameView::remountPolicy(uint8_t p) {
-        auto pol = tak::hpi::OverridePolicy(p <= 2 ? p : 2);
+        auto pol = ta::hpi::OverridePolicy(p <= 2 ? p : 2);
         if (pol == policy_ || installRoot_.empty()) return;
         policy_ = pol;
-        vfs_ = tak::hpi::mountRetailRoot(installRoot_, pol);
-        registry_ = tak::sim::TypeRegistry{};
-        tak::sim::setupRegistry(registry_, vfs_, crusades_);
+        vfs_ = ta::hpi::mountRetailRoot(installRoot_, pol);
+        registry_ = ta::sim::TypeRegistry{};
+        ta::sim::setupRegistry(registry_, vfs_, crusades_);
     }
 
     float GameView::birthProgress(int id) const {
@@ -2301,8 +2301,8 @@
         if (!vhas(ota)) return;
         try {
             auto b = vread(ota);
-            tak::tdf::Node r = tak::tdf::parseText(std::string(b.begin(), b.end()), ota);
-            if (const tak::tdf::Node* gh = r.child("globalheader")) {
+            ta::tdf::Node r = ta::tdf::parseText(std::string(b.begin(), b.end()), ota);
+            if (const ta::tdf::Node* gh = r.child("globalheader")) {
                 windMin_ = float(gh->numberOr("minwindspeed", 100));
                 windMax_ = float(gh->numberOr("maxwindspeed", 2000));
                 if (windMax_ < windMin_) std::swap(windMin_, windMax_);
@@ -2329,7 +2329,7 @@
     // model sinks up to `waterline` height units and no further once the seabed
     // rises to meet it. Our sim has no Y, so this is a pure screen-Y offset, added
     // where terrainLift is subtracted.
-    float GameView::waterSink(const tak::sim::UnitType* t, float wx, float wz) {
+    float GameView::waterSink(const ta::sim::UnitType* t, float wx, float wz) {
         if (!t || t->waterline <= 0 || !(t->canHover || t->floater)) return 0.0f;
         const auto& m = mapView_.map();
         if (m.heights.empty()) return 0.0f;
@@ -2351,9 +2351,9 @@
             int best = 0;
             for (int i = 1; i < 256; ++i) if (hist[i] > hist[best]) best = i;
             heightRef_ = best;
-            if (const char* e = tak::devEnv("TAK_HSCALE")) kHeightScale_ = std::stof(e);
-            if (const char* e = tak::devEnv("TAK_HSCALEX")) kHeightScaleX_ = std::stof(e);
-            if (tak::devEnv("TAK_HDEBUG")) showHDebug_ = true;
+            if (const char* e = ta::devEnv("TA_HSCALE")) kHeightScale_ = std::stof(e);
+            if (const char* e = ta::devEnv("TA_HSCALEX")) kHeightScaleX_ = std::stof(e);
+            if (ta::devEnv("TA_HDEBUG")) showHDebug_ = true;
         }
         float gx = (wx - 8.0f) / 16.0f, gz = (wz - 8.0f) / 16.0f;
         int x0 = std::clamp(int(std::floor(gx)), 0, m.width - 1);
@@ -2449,7 +2449,7 @@
                     + waterSink(u.type, ix, iz) * zm - altLift(u) * zm - 12.0f * zm};
     }
 
-    const SDL_FRect& GameView::unitHitBox(const tak::sim::UnitType* type) {
+    const SDL_FRect& GameView::unitHitBox(const ta::sim::UnitType* type) {
         auto it = hitBoxes_.find(type->id);
         if (it != hitBoxes_.end()) return it->second;
         // Fallback (model not loaded): a small box just above the anchor.
@@ -2497,7 +2497,7 @@
     }
 
 
-    const GameView::RingBox& GameView::unitRingBox(const tak::sim::UnitType* type) {
+    const GameView::RingBox& GameView::unitRingBox(const ta::sim::UnitType* type) {
         auto it = ringBoxes_.find(type->id);
         if (it != ringBoxes_.end()) return it->second;
         RingBox rb;   // defaults cover a model that never loaded
@@ -2510,7 +2510,7 @@
             // invisible spread-out polygons that would blow the ring out to nothing
             // like the unit's size.
             static const float kNoRot[3] = {0, 0, 0};   // rest pose: no COB rotation
-            auto walk = [&](auto&& self, const tak::tdo::Object& o, const Xform& parent,
+            auto walk = [&](auto&& self, const ta::tdo::Object& o, const Xform& parent,
                             bool isRoot) -> void {
                     Xform xf = parent.then(o.x, o.y, o.z, kNoRot);
                     std::string on = o.name;
@@ -2722,10 +2722,10 @@
         for (auto& [side, file] : maps) {
             try {
                 // TAF frames are raw ARGB; the palette arg is ignored for them.
-                auto pal = tak::gaf::Palette::fromBytes(vread("palettes/ara_textures.pcx"),
+                auto pal = ta::gaf::Palette::fromBytes(vread("palettes/ara_textures.pcx"),
                                                         "palettes/ara_textures.pcx");
                 std::string tp = "anims/" + std::string(file) + "_4444.taf";
-                auto seqs = tak::gaf::load(vread(tp), pal, -1, tp);
+                auto seqs = ta::gaf::load(vread(tp), pal, -1, tp);
                 if (seqs.empty()) continue;
                 auto& frames = buildFx_[side];
                 for (auto& fr : seqs[0].frames) {
@@ -2741,11 +2741,11 @@
         }
     }
 
-    void GameView::issuePerUnit(tak::net::Cmd kind, int value) {
+    void GameView::issuePerUnit(ta::net::Cmd kind, int value) {
         for (int id : selection_) {
             const auto* u = frameUnitP(id);
             if (!u || u->player != localPlayer_) continue;
-            tak::net::Command c;
+            ta::net::Command c;
             c.kind = kind;
             c.unitId = id;
             c.targetId = value;
@@ -2845,9 +2845,9 @@
         // Everything below is a REBINDABLE action: resolve the pressed chord to an
         // Act via the user's hotkey config (src/client/hotkeys) and dispatch.
         switch (hotkeys_.match(int32_t(key), mod)) {
-            case tak::Act::ToggleCounts: showCounts_ = !showCounts_; return true;
-            case tak::Act::UnitInfo: toggleUnitInfo(); return true;
-            case tak::Act::FullScreenRadar:
+            case ta::Act::ToggleCounts: showCounts_ = !showCounts_; return true;
+            case ta::Act::UnitInfo: toggleUnitInfo(); return true;
+            case ta::Act::FullScreenRadar:
                 // A VIEW action, so it belongs here and not in the order switch
                 // below -- that one returns early when nothing is selected, and
                 // the full-screen map is exactly what you want with an empty
@@ -2857,7 +2857,7 @@
                 fsRadar_ = !fsRadar_;
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::SelfDestruct: {   // self-destruct the selected unit(s)
+            case ta::Act::SelfDestruct: {   // self-destruct the selected unit(s)
                 // Through the command path (Cmd::Destroy), not a direct hp write --
                 // a local mutation would silently desync a networked game.
                 // Cmd::Destroy TOGGLES a 5s countdown; if any selected unit is
@@ -2868,8 +2868,8 @@
                     if (auto* su = frameUnitP(id))
                         if (su->alive() && su->player == localPlayer_) {
                             if (su->selfDestructT >= 0.0f) anyArmed = true;
-                            tak::net::Command c;
-                            c.kind = tak::net::Cmd::Destroy;
+                            ta::net::Command c;
+                            c.kind = ta::net::Cmd::Destroy;
                             c.unitId = id;
                             issue(c);
                             ++n;
@@ -2880,8 +2880,8 @@
                 }
                 return true;
             }
-            case tak::Act::Disco:
-            case tak::Act::Headbang: {
+            case ta::Act::Disco:
+            case ta::Act::Headbang: {
                 // One emote at a time -- don't even send the command while a disco or
                 // headbang is already running (the sim enforces this too). The busy
                 // notice reflects what you're ACTUALLY doing, not the key you pressed.
@@ -2890,28 +2890,28 @@
                     notice_ = frameDiscoActive(localPlayer_) ? "ALREADY GROOVING" : "ALREADY ROCKING";
                     noticeTimer_ = 2; return true;
                 }
-                bool disco = hotkeys_.match(int32_t(key), mod) == tak::Act::Disco;
-                tak::net::Command c;
-                c.kind = disco ? tak::net::Cmd::Disco : tak::net::Cmd::Headbang;
+                bool disco = hotkeys_.match(int32_t(key), mod) == ta::Act::Disco;
+                ta::net::Command c;
+                c.kind = disco ? ta::net::Cmd::Disco : ta::net::Cmd::Headbang;
                 issue(c);   // routed through lockstep so every peer sees the dance
                 notice_ = disco ? "DISCO TIME" : "HEADBANG!!";
                 noticeTimer_ = 2;
                 return true;
             }
             // Selection commands (no armed order, no selection prerequisite).
-            case tak::Act::SelectAll:
+            case ta::Act::SelectAll:
                 selectOwned([](const UnitR&){ return true; });
                 return true;
-            case tak::Act::SelectSameType: {   // all of the currently-selected type
+            case ta::Act::SelectSameType: {   // all of the currently-selected type
                 const auto* first = selection_.empty() ? nullptr : frameUnitP(selection_.front());
                 const auto* t = first ? first->type : nullptr;
                 if (t) selectOwned([t](const UnitR& u){ return u.type == t; });
                 return true;
             }
-            case tak::Act::SelectOnScreen:
+            case ta::Act::SelectOnScreen:
                 selectOwned([this](const UnitR& u){ return onScreen(u); });
                 return true;
-            case tak::Act::SelectMonarch: {   // select the Monarch and track it
+            case ta::Act::SelectMonarch: {   // select the Monarch and track it
                 const auto* m = playerMonarchId_ >= 0 ? frameUnitP(playerMonarchId_) : nullptr;
                 if (m && m->alive()) {
                     selection_ = {playerMonarchId_};
@@ -2925,55 +2925,55 @@
             }
             // Category selects: all owned units matching a predicate (workers, army,
             // navy, casters, flyers, ...). Any-weapon checks scan the weapons list.
-            case tak::Act::SelectBuilders:
+            case ta::Act::SelectBuilders:
                 selectOwned([](const UnitR& u){ return u.type->isBuilder; });
                 return true;
-            case tak::Act::SelectFactory:
+            case ta::Act::SelectFactory:
                 selectOwned([](const UnitR& u){ return u.type->isBuilder && u.type->isStructure(); });
                 return true;
-            case tak::Act::SelectMelee:
+            case ta::Act::SelectMelee:
                 selectOwned([](const UnitR& u){
                     if (!u.type->canMove) return false;
                     for (const auto& w : u.type->weapons) if (w.melee) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectMagic:   // casters carry a personal mana pool
+            case ta::Act::SelectMagic:   // casters carry a personal mana pool
                 selectOwned([](const UnitR& u){ return u.type->maxMana > 0 && u.type->canMove; });
                 return true;
-            case tak::Act::SelectBoats:
+            case ta::Act::SelectBoats:
                 selectOwned([](const UnitR& u){
-                    return u.type->domain == tak::sim::UnitType::Domain::Water;
+                    return u.type->domain == ta::sim::UnitType::Domain::Water;
                 });
                 return true;
-            case tak::Act::SelectBallistic:
+            case ta::Act::SelectBallistic:
                 selectOwned([](const UnitR& u){
                     for (const auto& w : u.type->weapons) if (w.ballistic) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectTroops:   // mobile armed, no navy, not the Monarch
+            case ta::Act::SelectTroops:   // mobile armed, no navy, not the Monarch
                 selectOwned([](const UnitR& u){
                     if (!u.type->canMove || u.type->commander) return false;
-                    if (u.type->domain == tak::sim::UnitType::Domain::Water) return false;
+                    if (u.type->domain == ta::sim::UnitType::Domain::Water) return false;
                     for (const auto& w : u.type->weapons) if (w.damage > 0) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectArmed:    // anything with a weapon except the Monarch
+            case ta::Act::SelectArmed:    // anything with a weapon except the Monarch
                 selectOwned([](const UnitR& u){
                     if (u.type->commander) return false;
                     for (const auto& w : u.type->weapons) if (w.damage > 0) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectOnScreenType: {   // on-screen units of the selected type
+            case ta::Act::SelectOnScreenType: {   // on-screen units of the selected type
                 const auto* first = selection_.empty() ? nullptr : frameUnitP(selection_.front());
                 const auto* t = first ? first->type : nullptr;
                 if (t) selectOwned([this, t](const UnitR& u){ return u.type == t && onScreen(u); });
                 return true;
             }
-            case tak::Act::SelectFlying:
+            case ta::Act::SelectFlying:
                 selectOwned([](const UnitR& u){ return u.type->canFly; });
                 return true;
             default: break;
@@ -2983,74 +2983,74 @@
         // Order commands need at least one selected unit.
         if (selection_.empty()) return false;
         switch (hotkeys_.match(int32_t(key), mod)) {
-            case tak::Act::FightMove: pendingCmd_ = 'f'; return true;
-            case tak::Act::Move:      pendingCmd_ = 'm'; return true;
-            case tak::Act::Attack:    pendingCmd_ = 'a'; return true;
-            case tak::Act::Patrol:    pendingCmd_ = 'p'; return true;
-            case tak::Act::Guard:     pendingCmd_ = 'g'; return true;
-            case tak::Act::Heal:      pendingCmd_ = 'r'; return true;   // repair a damaged friendly
-            case tak::Act::Load:      pendingCmd_ = 'l'; return true;   // click a unit to carry
-            case tak::Act::Unload:    pendingCmd_ = 'u'; return true;   // click the drop destination
-            case tak::Act::ClearOrders:                       // clear the whole order queue
+            case ta::Act::FightMove: pendingCmd_ = 'f'; return true;
+            case ta::Act::Move:      pendingCmd_ = 'm'; return true;
+            case ta::Act::Attack:    pendingCmd_ = 'a'; return true;
+            case ta::Act::Patrol:    pendingCmd_ = 'p'; return true;
+            case ta::Act::Guard:     pendingCmd_ = 'g'; return true;
+            case ta::Act::Heal:      pendingCmd_ = 'r'; return true;   // repair a damaged friendly
+            case ta::Act::Load:      pendingCmd_ = 'l'; return true;   // click a unit to carry
+            case ta::Act::Unload:    pendingCmd_ = 'u'; return true;   // click the drop destination
+            case ta::Act::ClearOrders:                       // clear the whole order queue
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::CycleWeapon:                       // cycle active weapon
+            case ta::Act::CycleWeapon:                       // cycle active weapon
                 if (const auto* u = multiWeaponSel()) {
                     int n = int(u->type->weapons.size());
                     selectWeapon((u->weaponSlot + 1) % n);
                 }
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::Stop:                              // stop (immediate)
+            case ta::Act::Stop:                              // stop (immediate)
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::ToggleCloak: {   // cloak on if any selected cloaker is off
+            case ta::Act::ToggleCloak: {   // cloak on if any selected cloaker is off
                 bool anyOn = false, anyCloaker = false;
                 for (int id : selection_)
                     if (const auto* u = frameUnitP(id); u && u->type && u->type->canCloak) {
                         anyCloaker = true;
                         if (u->cloakOn) anyOn = true;
                     }
-                if (anyCloaker) issuePerUnit(tak::net::Cmd::Cloak, anyOn ? 0 : 1);
+                if (anyCloaker) issuePerUnit(ta::net::Cmd::Cloak, anyOn ? 0 : 1);
                 pendingCmd_ = 0;
                 return true;
             }
-            case tak::Act::ToggleGate: {   // open/close: toggle active on gates (onoffable)
+            case ta::Act::ToggleGate: {   // open/close: toggle active on gates (onoffable)
                 bool anyActive = false, anyGate = false;
                 for (int id : selection_)
                     if (const auto* u = frameUnitP(id); u && u->type && u->type->onOffable) {
                         anyGate = true;
                         if (u->active) anyActive = true;
                     }
-                if (anyGate) issuePerUnit(tak::net::Cmd::SetActive, anyActive ? 0 : 1);
+                if (anyGate) issuePerUnit(ta::net::Cmd::SetActive, anyActive ? 0 : 1);
                 pendingCmd_ = 0;
                 return true;
             }
-            case tak::Act::TrackSelection:                    // track/untrack selection
+            case ta::Act::TrackSelection:                    // track/untrack selection
                 trackSel_ = !trackSel_;
                 if (trackSel_) centerOnSelection();
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::NextUnit: cycleNextUnit(); return true;
+            case ta::Act::NextUnit: cycleNextUnit(); return true;
             default: return false;
         }
     }
 
     void GameView::issueSquad(int unitId, int val) {   // val: 0 none, +N group N, -N formation N
-        tak::net::Command c;
-        c.kind = tak::net::Cmd::SetSquad;
+        ta::net::Command c;
+        c.kind = ta::net::Cmd::SetSquad;
         c.unitId = unitId;
         c.targetId = val;
         issue(c);

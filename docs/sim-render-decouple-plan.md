@@ -26,7 +26,7 @@ The snapshot is a `std::vector<UnitR>` indexed by unit id exactly like `interp_`
 
 Pose / identity (immutable-type carried by pointer so the record is self-contained):
 - `int id`
-- `const tak::sim::UnitType* type` — pointer is set once at spawn, never re-pointed by `tick` (confirmed `sim.h:215`); copying it makes the record touch no `world_`. All the `type->…` reads (name, maxHp, maxMana, weapons, footX/footZ, canFly, cruiseAlt, canMove, maxVel, isBuilder, canTransport, transportCap, canCloak, onOffable, canReclaim, side, buildCost, buildTime, workerTime, weapon.damage, veteranModel) stay off the pointer — immutable game data, safe.
+- `const ta::sim::UnitType* type` — pointer is set once at spawn, never re-pointed by `tick` (confirmed `sim.h:215`); copying it makes the record touch no `world_`. All the `type->…` reads (name, maxHp, maxMana, weapons, footX/footZ, canFly, cruiseAlt, canMove, maxVel, isBuilder, canTransport, transportCap, canCloak, onOffable, canReclaim, side, buildCost, buildTime, workerTime, weapon.damage, veteranModel) stay off the pointer — immutable game data, safe.
 - `float x, z, heading` — **latest-tick (curr) values**, for the RAW reads that bypass interp today: `wallOcclusionY` (`6074/6101/6144`), `uLiftX/uLiftY` (`6783-6784`, called at cull `4002-4003`), frustum cull (`4002-4003`), `flyerAltAt` (`6799`), minimap dots, all hit-test/proximity scans. **Interpolated pose still comes from `interp_`** (see 1e) — these curr x/z are only for occlusion/cull/hit-radius where one-tick staleness is invisible.
 
 Mutated-per-tick scalars/flags (all confirmed sim-written; **no interp**, latest-tick is correct):
@@ -136,7 +136,7 @@ The sim tick sequence and `stateHash()` must stay byte-identical — the rendere
 
 ## 4. STAGING
 
-Each stage is independently shippable and its `--mpai` hash must equal the pre-refactor baseline (currently `aa617979e4ff4cfa` per memory; re-baseline before starting). Sequence with `takserver` (needs matching `--data`) then `TAK_HEADLESS=1 … takclient … --mpai --time 60`; rebuild ALL targets after any `src/sim`/`src/net` touch.
+Each stage is independently shippable and its `--mpai` hash must equal the pre-refactor baseline (currently `aa617979e4ff4cfa` per memory; re-baseline before starting). Sequence with `taserver` (needs matching `--data`) then `TA_HEADLESS=1 … taclient … --mpai --time 60`; rebuild ALL targets after any `src/sim`/`src/net` touch.
 
 **Stage 0 — baseline + move latent mutations to the sim side (no threading).**
 Hazard #6 is resolved (see above) — nothing left to route. Ship.
@@ -145,7 +145,7 @@ Hazard #6 is resolved (see above) — nothing left to route. Ship.
 Define `rendersnapshot.h`. After each `mpStep` drain, on the same thread, populate a `Frame` from `world_` (units, players, projectiles, features, fog, header) plus the per-tick event queue; publish via the same atomic API the threaded version will use. Convert every read enumerated in the map — `drawUnits`/`buildUnitGeom`/`unitScreen`, HUD, minimap, projectiles, fog, cursor/brackets, input scans, `selectedBuilder`/`haveReclaimer` id-return — to read the `Frame`. `visUnits_` points into `frame->units`. This is the bulk of the mechanical work and is verifiable purely visually + by hash: **visuals must be pixel-identical and the `--mpai` hash unchanged** because nothing about sim execution moved. Ship. (This stage alone removes the dangling-pointer class even before threading.)
 
 **Stage B — move the InGame net/sim loop onto its own thread.**
-`mpStep`+`simStep`+`captureInterp`+`mp_` ownership move to a sim thread spun up at `mpSetupDone_`. Render→sim command/chat/intent queue replaces `outbox_` and direct `mp_` calls. Sim→render atomics/queues for outcome/netError/chat/notices/gameSpeed. Double-buffer `interp_` + `Frame` publish. Join-before-disconnect lifetime. Because Stage A already made the render path read only the `Frame`, Stage B is "flip where the `Frame` is produced" + the handoff plumbing. Keep a **single-threaded inline mode** for the headless harnesses (`11134-11172`, `TAK_REPLAY_VERIFY`, mp-headless) — they have no render thread, so run the loop inline as today. `--mpai` hash must remain identical (sim execution is byte-for-byte the same; only the thread it runs on changed).
+`mpStep`+`simStep`+`captureInterp`+`mp_` ownership move to a sim thread spun up at `mpSetupDone_`. Render→sim command/chat/intent queue replaces `outbox_` and direct `mp_` calls. Sim→render atomics/queues for outcome/netError/chat/notices/gameSpeed. Double-buffer `interp_` + `Frame` publish. Join-before-disconnect lifetime. Because Stage A already made the render path read only the `Frame`, Stage B is "flip where the `Frame` is produced" + the handoff plumbing. Keep a **single-threaded inline mode** for the headless harnesses (`11134-11172`, `TA_REPLAY_VERIFY`, mp-headless) — they have no render thread, so run the loop inline as today. `--mpai` hash must remain identical (sim execution is byte-for-byte the same; only the thread it runs on changed).
 
 **Stage C (optional follow-up) — polish.** `thread_local` height memo (#9); projectile sub-tick extrapolation; seqlock instead of mutex on the command queue if profiling shows contention.
 
@@ -298,7 +298,7 @@ All stages committed (B0 4c18c47 .. B1c-3 27b4f98). The sim worker (Option D) is
 default for interactive games; world_.tick no longer runs on the render thread.
 
 - Inline --mpai byte-identical: hash 9ec4f308daf984b1 @ tick 1800 ("Adamantine Gate").
-- Worker-on --mpai (TAK_SIM_THREAD=1): reproducible + err=none (threaded sim byte-matches
+- Worker-on --mpai (TA_SIM_THREAD=1): reproducible + err=none (threaded sim byte-matches
   the referee at every checkpoint). Its hash differs from inline run-to-run because the
   server AI scheduling reacts to ACK timing -- lockstep still holds (identical bundles to
   all peers).

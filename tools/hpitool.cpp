@@ -37,10 +37,10 @@ int main(int argc, char** argv) {
         if (cmd == "inspect") {
             for (int i = 2; i < argc; ++i) {
                 std::cout << "== " << argv[i] << " ==\n"
-                          << tak::hpi::describe(tak::hpi::inspect(argv[i])) << "\n";
+                          << ta::hpi::describe(ta::hpi::inspect(argv[i])) << "\n";
             }
         } else if (cmd == "list") {
-            tak::hpi::Archive ar(argv[2]);
+            ta::hpi::Archive ar(argv[2]);
             size_t files = 0;
             uint64_t total = 0;
             for (const auto& e : ar.entries()) {
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
             }
             std::cout << files << " files, " << total << " bytes\n";
         } else if (cmd == "cat" && argc >= 4) {
-            tak::hpi::Archive ar(argv[2]);
+            ta::hpi::Archive ar(argv[2]);
             const auto* e = ar.find(argv[3]);
             if (!e) {
                 std::cerr << "not found: " << argv[3] << "\n";
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
             std::cout.write(reinterpret_cast<const char*>(data.data()),
                             static_cast<std::streamsize>(data.size()));
         } else if (cmd == "extract" && argc >= 4) {
-            tak::hpi::Archive ar(argv[2]);
+            ta::hpi::Archive ar(argv[2]);
             fs::path outDir = argv[3];
             size_t files = 0;
             for (const auto& e : ar.entries()) {
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
             // Layer every *.hpi/*.ufo in a directory with the retail precedence
             // (newest file date wins; loose files on disk override) and extract
             // the resolved result -- what the retail engine would actually see.
-            tak::hpi::MountSet ms(argv[2]);
+            ta::hpi::MountSet ms(argv[2]);
             fs::path outDir = argv[3];
             std::cerr << "mounting " << ms.archiveFiles().size() << " archive(s):\n";
             for (const auto& a : ms.archiveFiles())
@@ -110,14 +110,14 @@ int main(int argc, char** argv) {
             }
             std::cout << "merged " << files << " files to " << outDir.string() << "\n";
         } else if (cmd == "where" && argc >= 4) {
-            tak::hpi::MountSet ms(argv[2]);
+            ta::hpi::MountSet ms(argv[2]);
             std::cout << argv[3] << " -> " << ms.sourceOf(argv[3]) << "\n";
         } else if (cmd == "pack" && argc >= 4) {
             // hpitool pack <indir> <out.hpi> -- pack every file under <indir>
             // into an uncompressed HPI (internal path = path relative to indir),
             // then reparse it and verify the contents round-trip byte-exact.
             fs::path indir = argv[2];
-            std::vector<tak::hpi::PackFile> files;
+            std::vector<ta::hpi::PackFile> files;
             for (auto& de : fs::recursive_directory_iterator(indir)) {
                 if (!de.is_regular_file()) continue;
                 std::string rel = fs::relative(de.path(), indir).generic_string();
@@ -126,13 +126,13 @@ int main(int argc, char** argv) {
                                           std::istreambuf_iterator<char>());
                 files.push_back({rel, std::move(data)});
             }
-            auto bytes = tak::hpi::pack(files);
+            auto bytes = ta::hpi::pack(files);
             { std::ofstream o(argv[3], std::ios::binary);
               o.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size())); }
-            tak::hpi::Archive ar(argv[3]);
+            ta::hpi::Archive ar(argv[3]);
             bool ok = true;
             for (const auto& pf : files) {
-                const tak::hpi::Entry* e = ar.find(pf.path);
+                const ta::hpi::Entry* e = ar.find(pf.path);
                 if (!e || ar.read(*e) != pf.data) { ok = false;
                     std::cerr << "  MISMATCH " << pf.path << "\n"; }
             }

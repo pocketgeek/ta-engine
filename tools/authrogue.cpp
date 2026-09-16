@@ -28,8 +28,8 @@
 #include <thread>
 #include <vector>
 
-using namespace tak;
-using namespace tak::net;
+using namespace ta;
+using namespace ta::net;
 
 namespace {
 

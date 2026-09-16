@@ -42,7 +42,7 @@
 #include "client/modelmath.h"   // Tri/Xform/scriptRot (shared by GameView + model viewer)
 #include "client/modelview.h"   // standalone 3DO model viewer (extracted leaf)
 #include "client/renderframe.h"   // UnitR/PlayerR/Frame render snapshot (extracted leaf)
-#include "client/replayfile.h"   // .takrep parser (extracted leaf)
+#include "client/replayfile.h"   // .tarep parser (extracted leaf)
 #include "client/sound.h"     // WAV mixer + music + soundclasses (extracted leaf)
 #include "client/threadpool.h"   // data-parallel worker pool (extracted leaf)
 #include "client/gpuvram.h"   // central GPU-texture VRAM accountant + hard cap
@@ -57,7 +57,7 @@
 
 // Keep our own main() on every platform (don't let SDL redefine it to SDL_main /
 // pull in SDL2main + a WinMain); we call SDL_SetMainReady() in main() instead. This
-// also keeps takclient usable as a console/headless tool on Windows. The build also
+// also keeps taclient usable as a console/headless tool on Windows. The build also
 // defines this target-wide (CMake) so it holds even when a header pulls in <SDL.h>
 // before this point; the guard avoids a redefinition warning.
 #ifndef SDL_MAIN_HANDLED
@@ -90,7 +90,7 @@
 #include <thread>
 #include <vector>
 
-// Single-player auto-launches a local takserver (AIs run only on the server).
+// Single-player auto-launches a local taserver (AIs run only on the server).
 // Sockets come from net/netcompat.h (included first, before SDL). Process control
 // is the one genuinely platform-specific bit: fork/exec on POSIX, CreateProcess on
 // Windows.
@@ -156,8 +156,8 @@ public:
     // covers single-player-vs-nobody, spectators, and replay playback itself.
     void saveNetReplay();
 
-    GameView(SDL_Renderer* ren, tak::hpi::Vfs vfs, const std::string& mapPath,
-             const std::string& installRoot, tak::hpi::OverridePolicy policy,
+    GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
+             const std::string& installRoot, ta::hpi::OverridePolicy policy,
              bool demo, bool scenario, bool mission,
              bool bare, const std::string& side = "ara", const std::string& aiSide = "tar",
              bool crusades = false)
@@ -169,17 +169,17 @@ public:
         // Unit registry: MOVEINFO + units + canbuild (+ Crusades overlay first).
         // The VFS merges base + Iron Plague + community data into one namespace,
         // precedence resolved by the retail newest-date rule.
-        tak::sim::setupRegistry(registry_, vfs_, crusades_);
+        ta::sim::setupRegistry(registry_, vfs_, crusades_);
         if (crusades_)
             std::fprintf(stderr, "balance: Crusades (unitscb/canbuildcb)%s\n",
                          vfs_.list("unitscb").empty() ? " -- NOT FOUND" : "");
-        // God economy timing (gamedata/gods.tdf). TAK_GODTIME overrides the
+        // God economy timing (gamedata/gods.tdf). TA_GODTIME overrides the
         // appear time (seconds) for testing; otherwise use AppearTimeMin minutes.
         try {
             auto g = vtdf("gamedata/gods.tdf");
             if (const auto* tm = g.child("TIMING")) {
                 float appear = float(tm->numberOr("AppearTimeMin", 30.0)) * 60.0f;
-                if (const char* e = tak::devEnv("TAK_GODTIME")) appear = std::stof(e);
+                if (const char* e = ta::devEnv("TA_GODTIME")) appear = std::stof(e);
                 world_.enableGods(appear);
             }
         } catch (const std::exception&) {}
@@ -208,7 +208,7 @@ public:
             world_.setTerrain(mapView_.map().heights, mapView_.map().width,
                               mapView_.map().height, mapView_.map().seaLevel,
                               &mapView_.map().features);
-            tak::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
+            ta::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
             try {
                 auto ota = vtdf(mapSibling(".ota"));
                 const auto* gh = ota.child("globalheader");
@@ -236,7 +236,7 @@ public:
                                 su->hp *= hpp / 100.0f;
                                 if (su->type->canMove &&
                                     su->type->domain ==
-                                        tak::sim::UnitType::Domain::Ground)
+                                        ta::sim::UnitType::Domain::Ground)
                                     reinfPool_[player].push_back(id);
                             }
                             if (player == 0) { cx += x; cz += z; ++pc; }
@@ -260,7 +260,7 @@ public:
                     if (n == "verat" || n == "araat" || n == "tarat" || n == "zonat")
                         missionTowerIdx_ = int(missionRoster_.size()) - 1;
                 }
-                missionVm_ = std::make_unique<tak::cob::Vm>(tak::cob::load(vread(cobPath), cobPath),
+                missionVm_ = std::make_unique<ta::cob::Vm>(ta::cob::load(vread(cobPath), cobPath),
                                                             /*deterministicRand=*/true);
                 missionVm_->onMapCommand = [this](int sub, const std::vector<int32_t>& a)
                     -> int32_t { return mapCommand(sub, a); };
@@ -318,10 +318,10 @@ public:
             world_.setTerrain(mapView_.map().heights, mapView_.map().width,
                               mapView_.map().height, mapView_.map().seaLevel,
                               &mapView_.map().features);
-            tak::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
+            ta::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
             std::string crtPath = mapSibling(".crt");
-            tak::crt::Scenario scen = vhas(crtPath) ? tak::crt::parse(vread(crtPath))
-                                                    : tak::crt::Scenario{};
+            ta::crt::Scenario scen = vhas(crtPath) ? ta::crt::parse(vread(crtPath))
+                                                    : ta::crt::Scenario{};
             std::printf("scenario: %zu placements, %zu regions\n",
                         scen.units.size(), scen.regions.size());
             float cx = 0, cz = 0;
@@ -335,7 +335,7 @@ public:
                 float heading = float(u.angle) * 3.14159265f / 180.0f;
                 int uid = spawn(id, wx, wz, heading, player);
                 if (uid >= 0) {
-                    if (tak::sim::Unit* su = world_.unit(uid)) {   // apply the .crt stats
+                    if (ta::sim::Unit* su = world_.unit(uid)) {   // apply the .crt stats
                         if (su->type)
                             su->hp = su->type->maxHp * float(std::clamp(u.health, 0, 100)) / 100.0f;
                         su->veteran = std::clamp(u.veteran, 0, 10);
@@ -353,7 +353,7 @@ public:
             // are evaluated in World::tick and folded into stateHash. Display
             // actions surface as HUD notices (drained in simStep).
             if (!scen.players.empty() || !scen.regions.empty())
-                world_.setScenario(std::make_unique<tak::sim::ScenarioScript>(
+                world_.setScenario(std::make_unique<ta::sim::ScenarioScript>(
                     scen, registry_, localPlayer_, world_.numPlayers(),
                     mapView_.map().width, mapView_.map().height));
             return;
@@ -362,7 +362,7 @@ public:
         world_.setTerrain(mapView_.map().heights, mapView_.map().width,
                           mapView_.map().height, mapView_.map().seaLevel,
                           &mapView_.map().features);
-        tak::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
+        ta::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
         loadFeatures();
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
 
@@ -388,14 +388,14 @@ public:
         }
         // Camera opens on the player's Monarch.
         mapView_.setOffset(px - 640 / 0.9f, pz - 400 / 0.9f);
-        // Dev harness: TAK_FFA=N or TAK_FFA=N,t0.t1.t2... sets up an N-player
+        // Dev harness: TA_FFA=N or TA_FFA=N,t0.t1.t2... sets up an N-player
         // game (each on its own team unless a team list is given), one monarch +
         // a small army per player at N start positions, all AI-driven. Verifies
         // the 8-player / team / shared-vision / win-condition paths before the
         // real lobby exists. (multiplayer M1)
-        if (const char* ff = tak::devEnv("TAK_FFA")) {
+        if (const char* ff = ta::devEnv("TA_FFA")) {
             int n = std::atoi(ff);
-            n = std::clamp(n, 2, tak::sim::kMaxPlayers);
+            n = std::clamp(n, 2, ta::sim::kMaxPlayers);
             std::vector<int> teams(size_t(n), 0);
             for (int i = 0; i < n; ++i) teams[size_t(i)] = i;   // default: FFA
             if (const char* comma = std::strchr(ff, ',')) {     // optional team list
@@ -438,7 +438,7 @@ public:
             ffaPlayers_ = n;
             for (auto& u : world_.units()) {
                 if (!u.type || u.type->canMove) continue;
-                tak::sim::blockFootprint(world_.nav(), *u.type, u.x, u.z, true);
+                ta::sim::blockFootprint(world_.nav(), *u.type, u.x, u.z, true);
             }
             return;
         }
@@ -486,7 +486,7 @@ public:
 
         for (auto& u : world_.units()) {
             if (!u.type || u.type->canMove) continue;
-            tak::sim::blockFootprint(world_.nav(), *u.type, u.x, u.z, true);
+            ta::sim::blockFootprint(world_.nav(), *u.type, u.x, u.z, true);
         }
     }
 
@@ -529,10 +529,10 @@ public:
 
     // Apply local Options (audio / camera / UI scale) live -- at startup and
     // whenever the in-game Options screen changes a value. Never touches the sim.
-    void applySettings(const tak::Settings& s);
+    void applySettings(const ta::Settings& s);
 
     // main()'s live settings, so the in-game Options screen can edit + persist them.
-    void setSettings(tak::Settings* s) { settings_ = s; }
+    void setSettings(ta::Settings* s) { settings_ = s; }
 
     // Open the in-game Options overlay (from the Esc menu). onChange applies audio,
     // camera, UI scale and window state live; the host saves on close.
@@ -566,7 +566,7 @@ public:
 
     // Attach the multiplayer client. The game world is set up later, from the
     // server's GameStarting (startMpGame), not from the constructor.
-    void setMpClient(tak::net::MpClient* mp);
+    void setMpClient(ta::net::MpClient* mp);
     bool isNet() const { return mp_ != nullptr; }
     // Run the sim on its own worker thread (Stage B1c). On by default for interactive
     // games; the headless harness disables it (inline == deterministic) unless verifying.
@@ -575,7 +575,7 @@ public:
     // plan (see MatchConfig::benchmark). Drives the createGame/seat path in mpAutoStep.
     void setBenchmark(int level) { benchmarkLevel_ = level; benchmarkMode_ = level > 0; }
     bool benchmarkMode() const { return benchmarkMode_; }
-    void setBenchmarkServerPid(long pid) { benchServerPid_ = pid; }   // local takserver, for its metrics
+    void setBenchmarkServerPid(long pid) { benchServerPid_ = pid; }   // local taserver, for its metrics
     bool benchmarkStatsShown() const { return benchStatsShown_; }
     // Establish the t=0 baseline for the CPU% deltas (called once when the run starts).
     void benchmarkBaseline();
@@ -607,30 +607,30 @@ public:
 
     // Route a command: offline it applies immediately; in a net game it is queued
     // for the server, which stamps ownership and sequences it into a tick bundle.
-    void issue(tak::net::Command c);
+    void issue(ta::net::Command c);
 
     // Set up the world for a multiplayer match from the server's final slot
     // table: one player per used slot (sim player index == slot), teams/colours
     // per slot, a monarch spawned at a start position each, seeded starting mana.
-    void startMpGame(const tak::net::RoomView& room, uint32_t seed);
+    void startMpGame(const ta::net::RoomView& room, uint32_t seed);
 
     // One networked frame: pump the connection, send this frame's local orders,
     // and simulate every tick the server has delivered a bundle for. Returns
     // false when the game/connection ends (see netError()).
     bool mpStep();
 
-    // ---- replay playback (.takrep) ----------------------------------------
+    // ---- replay playback (.tarep) ----------------------------------------
     // Build the world from a recorded match config and feed it the bundle log.
     // `mission` non-empty replays a CAMPAIGN recording: the world is rebuilt with
     // setupMission (placements + script), not as a skirmish on the same map.
-    void startReplay(tak::sim::MatchConfig cfg,
-                     std::vector<tak::net::Bundle> bundles,
+    void startReplay(ta::sim::MatchConfig cfg,
+                     std::vector<ta::net::Bundle> bundles,
                      const std::string& mission = {});
     bool replayMode() const { return replayMode_; }
     // (tick, hash) checkpoints from the ORIGINAL game. replayStep compares each one
     // as it passes it, so playback can say WHERE it stopped matching what happened
     // rather than merely running to the end and looking plausible.
-    void setReplayChecks(std::vector<tak::net::ReplayCheck> c) { replayChecks_ = std::move(c); }
+    void setReplayChecks(std::vector<ta::net::ReplayCheck> c) { replayChecks_ = std::move(c); }
     bool replayDiverged() const { return replayDiverged_; }
     // Advance playback by `dt` (real seconds), scaled by the game-speed control;
     // Pause freezes it. Applies each recorded bundle then ticks the world.
@@ -650,7 +650,7 @@ public:
     // Server::checkHashes returns immediately when no human slot is seated -- so it
     // sends a cheap 0 instead of folding thousands of units into an FNV every period.
     //
-    // TAK_FAKE_DESYNC=TICK is fault injection: from that tick on, this client reports
+    // TA_FAKE_DESYNC=TICK is fault injection: from that tick on, this client reports
     // a deliberately WRONG hash. It exists so a desync hunt can prove its own detector
     // FIRES. A sweep that has never caught a planted divergence has not been shown
     // capable of catching a real one -- which is exactly how a 32-run sweep of
@@ -663,7 +663,7 @@ public:
     }
     // The end-of-game statistics table, in slot order. Read from the render frame
     // (not live world_), so it is safe to call after the sim thread has stopped.
-    tak::ResultStats resultStats() const;
+    ta::ResultStats resultStats() const;
     size_t aliveUnits() const;
     // Units in the PUBLISHED render snapshot. Not the same question as aliveUnits(),
     // which reads the world: this is what the renderer would actually draw, and it is
@@ -675,26 +675,26 @@ public:
     // auto-drive the lobby (a real UI will), 1 = auto-host (create + start at 2+
     // ready), 2 = auto-join the first game. Returns false when the session ends.
     // (M3 uses the auto modes; the interactive lobby UI is follow-on work.)
-    // AI difficulty for the headless / auto seat paths: TAK_AI_LEVEL (0/1/2), default
+    // AI difficulty for the headless / auto seat paths: TA_AI_LEVEL (0/1/2), default
     // Normal. The interactive lobby sets it per-slot via the Room UI instead.
     static uint8_t aiLevelEnv() {
-        const char* e = tak::devEnv("TAK_AI_LEVEL");
+        const char* e = ta::devEnv("TA_AI_LEVEL");
         int v = e ? std::atoi(e) : 2;   // default normal (0=passive..4=absurd)
         return uint8_t(v < 0 ? 0 : v > 4 ? 4 : v);
     }
 
     bool mpAutoStep(int autoMode, const std::string& mapId, bool crusades);
 
-    void applyEvent(const tak::net::Event& e) { tak::sim::applyEvent(world_, e); }
+    void applyEvent(const ta::net::Event& e) { ta::sim::applyEvent(world_, e); }
 
     // Apply one command (shared with the server's referee sim, so both mutate
     // the world identically).
-    void apply(const tak::net::Command& c) { tak::sim::applyCommand(world_, registry_, c); }
+    void apply(const ta::net::Command& c) { ta::sim::applyCommand(world_, registry_, c); }
 
     // One lockstep step: returns false while stalled waiting for the peer.
     uint32_t netTick() const { return netTick_; }
 #ifndef NDEBUG
-    // TAK_AUTOPLAY=N -- a headless human issues roughly N orders per 10 seconds of
+    // TA_AUTOPLAY=N -- a headless human issues roughly N orders per 10 seconds of
     // game time, so a multi-client run exercises the COMMAND path instead of eight
     // players standing still. Without it a headless human seats itself and never
     // orders anything, so several clients issuing orders on the same tick -- the
@@ -719,7 +719,7 @@ public:
     // never to compare a hash against a previous run.
     void autoplayStep();
 #endif
-    tak::sim::World& worldRef() { return world_; }
+    ta::sim::World& worldRef() { return world_; }
     void selectOnly(int id) { if (spectating_) return; selection_.clear(); selection_.push_back(id); }
 
 #ifndef NDEBUG
@@ -806,7 +806,7 @@ public:
     uint32_t frameVisGeneration() const { return front().visGen; }
     bool cellVisibleR(float x, float z) const;
     // More snapshot accessors mirroring the World calls the render used to make directly.
-    const std::vector<tak::sim::World::HitFx>& frameHits() const { return front().hits; }
+    const std::vector<ta::sim::World::HitFx>& frameHits() const { return front().hits; }
     // Impacts are ONE-SHOT and the sim clears them every tick, while the render
     // only ever sees the newest published snapshot. Whenever the sim outruns the
     // renderer -- replay catch-up, or simply a frame rate under the 30 Hz tick --
@@ -818,13 +818,13 @@ public:
     // least worth drawing.
     static constexpr size_t kMaxPendingHits = 4096;
     std::mutex hitQueueMutex_;
-    std::deque<tak::sim::World::HitFx> hitQueue_;
+    std::deque<ta::sim::World::HitFx> hitQueue_;
     int frameWinningTeam() const { return front().winningTeam; }
     // world_.discoActive/headbangActive(p) == players_[p].{disco,headbang}Left > 0.
     bool frameDiscoActive(int p) const { return framePlayer(p).discoLeft > 0; }
     bool frameHeadbangActive(int p) const { return framePlayer(p).headbangLeft > 0; }
     // world_.queuedCount(builderId,type): count of that type queued on the builder.
-    int frameQueuedCount(int builderId, const tak::sim::UnitType* type) const;
+    int frameQueuedCount(int builderId, const ta::sim::UnitType* type) const;
 
     // The DISPLAY half: impact sounds/effects, particles, animation state and the
     // COB VMs, timers, camera-follow. Runs once per rendered frame with the game
@@ -848,7 +848,7 @@ public:
     // Create textures (terrain chunks, minimap) before the render pass.
     void prepare(int winW, int winH);
 
-    // Fetch and reset the per-draw sub-phase timers (for TAK_PROF).
+    // Fetch and reset the per-draw sub-phase timers (for TA_PROF).
     void takeProf(double& projMs, double& submitMs, double& shadowMs, double& simMs,
                   uint64_t& unitsDrawn, uint64_t& shadowVerts);
     // Current accumulators WITHOUT resetting, so a per-frame delta can be taken.
@@ -880,18 +880,18 @@ public:
 private:
     // The armed-order (command button / hotkey) -> its cursor. Fight-move reuses the
     // Attack glyph, matching retail (KINGDOMS.icd).
-    static tak::CursorId cursorForCmd(char cmd) {
+    static ta::CursorId cursorForCmd(char cmd) {
         switch (cmd) {
-            case 'm': return tak::CursorId::Move;
-            case 'f': return tak::CursorId::Attack;    // fight-move = tinted attack
-            case 'a': return tak::CursorId::Attack;
-            case 'p': return tak::CursorId::Patrol;
-            case 'g': return tak::CursorId::Defend;    // guard
-            case 'c': return tak::CursorId::Reclaim;
-            case 'r': return tak::CursorId::Repair;
-            case 'l': return tak::CursorId::Load;
-            case 'u': return tak::CursorId::Unload;
-            default:  return tak::CursorId::Normal;
+            case 'm': return ta::CursorId::Move;
+            case 'f': return ta::CursorId::Attack;    // fight-move = tinted attack
+            case 'a': return ta::CursorId::Attack;
+            case 'p': return ta::CursorId::Patrol;
+            case 'g': return ta::CursorId::Defend;    // guard
+            case 'c': return ta::CursorId::Reclaim;
+            case 'r': return ta::CursorId::Repair;
+            case 'l': return ta::CursorId::Load;
+            case 'u': return ta::CursorId::Unload;
+            default:  return ta::CursorId::Normal;
         }
     }
 
@@ -899,11 +899,11 @@ private:
     // the pointer -- the retail two-level scheme (an armed order beats plain hover).
     // `fightTint` is set when the cursor is the fight-move ('f') Attack glyph, which the
     // caller draws tinted so it reads apart from a real attack order.
-    tak::CursorId desiredCursor(bool& fightTint);
+    ta::CursorId desiredCursor(bool& fightTint);
 
     // Plain-hover cursor: classify what is under the world point, mirroring the priority
     // in rightClickOrder() so the pointer previews the order a right-click would issue.
-    tak::CursorId hoverCursor(float wx, float wz);
+    ta::CursorId hoverCursor(float wx, float wz);
     // Screen-space sprite hit test: the unit's projected model bounds at its
     // DRAWN position (terrain lift + flyer altitude), floored for tiny units --
     // the same region click-select uses, so the hover cursor and a click always
@@ -936,7 +936,7 @@ private:
     // The rules themselves, in ONE place, used both to precompute the tree and to
     // answer for a model that has no cached tree (ghosts, portraits). A second copy
     // of these predicates is how the cache and the live path would silently drift.
-    static void pieceMetaFor(const tak::tdo::Object& o, bool isRoot, PieceMeta& m) {
+    static void pieceMetaFor(const ta::tdo::Object& o, bool isRoot, PieceMeta& m) {
         std::string oname = o.name;
         std::transform(oname.begin(), oname.end(), oname.begin(), ::tolower);
         auto ends = [&](const char* suf) {
@@ -961,7 +961,7 @@ private:
         }
     }
     // Precompute the whole tree for a model (once, at registration).
-    static void buildPieceMeta(const tak::tdo::Object& o, PieceMeta& m, bool isRoot = true) {
+    static void buildPieceMeta(const ta::tdo::Object& o, PieceMeta& m, bool isRoot = true) {
         pieceMetaFor(o, isRoot, m);
         m.children.resize(o.children.size());
         for (size_t i = 0; i < o.children.size(); ++i)
@@ -969,12 +969,12 @@ private:
     }
 
     struct Visual {
-        tak::tdo::Model model;
+        ta::tdo::Model model;
         PieceMeta meta;   // precomputed once; see collect()
     };
     struct EffectAnim;   // defined below; Anim only needs the pointer type
     struct Anim {
-        std::unique_ptr<tak::cob::Vm> vm;
+        std::unique_ptr<ta::cob::Vm> vm;
         // Points at the shared per-TYPE CobCache.pieceNames (node-stable in cobCache_,
         // which outlives every Anim), not a per-unit copy -- ~25 MB saved at 38k units.
         const std::vector<std::string>* pieceNames = nullptr;
@@ -1073,7 +1073,7 @@ private:
     // Accumulated model-Y (height above the unit's ground origin) of a named piece,
     // for lifting the effect onto it. Ground-level pieces (the Sacred Fire's root)
     // give 0; a smokestack piece gives its height.
-    static bool findPieceY(const tak::tdo::Object& o, const std::string& name,
+    static bool findPieceY(const ta::tdo::Object& o, const std::string& name,
                            float acc, float& out) {
         float y = acc + o.y;
         std::string on = o.name;
@@ -1088,7 +1088,7 @@ private:
     // The `fly` script's first instruction is a PUSH_STATIC that gates the
     // whole animation; different flyers use different indices (zonhunt=8,
     // zongod/zonharp=7). Read it straight from the bytecode.
-    static int flyGateOf(const tak::cob::Vm& vm) {
+    static int flyGateOf(const ta::cob::Vm& vm) {
         const auto& f = vm.file();
         int si = f.scriptIndex("fly");
         if (si < 0) return 8;
@@ -1126,13 +1126,13 @@ private:
     // oars, wheeled war-machines' wheels/props) animates via its Create ambient loop
     // instead, so registerUnit starts Create for it and the walk state machine leaves
     // its VM alone (a walk-transition reset would wipe the ambient loop).
-    static bool hasWalkCycle(const tak::cob::File& f) {
+    static bool hasWalkCycle(const ta::cob::File& f) {
         for (const char* name : {"walk", "walk_legs", "tread"})
             if (f.scriptIndex(name) >= 0) return true;
         return false;
     }
 
-    static int walkGateOf(const tak::cob::File& f) {
+    static int walkGateOf(const ta::cob::File& f) {
         for (const char* name : {"walk", "walk_legs", "tread"}) {
             int si = f.scriptIndex(name);
             if (si < 0) continue;
@@ -1157,7 +1157,7 @@ private:
     // Client-side per-unit setup (model + COB animation VM). Takes id+type only (not a
     // Unit/UnitR) so it is callable from either the sim path (spawn) or the render path
     // (cosmeticStep, off front().live) without touching live world_.
-    void registerUnit(int id, const tak::sim::UnitType* type);
+    void registerUnit(int id, const ta::sim::UnitType* type);
 
     // Manifest player `t`'s faction god at its army's centre (once favour fills).
     // One announcement per player, for the god the SIM summoned. Not sim state: it
@@ -1169,11 +1169,11 @@ private:
 
     void loadTextures();
 
-    const tak::cob::PieceState* pieceFor(const Anim* a, const std::string& objName) const;
+    const ta::cob::PieceState* pieceFor(const Anim* a, const std::string& objName) const;
 
     // The 3DO model for a type, loading it on demand (a queued build may have
     // no live unit of that type yet).
-    const tak::tdo::Model* ghostModel(const std::string& typeId);
+    const ta::tdo::Model* ghostModel(const std::string& typeId);
 
     // Draw a translucent, faintly blue ghost of a building where it will be
     // built later (a queued or not-yet-started site).
@@ -1183,7 +1183,7 @@ private:
     // lifted by the shot's altitude and yawed along its flight.
     void drawShotModel(const std::string& name, int player, float x, float z,
                        float altPx, float facing) {
-        const tak::tdo::Model* model = ghostModel(name);
+        const ta::tdo::Model* model = ghostModel(name);
         if (!model) return;
         tris_.clear();
         SDL_Texture* atlas = atlasFor(colorSlot_[player & 7]);
@@ -1214,9 +1214,9 @@ private:
         flush();
     }
 
-    void drawGhostAt(const tak::sim::UnitType* type, float x, float z,
+    void drawGhostAt(const ta::sim::UnitType* type, float x, float z,
                      bool invalid = false) {
-        const tak::tdo::Model* model = ghostModel(type->id);
+        const ta::tdo::Model* model = ghostModel(type->id);
         if (!model) return;
         tris_.clear();
         SDL_Texture* atlas = atlasFor(colorSlot_[localPlayer_ & 7]);
@@ -1288,7 +1288,7 @@ private:
     // being concatenated into one array and started drawing straight from each unit's
     // own buffer; nothing shadow-related uses it now, and leaving the old name on it
     // invites exactly the wrong inference.
-    // Are projected unit shadows on? The Options toggle, with a dev-only TAK_NOSHADOW
+    // Are projected unit shadows on? The Options toggle, with a dev-only TA_NOSHADOW
     // override. Gates the BUILD as well as the draw -- skipping only the draw would still
     // pay to emit ~700k vertices nobody looks at.
     //
@@ -1298,7 +1298,7 @@ private:
     // non-atomic access is a data race whatever the type. Writing it before the parallel
     // geometry pass dispatches makes it happens-before every worker read.
     bool shadowsOn() const {
-        static const bool envOff = tak::devEnv("TAK_NOSHADOW") != nullptr;
+        static const bool envOff = ta::devEnv("TA_NOSHADOW") != nullptr;
         return !envOff && (!settings_ || settings_->unitShadows);
     }
     bool shadowsOnFrame_ = true;   // this frame's snapshot of the above
@@ -1326,7 +1326,7 @@ private:
     std::unordered_set<int> targetSet_;   // per-frame attack-target ids (reused)
     // Parsed COB scripts shared per unit type (see registerUnit).
     struct CobCache {
-        std::shared_ptr<const tak::cob::File> file;
+        std::shared_ptr<const ta::cob::File> file;
         std::vector<std::string> pieceNames;
         bool hasSounds = false;   // any PLAY_SOUND op: the script provides its own audio
         int moveGate = 0;         // walk-cycle moving-flag static index (walkGateOf)
@@ -1360,9 +1360,9 @@ private:
 
     std::vector<CopyTask> copyTasks_;
     std::vector<DrawOp> drawOps_;
-    // TAK_PROF sub-phase timers (main thread). ALL of these are MONOTONIC -- they only
+    // TA_PROF sub-phase timers (main thread). ALL of these are MONOTONIC -- they only
     // ever grow, and takeProf() returns the delta since its last call rather than zeroing
-    // them. They used to be reset in takeProf, which silently corrupted the TAK_SPIKES
+    // them. They used to be reset in takeProf, which silently corrupted the TA_SPIKES
     // logger: that keeps its own previous totals to get a per-FRAME delta, so the frame
     // after each one-second PROF line subtracted a large stale total from a freshly
     // zeroed counter and printed negative phase times with the difference dumped into
@@ -1374,7 +1374,7 @@ private:
     // logger can diff them independently of takeProf), and `long` is 32 bits on Windows.
     // At ~700k shadow vertices a frame that signed counter overflows -- undefined
     // behaviour, not just a wrong number -- about a minute into a game. The increments
-    // are unguarded by TAK_PROF, so it would have happened in ordinary play.
+    // are unguarded by TA_PROF, so it would have happened in ordinary play.
     uint64_t profUnits_ = 0;        // visible units accumulated over the sampled frames
     uint64_t profShadowVerts_ = 0;  // shadow vertices copied + submitted, likewise
     // takeProf's own previous values, so it can report per-interval deltas.
@@ -1511,9 +1511,9 @@ private:
     // it is safe to run for many units at once on the worker pool. drawUnit() then
     // just submits g.runs. `scratch` is a reusable per-thread triangle buffer.
     // A monarch (the five hero units) -- the only thing that disco-dances.
-    static bool isMonarchType(const tak::sim::UnitType* t) {
+    static bool isMonarchType(const ta::sim::UnitType* t) {
         if (!t) return false;
-        for (int i = 0; i < 5; ++i) if (t->id == tak::sim::kMonarchs[i]) return true;
+        for (int i = 0; i < 5; ++i) if (t->id == ta::sim::kMonarchs[i]) return true;
         return false;
     }
     // Fully-saturated hue wheel -> RGB, hue in [0,1). Drives the disco tint & floor.
@@ -1532,7 +1532,7 @@ private:
 
     // The projected silhouette for one unit, into g.shadowVerts. Split out because
     // it is built alongside the body geometry on the worker pool.
-    void buildUnitShadow(const UnitR& u, UnitGeom& g, const tak::tdo::Object& root,
+    void buildUnitShadow(const UnitR& u, UnitGeom& g, const ta::tdo::Object& root,
                          const PieceMeta& meta, const Anim* anim, float facing, float zm,
                          std::vector<Tri>& scratch);
     void buildUnitGeom(const UnitR& u, UnitGeom& g, std::vector<Tri>& scratch);
@@ -1583,12 +1583,12 @@ private:
         float minY = 1e30f, maxY = -1e30f;   // screen y, over all headings
         bool any = false;
     };
-    void collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
+    void collect(std::vector<Tri>& out, SDL_Texture* atlas, const ta::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
                  bool mirror = false, bool isRoot = true, bool shadow = false,
                  RadialExtent* ext = nullptr, const PieceMeta* meta = nullptr,
                  bool shadowCull = false) {
-        const tak::cob::PieceState* ps = pieceFor(anim, o.name);
+        const ta::cob::PieceState* ps = pieceFor(anim, o.name);
         if (ps && !ps->visible) return;
         float rr[3];
         Xform xf = parent.then(o.x + (ps ? ps->move[0] : 0),
@@ -1809,9 +1809,9 @@ private:
     // Walk the piece tree (exactly as collect(), but transform-only) to the named
     // piece and return its model-space origin M = the composed translation. Used to
     // place effects at a weapon's emit piece (QueryWeapon) or a unit's SweetSpot.
-    bool pieceModelOrigin(const tak::tdo::Object& o, const Anim* anim,
+    bool pieceModelOrigin(const ta::tdo::Object& o, const Anim* anim,
                           const Xform& parent, const std::string& want, float out[3]) const {
-        const tak::cob::PieceState* ps = pieceFor(anim, o.name);
+        const ta::cob::PieceState* ps = pieceFor(anim, o.name);
         float rr[3];
         Xform xf = parent.then(o.x + (ps ? ps->move[0] : 0),
                                o.y + (ps ? ps->move[1] : 0),
@@ -1859,15 +1859,15 @@ private:
     // here (not a reference) so a multiplayer client can REMOUNT to the room's
     // override tier at game start -- move-assigning vfs_ keeps every borrowed
     // pointer (MapView's Compositor) valid because the object itself is reused.
-    tak::hpi::Vfs vfs_;          // retail-root read-path (the only way we read files)
+    ta::hpi::Vfs vfs_;          // retail-root read-path (the only way we read files)
     MapView mapView_;
     std::string installRoot_;    // retail install dir (for remounting to a new tier)
-    tak::hpi::OverridePolicy policy_ = tak::hpi::OverridePolicy::Full;
+    ta::hpi::OverridePolicy policy_ = ta::hpi::OverridePolicy::Full;
     std::string mapPath_;        // VFS path to the map .tnt (start positions, siblings)
     // VFS read helpers -- the engine's only game-file access.
     std::vector<uint8_t> vread(const std::string& p) const { return vfs_.read(p); }
     bool vhas(const std::string& p) const { return vfs_.has(p); }
-    tak::tdf::Node vtdf(const std::string& p) const;
+    ta::tdf::Node vtdf(const std::string& p) const;
     // A map's sibling scenario file (map.tnt -> map.ota/.cob/.tdf/.txt/.crt).
     std::string mapSibling(const char* ext) const;
     // Remount the data set to a multiplayer room's override tier and rebuild the
@@ -1875,7 +1875,7 @@ private:
     // referee does. Cosmetics already loaded stay (harmless local display).
     void remountPolicy(uint8_t p);
     // Fingerprint of the gameplay data THIS client will feed its sim (current tier).
-    uint64_t gameDataHash() const { return tak::hpi::gameplayHash(vfs_); }
+    uint64_t gameDataHash() const { return ta::hpi::gameplayHash(vfs_); }
 public:
     uint8_t overridePolicy() const { return uint8_t(policy_); }
 private:
@@ -1883,7 +1883,7 @@ private:
     std::string side_ = "ara";
     // Retail loading screen. Alive from the start of world setup until the first
     // tick lands, so the plate covers both our own load and the wait on peers.
-    std::unique_ptr<tak::LoadScreen> loadScreen_;
+    std::unique_ptr<ta::LoadScreen> loadScreen_;
     std::string aiSide_ = "tar";   // single-player: the AI opponent's faction
     // Faction name -> wire index (0 ara, 1 tar, 2 ver, 3 zon, 4 cre).
     static uint8_t facIdx(const std::string& s) {
@@ -1891,8 +1891,8 @@ private:
         for (uint8_t i = 0; i < 5; ++i) if (s == n[i]) return i;
         return 0;
     }
-    tak::sim::TypeRegistry registry_;
-    tak::sim::World world_;
+    ta::sim::TypeRegistry registry_;
+    ta::sim::World world_;
     // Hash maps (not std::map): these are looked up per unit per frame in the
     // serial anim loop and the parallel projection, and tree traversals were a
     // measurable slice of the update cost at thousands of units.
@@ -1935,10 +1935,10 @@ private:
     float edgeScrollSpeed_ = 1.0f;
     bool  edgeScrollOn_ = true;
     float uiScale_ = 1.0f;
-    tak::Settings* settings_ = nullptr;               // main()'s settings (for the in-game Options)
-    std::unique_ptr<tak::OptionsScreen> options_;     // in-game Options overlay
-    std::unique_ptr<tak::HotkeysScreen> hotkeysScreen_;   // opened from Options -> CONTROLS
-    tak::Hotkeys hotkeys_;                             // effective bindings (from settings)
+    ta::Settings* settings_ = nullptr;               // main()'s settings (for the in-game Options)
+    std::unique_ptr<ta::OptionsScreen> options_;     // in-game Options overlay
+    std::unique_ptr<ta::HotkeysScreen> hotkeysScreen_;   // opened from Options -> CONTROLS
+    ta::Hotkeys hotkeys_;                             // effective bindings (from settings)
     int gameSpeed_ = 0;         // -10..+10 game-speed level (+/- keys); 0 = normal
     // 10^(level/10): +10 = 10x, 0 = 1x, -10 = 0.1x.
     // Game-speed multiplier. Forced to 1x in a networked game: the peers advance
@@ -1948,11 +1948,11 @@ private:
     bool spectating_ = false;   // watching a live net game (no control, no fog)
     std::string playerName_[8];   // net games: display name per player (from lobby)
     bool playerAi_[8] = {};       // net games: which players are server-run AI
-    bool showHDebug_ = false;   // terrain-height / lift diagnostic overlay (TAK_HDEBUG env)
+    bool showHDebug_ = false;   // terrain-height / lift diagnostic overlay (TA_HDEBUG env)
     float fps_ = 0;             // smoothed render FPS, shown on the F4 overlay
     int winW_ = 0, winH_ = 0;   // last-known window size (for centering/culling)
-    tak::net::MpClient* mp_ = nullptr;
-    std::vector<tak::net::Command> outbox_;   // local orders to send to the server
+    ta::net::MpClient* mp_ = nullptr;
+    std::vector<ta::net::Command> outbox_;   // local orders to send to the server
     // Index of the first UNSENT command in outbox_. The send path is rate- and
     // window-limited, so it usually ships a prefix and keeps the rest; erasing that
     // prefix shifted every survivor down, making a full drain O(B^2/b) for B queued
@@ -1961,12 +1961,12 @@ private:
     size_t outboxHead_ = 0;
     uint64_t mpListMs_ = 0, mpFirstListMs_ = 0;   // auto-join: ListGames timing
     uint64_t mpSlowSinceMs_ = 0;                  // when the replay backlog went deep
-    // Client-side jitter/receive buffer (ON by default; TAK_NET_DELAY overrides:
+    // Client-side jitter/receive buffer (ON by default; TA_NET_DELAY overrides:
     // 0 = off, K = fixed depth, auto/unset = self-sizing). The sim is paced on the
     // wall clock at 30 Hz and kept ~netDelay_ bundles behind the newest received,
     // so brief server->client jitter is covered from the reserve instead of
     // stalling. Costs ~netDelay_*33ms of input latency (auto keeps that minimal).
-    int netDelay_ = -2;          // -2 = read TAK_NET_DELAY once; then 0 = off, else depth
+    int netDelay_ = -2;          // -2 = read TA_NET_DELAY once; then 0 = off, else depth
     bool netAuto_ = false;       // auto (default): size the buffer to the link
     bool netBufReady_ = false;   // built the initial reserve
     float netAccum_ = 0;         // wall-clock tick accumulator (seconds)
@@ -1979,16 +1979,16 @@ public:
     float netRttMs() const { return mp_ ? mp_->rttMs() : 0.0f; }
     int netDelay() const { return netDelay_; }
 private:
-    bool replayMode_ = false;                     // playing a recorded .takrep
+    bool replayMode_ = false;                     // playing a recorded .tarep
     bool replaySaved_ = false;                    // this game's replay already written
-    std::vector<tak::net::ReplayCheck> replayChecks_;   // recorded (tick, hash) trail
+    std::vector<ta::net::ReplayCheck> replayChecks_;   // recorded (tick, hash) trail
     size_t replayCheckAt_ = 0;                    // next checkpoint to compare
     bool replayDiverged_ = false;                 // reported once, then stays quiet
     // Set by the SIM thread when the result lands; the MAIN thread does the writing.
     // The net client's recorded bundles and hashes are appended from the main thread,
     // so serializing them off-thread would read a growing vector.
     std::atomic<bool> replayWanted_{false};
-    std::vector<tak::net::Bundle> replayBundles_;
+    std::vector<ta::net::Bundle> replayBundles_;
     size_t replayTick_ = 0;
     float replayAccum_ = 0;
     bool mpReadied_ = false, mpStarted_ = false, mpSetupDone_ = false;
@@ -2032,7 +2032,7 @@ private:
     // Random-map generator ("Generate Random Map" in the picker): the current params,
     // which slider is being dragged (0=doodad 1=mana 2=water, -1=none), and the three
     // slider bar rects for drag hit-testing.
-    tak::mapgen::Params genParams_{};
+    ta::mapgen::Params genParams_{};
     int genSlider_ = -1;
     SDL_FRect genSliderRect_[5]{};
     void applyGenParams();             // re-encode genParams_ -> mpMapId_
@@ -2097,7 +2097,7 @@ private:
     // tiles too far up-screen and appeared to stand on terrain beside it.
     float kHeightScale_ = 0.5f;
     // Screen-X lift per height unit. Zero, and retail agrees: its screen X is
-    // (x << 4) - cameraX with no height term (0x426820). Tunable via TAK_HSCALEX
+    // (x << 4) - cameraX with no height term (0x426820). Tunable via TA_HSCALEX
     // for experiments only.
     float kHeightScaleX_ = 0.0f;
     int kOccScan_ = 12;                            // cells to scan south for a wall
@@ -2108,7 +2108,7 @@ private:
     float rawHeight(float wx, float wz);   // unclamped bilinear height (waterline sink)
     // Screen-Y sink for a wading (canhover) or floating (floater) unit standing in
     // water, from FBI `waterline`. Zero on land and for every other unit.
-    float waterSink(const tak::sim::UnitType* t, float wx, float wz);
+    float waterSink(const ta::sim::UnitType* t, float wx, float wz);
     const void* hMemoMap_ = nullptr;   // heightAbove 1-entry memo (see above)
     float hMemoX_ = 0, hMemoZ_ = 0, hMemoV_ = 0;
     // Screen-space displacement of a world point's surface from its flat grid cell,
@@ -2137,13 +2137,13 @@ private:
     // A "structure" (building) for render/build purposes = one that can't actually
     // move. NOTE: the FBI `canmove` flag is unreliable -- some buildings (the Keep,
     // arakeep) set canmove=1 with NO velocity -- so key off maxVel, not type->canMove.
-    static bool isStructure(const tak::sim::UnitType* t) { return !t || t->maxVel <= 0.0f; }
+    static bool isStructure(const ta::sim::UnitType* t) { return !t || t->maxVel <= 0.0f; }
     // Retail's shadow rule, and ONLY retail's: it skips the whole shadow block for
     // FBI `noshadow` (KINGDOMS.icd 0x4ec8d8) and, independently, for every `floater`
     // (0x4ecac0) -- which is why five ships carry a shadowart they never show.
     // Buildings are NOT excluded here: two of them (npcflag, vermort) declare a
     // shadow sprite and retail draws it.
-    static bool castsShadow(const tak::sim::UnitType* t) {
+    static bool castsShadow(const ta::sim::UnitType* t) {
         // Those two are the WHOLE test. The Glide shadow block reads the type and
         // bails on exactly two bits of UnitDef+0x260: 0x2000000 (noshadow, the
         // guard at 0x4ec8d8) and 0x80000 (floater, 0x4ecac6). There is no canfly
@@ -2169,13 +2169,13 @@ private:
     // from a subsystem (0x4ee310, reached only from 0x511d00) that never calls the
     // model draw. So in Glide the 17 sequences in shadows.gaf go unused for units
     // and the 104 types declaring `shadowart` get silhouettes like everyone else.
-    static bool castsBlobShadow(const tak::sim::UnitType* t) { return castsShadow(t); }
+    static bool castsBlobShadow(const ta::sim::UnitType* t) { return castsShadow(t); }
     // EVERYTHING on the map lifts onto the terrain relief by the same rule -- mobile
     // units, buildings, AND the feature decals (mana deposits, trees) -- so a mana
     // deposit sits at the height its heightmap claims and a lodestone/units built on
     // it stack right on top instead of the decal being flat while units float above.
-    float uLiftY(const tak::sim::Unit& u) { return terrainLift(u.x, u.z); }
-    float uLiftX(const tak::sim::Unit& u) { return terrainLiftX(u.x, u.z); }
+    float uLiftY(const ta::sim::Unit& u) { return terrainLift(u.x, u.z); }
+    float uLiftX(const ta::sim::Unit& u) { return terrainLiftX(u.x, u.z); }
     // Snapshot overloads. A FLYER rides the coarse dilated datum, not the relief
     // under its nose -- see flyerGround.
     float uLiftY(const UnitR& u) {
@@ -2228,10 +2228,10 @@ private:
 
     // Per-type on-screen sprite box (offset from the draw anchor, px @ zoom 1),
     // computed once by projecting the model over all facings and cached in hitBoxes_.
-    const SDL_FRect& unitHitBox(const tak::sim::UnitType* type);
+    const SDL_FRect& unitHitBox(const ta::sim::UnitType* type);
 
     // Per-type model-space extents driving the selection ring, cached in ringBoxes_.
-    const RingBox& unitRingBox(const tak::sim::UnitType* type);
+    const RingBox& unitRingBox(const ta::sim::UnitType* type);
     // Half-extent of the model's GROUND PLATE -- the flat untextured quad at
     // y = 0 that every TAK unit's root carries (AraGP and friends). It is the
     // unit's shadow: sized per unit (17.6 for a Monarch, 14.4 for a swordsman),
@@ -2260,7 +2260,7 @@ private:
     uint32_t autoplayRng_ = 0;     // per-player stream; seeded from slot + game seed
 #endif
     uint32_t lastSendTick_ = 0;     // tick the send credit was last accrued for
-    int cmdCredit_ = tak::net::kCmdCapPerTick;   // rate: commands we may send now
+    int cmdCredit_ = ta::net::kCmdCapPerTick;   // rate: commands we may send now
     int cmdInFlight_ = 0;   // window: sent, not yet seen back in a bundle
     bool cmdCatchUp_ = false;   // replaying a rejoin's bundle log: hold orders, ignore acks
     uint32_t cmdReplayEnd_ = 0;  // server-declared tick where that history ends
@@ -2272,8 +2272,8 @@ private:
     // sends the worker's per-tick state hash back to the server from simOutbox_. world_ is
     // mutated ONLY by the worker (under simMutex_); the render reads the published snapshot,
     // and its remaining live-world_ read (canPlace) takes simMutex_. Off for headless/replay
-    // (inline path) unless wantSimThread_ (TAK_SIM_THREAD) forces it on for verification.
-    struct SimJob { tak::net::Bundle bundle; uint32_t tick = 0; bool wantHash = false; bool spectator = false; };
+    // (inline path) unless wantSimThread_ (TA_SIM_THREAD) forces it on for verification.
+    struct SimJob { ta::net::Bundle bundle; uint32_t tick = 0; bool wantHash = false; bool spectator = false; };
     struct HashJob { uint32_t tick = 0; uint64_t hash = 0; };
     std::thread::id mainThreadId_ = std::this_thread::get_id();   // set at construction (main thread)
     std::thread simThread_;
@@ -2308,10 +2308,10 @@ private:
     std::string benchGpuName_;                       // GPU adapter name (captured once)
     size_t benchGpuTotal_ = 0;                       // total GPU VRAM, bytes
     std::vector<BenchSample> benchSamples_;
-    tak::proc::Sample benchCliPrev_, benchSrvPrev_;
+    ta::proc::Sample benchCliPrev_, benchSrvPrev_;
     uint64_t benchPrevWallMs_ = 0;
     uint32_t benchNextTick_ = 300;      // next milestone tick (300,600,...,1800)
-    long benchServerPid_ = 0;           // local takserver pid (0 = N/A, e.g. headless)
+    long benchServerPid_ = 0;           // local taserver pid (0 = N/A, e.g. headless)
     bool benchStatsShown_ = false;      // the benchmark stats overlay is up
     SDL_FRect benchDoneRect_{};          // the stats overlay's DONE button (set each render)
     int benchCamLeg_ = -1;              // benchmark flythrough: leg (faction) the camera is on
@@ -2324,17 +2324,17 @@ private:
     // nav grid), so it can't run lock-free while the worker ticks. Take simMutex_ for the
     // read. Placement-UX only and rare (a ghost while positioning a building), so the brief
     // wait for the current tick is invisible; uncontended and cheap when inline.
-    bool canPlaceLocked(const tak::sim::UnitType* type, float x, float z);
+    bool canPlaceLocked(const ta::sim::UnitType* type, float x, float z);
     // A site blocked ONLY by clearable features: collect those features' ids, so the
     // placement can queue reclaims ahead of the build instead of being refused.
     // Returns false when anything else blocks (terrain, a unit, a building, an
     // indestructible feature) -- those are refusals retail makes too and we keep.
-    bool clearableAt(const tak::sim::UnitType* type, float x, float z,
+    bool clearableAt(const ta::sim::UnitType* type, float x, float z,
                      std::vector<int>& outFeatures);
     // Queue reclaims for `feats`, then the build. Pure client macro: it emits only
     // the existing Reclaim and Build commands, so the SIM is untouched and stays
     // byte-for-byte what retail does.
-    void issueClearThenBuild(int builderId, const tak::sim::UnitType* type,
+    void issueClearThenBuild(int builderId, const ta::sim::UnitType* type,
                              float x, float z, const std::vector<int>& feats, bool queue);
     // HUD notice setter that is safe to call from the sim worker: the worker's sim events
     // (god summon, scenario/mission messages) defer into a pending slot that the main thread
@@ -2364,13 +2364,13 @@ public:
 private:
     int keepId_ = -1, aiKeepId_ = -1, builderId_ = -1;
     int playerMonarchId_ = -1, aiMonarchId_ = -1;
-    const tak::sim::UnitType* placing_ = nullptr;
+    const ta::sim::UnitType* placing_ = nullptr;
     float mouseX_ = -1, mouseY_ = -1;   // -1 until the first real mouse motion, so
                                         // edge-scroll can't fire from a (0,0) default
                                         // cursor on launch (before the mouse moves)
     // Retail animated mouse cursors (anims/cursors.gaf). Lazily loaded on the first
     // overlay draw; when it takes over, the OS arrow is hidden (restored in the dtor).
-    tak::CursorSet cursors_;
+    ta::CursorSet cursors_;
     bool cursorsInit_ = false;          // attempted the one-time load yet?
     int  cursorMode_ = -1;              // -1 uninit, 0 software (drawn), 1 hardware (OS-tracked)
     bool hwCursorFailed_ = false;       // hardware cursor rejected once -> stay on software
@@ -2425,11 +2425,11 @@ private:
     int botW_ = 0, botH_ = 0;
     // Retail GUI-driven HUD: the parsed .gui and, parallel to gui_.gadgets, the
     // loaded state-art textures for each gadget (imgs[0]=normal,1=hover,2=grayed).
-    tak::gui::Gui gui_;
+    ta::gui::Gui gui_;
     std::vector<std::vector<SDL_Texture*>> guiTex_;
     std::map<std::string, SDL_Texture*> icons_;
     std::map<std::pair<std::string, int>, SDL_Texture*> modelIcons_;  // model-rendered fallback icons
-    std::vector<std::pair<SDL_FRect, const tak::sim::UnitType*>> iconRects_;
+    std::vector<std::pair<SDL_FRect, const ta::sim::UnitType*>> iconRects_;
     static constexpr int kMiniSizeBase = 180;
     int miniSize() const { return int(kMiniSizeBase * uiScale_); }   // UI-scale (Options)
     // Right-side UI strip (minimap + command panel). The map view is kept to the
@@ -2460,13 +2460,13 @@ private:
     // Screen rect for a command-panel gadget (x >= 512 in 640-space): the whole
     // command panel is anchored to the bottom-right corner, so the ButtonPanel art
     // and its buttons share one transform and stay aligned at any scale.
-    SDL_FRect guiCmdRect(const tak::gui::Gadget& g) const;
+    SDL_FRect guiCmdRect(const ta::gui::Gadget& g) const;
 
     // Screen rect for a bottom-bar gadget (the retail InfoPanel occupies 640-space
     // y 431..480). The whole bar layout is scaled uniformly to our barH()-tall bar and
     // anchored bottom-left, so the unit-info block clusters at the left while the bar
     // chrome stretches to fill the width.
-    SDL_FRect guiBarRect(const tak::gui::Gadget& g) const;
+    SDL_FRect guiBarRect(const ta::gui::Gadget& g) const;
 
     SDL_FRect minimapRect(int winW, int winH) const;
 
@@ -2570,8 +2570,8 @@ private:
         std::vector<int> tickEnd;   // cumulative end tick per frame
         int totalTicks = 0;         // full loop length in 30Hz ticks
     };
-    std::map<std::string, tak::tdf::Node> featureDefs_;
-    std::map<std::string, tak::gaf::Palette> featurePals_;
+    std::map<std::string, ta::tdf::Node> featureDefs_;
+    std::map<std::string, ta::gaf::Palette> featurePals_;
     std::map<std::string, FeatArt> featureArt_;
 
     // Unit ground shadows: the sprites from data/anims/shadows.gaf named by each
@@ -2583,9 +2583,9 @@ private:
 
     void loadFeatureDefs();
 
-    const tak::gaf::Palette* featurePalette(std::string world);
+    const ta::gaf::Palette* featurePalette(std::string world);
 
-    FeatArt* featureArtFor(const tak::tdf::Node& def, const char* seqKey = "seqname",
+    FeatArt* featureArtFor(const ta::tdf::Node& def, const char* seqKey = "seqname",
                            const char* shadKey = "seqnameshad");
     void swapFeatureArt(FeatureInst& fi, const std::string& name);
     void syncBurningFeatures();
@@ -2608,7 +2608,7 @@ private:
 
     // Palette for a GUI GAF: the sibling anims/<gaf>.pcx if it exists (per-faction
     // panels ship one), else the global palettes/guipal.pal used by gui.gaf.
-    tak::gaf::Palette guiPalette(const std::string& gaf);
+    ta::gaf::Palette guiPalette(const std::string& gaf);
 
     // Load one GAF sequence frame (anims/<gaf>, sequence seq, frame idx) to a texture.
     SDL_Texture* loadGuiFrame(const std::string& gaf, const std::string& seq, int frame);
@@ -2727,7 +2727,7 @@ private:
     bool buildIconClick(float mx, float my, bool lmb, bool rmb);
 
     // Issue a per-unit toggle command (targetId = value) to every selected own unit.
-    void issuePerUnit(tak::net::Cmd kind, int value);
+    void issuePerUnit(ta::net::Cmd kind, int value);
 
     // Draw a thin fill gauge (HP/mana) at a bar gadget's .gui position.
     void drawGauge(const char* name, float frac, SDL_Color c);
@@ -2735,10 +2735,10 @@ private:
     // Retail's Unit Info dialog (guis/unitinfo.gui): portrait + the three mobility
     // stats for the hovered conjure icon, else the first selected unit. Does not
     // pause -- retail's didn't either. See client/gameview_unitinfo.cpp.
-    const tak::sim::UnitType* unitInfoSubject() const;
+    const ta::sim::UnitType* unitInfoSubject() const;
     void toggleUnitInfo();
     void drawUnitInfo(int winW, int winH);
-    const tak::sim::UnitType* unitInfoType_ = nullptr;   // null = dialog closed
+    const ta::sim::UnitType* unitInfoType_ = nullptr;   // null = dialog closed
     SDL_Texture* unitInfoBg_ = nullptr;
     SDL_Texture* unitInfoOk_ = nullptr;
     SDL_Texture* unitInfoIcon_ = nullptr;
@@ -3027,9 +3027,9 @@ private:
 
     void drawRoom(int winW, int winH);
 
-    static bool startValid(const tak::net::RoomView& room) {
+    static bool startValid(const ta::net::RoomView& room) {
         int used = 0; bool color[10] = {};
-        for (int i = 0; i < tak::net::kMaxSlots; ++i) {
+        for (int i = 0; i < ta::net::kMaxSlots; ++i) {
             const auto& s = room.slots[i];
             if (s.type != 1 && s.type != 2) continue;
             ++used;
@@ -3038,7 +3038,7 @@ private:
         }
         return used >= 2;
     }
-    const tak::net::RoomView& mpRoom() const { return mp_->room(); }
+    const ta::net::RoomView& mpRoom() const { return mp_->room(); }
 
     // A panel-local logical point, undoing the lobby's fit-scale + centre offset.
     void lobbyMouse(float& mx, float& my) const;
@@ -3108,7 +3108,7 @@ private:
     std::vector<BeamFx> beams_;
     // Live wandering storms by id, so a new one can announce itself and a
     // vanished one can leave its dissipation art behind.
-    struct StormTrack { float x = 0, z = 0; const tak::sim::Weapon* w = nullptr; };
+    struct StormTrack { float x = 0, z = 0; const ta::sim::Weapon* w = nullptr; };
     std::unordered_map<int, StormTrack> stormsSeen_;
     struct EFrame { SDL_Texture* tex = nullptr; int w = 0, h = 0, ax = 0, ay = 0; };
     struct EffectAnim { std::vector<EFrame> frames; };
@@ -3152,7 +3152,7 @@ private:
         const EffectAnim* ea = effectFor(anim);
         if (!ea) return false;
         effects_.push_back({ea, x, z, 0.0f, 0.0f, 0.0f, 1, alt});
-        static const bool kLog = tak::devEnv("TAK_FXLOG") != nullptr;
+        static const bool kLog = ta::devEnv("TA_FXLOG") != nullptr;
         if (kLog) std::fprintf(stderr, "t=%.2f effect '%s' anim '%s' (%zu frames)\n",
                                animClock_, cls.c_str(), anim.c_str(), ea->frames.size());
         return true;
@@ -3220,8 +3220,8 @@ private:
         }
     }
     // An impact effect scaled to the weapon: fire/lightning tinted, aoe-sized.
-    void spawnImpact(const tak::sim::Weapon& w, float x, float z, float baseAlt = 0) {
-        using Fx = tak::sim::WeaponFx;
+    void spawnImpact(const ta::sim::Weapon& w, float x, float z, float baseAlt = 0) {
+        using Fx = ta::sim::WeaponFx;
         float sc = 1.0f + std::min(w.aoe, 200.0f) / 40.0f;
         int n = int(6 + std::min(w.aoe, 200.0f) / 6);
         if (w.fx == Fx::Fire) {
@@ -3240,19 +3240,19 @@ private:
 
     SoundBank sounds_;
     ThreadPool pool_;                       // for parallel per-unit VM ticks
-    std::vector<tak::cob::Vm*> vmTick_;     // scratch list for the parallel pass
+    std::vector<ta::cob::Vm*> vmTick_;     // scratch list for the parallel pass
     SoundClasses soundClasses_;
     uint32_t salt_ = 0;
     std::atomic<int> outcome_{0};   // 0 = playing, 1 = victory, -1 = defeat (worker writes, main reads)
-    // TAK_FAKE_DESYNC=TICK: report a wrong hash from this tick on (see reportedHash).
+    // TA_FAKE_DESYNC=TICK: report a wrong hash from this tick on (see reportedHash).
     // Debug-only -- devEnv reads no environment at all in a release build, so this is
     // constant 0 there and the branch folds away.
     uint32_t fakeDesyncTick_ = [] {
-        const char* e = tak::devEnv("TAK_FAKE_DESYNC");
+        const char* e = ta::devEnv("TA_FAKE_DESYNC");
         return e ? uint32_t(std::strtoul(e, nullptr, 0)) : 0u;
     }();
-    bool sawTeam_[tak::sim::kMaxPlayers] = {};   // teams that have ever fielded a unit
-    // Dev-only N-player free-for-all / teams harness (TAK_FFA=N[,teams]); the
+    bool sawTeam_[ta::sim::kMaxPlayers] = {};   // teams that have ever fielded a unit
+    // Dev-only N-player free-for-all / teams harness (TA_FFA=N[,teams]); the
     // real lobby (multiplayer M3) replaces it. When >0, an AI Controller drives
     // every player, not just player 1.
     int ffaPlayers_ = 0;
@@ -3262,7 +3262,7 @@ private:
     Font hudFont_, bigFont_, statFont_;
 
     struct Region { int a, b, c, d; bool rect; bool armed; };
-    std::unique_ptr<tak::cob::Vm> missionVm_;
+    std::unique_ptr<ta::cob::Vm> missionVm_;
     std::vector<std::string> missionRoster_;
     std::map<int, Region> regions_;
     int missionTowerIdx_ = -1;

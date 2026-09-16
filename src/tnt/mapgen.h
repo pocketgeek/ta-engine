@@ -1,6 +1,6 @@
 #pragma once
 
-// Random map generator. Produces a tak::tnt::Map (+ start positions) procedurally
+// Random map generator. Produces a ta::tnt::Map (+ start positions) procedurally
 // from a small parameter set, deterministically (integer-only) so a multiplayer
 // client and the server referee build the BYTE-IDENTICAL map from the same seed --
 // the generated terrain/features feed the hashed lockstep sim, so it must agree on
@@ -14,9 +14,9 @@
 #include <utility>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::mapgen {
+namespace ta::mapgen {
 
 // One of the retail worlds; also selects the terrain section art + feature palette.
 // Matches matchsetup faction ids: 0=aramon 1=taros 2=veruna 3=zhon 4=creon.
@@ -36,7 +36,7 @@ struct Params {
 };
 
 struct Result {
-    tak::tnt::Map map;
+    ta::tnt::Map map;
     std::vector<std::pair<int, int>> starts;   // start positions in 16px CELL coords (x, z)
 };
 
@@ -56,4 +56,4 @@ Result generate(const Params& p, const hpi::Vfs& vfs);
 // Clamp raw UI inputs to supported ranges (even cells, 2..8 players, sane size).
 Params sanitize(Params p);
 
-}  // namespace tak::mapgen
+}  // namespace ta::mapgen

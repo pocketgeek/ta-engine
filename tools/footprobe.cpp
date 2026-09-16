@@ -8,7 +8,7 @@
 #include "hpi/hpi.h"
 #include "sim/sim.h"
 #include "sim/matchsetup.h"
-using namespace tak;
+using namespace ta;
 int main(int argc, char** argv) {
     if (argc < 2) { std::printf("usage: footprobe <install> [map...]\n"); return 2; }
     auto vfs = hpi::mountRetailRoot(argv[1], hpi::OverridePolicy::None);

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 namespace cart {
 
@@ -24,14 +24,14 @@ struct SectionRef {
 class SectionLibrary {
 public:
     // Scan Sections/<world>/** for prefab .TNTs (world = aramon/taros/veruna/zhon).
-    void scan(const tak::hpi::Vfs& vfs, const std::string& world);
+    void scan(const ta::hpi::Vfs& vfs, const std::string& world);
     const std::vector<SectionRef>& list() const { return sections_; }
     // Load (and cache) a prefab by VFS path; nullptr if it won't parse.
-    const tak::tnt::Map* load(const tak::hpi::Vfs& vfs, const std::string& path);
+    const ta::tnt::Map* load(const ta::hpi::Vfs& vfs, const std::string& path);
 
 private:
     std::vector<SectionRef> sections_;
-    std::map<std::string, tak::tnt::Map> cache_;
+    std::map<std::string, ta::tnt::Map> cache_;
 };
 
 // Stamp `section` into `map` with its top-left block at (bx, by), clipped to the
@@ -39,6 +39,6 @@ private:
 // REMAPPED by name (a prefab's feature indices point into ITS own name table, so
 // each is resolved to a name and re-interned in map.featureNames; the 0xFFFF/
 // 0xFFFB/0xFFFC sentinels pass through). Returns false if fully off-map.
-bool stampSection(tak::tnt::Map& map, const tak::tnt::Map& section, int bx, int by);
+bool stampSection(ta::tnt::Map& map, const ta::tnt::Map& section, int bx, int by);
 
 } // namespace cart

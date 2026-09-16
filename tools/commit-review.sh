@@ -21,11 +21,11 @@
 # are gitignored and never enter a commit, so they cannot be sent -- but code comments
 # and commit messages in this repo do carry reverse-engineering detail about
 # KINGDOMS.icd (addresses, RE'd behaviour). That is the deliberate trade for automatic
-# review. Set TAK_NO_COMMIT_REVIEW=1 to skip a commit, or remove the hook entirely
+# review. Set TA_NO_COMMIT_REVIEW=1 to skip a commit, or remove the hook entirely
 # with tools/install-commit-review.sh --uninstall.
 set -u
 
-[ "${TAK_NO_COMMIT_REVIEW:-0}" = "1" ] && exit 0
+[ "${TA_NO_COMMIT_REVIEW:-0}" = "1" ] && exit 0
 command -v codex >/dev/null 2>&1 || exit 0
 
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
@@ -55,9 +55,9 @@ if [ -s "$OUT" ] && grep -q '^finished: ' "$OUT" 2>/dev/null; then
 fi
 
 # Model: the account default is gpt-6-astra, but pin it so a later change to
-# ~/.codex/config.toml cannot silently alter what reviews this repo. TAK_REVIEW_MODEL
+# ~/.codex/config.toml cannot silently alter what reviews this repo. TA_REVIEW_MODEL
 # overrides for a one-off.
-MODEL="${TAK_REVIEW_MODEL:-gpt-6-astra}"
+MODEL="${TA_REVIEW_MODEL:-gpt-6-astra}"
 
 {
   echo "# codex review -- $SHA"

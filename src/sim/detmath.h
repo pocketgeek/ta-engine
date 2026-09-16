@@ -19,7 +19,7 @@
 
 #include <cmath>
 
-namespace tak::detmath {
+namespace ta::detmath {
 
 // Bit-identical across builds. Accurate to well under 1e-5 vs libm.
 float sin(float x);
@@ -30,4 +30,4 @@ float atan2(float y, float x);   // same argument order and range as std::atan2
 // (unlike libm hypot, which is not correctly rounded).
 inline float len(float a, float b) { return std::sqrt(a * a + b * b); }
 
-}  // namespace tak::detmath
+}  // namespace ta::detmath

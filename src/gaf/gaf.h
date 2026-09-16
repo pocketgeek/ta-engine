@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::gaf {
+namespace ta::gaf {
 
 // GAF/TAF sprite banks. Both use the same container (version 0x00010100):
 //
@@ -49,4 +49,4 @@ std::vector<Sequence> load(const std::filesystem::path& file, const Palette& pal
 std::vector<Sequence> load(const std::vector<uint8_t>& d, const Palette& pal,
                            int transparentIndex = -1, const std::string& origin = "<memory>");
 
-} // namespace tak::gaf
+} // namespace ta::gaf

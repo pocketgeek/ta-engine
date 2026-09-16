@@ -11,7 +11,7 @@
 # sending a literal 0 anyway (gameview_net.cpp: `isSpectator() ? 0 : world_.stateHash()`),
 # because its hash is documented as a pure progress ack. An all-spectator sweep is
 # therefore incapable of reporting a desync, however long it runs. Every run below
-# seats at least one human (--mphost WITHOUT TAK_MP_WATCH, TAK_MP_AIS=7).
+# seats at least one human (--mphost WITHOUT TA_MP_WATCH, TA_MP_AIS=7).
 #
 # WHY REMOTE. On one box, client and referee are the same binary, so the only
 # divergence reachable is client/server code asymmetry. Split across machines the
@@ -36,10 +36,10 @@ set -u
 # dispatch loop so all 20 runs reported twice, and cost a 45-minute sweep. A sweep runs
 # long enough that wanting to edit it is normal, so make editing safe rather than rely
 # on remembering not to.
-if [ -z "${TAK_SWEEP_SNAPSHOT:-}" ]; then
+if [ -z "${TA_SWEEP_SNAPSHOT:-}" ]; then
   _snap=$(mktemp "${TMPDIR:-/tmp}/desync-hunt-remote.XXXXXX.sh")
   cat "$0" >"$_snap"; chmod +x "$_snap"
-  export TAK_SWEEP_SNAPSHOT="$_snap"
+  export TA_SWEEP_SNAPSHOT="$_snap"
   exec "$_snap" "$@"
 fi
 # NOTE: no `trap ... EXIT` here. The cleanup() registered further down would REPLACE
@@ -62,11 +62,11 @@ find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'desync-hunt-remote.*.sh' -mmin +120 -d
 # them left the box at 0.13 load, so 6 fits in well under 500MB of 3.9GB with CPU to
 # spare. An earlier guess of 2 was over-cautious by 3x and would have turned 3 waves
 # into 8 for no reason -- the clients run here, so a remote box only carries referees.
-HOSTS_SPEC="${TAK_HOSTS:-tak.pgnet.us:10:heavy vpn3.pgnet.us:6:light}"
+HOSTS_SPEC="${TA_HOSTS:-ta.pgnet.us:10:heavy vpn3.pgnet.us:6:light}"
 RUSER="pocket_geek"
 RDATA="/home/pocket_geek/tak_data"
-RREPLAY="/home/pocket_geek/tak_replay"
-RBIN="/home/pocket_geek/takserver"
+RREPLAY="/home/pocket_geek/ta_replay"
+RBIN="/home/pocket_geek/taserver"
 LDATA="assets/game"
 MINUTES=45
 JOBS=12
@@ -87,8 +87,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-CLIENT=./build-dbg/takclient
-[ -x "$CLIENT" ] || { echo "build-dbg/takclient missing" >&2; exit 2; }
+CLIENT=./build-dbg/taclient
+[ -x "$CLIENT" ] || { echo "build-dbg/taclient missing" >&2; exit 2; }
 
 
 OUT="${TMPDIR:-/tmp}/desync-remote-$$"; mkdir -p "$OUT"
@@ -112,11 +112,11 @@ SSH=(ssh -n -o ControlMaster=auto -o ControlPath="$CTL" -o ControlPersist=15m -o
 # Two sweeps running at once would otherwise fight over the same ports: the table is
 # indexed from PORT_BASE, so a second invocation hands its clients the first one's
 # referees. Overridable rather than fixed.
-PORT_BASE="${TAK_PORT_BASE:-7900}"
+PORT_BASE="${TA_PORT_BASE:-7900}"
 # Shaping interface is DETECTED per host (see run_one); this only overrides it.
 MYIP=$(hostname -I 2>/dev/null | awk '{print $1}')
 # Every referee this run starts is recorded here as "host<TAB>pid", and cleanup kills
-# exactly those. `pkill -x takserver` would kill every server owned by the account --
+# exactly those. `pkill -x taserver` would kill every server owned by the account --
 # a concurrent sweep, or somebody's live game. A test harness must not be able to take
 # down what it is testing alongside. (This bit during development: a stray pkill in a
 # monitor killed servers out from under a running sweep and cost two confused runs.)
@@ -134,9 +134,9 @@ MOVEDFILE="$OUT/moved-aside"
 # even when the worker that applied the shaping never got to run its own teardown.
 SHAPEDFILE="$OUT/shaped-ifaces"
 : >"$SHAPEDFILE"
-NETEM_EXPIRY="${TAK_NETEM_EXPIRY:-1800}"   # remote self-revert, seconds
+NETEM_EXPIRY="${TA_NETEM_EXPIRY:-1800}"   # remote self-revert, seconds
 # Remote file naming who currently owns an interface's shaping (see run_one).
-NETEM_OWNER="/tmp/tak-netem-owner"
+NETEM_OWNER="/tmp/ta-netem-owner"
 # Keep a record until its file is VERIFIABLY back. Clearing the list regardless of
 # whether the restore worked destroys the only thing that could retry it: an ssh drop
 # mid-restore would leave the shared install missing a gameplay override and no record
@@ -187,7 +187,7 @@ reap_workers() {
 }
 
 cleanup() {
-  rm -f "${TAK_SWEEP_SNAPSHOT:-}" 2>/dev/null || true
+  rm -f "${TA_SWEEP_SNAPSHOT:-}" 2>/dev/null || true
   reap_workers
   restore_moved
   # Unshape anything this sweep shaped. The per-run teardown handles the normal case;
@@ -219,7 +219,7 @@ cleanup() {
       #
       # -w so a stuck peer cannot wedge our exit; if the lock cannot be had, fall through
       # and let the ownership check below be the guard.
-      exec 8>"${TMPDIR:-/tmp}/tak-netem.$_h.lock"
+      exec 8>"${TMPDIR:-/tmp}/ta-netem.$_h.lock"
       flock -w 30 8 2>/dev/null || true
       if [ -n "$_tok" ]; then
         _owner=$("${CLEANSSH[@]}" "$RUSER@$_h" "cat '$NETEM_OWNER.$_if' 2>/dev/null" 2>/dev/null || true)
@@ -281,11 +281,11 @@ cleanup() {
   for h in $hosts; do
     local pids; pids=$(awk -v h="$h" -F'\t' '$1==h {printf "%s ", $2}' "$PIDFILE")
     [ -n "$pids" ] || continue
-    # Confirm each pid is still OUR takserver before signalling: pids get recycled, and
+    # Confirm each pid is still OUR taserver before signalling: pids get recycled, and
     # killing a stranger because a number came round again is the same class of bug.
     "${SSH[@]}" "$RUSER@$h" "for p in $pids; do \
          c=\$(cat /proc/\$p/comm 2>/dev/null); \
-         [ \"\$c\" = takserver ] && kill \$p 2>/dev/null; \
+         [ \"\$c\" = taserver ] && kill \$p 2>/dev/null; \
        done; true" >/dev/null 2>&1 || true
   done
 }
@@ -311,8 +311,8 @@ echo "logs: $OUT"
 #     for every seated human. Both are no-ops with one.
 #
 # The host seats its AIs in the TOP slots ("leaving the low slots for human joiners"),
-# joiners come in with --mpjoin, and TAK_MP_WAIT holds the start until the table is
-# full -- so N humans means TAK_MP_AIS=(8-N) and TAK_MP_WAIT=8.
+# joiners come in with --mpjoin, and TA_MP_WAIT holds the start until the table is
+# full -- so N humans means TA_MP_AIS=(8-N) and TA_MP_WAIT=8.
 #
 # Run table. Each entry: NAME|MAP|ENVS|FLAGS|SEAT
 #   SEAT=human -> the local client takes a PLAYER slot (7 AIs + 1 human). Its hash is
@@ -326,32 +326,32 @@ echo "logs: $OUT"
 # so these are usually shorter than the clock allows. That is reported, not hidden.
 RUNS=(
   "h-baseline|Ulasem Arena|||human|light"
-  "h-gods|Ulasem Arena|TAK_GODS=1||human|light"
+  "h-gods|Ulasem Arena|TA_GODS=1||human|light"
   "h-crusades|Ulasem Arena||--crusades|human|light"
-  "h-stress|Ulasem Arena|TAK_STRESS=1||human|heavy"
-  "h-absurd|Ulasem Arena|TAK_AI_LEVEL=4||human|light"
-  "h-fog-explored|Ulasem Arena|TAK_FOG=1||human|light"
-  "h-fog-full|Ulasem Arena|TAK_FOG=2||human|light"
-  "h-unitcap|Ulasem Arena|TAK_UNITCAP=5000||human|light"
-  "h-cramped|Inner Circle|TAK_GODS=1||human|light"
+  "h-stress|Ulasem Arena|TA_STRESS=1||human|heavy"
+  "h-absurd|Ulasem Arena|TA_AI_LEVEL=4||human|light"
+  "h-fog-explored|Ulasem Arena|TA_FOG=1||human|light"
+  "h-fog-full|Ulasem Arena|TA_FOG=2||human|light"
+  "h-unitcap|Ulasem Arena|TA_UNITCAP=5000||human|light"
+  "h-cramped|Inner Circle|TA_GODS=1||human|light"
   "h-naval|Aibel's Seaport|||human|light"
   "h-naval-crus|Aibel's Seaport||--crusades|human|light"
-  "h-lake|Lake Lokken|TAK_STRESS=1||human|heavy"
-  "h-random-starts|Sand River Plain|TAK_RANDOM_STARTS=1||human|light"
-  "h-monarch-exp|Ulasem Arena|TAK_MONARCH_EXPENDABLE=1 TAK_GODS=1||human|light"
+  "h-lake|Lake Lokken|TA_STRESS=1||human|heavy"
+  "h-random-starts|Sand River Plain|TA_RANDOM_STARTS=1||human|light"
+  "h-monarch-exp|Ulasem Arena|TA_MONARCH_EXPENDABLE=1 TA_GODS=1||human|light"
   "h-overrides-full|Ulasem Arena||--overrides full|human|light"
-  "h-everything|Tarosian Plain|TAK_GODS=1 TAK_STRESS=1 TAK_AI_LEVEL=4 TAK_FOG=1|--crusades|human|heavy"
-  "h-speed-1x|Ulasem Arena|TAK_SPEED=10||human|light"
-  "h-two-castles|Two Castles|TAK_GODS=1|--crusades|human|light"
+  "h-everything|Tarosian Plain|TA_GODS=1 TA_STRESS=1 TA_AI_LEVEL=4 TA_FOG=1|--crusades|human|heavy"
+  "h-speed-1x|Ulasem Arena|TA_SPEED=10||human|light"
+  "h-two-castles|Two Castles|TA_GODS=1|--crusades|human|light"
   # --- multi-human: two independent client sims, compared to each other and to the
   # referee. These are the only entries that can reach the live>=2 consensus logic.
-  # ALL ON AN 8-SEAT MAP: these hold the start until the table is full (TAK_MP_WAIT),
+  # ALL ON AN 8-SEAT MAP: these hold the start until the table is full (TA_MP_WAIT),
   # and a map with fewer start positions can never fill it.
   "2h-baseline|Ulasem Arena|||human|light|2"
-  "2h-gods|Ulasem Arena|TAK_GODS=1||human|light|2"
+  "2h-gods|Ulasem Arena|TA_GODS=1||human|light|2"
   "2h-crusades|Ulasem Arena||--crusades|human|light|2"
-  "2h-stress|Ulasem Arena|TAK_STRESS=1||human|heavy|2"
-  # ORDER-ISSUING humans (TAK_AUTOPLAY). Everything above has its humans standing
+  "2h-stress|Ulasem Arena|TA_STRESS=1||human|heavy|2"
+  # ORDER-ISSUING humans (TA_AUTOPLAY). Everything above has its humans standing
   # still, so several clients landing commands on the SAME tick -- the ordinary case in
   # a real match, and where the server's per-tick command buffer interleaves them -- is
   # never exercised. These do that.
@@ -360,12 +360,12 @@ RUNS=(
   # tick it arrives on, so the same seed legitimately produces a different hash each
   # run. Judge them by "all clients and the referee agreed", never by comparing a hash
   # against a previous sweep.
-  "2h-orders|Ulasem Arena|TAK_AUTOPLAY=10||human|light|2"
-  "2h-orders-stress|Ulasem Arena|TAK_AUTOPLAY=20 TAK_STRESS=1||human|heavy|2"
-  "4h-orders|Ulasem Arena|TAK_AUTOPLAY=15||human|light|4"
+  "2h-orders|Ulasem Arena|TA_AUTOPLAY=10||human|light|2"
+  "2h-orders-stress|Ulasem Arena|TA_AUTOPLAY=20 TA_STRESS=1||human|heavy|2"
+  "4h-orders|Ulasem Arena|TA_AUTOPLAY=15||human|light|4"
   "3h-baseline|Ulasem Arena|||human|light|3"
-  "4h-gods|Ulasem Arena|TAK_GODS=1||human|light|4"
-  # --- over a LATENT link. TAK_RTT/TAK_JITTER put a delaying relay in front of the
+  "4h-gods|Ulasem Arena|TA_GODS=1||human|light|4"
+  # --- over a LATENT link. TA_RTT/TA_JITTER put a delaying relay in front of the
   # server (tools/netdelay.py); the client is otherwise unchanged. These exercise the
   # adaptive jitter buffer, the kMaxLeadTicks flow-control window and -- with orders in
   # flight -- command bucketing by arrival tick, none of which do anything on a LAN.
@@ -373,26 +373,26 @@ RUNS=(
   # The order-issuing ones are CONSENSUS tests twice over: live commands already make a
   # run unreproducible, and latency changes which tick each command lands on, so two
   # runs legitimately differ. Judge them by "everyone agreed", never by hash.
-  "net-rtt50|Ulasem Arena|TAK_RTT=50||human|light"
-  "net-rtt100|Ulasem Arena|TAK_RTT=100||human|light"
-  "net-jitter|Ulasem Arena|TAK_RTT=100 TAK_JITTER=30||human|light"
-  "net-rtt500|Ulasem Arena|TAK_RTT=500||human|light"
-  "net-loss1|Ulasem Arena|TAK_RTT=100 TAK_LOSS=1||human|light"
-  "net-loss3-orders|Ulasem Arena|TAK_RTT=100 TAK_LOSS=3 TAK_AUTOPLAY=15||human|light"
-  "net-orders100|Ulasem Arena|TAK_RTT=100 TAK_AUTOPLAY=15||human|light"
-  "net-2h-rtt100|Ulasem Arena|TAK_RTT=100 TAK_AUTOPLAY=15||human|light|2"
-  "w-allai-stress|Ulasem Arena|TAK_STRESS=1||watch|heavy"
-  "w-allai-bench|Ulasem Arena|TAK_BENCH=3||watch|heavy"
+  "net-rtt50|Ulasem Arena|TA_RTT=50||human|light"
+  "net-rtt100|Ulasem Arena|TA_RTT=100||human|light"
+  "net-jitter|Ulasem Arena|TA_RTT=100 TA_JITTER=30||human|light"
+  "net-rtt500|Ulasem Arena|TA_RTT=500||human|light"
+  "net-loss1|Ulasem Arena|TA_RTT=100 TA_LOSS=1||human|light"
+  "net-loss3-orders|Ulasem Arena|TA_RTT=100 TA_LOSS=3 TA_AUTOPLAY=15||human|light"
+  "net-orders100|Ulasem Arena|TA_RTT=100 TA_AUTOPLAY=15||human|light"
+  "net-2h-rtt100|Ulasem Arena|TA_RTT=100 TA_AUTOPLAY=15||human|light|2"
+  "w-allai-stress|Ulasem Arena|TA_STRESS=1||watch|heavy"
+  "w-allai-bench|Ulasem Arena|TA_BENCH=3||watch|heavy"
 )
 
-SPEED_DEFAULT="TAK_SPEED=40"
+SPEED_DEFAULT="TA_SPEED=40"
 
 # --only name[,name...] keeps just those runs. For working on ONE behaviour (the latency
 # shaping and its teardown, say) without sitting through the other 30-odd runs first.
 #
 # It fails loudly on a name that matches nothing. A filter that silently selects an empty
 # set would run a sweep of zero runs and report no failures -- and that is exactly how
-# this got tested wrong: an invented `TAK_ONLY=...` that this script never read was passed
+# this got tested wrong: an invented `TA_ONLY=...` that this script never read was passed
 # twice, and both runs quietly executed the FULL sweep while appearing to be targeted.
 if [ -n "${ONLY:-}" ]; then
   _keep=()
@@ -441,7 +441,7 @@ run_one() {
   local SSHH=(ssh -n -o ControlMaster=auto -o ControlPath="$OUT/ctl-%C" -o ControlPersist=15m -o BatchMode=yes)  # -n: see SSH above
   rsh1() { "${SSHH[@]}" "$RUSER@$host" "$@"; }
 
-  # LATENCY SHAPING. TAK_RTT / TAK_JITTER ride in the ENVS column rather than adding
+  # LATENCY SHAPING. TA_RTT / TA_JITTER ride in the ENVS column rather than adding
   # positional fields -- a wider spec is how --overrides full once ended up in the seat
   # slot and silently tested nothing. They are stripped before the client sees them:
   # they configure a relay in front of the server, not the game.
@@ -452,10 +452,10 @@ run_one() {
   # keep that fed. Measured: flat 4x through 100ms, 3.41x at 500ms, no desync at any of
   # them -- the knee is where the round trip starts eating the 120-tick lead window.
   local rtt=0 jit=0 loss=0 thost="$host" tport="$port" proxypid="" shaped_netem="" shaped_iface="" shaped_token=""
-  case "$envs" in *TAK_RTT=*)    rtt=$(printf '%s' "$envs" | grep -oE 'TAK_RTT=[0-9]+' | cut -d= -f2);; esac
-  case "$envs" in *TAK_JITTER=*) jit=$(printf '%s' "$envs" | grep -oE 'TAK_JITTER=[0-9]+' | cut -d= -f2);; esac
-  case "$envs" in *TAK_LOSS=*)   loss=$(printf '%s' "$envs" | grep -oE 'TAK_LOSS=[0-9.]+' | cut -d= -f2);; esac
-  envs=$(printf '%s' "$envs" | sed -E 's/TAK_(RTT|JITTER|LOSS)=[0-9.]+//g')
+  case "$envs" in *TA_RTT=*)    rtt=$(printf '%s' "$envs" | grep -oE 'TA_RTT=[0-9]+' | cut -d= -f2);; esac
+  case "$envs" in *TA_JITTER=*) jit=$(printf '%s' "$envs" | grep -oE 'TA_JITTER=[0-9]+' | cut -d= -f2);; esac
+  case "$envs" in *TA_LOSS=*)   loss=$(printf '%s' "$envs" | grep -oE 'TA_LOSS=[0-9.]+' | cut -d= -f2);; esac
+  envs=$(printf '%s' "$envs" | sed -E 's/TA_(RTT|JITTER|LOSS)=[0-9.]+//g')
 
   if [ "${rtt:-0}" != "0" ] || [ "${jit:-0}" != "0" ] || [ "${loss:-0}" != "0" ]; then
     # PREFER NETEM. It delays real packets and can DROP them; the relay delays a TCP
@@ -471,7 +471,7 @@ run_one() {
     # Lock in a FIXED place, not under $OUT: that path carries this sweep's pid, so two
     # sweeps against the same host took different locks, fought over the one interface
     # and each could tear down the other's shaping.
-    exec 9>"${TMPDIR:-/tmp}/tak-netem.$host.lock"
+    exec 9>"${TMPDIR:-/tmp}/ta-netem.$host.lock"
     flock 9
     if rsh1 "sudo -n /usr/sbin/tc -V >/dev/null 2>&1"; then
       # SHAPE THE INTERFACE THAT ROUTES TO THIS CLIENT, detected per host -- never a
@@ -497,7 +497,7 @@ run_one() {
       # while every packet runs unshaped. $SSH_CLIENT is what the host actually sees.
       local myaddr; myaddr=$(rsh1 'echo $SSH_CLIENT' 2>/dev/null | awk '{print $1}')
       [ -n "$myaddr" ] || myaddr="$MYIP"
-      local iface="${TAK_NETEM_IFACE:-}"
+      local iface="${TA_NETEM_IFACE:-}"
       [ -n "$iface" ] || iface=$(rsh1 "ip -o route get $myaddr 2>/dev/null | grep -oE 'dev [a-z0-9]+' | head -1 | cut -d' ' -f2")
       if [ -z "$iface" ]; then
         echo "SKIP $name ($host): cannot determine the interface back to $myaddr"; flock -u 9; return 0
@@ -549,7 +549,7 @@ run_one() {
       fi
       shaped_netem="$host"; shaped_iface="$iface"
     elif [ "${loss:-0}" != "0" ]; then
-      echo "SKIP $name ($host): TAK_LOSS needs netem, and sudo tc is not available there"
+      echo "SKIP $name ($host): TA_LOSS needs netem, and sudo tc is not available there"
       flock -u 9; return 0
     else
       local pport=$((PORT_BASE + 200 + idx))
@@ -566,11 +566,11 @@ run_one() {
   # client reaches it over a real NIC, which is the point of running it remotely.
   local spid
   spid=$(rsh1 "nohup $RBIN --port $port --data $RDATA --replaydir $RREPLAY --no-auth \
-         --seed $seed >/tmp/tak-srv-$port.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
+         --seed $seed >/tmp/ta-srv-$port.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
   [ -n "$spid" ] && note_server "$host" "$spid"
   local up=0
   for _ in $(seq 60); do
-    rsh1 "grep -q listening /tmp/tak-srv-$port.log 2>/dev/null" && { up=1; break; }
+    rsh1 "grep -q listening /tmp/ta-srv-$port.log 2>/dev/null" && { up=1; break; }
     sleep 2
   done
   # Kill the relay on THIS path too. It is started before the readiness check, and an
@@ -616,14 +616,14 @@ run_one() {
       shaping_down
       echo "FAIL $name ($host): remote server never came up (port $port)"; return 1; }
 
-  # SEAT: watch -> spectator (TAK_MP_WATCH=1, 8 AIs). human -> a real player slot with
+  # SEAT: watch -> spectator (TA_MP_WATCH=1, 8 AIs). human -> a real player slot with
   # 7 AIs alongside, which is what makes the referee compare hashes at all.
   # Seat the table. N humans -> (8-N) AIs.
   #
-  # TAK_MP_WAIT IS ONLY SAFE WHEN THE MAP REALLY HAS 8 SEATS. A room holds as many slots
+  # TA_MP_WAIT IS ONLY SAFE WHEN THE MAP REALLY HAS 8 SEATS. A room holds as many slots
   # as the map has start positions (mpCapacity clamps 2..8), so on a smaller map `ready`
   # can never reach 8 and the host waits for a table that cannot exist -- the game never
-  # starts and the run burns its whole timeout. Hardcoding TAK_MP_WAIT=8 did exactly
+  # starts and the run burns its whole timeout. Hardcoding TA_MP_WAIT=8 did exactly
   # that to every run on Inner Circle, Two Castles, Aibel's Seaport, Lake Lokken and
   # Tarosian Plain: seven runs, no "starting with N players" line between them.
   #
@@ -631,13 +631,13 @@ run_one() {
   # so the default (any 2 ready) starts the game correctly on a map of any size. Only a
   # multi-human run has to hold for joiners, and those are pinned to 8-seat maps.
   local nai=$((8 - humans))
-  local seatenv="TAK_MP_AIS=$nai"
-  [ "$humans" -gt 1 ] && seatenv="TAK_MP_AIS=$nai TAK_MP_WAIT=8"
-  [ "$seat" = "watch" ] && seatenv="TAK_MP_WATCH=1 TAK_MP_AIS=8"
+  local seatenv="TA_MP_AIS=$nai"
+  [ "$humans" -gt 1 ] && seatenv="TA_MP_AIS=$nai TA_MP_WAIT=8"
+  [ "$seat" = "watch" ] && seatenv="TA_MP_WATCH=1 TA_MP_AIS=8"
 
   local secs=$((MINUTES * 60))
   # shellcheck disable=SC2086
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $seatenv $SPEED_DEFAULT $envs \
+  env TA_HEADLESS=1 SDL_VIDEODRIVER=dummy $seatenv $SPEED_DEFAULT $envs \
       timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
       --server "$thost" --serverport "$tport" --mphost --time "$secs" $flags \
       >"$clog" 2>&1 &
@@ -650,7 +650,7 @@ run_one() {
     sleep 8
     for ((j = 2; j <= humans; j++)); do
       # shellcheck disable=SC2086
-      env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy $SPEED_DEFAULT $envs \
+      env TA_HEADLESS=1 SDL_VIDEODRIVER=dummy $SPEED_DEFAULT $envs \
           timeout -k 30 $((secs + 300)) $CLIENT game "$map" --data "$LDATA" \
           --server "$thost" --serverport "$tport" --mpjoin --time "$secs" $flags \
           >"$OUT/$name.client$j.log" 2>&1 &
@@ -681,8 +681,8 @@ run_one() {
   # is not evidence of absence -- it is a failed download. The size cross-check catches
   # a transfer that ended early without a nonzero status.
   local fetchrc=0 remote_sz local_sz
-  rsh1 "cat /tmp/tak-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null || fetchrc=$?
-  remote_sz=$(rsh1 "stat -c%s /tmp/tak-srv-$port.log 2>/dev/null || echo -1" 2>/dev/null | tr -d '\r')
+  rsh1 "cat /tmp/ta-srv-$port.log" >"$OUT/$name.server.log" 2>/dev/null || fetchrc=$?
+  remote_sz=$(rsh1 "stat -c%s /tmp/ta-srv-$port.log 2>/dev/null || echo -1" 2>/dev/null | tr -d '\r')
   local_sz=$(stat -c%s "$OUT/$name.server.log" 2>/dev/null || echo -2)
 
   # THE VERDICT. A run only passes if it actually ran: the completion line alone is
@@ -740,10 +740,10 @@ run_one() {
   # A spectator run compares NOTHING (checkHashes returns on `live == 0`, and the
   # spectator sends a zero hash by design), so its clean finish is a flow-control
   # result, not a determinism one. Label it rather than let "ok" imply verification.
-  # TAK_BENCH forces spectator mode too, whatever the seat says.
+  # TA_BENCH forces spectator mode too, whatever the seat says.
   local nohash=0
   [ "$seat" = "watch" ] && nohash=1
-  case "$envs" in *TAK_BENCH*) nohash=1;; esac
+  case "$envs" in *TA_BENCH*) nohash=1;; esac
 
   if [ -n "$hit" ]; then echo "HIT  $name @$host [seat=$seat seed=$seed map=$map $envs $flags] -- $hit"
                          echo "     $done_line"
@@ -872,14 +872,14 @@ if [ "$VALIDATE" = "1" ]; then
     *)       echo "   PASS -- both at $_cbuild";;
   esac
 
-echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on $vhost =="
-  vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/tak-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
+echo "== validating the detector with a PLANTED desync (TA_FAKE_DESYNC=900) on $vhost =="
+  vpid=$("${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7890 --data $RDATA --no-auth --seed 999 >/tmp/ta-val.log 2>&1 </dev/null & echo \$!" 2>/dev/null | tr -d '\r')
   [ -n "$vpid" ] && note_server "$vhost" "$vpid"
-  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-val.log 2>/dev/null" && break; sleep 2; done
-  env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 TAK_FAKE_DESYNC=900 \
+  for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/ta-val.log 2>/dev/null" && break; sleep 2; done
+  env TA_HEADLESS=1 SDL_VIDEODRIVER=dummy TA_MP_AIS=7 TA_SPEED=40 TA_FAKE_DESYNC=900 \
       timeout -k 30 400 $CLIENT game "Ulasem Arena" --data "$LDATA" \
       --server "$vhost" --serverport 7890 --mphost --time 120 >"$OUT/validate.client.log" 2>&1
-  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-val.log" >"$OUT/validate.server.log" 2>/dev/null
+  "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/ta-val.log" >"$OUT/validate.server.log" 2>/dev/null
   [ -n "$vpid" ] && "${VSSH[@]}" "$RUSER@$vhost" "kill $vpid 2>/dev/null; true" >/dev/null 2>&1
   if grep -qi "DESYNCED" "$OUT/validate.server.log"; then
     echo "   PASS -- referee reported: $(grep -i DESYNCED "$OUT/validate.server.log" | head -1)"
@@ -937,14 +937,14 @@ echo "== validating the detector with a PLANTED desync (TAK_FAKE_DESYNC=900) on 
   fi
   {
 
-    "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7891 --data $RDATA --no-auth --seed 999 >/tmp/tak-neg.log 2>&1 </dev/null & echo \$!" >/dev/null 2>&1
-    for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/tak-neg.log 2>/dev/null" && break; sleep 2; done
-    env TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_SPEED=40 \
+    "${VSSH[@]}" "$RUSER@$vhost" "nohup $RBIN --port 7891 --data $RDATA --no-auth --seed 999 >/tmp/ta-neg.log 2>&1 </dev/null & echo \$!" >/dev/null 2>&1
+    for _ in $(seq 60); do "${VSSH[@]}" "$RUSER@$vhost" "grep -q listening /tmp/ta-neg.log 2>/dev/null" && break; sleep 2; done
+    env TA_HEADLESS=1 SDL_VIDEODRIVER=dummy TA_MP_AIS=7 TA_SPEED=40 \
         timeout -k 20 180 $CLIENT game "Ulasem Arena" --data "$_negdata" \
         --server "$vhost" --serverport 7891 --mphost --time 60 --overrides full \
         >"$OUT/negative.client.log" 2>&1
-    "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/tak-neg.log" >"$OUT/negative.server.log" 2>/dev/null
-    "${VSSH[@]}" "$RUSER@$vhost" "ps -o pid,args -C takserver --no-headers | awk '/7891/{print \$1}' | xargs -r kill" >/dev/null 2>&1
+    "${VSSH[@]}" "$RUSER@$vhost" "cat /tmp/ta-neg.log" >"$OUT/negative.server.log" 2>/dev/null
+    "${VSSH[@]}" "$RUSER@$vhost" "ps -o pid,args -C taserver --no-headers | awk '/7891/{print \$1}' | xargs -r kill" >/dev/null 2>&1
 
     _rejected=0
     grep -qi "override mismatch" "$OUT/negative.server.log" "$OUT/negative.client.log" 2>/dev/null && _rejected=1
@@ -1013,7 +1013,7 @@ hits=$(grep -rlEi "DESYNCED|REFEREE SUSPECT" "$OUT" 2>/dev/null | grep -v "/vali
 if [ -n "$hits" ]; then echo "DESYNCS FOUND in:"; echo "$hits"; else echo "no desyncs reported"; fi
 echo "note: runs marked 'flow' seated no human, so no hashes were compared in them --"
 echo "      they cover flow control only and prove nothing about determinism."
-echo "note: TAK_AUTOPLAY runs issue live commands, so the server buckets them by the"
+echo "note: TA_AUTOPLAY runs issue live commands, so the server buckets them by the"
 echo "      tick they ARRIVE on and the same seed gives a different hash each run."
 echo "      They prove consensus, not reproducibility -- do not diff their hashes."
 echo "runs that did not complete:"

@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int failures = 0;
@@ -33,9 +33,9 @@ const char* kMap = "maps/Inner Circle.tnt";   // any shipped map; we only need t
 // pick round numbers and rely on the sim's "unstick" pass to walk a unit off
 // whatever rock it landed on; that pass is gone (retail has none), so a fixture
 // that spawns on a cliff now simply has a unit that cannot move.
-static void legalSpot(const tak::sim::World& w, const tak::sim::UnitType* t,
+static void legalSpot(const ta::sim::World& w, const ta::sim::UnitType* t,
                       float& x, float& z) {
-    const tak::sim::NavGrid& g = w.navFor(t);
+    const ta::sim::NavGrid& g = w.navFor(t);
     if (g.empty() || !t) return;
     const int foot = std::max(1, std::max(t->footX, t->footZ));
     const int cx = int(x) / 16, cz = int(z) / 16;

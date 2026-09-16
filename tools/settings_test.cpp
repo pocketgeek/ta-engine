@@ -21,7 +21,7 @@
 #include <cstdio>
 #include <string>
 
-using tak::Settings;
+using ta::Settings;
 
 static int g_fail = 0;
 
@@ -138,7 +138,7 @@ int main() {
         cur.uiScale = 1.75f;
         cur.bilinear = true;
 
-        const Settings d = tak::preferenceDefaults(cur);
+        const Settings d = ta::preferenceDefaults(cur);
         auto keep = [&](const char* what, bool ok) {
             std::printf("  keeps %-18s %s\n", what, ok ? "ok" : "FAIL (destroyed by DEFAULTS)");
             if (!ok) ++g_fail;
@@ -167,7 +167,7 @@ int main() {
 
         // And the two questions must agree: after a reset we ARE at defaults, which is
         // the invariant that broke when the preserve list and atDefaults() diverged.
-        const bool agree = (d == tak::preferenceDefaults(d));
+        const bool agree = (d == ta::preferenceDefaults(d));
         std::printf("  %-23s %s\n", "reset => atDefaults",
                     agree ? "ok" : "FAIL (reset does not settle at defaults)");
         if (!agree) ++g_fail;

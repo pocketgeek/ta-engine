@@ -57,15 +57,15 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_FRAMEWORK=LAST
-          cmake --build build --target takclient takserver detmath_test sim_driver_equiv_test
+          cmake --build build --target taclient taserver detmath_test sim_driver_equiv_test
 
       - name: Verify fully static (only system libs/frameworks linked)
         run: |
-          otool -L build/takclient
+          otool -L build/taclient
           # macOS can't static-link libSystem/frameworks, so those are expected; assert
           # NO Homebrew/@rpath/local dylib (SDL2/jpeg/zlib/ffmpeg must be baked in).
-          if otool -L build/takclient | tail -n +2 | grep -qE '@rpath|@loader_path|/opt/homebrew|/usr/local'; then
-            echo "::error::takclient links a non-system dylib -- not fully static"; exit 1
+          if otool -L build/taclient | tail -n +2 | grep -qE '@rpath|@loader_path|/opt/homebrew|/usr/local'; then
+            echo "::error::taclient links a non-system dylib -- not fully static"; exit 1
           fi
           echo "OK: only system libs/frameworks linked -- as static as macOS allows"
 
@@ -82,14 +82,14 @@ jobs:
         run: |
           APPDIR="dist-dmg/TAK Engine.app"
           mkdir -p "$APPDIR/Contents/MacOS"
-          cp build/takclient build/takserver "$APPDIR/Contents/MacOS/"
+          cp build/taclient build/taserver "$APPDIR/Contents/MacOS/"
           sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APPDIR/Contents/Info.plist"
           plutil -lint "$APPDIR/Contents/Info.plist"
           codesign --force --deep -s - "$APPDIR"
           ln -s /Applications dist-dmg/Applications
           hdiutil create -volname "TAK Engine" -srcfolder dist-dmg -ov -format UDZO \
-            "tak-engine-$VERSION-macos-arm64.dmg"
-          hdiutil verify "tak-engine-$VERSION-macos-arm64.dmg"
+            "ta-engine-$VERSION-macos-arm64.dmg"
+          hdiutil verify "ta-engine-$VERSION-macos-arm64.dmg"
 
       # The zip carries the SAME .app (launch that from Finder -- no Terminal)
       # plus the bare binaries for people who want the CLI/server.
@@ -97,40 +97,40 @@ jobs:
         run: |
           mkdir -p dist-macos
           cp -R "dist-dmg/TAK Engine.app" dist-macos/
-          cp build/takclient build/takserver dist-macos/
-          (cd dist-macos && zip -ry "../takclient-$VERSION-macos-arm64.zip" .)
+          cp build/taclient build/taserver dist-macos/
+          (cd dist-macos && zip -ry "../taclient-$VERSION-macos-arm64.zip" .)
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-macos-arm64
+          name: taclient-macos-arm64
           path: dist-macos/
 
       - name: Upload CI artifact (DMG)
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-macos-arm64-dmg
-          path: tak-engine-*.dmg
+          name: ta-engine-macos-arm64-dmg
+          path: ta-engine-*.dmg
 
       # Debug build: the release binaries are hardened (only --data/--version, no env
       # vars), so ship an unhardened DEBUG bundle for devs who need the CLI flags,
-      # TAK_* env hooks, and the headless --mp* harness.
+      # TA_* env hooks, and the headless --mp* harness.
       - name: Configure + build (debug)
         run: |
           cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_FIND_FRAMEWORK=LAST
-          cmake --build build-debug --target takclient takserver
+          cmake --build build-debug --target taclient taserver
 
       - name: Bundle + zip (debug)
         run: |
           mkdir -p dist-macos-debug
-          cp build-debug/takclient build-debug/takserver dist-macos-debug/
-          (cd dist-macos-debug && zip -r ../takclient-macos-arm64-debug.zip .)
+          cp build-debug/taclient build-debug/taserver dist-macos-debug/
+          (cd dist-macos-debug && zip -r ../taclient-macos-arm64-debug.zip .)
 
       - name: Upload CI artifact (debug)
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-macos-arm64-debug
+          name: taclient-macos-arm64-debug
           path: dist-macos-debug/
 
       - name: Determinism gate (cross-platform parity)
@@ -153,6 +153,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --title "TAK Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || true
           gh release upload "$GITHUB_REF_NAME" \
-            "takclient-$VERSION-macos-arm64.zip" takclient-macos-arm64-debug.zip \
-            "tak-engine-$VERSION-macos-arm64.dmg" \
+            "taclient-$VERSION-macos-arm64.zip" taclient-macos-arm64-debug.zip \
+            "ta-engine-$VERSION-macos-arm64.dmg" \
             --repo "$GITHUB_REPOSITORY" --clobber

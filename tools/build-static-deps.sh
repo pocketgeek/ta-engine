@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build static archives of zlib, libjpeg-turbo and SDL2 from source, into a prefix that
-# CMake links statically into the tak-engine binaries (see CMakeLists.txt,
+# CMake links statically into the ta-engine binaries (see CMakeLists.txt,
 # always, unconditionally). This lets the shipped binaries carry these libs internally so a
 # host needs no matching libz / libjpeg / libSDL2 shared library installed -- handy for the
 # release zips and for pinning known-good versions.

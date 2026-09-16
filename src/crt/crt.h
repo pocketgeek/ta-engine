@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::crt {
+namespace ta::crt {
 
 // .crt scenario files: the initial unit placements for a map, the per-player
 // trigger rules, custom unit-type stat overrides, and named regions.
@@ -84,4 +84,4 @@ Scenario parse(const std::vector<uint8_t>& d);
 // record bytes is zero-filled. parse(write(s)) == s for the fields above.
 std::vector<uint8_t> write(const Scenario& s);
 
-} // namespace tak::crt
+} // namespace ta::crt

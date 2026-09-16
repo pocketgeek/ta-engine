@@ -8,7 +8,7 @@
 
 #include <iostream>
 
-using tak::tdf::Node;
+using ta::tdf::Node;
 
 static void dump(const Node& n, int depth) {
     std::string ind(size_t(depth) * 2, ' ');
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
         int failures = 0;
         for (int i = 2; i < argc; ++i) {
             try {
-                tak::tdf::parse(argv[i]);
+                ta::tdf::parse(argv[i]);
             } catch (const std::exception& e) {
                 std::cerr << e.what() << "\n";
                 ++failures;
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     }
 
     try {
-        auto root = tak::tdf::parse(argv[2]);
+        auto root = ta::tdf::parse(argv[2]);
         if (cmd == "dump") {
             dump(root, 0);
         } else if (cmd == "get" && argc >= 5) {

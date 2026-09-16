@@ -6,7 +6,7 @@
 
 _Cavedog's 1999 fantasy RTS — reborn in clean-room C++20 / SDL2, in the spirit of OpenRA and the Robot War Engine._
 
-[![version](https://img.shields.io/badge/version-0.6.5-c9a227?style=flat-square)](https://github.com/pocketgeek/tak-engine/releases)
+[![version](https://img.shields.io/badge/version-0.6.5-c9a227?style=flat-square)](https://github.com/pocketgeek/ta-engine/releases)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c?style=flat-square&logo=cplusplus&logoColor=white)](CMakeLists.txt)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20·%20Windows%20·%20macOS-4c8c4a?style=flat-square)](#download)
 [![multiplayer](https://img.shields.io/badge/multiplayer-deterministic%20lockstep-b03a2e?style=flat-square)](#multiplayer)
@@ -42,7 +42,7 @@ _Cavedog's 1999 fantasy RTS — reborn in clean-room C++20 / SDL2, in the spirit
 A modern, cross-platform engine recreation for **Total Annihilation: Kingdoms**
 (Cavedog Entertainment, 1999), in the spirit of OpenRA and Robot War Engine.
 
-**Version 0.6.5** — reported by `takclient --version` and `takserver --version`
+**Version 0.6.5** — reported by `taclient --version` and `taserver --version`
 (and shown in the window title / server banner). The release version is set in
 one place, `project(... VERSION ...)` in `CMakeLists.txt`, and is separate from
 the multiplayer wire protocol version, which is gated independently at connect.
@@ -52,20 +52,20 @@ the multiplayer wire protocol version, which is gated independently at connect.
 Latest pre-built binaries (self-contained; you still supply your own retail game
 data — see **Game data**):
 
-- **Windows x64** — the `tak-engine-<version>-windows-x64-setup.exe` installer (Start-menu shortcuts + uninstaller), or the plain `takclient-<version>-windows-x64.zip`
-- **macOS (Apple Silicon)** — the `tak-engine-<version>-macos-arm64.dmg` disk image (drag *TAK Engine* to Applications; right-click → Open the first time), or `takclient-<version>-macos-arm64.zip` (contains the same *TAK Engine.app* — launch that, not the bare `takclient`, or Finder opens a Terminal window)
-- **Ubuntu 22.04 / 24.04 / 26.04** — `tak-engine-<version>-ubuntu<rel>-amd64.deb`, then `sudo apt install ./tak-engine-*.deb`
-- **Debian 12 / 13** — `tak-engine-<version>-debian<rel>-amd64.deb`, then `sudo apt install ./tak-engine-*.deb`
-- **Fedora 44** — `tak-engine-<version>-fedora44-x86_64.rpm`, then `sudo dnf install ./tak-engine-*.rpm`
-- **Arch** — `tak-engine-<version>-1-x86_64.pkg.tar.zst`, then `sudo pacman -U ./tak-engine-*.pkg.tar.zst`
-- All from the [latest release](https://github.com/pocketgeek/tak-engine/releases/latest) · [all releases](https://github.com/pocketgeek/tak-engine/releases) · or build from source below.
+- **Windows x64** — the `ta-engine-<version>-windows-x64-setup.exe` installer (Start-menu shortcuts + uninstaller), or the plain `taclient-<version>-windows-x64.zip`
+- **macOS (Apple Silicon)** — the `ta-engine-<version>-macos-arm64.dmg` disk image (drag *TAK Engine* to Applications; right-click → Open the first time), or `taclient-<version>-macos-arm64.zip` (contains the same *TAK Engine.app* — launch that, not the bare `taclient`, or Finder opens a Terminal window)
+- **Ubuntu 22.04 / 24.04 / 26.04** — `ta-engine-<version>-ubuntu<rel>-amd64.deb`, then `sudo apt install ./ta-engine-*.deb`
+- **Debian 12 / 13** — `ta-engine-<version>-debian<rel>-amd64.deb`, then `sudo apt install ./ta-engine-*.deb`
+- **Fedora 44** — `ta-engine-<version>-fedora44-x86_64.rpm`, then `sudo dnf install ./ta-engine-*.rpm`
+- **Arch** — `ta-engine-<version>-1-x86_64.pkg.tar.zst`, then `sudo pacman -U ./ta-engine-*.pkg.tar.zst`
+- All from the [latest release](https://github.com/pocketgeek/ta-engine/releases/latest) · [all releases](https://github.com/pocketgeek/ta-engine/releases) · or build from source below.
 
 Each release also attaches per-platform **debug** binaries (`*-debug`) — the same
-`takclient`/`takserver` *without* the release CLI/env hardening, so developers get the
-launch modes, dev flags, `TAK_*` env hooks, and the headless `--mp*` harness.
+`taclient`/`taserver` *without* the release CLI/env hardening, so developers get the
+launch modes, dev flags, `TA_*` env hooks, and the headless `--mp*` harness.
 
-All of these resolve to the newest [release](https://github.com/pocketgeek/tak-engine/releases);
-the `.deb`/`.rpm` packages install `takclient` + `takserver` to `/usr/bin`; SDL2,
+All of these resolve to the newest [release](https://github.com/pocketgeek/ta-engine/releases);
+the `.deb`/`.rpm` packages install `taclient` + `taserver` to `/usr/bin`; SDL2,
 libjpeg and zlib are linked **statically** (and the Bink FFmpeg too), so the packages
 are self-contained — they pull only base system libraries, nothing extra to install.
 They appear once the first tagged release finishes building.
@@ -85,7 +85,7 @@ Every stage is complete:
 
 1. ~~**Format tooling**~~ — HPI v2, GAF/TAF, TNT, 3DO, COB, TDF/FBI/OTA, GAF
    fonts, WAV all parse.
-2. ~~**Asset viewer**~~ — `takclient map` / `takclient model` (textured, COB-animated).
+2. ~~**Asset viewer**~~ — `taclient map` / `taclient model` (textured, COB-animated).
 3. ~~**Simulation**~~ — movement, pathfinding, combat, mana economy,
    production, per-unit COB VMs, sound.
 4. ~~**Skirmish game**~~ — playable vs AI: fog of war, minimap, building
@@ -136,7 +136,7 @@ cmake --build build
 The animated front-end door clips are Bink1 (`.bik`) video, decoded through
 FFmpeg. **The downloaded releases need no FFmpeg installed** — every shipped
 package (`.rpm`/`.deb`/zips, all three platforms) links a minimal, Bink-only
-FFmpeg **statically into `takclient`**, so the door videos just play on a stock
+FFmpeg **statically into `taclient`**, so the door videos just play on a stock
 system with nothing to install. It stays optional either way: with no FFmpeg
 decoder at all, the doors fall back to their static GAF art.
 
@@ -151,7 +151,7 @@ cmake -B build -G Ninja && cmake --build build
 
 Both only need running once; configure fails with the command to run if either
 is missing. The Bink path is pure LGPL (no GPL codecs pulled in), and
-`TAK_FFMPEG_PREFIX` / `TAK_STATIC_DEPS_PREFIX` override where they live.
+`TA_FFMPEG_PREFIX` / `TA_STATIC_DEPS_PREFIX` override where they live.
 
 The system `libavcodec` is never used. That is deliberate twice over: stock
 Fedora's `libavcodec-free` omits the Bink decoder entirely, so a successful
@@ -200,7 +200,7 @@ a release is just
 ## Game data
 
 Point the engine straight at a **retail install directory** — no extraction
-step. Pass it with `--data`, or just launch `takclient` with no arguments: it
+step. Pass it with `--data`, or just launch `taclient` with no arguments: it
 pops up a **native folder picker** ("choose your TA:Kingdoms install"), checks
 the folder actually holds the game data, and **remembers it** (saved in config,
 re-validated each launch) so you're only asked once. It reads the shipped
@@ -234,14 +234,14 @@ tree if you want one.
 
 ## Playing
 
-The engine is **client-server only** — every game runs on a `takserver`, and the
+The engine is **client-server only** — every game runs on a `taserver`, and the
 AI runs *only* on the server. Single-player is just a private game on a server the
 client starts for you.
 
 Point it at your install and it opens the retail **front-end menu**:
 
 ```sh
-./build/takclient --data /path/to/tak_install
+./build/taclient --data /path/to/tak_install
 ```
 
 From the three doors you pick **Single-Player**, **Multiplayer**, or **Campaign**,
@@ -301,16 +301,16 @@ A **release** build is deliberately minimal — it accepts only:
 | `--data <retail-install-dir>` | the game-data root (root `*.hpi` + `Maps/` + `Music/` + `overrides/`). **Optional** — with no `--data`, the client re-uses the folder saved in config, or pops the folder picker on first run (see **Game data**) |
 | `--version` | print the version and exit (`--help` prints this usage) |
 
-So a release `takclient` needs **no arguments at all** to launch. Everything else —
+So a release `taclient` needs **no arguments at all** to launch. Everything else —
 the data folder, factions, colours, difficulty, the map, multiplayer, overrides — is
 handled by the first-run picker and the menu, and a release build reads **no
 environment variables**.
 
 **Debug builds** additionally accept the launch modes `game <map>` / `map <map>` /
-`replay <file.takrep>` / `model <file.3do>` and the dev/test flags (`--side`,
+`replay <file.tarep>` / `model <file.3do>` and the dev/test flags (`--side`,
 `--aiside`, `--server`, `--overrides {none,cosmetic,full}`, `--crusades`, `--cheat`,
 `--demo`, `--mission`, `--campaign`, `--maxfps`, `--novsync`, the `--mp*` headless
-harness, …) plus the `TAK_*` diagnostic env vars. Run a debug `--help` for the full
+harness, …) plus the `TA_*` diagnostic env vars. Run a debug `--help` for the full
 list. `--overrides` defaults to `full` (a release build always mounts `full`):
 `none` = pure retail, `cosmetic` = only art/sound/music, `full` = everything including
 gameplay data.
@@ -342,23 +342,23 @@ faction soundtrack.
 ## Multiplayer
 
 Multiplayer is **client–server**: everyone connects out to one central
-`takserver`, so there's no NAT or port-forwarding on the players' side. The
+`taserver`, so there's no NAT or port-forwarding on the players' side. The
 server relays a **server-sequenced deterministic lockstep** — up to 8 players on
 up to 8 teams (allies share vision and economy), every machine running the
 identical sim with only ~35-byte commands on the wire.
 
 ```sh
 # somewhere reachable (default port 7677):
-./build/takserver --port 7677 --data /path/to/tak_install --accounts accounts.conf
+./build/taserver --port 7677 --data /path/to/tak_install --accounts accounts.conf
 
 # each player — launch the client and join through the menu's Multiplayer door
 # (pick the server, sign in with an account name and password, then browse/
 # create/join in the lobby):
-./build/takclient --data /path/to/tak_install
+./build/taclient --data /path/to/tak_install
 ```
 
 (A debug build can also connect straight from the command line, skipping the menu:
-`takclient game "<map>" --data <dir> --server <host> [--serverport N]
+`taclient game "<map>" --data <dir> --server <host> [--serverport N]
 [--user NAME --pass PASSWORD]`.)
 
 - **Accounts.** Players sign in with a name and a password; a name the server has
@@ -379,7 +379,7 @@ identical sim with only ~35-byte commands on the wire.
   the source address with an escalating delay (30s doubling to 15 min).
 
   Accounts live in one plain-text file (`--accounts`, default
-  `takserver-accounts.conf`), written owner-read-only and rewritten atomically —
+  `taserver-accounts.conf`), written owner-read-only and rewritten atomically —
   no database. New passwords must be at least 8 characters; names are 3-20
   characters of letters, digits, `_`, `-` or `.`, unique case-insensitively.
   `tools/authtest.cpp` checks the primitives against the published FIPS/RFC test
@@ -437,10 +437,10 @@ retired.)
 ## Replays
 
 Start the server with `--replaydir <dir>` and it writes a self-contained
-`.takrep` for every finished game. Play one back as a spectator:
+`.tarep` for every finished game. Play one back as a spectator:
 
 ```sh
-./build-dbg/takclient replay <file.takrep> --data /path/to/tak_install
+./build-dbg/taclient replay <file.tarep> --data /path/to/tak_install
 ```
 
 **Pause** and the **+/−** speed keys scrub it; a bar shows elapsed / total time. (The
@@ -486,12 +486,12 @@ See `docs/cartographer-port.md`.
 | `src/campaign/` | campaign spine (`camps/*.tdf`) + in-sim mission/god-script runner |
 | `src/sim/` | deterministic simulation (movement, pathfinding, combat, economy) |
 | `src/net/` | multiplayer wire format, framed TCP, client protocol |
-| `src/server/` | `takserver`, the headless lobby + lockstep relay |
+| `src/server/` | `taserver`, the headless lobby + lockstep relay |
 | `src/ai/` | the skirmish AI (server-portable; emits commands) |
 | `src/terrain/` | terrain / palette handling |
 | `src/util/` | shared helpers |
 | `src/gui/` | retail `.gui` HUD/gadget layout parsing |
-| `src/client/` | the SDL2 app (`takclient`: asset viewer + game) |
+| `src/client/` | the SDL2 app (`taclient`: asset viewer + game) |
 | `src/cartographer/` | `cartographer`, a clean-room port of the retail map editor (in progress) |
 | `tools/` | CLI dev tools (`hpitool`, `gaftool`, `tnttool`, `modeltool`, `cobtool`, `tdftool`, `missiontool`, `biktool`, `aitool`) |
 | `docs/` | format notes + reverse-engineering findings (`retail-engine.md` = the `KINGDOMS.icd` disassembly) |

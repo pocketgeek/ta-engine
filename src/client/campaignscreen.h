@@ -5,7 +5,7 @@
 // for the selected one, its missions -- each marked DONE or PLAY (nothing is ever
 // locked), with the first unbeaten mission highlighted as the suggested next. Picking
 // a mission closes the overlay with a chosen stem the host launches through the mission
-// runner. Completion comes from tak::Settings (campaignCompleted), which the host
+// runner. Completion comes from ta::Settings (campaignCompleted), which the host
 // records on victory. Draws with the shared block font; owns no game state.
 
 #include <SDL.h>
@@ -15,7 +15,7 @@
 
 #include "campaign/campaign.h"
 
-namespace tak {
+namespace ta {
 
 namespace hpi { class Vfs; }
 struct Settings;
@@ -60,4 +60,4 @@ private:
     std::string pickedStem_, pickedCampaign_;
 };
 
-}  // namespace tak
+}  // namespace ta

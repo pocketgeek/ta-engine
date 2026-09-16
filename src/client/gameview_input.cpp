@@ -7,7 +7,7 @@
 
     void GameView::openHotkeys() {
         if (!settings_) return;
-        hotkeysScreen_ = std::make_unique<tak::HotkeysScreen>(ren_, *settings_,
+        hotkeysScreen_ = std::make_unique<ta::HotkeysScreen>(ren_, *settings_,
             [this] { hotkeys_.load(settings_->hotkeys); },   // live-apply the rebind
             [this] { saveSettings(*settings_); });
     }
@@ -198,8 +198,8 @@
                 bdX0_ = wx;
                 bdZ0_ = wz;
             } else if (!selection_.empty() && canPlaceLocked(placing_, wx, wz)) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::Build;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::Build;
                 c.unitId = selectedBuilder() ? selectedBuilder()->id : selection_.front();
                 c.x = wx;
                 c.z = wz;
@@ -362,12 +362,12 @@
         if (shakeTime_ > 0) shakeTime_ = std::max(0.0f, shakeTime_ - dt);   // shake decay
     }
 
-    bool GameView::canPlaceLocked(const tak::sim::UnitType* type, float x, float z) {
+    bool GameView::canPlaceLocked(const ta::sim::UnitType* type, float x, float z) {
         std::lock_guard<std::mutex> lk(simMutex_);
         return world_.canPlace(type, x, z);
     }
 
-    bool GameView::clearableAt(const tak::sim::UnitType* type, float x, float z,
+    bool GameView::clearableAt(const ta::sim::UnitType* type, float x, float z,
                                std::vector<int>& outFeatures) {
         std::lock_guard<std::mutex> lk(simMutex_);
         return world_.clearableForPlacement(type, x, z, outFeatures);
@@ -380,7 +380,7 @@
     // does exactly what retail's does and the lockstep stream stays ordinary. The
     // builder walks the doodads down (earning their mana, as any reclaim does) and
     // then lays the foundation.
-    void GameView::issueClearThenBuild(int builderId, const tak::sim::UnitType* type,
+    void GameView::issueClearThenBuild(int builderId, const ta::sim::UnitType* type,
                                        float x, float z, const std::vector<int>& feats,
                                        bool queue) {
         if (!type || feats.empty()) return;
@@ -401,16 +401,16 @@
         std::sort(order.begin(), order.end());
         bool first = true;
         for (auto& [d, fid] : order) {
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Reclaim;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Reclaim;
             c.unitId = builderId;
             c.targetId = fid;
             c.queue = uint8_t((first && !queue) ? 0 : 1);   // first replaces unless queuing
             issue(c);
             first = false;
         }
-        tak::net::Command bc;
-        bc.kind = tak::net::Cmd::Build;
+        ta::net::Command bc;
+        bc.kind = ta::net::Cmd::Build;
         bc.unitId = builderId;
         bc.x = x;
         bc.z = z;
@@ -486,8 +486,8 @@
         std::lock_guard<std::mutex> lk(simMutex_);
         for (auto& [x, z] : buildLinePositions(x0, z0, x1, z1)) {
             if (!world_.canPlace(placing_, x, z)) continue;   // simMutex_ already held
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Build;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Build;
             c.unitId = builderId;
             c.x = x;
             c.z = z;
@@ -511,8 +511,8 @@
                                   {pick->x + 260, pick->z + 300},
                                   {pick->x - 60,  pick->z + 300}};
         for (int i = 0; i < 3; ++i) {
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Move;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Move;
             c.unitId = pick->id;
             c.x = legs[i][0];
             c.z = legs[i][1];

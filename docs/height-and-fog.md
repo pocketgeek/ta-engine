@@ -18,7 +18,7 @@ terrain skew). Everything below lives in `src/client/main.cpp` unless noted.
   and picking) and `kHeightScaleX_ = 0` (horizontal **off** — a nonzero X scale
   can't be inverted cleanly for both N-S and E-W walls, so vertical-only is the
   retail-faithful choice; the residual "east offset" on diagonal walls is the
-  accepted limit). Live-tunable via `TAK_HSCALE` / `TAK_HSCALEX`.
+  accepted limit). Live-tunable via `TA_HSCALE` / `TA_HSCALEX`.
 - Applied to **every height-anchored draw** of a mobile unit: sprite, shadow,
   HP/production bars, selection brackets, order rings, build ghosts, projectiles,
   particles, effects.
@@ -66,8 +66,8 @@ headless referee (`visPlayer_ < 0`), and `vis_` is **not** folded into
   `max(sight, radar) / 16`, but a cell is revealed only if `sightClear()` finds no
   intervening terrain rising above the straight eye→target sight line — so walls,
   cliffs, and hills cast fog shadows on their far side, while water (being low)
-  never blocks. Eye height = the unit's ground height + `TAK_FOG_EYE` (default
-  40); an obstacle must clear the sight line by `TAK_FOG_MARGIN` (default 16) to
+  never blocks. Eye height = the unit's ground height + `TA_FOG_EYE` (default
+  40); an obstacle must clear the sight line by `TA_FOG_MARGIN` (default 16) to
   block. Those defaults mean real walls (height 60–220 on athri cay) shadow but
   small rock clutter (< ~56) does not. Radar range skips the LoS test (radar is
   not line of sight). `World` keeps the raw heightmap (`heights_`) for this.
@@ -80,8 +80,8 @@ headless referee (`visPlayer_ < 0`), and `vis_` is **not** folded into
 
 | Var | Effect | Default |
 | --- | --- | --- |
-| `TAK_HSCALE` | unit lift per height unit (screen-Y) | 1.1 |
-| `TAK_HSCALEX` | unit lift per height unit (screen-X) | 0 (off) |
-| `TAK_FOG_EYE` | fog eye height above the unit's ground cell | 40 |
-| `TAK_FOG_MARGIN` | how far terrain must clear the sight line to block | 16 |
-| `TAK_HDEBUG` | force-enable the height debug overlay (also F7 in game) | off |
+| `TA_HSCALE` | unit lift per height unit (screen-Y) | 1.1 |
+| `TA_HSCALEX` | unit lift per height unit (screen-X) | 0 (off) |
+| `TA_FOG_EYE` | fog eye height above the unit's ground cell | 40 |
+| `TA_FOG_MARGIN` | how far terrain must clear the sight line to block | 16 |
+| `TA_HDEBUG` | force-enable the height debug overlay (also F7 in game) | off |

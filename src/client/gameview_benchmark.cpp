@@ -7,17 +7,17 @@
 
     void GameView::benchmarkBaseline() {
         benchPrevWallMs_ = SDL_GetTicks64();
-        benchCliPrev_ = tak::proc::sample(0);
-        benchSrvPrev_ = benchServerPid_ ? tak::proc::sample(benchServerPid_) : tak::proc::Sample{};
+        benchCliPrev_ = ta::proc::sample(0);
+        benchSrvPrev_ = benchServerPid_ ? ta::proc::sample(benchServerPid_) : ta::proc::Sample{};
         benchNextTick_ = 300; benchSamples_.clear(); benchStatsShown_ = false;
     }
 
     void GameView::pushBenchSample(int gameSec) {
         uint64_t nowMs = SDL_GetTicks64();
         double wallSec = benchPrevWallMs_ ? double(nowMs - benchPrevWallMs_) / 1000.0 : 0;
-        tak::proc::Sample cli = tak::proc::sample(0);
-        tak::proc::Sample srv = benchServerPid_ ? tak::proc::sample(benchServerPid_) : tak::proc::Sample{};
-        auto pct = [&](const tak::proc::Sample& n, const tak::proc::Sample& p) {
+        ta::proc::Sample cli = ta::proc::sample(0);
+        ta::proc::Sample srv = benchServerPid_ ? ta::proc::sample(benchServerPid_) : ta::proc::Sample{};
+        auto pct = [&](const ta::proc::Sample& n, const ta::proc::Sample& p) {
             return (n.ok && wallSec > 0) ? (n.cpuSeconds - p.cpuSeconds) / wallSec * 100.0 : 0.0;
         };
         BenchSample s;
@@ -30,7 +30,7 @@
         s.fps = fps_;
         s.simSpeed = actualSpeed_;
         s.gpuBytes = gpuvram::bytes();       // client GPU texture memory (bounded by the cap)
-        tak::proc::GpuSample gpu = tak::proc::gpuSample();   // whole-device util % + VRAM
+        ta::proc::GpuSample gpu = ta::proc::gpuSample();   // whole-device util % + VRAM
         if (gpu.ok) {
             s.gpuPct = gpu.utilPct;
             s.gpuSysUsed = gpu.memUsed;
@@ -92,8 +92,8 @@
         char subBuf[160];
         std::snprintf(subBuf, sizeof subBuf,
                       "8-AI FFA -- ULASEM ARENA -- %s: 1 UNIT/FACTION EVERY %s FOR 60S",
-                      tak::sim::benchmarkLevelName(benchmarkLevel_),
-                      tak::sim::benchmarkLevelInterval(benchmarkLevel_));
+                      ta::sim::benchmarkLevelName(benchmarkLevel_),
+                      ta::sim::benchmarkLevelInterval(benchmarkLevel_));
         const char* sub = subBuf;
 
         float contentW = tableW;

@@ -63,4 +63,11 @@ compile_commands.json
 third_party/
 
 # Server-local account store (no passwords in it, but it is server state).
-takserver-accounts.conf
+taserver-accounts.conf
+
+# TA retail data / binary (reverse-engineering only, never committed)
+ta_data/
+TotalA.exe
+*.ufo
+*.ccx
+*.gp3

@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
     }
     std::string cmd = argv[1];
     try {
-        auto f = tak::cob::load(argv[2]);
+        auto f = ta::cob::load(argv[2]);
         if (cmd == "info") {
             std::cout << f.scripts.size() << " scripts, " << f.pieces.size()
                       << " pieces, " << f.code.size() << " code words, "
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
         } else if (cmd == "disasm" && argc >= 4) {
             int idx = f.scriptIndex(argv[3]);
             if (idx < 0) { std::cerr << "no script " << argv[3] << "\n"; return 1; }
-            std::cout << tak::cob::disassemble(f, idx);
+            std::cout << ta::cob::disassemble(f, idx);
         } else {
             return 2;
         }

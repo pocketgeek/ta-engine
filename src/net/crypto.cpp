@@ -17,7 +17,7 @@
   #include <cstdio>
 #endif
 
-namespace tak::crypto {
+namespace ta::crypto {
 
 namespace {
 
@@ -268,4 +268,4 @@ void wipe(std::string& s) {
     s.clear();
 }
 
-}  // namespace tak::crypto
+}  // namespace ta::crypto

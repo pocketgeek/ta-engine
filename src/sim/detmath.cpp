@@ -2,7 +2,7 @@
 
 // Belt-and-suspenders: forbid a*b+c -> FMA fusion in THIS translation unit
 // regardless of the build flags, so the op sequence below is exactly what runs.
-// (tak-formats also builds with -ffp-contract=off; this makes the guarantee
+// (ta-formats also builds with -ffp-contract=off; this makes the guarantee
 // local to the file that most depends on it.)
 // Clang honours this pragma; GCC doesn't implement it (and warns), but the whole
 // library is compiled -ffp-contract=off, so GCC already has the guarantee.
@@ -18,7 +18,7 @@
 // round once to float on return; x86-64 (SSE2) and ARM (VFP/NEON) both keep
 // double in 64-bit registers, with no 80-bit x87 extended precision to leak.
 
-namespace tak::detmath {
+namespace ta::detmath {
 namespace {
 
 constexpr double kPi      = 3.141592653589793115997963468544185161590576171875;
@@ -93,4 +93,4 @@ float atan2(float yf, float xf) {
     return float(ang);
 }
 
-}  // namespace tak::detmath
+}  // namespace ta::detmath

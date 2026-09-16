@@ -8,7 +8,7 @@
 
 #include <SDL.h>
 
-#include "cob/vm.h"   // tak::cob::PieceState (scriptRot)
+#include "cob/vm.h"   // ta::cob::PieceState (scriptRot)
 
 #include <cmath>
 
@@ -64,7 +64,7 @@ struct Xform {
 // script->composer boundary, so then() stays a generic rotation utility and the
 // COB VM's script-space state (WAIT_TURN, shortest-path) is untouched.
 // See docs/model-rendering-plan.md.
-inline const float* scriptRot(const tak::cob::PieceState* ps, float (&tmp)[3]) {
+inline const float* scriptRot(const ta::cob::PieceState* ps, float (&tmp)[3]) {
     static const float kZero[3] = {0, 0, 0};
     if (!ps) return kZero;
     // COB piece angles compose with BOTH pitch (X) and yaw (Y) negated: the models

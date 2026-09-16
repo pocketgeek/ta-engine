@@ -1,25 +1,25 @@
 #include "client/mapview.h"
 
 #include "client/gpuvram.h"
-#include "hpi/hpi.h"           // tak::hpi::Vfs::read (ctor / reload)
+#include "hpi/hpi.h"           // ta::hpi::Vfs::read (ctor / reload)
 #include "tnt/mapgen.h"        // "~gen1~" random-map ids -> procedural map
 
 #include <algorithm>
 #include <cmath>
 
-tak::tnt::Map MapView::genOrLoad(const tak::hpi::Vfs& vfs, const std::string& mapPath) {
-    if (tak::mapgen::isGeneratedMapId(mapPath))
-        return tak::mapgen::generate(tak::mapgen::decodeMapId(mapPath), vfs).map;
-    return tak::tnt::Map::load(vfs.read(mapPath), mapPath);
+ta::tnt::Map MapView::genOrLoad(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
+    if (ta::mapgen::isGeneratedMapId(mapPath))
+        return ta::mapgen::generate(ta::mapgen::decodeMapId(mapPath), vfs).map;
+    return ta::tnt::Map::load(vfs.read(mapPath), mapPath);
 }
 
-MapView::MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& mapPath)
+MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& mapPath)
     : ren_(ren), map_(genOrLoad(vfs, mapPath)), comp_(vfs) {
     secWorker_ = std::thread([this] { sectionWorkerLoop(); });
     queueAllSections();
 }
 
-MapView::MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, tak::tnt::Map map)
+MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, ta::tnt::Map map)
     : ren_(ren), map_(std::move(map)), comp_(vfs) {
     secWorker_ = std::thread([this] { sectionWorkerLoop(); });
     queueAllSections();
@@ -38,7 +38,7 @@ MapView::~MapView() {
     for (auto& [k, s] : sections_) if (s.tex) gpuvram::destroy(s.tex);
 }
 
-void MapView::reload(const tak::hpi::Vfs& vfs, const std::string& mapPath) {
+void MapView::reload(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
     // Quiesce the decode worker first: it reads map_, which is about to be swapped.
     {
         std::unique_lock<std::mutex> lk(secMu_);
@@ -222,7 +222,7 @@ void MapView::uploadReadySections() {
     std::vector<uint32_t> deferred;
     for (uint32_t key : ready) {
         if (sections_.count(key)) continue;   // already uploaded
-        const tak::jpeg::Image* img = nullptr;
+        const ta::jpeg::Image* img = nullptr;
         try { img = &comp_.sectionImage(key); } catch (const std::exception&) {
             sections_[key] = {};   // absent JPG: remember so we never retry it
             continue;
@@ -240,7 +240,7 @@ void MapView::uploadReadySections() {
         sections_[key] = {t, img->width, img->height};
         tileBatchDirty_ = true;   // a new section can fill in visible tiles
         ++n;
-        static const bool kLog = std::getenv("TAK_TERRAINLOG") != nullptr;
+        static const bool kLog = std::getenv("TA_TERRAINLOG") != nullptr;
         if (kLog)
             std::fprintf(stderr, "terrain: section %08x %dx%d uploaded; %zu total, gpu=%zuMiB\n",
                          key, img->width, img->height, sections_.size(),

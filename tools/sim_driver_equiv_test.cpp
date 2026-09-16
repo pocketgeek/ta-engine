@@ -38,11 +38,11 @@
 
 #include <filesystem>
 
-using tak::net::Cmd;
-using tak::net::Command;
-using tak::net::Event;
-using tak::net::Reader;
-using tak::net::Writer;
+using ta::net::Cmd;
+using ta::net::Command;
+using ta::net::Event;
+using ta::net::Reader;
+using ta::net::Writer;
 
 namespace {
 
@@ -172,7 +172,7 @@ int testSortDeterminism() {
 // ---- Part 2: real-world sim equivalence (needs game data) -----------------
 
 // The monarch (first alive unit) of each player, in player order.
-std::vector<int> monarchs(const tak::sim::World& w, int players) {
+std::vector<int> monarchs(const ta::sim::World& w, int players) {
     std::vector<int> ids(size_t(players), 0);
     for (const auto& u : w.units())
         if (u.alive() && u.type && u.player >= 0 && u.player < players && ids[size_t(u.player)] == 0)
@@ -181,26 +181,26 @@ std::vector<int> monarchs(const tak::sim::World& w, int players) {
 }
 
 int testSimEquivalence(const std::string& mapArg, const std::string& dataRoot) {
-    tak::hpi::Vfs vfs = tak::hpi::mountRetailRoot(dataRoot);
+    ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(dataRoot);
     std::string mapName = std::filesystem::path(mapArg).stem().string();
-    std::string mapPath = tak::hpi::findMap(vfs, mapName);
+    std::string mapPath = ta::hpi::findMap(vfs, mapName);
     if (mapPath.empty()) {
         std::printf("sim-equivalence: SKIP (map '%s' not found)\n", mapName.c_str());
         return 0;
     }
-    tak::sim::TypeRegistry reg;
-    tak::sim::setupRegistry(reg, vfs, /*crusades=*/false);
+    ta::sim::TypeRegistry reg;
+    ta::sim::setupRegistry(reg, vfs, /*crusades=*/false);
 
-    tak::sim::MatchConfig cfg;
+    ta::sim::MatchConfig cfg;
     cfg.vfs = &vfs;
     cfg.mapPath = mapPath;
     cfg.slots = {{true, 0, 0}, {true, 1, 1}};   // 2 players, FFA
     cfg.gods = false;
     cfg.startMana = 2800;
 
-    tak::sim::World A, B;                        // separate instances -- never alias
-    auto spots = tak::sim::setupMatch(A, reg, cfg);
-    tak::sim::setupMatch(B, reg, cfg);
+    ta::sim::World A, B;                        // separate instances -- never alias
+    auto spots = ta::sim::setupMatch(A, reg, cfg);
+    ta::sim::setupMatch(B, reg, cfg);
     if (spots.size() < 2) {
         std::printf("sim-equivalence: SKIP (map has < 2 start positions)\n");
         return 0;
@@ -235,19 +235,19 @@ int testSimEquivalence(const std::string& mapArg, const std::string& dataRoot) {
         auto ev = events.find(uint32_t(t));
 
         // Path A -- direct application (single-player style).
-        if (sc != sched.end()) for (const auto& c : sc->second) tak::sim::applyCommand(A, reg, c);
-        if (ev != events.end()) for (const auto& e : ev->second) tak::sim::applyEvent(A, e);
+        if (sc != sched.end()) for (const auto& c : sc->second) ta::sim::applyCommand(A, reg, c);
+        if (ev != events.end()) for (const auto& e : ev->second) ta::sim::applyEvent(A, e);
         A.tick(1.0f / 30.0f);
 
         // Path B -- transported through the MP wire format first.
         if (sc != sched.end())
-            for (const auto& c : sc->second) tak::sim::applyCommand(B, reg, wireRoundTrip(c));
+            for (const auto& c : sc->second) ta::sim::applyCommand(B, reg, wireRoundTrip(c));
         if (ev != events.end())
             for (const auto& e : ev->second) {
                 Writer w; w.u8(uint8_t(e.kind)); w.u8(e.player);
                 Reader r(w.b.data(), w.b.size());
                 Event e2; e2.kind = Event::Kind(r.u8()); e2.player = r.u8();
-                tak::sim::applyEvent(B, e2);
+                ta::sim::applyEvent(B, e2);
             }
         B.tick(1.0f / 30.0f);
 

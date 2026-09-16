@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 // Completion index for a campaign's alternate-ending branch (it has no numbered slot).
 inline constexpr int kAltMission = -2;
@@ -172,4 +172,4 @@ inline Settings preferenceDefaults(const Settings& cur) {
     return d;
 }
 
-}  // namespace tak
+}  // namespace ta

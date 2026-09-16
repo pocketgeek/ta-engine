@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace tak {
+namespace ta {
 
 // Run `cmd`, return its trimmed stdout ("" on failure).
 inline std::string dpRunCapture(const std::string& cmd) {
@@ -77,4 +77,4 @@ inline void errorBox(const std::string& title, const std::string& msg) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title.c_str(), msg.c_str(), nullptr);
 }
 
-}  // namespace tak
+}  // namespace ta

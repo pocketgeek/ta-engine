@@ -38,10 +38,10 @@ int main(int argc, char** argv) {
             std::ifstream in(argv[2], std::ios::binary);
             std::vector<uint8_t> d((std::istreambuf_iterator<char>(in)),
                                    std::istreambuf_iterator<char>());
-            auto s = tak::crt::parse(d);
-            auto w = tak::crt::write(s);
-            auto s2 = tak::crt::parse(w);
-            auto w2 = tak::crt::write(s2);
+            auto s = ta::crt::parse(d);
+            auto w = ta::crt::write(s);
+            auto s2 = ta::crt::parse(w);
+            auto w2 = ta::crt::write(s2);
             bool sem = s.units.size() == s2.units.size() &&
                        s.customTypes.size() == s2.customTypes.size() &&
                        s.regions.size() == s2.regions.size() &&
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
             std::ifstream in(argv[2], std::ios::binary);
             std::string text((std::istreambuf_iterator<char>(in)),
                              std::istreambuf_iterator<char>());
-            auto sc = tak::tnt::Scenario::parse(text);
+            auto sc = ta::tnt::Scenario::parse(text);
             auto out = sc.write();
             std::cout << "OTA " << argv[2] << ": " << sc.starts.size()
                       << " start pos, size " << sc.sizeW << "x" << sc.sizeH
@@ -80,13 +80,13 @@ int main(int argc, char** argv) {
             return out == text ? 0 : 1;
         }
 
-        auto m = tak::tnt::Map::load(argv[2]);
+        auto m = ta::tnt::Map::load(argv[2]);
 
         if (cmd == "roundtrip") {
             // Load, re-serialize with Map::save(), reload, and compare every
             // field -- proves the writer reproduces the retail TNT layout.
             auto bytes = m.save();
-            auto r = tak::tnt::Map::load(bytes, "<roundtrip>");
+            auto r = ta::tnt::Map::load(bytes, "<roundtrip>");
             auto eq = [](const char* n, bool ok) {
                 std::cout << "  " << (ok ? "OK  " : "FAIL") << " " << n << "\n";
                 return ok;
@@ -119,10 +119,10 @@ int main(int argc, char** argv) {
             std::cout << "minimap: " << m.minimapW << "x" << m.minimapH << "\n";
         } else if (cmd == "render" && argc >= 5) {
             // render <map.tnt> <retail-install-dir> <out.png>
-            tak::hpi::Vfs vfs = tak::hpi::mountRetailRoot(argv[3]);
-            tak::terrain::Compositor comp(vfs);
+            ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(argv[3]);
+            ta::terrain::Compositor comp(vfs);
             auto img = comp.renderMap(m);
-            tak::png::write(argv[4], img.width, img.height, img.rgba);
+            ta::png::write(argv[4], img.width, img.height, img.rgba);
             std::cout << "wrote " << argv[4] << " (" << img.width << "x" << img.height
                       << ")\n";
         } else if ((cmd == "heightmap" || cmd == "minimap") && argc >= 4) {
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
                 rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
                 rgba[i * 4 + 3] = 255;
             }
-            tak::png::write(argv[3], w, h, rgba);
+            ta::png::write(argv[3], w, h, rgba);
             std::cout << "wrote " << argv[3] << " (" << w << "x" << h << ")\n";
         } else {
             std::cerr << "unknown command\n";

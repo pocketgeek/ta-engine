@@ -3,7 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace tak::cob {
+namespace ta::cob {
 
 namespace {
 
@@ -424,4 +424,4 @@ void Vm::run(Thread& t) {
     }
 }
 
-} // namespace tak::cob
+} // namespace ta::cob

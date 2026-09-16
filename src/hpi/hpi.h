@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::hpi {
+namespace ta::hpi {
 
 // TAK ships its data in HPI version-2 archives (header version 0x00020000),
 // a revision of Total Annihilation's HPI format. Layout, verified against
@@ -255,4 +255,4 @@ std::string findMap(const Vfs& vfs, const std::string& name);
 // Every map as {display name, .tnt VFS path}, sorted by name, deduped by name.
 std::vector<std::pair<std::string, std::string>> listMaps(const Vfs& vfs);
 
-} // namespace tak::hpi
+} // namespace ta::hpi

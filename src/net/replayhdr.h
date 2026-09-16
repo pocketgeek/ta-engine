@@ -1,6 +1,6 @@
 #pragma once
 
-// The .takrep header, in ONE place.
+// The .tarep header, in ONE place.
 //
 // It used to be written out field-by-field in two places -- Server::writeReplay and
 // the client's saveReplayFile -- and read in a third, with a comment in each asking
@@ -30,7 +30,7 @@
 
 #include "net/protocol.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // Bump when the layout changes, and handle the older values in readReplayHeader.
 inline constexpr uint32_t kReplayFormat = 6;
@@ -38,7 +38,7 @@ inline constexpr uint32_t kReplayFormat = 6;
 struct ReplayHeader {
     std::string mapId;
     std::string mission;          // campaign mission stem ("" = skirmish)
-    std::string engineVersion;    // tak::kVersion of the build that recorded it
+    std::string engineVersion;    // ta::kVersion of the build that recorded it
     uint8_t crusades = 0, gods = 0, forfeitSelfDestruct = 0;
     uint8_t overridePolicy = 1;
     uint32_t unitCap = 0;
@@ -125,4 +125,4 @@ inline bool readReplayHeader(Reader& r, ReplayHeader& h, uint32_t& fmt, uint32_t
     return r.ok;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

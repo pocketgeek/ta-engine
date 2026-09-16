@@ -5,7 +5,7 @@
 // Tools / binkw32.dll); this uses FFmpeg's clean-room reverse-engineered decoder
 // (libavcodec's `binkvideo`), which is GPL-compatible.
 //
-// Built with real decoding only when TAK_HAVE_FFMPEG is defined (FFmpeg found at
+// Built with real decoding only when TA_HAVE_FFMPEG is defined (FFmpeg found at
 // configure time). Otherwise every open() fails and callers fall back to the GAF
 // door art. The header pulls in no FFmpeg types (pimpl), so it compiles either way.
 
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::video {
+namespace ta::video {
 
 class BinkVideo {
 public:
@@ -65,4 +65,4 @@ private:
     std::unique_ptr<Impl> d_;
 };
 
-}  // namespace tak::video
+}  // namespace ta::video

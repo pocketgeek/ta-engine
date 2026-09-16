@@ -32,7 +32,7 @@ contract today:
 - **No RNG in the sim.** All variation comes from ordered state.
 - **Fixed timestep** (1/30 s), fixed iteration orders, `mixf` hashes the *exact*
   float bits (`src/sim/sim.cpp` `stateHash`).
-- **`-ffp-contract=off`** on `tak-formats` (which holds `sim.cpp`,
+- **`-ffp-contract=off`** on `ta-formats` (which holds `sim.cpp`,
   `matchsetup.cpp`, `ai.cpp`), so the compiler never fuses `a*b+c` into an FMA
   that rounds differently on different CPUs. **No `-ffast-math`.**
 
@@ -113,7 +113,7 @@ hit and pointless — the basic ops are already deterministic. Rejected.
 ## 4. Recommended design — `src/sim/detmath.{h,cpp}`
 
 ```cpp
-namespace tak::detmath {
+namespace ta::detmath {
     float sin(float x);              // fixed range-reduction + fixed polynomial
     float cos(float x);              // = sin(x + pi/2), shared core
     float atan2(float y, float x);   // quadrant dispatch + fixed atan polynomial
@@ -133,7 +133,7 @@ function does too. The rules that make this hold:
   return (x86-64 SSE and ARM NEON both keep `double` in 64-bit registers — no
   x87 80-bit extended precision to leak). Never rely on extended precision.
 - Keep `-ffp-contract=off` and round-to-nearest-even (already true; we never
-  touch the rounding mode). The detmath TU lives in `tak-formats`, so it inherits
+  touch the rounding mode). The detmath TU lives in `ta-formats`, so it inherits
   the flag automatically.
 - Write Horner evaluation with explicit parenthesization so the op order is fixed
   in source, not left to the optimizer.

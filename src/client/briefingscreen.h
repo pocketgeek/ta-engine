@@ -11,7 +11,7 @@
 
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 class MenuMusic;
 struct Settings;
@@ -28,4 +28,4 @@ public:
                     MenuMusic* music = nullptr);
 };
 
-}  // namespace tak
+}  // namespace ta

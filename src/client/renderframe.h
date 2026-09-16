@@ -7,7 +7,7 @@
 // client/main.cpp; kept at global scope so its unqualified use sites there are
 // unchanged.
 
-#include "sim/sim.h"   // tak::sim::UnitType / Order / Projectile / World::HitFx
+#include "sim/sim.h"   // ta::sim::UnitType / Order / Projectile / World::HitFx
 
 #include <array>
 #include <cstdint>
@@ -26,7 +26,7 @@ struct UnitR {
     // --- snapshot of Unit's render-read surface (same NAMES as sim::Unit, so render code
     //     that reads u.<field> works unchanged once its parameter is a UnitR) ---
     int id = 0;
-    const tak::sim::UnitType* type = nullptr;
+    const ta::sim::UnitType* type = nullptr;
     int player = 0;
     float x = 0, z = 0, heading = 0;   // current-tick pose
     float hp = 0, mana = 0;
@@ -42,8 +42,8 @@ struct UnitR {
     float selfDestructT = -1;   // >=0 = self-destruct countdown (seconds) armed
     int buildSiteId = 0, reclaimId = 0, repairId = 0;
     float buildProgress = 0;
-    std::vector<const tak::sim::UnitType*> buildQueue;
-    std::vector<tak::sim::Order> orders;
+    std::vector<const ta::sim::UnitType*> buildQueue;
+    std::vector<ta::sim::Order> orders;
     // Construction still pending anywhere in the queue (builds are ordinary
     // orders now, so this is just "is one of them a build").
     bool hasQueuedBuild() const {
@@ -57,7 +57,7 @@ struct UnitR {
         return false;
     }
     std::vector<int> cargo;
-    const tak::sim::UnitType* repeatType = nullptr;
+    const ta::sim::UnitType* repeatType = nullptr;
     bool moving_ = false, walking_ = false;   // cached u.moving()/u.walking()
     float speed = 0;                           // px/s (diagnostic use)
     bool corpsePhase = false;                  // dead, death anim done, body still lies
@@ -98,9 +98,9 @@ struct Frame {
     std::vector<uint8_t> vis;            // fog (empty for a noFog_ spectator)
     int visW = 0, visH = 0;
     uint32_t visGen = 0;
-    std::vector<tak::sim::Projectile> projectiles;
-    std::vector<tak::sim::World::Storm> storms;   // roaming wandering-weapon hazards
-    std::vector<tak::sim::World::HitFx> hits;   // weapon impacts this tick (cosmeticStep FX)
+    std::vector<ta::sim::Projectile> projectiles;
+    std::vector<ta::sim::World::Storm> storms;   // roaming wandering-weapon hazards
+    std::vector<ta::sim::World::HitFx> hits;   // weapon impacts this tick (cosmeticStep FX)
     int winningTeam = -1;                // world_.winningTeam() (victory overlay)
     uint32_t gameTick = 0;               // world_.tickCount() (benchmark timing)
     uint64_t tickMs = 0;                 // wall-clock of this tick (for interpolation)
@@ -110,6 +110,6 @@ struct Frame {
     // thread used to reach into world_.shakeRequest()/soundRequest() directly,
     // which races the worker -- and soundRequest carries a std::string, so that
     // is a torn read of a heap pointer, not just a stale float.
-    tak::sim::World::ShakeReq shakeReq;
-    tak::sim::World::SoundReq soundReq;
+    ta::sim::World::ShakeReq shakeReq;
+    ta::sim::World::SoundReq soundReq;
 };

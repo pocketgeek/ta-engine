@@ -16,8 +16,8 @@
         // Selected transport with cargo: right-click = sail + disembark.
             if (first && first->type && first->type->canTransport &&
                 !first->cargo.empty()) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::Unload;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::Unload;
                 c.unitId = first->id;
                 c.x = wx;
                 c.z = wz;
@@ -37,8 +37,8 @@
             }
             if (friendlyTransport >= 0) {
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Load;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Load;
                     c.unitId = id;
                     c.targetId = friendlyTransport;
                     issue(c);
@@ -74,8 +74,8 @@
                         const auto& menu = registry_.buildable(bu->type->id);
                         if (std::find(menu.begin(), menu.end(), st->type->id) == menu.end())
                             continue;
-                        tak::net::Command c;
-                        c.kind = tak::net::Cmd::Assist;
+                        ta::net::Command c;
+                        c.kind = ta::net::Cmd::Assist;
                         c.unitId = id; c.targetId = siteId; c.queue = queue;
                         issue(c);
                         any = true;
@@ -88,8 +88,8 @@
                     for (int id : selection_) {
                         const auto* gu = frameUnitP(id);
                         if (!gu || !gu->type || gu->type->weapon.damage <= 0) continue;
-                        tak::net::Command c;
-                        c.kind = tak::net::Cmd::Guard;
+                        ta::net::Command c;
+                        c.kind = ta::net::Cmd::Guard;
                         c.unitId = id; c.targetId = allyId; c.queue = queue;
                         issue(c);
                         any = true;
@@ -137,8 +137,8 @@
                 }
                 if (fhit) {
                     int builderId = firstReclaimer();
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Reclaim;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Reclaim;
                     c.unitId = builderId;
                     c.targetId = fid;
                     c.queue = uint8_t(queue ? 1 : 0);
@@ -149,8 +149,8 @@
             }
             if (enemy >= 0) {
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Attack;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Attack;
                     c.unitId = id;
                     c.targetId = enemy;
                     c.queue = queue;
@@ -167,8 +167,8 @@
                 for (int id : selection_) {
                     const auto* u = frameUnitP(id);
                     if (!u) continue;
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Move;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Move;
                     c.unitId = id;
                     c.x = wx + std::clamp(u->x - cx, -60.0f, 60.0f);
                     c.z = wz + std::clamp(u->z - cz, -60.0f, 60.0f);
@@ -191,7 +191,7 @@
             return;
         }
         bool fightTint = false;
-        tak::CursorId c = desiredCursor(fightTint);
+        ta::CursorId c = desiredCursor(fightTint);
         int sc = settings_ ? settings_->cursorScale : 1;
         SDL_Color tint = fightTint ? kFightMoveTint : SDL_Color{255, 255, 255, 255};
 
@@ -218,40 +218,40 @@
         cursors_.draw(ren_, c, mx, my, sc, tint);
     }
 
-    tak::CursorId GameView::desiredCursor(bool& fightTint) {
+    ta::CursorId GameView::desiredCursor(bool& fightTint) {
         fightTint = false;
         // Overlays / lobby: a plain arrow for clicking UI.
         if (inLobbyPhase() || exitMenu_ || options_)
-            return tak::CursorId::Normal;
+            return ta::CursorId::Normal;
         // Build/conjure placement: green when it fits, red when blocked (matches the ghost).
         if (placing_ && mouseX_ >= 0) {
             float wx, wz; pickWorld(mouseX_, mouseY_, wx, wz);
-            if (canPlaceLocked(placing_, wx, wz)) return tak::CursorId::Green;
+            if (canPlaceLocked(placing_, wx, wz)) return ta::CursorId::Green;
             // Clearable doodads: the click works (it clears first), so keep it green.
             std::vector<int> feats;
             if (clearableAt(placing_, wx, wz, feats) && !feats.empty())
-                return tak::CursorId::Green;
-            return tak::CursorId::Red;
+                return ta::CursorId::Green;
+            return ta::CursorId::Red;
         }
         // Right-drag "clear this area": show the broom only once the pointer has moved
         // enough to actually be a box (the same 6px threshold that tells a right-CLICK
         // from a box on release). Before that, keep the ordinary hover cursor.
         if (reclaimDrag_ &&
             (std::fabs(mouseX_ - rdSx0_) >= 6.0f || std::fabs(mouseY_ - rdSy0_) >= 6.0f))
-            return tak::CursorId::Reclaim;
-        if (dragging_) return tak::CursorId::Normal;       // box-select drag
+            return ta::CursorId::Reclaim;
+        if (dragging_) return ta::CursorId::Normal;       // box-select drag
         if (pendingCmd_)  { fightTint = (pendingCmd_ == 'f'); return cursorForCmd(pendingCmd_); }
-        if (mouseX_ < 0)  return tak::CursorId::Normal;
+        if (mouseX_ < 0)  return ta::CursorId::Normal;
         float wx, wz; pickWorld(mouseX_, mouseY_, wx, wz);
         return hoverCursor(wx, wz);
     }
 
-    tak::CursorId GameView::hoverCursor(float wx, float wz) {
+    ta::CursorId GameView::hoverCursor(float wx, float wz) {
         const auto* first = selection_.empty() ? nullptr : frameUnitP(selection_.front());
 
         // Selected transport carrying cargo -> unload cursor anywhere.
         if (first && first->type && first->type->canTransport && !first->cargo.empty())
-            return tak::CursorId::Unload;
+            return ta::CursorId::Unload;
 
         if (first) {
             // One SCREEN-SPACE pass over the drawn sprites (unitUnderCursor: the
@@ -280,16 +280,16 @@
                     if (d < bEnemy) { bEnemy = d; enemy = u.id; }
                 }
             }
-            if (loadId >= 0) return tak::CursorId::Load;
-            if (siteId >= 0) return tak::CursorId::Repair;   // assist a build/revive
-            if (ownId  >= 0) return tak::CursorId::Select;
-            if (allyId >= 0) return tak::CursorId::Green;
+            if (loadId >= 0) return ta::CursorId::Load;
+            if (siteId >= 0) return ta::CursorId::Repair;   // assist a build/revive
+            if (ownId  >= 0) return ta::CursorId::Select;
+            if (allyId >= 0) return ta::CursorId::Green;
             if (enemy >= 0) {
                 bool canAtk = false;
                 for (int id : selection_)
                     if (const auto* a = frameUnitP(id))
                         if (a->type && a->type->weapon.damage > 0) { canAtk = true; break; }
-                return canAtk ? tak::CursorId::Attack : tak::CursorId::Red;
+                return canAtk ? ta::CursorId::Attack : ta::CursorId::Red;
             }
 
             // A reclaimable feature under the pointer (reclaimer selected) -> broom.
@@ -312,22 +312,22 @@
                     if (!f.hasSim || !f.aliveVis) continue;
                     float dx = f.x - wx, dz = f.z - wz;
                     float r = 18.0f + 8.0f * float(std::max(f.fx, f.fz));
-                    if (dx * dx + dz * dz < r * r) return tak::CursorId::Reclaim;
+                    if (dx * dx + dz * dz < r * r) return ta::CursorId::Reclaim;
                 }
             }
 
             // Empty ground: plain arrow. The Move cursor shows ONLY when the move order
             // is armed (Move button / hotkey), not merely from having a unit selected.
-            return tak::CursorId::Normal;
+            return ta::CursorId::Normal;
         }
 
         // Nothing selected: highlight your own unit under the pointer, else the arrow.
         for (const UnitR* _up : front().live) { const UnitR& u = *_up;
             if (!u.alive() || u.embarked() || !u.type || u.player != localPlayer_) continue;
             float dx = u.x - wx, dz = u.z - wz;
-            if (dx * dx + dz * dz < 22.0f * 22.0f) return tak::CursorId::Select;
+            if (dx * dx + dz * dz < 22.0f * 22.0f) return ta::CursorId::Select;
         }
-        return tak::CursorId::Normal;
+        return ta::CursorId::Normal;
     }
 
     void GameView::postNotice(std::string msg, float t) {
@@ -353,7 +353,7 @@
         return std::max(miniSize() + 12, int(128 * guiS()) + 8);
     }
 
-    SDL_FRect GameView::guiCmdRect(const tak::gui::Gadget& g) const {
+    SDL_FRect GameView::guiCmdRect(const ta::gui::Gadget& g) const {
         float s = guiS();
         // 640-space y=480 (screen bottom in retail) maps just above our info bar so
         // the command panel and the existing bottom bar don't overlap.
@@ -361,7 +361,7 @@
         return {winW_ - (640 - g.x) * s, baseY - (480 - g.y) * s, g.w * s, g.h * s};
     }
 
-    SDL_FRect GameView::guiBarRect(const tak::gui::Gadget& g) const {
+    SDL_FRect GameView::guiBarRect(const ta::gui::Gadget& g) const {
         float vs = float(barH()) / 49.0f;   // 49-tall retail bar -> barH() px
         float barTop = winH_ - barH();
         return {g.x * vs, barTop + (g.y - 431) * vs, g.w * vs, g.h * vs};
@@ -494,7 +494,7 @@
         // Game clock from the snapshot's tick, not wall time: a paused or catching-up
         // client should show the clock the SIM is at, which is what a player comparing
         // notes with anyone else in the game means by "how long in are we".
-        uint32_t secs = front().gameTick / uint32_t(tak::net::kServerHz);
+        uint32_t secs = front().gameTick / uint32_t(ta::net::kServerHz);
         std::snprintf(b, sizeof b, "%u:%02u", secs / 60, secs % 60);
         rows.push_back({"TIME", b});
 
@@ -510,7 +510,7 @@
         static size_t memRss = 0;
         uint32_t now = SDL_GetTicks();
         if (memRss == 0 || now - memAt > 1000) {
-            tak::proc::Sample ps = tak::proc::sample(0);
+            ta::proc::Sample ps = ta::proc::sample(0);
             if (ps.ok) memRss = ps.rssBytes;
             memAt = now;
         }
@@ -533,8 +533,8 @@
         // Budget: 5 label + 1 gap + 7 value characters.
         constexpr int kColBudget = 13;
         const float px = 2.2f * uiScale_;
-        const tak::hud::StatsFit fit =
-            tak::hud::fitStats(int(rows.size()), availW, availH, kColBudget,
+        const ta::hud::StatsFit fit =
+            ta::hud::fitStats(int(rows.size()), availW, availH, kColBudget,
                                /*glyphW=*/6.0f, /*glyphH=*/7.0f, px,
                                // Breathing room between rows. The gap under the minimap
                                // runs to hundreds of pixels while nine rows need barely a
@@ -624,8 +624,8 @@
         for (int id : selection_) {
             const auto* u = frameUnitP(id);
             if (!u || u->player != localPlayer_) continue;
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Move;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Move;
             c.unitId = id;
             c.x = wx;
             c.z = wz;
@@ -664,8 +664,8 @@
             }
             if (!fhit) return;
             int builderId = firstReclaimer();
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Reclaim;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Reclaim;
             c.unitId = builderId;
             c.targetId = fid;
             c.queue = queue ? 1 : 0;
@@ -690,8 +690,8 @@
                 if (d < best) { best = d; tid = u.id; }
             }
             if (tid < 0) return;
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Repair;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Repair;
             c.unitId = builderId;
             c.targetId = tid;
             c.queue = queue ? 1 : 0;
@@ -704,8 +704,8 @@
             for (int id : selection_) {
                 const auto* u = frameUnitP(id);
                 if (!u || !u->type || !u->type->canTransport || u->cargo.empty()) continue;
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::Unload;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::Unload;
                 c.unitId = id;
                 c.x = wx;
                 c.z = wz;
@@ -732,8 +732,8 @@
                 if (d < best) { best = d; pid = u.id; }
             }
             if (pid < 0) return;
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Load;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Load;
             c.unitId = pid;
             c.targetId = transportId;
             issue(c);
@@ -752,8 +752,8 @@
             if (buddy < 0) return;
             for (int id : selection_) {
                 if (id == buddy) continue;
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::Guard;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::Guard;
                 c.unitId = id;
                 c.targetId = buddy;
                 c.queue = queue ? 1 : 0;
@@ -777,14 +777,14 @@
             }
         }
         for (int id : selection_) {
-            tak::net::Command c;
+            ta::net::Command c;
             if (enemy >= 0) {
-                c.kind = tak::net::Cmd::Attack;
+                c.kind = ta::net::Cmd::Attack;
                 c.targetId = enemy;
             } else {
-                c.kind = (cmd == 'f' || cmd == 'a') ? tak::net::Cmd::AttackMove
-                         : cmd == 'p'               ? tak::net::Cmd::Patrol
-                                                    : tak::net::Cmd::Move;
+                c.kind = (cmd == 'f' || cmd == 'a') ? ta::net::Cmd::AttackMove
+                         : cmd == 'p'               ? ta::net::Cmd::Patrol
+                                                    : ta::net::Cmd::Move;
                 c.x = wx;
                 c.z = wz;
             }
@@ -808,18 +808,18 @@
     void GameView::loadPanel(const std::string& side) {
         std::string base = "anims/" + side + "ingame";
         try {
-            auto pal = tak::gaf::Palette::fromBytes(vread(base + ".pcx"), base + ".pcx");
-            for (auto& sq : tak::gaf::load(vread(base + ".gaf"), pal, -1, base + ".gaf")) {
+            auto pal = ta::gaf::Palette::fromBytes(vread(base + ".pcx"), base + ".pcx");
+            for (auto& sq : ta::gaf::load(vread(base + ".gaf"), pal, -1, base + ".gaf")) {
                 if (sq.frames.empty()) continue;
                 auto& f = sq.frames[0];
                 if (sq.name == "AidPanel" || sq.name == "MainPanel") {
                     // panelW_/panelH_ keep the 1x LOGICAL size, which is what the HUD
                     // lays out in -- so the texture being built at 2x is invisible here.
-                    panelTex_ = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                    panelTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                     panelW_ = f.width;
                     panelH_ = f.height;
                 } else if (sq.name == "AidBotPanel" || sq.name == "BottomPanel") {
-                    botTex_ = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                    botTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                     botW_ = f.width;
                     botH_ = f.height;
                 }
@@ -827,13 +827,13 @@
         } catch (const std::exception&) {}
     }
 
-    tak::gaf::Palette GameView::guiPalette(const std::string& gaf) {
+    ta::gaf::Palette GameView::guiPalette(const std::string& gaf) {
         std::string pp = "anims/" + gaf + ".pcx";
         try {
-            return tak::gaf::Palette::fromBytes(vread(pp), pp);
+            return ta::gaf::Palette::fromBytes(vread(pp), pp);
         } catch (const std::exception&) {}
         try {
-            return tak::gaf::Palette::fromBytes(vread("palettes/guipal.pal"),
+            return ta::gaf::Palette::fromBytes(vread("palettes/guipal.pal"),
                                                 "palettes/guipal.pal");
         } catch (const std::exception&) {}
         return {};
@@ -847,13 +847,13 @@
             auto pal = guiPalette(gaf.size() >= 4 && gaf.substr(gaf.size() - 4) == ".gaf"
                                       ? gaf.substr(0, gaf.size() - 4)
                                       : gaf);
-            for (auto& sq : tak::gaf::load(vread(gp), pal, -1, gp)) {
+            for (auto& sq : ta::gaf::load(vread(gp), pal, -1, gp)) {
                 if (sq.name != seq) continue;
                 if (frame < 0 || size_t(frame) >= sq.frames.size()) frame = 0;
                 if (sq.frames.empty()) return nullptr;
                 auto& f = sq.frames[size_t(frame)];
                 if (f.width == 0 || f.height == 0) return nullptr;
-                SDL_Texture* t = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                SDL_Texture* t = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                 return t;
             }
         } catch (const std::exception&) {}
@@ -868,7 +868,7 @@
         gui_ = {};
         std::string path = "guis/" + side + "ingame.gui";
         try {
-            gui_ = tak::gui::parse(vread(path), path);
+            gui_ = ta::gui::parse(vread(path), path);
         } catch (const std::exception& e) {
             std::fprintf(stderr, "loadGui: %s: %s\n", path.c_str(), e.what());
             return;
@@ -879,7 +879,7 @@
             for (const auto& im : g.imgs)
                 guiTex_[i].push_back(loadGuiFrame(im.gaf, im.seq, im.frame));
         }
-        if (tak::devEnv("TAK_GUIDEBUG")) {
+        if (ta::devEnv("TA_GUIDEBUG")) {
             std::fprintf(stderr, "== %s: %zu gadgets ==\n", path.c_str(),
                          gui_.gadgets.size());
             for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
@@ -901,8 +901,8 @@
             try {
                 std::string pp = "anims/" + std::string(gaf) + ".pcx";
                 std::string gp = "anims/" + std::string(gaf) + ".gaf";
-                auto pal = tak::gaf::Palette::fromBytes(vread(pp), pp);
-                for (auto& sq : tak::gaf::load(vread(gp), pal, -1, gp)) {
+                auto pal = ta::gaf::Palette::fromBytes(vread(pp), pp);
+                for (auto& sq : ta::gaf::load(vread(gp), pal, -1, gp)) {
                     if (sq.name != seq || sq.frames.size() < 3) continue;
                     OrderBtn b;
                     b.cmd = cmd;
@@ -912,7 +912,7 @@
                         auto& f = sq.frames[size_t(idx[i])];
                         if (f.width == 0) continue;
                         // b.w/b.h keep the 1x logical size the button lays out in.
-                        b.frames[i] = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                        b.frames[i] = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                         b.w = f.width;
                         b.h = f.height;
                     }
@@ -1025,8 +1025,8 @@
         for (int id : selection_) {
             const auto* u = frameUnitP(id);
             if (!u || !u->type || int(u->type->weapons.size()) <= slot) continue;
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::SetWeapon;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::SetWeapon;
             c.unitId = id;
             c.targetId = slot;
             issue(c);
@@ -1316,8 +1316,8 @@
             guiPressedMs_ = SDL_GetTicks();
             if (cmd == 's') {
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
@@ -1325,11 +1325,11 @@
                 selectWeapon(cmd - '1');
             } else if (cmd == 'O' || cmd == 'D' || cmd == 'H') {
                 int st = cmd == 'O' ? 0 : cmd == 'D' ? 1 : 2;
-                issuePerUnit(tak::net::Cmd::Stance, st);
+                issuePerUnit(ta::net::Cmd::Stance, st);
             } else if (cmd == 'K' || cmd == 'k') {
-                issuePerUnit(tak::net::Cmd::Cloak, cmd == 'K' ? 1 : 0);
+                issuePerUnit(ta::net::Cmd::Cloak, cmd == 'K' ? 1 : 0);
             } else if (cmd == 'N' || cmd == 'F') {
-                issuePerUnit(tak::net::Cmd::SetActive, cmd == 'N' ? 1 : 0);
+                issuePerUnit(ta::net::Cmd::SetActive, cmd == 'N' ? 1 : 0);
             } else {
                 pendingCmd_ = cmd;
             }
@@ -1507,8 +1507,8 @@
                 pendingCmd_ = b.cmd;
             } else {
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
@@ -1531,8 +1531,8 @@
                                          : "anims/weaponpic/default_up.jpg"};
         for (const auto& path : paths) {
             try {
-                auto img = tak::jpeg::load(vread(path));
-                tex = tak::art::makeTexture(ren_, img.rgba, img.width, img.height);
+                auto img = ta::jpeg::load(vread(path));
+                tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
                 break;
             } catch (const std::exception&) {}
         }
@@ -1568,8 +1568,8 @@
     }
 
     void GameView::drawUnitCounts(int winW) {
-        int cnt[tak::sim::kMaxPlayers] = {};
-        std::string sd[tak::sim::kMaxPlayers];
+        int cnt[ta::sim::kMaxPlayers] = {};
+        std::string sd[ta::sim::kMaxPlayers];
         int np = frameNumPlayers();
         for (const UnitR* _up : front().live) { const UnitR& u = *_up;
             if (!u.alive() || !u.type) continue;
@@ -1584,9 +1584,9 @@
         bool board = mp_ || replayMode_;
         // Are there real alliances (a team with 2+ members)? If so, show a team tag.
         bool teams = false;
-        { int tc[tak::sim::kMaxPlayers] = {};
-          for (int t = 0; t < np; ++t) tc[framePlayer(t).team % tak::sim::kMaxPlayers]++;
-          for (int t = 0; t < tak::sim::kMaxPlayers; ++t) if (tc[t] > 1) teams = true; }
+        { int tc[ta::sim::kMaxPlayers] = {};
+          for (int t = 0; t < np; ++t) tc[framePlayer(t).team % ta::sim::kMaxPlayers]++;
+          for (int t = 0; t < ta::sim::kMaxPlayers; ++t) if (tc[t] > 1) teams = true; }
         int rows = 0, totalUnits = 0;
         for (int t = 0; t < np; ++t) { if (board || cnt[t] > 0) ++rows; totalUnits += cnt[t]; }
         // A spectator sees the full economy: an extra MANA column (income) per faction.

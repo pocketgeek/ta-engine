@@ -9,9 +9,9 @@
 
 #include <SDL.h>
 
-#include "client/options.h"   // tak::detectOutputChannels / tak::openAudioDevice
-#include "hpi/hpi.h"          // tak::hpi::Vfs
-#include "tdf/tdf.h"          // tak::tdf::parseText (SoundClasses::load)
+#include "client/options.h"   // ta::detectOutputChannels / ta::openAudioDevice
+#include "hpi/hpi.h"          // ta::hpi::Vfs
+#include "tdf/tdf.h"          // ta::tdf::parseText (SoundClasses::load)
 
 #include <algorithm>
 #include <cctype>
@@ -30,7 +30,7 @@
 // 11025 Hz 8-bit mono). Failing to open audio is non-fatal: play() no-ops.
 class SoundBank {
 public:
-    const tak::hpi::Vfs* vfs_ = nullptr;   // runtime read-path (owned by main)
+    const ta::hpi::Vfs* vfs_ = nullptr;   // runtime read-path (owned by main)
 
     SoundBank() = default;
     // Owns an SDL audio device + the buffers its callback reads; never copy it.
@@ -44,7 +44,7 @@ public:
         if (dev_) { SDL_CloseAudioDevice(dev_); dev_ = 0; }
     }
 
-    void init(const tak::hpi::Vfs& vfs) {
+    void init(const ta::hpi::Vfs& vfs) {
         vfs_ = &vfs;
         // Index the sounds/ namespace by stem (user overrides already win via the
         // VFS). A missing sounds dir must NOT skip audio init (music shares the
@@ -62,17 +62,17 @@ public:
         openOutput();
     }
 
-    // Open (or re-open) the output device on the current tak::g_audioDevice. Safe to call
+    // Open (or re-open) the output device on the current ta::g_audioDevice. Safe to call
     // again to switch devices live (Options): it closes the old device first, which stops
     // and joins the mix thread, so there's no concurrent access to chan_/spec_ while we
     // reconfigure. The detected channel layout follows the newly-chosen device.
     void openOutput() {
         if (dev_) { SDL_CloseAudioDevice(dev_); dev_ = 0; }
         if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return;
-        // The process-wide detected layout (see tak::detectOutputChannels) -- shared
+        // The process-wide detected layout (see ta::detectOutputChannels) -- shared
         // with the Options per-speaker sliders so they always match what we mix into,
         // and it reveals surround even when the default sink advertises stereo.
-        int chans = tak::detectOutputChannels();
+        int chans = ta::detectOutputChannels();
         SDL_AudioSpec want{};
         want.freq = 11025;
         want.format = AUDIO_S16SYS;
@@ -85,7 +85,7 @@ public:
         want.samples = 256;
         want.callback = &SoundBank::mixThunk;
         want.userdata = this;
-        dev_ = tak::openAudioDevice(0, &want, &spec_, SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
+        dev_ = ta::openAudioDevice(0, &want, &spec_, SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
         chan_ = dev_ ? (spec_.channels ? spec_.channels : 2) : 1;
         std::fprintf(stderr, "audio: %d output channels%s%s\n", chan_,
                      chan_ >= 4 ? " (surround: front/rear enabled)" : "",
@@ -539,7 +539,7 @@ public:
     // Begin playing a shuffled playlist of the given track numbers (a
     // faction's tracks, per sidedata.tdf). Empty = all 20. `dataRoot` is
     // the extracted data dir; music may live there or in the game install.
-    void startMusic(const tak::hpi::Vfs& vfs, const std::vector<int>& tracks) {
+    void startMusic(const ta::hpi::Vfs& vfs, const std::vector<int>& tracks) {
         vfs_ = &vfs;
         std::vector<int> want = tracks;
         if (want.empty())
@@ -649,13 +649,13 @@ private:
 // candidate WAV names.
 class SoundClasses {
 public:
-    void load(const tak::hpi::Vfs& vfs) {
+    void load(const ta::hpi::Vfs& vfs) {
         try {
             for (const std::string& path : vfs.list("gamedata/soundclasses")) {
                 if (std::filesystem::path(path).extension() != ".tdf") continue;
                 try {
                     auto sb = vfs.read(path);
-                    auto root = tak::tdf::parseText(std::string(sb.begin(), sb.end()), path);
+                    auto root = ta::tdf::parseText(std::string(sb.begin(), sb.end()), path);
                     for (const auto& clsName : root.childOrder) {
                         auto& cls = classes_[clsName];
                         const auto& node = root.children.at(clsName);

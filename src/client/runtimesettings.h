@@ -20,7 +20,7 @@
 #include "client/settings.h"
 #include "client/videofilter.h"
 
-namespace tak {
+namespace ta {
 
 inline void applyRuntimeSettings(const Settings& s) {
     // Art smoothing and the cursor factor are sampled here too, but they only affect
@@ -33,4 +33,4 @@ inline void applyRuntimeSettings(const Settings& s) {
     video::setDeblock(s.videoDeblock);
 }
 
-}  // namespace tak
+}  // namespace ta

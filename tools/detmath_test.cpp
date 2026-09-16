@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     // sin / cos over several full turns, fine step (covers reduction + all folds).
     for (int i = -20000; i <= 20000; ++i) {
         float x = float(i) * 0.001f;               // [-20, 20] rad, step 0.001
-        float ds = tak::detmath::sin(x), dc = tak::detmath::cos(x);
+        float ds = ta::detmath::sin(x), dc = ta::detmath::cos(x);
         mixBits(ds); mixBits(dc);
         sinMax = std::max(sinMax, std::fabs(double(ds) - std::sin(double(x))));
         cosMax = std::max(cosMax, std::fabs(double(dc) - std::cos(double(x))));
@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     for (int iy = -50; iy <= 50; ++iy)
         for (int ix = -50; ix <= 50; ++ix) {
             float y = float(iy) * 0.37f, x = float(ix) * 0.41f;
-            float da = tak::detmath::atan2(y, x);
+            float da = ta::detmath::atan2(y, x);
             mixBits(da);
             double ref = (x == 0.0f && y == 0.0f) ? 0.0 : std::atan2(double(y), double(x));
             atanMax = std::max(atanMax, std::fabs(double(da) - ref));

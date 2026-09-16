@@ -2,7 +2,7 @@
 """netdelay.py -- a TCP relay that adds latency and jitter, for testing lockstep
 multiplayer over something other than a perfect LAN.
 
-    tools/netdelay.py --listen 7700 --to tak.pgnet.us:7900 --rtt 100 --jitter 20
+    tools/netdelay.py --listen 7700 --to ta.pgnet.us:7900 --rtt 100 --jitter 20
 
 WHY THIS EXISTS. Every multiplayer run so far has been sub-millisecond LAN, which
 leaves the latency-sensitive machinery untested: the client's adaptive jitter buffer

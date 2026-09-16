@@ -20,7 +20,7 @@ if(GIT_FOUND AND EXISTS "${SRC}/.git")
   endif()
 endif()
 
-set(CONTENT "#pragma once\n#define TAK_BUILD_ID \"${ID}\"\n")
+set(CONTENT "#pragma once\n#define TA_BUILD_ID \"${ID}\"\n")
 set(OLD "")
 if(EXISTS "${OUT}")
   file(READ "${OUT}" OLD)

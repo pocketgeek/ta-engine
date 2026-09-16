@@ -2,13 +2,13 @@
 // Cross-platform process CPU + memory sampling for the benchmark stats screen. A Sample
 // holds a process's CUMULATIVE CPU time (seconds) and resident memory (bytes); the caller
 // diffs two samples over a wall-clock interval to get CPU%. Works for THIS process (pid 0)
-// or another same-user process by pid (the local takserver via its child pid) -- Linux via
+// or another same-user process by pid (the local taserver via its child pid) -- Linux via
 // /proc, macOS via libproc's proc_pid_rusage, Windows via GetProcessTimes/PSAPI.
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
-namespace tak::proc {
+namespace ta::proc {
 
 struct Sample {
     double cpuSeconds = 0;   // cumulative user+system CPU time
@@ -40,4 +40,4 @@ struct GpuSample {
 };
 GpuSample gpuSample();
 
-}  // namespace tak::proc
+}  // namespace ta::proc

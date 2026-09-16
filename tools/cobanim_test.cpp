@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 static int fails = 0;
 static int ran = 0;   // units actually exercised; 0 means the run proved nothing

@@ -10,8 +10,8 @@
 
 namespace cart {
 
-tak::gaf::Palette loadWorldPalette(const tak::hpi::Vfs& vfs, const std::string& world) {
-    tak::gaf::Palette pal{};
+ta::gaf::Palette loadWorldPalette(const ta::hpi::Vfs& vfs, const std::string& world) {
+    ta::gaf::Palette pal{};
     // Default: grayscale ramp (so a missing PCX still yields a usable index map).
     for (int i = 0; i < 256; ++i) {
         pal.rgba[i][0] = pal.rgba[i][1] = pal.rgba[i][2] = uint8_t(i);
@@ -36,7 +36,7 @@ tak::gaf::Palette loadWorldPalette(const tak::hpi::Vfs& vfs, const std::string& 
 
 namespace {
 
-uint8_t nearestIndex(const tak::gaf::Palette& pal, int r, int g, int b) {
+uint8_t nearestIndex(const ta::gaf::Palette& pal, int r, int g, int b) {
     int best = 0, bestD = 1 << 30;
     for (int i = 0; i < 256; ++i) {
         int dr = r - pal.rgba[i][0], dg = g - pal.rgba[i][1], db = b - pal.rgba[i][2];
@@ -47,8 +47,8 @@ uint8_t nearestIndex(const tak::gaf::Palette& pal, int r, int g, int b) {
 }
 
 // Average each 32px block to one RGB, giving a blocksX x blocksY colour grid.
-std::vector<uint8_t> blockColourGrid(const tak::tnt::Map& map,
-                                     tak::terrain::Compositor& comp) {
+std::vector<uint8_t> blockColourGrid(const ta::tnt::Map& map,
+                                     ta::terrain::Compositor& comp) {
     std::vector<uint8_t> grid(size_t(map.blocksX) * map.blocksY * 3, 0);
     std::vector<uint8_t> block(32 * 32 * 4);
     for (int by = 0; by < map.blocksY; ++by)
@@ -69,7 +69,7 @@ std::vector<uint8_t> blockColourGrid(const tak::tnt::Map& map,
 
 // Resample the block-colour grid to (tw x th) and index against the palette.
 std::vector<uint8_t> indexedMinimap(const std::vector<uint8_t>& grid, int gw, int gh,
-                                    int tw, int th, const tak::gaf::Palette& pal) {
+                                    int tw, int th, const ta::gaf::Palette& pal) {
     std::vector<uint8_t> out(size_t(tw) * th, 0);
     for (int y = 0; y < th; ++y)
         for (int x = 0; x < tw; ++x) {
@@ -83,8 +83,8 @@ std::vector<uint8_t> indexedMinimap(const std::vector<uint8_t>& grid, int gw, in
 
 } // namespace
 
-void generateMinimaps(tak::tnt::Map& map, tak::terrain::Compositor& comp,
-                      const tak::gaf::Palette& pal) {
+void generateMinimaps(ta::tnt::Map& map, ta::terrain::Compositor& comp,
+                      const ta::gaf::Palette& pal) {
     if (map.blocksX <= 0 || map.blocksY <= 0) return;
     std::vector<uint8_t> grid = blockColourGrid(map, comp);
 
@@ -102,8 +102,8 @@ void generateMinimaps(tak::tnt::Map& map, tak::terrain::Compositor& comp,
     map.overview = indexedMinimap(grid, map.blocksX, map.blocksY, ow, oh, pal);
 }
 
-void resizeMap(tak::tnt::Map& map, tak::terrain::Compositor& comp,
-               const tak::gaf::Palette& pal, int wUnits, int hUnits) {
+void resizeMap(ta::tnt::Map& map, ta::terrain::Compositor& comp,
+               const ta::gaf::Palette& pal, int wUnits, int hUnits) {
     int nw = std::max(1, wUnits) * 32, nh = std::max(1, hUnits) * 32;
     int nbx = nw / 2, nby = nh / 2;
     if (nw == map.width && nh == map.height) return;
@@ -138,8 +138,8 @@ void resizeMap(tak::tnt::Map& map, tak::terrain::Compositor& comp,
     generateMinimaps(map, comp, pal);
 }
 
-tak::tnt::Map newBlankMap(const tak::hpi::Vfs& vfs, SectionLibrary& sections,
-                          tak::terrain::Compositor& comp, const std::string& world,
+ta::tnt::Map newBlankMap(const ta::hpi::Vfs& vfs, SectionLibrary& sections,
+                          ta::terrain::Compositor& comp, const std::string& world,
                           int wUnits, int hUnits) {
     // Pick a flat ground section for the fill (prefer a "flat"/"ground" category).
     const SectionRef* fill = nullptr;
@@ -152,10 +152,10 @@ tak::tnt::Map newBlankMap(const tak::hpi::Vfs& vfs, SectionLibrary& sections,
     }
     if (!fill && !sections.list().empty()) fill = &sections.list().front();
     if (!fill) return {};
-    const tak::tnt::Map* sec = sections.load(vfs, fill->path);
+    const ta::tnt::Map* sec = sections.load(vfs, fill->path);
     if (!sec) return {};
 
-    tak::tnt::Map m;
+    ta::tnt::Map m;
     m.width = std::max(1, wUnits) * 32;    // 1 Unit = 32 cells
     m.height = std::max(1, hUnits) * 32;
     m.blocksX = m.width / 2;

@@ -15,7 +15,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int countType(const sim::World& w, const std::string& id) {
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
 
     // --campaigns: list the campaign spine (camps/*.tdf) and exit.
     if (stem == "--campaigns") {
-        for (const auto& c : tak::loadCampaigns(vfs)) {
+        for (const auto& c : ta::loadCampaigns(vfs)) {
             std::printf("%-28s (%s)  %d missions%s%s\n", c.title.c_str(), c.id.c_str(), c.count(),
                         c.altFinal.empty() ? "" : "  +alt ending: ", c.altFinal.c_str());
             for (int i = 0; i < c.count(); ++i)

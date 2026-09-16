@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace tak {
+namespace ta {
 
 HotkeysScreen::HotkeysScreen(SDL_Renderer* ren, Settings& s, std::function<void()> onChange,
                              std::function<void()> onSave)
@@ -203,4 +203,4 @@ void HotkeysScreen::render(int winW, int winH) {
     button(backRect_, "BACK", true);
 }
 
-}  // namespace tak
+}  // namespace ta

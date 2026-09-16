@@ -7,7 +7,7 @@
 #include "net/auth.h"
 #include "net/crypto.h"
 
-namespace tak::net {
+namespace ta::net {
 
 namespace {
 uint64_t nowMs() {   // monotonic wall-clock (pacing/keepalive only; never hashed)
@@ -51,9 +51,9 @@ void MpClient::disconnect(const std::string& reason) {
 bool MpClient::poll() {
     if (state_ == State::Offline || state_ == State::Done) return false;
     if (jitterMs_ < 0) {   // one-time init of the test link model
-        const char* j = std::getenv("TAK_NET_JITTER_MS");
-        const char* b = std::getenv("TAK_NET_BASE_MS");
-        const char* l = std::getenv("TAK_NET_LOSS_PCT");
+        const char* j = std::getenv("TA_NET_JITTER_MS");
+        const char* b = std::getenv("TA_NET_BASE_MS");
+        const char* l = std::getenv("TA_NET_LOSS_PCT");
         jitterMs_ = j ? std::max(0, std::atoi(j)) : 0;
         baseMs_ = b ? std::max(0, std::atoi(b)) : 0;
         lossPct_ = l ? std::clamp(std::atoi(l), 0, 100) : 0;
@@ -547,4 +547,4 @@ void MpClient::sendHash(uint32_t tick, uint64_t hash) {
     send(Msg::StateHash, w);
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

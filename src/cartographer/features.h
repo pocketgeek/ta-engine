@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 namespace cart {
 
@@ -31,11 +31,11 @@ struct FeatSprite {
 class FeatureLibrary {
 public:
     // Scan features/<world> + features/all worlds for placeable feature defs.
-    void scan(const tak::hpi::Vfs& vfs, const std::string& world);
+    void scan(const ta::hpi::Vfs& vfs, const std::string& world);
     const std::vector<FeatureRef>& list() const { return refs_; }
     const FeatureRef* byName(const std::string& name) const;   // nullptr if absent
     // Decode (and cache) a feature's sprite; empty (.w==0) if the art won't load.
-    const FeatSprite* sprite(const tak::hpi::Vfs& vfs, const FeatureRef& r);
+    const FeatSprite* sprite(const ta::hpi::Vfs& vfs, const FeatureRef& r);
 
 private:
     std::vector<FeatureRef> refs_;

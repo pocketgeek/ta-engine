@@ -38,7 +38,7 @@
 
 namespace fs = std::filesystem;
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -194,7 +194,7 @@ struct MainMenu::Impl {
             // click is queued at once (never a partial fill), so a short device
             // period can't underrun it. ~128/11025 ~= 12ms vs ~46ms at 512.
             want.samples = 128;
-            sfxDev_ = tak::openAudioDevice(0, &want, &have, 0);
+            sfxDev_ = ta::openAudioDevice(0, &want, &have, 0);
             if (sfxDev_) SDL_PauseAudioDevice(sfxDev_, 0);
         }
         // Scale to a UI level that sits above the (soft, ~45/128) menu music.
@@ -260,7 +260,7 @@ struct MainMenu::Impl {
                 if (sq.frames.empty()) return nullptr;
                 auto& f = sq.frames[size_t(frame)];
                 if (f.width == 0 || f.height == 0) return nullptr;
-                return tak::art::makeTexture(ren, f.rgba, f.width, f.height, appliedFactor);
+                return ta::art::makeTexture(ren, f.rgba, f.width, f.height, appliedFactor);
             }
         } catch (...) {}
         return nullptr;
@@ -299,7 +299,7 @@ struct MainMenu::Impl {
         // Exactly once per DECODED frame: setDoorTex is only ever called straight after a
         // successful nextFrame(). Filtering at the upload instead would re-filter a held
         // frame every time it was re-uploaded, smearing it a little more each pass.
-        if (tak::video::g_deblock) tak::video::deblock(d.rgba, d.vw, d.vh, 3);
+        if (ta::video::g_deblock) ta::video::deblock(d.rgba, d.vw, d.vh, 3);
         if (d.vw <= 0 || d.vh <= 0 || d.rgba.empty()) return;
         if (!d.vtex) {
             d.vtex = gpuvram::create(ren, SDL_PIXELFORMAT_ABGR8888,
@@ -432,10 +432,10 @@ struct MainMenu::Impl {
         SDL_RenderClear(ren);
         float s, ox, oy; layout(winW, winH, s, ox, oy);
         if (bg) { SDL_FRect r{ox, oy, 640 * s, 480 * s}; SDL_RenderCopyF(ren, bg, nullptr, &r); }
-        // TAK_NODOORVID=1 forces the static GAF door art instead of the clips, so
+        // TA_NODOORVID=1 forces the static GAF door art instead of the clips, so
         // the two can be compared directly -- retail authored both, so the art is
         // the closest thing to a reference for how bright a door should look.
-        static const bool kNoDoorVid = tak::devEnv("TAK_NODOORVID") != nullptr;
+        static const bool kNoDoorVid = ta::devEnv("TA_NODOORVID") != nullptr;
         for (auto& d : doors) {
             // A door with no gui art of its own has nothing to show at rest: the gui
             // gives the other three a GAF state image (singlemachine/bodgirl/
@@ -488,7 +488,7 @@ struct MainMenu::Impl {
             float tw = float(text.size()) * 6 * dpx;                        // design-space width
             shadowText(text, ox + (dx + (dw - tw) / 2) * s, oy + dy * s, dpx * s, c);
         };
-        placard(std::string("VERSION ") + tak::kVersion, 174, 295, 409, 2.0f, {185, 180, 160, 220});
+        placard(std::string("VERSION ") + ta::kVersion, 174, 295, 409, 2.0f, {185, 180, 160, 220});
         const std::string* tip = nullptr;
         for (auto& d : doors) if (d.hover && !d.tip.empty()) { tip = &d.tip; break; }
         if (!tip) for (auto& b : buttons) if (b.hover && !b.tip.empty()) { tip = &b.tip; break; }
@@ -498,7 +498,7 @@ struct MainMenu::Impl {
     // ---- minimal block font + multiplayer server-select overlay ---------------
     // A dropdown: the default server on top, then every server that has connected
     // successfully before (Settings::knownServers), then CUSTOM with a text field.
-    static constexpr const char* kDefaultServer = "tak.pgnet.us";
+    static constexpr const char* kDefaultServer = "ta.pgnet.us";
     bool serverSelect = false;
     std::vector<std::string> serverItems;   // dropdown rows (default + remembered)
     int serverSel = 0;                      // selected row; == serverItems.size() -> CUSTOM
@@ -783,12 +783,12 @@ struct MainMenu::Impl {
 
     // Benchmark intensity submenu: 5 spawn-rate levels. Records benchBtnRect_ for run().
     // Scan the user's config directory for saved replays, newest first. That is where
-    // every human player's client writes its own .takrep (see saveReplayFile) -- beside
+    // every human player's client writes its own .tarep (see saveReplayFile) -- beside
     // settings.ini -- so the picker lists exactly what this machine has recorded.
     void scanReplays() {
         replayFiles_.clear();
         replayScroll_ = 0;
-        std::string dir = tak::settingsPath();
+        std::string dir = ta::settingsPath();
         const size_t cut = dir.find_last_of("/\\");
         if (cut == std::string::npos) return;
         dir.erase(cut + 1);
@@ -797,7 +797,7 @@ struct MainMenu::Impl {
         for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
             if (ec) break;
             if (!e.is_regular_file(ec)) continue;
-            if (e.path().extension() != ".takrep") continue;
+            if (e.path().extension() != ".tarep") continue;
             found.push_back({e.last_write_time(ec), e.path().string()});
         }
         // Newest first: the replay you just played is the one you want to watch.
@@ -943,16 +943,16 @@ void MainMenu::setReplayError(const std::string& msg) { d_->pendingReplayError =
 
 MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverOut,
                                MenuMusic* music, Settings* settings) {
-    if (settings) tak::video::setDeblock(settings->videoDeblock);
+    if (settings) ta::video::setDeblock(settings->videoDeblock);
     int w = 0, h = 0;
     SDL_GetRendererOutputSize(d_->ren, &w, &h);
 
     if (!shotPath.empty()) {
         for (auto& dr : d_->doors) d_->updateDoor(dr, 0.0);
         d_->render(w, h);
-        // Debug: TAK_SHOT_CAMPAIGN captures the campaign picker overlay for tests.
-        if (const char* sc = settings ? tak::devEnv("TAK_SHOT_CAMPAIGN") : nullptr) {
-            int tab = std::atoi(sc);   // TAK_SHOT_CAMPAIGN=1 -> Iron Plague tab
+        // Debug: TA_SHOT_CAMPAIGN captures the campaign picker overlay for tests.
+        if (const char* sc = settings ? ta::devEnv("TA_SHOT_CAMPAIGN") : nullptr) {
+            int tab = std::atoi(sc);   // TA_SHOT_CAMPAIGN=1 -> Iron Plague tab
             Settings tmp = *settings;
             // Mark a mix of Iron Plague missions completed so the shot shows DONE + PLAY
             // rows and the next-up highlight (nothing is locked either way).
@@ -961,17 +961,17 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
             CampaignScreen cs(d_->ren, d_->vfs, tmp, tab);
             cs.render(w, h);
         }
-        // Debug: TAK_SHOT_SERVER captures the CONNECT dropdown (2 = CUSTOM selected,
+        // Debug: TA_SHOT_SERVER captures the CONNECT dropdown (2 = CUSTOM selected,
         // showing the address field; 3 = failed-connect error shown); seeds sample
         // remembered servers if none saved.
-        if (settings && tak::devEnv("TAK_SHOT_SERVER")) {
+        if (settings && ta::devEnv("TA_SHOT_SERVER")) {
             Settings tmp = *settings;
             if (tmp.knownServers.empty())
                 tmp.knownServers = {"192.168.1.50:7677", "example.dyndns.org"};
             d_->openServerSelect(&tmp);
-            int m = std::atoi(tak::devEnv("TAK_SHOT_SERVER"));
+            int m = std::atoi(ta::devEnv("TA_SHOT_SERVER"));
             if (m == 2) d_->setServerSel(int(d_->serverItems.size()));   // CUSTOM view
-            if (m == 3) d_->serverError = "COULD NOT CONNECT TO TAK.PGNET.US";
+            if (m == 3) d_->serverError = "COULD NOT CONNECT TO TA.PGNET.US";
             if (m == 4) {   // signed-in state: name filled, password part-typed
                 d_->loginUser = "curtis";
                 d_->loginPass = "hunter2hunter";
@@ -985,8 +985,8 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
             d_->renderServerSelect(w, h);
         }
         d_->screenshot(w, h, shotPath);
-        // Debug: TAK_SHOT_RESULT captures the victory result screen (saves to its path).
-        if (settings && tak::devEnv("TAK_SHOT_RESULT"))
+        // Debug: TA_SHOT_RESULT captures the victory result screen (saves to its path).
+        if (settings && ta::devEnv("TA_SHOT_RESULT"))
             ResultScreen::run(d_->ren, d_->vfs, true, "MISSION 1", true, settings, nullptr);
         return Choice::None;
     }
@@ -1032,7 +1032,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
     Uint64 prev = SDL_GetPerformanceCounter();
     const double freq = double(SDL_GetPerformanceFrequency());
     for (;;) {
-        if (tak::termRequested()) return Choice::Exit;   // SIGTERM/SIGINT -> quit the app
+        if (ta::termRequested()) return Choice::Exit;   // SIGTERM/SIGINT -> quit the app
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) continue;   // ignore the WM close button; use the Exit door
@@ -1059,7 +1059,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                     // Check the account locally before spending a round trip on it,
                     // and say the same things the server would.
                     std::string why;
-                    if (!tak::auth::validUsername(d_->loginUser, &why)) {
+                    if (!ta::auth::validUsername(d_->loginUser, &why)) {
                         d_->serverError = d_->loginUser.empty() ? "enter an account name" : why;
                         d_->field = 2;
                         return false;
@@ -1085,11 +1085,11 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                                 (std::isalnum(ch) || ch == '.' || ch == ':' || ch == '-'))
                                 *f += char(ch);
                         } else if (d_->field == 2) {
-                            if (f->size() < tak::auth::kMaxUsername &&
+                            if (f->size() < ta::auth::kMaxUsername &&
                                 (std::isalnum(ch) || ch == '_' || ch == '-' || ch == '.'))
                                 *f += char(ch);
                         } else {
-                            if (f->size() < tak::auth::kMaxPassword && ch >= 0x20 && ch < 0x7f)
+                            if (f->size() < ta::auth::kMaxPassword && ch >= 0x20 && ch < 0x7f)
                                 *f += char(ch);
                         }
                     }
@@ -1107,7 +1107,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                     if (k == SDLK_TAB) d_->cycleField(shift ? -1 : 1);
                     if (k == SDLK_ESCAPE) {
                         d_->serverSelect = false;
-                        tak::crypto::wipe(d_->loginPass);
+                        ta::crypto::wipe(d_->loginPass);
                         SDL_StopTextInput();
                     }
                     if (k == SDLK_BACKSPACE) {
@@ -1133,7 +1133,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                     }
                     if (in(d_->serverBackRect)) {
                         d_->serverSelect = false;
-                        tak::crypto::wipe(d_->loginPass);
+                        ta::crypto::wipe(d_->loginPass);
                         SDL_StopTextInput();
                     }
                 }
@@ -1160,7 +1160,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                             [ren, music, settings, fsWas = settings->fullscreen,
                              vsWas = settings->vsync]() mutable {
                                 if (music) music->setVolume(settings->masterVol, settings->bgmVol);
-                                tak::applyRuntimeSettings(*settings);   // incl. DEFAULTS
+                                ta::applyRuntimeSettings(*settings);   // incl. DEFAULTS
                                 // onChange fires on EVERY control tweak (a volume-slider drag
                                 // fires it many times a second). ANY window/renderer reconfigure
                                 // here re-commits the Wayland surface -- which rescales it and
@@ -1335,7 +1335,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
 const std::string& MainMenu::chosenMission() const { return d_->chosenMission_; }
 const std::string& MainMenu::chosenAccount() const { return d_->loginUser; }
 const std::string& MainMenu::chosenPassword() const { return d_->loginPass; }
-void MainMenu::clearPassword() { tak::crypto::wipe(d_->loginPass); }
+void MainMenu::clearPassword() { ta::crypto::wipe(d_->loginPass); }
 
 int MainMenu::chosenBenchmarkLevel() const { return d_->chosenBenchmark_; }
 const std::string& MainMenu::chosenCampaign() const { return d_->chosenCampaign_; }
@@ -1385,7 +1385,7 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
         want.channels = uint8_t(vid.audioChannels());
         want.samples = 1024;
         want.callback = nullptr;   // queue-driven
-        adev = tak::openAudioDevice(0, &want, &have, 0);
+        adev = ta::openAudioDevice(0, &want, &have, 0);
         if (adev) SDL_PauseAudioDevice(adev, 0);
     }
     const double fps = vid.fps() > 1.0 ? vid.fps() : 30.0;
@@ -1418,7 +1418,7 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
     int frame = 0;
     bool skip = false;
     for (;;) {
-        if (tak::termRequested()) break;   // SIGTERM/SIGINT -> abandon the intro
+        if (ta::termRequested()) break;   // SIGTERM/SIGINT -> abandon the intro
         SDL_Event e;
         while (SDL_PollEvent(&e))
             if (e.type == SDL_KEYDOWN || e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_QUIT)
@@ -1456,7 +1456,7 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
         // display rate, so most iterations decode nothing and `rgba` is the frame already
         // on screen -- filtering it again each time would smooth the same pixels over and
         // over, and by an amount that depended on the machine's frame rate.
-        if (decoded && tak::video::g_deblock) tak::video::deblock(rgba, vw, vh, 3);
+        if (decoded && ta::video::g_deblock) ta::video::deblock(rgba, vw, vh, 3);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), vw * 4);
         int ww = 0, wh = 0;
         SDL_GetRendererOutputSize(ren, &ww, &wh);
@@ -1477,4 +1477,4 @@ void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const ch
     SDL_FlushEvents(SDL_KEYDOWN, SDL_MOUSEBUTTONUP);
 }
 
-}  // namespace tak
+}  // namespace ta

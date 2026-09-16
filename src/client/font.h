@@ -8,12 +8,12 @@
 
 #include <string>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 class Font {
 public:
     Font() = default;
-    Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPath);
+    Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPath);
 
     bool ok() const { return ok_; }
 

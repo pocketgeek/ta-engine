@@ -104,7 +104,7 @@ the **tile/section palette + brush tools**, the **height tools**, the
 2. Tile palette + paint brush; height tools; Grid overlay; zoom levels.
 3. Feature/unit/start-pos placement + selection + the property dialogs. ✅
    [start positions + FEATURES + UNITS all DONE. Units read/written through the
-    SHARED tak::crt (parse/write; also used by takclient/takserver). Place/move/
+    SHARED ta::crt (parse/write; also used by taclient/taserver). Place/move/
     delete + a Unit Properties dialog (double-click: player/health/armor/weapon/
     veteran/angle); Save writes the map's .crt, preserving the trigger rules,
     regions, and custom types the unit tool doesn't touch.]
@@ -120,13 +120,13 @@ the **tile/section palette + brush tools**, the **height tools**, the
     + actions rendered human-readably from the 26+26 opcode templates
     (src/cartographer/triggers). Navigate players/rules; +/- RULE, +/- COND,
     +/- ACT (26-item opcode picker); double-click a condition/action to edit its
-    parameters (fields labelled by param kind). Saves through tak::crt::write in
+    parameters (fields labelled by param kind). Saves through ta::crt::write in
     the .crt -- verified: Ulin's Folly's 30 rules load, render correctly ("I
     control more than 2 ARAAT at hill"), and save back byte-identical.]
 6. Land Lasso + Clear Area; the .kmp bundle writer; polish to 1:1. ✅
    [Clear Area (key K): arm, drag a box, confirm -> removes units + clears the
     feature plane inside. Land Lasso (Ctrl+L): land-paint vs object-mode toggle.
-    .kmp bundle: SHARED tak::hpi::pack writes an HPI holding kmap/<name>/
+    .kmp bundle: SHARED ta::hpi::pack writes an HPI holding kmap/<name>/
     <name>.{tnt,ota,crt,txt}(+.tdf) -- the retail distributable-map format the
     engine mounts directly (Ctrl+B, or headless --bundle). Verified: a bundled
     map loads through the engine's real path (MountSet -> findMap -> Map::load ->
@@ -177,8 +177,8 @@ checks. Same warning also fires at save.
 ### The scenario (placed units + triggers) is a BINARY `.crt`, NOT the OTA
 `.crt` writer 0x40d8d0 / loader ~0x40de42. Full layout **PROVEN byte-exact**
 against every shipped `.crt` (empty 56-byte files through 120 KB Savannah Hunt)
-and implemented in the SHARED `src/crt/` (`tak::crt::parse`/`write`, used by
-takclient/takserver AND cartographer). Top-level, no padding anywhere:
+and implemented in the SHARED `src/crt/` (`ta::crt::parse`/`write`, used by
+taclient/taserver AND cartographer). Top-level, no padding anywhere:
 
 ```
 f32 version = 1.0
@@ -226,7 +226,7 @@ Full 26+26 template list captured in the RE task output (session d39a8c26,
 task ac01eaf629a4e233d).
 
 ### Engine: `.crt` scenario RUNNER is now in the sim (DONE, kNetVersion 36)
-`tak::crt::parse` reads the full record; the engine's scenario branch spawns the
+`ta::crt::parse` reads the full record; the engine's scenario branch spawns the
 placed units at the corrected cells, APPLYING each unit's health% and veteran,
 and honouring its facing angle. The 26+26 trigger opcodes now run in the sim:
 `src/sim/scenario.{h,cpp}` (`ScenarioScript`) mirrors `MissionScript` — built on
@@ -243,9 +243,9 @@ correct (a "set countdown timer to N" fires once then counts down), victory
 defeats opponents. `src/sim/mission.cpp` remains the separate CAMPAIGN runner.
 
 The old client-side heuristic trigger code was removed (the superseded
-`loadTriggers`/`Triggers`/`TrigRecord`/`Placement`/`load` in tak::crt, the
+`loadTriggers`/`Triggers`/`TrigRecord`/`Placement`/`load` in ta::crt, the
 gameview spawn-rule/scoring/message machinery, and the `--hilltest` harness);
-tak::crt is now just the typed `parse`/`write`. Minor remaining: "Move all"
+ta::crt is now just the typed `parse`/`write`. Minor remaining: "Move all"
 uses a plain move order; kill/loss credit is by last-hitter.
 
 ### Command ID -> handler VAs (for follow-up RE)
@@ -263,7 +263,7 @@ TXT 0x41c4e0 · CRT 0x40d8d0 · bundle 0x418b80. GetCell 0x419120 · SectionStam
   TNT/OTA write formats + coordinate model + world types: **DONE**.
 - `.crt` full binary layout (UnitRecord 568B, Rule 324B, CustomType 272B,
   RegionDef 272B, per-player group structure): **DONE** — proven byte-exact,
-  implemented as `tak::crt::parse`/`write` in the shared lib, round-trip tested
+  implemented as `ta::crt::parse`/`write` in the shared lib, round-trip tested
   by `tnttool crt` across all 27 shipped scenario maps.
 - Pending deep RE (for later phases): minimap-generation exact downsample;
   HPI/.kmp bundle writer; whether the loader consumes UnitRecord 0x224/0x228

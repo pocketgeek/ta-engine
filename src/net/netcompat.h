@@ -15,7 +15,7 @@
   #endif
   #include <winsock2.h>
   #include <ws2tcpip.h>
-  #define TAK_POLL WSAPoll
+  #define TA_POLL WSAPoll
 #else
   #include <fcntl.h>
   #include <netdb.h>
@@ -26,7 +26,7 @@
   #include <sys/types.h>
   #include <unistd.h>
   #include <cerrno>
-  #define TAK_POLL ::poll
+  #define TA_POLL ::poll
 #endif
 
 // Linux defines MSG_NOSIGNAL; Windows and macOS don't (macOS uses SO_NOSIGPIPE
@@ -35,7 +35,7 @@
 #define MSG_NOSIGNAL 0
 #endif
 
-namespace tak::net {
+namespace ta::net {
 
 // Initialise the socket subsystem once (WSAStartup on Windows; no-op elsewhere).
 // Idempotent; call before any socket use (connect/listen/pickFreePort).
@@ -112,4 +112,4 @@ inline std::string sockErrStr(int e) {
 #endif
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

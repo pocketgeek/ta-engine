@@ -154,7 +154,7 @@ the voiced story; on-map lines come from `.ota` message triggers; Iron Plague ad
 in-engine portrait widget (`playercampaigndialogue.gaf`). **Progress** lives in the
 Windows registry/ini in retail (`FavoriteCampaign`, `InitialMission`, per profile);
 our portable replacement: a small per-profile/per-campaign record `{campaignFile,
-highestUnlocked, lastPlayed}` via the existing `tak::Settings` persistence.
+highestUnlocked, lastPlayed}` via the existing `ta::Settings` persistence.
 
 ## 5. Current engine — reuse vs. build
 
@@ -176,7 +176,7 @@ outcome→banner→menu, and the Bink player (`MainMenu::playIntro`).
 
 ## 6. Key architecture decision — where a mission runs
 
-Skirmish today = client + an auto-launched local `takserver` (server = authoritative
+Skirmish today = client + an auto-launched local `taserver` (server = authoritative
 sim + AI + determinism). The old mission path = client-only local free-run sim with
 the COB script in the viewer and **no AI**. A campaign needs the COB script to drive
 the authoritative sim (spawns/orders/triggers/win-lose) *and* AI for `strategic`
@@ -197,10 +197,10 @@ server", keeps a single sim path, and gets AI for free; the COB VM move is the m
 ## 7. Phased plan
 
 Status (2026-09-07): phases 1–7 are **done and verified** (bar one data-absent
-item). A campaign mission runs over the real takserver/takclient in lockstep
+item). A campaign mission runs over the real taserver/taclient in lockstep
 (`err=none`, reproducible hash); the full front-end loop — pick → intro movie →
 briefing (+ VO) → play (objectives panel) → post-mission cutscene → victory/defeat
-→ next/retry, with end-of-campaign credits — works from the main menu (or `takclient
+→ next/retry, with end-of-campaign credits — works from the main menu (or `taclient
 game --campaign <stem>`); the conjure menu is restricted per mission; and the
 mission-runner sim has condition guards, the full `SetMission` verb set, and proper
 compacted-slot diplomacy. The Iron Plague dialogue widget is the sole open item and
@@ -222,7 +222,7 @@ is **not implementable against this install** (see phase 7 below).
    AI). Server hosts a mission referee (`server.cpp`), client builds the same
    deterministic world (`startMpGame`), and both run the in-sim god script in
    lockstep — the mission is authoritative on the server, which broadcasts
-   `MissionOutcome` (kNetVersion 17). Headless driver: `takclient … --mpmission <stem>`.
+   `MissionOutcome` (kNetVersion 17). Headless driver: `taclient … --mpmission <stem>`.
    First-pass diplomacy (opponents team 1, everyone else allied); proper
    neutral/ally roles and non-zero human slots are TODO.
 4. **Per-mission unit restriction.** ✅ `missions/<stem>.tdf` (a list of allowed unit
@@ -233,7 +233,7 @@ is **not implementable against this install** (see phase 7 below).
    drops to 8 where a unit isn't permitted (takmission43_ph/47_ph).
 5. **Campaign spine.** ✅ `camps/*.tdf` loader (`src/campaign/campaign.{h,cpp}`,
    `loadCampaigns` — Book of Darien 48, The Iron Plague 25, ipalt 25); progress
-   persisted in `tak::Settings` (`campaignDone`, `campaign.<id>=n`); win→advance
+   persisted in `ta::Settings` (`campaignDone`, `campaign.<id>=n`); win→advance
    handled in `main()`.
 6. **Front-end flow.** ✅ `Choice::Campaign` → `CampaignScreen`
    (`src/client/campaignscreen.{h,cpp}`): campaign tabs + completed/current(PLAY)/

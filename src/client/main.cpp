@@ -1,8 +1,8 @@
-// takclient — interactive TAK asset viewer.
+// taclient — interactive TAK asset viewer.
 //
-//   takclient map <map.tnt> <terrain-dir>       scrollable terrain (drag/arrows,
+//   taclient map <map.tnt> <terrain-dir>       scrollable terrain (drag/arrows,
 //                                             +/- zoom, S = screenshot)
-//   takclient model <file.3do> [textures-dir palette.pcx]
+//   taclient model <file.3do> [textures-dir palette.pcx]
 //                                             rotating textured model
 //                                             (drag to rotate, wheel zoom)
 //   ... --shot <out.png>                      render one frame headless
@@ -47,7 +47,7 @@
 #include "client/modelmath.h"   // Tri/Xform/scriptRot (shared by GameView + model viewer)
 #include "client/modelview.h"   // standalone 3DO model viewer (extracted leaf)
 #include "client/renderframe.h"   // UnitR/PlayerR/Frame render snapshot (extracted leaf)
-#include "client/replayfile.h"   // .takrep parser (extracted leaf)
+#include "client/replayfile.h"   // .tarep parser (extracted leaf)
 #include "client/sound.h"     // WAV mixer + music + soundclasses (extracted leaf)
 #include "client/threadpool.h"   // data-parallel worker pool (extracted leaf)
 #include "client/gpuvram.h"   // central GPU-texture VRAM accountant + hard cap
@@ -64,7 +64,7 @@
 
 // Keep our own main() on every platform (don't let SDL redefine it to SDL_main /
 // pull in SDL2main + a WinMain); we call SDL_SetMainReady() in main() instead. This
-// also keeps takclient usable as a console/headless tool on Windows. The build also
+// also keeps taclient usable as a console/headless tool on Windows. The build also
 // defines this target-wide (CMake) so it holds even when a header pulls in <SDL.h>
 // before this point; the guard avoids a redefinition warning.
 #ifndef SDL_MAIN_HANDLED
@@ -97,7 +97,7 @@
 #include <thread>
 #include <vector>
 
-// Single-player auto-launches a local takserver (AIs run only on the server).
+// Single-player auto-launches a local taserver (AIs run only on the server).
 // Sockets come from net/netcompat.h (included first, before SDL). Process control
 // is the one genuinely platform-specific bit: fork/exec on POSIX, CreateProcess on
 // Windows.
@@ -110,7 +110,7 @@
 #endif
 
 namespace {
-// A local takserver spawned for single-player; killed when the client exits.
+// A local taserver spawned for single-player; killed when the client exits.
 bool gLocalServerUp = false;
 #ifdef _WIN32
 PROCESS_INFORMATION gLocalProc{};
@@ -132,7 +132,7 @@ void killLocalServer() {
 
 // Pick a free loopback TCP port by binding to 0 and reading the assignment.
 int pickFreePort() {
-    tak::net::netStartup();
+    ta::net::netStartup();
     int fd = int(socket(AF_INET, SOCK_STREAM, 0));
     if (fd < 0) return 0;
     sockaddr_in a{}; a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -141,11 +141,11 @@ int pickFreePort() {
         socklen_t len = sizeof a;
         if (getsockname(fd, reinterpret_cast<sockaddr*>(&a), &len) == 0) port = ntohs(a.sin_port);
     }
-    tak::net::sockClose(fd);
+    ta::net::sockClose(fd);
     return port;
 }
 
-// Launch a takserver for a private single-player game. Returns true on success.
+// Launch a taserver for a private single-player game. Returns true on success.
 // --no-auth because there is nobody to sign in AS (this server exists for one
 // player, on one machine), and --local so that concession stays on this machine:
 // an unauthenticated server must not be reachable from the network.
@@ -176,7 +176,7 @@ bool spawnLocalServer(const std::string& serverBin, const std::string& dataRoot,
 #endif
 }
 
-// The local takserver's process id (for the benchmark's server-side CPU/memory sampling).
+// The local taserver's process id (for the benchmark's server-side CPU/memory sampling).
 long localServerPid() {
 #ifdef _WIN32
     return gLocalServerUp ? long(gLocalProc.dwProcessId) : 0;
@@ -185,18 +185,18 @@ long localServerPid() {
 #endif
 }
 
-// Path to the takserver binary that sits beside this client. argv[0] is unreliable:
+// Path to the taserver binary that sits beside this client. argv[0] is unreliable:
 // launched from PATH (e.g. the /usr/bin .rpm/.deb install) it's the bare name
-// "takclient" with no directory, and execl/CreateProcess do NOT search PATH -- which
-// is why single-player "never started takserver". Resolve the REAL executable's
+// "taclient" with no directory, and execl/CreateProcess do NOT search PATH -- which
+// is why single-player "never started taserver". Resolve the REAL executable's
 // directory (/proc/self/exe on Linux, the module path on Windows), then fall back to
-// argv[0]'s directory and finally a PATH scan. Returns the first "takserver" found.
+// argv[0]'s directory and finally a PATH scan. Returns the first "taserver" found.
 std::string resolveServerBin(const char* argv0) {
     namespace fs = std::filesystem;
     std::error_code ec;
     auto tryDir = [&](const fs::path& dir) -> std::string {
         if (dir.empty()) return {};
-        fs::path p = dir / "takserver";
+        fs::path p = dir / "taserver";
         return fs::exists(p, ec) ? p.string() : std::string{};
     };
 #if defined(__linux__)
@@ -224,7 +224,7 @@ std::string resolveServerBin(const char* argv0) {
         }
     }
     // Nothing found -- return the old argv[0]-relative guess so the caller can report it.
-    return (fs::path(argv0).parent_path() / "takserver").string();
+    return (fs::path(argv0).parent_path() / "taserver").string();
 }
 }  // namespace
 
@@ -239,7 +239,7 @@ constexpr int kWinW = 1920, kWinH = 1080;
 void screenshot(SDL_Renderer* ren, int w, int h, const std::string& path) {
     std::vector<uint8_t> px(size_t(w) * h * 4);
     if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_RGBA32, px.data(), w * 4) == 0) {
-        tak::png::write(path, w, h, px);
+        ta::png::write(path, w, h, px);
         std::printf("screenshot: %s\n", path.c_str());
     }
 }
@@ -278,15 +278,15 @@ void screenshot(SDL_Renderer* ren, int w, int h, const std::string& path) {
 // successful pick/validate the location + an authenticity manifest are saved to config.
 // `allowPrompt` gates the picker (off for headless runs, which always pass --data).
 // Leaves dataRoot empty if it can't be resolved; the caller then aborts.
-static void resolveDataDir(std::string& dataRoot, tak::Settings& settings, bool allowPrompt) {
-    namespace hpi = tak::hpi;
+static void resolveDataDir(std::string& dataRoot, ta::Settings& settings, bool allowPrompt) {
+    namespace hpi = ta::hpi;
     // 1. Explicit --data wins. Honour it even if it doesn't validate (a dev override);
     //    if it DOES validate, remember it so a later launch needs no --data.
     if (!dataRoot.empty()) {
         if (settings.dataDir != dataRoot && hpi::validInstall(dataRoot, nullptr)) {
             settings.dataDir = dataRoot;
             settings.dataManifest = hpi::rootManifest(dataRoot);
-            tak::saveSettings(settings);
+            ta::saveSettings(settings);
         }
         return;
     }
@@ -306,18 +306,18 @@ static void resolveDataDir(std::string& dataRoot, tak::Settings& settings, bool 
     if (!settings.dataDir.empty() && hpi::validInstall(settings.dataDir, nullptr)) {
         dataRoot = settings.dataDir;
         std::string m = hpi::rootManifest(dataRoot);   // note if the root archives changed
-        if (m != settings.dataManifest) { settings.dataManifest = m; tak::saveSettings(settings); }
+        if (m != settings.dataManifest) { settings.dataManifest = m; ta::saveSettings(settings); }
         return;
     }
     // 4. Ask (interactive only). Loop so a wrong pick can be corrected in place.
     if (!allowPrompt) return;
-    if (!tak::haveDirPicker()) {
+    if (!ta::haveDirPicker()) {
         std::fprintf(stderr, "no folder picker available (install kdialog or zenity) and no "
                              "--data given -- cannot locate the game data\n");
         return;
     }
     for (int tries = 0; tries < 6; ++tries) {
-        std::string picked = tak::pickDirectory(
+        std::string picked = ta::pickDirectory(
             "Select your Total Annihilation: Kingdoms install folder", settings.dataDir);
         if (picked.empty()) return;   // cancelled
         std::string why;
@@ -325,10 +325,10 @@ static void resolveDataDir(std::string& dataRoot, tak::Settings& settings, bool 
             dataRoot = picked;
             settings.dataDir = picked;
             settings.dataManifest = hpi::rootManifest(picked);
-            tak::saveSettings(settings);
+            ta::saveSettings(settings);
             return;
         }
-        tak::errorBox("Not a game folder",
+        ta::errorBox("Not a game folder",
                       "That folder isn't a Total Annihilation: Kingdoms install (" + why +
                       ").\n\nChoose the folder that contains data.hpi, terrain.hpi and Maps/.");
     }
@@ -339,20 +339,20 @@ static void resolveDataDir(std::string& dataRoot, tak::Settings& settings, bool 
 int main(int argc, char** argv) {
     SDL_SetMainReady();   // we defined SDL_MAIN_HANDLED; tell SDL our main is ready
     if (argc >= 2 && (!std::strcmp(argv[1], "--version") || !std::strcmp(argv[1], "-v"))) {
-        std::printf("takclient (TAK engine) %s (build %s)\n", tak::kVersion, tak::kBuildId);
+        std::printf("taclient (TAK engine) %s (build %s)\n", ta::kVersion, ta::kBuildId);
         return 0;
     }
     if (argc >= 2 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {
         std::printf(
 #ifdef NDEBUG
-            "usage: takclient --data <retail-install-dir>\n"
+            "usage: taclient --data <retail-install-dir>\n"
             "  Launches the game and its front-end menu.\n"
             "  --version, -v   print version and exit\n"
             "  <retail-install-dir> holds the shipped *.hpi plus Maps/ Music/ overrides/.\n");
 #else
-            "usage: takclient [mode] --data <retail-install-dir> [options]\n"
+            "usage: taclient [mode] --data <retail-install-dir> [options]\n"
             "  With no mode (or only flags), launches the front-end MENU.\n"
-            "  modes: menu | game <map> | map <map> | replay <file.takrep> | model <file.3do>\n"
+            "  modes: menu | game <map> | map <map> | replay <file.tarep> | model <file.3do>\n"
             "    game single-player: no --server -> auto-hosts a private game vs a server AI.\n"
             "    game multiplayer:   add --server host [--serverport N] [--name X].\n"
             "    game --campaign <stem>: play a campaign mission (e.g. takmission01_mt).\n"
@@ -364,21 +364,21 @@ int main(int argc, char** argv) {
     }
 #ifdef NDEBUG
     // Hardened release CLI: only --data (plus the meta --version/--help) is honoured.
-    // Every gameplay/dev/test flag and every TAK_* env var is debug-only, so a shipped
+    // Every gameplay/dev/test flag and every TA_* env var is debug-only, so a shipped
     // build has no hidden switches -- the game is configured through the menu + Options.
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--version" || a == "-v") { std::printf("takclient (TAK engine) %s\n", tak::kVersion); return 0; }
-        if (a == "--help" || a == "-h") { std::printf("usage: takclient --data <retail-install-dir>\n"); return 0; }
+        if (a == "--version" || a == "-v") { std::printf("taclient (TAK engine) %s\n", ta::kVersion); return 0; }
+        if (a == "--help" || a == "-h") { std::printf("usage: taclient --data <retail-install-dir>\n"); return 0; }
         if (a == "--data") { ++i; continue; }   // its value is consumed by the parser below
         std::fprintf(stderr,
-            "takclient: unknown option '%s' -- release builds accept only --data and --version.\n", a.c_str());
+            "taclient: unknown option '%s' -- release builds accept only --data and --version.\n", a.c_str());
         return 2;
     }
 #endif
     // The first positional arg is the launch mode only if it's a known keyword;
-    // otherwise the default is the front-end menu, so `takclient --data <dir>` (or even
-    // bare `takclient`) just opens it -- no need to type "menu".
+    // otherwise the default is the front-end menu, so `taclient --data <dir>` (or even
+    // bare `taclient`) just opens it -- no need to type "menu".
     std::string mode = "menu";
     int argStart = 1;
     if (argc >= 2) {
@@ -475,7 +475,7 @@ int main(int argc, char** argv) {
         else if (a == "--mpmission" && i + 1 < argc) { mpHeadless = 8; missionStem = argv[++i]; }  // host a campaign mission
         else if (a == "--campaign" && i + 1 < argc) { cliCampaign = argv[++i]; mode = "game"; }    // play a mission interactively
         else if (a == "--nofog") nofog = true;
-        else if (a == "--cheat") tak::sim::gInstantBuild = true;
+        else if (a == "--cheat") ta::sim::gInstantBuild = true;
         else if (a == "--look" && i + 2 < argc) {
             lookX = std::stof(argv[++i]);
             lookZ = std::stof(argv[++i]);
@@ -497,10 +497,10 @@ int main(int argc, char** argv) {
     // must outlive the views (GameView/MapView hold a reference), so it lives here
     // at function scope for the whole render loop, and is built BEFORE connecting
     // so the Hello can carry this install's gameplay-data fingerprint.
-    tak::hpi::OverridePolicy pol = tak::hpi::OverridePolicy::Full;
-    if (overridesArg == "none") pol = tak::hpi::OverridePolicy::None;
-    else if (overridesArg == "cosmetic") pol = tak::hpi::OverridePolicy::Cosmetic;
-    tak::hpi::Vfs vfs;   // mounted AFTER the data folder is resolved (below, post-settings)
+    ta::hpi::OverridePolicy pol = ta::hpi::OverridePolicy::Full;
+    if (overridesArg == "none") pol = ta::hpi::OverridePolicy::None;
+    else if (overridesArg == "cosmetic") pol = ta::hpi::OverridePolicy::Cosmetic;
+    ta::hpi::Vfs vfs;   // mounted AFTER the data folder is resolved (below, post-settings)
 
     // The engine is client-server only: every real game runs on a server, and AIs
     // run ONLY on the server. Local dev/test harnesses (which free-run the sim with
@@ -510,7 +510,7 @@ int main(int argc, char** argv) {
     localHarness = demo || scenario || missionFlag || navy || amphib || firetest ||
                    facetest || guardtest || lodetest || keytest ||
                    soundtest || misstest || creon || testbuild ||
-                   (tak::devEnv("TAK_FFA") != nullptr);
+                   (ta::devEnv("TA_FFA") != nullptr);
 #endif
     // Create the window + renderer up front so the front-end menu can drive the
     // single-player / multiplayer setup that follows it.
@@ -523,10 +523,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
-    tak::installSignalHandlers();
+    ta::installSignalHandlers();
     // Persisted Options (audio/camera/display prefs). CLI flags still win where they
     // apply; the file is the source of truth for anything not passed on the CLI.
-    tak::Settings settings = tak::loadSettings();
+    ta::Settings settings = ta::loadSettings();
     // Select the saved output device before ANY audio opens (validated -- an absent
     // device falls back to system default). Keep the setting so the picker still shows
     // the user's choice even if it's currently unplugged.
@@ -534,7 +534,7 @@ int main(int argc, char** argv) {
     // channel layout NOW -- before the menu music / door videos open a stereo stream that
     // would collapse the 5.1 sink's advertised layout to 2 -- and inits the audio subsystem
     // so the saved device actually validates (SDL_Init above is video-only).
-    tak::setAudioDevice(settings.audioDevice);
+    ta::setAudioDevice(settings.audioDevice);
     // Locate the retail data folder now that SDL (message boxes) and the config are up:
     // explicit --data, else the saved folder, else a native picker. Headless/harness runs
     // always pass --data, so they never prompt. Then mount it (must precede menu/game use).
@@ -545,17 +545,17 @@ int main(int argc, char** argv) {
             SDL_Quit();
             return 1;
         }
-        vfs = tak::hpi::mountRetailRoot(dataRoot, pol);
+        vfs = ta::hpi::mountRetailRoot(dataRoot, pol);
         gInstallRoot = dataRoot;   // the loading screen reads Movies/Gui from here
     }
     if (maxFps != 60) settings.maxFps = maxFps;          // --maxfps (if given) wins the file
     bool vsyncOn = settings.vsync && !noVsync;            // --novsync forces off
-    std::string winTitle = std::string("takclient ") + tak::kVersion;
+    std::string winTitle = std::string("taclient ") + ta::kVersion;
     SDL_Window* win = SDL_CreateWindow(winTitle.c_str(), SDL_WINDOWPOS_CENTERED,
                                        SDL_WINDOWPOS_CENTERED, winW, winH,
                                        SDL_WINDOW_RESIZABLE);
     {   // Application icon: the crown badge (src/util/appicon).
-        std::vector<uint8_t> ic = tak::appicon::render(tak::appicon::Kind::Client, 64);
+        std::vector<uint8_t> ic = ta::appicon::render(ta::appicon::Kind::Client, 64);
         if (SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(
                 ic.data(), 64, 64, 32, 64 * 4, SDL_PIXELFORMAT_RGBA32)) {
             SDL_SetWindowIcon(win, s);
@@ -581,7 +581,7 @@ int main(int argc, char** argv) {
     // Static-art smoothing is sampled ONCE here, before any art is built. Textures keep
     // whatever factor they were built with, so a mid-session toggle must not be re-read
     // per texture -- the Options row says RESTART for exactly this reason.
-    tak::applyRuntimeSettings(settings);
+    ta::applyRuntimeSettings(settings);
     bool renAccelerated = false;
     {
         SDL_RendererInfo ri{};
@@ -608,19 +608,19 @@ int main(int argc, char** argv) {
     std::string pendingCampaign, pendingCampaignId;
     SDL_Texture* aaTex = nullptr;   // whole-frame supersampling target (Options AA); reused
     int aaW = 0, aaH = 0;
-    tak::MenuMusic menuMusic;   // persists across menu -> lobby so the track doesn't restart
+    ta::MenuMusic menuMusic;   // persists across menu -> lobby so the track doesn't restart
     menuMusic.setVolume(settings.masterVol, settings.bgmVol);
-    // TAK_SHOT_RESULT=<png> [TAK_SHOT_RESULT_SIDE=0..4] [TAK_SHOT_RESULT_LOSE=1]:
+    // TA_SHOT_RESULT=<png> [TA_SHOT_RESULT_SIDE=0..4] [TA_SHOT_RESULT_LOSE=1]:
     // render the end-of-game plate with a sample table and exit. Playing a whole match
     // out just to look at the screen isn't practical, so this is how its layout gets
     // verified against the retail art.
-    if (const char* rs = tak::devEnv("TAK_SHOT_RESULT"); rs && *rs) {
-        tak::ResultStats st;
+    if (const char* rs = ta::devEnv("TA_SHOT_RESULT"); rs && *rs) {
+        ta::ResultStats st;
         st.matchSec = 17 * 60 + 42;
-        if (const char* sd = tak::devEnv("TAK_SHOT_RESULT_SIDE")) st.faction = std::atoi(sd);
+        if (const char* sd = ta::devEnv("TA_SHOT_RESULT_SIDE")) st.faction = std::atoi(sd);
         const char* names[4] = {"Curtis", "Bruce", "Ludwin", "Pat"};
         for (int i = 0; i < 4; ++i) {
-            tak::ResultRow r;
+            ta::ResultRow r;
             r.name = names[i];
             r.colorSlot = i;
             r.built = 120 - i * 23;
@@ -631,8 +631,8 @@ int main(int argc, char** argv) {
             r.timeSec = r.defeated ? 600 + i * 90 : st.matchSec;
             st.rows.push_back(std::move(r));
         }
-        bool victory = tak::devEnv("TAK_SHOT_RESULT_LOSE") == nullptr;
-        tak::ResultScreen::run(ren, vfs, victory, "MISSION 7", false, &settings, nullptr, &st);
+        bool victory = ta::devEnv("TA_SHOT_RESULT_LOSE") == nullptr;
+        ta::ResultScreen::run(ren, vfs, victory, "MISSION 7", false, &settings, nullptr, &st);
         SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit();
         return 0;
     }
@@ -643,11 +643,11 @@ int main(int argc, char** argv) {
     // LOGO ONLY. intro.bik belongs on the PlayStory door, not here -- retail
     // dispatches on that gadget name and plays it there, once per launch (see
     // MainMenu::run). Playing both back to back at startup was wrong.
-    if (fromMenu && shot.empty()) tak::MainMenu::playIntro(ren, dataRoot);
+    if (fromMenu && shot.empty()) ta::MainMenu::playIntro(ren, dataRoot);
     std::string menuConnectError;   // failed MP connect -> shown when the menu reopens
     std::string menuReplayError;    // refused replay -> shown on the picker when it reopens
     for (;;) {
-    if (tak::termRequested()) { quitApp = true; break; }   // SIGTERM/SIGINT between sessions
+    if (ta::termRequested()) { quitApp = true; break; }   // SIGTERM/SIGINT between sessions
     if (fromMenu) { serverHost = launchServerHost;
                     serverPort = launchServerPort; args = launchArgs;
                     menuMusic.start(vfs, 15);   // front-end BGM (idempotent; loops into the lobby)
@@ -673,7 +673,7 @@ int main(int argc, char** argv) {
     if (!cliCampaign.empty()) {
         campaignStem = cliCampaign;
         if (args.empty()) args.push_back("athri cay");   // GameView needs a map; the mission overrides it
-        for (const auto& c : tak::loadCampaigns(vfs)) {
+        for (const auto& c : ta::loadCampaigns(vfs)) {
             for (const auto& m : c.missions)
                 if (m.stem == campaignStem) { campaignId = c.id; break; }
             if (!campaignId.empty()) break;
@@ -687,9 +687,9 @@ int main(int argc, char** argv) {
     if (mode == "menu") {
         if (dataRoot.empty()) { std::fprintf(stderr, "menu: needs --data <retail-install-dir>\n"); return 1; }
         std::string menuServer;
-        tak::MainMenu::Choice choice;
+        ta::MainMenu::Choice choice;
         {
-            tak::MainMenu menu(ren, vfs, dataRoot);
+            ta::MainMenu menu(ren, vfs, dataRoot);
             if (!menuConnectError.empty()) {   // reopen the dropdown with the error
                 menu.setConnectError(menuConnectError);
                 menuConnectError.clear();
@@ -699,11 +699,11 @@ int main(int argc, char** argv) {
                 menuReplayError.clear();
             }
             choice = menu.run(shot, &menuServer, &menuMusic, &settings);
-            if (choice == tak::MainMenu::Choice::Campaign) {
+            if (choice == ta::MainMenu::Choice::Campaign) {
                 campaignStem = menu.chosenMission();
                 campaignId = menu.chosenCampaign();
             }
-            if (choice == tak::MainMenu::Choice::Multiplayer) {
+            if (choice == ta::MainMenu::Choice::Multiplayer) {
                 // Take the account out of the menu while it is still alive, and
                 // wipe its copy of the password immediately -- it has no further
                 // use for it, and a secret should outlive its purpose by as little
@@ -716,36 +716,36 @@ int main(int argc, char** argv) {
             // by setting the mode here, so the menu path and the debug CLI share one
             // implementation -- and so a RELEASE build can watch replays at all, which
             // it otherwise could not: the `replay` CLI keyword is debug-only.
-            if (choice == tak::MainMenu::Choice::Replay) {
+            if (choice == ta::MainMenu::Choice::Replay) {
                 mode = "replay";
                 args.clear();
                 args.push_back(menu.chosenReplay());
             }
-            if (choice == tak::MainMenu::Choice::Benchmark) {
+            if (choice == ta::MainMenu::Choice::Benchmark) {
                 benchmarkLevel = menu.chosenBenchmarkLevel();
-                if (benchmarkLevel < 1 || benchmarkLevel > tak::sim::kBenchLevels) benchmarkLevel = 3;   // safety default = High
+                if (benchmarkLevel < 1 || benchmarkLevel > ta::sim::kBenchLevels) benchmarkLevel = 3;   // safety default = High
             }
             // The credits door rolls the credits and returns to the menu, rather
             // than being a way out of the app.
-            if (choice == tak::MainMenu::Choice::Credits) {
-                tak::MainMenu::playIntro(ren, dataRoot, "credits.bik");
+            if (choice == ta::MainMenu::Choice::Credits) {
+                ta::MainMenu::playIntro(ren, dataRoot, "credits.bik");
                 continue;
             }
         }
         if (!shot.empty()) { SDL_DestroyRenderer(ren); SDL_DestroyWindow(win); SDL_Quit(); return 0; }
-        if (choice != tak::MainMenu::Choice::SinglePlayer &&
-            choice != tak::MainMenu::Choice::Multiplayer &&
-            choice != tak::MainMenu::Choice::Benchmark &&
-            choice != tak::MainMenu::Choice::Replay &&
-            !(choice == tak::MainMenu::Choice::Campaign && !campaignStem.empty())) {
+        if (choice != ta::MainMenu::Choice::SinglePlayer &&
+            choice != ta::MainMenu::Choice::Multiplayer &&
+            choice != ta::MainMenu::Choice::Benchmark &&
+            choice != ta::MainMenu::Choice::Replay &&
+            !(choice == ta::MainMenu::Choice::Campaign && !campaignStem.empty())) {
             quitApp = true; break;   // exit / options (or campaign with no pick) -> leave the app
         }
-        benchmarkLaunch = (choice == tak::MainMenu::Choice::Benchmark);
+        benchmarkLaunch = (choice == ta::MainMenu::Choice::Benchmark);
         // A replay picked from the menu already set mode/args above, and must not be
         // overwritten with "game" here.
-        if (choice != tak::MainMenu::Choice::Replay) mode = "game";
+        if (choice != ta::MainMenu::Choice::Replay) mode = "game";
         if (args.empty()) args.push_back("athri cay");   // TODO: map picker (SP battle menu)
-        if (choice == tak::MainMenu::Choice::Multiplayer) {
+        if (choice == ta::MainMenu::Choice::Multiplayer) {
             std::string sv = menuServer.empty() ? std::string("127.0.0.1") : menuServer;
             rememberServer = sv;   // remembered (as picked/typed) if the connect succeeds
             auto colon = sv.find(':');   // accept host:port
@@ -767,7 +767,7 @@ int main(int argc, char** argv) {
     // front-end for a menu pick, or exit for a --campaign launch.
     if (!campaignStem.empty() && !mpHeadless) {
         std::string title = "MISSION";
-        for (const auto& c : tak::loadCampaigns(vfs))
+        for (const auto& c : ta::loadCampaigns(vfs))
             if (c.id == campaignId) {
                 if (campaignStem == c.altFinal) title = "ALT ENDING";
                 for (int i = 0; i < c.count(); ++i)
@@ -775,9 +775,9 @@ int main(int argc, char** argv) {
                         title = "MISSION " + std::to_string(i + 1);
             }
         menuMusic.setVolume(0, 0);   // hush the front-end track under the movie's own audio
-        tak::MainMenu::playIntro(ren, dataRoot, (campaignStem + ".bik").c_str());
+        ta::MainMenu::playIntro(ren, dataRoot, (campaignStem + ".bik").c_str());
         menuMusic.setVolume(settings.masterVol, settings.bgmVol);
-        if (!tak::BriefingScreen::run(ren, vfs, campaignStem, title, &settings, &menuMusic)) {
+        if (!ta::BriefingScreen::run(ren, vfs, campaignStem, title, &settings, &menuMusic)) {
             campaignStem.clear(); campaignId.clear();
             if (fromMenu) continue;   // back to the front-end picker
             quitApp = true; break;    // a --campaign launch has nowhere to go back to
@@ -806,9 +806,9 @@ int main(int argc, char** argv) {
     }
 
     // Connect to the multiplayer server, if requested.
-    std::unique_ptr<tak::net::MpClient> mp;
+    std::unique_ptr<ta::net::MpClient> mp;
     if (!serverHost.empty()) {
-        mp = std::make_unique<tak::net::MpClient>();
+        mp = std::make_unique<ta::net::MpClient>();
         if (playerName.empty()) playerName = settings.playerName;
         if (playerName.empty()) playerName = "player";
         // Hello carries the PURE-RETAIL gameplay fingerprint (no overrides), so the
@@ -819,8 +819,8 @@ int main(int argc, char** argv) {
         static uint64_t retailHash = 0;
         if (!dataRoot.empty()) {
             if (!retailHash)
-                retailHash = tak::hpi::gameplayHash(
-                    tak::hpi::mountRetailRoot(dataRoot, tak::hpi::OverridePolicy::None));
+                retailHash = ta::hpi::gameplayHash(
+                    ta::hpi::mountRetailRoot(dataRoot, ta::hpi::OverridePolicy::None));
             mp->setDataHash(retailHash);
         }
         // A freshly-spawned local server takes a moment to mount + listen (~0.25s
@@ -832,7 +832,7 @@ int main(int argc, char** argv) {
             mp->setLogin(loginUser, loginPass);
             playerName = loginUser;   // the account IS the multiplayer identity
         }
-        tak::crypto::wipe(loginPass);
+        ta::crypto::wipe(loginPass);
         bool ok = false;
         for (int attempt = 0; attempt < (gLocalServerUp ? 200 : 1) && !ok; ++attempt) {
             ok = mp->connect(serverHost, uint16_t(serverPort), playerName);
@@ -875,8 +875,8 @@ int main(int argc, char** argv) {
                 menuTimedOut = true;
             }
         }
-        const bool loginRefused = mp->auth() == tak::net::MpClient::Auth::Failed;
-        if (loginRefused || menuTimedOut || mp->state() == tak::net::MpClient::State::Done) {
+        const bool loginRefused = mp->auth() == ta::net::MpClient::Auth::Failed;
+        if (loginRefused || menuTimedOut || mp->state() == ta::net::MpClient::State::Done) {
             std::string why =
                 menuTimedOut ? std::string("the server stopped responding while signing in")
                 : mp->error().empty() ? std::string("the server closed the connection")
@@ -890,14 +890,14 @@ int main(int argc, char** argv) {
             }
             return 1;
         }
-        if (mp->auth() == tak::net::MpClient::Auth::Created)
+        if (mp->auth() == ta::net::MpClient::Auth::Created)
             std::printf("created account '%s' on %s\n", mp->account().c_str(), serverHost.c_str());
         if (!mp->account().empty()) {
             playerName = mp->account();
             // Remember the NAME for next time (never the password).
             if (settings.accountName != mp->account()) {
                 settings.accountName = mp->account();
-                tak::saveSettings(settings);
+                ta::saveSettings(settings);
             }
         }
         std::printf("connected to %s:%d as '%s'\n", serverHost.c_str(), serverPort, playerName.c_str());
@@ -917,7 +917,7 @@ int main(int argc, char** argv) {
                      ks.end());
             ks.insert(ks.begin(), rememberServer);
             if (ks.size() > 8) ks.resize(8);
-            tak::saveSettings(settings);
+            ta::saveSettings(settings);
         }
     }
 
@@ -927,9 +927,9 @@ int main(int argc, char** argv) {
     std::unique_ptr<GameView> gameView;
     try {
         if (mode == "replay" && !args.empty() && !dataRoot.empty()) {
-            // takclient replay <file.takrep> --data <retail-root>
+            // taclient replay <file.tarep> --data <retail-root>
             ReplayFile rf;
-            // A refusal is normal, not fatal: the picker lists every .takrep it finds,
+            // A refusal is normal, not fatal: the picker lists every .tarep it finds,
             // including ones recorded under an older protocol, and the loader rightly
             // turns those away. From the MENU that has to reopen the menu with the
             // reason; only a command-line launch has nowhere to go but out.
@@ -949,8 +949,8 @@ int main(int argc, char** argv) {
             // playback ever started. (setupMission requires exactly this file, so if
             // it is missing the recording cannot be replayed at all.)
             std::string mapPath;
-            const auto rpol0 = tak::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
-            tak::hpi::Vfs probeVfs = tak::hpi::mountRetailRoot(dataRoot, rpol0);
+            const auto rpol0 = ta::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
+            ta::hpi::Vfs probeVfs = ta::hpi::mountRetailRoot(dataRoot, rpol0);
             if (!rf.mission.empty()) {
                 mapPath = "missions/" + rf.mission + ".tnt";
                 if (!probeVfs.has(mapPath)) {
@@ -959,7 +959,7 @@ int main(int argc, char** argv) {
                     return 1;
                 }
             } else {
-                mapPath = tak::hpi::findMap(probeVfs, rf.mapId);
+                mapPath = ta::hpi::findMap(probeVfs, rf.mapId);
                 if (mapPath.empty()) {
                     replayFailed("map '" + rf.mapId + "' is not in this game data");
                     if (fromMenu) continue;
@@ -973,9 +973,9 @@ int main(int argc, char** argv) {
             // hashed against None-tier data while its viewer loaded Full -- a mismatch
             // warning about nothing. The outer vfs and pol are now untouched, and
             // everything the replay does -- resolve, hash, construct -- uses this one.
-            auto rpol = tak::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
-            tak::hpi::Vfs rvfs = std::move(probeVfs);   // already mounted at the replay's tier
-            const uint64_t myDataHash = tak::hpi::gameplayHash(rvfs);
+            auto rpol = ta::hpi::OverridePolicy(rf.overridePolicy <= 2 ? rf.overridePolicy : 2);
+            ta::hpi::Vfs rvfs = std::move(probeVfs);   // already mounted at the replay's tier
+            const uint64_t myDataHash = ta::hpi::gameplayHash(rvfs);
             // From the menu, hand the view its OWN mount and leave the outer vfs
             // intact -- the front-end still needs it when playback ends, and the
             // ordinary game launch does exactly this for the same reason.
@@ -1011,13 +1011,13 @@ int main(int argc, char** argv) {
         } else if (mode == "map" && !args.empty() && !dataRoot.empty()) {
             // A "~gen1~" id is a random-map recipe MapView builds in memory; a plain
             // name resolves to a real .tnt in the mounted data.
-            std::string mapPath = tak::mapgen::isGeneratedMapId(args[0])
+            std::string mapPath = ta::mapgen::isGeneratedMapId(args[0])
                                       ? args[0]
-                                      : tak::hpi::findMap(vfs, args[0]);
+                                      : ta::hpi::findMap(vfs, args[0]);
             if (mapPath.empty()) { std::fprintf(stderr, "map '%s' not found\n", args[0].c_str()); return 1; }
             mapView = std::make_unique<MapView>(ren, vfs, mapPath);
         } else if (mode == "game" && !args.empty() && !dataRoot.empty()) {
-            std::string mapPath = tak::hpi::findMap(vfs, args[0]);
+            std::string mapPath = ta::hpi::findMap(vfs, args[0]);
 #ifndef NDEBUG
             // Campaign missions live under missions/, which findMap does not search --
             // it covers Maps/ and kmap/, the skirmish namespaces, and the campaign
@@ -1041,7 +1041,7 @@ int main(int argc, char** argv) {
             // When looping back to the menu, keep this function's vfs alive for the
             // next session (+ its findMap); hand the game its own fresh mount.
             gameView = std::make_unique<GameView>(ren,
-                                                  fromMenu ? tak::hpi::mountRetailRoot(dataRoot, pol) : std::move(vfs),
+                                                  fromMenu ? ta::hpi::mountRetailRoot(dataRoot, pol) : std::move(vfs),
                                                   mapPath, dataRoot, pol, demo,
                                                   scenario, missionFlag,
                                                   navy || amphib || firetest || facetest || mp,
@@ -1060,7 +1060,7 @@ int main(int argc, char** argv) {
                     gameView->setBenchmark(benchmarkLevel);
                     gameView->setBenchmarkServerPid(localServerPid());
                 }
-                if (const char* rp = tak::devEnv("TAK_RESUME")) gameView->setResumePath(rp);
+                if (const char* rp = ta::devEnv("TA_RESUME")) gameView->setResumePath(rp);
             }
             // Never let the window shrink below what the widest build-icon row
             // needs (full-size icons), and grow it now if it opened smaller.
@@ -1119,10 +1119,10 @@ int main(int argc, char** argv) {
     bool keytestSelectOnly = selonly;
 
     // Headless multiplayer test driver: auto-run the lobby + game loop against
-    // takserver and print periodic hashes. Proves the server-sequenced lockstep
+    // taserver and print periodic hashes. Proves the server-sequenced lockstep
     // end to end without any SDL UI. (--mphost creates+starts, --mpjoin joins.)
     // Headless replay verify: play the whole recording and print the final hash.
-    if (gameView && gameView->replayMode() && tak::devEnv("TAK_REPLAY_VERIFY")) {
+    if (gameView && gameView->replayMode() && ta::devEnv("TA_REPLAY_VERIFY")) {
         while (gameView->replayTick() < gameView->replayLength())
             gameView->replayStep(10.0f);   // guard caps to 64 ticks/call
         // PIN THE SNAPSHOT FIRST. captureFrame alternates buffers without moving
@@ -1148,18 +1148,18 @@ int main(int argc, char** argv) {
     if (gameView && mp && mpHeadless) {
         std::string mapId = std::filesystem::path(args[0]).stem().string();
         // The harness runs the sim INLINE (single-threaded == deterministic + reproducible)
-        // unless TAK_SIM_THREAD asks to verify the threaded sim against the referee.
-        gameView->setSimThreadMode(tak::devEnv("TAK_SIM_THREAD") != nullptr);
+        // unless TA_SIM_THREAD asks to verify the threaded sim against the referee.
+        gameView->setSimThreadMode(ta::devEnv("TA_SIM_THREAD") != nullptr);
         if (mpHeadless == 8) gameView->setMissionStem(missionStem);
         int limitTicks = int((startTime > 0 ? startTime : 60) * 30);
         // Jitter benchmark: run the client loop at a FIXED 60 fps (so the stall
         // metric is frame-rate-consistent) and enable the RTT probe. Otherwise the
         // usual tight poll loop.
-        bool bench = tak::devEnv("TAK_NETBENCH") != nullptr;
+        bool bench = ta::devEnv("TA_NETBENCH") != nullptr;
         if (bench) gameView->netEnableRttProbe();
         while (true) {
             // Pin the snapshot for the iteration (mirrors the interactive render loop), so
-            // cosmeticStep's front() reads can't tear against the worker under TAK_SIM_THREAD.
+            // cosmeticStep's front() reads can't tear against the worker under TA_SIM_THREAD.
             gameView->beginFrame();
             bool cont = gameView->mpAutoStep(mpHeadless, mapId, crusades);
             gameView->endFrame();
@@ -1203,15 +1203,15 @@ int main(int argc, char** argv) {
         return gameView->netError().empty() ? 0 : 1;
     }
 
-    // Lobby driver for THIS session (TAK_MPAUTO overrides mpAutoMode). Computed once
+    // Lobby driver for THIS session (TA_MPAUTO overrides mpAutoMode). Computed once
     // per session -- NOT a function-static, which would freeze it at the first game's
     // value and break re-entry (e.g. a Benchmark launched after any earlier game would
     // inherit that game's mode and just sit in the lobby instead of auto-hosting).
-    const int autoOv = tak::devEnv("TAK_MPAUTO")
-                           ? std::atoi(tak::devEnv("TAK_MPAUTO")) : mpAutoMode;
+    const int autoOv = ta::devEnv("TA_MPAUTO")
+                           ? std::atoi(ta::devEnv("TA_MPAUTO")) : mpAutoMode;
     uint64_t last = SDL_GetPerformanceCounter();
     while (running) {
-        if (tak::termRequested()) { running = false; quitApp = true; break; }
+        if (ta::termRequested()) { running = false; quitApp = true; break; }
         // Pin the newest published sim snapshot for this whole iteration -- input handlers
         // (below) AND the render pass (further down) read front(), so the pin must span both
         // so a concurrent publish from the sim worker (Stage B) can't tear them. Released by
@@ -1239,7 +1239,7 @@ int main(int argc, char** argv) {
             if (!gameView && e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_s) {
                 int sw, sh;
                 SDL_GetRendererOutputSize(ren, &sw, &sh);
-                screenshot(ren, sw, sh, "takclient_shot.png");
+                screenshot(ren, sw, sh, "taclient_shot.png");
             }
             int ww, wh;
             SDL_GetRendererOutputSize(ren, &ww, &wh);
@@ -1274,8 +1274,8 @@ int main(int argc, char** argv) {
             fpsAcc += dt; ++fpsFrames;
             if (fpsAcc >= 0.25f) {
                 char title[64];
-                std::snprintf(title, sizeof title, "takclient %s  |  %.0f fps",
-                              tak::kVersion, float(fpsFrames) / fpsAcc);
+                std::snprintf(title, sizeof title, "taclient %s  |  %.0f fps",
+                              ta::kVersion, float(fpsFrames) / fpsAcc);
                 SDL_SetWindowTitle(win, title);
                 fpsAcc = 0; fpsFrames = 0;
             }
@@ -1413,10 +1413,10 @@ int main(int argc, char** argv) {
         if (aaOn) { SDL_SetRenderTarget(ren, aaTex); SDL_RenderSetScale(ren, aaS, aaS); }
         SDL_SetRenderDrawColor(ren, 18, 18, 26, 255);
         SDL_RenderClear(ren);
-        // Optional per-phase profiler (TAK_PROF=1): prints where each frame's
+        // Optional per-phase profiler (TA_PROF=1): prints where each frame's
         // wall-clock goes, once a second, so a stall can be localised on real
         // hardware that the headless software renderer can't show.
-        static const bool prof = tak::devEnv("TAK_PROF") != nullptr;
+        static const bool prof = ta::devEnv("TA_PROF") != nullptr;
         static double pUpd = 0, pDraw = 0, pPres = 0, pAcc = 0;
         static int pFrames = 0;
         auto pnow = [] { return double(SDL_GetPerformanceCounter()) /
@@ -1440,14 +1440,14 @@ int main(int argc, char** argv) {
             if (benchFrozen) {
                 // frozen -- fall through to draw() so the overlay still renders
             } else if (gameView->replayMode()) {
-                gameView->replayStep(dt);   // play back a recorded .takrep
+                gameView->replayStep(dt);   // play back a recorded .tarep
             } else if (gameView->isNet()) {
                 // Server-sequenced lockstep: one mpAutoStep pumps the connection,
                 // advances the lobby (auto-matchmaking for now -- a lobby UI is
                 // follow-on), and simulates every delivered tick. (void)netAccum.
                 (void)netAccum;
                 // autoOv (computed once per session above) drives the lobby: 0 =
-                // UI-driven, 1 = auto-host, etc. TAK_MPAUTO can override it.
+                // UI-driven, 1 = auto-host, etc. TA_MPAUTO can override it.
                 gameView->mpAutoStep(autoOv, serverMapId, crusades);
             } else {
                 gameView->update(dt);
@@ -1500,7 +1500,7 @@ int main(int argc, char** argv) {
             // and then report t4-t1 as "draw" -- which swallowed the whole gameplay
             // update. So a stall in the sim showed up as unattributed time inside
             // "draw", and I went looking for it in the renderer. It was the fog pass.
-            static const bool spikes = tak::devEnv("TAK_SPIKES") != nullptr;
+            static const bool spikes = ta::devEnv("TA_SPIKES") != nullptr;
             if (spikes) {
                 const double total = t5 - t0;
                 // NOT a median -- an asymmetric EMA of recent frame times (rises slowly,
@@ -1607,8 +1607,8 @@ int main(int argc, char** argv) {
         if (!shot.empty()) {
             // Render a few frames so lazy content settles, then capture. For content
             // that settles asynchronously (a network spectator building its world),
-            // TAK_SHOT_MS waits that many wall-clock ms before capturing instead.
-            static const char* shotMsEnv = tak::devEnv("TAK_SHOT_MS");
+            // TA_SHOT_MS waits that many wall-clock ms before capturing instead.
+            static const char* shotMsEnv = ta::devEnv("TA_SHOT_MS");
             static uint64_t shotT0 = SDL_GetTicks64();
             static int frames = 0;
             bool ready = shotMsEnv ? (SDL_GetTicks64() - shotT0 >= uint64_t(std::atoi(shotMsEnv)))
@@ -1623,14 +1623,14 @@ int main(int argc, char** argv) {
                 else if (mapView) mapView->finishChunks();
                 if (!shotArmed) {
                     shotArmed = true;
-                    // TAK_SHOT_PRESS=<SDL key name> taps one key before the capture, so
+                    // TA_SHOT_PRESS=<SDL key name> taps one key before the capture, so
                     // a harness run can shoot an overlay (Unit Info, the F4 scoreboard)
                     // instead of only the plain game view.
-                    // TAK_SHOT_CLICKS="x,y;x,y" taps those points, one per armed pass,
+                    // TA_SHOT_CLICKS="x,y;x,y" taps those points, one per armed pass,
                     // before the capture -- enough to walk a menu into the state worth
                     // photographing (the lobby's map picker needs two clicks).
                     static size_t clickIdx = 0;
-                    if (const char* cl = tak::devEnv("TAK_SHOT_CLICKS")) {
+                    if (const char* cl = ta::devEnv("TA_SHOT_CLICKS")) {
                         std::vector<std::pair<int, int>> pts;
                         std::string acc(cl);
                         size_t p0 = 0;
@@ -1660,20 +1660,20 @@ int main(int argc, char** argv) {
                     }
                     static bool pressSent = false;
 #ifndef NDEBUG
-                    // TAK_SHOT_TRAIL=1 queues a short move chain on one owned unit so
+                    // TA_SHOT_TRAIL=1 queues a short move chain on one owned unit so
                     // the order line has something to draw. The orders have to round-trip
                     // through the server and come back in a bundle before they show up in
                     // a render snapshot, so hold the capture for a good number of passes:
                     // 30 was not enough and produced an empty picture that looked exactly
                     // like a broken feature.
                     static int trailWait = -1;
-                    if (tak::devEnv("TAK_SHOT_TRAIL") && gameView && trailWait != 0) {
+                    if (ta::devEnv("TA_SHOT_TRAIL") && gameView && trailWait != 0) {
                         if (trailWait < 0) trailWait = gameView->debugQueueDemo() ? 120 : 0;
                         else --trailWait;
                         if (trailWait > 0) shotArmed = false;
                     }
 #endif
-                    if (const char* kn = tak::devEnv("TAK_SHOT_PRESS"); kn && !pressSent) {
+                    if (const char* kn = ta::devEnv("TA_SHOT_PRESS"); kn && !pressSent) {
                         pressSent = true;
                         // Accepts "ctrl+a" / "shift+f1" / "ctrl+shift+d" as well as a
                         // bare key name: every SELECTION hotkey is Ctrl-modified, so
@@ -1703,7 +1703,7 @@ int main(int argc, char** argv) {
                     }
                 } else {
 #ifndef NDEBUG
-                    // TAK_SHOT_SIZES="WxH;WxH;..." captures the SAME running session at
+                    // TA_SHOT_SIZES="WxH;WxH;..." captures the SAME running session at
                     // each size in turn, resizing the live window between captures. That
                     // is deliberately not the same test as launching once per size with
                     // --winsize: it is the only way to exercise a LIVE resize, where any
@@ -1711,7 +1711,7 @@ int main(int argc, char** argv) {
                     // the old size. Output goes to <shot-stem>.WxH.png.
                     static std::vector<std::pair<int, int>> shotSizes = [] {
                         std::vector<std::pair<int, int>> v;
-                        if (const char* e = tak::devEnv("TAK_SHOT_SIZES")) {
+                        if (const char* e = ta::devEnv("TA_SHOT_SIZES")) {
                             std::string acc(e);
                             size_t p0 = 0;
                             while (p0 <= acc.size()) {
@@ -1765,11 +1765,11 @@ int main(int argc, char** argv) {
         int oc = gameView->missionOutcomePublic();
         std::string title = "MISSION", nextStem;
         bool finalMission = false;
-        for (const auto& c : tak::loadCampaigns(vfs)) {
+        for (const auto& c : ta::loadCampaigns(vfs)) {
             if (c.id != campaignId) continue;
             int completedIdx = -1;   // which slot was just beaten (kAltMission for the alt branch)
             if (campaignStem == c.altFinal) {   // terminal alt branch
-                title = "ALT ENDING"; finalMission = true; completedIdx = tak::kAltMission;
+                title = "ALT ENDING"; finalMission = true; completedIdx = ta::kAltMission;
             } else for (int i = 0; i < c.count(); ++i)
                 if (c.missions[size_t(i)].stem == campaignStem) {
                     title = "MISSION " + std::to_string(i + 1);
@@ -1785,7 +1785,7 @@ int main(int argc, char** argv) {
                 saveSettings(settings);
             break;
         }
-        tak::ResultStats st = gameView->resultStats();   // read before the sim is freed
+        ta::ResultStats st = gameView->resultStats();   // read before the sim is freed
         // gameView BEFORE mp: ~GameView saves the replay, which reads the net client.
         killLocalServer(); gameView.reset(); mp.reset();   // free the mission before the movie/modal
         if (oc > 0) {
@@ -1793,17 +1793,17 @@ int main(int argc, char** argv) {
             // one after Book of Darien mission 24), then the campaign's ending credits
             // after its final mission. Each is a no-op if the movie isn't present.
             menuMusic.setVolume(0, 0);
-            tak::MainMenu::playIntro(ren, dataRoot, ("post" + campaignStem + ".bik").c_str());
+            ta::MainMenu::playIntro(ren, dataRoot, ("post" + campaignStem + ".bik").c_str());
             if (finalMission)
-                tak::MainMenu::playIntro(ren, dataRoot,
+                ta::MainMenu::playIntro(ren, dataRoot,
                                          campaignId == "book of darien" ? "posttakcredits.bik" : "credits.bik");
             menuMusic.setVolume(settings.masterVol, settings.bgmVol);
         }
-        tak::ResultChoice rc = tak::ResultScreen::run(ren, vfs, oc > 0, title,
+        ta::ResultChoice rc = ta::ResultScreen::run(ren, vfs, oc > 0, title,
                                                       oc > 0 && !nextStem.empty(), &settings,
                                                       &menuMusic, &st);
-        if (rc == tak::ResultChoice::Next)       { pendingCampaign = nextStem;     pendingCampaignId = campaignId; }
-        else if (rc == tak::ResultChoice::Retry) { pendingCampaign = campaignStem; pendingCampaignId = campaignId; }
+        if (rc == ta::ResultChoice::Next)       { pendingCampaign = nextStem;     pendingCampaignId = campaignId; }
+        else if (rc == ta::ResultChoice::Retry) { pendingCampaign = campaignStem; pendingCampaignId = campaignId; }
         // Menu -> pendingCampaign stays empty -> the outer loop re-shows the front-end.
     } else if (campaignStem.empty() && gameView && !quitApp && fromMenu &&
                gameView->outcomePublic() != 0) {
@@ -1811,9 +1811,9 @@ int main(int argc, char** argv) {
         // with the match's statistics table. No next mission and nothing to retry,
         // so both buttons come back to the front end.
         int oc = gameView->outcomePublic();
-        tak::ResultStats st = gameView->resultStats();
+        ta::ResultStats st = gameView->resultStats();
         killLocalServer(); gameView.reset(); mp.reset();   // view first: it saves the replay
-        tak::ResultScreen::run(ren, vfs, oc > 0, "", false, &settings, &menuMusic, &st);
+        ta::ResultScreen::run(ren, vfs, oc > 0, "", false, &settings, &menuMusic, &st);
     }
     // Session ended: tear down any single-player local server, then either loop back
     // to the menu or exit the app.

@@ -1,4 +1,4 @@
-// replay_test -- the .takrep header round-trips, and the loader refuses what it
+// replay_test -- the .tarep header round-trips, and the loader refuses what it
 // cannot faithfully replay.
 //
 // Reviewed complaint, all of it true of the old format: the loader "accepts
@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak::net;
+using namespace ta::net;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what, const std::string& detail = {}) {

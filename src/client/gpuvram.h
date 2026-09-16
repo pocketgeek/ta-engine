@@ -4,7 +4,7 @@
 // NONE of this is folded into World::stateHash() -- it is pure display state, so the
 // deterministic lockstep sim is untouched (the headless referee never builds a GameView).
 //
-// Purpose: bound takclient's texture VRAM so a big scene (e.g. a 4K 40k-unit battle) can
+// Purpose: bound taclient's texture VRAM so a big scene (e.g. a 4K 40k-unit battle) can
 // never exhaust the GPU and trigger the NVKMS "Failed to allocate" storm that starves the
 // Wayland compositor (whole-screen flicker) and stalls present (frozen screen).
 //

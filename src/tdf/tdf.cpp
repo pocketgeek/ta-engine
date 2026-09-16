@@ -6,7 +6,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace tak::tdf {
+namespace ta::tdf {
 
 namespace {
 
@@ -176,4 +176,4 @@ Node parse(const std::filesystem::path& file) {
     return parseText(ss.str(), file.string());
 }
 
-} // namespace tak::tdf
+} // namespace ta::tdf

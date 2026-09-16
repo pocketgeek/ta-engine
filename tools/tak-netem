@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# tak-netem -- the ONLY privileged operation the test harness needs on a server host.
+# ta-netem -- the ONLY privileged operation the test harness needs on a server host.
 #
-# Install root-owned at /usr/local/sbin/tak-netem and grant exactly this one command in
+# Install root-owned at /usr/local/sbin/ta-netem and grant exactly this one command in
 # sudoers. Granting `tc` itself would hand over every traffic-control operation on every
 # interface; this restricts it to: shape the game ports on one interface, clear, show.
 #
-#   sudo tak-netem apply <rtt_ms> <jitter_ms> [loss_pct]
-#   sudo tak-netem clear
-#        tak-netem show                 # no privilege needed
+#   sudo ta-netem apply <rtt_ms> <jitter_ms> [loss_pct]
+#   sudo ta-netem clear
+#        ta-netem show                 # no privilege needed
 #
 # WHY A PORT FILTER AND NOT THE ROOT QDISC. `tc qdisc add dev ens18 root netem delay
 # 100ms` delays EVERYTHING, including the ssh session being used to run it -- which
@@ -24,14 +24,14 @@
 # Re-applying restarts the clock; `clear` cancels it.
 set -u
 
-IFACE="${TAK_NETEM_IFACE:-ens18}"
-PORT_LO="${TAK_NETEM_PORT_LO:-7890}"
-PORT_HI="${TAK_NETEM_PORT_HI:-7960}"
-AUTO_REVERT="${TAK_NETEM_REVERT:-900}"     # seconds
+IFACE="${TA_NETEM_IFACE:-ens18}"
+PORT_LO="${TA_NETEM_PORT_LO:-7890}"
+PORT_HI="${TA_NETEM_PORT_HI:-7960}"
+AUTO_REVERT="${TA_NETEM_REVERT:-900}"     # seconds
 TC=/usr/sbin/tc
-STAMP=/run/tak-netem.active
+STAMP=/run/ta-netem.active
 
-die() { echo "tak-netem: $*" >&2; exit 2; }
+die() { echo "ta-netem: $*" >&2; exit 2; }
 num() { case "$1" in ''|*[!0-9.]*) die "not a number: $1";; esac; }
 
 case "${1:-}" in
@@ -42,13 +42,13 @@ case "${1:-}" in
       [ "$(id -u)" = 0 ] || die "must run as root (use sudo)"
       $TC qdisc del dev "$IFACE" root 2>/dev/null
       rm -f "$STAMP"
-      echo "tak-netem: cleared on $IFACE"
+      echo "ta-netem: cleared on $IFACE"
       exit 0
       ;;
   apply)
       [ "$(id -u)" = 0 ] || die "must run as root (use sudo)"
       rtt="${2:-}"; jit="${3:-0}"; loss="${4:-0}"
-      [ -n "$rtt" ] || die "usage: tak-netem apply <rtt_ms> <jitter_ms> [loss_pct]"
+      [ -n "$rtt" ] || die "usage: ta-netem apply <rtt_ms> <jitter_ms> [loss_pct]"
       num "$rtt"; num "$jit"; num "$loss"
       # Half the round trip in each direction would need shaping on both hosts; we only
       # control this one, so the full figure is applied here and the other direction is
@@ -81,11 +81,11 @@ case "${1:-}" in
         [ "$(cat "$STAMP" 2>/dev/null)" = "$mine" ] || exit 0
         $TC qdisc del dev "$IFACE" root 2>/dev/null; rm -f "$STAMP"
       ) >/dev/null 2>&1 &
-      echo "tak-netem: $IFACE ports $PORT_LO-$PORT_HI: ${rtt}ms jitter ${jit}ms loss ${loss}% (egress only; reverts in ${AUTO_REVERT}s)"
+      echo "ta-netem: $IFACE ports $PORT_LO-$PORT_HI: ${rtt}ms jitter ${jit}ms loss ${loss}% (egress only; reverts in ${AUTO_REVERT}s)"
       exit 0
       ;;
   *)
-      echo "usage: tak-netem apply <rtt_ms> <jitter_ms> [loss_pct] | clear | show" >&2
+      echo "usage: ta-netem apply <rtt_ms> <jitter_ms> [loss_pct] | clear | show" >&2
       exit 2
       ;;
 esac

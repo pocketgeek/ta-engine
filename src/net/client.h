@@ -1,7 +1,7 @@
 #pragma once
 
 // Client-side handler for the multiplayer protocol (docs/multiplayer-design.md).
-// Owns the connection to takserver and the lobby/in-game state. The viewer polls
+// Owns the connection to taserver and the lobby/in-game state. The viewer polls
 // it, reads the lobby view for its UI, and in game pulls one TickBundle per tick.
 // This class does protocol only -- it never touches the sim; the viewer applies
 // the bundle's commands and advances the World.
@@ -19,7 +19,7 @@
 #include "net/protocol.h"
 #include "net/replayhdr.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // The commands + sequenced events the server assigned to one tick.
 struct Bundle {
@@ -134,7 +134,7 @@ public:
     //
     // Every TickBundle payload this client received, in tick order, byte-for-byte as
     // the server broadcast it -- which is the SAME buffer the server appends to its
-    // own replay log, so a client-written .takrep is identical to a server-written
+    // own replay log, so a client-written .tarep is identical to a server-written
     // one. Filled only while recording (see startRecording).
     //
     // A rejoining client is sent the whole backlog before the live stream, and a
@@ -249,14 +249,14 @@ private:
     std::atomic<bool> deriveDone_{false};
     auth::Keys keys_;
 
-    // Artificial receive jitter for testing (TAK_NET_JITTER_MS): hold each bundle
+    // Artificial receive jitter for testing (TA_NET_JITTER_MS): hold each bundle
     // then release it after a random 0..N ms delay, modelling uneven server->client
     // delivery. Test-only; does not touch command/sim state.
     struct HeldBundle { uint64_t releaseMs; uint32_t tick; Bundle bd; };
     std::vector<HeldBundle> jitterHeld_;
     int jitterMs_ = -1;                 // <0 = read env once; then 0 = off
-    int baseMs_ = 0;                    // TAK_NET_BASE_MS: constant one-way delay
-    int lossPct_ = 0;                   // TAK_NET_LOSS_PCT: retransmit-spike probability
+    int baseMs_ = 0;                    // TA_NET_BASE_MS: constant one-way delay
+    int lossPct_ = 0;                   // TA_NET_LOSS_PCT: retransmit-spike probability
     uint32_t rng_ = 0x2545F491u;        // xorshift (non-sim, non-determinism OK)
     uint32_t xorshift() { rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5; return rng_; }
     // Modelled one-way receive delay for a message: base + uniform jitter, plus an
@@ -291,4 +291,4 @@ public:
 private:
 };
 
-}  // namespace tak::net
+}  // namespace ta::net

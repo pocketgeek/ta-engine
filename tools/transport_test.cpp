@@ -36,8 +36,8 @@
 #include <cstdio>
 #include <vector>
 
-using tak::sim::UnitType;
-using tak::sim::World;
+using ta::sim::UnitType;
+using ta::sim::World;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what) {
@@ -104,11 +104,11 @@ static void openGround() {
     const float dropX = 600, dropZ = 600;
     w.unloadAt(tid, dropX, dropZ);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2, "an out-of-range drop queues an approach plus the unload");
     if (t->orders.size() == 2) {
-        const tak::sim::Order& leg = t->orders[0];
-        const tak::sim::Order& un = t->orders[1];
+        const ta::sim::Order& leg = t->orders[0];
+        const ta::sim::Order& un = t->orders[1];
         // The leg replaceLeg() would rebuild is the FIRST order flagged `goal`. It must
         // be the approach, never the unload -- see hazard TWO in the header.
         check(leg.goal && !leg.unload, "the routable leg is the approach, not the unload");
@@ -127,7 +127,7 @@ static void openGround() {
     const bool done = runUntilUnloaded(w, tid);
     check(done, "the transport sails to the drop point and disembarks");
     if (done) {
-        const tak::sim::Unit* c = w.unit(cid);
+        const ta::sim::Unit* c = w.unit(cid);
         check(c->inTransport == 0, "the cargo unit is off the transport");
         const float dx = c->x - dropX, dz = c->z - dropZ;
         check(std::sqrt(dx * dx + dz * dz) < 250,
@@ -155,7 +155,7 @@ static void alreadyInRange() {
 
     // 100px away -- inside kRange, so there is nothing to approach.
     w.unloadAt(tid, 600, 500);
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 1 && t->orders[0].unload,
           "a drop point already in range queues the unload alone, no approach");
 
@@ -205,10 +205,10 @@ static void coastline() {
     const float dropX = shoreX + 64, dropZ = 300;        // on land, 64px past the shore
     w.unloadAt(tid, dropX, dropZ);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2, "a coastal drop still queues an approach plus the unload");
     if (t->orders.size() == 2) {
-        const tak::sim::Order& leg = t->orders[0];
+        const ta::sim::Order& leg = t->orders[0];
         // The approach must be WATER -- somewhere this boat can actually be. Aiming it
         // at the drop point is the regression this case exists for.
         check(leg.x < shoreX, "the approach point is on water, not the land drop point");
@@ -225,8 +225,8 @@ static void coastline() {
     const bool done = runUntilUnloaded(w, tid);
     check(done, "the transport crosses the water, reaches the shore and disembarks");
     if (done) {
-        const tak::sim::Unit* c = w.unit(cid);
-        const tak::sim::Unit* tr = w.unit(tid);
+        const ta::sim::Unit* c = w.unit(cid);
+        const ta::sim::Unit* tr = w.unit(tid);
         check(c->inTransport == 0, "the cargo unit is off the transport");
         check(c->x >= shoreX, "the cargo is put down on LAND, not in the water");
         check(tr->x < shoreX, "the transport itself stayed in its own domain");
@@ -257,7 +257,7 @@ static void farInland() {
 
     // 900px inland: no water cell is within kRange of it.
     w.unloadAt(tid, 1300, 300);
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     // An approach leg here could only be unreachable, which is strictly worse than
     // none: with none the boat sails at the drop point and the range check governs,
     // which is exactly what the old code did by accident.
@@ -297,7 +297,7 @@ static void retargetWithPendingRoute() {
     // that no approach is needed, which is precisely the case that re-requests nothing.
     w.unloadAt(tid, 220, 200);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 1 && t->orders[0].unload,
           "the new order list is the bare unload");
 
@@ -305,7 +305,7 @@ static void retargetWithPendingRoute() {
     bool stillUnloading = true;
     for (int i = 0; i < 120 && stillUnloading; ++i) {
         w.tick(1.0f / 30.0f);
-        const tak::sim::Unit* u = w.unit(tid);
+        const ta::sim::Unit* u = w.unit(tid);
         if (u->cargo.empty()) break;                       // unloaded: fine
         stillUnloading = !u->orders.empty() && u->orders.back().unload;
     }
@@ -349,10 +349,10 @@ static void isolatedPond() {
     const float shoreX = float(shoreCell) * 16;           // 400
     w.unloadAt(tid, dropX, dropZ);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2, "a reachable sea cell IS in range, so an approach is queued");
     if (t->orders.size() == 2) {
-        const tak::sim::Order& leg = t->orders[0];
+        const ta::sim::Order& leg = t->orders[0];
         check(leg.x < shoreX,
               "the approach is the open sea the boat can reach, not the nearer pond");
         check(w.pathExists(&boat, leg.x, leg.z, w.unit(tid)->x, w.unit(tid)->z),

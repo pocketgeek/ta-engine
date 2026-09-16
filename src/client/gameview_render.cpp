@@ -128,7 +128,7 @@
             const UnitR& r = *_up;   // this tick's snapshot (front().live mirrors world_.units())
             if ((r.deadFor >= 4.0f && !r.corpsePhase) || r.embarked()) continue;
             if (r.corpsePhase && r.corpseFeat >= 0) {
-                static const bool kCorpLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+                static const bool kCorpLog = ta::devEnv("TA_BURNLOG") != nullptr;
                 static float lastLog = -10;
                 if (kCorpLog && animClock_ >= lastLog + 2.0f) {
                     lastLog = animClock_;
@@ -625,8 +625,8 @@
                     // fireball throws warm light on the ground as it passes.
                     float r = (10.0f + 8.0f * float(p.wsrc->lightMap)) * zm;
                     Uint8 lr = 255, lg = 230, lb = 160;
-                    if (p.fx == tak::sim::WeaponFx::Lightning) { lr = 190; lg = 215; lb = 255; }
-                    else if (p.fx == tak::sim::WeaponFx::Fire) { lr = 255; lg = 160; lb = 70; }
+                    if (p.fx == ta::sim::WeaponFx::Lightning) { lr = 190; lg = 215; lb = 255; }
+                    else if (p.fx == ta::sim::WeaponFx::Fire) { lr = 255; lg = 160; lb = 70; }
                     SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_ADD);
                     for (int ring = 3; ring >= 1; --ring) {
                         float rr = r * float(ring) / 3.0f;
@@ -700,7 +700,7 @@
                     continue;
                 }
             }
-            if (p.fx == tak::sim::WeaponFx::Lightning) {
+            if (p.fx == ta::sim::WeaponFx::Lightning) {
                 // Flat, fast, jagged blue-white bolt from source toward target.
                 float sx = (p.x - mapView_.offX()) * zm - terrainLiftX(p.x, p.z) * zm;
                 float sy = (p.z - mapView_.offY()) * zm - 12 * zm - terrainLift(p.x, p.z) * zm
@@ -719,7 +719,7 @@
                     SDL_RenderDrawLineF(ren_, px, py, nx, ny);
                     px = nx; py = ny;
                 }
-            } else if (p.fx == tak::sim::WeaponFx::Fire) {
+            } else if (p.fx == ta::sim::WeaponFx::Fire) {
                 // Flame breath: a short stream of flickering orange/yellow puffs
                 // trailing behind the leading tip, not a single fireball.
                 float bx = -p.vx, bz = -p.vz;
@@ -937,9 +937,9 @@
             drawOrderTrails(mvw, winH);
 
 #ifndef NDEBUG
-            // TAK_HITBOX=1: outline the box unitUnderCursor actually tests, so a
+            // TA_HITBOX=1: outline the box unitUnderCursor actually tests, so a
             // "I can't click its head" report can be measured instead of guessed at.
-            if (tak::devEnv("TAK_HITBOX")) {
+            if (ta::devEnv("TA_HITBOX")) {
                 for (int selId : selection_) {
                     const UnitR* hp = frameUnitP(selId);
                     if (!hp || !hp->alive() || !hp->type) continue;
@@ -1185,9 +1185,9 @@
             }
         }
         if (mp_ && hudFont_.ok()) {
-            // Dev net-status readout (TAK_NETDEBUG): off by default -- it sat over the
+            // Dev net-status readout (TA_NETDEBUG): off by default -- it sat over the
             // bottom-right mana panel. The BEHIND-BY lag warning below always shows.
-            static const bool kNetDebug = tak::devEnv("TAK_NETDEBUG") != nullptr;
+            static const bool kNetDebug = ta::devEnv("TA_NETDEBUG") != nullptr;
             if (kNetDebug) {
                 char nb[64];
                 std::snprintf(nb, sizeof nb, "NET P%d  TICK %u", localPlayer_ + 1, netTick_);
@@ -1201,7 +1201,7 @@
             // can't keep up, or a link stall is draining faster than it refills.
             // Only shown past 2 s so ordinary jitter never flashes the warning.
             // Escalates amber -> red toward the ~10 s server reconnect threshold.
-            float behindSec = float(mp_->bufferedBundles()) / float(tak::net::kServerHz);
+            float behindSec = float(mp_->bufferedBundles()) / float(ta::net::kServerHz);
             if (behindSec > 2.0f && outcome_ == 0 && !paused_) {
                 char bb[48];
                 std::snprintf(bb, sizeof bb, "BEHIND BY %.1fs", behindSec);
@@ -1393,14 +1393,14 @@
         if (hotkeysScreen_) hotkeysScreen_->render(winW, winH);   // above Options
     }
 
-    const tak::tdo::Model* GameView::ghostModel(const std::string& typeId) {
+    const ta::tdo::Model* GameView::ghostModel(const std::string& typeId) {
         auto it = visuals_.find(typeId);
         if (it != visuals_.end()) return &it->second.model;
         try {
             // meta{} on purpose: a ghost preview has no cached PieceMeta tree, and
             // collect() computes the same answers live for exactly this case. Spelled
             // out rather than left to aggregate initialisation so it reads as intent.
-            visuals_[typeId] = {tak::tdo::load(vread("objects3d/" + typeId + ".3do")), {}};
+            visuals_[typeId] = {ta::tdo::load(vread("objects3d/" + typeId + ".3do")), {}};
             return &visuals_[typeId].model;
         } catch (const std::exception&) {}
         return nullptr;
@@ -1729,7 +1729,7 @@
 
     // Reuses `scratch`: whatever the caller had in it is already consumed.
     void GameView::buildUnitShadow(const UnitR& u, UnitGeom& g,
-                                   const tak::tdo::Object& root, const PieceMeta& meta,
+                                   const ta::tdo::Object& root, const PieceMeta& meta,
                                    const Anim* anim, float facing, float zm,
                                    std::vector<Tri>& scratch) {
         g.shadowVerts.clear();
@@ -1959,7 +1959,7 @@
             shadowsLoaded_ = true;
             const auto* pal = featurePalette("aramon");
             if (pal) try {
-                for (auto& sq : tak::gaf::load(vread("anims/shadows.gaf"), *pal, -1,
+                for (auto& sq : ta::gaf::load(vread("anims/shadows.gaf"), *pal, -1,
                                                "anims/shadows.gaf")) {
                     if (sq.frames.empty() || sq.frames[0].width == 0) continue;
                     auto& fr = sq.frames[0];
@@ -2000,7 +2000,7 @@
         } catch (const std::exception&) {}
     }
 
-    const tak::gaf::Palette* GameView::featurePalette(std::string world) {
+    const ta::gaf::Palette* GameView::featurePalette(std::string world) {
         std::transform(world.begin(), world.end(), world.begin(), ::tolower);
         auto it = featurePals_.find(world);
         if (it != featurePals_.end()) return &it->second;
@@ -2010,7 +2010,7 @@
             try {
                 std::string pp = "palettes/" + cand;
                 return &featurePals_
-                            .emplace(world, tak::gaf::Palette::fromBytes(vread(pp), pp))
+                            .emplace(world, ta::gaf::Palette::fromBytes(vread(pp), pp))
                             .first->second;
             } catch (const std::exception&) {}
         }
@@ -2053,7 +2053,7 @@
         SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
     }
 
-    GameView::FeatArt* GameView::featureArtFor(const tak::tdf::Node& def,
+    GameView::FeatArt* GameView::featureArtFor(const ta::tdf::Node& def,
                                                const char* seqKey, const char* shadKey) {
         std::string file = def.valueOr("filename", "");
         std::string seq = def.valueOr(seqKey, "");
@@ -2074,7 +2074,7 @@
                         if (std::tolower(x[i]) != std::tolower(y[i])) return false;
                     return true;
                 };
-                for (auto& sq : tak::gaf::load(vread("anims/" + f + ".gaf"), *pal, -1,
+                for (auto& sq : ta::gaf::load(vread("anims/" + f + ".gaf"), *pal, -1,
                                                "anims/" + f + ".gaf")) {
                     if (sq.frames.empty() || sq.frames[0].width == 0) continue;
                     auto& fr = sq.frames[0];
@@ -2248,7 +2248,7 @@
                 if (di != featureDefs_.end())
                     fi.burnArt = featureArtFor(di->second, "seqnameburn",
                                                "seqnameburnshad");
-                static const bool kBurnLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+                static const bool kBurnLog = ta::devEnv("TA_BURNLOG") != nullptr;
                 if (kBurnLog)
                     std::fprintf(stderr, "burn-vis %s art=%d\n", fi.name.c_str(),
                                  fi.burnArt && fi.burnArt->tex ? 1 : 0);
@@ -2359,7 +2359,7 @@
         // surf rim; some maps have zero). Generated maps have no author, so
         // scatter them retail-style here. Display only: addFeature is a render
         // instance with no nav/mana/sim effect (nav blocking lives in the sim).
-        if (!tak::mapgen::isGeneratedMapId(mapPath_)) return;   // authored maps ship their own
+        if (!ta::mapgen::isGeneratedMapId(mapPath_)) return;   // authored maps ship their own
         const auto& map = mapView_.map();
         const int W = map.width, H = map.height, sea = map.seaLevel;
         if (W <= 0 || H <= 0 || map.heights.size() < size_t(W) * H) return;
@@ -2463,8 +2463,8 @@
             // works for a mobile conjurer (a beast tamer): the sim spawns each new
             // unit beside the producer and re-queues, no manual placement needed.
             if (lmb && ctrl && !shift) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::RepeatTrain;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::RepeatTrain;
                 c.unitId = b->id;
                 std::snprintf(c.type, sizeof c.type, "%s", bt->id.c_str());
                 issue(c);
@@ -2474,10 +2474,10 @@
                 if (lmb) placing_ = bt;   // manual placement (buildings / mobile conjurers)
                 return true;
             }
-            tak::net::Command c;
+            ta::net::Command c;
             c.unitId = b->id;
             std::snprintf(c.type, sizeof c.type, "%s", bt->id.c_str());
-            c.kind = lmb ? tak::net::Cmd::Train : tak::net::Cmd::Unqueue;
+            c.kind = lmb ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
             c.targetId = (ctrl && shift) ? 10 : shift ? 5 : 1;
             issue(c);
             return true;
@@ -2490,7 +2490,7 @@
         if (it != icons_.end()) return it->second;
         SDL_Texture* tex = nullptr;
         try {
-            auto img = tak::jpeg::load(vread("anims/buildpic/" + typeId + ".jpg"));
+            auto img = ta::jpeg::load(vread("anims/buildpic/" + typeId + ".jpg"));
             tex = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
                                     SDL_TEXTUREACCESS_STATIC, img.width, img.height);
             SDL_UpdateTexture(tex, nullptr, img.rgba.data(), img.width * 4);
@@ -2763,8 +2763,8 @@
             if (!ea.frames.empty()) break;
             try {
                 std::string ap = "anims/" + file + suf;
-                auto seqs = tak::gaf::load(vread(ap), pal ? *pal : tak::gaf::Palette{}, -1, ap);
-                const tak::gaf::Sequence* seq = nullptr;
+                auto seqs = ta::gaf::load(vread(ap), pal ? *pal : ta::gaf::Palette{}, -1, ap);
+                const ta::gaf::Sequence* seq = nullptr;
                 for (auto& s : seqs) {
                     if (s.frames.empty()) continue;
                     if (!seq) seq = &s;
@@ -2881,7 +2881,7 @@
     }
 
     void GameView::updateParticles(float dt) {
-        static const bool kLog = tak::devEnv("TAK_FXLOG") != nullptr;
+        static const bool kLog = ta::devEnv("TA_FXLOG") != nullptr;
         if (kLog && !particles_.empty()) {
             static size_t peak = 0;
             if (particles_.size() > peak) {
@@ -2969,7 +2969,7 @@
         // call the waypoint rings already make.
         if (kSpacing * zm < 10.0f) return;
         const int scale = std::clamp(int(zm + 0.5f), 1, 3);
-        const size_t frames = std::max<size_t>(1, cursors_.frameCount(tak::CursorId::PathIcon));
+        const size_t frames = std::max<size_t>(1, cursors_.frameCount(ta::CursorId::PathIcon));
         // Retail shows the order line only while SHIFT is physically held -- the
         // whole overlay pass is behind a GetAsyncKeyState(VK_SHIFT) test at
         // 0x4fcc46. The beads are the part that reads as clutter when a big
@@ -3009,7 +3009,7 @@
                             float sy = (wz - mapView_.offY()) * zm - terrainLift(wx, wz) * zm;
                             if (sx < -16 || sx > float(mvw) + 16 || sy < -16 || sy > float(winH) + 16)
                                 continue;
-                            cursors_.drawFrame(ren_, tak::CursorId::PathIcon,
+                            cursors_.drawFrame(ren_, ta::CursorId::PathIcon,
                                                size_t(bead) % frames, int(sx), int(sy), scale);
                         }
                     }
@@ -3021,16 +3021,16 @@
                 // it is going, patrol shows CursorPatrol, attack CursorAttack, and
                 // so on. We drew a small green ring instead, which is nothing
                 // retail ever put on the map.
-                tak::CursorId marker = tak::CursorId::Move;
+                ta::CursorId marker = ta::CursorId::Move;
                 bool haveMarker = true;
                 if (o.buildType)            haveMarker = false;   // the site ghost says it
-                else if (o.reclaimFeat)     marker = tak::CursorId::Reclaim;
-                else if (o.repairTarget)    marker = tak::CursorId::Repair;
-                else if (o.load)            marker = tak::CursorId::Load;
-                else if (o.unload)          marker = tak::CursorId::Unload;
-                else if (o.guard)           marker = tak::CursorId::Defend;
-                else if (o.targetId)        marker = tak::CursorId::Attack;
-                else if (o.patrol)          marker = tak::CursorId::Patrol;
+                else if (o.reclaimFeat)     marker = ta::CursorId::Reclaim;
+                else if (o.repairTarget)    marker = ta::CursorId::Repair;
+                else if (o.load)            marker = ta::CursorId::Load;
+                else if (o.unload)          marker = ta::CursorId::Unload;
+                else if (o.guard)           marker = ta::CursorId::Defend;
+                else if (o.targetId)        marker = ta::CursorId::Attack;
+                else if (o.patrol)          marker = ta::CursorId::Patrol;
                 if (haveMarker) {
                     // Draw the marker where the PLAYER CLICKED, not where the
                     // unit will end up. order() snaps a destination the unit

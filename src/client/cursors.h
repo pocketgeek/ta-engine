@@ -14,7 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 struct Settings;   // client/settings.h -- only a pointer is needed here
 
@@ -134,4 +134,4 @@ private:
     static constexpr int kFps = 15;    // retail cursor cadence (KINGDOMS.icd frame delta)
 };
 
-}  // namespace tak
+}  // namespace ta

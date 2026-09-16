@@ -25,7 +25,7 @@ AND deletes flyHalfTurn together. The two are coupled: −h is only correct once
 
 **Method that finally worked** (by-eye screenshots failed repeatedly): (1) for facing, tint front pieces red /
 back pieces blue in `collect()`, render moving east, compare red vs blue centroid-x automatically; (2) for the
-X-sign, the *user* judged it live — a runtime `TAK_NEGX` toggle let them confirm the walk stayed correct and
+X-sign, the *user* judged it live — a runtime `TA_NEGX` toggle let them confirm the walk stayed correct and
 the flyer went belly-down. Verified across nine flyers of all five factions. The rest-pose `modeltool obj`
 oracle does NOT predict airborne facing (the fly pose re-orients the body).
 
@@ -40,7 +40,7 @@ x-turns; the standing oracle is weakened"), and it was ignored.
 
 **The decisive method that finally worked** (after screenshots-by-eye repeatedly misled, because a valkyrie's
 head vs feet are unreadable at game zoom): render the flyer moving east with FRONT pieces tinted bright red
-and BACK/feet pieces tinted blue (`TAK_TINT` throwaway in `collect()`), then compute the red-centroid-x vs
+and BACK/feet pieces tinted blue (`TA_TINT` throwaway in `collect()`), then compute the red-centroid-x vs
 blue-centroid-x automatically. front_x > back_x ⇒ head leads the movement ⇒ forward. Measured per flyer,
 both facings:
 
@@ -55,7 +55,7 @@ both facings:
 `flyHalfTurnOf` matched the empirical answer on all four measurable flyers. So it was reverted (`git revert
 c0ab21a`) and kept. **Lesson: for flyer facing, the rest-pose front/back is NOT the airborne front/back;
 validate against the actual `fly`-pose render (the red/blue centroid method), not static geometry, and never
-against a single by-eye screenshot.** The `TAK_NO_HALFTURN` dev gate remains (default off = flyHalfTurn on).
+against a single by-eye screenshot.** The `TA_NO_HALFTURN` dev gate remains (default off = flyHalfTurn on).
 
 ## Progress (2026-09-04)
 
@@ -66,7 +66,7 @@ against a single by-eye screenshot.** The `TAK_NO_HALFTURN` dev gate remains (de
   correct (statics face right); retail applies the same `fchs` negation to root AND piece; so the piece must
   carry it too. The model-viewer attack-swing montage corroborated (the fix produces a coherent overhead→down
   arc vs the incoherent current one). Determinism unchanged (mpai `3eef6e0f`, render-only).
-- **Defect B — flyHalfTurn — DEFERRED, dev-gated.** `TAK_NO_HALFTURN=1` forces `flyHalfTurn=false` (default
+- **Defect B — flyHalfTurn — DEFERRED, dev-gated.** `TA_NO_HALFTURN=1` forces `flyHalfTurn=false` (default
   off = current behavior), left in as a toggle. Not deleted: the in-game flyer-facing A/B was visually
   ambiguous at readable zoom (zonhunt is a harpy with hair+wings+humanoid body; zondrake read backward under
   BOTH settings, which the plan did not predict), and the adversarial review specifically required a numeric
@@ -228,10 +228,10 @@ than on document confidence alone.
 movement `(sin h, cos h)` are retail-consistent and lockstep-hashed.
 
 **Step 0 — env-gated decisive experiment (~1 hour, before any permanent change):**
-- `TAK_YNEG=1` → negate the composed piece yaw. `TAK_NO_HALFTURN=1` → force `flyHalfTurn = false`. Two
+- `TA_YNEG=1` → negate the composed piece yaw. `TA_NO_HALFTURN=1` → force `flyHalfTurn = false`. Two
   lines, no deletions.
 - **Attack-swing signed test** (the direction oracle): spawn arasword vs an enemy, screenshot mid-`attack1`
-  with/without `TAK_YNEG`. Flag ON ⇒ windup must rotate torso/sword toward the **sword (−x)** side. This
+  with/without `TA_YNEG`. Flag ON ⇒ windup must rotate torso/sword toward the **sword (−x)** side. This
   distinguishes the correct sign from a wrongly-negated one — statics and "sway flipped" checks cannot.
 - **Flyer numeric probe**: with both flags on, compose the fly pose at fixed timestamps and print world
   positions of head/breast vs hair-tip pieces relative to the movement vector for **all six** Zhon flyers at
@@ -263,7 +263,7 @@ superseded memory notes. Portrait facing untouched.
 ground-plate skipping; `facingIndex`; all of `vm.cpp`.
 
 **Deferred follow-ups (separate commits, each behind its own A/B):** retail projection constants
-(`TAK_RETAIL_PROJ=1` first — changes proportions everywhere; shadows/anchors/occlusion must be retuned);
+(`TA_RETAIL_PROJ=1` first — changes proportions everywhere; shadows/anchors/occlusion must be retuned);
 root pitch/roll from `upright`/`pitchscale`/`bankscale` (flyer banking, slope tilt; render-side state only);
 piece-transform fire points (`EmitWpn`) for muzzle flashes — composes correctly once Step 1 is in.
 
@@ -310,7 +310,7 @@ replaced by a signed test.
 4. **Aim scripts**: when bearing/pitch get passed into `AimWeapon`, use script-space signs unchanged (retail
    negates only at composition) — a trap worth this written warning.
 5. **Projection constants adoption** (deferred): risk to tuned shadow/anchor/occlusion offsets; ships behind
-   `TAK_RETAIL_PROJ=1` with side-by-side shots first.
+   `TA_RETAIL_PROJ=1` with side-by-side shots first.
 6. **FBI `orientation`** (retail UNIT_DEF +0x22c): no shipped FBI sets it (verified by grep) — ignorable.
 
 **Bottom line:** keep `−heading`; negate one composed sine (env-gated, proven by the attack-swing oracle);

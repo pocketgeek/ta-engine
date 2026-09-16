@@ -7,7 +7,7 @@
 #include "client/blockfont.h"
 #include "client/settings.h"
 
-namespace tak {
+namespace ta {
 
 namespace {
 bool inRect(const SDL_FRect& r, float x, float y) {
@@ -195,4 +195,4 @@ void CampaignScreen::render(int winW, int winH) {
                   backRect_.y + (backRect_.h - 7 * bpx) / 2, bpx, {215, 220, 235, 255});
 }
 
-}  // namespace tak
+}  // namespace ta
