@@ -176,6 +176,63 @@ when it is missing or the file predates version `0x2000`:
 | `gravity` | `+0xd3c` (int) | `0x1fdb` (8155), after scaling by two constants |
 | `tidalstrength` | `+0xd40` (float) | `0.5` |
 
+## The stall — solved, and it is not a curve
+
+TA has three resource-spending primitives, and every one is the same shape:
+
+| | |
+| --- | --- |
+| `0x401220` | spend energy |
+| `0x401260` | spend metal |
+| `0x4012a0` | spend both |
+
+```
+if (player->resource < amount) return 0;    ; spend NOTHING
+player->resource -= amount;
+consumedAccumulator += amount;
+return 1;
+```
+
+There is **no division anywhere in them** — no fraction, no scaling, no curve. A
+consumer that cannot afford this tick's draw does not advance slowly; it does not
+advance at all, and tries again next tick.
+
+So "a stall slows everything down" is an emergent description, not a mechanic.
+Each consumer independently succeeds or fails depending on what is left when its
+turn comes, which is why a stalled TA base *stutters* — nanolathe beams flicker
+on and off — rather than easing smoothly to half speed.
+
+We had implemented the intuitive reading: pay what you can afford, credit that
+fraction of the work. It produces a visibly different game, and it is now gone.
+`Resource::share` went with it (it was only ever written).
+
+**Not yet matched:** a unit's standing `EnergyUse`/`MetalUse` still settles in
+bulk here, where retail bills each unit through the same all-or-nothing call.
+The difference only shows in *which* units go dark first when a base browns out,
+and it belongs with the on/off toggle work.
+
+## The player struct
+
+From the stat serialiser at `0x4660fe`:
+
+| Field | Offset | Type |
+| --- | --- | --- |
+| Energy | `+0x8c` | float |
+| Metal | `+0x98` | float |
+| TotalEnergyProduced | `+0xac` | double |
+| TotalMetalProduced | `+0xb4` | double |
+| TotalEnergyConsumed | `+0xbc` | double |
+| TotalMetalConsumed | `+0xc4` | double |
+| EnergyWasted | `+0xcc` | double |
+| MetalWasted | `+0xd4` | double |
+| PlayerEnergyStorage | `+0xdc` | float |
+| PlayerMetalStorage | `+0xe0` | float |
+
+Retail tracks produced, consumed AND wasted per resource as running doubles —
+so overflow is measured, not merely discarded.
+
 ## Open questions
 
-- The stall curve: is a starved consumer slowed strictly proportionally?
+Nothing outstanding from the original list. Candidates for the next pass: how
+`WindGenerator`/`TidalGenerator` ratings convert to energy per second, and the
+build-rate formula behind `WorkerTime`/`BuildTime`.

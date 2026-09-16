@@ -157,9 +157,10 @@ map one-to-one, they just need doubling:
 
 Two TA behaviours have no Kingdoms analogue and are new logic:
 
-- **Stall.** When a resource hits zero, TA does not halt consumers — it slows
-  *every* one of them proportionally. This is load-bearing for how the game
-  feels, and it is a hashed sim path, so it has to be deterministic.
+- **Stall.** When a consumer cannot afford this tick's draw it gets *nothing* and
+  retries next tick — all-or-nothing, not a proportional slowdown (confirmed
+  against the binary; see `docs/retail-engine-ta.md`). Load-bearing for how the
+  game feels, and a hashed sim path, so it has to be deterministic.
 - **Wind and tidal income**, which are map properties (`MinWindSpeed` /
   `MaxWindSpeed` / `TidalStrength` from the `.ota`) and, for wind, time-varying.
 
@@ -308,8 +309,9 @@ are collected in [`docs/retail-engine-ta.md`](retail-engine-ta.md).
 - Exact metal-extraction income formula. The inputs are now known: the map's
   per-cell metal plane, the FBI `ExtractsMetal`, and the `.ota` schema's
   `SurfaceMetal` / `MohoMetal`. The combining rule is not.
-- The stall curve: is the slowdown strictly proportional, or stepped? Implemented
-  proportionally (`Resource::share`), which is the community understanding.
+- ~~The stall curve~~ — **solved**, see `docs/retail-engine-ta.md`: there is no
+  curve. Spending is ALL OR NOTHING per consumer per tick, so a stalled base
+  stutters rather than slowing smoothly. The proportional model is gone.
 - ~~The extractor formula~~ — **solved**, see `docs/retail-engine-ta.md`:
   `yield = ExtractsMetal × Σ(cellMetal + 1)` over the footprint. The `+1` per
   cell is why a TA mex off a patch trickles rather than sitting dead, and it is

@@ -78,23 +78,33 @@ void TypeRegistry::loadMoveInfo(const hpi::Vfs& vfs, const std::string& path) {
 namespace {
 
 // Draw `frac` of a type's FULL build cost (frac == 1 is the whole unit) from a
-// player, taking metal and energy together. Returns the fraction actually paid,
-// which is less than `frac` when either resource is short: TA slows a starved
-// build rather than pausing it, so callers credit work in proportion to the
-// return value rather than treating this as a yes/no.
+// player, taking metal and energy together. Returns `frac` if it was paid and 0
+// if it was not -- ALL OR NOTHING, which is what retail does.
+//
+// TotalA.exe's three spend primitives (0x401220 energy, 0x401260 metal,
+// 0x4012a0 both) are each shaped:
+//
+//     if (player->resource < amount) return 0;   // spend NOTHING
+//     player->resource -= amount; consumed += amount; return 1;
+//
+// There is no division anywhere in them. So a consumer that cannot afford this
+// tick's draw does not advance slowly -- it does not advance at all, and tries
+// again next tick. What looks like a whole base slowing down is really every
+// consumer stuttering independently, which is why a stalled TA base flickers its
+// nanolathe beams rather than easing smoothly to half speed.
+//
+// This replaced a proportional model (pay what you can, credit that fraction of
+// the work), which is the intuitive reading of "a stall slows everything" and is
+// not what the game does.
 float spendBuild(Player& p, const UnitType& t, float frac) {
     if (frac <= 0) return 0;
     const float m = t.buildCostMetal * frac, e = t.buildCostEnergy * frac;
-    float got = 1.0f;
-    if (m > 0) got = std::min(got, p.metal.cur / m);
-    if (e > 0) got = std::min(got, p.energy.cur / e);
-    got = std::clamp(got, 0.0f, 1.0f);
-    if (got <= 0) return 0;
-    p.metal.cur -= m * got;
-    p.energy.cur -= e * got;
-    p.metal.spentThisTick += m * got;
-    p.energy.spentThisTick += e * got;
-    return frac * got;
+    if (p.metal.cur < m || p.energy.cur < e) return 0;
+    p.metal.cur -= m;
+    p.energy.cur -= e;
+    p.metal.spentThisTick += m;
+    p.energy.spentThisTick += e;
+    return frac;
 }
 
 }  // namespace
@@ -4470,20 +4480,16 @@ void World::tick(float dt) {
         tm.energy.income *= tm.incomeMult;
     }
 
-    // Apply income and drain, then derive the stall factor. `share` is what every
-    // consumer scales its work by for the NEXT tick: 1 while supply covers demand,
-    // and the fraction actually affordable once it does not.
-    //
-    // NOTE: proportional scaling is the documented community understanding of
-    // TA's stall, not something read out of the retail binary yet -- whether the
-    // real curve is strictly proportional or stepped is still open. See
-    // docs/ta-port.md.
+    // Apply income, then the standing drain.
+    // Standing drain (a unit's own EnergyUse/MetalUse) settles in bulk: retail
+    // bills each unit separately through the same all-or-nothing primitive, and
+    // the difference only shows in which units go dark first when a base browns
+    // out. Worth revisiting alongside the on/off toggle.
     auto settle = [&](Resource& r) {
         r.cur += r.income * dt;
         float want = r.drain * dt;
-        if (want <= 0) { r.share = 1.0f; return; }
-        if (r.cur >= want) { r.cur -= want; r.share = 1.0f; return; }
-        r.share = r.cur > 0 ? r.cur / want : 0.0f;
+        if (want <= 0) return;
+        if (r.cur >= want) { r.cur -= want; return; }
         r.cur = 0;
     };
     for (auto& tm : players_) { settle(tm.metal); settle(tm.energy); }

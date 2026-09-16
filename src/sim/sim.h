@@ -910,11 +910,6 @@ struct Resource {
     float income = 0;    // per second, recomputed each tick from alive units
     float drain = 0;     // per second, likewise
     float storage = 0;   // cap, recomputed each tick
-    // Stall factor for THIS tick, 0..1. When demand outruns supply TA does not
-    // halt consumers, it slows every one of them by the same fraction -- which is
-    // what makes a stalled base crawl rather than stop dead. Recomputed each tick
-    // and read by every consumer (construction, repair, cloaking, metal makers).
-    float share = 1.0f;
     // Per-second draw from CONSTRUCTION and repair, which does not go through
     // `drain`: a build pays through spendBuild as it progresses rather than
     // declaring a standing rate. Purely for the HUD's consumption figure, which
