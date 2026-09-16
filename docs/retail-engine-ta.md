@@ -164,6 +164,47 @@ own RNG and folded into the state hash, because it feeds energy income.
 Our first attempt was a smooth ~40s sine between the two bounds — the same
 numbers describing a different mechanic.
 
+### What a wind generator earns from that — solved, and it is not a clamp
+
+The wind speed above is not the energy. Retail normalises it against a **fixed
+5000** and *multiplies* the unit's rating by the result:
+
+```
+factor = min(currentWindSpeed / 5000.0, 1.0)
+energy = WindGenerator * factor
+```
+
+Traced from the `.ota` keys inward. The strings `minwindspeed` / `maxwindspeed`
+sit lowercased at `0x504c18` / `0x504c08` and are read at `0x43651c` / `0x43652c`
+into the map object. The live wind speed lives at `+0x37eda`; `0x490d40` does
+`fild [+0x37eda]; fidiv [+0x37ec8]` and stores the quotient as a factor at
+`+0x37ede`; `+0x37ec8` is written exactly once, with the literal `0x1388` = 5000
+(`0x4918ed`); and `0x490d5e` compares that factor against the double `1.0` at
+`0x4fda10`, overwriting it with `1.0f` when it is larger. The consumer at
+`0x401550` loads the factor and does `fmul [unit+0x1d2]`, the unit's
+`WindGenerator`.
+
+**This contradicts the obvious reading, and the data hides the contradiction.**
+`min(WindGenerator, windSpeed)` is what the two field names invite, and it is
+what we implemented. Both sides' wind generators rate `WindGenerator=30` while
+maps advertise wind speeds in the *thousands* — Coast To Coast 0..3500, Fox Holes
+100..6000, Etorrep Glacier 500..5000 — so that min always selected 30. Every wind
+generator on every map with any wind at all produced its full rating, flat,
+for ever: no weak-wind map, no gusting, and no reason for a map to state a range.
+
+The 5000 is what makes the range mean something: it is the speed at which a
+generator reaches its rating. Coast To Coast's 3500 ceiling is 70% of rating;
+only a map advertising 5000 or more ever reaches the full 30; Dark Side ships
+`0/0` and its wind generators are ornaments.
+
+`TidalGenerator` is the same shape — `fld [factor]; fmul [unit+0x1d6]` at
+`0x4015df` — but both tidal generators declare `TidalGenerator=1`, so the output
+*is* the factor and the multiply cannot be told apart from an assignment. The
+factor's global (`+0x14267`) is read at `0x4015df` and `0x488f92` and written
+nowhere in `.text` that a displacement scan can see, so whether it is
+`tidalstrength` verbatim or scaled is **not** established here. We use it
+verbatim, which matches the shape and the one map value we can check.
+
 ## The map header's own defaults
 
 The loader at `0x483793` validates each `.ota` field and substitutes a default

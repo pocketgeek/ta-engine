@@ -175,6 +175,64 @@ int main() {
         delete w;
     }
 
+    // --- wind: a normalised factor, not a clamp -------------------------------
+    // Retail's rule is energy = WindGenerator * min(windSpeed / 5000, 1). The
+    // shape matters more than the numbers: WindGenerator is 30 for both sides'
+    // wind generators while maps advertise wind in the thousands, so reading it
+    // as min(WindGenerator, windSpeed) -- which the field names invite -- makes
+    // every windy map produce the full rating, flat, and no map produce less.
+    {
+        UnitType wind{};
+        wind.name = "wind"; wind.id = "wind";
+        wind.maxVel = 0; wind.maxHp = 500; wind.footX = 3; wind.footZ = 3;
+        wind.windGenerator = 30;
+
+        // A map whose ceiling is 5000 reaches the full rating.
+        World* w = makeWorld();
+        MapEconomy econ;
+        econ.minWind = 5000; econ.maxWind = 5000;
+        w->setMapEconomy(econ);
+        w->spawn(&wind, 200, 200, 0, 0);
+        w->player(0).energy.cur = 0;
+        run(*w, 10.0f);
+        near(w->player(0).energy.cur, 300.0f, 15.0f,
+             "at wind 5000 a WindGenerator=30 earns its full 30/sec");
+        delete w;
+
+        // Coast To Coast's ceiling is 3500 -- 70% of rating, not 100%.
+        w = makeWorld();
+        econ.minWind = 3500; econ.maxWind = 3500;
+        w->setMapEconomy(econ);
+        w->spawn(&wind, 200, 200, 0, 0);
+        w->player(0).energy.cur = 0;
+        run(*w, 10.0f);
+        near(w->player(0).energy.cur, 210.0f, 15.0f,
+             "at wind 3500 it earns 70% of its rating, not all of it");
+        delete w;
+
+        // Above 5000 the factor clamps at 1: a gale does not overproduce.
+        w = makeWorld();
+        econ.minWind = 20000; econ.maxWind = 20000;
+        w->setMapEconomy(econ);
+        w->spawn(&wind, 200, 200, 0, 0);
+        w->player(0).energy.cur = 0;
+        run(*w, 10.0f);
+        near(w->player(0).energy.cur, 300.0f, 15.0f,
+             "and above 5000 the factor clamps at 1 rather than overproducing");
+        delete w;
+
+        // A becalmed map (Dark Side ships 0/0) earns nothing at all.
+        w = makeWorld();
+        econ.minWind = 0; econ.maxWind = 0;
+        w->setMapEconomy(econ);
+        w->spawn(&wind, 200, 200, 0, 0);
+        w->player(0).energy.cur = 0;
+        run(*w, 10.0f);
+        near(w->player(0).energy.cur, 0.0f, 0.01f,
+             "a becalmed map earns a wind generator nothing");
+        delete w;
+    }
+
     std::printf(g_fail ? "upkeep_test: %d FAILURE(S)\n" : "upkeep_test: all passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

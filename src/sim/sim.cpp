@@ -3409,6 +3409,37 @@ void World::tickWind() {
     windTimer_ = burnRand(63);
 }
 
+// A wind generator's output, as retail computes it (TotalA.exe):
+//
+//     factor = min(currentWindSpeed / 5000.0, 1.0)      // 0x490d40-0x490d6b
+//     energy = WindGenerator * factor                   // 0x40156f-0x401575
+//
+// This is a MULTIPLY against a normalised factor, not the clamp it looks like.
+// The engine used `min(WindGenerator, windSpeed)`, which is the reading the field
+// names invite -- and it is wrong in a way the data hides: WindGenerator is 30 for
+// both sides' wind generators while maps advertise wind speeds in the THOUSANDS
+// (Coast To Coast 0..3500, Fox Holes 100..6000, Etorrep Glacier 500..5000), so the
+// min always picked 30 and every wind generator on every windy map produced its
+// full rating, flat, for ever. There was no weak-wind map and no gusting.
+//
+// What the binary actually does, established by following the .ota keys into the
+// code: `minwindspeed`/`maxwindspeed` (the strings live lowercased at 0x504c18 and
+// 0x504c08) are read at 0x43651c/0x43652c into the map object; the per-tick wind
+// speed lands at +0x37eda; 0x490d40 does `fild [wind]; fidiv [+0x37ec8]` and
+// stores the quotient as the factor at +0x37ede; +0x37ec8 is set exactly once, to
+// the literal 0x1388 = 5000 (0x4918ed); and 0x490d5e compares the factor against
+// the double 1.0 at 0x4fda10, overwriting it with 1.0f when it exceeds that.
+// The consumer at 0x401550 loads the factor and multiplies the unit's
+// WindGenerator by it.
+//
+// So 5000 is the wind speed at which a generator reaches its rating, which is why
+// map wind ranges are stated in thousands at all: Coast To Coast's 3500 ceiling is
+// 70% of rating, and only a map advertising 5000+ ever reaches the full 30.
+float World::windEnergy(const UnitType& t) const {
+    const float factor = std::min(windSpeed() / 5000.0f, 1.0f);
+    return t.windGenerator * factor;
+}
+
 // An extractor's yield, as retail computes it (TotalA.exe 0x437880-0x4378e6):
 //
 //     yield = ExtractsMetal * SUM over footprint cells of (cellMetal + 1)
@@ -4602,9 +4633,8 @@ void World::tick(float dt) {
             tm.metal.income += extractorYield(u);
         // Wind and tidal are MAP properties, not unit constants: a wind farm on a
         // becalmed map earns nothing, which is why retail maps advertise their
-        // wind range in the .ota.
-        if (t->windGenerator > 0)
-            tm.energy.income += std::min(t->windGenerator, windSpeed());
+        // wind range in the .ota. See windEnergy() for the wind rule.
+        if (t->windGenerator > 0) tm.energy.income += windEnergy(*t);
         if (t->tidalGenerator > 0)
             tm.energy.income += t->tidalGenerator * mapEcon_.tidalStrength;
     }
@@ -4645,7 +4675,7 @@ void World::tick(float dt) {
         float earnM = t->metalMake + t->makesMetal;
         float earnE = t->energyMake;
         if (t->extractsMetal > 0) earnM += extractorYield(u);
-        if (t->windGenerator > 0) earnE += std::min(t->windGenerator, windSpeed());
+        if (t->windGenerator > 0) earnE += windEnergy(*t);
         if (t->tidalGenerator > 0) earnE += t->tidalGenerator * mapEcon_.tidalStrength;
         earnM *= tm.incomeMult;
         earnE *= tm.incomeMult;

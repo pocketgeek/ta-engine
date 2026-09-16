@@ -1033,6 +1033,10 @@ public:
     float windSpeed() const { return float(wind_); }
     // Metal per second an extractor on this unit's footprint yields.
     float extractorYield(const Unit& u) const;
+    // A wind generator's output at the current wind speed. Retail normalises the
+    // speed against a fixed 5000 and MULTIPLIES the unit's rating by it; see the
+    // note on the implementation, which is not what the field names suggest.
+    float windEnergy(const UnitType& t) const;
     // Per-cell metal richness, derived from the map's metal FEATURES at load.
     // TA has no stored metal plane -- a patch is a feature (ArchMetal*, with a
     // `metal=` richness and a 3x3 footprint) -- but an extractor is scored over
