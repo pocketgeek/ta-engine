@@ -231,8 +231,55 @@ From the stat serialiser at `0x4660fe`:
 Retail tracks produced, consumed AND wasted per resource as running doubles —
 so overflow is measured, not merely discarded.
 
+## Building
+
+| Key | UnitDef offset | Type |
+| --- | --- | --- |
+| `BuildTime` | `+0x1ea` | int32 |
+| `WorkerTime` | `+0x1fe` | **int16** |
+| `BuildDistance` | `+0x210` | int16 |
+
+**`sizeof(UnitDef)` is 585 bytes**, from the index arithmetic at `0x404f98`:
+`id << 6` then `+ id` (= `id * 65`), then `lea edx, [ecx + ecx*8]` (`* 9`). The
+definitions live in one flat array reached through the game-state pointer at
+`0x511de8`.
+
+Build PROGRESS is a plain fraction (`0x41bacd`): `work / BuildTime`, clamped to
+[0, 1], then used to interpolate two further UnitDef floats at `+0x186` and
+`+0x18a`. That matches the model the engine already uses, where `BuildTime` is a
+work quantity rather than a duration.
+
+**Still open:** what accumulates into `work` per tick. Our `buildTime /
+workerTime` seconds is the community formula and is consistent with the fraction
+above, but it has not been read out of the binary.
+
+### A false lead worth recording
+
+`0x404fb0` also reads `BuildTime` next to `WorkerTime` and computes
+
+```
+round( (BuildTime * 0.3) / (WorkerTime / 30) )      ; /30 via the 0x88888889 magic
+```
+
+into a countdown at `unit+0x3a` — which looks exactly like a build timer, and is
+not one. For ARMLAB built by a commander it gives ~203, where the unit takes
+around 22 s in play. The routine turns out to be RESURRECTION: a few instructions
+earlier it bails to an error string, `"Ressurection failed"`.
+
+Identify the routine before trusting the arithmetic. The numbers alone were
+perfectly plausible.
+
+### TA has a resurrection code path
+
+That string, and the routine behind it, exist in the retail binary. No shipped
+unit reaches them: a survey of all 815 FBIs in the Commander Pack finds no
+`canresurrect` key at all. Noted because this engine removed resurrection as a
+Kingdoms mechanic — which is still right for retail behaviour, but it is TA
+vestigial code rather than something TA never had.
+
 ## Open questions
 
-Nothing outstanding from the original list. Candidates for the next pass: how
-`WindGenerator`/`TidalGenerator` ratings convert to energy per second, and the
-build-rate formula behind `WorkerTime`/`BuildTime`.
+- What accumulates into build `work` per tick.
+- How `WindGenerator`/`TidalGenerator` ratings convert to energy per second.
+- Whether a unit's standing `EnergyUse`/`MetalUse` is billed per unit (retail) or
+  in bulk (ours) -- see the stall section.
