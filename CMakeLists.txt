@@ -71,6 +71,7 @@ add_library(ta-formats
   src/campaign/campaign.cpp
   src/crt/crt.cpp
   src/gui/gui.cpp
+  src/fnt/fnt.cpp
   src/net/protocol.cpp
   src/net/conn.cpp
   src/net/client.cpp
@@ -237,6 +238,7 @@ add_executable(settings_test tools/settings_test.cpp)
 add_executable(hpi1_test tools/hpi1_test.cpp)
 add_executable(tnt_test tools/tnt_test.cpp)
 add_executable(tdf_test tools/tdf_test.cpp)
+add_executable(fnt_test tools/fnt_test.cpp)
 add_executable(unitdata_test tools/unitdata_test.cpp)
     add_executable(footprobe tools/footprobe.cpp)
 target_link_libraries(retailgap_test PRIVATE ta-formats)
@@ -260,6 +262,7 @@ target_link_libraries(settings_test PRIVATE ta-formats)
 target_link_libraries(hpi1_test PRIVATE ta-formats)
 target_link_libraries(tnt_test PRIVATE ta-formats)
 target_link_libraries(tdf_test PRIVATE ta-formats)
+target_link_libraries(fnt_test PRIVATE ta-formats)
 target_link_libraries(unitdata_test PRIVATE ta-formats)
 
 # ctest registration. Without this `ctest` reports "No tests were found", which
@@ -287,6 +290,7 @@ add_test(NAME settings COMMAND settings_test)
 add_test(NAME hpi1 COMMAND hpi1_test)
 add_test(NAME tnt COMMAND tnt_test)
 add_test(NAME tdf COMMAND tdf_test)
+add_test(NAME fnt COMMAND fnt_test)
 add_test(NAME pathgeom COMMAND pathgeom_test)
 add_test(NAME ambush COMMAND ambush_test)
 add_test(NAME yield COMMAND yield_test)

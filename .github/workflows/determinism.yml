@@ -24,6 +24,9 @@ on:
       - 'tools/hpi1_test.cpp'
       - 'tools/tnt_test.cpp'
       - 'tools/tdf_test.cpp'
+      - 'tools/fnt_test.cpp'
+      - 'src/fnt/**'
+      - 'src/gui/**'
       - 'src/tdf/**'
       - 'src/tnt/**'
       - 'src/hpi/**'
@@ -43,6 +46,9 @@ on:
       - 'tools/hpi1_test.cpp'
       - 'tools/tnt_test.cpp'
       - 'tools/tdf_test.cpp'
+      - 'tools/fnt_test.cpp'
+      - 'src/fnt/**'
+      - 'src/gui/**'
       - 'src/tdf/**'
       - 'src/tnt/**'
       - 'src/hpi/**'
@@ -160,10 +166,11 @@ jobs:
       - name: Build + run
         run: |
           cmake -B build -G Ninja
-          cmake --build build --target pathsearch_test authtest cmdflow_test hpi1_test tnt_test tdf_test
+          cmake --build build --target pathsearch_test authtest cmdflow_test hpi1_test tnt_test tdf_test fnt_test
           ./build/pathsearch_test
           ./build/authtest
           ./build/cmdflow_test
           ./build/hpi1_test
           ./build/tnt_test
           ./build/tdf_test
+          ./build/fnt_test
