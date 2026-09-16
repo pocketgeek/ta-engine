@@ -79,6 +79,7 @@ add_library(ta-formats
   src/net/crypto.cpp
   src/net/auth.cpp
   src/util/png.cpp
+  src/util/pcx.cpp
   src/util/appicon.cpp
   src/util/jpeg.cpp
   src/terrain/terrain.cpp

@@ -839,6 +839,24 @@ A build whose FFmpeg lacks the decoder degrades rather than breaks:
 `avcodec_find_decoder` returns null, `decodeToS16` returns empty, and the player
 logs `music: cannot decode …` instead of crashing.
 
+### Build buttons showed rendered models, not TA's artwork
+
+`iconFor` asked for `anims/buildpic/<id>.jpg` — Kingdoms' layout. A TA install
+has **no `anims/buildpic` at all** (0 files); it ships **`unitpics/<UNITNAME>.PCX`,
+282 hand-drawn portraits**, one per unit. So every lookup missed and every build
+button fell back to `modelIconTex`, rendering the unit's 3DO as an icon. Not
+broken — the menu was perfectly usable — just never the artwork the game ships.
+
+There was no PCX *image* decoder: `gaf::Palette::fromBytes` reads a PCX's
+trailing colour table and nothing else. `src/util/pcx.cpp` adds one, handling
+only the shape TA ships — RLE, one plane of 8 bits, 256-colour palette appended
+after the pixels — and returning an empty image for anything else rather than
+guessing.
+
+Measured: **all 282 portraits decode, 0 failures**; `armcom.pcx` is 96x96 and is
+the Commander's familiar picture. Both art paths remain, JPEG first, then PCX,
+then the model fallback, so no data set loses what it had.
+
 ### Impacts drew particles instead of the authored explosion art
 
 `Weapon::explosionClass` is parsed from `explosionclass`, which a Kingdoms

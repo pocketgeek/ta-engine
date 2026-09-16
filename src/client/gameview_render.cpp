@@ -3,6 +3,7 @@
 #include "client/gameview.h"
 
 #include "util/strcase.h"
+#include "util/pcx.h"
 
 // Out-of-line GameView method definitions (render concern), split from the
 // class body in gameview.h so editing a body recompiles only this translation
@@ -2552,6 +2553,15 @@
         return false;
     }
 
+    // The picture on a build button.
+    //
+    // TA keeps these as `unitpics/<UNITNAME>.PCX` -- 282 hand-drawn portraits,
+    // one per unit. Kingdoms kept them as `anims/buildpic/<id>.jpg`, which is
+    // all this asked for, and a TA install has NO anims/buildpic at all (0
+    // files): every lookup missed, so every build button fell back to
+    // modelIconTex and the menu showed rendered 3DOs instead of the artwork the
+    // game ships. Both paths remain -- the JPEG one first for a data set that
+    // has it, then the PCX, then the caller's model fallback.
     SDL_Texture* GameView::iconFor(const std::string& typeId) {
         auto it = icons_.find(typeId);
         if (it != icons_.end()) return it->second;
@@ -2562,13 +2572,26 @@
                                     SDL_TEXTUREACCESS_STATIC, img.width, img.height);
             SDL_UpdateTexture(tex, nullptr, img.rgba.data(), img.width * 4);
         } catch (const std::exception&) {}
+        if (!tex) {
+            try {
+                // The VFS is case-insensitive, so the shipped upper-case
+                // ARMCOM.PCX answers a lower-case unit id.
+                auto img = ta::pcx::load(vread("unitpics/" + typeId + ".pcx"),
+                                         "unitpics/" + typeId + ".pcx");
+                if (img.ok()) {
+                    tex = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
+                                            SDL_TEXTUREACCESS_STATIC, img.width, img.height);
+                    SDL_UpdateTexture(tex, nullptr, img.rgba.data(), img.width * 4);
+                }
+            } catch (const std::exception&) {}
+        }
         icons_[typeId] = tex;
         return tex;
     }
 
     // Feature art for a def that names a 3DO OBJECT rather than a GAF sequence.
     //
-    // A quarter of TA's feature defs are this shape -- 420 of 1632 -- and they are
+    // A quarter of TA's feature defs are this shape -- 432 of 1644 -- and they are
     // overwhelmingly the `*_dead` and `*_heap` wreckage every destroyed unit leaves,
     // plus the dragon's teeth that wall off a map. featureArtFor only understood
     // `filename` + `seqname`, so all of them drew NOTHING: a battlefield kept no
