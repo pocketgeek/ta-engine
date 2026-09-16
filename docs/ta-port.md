@@ -80,6 +80,41 @@ cells.
 | Palette | JPG, truecolor | 8-bit indexed through the game palette |
 | Extras | minimap + overview | minimap, tile-anim (`TileAnim`) table, sea level |
 
+#### The TA header, decoded
+
+Read out of `maps/Coast To Coast.tnt` and cross-checked so that every offset in
+the file is accounted for — 16 little-endian u32 words, then the planes:
+
+| # | Field | Value here | Checks out as |
+| --- | --- | --- | --- |
+| 0 | version | `0x2000` | |
+| 1-2 | width, height | 210 × 126 | in 16px cells |
+| 3 | `mapDataOffset` | 64 | u16 tile index per **32px** tile, (w/2)×(h/2) = 105×63 |
+| 4 | `mapAttrOffset` | 13296 | 4 bytes per 16px cell — 105840 / 26460 = **exactly 4** |
+| 5 | `tileGfxOffset` | 119136 | `numTiles` × 1024 (32×32, 8-bit indexed) — **exactly** 1292 × 1024 |
+| 6 | `numTiles` | 1292 | |
+| 7 | `numTileAnims` | 19 | |
+| 8 | `tileAnimOffset` | 1442144 | 132 bytes each — **exactly** 19 × 132. Entry 0 is `ArchMetal3`. |
+| 9 | `seaLevel` | 85 | heights run 0–195 |
+| 10 | `minimapOffset` | 1444652 | `{u32 w, u32 h, w*h}` = 252×252 — **exactly** the file tail |
+| 11 | ? | 1 | |
+| 12-15 | pad | 0 | |
+
+`MapAttr`, per 16px cell, is `{ u8 height; u16 feature; u8 unused }`:
+
+- `height` 0–195 against a sea level of 85.
+- `feature` is a u16 index with `0xFFFF` = none (26260 of 26460 cells here).
+  `0xFFFE` occurs 80 times and is a sentinel of some kind — note this is a value
+  the *Kingdoms* loader's comment says never appears in a file, so the two games
+  use the spare range differently.
+- The fourth byte is 0 across every cell of this map, so its meaning is still open.
+
+**The metal map is not in here.** Every byte of the file is accounted for by the
+table above, a map directory holds only `.tnt` + `.ota`, and the `MapAttr` spare
+byte is uniformly zero. So per-cell metal is either derived from the tile
+graphics or computed from the `.ota` schema's `SurfaceMetal`/`MohoMetal` — which
+is a question for dynamic analysis of `TotalA.exe` rather than more guessing.
+
 `terrain::Compositor` is written entirely against the JPG path and gets replaced.
 `tnt::Map`'s *consumers* (14 files) mostly touch `heights` / `features` /
 `width` / `height`, so keeping that surface stable contains the blast radius to
