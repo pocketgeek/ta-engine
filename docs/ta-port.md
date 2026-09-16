@@ -1043,6 +1043,37 @@ virtual clock outruns the corpse window. A corpse is only in `corpsePhase` betwe
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.
 
+### `useonlyunits` is already right — a measured NON-finding
+
+Recorded because it looks like an obvious gap and is not, and because checking
+cost four probes that nobody should have to repeat.
+
+`missionAllowedUnits` is loaded only on the mission path and filters only the
+build menu, which invites two conclusions: that plain skirmish maps carry a
+restriction the engine ignores (every one of the 195 shipped `.ota` files
+declares `useonlyunits=`), and that UI-only enforcement is a hole. Both are
+wrong.
+
+Measured across all 195:
+
+| | maps | have `brief=` | place units |
+|---|---|---|---|
+| useonly file **present** | 97 | **97** | **97** |
+| useonly file **absent** | 98 | 2 | 3 |
+
+**Every map whose restriction file actually exists is a mission or Battle
+Tactics scenario** — the files live under `camps/useonly/`, 176 of them. The 98
+plain skirmish maps name a file that is not in the install at all; the key is
+vestigial boilerplate there, and honouring it would mean honouring nothing.
+
+The engine already resolves exactly the right set: `A Gentle Time` → 173 allowed
+units, `Air Assault` → 174, `AC01` → 14, `The Pass` → 0.
+
+Nor is UI-only a correctness hole. This is a single-player mission mechanism, so
+there is no adversary to build outside the roster; and an unenforced rule cannot
+desync a lockstep game in any case, because every peer runs the same code and
+therefore accepts the same builds. Sim enforcement would buy nothing.
+
 ## 6. Open questions, pending the retail data
 
 Answers come from the install itself and from analysing `TotalA.exe` — static
