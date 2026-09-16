@@ -44,6 +44,7 @@
 #include "net/conn.h"
 #include "net/protocol.h"
 #include "net/replayhdr.h"
+#include "tdf/sidedata.h"
 #include "sim/matchsetup.h"
 #include "sim/sim.h"
 #include "version.h"
@@ -327,6 +328,12 @@ private:
         ta::sim::TypeRegistry reg;
         uint64_t hash = 0;
         bool built = false;
+        // How many sides this data set declares (SIDEDATA.TDF). A slot's wire
+        // "faction" is an index into that list, so it is what the index must be
+        // reduced against -- the fixed `% 5` this replaced was Kingdoms' count,
+        // which in a two-side TA install let a slot claim a side that does not
+        // exist and folded both real sides onto the same one.
+        int sides = 1;
     };
     DataSet retail_, full_;            // none/cosmetic use retail_; full uses full_
     ta::ai::Profile aiProfile_;
@@ -371,6 +378,7 @@ private:
         ds.vfs = ta::hpi::mountRetailRoot(dataRoot_, pol);
         ta::sim::setupRegistry(ds.reg, ds.vfs);
         ds.hash = ta::hpi::gameplayHash(ds.vfs);
+        ds.sides = std::max(1, ta::tdf::SideData::load(ds.vfs).sideCount());
         ds.built = true;
     }
     // The data set a game runs under, by its override policy (0/1 = retail, 2 = full).
@@ -1229,7 +1237,8 @@ void Server::tryStart(Client& c) {
                 // shared aiLevel so the client mirror sets the same factor (lockstep).
                 float mm = s.type == 2
                     ? ta::ai::incomeMultFor(ta::ai::difficultyFromLevel(s.aiLevel)) : 1.0f;
-                cfg.slots[size_t(i)] = {s.type == 1 || s.type == 2, s.faction % 5, s.team, mm};
+                cfg.slots[size_t(i)] = {s.type == 1 || s.type == 2,
+                                        s.faction % std::max(1, ds->sides), s.team, mm};
             }
             auto spots = ta::sim::setupMatch(*r->ref, *r->reg, cfg);
             // setupMatch returns start positions in USED-slot order; remap to slot index.
@@ -1310,7 +1319,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
                     else if (type != 2 && old == 2) s.name.clear();     // no longer AI
                 }
             }
-            s.faction = faction % 5;
+            s.faction = faction % std::max(1, dataFor(r->opts.overridePolicy).sides);
             s.color = color % 10;
             s.team = uint8_t(team % kMaxSlots);
             s.ready = ready ? 1 : 0;

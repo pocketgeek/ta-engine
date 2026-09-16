@@ -155,7 +155,7 @@ public:
     GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, ta::hpi::OverridePolicy policy,
              bool demo, bool scenario, bool mission,
-             bool bare, const std::string& side = "ara", const std::string& aiSide = "tar")
+             bool bare, const std::string& side = "arm", const std::string& aiSide = "core")
         // (side_ initialized below before loadPanel uses it; vfs_ must precede
         //  mapView_ in the member list so the Compositor can borrow it)
         : ren_(ren), vfs_(std::move(vfs)), mapView_(ren, vfs_, mapPath),
@@ -1851,11 +1851,16 @@ private:
     // tick lands, so the plate covers both our own load and the wait on peers.
     std::unique_ptr<ta::LoadScreen> loadScreen_;
     std::string aiSide_ = "core";   // single-player: the AI opponent's side
-    // Faction name -> wire index (0 ara, 1 tar, 2 ver, 3 zon, 4 cre).
-    static uint8_t facIdx(const std::string& s) {
-        const char* n[5] = {"ara", "tar", "ver", "zon", "cre"};
-        for (uint8_t i = 0; i < 5; ++i) if (s == n[i]) return i;
-        return 0;
+    // Side name -> the wire index carried in a lobby slot, which is an index
+    // into SIDEDATA.TDF's sides and nothing else. Unknown names fall back to 0.
+    uint8_t facIdx(const std::string& s) const {
+        int i = sideData_.indexOfName(s);
+        return uint8_t(i < 0 ? 0 : i);
+    }
+    // ...and back: the wire index a slot carries -> the lowercase side name the
+    // panel/GUI loaders key off ("arm", "core").
+    std::string sideName(int wireIndex) const {
+        return sideData_.nameForIndex(wireIndex, side_);
     }
     ta::sim::TypeRegistry registry_;
     ta::sim::World world_;
@@ -2565,7 +2570,8 @@ private:
 
     void loadFeatureDefs();
 
-    const ta::gaf::Palette* featurePalette(std::string world);
+    // TA's single shared palette (palettes/PALETTE.PAL), cached.
+    const ta::gaf::Palette* gamePalette();
 
     FeatArt* featureArtFor(const ta::tdf::Node& def, const char* seqKey = "seqname",
                            const char* shadKey = "seqnameshad");
@@ -2596,7 +2602,7 @@ private:
     SDL_Texture* loadGuiFrame(const std::string& gaf, const std::string& seq, int frame);
 
     // Parse the faction in-game .gui and load every gadget's state art. side is the
-    // 3-letter faction ("ara"/"tar"/"ver"/"zon"/"cre"); the file is guis/<side>ingame.gui.
+    // Side name ("arm"/"core"); the file is guis/<side>ingame.gui.
     void loadGui(const std::string& side);
 
     static constexpr int kBarHBase = 72;

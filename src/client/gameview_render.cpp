@@ -1957,7 +1957,7 @@
         if (art.empty()) return nullptr;
         if (!shadowsLoaded_) {
             shadowsLoaded_ = true;
-            const auto* pal = featurePalette("aramon");
+            const auto* pal = gamePalette();
             if (pal) try {
                 for (auto& sq : ta::gaf::load(vread("anims/shadows.gaf"), *pal, -1,
                                                "anims/shadows.gaf")) {
@@ -2004,20 +2004,20 @@
         } catch (const std::exception&) {}
     }
 
-    const ta::gaf::Palette* GameView::featurePalette(std::string world) {
-        std::transform(world.begin(), world.end(), world.begin(), ::tolower);
-        auto it = featurePals_.find(world);
+    const ta::gaf::Palette* GameView::gamePalette() {
+        // TA has exactly ONE palette, palettes/PALETTE.PAL, shared by terrain,
+        // features, units and GUI art alike. (Kingdoms instead kept a palette per
+        // world and per faction -- aramon_features.pcx, archipelago.pcx -- and
+        // looking those up here found nothing in a TA install, so featureArtFor
+        // got a null palette and refused EVERY feature: 0 of a map's 120 trees and
+        // metal patches drawn, reported only as "features: 0 placed".)
+        auto it = featurePals_.find("");
         if (it != featurePals_.end()) return &it->second;
-        const std::string cands[] = {world + "_features.pcx", world + ".pcx",
-                                     std::string("aramon_features.pcx")};
-        for (const std::string& cand : cands) {
-            try {
-                std::string pp = "palettes/" + cand;
-                return &featurePals_
-                            .emplace(world, ta::gaf::Palette::fromBytes(vread(pp), pp))
-                            .first->second;
-            } catch (const std::exception&) {}
-        }
+        try {
+            const std::string pp = "palettes/PALETTE.PAL";
+            return &featurePals_.emplace("", ta::gaf::Palette::fromBytes(vread(pp), pp))
+                        .first->second;
+        } catch (const std::exception&) {}
         return nullptr;
     }
 
@@ -2067,7 +2067,7 @@
         auto it = featureArt_.find(key);
         if (it != featureArt_.end()) return it->second.tex ? &it->second : nullptr;
         FeatArt a{};
-        const auto* pal = featurePalette(def.valueOr("world", "aramon"));
+        const auto* pal = gamePalette();
         if (pal) {
             try {
                 std::string f = file;
@@ -2300,15 +2300,25 @@
         if (names.empty()) return;
         loadFeatureDefs();
         const auto& map = mapView_.map();
-        int placed = 0;
+        int placed = 0, wanted = 0, noDef = 0, noArt = 0;
         for (int cz = 0; cz < map.height; ++cz)
             for (int cx = 0; cx < map.width; ++cx) {
                 uint16_t v = map.features[size_t(cz) * map.width + cx];
                 if (v >= names.size()) continue;
-                if (addFeature(names[v], float(cx) * 16 + 8, float(cz) * 16 + 8))
+                ++wanted;
+                if (addFeature(names[v], float(cx) * 16 + 8, float(cz) * 16 + 8)) {
                     ++placed;
+                } else {
+                    // Say WHICH half failed. "0 placed" on its own cannot tell a
+                    // map whose feature TDFs never loaded from one whose art did
+                    // not, and the two have nothing to do with each other.
+                    std::string k = names[v];
+                    std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+                    if (featureDefs_.count(k)) ++noArt; else ++noDef;
+                }
             }
-        std::printf("features: %d placed\n", placed);
+        std::printf("features: %d/%d placed (%zu defs; %d no def, %d no art)\n",
+                    placed, wanted, featureDefs_.size(), noDef, noArt);
         // Register the Sacred Stone deposits so lodestones can only build on
         // them (and the AI knows where to put them). The buildable spot is the
         // GLOWING centre (animated Sacred Stone) -- NOT the ring of static
@@ -2749,7 +2759,7 @@
         if (it != effectAnims_.end())
             return it->second.frames.empty() ? nullptr : &it->second;
         EffectAnim ea;
-        const auto* pal = featurePalette("aramon");   // ignored for truecolor TAF
+        const auto* pal = gamePalette();   // ignored for truecolor TAF
         // "file:sequence" targets a specific GAF sequence (e.g. "flames:flame large");
         // a bare name uses the file of that name and its like-named (or first) sequence.
         std::string file = animName, seqWant = animName;

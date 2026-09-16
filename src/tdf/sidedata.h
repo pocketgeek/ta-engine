@@ -61,6 +61,21 @@ struct SideData {
     const Side* side(const std::string& name) const;       // by name, case-insensitive
     const Side* sideByPrefix(const std::string& p) const;  // by unit-id prefix
 
+    // The wire "faction" carried in a lobby slot is an INDEX INTO `sides`, so it
+    // means whatever SIDEDATA.TDF says and nothing more. These resolve it, so no
+    // caller has to carry its own table of side names -- the engine shipped with
+    // `{"ara","tar","ver","zon","cre"}` hardcoded in five places, which in a TA
+    // install resolved every slot, both sides and every AI to ARM.
+    int sideCount() const { return int(sides.size()); }
+    // Clamped, so an out-of-range index off the wire picks side 0 rather than
+    // reading past the end. Returns nullptr only when there are no sides at all.
+    const Side* byIndex(int i) const;
+    // Lowercase side name for a wire index ("arm"/"core"); `fallback` when the
+    // install declared no sides (an empty/foreign data dir).
+    std::string nameForIndex(int i, const std::string& fallback = "arm") const;
+    // Wire index for a side name, or -1 if this install has no such side.
+    int indexOfName(const std::string& name) const;
+
     // Read gamedata/SIDEDATA.TDF through the VFS. Returns an empty SideData if
     // the file is absent or unparseable rather than throwing: callers treat "no
     // sides" as "this is not a TA install", which is a better error than an

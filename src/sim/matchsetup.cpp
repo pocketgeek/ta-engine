@@ -892,7 +892,13 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     std::vector<MatchSlot> slots;
     int human = 0;
     bool foundHuman = false;
-    const char* kingdoms[5] = {"aramon", "taros", "veruna", "zhon", "creon"};
+    // The side a mission's playerN line names, matched against the sides this
+    // install declares rather than a fixed table. (NOTE: TA's own campaign
+    // missions do not use this key at all -- no shipped .ota carries a playerN --
+    // so this path still needs a pass against real TA mission data. What it must
+    // not do meanwhile is carry a table of five Kingdoms names that can never
+    // match anything in a TA install.)
+    tdf::SideData sd = tdf::SideData::load(vfs);
     for (int n = 1; n <= 16 && int(slots.size()) < kMaxPlayers; ++n) {
         const std::string* v = gh->value("player" + std::to_string(n));
         if (!v) continue;
@@ -903,7 +909,10 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
         MatchSlot s;
         s.used = false;   // no commander spawn -- units come from [Map Data][units]
         s.team = def.find("opponent") != std::string::npos ? 1 : 0;
-        for (int f = 0; f < 5; ++f) if (def.find(kingdoms[f]) != std::string::npos) s.faction = f;
+        for (int f = 0; f < sd.sideCount(); ++f) {
+            std::string sn = sd.nameForIndex(f);
+            if (!sn.empty() && def.find(sn) != std::string::npos) s.faction = f;
+        }
         slots.push_back(s);
         bool strategic = def.find("strategic") != std::string::npos;
         bool ai = strategic || def.find("passive") != std::string::npos;

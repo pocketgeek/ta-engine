@@ -110,4 +110,32 @@ SideData SideData::load(const hpi::Vfs& vfs) {
     }
 }
 
+
+const Side* SideData::byIndex(int i) const {
+    if (sides.empty()) return nullptr;
+    if (i < 0 || i >= int(sides.size())) i = 0;
+    return &sides[size_t(i)];
+}
+
+std::string SideData::nameForIndex(int i, const std::string& fallback) const {
+    const Side* s = byIndex(i);
+    if (!s) return fallback;
+    std::string n = s->name;
+    std::transform(n.begin(), n.end(), n.begin(),
+                   [](unsigned char ch) { return char(std::tolower(ch)); });
+    return n;
+}
+
+int SideData::indexOfName(const std::string& name) const {
+    for (size_t i = 0; i < sides.size(); ++i) {
+        const std::string& n = sides[i].name;
+        if (n.size() != name.size()) continue;
+        bool same = true;
+        for (size_t k = 0; k < n.size(); ++k)
+            if (std::tolower(uint8_t(n[k])) != std::tolower(uint8_t(name[k]))) { same = false; break; }
+        if (same) return int(i);
+    }
+    return -1;
+}
+
 } // namespace ta::tdf

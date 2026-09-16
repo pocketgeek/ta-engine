@@ -109,8 +109,7 @@
             if (!missionAllowed_.empty())
                 std::fprintf(stderr, "mission %s: conjure menu restricted to %zu allowed unit types\n",
                              room.mission.c_str(), missionAllowed_.size());
-            const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
-            if (room.mySlot >= 0) side_ = sides[room.slots[room.mySlot].faction % 5];
+            if (room.mySlot >= 0) side_ = sideName(room.slots[room.mySlot].faction);
             loadScreen_->step("LOADING INTERFACE", 90);
             loadPanel(side_);
             loadGui(side_);
@@ -180,8 +179,7 @@
         if (benchmarkMode_) benchmarkBaseline();             // t=0 baseline for the perf samples
         for (auto& u : world_.units())
             if (u.player == localPlayer_ && u.type) { playerCommanderId_ = u.id; builderId_ = u.id; break; }
-        const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
-        side_ = sides[room.slots[localPlayer_].faction % 5];
+        side_ = sideName(room.slots[localPlayer_].faction);
         loadScreen_->step("LOADING INTERFACE", 90);
         loadPanel(side_);
         loadGui(side_);
@@ -600,14 +598,17 @@ void GameView::autoplayStep() {
             // don't seat self -- an all-AI game the host just watches.
             if (r.mySlot < 0 && (benchmarkMode_ || (autoMode == 1 && ta::devEnv("TA_MP_WATCH")))) {
                 const char* ai = ta::devEnv("TA_MP_AIS");
-                // Benchmark: always a full 8-faction FFA (each AI its own team -> they fight,
-                // which is the point of the load test). FIXED factions by slot (k%5):
-                // AI1 Aramon, AI2 Taros, AI3 Veruna, AI4 Zhon, AI5 Creon, AI6 Aramon,
-                // AI7 Taros, AI8 Veruna -- never random.
+                // Benchmark: always a full 8-slot FFA (each AI its own team -> they fight,
+                // which is the point of the load test). Sides are assigned round-robin
+                // by slot, never randomly, so the run is reproducible.
                 int nAi = benchmarkMode_ ? int(ta::net::kMaxSlots)
                                          : std::clamp(ai ? std::atoi(ai) : 2, 2, int(ta::net::kMaxSlots));
+                // Alternate over the sides this install actually declares (TA has
+                // two), so an all-AI game is ARM vs CORE rather than eight ARMs.
+                const int nSides = std::max(1, sideData_.sideCount());
                 for (int k = 0; k < nAi; ++k)
-                    mp_->setSlot(k, 2, uint8_t(k % 5), uint8_t(k), uint8_t(k), 1, aiLevelEnv());
+                    mp_->setSlot(k, 2, uint8_t(k % nSides), uint8_t(k), uint8_t(k), 1,
+                                 aiLevelEnv());
                 mpReadied_ = true;
             } else if (autoMode == 8 && r.mySlot >= 0) {
                 // Campaign mission: seat the human ready and start; the mission's own
@@ -633,7 +634,9 @@ void GameView::autoplayStep() {
                     int n = std::clamp(std::atoi(na), 1, int(ta::net::kMaxSlots) - 1);
                     for (int k = 0; k < n && k + 1 < int(ta::net::kMaxSlots); ++k) {
                         int slot = k + 1;
-                        mp_->setSlot(slot, 2, uint8_t((facIdx(aiSide_) + k) % 5),
+                        mp_->setSlot(slot, 2,
+                                     uint8_t((facIdx(aiSide_) + k) %
+                                             std::max(1, sideData_.sideCount())),
                                      uint8_t(slot), uint8_t(slot), 1, aiLevelEnv());
                     }
                     mp_->startGame();
