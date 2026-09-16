@@ -11,9 +11,30 @@
 
 namespace ta::hpi {
 
-// TAK ships its data in HPI version-2 archives (header version 0x00020000),
-// a revision of Total Annihilation's HPI format. Layout, verified against
-// the GOG release and Joe D's HPIPack writer source:
+// Two generations of the same container are read here.
+//
+// **Version 1 (0x00010000) -- classic Total Annihilation.** This is what TA
+// ships, across four extensions that are all the same format: .hpi, .ufo (mods),
+// .ccx (Core Contingency) and .gp3 (Battle Tactics / patches).
+//
+//   HPIVERSION  { "HAPI", 0x00010000 }
+//   HPIHEADER1  { dirSize, headerKey, start }
+//   ...directory: name strings and {u32 count, u32 entries} records, freely
+//      interleaved at absolute offsets below dirSize...
+//   ...file data (chunk-size table + SQSH chunks, or raw)...
+//
+// v1 entries are 9 bytes { u32 nameOffset, u32 recordOffset, u8 isDirectory };
+// a file record is { u32 dataOffset, u32 size, u8 compression }. A COMPRESSED
+// file's data begins with a u32 compressed-size per chunk -- the chunk count is
+// not stored, it is ceil(size / 65536) -- followed by the chunks themselves.
+//
+// The whole v1 archive past the header is masked byte-by-byte against each
+// byte's own file offset, under a key derived from `headerKey` (0 = written in
+// the clear). See v1Key/deobfuscate in the .cpp.
+//
+// **Version 2 (0x00020000) -- TA: Kingdoms.** A revision that dropped the
+// whole-archive mask and split the directory into separate name and dir blocks.
+// Layout verified against the GOG release and Joe D's HPIPack writer source:
 //
 //   HPIVERSION  { "HAPI", 0x00020000 }
 //   HPIHEADER2  { dirBlock, dirSize, nameBlock, nameSize, dataStart, unused }
@@ -21,16 +42,19 @@ namespace ta::hpi {
 //   name block  (SQSH chunk or raw: null-terminated strings)
 //   dir block   (SQSH chunk or raw: tree of 20-byte dir / 24-byte file entries)
 //
-// SQSH chunk: 19-byte packed header { "SQSH", u8 ver, u8 method(2=zlib),
-// u8 encrypted, u32 compSize, u32 decompSize, u32 checksum } + payload.
-// Encrypted payload bytes are decoded with b[i] = (b[i] - i) ^ i.
+// Both share the SQSH chunk: a 19-byte packed header { "SQSH", u8 ver,
+// u8 method, u8 encrypted, u32 compSize, u32 decompSize, u32 checksum } +
+// payload. Method 0 = stored, 1 = LZ77 (v1 only), 2 = zlib. An encrypted
+// payload decodes with b[i] = (b[i] - i) ^ i -- which is per-chunk and entirely
+// separate from v1's whole-archive mask above.
 
 struct HeaderInfo {
     std::string magic;   // expected "HAPI"
     uint32_t version = 0;
     uint32_t dirBlock = 0, dirSize = 0;
     uint32_t nameBlock = 0, nameSize = 0;
-    uint32_t dataStart = 0;
+    uint32_t dataStart = 0;   // v1: offset of the root directory record
+    uint32_t headerKey = 0;   // v1 only; 0 = archive is not masked
     uint64_t fileSize = 0;
 };
 
@@ -41,6 +65,11 @@ struct Entry {
     uint32_t decompressedSize = 0;
     uint32_t compressedSize = 0;  // 0 = stored uncompressed
     uint32_t date = 0;            // time_t
+    // v1 only: the file record's SQSH compression method (0 stored, 1 LZ77,
+    // 2 zlib). v1 has no compressed-size field -- a compressed file carries a
+    // per-chunk size table instead -- so `compressedSize` cannot stand in for
+    // "is this stored?" the way it does in v2.
+    uint8_t compression = 0;
 };
 
 // One file to place into a packed archive. `path` is the internal,
@@ -107,6 +136,7 @@ private:
 
     std::filesystem::path file_;
     HeaderInfo header_;
+    uint8_t key_ = 0;        // v1 whole-archive mask key; 0 = none (and always 0 for v2)
     std::vector<Entry> entries_;
     mutable Mapping map_;
     mutable std::vector<uint8_t> fileData_;   // fallback only (mapping failed)
@@ -116,25 +146,29 @@ private:
 HeaderInfo inspect(const std::filesystem::path& archive);
 std::string describe(const HeaderInfo& info);
 
-// A directory's worth of archives, layered exactly as the retail engine does
-// (verified by disassembling KINGDOMS.icd's file-open path, 0x53aff0):
+// A directory's worth of archives, layered as the retail engine does:
 //
 //   1. A loose file on disk (dir/<path>) overrides everything -- the engine
-//      fopen()s the plain path first and only falls back to archives.
-//   2. Otherwise all *.hpi then *.ufo in the directory are searched, and when
-//      the same internal path exists in several, the one whose directory entry
-//      has the NEWEST date (file entry +0x10) wins; a tie keeps the earlier
-//      mount (*.hpi before *.ufo, alphabetical). This is why each retail patch
-//      shipped a new HPI that simply superseded older copies of a file.
+//      opens the plain path first and only falls back to archives.
+//   2. Otherwise the archives are searched in EXTENSION-GROUP order (see
+//      kRootArchiveExts: .hpi, then .ccx, .gp3, .ufo), each group alphabetical.
+//      Where the same internal path exists in several, the copy whose directory
+//      entry has the NEWEST date wins; a tie keeps the earlier-mounted archive.
 //
-// So dropping newer patch archives (or a loose override file) into a game
-// directory Just Works, same as the original.
+// The date rule is what let each retail patch ship as a new archive that simply
+// superseded older copies of a file. It is also why extension order is the
+// EFFECTIVE precedence for TA: HPI v1 file records carry no timestamp, so every
+// v1-vs-v1 collision is a date tie and falls through to mount order. (The rule
+// still does real work for .kmp/.ufo content and for v2 archives.)
+//
+// So dropping a newer pack, or a loose override file, into a game directory
+// Just Works -- same as the original.
+//
 // How a MountSet scans one directory. The defaults reproduce the retail
-// behaviour (loose files override; *.hpi then *.ufo). The runtime data-root
-// model overrides these: the retail-install ROOT layer sets includeLoose=false
-// and archiveExts={".hpi"} (only the shipped archives are read from the root),
-// while a Maps/ layer adds ".kmp" (single-map HPIs) and an overrides/ layer
-// keeps loose+archive with the widest extension set.
+// behaviour. The runtime data-root model overrides them: the install ROOT layer
+// sets includeLoose=false with archiveExts=kRootArchiveExts (only shipped
+// archives are read from the root), a Maps/ layer adds single-map bundles, and
+// an overrides/ layer keeps loose+archive with the widest extension set.
 struct MountConfig {
     bool includeLoose = true;                                   // loose file overrides archives
     std::vector<std::string> archiveExts{".hpi", ".ufo"};       // scanned as ordered groups
@@ -233,7 +267,8 @@ Vfs mountRetailRoot(const std::filesystem::path& root,
 // The canonical root HPI archives of a TA:Kingdoms install (base game + Iron Plague +
 // the official map packs), lowercased. mountRetailRoot mounts ONLY these from the root;
 // any other *.hpi dropped in the root is ignored.
-extern const std::vector<std::string> kRootHpiNames;
+// The archive extensions mounted from an install root, lowest rank first.
+extern const std::vector<std::string> kRootArchiveExts;
 
 // Does `root` look like a usable install? True iff the essential base archives are
 // present + readable and a core gameplay file resolves through the mount. When it

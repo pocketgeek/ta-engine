@@ -44,6 +44,99 @@ std::vector<uint8_t> readFile(const std::filesystem::path& path) {
 
 constexpr size_t kChunkHeaderSize = 19;
 
+// A compressed v1 file is cut into chunks of this many DECOMPRESSED bytes, and
+// the chunk count is derived from the file size rather than stored -- so it has
+// to match the writer's exactly.
+constexpr uint32_t kV1ChunkSize = 65536;
+
+// --- v1 obfuscation ----------------------------------------------------------
+//
+// Classic TA masks the WHOLE archive past the header, byte by byte, against each
+// byte's own absolute file offset. (v2 dropped this; its only obfuscation is the
+// per-SQSH-chunk `encrypted` flag, which v1 also has and which is unrelated.)
+// `headerKey` == 0 means the archive was written in the clear -- a few community
+// tools do that, and retail reads them.
+uint8_t v1Key(uint32_t headerKey) {
+    if (headerKey == 0) return 0;
+    return uint8_t(~((headerKey * 4) | (headerKey >> 6)));
+}
+
+// Copy [off, off+len) out of `data`, undoing the v1 mask. A copy rather than a
+// view because the mask is offset-dependent: there is nothing to decode in
+// place when the archive is a shared read-only mapping.
+std::vector<uint8_t> deobfuscate(const uint8_t* data, size_t size, size_t off,
+                                 size_t len, uint8_t key) {
+    if (off + len > size) throw std::runtime_error("read overruns archive");
+    std::vector<uint8_t> out(data + off, data + off + len);
+    if (key)
+        for (size_t i = 0; i < len; ++i)
+            out[i] = uint8_t(uint8_t((off + i) ^ key) ^ uint8_t(~out[i]));
+    return out;
+}
+
+// LZ77 with a 4096-byte ring window -- SQSH compression method 1, which v2 never
+// uses (everything there is method 2, zlib) but classic TA uses throughout.
+//
+// The stream is a sequence of 8-item groups preceded by a tag byte whose bits
+// say, LSB first, whether each item is a literal or a (offset, length) back
+// reference. A back reference is a little-endian u16: the high 12 bits are the
+// window position, the low 4 the length less 2. A window position of 0
+// terminates the stream -- which is why the window is seeded at index 1.
+std::vector<uint8_t> lz77Decompress(const uint8_t* in, size_t inSize, uint32_t outSize) {
+    std::vector<uint8_t> out;
+    out.reserve(outSize);
+    uint8_t window[4096] = {};
+    size_t inPos = 0;
+    uint32_t windowPos = 1;
+
+    auto take = [&](size_t n) {
+        if (inPos + n > inSize) throw std::runtime_error("LZ77 stream overruns chunk");
+    };
+
+    // The tag is refilled at the TOP of the loop, not the bottom, so a stream
+    // whose last item lands exactly on a group boundary is not required to carry
+    // a ninth tag byte that nothing would read. Refilling afterwards made that
+    // shape -- legal, and produced by any file whose length is a multiple of the
+    // group size -- throw "stream overruns chunk" on a perfectly good archive.
+    uint8_t tag = 0;
+    int tagBit = 0x100;
+
+    while (out.size() < outSize) {
+        if (tagBit == 0x100) {
+            take(1);
+            tag = in[inPos++];
+            tagBit = 1;
+        }
+        if (tag & tagBit) {
+            take(2);
+            uint32_t ref = uint32_t(in[inPos]) | (uint32_t(in[inPos + 1]) << 8);
+            inPos += 2;
+            uint32_t from = ref >> 4;
+            if (from == 0) break;            // end-of-stream marker
+            uint32_t count = (ref & 0x0f) + 2;
+            for (uint32_t i = 0; i < count && out.size() < outSize; ++i) {
+                uint8_t b = window[from];
+                out.push_back(b);
+                window[windowPos] = b;
+                from = (from + 1) & 0xfff;
+                windowPos = (windowPos + 1) & 0xfff;
+            }
+        } else {
+            take(1);
+            uint8_t b = in[inPos++];
+            out.push_back(b);
+            window[windowPos] = b;
+            windowPos = (windowPos + 1) & 0xfff;
+        }
+
+        tagBit <<= 1;                        // 0x100 => group exhausted, refill above
+    }
+    if (out.size() != outSize)
+        throw std::runtime_error("LZ77 produced " + std::to_string(out.size()) +
+                                 " bytes, expected " + std::to_string(outSize));
+    return out;
+}
+
 // Decompress one SQSH chunk at `off`; returns decompressed payload and
 // advances `off` past the chunk. Operates on a raw view so it works over both a
 // memory-mapped archive and an in-memory buffer.
@@ -66,6 +159,7 @@ std::vector<uint8_t> readChunk(const uint8_t* data, size_t size, size_t& off) {
     }
 
     if (method == 0) return payload;  // stored
+    if (method == 1) return lz77Decompress(payload.data(), payload.size(), decompSize);
     if (method != 2)
         throw std::runtime_error("unsupported SQSH compression method " + std::to_string(method));
 
@@ -145,6 +239,55 @@ void walk(const std::vector<uint8_t>& dir, const std::vector<uint8_t>& names,
     }
 }
 
+// Walk a v1 directory record. Unlike v2 -- where names and entries live in two
+// flat blocks and a subdirectory is a slice of the same array -- v1 offsets are
+// absolute into the (deobfuscated) directory region and point anywhere, so this
+// recurses on offsets rather than indices. `dir` is that region, decoded from
+// file offset 0, which makes an absolute file offset also an index into it.
+void walkV1(const std::vector<uint8_t>& dir, uint32_t recordOff,
+            const std::string& prefix, std::vector<Entry>& out, int depth) {
+    // A malformed or hostile archive can point a subdirectory at its own parent.
+    // Retail would loop forever; bail instead. Real trees are a handful deep.
+    if (depth > 64) throw std::runtime_error("directory nested too deep (cycle?)");
+    if (uint64_t(recordOff) + 8 > dir.size())
+        throw std::runtime_error("dir record out of range");
+    uint32_t count = u32(&dir[recordOff]);
+    uint32_t entries = u32(&dir[recordOff + 4]);
+
+    for (uint32_t i = 0; i < count; ++i) {
+        uint64_t e = uint64_t(entries) + uint64_t(i) * 9;
+        if (e + 9 > dir.size()) throw std::runtime_error("dir entry out of range");
+        uint32_t namePtr = u32(&dir[e]);
+        uint32_t dataPtr = u32(&dir[e + 4]);
+        bool isDir = dir[e + 8] != 0;
+
+        std::string name = nameAt(dir, namePtr);
+        std::string path = prefix.empty() ? name : prefix + "/" + name;
+
+        if (isDir) {
+            out.push_back({.path = path, .isDirectory = true});
+            walkV1(dir, dataPtr, path, out, depth + 1);
+            continue;
+        }
+        if (uint64_t(dataPtr) + 9 > dir.size())
+            throw std::runtime_error("file record out of range");
+        Entry f;
+        f.path = path;
+        f.start = u32(&dir[dataPtr]);
+        f.decompressedSize = u32(&dir[dataPtr + 4]);
+        f.compression = dir[dataPtr + 8];
+        // v2 uses compressedSize==0 to mean "stored"; keep that invariant so the
+        // Vfs and the tools do not have to know which version they are holding.
+        f.compressedSize = f.compression ? 1 : 0;
+        // v1 file records carry no timestamp. The Vfs resolves same-path
+        // collisions by newest date, so leaving these all 0 makes that a tie,
+        // and a tie keeps the earlier-mounted archive -- which is the mount
+        // order, exactly the fallback retail uses when dates are equal.
+        f.date = 0;
+        out.push_back(std::move(f));
+    }
+}
+
 bool iequals(const std::string& a, const std::string& b) {
     return a.size() == b.size() &&
            std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
@@ -158,8 +301,27 @@ Archive::Archive(const std::filesystem::path& file) : file_(file) {
     header_ = inspect(file);
     if (header_.magic != "HAPI")
         throw std::runtime_error(file.string() + ": not an HPI archive");
+    if (header_.version == 0x00010000) {
+        key_ = v1Key(header_.headerKey);
+        // The v1 directory is not a block to seek to -- names and records are
+        // scattered at absolute offsets anywhere below dirSize. So decode that
+        // whole region once (tens of KB against archives of tens of MB) and walk
+        // it with file offsets used directly as indices.
+        uint32_t dirSize = header_.dirSize;
+        if (dirSize < 20 || dirSize > header_.fileSize)
+            throw std::runtime_error(file.string() + ": bad v1 directory size");
+        std::vector<uint8_t> raw(dirSize);
+        std::ifstream in(file_, std::ios::binary);
+        if (!in) throw std::runtime_error("cannot open " + file_.string());
+        in.read(reinterpret_cast<char*>(raw.data()), std::streamsize(dirSize));
+        if (!in) throw std::runtime_error(file.string() + ": short read on v1 directory");
+        auto dir = deobfuscate(raw.data(), raw.size(), 0, dirSize, key_);
+        walkV1(dir, header_.dataStart, "", entries_, 0);
+        return;
+    }
     if (header_.version != 0x00020000)
-        throw std::runtime_error(file.string() + ": not a TAK (v2) archive");
+        throw std::runtime_error(file.string() + ": unsupported HPI version " +
+                                 std::to_string(header_.version));
 
     std::ifstream in(file_, std::ios::binary);
     if (!in) throw std::runtime_error("cannot open " + file_.string());
@@ -225,6 +387,36 @@ Archive::View Archive::bytes() const {
 std::vector<uint8_t> Archive::read(const Entry& entry) const {
     if (entry.isDirectory) throw std::runtime_error(entry.path + " is a directory");
     View data = bytes();
+
+    if (header_.version == 0x00010000) {
+        if (entry.compression == 0)   // stored: masked, but not chunked
+            return deobfuscate(data.data, data.size, entry.start,
+                               entry.decompressedSize, key_);
+
+        // Compressed: a u32 compressed-size per chunk, then the chunks. The
+        // count is derived, not stored -- ceil(size / 64K) -- so a writer that
+        // chunked differently would desync the table from the data.
+        uint32_t chunks = (entry.decompressedSize + kV1ChunkSize - 1) / kV1ChunkSize;
+        auto table = deobfuscate(data.data, data.size, entry.start,
+                                 size_t(chunks) * 4, key_);
+        std::vector<uint8_t> out;
+        out.reserve(entry.decompressedSize);
+        size_t pos = size_t(entry.start) + size_t(chunks) * 4;
+        for (uint32_t i = 0; i < chunks; ++i) {
+            uint32_t packed = u32(&table[i * 4]);
+            // `packed` covers the 19-byte SQSH header too. Decode the chunk into
+            // a plain buffer and hand it to the shared reader, which then sees
+            // the same bytes a v2 archive would have stored unmasked.
+            auto plain = deobfuscate(data.data, data.size, pos, packed, key_);
+            size_t at = 0;
+            auto part = readChunk(plain.data(), plain.size(), at);
+            out.insert(out.end(), part.begin(), part.end());
+            pos += packed;
+        }
+        if (out.size() != entry.decompressedSize)
+            throw std::runtime_error(entry.path + ": decompressed size mismatch");
+        return out;
+    }
 
     if (entry.compressedSize == 0) {
         if (uint64_t(entry.start) + entry.decompressedSize > data.size)
@@ -374,6 +566,15 @@ HeaderInfo inspect(const std::filesystem::path& archive) {
 
     info.magic.assign(reinterpret_cast<char*>(raw), 4);
     info.version = u32(raw + 4);
+    if (info.version == 0x00010000) {
+        // v1's three words are a different shape entirely -- reading them as a
+        // v2 header is how a TA archive used to come back as nonsense rather
+        // than as an unsupported version.
+        info.dirSize = u32(raw + 8);
+        info.headerKey = u32(raw + 12);
+        info.dataStart = u32(raw + 16);
+        return info;
+    }
     info.dirBlock = u32(raw + 8);
     info.dirSize = u32(raw + 12);
     info.nameBlock = u32(raw + 16);
@@ -726,13 +927,20 @@ uint64_t gameplayHash(const Vfs& vfs) {
     return h;
 }
 
-// The canonical root archives (lowercased): retail base game + Iron Plague expansion +
-// the official map/rocket packs. Nothing else in the install root is ever mounted.
-const std::vector<std::string> kRootHpiNames = {
-    "data.hpi", "english.hpi", "maps.hpi", "missions.hpi", "sections.hpi", "terrain.hpi",
-    "meta.hpi", "ipdata.hpi", "ipenglish.hpi", "ipmissions.hpi", "ipsections.hpi",
-    "boneyards.hpi", "boneyards2.hpi", "jersey.hpi", "v2rocket.hpi", "v3rocket.hpi",
-};
+// TA spreads its data across four extensions of the SAME v1 container, and the
+// extension is how the retail engine ranks them -- later groups override earlier
+// ones. Base game in .hpi, Battle Tactics / Core Contingency content in .ccx,
+// the 3.1 patch in .gp3, and user mods in .ufo.
+//
+// Kingdoms needed a name whitelist here because its install root collects stray
+// archives; TA's does not, and its expansions ship files whose names we would
+// only be guessing at. So this mounts BY EXTENSION, which is also what retail
+// does -- no whitelist, and a new official pack drops in and works.
+//
+// NOTE: the relative rank of .ccx and .gp3 is asserted from the community
+// modding record, not yet confirmed against the retail binary. It only matters
+// where an expansion and the patch ship the same path. See docs/ta-port.md.
+const std::vector<std::string> kRootArchiveExts = {".hpi", ".ccx", ".gp3", ".ufo"};
 
 // Lowercased filenames present in the install root (regular files only).
 static std::set<std::string> rootFileNames(const std::filesystem::path& root) {
@@ -755,7 +963,9 @@ bool validInstall(const std::filesystem::path& root, std::string* reason) {
     std::error_code ec;
     if (root.empty() || !fs::is_directory(root, ec)) { if (reason) *reason = "not a folder"; return false; }
     // The essential base archives must be present (Iron Plague + map packs are optional).
-    static const char* kEssential[] = {"data.hpi", "terrain.hpi", "sections.hpi", "maps.hpi"};
+    // The two base archives. Everything else -- the expansions, the patch, mods --
+    // is optional, so a plain TA install validates as readily as a Commander Pack.
+    static const char* kEssential[] = {"totala1.hpi", "totala2.hpi"};
     std::set<std::string> have = rootFileNames(root);
     for (const char* need : kEssential)
         if (!have.count(need)) { if (reason) *reason = std::string("missing ") + need; return false; }
@@ -778,7 +988,9 @@ std::string rootManifest(const std::filesystem::path& root) {
             if (!e.is_regular_file(ec)) continue;
             std::string l = e.path().filename().string();
             for (char& c : l) c = char(std::tolower(static_cast<unsigned char>(c)));
-            if (std::find(kRootHpiNames.begin(), kRootHpiNames.end(), l) == kRootHpiNames.end()) continue;
+            std::string ext = fs::path(l).extension().string();
+            if (std::find(kRootArchiveExts.begin(), kRootArchiveExts.end(), ext)
+                == kRootArchiveExts.end()) continue;
             present[l] = fs::file_size(e.path(), ec);
         }
     uint64_t h = 1469598103934665603ull;   // FNV-1a over "name:size;" pairs
@@ -815,8 +1027,9 @@ Vfs mountRetailRoot(const std::filesystem::path& root, OverridePolicy overrides)
     // The base game + expansions: ONLY the canonical *.hpi archives in the root (no
     // loose files, and never a stray/unknown *.hpi), layered by the retail
     // newest-entry-date rule. maps.hpi and terrain.hpi ride in here too.
-    vfs.addLayer(MountSet(root, MountConfig{.includeLoose = false, .archiveExts = {".hpi"},
-                                            .keep = {}, .archiveNames = kRootHpiNames}));
+    vfs.addLayer(MountSet(root, MountConfig{.includeLoose = false,
+                                            .archiveExts = kRootArchiveExts,
+                                            .keep = {}, .archiveNames = {}}));
     // Single-map .kmp archives (each an HPI -> kmap/<name>.*) plus any loose maps.
     // A handful of community .kmp bundle MODDED gameplay data (their own canbuild/
     // units/gamedata); retail reads a .kmp only for its map, so we expose just the
