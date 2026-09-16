@@ -756,7 +756,14 @@ void GameView::autoplayStep() {
 
     void GameView::amphibDemo() {
         amphib_ = true;
-        const auto* shipType = registry_.find("vertrans");
+        // TA sea transports: the Hulk (cap 20) and the Envoy (cap 5). Was
+        // `vertrans`, a Kingdoms ship that does not exist here -- so shipType was
+        // null, navFor() handed back the GROUND grid, and the whole demo then
+        // looked for a beach using the wrong domain and spawned nothing.
+        const ta::sim::UnitType* shipType = nullptr;
+        for (const char* id : {"armtship", "cortship"})
+            if ((shipType = registry_.find(id))) break;
+        if (!shipType) { std::fprintf(stderr, "amphib: no sea transport in this data set\n"); return; }
         const auto& ground = world_.nav();
         const auto& water = world_.navFor(shipType);
         float cx = float(mapView_.map().width) * 8, cz = float(mapView_.map().height) * 8;
@@ -795,8 +802,12 @@ void GameView::autoplayStep() {
         amphibSeaX_ = wbx;
         amphibSeaZ_ = wbz;
 
-        transportId_ = spawn("vertrans", wax, waz, 0, 0);
-        const char* squad[] = {"araarch", "araarch", "arasword", "arasword"};
+        transportId_ = spawn(shipType->id, wax, waz, 0, 0);
+        const char* pick = nullptr;
+        for (const char* id : {"armpw", "corak", "armham", "corthud"})
+            if (registry_.find(id)) { pick = id; break; }
+        if (!pick) { std::fprintf(stderr, "amphib: no usable ground unit\n"); return; }
+        const char* squad[] = {pick, pick, pick, pick};
         int i = 0;
         for (const char* t : squad) {
             int id = spawn(t, bax + float(i % 2) * 24 - 12, baz + float(i / 2) * 24 - 12,

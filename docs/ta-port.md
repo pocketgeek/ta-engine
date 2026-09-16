@@ -714,7 +714,7 @@ What is genuinely worth recording:
   line, because a map load never exercises a corpse def and so proves nothing
   about it.
 
-### `--firetest` was spawning nothing
+### The local harnesses were spawning nothing
 
 The staged-combat harness was still a Kingdoms scene: it spawned `araarch`,
 `tararch`, `vertower`, `tardrag`, `zonbasil` and `tarpries`, and checked
@@ -733,8 +733,35 @@ sides still stages a fight instead of silently staging nothing. The camera is
 pinned too — follow mode re-centres on moving friendlies every tick and drags
 the view off the scene, and off a wreck, which does not move.
 
-One harness property to know before using it to look at deaths: the virtual
-clock outruns the corpse window. A corpse is only in `corpsePhase` between
+`--firetest` was not alone. Sweeping `src/` for hard-coded Kingdoms unit ids
+turned up the same fault in every other local harness:
+
+| flag | spawned | outcome |
+|---|---|---|
+| `--navy` | `verflag`, `verman`, `verharp`, `vertre`, `npcbotl`, `monpiran` | converted to ARM vs CORE ships |
+| `--amphib` | `vertrans`, `araarch`, `arasword` | converted to the Hulk/Envoy + kbots |
+| `--facetest` | `araarch` | converted |
+| `--soundtest` | `araarch` | converted |
+| `--testbuild` | `aralode`, anchored on `keepId_` | converted: the commander builds a solar collector |
+| `--creon` | `cregod`, `creiron`, … | **removed** — Creon is a Kingdoms faction |
+| `--misstest` | `verat`, `versword` | **removed** — Kingdoms mission06 coordinates |
+| `--lodetest` (+ `--lodeunit`) | `zonlode` | **removed** — mana lodestones have no TA counterpart |
+
+`--amphib` is the one worth singling out. It did not merely spawn nothing: it
+opened with `registry_.find("vertrans")`, and a null type makes `navFor()` fall
+back to the GROUND grid, so the beach search that follows ran in the wrong
+domain before spawning nothing anyway. It now picks a real sea transport first
+and bails with a message if the data set has none, and it finds a beach:
+`amphib: embark beach (1421,1135) landing (1898,562)`.
+
+The general lesson is in how these failed. `spawn()` on an unknown id is not an
+error, so a harness whose entire cast is missing runs to completion and reports
+success. Converted harnesses now pick their units by PROBING the registry and
+say so on stderr when they find nothing, so the next data-set change makes noise
+instead of quietly doing nothing.
+
+One harness property to know before using `--firetest` to look at deaths: the
+virtual clock outruns the corpse window. A corpse is only in `corpsePhase` between
 `deadFor` 4 and its decompose time, and at `--time 30` the first rendered frame
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.

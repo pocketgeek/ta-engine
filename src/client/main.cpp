@@ -406,14 +406,12 @@ int main(int argc, char** argv) {
          scenario = false, navy = false, amphib = false, missionFlag = false,
          nofog = false, doLook = false,
          keytest = false, selonly = false;
-    std::string lodeUnitName;
     bool firetest = false, facetest = false, noVsync = false;
     // Debug/test harness flags (--march, --testbuild, --soundtest, ...): set from
     // argv but read only inside the #ifndef NDEBUG blocks below, so they are unused
     // in release builds.
     [[maybe_unused]] float marchX = 0, marchZ = 0;
-    [[maybe_unused]] bool doMarch = false, testbuild = false, misstest = false,
-        creon = false, guardtest = false, lodetest = false,
+    [[maybe_unused]] bool doMarch = false, testbuild = false, guardtest = false,
         soundtest = false;
     float lookX = 0, lookZ = 0;
     std::vector<std::string> args;
@@ -431,15 +429,12 @@ int main(int argc, char** argv) {
         else if (a == "--navy") navy = true;
         else if (a == "--amphib") amphib = true;
         else if (a == "--mission") missionFlag = true;
-        else if (a == "--misstest") misstest = true;
-        else if (a == "--creon") creon = true;
         else if (a == "--side" && i + 1 < argc) side = argv[++i];
         else if (a == "--aiside" && i + 1 < argc) aiSide = argv[++i];
         else if (a == "--color" && i + 1 < argc) playerColor = std::atoi(argv[++i]);
         else if (a == "--aicolor" && i + 1 < argc) aiColor = std::atoi(argv[++i]);
         else if (a == "--keytest") keytest = true;
         else if (a == "--guardtest") guardtest = true;
-        else if (a == "--lodetest") lodetest = true;
         else if (a == "--firetest") firetest = true;
         else if (a == "--facetest") facetest = true;
         else if (a == "--soundtest") soundtest = true;
@@ -452,7 +447,6 @@ int main(int argc, char** argv) {
         else if (a == "--novsync") noVsync = true;
 
 
-        else if (a == "--lodeunit" && i + 1 < argc) lodeUnitName = argv[++i];
         else if (a == "--selonly") selonly = true;
 
         else if (a == "--data" && i + 1 < argc) dataRoot = argv[++i];
@@ -506,8 +500,7 @@ int main(int argc, char** argv) {
     bool localHarness = false;
 #ifndef NDEBUG
     localHarness = demo || scenario || missionFlag || navy || amphib || firetest ||
-                   facetest || guardtest || lodetest || keytest ||
-                   soundtest || misstest || creon || testbuild ||
+                   facetest || guardtest || keytest || soundtest || testbuild ||
                    (ta::devEnv("TA_FFA") != nullptr);
 #endif
     // Create the window + renderer up front so the front-end menu can drive the
@@ -1092,10 +1085,7 @@ int main(int argc, char** argv) {
                 if (doMarch) gameView->marchTo(marchX, marchZ);
                 if (testbuild) gameView->testBuild();
                 if (navy) gameView->navyDemo();
-                if (misstest) gameView->missionTest();
-                if (creon) gameView->creonDemo();
                 if (guardtest) gameView->guardTest();
-                if (lodetest) { gameView->lodeUnit = lodeUnitName; gameView->lodeTest(); }
                 if (firetest) gameView->fireTest();
                 if (facetest) gameView->faceTest();
                 if (soundtest) { gameView->setTrace(true); gameView->soundTest(); }

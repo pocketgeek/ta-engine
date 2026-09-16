@@ -364,60 +364,62 @@
         return st;
     }
 
+    // --navy: two fleets shooting at each other, for watching naval movement and
+    // water combat. Was a KINGDOMS fleet (verflag/verman/verharp/vertre against
+    // npcbotl/monpiran sea monsters) -- none of those ids exist in TA, so it
+    // spawned nothing at all. Now ARM against CORE, picked from the registry so a
+    // data set without one of them still stages something.
     void GameView::navyDemo() {
+        auto have = [&](const char* id) { return registry_.find(id) != nullptr; };
         struct S { const char* t; float x, z; int player; };
-        const S fleet[] = {
-            {"verflag", 1150, 1250, 0}, {"verman", 1080, 1150, 0},
-            {"verman", 1220, 1130, 0},  {"verharp", 1020, 1260, 0},
-            {"vertre", 1100, 1360, 0},
-            {"npcbotl", 1750, 1500, 1}, {"npcbotl", 1830, 1600, 1},
-            {"monpiran", 1700, 1400, 1}, {"monpiran", 1780, 1420, 1},
-            {"monpiran", 1650, 1500, 1},
+        std::vector<S> fleet;
+        auto add = [&](std::initializer_list<const char*> ids, float x, float z, int pl) {
+            for (const char* id : ids)
+                if (have(id)) { fleet.push_back({id, x, z, pl}); return; }
         };
+        // Skeeters screen, Crusaders behind them: enough to see escorts move at a
+        // different speed from the line, which is the point of watching it.
+        add({"armpt", "corpt"},   1080, 1150, 0);
+        add({"armpt", "corpt"},   1220, 1130, 0);
+        add({"armroy", "corroy"}, 1150, 1250, 0);
+        add({"armss",  "corss"},  1020, 1260, 0);
+        add({"corpt", "armpt"},   1750, 1500, 1);
+        add({"corpt", "armpt"},   1830, 1600, 1);
+        add({"corroy", "armroy"}, 1700, 1400, 1);
+        add({"corss",  "armss"},  1780, 1420, 1);
         std::vector<int> a, b;
         for (const auto& sp : fleet) {
             int id = spawn(sp.t, sp.x, sp.z, sp.player == 0 ? 1.57f : -1.57f, sp.player);
             if (id >= 0) (sp.player == 0 ? a : b).push_back(id);
         }
-        for (size_t i = 0; i < a.size(); ++i)
-            world_.attack(a[i], b[i % b.size()], false);
-        for (size_t i = 0; i < b.size(); ++i)
-            world_.attack(b[i], a[i % a.size()], false);
+        if (a.empty() || b.empty()) {
+            std::fprintf(stderr, "navy: no usable ships in this data set\n");
+            return;
+        }
+        for (size_t i = 0; i < a.size(); ++i) world_.attack(a[i], b[i % b.size()], false);
+        for (size_t i = 0; i < b.size(); ++i) world_.attack(b[i], a[i % a.size()], false);
+        follow_ = false;
         mapView_.setOffset(1500 - 640 / 0.9f, 1380 - 400 / 0.9f);
     }
 
-    void GameView::creonDemo() {
-        float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
-        const char* squad[] = {"cregod",  "creiron", "creauto", "creauto",
-                               "crebeas", "cregatl", "creshoc", "credrag"};
-        int i = 0;
-        for (const char* t : squad) {
-            spawn(t, cx - 100 + float(i % 4) * 60, cz - 40 + float(i / 4) * 70, 1.57f, 0);
-            ++i;
-        }
-        mapView_.setOffset(cx - 640 / 0.9f, cz - 400 / 0.9f);
-    }
-
-    void GameView::missionTest() {
-        // Plant 4 Watch Towers + escorts inside mission06's forest-edge
-        // region (cells 147,119-269,210) to exercise the victory script.
-        for (int i = 0; i < 4; ++i)
-            spawn("verat", 3300 + float(i % 2) * 60, 2600 + float(i / 2) * 60, 0, 0);
-        spawn("versword", 3260, 2700, 0, 0);
-        mapView_.setOffset(3300 - 640 / 0.9f, 2620 - 400 / 0.9f);
-    }
-
+    // --testbuild: probe outward for the first legal build site and start one.
+    // Was anchored on keepId_ (the Kingdoms Keep) and built `aralode`, a mana
+    // lodestone -- neither exists in TA, so it returned immediately every time.
+    // Now: the player's commander builds a solar collector.
     void GameView::testBuild() {
-        const auto* keep = world_.unit(keepId_);
-        if (!keep) return;
-        const auto* lode = registry_.find("aralode");
-        // Probe outward from the keep for the first legal site.
+        const auto* origin = world_.unit(builderId_);
+        if (!origin) { std::printf("testbuild: no builder\n"); return; }
+        const ta::sim::UnitType* what = nullptr;
+        for (const char* id : {"armsolar", "corsolar", "armwin", "corwin"})
+            if ((what = registry_.find(id))) break;
+        if (!what) { std::printf("testbuild: nothing buildable in this data set\n"); return; }
         for (float r = 90; r < 400; r += 24) {
             for (float a = 0; a < 6.28f; a += 0.5f) {
-                float x = keep->x + std::cos(a) * r, z = keep->z + std::sin(a) * r;
-                if (world_.canPlace(lode, x, z)) {
-                    int id = world_.startBuild(builderId_, lode, x, z);
-                    std::printf("testbuild: site id %d at %.0f,%.0f\n", id, x, z);
+                float x = origin->x + std::cos(a) * r, z = origin->z + std::sin(a) * r;
+                if (world_.canPlace(what, x, z)) {
+                    int id = world_.startBuild(builderId_, what, x, z);
+                    std::printf("testbuild: %s site id %d at %.0f,%.0f\n",
+                                what->id.c_str(), id, x, z);
                     return;
                 }
             }
@@ -430,35 +432,32 @@
     }
 
     void GameView::soundTest() {
-        int id = spawn("araarch", 900, 1000, 0, 0);
+        const char* who = nullptr;
+        for (const char* id : {"armpw", "corak", "armcom", "corcom"})
+            if (registry_.find(id)) { who = id; break; }
+        if (!who) { std::fprintf(stderr, "soundtest: no usable unit\n"); return; }
+        int id = spawn(who, 900, 1000, 0, 0);
         selection_ = {id};
         for (int i = 0; i < 8; i++) voice(id, "move");
     }
 
+    // --facetest: four units walking outward on the cardinals, to check that a
+    // mover faces the way it is going (the mirrored-basis -heading rule).
     void GameView::faceTest() {
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
-        // araarch (correct, +h) vs zonhand, both walking east, arrows on.
+        const char* who = nullptr;
+        for (const char* id : {"armpw", "corak", "armham", "corthud"})
+            if (registry_.find(id)) { who = id; break; }
+        if (!who) { std::fprintf(stderr, "facetest: no usable unit\n"); return; }
         float ddx[4]={0,400,0,-400}, ddz[4]={-400,0,400,0};
         for (int i=0;i<4;i++){
-            int id=spawn("araarch", cx+ddx[i]*0.15f, cz+ddz[i]*0.15f, 0, 0);
+            int id=spawn(who, cx+ddx[i]*0.15f, cz+ddz[i]*0.15f, 0, 0);
             world_.order(id, cx+ddx[i], cz+ddz[i], false);
         }
+        follow_ = false;
         mapView_.setOffset(cx - 640 / mapView_.zoom(), cz - 400 / mapView_.zoom());
     }
 
-    // --firetest: a small staged fight, for watching combat and what it leaves
-    // behind. This was a KINGDOMS scene -- it spawned araarch/tararch/vertower/
-    // tardrag/zonbasil/tarpries and checked basilisk petrification and a
-    // necromancer raising a ghoul. None of those unit ids exist in a TA install
-    // and none of those mechanics exist in TA, so on this fork the harness
-    // silently spawned NOTHING and the flag did nothing at all.
-    //
-    // Rebuilt from the checks that still mean something here:
-    //   * a shooter kills a target, so the death leaves a TA WRECK (its own
-    //     *_dead 3DO, not the body lying flat -- see primeCorpseModel);
-    //   * a builder is sent to reclaim a fresh wreck (TA wrecks are reclaimable
-    //     for metal), which must consume it;
-    //   * splash beside a flamable feature must ignite it.
     void GameView::fireTest() {
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
         // Pick by SIDE rather than hard-coding arm*/cor*: a data set that ships
@@ -520,12 +519,6 @@
         // mode re-centres on moving friendly units every tick, which drags the
         // view off the staged scene (and off the wreck, which does not move).
         follow_ = false;
-        mapView_.setOffset(cx - 640 / mapView_.zoom(), cz - 400 / mapView_.zoom());
-    }
-
-    void GameView::lodeTest() {
-        float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
-        spawn(lodeUnit.empty()?"zonlode":lodeUnit, cx, cz, 3.14159f, 0);
         mapView_.setOffset(cx - 640 / mapView_.zoom(), cz - 400 / mapView_.zoom());
     }
 

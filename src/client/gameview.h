@@ -741,19 +741,15 @@ public:
 
     void navyDemo();
 
-    void creonDemo();
 
-    void missionTest();
 
     void testBuild();
 
     void lookAt(float x, float z);
 
-    std::string lodeUnit;
     void soundTest();
     void faceTest();
     void fireTest();
-    void lodeTest();
 
     void guardTest();
 
