@@ -132,9 +132,39 @@ deleted rather than left to resolve nothing.
 
 `cartographer`'s stamp brush is ported and now interns tiles by content (a tile
 index means nothing outside the map that owns the library). Its section palette
-comes up empty on a TA install: TA's prefabs live in `worlds.hpi` under the same
-`sections/<World>/<Category>/` layout, but in a `.sct` container (version 2)
-that is not a TNT and is not decoded yet.
+reads TA's prefabs, which live in `worlds.hpi` under the same
+`sections/<World>/<Category>/` layout but in a `.sct` container rather than a
+TNT — decoded in `src/sct/` (169 sections for Archipelago, 837 shipped in all).
+
+`.sct` is a close relative of the TNT: the same 32px tile library, the same
+per-16px-cell attribute plane, plus a fixed 128×128 palette thumbnail. Two
+versions ship and they are **not** the same layout with a different number —
+version 2 (607 files) puts the tile graphics straight after the header with the
+cell planes behind them, version 3 (230 files) puts the planes first and moves
+the graphics to the back. Both headers are pointer-led, so reading one with the
+other's field meaning yields plausible in-range offsets rather than an error.
+
+Two things about it were worth establishing empirically rather than assuming:
+
+- **The attribute plane is flat and row-major over the whole section**, not
+  grouped per tile. Per-tile grouping is exactly the same size in bytes, so the
+  file's shape cannot distinguish them; what does is that the flat reading yields
+  terrain with a little under half the total height variation of either per-tile
+  ordering, across every shipped section.
+- **The thumbnail is always 128×128**, whatever the section's size or aspect — a
+  16×48-tile section is drawn into it letterboxed, filling 42 of the 128 columns.
+
+The cell record is 4 bytes in version 3, byte-identical to the TNT's `MapAttr`
+(feature `u16` unaligned at byte 1, holding `0xFFFF` throughout, as befits a
+prefab that places none). In version 2 it is 8 bytes and **only byte 0, the
+height, is determinable**: the other seven hold `01 FF 00 00 00 00 00` in all
+664,144 cell records of all 607 v2 sections, so nothing in the shipped data
+distinguishes their meaning. They are read as opaque rather than guessed at.
+
+The editor's world list is now read off the `sections/` tree rather than
+hardcoded — TA's worlds are Archipelago, GreenWorld, Lava, Mars, Metal and MOON,
+where Kingdoms' were the five houses, and a fixed list makes the editor unusable
+against the other game and a mod's world invisible.
 
 ## 3. Simulation — the delta
 

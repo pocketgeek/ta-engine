@@ -4,11 +4,11 @@
 // A "section" is a 512px (32x32 cell / 16x16 block) prefab laid into the map by
 // snapping to the block grid and copying its cells -- the retail brush model.
 //
-// NOTE: TA keeps its prefabs in worlds.hpi under the same sections/<World>/
-// <Category>/<name> layout, but in a distinct ".sct" container (version 2) that
-// is not a TNT and is not decoded yet. So scan() -- which filters for .tnt --
-// finds nothing in a TA install today and the palette comes up empty. stampSection
-// itself is format-independent and works between any two loaded maps.
+// TA keeps its prefabs in worlds.hpi under the same sections/<World>/<Category>/
+// <name> layout, but in a ".sct" container rather than a TNT (see sct.h for the
+// two versions of it). scan() accepts both extensions and load() decodes either
+// into a tnt::Map, so stampSection -- which is format-independent -- keeps
+// working between any two loaded maps.
 
 #include "tnt/tnt.h"
 
@@ -28,10 +28,17 @@ struct SectionRef {
 
 class SectionLibrary {
 public:
-    // Scan Sections/<world>/** for prefab .TNTs (world = aramon/taros/veruna/zhon).
+    // Scan sections/<world>/** for prefabs (.sct in TA, .tnt in Kingdoms).
     void scan(const ta::hpi::Vfs& vfs, const std::string& world);
     const std::vector<SectionRef>& list() const { return sections_; }
-    // Load (and cache) a prefab by VFS path; nullptr if it won't parse.
+    // The worlds this install actually ships, read off the sections/ tree rather
+    // than from a fixed list. TA's are Archipelago, GreenWorld, Lava, Mars, Metal
+    // and MOON; Kingdoms' were the five houses. Hardcoding either set makes the
+    // editor unusable against the other, and makes a mod's world invisible.
+    // Returned lowercased (VFS keys are) and sorted, so the order is stable.
+    static std::vector<std::string> worlds(const ta::hpi::Vfs& vfs);
+    // Load (and cache) a prefab by VFS path, in either container; nullptr if it
+    // won't parse.
     const ta::tnt::Map* load(const ta::hpi::Vfs& vfs, const std::string& path);
 
 private:

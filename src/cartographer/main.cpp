@@ -365,9 +365,15 @@ int main(int argc, char** argv) {
         return writeFile(kmpPath, kmp.data(), kmp.size());
     };
 
-    // Section-prefab palette for this map's world (falls back to aramon).
+    // Section-prefab palette for this map's world. A map that names no world
+    // falls back to the FIRST world the install ships rather than to a fixed
+    // name: "aramon" exists only in Kingdoms, and asking a TA install for it
+    // yields an empty palette and a terrain build that cannot succeed.
     cart::SectionLibrary sections;
-    std::string world = scenario.kingdom.empty() ? "aramon" : scenario.kingdom;
+    const std::vector<std::string> installWorlds = cart::SectionLibrary::worlds(vfs);
+    const std::string defaultWorld = installWorlds.empty() ? std::string("aramon")
+                                                           : installWorlds.front();
+    std::string world = scenario.kingdom.empty() ? defaultWorld : scenario.kingdom;
     sections.scan(vfs, world);
     cart::FeatureLibrary features;
     features.scan(vfs, world);
@@ -565,7 +571,9 @@ int main(int argc, char** argv) {
     SDL_Rect mRandom{};                       // New Map: the RANDOM button rect
     // Dropdown option lists (New Map): map sizes in units, and the four worlds.
     const std::vector<std::string> kSizeOpts = {"8", "16", "24", "32", "48", "64"};
-    const std::vector<std::string> kWorldOpts = {"aramon", "veruna", "taros", "zhon", "creon"};
+    // Filled from the install below (cart::SectionLibrary::worlds), not fixed.
+    std::vector<std::string> kWorldOpts = installWorlds;
+    if (kWorldOpts.empty()) kWorldOpts.push_back(world);
     const char* mLabel[kMaxFields] = {};
     std::string mTitle;
     int mN = 0;                              // active field count

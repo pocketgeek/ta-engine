@@ -1,12 +1,32 @@
 #include "cartographer/sections.h"
 
 #include "hpi/hpi.h"
+#include "sct/sct.h"
+#include "util/strcase.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <unordered_map>
 
 namespace cart {
+
+std::vector<std::string> SectionLibrary::worlds(const ta::hpi::Vfs& vfs) {
+    std::vector<std::string> out;
+    for (const std::string& p : vfs.list("sections")) {
+        std::string lo = p;
+        std::transform(lo.begin(), lo.end(), lo.begin(), ::tolower);
+        // sections/<world>/... -- take the segment after the root.
+        const std::string root = "sections/";
+        if (lo.rfind(root, 0) != 0) continue;
+        size_t e = lo.find('/', root.size());
+        if (e == std::string::npos) continue;
+        std::string w = lo.substr(root.size(), e - root.size());
+        if (w.empty()) continue;
+        if (std::find(out.begin(), out.end(), w) == out.end()) out.push_back(w);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
 
 void SectionLibrary::scan(const ta::hpi::Vfs& vfs, const std::string& world) {
     sections_.clear();
@@ -16,7 +36,10 @@ void SectionLibrary::scan(const ta::hpi::Vfs& vfs, const std::string& world) {
         std::string lo = p;
         std::transform(lo.begin(), lo.end(), lo.begin(), ::tolower);
         if (lo.rfind(root, 0) != 0) continue;
-        if (std::filesystem::path(lo).extension() != ".tnt") continue;
+        // TA keeps its prefabs in ".sct" containers; Kingdoms used plain TNTs.
+        // Accept both -- load() below decodes either into a tnt::Map, so nothing
+        // downstream has to know which it came from.
+        if (!ta::iendsWith(lo, ".tnt") && !ta::iendsWith(lo, ".sct")) continue;
         // sections/<world>/<category>/<name>.tnt
         std::filesystem::path fp(p);
         SectionRef r;
@@ -35,7 +58,8 @@ const ta::tnt::Map* SectionLibrary::load(const ta::hpi::Vfs& vfs, const std::str
     if (it != cache_.end()) return &it->second;
     try {
         auto d = vfs.read(path);
-        auto m = ta::tnt::Map::load(d, path);
+        auto m = ta::sct::isSectionPath(path) ? ta::sct::load(d, path)
+                                              : ta::tnt::Map::load(d, path);
         return &cache_.emplace(path, std::move(m)).first->second;
     } catch (const std::exception&) {
         return nullptr;
