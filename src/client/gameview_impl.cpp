@@ -1219,6 +1219,14 @@
                 // spell cracks) now play those instead -- doubling both was wrong.
                 bool scripted = it != anims_.end() && it->second.cobSounds;
                 if (scripted) { /* the attack script provides the sound */ }
+                // The weapon's OWN firing sound, which is what TA ships:
+                // `soundstart=` on 298 of the 620 weapon sections. Everything
+                // below it is the Kingdoms fallback chain, and every stem in it
+                // (bow2, firedrag, fireflsh, lightng<N>, ahitfl0<N>) is ABSENT
+                // from a TA install -- so before this, a weapon whose COB played
+                // no sound of its own fired in silence.
+                else if (!w.soundStart.empty() && sounds_.has(w.soundStart))
+                    sounds_.playWorld(w.soundStart, u.x, u.z);
                 else if (w.melee)
                     sounds_.playWorld("ahitfl0" + std::to_string(1 + (salt_++ % 3)), u.x, u.z);
                 else if (w.fx == Fx::Fire)

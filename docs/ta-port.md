@@ -807,6 +807,26 @@ engine:
 `TA_SNDLOG=1` reports the class/event totals, the coverage line above, and each
 `voice()` lookup with what it resolved.
 
+### Weapons fired in silence
+
+Same file, a second failure. The sim parses a weapon's impact sound from
+`soundhitclass` and already falls back to TA's `soundhit`, so impacts were fine.
+But **`soundstart` — the FIRING sound — was never parsed at all**, and the
+client's fire branch fell through to a chain of Kingdoms stems: `bow2`,
+`firedrag`, `fireflsh`, `lightng<N>`, `ahitfl0<N>`. Every one of those is ABSENT
+from a TA install, so any weapon whose COB script did not play a sound of its
+own fired silently.
+
+`Weapon::soundStart` is now parsed and played ahead of that fallback chain.
+Measured over the weapons units actually carry: **167 weapons, all 167 declare
+`soundstart`, and all 167 have the WAV present** (all 167 also have a playable
+`soundhit`). Across the raw tables it is 298 of 620 sections, the remainder
+being weapons no unit fields.
+
+It is display-only and never hashed, like `soundHit` and the projectile art
+beside it — `check-determinism` still agrees on golden `ab1ef54ae324bd0e` with
+the field added.
+
 ### The lobby map preview was blank for every TA map
 
 Same shape of fault again, and it took two independent fixes because it was

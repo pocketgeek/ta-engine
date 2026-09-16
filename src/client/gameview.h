@@ -190,6 +190,20 @@ public:
             std::fprintf(stderr, "  %d unit types, %d name a SoundCategory, %d resolve a "
                                  "class (%d answer 'select', %d answer 'move')\n",
                          types, withClass, matched, canSelect, canMove);
+            // Weapon FIRING sounds, over the weapons units actually carry.
+            int wtot = 0, wstart = 0, wplay = 0, whit = 0;
+            for (const auto& [tid, ut] : registry_.types())
+                for (const auto& wp : ut.weapons) {
+                    ++wtot;
+                    if (!wp.soundStart.empty()) {
+                        ++wstart;
+                        if (sounds_.has(wp.soundStart)) ++wplay;
+                    }
+                    if (!wp.soundHit.empty() && sounds_.has(wp.soundHit)) ++whit;
+                }
+            std::fprintf(stderr, "  %d weapons, %d declare soundstart, %d of those have the "
+                                 "WAV (%d have a playable soundhit)\n",
+                         wtot, wstart, wplay, whit);
         }
         sideData_ = ta::tdf::SideData::load(vfs_);
         // Both of these read SIDEDATA, so neither can precede it. And the GUI

@@ -120,7 +120,14 @@ struct Weapon {
     // its magic; 8 shipped TA types carry ImmuneToParalyzer against this.
     enum class Status { None, Paralyzed } status = Status::None;
     float statusDur = 0;     // seconds the inflicted status lasts
-    std::string soundHit;    // soundhitclass: impact-sound class (arrow/sword/cannon..)
+    std::string soundHit;    // soundhitclass (Kingdoms) / soundhit (TA): impact sound
+    // soundstart: the sound the weapon makes FIRING. 298 of the 620 weapon
+    // sections in the Commander Pack declare one, and it was never read: the
+    // client fell back to a chain of KINGDOMS stems (bow2, firedrag, fireflsh,
+    // lightng<N>, ahitfl0<N>), none of which exist in a TA install -- so any
+    // weapon whose COB does not play its own sound fired in silence.
+    // Display only, never hashed, like soundHit and the art fields below.
+    std::string soundStart;
     // Projectile ART (display only -- never hashed, like explosionClass below).
     // Retail draws a shot as authored art: a GAF/TAF sprite (weaponart, 60
     // weapons), or a real 3DO mesh (model, 39 -- arrows, spears, boulders), with

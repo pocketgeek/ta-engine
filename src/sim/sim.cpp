@@ -164,6 +164,7 @@ Weapon parseWeaponNode(const tdf::Node* w) {
     wp.ballistic = lower(w->valueOr("type", "")) == "ballistic";
     wp.soundHit = lower(w->valueOr("soundhitclass",
                                    w->valueOr("soundhit", "")));
+    wp.soundStart = lower(w->valueOr("soundstart", ""));
     // Projectile art (display only).
     wp.weaponArt = lower(w->valueOr("weaponart", ""));
     wp.shotModel = lower(w->valueOr("model", ""));
