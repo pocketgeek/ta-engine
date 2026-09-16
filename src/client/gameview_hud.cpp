@@ -1297,6 +1297,71 @@ char taPanelCommand(const std::string& name) {
     // Still unwired: the ORDERS/BUILD panel tabs.
     return 0;
 }
+
+// Does this command apply to the current selection?
+//
+// Retail's panel is context-sensitive: a building's MOVE is drawn in its Disabled
+// face, a transport's UNLOAD only appears with cargo aboard, and a unit with no
+// cloak has no cloak button. The engine HAD this logic, keyed on Kingdoms' gadget
+// names ("MOVE", "Cloaked", "PrimaryWeapon"), which an exact-match lookup could
+// never find on a TA panel whose gadgets are ARMMOVE / ARMCLOAK -- so every
+// button was live for every unit, and clicking LOAD on a tank issued a transport
+// order that quietly went nowhere.
+//
+// Keyed on the COMMAND rather than the gadget name, so it holds for either game's
+// naming. A command with no rule here is always available.
+enum class CmdState { Enabled, Disabled };
+
+// Is this button showing its PRESSED face? A toggle or a cycle is pressed while
+// it is the selected/held option; a push order is pressed while it is ARMED and
+// waiting for the player to click a target.
+bool taButtonArmedFor(char cmd, const UnitR* u, char pendingCmd) {
+    if (!u || !u->type) return false;
+    switch (cmd) {
+        case 't': return u->active;                      // powered on
+        case 'y': return u->cloakOn;                     // cloaking
+        case 'b': return u->type->slotIsCommandFire(u->weaponSlot);   // D-gun armed
+        // The cycles light while their axis is away from "free" (roam / fire at
+        // will): the unit is being held back from something it would otherwise do.
+        case 'v': return u->moveState != 2;
+        case 'f': return u->fireState != 2;
+        case 's': return false;                          // STOP is instantaneous
+        default:  return pendingCmd == cmd;              // armed, awaiting a target
+    }
+}
+CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
+    const bool mobile = t.maxVel > 0.0f;
+    const bool armed = !t.weapons.empty();
+    switch (cmd) {
+        case 'm': case 'p': case 'g':          // move / patrol / guard
+            return mobile ? CmdState::Enabled : CmdState::Disabled;
+        case 'a':                               // attack (and capture)
+            return armed || t.canCapture ? CmdState::Enabled : CmdState::Disabled;
+        case 'b':                               // BLAST: needs a command-fire weapon
+            return t.commandFireSlot() >= 0 ? CmdState::Enabled : CmdState::Disabled;
+        case 'c':                               // reclaim
+            return t.isBuilder && t.canReclaim && mobile ? CmdState::Enabled
+                                                         : CmdState::Disabled;
+        case 'r':                               // repair
+            return t.isBuilder && mobile ? CmdState::Enabled : CmdState::Disabled;
+        case 'l':                               // load: a transport with room
+            return t.canTransport && int(u.cargo.size()) < t.transportCap
+                       ? CmdState::Enabled : CmdState::Disabled;
+        case 'u':                               // unload: a transport with cargo
+            return t.canTransport && !u.cargo.empty() ? CmdState::Enabled
+                                                      : CmdState::Disabled;
+        case 'y':                               // cloak toggle
+            return t.canCloak ? CmdState::Enabled : CmdState::Disabled;
+        case 't':                               // on/off toggle
+            return t.onOffable ? CmdState::Enabled : CmdState::Disabled;
+        case 'v':                               // move-order cycle
+            return mobile && t.canSetMoveState ? CmdState::Enabled : CmdState::Disabled;
+        case 'f':                               // fire-order cycle
+            return armed && t.canSetFireState ? CmdState::Enabled : CmdState::Disabled;
+        default:
+            return CmdState::Enabled;           // STOP, and anything unmodelled
+    }
+}
 }  // namespace
 
     void GameView::renderGui(int winW, int winH) {
@@ -1324,13 +1389,40 @@ char taPanelCommand(const std::string& name) {
                     guiTex_[i].empty())
                     continue;
                 SDL_FRect r = guiCmdRect(g);
-                bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w &&
-                           mouseY_ >= r.y && mouseY_ <= r.y + r.h;
-                size_t frame = (hot && guiTex_[i].size() > 1 && guiTex_[i][1]) ? 1 : 0;
-                if (SDL_Texture* t = guiTex_[i][frame])
-                    SDL_RenderCopyF(ren_, t, nullptr, &r);
-                if (char cmd = taPanelCommand(g.name))
-                    guiBtnRects_.push_back({r, cmd});
+                const char cmd = taPanelCommand(g.name);
+                // Availability, as retail draws it: an order that does not apply to
+                // the selection keeps its slot but shows the Disabled face and takes
+                // no click. With nothing selected every order is unavailable.
+                const UnitR* front =
+                    !selection_.empty() ? frameUnitP(selection_.front()) : nullptr;
+                const bool usable =
+                    cmd != 0 && front && front->type &&
+                    taCommandState(cmd, *front->type, *front) == CmdState::Enabled;
+                // Retail's image slots are {Disabled, Pressed, Unpressed} -- slot 0
+                // is the empty socket, 1 the pushed-in face and 2 the IDLE one. This
+                // pass had 0 for idle and 1 for hover, the pre-TA convention, so
+                // every button on the panel sat permanently in its disabled socket
+                // and lit to "pushed in" when the mouse crossed it -- backwards in
+                // both directions at once. (The other draw path was corrected for
+                // this long ago; this one is what actually runs on a TA panel.)
+                const bool held =
+                    taButtonArmedFor(cmd, front, pendingCmd_) ||
+                    (cmd == guiPressed_ && SDL_GetTicks() - guiPressedMs_ < 120);
+                const int slot = !usable ? 0 : (held ? 1 : 2);
+                auto tx = [&](int k) -> SDL_Texture* {
+                    return k >= 0 && k < int(guiTex_[i].size()) ? guiTex_[i][size_t(k)]
+                                                                : nullptr;
+                };
+                SDL_Texture* t = tx(slot);
+                if (!t) t = tx(held ? 2 : 1);   // art missing that face: use the other
+                if (!t) t = tx(0);
+                if (t) SDL_RenderCopyF(ren_, t, nullptr, &r);
+                // Armed with no distinct pressed face: fall back to the gold outline.
+                if (usable && held && slot != 1) {
+                    SDL_SetRenderDrawColor(ren_, 255, 220, 90, 255);
+                    SDL_RenderDrawRectF(ren_, &r);
+                }
+                if (usable) guiBtnRects_.push_back({r, cmd});
             }
         }
 
