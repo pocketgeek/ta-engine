@@ -14,6 +14,7 @@
 
 #include "hpi/hpi.h"
 #include "tdf/sidedata.h"
+#include "sim/matchsetup.h"
 #include "sim/sim.h"
 
 #include <cstdio>
@@ -44,9 +45,11 @@ int main(int argc, char** argv) {
     std::printf("unitdata_test\n");
 
     ta::hpi::Vfs vfs = ta::hpi::mountRetailRoot(argv[1]);
+    // Go through setupRegistry rather than calling the loaders by hand: the
+    // ORDER matters (weapons before units, or every unit loads unarmed) and a
+    // test that reproduces the order itself would not catch getting it wrong.
     TypeRegistry reg;
-    reg.loadMoveInfo(vfs, "gamedata/MOVEINFO.TDF");
-    reg.loadDir(vfs, "units");
+    ta::sim::setupRegistry(reg, vfs);
 
     // The Commander Pack ships 815 FBIs across base/CC/BT/patch, many of them the
     // same unit redefined by a later archive. A few hundred distinct types is the
@@ -162,6 +165,48 @@ int main(int argc, char** argv) {
         // And the registry agrees with SIDEDATA about the commanders.
         for (const auto& c : {std::string("armcom"), std::string("corcom")})
             check(reg.find(c) != nullptr, "the registry has " + c);
+    }
+
+    // --- Weapons: the shared tables, resolved by name ------------------------
+    // TA keeps 686 weapon definitions in weapons/**.tdf and gamedata/WEAPONS.TDF
+    // and a unit's FBI only NAMES the ones it carries. Kingdoms inlined a
+    // [WEAPONn] section per FBI, so before this was wired every one of the 278
+    // TA unit types loaded unarmed -- and nothing failed, the game was just
+    // silently pacifist. Hence the blunt count assertion first.
+    {
+        int armed = 0;
+        for (const auto& [id, t] : reg.types()) { (void)id; if (!t.weapons.empty()) ++armed; }
+        std::printf("  armed types: %d of %zu\n", armed, reg.types().size());
+        check(armed > 100, "a large fraction of unit types are armed");
+
+        const ta::sim::Weapon* laser = reg.weapon("ARMCOMLASER");
+        check(laser != nullptr, "the weapon table resolves ARMCOMLASER by name");
+        check(reg.weapon("armcomlaser") != nullptr, "...case-insensitively");
+        if (laser) {
+            near(laser->damage, 60, "ARMCOMLASER damage");
+            near(laser->range, 200, "ARMCOMLASER range");
+            near(laser->reload, 0.85f, "ARMCOMLASER reloadtime");
+            near(laser->aoe, 16, "ARMCOMLASER areaofeffect");
+        }
+        if (com) {
+            check(com->weapons.size() == 2, "armcom carries two weapons");
+            // Weapon1 = the laser, Weapon3 = ARM_DISINTEGRATOR, the D-gun. Its
+            // 5500 damage is the single most recognisable number in the game.
+            if (com->weapons.size() == 2) {
+                near(com->weapons[0].damage, 60, "armcom W1 is the J7 Laser");
+                near(com->weapons[1].damage, 5500, "armcom W3 is the Disintegrator");
+                near(com->weapons[1].range, 240, "...at D-gun range");
+            }
+        }
+        if (const UnitType* pw = reg.find("armpw")) {
+            check(pw->weapons.size() == 1, "the Peewee has one weapon");
+            if (!pw->weapons.empty()) near(pw->weapons[0].damage, 8, "Peewee E.M.G. damage");
+        } else {
+            check(false, "armpw is in the registry");
+        }
+        // A weapon the tables do not define must leave the slot empty rather than
+        // inventing a zero-damage one that would make the unit look armed.
+        check(reg.weapon("NO_SUCH_WEAPON_XYZ") == nullptr, "an unknown weapon resolves to nothing");
     }
 
     // --- The Kingdoms keys are gone, and nothing quietly sets them ------------

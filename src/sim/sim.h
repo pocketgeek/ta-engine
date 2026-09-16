@@ -433,6 +433,13 @@ public:
     void loadDir(const hpi::Vfs& vfs, const std::string& prefix);
     // Read the build tree from gamedata/SIDEDATA.TDF's [CANBUILD] block.
     void loadBuildTree(const hpi::Vfs& vfs);
+    // Parse every weapon definition in the shared tables (weapons/**.tdf and
+    // gamedata/weapon*.tdf) into a name -> Weapon table. MUST run before loadDir:
+    // a unit's FBI names its weapons (Weapon1=ARMCOMLASER) rather than carrying
+    // them, so with no table loaded every unit comes out unarmed.
+    void loadWeapons(const hpi::Vfs& vfs);
+    // A weapon by name (case-insensitive); nullptr if the tables lack it.
+    const Weapon* weapon(const std::string& name) const;
     const UnitType* find(const std::string& id) const;
     // Full type table in deterministic (name-sorted) order -- corpse interning
     // walks it so every peer builds identical FeatType indices.
@@ -464,6 +471,7 @@ private:
     std::map<std::string, UnitType> types_;
     std::set<std::string> canonicalTypes_;   // ids whose defining .fbi filename == objectname
     std::map<std::string, std::vector<std::string>> buildTree_;
+    std::map<std::string, Weapon> weaponDefs_;   // lowercased name -> definition
     std::map<std::string, MoveClass> moveClasses_;   // lowercased name -> limits
 };
 

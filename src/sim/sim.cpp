@@ -1,5 +1,7 @@
 #include "sim/sim.h"
 
+#include "util/strcase.h"
+
 #include "hpi/hpi.h"
 #include "sim/detmath.h"
 #include "sim/mission.h"
@@ -76,6 +78,180 @@ void TypeRegistry::loadMoveInfo(const hpi::Vfs& vfs, const std::string& path) {
 }
 
 namespace {
+
+// Parse one weapon definition. TA keeps these in SHARED tables under
+// weapons/ and gamedata/, named and referenced from a unit's FBI; Kingdoms
+// inlined a [WEAPON1] section in each FBI instead. The node shape is close
+// enough that one parser serves both.
+Weapon parseWeaponNode(const tdf::Node* w) {
+    Weapon wp;
+    wp.name = w->valueOr("name", "");
+    wp.range = float(w->numberOr("range", 0));
+    wp.reload = float(w->numberOr("reloadtime", 1));
+    wp.projVel = float(w->numberOr("weaponvelocity", 0));
+    // See Weapon::subSteps. Integer ceil: no shipped weaponvelocity is a
+    // multiple of 480, so this is bit-identical to retail's fixed-point
+    // chain on every shipped weapon (a mod landing exactly on 480n would
+    // differ by one sub-step).
+    wp.subSteps = wp.projVel > 0.0f
+                      ? int((wp.projVel + 479.0f) / 480.0f) : 1;
+    if (wp.subSteps < 1) wp.subSteps = 1;
+    wp.noLead = w->numberOr("dontleadtargets", 0) != 0;
+    wp.gravityAdj = float(w->numberOr("gravityadjustment", 1.0));
+    wp.lobPreferred = w->numberOr("lobpreferred", 0) != 0;
+    wp.melee = lower(w->valueOr("type", "")) == "melee";
+    // Visual family: FBI hweffect is authoritative (it names the hit
+    // effect); fall back to subtype/damagetype/name when it is absent.
+    std::string hwe = lower(w->valueOr("hweffect", ""));
+    std::string wtag = hwe + " " +
+                       lower(w->valueOr("subtype", "")) + " " +
+                       lower(w->valueOr("damagetype", "")) + " " +
+                       lower(wp.name);
+    if (wtag.find("lightning") != std::string::npos)
+        wp.fx = WeaponFx::Lightning;
+    else if (wtag.find("fire") != std::string::npos ||
+             wtag.find("flame") != std::string::npos ||
+             wtag.find("breath") != std::string::npos)
+        wp.fx = WeaponFx::Fire;
+    // FBI weapon type = "Line of Sight" is a sustained hitscan beam
+    // (the Gold Dragon's Fire Breath: range 600, emittime 45). It is
+    // NOT a lobbed projectile -- earlier code capped every fire weapon's
+    // range to 170px on the false premise that a breath is a short
+    // emission, which forced the drake to dive to point-blank and spit a
+    // single slow comet. Use the FBI range and drive the flame from
+    // emittime instead. (emittime is in 30Hz frames.)
+    wp.beam = lower(w->valueOr("type", "")) == "line of sight";
+    wp.emitTime = float(w->numberOr("emittime", 0)) / 30.0f;
+    // The remaining retail weapon classes. `type` is authoritative;
+    // subtype adds the mind-control behaviour on top of either a
+    // line-of-sight shot (Individual) or a Remote Effect (Area).
+    {
+        std::string ty = lower(w->valueOr("type", ""));
+        if (ty == "guided") wp.kind = Weapon::Kind::Guided;
+        else if (ty == "remote effect") wp.kind = Weapon::Kind::Remote;
+        else if (ty == "wandering") wp.kind = Weapon::Kind::Wandering;
+        // turnrate is in degrees/second (a guided shot at 180 flips its
+        // heading in a second, which matches the shipped 120..600 range
+        // against 250-1200 px/s speeds).
+        wp.turnRate = float(w->numberOr("turnrate", 0)) * (kPi / 180.0f);
+        wp.buildUp = float(w->numberOr("builduptime", 0));
+        wp.decay = float(w->numberOr("decaytime", 0));
+        wp.duration = float(w->numberOr("duration", 0));
+        // maxvariation is NOT an angle: it is the wander jitter's
+        // half-width in PIXELS PER TICK (2..8 across the shipped
+        // storms, which dwarfs their 45..80 px/s drift -- that is what
+        // makes the path genuinely wander rather than curve).
+        wp.maxVariation = float(w->numberOr("maxvariation", 0));
+        wp.variationTime = float(w->numberOr("variationtime", 0));
+        wp.unitsOnly = w->numberOr("unitsonly", 0) != 0;
+        wp.particlesPerSec = float(w->numberOr("particlespersecond", 0));
+        std::string st = lower(w->valueOr("subtype", ""));
+        // Which Remote Effect subclass this is (retail dispatches on
+        // subtype); it decides the damage cadence, not just the visuals.
+        // subtype=Dropped rides on a Ballistic weapon but is its own
+        // retail class: the bomb is let go, not launched.
+        if (st == "dropped") wp.kind = Weapon::Kind::Dropped;
+        if (st == "earthquake") wp.remote = Weapon::RemoteKind::Earthquake;
+        else if (st == "hailstorm") wp.remote = Weapon::RemoteKind::Hailstorm;
+        else if (st == "mindcontrol") wp.remote = Weapon::RemoteKind::MindCtl;
+        else if (st == "turntofrozen") wp.remote = Weapon::RemoteKind::Freeze;
+    }
+    // aimtolerance is in COB angle units; convert to radians. Ballistic
+    // weapons lob an arc (viewer draws it); soundhitclass = impact sound.
+    wp.aimTol = float(w->numberOr("aimtolerance",
+                      w->numberOr("aimtolerence", 1024))) * float(kCobAngle);
+    wp.ballistic = lower(w->valueOr("type", "")) == "ballistic";
+    wp.soundHit = lower(w->valueOr("soundhitclass",
+                                   w->valueOr("soundhit", "")));
+    // Projectile art (display only).
+    wp.weaponArt = lower(w->valueOr("weaponart", ""));
+    wp.shotModel = lower(w->valueOr("model", ""));
+    if (auto dot = wp.shotModel.rfind(".3do"); dot != std::string::npos)
+        wp.shotModel.erase(dot);          // some FBIs spell the extension
+    wp.nimbus = w->numberOr("nimbus", 0) != 0;
+    {
+        // innercolor/middlecolor/outercolor are "R G B" triples that
+        // tint a lightning bolt's core, body and halo.
+        auto rgb = [&](const char* key, uint8_t out[3]) {
+            const std::string* v = w->value(key);
+            if (!v) return false;
+            int c[3] = {255, 255, 255};
+            std::sscanf(v->c_str(), "%d %d %d", &c[0], &c[1], &c[2]);
+            for (int i = 0; i < 3; ++i)
+                out[i] = uint8_t(std::clamp(c[i], 0, 255));
+            return true;
+        };
+        bool a = rgb("innercolor", wp.inner);
+        bool b = rgb("middlecolor", wp.middle);
+        bool c = rgb("outercolor", wp.outer);
+        wp.hasBoltColor = a || b || c;
+    }
+    // spinheading is in COB angle units per second.
+    wp.spinRate = float(w->numberOr("spinheading", 0)) * float(kCobAngle);
+    // shadowgaf is always "shadows"; shadowart names the sequence in it.
+    wp.shadowArt = lower(w->valueOr("shadowart", ""));
+    wp.shotArt = lower(w->valueOr("shotart", ""));
+    {
+        std::string lm = lower(w->valueOr("lightmap", ""));
+        wp.lightMap = lm == "small" ? 1 : lm == "medium" ? 2
+                    : lm == "large" ? 3 : 0;
+    }
+    wp.wanderStart = lower(w->valueOr("wanderstartart", ""));
+    wp.wanderLoop = lower(w->valueOr("wanderloopart", ""));
+    wp.wanderEnd = lower(w->valueOr("wanderendart", ""));
+    wp.explosionClass = lower(w->valueOr("explosionclass", ""));
+    wp.waterExplosionClass = lower(w->valueOr("waterexplosionclass", ""));
+    wp.radiusArt[0] = lower(w->valueOr("radiusart0", ""));
+    wp.radiusArt[1] = lower(w->valueOr("radiusart1", ""));
+    wp.radiusArt[2] = lower(w->valueOr("radiusart2", ""));
+    wp.ringCount = int(w->numberOr("ringcount", 0));
+    wp.ringDelay = float(w->numberOr("ringdelay", 0.2));
+    wp.ringDur = float(w->numberOr("ringduration", 1.0));
+    wp.spriteCount = int(w->numberOr("spritecount", 24));
+    wp.shakeMag = float(w->numberOr("shakemagnitude", 0));
+    wp.shakeDur = float(w->numberOr("shakeduration", 0));
+    wp.fireStarter = w->numberOr("firestarter", 0) != 0;
+    {
+        std::string dtp = lower(w->valueOr("damagetype", "normal"));
+        wp.dmgType = dtp == "fire" ? 2 : dtp == "explosion" ? 3
+                   : dtp == "paralyzer" ? 4 : 1;
+    }
+    wp.minRange = float(w->numberOr("minrange", 0));
+    wp.noAir = w->numberOr("noairweapon", 0) != 0;
+    // Status-effect weapons (Creon freeze, medusa/paralyzer, petrify),
+    // inferred from the hit-effect / damagetype / name.
+    {
+        // Freeze and petrify come from the SUBTYPE, never from the name.
+        // Retail selects them by subtype=turntofrozen/turntostone (6
+        // weapons, all named accordingly), and a name-substring
+        // heuristic also swept up the three HAILSTORMS -- "Hail Shower",
+        // "Ice Storm", "Ice Storms" -- which do not freeze. Because our
+        // freeze is an instant statue death, that quietly turned the
+        // Acolyte's 70-damage Hail Shower into a 200-radius instant kill.
+        std::string st = lower(w->valueOr("subtype", ""));
+        std::string s = hwe + " " + lower(w->valueOr("damagetype", "")) +
+                        " " + lower(w->valueOr("soundhitclass", "")) + " " +
+                        lower(wp.name);
+        // TA's paralyzer is damagetype 4; the name check catches the
+        // Immobilizer family whose damagetype is spelled out.
+        if (s.find("paraly") != std::string::npos)
+            wp.status = Weapon::Status::Paralyzed;
+        if (wp.status != Weapon::Status::None)
+            wp.statusDur = float(w->numberOr("duration", 5.0));
+    }
+    wp.aoe = float(w->numberOr("areaofeffect", 0));
+    // The FBI data misspells this key both ways; accept either.
+    wp.edge = float(w->numberOr("edgeeffectiveness",
+                    w->numberOr("edgeeffectivness", 1.0)));
+    if (const auto* dmg = w->child("DAMAGE")) {
+        wp.damage = float(dmg->numberOr("default", 0));
+        // Per-target-category damage (every DAMAGE key but `default`).
+        for (const auto& [k, v] : dmg->values)
+            if (k != "default")
+                wp.dmgVs[k] = float(std::atof(v.c_str()));
+    }
+    return wp;
+}
 
 // Draw `frac` of a type's FULL build cost (frac == 1 is the whole unit) from a
 // player, taking metal and energy together. Returns `frac` if it was paid and 0
@@ -348,187 +524,35 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.pitchScale = float(info->numberOr("pitchscale", 0));
             // One weapon block -> a Weapon. Shared by WEAPON1..3 and by
             // [EXPLODEAS] (the death blast), which is the same block shape.
-            auto parseWeapon = [](const tdf::Node* w) {
-                Weapon wp;
-                wp.name = w->valueOr("name", "");
-                wp.range = float(w->numberOr("range", 0));
-                wp.reload = float(w->numberOr("reloadtime", 1));
-                wp.projVel = float(w->numberOr("weaponvelocity", 0));
-                // See Weapon::subSteps. Integer ceil: no shipped weaponvelocity is a
-                // multiple of 480, so this is bit-identical to retail's fixed-point
-                // chain on every shipped weapon (a mod landing exactly on 480n would
-                // differ by one sub-step).
-                wp.subSteps = wp.projVel > 0.0f
-                                  ? int((wp.projVel + 479.0f) / 480.0f) : 1;
-                if (wp.subSteps < 1) wp.subSteps = 1;
-                wp.noLead = w->numberOr("dontleadtargets", 0) != 0;
-                wp.gravityAdj = float(w->numberOr("gravityadjustment", 1.0));
-                wp.lobPreferred = w->numberOr("lobpreferred", 0) != 0;
-                wp.melee = lower(w->valueOr("type", "")) == "melee";
-                // Visual family: FBI hweffect is authoritative (it names the hit
-                // effect); fall back to subtype/damagetype/name when it is absent.
-                std::string hwe = lower(w->valueOr("hweffect", ""));
-                std::string wtag = hwe + " " +
-                                   lower(w->valueOr("subtype", "")) + " " +
-                                   lower(w->valueOr("damagetype", "")) + " " +
-                                   lower(wp.name);
-                if (wtag.find("lightning") != std::string::npos)
-                    wp.fx = WeaponFx::Lightning;
-                else if (wtag.find("fire") != std::string::npos ||
-                         wtag.find("flame") != std::string::npos ||
-                         wtag.find("breath") != std::string::npos)
-                    wp.fx = WeaponFx::Fire;
-                // FBI weapon type = "Line of Sight" is a sustained hitscan beam
-                // (the Gold Dragon's Fire Breath: range 600, emittime 45). It is
-                // NOT a lobbed projectile -- earlier code capped every fire weapon's
-                // range to 170px on the false premise that a breath is a short
-                // emission, which forced the drake to dive to point-blank and spit a
-                // single slow comet. Use the FBI range and drive the flame from
-                // emittime instead. (emittime is in 30Hz frames.)
-                wp.beam = lower(w->valueOr("type", "")) == "line of sight";
-                wp.emitTime = float(w->numberOr("emittime", 0)) / 30.0f;
-                // The remaining retail weapon classes. `type` is authoritative;
-                // subtype adds the mind-control behaviour on top of either a
-                // line-of-sight shot (Individual) or a Remote Effect (Area).
-                {
-                    std::string ty = lower(w->valueOr("type", ""));
-                    if (ty == "guided") wp.kind = Weapon::Kind::Guided;
-                    else if (ty == "remote effect") wp.kind = Weapon::Kind::Remote;
-                    else if (ty == "wandering") wp.kind = Weapon::Kind::Wandering;
-                    // turnrate is in degrees/second (a guided shot at 180 flips its
-                    // heading in a second, which matches the shipped 120..600 range
-                    // against 250-1200 px/s speeds).
-                    wp.turnRate = float(w->numberOr("turnrate", 0)) * (kPi / 180.0f);
-                    wp.buildUp = float(w->numberOr("builduptime", 0));
-                    wp.decay = float(w->numberOr("decaytime", 0));
-                    wp.duration = float(w->numberOr("duration", 0));
-                    // maxvariation is NOT an angle: it is the wander jitter's
-                    // half-width in PIXELS PER TICK (2..8 across the shipped
-                    // storms, which dwarfs their 45..80 px/s drift -- that is what
-                    // makes the path genuinely wander rather than curve).
-                    wp.maxVariation = float(w->numberOr("maxvariation", 0));
-                    wp.variationTime = float(w->numberOr("variationtime", 0));
-                    wp.unitsOnly = w->numberOr("unitsonly", 0) != 0;
-                    wp.particlesPerSec = float(w->numberOr("particlespersecond", 0));
-                    std::string st = lower(w->valueOr("subtype", ""));
-                    // Which Remote Effect subclass this is (retail dispatches on
-                    // subtype); it decides the damage cadence, not just the visuals.
-                    // subtype=Dropped rides on a Ballistic weapon but is its own
-                    // retail class: the bomb is let go, not launched.
-                    if (st == "dropped") wp.kind = Weapon::Kind::Dropped;
-                    if (st == "earthquake") wp.remote = Weapon::RemoteKind::Earthquake;
-                    else if (st == "hailstorm") wp.remote = Weapon::RemoteKind::Hailstorm;
-                    else if (st == "mindcontrol") wp.remote = Weapon::RemoteKind::MindCtl;
-                    else if (st == "turntofrozen") wp.remote = Weapon::RemoteKind::Freeze;
-                }
-                // aimtolerance is in COB angle units; convert to radians. Ballistic
-                // weapons lob an arc (viewer draws it); soundhitclass = impact sound.
-                wp.aimTol = float(w->numberOr("aimtolerance",
-                                  w->numberOr("aimtolerence", 1024))) * float(kCobAngle);
-                wp.ballistic = lower(w->valueOr("type", "")) == "ballistic";
-                wp.soundHit = lower(w->valueOr("soundhitclass",
-                                               w->valueOr("soundhit", "")));
-                // Projectile art (display only).
-                wp.weaponArt = lower(w->valueOr("weaponart", ""));
-                wp.shotModel = lower(w->valueOr("model", ""));
-                if (auto dot = wp.shotModel.rfind(".3do"); dot != std::string::npos)
-                    wp.shotModel.erase(dot);          // some FBIs spell the extension
-                wp.nimbus = w->numberOr("nimbus", 0) != 0;
-                {
-                    // innercolor/middlecolor/outercolor are "R G B" triples that
-                    // tint a lightning bolt's core, body and halo.
-                    auto rgb = [&](const char* key, uint8_t out[3]) {
-                        const std::string* v = w->value(key);
-                        if (!v) return false;
-                        int c[3] = {255, 255, 255};
-                        std::sscanf(v->c_str(), "%d %d %d", &c[0], &c[1], &c[2]);
-                        for (int i = 0; i < 3; ++i)
-                            out[i] = uint8_t(std::clamp(c[i], 0, 255));
-                        return true;
-                    };
-                    bool a = rgb("innercolor", wp.inner);
-                    bool b = rgb("middlecolor", wp.middle);
-                    bool c = rgb("outercolor", wp.outer);
-                    wp.hasBoltColor = a || b || c;
-                }
-                // spinheading is in COB angle units per second.
-                wp.spinRate = float(w->numberOr("spinheading", 0)) * float(kCobAngle);
-                // shadowgaf is always "shadows"; shadowart names the sequence in it.
-                wp.shadowArt = lower(w->valueOr("shadowart", ""));
-                wp.shotArt = lower(w->valueOr("shotart", ""));
-                {
-                    std::string lm = lower(w->valueOr("lightmap", ""));
-                    wp.lightMap = lm == "small" ? 1 : lm == "medium" ? 2
-                                : lm == "large" ? 3 : 0;
-                }
-                wp.wanderStart = lower(w->valueOr("wanderstartart", ""));
-                wp.wanderLoop = lower(w->valueOr("wanderloopart", ""));
-                wp.wanderEnd = lower(w->valueOr("wanderendart", ""));
-                wp.explosionClass = lower(w->valueOr("explosionclass", ""));
-                wp.waterExplosionClass = lower(w->valueOr("waterexplosionclass", ""));
-                wp.radiusArt[0] = lower(w->valueOr("radiusart0", ""));
-                wp.radiusArt[1] = lower(w->valueOr("radiusart1", ""));
-                wp.radiusArt[2] = lower(w->valueOr("radiusart2", ""));
-                wp.ringCount = int(w->numberOr("ringcount", 0));
-                wp.ringDelay = float(w->numberOr("ringdelay", 0.2));
-                wp.ringDur = float(w->numberOr("ringduration", 1.0));
-                wp.spriteCount = int(w->numberOr("spritecount", 24));
-                wp.shakeMag = float(w->numberOr("shakemagnitude", 0));
-                wp.shakeDur = float(w->numberOr("shakeduration", 0));
-                wp.fireStarter = w->numberOr("firestarter", 0) != 0;
-                {
-                    std::string dtp = lower(w->valueOr("damagetype", "normal"));
-                    wp.dmgType = dtp == "fire" ? 2 : dtp == "explosion" ? 3
-                               : dtp == "paralyzer" ? 4 : 1;
-                }
-                wp.minRange = float(w->numberOr("minrange", 0));
-                wp.noAir = w->numberOr("noairweapon", 0) != 0;
-                // Status-effect weapons (Creon freeze, medusa/paralyzer, petrify),
-                // inferred from the hit-effect / damagetype / name.
-                {
-                    // Freeze and petrify come from the SUBTYPE, never from the name.
-                    // Retail selects them by subtype=turntofrozen/turntostone (6
-                    // weapons, all named accordingly), and a name-substring
-                    // heuristic also swept up the three HAILSTORMS -- "Hail Shower",
-                    // "Ice Storm", "Ice Storms" -- which do not freeze. Because our
-                    // freeze is an instant statue death, that quietly turned the
-                    // Acolyte's 70-damage Hail Shower into a 200-radius instant kill.
-                    std::string st = lower(w->valueOr("subtype", ""));
-                    std::string s = hwe + " " + lower(w->valueOr("damagetype", "")) +
-                                    " " + lower(w->valueOr("soundhitclass", "")) + " " +
-                                    lower(wp.name);
-                    // TA's paralyzer is damagetype 4; the name check catches the
-                    // Immobilizer family whose damagetype is spelled out.
-                    if (s.find("paraly") != std::string::npos)
-                        wp.status = Weapon::Status::Paralyzed;
-                    if (wp.status != Weapon::Status::None)
-                        wp.statusDur = float(w->numberOr("duration", 5.0));
-                }
-                wp.aoe = float(w->numberOr("areaofeffect", 0));
-                // The FBI data misspells this key both ways; accept either.
-                wp.edge = float(w->numberOr("edgeeffectiveness",
-                                w->numberOr("edgeeffectivness", 1.0)));
-                if (const auto* dmg = w->child("DAMAGE")) {
-                    wp.damage = float(dmg->numberOr("default", 0));
-                    // Per-target-category damage (every DAMAGE key but `default`).
-                    for (const auto& [k, v] : dmg->values)
-                        if (k != "default")
-                            wp.dmgVs[k] = float(std::atof(v.c_str()));
-                }
-                return wp;
-            };
+            // TA names its weapons; the definitions live in the shared tables
+            // loadWeapons() read. (Kingdoms inlined a [WEAPONn] section per FBI --
+            // still honoured below, so an override in that shape keeps working,
+            // but no TA file uses it.)
             for (int slot = 1; slot <= 3; ++slot) {
-                const auto* w = root.child("WEAPON" + std::to_string(slot));
-                if (!w) continue;
-                Weapon wp = parseWeapon(w);
-                if (wp.damage > 0) t.weapons.push_back(wp);
+                std::string key = "weapon" + std::to_string(slot);
+                Weapon wp;
+                bool got = false;
+                if (const std::string* nm = info->value(key); nm && !nm->empty()) {
+                    if (const Weapon* def = weapon(*nm)) { wp = *def; got = true; }
+                }
+                if (!got) {
+                    const auto* w = root.child("WEAPON" + std::to_string(slot));
+                    if (!w) continue;
+                    wp = parseWeaponNode(w);
+                    got = true;
+                }
+                if (got && wp.damage > 0) t.weapons.push_back(wp);
             }
             if (!t.weapons.empty()) t.weapon = t.weapons[0];
             // [EXPLODEAS]: the weapon a unit detonates at its own position when it
             // dies -- the Kamikaze Rat's whole purpose (areaofeffect 203, 8000
             // damage), plus the Grenadier, Fire Demon, Balloon, crebomb, creshoc.
-            if (const auto* ea = root.child("EXPLODEAS")) {
-                t.explodeAs = parseWeapon(ea);
+            if (const Weapon* ea = t.explodeAsName.empty() ? nullptr
+                                                          : weapon(t.explodeAsName)) {
+                t.explodeAs = *ea;                    // TA: ExplodeAs names one
+                t.hasExplodeAs = t.explodeAs.damage > 0;
+            } else if (const auto* ean = root.child("EXPLODEAS")) {
+                t.explodeAs = parseWeaponNode(ean);   // Kingdoms: an inline section
                 t.hasExplodeAs = t.explodeAs.damage > 0;
             }
             // totalallowed: per-player cap on live units of this type (the five
@@ -574,6 +598,38 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
     // archive (unitscb then units) and this rebuilds from scratch each time, so it is
     // idempotent and cannot be left stale by a second load.
     internCategories();
+}
+
+void TypeRegistry::loadWeapons(const hpi::Vfs& vfs) {
+    // 686 definitions across ~145 files in the Commander Pack: weapons/ holds the
+    // bulk (cannons, lasers, missiles, rockets, fires, meteors...) and
+    // gamedata/WEAPONS.TDF a handful more. Every top-level section is one weapon,
+    // keyed by its section name -- which is what a unit's Weapon1/2/3 refers to.
+    auto take = [&](const std::string& path) {
+        try {
+            auto b = vfs.read(path);
+            auto root = tdf::parseText(std::string(b.begin(), b.end()), path);
+            for (const std::string& name : root.childOrder) {
+                const tdf::Node* w = root.child(name);
+                if (!w) continue;
+                // First definition wins, matching how the VFS already resolved
+                // which archive supplies a path.
+                if (weaponDefs_.count(name)) continue;
+                weaponDefs_[name] = parseWeaponNode(w);
+            }
+        } catch (const std::exception&) {}
+    };
+    for (const std::string& p : vfs.list("weapons"))
+        if (ta::iendsWith(p, ".tdf")) take(p);
+    for (const std::string& p : vfs.list("gamedata")) {
+        std::string leaf = lower(std::filesystem::path(p).filename().string());
+        if (leaf.rfind("weapon", 0) == 0 && ta::iendsWith(p, ".tdf")) take(p);
+    }
+}
+
+const Weapon* TypeRegistry::weapon(const std::string& name) const {
+    auto it = weaponDefs_.find(lower(name));
+    return it == weaponDefs_.end() ? nullptr : &it->second;
 }
 
 void TypeRegistry::loadBuildTree(const hpi::Vfs& vfs) {

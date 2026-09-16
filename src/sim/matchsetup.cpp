@@ -151,6 +151,9 @@ void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs) {
     // The VFS already merges base + the expansions + the patch + community units
     // into one namespace, resolved by retail newest-date precedence, so a single
     // loadDir("units") covers the whole Commander Pack.
+    // Weapons FIRST: a unit's FBI names its weapons rather than carrying them,
+    // so loading units against an empty table leaves every one of them unarmed.
+    reg.loadWeapons(vfs);
     reg.loadDir(vfs, "units");
     reg.loadBuildTree(vfs);
 }
