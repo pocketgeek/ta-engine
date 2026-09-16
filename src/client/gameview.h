@@ -1500,11 +1500,11 @@ private:
     // No SDL calls and only reads shared state (models/textures/heightmap/anim), so
     // it is safe to run for many units at once on the worker pool. drawUnit() then
     // just submits g.runs. `scratch` is a reusable per-thread triangle buffer.
-    // A monarch (the five hero units) -- the only thing that disco-dances.
+    // The commander -- the only thing that disco-dances. Kingdoms matched against
+    // a hardcoded list of its five monarchs; TA reads the flag the FBI already
+    // carries, so a modded side's commander dances too.
     static bool isMonarchType(const ta::sim::UnitType* t) {
-        if (!t) return false;
-        for (int i = 0; i < 5; ++i) if (t->id == ta::sim::kMonarchs[i]) return true;
-        return false;
+        return t && t->commander;
     }
     // Fully-saturated hue wheel -> RGB, hue in [0,1). Drives the disco tint & floor.
     static SDL_Color discoHue(float h) {

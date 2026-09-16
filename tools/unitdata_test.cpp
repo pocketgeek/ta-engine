@@ -13,6 +13,7 @@
 //   usage: unitdata_test <retail-install-dir>
 
 #include "hpi/hpi.h"
+#include "tdf/sidedata.h"
 #include "sim/sim.h"
 
 #include <cstdio>
@@ -117,6 +118,51 @@ int main(int argc, char** argv) {
     }
     std::printf("  ARM %d, CORE %d\n", arm, core);
     check(arm > 50 && core > 50, "both ARM and CORE rosters loaded");
+
+    // --- SIDEDATA: sides, commanders, build tree, HUD layout -----------------
+    {
+        ta::tdf::SideData sd = ta::tdf::SideData::load(vfs);
+        check(sd.sides.size() == 2, "SIDEDATA declares two sides");
+        const ta::tdf::Side* armS = sd.side("ARM");
+        const ta::tdf::Side* corS = sd.side("CORE");
+        check(armS && armS->commander == "armcom", "ARM's commander is ARMCOM");
+        check(corS && corS->commander == "corcom", "CORE's commander is CORCOM");
+        // CORE's unit-id prefix is COR, not its name -- so they must not be
+        // conflated, and sideByPrefix has to exist for id-based lookups.
+        check(corS && corS->namePrefix == "COR", "CORE's unit prefix is COR, not CORE");
+        check(sd.sideByPrefix("COR") == corS, "lookup by unit-id prefix works");
+        check(armS && armS->intGaf == "ARMINT", "ARM's interface GAF is named");
+
+        // The panel rects are what a faithful two-resource HUD is drawn from, and
+        // they are the reason the TDF parser had to stop reading values to end of
+        // line: SIDEDATA puts all four keys of a rect on ONE line, so a
+        // line-terminated value swallowed three of them and every rect came back
+        // as x1 plus three zeros.
+        const ta::tdf::PanelRect* mb = armS ? armS->panel("METALBAR") : nullptr;
+        const ta::tdf::PanelRect* eb = armS ? armS->panel("ENERGYBAR") : nullptr;
+        check(mb && mb->x1 == 218 && mb->y1 == 11 && mb->x2 == 339 && mb->y2 == 13,
+              "ARM METALBAR rect reads all four coordinates");
+        check(eb && eb->x1 == 471 && eb->y1 == 11 && eb->x2 == 592 && eb->y2 == 13,
+              "ARM ENERGYBAR rect likewise");
+        check(armS && armS->panels.size() > 25, "the whole panel table is read");
+
+        // The build tree. Menu ORDER is the canbuildN numbering, so a naive walk
+        // of a string-keyed map would sort canbuild10 between 1 and 2.
+        auto it = sd.canBuild.find("armcom");
+        check(it != sd.canBuild.end(), "ARMCOM has a build menu");
+        if (it != sd.canBuild.end()) {
+            const auto& m = it->second;
+            check(m.size() == 12, "ARMCOM offers 12 buildings");
+            check(m.size() > 6 && m[0] == "armsolar" && m[5] == "armmakr" &&
+                  m[6] == "armlab",
+                  "and in canbuild1..N order, not lexicographic");
+        }
+        check(sd.canBuild.size() > 20, "every builder's menu is read");
+
+        // And the registry agrees with SIDEDATA about the commanders.
+        for (const auto& c : {std::string("armcom"), std::string("corcom")})
+            check(reg.find(c) != nullptr, "the registry has " + c);
+    }
 
     // --- The Kingdoms keys are gone, and nothing quietly sets them ------------
     // A TA FBI has no buildcost/mogriumincome, so if any type comes back with a

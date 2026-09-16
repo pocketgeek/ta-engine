@@ -432,8 +432,8 @@ public:
     // Parse every .fbi under `prefix` in the VFS (e.g. "units"). All source
     // archives' units merge into one namespace, precedence already resolved.
     void loadDir(const hpi::Vfs& vfs, const std::string& prefix);
-    // Parse <prefix>/<builder>/<buildable>.tdf into the build tree.
-    void loadBuildTree(const hpi::Vfs& vfs, const std::string& prefix);
+    // Read the build tree from gamedata/SIDEDATA.TDF's [CANBUILD] block.
+    void loadBuildTree(const hpi::Vfs& vfs);
     const UnitType* find(const std::string& id) const;
     // Full type table in deterministic (name-sorted) order -- corpse interning
     // walks it so every peer builds identical FeatType indices.

@@ -99,25 +99,43 @@ struct Parser {
 
     void parseAssignment(Node& node) {
         std::string key;
-        while (pos < text.size() && text[pos] != '=' && text[pos] != '\n') {
+        while (pos < text.size() && text[pos] != '=' && text[pos] != '\n' &&
+               text[pos] != '}') {
             key += text[pos];
             advance();
         }
-        if (peek() != '=') fail("expected '=' in assignment");
+        // A bare token with no '=' is skipped, not fatal. The shipped data has
+        // one: ARMSCORP.FBI (the Core Contingency Scorpion) carries
+        // "ItalianDescription=;Scorpione", so once ';' terminates a value the
+        // stray "Scorpione" is left over. Failing here abandoned the whole file
+        // and quietly dropped a unit from the roster -- retail loads the Scorpion
+        // fine, so the tolerant reading is also the faithful one.
+        if (peek() != '=') return;
         advance();
-        // Values run to end of line: game data contains values holding ';'
-        // (French sentences) and even '}' (the SYMBOL_7D key name table), so
-        // ';' and '}' only terminate at line granularity. A '}' after other
-        // content on the line closes the section and is pushed back.
+        // A value ends at its ';' -- which is the format, and which TA's data
+        // relies on: SIDEDATA.TDF packs all four of a panel rect's keys onto one
+        // line ("{ x1=132; y1=5; x2=152; y2=25; }") 240 times over. Reading to
+        // end of line instead swallowed the last three into the first, so every
+        // rect came back as x1 and three zeros.
+        //
+        // That end-of-line rule was inherited from the Kingdoms engine, whose
+        // data had values legitimately containing ';' (French sentences). A scan
+        // of all 1819 TDF/FBI/OTA/GUI files in the Commander Pack finds exactly
+        // one line where text follows a ';' -- ARMSCORP.FBI's
+        // "ItalianDescription=;Scorpione", which is simply malformed and which
+        // retail reads as an empty description, same as this now does.
+        //
+        // A '}' still closes the section and is pushed back, and a comment still
+        // ends the value, so a trailing /* ... */ does not become part of it.
         std::string value;
-        while (pos < text.size() && text[pos] != '\n') {
-            if (text[pos] == '/' && pos + 1 < text.size() && text[pos + 1] == '/') break;
+        while (pos < text.size() && text[pos] != '\n' && text[pos] != ';') {
+            if (text[pos] == '/' && pos + 1 < text.size() &&
+                (text[pos + 1] == '/' || text[pos + 1] == '*')) break;
             if (text[pos] == '}' && !trim(value).empty()) break;
             value += text[pos];
             advance();
         }
-        value = trim(value);
-        while (!value.empty() && value.back() == ';') value.pop_back();
+        if (peek() == ';') advance();          // consume the terminator
         node.values[lower(trim(key))] = trim(value);
     }
 

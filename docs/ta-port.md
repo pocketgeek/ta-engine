@@ -173,12 +173,26 @@ metal/energy drawn continuously at a rate set by `WorkerTime / BuildTime`. The
 existing `buildTime`/`workerTime` fields are the right shape; the tick logic is
 not.
 
-### 🟠 Sides: four Houses become two
+### ✅ Sides: four Houses become two — done
 
-`UnitType::side` is `ARA/TAR/VER/ZON/CRE` today. TA has **ARM and CORE**, read
-from `SIDEDATA.TDF` — which also supplies per-side build menus, unit-icon
-mapping, and the side's starting commander. Fewer sides, but a different source
-of truth.
+`gamedata/SIDEDATA.TDF` turns out to carry, in one file, four things Kingdoms
+kept in four places — so `src/tdf/sidedata.{h,cpp}` reads all of them:
+
+| | |
+| --- | --- |
+| **Sides** | `[SIDE0]` ARM, `[SIDE1]` CORE, each with its `commander=`. Kingdoms had no equivalent — its five monarchs were a hardcoded table in the engine — so the roster now comes from the install, not from source. |
+| **The build tree** | `[CANBUILD]`, one block per builder, `canbuild1..N` **in menu order**. Kingdoms used a directory of `canbuild/<builder>/<buildable>.tdf` marker files with a `[Menu] priority` that had to be sorted, because a directory listing has no inherent order. |
+| **The HUD panel layout** | exact pixel rects for both resource bars, their numbers and caps, the production/consumption readouts, the unit footer and the reload bars. This is what a faithful two-resource panel gets drawn from. |
+| **Per-side cosmetics** | the interface GAF, fonts, and the palette indices the bars are drawn in. |
+
+This forced a **TDF parser change**. A value used to run to end of line — a
+Kingdoms accommodation, since its data had values legitimately containing `;`.
+SIDEDATA packs all four keys of a rect onto one line 240 times over, so every
+rect was reading as its `x1` and three zeros. A scan of all 1819 TDF/FBI/OTA/GUI
+files in the Commander Pack found exactly one line where text follows a `;` —
+`ARMSCORP.FBI`'s malformed `ItalianDescription=;Scorpione` — so `;` now
+terminates, and a stray token is skipped rather than fatal (failing on it
+abandoned the file and silently dropped the Core Contingency Scorpion).
 
 ### 🟠 Commander
 

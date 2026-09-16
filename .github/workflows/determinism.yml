@@ -23,6 +23,8 @@ on:
       - 'tools/cmdflow_test.cpp'
       - 'tools/hpi1_test.cpp'
       - 'tools/tnt_test.cpp'
+      - 'tools/tdf_test.cpp'
+      - 'src/tdf/**'
       - 'src/tnt/**'
       - 'src/hpi/**'
       - 'tools/check-detmath.sh'
@@ -40,6 +42,8 @@ on:
       - 'tools/cmdflow_test.cpp'
       - 'tools/hpi1_test.cpp'
       - 'tools/tnt_test.cpp'
+      - 'tools/tdf_test.cpp'
+      - 'src/tdf/**'
       - 'src/tnt/**'
       - 'src/hpi/**'
       - 'tools/check-detmath.sh'
@@ -156,9 +160,10 @@ jobs:
       - name: Build + run
         run: |
           cmake -B build -G Ninja
-          cmake --build build --target pathsearch_test authtest cmdflow_test hpi1_test tnt_test
+          cmake --build build --target pathsearch_test authtest cmdflow_test hpi1_test tnt_test tdf_test
           ./build/pathsearch_test
           ./build/authtest
           ./build/cmdflow_test
           ./build/hpi1_test
           ./build/tnt_test
+          ./build/tdf_test

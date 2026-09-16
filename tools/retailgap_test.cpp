@@ -1409,7 +1409,7 @@ int main(int argc, char** argv) {
         sim::TypeRegistry breg;
         breg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
         breg.loadDir(vfs, "units/");
-        breg.loadBuildTree(vfs, "canbuild/");
+        breg.loadBuildTree(vfs);
         const sim::UnitType* mon = breg.find("zonhunt");   // the Zhon monarch; a flyer
         const auto& menu = breg.buildable("zonhunt");
         check(mon && mon->isBuilder && !menu.empty(), "zonhunt is a builder with a menu");
@@ -1487,7 +1487,7 @@ int main(int argc, char** argv) {
         sim::TypeRegistry breg;
         breg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
         breg.loadDir(vfs, "units/");
-        breg.loadBuildTree(vfs, "canbuild/");
+        breg.loadBuildTree(vfs);
         const sim::UnitType* mon = breg.find("zonhunt");
         const auto& menu = breg.buildable("zonhunt");
         if (mon && !menu.empty()) {

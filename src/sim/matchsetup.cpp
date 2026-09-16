@@ -1,5 +1,7 @@
 #include "sim/matchsetup.h"
 
+#include "tdf/sidedata.h"
+
 #include "sim/detmath.h"
 #include <algorithm>
 #include <cctype>
@@ -23,7 +25,13 @@
 
 namespace ta::sim {
 
-const char* const kMonarchs[5] = {"araking", "tarnecro", "vermage", "zonhunt", "cresage"};
+// Cached per Vfs identity is not worth it: setupMatch reads this once per match,
+// and SIDEDATA is a few KB.
+std::vector<std::string> sideCommandersImpl(const hpi::Vfs& vfs) {
+    std::vector<std::string> out;
+    for (const auto& s : ta::tdf::SideData::load(vfs).sides) out.push_back(s.commander);
+    return out;
+}
 
 void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command& c) {
     using ta::net::Cmd;
@@ -132,17 +140,22 @@ void applyEvent(World& world, const ta::net::Event& e) {
         if (u.alive() && u.player == p) world.stop(u.id);
 }
 
+std::vector<std::string> sideCommanders(const hpi::Vfs& vfs) {
+    return sideCommandersImpl(vfs);
+}
+
 void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs, bool crusades) {
+    // `crusades` is a Kingdoms balance overlay (unitscb/canbuildcb) that has no
+    // TA counterpart and no data to load. The flag is still threaded through the
+    // lobby, the wire protocol and the replay header, so it is removed in its own
+    // pass rather than half-unpicked here.
+    (void)crusades;
     reg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
-    // Crusades overlay first (first-definition-wins), then the base roster. The
-    // VFS already merges base + Iron Plague + community units into one namespace,
-    // resolved by retail newest-date precedence, so one loadDir("units") suffices.
-    if (crusades) {
-        reg.loadDir(vfs, "unitscb");
-        reg.loadBuildTree(vfs, "canbuildcb");
-    }
+    // The VFS already merges base + the expansions + the patch + community units
+    // into one namespace, resolved by retail newest-date precedence, so a single
+    // loadDir("units") covers the whole Commander Pack.
     reg.loadDir(vfs, "units");
-    reg.loadBuildTree(vfs, "canbuild");
+    reg.loadBuildTree(vfs);
 }
 
 // Read the map's economy inputs out of its .ota. Wind, tide and metal richness
@@ -689,9 +702,18 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         for (int s = 0; s < kBenchSpawns; ++s)
             benchPlan[size_t(s)].tick = uint32_t((uint64_t(s + 1) * 1800) / uint64_t(kBenchSpawns));
     }
+    const std::vector<std::string> commanders =
+        cfg.vfs ? sideCommandersImpl(*cfg.vfs) : std::vector<std::string>{};
     for (int i = 0; i < int(cfg.slots.size()); ++i) {
         if (!cfg.slots[i].used) continue;
-        const UnitType* monarch = reg.find(kMonarchs[cfg.slots[i].faction % 5]);
+        // The side's commander, straight out of SIDEDATA. A slot pointing past
+        // the side list (a stale lobby, a modded install with fewer sides) falls
+        // back to side 0 rather than spawning nothing.
+        const UnitType* monarch = nullptr;
+        if (!commanders.empty()) {
+            size_t si = size_t(cfg.slots[i].faction) % commanders.size();
+            monarch = reg.find(commanders[si]);
+        }
         float mx = spots[size_t(spot)].first, mz = spots[size_t(spot)].second;
         assigned.push_back({mx, mz});
         ++spot;

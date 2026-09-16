@@ -28,7 +28,7 @@ void applyEvent(World& world, const ta::net::Event& e);
 // One player slot in a match (index = sim player id).
 struct MatchSlot {
     bool used = false;
-    int faction = 0;   // 0 ara, 1 tar, 2 ver, 3 zon, 4 cre
+    int faction = 0;   // index into SIDEDATA's sides: 0 = ARM, 1 = CORE
     int team = 0;
     float manaMult = 1.0f;   // per-player income multiplier (Absurd AI = 2); Player::manaMult
 };
@@ -71,8 +71,11 @@ inline const char* benchmarkLevelInterval(int level) {
     return (level >= 1 && level <= kBenchLevels) ? iv[level] : "";
 }
 
-// The starting Monarch of each faction (index = faction id).
-extern const char* const kMonarchs[5];
+// The starting commander of each side, in SIDEDATA order (index = side id).
+// Read from gamedata/SIDEDATA.TDF rather than hardcoded: TA states each side's
+// `commander=` in its data, so the roster is the install's business, not the
+// engine's. Empty if the install has no readable SIDEDATA.
+std::vector<std::string> sideCommanders(const hpi::Vfs& vfs);
 
 // Load the unit registry from the VFS: MOVEINFO, units, canbuild -- with the
 // Crusades overlay loaded first (it wins). Iron Plague and community units are
