@@ -88,13 +88,6 @@ struct Weapon {
     float maxVariation = 0;  // wandering: heading wobble per variationtime (radians)
     float variationTime = 0; // wandering: seconds between heading changes
     bool  unitsOnly = false; // unitsonly: the effect skips features (trees/props)
-    // subtype=mindcontrol: converts targets to the firer's side instead of damaging
-    // them, on a veterancy-scaled probability roll. The [DAMAGE] table is the
-    // ACQUISITION filter -- retail zeroes the categories you may not TARGET
-    // (monarch/god/dragon/fort/factory/naval/lodestone) -- while what actually
-    // protects a unit caught inside an AREA charm is the commander / cantbecaptured
-    // / in-transport gate at the impact itself.
-    bool  mindControl = false;
     float minRange = 0;      // minrange: can't hit targets closer than this
     bool noAir = false;
     // dontleadtargets: aim at the target's CURRENT position instead of extrapolating
@@ -115,8 +108,11 @@ struct Weapon {
     // EXPLODEs every piece and leaves no corpse), 4 paralyzer (retail icd
     // 0x531bbd; "monster" and friends map to non-gib codes).
     int dmgType = 1;
-    // Status effect this weapon inflicts (freeze/petrify/paralyze), 0 = none.
-    enum class Status { None, Frozen, Stoned, Paralyzed } status = Status::None;
+    // Status effect this weapon inflicts. TA has exactly one -- the paralyzer
+    // (damagetype 4, Core Contingency's Immobilizer), which holds a unit in place
+    // without damaging it. Kingdoms' freeze and petrify are gone with the rest of
+    // its magic; 8 shipped TA types carry ImmuneToParalyzer against this.
+    enum class Status { None, Paralyzed } status = Status::None;
     float statusDur = 0;     // seconds the inflicted status lasts
     std::string soundHit;    // soundhitclass: impact-sound class (arrow/sword/cannon..)
     // Projectile ART (display only -- never hashed, like explosionClass below).
@@ -309,8 +305,6 @@ struct UnitType {
     std::string soundClass;   // FBI soundcategory, keys gamedata/soundclasses
     std::string bodyType = "default";   // FBI bodytype (flesh/armor/wood/..) = hit-sound material
     std::string corpse;       // FBI corpse feature name
-    std::string stoneFeat;    // FBI stone= statue feature (death while petrified)
-    std::string frozenFeat;   // FBI frozen= statue feature (death while frozen)
     int corpseAdjX = 0, corpseAdjZ = 0;   // corpseadjustx/z: wreck offset in cells
     bool canAnimate = false;              // cananimate: raises animateType from corpses
     const UnitType* animateType = nullptr;   // animatetype=<unit>, resolved post-load
@@ -329,7 +323,6 @@ struct UnitType {
                               // water surface. Retail sets the object's Y to
                               // max(terrainHeight, waterLevel - waterline), so a god
                               // wades in up to its waist and a hull sits in the water.
-    std::string veteranModel; // veteranmodel: 3DO the unit swaps to at max veterancy
     // --- extended FBI stats -------------------------------------------------
     float healTime = 0;       // healtime: seconds per HP regenerated (0 = no regen)
     float leash = 0;          // maneuverleashlength: max auto-chase distance (0 = unlimited)
@@ -365,7 +358,6 @@ struct UnitType {
     float maxSlope = 255;     // steepest cell height-spread the unit may cross
     float minWaterDepth = 0;  // shallowest water a water unit needs (from MOVEINFO)
     float radar = 0;          // radardistance: fog-reveal radius (separate from sight)
-    bool  noVeteran = false;  // noveteran: this unit can never gain veterancy
     bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
     bool  canResurrect = false;   // canresurrect: can revive nearby corpses
     bool  canCapture = false;     // cancapture: can convert an enemy unit to its player
@@ -387,7 +379,6 @@ struct UnitType {
     bool  weaponSwitching = false;
     bool  onOffable = false;      // onoffable: can be toggled active/inactive
     bool  activateWhenBuilt = true;   // activatewhenbuilt (default on)
-    bool  cantBeStoned = false, cantBeFrozen = false;
     bool  cantBeCaptured = false, cantBeTransported = false;
     int   transportSize = 1;      // transportsize: transport slots this unit occupies
     // selfdestructcountdown: seconds between arming a self-destruct and the unit
@@ -624,12 +615,8 @@ struct Unit {
     bool corpseBlocks = false;   // dead structure still occupies its nav footprint
                                  // (blocking wreck / neutral wall) until retired
     // --- extended runtime state --------------------------------------------
-    int   xp = 0;          // accumulated experience from kills
-    int   veteran = 0;     // veteran level (0..10); scales attack/armor/reload
     float atkBuff = 1;     // live attack multiplier from auras (decays to 1)
     float armBuff = 1;     // live armour multiplier from auras (decays to 1)
-    float frozenFor = 0;   // >0 = frozen solid (can't act); counts down
-    float stonedFor = 0;   // >0 = petrified (can't act, immune to damage while stone)
     float paralyzedFor = 0;// >0 = paralyzed (can't act, still takes damage)
     float selfDestructT = -1;// >=0 = self-destruct countdown (s) armed; -1 = not
     bool  cloaked = false; // currently invisible to enemies
@@ -704,12 +691,11 @@ struct Unit {
 
     bool alive() const { return deadFor < 0; }
     bool embarked() const { return inTransport != 0; }
-    // Frozen/petrified/paralyzed units can't move, turn, or fire.
-    bool incapacitated() const { return frozenFor > 0 || stonedFor > 0 || paralyzedFor > 0; }
+    // A paralyzed unit can't move, turn, or fire -- but still takes damage.
+    bool incapacitated() const { return paralyzedFor > 0; }
     // Veterancy stat multiplier (retail: base 1.0, +10% per level, level capped
     // at 10 => up to 2.0x). Scales attack up, armor up (less damage taken), and
     // reload down (faster). Verified against KINGDOMS.icd. See retail-engine-internals.
-    float vetMul() const { return 1.0f + 0.10f * float(veteran); }
     bool moving() const { return alive() && (speed > 1.0f || !orders.empty()); }
     // Actually translating (for the walk animation), vs standing with an
     // attack/queued order.
@@ -744,8 +730,6 @@ struct FeatType {
     int  decomposeTicks = 0; // TDF decomposetime * 30 (0 = never rots)
     bool resurrectable = false;
     bool reclaimable = false;
-    bool isStone = false;    // TDF isstone=1 (statue: client tints it stone-gray)
-    bool isFrozen = false;   // TDF isfrozen=1 (client tints it ice-blue)
     bool indestructible = false;
     float hp = 0;            // TDF damage= (weapon damage the feature absorbs)
     int  deadType = -1;      // TDF featuredead -> destroyed-replacement (placed neutral)

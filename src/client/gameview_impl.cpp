@@ -691,12 +691,12 @@
             s.gen = fb.gen;
             fb.live.push_back(&s);   // compact live list (mirrors world_.units())
             s.id = u.id; s.type = u.type; s.player = u.player;
-            s.hp = u.hp; s.veteran = u.veteran; s.deadFor = u.deadFor;
+            s.hp = u.hp; s.deadFor = u.deadFor;
             s.inTransport = u.inTransport; s.squad = u.squad; s.stance = u.stance;
             s.weaponSlot = u.weaponSlot;
             s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
             s.cloaked = u.cloaked; s.cloakOn = u.cloakOn; s.active = u.active;
-            s.frozenFor = u.frozenFor; s.stonedFor = u.stonedFor; s.paralyzedFor = u.paralyzedFor;
+            s.paralyzedFor = u.paralyzedFor;
             s.selfDestructT = u.selfDestructT;
             s.buildSiteId = u.buildSiteId; s.reclaimId = u.reclaimId; s.repairId = u.repairId;
             s.buildProgress = u.buildProgress;
@@ -707,9 +707,7 @@
                             u.deadFor >= (u.corpseStatue >= 0 ? 0.0f : 4.0f);
             s.deathType = u.deathType;
             s.severity = u.severity;
-            s.corpseFeat = u.corpseStatue >= 0 ? u.corpseStatue
-                                               : world_.corpseTypeOf(u.type);
-            s.corpseStatue = u.corpseStatue >= 0;
+            s.corpseFeat = world_.corpseTypeOf(u.type);
             s.speed = u.speed; s.justFired = u.justFired; s.justBuilt = u.justBuilt;
             s.disco = world_.discoActive(u.player);
             s.headbang = world_.headbangActive(u.player);
@@ -1105,8 +1103,7 @@
         }
         for (const UnitR* _up : front().live) {
             const UnitR& u = *_up;
-            if (u.alive()) maybeSwapVeteranModel(u);
-            else if (u.corpsePhase) maybeSwapCorpseModel(u);
+            if (!u.alive() && u.corpsePhase) maybeSwapCorpseModel(u);
             auto it = anims_.find(u.id);
             if (u.justFired && newTick_ && u.type) {
                 using Fx = ta::sim::WeaponFx;
@@ -1823,19 +1820,6 @@
         it->second = obj;
     }
 
-    void GameView::maybeSwapVeteranModel(const UnitR& u) {
-        if (!u.type || u.veteran < 10 || u.type->veteranModel.empty()) return;
-        const std::string& vm = u.type->veteranModel;
-        auto it = unitType_.find(u.id);
-        if (it == unitType_.end() || it->second == vm) return;   // not drawn yet / done
-        if (!visuals_.count(vm)) {
-            try {
-                visuals_[vm] = {ta::tdo::load(vread("objects3d/" + vm + ".3do")), {}};
-            } catch (const std::exception&) { return; }   // no promoted mesh: keep base
-        }
-        it->second = vm;   // draw the promoted mesh from now on
-    }
-
     void GameView::registerUnit(int id, const ta::sim::UnitType* type) {
         const std::string& typeId = type->id;
         if (!visuals_.count(typeId)) {
@@ -1970,8 +1954,9 @@
                                          su->speed / su->type->maxVel * 100.0f,  // 25/75)
                                          0.0f, 100.0f))
                                    : 0;
-                    case 32: return su->veteran;                       // VETERAN LEVEL (StatusControl
-                                                                       // swaps golden weapon pieces)
+                    // VETERAN LEVEL: Kingdoms-only, and always 0 here. Retail TA's
+                    // StatusControl scripts read it but nothing in TA sets it.
+                    case 32: return 0;
                     // YARD_OPEN. Returning 0 here is NOT benign, which is what
                     // the old comment claimed -- it hangs the build yard. The
                     // castle/factory protocol (aracastl OpenYard) is a blocking
@@ -2750,8 +2735,6 @@
         // UNITMISSIONCODE_SELFDESTRUCT. First, because it is what the unit is
         // doing -- it has stopped taking orders and is walking out on you.
         if (u->selfDestructT >= 0) return "LEAVING YOUR COMMAND";
-        if (u->stonedFor > 0) return "PETRIFIED";
-        if (u->frozenFor > 0) return "FROZEN";
         if (u->paralyzedFor > 0) return "PARALYZED";
         if (u->underConstruction) return "INTANGIBLE MASS";
         if (!u->active) return "INACTIVE";

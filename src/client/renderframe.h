@@ -30,7 +30,6 @@ struct UnitR {
     int player = 0;
     float x = 0, z = 0, heading = 0;   // current-tick pose
     float hp = 0;
-    int veteran = 0;
     float deadFor = -1;
     int inTransport = 0;
     int8_t squad = 0;
@@ -38,7 +37,11 @@ struct UnitR {
     int weaponSlot = 0;
     bool underConstruction = false, buildBegun = false;
     bool cloaked = false, cloakOn = true, active = true;
-    float frozenFor = 0, stonedFor = 0, paralyzedFor = 0;
+    float paralyzedFor = 0;
+    bool justFired = false;                    // one-tick: fired a weapon this tick
+    int justBuilt = 0;                         // one-tick: unit id produced this tick, else 0
+    bool disco = false, headbang = false;      // cached world_.disco/headbangActive(player)
+    bool alliedToLocal = false;                // cached alliedToLocal(player)
     float selfDestructT = -1;   // >=0 = self-destruct countdown (seconds) armed
     int buildSiteId = 0, reclaimId = 0, repairId = 0;
     float buildProgress = 0;
@@ -64,12 +67,6 @@ struct UnitR {
     uint8_t deathType = 1;                     // killing blow damagetype (3 = gib)
     uint8_t severity = 0;                      // retail Killed severity (1..100)
     int corpseFeat = -1;                       // resolved corpse/statue FeatType index
-    bool corpseStatue = false;                 // petrified/frozen: the body stays UPRIGHT,
-                                               // unlike a normal corpse which lies flat
-    bool justFired = false;                    // one-tick: fired a weapon this tick
-    int justBuilt = 0;                         // one-tick: unit id produced this tick, else 0
-    bool disco = false, headbang = false;      // cached world_.disco/headbangActive(player)
-    bool alliedToLocal = false;                // cached alliedToLocal(player)
     bool alive() const { return deadFor < 0; }
     bool embarked() const { return inTransport != 0; }
     bool moving() const { return moving_; }

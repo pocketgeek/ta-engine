@@ -1642,17 +1642,6 @@
         // Statue corpses: a petrified body renders stone-gray, a frozen one
         // ice-blue (the isstone/isfrozen statue defs), through the same vertex
         // tint mix the emotes use.
-        if (u.corpsePhase && u.corpseFeat >= 0 &&
-            size_t(u.corpseFeat) < world_.featureTypes().size()) {
-            const auto& cf = world_.featureTypes()[size_t(u.corpseFeat)];
-            if (cf.isStone) {
-                discoCol = SDL_Color{145, 145, 150, 255};
-                discoMix = 0.65f; disco = true;
-            } else if (cf.isFrozen) {
-                discoCol = SDL_Color{160, 200, 255, 255};
-                discoMix = 0.55f; disco = true;
-            }
-        }
         bool mirror = false;
         SDL_Texture* atlas = (slot >= 0 && size_t(slot) < atlasTex_.size())
                                  ? atlasTex_[size_t(slot)] : nullptr;
@@ -1673,8 +1662,9 @@
                                         : birthP;
         Uint8 alpha = Uint8(p * 255.0f);
         const bool spectral = u.type && u.type->ghost && !conjuring;
-        float vetGold = (!conjuring && u.veteran >= 4)
-                            ? float(std::min(u.veteran, 10) - 3) / 7.0f * 0.5f : 0.0f;
+        // Kingdoms tinted a veteran unit gold. TA has no veterancy, so nothing
+        // ever tints; kept as a constant so the shading path below is unchanged.
+        const float vetGold = 0.0f;
         SDL_Texture* cur = nullptr;
         int runStart = 0;
         for (auto& t : scratch) {
@@ -1743,9 +1733,9 @@
         //   * the death ANIMATION (deadFor < 4) -- still standing or mid-fall;
         //   * STATUES -- a petrified or frozen body stays upright, and its corpsePhase
         //     starts at deadFor >= 0, so "dead" caught it from the very first frame.
-        // corpsePhase && !corpseStatue is exactly "finished falling, lying on the
-        // ground", which is the only case the flat-face artifact arises in.
-        const bool corpseCull = u.corpsePhase && !u.corpseStatue;
+        // corpsePhase is exactly "finished falling, lying on the ground", which is
+        // the only case the flat-face artifact arises in.
+        const bool corpseCull = u.corpsePhase;
         collect(scratch, nullptr, root, Xform{}, anim, facing, u.player, false, true,
                 /*shadow=*/true, nullptr, &meta, corpseCull);
         const float sx = g.ax + kShadowLX * g.alt * zm;

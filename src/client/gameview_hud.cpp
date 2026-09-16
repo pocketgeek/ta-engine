@@ -1434,14 +1434,6 @@
                 }
                 SDL_SetRenderDrawColor(ren_, 96, 84, 60, 255);
                 SDL_RenderDrawRectF(ren_, &pr);
-                if (u && u->veteran > 0) {
-                    int xi = guiIdxLeft("Experience");
-                    int tier = u->veteran >= 7 ? 2 : u->veteran >= 4 ? 1 : 0;
-                    if (xi >= 0 && tier < int(guiTex_[xi].size()) && guiTex_[xi][size_t(tier)]) {
-                        SDL_FRect cr{pr.x + 1, pr.y + pr.h - 22 * vs - 1, 11 * vs, 22 * vs};
-                        SDL_RenderCopyF(ren_, guiTex_[xi][size_t(tier)], nullptr, &cr);
-                    }
-                }
             }
             if (int t1 = guiIdxLeft("UnitText"); u && t1 >= 0) {
                 SDL_FRect nr = place(t1);

@@ -330,7 +330,6 @@ public:
                     if (ta::sim::Unit* su = world_.unit(uid)) {   // apply the .crt stats
                         if (su->type)
                             su->hp = su->type->maxHp * float(std::clamp(u.health, 0, 100)) / 100.0f;
-                        su->veteran = std::clamp(u.veteran, 0, 10);
                     }
                     if (player == 0) { cx += wx; cz += wz; ++n; }
                 }
@@ -1143,7 +1142,6 @@ private:
 
     // At max veterancy, a unit with a `veteranmodel` swaps its mesh for the
     // fancier promoted 3DO (same piece structure, so the COB/anim carries over).
-    void maybeSwapVeteranModel(const UnitR& u);
     void maybeSwapCorpseModel(const UnitR& u);
 
     // Client-side per-unit setup (model + COB animation VM). Takes id+type only (not a

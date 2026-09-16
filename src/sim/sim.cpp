@@ -216,8 +216,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                                                info->valueOr("soundclass", "")));
             t.sight = float(info->numberOr("sightdistance", 180));
             t.corpse = lower(info->valueOr("corpse", ""));
-            t.stoneFeat = lower(info->valueOr("stone", ""));
-            t.frozenFeat = lower(info->valueOr("frozen", ""));
             t.corpseAdjX = int(info->numberOr("corpseadjustx", 0));
             t.corpseAdjZ = int(info->numberOr("corpseadjustz", 0));
             t.canAnimate = info->numberOr("cananimate", 0) != 0;
@@ -228,7 +226,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.canHover = info->numberOr("canhover", 0) != 0;
             t.ghost = info->numberOr("ghost", 0) != 0;
             t.waterline = int(info->numberOr("waterline", 0));
-            t.veteranModel = lower(info->valueOr("veteranmodel", ""));
             t.bodyType = lower(info->valueOr("bodytype", "default"));
             // Extended stats.
             t.healTime = float(info->numberOr("healtime", 0));
@@ -277,7 +274,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.selfDestructCountdown =
                 std::clamp(int(info->numberOr("selfdestructcountdown", 2)), 0, 7);
             t.radar = float(info->numberOr("radardistance", 0));
-            t.noVeteran = info->numberOr("noveteran", 0) != 0;
             // TA spells it "canreclamate"; Kingdoms dropped the extra syllable.
             // Accept both so a Kingdoms-era override still reads.
             t.canReclaim = info->numberOr("canreclamate",
@@ -293,11 +289,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.weaponSwitching = info->numberOr("weaponswitching", 0) != 0;
             t.onOffable = info->numberOr("onoffable", 0) != 0;
             t.activateWhenBuilt = info->numberOr("activatewhenbuilt", 1) != 0;
-            t.cantBeStoned = info->numberOr("cantbestoned", 0) != 0;
-            t.cantBeFrozen = info->numberOr("cantbefrozen", 0) != 0;
-            // Retail forces both on Monarchs (icd: def bit18 -> cantbestoned +
-            // cantbefrozen) -- else petrify would be an instant Monarch kill.
-            if (t.commander) t.cantBeStoned = t.cantBeFrozen = true;
             t.cantBeCaptured = info->numberOr("cantbecaptured", 0) != 0;
             t.cantBeTransported = info->numberOr("cantbetransported", 0) != 0;
             t.transportSize = int(info->numberOr("transportsize", 1));
@@ -410,7 +401,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                     wp.unitsOnly = w->numberOr("unitsonly", 0) != 0;
                     wp.particlesPerSec = float(w->numberOr("particlespersecond", 0));
                     std::string st = lower(w->valueOr("subtype", ""));
-                    wp.mindControl = st == "mindcontrol";
                     // Which Remote Effect subclass this is (retail dispatches on
                     // subtype); it decides the damage cadence, not just the visuals.
                     // subtype=Dropped rides on a Ballistic weapon but is its own
@@ -497,9 +487,9 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                     std::string s = hwe + " " + lower(w->valueOr("damagetype", "")) +
                                     " " + lower(w->valueOr("soundhitclass", "")) + " " +
                                     lower(wp.name);
-                    if (st == "turntofrozen") wp.status = Weapon::Status::Frozen;
-                    else if (st == "turntostone") wp.status = Weapon::Status::Stoned;
-                    else if (s.find("paraly") != std::string::npos)
+                    // TA's paralyzer is damagetype 4; the name check catches the
+                    // Immobilizer family whose damagetype is spelled out.
+                    if (s.find("paraly") != std::string::npos)
                         wp.status = Weapon::Status::Paralyzed;
                     if (wp.status != Weapon::Status::None)
                         wp.statusDur = float(w->numberOr("duration", 5.0));
@@ -2186,43 +2176,15 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         hf.fromZ = from ? from->z : hz;
         hits_.push_back(hf);
     }
-    // Attacker's veteran attack multiplier boosts damage dealt (retail scales the
-    // attacker's attack stat by vetMul); the victim's boosts armour (below).
     const Unit* attacker = fromId ? unit(fromId) : nullptr;
-    // Attack multiplier = veterancy × live aura buff (AdjustAttack).
-    float atkMul = attacker ? attacker->vetMul() * attacker->atkBuff : 1.0f;
-    // Damage + status one victim, honouring veterancy, auras and immunities.
+    // Attack multiplier: the live aura buff (AdjustAttack) only. Kingdoms also
+    // scaled this by veterancy; TA has no veterancy.
+    float atkMul = attacker ? attacker->atkBuff : 1.0f;
+    // Damage + status one victim, honouring auras and immunities.
     auto hurt = [&](Unit& e, float scale) {
-        if (e.stonedFor > 0) return;   // petrified units are impervious
-        // subtype=mindcontrol (the Taros Mind Mage's Individual + Area Mind
-        // Control): the shot CONVERTS the victim instead of hurting it. Retail
-        // encodes eligibility in the weapon's own [DAMAGE] table -- it zeroes
-        // monarch/god/dragon/fort/factory/naval/lodestone -- so "damage > 0
-        // against this category" is exactly "can be charmed", which damageVs()
-        // already computes. Conversion is permanent, like contact capture.
-        if (w.mindControl) {
-            // Retail's charm roll (icd 0x52da10), gates in this exact order so the
-            // RNG stream can never diverge between peers. Note the [DAMAGE] table is
-            // the ACQUISITION filter -- it decides what you may TARGET -- so a
-            // Monarch caught inside an area charm is stopped by the commander gate
-            // here, not by its zeroed damage row.
-            if (e.embarked()) return;                 // safe inside a transport
-            if (e.type->commander) return;            // Monarchs are never charmed
-            if (e.type->cantBeCaptured) return;
-            if (e.hp <= 0) return;
-            if (atUnitCap(fromPlayer)) return;        // no room on the new side
-            // Chance rises with the victim's veterancy -- a green unit is ~80%, a
-            // 10-star veteran is capped at 99%. Scaled by the area falloff so the
-            // rim of an Area Mind Control is less reliable than its centre.
-            int chance = std::min(99, (int(e.veteran) + 16) * 5);
-            if (burnRand(100) >= int(float(chance) * std::clamp(scale, 0.0f, 1.0f)))
-                return;                               // it shrugged the spell off
-            captureUnit(e, fromPlayer);
-            return;
-        }
-        if (benchmarkMode() && e.type && e.type->commander) return;   // benchmark: Monarchs are invincible
-        // base × attacker-attack (↑) ÷ victim-armour (↓); armour = veterancy × aura.
-        float armour = std::max(e.vetMul() * e.armBuff, 0.01f);
+        if (benchmarkMode() && e.type && e.type->commander) return;   // benchmark: commanders are invincible
+        // base x attacker-attack (up) / victim-armour (down).
+        float armour = std::max(e.armBuff, 0.01f);
         float dealt = w.damageVs(e.type) * atkMul / armour * scale;
         e.hp -= dealt;
         if (e.hp <= 0) {
@@ -2230,32 +2192,12 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             e.deathType = uint8_t(w.dmgType);                  // 3 = explosion -> gib
         }
         if (fromId) e.lastHitBy = fromId;
-        if (w.status != Weapon::Status::None && e.type) {
-            bool immune =
-                (w.status == Weapon::Status::Frozen && e.type->cantBeFrozen) ||
-                (w.status == Weapon::Status::Stoned && e.type->cantBeStoned);
-            if (!immune) {
-                if (w.status == Weapon::Status::Paralyzed) {
-                    e.paralyzedFor = std::max(e.paralyzedFor, w.statusDur);
-                    e.speed = 0;
-                } else {
-                    // Retail petrify/freeze (icd 0x51a61a): HP zeroes INSTANTLY
-                    // regardless of amount -- the victim dies on the spot and
-                    // the death edge places its stone=/frozen= STATUE (blocking,
-                    // permanent, resurrectable back to life). The old temporary
-                    // stoned/frozen debuff was our pre-RE guess.
-                    bool freeze = w.status == Weapon::Status::Frozen;
-                    if (freeze) e.frozenFor = 1.0f; else e.stonedFor = 1.0f;
-                    e.hp = 0;
-                    e.deathType = freeze ? 15 : 14;
-                    e.speed = 0;
-                    static const bool kStatLog = std::getenv("TA_BURNLOG") != nullptr;
-                    if (kStatLog)
-                        std::fprintf(stderr, "statue kill: %s %s at %.0f,%.0f\n",
-                                     e.type->id.c_str(), freeze ? "frozen" : "stoned",
-                                     e.x, e.z);
-                }
-            }
+        // TA's one status weapon: the paralyzer holds a unit in place without
+        // damaging it. ImmuneToParalyzer (8 shipped types) shrugs it off.
+        if (w.status == Weapon::Status::Paralyzed && e.type &&
+            !e.type->immuneToParalyzer) {
+            e.paralyzedFor = std::max(e.paralyzedFor, w.statusDur);
+            e.speed = 0;
         }
     };
     if (primary) hurt(*primary, 1.0f);
@@ -2353,9 +2295,7 @@ static void leadAim(const Unit& shooter, const Unit& tgt, const Weapon& w,
 
 void World::fire(Unit& u, Unit& target, int slot) {
     const Weapon& w = u.type->weapons[size_t(slot)];
-    // Veterans reload faster (retail divides the cooldown by the veteran multiplier).
-    float rl = w.reload / std::max(u.vetMul(), 0.01f);
-    u.reloads[slot] = rl;
+    u.reloads[slot] = w.reload;
     u.justFired = true;
     // Remote Effect: nothing travels. The spell materialises at the AIMED GROUND
     // POINT and lands after builduptime -- so walking aside doesn't dodge an
@@ -5214,14 +5154,6 @@ void World::tick(float dt) {
                 if (k && k->type && !allied(k->player, u.player) &&
                     k->player >= 0 && k->player < int(players_.size()))
                     players_[size_t(k->player)].kills++;
-                if (k && k->alive() && k->type && k->type->canMove &&
-                    !k->type->noVeteran) {
-                    // One veteran level per kill, capped at 10 (retail counts
-                    // kills, not the victim's value — so a cheap unit that lands
-                    // a single big kill doesn't jump straight to max veterancy).
-                    k->xp += 1;
-                    k->veteran = std::min(10, k->xp);
-                }
             }
             if (mission_ || scenario_) justDied_.push_back(u.id);
             // [EXPLODEAS]: the unit detonates its own death weapon where it stands
@@ -5243,24 +5175,13 @@ void World::tick(float dt) {
                 float okPct = u.overkill * 100.0f / std::max(u.type->maxHp, 1.0f);
                 u.severity = uint8_t(std::clamp((okPct + float(u.hpPct1s)) * 0.5f,
                                                 1.0f, 100.0f));
-                // Dying while petrified/frozen leaves the FBI stone=/frozen=
-                // STATUE feature instead of the corpse (retail deathType 0xE/0xF
-                // path, 0x512d2a) -- blocking, permanent, and resurrectable
-                // (raising a statue un-petrifies the unit).
-                u.corpseStatue = u.stonedFor > 0 ? statueTypeOf(u.type, false)
-                              : u.frozenFor > 0 ? statueTypeOf(u.type, true) : -1;
-                static const bool kStatLog2 = std::getenv("TA_BURNLOG") != nullptr;
-                if (kStatLog2 && (u.stonedFor > 0 || u.frozenFor > 0))
-                    std::fprintf(stderr, "statue edge: %s statue=%d stoned=%.1f\n",
-                                 u.type->id.c_str(), u.corpseStatue, u.stonedFor);
-                int ct = u.corpseStatue >= 0 ? u.corpseStatue : corpseTypeOf(u.type);
+                int ct = corpseTypeOf(u.type);
                 // Retail gib rule (icd 0x512610): deathType = the killing blow's
                 // FBI damagetype; 3 (explosion) makes Killed refuse the corpse
                 // and EXPLODE every piece. An unfinished conjure never leaves a
                 // corpse (corpseType forced 0 at 0x5127f5). Statues place
                 // unconditionally.
-                bool gib = (u.deathType == 3 || u.underConstruction) &&
-                           u.corpseStatue < 0;
+                bool gib = (u.deathType == 3 || u.underConstruction);
                 // A self-destructed unit leaves nothing: it is not gibbed (that
                 // is the explosion type) and it does not lie there as a wreck
                 // either -- it fades. Statues still place, as they do for every
@@ -5318,9 +5239,7 @@ void World::tick(float dt) {
             u.hpPctCur = uint8_t(std::clamp(u.hp / std::max(u.type->maxHp, 1.0f)
                                             * 100.0f, 0.0f, 100.0f));
         }
-        // Status timers count down; HP regenerates (healtime); mana recharges.
-        if (u.frozenFor > 0) u.frozenFor = std::max(0.0f, u.frozenFor - dt);
-        if (u.stonedFor > 0) u.stonedFor = std::max(0.0f, u.stonedFor - dt);
+        // Status timers count down; HP regenerates (healtime).
         if (u.paralyzedFor > 0) u.paralyzedFor = std::max(0.0f, u.paralyzedFor - dt);
         if (u.selfDestructT >= 0.0f) {   // armed self-destruct: tick down, then blow up
             u.selfDestructT -= dt;
@@ -6183,7 +6102,6 @@ void World::hashTrace() const {
             hUnitOrd = fnv(fnv(fnv(hUnitOrd, uint32_t(o.targetId)), bits(o.x)), bits(o.z));
         }
         hUnitMisc = fnv(fnv(hUnitMisc, u.id), uint64_t(u.alive() ? 1 : 0));
-        hUnitMisc = fnv(hUnitMisc, uint64_t(u.veteran));
         for (float rl : u.reloads) hUnitMisc = fnv(hUnitMisc, bits(rl));
         hUnitMisc = fnv(hUnitMisc, uint64_t(uint32_t(u.stance)));
         hUnitMisc = fnv(hUnitMisc, uint64_t(u.moveState) * 3 + uint64_t(u.fireState));
@@ -6270,7 +6188,6 @@ uint64_t World::stateHash() const {
             mixf(o.z);
         }
         mix(uint64_t(u.alive() ? 1 : 0));
-        mix(uint64_t(u.veteran));
         // All three reload timers, not just the primary: they now decide WHICH
         // weapon the auto-selector fires, so a drift in any of them would change
         // behaviour.
