@@ -306,9 +306,6 @@ struct UnitType {
     std::string bodyType = "default";   // FBI bodytype (flesh/armor/wood/..) = hit-sound material
     std::string corpse;       // FBI corpse feature name
     int corpseAdjX = 0, corpseAdjZ = 0;   // corpseadjustx/z: wreck offset in cells
-    bool canAnimate = false;              // cananimate: raises animateType from corpses
-    const UnitType* animateType = nullptr;   // animatetype=<unit>, resolved post-load
-    std::string animName_;                   // raw animatetype value (loadDir fixup)
     std::string shadowArt;    // FBI shadowart: shadow sprite name in shadows.gaf
     // Display-only render flags (never hashed; the sim has no Y axis at all).
     bool noShadow = false;    // FBI noshadow: casts no ground shadow (walls, spectres)
@@ -359,7 +356,6 @@ struct UnitType {
     float minWaterDepth = 0;  // shallowest water a water unit needs (from MOVEINFO)
     float radar = 0;          // radardistance: fog-reveal radius (separate from sight)
     bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
-    bool  canResurrect = false;   // canresurrect: can revive nearby corpses
     bool  canCapture = false;     // cancapture: can convert an enemy unit to its player
     bool  canCloak = false;       // cancloak
     float cloakCost = 0;          // cloakcost: mana/sec while cloaked and idle
@@ -608,10 +604,6 @@ struct Unit {
     uint8_t hpPctCur = 100;  //  retail unit+0x111/+0x110 pair severity reads)
     int corpseStatue = -1;   // FeatType override chosen at death (stone/frozen), -1 = corpse=
     float corpseWork = 60;   // ordered-reclaim work left in the body (kReclaimRate/s)
-    int reviveTarget = 0;    // priest: dead unit id being channelled back (0 = none)
-    int8_t reviveMode = 0;   // 1 = resurrect (own corpse), 2 = animate (raise ghoul)
-    float reviveLeft = 0;    // seconds of channel remaining
-    float reviveTotal = 1;   // full channel length (mana drains proportionally)
     bool corpseBlocks = false;   // dead structure still occupies its nav footprint
                                  // (blocking wreck / neutral wall) until retired
     // --- extended runtime state --------------------------------------------
@@ -725,10 +717,10 @@ struct FeatType {
     bool  isMetal = false;   // TDF category=metal
     int  fx = 1, fz = 1;
     bool blocking = false;
-    // Corpse defs (features/corpses/*_dead.tdf): how long the body lies there
-    // and whether a priest can raise it (retail decomposetime / resurrectable).
+    // Corpse defs (features/corpses/*_dead.tdf): how long the wreck lies there
+    // before it rots away. TA wrecks are reclaimable for metal, which is what the
+    // `metal`/`energy` yields above are for.
     int  decomposeTicks = 0; // TDF decomposetime * 30 (0 = never rots)
-    bool resurrectable = false;
     bool reclaimable = false;
     bool indestructible = false;
     float hp = 0;            // TDF damage= (weapon damage the feature absorbs)
@@ -1492,7 +1484,7 @@ private:
     // A builder chips reclaim work off its target feature, drips mana, then removes
     // the feature and advances its reclaim queue.
     void tickReclaim(Unit& b, float dt);
-    void tickAbilities(float dt);   // reclaim / resurrect on nearby corpses
+    void tickAbilities(float dt);   // reclaim nearby corpses (wrecks) for metal
     void tickAuras(float dt);       // AdjustArmor/Attack stat auras
     void tickHealAuras();           // AdjustJoy passive repair aura (1 Hz)
     void updateVisibility();

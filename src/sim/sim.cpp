@@ -218,8 +218,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.corpse = lower(info->valueOr("corpse", ""));
             t.corpseAdjX = int(info->numberOr("corpseadjustx", 0));
             t.corpseAdjZ = int(info->numberOr("corpseadjustz", 0));
-            t.canAnimate = info->numberOr("cananimate", 0) != 0;
-            t.animName_ = lower(info->valueOr("animatetype", ""));
             t.shadowArt = lower(info->valueOr("shadowart", ""));
             t.noShadow = info->numberOr("noshadow", 0) != 0;
             t.floater = info->numberOr("floater", 0) != 0;
@@ -278,7 +276,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // Accept both so a Kingdoms-era override still reads.
             t.canReclaim = info->numberOr("canreclamate",
                                           info->numberOr("canreclaim", 0)) != 0;
-            t.canResurrect = info->numberOr("canresurrect", 0) != 0;
             t.canCapture = info->numberOr("cancapture", 0) != 0;
             t.canCloak = info->numberOr("cancloak", 0) != 0;
             t.cloakCost = float(info->numberOr("cloakcost", 0));
@@ -564,12 +561,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
     // archive (unitscb then units) and this rebuilds from scratch each time, so it is
     // idempotent and cannot be left stale by a second load.
     internCategories();
-    // Fix up cross-type references now that every unit is in the table
-    // (animatetype=MONGHOUL names another unit the animator raises).
-    for (auto& [id, t] : types_)
-        if (!t.animName_.empty())
-            if (auto it = types_.find(t.animName_); it != types_.end())
-                t.animateType = &it->second;
 }
 
 void TypeRegistry::loadBuildTree(const hpi::Vfs& vfs, const std::string& prefix) {
@@ -3906,11 +3897,12 @@ void World::tickAuras(float dt) {
     }
 }
 
-void World::tickAbilities(float dt) {
-    // A corpse is a dead unit whose body still lies on the field: the death
-    // anim has finished (4s) and decomposetime hasn't expired. Whether it can
-    // be RAISED again is the corpse def's `resurrectable` (81 of the 150
-    // shipped corpse defs; reclaiming works on any corpse).
+void World::tickAbilities(float) {
+    // A corpse is a dead unit whose wreck still lies on the field: the death
+    // anim has finished (4s) and decomposetime hasn't expired. A builder with
+    // canreclamate clears it for metal and energy. (Kingdoms also let a priest
+    // RAISE one; TA has no resurrection, so this pass is reclaim only -- which
+    // is why it no longer needs the timestep.)
     auto isCorpse = [](const Unit& c) {
         // Statues stand from the instant of death (retail: severity 0, no Dying
         // anim); ordinary bodies appear after the 4s death animation.
@@ -3966,33 +3958,9 @@ void World::tickAbilities(float dt) {
         Unit& u = units_[i];
         if (!u.alive() || !u.type || u.underConstruction || u.incapacitated() ||
             !u.orders.empty()) {
-            if (u.reviveTarget) u.reviveTarget = 0;   // interrupted: channel drops
             continue;
         }
-        bool caster = u.type->canResurrect || (u.type->canAnimate && u.type->animateType);
-        if (!caster && !u.type->canReclaim) continue;
-
-        // A revive is a CHANNEL, not an instant (retail order-0xA task states:
-        // work = target buildtime / caster workertime, x0.3 for animate; mana
-        // drains across the channel at the same total as the build cost).
-        if (u.reviveTarget) {
-            Unit* c = unit(u.reviveTarget);
-            if (!c || !isCorpse(*c)) { u.reviveTarget = 0; continue; }
-            float dx = c->x - u.x, dz = c->z - u.z;
-            if (dx * dx + dz * dz > kR * kR * 4) { u.reviveTarget = 0; continue; }
-            bool animate = u.reviveMode == 2;
-            const UnitType* out = animate ? u.type->animateType : c->type;
-            Player& tm = players_[size_t(u.player)];
-            float frac = (animate ? 0.3f : 1.0f) * dt / std::max(u.reviveTotal, 0.01f);
-            if (spendBuild(tm, *out, frac) <= 0) continue;   // starved: the channel stalls
-            u.reviveLeft -= dt;
-            if (u.reviveLeft <= 0) {
-                revives.push_back({out, c->x, c->z, u.player, animate});
-                retire(*c);
-                u.reviveTarget = 0;
-            }
-            continue;
-        }
+        if (!u.type->canReclaim) continue;
 
         // Corpses only -- collected once above, in ascending unit id.
         for (uint32_t ci : corpseIdx_) {
@@ -4003,46 +3971,13 @@ void World::tickAbilities(float dt) {
             if (dx * dx + dz * dz > kR * kR) continue;
             const FeatType* cd = corpseDef(c);
             if (!cd) continue;
-            if (u.type->canResurrect && c.player == u.player && cd->resurrectable) {
-                // Channel length: buildtime / workertime seconds (retail
-                // 0x4201e9), mana drained over it; unit returns at 10% HP.
-                u.reviveTarget = c.id;
-                u.reviveMode = 1;
-                u.reviveTotal = u.reviveLeft =
-                    std::max(c.type->buildTime / std::max(u.type->workerTime, 0.01f),
-                             0.5f);
-                break;
-            } else if (u.type->canAnimate && u.type->animateType &&
-                       cd->resurrectable) {
-                // Animate (tarpries animatetype=MONGHOUL): ANY resurrectable
-                // corpse -- friend or foe -- rises as the caster's creature,
-                // at 0.3x the work and FULL HP (retail 0x420257/0x4206ba).
-                u.reviveTarget = c.id;
-                u.reviveMode = 2;
-                u.reviveTotal = u.reviveLeft =
-                    std::max(u.type->animateType->buildTime /
-                                 std::max(u.type->workerTime, 0.01f) * 0.3f,
-                             0.5f);
-                break;
-            } else if (u.type->canReclaim && cd->reclaimable) {
+            if (u.type->canReclaim && cd->reclaimable) {
                 Player& rp = players_[size_t(u.player)];
                 rp.energy.cur = std::min(rp.energy.storage, rp.energy.cur + cd->energy);
                 rp.metal.cur = std::min(rp.metal.storage, rp.metal.cur + cd->metal);
                 retire(c);
             }
         }
-    }
-    for (const auto& r : revives) {
-        int id = spawn(r.type, r.x, r.z, 3.14159f, r.player);
-        // Retail HP: resurrect returns the unit at 10% (min 1); an animated
-        // creature rises at FULL health (icd 0x420666-0x4206ba).
-        if (Unit* nu = unit(id))
-            if (!r.animate) nu->hp = std::max(nu->type->maxHp * 0.1f, 1.0f);
-        static const bool kRevLog = std::getenv("TA_BURNLOG") != nullptr;
-        if (kRevLog)
-            std::fprintf(stderr, "%s: %s for p%d at %.0f,%.0f\n",
-                         r.animate ? "animate" : "resurrect",
-                         r.type->id.c_str(), r.player, r.x, r.z);
     }
 }
 

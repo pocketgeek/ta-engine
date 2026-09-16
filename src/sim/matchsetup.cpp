@@ -213,7 +213,7 @@ struct FeatDef { int blocking = 0; int fx = 1, fz = 1;
                  bool flamable = false; bool hasBurnAnim = false;
                  int spreadChance = 0; int sparkTicks = 0; std::string burnt;
                  // Corpse lifecycle (features/corpses).
-                 int decomposeTicks = 0; bool resurrectable = false;
+                 int decomposeTicks = 0;
                  bool indestructible = false;
                  float hp = 0; std::string dead;
                  std::string object;
@@ -256,7 +256,6 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     d.burnt = node.valueOr("featureburnt", "");
                     std::transform(d.burnt.begin(), d.burnt.end(), d.burnt.begin(), ::tolower);
                     d.decomposeTicks = int(node.numberOr("decomposetime", 0) * 30);
-                    d.resurrectable = node.numberOr("resurrectable", 0) != 0;
                     d.object = node.valueOr("object", "");
                     std::transform(d.object.begin(), d.object.end(), d.object.begin(), ::tolower);
                     d.indestructible = node.numberOr("indestructible", 0) != 0;
@@ -294,7 +293,6 @@ struct FeatTypeInterner {
         t.fx = di->second.fx; t.fz = di->second.fz;
         t.blocking = di->second.blocking != 0;
         t.decomposeTicks = di->second.decomposeTicks;
-        t.resurrectable = di->second.resurrectable;
         t.reclaimable = di->second.reclaimable != 0;
         t.indestructible = di->second.indestructible;
         t.hp = di->second.hp;

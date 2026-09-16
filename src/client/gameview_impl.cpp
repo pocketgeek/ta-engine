@@ -469,7 +469,6 @@
         int ar = spawn("araarch", tx, tz, -1.57f, 0);
         world_.attack(dr, ar, false);
         // Statue-death check: the Basilisk's gaze petrifies -- the victim must
-        // die on the spot and stand as a stone-gray, resurrectable statue.
         int bs = spawn("zonbasil", tx - 120, tz + 90, 1.57f, 1);
         int vic = spawn("arabow", tx + 40, tz + 90, -1.57f, 0);
         world_.attack(bs, vic, false);
