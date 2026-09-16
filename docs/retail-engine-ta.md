@@ -356,6 +356,38 @@ unit reaches them: a survey of all 815 FBIs in the Commander Pack finds no
 Kingdoms mechanic — which is still right for retail behaviour, but it is TA
 vestigial code rather than something TA never had.
 
+## Mission objectives — the shape, not yet the semantics
+
+A mission's objectives are `.ota` GlobalHeader keys, and the engine turns them
+into a **list of small polymorphic objects** rather than evaluating a fixed set of
+flags. One factory at `0x48e000`-`0x48e8xx` walks the keys in a fixed order; for
+each it calls the get-int reader (`0x4c46c0`), and when the key is present and
+non-zero it `new`s an object of a per-key size, writes a per-key vtable pointer,
+and appends it to an array whose count lives at `[ebp+0x40]`.
+
+Resolved so far, by walking that factory:
+
+| key | object size | vtable |
+| --- | --- | --- |
+| `AllUnitsKilled` | `0x10` | `0x4fd800` |
+| `DestroyAllUnits` | `0x0c` | `0x4fd948` |
+| `KillAllMobileUnits` | `0x14` | `0x4fd928` |
+| `CommanderKilled` | `0x0c` | `0x4fd818` |
+| `MoveUnitToRadius` | `0x40` | `0x4fd830` |
+| `DeathTimerRunsOut` | `0x10` | `0x4fd7a8` |
+
+The typed keys — `BuildUnitType` (`0x48e106`), `CaptureUnitType` (`0x48e197`),
+`KillUnitType` (`0x48e2a3`), `KillAllOfType`, `AllUnitsKilledOfType`
+(`0x48e726`), `UnitTypeKilled` — are built by the same factory but store a unit
+name before the vtable, so their sizes and vtables are not in the table above.
+
+**What is NOT established: whether a given key is a WIN or a LOSE condition.**
+That lives in each vtable's methods and has not been read. It matters, and the
+obvious reading is not safe: AC01 declares `AllUnitsKilledOfType=ARMGATE`, and the
+only ARMGATE on that map belongs to the PLAYER — so at least some of these keys
+describe a defeat. Anyone implementing evaluation should start from the vtables
+above rather than from the key names.
+
 ## Open questions
 
 - What accumulates into build `work` per tick.
