@@ -1249,6 +1249,39 @@ bool ieqName(const std::string& a, const std::string& b) {
         return out;
     }
 
+namespace {
+// Map a TA command-panel gadget to the engine's command char.
+//
+// The gadget names carry the side prefix (ARMMOVE / CORMOVE), so they are
+// matched on the tail. The names are NOT a passthrough for the .gui's own
+// `quickkey`: TA binds 'c' to CAPTURE and 'e' to RECLAIM, where this engine
+// already uses 'c' for clear/reclaim -- feeding the raw key through would have
+// wired the capture button to the reclaim order.
+//
+// Returns 0 for a gadget with no equivalent yet; those still DRAW (so the panel
+// looks right) but do not accept a click, which is better than silently issuing
+// the wrong order.
+char taPanelCommand(const std::string& name) {
+    std::string t = name;
+    for (char& c : t) c = char(std::toupper(static_cast<unsigned char>(c)));
+    // Strip a 3-letter side prefix if one is present.
+    if (t.size() > 3 && (t.rfind("ARM", 0) == 0 || t.rfind("COR", 0) == 0))
+        t = t.substr(3);
+    if (t == "MOVE")    return 'm';
+    if (t == "STOP")    return 's';
+    if (t == "ATTACK")  return 'a';
+    if (t == "PATROL")  return 'p';
+    if (t == "DEFEND")  return 'g';   // TA calls guard "defend"
+    if (t == "RECLAIM") return 'c';   // the engine's clear/reclaim
+    if (t == "REPAIR")  return 'r';
+    if (t == "LOAD")    return 'l';
+    if (t == "UNLOAD")  return 'u';
+    // Not wired yet: CAPTURE, CLOAK, ONOFF, BLAST (the commander's D-gun),
+    // FIREORD/MOVEORD (the stance cycles) and the ORDERS/BUILD panel tabs.
+    return 0;
+}
+}  // namespace
+
     void GameView::renderGui(int winW, int winH) {
         if (gui_.gadgets.empty()) { drawOrderColumn(winW, winH); return; }
         guiBtnRects_.clear();
@@ -1259,6 +1292,29 @@ bool ieqName(const std::string& a, const std::string& b) {
         if (panelTex_) {
             SDL_FRect pr = guiPanelRect();
             SDL_RenderCopyF(ren_, panelTex_, nullptr, &pr);
+        }
+
+        // TA's command buttons. Each is a gadget whose ART is the same-named
+        // sequence in commongui.gaf (loaded in loadGui) and whose position is its
+        // own rect, so the whole panel is data-driven -- no per-button table.
+        // Frame 0 is the idle face, 1 the hover/pressed one where the art has it.
+        {
+            const ta::tdf::Side* sd = localSide();
+            (void)sd;
+            for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
+                const auto& g = gui_.gadgets[i];
+                if (g.type != ta::gui::kButton || i >= guiTex_.size() ||
+                    guiTex_[i].empty())
+                    continue;
+                SDL_FRect r = guiCmdRect(g);
+                bool hot = mouseX_ >= r.x && mouseX_ <= r.x + r.w &&
+                           mouseY_ >= r.y && mouseY_ <= r.y + r.h;
+                size_t frame = (hot && guiTex_[i].size() > 1 && guiTex_[i][1]) ? 1 : 0;
+                if (SDL_Texture* t = guiTex_[i][frame])
+                    SDL_RenderCopyF(ren_, t, nullptr, &r);
+                if (char cmd = taPanelCommand(g.name))
+                    guiBtnRects_.push_back({r, cmd});
+            }
         }
 
         // Command panel background. ButtonPanel frame 0 is the idle dragon medallion;
