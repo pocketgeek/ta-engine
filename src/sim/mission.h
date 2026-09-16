@@ -63,8 +63,14 @@ private:
     // A parsed `.ota` victory/defeat rule. `kind` names the retail *Condition_* class;
     // `type` (optional unit type) + up to 4 numeric args carry its parameters.
     struct Cond {
+        // Victory kinds first, then defeat. Which side each belongs to is not a
+        // reading of the name: it is which of the engine's two objective arrays
+        // the factory at TotalA.exe 0x48e000 appends it to. See
+        // docs/retail-engine-ta.md -- CommanderKilled and KillEnemyCommander are
+        // different keys on opposite lists, and AllUnitsKilledOfType is a DEFEAT.
         enum Kind { MoveUnitToRadius, KillEnemyCommander, DestroyAllUnits, KillAllMobileUnits,
                     KillAllOfType, KillUnitType, VictoryTimerRunsOut, UnitTypePassesX, UnitTypePassesZ,
+                    CaptureUnitType, BuildUnitType,
                     CommanderKilled, AllUnitsKilled, AllUnitsKilledOfType, UnitTypeKilled,
                     DeathTimerRunsOut, AnyUnitPassesX, AnyUnitPassesZ } kind;
         const UnitType* type = nullptr;

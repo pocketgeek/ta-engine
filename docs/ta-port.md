@@ -485,13 +485,22 @@ switched off. Under the per-unit all-or-nothing billing established in
 opening 1000 energy in about a third of a second and then simply never pays
 again. Whether retail charges a campaign gate at all is not established here.
 
-Objectives are parsed, **win and lose separately**, but not yet evaluated. The
-split is settled in [`retail-engine-ta.md`](retail-engine-ta.md): the engine keeps
-two arrays on the mission object and which one a key lands in is its meaning. It
-is not guessable from the names — `CommanderKilled` (123 missions) is the DEFEAT
-and `KillEnemyCommander` (7) the victory, two different keys on opposite lists,
-and `AllUnitsKilledOfType=ARMGATE` in AC01 means *protect* the gate, the only one
-on that map being the player's.
+Objectives now **evaluate**. The win/lose split is settled in
+[`retail-engine-ta.md`](retail-engine-ta.md): the engine keeps two arrays on the
+mission object and which one a key lands in is its meaning. It is not guessable
+from the names — `CommanderKilled` (123 missions) is the DEFEAT and
+`KillEnemyCommander` (7) the victory, two different keys on opposite lists, and
+`AllUnitsKilledOfType=ARMGATE` in AC01 means *protect* the gate, the only one on
+that map being the player's.
+
+The evaluator itself was already here and already correct: the inherited
+`MissionScript::parseConditions` classifies all twelve keys it knew about exactly
+as the objective factory does, which is worth stating because it was arrived at
+independently. A TA mission attaches it in its data-only form — no `.cob`, just
+the `.ota` conditions — and the condition keys are the same names in both games,
+so it reads a TA header unchanged. Three keys the shipped TA data uses were
+missing and are now implemented: `CaptureUnitType` (32 missions),
+`BuildUnitType` (8) and `AnyUnitPasses{X,Z}` (3).
 
 ## 6. Open questions, pending the retail data
 

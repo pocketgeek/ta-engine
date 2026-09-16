@@ -433,6 +433,22 @@ void MissionScript::parseConditions(const ta::tdf::Node& h) {
     if (has("UnitTypePassesX")) { args(str("UnitTypePassesX"), ty, a); add(Cond::UnitTypePassesX, true, findType(ty), a[0], 0, 0, 0); }
     if (has("UnitTypePassesZ")) { args(str("UnitTypePassesZ"), ty, a); add(Cond::UnitTypePassesZ, true, findType(ty), a[0], 0, 0, 0); }
     if (has("UnitTypeKilled"))  { args(str("UnitTypeKilled"), ty, a); add(Cond::UnitTypeKilled, false, findType(ty), a[0], 0, 0, 0); }
+    // Three keys the shipped TA data uses that were never read. Their win/lose
+    // side is not a guess: it is which of the engine's two objective arrays the
+    // factory at TotalA.exe 0x48e000 appends them to (docs/retail-engine-ta.md).
+    // CaptureUnitType is the big one -- 32 of the 272 shipped .ota files.
+    if (has("CaptureUnitType"))
+        add(Cond::CaptureUnitType, true, findType(str("CaptureUnitType")), 0, 0, 0, 0);
+    if (has("BuildUnitType"))
+        add(Cond::BuildUnitType, true, findType(str("BuildUnitType")), 0, 0, 0, 0);
+    // AnyUnitPasses{X,Z}: an enemy crossing a line on the map -- a DEFEAT, where
+    // the UnitTypePasses pair above is a victory for getting YOUR unit across.
+    if (has("AnyUnitPassesX"))
+        add(Cond::AnyUnitPassesX, false, nullptr,
+            std::strtof(str("AnyUnitPassesX").c_str(), nullptr), 0, 0, 0);
+    if (has("AnyUnitPassesZ"))
+        add(Cond::AnyUnitPassesZ, false, nullptr,
+            std::strtof(str("AnyUnitPassesZ").c_str(), nullptr), 0, 0, 0);
 }
 
 void MissionScript::evalConditions(World& w, float) {
@@ -536,7 +552,53 @@ void MissionScript::evalConditions(World& w, float) {
                 }
                 break;
             }
-            default: break;   // KillEnemyCommander -> TODO
+            case Cond::CaptureUnitType: {
+                // Satisfied once the human OWNS one. Capture flips ownership, so
+                // the test is simply "a live unit of this type belongs to us" --
+                // which also covers a mission that hands one over by script.
+                for (const auto& u : w.units())
+                    if (u.alive() && u.type == c.type && u.player == human_) { met = true; break; }
+                break;
+            }
+            case Cond::BuildUnitType: {
+                // Same shape, but arm on absence: a mission asking you to BUILD an
+                // Advanced Lab must not be satisfied by one that was placed for
+                // you at t=0. Only a unit appearing after the mission started counts.
+                bool have = false;
+                for (const auto& u : w.units())
+                    if (u.alive() && u.type == c.type && u.player == human_) { have = true; break; }
+                if (!c.armed && !have) c.armed = true;   // none at the start: now watch for one
+                met = c.armed && have;
+                break;
+            }
+            case Cond::AnyUnitPassesX:
+            case Cond::AnyUnitPassesZ: {
+                // An ENEMY reaching the line loses the mission. (The UnitTypePasses
+                // pair above is the mirror: your escort reaching it wins.)
+                const bool isX = c.kind == Cond::AnyUnitPassesX;
+                const float line = cellToWorld(c.a);
+                for (const auto& u : w.units()) {
+                    if (!u.alive() || u.player == human_) continue;
+                    if (w.allied(u.player, human_)) continue;
+                    if ((isX ? u.x : u.z) >= line) { met = true; break; }
+                }
+                break;
+            }
+            case Cond::KillEnemyCommander: {
+                // No enemy commander left alive. Arms on first sight, so a mission
+                // whose enemy commander is spawned later cannot be won at t=0.
+                bool any = false;
+                for (const auto& u : w.units()) {
+                    if (!u.alive() || !u.type || !u.type->commander) continue;
+                    if (u.player == human_ || w.allied(u.player, human_)) continue;
+                    any = true;
+                    break;
+                }
+                if (any) c.armed = true;
+                met = c.armed && !any;
+                break;
+            }
+            default: break;
         }
         if (met) { outcome_ = c.victory ? 1 : -1; return; }
     }

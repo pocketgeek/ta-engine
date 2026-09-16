@@ -877,8 +877,8 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
 // different arrangement entirely (missions/ + a .cob god script + a .crt).
 static bool setupMissionTA(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                            const std::string& stem, const tnt::Scenario& sc,
-                           const std::string& difficulty, int& humanOut,
-                           MissionSetup* out) {
+                           const tdf::Node& header, const std::string& difficulty,
+                           int& humanOut, MissionSetup* out) {
     const tnt::Schema* schema = sc.schemaFor(difficulty);
     if (!schema) return false;
 
@@ -970,6 +970,21 @@ static bool setupMissionTA(World& world, const TypeRegistry& reg, const hpi::Vfs
             if (n[size_t(i)] > 0) out->aiSlots.push_back(i);
     }
 
+    // Win/lose evaluation. TA missions carry no god script, but MissionScript
+    // without a .cob is exactly the data-only case it already supports: it runs
+    // the .ota's conditions and nothing else. The condition keys are the SAME
+    // names in both games -- the two .ota dialects diverge on structure, not on
+    // these -- so parseConditions reads a TA header unchanged, and its
+    // victory/defeat classification independently matches what the objective
+    // factory in TotalA.exe does (see docs/retail-engine-ta.md).
+    //
+    // The player map is identity here: setupMissionTA already compacts .ota
+    // player N to slot N-1, so slot i IS .ota player i+1.
+    std::vector<int> otaToWorld(size_t(kMaxPlayers) + 1, -1);
+    for (int i = 0; i < nSlots; ++i) otaToWorld[size_t(i) + 1] = i;
+    world.setMission(std::make_unique<MissionScript>(std::vector<uint8_t>{}, header, reg,
+                                                     humanOut, stem, otaToWorld));
+
     std::fprintf(stderr,
                  "setupMission: TA '%s' [%s] -- %d units placed over %d players, "
                  "human=slot 0, profile=%s\n",
@@ -1023,9 +1038,13 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
         if (vfs.has(taOta) && vfs.has(taTnt)) {
             auto b = vfs.read(taOta);
             tnt::Scenario sc = tnt::Scenario::parse(std::string(b.begin(), b.end()));
-            if (sc.isMission())
-                return setupMissionTA(world, reg, vfs, stem, sc, /*difficulty=*/"",
-                                      humanOut, out);
+            if (sc.isMission()) {
+                tdf::Node root = tdf::parseText(std::string(b.begin(), b.end()), taOta);
+                const tdf::Node* gh = root.child("globalheader");
+                if (gh)
+                    return setupMissionTA(world, reg, vfs, stem, sc, *gh,
+                                          /*difficulty=*/"", humanOut, out);
+            }
         }
     }
     const std::string base = "missions/" + stem;
