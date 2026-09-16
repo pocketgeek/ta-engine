@@ -420,6 +420,8 @@
                     int id = world_.startBuild(builderId_, what, x, z);
                     std::printf("testbuild: %s site id %d at %.0f,%.0f\n",
                                 what->id.c_str(), id, x, z);
+                    follow_ = false;   // else the camera drifts off with the builder
+                    lookAt(x, z);
                     return;
                 }
             }
@@ -1134,6 +1136,81 @@
             const UnitR& u = *_up;
             if (!u.alive() && u.corpsePhase) maybeSwapCorpseModel(u);
             auto it = anims_.find(u.id);
+            // NANOLATHE. A TA builder streams its target into existence along a
+            // visible beam, and nothing drew one: loadBuildFx below still reads
+            // Kingdoms' aramonbuild/tarosbuild/verunabuild sparkle sheets, which
+            // do not exist in a TA install, so buildFx_ was always empty and
+            // sprinkleBuildFx returned immediately. Construction was silent.
+            //
+            // Reuses the weapon BeamFx renderer (three additive passes: outer
+            // halo, body, hot core) rather than a second beam path. One short
+            // beam is emitted per frame while the work is actually happening, so
+            // it appears and stops with the job -- a builder walking to a site,
+            // or starved and making no progress, draws nothing.
+            //
+            // The COLOURS are not measured from retail: they are a pale
+            // green-white chosen to read as a lathe rather than a weapon. The
+            // shape (a straight beam from the nanolathe piece to the site) is
+            // right; the exact ramp is a guess and is the first thing to check
+            // against the binary if this ever matters.
+            if (u.alive() && u.buildSiteId && u.type) {
+                const auto& fu = front().units;   // id-indexed
+                if (u.buildSiteId > 0 && size_t(u.buildSiteId) < fu.size()) {
+                    const UnitR* site = &fu[size_t(u.buildSiteId)];
+                    // "Actually working" = the site is still going up AND this
+                    // builder is within its reach. buildProgress is NOT the test:
+                    // it counts seconds of work on the builder's QUEUE front, not
+                    // the site's completion, so it reads 0 for a building under
+                    // construction and suppressed the beam entirely.
+                    float ddx = site->x - u.x, ddz = site->z - u.z;
+                    const float reach = std::max(u.type->buildDist, 1.0f) + 48.0f;
+                    const bool working = site->alive() && site->underConstruction &&
+                                         ddx * ddx + ddz * ddz <= reach * reach;
+                    if (working && (noFog_ || cellVisibleR(u.x, u.z))) {
+                        BeamFx nb;
+                        nb.x1 = u.x; nb.z1 = u.z;
+                        nb.x2 = site->x; nb.z2 = site->z;
+                        // Emit from the model's nanolathe piece, so the beam
+                        // leaves the arm/nozzle rather than the unit's centre.
+                        // The names are MEASURED, not guessed: across the 53
+                        // builders in the Commander Pack, 29 carry such a piece
+                        // and they spell it nano1/nano2 (14 each), nanospray (5),
+                        // nanogun (4), nanopoint (3), nano (3), nanolath (2),
+                        // nozzle (2), plus l/r-prefixed pairs. The other 24 have
+                        // none and fall back to the body, which is why this is a
+                        // preference and not a requirement. (14 builders carry
+                        // nano1 AND nano2; one beam from the first is enough to
+                        // read, so the pair is not drawn twice.)
+                        if (auto ai = anims_.find(u.id); ai != anims_.end()) {
+                            float wx, wz, wa;
+                            for (const char* pn : {"nano1", "nanospray", "nanolath",
+                                                   "nanogun", "nanopoint", "nano",
+                                                   "nozzle", "lnanospray", "lnanogun"})
+                                if (pieceWorldFx(u, ai->second, pn, wx, wz, wa)) {
+                                    nb.x1 = wx; nb.z1 = wz; nb.alt1 = wa;
+                                    break;
+                                }
+                        }
+                        nb.alt2 = 0;
+                        nb.lightning = false;
+                        nb.life = 0.10f;          // re-emitted each frame while working
+                        nb.inner[0] = 235; nb.inner[1] = 255; nb.inner[2] = 225;
+                        nb.middle[0] = 150; nb.middle[1] = 235; nb.middle[2] = 160;
+                        nb.outer[0]  = 60;  nb.outer[1]  = 150; nb.outer[2]  = 90;
+                        if (ta::devEnv("TA_FXLOG")) {
+                            static int shown = 0;
+                            if (shown++ < 3)
+                                std::fprintf(stderr, "nanolathe: builder %d (%s) -> site %d "
+                                                     "(%s %.0f%%) from (%.0f,%.0f) to (%.0f,%.0f)\n",
+                                             u.id, u.type->id.c_str(), u.buildSiteId,
+                                             site->type ? site->type->id.c_str() : "?",
+                                             double(site->buildProgress * 100.0f),
+                                             nb.x1, nb.z1, nb.x2, nb.z2);
+                        }
+                        beams_.push_back(nb);
+                    }
+                }
+            }
             if (u.justFired && newTick_ && u.type) {
                 using Fx = ta::sim::WeaponFx;
                 const auto& w = u.type->weapon;

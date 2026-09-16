@@ -323,12 +323,42 @@ synthetic world (no retail data, so CI runs it):
 * an abandoned site decays at the rate it was being built and vanishes, leaving
   no wreck — it was never finished.
 
-What is NOT done is the nanolathe BEAM. There is no construction-beam rendering
-at all: `loadBuildFx` still reads Kingdoms' `aramonbuild_4444.taf` /
-`tarosbuild` / `verunabuild` sparkle sheets, none of which exist in a TA
-install, so every load throws, `buildFx_` stays empty and `sprinkleBuildFx`
-returns immediately. The sim streams the unit up correctly; nothing draws the
-lathe.
+Construction was also SILENT until now. `loadBuildFx` reads Kingdoms'
+`aramonbuild_4444.taf` / `tarosbuild` / `verunabuild` sparkle sheets, none of
+which exist in a TA install, so every load threw, `buildFx_` stayed empty and
+`sprinkleBuildFx` returned immediately: the sim streamed the unit up and nothing
+drew the lathe.
+
+The beam now reuses the existing weapon `BeamFx` renderer (three additive
+passes — outer halo, body, hot core) rather than adding a second beam path. One
+short beam is emitted per frame while the work is actually happening, so it
+starts and stops with the job: a builder still walking to its site, or starved
+and making no progress, draws nothing.
+
+Two details worth keeping:
+
+* **Do not gate the beam on `buildProgress`.** That field counts *seconds of
+  work on the builder's QUEUE front*, not the site's completion, so it reads 0
+  for a building under construction — gating on it suppressed the beam
+  entirely. The condition is the site being `underConstruction` with the builder
+  inside its `buildDist`.
+* The emit piece names are **measured**: of the 53 builders in the Commander
+  Pack, 29 carry a nanolathe piece, spelled `nano1`/`nano2` (14 each),
+  `nanospray` (5), `nanogun` (4), `nanopoint` (3), `nano` (3), `nanolath` (2),
+  `nozzle` (2), plus `l`/`r`-prefixed pairs. The other 24 have none and emit
+  from the body, which is why the piece is a preference and not a requirement.
+
+**The colours are NOT measured from retail** — a pale green-white chosen to read
+as a lathe rather than a weapon. The shape is right; the ramp is a guess, and is
+the first thing to check against the binary if it ever matters.
+
+Verified by emission rather than by screenshot: `TA_FXLOG=1` with `--testbuild`
+reports `nanolathe: builder 1 (armcom) -> site 3 (armsolar) from (3243,247) to
+(3326,247)` — the endpoints are right and the emit point sits forward of the
+body, so the piece lookup resolved. A single-frame `--shot` does not land on a
+frame with that scene in view (it shows neither the builder nor the site), so
+there is no captured image of it here; the beam feeds the same renderer that
+draws every hitscan weapon in the game.
 
 ### ✅ Sides: four Houses become two — done
 
