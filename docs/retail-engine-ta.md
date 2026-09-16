@@ -416,6 +416,82 @@ the two by string, and on a match sets its cached flag. `AllUnitsKilled`
 overrides slot 0 instead and computes on demand -- assume satisfied, then walk
 the live-unit list and clear the flag if anything still qualifies.
 
+## The sound-event table — solved
+
+`TotalA.exe` carries the whole sound-event list as a 24-byte record array at
+`.data:0x005086f0`, laid out `{u32 id, u32 a, u32 b, char* key, char* label,
+u32}`. Walking it gives all 23 events in id order:
+
+| id | a | b | key | on-screen label |
+|---|---|---|---|---|
+| 1 | 10 | 0 | `select` | |
+| 2 | 9 | 20 | `underattack` | Under Attack |
+| 3 | 4 | 2 | `activate` | |
+| 4 | 4 | 2 | `deactivate` | |
+| 5 | 5 | 1 | `ok` | |
+| 6 | 3 | 4 | `arrived` | Arrived |
+| 7 | 8 | 1 | `cant` | Cannot Comply |
+| 8 | 3 | 3 | `unitcomplete` | Nanolathe Complete |
+| 9 | 4 | 2 | `build` | |
+| 10 | 3 | 1 | `repair` | |
+| 11 | 2 | 1 | `working` | |
+| 12 | 7 | 1 | `load` | |
+| 13 | 7 | 1 | `unload` | |
+| 14 | 7 | 1 | `cloak` | Cloaked |
+| 15 | 7 | 1 | `uncloak` | Visible |
+| 16 | 4 | 1 | `capture` | |
+| 17-22 | 10 | 0 | `count5`..`count0` | five..zero |
+| 23 | 10 | 0 | `canceldestruct` | Self destruct terminated |
+
+What this settles for the port:
+
+* **The order-acknowledgement event is `ok`, and there is exactly one of it.**
+  The engine asks for `move` / `attack` / `guard` and aliases all three onto
+  TA's `ok1`; that produces the right sound, and this confirms retail has no
+  per-order distinction to reproduce. The alias was inferred from WAV names
+  (`ok1=kbarmmov`) and is now checked against the binary.
+* **The keys carry no digit** — `select`, not `select1`. `SOUND.TDF` spells them
+  `select1` / `ok1` / `arrived1` / `cant1`, so retail appends a variant index at
+  lookup; single-variant events (`underattack`, `count0..5`, `canceldestruct`)
+  appear undigited in both.
+* The engine plays 4 of these 23. `build`, `repair`, `working`, `load`,
+  `unload`, `cloak`, `uncloak`, `capture`, `activate`, `deactivate`,
+  `unitcomplete`, `arrived`, `underattack`, the countdown and
+  `canceldestruct` all exist in the shipped `SOUND.TDF` and are never triggered.
+
+Columns `a` and `b` were NOT established. `a` runs 2..10 and `b` 0..20, and the
+values are suggestive — `select` and the countdown sit at a=10, `working` at
+a=2; `underattack` alone has b=20 where most events have b=0..4 — which reads
+like a priority and a repeat cooldown. That is a guess from the numbers' shape,
+not something traced through the code, and it is recorded here only so the next
+person starts from the measurement rather than re-deriving the table.
+
+## The nanolathe emit piece — solved
+
+The COB-callback name table contains **`QueryNanoPiece`**, alongside the
+`QueryPrimary` / `AimFromPrimary` / `SweetSpot` entries the engine already uses.
+Retail asks the unit's own script which piece the nanolathe emits from, exactly
+as `QueryWeapon` supplies a muzzle: the script writes the piece index to its
+out-param local 0.
+
+The shipped scripts agree — **51 of the 53 builders in the Commander Pack define
+`QueryNanoPiece`** (the exceptions are `armcarry` and `corcarry`). The engine
+now calls it. It previously guessed at piece NAMES, a list measured from the
+models rather than invented (`nano1`/`nano2`, `nanospray`, `nanogun`,
+`nanopoint`, `nano`, `nanolath`, `nozzle`), but one that could only ever cover
+the 29 builders whose piece happens to be named predictably.
+
+### The nanolathe COLOUR is still not established
+
+Recorded as unresolved rather than left implied. The engine draws the beam in an
+invented pale green-white. It is not authored art: sweeping every shipped GAF
+for a nano/lathe sequence turns up only GUI buttons (`ARMBUILD`, `CORBUILD`) and
+building scenery, so retail draws the lathe procedurally and its colour is a
+constant in the draw routine. That routine has no string to anchor a search on,
+and it was not found. The beam's SHAPE — a line from the script's nano piece to
+the build site, appearing and stopping with the work — is right; the ramp is
+still a guess.
+
 ## Open questions
 
 - What accumulates into build `work` per tick.

@@ -1180,26 +1180,36 @@
                         BeamFx nb;
                         nb.x1 = u.x; nb.z1 = u.z;
                         nb.x2 = site->x; nb.z2 = site->z;
-                        // Emit from the model's nanolathe piece, so the beam
-                        // leaves the arm/nozzle rather than the unit's centre.
-                        // The names are MEASURED, not guessed: across the 53
-                        // builders in the Commander Pack, 29 carry such a piece
-                        // and they spell it nano1/nano2 (14 each), nanospray (5),
-                        // nanogun (4), nanopoint (3), nano (3), nanolath (2),
-                        // nozzle (2), plus l/r-prefixed pairs. The other 24 have
-                        // none and fall back to the body, which is why this is a
-                        // preference and not a requirement. (14 builders carry
-                        // nano1 AND nano2; one beam from the first is enough to
-                        // read, so the pair is not drawn twice.)
-                        if (auto ai = anims_.find(u.id); ai != anims_.end()) {
+                        // Emit from the unit's nanolathe piece, so the beam
+                        // leaves the arm/nozzle rather than the model's centre.
+                        //
+                        // ASK THE SCRIPT, exactly as the muzzle-flash code asks
+                        // QueryWeapon: retail calls the COB function
+                        // `QueryNanoPiece`, which writes the emitting piece index
+                        // to its out-param local 0. The name is in TotalA.exe's
+                        // COB-callback table (see docs/retail-engine-ta.md), and
+                        // the shipped scripts agree: **51 of the 53 builders in
+                        // the Commander Pack define QueryNanoPiece**, the two
+                        // exceptions being armcarry/corcarry.
+                        //
+                        // This replaced a guess at piece NAMES. That guess was
+                        // measured rather than invented -- nano1/nano2, nanospray,
+                        // nanogun, nanopoint, nano, nanolath, nozzle -- but it
+                        // only ever covered 29 of the 53, because the other 22
+                        // name their piece something the list could not predict.
+                        // Asking the script needs no list and covers 51.
+                        if (auto ai = anims_.find(u.id);
+                            ai != anims_.end() && ai->second.vm && ai->second.pieceNames) {
+                            auto& fa = ai->second;
+                            fa.vm->call("QueryNanoPiece", {0});
+                            const auto& ll = fa.vm->lastLocals();
+                            int piece = ll.empty() ? -1 : ll[0];
                             float wx, wz, wa;
-                            for (const char* pn : {"nano1", "nanospray", "nanolath",
-                                                   "nanogun", "nanopoint", "nano",
-                                                   "nozzle", "lnanospray", "lnanogun"})
-                                if (pieceWorldFx(u, ai->second, pn, wx, wz, wa)) {
-                                    nb.x1 = wx; nb.z1 = wz; nb.alt1 = wa;
-                                    break;
-                                }
+                            if (piece >= 0 && piece < int(fa.pieceNames->size()) &&
+                                pieceWorldFx(u, fa, (*fa.pieceNames)[size_t(piece)],
+                                             wx, wz, wa)) {
+                                nb.x1 = wx; nb.z1 = wz; nb.alt1 = wa;
+                            }
                         }
                         nb.alt2 = 0;
                         nb.lightning = false;

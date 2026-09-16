@@ -342,15 +342,23 @@ Two details worth keeping:
   for a building under construction — gating on it suppressed the beam
   entirely. The condition is the site being `underConstruction` with the builder
   inside its `buildDist`.
-* The emit piece names are **measured**: of the 53 builders in the Commander
-  Pack, 29 carry a nanolathe piece, spelled `nano1`/`nano2` (14 each),
-  `nanospray` (5), `nanogun` (4), `nanopoint` (3), `nano` (3), `nanolath` (2),
-  `nozzle` (2), plus `l`/`r`-prefixed pairs. The other 24 have none and emit
-  from the body, which is why the piece is a preference and not a requirement.
+* The emit piece comes from the script, via `QueryNanoPiece` (see above). The
+  earlier approach probed piece NAMES — measured from the models, not invented
+  (`nano1`/`nano2` 14 each, `nanospray` 5, `nanogun` 4, `nanopoint` 3, `nano` 3,
+  `nanolath` 2, `nozzle` 2, plus l/r pairs) — but it could only ever reach the 29
+  of 53 builders whose piece is named predictably.
 
 **The colours are NOT measured from retail** — a pale green-white chosen to read
-as a lathe rather than a weapon. The shape is right; the ramp is a guess, and is
-the first thing to check against the binary if it ever matters.
+as a lathe rather than a weapon. Checked against the binary since: the beam is
+not authored art (no shipped GAF carries a nano/lathe sequence — only the
+`ARMBUILD`/`CORBUILD` GUI buttons), so retail draws it procedurally and the
+colour is a constant in a draw routine that has no string to anchor a search on.
+Still a guess; see `docs/retail-engine-ta.md`.
+
+The emit PIECE is no longer a guess. Retail calls the COB function
+`QueryNanoPiece` — it is in the binary's callback-name table next to
+`QueryPrimary` and `SweetSpot` — and **51 of the 53 builders define it**, against
+the 29 the old piece-name list could cover. The engine asks the script now.
 
 Verified by emission rather than by screenshot: `TA_FXLOG=1` with `--testbuild`
 reports `nanolathe: builder 1 (armcom) -> site 3 (armsolar) from (3243,247) to
