@@ -1,5 +1,7 @@
 #pragma once
 
+#include "util/strcase.h"
+
 // 8-channel positional WAV mixer + music player, and the soundclasses TDF map.
 // Extracted verbatim from client/main.cpp: kept at global scope and header-only
 // (every method stays inline, exactly as in the original) so its unqualified use
@@ -652,7 +654,11 @@ public:
     void load(const ta::hpi::Vfs& vfs) {
         try {
             for (const std::string& path : vfs.list("gamedata/soundclasses")) {
-                if (std::filesystem::path(path).extension() != ".tdf") continue;
+                // Case-INSENSITIVE: TA ships both cases (features/archi/METAL.TDF next to
+                // features/all worlds/DragonsTeeth.tdf), and a case-sensitive test here
+                // silently skipped every uppercase file -- which is how a map with 120
+                // features, 10 of them metal patches, loaded with none of them.
+                if (!ta::iendsWith(path, ".tdf")) continue;
                 try {
                     auto sb = vfs.read(path);
                     auto root = ta::tdf::parseText(std::string(sb.begin(), sb.end()), path);

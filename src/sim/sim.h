@@ -1015,6 +1015,17 @@ public:
     float windSpeed() const;
     // Metal per second an extractor on this unit's footprint yields.
     float extractorYield(const Unit& u) const;
+    // Per-cell metal richness, derived from the map's metal FEATURES at load.
+    // TA has no stored metal plane -- a patch is a feature (ArchMetal*, with a
+    // `metal=` richness and a 3x3 footprint) -- but an extractor is scored over
+    // the cells under it, and a multi-cell patch marks only its ANCHOR cell in
+    // the feature plane (the rest carry tnt::kFeatureCovered). So the richness is
+    // spread across each patch's footprint once, here, instead of every extractor
+    // hunting for the anchor that owns each of its cells.
+    float metalAt(int cx, int cz) const {
+        if (metal_.empty() || cx < 0 || cz < 0 || cx >= terW_ || cz >= terH_) return 0;
+        return metal_[size_t(cz) * size_t(terW_) + size_t(cx)];
+    }
     // Observational pathfinder counters (never hashed) -- for benchmarks.
     const PathService& pathStats() const { return paths_; }
 
@@ -1126,13 +1137,13 @@ public:
     const std::vector<Feature>& features() const { return features_; }
     const Feature* feature(int id) const;                 // by id, nullptr if none
     const Feature* featureAt(float x, float z) const;     // by cell (viewer burn/art sync)
-    void setFeatureTypes(std::vector<FeatType> t) { featTypes_ = std::move(t); }
+    // Installs the feature type table AND derives the metal plane from it (see
+    // metalAt). Has to happen here rather than in addFeature: the types are
+    // interned while the features are being registered, so at addFeature time
+    // this table is still empty and nothing knows which features are metal.
+    void setFeatureTypes(std::vector<FeatType> t);
     // Unit type -> its corpse feature def (index into featTypes_, -1 = none).
     void mapCorpse(const UnitType* t, int featType) { corpseType_[t] = featType; }
-    void mapStatue(const UnitType* t, int stoneIdx, int frozenIdx) {
-        if (stoneIdx >= 0) stoneType_[t] = stoneIdx;
-        if (frozenIdx >= 0) frozenType_[t] = frozenIdx;
-    }
     int statueTypeOf(const UnitType* t, bool frozen) const {
         const auto& m = frozen ? frozenType_ : stoneType_;
         auto it = m.find(t);
@@ -1749,6 +1760,7 @@ private:
     std::vector<int> justDied_;                // unit ids that died this tick (mission/scenario hook)
     std::vector<std::pair<float, float>> manaSpots_;
     MapEconomy mapEcon_;
+    std::vector<float> metal_;   // per-cell richness; see metalAt()
     std::vector<Feature> features_;             // reclaimable map features
     std::vector<FeatType> featTypes_;           // per-type burn data (setup-time, static)
     std::unordered_map<const UnitType*, int> corpseType_;   // unit -> corpse FeatType

@@ -1,5 +1,7 @@
 #include "sim/matchsetup.h"
 
+#include "util/strcase.h"
+
 #include "tdf/sidedata.h"
 
 #include "sim/detmath.h"
@@ -234,7 +236,11 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
     std::unordered_map<std::string, FeatDef> defs;
     try {
         for (const std::string& path : vfs.list("features")) {
-            if (std::filesystem::path(path).extension() != ".tdf") continue;
+            // Case-INSENSITIVE: TA ships both cases (features/archi/METAL.TDF next to
+                // features/all worlds/DragonsTeeth.tdf), and a case-sensitive test here
+                // silently skipped every uppercase file -- which is how a map with 120
+                // features, 10 of them metal patches, loaded with none of them.
+                if (!ta::iendsWith(path, ".tdf")) continue;
             try {
                 auto fb = vfs.read(path);
                 auto root = ta::tdf::parseText(std::string(fb.begin(), fb.end()), path);
@@ -354,15 +360,25 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                 int fx = di->second.fx, fz = di->second.fz;
                 world.blockCells(int(x) / 16 - fx / 2, int(z) / 16 - fz / 2, fx, fz, true);
             }
-            // Reclaimable obstacle features (trees/rocks/houses) enter the sim so a
-            // mobile builder can clear them for mana -- and flamable ones so dragonfire
-            // can burn them (World::tickBurning). The id is derived from the cell, so
-            // every peer records the identical feature.
-            if ((di->second.reclaimable || di->second.flamable) && !di->second.isMetal) {
+            // Which features enter the sim:
+            //   * reclaimable / flamable obstacles (trees, rocks, wreckage), so a
+            //     builder can clear them and fire can spread through them;
+            //   * METAL PATCHES, which are neither -- ArchMetal is indestructible
+            //     and not reclaimable -- but which the sim must still see, because
+            //     an extractor's yield is the `metal=` richness of the feature
+            //     under its footprint. Registering the patch only as a build SPOT
+            //     left World::extractorYield with nothing to find, so every mex
+            //     silently fell back to the map's background SurfaceMetal.
+            // The id is derived from the cell, so every peer records the identical
+            // feature.
+            if (di->second.reclaimable || di->second.flamable || di->second.isMetal) {
                 float work = std::max(di->second.energy, 60.0f);   // rocks (energy 0) still take a beat
                 world.addFeature(cz * map.width + cx, x, z, di->second.energy,
                                  di->second.metal, work,
-                                 di->second.fx, di->second.fz, di->second.blocking != 0,
+                                 di->second.fx, di->second.fz,
+                                 // A metal patch never blocks: units walk over it and
+                                 // the extractor is built on top.
+                                 !di->second.isMetal && di->second.blocking != 0,
                                  types.intern(key));
             }
         }

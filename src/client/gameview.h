@@ -108,28 +108,23 @@
 
 class GameView {
 public:
-    struct FactionKit {
-        const char* monarch;   // hero commander the faction starts with
-        const char* keep;      // production building the monarch builds first
-        const char* lode;
-        const char* builder;
-        const char* squad[4];
-    };
-    static const FactionKit& kit(const std::string& side) {
-        static const std::map<std::string, FactionKit> kits = {
-            {"ara", {"araking", "arakeep", "aralode", "arabuild",
-                     {"araarch", "araarch", "arasword", "arasword"}}},
-            {"tar", {"tarnecro", "tardung", "tarlode", "tarnecro",
-                     {"tararch", "tararch", "tardemon", "tartb"}}},
-            {"ver", {"vermage", "verkeep", "verlode", "verliege",
-                     {"verarch", "verarch", "versword", "versword"}}},
-            {"zon", {"zonhunt", "", "zonlode", "zonhand",
-                     {"zongob", "zonter", "zontroll", "zonbat"}}},
-            {"cre", {"cresage", "creacad", "crelode", "cremech",
-                     {"creauto", "creauto", "crebeas", "creshoc"}}},
-        };
-        auto it = kits.find(side);
-        return it != kits.end() ? it->second : kits.at("ara");
+    // TA's opening force is the COMMANDER and nothing else -- no starting squad,
+    // no free production building. Kingdoms handed each of its five houses a
+    // hardcoded kit (monarch + keep + lodestone + builder + a four-unit squad);
+    // there is nothing to hardcode here, because SIDEDATA names the commander and
+    // the player builds the rest.
+    const char* sideCommander(const std::string& sideName) const {
+        if (const auto* s = sideData_.side(sideName)) return s->commander.c_str();
+        return sideData_.sides.empty() ? "" : sideData_.sides[0].commander.c_str();
+    }
+    // A handful of this side's combat types, for the dev showcase armies. Drawn
+    // from the registry in its fixed name-sorted order, so the same build always
+    // stages the same fight.
+    std::vector<const ta::sim::UnitType*> showcaseUnits(const std::string& sideName) const {
+        const auto* sd = sideData_.side(sideName);
+        auto all = registry_.combatUnits(sd ? sd->name : sideName);
+        if (all.size() > 8) all.resize(8);
+        return all;
     }
 
     // Player start positions from the current map's sibling .ota, in world pixels,
@@ -406,21 +401,16 @@ public:
                 float ang = float(spots.size()) / float(n) * 6.2831853f;
                 spots.push_back({cx + std::cos(ang) * 300, cz + std::sin(ang) * 300});
             }
-            const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
             for (int i = 0; i < n; ++i) {
-                std::string fkSide = sides[i % 5];
-                // Gods are resolved in setupMatch, which this harness does not call, so
-                // godType stayed null here. World::summonReadyGods marks the summon
-                // HANDLED before checking it (a player with nothing on the map must not
-                // bank one), so a null type does not defer the god -- it consumes the
-                // favour and spawns nothing, permanently. Resolve it the same way
-                // setupMatch does.
-                const FactionKit& fk = kit(fkSide);
+                // Alternate the sides SIDEDATA declares, so an FFA of more than
+                // two players still fields both rosters.
+                const std::string& sideName =
+                    sideData_.sides.empty()
+                        ? side_
+                        : sideData_.sides[size_t(i) % sideData_.sides.size()].name;
                 float mx = spots[size_t(i)].first, mz = spots[size_t(i)].second;
-                int mon = spawn(fk.monarch, mx, mz, 0, i);
+                int mon = spawn(sideCommander(sideName), mx, mz, 0, i);
                 if (i == 0) { playerMonarchId_ = mon; builderId_ = mon; }
-                for (int s = 0; s < 4; ++s)
-                    spawn(fk.squad[s % 4], mx + (s % 2) * 26 - 13, mz - 50 + (s / 2) * 26, 0, i);
                 world_.player(i).metal.cur = 2800;
                 world_.player(i).energy.cur = 2800;
             }
@@ -432,14 +422,12 @@ public:
             return;
         }
         if (!bare) {
-        const FactionKit& pk = kit(side);
-        const FactionKit& ak = kit(aiSide);
-        // Monarchs face one another.
+        // Commanders face one another.
         float pFace = std::atan2(ax - px, az - pz);
         float aFace = std::atan2(px - ax, pz - az);
-        playerMonarchId_ = spawn(pk.monarch, px, pz, pFace, 0);
+        playerMonarchId_ = spawn(sideCommander(side), px, pz, pFace, 0);
         builderId_ = playerMonarchId_;
-        aiMonarchId_ = spawn(ak.monarch, ax, az, aFace, 1);
+        aiMonarchId_ = spawn(sideCommander(aiSide), ax, az, aFace, 1);
         // Enough of both to bootstrap the opening -- some economy and the start
         // of a factory -- without being able to skip economy and rush one to
         // completion.
@@ -449,16 +437,15 @@ public:
             // Showcase: skip the slow build-up and pit two ready armies at the
             // start positions against each other.
             std::vector<int> playerA, playerB;
-            for (int i = 0; i < 6; ++i) {
-                int a = spawn(pk.squad[i % 4], px + float(i % 2) * 26,
-                              pz - 60 + float(i / 2) * 30, pFace, 0);
-                int b = spawn(ak.squad[i % 4], ax + float(i % 2) * 26,
-                              az - 60 + float(i / 2) * 30, aFace, 1);
+            auto pUnits = showcaseUnits(side), aUnits = showcaseUnits(aiSide);
+            for (int i = 0; i < 6 && !pUnits.empty() && !aUnits.empty(); ++i) {
+                int a = spawn(pUnits[size_t(i) % pUnits.size()]->id,
+                              px + float(i % 2) * 26, pz - 60 + float(i / 2) * 30, pFace, 0);
+                int b = spawn(aUnits[size_t(i) % aUnits.size()]->id,
+                              ax + float(i % 2) * 26, az - 60 + float(i / 2) * 30, aFace, 1);
                 if (a >= 0) playerA.push_back(a);
                 if (b >= 0) playerB.push_back(b);
             }
-            if (pk.keep[0]) keepId_ = spawn(pk.keep, px, pz + 60, pFace, 0);
-            if (ak.keep[0]) aiKeepId_ = spawn(ak.keep, ax, az + 60, aFace, 1);
             if (!playerA.empty() && !playerB.empty()) {
                 for (size_t k = 0; k < playerA.size(); ++k)
                     world_.attack(playerA[k], playerB[k % playerB.size()], false);

@@ -3287,20 +3287,35 @@ float World::extractorYield(const Unit& u) const {
     float total = 0;
     for (int dz = 0; dz < fz; ++dz)
         for (int dx = 0; dx < fx; ++dx) {
-            int x = cx + dx - fx / 2, z = cz + dz - fz / 2;
-            if (x < 0 || z < 0 || terW_ <= 0 || x >= terW_) continue;
-            float cell = mapEcon_.surfaceMetal;
-            // A multi-cell metal patch stores its index on the ANCHOR cell only
-            // (the rest carry tnt::kFeatureCovered), so this finds the richness
-            // wherever the anchor happens to sit under the footprint.
-            if (const Feature* f = feature(z * terW_ + x))
-                if (f->alive && f->type >= 0 && size_t(f->type) < featTypes_.size()) {
-                    const FeatType& ft = featTypes_[size_t(f->type)];
-                    if (ft.isMetal) cell = ft.metal;
-                }
-            total += cell;
+            float cell = metalAt(cx + dx - fx / 2, cz + dz - fz / 2);
+            // Cells with no patch still carry the map's background richness.
+            total += cell > 0 ? cell : mapEcon_.surfaceMetal;
         }
     return total * u.type->extractsMetal;
+}
+
+void World::setFeatureTypes(std::vector<FeatType> t) {
+    featTypes_ = std::move(t);
+    // Derive the per-cell metal plane now that the types are known. A metal patch
+    // paints its richness across its whole footprint, so an extractor scored over
+    // the cells beneath it sees the same value wherever on the patch it sits --
+    // not just on the one anchor cell the map's feature plane marks.
+    metal_.clear();
+    if (terW_ <= 0 || terH_ <= 0) return;
+    for (const auto& f : features_) {
+        if (f.type < 0 || size_t(f.type) >= featTypes_.size()) continue;
+        const FeatType& ft = featTypes_[size_t(f.type)];
+        if (!ft.isMetal || ft.metal <= 0) continue;
+        if (metal_.empty()) metal_.assign(size_t(terW_) * size_t(terH_), 0.0f);
+        int cx0 = int(f.x) / 16 - f.fx / 2, cz0 = int(f.z) / 16 - f.fz / 2;
+        for (int dz = 0; dz < f.fz; ++dz)
+            for (int dx = 0; dx < f.fx; ++dx) {
+                int mx = cx0 + dx, mz = cz0 + dz;
+                if (mx < 0 || mz < 0 || mx >= terW_ || mz >= terH_) continue;
+                float& cell = metal_[size_t(mz) * size_t(terW_) + size_t(mx)];
+                cell = std::max(cell, ft.metal);   // overlapping patches: richer wins
+            }
+    }
 }
 
 void World::addFeature(int id, float x, float z, float energyYield, float metalYield,

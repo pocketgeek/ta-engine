@@ -2,6 +2,8 @@
 #include <functional>
 #include "client/gameview.h"
 
+#include "util/strcase.h"
+
 // Out-of-line GameView method definitions (render concern), split from the
 // class body in gameview.h so editing a body recompiles only this translation
 // unit. Trivial getters, ctors, static, template, constexpr and default-arg
@@ -1977,7 +1979,11 @@
         if (!featureDefs_.empty()) return;
         try {
             for (const std::string& path : vfs_.list("features")) {
-                if (std::filesystem::path(path).extension() != ".tdf") continue;
+                // Case-INSENSITIVE: TA ships both cases (features/archi/METAL.TDF next to
+                // features/all worlds/DragonsTeeth.tdf), and a case-sensitive test here
+                // silently skipped every uppercase file -- which is how a map with 120
+                // features, 10 of them metal patches, loaded with none of them.
+                if (!ta::iendsWith(path, ".tdf")) continue;
                 try {
                     auto root = vtdf(path);
                     for (const auto& n : root.childOrder) {
