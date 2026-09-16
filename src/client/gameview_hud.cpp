@@ -1449,9 +1449,10 @@
             }
             bar(guiIdxLeft("HealthBar"), u ? u->hp / std::max(1.0f, u->type->maxHp) : 0.0f,
                 {210, 70, 60, 255});
-            bar(guiIdxLeft("ManaBar"),
-                (u && u->type->maxMana > 0) ? u->mana / u->type->maxMana : 0.0f,
-                {90, 150, 255, 255});
+            // TA's second bar is not a per-unit pool -- there are no casters. The
+            // retail panel shows the unit's SHARE of the player economy here; until
+            // the TA HUD lands it stays empty rather than showing a stale mana bar.
+            bar(guiIdxLeft("ManaBar"), 0.0f, {90, 150, 255, 255});
 
             // --- ActionText: status (or +N MORE for a multi-selection) ---
             if (int ai = guiIdx("ActionText"); u && ai >= 0) {

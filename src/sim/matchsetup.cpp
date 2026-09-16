@@ -207,7 +207,7 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
 namespace {
 // Feature definition fields the sim cares about: is it a mana deposit, and its
 // footprint (for nav blocking). Loaded from the feature TDFs.
-struct FeatDef { bool mana = false; bool glowy = false; int blocking = 0; int fx = 1, fz = 1;
+struct FeatDef { int blocking = 0; int fx = 1, fz = 1;
                  int reclaimable = 0; float energy = 0;
                  // Burning chain (see World::tickBurning).
                  bool flamable = false; bool hasBurnAnim = false;
@@ -238,10 +238,8 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     FeatDef d;
                     std::string cat = node.valueOr("category", "");
                     std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
-                    d.mana = (cat == "mana");
-                    // The buildable deposit is the animated Sacred Stone centre;
-                    // the static Standing Stones (animating=0) around it are ruins.
-                    d.glowy = d.mana && node.numberOr("animating", 0) != 0;
+
+
                     d.blocking = int(node.numberOr("blocking", 0));
                     d.fx = int(node.numberOr("footprintx", 1));
                     d.fz = int(node.numberOr("footprintz", 1));
@@ -341,13 +339,17 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             auto di = defs.find(key);
             if (di == defs.end()) continue;
             float x = float(cx) * 16 + 8, z = float(cz) * 16 + 8;
-            if (di->second.mana) {
+            // TA's metal patches (category=metal: ArchMetal*, and each world's
+            // equivalents). A patch is where an extractor goes, so it is recorded as
+            // a build spot -- and unlike Kingdoms' Sacred Stones there is no separate
+            // "glowy centre": the whole 3x3 is the spot and all of it stays walkable.
+            if (di->second.isMetal) {
                 rawAll.push_back({x, z});
-                if (di->second.glowy) rawMana.push_back({x, z});   // buildable centre
+                rawMana.push_back({x, z});
             }
-            // Retail nav-blocking: obstacle features + static Standing Stones
-            // (blocking=1) block; only the glowy Sacred Stone centre stays clear.
-            if (!di->second.glowy && (!di->second.mana || di->second.blocking != 0)) {
+            // Nav-blocking: obstacle features block; a metal patch never does --
+            // units walk over metal, and an extractor is built on top of it.
+            if (!di->second.isMetal) {
                 int fx = di->second.fx, fz = di->second.fz;
                 world.blockCells(int(x) / 16 - fx / 2, int(z) / 16 - fz / 2, fx, fz, true);
             }
@@ -355,7 +357,7 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             // mobile builder can clear them for mana -- and flamable ones so dragonfire
             // can burn them (World::tickBurning). The id is derived from the cell, so
             // every peer records the identical feature.
-            if ((di->second.reclaimable || di->second.flamable) && !di->second.mana) {
+            if ((di->second.reclaimable || di->second.flamable) && !di->second.isMetal) {
                 float work = std::max(di->second.energy, 60.0f);   // rocks (energy 0) still take a beat
                 world.addFeature(cz * map.width + cx, x, z, di->second.energy,
                                  di->second.metal, work,
@@ -900,15 +902,9 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                 int id = world.spawn(t, x, z, ang, player);
                 if (id >= 0) {
                     ++spawned;
-                    if (auto* su = world.unit(id)) {
-                        su->hp = su->type->maxHp * float(u.numberOr("healthpercentage", 100)) / 100.0f;
-                        // ManaPercentage: enemy casters open a mission with the mana
-                        // the designer gave them (usually 0 -- they must recharge
-                        // before casting), not a full pool.
-                        if (su->type->maxMana > 0 && u.value("manapercentage"))
-                            su->mana = su->type->maxMana *
-                                       float(u.numberOr("manapercentage", 100)) / 100.0f;
-                    }
+                    if (auto* su = world.unit(id))
+                        su->hp = su->type->maxHp *
+                                 float(u.numberOr("healthpercentage", 100)) / 100.0f;
                     // InitialMission: the per-unit order queue in the SAME mini-language
                     // the god script's SetMission uses (move/patrol/attack/stance/wait/
                     // ambush/reinforce). 4416 placed units across the shipped missions

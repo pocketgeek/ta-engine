@@ -691,7 +691,7 @@
             s.gen = fb.gen;
             fb.live.push_back(&s);   // compact live list (mirrors world_.units())
             s.id = u.id; s.type = u.type; s.player = u.player;
-            s.hp = u.hp; s.mana = u.mana; s.veteran = u.veteran; s.deadFor = u.deadFor;
+            s.hp = u.hp; s.veteran = u.veteran; s.deadFor = u.deadFor;
             s.inTransport = u.inTransport; s.squad = u.squad; s.stance = u.stance;
             s.weaponSlot = u.weaponSlot;
             s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
@@ -2925,8 +2925,8 @@
                     return false;
                 });
                 return true;
-            case ta::Act::SelectMagic:   // casters carry a personal mana pool
-                selectOwned([](const UnitR& u){ return u.type->maxMana > 0 && u.type->canMove; });
+            case ta::Act::SelectMagic:   // no casters in TA: selects nothing
+                selectOwned([](const UnitR&){ return false; });
                 return true;
             case ta::Act::SelectBoats:
                 selectOwned([](const UnitR& u){

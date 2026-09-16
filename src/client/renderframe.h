@@ -29,7 +29,7 @@ struct UnitR {
     const ta::sim::UnitType* type = nullptr;
     int player = 0;
     float x = 0, z = 0, heading = 0;   // current-tick pose
-    float hp = 0, mana = 0;
+    float hp = 0;
     int veteran = 0;
     float deadFor = -1;
     int inTransport = 0;

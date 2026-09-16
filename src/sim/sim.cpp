@@ -278,8 +278,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 std::clamp(int(info->numberOr("selfdestructcountdown", 2)), 0, 7);
             t.radar = float(info->numberOr("radardistance", 0));
             t.noVeteran = info->numberOr("noveteran", 0) != 0;
-            t.maxMana = float(info->numberOr("maxmana", 0));
-            t.manaRegen = float(info->numberOr("manarechargerate", 0));
             // TA spells it "canreclamate"; Kingdoms dropped the extra syllable.
             // Accept both so a Kingdoms-era override still reads.
             t.canReclaim = info->numberOr("canreclamate",
@@ -485,7 +483,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 }
                 wp.minRange = float(w->numberOr("minrange", 0));
                 wp.noAir = w->numberOr("noairweapon", 0) != 0;
-                wp.manaCost = float(w->numberOr("manapershot", 0));
                 // Status-effect weapons (Creon freeze, medusa/paralyzer, petrify),
                 // inferred from the hit-effect / damagetype / name.
                 {
@@ -676,7 +673,6 @@ int World::spawn(const UnitType* type, float x, float z, float heading, int play
     u.z = z;
     u.heading = heading;
     u.hp = type ? type->maxHp : 100;
-    u.mana = type ? type->maxMana : 0;   // casters start with a full pool
     u.active = type ? type->activateWhenBuilt : true;
     u.homeX = x;
     u.homeZ = z;
@@ -2357,12 +2353,6 @@ static void leadAim(const Unit& shooter, const Unit& tgt, const Weapon& w,
 
 void World::fire(Unit& u, Unit& target, int slot) {
     const Weapon& w = u.type->weapons[size_t(slot)];
-    // manapershot: a caster spends personal mana to fire; if it can't pay, the
-    // shot doesn't happen (reload not consumed, so it fires the moment it can).
-    if (w.manaCost > 0 && u.type->maxMana > 0) {
-        if (u.mana < w.manaCost) return;
-        u.mana -= w.manaCost;
-    }
     // Veterans reload faster (retail divides the cooldown by the veteran multiplier).
     float rl = w.reload / std::max(u.vetMul(), 0.01f);
     u.reloads[slot] = rl;
@@ -5370,8 +5360,6 @@ void World::tick(float dt) {
         // That is why Ctrl+Shift+D self-destruct appeared to do nothing.
         if (u.type->healTime > 0 && u.hp > 0 && u.hp < u.type->maxHp)
             u.hp = std::min(u.type->maxHp, u.hp + dt / u.type->healTime);
-        if (u.type->maxMana > 0 && u.mana < u.type->maxMana)
-            u.mana = std::min(u.type->maxMana, u.mana + u.type->manaRegen * dt);
         // A WANDERER keeps its spawn point as home -- that anchor is what stops its
         // stroll turning into a migration.
         if (u.orders.empty() && !u.type->wanders) { u.homeX = u.x; u.homeZ = u.z; }

@@ -2538,10 +2538,12 @@ private:
         int simId = -1;      // cell-derived sim feature id (matches World's ids)
         float lastSmoke = 0; // animClock_ of the last smoke puff
         bool tree = false;   // category=trees (eligible for the wind-sway option)
-        bool mana = false;   // category=mana (deposit cluster: kept walkable/buildable)
-        bool glowy = false;  // the animated "Sacred Stone" centre -- the actual
-                             // buildable spot; category=mana + animating=1. The
-                             // static "Standing Stones" (animating=0) are decoration.
+        // category=metal: a TA metal patch. Kept walkable and buildable -- an
+        // extractor is built ON it -- and drawn under the building rather than
+        // over it. (Kingdoms had a two-tier version of this, a "glowy" Sacred
+        // Stone centre inside a ring of inert Standing Stones; TA's patch is one
+        // uniform 3x3, so the second tier is gone.)
+        bool metal = false;
     };
     std::vector<FeatureInst> features_;
     std::unordered_set<int> featInstIds_;   // sim ids with a visual inst (dynamic adds)

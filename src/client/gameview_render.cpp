@@ -118,10 +118,10 @@
             float sx = (f.x - mapView_.offX()) * zm0 - terrainLiftX(f.x, f.z) * zm0;
             float sy = (f.z - mapView_.offY()) * zm0 - terrainLift(f.x, f.z) * zm0;
             if (sx < -200 || sy < -200 || sx > winW + 200 || sy > winH + 200) continue;
-            // Mana deposit markers are flat ground decals a lodestone is built
-            // on top of, so bias their sort key back to keep them painted
-            // under the building rather than over it.
-            float key = f.mana ? f.z - 24.0f : f.z;
+            // Metal patches are flat ground decals an extractor is built on top
+            // of, so bias their sort key back to keep them painted under the
+            // building rather than over it.
+            float key = f.metal ? f.z - 24.0f : f.z;
             items.push_back({key, nullptr, &f, 0});
         }
         for (const UnitR* _up : front().live) {
@@ -2154,11 +2154,8 @@
         // the nav grid for them, or canPlace rejects the deposit itself.
         std::string cat = di->second.valueOr("category", "");
         std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
-        inst.mana = (cat == "mana");
+        inst.metal = (cat == "metal");
         inst.tree = (cat == "trees");
-        // The buildable spot is the animated Sacred Stone centre; the static
-        // Standing Stones sharing the category are just ruins around it.
-        inst.glowy = inst.mana && di->second.numberOr("animating", 0) != 0;
         features_.push_back(inst);
         // NO NAV BLOCKING HERE. Feature blocking belongs to the SIM, and
         // registerMapFeatures/setupMatch already does it -- into the shared obst_
@@ -2318,10 +2315,7 @@
         // centre at all (odd data) uses its category=mana features instead.
         std::vector<std::pair<float, float>> raw;
         for (const auto& f : features_)
-            if (f.glowy) raw.push_back({f.x, f.z});
-        if (raw.empty())
-            for (const auto& f : features_)
-                if (f.mana) raw.push_back({f.x, f.z});
+            if (f.metal) raw.push_back({f.x, f.z});
         std::vector<int> par(raw.size());
         for (size_t i = 0; i < par.size(); ++i) par[i] = int(i);
         std::function<int(int)> find = [&](int a) {

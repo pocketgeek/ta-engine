@@ -234,7 +234,6 @@ int main(int argc, char** argv) {
                 sim::World w; freshWorld(w);
                 int caster = w.spawn(acolyte, 1000, 1000, 0, 0);
                 int victim = w.spawn(prey, 1000, 1150, 0, 1);
-                if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
                 w.attack(caster, victim, false);
                 float hp0 = w.unit(victim)->hp;
                 for (int i = 0; i < 600; ++i) {
@@ -269,7 +268,6 @@ int main(int argc, char** argv) {
                 sim::World w; freshWorld(w);
                 int caster = w.spawn(acolyte, 1000, 1000, 0, 0);
                 int victim = w.spawn(prey, 1000, 1040, 0, 1);   // inside aoe/2 = 100
-                if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
                 w.setWeapon(caster, slot);
                 w.attack(caster, victim, false);
                 int pulses = 0; float last = w.unit(victim)->hp; bool died = false;
@@ -289,7 +287,6 @@ int main(int argc, char** argv) {
                 sim::World w; freshWorld(w);
                 int caster = w.spawn(acolyte, 1000, 1000, 0, 0);
                 int victim = w.spawn(prey, 1000, 1200, 0, 1);   // 200px: a real flight
-                if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
                 w.setWeapon(caster, 0);
                 w.attack(caster, victim, false);
                 bool sawShot = false;
@@ -320,7 +317,6 @@ int main(int argc, char** argv) {
             float wx = 1000, wz = 1000;
             legalSpot(w, witch, wx, wz);
             int caster = w.spawn(witch, wx, wz, 0, 0);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
             // A dense field across the whole region a 9-second tornado can reach
             // (it drifts ~400px forward and wanders hundreds of px sideways), so the
             // check does not depend on the exact RNG path.
@@ -353,7 +349,6 @@ int main(int argc, char** argv) {
             sim::World w; freshWorld(w);
             int caster = w.spawn(mage, 1000, 1000, 0, 0);
             int victim = w.spawn(prey, 1000, 1200, 0, 1);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
             w.attack(caster, victim, false);
             bool converted = false;
             for (int i = 0; i < 900; ++i) {
@@ -371,7 +366,6 @@ int main(int argc, char** argv) {
             sim::World w; freshWorld(w);
             int caster = w.spawn(mage, 1000, 1000, 0, 0);
             int royal = w.spawn(king, 1000, 1200, 0, 1);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
             w.attack(caster, royal, false);
             bool stolen = false;
             for (int i = 0; i < 900; ++i) {
@@ -392,7 +386,6 @@ int main(int argc, char** argv) {
             int v1 = w.spawn(prey, 1000, 1150, 0, 1);
             int v2 = w.spawn(prey, 1060, 1160, 0, 1);
             int v3 = w.spawn(prey, 940, 1140, 0, 1);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
             // A player selects the area spell (Ctrl+W cycles weapons); the sim fires
             // whichever slot is selected, so pick slot 1 as a player would.
             w.setWeapon(caster, 1);
@@ -432,7 +425,6 @@ int main(int argc, char** argv) {
             sim::setupMatch(w, reg, cfg);
             int b = w.spawn(bomber, 1000, 1000, 0, 0);
             int v = w.spawn(prey, 1000, 1500, 0, 1);   // 500px away: well beyond a drop
-            if (auto* bu = w.unit(b)) bu->mana = bomber->maxMana;
             w.attack(b, v, false);
             float hp0 = w.unit(v)->hp;
             bool hurt = false; float closest = 1e9f;
@@ -476,7 +468,6 @@ int main(int argc, char** argv) {
                 cfg.slots[0].team = 0; cfg.slots[1].team = 1;
                 sim::setupMatch(w, reg, cfg);
                 int c = w.spawn(king, 1000, 1000, 0, 0);
-                if (auto* u = w.unit(c)) u->mana = king->maxMana;
                 if (manualSlot0) w.setWeapon(c, 0);      // player takes control
                 for (int i = 0; i < 40; ++i)
                     w.spawn(prey, 1000.0f + (i % 8) * 30, 1150.0f + (i / 8) * 30, 0, 1);
@@ -492,8 +483,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 int n = 0; for (bool b : used) if (b) ++n;
-                float manaLeft = w.unit(c) ? w.unit(c)->mana : -1;
-                return std::pair<int, float>{n, manaLeft};
+                return std::pair<int, float>{n, 0.0f};
             };
             auto [autoN, autoMana] = runFight(false);
             // Elsin carries weaponswitching, so retail holds him on ONE weapon --
@@ -522,7 +512,6 @@ int main(int argc, char** argv) {
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
             int t = w.spawn(tower, 1000, 1000, 0, 0);
-            if (auto* tu = w.unit(t)) tu->mana = tower->maxMana;
             for (int i = 0; i < 20; ++i) w.spawn(prey, 1000.0f + (i % 5) * 25, 1120.0f + (i / 5) * 25, 0, 1);
             bool used[3] = {false, false, false};
             float prev[3] = {0, 0, 0};

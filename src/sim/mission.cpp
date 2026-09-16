@@ -305,7 +305,6 @@ void MissionScript::doSetAttribute(World& w, const std::string& sub, int unitId,
     if (!u || !u->type) return;
     float f = float(pct) / 100.0f;
     if (ieq(sub, "healthpercentage"))     u->hp = u->type->maxHp * f;
-    else if (ieq(sub, "manapercentage"))  u->mana = u->type->maxMana * f;
     else if (ieq(sub, "armorpercentage")) u->armBuff = f;      // live armour multiplier
     else if (ieq(sub, "attackpercentage")) u->atkBuff = f;
 }

@@ -111,7 +111,6 @@ struct Weapon {
     // see the note at the line-of-sight gate in tickCombat.
     float gravityAdj = 1.0f;
     bool lobPreferred = false;      // noairweapon: cannot target flying units
-    float manaCost = 0;      // manapershot: mana drained from the firer per shot
     // FBI damagetype: 1 normal, 2 fire, 3 explosion (gibs -- Killed deathType 3
     // EXPLODEs every piece and leaves no corpse), 4 paralyzer (retail icd
     // 0x531bbd; "monster" and friends map to non-gib codes).
@@ -367,8 +366,6 @@ struct UnitType {
     float minWaterDepth = 0;  // shallowest water a water unit needs (from MOVEINFO)
     float radar = 0;          // radardistance: fog-reveal radius (separate from sight)
     bool  noVeteran = false;  // noveteran: this unit can never gain veterancy
-    float maxMana = 0;        // per-unit mana pool (casters); 0 = uses no personal mana
-    float manaRegen = 0;      // manarechargerate: personal mana regained per second
     bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
     bool  canResurrect = false;   // canresurrect: can revive nearby corpses
     bool  canCapture = false;     // cancapture: can convert an enemy unit to its player
@@ -627,7 +624,6 @@ struct Unit {
     bool corpseBlocks = false;   // dead structure still occupies its nav footprint
                                  // (blocking wreck / neutral wall) until retired
     // --- extended runtime state --------------------------------------------
-    float mana = 0;        // personal mana pool (casters), capped at type->maxMana
     int   xp = 0;          // accumulated experience from kills
     int   veteran = 0;     // veteran level (0..10); scales attack/armor/reload
     float atkBuff = 1;     // live attack multiplier from auras (decays to 1)
