@@ -3271,15 +3271,26 @@ float World::windSpeed() const {
     return lo + (hi - lo) * t;
 }
 
-// An extractor's yield is a property of the map FEATURES under its footprint --
-// TA has no metal-density plane, metal patches ARE features (ArchMetal*, which
-// carry `metal=` and `category=metal`). Cells with no metal feature fall back to
-// the map's background SurfaceMetal.
+// An extractor's yield, as retail computes it (TotalA.exe 0x437880-0x4378e6):
 //
-// NOTE: the combining rule -- sum the per-cell richness over the footprint, then
-// scale by ExtractsMetal -- reproduces the right order of magnitude (ARMMEX's
-// ExtractsMetal=0.001 over a 3x3 patch of metal=127 gives ~1.14 metal/s) but has
-// not been confirmed against the retail binary. See docs/ta-port.md.
+//     yield = ExtractsMetal * SUM over footprint cells of (cellMetal + 1)
+//
+// Two details that could not have been guessed from the data:
+//
+//   * the PLUS ONE per cell. A 3x3 mex on a 127-metal patch sums 9*(127+1)=1152,
+//     not 9*127=1143 -- and, more visibly, a mex on bare ground still yields
+//     ExtractsMetal * (footprint cells) rather than nothing, which is why TA
+//     extractors off a patch trickle instead of sitting dead.
+//   * retail multiplies by 1/65536 at the end, because its FBI float parser
+//     stores values pre-scaled by 65536 (the engine's 16.16 convention kept even
+//     in float form). The two cancel, so what is left is the FBI value as
+//     written -- which is why this code uses extractsMetal directly.
+//
+// Shape difference worth recording: retail evaluates this ONCE, when the
+// building is placed, and caches it on the unit (+0x58); the economy tick just
+// adds the cached figure. We recompute per tick, which costs a footprint's worth
+// of lookups and gives the same answer for a static map. See
+// docs/retail-engine-ta.md.
 float World::extractorYield(const Unit& u) const {
     if (!u.type || u.type->extractsMetal <= 0) return 0;
     const int cx = int(u.x) / 16, cz = int(u.z) / 16;
@@ -3289,7 +3300,8 @@ float World::extractorYield(const Unit& u) const {
         for (int dx = 0; dx < fx; ++dx) {
             float cell = metalAt(cx + dx - fx / 2, cz + dz - fz / 2);
             // Cells with no patch still carry the map's background richness.
-            total += cell > 0 ? cell : mapEcon_.surfaceMetal;
+            if (cell <= 0) cell = mapEcon_.surfaceMetal;
+            total += cell + 1.0f;
         }
     return total * u.type->extractsMetal;
 }

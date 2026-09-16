@@ -16,12 +16,13 @@ Unicorn to watch what they compute. The harness lives OUTSIDE this repo. No code
 or data from the binary is reproduced here or copied into the engine; this
 documents an interface for a clean-room re-implementation.
 
-**A caveat that applies throughout.** Most of what follows came from a LINEAR
-sweep of `.text`, which on x86 is not trustworthy: a single misaligned byte
-desynchronises the decoder until it happens to resynchronise, so "there is
-exactly one reference to X" should be read as "one reference was found". Absence
-is not evidence here. Positive findings quoted with an address were each read
-back in context and are solid.
+**A caveat that applies throughout.** Linear disassembly of `.text` is not
+trustworthy on x86: one misaligned byte desynchronises the decoder until it
+happens to resynchronise, so "there is exactly one reference to X" means only
+"one was found" — and this document has already been wrong once that way (see
+the metal-extraction section). Prefer byte-pattern search for an instruction's
+encoding when asking whether something exists. Positive findings quoted with an
+address were each read back in context and are solid.
 
 ## The FBI parser, and unit-struct offsets
 
@@ -47,47 +48,68 @@ readable. Confirmed so far:
 `0x4c4760` is the float-key reader; `0x4c46c0` appears alongside it for a
 different value type.
 
-## Metal extraction: `ExtractsMetal` is a PREDICATE, not a multiplier
+## Metal extraction — solved
 
-This is the interesting one, and it contradicts the natural reading of the FBI.
-
-At `0x401480`, in what is evidently the per-unit economy tick (`esi` = the unit,
-`[esi+0x92]` = its UnitDef):
+The formula, from the placement routine at `0x437880`-`0x4378e6`:
 
 ```
-mov  ecx, [esi + 0x92]          ; unit->def
-fld  dword [ecx + 0x1ce]        ; ExtractsMetal
-fcomp dword [0x4fc478]          ; ...against 0.0
-fnstsw ax
-test ah, 0x41                   ; C3|C0 -> "less or equal"
-jne  0x4014ca                   ; <= 0: not an extractor
-; > 0 falls through to the extractor path, which loads...
-fld  dword [esi + 0x58]         ; ...a PER-UNIT float
+; for each cell of the footprint (def+0x76 = footprintX, def+0x78 = footprintZ)
+call 0x481550                 ; look up the map cell
+movzx dx, byte [eax + 7]      ; that cell's metal byte
+inc   edx                     ; ...PLUS ONE
+add   word [esp+0x1a], dx     ; accumulate
+
+; once, after the loop:
+mov  eax, [ebx + 0x92]        ; unit->def
+fld  dword [eax + 0x1ce]      ; ExtractsMetal
+fild dword [esp + 0x18]       ; the accumulated sum
+fmulp st(1)
+fmul qword [0x4fd278]         ; x 1/65536
+fstp dword [ebx + 0x58]       ; -> cached on the unit
 ```
 
-`ExtractsMetal` is loaded exactly once in the whole binary, and only to be
-compared with zero. It is never multiplied by anything. The yield an extractor
-actually contributes is a float already sitting on the unit at `+0x58`.
+So:
 
-So the per-tick formula is not `ExtractsMetal x (metal under the footprint)`.
-Retail evaluates the footprint once — presumably when the building is placed or
-completed — and caches the result on the unit; the tick just adds it.
+> **yield = `ExtractsMetal` x SUM over footprint cells of (cellMetal + 1)**
 
-**Not yet found:** where `+0x58` is written. No `fstp`/`mov` to `[reg+0x58]`
-turned up, which given the caveat above most likely means the sweep desynced
-around it rather than that no writer exists. Until that is located, the exact
-combining rule — and in particular whether `ExtractsMetal`'s *magnitude* matters
-at all, or only its sign — is still open.
+Two details that the data alone would never have given up:
 
-**What this means for the engine.** `World::extractorYield` currently computes
-`sum(per-cell richness under the footprint) x ExtractsMetal` every time it is
-asked, which reproduces the right order of magnitude (ARMMEX's `0.001` over a
-3x3 patch of `metal=127` gives ~1.14 metal/s). That matches retail's *output*
-but not its *shape*: retail caches, and may not use the magnitude at all. Worth
-revisiting once the writer is found.
+- **The plus one per cell.** A 3x3 mex on a 127-metal patch sums `9 x 128 = 1152`,
+  not `9 x 127 = 1143`. More visibly, a mex on *bare* ground still yields
+  `ExtractsMetal x footprintCells` rather than nothing — which is why a TA
+  extractor off a patch trickles instead of sitting dead.
+- **The `1/65536`.** The FBI float parser stores values pre-scaled by 65536 — the
+  engine's 16.16 convention kept even in float form — and extraction divides it
+  back out. The two cancel, so what survives is the FBI value as written.
 
-The non-extractor branch falls through to `MakesMetal` (`+0x1d2`), compared
-against 0.0 the same way at `0x401550` — a flat rate for metal makers.
+Checked against the engine: ARMMEX (`ExtractsMetal=0.001`, 3x3) on a `metal=127`
+patch gives **1.152 metal/s**, which our `World::extractorYield` now reproduces
+exactly.
+
+**Correcting an earlier reading in this document.** The tick site at `0x401486`
+loads `ExtractsMetal` only to compare it with `0.0`, and I wrote that up as
+"`ExtractsMetal` is a predicate, not a multiplier". That was right about *that*
+site and wrong about the mechanic: the multiply happens once at placement, and
+the tick is only asking "is this an extractor?" before adding the cached figure.
+The lesson is the obvious one — a single call site is not the mechanic.
+
+**Shape difference we keep deliberately.** Retail evaluates the footprint once
+and caches the result on the unit (`+0x58`); we recompute per tick. That costs a
+footprint's worth of lookups and gives the same answer for a static map, and it
+means a map edit (a reclaimed patch) is picked up for free.
+
+### How this was found, and the method that failed
+
+A linear sweep of `.text` reported *zero* writes to `[reg+0x58]`, which is what
+sent the first pass down the predicate reading. A BYTE-PATTERN search for the
+encodings of `fstp dword [reg+0x58]` (`D9 5E 58` and its seven register
+siblings) and `mov [reg+0x58], reg` found 25, of which exactly one was a float
+store — the line above.
+
+The lesson for anything else in this document: on x86, byte-pattern search for
+an instruction encoding is reliable where linear disassembly is not, because a
+sweep desynchronises on the first misaligned byte and silently skips whatever
+follows.
 
 ## Income handicap multipliers
 
@@ -124,7 +146,6 @@ setting rather than anything data-driven.
 
 ## Open questions
 
-- Where unit `+0x58` is written, and whether `ExtractsMetal`'s magnitude is used.
 - The stall curve: is a starved consumer slowed strictly proportionally?
 - How fast wind varies between the `.ota`'s `minwindspeed` and `maxwindspeed`,
   and whether it interpolates or steps.

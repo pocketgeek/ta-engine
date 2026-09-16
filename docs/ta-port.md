@@ -310,13 +310,10 @@ are collected in [`docs/retail-engine-ta.md`](retail-engine-ta.md).
   `SurfaceMetal` / `MohoMetal`. The combining rule is not.
 - The stall curve: is the slowdown strictly proportional, or stepped? Implemented
   proportionally (`Resource::share`), which is the community understanding.
-- The extractor formula. **Partly answered by `docs/retail-engine-ta.md`:**
-  `ExtractsMetal` is a *predicate* in retail, not a multiplier — it is loaded
-  once, compared against 0.0, and never multiplied. The yield is a float cached
-  on the unit (`+0x58`) and the tick just adds it, so retail evaluates the
-  footprint once at placement rather than per tick. Our version reproduces the
-  right order of magnitude but not that shape. Where `+0x58` is written, and
-  whether the magnitude matters at all, is still open.
+- ~~The extractor formula~~ — **solved**, see `docs/retail-engine-ta.md`:
+  `yield = ExtractsMetal × Σ(cellMetal + 1)` over the footprint. The `+1` per
+  cell is why a TA mex off a patch trickles rather than sitting dead, and it is
+  implemented.
 - How fast retail varies wind between the map's min and max, and whether it
   interpolates or steps. Currently a ~40s oscillation through `detmath`.
 - Wind income's cadence and interpolation between the `.ota`'s `minwindspeed`
