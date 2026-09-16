@@ -2171,12 +2171,18 @@
         inst.name = key;
         inst.simId = (int(z) / 16) * mapView_.map().width + int(x) / 16;
         featInstIds_.insert(inst.simId);
-        // Mana deposits ("Sacred Stone", category=Mana) are the spots you build
-        // lodestones ON, so they must stay buildable (walkable) — never block
-        // the nav grid for them, or canPlace rejects the deposit itself.
+        // A metal PATCH is `category=metal` OR `description=Metal` -- the same
+        // rule the sim uses for FeatType::isMetal, and for the same reason: seven
+        // 3x3 patch defs (rockmetal, rockmetal1/2/3, greenaquaore1/2/3) are filed
+        // under `category=rocks`, and the category test alone misses every one.
+        // The metal VALUE is not usable as the test: 224 of the 254 rock defs
+        // carry metal>0 while being plainly described "Rock", with values that
+        // overlap the patches exactly. See src/sim/matchsetup.cpp.
         std::string cat = di->second.valueOr("category", "");
         std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
-        inst.metal = (cat == "metal");
+        std::string desc = di->second.valueOr("description", "");
+        std::transform(desc.begin(), desc.end(), desc.begin(), ::tolower);
+        inst.metal = (cat == "metal" || desc == "metal");
         inst.tree = (cat == "trees");
         features_.push_back(inst);
         // NO NAV BLOCKING HERE. Feature blocking belongs to the SIM, and

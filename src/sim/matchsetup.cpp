@@ -293,7 +293,34 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     // category=metal feature, the per-cell richness an extractor
                     // built over it draws from. There is no separate metal plane.
                     d.metal = float(node.numberOr("metal", 0));
-                    d.isMetal = (cat == "metal");
+                    // A metal PATCH -- what an extractor draws richness from --
+                    // is `category=metal` OR `description=Metal`. The second half
+                    // matters: seven 3x3 patch defs are filed under
+                    // `category=rocks` (rockmetal, rockmetal1/2/3, greenaquaore1/2/3,
+                    // metal 86..250, placed on 10-35 maps each), and with the
+                    // category test alone they contributed NOTHING to the metal
+                    // plane. 38 of the 197 shipped maps place only those, so those
+                    // maps had no extractable metal at all -- The Pass reported
+                    // "metal patches: 0" and its extractors earned background
+                    // richness only.
+                    //
+                    // The metal VALUE cannot be the test, which is the trap here:
+                    // 232 of the 254 `category=rocks` defs carry metal>0 and 224 of
+                    // them are described plainly as "Rock" -- ordinary boulders,
+                    // reclaimable but not extraction sites, and their values
+                    // overlap the patches exactly (slaterock09 is metal=249 against
+                    // rockmetal3's 223). Keying on metal>0 would paint richness
+                    // under nearly every rock on every map. Nor is it a magnitude
+                    // test: reclaim scrap runs 500..11000 (building06 is 11000)
+                    // while every patch sits in the 84..250 richness band, but
+                    // cars/pipes/trucks share that band too.
+                    //
+                    // Measured: description=Metal gives 62 defs, category=metal 82,
+                    // their union 89 -- of which 81 are actually placed by a map.
+                    std::string desc = node.valueOr("description", "");
+                    std::transform(desc.begin(), desc.end(), desc.begin(),
+                                   [](unsigned char c) { return char(std::tolower(c)); });
+                    d.isMetal = (cat == "metal" || desc == "metal");
                     d.flamable = node.numberOr("flamable", 0) != 0;
                     d.hasBurnAnim = !node.valueOr("seqnameburn", "").empty();
                     d.spreadChance = int(node.numberOr("spreadchance", 0));

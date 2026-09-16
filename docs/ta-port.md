@@ -839,6 +839,43 @@ A build whose FFmpeg lacks the decoder degrades rather than breaks:
 `avcodec_find_decoder` returns null, `decodeToS16` returns empty, and the player
 logs `music: cannot decode …` instead of crashing.
 
+### 38 of 197 maps had no extractable metal
+
+`FeatType::isMetal` was `category == "metal"`. That misses seven metal-patch
+defs filed under `category=rocks` — `rockmetal`, `rockmetal1/2/3`,
+`greenaquaore1/2/3` — each a 3x3 footprint with `metal=` between 86 and 250,
+each placed on 10 to 35 of the shipped maps. They contributed nothing to the
+metal plane, so **38 of the 197 shipped maps had no extractable metal at all**.
+The Pass is one: it places four `RockMetal3` and the engine reported
+`metal patches: 0`.
+
+Quantified on The Pass, whose `[Schema 0]` declares `SurfaceMetal=3`: every cell
+fell back to that background richness, so a 3x3 extractor scored
+`(3 + 1) x 9 = 36`. On a `RockMetal3` patch it now scores
+`(223 + 1) x 9 = 2016` — **56x** the metal, which is the difference between a
+mex being worth building and not.
+
+**The obvious rule is the wrong one, and it is worth saying why.** `metal > 0`
+looks like the natural test and would be badly wrong: **232 of the 254
+`category=rocks` defs carry `metal>0`, and 224 of those are described plainly as
+"Rock"** — ordinary boulders, reclaimable but not extraction sites. Their values
+overlap the real patches exactly (`slaterock09` is `metal=249` against
+`rockmetal3`'s 223), so no threshold separates them either. Keying on the value
+would have painted metal richness under nearly every rock on every map while
+looking like a fix.
+
+Magnitude does not work on its own either. Reclaim scrap runs far higher —
+`building06` is `metal=11000`, `comstat02` is 8997 — and every genuine patch sits
+in an 84..250 richness band; but cars (20..37), pipes (25..75) and trucks
+(50..65) share that band.
+
+What separates them is the DESCRIPTION. Measured: `description=Metal` gives 62
+defs, `category=metal` gives 82, and their union is 89, of which 81 are actually
+placed by some map. That union is the rule now, in both the sim
+(`matchsetup.cpp`, the metal plane and extractor yield) and the client
+(`addFeature`, the patch list the HUD and AI use) — they had drifted, which is
+why fixing only the sim left the client still reporting zero.
+
 ### Build buttons showed rendered models, not TA's artwork
 
 `iconFor` asked for `anims/buildpic/<id>.jpg` — Kingdoms' layout. A TA install
