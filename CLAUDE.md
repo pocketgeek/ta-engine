@@ -49,8 +49,11 @@ the engine or its comments.** Findings go in `docs/retail-engine-ta.md`.
   the data quietly contradicts: `EnergyUse=-20` is a solar panel's *output*,
   `WindGenerator=30` is a cap multiplied by a normalised factor rather than a
   `min`, `TidalGenerator=1` is a flag and not a rating, `.ota` `XPos` is in world
-  units and not cells. Check the claim against the shipped files (the `tools/` CLIs
-  below) or against the binary, and say in the comment what was measured — and
+  units and not cells, and a feature's `metal=` does NOT mark a metal patch — 224
+  plain "Rock" boulders carry one, with values overlapping the real patches
+  (`slaterock09`=249 vs `rockmetal3`=223), so the patch test is `category=metal`
+  or `description=Metal`. Check the claim against the shipped files (the
+  `tools/` CLIs below) or against the binary, and say in the comment what was measured — and
   where something could NOT be established, say that too rather than implying it
   was.
 
