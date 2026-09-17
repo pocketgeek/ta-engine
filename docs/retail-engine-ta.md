@@ -481,16 +481,43 @@ models rather than invented (`nano1`/`nano2`, `nanospray`, `nanogun`,
 `nanopoint`, `nano`, `nanolath`, `nozzle`), but one that could only ever cover
 the 29 builders whose piece happens to be named predictably.
 
-### The nanolathe COLOUR is still not established
+### The lathe is a broadcast EVENT, not a local visual
 
-Recorded as unresolved rather than left implied. The engine draws the beam in an
-invented pale green-white. It is not authored art: sweeping every shipped GAF
-for a nano/lathe sequence turns up only GUI buttons (`ARMBUILD`, `CORBUILD`) and
-building scenery, so retail draws the lathe procedurally and its colour is a
-constant in the draw routine. That routine has no string to anchor a search on,
-and it was not found. The beam's SHAPE — a line from the script's nano piece to
-the build site, appearing and stopping with the work — is right; the ramp is
-still a guess.
+Found while hunting the colour, and worth more than the colour would have been.
+
+`StartBuilding` and `StopBuilding` — the COB callbacks whose names sit in the
+same table as `QueryNanoPiece` — are invoked from a pair of handlers at
+`0x00438590` and `0x004385f0`. Each looks the script function up
+(`0x004b07c0`), runs it (`0x004b0b00`), and then calls one of two emitters:
+
+| | emitter | effect |
+|---|---|---|
+| start | `0x00456290` | sets flag `0x400000` in the unit's field at `+0x42` |
+| stop | `0x00456190` | clears it |
+
+Both emitters build the **same 22-byte packet** on the stack and hand it to
+`0x00451df0` with a length of `0x16`:
+
+```
+u8  type = 0x10
+u16 unit          (from the unit's +0xa8)
+u16 arg           (caller's)
+u8  flag          (1 on start, 0 on stop)
+u32 a, b, c, d    (caller's on start; ALL ZERO on stop)
+```
+
+So the nanolathe is a game EVENT that retail broadcasts, and the stop message is
+simply the same record with its parameters zeroed. The drawing happens in
+whatever consumes type `0x10`.
+
+**The COLOUR is still not established.** It is not authored art — sweeping every
+shipped GAF for a nano/lathe sequence turns up only the `ARMBUILD`/`CORBUILD`
+GUI buttons and building scenery — and it is not in the packet either: the four
+dwords are the job's geometry, since the stop message zeroes them. That leaves a
+constant inside the type-`0x10` handler, which would mean finding the message
+dispatch. Not done. The engine's pale green-white remains invented; the beam's
+SHAPE (from the script's nano piece to the site, starting and stopping with the
+work) is right.
 
 ## Open questions
 
