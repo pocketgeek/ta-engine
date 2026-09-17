@@ -1051,7 +1051,7 @@ virtual clock outruns the corpse window. A corpse is only in `corpsePhase` betwe
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.
 
-### Two more of retail's 23 sound events
+### Six more of retail's 23 sound events
 
 The RE table (`docs/retail-engine-ta.md`) showed the engine triggering 4 of
 retail's 23 events. Two more are wired, and the pair are verified to *different
@@ -1086,6 +1086,28 @@ weaker claim than `unitcomplete` and is not being dressed up as equal.
 Its rate limit (8 s) is **ours, not retail's**. The event table gives
 `underattack` a second numeric column of 20 where most events carry 0..4, which
 reads like a repeat cooldown, but that column's meaning was never established.
+
+**`build`, `repair`, `working`, `arrived` — four job/order events**, fired on the
+EDGE into a state so a unit reports once when it starts rather than every frame
+it continues. Three of the four are verified firing with the right sound:
+
+| event | resolves to | seen in |
+|---|---|---|
+| `build` | `nanlath1` — the nanolathe itself | `--testbuild` |
+| `working` | `reclaim1` | `--firetest` reclaim |
+| `arrived` | `kbarmstp` / `servtny2` | `--firetest`, `--facetest` |
+| `repair` | `repair1` | not exercised by any harness |
+
+What each name MEANS came from the data, not the name: `[ARM_COM]` gives
+`working=reclaim1`, so `working` is TA's **reclaim** sound — which "working"
+alone would not tell you. `build=nanlath1` is the lathe sound proper, and now
+plays alongside the beam.
+
+`arrived` fires only on the edge to an empty order queue, so a unit working
+through a queued route reports once at the end rather than once per leg. A nice
+confirmation that the lookup is exact rather than approximately right: the Peewee
+has its own sound class (`[ARMPW]`, not `ARM_KBOT`) where every event is
+`servtny2`, and that is what it played.
 
 ### `--firetest` stages a scene, not a fight
 

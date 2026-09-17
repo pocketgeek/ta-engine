@@ -1169,6 +1169,34 @@
                     hpSeen_.erase(u.id);
                 }
                 if (u.buildSiteId) siteBuilder_[u.buildSiteId] = u.id;
+                // The JOB events, fired on the edge into a job so a unit reports
+                // once when it starts rather than every frame it keeps going.
+                // What each name means is from the shipped data, not guessed:
+                // ARM_COM gives build=nanlath1 (the nanolathe itself, which pairs
+                // with the beam), repair=repair1 and working=reclaim1 -- so
+                // `working` is TA's reclaim sound, which the name alone does not
+                // tell you. Defined by 30 / 22 / 36 classes respectively, all
+                // construction units.
+                const int job = u.buildSiteId ? 1 : u.repairId ? 2 : u.reclaimId ? 3 : 0;
+                auto jp = unitJob_.find(u.id);
+                const int wasJob = jp == unitJob_.end() ? 0 : jp->second;
+                if (job != wasJob) {
+                    unitJob_[u.id] = job;
+                    if (job == 1) voice(u.id, "build");
+                    else if (job == 2) voice(u.id, "repair");
+                    else if (job == 3) voice(u.id, "working");
+                }
+                // `arrived` (id 6, labelled "Arrived"): a mover that has just run
+                // out of orders. Only on the edge to empty, so a unit working
+                // through a queue reports once at the end rather than per leg.
+                if (!isStructure(u.type)) {
+                    const bool hadOrders = ordersSeen_.count(u.id) != 0;
+                    if (!u.orders.empty()) ordersSeen_.insert(u.id);
+                    else if (hadOrders) {
+                        ordersSeen_.erase(u.id);
+                        if (u.alive()) voice(u.id, "arrived");
+                    }
+                }
                 const bool wasBuilding = builtVoiceSeen_.count(u.id) != 0;
                 if (u.underConstruction) builtVoiceSeen_.insert(u.id);
                 else if (wasBuilding) {

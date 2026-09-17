@@ -2709,6 +2709,10 @@ private:
                                         // PRODUCER reports "Nanolathe Complete".
     std::unordered_map<int, float> hpSeen_;   // last seen HP of our units, for the
                                               // damage edge behind "Under Attack".
+    std::unordered_map<int, int> unitJob_;    // unit -> 0 none / 1 build / 2 repair /
+                                              // 3 reclaim, for the job-start voices.
+    std::set<int> ordersSeen_;                // movers that had orders last frame,
+                                              // for the `arrived` edge.
 
     void loadBuildFx();
 
