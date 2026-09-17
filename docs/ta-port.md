@@ -1051,6 +1051,43 @@ virtual clock outruns the corpse window. A corpse is only in `corpsePhase` betwe
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.
 
+### The main menu was a black screen
+
+The first thing a TA player saw, and it drew nothing at all.
+
+`MainMenu::load` takes its background from the root gadget's first image, which
+is how Kingdoms names it (`MainScreen.gaf`/`MainBG` via the gadget's `panel=`).
+**TA's `guis/MAINMENU.GUI` declares GADGET0 with `panel=;` EMPTY** — it names no
+background anywhere — so `gui.gadgets[0].imgs` was empty, `bg` stayed null, and
+the screen was black.
+
+TA's front-end art is a plain 640x480 PCX in `bitmaps/`, a directory nothing
+else in the engine reads:
+
+* `FrontendX.pcx` — the logo panel with the four button plates EMPTY. This is
+  the one drawn: the plates are exactly where the gui puts its gadgets, so the
+  labels land on them.
+* `Frontend1F.PCX` — the same screen with the plates lit (the other state).
+* `FRONTBG.PCX` — the bare circuit-board panel behind both.
+
+The buttons were missing too, and for a second reason. The menu builds its doors
+from Kingdoms gadget names — `PlayComputer`, `PlayStory`, `PlayPlayer` — none of
+which TA has. TA's are `SINGLE` (139,393), `MULTI` (139,430), `INTRO` (409,393),
+`EXIT` (409,430), each 96x20, plus `Credits` (280,440) — and they carry no
+images, so each draws its own text label. `INTRO` plays the movie in place and
+stays in the menu, as the Credits door does.
+
+One trap worth recording: the first attempt gated the TA buttons on
+`doors.empty()`, which is never true on TA — its MAINMENU.GUI *also* has a
+gadget called `Credits`, which the Kingdoms door spec matches. The test is now
+`gui.find("SINGLE")`.
+
+**Still open, and a design decision rather than a bug:** TA's front end has no
+campaign plate. Retail reaches the campaign from inside its SINGLE PLAYER
+screen, which this engine does not have — it has a separate `Choice::Campaign`
+that opened from the Kingdoms `PlayStory` door. So campaigns are currently
+reachable only via the debug `--campaign` flag.
+
 ### Six more of retail's 23 sound events
 
 The RE table (`docs/retail-engine-ta.md`) showed the engine triggering 4 of

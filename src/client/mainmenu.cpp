@@ -1,5 +1,7 @@
 #include "client/mainmenu.h"
 
+#include "util/pcx.h"
+
 #include "util/strcase.h"
 #include "client/videofilter.h"
 #include "client/runtimesettings.h"
@@ -102,6 +104,10 @@ struct Button {
                                  // would draw the button at half size.
     std::string sound;                                   // click sound (gui states)
     std::string tip;                                     // help caption (gui cmd)
+    // Label drawn when the gadget carries NO art. Kingdoms' menu buttons are
+    // pictures; TA's are bare rectangles over a background that already has the
+    // plate painted on it, so the text is all there is to draw.
+    std::string label;
     MainMenu::Choice action = MainMenu::Choice::None;
     bool hover = false;
 };
@@ -359,13 +365,38 @@ struct MainMenu::Impl {
         catch (...) {}
         indexVideos();
 
-        // Background: the root gadget's first image (MainScreen.gaf/MainBG).
+        // Background: the root gadget's first image (Kingdoms' MainScreen.gaf/MainBG).
         if (!gui.gadgets.empty() && !gui.gadgets[0].imgs.empty()) {
             auto& im = gui.gadgets[0].imgs[0];
             bg = gafTex(im.gaf, im.seq, im.frame);
             // The background is the opaque base layer -- ignore any palette-index-0
             // "transparency" in the map art so it doesn't punch through to black.
             if (bg) SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
+        }
+        // TA names no background at all: its guis/MAINMENU.GUI declares GADGET0
+        // with `panel=;` EMPTY, so the block above finds no image and the menu
+        // drew nothing -- a black screen, which is the first thing a TA player
+        // saw. The art is a plain 640x480 PCX in bitmaps/, a directory nothing
+        // else in the engine reads.
+        //
+        // FrontendX is the plate-empty state: the four black rectangles are
+        // exactly where MAINMENU.GUI puts SINGLE (139,393), MULTI (139,430) and
+        // their right-hand pair, so the gadget labels drawn over it land on the
+        // plates. (Frontend1F.PCX is the same screen with those plates lit, and
+        // FRONTBG.PCX the bare circuit-board panel behind both.)
+        if (!bg) {
+            for (const char* p : {"bitmaps/FrontendX.pcx", "bitmaps/FRONTBG.PCX"}) {
+                try {
+                    auto img = ta::pcx::load(vfs.read(p), p);
+                    if (!img.ok()) continue;
+                    bg = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
+                                           SDL_TEXTUREACCESS_STATIC, img.width, img.height);
+                    if (!bg) continue;
+                    SDL_UpdateTexture(bg, nullptr, img.rgba.data(), img.width * 4);
+                    SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
+                    break;
+                } catch (const std::exception&) {}
+            }
         }
 
         struct DoorSpec { const char* gadget; const char* vbase; Choice act; };
@@ -395,6 +426,39 @@ struct MainMenu::Impl {
         // Open each door's idle clip so it rests on the animated idle frame.
         for (auto& d : doors) d.videoOk = video::BinkVideo::available() && startClip(d, 4, DoorState::Idle);
 
+        // TA's front end. Its MAINMENU.GUI names none of the Kingdoms doors above,
+        // so `doors` comes out empty and -- before this -- the whole menu drew
+        // nothing but the background: a black screen with no way in.
+        //
+        // The four plates painted into the background art are at exactly these
+        // gadget rects: SINGLE (139,393), MULTI (139,430), INTRO (409,393) and
+        // EXIT (409,430), each 96x20, with Credits (280,440) between them. The
+        // gadgets carry no images, so each draws its own text.
+        // Keyed on TA's own SINGLE gadget, NOT on `doors` being empty: TA's
+        // MAINMENU.GUI also has a gadget called Credits, which the Kingdoms door
+        // spec above matches, so `doors` is not empty on TA and that test
+        // silently skipped every button.
+        if (gui.find("SINGLE")) {
+            struct TaSpec { const char* gadget; const char* label; Choice act; };
+            const TaSpec taBtns[] = {
+                {"SINGLE",  "SINGLE",  Choice::SinglePlayer},
+                {"MULTI",   "MULTI",   Choice::Multiplayer},
+                {"INTRO",   "INTRO",   Choice::None},        // plays the movie in place
+                {"EXIT",    "EXIT",    Choice::Exit},
+                {"Credits", "CREDITS", Choice::Credits},
+            };
+            for (auto& t : taBtns) {
+                const gui::Gadget* g = gui.find(t.gadget);
+                if (!g) continue;
+                Button bt;
+                bt.name = t.gadget;
+                bt.label = t.label;
+                bt.rect = {g->x, g->y, g->w, g->h};
+                bt.action = t.act;
+                bt.tip = g->cmd;
+                buttons.push_back(std::move(bt));
+            }
+        }
         struct BtnSpec { const char* gadget; Choice act; };
         const BtnSpec btns[] = {{"Options", Choice::Options}, {"Exit", Choice::Exit}};
         for (auto& b : btns) {
@@ -465,7 +529,19 @@ struct MainMenu::Impl {
         for (auto& b : buttons) {
             const int ti = (b.hover && b.tex[1]) ? 1 : 0;
             SDL_Texture* t = b.tex[ti];
-            if (!t) continue;
+            if (!t) {
+                // Art-less gadget (TA): draw the label centred in its rect, lit
+                // on hover. The background art already supplies the plate.
+                if (b.label.empty()) continue;
+                const float px = 2.0f;
+                const float tw = float(b.label.size()) * 6 * px;
+                SDL_Color c = b.hover ? SDL_Color{255, 245, 200, 255}
+                                      : SDL_Color{190, 185, 165, 230};
+                shadowText(b.label,
+                           ox + (float(b.rect.x) + (float(b.rect.w) - tw) * 0.5f) * s,
+                           oy + (float(b.rect.y) + 3.0f) * s, px * s, c);
+                continue;
+            }
             // The button art is bigger than its gui hotspot rect and is authored to
             // exactly cover MainBG's button-footprint box; draw it at native size
             // from the gadget origin, not stretched to the (smaller) hotspot rect.
@@ -1258,6 +1334,20 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                 // here, so the menu feels immediate.
                 d_->updateHover(e.button.x, e.button.y, w, h);
                 d_->playHoveredSound();
+                // TA's INTRO plate plays the movie in place and stays in the menu,
+                // the way the Credits door does. It carries no Choice of its own
+                // because there is nothing to leave the front end for.
+                bool introClicked = false;
+                for (const auto& b : d_->buttons)
+                    if (b.hover && b.name == "INTRO") { introClicked = true; break; }
+                if (introClicked) {
+                    SDL_PumpEvents();
+                    SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
+                    if (music) music->setVolume(0, 0);
+                    playIntro(d_->ren, d_->install, "intro.bik");
+                    if (music && settings) music->setVolume(settings->masterVol, settings->bgmVol);
+                    continue;
+                }
                 Choice c = d_->clicked();
                 if (c != Choice::None) {
                     // We acted on the press -- drop this click's matching release so
