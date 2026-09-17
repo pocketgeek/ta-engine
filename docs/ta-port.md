@@ -1082,11 +1082,28 @@ One trap worth recording: the first attempt gated the TA buttons on
 gadget called `Credits`, which the Kingdoms door spec matches. The test is now
 `gui.find("SINGLE")`.
 
-**Still open, and a design decision rather than a bug:** TA's front end has no
-campaign plate. Retail reaches the campaign from inside its SINGLE PLAYER
-screen, which this engine does not have — it has a separate `Choice::Campaign`
-that opened from the Kingdoms `PlayStory` door. So campaigns are currently
-reachable only via the debug `--campaign` flag.
+**The campaign now lives where retail puts it**, behind SINGLE. Retail ships
+that screen too — `guis/SINGLE.GUI` with `bitmaps/SINGLEBG.PCX` — so it is its
+own layout and art rather than something invented: five plates at x=447, NEW
+CAMPAIGN (136), SKIRMISH (178), OPTIONS (220), LOAD GAME (262) and PREVIOUS MENU
+(346). `panel=` is empty there as well, and the gadgets carry no images, so the
+background is the PCX and each button draws its own text — shrunk to fit, since
+"NEW CAMPAIGN" at the nominal 2x is 144 units wide against a 118-wide plate.
+
+LOAD GAME is inert: the engine has no save/load yet. `TA_SHOT_SINGLE=1` captures
+the page, which is otherwise only reachable by clicking.
+
+### The Kingdoms front end is gone
+
+The menu carried a whole door subsystem for Kingdoms: a `Door` struct with its
+own Bink clip, streaming texture and four-state machine (Idle/In/Loop/Out), the
+`Movies/Gui` video index, and specs binding gadgets `PlayComputer`, `PlayStory`,
+`PlayPlayer` and `Credits` to videos `machine`, `girl`, `knight` and `snort`.
+None of those gadget names exist in TA, so all of it was dead weight that ran
+every frame and produced the startup warning about door videos. Removed —
+`DoorState`, `Door`, `doors`, `indexVideos`, `findBik`, `setDoorTex`,
+`startClip`, `updateDoor`, the `TA_NODOORVID` switch and the now-unused frame
+clock. `playIntro` stays: TA uses it for `intro.bik` and `credits.bik`.
 
 ### Six more of retail's 23 sound events
 

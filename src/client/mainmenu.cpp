@@ -72,27 +72,6 @@ fs::path ciResolve(fs::path base, std::initializer_list<const char*> parts) {
 
 // Per-door hover video state: hold the idle clip (`*4`), play hover-in (`*5`) once,
 // loop (`*6`) while hovered, then play hover-out (`*7`) back to idle.
-enum class DoorState { Idle, In, Loop, Out };
-
-struct Door {
-    std::string name;                 // gui gadget id
-    SDL_Rect rect{};                  // 640x480 layout space
-    std::string vbase;                // video basename: "machine"/"girl"/"knight"
-    std::string sound;                // click sound (gui states, e.g. "skirmish.wav")
-    std::string tip;                  // help caption (gui cmd, e.g. "Play the Machine")
-    MainMenu::Choice action = MainMenu::Choice::None;
-
-    SDL_Texture* gaf = nullptr;       // static fallback (GAF state-0 art)
-    video::BinkVideo vid;             // current clip
-    SDL_Texture* vtex = nullptr;      // streaming frame texture (video size)
-    int vw = 0, vh = 0;
-    double fps = 30.0, accum = 0.0;
-    DoorState state = DoorState::Idle;
-    bool videoOk = false;
-    bool hover = false;
-    std::vector<uint8_t> rgba;
-};
-
 struct Button {
     std::string name;
     SDL_Rect rect{};
@@ -132,9 +111,7 @@ struct MainMenu::Impl {
 
     gui::Gui gui;
     SDL_Texture* bg = nullptr;
-    std::vector<Door> doors;
     std::vector<Button> buttons;
-    std::unordered_map<std::string, std::string> bikByLower;   // lowercased name -> path
 
     // Click SFX: one queue-driven device (all menu click WAVs share a format,
     // u8/11025/mono), and each sound's volume-scaled PCM keyed by filename. This is
@@ -148,6 +125,14 @@ struct MainMenu::Impl {
     // The SETTINGS menu overlay -- the lower-right menu button opens THIS (OPTIONS / CONTROLS)
     // instead of jumping straight into Options, mirroring the in-game Esc GAME MENU.
     bool settingsMenu_ = false;
+    // TA's SINGLE PLAYER screen: its own background and button set, swapped in
+    // over the title screen. Retail reaches the campaign from here rather than
+    // from the front page, and guis/SINGLE.GUI + bitmaps/SINGLEBG.PCX are its
+    // own art and layout.
+    bool singleScreen_ = false;
+    SDL_Texture* bgSingle = nullptr;
+    gui::Gui singleGui;
+    std::vector<Button> singleButtons;
     SDL_FRect setBtnRect_[4]{};        // OPTIONS / CONTROLS / BENCHMARK / LOAD REPLAY (set each render)
     bool benchMenu_ = false;          // benchmark intensity submenu (opened from SETTINGS)
     bool replayMenu_ = false;         // replay picker (opened from SETTINGS)
@@ -175,9 +160,8 @@ struct MainMenu::Impl {
         : ren(r), vfs(v), install(std::move(in)) {}
     ~Impl() {
         if (bg) gpuvram::destroy(bg);
-        for (auto& d : doors) { if (d.gaf) gpuvram::destroy(d.gaf);
-                                if (d.vtex) gpuvram::destroy(d.vtex); }
         for (auto& b : buttons) for (auto* t : b.tex) if (t) gpuvram::destroy(t);
+        if (bgSingle) gpuvram::destroy(bgSingle);
         if (sfxDev_) SDL_CloseAudioDevice(sfxDev_);
     }
 
@@ -225,8 +209,7 @@ struct MainMenu::Impl {
 
     // Play the click sound of whatever door/button is currently hovered.
     void playHoveredSound() {
-        for (auto& d : doors) if (d.hover) { playSfx(d.sound); return; }
-        for (auto& b : buttons) if (b.hover) { playSfx(b.sound); return; }
+        for (auto& b : active()) if (b.hover) { playSfx(b.sound); return; }
     }
 
     // A click that transitions away destroys this MainMenu (closing the SFX
@@ -275,95 +258,11 @@ struct MainMenu::Impl {
 
     // Index the loose door videos under <install>/Movies/Gui by lowercased name so a
     // "machine5.bik" / "GIRL5.BIK" mix resolves on a case-sensitive filesystem.
-    void indexVideos() {
-        std::error_code ec;
-        fs::path dir = ciResolve(fs::path(install), {"Movies", "Gui"});
-        if (dir.empty()) {
-            std::fprintf(stderr, "menu: no Movies/Gui under %s -- door videos disabled "
-                         "(doors stay on their static art)\n", install.c_str());
-            return;
-        }
-        for (auto& e : fs::directory_iterator(dir, ec)) {
-            if (!e.is_regular_file()) continue;
-            std::string n = e.path().filename().string();
-            std::string low = n;
-            std::transform(low.begin(), low.end(), low.begin(),
-                           [](unsigned char c) { return char(std::tolower(c)); });
-            bikByLower[low] = e.path().string();
-        }
-        std::fprintf(stderr, "menu: indexed %zu door video(s) from %s\n",
-                     bikByLower.size(), dir.string().c_str());
-    }
-
-    std::string findBik(const std::string& base, int n) const {
-        auto it = bikByLower.find(base + std::to_string(n) + ".bik");
-        return it == bikByLower.end() ? std::string() : it->second;
-    }
-
-    // ---- door video state machine --------------------------------------------
-
-    void setDoorTex(Door& d) {
-        // Exactly once per DECODED frame: setDoorTex is only ever called straight after a
-        // successful nextFrame(). Filtering at the upload instead would re-filter a held
-        // frame every time it was re-uploaded, smearing it a little more each pass.
-        if (ta::video::g_deblock) ta::video::deblock(d.rgba, d.vw, d.vh, 3);
-        if (d.vw <= 0 || d.vh <= 0 || d.rgba.empty()) return;
-        if (!d.vtex) {
-            d.vtex = gpuvram::create(ren, SDL_PIXELFORMAT_ABGR8888,
-                                       SDL_TEXTUREACCESS_STREAMING, d.vw, d.vh);
-            // Bink frames are opaque -- ignore any decoder alpha. Linear filtering
-            // smooths the low-res door clips (~150-220px) when scaled to the window.
-            SDL_SetTextureBlendMode(d.vtex, SDL_BLENDMODE_NONE);
-            SDL_SetTextureScaleMode(d.vtex, SDL_ScaleModeLinear);
-        }
-        SDL_UpdateTexture(d.vtex, nullptr, d.rgba.data(), d.vw * 4);
-    }
-
-    // Open clip <base><n>.bik and show its first frame; returns false if unavailable.
-    bool startClip(Door& d, int n, DoorState st) {
-        std::string path = findBik(d.vbase, n);
-        if (path.empty()) return false;
-        std::ifstream f(path, std::ios::binary);
-        if (!f) return false;
-        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(f)),
-                                   std::istreambuf_iterator<char>());
-        if (!d.vid.open(std::move(bytes))) return false;
-        d.vw = d.vid.width(); d.vh = d.vid.height();
-        d.fps = d.vid.fps() > 1.0 ? d.vid.fps() : 30.0;
-        d.accum = 0.0;
-        d.state = st;
-        if (d.vid.nextFrame(d.rgba)) { setDoorTex(d); return true; }
-        return false;
-    }
-
-    void updateDoor(Door& d, double dt) {
-        if (!d.videoOk) return;
-        if (d.hover && (d.state == DoorState::Idle || d.state == DoorState::Out))
-            startClip(d, 5, DoorState::In);
-        else if (!d.hover && (d.state == DoorState::In || d.state == DoorState::Loop))
-            startClip(d, 7, DoorState::Out);
-
-        if (d.state == DoorState::Idle) return;   // hold the idle frame
-        d.accum += dt;
-        double spf = 1.0 / std::max(1.0, d.fps);
-        int guard = 0;
-        while (d.accum >= spf && guard++ < 8) {
-            d.accum -= spf;
-            if (d.vid.nextFrame(d.rgba)) { setDoorTex(d); continue; }
-            // clip ended -> advance the state machine
-            if (d.state == DoorState::In) startClip(d, 6, DoorState::Loop);
-            else if (d.state == DoorState::Loop) { d.vid.rewind();
-                if (d.vid.nextFrame(d.rgba)) setDoorTex(d); }
-            else if (d.state == DoorState::Out) { startClip(d, 4, DoorState::Idle); break; }
-        }
-    }
-
     // ---- setup ----------------------------------------------------------------
 
     void load() {
         try { gui = gui::parse(vfs.read("guis/mainmenu.gui"), "guis/mainmenu.gui"); }
         catch (...) {}
-        indexVideos();
 
         // Background: the root gadget's first image (Kingdoms' MainScreen.gaf/MainBG).
         if (!gui.gadgets.empty() && !gui.gadgets[0].imgs.empty()) {
@@ -399,45 +298,10 @@ struct MainMenu::Impl {
             }
         }
 
-        struct DoorSpec { const char* gadget; const char* vbase; Choice act; };
-        const DoorSpec specs[] = {
-            {"PlayComputer", "machine", Choice::SinglePlayer},
-            {"PlayStory",    "girl",    Choice::Campaign},
-            {"PlayPlayer",   "knight",  Choice::Multiplayer},
-            // The fourth door. Its gadget is in mainmenu.gui and its hover videos
-            // ship as SNORT4..7.BIK; we simply never wired it up, so the credits
-            // were unreachable from the front end.
-            {"Credits",      "snort",   Choice::Credits},
-        };
-        for (auto& s : specs) {
-            const gui::Gadget* g = gui.find(s.gadget);
-            if (!g) continue;
-            Door d;
-            d.name = s.gadget;
-            d.rect = {g->x, g->y, g->w, g->h};
-            d.vbase = s.vbase;
-            d.action = s.act;
-            d.sound = clickSound(*g);
-            d.tip = g->cmd;   // gui cmd doubles as the hover help caption
-            loadSfx(d.sound);
-            if (!g->imgs.empty()) d.gaf = gafTex(g->imgs[0].gaf, g->imgs[0].seq, g->imgs[0].frame);
-            doors.push_back(std::move(d));
-        }
-        // Open each door's idle clip so it rests on the animated idle frame.
-        for (auto& d : doors) d.videoOk = video::BinkVideo::available() && startClip(d, 4, DoorState::Idle);
-
-        // TA's front end. Its MAINMENU.GUI names none of the Kingdoms doors above,
-        // so `doors` comes out empty and -- before this -- the whole menu drew
-        // nothing but the background: a black screen with no way in.
-        //
-        // The four plates painted into the background art are at exactly these
-        // gadget rects: SINGLE (139,393), MULTI (139,430), INTRO (409,393) and
-        // EXIT (409,430), each 96x20, with Credits (280,440) between them. The
-        // gadgets carry no images, so each draws its own text.
-        // Keyed on TA's own SINGLE gadget, NOT on `doors` being empty: TA's
-        // MAINMENU.GUI also has a gadget called Credits, which the Kingdoms door
-        // spec above matches, so `doors` is not empty on TA and that test
-        // silently skipped every button.
+        // TA's front end. The four plates painted into the background art sit at
+        // exactly these gadget rects: SINGLE (139,393), MULTI (139,430), INTRO
+        // (409,393) and EXIT (409,430), each 96x20, with Credits (280,440)
+        // between them. The gadgets carry no images, so each draws its own text.
         if (gui.find("SINGLE")) {
             struct TaSpec { const char* gadget; const char* label; Choice act; };
             const TaSpec taBtns[] = {
@@ -459,6 +323,40 @@ struct MainMenu::Impl {
                 buttons.push_back(std::move(bt));
             }
         }
+        // TA's SINGLE PLAYER screen, from retail's own gui and art. Its five
+        // plates are at x=447: New Campaign (136), Skirmish (178), Options (220),
+        // Load Game (262) and Previous Menu (346). Like the title screen, the
+        // gadgets carry no images and `panel=` is empty, so the background is a
+        // bitmaps/ PCX and each button draws its own text.
+        try {
+            singleGui = gui::parse(vfs.read("guis/SINGLE.GUI"), "guis/SINGLE.GUI");
+        } catch (...) {}
+        if (!singleGui.gadgets.empty()) {
+            try {
+                auto img = ta::pcx::load(vfs.read("bitmaps/SINGLEBG.PCX"), "SINGLEBG");
+                if (img.ok()) {
+                    bgSingle = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32,
+                                                 SDL_TEXTUREACCESS_STATIC,
+                                                 img.width, img.height);
+                    if (bgSingle) {
+                        SDL_UpdateTexture(bgSingle, nullptr, img.rgba.data(), img.width * 4);
+                        SDL_SetTextureBlendMode(bgSingle, SDL_BLENDMODE_NONE);
+                    }
+                }
+            } catch (const std::exception&) {}
+            for (const char* nm : {"NewCamp", "Skirmish", "Options", "LoadGame", "PrevMenu"}) {
+                const gui::Gadget* g = singleGui.find(nm);
+                if (!g) continue;
+                Button bt;
+                bt.name = nm;
+                bt.label = g->text;
+                for (char& c : bt.label) c = char(std::toupper((unsigned char)c));
+                bt.rect = {g->x, g->y, g->w, g->h};
+                bt.tip = g->help;
+                singleButtons.push_back(std::move(bt));
+            }
+        }
+
         struct BtnSpec { const char* gadget; Choice act; };
         const BtnSpec btns[] = {{"Options", Choice::Options}, {"Exit", Choice::Exit}};
         for (auto& b : btns) {
@@ -496,45 +394,21 @@ struct MainMenu::Impl {
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         float s, ox, oy; layout(winW, winH, s, ox, oy);
-        if (bg) { SDL_FRect r{ox, oy, 640 * s, 480 * s}; SDL_RenderCopyF(ren, bg, nullptr, &r); }
-        // TA_NODOORVID=1 forces the static GAF door art instead of the clips, so
-        // the two can be compared directly -- retail authored both, so the art is
-        // the closest thing to a reference for how bright a door should look.
-        static const bool kNoDoorVid = ta::devEnv("TA_NODOORVID") != nullptr;
-        for (auto& d : doors) {
-            // A door with no gui art of its own has nothing to show at rest: the gui
-            // gives the other three a GAF state image (singlemachine/bodgirl/
-            // multiknight) but gives Credits three empty image refs, and MainBG
-            // already has that door's carved "K" painted into it. So its resting
-            // look IS the background, and clip 4 -- a Bink-compressed copy of the
-            // same carving -- must not be pinned over it. Measured against MainBG at
-            // 1:1, SNORT4's thin gold strokes come back 24 luma short (neutrals match
-            // to ~2), which is exactly the rectangle that cut through the letter.
-            // The hover clips still play; only the idle still is suppressed.
-            const bool idleNoArt = (d.state == DoorState::Idle && !d.gaf);
-            if (d.videoOk && d.vtex && !kNoDoorVid && !idleNoArt) {
-                // Like the buttons, the door video is authored bigger than its gui
-                // hotspot and anchored at the gadget origin -- draw it at native size,
-                // NOT stretched to the (smaller) hotspot. Stretching squished it badly:
-                // knight is 221x250 vs a 161-wide hotspot, and its 221px width is
-                // authored to run from x=419 to the 640px screen edge.
-                SDL_Rect nat{d.rect.x, d.rect.y, d.vw, d.vh};
-                SDL_FRect r = toScreen(nat, s, ox, oy);
-                SDL_RenderCopyF(ren, d.vtex, nullptr, &r);
-            } else if (d.gaf) {
-                SDL_FRect r = toScreen(d.rect, s, ox, oy);
-                SDL_RenderCopyF(ren, d.gaf, nullptr, &r);
-            }
-        }
-        for (auto& b : buttons) {
+        SDL_Texture* page = (singleScreen_ && bgSingle) ? bgSingle : bg;
+        if (page) { SDL_FRect r{ox, oy, 640 * s, 480 * s}; SDL_RenderCopyF(ren, page, nullptr, &r); }
+        for (auto& b : active()) {
             const int ti = (b.hover && b.tex[1]) ? 1 : 0;
             SDL_Texture* t = b.tex[ti];
             if (!t) {
                 // Art-less gadget (TA): draw the label centred in its rect, lit
                 // on hover. The background art already supplies the plate.
                 if (b.label.empty()) continue;
-                const float px = 2.0f;
-                const float tw = float(b.label.size()) * 6 * px;
+                // Shrink to fit: the blockText glyph cell is 6 design units wide,
+                // and TA's plates are only 118 wide, so "NEW CAMPAIGN" at the
+                // nominal 2x overhangs its plate by a good margin.
+                const float wide = float(b.label.size()) * 6.0f;
+                const float px = std::min(2.0f, std::max(1.0f, (float(b.rect.w) - 8.0f) / wide));
+                const float tw = wide * px;
                 SDL_Color c = b.hover ? SDL_Color{255, 245, 200, 255}
                                       : SDL_Color{190, 185, 165, 230};
                 shadowText(b.label,
@@ -567,8 +441,7 @@ struct MainMenu::Impl {
         };
         placard(std::string("VERSION ") + ta::kVersion, 174, 295, 409, 2.0f, {185, 180, 160, 220});
         const std::string* tip = nullptr;
-        for (auto& d : doors) if (d.hover && !d.tip.empty()) { tip = &d.tip; break; }
-        if (!tip) for (auto& b : buttons) if (b.hover && !b.tip.empty()) { tip = &b.tip; break; }
+        if (!tip) for (auto& b : active()) if (b.hover && !b.tip.empty()) { tip = &b.tip; break; }
         if (tip) placard(*tip, 172, 296, 448, 2.5f, {240, 238, 245, 235});
     }
 
@@ -994,19 +867,25 @@ struct MainMenu::Impl {
 
     // ---- input ----------------------------------------------------------------
 
+    // Whichever screen is showing. The title page and the SINGLE PLAYER page are
+    // the same widget kind over different art, so hover, click and draw all work
+    // off this rather than each knowing which page it is on.
+    std::vector<Button>& active() { return singleScreen_ ? singleButtons : buttons; }
+    const std::vector<Button>& active() const {
+        return singleScreen_ ? singleButtons : buttons;
+    }
+
     void updateHover(int mx, int my, int winW, int winH) {
         float s, ox, oy; layout(winW, winH, s, ox, oy);
         float gx = (mx - ox) / s, gy = (my - oy) / s;   // to 640x480 space
         auto in = [&](const SDL_Rect& r) {
             return gx >= r.x && gx < r.x + r.w && gy >= r.y && gy < r.y + r.h;
         };
-        for (auto& d : doors) d.hover = in(d.rect);
-        for (auto& b : buttons) b.hover = in(b.rect);
+        for (auto& b : active()) b.hover = in(b.rect);
     }
 
     Choice clicked() const {
-        for (auto& d : doors) if (d.hover) return d.action;
-        for (auto& b : buttons) if (b.hover) return b.action;
+        for (auto& b : active()) if (b.hover) return b.action;
         return Choice::None;
     }
 };
@@ -1025,8 +904,13 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
     SDL_GetRendererOutputSize(d_->ren, &w, &h);
 
     if (!shotPath.empty()) {
-        for (auto& dr : d_->doors) d_->updateDoor(dr, 0.0);
         d_->render(w, h);
+        // Debug: TA_SHOT_SINGLE captures the SINGLE PLAYER page instead of the
+        // title screen, which is otherwise only reachable by clicking.
+        if (ta::devEnv("TA_SHOT_SINGLE")) {
+            d_->singleScreen_ = true;
+            d_->render(w, h);
+        }
         // Debug: TA_SHOT_CAMPAIGN captures the campaign picker overlay for tests.
         if (const char* sc = settings ? ta::devEnv("TA_SHOT_CAMPAIGN") : nullptr) {
             int tab = std::atoi(sc);   // TA_SHOT_CAMPAIGN=1 -> Iron Plague tab
@@ -1106,8 +990,6 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
         d_->pendingReplayError.clear();
     }
 
-    Uint64 prev = SDL_GetPerformanceCounter();
-    const double freq = double(SDL_GetPerformanceFrequency());
     for (;;) {
         if (ta::termRequested()) return Choice::Exit;   // SIGTERM/SIGINT -> quit the app
         SDL_Event e;
@@ -1337,9 +1219,42 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
                 // TA's INTRO plate plays the movie in place and stays in the menu,
                 // the way the Credits door does. It carries no Choice of its own
                 // because there is nothing to leave the front end for.
-                bool introClicked = false;
-                for (const auto& b : d_->buttons)
-                    if (b.hover && b.name == "INTRO") { introClicked = true; break; }
+                // Name-dispatched page buttons: these move BETWEEN pages rather
+                // than leaving the front end, so they carry no Choice.
+                std::string hit;
+                for (const auto& b : d_->active()) if (b.hover) { hit = b.name; break; }
+                if (hit == "SINGLE") {          // title -> SINGLE PLAYER page
+                    SDL_PumpEvents();
+                    SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
+                    d_->singleScreen_ = true;
+                    d_->updateHover(e.button.x, e.button.y, w, h);
+                    continue;
+                }
+                if (hit == "PrevMenu") {        // SINGLE PLAYER page -> title
+                    SDL_PumpEvents();
+                    SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
+                    d_->singleScreen_ = false;
+                    d_->updateHover(e.button.x, e.button.y, w, h);
+                    continue;
+                }
+                if (hit == "NewCamp" && settings) {   // the campaign lives HERE, as in retail
+                    SDL_PumpEvents();
+                    SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
+                    d_->campaign_ = std::make_unique<CampaignScreen>(d_->ren, d_->vfs, *settings);
+                    continue;
+                }
+                if (hit == "Skirmish") {        // a plain skirmish: leave the menu
+                    d_->flushSfx(w, h);
+                    return Choice::SinglePlayer;
+                }
+                if (hit == "Options" && settings) {
+                    SDL_PumpEvents();
+                    SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
+                    d_->settingsMenu_ = true;
+                    continue;
+                }
+                if (hit == "LoadGame") continue;   // no save/load in the engine yet
+                bool introClicked = (hit == "INTRO");
                 if (introClicked) {
                     SDL_PumpEvents();
                     SDL_FlushEvents(SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP);
@@ -1390,10 +1305,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
             }
         }
         SDL_GetRendererOutputSize(d_->ren, &w, &h);
-        Uint64 now = SDL_GetPerformanceCounter();
-        double dt = double(now - prev) / freq;
-        prev = now;
-        for (auto& dr : d_->doors) d_->updateDoor(dr, dt);
+
         if (music) music->poll();
         d_->render(w, h);
         if (d_->serverSelect) d_->renderServerSelect(w, h);
@@ -1403,7 +1315,7 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
         if (d_->options_) d_->options_->render(w, h);
         if (d_->hotkeys_) d_->hotkeys_->render(w, h);   // above Options
         if (d_->campaign_) d_->campaign_->render(w, h);
-        // Draw the cursor last so it sits above the doors and the overlays. With the
+        // Draw the cursor last so it sits above the menu and the overlays. With the
         // hardware-cursor option the OS tracks the pointer (smooth under load); otherwise
         // hide the OS arrow and draw our own into the frame.
         if (d_->cursors_.ok()) {
