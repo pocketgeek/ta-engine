@@ -2531,6 +2531,23 @@
 
     bool GameView::buildIconClick(float mx, float my, bool lmb, bool rmb) {
         if (!lmb && !rmb) return false;
+        // PREV / NEXT page the in-panel grid (TA's ARMPREV/ARMNEXT). Checked
+        // before the cells: they sit in the same panel and a page turn is not a
+        // build order.
+        auto inRect = [&](const SDL_FRect& r) {
+            return r.w > 0 && mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+        };
+        if (lmb && (inRect(buildPrevRect_) || inRect(buildNextRect_))) {
+            const auto* b = selectedBuilder();
+            int pages = 1;
+            if (b) {
+                const auto menu = conjureMenu(b->type->id);
+                pages = std::max(1, (int(menu.size()) + 5) / 6);
+            }
+            buildPage_ = (buildPage_ + (inRect(buildNextRect_) ? 1 : pages - 1)) % pages;
+            playClickTone();
+            return true;
+        }
         for (const auto& [r, bt] : iconRects_) {
             if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
             playClickTone();

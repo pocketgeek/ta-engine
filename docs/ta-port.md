@@ -1078,6 +1078,38 @@ rect. Giving the draw a real origin would have meant touching all 42 direct
 `mapView_.offX()` transforms in the renderer plus mouse picking; clipping costs
 only the sliver hidden behind the panel.
 
+### The build menu is retail's in-panel grid
+
+This was recorded as a design fork -- the engine had a Kingdoms-style row along
+the bottom with its own alignment and scale preferences -- and it is settled now
+in retail's favour.
+
+The geometry comes straight from the shipped `.gui` files and is **identical on
+every unit page**: six 64x64 cells at (0,27) (64,27) (0,91) (64,91) (0,155)
+(64,155) in panel space, with `ARMPREV` at (8,222) and `ARMNEXT` at (72,222).
+Checked across `ARMCOM1`, `ARMCOM2`, `ARMCK1` and `ARMLAB1`.
+
+The page CONTENTS turn out to be nothing more than the side's `canbuild` list
+for that unit, chunked six at a time — `ARMCOM1` is canbuild 1..6 (solar, wind,
+estore, mstore, mex, maker) and `ARMCOM2` is 7..12 (lab, vp, ap, sy, llt, rad).
+So the engine lays its own (mission-filtered) menu into that grid rather than
+loading a hundred per-unit `.gui` files to be told the same thing. Retail pads a
+short page with `IGPATCH`, a blank plate; an empty cell is left empty here.
+
+ORDERS and BUILD are real TABS over the panel's middle band. Retail's cells
+occupy y 27..219 and its page arrows sit at 222 — the same band `ARMGEN.GUI`
+uses for its fire/move/on-off rows — so only one view may own it. Without that
+the order rows drew straight over the build icons, which is exactly what the
+first attempt did.
+
+`TA_GRIDLOG=1` reports why the panel is showing orders instead of a build page:
+four conditions must hold (tab, a loaded panel gui, a selected builder, a
+non-empty menu) and they look identical from outside.
+
+`--testbuild` now selects its builder, which a build harness should have been
+doing anyway — without a selection the panel shows the ORDERS view, which is not
+what that harness is for.
+
 ### The main menu was a black screen
 
 The first thing a TA player saw, and it drew nothing at all.

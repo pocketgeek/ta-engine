@@ -1413,11 +1413,19 @@ CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
         {
             const ta::tdf::Side* sd = localSide();
             (void)sd;
+            const bool gridBand = buildGridActive();
             for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
                 const auto& g = gui_.gadgets[i];
                 if (g.type != ta::gui::kButton || i >= guiTex_.size() ||
                     guiTex_[i].empty())
                     continue;
+                // ORDERS / BUILD are TABS over the panel's middle band. Retail's
+                // build cells occupy y 27..219 in panel space and its page arrows
+                // sit at 222; the same band holds ARMGEN's fire/move/on-off rows.
+                // Only one of the two may own it, or the order rows draw straight
+                // over the build icons. The tabs themselves (y < 27) and the order
+                // buttons along the bottom (y >= 240) belong to both views.
+                if (gridBand && g.y >= 27 && g.y < 240) continue;
                 SDL_FRect r = guiCmdRect(g);
                 const char cmd = taPanelCommand(g.name);
                 // Availability, as retail draws it: an order that does not apply to
@@ -2104,6 +2112,93 @@ CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
         hudFont_.draw(ren_, "[O] hide", x0, y + 4, 1.1f, {140, 146, 162, 200});
     }
 
+    // TA's build menu: a 2x3 grid of 64x64 cells INSIDE the command panel, paged.
+    //
+    // The geometry is retail's, read straight out of the shipped .gui files, and
+    // it is identical on every unit page -- ARMCOM1/ARMCOM2, ARMCK1, ARMLAB1 and
+    // the rest all place their six cells at (0,27) (64,27) (0,91) (64,91) (0,155)
+    // (64,155) with ARMPREV at (8,222) and ARMNEXT at (72,222), all in panel
+    // space. The page CONTENTS are just the side's canbuild list for that unit,
+    // chunked six at a time: ARMCOM1 is canbuild1..6 (solar, wind, estore,
+    // mstore, mex, maker) and ARMCOM2 is 7..12 (lab, vp, ap, sy, llt, rad).
+    //
+    // So this lays the engine's own (mission-filtered) menu into that grid rather
+    // than loading a hundred per-unit .gui files to be told the same thing. A
+    // page with fewer than six entries leaves the remaining cells empty, which is
+    // what retail does too -- ARMLAB1 fills its spare slot with IGPATCH, a blank
+    // plate.
+    // Is the panel currently showing a build page rather than the order rows?
+    // renderGui asks this too, so the two agree about who owns the middle band.
+    bool GameView::buildGridActive() {
+        const auto* b = selectedBuilder();
+        // TA_GRIDLOG: why the panel is showing orders instead of a build page.
+        // Four separate things must hold and they are indistinguishable on screen.
+        if (ta::devEnv("TA_GRIDLOG")) {
+            static size_t lastSel = 999;
+            if (selection_.size() != lastSel && (lastSel = selection_.size(), true))
+                std::fprintf(stderr, "grid: tab=%d gadgets=%zu sel=%zu builder=%s menu=%zu\n",
+                             int(gBuildTabOn), gui_.gadgets.size(), selection_.size(),
+                             b && b->type ? b->type->id.c_str() : "none",
+                             b && b->type ? conjureMenu(b->type->id).size() : 0);
+        }
+        if (!gBuildTabOn || gui_.gadgets.empty()) return false;
+        return b && b->type && !conjureMenu(b->type->id).empty();
+    }
+
+    bool GameView::drawBuildGrid() {
+        iconRects_.clear();
+        buildPrevRect_ = buildNextRect_ = SDL_FRect{0, 0, 0, 0};
+        if (!buildGridActive()) return false;
+        const auto* b = selectedBuilder();
+        const auto menu = conjureMenu(b->type->id);
+
+        const int kPerPage = 6;
+        const int pages = (int(menu.size()) + kPerPage - 1) / kPerPage;
+        if (buildPage_ >= pages) buildPage_ = 0;
+
+        const float s = guiS();
+        const SDL_FRect p = guiPanelRect();
+        auto cell = [&](float gx, float gy, float gw, float gh) {
+            return SDL_FRect{p.x + gx * s, p.y + gy * s, gw * s, gh * s};
+        };
+        static const struct { float x, y; } kCells[kPerPage] = {
+            {0, 27}, {64, 27}, {0, 91}, {64, 91}, {0, 155}, {64, 155},
+        };
+        for (int i = 0; i < kPerPage; ++i) {
+            const size_t idx = size_t(buildPage_ * kPerPage + i);
+            if (idx >= menu.size()) break;
+            const auto* bt = registry_.find(menu[idx]);
+            if (!bt) continue;
+            SDL_FRect r = cell(kCells[i].x, kCells[i].y, 64, 64);
+            SDL_Texture* ic = iconFor(bt->id);
+            if (!ic) ic = modelIconTex(bt->id, colorSlot_[localPlayer_ & 7],
+                                       bt->maxVel > 0);
+            if (ic) SDL_RenderCopyF(ren_, ic, nullptr, &r);
+            else {
+                SDL_SetRenderDrawColor(ren_, 20, 18, 14, 235);
+                SDL_RenderFillRectF(ren_, &r);
+            }
+            iconRects_.push_back({r, bt});
+        }
+        // PREV / NEXT, drawn only when there is somewhere to go.
+        if (pages > 1) {
+            buildPrevRect_ = cell(8, 222, 44, 16);
+            buildNextRect_ = cell(72, 222, 44, 16);
+            for (auto* rp : {&buildPrevRect_, &buildNextRect_}) {
+                SDL_SetRenderDrawColor(ren_, 24, 22, 18, 220);
+                SDL_RenderFillRectF(ren_, rp);
+                SDL_SetRenderDrawColor(ren_, 120, 105, 80, 255);
+                SDL_RenderDrawRectF(ren_, rp);
+            }
+            const float px = std::max(1.0f, 1.0f * s);
+            blockText("PREV", buildPrevRect_.x + 5 * s, buildPrevRect_.y + 4 * s, px,
+                      {200, 195, 170, 255});
+            blockText("NEXT", buildNextRect_.x + 5 * s, buildNextRect_.y + 4 * s, px,
+                      {200, 195, 170, 255});
+        }
+        return true;
+    }
+
     void GameView::drawPanel(int winW, int winH) {
         // Bottom bar: the retail InfoPanel chrome + unit info when a .gui is loaded,
         // else our own stone strip. The build menu + mana readout below draw on top.
@@ -2169,9 +2264,13 @@ CmdState taCommandState(char cmd, const ta::sim::UnitType& t, const UnitR& u) {
         // Conjure menu: clickable build icons for the selected builder, in a
         // horizontal row just above the info bar. Where it sits along the bottom is
         // a user preference (Options "BUILD MENU": left / centered / right).
-        iconRects_.clear();
+        // TA draws the build menu INSIDE the command panel (drawBuildGrid, which
+        // fills iconRects_ itself). The bottom row below is Kingdoms' layout,
+        // kept only for a data set with no command-panel gui to lay a grid into.
+        const bool gridDrawn = drawBuildGrid();
+        if (!gridDrawn) iconRects_.clear();
         const auto* b = selectedBuilder();
-        if (b && gBuildTabOn) {
+        if (!gridDrawn && b && gBuildTabOn) {
             const auto menu = conjureMenu(b->type->id);   // mission-filtered
             int n = int(menu.size());
             // Row size: the bar height (already uiScale-scaled) times the user's

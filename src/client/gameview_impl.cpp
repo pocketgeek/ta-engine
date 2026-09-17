@@ -422,6 +422,9 @@
                                 what->id.c_str(), id, x, z);
                     follow_ = false;   // else the camera drifts off with the builder
                     lookAt(x, z);
+                    // Select the builder: a build harness with nothing selected
+                    // shows the panel's ORDERS view, which is not what it is for.
+                    selection_ = {builderId_};
                     return;
                 }
             }

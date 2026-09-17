@@ -2479,6 +2479,11 @@ private:
     std::map<std::string, SDL_Texture*> icons_;
     std::map<std::pair<std::string, int>, SDL_Texture*> modelIcons_;  // model-rendered fallback icons
     std::vector<std::pair<SDL_FRect, const ta::sim::UnitType*>> iconRects_;
+    // TA's in-panel build grid: six 64x64 cells a page, with PREV/NEXT.
+    bool drawBuildGrid();
+    bool buildGridActive();
+    int buildPage_ = 0;
+    SDL_FRect buildPrevRect_{0, 0, 0, 0}, buildNextRect_{0, 0, 0, 0};
     static constexpr int kMiniSizeBase = 180;
     int miniSize() const { return int(kMiniSizeBase * uiScale_); }   // UI-scale (Options)
     // Right-side UI strip (minimap + command panel). The map view is kept to the
