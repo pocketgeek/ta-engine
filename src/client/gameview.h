@@ -2504,7 +2504,21 @@ private:
     // Width of the right-hand command-panel strip (the retail UnitMenu is 128 wide in
     // 640-space); never narrower than the minimap.
     int cmdPanelW() const;
+    // TA's command panel is a strip down the LEFT edge (ARMGEN's root is at
+    // x=0), with the minimap in the 128x128 above it. So the world viewport
+    // starts to the RIGHT of the panel -- Kingdoms' was the other way round, its
+    // panel on the right, which is why this used to be a width with no origin.
+    //
+    // The world is still DRAWN across the whole window and merely clipped to this
+    // rect: every screen<->world transform in the renderer is full-window, so
+    // giving the draw an origin instead would have meant touching all 42 of them
+    // (and mouse picking besides). The cost is drawing the sliver hidden behind
+    // the panel.
+    int mapViewX() const { return cmdPanelW(); }
     int mapViewW(int winW) const { return std::max(64, winW - cmdPanelW()); }
+    // Centre of the VISIBLE world viewport, which is not the window centre when a
+    // panel covers one edge.
+    float mapViewCx(int winW) const { return float(mapViewX()) + float(mapViewW(winW)) * 0.5f; }
 
     // Screen rect for a command-panel gadget (x >= 512 in 640-space): the whole
     // command panel is anchored to the bottom-right corner, so the ButtonPanel art

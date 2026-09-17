@@ -1940,15 +1940,21 @@
     }
 
     void GameView::prepare(int winW, int winH) {
-        mapView_.ensureChunks(mapViewW(winW), winH);
+        // The world is drawn across the WHOLE window and clipped to the right of
+        // the command panel, so the chunks it needs span the window, not just the
+        // visible slice -- loading only mapViewW left the far edge unpainted.
+        mapView_.ensureChunks(winW, winH);
         if (!miniTex_) buildMinimap();
         // Listener = the camera view (the map viewport), so positional sounds pan by
         // where the source sits on SCREEN, not by its absolute map position. This
         // runs every frame for SP, net, AND spectator -- update() is skipped on the
         // net/spectator path, so the listener can't live there.
         float zm = std::max(mapView_.zoom(), 1e-3f);
+        // Listener at the centre of the VISIBLE viewport, which the panel shifts
+        // off the window centre.
         float halfW = (mapViewW(winW) / 2.0f) / zm, halfH = (winH / 2.0f) / zm;
-        sounds_.setListener(mapView_.offX() + halfW, mapView_.offY() + halfH, halfW, halfH);
+        sounds_.setListener(mapView_.offX() + mapViewCx(winW) / zm,
+                            mapView_.offY() + halfH, halfW, halfH);
     }
 
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,

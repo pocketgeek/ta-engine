@@ -1051,6 +1051,33 @@ virtual clock outruns the corpse window. A corpse is only in `corpsePhase` betwe
 already reports `deadFor=1023.5`. Use a SHORT `--time` (5-8) to land inside the
 window.
 
+### The in-game HUD was half-converted to TA's layout
+
+`guiPanelRect()` had already been moved to TA's shape — the command panel is a
+128x352 strip whose root sits at (0,128), flush LEFT, with the minimap in the
+128x128 above it (`ARMGEN.GUI`'s HEADER, and `ARMMAIN`/`ARMCOM1`/... all agree).
+But everything AROUND it still assumed Kingdoms' right-hand panel, so the two
+layouts fought:
+
+* `mapViewW(winW) = winW - cmdPanelW()` shrank the world viewport from the
+  RIGHT while the panel drew on the LEFT — so the panel overlaid the map and an
+  equally wide strip of the map was simply never used.
+* The minimap sat at `winW - miniSize() - 10` (top right).
+* A solid chrome strip was filled at `{mapViewW, 0, winW - mapViewW, …}`, which
+  after the viewport moved painted a band straight over the map's right third.
+* The stats readout measured "the dead strip" from the right edge too.
+
+Now: `mapViewX()` is the panel width and the world viewport runs from there to
+the window's right edge; the minimap is fitted to the map's aspect inside the
+top-left 128x128 box; the chrome strip is the left column; and the stats readout
+fills the genuine gap under the minimap (which exists because a non-square map
+does not fill its square box).
+
+The world is still DRAWN across the whole window and merely clipped to that
+rect. Giving the draw a real origin would have meant touching all 42 direct
+`mapView_.offX()` transforms in the renderer plus mouse picking; clipping costs
+only the sliver hidden behind the panel.
+
 ### The main menu was a black screen
 
 The first thing a TA player saw, and it drew nothing at all.

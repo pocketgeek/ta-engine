@@ -167,7 +167,7 @@
             draggingMinimap_ = true;   // camera follows the drag until release
             trackSel_ = false;
         } else if (e.type == SDL_MOUSEBUTTONDOWN &&
-                   e.button.x > mapViewW(winW) && e.button.y < winH - barH()) {
+                   e.button.x < mapViewX() && e.button.y < winH - barH()) {
             // Right-hand panel press. A right-click on the minimap orders the
             // selection to that world point; every other panel press is swallowed
             // so it can't start a box-select or drop an order on the map. (Only the

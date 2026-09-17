@@ -415,7 +415,13 @@
             if (h > vh) { h = vh; w = vh / aspect; }
             return {(vw - w) * 0.5f, (vh - h) * 0.5f, w, h};
         }
-        return {float(winW) - miniSize() - 10, 10, float(miniSize()), float(miniSize()) * aspect};
+        // Retail's minimap is the 128x128 square at the TOP LEFT, directly above
+        // the command panel whose root sits at (0,128). Fit the map's own aspect
+        // inside that box and centre it, rather than stretching a 2:1 map square.
+        const float box = 128.0f * guiS();
+        float w = box, h = box * aspect;
+        if (h > box) { h = box; w = box / aspect; }
+        return {(box - w) * 0.5f, (box - h) * 0.5f, w, h};
     }
 
     void GameView::buildMinimap() {
@@ -460,15 +466,21 @@
     void GameView::drawStatsPanel(int winW, int winH) {
         if (!statsPanel_ || !hudFont_.ok()) return;
 
-        // WHERE THE GAP IS. The right strip holds the minimap at the top and the command
-        // panel at the bottom; everything between them is the black space this fills.
-        // Both edges move: the minimap is as tall as the map's aspect makes it, and the
-        // command panel is anchored to the bottom bar and scaled by guiS(). So measure
-        // them rather than assuming a layout -- a hard-coded gap would overlap the
-        // command panel on a tall map, or float in mid-strip on a wide one.
+        // WHERE THE GAP IS. The LEFT column holds the minimap at the top and the
+        // command panel below it; the space between them is what this fills. That
+        // gap exists because the minimap is fitted to the MAP's aspect inside its
+        // 128x128 box, so anything but a square map leaves room under it.
+        //
+        // (It used to fill a strip down the right-hand edge, which was Kingdoms'
+        // layout. TA's panel is on the left and the world viewport now runs to the
+        // window's right edge, so filling a right strip painted a black band over
+        // the map.)
+        //
+        // Both edges move -- the minimap by the map's aspect, the panel by guiS()
+        // -- so measure them rather than assuming.
         const float pad = std::max(4.0f, 6.0f * uiScale_);
-        float x0 = float(mapViewW(winW)) + pad;
-        float x1 = float(winW) - pad;
+        float x0 = pad;
+        float x1 = float(mapViewX()) - pad;
         // TAB (full-screen radar) moves the minimap out of the strip entirely and over
         // the world viewport, so the strip is free all the way to the top.
         float top = pad;
@@ -480,9 +492,8 @@
         // bottom bar. A spectator gets neither, so the strip runs to the window edge.
         float bot = spectating_ ? float(winH) - pad : float(winH) - barH() - pad;
         if (!spectating_) {
-            int mi = guiIdx("UnitMenu");
-            if (mi >= 0 && mi < int(gui_.gadgets.size()))
-                bot = guiCmdRect(gui_.gadgets[size_t(mi)]).y - pad;
+            SDL_FRect pr = guiPanelRect();
+            if (pr.h > 0) bot = pr.y - pad;
         }
         float availW = x1 - x0, availH = bot - top;
         if (availW <= 8 || availH <= 4) return;
@@ -647,7 +658,7 @@
         float wx, wz;
         if (!minimapToWorld(mx, my, winW, winH, wx, wz)) return false;
         float zm = mapView_.zoom();   // centre the clicked point in the map viewport
-        mapView_.setOffset(wx - mapViewW(winW) / zm / 2,
+        mapView_.setOffset(wx - mapViewCx(winW) / zm,
                            wz - (winH - int(barH())) / zm / 2);
         return true;
     }

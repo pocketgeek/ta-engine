@@ -91,12 +91,12 @@
         // Everything world-space (map, units, effects, bars) is clipped to the map
         // viewport so it never bleeds under the right-hand panel.
         int mvw = mapViewW(winW);
-        SDL_Rect worldClip{0, 0, mvw, winH};
+        SDL_Rect worldClip{mapViewX(), 0, mvw, winH};
         SDL_RenderSetClipRect(ren_, &worldClip);
         mapView_.setUnderlay(miniTex_);   // low-res gap filler (null until the overview bakes)
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
-            mapView_.draw(mvw, winH);
+            mapView_.draw(winW, winH);
             profTerrainMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
                               (double(SDL_GetPerformanceFrequency()) / 1000.0);
         }
@@ -1159,7 +1159,7 @@
         // Restore the un-shaken camera so the HUD/panel stays rock-steady.
         if (shaking) mapView_.setOffset(shakeBaseX, shakeBaseY);
 
-        // Done with world-space: drop the clip and draw the right-hand panel and
+        // Done with world-space: drop the clip and draw the LEFT-hand panel and
         // its minimap + order column on a solid strip (never over the map).
         SDL_RenderSetClipRect(ren_, nullptr);
         // Neutral panel strip behind the minimap (kept for spectators too -- it's plain
@@ -1171,7 +1171,12 @@
         // InfoPanel bar; a spectator has no bottom bar, so it must reach the
         // bottom edge (else a barH()-tall gap shows under the right panel).
         float stripH = spectating_ ? float(winH) : float(winH) - barH();
-        SDL_FRect panelStrip{float(mvw), 0, float(winW - mvw), stripH};
+        // TA's chrome column is the LEFT edge -- minimap on top, command panel
+        // below. This strip used to be laid out against the right edge, which is
+        // where Kingdoms put its panel; after the world viewport moved to the
+        // right of the panel that strip painted a solid band straight over the
+        // map's right-hand third.
+        SDL_FRect panelStrip{0, 0, float(mapViewX()), stripH};
         SDL_RenderFillRectF(ren_, &panelStrip);
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
