@@ -1099,11 +1099,27 @@ scripted kills, not from combat.
 
 The units are fine on paper: `armpw` carries its EMG at range 180 against a
 `corak` 130 away, both sides armed, `world_.allied(0,1)` false. Neither ever
-sets `justFired`. Target acquisition is gated on `losBetween`, which the nav
-overlay drives, so the likely cause is the local harness's world setup rather
-than the combat code — the MP path fights perfectly well, concluding all-AI
-matches with kills. Not chased further; recorded so the next person does not
-trust the harness for combat.
+sets `justFired`.
+
+**Real play is NOT affected, and that is checked rather than assumed.** A
+single-player game auto-launches a private local server and plays through the MP
+path (`main.cpp`: the launch is gated on `!localHarness`), which is the path that
+concludes all-AI matches with kills. Only the dev harnesses — `--firetest`,
+`TA_FFA`, `--navy` and friends — build their world by hand.
+
+Ruled out so far, each by measurement rather than reasoning: the units are armed
+and enemies; the leash anchor is set correctly by `spawn()` and does not bind a
+unit that has an order; and adding the two calls the harness was missing
+(`buildNavClasses` + `setPathService`, below) did NOT fix it. The chase stopped
+there, because the cost had outrun the value of a dev-only path. Recorded so the
+next person does not trust this harness for combat, and does not re-walk the
+three dead ends.
+
+The harness does now make those two calls, on their own merit rather than as a
+fix: `setupMatch` makes them after `setTerrain` for every real game — one nav
+grid per movement class, plus retail's background pathfinder — and a harness
+whose world is built differently from a real game's is worth less than one
+whose isn't.
 
 ### Does the AI fight? Yes — and a tuning "fix" that measured as noise
 

@@ -370,6 +370,13 @@ public:
         world_.setTerrain(mapView_.map().heights, mapView_.map().width,
                           mapView_.map().height, mapView_.map().seaLevel,
                           &mapView_.map().features);
+        // The same two calls setupMatch makes after setTerrain, and for the same
+        // reasons: one nav grid per movement class (navFor falls back to the
+        // legacy domain grids without them), and retail's background pathfinder.
+        // The dev harnesses built their world by hand and skipped both, which is
+        // one concrete way this path differed from every real game.
+        world_.buildNavClasses(registry_);
+        world_.setPathService(true);
         ta::sim::registerMapFeatures(world_, mapView_.map(), vfs_, &registry_);
         loadFeatures();
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
