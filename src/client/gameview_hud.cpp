@@ -1479,8 +1479,6 @@ namespace {
             } else if (u) {
                 bar(guiIdxLeft("HealthBar"), u->hp / std::max(1.0f, float(u->type->maxHp)),
                     {210, 70, 60, 255});
-                if (u->type->maxMana > 0)
-                    bar(guiIdxLeft("ManaBar"), u->mana / u->type->maxMana, {90, 150, 255, 255});
             }
             // KillCount (4b28e8..4b2909): the unit's own kills, beside its bars, only
             // for this player's unit and only once it has one. A watcher (spectator or
@@ -1545,7 +1543,7 @@ namespace {
         v.reserve(selection_.size());
         for (int id : selection_)
             if (const UnitR* u = frameUnitP(id); u && u->alive() && u->type)
-                v.push_back({u->hp, float(u->type->maxHp), u->mana, u->type->maxMana});
+                v.push_back({u->hp, float(u->type->maxHp), 0.0f, 0.0f});
         return ta::selportraits::total(v);
     }
 

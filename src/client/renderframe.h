@@ -338,7 +338,6 @@ struct Frame {
 
     std::vector<ta::sim::Projectile> projectiles;
     std::vector<ta::sim::FlameShot> flames;
-    std::vector<ta::sim::World::Storm> storms;   // roaming wandering-weapon hazards
     std::vector<ta::sim::World::HitFx> hits;   // weapon impacts this tick (cosmeticStep FX)
     int winningTeam = -1;                // world_.winningTeam() (victory overlay)
     ta::sim::RetailWind wind;

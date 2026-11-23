@@ -7134,10 +7134,6 @@
                 if(flameInViewport(ta::retailFlameParticlePoint(particle.position)))
                     add(FxKind::Flame,&particle,0,float(particle.position[0]>>16),float(particle.position[2]>>16));
         }
-        // Wandering storms, at their foot.
-        for(const auto& st:frame.storms)
-            if(st.w && (noFog_ || cellVisibleR(st.x.toFloat(),st.z.toFloat())))
-                add(FxKind::Storm,&st,0,st.x.toFloat(),st.z.toFloat());
         // Hitscan bolts: a model or sprite where its head is; a drawn bolt at its
         // southern end, so it is over the unit at either end of it.
         for(const auto& b:beams_) {
@@ -7311,7 +7307,6 @@
 #endif
             return;
         }
-        case FxKind::Storm: drawFxStorm(*static_cast<const ta::sim::World::Storm*>(item.p)); return;
         case FxKind::Beam:
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_ADD);
             drawFxBeam(*static_cast<const BeamFx*>(item.p));
@@ -7534,39 +7529,6 @@
         }
     }
 
-    // Wandering storms. These are roaming hazards with their own three-part
-    // animation (wanderstartart while it spins up, wanderloopart while it roams);
-    // without it a Tornado or a god's vortex tears through an army invisibly.
-    void GameView::drawFxStorm(const ta::sim::World::Storm& st) {
-        const float zm = mapView_.zoom();
-        if (!st.w) return;
-        if (!noFog_ && !cellVisibleR(st.x.toFloat(), st.z.toFloat())) return;
-        using Phase=ta::sim::World::Storm::Phase;
-        if(st.phase==Phase::Waiting || !st.animation.active)return;
-        const std::string& artName=st.phase==Phase::Starting ? st.w->wanderStart :
-            st.phase==Phase::Ending ? st.w->wanderEnd : st.w->wanderLoop;
-        if(artName.empty())return;
-        const EffectAnim* ea=effectFor(artName);
-        if(!ea || st.animation.frame>=ea->frames.size())return;
-        const size_t fi=st.animation.frame;
-        const auto& fr = ea->frames[fi];
-        // Native 52fd00 refreshes terrain Y at draw time, then projects
-        // signed whole coordinates. Keep that refresh local to rendering:
-        // client visibility must not mutate deterministic simulation state.
-        const auto& terrain=mapView_.map();
-        const int height=terrain.heights.empty() ? 0 : ta::sim::retailTerrainHeight(
-            st.x.v,st.z.v,terrain.width,terrain.height,[&](int x,int z) {
-                return terrain.heights[size_t(z)*size_t(terrain.width)+size_t(x)];
-            });
-        const int x=st.x.v>>16,z=st.z.v>>16;
-        float sx = (float(x) - mapView_.offX()) * zm;
-        float sy = (float(z-(height>>1)) - mapView_.offY()) * zm;
-        float fw = float(fr.w) * zm, fh = float(fr.h) * zm;
-        // Anchored at the storm's FOOT: these sprites are tall columns whose
-        // anchor sits near the base, so the funnel stands on the ground.
-        SDL_FRect dst{sx - float(fr.ax) * zm, sy - float(fr.ay) * zm, fw, fh};
-        SDL_RenderCopyF(ren_, fr.tex, nullptr, &dst);
-    }
 
     // Hitscan flashes. A Line-of-Sight weapon applies its damage instantly and
     // spawns no projectile, so this bolt IS the shot: without it the King's

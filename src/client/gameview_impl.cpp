@@ -813,7 +813,7 @@
         shakeTime_ = 0;
         anims_.clear();unitType_.clear();birthFx_.clear();
         beams_.clear();effects_.clear();explosionGlows_.clear();rings_.clear();particles_.clear();
-        detachedPieces_.clear();bloodStains_.clear();nimbusEffects_.clear();stormsSeen_.clear();
+        detachedPieces_.clear();bloodStains_.clear();nimbusEffects_.clear();
         pointParticles_.clear();damageFlames_.clear();smokeSprites_.clear();featureSmokeSprites_.clear();
         smokeOwners_.clear();featureSmokeOwners_.clear();
         effectVisibility_.reset();
@@ -1155,7 +1155,7 @@
         s.gen = fb.gen;
         s.id = u.id; s.type = u.type; s.player = u.player;
         if (s.scenarioName != u.scenarioName) s.scenarioName = u.scenarioName;
-        s.hp = u.hp.toFloat(); s.mana = u.mana; s.veteran = u.veteran; s.kills = u.kills;
+        s.hp = u.hp.toFloat(); s.mana = 0; s.veteran = u.veteran; s.kills = u.kills;
         s.deadFor = u.deadFor < 0 ? -1.0f : float(u.deadFor) / 30.0f;   // ticks -> seconds
         s.inTransport = u.inTransport; s.squad = u.squad; s.stance = u.stance; s.outputStance = u.outputStance;
         s.standingOrder = u.standingOrder;
@@ -1416,7 +1416,6 @@
         }
         fb.flames=world_.flames();
         fb.projectiles = world_.projectiles();   // sim push_back/erase each tick -> must copy
-        fb.storms = world_.storms();             // ditto: the viewer draws these
         fb.hits = world_.hits();                  // weapon impacts this tick (cleared next tick)
         // ...and queue them for the render as well, so impacts survive a skipped
         // snapshot (see hitQueue_). Oldest out first when the renderer is so far
@@ -1691,18 +1690,6 @@
         lastCosmeticGen_ = front().gen;
         // Weapon impacts this tick: play each weapon's soundhitclass, picking the
         // material-specific variant from the struck unit's bodytype (flesh/armor/..).
-        // A storm announces itself once. Its ending animation and movement now
-        // remain in the authoritative storm rather than a detached effect.
-        if (newTick_) {
-            std::unordered_map<int, StormTrack> live;
-            for (const auto& st : front().storms) {
-                auto prev = stormsSeen_.find(st.id);
-                if (prev == stormsSeen_.end() && st.w && !st.w->soundHit.empty())
-                    sounds_.playWorld(st.w->soundHit, st.x.toFloat(), st.z.toFloat());
-                live.emplace(st.id, StormTrack{st.x.toFloat(), st.z.toFloat(), st.w});
-            }
-            stormsSeen_ = std::move(live);
-        }
         // A mission script asking for a camera shake: fire on the sequence edge.
         if (newTick_) {
             const auto& sr = front().shakeReq;     // snapshot, not live world_
@@ -2515,23 +2502,11 @@
         for (float t = 0; t < seconds; t += 1.0f / 30.0f) {
             update(1.0f / 30.0f);
             if (ta::devFlag("TA_CONJURE_TEST") ||
-                ta::devFlag("TA_PROJECTILE_CAPTURE") || ta::devFlag("TA_NIMBUS_CAPTURE") ||
-                ta::devFlag("TA_STORM_CAPTURE")) {
+                ta::devFlag("TA_PROJECTILE_CAPTURE") || ta::devFlag("TA_NIMBUS_CAPTURE")) {
                 beginFrame();
                 cosmeticStep(1.0f / 30.0f);
                 animFrame(1.0f / 30.0f);
                 endFrame();
-            }
-            if (const char* phase=ta::devEnv("TA_STORM_CAPTURE")) {
-                for(const auto& storm:world_.storms()) if(int(storm.phase)==std::atoi(phase)) {
-                    int width=0,height=0;SDL_GetRendererOutputSize(ren_,&width,&height);
-                    mapView_.setOffset(storm.x.toFloat()-float(mapViewW(width))*0.5f/mapView_.zoom(),
-                        storm.z.toFloat()-float(height-barH())*0.5f/mapView_.zoom());
-                    std::printf("storm capture: tick=%u phase=%d frame=%u at=%.1f,%.1f\n",
-                        world_.tickCount(),int(storm.phase),unsigned(storm.animation.frame),
-                        storm.x.toFloat(),storm.z.toFloat());
-                    paused_=true;return;
-                }
             }
             if (ta::devFlag("TA_NIMBUS_CAPTURE")) {
                 for (const auto& [id, effect] : nimbusEffects_)
@@ -4142,8 +4117,8 @@
                     return false;
                 });
                 return true;
-            case ta::Act::SelectMagic:   // casters carry a personal mana pool
-                selectOwned([](const UnitR& u){ return u.type->maxMana > 0 && u.type->canMove; });
+            case ta::Act::SelectMagic:   // Kingdoms casters; TA has none
+                selectOwned([](const UnitR&){ return false; });
                 return true;
             case ta::Act::SelectBoats:
                 selectOwned([](const UnitR& u){

@@ -5,7 +5,6 @@
 #include "sim/retailanimationqueries.h"
 #include "sim/retailaim.h"
 #include "sim/retailhweffectdata.h"
-#include "sim/retailstorm.h"
 #include "sim/retailguided.h"
 #include "sim/retailinstantcorpse.h"
 #include "sim/retailsplash.h"
@@ -369,8 +368,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 ? (int32_t(info->numberOr("selfdestructcountdown", 5)) & 7) : 5;
             t.radar = float(info->numberOr("radardistance", 0));
             t.noVeteran = info->numberOr("noveteran", 0) != 0;
-            t.maxMana = float(info->numberOr("maxmana", 0));
-            t.manaRegen = float(info->numberOr("manarechargerate", 0));
             t.builderLimited = info->numberOr("builderlimited", 0) != 0;
             t.canGuard = info->numberOr("canguard", 0) != 0;
             t.canPatrol = info->numberOr("canpatrol", 0) != 0;
@@ -857,7 +854,6 @@ int World::spawn(const UnitType* type, float x, float z, std::optional<float> he
     // default 0), a script's SetAttribute (4d3eb9), regeneration once complete
     // and ManaMe fill it (check_new_unit_mana.py). The HP samples +0x110/+0x111
     // the death severity reads start at 0 (511b40).
-    u.mana = 0;
     u.hpPct1s = 0; u.hpPctCur = 0;
     // 511990 clears the activation byte +0x114; only activateBuilt sets it.
     u.active = false;
@@ -1004,7 +1000,6 @@ void World::compactRetiredUnits() {
     for(const auto& p:projectiles_) {referenced.insert(p.fromId);referenced.insert(p.targetId);}
     for(const auto& f:flames_)referenced.insert(f.fromId);
     for(const auto& e:pendingEffects_)referenced.insert(e.fromId);
-    for(const auto& storm:storms_)referenced.insert(storm.fromId);
     for(const auto& blast:deathBlasts_)referenced.insert(blast.fromId);
     size_t write=0;
     TA_PASS();
@@ -6341,27 +6336,6 @@ bool World::switchWeaponSlot(Unit& u,int slot,bool fromCommand) {
     return true;
 }
 
-float World::manaShotCost(const Unit& u,int slot) {
-    return u.type->weapons[size_t(slot)].manaCost/(u.type->noVeteran ? 1.0f : u.vetMul());
-}
-
-// 52af6c..52afa1, after the release (530220) has paid: from the slot that
-// fired, step down while the slot's cost is above the mana left; a lower
-// slot that differs is selected (51a8b0). It lands on the highest cheaper
-// slot it can afford, or on slot 0 when none is (a dearer slot in between
-// is skipped, an unaffordable slot 0 is still taken), and slot 0 never
-// switches. It reads no mission and no owner: a player's switcher falls
-// back as an AI's does, at a point or a unit. A unit firing all its slots
-// (no weaponswitching, 511a4f's selector 3) never switches. No mana pool:
-// World's readiness lets such a unit fire for free (tickScriptWeapon), so it
-// has nothing to fall back from.
-void World::manaFallback(Unit& u,int slot) {
-    if (!u.type->weaponSwitching || slot!=u.weaponSlot || u.type->maxMana<=0) return;
-    int s=slot;
-    while (s>0 && double(manaShotCost(u,s))>u.mana) --s;
-    if (s!=slot) switchWeaponSlot(u,s,false);
-}
-
 void World::setStance(int unitId, int stance) {
     Unit* u = unit(unitId);
     if (!u || !u->alive()) return;
@@ -6933,11 +6907,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
     // negative (readiness, 52fff0, already asked for the cost). A shot with
     // no script has no readiness, so it waits here (reload not consumed, so it
     // fires the moment it can).
-    if (w.manaCost > 0 && u.type->maxMana > 0) {
-        const float cost=manaShotCost(u,slot);
-        if (!scriptTriggered && u.mana < cost) return false;
-        if (double(cost) <= u.mana) u.mana -= cost;
-    }
     // TA: a weapon fires only when storage holds both energypershot and
     // metalpershot, which are then taken at once (docs/retail-economy.md).
     if (!econPayShot(u, w)) return false;
@@ -8304,8 +8273,6 @@ void World::tickFireSweep(int player) {
                         for (int o=0;o<int(std::min<size_t>(3,u->type->weapons.size())) && !found;++o) {
                             if (o==s || !(u->slotAuto>>o&1)) continue;
                             const Weapon& ow=u->type->weapons[size_t(o)];
-                            const float cost=ow.manaCost/(u->type->noVeteran ? 1.0f : u->vetMul());
-                            if (cost>=0.01f && double(cost)>u->mana) continue;
                             if (ow.cursorAirstrike || ow.commandFire) continue;
                             if (const int other=retailSelectTarget(*u,o,true)) {
                                 dropSlotTarget(*u,s);
@@ -8352,7 +8319,7 @@ void World::tickSlotWeapons(Unit& u) {
         const Weapon& w=u.type->weapons[size_t(s)];
         if (u.reloads[size_t(s)]>0) continue;
         if (facing && std::abs(bamDiff(desired,u.heading))>std::max(512,int(uint16_t(w.aimTol)))) continue;
-        if (fire(u,*t,s)) manaFallback(u,s);
+        fire(u,*t,s);
     }
     if (!aiming) { u.faceRequest=-1;return; }
     // 4d9b6a: the request turns the body only while the navigator is idle.
@@ -8425,7 +8392,6 @@ void World::retailAiWeaponSwitch(Unit& u) {
     // A target the sweep handed an auto slot is fought from where the unit
     // stands; an ordered one is closed on.
     const bool swept=(u.slotAuto>>sel&1)!=0;
-    const float costMult=u.type->noVeteran ? 1.0f : u.vetMul();
     RetailWeaponSwitchInput in;
     in.selected=sel;
     in.target=live;
@@ -8434,16 +8400,14 @@ void World::retailAiWeaponSwitch(Unit& u) {
     for (int s=0;s<n;++s) {
         const Weapon& w=u.type->weapons[size_t(s)];
         auto& slot=in.slots[size_t(s)];
-        const float cost=w.manaCost/costMult;
         slot.present=true;
-        slot.affordable=cost<0.01f || double(cost)<=u.mana;
+        slot.affordable=true;   // TA: no per-unit pool; shots are gated by stored E/M
         slot.aoe=int32_t(uint16_t(w.aoe));
         slot.mindControl=w.mindControl;
         slot.damage=w.damage;
         const bool stone=w.status==Weapon::Status::Stoned,freeze=w.status==Weapon::Status::Frozen;
         const bool paralyzer=w.dmgType==4;
-        slot.costlyOrSpecial=stone || freeze || w.mindControl || paralyzer || slot.aoe>=200 ||
-            double(u.type->maxMana)*0.1<double(cost);
+        slot.costlyOrSpecial=stone || freeze || w.mindControl || paralyzer || slot.aoe>=200;
         if (live) {
             // 40f50e..40f5ea / 40f7b8..40f8ab: a stone, freeze or charm class
             // is no use on a type immune to it or on a target with
@@ -8481,8 +8445,7 @@ void World::retailAiWeaponSwitch(Unit& u) {
     if (live) {
         auto serves=[&](int s) {
             const Weapon& w=u.type->weapons[size_t(s)];
-            const float cost=w.manaCost/costMult;
-            return (cost<0.01f || double(cost)<=u.mana) && aiSlotServes(u,w,*target,s,swept) &&
+            return aiSlotServes(u,w,*target,s,swept) &&
                 (s==0 || in.slots[size_t(s)].usable);
         };
         if (!serves(pick<0 ? sel : pick)) {
@@ -8622,7 +8585,7 @@ void World::fireBehindStepOut(Unit& u) {
         if (tickScriptWeapon(u,*target,sl)) return;
         if (u.reloads[size_t(sl)]>0) return;
         if (sw.kind!=Weapon::Kind::Dropped && std::abs(diff)>=std::max(sw.aimTol,int32_t(0.03f/kCobAngle))) return;
-        if (fire(u,*target,sl)) manaFallback(u,sl);
+        fire(u,*target,sl);
     };
     if (allWeapons) for (int sl=0;sl<int(u.type->weapons.size());++sl) tryFire(sl);
     else tryFire(slot);
@@ -9143,12 +9106,12 @@ void World::tickCombat(Unit& u, float /*dt*/, bool& groundMovementHandled) {
         // a hovering flyer with momentum could otherwise almost never satisfy).
         if (!u.type->isStructure() && sw.kind != Weapon::Kind::Dropped &&
             std::abs(diff) >= std::max(sw.aimTol, int32_t(0.03f / kCobAngle))) return;
-        if (fire(u, *target, sl)) manaFallback(u, sl);
+        fire(u, *target, sl);
     };
     if (aimHeld) return;
     // 52ae90 runs the weapons before the missions and the mover.
     forEachSlot(tryFire);
-    // A mana fallback (manaFallback) may have switched the slot: the
+    // A weapon switch may have changed the slot: the
     // missions' heads read 519ac0 on this dispatch.
     if (u.type->weaponSwitching && slot!=u.weaponSlot && u.weaponSlot<int(u.type->weapons.size())) {
         slot=u.weaponSlot;
@@ -9267,7 +9230,7 @@ void World::tickPointWeapons(Unit& u) {
         const Weapon& w=u.type->weapons[size_t(s)];
         if (u.reloads[size_t(s)]>0) continue;
         if (facing && std::abs(bamDiff(desired,u.heading))>std::max(512,int(uint16_t(w.aimTol)))) continue;
-        if (fire(u,t,s)) manaFallback(u,s);
+        fire(u,t,s);
     }
 }
 
@@ -9295,7 +9258,7 @@ void World::tickAttackWalkWeapons(Unit& u,Unit& target) {
         if (tickScriptWeapon(u,target,s,false,solution ? &*solution : nullptr)) continue;
         if (u.reloads[size_t(s)]>0) continue;
         if (facing && std::abs(bamDiff(desired,u.heading))>std::max(512,int(uint16_t(w.aimTol)))) continue;
-        if (fire(u,target,s)) manaFallback(u,s);
+        fire(u,target,s);
     }
 }
 
@@ -9865,7 +9828,6 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     u.scenarioName.clear();   // 511990 zeroes the name pointer +4 (51f4c0's)
     u.frozenFor = u.stonedFor = u.paralyzedFor = 0;
     u.cloakOn = u.type->initCloaked; u.cloakBlockedUntil = 0;   // 511c77
-    u.mana = 0;
     u.selectable = true;   // 511b21: a new object is selectable, whatever its script did
     u.hpPct1s = u.hpPctCur = 0;
     u.healCarry = 0;
@@ -10085,7 +10047,6 @@ void World::missionKillAll() {
     std::erase_if(projectiles_, [&](const Projectile& p) { return killed.contains(p.fromId); });
     std::erase_if(flames_, [&](const FlameShot& f) { return killed.contains(f.fromId); });
     std::erase_if(pendingEffects_, [&](const PendingEffect& e) { return killed.contains(e.fromId); });
-    std::erase_if(storms_, [&](const Storm& s) { return killed.contains(s.fromId); });
 }
 
 // Stamp every PARKED ground unit into the occupancy layer. O(n), one cell each:
@@ -16305,16 +16266,8 @@ void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
             }
             break;
         }
-        case PowerCode::ManaMe: {
-            // 426390: mana += 999999.0f, clamped to the type's maximum, on each of the
-            // typer's selected units (one command per unit); units without a
-            // personal pool are unchanged.
-            Unit* u=unit(unitId);
-            if (!u || !u->alive() || !u->type || u->player!=player || u->underConstruction ||
-                u->type->maxMana<=0) break;
-            u->mana=double(std::min(float(u->mana)+999999.0f,u->type->maxMana));
-            break;
-        }
+        case PowerCode::ManaMe:
+            break;   // Kingdoms' per-unit mana cheat: TA units have no pool
         case PowerCode::DoubleShot:
             damageMode_=damageMode_==DamageMode::Double ? DamageMode::Normal : DamageMode::Double;
             break;
@@ -17740,8 +17693,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         // only queues its thread; the following unit-script phase runs its body.
         it->state().startArguments(file,aimScript,{aimHeading,aimPitch,uint32_t(slot),0},3);
     }
-    const bool available=u.reloads[slot]==0 &&
-        (u.type->maxMana<=0 || u.mana>=manaShotCost(u,slot));
+    const bool available=u.reloads[slot]==0;
     if(isLegionPathfinding(pathfindingMode_) && !u.type->canFly && !u.type->isStructure())
         legionAimStall(u,slot,available);
     // Native readiness (52fff0) compares the body heading with the mover's
@@ -17785,7 +17737,6 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         fire(u,t,slot,true);
         aim.projectileCreated();
         // 52af72: the fallback follows every release, shot or no shot.
-        manaFallback(u,slot);
     }
     return true;
 }
@@ -20085,10 +20036,6 @@ void World::tick(float dt) {
                                        retailInverseBuildTime(u.type->buildTime), maxHp), maxHp);
             u.hp = fxMin(Fixed::fromInt(int32_t(maxHp)), u.hp + Fixed::fromInt(int32_t(healed) - whole));
         }
-        // 401160: a pool regains ManaRechargeRate only once the unit is complete
-        // (+0x108 == 0); one being built stays as made, empty.
-        if (u.type->maxMana > 0 && u.mana < u.type->maxMana && !u.underConstruction)
-            u.mana = std::min(double(u.type->maxMana), u.mana + double(u.type->manaRegen) * double(dt));
         // Self-destruct (Ctrl+D): NOT an explosion. Its mission (4017e0, the
         // handler behind UNITMISSIONCODE_SELFDESTRUCT) runs in the background
         // list (4d85e0, after self-repair 429d90, the pool 401160 and the
@@ -20251,28 +20198,10 @@ void World::tick(float dt) {
                   u.homeZ.toFloat() + detmath::cos(ang) * r, false);
         }
 
-        // Cloaking spends the UNIT'S OWN mana, never the player's store (icd
-        // 0x401160, after the regeneration above: 0x4010d0 on unit +0xd8, so it
-        // never shows in the mana bulb). A tick costs cloakcost/30, or
-        // cloakcostmoving/30 while the unit's MoveRate tier (+0x130 bits 2-3,
-        // set by 4db350 after its mover) is not 0 -- moving or turning; a unit
-        // whose pool cannot pay it decloaks and may not cloak again for 90
-        // ticks (+0xcc = max(+0xcc, now + 90)), then retries while the order
-        // stands. Shots, construction, repair, reclaim and revive work set
-        // +0xcc too (blockCloak). Nothing else decloaks: retail reads
-        // mincloakdistance only to draw a circle round a cloaked unit (0x4d6530,
-        // under the renderer 0x4fc5b0), and the +0x130 & 0x400 veto it tests
-        // has no writer.
+        // TA pays the cloak from stored energy at each player settle (taSettle,
+        // docs/retail-economy.md section 2); here only work decloaks at once.
         if (u.type->canCloak && u.cloakOn) {
-            const UnitScript* script = unitScript(u.id);
-            const bool moving = script ? script->movementRate != 0 : u.speed.v != 0;
-            const float cost = (moving ? u.type->cloakCostMove : u.type->cloakCost) * dt;
             if (u.cloakBlockedUntil > tickCounter_) u.cloaked = false;
-            else if (double(cost) <= u.mana) { u.mana -= double(cost); u.cloaked = true; }
-            else {
-                u.cloakBlockedUntil = std::max(u.cloakBlockedUntil, tickCounter_ + 90u);
-                u.cloaked = false;
-            }
         } else if (u.cloaked) {
             u.cloaked = false;   // toggled off (or no longer a cloaker): decloak now
         }
@@ -20688,69 +20617,6 @@ void World::tick(float dt) {
         if (pulse && cur.w) applyHit(*cur.w, cur.x.toFloat(), cur.z.toFloat(), cur.player, cur.fromId, nullptr,
                                      {}, std::array<int32_t,3>{cur.x.v, cur.y.v, cur.z.v});
     }
-    // Wandering storms: drift along the launch heading, weave, and grind whatever
-    // they touch. The FBI `damage` is a PER-TICK rate, not a per-hit figure -- the
-    // Tornado's 50 is 1500/sec inside its small radius (it wears a unit down over
-    // its 9 seconds), while a god vortex's 12500 is simply death to stand in, which
-    // its `monarch = 0.01` row scales back so a Monarch has a few seconds to escape.
-    for (size_t i = 0; i < storms_.size();) {
-        Storm& s = storms_[i];
-        if (!s.w) { storms_.erase(storms_.begin() + std::ptrdiff_t(i)); continue; }
-        auto vary = [&] {
-            for(size_t index=0;index<2;++index) {
-                const size_t axis=index*2;
-                const float amplitude=s.variation[index];
-                const int32_t offset=retailStormInteger(
-                    (retailWanderRandom(s.wanderSeed,amplitude*2)-double(amplitude))*65536.0);
-                s.velocity[axis]=std::bit_cast<int32_t>(uint32_t(s.baseVelocity[axis])+uint32_t(offset));
-            }
-            s.velocity[1]=s.baseVelocity[1];
-        };
-        auto activate = [&] {
-            s.phase=Storm::Phase::Active;s.animation.start(s.w->wanderLoopTicks);
-            s.end=tickCounter_+uint32_t(s.w->durationTicks);
-            s.nextVary=tickCounter_+uint32_t(s.w->variationTicks);
-            vary();
-        };
-        if(s.phase==Storm::Phase::Waiting) {
-            if(tickCounter_<s.start) {
-                const auto* caster=unit(s.fromId);
-                if(!caster || !caster->alive() || caster->hp<=Fixed()) {
-                    storms_.erase(storms_.begin()+std::ptrdiff_t(i));continue;
-                }
-            } else if(!s.w->wanderStartTicks.empty()) {
-                s.phase=Storm::Phase::Starting;s.animation.start(s.w->wanderStartTicks);
-            } else activate();
-            ++i;continue;
-        }
-        if(s.phase==Storm::Phase::Starting) {
-            s.animation.tick(s.w->wanderStartTicks,false);
-            if(!s.animation.active)activate();
-            ++i;continue;
-        }
-        const bool ending=s.phase==Storm::Phase::Ending;
-        s.animation.tick(ending ? s.w->wanderEndTicks : s.w->wanderLoopTicks,!ending);
-        if(ending && !s.animation.active) {
-            storms_.erase(storms_.begin()+std::ptrdiff_t(i));continue;
-        }
-        // Native integrates each substep without clamping at the map edge.
-        s.x.v=std::bit_cast<int32_t>(uint32_t(s.x.v)+uint32_t(s.velocity[0])*s.substeps);
-        s.y.v=std::bit_cast<int32_t>(uint32_t(s.y.v)+uint32_t(s.velocity[1])*s.substeps);
-        s.z.v=std::bit_cast<int32_t>(uint32_t(s.z.v)+uint32_t(s.velocity[2])*s.substeps);
-        if(!ending) {
-            if(s.nextVary<=tickCounter_) { vary();s.nextVary+=uint32_t(s.w->variationTicks); }
-            const Storm hit=s;
-            applyHit(*hit.w,hit.x.toFloat(),hit.z.toFloat(),hit.player,hit.fromId,nullptr,
-                {},std::array<int32_t,3>{hit.x.v,hit.y.v,hit.z.v});
-            if(s.end<=tickCounter_) {
-                if(s.w->wanderEndTicks.empty()) {
-                    storms_.erase(storms_.begin()+std::ptrdiff_t(i));continue;
-                }
-                s.phase=Storm::Phase::Ending;s.animation.start(s.w->wanderEndTicks);
-            }
-        }
-        ++i;
-    }
     // Drain the [EXPLODEAS] death blasts queued by the sweep above. Done here, after
     // the loop, because applyHit can kill further units (chain-detonating a pack of
     // Kamikaze Rats) and must not mutate units_ while it is being walked. A blast may
@@ -21004,7 +20870,6 @@ void World::hashTrace() const {
                         uint64_t(uint32_t(u.z.v)));
         hUnitPos  = fnv(hUnitPos, uint64_t(uint32_t(u.heading.v)));
         hUnitHp   = fnv(fnv(hUnitHp, u.id), uint64_t(uint32_t(u.hp.v)));
-        if (u.mana != 0) hUnitHp = fnv(hUnitHp, bits64(u.mana));
         if (u.buildStarted) hUnitHp = fnv(hUnitHp, std::bit_cast<uint32_t>(u.buildRemaining));
         if (u.books.indebted())
             hUnitHp = fnv(fnv(hUnitHp, std::bit_cast<uint32_t>(u.books.r[0].debt)),
@@ -21064,11 +20929,7 @@ void World::hashTrace() const {
         hEff = fnv(fnv(fnv(fnv(hEff, uint32_t(e.player)),
                            uint64_t(uint32_t(e.x.v))), uint64_t(uint32_t(e.z.v))),
                    uint64_t(uint32_t(e.at)));
-    uint64_t hStorm = fnv(fnv(seed, uint32_t(stormSeq_)), storms_.size());
-    for (const auto& s : storms_)
-        hStorm = fnv(fnv(fnv(fnv(hStorm, uint32_t(s.player)),
-                             uint64_t(uint32_t(s.x.v))), uint64_t(uint32_t(s.z.v))),
-                     uint64_t(s.end));
+    const uint64_t hStorm = seed;   // Kingdoms wandering storms are gone
     uint64_t hPlayers = seed;
     for (const auto& t : players_)
     {
@@ -21613,7 +21474,6 @@ uint64_t World::stateHash() const {
         mix(u.standingOrder);
         mix(uint64_t((u.cloakOn ? 1u : 0u) | (u.active ? 2u : 0u)));
         // The personal pool gates casting and cloak; a double, so all eight bytes.
-        if (u.mana != 0) { uint64_t b; std::memcpy(&b, &u.mana, 8); mix(0x554d414eu); mix(b); }
         if (u.cloakBlockedUntil) { mix(0x434c4f4bu); mix(u.cloakBlockedUntil); }
         if (u.guardHelpTick) { mix(0x47554152u); mix(u.guardHelpTick); }
         if (u.guardHeard) { mix(0x47484541u); mix(u.guardHeard); }
@@ -21742,21 +21602,6 @@ uint64_t World::stateHash() const {
         mix(uint64_t(uint32_t(e.x.v))); mix(uint64_t(uint32_t(e.z.v)));
         mix(uint64_t(uint32_t(e.at)));   // ticks
         mix(uint64_t(uint32_t(e.y.v)));  // the 3D area pass reads it
-    }
-    mix(uint64_t(uint32_t(stormSeq_)));
-    mix(uint64_t(storms_.size()));
-    for (const auto& s : storms_) {
-        mix(uint64_t(uint32_t(s.player)));
-        mix(uint64_t(uint32_t(s.x.v))); mix(uint64_t(uint32_t(s.z.v)));
-        mix(s.start);mix(s.end);mix(uint32_t(s.phase));
-        mix(s.animation.frame);mix(s.animation.remaining);mix(s.animation.active);
-        mix(uint32_t(s.fromId));mix(uint32_t(s.y.v));mix(s.substeps);
-        for(auto value:s.baseVelocity)mix(uint32_t(value));
-        for(auto value:s.velocity)mix(uint32_t(value));
-        for(auto value:s.variation)mix(std::bit_cast<uint32_t>(value));
-        // The private sampler state, offset and timer decide the storm's path.
-        mix(s.wanderSeed);
-        mix(uint64_t(uint32_t(s.nextVary)));
     }
     for (const auto& t : players_) {
         mix(uint32_t(t.automaticGates) | (uint32_t(t.defensiveAi)<<1) | (uint32_t(t.passiveNeutral)<<2));

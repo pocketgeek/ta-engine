@@ -228,7 +228,6 @@ struct Weapon {
     // of the low one, which is what lets a mortar drop its shell behind a wall.
     float gravityAdj = 1.0f;
     bool lobPreferred = false;      // noairweapon: cannot target flying units
-    float manaCost = 0;      // manapershot: mana drained from the firer per shot
     // FBI damagetype: 1 normal, 2 fire, 3 explosion (gibs -- Killed deathType 3
     // EXPLODEs every piece and leaves no corpse), 4 paralyzer (retail icd
     // 0x531bbd; "monster" and friends map to non-gib codes).
@@ -268,10 +267,6 @@ struct Weapon {
     // read at all; for the other 22 Remote Effects it is dead data.
     std::string shotArt;
     int lightMap = 0;         // lightmap: ground light pool, 1 small 2 medium 3 large
-    // A wandering storm's own three-part animation: the spin-up, the roaming loop,
-    // and the dissipation. Without these a tornado is invisible.
-    std::string wanderStart, wanderLoop, wanderEnd;
-    std::vector<uint16_t> wanderStartTicks, wanderLoopTicks, wanderEndTicks;
     std::string explosionClass;       // explosionclass: impact effect (gamedata/explosions)
     std::string waterExplosionClass;  // waterexplosionclass: impact effect over water
     // Area-effect shockwave rings emitted at this weapon's impact.
@@ -518,13 +513,11 @@ struct UnitType {
     uint8_t landMaxSlope=255;
     int32_t radar = 0;        // radardistance (readInt): fog-reveal radius (separate from sight)
     bool  noVeteran = false;  // noveteran: this unit can never gain veterancy
-    float maxMana = 0;        // per-unit mana pool (casters); 0 = uses no personal mana
-    float manaRegen = 0;      // manarechargerate: personal mana regained per second
     bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
     bool  canResurrect = false;   // canresurrect: can revive nearby corpses
     bool  canCloak = false;       // cancloak
     bool  initCloaked = false;    // init_cloaked: a new unit's cloak order starts on
-    float cloakCost = 0;          // cloakcost: the unit's OWN mana/sec while cloaked and idle
+    float cloakCost = 0;          // cloakcost: energy per second while cloaked and idle (taSettle)
     float cloakCostMove = 0;      // cloakcostmoving: the same while moving (default cloakcost/30)
     int32_t minCloakDist = 0;     // mincloakdistance (readInt): retail only draws it round a cloaked unit
     // FBI fireatwillrandom (icd: UnitDef+0x264 bit 24, parsed at 0x4c0a3a; its ONLY
@@ -1340,7 +1333,7 @@ struct alignas(64) Unit {
     // --- extended runtime state --------------------------------------------
     // DOUBLE, like Player::mana and for the same reason: retail's pools are 64-bit
     // floating point (the affordability check at 0x46e85f subtracts one with `fsubl`).
-    double mana = 0;       // personal mana pool (casters), capped at type->maxMana
+    double layoutPadMana_ = 0;   // was Kingdoms' per-unit mana; kept for the Unit layout asserts
     uint32_t missionEvents = 0; // read by every unit's mission dispatch each tick
     // Experience (+0xf0): the experiencepoints of every unit it killed (512ce0),
     // or an authored level's worth (setLevel 519370). `veteran` is its level.
@@ -2874,8 +2867,6 @@ public:
         // RNG itself is re-seeded for the same reason: replaying from a mid-match
         // stream position diverges from a referee that started fresh.
         pendingEffects_.clear();
-        storms_.clear();
-        stormSeq_ = 0;
         deathBlasts_.clear();
         gameRng_ = initialGameRng_;
         windRng_ = initialWindRng_;
@@ -3423,23 +3414,6 @@ public:
 
     std::vector<Unit>& units() { return units_; }
     const std::vector<Unit>& units() const { return units_; }
-    // A wandering storm (FBI type=wandering): a roaming hazard the VIEWER must
-    // draw, so its state is public like a projectile's. `id` is stable for the
-    // storm's life so the viewer can play its spin-up, loop and dissipation art.
-    struct Storm {
-        const Weapon* w = nullptr;
-        Fixed x = Fixed(), y = Fixed(), z = Fixed();
-        std::array<int32_t,3> baseVelocity{}, velocity{};
-        std::array<float,2> variation{};
-        uint32_t substeps = 1;
-        int player = 0, fromId = 0;
-        int id = 0;
-        enum class Phase { Waiting, Starting, Active, Ending } phase = Phase::Waiting;
-        RetailEffectClock animation;
-        uint32_t start = 0, end = 0, nextVary = 0;
-        uint32_t wanderSeed = 0;
-    };
-    const std::vector<Storm>& storms() const { return storms_; }
     const std::vector<Projectile>& projectiles() const { return projectiles_; }
     const std::vector<FlameShot>& flames() const { return flames_; }
     Unit* unit(int id);
@@ -4216,10 +4190,8 @@ private:
     // routes the clear/switch animations through pendingWeaponAnimations.
     bool switchWeaponSlot(Unit& u,int slot,bool fromCommand);
     // 531ea0: a slot's manapershot over the veteran multiplier (5193c0).
-    static float manaShotCost(const Unit& u,int slot);
     // 52af72..52af9a: after a release, a switcher that cannot pay for its
     // weapon again drops to a cheaper slot.
-    void manaFallback(Unit& u,int slot);
     // 40f411..40fb92: a computer-owned switcher's per-visit weapon choice.
     void retailAiWeaponSwitch(Unit& u);
     // 409a50: the victim's response to a hit -- the AI Monarch block, the
@@ -4598,11 +4570,9 @@ private:
     // Wandering (FBI type=wandering): a storm entity that roams for `duration`,
     // drifting at weaponvelocity and wobbling its heading every `variationtime`.
     // Damages everything it passes on a fixed cadence. Hashed.
-    std::vector<Storm> storms_;
     // Per unit id: the tick and the pace (raw Fixed px a tick) the mover was
     // given, for its Legion headway window. Scratch, rewritten every tick.
     std::vector<std::pair<uint32_t,int32_t>> legionPace_;
-    int stormSeq_ = 0;        // id source, so the viewer can track a storm's life
     bool scoreAutomaticDisabled_=false;
     int scenarioParticipantCount_ = -1; // ninth owner is scenery, never a lobby participant
     std::map<std::string, std::array<int,3>> scenarioTypeStats_;

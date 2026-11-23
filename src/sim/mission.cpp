@@ -422,10 +422,6 @@ int32_t MissionScript::percentHp(const UnitType& t, int32_t pct) {
     return int32_t(uint16_t((uint32_t(t.maxHp) * uint32_t(pct)) / 100u));
 }
 
-double MissionScript::percentMana(const UnitType& t, int32_t pct) {
-    const float v = float(double(t.maxMana) * double(pct) * double(0.01f));
-    return double(v > t.maxMana ? t.maxMana : v);
-}
 
 MissionScript::Point MissionScript::createPoint(const UnitType& t, int x, int z) {
     return {Fixed::fromInt(x * 16 + t.footX * 8), Fixed::fromInt(z * 16 + t.footZ * 8)};
@@ -607,7 +603,6 @@ void MissionScript::doSetAttribute(World& w, const std::string& sub, int unitId,
     if (!u || !World::retailObjectLives(*u)) return;
     float f = float(pct) / 100.0f;
     if (ieq(sub, "healthpercentage"))     u->hp = Fixed::fromInt(percentHp(*u->type, pct));
-    else if (ieq(sub, "manapercentage"))  u->mana = percentMana(*u->type, pct);
     else if (ieq(sub, "armorpercentage")) u->armBuff = f;      // live armour multiplier
     else if (ieq(sub, "attackpercentage")) u->atkBuff = f;
 }

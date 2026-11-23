@@ -637,12 +637,12 @@ void ClassicBrain::planConstructor(const ta::sim::World& world, int slot, std::v
     u.commander = member.commander;
     u.hp = int16_t(unit->hp.floorInt());
     u.maxDamage = int32_t(unit->type->maxHp);
-    u.mana = float(unit->mana);
-    u.maxMana = unit->type->maxMana;
-    if (const auto* w = currentWeapon(*unit)) {
-        // 0x531ea0: mana per shot over the unit's cost multiplier (0x5193c0).
+    // TA units carry no personal mana pool: shots are paid from stored E/M.
+    u.mana = 0;
+    u.maxMana = 0;
+    if (currentWeapon(*unit)) {
         u.weapon = true;
-        u.shotCost = classicShotCost(w->manaCost, unit->type->noVeteran ? 1.0f : unit->vetMul());
+        u.shotCost = 0;
     }
     u.mission = member.mission;
     u.missionClass = member.missionClass;

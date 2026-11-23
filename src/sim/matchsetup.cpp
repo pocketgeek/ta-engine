@@ -1777,7 +1777,6 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                         // gave it (usually 0 -- it must recharge before casting).
                         const int16_t health = int16_t(std::atoi(u.valueOr("healthpercentage", "100").c_str()));
                         su->hp = Fixed::fromInt(MissionScript::percentHp(*t, health));
-                        su->mana = MissionScript::percentMana(*t, int16_t(integer("manapercentage")));
                         // Kills (default 0; 4c8ea6 into the record's word +0x1e,
                         // 514cfb): the unit's own kill count. Every shipped record says 0.
                         su->kills = uint16_t(integer("kills"));

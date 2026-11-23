@@ -518,7 +518,6 @@
                 auto* su=writableWorld().unit(selection_[i]);
                 if (!su || !su->type) continue;
                 if (hurt && i%2==0) su->hp=ta::sim::Fixed::fromFloat(float(su->type->maxHp)*(0.25f+0.1f*float(i%5)));
-                if (hurt && su->type->maxMana>0) su->mana=double(su->type->maxMana)*(i%3==0?0.2:0.9);
                 if (sq) su->squad=int8_t(std::atoi(sq));
             }
             // TA_SELPORTRAITS_ORDERS: the order overlay's still life (shoot it with
@@ -531,7 +530,7 @@
                 for (int id:selection_) {
                     auto* su=writableWorld().unit(id);
                     if (!su || !su->type) continue;
-                    if (su->type->canCloak) {su->cloakOn=true;su->mana=double(su->type->maxMana);continue;}
+                    if (su->type->canCloak) {su->cloakOn=true;continue;}
                     if (!attacker && enemy>=0) {writableWorld().attack(id,enemy,false);attacker=true;continue;}
                     if (!clearer && su->type->canReclaim) {
                         writableWorld().reclaimArea(id,x0-140,z0-180,x0+20,z0-20,false);clearer=true;

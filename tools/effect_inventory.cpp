@@ -97,7 +97,6 @@ int main(int argc, char** argv) {
         for (const auto& [name, type] : registry.types()) {
             for (const auto& weapon : type.weapons) {
                 for (const auto& art : {weapon.weaponArt, weapon.shotArt,
-                        weapon.wanderStart, weapon.wanderLoop, weapon.wanderEnd,
                         weapon.radiusArt[0], weapon.radiusArt[1], weapon.radiusArt[2]})
                     if (!art.empty()) names.insert(art);
                 if (!weapon.shadowArt.empty()) names.insert("shadows:" + weapon.shadowArt);

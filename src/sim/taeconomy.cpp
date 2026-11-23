@@ -144,6 +144,20 @@ void World::taSettle(int player) {
             b.r[M].prod += mult * t.metalMake;
             P.cap[E] += t.energyStorage;
             P.cap[M] += t.metalStorage;
+            // Cloak (0x4017d9..0x401872): wanted and not blocked by work (unit+0xb0),
+            // cost = trunc(moving ? cloakcostmoving : cloakcost) taken from stored
+            // energy at once and counted as requested; unaffordable -> cloak off.
+            if (t.canCloak && u.cloakOn && u.cloakBlockedUntil <= tickCounter_) {
+                const bool moving = u.speed != Fixed();
+                const float cost = float(int32_t(moving ? t.cloakCostMove : t.cloakCost));
+                if (cost <= P.stored[E]) {
+                    P.stored[E] -= cost;
+                    b.r[E].req += cost;
+                    u.cloaked = true;
+                } else {
+                    u.cloaked = false;
+                }
+            }
         }
         sums.add(b.r);
     }

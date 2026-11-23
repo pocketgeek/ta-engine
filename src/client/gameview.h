@@ -1693,7 +1693,7 @@ private:
     // mutates them between collection and the draw). `queued`: it went into the
     // painter list; the rest (far outside the view) draw in the late pass, in the
     // old family order, so nothing is ever dropped.
-    enum class FxKind : uint8_t { Flame, Storm, Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
+    enum class FxKind : uint8_t { Flame, Beam, Projectile, Particle, Ring, BloodStain, DebrisBlood,
                                   Debris, Glow, Nimbus, Effect, Point, Smoke, DamageFlame, UnitFx };
     struct FxItem { const void* p; uint32_t a, b; FxKind kind; bool queued; };
     std::vector<FxItem> fxItems_;
@@ -4815,10 +4815,6 @@ private:
         float age = 0;
     };
     std::vector<BeamFx> beams_;
-    // Live wandering storms by id, so a new one can announce itself and a
-    // vanished one can leave its dissipation art behind.
-    struct StormTrack { float x = 0, z = 0; const ta::sim::Weapon* w = nullptr; };
-    std::unordered_map<int, StormTrack> stormsSeen_;
     struct EFrame { SDL_Texture* tex = nullptr; int w = 0, h = 0, ax = 0, ay = 0, ticks = 2; uint8_t encoding = 0; };
     struct EffectAnim { std::vector<EFrame> frames; std::vector<uint16_t> durations; bool loop=false; };
     std::vector<std::string> explosionClassOrder_; // numeric COB classes follow authored order
@@ -4943,7 +4939,6 @@ private:
     size_t nimbusFrame(const NimbusEffect& effect) const;
     void pruneNimbusEffects();
     // Per-family draws of single world effects (drawFxItem).
-    void drawFxStorm(const ta::sim::World::Storm& st);
     void drawFxBeam(const BeamFx& b);
     void drawFxProjectile(const ta::sim::Projectile& p);
 
