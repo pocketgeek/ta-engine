@@ -787,9 +787,8 @@ void Controller::planUpgrade(const ta::sim::World& world, Needs& needs) {
     // Who builds it: a priest we have (or have ordered), else one an existing
     // factory can train -- no factory is built for this alone.
     auto mult = [&](const ta::sim::UnitType* type, float x, float z) {
-        if (!type->sacredIncome) return 1.0f;
-        return world.sacredIncomeMultiplier(ta::sim::footprintOrigin(x, type->footX),
-                                            ta::sim::footprintOrigin(z, type->footZ), type->footX, type->footZ);
+        (void)type; (void)x; (void)z;
+        return 1.0f;   // Kingdoms sacred-site multipliers: none in TA
     };
     const auto weighted = [&](const ta::sim::UnitType* type) {
         const auto w = profile_.weight.find(type->id);

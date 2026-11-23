@@ -1492,7 +1492,7 @@ void World::setMapPlacementFeatures(const std::vector<uint16_t>& raw,
 void World::setTerrain(const std::vector<uint8_t>& heights, int w, int h, int seaLevel,
                        const std::vector<uint16_t>* features) {
     mapPlacementCells_.clear();mapPlacementTypes_.clear();corpseFootprints_.clear();corpseAnchors_.clear();
-    installedMapFeatures_.clear();sacredUnderlay_.clear();
+    installedMapFeatures_.clear();
     ++placementEpoch_;
     paths_.clear();legion_.reset();
     searchGrades_.clear(); activeSearchGrade_=-1;
@@ -10485,30 +10485,7 @@ void World::blockCells(int cx, int cz, int w, int h, bool blocked) {
 
 void World::blockFoot(const UnitType& t, float x, float z, bool blocked) {
     int cx = footprintOrigin(x, t.footX), cz = footprintOrigin(z, t.footZ);
-    // A one-character S yard (every lodestone) fills the whole footprint, and
-    // S cells may stand on fixed obstacles (placementCheck). The overlay has
-    // one bit per cell, so remember which cells were already blocked and leave
-    // them blocked when the building goes. Recorded once per placement: setup
-    // stamps scenario buildings twice, and the second stamp would otherwise
-    // record the building's own cells.
-    const bool sacred=t.yardMap.empty() && t.sacredIncome && t.isStructure() &&
-        !obst_.empty() && terW_>0;
-    const int key=cz*terW_+cx;
-    if (sacred && blocked && !sacredUnderlay_.contains(key)) {
-        std::vector<int> under;
-        for (int j=std::max(0,cz);j<std::min(terH_,cz+t.footZ);++j)
-            for (int i=std::max(0,cx);i<std::min(terW_,cx+t.footX);++i)
-                if (obst_[size_t(j)*size_t(terW_)+size_t(i)]) under.push_back(j*terW_+i);
-        sacredUnderlay_.emplace(key,std::move(under));
-    }
     if (t.yardMap.empty()) blockCells(cx, cz, t.footX, t.footZ, blocked);
-    if (sacred && !blocked) {
-        if (const auto found=sacredUnderlay_.find(key); found!=sacredUnderlay_.end()) {
-            for (const int cell:found->second)
-                if (fixedBlockerAt(cell%terW_,cell/terW_)) blockCells(cell%terW_,cell/terW_,1,1,true);
-            sacredUnderlay_.erase(found);
-        }
-    }
     if (t.yardMap.empty()) return;
     for (int j = 0; j < t.footZ; ++j)
         for (int i = 0; i < t.footX; ++i) {
@@ -11825,32 +11802,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
     // Lodestones must sit on a mana deposit — but only on maps that have any
     // (deposit-less maps let them build on open ground). And only ONE lodestone
     // per deposit: reject if another already occupies the target deposit.
-    if (type->onMana && !manaSpots_.empty()) {
-        int spot = -1;
-        float best = 24.0f * 24.0f;
-        for (size_t i = 0; i < manaSpots_.size(); ++i) {
-            float dx = manaSpots_[i].first - x, dz = manaSpots_[i].second - z;
-            float d = dx * dx + dz * dz;
-            if (d < best) { best = d; spot = int(i); }
-        }
-        if (spot < 0) return false;   // not on any deposit
-        // Proximity alone can accept an offset footprint that earns no mana.
-        // Match the sacred-site coverage used by the economy calculation.
-        if (type->sacredIncome && !sacredSites_.empty() &&
-            sacredIncomeMultiplier(footprintOrigin(x,type->footX),
-                                   footprintOrigin(z,type->footZ),type->footX,type->footZ)<=0)
-            return false;
-        float sx = manaSpots_[size_t(spot)].first, sz = manaSpots_[size_t(spot)].second;
-        // One lodestone per deposit. Some Sacred Stones register as two adjacent
-        // spots (~22-40px apart); a 44px exclusion merges those into one deposit
-        // so a second lodestone can't squeeze onto the same stone.
-        TA_PASS();
-        for (const auto& u : units_) {
-            if (&u==replacing || !u.alive() || !u.type || !u.type->onMana) continue;
-            float dx = u.x.toFloat() - sx, dz = u.z.toFloat() - sz;
-            if (dx * dx + dz * dz < 44.0f * 44.0f) return false;   // deposit taken
-        }
-    }
+    // (Kingdoms' lodestone-on-deposit rule removed: TA extractors build anywhere.)
     // Check the domain-appropriate grid so water units (Kraken) require water
     // and land units require land, rather than always testing the ground grid.
     const NavGrid& grid = navFor(type);
@@ -11901,8 +11853,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
     // on a map without sacred sites (where a lodestone may stand on open
     // ground, an engine extension) nothing ties the footprint to a site, so its
     // cells keep the overlay test and never land on a wall or a rock.
-    const bool sacredRule=type->sacredIncome && type->isStructure() && type->onMana &&
-        !manaSpots_.empty() && !sacredSites_.empty();
+    const bool sacredRule=false;   // Kingdoms sacred-site yards: none in TA
     const bool sacredYard=sacredRule && type->yardMap.empty();
     const auto sacredCell=[&](int gx,int gz) {
         if (!grid.terrainWalkable(gx,gz)) return false;
@@ -12391,62 +12342,6 @@ void World::assist(int builderId, int siteId, bool queue) {
     if (!b->type->canFly && currentLeg(b->orders)+1==b->orders.size()) b->buildSiteId=siteId;
 }
 
-// Sites never change after setup and buildings never move, but every sacred-income
-// building asks each tick: a scan of every site per footprint cell was 5-10% of a
-// late 8-AI game's tick (2,863 sites). The buckets keep the scan's answer.
-static constexpr int kSacredBucketShift=3;
-
-void World::setSacredSites(std::vector<SacredSite> sites) {
-    sacredSites_=std::move(sites);
-    sacredBucketStart_.clear();sacredBucketSites_.clear();
-    sacredBx0_=sacredBz0_=sacredBw_=sacredBh_=0;
-    int bx0=INT32_MAX,bz0=INT32_MAX,bx1=INT32_MIN,bz1=INT32_MIN;
-    for (const auto& s:sacredSites_) {
-        if (s.fx<=0 || s.fz<=0) continue;   // covers no cell
-        bx0=std::min(bx0,s.x>>kSacredBucketShift);bx1=std::max(bx1,(s.x+s.fx-1)>>kSacredBucketShift);
-        bz0=std::min(bz0,s.z>>kSacredBucketShift);bz1=std::max(bz1,(s.z+s.fz-1)>>kSacredBucketShift);
-    }
-    if (bx0>bx1) return;
-    sacredBx0_=bx0;sacredBz0_=bz0;sacredBw_=bx1-bx0+1;sacredBh_=bz1-bz0+1;
-    sacredBucketStart_.assign(size_t(sacredBw_)*size_t(sacredBh_)+1,0);
-    auto each=[&](const SacredSite& s,auto&& f) {
-        if (s.fx<=0 || s.fz<=0) return;
-        for (int bz=(s.z>>kSacredBucketShift)-bz0;bz<=((s.z+s.fz-1)>>kSacredBucketShift)-bz0;++bz)
-            for (int bx=(s.x>>kSacredBucketShift)-bx0;bx<=((s.x+s.fx-1)>>kSacredBucketShift)-bx0;++bx)
-                f(size_t(bz)*size_t(sacredBw_)+size_t(bx));
-    };
-    for (const auto& s:sacredSites_) each(s,[&](size_t b) { ++sacredBucketStart_[b+1]; });
-    for (size_t b=1;b<sacredBucketStart_.size();++b) sacredBucketStart_[b]+=sacredBucketStart_[b-1];
-    sacredBucketSites_.resize(sacredBucketStart_.back());
-    std::vector<uint32_t> fill(sacredBucketStart_.begin(),sacredBucketStart_.end()-1);
-    for (size_t i=0;i<sacredSites_.size();++i)
-        each(sacredSites_[i],[&](size_t b) { sacredBucketSites_[fill[b]++]=uint32_t(i); });
-}
-
-// The last site in sacredSites_ order whose footprint holds cell (x, z), or none.
-const SacredSite* World::sacredSiteAt(int x,int z) const {
-    const int bx=(x>>kSacredBucketShift)-sacredBx0_,bz=(z>>kSacredBucketShift)-sacredBz0_;
-    if (bx<0 || bz<0 || bx>=sacredBw_ || bz>=sacredBh_) return nullptr;
-    const size_t b=size_t(bz)*size_t(sacredBw_)+size_t(bx);
-    for (uint32_t k=sacredBucketStart_[b+1];k>sacredBucketStart_[b];--k) {
-        const SacredSite& s=sacredSites_[sacredBucketSites_[k-1]];
-        if (x>=s.x && x<s.x+s.fx && z>=s.z && z<s.z+s.fz) return &s;
-    }
-    return nullptr;
-}
-
-float World::sacredIncomeMultiplier(int x,int z,int fx,int fz) const {
-    // 51d68e..51d7b6 scans x then z. Count positive sacred-site cells and
-    // compare with the last encountered site's full footprint. Each cell reads
-    // the last-listed site that holds it.
-    const SacredSite* last=nullptr;
-    int covered=0;
-    for (int dx=0;dx<fx;++dx) for (int dz=0;dz<fz;++dz) {
-        const SacredSite* s=sacredSiteAt(x+dx,z+dz);
-        if (s && s->multiplier>0) { ++covered;last=s; }
-    }
-    return last && covered>=last->fx*last->fz ? last->multiplier : 0;
-}
 
 // Corpse visuals/reclaim targets stay on the dead unit record. Navigation uses
 // the feature's own footprint, and ownership prevents an old corpse retiring a
@@ -19734,12 +19629,8 @@ void World::tick(float dt) {
                     sacred=(entry->inputs.secondaryFlags&0x80000000u)!=0;
                 }
             }
-            if (sacred) {
-                const float multiplier=sacredIncomeMultiplier(
-                    footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ),
-                    u.type->footX,u.type->footZ);
-                emit(EconomyKind::SacredIncome,u.player,0.0f,double(income)*double(multiplier));
-            } else emit(EconomyKind::Income,u.player,income,0.0);
+            (void)sacred;   // Kingdoms sacred-site income: none in TA
+            emit(EconomyKind::Income,u.player,income,0.0);
             emit(EconomyKind::Storage,u.player,storage,0.0);
         }
         const auto& builder=u;

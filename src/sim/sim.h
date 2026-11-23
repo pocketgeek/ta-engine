@@ -1852,10 +1852,6 @@ inline uint8_t reviveKindFor(const UnitType& caster, const FeatType& corpse) {
     return 0;
 }
 
-struct SacredSite {
-    int x=0,z=0,fx=1,fz=1; // feature-plane origin and footprint, in cells
-    float multiplier=0;
-};
 
 struct Feature {
     int   id = 0;          // cz*terrainWidth + cx: position-derived, peer-identical
@@ -2571,11 +2567,8 @@ public:
     }
     bool hasManaSpots() const { return !manaSpots_.empty(); }
     const std::vector<std::pair<float, float>>& manaSpots() const { return manaSpots_; }
-    void setSacredSites(std::vector<SacredSite> sites);
     // The map's sacred-site features (each anchor, in map scan order); read-only,
     // for the server-side Classic AI's deposit search.
-    const std::vector<SacredSite>& sacredSites() const { return sacredSites_; }
-    float sacredIncomeMultiplier(int x,int z,int fx,int fz) const;
     // Reclaimable features (trees/rocks/houses). Populated only by setupMatch (the
     // one deterministic per-peer walk); never from the viewer. See struct Feature.
     void addFeature(int id, float x, float z, float energy,
@@ -2861,7 +2854,7 @@ public:
         clearFeatureMarks();
         mapPlacementCells_.clear();mapPlacementTypes_.clear();corpseFootprints_.clear();corpseAnchors_.clear();
         corpseSinks_.clear();
-        installedMapFeatures_.clear();sacredUnderlay_.clear();
+        installedMapFeatures_.clear();
         explorationHeights_.clear();navigationExplored_.clear();explorationBlocks_.clear();
         viewCounts_.clear();deathSights_.clear();
         restoredNavigationViewer_=-1;
@@ -3963,7 +3956,6 @@ private:
     // origin cell -> the overlay cells already blocked when it was stamped, so its
     // removal (blockFoot) leaves those obstacles blocked. Not hashed: derived from
     // the same placements on every peer, and only the overlay reads it.
-    std::map<int,std::vector<int>> sacredUnderlay_;
     // A blocker the sim can remove later (a registered feature, or a wreck).
     bool removableBlockerAt(int gx,int gz) const;
     // The map placement cell still holds a blocking feature or a 0xFFFC cell.
@@ -4463,13 +4455,6 @@ private:
     struct ReplacedObject { int id; const UnitType* type; int owner, lastHitPlayer; };
     std::vector<ReplacedObject> replacedObjects_;
     std::vector<std::pair<float, float>> manaSpots_;
-    std::vector<SacredSite> sacredSites_;
-    // sacredIncomeMultiplier's index, derived from sacredSites_ (never hashed): the
-    // sites overlapping each 8x8-cell bucket of their bounding box, ascending, as
-    // sacredBucketSites_[sacredBucketStart_[b] .. sacredBucketStart_[b+1]).
-    int sacredBx0_=0,sacredBz0_=0,sacredBw_=0,sacredBh_=0;
-    std::vector<uint32_t> sacredBucketStart_,sacredBucketSites_;
-    const SacredSite* sacredSiteAt(int x,int z) const;
     std::vector<Feature> features_;             // reclaimable map features
     PackedWhenKept<RetailMapFeatureCell> mapPlacementCells_;
     SharedArray<uint16_t> installedMapFeatures_;   // load-time survivors (installedMapFeatures)

@@ -485,7 +485,10 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     FeatDef d;
                     std::string cat = node.valueOr("category", "");
                     std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
-                    d.mana = (cat == "mana");
+                    // TA: the "deposit" features are the ore patches -- indestructible
+                    // features carrying metal (docs/retail-ai.md: the AI sends extractors
+                    // to them; docs/retail-economy.md section 6: they set the cell metal).
+                    d.mana = false;
                     // Lone scenery Legion's pinwheel ignores (RetailMapFeatureType::treeOrRock).
                     d.treeOrRock = cat == "trees" || cat == "plant" || cat == "plants" || cat == "rocks";
                     // The buildable deposit is the animated Sacred Stone centre;
@@ -499,6 +502,8 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     // TA: metal/energy read as int & 0xffff, then float (0x422e40).
                     d.energy = float(int32_t(node.numberOr("energy", 0)) & 0xffff);
                     d.metal = float(int32_t(node.numberOr("metal", 0)) & 0xffff);
+                    d.indestructible = (int32_t(node.numberOr("indestructible", 0)) & 1) != 0;
+                    d.mana = d.indestructible && d.metal > 0;
                     d.sacredSite = float(node.numberOr("sacredsite",0));
                     d.flamable = node.numberOr("flamable", 0) != 0;
                     d.burnTicks = burnTiming.duration(node);
@@ -587,7 +592,6 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                              FeatTypeInterner& types,
                              std::vector<std::pair<float, float>>& rawMana,
                              std::vector<std::pair<float, float>>& rawAll) {
-    std::vector<SacredSite> sacredSites;
     std::vector<RetailMapFeatureType> placementTypes;
     for (auto name:map.featureNames) {
         std::transform(name.begin(),name.end(),name.begin(),::tolower);
@@ -615,7 +619,7 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
         placementTypes.push_back(std::move(type));
     }
     world.setMapPlacementFeatures(map.features,std::move(placementTypes));
-    if (map.featureNames.empty()) { world.setSacredSites({});return; }
+    if (map.featureNames.empty()) return;
     // Only the features that survived install (495360 removes the earlier of
     // two overlapping ones): retail has no record of the others, so they make
     // no sacred site (0x62dbc8), no deposit, no blocker and no target.
@@ -628,8 +632,6 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             std::transform(key.begin(), key.end(), key.begin(), ::tolower);
             auto di = defs.find(key);
             if (di == defs.end()) continue;
-            if (di->second.sacredSite>0)
-                sacredSites.push_back({cx,cz,di->second.fx,di->second.fz,di->second.sacredSite});
             // Retail feature records name the footprint origin (0x4931e0).
             float x = float(cx * 16 + di->second.fx * 8);
             float z = float(cz * 16 + di->second.fz * 8);
@@ -655,7 +657,6 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                                  types.intern(key),false);
             }
         }
-    world.setSacredSites(std::move(sacredSites));
 }
 
 // Cluster the mana features into deposits, publish them, and carve each one clear.
@@ -688,12 +689,8 @@ static void installManaSpots(World& world,
     std::vector<std::pair<float, float>> manaSpots;
     for (auto& [root, a] : acc)
         manaSpots.push_back({float(a.first.first / a.second), float(a.first.second / a.second)});
+    // TA: the clustered ore patches -- where the AI sends metal extractors.
     world.setManaSpots(manaSpots);
-    // Standing Stones block nav, but a large one can reach the glowy centre; keep
-    // every deposit buildable by carving the 2x2 lodestone footprint clear at each
-    // spot (canPlace tests exactly these cells).
-    for (const auto& [sx, sz] : manaSpots)
-        world.blockCells(int(sx) / 16 - 1, int(sz) / 16 - 1, 2, 2, false);
 }
 
 // Register the map's obstacle features into the sim world (reclaim + burning),

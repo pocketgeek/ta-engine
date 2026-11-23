@@ -511,15 +511,7 @@ void ClassicBrain::readSites(const ta::sim::World& world) {
     const auto& cells = world.mapPlacementCells();
     const bool plane = !cells.empty() && cells.size() == size_t(world.mapW()) * size_t(world.mapH());
     sacredTypes_.assign(plane ? world.mapPlacementTypes().size() : 0, false);
-    for (const auto& site : world.sacredSites()) {
-        sites_.push_back(ClassicCell{int16_t(site.x), int16_t(site.z)});
-        sacredRects_.push_back({ClassicCell{int16_t(site.x), int16_t(site.z)}, ClassicCell{int16_t(site.fx), int16_t(site.fz)}});
-        // The feature type at the anchor is a sacred one (sacredsite != 0).
-        if (plane && site.x >= 0 && site.z >= 0 && site.x < world.mapW() && site.z < world.mapH()) {
-            const uint16_t f = cells[size_t(site.z) * size_t(world.mapW()) + size_t(site.x)].feature;
-            if (f < sacredTypes_.size()) sacredTypes_[f] = true;
-        }
-    }
+    // (Kingdoms sacred sites: none in TA.)
     // The expansion bases' anchors (p0 = -(k+1)) index the same table.
     squads_.sites = sites_;
 }
