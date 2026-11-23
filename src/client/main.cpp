@@ -1325,6 +1325,15 @@ int main(int argc, char** argv) {
             ta::TaFrontEnd front(ren, win, vfs);
             const auto tc = front.run(skirmishSetup);
             if (tc == ta::TaFrontEnd::Choice::Exit) { quitApp = true; break; }
+            if (tc == ta::TaFrontEnd::Choice::Multiplayer) {
+                // SELPROV -> TCP: the engine server at the typed address (blank: this
+                // machine), signed in as the player's name.
+                choice = ta::MainMenu::Choice::Multiplayer;
+                taFrontChose = true;
+                menuServer = front.chosenServer();
+                loginUser = settings.accountName.empty() ? settings.playerName : settings.accountName;
+                connectKind = ta::MainMenu::Connect::Server;
+            }
             if (tc == ta::TaFrontEnd::Choice::Skirmish) {
                 choice = ta::MainMenu::Choice::SinglePlayer;
                 skirmishLaunch = true;

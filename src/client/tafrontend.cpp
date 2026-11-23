@@ -89,6 +89,7 @@ SkirmishSetup defaultSkirmish(const hpi::Vfs& vfs) {
 TaFrontEnd::TaFrontEnd(SDL_Renderer* ren, SDL_Window* win, const hpi::Vfs& vfs) : ren_(ren), win_(win), vfs_(vfs) {}
 
 TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup) {
+    SDL_StartTextInput();
     if (setup.seats.empty()) setup = defaultSkirmish(vfs_);
     std::unique_ptr<TaGuiView> view, popup;
     std::unique_ptr<TaGuiView> skirmArt;   // skirmish.gaf rows
@@ -123,6 +124,12 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup) {
         case Page::Single: open("single", "singlebg"); break;
         case Page::Skirmish: open("skirmish", "skirmsetup4x"); syncSkirmish(); break;
         case Page::SelectMap: break;
+        case Page::SelProv:
+            open("selprov", "selconnect2");
+            view->setList("DPLAY", {"TA Engine server (TCP/IP)"});
+            view->setSelection("DPLAY", 0);
+            view->setVisible("SERVICEX", false);
+            break;
         }
     };
     goPage(Page::Main);
@@ -151,6 +158,15 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup) {
         const GuiLayout L(w, h);
         SDL_Event e;
         auto onHit = [&](const std::string& h2) -> std::optional<Choice> {
+            if (popup && page_ == Page::SelProv) {   // TCP address
+                if (h2 == "PREV") popup.reset();
+                else if (h2 == "OK") {
+                    const auto* f = popup->screen().find("ADDRESS");
+                    server_ = f ? f->text : std::string();
+                    return Choice::Multiplayer;
+                }
+                return std::nullopt;
+            }
             if (popup) {   // SELMAP
             if (h2 == "PREVMENU") popup.reset();
             else if (h2 == "LOAD" || h2 == "MAPNAMES") {
@@ -163,7 +179,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup) {
         switch (page_) {
         case Page::Main:
             if (h2 == "SINGLE") goPage(Page::Single);
-            else if (h2 == "MULTI") return Choice::Multiplayer;
+            else if (h2 == "MULTI") goPage(Page::SelProv);
             else if (h2 == "EXIT") return Choice::Exit;
             break;
         case Page::Single:
@@ -202,6 +218,13 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup) {
                 else if (humans != 1 || cpus < 1) message = "A skirmish needs one Player and at least one Computer.";
                 else if (oneTeam) message = "Everyone is on the same team.";
                 else return Choice::Skirmish;
+            }
+            break;
+        case Page::SelProv:
+            if (h2 == "PREVMENU") goPage(Page::Main);
+            else if (h2 == "SELECT" || h2 == "DPLAY") {
+                popup = std::make_unique<TaGuiView>(ren_, vfs_, tagui::load(vfs_, "tcp"), true);
+                popup->setText("ADDRESS", server_);
             }
             break;
         default: break;

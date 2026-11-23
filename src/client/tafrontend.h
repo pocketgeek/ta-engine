@@ -40,9 +40,12 @@ public:
     // Runs until a choice is made. `setup` is filled for Skirmish (and kept between
     // calls, like retail's registry-backed skirmish settings).
     Choice run(SkirmishSetup& setup);
+    // MULTI -> SELPROV -> TCP: the server address typed ("" = search the local network).
+    const std::string& chosenServer() const { return server_; }
 
 private:
-    enum class Page { Main, Single, Skirmish, SelectMap };
+    enum class Page { Main, Single, Skirmish, SelectMap, SelProv };
+    std::string server_;
     Page page_ = Page::Main;
     SDL_Renderer* ren_;
     SDL_Window* win_;

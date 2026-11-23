@@ -109,6 +109,7 @@ private:
     int ox_ = 0, oy_ = 0;
     std::unique_ptr<TaFont> font_, font11_;
     std::string downGadget_;
+    std::string focus_;   // text field taking typed input
     State& st(const std::string& name);
     const State* stc(const std::string& name) const;
 };

@@ -411,9 +411,27 @@ std::string TaGuiView::handle(const SDL_Event& e, const GuiLayout& L) {
         }
         return g.name;
     };
+    // Text fields: the focused one (clicked, or the container's defaultfocus) takes
+    // typed text up to maxchars; Backspace deletes.
+    if (focus_.empty() && !screen_.container().defaultFocus.empty()) focus_ = screen_.container().defaultFocus;
+    if (e.type == SDL_TEXTINPUT && !focus_.empty()) {
+        if (auto* g = screen_.find(focus_); g && g->type == tagui::Type::TextField) {
+            for (const char* p = e.text.text; *p; ++p)
+                if (int(g->text.size()) < std::max(1, g->maxChars ? g->maxChars : 64) && *p >= 32 && *p < 127)
+                    g->text.push_back(*p);
+            return {};
+        }
+    }
+    if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_BACKSPACE && !focus_.empty()) {
+        if (auto* g = screen_.find(focus_); g && g->type == tagui::Type::TextField && !g->text.empty()) {
+            g->text.pop_back();
+            return {};
+        }
+    }
     if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
         const tagui::Gadget* g = at(float(e.button.x), float(e.button.y), L);
         if (!g) return {};
+        if (g->type == tagui::Type::TextField) { focus_ = g->name; return {}; }
         if (g->type == tagui::Type::ListBox) {
             auto& s = st(g->name);
             const Rect r = rectOf(*g);
