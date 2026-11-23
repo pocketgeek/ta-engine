@@ -118,6 +118,10 @@ std::string friendlyLabel(const Params& p);
 // the VFS -- same install => identical bytes on every peer; the MP data-hash
 // agreement already pins the install).
 Result generate(const Params& p, const hpi::Vfs& vfs);
+// Total Annihilation: random maps from the world's terrain sections (mapgen_ta.cpp).
+bool taSectionsAvailable(const hpi::Vfs& vfs);
+Result generateTa(const Params& p, const hpi::Vfs& vfs);
+const char* taPlanetFor(uint8_t world);
 
 // Prefabs consumed by either generator, included in multiplayer's data hash.
 std::vector<std::string> assetPaths(const hpi::Vfs& vfs);

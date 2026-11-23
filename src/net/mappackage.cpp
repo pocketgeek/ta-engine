@@ -364,21 +364,26 @@ std::filesystem::path saveGenerated(const std::filesystem::path& root, const hpi
     kingdom[0] = char(std::toupper(uint8_t(kingdom[0])));
     // The radar pictures the map lists and the in-game minimap show, as the Cartographer builds them.
     terrain::Compositor compositor(vfs);
-    terrain::generateMinimaps(g.map, compositor, terrain::loadWorldPalette(vfs, world));
+    if (g.map.tileCount == 0)
+        terrain::generateMinimaps(g.map, compositor, terrain::loadWorldPalette(vfs, world));
     std::vector<hpi::PackFile> files{{path + ".tnt", g.map.save()}};
-    std::string ota = "[GlobalHeader]\n{\nmissionname=" + name + ";\nmissiondescription=" +
-        mapgen::friendlyLabel(params) + " Seed " + std::to_string(params.seed) + ";\nkingdom=" + kingdom +
-        ";\nnumplayers=" + std::to_string(g.starts.size()) + ";\nsize=" + std::to_string(g.map.width / 32) + " x " +
-        std::to_string(g.map.height / 32) + ";\ngravity=112;\nminwindspeed=100;\nmaxwindspeed=2000;\n[Map Data]\n{\n[Specials]\n{\n";
+    // Total Annihilation's .ota layout (tnt::Scenario::write): planet, the Network
+    // schema with its resources and the starts (pixels).
+    tnt::Scenario sc;
+    sc.missionName = name;
+    sc.missionDescription = mapgen::friendlyLabel(params) + " Seed " + std::to_string(params.seed);
+    sc.kingdom = g.map.tileCount ? mapgen::taPlanetFor(params.mapType) : kingdom;
+    sc.sizeW = g.map.width / 32; sc.sizeH = g.map.height / 32;
+    sc.minWindSpeed = 100; sc.maxWindSpeed = 2000; sc.gravity = 112;
     for (size_t i = 0; i < g.starts.size(); ++i)
-        ota += "[Special" + std::to_string(i) + "]\n{\nspecialwhat=StartPos" + std::to_string(i + 1) +
-            ";\nxpos=" + std::to_string(g.starts[i].first) + ";\nzpos=" + std::to_string(g.starts[i].second) + ";\n}\n";
-    ota += "}\n}\n}\n";
+        sc.starts.push_back({int(i) + 1, g.starts[i].first, g.starts[i].second});
+    std::string ota = sc.write();
     files.push_back({path + ".ota", {ota.begin(), ota.end()}});
     files.push_back({path + ".recipe", {recipe.begin(), recipe.end()}});
-    for (auto key : std::set<uint32_t>(g.map.tileKeys.begin(), g.map.tileKeys.end())) {
-        auto tile = tilePath(key); files.push_back({tile, vfs.read(tile, g.map.stockTerrain)});
-    }
+    if (g.map.tileCount == 0)   // TA maps carry their tiles; section-keyed maps need their JPGs
+        for (auto key : std::set<uint32_t>(g.map.tileKeys.begin(), g.map.tileKeys.end())) {
+            auto tile = tilePath(key); files.push_back({tile, vfs.read(tile, g.map.stockTerrain)});
+        }
     const auto packed=hpi::pack(files);
     ta::storageRoom(usage,packed.size(),quota);
     writeAtomic(output,packed); return output;

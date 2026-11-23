@@ -124,6 +124,8 @@ Params sanitize(Params p) {
 
 Result generate(const Params& raw, const ta::hpi::Vfs& input) {
     ta::hpi::Vfs vfs(&input, true);
+    // Total Annihilation data: assemble from the world's .sct sections (mapgen_ta.cpp).
+    if (taSectionsAvailable(vfs)) return generateTa(sanitize(raw), vfs);
     return generateBalanced(sanitize(raw), vfs);
 }
 

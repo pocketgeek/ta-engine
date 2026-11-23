@@ -7,7 +7,7 @@ on synthetic maps, and compares every result with path_model.py, an
 independent Python reading of the same routines.  Nothing from the binary is
 copied into engine source.
 
-Usage: path_emu.py [grade|plane|search|all] [trials]
+Usage: path_emu.py [grade|plane|search|rect|all] [trials] [seed]
 """
 import sys, struct, random
 sys.path.insert(0, '/home/pocket_geek/TA/tools/re')
@@ -274,6 +274,33 @@ def test_search(trials):
     return bad
 
 
+def test_rect(trials):
+    """0x47e1f0 (the per-cell re-rate 0x440830 uses for a refreshed rectangle)
+    must agree with the full plane build for every cell."""
+    rng = random.Random(4)
+    bad = differs = 0
+    for t in range(trials):
+        e = Emu()
+        m = M.Map.random(rng, rng.randint(6, 16), rng.randint(6, 16), noise=rng.choice([2, 8]))
+        cls = M.MoveClass.random(rng, foot=(rng.randint(1, 4), rng.randint(1, 4)))
+        setup_world(e, m)
+        rec = make_class(e, m, cls)
+        e.call(0x440470, [m.w, m.h], ecx=rec)
+        full = M.class_plane(m, cls)
+        for z in range(m.h):
+            for x in range(m.w):
+                got = e.call(0x47e1f0, [rec, x, z])
+                want = M.refresh_grade(m, cls, x, z)
+                if got != full[z][x]: differs += 1
+                if got != want:
+                    bad += 1
+                    if bad < 6: print('rect mismatch', t, x, z, cls, got, want)
+    print(f'rect re-rate (0x47e1f0): {trials} maps, mismatches {bad}; '
+          f'cells where the local re-rate differs from the full build 0x440500: {differs}')
+    return bad
+
+
+
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'all'
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 0
@@ -281,4 +308,5 @@ if __name__ == '__main__':
     if what in ('grade', 'all'): tot += test_grade(n or 60)
     if what in ('plane', 'all'): tot += test_plane(n or 60)
     if what in ('search', 'all'): tot += test_search(n or 150)
+    if what in ('rect', 'all'): tot += test_rect(n or 40)
     print('TOTAL mismatches', tot)

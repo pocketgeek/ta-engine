@@ -144,6 +144,7 @@ add_library(ta-formats
   src/tnt/tnt.cpp
   src/tnt/ota.cpp
   src/tnt/mapgen.cpp
+  src/tnt/mapgen_ta.cpp
   src/tnt/mapgen_balanced.cpp
   src/tnt/mapgen_kits.cpp
   src/tdo/tdo.cpp
@@ -4124,3 +4125,6 @@ if(TARGET SDL2::SDL2-static OR TARGET SDL2::SDL2)
   target_compile_definitions(guitool PRIVATE SDL_MAIN_HANDLED)
   target_link_libraries(guitool PRIVATE ta-formats ${_ta_sdl2})
 endif()
+# tagen <install> <world> <out.png>: a TA random map rendered (tnt/mapgen_ta.cpp)
+add_executable(tagen tools/tagen.cpp)
+target_link_libraries(tagen PRIVATE ta-formats)
