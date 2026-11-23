@@ -17,6 +17,11 @@ ta::gaf::Palette loadWorldPalette(const ta::hpi::Vfs& vfs, const std::string& wo
         pal.rgba[i][0] = pal.rgba[i][1] = pal.rgba[i][2] = uint8_t(i);
         pal.rgba[i][3] = 255;
     }
+    // Total Annihilation: one game palette for every world (palettes/palette.pal).
+    if (!vfs.has("palettes/" + world + ".pcx") && vfs.has("palettes/palette.pal")) {
+        try { return ta::gaf::Palette::fromBytes(vfs.read("palettes/palette.pal"), "palette.pal"); }
+        catch (const std::exception&) {}
+    }
     try {
         auto d = vfs.read("palettes/" + world + ".pcx");
         // A palette-only PCX ends with a 0x0C marker byte followed by 768 RGB
@@ -104,9 +109,42 @@ MinimapPreview minimapPreview(const ta::tnt::Map& map,ta::terrain::Compositor& c
 void generateMinimaps(ta::tnt::Map& map, ta::terrain::Compositor& comp,
                       const ta::gaf::Palette& pal, std::shared_ptr<const std::atomic_bool> stop) {
     if (map.blocksX <= 0 || map.blocksY <= 0) return;
-    std::vector<uint8_t> grid = blockColourGrid(map, comp, stop);
+    std::vector<uint8_t> grid;
+    if (map.tileCount > 0 && map.tileGfx.size() >= size_t(map.tileCount) * 1024) {
+        // A TA map's own 8-bit tiles: each block's colour is its tile's mean
+        // through the game palette.
+        std::vector<std::array<uint8_t,3>> mean(size_t(map.tileCount));
+        for (size_t t = 0; t < mean.size(); ++t) {
+            uint32_t r = 0, g = 0, b = 0;
+            for (size_t i = 0; i < 1024; ++i) {
+                const uint8_t* c = pal.rgba[map.tileGfx[t * 1024 + i]];
+                r += c[0]; g += c[1]; b += c[2];
+            }
+            mean[t] = {uint8_t(r / 1024), uint8_t(g / 1024), uint8_t(b / 1024)};
+        }
+        grid.assign(size_t(map.blocksX) * map.blocksY * 3, 0);
+        for (size_t i = 0; i < size_t(map.blocksX) * map.blocksY && i < map.tileIndex.size(); ++i) {
+            const uint16_t t = map.tileIndex[i];
+            if (t < mean.size()) std::copy(mean[t].begin(), mean[t].end(), grid.begin() + std::ptrdiff_t(i * 3));
+        }
+    } else {
+        grid = blockColourGrid(map, comp, stop);
+    }
     if(stop && stop->load())throw std::runtime_error("Save cancelled");
 
+    if (map.tileCount > 0) {
+        // Total Annihilation (a map carrying its own tiles): a 252x252 picture,
+        // the map aspect-fitted from the top-left and the rest padded, as in
+        // the shipped .tnt files.
+        const int longSide = std::max(map.blocksX, map.blocksY);
+        const int cw = std::max(1, map.blocksX * 252 / longSide), ch = std::max(1, map.blocksY * 252 / longSide);
+        const auto fitted = indexedMinimap(grid, map.blocksX, map.blocksY, cw, ch, pal);
+        map.minimapW = 252; map.minimapH = 252;
+        map.minimap.assign(size_t(252) * 252, 0);
+        for (int y = 0; y < ch; ++y)
+            std::copy_n(fitted.begin() + std::ptrdiff_t(y) * cw, cw, map.minimap.begin() + std::ptrdiff_t(y) * 252);
+        return;
+    }
     // Small minimap: retail's fixed 126x126.
     map.minimapW = 126; map.minimapH = 126;
     map.minimap = indexedMinimap(grid, map.blocksX, map.blocksY, 126, 126, pal);

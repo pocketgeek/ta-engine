@@ -18,7 +18,7 @@ using namespace detail;
 Result generateBalanced(const Params& p, const hpi::Vfs& vfs);
 
 const char* worldKey(uint8_t world) {
-    static const char* keys[kMapTypes] = {"aramon", "taros", "veruna", "zhon", "creon", "volcano"};
+    static const char* keys[kMapTypes] = {"greenworld", "mars", "archipelago", "metal", "moon", "lava"};
     return keys[world < kMapTypes ? world : 0];
 }
 
@@ -27,7 +27,7 @@ const char* worldTitle(uint8_t world) {
     return titles[world < kMapTypes ? world : 0];
 }
 
-bool lavaWorld(uint8_t world) { return world == Volcano; }
+bool lavaWorld(uint8_t world) { return world == Lava; }
 
 bool worldHasForests(uint8_t world) { return world < kMapTypes && kWorldFeat[world].trees.n > 0; }
 
@@ -74,7 +74,7 @@ Params sanitize(Params p) {
     while (!name.empty() && name.back() == ' ') name.pop_back();
     const auto first = name.find_first_not_of(' ');
     p.name = first == std::string::npos ? std::string{} : name.substr(first);
-    if (p.mapType >= kMapTypes) p.mapType = Aramon;
+    if (p.mapType >= kMapTypes) p.mapType = Green;
     // Section multiples, 8..64 sections per side.
     auto fix = [](uint16_t v) -> uint16_t { return uint16_t(std::clamp(int(v) / 32, 8, 64) * 32); };
     p.widthCells = fix(p.widthCells);
@@ -84,7 +84,7 @@ Params sanitize(Params p) {
     p.layout = std::min<uint8_t>(p.layout, kLayouts-1);
     if (p.layout >= Maze) for (uint8_t world=0;world<kMapTypes;++world)
         if (themedLayout(world)==p.layout) p.mapType=world;
-    if (p.layout == IndustrialZone) p.mapType = Volcano;
+    if (p.layout == IndustrialZone) p.mapType = Lava;
     if (!layoutAllowed(p.mapType, p.layout)) p.layout = Mainland;
     // What fits was measured, not assumed (2026-11-09): every layout, 2-8 players and
     // widths x heights of 8-64 sections, generated for 16 seeds, counting a size only when
@@ -227,7 +227,7 @@ Params parseMapId(const std::string& id) {
 std::string friendlyLabel(const Params& pin) {
     Params p = sanitize(pin);
     if (!p.name.empty()) return p.name;
-    static const char* kNames[kMapTypes] = {"Aramon", "Taros", "Veruna", "Zhon", "Creon", "Volcano"};
+    static const char* kNames[kMapTypes] = {"Green", "Mars", "Archipelago", "Metal", "Moon", "Lava"};
     int u = p.widthCells / 32, v = p.heightCells / 32;
     // ASCII only: the lobby draws this with the 5x7 block font, which has no glyph
     // for a middot and would render each byte of one as a blank.

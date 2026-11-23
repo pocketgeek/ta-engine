@@ -46,7 +46,7 @@ cart::FreshMap cart::buildFreshMap(const ta::hpi::Vfs& vfs, cart::SectionLibrary
     FreshMap out;
     if (random) {
         ta::mapgen::Params gp=requested?*requested:ta::mapgen::Params{};
-        gp.mapType = ta::mapgen::Aramon;
+        gp.mapType = ta::mapgen::Green;
         for (uint8_t i = 0; i < ta::mapgen::kMapTypes; ++i) if (world == ta::mapgen::worldKey(i)) gp.mapType = i;
         gp.widthCells = uint16_t(wUnits * 32);
         gp.heightCells = uint16_t(hUnits * 32);

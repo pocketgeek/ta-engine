@@ -366,6 +366,8 @@ std::filesystem::path saveGenerated(const std::filesystem::path& root, const hpi
     terrain::Compositor compositor(vfs);
     if (g.map.tileCount == 0)
         terrain::generateMinimaps(g.map, compositor, terrain::loadWorldPalette(vfs, world));
+    else   // TA: the map's own tiles through the game palette
+        terrain::generateMinimaps(g.map, compositor, gaf::Palette::fromBytes(vfs.read("palettes/palette.pal"), "palette.pal"));
     std::vector<hpi::PackFile> files{{path + ".tnt", g.map.save()}};
     // Total Annihilation's .ota layout (tnt::Scenario::write): planet, the Network
     // schema with its resources and the starts (pixels).

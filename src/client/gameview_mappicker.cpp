@@ -288,7 +288,7 @@ int seatedHumans(const ta::net::RoomView& room) {
         slider(6, "PLATEAUS", genParams_.plateauDensity, !ta::mapgen::automaticPlateaus(layout) &&
                ta::mapgen::kitAvailable(world, ta::mapgen::KitPlateaus));
         slider(7, "MOUNTAINS", genParams_.mountainDensity, ta::mapgen::kitAvailable(world, ta::mapgen::KitMountains), "NONE");
-        slider(8, world==ta::mapgen::Zhon?"VILLAGES":"TOWNS", genParams_.townDensity,
+        slider(8, world==ta::mapgen::Metal?"VILLAGES":"TOWNS", genParams_.townDensity,
                ta::mapgen::kitAvailable(world, ta::mapgen::KitTowns), "NONE");
         // The seed button shares the last row with TOWNS.
         py += 8;

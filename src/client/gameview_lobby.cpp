@@ -1244,7 +1244,7 @@ std::string defaultGameName(const std::string& player) {
                                        gp.layout == ta::mapgen::Maze ? "AUTO" : "NONE")},
                {std::string("PLATEAUS: ") + (ta::mapgen::automaticPlateaus(gp.layout) ? "AUTO" : kit(gp.plateauDensity, ta::mapgen::KitPlateaus)),
                 std::string("MOUNTAINS: ") + (noRoom ? "NO ROOM" : kit(gp.mountainDensity, ta::mapgen::KitMountains)),
-                std::string(gp.mapType == ta::mapgen::Zhon ? "VILLAGES: " : "TOWNS: ") + kit(gp.townDensity, ta::mapgen::KitTowns),
+                std::string(gp.mapType == ta::mapgen::Metal ? "VILLAGES: " : "TOWNS: ") + kit(gp.townDensity, ta::mapgen::KitTowns),
                 "SCATTERED MANA: " + scatter,
                 "MAP SEED: " + std::to_string(gp.seed)}};
     }

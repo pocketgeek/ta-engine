@@ -807,7 +807,10 @@ void MissionScript::evalConditions(World& w, float) {
         case Cond::MoveUnitToRadius:
             for(const auto& u:w.units()) {
                 if(conditionOwner(u.player)!=0 || !ready(u) || (!c.wildcard && u.type!=c.type))continue;
-                if(retailCampaignRadius(u.x.v,u.z.v,int32_t(uint32_t(c.a)<<20),int32_t(uint32_t(c.b)<<20),int32_t(uint32_t(c.c)<<20)))c.met=true;
+                // TA's x, z, r are pixels (0x4fd890, docs/retail-campaign.md 3.1);
+                // Kingdoms' are 16px cells.
+                const unsigned shift=taRules_ ? 16u : 20u;
+                if(retailCampaignRadius(u.x.v,u.z.v,int32_t(uint32_t(c.a)<<shift),int32_t(uint32_t(c.b)<<shift),int32_t(uint32_t(c.c)<<shift)))c.met=true;
             }
             break;
         case Cond::UnitTypePassesX:case Cond::UnitTypePassesZ:
@@ -818,7 +821,8 @@ void MissionScript::evalConditions(World& w, float) {
                 if(!u.alive() || u.hp<=Fixed() || !u.type || conditionOwner(u.player)!=(enemy?1:0))continue;
                 if(!enemy && !c.wildcard && u.type!=c.type)continue;
                 const int coordinate=x?footprintOrigin(u.x,u.type->footX):footprintOrigin(u.z,u.type->footZ);
-                if(retailCampaignAxis(coordinate,c.a))c.met=true;
+                // TA stores the line as X>>4 from pixels (0x4fd870 / 0x4fd850).
+                if(retailCampaignAxis(coordinate,taRules_ ? (c.a>>4) : c.a))c.met=true;
             }
             break;
         }

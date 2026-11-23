@@ -46,4 +46,10 @@ constexpr Fixed footprintClamp(Fixed current, Fixed proposed, int size, bool rep
     return proposed;
 }
 
+// TotalA.exe yardmap codes (0x42cf3e, docs/retail-data.md 2.4): o, w, f and G
+// always block (bits 1 and 2); y and Y never do and, like '.', are open ground.
+// c/C and O block in one yard state each, which callers decide.
+constexpr bool retailYardAlwaysBlocks(char c) { return c=='o' || c=='w' || c=='f' || c=='G'; }
+constexpr bool retailYardOpen(char c) { return c=='.' || c=='y' || c=='Y'; }
+
 } // namespace ta::sim

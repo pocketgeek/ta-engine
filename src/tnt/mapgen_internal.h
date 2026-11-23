@@ -12,6 +12,9 @@
 namespace ta::hpi { class Vfs; }
 
 namespace ta::mapgen::detail {
+// Kingdoms world names for the section-kit generator below (to be removed).
+constexpr uint8_t Aramon=Green, Taros=Mars, Veruna=Archipelago, Zhon=Metal, Creon=Moon, Volcano=Lava;
+
 
 
 // ---- deterministic integer helpers (no float -> identical on every peer) -------

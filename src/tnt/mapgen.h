@@ -22,7 +22,8 @@ namespace ta::mapgen {
 // One of the retail worlds; also selects the terrain section art + feature palette.
 // 0..4 match matchsetup faction ids (0=aramon 1=taros 2=veruna 3=zhon 4=creon);
 // Volcano is Iron Plague's lava world (kingdom=volcano), which no side calls home.
-enum MapType : uint8_t { Aramon = 0, Taros = 1, Veruna = 2, Zhon = 3, Creon = 4, Volcano = 5, kMapTypes };
+// Total Annihilation's worlds, in mapgen_ta.cpp's section-folder order.
+enum MapType : uint8_t { Green = 0, Mars = 1, Archipelago = 2, Metal = 3, Moon = 4, Lava = 5, kMapTypes };
 // The world's name as an OTA kingdom and as its features/ and palettes/ folder.
 const char* worldKey(uint8_t world);
 // The world's name for menus, in capitals.
@@ -69,7 +70,7 @@ struct Params {
     uint16_t formatVer = 10;         // the recipe version, the only one an id may carry
     uint64_t seed = 1;
     std::string name;               // v5: optional ASCII map title, up to 24 characters
-    uint8_t  mapType = Aramon;
+    uint8_t  mapType = Green;
     uint16_t widthCells = 256, heightCells = 256;   // multiples of 32, clamped
     uint8_t  players = 2;            // 2..8
     uint8_t  treeDensity = 128;      // 0..255 (few..lots)

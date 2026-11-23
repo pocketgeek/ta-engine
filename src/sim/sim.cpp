@@ -371,7 +371,8 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.builderLimited = info->numberOr("builderlimited", 0) != 0;
             t.canGuard = info->numberOr("canguard", 0) != 0;
             t.canPatrol = info->numberOr("canpatrol", 0) != 0;
-            t.canReclaim = info->numberOr("canreclaim", 0) != 0;
+            // TA's key is CanReclamate (flagsB bit 10, docs/retail-data.md 2.2).
+            t.canReclaim = (int32_t(info->numberOr("canreclamate", 0)) & 1) != 0;
             t.canResurrect = info->numberOr("canresurrect", 0) != 0;
             // cancapture is not read: retail parses it into a UnitDef bit (0x4c07de)
             // that no simulation code reads -- only a "CAPTURE" button no shipped
@@ -498,7 +499,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // 4c082e..4c0837: read as an integer, stored as a word.
             t.attackRunLength = uint16_t(int32_t(info->numberOr("attackrunlength", 0)));
             t.bankScale = Fixed::fromRetailNumber(info->numberOr("bankscale", 0.5));
-            t.canSetStance = int(info->numberOr("unitstandorders", 1)) != 0;
+            // TA: mobilestandorders / firestandorders (flagsB bits 0, 1; atol & 1,
+            // absent = 0). The engine's single stance control serves either.
+            t.canSetStance = ((int32_t(info->numberOr("mobilestandorders", 0)) |
+                               int32_t(info->numberOr("firestandorders", 0))) & 1) != 0;
             {
                 std::string dmt = lower(info->valueOr("defaultmissiontype", ""));
                 t.wanders = dmt == "standby_wander";
@@ -1387,7 +1391,7 @@ void blockFootprint(NavGrid& nav, const UnitType& t, float x, float z, bool bloc
     for (int j = 0; j < t.footZ; ++j)
         for (int i = 0; i < t.footX; ++i) {
             char c = t.yardMap[size_t(j) * t.footX + i];
-            if (c == 'o' || c == 'O')
+            if (retailYardAlwaysBlocks(c) || c == 'O')
                 nav.block(cx + i, cz + j, 1, 1, blocked);
         }
 }
@@ -10108,7 +10112,7 @@ void World::blockFoot(const UnitType& t, float x, float z, bool blocked) {
     for (int j = 0; j < t.footZ; ++j)
         for (int i = 0; i < t.footX; ++i) {
             char c = t.yardMap[size_t(j) * t.footX + i];
-            if (c == 'o' || c == 'O') blockCells(cx + i, cz + j, 1, 1, blocked);
+            if (retailYardAlwaysBlocks(c) || c == 'O') blockCells(cx + i, cz + j, 1, 1, blocked);
         }
 }
 
@@ -10296,7 +10300,7 @@ bool World::groundStampsCell(const Unit& u,int dx,int dz) const {
     const auto& type=*u.type;
     if (!type.isStructure() || type.yardMap.empty()) return true;
     const char yard=type.yardMap.at(size_t(dz)*type.footX+dx);
-    if (yard=='.') return false;
+    if (retailYardOpen(yard)) return false;
     if (yard!='c' && yard!='C') return true;
     return !(size_t(u.id)<scriptYardById_.size() && scriptYardById_[size_t(u.id)]);
 }
@@ -10424,7 +10428,7 @@ World::SearchBodyRect World::searchBodyRect(int x,int z,int w,int h,int ignoreId
         for (int cz=z0;cz<z1;++cz) for (int cx=x0;cx<x1;++cx) {
             if (u.type->isStructure() && !u.type->yardMap.empty()) {
                 const char yard=u.type->yardMap.at(size_t(cz-uz)*u.type->footX+cx-ux);
-                if (yard=='.') continue;
+                if (retailYardOpen(yard)) continue;
                 if (yard=='c' || yard=='C') {
                     const auto script=unitScripts_.find(u.id);
                     if (script!=unitScripts_.end() && script->second.yardOpen) continue;
@@ -10547,6 +10551,7 @@ int World::rawSearchGrade(const SearchGradePlane& plane,int x,int z,int w,int h,
                 const char yard=body->type->yardMap.at(size_t(bz)*body->type->footX+bx);
                 // 506416 marks only c/C gate passages; 508b54 grades them
                 // specially before the ordinary stationary-body rejection.
+                if (yard=='y' || yard=='Y') continue;   // never blocks (docs/retail-data.md 2.4)
                 if (yard=='c' || yard=='C') { grade=std::min(grade,3);continue; }
             }
             grade=std::min(grade,retailCachedBodyGrade(!body->type->isStructure(),
@@ -10688,6 +10693,7 @@ void World::refreshSearchRect(SearchGradePlane& plane,int x,int z,int w,int h) {
                 // 506416 marks only c/C gate passages; 508b54 grades them
                 // specially before the ordinary stationary-body rejection.
                 if (yard=='c' || yard=='C') value=3;
+                if (yard=='y' || yard=='Y') value=7;   // never blocks
             }
             if (value<0) value=retailCachedBodyGrade(!body->type->isStructure(),
                 body->id==plane.preparation.requestSlot,body->groundGradeTick,
@@ -10771,7 +10777,7 @@ void World::buildSearchPlane(SearchGradePlane& plane) {
             uint8_t value=grade;
             if (yards || gate) {
                 const char yard=type.yardMap.at(size_t(cz-uz)*type.footX+cx-ux);
-                if (yards && (yard=='.' || ((yard=='c' || yard=='C') && yardOpen))) continue;
+                if (yards && (retailYardOpen(yard) || ((yard=='c' || yard=='C') && yardOpen))) continue;
                 // 506416 marks only c/C gate passages; 508b54 grades them
                 // specially before the ordinary stationary-body rejection.
                 if (gate && (yard=='c' || yard=='C')) value=3;
@@ -11445,7 +11451,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
             if (gx>=ox && gz>=oz && gx<ox+replacing->type->footX && gz<oz+replacing->type->footZ) {
                 const auto& yard=replacing->type->yardMap;
                 const char cell=yard.empty() ? 'o' : yard[size_t(gz-oz)*replacing->type->footX+gx-ox];
-                if (cell=='o' || cell=='O') return true;
+                if (retailYardAlwaysBlocks(cell) || cell=='O') return true;
             }
         }
         return clearObstacle(gx,gz);
@@ -11584,7 +11590,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
                         if (!tested(size_t(j-cz)*type->footX+i-cx)) continue;
                         if (!mobile && !u.type->yardMap.empty()) {
                             const char yard=u.type->yardMap.at(size_t(j-uz)*u.type->footX+i-ux);
-                            if (yard=='.') continue;
+                            if (retailYardOpen(yard)) continue;
                             if (yard=='c' || yard=='C') {
                                 const auto script=unitScripts_.find(u.id);
                                 if (script!=unitScripts_.end() && script->second.yardOpen) continue;
