@@ -80,6 +80,7 @@ ta::tnt::Map MapView::genOrLoad(const ta::hpi::Vfs& vfs, const std::string& mapP
 
 MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& mapPath)
     : ren_(ren), map_(genOrLoad(vfs, mapPath)), comp_(vfs) {
+    comp_.setMapTiles(map_);   // TA maps carry their own tile art
     applySectionBudget(comp_);
     applyMipBudget(chunks_);
     chunks_.setParams(scheduleParams());
@@ -90,6 +91,7 @@ MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& 
 
 MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, ta::tnt::Map map)
     : ren_(ren), map_(std::move(map)), comp_(vfs) {
+    comp_.setMapTiles(map_);   // TA maps carry their own tile art
     applySectionBudget(comp_);
     applyMipBudget(chunks_);
     chunks_.setParams(scheduleParams());

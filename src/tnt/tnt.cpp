@@ -73,6 +73,11 @@ Map Map::load(const std::vector<uint8_t>& d, const std::string& origin) {
     m.tileGfx.assign(d.begin() + pGfx, d.begin() + pGfx + size_t(tiles) * 1024);
     for (auto& t : m.tileIndex)
         if (t >= tiles) t = 0;   // out-of-range tile: draw tile 0 rather than read past
+    // The renderer addresses 32px blocks by "section key" + column/row (the TAK
+    // layout); a TA tile is its own 32x32 section.
+    m.tileKeys.assign(m.tileIndex.begin(), m.tileIndex.end());
+    m.tileCols.assign(blocks, 0);
+    m.tileRows.assign(blocks, 0);
 
     if (featCount > 65535) throw std::runtime_error(origin + ": bad feature count");
     need(d, pFeat, uint64_t(featCount) * 132, "feature names");

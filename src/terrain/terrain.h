@@ -3,6 +3,7 @@
 #include "tnt/tnt.h"
 #include "util/jpeg.h"
 
+#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -41,6 +42,12 @@ public:
     // about to swap or remount the VFS must still stop its readers first (the decode
     // reads the VFS outside the cache lock).
     void clear();
+
+    // Total Annihilation maps carry their own 32x32 8-bit tiles: a tile index is the
+    // "section key" (tnt::Map::load mirrors tileIndex into tileKeys) and its image is
+    // built from the map's tile graphics through palettes/palette.pal. Swapping maps
+    // clears the cache. Thread-safe.
+    void setMapTiles(const tnt::Map& map);
 
     // Render the whole map at full resolution (width*16 x height*16 px).
     jpeg::Image renderMap(const tnt::Map& map);
@@ -111,6 +118,11 @@ private:
     void evictLocked(size_t target, std::vector<SectionRef>& dropped);
 
     const hpi::Vfs* vfs_ = nullptr;
+    std::shared_ptr<const std::vector<uint8_t>> tileGfx_;   // TA: the map's tiles
+    int tileCount_ = 0;
+    const std::vector<uint8_t>* tileSource_ = nullptr;      // identity of the loaded map's tiles
+    std::array<uint8_t, 1024> palette_{};                    // RGBx x 256
+    bool paletteLoaded_ = false;
     std::mutex mu_;                           // guards everything below
     std::condition_variable decodedCv_;       // a decode in flight finished
     std::map<Id, Entry> cache_;

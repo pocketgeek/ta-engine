@@ -22,6 +22,29 @@ std::string sectionPath(uint32_t key) {
 
 Compositor::Compositor(const hpi::Vfs& vfs) : vfs_(&vfs) {}
 
+void Compositor::setMapTiles(const tnt::Map& map) {
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (tileSource_ == &map.tileGfx && tileGfx_ && tileGfx_->size() == map.tileGfx.size()) return;
+    }
+    auto gfx = std::make_shared<const std::vector<uint8_t>>(map.tileGfx);
+    std::array<uint8_t, 1024> pal{};
+    bool havePal = false;
+    try {
+        auto b = vfs_->read("palettes/palette.pal");
+        if (b.size() >= 1024) { std::memcpy(pal.data(), b.data(), 1024); havePal = true; }
+    } catch (...) {}
+    if (!havePal)   // no palette: a grey ramp keeps the map readable
+        for (int i = 0; i < 256; ++i) pal[size_t(i) * 4] = pal[size_t(i) * 4 + 1] = pal[size_t(i) * 4 + 2] = uint8_t(i);
+    clear();
+    std::lock_guard<std::mutex> lk(mu_);
+    tileGfx_ = std::move(gfx);
+    tileCount_ = map.tileCount;
+    tileSource_ = &map.tileGfx;
+    palette_ = pal;
+    paletteLoaded_ = true;
+}
+
 void Compositor::clear() {
     std::vector<SectionRef> dropped;
     {
@@ -109,10 +132,37 @@ SectionRef Compositor::sectionImage(uint32_t key, bool stockTerrain) {
     // (the render thread's cachedSection never waits behind a JPEG decode).
     SectionRef image;
     bool missing = false;
+    std::shared_ptr<const std::vector<uint8_t>> tiles;
+    std::array<uint8_t, 1024> pal{};
+    int tileCount = 0;
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        tiles = tileGfx_;
+        tileCount = tileCount_;
+        pal = palette_;
+    }
     try {
+        if (tiles) {   // TA: the map's own 8-bit tile
+            if (key >= uint32_t(tileCount)) missing = true;
+            else {
+                jpeg::Image img;
+                img.width = img.height = kBlock;
+                img.rgba.resize(size_t(kBlock) * kBlock * 4);
+                const uint8_t* src = tiles->data() + size_t(key) * kBlock * kBlock;
+                for (int i = 0; i < kBlock * kBlock; ++i) {
+                    const uint8_t* c = &pal[size_t(src[i]) * 4];
+                    img.rgba[size_t(i) * 4 + 0] = c[0];
+                    img.rgba[size_t(i) * 4 + 1] = c[1];
+                    img.rgba[size_t(i) * 4 + 2] = c[2];
+                    img.rgba[size_t(i) * 4 + 3] = 255;
+                }
+                image = std::make_shared<const jpeg::Image>(std::move(img));
+            }
+        } else {
         const std::string path = sectionPath(key);
         if (!vfs_->has(path)) missing = true;
         else image = std::make_shared<const jpeg::Image>(jpeg::load(vfs_->read(path, stockTerrain)));
+        }
     } catch (...) {
         std::lock_guard<std::mutex> lk(mu_);
         decoding_.erase(id);
@@ -208,6 +258,7 @@ void Compositor::renderBlock(const tnt::Map& map, int bx, int by,
 }
 
 jpeg::Image Compositor::renderMap(const tnt::Map& map) {
+    if (map.tileCount > 0) setMapTiles(map);
     jpeg::Image out;
     out.width = map.blocksX * kBlock;
     out.height = map.blocksY * kBlock;
