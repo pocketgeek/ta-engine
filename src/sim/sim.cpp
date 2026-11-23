@@ -18746,8 +18746,11 @@ void World::deliverSearchRoute(int unitId,const std::vector<PathCell>& route,Fix
     // ends the leg early, the appended goal and the re-ask pick up from
     // CLOSER, and each re-trace shortens what remains of the wander.
     std::vector<PathCell> capped;
-    const bool clipped = route.size() > 64;
-    if (clipped) capped.assign(route.begin(), route.begin() + 64);
+    // TotalA.exe's navigator holds 20 points, the start among them
+    // (docs/retail-pathfinding.md section 5 item 8); Kingdoms held 64.
+    constexpr size_t kNavigatorPoints = 20;
+    const bool clipped = route.size() > kNavigatorPoints;
+    if (clipped) capped.assign(route.begin(), route.begin() + kNavigatorPoints);
     const std::vector<PathCell>& useRoute = clipped ? capped : route;
     const bool reachedGoal = traceReachedGoal && !failed && !clipped;
     std::vector<Order> path;

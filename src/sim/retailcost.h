@@ -157,7 +157,8 @@ public:
                int goalRadius, int spread) {
         if (empty()) return Result::Exhausted;
         ++processed;
-        if (processed > 100) heuristicWeight = std::min(50 * 65536, heuristicWeight + 655);
+        // TotalA.exe keeps one heuristic weight for the whole search (no ramp; the
+        // Kingdoms ramp is gone: docs/retail-pathfinding.md section 5 item 2).
         if (pendingRoot_) { erase(heap[0]); pendingRoot_ = false; }
         const Node parent = top();
         const int parentId = heap[0];
@@ -287,6 +288,19 @@ inline uint16_t retailEffectiveTurnRate(uint16_t turnRate, int32_t roadMultiplie
 inline RetailCostSearch::Costs retailPathCosts(uint16_t turnRate, int footprint,
                                                int32_t roadMultiplier, int32_t waterMultiplier,
                                                uint16_t movementFlags, bool heavySlope) {
+    // Total Annihilation's fixed costs (TotalA.exe A*, docs/retail-pathfinding.md):
+    // step 16/22, turns {0,40,60,80,100,80,60,40}, +30 on a penalised (grade-1)
+    // cell, +75 for a turn after fewer than 5 straight steps; no turn-rate,
+    // footprint, road or water scaling. 613/613 routes matched retail in emulation.
+    (void)turnRate; (void)footprint; (void)roadMultiplier; (void)waterMultiplier;
+    (void)movementFlags; (void)heavySlope;
+    RetailCostSearch::Costs ta;
+    ta.step = {16, 22, 16, 22, 16, 22, 16, 22};
+    ta.turn = {0, 40, 60, 80, 100, 80, 60, 40};
+    ta.ground = 0; ta.road = 0; ta.traffic = 0; ta.slope = 30;
+    ta.shortTurn = 75; ta.minStraight = 5;
+    ta.heavyFloater = false;
+    if (true) return ta;
     RetailCostSearch::Costs costs;
     costs.heavyFloater=heavySlope;
     costs.slope = heavySlope ? 320 : 48;

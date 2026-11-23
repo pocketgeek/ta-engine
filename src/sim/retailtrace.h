@@ -60,7 +60,7 @@ public:
             march = start;
             slopes = ground = roads = visited = 0;
             visitLimit = (width + height) * 20;
-            phase = 1;
+            phase = 2; origin = march;   // TA: no octant march
             mark(start, 0x20);
             for (int x = -3; x <= 3 && phase == 1; ++x)
                 for (int z = -3; z <= 3; ++z)
@@ -92,7 +92,7 @@ public:
             closer(march);
         }
         while (work < budget) {
-            if (visited > visitLimit) return best;
+            /* TA: no visit limit */
             while (phase == 2 && work < budget) {
                 work += 7;
                 if (!best) return 0;
@@ -298,7 +298,7 @@ public:
             cost.reset(trace.width, trace.height, startCell, (heading + 4096) >> 13,
                        initialDistance, weight, std::move(trace.cells),std::move(trace.scratch));
             const int count = trace.width * trace.height;
-            nodeLimit = retry > 2 ? count * 2 : retry > 0 ? count / (10 / retry) : count / 20;
+            nodeLimit = 1<<30; // TA: no node limit
             spread = 4; phase = 2;
             return {Result::Searching, trace.work, notification};
         }

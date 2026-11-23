@@ -50,6 +50,15 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 8. Campaigns (camps/*.tdf, .ota missions, briefings), Cartographer for TA maps,
    random maps from worlds.hpi sections, multiplayer polish, packaging/branding.
 
+## Pathfinding status (docs/retail-pathfinding.md)
+
+Applied (verified 613/613 against TotalA.exe in emulation): TA's fixed A* costs,
+no weight ramp, no octant march / visit limit, no node limit; navigator holds 20
+points. Pending from the change list: per-player initial heuristic weight (5),
+search grade for unexplored / out-of-plane cells (6), 30-tick body grades (7),
+60-tick re-path gate (9), scheduler credits (10), goal metrics (11-13), underwater
+speed cap (14), ground scan (15), cell-entry refusal (16).
+
 ## Known deviations from retail (deliberate)
 
 - All *.hpi are mounted (retail stops after 10, hiding totala3/4 and worlds.hpi on the GOG layout).
