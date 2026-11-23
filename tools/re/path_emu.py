@@ -153,22 +153,22 @@ def read_plane(e, rec, w, h):
 
 # ------------------------------------------------------------------ tests
 def test_grade(trials):
-    rng = random.Random(1)
+    rng = random.Random(1); hist = {}
     bad = 0
     for t in range(trials):
         e = Emu()
-        m = M.Map.random(rng, 4, 4, obstacles=False)
+        m = M.Map.random(rng, 4, 4, density=0.5)
         cls = M.MoveClass.random(rng)
         cells = setup_world(e, m)
         rec = make_class(e, m, cls)
         for z in range(m.h):
             for x in range(m.w):
                 got = e.call(0x47de60, [rec, cells + (z * m.w + x) * 13])
-                want = M.raw_grade(m, cls, x, z)
+                want = M.raw_grade(m, cls, x, z); hist[got] = hist.get(got, 0) + 1
                 if got != want:
                     bad += 1
                     if bad < 10: print('grade mismatch', t, x, z, m.lohi(x, z), m.sea, cls, got, want)
-    print(f'grade (0x47de60): {trials} maps x 16 cells, mismatches {bad}')
+    print(f'grade (0x47de60): {trials} maps x 16 cells, grades {hist}, mismatches {bad}')
     return bad
 
 
@@ -237,14 +237,20 @@ def run_search(e, m, cls, start, goal, radius_px, heading, weight):
 
 
 def test_search(trials):
-    rng = random.Random(3)
+    rng = random.Random(int(sys.argv[3]) if len(sys.argv) > 3 else 3)
     bad = 0
     stats = {}
     for t in range(trials):
         e = Emu()
         w, h = rng.randint(8, 28), rng.randint(8, 28)
-        m = M.Map.random(rng, w, h, density=rng.choice([0.0, 0.1, 0.25, 0.4]))
-        cls = M.MoveClass.random(rng, foot=(rng.choice([1, 1, 2, 3]),) * 2)
+        m = M.Map.random(rng, w, h, density=rng.choice([0.0, 0.1, 0.25, 0.4]),
+                         noise=rng.choice([1, 3, 6]))
+        f = rng.choice([1, 1, 2, 3])
+        if rng.random() < 0.7:
+            ms = rng.choice([10, 16, 24])
+            cls = M.MoveClass(f, f, maxslope=ms, badslope=ms // 2, maxwslope=ms, badwslope=ms // 2)
+        else:
+            cls = M.MoveClass.random(rng, foot=(f, f))
         start = (rng.randrange(w), rng.randrange(h))
         goal = (rng.randrange(w), rng.randrange(h))
         radius = rng.choice([0, 16, 20, 48])

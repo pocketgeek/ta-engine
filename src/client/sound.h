@@ -1090,6 +1090,24 @@ public:
                 } catch (const std::exception&) {}
             }
         } catch (const std::exception&) {}
+        // Total Annihilation: gamedata/sound.tdf, one flat section per class
+        // ([ARM_KBOT] { select1=kbarmsel; ok1=kbarmmov; arrived1=...; }). The event is
+        // the key without its trailing digits; "ok" also answers the engine's "move".
+        try {
+            auto sb = vfs.read("gamedata/sound.tdf");
+            auto root = ta::tdf::parseText(std::string(sb.begin(), sb.end()), "gamedata/sound.tdf");
+            for (const auto& clsName : root.childOrder) {
+                auto& cls = classes_[clsName];
+                for (const auto& [key, value] : root.children.at(clsName).values) {
+                    if (value.empty()) continue;
+                    std::string ev = key;
+                    while (!ev.empty() && std::isdigit(static_cast<unsigned char>(ev.back()))) ev.pop_back();
+                    if (ev.empty()) continue;
+                    cls[ev].push_back({wavStem(value), 1.0f});
+                    if (ev == "ok") cls["move"].push_back({wavStem(value), 1.0f});
+                }
+            }
+        } catch (const std::exception&) {}
     }
 
     const std::string* pick(const std::string& cls, const std::string& event,
