@@ -1165,20 +1165,6 @@
         s.underConstruction = u.underConstruction; s.buildBegun = u.buildBegun;
         s.selectable = u.selectable;
         s.replacementModel=nullptr;s.replacementOpacity=-1;
-        if (u.underConstruction && u.lodestoneReplacement) {
-            const float progress=u.constructionFraction();
-            // An abandoned/damaged site fades out instead of keeping the old
-            // building solid until the last unconjure tick.
-            const float healthFade=std::clamp(u.hp.toFloat()/
-                (float(u.type->maxHp)*(0.05f+0.95f*progress)),0.0f,1.0f);
-            s.replacementOpacity=std::abs(2.0f*progress-1.0f)*healthFade;
-            if (progress<0.5f) {
-                const auto& old=*u.lodestoneReplacement;
-                s.replacementModel=old.type;
-                s.replacementX=old.x.toFloat();s.replacementZ=old.z.toFloat();
-                s.replacementHeading=ta::sim::radiansFromBam(old.heading);
-            }
-        }
         s.cloaked = u.cloaked; s.cloakOn = u.cloakOn; s.active = u.active;
         // The sim counts these in TICKS now (retail's representation); the HUD
         // wants seconds, so the conversion happens here, at the render boundary.

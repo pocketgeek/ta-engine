@@ -696,17 +696,6 @@ public:
 private:
 };
 
-// Persistent lodestone area job (an engine feature, not a retail mission).
-// Deposits are visited greedily, nearest first from wherever the builder stands
-// each time it picks: `visited` holds the deposits already tried (sorted spot
-// indices), `nextSpot` is the deposit being scouted while `exploring`.
-struct ManaBuildArea {
-    const UnitType* type = nullptr;
-    Fixed minX,maxX,minZ,maxZ;
-    uint32_t nextSpot = 0;
-    bool exploring = false;
-    std::vector<uint32_t> visited;
-};
 
 // A campaign mission's order (SetMission / InitialMission, sim/mission.cpp)
 // whose state does not fit in an Order: the World keeps it in a table and
@@ -798,7 +787,9 @@ struct alignas(64) Order {
     // north of it.
     const UnitType* buildType = nullptr;
     HeapOptional<RetailReclaimArea> reclaimArea;
-    HeapOptional<ManaBuildArea> manaBuildArea;
+    // Layout pad: Order's cache-line plan (TA_ORDER_LINE below) was laid out with an
+    // 8-byte slot here (once Kingdoms' area-build order); keep the plan intact.
+    uint64_t layoutPad0_ = 0;
     // This order is a RECLAIM: consume feature `reclaimFeat` (negative = a corpse
     // record). Reclaims used to live in Unit::reclaimQueue, a THIRD parallel list
     // with the same defect the build list had -- nothing drained it unless a
@@ -1100,7 +1091,7 @@ TA_ORDER_LINE(x, 0); TA_ORDER_LINE(z, 0); TA_ORDER_LINE(targetId, 0);
 TA_ORDER_LINE(load, 0); TA_ORDER_LINE(unload, 0); TA_ORDER_LINE(attackMove, 0);
 TA_ORDER_LINE(patrol, 0); TA_ORDER_LINE(guard, 0); TA_ORDER_LINE(waitAttack, 0);
 TA_ORDER_LINE(goal, 0); TA_ORDER_LINE(groundMission, 0); TA_ORDER_LINE(wait, 0);
-TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(reclaimArea, 0); TA_ORDER_LINE(manaBuildArea, 0);
+TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(reclaimArea, 0);
 TA_ORDER_LINE(reclaimFeat, 0); TA_ORDER_LINE(repairTarget, 0);
 TA_ORDER_LINE(transportUnloadApproach, 0); TA_ORDER_LINE(navigationConsumed, 0);
 TA_ORDER_LINE(autoTarget, 0); TA_ORDER_LINE(flightMoveMission, 0); TA_ORDER_LINE(landing, 0);
@@ -1536,19 +1527,12 @@ struct alignas(64) Unit {
     // The planes viewSight is counted in (bit per player): the owner's, plus
     // each ally's, human or computer (World::viewShareMask). 0 = none. Hashed.
     uint16_t viewPlanes = 0;
-    // An upgrade consumes its old building when the new site is admitted. Keep
-    // its presentation independent of retired/reused unit slots.
-    struct LodestoneReplacement {
-        const UnitType* type = nullptr;
-        Fixed x,z;
-        Bam heading;
-        double completedWork=0; // paid work, independent of healing/damage
-    };
-    HeapOptional<LodestoneReplacement> lodestoneReplacement;
     float constructionFraction() const {
         if (!underConstruction) return 1.0f;
+        // TA: retail's remaining fraction (sim/taeconomy.cpp) once building began.
+        if (buildStarted) return std::clamp(1.0f-buildRemaining,0.0f,1.0f);
         return std::clamp(retailSite ? 1.0f-retailSite->progress.remaining :
-            lodestoneReplacement ? float(lodestoneReplacement->completedWork) : (hp.toFloat()/std::max(1,type->maxHp)-0.05f)/0.95f,0.0f,1.0f);
+            (hp.toFloat()/std::max(1,type->maxHp)-0.05f)/0.95f,0.0f,1.0f);
     }
     uint32_t constructionVisualRandom=1;
     // Cumulative cosmetic work events (falling/rising), excluded from stateHash.
@@ -2507,8 +2491,6 @@ public:
     void queueBuild(int builderId, const UnitType* type, float x, float z, bool queue);
     // Persistent area job: explore and try each mana deposit, without allocating
     // a potentially map-sized list of commands or changing either pathfinder.
-    void queueManaBuildArea(int builderId,const UnitType* type,
-                           float x0,float z0,float x1,float z1,bool queue);
     // Abandon a builder's queued builds and drop any not-yet-started site.
     void cancelBuilds(int builderId);
     // Latch a mobile builder onto an existing construction site to resume/assist
@@ -3259,14 +3241,14 @@ public:
     void dropLeg(Unit& u);
     // Does this unit still have construction queued (anywhere in its orders)?
     static bool hasQueuedBuild(const Unit& u) {
-        for (const Order& o : u.orders) if (o.buildType || o.manaBuildArea) return true;
+        for (const Order& o : u.orders) if (o.buildType) return true;
         return false;
     }
     // Any construction OR reclaim still queued -- the "this builder is on a job"
     // test that several places need.
     static bool hasQueuedWork(const Unit& u) {
         for (const Order& o : u.orders)
-            if (o.buildType || o.manaBuildArea || o.reclaimFeat || o.reclaimArea || o.repairTarget) return true;
+            if (o.buildType || o.reclaimFeat || o.reclaimArea || o.repairTarget) return true;
         return false;
     }
     void attackMove(int unitId, float x, float z, bool queue);
@@ -3789,7 +3771,6 @@ private:
     void finishReclaim(Unit& b,int target);
     void tickFeatureFades();
     void tickReclaimArea(Unit& b);
-    void tickManaBuildArea(Unit& b);
     void tickAbilities(float dt);   // reclaim / resurrect on nearby corpses
 
     // Connected-component labelling of a nav grid for one footprint, built on first

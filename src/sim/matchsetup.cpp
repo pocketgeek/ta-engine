@@ -259,10 +259,6 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         case Cmd::Build:
             if (owns(c.unitId) && admits()) world.queueBuild(c.unitId, reg.find(c.type), c.x, c.z, c.queue);
             break;
-        case Cmd::BuildManaArea:
-            if (owns(c.unitId) && admits())
-                world.queueManaBuildArea(c.unitId, reg.find(c.type), c.x, c.z, c.x2, c.z2, c.queue != 0);
-            break;
         case Cmd::Assist:
             // Help/resume an unfinished unit, checked (admits) before anything
             // is cancelled so a refused order leaves the builder's work alone.

@@ -1991,7 +1991,7 @@ bool World::setRally(Unit& u, const Order& o, bool queue) {
 World::QueuedKind World::queuedKind(const Order& o) {
     if (!o.goal || o.scripted || o.stepOut || o.landing || o.formationLevel || o.seekGuard || o.seekAttack ||
         o.reclaimAreaApproach || o.transportPickup || o.patrolRepair || o.guardRepair || o.wait ||
-        o.waitAttack || o.reclaimArea || o.manaBuildArea)
+        o.waitAttack || o.reclaimArea)
         return QueuedKind::None;
     // SUPPRESS and a flyer's attack at a point (+0x22); the approach SUPPRESS
     // puts ahead of itself is part of that order, never matched on its own.
@@ -2383,8 +2383,7 @@ Order* World::groundMissionOrder(Unit& u, bool includeCombatMoves) {
     const auto plain = [includeCombatMoves](const Order& o) {
         return !o.targetId && (includeCombatMoves || (!o.attackMove && !o.patrol)) && !o.guard && !o.load &&
                (!o.unload || o.transportUnloadApproach) &&
-               !o.buildType && !o.reclaimFeat && !o.reclaimArea && !o.manaBuildArea &&
-               !o.repairTarget && !o.wait && !o.waitAttack && !o.scripted && !o.suppress;
+               !o.buildType && !o.reclaimFeat && !o.reclaimArea && !o.repairTarget && !o.wait && !o.waitAttack && !o.scripted && !o.suppress;
     };
     if (!plain(u.orders.front())) return nullptr;
     Order& goal = u.orders[currentLeg(u.orders)];
@@ -3493,7 +3492,7 @@ static bool legionStationOrder(const Unit& u) {
     if (u.orders.empty() || u.retailBuild) return false;
     const Order& o=u.orders.front();
     if (o.targetId || o.load || o.unload || o.guard || o.wait>0 || o.waitAttack || o.buildType ||
-        o.reclaimFeat || o.reclaimArea || o.manaBuildArea || o.repairTarget || o.patrolRepair ||
+        o.reclaimFeat || o.reclaimArea || o.repairTarget || o.patrolRepair ||
         o.landing || o.transportPickup || o.buildRectangle || o.formationLevel) return false;
     return o.flightMoveMission || o.attackMove || o.patrol;
 }
@@ -8111,7 +8110,7 @@ static bool movementQueued(const Unit& u) {
     if (u.orders.size()<2) return false;
     const Order& o=u.orders[1];
     return !o.targetId && !o.guard && !o.load && !o.unload && !o.buildType && !o.reclaimFeat &&
-        !o.reclaimArea && !o.manaBuildArea && !o.repairTarget && !o.wait && !o.waitAttack;
+        !o.reclaimArea && !o.repairTarget && !o.wait && !o.waitAttack;
 }
 
 bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
@@ -12082,24 +12081,13 @@ int World::startBuild(int builderId, const UnitType* type, float x, float z,
             *mobileBlocked=placementCheck(type,x,z,b->player,nullptr,nullptr,0,true,-1,true);
         return 0;
     }
-    std::optional<Unit::LodestoneReplacement> replacement;
-    if (replacing) {
-        replacement=Unit::LodestoneReplacement{replacing->type,replacing->x,replacing->z,replacing->heading};
-        Unit* old=unit(replacing->id);
-        blockFoot(*old->type,old->x.toFloat(),old->z.toFloat(),false);
-        groundRemove(*old);
-        old->deadFor=kRetiredTicks; // consumed, not killed: no wreck, death sound or kill credit
-        old->orders.clear();
-        --players_[size_t(old->player)].unitCount;
-        gPlayersValid_=false;bodyIndexValid_=false;
-    }
+    if (replacing) return 0;   // TA has no in-place building upgrades
     // Preserve retail birth orientation. Factory scripts query this heading to
     // counter-rotate their build pads into the fixed yard where appropriate.
     int id = spawn(type, x, z, std::nullopt, b->player, false);
     Unit* site = unit(id);
     site->underConstruction = true;
-    site->lodestoneReplacement=replacement;
-    site->buildBegun=bool(replacement);
+    site->buildBegun=false;
     site->hp = Fixed::fromFloat(type->maxHp * 0.05f);
     // Key off maxVel, NOT the FBI canmove flag: verwall and tarwall both declare
     // canmove=1 with no velocity, so a canMove gate left Veruna and Taros walls
@@ -12167,127 +12155,6 @@ void World::queueBuild(int builderId, const UnitType* type, float x, float z, bo
     b->orders.push_back(makeBuildOrder(*b,type,Fixed::fromFloat(x),Fixed::fromFloat(z)));
 }
 
-void World::queueManaBuildArea(int builderId,const UnitType* type,
-                             float x0,float z0,float x1,float z1,bool queue) {
-    OrdersNote note{*this,builderId};
-    Unit* b=unit(builderId);
-    if (!buildAllowed(type) || !type->onMana || !b || !b->alive() || !b->type ||
-        !b->type->isBuilder || b->type->isStructure() || b->underConstruction || b->repeatType ||
-        !std::isfinite(x0) || !std::isfinite(z0) || !std::isfinite(x1) || !std::isfinite(z1)) return;
-    const float limitX=float(std::max(0,hW_-1)*16),limitZ=float(std::max(0,hH_-1)*16);
-    ManaBuildArea area;
-    area.type=type;
-    area.minX=Fixed::fromFloat(std::clamp(std::min(x0,x1),0.0f,limitX));
-    area.maxX=Fixed::fromFloat(std::clamp(std::max(x0,x1),0.0f,limitX));
-    area.minZ=Fixed::fromFloat(std::clamp(std::min(z0,z1),0.0f,limitZ));
-    area.maxZ=Fixed::fromFloat(std::clamp(std::max(z0,z1),0.0f,limitZ));
-    if (!queue) {cancelPath(*b);cancelBuilds(builderId);b->orders.clear();}
-    Order o;
-    o.x=area.minX;o.z=area.minZ;o.goal=true;o.issuedTick=tickCounter_;o.manaBuildArea=area;
-    b->orders.push_back(o);
-}
-
-void World::tickManaBuildArea(Unit& b) {
-    if (b.orders.empty() || !b.orders.front().manaBuildArea) return;
-    auto& area=*b.orders.front().manaBuildArea;
-    const int width=hW_/2,height=hH_/2;
-    const auto explored=[&](Fixed x,Fixed z) {
-        const int cx=x.floorInt()/32,cz=z.floorInt()/32;
-        return navigationExplored_.empty() || (cx>=0 && cz>=0 && cx<width && cz<height &&
-            (navigationExplored_[size_t(cz)*width+cx] & (1u<<b.player)));
-    };
-    const auto tried=[&](uint32_t i){return std::binary_search(area.visited.begin(),area.visited.end(),i);};
-    const auto visit=[&](uint32_t i) {
-        const auto at=std::lower_bound(area.visited.begin(),area.visited.end(),i);
-        if (at==area.visited.end() || *at!=i) area.visited.insert(at,i);
-    };
-    if (area.exploring) {
-        // Scouting is over (arrived, or its move failed). A deposit that is
-        // still unexplored is given up, so a failed scout never repeats.
-        area.exploring=false;
-        if (area.nextSpot<manaSpots_.size()) {
-            const auto [sx,sz]=manaSpots_[area.nextSpot];
-            if (!explored(Fixed::fromFloat(sx),Fixed::fromFloat(sz))) visit(area.nextSpot);
-        }
-    }
-    // Deposits another allied builder has claimed: a lodestone build in its
-    // queue, or the deposit its own area job is scouting. Two builders on
-    // overlapping areas therefore split the deposits instead of racing to
-    // the same one. Unit order is the deterministic units_ order.
-    struct Claim {const UnitType* type;Fixed x,z;};
-    std::vector<Claim> claims;std::vector<uint32_t> scouted;
-    TA_PASS();
-    for (const auto& u:units_) {
-        if (u.id==b.id || !u.alive() || !allied(u.player,b.player)) continue;
-        bool firstArea=true;
-        for (const auto& o:u.orders) {
-            if (o.buildType && o.buildType->onMana) claims.push_back({o.buildType,o.buildX,o.buildZ});
-            if (o.manaBuildArea && firstArea) {
-                firstArea=false;
-                if (o.manaBuildArea->exploring) scouted.push_back(o.manaBuildArea->nextSpot);
-            }
-        }
-    }
-    const auto claimed=[&](uint32_t i,Fixed x,Fixed z) {
-        if (std::find(scouted.begin(),scouted.end(),i)!=scouted.end()) return true;
-        for (const auto& c:claims)
-            if (footprintWaypoint(footprintCell(x,c.type->footX),c.type->footX)==c.x &&
-                footprintWaypoint(footprintCell(z,c.type->footZ),c.type->footZ)==c.z) return true;
-        return false;
-    };
-    // Greedy nearest neighbour, re-chosen from the builder's CURRENT position
-    // after every deposit (so a Shift-queued area starts where the previous
-    // order ended, and deposits built by others drop out as it goes). Rank:
-    // deposits on the builder's own nav component first, then exact squared
-    // straight-line distance in 16.16, then spot index.
-    int64_t best=-1;bool bestKnown=false;
-    std::tuple<int,uint64_t,uint32_t> bestKey{};
-    for (uint32_t i=0;i<manaSpots_.size();++i) {
-        if (tried(i)) continue;
-        const auto [sx,sz]=manaSpots_[i];
-        const Fixed x=Fixed::fromFloat(sx),z=Fixed::fromFloat(sz);
-        if (x<area.minX || x>area.maxX || z<area.minZ || z>area.maxZ || claimed(i,x,z)) continue;
-        const bool known=explored(x,z);
-        const bool reachable=b.type->canFly || pathExists(b.type,sx,sz,b.x.toFloat(),b.z.toFloat());
-        // An unexplored deposit we cannot walk to cannot be scouted: give it up.
-        if (!known && !reachable) {visit(i);continue;}
-        const int64_t dx=int64_t(x.v)-b.x.v,dz=int64_t(z.v)-b.z.v;
-        const std::tuple<int,uint64_t,uint32_t> key{reachable?0:1,uint64_t(dx*dx)+uint64_t(dz*dz),i};
-        if (best<0 || key<bestKey) {best=i;bestKey=key;bestKnown=known;}
-    }
-    if (best<0) {b.orders.erase(b.orders.begin());return;}
-    const uint32_t spot=uint32_t(best);
-    const auto [sx,sz]=manaSpots_[spot];
-    const Fixed x=Fixed::fromFloat(sx),z=Fixed::fromFloat(sz);
-    if (!bestKnown) {
-        area.exploring=true;area.nextSpot=spot;
-        const Order approach=makeBuildOrder(b,area.type,x,z);
-        const size_t oldSize=b.orders.size();
-        order(b.id,approach.x.toFloat(),approach.z.toFloat(),true);
-        if (b.orders.size()>oldSize) {
-            if (b.type->canFly) {
-                // An ordinary queued flight move may retire 80..144px
-                // before its point. Scouting must reach the actual approach
-                // so that its following area job can see the deposit.
-                auto& scout=b.orders.back();scout.flightMoveMission=false;
-                scout.flightGoal=RetailFlightGoal{{scout.x.v,b.flightY.v,scout.z.v}};
-                if (auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.activated) {
-                    script->second.activated=true;notifyUnitScript(b,"Activate");
-                }
-                notifyUnitScript(b,"BeginFlight");
-            }
-            std::rotate(b.orders.begin(),b.orders.begin()+oldSize,b.orders.end());
-        }
-        return;
-    }
-    visit(spot);
-    const size_t oldSize=b.orders.size();
-    // Reuse normal placement, clearing, construction and upgrade orders.
-    // Move the appended child work ahead of the area and its queued tail.
-    queueBuild(b.id,area.type,sx,sz,true);
-    if (b.orders.size()>oldSize)
-        std::rotate(b.orders.begin(),b.orders.begin()+oldSize,b.orders.end());
-}
 
 Order World::makeBuildOrder(const Unit& builder,const UnitType* type,Fixed x,Fixed z) const {
     const Unit* b=&builder;
@@ -12405,7 +12272,7 @@ void World::cancelBuilds(int builderId) {
     const bool groundHelp=b->type && !b->type->canFly;
     b->orders.erase(std::remove_if(b->orders.begin(), b->orders.end(),
                                    [groundHelp](const Order& o) {
-                                       return o.buildType != nullptr || o.reclaimFeat != 0 || o.reclaimArea || o.manaBuildArea ||
+                                       return o.buildType != nullptr || o.reclaimFeat != 0 || o.reclaimArea ||
                                               o.repairTarget != 0 || (groundHelp && o.helpSite != 0);
                                    }),
                     b->orders.end());
@@ -14385,11 +14252,8 @@ static void turnBuilderToSite(Unit& b, const Unit& site) {
 }
 
 void World::emitConstruction(Unit& u,bool rising) {
-    if (rising && u.lodestoneReplacement && u.underConstruction)
-        rising=u.constructionFraction()>=0.5f;
     ++u.constructionEmissions[rising ? 1 : 0];
-    const UnitType* effectType=u.lodestoneReplacement && u.underConstruction &&
-        u.constructionFraction()<0.5f ? u.lodestoneReplacement->type : u.type;
+    const UnitType* effectType=u.type;
     if (!u.constructionEmitter) {
         if (!u.cosmeticConstructionEmitter) {
             u.cosmeticConstructionEmitter.emplace();
@@ -14410,10 +14274,7 @@ void World::emitConstruction(Unit& u,bool rising) {
             u.constructionVisualRandom=u.constructionVisualRandom*0x343fdu+0x269ec3u;
             return (u.constructionVisualRandom>>16)&0x7fffu;
         });
-        if (effectType!=u.type) for (size_t i=before;i<emitter.particles.size();++i) {
-            emitter.particles[i].x+=u.lodestoneReplacement->x.v-u.x.v;
-            emitter.particles[i].z+=u.lodestoneReplacement->z.v-u.z.v;
-        }
+        (void)before;
         return;
     }
     // Captured-retail restore path (hashed): still the nearest height corner, not
@@ -15790,7 +15651,7 @@ void World::tickConstruction(Unit& b, float dt) {
     }
     // Our sites are placed when the order is given, retail's on arrival: until
     // its first work, a builder on its way keeps the site from decaying.
-    if (!site->buildBegun || (site->lodestoneReplacement && site->lodestoneReplacement->completedWork==0))
+    if (!site->buildBegun)
         noteSiteWork(b,*site);
     // A flying job waits behind a step-out pushed ahead of it (its air-traffic
     // check, flyingJobTraffic): its mission is not the head meanwhile.
@@ -16017,31 +15878,7 @@ bool World::constructionWork(Unit& b, Unit& site, float dt) {
     }
     if (gInstantBuild) {
         site.hp = Fixed::fromFloat(site.type->maxHp);   // finishes this tick, free
-        if (site.lodestoneReplacement) site.lodestoneReplacement->completedWork=1;
-    } else if (site.lodestoneReplacement) {
-        auto& progress=site.lodestoneReplacement->completedWork;
-        // Scale one tick of work by the share FIRST, then clamp it to what is
-        // left (retail 429af0 subtracts allocation * work and completes at
-        // remaining <= 0). Clamping first and scaling after made the last tick
-        // cover only share * gap: the gap shrank geometrically, and once it was
-        // one ulp a share <= 0.5 rounded away, so the site sat at full hp and
-        // completedWork 1-2^-53 until the allocation rose above one half.
-        // The request is the full tick (retail records it before scaling).
-        double work=double(dt)/std::max(total,0.01f);
-        const double cost=site.type->buildCost*work;
-        const double share=tm.constructionShare(cost);
-        if (share<=0) return false;
-        if (share<1) work*=share;
-        const double gap=1.0-progress;
-        if (work>=gap) {
-            work=gap;
-            tm.payMana(std::min(tm.mana,site.type->buildCost*gap));
-            progress=1.0;
-        } else {
-            tm.payMana(std::min(tm.mana,cost*share));
-            progress=std::min(1.0,progress+work);
-        }
-        site.hp=addCapped(site.hp,Fixed::fromFloat(float(site.type->maxHp*0.95*work)),site.type->maxHp);
+        site.buildRemaining = 0;
     } else {
         // TA build step: remaining-fraction progress, costs requested through the
         // builder's books; a builder in debt stalls until the settle pays it off.
@@ -16049,8 +15886,7 @@ bool World::constructionWork(Unit& b, Unit& site, float dt) {
     }
     emitConstruction(b,false);
     emitConstruction(site,true);
-    if (site.lodestoneReplacement ? site.lodestoneReplacement->completedWork>=1 :
-        (site.buildStarted ? site.buildRemaining <= 0 : site.hp >= Fixed::fromFloat(site.type->maxHp))) {
+    if (site.buildStarted ? site.buildRemaining <= 0 : site.hp >= Fixed::fromFloat(site.type->maxHp)) {
         site.hp = Fixed::fromFloat(site.type->maxHp);
         site.underConstruction = false;
         activateBuilt(site.id);     // 429a8d
@@ -16083,11 +15919,7 @@ void World::decayConstruction(Unit& u) {
     const auto step=retailSiteDecay(retailInverseBuildTime(u.type->buildTime),u.type->buildCost);
     const Fixed drop=Fixed::fromFloat(float(double(u.type->maxHp)*0.95*step.progress));
     bool removed=u.hp<=drop;
-    if (u.lodestoneReplacement) {
-        auto& done=u.lodestoneReplacement->completedWork;
-        removed=removed || done-step.progress<=0;
-        if (!removed) done-=step.progress;
-    } else removed=removed || u.hp-drop<=Fixed::fromFloat(u.type->maxHp*0.05f);
+    removed=removed || u.hp-drop<=Fixed::fromFloat(u.type->maxHp*0.05f);
     if (!removed) {
         u.hp=u.hp-drop;
         players_[size_t(u.player)].creditMana(double(step.refund));
@@ -19464,13 +19296,6 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
             leg.x==Fixed() && leg.z==Fixed())
             if (const Unit* t=unit(leg.targetId); t && t->alive()) { leg.x=t->x; leg.z=t->z; }
     }
-    // The rectangle is work metadata, never a movement destination. A rejected
-    // site leaves it at the head until the next deposit is tried next tick.
-    if (!u.orders.empty() && u.orders.front().manaBuildArea) {
-        if (u.type->canFly) tickFlightBody(u);
-        else brakeGround(u);
-        return;
-    }
     // MobileBuild stopped navigating at its site while mobile units stand on
     // it (405824..405911): the body brakes and stays for the 10-tick retry.
     // FlyingBuild (41f2a8) has no controller left after arrival: the flyer
@@ -20749,7 +20574,6 @@ void World::tick(float dt) {
             u.orders.front().buildType && !u.orders.front().buildRectangle &&
             u.orders.front().placementFailures>0;
         if (!placementWait) {
-            tickManaBuildArea(u);
             tickGuardHelp(u);
             tickPatrolRepair(u);
             if (g_phase) {
@@ -22039,16 +21863,6 @@ uint64_t World::stateHash() const {
             }
             mix(order.groundMission);mix(order.navigationExhausted);mix(order.navigationConsumed);
             mix(order.buildRectangle.has_value());
-            if (order.manaBuildArea) {
-                const auto& area=*order.manaBuildArea;
-                mix(0x4d414e4141524541ull);
-                mix(uint32_t(area.minX.v));mix(uint32_t(area.maxX.v));
-                mix(uint32_t(area.minZ.v));mix(uint32_t(area.maxZ.v));
-                mix(area.nextSpot);mix(area.exploring);
-                mix(area.visited.size());for (uint32_t i:area.visited) mix(i);
-                mix(area.type->id.size());
-                for (unsigned char c:area.type->id) mix(c);
-            }
             if (u.type && u.type->canFly) {
                 mix(order.landing);
                 mix(order.flightMoveMission);
@@ -22282,11 +22096,6 @@ uint64_t World::stateHash() const {
             const auto& m=u.siteTimer;
             mix(0x44454341u);mix(m.stage);mix(m.waitMask);mix(m.deadline);mix(m.pending);mix(u.siteWorkLate);
             if (!u.siteGetBuilt) mix(0x4e4f4742u);
-        }
-        if (u.lodestoneReplacement) {
-            const auto& old=*u.lodestoneReplacement;
-            mix(0x4c4f4445u);for (char c:old.type->id) mix(uint8_t(c));
-            mix(uint32_t(old.x.v));mix(uint32_t(old.z.v));mix(old.heading.v);mix(std::bit_cast<uint64_t>(old.completedWork));
         }
         if (u.retailSite) {
             mix(0x53495445u);const auto& s=*u.retailSite;

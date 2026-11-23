@@ -47,12 +47,6 @@ struct RenderOrder {
             buildX=ta::sim::Fixed::raw(o.reclaimArea->maxX);buildZ=ta::sim::Fixed::raw(o.reclaimArea->maxZ);
             areaApproached=o.reclaimArea->stage>=2;   // its approach leg is queued (or done)
         }
-        if (o.manaBuildArea) {
-            manaBuildArea=true;buildType=o.manaBuildArea->type;
-            x=o.manaBuildArea->minX;z=o.manaBuildArea->minZ;
-            buildX=o.manaBuildArea->maxX;buildZ=o.manaBuildArea->maxZ;
-            areaNextSpot=o.manaBuildArea->nextSpot;areaExploring=o.manaBuildArea->exploring;
-        }
     }
 };
 
@@ -121,8 +115,6 @@ struct UnitR {
         orders.assign(unit.orders.begin(),unit.orders.end());
         rally.assign(unit.rally.begin(),unit.rally.end());
         areaVisited.clear();
-        for (const auto& o : unit.orders)
-            if (o.manaBuildArea) {areaVisited=o.manaBuildArea->visited;break;}
     }
     void clearOrders() {orders.clear();rally.clear();areaVisited.clear();hasSpot=false;}
     // Orders given to this unit set its output's rally instead (World::setRally):
