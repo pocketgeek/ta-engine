@@ -295,6 +295,27 @@ struct Weapon {
     // hashed state is a desync rather than merely a bug.
     std::vector<std::pair<int, int32_t>> dmgVsIds;
     WeaponFx fx = WeaponFx::Arrow;
+    // ---- Total Annihilation weapon record (weapons/*.tdf; TotalA.exe 0x42e440,
+    // docs/retail-data.md section 3). Values are stored the way retail stores them.
+    int taId = -1;                  // ID= slot 0..255 (0 = NOWEAPON)
+    std::string section;            // [SECTION] name: what FBI weapon1.. refers to
+    uint32_t taFlags = 0;           // TaWeaponFlag bits (+0x111)
+    float energyPerShot = 0, metalPerShot = 0;
+    int32_t velocityFx = 0, startVelocityFx = 0, accelerationFx = 0;   // fx16 per tick / tick^2
+    uint16_t reloadTicks = 0, weaponTimerTicks = 0, burst = 0, burstRateTicks = 0;
+    uint16_t sprayAngle = 0, durationTicks16 = 0, flightTimeTicks = 0, holdTimeTicks = 0;
+    uint16_t smokeDelayTicks = 0, randomDecayTicks = 0, turnRatePerTick = 0;
+    uint16_t accuracy = 0, tolerance = 0, pitchTolerance = 0;
+    int32_t coverage = 0;
+    float minBarrelAngle = -0.19634954f;   // radians; retail default -11.25 degrees
+    uint8_t renderType = 0, color = 0, color2 = 0;
+    std::string explosionGaf, explosionArt, waterExplosionGaf, waterExplosionArt,
+                lavaExplosionGaf, lavaExplosionArt;
+    std::string soundStart, soundWater;
+    // Aim handler retail installs (0x49e010): which of turret / vlaunch /
+    // lineofsight-or-selfprop / dropped claimed it. None = cannot fire.
+    enum class TaAim : uint8_t { None, Turret, VLaunch, Direct, Dropped } taAim = TaAim::None;
+    bool hasTaFlag(uint32_t bit) const { return (taFlags >> bit) & 1u; }
     // Damage this weapon deals to a unit of type `t` (category override, else base).
     float damageVs(const UnitType* t) const;
 };
@@ -373,7 +394,19 @@ struct UnitType {
     bool onMana = false;    // must be built on a mana deposit (yardmap 'S'), e.g. lodestones
     bool sacredIncome = false; // retail yardmap S: income requires sacred-site coverage
     bool gate = false; // FBI gate low bit: closed passage cells use search grade 3
-    float buildCost = 0;    // mana
+    float buildCost = 0;    // legacy single-resource cost (= buildCostMetal for TA data)
+    // Total Annihilation economy (FBI; TotalA.exe 0x42bf40, docs/retail-data.md 2.2).
+    // buildcost* are read as INTEGERS then stored as float (12.9 -> 12).
+    float buildCostMetal = 0, buildCostEnergy = 0;
+    float energyMake = 0, energyUse = 0, metalMake = 0, extractsMetal = 0;
+    uint8_t makesMetal = 0;          // read as an integer byte
+    float windGenerator = 0, tidalGenerator = 0;
+    float energyStorage = 0, metalStorage = 0;
+    std::string objectName;          // 3DO name (defaults to unitname)
+    std::string description;
+    int16_t sonar = 0, radarJam = 0, sonarJam = 0;
+    bool stealth = false, canDgun = false, showPlayerName = false, downloadable = false;
+    bool isAirBase = false, antiWeapons = false, targetingUpgrade = false;
     float buildTime = 0;    // work units; seconds = buildTime / builder workerTime
     float workerTime = 1;
     float income = 0;       // mana/sec (mogriumincome)
@@ -658,6 +691,9 @@ public:
         return it == catIds_.end() ? -1 : it->second;
     }
     const std::vector<std::string>& buildable(const std::string& builderId) const;
+    // TA build-menu placement: GUI page (1-based, after the orders page) and slot 0..5.
+    struct BuildSlot { std::string unit; int page = 1; int slot = 0; };
+    const std::vector<BuildSlot>& buildPages(const std::string& builderId) const;
     // Mobile, armed combat units of a faction `side` ("ARA".."CRE"), in a fixed
     // (name-sorted) order so every peer builds the same stress-test army. Excludes
     // structures, builders, the Monarch, and anything with no weapon.
@@ -681,7 +717,12 @@ private:
     std::set<std::string> canonicalTypes_;   // ids whose defining .fbi filename == objectname
     std::map<std::string, UnitType> classicVariants_;
     std::map<std::string, std::vector<std::string>> buildTree_;
+    std::map<std::string, std::vector<BuildSlot>> buildPages_;
     std::map<std::string, MoveClass> moveClasses_;   // lowercased name -> limits
+    std::shared_ptr<class TaWeaponTable> taWeapons_;  // weapons/*.tdf by ID and section name
+public:
+    const class TaWeaponTable* taWeapons() const { return taWeapons_.get(); }
+private:
 };
 
 // Persistent lodestone area job (an engine feature, not a retail mission).

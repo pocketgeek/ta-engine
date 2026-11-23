@@ -159,6 +159,7 @@ add_library(ta-formats
   src/sim/detmath.cpp
   src/sim/matchsetup.cpp
   src/sim/sides.cpp
+  src/sim/taweapons.cpp
   src/sim/mission.cpp
   src/sim/scenario.cpp
   src/sim/scenarioinfo.cpp
@@ -4724,3 +4725,7 @@ if(TARGET ta-music)
     endif()
   endforeach()
 endif()
+
+# TA data check: registry_dump <install-dir> [unit...]
+add_executable(registry_dump tools/registry_dump.cpp)
+target_link_libraries(registry_dump PRIVATE ta-formats)

@@ -45,8 +45,14 @@ struct Parser {
         auto previous=node.children.find(key);
         if(previous==node.children.end())node.childOrder.push_back(key);
         else {
+            // TotalA.exe's section lookup returns the FIRST section of a name
+            // (docs/retail-data.md section 1): a later duplicate is kept only as
+            // history and never answers child().
             node.childEntries.at(latest.at(key)).previous=int(node.previousChildren.size());
-            node.previousChildren.push_back(std::move(previous->second));
+            node.previousChildren.push_back(std::move(child));
+            latest[key]=node.childEntries.size();
+            node.childEntries.push_back({key,-1});
+            return;
         }
         latest[key]=node.childEntries.size();
         node.childEntries.push_back({key,-1});
@@ -128,28 +134,35 @@ struct Parser {
     void parseAssignment(Node& node) {
         if(++usage().nodes>limits.nodes)limit("node limit exceeded");
         charge(256);
+        // TotalA.exe: a key is everything up to the next '=' -- across line ends
+        // ("ItalianDescription=;Scorpione" leaves "Scorpione\n canguard" as the
+        // next key, so retail's armscorp loses canguard). Text that reaches a
+        // '}' or '[' with no '=' is dropped.
         std::string key;
-        while (pos < text.size() && text[pos] != '=' && text[pos] != '\n') {
+        while (pos < text.size() && text[pos] != '=' && text[pos] != '}' && text[pos] != '[') {
             charge(4);
             key += text[pos];
             advance();
         }
-        if (peek() != '=') fail("expected '=' in assignment");
+        if (peek() != '=') return;
         advance();
         // Values run to end of line: game data contains values holding ';'
         // (French sentences) and even '}' (the SYMBOL_7D key name table), so
         // ';' and '}' only terminate at line granularity. A '}' after other
         // content on the line closes the section and is pushed back.
+        // TotalA.exe: a value runs to the next ';' -- several keys may share a
+        // line ("{ x1=132; y1=5; x2=152; y2=25; }" in sidedata.tdf). A value missing
+        // its ';' ends at the line end, and a '}' after content closes the section.
         std::string value;
-        while (pos < text.size() && text[pos] != '\n') {
+        while (pos < text.size() && text[pos] != '\n' && text[pos] != ';') {
             if (text[pos] == '/' && pos + 1 < text.size() && text[pos + 1] == '/') break;
             if (text[pos] == '}' && !trim(value).empty()) break;
             charge(4);
             value += text[pos];
             advance();
         }
+        if (pos < text.size() && text[pos] == ';') advance();
         value = trim(value);
-        while (!value.empty() && value.back() == ';') value.pop_back();
         node.values[lower(trim(key))] = trim(value);
     }
 

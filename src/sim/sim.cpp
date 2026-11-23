@@ -1,4 +1,6 @@
 #include "sim/sim.h"
+#include "sim/taweapons.h"
+#include "util/virtualpath.h"
 #include "sim/retailtransport.h"
 #include "sim/retailanimationqueries.h"
 #include "sim/retailaim.h"
@@ -168,16 +170,32 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
         }
         effectsLoaded_=true;
     }
+    // Total Annihilation weapons live in weapons/*.tdf, referenced from FBIs by
+    // section name (TotalA.exe 0x42e310).
+    taWeapons_ = std::make_shared<TaWeaponTable>();
+    taWeapons_->load(vfs);
     for (const std::string& path : vfs.list(prefix)) {
-        if (lower(std::filesystem::path(path).extension().string()) != ".fbi") continue;
+        if (ta::vpath::extension(path) != ".fbi") continue;
         try {
             auto bytes = vfs.read(path);
             auto root = tdf::parseText(std::string(bytes.begin(), bytes.end()), path);
             const auto* info = root.child("UNITINFO");
             if (!info) continue;
             UnitType t;
-            std::string stem = lower(std::filesystem::path(path).stem().string());
-            t.id = lower(info->valueOr("objectname", stem));
+            std::string stem = lower(ta::vpath::stem(path));
+            // Copyright gate (TotalA.exe pre-pass 0x42a8d0): the line, with the four
+            // characters at offset 10 replaced by "0000", must match exactly, or the
+            // unit is silently not loaded. All 278 shipped FBIs carry it.
+            {
+                std::string c = info->valueOr("copyright", "Run to the Village!  Warn your brother!");
+                if (c.size() >= 14) c.replace(10, 4, "0000");
+                if (c != "Copyright 0000 Humongous Entertainment. All rights reserved.") continue;
+            }
+            // unitname is TA's primary key (sort key, scripts\<unitname>.COB,
+            // sidedata commander=); objectname only names the 3DO.
+            t.id = lower(info->valueOr("unitname", stem));
+            t.objectName = lower(info->valueOr("objectname", t.id));
+            t.description = info->valueOr("description", "");
             // Two files can claim the same objectname (e.g. the Iron Plague campaign's
             // tarnecr2.fbi also declares objectname TARNECRO, but drops builder=1). The
             // CANONICAL definition is the one whose filename matches the objectname
@@ -238,30 +256,57 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.experiencePoints = int32_t(info->numberOr("experiencepoints", 666));
             t.isBuilder = info->numberOr("builder", 0) != 0;
             t.commander = info->numberOr("commander", 0) != 0;   // the Monarch
-            t.buildCost = float(info->numberOr("buildcost", 0));
+            // Integer-then-float (atol): 12.9 -> 12.
+            t.buildCostMetal = float(int32_t(info->numberOr("buildcostmetal", 0)));
+            t.buildCostEnergy = float(int32_t(info->numberOr("buildcostenergy", 0)));
+            t.buildCost = t.buildCostMetal;
+            t.energyMake = float(info->numberOr("energymake", 0));
+            t.energyUse = float(info->numberOr("energyuse", 0));
+            t.metalMake = float(info->numberOr("metalmake", 0));
+            t.extractsMetal = float(info->numberOr("extractsmetal", 0));
+            t.makesMetal = uint8_t(int32_t(info->numberOr("makesmetal", 0)));
+            t.windGenerator = float(info->numberOr("windgenerator", 0));
+            t.tidalGenerator = float(info->numberOr("tidalgenerator", 0));
+            t.energyStorage = float(info->numberOr("energystorage", 0));
+            t.metalStorage = float(info->numberOr("metalstorage", 0));
+            t.sonar = int16_t(int32_t(info->numberOr("sonardistance", 0)));
+            t.radarJam = int16_t(int32_t(info->numberOr("radardistancejam", 0)));
+            t.sonarJam = int16_t(int32_t(info->numberOr("sonardistancejam", 0)));
+            t.stealth = (int32_t(info->numberOr("stealth", 0)) & 1) != 0;
+            t.canDgun = (int32_t(info->numberOr("candgun", 0)) & 1) != 0;
+            t.showPlayerName = (int32_t(info->numberOr("showplayername", 0)) & 1) != 0;
+            t.downloadable = (int32_t(info->numberOr("downloadable", 0)) & 1) != 0;
+            t.isAirBase = (int32_t(info->numberOr("isairbase", 0)) & 1) != 0;
+            t.antiWeapons = (int32_t(info->numberOr("antiweapons", 0)) & 1) != 0;
+            t.targetingUpgrade = (int32_t(info->numberOr("istargetingupgrade", 0)) & 1) != 0;
             t.buildTime = float(info->numberOr("buildtime", 0));
             t.workerTime = float(info->numberOr("workertime", 1));
-            t.income = float(info->numberOr("mogriumincome", 0));
-            t.storage = float(info->numberOr("mogriumstorage", 0));
-            t.bounty = float(info->numberOr("mogriumbounty", 0));
+            t.income = 0;    // Kingdoms mana fields: unused by TA data
+            t.storage = 0;
+            t.bounty = 0;
             t.footX = int(info->numberOr("footprintx", 1));
             t.footZ = int(info->numberOr("footprintz", 1));
             t.gate = (int(info->numberOr("gate",0))&1)!=0;
-            {
-                std::string ym = info->valueOr("yardmap", "");
-                std::erase_if(ym, [](char c) { return c == ' ' || c == '\t'; });
-                // A stray 'S' (not a full footprint map) marks a lodestone that
-                // must sit on a mana deposit.
-                t.onMana = ym.find('S') != std::string::npos ||
-                           ym.find('s') != std::string::npos;
-                t.sacredIncome=ym.find('S')!=std::string::npos;
-                if (int(ym.size()) == t.footX * t.footZ) t.yardMap = ym;
+            // YardMap (TotalA.exe 0x42cf3e): only for bmcode 0; characters outside
+            // ". C G O Y c f o w y" are skipped without using a cell; a short map
+            // repeats its last valid character; extra characters are ignored.
+            // (46 shipped buildings have a map of the wrong length.)
+            if (int32_t(info->numberOr("bmcode", 0)) == 0) {
+                const std::string raw = info->valueOr("yardmap", "");
+                const std::string valid = ".CGOYcfowy";
+                std::string ym;
+                const size_t cells = size_t(std::max(0, t.footX)) * size_t(std::max(0, t.footZ));
+                char last = 0;
+                for (char c : raw) {
+                    if (valid.find(c) == std::string::npos) continue;
+                    if (ym.size() < cells) ym.push_back(c);
+                    last = c;
+                }
+                if (last) while (ym.size() < cells) ym.push_back(last);
+                if (ym.size() == cells) t.yardMap = ym;
             }
-            // Every lodestone (Lodestone / Divine Lodestone) must sit on a mana
-            // deposit, even ones whose FBI omits the 'S' yardmap (e.g. crelode).
-            if (t.id.find("lode") != std::string::npos ||
-                t.id.find("mana") != std::string::npos)
-                t.onMana = true;
+            t.onMana = false;
+            t.sacredIncome = false;
             t.canTransport = info->numberOr("cantransport", 0) != 0;
             t.transportCap = uint16_t(int(info->numberOr("transportcapacity",0)));
             t.transportSizeCap = uint16_t(int(info->numberOr("transportsizecapacity",0)));
@@ -339,8 +384,9 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // bit 23 and sets bit 22 of the three-bit field (icd 0x4c0a1f),
             // which leaves 2. No shipped FBI declares the key, so 2 is what
             // every unit in the game actually uses.
-            t.selfDestructCountdown =
-                std::clamp(int(info->numberOr("selfdestructcountdown", 2)), 0, 7);
+            // TotalA.exe: atol & 7, default 5 when absent (flagsB bits 20-22).
+            t.selfDestructCountdown = info->value("selfdestructcountdown")
+                ? (int32_t(info->numberOr("selfdestructcountdown", 5)) & 7) : 5;
             t.radar = float(info->numberOr("radardistance", 0));
             t.noVeteran = info->numberOr("noveteran", 0) != 0;
             t.maxMana = float(info->numberOr("maxmana", 0));
@@ -357,13 +403,14 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // init_cloaked's low bit is UnitDef +0x260 & 0x40 (4c0100); 511990
             // copies it to the new unit's cloak order bit (+0x130 & 0x200, 511c77).
             t.initCloaked = (int32_t(info->numberOr("init_cloaked", 0)) & 1) != 0;
-            t.cloakCost = float(info->numberOr("cloakcost", 0));
-            // Retail (0x4c01a1) reads cloakcost, scales it by 1/30 to a per-tick
-            // cost, and passes that SCALED value as cloakcostmoving's default before
-            // scaling the result by 1/30 again: a unit without the key (zonspide)
-            // pays cloakcost/30 per second while moving.
-            t.cloakCostMove = float(info->numberOr("cloakcostmoving", t.cloakCost / 30.0f));
-            t.minCloakDist = float(info->numberOr("mincloakdistance", 0));
+            // TotalA.exe: cloakcost and cloakcostmoving are atol'd then stored as
+            // float (0.5 -> 0); cloakcostmoving defaults to int(cloakcost);
+            // mincloakdistance becomes 80 when cloakcost > 0 and it is 0 (0x42d12a).
+            t.cloakCost = float(int32_t(info->numberOr("cloakcost", 0)));
+            t.cloakCostMove = float(int32_t(info->numberOr("cloakcostmoving", t.cloakCost)));
+            t.canCloak = t.cloakCost > 0;
+            t.minCloakDist = float(int16_t(int32_t(info->numberOr("mincloakdistance", 0))));
+            if (t.cloakCost > 0 && t.minCloakDist == 0) t.minCloakDist = 80;
             // Boolean in retail too: the parser does `and eax,1`.
             t.fireAtWillRandom = (int(info->numberOr("fireatwillrandom", 0)) & 1) != 0;
             t.attractsGods = info->numberOr("attractsgods", 0) != 0;
@@ -708,33 +755,27 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 }
                 return wp;
             };
-            t.hasPrimaryWeaponBlock = root.child("WEAPON1") != nullptr;
+            // weapon1/2/3, explodeas, selfdestructas name weapons/*.tdf SECTIONS
+            // (0x49e5b0); missing, empty or unknown -> slot 0 (NOWEAPON). A unit
+            // "has a weapon" when any of weapon1..3 is not slot 0.
             for (int slot = 1; slot <= 3; ++slot) {
-                const auto* w = root.child("WEAPON" + std::to_string(slot));
-                if (!w) continue;
+                const std::string ref = info->valueOr("weapon" + std::to_string(slot), "");
+                const Weapon& wp = taWeapons_->resolve(ref);
+                if (wp.taId <= 0) continue;
+                t.hasPrimaryWeaponBlock = t.hasPrimaryWeaponBlock || slot == 1;
                 t.classicFbi.weaponBlocks |= uint8_t(1u << (slot - 1));
-                Weapon wp = parseWeapon(w);
-                // 5307e9 truncates reloadtime*30 into a 16-bit tick count;
-                // 52aae0 takes the maximum over all three slots, even when a
-                // slot has no damage, then converts ticks to milliseconds.
-                const auto reloadTicks=uint16_t(int32_t(w->numberOr("reloadtime",0)*30.0));
-                t.maxWeaponReloadMs=std::max(t.maxWeaponReloadMs,int32_t(reloadTicks)*1000/30);
-                t.weaponAirstrikeCursor[size_t(slot-1)] = wp.cursorAirstrike;
-                if (wp.damage > 0) {
-                    t.weaponNativeSlotForLocal[t.weapons.size()] = uint8_t(slot-1);
-                    t.weapons.push_back(wp);
-                }
+                t.maxWeaponReloadMs = std::max(t.maxWeaponReloadMs, int32_t(wp.reloadTicks) * 1000 / 30);
+                t.weaponAirstrikeCursor[size_t(slot - 1)] = wp.cursorAirstrike;
+                t.weaponNativeSlotForLocal[t.weapons.size()] = uint8_t(slot - 1);
+                t.weapons.push_back(wp);
             }
             if (!t.weapons.empty()) t.weapon = t.weapons[0];
-            // [EXPLODEAS]: the weapon a unit detonates at its own position when it
-            // dies -- the Kamikaze Rat's whole purpose (areaofeffect 203, 8000
-            // damage), plus the Grenadier, Fire Demon, Balloon, crebomb, creshoc.
-            if (const auto* ea = root.child("EXPLODEAS")) {
-                t.explodeAs = parseWeapon(ea);
-                t.hasExplodeAs = t.explodeAs.damage > 0;
+            if (const Weapon& ea = taWeapons_->resolve(info->valueOr("explodeas", "")); ea.taId > 0) {
+                t.explodeAs = ea;
+                t.hasExplodeAs = ea.damage > 0;
             }
-            if (const auto* sd = root.child("SELFDESTRUCTAS")) {
-                t.selfDestructAs = parseWeapon(sd);
+            if (const Weapon& sd = taWeapons_->resolve(info->valueOr("selfdestructas", "")); sd.taId > 0) {
+                t.selfDestructAs = sd;
                 t.hasSelfDestructAs = true;
             }
             // totalallowed: per-player cap on live units of this type (the five
@@ -761,7 +802,8 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // Target-category tokens for weapons' per-category damage: split
             // `category`, plus `damagecategory` and `tedclass`, all lowercased.
             {
-                t.damageCategory = lower(info->valueOr("damagecategory", ""));
+                // TA [DAMAGE] overrides are keyed by target UNITNAME (0x499cd0).
+                t.damageCategory = t.id;
                 std::string cat = lower(info->valueOr("category", "")) + " " +
                                   t.damageCategory + " " +
                                   lower(info->valueOr("tedclass", ""));
@@ -782,7 +824,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
     // Script/model failures must not silently remove a valid unit definition.
     for (auto& [id,t]:types_) {
         if (!t.groundModelLoaded) {
-            const auto path="objects3d/"+t.id+".3do";
+            const auto path="objects3d/"+(t.objectName.empty()?t.id:t.objectName)+".3do";
             if (vfs.has(path)) {
                 const auto model=tdo::load(vfs.read(path));
                 t.modelTop=retailModelTop(model.root);
@@ -813,7 +855,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 t.simulationScript=script;
                 t.instantCorpse=t.isStructure() && !t.corpse.empty() && retailInstantCorpse(*script);
                 t.explosionCorpse=!t.corpse.empty() && retailExplosionCorpse(*script);
-                const auto modelPath="objects3d/"+t.id+".3do";
+                const auto modelPath="objects3d/"+(t.objectName.empty()?t.id:t.objectName)+".3do";
                 if(vfs.has(modelPath)) {
                     auto model=tdo::load(vfs.read(modelPath));
                     auto& currentType=t;
@@ -864,56 +906,76 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 t.animateType = &it->second;
 }
 
-void TypeRegistry::loadBuildTree(const hpi::Vfs& vfs, const std::string& prefix) {
-    namespace fs = std::filesystem;
-    // Retail 0x4c1950: for every roster type with the builder flag, list
-    // CanBuild\<builder>\*.tdf, keep each entry that names a roster type (0x515ac0
-    // returns 0 for anything else and the entry is skipped), read [Menu] Priority
-    // (default 9999999999 when absent) and sort ascending. The roster must
-    // therefore be loaded (loadDir) before this. The VFS enumerates
-    // <prefix>/<builder>/<buildable>.tdf recursively; group by the builder
-    // subdirectory (the path segment right after `prefix`).
-    std::string pre = lower(prefix);
-    while (!pre.empty() && (pre.back() == '/' || pre.back() == '\\')) pre.pop_back();
-    std::map<std::string, std::vector<std::pair<double, std::string>>> byBuilder;
-    std::vector<std::string> order;   // builders in first-seen order
-    for (const std::string& path : vfs.list(prefix)) {
-        if (lower(fs::path(path).extension().string()) != ".tdf") continue;
-        // Split into segments; require exactly <prefix>/<builder>/<file>.
-        std::vector<std::string> segs;
-        for (const auto& part : fs::path(path)) {
-            std::string s = part.string();
-            if (!s.empty() && s != "/") segs.push_back(s);
-        }
-        size_t i = 0;
-        while (i < segs.size() && lower(segs[i]) != pre) ++i;
-        if (i + 3 != segs.size()) continue;   // require exactly <prefix>/<builder>/<file>
-        std::string builder = lower(segs[i + 1]);
-        const auto bt = types_.find(builder);
-        if (bt == types_.end() || !bt->second.isBuilder) continue;
-        std::string id = lower(fs::path(path).stem().string());
-        if (!types_.count(id)) continue;
-        double prio = 9999999999.0;
+void TypeRegistry::loadBuildTree(const hpi::Vfs& vfs, const std::string& /*prefix*/) {
+    // Total Annihilation build menus (docs/retail-data.md section 5): a builder's
+    // pages are guis\<unit>1.GUI, guis\<unit>2.GUI, ... (consecutive); each button
+    // gadget (type 1) named after a unit is a build slot, numbered in gadget order.
+    // download\*.tdf [MENUENTRYn] {UNITMENU; MENU; BUTTON; UNITNAME} adds entries:
+    // MENU is the page + 1 (the orders page counts as menu 1), BUTTON a 0-based slot,
+    // and such units are forced downloadable.
+    buildTree_.clear();
+    buildPages_.clear();
+    auto readTdf = [&](const std::string& path) -> std::optional<tdf::Node> {
         try {
-            auto bytes = vfs.read(path);
-            auto root = tdf::parseText(std::string(bytes.begin(), bytes.end()), path);
-            if (const auto* m = root.child("Menu")) prio = m->numberOr("priority", prio);
-        } catch (const std::exception&) {}
-        if (!byBuilder.count(builder)) order.push_back(builder);
-        byBuilder[builder].push_back({prio, std::move(id)});
+            auto b = vfs.read(path);
+            return tdf::parseText(std::string(b.begin(), b.end()), path);
+        } catch (const std::exception&) { return std::nullopt; }
+    };
+    for (auto& [id, t] : types_) {
+        if (!t.isBuilder) continue;
+        auto& pages = buildPages_[id];
+        for (int page = 1; page < 64; ++page) {
+            const std::string gui = "guis/" + id + std::to_string(page) + ".gui";
+            if (!vfs.has(gui)) break;
+            auto root = readTdf(gui);
+            if (!root) break;
+            int slot = 0;
+            for (int g = 0;; ++g) {
+                const tdf::Node* gad = root->child("GADGET" + std::to_string(g));
+                if (!gad) break;
+                const tdf::Node* common = gad->child("COMMON");
+                if (!common || int(common->numberOr("id", -1)) != 1) continue;
+                const std::string name = lower(common->valueOr("name", ""));
+                if (!types_.count(name)) continue;   // PREV/NEXT and other buttons
+                pages.push_back({name, page, slot++});
+            }
+        }
     }
-    for (const std::string& builder : order) {
-        auto entries = byBuilder[builder];
-        // Retail bubble-sorts with a strict > swap: ascending priority, ties kept in
-        // enumeration order (here the VFS's sorted listing).
-        std::stable_sort(entries.begin(), entries.end(),
-                         [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (const std::string& path : vfs.list("download")) {
+        if (ta::vpath::extension(path) != ".tdf") continue;
+        auto root = readTdf(path);
+        if (!root) continue;
+        for (const auto& sec : root->childOrder) {
+            const tdf::Node* e = root->child(sec);
+            if (!e) continue;
+            const std::string builder = lower(e->valueOr("unitmenu", ""));
+            const std::string unit = lower(e->valueOr("unitname", ""));
+            auto bt = types_.find(builder);
+            auto ut = types_.find(unit);
+            if (bt == types_.end() || ut == types_.end()) continue;
+            ut->second.downloadable = true;
+            auto& pages = buildPages_[builder];
+            const int page = int(e->numberOr("menu", 2)) - 1;
+            const int slot = int(e->numberOr("button", 0));
+            std::erase_if(pages, [&](const BuildSlot& s) { return s.unit == unit; });
+            pages.push_back({unit, std::max(1, page), std::clamp(slot, 0, 5)});
+        }
+    }
+    for (auto& [builder, pages] : buildPages_) {
+        std::stable_sort(pages.begin(), pages.end(), [](const BuildSlot& a, const BuildSlot& b) {
+            return a.page != b.page ? a.page < b.page : a.slot < b.slot;
+        });
         auto& list = buildTree_[builder];
-        for (auto& [p, id] : entries)
-            if (std::find(list.begin(), list.end(), id) == list.end())
-                list.push_back(id);
+        for (const auto& s : pages)
+            if (std::find(list.begin(), list.end(), s.unit) == list.end()) list.push_back(s.unit);
         if (auto t = types_.find(builder); t != types_.end()) t->second.buildMenu = list;
     }
+}
+
+const std::vector<TypeRegistry::BuildSlot>& TypeRegistry::buildPages(const std::string& builderId) const {
+    static const std::vector<BuildSlot> kEmpty;
+    auto it = buildPages_.find(lower(builderId));
+    return it == buildPages_.end() ? kEmpty : it->second;
 }
 
 const std::vector<std::string>& TypeRegistry::buildable(const std::string& builderId) const {
