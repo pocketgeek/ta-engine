@@ -38,7 +38,7 @@ static int runTest(int argc,char** argv) try {
         const auto top=fs::temp_directory_path()/ta::u8path("ta clientpath ü");
         std::error_code ec;fs::remove_all(top,ec);
         const auto editor=top/"dmg"/"TA Cartographer.app"/"Contents";
-        const auto game=top/"dmg"/"Total Annihilation - Kingdoms.app"/"Contents"/"MacOS";
+        const auto game=top/"dmg"/"Total Annihilation.app"/"Contents"/"MacOS";
         fs::create_directories(editor/"Resources");fs::create_directories(editor/"MacOS");fs::create_directories(game);
         auto touch=[](const fs::path& f){std::ofstream(f)<<"x";};
         auto fails=[](const fs::path& d){try{cart::Playtest::clientPath(d);}catch(const std::runtime_error&){return true;}return false;};

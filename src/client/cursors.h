@@ -2,7 +2,7 @@
 
 #include "client/cursortiming.h"
 
-// Retail Total Annihilation: Kingdoms animated mouse cursors. Loads anims/cursors.gaf
+// Retail Total Annihilation animated mouse cursors. Loads anims/cursors.gaf
 // and draws the context-sensitive pointer (point / attack / move / reclaim / guard /
 // ...). The cursor set, the per-context selection, the hotspot (each GAF frame's anchor)
 // and the wall-clock ~15fps animation are reverse-engineered from KINGDOMS.icd by static

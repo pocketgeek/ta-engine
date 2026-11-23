@@ -127,7 +127,7 @@ void setSettingsPath(std::string path) {
 std::string settingsPath() {
     if (!pathOverride().empty()) return pathOverride();
     if (const char* o = devEnv("TA_SETTINGS_FILE")) if (*o) return o;   // debug builds: test profile
-    const std::string base = prefPath("TAKingdoms");
+    const std::string base = prefPath("TAEngine");
     return base.empty() ? std::string() : base + "settings.ini";
 }
 
@@ -311,7 +311,7 @@ Settings loadSettings(bool* fileFound) {
 
 std::string serializeSettings(const Settings& s) {
     std::ostringstream o;
-    o << "# TA:Kingdoms engine settings\n";
+    o << "# Total Annihilation engine settings\n";
     o << "fullscreen = " << (s.fullscreen ? 1 : 0) << "\n";
     o << "vsync = " << (s.vsync ? 1 : 0) << "\n";
     o << "maxFps = " << s.maxFps << "\n";

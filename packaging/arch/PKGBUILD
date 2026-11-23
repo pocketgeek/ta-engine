@@ -6,7 +6,7 @@
 pkgname=ta-engine
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="Clean-room engine recreation of Total Annihilation: Kingdoms"
+pkgdesc="Clean-room engine recreation of Total Annihilation"
 arch=('x86_64')
 url="https://github.com/pocketgeek/ta-engine"
 license=('GPL-3.0-or-later')

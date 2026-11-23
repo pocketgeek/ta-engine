@@ -345,7 +345,7 @@ Vfs mountPlayVfs(const std::filesystem::path& root, Vfs::Files gameFiles,
                  std::vector<std::string> cosmeticPacks, bool withCosmetic = true,
                  std::vector<std::string>* skipped = nullptr);
 
-// The canonical root HPI archives of a TA:Kingdoms install (base game + Iron Plague +
+// The canonical root HPI archives of a Total Annihilation install (base game + Iron Plague +
 // the official map packs), lowercased. mountRetailRoot mounts ONLY these from the root;
 // any other *.hpi dropped in the root is ignored.
 extern const std::vector<std::string> kRootArchiveExts;

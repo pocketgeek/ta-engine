@@ -1,6 +1,6 @@
 #pragma once
 
-// The Classic AI level (Difficulty::Classic): a port of the retail TA:Kingdoms
+// The Classic AI level (Difficulty::Classic): a port of the retail Total Annihilation
 // skirmish AI, behaviour reverse-engineered from the retail binary and described in
 // docs/classic-ai-plan.md. It keeps retail's own decisions, retail's AI bugs
 // included, and has no difficulty knobs and no income cheat.

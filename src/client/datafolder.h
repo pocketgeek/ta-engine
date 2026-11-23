@@ -118,10 +118,10 @@ inline DataFolderPick evaluateDataFolderPick(const std::string& picked, const st
 
 // The picker's title and the words for a folder that is not an install, shared by the
 // first-run prompt, Options and Cartographer's Preferences.
-inline constexpr const char* kDataFolderPickerTitle = "Select your Total Annihilation: Kingdoms install folder";
+inline constexpr const char* kDataFolderPickerTitle = "Select your Total Annihilation install folder";
 inline std::string dataFolderInvalidMessage(const std::string& why) {
-    return "That folder isn't a Total Annihilation: Kingdoms install (" + why +
-           "). Choose the folder that contains data.hpi, terrain.hpi and Maps/.";
+    return "That folder isn't a Total Annihilation install (" + why +
+           "). Choose the folder that contains totala1.hpi (for example the GOG installation).";
 }
 
 // A restart is needed when the saved setting is not the folder this launch mounted.

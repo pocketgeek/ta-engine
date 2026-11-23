@@ -1,5 +1,5 @@
 #include "util/winargv.h"
-// Cartographer -- a clean-room re-implementation of the retail TA:Kingdoms map
+// Cartographer -- a clean-room re-implementation of the retail Total Annihilation map
 // editor (see docs/cartographer-port.md). Static-analysis RE of the shipped
 // Cartographer.exe drives the behaviour; this shares the engine's rendering
 // stack (hpi VFS, tnt loader, terrain compositor, MapView) so terrain looks
@@ -84,7 +84,7 @@ static std::filesystem::path profileFolder() {
 
 namespace {
 const char* const kUsage =
-            "Cartographer -- TA:Kingdoms map editor\n"
+            "Cartographer -- Total Annihilation map editor\n"
             "usage: cartographer \"<map name>\" [--data <retail-install-dir>]\n"
             "         (--data is optional when run from inside a game folder)\n"
             "         [--out <dir>]        Ctrl+S / Ctrl+B save destination (default .)\n"

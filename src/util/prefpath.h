@@ -26,7 +26,7 @@ namespace ta {
 
 inline constexpr const char* kPrefOrg = "TAengine";
 
-// The per-user folder for `app` ("TAKingdoms", "Cartographer"), created if missing,
+// The per-user folder for `app` ("TAEngine", "Cartographer"), created if missing,
 // ending in a separator like SDL_GetPrefPath's. Empty if there is none.
 inline std::string prefPath(const char* app) {
 #if (defined(_WIN32) || defined(__APPLE__)) && (!defined(NDEBUG) || !defined(TA_PRODUCT))

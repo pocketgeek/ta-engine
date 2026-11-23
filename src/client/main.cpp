@@ -760,7 +760,7 @@ int main(int argc, char** argv) {
     if (!dataRoot.empty() || !localHarness) {
         dataOrigin = resolveDataDir(dataRoot, settings, /*allowPrompt=*/mpHeadless == 0);
         if (dataRoot.empty()) {
-            std::fprintf(stderr, "no Total Annihilation: Kingdoms data folder selected -- exiting\n");
+            std::fprintf(stderr, "no Total Annihilation data folder selected -- exiting\n");
             SDL_Quit();
             return 1;
         }
@@ -828,7 +828,7 @@ int main(int argc, char** argv) {
     }
     if (maxFps != 60) settings.maxFps = maxFps;          // --maxfps (if given) wins the file
     bool vsyncOn = settings.vsync && !noVsync;            // --novsync forces off
-    std::string winTitle = std::string("Total Annihilation: Kingdoms ") + ta::kVersion;
+    std::string winTitle = std::string("Total Annihilation ") + ta::kVersion;
     SDL_Window* win = SDL_CreateWindow(winTitle.c_str(), SDL_WINDOWPOS_CENTERED,
                                        SDL_WINDOWPOS_CENTERED, winW, winH,
                                        SDL_WINDOW_RESIZABLE
@@ -2378,7 +2378,7 @@ int main(int argc, char** argv) {
             fpsAcc += dt; ++fpsFrames;
             if (fpsAcc >= 0.25f) {
                 char title[64];
-                std::snprintf(title, sizeof title, "Total Annihilation: Kingdoms %s  |  %.0f fps",
+                std::snprintf(title, sizeof title, "Total Annihilation %s  |  %.0f fps",
                               ta::kVersion, float(fpsFrames) / fpsAcc);
                 SDL_SetWindowTitle(win, title);
                 fpsAcc = 0; fpsFrames = 0;

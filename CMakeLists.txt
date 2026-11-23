@@ -3926,11 +3926,11 @@ if(UNIX AND NOT APPLE)
   set(CPACK_PACKAGE_NAME "ta-engine")
   set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-      "Clean-room engine recreation of Total Annihilation: Kingdoms")
+      "Clean-room engine recreation of Total Annihilation")
   # The long description, vendor and packager are what package installers show
   # (CPack's defaults read "Humanity" and "This is an installer created using CPack").
   set(CPACK_PACKAGE_DESCRIPTION
-      "TA Engine is a modern, clean-room re-implementation of Total Annihilation: Kingdoms (Cavedog, 1999), written in C++20 with SDL2. It plays the original campaign, skirmishes against the computer and online multiplayer, and includes Cartographer, a port of the original map editor, and taserver, a dedicated multiplayer server.\n\nThe game's data is not included: point the engine at your own retail Total Annihilation: Kingdoms install.")
+      "TA Engine is a modern, clean-room re-implementation of Total Annihilation (Cavedog, 1999), written in C++20 with SDL2. It plays the original campaign, skirmishes against the computer and online multiplayer, and includes Cartographer, a port of the original map editor, and taserver, a dedicated multiplayer server.\n\nThe game's data is not included: point the engine at your own retail Total Annihilation install.")
   set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/pocketgeek/ta-engine")
   set(CPACK_PACKAGE_VENDOR "Curtis Edge")
   set(CPACK_PACKAGE_CONTACT "Curtis Edge <pocket_geek@pgnet.us>")
@@ -3997,7 +3997,7 @@ endif()
 # per-user folder follows XDG_DATA_HOME on every platform in Debug builds and test
 # executables; SDL alone honours it only on Linux. On 2026-10-14 diplomacy_ui and four
 # more taclient tests, which set no XDG_DATA_HOME, saved their --data folder as the
-# player's dataDir in the real ~/.local/share/TAengine/TAKingdoms/settings.ini. A new
+# player's dataDir in the real ~/.local/share/TAengine/TAEngine/settings.ini. A new
 # test needs nothing to be safe. The tak_prefs fixture brackets every run:
 # pref_guard_check fails if anything wrote a TAengine folder into a test's sentinel
 # HOME (a process that dropped its XDG_DATA_HOME, i.e. the real profile outside ctest);

@@ -1,6 +1,6 @@
 #pragma once
 
-// Decoder for the retail Total Annihilation: Kingdoms `.bik` (Bink Video) menu
+// Decoder for the retail Total Annihilation `.bik` (Bink Video) menu
 // clips -- the animated doors on the front screen. Bink is proprietary (RAD Game
 // Tools / binkw32.dll); this uses FFmpeg's clean-room reverse-engineered decoder
 // (libavcodec's `binkvideo`), which is GPL-compatible.

@@ -93,7 +93,7 @@ elseif(MODE STREQUAL "selftest")
     execute_process(COMMAND "${CLIENT}" game "Ulasem Arena" --data "${DATA}" --testbuild --time 0
                             --shot "${ROOT}/diplomacy-test.png"
                     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out TIMEOUT 50)
-    set(written "${home}/.local/share/TAengine/TAKingdoms/settings.ini")
+    set(written "${home}/.local/share/TAengine/TAEngine/settings.ini")
     if(NOT EXISTS "${written}")
         message(FATAL_ERROR "selftest: the leaking client (exit ${rc}) wrote no ${written}; "
             "the sentinel no longer sees this leak\n${out}")

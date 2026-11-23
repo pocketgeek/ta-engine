@@ -186,7 +186,7 @@ jobs:
       - name: Project version
         run: echo "VERSION=$(grep -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | head -1 | awk '{print $2}')" >> "$GITHUB_ENV"
 
-      # Drag-and-drop disk image: a "Total Annihilation - Kingdoms.app" bundle (Finder-launchable
+      # Drag-and-drop disk image: a "Total Annihilation.app" bundle (Finder-launchable
       # with NO Terminal window -- only .app bundles get that; a bare Unix binary
       # double-clicked in Finder always opens Terminal) plus an /Applications
       # symlink, packed with hdiutil. Ad-hoc codesigned here so Apple Silicon will
@@ -194,7 +194,7 @@ jobs:
       # and staples it.
       - name: App bundle + DMG
         run: |
-          APPDIR="dist-dmg/Total Annihilation - Kingdoms.app"
+          APPDIR="dist-dmg/Total Annihilation.app"
           mkdir -p "$APPDIR/Contents/MacOS" "$APPDIR/Contents/Resources"
           cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt "$APPDIR/Contents/Resources/"
           cp res/icons/taclient.icns "$APPDIR/Contents/Resources/"
@@ -218,7 +218,7 @@ jobs:
           codesign --force --deep -s - "$EDITOR_APP"
           codesign --verify --deep --strict "$EDITOR_APP"
           ln -s /Applications dist-dmg/Applications
-          hdiutil create -volname "Total Annihilation - Kingdoms" -srcfolder dist-dmg -ov -format UDZO \
+          hdiutil create -volname "Total Annihilation" -srcfolder dist-dmg -ov -format UDZO \
             "ta-engine-$VERSION-macos-${{ matrix.arch }}.dmg"
           # hdiutil can briefly report the new image busy ("Resource temporarily
           # unavailable"); retry before calling it a bad image.
@@ -233,8 +233,8 @@ jobs:
       - name: Bundle + zip
         run: |
           mkdir -p dist-macos
-          ditto --rsrc --extattr "dist-dmg/Total Annihilation - Kingdoms.app" \
-            "dist-macos/Total Annihilation - Kingdoms.app"
+          ditto --rsrc --extattr "dist-dmg/Total Annihilation.app" \
+            "dist-macos/Total Annihilation.app"
           ditto --rsrc --extattr "dist-dmg/TA Cartographer.app" "dist-macos/TA Cartographer.app"
           cp build/taclient build/taserver build/cartographer dist-macos/
           # Preserve the signed bundle intact in the zip.
@@ -481,7 +481,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p work signed
           ditto -x -k "$zip" work/release
-          GAME="work/release/Total Annihilation - Kingdoms.app"
+          GAME="work/release/Total Annihilation.app"
           EDITOR="work/release/TA Cartographer.app"
 
           # Nested code first (every Mach-O in Contents/MacOS), then the bundle itself; no --deep.
@@ -523,11 +523,11 @@ jobs:
 
           # DMG rebuilt from the stapled apps, signed, notarized and stapled itself.
           mkdir -p work/dmg
-          ditto "$GAME" "work/dmg/Total Annihilation - Kingdoms.app"
+          ditto "$GAME" "work/dmg/Total Annihilation.app"
           ditto "$EDITOR" "work/dmg/TA Cartographer.app"
           ln -s /Applications work/dmg/Applications
           DMG="signed/ta-engine-$VERSION-macos-$ARCH.dmg"
-          hdiutil create -volname "Total Annihilation - Kingdoms" -srcfolder work/dmg -ov -format UDZO "$DMG"
+          hdiutil create -volname "Total Annihilation" -srcfolder work/dmg -ov -format UDZO "$DMG"
           codesign --force --timestamp --keychain "$KEYCHAIN" --sign "$MACOS_SIGN_IDENTITY" "$DMG"
           dmg_id=$(submit "$DMG")
           await "$dmg_id" "the DMG"

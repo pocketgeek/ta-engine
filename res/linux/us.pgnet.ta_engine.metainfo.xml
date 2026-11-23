@@ -6,13 +6,13 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>TA Engine</name>
-  <summary>Clean-room engine recreation of Total Annihilation: Kingdoms</summary>
+  <summary>Clean-room engine recreation of Total Annihilation</summary>
   <developer id="us.pgnet">
     <name>Curtis Edge</name>
   </developer>
   <description>
     <p>
-      TA Engine is a modern, clean-room re-implementation of Total Annihilation: Kingdoms
+      TA Engine is a modern, clean-room re-implementation of Total Annihilation
       (Cavedog, 1999), written in C++20 with SDL2. It plays the original campaign,
       skirmishes against the computer and online multiplayer, and includes Cartographer,
       a port of the original map editor, and taserver, a dedicated multiplayer server.

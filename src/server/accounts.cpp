@@ -29,7 +29,7 @@ std::string trim(std::string_view s) {
 }
 
 constexpr const char* kHeader =
-    "# TA:Kingdoms engine -- multiplayer accounts.\n"
+    "# Total Annihilation engine -- multiplayer accounts.\n"
     "#\n"
     "# There are no passwords in this file and none can be recovered from it. Each\n"
     "# account stores a random salt and two SHA-256 verifiers (SCRAM-SHA-256); a\n"

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Total Annihilation - Kingdoms.app bundle metadata. @VERSION@ is stamped by the macOS CI
+<!-- Total Annihilation.app bundle metadata. @VERSION@ is stamped by the macOS CI
      (macos.yml) when it assembles the .app + .dmg. -->
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Total Annihilation: Kingdoms</string>
+    <string>Total Annihilation</string>
     <key>CFBundleDisplayName</key>
-    <string>Total Annihilation: Kingdoms</string>
+    <string>Total Annihilation</string>
     <key>CFBundleIdentifier</key>
     <string>us.pgnet.ta-engine</string>
     <key>CFBundleIconFile</key>

@@ -1,6 +1,6 @@
 #pragma once
 
-// The retail Total Annihilation: Kingdoms front-end: the three-door main menu.
+// The retail Total Annihilation front-end: the three-door main menu.
 // Layout is data-driven from guis/mainmenu.gui (background, door + button rects,
 // GAF art); each door plays its Bink (.bik) hover video (idle -> hover-in -> loop
 // -> hover-out) when FFmpeg is available, falling back to the GAF door art. Returns

@@ -36,7 +36,7 @@ fs::path Playtest::clientPath(const fs::path& directory) {
         const bool bundle=folder.extension()==".app";
         folder=folder.parent_path();
         if(!bundle)continue;
-        const auto bundled=folder/"Total Annihilation - Kingdoms.app"/"Contents"/"MacOS"/"taclient";
+        const auto bundled=folder/"Total Annihilation.app"/"Contents"/"MacOS"/"taclient";
         if(fs::is_regular_file(bundled))return bundled;
         const auto beside=folder/"taclient";
         if(fs::is_regular_file(beside))return beside;

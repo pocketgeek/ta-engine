@@ -4278,7 +4278,7 @@ static int serverMain(int argc, char** argv) {
         std::fprintf(stderr,
             "taserver: --data <retail-install-dir> is required.\n"
             "  It is what the referee sim and the AI players read. Point it at a\n"
-            "  TA:Kingdoms install (the folder holding the root *.hpi and Maps/).\n"
+            "  Total Annihilation install (the folder holding the root *.hpi and Maps/).\n"
             "  Run with --help for the full usage.\n");
         return 1;
     }

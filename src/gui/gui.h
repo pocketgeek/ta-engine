@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-// Loader for the retail Total Annihilation: Kingdoms `.gui` files (the in-game HUD,
+// Loader for the retail Total Annihilation `.gui` files (the in-game HUD,
 // menus and dialogs). NOT the OTA "[GADGET]{ xpos=; }" text format -- these are the
 // classic TA length-prefixed TOKEN stream: a flat list of gadget records read to EOF,
 // where each string is stored as "<length> <bytes>". Coordinates are in a 640x480
