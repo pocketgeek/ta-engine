@@ -206,6 +206,11 @@ struct MissionSetup {
     bool preMapped = false;    // .ota mapping=1: terrain starts explored (units still fogged)
 };
 
+// The map of a mission spec: Kingdoms' missions/<stem>.tnt, or for a TA campaign
+// mission ("<missionfile>[:<difficulty>]") maps/<missionfile-without-ext>.tnt.
+std::string missionMapPath(const hpi::Vfs& vfs, const std::string& spec);
+bool isTaMission(const hpi::Vfs& vfs, const std::string& spec);
+
 bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                   const std::string& stem, int& humanOut, MissionSetup* out = nullptr);
 

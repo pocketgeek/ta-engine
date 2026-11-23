@@ -33,18 +33,44 @@ struct SkirmishSetup {
     std::vector<SkirmishSeat> seats; // NumSkirmishPlayers rows
 };
 
+// A Total Annihilation campaign in play (docs/retail-campaign.md section 1):
+// camps/<name>.tdf's missions, the mission being played, the difficulty and the
+// 25-slot U/W/L result string. Retail keeps no persistent unlock; neither do we.
+struct TaCampaign {
+    struct Mission { std::string file, name; };   // missionfile (with .ota), missionname
+    std::string name;                             // camps/<name>.tdf stem
+    std::vector<Mission> missions;
+    int side = 0, cur = 0, difficulty = 1;
+    std::string results = std::string(25, 'U');
+    bool active() const { return !missions.empty(); }
+    // The mission spec setupMission takes ("<missionfile>:<difficulty>") and its map name.
+    std::string spec() const;
+    std::string mapName() const;
+};
+// camps/*.tdf sorted by name whose [HEADER] campaignside is the side's name or ALL (0x476a60).
+std::vector<std::string> taCampaignList(const hpi::Vfs& vfs, const std::string& sideName);
+// MISSION0.. up to the first gap; missionname per language falls back to the plain key.
+bool loadTaCampaign(const hpi::Vfs& vfs, const std::string& name, TaCampaign& out);
+
 class TaFrontEnd {
 public:
-    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options };
+    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu };
     TaFrontEnd(SDL_Renderer* ren, SDL_Window* win, const hpi::Vfs& vfs);
     // Runs until a choice is made. `setup` is filled for Skirmish (and kept between
-    // calls, like retail's registry-backed skirmish settings).
-    Choice run(SkirmishSetup& setup);
+    // calls, like retail's registry-backed skirmish settings). Campaign: NEWGAME ->
+    // MSNBRIEF Start, with `camp` holding the mission to play.
+    Choice run(SkirmishSetup& setup, TaCampaign& camp);
+    // After a campaign mission (outcome +1 won / -1 lost): records the result, then
+    // ENDMSN. Start -> MSNBRIEF -> Choice::Campaign (camp.cur is the pick); MainMenu
+    // -> Choice::Menu.
+    Choice endMission(SkirmishSetup& setup, TaCampaign& camp, int outcome);
     // MULTI -> SELPROV -> TCP: the server address typed ("" = search the local network).
     const std::string& chosenServer() const { return server_; }
 
 private:
-    enum class Page { Main, Single, Skirmish, SelectMap, SelProv };
+    enum class Page { Main, Single, Skirmish, SelectMap, SelProv, NewGame, Brief, EndMission };
+    Page start_ = Page::Main;
+    int outcome_ = 0;
     std::string server_;
     Page page_ = Page::Main;
     SDL_Renderer* ren_;

@@ -1486,8 +1486,172 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     return assigned;
 }
 
+// Total Annihilation campaign mission (docs/retail-campaign.md sections 2, 5.3):
+// maps/<file>.ota + .tnt, the [Schema N] picked by difficulty with retail's
+// fallback order, its [units] placed fully built (Player=1 the human, index 0;
+// Player=2 the computer, index 1, the only "enemy"), HumanMetal/ComputerMetal...
+// as start resources, and the GlobalHeader conditions run by MissionScript's
+// TA rules (once a second, the 5 s end countdown, default DestroyAllUnits).
+// `spec` is "<missionfile>[:<difficulty 0..2>]".
+static bool setupTaMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
+                           const std::string& spec, int& humanOut, MissionSetup* out) {
+    std::string file = spec;
+    int difficulty = 1;
+    if (const auto colon = spec.rfind(':'); colon != std::string::npos) {
+        difficulty = std::clamp(std::atoi(spec.c_str() + colon + 1), 0, 2);
+        file = spec.substr(0, colon);
+    }
+    std::string stem = file;
+    if (stem.size() > 4 && vpath::extension(stem) == ".ota") stem.resize(stem.size() - 4);
+    const std::string base = "maps/" + stem;
+    if (!vfs.has(base + ".ota") || !vfs.has(base + ".tnt")) {
+        std::fprintf(stderr, "setupTaMission: '%s' not found\n", base.c_str());
+        return false;
+    }
+    const auto otaBytes = vfs.read(base + ".ota");
+    const tdf::Node root = tdf::parseText(std::string(otaBytes.begin(), otaBytes.end()), base + ".ota");
+    const tdf::Node* gh = root.child("globalheader");
+    if (!gh) return false;
+    // 0x436c1c: the requested difficulty's schema, else the fallback order.
+    static const char* order[3][3] = {{"easy", "medium", "hard"}, {"medium", "easy", "hard"},
+                                      {"hard", "medium", "easy"}};
+    const tdf::Node* schema = nullptr;
+    for (const char* want : order[difficulty]) {
+        for (int i = 0; i < 16 && !schema; ++i)
+            if (const tdf::Node* sc = gh->child("schema " + std::to_string(i))) {
+                std::string type = sc->valueOr("type", "");
+                std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+                if (type == want) schema = sc;
+            }
+        if (schema) break;
+    }
+    if (!schema) { std::fprintf(stderr, "setupTaMission: %s has no schema\n", base.c_str()); return false; }
+    world.setBallisticGravityRaw(retailBallisticGravityRaw(gh->numberOr("gravity", 112.0)));
+    world.setPowerCodes(false);
+    {
+        const bool fullVision = gh->numberOr("lineofsight", 1) == 0;
+        world.setRoomVision(fullVision || gh->numberOr("mapping", 0) != 0, fullVision);
+    }
+    const tdf::Node* units = schema->child("units");
+    // A side per player from its placed units' name prefixes (ARM / COR).
+    int sideOf[2] = {0, sides::count() > 1 ? 1 : 0};
+    if (units) {
+        int votes[2][8] = {};
+        for (const auto& key : units->childOrder) {
+            const tdf::Node& u = units->children.at(key);
+            int p = int(u.numberOr("player", 1)); if (p == 0) p = 1;
+            if (p < 1 || p > 2) continue;
+            std::string name = u.valueOr("unitname", "");
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            for (int s = 0; s < std::min(8, sides::count()); ++s)
+                if (name.rfind(sides::lowerPrefix(s), 0) == 0) ++votes[p - 1][s];
+        }
+        for (int p = 0; p < 2; ++p) {
+            int best = -1;
+            for (int s = 0; s < std::min(8, sides::count()); ++s)
+                if (votes[p][s] > 0 && (best < 0 || votes[p][s] > votes[p][best])) best = s;
+            if (best >= 0) sideOf[p] = best;
+        }
+    }
+    std::vector<MatchSlot> slots(2);
+    slots[0].faction = sideOf[0]; slots[0].team = 0;
+    slots[1].faction = sideOf[1]; slots[1].team = 1; slots[1].automaticGates = true;
+    MatchConfig cfg;
+    cfg.vfs = &vfs;
+    cfg.mapPath = base + ".tnt";
+    cfg.pathfindingMode = PathfindingMode::Retail;
+    cfg.loadCrt = false;
+    cfg.slots = slots;
+    cfg.unitCap = int(gh->numberOr("maxunits", 200));
+    setupMatch(world, reg, cfg);
+    world.setSurfaceMetal(int(schema->numberOr("surfacemetal", 0)));
+    world.setStartResources(0, float(schema->numberOr("humanenergy", 1000)), float(schema->numberOr("humanmetal", 1000)));
+    world.setStartResources(1, float(schema->numberOr("computerenergy", 1000)), float(schema->numberOr("computermetal", 1000)));
+    if (gh->numberOr("waterdoesdamage", 0) != 0) world.setWaterDamage(int32_t(gh->numberOr("waterdamage", 0)));
+
+    int spawned = 0;
+    std::vector<std::pair<int, std::string>> initialOrders;
+    std::vector<MissionScript::Placement> placements;
+    if (units)
+        for (const auto& key : units->childOrder) {
+            const tdf::Node& u = units->children.at(key);
+            std::string name = u.valueOr("unitname", "");
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            placements.push_back({u.valueOr("ident", ""), name, 0});
+            const UnitType* t = reg.find(name);
+            if (!t) continue;   // 0x488a50: unknown type, slot stays null
+            int p = int(u.numberOr("player", 1)); if (p == 0) p = 1;
+            const int player = std::clamp(p - 1, 0, 1);
+            // 0x436c30: XPos/ZPos are pixels; the unit is created fully built there.
+            const float x = float(u.numberOr("xpos", 0)), z = float(u.numberOr("zpos", 0));
+            const int id = world.spawn(t, x, z, std::nullopt, player);
+            if (id < 0) continue;
+            ++spawned;
+            placements.back().unitId = id;
+            if (auto* su = world.unit(id)) {
+                // Angle: degrees * 65536 / 360 (0x436c30).
+                const uint16_t angle = uint16_t(int32_t(u.numberOr("angle", 0) * 65536.0 / 360.0));
+                su->heading = retailHeadingToPort(angle);
+                su->tickStartHeadingBam = uint16_t(su->heading.v);
+                if (t->canFly) su->flightNavigation.heading = angle;
+                const int16_t health = int16_t(u.numberOr("healthpercentage", 100));
+                su->hp = Fixed::fromInt(MissionScript::percentHp(*t, health));
+                world.finishAsFeature(id);
+            }
+            if (const std::string* im = u.value("initialmission"))
+                if (!im->empty()) initialOrders.push_back({id, *im});
+        }
+    if (out) {
+        out->aiSlots = {1};
+        out->aiProfile = schema->valueOr("aiprofile", "");
+        std::transform(out->aiProfile.begin(), out->aiProfile.end(), out->aiProfile.begin(), ::tolower);
+        out->playerDefs = {"", "strategic opponent"};
+        out->fullVision = gh->numberOr("lineofsight", 1) == 0;
+        out->preMapped = gh->numberOr("mapping", 0) != 0;
+        out->slotPos.assign(size_t(kMaxPlayers), {0.0f, 0.0f});
+        std::vector<int> n(size_t(kMaxPlayers), 0);
+        for (const auto& u : world.units()) {
+            if (!u.alive() || !u.type || u.player < 0 || u.player >= kMaxPlayers) continue;
+            out->slotPos[size_t(u.player)].first += u.x.toFloat();
+            out->slotPos[size_t(u.player)].second += u.z.toFloat();
+            ++n[size_t(u.player)];
+        }
+        for (size_t i = 0; i < out->slotPos.size(); ++i)
+            if (n[i]) { out->slotPos[i].first /= float(n[i]); out->slotPos[i].second /= float(n[i]); }
+    }
+    auto ms = std::make_unique<MissionScript>(std::vector<uint8_t>{}, *gh, reg, 0, stem,
+                                              std::vector<int>{-1, 0, 1}, /*taRules=*/true);
+    ms->setPlayerCommanders({reg.find(sides::commander(sideOf[0])), reg.find(sides::commander(sideOf[1]))});
+    ms->setInitialOrders(std::move(initialOrders));
+    ms->setPlacements(std::move(placements));
+    if (spawned == 0) ms->disableConditions();   // 0x488541: no [units], no outcome
+    world.setMission(std::move(ms));
+    prebuildReachability(world, reg);
+    humanOut = 0;
+    std::fprintf(stderr, "setupTaMission: %s (%s) -- %d placed units\n", stem.c_str(),
+                 order[difficulty][0], spawned);
+    return true;
+}
+
+static std::string taMissionStem(const std::string& spec) {
+    std::string file = spec.substr(0, spec.rfind(':'));
+    if (vpath::extension(file) == ".ota") file.resize(file.size() - 4);
+    return file;
+}
+
+bool isTaMission(const hpi::Vfs& vfs, const std::string& spec) {
+    const std::string file = taMissionStem(spec);
+    return !vfs.has("missions/" + file + ".ota") && vfs.has("maps/" + file + ".ota");
+}
+
+std::string missionMapPath(const hpi::Vfs& vfs, const std::string& spec) {
+    return isTaMission(vfs, spec) ? "maps/" + taMissionStem(spec) + ".tnt" : "missions/" + spec + ".tnt";
+}
+
 bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                   const std::string& stem, int& humanOut, MissionSetup* out) {
+    // TA campaign missions live in maps/ (camps/*.tdf missionfile=); Kingdoms' in missions/.
+    if (isTaMission(vfs, stem)) return setupTaMission(world, reg, vfs, stem, humanOut, out);
     const std::string base = "missions/" + stem;
     // The .cob is OPTIONAL: 11 of the 74 shipped missions (takmission05_dh --
     // chapter 5 of Book of Darien! -- 07/23/28/40_ph/dh and takx07/10/12/14/15/17)

@@ -404,7 +404,7 @@ std::unique_ptr<GameView> makeReplayView(SDL_Renderer* ren, const std::string& p
         catch (const std::exception& e) { std::fprintf(stderr,"replay: verified map cache unavailable: %s\n",e.what()); }
         mapPath = package->mapPath; rvfs.setMapFiles(package->files);
     } else if (!rf.mission.empty()) {
-        mapPath = "missions/" + rf.mission + ".tnt";
+        mapPath = ta::sim::missionMapPath(rvfs, rf.mission);
         if (!rvfs.has(mapPath)) throw std::runtime_error("mission '" + rf.mission + "' is not in this game data");
     } else {
         mapPath = ta::hpi::findMap(rvfs, rf.mapId);
@@ -1265,6 +1265,7 @@ int main(int argc, char** argv) {
     // 8 = auto campaign mission (create the mission room, seat, start, then play).
     int mpAutoMode = 0;
     ta::SkirmishSetup skirmishSetup;   // TA SKIRMISH screen (kept between games)
+    ta::TaCampaign taCampaign;         // TA NEWGAME pick: campaign, mission, difficulty, W/L/U results
     bool skirmishLaunch = false;
     bool menuInteractive = false;   // menu single-player -> interactive lobby, not auto-play
     bool tokenLaunch = false;       // GAME SELECT, signing in with the sign-in token
@@ -1290,6 +1291,7 @@ int main(int argc, char** argv) {
         if (fromMenu) origin = ta::LaunchOrigin::Campaign;
         campaignStem = pendingCampaign; campaignId = pendingCampaignId;
         pendingCampaign.clear(); pendingCampaignId.clear();
+        if (campaignId.rfind("ta:", 0) == 0) { args.clear(); args.push_back(taCampaign.mapName()); }
         if (args.empty()) args.push_back("athri cay");
     }
     // Direct launch into a mission (`--campaign <stem>`): same host path as a menu
@@ -1323,8 +1325,18 @@ int main(int argc, char** argv) {
         bool taFrontChose = false;
         if (afterResult == ta::ResultChoice::Menu && menuFailure.message.empty()) {
             ta::TaFrontEnd front(ren, win, vfs);
-            const auto tc = front.run(skirmishSetup);
+            const auto tc = front.run(skirmishSetup, taCampaign);
+            if (tc == ta::TaFrontEnd::Choice::Campaign && taCampaign.active()) {
+                // NEWGAME -> MSNBRIEF Start: host the mission (autoMode 8) on its map.
+                choice = ta::MainMenu::Choice::Campaign;
+                taFrontChose = true;
+                campaignStem = taCampaign.spec();
+                campaignId = "ta:" + taCampaign.name;
+                args.clear();
+                args.push_back(taCampaign.mapName());
+            }
             if (tc == ta::TaFrontEnd::Choice::Exit) { quitApp = true; break; }
+            if (tc == ta::TaFrontEnd::Choice::Menu) continue;   // back to the TA main menu
             if (tc == ta::TaFrontEnd::Choice::Multiplayer) {
                 // SELPROV -> TCP: the engine server at the typed address (blank: this
                 // machine), signed in as the player's name.
@@ -3245,7 +3257,16 @@ int main(int argc, char** argv) {
     // Campaign mission ended (and resolved -- not a mid-mission quit): advance
     // persisted progress on a win, then show the result screen and act on the choice.
     bool resultToTitle = false;   // the end screen's left door: the title, whatever the game
-    if (!campaignStem.empty() && !campaignId.empty() && gameView && !quitApp &&
+    if (campaignId.rfind("ta:", 0) == 0 && gameView && !quitApp && gameView->missionOutcomePublic() != 0) {
+        // Total Annihilation campaign (docs/retail-campaign.md 4.3): record W/L, then
+        // ENDMSN; Start goes through MSNBRIEF to the picked mission.
+        const int oc = gameView->missionOutcomePublic();
+        localServer.stop(); gameView.reset(); mp.reset();
+        ta::TaFrontEnd front(ren, win, vfs);
+        const auto tc = front.endMission(skirmishSetup, taCampaign, oc);
+        if (tc == ta::TaFrontEnd::Choice::Campaign) { pendingCampaign = taCampaign.spec(); pendingCampaignId = campaignId; }
+        else if (tc == ta::TaFrontEnd::Choice::Exit) quitApp = true;
+    } else if (!campaignStem.empty() && !campaignId.empty() && gameView && !quitApp &&
         gameView->missionOutcomePublic() != 0) {
         int oc = gameView->missionOutcomePublic();
         std::string title = "MISSION", nextStem;

@@ -263,7 +263,7 @@
         // the referee, and every peer stay byte-identical -- the mission runs in
         // lockstep with no relayed actions. See docs/campaign-design.md.
         if (!room.mission.empty()) {
-            mapPath_ = "missions/" + room.mission + ".tnt";
+            mapPath_ = ta::sim::missionMapPath(vfs_, room.mission);
             resetMinimap();   // its thread reads the map being swapped
             loadScreen_->step("LOADING TERRAIN", 30);
             mapView_.reload(vfs_, mapPath_);

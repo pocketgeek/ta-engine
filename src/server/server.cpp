@@ -2437,7 +2437,7 @@ void Server::tryStart(Client& c) {
                 const ta::ai::Profile& prof = r->aiProfiles[size_t(missionDiff)];
                 const auto classicProfile = classicProfileFor(*r, ms.aiProfile, ds->vfs, true);
                 const auto classicStarts =
-                    ta::sim::parseStartPositions(ds->vfs, "missions/" + r->mission + ".tnt");
+                    ta::sim::parseStartPositions(ds->vfs, ta::sim::missionMapPath(ds->vfs, r->mission));
                 for (int slot : ms.aiSlots) {
                     std::vector<std::pair<float, float>> enemyStarts;
                     for (size_t j = 0; j < ms.slotPos.size(); ++j) {

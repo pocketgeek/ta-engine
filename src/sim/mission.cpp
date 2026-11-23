@@ -43,9 +43,10 @@ std::pair<std::string, std::string> splitVerb(const std::string& cmd) {
 
 MissionScript::MissionScript(std::vector<uint8_t> cobBytes, const ta::tdf::Node& header,
                              const TypeRegistry& reg, int humanPlayer, std::string origin,
-                             std::vector<int> playerMap)
+                             std::vector<int> playerMap, bool taRules)
     : reg_(reg), human_(humanPlayer), origin_(std::move(origin)), playerMap_(std::move(playerMap)),
-      pointScale_(header.child("map data") ? 16 : 1) {   // 4c86eb / 4c8748
+      pointScale_(header.child("map data") ? 16 : 1),   // 4c86eb / 4c8748
+      taRules_(taRules) {
     if (cobBytes.empty()) {
         // Data-only mission (11 of the 74 shipped ones ship no .cob): no god script.
         // The .ota conditions + the placed units' InitialMission queues drive it.
@@ -135,7 +136,8 @@ void MissionScript::step(World& w, float dt) {
     for (auto& [name, flags] : heldSounds_) w.requestSound(std::move(name), flags);
     heldSounds_.clear();
     ++clock_;
-    if (outcome_ == 0) evalConditions(w, dt);
+    // TA polls once a second (the local player's settle, 0x4650a9).
+    if (outcome_ == 0 && conditionsOn_ && (!taRules_ || clock_ % 30 == 0)) evalConditions(w, dt);
     if (vm_) vm_->tick(dt);
     sweepTriggers(w);
 }
@@ -768,6 +770,10 @@ void MissionScript::parseConditions(const ta::tdf::Node& h) {
     // 522f48 skips the default DestroyAllUnits in campaign mode (1).
     // Empty victory lists stay pending for a scripted win, e.g. takx13_mt.
     // The default defeat AllUnitsKilled at522f78 is unconditional.
+    // TA (0x48e010 tail): an empty victory list takes DestroyAllUnits.
+    if(taRules_ && std::none_of(conds_.begin(),conds_.end(),[](const Cond& c){return c.victory;})) {
+        Cond c;c.kind=Cond::DestroyAllUnits;c.victory=true;conds_.push_back(c);
+    }
     if(std::none_of(conds_.begin(),conds_.end(),[](const Cond& c){return !c.victory;})) {
         Cond c;c.kind=Cond::AllUnitsKilled;conds_.push_back(c);
     }
@@ -827,6 +833,15 @@ void MissionScript::evalConditions(World& w, float) {
         if(c.victory)victory=bool(victory && c.met);
         else defeat=bool(defeat || c.met);
     }
+    if(taRules_) {
+        // 0x490230 / 0x490360: the first detection starts a 4..-1 countdown; each
+        // later poll steps it and the outcome lands when it drops below 0 (~5 s).
+        const int detected=victory?1:defeat?-1:0;
+        if(endTimer_<0) {
+            if(detected) { endTimer_=4; pendingOutcome_=detected; }
+        } else if(--endTimer_<0) outcome_=pendingOutcome_;
+        return;
+    }
     if(victory)outcome_=1;
     else if(defeat)outcome_=-1;
 }
@@ -836,6 +851,7 @@ void MissionScript::evalConditions(World& w, float) {
 void MissionScript::foldHash(uint64_t& h) const {
     auto mix = [&](uint64_t v) { h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); };
     mix(uint64_t(int64_t(outcome_)));
+    mix(uint64_t(int64_t(endTimer_))); mix(uint64_t(int64_t(pendingOutcome_))); mix(conditionsOn_);
     for (const Region& r : regions_) {
         mix(r.armed ? 1u : 0u); mix(r.rect ? 1u : 0u);
         mix(uint16_t(r.x1)); mix(uint16_t(r.z1)); mix(uint16_t(r.x2)); mix(uint16_t(r.z2)); mix(uint32_t(r.r));

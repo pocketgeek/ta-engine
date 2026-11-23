@@ -38,7 +38,12 @@ public:
     // refs (0-based .ota) land in the same compacted slots as the placed units.
     MissionScript(std::vector<uint8_t> cobBytes, const ta::tdf::Node& header,
                   const TypeRegistry& reg, int humanPlayer, std::string origin,
-                  std::vector<int> playerMap = {});
+                  std::vector<int> playerMap = {}, bool taRules = false);
+    // Total Annihilation's condition manager (docs/retail-campaign.md 5.4): the
+    // conditions are polled once a second, an empty victory list takes
+    // DestroyAllUnits, and an outcome lands after a 5 s countdown (4..-1).
+    bool taRules() const { return taRules_; }
+    void disableConditions() { conditionsOn_ = false; }   // 0x488541: a mission with no [units]
 
     void setPlayerCommanders(std::vector<const UnitType*> types) { playerCommanders_=std::move(types); }
     // An exact copy of the mission's state, for a copy of its world (World::clone).
@@ -187,6 +192,10 @@ private:
 
     int32_t clock_ = 0;       // mission time in TICKS, for timer conditions
     int outcome_ = 0;         // 0 / +1 / -1
+    bool taRules_ = false;
+    bool conditionsOn_ = true;
+    int endTimer_ = -1;       // TA: -1 idle, 4..0 counting down to the outcome
+    int pendingOutcome_ = 0;  // TA: the first outcome detected
     bool started_ = false;
     // Start runs before the first tick (4d2dc0); the lines it plays wait for
     // the first step, so a paused opening briefing does not hear them.
