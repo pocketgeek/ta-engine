@@ -5904,8 +5904,9 @@
         std::transform(world.begin(), world.end(), world.begin(), ::tolower);
         auto it = featurePals_.find(world);
         if (it != featurePals_.end()) return &it->second;
-        const std::string cands[] = {world + "_features.pcx", world + ".pcx",
-                                     std::string("aramon_features.pcx")};
+        // Total Annihilation draws every feature through the one game palette
+        // (palettes/palette.pal); per-world PCX palettes are a mod/legacy fallback.
+        const std::string cands[] = {std::string("palette.pal"), world + "_features.pcx", world + ".pcx"};
         for (const std::string& cand : cands) {
             try {
                 std::string pp = "palettes/" + cand;
@@ -6166,9 +6167,17 @@
         std::string key = rawName;
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);
         auto di = featureDefs_.find(key);
-        if (di == featureDefs_.end()) return false;
+        static const bool kFeatLog = ta::devEnv("TA_FEATLOG") != nullptr;
+        if (di == featureDefs_.end()) {
+            if (kFeatLog) std::fprintf(stderr, "feature %s: no definition (%zu defs)\n", key.c_str(), featureDefs_.size());
+            return false;
+        }
         FeatArt* a = featureArtFor(di->second);
-        if (!a) return false;
+        if (!a) {
+            if (kFeatLog) std::fprintf(stderr, "feature %s: no art (%s/%s)\n", key.c_str(),
+                                       di->second.valueOr("filename", "").c_str(), di->second.valueOr("seqname", "").c_str());
+            return false;
+        }
         FeatureInst inst;
         inst.tex = a->tex;
         inst.frames = &a->frames;
