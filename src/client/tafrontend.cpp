@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <memory>
 #include <optional>
+#include <utility>
 
 namespace ta {
 
@@ -147,6 +148,12 @@ bool loadTaCampaign(const hpi::Vfs& vfs, const std::string& name, TaCampaign& ou
         out.missions.push_back(e);
     }
     return !out.missions.empty();
+}
+
+void TaFrontEnd::setFailure(int failTo, std::string message) {
+    // FailTo (sessionfailure.h): 2 ServerSelect, 5 CampaignPicker; the rest open MAINMENU.
+    start_ = failTo == 2 ? Page::SelProv : failTo == 5 ? Page::NewGame : Page::Main;
+    failure_ = std::move(message);
 }
 
 TaFrontEnd::Choice TaFrontEnd::endMission(SkirmishSetup& setup, TaCampaign& camp, int outcome) {
@@ -358,13 +365,14 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         for (size_t i = 0; i < 4; ++i) if (steps[i] == v) return steps[(i + 1) % 4];
         return 1000;
     };
-    std::string message;
+    std::string message = std::exchange(failure_, {});
     for (;;) {
         int w = 640, h = 480;
         SDL_GetRendererOutputSize(ren_, &w, &h);
         const GuiLayout L(w, h);
         SDL_Event e;
         auto onHit = [&](const std::string& h2) -> std::optional<Choice> {
+            message.clear();   // any press dismisses the last message
             if (popup && page_ == Page::SelProv) {   // TCP address
                 if (h2 == "PREV") popup.reset();
                 else if (h2 == "OK") {
@@ -550,7 +558,13 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 }
             }
         }
-        if (page_ == Page::NewGame && !message.empty() && view) rowFont.draw(ren_, L, 34, 466, message, SDL_Color{255, 220, 120, 255});
+        if (page_ != Page::Skirmish && !message.empty() && view) {
+            // A failed launch's reason (or a NEWGAME refusal), on a dark band at the foot.
+            const SDL_FRect band = L.rect(0, 462, 640, 18);
+            SDL_SetRenderDrawColor(ren_, 0, 0, 0, 200);
+            SDL_RenderFillRectF(ren_, &band);
+            rowFont.draw(ren_, L, 8, 465, message, SDL_Color{255, 220, 120, 255});
+        }
         if (page_ == Page::Skirmish && view) {
             for (int r = 0; r < kRows && r < int(setup.seats.size()); ++r) {
                 const auto& seat = setup.seats[size_t(r)];

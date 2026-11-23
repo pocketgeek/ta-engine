@@ -64,12 +64,16 @@ public:
     // ENDMSN. Start -> MSNBRIEF -> Choice::Campaign (camp.cur is the pick); MainMenu
     // -> Choice::Menu.
     Choice endMission(SkirmishSetup& setup, TaCampaign& camp, int outcome);
+    // A launch that failed: reopen the screen it was picked from (SELPROV for a
+    // multiplayer connect, NEWGAME for a campaign, else the main menu) with the reason.
+    void setFailure(int failTo, std::string message);
     // MULTI -> SELPROV -> TCP: the server address typed ("" = search the local network).
     const std::string& chosenServer() const { return server_; }
 
 private:
     enum class Page { Main, Single, Skirmish, SelectMap, SelProv, NewGame, Brief, EndMission };
     Page start_ = Page::Main;
+    std::string failure_;
     int outcome_ = 0;
     std::string server_;
     Page page_ = Page::Main;

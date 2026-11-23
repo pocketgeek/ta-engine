@@ -1323,8 +1323,14 @@ int main(int argc, char** argv) {
         // straight from it; the other doors still use the engine menu below for now.
         skirmishLaunch = false;
         bool taFrontChose = false;
-        if (afterResult == ta::ResultChoice::Menu && menuFailure.message.empty()) {
+        if (afterResult == ta::ResultChoice::Menu &&
+            (!menuFailure || menuFailure.to == ta::FailTo::Notice || menuFailure.to == ta::FailTo::ServerSelect ||
+             menuFailure.to == ta::FailTo::CampaignPicker)) {
             ta::TaFrontEnd front(ren, win, vfs);
+            if (menuFailure) {
+                const auto f = std::exchange(menuFailure, {});
+                front.setFailure(int(f.to), f.message);
+            }
             const auto tc = front.run(skirmishSetup, taCampaign);
             if (tc == ta::TaFrontEnd::Choice::Campaign && taCampaign.active()) {
                 // NEWGAME -> MSNBRIEF Start: host the mission (autoMode 8) on its map.
