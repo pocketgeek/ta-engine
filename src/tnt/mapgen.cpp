@@ -1,21 +1,13 @@
 #include "tnt/mapgen.h"
-#include "tnt/mapgen_internal.h"
 
-#include "hpi/hpi.h"   // coast prefab sections are read through the VFS
+#include "hpi/hpi.h"
 
 #include <algorithm>
-#include <array>
-#include <map>
-#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
 
 namespace ta::mapgen {
-
-using namespace detail;
-
-Result generateBalanced(const Params& p, const hpi::Vfs& vfs);
 
 const char* worldKey(uint8_t world) {
     static const char* keys[kMapTypes] = {"greenworld", "mars", "archipelago", "metal", "moon", "lava"};
@@ -23,45 +15,11 @@ const char* worldKey(uint8_t world) {
 }
 
 const char* worldTitle(uint8_t world) {
-    static const char* titles[kMapTypes] = {"ARAMON", "TAROS", "VERUNA", "ZHON", "CREON", "VOLCANO"};
+    static const char* titles[kMapTypes] = {"GREEN", "MARS", "ARCHIPELAGO", "METAL", "MOON", "LAVA"};
     return titles[world < kMapTypes ? world : 0];
 }
 
 bool lavaWorld(uint8_t world) { return world == Lava; }
-
-bool worldHasForests(uint8_t world) { return world < kMapTypes && kWorldFeat[world].trees.n > 0; }
-
-bool worldHasHills(uint8_t world) { return world < kMapTypes && kReliefDir[world]; }
-
-bool hillsPossible(uint8_t world, uint8_t layout) {
-    return worldHasHills(world) && layout != Maze && layout != Ports;
-}
-
-std::vector<std::string> assetPaths(const hpi::Vfs& vfs) {
-    std::vector<std::string> paths;
-    for (const auto& kit : kShoreKit)
-        for (const auto* name : kit.name)
-            for (const auto* variant : kit.var) {
-                std::string path = std::string(kit.dir) + name + variant + kit.ext;
-                if (vfs.has(path)) paths.push_back(std::move(path));
-            }
-    for (const auto& art : kWorldArt)
-        for (int i = 1; i <= art.fillCount; ++i)
-            if (std::string path = art.fills + std::to_string(i) + ".tnt"; vfs.has(path)) paths.push_back(std::move(path));
-    for (const auto& path : vfs.list(kIndustrialRoads))
-        if (hpi::MountSet::key(path).ends_with(".tnt")) paths.push_back(path);
-    for (int i = 1; i <= 4; ++i)
-        if (std::string path = kIndustrialIsle + std::to_string(i) + ".tnt"; vfs.has(path)) paths.push_back(std::move(path));
-    for (const auto* prefix : kReliefDir)
-        if (prefix) for (const auto& path : vfs.list(prefix))
-            if (hpi::MountSet::key(path).ends_with(".tnt")) paths.push_back(path);
-    for (const auto& prefix : kitDirectories())
-        for (const auto& path : vfs.list(prefix))
-            if (hpi::MountSet::key(path).ends_with(".tnt")) paths.push_back(path);
-    std::sort(paths.begin(), paths.end());
-    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
-    return paths;
-}
 
 Params sanitize(Params p) {
     std::string name;
@@ -80,53 +38,15 @@ Params sanitize(Params p) {
     p.widthCells = fix(p.widthCells);
     p.heightCells = fix(p.heightCells);
     p.players = uint8_t(std::clamp<int>(p.players, 2, 8));
-    p.manaScatter = std::min<uint8_t>(p.manaScatter, kScatterLevels - 1);
-    p.layout = std::min<uint8_t>(p.layout, kLayouts-1);
-    if (p.layout >= Maze) for (uint8_t world=0;world<kMapTypes;++world)
-        if (themedLayout(world)==p.layout) p.mapType=world;
-    if (p.layout == IndustrialZone) p.mapType = Lava;
-    if (!layoutAllowed(p.mapType, p.layout)) p.layout = Mainland;
-    // What fits was measured, not assumed (2026-11-09): every layout, 2-8 players and
-    // widths x heights of 8-64 sections, generated for 16 seeds, counting a size only when
-    // every seed built a map that keeps its layout -- Maze walls and open exits, Highlands
-    // uplands, water on Lakes, Riverlands and Ports, a harbor per player on Islands and
-    // Ports. The start plan decides most of it: every start kMinStartGap from the others,
-    // for any seed. Beyond that a layout needs a shortest side (sections) per player
-    // count, the measured value held level or rising as players are added.
-    static constexpr int kMinSide[kLayouts][9] = {
-        /* Mainland   */ {0, 0, 8, 8, 8, 8, 8, 8, 8},
-        /* Lakes      */ {0, 0, 8, 8, 8, 12, 12, 12, 12},
-        /* Islands    */ {0, 0, 8, 12, 12, 16, 16, 20, 20},
-        /* Maze       */ {0, 0, 8, 8, 8, 8, 8, 8, 8},
-        /* Ports      */ {0, 0, 12, 12, 16, 16, 16, 16, 16},
-        /* Riverlands */ {0, 0, 8, 8, 12, 12, 12, 12, 16},
-        /* Jungle     */ {0, 0, 8, 8, 8, 8, 8, 8, 8},
-        /* Highlands  */ {0, 0, 8, 8, 8, 8, 8, 8, 8},
-        /* LavaFlows  */ {0, 0, 8, 8, 8, 8, 8, 8, 8},
-        /* Industrial */ {0, 0, 8, 8, 12, 16, 16, 16, 16},
-    };
-    const auto fits = [&](const Params& q) {
-        if (std::min(q.widthCells, q.heightCells) / 32 < kMinSide[q.layout][q.players]) return false;
-        return detail::startsSpacedForAnySeed(q);
-    };
-    // A size that does not fit grows the smaller side (width on a tie) to the next menu
-    // step until it does; 64 x 64 fits everything.
-    const auto grow = [](uint16_t cells) {
-        for (int step : kSizeSteps) if (step * 32 > cells) return uint16_t(step * 32);
-        return cells;
-    };
-    while (!fits(p) && (p.widthCells < 64 * 32 || p.heightCells < 64 * 32)) {
-        if (p.widthCells <= p.heightCells && p.widthCells < 64 * 32) p.widthCells = grow(p.widthCells);
-        else p.heightCells = grow(p.heightCells);
-    }
     return p;
 }
 
 Result generate(const Params& raw, const ta::hpi::Vfs& input) {
     ta::hpi::Vfs vfs(&input, true);
-    // Total Annihilation data: assemble from the world's .sct sections (mapgen_ta.cpp).
-    if (taSectionsAvailable(vfs)) return generateTa(sanitize(raw), vfs);
-    return generateBalanced(sanitize(raw), vfs);
+    if (!taSectionsAvailable(vfs))
+        throw std::runtime_error("random maps need Total Annihilation terrain sections (sections/*.sct), "
+                                 "which this game data does not have");
+    return generateTa(sanitize(raw), vfs);
 }
 
 // ---- mapId carrier: "~gen1~" + hex of the packed Params -----------------------

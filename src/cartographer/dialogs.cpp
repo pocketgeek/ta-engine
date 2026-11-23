@@ -49,19 +49,16 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
         mLabel[0] = "SCENARIO NAME"; mf[0] = scenario.missionName;        mfNumeric[0] = false;
         mLabel[1] = "DESCRIPTION";   mf[1] = scenario.missionDescription; mfNumeric[1] = false;
     } else if(m==M_GENERATOR) {
-        mTitle="RANDOM MAP SETTINGS";mN=15;
+        mTitle="RANDOM MAP SETTINGS";mN=6;
         const auto fields=cart::generatorFields(generatorParams);
-        const char* labels[]={"SEED (REPRODUCIBLE)","PLAYERS (2-8)","LAYOUT","TREES (0-255)","ROCKS (0-255)","MANA (0-255)","WATER / LAVA PADS (0-255)","RELIEF (0-255)"};
-        for(int i=0;i<8;++i) {mf[i]=fields[i];mLabel[i]=labels[i];mfNumeric[i]=i!=2;}
-        mfChoices[2]=&generatorLayouts;
-        mLabel[8]="WIDTH (1-64 UNITS)";mf[8]=generatorDraft[1];mfNumeric[8]=true;
-        mLabel[9]="HEIGHT (1-64 UNITS)";mf[9]=generatorDraft[2];mfNumeric[9]=true;
-        mLabel[10]="WORLD";mf[10]=generatorDraft[3];mfNumeric[10]=false;mfChoices[10]=&kWorldOpts;
-        mLabel[11]="SCATTERED MANA (BY MAP AREA)";mf[11]=fields[8];mfNumeric[11]=false;mfChoices[11]=&generatorScatter;
-        // v10 retail kits (Maze and Highlands raise their own high ground).
-        mLabel[12]="PLATEAUS (0-255)";mf[12]=fields[9];mfNumeric[12]=true;
-        mLabel[13]="MOUNTAINS (0-255)";mf[13]=fields[10];mfNumeric[13]=true;
-        mLabel[14]="TOWNS (0-255)";mf[14]=fields[11];mfNumeric[14]=true;
+        const char* labels[]={"SEED (REPRODUCIBLE)","PLAYERS (2-8)","HILLS (0-255)"};
+        for(int i=0;i<3;++i) {mf[i]=fields[size_t(i)];mLabel[i]=labels[i];mfNumeric[i]=true;}
+        mLabel[3]="WIDTH (1-64 UNITS)";mf[3]=generatorDraft[1];mfNumeric[3]=true;
+        mLabel[4]="HEIGHT (1-64 UNITS)";mf[4]=generatorDraft[2];mfNumeric[4]=true;
+        // The generator's worlds are TA's; a New Map world it has no sections for shows the recipe's.
+        const bool known=std::find(generatorWorlds.begin(),generatorWorlds.end(),generatorDraft[3])!=generatorWorlds.end();
+        mLabel[5]="WORLD";mf[5]=known?generatorDraft[3]:std::string(ta::mapgen::worldKey(generatorParams.mapType));
+        mfNumeric[5]=false;mfChoices[5]=&generatorWorlds;
     } else if(m==M_SYMMETRIZE) {
         setupSymmetrizeFields();
     } else if(m==M_PREFERENCES) {
@@ -208,8 +205,6 @@ void cart::Editor::applyNewMap(bool random) {
             ta::terrain::Compositor compositor(vfs);
             cart::generateMinimaps(map.map,compositor,cart::loadWorldPalette(vfs,wld));
             int number=1;for(auto [x,z]:result.starts)map.starts.push_back({number++,x,z});
-            if(params.mountainDensity&&ta::mapgen::kitAvailable(params.mapType,ta::mapgen::KitMountains)&&!result.mountains)
-                map.note="No room for mountains on this map: try it larger or with fewer players.";
             return map;
         });
         modal=M_GENERATING;SDL_StopTextInput();return;
@@ -235,17 +230,16 @@ void cart::Editor::openGeneratorRecipe() {
 void cart::Editor::applyModal() {
     const auto applying=modal;modalError.clear();
     if(modal==M_GENERATOR) {
-        cart::GeneratorFields fields;for(int i=0;i<8;++i)fields[i]=mf[i];fields[8]=mf[11];
-        for(int i=9;i<12;++i)fields[size_t(i)]=mf[i+3];
+        cart::GeneratorFields fields;for(int i=0;i<3;++i)fields[size_t(i)]=mf[i];
         std::string error;
         auto nextParams=generatorParams;
         if(!cart::parseGeneratorFields(fields,nextParams,error)) {modalError=error;return;}
-        for(int i=8;i<10;++i) {
+        for(int i=3;i<5;++i) {
             int units=0;const auto parsed=std::from_chars(mf[i].data(),mf[i].data()+mf[i].size(),units);
             if(parsed.ec!=std::errc{} || parsed.ptr!=mf[i].data()+mf[i].size() || units<1 || units>64) {modalError="Width and height must be whole numbers from 1 to 64. The preview shows the generator's adjusted size.";return;}
         }
         generatorParams=nextParams;
-        generatorDraft[1]=mf[8];generatorDraft[2]=mf[9];generatorDraft[3]=mf[10];
+        generatorDraft[1]=mf[3];generatorDraft[2]=mf[4];generatorDraft[3]=mf[5];
         applyNewMap(true);return;
     } else if(modal==M_REGION) {
         int cells[4];
@@ -924,7 +918,7 @@ void cart::Editor::drawModal() {
         }
     } else if (modal != M_NONE) {
         // N-field dialog; height fits the field count.
-        // The generator's fifteen fields go in two columns.
+        // The generator's six fields go in two columns.
         const int rows=modal==M_GENERATOR?(mN+1)/2:mN;
         int ph = modal==M_OPENPATH?420:modal==M_SCENARIO?300:70+rows*40+(modal==M_PREFERENCES?84:modal==M_NEWAIMOD?36:0);
         const int panelWidth=(modal==M_OPENPATH || modal==M_SCENARIO)?560:modal==M_PREFERENCES || modal==M_NEWAIMOD?460:modal==M_GENERATOR?600:320;

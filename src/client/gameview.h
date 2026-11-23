@@ -2910,7 +2910,6 @@ private:
         std::vector<std::pair<float, float>> starts; float worldW = 0, worldH = 0;
         std::string id, dims, error;
         std::shared_ptr<const ta::tnt::Map> map;
-        int mountains = -1;   // ranges the roll placed
     };
     static GenPreviewOut rollGenPreview(const std::string& id, const ta::hpi::Vfs& vfs);
     // A map's large radar picture as RGBA (built from its tiles when it has none, as
@@ -2923,7 +2922,6 @@ private:
     bool genPreviewPending_ = false, mapPreviewIsGen_ = false;
     std::shared_ptr<const ta::tnt::Map> genPreviewMap_;
     std::string genPreviewMapId_;
-    int genPreviewMountains_ = -1;   // the preview roll's ranges (its MOUNTAINS line says NO ROOM at 0)
     // Every lobby preview that reads vfs_ off the main thread is finished: the full-window
     // view is closed (its MapView joins its terrain workers; its textures go here, on the
     // main thread) and each roll in genJobs_ has returned -- the finished ones stay listed
@@ -2942,7 +2940,7 @@ private:
     // the status line): one value both sides.
     static constexpr float kCreateMargin = 16.0f;
     int genSlider_ = -1;
-    SDL_FRect genSliderRect_[9]{};
+    SDL_FRect genSliderRect_[1]{};   // HILLS
     void applyGenParams();             // re-encode genParams_ -> the panel's RANDOM candidate (picker_.gen)
     void setGenSlider(int i, float mx);  // drag a density slider from a panel-x
     SDL_FRect mapListRect_{};          // the list box (rows area) -- wheel target
@@ -4488,12 +4486,10 @@ private:
     // The room's map preview with its start markers, fitted into `box`. `authored`:
     // a scenario that places its own forces, whose starts no slot takes.
     void drawRoomPreview(const SDL_FRect& box, bool authored);
-    // A generated map's recipe as short items ("MAP TYPE: ARAMON", "MAP SEED: 7"...) in
-    // two groups (shape and terrain; kits, scattered mana and seed), none for any other
-    // id; packItems joins each group's items into lines no wider than maxW.
-    // mountains: the ranges its roll placed, when known (-1 if not): 0 reads NO ROOM.
-    static std::vector<std::vector<std::string>> genRecipeItems(const std::string& mapId, int mountains = -1);
-    int genPreviewMountainsFor(const std::string& mapId) const { return genPreviewMapId_ == mapId ? genPreviewMountains_ : -1; }
+    // A generated map's recipe as short items ("MAP TYPE: GREEN", "MAP SEED: 7"...) in
+    // two groups (shape and terrain; the seed), none for any other id; packItems joins
+    // each group's items into lines no wider than maxW.
+    static std::vector<std::vector<std::string>> genRecipeItems(const std::string& mapId);
     std::vector<std::string> packItems(const std::vector<std::vector<std::string>>& groups, float px, float maxW) const;
     void openBigMap();                      // the map of the preview on show (mapPreviewFor_)
     void drawClickHint(const SDL_FRect& box);   // CLICK over a hovered preview that opens it

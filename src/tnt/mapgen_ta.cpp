@@ -6,7 +6,9 @@
 // SCT v2 (checked on the shipped sections): u32 version 2, u32 -> minimap,
 // u32 tile count, u32 -> tiles (count x 1024), u32 width, u32 height (32px blocks),
 // u32 -> data: u16 tile index per block, then 8 bytes per 16px cell (byte 0 the
-// height). A section family that shares one border height tiles seamlessly.
+// height). SCT v3 (worlds.hpi's Metal sections) is the same but for 4 bytes per
+// cell: the height, the u16 feature (0xffff none), 0. A section family that shares
+// one border height tiles seamlessly.
 #include "tnt/mapgen.h"
 
 #include "hpi/hpi.h"
@@ -35,12 +37,13 @@ struct Sct {
 uint32_t rd32(const std::vector<uint8_t>& d, size_t o) { return d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (uint32_t(d[o + 3]) << 24); }
 
 bool parseSct(const std::vector<uint8_t>& d, Sct& s, const std::vector<uint8_t>& pal) {
-    if (d.size() < 28 || rd32(d, 0) != 2) return false;
+    if (d.size() < 28 || (rd32(d, 0) != 2 && rd32(d, 0) != 3)) return false;
+    const size_t stride = rd32(d, 0) == 3 ? 4 : 8;   // bytes per 16px cell
     const uint32_t nt = rd32(d, 8), pt = rd32(d, 12), w = rd32(d, 16), h = rd32(d, 20), pd = rd32(d, 24);
     if (!w || !h || w > 64 || h > 64 || nt > 4096) return false;
     if (uint64_t(pt) + uint64_t(nt) * 1024 > d.size()) return false;
     const uint64_t cells = uint64_t(w) * h * 4;
-    if (uint64_t(pd) + uint64_t(w) * h * 2 + cells * 8 > d.size()) return false;
+    if (uint64_t(pd) + uint64_t(w) * h * 2 + cells * stride > d.size()) return false;
     s.w = int(w); s.h = int(h);
     s.tiles.assign(d.begin() + pt, d.begin() + pt + size_t(nt) * 1024);
     s.tileMap.resize(size_t(w) * h);
@@ -50,7 +53,7 @@ bool parseSct(const std::vector<uint8_t>& d, Sct& s, const std::vector<uint8_t>&
     }
     const size_t ha = pd + size_t(w) * h * 2;
     s.heights.resize(size_t(cells));
-    for (size_t i = 0; i < cells; ++i) s.heights[i] = d[ha + i * 8];
+    for (size_t i = 0; i < cells; ++i) s.heights[i] = d[ha + i * stride];
     // Border height: the edge's most common height when every edge cell is within
     // 3 of it (sections are authored to join at one level, give or take a step).
     const int cw = int(w) * 2, ch = int(h) * 2;
@@ -97,6 +100,17 @@ bool taSectionsAvailable(const hpi::Vfs& vfs) {
 }
 
 const char* taPlanetFor(uint8_t world) { return kTaWorlds[world % 6].planet; }
+
+std::vector<std::string> assetPaths(const hpi::Vfs& vfs) {
+    std::vector<std::string> paths;
+    for (const auto& w : kTaWorlds)
+        for (const auto& path : vfs.list(std::string("sections/") + w.sections))
+            if (ta::vpath::extension(path) == ".sct") paths.push_back(path);
+    if (vfs.has("palettes/palette.pal")) paths.push_back("palettes/palette.pal");
+    std::sort(paths.begin(), paths.end());
+    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+    return paths;
+}
 
 Result generateTa(const Params& p, const hpi::Vfs& vfs) {
     const TaWorld& W = kTaWorlds[p.mapType % 6];

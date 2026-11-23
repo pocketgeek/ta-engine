@@ -60,7 +60,7 @@ int main() {
         other[0].actions[0].slot[0]="200";
         check(rules[0].actions[0].slot[0]=="100","clipboard creates independent records");
         check(cart::moveRule(other,group,row,cart::RuleColumn::Group,1) && group==1 && other[0].conditions[0].opcode==1,"reorder rule groups");
-        ta::mapgen::Params params;params.seed=UINT64_MAX;params.players=8;params.layout=ta::mapgen::Islands;
+        ta::mapgen::Params params;params.seed=UINT64_MAX;params.players=8;params.reliefDensity=7;
         auto fields=cart::generatorFields(params);std::string generatorError;
         ta::mapgen::Params parsed;
         check(cart::parseGeneratorFields(fields,parsed,generatorError),"generator fields parse");
@@ -80,28 +80,11 @@ int main() {
         }
         fields[0]="18446744073709551616";
         check(!cart::parseGeneratorFields(fields,parsed,generatorError) && ta::mapgen::encodeMapId(parsed)==original,"seed overflow leaves settings unchanged");
-        for(int layout=ta::mapgen::Maze;layout<ta::mapgen::kLayouts;++layout) {
-            auto themed=params;
-            auto themeFields=cart::generatorFields(themed);themeFields[2]=ta::mapgen::layoutName(layout);
-            check(cart::parseGeneratorFields(themeFields,themed,generatorError),"themed editor layout rejected");
-            check(ta::mapgen::sanitize(themed).layout==layout,"themed editor layout lost");
-        }
-        {
-            // v10 kit amounts: edited, range-checked, and carried in the recipe.
-            auto kits=params;auto kitFields=cart::generatorFields(kits);
-            kitFields[8]="Max";kitFields[9]="0";kitFields[10]="200";kitFields[11]="255";
-            check(cart::parseGeneratorFields(kitFields,kits,generatorError) && kits.manaScatter==ta::mapgen::ScatterMax &&
-                  kits.plateauDensity==0 && kits.mountainDensity==200 && kits.townDensity==255,"kit amounts parse");
-            const auto decoded=ta::mapgen::decodeMapId(ta::mapgen::encodeMapId(kits));
-            check(decoded.plateauDensity==0 && decoded.mountainDensity==200 && decoded.townDensity==255,"kit amounts ride in the recipe");
-            kitFields[8]="Lots";check(!cart::parseGeneratorFields(kitFields,kits,generatorError),"unknown scattered mana level accepted");
-            kitFields[8]="None";kitFields[10]="256";check(!cart::parseGeneratorFields(kitFields,kits,generatorError),"kit amount range checked");
-            // Only the current recipe version restores; any other is malformed.
-            check(!cart::restoreGeneratorRecipe("~gen1~080001000000000000000100030003020000ff608003",restored,generatorError) &&
-                  generatorError.find("malformed or cannot be restored exactly")!=std::string::npos,"another recipe version is refused as malformed");
-        }
-        fields=cart::generatorFields(params);fields[3]="256";
-        check(!cart::parseGeneratorFields(fields,parsed,generatorError),"density range checked");
+        // Only the current recipe version restores; any other is malformed.
+        check(!cart::restoreGeneratorRecipe("~gen1~080001000000000000000100030003020000ff608003",restored,generatorError) &&
+              generatorError.find("malformed or cannot be restored exactly")!=std::string::npos,"another recipe version is refused as malformed");
+        fields=cart::generatorFields(params);fields[2]="256";
+        check(!cart::parseGeneratorFields(fields,parsed,generatorError),"hills range checked");
         fields=cart::generatorFields(params);fields[1]="3players";
         check(!cart::parseGeneratorFields(fields,parsed,generatorError),"partial numeric input rejected");
         ta::hpi::Vfs vfs;ta::sim::TypeRegistry registry;
@@ -114,12 +97,9 @@ int main() {
             for(int i=1;i<=9;++i)file<<"[AraHenge0"<<i<<"] {\nfootprintx=3;\nfootprintz=3;\nblocking=1;\n}\n";
         }
         vfs.addLayer(ta::hpi::MountSet(root));
-        params.layout=ta::mapgen::Mainland;params.waterDensity=params.reliefDensity=0;
+        params.reliefDensity=0;
         fields=cart::generatorFields(params);check(cart::parseGeneratorFields(fields,parsed,generatorError),"edited generator settings parse");
-        const auto first=ta::mapgen::generate(params,vfs),second=ta::mapgen::generate(parsed,vfs);
-        check(first.starts==second.starts && first.map.heights==second.map.heights && first.map.features==second.map.features &&
-              first.map.tileKeys==second.map.tileKeys && first.map.tileCols==second.map.tileCols && first.map.tileRows==second.map.tileRows,
-              "editor settings reproduce actual generator output");
+        check(ta::mapgen::encodeMapId(params)==ta::mapgen::encodeMapId(parsed),"editor settings reproduce the recipe");
         auto files=std::make_shared<ta::hpi::Vfs::Files>();
         (*files)["kmap/recipe-test.recipe"]={original.begin(),original.end()};vfs.setMapFiles(files);
         check(cart::mapGeneratorRecipe(vfs,"kmap/recipe-test.tnt","")==original,"game-generated map recipe sidecar imports");

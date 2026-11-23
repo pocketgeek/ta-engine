@@ -380,8 +380,7 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
 
 cart::Editor::Editor(int argc,char** argv,const FrameHook& frameHook,const EditorHooks& hooks)
     : Session(argc,argv,frameHook,hooks) {
-    for(uint8_t i=0;i<ta::mapgen::kLayouts;++i)generatorLayouts.push_back(ta::mapgen::layoutName(i));
-    for(uint8_t i=0;i<ta::mapgen::kScatterLevels;++i)generatorScatter.push_back(ta::mapgen::scatterName(i));
+    for(uint8_t i=0;i<ta::mapgen::kMapTypes;++i)generatorWorlds.push_back(ta::mapgen::worldKey(i));
     if(showWelcome) {
         openMessage("WELCOME TO CARTOGRAPHER",
             "Start with File > Open (Ctrl+O), or New (Ctrl+N). Pick a tool and search the left browser (Ctrl+F).\n"

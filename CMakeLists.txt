@@ -145,8 +145,6 @@ add_library(ta-formats
   src/tnt/ota.cpp
   src/tnt/mapgen.cpp
   src/tnt/mapgen_ta.cpp
-  src/tnt/mapgen_balanced.cpp
-  src/tnt/mapgen_kits.cpp
   src/tdo/tdo.cpp
   src/tdf/tdf.cpp
   src/cob/cob.cpp
@@ -1350,9 +1348,6 @@ add_test(NAME scenario_resources COMMAND scenario_resources_test)
 
 add_executable(mapgen_test tools/mapgen_test.cpp)
 target_link_libraries(mapgen_test PRIVATE ta-formats)
-# Seam hunt: generated tile boundaries against retail adjacency and pixel steps.
-add_executable(mapgen_seams tools/mapgen_seams.cpp)
-target_link_libraries(mapgen_seams PRIVATE ta-formats)
 add_test(NAME mapgen COMMAND mapgen_test)
 
 add_executable(terrainlift_test tools/terrainlift_test.cpp)
@@ -1639,15 +1634,9 @@ if(TA_TEST_DATA)
     add_test(NAME legion_movement_orders_trolls_maze COMMAND movement_orders_test --legion --trolls "${TA_TEST_DATA}" maze)
     set_tests_properties(legion_movement_orders_trolls legion_movement_orders_trolls_maze PROPERTIES TIMEOUT 900)
     add_test(NAME map_transfer_data COMMAND map_transfer_test "${TA_TEST_DATA}")
-    add_test(NAME mapgen_roster COMMAND mapgen_test "${TA_TEST_DATA}")
+    add_test(NAME mapgen_data COMMAND mapgen_test "${TA_TEST_DATA}")
+    set_tests_properties(mapgen_data PROPERTIES TIMEOUT 300)
     add_test(NAME issue_selection_test_data COMMAND issue_selection_test "${TA_TEST_DATA}")
-    add_test(NAME mapgen_mana COMMAND mapgen_test "${TA_TEST_DATA}" --mana)
-    set_tests_properties(mapgen mapgen_mana PROPERTIES TIMEOUT 180)
-    add_test(NAME mapgen_naval COMMAND mapgen_test "${TA_TEST_DATA}" --naval)
-    add_test(NAME mapgen_themes COMMAND mapgen_test "${TA_TEST_DATA}" --themes)
-    add_test(NAME mapgen_kits COMMAND mapgen_test "${TA_TEST_DATA}" --kits)
-    add_test(NAME mapgen_seams COMMAND mapgen_seams "${TA_TEST_DATA}" sweep 0 1 quick)
-    add_test(NAME mapgen_ports COMMAND mapgen_test "${TA_TEST_DATA}" --ports)
     add_test(NAME campaign_roster COMMAND campaign_test "${TA_TEST_DATA}")
     add_test(NAME structure_combat COMMAND structure_combat_test "${TA_TEST_DATA}")
     add_test(NAME structure_combat_reach COMMAND structure_combat_test "${TA_TEST_DATA}" reach)

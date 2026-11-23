@@ -12,10 +12,7 @@ std::string mapGeneratorRecipe(const ta::hpi::Vfs& vfs,const std::string& mapPat
     const auto bytes=vfs.read(path);return {bytes.begin(),bytes.end()};
 }
 GeneratorFields generatorFields(const ta::mapgen::Params& p) {
-    return {std::to_string(p.seed),std::to_string(p.players),ta::mapgen::layoutName(p.layout),
-        std::to_string(p.treeDensity),std::to_string(p.rockDensity),std::to_string(p.manaDensity),
-        std::to_string(p.waterDensity),std::to_string(p.reliefDensity),ta::mapgen::scatterName(p.manaScatter),
-        std::to_string(p.plateauDensity),std::to_string(p.mountainDensity),std::to_string(p.townDensity)};
+    return {std::to_string(p.seed),std::to_string(p.players),std::to_string(p.reliefDensity)};
 }
 bool parseGeneratorFields(const GeneratorFields& f,ta::mapgen::Params& p,std::string& error) {
     auto next=p;
@@ -26,22 +23,7 @@ bool parseGeneratorFields(const GeneratorFields& f,ta::mapgen::Params& p,std::st
     uint64_t value=0;
     if(!number(0,0,UINT64_MAX,value)) {error="Seed must be an unsigned 64-bit whole number.";return false;}next.seed=value;
     if(!number(1,2,8,value)) {error="Choose 2 to 8 players.";return false;}next.players=uint8_t(value);
-    bool layout=false;
-    for(uint8_t i=0;i<ta::mapgen::kLayouts;++i)if(f[2]==ta::mapgen::layoutName(i)) {next.layout=i;layout=true;}
-    if(!layout) {error="Choose a layout.";return false;}
-    uint8_t* density[]={&next.treeDensity,&next.rockDensity,&next.manaDensity,&next.waterDensity,&next.reliefDensity};
-    for(size_t i=3;i<8;++i) {
-        if(!number(i,0,255,value)) {error="Densities must be whole numbers from 0 to 255.";return false;}
-        *density[i-3]=uint8_t(value);
-    }
-    bool scatter=false;
-    for(uint8_t i=0;i<ta::mapgen::kScatterLevels;++i)if(f[8]==ta::mapgen::scatterName(i)) {next.manaScatter=i;scatter=true;}
-    if(!scatter) {error="Choose a scattered mana level.";return false;}
-    uint8_t* kits[]={&next.plateauDensity,&next.mountainDensity,&next.townDensity};
-    for(size_t i=9;i<12;++i) {
-        if(!number(i,0,255,value)) {error="Plateaus, mountains and towns must be whole numbers from 0 to 255.";return false;}
-        *kits[i-9]=uint8_t(value);
-    }
+    if(!number(2,0,255,value)) {error="Hills must be a whole number from 0 to 255.";return false;}next.reliefDensity=uint8_t(value);
     p=next;error.clear();return true;
 }
 bool restoreGeneratorRecipe(const std::string& recipe,ta::mapgen::Params& params,std::string& error) {

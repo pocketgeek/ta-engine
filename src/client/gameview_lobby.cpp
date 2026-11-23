@@ -822,7 +822,6 @@ std::string defaultGameName(const std::string& player) {
         const int W = g.map.width, H = g.map.height;
         int TW = 0, TH = 0;
         auto rgba = radarPicture(g.map, vfs, ta::mapgen::worldKey(gp.mapType), TW, TH);
-        out.mountains = g.mountains;
         if (rgba.empty()) return out;
         // Start positions: drawn over the thumbnail as numbered markers (drawStartMarkers),
         // in world px like a shipped map's -- the same cell -> px setupMatch applies.
@@ -855,7 +854,7 @@ std::string defaultGameName(const std::string& player) {
             mapPreviewWorldW_ = out.worldW; mapPreviewWorldH_ = out.worldH;
             mapPreviewDims_ = std::move(out.dims);
             genPreviewError_ = std::move(out.error);
-            if (out.map) { genPreviewMap_ = std::move(out.map); genPreviewMapId_ = out.id; genPreviewMountains_ = out.mountains; }
+            if (out.map) { genPreviewMap_ = std::move(out.map); genPreviewMapId_ = out.id; }
             if (out.w <= 0) continue;
             mapPreviewTex_ = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, out.w, out.h);
             if (!mapPreviewTex_) continue;
@@ -867,7 +866,7 @@ std::string defaultGameName(const std::string& player) {
     }
 
     void GameView::applyGenParams() {
-        genParams_ = ta::mapgen::sanitize(genParams_);   // grows a side the layout cannot fit
+        genParams_ = ta::mapgen::sanitize(genParams_);
         // The generator's target: the CHANGE MAP panel's RANDOM candidate.
         std::string& id = picker_.gen.id;
         std::string& path = picker_.gen.path;
@@ -888,18 +887,7 @@ std::string defaultGameName(const std::string& player) {
         if (r.w <= 0) return;
         float t = std::clamp((mx - r.x) / r.w, 0.0f, 1.0f);
         uint8_t v = uint8_t(t * 255.0f + 0.5f);
-        switch (i) {
-            case 0: genParams_.treeDensity = v; break;
-            case 1: genParams_.rockDensity = v; break;
-            case 2: genParams_.manaDensity = v; break;
-            case 3: genParams_.waterDensity = v; break;
-            case 4: genParams_.reliefDensity = v; break;
-            case 6: genParams_.plateauDensity = v; break;
-            case 7: genParams_.mountainDensity = v; break;
-            case 8: genParams_.townDensity = v; break;
-            default:   // SCATTERED MANA snaps to its five levels
-                genParams_.manaScatter = uint8_t(t * float(ta::mapgen::kScatterLevels - 1) + 0.5f); break;
-        }
+        if (i == 0) genParams_.reliefDensity = v;   // HILLS, the one slider
     }
 
     void GameView::scanModPacks() {
@@ -1205,7 +1193,7 @@ std::string defaultGameName(const std::string& player) {
         // of the CLICK band, or hung under it (over the mods and the chat) when the preview
         // is too short to hold it -- never past the bottom of the screen.
         if (roomMap && !picker_.open && lbHot(pv) && !genPreviewPending_ && mapPreviewTex_) {
-            const auto lines = packItems(genRecipeItems(room.mapId, genPreviewMountainsFor(room.mapId)), 1.1f, colW - 12);
+            const auto lines = packItems(genRecipeItems(room.mapId), 1.1f, colW - 12);
             if (!lines.empty()) {
                 constexpr float kPitch = 13;
                 const float h = float(lines.size()) * kPitch + 8;
@@ -1220,33 +1208,15 @@ std::string defaultGameName(const std::string& player) {
         }
     }
 
-    std::vector<std::vector<std::string>> GameView::genRecipeItems(const std::string& mapId, int mountains) {
+    std::vector<std::vector<std::string>> GameView::genRecipeItems(const std::string& mapId) {
         if (!ta::mapgen::isGeneratedMapId(mapId)) return {};
         const auto gp = ta::mapgen::decodeMapId(mapId);
         const auto level = [](uint8_t v) { return v == 0 ? "NONE" : v < 86 ? "LOW" : v < 171 ? "MED" : "HIGH"; };
-        const auto kit = [&](uint8_t v, uint8_t which) { return ta::mapgen::kitAvailable(gp.mapType, which) ? level(v) : "NONE"; };
-        // Asked for, but the roll found no room (small or crowded maps): say so, not the amount.
-        const bool noRoom = gp.mountainDensity && ta::mapgen::kitAvailable(gp.mapType, ta::mapgen::KitMountains) &&
-                            mountains == 0;
-        std::string scatter = ta::mapgen::scatterName(gp.manaScatter);
-        for (char& ch : scatter) ch = char(std::toupper(static_cast<unsigned char>(ch)));
         return {{std::string("MAP TYPE: ") + ta::mapgen::worldTitle(gp.mapType),
-                std::string("LAYOUT: ") + ta::mapgen::layoutName(gp.layout),
                 "SIZE: " + std::to_string(gp.widthCells / 32) + " X " + std::to_string(gp.heightCells / 32),
                 "PLAYERS: " + std::to_string(gp.players),
-                std::string("FORESTS: ") + (ta::mapgen::worldHasForests(gp.mapType) ? level(gp.treeDensity) : "NONE"),
-                std::string(ta::mapgen::lavaWorld(gp.mapType) ? "RUINS: " : "ROCKS: ") + level(gp.rockDensity),
-                std::string("MANA: ") + level(gp.manaDensity),
-                gp.layout == ta::mapgen::IndustrialZone ? std::string("LAVA PADS: ") + level(gp.waterDensity) :
-                std::string(ta::mapgen::lavaWorld(gp.mapType) ? "LAVA: " : "WATER: ") +
-                    (ta::mapgen::automaticWater(gp.layout) ? "AUTO" : level(gp.waterDensity)),
-                std::string("HILLS: ") + (ta::mapgen::hillsPossible(gp.mapType, gp.layout) ? level(gp.reliefDensity) :
-                                       gp.layout == ta::mapgen::Maze ? "AUTO" : "NONE")},
-               {std::string("PLATEAUS: ") + (ta::mapgen::automaticPlateaus(gp.layout) ? "AUTO" : kit(gp.plateauDensity, ta::mapgen::KitPlateaus)),
-                std::string("MOUNTAINS: ") + (noRoom ? "NO ROOM" : kit(gp.mountainDensity, ta::mapgen::KitMountains)),
-                std::string(gp.mapType == ta::mapgen::Metal ? "VILLAGES: " : "TOWNS: ") + kit(gp.townDensity, ta::mapgen::KitTowns),
-                "SCATTERED MANA: " + scatter,
-                "MAP SEED: " + std::to_string(gp.seed)}};
+                std::string("HILLS: ") + level(gp.reliefDensity)},
+               {"MAP SEED: " + std::to_string(gp.seed)}};
     }
 
     std::vector<std::string> GameView::packItems(const std::vector<std::vector<std::string>>& groups, float px, float maxW) const {
@@ -1448,7 +1418,7 @@ std::string defaultGameName(const std::string& player) {
         const bool fromRoom = bigMapFor_.rfind("room:", 0) == 0;
         const std::string mapId = fromRoom ? mpRoom().mapId : picker_.open ? (picker_.random ? picker_.gen : picker_.file).id : std::string();
         constexpr float kRecipePx = 1.1f, kRecipePitch = 13;
-        const auto recipe = packItems(genRecipeItems(mapId, genPreviewMountainsFor(mapId)), kRecipePx, lw - 2 * kCreateMargin);
+        const auto recipe = packItems(genRecipeItems(mapId), kRecipePx, lw - 2 * kCreateMargin);
         const float recipeH = recipe.empty() ? 0 : float(recipe.size()) * kRecipePitch + 4;
         const SDL_FRect area{kCreateMargin * s, kCreateMargin * s, (lw - 2 * kCreateMargin) * s,
                              (lh - kCreateMargin - 50 - recipeH) * s};
@@ -1578,7 +1548,7 @@ std::string defaultGameName(const std::string& player) {
             if (forward) { if (lbField_ == 5) applyGenParams(); lbField_ = 0; SDL_StopTextInput(); }
             float mx, my; lobbyMouse(mx, my);
             if (forward && ptIn(mapThumbRect_, mx, my)) { mapDrag_ = true; return; }   // grab the thumb
-            for (int gi = 0; gi < 9; ++gi)   // grab a density slider
+            for (int gi = 0; gi < int(std::size(genSliderRect_)); ++gi)   // grab a density slider
                 if (forward && ptIn(genSliderRect_[gi], mx, my)) { genSlider_ = gi; setGenSlider(gi, mx); return; }
             for (auto& hot : lobbyHots_)
                 if (ptIn(hot.rect, mx, my)) {

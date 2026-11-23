@@ -202,37 +202,21 @@ int seatedHumans(const ta::net::RoomView& room) {
         // sat tighter than the sliders and the run of sliders drifted out of line
         // with everything above it.
         const float kRowH = 24, kGap = 6, kBtnW = 300;
-        const float kSliderH = 30;   // label (11) + 5 + bar (14)
         const float kHalfW = (kBtnW - kGap) / 2;
         float px = x, py = y;
         lbField(px, py, kBtnW, "MAP NAME (OPTIONAL)", genParams_.name, 5); py += 44;
         lbCycle(px, py, kBtnW, kRowH, std::string("TYPE:  ") + ta::mapgen::worldTitle(genParams_.mapType),
               true, [this](int direction) { genParams_.mapType = uint8_t((genParams_.mapType + direction + ta::mapgen::kMapTypes) % ta::mapgen::kMapTypes);
-                             genParams_.layout=ta::mapgen::layoutForSlot(genParams_.mapType,ta::mapgen::slotOfLayout(genParams_.layout));
-                             applyGenParams(); }); py += kRowH + kGap;
-        // Mainland, Lakes, Islands (the volcano's Industrial Zone) and the world's own layout.
-        lbCycle(px, py, kBtnW, kRowH, std::string("LAYOUT:  ") + ta::mapgen::layoutName(genParams_.layout),
-              true, [this](int direction) { const int next=(ta::mapgen::slotOfLayout(genParams_.layout)+direction+4)%4;
-                             genParams_.layout=ta::mapgen::layoutForSlot(genParams_.mapType,next);
                              applyGenParams(); }); py += kRowH + kGap;
         char pl[32]; std::snprintf(pl, sizeof pl, "PLAYERS:  %d", int(genParams_.players));
         lbCycle(px, py, kBtnW, kRowH, pl, true, [this](int direction) {
             genParams_.players = uint8_t(2 + (genParams_.players - 2 + direction + 7) % 7);
             applyGenParams();
         }); py += kRowH + kGap;
-        // WIDTH and HEIGHT, in sections (32 cells), each on its own: a step offers only the
-        // sizes the layout can build with the other side as it is (sanitize keeps both).
+        // WIDTH and HEIGHT, in sections (32 cells), each on its own, over the menu's steps.
         const auto sizeCycle = [this](bool height, int direction) {
             const int cur = (height ? genParams_.heightCells : genParams_.widthCells) / 32;
-            std::vector<int> sizes;
-            for (int size : ta::mapgen::kSizeSteps) {
-                auto candidate = genParams_;
-                (height ? candidate.heightCells : candidate.widthCells) = uint16_t(size * 32);
-                const auto kept = ta::mapgen::sanitize(candidate);
-                if (kept.widthCells == candidate.widthCells && kept.heightCells == candidate.heightCells)
-                    sizes.push_back(size);
-            }
-            if (sizes.empty()) return;
+            const std::vector<int> sizes(std::begin(ta::mapgen::kSizeSteps), std::end(ta::mapgen::kSizeSteps));
             const auto at = std::find(sizes.begin(), sizes.end(), cur);
             const int index = at == sizes.end() ? (direction > 0 ? -1 : 0) : int(at - sizes.begin());
             const int next = sizes[size_t((index + direction + int(sizes.size())) % int(sizes.size()))];
@@ -244,53 +228,26 @@ int seatedHumans(const ta::net::RoomView& room) {
         char hl[32]; std::snprintf(hl, sizeof hl, "HEIGHT:  %d", genParams_.heightCells / 32);
         lbCycle(px + kHalfW + kGap, py, kHalfW, kRowH, hl, true, [sizeCycle](int direction) { sizeCycle(true, direction); });
         py += kRowH + kGap * 2;   // a wider break between the pickers and the sliders
-        // Nine sliders in two half-width columns; each level reads at the right end of
-        // its label line, where the bar's column ends.
-        int column = 0;
-        auto slider = [&](int idx, const char* label, uint8_t val, bool enabled = true, const char* off = "AUTO") {
-            const float bx = px + column * (kHalfW + kGap), by = py + 16, bw = kHalfW, bh = 14;
-            genSliderRect_[idx] = enabled ? SDL_FRect{bx, by, bw, bh} : SDL_FRect{};
+        // HILLS: how much of the map is laid with the world's terrain sections. Its level
+        // reads at the right end of its label line, where the bar ends; RE-ROLL SEED shares
+        // the row.
+        {
+            const float bx = px, by = py + 16, bw = kHalfW, bh = 14;
+            const uint8_t val = genParams_.reliefDensity;
+            genSliderRect_[0] = SDL_FRect{bx, by, bw, bh};
             SDL_FRect bar{bx, by, bw, bh};
             SDL_SetRenderDrawColor(ren_, 30, 34, 46, 255); SDL_RenderFillRectF(ren_, &bar);
-            float t = enabled ? val / 255.0f : 0.0f;
+            const float t = val / 255.0f;
             SDL_FRect fill{bx, by, bw * t, bh};
             SDL_SetRenderDrawColor(ren_, 70, 120, 90, 255); SDL_RenderFillRectF(ren_, &fill);
             SDL_FRect handle{bx + bw * t - 3, by - 2, 6, bh + 4};
-            SDL_SetRenderDrawColor(ren_, 200, 220, 200, 255); if (enabled) SDL_RenderFillRectF(ren_, &handle);
+            SDL_SetRenderDrawColor(ren_, 200, 220, 200, 255); SDL_RenderFillRectF(ren_, &handle);
             SDL_SetRenderDrawColor(ren_, 70, 76, 96, 255); SDL_RenderDrawRectF(ren_, &bar);
-            static const char* kScatterShort[ta::mapgen::kScatterLevels] = {"NONE", "MIN", "MED", "HIGH", "MAX"};
-            const std::string level = !enabled ? off : idx==2 ? "+" + std::to_string(ta::mapgen::extraManaRounds(val)) + "/P" :
-                idx==5 ? kScatterShort[std::min<int>(genParams_.manaScatter, ta::mapgen::kScatterLevels - 1)] :
-                val == 0 ? "NONE" : val < 86 ? "LOW" : val < 171 ? "MED" : "HIGH";
+            const std::string level = val == 0 ? "NONE" : val < 86 ? "LOW" : val < 171 ? "MED" : "HIGH";
             const float levelW = blockWidth(level, 1.3f);
-            // The label shrinks, if it must, to leave the level its room on the line.
-            blockText(label, bx, py + 2, ta::uiTextFitPx(label, 1.3f, bw - levelW - 8), {180, 185, 195, 255});
+            blockText("HILLS", bx, py + 2, ta::uiTextFitPx("HILLS", 1.3f, bw - levelW - 8), {180, 185, 195, 255});
             blockText(level, bx + bw - levelW, py + 2, 1.3f, {160, 165, 180, 255});
-            if (++column == 2) { column = 0; py += kSliderH + kGap; }
-        };
-        const uint8_t world = genParams_.mapType, layout = genParams_.layout;
-        // The volcano has no trees or hill sections; its rocks are ruined Creon works.
-        slider(0, "FORESTS", genParams_.treeDensity, ta::mapgen::worldHasForests(world), "NONE");
-        slider(1, ta::mapgen::lavaWorld(world) ? "RUINS" : "ROCKS", genParams_.rockDensity);
-        slider(2, "EXTRA MANA", genParams_.manaDensity);
-        // Neutral spots scattered by AREA, apart from the per-player extra spots (a
-        // level, not a count: the same level puts four times as many on a map twice as
-        // wide). Five notches, NONE..MAX; MAX = a six-spot home's density.
-        slider(5, "SCATTERED MANA", uint8_t(genParams_.manaScatter * 255 / (ta::mapgen::kScatterLevels - 1)));
-        // Industrial Zone's lava is its own; the slider sets its cut-off pads instead.
-        const bool pads = layout == ta::mapgen::IndustrialZone;
-        slider(3, pads ? "LAVA PADS" : ta::mapgen::lavaWorld(world) ? "LAVA" : "WATER", genParams_.waterDensity,
-               pads || !ta::mapgen::automaticWater(layout));
-        slider(4, layout==ta::mapgen::Highlands?"HIGHLANDS":"HILLS", genParams_.reliefDensity,
-               ta::mapgen::hillsPossible(world, layout), layout==ta::mapgen::Maze ? "AUTO" : "NONE");
-        // v10 retail kits. Maze walls and Creon highlands are the layout's own high
-        // ground; Veruna ships no mountain kit.
-        slider(6, "PLATEAUS", genParams_.plateauDensity, !ta::mapgen::automaticPlateaus(layout) &&
-               ta::mapgen::kitAvailable(world, ta::mapgen::KitPlateaus));
-        slider(7, "MOUNTAINS", genParams_.mountainDensity, ta::mapgen::kitAvailable(world, ta::mapgen::KitMountains), "NONE");
-        slider(8, world==ta::mapgen::Metal?"VILLAGES":"TOWNS", genParams_.townDensity,
-               ta::mapgen::kitAvailable(world, ta::mapgen::KitTowns), "NONE");
-        // The seed button shares the last row with TOWNS.
+        }
         py += 8;
         px += kHalfW + kGap;
         lbBtn(px, py, kHalfW, kRowH, "RE-ROLL SEED", true, [this] {

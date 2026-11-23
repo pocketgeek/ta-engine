@@ -393,7 +393,7 @@ struct Editor : Session {
     ta::mapgen::Params generatorParams;
     bool regeneratingCurrent=false;
     std::array<std::string,4> generatorDraft;
-    std::vector<std::string> generatorLayouts,generatorScatter;
+    std::vector<std::string> generatorWorlds;   // mapgen::worldKey of each TA world
     const char* mLabel[kMaxFields] = {};
     std::string mTitle,modalError;
     int mN = 0;                              // active field count

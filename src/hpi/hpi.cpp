@@ -982,7 +982,7 @@ uint64_t gameplayHash(const Vfs& input) {
     // objects3d/<id>.3do (production transforms, sight and projectile geometry);
     // every .cob/.3do there is hashed, as none is ever cosmetic.
     std::unordered_map<std::string, std::string> byKey;   // key -> winning path (deduped)
-    for (const char* pre : {"units", "unitscb", "canbuild", "features",
+    for (const char* pre : {"units", "canbuild", "features",
                             "gamedata", "weapons", "scripts", "objects3d"})
         for (const std::string& p : vfs.list(pre)) {
             if (!affectsGameplay(p)) continue;
