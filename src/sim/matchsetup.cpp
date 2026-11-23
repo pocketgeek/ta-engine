@@ -632,6 +632,11 @@ static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
             std::transform(key.begin(), key.end(), key.begin(), ::tolower);
             auto di = defs.find(key);
             if (di == defs.end()) continue;
+            // Metal patches: an indestructible feature with metal overwrites the
+            // cells under it, in cell order (docs/retail-economy.md section 6).
+            if (di->second.indestructible && di->second.metal != 0)
+                world.stampFeatureMetal(cx, cz, di->second.fx, di->second.fz, int(di->second.metal),
+                                        map.width, map.height);
             // Retail feature records name the footprint origin (0x4931e0).
             float x = float(cx * 16 + di->second.fx * 8);
             float z = float(cz * 16 + di->second.fz * 8);
@@ -704,18 +709,6 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
     FeatTypeInterner types(defs);
     std::vector<std::pair<float, float>> rawMana, rawAll;
     scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
-    // Metal patches: every indestructible feature with metal overwrites the cells
-    // under it, in cell order (docs/retail-economy.md section 6).
-    for (int cz = 0; cz < map.height; ++cz)
-        for (int cx = 0; cx < map.width; ++cx) {
-            const uint16_t v = map.features[size_t(cz) * size_t(map.width) + size_t(cx)];
-            if (v >= map.featureNames.size()) continue;
-            std::string name = map.featureNames[v];
-            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-            const auto it = defs.find(name);
-            if (it == defs.end() || !it->second.indestructible || it->second.metal == 0) continue;
-            world.stampFeatureMetal(cx, cz, it->second.fx, it->second.fz, int(it->second.metal));
-        }
     installManaSpots(world, rawMana, rawAll);
     if (reg)
         for (const auto& [tid, ut] : reg->types()) {
@@ -906,6 +899,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         world.setTeam(i, cfg.slots[i].team);
         world.player(i).cacheClock.enabled=true;
         world.player(i).manaMult = cfg.slots[i].manaMult;   // Absurd AI = 2x income
+        world.player(i).books.mult = cfg.slots[i].manaMult;  // TA: AI income x0.5/0.7/1.0 (retail)
         // Every player's pool starts empty (the resource object 401240 zeroes,
         // allocated for all ten records at 4f6910); the units a game opens with
         // fill it from their mogriumstorage (World::creditCreationStorage).

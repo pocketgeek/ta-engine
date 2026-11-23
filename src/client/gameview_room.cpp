@@ -503,7 +503,8 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                 // ai/default.txt; a new AI seat still starts NORMAL.
                 constexpr int kLevels = ta::ai::kAiLevels;
                 static const char* diffName[kLevels] = {"DEFENSIVE", "EASY", "NORMAL", "HARD", "ABSURD",
-                                                        "ABSURDLY DEFENSIVE", "RETAIL", "PASSIVE"};
+                                                        "ABSURDLY DEFENSIVE", "RETAIL", "PASSIVE",
+                                                        "RETAIL EASY", "RETAIL HARD"};
                 static const SDL_Color diffCol[kLevels] = {
                     {150, 180, 210, 255},   // defensive (calm blue)
                     {150, 200, 150, 255},   // easy     (green)

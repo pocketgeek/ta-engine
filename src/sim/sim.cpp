@@ -210,6 +210,7 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.classicFbi.isFeature=(int32_t(info->numberOr("isfeature",0))&1)!=0;
             t.classicFbi.category=info->valueOr("category","");
             t.classicFbi.yardMap=info->valueOr("yardmap","");
+            t.classicFbi.aiWeight=info->valueOr("ai_weight","");
             t.maxVel = Fixed::fromRetailNumber(info->numberOr("maxvelocity", 0));
             // 4bfd8e: absent moverate1/2 both default to twice maxvelocity.
             t.animationMoveRate1=info->value("moverate1")
@@ -11485,6 +11486,21 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
         return walkable(grid,gx,gz);
     };
     int cx = footprintOrigin(x, type->footX), cz = footprintOrigin(z, type->footZ);
+    // Total Annihilation structures honour their FBI water limits: each footprint
+    // cell's depth (sea level - height) must lie in minwaterdepth..maxwaterdepth --
+    // land buildings (maxwaterdepth 0..) stay dry, underwater extractors and sonar
+    // need water. [U: retail's exact test is the yard height scan near 0x47d8ce;
+    // this checks every cell against the FBI limits.]
+    if (type->isStructure() && !heights_.empty() &&
+        (type->landMinWaterDepth > -10000 || type->landMaxWaterDepth < 10000)) {
+        for (int j = 0; j < type->footZ; ++j)
+            for (int i = 0; i < type->footX; ++i) {
+                const int gx = cx + i, gz = cz + j;
+                if (gx < 0 || gz < 0 || gx >= terW_ || gz >= terH_) return false;
+                const int depth = seaLevel_ - int(heights_[size_t(gz) * terW_ + gx]);
+                if (depth < type->landMinWaterDepth || depth > type->landMaxWaterDepth) return false;
+            }
+    }
     // Retail 507400 checks the entire building rectangle before its yard masks.
     // Even ignored '.' rows need the one-cell map border: the yard transition
     // at 507ae0 uses these same bounds and otherwise can never open the factory.

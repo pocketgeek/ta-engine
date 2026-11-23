@@ -199,8 +199,20 @@ std::string classicMapAiProfile(const ta::hpi::Vfs& vfs, const std::string& mapP
     if (!bytes) return {};
     try {
         const auto root = ta::tdf::parseText(std::string(bytes->begin(), bytes->end()), ota);
-        if (const auto* gh = root.child("globalheader"))
+        if (const auto* gh = root.child("globalheader")) {
+            // Total Annihilation keeps aiprofile in the [Schema N] blocks (0x436860):
+            // skirmish/MP use a "Network" schema; here the first one, else Schema 0.
+            const ta::tdf::Node* pick = nullptr;
+            for (int i = 0; i < 16 && !pick; ++i)
+                if (const auto* sc = gh->child("schema " + std::to_string(i))) {
+                    std::string type = sc->valueOr("type", "");
+                    for (char& c : type) c = char(std::tolower(static_cast<unsigned char>(c)));
+                    if (type.rfind("network", 0) == 0) pick = sc;
+                }
+            if (!pick) pick = gh->child("schema 0");
+            if (pick) return pick->valueOr("aiprofile", "");
             if (const auto* md = gh->child("map data")) return md->valueOr("aiprofile", "");
+        }
     } catch (const std::exception&) {}
     return {};
 }

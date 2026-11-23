@@ -66,9 +66,19 @@ Profile loadProfile(const ta::hpi::Vfs& vfs, const std::string& name = "default"
 // of home (Controller::stayHome_). Its seat's sim config is exactly an Easy seat's.
 // Renumbering is versioned by kNetVersion.
 enum class Difficulty : uint8_t {
-    Defensive = 0, Easy = 1, Normal = 2, Hard = 3, Absurd = 4, AbsurdlyDefensive = 5, Classic = 6, Passive = 7
+    Defensive = 0, Easy = 1, Normal = 2, Hard = 3, Absurd = 4, AbsurdlyDefensive = 5, Classic = 6, Passive = 7,
+    // Total Annihilation's own computer player (ai/taretail.h) at retail Easy and
+    // Hard; Classic is the same brain at retail Medium.
+    RetailEasy = 8, RetailHard = 9
 };
-inline constexpr uint8_t kAiLevels = 8;
+inline constexpr uint8_t kAiLevels = 10;
+// The TA retail brain's levels and their retail difficulty index (0 Easy, 1 Medium, 2 Hard).
+inline constexpr bool retailLevel(Difficulty d) {
+    return d == Difficulty::Classic || d == Difficulty::RetailEasy || d == Difficulty::RetailHard;
+}
+inline constexpr int retailDifficulty(Difficulty d) {
+    return d == Difficulty::RetailEasy ? 0 : d == Difficulty::RetailHard ? 2 : 1;
+}
 
 // Map a wire aiLevel to a Difficulty, clamping anything out of range to Normal.
 inline Difficulty difficultyFromLevel(uint8_t lvl) {
@@ -87,6 +97,11 @@ inline constexpr bool defensiveLevel(Difficulty d) {
 // player -- it is derived from the broadcast aiLevel and set on the sim player at
 // match setup, never AI-local.
 inline constexpr float incomeMultFor(Difficulty d) {
+    // TotalA.exe scales every resource credit to a computer's units by its
+    // difficulty: Easy 0.5, Medium 0.7, Hard 1.0 (docs/retail-ai.md section 2).
+    if (d == Difficulty::RetailEasy) return 0.5f;
+    if (d == Difficulty::Classic) return 0.7f;
+    if (d == Difficulty::RetailHard) return 1.0f;
     return d == Difficulty::Absurd || d == Difficulty::AbsurdlyDefensive ? 2.0f : 1.0f;
 }
 
@@ -249,6 +264,7 @@ public:
     // n x 30 ticks (classicMassAttackTicks).
     void setClassicCampaign(const std::string& otaPlayer);
     const ClassicBrain* classicBrain() const { return classic_.get(); }
+    const class TaRetailBrain* retailBrain() const { return retail_.get(); }
 
     // The start spots an enemy may have opened at (StartSpot), in place of the
     // constructor's enemyStarts. Call before the first tick.
@@ -746,6 +762,7 @@ private:
     // Difficulty::Classic only: the retail-AI port that drives this player in place
     // of everything above (which then stays idle).
     std::unique_ptr<ClassicBrain> classic_;
+    std::unique_ptr<class TaRetailBrain> retail_;   // TA retail levels (ai/taretail.h)
     uint32_t now_ = 0;
     // Fighters sent on a wave or raid (sendWaves). Once one is idle again it goes
     // straight for the next site rather than back into the pool for the next push.

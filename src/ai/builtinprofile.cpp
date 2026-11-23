@@ -108,7 +108,7 @@ const Profile& builtinProfile(Difficulty d) {
 }
 
 const char* levelProfileFile(Difficulty d) {
-    return d != Difficulty::Classic ? kEngineProfileFile : nullptr;
+    return retailLevel(d) ? nullptr : kEngineProfileFile;
 }
 
 void applyProfileText(std::string_view text, Profile& prof) {

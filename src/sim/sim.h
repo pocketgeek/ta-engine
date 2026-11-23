@@ -605,6 +605,7 @@ struct UnitType {
         int32_t bmcode = 0;      // `bmcode=`, retail's default 0
         bool isFeature = false;  // `isfeature=` low bit
         uint8_t weaponBlocks = 0;// bit n-1: a [WEAPONn] block is present
+        std::string aiWeight;    // TA `ai_weight=` profile line (applied by the retail AI)
     } classicFbi;
     float maxRange() const {
         float r = 0;
@@ -2791,9 +2792,14 @@ public:
     float windFactor() const { return taWindFactor(wind_); }
     // TA map metal (docs/retail-economy.md section 6): SurfaceMetal everywhere, then
     // each indestructible feature with metal overwrites the cells under it.
-    void setSurfaceMetal(int metal) { surfaceMetal_ = uint8_t(std::clamp(metal, 0, 255)); cellMetal_.clear(); }
-    void stampFeatureMetal(int cx, int cz, int fx, int fz, int metal);
+    void setSurfaceMetal(int metal) {   // keeps stamped ore; unstamped cells take the new value
+        const uint8_t old = surfaceMetal_;
+        surfaceMetal_ = uint8_t(std::clamp(metal, 0, 255));
+        for (auto& c : cellMetal_) if (c == old) c = surfaceMetal_;
+    }
+    void stampFeatureMetal(int cx, int cz, int fx, int fz, int metal, int mapW, int mapH);
     int cellMetal(int cx, int cz) const;
+    int surfaceMetal() const { return surfaceMetal_; }
     void setTidalStrength(float t) { wind_tidal_ = t; }
     // Start resources (lobby value x100 in MP/skirmish): stored = start, base
     // storage = max(start, 200).
@@ -4478,6 +4484,7 @@ private:
     float wind_tidal_ = econ::kTidalDefault;
     uint8_t surfaceMetal_ = 0;
     std::vector<uint8_t> cellMetal_;   // empty until a feature stamps metal
+    int cellMetalW_ = 0, cellMetalH_ = 0;
     void taEconomyTick();
     void taSettle(int player);
     void taShare();

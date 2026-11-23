@@ -2513,7 +2513,7 @@ void Server::tryStart(Client& c) {
                     r->ai.emplace_back(i, *r->reg, r->aiProfiles[size_t(diff)], r->seed,
                                        diff, std::move(enemyStarts));
                     r->ai.back().setStartSpots(aiStartSpots(*r, i));
-                    if (diff == ta::ai::Difficulty::Classic) {
+                    if (true) {   // every level runs the TA brain and reads the map's profile
                         if (!classicProfile)
                             classicProfile = classicProfileFor(*r, ta::ai::classicMapAiProfile(*cfg.vfs, mapPath),
                                                                *cfg.vfs, !r->mapVfs);

@@ -1,4 +1,5 @@
 #include "ai/ai.h"
+#include "ai/taretail.h"
 #include "ai/builtinprofile.h"
 #include "ai/classicbrain.h"
 #include "ai/classicprofile.h"
@@ -74,7 +75,18 @@ Controller::Controller(int player, const ta::sim::TypeRegistry& registry,
       rng_(seed), diff_(difficulty == Difficulty::Passive ? Difficulty::Easy : difficulty),
       stayHome_(difficulty == Difficulty::Passive), dp_(paramsFor(difficulty)),
       enemyStarts_(std::move(enemyStarts)) {
-    if (diff_ == Difficulty::Classic) classic_ = std::make_unique<ClassicBrain>(player, seed, registry);
+    // Every level runs Total Annihilation's own AI (TotalA.exe port, ai/taretail.h):
+    // RETAIL EASY/RETAIL/RETAIL HARD exactly; the engine's levels map onto its plans
+    // (Easy -> easy, Normal -> medium, Hard/Absurd -> hard; Absurd keeps its 2x income)
+    // and the defensive levels never launch strike groups.
+    {
+        int d = retailLevel(diff_) ? retailDifficulty(diff_)
+              : (diff_ == Difficulty::Easy || difficulty == Difficulty::Passive) ? 0
+              : (diff_ == Difficulty::Hard || diff_ == Difficulty::Absurd) ? 2 : 1;
+        retail_ = std::make_unique<TaRetailBrain>(player, seed, registry, d);
+        retail_->setAggressive(!(diff_ == Difficulty::Defensive || diff_ == Difficulty::AbsurdlyDefensive ||
+                                 difficulty == Difficulty::Passive));
+    }
     for (const auto& [x, z] : enemyStarts_) starts_.push_back({x, z, -1});
 }
 
@@ -109,6 +121,7 @@ void Controller::setStartSpots(std::vector<StartSpot> spots) {
 }
 
 void Controller::setClassicProfile(const ClassicProfileScript& script) {
+    if (retail_) retail_->useProfile(script.text);
     if (classic_) classic_->useProfile(script);
 }
 
@@ -3825,6 +3838,7 @@ void Controller::tick(const ta::sim::World& world, uint32_t simTick,
                       const CommandSink& sink) {
     // Classic runs retail's own clocks and bookkeeping: hand it every tick before
     // any of the other levels' cadence, home or ally setup runs.
+    if (retail_) { retail_->tick(world, simTick, sink); return; }
     if (classic_) { classic_->tick(world, simTick, sink); return; }
     // Think cadence (per difficulty), staggered by player so several AIs don't all
     // fire on the same tick. Sim-tick driven so a --mpai run is repeatable. Hard

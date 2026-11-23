@@ -1267,7 +1267,7 @@ add_test(NAME benchmark_mods COMMAND benchmark_mods_test)
 add_test(NAME no_game_mods_toggle COMMAND "${CMAKE_COMMAND}" -DLOBBY=${CMAKE_SOURCE_DIR}/src/client/gameview_lobby.cpp
          -DROOM=${CMAKE_SOURCE_DIR}/src/client/gameview_room.cpp -P "${CMAKE_SOURCE_DIR}/tools/no_game_mods_toggle.cmake")
 # The server-side AI (src/ai): every executable that runs a Controller links these.
-set(TA_AI_SOURCES src/ai/ai.cpp src/ai/builtinprofile.cpp src/ai/classicbrain.cpp src/ai/classicprofile.cpp src/ai/classictypes.cpp)
+set(TA_AI_SOURCES src/ai/ai.cpp src/ai/taretail.cpp src/ai/builtinprofile.cpp src/ai/classicbrain.cpp src/ai/classicprofile.cpp src/ai/classictypes.cpp)
 # mission_orders_test reads a scripted order as the Retail AI does (firstMissionOf).
 target_sources(mission_orders_test PRIVATE ${TA_AI_SOURCES})
 add_executable(room_worker_test tools/room_worker_test.cpp src/server/roomtick.cpp src/server/rosterdump.cpp ${TA_AI_SOURCES})

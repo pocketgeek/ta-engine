@@ -276,7 +276,8 @@ public:
         }
     }
     // SKIRMISH Difficulty -> the computer's wire aiLevel (ai::Difficulty).
-    static int skirmishAiLevel(int difficulty) { return difficulty <= 0 ? 1 : difficulty == 1 ? 2 : 3; }
+    // TA's own computer player (ai/taretail.h): RetailEasy 8, Classic 6 (Medium), RetailHard 9.
+    static int skirmishAiLevel(int difficulty) { return difficulty <= 0 ? 8 : difficulty == 1 ? 6 : 9; }
     // LOCAL SERVER from the CONNECT screen: the host's room opens straight away from the
     // multiplayer remembered settings, named "<name>'s Game" by the server, with the game
     // password typed on CONNECT. LEAVE closes the game and goes back to CONNECT.

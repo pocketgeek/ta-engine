@@ -13,19 +13,22 @@ namespace ta::sim {
 
 using namespace econ;
 
-void World::stampFeatureMetal(int cx, int cz, int fx, int fz, int metal) {
-    if (metal == 0 || hW_ <= 0 || hH_ <= 0) return;
-    if (cellMetal_.empty()) cellMetal_.assign(size_t(hW_) * size_t(hH_), surfaceMetal_);
+void World::stampFeatureMetal(int cx, int cz, int fx, int fz, int metal, int mapW, int mapH) {
+    if (metal == 0 || mapW <= 0 || mapH <= 0) return;
+    if (cellMetal_.empty() || cellMetalW_ != mapW || cellMetalH_ != mapH) {
+        cellMetalW_ = mapW; cellMetalH_ = mapH;
+        cellMetal_.assign(size_t(mapW) * size_t(mapH), surfaceMetal_);
+    }
     const uint8_t v = uint8_t(int32_t(metal));   // (u8)(int)metal
     for (int z = cz; z < cz + std::max(1, fz); ++z)
         for (int x = cx; x < cx + std::max(1, fx); ++x)
-            if (x >= 0 && z >= 0 && x < hW_ && z < hH_) cellMetal_[size_t(z) * size_t(hW_) + size_t(x)] = v;
+            if (x >= 0 && z >= 0 && x < mapW && z < mapH) cellMetal_[size_t(z) * size_t(mapW) + size_t(x)] = v;
 }
 
 int World::cellMetal(int cx, int cz) const {
-    if (cx < 0 || cz < 0 || cx >= hW_ || cz >= hH_) return 0;
-    if (cellMetal_.empty()) return surfaceMetal_;
-    return cellMetal_[size_t(cz) * size_t(hW_) + size_t(cx)];
+    if (cellMetal_.empty()) return (cx < 0 || cz < 0 || (terW_ > 0 && (cx >= terW_ || cz >= terH_))) ? 0 : surfaceMetal_;
+    if (cx < 0 || cz < 0 || cx >= cellMetalW_ || cz >= cellMetalH_) return 0;
+    return cellMetal_[size_t(cz) * size_t(cellMetalW_) + size_t(cx)];
 }
 
 void World::setStartResources(int player, float energy, float metal) {
