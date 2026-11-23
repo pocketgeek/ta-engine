@@ -299,6 +299,9 @@
                    e.button.y > winH - barH()) {
             // bottom bar: build icons already handled above; swallow the rest so a stray
             // click on the bar chrome doesn't deselect / order into the world
+        } else if ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) &&
+                   e.button.button == SDL_BUTTON_LEFT && hudShown() && taHudEvent(e)) {
+            // TA sidebar page (build pictures, order buttons, tabs, paging)
         } else if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
                    (gui_.gadgets.empty()
                         ? orderColumnClick(float(e.button.x), float(e.button.y), winW)

@@ -2084,6 +2084,7 @@ int main(int argc, char** argv) {
             gameView->finishTerrain();
             gameView->beginFrame();
             gameView->cosmeticStep(0);
+            if (ta::devEnv("TA_SHOT_SELECT")) gameView->selectFirstOwnForShot();
             gameView->draw(w,h);
             screenshot(ren,w,h,shot);
             gameView->endFrame();

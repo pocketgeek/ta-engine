@@ -53,8 +53,10 @@ bool TaFont::loadFnt(SDL_Renderer* ren, const std::vector<uint8_t>& d, SDL_Color
     // height*width bits MSB-first, continuous (docs/retail-gui.md section 1.5).
     if (d.size() < 4 + 255 * 2) return false;
     height_ = d[0] | (d[1] << 8);
-    for (int ch = 1; ch < 256; ++ch) {
-        const size_t o = size_t(d[4 + (ch - 1) * 2] | (d[5 + (ch - 1) * 2] << 8));
+    // The offset table is indexed by the character itself (checked on console.fnt:
+    // indexing by ch - 1 draws "1000" as "0///").
+    for (int ch = 0; ch < 255; ++ch) {
+        const size_t o = size_t(d[4 + ch * 2] | (d[5 + ch * 2] << 8));
         if (!o || o >= d.size()) continue;
         const int w = d[o];
         Glyph g;
@@ -462,6 +464,11 @@ std::string TaGuiView::handle(const SDL_Event& e, const GuiLayout& L) {
             if (auto* m = screen_.find(target)) return activate(*m);
     }
     return {};
+}
+
+void TaGuiView::drawSequence(const std::string& gaf, const std::string& seq, int frame, float x, float y,
+                             const GuiLayout& L) {
+    if (const Frames* f = sequence(gaf, seq)) drawFrame(*f, frame, {x, y, 0, 0}, L, false);
 }
 
 std::string TaGuiView::activate(const std::string& name) {

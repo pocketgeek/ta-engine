@@ -2934,6 +2934,7 @@
         if (hudShown()) {
             renderGui(winW, winH);
             drawPanel(winW, winH);
+            renderTaHud(winW, winH);   // TA sidebar page + top bar (client/gameview_tahud.cpp)
         } else {   // nothing on screen to click
             guiBtnRects_.clear();weaponRects_.clear();iconRects_.clear();selPortraitRects_.clear();
             buildMenuRect_={};buildRowTop_=0;

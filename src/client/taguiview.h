@@ -76,6 +76,8 @@ public:
     // Feed an SDL event; returns the name of the activated gadget ("" for none).
     // Buttons activate on release over themselves, quickkeys and Enter/Esc at once.
     std::string handle(const SDL_Event& e, const GuiLayout& L);
+    // Draw frame `frame` of `gaf`'s sequence `seq` with its top-left at (x, y) in GUI space.
+    void drawSequence(const std::string& gaf, const std::string& seq, int frame, float x, float y, const GuiLayout& L);
     // Press gadget `name` as a click would (stage/radio/latch effects); returns the
     // name, or "" when it is absent or grayed. For scripted front-end runs.
     std::string activate(const std::string& name);

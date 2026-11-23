@@ -2,6 +2,7 @@
 #include "sim/sides.h"
 #include "client/battlemusic.h"
 #include "client/tafrontend.h"
+#include "client/taguiview.h"
 #include "client/areadrag.h"
 #include "client/emotetiming.h"
 #include "client/retailmodellighting.h"
@@ -252,6 +253,28 @@ public:
     // human and the computers from its rows and start (docs/retail-gui.md 2).
     void setSkirmish(const ta::SkirmishSetup& s) { skirmish_ = s; singlePlayer_ = true; }
     std::optional<ta::SkirmishSetup> skirmish_;
+    // Total Annihilation in-game interface (client/gameview_tahud.cpp).
+    std::map<std::string, std::unique_ptr<ta::TaGuiView>> taPages_;
+    std::unique_ptr<ta::TaGuiView> taTopBar_;
+    std::unique_ptr<ta::TaFont> taConsole_;
+    std::map<std::string, SDL_Rect> taBarRects_;   // sidedata x1,y1,x2,y2
+    std::string taHudPage_;
+    ta::GuiLayout taHudLayout_;
+    bool taBuildTab_ = true;
+    int taBuildPage_ = 1;
+    ta::TaGuiView* taPage(const std::string& name);
+    std::string taSidebarPage();
+    void renderTaHud(int winW, int winH);
+    void renderTaTopBar(int winW);
+    bool taHudEvent(const SDL_Event& e);
+public:
+    // Debug shots: select the local player's first unit (TA_SHOT_SELECT).
+    void selectFirstOwnForShot() {
+        for (int id = 1; id < 100000; ++id) {
+            const UnitR* u = frameUnitP(id);
+            if (u && u->alive() && u->player == localPlayer_) { selection_ = {id}; return; }
+        }
+    }
     // SKIRMISH Difficulty -> the computer's wire aiLevel (ai::Difficulty).
     static int skirmishAiLevel(int difficulty) { return difficulty <= 0 ? 1 : difficulty == 1 ? 2 : 3; }
     // LOCAL SERVER from the CONNECT screen: the host's room opens straight away from the

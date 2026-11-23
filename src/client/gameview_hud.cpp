@@ -1992,7 +1992,8 @@ namespace {
         iconRects_.clear();
         buildMenuRect_ = {};
         buildRowTop_ = 0;
-        const auto* b = selectedBuilder();
+        // TA builds from the sidebar's build pages (renderTaHud), not a bottom row.
+        const UnitR* b = nullptr;   // never: TA builds from the sidebar (renderTaHud)
         if (b) {
             // Mission-filtered; an entry naming no known type takes no slot.
             std::vector<const ta::sim::UnitType*> menu;
@@ -2122,9 +2123,9 @@ namespace {
 
         drawIdleBuilders(winW, winH, bar.y);
 
-        // Bottom-RIGHT: mana -- only on our own bar. The retail GUI bar draws the mana
-        // readout at the command-panel foot around the orb (renderGui) instead.
-        if (!guiBar) {
+        // Bottom-RIGHT: the Kingdoms mana readout. TA shows metal/energy in its top
+        // bar (renderTaTopBar), so this never draws for TA data.
+        if (!guiBar && false) {
             const PlayerR& tm = framePlayer(hudPlayer());
             float manaX = float(winW) - 192;
             shade(manaX - 8, 200);
