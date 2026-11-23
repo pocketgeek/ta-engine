@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Total Annihilation: Kingdoms
+GenericName=Real-Time Strategy
+Comment=Clean-room engine recreation of Total Annihilation: Kingdoms
+Exec=takclient
+Icon=tak-client
+Terminal=false
+Categories=Game;StrategyGame;

@@ -1,0 +1,565 @@
+name: macOS build
+run-name: macOS build · ${{ github.ref_name }}
+
+# Builds native macOS ARM64 and Intel x64: uploads CI artifacts and runs the
+# determinism gate; on a tag it also attaches the zipped bundle to the GitHub Release.
+
+# Runs on every push to main AS WELL AS on a version tag. It used to be tag-only,
+# to keep per-commit CI fast -- and that is how a std::atomic_ref that Apple's libc++
+# does not have sat broken in sim.cpp from the commit that introduced it until the
+# v0.6.5 tag tried to build it, with a green determinism gate the whole time. A
+# platform break is only cheap to fix while you still remember what caused it. The
+# release steps below stay guarded on a tag ref, so a main push builds and tests but
+# publishes nothing.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write    # prune superseded ccache entries
+
+jobs:
+  build:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            machine: arm64
+            runner_arch: ARM64
+            runner: macos-15
+          - arch: x64
+            machine: x86_64
+            runner_arch: X64
+            runner: macos-15-intel
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+      # Compiler cache for our own sources (CMake picks ccache up as the launcher).
+      # The Intel runner spent ~13 of its ~25 minutes rebuilding Release + Debug from
+      # nothing on every push. The repo cache quota is shared with the FFmpeg builds,
+      # so the size is capped and only the newest entry per arch is kept.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 600M
+      CCACHE_COMPRESS: 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify native runner
+        run: |
+          [[ "${{ runner.arch }}" == "${{ matrix.runner_arch }}" ]]
+          [[ "$(uname -m)" == "${{ matrix.machine }}" ]]
+          clang --version
+
+      - name: Install dependencies
+        run: brew install ninja pkg-config nasm ccache
+
+      # Static Bink/streaming FFmpeg so the bundle plays the door videos with no
+      # runtime FFmpeg (see tools/build-ffmpeg-bink.sh). Cached by FFmpeg version.
+      - name: Cache static FFmpeg (Bink)
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-macos-${{ matrix.arch }}-min14-n7.1.1-stream-v2-${{ hashFiles('tools/build-ffmpeg-bink.sh', 'tools/build-stream-deps.sh', 'tools/ffmpeg-tls-hostname.patch', 'tools/vashim.c') }}
+          restore-keys: ffmpeg-bink-macos-${{ matrix.arch }}-min14-n7.1.1-stream-v2-
+      - name: Build static FFmpeg (Bink)
+        run: |
+          if ! ./tools/build-ffmpeg-bink.sh; then
+            test ! -f third_party/ffmpeg-bink/src/ffbuild/config.log || tail -180 third_party/ffmpeg-bink/src/ffbuild/config.log
+            exit 1
+          fi
+      - name: Save successful static FFmpeg build
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+      # Static zlib/libjpeg/SDL2 (built from source, like Linux) so the binary is fully
+      # self-contained -- no Homebrew dylibs referenced. SDL2 still links the system
+      # frameworks (Cocoa/Metal/CoreAudio/...), which macOS forbids linking statically.
+      - name: Cache static deps (zlib/libjpeg/SDL2)
+        id: static-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: third_party/static-deps
+          key: static-deps-macos-${{ matrix.arch }}-min14-zlib1.3.1-jpeg3.0.4-sdl2.32.10-${{ hashFiles('tools/build-static-deps.sh') }}
+      - name: Build static deps (zlib/libjpeg/SDL2)
+        run: ./tools/build-static-deps.sh
+      - name: Save successful static dependency build
+        if: steps.static-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: third_party/static-deps
+          key: ${{ steps.static-cache.outputs.cache-primary-key }}
+
+      - name: Restore compiler cache
+        id: ccache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-macos-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: ccache-macos-${{ matrix.arch }}-
+      - name: Configure + build
+        # FIND_FRAMEWORK=LAST keeps FindJPEG off Mono.framework's ancient libjpeg; the
+        # vendored static zlib/jpeg/SDL2 are found via the prefix (always static).
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_FIND_FRAMEWORK=LAST
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test takclient takserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test stream_network_test menu_music_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
+
+      - name: Server, network and replay checks
+        run: |
+          ./build/filelease_test
+          ./build/tls_test
+          ./build/acme_test
+          ./build/server_address_test
+          ./build/server_commands_test
+          ./build/room_worker_test
+          ./build/state_hash_test
+          ./build/mod_packs_test
+          ./build/replay_file_test
+          ./build/spectator_client_test
+
+      - name: Retail scripts, paths, rendering and map generation
+        run: |
+          ./build/cartographer_document_test
+          ./build/datafolder_test
+          ./build/cartographer_validation_test
+          ./build/retail_script_test
+          ./build/pathsearch_test
+          ./build/retail_visual_test
+          ./build/mapgen_test
+          ./build/map_transfer_test
+          ./build/unit_gift_test
+
+      - name: Verify Release architecture and static dependencies
+        run: |
+          for binary in takclient takserver cartographer; do
+            [[ "$(lipo -archs "build/$binary")" == "${{ matrix.machine }}" ]]
+            otool -L "build/$binary"
+            imports=$(otool -L "build/$binary" | tail -n +2 | awk '{print $1}')
+            if echo "$imports" | grep -qvE '^(/usr/lib/|/System/Library/)'; then
+              echo "::error::$binary links a non-system dylib"; exit 1
+            fi
+          done
+
+      - name: Rendering, navigation and validation regressions
+        run: |
+          cmake --build build --target tdf_limits_test validationworker_test order_trail_test retail_search_scratch_test navigation_checkpoint_test navigation_telemetry_test replay_test scenario_info_test fp_contract_test simpool_passes_test fire_sweep_test renderdriver_test jpeg_encode_test cpu_topology_test
+          bash tools/run-ctest-selection.sh build fp_contract tdf_limits validationworker order_trail retail_search_scratch navigation_determinism crowdbench_matrix navigation_telemetry replay scenario_info simpool_passes fire_sweep_vision fire_sweep_switch fire_sweep_retaliation pref_guard_lint renderdriver jpeg_encode cpu_topology
+          # What this runner's CPUs were read as (ctest prints nothing of a passing test).
+          ./build/cpu_topology_test
+
+      # The per-commit Legion selection (PLAN 3.0 / T8 A8, <= 45 s on 4 cores): the World
+      # cases, the instrument selftests, the asset-free scenarios of label legion (the
+      # nightly and data-gated ones are not run here), the cost gate and the baseline
+      # reasons check. The movement/production/transport variants need game data.
+      # arm64 only: the sim is bit-identical across architectures (the determinism gate
+      # below checks that on x64 too), and on the slower Intel runner this selection
+      # alone took ~8.5 minutes.
+      - name: Legion navigation tests and scenarios
+        if: matrix.arch == 'arm64'
+        env:
+          CTEST_PARALLEL_LEVEL: 3
+        run: |
+          cmake --build build --target legion_world_test legion_idmap_test legion_flyers_test legion_still_test crowdbench legion_observe_selftest issue_selection_test legion_scenario legion_acceptance_test legion_hier_test legion_route_test legion_cluster_test legion_routebins_test legion_park_test attack_stop_test ballistic_line_test blocked_shot_test naval_reach_test queue_modifiers_test shot_range_test suppress_test target_search_test vermage_fight_test queued_target_test queued_load_test
+          bash tools/run-ctest-selection.sh --exclude-labels 'nightly|data' --selection tools/legion_ci_selection.txt build
+
+      - name: Streaming encode test
+        run: |
+          ./build/stream_test
+          ./build/stream_test libx264 overload
+          ./build/stream_test libx264 native
+          python3 tools/check-stream-rtmps.py build/stream_network_test
+          ./build/menu_music_test
+          ./build/nvml_test
+          ./build/windowsgpu_test
+          SDL_VIDEODRIVER=dummy ./build/distant_models_test
+
+      - name: Project version
+        run: echo "VERSION=$(grep -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | head -1 | awk '{print $2}')" >> "$GITHUB_ENV"
+
+      # Drag-and-drop disk image: a "Total Annihilation - Kingdoms.app" bundle (Finder-launchable
+      # with NO Terminal window -- only .app bundles get that; a bare Unix binary
+      # double-clicked in Finder always opens Terminal) plus an /Applications
+      # symlink, packed with hdiutil. Ad-hoc codesigned here so Apple Silicon will
+      # run it; the `sign` job below re-signs it with the Developer ID, notarizes
+      # and staples it.
+      - name: App bundle + DMG
+        run: |
+          APPDIR="dist-dmg/Total Annihilation - Kingdoms.app"
+          mkdir -p "$APPDIR/Contents/MacOS" "$APPDIR/Contents/Resources"
+          cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt "$APPDIR/Contents/Resources/"
+          cp res/icons/takclient.icns "$APPDIR/Contents/Resources/"
+          iconutil -c iconset "$APPDIR/Contents/Resources/takclient.icns" -o /tmp/takclient.iconset
+          cp build/takclient build/takserver "$APPDIR/Contents/MacOS/"
+          sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APPDIR/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $MACOSX_DEPLOYMENT_TARGET" "$APPDIR/Contents/Info.plist"
+          plutil -lint "$APPDIR/Contents/Info.plist"
+          codesign --force --deep -s - "$APPDIR"
+          # FinderInfo attributes invalidate strict bundle signature verification.
+          # Let Finder apply its normal application-extension display preference.
+          codesign --verify --deep --strict "$APPDIR"
+          EDITOR_APP="dist-dmg/TAK Cartographer.app"
+          mkdir -p "$EDITOR_APP/Contents/MacOS" "$EDITOR_APP/Contents/Resources"
+          cp EDITOR-FONT-LICENSE.txt "$EDITOR_APP/Contents/Resources/"
+          cp build/cartographer "$EDITOR_APP/Contents/MacOS/"
+          cp res/icons/cartographer.icns "$EDITOR_APP/Contents/Resources/"
+          sed "s/@VERSION@/$VERSION/g" packaging/macos/Cartographer-Info.plist > "$EDITOR_APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $MACOSX_DEPLOYMENT_TARGET" "$EDITOR_APP/Contents/Info.plist"
+          plutil -lint "$EDITOR_APP/Contents/Info.plist"
+          codesign --force --deep -s - "$EDITOR_APP"
+          codesign --verify --deep --strict "$EDITOR_APP"
+          ln -s /Applications dist-dmg/Applications
+          hdiutil create -volname "Total Annihilation - Kingdoms" -srcfolder dist-dmg -ov -format UDZO \
+            "tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg"
+          # hdiutil can briefly report the new image busy ("Resource temporarily
+          # unavailable"); retry before calling it a bad image.
+          for attempt in 1 2 3 4 5; do
+            hdiutil verify "tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg" && break
+            [ "$attempt" -lt 5 ] || exit 1
+            sleep 10
+          done
+
+      # The zip carries the SAME .app (launch that from Finder -- no Terminal)
+      # plus the bare binaries for people who want the CLI/server.
+      - name: Bundle + zip
+        run: |
+          mkdir -p dist-macos
+          ditto --rsrc --extattr "dist-dmg/Total Annihilation - Kingdoms.app" \
+            "dist-macos/Total Annihilation - Kingdoms.app"
+          ditto --rsrc --extattr "dist-dmg/TAK Cartographer.app" "dist-macos/TAK Cartographer.app"
+          cp build/takclient build/takserver build/cartographer dist-macos/
+          # Preserve the signed bundle intact in the zip.
+          ditto -c -k --sequesterRsrc dist-macos "takclient-$VERSION-macos-${{ matrix.arch }}.zip"
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: takclient-macos-${{ matrix.arch }}
+          path: takclient-*-macos-${{ matrix.arch }}.zip
+
+      - name: Upload CI artifact (DMG)
+        uses: actions/upload-artifact@v7
+        with:
+          name: tak-engine-macos-${{ matrix.arch }}-dmg
+          path: tak-engine-*.dmg
+
+      # Debug build: the release binaries are hardened (only --data/--version, no env
+      # vars), so ship an unhardened DEBUG bundle for devs who need the CLI flags,
+      # TAK_* env hooks, and the headless --mp* harness.
+      - name: Configure + build (debug)
+        run: |
+          cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_FIND_FRAMEWORK=LAST
+          cmake --build build-debug --target takclient takserver cartographer
+          ccache --show-stats
+
+      # Saved even when a test step failed, so the next push still starts warm.
+      - name: Save compiler cache
+        if: always() && steps.ccache-restore.outcome == 'success' && steps.ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+      - name: Prune older compiler caches
+        if: always() && steps.ccache-restore.outcome == 'success' && steps.ccache-restore.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          keep="ccache-macos-${{ matrix.arch }}-${{ github.sha }}"
+          gh cache list --repo "$GITHUB_REPOSITORY" --key "ccache-macos-${{ matrix.arch }}-" --limit 100 \
+              --json key --jq '.[].key' | while read -r key; do
+            [ "$key" = "$keep" ] || gh cache delete "$key" --repo "$GITHUB_REPOSITORY" || true
+          done
+
+      - name: Verify Debug architecture and static dependencies
+        run: |
+          for binary in takclient takserver cartographer; do
+            [[ "$(lipo -archs "build-debug/$binary")" == "${{ matrix.machine }}" ]]
+            imports=$(otool -L "build-debug/$binary" | tail -n +2 | awk '{print $1}')
+            if echo "$imports" | grep -qvE '^(/usr/lib/|/System/Library/)'; then
+              echo "::error::$binary links a non-system dylib"; exit 1
+            fi
+          done
+
+      - name: Bundle + zip (debug)
+        run: |
+          mkdir -p dist-macos-debug
+          cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-macos-debug/
+          cp build-debug/takclient build-debug/takserver build-debug/cartographer dist-macos-debug/
+          (cd dist-macos-debug && zip -r ../takclient-macos-${{ matrix.arch }}-debug.zip .)
+
+      - name: Upload CI artifact (debug)
+        uses: actions/upload-artifact@v7
+        with:
+          name: takclient-macos-${{ matrix.arch }}-debug
+          path: dist-macos-debug/
+
+      - name: Determinism gate (cross-platform parity)
+        run: |
+          expected=dcef618cd2e4d558
+          ./build/detmath_test    # accuracy vs libm (fails on tolerance)
+          got=$(./build/detmath_test --hash | grep -oE '[0-9a-f]{16}')
+          echo "detmath golden: $got (expected $expected)"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::detmath golden mismatch -- cross-platform lockstep broken"
+            exit 1
+          fi
+          ./build/sim_driver_equiv_test
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Reuse an existing draft instead of creating a second release record.
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "TAK Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || \
+              gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            "takclient-$VERSION-macos-${{ matrix.arch }}.zip" takclient-macos-${{ matrix.arch }}-debug.zip \
+            "tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+  # Developer ID signing + notarization (distribution outside the App Store). Runs on its own
+  # runner after the build so the signing secrets never enter the build job. It re-signs the
+  # built bundles and binaries with the hardened runtime, notarizes them with the App Store
+  # Connect API key, staples the tickets, and rebuilds the zip and DMG from the stapled apps.
+  # Skipped (not failed) on fork PRs and wherever the secrets are not available. Decoded key
+  # material only ever lives in $RUNNER_TEMP and is deleted at the end; nothing under it is
+  # uploaded, and no step echoes it.
+  sign:
+    name: Sign + notarize macOS ${{ matrix.arch }}
+    needs: build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      - name: Check signing secrets
+        id: secrets
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          if [ -n "$MACOS_CERT_P12" ] && [ -n "$NOTARY_KEY_P8" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Signing secrets not available; skipping signing and notarization"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download unsigned build
+        if: steps.secrets.outputs.enabled == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          pattern: takclient-macos-${{ matrix.arch }}*
+          path: unsigned
+
+      - name: Import signing certificate into a temporary keychain
+        if: steps.secrets.outputs.enabled == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -f pkcs12 \
+            -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign >/dev/null
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -qF "\"$MACOS_SIGN_IDENTITY\""; then
+            echo "::error::MACOS_SIGN_IDENTITY is not a valid code-signing identity in the imported .p12"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/notary"
+          printf '%s' "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary/AuthKey.p8"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Sign, notarize and staple
+        if: steps.secrets.outputs.enabled == 'true'
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          sign() {
+            codesign --force --options runtime --timestamp --keychain "$KEYCHAIN" \
+              --sign "$MACOS_SIGN_IDENTITY" "$@"
+          }
+          # Voice chat records the microphone. Under the hardened runtime that needs this
+          # entitlement on takclient (and on the game bundle, whose signature re-signs its
+          # main executable), or macOS hands it silence without ever asking the player.
+          # Info.plist carries the NSMicrophoneUsageDescription the permission prompt shows.
+          MIC="$RUNNER_TEMP/takclient.entitlements"
+          cat > "$MIC" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.device.audio-input</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "$MIC"
+          signbin() {   # takclient gets the microphone entitlement, the others nothing extra
+            if [ "$(basename "$1")" = takclient ]; then sign --entitlements "$MIC" "$1"; else sign "$1"; fi
+          }
+          # notarytool prints its JSON on stdout on success but on stderr on failure (a --wait
+          # timeout included), so both streams are kept and parsed.
+          notary() {
+            xcrun notarytool "$@" --key "$RUNNER_TEMP/notary/AuthKey.p8" \
+              --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
+          }
+          json_field() {  # json_field <field> <file>...: first value found in any file
+            python3 - "$@" <<'PY'
+          import json, sys
+          for path in sys.argv[2:]:
+              for line in open(path, errors="replace"):
+                  line = line.strip()
+                  if line.startswith("{"):
+                      try: value = json.loads(line).get(sys.argv[1])
+                      except ValueError: continue
+                      if value: print(value); sys.exit(0)
+          PY
+          }
+          # submit <file>: upload without waiting; prints the submission id.
+          submit() {
+            local out="$RUNNER_TEMP/submit-$(basename "$1").out" id
+            notary submit "$1" --output-format json >"$out" 2>&1 || true
+            id=$(json_field id "$out" || true)
+            if [ -z "$id" ]; then
+              cat "$out" >&2
+              echo "::error::Upload of $(basename "$1") to the notary service failed" >&2
+              exit 1
+            fi
+            echo "Submitted $(basename "$1") as $id" >&2
+            echo "$id"
+          }
+          # await <id> <name>: wait for Apple, always print its log, fail unless Accepted.
+          # A new team's first submissions can sit in Apple's queue for over an hour.
+          await() {
+            local out="$RUNNER_TEMP/wait-$1.out" status
+            notary wait "$1" --timeout 2h --output-format json >"$out" 2>&1 || true
+            cat "$out"
+            status=$(json_field status "$out" || true)
+            notary log "$1" || true
+            if [ "$status" != "Accepted" ]; then
+              echo "::error::Notarization of $2 (submission $1) ended with status '${status:-still in progress}'"
+              exit 1
+            fi
+          }
+
+          zip=$(ls unsigned/takclient-macos-"$ARCH"/takclient-*-macos-"$ARCH".zip)
+          VERSION=$(basename "$zip" | sed -E "s/^takclient-(.*)-macos-$ARCH\.zip$/\1/")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p work signed
+          ditto -x -k "$zip" work/release
+          GAME="work/release/Total Annihilation - Kingdoms.app"
+          EDITOR="work/release/TAK Cartographer.app"
+
+          # Nested code first (every Mach-O in Contents/MacOS), then the bundle itself; no --deep.
+          for app in "$GAME" "$EDITOR"; do
+            for bin in "$app"/Contents/MacOS/*; do signbin "$bin"; done
+            if [ "$app" = "$GAME" ]; then sign --entitlements "$MIC" "$app"; else sign "$app"; fi
+            codesign --verify --strict --verbose=2 "$app"
+          done
+          codesign -d --entitlements - "$GAME" 2>/dev/null | grep -q com.apple.security.device.audio-input \
+            || { echo "::error::the game bundle lost its microphone entitlement"; exit 1; }
+          for bin in takclient takserver cartographer; do
+            signbin "work/release/$bin"
+          done
+
+          # Debug CLI binaries: bare Mach-Os cannot hold a stapled ticket; Gatekeeper checks online.
+          mkdir -p work/debug
+          ditto unsigned/takclient-macos-"$ARCH"-debug work/debug
+          # upload-artifact drops Unix modes on a loose directory; restore the execute bit.
+          chmod 755 work/debug/takclient work/debug/takserver work/debug/cartographer
+          for bin in takclient takserver cartographer; do
+            signbin "work/debug/$bin"
+          done
+          (cd work/debug && zip -qr "$GITHUB_WORKSPACE/signed/takclient-macos-$ARCH-debug.zip" .)
+
+          # Release zip and debug zip are notarized together; the apps are stapled and
+          # re-zipped so the tickets ship inside. The DMG is built from the stapled apps after.
+          ditto -c -k --sequesterRsrc work/release "$RUNNER_TEMP/release-submit.zip"
+          release_id=$(submit "$RUNNER_TEMP/release-submit.zip")
+          debug_id=$(submit "signed/takclient-macos-$ARCH-debug.zip")
+          await "$release_id" "the release zip"
+          await "$debug_id" "the debug zip"
+          xcrun stapler staple "$GAME"
+          xcrun stapler staple "$EDITOR"
+          for app in "$GAME" "$EDITOR"; do
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=2 "$app" || echo "::warning::spctl rejected $app"
+          done
+          ditto -c -k --sequesterRsrc work/release "signed/takclient-$VERSION-macos-$ARCH.zip"
+
+          # DMG rebuilt from the stapled apps, signed, notarized and stapled itself.
+          mkdir -p work/dmg
+          ditto "$GAME" "work/dmg/Total Annihilation - Kingdoms.app"
+          ditto "$EDITOR" "work/dmg/TAK Cartographer.app"
+          ln -s /Applications work/dmg/Applications
+          DMG="signed/tak-engine-$VERSION-macos-$ARCH.dmg"
+          hdiutil create -volname "Total Annihilation - Kingdoms" -srcfolder work/dmg -ov -format UDZO "$DMG"
+          codesign --force --timestamp --keychain "$KEYCHAIN" --sign "$MACOS_SIGN_IDENTITY" "$DMG"
+          dmg_id=$(submit "$DMG")
+          await "$dmg_id" "the DMG"
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG" || echo "::warning::spctl rejected the DMG"
+
+      - name: Upload signed CI artifacts
+        if: steps.secrets.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: takclient-macos-${{ matrix.arch }}-signed
+          path: |
+            signed/takclient-*-macos-${{ matrix.arch }}.zip
+            signed/tak-engine-*-macos-${{ matrix.arch }}.dmg
+            signed/takclient-macos-${{ matrix.arch }}-debug.zip
+
+      # Replaces the unsigned files the build job attached (same names, --clobber).
+      - name: Attach signed files to release
+        if: steps.secrets.outputs.enabled == 'true' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "signed/takclient-$VERSION-macos-${{ matrix.arch }}.zip" \
+            "signed/takclient-macos-${{ matrix.arch }}-debug.zip" \
+            "signed/tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Remove signing keychain and keys
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN:-}" ]; then security delete-keychain "$KEYCHAIN" || true; fi
+          rm -rf "$RUNNER_TEMP/notary" "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/release-submit.zip" \
+            "$RUNNER_TEMP"/submit-*.out "$RUNNER_TEMP"/wait-*.out

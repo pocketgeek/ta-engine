@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Cartographer
+GenericName=Map Editor
+Comment=Map editor for the TAK engine
+Exec=cartographer
+Icon=tak-cartographer
+Terminal=false
+Categories=Game;Development;

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what KDE Discover, GNOME Software and similar installers show
+     for the package (name, developer, description). Installed to share/metainfo. -->
+<component type="desktop-application">
+  <id>us.pgnet.tak_engine</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>TAK Engine</name>
+  <summary>Clean-room engine recreation of Total Annihilation: Kingdoms</summary>
+  <developer id="us.pgnet">
+    <name>Curtis Edge</name>
+  </developer>
+  <description>
+    <p>
+      TAK Engine is a modern, clean-room re-implementation of Total Annihilation: Kingdoms
+      (Cavedog, 1999), written in C++20 with SDL2. It plays the original campaign,
+      skirmishes against the computer and online multiplayer, and includes Cartographer,
+      a port of the original map editor, and takserver, a dedicated multiplayer server.
+    </p>
+    <p>
+      The game's data is not included: point the engine at your own retail Total
+      Annihilation: Kingdoms install.
+    </p>
+  </description>
+  <launchable type="desktop-id">tak-client.desktop</launchable>
+  <icon type="stock">tak-client</icon>
+  <url type="homepage">https://github.com/pocketgeek/tak-engine</url>
+  <url type="bugtracker">https://github.com/pocketgeek/tak-engine/issues</url>
+  <categories>
+    <category>Game</category>
+    <category>StrategyGame</category>
+  </categories>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">moderate</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-audio">intense</content_attribute>
+  </content_rating>
+</component>

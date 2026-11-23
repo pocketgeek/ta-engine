@@ -1,0 +1,23 @@
+--- a/libavformat/tls_openssl.c
++++ b/libavformat/tls_openssl.c
+@@ -292,8 +292,7 @@
+         ret = AVERROR(EIO);
+         goto fail;
+     }
+-    // Note, this doesn't check that the peer certificate actually matches
+-    // the requested hostname.
++    SSL_CTX_set_default_verify_paths(p->ctx);
+     if (c->verify)
+         SSL_CTX_set_verify(p->ctx, SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+     p->ssl = SSL_new(p->ctx);
+@@ -319,6 +318,10 @@
+     SSL_set_bio(p->ssl, bio, bio);
+     if (!c->listen && !c->numerichost)
+         SSL_set_tlsext_host_name(p->ssl, c->host);
++    if (c->verify && !c->listen && !SSL_set1_host(p->ssl, c->host)) {
++        ret = AVERROR(EIO);
++        goto fail;
++    }
+     ret = c->listen ? SSL_accept(p->ssl) : SSL_connect(p->ssl);
+     if (ret == 0) {
+         av_log(h, AV_LOG_ERROR, "Unable to negotiate TLS/SSL session\n");

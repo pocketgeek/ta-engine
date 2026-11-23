@@ -1,0 +1,67 @@
+# ctest creon_death_sound_peers: the Creon death-sound harness (TAK_CREON_DEATH_SOUND_TEST,
+# src/client/gameview_devharness.cpp; ctest creon_death_sound runs it once) run as two
+# peers of one game. Each run checks its own deaths against the simulation's choice; the
+# second (TAK_CREON_DEATH_SOUND_CATCHUP=1) presents every batch late, as a rejoining client
+# or a spectator catching up does. Both must simulate the same world and hear the same
+# sounds for every death.
+#   cmake -DCLIENT=<takclient> -DDATA=<retail install> -DOUT=<dir> -P creon_death_sound.cmake
+foreach(var CLIENT DATA OUT)
+  if(NOT DEFINED ${var})
+    message(FATAL_ERROR "creon_death_sound.cmake needs -D${var}=...")
+  endif()
+endforeach()
+file(MAKE_DIRECTORY "${OUT}")
+set(errors "")
+foreach(peer normal catchup)
+  set(extra "")
+  if(peer STREQUAL "catchup")
+    set(extra TAK_CREON_DEATH_SOUND_CATCHUP=1)
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env TAK_CREON_DEATH_SOUND_TEST=1 ${extra}
+            "${CLIENT}" game "Ulasem Arena" --data "${DATA}" --firetest --time 0.1
+            --shot "${OUT}/creon-death-sound-${peer}.png"
+    OUTPUT_VARIABLE log ERROR_VARIABLE log RESULT_VARIABLE rc)
+  file(WRITE "${OUT}/creon-death-sound-${peer}.log" "${log}")
+  string(REGEX MATCHALL "CREON_DEATH (exact|fog|backlog|statues)[^\n]*" summary "${log}")
+  foreach(line IN LISTS summary)
+    message("${peer}: ${line}")
+  endforeach()
+  string(REGEX MATCH "PASS: Creon death sounds are the simulation's[^\n]*" pass "${log}")
+  if(NOT rc EQUAL 0 OR NOT pass)
+    string(REGEX MATCHALL "(FAIL|error)[^\n]*" why "${log}")
+    string(REPLACE ";" "\n    " why "${why}")
+    string(APPEND errors "\n  ${peer} peer (exit ${rc}, ${OUT}/creon-death-sound-${peer}.log):\n    ${why}")
+  endif()
+  string(REGEX MATCHALL "CREON_DEATH_CRY [^\n]*" cries_${peer} "${log}")
+  string(REGEX MATCH "CREON_DEATH_WORLD [^\n]*" world_${peer} "${log}")
+endforeach()
+# (b) Same game, same sounds.
+list(LENGTH cries_normal deaths)
+list(LENGTH cries_catchup deaths_catchup)
+if(NOT world_normal OR NOT world_normal STREQUAL world_catchup)
+  string(APPEND errors "\n  the peers simulated different games: '${world_normal}' vs '${world_catchup}'")
+elseif(deaths EQUAL 0 OR NOT deaths EQUAL deaths_catchup)
+  string(APPEND errors "\n  the peers reported ${deaths} and ${deaths_catchup} deaths")
+else()
+  set(differ 0)
+  math(EXPR last "${deaths}-1")
+  foreach(i RANGE ${last})
+    list(GET cries_normal ${i} a)
+    list(GET cries_catchup ${i} b)
+    if(NOT a STREQUAL b)
+      math(EXPR differ "${differ}+1")
+      if(differ LESS_EQUAL 8)
+        message("  normal:  ${a}\n  catchup: ${b}")
+      endif()
+    endif()
+  endforeach()
+  message("CREON_DEATH peers: ${deaths} deaths, ${differ} heard differently (${world_normal})")
+  if(differ GREATER 0)
+    string(APPEND errors "\n  (b) the peers heard different sounds for ${differ} of ${deaths} deaths")
+  endif()
+endif()
+if(errors)
+  message(FATAL_ERROR "creon_death_sound:${errors}")
+endif()
+message("PASS: both peers hear the simulation's Creon death sounds (${deaths} deaths)")

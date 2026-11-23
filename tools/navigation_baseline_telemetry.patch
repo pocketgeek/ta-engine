@@ -1,0 +1,295 @@
+diff --git a/src/sim/flownavigator.cpp b/src/sim/flownavigator.cpp
+index 885e57b..08dfd46 100644
+--- a/src/sim/flownavigator.cpp
++++ b/src/sim/flownavigator.cpp
+@@ -60,6 +60,7 @@ struct FlowNavigator::Impl {
+         uint32_t firingCursor=0;
+         std::array<Cell,16> firingSeeds{};
+         bool firingDone=false,firingContinuation=false,passagePending=false;
++        uint64_t telemetryToken=0;
+         void resetFiring() {firingState=0;firingCount=0;firingCursor=0;firingDone=false;}
+     };
+     static_assert(sizeof(Request)<=384,"review canonical request/traffic memory reservation");
+@@ -124,6 +125,7 @@ struct FlowNavigator::Impl {
+     std::map<uint64_t,Key> admission;
+     uint64_t nextAdmission=0;
+     Stats counters;
++    NavigationTelemetry* telemetry=nullptr;
+     uint64_t nextProfile=0,clock=0;
+     int requestCursor=0;
+     size_t firingRays=0,firingCells=0;
+@@ -237,10 +239,13 @@ struct FlowNavigator::Impl {
+             }
+         }
+     }
+-    void cancel(int id) {
++    void cancel(int id,NavigationTelemetry::Cancel reason=NavigationTelemetry::Cancel::Explicit) {
+         service.cancel(id);local.erase(id);
+         const auto it=requests.find(id);
+-        if(it!=requests.end()) {release(it->second);requests.erase(it);}
++        if(it!=requests.end()) {
++            if(telemetry)telemetry->cancelled(it->second.telemetryToken,reason);
++            release(it->second);requests.erase(it);
++        }
+     }
+     void awaitProfile(const Key& key) {
+         if(!waiting.contains(key)) {
+@@ -466,6 +471,10 @@ struct FlowNavigator::Impl {
+         counters.deliveredAgeMax=std::max(counters.deliveredAgeMax,age);counters.deliveredAgeTotal+=age;
+         ++counters.deliveries;
+     }
++    void observeDelivery(Request& r,bool failed,size_t points) {
++        if(telemetry)telemetry->delivered(r.telemetryToken,failed,points);
++        r.telemetryToken=0;
++    }
+     void begin(Profile& p) {
+         const auto& nav=world.navFor(p.type);
+         p.preparingHash=1469598103934665603ull;
+@@ -697,6 +706,7 @@ struct FlowNavigator::Impl {
+         if(!prepareFiring(r,p,u))return false;
+         if(r.firingState==2&&!r.firingCount&&r.firingDone) {
+             if(!snapshotFresh){r.passagePending=true;return false;}
++            observeDelivery(r,true,0);
+             world.deliverSearchRoute(id,{},r.x,r.z,true,false,false,false);
+             delivered(r);++counters.failures;served(p);return true;
+         }
+@@ -736,6 +746,7 @@ struct FlowNavigator::Impl {
+                 if(sample.status==flow::Service::Status::Pending)return false;
+                 if(sample.status!=flow::Service::Status::Ready&&sample.status!=flow::Service::Status::Arrived)continue;
+                 route.push_back({next.x,next.z});
++                observeDelivery(r,false,route.size());
+                 world.deliverSearchRoute(id,route,r.x,r.z,false,false,false,true);
+                 if(auto* goal=world.navigationMissionOrder(u);goal&&goal->controller==r.controller)
+                     (goal->load||goal->transportUnloadApproach?goal->transportMission:goal->mission).pending|=0x1000;
+@@ -747,6 +758,7 @@ struct FlowNavigator::Impl {
+                 // With an up-to-date static snapshot and no adjacent legal
+                 // anchor there is no physical route out. Mobile occupancy
+                 // alone never reaches this branch: it waits for a free exit.
++                observeDelivery(r,true,0);
+                 world.deliverSearchRoute(id,{},r.x,r.z,true,false,false,false);
+                 if(auto* goal=world.navigationMissionOrder(u);goal&&goal->controller==r.controller)
+                     (goal->load||goal->transportUnloadApproach?goal->transportMission:goal->mission).pending|=0x2000;
+@@ -828,6 +840,7 @@ struct FlowNavigator::Impl {
+         // Never report stale topology as a permanent mission failure.
+         if(failed&&(!structuresComplete||!obstacles->settled()||p.builder||std::any_of(p.dirty.begin(),p.dirty.end(),[](bool d){return d;})))return false;
+         if(failed&&route.size()==1)route.clear();
++        observeDelivery(r,failed,route.size());
+         world.deliverSearchRoute(id,route,r.x,r.z,failed,false,false,r.firingState==2);
+         if(auto* goal=world.navigationMissionOrder(u);goal&&goal->controller==r.controller)
+             (goal->load||goal->transportUnloadApproach?goal->transportMission:goal->mission).pending|=failed?0x2000:0x1000;
+@@ -872,6 +885,7 @@ struct FlowNavigator::Impl {
+         }
+         std::vector<PathCell> route;route.reserve(it->second->route().size());
+         for(Cell c:it->second->route())route.push_back({c.x,c.z});
++        observeDelivery(r,false,route.size());
+         world.deliverSearchRoute(id,route,r.x,r.z,false,false,false,true);
+         if(auto* goal=world.navigationMissionOrder(u);goal&&goal->controller==r.controller)
+             (goal->load||goal->transportUnloadApproach?goal->transportMission:goal->mission).pending|=0x1000;
+@@ -922,6 +936,7 @@ struct FlowNavigator::Impl {
+             if(it==requests.end())it=requests.begin();
+             const int id=it->first;requestCursor=id;auto& r=it->second;auto* u=world.unit(id);
+             bool remove=!valid(u,r);
++            if(remove&&telemetry)telemetry->cancelled(r.telemetryToken,NavigationTelemetry::Cancel::Stale);
+             if(!remove) {
+                 auto* p=profile(r.key,*u);
+                 const bool classified=classifyFiring(r,*u);
+@@ -937,7 +952,15 @@ struct FlowNavigator::Impl {
+     }
+ };
+ FlowNavigator::FlowNavigator(World& world):impl_(std::make_unique<Impl>(world)) {}
+-FlowNavigator::~FlowNavigator()=default;
++FlowNavigator::~FlowNavigator() {
++    if(impl_->telemetry)for(const auto& [id,r]:impl_->requests) {
++        (void)id;impl_->telemetry->cancelled(r.telemetryToken,NavigationTelemetry::Cancel::Cleared);
++    }
++}
++void FlowNavigator::setTelemetry(NavigationTelemetry* observer) {
++    if(observer!=impl_->telemetry&&!impl_->requests.empty())throw std::logic_error("telemetry requires an empty request queue");
++    impl_->telemetry=observer;
++}
+ bool FlowNavigator::request(Unit& u,Fixed x,Fixed z) {
+     auto& p=*impl_;
+     if(!p.memory.supported)return false;
+@@ -952,7 +975,7 @@ bool FlowNavigator::request(Unit& u,Fixed x,Fixed z) {
+     auto goals=p.goals(u,x,z);
+     const auto controller=mission?mission->controller:0;
+     if(auto it=p.requests.find(u.id);it!=p.requests.end()&&it->second.key==key&&it->second.x==x&&it->second.z==z&&it->second.controller==controller&&it->second.targetId==(mission?mission->targetId:0)&&it->second.region==goals)return true;
+-    p.cancel(u.id);++p.subscribers[key];
++    p.cancel(u.id,NavigationTelemetry::Cancel::Replaced);++p.subscribers[key];
+     p.requests[u.id]={key,x,z,controller,u.player,u.type,std::move(goals),false,p.clock,0};
+     // The third backend must prove clearance and coordinate passage entry
+     // before consuming either a new raw goal or an older installed prefix.
+@@ -962,6 +985,7 @@ bool FlowNavigator::request(Unit& u,Fixed x,Fixed z) {
+     // when it temporarily leads away from weapon range. Every continuation is
+     // still checked against the exact LOS rule before using point seeds.
+     p.requests[u.id].firingContinuation=u.routeDetour;
++    p.requests[u.id].telemetryToken=p.telemetry?p.telemetry->requested(u.id):0;
+     u.routeStamp=std::bit_cast<int32_t>(p.world.tickCounter_);
+     u.routeCrowded=u.routeTraffic=u.routeFailed=u.routeDetour=false;
+     if(!u.orders.empty()&&World::currentLeg(u.orders)==0)u.orders.front().navigationExhausted=true;
+diff --git a/src/sim/flownavigator.h b/src/sim/flownavigator.h
+index 1787088..851b437 100644
+--- a/src/sim/flownavigator.h
++++ b/src/sim/flownavigator.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ #include "fixed.h"
+ #include "flowtraffic.h"
++#include "navigationtelemetry.h"
+ #include <cstddef>
+ #include <cstdint>
+ #include <memory>
+@@ -33,6 +34,7 @@ public:
+     ~FlowNavigator();
+     FlowNavigator(const FlowNavigator&)=delete;
+     FlowNavigator& operator=(const FlowNavigator&)=delete;
++    void setTelemetry(NavigationTelemetry* observer);
+     bool request(Unit& unit,Fixed x,Fixed z);
+     bool pending(int unit) const;
+     bool routeBlocked(const Unit& unit) const;
+diff --git a/src/sim/pathsearch.cpp b/src/sim/pathsearch.cpp
+index 9cc596f..fbca33e 100644
+--- a/src/sim/pathsearch.cpp
++++ b/src/sim/pathsearch.cpp
+@@ -504,7 +504,7 @@ void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
+     // cannot inherit the old controller's search or undelivered events.
+     if (auto it = q_.find(unitId); it != q_.end() &&
+         (it->second.controller != controller || it->second.player != player))
+-        cancel(unitId);
++        cancel(unitId,NavigationTelemetry::Cancel::Replaced);
+     // A RE-REQUEST FOR THE SAME SEARCH LETS IT RUN. Everything below restarts the
+     // search from scratch (cap = 0), which is right when the question changed and
+     // ruinous when it did not: the sim re-asks every kPathRetryTicks (120 ticks, 4s)
+@@ -548,6 +548,7 @@ void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
+     auto [entry,inserted]=q_.try_emplace(unitId);
+     Entry& e=entry->second;
+     if (!inserted) {
++        if(telemetry_)telemetry_->cancelled(e.telemetryToken,NavigationTelemetry::Cancel::Replaced);
+         --pendingByPlayer_[size_t(e.player)];
+         priorityByPlayer_[size_t(e.player)]-=e.priority;
+     }
+@@ -570,6 +571,7 @@ void PathService::request(int unitId, PathCell start, PathCell goal, int mapW,
+     e.goalRadiusSquared = goalRadiusSquared;
+     e.rectangle = rectangle;
+     e.ring = ring;
++    e.telemetryToken=telemetry_?telemetry_->requested(unitId):0;
+ }
+ 
+ void PathService::eraseRequest(std::unordered_map<int,Entry>::iterator it) {
+@@ -578,10 +580,11 @@ void PathService::eraseRequest(std::unordered_map<int,Entry>::iterator it) {
+     q_.erase(it);
+ }
+ 
+-void PathService::cancel(int unitId) {
++void PathService::cancel(int unitId,NavigationTelemetry::Cancel reason) {
+     std::erase_if(notifications_, [=](const Notification& n) { return n.unitId == unitId; });
+     auto it = q_.find(unitId);
+     if (it == q_.end()) return;
++    if(telemetry_)telemetry_->cancelled(it->second.telemetryToken,reason);
+     if (scheduler_.active==RetailSearchScheduler::Request{
+         it->second.player,unitId-poolFirst_[size_t(it->second.player)]}) retireActive();
+     // A finish callback may queue other requests and rehash the lookup table.
+@@ -594,6 +597,15 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
+         uint32_t simulationTick, const std::function<bool(int,uint32_t)>& admit) {
+     ++tickNo_;
+     if (q_.empty()) return;
++    // Completed entries leave q_ before their delivery callbacks run. Keep the
++    // observer fixed across the whole dispatch, including those outstanding
++    // tokens, and restore the guard if a callback throws or ticks recursively.
++    struct TelemetryTickScope {
++        bool& active;
++        bool previous;
++        explicit TelemetryTickScope(bool& value):active(value),previous(value){active=true;}
++        ~TelemetryTickScope(){active=previous;}
++    } telemetryScope(telemetryTickActive_);
+     const uint32_t now=simulationTick ? simulationTick : uint32_t(tickNo_);
+     std::array<RetailSearchScheduler::Player,10> players{};
+     for (size_t i=0;i<players.size();++i) {
+@@ -606,7 +618,7 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
+         auto it=q_.find(id);
+         return it!=q_.end() && it->second.player==r.player ? it : q_.end();
+     };
+-    struct Finished { int id; std::vector<PathCell> route; Fixed x,z; bool failed,crowded,traffic,detour; };
++    struct Finished { int id; std::vector<PathCell> route; Fixed x,z; bool failed,crowded,traffic,detour; uint64_t telemetryToken;bool telemetryFailed; };
+     std::vector<Finished> finished;
+     scheduler_.tick(players,budget_,1,int(now),
+         [&](auto r) { return lookup(r)!=q_.end(); },
+@@ -693,7 +705,8 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
+                 std::vector<PathCell> points;
+                 for (auto p:route.points) points.push_back({p.x+e.cellOffset.x,p.z+e.cellOffset.z});
+                 finished.push_back({id,std::move(points),e.goalX,e.goalZ,partial,
+-                                    (route.flags&1)!=0,(route.flags&2)!=0,(route.flags&8)!=0});
++                                    (route.flags&1)!=0,(route.flags&2)!=0,(route.flags&8)!=0,
++                                    e.telemetryToken,e.notification==0x2000||partial});
+                 if (gradeHost_.finish) gradeHost_.finish(id);
+                 activeId_=-1;
+                 --players[size_t(e.player)].pending;
+@@ -704,7 +717,10 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
+         });
+     // Delivery can cancel or replace other orders. Release the active queue
+     // traversal first so callbacks never invalidate its current entry.
+-    for (const auto& f:finished) done(f.id,f.route,f.x,f.z,f.failed,f.crowded,f.traffic,f.detour);
++    for (const auto& f:finished) {
++        if(telemetry_)telemetry_->delivered(f.telemetryToken,f.telemetryFailed,f.route.size());
++        done(f.id,f.route,f.x,f.z,f.failed,f.crowded,f.traffic,f.detour);
++    }
+ }
+ 
+ }   // namespace tak::sim
+diff --git a/src/sim/pathsearch.h b/src/sim/pathsearch.h
+index 7a6fcf8..5bdce31 100644
+--- a/src/sim/pathsearch.h
++++ b/src/sim/pathsearch.h
+@@ -15,6 +15,7 @@
+ #include "retailtrace.h"
+ #include "retailgoal.h"
+ #include "retailscheduler.h"
++#include "navigationtelemetry.h"
+ 
+ namespace tak::sim {
+ 
+@@ -238,6 +239,11 @@ inline constexpr int kMaxActiveSearches = 1;
+ 
+ class PathService {
+   public:
++    void setTelemetry(NavigationTelemetry* observer) {
++        if(observer!=telemetry_&&(telemetryTickActive_||!q_.empty()))
++            throw std::logic_error("telemetry requires an empty request queue outside tick callbacks");
++        telemetry_=observer;
++    }
+     void setBudget(int b) { budget_ = b > 0 ? b : kPathBudgetDefault; }
+     int budget() const { return budget_; }
+     uint64_t workSpent() const { return workSpent_; }      // observational; see workSpent_
+@@ -299,11 +305,14 @@ class PathService {
+     // the token to its current controller; zero keeps the legacy route-only API.
+     struct Notification { int unitId; uint64_t controller; int events; };
+     std::vector<Notification> takeNotifications() { return std::exchange(notifications_, {}); }
+-    void cancel(int unitId);
++    void cancel(int unitId,NavigationTelemetry::Cancel reason=NavigationTelemetry::Cancel::Explicit);
+     bool pending(int unitId) const { return q_.find(unitId) != q_.end(); }
+     size_t pendingCount() const { return q_.size(); }
+     void clear() {
+         retireActive();
++        if(telemetry_)for(const auto& [id,e]:q_) {
++            (void)id;telemetry_->cancelled(e.telemetryToken,NavigationTelemetry::Cancel::Cleared);
++        }
+         q_.clear();
+         pendingByPlayer_.fill(0);priorityByPlayer_.fill(0);
+         notifications_.clear();
+@@ -351,6 +360,7 @@ class PathService {
+         int goalRadiusSquared = 0;
+         std::optional<RetailRectGoal> rectangle; // footprint-origin coordinates
+         std::optional<RetailRingGoal> ring;
++        uint64_t telemetryToken=0;
+     };
+     uint64_t tickNo_ = 0;       // monotonic, integer: tells "already ran this tick" apart
+     std::vector<Notification> notifications_;
+@@ -363,6 +373,8 @@ class PathService {
+     uint64_t requests_ = 0;      // admissions, i.e. how often a route was asked for
+     bool profiling_=false;
+     Diagnostics diagnostics_;
++    NavigationTelemetry* telemetry_=nullptr;
++    bool telemetryTickActive_=false; // Observer lifetime guard; not simulation state.
+ 
+     int budget_ = kPathBudgetDefault;
+     // Requests are looked up by ID only. RetailSearchScheduler owns traversal

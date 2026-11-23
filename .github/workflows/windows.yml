@@ -1,0 +1,524 @@
+name: Windows build
+run-name: Windows build · ${{ github.ref_name }}
+
+# Builds native Windows x64 and ARM64: uploads CI artifacts and runs the
+# determinism gate; on a tag it also attaches the zipped bundle to the GitHub Release.
+# (determinism.yml remains the fast, always-on sim gate.)
+
+# Runs on every push to main AS WELL AS on a version tag. It used to be tag-only,
+# to keep per-commit CI fast -- and that is how a std::atomic_ref that Apple's libc++
+# does not have sat broken in sim.cpp from the commit that introduced it until the
+# v0.6.5 tag tried to build it, with a green determinism gate the whole time. A
+# platform break is only cheap to fix while you still remember what caused it. The
+# release steps below stay guarded on a tag ref, so a main push builds and tests but
+# publishes nothing.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows ${{ matrix.arch }} (${{ matrix.msystem }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write   # unsigned fork tag releases; official tags publish only in sign-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            msystem: MINGW64
+            package: mingw-w64-x86_64
+            cc: gcc
+            cxx: g++
+            ffmpeg_arch: x86_64
+            objdump: objdump
+            machine: 'i386:x86-64'
+            extras: mingw-w64-x86_64-nsis mingw-w64-x86_64-nasm
+          - arch: arm64
+            runner: windows-11-arm
+            msystem: CLANGARM64
+            package: mingw-w64-clang-aarch64
+            cc: clang
+            cxx: clang++
+            ffmpeg_arch: aarch64
+            objdump: llvm-objdump
+            machine: aarch64
+            extras: mingw-w64-clang-aarch64-llvm
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      TARGET_OS: mingw32
+      TARGET_ARCH: ${{ matrix.ffmpeg_arch }}
+      OBJDUMP: ${{ matrix.objdump }}
+      # Compiler cache for our own sources (CMake picks ccache up as the launcher); the x64
+      # job spent ~14 of its ~25 minutes compiling from nothing on every push. Capped, and
+      # the prune-caches job keeps only the newest entry per arch.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 600M
+      CCACHE_COMPRESS: 'true'
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate release packaging scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem packaging/windows/*.ps1 | ForEach-Object {
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$parseErrors) > $null
+            if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          }
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.package }}-${{ matrix.cc }}
+            ${{ matrix.package }}-cmake
+            ${{ matrix.package }}-ninja
+            ${{ matrix.package }}-SDL2
+            ${{ matrix.package }}-libjpeg-turbo
+            ${{ matrix.package }}-zlib
+            ${{ matrix.package }}-pkgconf
+            ${{ matrix.package }}-ccache
+            git
+            make
+            perl
+            patch
+            ${{ matrix.extras }}
+            ${{ matrix.package }}-python
+            zip
+
+      # MSYS2's NSIS 3.13-1 makensis searches no plugin directory ("Plugin
+      # directories:" is empty), so MUI's welcome page fails on
+      # InstallOptions::initDialog. 3.12-1 ships the same plugins and finds them.
+      - name: Pin NSIS 3.12 (3.13-1 finds no plugins)
+        if: matrix.arch == 'x64'
+        run: |
+          pacman -U --noconfirm https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-nsis-3.12-1-any.pkg.tar.zst
+          makensis -VERSION
+
+      # Static Bink/streaming FFmpeg so the bundle plays the door videos with no
+      # runtime FFmpeg DLLs (see tools/build-ffmpeg-bink.sh). Cached by FFmpeg version.
+      - name: Verify native runner and compiler target
+        run: |
+          [[ "${{ runner.arch }}" == "${{ matrix.arch == 'arm64' && 'ARM64' || 'X64' }}" ]]
+          target=$($CC -dumpmachine)
+          echo "Native compiler target: $target"
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            [[ "$target" == aarch64-* ]]
+          else
+            [[ "$target" == x86_64-* ]]
+          fi
+
+      - name: Cache static FFmpeg (Bink)
+        id: ffmpeg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-windows-${{ matrix.arch }}-n7.1.1-stream-v2-${{ hashFiles('tools/build-ffmpeg-bink.sh', 'tools/build-stream-deps.sh', 'tools/ffmpeg-tls-hostname.patch', 'tools/vashim.c') }}
+          restore-keys: ffmpeg-bink-windows-${{ matrix.arch }}-n7.1.1-stream-v2-
+      - name: Build static FFmpeg (Bink)
+        run: |
+          if ! ./tools/build-ffmpeg-bink.sh; then
+            test ! -f third_party/ffmpeg-bink/src/ffbuild/config.log || tail -180 third_party/ffmpeg-bink/src/ffbuild/config.log
+            exit 1
+          fi
+
+      - name: Save successful static FFmpeg build
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
+
+      # The build id comes from `git describe --dirty`. The checkout was written by
+      # the runner's Windows git (autocrlf=true, no file modes) but the build runs
+      # MSYS2's git, which would see every CRLF file and script mode as modified and
+      # stamp a spurious "-dirty". Match the checkout's settings in the repo config.
+      - name: Match git settings for the build id
+        run: |
+          git config core.autocrlf true
+          git config core.filemode false
+          git status --porcelain | head -5
+          git describe --always --dirty --abbrev=12
+
+      - name: Restore compiler cache
+        id: ccache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-windows-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: ccache-windows-${{ matrix.arch }}-
+
+      - name: Configure + build
+        # links MSYS2's static libSDL2.a/libjpeg.a/libz.a (SDL2::SDL2-static
+        # + the WIN32 -static flag) so the .exe is fully self-contained -- no bundled DLLs.
+        run: |
+          cmake -B build -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test takclient takserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test menu_music_test vfs_names_test audio_device_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
+
+      - name: Server, network and replay checks
+        run: |
+          ./build/filelease_test.exe
+          ./build/tls_test.exe
+          ./build/acme_test.exe
+          ./build/server_address_test.exe
+          ./build/server_commands_test.exe
+          ./build/room_worker_test.exe
+          ./build/state_hash_test.exe
+          ./build/mod_packs_test.exe
+          ./build/replay_file_test.exe
+          ./build/spectator_client_test.exe
+
+      - name: Retail scripts, paths, rendering and map generation
+        run: |
+          ./build/cartographer_document_test.exe
+          ./build/datafolder_test.exe
+          ./build/cartographer_validation_test.exe
+          ./build/retail_script_test.exe
+          ./build/pathsearch_test.exe
+          ./build/retail_visual_test.exe
+          ./build/mapgen_test.exe
+          ./build/map_transfer_test.exe
+          ./build/unit_gift_test.exe
+
+      - name: Rendering, navigation and validation regressions
+        run: |
+          cmake --build build --target tdf_limits_test validationworker_test order_trail_test retail_search_scratch_test navigation_checkpoint_test navigation_telemetry_test replay_test scenario_info_test simpool_passes_test fire_sweep_test renderdriver_test jpeg_encode_test cpu_topology_test
+          bash tools/run-ctest-selection.sh build tdf_limits validationworker order_trail retail_search_scratch navigation_determinism crowdbench_matrix navigation_telemetry replay scenario_info simpool_passes fire_sweep_vision fire_sweep_switch fire_sweep_retaliation pref_guard_lint renderdriver jpeg_encode cpu_topology
+          # What this runner's CPUs were read as (ctest prints nothing of a passing test).
+          ./build/cpu_topology_test.exe
+
+      # The per-commit Legion selection (PLAN 3.0 / T8 A8, <= 45 s on 4 cores): the World
+      # cases, the instrument selftests, the asset-free scenarios of label legion (the
+      # nightly and data-gated ones are not run here), the cost gate and the baseline
+      # reasons check. The movement/production/transport variants need game data.
+      - name: Legion navigation tests and scenarios
+        env:
+          CTEST_PARALLEL_LEVEL: 4
+        run: |
+          cmake --build build --target legion_world_test legion_idmap_test legion_flyers_test legion_still_test crowdbench legion_observe_selftest issue_selection_test legion_scenario legion_acceptance_test legion_hier_test legion_route_test legion_cluster_test legion_routebins_test legion_park_test attack_stop_test ballistic_line_test blocked_shot_test naval_reach_test queue_modifiers_test shot_range_test suppress_test target_search_test vermage_fight_test queued_target_test queued_load_test
+          bash tools/run-ctest-selection.sh --exclude-labels 'nightly|data' --selection tools/legion_ci_selection.txt build
+
+      - name: Verify fully static (only system DLL imports)
+        run: |
+          for binary in takclient takserver cartographer; do
+            imports=$("$OBJDUMP" -p "build/$binary.exe" | awk '/DLL Name:/{print tolower($3)}')
+            echo "$binary DLL imports: $imports"
+            if echo "$imports" | grep -qE 'sdl2|opus|jpeg|zlib|libz|libpng|avcodec|avformat|swscale|swresample|avutil|x264|libssl|libcrypto|libvpl|nvml|sqlite|libstdc|libgcc|winpthread|libc\+\+|libunwind|msys-|cygwin'; then
+              echo "::error::$binary imports a non-static dependency"; exit 1
+            fi
+          done
+
+      - name: Verify executable architecture
+        run: |
+          for binary in takclient takserver cartographer; do
+            header=$("$OBJDUMP" -f "build/$binary.exe")
+            echo "$header"
+            [[ "$header" == *"architecture: ${{ matrix.machine }}"* ]]
+          done
+
+      - name: Windows startup regressions
+        run: |
+          ./build/vfs_names_test.exe
+          ./build/audio_device_test.exe
+          ./build/nvml_test.exe
+          ./build/windowsgpu_test.exe
+          SDL_VIDEODRIVER=dummy ./build/distant_models_test.exe
+          subsystem=$("$OBJDUMP" -p build/takclient.exe | grep '^Subsystem')
+          [[ "$subsystem" == *"(Windows GUI)"* ]]
+          editor_subsystem=$("$OBJDUMP" -p build/cartographer.exe | grep '^Subsystem')
+          [[ "$editor_subsystem" == *"(Windows GUI)"* ]]
+
+      - name: Streaming encode test
+        run: |
+          ./build/stream_test.exe
+          ./build/stream_test.exe libx264 overload
+          ./build/stream_test.exe libx264 native
+          ./build/menu_music_test.exe
+
+      - name: Project version
+        run: echo "VERSION=$(grep -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | head -1 | awk '{print $2}')" >> "$GITHUB_ENV"
+
+      - name: Stage static executables
+        run: |
+          mkdir -p dist-win
+          cp build/takclient.exe build/takserver.exe build/cartographer.exe dist-win/
+          cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-win/
+
+      - name: ZIP unsigned CI build
+        if: github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v')
+        run: (cd dist-win && zip -r "../takclient-$VERSION-windows-${{ matrix.arch }}.zip" .)
+
+      # Proper installer (NSIS via CPack): installs into Program Files\TAK Engine
+      # with Start-menu shortcuts + an uninstaller. Same static binaries as the zip.
+      - name: Build installer (NSIS)
+        if: matrix.arch == 'x64' && (github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v'))
+        run: |
+          if ! (cd build && cpack -G NSIS); then
+            cat build/_CPack_Packages/win64/NSIS/NSISOutput.log || true
+            exit 1
+          fi
+          ls -l build/tak-engine-*-setup.exe
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: takclient-windows-${{ matrix.arch }}
+          path: dist-win/
+
+      - name: Upload CI artifact (installer)
+        if: matrix.arch == 'x64' && (github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v'))
+        uses: actions/upload-artifact@v7
+        with:
+          name: tak-engine-windows-${{ matrix.arch }}-setup
+          path: build/tak-engine-*-setup.exe
+
+      # Debug build: the release binaries are hardened (only --data/--version, no env
+      # vars), so ship an unhardened DEBUG bundle for devs who need the CLI flags,
+      # TAK_* env hooks, and the headless --mp* harness.
+      - name: Configure + build (debug)
+        run: |
+          cmake -B build-debug -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-debug --target takclient takserver cartographer
+          ccache --show-stats
+
+      # Saved even when a test step failed, so the next push still starts warm.
+      - name: Save compiler cache
+        if: always() && steps.ccache-restore.outcome == 'success' && steps.ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+      - name: Verify Debug architecture and static dependencies
+        run: |
+          for binary in takclient takserver cartographer; do
+            header=$("$OBJDUMP" -f "build-debug/$binary.exe")
+            [[ "$header" == *"architecture: ${{ matrix.machine }}"* ]]
+            imports=$("$OBJDUMP" -p "build-debug/$binary.exe" | awk '/DLL Name:/{print tolower($3)}')
+            if echo "$imports" | grep -qE 'sdl2|opus|jpeg|zlib|libz|libpng|avcodec|avformat|swscale|swresample|avutil|x264|libssl|libcrypto|libvpl|nvml|sqlite|libstdc|libgcc|winpthread|libc\+\+|libunwind|msys-|cygwin'; then
+              echo "::error::$binary imports a non-static dependency"; exit 1
+            fi
+          done
+
+      - name: Stage static executables (debug)
+        run: |
+          mkdir -p dist-win-debug
+          cp build-debug/takclient.exe build-debug/takserver.exe build-debug/cartographer.exe dist-win-debug/
+          cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-win-debug/
+
+      - name: ZIP unsigned CI build (debug)
+        if: github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v')
+        run: (cd dist-win-debug && zip -r ../takclient-windows-${{ matrix.arch }}-debug.zip .)
+
+      - name: Upload CI artifact (debug)
+        uses: actions/upload-artifact@v7
+        with:
+          name: takclient-windows-${{ matrix.arch }}-debug
+          path: dist-win-debug/
+
+      - name: Determinism gate (cross-platform parity)
+        run: |
+          expected=dcef618cd2e4d558
+          ./build/detmath_test.exe    # accuracy vs libm (fails on tolerance)
+          got=$(./build/detmath_test.exe --hash | grep -oE '[0-9a-f]{16}')
+          echo "detmath golden: $got (expected $expected)"
+          if [ "$got" != "$expected" ]; then
+            echo "::error::detmath golden mismatch -- cross-platform lockstep broken"
+            exit 1
+          fi
+          ./build/sim_driver_equiv_test.exe
+
+      - name: Attach unsigned fork release
+        if: github.repository != 'pocketgeek/tak-engine' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh   # gh is on the Windows PATH, not inside msys2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY `
+            --title "TAK Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag 2>$null
+          $zip = "takclient-$($env:VERSION)-windows-${{ matrix.arch }}.zip"
+          $files = @($zip, "takclient-windows-${{ matrix.arch }}-debug.zip")
+          if ("${{ matrix.arch }}" -eq "x64") {
+            $setup = Get-ChildItem build\tak-engine-*-setup.exe | Select-Object -First 1
+            $files += $setup.FullName
+          }
+          gh release upload $env:GITHUB_REF_NAME @files `
+            --repo $env:GITHUB_REPOSITORY --clobber
+
+  # Only this job can publish official Windows assets. It waits for BOTH native
+  # builds and their tests, then signs ARM64 files on a supported x64 runner.
+  # Cache housekeeping: the repo's 10 GB cache quota is shared with the FFmpeg builds. Keep only
+  # the newest compiler cache per arch, and the newest MSYS2 package cache per package set
+  # (setup-msys2 saves a new entry whenever the package files change and never deletes the old).
+  prune-caches:
+    name: Prune superseded caches
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep the newest entry per group; group = key minus its per-commit suffix.
+          prune() {  # prune <key prefix> <sed expression mapping key -> group>
+            gh cache list --repo "$GITHUB_REPOSITORY" --key "$1" --limit 500 \
+                --json key,createdAt --jq 'sort_by(.createdAt) | reverse | .[].key' |
+              while read -r key; do
+                group=$(printf '%s\n' "$key" | sed -E "$2")
+                if printf '%s\n' "$seen" | grep -qxF "$group"; then
+                  echo "delete $key"
+                  gh cache delete "$key" --repo "$GITHUB_REPOSITORY" || true
+                else
+                  seen="$seen"$'\n'"$group"
+                fi
+              done
+          }
+          prune ccache-windows- 's/-[0-9a-f]{40}$//'
+          prune msys2-pkgs- 's/-files:.*$//'
+
+  sign-release:
+    name: Sign and publish Windows release
+    needs: build
+    if: github.repository == 'pocketgeek/tak-engine' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
+    environment: windows-signing
+    permissions:
+      contents: write
+      id-token: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: takclient-windows-*
+          path: unsigned-payloads
+
+      - name: Validate release inputs and signing configuration
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_SIGNING_ACCOUNT_NAME: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+          AZURE_SIGNING_CERTIFICATE_PROFILE_NAME: ${{ vars.AZURE_SIGNING_CERTIFICATE_PROFILE_NAME }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+        run: |
+          foreach ($name in @('AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID',
+                              'AZURE_SIGNING_ACCOUNT_NAME', 'AZURE_SIGNING_CERTIFICATE_PROFILE_NAME',
+                              'AZURE_SIGNING_ENDPOINT')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing windows-signing configuration: $name"
+            }
+          }
+          ./packaging/windows/package-release.ps1 -PayloadRoot unsigned-payloads -ValidateOnly
+
+      - name: Azure login (GitHub OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign all shipped Release and Debug executables
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_CERTIFICATE_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\unsigned-payloads
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Install NSIS
+        run: |
+          choco install nsis --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          "${env:ProgramFiles(x86)}\NSIS" >> $env:GITHUB_PATH
+
+      - name: Verify signatures and timestamps, then package ZIPs and NSIS
+        run: ./packaging/windows/package-release.ps1 -PayloadRoot unsigned-payloads
+
+      - name: Sign completed installer
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_CERTIFICATE_PROFILE_NAME }}
+          files-folder: ${{ github.workspace }}\windows-release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Verify completed installer signature and timestamp
+        run: ./packaging/windows/verify-signatures.ps1 -Path windows-release -ExpectedCount 1
+
+      - name: Upload signed packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: tak-engine-windows-signed
+          path: windows-release/*
+          if-no-files-found: error
+
+      - name: Publish verified signed packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = @(Get-ChildItem windows-release -File)
+          if ($files.Count -ne 5) { throw 'Expected four ZIPs and one signed installer' }
+          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY `
+              --title "TAK Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag
+            # Other platform jobs may create the release concurrently.
+            if ($LASTEXITCODE -ne 0) {
+              gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot find or create release' }
+            }
+          }
+          gh release upload $env:GITHUB_REF_NAME @($files.FullName) `
+            --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Signed release upload failed' }

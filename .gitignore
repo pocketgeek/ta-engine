@@ -1,0 +1,74 @@
+# Original game assets — never commit Cavedog's copyrighted content
+assets/
+
+# Build output (build/, build-dbg/, build-asan/, …)
+build*/
+# Packaged binary bundles (dist-win/, dist-macos/) — never commit binaries
+dist*/
+.cache/
+compile_commands.json
+
+# Game-derived HPI archives dropped at the repo root (never commit)
+/*.hpi
+/*.HPI
+
+# Extracted retail data — hpitool/gaftool/etc. dump into the working dir, and
+# accidental extraction outdirs have been committed before (see CLAUDE.md). Ignore
+# the known offenders plus retail asset formats anywhere so they can't slip back in.
+# (mods/cosmetic/always_enabled/click/click.hpi is an intentional, project-authored always-enabled mod and stays tracked.
+# mods/cosmetic/ManaPost/ and mods/game/always_enabled/CUTbugfix/ are third-party 2004 community mods kept
+# deliberately, by the project owner's decision; they are never packaged.)
+/guis/
+/anims/
+/camps/
+/missions/
+/Movies/
+/Cay.tnt/
+/features/
+/gamedata/
+/objects3d/
+/palettes/
+/scripts/
+/textures/
+/units/
+/bitmaps/
+/fonts/
+/canbuild/
+/Keys.TDF
+/sdlaudio.raw
+*.gaf
+*.taf
+*.tnt
+*.cob
+*.tdo
+*.3do
+*.icd
+*.gp3
+*.ufo
+*.tdf
+*.fbi
+*.pcx
+*.gui
+*.pal
+*.shd
+*.lht
+*.gry
+*.blu
+*.alp
+*.gao
+*.gao2
+*.pco
+!mods/cosmetic/always_enabled/click/click.hpi
+!mods/cosmetic/ManaPost/ManaPost.hpi
+!mods/game/always_enabled/CUTbugfix/CUTbugfix.ufo
+
+# Locally-built vendored static deps: minimal FFmpeg (tools/build-ffmpeg-bink.sh) and
+# zlib/libjpeg/SDL2 (tools/build-static-deps.sh). Build output -- never committed.
+third_party/
+
+# Server-local account store (no passwords in it, but it is server state).
+takserver-accounts.conf
+
+# Python tooling caches
+__pycache__/
+*.py[cod]

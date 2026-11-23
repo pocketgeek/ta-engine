@@ -1,0 +1,30 @@
+# The per-commit Legion selection run by .github/workflows/{linux,macos,windows}.yml:
+#
+#   bash tools/run-ctest-selection.sh --exclude-labels 'nightly|data' \
+#        --selection tools/legion_ci_selection.txt build
+#
+# Names are exact ctest names or globs (`*`); every one must match a registered test;
+# a leading `!` removes the tests it matches. The run also drops every test labelled
+# nightly or data, so the long scenarios (corner-4x50/8x56/1x448, split, wall-4x50,
+# gapsweep, slowturn, densehead, island-1x150, strait-3x80/2x150, battle-field-2x250/
+# 2x500, battle-assault) and the data-gated motion and gen1 routes stay off CI. The
+# budget is 45 s on 4 cores (PLAN T8 A8); when a case pushes the run over it, move the
+# case to the nightly label in CMakeLists.txt, never loosen a bound. Cases CI always
+# keeps: corner-1x48, aware-*, strait-4x48 (strait), mixed2, battle-field-2x60 and
+# legion_cost.
+legion_*
+legion_acceptance_*_legion
+legion_scenario_*
+legion_cost
+legion_observe_selftest
+observer_neutral
+issue_selection_test
+legion_baseline_reasons
+legion_doc_links
+legion_doc_links_selftest
+# Retail comparison reports and the variants that need the retail install.
+!legion_acceptance_*_retail
+!legion_movement_orders*
+!legion_production
+!legion_transport
+!legion_naval_combat

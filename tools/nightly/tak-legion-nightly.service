@@ -1,0 +1,10 @@
+[Unit]
+Description=TAK Legion nightly (crowdbench screen, scenarios, baseline gate, anchor drift)
+
+[Service]
+Type=oneshot
+# Private copy installed by `tools/legion_nightly.sh --install`; it checks its own worktree out.
+ExecStart=%h/.local/share/tak-legion-nightly/bin/legion_nightly.sh
+Nice=10
+# Builds + screen + scenarios fit well inside this; the script also times each stage out.
+TimeoutStartSec=4h

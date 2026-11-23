@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TAK Server
+GenericName=Dedicated Server
+Comment=Dedicated server for the TAK engine
+Exec=takserver
+Icon=tak-server
+Terminal=true
+Categories=Game;

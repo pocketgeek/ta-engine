@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Total Annihilation - Kingdoms.app bundle metadata. @VERSION@ is stamped by the macOS CI
+     (macos.yml) when it assembles the .app + .dmg. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Total Annihilation: Kingdoms</string>
+    <key>CFBundleDisplayName</key>
+    <string>Total Annihilation: Kingdoms</string>
+    <key>CFBundleIdentifier</key>
+    <string>us.pgnet.tak-engine</string>
+    <key>CFBundleIconFile</key>
+    <string>takclient.icns</string>
+    <key>CFBundleExecutable</key>
+    <string>takclient</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.strategy-games</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Voice chat sends your microphone to the other players while you hold the push-to-talk key.</string>
+</dict>
+</plist>

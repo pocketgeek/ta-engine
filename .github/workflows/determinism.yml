@@ -1,0 +1,170 @@
+name: Determinism (sim)
+run-name: Determinism (sim) · ${{ github.ref_name }}
+
+# The per-commit gate: cross-build determinism for the simulation's math shim
+# (src/sim/detmath). Lockstep multiplayer needs bit-identical sim state across
+# DIFFERENT builds, so this builds the shim with a second compiler (gcc vs clang)
+# across opt levels and asserts one identical golden hash, plus the guard that keeps
+# libm transcendentals out of the sim path. Real cross-ARCHITECTURE parity (Apple-
+# silicon ARM64) is covered natively by the macOS build workflow, so the old
+# aarch64/qemu leg is gone. See docs/detmath-scope.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/sim/**'
+      - 'src/ai/**'
+      - 'src/net/**'
+      - 'src/server/**'
+      - 'tools/detmath_test.cpp'
+      - 'tools/pathsearch_test.cpp'
+      - 'tools/authtest.cpp'
+      - 'tools/cmdflow_test.cpp'
+      - 'tools/unit_gift_test.cpp'
+      - 'tools/check-detmath.sh'
+      - 'tools/check-determinism.sh'
+      - 'tools/navigation*'
+      - 'tools/crowdbench*'
+      - 'tools/pathfinding_matchsetup_test.cpp'
+      - 'tools/run-ctest-selection.sh'
+      - 'CMakeLists.txt'
+      - '.github/workflows/determinism.yml'
+  pull_request:
+    paths:
+      - 'src/sim/**'
+      - 'src/ai/**'
+      - 'src/net/**'
+      - 'src/server/**'
+      - 'tools/detmath_test.cpp'
+      - 'tools/pathsearch_test.cpp'
+      - 'tools/authtest.cpp'
+      - 'tools/cmdflow_test.cpp'
+      - 'tools/unit_gift_test.cpp'
+      - 'tools/check-detmath.sh'
+      - 'tools/check-determinism.sh'
+      - 'tools/navigation*'
+      - 'tools/crowdbench*'
+      - 'tools/pathfinding_matchsetup_test.cpp'
+      - 'tools/run-ctest-selection.sh'
+      - 'CMakeLists.txt'
+      - '.github/workflows/determinism.yml'
+  workflow_dispatch:
+
+jobs:
+  detmath:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # g++ (default) + clang: the same-arch second-compiler leg. Cross-arch parity
+      # runs on real hardware in the macos workflow, so no aarch64/qemu toolchain
+      # is installed here.
+      - name: Install toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ clang
+
+      # Runs the guard + builds the shim with every compiler x opt level, asserting
+      # one identical golden hash. Fails if the guard trips or any two builds
+      # disagree. (check-determinism.sh's aarch64/qemu leg auto-skips when, as here,
+      # its toolchain is absent.)
+      - name: Cross-build determinism check
+        run: sh tools/check-determinism.sh
+
+  # SP/MP driver-equivalence: the same commands+events at the same ticks yield
+  # the same sim state whether applied directly (single-player) or transported
+  # through the multiplayer wire format first. Guards a serialization bug or a
+  # sim-affecting side effect added to one driver path. Needs a real build
+  # (links tak-formats), so it runs the data-independent checks only -- the
+  # deeper data-backed leg needs the (gitignored) game assets. See
+  # docs/sp-mp-equivalence.md.
+  sim-equiv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # zlib/libjpeg/SDL2 and the Bink FFmpeg are ALWAYS linked statically -- there is no
+      # dynamic build to fall back to -- so even these test-only jobs need the vendored
+      # archives. The -dev packages are still installed because SDL2 is built from source
+      # here and needs its backend headers. Cached, so only the first run pays for it.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ cmake ninja-build nasm pkg-config git make curl ca-certificates perl python3 patch \
+            libstdc++-*-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libgl1-mesa-dev libegl1-mesa-dev
+      - name: Cache static FFmpeg (Bink)
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-ubuntu-latest-n7.1.1-stream-v2-${{ hashFiles('tools/build-ffmpeg-bink.sh', 'tools/build-stream-deps.sh', 'tools/ffmpeg-tls-hostname.patch', 'tools/vashim.c') }}
+          restore-keys: ffmpeg-bink-ubuntu-latest-n7.1.1-stream-v2-
+      - name: Build static FFmpeg (Bink)
+        run: ./tools/build-ffmpeg-bink.sh
+      - name: Cache static deps (zlib/libjpeg/SDL2)
+        uses: actions/cache@v4
+        with:
+          path: third_party/static-deps
+          key: static-deps-ubuntu-latest-zlib1.3.1-jpeg3.0.4-sdl2.32.10
+      - name: Build static deps (zlib/libjpeg/SDL2)
+        run: ./tools/build-static-deps.sh
+      - name: Build + run the driver-equivalence test
+        run: |
+          cmake -B build -G Ninja
+          cmake --build build --target sim_driver_equiv_test
+          ./build/sim_driver_equiv_test
+
+  # The data-independent unit tests. These existed but nothing ran them: CI built
+  # only detmath and sim_driver_equiv, so the pathfinder's scheduler bounds and
+  # the account code were guarded by nobody remembering to run them locally.
+  #
+  # cobanim_test and retailgap_test are deliberately NOT here. They drive the
+  # real COBs and unit data from a retail install, which is gitignored and not
+  # present on a runner -- they stay local-only, registered with ctest when the
+  # build is configured with -DTAK_TEST_DATA.
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # zlib/libjpeg/SDL2 and the Bink FFmpeg are ALWAYS linked statically -- there is no
+      # dynamic build to fall back to -- so even these test-only jobs need the vendored
+      # archives. The -dev packages are still installed because SDL2 is built from source
+      # here and needs its backend headers. Cached, so only the first run pays for it.
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ cmake ninja-build nasm pkg-config git make curl ca-certificates perl python3 patch \
+            libstdc++-*-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libgl1-mesa-dev libegl1-mesa-dev
+      - name: Cache static FFmpeg (Bink)
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-ubuntu-latest-n7.1.1-stream-v2-${{ hashFiles('tools/build-ffmpeg-bink.sh', 'tools/build-stream-deps.sh', 'tools/ffmpeg-tls-hostname.patch', 'tools/vashim.c') }}
+          restore-keys: ffmpeg-bink-ubuntu-latest-n7.1.1-stream-v2-
+      - name: Build static FFmpeg (Bink)
+        run: ./tools/build-ffmpeg-bink.sh
+      - name: Cache static deps (zlib/libjpeg/SDL2)
+        uses: actions/cache@v4
+        with:
+          path: third_party/static-deps
+          key: static-deps-ubuntu-latest-zlib1.3.1-jpeg3.0.4-sdl2.32.10
+      - name: Build static deps (zlib/libjpeg/SDL2)
+        run: ./tools/build-static-deps.sh
+      - name: Build + run
+        run: |
+          cmake -B build -G Ninja
+          cmake --build build --target pathsearch_test authtest cmdflow_test unit_gift_test pathfinding_matchsetup_test navigation_telemetry_test movement_orders_test builder_automation_test navigation_checkpoint_test
+          ./build/pathsearch_test
+          ./build/authtest
+          ./build/cmdflow_test
+          ./build/unit_gift_test
+          bash tools/run-ctest-selection.sh build pathfinding_matchsetup navigation_telemetry movement_orders builder_automation navigation_determinism crowdbench_matrix

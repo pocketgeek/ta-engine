@@ -1,0 +1,504 @@
+name: Linux packages
+run-name: Linux packages · ${{ github.ref_name }}
+
+# Native x64/ARM64 packages for Ubuntu, Debian, Fedora, openSUSE Leap and Tumbleweed and
+# the RHEL family (EL9/EL10: RHEL, Rocky, Alma); x64 packages for Arch and Slackware; an
+# x64/ARM64 AppImage for any other distribution and the Steam Deck. Each builds in its
+# target distro container.
+# SDL2/jpeg/zlib and FFmpeg/TLS are static; OS graphics/audio drivers remain external.
+# Main builds upload CI artifacts; version tags also attach them to the release.
+
+# Runs on every push to main AS WELL AS on a version tag. It used to be tag-only,
+# to keep per-commit CI fast -- and that is how a std::atomic_ref that Apple's libc++
+# does not have sat broken in sim.cpp from the commit that introduced it until the
+# v0.6.5 tag tried to build it, with a green determinism gate the whole time. A
+# platform break is only cheap to fix while you still remember what caused it. The
+# release steps below stay guarded on a tag ref, so a main push builds and tests but
+# publishes nothing.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+      volumes:
+        # Slackware's minimal image lacks CA certificates during bootstrap.
+        - /etc/ssl/certs:/run/host-ca:ro
+    env:
+      # Compiler cache for our own sources (CMake picks ccache up as the launcher): each leg
+      # spent 4-7.5 minutes compiling from nothing on every push. Capped, and the prune-caches
+      # job keeps only the newest entry per distro and arch.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 400M
+      CCACHE_COMPRESS: 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners and containers; Arch provides only an x64 image.
+          # Debug binaries and the AppImage use the oldest glibc among the Ubuntu/Debian legs
+          # (2.35), which every current distribution and SteamOS meet.
+          - { name: 'Ubuntu 22.04 x64', image: 'ubuntu:22.04', family: deb,
+              tag: ubuntu22.04, arch: x64, cpu: x86_64, runner: ubuntu-24.04, debug: true, appimage: true, cmake_dl: true, cxx12: true }
+          - { name: 'Ubuntu 24.04 x64', image: 'ubuntu:24.04', family: deb,
+              tag: ubuntu24.04, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Ubuntu 26.04 x64', image: 'ubuntu:26.04', family: deb,
+              tag: ubuntu26.04, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Debian 12 x64', image: 'debian:12', family: deb,
+              tag: debian12, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Debian 13 x64', image: 'debian:13', family: deb,
+              tag: debian13, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Fedora 44 x64', image: 'fedora:44', family: rpm,
+              tag: fedora44, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Fedora 45 x64', image: 'fedora:45', family: rpm,
+              tag: fedora45, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Arch x64', image: 'archlinux:latest', family: arch,
+              tag: arch, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'Ubuntu 22.04 arm64', image: 'ubuntu:22.04', family: deb,
+              tag: ubuntu22.04, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm, debug: true, appimage: true, cmake_dl: true, cxx12: true }
+          - { name: 'Ubuntu 24.04 arm64', image: 'ubuntu:24.04', family: deb,
+              tag: ubuntu24.04, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'Ubuntu 26.04 arm64', image: 'ubuntu:26.04', family: deb,
+              tag: ubuntu26.04, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'Debian 12 arm64', image: 'debian:12', family: deb,
+              tag: debian12, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'Debian 13 arm64', image: 'debian:13', family: deb,
+              tag: debian13, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'Fedora 44 arm64', image: 'fedora:44', family: rpm,
+              tag: fedora44, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'Fedora 45 arm64', image: 'fedora:45', family: rpm,
+              tag: fedora45, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'openSUSE Leap 16.0 x64', image: 'registry.opensuse.org/opensuse/leap:16.0', family: suse,
+              tag: opensuse-leap16.0, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'openSUSE Leap 16.0 arm64', image: 'registry.opensuse.org/opensuse/leap:16.0', family: suse,
+              tag: opensuse-leap16.0, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { name: 'openSUSE Tumbleweed x64', image: 'registry.opensuse.org/opensuse/tumbleweed:latest', family: suse,
+              tag: opensuse-tumbleweed, arch: x64, cpu: x86_64, runner: ubuntu-24.04 }
+          - { name: 'openSUSE Tumbleweed arm64', image: 'registry.opensuse.org/opensuse/tumbleweed:latest', family: suse,
+              tag: opensuse-tumbleweed, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm }
+          # The RHEL family, built on AlmaLinux: one package per major release serves RHEL,
+          # Rocky and Alma alike. Both build with a gcc-toolset: EL9's own g++ is 11 (C++20
+          # needs more), and EL10's gcc has no static libatomic (FFmpeg's link asks for
+          # -latomic, which CMakeLists keeps static). Each toolset carries its own static
+          # libstdc++ and libatomic.
+          - { name: 'EL9 x64 (RHEL/Rocky/Alma)', image: 'almalinux:9', family: el,
+              tag: el9, arch: x64, cpu: x86_64, runner: ubuntu-24.04, toolset: 14 }
+          - { name: 'EL9 arm64 (RHEL/Rocky/Alma)', image: 'almalinux:9', family: el,
+              tag: el9, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm, toolset: 14 }
+          - { name: 'EL10 x64 (RHEL/Rocky/Alma)', image: 'almalinux:10', family: el,
+              tag: el10, arch: x64, cpu: x86_64, runner: ubuntu-24.04, toolset: 15 }
+          - { name: 'EL10 arm64 (RHEL/Rocky/Alma)', image: 'almalinux:10', family: el,
+              tag: el10, arch: arm64, cpu: aarch64, runner: ubuntu-24.04-arm, toolset: 15 }
+          - { name: 'Slackware 15.0 x64', image: 'vbatts/slackware:15.0', family: slack,
+              tag: slackware15.0, arch: x64, cpu: x86_64, runner: ubuntu-24.04, cmake_dl: true }
+    steps:
+      # Deps FIRST (before checkout: the checkout action needs nothing from us,
+      # but the containers lack git/curl until this runs).
+      - name: Install build deps (apt)
+        if: matrix.family == 'deb'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          # Build tools + the SDL2 backend -dev headers needed to BUILD a static
+          # SDL2 with its X11/Wayland/audio drivers (the libs themselves are
+          # built from source below).
+          apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ ccache git make perl python3 patch dpkg-dev pkg-config file \
+            curl ca-certificates xz-utils \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxcursor-dev libxi-dev libxrandr-dev libxfixes-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libgl1-mesa-dev libegl1-mesa-dev
+          if [ "${{ matrix.arch }}" = "x64" ]; then apt-get install -y nasm; fi
+          if [ "${{ matrix.cxx12 }}" = "true" ]; then apt-get install -y g++-12; fi
+      - name: Install build deps (dnf)
+        if: matrix.family == 'rpm'
+        run: |
+          # libstdc++-static: Fedora splits libstdc++.a out, and without it the
+          # -static-libstdc++ probe in CMakeLists fails and the binary keeps a
+          # libstdc++.so.6 dependency -- which is exactly what the static gate rejects.
+          dnf -y install cmake ninja-build gcc-c++ ccache git make perl-core python3 patch rpm-build pkgconf \
+            libstdc++-static \
+            tar gzip zstd xz \
+            alsa-lib-devel pulseaudio-libs-devel pipewire-devel dbus-devel \
+            libX11-devel libXext-devel libXcursor-devel libXi-devel libXrandr-devel \
+            libXfixes-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel \
+            wayland-protocols-devel libdecor-devel mesa-libGL-devel mesa-libEGL-devel
+          if [ "${{ matrix.arch }}" = "x64" ]; then dnf -y install nasm; fi
+      - name: Install build deps (dnf, EL)
+        if: matrix.family == 'el'
+        run: |
+          # EPEL (ccache) and CRB (ninja, nasm, libstdc++-static and several -devel).
+          dnf -y install dnf-plugins-core epel-release
+          dnf config-manager --set-enabled crb
+          dnf -y install cmake ninja-build gcc-c++ ccache git make perl python3 patch rpm-build pkgconf \
+            tar gzip zstd xz file \
+            alsa-lib-devel pulseaudio-libs-devel pipewire-devel dbus-devel \
+            libX11-devel libXext-devel libXcursor-devel libXi-devel libXrandr-devel \
+            libXfixes-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel \
+            wayland-protocols-devel libdecor-devel mesa-libGL-devel mesa-libEGL-devel
+          if [ "${{ matrix.arch }}" = "x64" ]; then dnf -y install nasm; fi
+          t=gcc-toolset-${{ matrix.toolset }}
+          dnf -y install $t-gcc-c++ $t-libstdc++-devel $t-libatomic-devel
+          # Every later step (FFmpeg, SDL2, the game) compiles with the toolset's gcc.
+          echo "PATH=/opt/rh/$t/root/usr/bin:$PATH" >> "$GITHUB_ENV"
+      - name: Install build deps (pacman)
+        if: matrix.family == 'arch'
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel perl python patch cmake ninja ccache git nasm pkgconf curl \
+            alsa-lib libpulse pipewire dbus \
+            libx11 libxext libxcursor libxi libxrandr libxfixes libxss \
+            libxkbcommon wayland wayland-protocols libdecor mesa
+
+      - name: Install build deps (zypper)
+        if: matrix.family == 'suse'
+        run: |
+          # The images default to HTTP mirrors; use authenticated HTTPS in CI. Leap keeps its
+          # repos in a service file on cdn.opensuse.org, Tumbleweed in repos.d on
+          # download.opensuse.org.
+          for f in /usr/share/zypp/local/service/openSUSE/repo/*.xml /etc/zypp/repos.d/*.repo; do
+            if [ -f "$f" ]; then
+              sed -i -e 's|http://cdn.opensuse.org|https://cdn.opensuse.org|g' \
+                     -e 's|http://download.opensuse.org|https://download.opensuse.org|g' "$f"
+            fi
+          done
+          zypper --non-interactive refresh
+          zypper --non-interactive install --no-recommends \
+            cmake ninja gcc-c++ ccache git make perl python3 patch rpm-build pkgconf-pkg-config \
+            file curl ca-certificates tar gzip zstd xz \
+            alsa-devel libpulse-devel pipewire-devel dbus-1-devel \
+            libX11-devel libXext-devel libXcursor-devel libXi-devel libXrandr-devel \
+            libXfixes-devel libXScrnSaver-devel libxkbcommon-devel wayland-devel \
+            wayland-protocols-devel libdecor-devel Mesa-libGL-devel Mesa-libEGL-devel
+          if [ "${{ matrix.arch }}" = "x64" ]; then zypper --non-interactive install nasm; fi
+
+      - name: Install build deps (slackpkg)
+        if: matrix.family == 'slack'
+        run: |
+          set -eu
+          # Fixed mirrors, tried in turn: the mirrors.slackware.com redirector can hand
+          # out a mirror whose certificate chain the runner cannot verify, and any one
+          # mirror can be down or serve a bad sync (mirrors.kernel.org, 2026-11-03).
+          sed -i 's|^WGETFLAGS=.*|WGETFLAGS="--ca-certificate=/run/host-ca/ca-certificates.crt"|' /etc/slackpkg/slackpkg.conf
+          ok=
+          for mirror in https://slackware.osuosl.org/slackware64-15.0/ \
+                        https://mirrors.ocf.berkeley.edu/slackware/slackware64-15.0/ \
+                        https://mirrors.kernel.org/slackware/slackware64-15.0/; do
+            echo "::group::slackpkg from $mirror"
+            printf '%s\n' "$mirror" > /etc/slackpkg/mirrors
+            if wget --ca-certificate=/run/host-ca/ca-certificates.crt --timeout=60 --tries=2 \
+                   -O /tmp/slackware-key "${mirror}GPG-KEY" &&
+               gpg --import /tmp/slackware-key &&
+               slackpkg -batch=on -default_answer=y update &&
+               slackpkg -batch=on -default_answer=y install \
+                 gcc gcc-g++ binutils flex dcron make ninja cmake ccache git curl ca-certificates perl python3 \
+                 pkg-config nasm glibc kernel-headers zlib libffi libmpc isl libarchive sqlite icu4c \
+                 libxml2 nghttp2 cyrus-sasl brotli guile gc \
+                 alsa-lib pulseaudio pipewire dbus libX11 libXext libXcursor libXi \
+                 libXrandr libXfixes libXScrnSaver libxkbcommon wayland wayland-protocols \
+                 libdecor mesa libxcb xorgproto libXrender libXau libXdmcp libglvnd eudev; then
+              ok=1
+            fi
+            echo "::endgroup::"
+            [ -n "$ok" ] && break
+            echo "::warning::slackpkg failed from $mirror; trying the next mirror"
+          done
+          [ -n "$ok" ] || { echo "::error::slackpkg failed from every mirror"; exit 1; }
+          update-ca-certificates
+          # Minimal Slackware lacks the usual OpenSSL certificate rehash hook.
+          openssl rehash /etc/ssl/certs
+          gcc --version
+          g++ --version
+          git --version
+          python3 --version
+
+      - uses: actions/checkout@v7
+
+      - name: Verify native runner architecture
+        run: test "$(uname -m)" = "${{ matrix.cpu }}"
+
+      # Ubuntu 22.04 and Slackware 15.0 need a newer CMake (minimum 3.24). Drop in the official
+      # native binary tarball ahead of it on PATH.
+      - name: Newer CMake
+        if: matrix.cmake_dl == true
+        run: |
+          curl -fsSL -o /tmp/cmake.tar.gz \
+            https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-${{ matrix.cpu }}.tar.gz
+          tar -C /opt -xzf /tmp/cmake.tar.gz
+          ln -sf /opt/cmake-3.28.6-linux-${{ matrix.cpu }}/bin/cmake /usr/local/bin/cmake
+          ln -sf /opt/cmake-3.28.6-linux-${{ matrix.cpu }}/bin/cpack /usr/local/bin/cpack
+          ln -sf /opt/cmake-3.28.6-linux-${{ matrix.cpu }}/bin/ctest /usr/local/bin/ctest
+          cmake --version
+
+      # Static Bink/streaming FFmpeg + static zlib/libjpeg/SDL2 (see the tools/
+      # scripts): built inside THIS distro's container, cached per distro.
+      - name: Cache static FFmpeg (Bink)
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg-bink
+          key: ffmpeg-bink-${{ matrix.tag }}-${{ matrix.arch }}-n7.1.1-stream-v2-${{ hashFiles('tools/build-ffmpeg-bink.sh', 'tools/build-stream-deps.sh', 'tools/ffmpeg-tls-hostname.patch', 'tools/vashim.c') }}
+          restore-keys: ffmpeg-bink-${{ matrix.tag }}-${{ matrix.arch }}-n7.1.1-stream-v2-
+      - name: Build static FFmpeg (Bink)
+        run: ./tools/build-ffmpeg-bink.sh
+      - name: Cache static deps (zlib/libjpeg/SDL2)
+        uses: actions/cache@v4
+        with:
+          path: third_party/static-deps
+          key: static-deps-${{ matrix.tag }}-${{ matrix.arch }}-zlib1.3.1-jpeg3.0.4-sdl2.32.10
+      - name: Build static deps (zlib/libjpeg/SDL2)
+        run: ./tools/build-static-deps.sh
+
+      # The build id comes from `git describe`. actions/checkout only trusts the
+      # container's checkout (owned by another uid) while it runs, so without this
+      # every later git call fails and packages report "build unknown".
+      - name: Trust the checkout for the build id
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git describe --always --dirty --abbrev=12
+
+      # The workspace path is the same in every container; the key's distro tag keeps
+      # compilers apart.
+      - name: Restore compiler cache
+        id: ccache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-linux-${{ matrix.tag }}-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: ccache-linux-${{ matrix.tag }}-${{ matrix.arch }}-
+
+      - name: Configure + build
+        run: |
+          ccache --version | head -1
+          if [ "${{ matrix.cxx12 }}" = "true" ]; then export CC=gcc-12 CXX=g++-12; fi
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            \
+            -DTAK_DISTRO_TAG=${{ matrix.tag }}
+          # Every target the Linux install() rules reference, or cpack fails at
+          # package time with "file INSTALL cannot find build/<target>" -- which is
+          # exactly how 0.6.0 broke when cartographer joined those rules.
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test takclient takserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test stream_test vashim_test menu_music_test nvml_test windowsgpu_test distant_models_test
+
+      - name: Server, network and replay checks
+        run: |
+          ./build/filelease_test
+          ./build/tls_test
+          ./build/acme_test
+          ./build/server_address_test
+          ./build/server_commands_test
+          ./build/room_worker_test
+          ./build/state_hash_test
+          ./build/mod_packs_test
+          ./build/replay_file_test
+          ./build/spectator_client_test
+
+      - name: Cartographer document and validation checks
+        run: |
+          ./build/cartographer_document_test
+          ./build/datafolder_test
+          ./build/cartographer_validation_test
+
+      - name: Rendering, navigation and validation regressions
+        run: |
+          cmake --build build --target tdf_limits_test validationworker_test order_trail_test retail_search_scratch_test navigation_checkpoint_test navigation_telemetry_test mod_settings_test replay_test scenario_info_test simpool_passes_test fire_sweep_test renderdriver_test jpeg_encode_test cpu_topology_test
+          bash tools/run-ctest-selection.sh build tdf_limits validationworker order_trail retail_search_scratch navigation_determinism crowdbench_matrix navigation_telemetry mod_settings replay scenario_info simpool_passes fire_sweep_vision fire_sweep_switch fire_sweep_retaliation pref_guard_lint renderdriver jpeg_encode cpu_topology
+          # What this runner's CPUs were read as (ctest prints nothing of a passing test).
+          ./build/cpu_topology_test
+
+      # The per-commit Legion selection (PLAN 3.0 / T8 A8, <= 45 s on 4 cores): the World
+      # cases, the instrument selftests, the asset-free scenarios of label legion (the
+      # nightly and data-gated ones are not run here), the cost gate and the baseline
+      # reasons check. The movement/production/transport variants need game data.
+      - name: Legion navigation tests and scenarios
+        env:
+          CTEST_PARALLEL_LEVEL: 4
+        run: |
+          cmake --build build --target legion_world_test legion_idmap_test legion_flyers_test legion_still_test crowdbench legion_observe_selftest issue_selection_test legion_scenario legion_acceptance_test legion_hier_test legion_route_test legion_cluster_test legion_routebins_test legion_park_test attack_stop_test ballistic_line_test blocked_shot_test naval_reach_test queue_modifiers_test shot_range_test suppress_test target_search_test vermage_fight_test queued_target_test queued_load_test
+          bash tools/run-ctest-selection.sh --exclude-labels 'nightly|data' --selection tools/legion_ci_selection.txt build
+
+      - name: Streaming encode test
+        run: |
+          ./build/stream_test
+          ./build/stream_test libx264 overload
+          ./build/stream_test libx264 native
+          LD_LIBRARY_PATH=build/vashim-fake-libva ./build/vashim_test unavailable
+          ./build/menu_music_test
+          ./build/nvml_test
+          ./build/windowsgpu_test
+          SDL_VIDEODRIVER=dummy ./build/distant_models_test
+
+      # Windows and macOS each gate on their binaries being static; Linux did not, and it
+      # is the platform where a leak is most costly: CPack derives package dependencies
+      # from what the binary links (SHLIBDEPS/AUTOREQ), so an SDL2 or libstdc++ that
+      # quietly went dynamic becomes an install-time requirement on every user's machine.
+      # libc/libm are expected -- glibc's NSS and SDL2's backends are dlopen'd, so a
+      # fully static binary could not resolve a host or open a window.
+      - name: Verify fully static (only libc/libm linked)
+        run: |
+          ldd build/takclient build/takserver build/cartographer || true
+          leaked=$(ldd build/takclient build/takserver build/cartographer \
+            | awk '/=>/{print $1}' | sort -u \
+            | grep -vE '^(libc|libm|libdl|libpthread|librt)\.so|^linux-vdso|^/lib64/ld-' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::takclient/takserver link non-libc shared libraries:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "OK: only libc/libm linked -- as static as a Linux build can usefully be"
+          # VA-API forwards to the system libva (tools/vashim.c); a bundled libva loader
+          # could not open drivers built for a newer libva.
+          if grep -aq '__vaDriverInit_' build/takclient; then
+            echo "::error::takclient contains a bundled libva driver loader"
+            exit 1
+          fi
+
+      - name: Verify native executables
+        run: |
+          python3 tools/check-linux-architecture.py ${{ matrix.arch }} build/takclient build/takserver build/cartographer
+          ./build/takclient --version
+          ./build/takserver --version
+
+      - name: Package (.deb)
+        if: matrix.family == 'deb'
+        run: |
+          (cd build && cpack -G DEB)
+          expected=amd64
+          if [ "${{ matrix.arch }}" = "arm64" ]; then expected=arm64; fi
+          test "$(dpkg-deb -f build/tak-engine-*.deb Architecture)" = "$expected"
+          dpkg-deb -I build/tak-engine-*.deb   # show control + auto deps
+          mkdir -p dist && cp build/tak-engine-*.deb dist/
+      - name: Package (.rpm)
+        if: matrix.family == 'rpm' || matrix.family == 'suse' || matrix.family == 'el'
+        run: |
+          (cd build && cpack -G RPM)
+          test "$(rpm -qp --qf '%{ARCH}' build/tak-engine-*.rpm)" = "${{ matrix.cpu }}"
+          rpm -qp --requires build/tak-engine-*.rpm
+          mkdir -p dist && cp build/tak-engine-*.rpm dist/
+      - name: Package (.pkg.tar.zst)
+        if: matrix.family == 'arch'
+        run: |
+          VERSION=$(grep -oE 'VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | head -1 | awk '{print $2}')
+          sed -i "s/@VERSION@/$VERSION/" packaging/arch/PKGBUILD
+          # makepkg refuses to run as root: hand the tree to a build user.
+          useradd -m builder
+          chown -R builder: .
+          su builder -c 'cd packaging/arch && makepkg -f --nodeps'
+          pacman -Qip packaging/arch/tak-engine-*.pkg.tar.zst
+          mkdir -p dist && cp packaging/arch/tak-engine-*.pkg.tar.zst dist/
+
+      - name: Package (.txz)
+        if: matrix.family == 'slack'
+        run: |
+          packaging/slackware/package.sh build dist
+          installpkg dist/tak-engine-*.txz
+          /usr/bin/takclient --version
+          /usr/bin/takserver --version
+
+      # One AppImage per architecture: the same static binaries, so no bundled libraries.
+      # Containers have no FUSE, so the checks run it extracted.
+      - name: Package (.AppImage)
+        if: matrix.appimage == true
+        run: |
+          sh packaging/appimage/build.sh build dist
+          image=$(ls dist/tak-engine-*-${{ matrix.cpu }}.AppImage)
+          APPIMAGE_EXTRACT_AND_RUN=1 "$image" --version
+          APPIMAGE_EXTRACT_AND_RUN=1 "$image" takserver --version
+          APPIMAGE_EXTRACT_AND_RUN=1 "$image" cartographer --version
+
+      # Debug tarball from the oldest-glibc leg only: the release binaries are
+      # hardened (only --data/--version, no env vars), so devs get an unhardened
+      # DEBUG build with the CLI flags, TAK_* env hooks, and the --mp* harness.
+      - name: Build + tar the debug binaries
+        if: matrix.debug == true
+        run: |
+          export CC=gcc-12 CXX=g++-12
+          cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-debug --target takclient takserver cartographer
+          python3 tools/check-linux-architecture.py ${{ matrix.arch }} build-debug/takclient build-debug/takserver build-debug/cartographer
+          mkdir -p dist-linux-debug
+          cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-linux-debug/
+          cp build-debug/takclient build-debug/takserver build-debug/cartographer dist-linux-debug/
+          tar -C dist-linux-debug -czf dist/tak-engine-linux-${{ matrix.arch }}-debug.tar.gz .
+
+      - name: Compiler cache statistics
+        if: always() && steps.ccache-restore.outcome == 'success'
+        run: ccache --show-stats || true
+
+      # Saved even when a test step failed, so the next push still starts warm.
+      - name: Save compiler cache
+        if: always() && steps.ccache-restore.outcome == 'success' && steps.ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: tak-engine-${{ matrix.tag }}-${{ matrix.arch }}
+          path: dist/*
+
+  # The repo's 10 GB cache quota is shared with the FFmpeg builds: keep only the newest
+  # compiler cache per distro and arch. (The containers have no gh, so this runs on the host.)
+  prune-caches:
+    name: Prune superseded caches
+    needs: package
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep the newest entry per group; group = key minus its per-commit suffix.
+          prune() {  # prune <key prefix> <sed expression mapping key -> group>
+            gh cache list --repo "$GITHUB_REPOSITORY" --key "$1" --limit 500 \
+                --json key,createdAt --jq 'sort_by(.createdAt) | reverse | .[].key' |
+              while read -r key; do
+                group=$(printf '%s\n' "$key" | sed -E "$2")
+                if printf '%s\n' "$seen" | grep -qxF "$group"; then
+                  echo "delete $key"
+                  gh cache delete "$key" --repo "$GITHUB_REPOSITORY" || true
+                else
+                  seen="$seen"$'\n'"$group"
+                fi
+              done
+          }
+          prune ccache-linux- 's/-[0-9a-f]{40}$//'
+
+  release:
+    name: Attach to release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: tak-engine-*
+          merge-multiple: true
+          path: dist
+      - name: Create release + upload packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Reuse an existing draft instead of creating a second release record.
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "TAK Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || \
+              gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

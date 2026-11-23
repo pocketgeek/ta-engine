@@ -1,0 +1,10 @@
+[Unit]
+Description=TAK Legion nightly at 03:30
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=false
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

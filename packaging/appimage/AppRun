@@ -1,0 +1,15 @@
+#!/bin/sh
+# The AppImage's entry point. One download, three programs: the game by default, or
+# Cartographer or the server when the first argument names it:
+#   ./tak-engine-<version>-x86_64.AppImage [--data <dir>]
+#   ./tak-engine-<version>-x86_64.AppImage cartographer
+#   ./tak-engine-<version>-x86_64.AppImage takserver --port 7677 --data <dir>
+here="$(dirname "$(readlink -f "$0")")"
+case "${1:-}" in
+    cartographer|takserver)
+        prog=$1
+        shift
+        exec "$here/usr/bin/$prog" "$@"
+        ;;
+esac
+exec "$here/usr/bin/takclient" "$@"
