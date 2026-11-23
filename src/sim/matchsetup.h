@@ -121,8 +121,6 @@ inline const char* benchmarkLevelInterval(int level) {
     return (level >= 1 && level <= kBenchLevels) ? iv[level] : "";
 }
 
-// The starting Monarch of each faction (index = faction id).
-extern const char* const kMonarchs[5];
 
 // Load the unit registry from the VFS: MOVEINFO, the roster (units, or unitscb
 // alone for the Crusades balance -- no fallback, as retail), then canbuild menus

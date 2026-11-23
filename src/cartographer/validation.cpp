@@ -1,3 +1,4 @@
+#include "sim/sides.h"
 #include "cartographer/validation.h"
 #include "cartographer/aiprofiles.h"
 #include "cartographer/triggers.h"
@@ -171,8 +172,8 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
         if(!inside(x,z)) {issue(label+": outside map",-1,-1,true);continue;}
         if(!startCells.insert({start.xpos,start.zpos}).second)issue(label+": overlaps another start",x,z);
         std::string blocked;
-        for(const char* monarch:ta::sim::kMonarchs) {
-            const auto* type=registry.find(monarch);
+        for(const auto& side:ta::sides::all()) {
+            const auto* type=registry.find(side.commander);
             if(type && !type->canFly) {
                 if(!world->canPlace(type,x,z)) {if(!blocked.empty())blocked+=", ";blocked+=type->name;}
                 else startCandidates.push_back({type,x,z,start.number});
@@ -186,8 +187,8 @@ std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
     // Use the same observational connectivity query as the AI. It resolves a
     // blocked endpoint to nearby occupiable ground, so these are approach-route
     // warnings, not guarantees about the exact destination cell or build site.
-    if(metadata.starts.size()<=8)for(const char* monarchId:ta::sim::kMonarchs) {
-        const auto* monarch=registry.find(monarchId);if(!monarch || monarch->canFly)continue;
+    if(metadata.starts.size()<=8)for(const auto& side:ta::sides::all()) {
+        const auto* monarch=registry.find(side.commander);if(!monarch || monarch->canFly)continue;
         for(size_t i=0;i<metadata.starts.size();++i) {
             const auto& start=metadata.starts[i];const float x=start.xpos*16.f,z=start.zpos*16.f;
             if(!inside(x,z))continue;

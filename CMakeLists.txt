@@ -158,6 +158,7 @@ add_library(ta-formats
   src/sim/convoy.cpp
   src/sim/detmath.cpp
   src/sim/matchsetup.cpp
+  src/sim/sides.cpp
   src/sim/mission.cpp
   src/sim/scenario.cpp
   src/sim/scenarioinfo.cpp

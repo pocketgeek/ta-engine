@@ -156,11 +156,13 @@ static std::shared_ptr<Package> buildUncached(const hpi::Vfs& vfs, const std::st
     const auto map = tnt::Map::load(files->at(path), path);
     for (const auto& companion : companionPaths(path))
         if (auto data = vfs.tryRead(companion)) (*files)[companion] = std::move(*data);
-    for (auto key : std::set<uint32_t>(map.tileKeys.begin(), map.tileKeys.end())) {
-        auto tile = tilePath(key);
-        // Missing art is an error, not a black map silently propagated to peers.
-        (*files)[tile] = vfs.read(tile);
-    }
+    // A TA map carries its tile art inside the TNT; only section-keyed maps need JPGs.
+    if (map.tileCount == 0)
+        for (auto key : std::set<uint32_t>(map.tileKeys.begin(), map.tileKeys.end())) {
+            auto tile = tilePath(key);
+            // Missing art is an error, not a black map silently propagated to peers.
+            (*files)[tile] = vfs.read(tile);
+        }
     for (const auto& resource : featureResources(map, vfs)) (*files)[resource] = vfs.read(resource);
     // From the map's own archive: another installed map carrying the same file name
     // must not take it (nor a game mod's copy, which the server's lookup prefers anyway).
@@ -281,7 +283,7 @@ std::shared_ptr<Package> decode(std::vector<uint8_t> bytes, const std::string& d
         if (files->count(companion)) required.insert(companion);
     for (const auto& ai : aiProfilePaths(*files, path))
         if (files->count(ai)) required.insert(ai);
-    for (auto key : map.tileKeys) required.insert(tilePath(key));
+    if (map.tileCount == 0) for (auto key : map.tileKeys) required.insert(tilePath(key));
     hpi::Vfs view; view.setMapFiles(files);
     const auto features = featureResources(map, view, stop);
     required.insert(features.begin(), features.end());

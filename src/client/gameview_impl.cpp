@@ -1,3 +1,4 @@
+#include "sim/sides.h"
 #include "util/virtualpath.h"
 #include "client/retailaim.h"
 #include "gaf/nimbus.h"
@@ -498,7 +499,7 @@
         replayKeyBudget_ = ta::replaybar::keyframeBudget(uint64_t(SDL_GetSystemRAM()) << 20);
         noFog_ = true;             // a spectator sees the whole map
         localPlayer_ = 0;
-        side_ = "ara";
+        side_ = "arm";
         loadPanel(side_);
         loadGui(side_);
         if (!spots.empty())
@@ -879,8 +880,7 @@
         const Frame& f = front();
         st.matchSec = int(f.gameTick / 30);
         if (spectating_ && outcomeTick_ != 0) st.matchSec = std::min(st.matchSec, int(outcomeTick_ / 30));
-        static const char* kSides[5] = {"ara", "tar", "ver", "zon", "cre"};
-        if (!spectating_) for (int i = 0; i < 5; ++i) if (side_ == kSides[i]) st.faction = i;
+        if (!spectating_ && ta::sides::find(side_) >= 0) st.faction = ta::sides::find(side_);
         const int winner = spectating_ ? f.winningTeam : -1;
         int winners = 0;
         const PlayerR* plate = nullptr;   // the winner whose side the plate is

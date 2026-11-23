@@ -5,6 +5,7 @@
 // localHarness block in main.cpp) are #ifndef NDEBUG too, so a release taclient
 // carries none of it. Shared helpers the harness leans on (startAtMonarch, lookAt,
 // collect, spawn) stay in gameview_impl.cpp / gameview.h.
+#include "sim/sides.h"
 #include "util/virtualpath.h"
 #include "client/gameview.h"
 #include "client/gamespeed.h"
@@ -318,9 +319,8 @@
                 float ang = float(spots.size()) / float(n) * 6.2831853f;
                 spots.push_back({cx + std::cos(ang) * 300, cz + std::sin(ang) * 300});
             }
-            const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
             for (int i = 0; i < n; ++i) {
-                std::string fkSide = sides[i % 5];
+                std::string fkSide = ta::sides::lowerPrefix(i % ta::sides::count());
                 // Gods are resolved in setupMatch, which this harness does not call, so
                 // godType stayed null here. World::summonReadyGods marks the summon
                 // HANDLED before checking it (a player with nothing on the map must not

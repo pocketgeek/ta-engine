@@ -240,8 +240,11 @@ std::vector<Sequence> load(const std::filesystem::path& file, const Palette& pal
 std::vector<Sequence> load(const std::vector<uint8_t>& d, const Palette& pal,
                            int transparentIndex, const std::string& origin) {
     need(d, 0, 12, "GAF header");
-    if (u32(&d[0]) != 0x00010100)
-        throw std::runtime_error(origin + ": not a GAF/TAF (bad version)");
+    // TotalA.exe never checks the version word (0x429700 -> 0x4b8d40 reads the
+    // entry count at +4 and the entry table from +0xc): anims/terrain.gaf and
+    // anims/vismasks.gaf ship with version 0. Only a nonsense entry count fails.
+    if (u32(&d[4]) > 0x10000)
+        throw std::runtime_error(origin + ": not a GAF/TAF (bad entry count)");
     uint32_t numEntries = u32(&d[4]);
     need(d, 12, uint64_t(numEntries) * 4, "entry pointers");
 

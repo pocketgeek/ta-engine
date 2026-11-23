@@ -1,4 +1,5 @@
 #pragma once
+#include "sim/sides.h"
 #include "client/battlemusic.h"
 #include "client/areadrag.h"
 #include "client/emotetiming.h"
@@ -202,7 +203,7 @@ public:
     GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, ta::hpi::ModUse mods,
              bool demo, bool scenario,
-             bool bare, const std::string& side = "ara", const std::string& aiSide = "tar",
+             bool bare, const std::string& side = "arm", const std::string& aiSide = "cor",
              bool crusades = false);
 
     // True while the multiplayer lobby is showing (before the game world exists).
@@ -2133,8 +2134,7 @@ private:
     // A monarch (the five hero units).
     static bool isMonarchType(const ta::sim::UnitType* t) {
         if (!t) return false;
-        for (int i = 0; i < 5; ++i) if (t->id == ta::sim::kMonarchs[i]) return true;
-        return false;
+        return ta::sides::isCommander(t->id);
     }
     // Fully-saturated hue wheel -> RGB, hue in [0,1). Drives the disco tint & floor.
     static SDL_Color discoHue(float h) {
@@ -2314,16 +2314,15 @@ private:
     // Fingerprint of the gameplay data THIS client will feed its sim (current mods).
     uint64_t gameDataHash() const { return ta::hpi::gameplayHash(vfs_); }
     bool crusades_ = false; // which balance registry_ currently holds
-    std::string side_ = "ara";
+    std::string side_ = "arm";   // lowercased sidedata nameprefix
     // Retail loading screen. Alive from the start of world setup until the first
     // tick lands, so the plate covers both our own load and the wait on peers.
     std::unique_ptr<ta::LoadScreen> loadScreen_;
-    std::string aiSide_ = "tar";   // single-player: the AI opponent's faction
-    // Faction name -> wire index (0 ara, 1 tar, 2 ver, 3 zon, 4 cre).
+    std::string aiSide_ = "cor";   // single-player: the AI opponent's side
+    // Side name or prefix -> wire index (gamedata/sidedata.tdf order).
     static uint8_t facIdx(const std::string& s) {
-        const char* n[5] = {"ara", "tar", "ver", "zon", "cre"};
-        for (uint8_t i = 0; i < 5; ++i) if (s == n[i]) return i;
-        return 0;
+        const int i = ta::sides::find(s);
+        return uint8_t(i < 0 ? 0 : i);
     }
     ta::sim::TypeRegistry registry_;
     // The simulation, reached through the CONST view world_. A write has to name
@@ -4273,8 +4272,9 @@ private:
     // ==================== interactive multiplayer lobby ====================
 
     static const char* factionName(int f) {
-        static const char* n[5] = {"ARAMON", "TAROS", "VERUNA", "ZHON", "CREON"};
-        return n[f % 5];
+        static std::string name;
+        name = ta::sides::at(f).name;
+        return name.c_str();
     }
     // Lobby design size (logical). The lobby always lays out at exactly this size and
     // is scaled to fit + centred in the window (lobbyScale_ / lobbyOffX_/Y_), so it

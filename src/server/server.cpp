@@ -11,6 +11,7 @@
 // referee's own state hash is the canonical one clients are checked against (with
 // a suspicion rule that blames the referee if every client agrees against it).
 
+#include "sim/sides.h"
 #include "net/mappackage.h"
 #include "util/u8path.h"
 #include "net/modpackage.h"
@@ -2712,7 +2713,7 @@ void Server::gameMsg(Client& c, const Frame& f) {
                     else if (type != 2 && old == 2) s.name.clear();     // no longer AI
                 }
             }
-            s.faction = faction % 5;
+            s.faction = uint8_t(faction % std::max(1, ta::sides::count()));
             s.color = color % 10;
             s.team = uint8_t(team % kMaxSlots);
             // READY: only a seat's own player changes it, never the host for someone else; a

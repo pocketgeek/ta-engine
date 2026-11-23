@@ -1,5 +1,6 @@
 #include "util/virtualpath.h"
 #include "sim/matchsetup.h"
+#include "sim/sides.h"
 
 #include "sim/detmath.h"
 #include "gaf/featureburntiming.h"
@@ -31,7 +32,6 @@
 
 namespace ta::sim {
 
-const char* const kMonarchs[5] = {"araking", "tarnecro", "vermage", "zonhunt", "cresage"};
 
 // One explicit selection order (Cmd::Order): every member gets
 // the template command, in increasing id order, inside one World::beginOrder
@@ -305,7 +305,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
             else { // Empty selection: living monarch only.
                 for (const auto& u : world.units()) {
                     if (!u.alive() || u.player != int(c.player) || !u.type) continue;
-                    if (std::find(std::begin(kMonarchs), std::end(kMonarchs), u.type->id) != std::end(kMonarchs))
+                    if (ta::sides::isCommander(u.type->id))
                         emote(u.id);
                 }
             }
@@ -1260,7 +1260,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     std::vector<std::pair<float,float>> monarchPositions(cfg.slots.size());
     for (size_t i=0;i<cfg.slots.size();++i) if (cfg.slots[i].used) {
         auto [x,z]=spots[size_t(slotSpot[i])];
-        placeMonarch(reg.find(kMonarchs[cfg.slots[i].faction % 5]),x,z);
+        placeMonarch(reg.find(ta::sides::commander(cfg.slots[i].faction)),x,z);
         monarchPositions[i]={x,z};
     }
     std::vector<BenchStage> benchPlan;
@@ -1286,7 +1286,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     }
     for (int i = 0; i < int(cfg.slots.size()); ++i) {
         if (!cfg.slots[i].used) continue;
-        const UnitType* monarch = reg.find(kMonarchs[cfg.slots[i].faction % 5]);
+        const UnitType* monarch = reg.find(ta::sides::commander(cfg.slots[i].faction));
         auto [mx,mz]=monarchPositions[size_t(i)];
         // AFTER the snap, not before: this list is what the caller opens the camera on
         // (and what the server records as the slot's position), so recording the raw

@@ -1,3 +1,4 @@
+#include "sim/sides.h"
 #include "net/matchconfig.h"
 
 #include "ai/ai.h"   // incomeMultFor / difficultyFromLevel (inline)
@@ -29,7 +30,7 @@ sim::MatchConfig matchConfigFor(const GameOptions& o, const SlotInfo* slots, uin
         const SlotInfo& s = slots[i];
         const auto level = ai::difficultyFromLevel(s.aiLevel);
         const float mm = s.type == 2 ? ai::incomeMultFor(level) : 1.0f;
-        cfg.slots[size_t(i)] = {s.type == 1 || s.type == 2, s.faction % 5, s.team, mm, s.type == 2,
+        cfg.slots[size_t(i)] = {s.type == 1 || s.type == 2, int(s.faction) % std::max(1, ta::sides::count()), s.team, mm, s.type == 2,
                                 s.type == 2 && ai::defensiveLevel(level)};
     }
     return cfg;

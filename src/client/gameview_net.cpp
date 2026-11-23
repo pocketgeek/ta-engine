@@ -1,4 +1,5 @@
 #include <ctime>
+#include "sim/sides.h"
 #include "tnt/ota.h"
 #include "client/gameview.h"
 #include "net/crypto.h"
@@ -294,8 +295,7 @@
             if (!missionAllowed_.empty())
                 std::fprintf(stderr, "mission %s: conjure menu restricted to %zu allowed unit types\n",
                              room.mission.c_str(), missionAllowed_.size());
-            const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
-            if (room.mySlot >= 0) side_ = sides[room.slots[room.mySlot].faction % 5];
+            if (room.mySlot >= 0) side_ = ta::sides::lowerPrefix(room.slots[room.mySlot].faction);
             loadScreen_->step("LOADING INTERFACE", 90);
             loadPanel(side_);
             loadGui(side_);
@@ -357,8 +357,7 @@
         if (benchmarkMode_) benchmarkBaseline();             // t=0 baseline for the perf samples
         for (auto& u : world_.units())
             if (u.player == localPlayer_ && u.type) { playerMonarchId_ = u.id; builderId_ = u.id; break; }
-        const char* sides[5] = {"ara", "tar", "ver", "zon", "cre"};
-        side_ = sides[room.slots[localPlayer_].faction % 5];
+        side_ = ta::sides::lowerPrefix(room.slots[localPlayer_].faction);
         loadScreen_->step("LOADING INTERFACE", 90);
         loadPanel(side_);
         loadGui(side_);
@@ -1611,7 +1610,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                 int nAi = benchmarkMode_ ? int(ta::net::kMaxSlots)
                                          : std::clamp(ai ? std::atoi(ai) : 2, 2, int(ta::net::kMaxSlots));
                 for (int k = 0; k < nAi; ++k)
-                    mp_->setSlot(k, 2, uint8_t(k % 5), uint8_t(k), uint8_t(k), 1, aiLevelEnv(k));
+                    mp_->setSlot(k, 2, uint8_t(k % ta::sides::count()), uint8_t(k), uint8_t(k), 1, aiLevelEnv(k));
                 mpReadied_ = true;
             } else if (autoMode == 8 && r.mySlot >= 0) {
                 // Campaign mission: seat the human ready and start; the mission's own
@@ -1637,7 +1636,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                     int n = std::clamp(std::atoi(na), 1, int(ta::net::kMaxSlots) - 1);
                     for (int k = 0; k < n && k + 1 < int(ta::net::kMaxSlots); ++k) {
                         int slot = k + 1;
-                        mp_->setSlot(slot, 2, uint8_t((facIdx(aiSide_) + k) % 5),
+                        mp_->setSlot(slot, 2, uint8_t((facIdx(aiSide_) + k) % ta::sides::count()),
                                      uint8_t(slot), uint8_t(slot), 1, aiLevelEnv(k));
                     }
                     mp_->startGame();
@@ -1648,7 +1647,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                 // TA_AUTOPLAY_SIDE=ara|tar|ver|zon|cre: the seat's faction (default by
                 // slot), e.g. a side with flying builders for TA_START_FLYERS.
                 const char* autoSide = ta::devEnv("TA_AUTOPLAY_SIDE");
-                mp_->setSlot(r.mySlot, 1, autoSide ? facIdx(autoSide) : uint8_t(r.mySlot % 5),
+                mp_->setSlot(r.mySlot, 1, autoSide ? facIdx(autoSide) : uint8_t(r.mySlot % ta::sides::count()),
                              uint8_t(r.mySlot), uint8_t(r.mySlot), 1);
                 // autoMode 4 (AI-game host): also seat one AI opponent in slot 1.
                 if (autoMode == 4 && r.mySlot == 0)
@@ -1660,7 +1659,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                         int nAi = std::clamp(std::atoi(ai), 0, ta::net::kMaxSlots - 1);
                         for (int k = 0; k < nAi; ++k) {
                             int slot = ta::net::kMaxSlots - 1 - k;
-                            mp_->setSlot(slot, 2, uint8_t(slot % 5), uint8_t(slot),
+                            mp_->setSlot(slot, 2, uint8_t(slot % ta::sides::count()), uint8_t(slot),
                                          uint8_t(slot), 1, aiLevelEnv(k));   // AI, distinct colour/team
                         }
                     }
@@ -1677,7 +1676,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (readiedAt != std::pair<uint32_t, uint32_t>{r.id, r.roomRev}) {
                 readiedAt = {r.id, r.roomRev};
                 const char* autoSide = ta::devEnv("TA_AUTOPLAY_SIDE");
-                mp_->setSlot(r.mySlot, 1, autoSide ? facIdx(autoSide) : uint8_t(r.mySlot % 5),
+                mp_->setSlot(r.mySlot, 1, autoSide ? facIdx(autoSide) : uint8_t(r.mySlot % ta::sides::count()),
                              uint8_t(r.mySlot), uint8_t(r.mySlot), 1);
             }
         } else if (st == S::InRoom && (autoMode == 1 || autoMode == 3 || autoMode == 4) &&

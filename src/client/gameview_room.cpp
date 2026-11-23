@@ -1,3 +1,4 @@
+#include "sim/sides.h"
 #include "client/gameview.h"
 #include "net/crypto.h"
 #include "net/matchconfig.h"
@@ -277,7 +278,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                             uint8_t colour = 0;
                             while (colour < 9 && held[colour]) ++colour;
                             held[colour] = true;
-                            mp_->setSlot(i, 2, uint8_t(rng() % 5), colour, room.slots[i].team, 1, aiLevelEnv());
+                            mp_->setSlot(i, 2, uint8_t(rng() % uint32_t(std::max(1, ta::sides::count()))), colour, room.slots[i].team, 1, aiLevelEnv());
                         }
                     }
                     mp_->setGameOptions(roomEffective());
@@ -539,7 +540,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             cell(factionName(s.faction), x + kSide + wide, y + 8, 1.6f, kColour - kSide - 4, {200, 205, 215, 255});
             if (canEdit) { SDL_FRect fb{x + kSide + wide, y + 6, kColour - kSide - 4, 18};
                 lobbyHots_.push_back({fb, [this, i](int direction) { const auto& s2 = mpRoom().slots[i];
-                    mp_->setSlot(i, s2.type, (s2.faction + direction + 5) % 5, s2.color, s2.team, s2.ready, s2.aiLevel); }}); }
+                    mp_->setSlot(i, s2.type, (s2.faction + direction + ta::sides::count()) % std::max(1, ta::sides::count()), s2.color, s2.team, s2.ready, s2.aiLevel); }}); }
             colorSwatch(x + kColour + wide, y + 5, 20, s.color, canEdit ? std::function<void(int)>([this, i](int direction) {
                 // Cycle to the next colour NOT already held by another used slot --
                 // landing on a taken colour just blocked READY, which was a trap.

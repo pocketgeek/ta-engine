@@ -5,6 +5,7 @@
 #include "gaf/featureburntiming.h"
 #include "tdf/tdf.h"
 #include "tnt/mapgen.h"
+#include "sim/sides.h"
 
 #include <zlib.h>
 
@@ -1372,6 +1373,7 @@ Vfs mountRetailRoot(const std::filesystem::path& root, const std::vector<std::st
         vfs.setModFiles(std::make_shared<const Vfs::Files>(std::move(files)));
     }
     vfs.refreshMapCache(user);
+    ta::sides::load(vfs);   // gamedata/sidedata.tdf drives every side table
     return vfs;
 }
 
