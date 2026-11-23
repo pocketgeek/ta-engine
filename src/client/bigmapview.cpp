@@ -5,14 +5,14 @@
 #include <algorithm>
 #include <cmath>
 
-BigMapView::BigMapView(SDL_Renderer* ren, std::unique_ptr<tak::hpi::Vfs> vfs, const std::string& tntPath,
+BigMapView::BigMapView(SDL_Renderer* ren, std::unique_ptr<ta::hpi::Vfs> vfs, const std::string& tntPath,
                        const std::string& world)
     : ren_(ren), vfs_(std::move(vfs)) {
     view_ = std::make_unique<MapView>(ren_, *vfs_, tntPath);
     loadFeatures(world);
 }
 
-BigMapView::BigMapView(SDL_Renderer* ren, std::unique_ptr<tak::hpi::Vfs> vfs, tak::tnt::Map map,
+BigMapView::BigMapView(SDL_Renderer* ren, std::unique_ptr<ta::hpi::Vfs> vfs, ta::tnt::Map map,
                        const std::string& world)
     : ren_(ren), vfs_(std::move(vfs)) {
     view_ = std::make_unique<MapView>(ren_, *vfs_, std::move(map));

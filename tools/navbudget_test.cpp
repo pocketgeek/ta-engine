@@ -35,7 +35,7 @@
 #include <map>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 int failures = 0;

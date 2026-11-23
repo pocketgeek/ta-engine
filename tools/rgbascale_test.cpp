@@ -56,7 +56,7 @@ int maxError(const std::vector<uint8_t>& src, int sw, int sh, const std::vector<
 }
 
 int main() {
-    tak::video::RgbaScaler threaded(3), single(0);
+    ta::video::RgbaScaler threaded(3), single(0);
     // Exact 2:1 box: every output channel is the rounded mean of its 2x2 block.
     {
         const int sw = 1280, sh = 720, dw = 640, dh = 360;
@@ -110,7 +110,7 @@ int main() {
         require(ok, "pitches honoured, nothing outside the target rectangle written");
     }
     {
-        tak::video::RgbaScaler automatic;
+        ta::video::RgbaScaler automatic;
         auto src = pattern(7680, 2160, 3);
         std::vector<uint8_t> out(size_t(3840) * 1080 * 4);
         automatic.scale(src.data(), 7680, 2160, 7680 * 4, out.data(), 3840, 1080, 3840 * 4);

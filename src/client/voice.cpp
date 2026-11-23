@@ -12,7 +12,7 @@
 #include <array>
 #include <map>
 
-namespace tak {
+namespace ta {
 
 static_assert(voice::kMaxPacket == net::kVoiceMaxOpus, "codec packet cap matches the wire cap");
 static_assert(voice::kFlagStart == net::kVoiceStart && voice::kFlagEnd == net::kVoiceEnd, "voice flags match the wire");
@@ -366,4 +366,4 @@ std::string VoiceEngine::note(Device d) {
     }
 }
 
-}  // namespace tak
+}  // namespace ta

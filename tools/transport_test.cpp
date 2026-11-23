@@ -40,20 +40,20 @@
 #include <cstdio>
 #include <vector>
 
-using tak::sim::UnitType;
-using tak::sim::World;
-static tak::sim::PathfindingMode g_pathfinding = tak::sim::PathfindingMode::Retail;
+using ta::sim::UnitType;
+using ta::sim::World;
+static ta::sim::PathfindingMode g_pathfinding = ta::sim::PathfindingMode::Retail;
 static void setTestPathfinding(World& world) {
-    if(g_pathfinding!=tak::sim::PathfindingMode::Retail)world.setPathfindingMode(g_pathfinding);
+    if(g_pathfinding!=ta::sim::PathfindingMode::Retail)world.setPathfindingMode(g_pathfinding);
 }
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
-    static bool waterFootprintPassable(const World& world,const tak::sim::Unit* unit) {
+    static bool waterFootprintPassable(const World& world,const ta::sim::Unit* unit) {
         if(!unit || !unit->type) return false;
         const int fx=unit->type->footX,fz=unit->type->footZ;
-        const int x=tak::sim::footprintOrigin(unit->x,fx);
-        const int z=tak::sim::footprintOrigin(unit->z,fz);
+        const int x=ta::sim::footprintOrigin(unit->x,fx);
+        const int z=ta::sim::footprintOrigin(unit->z,fz);
         const auto& nav=world.navFor(unit->type);
         const bool fits=nav.fits(x+fx/2,z+fz/2,std::max(fx,fz));
         if(!fits) return false;
@@ -63,22 +63,22 @@ struct RetailReplayProbe {
         return true;
     }
 
-    static bool footprintPhysicallyPlaced(const World& world,const tak::sim::Unit* unit) {
+    static bool footprintPhysicallyPlaced(const World& world,const ta::sim::Unit* unit) {
         if(!unit || !unit->type) return false;
         return world.mobilePlacement(*unit,
-            tak::sim::footprintOrigin(unit->x,unit->type->footX),
-            tak::sim::footprintOrigin(unit->z,unit->type->footZ),false);
+            ta::sim::footprintOrigin(unit->x,unit->type->footX),
+            ta::sim::footprintOrigin(unit->z,unit->type->footZ),false);
     }
 
     static void dumpSurfaceSearchGrades(World& world) {
         struct State { bool dumped=false; std::vector<int> initial; int changes=0; };
-        auto* stream=std::getenv("TAK_DUMP_GRADE_PLANE") ? stderr : nullptr;
+        auto* stream=std::getenv("TA_DUMP_GRADE_PLANE") ? stderr : nullptr;
         if (!stream) return;
         auto state=std::make_shared<State>();
         world.paths_.setGradeHost({
             [&world](int id,bool last) {
                 world.prepareSearchGrade(id,last);
-                if(!std::getenv("TAK_DUMP_ATTEMPT_PLANES") || world.activeSearchGrade_<0)
+                if(!std::getenv("TA_DUMP_ATTEMPT_PLANES") || world.activeSearchGrade_<0)
                     return;
                 const Unit* unit=world.unit(id);
                 if(!unit || !unit->type) return;
@@ -199,7 +199,7 @@ static constexpr float kRange = 150.0f;
 static UnitType boatType() {
     UnitType t{};
     t.name = "boat";
-    t.maxVel = tak::sim::Fixed::fromFloat(60.0f / 30.0f);              // maxVel > 0 => not a structure
+    t.maxVel = ta::sim::Fixed::fromFloat(60.0f / 30.0f);              // maxVel > 0 => not a structure
     t.turnRate = 10000;
     t.canTransport = true;
     t.transportCap = 4;
@@ -214,7 +214,7 @@ static UnitType footType() {
     UnitType t{};
     t.name = "foot";
     t.upright = true;
-    t.maxVel = tak::sim::Fixed::fromFloat(30.0f / 30.0f);
+    t.maxVel = ta::sim::Fixed::fromFloat(30.0f / 30.0f);
     t.turnRate = 10000;
     t.transportSize = 1;
     t.maxHp = 100;
@@ -242,13 +242,13 @@ static bool runUntilUnloaded(World& w, int tid, int ticks = 4000) {
 // --legion: Legion (not the native mover) routes a ground passenger walking to
 // its carrier, the ground carrier's unload approach and the released
 // passenger's PARK ring; the missions themselves stay native.
-static bool legionSaw(World& w,tak::sim::LegionMission kind) {
+static bool legionSaw(World& w,ta::sim::LegionMission kind) {
     const auto* legion=w.legionNavigator();bool seen=false;
     if(legion)for(const auto& u:w.units())seen|=legion->mission(u)==kind;
     return seen;
 }
 static void legionLogistics() {
-    if(g_pathfinding!=tak::sim::PathfindingMode::Legion)return;
+    if(g_pathfinding!=ta::sim::PathfindingMode::Legion)return;
     std::printf("legion routes boarding, unload approach and parking:\n");
     World w;setTestPathfinding(w);w.setPathService(true);
     w.setTerrain(std::vector<uint8_t>(size_t(128)*128,100),128,128,20);
@@ -257,7 +257,7 @@ static void legionLogistics() {
     w.loadInto(cid,tid);
     bool load=false,boarded=false;
     for(int tick=0;tick<3000&&!boarded;++tick) {
-        w.tick(1.f/30);load|=legionSaw(w,tak::sim::LegionMission::Load);
+        w.tick(1.f/30);load|=legionSaw(w,ta::sim::LegionMission::Load);
         boarded=w.unit(cid)->inTransport==tid;
     }
     check(load,"Legion routes the passenger's walk to its carrier");
@@ -265,13 +265,13 @@ static void legionLogistics() {
     w.unloadAt(tid,1500,1200);
     bool unload=false,released=false;
     for(int tick=0;tick<4000&&!released;++tick) {
-        w.tick(1.f/30);unload|=legionSaw(w,tak::sim::LegionMission::Unload);
+        w.tick(1.f/30);unload|=legionSaw(w,ta::sim::LegionMission::Unload);
         released=w.unit(tid)->cargo.empty();
     }
     check(unload,"Legion routes the ground carrier's unload approach");
     check(released,"the carrier unloads after a Legion approach");
     bool park=false;
-    for(int tick=0;tick<900;++tick) {w.tick(1.f/30);park|=legionSaw(w,tak::sim::LegionMission::Park);}
+    for(int tick=0;tick<900;++tick) {w.tick(1.f/30);park|=legionSaw(w,ta::sim::LegionMission::Park);}
     check(park,"Legion routes the released passenger's PARK ring");
     check(w.unit(cid)->orders.empty() && !w.unit(cid)->embarked(),"the released passenger finishes parking");
 }
@@ -290,11 +290,11 @@ static void openGround() {
     const float dropX = 600, dropZ = 600;
     w.unloadAt(tid, dropX, dropZ);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2, "an out-of-range drop queues an approach plus the unload");
     if (t->orders.size() == 2) {
-        const tak::sim::Order& leg = t->orders[0];
-        const tak::sim::Order& un = t->orders[1];
+        const ta::sim::Order& leg = t->orders[0];
+        const ta::sim::Order& un = t->orders[1];
         // The leg replaceLeg() would rebuild is the FIRST order flagged `goal`. It must
         // be the approach, never the unload -- see hazard TWO in the header.
         check(leg.goal && !leg.unload, "the routable leg is the approach, not the unload");
@@ -313,7 +313,7 @@ static void openGround() {
     const bool done = runUntilUnloaded(w, tid);
     check(done, "the transport sails to the drop point and disembarks");
     if (done) {
-        const tak::sim::Unit* c = w.unit(cid);
+        const ta::sim::Unit* c = w.unit(cid);
         check(c->inTransport == 0, "the cargo unit is off the transport");
         const float dx = c->x.toFloat() - dropX, dz = c->z.toFloat() - dropZ;
         check(std::sqrt(dx * dx + dz * dz) < 250,
@@ -347,7 +347,7 @@ static void alreadyInRange() {
     const int cid2 = w.spawn(&foot, 500, 500);
     board(w, tid, cid2);
     w.unloadAt(tid, 600, 500);
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 1 && t->orders[0].unload,
           "a drop point already in range queues the unload alone, no approach");
 
@@ -361,8 +361,8 @@ static void alreadyInRange() {
     check(quick, "it unloads both passengers after their individual transfer delays");
     const auto& a = *w.unit(cid);
     const auto& b = *w.unit(cid2);
-    check(std::abs(tak::sim::footprintOrigin(a.x, 2) - tak::sim::footprintOrigin(b.x, 2)) >= 2 ||
-          std::abs(tak::sim::footprintOrigin(a.z, 2) - tak::sim::footprintOrigin(b.z, 2)) >= 2,
+    check(std::abs(ta::sim::footprintOrigin(a.x, 2) - ta::sim::footprintOrigin(b.x, 2)) >= 2 ||
+          std::abs(ta::sim::footprintOrigin(a.z, 2) - ta::sim::footprintOrigin(b.z, 2)) >= 2,
           "passengers reserve distinct whole footprints during one unload");
 }
 
@@ -401,10 +401,10 @@ static void coastline() {
     const float dropX = shoreX + 64, dropZ = 300;        // on land, 64px past the shore
     w.unloadAt(tid, dropX, dropZ);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2, "a coastal drop still queues an approach plus the unload");
     if (t->orders.size() == 2) {
-        const tak::sim::Order& leg = t->orders[0];
+        const ta::sim::Order& leg = t->orders[0];
         check(leg.groundMission && leg.x.toFloat() == dropX && leg.z.toFloat() == dropZ,
               "the approach circle is centered on the exact land drop point");
         check(int(leg.missionRadius) + 4 == boat.transportDist - 34,
@@ -419,8 +419,8 @@ static void coastline() {
     const bool done = runUntilUnloaded(w, tid);
     check(done, "the transport crosses the water, reaches the shore and disembarks");
     if (done) {
-        const tak::sim::Unit* c = w.unit(cid);
-        const tak::sim::Unit* tr = w.unit(tid);
+        const ta::sim::Unit* c = w.unit(cid);
+        const ta::sim::Unit* tr = w.unit(tid);
         check(c->inTransport == 0, "the cargo unit is off the transport");
         check(c->x.toFloat() >= shoreX, "the cargo is put down on LAND, not in the water");
         check(tr->x.toFloat() < shoreX, "the transport itself stayed in its own domain");
@@ -450,8 +450,8 @@ static void crowdedCoastlineUnloadRetry() {
         carrier.canFly=air;carrier.cruiseAlt=100;
         if(!air)carrier.domain=UnitType::Domain::Water;
         passenger.accel={};
-        blockerType.accel=tak::sim::Fixed::fromInt(1);
-        blockerType.maxVel=tak::sim::Fixed::fromInt(3);
+        blockerType.accel=ta::sim::Fixed::fromInt(1);
+        blockerType.maxVel=ta::sim::Fixed::fromInt(3);
         const int dropX=shoreCell*16+64,dropZ=300;
         const int tid=w.spawn(&carrier,80,700),cid=w.spawn(&passenger,80,700);
         board(w,tid,cid);
@@ -460,12 +460,12 @@ static void crowdedCoastlineUnloadRetry() {
         int blocker=0;
         bool retrySeen=false,carrierMovedDuringRetry=false,passengerFollowedCarrier=true;
         bool heldThroughRetry=false,blockerClearedAtRelease=false;
-        int retryTick=-1;tak::sim::Fixed retryX{},retryZ{};
+        int retryTick=-1;ta::sim::Fixed retryX{},retryZ{};
         bool released=false;
         for(int tick=0;tick<4000 && !released;++tick) {
             const auto* before=w.unit(tid);
-            const float dx=(tak::sim::Fixed::fromInt(dropX)-before->x).toFloat();
-            const float dz=(tak::sim::Fixed::fromInt(dropZ)-before->z).toFloat();
+            const float dx=(ta::sim::Fixed::fromInt(dropX)-before->x).toFloat();
+            const float dz=(ta::sim::Fixed::fromInt(dropZ)-before->z).toFloat();
             if(!blocker && dx*dx+dz*dz < (kRange+8)*(kRange+8)) {
                 blocker=w.spawn(&blockerType,float(dropX),float(dropZ));
             }
@@ -488,10 +488,10 @@ static void crowdedCoastlineUnloadRetry() {
             released=transport->cargo.empty();
             if(released && blocker) {
                 const auto& cargo=*w.unit(cid);const auto& body=*w.unit(blocker);
-                const int px=tak::sim::footprintOrigin(cargo.x,passenger.footX);
-                const int pz=tak::sim::footprintOrigin(cargo.z,passenger.footZ);
-                const int bx=tak::sim::footprintOrigin(body.x,blockerType.footX);
-                const int bz=tak::sim::footprintOrigin(body.z,blockerType.footZ);
+                const int px=ta::sim::footprintOrigin(cargo.x,passenger.footX);
+                const int pz=ta::sim::footprintOrigin(cargo.z,passenger.footZ);
+                const int bx=ta::sim::footprintOrigin(body.x,blockerType.footX);
+                const int bz=ta::sim::footprintOrigin(body.z,blockerType.footZ);
                 const bool overlapX=bx<px+passenger.footX && px<bx+blockerType.footX;
                 const bool overlapZ=bz<pz+passenger.footZ && pz<bz+blockerType.footZ;
                 blockerClearedAtRelease=!overlapX || !overlapZ;
@@ -519,8 +519,8 @@ static void crowdedCoastlineUnloadRetry() {
         if(released) {
             check(blockerClearedAtRelease,
                   "the blocker leaves the passenger's footprint before release");
-            check(w.unit(cid)->x==tak::sim::Fixed::fromInt(dropX) &&
-                  w.unit(cid)->z==tak::sim::Fixed::fromInt(dropZ),
+            check(w.unit(cid)->x==ta::sim::Fixed::fromInt(dropX) &&
+                  w.unit(cid)->z==ta::sim::Fixed::fromInt(dropZ),
                   "retry retains the exact selected passenger landing point");
             if(!air)
                 check(w.unit(tid)->x.toFloat()<shoreCell*16,
@@ -549,7 +549,7 @@ static void farInland() {
 
     // 900px inland: no water cell is within the native approach circle.
     w.unloadAt(tid, 1300, 300);
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2 && t->orders[0].groundMission && t->orders[1].unload,
           "an unreachable destination still submits the native circle goal before unload");
     if (t->orders.size() == 2)
@@ -623,7 +623,7 @@ static void retargetWithPendingRoute() {
     // that no approach is needed, which is precisely the case that re-requests nothing.
     w.unloadAt(tid, 420, 200);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 1 && t->orders[0].unload,
           "the new order list is the bare unload");
 
@@ -631,7 +631,7 @@ static void retargetWithPendingRoute() {
     bool stillUnloading = true;
     for (int i = 0; i < 120 && stillUnloading; ++i) {
         w.tick(1.0f / 30.0f);
-        const tak::sim::Unit* u = w.unit(tid);
+        const ta::sim::Unit* u = w.unit(tid);
         if (u->cargo.empty()) break;                       // unloaded: fine
         stillUnloading = !u->orders.empty() && u->orders.back().unload;
     }
@@ -669,10 +669,10 @@ static void isolatedPond() {
     const float shoreX = float(shoreCell) * 16;           // 400
     w.unloadAt(tid, dropX, dropZ);
 
-    const tak::sim::Unit* t = w.unit(tid);
+    const ta::sim::Unit* t = w.unit(tid);
     check(t->orders.size() == 2, "an out-of-range unload queues its native circle approach");
     if (t->orders.size() == 2) {
-        const tak::sim::Order& leg = t->orders[0];
+        const ta::sim::Order& leg = t->orders[0];
         check(leg.groundMission && leg.x.toFloat() == dropX && leg.z.toFloat() == dropZ,
               "the approach stays centered on the requested point instead of preselecting water");
         check(int(leg.missionRadius) + 4 == boat.transportDist - 34,
@@ -742,7 +742,7 @@ static void boardingLimits() {
     carrier.canFly=false;
     passenger.transportLandEligible=true;
     const auto height=w.unit(ids[0])->groundY;
-    w.unit(ids[0])->groundY=tak::sim::Fixed::fromInt(20);
+    w.unit(ids[0])->groundY=ta::sim::Fixed::fromInt(20);
     check(!w.canLoadInto(ids[0],tid),"fully submerged passenger cannot board");
     passenger.modelTop=1;
     check(w.canLoadInto(ids[0],tid),"passenger model top above sea level permits boarding");
@@ -831,7 +831,7 @@ static void unloadParkPlace() {
 // Ordinary moves use the same VTOL mission for transports, builders and armed
 // flyers: queued work starts at the coarse circle; the final move refines it.
 static void ordinaryFlightMoves() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     for (int role=0;role<3;++role) {
         UnitType air=boatType();air.canFly=true;air.cruiseAlt=100;
         air.accel=Fixed::raw(20000);air.brake=Fixed::raw(60000);
@@ -886,13 +886,13 @@ static void loadOrderQueueing() {
     w.order(cid,460,400,false);
     w.order(tid,460,440,false);
 
-    tak::net::Command command;command.kind=tak::net::Cmd::Load;
+    ta::net::Command command;command.kind=ta::net::Cmd::Load;
     command.unitId=cid;command.targetId=tid;command.queue=1;
-    tak::net::Writer writer;writer.cmd(command);
-    tak::net::Reader reader(writer.b.data(),writer.b.size());
+    ta::net::Writer writer;writer.cmd(command);
+    ta::net::Reader reader(writer.b.data(),writer.b.size());
     const auto delivered=reader.cmd();
-    tak::sim::TypeRegistry registry;
-    tak::sim::applyCommand(w,registry,delivered);
+    ta::sim::TypeRegistry registry;
+    ta::sim::applyCommand(w,registry,delivered);
 
     const auto* passengerUnit=w.unit(cid);
     const auto* carrierUnit=w.unit(tid);
@@ -933,12 +933,12 @@ static void loadOrderQueueing() {
     const int unloadPassenger=unloading.spawn(&passenger,200,440);
     board(unloading,unloadCarrier,unloadPassenger);
     unloading.order(unloadCarrier,460,440,false);
-    tak::net::Command unload;unload.kind=tak::net::Cmd::Unload;
+    ta::net::Command unload;unload.kind=ta::net::Cmd::Unload;
     unload.unitId=unloadCarrier;unload.x=480;unload.z=440;unload.queue=1;
-    tak::net::Writer unloadWriter;unloadWriter.cmd(unload);
-    tak::net::Reader unloadReader(unloadWriter.b.data(),unloadWriter.b.size());
+    ta::net::Writer unloadWriter;unloadWriter.cmd(unload);
+    ta::net::Reader unloadReader(unloadWriter.b.data(),unloadWriter.b.size());
     const auto queuedUnload=unloadReader.cmd();
-    tak::sim::applyCommand(unloading,registry,queuedUnload);
+    ta::sim::applyCommand(unloading,registry,queuedUnload);
     const auto& unloadOrders=unloading.unit(unloadCarrier)->orders;
     check(unloadReader.ok && queuedUnload.queue==1 && unloadOrders.size()==3 &&
           unloadOrders[0].groundMission && !unloadOrders[0].unload &&
@@ -991,9 +991,9 @@ static void queueUnloadDuringPickup() {
         carrier.canFly=air;carrier.cruiseAlt=100;
         const int tid=w.spawn(&carrier,200,440),cid=w.spawn(&passenger,240,440);
         w.loadInto(cid,tid);
-        tak::net::Command unload;unload.kind=tak::net::Cmd::Unload;
+        ta::net::Command unload;unload.kind=ta::net::Cmd::Unload;
         unload.unitId=tid;unload.x=650;unload.z=440;unload.queue=1;
-        tak::sim::TypeRegistry registry;tak::sim::applyCommand(w,registry,unload);
+        ta::sim::TypeRegistry registry;ta::sim::applyCommand(w,registry,unload);
         bool boarded=false,released=false;
         for(int tick=0;tick<3000 && !released;++tick) {
             w.tick(1.f/30);
@@ -1025,7 +1025,7 @@ static void transportEffectEvents() {
               "pickup emits exactly one effect event before attachment");
         if(captured.empty())continue;
         const auto original=captured.front();
-        w.unloadAt(tid,500,400,tak::sim::Fixed::raw(1234567));
+        w.unloadAt(tid,500,400,ta::sim::Fixed::raw(1234567));
         for(int tick=0;tick<240 && w.unit(cid)->embarked();++tick) {
             w.tick(1.f/30);
             for(const auto& event:w.transportEffects()) {
@@ -1053,12 +1053,12 @@ static void unloadDestinationRetention() {
         const int tid=w.spawn(&carrier,400,400),cid=w.spawn(&passenger,430,400);
         w.loadInto(cid,tid);
         for(int tick=0;tick<120 && !w.unit(cid)->embarked();++tick)w.tick(1.f/30);
-        tak::net::Command command;command.kind=tak::net::Cmd::Unload;
+        ta::net::Command command;command.kind=ta::net::Cmd::Unload;
         command.unitId=tid;command.x=900;command.z=400;command.targetId=height;
-        tak::net::Writer writer;writer.cmd(command);
-        tak::net::Reader reader(writer.b.data(),writer.b.size());
+        ta::net::Writer writer;writer.cmd(command);
+        ta::net::Reader reader(writer.b.data(),writer.b.size());
         const auto delivered=reader.cmd();
-        tak::sim::TypeRegistry registry;tak::sim::applyCommand(w,registry,delivered);
+        ta::sim::TypeRegistry registry;ta::sim::applyCommand(w,registry,delivered);
         check(reader.ok && delivered.targetId==height,"unload command wire preserves signed fractional height");
         check(!w.unit(tid)->orders.empty() && w.unit(tid)->orders.back().unload &&
               w.unit(tid)->orders.back().transportY.v==height,
@@ -1143,7 +1143,7 @@ static void pickupRangeBoundary() {
         w.loadInto(cid,tid);w.tick(1.f/30);w.tick(1.f/30);w.tick(1.f/30);
         const auto* cargo=w.unit(cid);
         check(!w.unit(tid)->orders.empty() && w.unit(tid)->orders.front().transportMission.stage==2 &&
-              (!air || (cargo->x==tak::sim::Fixed::fromInt(550) && cargo->z==tak::sim::Fixed::fromFloat(400.5f))),
+              (!air || (cargo->x==ta::sim::Fixed::fromInt(550) && cargo->z==ta::sim::Fixed::fromFloat(400.5f))),
               air ? "air pickup accepts native fractional range boundary without approach" :
                     "surface carrier starts transfer while its passenger approaches the inner circle");
     }
@@ -1153,11 +1153,11 @@ static void pickupBraking() {
     World w;setTestPathfinding(w);
     w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
     UnitType carrier=boatType(),passenger=footType();
-    passenger.brake=tak::sim::Fixed::fromFloat(0.1f);
+    passenger.brake=ta::sim::Fixed::fromFloat(0.1f);
     const int tid=w.spawn(&carrier,400,400),cid=w.spawn(&passenger,430,400);
-    w.unit(cid)->speed=tak::sim::Fixed::fromInt(1);
+    w.unit(cid)->speed=ta::sim::Fixed::fromInt(1);
     w.loadInto(cid,tid);w.tick(1.f/30);w.tick(1.f/30);w.tick(1.f/30);
-    check(w.unit(cid)->speed>tak::sim::Fixed() && w.unit(tid)->orders.front().transportTicks==0 &&
+    check(w.unit(cid)->speed>ta::sim::Fixed() && w.unit(tid)->orders.front().transportTicks==0 &&
           w.unit(tid)->orders.front().transportApproachAttempts==1,
           "pickup brakes a moving passenger and delays the beam by six ticks");
     for(int tick=0;tick<16;++tick)w.tick(1.f/30);
@@ -1208,13 +1208,13 @@ static void cargoSight() {
     check(explored(*loaded)>explored(*empty)+100,
           "the passenger's own sight explores beyond the carrier's");
     // The floater clamp in 4dad3e..4dadd2 wraps its byte arithmetic to sea-waterline.
-    const auto low=tak::sim::retailAttachedPosition({1,3<<16,2},true,5,20);
+    const auto low=ta::sim::retailAttachedPosition({1,3<<16,2},true,5,20);
     check(low[1]==15<<16 && low[0]==1 && low[2]==2,"a floater cargo is held at sea minus waterline");
-    check(tak::sim::retailAttachedPosition({1,3<<16,2},false,5,20)[1]==3<<16,
+    check(ta::sim::retailAttachedPosition({1,3<<16,2},false,5,20)[1]==3<<16,
           "a non-floater cargo takes the attach height unchanged");
-    check(tak::sim::retailAttachedPosition({0,-400*65536,0},true,200,10)[1]==-190*65536,
+    check(ta::sim::retailAttachedPosition({0,-400*65536,0},true,200,10)[1]==-190*65536,
           "the floater clamp wraps (waterline*0xffff+sea)<<16 to (sea-waterline)<<16");
-    check(tak::sim::retailAttachPoint({7,8,9},{},{},-1,0)==std::array<int32_t,3>{7,8,9},
+    check(ta::sim::retailAttachPoint({7,8,9},{},{},-1,0)==std::array<int32_t,3>{7,8,9},
           "attach piece -1 is the host position");
 }
 
@@ -1226,8 +1226,8 @@ static void airPickupTransfer() {
     w.loadInto(first,tid);w.loadInto(second,tid);
     w.tick(1.f/30);
     const auto* before=w.unit(tid);
-    const auto departure=tak::sim::retailUnloadStepOut({before->x.v,before->flightY.v,before->z.v},
-        tak::sim::portHeadingToRetail(before->heading),uint16_t(carrier.transportDist));
+    const auto departure=ta::sim::retailUnloadStepOut({before->x.v,before->flightY.v,before->z.v},
+        ta::sim::portHeadingToRetail(before->heading),uint16_t(carrier.transportDist));
     w.tick(1.f/30);w.tick(1.f/30);
     const auto* transport=w.unit(tid);
     check(!transport->orders.empty() && transport->orders.front().flightGoal &&
@@ -1240,7 +1240,7 @@ static void airPickupTransfer() {
           "air carrier transfers only its assigned passenger at a time");
     // Once the beam is committed, the carrier's continuing motion must not
     // reset it when the pair move outside the initial pickup radius.
-    w.unit(tid)->x=tak::sim::Fixed::fromInt(1000);
+    w.unit(tid)->x=ta::sim::Fixed::fromInt(1000);
     for(int tick=0;tick<20 && !w.unit(first)->embarked();++tick)w.tick(1.f/30);
     check(w.unit(first)->inTransport==tid,"committed air pickup finishes beyond the approach radius");
     w.stop(tid);
@@ -1301,9 +1301,9 @@ static void pickupMissionOwnership() {
         World w;setTestPathfinding(w);
         w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
         UnitType carrier=boatType(),passenger=footType();carrier.canFly=air;carrier.cruiseAlt=100;
-        passenger.brake=tak::sim::Fixed();
+        passenger.brake=ta::sim::Fixed();
         const int tid=w.spawn(&carrier,400,400),cid=w.spawn(&passenger,430,400);
-        w.unit(cid)->speed=tak::sim::Fixed::fromInt(1);
+        w.unit(cid)->speed=ta::sim::Fixed::fromInt(1);
         w.loadInto(cid,tid);
         for(int tick=0;tick<3;++tick)w.tick(1.f/30);
         check(w.unit(tid)->orders.front().transportApproachAttempts==1 &&
@@ -1359,11 +1359,11 @@ static void surfacePickupNavigation() {
         // Legion plans on the placement plane: on the legacy nav-grid plane a
         // body (a plain Move as well) holds at the water's corner, the known
         // gap in docs/legion-pathfinding.md "Scope".
-        const bool legion=g_pathfinding==tak::sim::PathfindingMode::Legion;
+        const bool legion=g_pathfinding==ta::sim::PathfindingMode::Legion;
         if(legion)w.setMapPlacementFeatures(std::vector<uint16_t>(size_t(96)*96,0xffff),{});
         UnitType carrier=boatType(),passenger=footType();
-        carrier.maxVel=tak::sim::Fixed::raw(1);
-        passenger.brake=tak::sim::Fixed::fromFloat(0.1f);
+        carrier.maxVel=ta::sim::Fixed::raw(1);
+        passenger.brake=ta::sim::Fixed::fromFloat(0.1f);
         const int tid=w.spawn(&carrier,1000,400),cid=w.spawn(&passenger,200,400);
         w.loadInto(cid,tid);
         bool sawRoute=false,preserved=true;
@@ -1373,7 +1373,7 @@ static void surfacePickupNavigation() {
             size_t end=0;while(end<orders.size() && !orders[end].goal)++end;
             // Legion installs no native waypoints: the route is Legion's
             // while it serves this pickup leg.
-            if(legion ? w.legionNavigator() && w.legionNavigator()->mission(*w.unit(cid))==tak::sim::LegionMission::Load &&
+            if(legion ? w.legionNavigator() && w.legionNavigator()->mission(*w.unit(cid))==ta::sim::LegionMission::Load &&
                         end<orders.size() && orders[end].controller :
                         end>0 && end<orders.size()) {
                 sawRoute=true;
@@ -1393,7 +1393,7 @@ static void surfacePickupNavigation() {
         for(int z=28;z<35;++z)for(int x=25;x<50;++x)heights[size_t(z)*96+x]=100;
         w.setTerrain(heights,96,96,40);w.setPathService(true);
         UnitType carrier=boatType(),passenger=footType();carrier.domain=UnitType::Domain::Water;
-        passenger.maxVel=tak::sim::Fixed::raw(1);
+        passenger.maxVel=ta::sim::Fixed::raw(1);
         const int tid=w.spawn(&carrier,200,300),first=w.spawn(&passenger,850,800),
             second=w.spawn(&passenger,850,850);
         w.loadInto(first,tid);w.loadInto(second,tid);
@@ -1423,7 +1423,7 @@ static void surfacePickupNavigation() {
         UnitType carrier=boatType(),passenger=footType();
         const int tid=w.spawn(&carrier,400,400),cid=w.spawn(&passenger,1000,400);
         w.loadInto(cid,tid);w.tick(1.f/30);w.tick(1.f/30);
-        w.unit(tid)->x=tak::sim::Fixed::fromInt(875);
+        w.unit(tid)->x=ta::sim::Fixed::fromInt(875);
         w.tick(1.f/30);
         const auto& goal=w.unit(tid)->orders.front();
         check((goal.transportMission.pending&0x500)==0x500 && goal.controller==0,
@@ -1448,7 +1448,7 @@ static void surfacePickupNavigation() {
         }
         check(failed,"boxed ship generates a native navigator failure for its pickup mission");
         if(failed) {
-            w.unit(cid)->speed=tak::sim::Fixed();
+            w.unit(cid)->speed=ta::sim::Fixed();
             w.tick(1.f/30);
             check(w.unit(tid)->orders.empty() && !w.unit(cid)->embarked(),
                   "navigator failure aborts pickup when its passenger has stopped");
@@ -1465,8 +1465,8 @@ static void pickupApproachFailure() {
         UnitType carrier=boatType(),passenger=footType();carrier.canFly=air;carrier.cruiseAlt=100;
         const int tid=w.spawn(&carrier,400,400),cid=w.spawn(&passenger,1000,400);
         w.loadInto(cid,tid);w.tick(1.f/30);w.tick(1.f/30);
-        if(inRange)w.unit(cid)->x=tak::sim::Fixed::fromInt(430);
-        w.unit(cid)->speed=moving ? tak::sim::Fixed::fromInt(1) : tak::sim::Fixed();
+        if(inRange)w.unit(cid)->x=ta::sim::Fixed::fromInt(430);
+        w.unit(cid)->speed=moving ? ta::sim::Fixed::fromInt(1) : ta::sim::Fixed();
         w.unit(tid)->missionEvents|=0x200;
         w.tick(1.f/30);
         const auto& orders=w.unit(tid)->orders;
@@ -1497,7 +1497,7 @@ static void airPickupArrivalEvent() {
           "air pickup pursues passenger height with the native arrival radius");
     // Put the controller inside its radius before its polling deadline. The
     // actual movement update must generate the event; do not inject it here.
-    w.unit(tid)->x=tak::sim::Fixed::fromInt(852);
+    w.unit(tid)->x=ta::sim::Fixed::fromInt(852);
     w.tick(1.f/30);
     check(w.unit(tid)->orders.front().transportMission.stage==1 &&
           (w.unit(tid)->orders.front().transportMission.pending&0x100) && deadline>4,
@@ -1516,7 +1516,7 @@ static void pickupNearbySelection(bool air,bool slowBrake=false) {
     World w;setTestPathfinding(w);w.setGameSeed(173);w.setPathService(true);
     w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
     UnitType carrier=boatType(),passenger=footType();carrier.canFly=air;carrier.cruiseAlt=100;
-    if(!slowBrake)passenger.brake=tak::sim::Fixed::fromFloat(0.125f);
+    if(!slowBrake)passenger.brake=ta::sim::Fixed::fromFloat(0.125f);
     const int tid=w.spawn(&carrier,400,400),far=w.spawn(&passenger,1000,400);
     const int first=w.spawn(&passenger,430,400),second=w.spawn(&passenger,430,430),
         canceled=w.spawn(&passenger,400,430);
@@ -1566,9 +1566,9 @@ static void pickupNearbySelection(bool air,bool slowBrake=false) {
 }
 
 static void retailRoster(const char* root) {
-    auto vfs=tak::hpi::mountRetailRoot(root);
+    auto vfs=ta::hpi::mountRetailRoot(root);
     for(bool crusades:{false,true}) {
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         for(bool air:{false,true}) {
             World w;setTestPathfinding(w);
             w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
@@ -1590,7 +1590,7 @@ static void retailRoster(const char* root) {
                     "passenger reload advances while executing pickup");
                 const auto& events=w.unit(cid)->weaponAnimations;
                 for(size_t i=0;i<events.count;++i)
-                    clears+=events.at(i).kind==tak::RetailWeaponAnimation::Clear;
+                    clears+=events.at(i).kind==ta::RetailWeaponAnimation::Clear;
             }
             check(w.unit(cid)->embarked(),"armed passenger boards through its real load order");
             check(!w.unit(cid)->scriptAimTarget && clears==1,
@@ -1739,13 +1739,13 @@ static void retailRoster(const char* root) {
 // in range and after an approach: once released it comes to rest within its own
 // stopping distance of where it let go (flyers: plus the landing search's reach).
 static void postUnloadRoster(const char* root) {
-    using tak::sim::Fixed;
-    using tak::sim::PathfindingMode;
+    using ta::sim::Fixed;
+    using ta::sim::PathfindingMode;
     std::printf("every carrier stays at its drop point after unloading:\n");
-    auto vfs=tak::hpi::mountRetailRoot(root);
+    auto vfs=ta::hpi::mountRetailRoot(root);
     int carriers=0,cases=0,drifted=0;
     for(bool crusades:{false,true}) {
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         const auto* foot=registry.find("araarch");
         check(foot!=nullptr,"post-unload roster passenger type is available");
         if(!foot)continue;
@@ -1781,10 +1781,10 @@ static void postUnloadRoster(const char* root) {
                         count,near?"near":"far");
                     check(aboard(),what);
                     if(!aboard())continue;
-                    tak::sim::Unit* t=w.unit(tid);
+                    ta::sim::Unit* t=w.unit(tid);
                     const float dropX=near ? std::max(880.f,t->x.toFloat()-60) : 900.f;
                     const float dropZ=near ? t->z.toFloat()+80 : std::min(t->z.toFloat()+800,1900.f);
-                    const bool inRange=tak::sim::retailTransportInRange((Fixed::fromFloat(dropX)-t->x).v,
+                    const bool inRange=ta::sim::retailTransportInRange((Fixed::fromFloat(dropX)-t->x).v,
                         (Fixed::fromFloat(dropZ)-t->z).v,uint16_t(type.transportDist));
                     w.unloadAt(tid,dropX,dropZ);
                     const bool released=runUntilUnloaded(w,tid,6000);
@@ -1834,11 +1834,11 @@ static void postUnloadRoster(const char* root) {
 // Standing by after the drop must not swallow queued work: with a move or a pickup
 // queued behind the unload, each air carrier takes it up instead of landing.
 static void postUnloadQueued(const char* root) {
-    using tak::sim::PathfindingMode;
+    using ta::sim::PathfindingMode;
     std::printf("queued orders after an air unload:\n");
-    auto vfs=tak::hpi::mountRetailRoot(root);
+    auto vfs=ta::hpi::mountRetailRoot(root);
     for(bool crusades:{false,true}) {
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         const auto* foot=registry.find("araarch");
         if(!foot)continue;
         for(const char* id:{"zonroc","tarship","creaeri"}) {
@@ -1910,8 +1910,8 @@ static void airAcrossWater() {
     approach=w.unit(tid);
     const auto* flightGoal=approach->orders.empty()?nullptr:(
         approach->orders.front().flightGoal ? &*approach->orders.front().flightGoal : nullptr);
-    check(flightGoal && flightGoal->point.x==tak::sim::Fixed::fromInt(1480).v &&
-          flightGoal->point.z==tak::sim::Fixed::fromInt(1200).v &&
+    check(flightGoal && flightGoal->point.x==ta::sim::Fixed::fromInt(1480).v &&
+          flightGoal->point.z==ta::sim::Fixed::fromInt(1200).v &&
           flightGoal->flags==0x30 &&
           flightGoal->radius==int16_t(air.transportDist-34),
         "distant air unload first flies to the native transportdistance-34 circle");
@@ -1922,8 +1922,8 @@ static void airAcrossWater() {
     const float unloadTravel=std::hypot((w.unit(tid)->x-unloadStartX).toFloat(),
                                         (w.unit(tid)->z-unloadStartZ).toFloat());
     check(unloadTravel>150.0f,"air carrier physically flies to the distant unload point");
-    check(std::abs((released->x-tak::sim::Fixed::fromInt(1480)).toFloat())<0.01f &&
-          std::abs((released->z-tak::sim::Fixed::fromInt(1200)).toFloat())<0.01f,
+    check(std::abs((released->x-ta::sim::Fixed::fromInt(1480)).toFloat())<0.01f &&
+          std::abs((released->z-ta::sim::Fixed::fromInt(1200)).toFloat())<0.01f,
           "air carrier releases cargo at the selected landing point");
     const auto parkOrder=std::find_if(released->orders.begin(),released->orders.end(),
         [](const auto& order){return order.park.has_value();});
@@ -2113,7 +2113,7 @@ static void passengerCancellationWait() {
 }
 
 static void passengerMissionSchedule() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     struct Host {
         RetailMissionState mission;
         uint32_t now=0,retries=0;
@@ -2167,9 +2167,9 @@ static void airUnloadArrivalEvent() {
     for(int tick=0;tick<120 && !w.unit(cid)->embarked();++tick)w.tick(1.f/30);
     check(w.unit(cid)->embarked(),"air unload arrival fixture boards passenger");
     w.unloadAt(tid,500,400);
-    w.unit(tid)->x=tak::sim::Fixed::fromInt(100);w.tick(1.f/30);
+    w.unit(tid)->x=ta::sim::Fixed::fromInt(100);w.tick(1.f/30);
     const auto deadline=w.unit(tid)->orders.front().transportMission.deadline;
-    w.unit(tid)->x=tak::sim::Fixed::fromInt(400);w.tick(1.f/30);
+    w.unit(tid)->x=ta::sim::Fixed::fromInt(400);w.tick(1.f/30);
     check((w.unit(tid)->orders.front().transportMission.pending&0x500)==0x500 &&
           !w.unit(tid)->orders.front().flightGoal,
           "air unload controller posts arrival and detaches before its polling deadline");
@@ -2182,7 +2182,7 @@ static void airUnloadArrivalEvent() {
     flying->orders.front().transportMission.pending|=0x400;
     flying->flightNavigation.destination={flying->x.v+8*65536,flying->flightY.v,flying->z.v};
     flying->flightNavigation.velocity={};
-    flying->flightVelocity={65536,0,0};flying->speed=tak::sim::Fixed::fromInt(1);
+    flying->flightVelocity={65536,0,0};flying->speed=ta::sim::Fixed::fromInt(1);
     const auto retained=flying->flightNavigation.destination;
     const auto oldX=flying->x,oldZ=flying->z;
     w.tick(1.f/30);
@@ -2205,11 +2205,11 @@ static void airUnloadControllerPendingEvents() {
     w.unloadAt(tid,500,400);
     // Drift outside range after the command, exercising the unload handler's
     // own approach rather than the separate command-side movement prefix.
-    w.unit(tid)->x=tak::sim::Fixed::fromInt(100);w.tick(1.f/30);
+    w.unit(tid)->x=ta::sim::Fixed::fromInt(100);w.tick(1.f/30);
     for(bool inside:{false,true}) {
         auto& mission=w.unit(tid)->orders.front().transportMission;
         mission.deadline=0;mission.pending=0x403700;
-        if(inside)w.unit(tid)->x=tak::sim::Fixed::fromInt(450);
+        if(inside)w.unit(tid)->x=ta::sim::Fixed::fromInt(450);
         w.tick(1.f/30);
         const auto& after=w.unit(tid)->orders.front().transportMission;
         check((after.pending&0x403700)==0x400000,
@@ -2220,7 +2220,7 @@ static void airUnloadControllerPendingEvents() {
 }
 
 static void airUnloadWorldTimeline() {
-    using tak::sim::Fixed;
+    using ta::sim::Fixed;
     World w;setTestPathfinding(w);w.setGameSeed(71);
     w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
     UnitType carrier=boatType(),passenger=footType();
@@ -2245,7 +2245,7 @@ static void airUnloadWorldTimeline() {
         w.tick(1.f/30);
         const auto& unit=*w.unit(tid);
         const auto* order=unit.orders.empty()?nullptr:&unit.orders.front();
-        const tak::sim::RetailMissionState emptyMission{};
+        const ta::sim::RetailMissionState emptyMission{};
         const auto& mission=order ? order->transportMission : emptyMission;
         const auto* goal=order && order->flightGoal ? &*order->flightGoal : nullptr;
         const auto& passengerUnit=*w.unit(cid);
@@ -2262,7 +2262,7 @@ static void airUnloadWorldTimeline() {
 }
 
 static void surfaceUnloadWorldTimeline() {
-    using tak::sim::Fixed;
+    using ta::sim::Fixed;
     World w;setTestPathfinding(w);w.setPathService(false);w.setGameSeed(71);
     w.setTerrain(coastHeights(64,64,25),64,64,40);
     UnitType carrier=boatType(),passenger=footType();
@@ -2282,7 +2282,7 @@ static void surfaceUnloadWorldTimeline() {
         w.tick(1.f/30);
         const auto& unit=*w.unit(tid);
         const auto* order=unit.orders.empty()?nullptr:&unit.orders.front();
-        const tak::sim::RetailMissionState emptyMission{};
+        const ta::sim::RetailMissionState emptyMission{};
         const auto& mission=order ? order->transportMission : emptyMission;
         const auto center=order && order->missionTarget ? *order->missionTarget :
             std::pair<Fixed,Fixed>{};
@@ -2321,7 +2321,7 @@ static void pickupControllerPendingEvents() {
             w.tick(1.f/30);
             check((w.unit(tid)->orders.front().transportMission.pending&0x403000)==0x403000,
                   "air pursuit position refresh preserves pending events between mission polls");
-            w.unit(tid)->x=w.unit(cid)->x-tak::sim::Fixed::fromInt(100);
+            w.unit(tid)->x=w.unit(cid)->x-ta::sim::Fixed::fromInt(100);
             w.unit(tid)->z=w.unit(cid)->z;
             auto& approach=w.unit(tid)->orders.front().transportMission;
             approach.pending=0x403700;approach.deadline=0;
@@ -2382,7 +2382,7 @@ static void surfaceUnloadRouteFixture(int variant) {
     }
 
     World w;setTestPathfinding(w);w.setTerrain(heights,W,H,sea);w.setPathService(true);
-    tak::sim::RetailReplayProbe::dumpSurfaceSearchGrades(w);
+    ta::sim::RetailReplayProbe::dumpSurfaceSearchGrades(w);
     UnitType carrier=boatType(),passenger=footType();
     carrier.domain=UnitType::Domain::Water;carrier.floater=true;
     carrier.minWaterDepth=13;carrier.maxWaterDepth=10000;
@@ -2402,7 +2402,7 @@ static void surfaceUnloadRouteFixture(int variant) {
         w.tick(1.f/30);
         const auto* u=w.unit(tid);
         if(!u || u->orders.empty()) break;
-        if(std::getenv("TAK_ROUTE_TRACE") && (tick<=2 || (tick>=14 && tick<=15))) {
+        if(std::getenv("TA_ROUTE_TRACE") && (tick<=2 || (tick>=14 && tick<=15))) {
             const auto& o=u->orders.front();
             std::printf("TRACE %u pos=%d,%d heading=%d orders=%zu front=%d,%d segment=%d,%d has=%d mission=%d radius=%u target=%d,%d consumed=%d exhausted=%d routeStamp=%d pending=%d completed=%llu failed=%llu\n",
                 tick,u->x.v,u->z.v,u->heading.v,u->orders.size(),o.x.v,o.z.v,o.segmentX.v,o.segmentZ.v,
@@ -2425,12 +2425,12 @@ static void surfaceUnloadRouteFixture(int variant) {
             static_cast<unsigned long long>(w.pathStats().failures()));
         for(size_t i=0;i<end;++i)
             std::printf("%d %d\n",orders[i].x.v,orders[i].z.v);
-        if(std::getenv("TAK_SURFACE_STEP")) {
+        if(std::getenv("TA_SURFACE_STEP")) {
             auto* stepped=w.unit(tid);
             stepped->x=orders.front().segmentX;stepped->z=orders.front().segmentZ;
-            stepped->speed=tak::sim::Fixed();
-            stepped->heading=tak::sim::retailHeadingToPort(
-                tak::sim::portHeadingToRetail(stepped->heading));
+            stepped->speed=ta::sim::Fixed();
+            stepped->heading=ta::sim::retailHeadingToPort(
+                ta::sim::portHeadingToRetail(stepped->heading));
             stepped->turnReqBam=0;stepped->groundMoveTick=0;stepped->groundScanTick=tick+1000;
             stepped->groundMovementMode=0;stepped->groundSpeedMode=0;stepped->groundTerrainFlags=0x1000;
             const size_t activeGoal=World::currentLeg(stepped->orders);
@@ -2439,7 +2439,7 @@ static void surfaceUnloadRouteFixture(int variant) {
             stepped->orders[activeGoal].transportMission.deadline=tick+474;
             w.setPathService(false);
             std::printf("WORLDSEED %d %d %d %d %d %d %d\n",stepped->x.v,stepped->groundY.v,
-                stepped->z.v,int(tak::sim::portHeadingToRetail(stepped->heading)),
+                stepped->z.v,int(ta::sim::portHeadingToRetail(stepped->heading)),
                 stepped->speed.v,stepped->baseSpeed.v,stepped->groundTerrainFlags);
             const auto& initialMission=stepped->orders[activeGoal].transportMission;
             std::printf("WORLDMISSION %u %u %u %u %u %u %u %u %d %d\n",
@@ -2450,14 +2450,14 @@ static void surfaceUnloadRouteFixture(int variant) {
                 stepped->orders[activeGoal].missionTarget ? stepped->orders[activeGoal].missionTarget->second.v : 0);
             // Cover the retry, unload transfer, and initial post-transfer coast.
             unsigned stepLimit=32;
-            if(const char* text=std::getenv("TAK_SURFACE_STEPS"))
+            if(const char* text=std::getenv("TA_SURFACE_STEPS"))
                 stepLimit=unsigned(std::clamp(std::atoi(text),1,1000));
             for(unsigned step=1;step<=stepLimit;++step) {
                 w.tick(1.f/30);
                 const auto* after=w.unit(tid);
                 std::printf("WORLDSTEP %u %d %d %d %d %d %u %u %u %d\n",step,
                     after->x.v,after->groundY.v,after->z.v,
-                    int(tak::sim::portHeadingToRetail(after->heading)),after->speed.v,
+                    int(ta::sim::portHeadingToRetail(after->heading)),after->speed.v,
                     unsigned(after->groundMovementMode),unsigned(after->groundSpeedMode),
                     unsigned(after->groundTerrainFlags),after->turnReqBam);
                 const auto& orders=after->orders;
@@ -2481,7 +2481,7 @@ static void surfaceUnloadRouteFixture(int variant) {
                 const size_t missionIndex=orders.empty()?0:World::currentLeg(orders);
                 const auto* missionOrder=orders.empty()?nullptr:&orders[missionIndex];
                 const auto* passengerUnit=w.unit(cid);
-                const auto& mission=missionOrder ? missionOrder->transportMission : tak::sim::RetailMissionState{};
+                const auto& mission=missionOrder ? missionOrder->transportMission : ta::sim::RetailMissionState{};
                 std::printf("WORLDTRANS %u %u %u %u %u %u %u %u %u %u %u %u\n",step,
                     unsigned(orders.size()),unsigned(after->cargo.size()),unsigned(mission.stage),
                     mission.waitMask,mission.deadline,mission.pending,mission.flags,
@@ -2509,31 +2509,31 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                                          const char* carrierName=nullptr,
                                          const char* passengerName=nullptr,
                                          bool crusades=false) {
-    auto vfs=tak::hpi::mountRetailRoot(retailRoot);
-    const std::string mapPath=tak::hpi::findMap(vfs,mapName);
+    auto vfs=ta::hpi::mountRetailRoot(retailRoot);
+    const std::string mapPath=ta::hpi::findMap(vfs,mapName);
     if(mapPath.empty()) throw std::runtime_error(std::string("map not found: ")+mapName);
-    const auto map=tak::tnt::Map::load(vfs.read(mapPath),mapPath);
+    const auto map=ta::tnt::Map::load(vfs.read(mapPath),mapPath);
     if((!carrierName && (footprint<1 || footprint>16)) || startCellX<0 || startCellZ<0 ||
        goalCellX<0 || goalCellZ<0 || startCellX>=map.width || startCellZ>=map.height ||
        goalCellX>=map.width || goalCellZ>=map.height)
         throw std::runtime_error("surface-unload map route coordinates outside the map");
 
-    std::unique_ptr<tak::sim::TypeRegistry> registry;
+    std::unique_ptr<ta::sim::TypeRegistry> registry;
     UnitType syntheticCarrier{},syntheticPassenger{};
     const UnitType* carrierType=nullptr;
     const UnitType* passengerType=nullptr;
     if(carrierName || passengerName) {
         if(!carrierName || !passengerName)
             throw std::runtime_error("both retail carrier and passenger names are required");
-        registry=std::make_unique<tak::sim::TypeRegistry>();
-        tak::sim::setupRegistry(*registry,vfs,crusades);
+        registry=std::make_unique<ta::sim::TypeRegistry>();
+        ta::sim::setupRegistry(*registry,vfs,crusades);
         carrierType=registry->find(carrierName);
         passengerType=registry->find(passengerName);
         if(!carrierType || !passengerType)
             throw std::runtime_error("retail carrier or passenger unit type not found");
         // Sensitivity fixture for the cargo sight check: a passenger that sees
         // farther than its carrier reveals cells only its own sight reaches.
-        if(const char* sight=std::getenv("TAK_MAP_SURFACE_CARGO_SIGHT");sight && *sight)
+        if(const char* sight=std::getenv("TA_MAP_SURFACE_CARGO_SIGHT");sight && *sight)
             const_cast<UnitType*>(passengerType)->sight=std::atoi(sight);
         if(!carrierType->canTransport || carrierType->domain!=UnitType::Domain::Water ||
            !passengerType->canMove || passengerType->domain==UnitType::Domain::Water)
@@ -2548,7 +2548,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
 
     World w;setTestPathfinding(w);
     w.setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
-    tak::sim::registerMapFeatures(w,map,vfs);
+    ta::sim::registerMapFeatures(w,map,vfs);
     if(registry) w.buildNavClasses(*registry);
     w.setPathService(true);
     const int fx=carrierType->footX,fz=carrierType->footZ;
@@ -2563,7 +2563,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                      int(carrierType->floater && carrierType->minWaterDepth>0));
     }
     board(w,tid,cid);w.unloadAt(tid,float(goalX),float(goalZ));
-    tak::sim::RetailReplayProbe::dumpSurfaceSearchGrades(w);
+    ta::sim::RetailReplayProbe::dumpSurfaceSearchGrades(w);
     std::printf("MAPROUTE %d %d %d %d %d %d %d %d %d\n",map.width,map.height,
         map.seaLevel,fx,startX,startZ,goalX,goalZ,tid);
 
@@ -2573,8 +2573,8 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
         if(!u || u->orders.empty()) break;
         if(w.pathStats().completions()+w.pathStats().failures()==0) continue;
         const auto& orders=u->orders;
-        if(std::getenv("TAK_DUMP_ROUTE_ATTEMPT"))
-            tak::sim::RetailReplayProbe::dumpCompletedPathAttempt(w,tid);
+        if(std::getenv("TA_DUMP_ROUTE_ATTEMPT"))
+            ta::sim::RetailReplayProbe::dumpCompletedPathAttempt(w,tid);
         size_t end=0;
         while(end<orders.size() && !orders[end].unload) ++end;
         std::printf("ROUTE %u %d %d %d %d %zu %llu %llu\n",tick,u->x.v,u->z.v,
@@ -2583,16 +2583,16 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
             static_cast<unsigned long long>(w.pathStats().failures()));
         for(size_t i=0;i<end;++i)
             std::printf("%d %d\n",orders[i].x.v,orders[i].z.v);
-        if(const char* text=std::getenv("TAK_MAP_SURFACE_STEPS")) {
+        if(const char* text=std::getenv("TA_MAP_SURFACE_STEPS")) {
             const unsigned stepLimit=unsigned(std::clamp(std::atoi(text),1,10000));
             auto* stepped=w.unit(tid);
             stepped->x=orders.front().segmentX;stepped->z=orders.front().segmentZ;
-            stepped->speed=tak::sim::Fixed();
-            stepped->heading=tak::sim::retailHeadingToPort(
-                tak::sim::portHeadingToRetail(stepped->heading));
+            stepped->speed=ta::sim::Fixed();
+            stepped->heading=ta::sim::retailHeadingToPort(
+                ta::sim::portHeadingToRetail(stepped->heading));
             stepped->turnReqBam=0;stepped->groundMoveTick=0;
             unsigned scanAfter=stepLimit+1000;
-            if(const char* scan=std::getenv("TAK_MAP_SURFACE_SCAN_AFTER"))
+            if(const char* scan=std::getenv("TA_MAP_SURFACE_SCAN_AFTER"))
                 scanAfter=unsigned(std::clamp(std::atoi(scan),0,2500));
             stepped->groundScanTick=tick+scanAfter;
             stepped->groundMovementMode=0;stepped->groundSpeedMode=0;
@@ -2605,10 +2605,10 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
             unsigned routeCompletions=w.pathStats().completions();
             bool routeBlockerCleared=false;
             bool routeSearchEnabled=false;
-            const char* routeAlwaysEnabled=std::getenv("TAK_MAP_SURFACE_ROUTE_ALWAYS_ON");
+            const char* routeAlwaysEnabled=std::getenv("TA_MAP_SURFACE_ROUTE_ALWAYS_ON");
             const bool alwaysEnabledRouteSearch=routeAlwaysEnabled && *routeAlwaysEnabled &&
                 *routeAlwaysEnabled!='0';
-            const char* routeBlockerEnabled=std::getenv("TAK_MAP_SURFACE_ROUTE_BLOCKER");
+            const char* routeBlockerEnabled=std::getenv("TA_MAP_SURFACE_ROUTE_BLOCKER");
             const bool liveRouteBlocker=routeBlockerEnabled && *routeBlockerEnabled &&
                 *routeBlockerEnabled!='0';
             std::vector<std::pair<int,int>> initialWaypoints;
@@ -2627,7 +2627,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                     w.unit(routeBlocker)->x.v,w.unit(routeBlocker)->z.v,
                     int(initialWaypoints.size()),carrierType->footX,carrierType->footZ);
             }
-            if(const char* enabled=std::getenv("TAK_MAP_SURFACE_BLOCK_SHORE")) {
+            if(const char* enabled=std::getenv("TA_MAP_SURFACE_BLOCK_SHORE")) {
                 if(*enabled && *enabled!='0') {
                     if(!passengerType || !passengerType->canMove || passengerType->canFly)
                         throw std::runtime_error("shore blocker requires a ground passenger profile");
@@ -2635,7 +2635,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                     const auto* body=w.unit(shoreBlocker);
                     std::printf("WORLD_BLOCKER 0 %d %d %d %d 0 %zu 0\n",body->x.v,
                         body->z.v,body->speed.v,
-                        int(tak::sim::portHeadingToRetail(body->heading)),
+                        int(ta::sim::portHeadingToRetail(body->heading)),
                         w.unit(tid)->cargo.size());
                 }
             }
@@ -2643,7 +2643,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
             if(!alwaysEnabledRouteSearch) w.setPathService(false);
             std::printf("WORLDSEED %d %d %d %d %d %d %d\n",stepped->x.v,
                 stepped->groundY.v,stepped->z.v,
-                int(tak::sim::portHeadingToRetail(stepped->heading)),
+                int(ta::sim::portHeadingToRetail(stepped->heading)),
                 stepped->speed.v,stepped->baseSpeed.v,stepped->groundTerrainFlags);
             std::printf("WORLDTYPE %d %d %d %d %d\n",stepped->type->maxVel.v,
                 stepped->type->accel.v,stepped->type->brake.v,stepped->type->turnRate,
@@ -2655,7 +2655,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
             const int explorationHeight=map.height/2;
             // Exploration deltas for native sight-producer comparisons; the
             // route-blocker trace always needs them.
-            const char* explorationTrace=std::getenv("TAK_MAP_SURFACE_EXPLORATION");
+            const char* explorationTrace=std::getenv("TA_MAP_SURFACE_EXPLORATION");
             const bool traceExploration=liveRouteBlocker ||
                 (explorationTrace && *explorationTrace && *explorationTrace!='0');
             if(traceExploration)
@@ -2703,7 +2703,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                     const bool inUnloadCircle=dx*dx+dz*dz<=radius*radius;
                     std::printf("WORLD_ROUTE_RELEASE %u %d %d %d %d %d %d %zu %d\n",step,
                         after->x.v,after->z.v,w.unit(cid)->x.v,w.unit(cid)->z.v,
-                        int(tak::sim::RetailReplayProbe::waterFootprintPassable(w,after)),
+                        int(ta::sim::RetailReplayProbe::waterFootprintPassable(w,after)),
                         int(inUnloadCircle),after->cargo.size(),
                         int(w.unit(cid)->inTransport==tid));
                     routeReleaseReported=true;
@@ -2732,8 +2732,8 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                         int(after->bodyBlockStreak),after->cargo.size(),
                         int(w.unit(cid)->inTransport==tid));
                     if(changed && !routeAttemptReported &&
-                       std::getenv("TAK_DUMP_ROUTE_ATTEMPT")) {
-                        tak::sim::RetailReplayProbe::dumpCompletedPathAttempt(w,tid);
+                       std::getenv("TA_DUMP_ROUTE_ATTEMPT")) {
+                        ta::sim::RetailReplayProbe::dumpCompletedPathAttempt(w,tid);
                         routeAttemptReported=true;
                     }
                     if(!routeBlockerCleared && changed) {
@@ -2745,12 +2745,12 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                     const auto* body=w.unit(routeBlocker);
                     std::printf("WORLD_ROUTE_BODY %u %d %d %d %d %u\n",step,
                         body->x.v,body->z.v,body->speed.v,
-                        int(tak::sim::portHeadingToRetail(body->heading)),
+                        int(ta::sim::portHeadingToRetail(body->heading)),
                         unsigned(routeBlockerCleared));
                 }
                 std::printf("WORLDSTEP %u %d %d %d %d %d %u %u %u %d %u\n",step,
                     after->x.v,after->groundY.v,after->z.v,
-                    int(tak::sim::portHeadingToRetail(after->heading)),after->speed.v,
+                    int(ta::sim::portHeadingToRetail(after->heading)),after->speed.v,
                     unsigned(after->groundMovementMode),unsigned(after->groundSpeedMode),
                     unsigned(after->groundTerrainFlags),after->turnReqBam,after->groundScanTick);
                 if(traceExploration)
@@ -2771,7 +2771,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                     const auto* body=w.unit(shoreBlocker);
                     std::printf("WORLD_BLOCKER %u %d %d %d %d %u %zu %u\n",step,
                         body->x.v,body->z.v,body->speed.v,
-                        int(tak::sim::portHeadingToRetail(body->heading)),stage,cargo,
+                        int(ta::sim::portHeadingToRetail(body->heading)),stage,cargo,
                         unsigned(shoreBlockerCleared));
                 }
             }
@@ -2790,24 +2790,24 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
                                           const char* carrierName=nullptr,
                                           const char* passengerName=nullptr,
                                           bool crusades=false,bool loadOrder=false) {
-    auto vfs=tak::hpi::mountRetailRoot(retailRoot);
-    const std::string mapPath=tak::hpi::findMap(vfs,mapName);
+    auto vfs=ta::hpi::mountRetailRoot(retailRoot);
+    const std::string mapPath=ta::hpi::findMap(vfs,mapName);
     if(mapPath.empty()) throw std::runtime_error(std::string("map not found: ")+mapName);
-    const auto map=tak::tnt::Map::load(vfs.read(mapPath),mapPath);
+    const auto map=ta::tnt::Map::load(vfs.read(mapPath),mapPath);
     if(startCellX<0 || startCellZ<0 || goalCellX<0 || goalCellZ<0 ||
        startCellX>=map.width || startCellZ>=map.height ||
        goalCellX>=map.width || goalCellZ>=map.height)
         throw std::runtime_error("surface-unload map travel coordinates outside the map");
 
-    std::unique_ptr<tak::sim::TypeRegistry> registry;
+    std::unique_ptr<ta::sim::TypeRegistry> registry;
     UnitType syntheticCarrier{},syntheticPassenger{};
     const UnitType* carrierType=nullptr;
     const UnitType* passengerType=nullptr;
     if(carrierName || passengerName) {
         if(!carrierName || !passengerName)
             throw std::runtime_error("both retail carrier and passenger names are required");
-        registry=std::make_unique<tak::sim::TypeRegistry>();
-        tak::sim::setupRegistry(*registry,vfs,crusades);
+        registry=std::make_unique<ta::sim::TypeRegistry>();
+        ta::sim::setupRegistry(*registry,vfs,crusades);
         carrierType=registry->find(carrierName);
         passengerType=registry->find(passengerName);
         if(!carrierType || !passengerType)
@@ -2826,7 +2826,7 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
 
     World world;setTestPathfinding(world);
     world.setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
-    tak::sim::registerMapFeatures(world,map,vfs);
+    ta::sim::registerMapFeatures(world,map,vfs);
     if(registry) world.buildNavClasses(*registry);
     world.setPathService(true);
     const int startX=startCellX*16,startZ=startCellZ*16;
@@ -2868,12 +2868,12 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
             if(!unloaded) {
                 unloaded=true;unloadTick=tick;
                 releasedX=passengerUnit->x.v;releasedZ=passengerUnit->z.v;
-                carrierPassableAtRelease=tak::sim::RetailReplayProbe::footprintPhysicallyPlaced(
+                carrierPassableAtRelease=ta::sim::RetailReplayProbe::footprintPhysicallyPlaced(
                     world,carrierUnit);
                 passengerPhysicallyPlacedAtRelease=
-                    tak::sim::RetailReplayProbe::footprintPhysicallyPlaced(world,passengerUnit);
+                    ta::sim::RetailReplayProbe::footprintPhysicallyPlaced(world,passengerUnit);
             }
-            carrierPassableAtEnd=tak::sim::RetailReplayProbe::footprintPhysicallyPlaced(
+            carrierPassableAtEnd=ta::sim::RetailReplayProbe::footprintPhysicallyPlaced(
                 world,carrierUnit);
             finalTick=tick;
             if(tick>=unloadTick+60) break;
@@ -2905,19 +2905,19 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
             static_cast<unsigned long long>(world.pathStats().completions()),
             static_cast<unsigned long long>(world.pathStats().failures()));
     } else if(carrierUnit) std::printf("MISSION 0\n");
-    const bool exactRelease=unloaded && releasedX==tak::sim::Fixed::fromInt(goalX).v &&
-        releasedZ==tak::sim::Fixed::fromInt(goalZ).v;
-    const int64_t landingDx=unloaded ? int64_t(releasedX)-tak::sim::Fixed::fromInt(goalX).v : INT64_MAX;
-    const int64_t landingDz=unloaded ? int64_t(releasedZ)-tak::sim::Fixed::fromInt(goalZ).v : INT64_MAX;
+    const bool exactRelease=unloaded && releasedX==ta::sim::Fixed::fromInt(goalX).v &&
+        releasedZ==ta::sim::Fixed::fromInt(goalZ).v;
+    const int64_t landingDx=unloaded ? int64_t(releasedX)-ta::sim::Fixed::fromInt(goalX).v : INT64_MAX;
+    const int64_t landingDz=unloaded ? int64_t(releasedZ)-ta::sim::Fixed::fromInt(goalZ).v : INT64_MAX;
     constexpr int64_t kRetailPostReleaseTolerance=8ll*65536;
     const bool retailLanding=carrierName && unloaded && landingDx*landingDx+landingDz*landingDz<=
         kRetailPostReleaseTolerance*kRetailPostReleaseTolerance;
     const bool landedAtSite=carrierName ? retailLanding : exactRelease;
     const bool emptyCargo=carrierUnit && carrierUnit->cargo.empty();
     const bool carrierInWater=carrierPassableAtEnd;
-    const bool carrierRoutePassable=tak::sim::RetailReplayProbe::waterFootprintPassable(
+    const bool carrierRoutePassable=ta::sim::RetailReplayProbe::waterFootprintPassable(
         world,carrierUnit);
-    const bool passengerPlaced=tak::sim::RetailReplayProbe::footprintPhysicallyPlaced(
+    const bool passengerPlaced=ta::sim::RetailReplayProbe::footprintPhysicallyPlaced(
         world,passengerUnit);
     std::printf("%s: %s\n",unloaded?"PASS":"FAIL",
         unloaded?"boat completed routed shore unload on the shipped map":"boat did not release its cargo");
@@ -2956,16 +2956,16 @@ static void airFlightTraceFixture(unsigned steps) {
     w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,40);w.setPathService(false);
     UnitType air=boatType();
     air.name="flight trace";air.canFly=true;air.cruiseAlt=100;
-    air.maxVel=tak::sim::Fixed::raw(120000);
+    air.maxVel=ta::sim::Fixed::raw(120000);
     // The native flight kernel uses FBI brakerate (+0x166) as its lateral
     // velocity limit, while acceleration (+0x16a) limits the full 3D change.
-    air.accel=tak::sim::Fixed::raw(20000);air.brake=tak::sim::Fixed::raw(60000);
+    air.accel=ta::sim::Fixed::raw(20000);air.brake=ta::sim::Fixed::raw(60000);
     air.turnRate=10000;
     const int id=w.spawn(&air,160,160);
     auto* u=w.unit(id);
-    u->baseSpeed=air.maxVel;u->speed=tak::sim::Fixed();
-    u->heading=tak::sim::retailHeadingToPort(0);
-    u->flightY=tak::sim::Fixed::fromInt(100);
+    u->baseSpeed=air.maxVel;u->speed=ta::sim::Fixed();
+    u->heading=ta::sim::retailHeadingToPort(0);
+    u->flightY=ta::sim::Fixed::fromInt(100);
     u->flightVelocity={};
     u->flightNavigation={{160<<16,100<<16,160<<16},{},0};
     w.order(id,800,800,false);
@@ -2980,7 +2980,7 @@ static void airFlightTraceFixture(unsigned steps) {
         const auto& v=u->flightVelocity;
         std::printf("%u %d %d %d %u %d %d %d %d %d %d %d %d %d %d %u\n",
             step,u->x.v,u->flightY.v,u->z.v,
-            unsigned(tak::sim::portHeadingToRetail(u->heading)),u->speed.v,
+            unsigned(ta::sim::portHeadingToRetail(u->heading)),u->speed.v,
             v.x,v.y,v.z,n.destination.x,n.destination.y,n.destination.z,
             n.velocity.x,n.velocity.y,n.velocity.z,unsigned(n.heading));
     }
@@ -3009,28 +3009,28 @@ static void airUnloadFlightTraceFixture(unsigned steps,bool heightStep=false,
     w.setTerrain(terrain,256,256,40);w.setPathService(false);
     UnitType air=boatType(),passenger=footType();
     air.name="flight unload trace";air.canFly=true;air.cruiseAlt=100;
-    air.maxVel=tak::sim::Fixed::raw(120000);
-    air.accel=tak::sim::Fixed::raw(20000);air.brake=tak::sim::Fixed::raw(60000);
+    air.maxVel=ta::sim::Fixed::raw(120000);
+    air.accel=ta::sim::Fixed::raw(20000);air.brake=ta::sim::Fixed::raw(60000);
     air.turnRate=10000;
     if(profile) {
-        air.maxVel=tak::sim::Fixed::raw(profile->maxVelocityRaw);
-        air.accel=tak::sim::Fixed::raw(profile->accelerationRaw);
-        air.brake=tak::sim::Fixed::raw(profile->brakeRaw);
+        air.maxVel=ta::sim::Fixed::raw(profile->maxVelocityRaw);
+        air.accel=ta::sim::Fixed::raw(profile->accelerationRaw);
+        air.brake=ta::sim::Fixed::raw(profile->brakeRaw);
         air.turnRate=profile->turnRate;
         air.cruiseAlt=profile->cruiseAlt;
         air.transportDist=profile->transportDistance;
         air.footX=profile->footprintX;
         air.footZ=profile->footprintZ;
-        air.waterMult=tak::sim::Fixed::raw(profile->waterMultiplierRaw);
-        air.roadMult=tak::sim::Fixed::raw(profile->roadMultiplierRaw);
+        air.waterMult=ta::sim::Fixed::raw(profile->waterMultiplierRaw);
+        air.roadMult=ta::sim::Fixed::raw(profile->roadMultiplierRaw);
         air.halfCellTicks=profile->halfCellTicks;
     }
     const int carrier=w.spawn(&air,3000,3000),cargo=w.spawn(&passenger,3000,3000);
     board(w,carrier,cargo);
     auto* u=w.unit(carrier);
-    u->baseSpeed=air.maxVel;u->speed=tak::sim::Fixed();
-    u->heading=tak::sim::retailHeadingToPort(0);
-    u->flightY=tak::sim::Fixed::fromInt(100);
+    u->baseSpeed=air.maxVel;u->speed=ta::sim::Fixed();
+    u->heading=ta::sim::retailHeadingToPort(0);
+    u->flightY=ta::sim::Fixed::fromInt(100);
     u->flightVelocity={};
     u->flightNavigation={{3000<<16,100<<16,3000<<16},{},0};
     w.unloadAt(carrier,4000,3000);
@@ -3040,7 +3040,7 @@ static void airUnloadFlightTraceFixture(unsigned steps,bool heightStep=false,
         const auto& n=u->flightNavigation;
         const auto& v=u->flightVelocity;
         const auto* order=u->orders.empty()?nullptr:&u->orders.front();
-        const tak::sim::RetailMissionState emptyMission{};
+        const ta::sim::RetailMissionState emptyMission{};
         const auto& mission=order?order->transportMission:emptyMission;
         const auto* goal=order && order->flightGoal ? &*order->flightGoal :
             (u->retainedFlightGoal ? &*u->retainedFlightGoal : nullptr);
@@ -3051,7 +3051,7 @@ static void airUnloadFlightTraceFixture(unsigned steps,bool heightStep=false,
             passengerUnit->orders.front().park.has_value();
         std::printf("%u %d %d %d %u %d %d %d %d %d %d %d %d %d %d %u ",
             step,u->x.v,u->flightY.v,u->z.v,
-            unsigned(tak::sim::portHeadingToRetail(u->heading)),u->speed.v,
+            unsigned(ta::sim::portHeadingToRetail(u->heading)),u->speed.v,
             v.x,v.y,v.z,n.destination.x,n.destination.y,n.destination.z,
             n.velocity.x,n.velocity.y,n.velocity.z,unsigned(n.heading));
         std::printf("%u %u %u %u %u %u %u %d %d %d %u %u %u %u %u %u\n",
@@ -3072,17 +3072,17 @@ static void airUnloadFlightTraceFixture(unsigned steps,bool heightStep=false,
 static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* mapName,
         const char* carrierName,const char* passengerName,int startCellX,int startCellZ,
         int targetCellX,int targetCellZ,unsigned steps,bool crusades) {
-    auto vfs=tak::hpi::mountRetailRoot(retailRoot);
-    const std::string mapPath=tak::hpi::findMap(vfs,mapName);
+    auto vfs=ta::hpi::mountRetailRoot(retailRoot);
+    const std::string mapPath=ta::hpi::findMap(vfs,mapName);
     if(mapPath.empty()) throw std::runtime_error(std::string("map not found: ")+mapName);
-    const auto map=tak::tnt::Map::load(vfs.read(mapPath),mapPath);
+    const auto map=ta::tnt::Map::load(vfs.read(mapPath),mapPath);
     if(startCellX<0 || startCellZ<0 || targetCellX<0 || targetCellZ<0 ||
        startCellX>=map.width || startCellZ>=map.height ||
        targetCellX>=map.width || targetCellZ>=map.height)
         throw std::runtime_error("air-unload map trace coordinates outside the map");
 
-    tak::sim::TypeRegistry registry;
-    tak::sim::setupRegistry(registry,vfs,crusades);
+    ta::sim::TypeRegistry registry;
+    ta::sim::setupRegistry(registry,vfs,crusades);
     const auto* carrierType=registry.find(carrierName);
     const auto* passengerType=registry.find(passengerName);
     if(!carrierType || !passengerType)
@@ -3093,7 +3093,7 @@ static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* ma
 
     World w;setTestPathfinding(w);
     w.setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
-    tak::sim::registerMapFeatures(w,map,vfs);
+    ta::sim::registerMapFeatures(w,map,vfs);
     w.buildNavClasses(registry);
     w.setPathService(false);
     const int startX=startCellX*16+8,startZ=startCellZ*16+8;
@@ -3103,14 +3103,14 @@ static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* ma
     board(w,carrierId,passengerId);
     auto* carrier=w.unit(carrierId);
     carrier->baseSpeed=carrierType->maxVel;
-    carrier->speed=tak::sim::Fixed();
-    carrier->heading=tak::sim::retailHeadingToPort(0);
+    carrier->speed=ta::sim::Fixed();
+    carrier->heading=ta::sim::retailHeadingToPort(0);
     carrier->flightNavigation={{carrier->x.v,carrier->flightY.v,carrier->z.v},{},0};
     const auto terrainAt=[&](int x,int z) {
         return int(map.heights[size_t(z)*size_t(map.width)+size_t(x)]);
     };
     w.unloadAt(carrierId,float(targetX),float(targetZ),
-               tak::sim::Fixed::fromInt(terrainAt(targetCellX,targetCellZ)));
+               ta::sim::Fixed::fromInt(terrainAt(targetCellX,targetCellZ)));
 
     std::printf("MAPTRACE %d %d %d %s %s %d %d %d %d %d %d %d\n",
         map.width,map.height,map.seaLevel,carrierName,passengerName,
@@ -3122,7 +3122,7 @@ static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* ma
         const auto& n=carrier->flightNavigation;
         const auto& v=carrier->flightVelocity;
         const auto* order=carrier->orders.empty()?nullptr:&carrier->orders.front();
-        const tak::sim::RetailMissionState emptyMission{};
+        const ta::sim::RetailMissionState emptyMission{};
         const auto& mission=order?order->transportMission:emptyMission;
         const auto* goal=order && order->flightGoal ? &*order->flightGoal :
             (carrier->retainedFlightGoal ? &*carrier->retainedFlightGoal : nullptr);
@@ -3134,7 +3134,7 @@ static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* ma
             passenger->orders.front().park.has_value();
         std::printf("%u %d %d %d %u %d %d %d %d %d %d %d %d %d %d %u ",
             step,carrier->x.v,carrier->flightY.v,carrier->z.v,
-            unsigned(tak::sim::portHeadingToRetail(carrier->heading)),carrier->speed.v,
+            unsigned(ta::sim::portHeadingToRetail(carrier->heading)),carrier->speed.v,
             v.x,v.y,v.z,n.destination.x,n.destination.y,n.destination.z,
             n.velocity.x,n.velocity.y,n.velocity.z,unsigned(n.heading));
         std::printf("%u %u %u %u %u %u %u %d %d %d %u %u %u %u %u %u\n",
@@ -3153,14 +3153,14 @@ int main(int argc,char** argv) {
     // Optional backend run reuses the same placement/mission assertions. The
     // default and every retail trace command retain their existing backend.
     if(argc>1 && !std::strcmp(argv[1],"--legion")) {
-        g_pathfinding=tak::sim::PathfindingMode::Legion;--argc;++argv;
+        g_pathfinding=ta::sim::PathfindingMode::Legion;--argc;++argv;
     }
     if(argc==2 && !std::strcmp(argv[1],"--attach-position")) {
         // check_cargo_attach_position.py: host x y z, floater, waterline, sea, piece.
         long long hx,hy,hz;int floater,waterline,sea,piece;
         while(std::scanf("%lld %lld %lld %d %d %d %d",&hx,&hy,&hz,&floater,&waterline,&sea,&piece)==7) {
-            const auto point=tak::sim::retailAttachedPosition(
-                tak::sim::retailAttachPoint({int32_t(hx),int32_t(hy),int32_t(hz)},{},{},piece,0),
+            const auto point=ta::sim::retailAttachedPosition(
+                ta::sim::retailAttachPoint({int32_t(hx),int32_t(hy),int32_t(hz)},{},{},piece,0),
                 floater!=0,uint8_t(waterline),uint8_t(sea));
             std::printf("%d %d %d\n",point[0],point[1],point[2]);
         }
@@ -3255,9 +3255,9 @@ int main(int argc,char** argv) {
     if(argc==2 && !std::strcmp(argv[1],"--passenger-pickup")) {
         unsigned stage,retries,now,events,surface,mask,deadline;
         while(std::scanf("%u %u %u %u %u %u %u",&stage,&retries,&now,&events,&surface,&mask,&deadline)==7) {
-            tak::sim::RetailMissionState m{uint8_t(stage),mask,deadline};
+            ta::sim::RetailMissionState m{uint8_t(stage),mask,deadline};
             int approaches=0,detaches=0;
-            const int result=tak::sim::retailPassengerPickup(m,retries,now,events,surface!=0,
+            const int result=ta::sim::retailPassengerPickup(m,retries,now,events,surface!=0,
                 [&]{++approaches;},[&]{++detaches;});
             std::printf("%d %u %u %u %u %d %d\n",result,unsigned(m.stage),retries,
                 m.waitMask,m.deadline,approaches,detaches);
@@ -3267,13 +3267,13 @@ int main(int argc,char** argv) {
     if(argc==2 && !std::strcmp(argv[1],"--pickup-approach-abort")) {
         unsigned air,mover,events;int speed;
         while(std::scanf("%u %u %u %d",&air,&mover,&events,&speed)==4)
-            std::printf("%d\n",int(tak::sim::retailPickupApproachAborted(air!=0,mover!=0,events,speed)));
+            std::printf("%d\n",int(ta::sim::retailPickupApproachAborted(air!=0,mover!=0,events,speed)));
         return 0;
     }
     if(argc==2 && !std::strcmp(argv[1],"--pickup-pursuit")) {
         int x,y,z,tx,ty,tz;unsigned range;
         while(std::scanf("%d %d %d %d %d %d %u",&x,&y,&z,&tx,&ty,&tz,&range)==7) {
-            const auto goal=tak::sim::retailPickupPursuitGoal({tx,ty,tz},uint16_t(range));
+            const auto goal=ta::sim::retailPickupPursuitGoal({tx,ty,tz},uint16_t(range));
             std::printf("%d %d %d %u %d %d\n",goal.point.x,goal.point.y,goal.point.z,
                 unsigned(goal.flags),int(goal.radius),int(goal.accepts({x,y,z})));
         }
@@ -3282,8 +3282,8 @@ int main(int argc,char** argv) {
     if(argc==2 && !std::strcmp(argv[1],"--pickup-approach-wait")) {
         unsigned air,draw;
         while(std::scanf("%u %u",&air,&draw)==2) {
-            tak::sim::RetailMissionState mission;unsigned bound=0;
-            tak::sim::retailPickupApproachWait(mission,100,air!=0,[&](unsigned n){bound=n;return draw;});
+            ta::sim::RetailMissionState mission;unsigned bound=0;
+            ta::sim::retailPickupApproachWait(mission,100,air!=0,[&](unsigned n){bound=n;return draw;});
             std::printf("%u %u %u\n",mission.waitMask,mission.deadline,bound);
         }
         return 0;
@@ -3318,8 +3318,8 @@ int main(int argc,char** argv) {
     if(argc==2 && !std::strcmp(argv[1],"--pickup-transfer")) {
         unsigned air,attempts;int ticks,speed;
         while(std::scanf("%u %u %d %d",&air,&attempts,&ticks,&speed)==4) {
-            tak::sim::RetailMissionState mission;int effects=0;
-            const int result=tak::sim::retailPickupTransfer(mission,ticks,attempts,100,air!=0,speed,[&]{++effects;});
+            ta::sim::RetailMissionState mission;int effects=0;
+            const int result=ta::sim::retailPickupTransfer(mission,ticks,attempts,100,air!=0,speed,[&]{++effects;});
             std::printf("%d %u %d %u %d\n",result,attempts,ticks,
                 mission.waitMask&1 ? mission.deadline-100:0,effects);
         }
@@ -3328,13 +3328,13 @@ int main(int argc,char** argv) {
     if (argc==2 && !std::strcmp(argv[1],"--transport-range")) {
         int dx,dz;unsigned radius;
         while (std::scanf("%d %d %u",&dx,&dz,&radius)==3)
-            std::printf("%d\n",tak::sim::retailTransportInRange(dx,dz,uint16_t(radius)));
+            std::printf("%d\n",ta::sim::retailTransportInRange(dx,dz,uint16_t(radius)));
         return 0;
     }
     if (argc==2 && !std::strcmp(argv[1],"--unload-stepout")) {
         int x,y,z;unsigned heading,range;
         while (std::scanf("%d %d %d %u %u",&x,&y,&z,&heading,&range)==5) {
-            const auto goal=tak::sim::retailUnloadStepOut({x,y,z},uint16_t(heading),uint16_t(range));
+            const auto goal=ta::sim::retailUnloadStepOut({x,y,z},uint16_t(heading),uint16_t(range));
             std::printf("%d %d %d %u %d\n",goal.point.x,goal.point.y,goal.point.z,goal.flags,goal.radius);
         }
         return 0;
@@ -3342,8 +3342,8 @@ int main(int argc,char** argv) {
     if (argc==2 && !std::strcmp(argv[1],"--unload-transfer")) {
         unsigned stage,attempts;int ticks,valid,strict,relaxed;
         while (std::scanf("%u %d %u %d %d %d",&stage,&ticks,&attempts,&valid,&strict,&relaxed)==6) {
-            tak::sim::RetailMissionState m{uint8_t(stage)};int effects=0,blocked=0,queries=0;
-            const int result=tak::sim::retailUnloadTransfer(m,ticks,attempts,100,valid,
+            ta::sim::RetailMissionState m{uint8_t(stage)};int effects=0,blocked=0,queries=0;
+            const int result=ta::sim::retailUnloadTransfer(m,ticks,attempts,100,valid,
                 [&](bool allow){++queries;return allow ? relaxed : strict;},
                 [&]{++effects;},[&]{++blocked;});
             std::printf("%d %u %d %u %d %d %d\n",result,unsigned(m.stage),ticks,
@@ -3354,8 +3354,8 @@ int main(int argc,char** argv) {
     if (argc==2 && !std::strcmp(argv[1],"--unload-approach")) {
         unsigned stage,attempts,events,inRange,mover;
         while (std::scanf("%u %u %u %u %u",&stage,&attempts,&events,&inRange,&mover)==5) {
-            tak::sim::RetailMissionState m{uint8_t(stage)};unsigned approaches=0;
-            const int result=tak::sim::retailTransportUnloadApproach(m,attempts,100,events,
+            ta::sim::RetailMissionState m{uint8_t(stage)};unsigned approaches=0;
+            const int result=ta::sim::retailTransportUnloadApproach(m,attempts,100,events,
                 inRange!=0,mover!=0,[&]{++approaches;});
             const unsigned delay=(m.waitMask&1u) ? m.deadline-100u : 0u;
             std::printf("%d %u %u %u %u %u\n",result,unsigned(m.stage),attempts,
@@ -3364,7 +3364,7 @@ int main(int argc,char** argv) {
         return 0;
     }
     if (argc==2 && !std::strcmp(argv[1],"--unload-approach-timeline")) {
-        using namespace tak::sim;
+        using namespace ta::sim;
         struct Host {
             RetailMissionState mission{1};
             uint32_t now=0,attempts=0,requests=0;
@@ -3398,7 +3398,7 @@ int main(int argc,char** argv) {
     if (argc==2 && !std::strcmp(argv[1],"--unload-park")) {
         unsigned first,second,remaining;int footX,footZ;
         while (std::scanf("%u %u %u %d %d",&first,&second,&remaining,&footX,&footZ)==5)
-            std::printf("%u\n",tak::sim::retailUnloadParkPadding(first,second,remaining,int16_t(footX),int16_t(footZ)));
+            std::printf("%u\n",ta::sim::retailUnloadParkPadding(first,second,remaining,int16_t(footX),int16_t(footZ)));
         return 0;
     }
     if (argc==2 && !std::strcmp(argv[1],"--unload-park-order")) {
@@ -3406,9 +3406,9 @@ int main(int argc,char** argv) {
         // per line -> 1 when the released passenger's PARK goes in front.
         unsigned flags,held,carried,holder;float left;
         while (std::scanf("%x %f %u %u %u",&flags,&left,&held,&carried,&holder)==5) {
-            tak::sim::Unit c;
+            ta::sim::Unit c;
             c.deadFor=(flags&0x1000000u) ? -1 : 0;
-            c.hp=(flags&0x1000u) ? tak::sim::Fixed() : tak::sim::Fixed::fromInt(100);
+            c.hp=(flags&0x1000u) ? ta::sim::Fixed() : ta::sim::Fixed::fromInt(100);
             c.selectable=(flags&0x20u)!=0;
             c.underConstruction=left>0.0f;
             c.inTransport=carried ? 99 : 0;
@@ -3425,7 +3425,7 @@ int main(int argc,char** argv) {
     if (argc==2 && !std::strcmp(argv[1],"--capacity")) {
         unsigned size,maximum,count,limit,used,budget;
         while (std::scanf("%u %u %u %u %u %u",&size,&maximum,&count,&limit,&used,&budget)==6)
-            std::printf("%d\n",tak::sim::retailTransportCapacity(size,maximum,count,limit,used,budget));
+            std::printf("%d\n",ta::sim::retailTransportCapacity(size,maximum,count,limit,used,budget));
         return 0;
     }
     std::printf("transport_test\n");

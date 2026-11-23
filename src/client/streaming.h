@@ -4,7 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
-namespace tak {
+namespace ta {
 struct Settings;
 namespace credstore { class Store; }
 constexpr int kStreamingEvent = 0x54414b53;
@@ -37,7 +37,7 @@ public:
     SDL_FRect recommendedRect(int w, int h);
     const std::string& notice() const;
     bool waitKeyStore(int ms);
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     // Use this cursor for every capture instead of the OS pointer's (null: back to the
     // OS pointer), so a hidden test window can check stamping through each backend.
     void testCursor(const video::StreamCursor*);

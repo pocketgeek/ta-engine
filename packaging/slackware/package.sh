@@ -16,4 +16,4 @@ rm -rf "$stage/usr/lib/systemd"
 mkdir -p "$stage/install"
 cp "$root/packaging/slackware/slack-desc" "$stage/install/"
 cp "$root/packaging/slackware/doinst.sh" "$stage/install/"
-(cd "$stage" && makepkg -l y -c y "$out/tak-engine-$version-x86_64-1_slack15.0.txz")
+(cd "$stage" && makepkg -l y -c y "$out/ta-engine-$version-x86_64-1_slack15.0.txz")

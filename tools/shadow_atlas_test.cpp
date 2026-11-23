@@ -23,7 +23,7 @@
 #include <vector>
 
 namespace {
-using namespace tak::render;
+using namespace ta::render;
 int failures = 0;
 void check(bool ok, const char* what) {
     if (!ok) { std::fprintf(stderr, "FAIL: %s\n", what); ++failures; }
@@ -324,7 +324,7 @@ void testPageBudget() {
           "pressure above seven eighths of the cap");
     check(!shadowExtendedPressure({4096 * MiB, SIZE_MAX, false}), "no pressure without a cap");
     check(shadowPageFits(1, 0, page, roomy, 1) == shadowPageFits(4, 0, page, roomy) && !shadowPageFits(1, 0, page, tight, 1),
-          "the base page count is a parameter (TAK_SHADOW_PAGES_MAX below four)");
+          "the base page count is a parameter (TA_SHADOW_PAGES_MAX below four)");
 }
 
 }  // namespace

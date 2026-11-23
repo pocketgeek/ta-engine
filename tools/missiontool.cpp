@@ -15,7 +15,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int countType(const sim::World& w, const std::string& id) {
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
 
     // --campaigns: list the campaign spine (camps/*.tdf) and exit.
     if (stem == "--campaigns") {
-        for (const auto& c : tak::loadCampaigns(vfs)) {
+        for (const auto& c : ta::loadCampaigns(vfs)) {
             std::printf("%-28s (%s)  %d missions%s%s\n", c.title.c_str(), c.id.c_str(), c.count(),
                         c.altFinal.empty() ? "" : "  +alt ending: ", c.altFinal.c_str());
             for (int i = 0; i < c.count(); ++i)
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     // ---- WIN: drop the escorted NPC onto the objective radius ----
     int emen = findType(w, "npcemen");
     if (emen >= 0 && w.missionOutcome() == 0) {
-        if (auto* u = w.unit(emen)) { u->x = tak::sim::Fixed::fromInt(130 * 16 + 8); u->z = tak::sim::Fixed::fromInt(76 * 16 + 8); }
+        if (auto* u = w.unit(emen)) { u->x = ta::sim::Fixed::fromInt(130 * 16 + 8); u->z = ta::sim::Fixed::fromInt(76 * 16 + 8); }
         w.tick(1.0f / 30.0f);
         std::printf("WIN test  (NPCEMEN on objective): outcome=%d %s\n",
                     w.missionOutcome(), w.missionOutcome() == 1 ? "PASS" : "FAIL");
@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
         tick(w2, 2.0f);
         int e2 = findType(w2, "npcemen");
         if (e2 >= 0 && w2.missionOutcome() == 0) {
-            if (auto* u = w2.unit(e2)) u->hp = tak::sim::Fixed();   // die -> World::tick fires UnitDestroyed
+            if (auto* u = w2.unit(e2)) u->hp = ta::sim::Fixed();   // die -> World::tick fires UnitDestroyed
             tick(w2, 1.0f);
             std::printf("LOSE test (NPCEMEN killed):       outcome=%d %s\n",
                         w2.missionOutcome(), w2.missionOutcome() == -1 ? "PASS" : "FAIL");
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 30; ++i) w3.tick(1.0f / 30.0f);   // run Start (arms triggers)
         int mover = findHumanMover(w3);
         if (mover >= 0) {
-            if (auto* u = w3.unit(mover)) { u->x = tak::sim::Fixed::fromInt(130 * 16 + 8); u->z = tak::sim::Fixed::fromInt(76 * 16 + 8); }
+            if (auto* u = w3.unit(mover)) { u->x = ta::sim::Fixed::fromInt(130 * 16 + 8); u->z = ta::sim::Fixed::fromInt(76 * 16 + 8); }
             for (int i = 0; i < 15; ++i) w3.tick(1.0f / 30.0f);   // fire TriggerHit -> squad spawns
             int bro = findType(w3, "arabroad");
             float x0 = 0, z0 = 0;

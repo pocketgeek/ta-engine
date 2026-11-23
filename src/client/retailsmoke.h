@@ -5,7 +5,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 // Retail inserts newly burning features at the active-list head, then walks
 // that list newest-first. Within each burn it advances old smoke before asking
@@ -46,4 +46,4 @@ struct RetailSmokeParticle {
     }
 };
 
-} // namespace tak
+} // namespace ta

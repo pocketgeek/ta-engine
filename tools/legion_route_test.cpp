@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 int failures = 0;

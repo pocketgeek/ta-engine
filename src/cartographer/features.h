@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 namespace cart {
 
@@ -33,14 +33,14 @@ struct FeatSprite {
 class FeatureLibrary {
 public:
     // Scan features/<world> + features/all worlds for placeable feature defs.
-    void scan(const tak::hpi::Vfs& vfs, const std::string& world);
+    void scan(const ta::hpi::Vfs& vfs, const std::string& world);
     const std::vector<FeatureRef>& list() const { return refs_; }
     const FeatureRef* byName(const std::string& name) const;   // nullptr if absent
     // Decode (and cache) a feature's sprite; empty (.w==0) if the art won't load.
-    const FeatSprite* sprite(const tak::hpi::Vfs& vfs, const FeatureRef& r);
+    const FeatSprite* sprite(const ta::hpi::Vfs& vfs, const FeatureRef& r);
     // Nonblocking editor path: nullptr while art is queued/decoding. A worker
     // owns only a copied feature reference and borrows the immutable VFS.
-    const FeatSprite* requestSprite(const tak::hpi::Vfs& vfs,const FeatureRef& r);
+    const FeatSprite* requestSprite(const ta::hpi::Vfs& vfs,const FeatureRef& r);
     // Must precede replacing the borrowed VFS. scan() also drains old work.
     void quiesce();
     bool loading() const {return job_.valid();}
@@ -54,7 +54,7 @@ private:
     std::map<std::string, FeatSprite> spriteCache_;   // keyed by feature name
     struct Result {std::string name;FeatSprite sprite;};
     std::future<Result> job_; // destroyed/joined before the cache and references
-    static FeatSprite decodeSprite(const tak::hpi::Vfs& vfs,const FeatureRef& r);
+    static FeatSprite decodeSprite(const ta::hpi::Vfs& vfs,const FeatureRef& r);
 };
 
 } // namespace cart

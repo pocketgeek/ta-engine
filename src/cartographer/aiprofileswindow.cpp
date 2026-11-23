@@ -1,5 +1,5 @@
 // The AI Profiles window (SCENARIO > AI Profiles, A): the map's DEFAULT AI profile
-// (ai/<aiprofile>.txt) and the one file all six of our levels read (ai/takengine.txt,
+// (ai/<aiprofile>.txt) and the one file all six of our levels read (ai/taengine.txt,
 // previewed for one level at a time), shown as a unit table or as text. Built from the editor's own widgets (the Scripting-sized
 // panel, the Placed Units search list, the Use Only checklist). The model and
 // every rule about the two grammars live in aiprofiles.h; this file only draws,
@@ -21,7 +21,7 @@
 #include "util/u8path.h"
 
 namespace {
-using tak::ai::Difficulty;
+using ta::ai::Difficulty;
 constexpr const char* kSideCodes[]={"","ARA","TAR","VER","ZON","CRE"};
 constexpr const char* kSideNames[]={"ALL SIDES","ARAMON","TAROS","VERUNA","ZHON","CREON"};
 constexpr const char* kGroups[]={"ALL GROUPS","AIR","BUILDERS","BUILDINGS","GROUND","MANA","NAVAL","OTHER"};
@@ -66,7 +66,7 @@ bool doesNothing(cart::AiLine::What what) {
 }
 } // namespace
 
-std::optional<tak::ai::Difficulty> cart::Editor::aiTabLevel() const {
+std::optional<ta::ai::Difficulty> cart::Editor::aiTabLevel() const {
     if(aiTab<=0)return std::nullopt;
     return aiPreviewLevel;
 }
@@ -82,7 +82,7 @@ void cart::Editor::aiStepPreview(int by) {
 }
 
 std::string cart::Editor::aiKeyFor(int tab) const {
-    if(tab>0)return tak::ai::kEngineProfileFile;
+    if(tab>0)return ta::ai::kEngineProfileFile;
     if(aiMod)return aiMod->defaultKey;   // a pack's DEFAULT file: ai/default.txt or a profile name
     if(!cart::standardAiProfile(scenario.aiProfile))return cart::aiProfileFileKey(scenario.aiProfile);
     if(aiFiles.count("ai/default.txt"))return "ai/default.txt";   // kept from the map; never written new
@@ -92,7 +92,7 @@ std::string cart::Editor::aiKeyFor(int tab) const {
 const cart::Editor::AiTabView& cart::Editor::aiTabView() {
     const auto key=aiTabKey();const AiKind kind=aiTab?AiKind::Level:AiKind::Default;
     std::string bytes;bool readOnly=false;
-    if(key.empty()) {bytes=tak::ai::classicProfileScript(vfs,"").text;readOnly=true;}   // the installed standard profile
+    if(key.empty()) {bytes=ta::ai::classicProfileScript(vfs,"").text;readOnly=true;}   // the installed standard profile
     else if(aiView==AiView::Text && aiTextKey==key)bytes=aiText;
     else if(const auto it=aiSet().find(key);it!=aiSet().end())bytes=bytesText(it->second);
     auto& v=aiViewCache;
@@ -103,7 +103,7 @@ const cart::Editor::AiTabView& cart::Editor::aiTabView() {
     v.lines=cart::attributeAiLines(v.bytes,kind,catalogue);   // views into v.bytes
     if(!key.empty())v.issues=cart::checkAiFile(key,v.bytes,{&catalogue,&aiRegistry()});
     if(kind==AiKind::Default) {v.classic.reset(catalogue.size());v.classic.execute(v.bytes,catalogue);}
-    else {v.builtin=tak::ai::builtinProfile(*aiTabLevel());v.level=v.builtin;tak::ai::applyProfileText(v.bytes,v.level);}
+    else {v.builtin=ta::ai::builtinProfile(*aiTabLevel());v.level=v.builtin;ta::ai::applyProfileText(v.bytes,v.level);}
     return v;
 }
 
@@ -134,7 +134,7 @@ bool cart::Editor::aiEdit(const std::function<bool(AiDraft&)>& change,const std:
 }
 
 std::string cart::Editor::aiHeaderFor(int tab) const {
-    return std::string(tab?"TAK ENGINE AI (all six levels)":"DEFAULT AI")+" profile for "+(aiMod?"game mod \""+aiMod->pack:"map \""+mapName)+
+    return std::string(tab?"TA ENGINE AI (all six levels)":"DEFAULT AI")+" profile for "+(aiMod?"game mod \""+aiMod->pack:"map \""+mapName)+
         "\" ("+aiKeyFor(tab)+"). Edit in Cartographer: SCENARIO > AI Profiles.";
 }
 
@@ -142,10 +142,10 @@ std::string cart::Editor::aiHeaderFor(int tab) const {
 // game mod is edited or previewed, from that pack's (aiRegistry).
 void cart::Editor::aiBuildRoster() {
     const auto& registry=aiRegistry();
-    aiCatalogue=tak::ai::ClassicCatalogue::from(registry);
+    aiCatalogue=ta::ai::ClassicCatalogue::from(registry);
     const auto reach=cart::aiReachableUnits(registry);
     const auto* added=!aiRosterPack.empty() && aiPackRoster?&aiPackRoster->added:nullptr;
-    auto row=[&](std::string key,const tak::sim::UnitType* type) {
+    auto row=[&](std::string key,const ta::sim::UnitType* type) {
         AiRosterRow r;r.key=std::move(key);r.type=type;
         r.label=type?(type->name.empty()?type->id:type->name):r.key;
         r.group=cart::unitGroupOf(type);r.side=type?upperText(type->side):"";
@@ -178,8 +178,8 @@ void cart::Editor::aiUseRoster(const std::string& pack) {
     if(!pack.empty() && !(aiPackRoster && aiPackRoster->pack==pack)) {
         try {
             auto roster=std::make_unique<AiPackRoster>();roster->pack=pack;
-            const auto packVfs=tak::hpi::mountRetailRoot(tak::u8path(dataRoot),{pack});
-            tak::sim::setupRegistry(roster->registry,packVfs,false);
+            const auto packVfs=ta::hpi::mountRetailRoot(ta::u8path(dataRoot),{pack});
+            ta::sim::setupRegistry(roster->registry,packVfs,false);
             for(const auto& [id,type]:roster->registry.types())if(!unitRegistry.find(id))roster->added.insert(id);
             aiPackRoster=std::move(roster);
         } catch(const std::exception& error) {
@@ -196,7 +196,7 @@ bool cart::Editor::aiRosterLists(const std::string& pack) const {
 
 void cart::Editor::openAiProfiles() {
     if(aiOpen)return;
-    try {aiPacks=tak::hpi::modPacks(tak::u8path(dataRoot),tak::hpi::ModKind::Game);} catch(const std::exception&) {aiPacks.clear();}
+    try {aiPacks=ta::hpi::modPacks(ta::u8path(dataRoot),ta::hpi::ModKind::Game);} catch(const std::exception&) {aiPacks.clear();}
     if(aiPack>int(aiPacks.size())) {aiPack=0;aiPackFiles.reset();}
     aiPackRoster.reset();aiRosterPack.clear();aiCatalogue.reset();   // units are read afresh each time
     aiMod.reset();aiModSaveOpen=aiModOpenOpen=false;aiView=AiView::Table;
@@ -233,7 +233,7 @@ void cart::Editor::aiSelectTab(int tab) {
     if(aiFocus==AI_GROUP)aiFocus=AI_NONE;
     if(aiView==AiView::Text) {
         aiTextKey=aiTabKey();
-        if(aiTextKey.empty())aiText=tak::ai::classicProfileScript(vfs,"").text;
+        if(aiTextKey.empty())aiText=ta::ai::classicProfileScript(vfs,"").text;
         else if(const auto it=aiSet().find(aiTextKey);it!=aiSet().end())aiText=bytesText(it->second);
         else aiText.clear();
         aiTextScroll=0;aiTextEdit.focus(aiText,false);aiTextEdit.caret=aiTextEdit.anchor=0;
@@ -309,10 +309,10 @@ void cart::Editor::aiToggleBuild(const std::string& key) {
     const auto& catalogue=*aiCatalogue;
     auto builds=[&](const std::string& bytes) {
         if(!aiTab) {
-            tak::ai::ClassicProfile p(catalogue.size());p.execute(bytes,catalogue);
+            ta::ai::ClassicProfile p(catalogue.size());p.execute(bytes,catalogue);
             const auto i=catalogue.byName.at(key);return p.pref[i]>0 && p.limit[i]!=0;
         }
-        auto p=tak::ai::builtinProfile(*aiTabLevel());tak::ai::applyProfileText(bytes,p);
+        auto p=ta::ai::builtinProfile(*aiTabLevel());ta::ai::applyProfileText(bytes,p);
         const auto w=p.weight.find(key);const auto l=p.limit.find(key);
         return w!=p.weight.end() && w->second>0 && !(l!=p.limit.end() && l->second==0);
     };
@@ -328,7 +328,7 @@ void cart::Editor::aiToggleBuild(const std::string& key) {
         if(!builds(cart::writeAiDraft(d))) {
             if(aiTab)stillOff=true;
             else {
-                tak::ai::ClassicProfile p(catalogue.size());p.execute(cart::writeAiDraft(d),catalogue);
+                ta::ai::ClassicProfile p(catalogue.size());p.execute(cart::writeAiDraft(d),catalogue);
                 const auto i=catalogue.byName.at(key);
                 if(p.pref[i]==0)rule.chance=100;
                 if(p.limit[i]==0)rule.limit=-1;
@@ -356,7 +356,7 @@ void cart::Editor::aiPreset(int which) {
     std::vector<std::string> targets;
     for(const auto& row:aiRoster()) {
         if(!row.type || (!aiTab && row.lockedForDefault))continue;
-        const bool match=which==0?row.type->canFly:row.type->domain==tak::sim::UnitType::Domain::Water && !row.type->isStructure();
+        const bool match=which==0?row.type->canFly:row.type->domain==ta::sim::UnitType::Domain::Water && !row.type->isStructure();
         if(!match)continue;
         if(const auto it=view.draft.units.find(row.key);it!=view.draft.units.end() && !it->second.empty())continue;
         targets.push_back(row.key);
@@ -379,13 +379,13 @@ void cart::Editor::aiStartFrom(bool standard) {
     std::string bytes,error;
     if(standard) {
         // The user's own install, read now; nothing of it is part of the editor.
-        const auto script=tak::ai::classicProfileScript(vfs,"");
+        const auto script=ta::ai::classicProfileScript(vfs,"");
         if(script.text.empty()) {aiNote="This install has no ai/default.txt, so the profile starts empty.";standard=false;}
         else {
             auto draft=cart::parseAiDraft(script.text,AiKind::Default,catalogue);
             std::string why;
             if(cart::makeEditable(draft,catalogue,&why)) {
-                draft.header="Started from the installed "+tak::hpi::MountSet::key(script.path)+". "+header;
+                draft.header="Started from the installed "+ta::hpi::MountSet::key(script.path)+". "+header;
                 if(!cart::saveAiDraft(draft,catalogue,bytes,error))bytes=script.text;
             } else bytes=script.text;   // kept as written: it still plays exactly as installed
         }
@@ -696,7 +696,7 @@ void cart::Editor::handleAiProfiles(SDL_Event& e) {
     if(!aiMod && cart::pointIn(mx,my,aiPackButton)) {
         aiPack=(aiPack+1)%(int(aiPacks.size())+1);aiPackFiles.reset();
         if(aiPack) try {
-            auto files=tak::hpi::modFiles(tak::u8path(dataRoot),tak::hpi::ModKind::Game,{aiPacks[size_t(aiPack-1)]});
+            auto files=ta::hpi::modFiles(ta::u8path(dataRoot),ta::hpi::ModKind::Game,{aiPacks[size_t(aiPack-1)]});
             std::erase_if(files,[](const auto& file){return !file.first.starts_with("ai/");});   // only ai/ is asked
             aiPackFiles=std::move(files);
         } catch(const std::exception& error) {aiNote=std::string("Game mod: ")+error.what();aiPack=0;}
@@ -827,7 +827,7 @@ void cart::Editor::drawAiProfiles() {
             if(cached.first!=bytes)cached={bytes,cart::parseAiDraft(bytes,t?AiKind::Level:AiKind::Default,catalogue).asWritten};
             written=cached.second;
         }
-        const std::string label=t?"TAK ENGINE AI":"DEFAULT AI";
+        const std::string label=t?"TA ENGINE AI":"DEFAULT AI";
         cart::drawText(ren,(t==aiTab?">":" ")+label,r.x+3,r.y+3,1,t==aiTab?255:215,t==aiTab?235:220,t==aiTab?200:230);
         const std::string tag=std::string(written?"as written ":"")+(inMap?aiMod?"pack":"map":"")+(edited?" *":"");
         cart::drawText(ren,tag,r.x+r.w-4-cart::textWidth(tag,1),r.y+3,1,written?235:160,written?190:200,written?120:170);
@@ -864,7 +864,7 @@ void cart::Editor::drawAiProfiles() {
 
     // ---- right side ----
     const int x0=ct.x+kLeftW+10,W=ct.x+ct.w-x0,y0=ct.y;
-    cart::drawText(ren,aiTab?"TAK ENGINE RULES: WHOLE NUMBERS; UNITS BY NAME ONLY; LATER LINES WIN.":"ORIGINAL-GAME RULES: THE FIRST LINE NAMING A UNIT WINS; GROUP RULES COMBINE.",x0,y0,1,235,220,160);
+    cart::drawText(ren,aiTab?"TA ENGINE RULES: WHOLE NUMBERS; UNITS BY NAME ONLY; LATER LINES WIN.":"ORIGINAL-GAME RULES: THE FIRST LINE NAMING A UNIT WINS; GROUP RULES COMBINE.",x0,y0,1,235,220,160);
     aiStandardRadio=aiOwnRadio=aiNameBox=aiModDefaultButton=aiModNewNameButton={};
     if(!aiTab && aiMod) {
         cart::drawText(ren,"This pack's DEFAULT AI file:",x0,y0+17,1,220,225,235);
@@ -1089,8 +1089,8 @@ void cart::Editor::drawAiProfiles() {
         else if(aiPack)plays+=" (with pack "+aiPacks[size_t(aiPack-1)]+" ticked)";
     }
     drawWrapped(ren,plays,ct.x,footY+2,ct.w,2,180,220,190);
-    cart::drawText(ren,aiModOnly?"TEST IN GAME: pick a map; its room ticks this pack. RETAIL plays the DEFAULT AI, other levels ai/takengine.txt.":
-        aiTab?"Test Map: every level you pick in the room reads ai/takengine.txt. Game-mod files are tested by ticking that pack.":
+    cart::drawText(ren,aiModOnly?"TEST IN GAME: pick a map; its room ticks this pack. RETAIL plays the DEFAULT AI, other levels ai/taengine.txt.":
+        aiTab?"Test Map: every level you pick in the room reads ai/taengine.txt. Game-mod files are tested by ticking that pack.":
         "Test Map: pick RETAIL for the DEFAULT AI in the room. Game-mod files are tested by ticking that pack.",ct.x,footY+28,1,150,160,175);
     const int by=ct.y+ct.h-18;
     aiStartButton=aiEditableButton=aiInsertButton={};
@@ -1128,7 +1128,7 @@ void cart::Editor::aiOpenModSave() {
     aiModRows.clear();aiModDeletes.clear();aiModDeleteTicked.clear();aiModNote.clear();aiModDeleteBoxes.clear();
     const auto& files=aiSet();
     auto has=[&](const std::string& key) {const auto it=files.find(key);return it!=files.end() && !it->second.empty();};
-    auto label=[](const std::string& key) {return std::string(cart::aiEngineFile(key)?"TAK ENGINE AI":"DEFAULT AI");};
+    auto label=[](const std::string& key) {return std::string(cart::aiEngineFile(key)?"TA ENGINE AI":"DEFAULT AI");};
     if(aiMod) {   // back to the pack it came from: what changed since it was opened
         aiModPack=aiMod->pack;
         for(const auto& [key,bytes]:files)if(!bytes.empty()) {
@@ -1141,12 +1141,12 @@ void cart::Editor::aiOpenModSave() {
         // DEFAULT unticked: a game mod's file applies on every map (design 3.5).
         const auto def=aiKeyFor(0);
         if(!def.empty() && has(def))aiModRows.push_back({"DEFAULT AI",def,def,false,true,{}});
-        const auto key=aiKeyFor(1);   // ai/takengine.txt
+        const auto key=aiKeyFor(1);   // ai/taengine.txt
         if(has(key))aiModRows.push_back({label(key),key,key,true,false,{}});
         else if(aiOpened.count(key))aiModDeletes.push_back(key);   // emptied in this window
     }
     if(aiModRows.empty() && aiModDeletes.empty()) {
-        aiNote=aiMod?"This pack has no AI files to save.":"This map has no AI profiles to save yet: edit TAK ENGINE AI, or choose the DEFAULT AI's own profile first.";
+        aiNote=aiMod?"This pack has no AI files to save.":"This map has no AI profiles to save yet: edit TA ENGINE AI, or choose the DEFAULT AI's own profile first.";
         return;
     }
     aiModSaveOpen=true;if(aiFocus!=AI_NONE)aiFocus=AI_NONE;
@@ -1170,7 +1170,7 @@ void cart::Editor::aiModReplan() {
             else write[row.target]=it->second;
         }
         aiModPlanError.clear();
-        if(!cart::planModProfiles(tak::u8path(dataRoot),pack,write,remove,aiModPlan,aiModPlanError))aiModPlan=ModProfilePlan{};
+        if(!cart::planModProfiles(ta::u8path(dataRoot),pack,write,remove,aiModPlan,aiModPlanError))aiModPlan=ModProfilePlan{};
     };
     plan(trimmed(aiModPack));
     // An existing pack keeps its own spelling on disk; the header names it that way.
@@ -1192,7 +1192,7 @@ void cart::Editor::aiModSave() {
     }
     auto write=[this,plan] {
         std::string error;std::filesystem::path backup;
-        if(!cart::writeModProfiles(tak::u8path(dataRoot),plan,preferencesFolder,error,&backup)) {aiAfterSave=nullptr;openMessage("SAVE FAILED",error);return;}
+        if(!cart::writeModProfiles(ta::u8path(dataRoot),plan,preferencesFolder,error,&backup)) {aiAfterSave=nullptr;openMessage("SAVE FAILED",error);return;}
         int written=0,same=0,deleted=0;
         for(const auto& change:plan.changes) {
             if(change.action==A::Same)++same;else if(change.action==A::Delete)++deleted;else ++written;
@@ -1203,7 +1203,7 @@ void cart::Editor::aiModSave() {
         }
         if(aiMod)aiMod->pack=plan.pack;
         aiModSaveOpen=false;aiModPack=plan.pack;
-        try {aiPacks=tak::hpi::modPacks(tak::u8path(dataRoot),tak::hpi::ModKind::Game);} catch(const std::exception&) {}
+        try {aiPacks=ta::hpi::modPacks(ta::u8path(dataRoot),ta::hpi::ModKind::Game);} catch(const std::exception&) {}
         aiPack=0;aiPackFiles.reset();   // the preview reads packs again when picked
         aiUseRoster(aiMod?aiMod->pack:"");
         std::string text="Saved to "+pathText(plan.folder)+": "+std::to_string(written)+" written";
@@ -1218,7 +1218,7 @@ void cart::Editor::aiModSave() {
         }
         openMessage("SAVED",text);
     };
-    if(replaces)openConfirm("REPLACE PACK FILES",compare+"The old files are kept in "+pathText(preferencesFolder/"mod-backups"/tak::u8path(plan.pack))+
+    if(replaces)openConfirm("REPLACE PACK FILES",compare+"The old files are kept in "+pathText(preferencesFolder/"mod-backups"/ta::u8path(plan.pack))+
         ", not in the pack. Save?",write);
     else write();
 }
@@ -1227,7 +1227,7 @@ void cart::Editor::aiOpenPack(const std::string& pack) {
     aiModOpenOpen=false;
     if(aiModPickWorkspace && !aiOpen) {aiModPickWorkspace=false;startAiModWorkspace(pack,false);return;}   // File > Open AI mod
     try {
-        auto files=cart::readModProfiles(tak::u8path(dataRoot),pack);
+        auto files=cart::readModProfiles(ta::u8path(dataRoot),pack);
         AiModSet set;set.pack=pack;set.files=files;set.opened=std::move(files);
         // The DEFAULT tab shows ai/default.txt, or the pack's file for this map's profile name.
         if(!set.files.count("ai/default.txt")) {
@@ -1303,7 +1303,7 @@ bool cart::Editor::mapHasUnsavedWork() const {
 void cart::Editor::requestAiMod(bool create) {
     auto next=[this,create] {
         if(create) {openModal(M_NEWAIMOD);return;}
-        try {aiPacks=tak::hpi::modPacks(tak::u8path(dataRoot),tak::hpi::ModKind::Game);} catch(const std::exception&) {aiPacks.clear();}
+        try {aiPacks=ta::hpi::modPacks(ta::u8path(dataRoot),ta::hpi::ModKind::Game);} catch(const std::exception&) {aiPacks.clear();}
         if(aiPacks.empty()) {openMessage("OPEN AI MOD","This install has no game mods yet (mods/game/<pack>/). File > New AI mod makes one.");return;}
         aiOpenPackList();
     };
@@ -1334,7 +1334,7 @@ void cart::Editor::startAiModWorkspace(const std::string& pack,bool fresh) {
     aiModOnly=true;aiModPickWorkspace=false;aiTab=1;aiPreviewLevel=Difficulty::Normal;
     if(fresh) {
         AiModSet set;set.pack=pack;aiMod=std::move(set);
-        aiNote="New AI mod "+pack+": edit TAK ENGINE AI (all six levels) and DEFAULT AI (RETAIL), then SAVE TO PACK makes mods/game/"+pack+"/ai/.";
+        aiNote="New AI mod "+pack+": edit TA ENGINE AI (all six levels) and DEFAULT AI (RETAIL), then SAVE TO PACK makes mods/game/"+pack+"/ai/.";
     } else {
         aiOpenPack(pack);
         if(!aiMod) {const auto why=aiNote;finishAiModWorkspace();openMessage("OPEN AI MOD FAILED",why);return;}
@@ -1358,7 +1358,7 @@ void cart::Editor::leaveAiModThen(std::function<void()> then) {
 }
 
 // TEST IN GAME: the pack as saved, on one of the install's maps, in the normal private
-// single-player room with this pack ticked (takclient --play-map <snapshot> --game-mod <pack>).
+// single-player room with this pack ticked (taclient --play-map <snapshot> --game-mod <pack>).
 void cart::Editor::aiTestInGame() {
     aiCommitText();
     if(!aiMod)return;
@@ -1366,7 +1366,7 @@ void cart::Editor::aiTestInGame() {
     auto pick=[this] {
         if(!aiMod)return;
         std::vector<std::string> packs;
-        try {packs=tak::hpi::modPacks(tak::u8path(dataRoot),tak::hpi::ModKind::Game);} catch(const std::exception&) {}
+        try {packs=ta::hpi::modPacks(ta::u8path(dataRoot),ta::hpi::ModKind::Game);} catch(const std::exception&) {}
         if(std::none_of(packs.begin(),packs.end(),[&](const std::string& p){return p==aiMod->pack;})) {
             aiNote="Save the pack first: mods/game/"+aiMod->pack+" is not in the data folder yet, so the game has nothing to tick.";return;
         }
@@ -1381,7 +1381,7 @@ void cart::Editor::openTestMapPicker() {
     openModal(M_OPENPATH);
     openForTest=true;mTitle="TEST IN GAME: CHOOSE A MAP";mLabel[0]="SEARCH THE INSTALL'S MAPS";
     openCatalog.clear();
-    for(const auto& [name,path]:tak::hpi::listMaps(vfs))openCatalog.emplace_back(name,path);
+    for(const auto& [name,path]:ta::hpi::listMaps(vfs))openCatalog.emplace_back(name,path);
     openFilterDirty=true;filterOpenMaps();
 }
 
@@ -1395,11 +1395,11 @@ void cart::Editor::aiLaunchTest(const std::string& mapPath) {
         const auto name="Test "+std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
         const auto files=installedMapFiles(mapPath,name);
         std::string error;
-        if(!playtest.start(client,tak::u8path(dataRoot),files,error,aiMod->pack))throw std::runtime_error(error);
+        if(!playtest.start(client,ta::u8path(dataRoot),files,error,aiMod->pack))throw std::runtime_error(error);
         playtestAiMod=true;
         openMessage("TEST IN GAME","Opened a private game lobby on a test copy of "+label+" with game mod "+aiMod->pack+
             " ticked for that room only (your own ticks are kept). Seat AIs at the levels to test (RETAIL for the DEFAULT AI), then start. Close the game to return here."+
-            cart::alwaysEnabledGameNote(tak::u8path(dataRoot)));
+            cart::alwaysEnabledGameNote(ta::u8path(dataRoot)));
     } catch(const std::exception& e) {openMessage("TEST IN GAME FAILED",e.what());}
 }
 
@@ -1585,7 +1585,7 @@ void cart::Editor::drawAiModDialogs() {
         y+=18;
     }
     y+=6;
-    y+=12*drawWrapped(ren,"! A game mod's file replaces the same file on every map, the whole file, not line by line: its ai/takengine.txt replaces the map's for all six levels. "
+    y+=12*drawWrapped(ren,"! A game mod's file replaces the same file on every map, the whole file, not line by line: its ai/taengine.txt replaces the map's for all six levels. "
         "It applies only when the pack is ticked (multiplayer: the host ticks it in the room) or is in mods/game/always_enabled/ of the host's install. "
         "A game mod's default.txt does not replace a map's own profile.",pc.x,y,pc.w,4,255,205,140)+4;
     // The roster note: the units listed are this pack's when the window reads them (editing or previewing it).
@@ -1593,7 +1593,7 @@ void cart::Editor::drawAiModDialogs() {
     if(aiRosterLists(target))
         y+=12*drawWrapped(ren,"The units listed are this pack's, its "+std::to_string(aiPackRoster->added.size())+" additions included.",pc.x,y,pc.w,2,150,160,175)+4;
     else
-        y+=12*drawWrapped(ren,"Units this pack adds are not listed (PREVIEW WITH GAME MOD lists a pack's units). Our levels never build a unit that neither their built-in table nor ai/takengine.txt names; the DEFAULT AI builds them at full chance.",
+        y+=12*drawWrapped(ren,"Units this pack adds are not listed (PREVIEW WITH GAME MOD lists a pack's units). Our levels never build a unit that neither their built-in table nor ai/taengine.txt names; the DEFAULT AI builds them at full chance.",
             pc.x,y,pc.w,2,150,160,175)+4;
     if(!aiModPlanError.empty())drawWrapped(ren,aiModPlanError,pc.x,y,pc.w,3,255,150,135);
     else if(!aiModNote.empty())drawWrapped(ren,aiModNote,pc.x,y,pc.w,2,255,200,130);

@@ -37,7 +37,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace tak::wayland {
+namespace ta::wayland {
 
 enum Setting : int { kAuto = 0, kOn = 1, kOff = 2 };
 
@@ -247,7 +247,7 @@ struct Observation {
     int logicalWidth = 0;      // native: the logical desktop width
 };
 
-// The display scale the first-run rule (tak::applyFirstRunScale) uses for this start's
+// The display scale the first-run rule (ta::applyFirstRunScale) uses for this start's
 // window: the settled compositor scale in a native Wayland window, on every desktop; 1 in
 // an X11 one, plain or through XWayland (and in a native start whose scale never settled),
 // which leaves the defaults.
@@ -292,4 +292,4 @@ inline float advanceDisplay(DisplayHistory& h, const Observation& now, Units u, 
     return inPoints(prev, u) ? S : 1.0f / S;
 }
 
-}  // namespace tak::wayland
+}  // namespace ta::wayland

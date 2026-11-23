@@ -17,7 +17,7 @@
 // after release(), page creation refused under the GPU budget, no tracked-byte
 // leak, and ready() refuses the software renderer.
 //
-// Accelerated runs need TAK_GEOMETRY_TEST_ACCELERATED=1 (SDL_VIDEODRIVER=offscreen
+// Accelerated runs need TA_GEOMETRY_TEST_ACCELERATED=1 (SDL_VIDEODRIVER=offscreen
 // is fine); without it the test checks the software refusal only.
 #include "client/paletteindexed.h"
 #include "client/nativepass.h"
@@ -27,7 +27,7 @@
 #include <random>
 #include <vector>
 
-using namespace tak::render;
+using namespace ta::render;
 
 namespace {
 int failures = 0;
@@ -37,17 +37,17 @@ struct Sheet { size_t frame; size_t page; palette::Rect rect; uint32_t id; int b
 }  // namespace
 
 int main() {
-    const bool accelerated = std::getenv("TAK_GEOMETRY_TEST_ACCELERATED");
+    const bool accelerated = std::getenv("TA_GEOMETRY_TEST_ACCELERATED");
     if (!accelerated) {
         SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 64, 64, 32, SDL_PIXELFORMAT_RGBA32);
         SDL_Renderer* renderer = surface ? SDL_CreateSoftwareRenderer(surface) : nullptr;
         if (!renderer) { std::printf("%s\n", SDL_GetError()); return 2; }
-        tak::PaletteIndexedGL indexed;
+        ta::PaletteIndexedGL indexed;
         CHECK(!indexed.ready(renderer));
         SDL_DestroyRenderer(renderer);
         SDL_FreeSurface(surface);
         if (failures) return 1;
-        std::printf("PASS: palette indexed (software renderer refused; set TAK_GEOMETRY_TEST_ACCELERATED=1 for GL)\n");
+        std::printf("PASS: palette indexed (software renderer refused; set TA_GEOMETRY_TEST_ACCELERATED=1 for GL)\n");
         return 0;
     }
     if (SDL_Init(SDL_INIT_VIDEO) != 0) return 2;
@@ -112,7 +112,7 @@ int main() {
         CHECK(SDL_UpdateTexture(baked[s.page], &r, expanded.data(), s.rect.w * 4) == 0);
     }
     // ---- indexed pages (and a marked copy: outside decodes magenta) ----
-    tak::PaletteIndexedGL indexed, marked;
+    ta::PaletteIndexedGL indexed, marked;
     marked.setMarkOutside(true);
     CHECK(indexed.ready(renderer));
     if (!indexed.ready(renderer)) { std::printf("indexed unavailable: %s\n", indexed.error().c_str()); return 1; }
@@ -188,7 +188,7 @@ int main() {
     SDL_UpdateTexture(plain, nullptr, plainPixels, 8);
     int outsidePixels = 0;
     int linearHistogram[5] = {};   // max channel diff 1, 2, 3..4, 5..16, >16
-    tak::GeometrySubmit submit;
+    ta::GeometrySubmit submit;
     int cases = 0, linearDiffPixels = 0, linearMax = 0;
     size_t comparedPixels = 0;
     for (int variant = 0; variant < 2; ++variant)
@@ -213,7 +213,7 @@ int main() {
             for (size_t p = 0; p < batches.size(); ++p) {
                 const auto& b = batches[p];
                 if (b.baked.empty()) continue;
-                tak::PaletteIndexedGL& programs = form == 2 ? marked : indexed;
+                ta::PaletteIndexedGL& programs = form == 2 ? marked : indexed;
                 if (form == 0) {
                     CHECK(SDL_RenderGeometry(renderer, baked[p], b.baked.data(), int(b.baked.size()), nullptr, 0) == 0);
                 } else if (path == 0) {
@@ -306,7 +306,7 @@ int main() {
         auto glDeleteBuffers = reinterpret_cast<void (APIENTRY*)(GLsizei, const GLuint*)>(SDL_GL_GetProcAddress("glDeleteBuffers"));
         struct Command { int kind; size_t page; std::vector<SDL_Vertex> baked, drawn; };   // 0 palette, 1 plain, 2 premul
         int passCases = 0;
-        tak::NativePassGL pass;   // workstream N: the pass owner (was PaletteIndexedGL's pass state)
+        ta::NativePassGL pass;   // workstream N: the pass owner (was PaletteIndexedGL's pass state)
         CHECK(pass.ready(renderer));
         pass.setVerify(true);
         for (float scale : {1.0f, 2.0f})

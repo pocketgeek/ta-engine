@@ -16,14 +16,14 @@
 
 #include <string>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 enum class FontRole { Art, Text };
 
 class Font {
 public:
     Font() = default;
-    Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPath,
+    Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPath,
          FontRole role = FontRole::Art);
     ~Font();
     Font(const Font&) = delete;

@@ -7,10 +7,10 @@
 #include "util/audiolayout.h"
 #include "video/streamcursor.h"
 
-namespace tak::video {
+namespace ta::video {
 // Where Stream::start() sends the stream (the key follows it): YouTube's RTMPS ingest.
 // Stream::audio() takes PCM at the game's mix rate (util/audiolayout.h kMixRate).
-inline constexpr int kAudioRate = tak::audio::kMixRate;   // 44100
+inline constexpr int kAudioRate = ta::audio::kMixRate;   // 44100
 inline constexpr const char* kYouTubeIngest = "rtmps://a.rtmps.youtube.com:443/live2/";
 struct StreamConfig {
     int width = 1280, height = 720, fps = 30, bitrateKbps = 6000;
@@ -18,7 +18,7 @@ struct StreamConfig {
     std::string encoder;
     std::string key; // Memory only. Never persisted or logged.
     // Non-empty: also save the SAME encoded packets to a fragmented MP4 in this folder
-    // (created if missing), TAK-YYYYMMDD-HHMMSS.mp4, one file per connection. A local
+    // (created if missing), TA-YYYYMMDD-HHMMSS.mp4, one file per connection. A local
     // failure stops only the copy; the stream continues.
     std::string localCopyDir;
 };
@@ -43,7 +43,7 @@ public:
     bool start(const StreamConfig&);
     // Local FLV integration test/recording sink, never exposed as a network URL.
     bool startRecording(const StreamConfig&, const std::string& path);
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     void testDelayOnce(int milliseconds);
     bool testDelayInProgress() const;
     size_t testRetainedVideoBytes() const;

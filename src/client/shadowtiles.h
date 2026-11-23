@@ -42,7 +42,7 @@
 #include <cstdint>
 #include <span>
 
-namespace tak::render {
+namespace ta::render {
 
 // What a retained tile holds and where it sits. Compared field by field.
 struct ShadowTileStamp {
@@ -147,4 +147,4 @@ inline bool originalRuleReuses(const ShadowTileStamp* before, const ShadowTileSt
            sameBits(before->scaleY, now.scaleY);
 }
 
-}  // namespace tak::render
+}  // namespace ta::render

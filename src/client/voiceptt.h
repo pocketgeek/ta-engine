@@ -13,7 +13,7 @@
 //    screen is capturing a key) or the key is found up without our having seen the
 //    release, the transmission ends. It restarts only on a fresh press.
 
-namespace tak::voice {
+namespace ta::voice {
 
 class PushToTalk {
 public:
@@ -62,4 +62,4 @@ private:
     int hold_ = 0;
 };
 
-}  // namespace tak::voice
+}  // namespace ta::voice

@@ -27,7 +27,7 @@ struct CellRect {int x0=0,z0=0,x1=0,z1=0;};   // inclusive cell corners
 
 // Paint or erase every cell of the inclusive rectangle (corners in any order),
 // clipped to the map. Returns the number of cells changed.
-inline int applyBlockers(tak::tnt::Map& map,int x0,int z0,int x1,int z1,BlockOp op) {
+inline int applyBlockers(ta::tnt::Map& map,int x0,int z0,int x1,int z1,BlockOp op) {
     if(map.width<=0 || map.height<=0 || map.features.size()!=size_t(map.width)*size_t(map.height))return 0;
     const int lx=std::max(0,std::min(x0,x1)),hx=std::min(map.width-1,std::max(x0,x1));
     const int lz=std::max(0,std::min(z0,z1)),hz=std::min(map.height-1,std::max(z0,z1));
@@ -50,7 +50,7 @@ inline CellRect brushCells(int cx,int cz,int size) {
 // The brush stamped at every cell of the line a->b, so a fast drag leaves no gaps.
 // The line steps along x or z, never both at once: it is 4-connected, so a wall
 // drawn with the smallest brush has no diagonal chinks.
-inline int applyBlockerLine(tak::tnt::Map& map,int ax,int az,int bx,int bz,int size,BlockOp op) {
+inline int applyBlockerLine(ta::tnt::Map& map,int ax,int az,int bx,int bz,int size,BlockOp op) {
     const int nx=std::abs(bx-ax),nz=std::abs(bz-az),sx=bx<ax?-1:1,sz=bz<az?-1:1;
     auto stamp=[&](int x,int z) {const auto b=brushCells(x,z,size);return applyBlockers(map,b.x0,b.z0,b.x1,b.z1,op);};
     int changed=stamp(ax,az);
@@ -61,7 +61,7 @@ inline int applyBlockerLine(tak::tnt::Map& map,int ax,int az,int bx,int bz,int s
     return changed;
 }
 
-inline int countBlocked(const tak::tnt::Map& map) {
+inline int countBlocked(const ta::tnt::Map& map) {
     return int(std::count(map.features.begin(),map.features.end(),kCellBlocked));
 }
 

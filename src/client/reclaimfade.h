@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::reclaimfade {
+namespace ta::reclaimfade {
 
 // The alpha after `steps` of retail's per-tick float subtraction, as the
 // vertex alpha byte. The float rounding is retail's: fst stores each step back
@@ -62,4 +62,4 @@ inline std::vector<uint8_t> silhouette(const hiddenunits::AlphaMask& mask) {
     return rgba;
 }
 
-} // namespace tak::reclaimfade
+} // namespace ta::reclaimfade

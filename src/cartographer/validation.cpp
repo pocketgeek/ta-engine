@@ -20,7 +20,7 @@ std::string folded(std::string value) {
     return value;
 }
 }
-std::vector<MapIssue> validateTerrainResources(const tak::tnt::Map& map,const tak::hpi::Vfs& vfs) {
+std::vector<MapIssue> validateTerrainResources(const ta::tnt::Map& map,const ta::hpi::Vfs& vfs) {
     std::vector<MapIssue> issues;
     const auto count=size_t(std::max(0,map.blocksX))*std::max(0,map.blocksY);
     if(map.blocksX<=0 || map.blocksY<=0 || map.blocksX!=map.width/2 || map.blocksY!=map.height/2 ||
@@ -29,7 +29,7 @@ std::vector<MapIssue> validateTerrainResources(const tak::tnt::Map& map,const ta
     }
     struct Use {size_t first=0,count=0;};std::map<uint32_t,Use> used;
     for(size_t i=0;i<count;++i) {auto& use=used[map.tileKeys[i]];if(use.count++==0)use.first=i;}
-    tak::terrain::Compositor compositor(vfs);
+    ta::terrain::Compositor compositor(vfs);
     for(const auto& [key,use]:used) {
         try {compositor.sectionImage(key,map.stockTerrain);}
         catch(const std::exception& error) {
@@ -42,7 +42,7 @@ std::vector<MapIssue> validateTerrainResources(const tak::tnt::Map& map,const ta
     }
     return issues;
 }
-std::vector<MovementRegion> movementRegions(const tak::sim::NavGrid& grid,int footprint) {
+std::vector<MovementRegion> movementRegions(const ta::sim::NavGrid& grid,int footprint) {
     footprint=std::clamp(footprint,1,15);
     const int width=grid.width(),height=grid.height();grid.ensureClearance();
     std::vector<uint8_t> cells(size_t(width)*height);
@@ -67,8 +67,8 @@ std::vector<MovementRegion> movementRegions(const tak::sim::NavGrid& grid,int fo
     std::stable_sort(regions.begin(),regions.end(),[](const auto& a,const auto& b){return a.cells>b.cells;});
     return regions;
 }
-std::vector<MapIssue> validateRuleOperands(bool action,const tak::crt::Rule& rule,
-    const tak::crt::Scenario& scenario,const tak::sim::TypeRegistry& registry) {
+std::vector<MapIssue> validateRuleOperands(bool action,const ta::crt::Rule& rule,
+    const ta::crt::Scenario& scenario,const ta::sim::TypeRegistry& registry) {
     std::vector<MapIssue> issues;
     auto issue=[&](std::string text,bool error=true) {issues.push_back({error?MapIssue::Severity::Error:MapIssue::Severity::Warning,std::move(text)});};
     const auto& definitions=action?actionDefs():conditionDefs();
@@ -108,10 +108,10 @@ std::vector<MapIssue> validateRuleOperands(bool action,const tak::crt::Rule& rul
     }
     return issues;
 }
-std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
-    const tak::tnt::Scenario& metadata,const tak::crt::Scenario& scenario,
+std::vector<MapIssue> validateMap(const ta::tnt::Map& map,
+    const ta::tnt::Scenario& metadata,const ta::crt::Scenario& scenario,
     const std::vector<PlacedUnit>& units,const std::set<std::string>& useOnly,
-    const tak::sim::TypeRegistry& registry,const tak::hpi::Vfs& vfs) {
+    const ta::sim::TypeRegistry& registry,const ta::hpi::Vfs& vfs) {
     std::vector<MapIssue> issues;
     auto issue=[&](std::string text,float x=-1,float z=-1,bool error=false) {
         issues.push_back({error?MapIssue::Severity::Error:MapIssue::Severity::Warning,std::move(text),x,z});
@@ -122,10 +122,10 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
     }
     issues=validateTerrainResources(map,vfs);
     auto inside=[&](float x,float z) {return std::isfinite(x) && std::isfinite(z) && x>=0 && z>=0 && x<map.width*16.f && z<map.height*16.f;};
-    auto world=std::make_unique<tak::sim::World>();
+    auto world=std::make_unique<ta::sim::World>();
     world->setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
     world->buildNavClasses(registry);
-    tak::sim::registerMapFeatures(*world,map,vfs,&registry);
+    ta::sim::registerMapFeatures(*world,map,vfs,&registry);
     std::set<uint16_t> missingFeatures;
     const auto& featureTypes=world->mapPlacementTypes();
     for(size_t i=0;i<map.features.size();++i) {
@@ -159,7 +159,7 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
     if(metadata.starts.empty())issue("No player start positions");
     else if(metadata.starts.size()<2)issue("Fewer than two player starts; ordinary skirmishes need at least two");
     if(metadata.starts.size()>8)issue("More than eight player starts; only eight players can join a match");
-    struct StartCandidate {const tak::sim::UnitType* type;float x,z;int number;};
+    struct StartCandidate {const ta::sim::UnitType* type;float x,z;int number;};
     std::vector<StartCandidate> startCandidates;
     std::set<std::pair<int,int>> startCells;
     std::set<int> startNumbers;
@@ -171,7 +171,7 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
         if(!inside(x,z)) {issue(label+": outside map",-1,-1,true);continue;}
         if(!startCells.insert({start.xpos,start.zpos}).second)issue(label+": overlaps another start",x,z);
         std::string blocked;
-        for(const char* monarch:tak::sim::kMonarchs) {
+        for(const char* monarch:ta::sim::kMonarchs) {
             const auto* type=registry.find(monarch);
             if(type && !type->canFly) {
                 if(!world->canPlace(type,x,z)) {if(!blocked.empty())blocked+=", ";blocked+=type->name;}
@@ -186,7 +186,7 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
     // Use the same observational connectivity query as the AI. It resolves a
     // blocked endpoint to nearby occupiable ground, so these are approach-route
     // warnings, not guarantees about the exact destination cell or build site.
-    if(metadata.starts.size()<=8)for(const char* monarchId:tak::sim::kMonarchs) {
+    if(metadata.starts.size()<=8)for(const char* monarchId:ta::sim::kMonarchs) {
         const auto* monarch=registry.find(monarchId);if(!monarch || monarch->canFly)continue;
         for(size_t i=0;i<metadata.starts.size();++i) {
             const auto& start=metadata.starts[i];const float x=start.xpos*16.f,z=start.zpos*16.f;
@@ -207,7 +207,7 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
     }
     if(!world->hasManaSpots() && std::any_of(registry.types().begin(),registry.types().end(),[](const auto& entry){return entry.second.onMana;}))
         issue("No recognized mana deposits; skirmish players cannot expand their lodestone economy");
-    struct ManaCandidate {const tak::sim::UnitType* type;float x,z;};
+    struct ManaCandidate {const ta::sim::UnitType* type;float x,z;};
     std::vector<ManaCandidate> manaCandidates;
     for(const auto& [x,z]:world->manaSpots()) {
         std::string blocked;
@@ -221,7 +221,7 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
     // Classify all distinct mobile movement/footprint profiles, not just routes
     // between starts. Reuse equivalent profiles and release each scan before
     // starting the next so large maps do not retain one label grid per type.
-    std::map<std::pair<const tak::sim::NavGrid*,int>,std::vector<std::string>> profiles;
+    std::map<std::pair<const ta::sim::NavGrid*,int>,std::vector<std::string>> profiles;
     for(const auto& [id,type]:registry.types()) {
         if(type.canFly || type.maxVel.v<=0 || (!restrictions.empty() && !restrictions.count(folded(id))))continue;
         profiles[{&world->navFor(&type),std::clamp(std::max(type.footX,type.footZ),1,15)}].push_back(type.name.empty()?id:type.name);
@@ -256,8 +256,8 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
         std::string blocked;
         for(const auto& output:registry.buildable(factoryType)) {
             const auto* ship=registry.find(output);
-            if(!ship || ship->domain!=tak::sim::UnitType::Domain::Water || ship->isStructure())continue;
-            tak::sim::Fixed sx,sy,sz;
+            if(!ship || ship->domain!=ta::sim::UnitType::Domain::Water || ship->isStructure())continue;
+            ta::sim::Fixed sx,sy,sz;
             if(!world->productionPosition(id,ship,sx,sy,sz)) {
                 if(!blocked.empty())blocked+=", ";
                 blocked+=ship->name;
@@ -295,16 +295,16 @@ std::vector<MapIssue> validateMap(const tak::tnt::Map& map,
     }
     return issues;
 }
-std::vector<MapIssue> validateCrusadesRoster(const tak::crt::Scenario& scenario,
-    const std::vector<PlacedUnit>& units,const tak::sim::TypeRegistry& standard,
-    const tak::sim::TypeRegistry& crusades) {
+std::vector<MapIssue> validateCrusadesRoster(const ta::crt::Scenario& scenario,
+    const std::vector<PlacedUnit>& units,const ta::sim::TypeRegistry& standard,
+    const ta::sim::TypeRegistry& crusades) {
     std::vector<MapIssue> issues;
     // The standard unit a name means, when CRUSADES leaves it out.
-    auto lost=[&](const std::string& name)->const tak::sim::UnitType* {
+    auto lost=[&](const std::string& name)->const ta::sim::UnitType* {
         const auto id=folded(name);
         return crusades.find(id)?nullptr:standard.find(id);
     };
-    auto label=[](const tak::sim::UnitType& type,const std::string& name) {
+    auto label=[](const ta::sim::UnitType& type,const std::string& name) {
         std::string upper=name;
         std::transform(upper.begin(),upper.end(),upper.begin(),[](unsigned char c){return char(std::toupper(c));});
         return type.name.empty()?upper:type.name+" ("+upper+")";
@@ -347,9 +347,9 @@ std::vector<MapIssue> validateCrusadesRoster(const tak::crt::Scenario& scenario,
     return issues;
 }
 std::vector<MapIssue> validateAiProfiles(const AiFiles& files,const std::string& aiProfile,
-    const tak::sim::TypeRegistry& registry,const tak::hpi::Vfs& vfs) {
+    const ta::sim::TypeRegistry& registry,const ta::hpi::Vfs& vfs) {
     std::vector<MapIssue> issues;
-    const auto catalogue=tak::ai::ClassicCatalogue::from(registry);
+    const auto catalogue=ta::ai::ClassicCatalogue::from(registry);
     for(const auto& issue:checkAiMap(files,aiProfile,vfs,{&catalogue,&registry})) {
         if(issue.severity==AiIssue::Severity::Info)continue;
         std::string where=issue.file.empty()?"aiprofile":issue.file;

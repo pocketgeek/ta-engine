@@ -21,7 +21,7 @@
 #include <cstdio>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int g_fail = 0;
 static World::CompStats g_warm;   // summed over every warm world, to prove the paths fire
@@ -34,7 +34,7 @@ static void check(bool cond, const std::string& what, const std::string& detail 
 static UnitType mover(int foot) {
     UnitType t{};
     t.name = "m"; t.id = "m";
-    t.maxVel = tak::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 10000; t.maxHp = 100; t.canMove = true;
+    t.maxVel = ta::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 10000; t.maxHp = 100; t.canMove = true;
     t.footX = foot; t.footZ = foot;
     return t;
 }

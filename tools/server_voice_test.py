@@ -130,7 +130,7 @@ def main():
     ap.add_argument('--server', type=Path, required=True)
     ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-voice-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-voice-') as tmp:
         root = Path(tmp)
         with server(a.server.resolve(), a.data.resolve(), root) as (port, h, process), contextlib.ExitStack() as stack:
             peers = {n: stack.enter_context(contextlib.closing(login(port, h, n)))

@@ -4,7 +4,7 @@
 // the results and the stats panel name the mode the run's world really used.
 #include "sim/pathmode.h"
 
-namespace tak {
+namespace ta {
 
 // The screen's PATHFINDING choices, left to right.
 inline constexpr sim::PathfindingMode kBenchmarkPaths[2] = {sim::PathfindingMode::Retail,
@@ -22,4 +22,4 @@ constexpr const char* benchmarkSpeedLabel(int level) { return level >= 100 ? "+1
 // A saved or passed level as one of the choices.
 constexpr int benchmarkSpeedChoice(int level) { return level >= 100 ? 100 : level > 0 ? 10 : 0; }
 
-}  // namespace tak
+}  // namespace ta

@@ -9,8 +9,8 @@
 namespace cart {
 namespace {
 std::string lower(std::string s) {for(char& c:s)c=char(std::tolower(static_cast<unsigned char>(c)));return s;}
-bool named(const tak::tnt::Map& map,size_t i) {return i<map.features.size() && map.features[i]<0xFFFA && map.features[i]<map.featureNames.size();}
-uint16_t intern(tak::tnt::Map& map,const std::string& name) {
+bool named(const ta::tnt::Map& map,size_t i) {return i<map.features.size() && map.features[i]<0xFFFA && map.features[i]<map.featureNames.size();}
+uint16_t intern(ta::tnt::Map& map,const std::string& name) {
     for(size_t i=0;i<map.featureNames.size();++i)if(map.featureNames[i]==name)return uint16_t(i);
     if(map.featureNames.size()>=0xFFFA)return 0xFFFF;
     map.featureNames.push_back(name);return uint16_t(map.featureNames.size()-1);
@@ -238,25 +238,25 @@ std::optional<std::pair<int,int>> mirrorFeature(int x,int z,int fx,int fz,Xf xf,
     if(ox<0 || oz<0 || ox>=outW || oz>=outH)return std::nullopt;
     return std::pair{ox,oz};
 }
-std::optional<tak::tnt::StartPos> mirrorStart(const tak::tnt::StartPos& start,Xf xf,int width,int height) {
+std::optional<ta::tnt::StartPos> mirrorStart(const ta::tnt::StartPos& start,Xf xf,int width,int height) {
     const auto p=transform(xf,PointF{double(start.xpos),double(start.zpos)},width,height);
     const int outW=swapsAxes(xf)?height:width,outH=swapsAxes(xf)?width:height;
-    tak::tnt::StartPos out=start;out.xpos=int(p.x);out.zpos=int(p.z);
+    ta::tnt::StartPos out=start;out.xpos=int(p.x);out.zpos=int(p.z);
     if(out.xpos<0 || out.zpos<0 || out.xpos>=outW || out.zpos>=outH)return std::nullopt;
     return out;
 }
-std::optional<tak::crt::Region> mirrorRegion(const tak::crt::Region& region,Xf xf,int width,int height) {
+std::optional<ta::crt::Region> mirrorRegion(const ta::crt::Region& region,Xf xf,int width,int height) {
     const auto box=transform(xf,Box{std::min(region.x1,region.x2),std::min(region.z1,region.z2),std::max(region.x1,region.x2)+1,std::max(region.z1,region.z2)+1},width,height);
     const int outW=swapsAxes(xf)?height:width,outH=swapsAxes(xf)?width:height;
     if(box.x0<0 || box.z0<0 || box.x1>outW || box.z1>outH)return std::nullopt;
     auto out=region;out.x1=box.x0;out.z1=box.z0;out.x2=box.x1-1;out.z2=box.z1-1;
     return out;
 }
-int nextStartNumber(const std::vector<tak::tnt::StartPos>& starts) {
+int nextStartNumber(const std::vector<ta::tnt::StartPos>& starts) {
     for(int n=1;n<=8;++n)if(std::none_of(starts.begin(),starts.end(),[&](const auto& s){return s.number==n;}))return n;
     return 0;
 }
-std::array<int,9> mirrorPlayers(const std::vector<tak::tnt::StartPos>& starts,Xf xf,int width,int height) {
+std::array<int,9> mirrorPlayers(const std::vector<ta::tnt::StartPos>& starts,Xf xf,int width,int height) {
     std::array<int,9> players{};for(int i=0;i<9;++i)players[size_t(i)]=i;
     for(const auto& start:starts)if(start.number>=1 && start.number<=8)
         if(const auto image=mirrorStart(start,xf,width,height))
@@ -264,7 +264,7 @@ std::array<int,9> mirrorPlayers(const std::vector<tak::tnt::StartPos>& starts,Xf
                 players[size_t(start.number-1)]=other.number-1;
     return players;
 }
-std::string uniqueRegionName(const std::vector<tak::crt::Region>& regions,const std::string& base) {
+std::string uniqueRegionName(const std::vector<ta::crt::Region>& regions,const std::string& base) {
     auto taken=[&](const std::string& name){return std::any_of(regions.begin(),regions.end(),[&](const auto& r){return lower(r.name)==lower(name);});};
     const auto stem=base.substr(0,56);
     if(!taken(stem))return stem;
@@ -361,7 +361,7 @@ void SectionMatcher::build(const std::vector<SectionRef>& refs,const Loader& loa
     }
     built_=true;
 }
-std::vector<SectionMatcher::Source> SectionMatcher::attribute(const tak::tnt::Map& map,Box b) const {
+std::vector<SectionMatcher::Source> SectionMatcher::attribute(const ta::tnt::Map& map,Box b) const {
     b={std::max(0,b.x0),std::max(0,b.z0),std::min(map.blocksX,b.x1),std::min(map.blocksY,b.z1)};
     std::vector<Source> out(size_t(std::max(0,b.x1-b.x0))*std::max(0,b.z1-b.z0));
     std::map<std::tuple<int,int,int>,int> scores;
@@ -406,8 +406,8 @@ int SectionMatcher::twin(int section,Xf xf) const {
     return twins_[key]=result;
 }
 
-TerrainMirror mirrorTerrain(const SectionMatcher& matcher,const tak::tnt::Map& source,Box b,
-                            const std::vector<SectionMatcher::Source>& attribution,Xf xf,tak::tnt::Map& out,
+TerrainMirror mirrorTerrain(const SectionMatcher& matcher,const ta::tnt::Map& source,Box b,
+                            const std::vector<SectionMatcher::Source>& attribution,Xf xf,ta::tnt::Map& out,
                             const std::function<bool(int,int)>& include) {
     TerrainMirror result;
     const int width=source.blocksX,height=source.blocksY,boxW=b.x1-b.x0;
@@ -447,7 +447,7 @@ std::string SymmetryReport::summary() const {
     return text;
 }
 
-SymmetryReport symmetrize(tak::tnt::Map& map,std::vector<tak::tnt::StartPos>& starts,tak::crt::Scenario& scenario,
+SymmetryReport symmetrize(ta::tnt::Map& map,std::vector<ta::tnt::StartPos>& starts,ta::crt::Scenario& scenario,
                           std::vector<PlacedUnit>& units,const SymmetryRequest& request,const FootprintLookup& footprint,
                           const SectionMatcher* matcher) {
     SymmetryReport report;
@@ -458,7 +458,7 @@ SymmetryReport symmetrize(tak::tnt::Map& map,std::vector<tak::tnt::StartPos>& st
 
     // Starts first: unit owners follow the start each owner's start mirrors to.
     if(!selection) {
-        std::vector<tak::tnt::StartPos> kept;
+        std::vector<ta::tnt::StartPos> kept;
         for(const auto& start:starts)if(source({double(start.xpos),double(start.zpos)}))kept.push_back(start);else ++report.removedStarts;
         auto ordered=kept;std::sort(ordered.begin(),ordered.end(),[](const auto& a,const auto& b){return a.number<b.number;});
         for(const auto& start:ordered) {
@@ -478,7 +478,7 @@ SymmetryReport symmetrize(tak::tnt::Map& map,std::vector<tak::tnt::StartPos>& st
     }
 
     if(!selection) {
-        std::vector<tak::crt::Region> sources;
+        std::vector<ta::crt::Region> sources;
         for(int i=int(scenario.regions.size())-1;i>=0;--i) {
             const auto& r=scenario.regions[size_t(i)];
             const PointF centre{(std::min(r.x1,r.x2)+std::max(r.x1,r.x2)+1)/2.0,(std::min(r.z1,r.z2)+std::max(r.z1,r.z2)+1)/2.0};
@@ -487,7 +487,7 @@ SymmetryReport symmetrize(tak::tnt::Map& map,std::vector<tak::tnt::StartPos>& st
             if(removeRegion(scenario,i,error))++report.removedRegions;else ++report.keptRegions;
         }
         for(const auto& region:sources) {
-            std::vector<tak::crt::Region> seen{region};
+            std::vector<ta::crt::Region> seen{region};
             for(Xf xf:images) {
                 auto image=mirrorRegion(region,xf,width,height);
                 if(!image) {++report.skippedRegions;continue;}
@@ -620,7 +620,7 @@ SymmetryReport symmetrize(tak::tnt::Map& map,std::vector<tak::tnt::StartPos>& st
 }
 
 LiveMirrorResult mirrorUnitEdits(const std::vector<PlacedUnit>& before,std::vector<PlacedUnit>& units,
-                                 Mirror kind,const std::vector<tak::tnt::StartPos>& starts,int width,int height) {
+                                 Mirror kind,const std::vector<ta::tnt::StartPos>& starts,int width,int height) {
     LiveMirrorResult result;const auto images=mirrorImages(kind);
     auto addCopy=[&](const PlacedUnit& unit,Xf xf,size_t self) {
         auto image=mirrorUnit(unit,xf,width,height);
@@ -679,7 +679,7 @@ LiveMirrorResult mirrorUnitEdits(const std::vector<PlacedUnit>& before,std::vect
 }
 
 LiveMirrorResult mirrorFeatureEdits(const std::vector<uint16_t>& beforeFeatures,const std::vector<std::string>& beforeNames,
-                                    tak::tnt::Map& map,Mirror kind,const FootprintLookup& footprint) {
+                                    ta::tnt::Map& map,Mirror kind,const FootprintLookup& footprint) {
     LiveMirrorResult result;const auto images=mirrorImages(kind);
     if(beforeFeatures.size()!=map.features.size())return result;
     struct Change {int x,z;std::string name;};
@@ -717,7 +717,7 @@ LiveMirrorResult mirrorFeatureEdits(const std::vector<uint16_t>& beforeFeatures,
     return result;
 }
 
-LiveMirrorResult mirrorBlockerEdits(const std::vector<uint16_t>& before,tak::tnt::Map& map,Mirror kind) {
+LiveMirrorResult mirrorBlockerEdits(const std::vector<uint16_t>& before,ta::tnt::Map& map,Mirror kind) {
     LiveMirrorResult result;const auto images=mirrorImages(kind);
     if(before.size()!=map.features.size())return result;
     std::vector<std::pair<size_t,bool>> changes;   // cell, painted (else erased); ascending
@@ -748,14 +748,14 @@ LiveMirrorResult mirrorBlockerEdits(const std::vector<uint16_t>& before,tak::tnt
     return result;
 }
 
-LiveMirrorResult mirrorStartEdits(const std::vector<tak::tnt::StartPos>& before,std::vector<tak::tnt::StartPos>& starts,
+LiveMirrorResult mirrorStartEdits(const std::vector<ta::tnt::StartPos>& before,std::vector<ta::tnt::StartPos>& starts,
                                   Mirror kind,int width,int height) {
     LiveMirrorResult result;const auto images=mirrorImages(kind);
     auto at=[&](int x,int z,size_t self)->int {
         for(size_t j=0;j<starts.size();++j)if(j!=self && starts[j].xpos==x && starts[j].zpos==z)return int(j);
         return -1;
     };
-    auto addCopy=[&](const tak::tnt::StartPos& start,Xf xf) {
+    auto addCopy=[&](const ta::tnt::StartPos& start,Xf xf) {
         const auto image=mirrorStart(start,xf,width,height);
         if(!image) {++result.skipped;return;}
         if(image->xpos==start.xpos && image->zpos==start.zpos)return;
@@ -794,7 +794,7 @@ LiveMirrorResult mirrorStartEdits(const std::vector<tak::tnt::StartPos>& before,
     return result;
 }
 
-TerrainClip copyTerrain(const tak::tnt::Map& map,Box b,const std::vector<PlacedUnit>& units,const SectionMatcher* matcher) {
+TerrainClip copyTerrain(const ta::tnt::Map& map,Box b,const std::vector<PlacedUnit>& units,const SectionMatcher* matcher) {
     TerrainClip clip;
     b={std::max(0,b.x0),std::max(0,b.z0),std::min(map.blocksX,b.x1),std::min(map.blocksY,b.z1)};
     if(b.x1<=b.x0 || b.z1<=b.z0)return clip;
@@ -822,7 +822,7 @@ TerrainClip copyTerrain(const tak::tnt::Map& map,Box b,const std::vector<PlacedU
     }
     return clip;
 }
-PasteResult pasteTerrain(tak::tnt::Map& map,std::vector<PlacedUnit>& units,const TerrainClip& clip,int bx,int bz,StampLayers layers) {
+PasteResult pasteTerrain(ta::tnt::Map& map,std::vector<PlacedUnit>& units,const TerrainClip& clip,int bx,int bz,StampLayers layers) {
     PasteResult result;
     if(clip.empty() || !stampSection(map,clip.map,bx,bz,layers))return result;
     result.pasted=true;

@@ -17,7 +17,7 @@
 
 #include "gui/gui.h"
 
-namespace tak::menuclick {
+namespace ta::menuclick {
 
 // The format every click is played in (the shipped WAVs' own; others are converted).
 constexpr int kRate = 11025;
@@ -57,4 +57,4 @@ inline std::vector<uint8_t> level(const std::vector<uint8_t>& u8, int master, in
     return out;
 }
 
-}  // namespace tak::menuclick
+}  // namespace ta::menuclick

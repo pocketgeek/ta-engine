@@ -1,5 +1,5 @@
 // spectator_client_test -- what a real MpClient makes of ALLOW SPECTATORS, against a
-// scripted loopback server (no game data, no takserver; the server's own enforcement
+// scripted loopback server (no game data, no taserver; the server's own enforcement
 // is tools/server_spectators_test.py).
 //
 //  - GameList carries the room's rule, so the browser can show NO WATCH.
@@ -21,7 +21,7 @@
 #include <string>
 #include <thread>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int checks = 0, failures = 0;

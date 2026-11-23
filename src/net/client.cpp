@@ -10,7 +10,7 @@
 #include "tnt/mapgen.h"
 #include "util/devenv.h"
 
-namespace tak::net {
+namespace ta::net {
 
 namespace {
 uint64_t nowMs() {   // monotonic wall-clock (pacing/keepalive only; never hashed)
@@ -164,9 +164,9 @@ void MpClient::leaveRunningGame() {
 bool MpClient::poll() {
     if (state_ == State::Offline || state_ == State::Done) return false;
     if (jitterMs_ < 0) {   // one-time init of the test link model
-        const char* j = tak::devEnv("TAK_NET_JITTER_MS");
-        const char* b = tak::devEnv("TAK_NET_BASE_MS");
-        const char* l = tak::devEnv("TAK_NET_LOSS_PCT");
+        const char* j = ta::devEnv("TA_NET_JITTER_MS");
+        const char* b = ta::devEnv("TA_NET_BASE_MS");
+        const char* l = ta::devEnv("TA_NET_LOSS_PCT");
         jitterMs_ = j ? std::max(0, std::atoi(j)) : 0;
         baseMs_ = b ? std::max(0, std::atoi(b)) : 0;
         lossPct_ = l ? std::clamp(std::atoi(l), 0, 100) : 0;
@@ -1151,9 +1151,9 @@ void MpClient::sendProgress(uint32_t tick) {
     send(Msg::Progress, w);
 }
 
-}  // namespace tak::net
+}  // namespace ta::net
 
-namespace tak::net {
+namespace ta::net {
 void MpClient::acceptMap(std::shared_ptr<maps::Package> package, uint32_t room) {
     mapPackage_ = std::move(package); mapPackageFor_ = room_.mapId; mapReadyRoom_ = room; mapReceive_ = {};
     mapRetries_ = 0; mapRetryAt_ = 0;
@@ -1231,7 +1231,7 @@ void MpClient::mapFrame(const Frame& f) {
 }
 }
 
-namespace tak::net {
+namespace ta::net {
 void MpClient::resetModTransfer() {
     modPackage_.reset();modReceive_={};modSend_={};modOfferedRoom_=modReadyRoom_=0;modStatus_.clear();modPendingAt_=0;
 }

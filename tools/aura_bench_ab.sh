@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # aura_bench_ab.sh --base BUILD --cand BUILD [--rounds N] [--out DIR] [--data DIR] [--set NAME]
 #   -- A/B rounds of tools/aura_bench (perf follow-up L): per workload, base and candidate alternate ABBA
-#   on the reserved timing cores (/home/pocket_geek/tak-tmp/tools/timing.sh: one lock hold for the set), then
+#   on the reserved timing cores (/home/pocket_geek/ta-tmp/tools/timing.sh: one lock hold for the set), then
 #   tools/aura_bench_ab.py prints per build the median over rounds of each run's mean/median/p95/p99/max/min/p10,
 #   the per-round ratios, the retained scratch and whether the buff digests agree (they must: the pass is exact).
 # BUILD is a Debug -O2 -g build dir holding aura_bench (both trees need the aura_bench commits).
 # Sets (--set): screen (default) = the workloads of the L screening, quick = dense + R-2h only.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-BASE= CAND= ROUNDS=4 OUT= SET=screen DATA=${TAK_DATA:-$HOME/TAK/assets/game}
-TIMING=${TAK_TIMING_SH:-/home/pocket_geek/tak-tmp/tools/timing.sh}
+BASE= CAND= ROUNDS=4 OUT= SET=screen DATA=${TA_DATA:-$HOME/TA/assets/game}
+TIMING=${TA_TIMING_SH:-/home/pocket_geek/ta-tmp/tools/timing.sh}
 while [ $# -gt 0 ]; do case $1 in
   --base) BASE=$2; shift 2;; --cand) CAND=$2; shift 2;; --rounds) ROUNDS=$2; shift 2;; --out) OUT=$2; shift 2;;
   --data) DATA=$2; shift 2;; --set) SET=$2; shift 2;; --inner) INNER=1; shift;;

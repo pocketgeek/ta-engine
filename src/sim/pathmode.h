@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-namespace tak::sim {
+namespace ta::sim {
 // Stable saved/network/replay identities. Values 1-3 are reserved and invalid.
 enum class PathfindingMode : uint8_t { Retail=0,Legion=4 };
 // Group-planned, clearance-exact ground navigation (src/sim/legion*).

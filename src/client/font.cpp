@@ -24,12 +24,12 @@ Font& Font::operator=(Font&& other) noexcept {
     return *this;
 }
 
-Font::Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPath, FontRole role) {
+Font::Font(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& gafPath, FontRole role) {
     std::filesystem::path pcx = gafPath;
     pcx.replace_extension(".pcx");
-    auto pal = tak::gaf::Palette::fromBytes(vfs.read(pcx.generic_string()),
+    auto pal = ta::gaf::Palette::fromBytes(vfs.read(pcx.generic_string()),
                                             pcx.generic_string());
-    auto seqs = tak::gaf::load(vfs.read(gafPath), pal, -1, gafPath);
+    auto seqs = ta::gaf::load(vfs.read(gafPath), pal, -1, gafPath);
     if (seqs.empty()) return;
     // A failed allocation partway through construction must release earlier
     // glyphs too; the destructor of a partially constructed Font is not called.
@@ -46,10 +46,10 @@ Font::Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPa
             // vbounds() are all in those units, so a 2x texture is invisible to layout.
             // Glyphs are the smallest art in the game (a few px tall) and the HUD
             // magnifies them, so they stair-step as badly as anything.
-            g.tex = tak::art::makeTexture(ren, f.rgba, f.width, f.height);
+            g.tex = ta::art::makeTexture(ren, f.rgba, f.width, f.height);
             std::vector<uint8_t> mask = f.rgba;
             for (size_t p = 0; p + 3 < mask.size(); p += 4) mask[p] = mask[p + 1] = mask[p + 2] = 255;
-            g.mask = tak::art::makeTexture(ren, mask, f.width, f.height);
+            g.mask = ta::art::makeTexture(ren, mask, f.width, f.height);
         }
         loaded.glyphs_[i] = g;
     }
@@ -83,17 +83,17 @@ Font::Font(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& gafPa
     *this = std::move(loaded);
 }
 
-bool Font::modern() const { return role_ == FontRole::Text && tak::modernUiText() && tak::uiFont().ok(); }
+bool Font::modern() const { return role_ == FontRole::Text && ta::modernUiText() && ta::uiFont().ok(); }
 
 int Font::width(const std::string& text, float scale) const {
-    if (modern()) return int(std::ceil(tak::uiFont().width(text, tak::uiFontScaleForCap(capH_ * scale))));
+    if (modern()) return int(std::ceil(ta::uiFont().width(text, ta::uiFontScaleForCap(capH_ * scale))));
     float x = 0;
     for (unsigned char c : text) x += advance(glyphs_[c]) * scale;
     return int(x);
 }
 
 int Font::height(float scale) const {
-    if (modern()) return int(tak::uiFont().pixelSize(tak::uiFontScaleForCap(capH_ * scale)) + 0.5f);
+    if (modern()) return int(ta::uiFont().pixelSize(ta::uiFontScaleForCap(capH_ * scale)) + 0.5f);
     return glyphHeight(scale);
 }
 
@@ -107,8 +107,8 @@ void Font::vbounds(const std::string& text, float scale, float& topOff, float& h
     if (modern()) {
         // UiFont's bounds are below its line top, which drawWith puts ascent above the
         // GAF baseline (y + baseOff_ * scale).
-        const tak::UiFont& f = tak::uiFont();
-        const float sc = tak::uiFontScaleForCap(capH_ * scale);
+        const ta::UiFont& f = ta::uiFont();
+        const float sc = ta::uiFontScaleForCap(capH_ * scale);
         f.vbounds(text, sc, topOff, h);
         topOff += baseOff_ * scale - f.ascentFrac() * f.pixelSize(sc);
         return;
@@ -141,8 +141,8 @@ void Font::drawWith(SDL_Renderer* ren, const std::string& text, float x, float y
         SDL_Color c = tint;
         if (!solid)
             c = {Uint8(base_.r * tint.r / 255), Uint8(base_.g * tint.g / 255), Uint8(base_.b * tint.b / 255), tint.a};
-        const tak::UiFont& f = tak::uiFont();
-        const float sc = tak::uiFontScaleForCap(capH_ * scale);
+        const ta::UiFont& f = ta::uiFont();
+        const float sc = ta::uiFontScaleForCap(capH_ * scale);
         f.drawSolid(ren, text, x, y + baseOff_ * scale - f.ascentFrac() * f.pixelSize(sc), sc, c);
         return;
     }

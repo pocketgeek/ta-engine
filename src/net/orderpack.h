@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::net {
+namespace ta::net {
 
 struct ClickShape {
     bool moveOffsets = false;   // the right-click move: Move runs carry the click, shape Offsets
@@ -107,4 +107,4 @@ private:
     size_t bytes_ = 0;
 };
 
-}  // namespace tak::net
+}  // namespace ta::net

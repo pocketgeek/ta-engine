@@ -30,8 +30,8 @@ void check(bool ok, const char* what) {
     if (!ok) { std::fprintf(stderr, "FAIL: %s\n", what); ++failures; }
 }
 
-using tak::render::SchedulePolicy;
-using tak::render::WorkPlan;
+using ta::render::SchedulePolicy;
+using ta::render::WorkPlan;
 
 bool wellFormed(const WorkPlan& plan, size_t count) {
     const auto b = plan.bounds();

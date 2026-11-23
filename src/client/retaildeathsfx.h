@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace tak {
+namespace ta {
 
 enum class RetailDeathSfxFamily : uint8_t {
     Smoke,
@@ -78,4 +78,4 @@ constexpr bool retailOwnerVmMayAdvance(bool stopRequested) {
     return !stopRequested;
 }
 
-} // namespace tak
+} // namespace ta

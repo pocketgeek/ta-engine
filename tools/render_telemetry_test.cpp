@@ -22,7 +22,7 @@ void check(bool ok, const char* what) {
 }
 
 int main() {
-    using namespace tak::render;
+    using namespace ta::render;
     {   // Handles: capacity bound, stale-handle rejection, generation on reuse.
         HandleSlots slots(2);
         const RenderHandle a = slots.acquire(), b = slots.acquire();

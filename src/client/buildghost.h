@@ -15,7 +15,7 @@
 
 #include <cstddef>
 
-namespace tak::render {
+namespace ta::render {
 
 // Does order `index` of `builder` draw a queued-build ghost? `site` is the unit
 // builder.buildSiteId names (nullptr when there is none or it is gone).
@@ -30,4 +30,4 @@ bool buildGhostDrawn(const Unit& builder, size_t index, const Unit* site) {
     return !sited;
 }
 
-}  // namespace tak::render
+}  // namespace ta::render

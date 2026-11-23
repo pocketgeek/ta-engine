@@ -8,9 +8,9 @@
 #                              [--speed TENTHS] [--by-tick N | --within-s S] [--min-rate X]
 #                              [--data DIR] [--cpus A-B] [--port N] [--seconds N] [--log DIR]
 #
-# --seat (default) plays Inner Circle --mpai against a local takserver; --watch spectates an 8-AI
+# --seat (default) plays Inner Circle --mpai against a local taserver; --watch spectates an 8-AI
 # Legion game on a generated 8-player map as the host (the user's case). The client stalls once at
-# --stall (TAK_STALL_AT), the host sets --speed at tick --set (TAK_SPEED_AT), and SPEEDLOG's
+# --stall (TA_STALL_AT), the host sets --speed at tick --set (TA_SPEED_AT), and SPEEDLOG's
 # once-a-second lines give the real playout rate. PASS when a 1-second window starting after the
 # change plays at --min-rate (default 0.95 x the requested speed) or more, ending by tick --by-tick
 # or within --within-s seconds of the change. Debug builds only (every hook is a dev.h env var).
@@ -20,9 +20,9 @@
 # models the load gap of a watch game, which the server does not wait for).
 set -u
 BUILD=${1:-}; shift || true
-[ -n "$BUILD" ] && [ -x "$BUILD/takclient" ] || { echo "usage: $0 <debug build dir> [options]" >&2; exit 2; }
+[ -n "$BUILD" ] && [ -x "$BUILD/taclient" ] || { echo "usage: $0 <debug build dir> [options]" >&2; exit 2; }
 MODE=seat; STALL=2000:1500; SET=2100; SPEED=20; BYTICK=2400; WITHIN=""; MINRATE=""
-DATA=${TAK_DATA:-assets/game}; CPUS=${PACE_CPUS:-4-23}; PORT=7795; SECS=""; LOGDIR=""
+DATA=${TA_DATA:-assets/game}; CPUS=${PACE_CPUS:-4-23}; PORT=7795; SECS=""; LOGDIR=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --watch) MODE=watch; shift;; --seat) MODE=seat; shift;;
@@ -38,20 +38,20 @@ done
 # Client clock: the set tick at 1x, the stall, then room to show the rate (or its absence).
 [ -n "$SECS" ] || SECS=$(( SET / 30 + 25 ))
 work=${LOGDIR:-$(mktemp -d)}; mkdir -p "$work/xdg" "$work/home"
-export HOME="$work/home" XDG_DATA_HOME="$work/xdg" TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
-export TAK_SIM_THREAD=1 TAK_VSYNC_HZ=120 TAK_SPEED_AT="$SET:$SPEED"
-[ -n "$STALL" ] && [ "$STALL" != none ] && export TAK_STALL_AT="$STALL"
-taskset -c "$CPUS" "$BUILD/takserver" --port "$PORT" --data "$DATA" --no-auth --seed 1 --local > "$work/server.log" 2>&1 &
+export HOME="$work/home" XDG_DATA_HOME="$work/xdg" TA_HEADLESS=1 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
+export TA_SIM_THREAD=1 TA_VSYNC_HZ=120 TA_SPEED_AT="$SET:$SPEED"
+[ -n "$STALL" ] && [ "$STALL" != none ] && export TA_STALL_AT="$STALL"
+taskset -c "$CPUS" "$BUILD/taserver" --port "$PORT" --data "$DATA" --no-auth --seed 1 --local > "$work/server.log" 2>&1 &
 SP=$!
 trap 'kill $SP 2>/dev/null; wait $SP 2>/dev/null' EXIT
 for _ in $(seq 1 90); do grep -qi listening "$work/server.log" && break; sleep 1; done
 if [ "$MODE" = watch ]; then
-  TAK_MP_WATCH=1 TAK_MP_AIS=8 TAK_AI_LEVEL=4 TAK_LEGION=1 TAK_FOG=2 TAK_RANDOM_STARTS=2 \
-    timeout $(( SECS * 3 + 120 )) taskset -c "$CPUS" "$BUILD/takclient" game \
+  TA_MP_WATCH=1 TA_MP_AIS=8 TA_AI_LEVEL=4 TA_LEGION=1 TA_FOG=2 TA_RANDOM_STARTS=2 \
+    timeout $(( SECS * 3 + 120 )) taskset -c "$CPUS" "$BUILD/taclient" game \
     "~gen1~0a000100000000000000038001800108ffffffffff0004000000" --data "$DATA" --server 127.0.0.1 \
     --serverport "$PORT" --mphost --time "$SECS" > "$work/client.log" 2>&1
 else
-  timeout $(( SECS * 3 + 120 )) taskset -c "$CPUS" "$BUILD/takclient" game "Inner Circle" --data "$DATA" \
+  timeout $(( SECS * 3 + 120 )) taskset -c "$CPUS" "$BUILD/taclient" game "Inner Circle" --data "$DATA" \
     --server 127.0.0.1 --serverport "$PORT" --mpai --time "$SECS" > "$work/client.log" 2>&1
 fi
 awk -v want="$SPEED" -v minr="$MINRATE" -v bytick="$BYTICK" -v within="$WITHIN" -v mode="$MODE" '

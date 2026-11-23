@@ -19,7 +19,7 @@
 //           --data: the recording's own bodies and emitters (R-2h-1800: ~11.9k
 //           units, ~230 Smiths).
 // Workers: --workers N (World::setSimWorkers) or --serial (no pool). Run it on the
-// timing cores through /home/pocket_geek/tak-tmp/tools/timing.sh.
+// timing cores through /home/pocket_geek/ta-tmp/tools/timing.sh.
 // --relax-only strips every aura from the world's types before the first pass, so
 // the pass is the relax walk alone: the fixed cost under the aura application.
 //
@@ -44,7 +44,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void pin(World& w, uint32_t tick) { w.tickCounter_ = tick; w.rebuildGrid(); }
     static void auras(World& w, float dt) { w.tickAuras(dt); }
@@ -68,9 +68,9 @@ struct RetailReplayProbe {
         return n;
     }
 };
-}  // namespace tak::sim
+}  // namespace ta::sim
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 struct Counters { size_t emitters = 0, entries = 0, cells = 0, pairs = 0, hits = 0, recipients = 0, gridUnits = 0; };
@@ -180,13 +180,13 @@ int main(int argc, char** argv) try {
     hexer.auras = {Aura{Aura::Kind::Attack, 1.15f, false, 160, 0.5f}, Aura{Aura::Kind::Armor, 0.8f, true, 160, 0.5f},
                    Aura{Aura::Kind::Attack, 0.85f, true, 120, 1.0f}};
 
-    std::unique_ptr<tak::scn::Built> built;
+    std::unique_ptr<ta::scn::Built> built;
     std::unique_ptr<World> own;
     World* world = nullptr;
     if (layout == "scn") {
         if (scnPath.empty() || data.empty()) throw std::invalid_argument("--layout scn needs --scn FILE and --data DIR");
-        const auto scn = tak::scn::load(scnPath);
-        built = tak::scn::build(scn, {PathfindingMode::Retail, serial, 0, data.c_str()});
+        const auto scn = ta::scn::load(scnPath);
+        built = ta::scn::build(scn, {PathfindingMode::Retail, serial, 0, data.c_str()});
         if (!built->skipped.empty()) throw std::runtime_error(built->skipped);
         world = built->world.get();
     } else if (layout == "sparse" || layout == "dense") {

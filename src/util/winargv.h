@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 inline std::wstring quoteWindowsArgument(const std::wstring& text) {
     std::wstring result=L"\"";size_t slashes=0;
     for(wchar_t c:text) {

@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cstdio>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int failures=0;
 static void check(bool ok,const char* what) {

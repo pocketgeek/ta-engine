@@ -40,19 +40,19 @@
 float cart::kUIScale = 1.5f;
 float cart::kBacking = 1.0f;
 
-cart::FreshMap cart::buildFreshMap(const tak::hpi::Vfs& vfs, cart::SectionLibrary& sections,
-                       tak::terrain::Compositor& comp, const std::string& world,
-                       int wUnits, int hUnits, bool random, const tak::mapgen::Params* requested) {
+cart::FreshMap cart::buildFreshMap(const ta::hpi::Vfs& vfs, cart::SectionLibrary& sections,
+                       ta::terrain::Compositor& comp, const std::string& world,
+                       int wUnits, int hUnits, bool random, const ta::mapgen::Params* requested) {
     FreshMap out;
     if (random) {
-        tak::mapgen::Params gp=requested?*requested:tak::mapgen::Params{};
-        gp.mapType = tak::mapgen::Aramon;
-        for (uint8_t i = 0; i < tak::mapgen::kMapTypes; ++i) if (world == tak::mapgen::worldKey(i)) gp.mapType = i;
+        ta::mapgen::Params gp=requested?*requested:ta::mapgen::Params{};
+        gp.mapType = ta::mapgen::Aramon;
+        for (uint8_t i = 0; i < ta::mapgen::kMapTypes; ++i) if (world == ta::mapgen::worldKey(i)) gp.mapType = i;
         gp.widthCells = uint16_t(wUnits * 32);
         gp.heightCells = uint16_t(hUnits * 32);
         if(!requested) {gp.players=4;gp.seed=uint64_t(SDL_GetPerformanceCounter());}
-        gp=tak::mapgen::sanitize(gp);out.recipe=tak::mapgen::encodeMapId(gp);
-        auto res = tak::mapgen::generate(tak::mapgen::sanitize(gp), vfs);
+        gp=ta::mapgen::sanitize(gp);out.recipe=ta::mapgen::encodeMapId(gp);
+        auto res = ta::mapgen::generate(ta::mapgen::sanitize(gp), vfs);
         out.map = std::move(res.map);
         int n = 1;
         for (auto& [sx, sz] : res.starts) out.starts.push_back({n++, sx, sz});
@@ -62,12 +62,12 @@ cart::FreshMap cart::buildFreshMap(const tak::hpi::Vfs& vfs, cart::SectionLibrar
     return out;
 }
 
-// TAK_CARTOGRAPHER_PROFILE names a test profile folder. Debug builds and the editor's test
-// executables (TAK_CARTOGRAPHER_TEST, every build type) read it; a release editor reads no
-// TAK_* variable, like a release takclient.
+// TA_CARTOGRAPHER_PROFILE names a test profile folder. Debug builds and the editor's test
+// executables (TA_CARTOGRAPHER_TEST, every build type) read it; a release editor reads no
+// TA_* variable, like a release taclient.
 static const char* testProfile() {
-#if !defined(NDEBUG) || defined(TAK_CARTOGRAPHER_TEST)
-    const char* o=SDL_getenv("TAK_CARTOGRAPHER_PROFILE");
+#if !defined(NDEBUG) || defined(TA_CARTOGRAPHER_TEST)
+    const char* o=SDL_getenv("TA_CARTOGRAPHER_PROFILE");
     return o && *o ? o : nullptr;
 #else
     return nullptr;
@@ -77,9 +77,9 @@ static const char* testProfile() {
 // Preferences/recovery folder. A test profile (above) names it outright; otherwise the
 // per-user folder, which follows XDG_DATA_HOME in tests on every platform (util/prefpath.h).
 static std::filesystem::path profileFolder() {
-    if(const char* o=testProfile()) return tak::u8path(o);
-    const std::string path=tak::prefPath("Cartographer");
-    return path.empty()?std::filesystem::path():tak::u8path(path);
+    if(const char* o=testProfile()) return ta::u8path(o);
+    const std::string path=ta::prefPath("Cartographer");
+    return path.empty()?std::filesystem::path():ta::u8path(path);
 }
 
 namespace {
@@ -105,26 +105,26 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
     // A test profile has its own copy of the game's settings file, so a test can
     // exercise the shared data folder without ever touching the player's real one.
     if(const char* profile=testProfile())
-        tak::setSettingsPath(pathText(tak::u8path(profile)/"game-settings.ini"));
-    // Data root, by the game's own rules (tak::chooseDataFolder): --data wins; then the
+        ta::setSettingsPath(pathText(ta::u8path(profile)/"game-settings.ini"));
+    // Data root, by the game's own rules (ta::chooseDataFolder): --data wins; then the
     // local directory if it holds a valid install (drop the editor into a game folder
     // and it just works); then the GAME's saved folder, which Preferences changes for
     // both programs; then ask.
     {
-        const auto valid=[](const std::string& folder,std::string* why) {return tak::hpi::validInstall(tak::u8path(folder),why);};
+        const auto valid=[](const std::string& folder,std::string* why) {return ta::hpi::validInstall(ta::u8path(folder),why);};
         std::error_code ec;const auto here=std::filesystem::current_path(ec);
-        const auto choice=tak::chooseDataFolder(dataRoot,ec?std::string():pathText(here),tak::loadSettings().dataDir,valid);
+        const auto choice=ta::chooseDataFolder(dataRoot,ec?std::string():pathText(here),ta::loadSettings().dataDir,valid);
         dataOrigin=choice.origin;
-        if(choice.origin!=tak::DataFolderOrigin::CommandLine)dataRoot=choice.folder;
-        if(choice.origin==tak::DataFolderOrigin::LaunchFolder)std::fprintf(stderr,"data: using the local directory %s\n",dataRoot.c_str());
+        if(choice.origin!=ta::DataFolderOrigin::CommandLine)dataRoot=choice.folder;
+        if(choice.origin==ta::DataFolderOrigin::LaunchFolder)std::fprintf(stderr,"data: using the local directory %s\n",dataRoot.c_str());
         const char* video=std::getenv("SDL_VIDEODRIVER");
         if(dataRoot.empty() && (!video || (std::string(video)!="dummy" && std::string(video)!="offscreen")))
             for(int tries=0;tries<6 && dataRoot.empty();++tries) {
-                const auto picked=tak::pickDirectory(tak::kDataFolderPickerTitle,"");
+                const auto picked=ta::pickDirectory(ta::kDataFolderPickerTitle,"");
                 if(picked.empty())break;   // cancelled
                 std::string why;
-                if(valid(picked,&why)) {dataRoot=picked;tak::saveDataFolderSetting(picked,tak::hpi::rootManifest(tak::u8path(picked)));}
-                else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Not a game folder",tak::dataFolderInvalidMessage(why).c_str(),nullptr);
+                if(valid(picked,&why)) {dataRoot=picked;ta::saveDataFolderSetting(picked,ta::hpi::rootManifest(ta::u8path(picked)));}
+                else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Not a game folder",ta::dataFolderInvalidMessage(why).c_str(),nullptr);
             }
     }
     if (dataRoot.empty()) {
@@ -132,13 +132,13 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
         throw Exit{2};
     }
 
-    if(!explicitOutput) outDir=pathText(tak::u8path(dataRoot)/"Maps");
+    if(!explicitOutput) outDir=pathText(ta::u8path(dataRoot)/"Maps");
     // A .kmp/.tnt FILE named at launch (how a restart reopens a saved document) opens
     // through File > Open once the editor is up; a bare name is an installed map.
     {
         std::error_code ec;
         if(!mapName.empty() && shotPath.empty() && exportPath.empty() && bundlePath.empty() && stampName.empty() &&
-           std::filesystem::is_regular_file(tak::u8path(mapName),ec)) {pendingOpen=mapName;mapName.clear();}
+           std::filesystem::is_regular_file(ta::u8path(mapName),ec)) {pendingOpen=mapName;mapName.clear();}
     }
 
     SDL_SetMainReady();   // we own main() (SDL_MAIN_HANDLED); tell SDL not to hijack it
@@ -146,12 +146,12 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
     // NATIVE WAYLAND, the game's Display option (shared settings file): a Wayland window in
     // real pixels instead of X11 through XWayland, stretched at a desktop scale above 100%.
     bool appIdSet=false;
-    if(shotPath.empty() && exportPath.empty() && bundlePath.empty() && stampName.empty())tak::wayland::startup().session=tak::wayland::probeSession();
+    if(shotPath.empty() && exportPath.empty() && bundlePath.empty() && stampName.empty())ta::wayland::startup().session=ta::wayland::probeSession();
     if(shotPath.empty() && exportPath.empty() && bundlePath.empty() && stampName.empty() &&
-       tak::wayland::wantNative(tak::loadSettings().nativeWayland,tak::wayland::startup().session)) {
-        tak::wayland::startup().requested=true;
+       ta::wayland::wantNative(ta::loadSettings().nativeWayland,ta::wayland::startup().session)) {
+        ta::wayland::startup().requested=true;
         SDL_SetHint(SDL_HINT_VIDEODRIVER,"wayland,x11");   // X11 if Wayland cannot start
-        if(!std::getenv("SDL_VIDEO_WAYLAND_WMCLASS")) {setenv("SDL_VIDEO_WAYLAND_WMCLASS","tak-cartographer",0);appIdSet=true;}
+        if(!std::getenv("SDL_VIDEO_WAYLAND_WMCLASS")) {setenv("SDL_VIDEO_WAYLAND_WMCLASS","ta-cartographer",0);appIdSet=true;}
     }
 #endif
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -160,10 +160,10 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
     }
 #if defined(__linux__)
     if(appIdSet)unsetenv("SDL_VIDEO_WAYLAND_WMCLASS");   // read by SDL_Init; keep it out of TEST IN GAME
-    if(tak::wayland::startup().requested) {
+    if(ta::wayland::startup().requested) {
         const char* drv=SDL_GetCurrentVideoDriver();
-        tak::wayland::startup().native=drv && std::string(drv)=="wayland";
-        std::fprintf(stderr,"video: native wayland %s, driver %s\n",tak::wayland::startup().native?"on":"unavailable -- using X11",drv?drv:"?");
+        ta::wayland::startup().native=drv && std::string(drv)=="wayland";
+        std::fprintf(stderr,"video: native wayland %s, driver %s\n",ta::wayland::startup().native?"on":"unavailable -- using X11",drv?drv:"?");
     }
 #endif
     sdlLifetime.active=true;
@@ -176,12 +176,12 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
         ("Cartographer -- " + mapName).c_str(), SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED, initialWidth, initialHeight, SDL_WINDOW_RESIZABLE
 #if defined(__linux__)
-        | (tak::wayland::startup().native ? SDL_WINDOW_ALLOW_HIGHDPI : 0)
+        | (ta::wayland::startup().native ? SDL_WINDOW_ALLOW_HIGHDPI : 0)
 #endif
         );
     windowOwner.reset(win);
     {   // Application icon: the compass-rose badge (src/util/appicon).
-        std::vector<uint8_t> ic = tak::appicon::render(tak::appicon::Kind::Cartographer, 64);
+        std::vector<uint8_t> ic = ta::appicon::render(ta::appicon::Kind::Cartographer, 64);
         if (SDL_Surface* s = SDL_CreateRGBSurfaceWithFormatFrom(
                 ic.data(), 64, 64, 32, 64 * 4, SDL_PIXELFORMAT_RGBA32)) {
             SDL_SetWindowIcon(win, s);
@@ -203,7 +203,7 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
         // UI SCALE and the window size are in window points except on a real-pixel X11
         // window (KDE's default), so keep them the same physical size when that changes
         // (NATIVE WAYLAND switched): client/waylandchoice.h.
-        namespace wlc=tak::wayland;
+        namespace wlc=ta::wayland;
         const auto& wl=wlc::startup();
         const char* drv=SDL_GetCurrentVideoDriver();
         wlc::Observation now;now.mode=wlc::sessionMode(drv?drv:"",wl.native,wl.session);
@@ -240,9 +240,9 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
 
     // The game's downloaded maps and Test Map copies (MapCache/) and saved generated
     // maps live in the game's per-user folder, beside its settings.ini; list them too.
-    tak::hpi::setUserMapRoot(tak::u8path(tak::replayDir()));
+    ta::hpi::setUserMapRoot(ta::u8path(ta::replayDir()));
     try {
-        vfs = tak::hpi::mountRetailRoot(tak::u8path(dataRoot));
+        vfs = ta::hpi::mountRetailRoot(ta::u8path(dataRoot));
     } catch (const std::exception& e) {
         std::fprintf(stderr, "mount %s: %s\n", dataRoot.c_str(), e.what());
         throw Exit{1};
@@ -267,7 +267,7 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
             if(choice==1) {
                 try {
                     auto snapshot=cart::readRecoverySnapshot(recoveredSession->path());
-                    recoveredMapPath=snapshot.mapPath;mapName=tak::vpath::stem(snapshot.mapPath);
+                    recoveredMapPath=snapshot.mapPath;mapName=ta::vpath::stem(snapshot.mapPath);
                     if(snapshot.destination) {mapName=snapshot.destination->name;if(!explicitOutput)outDir=snapshot.destination->directory;}
                     if(snapshot.fromBackup)recoveryStatus="Recovered previous snapshot; newest recovery was unreadable";
                     aiFiles=cart::liftAiFiles(*snapshot.files);   // root ai/ members back into the document
@@ -286,7 +286,7 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
     mapPath=recoveredMapPath;
     if(recoveredMapPath.empty())documentRequest=mapName;   // an installed map reopens by name
     if (!mapName.empty() && mapPath.empty()) {
-        for (const auto& [name, path] : tak::hpi::listMaps(vfs)) {
+        for (const auto& [name, path] : ta::hpi::listMaps(vfs)) {
             std::string lo = name;
             for (char& c : lo) c = char(std::tolower((unsigned char)c));
             std::string want = mapName;
@@ -311,13 +311,13 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
         std::string otaPath = mapPath.substr(0, mapPath.rfind('.')) + ".ota";
         try {
             auto b = vfs.read(otaPath);
-            scenario = tak::tnt::Scenario::parse(std::string(b.begin(), b.end()));
+            scenario = ta::tnt::Scenario::parse(std::string(b.begin(), b.end()));
         } catch (const std::exception&) { /* no .ota: keep defaults */ }
         scenario.generatorRecipe=cart::mapGeneratorRecipe(vfs,mapPath,scenario.generatorRecipe);
     } else {
         int fw = newW > 0 ? newW : 8, fh = newH > 0 ? newH : 8;
         cart::SectionLibrary ns; ns.scan(vfs, newWorld);
-        tak::terrain::Compositor nc(vfs);
+        ta::terrain::Compositor nc(vfs);
         FreshMap fm = buildFreshMap(vfs, ns, nc, newWorld, fw, fh, randomTerrain);
         if (fm.map.width == 0) {
             std::fprintf(stderr, "new: could not build terrain for world '%s'\n", newWorld.c_str());
@@ -364,8 +364,8 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
 
     // Unit-type list for the palette (units + scen loaded above, before saveMap).
     unitTypes = cart::unitTypeNames(vfs);
-    tak::sim::setupRegistry(unitRegistry,vfs,false);
-    tak::sim::setupRegistry(crusadesRegistry,vfs,true);
+    ta::sim::setupRegistry(unitRegistry,vfs,false);
+    ta::sim::setupRegistry(crusadesRegistry,vfs,true);
     // Offer only types the game spawns by that name: a scenario naming any other
     // stops the match ("Scenario unit type is missing"). Iron Plague's campaign
     // tarnecr2.fbi declares objectname TARNECRO, so the registry has no TARNECR2.
@@ -381,8 +381,8 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
 
 cart::Editor::Editor(int argc,char** argv,const FrameHook& frameHook,const EditorHooks& hooks)
     : Session(argc,argv,frameHook,hooks) {
-    for(uint8_t i=0;i<tak::mapgen::kLayouts;++i)generatorLayouts.push_back(tak::mapgen::layoutName(i));
-    for(uint8_t i=0;i<tak::mapgen::kScatterLevels;++i)generatorScatter.push_back(tak::mapgen::scatterName(i));
+    for(uint8_t i=0;i<ta::mapgen::kLayouts;++i)generatorLayouts.push_back(ta::mapgen::layoutName(i));
+    for(uint8_t i=0;i<ta::mapgen::kScatterLevels;++i)generatorScatter.push_back(ta::mapgen::scatterName(i));
     if(showWelcome) {
         openMessage("WELCOME TO CARTOGRAPHER",
             "Start with File > Open (Ctrl+O), or New (Ctrl+N). Pick a tool and search the left browser (Ctrl+F).\n"
@@ -410,7 +410,7 @@ int cart::Editor::run() {
             openMessage(playtestAiMod?"TEST IN GAME ENDED":"TEST MAP ENDED", "The game exited with an error ("+std::to_string(*result)+")."+
                         (aiModOnly?" Your AI mod is still open here.":noDocument?std::string():" Your map is still open here."));
         SDL_GetRendererOutputSize(ren, &w, &h);
-        {int ww=0,wh=0;SDL_GetWindowSize(win,&ww,&wh);kBacking=tak::backingScale(ww,w);}
+        {int ww=0,wh=0;SDL_GetWindowSize(win,&ww,&wh);kBacking=ta::backingScale(ww,w);}
         kUIScale=std::max(.5f,std::min({preferences.scalePercent/100.f,float(w)/kBacking/900.0f,float(h)/kBacking/600.0f}));
         SDL_RenderSetScale(ren,renderScale(),renderScale());
         w /= renderScale(); h /= renderScale();   // physical -> logical (SDL_RenderSetScale)
@@ -539,7 +539,7 @@ int cart::runEditor(int argc, char** argv, const std::function<void(SDL_Window*,
     if(restart) {
         if(hooks.relaunch) {hooks.relaunch(*restart);return code;}
         std::string why;
-        if(!tak::relaunchSelf(*restart,why)) {
+        if(!ta::relaunchSelf(*restart,why)) {
             std::fprintf(stderr,"restart failed: %s\n",why.c_str());
             SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Restart failed",("The new game data folder is saved. Start Cartographer again to use it.\n\n("+why+")").c_str(),nullptr);
             return 1;
@@ -548,17 +548,17 @@ int cart::runEditor(int argc, char** argv, const std::function<void(SDL_Window*,
     return code;
 }
 
-#ifndef TAK_CARTOGRAPHER_TEST
+#ifndef TA_CARTOGRAPHER_TEST
 int main(int argc,char** argv) {
     // Informational flags answer before any editor, window or data-folder prompt exists.
     for(int i=1;i<argc;++i) {
         const std::string a=argv[i];
-        if(a=="--version"||a=="-v") {std::printf("cartographer (TAK engine) %s (build %s)\n",tak::kVersion,tak::kBuildId);return 0;}
+        if(a=="--version"||a=="-v") {std::printf("cartographer (TA engine) %s (build %s)\n",ta::kVersion,ta::kBuildId);return 0;}
         if(a=="--help"||a=="-h") {std::fputs(kUsage,stdout);return 0;}
     }
     return cart::runEditor(argc,argv);
 }
 #ifdef _WIN32
-int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int) {return tak::utf8Main(main);}
+int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int) {return ta::utf8Main(main);}
 #endif
 #endif

@@ -8,8 +8,8 @@
 #include <stdexcept>
 #include <string>
 
-using namespace tak::client;
-using tak::sim::footprintOrigin;
+using namespace ta::client;
+using ta::sim::footprintOrigin;
 
 static void check(bool ok, const std::string& message) {
     if (!ok) throw std::runtime_error(message);
@@ -38,8 +38,8 @@ int main() try {
                 for (size_t i = 0; i < line.size(); ++i) {
                     const auto c = origin(line[i], fx, fz);
                     // The Build order's own snap keeps the same cells.
-                    const float sx = tak::sim::footprintWaypoint(tak::sim::footprintCell(line[i].first, fx), fx).toFloat();
-                    const float sz = tak::sim::footprintWaypoint(tak::sim::footprintCell(line[i].second, fz), fz).toFloat();
+                    const float sx = ta::sim::footprintWaypoint(ta::sim::footprintCell(line[i].first, fx), fx).toFloat();
+                    const float sz = ta::sim::footprintWaypoint(ta::sim::footprintCell(line[i].second, fz), fz).toFloat();
                     check(origin({sx, sz}, fx, fz).x == c.x && origin({sx, sz}, fx, fz).z == c.z,
                           at + "a site moves cells under the Build order's snap");
                     check(sx == line[i].first && sz == line[i].second, at + "a site is not already on the snapped point");

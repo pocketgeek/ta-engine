@@ -8,7 +8,7 @@
 // last go on (its later reads pass), release() lets every reader go. The layer reports
 // when the Vfs drops it -- a remount replacing the data set, or the Vfs going away --
 // with how many reads it was still holding then. Nothing mounts one in a game: the debug
-// probe TAK_PREVIEW_LIFETIME_TEST (gameview_devharness.cpp) and
+// probe TA_PREVIEW_LIFETIME_TEST (gameview_devharness.cpp) and
 // tools/bigmap_lifetime_test.cpp hold preview workers at a read with it.
 
 #include "hpi/hpi.h"
@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 class ReadGate {
 public:
@@ -132,4 +132,4 @@ private:
     std::shared_ptr<State> s_;
 };
 
-}  // namespace tak
+}  // namespace ta

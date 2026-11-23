@@ -6,7 +6,7 @@
 #include <cctype>
 #include <cstdlib>
 
-namespace tak::mapgen {
+namespace ta::mapgen {
 namespace detail {
 
 std::vector<std::string> kitDirectories() {
@@ -255,4 +255,4 @@ int slotOfLayout(uint8_t layout) {
     return layout == IndustrialZone ? 2 : layout >= Maze ? 3 : layout;
 }
 
-}  // namespace tak::mapgen
+}  // namespace ta::mapgen

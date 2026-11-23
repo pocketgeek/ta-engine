@@ -92,7 +92,7 @@ def token_checks(binary, data, root, client_tool, secrets):
 
 def run(binary, data, tls_tool, client_tool):
     secrets = []
-    with tempfile.TemporaryDirectory(prefix='tak-account-auth-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='ta-account-auth-') as temporary:
         root = Path(temporary)
         with net.server(binary, data, root) as (port, fingerprint):
             with contextlib.closing(net.Peer(port)) as alice:
@@ -130,7 +130,7 @@ def run(binary, data, tls_tool, client_tool):
                 refused.stderr
         assert not (root / 'campaign.sqlite').exists()
         usage = subprocess.run([str(binary), '--help'], capture_output=True, timeout=30)
-        assert usage.returncode == 0 and b'crusades' not in usage.stdout.lower(), 'takserver --help lists Crusades options'
+        assert usage.returncode == 0 and b'crusades' not in usage.stdout.lower(), 'taserver --help lists Crusades options'
         subprocess.run([str(tls_tool), '--fixtures', str(root)], check=True, timeout=10)
         token_checks(binary, data, root, client_tool, secrets)
     subprocess.run([str(client_tool)], check=True, timeout=60)   # the hostile-server scenarios

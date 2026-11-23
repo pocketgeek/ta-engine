@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 
@@ -41,7 +41,7 @@ std::pair<std::string, std::string> splitVerb(const std::string& cmd) {
 
 }  // namespace
 
-MissionScript::MissionScript(std::vector<uint8_t> cobBytes, const tak::tdf::Node& header,
+MissionScript::MissionScript(std::vector<uint8_t> cobBytes, const ta::tdf::Node& header,
                              const TypeRegistry& reg, int humanPlayer, std::string origin,
                              std::vector<int> playerMap)
     : reg_(reg), human_(humanPlayer), origin_(std::move(origin)), playerMap_(std::move(playerMap)),
@@ -714,7 +714,7 @@ void MissionScript::sweepTriggers(World& w) {
 
 // ---- data-driven win/lose conditions --------------------------------------
 
-void MissionScript::parseConditions(const tak::tdf::Node& h) {
+void MissionScript::parseConditions(const ta::tdf::Node& h) {
     auto text=[&](const char* key){return h.valueOr(key,"");};
     auto integer=[](const std::string& value) {
         const long long n=std::strtoll(value.c_str(),nullptr,0);
@@ -859,4 +859,4 @@ void MissionScript::foldHash(uint64_t& h) const {
     for (const auto& [k, v] : variables) { for (char ch : k) mix(uint64_t((unsigned char)ch)); mix(uint64_t(uint32_t(v))); }
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

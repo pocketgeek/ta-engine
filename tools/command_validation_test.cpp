@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 using sim::Fixed;
 
 namespace {

@@ -13,7 +13,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace tf = tak::texturefilter;
+namespace tf = ta::texturefilter;
 
 static int g_fail = 0;
 

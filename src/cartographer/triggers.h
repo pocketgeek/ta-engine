@@ -2,7 +2,7 @@
 
 // Cartographer's trigger opcode tables + rule formatting. The scenario rules
 // live in the map's .crt as per-player groups of condition/action records
-// (opcode + five string operand slots), read/written by the shared tak::crt.
+// (opcode + five string operand slots), read/written by the shared ta::crt.
 // This provides the human-readable templates for the 26 conditions and 26
 // actions (reverse-engineered from Cartographer.exe's tables at 0x51c190) so
 // the editor can render a rule and know each opcode's parameter shape.
@@ -35,7 +35,7 @@ const std::vector<OpDef>& actionDefs();
 
 // Human-readable rendering of a rule: the opcode's template with each <...>
 // filled from the rule's slots. Unknown opcodes render as "cond/act <n>".
-std::string formatRule(bool isAction, const tak::crt::Rule& r);
+std::string formatRule(bool isAction, const ta::crt::Rule& r);
 
 // The default operand for a parameter kind (retail combo defaults).
 std::string defaultParam(PKind k);

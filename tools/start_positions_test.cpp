@@ -19,7 +19,7 @@
 #include <initializer_list>
 #include <stdexcept>
 #include <string>
-using namespace tak;
+using namespace ta;
 
 static void check(bool ok, const std::string& text) { if (!ok) throw std::runtime_error(text); }
 

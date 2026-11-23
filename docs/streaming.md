@@ -1,6 +1,6 @@
 # Streaming to YouTube
 
-TAK Engine can broadcast the game straight to YouTube, with no extra software.
+TA Engine can broadcast the game straight to YouTube, with no extra software.
 
 ![The YouTube Streaming panel: stream key, Remember Key, resolution, frame rate, bitrate, encoder, Save a Local Copy and Start Streaming](img/streaming.jpg)
 
@@ -135,11 +135,11 @@ To see what libva does when the game opens the encoder, start the game from a
 terminal with libva's own messages switched on:
 
 ```sh
-LIBVA_MESSAGING_LEVEL=2 takclient
+LIBVA_MESSAGING_LEVEL=2 taclient
 ```
 
-When you press Start Streaming the terminal shows a `TAK VA-API: using system
-.../libva.so.2 and .../libva-drm.so.2` line naming the files it loaded (or a `TAK
+When you press Start Streaming the terminal shows a `TA VA-API: using system
+.../libva.so.2 and .../libva-drm.so.2` line naming the files it loaded (or a `TA
 VA-API: system libva unavailable: ...` line saying why not), then libva's
 `libva info:` lines: its VA-API version, each driver file it tries, and whether that
 driver started. `LIBVA_DRIVER_NAME` (for example `iHD`) and `LIBVA_DRIVERS_PATH`
@@ -208,13 +208,13 @@ not extra CPU or GPU time, and it has the stream's resolution, frame rate, bitra
 and codec (H.264, or HEVC for very wide streams; AAC audio). Files go into a
 **videos** folder inside the game's user folder, the folder that holds `settings.ini`
 and your replays, and are named after the local time the connection opened:
-`TAK-YYYYMMDD-HHMMSS.mp4`. The folder is created when the first copy starts.
+`TA-YYYYMMDD-HHMMSS.mp4`. The folder is created when the first copy starts.
 
 | Platform | Videos folder |
 | --- | --- |
-| Windows | `%APPDATA%\TAKengine\TAKingdoms\videos\` |
-| macOS | `~/Library/Application Support/TAKengine/TAKingdoms/videos/` |
-| Linux | `~/.local/share/TAKengine/TAKingdoms/videos/` (or under `$XDG_DATA_HOME`) |
+| Windows | `%APPDATA%\TAengine\TAKingdoms\videos\` |
+| macOS | `~/Library/Application Support/TAengine/TAKingdoms/videos/` |
+| Linux | `~/.local/share/TAengine/TAKingdoms/videos/` (or under `$XDG_DATA_HOME`) |
 
 The file is a **fragmented MP4**: a fragment is written every two seconds, at each
 keyframe, so if the game crashes or the computer loses power the file still plays up
@@ -257,9 +257,9 @@ moments.
 
 | Platform | Where the key is stored |
 | --- | --- |
-| Windows x64 and ARM64 | Credential Manager, under Windows Credentials: the generic credential `TAK Engine/YouTube stream key`, kept for your account on this computer |
-| macOS | Your login keychain: a password item with service `TAK Engine` and account `YouTube stream key`, visible in Keychain Access |
-| Linux | The Secret Service: KWallet, GNOME Keyring, KeePassXC or another provider of `org.freedesktop.secrets`. The item is labelled `TAK Engine: YouTube stream key`, with attributes `service` = `TAK Engine` and `account` = `YouTube stream key` |
+| Windows x64 and ARM64 | Credential Manager, under Windows Credentials: the generic credential `TA Engine/YouTube stream key`, kept for your account on this computer |
+| macOS | Your login keychain: a password item with service `TA Engine` and account `YouTube stream key`, visible in Keychain Access |
+| Linux | The Secret Service: KWallet, GNOME Keyring, KeePassXC or another provider of `org.freedesktop.secrets`. The item is labelled `TA Engine: YouTube stream key`, with attributes `service` = `TA Engine` and `account` = `YouTube stream key` |
 
 On Linux the game loads libsecret (`libsecret-1.so.0`) when it first needs the store;
 it is not a package dependency. If libsecret is missing, or nothing on the session
@@ -369,7 +369,7 @@ against a fake `libva.so.2` and `libva-drm.so.2` with no functions and expects a
 recording; `vashim_system` and `vashim_system_loader` (skipped without libva or a DRM
 render node) open the system libva, and the latter gives it a fake driver that exports
 only `__vaDriverInit_1_23`, which only a libva 2.23 or newer loader finds. Linux CI also
-fails if `takclient` contains a libva driver loader. `stream_test` tests H.264/AAC output, timestamps,
+fails if `taclient` contains a libva driver loader. `stream_test` tests H.264/AAC output, timestamps,
 configuration validation, stopping, failure and restart without any network. It also
 records with a local copy and reads the MP4 back box by box (the shipped FFmpeg has no
 MP4 reader): fragmented, an H.264/HEVC video track and an AAC track, the expected
@@ -387,10 +387,10 @@ and `stream_test libx264 cursor` checks it through the encoding worker.
 `stream_key_test` drives Remember Key through the panel against a fake store, and
 checks that the saved settings never contain the key. `credstore_test` makes a round
 trip through the real password store under a test-only name (service
-`TAK Engine Test`, account `credstore round-trip`) with dummy values, and is skipped
+`TA Engine Test`, account `credstore round-trip`) with dummy values, and is skipped
 when the session has no usable store. All are registered with CTest. In a debug build,
-`TAK_CREDSTORE=none` shows the greyed-out box, `TAK_CREDSTORE=memory` keeps the key in
-process memory only, and `TAK_CREDSTORE=test` uses the real store under the test name. For a GPU capture check:
+`TA_CREDSTORE=none` shows the greyed-out box, `TA_CREDSTORE=memory` keeps the key in
+process memory only, and `TA_CREDSTORE=test` uses the real store under the test name. For a GPU capture check:
 
 ```sh
 SDL_VIDEODRIVER=offscreen SDL_RENDER_DRIVER=opengl \

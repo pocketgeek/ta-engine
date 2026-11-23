@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The host's powers and the live settings across reconnects, as real MpClients see them:
-runs tools/host_session_test.cpp against a real takserver with a short disconnect wait,
+runs tools/host_session_test.cpp against a real taserver with a short disconnect wait,
 and checks the referee saw no desync."""
 import argparse
 import os
@@ -17,8 +17,8 @@ def main():
     ap.add_argument('--client', type=Path, required=True)
     ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
-    os.environ['TAK_STALL_MS'], os.environ['TAK_DROP_WAIT_MS'] = '3000', '8000'
-    with tempfile.TemporaryDirectory(prefix='tak-host-session-') as tmp:
+    os.environ['TA_STALL_MS'], os.environ['TA_DROP_WAIT_MS'] = '3000', '8000'
+    with tempfile.TemporaryDirectory(prefix='ta-host-session-') as tmp:
         root = Path(tmp)
         with server(a.server.resolve(), a.data.resolve(), root, '--no-auth', '--seed', '1') as (port, _h, process):
             result = subprocess.run([str(a.client.resolve()), str(port), str(a.data.resolve())],

@@ -18,7 +18,7 @@
 #include <map>
 #include <thread>
 
-using namespace tak;
+using namespace ta;
 static void check(bool ok, const char* why) { if (!ok) throw std::runtime_error(why); }
 template<class F> static void rejects(F f, const char* why) {
     bool failed = false; try { f(); } catch (const std::exception&) { failed = true; } check(failed, why);
@@ -72,7 +72,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
         if(path=="kmap/solo authored.ota") {
             auto metadata=tnt::Scenario::parse(std::string(data.begin(),data.end()));
             metadata.hasScenario=true;metadata.useOnlyUnits="solo authored.tdf";
-            const auto text=metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n";
+            const auto text=metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n";
             entries.push_back({path,{text.begin(),text.end()}});
         } else entries.push_back({path,data});
     }
@@ -173,7 +173,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
 }
 
 // A scripted loopback server for one MpClient (as spectator_client_test's): the client's
-// side of room editing and of the transfer ids, without takserver.
+// side of room editing and of the transfer ids, without taserver.
 struct FakeServer {
     int listener = -1; uint16_t port = 0; net::Conn conn;
     FakeServer() {
@@ -359,7 +359,7 @@ static void hostOnlyMap(const std::filesystem::path& root, const hpi::Vfs& data,
     write(root / "Maps" / (stem + ".kmp"), hpi::pack(entries));
 }
 
-// --room-edit: protocol 323's map changes between real MpClients through a real takserver
+// --room-edit: protocol 323's map changes between real MpClients through a real taserver
 // (run by server_room_edit_test.py, which checks the server's log afterwards). Each case
 // is a fresh room of fresh connections.
 static int roomEdit(uint16_t port, const std::filesystem::path& hostRoot, const std::filesystem::path& peerRoot,
@@ -371,7 +371,7 @@ static int roomEdit(uint16_t port, const std::filesystem::path& hostRoot, const 
     hostOnlyMap(hostRoot, base, INNER, "room edit a");    // ~6 MB: the server must take an upload
     hostOnlyMap(hostRoot, base, KOTH, "room edit b");     // small: guests download it
     hostOnlyMap(hostRoot, base, "Ulasem Arena", "room edit c");
-    const auto cacheBase = std::filesystem::temp_directory_path() / ("tak-room-edit-" + crypto::toHex(crypto::randomVec(8)));
+    const auto cacheBase = std::filesystem::temp_directory_path() / ("ta-room-edit-" + crypto::toHex(crypto::randomVec(8)));
     struct CleanCache { std::filesystem::path p; ~CleanCache() { std::error_code ec; std::filesystem::remove_all(p, ec); } } clean{cacheBase};
     sim::TypeRegistry reg; sim::setupRegistry(reg, base, true);
     int made = 0;
@@ -591,7 +591,7 @@ int main(int argc, char** argv) try {
     if(argc==6 && std::string(argv[1])=="--room-edit")return roomEdit(uint16_t(std::stoi(argv[2])),argv[3],argv[4],argv[5]);
     if (argc >= 5 && std::string(argv[1]) == "--network") {
         const auto port = uint16_t(std::stoi(argv[2]));
-        const bool diplomacy=std::getenv("TAK_DIPLOMACY_NETWORK")!=nullptr;
+        const bool diplomacy=std::getenv("TA_DIPLOMACY_NETWORK")!=nullptr;
         if (argc == 5) {
             auto original = hpi::mountRetailRoot(argv[3]);
             auto package = net::maps::build(original, "Ulasem Arena");
@@ -616,7 +616,7 @@ int main(int argc, char** argv) try {
             };
             crt::Scenario authored;authored.players.resize(2);
             authored.players[1].push_back({{{20,{}}},{{13,{"All Players","Transferred scenario"}}}});
-            if(std::getenv("TAK_MAP_TEST_SCENARIO")) {
+            if(std::getenv("TA_MAP_TEST_SCENARIO")) {
                 auto starts=sim::parseStartPositions(original,package->mapPath);
                 check(starts.size()>=2,"scenario transfer fixture needs two start positions");
                 for(int p=0;p<2;++p) {
@@ -627,15 +627,15 @@ int main(int argc, char** argv) try {
                 authored.players[1][0].conditions[0].opcode=0;
                 for(auto& entry:entries) if(entry.path=="kmap/transfer test.ota") {
                     auto metadata=tnt::Scenario::parse(std::string(entry.data.begin(),entry.data.end()));
-                    metadata.hasScenario=true;const auto text=metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n";entry.data={text.begin(),text.end()};
+                    metadata.hasScenario=true;const auto text=metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n";entry.data={text.begin(),text.end()};
                 }
             }
             companion(".crt",crt::write(authored));
             companion(".tdf",{});
-            const std::string names="TAK_EDITOR_RULE_NAMES 1\n1 0 \"Transfer rule\"\n";
+            const std::string names="TA_EDITOR_RULE_NAMES 1\n1 0 \"Transfer rule\"\n";
             companion(".editor",{names.begin(),names.end()});
             write(std::filesystem::path(argv[3])/"Maps"/"transfer-test.kmp",hpi::pack(entries));
-            if (std::getenv("TAK_MAP_TEST_MISMATCH")) {
+            if (std::getenv("TA_MAP_TEST_MISMATCH")) {
                 for (auto& entry:entries) if(entry.path.ends_with(".tnt")) {
                     auto m=tnt::Map::load(entry.data); m.heights[100] ^= 1; entry.data=m.save();
                 }
@@ -645,12 +645,12 @@ int main(int argc, char** argv) try {
         hpi::Vfs hostData = hpi::mountRetailRoot(argv[3]);
         hpi::Vfs peerData = hpi::mountRetailRoot(argv[4]);
         // Each player's downloads and saved generated maps go to its own per-user
-        // folder; the data folders are only read. TAK_MAP_TEST_READONLY takes write
+        // folder; the data folders are only read. TA_MAP_TEST_READONLY takes write
         // permission off them (and their Maps/) and checks nothing in them changed.
-        const auto cacheBase = std::filesystem::temp_directory_path() / ("tak-map-net-" + crypto::toHex(crypto::randomVec(8)));
+        const auto cacheBase = std::filesystem::temp_directory_path() / ("ta-map-net-" + crypto::toHex(crypto::randomVec(8)));
         struct CleanCache { std::filesystem::path p; ~CleanCache() { std::error_code ec; std::filesystem::remove_all(p,ec); } } cleanCache{cacheBase};
-        const char* spectatorRoot = std::getenv("TAK_MAP_TEST_SPECTATOR_ROOT");
-        const bool readOnlyData = std::getenv("TAK_MAP_TEST_READONLY") != nullptr;
+        const char* spectatorRoot = std::getenv("TA_MAP_TEST_SPECTATOR_ROOT");
+        const bool readOnlyData = std::getenv("TA_MAP_TEST_READONLY") != nullptr;
         std::vector<std::filesystem::path> dataRoots{argv[3], argv[4]};
         if (spectatorRoot) dataRoots.push_back(spectatorRoot);
         std::vector<decltype(tree({}))> before;
@@ -714,7 +714,7 @@ int main(int argc, char** argv) try {
                       view.read("kmap/transfer test.tdf").empty(),"editor metadata or empty restriction lost over network");
             }
             sim::setupMatch(world, reg, cfg);
-            if(std::getenv("TAK_MAP_TEST_SCENARIO"))
+            if(std::getenv("TA_MAP_TEST_SCENARIO"))
                 check(world.scenario() && world.units().size()==2,"network peer did not initialize authored scenario");
             client.reportLoaded(hpi::gameplayHash(base));
         };
@@ -809,7 +809,7 @@ int main(int argc, char** argv) try {
                     check(std::filesystem::exists(cacheBase/"host"/"Maps"/file),"host did not save generated map");
                     check(std::filesystem::exists(cacheBase/"peer"/"Maps"/file),"peer did not save generated map");
                 } else {
-                    check(std::filesystem::exists(cacheBase/"peer"/"MapCache"/(peer.mapPackage()->digest+".takmap")),"peer did not cache the downloaded map");
+                    check(std::filesystem::exists(cacheBase/"peer"/"MapCache"/(peer.mapPackage()->digest+".tamap")),"peer did not cache the downloaded map");
                 }
                 for (size_t i = 0; i < before.size(); ++i)
                     check(tree(dataRoots[i]) == before[i], "a data folder was written");
@@ -821,7 +821,7 @@ int main(int argc, char** argv) try {
         }
         throw std::runtime_error("map transfer timed out: " + host.mapStatus() + "; " + peer.mapStatus());
     }
-    const auto root = std::filesystem::temp_directory_path() / ("tak-map-test-" + crypto::toHex(crypto::randomVec(8)));
+    const auto root = std::filesystem::temp_directory_path() / ("ta-map-test-" + crypto::toHex(crypto::randomVec(8)));
     struct Clean { std::filesystem::path p; ~Clean() { std::error_code ec; std::filesystem::remove_all(p,ec); } } clean{root};
     tnt::Map map; map.width=map.height=64; map.blocksX=map.blocksY=32; map.seaLevel=0;
     map.heights.assign(4096,40); map.features.assign(4096,0xffff);
@@ -858,7 +858,7 @@ int main(int argc, char** argv) try {
             encoded.b.insert(encoded.b.end(),data.begin(),data.end());
         }
         rejects([&]{net::maps::decode(encoded.b,"");},"unreferenced adversarial TDF accepted");
-        tak::StopSource cancelled;cancelled.request_stop();
+        ta::StopSource cancelled;cancelled.request_stop();
         rejects([&]{net::maps::decode(p->bytes,p->digest,cancelled.get_token());},"cancelled map decoded");
     }
 
@@ -877,7 +877,7 @@ int main(int argc, char** argv) try {
         check(!net::maps::authoredScenario(authored),"hasScenario alone enabled solo skirmish");
         // ... but it is what MAP SCENARIO offers: the Test Map opt-in keeps its own meaning.
         check(net::maps::scenarioInfo(authored).offerable(),"a declared package scenario is not offered");
-        setMetadata(metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n");
+        setMetadata(metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n");
         check(net::maps::authoredScenario(authored),"explicit valid authored scenario cannot start solo");
         hpi::Vfs view;view.setMapFiles(authoredFiles);
         check(net::maps::authoredScenario(view,"kmap/test.tnt"),"local and packaged scenario detection differ");
@@ -898,9 +898,9 @@ int main(int argc, char** argv) try {
         check(!net::maps::authoredScenario(authored),"damaged CRT enabled solo exception");
         (*authoredFiles)["kmap/test.crt"]=crt;
         metadata.hasScenario=false;
-        setMetadata(metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n");
+        setMetadata(metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n");
         check(!net::maps::authoredScenario(authored),"disabled scenario enabled solo exception");
-        setMetadata(metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=0;\n}\n");
+        setMetadata(metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=0;\n}\n");
         check(!net::maps::authoredScenario(authored),"disabled opt-in marker enabled solo exception");
     }
     for (const auto* extension : {".ota", ".crt", ".tdf", ".txt", ".editor", ".recipe"}) {
@@ -915,13 +915,13 @@ int main(int argc, char** argv) try {
     check(!p->files->count("kmap/other.crt") && !p->files->count("scripts/evil.cob"),
           "unrelated files included in package");
     rejects([&]{net::maps::saveCache(root,*p,1);},"disk quota accepted oversized package");
-    check(!std::filesystem::exists(root/"MapCache"/(p->digest+".takmap")),"quota rejection left partial cache");
+    check(!std::filesystem::exists(root/"MapCache"/(p->digest+".tamap")),"quota rejection left partial cache");
     net::maps::saveCache(root,*p);
     net::maps::saveCache(root,*p,1); // an existing download needs no additional quota
 
     rejects([&]{net::maps::loadCache(root,p->digest,p->bytes.size()-1);},"actual cache size escaped budget");
     rejects([&]{net::maps::loadCache(root,p->digest,net::maps::kMaxBytes,p->bytes.size()-1);},"cache advertised mismatch accepted");
-    check(std::filesystem::exists(root/"MapCache"/(p->digest+".takmap")),"admission removed valid cache");
+    check(std::filesystem::exists(root/"MapCache"/(p->digest+".tamap")),"admission removed valid cache");
     const auto cached = net::maps::loadCache(root,p->digest);
     check(cached && *cached->files == *p->files, "cache companion roundtrip");
     hpi::Vfs catalog; catalog.refreshMapCache(root);

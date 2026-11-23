@@ -42,16 +42,16 @@
 #include <limits>
 #include <thread>
 
-namespace tak::sim {
+namespace ta::sim {
 
 
 bool gInstantBuild = false;
 
-// TAK_PHASE sim profiler globals (zero cost when unset). The accumulators are
+// TA_PHASE sim profiler globals (zero cost when unset). The accumulators are
 // thread_local: the server may tick several games in parallel, one World::tick per
 // thread, so each thread accumulates (and prints) its own room's timing -- both
 // race-free and correctly attributed.
-static const bool g_phase = tak::devEnv("TAK_PHASE") != nullptr;
+static const bool g_phase = ta::devEnv("TA_PHASE") != nullptr;
 // finer "other" split. g_visMs timed the display fog pass, which the sim no longer runs
 // (the client reads viewCounts_); it stays 0 so SIMPHASE keeps its columns for the tools.
 static thread_local double g_visMs = 0, g_burnMs = 0, g_gridMs = 0;
@@ -62,27 +62,27 @@ static thread_local double g_exploreMs = 0;   // navigation exploration; part of
 // runs after the tick total is taken and is reported beside it.
 static thread_local double g_prologueMs = 0, g_compactMs = 0;
 #ifndef NDEBUG
-// TAK_VERIFY_LISTS (debug): every tick, each id list and reused count that
+// TA_VERIFY_LISTS (debug): every tick, each id list and reused count that
 // stands in for a full walk over units_ (WE E2.5) is checked against that walk,
 // and the exploration block summaries against a rebuild from the plane.
 static bool verifyLists() {
-    static const bool on = std::getenv("TAK_VERIFY_LISTS") != nullptr;
+    static const bool on = std::getenv("TA_VERIFY_LISTS") != nullptr;
     return on;
 }
-// TAK_VERIFY_POOL (debug): every pass that WE E4.3 put on the SimPool is
+// TA_VERIFY_POOL (debug): every pass that WE E4.3 put on the SimPool is
 // redone serially and its result compared (aborts on a difference).
 static bool verifyPool() {
-    static const bool on = std::getenv("TAK_VERIFY_POOL") != nullptr;
+    static const bool on = std::getenv("TA_VERIFY_POOL") != nullptr;
     return on;
 }
 [[noreturn]] static void poolMismatch(const char* pass, uint32_t tick) {
-    std::fprintf(stderr, "TAK_VERIFY_POOL tick %u: %s differs from the serial pass\n", tick, pass);
+    std::fprintf(stderr, "TA_VERIFY_POOL tick %u: %s differs from the serial pass\n", tick, pass);
     std::abort();
 }
 #endif
 
 namespace {
-// One TAK_PHASE bucket: its wall time, and in a debug build with TAK_PMU also the PMU
+// One TA_PHASE bucket: its wall time, and in a debug build with TA_PMU also the PMU
 // deltas over the same span (src/sim/simprobe.h).
 struct PhaseSpan {
     double& acc;
@@ -1176,7 +1176,7 @@ Unit* World::unit(int id) {
     }
     // Restored retail fixtures can reorder or author IDs directly. Repair only
     // that lookup; normal spawn/compaction paths maintain the table eagerly.
-    TAK_PASS();
+    TA_PASS();
     for(size_t i=0;i<units_.size();++i)if(units_[i].id==id) {
         if(unitSlotById_.size()<=size_t(id))unitSlotById_.resize(size_t(id)+1,-1);
         unitSlotById_[size_t(id)]=int32_t(i);return &units_[i];
@@ -1210,7 +1210,7 @@ void World::compactRetiredUnits() {
     for(const auto& storm:storms_)referenced.insert(storm.fromId);
     for(const auto& blast:deathBlasts_)referenced.insert(blast.fromId);
     size_t write=0;
-    TAK_PASS();
+    TA_PASS();
     for(size_t read=0;read<units_.size();++read) {
         auto& u=units_[read];
         if(!u.alive() && u.deadFor>=kRetiredTicks+30 && u.corpseUntil==0 && !u.viewSight.active &&
@@ -1224,7 +1224,7 @@ void World::compactRetiredUnits() {
             if(size_t(u.id)<unitSlotById_.size())unitSlotById_[size_t(u.id)]=-1;
             continue;
         }
-        if(write!=read) {TAK_PROBE(++probe::tl.compactMoved);units_[write]=std::move(u);}
+        if(write!=read) {TA_PROBE(++probe::tl.compactMoved);units_[write]=std::move(u);}
         const int id=units_[write].id;
         if(unitSlotById_.size()<=size_t(id))unitSlotById_.resize(size_t(id)+1,-1);
         unitSlotById_[size_t(id)]=int32_t(write++);
@@ -2203,7 +2203,7 @@ uint32_t World::joinConvoy(const Unit& u, ConvoyClass cls, Fixed x, Fixed z) {
 
 uint32_t World::joinArea(int player, ConvoyClass cls, Fixed x, Fixed z, bool shared, uint32_t key) {
 #ifndef NDEBUG
-    // TAK_LEGION_VERIFY: the indexed lookup picks the convoy a scan of the
+    // TA_LEGION_VERIFY: the indexed lookup picks the convoy a scan of the
     // whole table picks.
     const ConvoyTable::Convoy* brute=nullptr;
     const bool verify=LegionNavigator::verifying();
@@ -2214,12 +2214,12 @@ uint32_t World::joinArea(int player, ConvoyClass cls, Fixed x, Fixed z, bool sha
     const auto& convoy=convoys_.join(player,cls,x.v,z.v,shared,tickCounter_,key);
 #ifndef NDEBUG
     if(verify&&bruteId&&convoy.id!=bruteId) {
-        std::fprintf(stderr,"TAK_LEGION_VERIFY tick %u: convoy index picked %u, a scan picks %u\n",
+        std::fprintf(stderr,"TA_LEGION_VERIFY tick %u: convoy index picked %u, a scan picks %u\n",
                      tickCounter_,convoy.id,bruteId);
         std::abort();
     }
     if(verify&&!bruteId&&convoys_.size()==open) {
-        std::fprintf(stderr,"TAK_LEGION_VERIFY tick %u: convoy index joined %u, a scan opens one\n",tickCounter_,convoy.id);
+        std::fprintf(stderr,"TA_LEGION_VERIFY tick %u: convoy index joined %u, a scan opens one\n",tickCounter_,convoy.id);
         std::abort();
     }
 #endif
@@ -2324,7 +2324,7 @@ void World::order(int unitId, float x, float z, bool queue, ConvoyClass cls, std
 // route to wherever it was going before. Both were reachable by changing your mind
 // while a route was in flight.
 void World::cancelPath(Unit& u) {
-    static const bool kPqLog = tak::devEnv("TAK_PATHLOG") != nullptr;
+    static const bool kPqLog = ta::devEnv("TA_PATHLOG") != nullptr;
     if (kPqLog) std::printf("[pq] t=%u id=%d CANCEL\n", tickCounter_, u.id);
     paths_.cancel(u.id);
     if(legion_)legion_->cancel(u.id);
@@ -3382,7 +3382,7 @@ void World::tickRetailGroups() {
     std::array<std::array<bool,100>,kMaxPlayers> formation{};
     std::array<std::vector<RetailGroupUnit>,kMaxPlayers> roster;
     std::array<std::vector<size_t>,kMaxPlayers> index;
-    TAK_PASS();
+    TA_PASS();
     for (size_t i=0;i<units_.size();++i) {
         Unit& u=units_[i];
         if (!u.alive() || !u.type || u.player<0 || u.player>=kMaxPlayers) continue;
@@ -3660,7 +3660,7 @@ void World::planLegionFlightStations() {
                !u.type->isStructure() && !u.underConstruction && !u.embarked();
     };
     bool flyers=false;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) {
         if (!member(u) || !u.type->canFly) continue;
         auto& g=groups[size_t(u.player)][size_t(-u.squad)];
@@ -3668,7 +3668,7 @@ void World::planLegionFlightStations() {
         g.foot=std::max({g.foot,int(u.type->footX),int(u.type->footZ)});
     }
     if (!flyers) return;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) {
         if (!member(u) || u.type->canFly) continue;
         auto& g=groups[size_t(u.player)][size_t(-u.squad)];
@@ -3733,7 +3733,7 @@ void World::planLegionFlightStations() {
         cx=Fixed::raw(int32_t((whole?g.sx:b.sx)/n));cz=Fixed::raw(int32_t((whole?g.sz:b.sz)/n));
         return std::max<int64_t>(256,32*int64_t(isqrt64(uint64_t(whole?g.area:b.area))));
     };
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) {
         if (!member(u) || !u.type->canFly || !legionStationOrder(u)) continue;
         auto& g=groups[size_t(u.player)][size_t(-u.squad)];
@@ -3749,7 +3749,7 @@ void World::planLegionFlightStations() {
         b->arriving|=b->cls!=ConvoyClass::Patrol &&
             near(cx,cz,Fixed::raw(int32_t(b->gx/b->busy)),Fixed::raw(int32_t(b->gz/b->busy)),radius);
     }
-    TAK_PASS();
+    TA_PASS();
     for (size_t i=0;i<units_.size();++i) {
         Unit& u=units_[i];
         if (!member(u) || !u.type->canFly || !legionStationOrder(u)) continue;
@@ -4629,7 +4629,7 @@ bool World::admitSearchRequest(int id,uint32_t now) {
 }
 
 bool World::requestPath(Unit& u, float x, float z) {
-    static const bool kPqLog = tak::devEnv("TAK_PATHLOG") != nullptr;
+    static const bool kPqLog = ta::devEnv("TA_PATHLOG") != nullptr;
     if (!pathService_) return false;
     if (!u.type || u.type->canFly || u.type->isStructure()) return false;
     if(isLegionPathfinding(pathfindingMode_)) {
@@ -5104,7 +5104,7 @@ const World::CompGrid* World::components(const NavGrid& g, int foot) const {
     if (cg.ver == g.version() && cg.w == g.width() && cg.h == g.height()) {
         // A current entry may have been carried across edits rather than built: check
         // it once per version against a from-scratch labelling (debug only, slow).
-        static const bool kCheck = tak::devFlag("TAK_COMPCHECK");
+        static const bool kCheck = ta::devFlag("TA_COMPCHECK");
         if (kCheck && cg.checkedVer != cg.ver) {
             verifyComponents(g, foot, cg);
             cg.checkedVer = cg.ver;
@@ -6507,8 +6507,8 @@ bool World::switchWeaponSlot(Unit& u,int slot,bool fromCommand) {
     if (const auto script=unitScripts_.find(u.id);script!=unitScripts_.end()) {
         const auto& file=*u.type->script();
         script->second.state().startArguments(file,file.scriptIndex("SwitchWeapon"),{uint32_t(slot),0,0,0},1);
-        if (fromCommand) u.pendingWeaponAnimations.push_back({tak::RetailWeaponAnimation::Switch,uint8_t(slot),0,0});
-        else u.weaponAnimations.add(tak::RetailWeaponAnimation::Switch,slot);
+        if (fromCommand) u.pendingWeaponAnimations.push_back({ta::RetailWeaponAnimation::Switch,uint8_t(slot),0,0});
+        else u.weaponAnimations.add(ta::RetailWeaponAnimation::Switch,slot);
     }
     return true;
 }
@@ -6823,7 +6823,7 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             if (freeze) e.frozenFor = int32_t(kTick); else e.stonedFor = int32_t(kTick);
             e.hp = Fixed();
             e.speed = Fixed();
-            static const bool kStatLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+            static const bool kStatLog = ta::devEnv("TA_BURNLOG") != nullptr;
             if (kStatLog)
                 std::fprintf(stderr, "statue kill: %s %s at %.0f,%.0f\n",
                              e.type->id.c_str(), freeze ? "frozen" : "stoned",
@@ -6884,7 +6884,7 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
                     const uint16_t bearing=uint16_t(retailDirection(Fixed::fromFloat(hx)-e.x,
                         Fixed::fromFloat(hz)-e.z).v-portHeadingToRetail(e.heading))&0xff00u;
                     const uint16_t damage=uint16_t(dealt);
-                    e.weaponAnimations.add(tak::RetailWeaponAnimation::Hit,w.dmgType,bearing,0,damage);
+                    e.weaponAnimations.add(ta::RetailWeaponAnimation::Hit,w.dmgType,bearing,0,damage);
                     script->second.state().startArguments(file,callback,
                         {uint32_t(w.dmgType),uint32_t(retailScaledCosine(bearing,400)),
                          uint32_t(retailScaledSine(bearing,400)),damage},4);
@@ -7056,7 +7056,7 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
     for (const auto& [id, fraction] : recipients)
         if (Unit* e = unit(id)) hurt(*e, fraction);
     shotOutcome(false);
-    static const bool kLog = tak::devEnv("TAK_SPLASHLOG") != nullptr;
+    static const bool kLog = ta::devEnv("TA_SPLASHLOG") != nullptr;
     if (!recipients.empty() && kLog)
         std::fprintf(stderr, "splash %s aoe=%d hit %zu\n",
                      w.name.c_str(), int(aoe), recipients.size());
@@ -7114,7 +7114,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
     // shot keeps the nominal reload; changing this fallback moves the Legion
     // battle scenarios' baselines and nothing retail can run.
     const float rl = w.reload / std::max(u.vetMul(), 0.01f);
-    if(!scriptTriggered) {u.reloads[slot] = int32_t(rl * kTick + 0.5f);u.fireAnimations|=uint32_t(1)<<slot;u.weaponAnimations.add(tak::RetailWeaponAnimation::Fire,slot);}   // seconds -> ticks, as retail stores it
+    if(!scriptTriggered) {u.reloads[slot] = int32_t(rl * kTick + 0.5f);u.fireAnimations|=uint32_t(1)<<slot;u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,slot);}   // seconds -> ticks, as retail stores it
     u.justFired = true;
     if (slot < 32) u.firedWeapons |= uint32_t(1) << slot;
     // Engine deviation (owner's call 2026-11-15): retail launches a
@@ -7172,7 +7172,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
                                   int64_t(int16_t(uint32_t(origin[axis]) >> 16));
                 squared += d * d;
             }
-            const uint32_t speed = uint32_t(tak::retailAimSpeed(w.projVel));
+            const uint32_t speed = uint32_t(ta::retailAimSpeed(w.projVel));
             if (speed) flight = int32_t(uint32_t(uint32_t(isqrt64(uint64_t(squared))) << 16) / speed);
             if (flight > 0) {
                 // Flies straight at the aim point and arrives as it lands.
@@ -7511,7 +7511,7 @@ static bool meleeInRange(const Unit& a, const Unit& b) {
 // not a projectile blocker; sight grids still consult the shared obstacle overlay.
 // Ground-only combat retains its existing sight test and navigation is unchanged.
 bool World::combatLineOfSight(const Unit& from,const Unit& to) const {
-    TAK_PROBE(++probe::tl.losCalls);
+    TA_PROBE(++probe::tl.losCalls);
     const bool naval=from.type->domain==UnitType::Domain::Water ||
                      to.type->domain==UnitType::Domain::Water;
     return (naval?navalSight_:nav_).losBetween(from.x.toFloat(),from.z.toFloat(),to.x.toFloat(),to.z.toFloat(),
@@ -7611,7 +7611,7 @@ void World::dropSlotTarget(Unit& u,int slot) {
     if (u.type->weaponSwitching && slot!=u.weaponSlot) return;
     if (const auto it=unitScript(u.id)) {
         const auto& file=*u.type->script();
-        u.weaponAnimations.add(tak::RetailWeaponAnimation::Clear,slot);
+        u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,slot);
         it->state().startArguments(file,file.scriptIndex("TargetCleared"),{uint32_t(slot),0,0,0},1);
     }
 }
@@ -7709,7 +7709,7 @@ bool World::slotInsideMinRange(const Unit& u,const Unit& t,int slot) const {
 bool World::ballisticInRange(Fixed x,Fixed y,Fixed z,const Unit& t,const Weapon& w) const {
     const Fixed ty=t.type->canFly ? t.flightY : t.groundY;
     auto delta=[](Fixed to,Fixed from) { return satSub32(to.v,from.v); };
-    return tak::retailBallisticInRange(delta(t.x,x),delta(ty,y),delta(t.z,z),tak::retailAimSpeed(w.projVel),
+    return ta::retailBallisticInRange(delta(t.x,x),delta(ty,y),delta(t.z,z),ta::retailAimSpeed(w.projVel),
         w.gravityAdj,w.lobPreferred,ballisticGravityRaw_,w.range);
 }
 
@@ -8351,7 +8351,7 @@ int World::retailMissionScan(Unit& u) {
     // 4d8370: armed (+0x130 & 0x8000000) and Fire At Will ((+0x130 & 0xc0000)
     // == 0x80000), else 0; then 412620(unit, 519ac0(unit), sweep 0).
     if (!u.type || u.type->weapons.empty() || u.fireState!=2) return 0;
-    TAK_PROBE(++probe::tl.missionScans);
+    TA_PROBE(++probe::tl.missionScans);
     return retailSelectTarget(u,retailScanSlot(u),false);
 }
 
@@ -9526,8 +9526,8 @@ bool World::slotReachesPoint(const Unit& u,const std::array<int32_t,3>& aim,int 
     }
     auto delta=[](int32_t to,int32_t from) { return satSub32(to,from); };
     if (w.ballisticClass())   // 52bbb0: the arc from the origin first, then 530500
-        return tak::retailBallisticInRange(delta(aim[0],u.x.v),delta(aim[1],(u.type->canFly ? u.flightY : u.groundY).v),
-            delta(aim[2],u.z.v),tak::retailAimSpeed(w.projVel),w.gravityAdj,w.lobPreferred,ballisticGravityRaw_,w.range);
+        return ta::retailBallisticInRange(delta(aim[0],u.x.v),delta(aim[1],(u.type->canFly ? u.flightY : u.groundY).v),
+            delta(aim[2],u.z.v),ta::retailAimSpeed(w.projVel),w.gravityAdj,w.lobPreferred,ballisticGravityRaw_,w.range);
     // 530500 (DroppedBallistic 532270 too): 2D, inclusive; range 0 reaches anywhere.
     if (!w.range) return true;
     const int64_t dx=delta(aim[0],u.x.v),dz=delta(aim[2],u.z.v);
@@ -10600,7 +10600,7 @@ void World::rebuildBodyIndex() const {
     bodyTileBounds_.assign(units_.size(),{-1,-1,-1,-1});
     bodyFootprints_.resize(units_.size());
     bodyIndexValid_=true;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) updateBodyIndex(u);
 }
 
@@ -10769,7 +10769,7 @@ void World::groundRebuild() {
 
 World::SearchBodyRect World::searchBodyRect(int x,int z,int w,int h,int ignoreId) const {
     SearchBodyRect result{x,z,w,h,BodyCells(size_t(w)*h)};
-    TAK_PROBE(++probe::tl.bodyRects; if (size_t(w)*h>BodyCells::kInline) ++probe::tl.bodyRectsHeap);
+    TA_PROBE(++probe::tl.bodyRects; if (size_t(w)*h>BodyCells::kInline) ++probe::tl.bodyRectsHeap);
     auto stamp=[&](const Unit& u,const std::array<int,4>* bounds=nullptr) {
         if (u.id==ignoreId || !u.alive() || u.embarked() || !u.type || (u.type->canFly && u.flightGroundMode!=1)) return;
         const int ux=bounds ? (*bounds)[0] : footprintOrigin(u.x,u.type->footX);
@@ -10813,16 +10813,16 @@ World::SearchBodyRect World::searchBodyRect(int x,int z,int w,int h,int ignoreId
                 }
             }
 #ifndef NDEBUG
-        static const bool verify=std::getenv("TAK_VERIFY_BODY_INDEX")!=nullptr;
+        static const bool verify=std::getenv("TA_VERIFY_BODY_INDEX")!=nullptr;
         if (verify) {
             const auto indexed=result.cells;
             std::fill(result.cells.begin(),result.cells.end(),nullptr);
-            TAK_PASS();
+            TA_PASS();
             for (const auto& u:units_) stamp(u);
             if (result.cells!=indexed) throw std::runtime_error("body spatial index differs from full occupancy scan");
         }
 #endif
-    } else { TAK_PASS(); for (const auto& u:units_) stamp(u); }
+    } else { TA_PASS(); for (const auto& u:units_) stamp(u); }
     return result;
 }
 
@@ -10841,7 +10841,7 @@ bool World::gatePassageAt(int x,int z,const std::vector<int>* gates) const {
         for (const int id:*gates) if (passage(*unit(id))) return true;
         return false;
     }
-    TAK_PASS();
+    TA_PASS();
     for (const auto& gate:units_) if (passage(gate)) return true;
     return false;
 }
@@ -10914,7 +10914,7 @@ int World::rawSearchGrade(const SearchGradePlane& plane,int x,int z,int w,int h,
 }
 
 // The per-cell reference: rates every cell's footprint and clearance ring
-// with rawSearchGrade. refreshSearchRect must equal it (TAK_VERIFY_SEARCH_PLANE
+// with rawSearchGrade. refreshSearchRect must equal it (TA_VERIFY_SEARCH_PLANE
 // checks every refresh in a Debug binary, and pathblock_test compares both).
 void World::refreshSearchRectPerCell(SearchGradePlane& plane,int x,int z,int w,int h) {
     const int width=plane.nav->width(),height=plane.nav->height();
@@ -10925,7 +10925,7 @@ void World::refreshSearchRectPerCell(SearchGradePlane& plane,int x,int z,int w,i
     for (int cz=z0;cz<z1;++cz) for (int cx=x0;cx<x1;++cx) {
         const int grade=retailCachedFootprintGrade(cx,cz,plane.footX,plane.footZ,
             [&](int qx,int qz,int qw,int qh) {
-                TAK_PROBE(++probe::tl.refreshRawGrades);
+                TA_PROBE(++probe::tl.refreshRawGrades);
                 return rawSearchGrade(plane,qx,qz,qw,qh,&bodies);
             });
         const size_t index=size_t(cz)*width+cx;
@@ -10994,10 +10994,10 @@ void World::refreshSearchRect(SearchGradePlane& plane,int x,int z,int w,int h) {
     const int x0=std::max(0,x-footX),z0=std::max(0,z-footZ);
     const int x1=std::min(width,x+w+1),z1=std::min(height,z+h+1);
     if (x1<=x0 || z1<=z0) return;
-    TAK_PROBE(++probe::tl.refreshRects; probe::tl.refreshGradeEvals+=uint64_t(x1-x0)*uint64_t(z1-z0));
+    TA_PROBE(++probe::tl.refreshRects; probe::tl.refreshGradeEvals+=uint64_t(x1-x0)*uint64_t(z1-z0));
     if (footX<1 || footZ<1 || width!=hW_ || height!=hH_) { refreshSearchRectPerCell(plane,x,z,w,h); return; }
 #ifndef NDEBUG
-    static const bool verify=std::getenv("TAK_VERIFY_SEARCH_PLANE")!=nullptr;
+    static const bool verify=std::getenv("TA_VERIFY_SEARCH_PLANE")!=nullptr;
     std::vector<uint8_t> before,expected;
     uint64_t checksumBefore=0,checksumExpected=0;
     if (verify) {
@@ -11025,7 +11025,7 @@ void World::refreshSearchRect(SearchGradePlane& plane,int x,int z,int w,int h) {
     const auto bodies=searchBodyRect(x0-1,z0-1,x1-x0+footX+2,z1-z0+footZ+2);
     thread_local std::vector<uint8_t> cell,rows,foot,ring;
     cell.resize(size_t(gw)*gh);
-    TAK_PROBE(probe::tl.refreshCellsRated+=uint64_t(gw)*uint64_t(gh));
+    TA_PROBE(probe::tl.refreshCellsRated+=uint64_t(gw)*uint64_t(gh));
     for (int cz=gz0;cz<gz1;++cz) for (int cx=gx0;cx<gx1;++cx) {
         int grade=searchCellGrade(*plane.nav,cx,cz,hasMapCells);
         const Unit* body=bodies.cells[size_t(cz-bodies.z)*bodies.width+cx-bodies.x];
@@ -11095,7 +11095,7 @@ void World::ageSearchBody(SearchGradePlane& plane,const RetailGradeBody& body,bo
 // same plane comes from one pass of per-cell grades, one stamp of the bodies
 // and two box minima: on a 768x768 map 37-49 ms becomes about 3.5 ms.
 // Derived state only: the cells and checksum equal the per-cell build's
-// (pathblock_test checks it, and TAK_VERIFY_SEARCH_PLANE does on every
+// (pathblock_test checks it, and TA_VERIFY_SEARCH_PLANE does on every
 // build in a Debug binary).
 void World::buildSearchPlane(SearchGradePlane& plane) {
     const NavGrid& nav=*plane.nav;
@@ -11119,7 +11119,7 @@ void World::buildSearchPlane(SearchGradePlane& plane) {
     // but a holder's value, leaves the same body's grade.
     std::vector<uint8_t> body(cell.size(),0xff),held(groundOwner_.empty() ? 0 : cell.size(),0);
     bool anyBody=false;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) {
         if (!u.alive() || u.embarked() || !u.type || (u.type->canFly && u.flightGroundMode!=1)) continue;
         const auto& type=*u.type;
@@ -11212,7 +11212,7 @@ void World::prepareSearchGrade(int id,bool lastRetry) {
     if (plane.cells.empty() || plane.navVersion!=nav->version()) {
         buildSearchPlane(plane);
 #ifndef NDEBUG
-        static const bool verify=std::getenv("TAK_VERIFY_SEARCH_PLANE")!=nullptr;
+        static const bool verify=std::getenv("TA_VERIFY_SEARCH_PLANE")!=nullptr;
         if (verify && !searchGradeBuildMatchesReference())
             throw std::runtime_error("separable search plane build differs from the per-cell reference");
 #endif
@@ -11221,7 +11221,7 @@ void World::prepareSearchGrade(int id,bool lastRetry) {
     if (!searchGradeBatch_ || !searchGradeBodiesValid_) {
         if (paths_.profiling()) ++searchGradeBodyRebuilds_;
         searchGradeBodies_.clear();
-        TAK_PASS();
+        TA_PASS();
         for (const auto& u:units_) {
             if (!u.type || !u.alive() || u.embarked() || (u.type->canFly && u.flightGroundMode!=1)) continue;
             searchGradeBodies_.push_back({u.id,0x1000001u,u.groundGradeTick,!u.type->isStructure(),
@@ -11369,7 +11369,7 @@ uint32_t World::rebuildSpatialSerial(bool grid, bool occupancy) {
         gCell_ = 32.0f;
         float minx = 1e30f, minz = 1e30f, maxx = -1e30f, maxz = -1e30f;
         bool any = false;
-        TAK_PASS();
+        TA_PASS();
         for (const auto& u : units_) {
             if (!inGrid(u)) continue;
             any = true;
@@ -11430,7 +11430,7 @@ uint32_t World::rebuildSpatialSerial(bool grid, bool occupancy) {
     };
     occParked_.clear();
     uint32_t live = 0;
-    TAK_PASS();
+    TA_PASS();
     for (size_t i = 0; i < units_.size(); ++i) {
         const Unit& u = units_[i];
         if (!u.alive() || !u.type) continue;
@@ -11472,7 +11472,7 @@ uint32_t World::rebuildSpatialSerial(bool grid, bool occupancy) {
 //     unit order, then parked ones) and link the spatial hash in unit order,
 //     with the serial walk's float cell arithmetic.
 // So every chain, stamp and list is the serial one at any worker count
-// (TAK_VERIFY_POOL checks it). Stamping and linking in parallel were tried and
+// (TA_VERIFY_POOL checks it). Stamping and linking in parallel were tried and
 // measured slower: banded stamping was unbalanced (armies fill a few bands),
 // and chunk-local chains merged in order cost more than the walk they split.
 uint32_t World::rebuildSpatialParallel(bool grid, bool occupancy) {
@@ -11542,7 +11542,7 @@ uint32_t World::rebuildSpatialParallel(bool grid, bool occupancy) {
                 }
         };
         occParked_.clear();
-        TAK_PASS();
+        TA_PASS();
         for (size_t i = 0; i < n; ++i) {
             const SpatialRec& r = spatialRec_[i];
             if (r.kind & 4) occParked_.push_back(uint32_t(i));
@@ -11571,7 +11571,7 @@ uint32_t World::rebuildSpatialParallel(bool grid, bool occupancy) {
         }
     }
     if (!grid) return live;
-    TAK_PASS();
+    TA_PASS();
     for (size_t i = 0; i < n; ++i) {
         const SpatialRec& r = spatialRec_[i];
         if (!(r.kind & 1)) continue;
@@ -11636,7 +11636,7 @@ void World::verifyNear(float x, float z, float radius, uint64_t players) const {
     scanNear<true, false>(x, z, radius, players, [&](int i) { skipped.push_back(i); });
     if (plain != skipped)
         throw std::runtime_error("forEachNear: the block-skipping scan visits a different unit sequence "
-                                 "than the plain scan (TAK_VERIFY_NEAR, tick " + std::to_string(tickCounter_) + ")");
+                                 "than the plain scan (TA_VERIFY_NEAR, tick " + std::to_string(tickCounter_) + ")");
 }
 
 #endif
@@ -11737,7 +11737,7 @@ std::vector<uint8_t> World::placementCells(const UnitType* type,const std::atomi
     std::vector<std::vector<int>> buckets;
     if(!type->isStructure()) {
         buckets.resize(size_t(bw)*bh);
-        TAK_PASS();
+        TA_PASS();
         for(size_t i=0;i<units_.size();++i) {
             if(cancelled())return {};
             const auto& u=units_[i];if(!u.alive())continue;
@@ -11794,7 +11794,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
         // One lodestone per deposit. Some Sacred Stones register as two adjacent
         // spots (~22-40px apart); a 44px exclusion merges those into one deposit
         // so a second lodestone can't squeeze onto the same stone.
-        TAK_PASS();
+        TA_PASS();
         for (const auto& u : units_) {
             if (&u==replacing || !u.alive() || !u.type || !u.type->onMana) continue;
             float dx = u.x.toFloat() - sx, dz = u.z.toFloat() - sz;
@@ -11983,7 +11983,7 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
         return dx * dx + dz * dz < min * min;
     };
     if(candidates) {for(int index:*candidates)if(overlaps(units_[size_t(index)]))return false;}
-    else {TAK_PASS();for(const auto& u:units_)if(overlaps(u))return false;}
+    else {TA_PASS();for(const auto& u:units_)if(overlaps(u))return false;}
     return true;
 }
 
@@ -12165,7 +12165,7 @@ void World::tickManaBuildArea(Unit& b) {
     // the same one. Unit order is the deterministic units_ order.
     struct Claim {const UnitType* type;Fixed x,z;};
     std::vector<Claim> claims;std::vector<uint32_t> scouted;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) {
         if (u.id==b.id || !u.alive() || !allied(u.player,b.player)) continue;
         bool firstArea=true;
@@ -12787,7 +12787,7 @@ void World::igniteFeature(Feature& f) {
     if (f.burn || !f.alive || f.type < 0 || f.fadeLeft || f.dieLeft) return;
     const FeatType& ft = featTypes_[size_t(f.type)];
     if (!ft.flamable || !ft.hasBurnAnim) return;
-    static const bool kBurnLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+    static const bool kBurnLog = ta::devEnv("TA_BURNLOG") != nullptr;
     if (kBurnLog)
         std::fprintf(stderr, "ignite %s at %.0f,%.0f (spark %d)\n",
                      ft.name.c_str(), f.x.toFloat(), f.z.toFloat(), ft.sparkTicks);
@@ -12919,7 +12919,7 @@ void World::tickReclaimArea(Unit& b) {
     std::vector<uint8_t> visible;
     if (losOn) {
         visible.assign(size_t(width)*height,0);
-        TAK_PASS();
+        TA_PASS();
         for (const auto& u:units_) {
             // Cargo footprints are live too (4f6a60 has no attachment test).
             if (!u.alive() || !u.type || u.underConstruction || !allied(u.player,b.player)) continue;
@@ -13013,7 +13013,7 @@ void World::reclaim(int builderId, int featureId, bool queue) {
         int ct = c->corpseStatue >= 0 ? c->corpseStatue : corpseTypeOf(c->type);
         if (ct < 0 || !featTypes_[size_t(ct)].reclaimable) return;
         tx = c->x.toFloat(); tz = c->z.toFloat();
-        static const bool kRcLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+        static const bool kRcLog = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kRcLog)
             std::fprintf(stderr, "corpse-reclaim ORDER: b%d -> %s (%d)\n",
                          builderId, c->type->id.c_str(), -featureId);
@@ -13065,7 +13065,7 @@ void World::resurrect(int casterId, int corpseId, bool queue) {
     if (!kind) return;
     Unit* b = unit(casterId);
     const Unit* c = unit(corpseId);
-    static const bool kRvLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+    static const bool kRvLog = ta::devEnv("TA_BURNLOG") != nullptr;
     if (kRvLog)
         std::fprintf(stderr, "resurrect ORDER: u%d -> %s (%d) kind %d\n",
                      casterId, c->type->id.c_str(), corpseId, int(kind));
@@ -13329,7 +13329,7 @@ void World::tickReclaim(Unit& b) {
     startWorkAnimation(b,tx,tz);
     if (retailReclaimRemoval(work.mission)) {
         finishReclaim(b,target);
-        static const bool kRecLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+        static const bool kRecLog = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kRecLog)
             std::fprintf(stderr, "reclaimed %d at %d,%d (tick %u)\n", target, ax, az, tickCounter_);
         quit();
@@ -16114,7 +16114,7 @@ void World::tickRetailAiStrike(int owner,unsigned index) {
         return std::bit_cast<int32_t>(uint32_t((x*x)>>32)+uint32_t((z*z)>>32));
     };
     const int threatRadius=(radius*3)/2;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& enemy:units_) if (enemy.alive() && !allied(owner,enemy.player) &&
         distance(center->first,center->second,enemy.x.v,enemy.z.v)<=threatRadius*threatRadius)
         unsupported("nearby combat");
@@ -16204,7 +16204,7 @@ void World::tickRetailAiBase(int owner,unsigned index) {
     for (int id:squad.members) if (const Unit* u=unit(id);u && u->alive() && u->type->isStructure())
         footprint+=u->type->footX+u->type->footZ;
     const int radius=retailAiBaseRadius(footprint,0);
-    TAK_PASS();
+    TA_PASS();
     for (const auto& enemy:units_) if (enemy.alive() && !allied(owner,enemy.player)) {
         const int64_t dx=std::bit_cast<int32_t>(uint32_t(center->first)-uint32_t(enemy.x.v));
         const int64_t dz=std::bit_cast<int32_t>(uint32_t(center->second)-uint32_t(enemy.z.v));
@@ -16212,7 +16212,7 @@ void World::tickRetailAiBase(int owner,unsigned index) {
         if (distance<=radius*radius) unsupported("nearby threat response");
     }
     unsigned population=0;
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) if (u.alive() && u.player==owner) ++population;
     for (int id:squad.members) {
         Unit* u=unit(id);
@@ -16357,7 +16357,7 @@ void World::setRepeat(int builderId, const UnitType* type) {
 // by the full count -- damaged or not -- is what stops it being absurd in a crowd.
 // An aura emitter (51d3e0's walk, 51d535..51d560, S; the callbacks 51f5e9,
 // 51f6c9 and 51f7cc test only that it is not carried, +0x130 & 3, E for the Joy
-// one in ~/tak-tmp/retail-checks/hunt7/probe_aura_gate.py): alive, not dying,
+// one in ~/ta-tmp/retail-checks/hunt7/probe_aura_gate.py): alive, not dying,
 // finished, not carried. No activation test: an emitter made inactive
 // (511990, the shipped priests, shamans and smiths) or switched off still
 // emits, and so does a paralysed one. A statue is dying (51a61a): stone and
@@ -16465,7 +16465,7 @@ void World::tickAuras(float dt) {
         simPool().forChunks(units_.size(), SimPool::kUnitChunk, 0,
                             [&](size_t, size_t begin, size_t end, unsigned) { relaxBuffs(begin, end); });
     else {
-        TAK_PASS();
+        TA_PASS();
         relaxBuffs(0, units_.size());
     }
     // Per emitter, in forEachNear order, every unit it refreshes and the
@@ -16503,7 +16503,7 @@ void World::tickAuras(float dt) {
     };
     if (tiled) {
 #ifndef NDEBUG
-        // TAK_VERIFY_POOL: the serial fold, on copies of the relaxed buffs.
+        // TA_VERIFY_POOL: the serial fold, on copies of the relaxed buffs.
         std::vector<std::pair<float, float>> serial;
         if (verifyPool()) {
             serial.reserve(units_.size());
@@ -16765,7 +16765,7 @@ void World::tickAbilities(float) {
         }
 #endif
     } else {
-        TAK_PASS();
+        TA_PASS();
         for (size_t j = 0; j < units_.size(); ++j)
             if (actor(units_[j])) actorIdx_.push_back(uint32_t(j));
     }
@@ -16812,7 +16812,7 @@ void World::tickAbilities(float) {
         // creature rises at FULL health (icd 0x420666-0x4206ba).
         if (Unit* nu = unit(id))
             if (!r.animate) nu->hp = Fixed::fromFloat(std::max(nu->type->maxHp * 0.1f, 1.0f));
-        static const bool kRevLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+        static const bool kRevLog = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kRevLog)
             std::fprintf(stderr, "%s: %s for p%d at %.0f,%.0f\n",
                          r.animate ? "animate" : "resurrect",
@@ -16884,7 +16884,7 @@ void World::updateExplorationPlane() {
     }
 #ifndef NDEBUG
     if (verifyLists() && !explorationBlocksMatchPlane()) {
-        std::fprintf(stderr,"TAK_VERIFY_LISTS tick %u: exploration block summaries differ from the plane\n",tickCounter_);
+        std::fprintf(stderr,"TA_VERIFY_LISTS tick %u: exploration block summaries differ from the plane\n",tickCounter_);
         std::abort();
     }
 #endif
@@ -16987,7 +16987,7 @@ void World::updateExplorationPlane() {
     }
 #ifndef NDEBUG
     if (verifyLists() && !explorationBlocksMatchPlane()) {
-        std::fprintf(stderr,"TAK_VERIFY_LISTS tick %u: exploration pass left block summaries unlike the plane\n",tickCounter_);
+        std::fprintf(stderr,"TA_VERIFY_LISTS tick %u: exploration pass left block summaries unlike the plane\n",tickCounter_);
         std::abort();
     }
 #endif
@@ -17253,7 +17253,7 @@ void World::applyPowerCode(int player,PowerCode code,PowerArg arg,int unitId) {
 void World::rebuildVisibleLists(int player) {
     Player& owner=players_[size_t(player)];
     owner.visibleEnemies.clear();owner.visibleAllies.clear();
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u:units_) {
         if (!u.alive() || u.hp<=Fixed() || !u.type) continue;
         if (allied(player,u.player)) {
@@ -17293,7 +17293,7 @@ void World::summonReadyGods() {
         // identically, so the sum -- and therefore the spawn point -- is bit-identical.
         float cx = 0, cz = 0;
         int n = 0;
-        TAK_PASS();
+        TA_PASS();
         for (const auto& u : units_)
             if (u.alive() && u.player == int(t) && u.type && !u.underConstruction) {
                 cx += u.x.toFloat();
@@ -17334,7 +17334,7 @@ bool World::exitSpot(const UnitType* t, float fx, float fz, float& outX, float& 
     // spot and the later unit stops in the doorway when traffic blocks arrival.
     std::vector<std::pair<float,float>> reserved;
     const Unit* departing=departingId ? unit(departingId) : nullptr;
-    if(departing)TAK_PASS();
+    if(departing)TA_PASS();
     if(departing)for(const auto& u:units_) {
         if(!u.alive() || !u.type || u.underConstruction || u.orders.empty())continue;
         const auto& o=u.orders[currentLeg(u.orders)];
@@ -18252,7 +18252,7 @@ void World::tickFlames(std::span<const int> airGrid) {
             return projectileCollision(position,flame.velocity[1],flags,flame.owner,airGrid);
         };
         if(tickCounter_==flame.start) {
-            const auto scan=tak::retailFlameScan(flame.position,flame.velocity,uint32_t(w.range),
+            const auto scan=ta::retailFlameScan(flame.position,flame.velocity,uint32_t(w.range),
                 flame.speed,flame.substeps,[&](const auto& point){return collision(point).code;});
             flame.endpoint=scan.endpoint;flame.lifetime=scan.lifetime;flame.impacted=false;
             continue;
@@ -18275,7 +18275,7 @@ void World::tickFlames(std::span<const int> airGrid) {
             }
         }
         const std::array<uint16_t,3> rolls{uint16_t(crtRand(0x52d5d7)),uint16_t(crtRand(0x52d627)),uint16_t(crtRand(0x52d675))};
-        const auto velocity=tak::retailFlameVelocity(muzzle,flame.endpoint,int32_t(flame.lifetime),rolls);
+        const auto velocity=ta::retailFlameVelocity(muzzle,flame.endpoint,int32_t(flame.lifetime),rolls);
         // Native updates the existing emitter before inserting this tick's particle.
         advanceParticles();
         if(flame.particles.size()<500)flame.particles.push_back({muzzle,velocity,int32_t(flame.lifetime),
@@ -18327,7 +18327,7 @@ void World::syncUnitLists() {
         UnitClassLists fresh;
         fresh.sync(units_);
         if (!(fresh==unitLists_)) {
-            std::fprintf(stderr,"TAK_VERIFY_LISTS tick %u: unit class lists differ from a walk of the units\n",tickCounter_);
+            std::fprintf(stderr,"TA_VERIFY_LISTS tick %u: unit class lists differ from a walk of the units\n",tickCounter_);
             std::abort();
         }
     }
@@ -18461,7 +18461,7 @@ std::array<int32_t,3> World::retailLeadPoint(const Unit& u,const Unit& target,co
     const std::array<int32_t,3> velocity=target.type->canFly ?
         std::array<int32_t,3>{target.flightVelocity.x,target.flightVelocity.y,target.flightVelocity.z} :
         std::array<int32_t,3>{step.s.v,0,step.c.v};
-    return tak::retailAimLead(origin,sweetSpot,velocity,tak::retailAimSpeed(weapon->projVel),
+    return ta::retailAimLead(origin,sweetSpot,velocity,ta::retailAimSpeed(weapon->projVel),
         weapon->noLead || target.type->isStructure());
 }
 
@@ -18484,7 +18484,7 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(int unitId,int tar
     result.facing=retailSlotFacing(origin,result.target,led,weapon.melee);
     if(aimed) {
         const auto source=result.source;
-        const int32_t speed=tak::retailAimSpeed(weapon.projVel);
+        const int32_t speed=ta::retailAimSpeed(weapon.projVel);
         result.target=led;
         std::array<int32_t,3> delta;
         for(size_t axis=0;axis<3;++axis)
@@ -18492,7 +18492,7 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(int unitId,int tar
         const auto angles=retailDirectAim(delta[0],delta[1],delta[2],heading);
         result.heading=angles[0];result.pitch=angles[1];
         if(weapon.ballistic) {
-            result.pitch=tak::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
+            result.pitch=ta::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
                 float(delta[2])/65536.f,float(speed)/65536.f,weapon.gravityAdj,weapon.lobPreferred,
                 ballisticGravityRaw_);
             // 52bdf0 aims at pitch 0 when the arc cannot reach. Retail never
@@ -18537,14 +18537,14 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(Unit& u,const Weap
     result.facing=retailSlotFacing(origin,t.point,t.point,weapon.melee);
     if(aimed) {
         const auto source=result.source;
-        const int32_t speed=tak::retailAimSpeed(weapon.projVel);
+        const int32_t speed=ta::retailAimSpeed(weapon.projVel);
         std::array<int32_t,3> delta;
         for(size_t axis=0;axis<3;++axis)
             delta[axis]=std::bit_cast<int32_t>(uint32_t(t.point[axis])-uint32_t(source[axis]));
         const auto angles=retailDirectAim(delta[0],delta[1],delta[2],heading);
         result.heading=angles[0];result.pitch=angles[1];
         if(weapon.ballistic) {
-            result.pitch=tak::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
+            result.pitch=ta::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
                 float(delta[2])/65536.f,float(speed)/65536.f,weapon.gravityAdj,weapon.lobPreferred,
                 ballisticGravityRaw_);
             if(result.pitch==0x8000) {
@@ -18573,8 +18573,8 @@ void World::clearScriptWeaponTarget(Unit& u,bool fromCommand) {
             // TargetCleared a second time.
             u.slotTarget[slot]=0;
             u.aimWait[slot]=0;
-            if(fromCommand)u.pendingWeaponAnimations.push_back({tak::RetailWeaponAnimation::Clear,uint8_t(slot),0,0});
-            else u.weaponAnimations.add(tak::RetailWeaponAnimation::Clear,int(slot));
+            if(fromCommand)u.pendingWeaponAnimations.push_back({ta::RetailWeaponAnimation::Clear,uint8_t(slot),0,0});
+            else u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,int(slot));
             // Native 51a7f0 starts TargetCleared with immediate=0. The callback
             // thread runs in the next regular COB pass, not inline in target
             // retirement; its SET 21 remains script-owned and takes effect there.
@@ -18614,7 +18614,7 @@ void World::legionAimStall(Unit& u,int slot,bool available) {
     const auto it=unitScript(u.id);
     if(!it) return;
     const auto& file=*u.type->script();
-    u.weaponAnimations.add(tak::RetailWeaponAnimation::Clear,slot);
+    u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,slot);
     it->state().startArguments(file,file.scriptIndex("TargetCleared"),{uint32_t(slot),0,0,0},1);
 }
 
@@ -18645,7 +18645,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
     const uint16_t aimHeading=dropped ? aim.heading : solution->heading;
     const uint16_t aimPitch=dropped ? aim.pitch : solution->pitch;
     if(aim.start(aimHeading,aimPitch)) {
-        u.weaponAnimations.add(tak::RetailWeaponAnimation::Aim,slot,aimHeading,aimPitch);
+        u.weaponAnimations.add(ta::RetailWeaponAnimation::Aim,slot,aimHeading,aimPitch);
         // Native 52fe30 starts AimWeapon with immediate=0. Starting the VM here
         // only queues its thread; the following unit-script phase runs its body.
         it->state().startArguments(file,aimScript,{aimHeading,aimPitch,uint32_t(slot),0},3);
@@ -18681,7 +18681,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         const uint32_t weaponFlags=!t.unit && weapon.commandFire ? 0x20000u : 0u;
         u.missionEvents|=retailWeaponFireEvent(weaponFlags,0x10000,all ? 0xc0000000u : uint32_t(slot)<<30,aim.flags);
         u.fireAnimations|=uint32_t(1)<<slot;
-        u.weaponAnimations.add(tak::RetailWeaponAnimation::Fire,slot);
+        u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,slot);
         // Native 530140 also starts FireWeapon with immediate=0. SET 23 can
         // therefore only be observed by a later common weapon update.
         it->state().startArguments(file,fireScript,{uint32_t(slot),0,0,0},1);
@@ -18997,14 +18997,14 @@ void World::UnitScript::pay([[maybe_unused]] bool touch) {
     if (!debt_) return;
 #ifndef NDEBUG
     if (probe::kStats && touch) ++probe::tl.vmDebtFlushes;
-    static const bool verify=probe::envOn("TAK_VERIFY_SCRIPT_SKIP");
+    static const bool verify=probe::envOn("TA_VERIFY_SCRIPT_SKIP");
     std::optional<cob::RetailScriptState> replayed;
     if (verify && file_) {
         // Re-run the skipped ticks for real on a copy. A skipped tick must not reach
         // the host at all (no RNG draw, no query, no piece callback).
         struct Refuse {
             [[noreturn]] static void fail() {
-                throw std::runtime_error("TAK_VERIFY_SCRIPT_SKIP: a skipped COB tick reached its host");
+                throw std::runtime_error("TA_VERIFY_SCRIPT_SKIP: a skipped COB tick reached its host");
             }
             uint32_t random(int32_t) { fail(); }
             uint32_t get(int,const std::array<uint32_t,4>&) { fail(); }
@@ -19029,7 +19029,7 @@ void World::UnitScript::pay([[maybe_unused]] bool touch) {
             r.vm.statics==vm.statics && r.pieces==state_.pieces &&
             r.activePieceMask()==state_.activePieceMask();
         for (size_t i=0;same && i<vm.threads.size();++i) same=r.vm.threads[i].words==vm.threads[i].words;
-        if (!same) throw std::runtime_error("TAK_VERIFY_SCRIPT_SKIP: paying a COB VM's skipped ticks "
+        if (!same) throw std::runtime_error("TA_VERIFY_SCRIPT_SKIP: paying a COB VM's skipped ticks "
                                             "differs from running them");
     }
 #endif
@@ -19130,7 +19130,7 @@ void World::sweepDeath(Unit& u) {
         // (raising a statue un-petrifies the unit).
         u.corpseStatue = u.stonedFor > 0 ? statueTypeOf(u.type, false)
                       : u.frozenFor > 0 ? statueTypeOf(u.type, true) : -1;
-        static const bool kStatLog2 = tak::devEnv("TAK_BURNLOG") != nullptr;
+        static const bool kStatLog2 = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kStatLog2 && (u.stonedFor > 0 || u.frozenFor > 0))
             std::fprintf(stderr, "statue edge: %s statue=%d stoned=%d\n",
                          u.type->id.c_str(), u.corpseStatue, u.stonedFor);
@@ -19598,7 +19598,7 @@ void World::deliverSearchRoute(int unitId,const std::vector<PathCell>& route,Fix
     // 4e4f39: every route delivery, including an empty route, makes
     // the mover recheck nearby obstacles on its next update.
     if (u && u->alive()) u->groundScanTick=0;
-    static const bool kPqLog2 = tak::devEnv("TAK_PATHLOG") != nullptr;
+    static const bool kPqLog2 = ta::devEnv("TA_PATHLOG") != nullptr;
     if (kPqLog2) std::printf("[pq] t=%u id=%d DELIVER wps=%zu failed=%d "
                              "(alive=%d orders=%zu)\n",
                              tickCounter_, unitId, route.size(), int(failed),
@@ -20065,10 +20065,10 @@ void World::tick(float dt) {
     if (!tickCounter_) updateNavigationExploration();
     if (isLegionPathfinding(pathfindingMode_)) {
 #ifndef NDEBUG
-        // TAK_LEGION_VERIFY: after this tick's command application, both
+        // TA_LEGION_VERIFY: after this tick's command application, both
         // convoy indexes equal a rebuild from the table.
         if (LegionNavigator::verifying() && !convoys_.indexesMatch(tickCounter_)) {
-            std::fprintf(stderr, "TAK_LEGION_VERIFY tick %u: convoy indexes differ from a rebuild\n", tickCounter_);
+            std::fprintf(stderr, "TA_LEGION_VERIFY tick %u: convoy indexes differ from a rebuild\n", tickCounter_);
             std::abort();
         }
 #endif
@@ -20081,7 +20081,7 @@ void World::tick(float dt) {
         std::optional<PhaseSpan> _nav;
         if (g_phase) _nav.emplace(g_navMs, probe::kNav);
         if(isLegionPathfinding(pathfindingMode_)) {
-            TAK_PASS();
+            TA_PASS();
             for(const auto& u:units_) {
                 if(size_t(u.id)>=legionTickStart_.size()) {
                     legionTickStart_.resize(size_t(u.id)+1);legionTickStartAt_.resize(size_t(u.id)+1,0);
@@ -20113,7 +20113,7 @@ void World::tick(float dt) {
         }
     }
 #ifndef NDEBUG
-    hashTrace();   // TAK_HASHTRACE=lo:hi -- per-component dump, EVERY tick on both peers
+    hashTrace();   // TA_HASHTRACE=lo:hi -- per-component dump, EVERY tick on both peers
 #endif
     {
         std::optional<PhaseSpan> _burn;
@@ -20249,7 +20249,7 @@ void World::tick(float dt) {
     // trip of the sacred and demand sums), so the totals are unchanged.
     const bool prologuePool = units_.size() >= kPrologueMinParallel && simPool().workers();
     if (!prologuePool) {
-        TAK_PASS();
+        TA_PASS();
         for (auto& u : units_) resetTickState(u);
     } else {
         const size_t chunks = (units_.size() + SimPool::kUnitChunk - 1) / SimPool::kUnitChunk;
@@ -20318,7 +20318,7 @@ void World::tick(float dt) {
                 else applyEconomy(item.kind, item.player, item.f, item.d);
             }
     } else {
-        TAK_PASS();
+        TA_PASS();
         for (size_t i = 0; i < units_.size(); ++i)
             economyOf(units_[i], applyEconomy, [&] { sitesIdx_.push_back(uint32_t(i)); });
     }
@@ -20416,7 +20416,7 @@ void World::tick(float dt) {
     // in, with nothing in the command stream to explain it.
     summonReadyGods();
 
-    TAK_PASS();
+    TA_PASS();
     for (size_t i = 0; i < units_.size(); ++i) {
         Unit& u = units_[i];
         u.constructionHolding=false;
@@ -20453,7 +20453,7 @@ void World::tick(float dt) {
             while (next < sitesIdx_.size() && sitesIdx_[next] < i) ++next;
             const Unit& u = units_[i];
             if (u.alive() && u.type && u.underConstruction && (next == sitesIdx_.size() || sitesIdx_[next] != i)) {
-                std::fprintf(stderr, "TAK_VERIFY_LISTS tick %u: site %d (index %zu) missing from the decay list\n",
+                std::fprintf(stderr, "TA_VERIFY_LISTS tick %u: site %d (index %zu) missing from the decay list\n",
                              tickCounter_, u.id, i);
                 std::abort();
             }
@@ -20699,7 +20699,7 @@ void World::tick(float dt) {
     // Retail has no formation aggregates (formOf is null for every unit), so it
     // skips this walk and the rejoin walk below: neither can do anything there.
     const bool formations = pathfindingMode_!=PathfindingMode::Retail;
-    if (formations) TAK_PASS();
+    if (formations) TA_PASS();
     if (formations) for (auto& u : units_)
         if (u.alive() && u.type && !u.type->isStructure() &&
             !u.underConstruction && u.baseSpeed.v > 0)
@@ -20767,7 +20767,7 @@ void World::tick(float dt) {
         r.count = best;
         return r;
     };
-    if (formations) TAK_PASS();
+    if (formations) TA_PASS();
     if (formations) for (auto& u : units_) {
         if (!u.alive() || !u.type || !u.orders.empty()) continue;
         const int group = groupOf(u);
@@ -20826,7 +20826,7 @@ void World::tick(float dt) {
             probe::tlPmu[probe::kPrologue].v[i] -= probe::tlPmu[probe::kBurn].v[i] + probe::tlPmu[probe::kVis].v[i];
     }
 #endif
-    TAK_PASS();
+    TA_PASS();
     for (size_t unitIndex=0;unitIndex<units_.size();++unitIndex) {
 #if defined(__GNUC__) || defined(__clang__)
         // Cache hints for the units ahead, in three stages so that every address
@@ -21480,7 +21480,7 @@ void World::tick(float dt) {
                     ai.initialized=true;
                     if (ai.scenarioDeadline && tickCounter_>=ai.scenarioDeadline)
                         unsupported("scenario assignment");
-                    TAK_PASS();
+                    TA_PASS();
                     for (auto& member:units_) {
                         if (member.player!=owner || !member.alive() || member.underConstruction ||
                             !member.type || member.type->isStructure()) continue;
@@ -21558,7 +21558,7 @@ void World::tick(float dt) {
             const int owner=int(&player-players_.data());
             unsigned population=0;
             for (auto& entry:cache.entries) entry.inputs.count=entry.inputs.completed=0;
-            TAK_PASS();
+            TA_PASS();
             for (const auto& member:units_) {
                 if (member.player!=owner || !member.alive()) continue;
                 ++population;
@@ -21753,7 +21753,7 @@ void World::tick(float dt) {
     const auto died=std::move(justDied_);
     justDied_.clear();
     if (mission_) {
-        TAK_PASS();
+        TA_PASS();
         // Each UnitDestroyed runs its first slice in its retirement, where the
         // population words still hold the units retiring after it.
         std::vector<std::pair<int,int>> retiring;
@@ -21786,7 +21786,7 @@ void World::tick(float dt) {
         simPool().forChunks(units_.size(), SimPool::kUnitChunk, 0,
                             [&](size_t, size_t begin, size_t end, unsigned) { turnBam(begin, end); });
     else {
-        TAK_PASS();
+        TA_PASS();
         turnBam(0, units_.size());
     }
     tickCorpseSinks();
@@ -21797,8 +21797,8 @@ void World::tick(float dt) {
     }
     if (g_phase) {
         const double ttot = phaseTotal, tsep = phaseSep;
-        static double thr = tak::devEnv("TAK_PHASE_MS") ? atof(tak::devEnv("TAK_PHASE_MS")) : 15.0;
-        if (ttot > thr) {   // only report a stall (threshold tunable via TAK_PHASE_MS)
+        static double thr = ta::devEnv("TA_PHASE_MS") ? atof(ta::devEnv("TA_PHASE_MS")) : 15.0;
+        if (ttot > thr) {   // only report a stall (threshold tunable via TA_PHASE_MS)
             int alive = 0; for (auto& u : units_) if (u.alive()) ++alive;
             // flow= and path= used to sit here; the flow fields and the inline
             // A* are both gone, so the counters were always zero. prologue= is a part
@@ -21902,13 +21902,13 @@ void World::hashTrace() const {
     static uint32_t lo = 0, hi = 0;
     if (!init) {
         init = true;
-        if (const char* e = std::getenv("TAK_HASHTRACE")) {
+        if (const char* e = std::getenv("TA_HASHTRACE")) {
             unsigned a = 0, b = 0;
             if (std::sscanf(e, "%u:%u", &a, &b) == 2) { lo = a; hi = b; on = true; }
         }
     }
     if (!on || tickCounter_ < lo || tickCounter_ > hi) return;
-    if (std::getenv("TAK_HASHDETAIL")) (void)stateHash();
+    if (std::getenv("TA_HASHDETAIL")) (void)stateHash();
 
     auto fnv = [](uint64_t h, uint64_t v) {
         for (int i = 0; i < 8; ++i) { h ^= (v >> (i * 8)) & 0xFF; h *= 1099511628211ULL; }
@@ -22034,7 +22034,7 @@ uint64_t World::stateHash() const {
     // from the older motion-oriented hashTrace diagnostic.
     auto checkpoint = [&](const char* section) {
 #ifndef NDEBUG
-        static const char* limit = std::getenv("TAK_HASHDETAIL");
+        static const char* limit = std::getenv("TA_HASHDETAIL");
         if (limit && tickCounter_ <= std::strtoul(limit,nullptr,10)) {
             std::fprintf(stderr,"HASHDETAIL t=%u section=%s hash=%016llx\n",
                          tickCounter_,section,static_cast<unsigned long long>(words.digest()));
@@ -22175,7 +22175,7 @@ uint64_t World::stateHash() const {
     for (const auto& o:replacedObjects_) {mix(0x5245504cull);mix(uint32_t(o.id));mix(uint32_t(o.owner));mix(uint32_t(o.lastHitPlayer));}
     // Retirements the mission or scenario has yet to hear (its own step's).
     for (const int id:justDied_) {mix(0x52455449ull);mix(uint32_t(id));}
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u : units_) {
         mix(uint64_t(u.id));
         mix(uint64_t(u.player));
@@ -22797,7 +22797,7 @@ uint64_t World::stateHash() const {
     for (const auto& [id,footprint]:corpseFootprints_) {
         mix(uint32_t(id));mix(uint32_t(footprint.x));mix(uint32_t(footprint.z));mix(uint32_t(footprint.type));mix(uint32_t(footprint.damage));
     }
-    TAK_PASS();
+    TA_PASS();
     for (const auto& corpse:units_) if (!corpse.alive() &&
         (corpse.deadFor<kRetiredTicks || corpseFootprints_.contains(corpse.id))) {
         mix(uint32_t(corpse.id));mix(uint32_t(corpse.deadFor));mix(uint32_t(corpse.corpseUntil));
@@ -22862,7 +22862,7 @@ uint64_t World::stateHash() const {
         // GET40 makes scores and future attribution authoritative in campaigns.
         mix(scoreAutomaticDisabled_);
         for(const auto& p:players_) mix(uint32_t(p.score));
-        TAK_PASS();
+        TA_PASS();
         for(const auto& u:units_) mix(uint32_t(u.lastHitPlayer));
     }
     h=words.digest();
@@ -23069,7 +23069,7 @@ int World::updateOutcome() {
     std::vector<int> aliveByPlayer(players_.size(), 0);
     // Living Monarch (commander unit) per player, for the monarch-loss rule.
     std::vector<int> monarchByPlayer(players_.size(), 0);
-    TAK_PASS();
+    TA_PASS();
     for (const auto& u : units_)
         if (u.alive() && u.type &&
             u.player >= 0 && u.player < numPlayers()) {
@@ -23130,4 +23130,4 @@ int World::updateOutcome() {
     return winningTeam_;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -8,10 +8,10 @@
 #include <stdexcept>
 #include <vector>
 
-namespace tak::terrain {
+namespace ta::terrain {
 
-tak::gaf::Palette loadWorldPalette(const tak::hpi::Vfs& vfs, const std::string& world) {
-    tak::gaf::Palette pal{};
+ta::gaf::Palette loadWorldPalette(const ta::hpi::Vfs& vfs, const std::string& world) {
+    ta::gaf::Palette pal{};
     // Default: grayscale ramp (so a missing PCX still yields a usable index map).
     for (int i = 0; i < 256; ++i) {
         pal.rgba[i][0] = pal.rgba[i][1] = pal.rgba[i][2] = uint8_t(i);
@@ -36,7 +36,7 @@ tak::gaf::Palette loadWorldPalette(const tak::hpi::Vfs& vfs, const std::string& 
 
 namespace {
 
-uint8_t nearestIndex(const tak::gaf::Palette& pal, int r, int g, int b) {
+uint8_t nearestIndex(const ta::gaf::Palette& pal, int r, int g, int b) {
     int best = 0, bestD = 1 << 30;
     for (int i = 0; i < 256; ++i) {
         int dr = r - pal.rgba[i][0], dg = g - pal.rgba[i][1], db = b - pal.rgba[i][2];
@@ -47,8 +47,8 @@ uint8_t nearestIndex(const tak::gaf::Palette& pal, int r, int g, int b) {
 }
 
 // Average each 32px block to one RGB, giving a blocksX x blocksY colour grid.
-std::vector<uint8_t> blockColourGrid(const tak::tnt::Map& map,
-                                     tak::terrain::Compositor& comp,std::shared_ptr<const std::atomic_bool> stop={},int width=0,int height=0) {
+std::vector<uint8_t> blockColourGrid(const ta::tnt::Map& map,
+                                     ta::terrain::Compositor& comp,std::shared_ptr<const std::atomic_bool> stop={},int width=0,int height=0) {
     const int gw=width?width:map.blocksX,gh=height?height:map.blocksY;
     std::vector<uint8_t> grid(size_t(gw) * gh * 3, 0);
     std::vector<uint8_t> block(32 * 32 * 4);
@@ -75,7 +75,7 @@ std::vector<uint8_t> blockColourGrid(const tak::tnt::Map& map,
 
 // Resample the block-colour grid to (tw x th) and index against the palette.
 std::vector<uint8_t> indexedMinimap(const std::vector<uint8_t>& grid, int gw, int gh,
-                                    int tw, int th, const tak::gaf::Palette& pal) {
+                                    int tw, int th, const ta::gaf::Palette& pal) {
     std::vector<uint8_t> out(size_t(tw) * th, 0);
     for (int y = 0; y < th; ++y)
         for (int x = 0; x < tw; ++x) {
@@ -89,8 +89,8 @@ std::vector<uint8_t> indexedMinimap(const std::vector<uint8_t>& grid, int gw, in
 
 } // namespace
 
-MinimapPreview minimapPreview(const tak::tnt::Map& map,tak::terrain::Compositor& comp,
-                              const tak::gaf::Palette& palette,std::shared_ptr<const std::atomic_bool> stop) {
+MinimapPreview minimapPreview(const ta::tnt::Map& map,ta::terrain::Compositor& comp,
+                              const ta::gaf::Palette& palette,std::shared_ptr<const std::atomic_bool> stop) {
     MinimapPreview result;
     if(map.blocksX<=0 || map.blocksY<=0)return result;
     const auto grid=blockColourGrid(map,comp,stop,result.width,result.height);
@@ -101,8 +101,8 @@ MinimapPreview minimapPreview(const tak::tnt::Map& map,tak::terrain::Compositor&
     return result;
 }
 
-void generateMinimaps(tak::tnt::Map& map, tak::terrain::Compositor& comp,
-                      const tak::gaf::Palette& pal, std::shared_ptr<const std::atomic_bool> stop) {
+void generateMinimaps(ta::tnt::Map& map, ta::terrain::Compositor& comp,
+                      const ta::gaf::Palette& pal, std::shared_ptr<const std::atomic_bool> stop) {
     if (map.blocksX <= 0 || map.blocksY <= 0) return;
     std::vector<uint8_t> grid = blockColourGrid(map, comp, stop);
     if(stop && stop->load())throw std::runtime_error("Save cancelled");
@@ -121,4 +121,4 @@ void generateMinimaps(tak::tnt::Map& map, tak::terrain::Compositor& comp,
     map.overview = indexedMinimap(grid, map.blocksX, map.blocksY, ow, oh, pal);
 }
 
-} // namespace tak::terrain
+} // namespace ta::terrain

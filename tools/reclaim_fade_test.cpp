@@ -8,7 +8,7 @@
 
 #include <cstdio>
 
-namespace rf = tak::reclaimfade;
+namespace rf = ta::reclaimfade;
 
 static int g_fail = 0;
 
@@ -35,7 +35,7 @@ int main() {
     int gone = 0;
     for (float a = 1.0f; a > 0.0f; a = a - 0.03f) ++gone;
     check("kReclaimFadeTicks = the steps to alpha <= 0 (34)",
-          gone == tak::sim::kReclaimFadeTicks && gone == 34);
+          gone == ta::sim::kReclaimFadeTicks && gone == 34);
     check("step 34 would be transparent", rf::alphaByte(34) == 0);
 
     // fadeEnd is the same whichever tick the client read it on.
@@ -55,7 +55,7 @@ int main() {
     // The silhouette: white where the frame is opaque, clear elsewhere.
     const uint8_t rgba[] = {10, 20, 30, 255,   0, 0, 0, 0,
                             0, 0, 0, 0,        200, 100, 50, 255};
-    tak::hiddenunits::AlphaMask mask;
+    ta::hiddenunits::AlphaMask mask;
     mask.build(rgba, 2, 2);
     const auto px = rf::silhouette(mask);
     check("silhouette size", px.size() == 16);

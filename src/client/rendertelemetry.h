@@ -10,8 +10,8 @@
 //   * FrameStats is owned by the render thread. Workers never write it: they
 //     leave per-item results (UnitGeom::reused, vertex counts, ...) that the
 //     render thread tallies after the parallel pass. No atomics, no locks.
-//   * Recording is off unless a debug harness asks for it (TAK_RENDER_STATS,
-//     or the render study; TAK_RENDER_STATS=0 turns it off inside the study to
+//   * Recording is off unless a debug harness asks for it (TA_RENDER_STATS,
+//     or the render study; TA_RENDER_STATS=0 turns it off inside the study to
 //     measure the telemetry's own cost). A release build (NDEBUG) compiles
 //     kTelemetryCompiled to false, so every tally, ScopedPhase and submit counter
 //     folds away; a debug build pays one not-taken branch while off.
@@ -60,7 +60,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 using Generation = uint64_t;
 inline constexpr Generation kNoGeneration = 0;
@@ -254,7 +254,7 @@ enum class Counter : uint8_t {
     ShadowDirtyRelocated,//   packer moved the tile to another slot position
     ShadowDirtyResized,  //   tile size or output scale changed
     ShadowDirtyMoved,    //   screen pixel position changed (placement only)
-    ShadowDirtyForced,   //   TAK_SHADOW_NOCACHE
+    ShadowDirtyForced,   //   TA_SHADOW_NOCACHE
     ShadowPageAllocs,    // silhouette pages created this frame (growth or resize)
     ShadowFallback,      // 1 when the silhouette atlas fell back to direct shadows
     ShadowDirectUnits,   // unit shadows drawn through the direct (non-atlas) path
@@ -707,4 +707,4 @@ private:
     std::chrono::steady_clock::time_point start_{};
 };
 
-}  // namespace tak::render
+}  // namespace ta::render

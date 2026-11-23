@@ -9,7 +9,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // AirToGround (mission registry row 5ebd9b, handler 41bf80): the attack
 // mission 4de530 picks for a flyer without hoverattack whose target cannot
@@ -531,4 +531,4 @@ int retailAirStrike(RetailMissionState& m,RetailFlightVector& point,uint32_t tic
     }
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

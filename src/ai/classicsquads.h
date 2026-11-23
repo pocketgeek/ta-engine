@@ -30,7 +30,7 @@
 
 #include "sim/retailai.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 // Retail's squad slots (0x40fed0). Slot 0 and 99 hold nothing; dispatch visits
 // 0..98. Odd strike slots own the even backup slot after them.
@@ -499,4 +499,4 @@ bool classicBaseMembers(ClassicSquads& s, const std::vector<ClassicSquadUnit>& u
 // no keyword, or no number after it, gives 0.
 uint32_t classicMassAttackTicks(const std::string& playerLine);
 
-}  // namespace tak::ai
+}  // namespace ta::ai

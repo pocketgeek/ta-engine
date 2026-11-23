@@ -9,7 +9,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
 
-namespace tak::credstore {
+namespace ta::credstore {
 namespace {
 
 // Owns one CF reference.
@@ -60,7 +60,7 @@ public:
         OSStatus st = SecItemUpdate(q.ref, change.ref);
         if (st == errSecItemNotFound) {
             CFDictionarySetValue(q.ref, kSecValueData, value.ref);
-            CF<CFStringRef> label(cfString("TAK Engine: YouTube stream key"));
+            CF<CFStringRef> label(cfString("TA Engine: YouTube stream key"));
             CFDictionarySetValue(q.ref, kSecAttrLabel, label.ref);
             st = SecItemAdd(q.ref, nullptr);
         }
@@ -98,4 +98,4 @@ private:
 
 std::unique_ptr<Store> system(const Slot& slot) { return std::make_unique<Keychain>(slot); }
 
-}  // namespace tak::credstore
+}  // namespace ta::credstore

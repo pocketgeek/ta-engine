@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 namespace cart {
-bool RuleClipboard::copy(const std::vector<tak::crt::RuleGroup>& source,int group,int row,RuleColumn selected,bool wholePlayer) {
+bool RuleClipboard::copy(const std::vector<ta::crt::RuleGroup>& source,int group,int row,RuleColumn selected,bool wholePlayer) {
     if(wholePlayer) {column=RuleColumn::Group;groups=source;rule.reset();return !groups.empty();}
     if(group<0 || group>=int(source.size()))return false;
     if(selected==RuleColumn::Group) {column=selected;groups={source[group]};rule.reset();return true;}
@@ -11,7 +11,7 @@ bool RuleClipboard::copy(const std::vector<tak::crt::RuleGroup>& source,int grou
     if(row<0 || row>=int(list.size()))return false;
     column=selected;rule=list[row];groups.clear();return true;
 }
-bool RuleClipboard::paste(std::vector<tak::crt::RuleGroup>& target,int& group,int& row,RuleColumn selected) const {
+bool RuleClipboard::paste(std::vector<ta::crt::RuleGroup>& target,int& group,int& row,RuleColumn selected) const {
     if(column==RuleColumn::Group) {
         if(groups.empty())return false;
         const int at=group>=0 && group<int(target.size())?group+1:int(target.size());
@@ -24,8 +24,8 @@ bool RuleClipboard::paste(std::vector<tak::crt::RuleGroup>& target,int& group,in
 }
 std::vector<RuleTemplate> ruleTemplates(int player,const std::string& unitType,const std::string& location) {
     std::vector<RuleTemplate> result;
-    auto add=[&](std::string name,std::string description,tak::crt::Rule condition,tak::crt::Rule action) {
-        tak::crt::RuleGroup group;
+    auto add=[&](std::string name,std::string description,ta::crt::Rule condition,ta::crt::Rule action) {
+        ta::crt::RuleGroup group;
         group.editorName=name;group.conditions.push_back(std::move(condition));
         group.actions.push_back(std::move(action));group.actions.push_back({14,{}}); // Run once.
         result.push_back({std::move(name),std::move(description),std::move(group)});
@@ -57,7 +57,7 @@ std::vector<int> matchingRuleTemplates(const std::vector<RuleTemplate>& template
         if(lower(templates[i].name+" "+templates[i].description).find(term)!=std::string::npos)result.push_back(i);
     return result;
 }
-std::vector<std::string> ruleFlags(const std::vector<tak::crt::RuleGroup>& groups) {
+std::vector<std::string> ruleFlags(const std::vector<ta::crt::RuleGroup>& groups) {
     std::vector<std::string> result;
     auto collect=[&](const auto& rules,const auto& defs) {
         for(const auto& rule:rules) {
@@ -71,7 +71,7 @@ std::vector<std::string> ruleFlags(const std::vector<tak::crt::RuleGroup>& group
     std::sort(result.begin(),result.end());result.erase(std::unique(result.begin(),result.end()),result.end());
     return result;
 }
-std::string ruleDetails(const tak::crt::RuleGroup& group,RuleColumn selected,int row) {
+std::string ruleDetails(const ta::crt::RuleGroup& group,RuleColumn selected,int row) {
     std::string text=group.editorName;
     auto append=[&](bool action,int i) {
         const auto& rules=action?group.actions:group.conditions;
@@ -86,7 +86,7 @@ std::string ruleDetails(const tak::crt::RuleGroup& group,RuleColumn selected,int
     } else append(selected==RuleColumn::Action,row);
     return text;
 }
-bool moveRule(std::vector<tak::crt::RuleGroup>& groups,int& group,int& row,RuleColumn selected,int direction) {
+bool moveRule(std::vector<ta::crt::RuleGroup>& groups,int& group,int& row,RuleColumn selected,int direction) {
     if(direction!=-1 && direction!=1)return false;
     if(group<0 || group>=int(groups.size()))return false;
     if(selected==RuleColumn::Group) {

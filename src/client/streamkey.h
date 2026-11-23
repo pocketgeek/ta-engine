@@ -24,7 +24,7 @@
 #include <memory>
 #include <string>
 
-namespace tak {
+namespace ta {
 
 class StreamKeyMemory {
 public:
@@ -65,9 +65,9 @@ private:
     std::string reason_, error_, name_;
 };
 
-// The store the panel uses: the system store, or in a debug build TAK_CREDSTORE=none
+// The store the panel uses: the system store, or in a debug build TA_CREDSTORE=none
 // (no store, for the greyed-out state), =memory (process memory only) or =test (the
 // system store under credstore::testSlot()).
 std::shared_ptr<credstore::Store> streamKeyStore();
 
-}  // namespace tak
+}  // namespace ta

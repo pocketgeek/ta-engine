@@ -16,7 +16,7 @@
 #include <random>
 #include <vector>
 
-using tak::sim::IdMap;
+using ta::sim::IdMap;
 
 namespace {
 int failures=0;

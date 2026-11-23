@@ -29,7 +29,7 @@
 #include "sim/retailaipatrol.h"
 #include "sim/retailmotion.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 // One unit of the player's visible-enemy list (build manager +5, rebuilt by
 // 0x411700 every >= 7 ticks), as the AI reads it at query time.
@@ -306,4 +306,4 @@ void classicRetreat(Host& h, const ClassicCombatUnit& u) {
     if (const uint8_t patrol = h.resolve(kClassicPatrol, leg)) h.order(patrol, true, leg, 0, 0);
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

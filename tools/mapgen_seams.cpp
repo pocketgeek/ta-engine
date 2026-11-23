@@ -42,7 +42,7 @@
 #include <vector>
 
 namespace {
-using namespace tak;
+using namespace ta;
 
 // Per 32px tile, per edge (0 N, 1 S, 2 W, 3 E): the outermost pixel line, the mean
 // step from it to the next line in, and the mean colour of the outer and the next

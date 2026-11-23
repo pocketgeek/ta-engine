@@ -45,7 +45,7 @@
 #undef C
 #undef R
 
-namespace tak::music {
+namespace ta::music {
 
 namespace {
 
@@ -181,7 +181,7 @@ std::string customFile(int track) {
 
 std::optional<Pcm16> loadTrack(const hpi::Vfs& vfs, int track, int maxRate, bool custom) {
     if (const std::string file = custom ? customFile(track) : std::string(); !file.empty()) {
-        std::ifstream in(tak::u8path(file), std::ios::binary);
+        std::ifstream in(ta::u8path(file), std::ios::binary);
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         std::string why;
         if (auto pcm = in.bad() || bytes.empty() ? std::nullopt : decode(bytes, maxRate, &why)) {
@@ -203,9 +203,9 @@ std::vector<SideTracks> sideTracks(const hpi::Vfs& vfs) {
     std::vector<SideTracks> out;
     try {
         const auto bytes = vfs.read("gamedata/sidedata.tdf");
-        const auto root = tak::tdf::parseText(std::string(bytes.begin(), bytes.end()), "gamedata/sidedata.tdf");
+        const auto root = ta::tdf::parseText(std::string(bytes.begin(), bytes.end()), "gamedata/sidedata.tdf");
         for (const auto& key : root.childOrder) {
-            const tak::tdf::Node* side = root.child(key);
+            const ta::tdf::Node* side = root.child(key);
             if (!side) continue;
             SideTracks st;
             st.side = side->valueOr("name", "");
@@ -218,4 +218,4 @@ std::vector<SideTracks> sideTracks(const hpi::Vfs& vfs) {
     return out;
 }
 
-}  // namespace tak::music
+}  // namespace ta::music

@@ -9,26 +9,26 @@
 #include <fstream>
 #include <iostream>
 #include "util/u8path.h"
-using namespace tak;
+using namespace ta;
 int main() {
-    auto root = std::filesystem::temp_directory_path() / ("tak-benchmods-" + crypto::toHex(crypto::randomVec(8)));
+    auto root = std::filesystem::temp_directory_path() / ("ta-benchmods-" + crypto::toHex(crypto::randomVec(8)));
     int failures = 0;
     auto check = [&](bool value, const char* label) { if (!value) { std::cerr << "FAIL: " << label << '\n'; ++failures; } };
     auto put = [&](const std::string& path, const std::string& value) {
-        auto p = root / tak::u8path(path);
+        auto p = root / ta::u8path(path);
         std::filesystem::create_directories(p.parent_path());
         std::ofstream(p, std::ios::binary) << value;
     };
     const std::string unit = "[UNITINFO]\n{\nUnitName=modded;\nMaxDamage=5;\n}\n";
     const char* packFiles[] = {"sounds/tick.wav", "sounds/always.wav", "units/tick.fbi", "units/always.fbi",
-                               "ai/default.txt", "ai/takengine.txt"};
+                               "ai/default.txt", "ai/taengine.txt"};
     try {
         put("mods/cosmetic/Tick/sounds/tick.wav", "c");
         put("mods/cosmetic/always_enabled/AlwaysC/sounds/always.wav", "ca");
         put("mods/game/Tick/units/tick.fbi", unit);
         put("mods/game/Tick/ai/default.txt", "ai");
         put("mods/game/always_enabled/AlwaysG/units/always.fbi", unit);
-        put("mods/game/always_enabled/AlwaysG/ai/takengine.txt", "ai");
+        put("mods/game/always_enabled/AlwaysG/ai/taengine.txt", "ai");
         const std::vector<std::string> tickedCosmetic{"Tick"};
         const uint64_t retailHash = hpi::gameplayHash(hpi::mountRetailRoot(root));
 

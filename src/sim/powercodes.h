@@ -16,7 +16,7 @@
 #include <optional>
 #include <string_view>
 
-namespace tak::sim {
+namespace ta::sim {
 
 enum class PowerCode : uint8_t {
     None = 0,
@@ -101,4 +101,4 @@ inline std::optional<PowerCodeInput> parsePowerCode(std::string_view line) {
     return in;
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

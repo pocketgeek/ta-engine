@@ -40,7 +40,7 @@
 #include <sys/stat.h>
 #endif
 
-namespace tak::srv {
+namespace ta::srv {
 namespace {
 using Json=nlohmann::json;
 using Clock=std::chrono::steady_clock;
@@ -126,18 +126,18 @@ Url url(const std::string& text) {
     if(colon!=u.host.npos) {unsigned port=0;auto p=std::string_view(u.host).substr(colon+1);auto r=std::from_chars(p.data(),p.data()+p.size(),port);require(r.ec==std::errc{} && r.ptr==p.data()+p.size() && port>0 && port<=65535,"invalid HTTPS port");u.port=uint16_t(port);u.host.resize(colon);}
     require(!u.host.empty(),"missing HTTPS hostname");return u;
 }
-struct Socket {int fd=-1;~Socket(){if(fd>=0)tak::net::sockClose(fd);}};
+struct Socket {int fd=-1;~Socket(){if(fd>=0)ta::net::sockClose(fd);}};
 void waitSocket(int fd,short events,Clock::time_point deadline,Stop stop) {
     for(;;) {
         require(!stop.stop_requested(),"cancelled");require(Clock::now()<deadline,"network timeout");
-        pollfd p{};p.fd=fd;p.events=events;const int n=TAK_POLL(&p,1,100);
+        pollfd p{};p.fd=fd;p.events=events;const int n=TA_POLL(&p,1,100);
         if(n>0)return;
-        if(n<0 && !tak::net::sockInterrupted(tak::net::sockErr()))fail("socket poll failed");
+        if(n<0 && !ta::net::sockInterrupted(ta::net::sockErr()))fail("socket poll failed");
     }
 }
 struct Response {int status=0;std::map<std::string,std::string> headers;std::string body;};
 Response https(const std::string& endpoint,const std::string& method,const std::string& body,Stop stop) {
-    using namespace tak::net;const auto u=url(endpoint);netStartup();Socket socket;
+    using namespace ta::net;const auto u=url(endpoint);netStartup();Socket socket;
     addrinfo hints{},*addresses=nullptr;hints.ai_socktype=SOCK_STREAM;hints.ai_family=AF_UNSPEC;
     require(getaddrinfo(u.host.c_str(),std::to_string(u.port).c_str(),&hints,&addresses)==0,"cannot resolve CA");
     std::unique_ptr<addrinfo,decltype(&freeaddrinfo)> owned(addresses,freeaddrinfo);
@@ -170,8 +170,8 @@ Response https(const std::string& endpoint,const std::string& method,const std::
         waitSocket(socket.fd,e==SSL_ERROR_WANT_READ?POLLIN:POLLOUT,deadline,stop);
     };
     for(;;) {int n=SSL_connect(ssl.get());if(n==1)break;retry(n);}
-    require(tak::net::checkPeerRevocation(ssl.get()).state!=tak::net::Revocation::Revoked,"CA certificate revoked");
-    const std::string request=method+" "+u.path+" HTTP/1.1\r\nHost: "+u.origin.substr(8)+"\r\nUser-Agent: TAK-ACME/1\r\nConnection: close\r\nAccept: application/json, application/pem-certificate-chain\r\n"+(method=="POST"?"Content-Type: application/jose+json\r\nContent-Length: "+std::to_string(body.size())+"\r\n":"")+"\r\n"+body;
+    require(ta::net::checkPeerRevocation(ssl.get()).state!=ta::net::Revocation::Revoked,"CA certificate revoked");
+    const std::string request=method+" "+u.path+" HTTP/1.1\r\nHost: "+u.origin.substr(8)+"\r\nUser-Agent: TA-ACME/1\r\nConnection: close\r\nAccept: application/json, application/pem-certificate-chain\r\n"+(method=="POST"?"Content-Type: application/jose+json\r\nContent-Length: "+std::to_string(body.size())+"\r\n":"")+"\r\n"+body;
     for(size_t sent=0;sent<request.size();) {int n=SSL_write(ssl.get(),request.data()+sent,int(request.size()-sent));if(n>0)sent+=size_t(n);else retry(n);}
     std::string received;char buf[8192];
     for(;;) {
@@ -229,7 +229,7 @@ class ChallengeResponder {
 public:
     ChallengeResponder(uint16_t port,std::string token,std::string authorization) {
         require(token.size()>=22 && token.size()<=256 && token.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")==token.npos,"invalid challenge token");
-        std::string error;listener_.fd=tak::net::listenOn(port,error);
+        std::string error;listener_.fd=ta::net::listenOn(port,error);
         require(listener_.fd>=0,("cannot listen for HTTP-01 on port "+std::to_string(port)+": "+error).c_str());
         std::fprintf(stderr,"ACME: HTTP-01 listening on port %u for validation only\n",port);
         const int fd=listener_.fd;
@@ -240,9 +240,9 @@ public:
             while(!stop.stop_requested()) {
                 for(unsigned count=0;count<32;++count) {
                     int client=int(::accept(fd,nullptr,nullptr));if(client<0)break;
-                    const auto source=tak::net::peerAddress(client);
-                    if(peers.size()>=32 || std::count_if(peers.begin(),peers.end(),[&](const Peer& peer){return peer.source==source;})>=4) {tak::net::sockClose(client);continue;}
-                    tak::net::sockSetNonBlock(client);
+                    const auto source=ta::net::peerAddress(client);
+                    if(peers.size()>=32 || std::count_if(peers.begin(),peers.end(),[&](const Peer& peer){return peer.source==source;})>=4) {ta::net::sockClose(client);continue;}
+                    ta::net::sockSetNonBlock(client);
 #ifdef SO_NOSIGPIPE
                     int one=1;setsockopt(client,SOL_SOCKET,SO_NOSIGPIPE,&one,sizeof one);
 #endif
@@ -261,19 +261,19 @@ public:
                                 const auto body=found?authorization:std::string("Not found\n");
                                 it->output="HTTP/1.1 "+std::string(found?"200 OK":"404 Not Found")+"\r\nContent-Type: application/octet-stream\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: "+std::to_string(body.size())+"\r\n\r\n"+body;
                             }
-                        } else if(n==0 || (!tak::net::sockWouldBlock(tak::net::sockErr()) && !tak::net::sockInterrupted(tak::net::sockErr())))close=true;
+                        } else if(n==0 || (!ta::net::sockWouldBlock(ta::net::sockErr()) && !ta::net::sockInterrupted(ta::net::sockErr())))close=true;
                     }
                     if(!close && !it->output.empty()) {
                         int n=int(::send(it->fd,it->output.data()+it->sent,int(it->output.size()-it->sent),MSG_NOSIGNAL));
                         if(n>0)it->sent+=size_t(n);
-                        else if(!tak::net::sockWouldBlock(tak::net::sockErr()) && !tak::net::sockInterrupted(tak::net::sockErr()))close=true;
+                        else if(!ta::net::sockWouldBlock(ta::net::sockErr()) && !ta::net::sockInterrupted(ta::net::sockErr()))close=true;
                         if(it->sent==it->output.size())close=true;
                     }
-                    if(close) {tak::net::sockClose(it->fd);it=peers.erase(it);}else ++it;
+                    if(close) {ta::net::sockClose(it->fd);it=peers.erase(it);}else ++it;
                 }
-                pollfd p{};p.fd=fd;p.events=POLLIN;TAK_POLL(&p,1,10);
+                pollfd p{};p.fd=fd;p.events=POLLIN;TA_POLL(&p,1,10);
             }
-            for(const auto& peer:peers)tak::net::sockClose(peer.fd);
+            for(const auto& peer:peers)ta::net::sockClose(peer.fd);
         });
     }
     ~ChallengeResponder() {stopping_=true;if(worker_.joinable())worker_.join();std::fprintf(stderr,"ACME: HTTP-01 validation finished; closing listener\n");}
@@ -502,9 +502,9 @@ struct AcmeCertificates::Impl {
     std::unique_ptr<FileLease> lease;
     // The live certificate: replaced by renewals, read by every new connection.
     mutable std::mutex currentMutex;
-    std::shared_ptr<tak::net::TlsContext> current;
-    void setCurrent(std::shared_ptr<tak::net::TlsContext> context) {std::lock_guard lock(currentMutex);current=std::move(context);}
-    std::shared_ptr<tak::net::TlsContext> currentContext() const {std::lock_guard lock(currentMutex);return current;}
+    std::shared_ptr<ta::net::TlsContext> current;
+    void setCurrent(std::shared_ptr<ta::net::TlsContext> context) {std::lock_guard lock(currentMutex);current=std::move(context);}
+    std::shared_ptr<ta::net::TlsContext> currentContext() const {std::lock_guard lock(currentMutex);return current;}
     std::time_t renewAt=0,nextAttempt=0;
     unsigned failures=0;
     // Renewal information (RFC 9773) for the current certificate. renewAt holds the
@@ -545,7 +545,7 @@ struct AcmeCertificates::Impl {
         auto retry=readFile(options.state/"retry.json");if(!retry.empty()) {auto r=json(retry);nextAttempt=r.value("next",std::time_t{});failures=std::min(r.value("failures",0u),4u);}
         const auto stored=readFile(options.state/"current.pem");
         if(!stored.empty()) {
-            try {renewAt=renewalTime(stored,options.domain);setCurrent(tak::net::TlsContext::serverPem(stored,stored));adopt(stored,renewAt);}
+            try {renewAt=renewalTime(stored,options.domain);setCurrent(ta::net::TlsContext::serverPem(stored,stored));adopt(stored,renewAt);}
             catch(const std::exception& e) {std::fprintf(stderr,"ACME: stored certificate unavailable: %s\n",e.what());}
         }
         // Initial issuance uses the same persistent, interruptible retry loop as
@@ -566,7 +566,7 @@ struct AcmeCertificates::Impl {
         std::fprintf(stderr,"ACME: obtaining certificate for %s\n",options.domain.c_str());
         Client client(options,stop);auto issued=client.issue(replaces);const auto renewal=renewalTime(issued,options.domain);
         require(renewal>std::time(nullptr),"issued certificate already due for renewal");
-        auto context=tak::net::TlsContext::serverPem(issued,issued);
+        auto context=ta::net::TlsContext::serverPem(issued,issued);
         save(options.state/"current.pem",issued);
         setCurrent(std::move(context));renewAt=renewal;nextAttempt=0;failures=0;adopt(issued,renewal);
         save(options.state/"retry.json",Json{{"next",0},{"failures",0}}.dump());
@@ -614,7 +614,7 @@ struct AcmeCertificates::Impl {
         }
         // The CA's renewal window covers revocation for ARI CAs; the CRL also covers others.
         if(!stop.stop_requested() && chain.second &&
-           tak::net::checkRevocation(chain.first.get(),chain.second.get()).state==tak::net::Revocation::Revoked && renewAt>now) {
+           ta::net::checkRevocation(chain.first.get(),chain.second.get()).state==ta::net::Revocation::Revoked && renewAt>now) {
             std::fprintf(stderr,"ACME: current certificate is revoked; renewing now\n");renewAt=now;
         }
     }
@@ -629,5 +629,5 @@ struct AcmeCertificates::Impl {
 };
 AcmeCertificates::AcmeCertificates(AcmeOptions options):impl_(std::make_unique<Impl>(std::move(options))){}
 AcmeCertificates::~AcmeCertificates()=default;
-std::shared_ptr<tak::net::TlsContext> AcmeCertificates::context() const {return impl_->currentContext();}
+std::shared_ptr<ta::net::TlsContext> AcmeCertificates::context() const {return impl_->currentContext();}
 }

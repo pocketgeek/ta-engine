@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace tak {
+namespace ta {
 // SDL's software backend can recognize a batched quad and switch to a
 // different texture sampler. Keep its existing per-triangle coverage; GPUs
 // can submit the same ordered triangles as one run.
@@ -57,4 +57,4 @@ inline std::vector<uint8_t> paddedShadowCoveragePixels(std::span<const uint8_t> 
                                                       int width,int height) {
     return paddedShadowPixels(shadowCoveragePixels(rgba),width,height);
 }
-} // namespace tak
+} // namespace ta

@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail's group spread for flyers (the order code 0x5214b0). A move or patrol
 // whose mission descriptor carries flag 0x2 at +0x11 -- VTOL_Move,
@@ -49,4 +49,4 @@ struct FlyerGroupCentre {
     }
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

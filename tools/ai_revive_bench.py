@@ -7,7 +7,7 @@ Runs every workload below once per build per round, alternating which build
 goes first, and prints per workload and build the median over rounds of each
 run's mean/median/p95/p99 call time and the largest max. The command count and
 stream hash must agree between the builds (the script fails otherwise). Run it
-on the timing cores, e.g. under /home/pocket_geek/tak-tmp/tools/timing.sh.
+on the timing cores, e.g. under /home/pocket_geek/ta-tmp/tools/timing.sh.
 """
 import argparse
 import re

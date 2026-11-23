@@ -2,8 +2,8 @@
 """The Benchmark results' SAVE AS JPG button, clicked where it is drawn.
 
 Each run is a menu Benchmark on a scratch profile, ended early with a full run's results
-(TAK_BENCH_STOP_TICK, as benchmark_pathfinding does). TAK_BENCH_CLICKS then works the
-pointer on the results screen with real mouse events, and TAK_BENCH_REPORT prints the
+(TA_BENCH_STOP_TICK, as benchmark_pathfinding does). TA_BENCH_CLICKS then works the
+pointer on the results screen with real mouse events, and TA_BENCH_REPORT prints the
 button and the note under it whenever either changes: BENCHSAVE (LIVE or GREYED, and
 the label, both as the button was drawn) and BENCHNOTE (PLAIN or WARNING, and the text
 as drawn).
@@ -19,7 +19,7 @@ them is written over. Both buttons and the note must be inside the window, at th
 smallest size too. The settings file is named outright (SDL_GetPrefPath ignores XDG_*
 on macOS and Windows); the pictures go beside it.
 
-usage: benchmark_save_test.py <takclient> <retail-install>
+usage: benchmark_save_test.py <taclient> <retail-install>
 """
 import os, re, struct, subprocess, sys, tempfile, time
 
@@ -40,10 +40,10 @@ def start(root, name, size, clicks):
     with open(settings, "w") as f:
         f.write("fullscreen = 0\n")
     env = dict(os.environ, XDG_CONFIG_HOME=home, XDG_DATA_HOME=home, SDL_VIDEODRIVER="dummy",
-               SDL_AUDIODRIVER="dummy", TAK_SETTINGS_FILE=settings, TAK_MENU_PICK="benchmark", TAK_SPEED="80",
-               TAK_QUIT_TICK="100000", TAK_SHOT_MS="100000", TAK_BENCH_STOP_TICK="45", TAK_BENCH_REPORT="1",
-               TAK_BENCH_CLICKS=clicks)
-    env.pop("TAK_LEGION", None)
+               SDL_AUDIODRIVER="dummy", TA_SETTINGS_FILE=settings, TA_MENU_PICK="benchmark", TA_SPEED="80",
+               TA_QUIT_TICK="100000", TA_SHOT_MS="100000", TA_BENCH_STOP_TICK="45", TA_BENCH_REPORT="1",
+               TA_BENCH_CLICKS=clicks)
+    env.pop("TA_LEGION", None)
     path = os.path.join(home, "log.txt")
     with open(path, "w") as out:
         proc = subprocess.Popen([client, "menu", "--data", data, "--shot", os.path.join(home, "shot.png"),
@@ -137,7 +137,7 @@ def jpeg(path, name, size, log):
     fail("%s: %s has no SOF segment" % (name, path), log)
 
 
-with tempfile.TemporaryDirectory(prefix="tak-bench-save-") as root:
+with tempfile.TemporaryDirectory(prefix="ta-bench-save-") as root:
     # A click beside the button, the button, the button again: one picture.
     size = (1280, 720)
     proc, path, home = start(root, "save", size, "miss;save;save")

@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailAiBuildChoice {
     uint16_t type=0;
@@ -218,4 +218,4 @@ void retailTickAiSchedule(RetailAiSchedule& state, uint32_t tick, Random random,
     }
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Matched AA-off renderer measurements with an optimized Debug takclient.
+"""Matched AA-off renderer measurements with an optimized Debug taclient.
 
 The reference switch restores tick-based animated-texture invalidation in the
 same executable; it does not change simulation or the existing distant cache.
@@ -23,12 +23,12 @@ SCENES = {
     "sparse": (24, "araat", 1.0, {}),
     "towers": (500, "araat", 1.0, {}),
     "keeps": (1500, "arakeep", 0.5, {}),
-    "spaced-keeps": (200, "arakeep", 0.5, {"TAK_RENDER_SPACING": "160"}),
+    "spaced-keeps": (200, "arakeep", 0.5, {"TA_RENDER_SPACING": "160"}),
     "distant": (2000, None, 0.25, {}),
-    "animated": (1200, "araarch", 0.5, {"TAK_RENDER_MOTION": "1"}),
-    "battle": (1200, "araarch", 0.5, {"TAK_RENDER_BATTLE": "1"}),
-    "pan": (500, "araat", 0.75, {"TAK_RENDER_CAMERA": "1"}),
-    "zoom": (500, "araat", 1.0, {"TAK_RENDER_CAMERA": "1", "TAK_RENDER_ZOOM": "1"}),
+    "animated": (1200, "araarch", 0.5, {"TA_RENDER_MOTION": "1"}),
+    "battle": (1200, "araarch", 0.5, {"TA_RENDER_BATTLE": "1"}),
+    "pan": (500, "araat", 0.75, {"TA_RENDER_CAMERA": "1"}),
+    "zoom": (500, "araat", 1.0, {"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"}),
 }
 
 
@@ -56,7 +56,7 @@ def run(args, scene, leg, mode):
     count, kind, zoom, extra = SCENES[scene]
     name = f"{scene}-{leg}-{mode}"
     profile = args.output / name / "profile"
-    pref = profile / "TAKengine" / "TAKingdoms"
+    pref = profile / "TAengine" / "TAKingdoms"
     pref.mkdir(parents=True, exist_ok=True)
     # SDL_GetPrefPath uses XDG_DATA_HOME on this backend. Set both directories
     # so existing user preferences never affect the comparison.
@@ -66,26 +66,26 @@ def run(args, scene, leg, mode):
         "healthBars = 1\nstatsPanel = 1\nhardwareCursor = 1\n"
         "smoothMotion = 1\nedgeScroll = 0\nmasterVol = 0\n"
     )
-    env = {key: value for key, value in os.environ.items() if not key.startswith("TAK_")}
+    env = {key: value for key, value in os.environ.items() if not key.startswith("TA_")}
     env.update(
         SDL_VIDEODRIVER=args.video_driver, SDL_RENDER_DRIVER=args.render_driver,
         SDL_AUDIODRIVER="dummy", XDG_CONFIG_HOME=str(profile), XDG_DATA_HOME=str(profile),
-        TAK_SHADOW_BENCH=str(count), TAK_PROFILE_ZOOM=str(zoom), TAK_PROF="1",
-        TAK_PROF_FRAMES="1", TAK_DISTANT_STATS="1", TAK_PROF_FINISH="1",
-        TAK_RENDER_STUDY="1", TAK_RENDER_FRAMES=str(args.frames),
-        TAK_TEXTURE_TICK_REFERENCE="1" if mode == "reference" else "0",
+        TA_SHADOW_BENCH=str(count), TA_PROFILE_ZOOM=str(zoom), TA_PROF="1",
+        TA_PROF_FRAMES="1", TA_DISTANT_STATS="1", TA_PROF_FINISH="1",
+        TA_RENDER_STUDY="1", TA_RENDER_FRAMES=str(args.frames),
+        TA_TEXTURE_TICK_REFERENCE="1" if mode == "reference" else "0",
     )
     if kind:
-        env["TAK_SHADOW_BENCH_TYPE"] = kind
+        env["TA_SHADOW_BENCH_TYPE"] = kind
     env.update(extra)
     if args.capture:
         captures = args.output / name / "captures"
         captures.mkdir(parents=True, exist_ok=True)
-        env["TAK_RENDER_CAPTURE_DIR"] = str(captures)
+        env["TA_RENDER_CAPTURE_DIR"] = str(captures)
     if args.verify and mode == "retained":
-        env["TAK_GEOMETRY_VERIFY"] = "1"
+        env["TA_GEOMETRY_VERIFY"] = "1"
         if kind == "arakeep":
-            env["TAK_REQUIRE_GEOMETRY_REUSE"] = "1"
+            env["TA_REQUIRE_GEOMETRY_REUSE"] = "1"
     command = [str(args.client), "game", "Ulasem Arena", "--data", str(args.data),
                "--testbuild", "--winsize", "1280", "960", "--novsync", "--maxfps", "0"]
     log = args.output / f"{name}.log"
@@ -158,7 +158,7 @@ def run(args, scene, leg, mode):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--client", type=Path, required=True, help="optimized Debug takclient")
+    parser.add_argument("--client", type=Path, required=True, help="optimized Debug taclient")
     parser.add_argument("--data", type=Path, required=True, help="legally owned retail data")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--scenes", nargs="+", choices=SCENES, default=list(SCENES))

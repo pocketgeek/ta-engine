@@ -63,14 +63,14 @@ static int unavailable() {
 
     // A stream asked for h264_vaapi falls through to the CPU encoder, as on a machine
     // without VA-API hardware.
-    tak::video::StreamConfig config;
+    ta::video::StreamConfig config;
     config.encoder = "h264_vaapi";
     config.width = 640; config.height = 360; config.fps = 30;
     auto path = std::filesystem::temp_directory_path() /
-        ("tak-vashim-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".flv");
+        ("ta-vashim-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".flv");
     std::string encoder;
     {
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         require(stream.startRecording(config, path.string()), "start recording");
         std::vector<uint8_t> pixels(640 * 360 * 4, 90);
         std::array<int16_t, 256 * 2> audio{};

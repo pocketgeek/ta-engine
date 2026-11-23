@@ -5,7 +5,7 @@
 // opacity mask with the sway shear, the model triangle test, the screen bins the frame
 // walks backwards) and FADE's cover tests and fades. The draw itself (cover order,
 // fog, faded pixels) is checked through the real renderer by the hidden_units harness
-// test (TAK_HIDDEN_UNITS_TEST).
+// test (TA_HIDDEN_UNITS_TEST).
 
 #include "client/hiddenunits.h"
 
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace hu = tak::hiddenunits;
+namespace hu = ta::hiddenunits;
 
 static int g_fail = 0;
 

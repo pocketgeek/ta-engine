@@ -12,7 +12,7 @@
 #include "tdf/tdf.h"
 #include "util/virtualpath.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 namespace {
 
@@ -103,7 +103,7 @@ uint8_t classicScaledPref(uint8_t pref, float w) {
     return uint8_t(std::clamp(v, 0, 100));
 }
 
-void ClassicCatalogue::add(const tak::sim::UnitType* type, std::string name,
+void ClassicCatalogue::add(const ta::sim::UnitType* type, std::string name,
                            const std::string& categoryWords) {
     const auto index = uint16_t(names.size());
     types.push_back(type);
@@ -115,10 +115,10 @@ void ClassicCatalogue::add(const tak::sim::UnitType* type, std::string name,
     categories["all"].push_back(index);
 }
 
-ClassicCatalogue ClassicCatalogue::from(const tak::sim::TypeRegistry& registry) {
+ClassicCatalogue ClassicCatalogue::from(const ta::sim::TypeRegistry& registry) {
     // Retail's table holds one entry per FBI, keyed and sorted by unitname: the
     // registry's types plus the variants that lost their objectname (tarnecr2).
-    std::map<std::string, const tak::sim::UnitType*> table;
+    std::map<std::string, const ta::sim::UnitType*> table;
     for (const auto& [id, type] : registry.types())
         table.emplace(type.classicFbi.unitName.empty() ? id : type.classicFbi.unitName, &type);
     for (const auto& [name, type] : registry.classicVariants()) table.emplace(name, &type);
@@ -193,23 +193,23 @@ void ClassicProfile::execute(std::string_view script, const ClassicCatalogue& ca
     }
 }
 
-std::string classicMapAiProfile(const tak::hpi::Vfs& vfs, const std::string& mapPath) {
-    const std::string ota = tak::vpath::replaceExtension(mapPath, ".ota");
+std::string classicMapAiProfile(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
+    const std::string ota = ta::vpath::replaceExtension(mapPath, ".ota");
     const auto bytes = vfs.tryRead(ota);
     if (!bytes) return {};
     try {
-        const auto root = tak::tdf::parseText(std::string(bytes->begin(), bytes->end()), ota);
+        const auto root = ta::tdf::parseText(std::string(bytes->begin(), bytes->end()), ota);
         if (const auto* gh = root.child("globalheader"))
             if (const auto* md = gh->child("map data")) return md->valueOr("aiprofile", "");
     } catch (const std::exception&) {}
     return {};
 }
 
-ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::string& key) {
+ClassicProfileScript classicProfileScript(const ta::hpi::Vfs& vfs, const std::string& key) {
     return classicProfileScript(vfs, key, nullptr, nullptr);
 }
 
-ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::string& key,
+ClassicProfileScript classicProfileScript(const ta::hpi::Vfs& vfs, const std::string& key,
                                           const ClassicFiles* gameModFiles, const ClassicFiles* mapFiles,
                                           ClassicProfileLayer* layer) {
     std::string name = key;
@@ -222,7 +222,7 @@ ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::s
     for (const std::string& path : {name.empty() ? std::string() : "ai/" + name + ".txt",
                                     std::string("ai/default.txt")}) {
         if (path.empty()) continue;
-        const std::string k = tak::hpi::MountSet::key(path);
+        const std::string k = ta::hpi::MountSet::key(path);
         for (auto [files, from] : {std::pair{gameModFiles, ClassicProfileLayer::GameMods},
                                    std::pair{mapFiles, ClassicProfileLayer::Map}}) {
             if (!files) continue;
@@ -243,4 +243,4 @@ ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::s
     return out;
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

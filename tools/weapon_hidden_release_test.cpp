@@ -7,12 +7,12 @@
 #include <vector>
 
 int main() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     const auto require=[](bool ok,const char* message) {
         if (!ok) throw std::runtime_error(message);
     };
 
-    auto script=std::make_shared<tak::cob::File>();
+    auto script=std::make_shared<ta::cob::File>();
     script->scripts={{"AimWeapon",0},{"FireWeapon",9},{"TargetCleared",18}};
     script->code={0x10021001,100,0x10013000,0x10021001,22,0x10021002,2,0x10082000,0x10065000,
                   0x10021001,100,0x10013000,0x10021001,23,0x10021002,0,0x10082000,0x10065000,

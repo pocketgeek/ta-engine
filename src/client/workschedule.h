@@ -28,7 +28,7 @@
 #include <span>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 struct SchedulePolicy {
     double serialBelowNs = 30000;   // whole-pass estimate under which the caller runs alone
@@ -130,7 +130,7 @@ struct GeometryCostModel {
     static constexpr double kMaterialPerVertNs = 8;  // re-colouring, per body vertex
     static constexpr double kColdNs = 16000;         // an entry with no history (mean full build)
 
-    // stages / bodyStages: tak::render::StageBit sets (local 1, placement 2,
+    // stages / bodyStages: ta::render::StageBit sets (local 1, placement 2,
     // material 4) of the whole build and of its body half (workstream G may hold
     // the body back); sizes are the entry's body vertices and shadow points.
     static double estimateNs(uint8_t stages, uint8_t bodyStages, size_t keyWords, size_t bodyVerts,
@@ -172,4 +172,4 @@ struct RenderSchedules {
     static constexpr double kCopyPerTaskNs = 40;            // per copy range (cache misses at its ends)
 };
 
-}  // namespace tak::render
+}  // namespace ta::render

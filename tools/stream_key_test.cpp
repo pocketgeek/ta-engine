@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {
@@ -325,7 +325,7 @@ int main() {
                   "ticking sets and saves the preference");
             check(!s.streamRememberKey, "...and leaves REMEMBER KEY alone");
             // While a stream runs the box is greyed out: the choice applies at the next start.
-            const auto file = std::filesystem::temp_directory_path() / "tak-stream-key-test.flv";
+            const auto file = std::filesystem::temp_directory_path() / "ta-stream-key-test.flv";
             video::StreamConfig c; c.encoder = "libx264";
             check(p.stream().startRecording(c, file.string()), "a local recording runs");
             clickLocalCopy(p); p.draw(W, H);

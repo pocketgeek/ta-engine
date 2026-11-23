@@ -11,7 +11,7 @@
 #include <cctype>
 #include <exception>
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 std::string upper(std::string s, size_t limit) {
@@ -29,11 +29,11 @@ int seatCount(uint8_t seats) {
 ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, const TypeRegistry* reg) {
     ScenarioInfo info;
     try {
-        const auto otaPath = tak::vpath::replaceExtension(mapPath, ".ota");
+        const auto otaPath = ta::vpath::replaceExtension(mapPath, ".ota");
         const auto otaBytes = vfs.tryRead(otaPath);
         if (!otaBytes) return info;
         const auto root = tdf::parseText(std::string(otaBytes->begin(), otaBytes->end()), otaPath);
-        if (const auto* test = root.child("takplaytest")) info.marker = test->numberOr("authoredscenario", 0) != 0;
+        if (const auto* test = root.child("taplaytest")) info.marker = test->numberOr("authoredscenario", 0) != 0;
         const auto* gh = root.child("globalheader");
         info.hasScenario = gh && gh->numberOr("hasscenario", 0) != 0;
 
@@ -46,8 +46,8 @@ ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, co
         if (!restriction.empty()) {
             const auto slash = otaPath.find_last_of('/');
             const auto path = (slash == std::string::npos ? std::string{} : otaPath.substr(0, slash + 1)) + restriction;
-            if (tak::vpath::filename(restriction) != restriction || restriction == "." || restriction == ".." ||
-                hpi::MountSet::key(path) != hpi::MountSet::key(tak::vpath::replaceExtension(otaPath, ".tdf"))) {
+            if (ta::vpath::filename(restriction) != restriction || restriction == "." || restriction == ".." ||
+                hpi::MountSet::key(path) != hpi::MountSet::key(ta::vpath::replaceExtension(otaPath, ".tdf"))) {
                 useOnlyBroken = true;
             } else if (!vfs.has(path)) {
                 useOnlyBroken = info.useOnlyMissing = true;
@@ -66,7 +66,7 @@ ScenarioInfo inspectScenario(const hpi::Vfs& vfs, const std::string& mapPath, co
             if (useOnlyBroken) info.useOnlyTypes = -1;
         }
 
-        const auto crtBytes = vfs.tryRead(tak::vpath::replaceExtension(mapPath, ".crt"));
+        const auto crtBytes = vfs.tryRead(ta::vpath::replaceExtension(mapPath, ".crt"));
         crt::Scenario scenario;
         if (crtBytes) scenario = crt::parse(*crtBytes);
         info.crtValid = crtBytes && scenario.version == 1;
@@ -210,4 +210,4 @@ std::string scenarioUseOnlyLine(const ScenarioInfo& info, bool compact) {
     return compact ? std::string() : std::string("ALL UNIT TYPES CAN BE BUILT");
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

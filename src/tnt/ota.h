@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::tnt {
+namespace ta::tnt {
 
 // A map's .ota scenario "GlobalHeader" -- metadata + start positions, the TDF
 // text file Cartographer writes alongside the .tnt (writer RE'd from
@@ -21,7 +21,7 @@ struct Scenario {
         "Copyright 1998 Cavedog Entertainment. All rights reserved.";
     std::string missionName;
     std::string missionDescription;
-    std::string generatorRecipe;      // optional TAK engine extension, independent of the description
+    std::string generatorRecipe;      // optional TA engine extension, independent of the description
     std::string kingdom;              // lowercase world: aramon/taros/veruna/zhon
     int sizeW = 0, sizeH = 0;         // in Units (cells>>5); OTA "size = W x H"
     std::string useOnlyUnits;         // "<name>.tdf", or empty when unrestricted
@@ -32,9 +32,9 @@ struct Scenario {
 
     // Parse an .ota (GlobalHeader TDF). Missing fields keep their defaults.
     static Scenario parse(const std::string& text);
-    // Retail field layout (CRLF, tab indent, key order), with optional TAK
+    // Retail field layout (CRLF, tab indent, key order), with optional TA
     // extensions for generator recipes and otherwise unrepresentable text.
     std::string write() const;
 };
 
-} // namespace tak::tnt
+} // namespace ta::tnt

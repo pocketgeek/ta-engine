@@ -23,7 +23,7 @@ struct EditorHooks {
     // folder, which receives the restart arguments instead of the process exec'ing.
     std::function<std::string(const std::string&,const std::string&)> pickFolder;
     std::function<void(const std::vector<std::string>&)> relaunch;
-    // Test Map / TEST IN GAME: the game client to start instead of the takclient beside
+    // Test Map / TEST IN GAME: the game client to start instead of the taclient beside
     // the editor (a stub that records its arguments).
     std::function<std::string()> gameClient;
 };

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // floor(sqrt(v)) for v >= 0, exact whatever the sqrt rounding.
 inline int retailIsqrt(int v) {
@@ -156,4 +156,4 @@ void retailUpdateSightCounts(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z
     sight=next;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -1,6 +1,6 @@
 #pragma once
 
-// SDL-free match setup shared by the takclient client and the takserver referee
+// SDL-free match setup shared by the taclient client and the taserver referee
 // sim (docs/multiplayer-design.md, "Determinism contract"). Both must build a BIT-IDENTICAL initial
 // world -- same terrain, feature nav-blocking, mana deposits, players, teams,
 // and monarch spawns -- so their state hashes agree in lockstep.
@@ -15,17 +15,17 @@
 #include "sim/scenario.h"
 #include "tnt/tnt.h"        // tnt::Map (registerMapFeatures)
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Apply one sequenced command to a world (the shared lockstep step used by every
 // client AND the server's referee sim, so they mutate identically). Enforces
 // per-unit ownership against Command::player.
-void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command& c);
+void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command& c);
 
 // Apply one sequenced lifecycle event (Forfeit/Leave -> the player's units go
 // inert; AiTakeover -> the player becomes computer-owned). Symmetric across peers so
 // the sim stays in lockstep.
-void applyEvent(World& world, const tak::net::Event& e);
+void applyEvent(World& world, const ta::net::Event& e);
 
 
 // One player slot in a match (index = sim player id).
@@ -53,7 +53,7 @@ struct MatchConfig {
     bool loadCrt = true;             // opt-in Test Map placements/rules; campaign OTA setup opts out
     // The room's MAP SCENARIO option (GameOptions::mapScenario): run the map's own .crt
     // placements/rules and Use Only list when its .ota declares hasscenario. A Test Map
-    // copy's [TAKPlaytest] opt-in runs them regardless. Off by default, so fixtures and
+    // copy's [TAPlaytest] opt-in runs them regardless. Off by default, so fixtures and
     // rooms that leave it off keep plain skirmish setup.
     bool mapScenario = false;
     // The room's POWER CODES option (GameOptions::powerCodes): World::applyPowerCode
@@ -172,7 +172,7 @@ std::vector<int> startSpotsFor(const std::vector<MatchSlot>& slots, size_t autho
 // camera). Every peer that calls this with the same config gets the same world.
 // Register the map's obstacle features (+ burn-type table) into a world built
 // WITHOUT setupMatch (client local-harness / mission / scenario paths).
-void registerMapFeatures(World& world, const tak::tnt::Map& map, const hpi::Vfs& vfs,
+void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& vfs,
                          const TypeRegistry* reg = nullptr);
 
 // `startTable`, when given, receives every spot a seat could have opened at: the
@@ -207,4 +207,4 @@ struct MissionSetup {
 bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
                   const std::string& stem, int& humanOut, MissionSetup* out = nullptr);
 
-}  // namespace tak::sim
+}  // namespace ta::sim

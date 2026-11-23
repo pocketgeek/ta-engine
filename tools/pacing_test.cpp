@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <cstdio>
 
-using tak::net::ArrivalJitter;
+using ta::net::ArrivalJitter;
 
 namespace {
 int failures = 0;
@@ -101,15 +101,15 @@ int main() {
     // reported processed tick by flowLeadTicks, which trails the played tick by kProgressPeriod
     // plus the worker inbox, and the round trip passes (report out, bundles back) while the client
     // plays on.
-    for (int sp = 1; sp <= tak::net::kMaxDevGameSpeed; ++sp)
+    for (int sp = 1; sp <= ta::net::kMaxDevGameSpeed; ++sp)
         for (float rtt : {0.0f, 8.0f, 30.0f, 100.0f, 400.0f, 2000.0f})
             for (float jit : {0.0f, 50.0f, 370.0f, 750.0f, 1500.0f, 5000.0f})
                 for (float frame : {4.0f, 8.3f, 33.0f, 60.0f, 250.0f})
                     for (int inbox : {0, 2}) {
-                        const int t = tak::net::jitterTargetTicks(jit, rtt, frame, sp, inbox);
-                        const uint32_t r = tak::net::progressRttMs(rtt);
+                        const int t = ta::net::jitterTargetTicks(jit, rtt, frame, sp, inbox);
+                        const uint32_t r = ta::net::progressRttMs(rtt);
                         const int rttTicks = int((uint64_t(r) * 3 * uint64_t(sp) + 999) / 1000);
-                        const int reach = int(tak::net::flowLeadTicks(sp, r)) - tak::net::kProgressPeriod -
+                        const int reach = int(ta::net::flowLeadTicks(sp, r)) - ta::net::kProgressPeriod -
                                           rttTicks - inbox;
                         if (t < 2 || (t >= reach && t > 2)) {   // 2 is the floor even past a reach the speed cannot hold
                             std::fprintf(stderr, "FAIL: target %d vs reachable %d (speed %d rtt %.0f jitter %.0f frame %.1f inbox %d)\n",
@@ -120,21 +120,21 @@ int main() {
     // The user's game: 750 ms of jitter at 2x on a local link. The old cap was 32 ticks against a
     // reachable ~19; now the target is what the buffer can hold.
     {
-        const int t = tak::net::jitterTargetTicks(750.0f, 8.0f, 8.3f, 20, 2);
+        const int t = ta::net::jitterTargetTicks(750.0f, 8.0f, 8.3f, 20, 2);
         check(t == 14, "750 ms jitter at 2x, 8 ms RTT: target 14 (22 lead - 4 - 1 rtt - 2 - 1)", t);
     }
     // An internet link: 100 ms RTT at 2x is 6 ticks each way round, a 32-tick lead holds ~20 in
     // hand, not the 25 a cap without the round trip asked for (the servo sat near its 0.7 floor).
     {
-        const int t = tak::net::jitterTargetTicks(1500.0f, 100.0f, 8.3f, 20, 2);
+        const int t = ta::net::jitterTargetTicks(1500.0f, 100.0f, 8.3f, 20, 2);
         check(t == 19, "1500 ms jitter at 2x, 100 ms RTT: target 19 (32 lead - 4 - 6 rtt - 2 - 1)", t);
     }
     // Unchanged where the cap does not bite: a quiet local link at 1x and 8x.
-    check(tak::net::jitterTargetTicks(0.0f, 8.0f, 8.3f, 10, 2) == 3, "quiet 1x target is 3",
-          tak::net::jitterTargetTicks(0.0f, 8.0f, 8.3f, 10, 2));
-    check(tak::net::jitterTargetTicks(0.0f, 8.0f, 50.0f, 80, 2) == 14, "8x at 50 ms frames: 2 + 12 frame ticks",
-          tak::net::jitterTargetTicks(0.0f, 8.0f, 50.0f, 80, 2));
-    check(tak::net::progressRttMs(0) == 0 && tak::net::progressRttMs(7.6f) == 8 && tak::net::progressRttMs(1e9f) == 60000,
+    check(ta::net::jitterTargetTicks(0.0f, 8.0f, 8.3f, 10, 2) == 3, "quiet 1x target is 3",
+          ta::net::jitterTargetTicks(0.0f, 8.0f, 8.3f, 10, 2));
+    check(ta::net::jitterTargetTicks(0.0f, 8.0f, 50.0f, 80, 2) == 14, "8x at 50 ms frames: 2 + 12 frame ticks",
+          ta::net::jitterTargetTicks(0.0f, 8.0f, 50.0f, 80, 2));
+    check(ta::net::progressRttMs(0) == 0 && ta::net::progressRttMs(7.6f) == 8 && ta::net::progressRttMs(1e9f) == 60000,
           "progress RTT rounding");
 
     if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }

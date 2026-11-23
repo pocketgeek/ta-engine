@@ -32,16 +32,16 @@
 #include <unordered_map>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
-namespace tak::sim { class TypeRegistry; struct UnitType; }
+namespace ta::hpi { class Vfs; }
+namespace ta::sim { class TypeRegistry; struct UnitType; }
 
-namespace tak::ai {
+namespace ta::ai {
 
 // Retail's unit-type table in its own order (sorted by name, case-insensitively),
 // with index 0 the empty sentinel retail keeps there. Every per-type array of the
 // Classic brain is indexed by this catalogue.
 struct ClassicCatalogue {
-    std::vector<const tak::sim::UnitType*> types{nullptr};   // [0] = sentinel
+    std::vector<const ta::sim::UnitType*> types{nullptr};   // [0] = sentinel
     std::vector<std::string> names{""};                       // lowercased
     std::unordered_map<std::string, uint16_t> byName;
     // Lowercased category word -> catalogue indices ("all" holds every type).
@@ -49,12 +49,12 @@ struct ClassicCatalogue {
 
     size_t size() const { return names.size(); }
     // One entry per registry type, its categories from the FBI `category=` words.
-    static ClassicCatalogue from(const tak::sim::TypeRegistry& registry);
+    static ClassicCatalogue from(const ta::sim::TypeRegistry& registry);
     // A catalogue without real types (tests, the emulation oracle): names in any
     // order (sorted here), each with its category words.
     static ClassicCatalogue synthetic(
         std::vector<std::pair<std::string, std::vector<std::string>>> entries);
-    void add(const tak::sim::UnitType* type, std::string name, const std::string& categoryWords);
+    void add(const ta::sim::UnitType* type, std::string name, const std::string& categoryWords);
 };
 
 struct ClassicProfile {
@@ -89,7 +89,7 @@ uint8_t classicScaledPref(uint8_t pref, float w);
 
 // The `aiprofile=` key of a map's .ota ([GlobalHeader] -> [Map Data]), or "" when
 // the map has none (or no .ota).
-std::string classicMapAiProfile(const tak::hpi::Vfs& vfs, const std::string& mapPath);
+std::string classicMapAiProfile(const ta::hpi::Vfs& vfs, const std::string& mapPath);
 struct ClassicProfileScript { std::string path, text; };
 // Retail's file choice (map loader 0x4c8608 and loader 0x4f6860): ai/<key>.txt
 // with any extension of the key dropped; an empty key means ai/default.txt; an
@@ -97,7 +97,7 @@ struct ClassicProfileScript { std::string path, text; };
 // script is empty (every type keeps 100 / -1). Retail's language-variant name
 // (ai/<key>_<variant>.txt) is not tried: no such file ships. The VFS applies
 // retail's archive precedence, so IPData.hpi's default.txt wins.
-ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::string& key);
+ClassicProfileScript classicProfileScript(const ta::hpi::Vfs& vfs, const std::string& key);
 // The same choice over a room's layers, for ai/ files only: each candidate file is
 // taken from the room's game mods (`gameModFiles`), else its map package
 // (`mapFiles`), else `vfs` (the base data) -- a game mod wins over the map, which
@@ -106,8 +106,8 @@ ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::s
 // given, receives where the chosen file came from.
 enum class ClassicProfileLayer : uint8_t { None, Base, GameMods, Map };
 using ClassicFiles = std::map<std::string, std::vector<uint8_t>>;   // == hpi::Vfs::Files
-ClassicProfileScript classicProfileScript(const tak::hpi::Vfs& vfs, const std::string& key,
+ClassicProfileScript classicProfileScript(const ta::hpi::Vfs& vfs, const std::string& key,
                                           const ClassicFiles* gameModFiles, const ClassicFiles* mapFiles,
                                           ClassicProfileLayer* layer = nullptr);
 
-}  // namespace tak::ai
+}  // namespace ta::ai

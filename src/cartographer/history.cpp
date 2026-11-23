@@ -4,8 +4,8 @@
 #include <limits>
 
 namespace cart {
-HistoryState historyState(const tak::tnt::Map& map,const tak::tnt::Scenario& metadata,
-                          const tak::crt::Scenario& scenario,const std::vector<PlacedUnit>& units,
+HistoryState historyState(const ta::tnt::Map& map,const ta::tnt::Scenario& metadata,
+                          const ta::crt::Scenario& scenario,const std::vector<PlacedUnit>& units,
                           const std::set<std::string>& useOnly,const AiFiles& aiFiles,const std::string& name) {
     return {map.save(),metadata.write(),saveScenario(scenario,units),useOnly,name,map.seaLevel,map.stockTerrain,scenarioInfo(scenario),aiFiles};
 }

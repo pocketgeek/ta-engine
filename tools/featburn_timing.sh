@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # featburn_timing.sh -- swapped base/candidate pairs of tools/featburn_bench (feature burning
 # and fading). Run it under the timing-core lock, e.g.
-#   /home/pocket_geek/tak-tmp/tools/timing.sh tools/featburn_timing.sh BASE_BENCH CAND_BENCH DATA [ROUNDS] [TICKS] [CORE]
+#   /home/pocket_geek/ta-tmp/tools/timing.sh tools/featburn_timing.sh BASE_BENCH CAND_BENCH DATA [ROUNDS] [TICKS] [CORE]
 # BASE_BENCH/CAND_BENCH: featburn_bench binaries built against each tree. Every run is pinned to
 # CORE (default 2); within a round the order alternates per workload. Prints one line per run.
 set -euo pipefail

@@ -21,10 +21,10 @@
 #include <cstdlib>
 
 namespace {
-namespace hu = tak::hiddenunits;
+namespace hu = ta::hiddenunits;
 }  // namespace
 
-    tak::hiddenunits::Rect GameView::hiddenBodyBounds(int slot) {
+    ta::hiddenunits::Rect GameView::hiddenBodyBounds(int slot) {
         const auto& distant = distantModelItems_[size_t(slot)];
         hu::Rect b{1e30f, 1e30f, -1e30f, -1e30f};
         const auto add = [&](const SDL_FPoint& p) {
@@ -53,15 +53,15 @@ namespace hu = tak::hiddenunits;
         hiddenRecs_.clear();
 #ifndef NDEBUG
         debugHiddenCandidates_ = 0;
-        // Debug: TAK_HIDDEN_UNITS=off|dots|fade overrides the option (benchmarks).
-        static const char* forced = tak::devEnv("TAK_HIDDEN_UNITS");
+        // Debug: TA_HIDDEN_UNITS=off|dots|fade overrides the option (benchmarks).
+        static const char* forced = ta::devEnv("TA_HIDDEN_UNITS");
         if (forced) hiddenUnitsMode_ = hu::parse(forced);
-        static const bool verifyEnv = tak::devFlag("TAK_HIDDEN_VERIFY");
+        static const bool verifyEnv = ta::devFlag("TA_HIDDEN_VERIFY");
         const bool verify = verifyEnv || debugHiddenVerify_;
         debugHiddenFound_.clear();
         debugHiddenRef_.clear();
 #endif
-        using RS = tak::render::Counter;
+        using RS = ta::render::Counter;
         // FADE's display clock: whatever this frame finds, the fades advance at the end
         // (a cover with no unit under it, or out of view, fades back or is dropped).
         uint64_t nowMs = SDL_GetTicks64();
@@ -76,7 +76,7 @@ namespace hu = tak::hiddenunits;
             hiddenFades_.advance(fadeMs);   // nothing hit, nothing in view: all dropped
             return;
         }
-        tak::render::ScopedPhase phase(renderStats_, tak::render::Phase::HiddenUnits);
+        ta::render::ScopedPhase phase(renderStats_, ta::render::Phase::HiddenUnits);
         const bool fade = hiddenUnitsMode_ == hu::kFade;
         const float zm = mapView_.zoom();
         const hu::Rect screen{0, 0, float(mvw), float(winH)};
@@ -279,7 +279,7 @@ namespace hu = tak::hiddenunits;
     // paints after it (feature sprite texels, structure triangles).
     void GameView::drawHiddenDots(int mvw, int winH) {
         if (hiddenUnitsMode_ != hu::kDots || dotsFrame_ || hiddenRecs_.empty()) return;
-        tak::render::ScopedPhase phase(renderStats_, tak::render::Phase::HiddenUnits);
+        ta::render::ScopedPhase phase(renderStats_, ta::render::Phase::HiddenUnits);
         const float zm = mapView_.zoom();
         const hu::Rect screen{0, 0, float(mvw), float(winH)};
         const auto& items = paintItems_;
@@ -312,7 +312,7 @@ namespace hu = tak::hiddenunits;
             hiddenDotIds_.push_back(u.id);
         }
         std::sort(hiddenDotIds_.begin(), hiddenDotIds_.end());
-        renderStats_.add(tak::render::Counter::HiddenMarked, hiddenDotIds_.size());
+        renderStats_.add(ta::render::Counter::HiddenMarked, hiddenDotIds_.size());
         if (!overlayBatch_.empty()) {
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             SDL_RenderGeometry(ren_, nullptr, overlayBatch_.data(), int(overlayBatch_.size()), nullptr, 0);

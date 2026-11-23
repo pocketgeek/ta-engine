@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <vector>
 
-namespace tak::jpeg {
+namespace ta::jpeg {
 
 struct Image {
     int width = 0, height = 0;
@@ -21,4 +21,4 @@ Image load(const std::vector<uint8_t>& d);
 // around every letter. Throws std::runtime_error on a bad size or an encoder failure.
 std::vector<uint8_t> encode(int width, int height, const std::vector<uint8_t>& rgba, int quality);
 
-} // namespace tak::jpeg
+} // namespace ta::jpeg

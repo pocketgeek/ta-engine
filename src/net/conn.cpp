@@ -22,7 +22,7 @@
 #endif
 #include <utility>
 
-namespace tak::net {
+namespace ta::net {
 
 void setupSocket(int fd) {
     int one = 1;
@@ -90,7 +90,7 @@ long kernelQueued(int fd, uint64_t written) {
 long Conn::kernelQueued() const {
     // Under TLS every byte goes through the socket BIO, whose count includes the handshake.
     const uint64_t written = tls_ ? BIO_number_written(SSL_get_wbio(static_cast<SSL*>(tls_))) : wireOut_;
-    return tak::net::kernelQueued(fd_, written);
+    return ta::net::kernelQueued(fd_, written);
 }
 
 Conn::Conn(int fd,std::shared_ptr<TlsContext> tls):tlsContext_(std::move(tls)),fd_(fd) {
@@ -160,7 +160,7 @@ bool Conn::connect(const std::string& address, uint16_t port, int timeoutMs) {
         else if (sockInProgress(sockErr())) {
             pollfd pf{};
             pf.fd = fd; pf.events = POLLOUT;
-            if (TAK_POLL(&pf, 1, timeoutMs) > 0 && (pf.revents & POLLOUT)) {
+            if (TA_POLL(&pf, 1, timeoutMs) > 0 && (pf.revents & POLLOUT)) {
                 int se = 0; socklen_t sl = sizeof se;
                 getsockopt(fd, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&se), &sl);
                 if (se == 0) { connected = true; fd_ = fd; }
@@ -188,7 +188,7 @@ bool Conn::connect(const std::string& address, uint16_t port, int timeoutMs) {
             const auto remaining=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();
             if(remaining<=0) {err_="TLS handshake timed out";break;}
             pollfd p{};p.fd=fd_;p.events=tlsWantWrite_?POLLOUT:POLLIN;
-            if(TAK_POLL(&p,1,int(remaining))<=0) {err_="TLS handshake timed out";break;}
+            if(TA_POLL(&p,1,int(remaining))<=0) {err_="TLS handshake timed out";break;}
         }
         if(!err_.empty()) {closeNow();return false;}
         // Soft-fail: only a valid CRL listing this certificate refuses the server.
@@ -427,4 +427,4 @@ std::string peerAddress(int fd) {
     return s;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

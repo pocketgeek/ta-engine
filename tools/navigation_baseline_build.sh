@@ -24,7 +24,7 @@
 #   OVERLAY=0 tools/navigation_baseline_build.sh OUT_DIR . HEAD
 # (the binary is still written as OUT_DIR/crowdbench-baseline; rename it).
 #
-# Environment: TAK_STATIC_DEPS_PREFIX / TAK_FFMPEG_PREFIX (passed to CMake when
+# Environment: TA_STATIC_DEPS_PREFIX / TA_FFMPEG_PREFIX (passed to CMake when
 # set), CMAKE_GENERATOR (default Ninja), JOBS (default 8), TASKSET_CPUS (optional
 # cpu list for the compile, e.g. 2-23).
 set -euo pipefail
@@ -56,8 +56,8 @@ fi
 
 cmake_args=(-S "$src" -B "$out/build" -G "${CMAKE_GENERATOR:-Ninja}" -DCMAKE_BUILD_TYPE=Release
             "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=$src=." "-DCMAKE_C_FLAGS=-ffile-prefix-map=$src=.")
-[[ -n "${TAK_STATIC_DEPS_PREFIX:-}" ]] && cmake_args+=("-DTAK_STATIC_DEPS_PREFIX=$TAK_STATIC_DEPS_PREFIX")
-[[ -n "${TAK_FFMPEG_PREFIX:-}" ]] && cmake_args+=("-DTAK_FFMPEG_PREFIX=$TAK_FFMPEG_PREFIX")
+[[ -n "${TA_STATIC_DEPS_PREFIX:-}" ]] && cmake_args+=("-DTAK_STATIC_DEPS_PREFIX=$TA_STATIC_DEPS_PREFIX")
+[[ -n "${TA_FFMPEG_PREFIX:-}" ]] && cmake_args+=("-DTAK_FFMPEG_PREFIX=$TA_FFMPEG_PREFIX")
 cmake "${cmake_args[@]}" > "$out/configure.log" 2>&1 || { tail -40 "$out/configure.log"; exit 1; }
 runner=()
 [[ -n "${TASKSET_CPUS:-}" ]] && runner=(taskset -c "$TASKSET_CPUS")

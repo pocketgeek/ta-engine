@@ -6,7 +6,7 @@
 #include <thread>
 #include <vector>
 
-namespace tak::video {
+namespace ta::video {
 // Resizes packed 8-bit, four-channel pixels for the stream encoder. Shrinking
 // averages each output pixel's whole source area (a box at exact 2:1, as MAX
 // 3840 sends a 7680-wide window); enlarging is bilinear. Integer fixed point,

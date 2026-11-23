@@ -9,10 +9,10 @@
 // player's real profile (%APPDATA%, ~/Library/Application Support), so a test that
 // isolated itself with XDG_DATA_HOME still read and wrote the real settings file there.
 // Debug builds and every test executable therefore honour XDG_DATA_HOME on all three
-// platforms, with SDL's Linux layout (<XDG_DATA_HOME>/TAKengine/<app>/). CTest hands
+// platforms, with SDL's Linux layout (<XDG_DATA_HOME>/TAengine/<app>/). CTest hands
 // every test its own XDG_DATA_HOME (CMakeLists.txt, "Per-user files"), so no test
-// reaches the player's profile on any platform. A shipped Release program (takclient
-// and cartographer define TAK_PRODUCT) reads no such variable off Linux and gets SDL's
+// reaches the player's profile on any platform. A shipped Release program (taclient
+// and cartographer define TA_PRODUCT) reads no such variable off Linux and gets SDL's
 // answer, as it always has.
 
 #include <SDL.h>
@@ -22,16 +22,16 @@
 #include <system_error>
 #include "util/u8path.h"
 
-namespace tak {
+namespace ta {
 
-inline constexpr const char* kPrefOrg = "TAKengine";
+inline constexpr const char* kPrefOrg = "TAengine";
 
 // The per-user folder for `app` ("TAKingdoms", "Cartographer"), created if missing,
 // ending in a separator like SDL_GetPrefPath's. Empty if there is none.
 inline std::string prefPath(const char* app) {
-#if (defined(_WIN32) || defined(__APPLE__)) && (!defined(NDEBUG) || !defined(TAK_PRODUCT))
+#if (defined(_WIN32) || defined(__APPLE__)) && (!defined(NDEBUG) || !defined(TA_PRODUCT))
     if (const char* root = SDL_getenv("XDG_DATA_HOME"); root && *root) {
-        const auto dir = tak::u8path(root) / kPrefOrg / app;
+        const auto dir = ta::u8path(root) / kPrefOrg / app;
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
         if (ec) return {};
@@ -46,4 +46,4 @@ inline std::string prefPath(const char* app) {
     return out;
 }
 
-}  // namespace tak
+}  // namespace ta

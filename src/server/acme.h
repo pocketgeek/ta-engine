@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-namespace tak::srv {
+namespace ta::srv {
 struct AcmeOptions {
     std::string domain,email;
     std::filesystem::path state;
@@ -20,7 +20,7 @@ class AcmeCertificates {
 public:
     explicit AcmeCertificates(AcmeOptions options);
     ~AcmeCertificates();
-    std::shared_ptr<tak::net::TlsContext> context() const;
+    std::shared_ptr<ta::net::TlsContext> context() const;
     AcmeCertificates(const AcmeCertificates&)=delete;
     AcmeCertificates& operator=(const AcmeCertificates&)=delete;
 private:

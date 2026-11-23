@@ -17,7 +17,7 @@
 #include "net/protocol.h"
 #include "sim/matchsetup.h"
 
-namespace tak::startmarkers {
+namespace ta::startmarkers {
 
 // The room slot that opens at each of `starts` start positions (index = start, in the
 // .ota StartPosN order parseStartPositions returns; FIXED and BY SLOT both follow
@@ -48,4 +48,4 @@ inline Point place(std::pair<float, float> pos, float worldW, float worldH,
     return {std::clamp(px, x + ix, x + w - ix), std::clamp(py, y + iy, y + h - iy)};
 }
 
-}  // namespace tak::startmarkers
+}  // namespace ta::startmarkers

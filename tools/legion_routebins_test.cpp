@@ -2,7 +2,7 @@
 // routes (windows, corridors and chains' tile lists, empty and map-edge windows, other tile sizes) listed, re-listed and
 // unlisted at random on several planes and map sizes, every group whose route a random change box reaches (touches(),
 // legion.cpp's fieldTouched) is among the index's candidates for that box; every candidate is a group listed on that
-// plane now; the read-only collect() (TAK_LEGION_VERIFY's query) finds the same groups and changes nothing; the bins
+// plane now; the read-only collect() (TA_LEGION_VERIFY's query) finds the same groups and changes nothing; the bins
 // hold exactly what a fresh listing would; and the live / stale counts agree through query-time drops and whole-index
 // compactions.
 #include "sim/legion_routebins.h"
@@ -13,7 +13,7 @@
 #include <memory>
 #include <set>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 int failures = 0;

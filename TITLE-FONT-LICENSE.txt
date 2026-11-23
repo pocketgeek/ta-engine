@@ -1,4 +1,4 @@
-The title-screen lettering (res/title-font/, embedded into takclient) is Cinzel Bold,
+The title-screen lettering (res/title-font/, embedded into taclient) is Cinzel Bold,
 an SIL OFL 1.1 font, drawn with stb_truetype (public domain / MIT; its licence is in
 CHAT-FONT-LICENSE.txt).
 

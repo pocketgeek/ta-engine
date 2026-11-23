@@ -47,7 +47,7 @@
 // renderer: D3D11/12, Metal and the software renderer return NULL when an allocation
 // fails. SDL's OpenGL and GLES2 renderers do NOT: GL_CheckAllErrors (SDL 2.32,
 // render/opengl/SDL_render_gl.c, likewise opengles2) returns 0 unless the context has
-// SDL_GL_CONTEXT_DEBUG_FLAG, which takclient never requests, so a GL_OUT_OF_MEMORY from
+// SDL_GL_CONTEXT_DEBUG_FLAG, which taclient never requests, so a GL_OUT_OF_MEMORY from
 // glTexImage2D never fails SDL_CreateTexture, and FBO completeness is only checked when
 // a target is bound. (NVIDIA's Linux driver also defers allocation and spills to system
 // memory.) On GL the only caller that can fire is GeometrySubmit's GL_BUFFER_SIZE check;

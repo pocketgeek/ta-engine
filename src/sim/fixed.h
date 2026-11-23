@@ -32,7 +32,7 @@
 #include <bit>
 #include <cmath>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Defined float->int conversions. A bare int32_t(double) of an out-of-range value is
 // undefined behaviour (x86 yields INT32_MIN, ARM saturates), and std::lround returns a
@@ -302,4 +302,4 @@ constexpr float radiansFromBam(Bam a) {
     return float(double(a.v) * (2.0 * 3.14159265358979323846 / 65536.0));
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 
-namespace tak {
+namespace ta {
 
 // HARDWARE CURSOR on, and the platform has not refused our cursor: the OS draws it.
 // Streaming is deliberately NOT an input. It used to force the software path, so the
@@ -63,4 +63,4 @@ inline std::string hardwareCursorNote(bool hardwareSetting, const HardwareCursor
     return "OS CURSOR " + std::to_string(st.w) + "X" + std::to_string(st.h);
 }
 
-}  // namespace tak
+}  // namespace ta

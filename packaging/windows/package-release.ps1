@@ -9,16 +9,16 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = (Resolve-Path "$PSScriptRoot/../..").Path
 $payload = (Resolve-Path $PayloadRoot).Path
-$executables = @('takclient.exe', 'takserver.exe', 'cartographer.exe')
+$executables = @('taclient.exe', 'taserver.exe', 'cartographer.exe')
 $expected = @($executables) + @('STREAMING-LICENSES.txt', 'EDITOR-FONT-LICENSE.txt', 'CHAT-FONT-LICENSE.txt', 'TITLE-FONT-LICENSE.txt', 'ACME-LICENSES.txt', 'OPUS-LICENSE.txt')
-$versionMatch = [regex]::Match((Get-Content "$root/CMakeLists.txt" -Raw), 'project\(tak-engine VERSION ([0-9]+\.[0-9]+\.[0-9]+)')
+$versionMatch = [regex]::Match((Get-Content "$root/CMakeLists.txt" -Raw), 'project\(ta-engine VERSION ([0-9]+\.[0-9]+\.[0-9]+)')
 if (!$versionMatch.Success) { throw 'Cannot read project version' }
 $version = $versionMatch.Groups[1].Value
 if ($env:GITHUB_REF -and $env:GITHUB_REF -ne "refs/tags/v$version") {
     throw "Release tag must match project version v$version"
 }
-$groups = @('takclient-windows-x64', 'takclient-windows-x64-debug',
-            'takclient-windows-arm64', 'takclient-windows-arm64-debug')
+$groups = @('taclient-windows-x64', 'taclient-windows-x64-debug',
+            'taclient-windows-arm64', 'taclient-windows-arm64-debug')
 # Validate the entire input before spending a signing request or publishing files.
 if (@(Get-ChildItem $payload -Directory).Count -ne $groups.Count) { throw 'Unexpected artifact set' }
 foreach ($group in $groups) {
@@ -46,8 +46,8 @@ if (Test-Path $output) { throw "Output folder already exists: $output" }
 New-Item -ItemType Directory $output | Out-Null
 foreach ($group in $groups) {
     $arch = if ($group -like '*arm64*') { 'arm64' } else { 'x64' }
-    $name = if ($group.EndsWith('-debug')) { "takclient-windows-$arch-debug.zip" }
-            else { "takclient-$version-windows-$arch.zip" }
+    $name = if ($group.EndsWith('-debug')) { "taclient-windows-$arch-debug.zip" }
+            else { "taclient-$version-windows-$arch.zip" }
     $dir = Join-Path $payload $group
     $zip = Join-Path $output $name
     Compress-Archive -Path "$dir/*" -DestinationPath $zip
@@ -62,18 +62,18 @@ foreach ($group in $groups) {
     Remove-Item $extracted -Recurse -Force
 }
 $build = Join-Path $output 'installer-build'
-& cmake -S $PSScriptRoot -B $build "-DTAK_VERSION=$version" "-DTAK_SIGNED_PAYLOAD=$payload/takclient-windows-x64"
+& cmake -S $PSScriptRoot -B $build "-DTAK_VERSION=$version" "-DTAK_SIGNED_PAYLOAD=$payload/taclient-windows-x64"
 if ($LASTEXITCODE -ne 0) { throw 'Installer configuration failed' }
 & cpack --config "$build/CPackConfig.cmake" -G NSIS -B $build
 if ($LASTEXITCODE -ne 0) { throw 'NSIS packaging failed' }
 # Check CPack's actual staged input, not just the source files it was given.
-$staged = @(Get-ChildItem "$build/_CPack_Packages" -Filter takclient.exe -Recurse)
+$staged = @(Get-ChildItem "$build/_CPack_Packages" -Filter taclient.exe -Recurse)
 if ($staged.Count -ne 1) { throw 'Missing or ambiguous NSIS payload' }
 foreach ($file in $expected) {
-    if ((Get-FileHash "$payload/takclient-windows-x64/$file").Hash -ne
+    if ((Get-FileHash "$payload/taclient-windows-x64/$file").Hash -ne
         (Get-FileHash (Join-Path $staged[0].DirectoryName $file)).Hash) {
         throw "NSIS payload changed: $file"
     }
 }
-Move-Item "$build/tak-engine-$version-windows-x64-setup.exe" $output
+Move-Item "$build/ta-engine-$version-windows-x64-setup.exe" $output
 Remove-Item $build -Recurse -Force

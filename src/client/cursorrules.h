@@ -23,7 +23,7 @@
 
 #include <initializer_list>
 
-namespace tak::client {
+namespace ta::client {
 
 // Retail's cursor slot (1 = Attack .. 20 = Hourglass). The aggregator keeps the
 // lowest slot over the selected units. PathIcon is no pointer; it sorts last.
@@ -182,4 +182,4 @@ inline CursorId attackUnitCursor(HoverKind target, const AttackUnitFacts& u) {
 // Every other armed command is decided per unit with its order, in
 // clickrules.h (armedClick), so the cursor and the click share one rule.
 
-} // namespace tak::client
+} // namespace ta::client

@@ -27,7 +27,7 @@
 #include <type_traits>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 using sim::ScenarioStatus;
 
 static int g_fail = 0, g_checks = 0;
@@ -61,7 +61,7 @@ std::vector<uint8_t> bytes(const std::string& text) { return {text.begin(), text
 struct Case {
     std::string name;
     tnt::Scenario ota;               // the .ota's GlobalHeader (hasScenario, useOnlyUnits)
-    bool marker = false;             // [TAKPlaytest] authoredscenario=1 (a Test Map copy)
+    bool marker = false;             // [TAPlaytest] authoredscenario=1 (a Test Map copy)
     bool crt = false;                // write a .crt ...
     crt::Scenario scenario;          // ... of this scenario
     std::vector<uint8_t> rawCrt;     // ... or these bytes, when set
@@ -103,7 +103,7 @@ int main() {
     auto filesOf = [&](const Case& c) {
         auto files = std::make_shared<Files>(*base);
         std::string ota = c.ota.write();
-        if (c.marker) ota += "\n[TAKPlaytest]\n{\nauthoredscenario=1;\n}\n";
+        if (c.marker) ota += "\n[TAPlaytest]\n{\nauthoredscenario=1;\n}\n";
         (*files)[kOta] = bytes(ota);
         if (!c.rawCrt.empty()) (*files)[kCrt] = c.rawCrt;
         else if (c.crt) (*files)[kCrt] = crt::write(c.scenario);

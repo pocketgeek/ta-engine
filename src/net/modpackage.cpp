@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <fstream>
 #include <stdexcept>
-namespace tak::net::mods {
+namespace ta::net::mods {
 namespace {
 // "TOV2": every file is a u32-length blob. Any other magic is rejected.
 constexpr uint32_t kPackageMagic = 0x32564f54;
@@ -33,7 +33,7 @@ std::shared_ptr<Package> build(const std::filesystem::path& root,const std::vect
 }
 void saveCache(const std::filesystem::path& root,const Package& package,uint64_t quota) {
     if(!maps::validDigest(package.digest))throw std::runtime_error("invalid mod cache key");
-    auto dir=root/"ModCache",path=dir/(package.digest+".takmods");
+    auto dir=root/"ModCache",path=dir/(package.digest+".tamods");
     // The caller already verified these bytes, so an identical file is reused
     // without decoding it. A damaged entry is replaced by the rename below, never
     // deleted first: a quota or disk failure must leave the old file in place.
@@ -42,8 +42,8 @@ void saveCache(const std::filesystem::path& root,const Package& package,uint64_t
         std::vector<uint8_t> b(existing);std::ifstream in(path,std::ios::binary);in.read(reinterpret_cast<char*>(b.data()),std::streamsize(existing));
         if(in && b==package.bytes)return;
     }
-    const auto used=quota?tak::storageUsage(dir):0;
-    tak::storageRoom(used-std::min<uint64_t>(used,ec?0:existing),package.bytes.size(),quota);
+    const auto used=quota?ta::storageUsage(dir):0;
+    ta::storageRoom(used-std::min<uint64_t>(used,ec?0:existing),package.bytes.size(),quota);
     std::filesystem::create_directories(dir);
     const auto tmp=dir/(package.digest+"."+crypto::toHex(crypto::randomVec(8))+".tmp");
     try {std::ofstream out(tmp,std::ios::binary);out.write(reinterpret_cast<const char*>(package.bytes.data()),std::streamsize(package.bytes.size()));out.close();if(!out)throw std::runtime_error("cannot save mod cache");std::filesystem::rename(tmp,path);}
@@ -51,7 +51,7 @@ void saveCache(const std::filesystem::path& root,const Package& package,uint64_t
 }
 std::shared_ptr<Package> loadCache(const std::filesystem::path& root,const std::string& digest,size_t maxBytes,size_t expected) {
     if(!maps::validDigest(digest))return {};
-    auto path=root/"ModCache"/(digest+".takmods");
+    auto path=root/"ModCache"/(digest+".tamods");
     std::error_code ec;auto n=std::filesystem::file_size(path,ec);
     if(ec || !n || n>maps::kMaxBytes)return {};
     if(n>maxBytes || (expected && n!=expected))throw std::runtime_error("cached mod size/budget mismatch");

@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace navigation_test {
-using namespace tak::sim;
+using namespace ta::sim;
 inline void require(bool value,const char* message) {if(!value)throw std::runtime_error(message);}
 inline PathfindingMode mode(std::string_view value) {
     if(value=="retail")return PathfindingMode::Retail;

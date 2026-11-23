@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)),
                               std::istreambuf_iterator<char>());
 
-    tak::video::BinkVideo v;
+    ta::video::BinkVideo v;
     if (!v.open(std::move(data))) {
         std::fprintf(stderr, "open/decode failed (not a Bink stream, or no FFmpeg)\n");
         return 1;
@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     int n = 0;
     while (v.nextFrame(rgba)) {
         if (n == want && out) {
-            tak::png::write(out, v.width(), v.height(), rgba);
+            ta::png::write(out, v.width(), v.height(), rgba);
             std::fprintf(stderr, "wrote frame %d -> %s\n", n, out);
         }
         ++n;

@@ -19,7 +19,7 @@
   #endif
 #endif
 
-namespace tak {
+namespace ta {
 
 std::string selfExecutable() {
 #if defined(_WIN32)
@@ -79,4 +79,4 @@ bool relaunchSelf(const std::vector<std::string>& args, std::string& error) {
 #endif
 }
 
-}  // namespace tak
+}  // namespace ta

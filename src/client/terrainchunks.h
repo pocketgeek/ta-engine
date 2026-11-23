@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak {
+namespace ta {
 // Camera-independent terrain images. The worker owns mip generation/composition;
 // all SDL operations and cache bookkeeping stay on the render thread.
 //

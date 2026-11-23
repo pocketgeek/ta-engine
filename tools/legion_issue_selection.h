@@ -42,7 +42,7 @@
 //     order budget (kTickOrderBytes): it lands whole, in one tick.
 //
 // Nothing here is hashed or read by the sim; a fixture applies the drained
-// commands with tak::sim::applyCommand exactly as the client does.
+// commands with ta::sim::applyCommand exactly as the client does.
 #include "net/lockstep.h"
 #include "net/protocol.h"
 #include "net/orderpack.h"
@@ -58,7 +58,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace tak::scn {
+namespace ta::scn {
 
 enum class Verb { Move, Fight, Patrol, Attack, Guard, Stop, Squad };
 
@@ -72,9 +72,9 @@ struct SelectionOrder {
 };
 
 // gameview_hud.cpp flyerSpreadGoal: retail's flyer spread, from the frame's floats.
-inline void flyerSpreadGoal(const tak::sim::FlyerGroupCentre& air, const tak::sim::Unit& u, float wx, float wz,
+inline void flyerSpreadGoal(const ta::sim::FlyerGroupCentre& air, const ta::sim::Unit& u, float wx, float wz,
                             float& gx, float& gz) {
-    using tak::sim::Fixed;
+    using ta::sim::Fixed;
     int32_t x = 0, z = 0;
     air.goal(Fixed::fromFloat(u.x.toFloat()).v, Fixed::fromFloat(u.z.toFloat()).v, Fixed::fromFloat(wx).v,
              Fixed::fromFloat(wz).v, x, z);
@@ -84,33 +84,33 @@ inline void flyerSpreadGoal(const tak::sim::FlyerGroupCentre& air, const tak::si
 
 // The commands one click builds, in the order the client issues them (before
 // GameView::flushClick packs them; hudItems below is what reaches the outbox).
-inline std::vector<tak::net::Command> hudCommands(const tak::sim::World& world,
+inline std::vector<ta::net::Command> hudCommands(const ta::sim::World& world,
                                                   const std::vector<int>& selection,
                                                   const SelectionOrder& order, int player = 0) {
-    using tak::net::Cmd;
-    std::vector<tak::net::Command> out;
+    using ta::net::Cmd;
+    std::vector<ta::net::Command> out;
     if (selection.empty()) return out;
     auto make = [&](Cmd kind, int id) {
-        tak::net::Command c;
+        ta::net::Command c;
         c.kind = kind;
         c.player = uint8_t(player);   // GameView::issue stamps the local player
         c.unitId = id;
         return c;
     };
-    auto live = [&](int id) -> const tak::sim::Unit* {
+    auto live = [&](int id) -> const ta::sim::Unit* {
         const auto* u = world.unit(id);
         return u && u->alive() ? u : nullptr;
     };
     switch (order.verb) {
     case Verb::Move: {
-        const bool legion = tak::sim::isLegionPathfinding(world.pathfindingMode());
+        const bool legion = ta::sim::isLegionPathfinding(world.pathfindingMode());
         float cx = 0, cz = 0;
         int n = 0;
-        tak::sim::FlyerGroupCentre air;
+        ta::sim::FlyerGroupCentre air;
         for (int id : selection)
             if (const auto* u = live(id)) {
                 cx += u->x.toFloat(); cz += u->z.toFloat(); ++n;
-                air.add(tak::sim::Fixed::fromFloat(u->x.toFloat()).v, tak::sim::Fixed::fromFloat(u->z.toFloat()).v);
+                air.add(ta::sim::Fixed::fromFloat(u->x.toFloat()).v, ta::sim::Fixed::fromFloat(u->z.toFloat()).v);
             }
         if (n) { cx /= float(n); cz /= float(n); }
         for (int id : selection) {
@@ -118,7 +118,7 @@ inline std::vector<tak::net::Command> hudCommands(const tak::sim::World& world,
             if (!u) continue;
             auto c = make(Cmd::Move, id);
             const auto* t = u->type;
-            const bool shared = t && legion && tak::sim::legionSharedClick(t->canFly, t->footX, t->footZ);
+            const bool shared = t && legion && ta::sim::legionSharedClick(t->canFly, t->footX, t->footZ);
             if (t && t->canFly) flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
             else {
                 c.x = shared ? order.x : order.x + std::clamp(u->x.toFloat() - cx, -60.0f, 60.0f);
@@ -139,10 +139,10 @@ inline std::vector<tak::net::Command> hudCommands(const tak::sim::World& world,
         break;
     case Verb::Fight:
     case Verb::Patrol: {
-        tak::sim::FlyerGroupCentre air;
+        ta::sim::FlyerGroupCentre air;
         for (int id : selection)
             if (const auto* u = live(id))
-                air.add(tak::sim::Fixed::fromFloat(u->x.toFloat()).v, tak::sim::Fixed::fromFloat(u->z.toFloat()).v);
+                air.add(ta::sim::Fixed::fromFloat(u->x.toFloat()).v, ta::sim::Fixed::fromFloat(u->z.toFloat()).v);
         for (int id : selection) {
             auto c = make(order.verb == Verb::Fight ? Cmd::AttackMove : Cmd::Patrol, id);
             c.x = order.x;
@@ -192,14 +192,14 @@ inline std::vector<tak::net::Command> hudCommands(const tak::sim::World& world,
 
 // What one click puts in the client's outbox: in a Legion game the packed
 // explicit orders (serials from `serial`, the player's next), else hudCommands.
-inline std::vector<tak::net::Command> hudItems(const tak::sim::World& world, const std::vector<int>& selection,
+inline std::vector<ta::net::Command> hudItems(const ta::sim::World& world, const std::vector<int>& selection,
                                                const SelectionOrder& order, int player, uint32_t& serial) {
     auto cmds = hudCommands(world, selection, order, player);
-    if (!tak::sim::isLegionPathfinding(world.pathfindingMode())) return cmds;
-    tak::net::ClickShape shape;
+    if (!ta::sim::isLegionPathfinding(world.pathfindingMode())) return cmds;
+    ta::net::ClickShape shape;
     if (order.verb == Verb::Move) { shape.moveOffsets = true; shape.x = order.x; shape.z = order.z; }
     if (order.verb == Verb::Patrol || order.verb == Verb::Fight) { shape.flyerOffsets = true; shape.x = order.x; shape.z = order.z; }
-    return tak::net::packClick(cmds, shape, serial);
+    return ta::net::packClick(cmds, shape, serial);
 }
 
 // Client outbox -> server FIFO -> sim tick. Call issue() for every click made at
@@ -213,15 +213,15 @@ public:
     // command it frees can land in.
     explicit Uplink(int roundTrip = -1) : roundTrip_(roundTrip) {}
 
-    void issue(const std::vector<tak::net::Command>& cmds) {
+    void issue(const std::vector<ta::net::Command>& cmds) {
         outbox_.insert(outbox_.end(), cmds.begin(), cmds.end());
     }
     bool idle() const { return outbox_.empty() && server_.empty(); }
     size_t pending() const { return outbox_.size() + server_.size(); }
 
-    std::vector<tak::net::Command> land(uint32_t tick) {
-        using tak::net::Cmd;
-        auto bytesOf = [](const tak::net::Command& c) { return c.order ? tak::net::orderRecordBytes(*c.order) : 0; };
+    std::vector<ta::net::Command> land(uint32_t tick) {
+        using ta::net::Cmd;
+        auto bytesOf = [](const ta::net::Command& c) { return c.order ? ta::net::orderRecordBytes(*c.order) : 0; };
         if (roundTrip_ < 0) {
             server_.insert(server_.end(), outbox_.begin(), outbox_.end());
             outbox_.clear();
@@ -232,17 +232,17 @@ public:
                 orderBytes_ -= std::min(orderBytes_, it->second.bytes);
             }
             if (tick != lastSendTick_) {
-                credit_ = tak::net::cmdSendCredit(credit_, tick - lastSendTick_);
+                credit_ = ta::net::cmdSendCredit(credit_, tick - lastSendTick_);
                 lastSendTick_ = tick;
             }
             // The client's send loop (gameview_net.cpp mpStep): FIFO; commands under the
             // credit and window, an order whole under the order window.
-            int sendable = tak::net::cmdSendWindow(credit_, inFlight_);
+            int sendable = ta::net::cmdSendWindow(credit_, inFlight_);
             while (!outbox_.empty()) {
                 const auto& c = outbox_.front();
                 if (c.kind == Cmd::Order) {
                     const size_t b = bytesOf(c);
-                    if (!tak::net::orderSendWindow(orderInFlight_, orderBytes_, b)) break;
+                    if (!ta::net::orderSendWindow(orderInFlight_, orderBytes_, b)) break;
                     ++orderInFlight_;
                     orderBytes_ += b;
                 } else {
@@ -257,19 +257,19 @@ public:
         }
         // The server's drain (server.cpp closeTick): kCmdCapPerTick commands, orders
         // within the tick's order budget, stopping at the first item that does not fit.
-        std::vector<tak::net::Command> out;
+        std::vector<ta::net::Command> out;
         Ack ack;
         size_t orderBudget = 0;
         while (!server_.empty()) {
             const auto& c = server_.front();
             if (c.kind == Cmd::Order) {
                 const size_t b = bytesOf(c);
-                if (orderBudget + b > tak::net::kTickOrderBytes) break;
+                if (orderBudget + b > ta::net::kTickOrderBytes) break;
                 orderBudget += b;
                 ++ack.orders;
                 ack.bytes += b;
             } else {
-                if (ack.cmds >= tak::net::kCmdCapPerTick) break;
+                if (ack.cmds >= ta::net::kCmdCapPerTick) break;
                 ++ack.cmds;
             }
             out.push_back(c);
@@ -290,9 +290,9 @@ private:
         size_t bytes = 0;
     };
     int roundTrip_;
-    std::deque<tak::net::Command> outbox_, server_;
+    std::deque<ta::net::Command> outbox_, server_;
     // The client's credit starts at one tick's worth (gameview.h cmdCredit_).
-    int credit_ = tak::net::kCmdCapPerTick, inFlight_ = 0;
+    int credit_ = ta::net::kCmdCapPerTick, inFlight_ = 0;
     int orderInFlight_ = 0;
     size_t orderBytes_ = 0;
     uint32_t lastSendTick_ = 0;
@@ -301,14 +301,14 @@ private:
 
 struct CmdBatch {
     uint32_t tick = 0;
-    std::vector<tak::net::Command> cmds;
+    std::vector<ta::net::Command> cmds;
 };
 
 // One click at `tick` on an otherwise idle uplink: the batches it lands as,
 // one per tick from `tick` until the last command (empty ticks inside a
 // window gap are kept, so batch i is tick + i). `serial` is the player's next
 // explicit-order serial (Legion; see hudItems).
-inline std::vector<CmdBatch> issueSelection(const tak::sim::World& world, const std::vector<int>& selection,
+inline std::vector<CmdBatch> issueSelection(const ta::sim::World& world, const std::vector<int>& selection,
                                             const SelectionOrder& order, uint32_t tick, int player = 0,
                                             int roundTrip = -1, uint32_t serial = 0) {
     if (!serial) serial = tick + 1;   // the default numbers a click by its tick: unique for one click a tick
@@ -319,4 +319,4 @@ inline std::vector<CmdBatch> issueSelection(const tak::sim::World& world, const 
     return out;
 }
 
-}  // namespace tak::scn
+}  // namespace ta::scn

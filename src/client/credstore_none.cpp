@@ -3,7 +3,7 @@
 
 #include "client/credstore.h"
 
-namespace tak::credstore {
+namespace ta::credstore {
 namespace {
 
 class NoStore final : public Store {
@@ -19,4 +19,4 @@ public:
 
 std::unique_ptr<Store> system(const Slot&) { return std::make_unique<NoStore>(); }
 
-}  // namespace tak::credstore
+}  // namespace ta::credstore

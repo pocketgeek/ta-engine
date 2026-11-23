@@ -25,11 +25,11 @@ def free_port():
 
 
 def environment(root, name):
-    env = {k: v for k, v in os.environ.items() if not k.startswith('TAK_')}
+    env = {k: v for k, v in os.environ.items() if not k.startswith('TA_')}
     for sub in ('data', 'config', 'home'):
         (root / name / sub).mkdir(parents=True, exist_ok=True)
     env.update(XDG_DATA_HOME=str(root / name / 'data'), XDG_CONFIG_HOME=str(root / name / 'config'),
-               HOME=str(root / name / 'home'), TAK_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+               HOME=str(root / name / 'home'), TA_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
     return env
 
 

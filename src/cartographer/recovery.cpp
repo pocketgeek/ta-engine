@@ -107,25 +107,25 @@ RecoverySnapshot readRecoverySnapshot(const fs::path& file) {
     std::string errors;
     for(const auto& source:{file,backupPath(file)}) {
         try {
-            RecoverySnapshot result;result.files=std::make_shared<tak::hpi::Vfs::Files>();
-            tak::hpi::Archive archive(source);
+            RecoverySnapshot result;result.files=std::make_shared<ta::hpi::Vfs::Files>();
+            ta::hpi::Archive archive(source);
             for(const auto& entry:archive.entries())if(!entry.isDirectory) {
-                auto bytes=archive.read(entry);const auto key=tak::hpi::MountSet::key(entry.path);
+                auto bytes=archive.read(entry);const auto key=ta::hpi::MountSet::key(entry.path);
                 if(key.ends_with(".tnt")) {
                     if(!result.mapPath.empty())throw std::runtime_error("Recovery contains multiple maps");
-                    tak::tnt::Map::load(bytes,key);result.mapPath=key;
+                    ta::tnt::Map::load(bytes,key);result.mapPath=key;
                 }
                 // Recovery is written by our canonical serializer. The legacy
                 // parser returns an empty default on malformed input, so check
                 // the round trip instead of mistaking that default for success.
-                if(key.ends_with(".crt") && tak::crt::write(tak::crt::parse(bytes))!=bytes)throw std::runtime_error("Recovery scenario is damaged");
+                if(key.ends_with(".crt") && ta::crt::write(ta::crt::parse(bytes))!=bytes)throw std::runtime_error("Recovery scenario is damaged");
                 if(key=="recovery-info.txt" || key.ends_with("/recovery-info.txt"))result.destination=readRecoveryInfo(bytes);
                 (*result.files)[key]=std::move(bytes);
             }
             if(result.mapPath.empty())throw std::runtime_error("Recovery contains no map terrain");
             const auto stem=result.mapPath.substr(0,result.mapPath.size()-4);
             if(const auto info=result.files->find(stem+".editor");info!=result.files->end()) {
-                auto scenario=tak::crt::parse(result.files->at(stem+".crt"));
+                auto scenario=ta::crt::parse(result.files->at(stem+".crt"));
                 if(!applyScenarioInfo(scenario,std::string(info->second.begin(),info->second.end())))throw std::runtime_error("Recovery rule names are damaged");
             }
             result.fromBackup=source!=file;return result;
@@ -136,19 +136,19 @@ RecoverySnapshot readRecoverySnapshot(const fs::path& file) {
     }
     throw std::runtime_error("Cannot read recovery; both files have been preserved.\n"+errors);
 }
-tak::hpi::PackFile recoveryInfo(const std::string& name,const fs::path& directory) {
+ta::hpi::PackFile recoveryInfo(const std::string& name,const fs::path& directory) {
     std::ostringstream out;
-    out<<"TAK_CARTOGRAPHER_RECOVERY 1\n"<<std::quoted(name)<<'\n'<<std::quoted(utf8(fs::absolute(directory)))<<'\n';
+    out<<"TA_CARTOGRAPHER_RECOVERY 1\n"<<std::quoted(name)<<'\n'<<std::quoted(utf8(fs::absolute(directory)))<<'\n';
     const auto text=out.str();return {"recovery-info.txt",{text.begin(),text.end()}};
 }
 std::optional<RecoveryDestination> readRecoveryInfo(const std::vector<uint8_t>& bytes) {
     if(bytes.size()>65536)return {};
     std::istringstream in(std::string(bytes.begin(),bytes.end()));std::string magic;int version=0;
     RecoveryDestination result;
-    if(!(in>>magic>>version) || magic!="TAK_CARTOGRAPHER_RECOVERY" || version!=1 ||
+    if(!(in>>magic>>version) || magic!="TA_CARTOGRAPHER_RECOVERY" || version!=1 ||
        !(in>>std::quoted(result.name)>>std::quoted(result.directory)) || !validDocumentName(result.name) ||
        result.directory.empty() || result.directory.size()>4096 || result.directory.find('\0')!=std::string::npos ||
-       !tak::u8path(result.directory).is_absolute())return {};
+       !ta::u8path(result.directory).is_absolute())return {};
     return result;
 }
 }

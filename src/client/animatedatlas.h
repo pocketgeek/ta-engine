@@ -28,7 +28,7 @@
 
 #include "client/rendertelemetry.h"
 
-namespace tak::render {
+namespace ta::render {
 
 struct AtlasPaintCounts {
     uint64_t regions = 0;   // animated regions repainted (clear + optional copy)
@@ -130,4 +130,4 @@ private:
     std::vector<Slot> slots_;
 };
 
-}  // namespace tak::render
+}  // namespace ta::render

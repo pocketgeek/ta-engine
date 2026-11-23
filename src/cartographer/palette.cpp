@@ -28,7 +28,7 @@ SDL_Texture* cart::Editor::featTextureFor(const cart::FeatureRef& r) {
 
 SDL_Texture* cart::Editor::thumbFor(const std::string& path) {return thumbs.get(path);}
 
-const tak::sim::UnitType* cart::Editor::unitInfo(int index) {return index>=0 && index<int(unitTypes.size())?unitRegistry.find(lowerText(unitTypes[size_t(index)])):nullptr;}
+const ta::sim::UnitType* cart::Editor::unitInfo(int index) {return index>=0 && index<int(unitTypes.size())?unitRegistry.find(lowerText(unitTypes[size_t(index)])):nullptr;}
 
 std::string cart::Editor::unitCategory(int index) {
     return cart::unitGroupOf(unitInfo(index));

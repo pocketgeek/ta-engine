@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
-namespace tak::cob {
+namespace ta::cob {
 
 namespace {
 
@@ -77,7 +77,7 @@ struct Vm::Native {
     }
     struct Host {
         Vm& vm;Native& native;
-        uint32_t random(int32_t bound) { return tak::sim::retailRandom(native.seed,bound); }
+        uint32_t random(int32_t bound) { return ta::sim::retailRandom(native.seed,bound); }
         void pieceChanged(size_t i) { native.pieceChanged(i); }
         void pieceCommanded(size_t i) {
             if(native.gait.empty() || i>=64)return;
@@ -207,7 +207,7 @@ void Vm::exportNativePieces() {
     }
     native_->changed.clear();
 #ifndef NDEBUG
-    static const bool verify=std::getenv("TAK_VERIFY_NATIVE_EXPORT")!=nullptr;
+    static const bool verify=std::getenv("TA_VERIFY_NATIVE_EXPORT")!=nullptr;
     if (verify) for (size_t i=0;i<pieces_.size();++i) {
         PieceState expected;
         convert(native_->state.pieces[i],expected);
@@ -403,7 +403,7 @@ void Vm::run(Thread& t) {
             case 0x10032000: { auto b = pop(t), a = pop(t); push(t, a - b); t.pc += 1; break; }
             case 0x10033000: { auto b = pop(t), a = pop(t); push(t, a * b); t.pc += 1; break; }
             case 0x10034000: { auto b = pop(t), a = pop(t); push(t, b ? a / b : 0); t.pc += 1; break; }
-            // TAK's opcode numbering here differs from "classic TA" -- verified
+            // TA's opcode numbering here differs from "classic TA" -- verified
             // against the retail COB interpreter (KINGDOMS.icd, dispatch @0x56c966):
             // sub-ops 5..B are AND OR XOR NOT(unary) SHL SHR(arith) MOD. We had these
             // wrong, and OR/XOR/NOT were absent -- hitting a missing one killed the
@@ -483,7 +483,7 @@ void Vm::run(Thread& t) {
                 else { t.dead = true; return; }
                 break;
             }
-            case 0x10063000: {                                                // start/call variant (absent from TAK data; stack-safe)
+            case 0x10063000: {                                                // start/call variant (absent from TA data; stack-safe)
                 int32_t nparams = arg(1);
                 for (int i = 0; i < nparams; ++i) pop(t);
                 t.pc += 3; break;
@@ -653,4 +653,4 @@ void Vm::run(Thread& t) {
     }
 }
 
-} // namespace tak::cob
+} // namespace ta::cob

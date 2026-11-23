@@ -46,7 +46,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 namespace {
 int failures=0,cases=0;
 void check(bool ok,const std::string& label,const std::string& detail={}) {

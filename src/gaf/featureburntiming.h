@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <map>
 
-namespace tak::gaf {
+namespace ta::gaf {
 // Gameplay and data-hash callers share asset resolution. Pixel-only reskins
 // remain cosmetic; the duration that controls feature replacement does not.
 class FeatureBurnTiming {
@@ -50,4 +50,4 @@ public:
     // runs out (495ef7). 0: no such sequence, so it is replaced at once.
     uint32_t dieDuration(const tdf::Node& definition) { return body(definition,"seqnamedie"); }
 };
-} // namespace tak::gaf
+} // namespace ta::gaf

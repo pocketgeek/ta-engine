@@ -11,7 +11,7 @@
 #include "sim/sim.h"
 #include <cstdio>
 #include <vector>
-using namespace tak;
+using namespace ta;
 
 namespace {
 int failures=0;

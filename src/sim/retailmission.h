@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Primary order dispatcher (4d8450), independent of individual order handlers.
 // The host owns the queue and controller lifetimes. This is not the campaign
@@ -333,4 +333,4 @@ void retailDispatchMissions(uint32_t tick, uint32_t& unitEvents, Host& host) {
     }
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

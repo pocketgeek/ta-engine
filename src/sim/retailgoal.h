@@ -7,7 +7,7 @@
 #include <bit>
 #include <utility>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 4e2500: constructor stores world tolerance and a separately rounded cell
 // radius. Preserve 32-bit multiply/add and signed truncating division.
@@ -106,4 +106,4 @@ struct RetailRingGoal {
     }
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

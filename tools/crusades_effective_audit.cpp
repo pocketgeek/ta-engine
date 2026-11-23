@@ -32,7 +32,7 @@ static std::string escape(const std::string& s) {
         else if(c=='\r')out+="\\r";else if(c=='\n')out+="\\n";else out+=c;
     }return out;
 }
-static void weapon(Fields& fields,const std::string& id,const std::string& prefix,const tak::sim::Weapon& w) {
+static void weapon(Fields& fields,const std::string& id,const std::string& prefix,const ta::sim::Weapon& w) {
     auto add=[&](const char* key,auto v){fields[{prefix+key,id}]=value(v);};
 #define W(member) add(#member,w.member)
     W(range);W(reload);W(switchReloadTicks);W(damage);W(projVel);W(subSteps);
@@ -49,8 +49,8 @@ static void weapon(Fields& fields,const std::string& id,const std::string& prefi
     for(const auto& [category,amount]:w.dmgVs)
         fields[{prefix+"damageCategory/"+category,id}]=value(amount);
 }
-static Fields dump(const tak::hpi::Vfs& vfs,bool cb,const std::set<std::string>& builders) {
-    tak::sim::TypeRegistry reg;tak::sim::setupRegistry(reg,vfs,cb);Fields result;
+static Fields dump(const ta::hpi::Vfs& vfs,bool cb,const std::set<std::string>& builders) {
+    ta::sim::TypeRegistry reg;ta::sim::setupRegistry(reg,vfs,cb);Fields result;
     if(reg.types().empty())throw std::runtime_error("no loaded unit types");
     for(const auto& [id,t]:reg.types()) {
         auto add=[&](const char* key,auto v){result[{std::string("unit/")+key,id}]=value(v);};
@@ -98,8 +98,8 @@ int main(int argc,char** argv) {
     if(argc!=2){std::cerr<<"usage: crusades_effective_audit RETAIL_ROOT\n";return 2;}
     SDL_SetMainReady();
     try {
-        auto mounts=tak::hpi::mountRetailRoot(argv[1]);
-        tak::hpi::Vfs vfs(&mounts,true);std::set<std::string> builders;
+        auto mounts=ta::hpi::mountRetailRoot(argv[1]);
+        ta::hpi::Vfs vfs(&mounts,true);std::set<std::string> builders;
         if(vfs.list("unitscb").empty())throw std::runtime_error("no Crusades unit roster");
         // Retail builds every menu from canbuild/ in both modes (it never reads
         // canbuildcb/); Crusades changes the roster those menus are filtered by.

@@ -34,7 +34,7 @@
 #include <optional>
 #include <vector>
 
-namespace tak::srv {
+namespace ta::srv {
 
 class OrderInbox {
 public:
@@ -160,4 +160,4 @@ private:
     uint32_t droppedSerial_ = 0;
 };
 
-}  // namespace tak::srv
+}  // namespace ta::srv

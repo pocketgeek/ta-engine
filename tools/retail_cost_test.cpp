@@ -5,7 +5,7 @@
 #include "sim/sim.h"
 #include <iostream>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static RetailCostSearch::Costs costs(const World& world,const Unit& unit) { return world.searchCosts(unit); }
 };
@@ -18,7 +18,7 @@ static void word(uint64_t& hash, uint32_t value) {
 }
 
 int main(int argc, char** argv) {
-    using tak::sim::RetailCostSearch;
+    using ta::sim::RetailCostSearch;
     if (argc == 2 && std::string(argv[1]) == "--reachability") {
         int w,h,sx,sz,sw,sh,tx,tz,tw,th,mode,limited;
         while (std::cin >> w >> h >> sx >> sz >> sw >> sh >> tx >> tz >> tw >> th >> mode >> limited) {
@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
             std::vector<int> cells(size_t(w)*h);
             for (int& value:cells) std::cin >> value;
             if (!std::cin) return 2;
-            std::cout << tak::sim::retailRectangleReachable(w,h,sx,sz,sw,sh,tx,tz,tw,th,
+            std::cout << ta::sim::retailRectangleReachable(w,h,sx,sz,sw,sh,tx,tz,tw,th,
                 mode!=0,limited!=0,[&](int x,int z) { return cells[size_t(z)*w+x]; }) << '\n';
         }
         return 0;
@@ -37,16 +37,16 @@ int main(int argc, char** argv) {
         const bool worldCosts=std::string(argv[1])=="--world-costs";
         int turn, foot, road, water, flags, heavy;
         while (std::cin >> turn >> foot >> road >> water >> flags >> heavy) {
-            auto costs = tak::sim::retailPathCosts(uint16_t(turn), foot, road, water, uint16_t(flags), heavy != 0);
+            auto costs = ta::sim::retailPathCosts(uint16_t(turn), foot, road, water, uint16_t(flags), heavy != 0);
             if (worldCosts) {
                 int floater,minimum,maximum;
                 if (!(std::cin>>floater>>minimum>>maximum)) return 2;
-                tak::sim::World world;tak::sim::UnitType type;tak::sim::Unit unit;
+                ta::sim::World world;ta::sim::UnitType type;ta::sim::Unit unit;
                 type.turnRate=turn;type.footX=type.footZ=foot;
-                type.roadMult=tak::sim::Fixed::raw(road);type.waterMult=tak::sim::Fixed::raw(water);
+                type.roadMult=ta::sim::Fixed::raw(road);type.waterMult=ta::sim::Fixed::raw(water);
                 type.floater=floater!=0;type.minWaterDepth=minimum;type.maxWaterDepth=maximum;
                 unit.type=&type;unit.groundTerrainFlags=uint16_t(flags);
-                costs=tak::sim::RetailReplayProbe::costs(world,unit);
+                costs=ta::sim::RetailReplayProbe::costs(world,unit);
             }
             for (int value : costs.turn) std::cout << value << ' ';
             std::cout << costs.ground << ' ' << costs.road << ' ' << costs.slope << ' ' << costs.traffic
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
         for (int& value : search.costs.turn) std::cin >> value;
         std::cin >> search.costs.ground >> search.costs.road >> search.costs.slope >> search.costs.traffic
                  >> search.costs.shortTurn >> search.costs.minStraight;
-        auto distance = [&](int x, int z) { return tak::sim::retailGoalDistance(x-gx, z-gz, tolerance); };
+        auto distance = [&](int x, int z) { return ta::sim::retailGoalDistance(x-gx, z-gz, tolerance); };
         search.reset(width, height, start, direction, distance(start % width, start / width), weight);
         std::vector<int> grades(size_t(width) * height);
         for (size_t i = 0; i < grades.size(); ++i) {

@@ -10,7 +10,7 @@
 #include <set>
 #include <cstdio>
 #include <stdexcept>
-using namespace tak::sim;
+using namespace ta::sim;
 namespace {
 int failures=0;
 // Retail by default; --legion selects Legion.
@@ -298,12 +298,12 @@ uint64_t groupPatrol(PathfindingMode mode,bool serial) {
 // ---- Shift-queued player orders ----------------------------------------
 // Each order arrives through applyCommand exactly as the client sends it
 // (queue=1 is Shift), and must run after everything queued before it.
-void send(World& w,tak::net::Cmd kind,int id,float x,float z,bool queue,int target=0) {
+void send(World& w,ta::net::Cmd kind,int id,float x,float z,bool queue,int target=0) {
     static const TypeRegistry none;
-    tak::net::Command c;c.kind=kind;c.player=uint8_t(w.unit(id)->player);c.unitId=id;
+    ta::net::Command c;c.kind=kind;c.player=uint8_t(w.unit(id)->player);c.unitId=id;
     c.x=x;c.z=z;c.queue=queue;c.targetId=target;
     // Over the wire first: the Shift flag must survive the command encoding.
-    tak::net::Writer out;out.cmd(c);tak::net::Reader in(out.b.data(),out.b.size());
+    ta::net::Writer out;out.cmd(c);ta::net::Reader in(out.b.data(),out.b.size());
     const auto wire=in.cmd();
     if(!in.ok||wire.kind!=kind||wire.queue!=uint8_t(queue)||wire.targetId!=target) {
         check(false,"a queued order survives the command encoding");return;
@@ -336,7 +336,7 @@ std::vector<int> route(World& w,int id,const std::vector<std::pair<float,float>>
     return seen;
 }
 void queuedMoves(PathfindingMode mode) {
-    using tak::net::Cmd;
+    using ta::net::Cmd;
     {   // Move, then two Shift-moves: three legs in order, then idle at the last.
         World w;setup(w,mode);auto type=soldier();const int id=w.spawn(&type,320,320,0,0);
         send(w,Cmd::Move,id,1200,320,false);send(w,Cmd::Move,id,1200,1200,true);send(w,Cmd::Move,id,320,1200,true);
@@ -461,7 +461,7 @@ std::vector<int> flyRoute(World& w,int id,const std::vector<std::pair<float,floa
     return seen;
 }
 void queuedFlyerPatrols(PathfindingMode mode) {
-    using tak::net::Cmd;
+    using ta::net::Cmd;
     const std::vector<std::pair<float,float>> square{{320,320},{1200,320},{1200,1200},{320,1200}};
     const struct {bool weapon,builder;const char* name;} kinds[]{
         {false,false,"unarmed flyer"},{true,false,"armed flyer"},{false,true,"flying builder"}};
@@ -502,7 +502,7 @@ void queuedFlyerPatrols(PathfindingMode mode) {
 // point per click (Legion packs it into arrival slots), and every leg is
 // a group leg when it becomes current.
 uint64_t queuedGroupMoves(PathfindingMode mode,bool serial) {
-    using tak::net::Cmd;
+    using ta::net::Cmd;
     World w;setup(w,mode,serial);auto type=soldier();std::vector<int> ids;
     for(int i=0;i<12;++i)ids.push_back(w.spawn(&type,float(240+i%3*48),float(320+i/3*48),0,0));
     const bool shared=mode==PathfindingMode::Legion;
@@ -534,11 +534,11 @@ uint64_t queuedGroupMoves(PathfindingMode mode,bool serial) {
     return w.stateHash();
 }
 void mazeProduction(const char* data) {
-    auto vfs=tak::hpi::mountRetailRoot(data);
+    auto vfs=ta::hpi::mountRetailRoot(data);
     TypeRegistry registry;setupRegistry(registry,vfs,true);
     constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
-    auto generated=tak::mapgen::generate(tak::mapgen::decodeMapId(recipe),vfs);
-    auto files=std::make_shared<tak::hpi::Vfs::Files>();(*files)["maps/orders-maze.tnt"]=generated.map.save();vfs.setMapFiles(files);
+    auto generated=ta::mapgen::generate(ta::mapgen::decodeMapId(recipe),vfs);
+    auto files=std::make_shared<ta::hpi::Vfs::Files>();(*files)["maps/orders-maze.tnt"]=generated.map.save();vfs.setMapFiles(files);
     for(bool mobile:{false,true})for(bool rally:{false,true}) {
         World w;w.setSerialThreads(true);
         MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath="maps/orders-maze.tnt";cfg.loadCrt=false;
@@ -568,7 +568,7 @@ void mazeProduction(const char* data) {
         check(stopped&&built==16&&idle==built,"all Hunters finish production exit/rally moves on the actual 64x64 maze");
     }
 }
-uint64_t trollRally(const TypeRegistry& registry,bool serial,const tak::hpi::Vfs* maze=nullptr,int count=100) {
+uint64_t trollRally(const TypeRegistry& registry,bool serial,const ta::hpi::Vfs* maze=nullptr,int count=100) {
     World w;w.setSerialThreads(serial);
     if(maze) {
         MatchConfig cfg;cfg.vfs=maze;cfg.mapPath="maps/orders-troll-maze.tnt";cfg.loadCrt=false;
@@ -613,7 +613,7 @@ uint64_t trollRally(const TypeRegistry& registry,bool serial,const tak::hpi::Vfs
 // `open`: only the open-ground cohorts. `maze`: only the generated-maze
 // cohort, serial and threaded.
 void trollProduction(const char* data,bool open=false,bool mazeOnly=false) {
-    auto vfs=tak::hpi::mountRetailRoot(data);
+    auto vfs=ta::hpi::mountRetailRoot(data);
     for(bool crusades:{false,true}) {
         TypeRegistry registry;setupRegistry(registry,vfs,crusades);
         if(mazeOnly&&!crusades)continue;
@@ -627,8 +627,8 @@ void trollProduction(const char* data,bool open=false,bool mazeOnly=false) {
                 check(large==trollRally(registry,false,nullptr,256),"256-Troll arrivals match serial and threaded preparation");
             }
             constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
-            auto generated=tak::mapgen::generate(tak::mapgen::decodeMapId(recipe),vfs);
-            auto files=std::make_shared<tak::hpi::Vfs::Files>();(*files)["maps/orders-troll-maze.tnt"]=generated.map.save();
+            auto generated=ta::mapgen::generate(ta::mapgen::decodeMapId(recipe),vfs);
+            auto files=std::make_shared<ta::hpi::Vfs::Files>();(*files)["maps/orders-troll-maze.tnt"]=generated.map.save();
             if(!open) {
                 vfs.setMapFiles(files);
                 const auto serial=trollRally(registry,true,&vfs);

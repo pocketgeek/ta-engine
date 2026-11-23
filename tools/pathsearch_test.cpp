@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static bool counts(const PathService& service) {
         std::array<int,10> pending{},priority{};

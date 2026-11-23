@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-using namespace tak::net;
+using namespace ta::net;
 
 static int g_fail = 0, g_checks = 0;
 static void check(bool cond, const char* what) {

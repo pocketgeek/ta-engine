@@ -22,7 +22,7 @@
 #include <set>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 
 int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: aitool <install> [map] [defensive|easy|normal|hard|absurd|absurdly-defensive|retail] [seconds] [standard|crusades]\n"); return 2; }
@@ -49,18 +49,18 @@ int main(int argc, char** argv) {
     sim::MatchConfig cfg;
     cfg.vfs = &vfs;
     cfg.mapPath = hpi::findMap(vfs, map);
-    // The lobby's default per-player unit cap; TAK_UNIT_CAP overrides (0 = none).
-    cfg.unitCap = std::getenv("TAK_UNIT_CAP") ? std::atoi(std::getenv("TAK_UNIT_CAP")) : 2000;
+    // The lobby's default per-player unit cap; TA_UNIT_CAP overrides (0 = none).
+    cfg.unitCap = std::getenv("TA_UNIT_CAP") ? std::atoi(std::getenv("TA_UNIT_CAP")) : 2000;
     if (cfg.mapPath.empty()) { std::fprintf(stderr, "aitool: map '%s' not found\n", map.c_str()); return 1; }
-    // Slot 0 = opponent (idle, or a 2nd AI under TAK_2AI), slot 1 = the AI under test.
+    // Slot 0 = opponent (idle, or a 2nd AI under TA_2AI), slot 1 = the AI under test.
     // Only AI slots receive the difficulty income multiplier.
-    // TAK_FACTION=0..4 (ara/tar/ver/zon/cre) sets the AI-under-test's faction (default
+    // TA_FACTION=0..4 (ara/tar/ver/zon/cre) sets the AI-under-test's faction (default
     // 1 = Taros) so each faction's AI can be exercised.
     float mm = ai::incomeMultFor(diff);
     int fac = 1;
-    if (const char* fe = std::getenv("TAK_FACTION")) fac = std::clamp(std::atoi(fe), 0, 4);
+    if (const char* fe = std::getenv("TA_FACTION")) fac = std::clamp(std::atoi(fe), 0, 4);
     cfg.slots = {{true, 0, 0, 1.0f}, {true, fac, 1, mm, true, ai::defensiveLevel(diff)}};
-    if (std::getenv("TAK_2AI")) { cfg.slots[0].manaMult=mm;cfg.slots[0].automaticGates=true;
+    if (std::getenv("TA_2AI")) { cfg.slots[0].manaMult=mm;cfg.slots[0].automaticGates=true;
         cfg.slots[0].defensiveAi=ai::defensiveLevel(diff); }
     auto spots = sim::setupMatch(w, reg, cfg);
     std::vector<std::pair<float, float>> enemyStarts;
@@ -86,10 +86,10 @@ int main(int argc, char** argv) {
 
     // Controlled path test: spawn a knight at the AI base, order it straight at the
     // enemy base, and watch it travel -- isolates long-range nav from the AI logic.
-    if (std::getenv("TAK_PATHTEST")) {
+    if (std::getenv("TA_PATHTEST")) {
         const sim::UnitType* kt = reg.find("tarknigh");
         int id = w.spawn(kt, spots[1].first, spots[1].second, 0, 1);
-        bool am = std::getenv("TAK_PATHTEST_MOVE") == nullptr;   // default: attackMove (what the AI uses)
+        bool am = std::getenv("TA_PATHTEST_MOVE") == nullptr;   // default: attackMove (what the AI uses)
         if (am) w.attackMove(id, ex, ez, false); else w.order(id, ex, ez, false);
         std::printf("PATHTEST (%s): knight %d from (%.0f,%.0f) -> (%.0f,%.0f)\n",
                     am ? "attackMove" : "move", id, spots[1].first, spots[1].second, ex, ez);
@@ -107,11 +107,11 @@ int main(int argc, char** argv) {
     }
 
     ai::Controller ctl(1, reg, profile, 0x1234, diff, enemyStarts);
-    // TAK_2AI: put a second AI on player 0 (instead of an idle opponent) so we can see
+    // TA_2AI: put a second AI on player 0 (instead of an idle opponent) so we can see
     // whether two active AIs actually fight -- the realistic case.
     std::vector<std::pair<float, float>> starts0;
     if (!spots.empty()) starts0.push_back(spots[1]);   // AI-1's base is AI-0's enemy
-    bool twoAi = std::getenv("TAK_2AI") != nullptr;
+    bool twoAi = std::getenv("TA_2AI") != nullptr;
     ai::Controller ctl0(0, reg, profile, 0x5678, diff, starts0);
     std::map<int, int> cmdCount;   // Cmd kind -> count
     int fullSeconds = 0;           // seconds the AI's store sat at 90% or more
@@ -124,12 +124,12 @@ int main(int argc, char** argv) {
                 if (u->type->domain==sim::UnitType::Domain::Water) ++navalAttacks;
                 if (u->type->domain==sim::UnitType::Domain::Hover) ++amphibiousAttacks;
             }
-        if (std::getenv("TAK_AI_PICK") && c.kind==net::Cmd::Build)
+        if (std::getenv("TA_AI_PICK") && c.kind==net::Cmd::Build)
             std::fprintf(stderr,"    BUILD %s by #%d at (%.2f,%.2f)\n",c.type,c.unitId,c.x,c.z);
         sim::applyCommand(w, reg, c);
         // Did the sim take the order? A Build it refuses leaves the builder idle,
         // and the AI re-issues the same pick next think.
-        if (std::getenv("TAK_AI_PICK") && c.kind==net::Cmd::Build)
+        if (std::getenv("TA_AI_PICK") && c.kind==net::Cmd::Build)
             if (const auto* u=w.unit(c.unitId))
                 std::fprintf(stderr,"      -> orders=%zu site=%d\n",u->orders.size(),u->buildSiteId);
     };
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
                     "unfinished=%d fullsecs=%d cap=%d\n",
                     t, income, mana, w.player(1).manaCapacity(), units, structs, units - structs, builders,
                     unfinished, fullSeconds, w.unitCap());
-        if (std::getenv("TAK_AI_ECON")) {
+        if (std::getenv("TA_AI_ECON")) {
             // Where is the income going? Dump every under-construction site and every
             // builder's job so we can see a stalled/over-expensive build freezing the economy.
             for (const auto& u : w.units()) {
@@ -198,7 +198,7 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        if (std::getenv("TAK_AI_UNITS"))
+        if (std::getenv("TA_AI_UNITS"))
             for (const auto& u : w.units())
                 if (u.alive() && u.player == 1 && u.type && u.type->canMove && !u.type->isBuilder) {
                     float d = std::sqrt((u.x.toFloat() - ex) * (u.x.toFloat() - ex) + (u.z.toFloat() - ez) * (u.z.toFloat() - ez));
@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
     };
 
     const float dt = 1.0f / 30.0f;
-    const int reportEvery = std::getenv("TAK_AI_EVERY") ? std::max(1, std::atoi(std::getenv("TAK_AI_EVERY"))) : 30;
+    const int reportEvery = std::getenv("TA_AI_EVERY") ? std::max(1, std::atoi(std::getenv("TA_AI_EVERY"))) : 30;
     int totalTicks = seconds * 30;
     std::printf("=== AI %s on '%s' (enemy start %.0f,%.0f) ===\n", dstr.c_str(), map.c_str(), ex, ez);
     for (int t = 0; t < totalTicks; ++t) {

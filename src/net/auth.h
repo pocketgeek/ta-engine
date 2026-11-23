@@ -57,7 +57,7 @@
 
 #include "net/crypto.h"
 
-namespace tak::auth {
+namespace ta::auth {
 
 // PBKDF2 work factor. The CLIENT pays this on each login (the server does zero
 // PBKDF2 work, which is one of SCRAM's nice properties -- a login flood cannot
@@ -148,4 +148,4 @@ crypto::Digest tokenHash(const Credential& c, std::string_view user,
 // displayed.
 std::string foldUsername(std::string_view u);
 
-}  // namespace tak::auth
+}  // namespace ta::auth

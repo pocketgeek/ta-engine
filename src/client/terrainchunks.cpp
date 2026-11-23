@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace tak {
+namespace ta {
 namespace {
 // Resident images plus free texture slots: 40% of the player's GPU MEMORY LIMIT, from
 // 256 MiB up to 2 GiB (UNLIMITED: 2 GiB) -- 512 MiB at the 1.25 GiB default. A typical

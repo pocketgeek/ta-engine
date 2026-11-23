@@ -3,7 +3,7 @@
 #include "hpi/hpi.h"
 #include <stdexcept>
 
-namespace tak::gaf {
+namespace ta::gaf {
 inline std::vector<uint16_t> animationTiming(const hpi::Vfs& vfs, const std::string& name) {
     if (name.empty()) return {};
     for (const char* suffix : {"_4444.taf", "_1555.taf", ".taf", ".gaf"}) {
@@ -19,4 +19,4 @@ inline std::vector<uint16_t> animationTiming(const hpi::Vfs& vfs, const std::str
     }
     return {};
 }
-} // namespace tak::gaf
+} // namespace ta::gaf

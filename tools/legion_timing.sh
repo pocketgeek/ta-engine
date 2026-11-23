@@ -7,21 +7,21 @@
 #                          [--cmd 'TEMPLATE'] [--threshold-ms 4.17]
 #   tools/legion_timing.sh --check-idle CPUS      (exit 0 when every listed core is <= 2% busy)
 #
-# BIN is an optimized-Debug takclient (the `replay` keyword and TAK_PHASE are debug-only). The default
-# workload is `BIN replay FILE --data DIR` with TAK_REPLAY_VERIFY=1 (unpaced) and TAK_PHASE=1
-# TAK_PHASE_MS=0, one SIMPHASE line per tick; --cmd replaces it ({BIN} stands for the binary, which gets
+# BIN is an optimized-Debug taclient (the `replay` keyword and TA_PHASE are debug-only). The default
+# workload is `BIN replay FILE --data DIR` with TA_REPLAY_VERIFY=1 (unpaced) and TA_PHASE=1
+# TA_PHASE_MS=0, one SIMPHASE line per tick; --cmd replaces it ({BIN} stands for the binary, which gets
 # the same environment). A replay only plays back exactly on the build that recorded it; after a behaviour
 # change it diverges and its commands still play, so the timing remains a realistic workload, not a result.
 #
 # Rules the audit paid for (IN-08): a core that is busy with anything else spread the audited "+-50%"
 # noise; a busy loop on the same core reproduces it column for column, and an idle core gave 2/2/2/2
 # ticks over budget. So the script REFUSES a core that was more than 2% busy over the last second, and it
-# re-checks before every run. On a shared host the limit can be raised with TAK_MAX_BUSY_PCT=N; the
+# re-checks before every run. On a shared host the limit can be raised with TA_MAX_BUSY_PCT=N; the
 # numbers are then not comparable with an idle-core run and the report says so. The over-threshold count is ill-conditioned at the knee (the audit's
 # 236-644 spread), so it is printed only when the threshold is more than 20% away from the run's p95.
 set -u
-check_idle() {  # $1 = cpu list (e.g. 22-23 or 5); TAK_MAX_BUSY_PCT overrides the 2% limit (reported when it does)
-  python3 - "$1" "${TAK_MAX_BUSY_PCT:-2}" <<'PY'
+check_idle() {  # $1 = cpu list (e.g. 22-23 or 5); TA_MAX_BUSY_PCT overrides the 2% limit (reported when it does)
+  python3 - "$1" "${TA_MAX_BUSY_PCT:-2}" <<'PY'
 import sys,time
 def parse(spec):
     out=[]
@@ -47,7 +47,7 @@ PY
 }
 if [ "${1:-}" = "--check-idle" ]; then check_idle "${2:?cpu list}"; exit $?; fi
 
-A=""; B=""; CPU=5; RUNS=4; REPLAY=""; DATA=${TAK_DATA:-assets/game}; CMD=""; THRESH=4.17
+A=""; B=""; CPU=5; RUNS=4; REPLAY=""; DATA=${TA_DATA:-assets/game}; CMD=""; THRESH=4.17
 while [ $# -gt 0 ]; do
   case "$1" in
     --a) A=$2; shift 2;; --b) B=$2; shift 2;; --cpu) CPU=$2; shift 2;; --runs) RUNS=$2; shift 2;;
@@ -68,11 +68,11 @@ for i in $(seq 1 "$RUNS"); do
     bin=$A; [ $who = B ] && bin=$B
     check_idle "$CPU" || { echo "run $i $who: core $CPU not idle" >&2; exit 3; }
     cmd=${CMD//\{BIN\}/$bin}
-    TAK_REPLAY_VERIFY=1 TAK_PHASE=1 TAK_PHASE_MS=0 XDG_DATA_HOME="$work/xdg" TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy \
+    TA_REPLAY_VERIFY=1 TA_PHASE=1 TA_PHASE_MS=0 XDG_DATA_HOME="$work/xdg" TA_HEADLESS=1 SDL_VIDEODRIVER=dummy \
       taskset -c "$CPU" bash -c "$cmd" > "$work/$who.$i.log" 2>&1
   done
 done
-python3 - "$work" "$RUNS" "$THRESH" "${TAK_MAX_BUSY_PCT:-2}" <<'PY'
+python3 - "$work" "$RUNS" "$THRESH" "${TA_MAX_BUSY_PCT:-2}" <<'PY'
 import re,sys,statistics
 work,runs,thresh=sys.argv[1],int(sys.argv[2]),float(sys.argv[3])
 limit=float(sys.argv[4])
@@ -101,7 +101,7 @@ def line(who):
     else:
         out+=f" | ticks over {thresh} ms not reported: the threshold is within 20% of this run's p95 ({p95:.2f} ms)"
     return out
-if limit!=2.0: print(f'NOTE: busy limit raised to {limit:g}% (TAK_MAX_BUSY_PCT); not comparable with an idle-core run')
+if limit!=2.0: print(f'NOTE: busy limit raised to {limit:g}% (TA_MAX_BUSY_PCT); not comparable with an idle-core run')
 print(line('A')); print(line('B'))
 ma=statistics.median([x[0] for x in res['A']]); mb=statistics.median([x[0] for x in res['B']])
 print(f"B/A mean (median of runs) {mb/ma:.3f}   [wall time is reported, never gated]")

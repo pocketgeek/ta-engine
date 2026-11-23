@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail group records (player+0x84, 99 records of 0xc4 bytes). 51b890
 // rebuilds the aggregates every tick before 51d3e0 runs missions and movers.
@@ -419,4 +419,4 @@ inline int32_t retailGroupSpeedCap(int32_t group,int32_t own,int32_t typeMaximum
     return int32_t((int64_t(ratio)*group)>>16);
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

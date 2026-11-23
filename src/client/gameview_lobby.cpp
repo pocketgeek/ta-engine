@@ -24,7 +24,7 @@ std::string defaultGameName(const std::string& player) {
     for (unsigned char ch : player) if (ch >= 0x20 && ch <= 0x7e) name += char(ch);
     if (name.empty()) name = "Player";
     name += "'s Game";
-    if (name.size() > tak::net::kRoomNameMax) name.resize(tak::net::kRoomNameMax);
+    if (name.size() > ta::net::kRoomNameMax) name.resize(ta::net::kRoomNameMax);
     return name;
 }
 }  // namespace
@@ -32,10 +32,10 @@ std::string defaultGameName(const std::string& player) {
     bool GameView::inLobbyPhase() const {
         if (!mp_ || mpSetupDone_) return false;
         auto s = mp_->state();
-        return s == tak::net::MpClient::State::Connecting ||
-               s == tak::net::MpClient::State::Lobby ||
-               s == tak::net::MpClient::State::InRoom ||
-               s == tak::net::MpClient::State::Done;
+        return s == ta::net::MpClient::State::Connecting ||
+               s == ta::net::MpClient::State::Lobby ||
+               s == ta::net::MpClient::State::InRoom ||
+               s == ta::net::MpClient::State::Done;
     }
 
     int GameView::geomSlot(int id) const {
@@ -57,16 +57,16 @@ std::string defaultGameName(const std::string& player) {
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         float cx = winW / 2.0f;
         // Titled as the door that opens it (PlayComputer's and PlayPlayer's captions).
-        const char* title = modsScreen_ && mp_ && mp_->state() == tak::net::MpClient::State::InRoom ? "MODS"
+        const char* title = modsScreen_ && mp_ && mp_->state() == ta::net::MpClient::State::InRoom ? "MODS"
                           : singlePlayer_ ? "PLAY THE MACHINE" : "PLAY AN OPPONENT";
         blockText(title, cx - blockWidth(title, 2.6f) / 2, 24, 2.6f, {210, 200, 150, 255});
         if (!mp_) return;
         auto st = mp_->state();
-        if (st == tak::net::MpClient::State::Connecting) {
+        if (st == ta::net::MpClient::State::Connecting) {
             blockText("CONNECTING TO SERVER...", cx - 120, winH / 2.0f, 2.0f, {200, 200, 210, 255});
             return;
         }
-        if (st == tak::net::MpClient::State::Done) {
+        if (st == ta::net::MpClient::State::Done) {
             // Connection over (server closed / rejected us / timed out): say WHY --
             // MpClient preserves the server's Reject reason (e.g. "protocol version
             // mismatch (server 28 / client 29)") -- and give the player a way OUT.
@@ -78,11 +78,11 @@ std::string defaultGameName(const std::string& player) {
                              : why == "the host closed the game" ? "GAME CLOSED" : "DISCONNECTED";
             blockText(head, cx - blockWidth(head, 2.6f) / 2, my, 2.6f, {255, 130, 110, 255});
             // Long reasons (version-mismatch text) wrap onto two centred lines.
-            auto rows = tak::uiTextWrap(why, 1.8f, 600);
+            auto rows = ta::uiTextWrap(why, 1.8f, 600);
             const std::string l1 = rows[0];
             std::string l2;
             for (size_t k = 1; k < rows.size(); ++k) l2 += (k > 1 ? " " : "") + rows[k];
-            l2 = tak::uiTextFit(l2, 1.8f, 600);
+            l2 = ta::uiTextFit(l2, 1.8f, 600);
             blockText(l1, cx - blockWidth(l1, 1.8f) / 2, my + 34, 1.8f, {215, 218, 228, 255});
             if (!l2.empty())
                 blockText(l2, cx - blockWidth(l2, 1.8f) / 2, my + 56, 1.8f, {215, 218, 228, 255});
@@ -92,18 +92,18 @@ std::string defaultGameName(const std::string& player) {
             return;
         }
         // Someone else's LOCAL SERVER: into its open game, never the game list.
-        if (st == tak::net::MpClient::State::Lobby && mp_->lanServer() && !lanHost_) {
+        if (st == ta::net::MpClient::State::Lobby && mp_->lanServer() && !lanHost_) {
             lanJoinStep();
-            if (mp_->state() == tak::net::MpClient::State::Lobby) {
+            if (mp_->state() == ta::net::MpClient::State::Lobby) {
                 const char* note = lanWaitingStart_ ? "WAITING FOR THE GAME TO START..." : "JOINING THE GAME...";
                 blockText(note, cx - blockWidth(note, 2.0f) / 2, winH / 2.0f, 2.0f, {200, 200, 210, 255});
             }
             return;
         }
-        if (st != tak::net::MpClient::State::InRoom) modsScreen_ = false;   // left the room: back to it next time
-        if (st != tak::net::MpClient::State::InRoom) lanLeavePrompt_ = false;
-        if (st != tak::net::MpClient::State::InRoom) closeMapPicker();   // the panel goes with the room
-        if (st == tak::net::MpClient::State::InRoom) {
+        if (st != ta::net::MpClient::State::InRoom) modsScreen_ = false;   // left the room: back to it next time
+        if (st != ta::net::MpClient::State::InRoom) lanLeavePrompt_ = false;
+        if (st != ta::net::MpClient::State::InRoom) closeMapPicker();   // the panel goes with the room
+        if (st == ta::net::MpClient::State::InRoom) {
             roomStep();   // the room's reactions run while MODS is open too
             // Under the CHANGE MAP panel or the LAN leave prompt nothing of the room lights up.
             lobbyModal_ = picker_.open || lanLeavePrompt_;
@@ -111,13 +111,13 @@ std::string defaultGameName(const std::string& player) {
             lobbyModal_ = false;
             if (picker_.open) drawMapPicker(winW, winH);   // the CHANGE MAP panel, over the room
             if (lanLeavePrompt_) drawLanLeavePrompt(winW, winH);
-            if (!roomShotPath_.empty()) roomShotCapture();   // TAK_ROOM_SCRIPT shot:, as drawn
+            if (!roomShotPath_.empty()) roomShotCapture();   // TA_ROOM_SCRIPT shot:, as drawn
         }
         // A room-first session has no game list: its room is on its way, or could not open.
         else if (singlePlayer_ || lanHost_) drawRoomOpening(winW, winH);
         else {
             drawBrowser(winW, winH);
-            if (!roomShotPath_.empty()) roomShotCapture();   // TAK_ROOM_SCRIPT shot:, as drawn
+            if (!roomShotPath_.empty()) roomShotCapture();   // TA_ROOM_SCRIPT shot:, as drawn
         }
     }
 
@@ -133,9 +133,9 @@ std::string defaultGameName(const std::string& player) {
         } else {
             const char* head = "CANNOT OPEN A GAME";
             blockText(head, cx - blockWidth(head, 2.6f) / 2, my, 2.6f, {255, 130, 110, 255});
-            const auto rows = tak::uiTextWrap(why, 1.8f, 600);
+            const auto rows = ta::uiTextWrap(why, 1.8f, 600);
             for (size_t k = 0; k < rows.size() && k < 2; ++k) {
-                const std::string line = k == 1 && rows.size() > 2 ? tak::uiTextFit(rows[1] + " " + rows[2], 1.8f, 600) : rows[k];
+                const std::string line = k == 1 && rows.size() > 2 ? ta::uiTextFit(rows[1] + " " + rows[2], 1.8f, 600) : rows[k];
                 blockText(line, cx - blockWidth(line, 1.8f) / 2, my + 34 + 22 * float(k), 1.8f, {215, 218, 228, 255});
             }
         }
@@ -149,7 +149,7 @@ std::string defaultGameName(const std::string& player) {
     int GameView::lanOthersInRoom() const {
         const auto& room = mp_->room();
         int n = 0;
-        for (int i = 0; i < tak::net::kMaxSlots; ++i) n += i != room.mySlot && room.slots[i].type == 1;
+        for (int i = 0; i < ta::net::kMaxSlots; ++i) n += i != room.mySlot && room.slots[i].type == 1;
         return n;
     }
 
@@ -157,7 +157,7 @@ std::string defaultGameName(const std::string& player) {
         mp_->leaveGame();
         mpReadied_ = false; mpStarted_ = false;
         lanLeavePrompt_ = false;
-        tak::crypto::wipe(roomPass_);   // the room's password goes with the room
+        ta::crypto::wipe(roomPass_);   // the room's password goes with the room
         roomPassShown_ = false;
         // Whatever room comes next (this one again too) is seen afresh: nothing it shows
         // first is a change.
@@ -207,7 +207,7 @@ std::string defaultGameName(const std::string& player) {
                 if (!g.running) { lanWaitingStart_ = true; continue; }
                 roomKind_ = RoomKind::Multiplayer; rememberRoom_ = lobbyAutoMode_ == 0;
                 mp_->spectate(g.id, joinPass_);
-                tak::crypto::wipe(joinPass_);
+                ta::crypto::wipe(joinPass_);
                 lanJoinSent_ = true;
                 return;
             }
@@ -215,7 +215,7 @@ std::string defaultGameName(const std::string& player) {
             roomKind_ = RoomKind::Multiplayer; rememberRoom_ = lobbyAutoMode_ == 0;
             mp_->joinGame(g.id, joinPass_);
             roomPassAsked_ = joinPass_;   // the room shows it behind SHOW / HIDE (roomPasswordStep)
-            tak::crypto::wipe(joinPass_);
+            ta::crypto::wipe(joinPass_);
             lanJoinSent_ = true;
             return;
         }
@@ -253,9 +253,9 @@ std::string defaultGameName(const std::string& player) {
             SDL_SetRenderDrawColor(ren_, hot ? 46 : 30, hot ? 52 : 34, hot ? 72 : 44, 255);
             SDL_RenderFillRectF(ren_, &row);
             // A name is up to 32 bytes: shrunk (on its baseline) before it is cut.
-            const float namePx = tak::uiTextFitPx(g.name, 1.8f, kNameW, 1.4f);
-            blockText(tak::uiTextFit(g.name, namePx, kNameW), x + 8, y + 8 + 7 * (1.8f - namePx), namePx, {225, 228, 236, 255});
-            blockText(tak::uiTextFit(mapTitle(g.mapId), 1.6f, w - 262 - kMapX), x + kMapX, y + 8, 1.6f, {180, 185, 195, 255});
+            const float namePx = ta::uiTextFitPx(g.name, 1.8f, kNameW, 1.4f);
+            blockText(ta::uiTextFit(g.name, namePx, kNameW), x + 8, y + 8 + 7 * (1.8f - namePx), namePx, {225, 228, 236, 255});
+            blockText(ta::uiTextFit(mapTitle(g.mapId), 1.6f, w - 262 - kMapX), x + kMapX, y + 8, 1.6f, {180, 185, 195, 255});
             char pc[32]; std::snprintf(pc, sizeof pc, "%d/%d", g.players, g.capacity);
             blockText(pc, x + w - 200, y + 8, 1.8f, {200, 205, 215, 255});
             if (g.passworded)   // (a live game's: left of its player count, clear of LIVE and WATCH)
@@ -277,10 +277,10 @@ std::string defaultGameName(const std::string& player) {
         // The bottom line: a WATCH that is loading says what is arriving, with CANCEL to take
         // it back (a locked game's window says and does the same); else the last refusal.
         if (const std::string loading = window ? std::string() : browserLoading(); !loading.empty()) {
-            blockText(tak::uiTextFit(loading, 1.6f, winW - 2 * x - 270), x, winH - 31.0f, 1.6f, {200, 200, 210, 255});
+            blockText(ta::uiTextFit(loading, 1.6f, winW - 2 * x - 270), x, winH - 31.0f, 1.6f, {200, 200, 210, 255});
             lbBtn(winW - 270.0f, winH - 40.0f, 120, 30, "CANCEL", true, [this] { browserTakeBack(); });
         } else if (const std::string why = browserLine(); !why.empty())
-            blockText(tak::uiTextFit(why, 1.6f, winW - 2 * x - 140), x, winH - 31.0f, 1.6f, {255, 130, 110, 255});
+            blockText(ta::uiTextFit(why, 1.6f, winW - 2 * x - 140), x, winH - 31.0f, 1.6f, {255, 130, 110, 255});
         lbBtn(winW - 140.0f, winH - 40.0f, 120, 30, "BACK", true, [this] { menuRequested_ = true; });
         lobbyModal_ = false;
         if (window) drawBrowserWindow(winW, winH);
@@ -306,7 +306,7 @@ std::string defaultGameName(const std::string& player) {
     bool GameView::browserWatchLoading() const {
         if (!roomJoinSent_ || !browserWatchId_ || !mp_->watchLoading()) return false;
         const auto& games = mp_->games();
-        return std::any_of(games.begin(), games.end(), [&](const tak::net::GameInfo& g) { return g.id == browserWatchId_; });
+        return std::any_of(games.begin(), games.end(), [&](const ta::net::GameInfo& g) { return g.id == browserWatchId_; });
     }
 
     std::string GameView::browserLoading() const {
@@ -327,7 +327,7 @@ std::string defaultGameName(const std::string& player) {
         mp_->leaveGame();
         roomCreateSent_ = roomJoinSent_ = false;
         roomOpenNote_.clear();   // (CREATE's note for a room nobody saw is not the next room's)
-        tak::crypto::wipe(roomPassAsked_);
+        ta::crypto::wipe(roomPassAsked_);
     }
 
     bool GameView::browserRequestFree() {
@@ -343,7 +343,7 @@ std::string defaultGameName(const std::string& player) {
         if (watch) mp_->spectate(id, password);
         else mp_->joinGame(id, password);
         // A game joined shows its password in the room (roomPasswordStep); one watched has no room.
-        tak::crypto::wipe(roomPassAsked_);
+        ta::crypto::wipe(roomPassAsked_);
         if (!watch) roomPassAsked_ = password;
         roomJoinSent_ = true; roomRequestMs_ = SDL_GetTicks64();
         browserWatchId_ = watch ? id : 0;
@@ -355,14 +355,14 @@ std::string defaultGameName(const std::string& player) {
     // for as it is: the server refuses it before it reads a password, and says why.
     void GameView::browserGameClick(uint32_t id, bool watch) {
         const auto& games = mp_->games();
-        const auto game = std::find_if(games.begin(), games.end(), [&](const tak::net::GameInfo& g) { return g.id == id; });
+        const auto game = std::find_if(games.begin(), games.end(), [&](const ta::net::GameInfo& g) { return g.id == id; });
         if (game == games.end()) { roomActError_ = "the game is no longer listed"; return; }
         if (game->passworded && (!watch || game->allowSpectators)) openPasswordWindow(*game, watch);
         else browserJoin(id, "", watch);
     }
 
     void GameView::openCreateWindow() {
-        if (!mp_ || mp_->state() != tak::net::MpClient::State::Lobby) { roomActError_ = "not in the game list"; return; }
+        if (!mp_ || mp_->state() != ta::net::MpClient::State::Lobby) { roomActError_ = "not in the game list"; return; }
         closeBrowserWindow();
         auto& w = browserWin_;
         w.kind = BrowserWindow::Kind::Create;
@@ -372,7 +372,7 @@ std::string defaultGameName(const std::string& player) {
         lbFocus(w.focus = 11);
     }
 
-    void GameView::openPasswordWindow(const tak::net::GameInfo& game, bool watch) {
+    void GameView::openPasswordWindow(const ta::net::GameInfo& game, bool watch) {
         closeBrowserWindow();
         auto& w = browserWin_;
         w.kind = watch ? BrowserWindow::Kind::Watch : BrowserWindow::Kind::Join;
@@ -384,7 +384,7 @@ std::string defaultGameName(const std::string& player) {
         auto& w = browserWin_;
         if (w.kind == BrowserWindow::Kind::None) return;
         if (lbField_ == 11 || lbField_ == 12) lbFocus(0);
-        tak::crypto::wipe(w.password);
+        ta::crypto::wipe(w.password);
         w = {};
     }
 
@@ -444,7 +444,7 @@ std::string defaultGameName(const std::string& player) {
 
     void GameView::browserStep() {
         auto& w = browserWin_;
-        if (mp_->state() != tak::net::MpClient::State::Lobby) {
+        if (mp_->state() != ta::net::MpClient::State::Lobby) {
             // In the room or the watched game, or the connection is over: the window goes.
             roomJoinSent_ = false;
             closeBrowserWindow();
@@ -485,7 +485,7 @@ std::string defaultGameName(const std::string& player) {
         const bool waiting = w.asked && browserBusy();
         const char* gone = waiting ? nullptr : browserWindowGone();
         const bool typing = !waiting && !gone;
-        const std::string head = create ? std::string("CREATE A GAME") : tak::uiTextFit("PASSWORD FOR " + w.gameName, 1.8f, fw);
+        const std::string head = create ? std::string("CREATE A GAME") : ta::uiTextFit("PASSWORD FOR " + w.gameName, 1.8f, fw);
         blockText(head, fx, py + 20, 1.8f, {225, 215, 170, 255});
         // A password field with its SHOW / HIDE beside it: one pip per character until SHOW.
         const auto passwordField = [&](float y, const char* label) {
@@ -510,16 +510,16 @@ std::string defaultGameName(const std::string& player) {
         // two rows).
         constexpr SDL_Color kWait{200, 200, 210, 255}, kWarn{255, 130, 110, 255};
         if (const std::string loading = waiting ? browserLoading() : std::string(); !loading.empty())
-            blockText(tak::uiTextFit(loading, 1.6f, fw), fx, y, 1.6f, kWait);   // the watch was taken: what is arriving
+            blockText(ta::uiTextFit(loading, 1.6f, fw), fx, y, 1.6f, kWait);   // the watch was taken: what is arriving
         else if (waiting)
             blockText(create ? "OPENING THE GAME..." : w.kind == Kind::Watch ? "OPENING..." : "JOINING...", fx, y, 1.6f, kWait);
         else if (gone) blockText(gone, fx, y, 1.6f, kWarn);
         else if (browserBusy()) blockText("WAITING FOR THE SERVER...", fx, y, 1.6f, kWait);
         else if (!w.error.empty()) {
-            auto rows = tak::uiTextWrap(w.error, 1.6f, fw);
+            auto rows = ta::uiTextWrap(w.error, 1.6f, fw);
             for (size_t k = 2; k < rows.size(); ++k) rows[1] += " " + rows[k];
             blockText(rows[0], fx, y, 1.6f, kWarn);
-            if (rows.size() > 1) blockText(tak::uiTextFit(rows[1], 1.6f, fw), fx, y + 16, 1.6f, kWarn);
+            if (rows.size() > 1) blockText(ta::uiTextFit(rows[1], 1.6f, fw), fx, y + 16, 1.6f, kWarn);
         }
         const float by = py + ph - 46;
         if (gone) {
@@ -560,14 +560,14 @@ std::string defaultGameName(const std::string& player) {
         return false;
     }
 
-    void GameView::buildMapList(tak::LoadScreen* progress) {
+    void GameView::buildMapList(ta::LoadScreen* progress) {
         if (progress) progress->step("Finding maps",70);
         resetMinimap(); mapView_.quiesce(); stopPreviewReaders();
-        vfs_.refreshMapCache(tak::hpi::userMapRoot());
+        vfs_.refreshMapCache(ta::hpi::userMapRoot());
         mapList_.clear();
         mapListScanned_ = true;
         mapTitlesLoaded_ = false;   // the install may have changed: read the tables again
-        auto maps=tak::hpi::listMaps(vfs_);
+        auto maps=ta::hpi::listMaps(vfs_);
         // A per-user MapCache copy ("name [16 hex]": a map received from a server, or a
         // Cartographer Test Map snapshot) is left out while an installed map has the same
         // name: those are older or other versions of a map the player has. A copy of a map
@@ -597,11 +597,11 @@ std::string defaultGameName(const std::string& player) {
         for (const auto& [name, path] : maps) {
             MapInfo mi; mi.name = name; mi.path = path;
             std::string missionName;
-            std::string otaPath = tak::vpath::replaceExtension(path,".ota");
+            std::string otaPath = ta::vpath::replaceExtension(path,".ota");
             if (vfs_.has(otaPath)) {
                 try {
                     auto b = vfs_.read(otaPath);
-                    auto root = tak::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
+                    auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
                     const auto* gh = root.child("globalheader");
                     if (gh) {
                         missionName = gh->valueOr("missionname", "");
@@ -612,12 +612,12 @@ std::string defaultGameName(const std::string& player) {
                     }
                     // MAP SCENARIO: only a map that declares a scenario (or a Test Map copy)
                     // can have one, so the CRT of every other map is never read here.
-                    if ((gh && gh->numberOr("hasscenario", 0) != 0) || root.child("takplaytest"))
+                    if ((gh && gh->numberOr("hasscenario", 0) != 0) || root.child("taplaytest"))
                         mi.scenario = mapScenarioInfo(path);
                 } catch (const std::exception&) {}
             }
             // A saved random map's .ota has no size: its .tnt header has (cells, 32 to a unit).
-            if (mi.sizeW == 0 && vfs_.has(tak::vpath::replaceExtension(path, ".recipe"))) {
+            if (mi.sizeW == 0 && vfs_.has(ta::vpath::replaceExtension(path, ".recipe"))) {
                 try {
                     const auto d = vfs_.read(path);
                     auto u32 = [&](size_t o) { return int(uint32_t(d[o]) | (uint32_t(d[o + 1]) << 8)
@@ -625,7 +625,7 @@ std::string defaultGameName(const std::string& player) {
                     if (d.size() >= 12) { mi.sizeW = u32(4) / 32; mi.sizeH = u32(8) / 32; }
                 } catch (const std::exception&) {}
             }
-            mi.starts = int(tak::sim::parseStartPositions(vfs_, path).size());
+            mi.starts = int(ta::sim::parseStartPositions(vfs_, path).size());
             if (mi.players == 0)   // .ota had no numplayers: count the start positions
                 mi.players = mi.starts;
             mi.title = mapTitleFor(name, missionName);
@@ -647,7 +647,7 @@ std::string defaultGameName(const std::string& player) {
             if (!vfs_.has(path)) continue;
             try {
                 const auto b = vfs_.read(path);
-                const auto root = tak::tdf::parseText(std::string(b.begin(), b.end()), path);
+                const auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), path);
                 for (const auto& [key, node] : root.children) {
                     const std::string* en = node.value("english");
                     if (!en || en->empty()) continue;
@@ -682,7 +682,7 @@ std::string defaultGameName(const std::string& player) {
     // label mapgen provides ("Random 16x16 4P Aramon"). A real map's id is its name: the
     // map list's title for it when the list is built, else the translate tables' title.
     std::string GameView::mapTitle(const std::string& id) {
-        if (tak::mapgen::isGeneratedMapId(id)) return tak::mapgen::friendlyLabel(tak::mapgen::decodeMapId(id));
+        if (ta::mapgen::isGeneratedMapId(id)) return ta::mapgen::friendlyLabel(ta::mapgen::decodeMapId(id));
         for (const MapInfo& m : mapList_)
             if (m.name == id) return m.title.empty() ? m.name : m.title;
         return mapTitleFor(id);
@@ -707,8 +707,8 @@ std::string defaultGameName(const std::string& player) {
         });
     }
 
-    void GameView::buildMapPreview(const std::string& tntPath, const tak::hpi::Vfs* src) {
-        const bool gen = tak::mapgen::isGeneratedMapId(tntPath);
+    void GameView::buildMapPreview(const std::string& tntPath, const ta::hpi::Vfs* src) {
+        const bool gen = ta::mapgen::isGeneratedMapId(tntPath);
         ++genSeq_;   // any newer preview supersedes a roll still running
         genPreviewPending_ = false;
         mapPreviewFor_ = tntPath;
@@ -736,7 +736,7 @@ std::string defaultGameName(const std::string& player) {
             genPreviewPending_ = true;
             return;
         }
-        const tak::hpi::Vfs& from = src ? *src : vfs_;
+        const ta::hpi::Vfs& from = src ? *src : vfs_;
         std::vector<uint8_t> d;
         try { d = from.read(tntPath); } catch (...) { return; }
         if (d.size() < 52) return;
@@ -744,11 +744,11 @@ std::string defaultGameName(const std::string& player) {
                  | (uint32_t(d[o + 2]) << 16) | (uint32_t(d[o + 3]) << 24); };
         // The radar pictures cover the whole map (16 px cells), so a start's world
         // position scales straight onto the drawn image.
-        mapPreviewStarts_ = tak::sim::parseStartPositions(from, tntPath);
+        mapPreviewStarts_ = ta::sim::parseStartPositions(from, tntPath);
         mapPreviewWorldW_ = float(u32(4)) * 16; mapPreviewWorldH_ = float(u32(8)) * 16;
         std::string ota;
         if (!src) ota = readOta(tntPath);
-        else if (auto o = src->tryRead(tak::vpath::replaceExtension(tntPath, ".ota"))) ota.assign(o->begin(), o->end());
+        else if (auto o = src->tryRead(ta::vpath::replaceExtension(tntPath, ".ota"))) ota.assign(o->begin(), o->end());
         int w = 0, h = 0; const uint8_t* idx = nullptr;
         std::vector<uint8_t> rgba;
         if (tntIndexedImage(d, 12, w, h, idx) || tntIndexedImage(d, 11, w, h, idx)) {
@@ -768,7 +768,7 @@ std::string defaultGameName(const std::string& player) {
             std::string kingdom = otaField(ota, "kingdom");
             for (auto& ch : kingdom) ch = char(std::tolower(uint8_t(ch)));
             if (kingdom.empty()) kingdom = "aramon";
-            try { auto m = tak::tnt::Map::load(d, tntPath); rgba = radarPicture(m, from, kingdom, w, h); }
+            try { auto m = ta::tnt::Map::load(d, tntPath); rgba = radarPicture(m, from, kingdom, w, h); }
             catch (const std::exception&) { return; }
             if (rgba.empty()) return;
         }
@@ -789,18 +789,18 @@ std::string defaultGameName(const std::string& player) {
         mapPreviewDims_ = size + (players.empty() ? "" : "   " + players + " PLAYER");
     }
 
-    std::vector<uint8_t> GameView::radarPicture(tak::tnt::Map& m, const tak::hpi::Vfs& vfs, const std::string& world,
+    std::vector<uint8_t> GameView::radarPicture(ta::tnt::Map& m, const ta::hpi::Vfs& vfs, const std::string& world,
                                                 int& w, int& h) {
         // The large radar picture a saved map carries, built from the map's tiles as the
         // Cartographer builds it, through the world's palette (index 9 transparent, as
         // buildMapPreview draws a shipped map's).
         if (m.overview.empty() || m.overviewW <= 0 || m.overviewH <= 0) {
-            tak::terrain::Compositor compositor(vfs);
-            tak::terrain::generateMinimaps(m, compositor, tak::terrain::loadWorldPalette(vfs, world));
+            ta::terrain::Compositor compositor(vfs);
+            ta::terrain::generateMinimaps(m, compositor, ta::terrain::loadWorldPalette(vfs, world));
         }
         w = m.overviewW; h = m.overviewH;
         if (w <= 0 || h <= 0 || m.overview.size() < size_t(w) * h) return {};
-        const auto pal = tak::terrain::loadWorldPalette(vfs, world);
+        const auto pal = ta::terrain::loadWorldPalette(vfs, world);
         std::vector<uint8_t> rgba(size_t(w) * h * 4);
         for (size_t i = 0; i < size_t(w) * h; ++i) {
             const uint8_t p = m.overview[i];
@@ -810,18 +810,18 @@ std::string defaultGameName(const std::string& player) {
         return rgba;
     }
 
-    GameView::GenPreviewOut GameView::rollGenPreview(const std::string& id, const tak::hpi::Vfs& vfs) {
+    GameView::GenPreviewOut GameView::rollGenPreview(const std::string& id, const ta::hpi::Vfs& vfs) {
         // On a worker: roll the map from the seed and build its radar picture from the
         // tiles, as a saved map carries it; pollGenPreview uploads it. Nothing here touches the view.
         GenPreviewOut out;
         out.id = id;
-        tak::mapgen::Params gp;
-        tak::mapgen::Result g;
-        try { gp = tak::mapgen::parseMapId(id); g = tak::mapgen::generate(gp, vfs); }
+        ta::mapgen::Params gp;
+        ta::mapgen::Result g;
+        try { gp = ta::mapgen::parseMapId(id); g = ta::mapgen::generate(gp, vfs); }
         catch (const std::exception& e) { out.error = e.what(); return out; }
         const int W = g.map.width, H = g.map.height;
         int TW = 0, TH = 0;
-        auto rgba = radarPicture(g.map, vfs, tak::mapgen::worldKey(gp.mapType), TW, TH);
+        auto rgba = radarPicture(g.map, vfs, ta::mapgen::worldKey(gp.mapType), TW, TH);
         out.mountains = g.mountains;
         if (rgba.empty()) return out;
         // Start positions: drawn over the thumbnail as numbered markers (drawStartMarkers),
@@ -832,7 +832,7 @@ std::string defaultGameName(const std::string& player) {
         char dims[48];
         std::snprintf(dims, sizeof dims, "%d x %d   %d PLAYER", W / 32, H / 32, int(gp.players));
         out.dims = dims;
-        out.map = std::make_shared<const tak::tnt::Map>(std::move(g.map));
+        out.map = std::make_shared<const ta::tnt::Map>(std::move(g.map));
         return out;
     }
 
@@ -867,16 +867,16 @@ std::string defaultGameName(const std::string& player) {
     }
 
     void GameView::applyGenParams() {
-        genParams_ = tak::mapgen::sanitize(genParams_);   // grows a side the layout cannot fit
+        genParams_ = ta::mapgen::sanitize(genParams_);   // grows a side the layout cannot fit
         // The generator's target: the CHANGE MAP panel's RANDOM candidate.
         std::string& id = picker_.gen.id;
         std::string& path = picker_.gen.path;
-        auto previous = tak::mapgen::decodeMapId(id);
+        auto previous = ta::mapgen::decodeMapId(id);
         previous.name = genParams_.name;
         const bool reusePreview = mapPreviewFor_ == path &&
-            tak::mapgen::isGeneratedMapId(id) &&
-            tak::mapgen::encodeMapId(previous) == tak::mapgen::encodeMapId(genParams_);
-        const std::string next = tak::mapgen::encodeMapId(genParams_);
+            ta::mapgen::isGeneratedMapId(id) &&
+            ta::mapgen::encodeMapId(previous) == ta::mapgen::encodeMapId(genParams_);
+        const std::string next = ta::mapgen::encodeMapId(genParams_);
         if (next != id) picker_.message.clear();   // a new candidate: the last PICK's answer is old news
         id = next;
         if (reusePreview) mapPreviewFor_ = id;
@@ -898,17 +898,17 @@ std::string defaultGameName(const std::string& player) {
             case 7: genParams_.mountainDensity = v; break;
             case 8: genParams_.townDensity = v; break;
             default:   // SCATTERED MANA snaps to its five levels
-                genParams_.manaScatter = uint8_t(t * float(tak::mapgen::kScatterLevels - 1) + 0.5f); break;
+                genParams_.manaScatter = uint8_t(t * float(ta::mapgen::kScatterLevels - 1) + 0.5f); break;
         }
     }
 
     void GameView::scanModPacks() {
         if(!modPacksScanned_){
-            const auto root=tak::u8path(installRoot_);
-            availableGameMods_=mods_.game?tak::hpi::modPacks(root,tak::hpi::ModKind::Game):std::vector<std::string>{};
-            availableCosmeticMods_=mods_.cosmetic?tak::hpi::modPacks(root,tak::hpi::ModKind::Cosmetic):std::vector<std::string>{};
-            alwaysCosmeticMods_=mods_.cosmetic?tak::hpi::alwaysEnabledPacks(root,tak::hpi::ModKind::Cosmetic):std::vector<std::string>{};
-            alwaysGameMods_=mods_.game?tak::hpi::alwaysEnabledPacks(root,tak::hpi::ModKind::Game):std::vector<std::string>{};
+            const auto root=ta::u8path(installRoot_);
+            availableGameMods_=mods_.game?ta::hpi::modPacks(root,ta::hpi::ModKind::Game):std::vector<std::string>{};
+            availableCosmeticMods_=mods_.cosmetic?ta::hpi::modPacks(root,ta::hpi::ModKind::Cosmetic):std::vector<std::string>{};
+            alwaysCosmeticMods_=mods_.cosmetic?ta::hpi::alwaysEnabledPacks(root,ta::hpi::ModKind::Cosmetic):std::vector<std::string>{};
+            alwaysGameMods_=mods_.game?ta::hpi::alwaysEnabledPacks(root,ta::hpi::ModKind::Game):std::vector<std::string>{};
             modPacksScanned_=true;
         }
     }
@@ -936,7 +936,7 @@ std::string defaultGameName(const std::string& player) {
                           std::function<void(std::vector<std::string>)> apply) {
             const float cx = kCreateMargin + float(k) * (colW + 16);
             blockText(heading, cx, kTop, 1.8f, {205, 210, 225, 255});
-            const auto key = [](const std::string& n) { return tak::hpi::MountSet::key(n); };
+            const auto key = [](const std::string& n) { return ta::hpi::MountSet::key(n); };
             const auto isAlways = [&](const std::string& n) {
                 return std::any_of(always.begin(), always.end(), [&](const std::string& a) { return key(a) == key(n); });
             };
@@ -954,14 +954,14 @@ std::string defaultGameName(const std::string& player) {
             SDL_SetRenderDrawColor(ren_, 24, 26, 34, 255); SDL_RenderFillRectF(ren_, &fr);
             SDL_SetRenderDrawColor(ren_, active ? 200 : 90, active ? 210 : 100, active ? 130 : 130, 255); SDL_RenderDrawRectF(ren_, &fr);
             if (filter.empty() && !active) blockText("FILTER", fr.x + 6, fr.y + 5, kPx, {110, 116, 132, 255});
-            else blockText(tak::uiTextFitStart(filter + (active ? "_" : ""), kPx, fr.w - 12), fr.x + 6, fr.y + 5, kPx, {225, 230, 240, 255});
+            else blockText(ta::uiTextFitStart(filter + (active ? "_" : ""), kPx, fr.w - 12), fr.x + 6, fr.y + 5, kPx, {225, 230, 240, 255});
             lobbyHots_.push_back({fr, [this, field] { lbField_ = field; SDL_StartTextInput(); }});
-            const std::string want = tak::mapfilter::lower(filter);
+            const std::string want = ta::mapfilter::lower(filter);
             // The rows: the always-enabled packs (locked), then the tickable ones.
             struct Row { std::string name; bool locked; };
             std::vector<Row> rows;
-            for (const auto& a : always) if (tak::mapfilter::matches(a, "", want)) rows.push_back({a, true});
-            for (const auto& n : names) if (tak::mapfilter::matches(n, "", want)) rows.push_back({n, false});
+            for (const auto& a : always) if (ta::mapfilter::matches(a, "", want)) rows.push_back({a, true});
+            for (const auto& n : names) if (ta::mapfilter::matches(n, "", want)) rows.push_back({n, false});
             const SDL_FRect box{cx, kListTop, colW, kListBottom - kListTop};
             modListRect_[k] = box;
             SDL_SetRenderDrawColor(ren_, 24, 26, 34, 255); SDL_RenderFillRectF(ren_, &box);
@@ -994,7 +994,7 @@ std::string defaultGameName(const std::string& player) {
                 SDL_SetRenderDrawColor(ren_, live ? 190 : 120, live ? 205 : 128, live ? 220 : 140, 255);
                 SDL_RenderDrawRectF(ren_, &check);
                 if (on) { check.x += 3; check.y += 3; check.w -= 6; check.h -= 6; SDL_RenderFillRectF(ren_, &check); }
-                blockText(tak::uiTextFit(row.name, kPx, rr.w - 120), rr.x + 28, rr.y + 4, kPx,
+                blockText(ta::uiTextFit(row.name, kPx, rr.w - 120), rr.x + 28, rr.y + 4, kPx,
                           live ? SDL_Color{225, 230, 240, 255} : SDL_Color{170, 200, 170, 255});
                 if (row.locked) {
                     const char* tag = "ALWAYS ON";
@@ -1019,7 +1019,7 @@ std::string defaultGameName(const std::string& player) {
         else if (!host) {
             std::string names = mp_->modPackage() ? mp_->modPackage()->mapPath : "";
             guestNote = "THE HOST CHOOSES: " + (names.empty() ? std::string(mp_->modPackage() ? "NONE" : "WAITING FOR THE HOST") : names);
-            guestNote = tak::uiTextFit(guestNote, 1.4f, colW - 16);
+            guestNote = ta::uiTextFit(guestNote, 1.4f, colW - 16);
         }
         column(1, "GAME MODS", availableGameMods_, mp_->gameModPacks(), host ? alwaysGame : std::vector<std::string>{},
                gameModFilter_, 8, host && gameOn && !mp_->modBusy(), guestNote.empty() ? nullptr : guestNote.c_str(),
@@ -1031,7 +1031,7 @@ std::string defaultGameName(const std::string& player) {
                    rememberRoomPrefs(RoomField::Mods);
                });
         if (const auto status = mp_->roomModStatus(); gameOn && !status.empty())
-            blockText(tak::uiTextFit(status, 1.3f, 600), kCreateMargin, kLobbyH - 32, 1.3f, {205, 190, 135, 255});
+            blockText(ta::uiTextFit(status, 1.3f, 600), kCreateMargin, kLobbyH - 32, 1.3f, {205, 190, 135, 255});
         lbBtn(kLobbyW - kCreateMargin - 120, kLobbyH - 40, 120, 30, "DONE", true, [this] { modsScreen_ = false; lbField_ = 0; SDL_StopTextInput(); });
     }
 
@@ -1046,8 +1046,8 @@ std::string defaultGameName(const std::string& player) {
         const SDL_FRect head{colX, 58, colW, 20};
         drawRoomFlash(RoomField::Map, head); drawRoomFlash(RoomField::Scenario, head);
         const std::string mapHead = mapTitle(room.mapId);
-        const float mapHeadPx = tak::uiTextFitPx(mapHead, 1.8f, colW, 1.4f);
-        blockText(tak::uiTextFit(mapHead, mapHeadPx, colW), colX, 62 + (1.8f - mapHeadPx) * 4, mapHeadPx, {180, 185, 195, 255});
+        const float mapHeadPx = ta::uiTextFitPx(mapHead, 1.8f, colW, 1.4f);
+        blockText(ta::uiTextFit(mapHead, mapHeadPx, colW), colX, 62 + (1.8f - mapHeadPx) * 4, mapHeadPx, {180, 185, 195, 255});
         // The room's map, with its starts numbered and coloured by who opens there,
         // heads the right column; the mod packs and the chat sit right under it.
         // The preview is as wide as the column and as tall as the map's shape makes it.
@@ -1135,14 +1135,14 @@ std::string defaultGameName(const std::string& player) {
                 if(i){blockText(sep,nx,py,kPx,kDim);nx+=blockWidth(sep,kPx);}
                 // A first name too long for the line is cut.
                 const float room=right-nx-(last?0:blockWidth(" +99",kPx));
-                const std::string shown=tak::uiTextFit(names[i].first,kPx,std::max(20.0f,room));
+                const std::string shown=ta::uiTextFit(names[i].first,kPx,std::max(20.0f,room));
                 blockText(shown,nx,py,kPx,names[i].second);
                 nx+=blockWidth(shown,kPx);
             }
             if(gameRoom)lbBtn(colX+colW-kBtnW,py-4,kBtnW,18,"MODS...",true,[this]{modsScreen_=true;lbField_=0;SDL_StopTextInput();},
                               {60,66,86,255},kPx);
             float below=py+20;
-            for(const auto& note:notes){blockText(tak::uiTextFit(note,1.1f,colW-4),colX+4,below-2,1.1f,{205,190,135,255});below+=12;}
+            for(const auto& note:notes){blockText(ta::uiTextFit(note,1.1f,colW-4),colX+4,below-2,1.1f,{205,190,135,255});below+=12;}
             modBottom=below+2;
         }
         // A scenario that places its own armies opens nobody at the map's starts. The
@@ -1171,7 +1171,7 @@ std::string defaultGameName(const std::string& player) {
             // (the mouse wheel over the box), with a scroll bar once they overflow.
             std::vector<std::string> rows;
             for (const auto& m : chatLog_)
-                for (auto& r : tak::uiTextWrap(m.first + ": " + m.second, 1.4f, chw - 16 - kSb)) rows.push_back(std::move(r));
+                for (auto& r : ta::uiTextWrap(m.first + ": " + m.second, 1.4f, chw - 16 - kSb)) rows.push_back(std::move(r));
             const int visible = std::max(1, int((cp.h - 8) / kLineH));
             const int total = int(rows.size());
             chatScroll_ = std::clamp(chatScroll_, 0, std::max(0, total - visible));
@@ -1191,9 +1191,9 @@ std::string defaultGameName(const std::string& player) {
                 const bool active = lbField_ == 4;
                 SDL_SetRenderDrawColor(ren_, 24, 26, 34, 255); SDL_RenderFillRectF(ren_, &r);
                 SDL_SetRenderDrawColor(ren_, active ? 200 : 90, active ? 210 : 100, active ? 130 : 130, 255); SDL_RenderDrawRectF(ren_, &r);
-                const float vpx = tak::modernUiText() ? 1.6f : 1.8f;
-                const std::string shown = tak::uiTextFitStart(chatDraft_ + (active ? "_" : ""), vpx, r.w - 12);
-                blockText(shown, r.x + 6, r.y + (r.h - 7 * vpx - (tak::modernUiText() ? tak::uiTextDescent(vpx) : 0)) / 2, vpx,
+                const float vpx = ta::modernUiText() ? 1.6f : 1.8f;
+                const std::string shown = ta::uiTextFitStart(chatDraft_ + (active ? "_" : ""), vpx, r.w - 12);
+                blockText(shown, r.x + 6, r.y + (r.h - 7 * vpx - (ta::modernUiText() ? ta::uiTextDescent(vpx) : 0)) / 2, vpx,
                           {225, 230, 240, 255});
                 lobbyHots_.push_back({r, [this] { lbField_ = 4; SDL_StartTextInput(); }});
             }
@@ -1221,30 +1221,30 @@ std::string defaultGameName(const std::string& player) {
     }
 
     std::vector<std::vector<std::string>> GameView::genRecipeItems(const std::string& mapId, int mountains) {
-        if (!tak::mapgen::isGeneratedMapId(mapId)) return {};
-        const auto gp = tak::mapgen::decodeMapId(mapId);
+        if (!ta::mapgen::isGeneratedMapId(mapId)) return {};
+        const auto gp = ta::mapgen::decodeMapId(mapId);
         const auto level = [](uint8_t v) { return v == 0 ? "NONE" : v < 86 ? "LOW" : v < 171 ? "MED" : "HIGH"; };
-        const auto kit = [&](uint8_t v, uint8_t which) { return tak::mapgen::kitAvailable(gp.mapType, which) ? level(v) : "NONE"; };
+        const auto kit = [&](uint8_t v, uint8_t which) { return ta::mapgen::kitAvailable(gp.mapType, which) ? level(v) : "NONE"; };
         // Asked for, but the roll found no room (small or crowded maps): say so, not the amount.
-        const bool noRoom = gp.mountainDensity && tak::mapgen::kitAvailable(gp.mapType, tak::mapgen::KitMountains) &&
+        const bool noRoom = gp.mountainDensity && ta::mapgen::kitAvailable(gp.mapType, ta::mapgen::KitMountains) &&
                             mountains == 0;
-        std::string scatter = tak::mapgen::scatterName(gp.manaScatter);
+        std::string scatter = ta::mapgen::scatterName(gp.manaScatter);
         for (char& ch : scatter) ch = char(std::toupper(static_cast<unsigned char>(ch)));
-        return {{std::string("MAP TYPE: ") + tak::mapgen::worldTitle(gp.mapType),
-                std::string("LAYOUT: ") + tak::mapgen::layoutName(gp.layout),
+        return {{std::string("MAP TYPE: ") + ta::mapgen::worldTitle(gp.mapType),
+                std::string("LAYOUT: ") + ta::mapgen::layoutName(gp.layout),
                 "SIZE: " + std::to_string(gp.widthCells / 32) + " X " + std::to_string(gp.heightCells / 32),
                 "PLAYERS: " + std::to_string(gp.players),
-                std::string("FORESTS: ") + (tak::mapgen::worldHasForests(gp.mapType) ? level(gp.treeDensity) : "NONE"),
-                std::string(tak::mapgen::lavaWorld(gp.mapType) ? "RUINS: " : "ROCKS: ") + level(gp.rockDensity),
+                std::string("FORESTS: ") + (ta::mapgen::worldHasForests(gp.mapType) ? level(gp.treeDensity) : "NONE"),
+                std::string(ta::mapgen::lavaWorld(gp.mapType) ? "RUINS: " : "ROCKS: ") + level(gp.rockDensity),
                 std::string("MANA: ") + level(gp.manaDensity),
-                gp.layout == tak::mapgen::IndustrialZone ? std::string("LAVA PADS: ") + level(gp.waterDensity) :
-                std::string(tak::mapgen::lavaWorld(gp.mapType) ? "LAVA: " : "WATER: ") +
-                    (tak::mapgen::automaticWater(gp.layout) ? "AUTO" : level(gp.waterDensity)),
-                std::string("HILLS: ") + (tak::mapgen::hillsPossible(gp.mapType, gp.layout) ? level(gp.reliefDensity) :
-                                       gp.layout == tak::mapgen::Maze ? "AUTO" : "NONE")},
-               {std::string("PLATEAUS: ") + (tak::mapgen::automaticPlateaus(gp.layout) ? "AUTO" : kit(gp.plateauDensity, tak::mapgen::KitPlateaus)),
-                std::string("MOUNTAINS: ") + (noRoom ? "NO ROOM" : kit(gp.mountainDensity, tak::mapgen::KitMountains)),
-                std::string(gp.mapType == tak::mapgen::Zhon ? "VILLAGES: " : "TOWNS: ") + kit(gp.townDensity, tak::mapgen::KitTowns),
+                gp.layout == ta::mapgen::IndustrialZone ? std::string("LAVA PADS: ") + level(gp.waterDensity) :
+                std::string(ta::mapgen::lavaWorld(gp.mapType) ? "LAVA: " : "WATER: ") +
+                    (ta::mapgen::automaticWater(gp.layout) ? "AUTO" : level(gp.waterDensity)),
+                std::string("HILLS: ") + (ta::mapgen::hillsPossible(gp.mapType, gp.layout) ? level(gp.reliefDensity) :
+                                       gp.layout == ta::mapgen::Maze ? "AUTO" : "NONE")},
+               {std::string("PLATEAUS: ") + (ta::mapgen::automaticPlateaus(gp.layout) ? "AUTO" : kit(gp.plateauDensity, ta::mapgen::KitPlateaus)),
+                std::string("MOUNTAINS: ") + (noRoom ? "NO ROOM" : kit(gp.mountainDensity, ta::mapgen::KitMountains)),
+                std::string(gp.mapType == ta::mapgen::Zhon ? "VILLAGES: " : "TOWNS: ") + kit(gp.townDensity, ta::mapgen::KitTowns),
                 "SCATTERED MANA: " + scatter,
                 "MAP SEED: " + std::to_string(gp.seed)}};
     }
@@ -1255,7 +1255,7 @@ std::string defaultGameName(const std::string& player) {
             bool fresh = true;   // each group starts a line
             for (const auto& item : items) {
                 if (!fresh && blockWidth(lines.back() + "  " + item, px) <= maxW) lines.back() += "  " + item;
-                else lines.push_back(tak::uiTextFit(item, px, maxW));
+                else lines.push_back(ta::uiTextFit(item, px, maxW));
                 fresh = false;
             }
         }
@@ -1265,8 +1265,8 @@ std::string defaultGameName(const std::string& player) {
     GameView::RoomStarts GameView::roomStarts() {
         const auto& room = mp_->room();
         // A generated map has a start for each player its recipe (the map id) names.
-        if (tak::mapgen::isGeneratedMapId(room.mapId)) {
-            try { return {int(tak::mapgen::decodeMapId(room.mapId).players), false}; }
+        if (ta::mapgen::isGeneratedMapId(room.mapId)) {
+            try { return {int(ta::mapgen::decodeMapId(room.mapId).players), false}; }
             catch (const std::exception&) { return {}; }   // invalid ids cannot start
         }
         // A file map: read its verified package (the host's own until then) once.
@@ -1276,11 +1276,11 @@ std::string defaultGameName(const std::string& player) {
             roomStartsPackage_ = package;
             roomStarts_ = {};
             try {
-                tak::hpi::Vfs view; view.setMapFiles(package->files);
-                roomStarts_.count = int(tak::sim::parseStartPositions(view, package->mapPath).size());
-                if (tak::net::maps::authoredScenario(*package))
-                    if (const auto crt = view.tryRead(tak::vpath::replaceExtension(package->mapPath, ".crt")))
-                        roomStarts_.placed = !tak::crt::parse(*crt).units.empty();
+                ta::hpi::Vfs view; view.setMapFiles(package->files);
+                roomStarts_.count = int(ta::sim::parseStartPositions(view, package->mapPath).size());
+                if (ta::net::maps::authoredScenario(*package))
+                    if (const auto crt = view.tryRead(ta::vpath::replaceExtension(package->mapPath, ".crt")))
+                        roomStarts_.placed = !ta::crt::parse(*crt).units.empty();
             } catch (const std::exception&) {}
         }
         return roomStarts_;
@@ -1305,7 +1305,7 @@ std::string defaultGameName(const std::string& player) {
             SDL_RenderGeometry(ren_, nullptr, v, kSeg + 1, ix, kSeg * 3);
         };
         for (size_t k = 0; k < mapPreviewStarts_.size(); ++k) {
-            const auto p = tak::startmarkers::place(mapPreviewStarts_[k], mapPreviewWorldW_, mapPreviewWorldH_,
+            const auto p = ta::startmarkers::place(mapPreviewStarts_[k], mapPreviewWorldW_, mapPreviewWorldH_,
                                                     img.x, img.y, img.w, img.h, r + 2);
             const int color = k < colorOfStart.size() ? colorOfStart[k] : -1;
             // Neutral (nobody, or nobody knows yet) is a dark disc: the slot palette has
@@ -1328,14 +1328,14 @@ std::string defaultGameName(const std::string& player) {
         // or may hold a different map under the same name); otherwise the room's map is
         // in the VFS, or it is a generated id. Rebuilt only when the map changes.
         const auto pkg = mp_->mapPackage();
-        const bool gen = tak::mapgen::isGeneratedMapId(room.mapId);
+        const bool gen = ta::mapgen::isGeneratedMapId(room.mapId);
         const std::string key = "room:" + room.mapId + "#" + (pkg && !gen ? pkg->digest : std::string());
         if (mapPreviewFor_ != key) {
             if (pkg && !gen && pkg->files) {
-                tak::hpi::Vfs view; view.setMapFiles(pkg->files);
+                ta::hpi::Vfs view; view.setMapFiles(pkg->files);
                 buildMapPreview(pkg->mapPath, &view);
             } else {
-                buildMapPreview(gen ? room.mapId : tak::hpi::findMap(vfs_, room.mapId));
+                buildMapPreview(gen ? room.mapId : ta::hpi::findMap(vfs_, room.mapId));
             }
             mapPreviewFor_ = key;
         }
@@ -1347,8 +1347,8 @@ std::string defaultGameName(const std::string& player) {
         // square while neither is known.
         const auto& id = mpRoom().mapId;
         float w = 1, h = 1;
-        if (tak::mapgen::isGeneratedMapId(id)) {
-            const auto gp = tak::mapgen::decodeMapId(id);
+        if (ta::mapgen::isGeneratedMapId(id)) {
+            const auto gp = ta::mapgen::decodeMapId(id);
             w = gp.widthCells; h = gp.heightCells;
         } else if (picker_.open) {   // the CHANGE MAP panel's candidate owns the picture: the room's size, kept
             if (roomPreviewSize_.x > 0 && roomPreviewSize_.y > 0) { w = float(roomPreviewSize_.x); h = float(roomPreviewSize_.y); }
@@ -1372,7 +1372,7 @@ std::string defaultGameName(const std::string& player) {
             // places its own forces, so its starts belong to nobody.
             std::vector<int> colors;
             if (!authored)
-                for (int slot : tak::startmarkers::occupants(room.opts, room.slots, mapPreviewStarts_.size()))
+                for (int slot : ta::startmarkers::occupants(room.opts, room.slots, mapPreviewStarts_.size()))
                     colors.push_back(slot >= 0 ? room.slots[slot].color : -1);
             drawStartMarkers(dst, colors);
             roomPreviewColors_ = std::move(colors);
@@ -1403,24 +1403,24 @@ std::string defaultGameName(const std::string& player) {
         std::string path = room ? mpRoom().mapId : picker_.open ? (picker_.random ? picker_.gen : picker_.file).path : std::string();
         if (path.empty()) return;
         try {
-            if (tak::mapgen::isGeneratedMapId(path)) {
-                const auto params = tak::mapgen::parseMapId(path);
-                auto view = std::make_unique<tak::hpi::Vfs>(&vfs_, true);
+            if (ta::mapgen::isGeneratedMapId(path)) {
+                const auto params = ta::mapgen::parseMapId(path);
+                auto view = std::make_unique<ta::hpi::Vfs>(&vfs_, true);
                 // The preview's roll when it is this map (it always is once the preview shows).
                 auto map = genPreviewMap_ && genPreviewMapId_ == path ? *genPreviewMap_
-                                                                      : tak::mapgen::generate(params, *view).map;
+                                                                      : ta::mapgen::generate(params, *view).map;
                 bigMap_ = std::make_unique<BigMapView>(ren_, std::move(view), std::move(map),
-                                                       tak::mapgen::worldKey(params.mapType));
+                                                       ta::mapgen::worldKey(params.mapType));
             } else {
-                auto view = std::make_unique<tak::hpi::Vfs>(&vfs_);
+                auto view = std::make_unique<ta::hpi::Vfs>(&vfs_);
                 const auto pkg = room ? mp_->mapPackage() : nullptr;
                 if (pkg && pkg->files) { path = pkg->mapPath; view->setMapFiles(pkg->files); }
                 else {
-                    if (room) path = tak::hpi::findMap(vfs_, path);
+                    if (room) path = ta::hpi::findMap(vfs_, path);
                     if (const auto cached = vfs_.cachedMap(path)) { path = cached->first; view->setMapFiles(cached->second); }
                 }
                 std::string ota;
-                if (auto o = view->tryRead(tak::vpath::replaceExtension(path, ".ota"))) ota.assign(o->begin(), o->end());
+                if (auto o = view->tryRead(ta::vpath::replaceExtension(path, ".ota"))) ota.assign(o->begin(), o->end());
                 std::string world = otaField(ota, "kingdom");
                 std::transform(world.begin(), world.end(), world.begin(), [](unsigned char c) { return char(std::tolower(c)); });
                 bigMap_ = std::make_unique<BigMapView>(ren_, std::move(view), path, world);
@@ -1468,7 +1468,7 @@ std::string defaultGameName(const std::string& player) {
             blockText(recipe[k], (lw - blockWidth(recipe[k], kRecipePx)) / 2,
                       lh - 50 - recipeH + 2 + float(k) * kRecipePitch, kRecipePx, {205, 210, 225, 255});
         const std::string title = mapTitle(mapId);
-        const std::string fitted = tak::uiTextFit(title, 1.8f, lw - 2 * (kCreateMargin + 140), false);
+        const std::string fitted = ta::uiTextFit(title, 1.8f, lw - 2 * (kCreateMargin + 140), false);
         blockText(fitted, (lw - blockWidth(fitted, 1.8f)) / 2, lh - 32, 1.8f, {200, 205, 220, 255});
         SDL_RenderSetScale(ren_, 1.0f, 1.0f);
     }
@@ -1481,7 +1481,7 @@ std::string defaultGameName(const std::string& player) {
     // What the lobby shows under the pointer: the screen (connecting, the game list or a
     // room on its way, a room, the end of the connection) and whatever lies over it.
     uint32_t GameView::lobbyScreenNow() const {
-        using S = tak::net::MpClient::State;
+        using S = ta::net::MpClient::State;
         const S st = mp_ ? mp_->state() : S::Offline;
         const bool room = st == S::InRoom;
         uint32_t screen = 1 + uint32_t(st);
@@ -1590,7 +1590,7 @@ std::string defaultGameName(const std::string& player) {
             std::string* f = lbFieldBuf();
             // A new game's name and a game's password (fields 11 and 12, the browser's
             // windows) take printable ASCII up to the server's limits.
-            const size_t cap = lbField_ == 11 ? tak::net::kRoomNameMax : lbField_ == 12 ? tak::net::kRoomPasswordMax : 24;
+            const size_t cap = lbField_ == 11 ? ta::net::kRoomNameMax : lbField_ == 12 ? ta::net::kRoomPasswordMax : 24;
             if (f && f->size() < cap) {
                 if (lbField_ == 11 || lbField_ == 12) {
                     for (unsigned char c : std::string(e.text.text))
@@ -1636,11 +1636,11 @@ std::string defaultGameName(const std::string& player) {
         // 2 px inside the border, and centres caps plus descenders; caps-only labels
         // centre their caps as always. A capital's tail (J, Q) counts as a descender
         // unless capsCentred.
-        float px = tak::uiTextFitPx(label, labelPx, w - 12.0f);
-        if (const float ink = 7 * px + (capsCentred ? 0 : tak::uiTextInkDescent(label, px)); ink > h - 4)
+        float px = ta::uiTextFitPx(label, labelPx, w - 12.0f);
+        if (const float ink = 7 * px + (capsCentred ? 0 : ta::uiTextInkDescent(label, px)); ink > h - 4)
             px *= (h - 4) / ink;
         float tw = blockWidth(label, px);
-        const float tail = capsCentred ? 0 : tak::uiTextInkDescent(label, px);
+        const float tail = capsCentred ? 0 : ta::uiTextInkDescent(label, px);
         blockText(label, x + (w - tw) / 2, y + (h - 7 * px - tail) / 2, px,
                   enabled ? SDL_Color{225, 230, 240, 255} : SDL_Color{110, 115, 125, 255});
         if (enabled && action) lobbyHots_.push_back({r, std::move(action)});

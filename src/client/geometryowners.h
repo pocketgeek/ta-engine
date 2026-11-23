@@ -57,7 +57,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 struct UnitOwner {
     int id = -1;
@@ -408,4 +408,4 @@ private:
     uint64_t frame_ = 0, nowMs_ = 0;
 };
 
-}  // namespace tak::render
+}  // namespace ta::render

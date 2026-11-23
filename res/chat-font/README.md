@@ -8,7 +8,7 @@ the repository root), subset from the upstream file with fontTools:
       --layout-features=kern --no-hinting --desubroutinize \
       --output-file=NotoSans-Bold.ttf
 
-`cmake/EmbedFiles.cmake` writes it into `takclient` as a byte array (no runtime data
+`cmake/EmbedFiles.cmake` writes it into `taclient` as a byte array (no runtime data
 file), and `src/client/uifont.cpp` rasterizes it with stb_truetype (`src/vendor/stb`)
 at the exact pixel size drawn. It draws the in-game chat box, and every plain interface
 text while Options > Interface > UI FONT is MODERN (`src/client/uitext.h`). The character

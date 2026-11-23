@@ -22,7 +22,7 @@ const char* name(Kind kind) {
 
 std::vector<Event> update(State& state,int turnDegrees,uint32_t moveRate,uint32_t occupancy) {
     std::vector<Event> events;
-    tak::updateRetailMovementAnimationCallbacks(true,turnDegrees,state.turnSign,
+    ta::updateRetailMovementAnimationCallbacks(true,turnDegrees,state.turnSign,
         moveRate,state.moveRate,occupancy,state.occupancy,
         [&](int value) { events.push_back({Kind::Turn,value}); },
         [&](uint32_t value) { events.push_back({Kind::MoveRate,int(value)}); },

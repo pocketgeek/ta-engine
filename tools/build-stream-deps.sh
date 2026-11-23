@@ -11,7 +11,7 @@ fetch() {
     git clone --depth 1 --branch "$3" "$2" "$root/$1"
   fi
 }
-# Fixed source revision; no GPL-incompatible codecs. TAK is GPLv3.
+# Fixed source revision; no GPL-incompatible codecs. TA is GPLv3.
 if [ ! -f "$PREFIX/lib/libx264.a" ]; then
   mkdir -p "$root/x264"
   (cd "$root/x264"
@@ -43,16 +43,16 @@ if [ ! -f "$PREFIX/lib/libssl.a" ] || [ "$(cat "$PREFIX/openssl-version" 2>/dev/
    case "$platform" in
      MINGW*|MSYS*|mingw32)
        if [ "${TARGET_ARCH:-}" = aarch64 ]; then
-         cat > Configurations/99-tak.conf <<'TLSCONFIG'
+         cat > Configurations/99-ta.conf <<'TLSCONFIG'
 my %targets = (
-    "tak-mingw-arm64" => {
+    "ta-mingw-arm64" => {
         inherit_from => [ "mingw-common" ],
         sys_id => "MINGW64", bn_ops => "SIXTY_FOUR_BIT",
         asm_arch => "aarch64", uplink_arch => undef,
     },
 );
 TLSCONFIG
-         perl Configure tak-mingw-arm64 no-asm "${tls_args[@]}"
+         perl Configure ta-mingw-arm64 no-asm "${tls_args[@]}"
        else
          perl Configure mingw64 "${tls_args[@]}"
        fi ;;

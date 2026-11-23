@@ -12,8 +12,8 @@ static bool atlasSamplingParity(SDL_Renderer* renderer) {
     const std::array<uint8_t,12> alpha={0,255,128,0,255,64,192,255,0,255,0,128};
     std::array<uint8_t,width*height*4> rgba{};
     for(size_t i=0;i<alpha.size();++i)rgba[i*4+3]=alpha[i];
-    const auto pixels=tak::shadowMaskPixels(rgba,140);
-    const auto padded=tak::paddedShadowMaskPixels(rgba,width,height,140);
+    const auto pixels=ta::shadowMaskPixels(rgba,140);
+    const auto padded=ta::paddedShadowMaskPixels(rgba,width,height,140);
     auto* single=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,width,height);
     auto* atlas=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,pageSide,pageSide);
     if(!single || !atlas) {SDL_DestroyTexture(single);SDL_DestroyTexture(atlas);return false;}
@@ -58,7 +58,7 @@ static bool atlasSamplingParity(SDL_Renderer* renderer) {
 // darken their own unit twice, while separate units remain separate shadows.
 static bool unitCoverageParity(SDL_Renderer* renderer) {
     const std::array<uint8_t,12> rgba={90,20,30,0, 40,50,60,255, 70,80,90,128};
-    const auto pixels=tak::shadowCoveragePixels(rgba);
+    const auto pixels=ta::shadowCoveragePixels(rgba);
     auto* cutout=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,3,1);
     if(!cutout)return false;
     SDL_UpdateTexture(cutout,nullptr,pixels.data(),12);
@@ -130,7 +130,7 @@ static bool opaqueSubmissionParity(SDL_Renderer* renderer) {
     const SDL_Vertex colored[3]={{{12,1},{200,30,80,255},{0,0}},
         {{20,1},{20,230,60,255},{0,0}},{{12,9},{80,90,250,255},{0,0}}};
     std::array<uint8_t,64*64*4> expected{},actual{};
-    tak::OpaqueShadowSubmit submit;
+    ta::OpaqueShadowSubmit submit;
     bool ok=true;
     for (float scale:{1.f,2.f}) for (float aa:{1.f,2.f})
         for (float offset:{0.f,0.125f,0.5f}) for (bool clipped:{false,true}) {
@@ -175,7 +175,7 @@ static bool opaqueSubmissionParity(SDL_Renderer* renderer) {
 // Combining adjacent mask triangles must preserve overlap darkening and the
 // transparent/partially covered texels, not just their projected positions.
 static bool maskedRunBatchParity() {
-    const bool accelerated=std::getenv("TAK_SHADOW_TEST_ACCELERATED")!=nullptr;
+    const bool accelerated=std::getenv("TA_SHADOW_TEST_ACCELERATED")!=nullptr;
     SDL_Surface* surface=nullptr;SDL_Window* window=nullptr;SDL_Renderer* renderer=nullptr;
     if (accelerated) {
         if (SDL_InitSubSystem(SDL_INIT_VIDEO)!=0) return false;
@@ -191,7 +191,7 @@ static bool maskedRunBatchParity() {
     SDL_RendererInfo info{};SDL_GetRendererInfo(renderer,&info);
     const bool batch=(info.flags&SDL_RENDERER_ACCELERATED)!=0;
     const std::array<uint8_t,12> rgba={200,0,0,0,0,200,0,255,0,0,200,128};
-    const auto pixels=tak::shadowMaskPixels(rgba,140);
+    const auto pixels=ta::shadowMaskPixels(rgba,140);
     auto* texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,3,1);
     if (!texture) {SDL_DestroyRenderer(renderer);SDL_DestroyWindow(window);SDL_FreeSurface(surface);return false;}
     SDL_UpdateTexture(texture,nullptr,pixels.data(),12);
@@ -204,7 +204,7 @@ static bool maskedRunBatchParity() {
     bool ok=true;
     for (int mode=0;mode<2;++mode) {
         SDL_SetRenderDrawColor(renderer,200,160,120,255);SDL_RenderClear(renderer);
-        if (mode) ok &= tak::submitShadowMaskRun(renderer,texture,vertices.data(),int(vertices.size()),batch)==0;
+        if (mode) ok &= ta::submitShadowMaskRun(renderer,texture,vertices.data(),int(vertices.size()),batch)==0;
         else for (int offset=0;offset<int(vertices.size());offset+=3)
             ok &= SDL_RenderGeometry(renderer,texture,vertices.data()+offset,3,nullptr,0)==0;
         ok &= SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,
@@ -232,7 +232,7 @@ int main() {
     auto* renderer=SDL_CreateSoftwareRenderer(surface);
     if (!renderer) return 1;
     const std::array<uint8_t,12> rgba={200,0,0,0, 0,200,0,255, 0,0,200,128};
-    const auto pixels=tak::shadowMaskPixels(rgba,140);
+    const auto pixels=ta::shadowMaskPixels(rgba,140);
     auto* texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,3,1);
     if (!renderer || !texture) return 1;
     SDL_UpdateTexture(texture,nullptr,pixels.data(),12);

@@ -13,7 +13,7 @@
 #include <cstring>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 int main(int argc, char** argv) {
     // tools/re/check_air_attack_run.py: one AirToGround (41bf80) handler call
@@ -406,7 +406,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (argc==2 && std::strcmp(argv[1],"--hover-attack")==0) {
-        using namespace tak::sim;
+        using namespace ta::sim;
         RetailFlightVector p,t;int distance;unsigned seed;
         while (std::scanf("%d %d %d %d %d %u",&p.x,&p.z,&t.x,&t.z,&distance,&seed)==6) {
             p.y=t.y=0;unsigned calls=0;
@@ -421,7 +421,7 @@ int main(int argc, char** argv) {
         int count;
         while (std::scanf("%d",&count)==1) {
             if (count<1 || count>128) return 2;
-            std::vector<tak::tdo::Object> nodes(size_t(count),tak::tdo::Object{});
+            std::vector<ta::tdo::Object> nodes(size_t(count),ta::tdo::Object{});
             std::vector<int> parents(size_t(count),-1);
             for (int i=0;i<count;++i) {
                 int vertices;auto& node=nodes[size_t(i)];

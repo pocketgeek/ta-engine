@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // stateHash's fold of its words: one xor-multiply-xorshift round per 64-bit
 // word, the words dealt to four lanes in turn. A lane's rounds depend on each
@@ -84,4 +84,4 @@ uint64_t foldPlane(SimPool* pool,size_t n,Chunk chunk) {
     return h;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

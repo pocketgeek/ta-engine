@@ -19,7 +19,7 @@
 #include <set>
 #include <string>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 
@@ -117,7 +117,7 @@ Run run(const TypeRegistry& registry,const UnitType& attacker,const UnitType& vi
 
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     int failures=0;
     auto check=[&](bool ok,const char* label,const std::string& what) {
         std::printf("[%s] %s: %s\n",ok?"PASS":"FAIL",what.c_str(),label);

@@ -57,7 +57,7 @@
 
 #include "client/gpuvram.h"
 
-namespace tak::render {
+namespace ta::render {
 
 inline constexpr uint32_t kArenaNoSlot = ~0u;     // a source with no retained identity: always written
 inline constexpr uint32_t kArenaValueVerts = 6;   // by-value sources: one distant-image quad
@@ -634,4 +634,4 @@ inline size_t appendArenaRange(std::vector<GLint>& firsts, std::vector<GLsizei>&
     return 1;
 }
 
-}  // namespace tak::render
+}  // namespace ta::render

@@ -2,7 +2,7 @@
 #include <string>
 #include <string_view>
 
-namespace tak::vpath {
+namespace ta::vpath {
 // Archive names are byte strings, not native OS paths. Never route lexical
 // operations through Windows' locale-dependent narrow/wide conversion.
 inline std::string_view filename(std::string_view p) {

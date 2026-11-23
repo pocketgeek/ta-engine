@@ -53,7 +53,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 // Round a tile height (pixels, padding included) up to its shelf class:
 // multiples of 2 up to 32, of 4 up to 64, then 8 steps per octave (<= 12.5%).
@@ -96,7 +96,7 @@ inline bool shadowCellKeeps(int cellW, int cellH, int tileW, int tileH, int limi
 // and so are their bytes: a frame's pages are budgeted before any is created.
 // kShadowMaxPages bounds them all (256 MiB of 2048^2 pages); equal to
 // kShadowBasePages it means no extended page, the pre-K atlas (debug
-// TAK_SHADOW_PAGES_MAX=4, for tests and same-binary comparisons).
+// TA_SHADOW_PAGES_MAX=4, for tests and same-binary comparisons).
 inline constexpr size_t kShadowBasePages = 4;    // the former fixed limit
 inline constexpr size_t kShadowMaxPages = 16;
 
@@ -278,7 +278,7 @@ public:
         return s;
     }
 
-    // Full consistency check (tests and TAK_SHADOW_CACHE_VERIFY): every live cell
+    // Full consistency check (tests and TA_SHADOW_CACHE_VERIFY): every live cell
     // inside its page and shelf, no two cells overlapping, shelves and free rows
     // tiling each page exactly, free spans disjoint from cells, counts exact.
     bool validate(std::string* why = nullptr) const {
@@ -500,4 +500,4 @@ private:
     uint32_t nextGeneration_ = 0;
 };
 
-}  // namespace tak::render
+}  // namespace ta::render

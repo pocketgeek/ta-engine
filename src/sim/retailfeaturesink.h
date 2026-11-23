@@ -34,7 +34,7 @@
 
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 inline constexpr int32_t kRetailSinkVelocity = -0x2ccc;   // 512fdb, 495c41
 
@@ -110,4 +110,4 @@ int retailCellMidHeight(int32_t x, int32_t z, int width, int height, Range range
     return (low + high) >> 1;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

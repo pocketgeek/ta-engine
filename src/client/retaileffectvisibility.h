@@ -5,7 +5,7 @@
 #include <span>
 #include <unordered_map>
 
-namespace tak {
+namespace ta {
 
 // Display-owned current sight. The terrain plane and footprint admission are
 // shared with navigation, but these byte counts expire instead of accumulating.
@@ -114,4 +114,4 @@ private:
     size_t retainedCount_=0;
 };
 
-} // namespace tak
+} // namespace ta

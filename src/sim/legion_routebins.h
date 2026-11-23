@@ -32,7 +32,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim::routebins {
+namespace ta::sim::routebins {
 
 // Does a static change box (inclusive cells x0,z0,x1,z1; x1 < 0: none) reach the route? A route covers its window
 // (its seeds' component box, or a margin round its bodies); a change farther than one cell from every cell of that box
@@ -193,7 +193,7 @@ public:
             }
     }
 
-    // Verification (TAK_LEGION_VERIFY, tests): gather()'s candidates for a box, appended in no particular order and
+    // Verification (TA_LEGION_VERIFY, tests): gather()'s candidates for a box, appended in no particular order and
     // possibly repeated, without changing the index (no stale entry dropped, no stats): a check must not move what
     // the index does next (staticChanged's choice between the index and the walk reads the bins' sizes).
     void collect(int plane, const std::array<int, 4>& b, std::vector<int>& out) const {
@@ -288,4 +288,4 @@ private:
     Stats stats_;
 };
 
-}  // namespace tak::sim::routebins
+}  // namespace ta::sim::routebins

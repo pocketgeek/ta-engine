@@ -1,4 +1,4 @@
-// client/localserver.h: the single-player takserver child. A child that dies on
+// client/localserver.h: the single-player taserver child. A child that dies on
 // startup must be seen at once (the connect poll used to wait out its whole 10 s
 // timeout on a missing binary), and stop()/the destructor must end a live one.
 // The test spawns ITSELF as the child: `--child-exit N` exits N, `--child-sleep`
@@ -16,7 +16,7 @@ using Clock = std::chrono::steady_clock;
 int failed = 0;
 void expect(bool ok, const char* what) { if (!ok) { ++failed; std::fprintf(stderr, "FAIL: %s\n", what); } }
 // Poll exited() the way the client's connect loop does; returns the ms it took (-1 = never).
-long waitExit(tak::LocalServer& s, int* code, int limitMs) {
+long waitExit(ta::LocalServer& s, int* code, int limitMs) {
     const auto t0 = Clock::now();
     while (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t0).count() < limitMs) {
         if (s.exited(code)) return long(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t0).count());
@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
     const std::string self = argv[0];
 
     {   // a child that exits on startup is reported promptly, with its code
-        tak::LocalServer s;
+        ta::LocalServer s;
         expect(s.start(self, {"--child-exit", "7"}), "start self --child-exit");
         int code = -1;
         const long ms = waitExit(s, &code, 5000);
@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
         expect(!s.started() && s.pid() == 0, "stop() releases an exited child");
     }
     {   // a missing binary: Windows refuses at start(); POSIX exits 127 from the child
-        tak::LocalServer s;
+        ta::LocalServer s;
         const bool started = s.start(self + "-does-not-exist", {"--port", "1"});
         if (started) {
             int code = -1;
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
         }
     }
     {   // a live child is running until stopped, and stop() ends it promptly
-        tak::LocalServer s;
+        ta::LocalServer s;
         expect(s.start(self, {"--child-sleep"}), "start self --child-sleep");
         const long pid = s.pid();
         expect(pid > 0, "live child has a pid");
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
         long pid = 0;
         const auto t0 = Clock::now();
         {
-            tak::LocalServer s;
+            ta::LocalServer s;
             expect(s.start(self, {"--child-sleep"}), "start self for destructor");
             pid = s.pid();
         }

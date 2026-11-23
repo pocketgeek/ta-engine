@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """A replay is saved however a game ends.
 
-Real takserver + headless takclient games (Inner Circle, --seed 1), each in its own
+Real taserver + headless taclient games (Inner Circle, --seed 1), each in its own
 scratch profile, ended in different ways:
 
-  crash      the client SIGKILLs itself at a known tick (TAK_KILL_AT_TICK; on
+  crash      the client SIGKILLs itself at a known tick (TA_KILL_AT_TICK; on
              Windows TerminateProcess): the next start recovers a replay holding
              nearly every tick it had received;
   kill       the test kills the client from outside (SIGKILL / Task Manager style);
@@ -19,7 +19,7 @@ scratch profile, ended in different ways:
              client also reports at Loaded;
   mission-crash  the same mission, the client SIGKILLed mid-game: recovered.
 
-Every replay is then played back (TAK_REPLAY_VERIFY) and must match the recorded
+Every replay is then played back (TA_REPLAY_VERIFY) and must match the recorded
 hash checkpoints. Old-format files loading is replay_file's job; the byte layout of a
 streamed file is replay_writer's.
 """
@@ -49,11 +49,11 @@ def free_port():
 
 def environment(root):
     env = {k: v for k, v in os.environ.items()
-           if not k.startswith('TAK_') or k in ('TAK_LEGION',)}
+           if not k.startswith('TA_') or k in ('TA_LEGION',)}
     for name in ('data', 'config', 'home'):
         (root / name).mkdir(parents=True, exist_ok=True)
     env.update(XDG_DATA_HOME=str(root / 'data'), XDG_CONFIG_HOME=str(root / 'config'),
-               TAK_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+               TA_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
     if os.name != 'nt':
         env['HOME'] = str(root / 'home')
     return env
@@ -64,7 +64,7 @@ def replays(root, suffix):
 
 
 def header_fields(path):
-    """(mission stem, data hash) from a .takrep header (format 15)."""
+    """(mission stem, data hash) from a .tarep header (format 15)."""
     d = path.read_bytes()
     pos = 12
 
@@ -80,7 +80,7 @@ def header_fields(path):
 
 
 def complete_ticks(path):
-    """Complete bundles in a (possibly still growing) .takrep / .takrep.part."""
+    """Complete bundles in a (possibly still growing) .tarep / .tarep.part."""
     try:
         d = path.read_bytes()
     except OSError:
@@ -148,7 +148,7 @@ class Game:
         """Wait until the recording on disk holds `ticks` complete ticks; returns them."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            parts = replays(self.root, '.takrep.part')
+            parts = replays(self.root, '.tarep.part')
             if parts and complete_ticks(parts[0]) >= ticks:
                 return parts[0], complete_ticks(parts[0])
             if self.client.poll() is not None:
@@ -176,7 +176,7 @@ def verify(args, root, path):
     """Play `path` back headless (the start recovers unfinished recordings first);
     returns its tick count. Fails on a refused or diverging replay."""
     env = environment(root)
-    env['TAK_REPLAY_VERIFY'] = '1'
+    env['TA_REPLAY_VERIFY'] = '1'
     out = subprocess.run([args.client, 'replay', str(path), '--data', args.data], env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
                          timeout=300).stdout
@@ -191,9 +191,9 @@ def seek_proof(args, root, path, ticks):
     so must the end, with no divergence from the recording."""
     def run(straight):
         env = environment(root)
-        env.update(TAK_REPLAY_VERIFY='1', TAK_REPLAY_SEEK_SCRIPT=','.join(map(str, ticks)))
+        env.update(TA_REPLAY_VERIFY='1', TA_REPLAY_SEEK_SCRIPT=','.join(map(str, ticks)))
         if straight:
-            env['TAK_REPLAY_SEEK_STRAIGHT'] = '1'
+            env['TA_REPLAY_SEEK_STRAIGHT'] = '1'
         out = subprocess.run([args.client, 'replay', str(path), '--data', args.data], env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
                              timeout=240).stdout
@@ -223,47 +223,47 @@ def recorded_game(args, root, **game):
 
 
 def case_seek_retail(args, root):
-    return seek_proof(args, root, recorded_game(args, root, client_env={'TAK_SPEED': '80'}), SEEK_SCRIPT)
+    return seek_proof(args, root, recorded_game(args, root, client_env={'TA_SPEED': '80'}), SEEK_SCRIPT)
 
 
 def case_seek_legion(args, root):
-    path = recorded_game(args, root, client_env={'TAK_SPEED': '80', 'TAK_LEGION': '1'})
+    path = recorded_game(args, root, client_env={'TA_SPEED': '80', 'TA_LEGION': '1'})
     return seek_proof(args, root, path, SEEK_SCRIPT)
 
 
 def case_seek_mission(args, root):
-    path = recorded_game(args, root, client_env={'TAK_SPEED': '80'}, mission=MISSION)
+    path = recorded_game(args, root, client_env={'TA_SPEED': '80'}, mission=MISSION)
     return seek_proof(args, root, path, SEEK_SCRIPT)
 
 
 def case_seek_scenario(args, root):
     path = recorded_game(args, root, map_name='Riparian Conflict',
-                         client_env={'TAK_SPEED': '80', 'TAK_MAP_SCENARIO': '1'})
+                         client_env={'TA_SPEED': '80', 'TA_MAP_SCENARIO': '1'})
     return seek_proof(args, root, path, SEEK_SCRIPT)
 
 
 def case_seek_spectator(args, root):   # a spectator's recording: no checkpoints to lean on
     path = recorded_game(args, root, launch='--mphost',
-                         client_env={'TAK_SPEED': '80', 'TAK_MP_WATCH': '1', 'TAK_MP_AIS': '4'})
+                         client_env={'TA_SPEED': '80', 'TA_MP_WATCH': '1', 'TA_MP_AIS': '4'})
     assert 'spectat' in (root / 'client.log').read_text(errors='replace').lower(), 'the recording was not a spectator\'s'
     return seek_proof(args, root, path, SEEK_SCRIPT)
 
 
 def finished_one(root):
-    done, parts = replays(root, '.takrep'), replays(root, '.takrep.part')
+    done, parts = replays(root, '.tarep'), replays(root, '.tarep.part')
     assert len(done) == 1 and not parts, (done, parts)
     return done[0]
 
 
 def case_crash(args, root):
-    game = Game(args, root, {'TAK_KILL_AT_TICK': '450'})
+    game = Game(args, root, {'TA_KILL_AT_TICK': '450'})
     try:
         game.wait_client()
         m = re.search(r'kill-at-tick: killing the client at tick (\d+) with (\d+) ticks received', game.log())
         assert m, game.log()
         received = int(m.group(2))
-        parts = replays(root, '.takrep.part')
-        assert len(parts) == 1 and not replays(root, '.takrep'), 'a killed client left no recording'
+        parts = replays(root, '.tarep.part')
+        assert len(parts) == 1 and not replays(root, '.tarep'), 'a killed client left no recording'
     finally:
         game.close()
     final = parts[0].with_name(parts[0].name[:-len('.part')])
@@ -283,7 +283,7 @@ def case_kill(args, root):
         game.client.wait()
     finally:
         game.close()
-    part = replays(root, '.takrep.part')
+    part = replays(root, '.tarep.part')
     assert len(part) == 1, part
     ticks, _ = verify(args, root, part[0].with_name(part[0].name[:-len('.part')]))
     finished_one(root)
@@ -292,7 +292,7 @@ def case_kill(args, root):
 
 
 def case_result(args, root):
-    game = Game(args, root, {'TAK_DEFEAT_TEST': '1'})
+    game = Game(args, root, {'TA_DEFEAT_TEST': '1'})
     try:
         assert game.wait_client() == 0, game.log()
         log = game.log()
@@ -355,7 +355,7 @@ def case_server_sigterm(args, root):
         game.wait_client()
     finally:
         game.close()
-    kept = sorted(served.glob('*.takrep'))
+    kept = sorted(served.glob('*.tarep'))
     assert len(kept) == 1 and not list(served.glob('*.tmp')), kept
     server_ticks, _ = verify(args, root, kept[0])
     client_ticks, _ = verify(args, root, finished_one(root))
@@ -383,14 +383,14 @@ def case_mission(args, root):
 
 
 def case_mission_crash(args, root):
-    game = Game(args, root, {'TAK_KILL_AT_TICK': '300'}, time_limit=60, mission=MISSION)
+    game = Game(args, root, {'TA_KILL_AT_TICK': '300'}, time_limit=60, mission=MISSION)
     try:
         game.wait_client()
         m = re.search(r'kill-at-tick: killing the client at tick (\d+) with (\d+) ticks received', game.log())
         assert m, game.log()
         received = int(m.group(2))
-        parts = replays(root, '.takrep.part')
-        assert len(parts) == 1 and not replays(root, '.takrep'), 'a killed mission client left no recording'
+        parts = replays(root, '.tarep.part')
+        assert len(parts) == 1 and not replays(root, '.tarep'), 'a killed mission client left no recording'
     finally:
         game.close()
     ticks, out = verify(args, root, parts[0].with_name(parts[0].name[:-len('.part')]))
@@ -419,7 +419,7 @@ def main():
     if names == ['seek']:   # a run of its own (ctest replay_seek)
         names = list(seek_cases)
     cases.update(seek_cases)
-    base = Path(tempfile.mkdtemp(prefix='tak-replay-always-'))
+    base = Path(tempfile.mkdtemp(prefix='ta-replay-always-'))
     failed = False
     try:
         with concurrent.futures.ThreadPoolExecutor(len(names)) as pool:

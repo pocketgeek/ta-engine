@@ -8,7 +8,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail's air traffic. After the occupancy rebuild (51da6a..51dbbe) each
 // tick, every live, not dying flyer of a player of type 1 or 2 updates its
@@ -183,4 +183,4 @@ int retailAirTrafficCheck(RetailTrafficMission mission,RetailMissionState& m,uin
     return mission==M::Patrol ? 2 : 0;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

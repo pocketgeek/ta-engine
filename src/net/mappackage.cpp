@@ -14,7 +14,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace tak::net::maps {
+namespace ta::net::maps {
 namespace {
 std::string hash(const std::vector<uint8_t>& bytes) {
     return crypto::toHex(crypto::sha256(bytes.data(), bytes.size()));
@@ -46,13 +46,13 @@ std::set<std::string> companionPaths(const std::string& path) {
 }
 // The map's AI profile files: the Classic AI reads ai/<aiprofile>.txt (the .ota's
 // [Map Data] key, any extension dropped), else ai/default.txt, and all of our levels
-// the one ai/takengine.txt (ai/builtinprofile.h). The server reads them from the room's
+// the one ai/taengine.txt (ai/builtinprofile.h). The server reads them from the room's
 // map package (a game mod's copy wins), so when the map's own archive carries one it
 // travels here -- that archive's copy, whichever installed map wins the path in the mount.
 std::set<std::string> aiProfilePaths(const hpi::Vfs::Files& files, const std::string& mapPath) {
     // ai::kEngineProfileFile (src/ai is not linked here; ai_profile_test checks the
     // two names agree).
-    std::set<std::string> result{"ai/default.txt", "ai/takengine.txt"};
+    std::set<std::string> result{"ai/default.txt", "ai/taengine.txt"};
     const auto ota = files.find(vpath::replaceExtension(mapPath, ".ota"));
     if (ota == files.end()) return result;
     std::string key;
@@ -70,7 +70,7 @@ std::set<std::string> aiProfilePaths(const hpi::Vfs::Files& files, const std::st
 // Follow feature burn/death chains as well as their sprites and palettes. A
 // feature file may define several names, so include dependencies of every
 // definition it brings into the room, not only the initially placed feature.
-std::set<std::string> featureResources(const tnt::Map& map, const hpi::Vfs& vfs, tak::StopToken stop = {}) {
+std::set<std::string> featureResources(const tnt::Map& map, const hpi::Vfs& vfs, ta::StopToken stop = {}) {
     std::map<std::string, tdf::Node> definitions;
     size_t featureBytes=0;
     tdf::ParseUsage usage;
@@ -178,7 +178,7 @@ std::shared_ptr<Package> importSnapshot(const hpi::Vfs& base, const std::filesys
         if (entry.decompressedSize > kMaxBytes - total) throw std::runtime_error("Test map exceeds the map transfer size limit");
         total += entry.decompressedSize;
         const auto key = hpi::MountSet::key(entry.path);
-        if (tak::vpath::extension(key) == ".tnt") {
+        if (ta::vpath::extension(key) == ".tnt") {
             if (!mapPath.empty()) throw std::runtime_error("Test Map requires a KMP containing exactly one map");
             mapPath = key;
         }
@@ -190,14 +190,14 @@ std::shared_ptr<Package> importSnapshot(const hpi::Vfs& base, const std::filesys
     view.setMapFiles(files);
     const auto validated=buildUncached(view, mapPath); // current snapshot wins over cached revisions
     auto enabled=std::make_shared<hpi::Vfs::Files>(*validated->files);
-    auto& ota=(*enabled)[tak::vpath::replaceExtension(mapPath,".ota")];
+    auto& ota=(*enabled)[ta::vpath::replaceExtension(mapPath,".ota")];
     const auto metadata=tdf::parseText(std::string(ota.begin(),ota.end()));
-    const auto* test=metadata.child("takplaytest");
+    const auto* test=metadata.child("taplaytest");
     if(!test || test->numberOr("authoredscenario",0)==0) {
         // Explicit production playtest opt-in. Ordinary retail maps may carry CRT
         // data too; their existing skirmish setup must remain unchanged. Append a
         // separate section rather than rewriting/dropping unknown retail OTA keys.
-        const std::string marker="\n[TAKPlaytest]\n{\nauthoredscenario=1;\n}\n";
+        const std::string marker="\n[TAPlaytest]\n{\nauthoredscenario=1;\n}\n";
         ota.insert(ota.end(),marker.begin(),marker.end());
     }
     return decode(encode(mapPath,std::move(enabled))->bytes, "");
@@ -209,11 +209,11 @@ bool authoredScenario(const hpi::Vfs& vfs, const std::string& mapPath) {
         if (!ota) return false;
         const std::string text(ota->begin(),ota->end());
         const auto root=tdf::parseText(text);
-        const auto* marker=root.child("takplaytest");
+        const auto* marker=root.child("taplaytest");
         if (!marker || marker->numberOr("authoredscenario",0)==0 ||
             !tnt::Scenario::parse(text).hasScenario) return false;
         const auto crt=vfs.tryRead(vpath::replaceExtension(mapPath,".crt"));
-        return crt && tak::crt::parse(*crt).version==1;
+        return crt && ta::crt::parse(*crt).version==1;
     } catch (const std::exception&) { return false; }
 }
 
@@ -239,7 +239,7 @@ std::shared_ptr<Package> build(const hpi::Vfs& vfs, const std::string& mapId) {
     }
     return buildUncached(vfs, path);
 }
-std::shared_ptr<Package> decode(std::vector<uint8_t> bytes, const std::string& digest, tak::StopToken stop) {
+std::shared_ptr<Package> decode(std::vector<uint8_t> bytes, const std::string& digest, ta::StopToken stop) {
     if(stop.stop_requested())throw std::runtime_error("map validation cancelled");
     if (bytes.empty() || bytes.size() > kMaxBytes) throw std::runtime_error("invalid map package size");
     const auto actual = hash(bytes);
@@ -316,25 +316,25 @@ void Sender::pump(Conn& conn, Msg kind) {
 }
 void saveCache(const std::filesystem::path& root, const Package& p,uint64_t quota) {
     if (!validDigest(p.digest)) throw std::runtime_error("invalid map cache key");
-    const auto canonical=root / "MapCache" / (p.digest+".takmap");
+    const auto canonical=root / "MapCache" / (p.digest+".tamap");
     const auto archive=root / "MapCache" / (p.digest+".kmp");
     const bool needCanonical=!std::filesystem::exists(canonical),needArchive=!std::filesystem::exists(archive);
     if(!needCanonical && !needArchive)return;
     std::vector<uint8_t> packed;
-    const auto usage=quota ? tak::storageUsage(root/"MapCache")+tak::storageUsage(root/"Maps","Generated-") : 0;
-    if(quota)tak::storageRoom(usage,needCanonical?p.bytes.size():0,quota);
+    const auto usage=quota ? ta::storageUsage(root/"MapCache")+ta::storageUsage(root/"Maps","Generated-") : 0;
+    if(quota)ta::storageRoom(usage,needCanonical?p.bytes.size():0,quota);
     if(needArchive) {
         std::vector<hpi::PackFile> files;
         for(const auto& [path,bytes]:*p.files)files.push_back({path,bytes});
         packed=hpi::pack(files);
     }
-    tak::storageRoom(usage,(needCanonical?p.bytes.size():0)+packed.size(),quota);
+    ta::storageRoom(usage,(needCanonical?p.bytes.size():0)+packed.size(),quota);
     if(needCanonical)writeAtomic(canonical,p.bytes);
     if(needArchive)writeAtomic(archive,packed);
 }
-std::shared_ptr<Package> loadCache(const std::filesystem::path& root, const std::string& digest, size_t maxBytes, size_t expected, tak::StopToken stop) {
+std::shared_ptr<Package> loadCache(const std::filesystem::path& root, const std::string& digest, size_t maxBytes, size_t expected, ta::StopToken stop) {
     if (!validDigest(digest)) return {};
-    const auto path = root / "MapCache" / (digest + ".takmap");
+    const auto path = root / "MapCache" / (digest + ".tamap");
     std::error_code ec; auto size = std::filesystem::file_size(path, ec);
     if (ec || !size || size > kMaxBytes) return {};
     if(size>maxBytes || (expected && size!=expected))throw std::runtime_error("cached map size/budget mismatch");
@@ -354,8 +354,8 @@ std::filesystem::path saveGenerated(const std::filesystem::path& root, const hpi
     const auto output = root / "Maps" / ("Generated-" + (params.name.empty() ? std::string{} : params.name + "-") + id + ".kmp");
     const std::string path = "kmap/" + name;
     if (std::filesystem::exists(output)) return output;
-    const auto usage=quota ? tak::storageUsage(root/"MapCache")+tak::storageUsage(root/"Maps","Generated-") : 0;
-    tak::storageRoom(usage,1,quota);
+    const auto usage=quota ? ta::storageUsage(root/"MapCache")+ta::storageUsage(root/"Maps","Generated-") : 0;
+    ta::storageRoom(usage,1,quota);
     auto g = mapgen::generate(params, vfs);
     const std::string world = mapgen::worldKey(params.mapType);
     std::string kingdom = world;
@@ -378,7 +378,7 @@ std::filesystem::path saveGenerated(const std::filesystem::path& root, const hpi
         auto tile = tilePath(key); files.push_back({tile, vfs.read(tile, g.map.stockTerrain)});
     }
     const auto packed=hpi::pack(files);
-    tak::storageRoom(usage,packed.size(),quota);
+    ta::storageRoom(usage,packed.size(),quota);
     writeAtomic(output,packed); return output;
 }
 }

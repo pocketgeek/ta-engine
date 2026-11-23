@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-using Scheduler = tak::sim::RetailSearchScheduler;
+using Scheduler = ta::sim::RetailSearchScheduler;
 struct Fixture {
     Scheduler scheduler;
     std::array<Scheduler::Player, 10> players{};
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
     if (argc>1 && std::string(argv[1])=="--admission") {
         unsigned pending; uint32_t tick,stamp;
         while (std::cin>>pending>>tick>>stamp) {
-            const bool accepted=tak::sim::retailAdmitNavigator(pending!=0,tick,stamp);
+            const bool accepted=ta::sim::retailAdmitNavigator(pending!=0,tick,stamp);
             std::cout<<accepted<<' '<<stamp<<'\n';
         }
         return 0;
@@ -110,10 +110,10 @@ int main(int argc, char** argv) {
     if (small.scheduler.active.player != -1 || small.scheduler.newAdmission) return 1;
     // An arrival beyond the node cap is legal within the same slice. On the
     // next slice, the cap is enforced before another node can be expanded.
-    using Search = tak::sim::RetailCostSearch;
+    using Search = ta::sim::RetailCostSearch;
     Search search;
     const auto grade = [](int, int) { return 6; };
-    const auto distance = [](int x, int z) { return tak::sim::retailGoalDistance(x - 3, z); };
+    const auto distance = [](int x, int z) { return ta::sim::retailGoalDistance(x - 3, z); };
     search.reset(4, 1, 0, 6, distance(0, 0));
     int spread = 4;
     auto slice = search.runSlice(grade, distance, 0, 1, 1000, 0, spread);

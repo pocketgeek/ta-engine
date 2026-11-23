@@ -32,7 +32,7 @@
 #  include <sys/syscall.h>
 #endif
 
-namespace tak::proc {
+namespace ta::proc {
 
 int numCpus() {
     unsigned n = std::thread::hardware_concurrency();
@@ -336,4 +336,4 @@ GpuSample gpuSample() {
 #endif   // !__APPLE__
 }
 
-}  // namespace tak::proc
+}  // namespace ta::proc

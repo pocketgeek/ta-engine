@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <vector>
 
-namespace tak {
+namespace ta {
 // Ordered display callbacks emitted by authoritative commands and combat.
 // Aim/fire updates need at most three clears, three starts and three fires;
 // incoming hits and command bursts may add further callbacks.
@@ -69,9 +69,9 @@ struct RetailAimState {
     }
 };
 
-} // namespace tak
+} // namespace ta
 
-namespace tak::sim {
+namespace ta::sim {
 // 530140: FireWeapon starts a nominal +/-20% reload using one CRT draw.
 // The reload field is a word; large nominal values wrap after the adjustment.
 constexpr uint16_t retailWeaponReload(uint16_t nominal,uint16_t crtRoll) {
@@ -92,7 +92,7 @@ constexpr uint32_t retailWeaponFireEvent(uint32_t weaponFlags,uint32_t typeFlags
 // Fire starts the script and reload; SET 23 may arrive on a later update.
 // Create owns allocation, projectileCreated(), mana and slot fallback handling.
 template<class Admit,class Ready,class Fire,class Create>
-void retailWeaponUpdate(uint16_t& reload,tak::RetailAimState& aim,uint32_t now,
+void retailWeaponUpdate(uint16_t& reload,ta::RetailAimState& aim,uint32_t now,
         uint32_t& combatUntil,Admit admit,Ready ready,Fire fire,Create create) {
     if(reload)--reload;
     if(!admit())return;
@@ -102,4 +102,4 @@ void retailWeaponUpdate(uint16_t& reload,tak::RetailAimState& aim,uint32_t now,
         create();
     }
 }
-} // namespace tak::sim
+} // namespace ta::sim

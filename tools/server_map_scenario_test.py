@@ -264,15 +264,15 @@ def main():
     ap.add_argument('--map-tool', type=Path, required=True)
     a = ap.parse_args()
     failed = []
-    with tempfile.TemporaryDirectory(prefix='tak-map-scenario-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-map-scenario-') as tmp:
         root = Path(tmp)
         packages = {}
         for name in ('Inner Circle', 'King of the Hill'):
-            out = root / (name.replace(' ', '-') + '.takmap')
+            out = root / (name.replace(' ', '-') + '.tamap')
             subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out), name],
                            check=True)
             packages[name] = out.read_bytes()
-        out = root / 'King-of-the-Hill-no-tdf.takmap'
+        out = root / 'King-of-the-Hill-no-tdf.tamap'
         subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out),
                         'King of the Hill', '.tdf'], check=True)
         packages['King of the Hill without its .tdf'] = out.read_bytes()

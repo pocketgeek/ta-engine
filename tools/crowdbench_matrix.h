@@ -80,7 +80,7 @@ void operator delete[](void* p,std::align_val_t) noexcept {crowdbench_allocation
 void operator delete(void* p,size_t,std::align_val_t) noexcept {crowdbench_allocation::alignedFree(p);}
 void operator delete[](void* p,size_t,std::align_val_t) noexcept {crowdbench_allocation::alignedFree(p);}
 
-namespace tak::sim {
+namespace ta::sim {
 // Existing diagnostic friendship: observe pending ownership without changing it.
 struct RetailReplayProbe {
     static bool pending(const World& world,int id) {return world.pathPending(id);}
@@ -93,7 +93,7 @@ struct RetailReplayProbe {
 };
 }
 namespace crowdbench_matrix {
-using namespace tak::sim;
+using namespace ta::sim;
 using Clock=std::chrono::steady_clock;
 constexpr int restTicks=30;
 struct Options {
@@ -253,7 +253,7 @@ template<class W> void printDiagnostics(const W& world,bool enabled) {
     // (forEachStat's names, so a counter added to Stats is exported here
     // without a second list to keep in step).
     if constexpr(requires {world.legionStats();}) {
-        tak::sim::LegionNavigator::forEachStat(world.legionStats(),[&](const char* name,uint64_t value) {
+        ta::sim::LegionNavigator::forEachStat(world.legionStats(),[&](const char* name,uint64_t value) {
             metric(("legion_"+std::string(name)).c_str(),value);
         });
     }

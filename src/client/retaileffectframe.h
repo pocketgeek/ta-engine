@@ -4,7 +4,7 @@
 #include <optional>
 #include <span>
 
-namespace tak {
+namespace ta {
 // Sample the native single-tick effect clock without replaying every elapsed
 // tick. A zero authored delay still occupies one tick, like delay one.
 inline std::optional<size_t> retailEffectFrame(std::span<const uint16_t> durations,
@@ -32,4 +32,4 @@ inline RetailEffectSpriteOrigin retailEffectSpriteOrigin(float anchorX,float anc
                                                          float zoom) {
     return {anchorX-float(frameAnchorX)*zoom,anchorY-float(frameAnchorY)*zoom};
 }
-} // namespace tak
+} // namespace ta

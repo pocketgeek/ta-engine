@@ -32,14 +32,14 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 
 UnitType soldier() {
     UnitType t{};
     t.name = "sol"; t.id = "sol";
-    t.maxVel = tak::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 2500;
+    t.maxVel = ta::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 2500;
     t.maxHp = 100; t.canMove = true;
     t.footX = 2; t.footZ = 2;
     return t;

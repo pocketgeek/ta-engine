@@ -9,7 +9,7 @@
 // Compare the permanent-reveal shortcut against the full retail traversal,
 // including cached footprint state, over uneven terrain and changing viewers.
 static bool checkRevealShortcut() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     constexpr int width=48,height=40;
     std::vector<uint16_t> full(width*height),skip(width*height);
     RetailSightFootprint a,b;
@@ -41,7 +41,7 @@ static bool checkRevealShortcut() {
 // The exploration-only updater (no removal traversal, block skipping) must
 // leave the same masks and cached footprint as the full retail traversal.
 static bool checkBlockExploration() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     constexpr int width=45,height=37,shift=2,bw=(width+3)>>shift,bh=(height+3)>>shift;
     std::vector<uint16_t> full(width*height),fast(width*height),blocks(bw*bh,0);
     std::array<RetailSightFootprint,6> a{},b{};
@@ -91,7 +91,7 @@ static bool checkBlockExploration() {
 // bits, new terrain of the same size, and a reused world (resetForReplay) of
 // another size. workers<0: serial; otherwise a pool of that many workers.
 static bool checkKeptBlocks(int workers,std::vector<uint64_t>& hashes) {
-    using namespace tak::sim;
+    using namespace ta::sim;
     UnitType near{},far{};
     near.name=near.id="sight-near";far.name=far.id="sight-far";
     for (auto* type:{&near,&far}) {
@@ -186,7 +186,7 @@ int main() {
     {
         std::vector<uint64_t> serialHashes;
         if (!checkKeptBlocks(-1,serialHashes)) return 1;
-        for (const int workers:{3,int(tak::sim::SimPool::kMaxWorkers)}) {
+        for (const int workers:{3,int(ta::sim::SimPool::kMaxWorkers)}) {
             std::vector<uint64_t> workerHashes;
             if (!checkKeptBlocks(workers,workerHashes)) return 1;
             if (serialHashes!=workerHashes) {
@@ -194,7 +194,7 @@ int main() {
             }
         }
     }
-    using namespace tak::sim;
+    using namespace ta::sim;
     UnitType type{};
     type.name=type.id="sight-probe";type.maxHp=100;
     type.maxVel=Fixed::fromInt(1);type.canMove=true;

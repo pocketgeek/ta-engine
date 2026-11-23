@@ -64,9 +64,9 @@
 #include "net/lockstep.h"
 #include "sim/retailrng.h"
 
-namespace tak::sim { class World; class TypeRegistry; class NavGrid; struct Unit; }
+namespace ta::sim { class World; class TypeRegistry; class NavGrid; struct Unit; }
 
-namespace tak::ai {
+namespace ta::ai {
 
 class ClassicBrain {
 public:
@@ -78,7 +78,7 @@ public:
     // their rolls), then the build manager. `largestEnemyPopulation` is what the
     // ground wave roll reads as E; at a skirmish start every player has at most a
     // Monarch, so any value under 10 gives retail's E = 10.
-    ClassicBrain(int player, uint32_t roomSeed, const tak::sim::TypeRegistry& registry,
+    ClassicBrain(int player, uint32_t roomSeed, const ta::sim::TypeRegistry& registry,
                  int32_t largestEnemyPopulation = 0);
     ClassicBrain(int player, uint32_t roomSeed);   // an empty catalogue (tests)
 
@@ -137,7 +137,7 @@ public:
     };
     const WaveStats& waveStats() const { return waves_; }
     // A unit's first mission as the manager reads it (class U1, flags; tests).
-    static std::pair<uint8_t, uint32_t> firstMissionOf(const tak::sim::World& world, const tak::sim::Unit& u);
+    static std::pair<uint8_t, uint32_t> firstMissionOf(const ta::sim::World& world, const ta::sim::Unit& u);
     // The block grids the build manager drew as it was built (0x4110f0).
     const ClassicBlockGrids& blockGrids() const { return grids_; }
     // Retail's per-type cache (mgr+0x85 / +0x95, recounted every tick by 0x4119d0):
@@ -160,17 +160,17 @@ public:
     // px) within `radius` px: the nearest sacred site that passes the placement
     // test (siteOpen), as the footprint's top-left cell; none when every site
     // in reach is taken (retail then builds nothing).
-    std::optional<std::pair<int16_t, int16_t>> depositSite(const tak::sim::World& world, uint16_t t,
+    std::optional<std::pair<int16_t, int16_t>> depositSite(const ta::sim::World& world, uint16_t t,
                                                            std::pair<int32_t, int32_t> centre, int32_t radius);
 
     // Runs every sim tick (the brain keeps retail's own clocks, not a think period).
-    void tick(const tak::sim::World& world, uint32_t simTick,
-              const std::function<void(const tak::net::Command&)>& sink);
+    void tick(const ta::sim::World& world, uint32_t simTick,
+              const std::function<void(const ta::net::Command&)>& sink);
 
     // Retail's game RNG (Park-Miller, 0x535cc0): a value in [0,n); n < 2 returns 0
     // without a draw. A private, server-local stream; the draw order inside each
     // ported routine follows retail's.
-    int rand(int n) { return int(tak::sim::retailRandom(seed_, n)); }
+    int rand(int n) { return int(ta::sim::retailRandom(seed_, n)); }
     uint32_t seed() const { return seed_; }
     int player() const { return player_; }
 
@@ -180,111 +180,111 @@ public:
     // would repeat. retailSeed's |1 already rules out 0; the one odd multiple,
     // 0x7fffffff itself, is moved to a neighbouring odd seed.
     static constexpr uint32_t seedFor(int player, uint32_t roomSeed) {
-        const uint32_t s = tak::sim::retailSeed(roomSeed ^ (0x9e3779b9u * uint32_t(player + 1)));
+        const uint32_t s = ta::sim::retailSeed(roomSeed ^ (0x9e3779b9u * uint32_t(player + 1)));
         return s % 0x7fffffffu == 0 ? s ^ 2u : s;
     }
     // The player's units as the manager reads them, in unit order, with their
     // squads; members that left the world (or the player) are dropped first.
     // Public for the tests that check what the manager sees of a unit.
-    std::vector<ClassicSquadUnit> squadUnits(const tak::sim::World& world);
+    std::vector<ClassicSquadUnit> squadUnits(const ta::sim::World& world);
 
 private:
     // 0x40fe00 -> 0x40fd80, retail's AI scheduler: the assignment countdown, then
     // each squad whose deadline has come (the shared sim templates).
-    void scheduler(const tak::sim::World& world, uint32_t simTick,
-                   const std::function<void(const tak::net::Command&)>& sink);
+    void scheduler(const ta::sim::World& world, uint32_t simTick,
+                   const std::function<void(const ta::net::Command&)>& sink);
     // Retail's AI squads are the player's group records (unit+0xc8 by set-squad
     // 0x50b4f0, record +8 by set-active 0x50b700), and the Retail movement paces
     // a formation's members (51b890, the Move_Ground and attack group checks).
     // Only a strike squad (while attacking) and a VTOL squad (while it has units)
     // are ever made formations, so the World is told those squads' members and
     // flags, as Cmd::AiGroup, whenever they differ from what it was last told.
-    void publishGroups(const tak::sim::World& world, const std::function<void(const tak::net::Command&)>& sink);
+    void publishGroups(const ta::sim::World& world, const std::function<void(const ta::net::Command&)>& sink);
     // 0x411a90, retail's per-player bookkeeping: the >= 7-tick window (where the
     // world rebuilds its visibility lists) draws rand(30), and 0 recomputes the
     // priorities from the cache as the previous tick left it; then the recount.
-    void bookkeeping(const tak::sim::World& world, uint32_t simTick);
+    void bookkeeping(const ta::sim::World& world, uint32_t simTick);
     // 0x40b320's member loop for base `slot` (after its reschedule), and the
     // factory planner 0x40dcb0 for one of its members. Retail's orders take
     // effect at once (0x429810 / 0x4d78a0 put the mission on the unit), so a
     // planner that orders a member updates its first mission in `units`: later
     // members of the same think read it (the idle-factory and busy-deposit tests).
-    void baseThink(const tak::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
-                   const std::function<void(const tak::net::Command&)>& sink);
-    void planFactory(const tak::sim::World& world, ClassicSquadUnit& unit,
-                     const std::function<void(const tak::net::Command&)>& sink);
+    void baseThink(const ta::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
+                   const std::function<void(const ta::net::Command&)>& sink);
+    void planFactory(const ta::sim::World& world, ClassicSquadUnit& unit,
+                     const std::function<void(const ta::net::Command&)>& sink);
     // 0x40c890 for units[i], a ready mobile builder of base `slot`.
-    void planConstructor(const tak::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
-                         size_t i, bool threat, const std::function<void(const tak::net::Command&)>& sink);
+    void planConstructor(const ta::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
+                         size_t i, bool threat, const std::function<void(const ta::net::Command&)>& sink);
     // 0x40d370 (the combat-member planner) for a ready member of base `slot`
     // with the base think's threat answer, or with `retreat` 0x40d010 (the
     // Monarch's retreat); the orders update the member's first mission in the
     // think's snapshot, as retail's do at once.
-    void planCombat(const tak::sim::World& world, int slot, const std::vector<ClassicSquadUnit>& units,
+    void planCombat(const ta::sim::World& world, int slot, const std::vector<ClassicSquadUnit>& units,
                     ClassicSquadUnit& member, bool threat, bool retreat,
-                    const std::function<void(const tak::net::Command&)>& sink);
+                    const std::function<void(const ta::net::Command&)>& sink);
     // The player's visible-enemy list (0x411700's +5) as the AI reads it.
-    std::vector<ClassicEnemy> visibleEnemies(const tak::sim::World& world) const;
+    std::vector<ClassicEnemy> visibleEnemies(const ta::sim::World& world) const;
     // Rebuilds visible_ when the World has just rebuilt its own lists (U16).
-    void refreshVisible(const tak::sim::World& world);
+    void refreshVisible(const ta::sim::World& world);
     // Any unit as the AI reads an enemy (the lists, the picker, a strike's p4).
-    ClassicEnemy enemyView(const tak::sim::World& world, const tak::sim::Unit& e) const;
+    ClassicEnemy enemyView(const ta::sim::World& world, const ta::sim::Unit& e) const;
     // The army squads' thinks (ai/classicwaves.h) for squad `slot`, after the
     // shared clock template's reschedule (and, for a strike, its cohesion pass).
-    void strikeThink(const tak::sim::World& world, int slot, tak::sim::RetailAiGroupClock& clock,
+    void strikeThink(const ta::sim::World& world, int slot, ta::sim::RetailAiGroupClock& clock,
                      std::vector<ClassicSquadUnit>& units, uint32_t simTick,
-                     const std::function<void(const tak::net::Command&)>& sink);
-    void backupThink(const tak::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
-                     const std::function<void(const tak::net::Command&)>& sink);
-    void vtolThink(const tak::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
-                   const std::function<void(const tak::net::Command&)>& sink);
+                     const std::function<void(const ta::net::Command&)>& sink);
+    void backupThink(const ta::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
+                     const std::function<void(const ta::net::Command&)>& sink);
+    void vtolThink(const ta::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
+                   const std::function<void(const ta::net::Command&)>& sink);
     // 0x40a200 for `member` around `centre` over every enemy unit
     // (classicPickTarget), and the reachability walk it and the strike's
     // withdrawal test use (0x4e1570 from the member's cell and footprint to
     // range x range cells at the target's cell, over the static grade).
-    int pickTarget(const tak::sim::World& world, const ClassicSquadUnit& member, std::pair<int32_t, int32_t> centre);
-    bool reachTarget(const tak::sim::World& world, const ClassicSquadUnit& member, const ClassicEnemy& target,
+    int pickTarget(const ta::sim::World& world, const ClassicSquadUnit& member, std::pair<int32_t, int32_t> centre);
+    bool reachTarget(const ta::sim::World& world, const ClassicSquadUnit& member, const ClassicEnemy& target,
                      int16_t range, bool limited);
     // 0x40b320 after its member loop: the launch (classicBaseLaunch).
-    void baseLaunch(const tak::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
-                    const std::function<void(const tak::net::Command&)>& sink);
+    void baseLaunch(const ta::sim::World& world, int slot, std::vector<ClassicSquadUnit>& units,
+                    const std::function<void(const ta::net::Command&)>& sink);
     // The largest unit count among the players not allied to this one (the
     // ground wave roll's E, before its floor of 10).
-    int32_t largestEnemyPopulation(const tak::sim::World& world) const;
+    int32_t largestEnemyPopulation(const ta::sim::World& world) const;
     // A squad member's order (0x4d78a0) as a Move or Patrol command: queue 0
     // replaces its missions, and a Move whose mission +0x4e is a6 > 0 ends
     // within that distance (dropped when the unit is already inside, else aimed
     // at the circle's edge). Updates the member's first mission in the snapshot
     // when it replaces them. Whether a command was sent.
-    bool sendOrder(const tak::sim::World& world, ClassicSquadUnit& member, bool patrol, bool queue,
-                   const ClassicPoint& at, int32_t a6, const std::function<void(const tak::net::Command&)>& sink);
+    bool sendOrder(const ta::sim::World& world, ClassicSquadUnit& member, bool patrol, bool queue,
+                   const ClassicPoint& at, int32_t a6, const std::function<void(const ta::net::Command&)>& sink);
     // 0x4d6a50(u, 0) as a Stop command; the member's snapshot loses its missions.
-    void clearMissions(ClassicSquadUnit& member, const std::function<void(const tak::net::Command&)>& sink);
+    void clearMissions(ClassicSquadUnit& member, const std::function<void(const ta::net::Command&)>& sink);
     // The map's sacred-site records (0x62dbcc) and which feature-plane types are
     // sacred, read from the World once.
-    void readSites(const tak::sim::World& world);
-    bool sacredCell(const tak::sim::World& world, int x, int z) const;
+    void readSites(const ta::sim::World& world);
+    bool sacredCell(const ta::sim::World& world, int x, int z) const;
     // 0x507d10(type, 0, cell, 1, 0) as the AI calls it, for type `t`'s footprint
     // with its top-left on cell (x, z).
-    bool siteOpen(const tak::sim::World& world, uint16_t t, int16_t x, int16_t z) const;
+    bool siteOpen(const ta::sim::World& world, uint16_t t, int16_t x, int16_t z) const;
 
     // A sacred-site record's footprint as the zone labelling reads it (its
     // sacred feature's, else 1 x 1).
-    std::pair<int16_t, int16_t> siteFootprint(const tak::sim::World& world, const ClassicCell& cell) const;
+    std::pair<int16_t, int16_t> siteFootprint(const ta::sim::World& world, const ClassicCell& cell) const;
     // The zone labels (0x4e0a20) of the navigator grid a `footX` x `footZ` mover
     // on `nav` uses, built once per grid over its static bit.
-    const ClassicZoneLabels& zoneLabels(const tak::sim::World& world, const tak::sim::NavGrid& nav, int footX, int footZ);
+    const ClassicZoneLabels& zoneLabels(const ta::sim::World& world, const ta::sim::NavGrid& nav, int footX, int footZ);
     // A unit's grid labels (unit +8 -> +4), or null for one without a ground
     // navigator (a flyer).
-    const ClassicZoneLabels* unitLabels(const tak::sim::World& world, const ClassicSquadUnit& unit);
+    const ClassicZoneLabels* unitLabels(const ta::sim::World& world, const ClassicSquadUnit& unit);
     // The navigator grid's static bit (what 0x4e1570's mode 1 reads) for a
     // `footX` x `footZ` mover on `nav`: 1 where the grid build set it at load.
-    const std::vector<uint8_t>& staticBlocked(const tak::sim::World& world, const tak::sim::NavGrid& nav,
+    const std::vector<uint8_t>& staticBlocked(const ta::sim::World& world, const ta::sim::NavGrid& nav,
                                               int footX, int footZ);
     // The owner's unit count as retail keeps it (player +0xe8): its live units.
-    uint16_t population(const tak::sim::World& world) const;
-    void recount(const tak::sim::World& world);
-    void recomputePriorities(const tak::sim::World& world);
+    uint16_t population(const ta::sim::World& world) const;
+    void recount(const ta::sim::World& world);
+    void recomputePriorities(const ta::sim::World& world);
     // 0x4102f0's pass at the manager's creation (from the registry constructor).
     void creationPass();
 #ifndef NDEBUG
@@ -309,14 +309,14 @@ private:
     // staticBlocked / zoneLabels hand out references into these caches and add
     // to them while one may be held (zoneLabels builds a static plane first), so
     // they are deques: an append never moves an existing entry.
-    struct StaticPlane { const tak::sim::NavGrid* nav; int footX, footZ; std::vector<uint8_t> blocked; };
+    struct StaticPlane { const ta::sim::NavGrid* nav; int footX, footZ; std::vector<uint8_t> blocked; };
     std::deque<StaticPlane> staticPlanes_;
-    struct ZonePlane { const tak::sim::NavGrid* nav; int footX, footZ; ClassicZoneLabels labels; };
+    struct ZonePlane { const ta::sim::NavGrid* nav; int footX, footZ; ClassicZoneLabels labels; };
     std::deque<ZonePlane> zonePlanes_;
-    std::unordered_map<const tak::sim::UnitType*, uint16_t> index_;
+    std::unordered_map<const ta::sim::UnitType*, uint16_t> index_;
     std::vector<int16_t> count_, completed_;
     std::vector<uint8_t> priority_;
-    tak::sim::RetailPlayerCacheClock clock_{true, 0};
+    ta::sim::RetailPlayerCacheClock clock_{true, 0};
     uint32_t refreshes_ = 0;
     ClassicSquads squads_;
     // 0x411700's list +5 for this player, as of the World's last rebuild (the
@@ -333,4 +333,4 @@ private:
     int32_t scenarioMode_ = 2;   // retail's skirmish map mode
 };
 
-}  // namespace tak::ai
+}  // namespace ta::ai

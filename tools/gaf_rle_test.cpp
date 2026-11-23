@@ -39,19 +39,19 @@ std::vector<uint8_t> rleGaf(uint16_t w, uint16_t h, const std::vector<uint8_t>& 
     return {d.begin(), d.end()};  // exact capacity, so ASan sees any read past the end
 }
 
-tak::gaf::Palette palette() {
+ta::gaf::Palette palette() {
     std::vector<uint8_t> raw(1024);
     for (int i = 0; i < 256; ++i) {
         raw[size_t(i) * 4] = uint8_t(i);
         raw[size_t(i) * 4 + 1] = uint8_t(255 - i);
         raw[size_t(i) * 4 + 2] = uint8_t(i ^ 0x5A);
     }
-    return tak::gaf::Palette::fromBytes(raw);
+    return ta::gaf::Palette::fromBytes(raw);
 }
 
 void expectRejected(const std::vector<uint8_t>& gaf, const char* what) {
     try {
-        tak::gaf::load(gaf, palette(), -1, what);
+        ta::gaf::load(gaf, palette(), -1, what);
     } catch (const std::runtime_error&) {
         return;
     }
@@ -74,7 +74,7 @@ void validRuns() {
         {-1, -1, -1, -1, -1, 30, 31, 32},
     };
     const auto pal = palette();
-    const auto seqs = tak::gaf::load(rleGaf(8, 4, rle), pal, -1, "valid");
+    const auto seqs = ta::gaf::load(rleGaf(8, 4, rle), pal, -1, "valid");
     check(seqs.size() == 1 && seqs[0].frames.size() == 1, "valid: one sequence, one frame");
     const auto& fr = seqs[0].frames[0];
     check(fr.width == 8 && fr.height == 4 && fr.rgba.size() == 8 * 4 * 4, "valid: frame size");
@@ -91,7 +91,7 @@ void validRuns() {
         }
 
     // A run ending exactly on the scanline's last byte with bytes after it (next line).
-    const auto twoLines = tak::gaf::load(rleGaf(2, 2, {2, 0, 0x06, 4, 2, 0, 0x06, 5, 0xEE}), pal);
+    const auto twoLines = ta::gaf::load(rleGaf(2, 2, {2, 0, 0x06, 4, 2, 0, 0x06, 5, 0xEE}), pal);
     const auto& t = twoLines[0].frames[0].rgba;
     check(t[0] == 4 && t[4] == 4 && t[8] == 5 && t[12] == 5 && t[15] == 255,
           "valid: repeat runs that end on their scanline boundary");
@@ -158,7 +158,7 @@ struct Builder {
 
 void expectRefused(const std::vector<uint8_t>& gaf, const char* what) {
     try {
-        tak::gaf::load(gaf, palette(), -1, what);
+        ta::gaf::load(gaf, palette(), -1, what);
     } catch (const std::runtime_error&) {
         return;
     }
@@ -176,7 +176,7 @@ void compositeFrames() {
         b.u32(ptrs, s0); b.u32(ptrs + 4, s1);
         b.point(rec, b.frame(4, 2, 0, 0, 0, 2, ptrs));
         const auto pal = palette();
-        const auto seqs = tak::gaf::load(b.done(), pal, -1, "composite");
+        const auto seqs = ta::gaf::load(b.done(), pal, -1, "composite");
         const auto& fr = seqs[0].frames[0];
         const int want[2][4] = {{1, 2, 5, 6}, {3, 4, 7, -1}};
         check(fr.width == 4 && fr.height == 2, "composite: frame size");
@@ -244,7 +244,7 @@ void decodeBudget() {
         const auto rec = b.table(1, 100);
         const uint32_t lines = b.bytes(std::vector<uint8_t>(1024, 0));
         b.point(rec, b.frame(512, 512, 0, 0, 1, 0, lines));
-        check(tak::gaf::load(b.done(), palette())[0].frames.size() == 100, "budget: 100 MB of frames still load");
+        check(ta::gaf::load(b.done(), palette())[0].frames.size() == 100, "budget: 100 MB of frames still load");
     }
 }
 

@@ -26,14 +26,14 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim { struct RetailReplayProbe {
+namespace ta::sim { struct RetailReplayProbe {
     static int gridW(const World& w) { return w.gW_; }
     static int gridH(const World& w) { return w.gH_; }
     static void shoot(World& w,const Projectile& p) { w.projectiles_.push_back(p); }
 }; }
 
 namespace {
-using namespace tak::sim;
+using namespace ta::sim;
 constexpr int kCells=2048;                    // the largest map: 2048 cells of 16 px
 constexpr float kMapPx=float(kCells)*16;      // 32768 px, one past the largest position
 constexpr int32_t kPx=65536;                  // one pixel, raw
@@ -201,12 +201,12 @@ void groupMoveAtTheEdge() {
         for(int i=-1;i<=1;++i)
             ids.push_back(south ? w.spawn(&foot,16000,kMapPx-600+float(i)*50,std::nullopt,0)
                                 : w.spawn(&foot,kMapPx-600+float(i)*50,16000,std::nullopt,0));
-        auto order=std::make_shared<tak::net::SelectionOrder>();
-        order->serial=1;order->shape=tak::net::OrderShape::Offsets;
-        order->tmpl.kind=tak::net::Cmd::Move;
+        auto order=std::make_shared<ta::net::SelectionOrder>();
+        order->serial=1;order->shape=ta::net::OrderShape::Offsets;
+        order->tmpl.kind=ta::net::Cmd::Move;
         order->tmpl.x=south ? 16000.f : kMapPx-10;order->tmpl.z=south ? kMapPx-10 : 16000.f;
         order->members=ids;std::sort(order->members.begin(),order->members.end());
-        tak::net::Command c;c.kind=tak::net::Cmd::Order;c.player=0;c.order=order;
+        ta::net::Command c;c.kind=ta::net::Cmd::Order;c.player=0;c.order=order;
         applyCommand(w,registry,c);
         double low=1e9;
         for(int id:ids) {
@@ -288,7 +288,7 @@ void legionGoalOffTheMap() {
 
 // ---- Gryphons on attack runs at the east and south edges (shipped units) ------------------
 int gryphons(const char* data) {
-    auto vfs=tak::hpi::mountRetailRoot(data);
+    auto vfs=ta::hpi::mountRetailRoot(data);
     TypeRegistry registry;setupRegistry(registry,vfs,false);
     const UnitType* gryphon=registry.find("zongryp");
     const UnitType* soldier=registry.find("arasword");

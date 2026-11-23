@@ -36,7 +36,7 @@ def main():
     ap.add_argument('--server', type=Path, required=True)
     ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-ai-level-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-ai-level-') as tmp:
         with server(a.server.resolve(), a.data.resolve(), Path(tmp)) as (port, h, process), \
              contextlib.closing(login(port, h, 'Alice')) as host:
             host.send('CreateGame', auth.field('levels') + auth.field('') + auth.field(recipe()) +

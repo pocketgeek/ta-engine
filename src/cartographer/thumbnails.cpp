@@ -4,8 +4,8 @@
 #include <chrono>
 
 namespace cart {
-Thumbnails::Thumbnails(SDL_Renderer* renderer,const tak::hpi::Vfs& assets,size_t limit)
-    :renderer_(renderer),assets_(assets),compositor_(std::make_unique<tak::terrain::Compositor>(assets)),limit_(std::max(size_t(1),limit)) {}
+Thumbnails::Thumbnails(SDL_Renderer* renderer,const ta::hpi::Vfs& assets,size_t limit)
+    :renderer_(renderer),assets_(assets),compositor_(std::make_unique<ta::terrain::Compositor>(assets)),limit_(std::max(size_t(1),limit)) {}
 Thumbnails::~Thumbnails() {reset();}
 void Thumbnails::reset() {
     if(job_.valid()) {job_.wait();job_=std::future<Result>{};}
@@ -36,10 +36,10 @@ SDL_Texture* Thumbnails::get(const std::string& path) {
         Result result;result.path=path;
         try {
             if(path.ends_with(".jpg")) {
-                result.image=tak::jpeg::load(assets_.read(path));
+                result.image=ta::jpeg::load(assets_.read(path));
                 return result;
             }
-            auto map=tak::tnt::Map::load(assets_.read(path),path);
+            auto map=ta::tnt::Map::load(assets_.read(path),path);
             // Section thumbnails are not whole-map renders. Reject corrupt or
             // misplaced oversized prefabs before allocating the raster.
             if(map.blocksX>0 && map.blocksY>0 && map.blocksX<=128 && map.blocksY<=128)

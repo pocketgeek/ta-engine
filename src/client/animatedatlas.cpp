@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace tak::render {
+namespace ta::render {
 
 void AtlasPainter::clear(const SDL_Rect& content) {
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_NONE);
@@ -119,4 +119,4 @@ size_t AnimatedAtlasTracker::update(size_t slot, Generation renderer, Generation
     return painted;
 }
 
-}  // namespace tak::render
+}  // namespace ta::render

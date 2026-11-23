@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim { struct RetailReplayProbe {
+namespace ta::sim { struct RetailReplayProbe {
     static void capture(World& w,int id,int owner) {w.captureUnit(*w.unit(id),owner);}
     // A shot of `weapon` striking `target`, as a projectile's collision reports it.
     static void impact(World& w,const Weapon& weapon,int from,int player,int target) {
@@ -26,11 +26,11 @@ namespace tak::sim { struct RetailReplayProbe {
 }; }
 
 namespace {
-using tak::sim::Fixed;
-using tak::sim::Unit;
-using tak::sim::UnitType;
-using tak::sim::Weapon;
-using tak::sim::World;
+using ta::sim::Fixed;
+using ta::sim::Unit;
+using ta::sim::UnitType;
+using ta::sim::Weapon;
+using ta::sim::World;
 using LosStatus=Weapon::LosStatus;
 int failures=0;
 void check(bool ok,const std::string& message) {
@@ -88,7 +88,7 @@ void callbackGates(LosStatus kind) {
         if(c==Carried)w.unit(b)->inTransport=carrier;
         const Fixed hp=w.unit(b)->hp;
         // Forty strikes: an eligible unit falls to one of them (80% each).
-        for(int i=0;i<40 && !taken(w,b,kind);++i)tak::sim::RetailReplayProbe::impact(w,weapon,a,0,b);
+        for(int i=0;i<40 && !taken(w,b,kind);++i)ta::sim::RetailReplayProbe::impact(w,weapon,a,0,b);
         const bool want=c==Eligible || c==Ally ||
             (c==Carried && kind!=LosStatus::MindControl);   // stone/freeze have no transport gate
         if(c==OwnPlayer && kind==LosStatus::MindControl) {
@@ -113,7 +113,7 @@ void callbackRoll(LosStatus kind) {
             const int b=w.spawn(&victim,float(300+(i%40)*40),float(300+(i/40)*40),0,1);
             w.unit(b)->veteran=level;
             const Fixed hp=w.unit(b)->hp;
-            tak::sim::RetailReplayProbe::impact(w,weapon,a,0,b);
+            ta::sim::RetailReplayProbe::impact(w,weapon,a,0,b);
             if(taken(w,b,kind))++landed;
             else if(w.unit(b)->hp!=hp)++hurt;
         }
@@ -136,7 +136,7 @@ void callbackPresentation(LosStatus kind) {
     int strikes=0;
     while(!taken(w,b,kind) && strikes<40) {
         w.tick(1.f/30);   // a fresh hit list
-        tak::sim::RetailReplayProbe::impact(w,weapon,a,0,b);++strikes;
+        ta::sim::RetailReplayProbe::impact(w,weapon,a,0,b);++strikes;
     }
     const auto& hits=w.hits();
     const auto impact=std::find_if(hits.begin(),hits.end(),[&](const auto& h){return h.weapon==&weapon && h.sound;});
@@ -158,8 +158,8 @@ void callbackCasterSwitched(LosStatus kind) {
     const int a=w.spawn(&caster,1000,1000,0,0);
     const int b=w.spawn(&victim,1000,1200,0,1);
     w.unit(b)->veteran=10;
-    tak::sim::RetailReplayProbe::capture(w,a,1);
-    for(int i=0;i<40 && !taken(w,b,kind);++i)tak::sim::RetailReplayProbe::impact(w,weapon,a,0,b);
+    ta::sim::RetailReplayProbe::capture(w,a,1);
+    for(int i=0;i<40 && !taken(w,b,kind);++i)ta::sim::RetailReplayProbe::impact(w,weapon,a,0,b);
     check(taken(w,b,kind) && w.unit(b)->lastHitBy!=a,
           name+" from a caster that changed sides lands and credits no hitter (51a140)");
 }
@@ -167,7 +167,7 @@ void callbackCasterSwitched(LosStatus kind) {
 // ---- The shipped casters, in flight ------------------------------------------
 struct Caster { const UnitType* type; int slot; LosStatus kind; };
 
-std::vector<Caster> roster(const tak::sim::TypeRegistry& registry) {
+std::vector<Caster> roster(const ta::sim::TypeRegistry& registry) {
     std::vector<Caster> out;
     for(const auto& [id,type]:registry.types())
         for(size_t s=0;s<type.weapons.size() && s<3;++s)
@@ -177,7 +177,7 @@ std::vector<Caster> roster(const tak::sim::TypeRegistry& registry) {
 
 // A still enemy the weapon may target and take: mobile, on the ground, with a
 // collision quad, not a Monarch, not immune.
-const UnitType* victimFor(const tak::sim::TypeRegistry& registry,const Weapon& weapon) {
+const UnitType* victimFor(const ta::sim::TypeRegistry& registry,const Weapon& weapon) {
     for(const char* id:{"araarch","tararch","verarch","zonhunt"}) {
         const UnitType* t=registry.find(id);
         if(t && t->projectileQuad && !t->canFly && !t->commander && t->buildMovementCode==1 &&
@@ -245,7 +245,7 @@ void shotLandsOnArrival(const Caster& c,const UnitType& victimType,bool crusades
 }
 
 // Mind Mage (charm) and Basilisk (stone): what happens to a shot in flight.
-void flightCases(const tak::sim::TypeRegistry& registry) {
+void flightCases(const ta::sim::TypeRegistry& registry) {
     const UnitType* mage=registry.find("tarmind");
     const UnitType* basilisk=registry.find("zonbasil");
     check(mage && basilisk,"the Mind Mage and the Basilisk exist");
@@ -283,7 +283,7 @@ void flightCases(const tak::sim::TypeRegistry& registry) {
                     fired=now;++released;
                     firstTaken=taken(w,first,kind);   // the old engine's instant effect
                     if(event==TargetDies)w.scenarioDestroy(first);
-                    if(event==TargetTurned)tak::sim::RetailReplayProbe::capture(w,first,0);
+                    if(event==TargetTurned)ta::sim::RetailReplayProbe::capture(w,first,0);
                     // One shot only: no second one may take the unit behind.
                     w.stop(a);w.unit(a)->fireState=0;
                 } else if(fired>=0 && w.unit(a) && w.unit(a)->justFired)++released;
@@ -353,9 +353,9 @@ int main(int argc,char** argv) {
         callbackCasterSwitched(kind);
     }
     if(argc==2) {
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         for(bool crusades:{false,true}) {
-            tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
             const auto casters=roster(registry);
             std::printf("balance=%d: %zu status casters\n",int(crusades),casters.size());
             check(casters.size()==7,"seven casters carry a Line-of-Sight status weapon");

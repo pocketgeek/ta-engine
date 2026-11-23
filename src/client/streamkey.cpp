@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-namespace tak {
+namespace ta {
 namespace {
 
 // Notices that the field changed since the last write without keeping another copy of
@@ -21,7 +21,7 @@ uint64_t keyHash(const std::string& s) {
     return h ^ s.size();
 }
 
-// Debug-only stand-ins (TAK_CREDSTORE): the greyed-out state, and a store that lives in
+// Debug-only stand-ins (TA_CREDSTORE): the greyed-out state, and a store that lives in
 // this process only.
 class Unavailable final : public credstore::Store {
 public:
@@ -226,7 +226,7 @@ bool StreamKeyMemory::waitIdle(int ms) {
 }
 
 std::shared_ptr<credstore::Store> streamKeyStore() {
-    if (const char* v = devEnv("TAK_CREDSTORE")) {
+    if (const char* v = devEnv("TA_CREDSTORE")) {
         if (!std::strcmp(v, "none")) return std::make_shared<Unavailable>();
         if (!std::strcmp(v, "memory")) return std::make_shared<Memory>();
         if (!std::strcmp(v, "test")) return credstore::system(credstore::testSlot());
@@ -234,4 +234,4 @@ std::shared_ptr<credstore::Store> streamKeyStore() {
     return credstore::system(credstore::streamKeySlot());
 }
 
-}  // namespace tak
+}  // namespace ta

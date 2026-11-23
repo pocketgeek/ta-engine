@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace tak::voice {
+namespace ta::voice {
 
 namespace {
 OpusEncoder* enc(void* p) { return static_cast<OpusEncoder*>(p); }
@@ -70,4 +70,4 @@ bool Decoder::conceal(float* out) {
 
 void Decoder::reset() { if (st_) opus_decoder_ctl(dec(st_), OPUS_RESET_STATE); }
 
-}  // namespace tak::voice
+}  // namespace ta::voice

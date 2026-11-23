@@ -4,9 +4,9 @@
 // Absurdly Defensive, Passive): per-unit weight and limit, built into the engine.
 //
 // These levels never read a game's ai/default.txt. Each has its own built-in table
-// (builtinProfile). ONE file, ai/takengine.txt, adjusts all six of them: a GAME MOD
+// (builtinProfile). ONE file, ai/taengine.txt, adjusts all six of them: a GAME MOD
 // or the room's MAP PACKAGE may carry it in its ai/ folder -- loose in a game-mod
-// pack folder (mods/game/<pack>/ai/takengine.txt), at ai/ inside an archive in a
+// pack folder (mods/game/<pack>/ai/taengine.txt), at ai/ inside an archive in a
 // game mod, or at ai/ in the map's .kmp (it travels in the room's map package,
 // net/mappackage.h).
 //
@@ -19,7 +19,7 @@
 // another folder) is not read, and the base install and cosmetic packs can never
 // supply one.
 // Classic (retail's own AI, shown to players as RETAIL) is not built in and never
-// reads ai/takengine.txt: it reads ai/<aiprofile>.txt, else the game's
+// reads ai/taengine.txt: it reads ai/<aiprofile>.txt, else the game's
 // ai/default.txt (ai/classicprofile.h).
 //
 // Line format: `weight <unit> <n>` or
@@ -36,13 +36,13 @@
 #include "ai/ai.h"
 #include "hpi/hpi.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 // A level's built-in profile; Classic (and anything out of range) has an empty one.
 const Profile& builtinProfile(Difficulty d);
 
 // The one file that adjusts all of our levels.
-inline constexpr const char* kEngineProfileFile = "ai/takengine.txt";
+inline constexpr const char* kEngineProfileFile = "ai/taengine.txt";
 
 // The file that adjusts a level (kEngineProfileFile for each of our levels), or
 // nullptr for Classic.
@@ -51,23 +51,23 @@ const char* levelProfileFile(Difficulty d);
 // Apply profile lines to `prof`: each `weight`/`limit` line sets that unit's entry.
 void applyProfileText(std::string_view text, Profile& prof);
 
-// A room's ai/takengine.txt: from `gameModFiles` (the room's verified game-mod
+// A room's ai/taengine.txt: from `gameModFiles` (the room's verified game-mod
 // package) if it has one, else from `mapFiles` (the room's verified map package), else
 // null. Both are Vfs::Files keyed by lowercased path, or null for none. `fromMap`,
 // when given, receives whether it was the map package's.
-const std::vector<uint8_t>* engineProfileText(const tak::hpi::Vfs::Files* gameModFiles,
-                                              const tak::hpi::Vfs::Files* mapFiles = nullptr,
+const std::vector<uint8_t>* engineProfileText(const ta::hpi::Vfs::Files* gameModFiles,
+                                              const ta::hpi::Vfs::Files* mapFiles = nullptr,
                                               bool* fromMap = nullptr);
 
-// A level's effective profile: builtinProfile(d) with `text` (ai/takengine.txt's
+// A level's effective profile: builtinProfile(d) with `text` (ai/taengine.txt's
 // bytes, or null) applied on top; Classic ignores it.
 Profile levelProfileFrom(Difficulty d, const std::vector<uint8_t>* text);
 
 // The same, finding the file with engineProfileText. `source`, when given, receives
 // the path of the file applied ("" for the built-in table) and `fromMap` whether it
 // was the map package's.
-Profile levelProfile(Difficulty d, const tak::hpi::Vfs::Files* gameModFiles,
-                     const tak::hpi::Vfs::Files* mapFiles = nullptr, std::string* source = nullptr,
+Profile levelProfile(Difficulty d, const ta::hpi::Vfs::Files* gameModFiles,
+                     const ta::hpi::Vfs::Files* mapFiles = nullptr, std::string* source = nullptr,
                      bool* fromMap = nullptr);
 
-} // namespace tak::ai
+} // namespace ta::ai

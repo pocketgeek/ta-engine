@@ -417,7 +417,7 @@ int main(int argc,char** argv) {
         put(root/"Music"/"track3.wav",wavFile(22050,2,16,tones(22050,N/2,{440,440})));
         put(pack/"track3.wav",wavFile(R,2,16,tones(R,N,{15000,1000})));
         {
-            auto vfs=tak::hpi::mountPlayVfs(root,{},{});
+            auto vfs=ta::hpi::mountPlayVfs(root,{},{});
             SoundBank bank;
             if(!SoundBankTestAccess::openPaused(bank))return 2;
             SoundBankTestAccess::layout(bank,2);
@@ -437,7 +437,7 @@ int main(int argc,char** argv) {
     }
     if(argc==2) {
         // Retail tracks are 22050 Hz stereo: cached as they are, frame for frame.
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         int tracks=0;
         for(int t=1;t<=20;++t) {
             const std::string path="music/track"+std::to_string(t)+".wav";

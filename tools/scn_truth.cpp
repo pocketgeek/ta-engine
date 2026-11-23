@@ -17,12 +17,12 @@
 int main(int argc, char** argv) {
     const char* file = nullptr;
     const char* data = nullptr;
-    auto mode = tak::sim::PathfindingMode::Legion;
+    auto mode = ta::sim::PathfindingMode::Legion;
     int offset = 0;
     bool detail = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
-        else if (!std::strcmp(argv[i], "--mode") && i + 1 < argc) mode = !std::strcmp(argv[++i], "retail") ? tak::sim::PathfindingMode::Retail : tak::sim::PathfindingMode::Legion;
+        else if (!std::strcmp(argv[i], "--mode") && i + 1 < argc) mode = !std::strcmp(argv[++i], "retail") ? ta::sim::PathfindingMode::Retail : ta::sim::PathfindingMode::Legion;
         else if (!std::strcmp(argv[i], "--offset") && i + 1 < argc) offset = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--detail")) detail = true;
         else if (argv[i][0] != '-' && !file) file = argv[i];
@@ -30,24 +30,24 @@ int main(int argc, char** argv) {
     }
     if (!file) { std::fprintf(stderr, "usage: scn_truth <file.scn> --data DIR\n"); return 2; }
     try {
-        const auto s = tak::scn::load(file);
-        tak::scn::BuildOptions bo;
+        const auto s = ta::scn::load(file);
+        ta::scn::BuildOptions bo;
         bo.mode = mode;
         bo.serial = true;
         bo.offset = offset;
         bo.data = data;
-        auto b = tak::scn::build(s, bo);
+        auto b = ta::scn::build(s, bo);
         if (!b->skipped.empty()) { std::fprintf(stderr, "%s\n", b->skipped.c_str()); return 77; }
         if (s.truths.empty()) { std::fprintf(stderr, "%s has no truth line\n", file); return 2; }
-        const auto start = tak::scn::startPositions(s, *b);
-        tak::scn::OrderFeed feed(s, *b);
+        const auto start = ta::scn::startPositions(s, *b);
+        ta::scn::OrderFeed feed(s, *b);
         int64_t commands = 0;
         for (uint32_t t = 0; t < s.truths.back().tick; ++t) {
             commands += int64_t(feed.apply(t));
             b->world->tick(1.f / 30);
             for (const auto& tr : s.truths) {
                 if (t + 1 != tr.tick) continue;
-                const auto r = tak::scn::truthReport(s, *b, tr, start, offset, detail ? "" : nullptr);
+                const auto r = ta::scn::truthReport(s, *b, tr, start, offset, detail ? "" : nullptr);
                 std::printf("truth t=%u n=%lld within2_permille=%lld moved_n=%lld moved_within2_permille=%lld commands=%lld\n",
                             tr.tick, (long long)r.n, (long long)r.within2Permille(), (long long)r.movedN,
                             (long long)r.movedWithin2Permille(), (long long)commands);

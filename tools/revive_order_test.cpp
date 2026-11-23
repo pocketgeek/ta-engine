@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 using sim::Fixed;
 
 static int g_fail = 0;

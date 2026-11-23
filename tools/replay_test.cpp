@@ -1,4 +1,4 @@
-// replay_test -- the .takrep header round-trips, and the loader refuses what it
+// replay_test -- the .tarep header round-trips, and the loader refuses what it
 // cannot faithfully replay: any other format or protocol, a truncated header, an
 // unknown pathfinder or an impossible slot count.
 //
@@ -11,7 +11,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak::net;
+using namespace ta::net;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what, const std::string& detail = {}) {
@@ -111,7 +111,7 @@ int main() {
     }
 
     std::printf("pathfinding mode:\n");
-    for (auto mode : {tak::sim::PathfindingMode::Retail, tak::sim::PathfindingMode::Legion}) {
+    for (auto mode : {ta::sim::PathfindingMode::Retail, ta::sim::PathfindingMode::Legion}) {
         auto in = sample(); in.mission.clear(); in.pathfindingMode = mode;
         Writer w; writeReplayHeader(w, in);
         const size_t modeAt = w.b.size() - size_t(kMaxSlots) * 5 - 5;   // ... mode, count, slots, mapScenario, powerCodes, fogExplored
@@ -126,11 +126,11 @@ int main() {
             check(!readReplayHeader(invalid,out,fmt,proto), "unknown pathfinder is refused");
         }
     }
-    for(auto mode:{tak::sim::PathfindingMode::Legion}) {
+    for(auto mode:{ta::sim::PathfindingMode::Legion}) {
         auto in=sample(); in.pathfindingMode=mode;
         Writer w; writeReplayHeader(w,in);
         Reader r(w.b.data()+4,w.b.size()-4); ReplayHeader out; uint32_t fmt=0,proto=0;
-        check(readReplayHeader(r,out,fmt,proto) && out.pathfindingMode==tak::sim::PathfindingMode::Retail,
+        check(readReplayHeader(r,out,fmt,proto) && out.pathfindingMode==ta::sim::PathfindingMode::Retail,
               "campaign playback always uses Retail");
     }
 

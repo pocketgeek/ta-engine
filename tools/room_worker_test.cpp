@@ -5,7 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <limits>
-using namespace tak;
+using namespace ta;
 using namespace std::chrono_literals;
 int main() {
     int failures=0;

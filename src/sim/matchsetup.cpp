@@ -29,7 +29,7 @@
 #include "tnt/tnt.h"
 #include "tnt/mapgen.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 const char* const kMonarchs[5] = {"araking", "tarnecro", "vermage", "zonhunt", "cresage"};
 
@@ -40,11 +40,11 @@ const char* const kMonarchs[5] = {"araking", "tarnecro", "vermage", "zonhunt", "
 // the ordinary command path (a dead, gone or given-away member is skipped), so
 // the sim itself refuses what the server cannot know. The server and the strict
 // replay reader validate the order; an invalid one is ignored here as well.
-static void applySelectionOrder(World& world, const TypeRegistry& reg, const tak::net::Command& c) {
-    using tak::net::OrderShape;
-    if (!c.order || !tak::net::validOrder(*c.order)) return;
+static void applySelectionOrder(World& world, const TypeRegistry& reg, const ta::net::Command& c) {
+    using ta::net::OrderShape;
+    if (!c.order || !ta::net::validOrder(*c.order)) return;
     const auto& o = *c.order;
-    tak::net::Command m = o.tmpl;
+    ta::net::Command m = o.tmpl;
     m.player = c.player;
     const Fixed cx0 = Fixed::fromFloat(o.tmpl.x), cz0 = Fixed::fromFloat(o.tmpl.z);
     auto owned = [&](int id) -> const Unit* {
@@ -61,8 +61,8 @@ static void applySelectionOrder(World& world, const TypeRegistry& reg, const tak
             if (const Unit* u = owned(id)) { sx += u->x.v; sz += u->z.v; ++n; air.add(u->x.v, u->z.v); }
     const bool legion = isLegionPathfinding(world.pathfindingMode());
     // The verbs whose template carries the click: their members share an area there.
-    const bool point = o.tmpl.kind == tak::net::Cmd::Move || o.tmpl.kind == tak::net::Cmd::AttackMove ||
-                       o.tmpl.kind == tak::net::Cmd::Patrol;
+    const bool point = o.tmpl.kind == ta::net::Cmd::Move || o.tmpl.kind == ta::net::Cmd::AttackMove ||
+                       o.tmpl.kind == ta::net::Cmd::Patrol;
     world.beginOrder(o.serial, int(c.player), point, cx0, cz0);
     for (const int32_t id : o.members) {
         m.unitId = id;
@@ -95,8 +95,8 @@ static void applySelectionOrder(World& world, const TypeRegistry& reg, const tak
     world.endOrder();
 }
 
-void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command& c) {
-    using tak::net::Cmd;
+void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command& c) {
+    using ta::net::Cmd;
     if (c.kind == Cmd::Order) { applySelectionOrder(world, reg, c); return; }
     // An infinitely producing mobile builder stays on that job until Stop.
     // Move/patrol/attack/fight-move describe its output rally, without
@@ -147,7 +147,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command
     // 3) neither toggles nor front-inserts, and its work is left alone.
     if (c.kind == Cmd::AttackGround && (!owns(c.unitId) || !world.suppressAccepts(c.unitId, c.x, c.z))) return;
     {
-        using tak::net::kQueueFront; using tak::net::kQueuePlace; using tak::net::kQueueToggle;
+        using ta::net::kQueueFront; using ta::net::kQueuePlace; using ta::net::kQueueToggle;
         const bool front = (c.queue & kQueuePlace) == kQueueFront;
         const bool toggle = (c.queue & kQueueToggle) && (c.queue & kQueuePlace);
         const bool rallyVerb = c.kind == Cmd::Move || c.kind == Cmd::AttackMove || c.kind == Cmd::Patrol ||
@@ -192,8 +192,8 @@ void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command
             // as unloadAt refuses a plain one.
             if (front && c.kind == Cmd::Unload && producer->cargo.empty()) return;
             if (front && !idle) {
-                tak::net::Command append = c;
-                append.queue = tak::net::kQueueAppend;
+                ta::net::Command append = c;
+                append.queue = ta::net::kQueueAppend;
                 const auto issue = [&] { applyCommand(world, reg, append); };
                 if (carrier) {
                     const int passenger = c.unitId;
@@ -206,8 +206,8 @@ void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command
             // At the head of an empty list is the plain order, given as one (a
             // Patrol then gets its two-leg loop, not an open leg).
             if (front) {
-                tak::net::Command plain = c;
-                plain.queue = tak::net::kQueueReplace;
+                ta::net::Command plain = c;
+                plain.queue = ta::net::kQueueReplace;
                 applyCommand(world, reg, plain);
                 return;
             }
@@ -351,15 +351,15 @@ void applyCommand(World& world, const TypeRegistry& reg, const tak::net::Command
     }
 }
 
-void applyEvent(World& world, const tak::net::Event& e) {
+void applyEvent(World& world, const ta::net::Event& e) {
     int p = e.player;
     if (p < 0 || p >= world.numPlayers()) return;
     // A server AI takes over a seat whose player stopped communicating: the empire
     // plays on with its orders intact, and from this tick it is computer-owned, as an
     // AI seat is from the start (MatchSlot::automaticGates: gates open themselves, no
     // human death sights).
-    if (e.kind == tak::net::Event::Kind::AiTakeover) { world.player(p).automaticGates = true; return; }
-    if (e.kind != tak::net::Event::Kind::Forfeit && e.kind != tak::net::Event::Kind::Leave) return;
+    if (e.kind == ta::net::Event::Kind::AiTakeover) { world.player(p).automaticGates = true; return; }
+    if (e.kind != ta::net::Event::Kind::Forfeit && e.kind != ta::net::Event::Kind::Leave) return;
     if (world.hasScenarioOutcomes()) world.forceDefeat(p);
     for (auto& u : world.units())
         if (u.alive() && u.player == p) world.stop(u.id);
@@ -403,11 +403,11 @@ bool balanceUnitFile(const hpi::Vfs& vfs, const std::string& name) {
 std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
                                                          const std::string& mapPath) {
     std::vector<std::pair<float, float>> out;
-    std::string otaPath = tak::vpath::replaceExtension(mapPath,".ota");
+    std::string otaPath = ta::vpath::replaceExtension(mapPath,".ota");
     if (!vfs.has(otaPath)) return out;
     try {
         auto b = vfs.read(otaPath);
-        auto root = tak::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
+        auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
         const auto* gh = root.child("globalheader");
         const auto* md = gh ? gh->child("map data") : nullptr;
         const auto* sp = md ? md->child("specials") : nullptr;
@@ -478,10 +478,10 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
     gaf::FeatureBurnTiming burnTiming(vfs);
     try {
         for (const std::string& path : vfs.list("features")) {
-            if (tak::vpath::extension(path) != ".tdf") continue;
+            if (ta::vpath::extension(path) != ".tdf") continue;
             try {
                 auto fb = vfs.read(path);
-                auto root = tak::tdf::parseText(std::string(fb.begin(), fb.end()), path);
+                auto root = ta::tdf::parseText(std::string(fb.begin(), fb.end()), path);
                 for (const auto& n : root.childOrder) {
                     std::string k = n;
                     std::transform(k.begin(), k.end(), k.begin(), ::tolower);
@@ -531,7 +531,7 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
 }
 struct FeatTypeInterner {
     const std::unordered_map<std::string, FeatDef>& defs;
-    std::vector<tak::sim::FeatType> table;
+    std::vector<ta::sim::FeatType> table;
     std::unordered_map<std::string, int> byName;
     explicit FeatTypeInterner(const std::unordered_map<std::string, FeatDef>& d) : defs(d) {}
     int intern(const std::string& nm) {
@@ -541,7 +541,7 @@ struct FeatTypeInterner {
         if (di == defs.end()) return -1;
         int idx = int(table.size());
         byName[nm] = idx;                  // reserve BEFORE recursing (cycle guard)
-        tak::sim::FeatType t;
+        ta::sim::FeatType t;
         t.name = nm;
         t.flamable = di->second.flamable;
         t.hasBurnAnim = di->second.hasBurnAnim;
@@ -583,7 +583,7 @@ struct FeatTypeInterner {
 // which desynced auto-acquisition. Blocking belongs here, in the sim, where both
 // peers run it; having one function makes it impossible for the two to diverge
 // again.
-static void scanFeaturePlane(World& world, const tak::tnt::Map& map,
+static void scanFeaturePlane(World& world, const ta::tnt::Map& map,
                              const std::unordered_map<std::string, FeatDef>& defs,
                              FeatTypeInterner& types,
                              std::vector<std::pair<float, float>>& rawMana,
@@ -701,7 +701,7 @@ static void installManaSpots(World& world,
 // exactly as setupMatch's placement loop does -- for the client's LOCAL harness
 // and mission paths, which build their worlds without setupMatch. Nav blocking
 // is NOT done here (those paths already block via their own feature placement).
-void registerMapFeatures(World& world, const tak::tnt::Map& map, const hpi::Vfs& vfs,
+void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& vfs,
                          const TypeRegistry* reg) {
     world.clearFeatureTypes();
     auto defs = loadFeatureDefs(vfs);
@@ -749,21 +749,21 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                                                 std::vector<std::pair<float, float>>* startTable) {
     std::unique_ptr<ScenarioScript> pendingScenario;
     hpi::Vfs generatedData(cfg.vfs, true);
-    const hpi::Vfs& vfs = tak::mapgen::isGeneratedMapId(cfg.mapPath) ? generatedData : *cfg.vfs;
+    const hpi::Vfs& vfs = ta::mapgen::isGeneratedMapId(cfg.mapPath) ? generatedData : *cfg.vfs;
     world.setGameSeed(cfg.startSeed);
     // A "~gen1~" mapPath is a random-map recipe: generate it in memory (identically
     // on client and referee -- the params ride the mapId, generation is integer-only).
-    const bool generated = tak::mapgen::isGeneratedMapId(cfg.mapPath);
+    const bool generated = ta::mapgen::isGeneratedMapId(cfg.mapPath);
     int windMin = 100, windMax = 2000;
     double mapGravity = 112.0;
     bool noSeaLevelTrigger = false, authoredPlaytest = false, scenarioOn = false;
     world.setBuildRestrictions({},false);
     if (!generated) {
-        auto ota = tak::vpath::replaceExtension(cfg.mapPath,".ota");
+        auto ota = ta::vpath::replaceExtension(cfg.mapPath,".ota");
         if (vfs.has(ota)) {
             const auto bytes = vfs.read(ota);
             const auto root = tdf::parseText(std::string(bytes.begin(), bytes.end()), ota);
-            if(const auto* test=root.child("takplaytest"))authoredPlaytest=test->numberOr("authoredscenario",0)!=0;
+            if(const auto* test=root.child("taplaytest"))authoredPlaytest=test->numberOr("authoredscenario",0)!=0;
             const auto* gh = root.child("globalheader");
             const bool declared = gh && gh->numberOr("hasscenario", 0) != 0;
             // Scenario content runs for a Test Map copy (its opt-in) or when the room
@@ -779,12 +779,12 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 if (scenarioOn && !restriction.empty()) {
                     // Map companion names are virtual archive paths, never native paths.
                     // Authored packages carry their restriction file beside the OTA.
-                    if (tak::vpath::filename(restriction) != restriction ||
+                    if (ta::vpath::filename(restriction) != restriction ||
                         restriction == "." || restriction == "..")
                         throw std::runtime_error("Authored Use Only file must be a map companion: " + restriction);
                     const auto slash = ota.find_last_of('/');
                     const auto path = (slash == std::string::npos ? std::string{} : ota.substr(0,slash+1)) + restriction;
-                    if (hpi::MountSet::key(path) != hpi::MountSet::key(tak::vpath::replaceExtension(ota,".tdf")))
+                    if (hpi::MountSet::key(path) != hpi::MountSet::key(ta::vpath::replaceExtension(ota,".tdf")))
                         throw std::runtime_error("Authored Use Only file must match the map name: " + restriction);
                     if (!vfs.has(path)) throw std::runtime_error("Missing authored Use Only file: " + path);
                     const auto data = vfs.read(path);
@@ -810,14 +810,14 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     world.setWindRange(windMin, windMax);
     world.setBallisticGravityRaw(retailBallisticGravityRaw(mapGravity));
     std::vector<std::pair<float, float>> genStarts;
-    tak::tnt::Map map;
+    ta::tnt::Map map;
     if (generated) {
-        auto g = tak::mapgen::generate(tak::mapgen::parseMapId(cfg.mapPath), vfs);
+        auto g = ta::mapgen::generate(ta::mapgen::parseMapId(cfg.mapPath), vfs);
         map = std::move(g.map);
         for (auto& [scx, scz] : g.starts)   // cell -> px, matching parseStartPositions
             genStarts.push_back({float(scx * 16), float(scz * 16)});
     } else {
-        map = tak::tnt::Map::load(vfs.read(cfg.mapPath), cfg.mapPath);
+        map = ta::tnt::Map::load(vfs.read(cfg.mapPath), cfg.mapPath);
     }
     // Validate the incoming mode before replacing terrain. A reused World may
     // still carry the previous replay's mode; it must not constrain the new match.
@@ -893,14 +893,14 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // unit update (51e23c..51e352) makes it beside the player's first live,
     // finished `attractsgods` unit (UnitDef +0x268 bit 3, 4c093d; the 0x4ecfd3
     // drawing test once read as attractsgods is bit 0, `ghost`). That gate was
-    // misread when this was decided; World::summonReadyGods (debug TAK_GODS only)
+    // misread when this was decided; World::summonReadyGods (debug TA_GODS only)
     // still summons for every player at the centroid of its forces.
     float godSec = 1e9f;   // 1e9 => never manifests
 #ifndef NDEBUG
     // Harness escape hatch: a desync hunt that cannot turn gods on cannot find that
     // class of bug. Must be set for EVERY peer in the run -- it is a shared input to
     // a lockstep decision, and setting it on one side only will desync by design.
-    if (std::getenv("TAK_GODS")) godSec = 0.0f;
+    if (std::getenv("TA_GODS")) godSec = 0.0f;
 #endif
     world.enableGods(godSec);
     world.setUnitCap(cfg.unitCap);
@@ -912,12 +912,12 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // Cartographer scenarios use authored placements instead of skirmish monarchs.
     // Read the same map-local CRT on every peer, before any default units spawn.
     if (scenarioOn && !generated) {
-        const auto otaPath = tak::vpath::replaceExtension(cfg.mapPath, ".ota");
+        const auto otaPath = ta::vpath::replaceExtension(cfg.mapPath, ".ota");
         const auto otaBytes = vfs.tryRead(otaPath);
-        if (otaBytes && tak::tnt::Scenario::parse(std::string(otaBytes->begin(), otaBytes->end())).hasScenario) {
-            const auto crtPath = tak::vpath::replaceExtension(cfg.mapPath, ".crt");
+        if (otaBytes && ta::tnt::Scenario::parse(std::string(otaBytes->begin(), otaBytes->end())).hasScenario) {
+            const auto crtPath = ta::vpath::replaceExtension(cfg.mapPath, ".crt");
             if (!vfs.has(crtPath)) throw std::runtime_error("Scenario map is missing its CRT file");
-            auto scenario = tak::crt::parse(vfs.read(crtPath));
+            auto scenario = ta::crt::parse(vfs.read(crtPath));
             if (scenario.version != 1) throw std::runtime_error("Scenario CRT file is damaged");
             auto requirePlayer = [&](int player) {
                 if (player == 8) { world.enableScenarioNeutralPlayer(); return; }
@@ -944,7 +944,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             // or a refusal), so no file sets up differently except by starting at all.
             for (size_t p = 1; p < scenario.players.size(); ++p)
                 if (p > size_t(kMaxPlayers) ? !scenario.players[p].empty()
-                                            : std::any_of(scenario.players[p].begin(), scenario.players[p].end(), tak::crt::hasRules))
+                                            : std::any_of(scenario.players[p].begin(), scenario.players[p].end(), ta::crt::hasRules))
                     requirePlayer(int(p)-1);
             for (const auto& placed : scenario.units) {
                 requirePlayer(placed.player);
@@ -975,7 +975,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                     unit->hp = Fixed::fromInt(std::clamp(int(health),0,std::max(0,type->maxHp)));
                     unit->scenarioArmor = float(double(unit->scenarioArmor) * double(std::clamp(placed.armor,0,1000)) * double(0.01f));
                     unit->scenarioWeapon = float(double(unit->scenarioWeapon) * double(std::clamp(placed.weapon,0,1000)) * double(0.01f));
-                    unit->xp = tak::sim::retailExperienceForLevel(unit->xp, std::clamp(placed.veteran, 0, 9),
+                    unit->xp = ta::sim::retailExperienceForLevel(unit->xp, std::clamp(placed.veteran, 0, 9),
                         type->experiencePoints, type->noVeteran, unit->vetOverride);   // setLevel 4cd335
                     unit->veteran = unit->veteranLevel();
                     if (type->isStructure()) world.blockFoot(*type, x, z, true);
@@ -1297,15 +1297,15 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         // five) is the pool a skirmish or multiplayer game opens with.
         world.creditCreationStorage(world.spawn(monarch, mx, mz, 0, i));
 #ifndef NDEBUG
-        // Harness fixture (TAK_START_FLYERS=N, at most 16): every player also
+        // Harness fixture (TA_START_FLYERS=N, at most 16): every player also
         // starts with N finished flying builders of its side (every other one at
         // half health), round-robin by type (Aramon arafly, Taros tarprie2/
         // tarpries; Zhon's, zonhunt, is its Monarch and so skipped, and Veruna
         // and Creon have none), in rows just north of its Monarch, so
         // autoplay runs put flying guards to work (VTOL_Follow's help, repair
         // and orbit) from the first minute. A shared input to the lockstep
-        // setup, as TAK_GODS: set it for EVERY peer in the run, the server too.
-        if (const char* e = std::getenv("TAK_START_FLYERS"); e && monarch) {
+        // setup, as TA_GODS: set it for EVERY peer in the run, the server too.
+        if (const char* e = std::getenv("TA_START_FLYERS"); e && monarch) {
             std::vector<const UnitType*> flyers;
             for (const auto& [id, t] : reg.types())
                 if (t.side == monarch->side && t.canFly && t.isBuilder && !t.isStructure() && !t.commander)
@@ -1681,4 +1681,4 @@ bool setupMission(World& world, const TypeRegistry& reg, const hpi::Vfs& vfs,
     return true;
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace tak::sim { struct RetailReplayProbe {
+namespace ta::sim { struct RetailReplayProbe {
     static void impact(World& w,const Weapon& weapon,int from,int target) {
         const auto* source=w.unit(from);auto* victim=w.unit(target);
         w.applyHit(weapon,victim->x.toFloat(),victim->z.toFloat(),source->player,from,victim);
@@ -20,44 +20,44 @@ void check(bool ok,const char* message) {
     std::printf("[%s] %s\n",ok?"PASS":"FAIL",message);
     if(!ok)++failures;
 }
-tak::sim::UnitType victimType() {
+ta::sim::UnitType victimType() {
     // bmcode 1: retail's charm (52da10) refuses a body without a mover.
     // Upright, so it stands on the terrain: the scans take only what the
     // player sees, and a body left at y 0 under the height-100 ground falls
     // on the wrong sight cells.
-    tak::sim::UnitType t;t.id="victim";t.maxHp=10000;t.canMove=true;t.buildMovementCode=1;t.upright=true;
+    ta::sim::UnitType t;t.id="victim";t.maxHp=10000;t.canMove=true;t.buildMovementCode=1;t.upright=true;
     return t;
 }
-tak::sim::UnitType casterType() {
+ta::sim::UnitType casterType() {
     auto t=victimType();t.id="caster";
-    tak::sim::Weapon w;w.damage=1;w.range=400;w.reload=0.1f;
-    w.mindControl=true;w.kind=tak::sim::Weapon::Kind::Remote;
-    w.remote=tak::sim::Weapon::RemoteKind::MindCtl;w.unitsOnly=true;w.aoe=32;w.buildUpTicks=8;w.decayTicks=8;
+    ta::sim::Weapon w;w.damage=1;w.range=400;w.reload=0.1f;
+    w.mindControl=true;w.kind=ta::sim::Weapon::Kind::Remote;
+    w.remote=ta::sim::Weapon::RemoteKind::MindCtl;w.unitsOnly=true;w.aoe=32;w.buildUpTicks=8;w.decayTicks=8;
     t.weapon=w;t.weapons={w};return t;
 }
-void setup(tak::sim::World& w) {
+void setup(ta::sim::World& w) {
     w.setPlayerCount(3);w.setTeam(2,0);
     w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
 }
-bool targets(const tak::sim::Unit& unit,int id) {
+bool targets(const ta::sim::Unit& unit,int id) {
     return std::any_of(unit.orders.begin(),unit.orders.end(),
                        [&](const auto& order){return order.targetId==id;});
 }
 
-const tak::sim::Weapon* charmOf(const tak::sim::UnitType& caster) {
+const ta::sim::Weapon* charmOf(const ta::sim::UnitType& caster) {
     const auto it=std::find_if(caster.weapons.begin(),caster.weapons.end(),
                                [](const auto& weapon){return weapon.mindControl;});
     return it==caster.weapons.end()?nullptr:&*it;
 }
 
-void rejectedTargets(const tak::sim::UnitType& caster) {
+void rejectedTargets(const ta::sim::UnitType& caster) {
     // 6: still being built. Retail's charm roll refuses a target whose
     // construction remaining (+0x108) is above zero.
     for(int reason=0;reason<7;++reason) {
         auto victim=victimType();
         victim.commander=reason==0;victim.cantBeCaptured=reason==1;
         victim.buildTime=1e6f;   // an unworked site un-conjures this slowly
-        tak::sim::World w;setup(w);
+        ta::sim::World w;setup(w);
         const int a=w.spawn(&caster,1000,1000,0,0);
         const int b=w.spawn(&victim,1000,1100,0,reason==5?2:1);
         if(reason==2)w.unit(b)->inTransport=a;
@@ -77,7 +77,7 @@ void rejectedTargets(const tak::sim::UnitType& caster) {
               "automatic capture does not acquire or fire against immunity/capacity");
         check(w.unit(b)->player==(reason==5?2:1),"rejected capture preserves ownership");
         if(const auto* charm=charmOf(caster)) {
-            for(int i=0;i<20;++i)tak::sim::RetailReplayProbe::impact(w,*charm,a,b);
+            for(int i=0;i<20;++i)ta::sim::RetailReplayProbe::impact(w,*charm,a,b);
             // 5: an ally's unit. The caster does not choose it, but the charm
             // spares only the caster's own player (52da10 compares +0xfd), so a
             // shot that strikes it takes it.
@@ -89,10 +89,10 @@ void rejectedTargets(const tak::sim::UnitType& caster) {
 
 // A converted unit keeps its damage (514f8a copies HP raw) and, as retail's
 // new object, starts without experience (511990 zeroes +0xf4).
-void conversionKeepsDamage(const tak::sim::UnitType& caster,const tak::sim::UnitType& victim,bool data) {
-    tak::sim::World w;setup(w);
+void conversionKeepsDamage(const ta::sim::UnitType& caster,const ta::sim::UnitType& victim,bool data) {
+    ta::sim::World w;setup(w);
     const int a=w.spawn(&caster,1000,1000,0,0),b=w.spawn(&victim,1000,1100,0,1);
-    const auto hp=tak::sim::Fixed::fromFloat(float(victim.maxHp)*0.1f);
+    const auto hp=ta::sim::Fixed::fromFloat(float(victim.maxHp)*0.1f);
     w.unit(b)->hp=hp;w.unit(b)->veteran=5;w.unit(b)->xp=5;
     w.unit(a)->mana=1e6;w.unit(a)->fireState=0;w.attack(a,b,false);
     for(int tick=0;tick<600 && w.unit(b)->player!=0;++tick)w.tick(1.f/30);
@@ -110,7 +110,7 @@ int main(int argc,char** argv) {
         // A nearer immune enemy must not starve a farther eligible target.
         {
             auto immune=victimType(),eligible=victimType();immune.commander=true;
-            tak::sim::World w;setup(w);
+            ta::sim::World w;setup(w);
             const int a=w.spawn(&caster,1000,1000,0,0);
             const int blocked=w.spawn(&immune,1000,1100,0,1);
             const int b=w.spawn(&eligible,1000,1200,0,1);
@@ -125,7 +125,7 @@ int main(int argc,char** argv) {
         // Eligibility changes after an attack was accepted. Preserve its queued
         // destination while clearing aim/channel state before another release.
         for(bool capacity:{false,true}) {
-            auto victim=victimType();tak::sim::World w;setup(w);
+            auto victim=victimType();ta::sim::World w;setup(w);
             const int a=w.spawn(&caster,1000,1000,0,0);
             const int b=w.spawn(&victim,1000,1100,0,1);
             w.unit(a)->fireState=0;w.attack(a,b,false);w.tick(1.f/30);
@@ -144,7 +144,7 @@ int main(int argc,char** argv) {
         auto caster=casterType(),victim=victimType();victim.damageCategory="immune";
         caster.weaponSwitching=true;caster.weapons.push_back(caster.weapon);
         caster.weapons[0].dmgVs["immune"]=0;
-        tak::sim::World w;setup(w);
+        ta::sim::World w;setup(w);
         const int a=w.spawn(&caster,1000,1000,0,0),b=w.spawn(&victim,1000,1100,0,1);
         w.unit(a)->fireState=2;w.attack(a,b,false);
         for(int tick=0;tick<30;++tick)w.tick(1.f/30);
@@ -156,16 +156,16 @@ int main(int argc,char** argv) {
     // Ordinary weapons retain explicit friendly fire.
     {
         auto caster=casterType(),victim=victimType();
-        caster.weapons[0].mindControl=false;caster.weapons[0].remote=tak::sim::Weapon::RemoteKind::Plain;
-        caster.weapon=caster.weapons[0];tak::sim::World w;setup(w);
+        caster.weapons[0].mindControl=false;caster.weapons[0].remote=ta::sim::Weapon::RemoteKind::Plain;
+        caster.weapon=caster.weapons[0];ta::sim::World w;setup(w);
         const int a=w.spawn(&caster,1000,1000,0,0),b=w.spawn(&victim,1000,1100,0,0);
         w.unit(a)->fireState=0;w.attack(a,b,false);w.tick(1.f/30);
         check(w.unit(a)->justFired,"ordinary explicit attacks still allow friendly fire");
     }
     if(argc==2) {
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         for(bool crusades:{false,true}) {
-            tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
             int count=0;
             for(const auto& [name,type]:registry.types()) {
                 if(!charmOf(type))continue;
@@ -182,9 +182,9 @@ int main(int argc,char** argv) {
             // No capture by contact: a Harpy with no mana for its charm stays
             // beside a worn-down enemy without converting it.
             for(bool automatic:{false,true}) {
-                tak::sim::World w;setup(w);
+                ta::sim::World w;setup(w);
                 const int a=w.spawn(harpy,1000,1000,0,0),b=w.spawn(&victim,1000,1060,0,1);
-                w.unit(b)->hp=tak::sim::Fixed::fromFloat(float(victim.maxHp)*0.2f);
+                w.unit(b)->hp=ta::sim::Fixed::fromFloat(float(victim.maxHp)*0.2f);
                 w.unit(a)->fireState=2;w.unit(a)->moveState=2;w.unit(a)->mana=0;
                 if(!automatic)w.attack(a,b,false);
                 for(int tick=0;tick<150;++tick)w.tick(1.f/30);
@@ -194,7 +194,7 @@ int main(int argc,char** argv) {
             // With mana the Harpy converts on its own, by its weapon: the charm
             // spends the shot's mana.
             {
-                tak::sim::World w;setup(w);
+                ta::sim::World w;setup(w);
                 const int a=w.spawn(harpy,1000,1000,0,0),b=w.spawn(&victim,1000,1200,0,1);
                 w.unit(a)->fireState=2;w.unit(a)->moveState=2;w.unit(a)->mana=harpy->maxMana;
                 bool fired=false;

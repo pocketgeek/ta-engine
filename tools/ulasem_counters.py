@@ -3,8 +3,8 @@
 
 W4 gates B1/B2/B3 on counters of the live benchmark (PLAN 3.0, 4 W4): relaxations
 (field_work) per unit-tick, refresh_idle, the field-quota peg run, churn per
-1500-tick bin. This reads the LPROBE lines a run prints (TAK_LPROBE=100 in the
-environment of takserver and of the headless takclient, debug build) and
+1500-tick bin. This reads the LPROBE lines a run prints (TA_LPROBE=100 in the
+environment of taserver and of the headless taclient, debug build) and
 reduces them; the counters are deterministic, so the referee's and the
 client's lines are equal and any platform gives the same numbers.
 
@@ -19,9 +19,9 @@ Gauges (still_per_residue_max, quota_peg_run_max) are the run's final maxima;
 bins are field_work and the legion work classes' deltas per 1500 ticks.
 
 How the run is made (tools/desync-hunt.sh pattern; seeds 0/1/2):
-  TAK_LPROBE=100 takserver --port P --data D --no-auth --local --seed S &
-  TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy TAK_MP_AIS=7 TAK_BENCH=4 TAK_LEGION=1 TAK_LPROBE=100 \\
-      takclient game "Ulasem Arena" --data D --server 127.0.0.1 --serverport P --mphost --time 240
+  TA_LPROBE=100 taserver --port P --data D --no-auth --local --seed S &
+  TA_HEADLESS=1 SDL_VIDEODRIVER=dummy TA_MP_AIS=7 TA_BENCH=4 TA_LEGION=1 TA_LPROBE=100 \\
+      taclient game "Ulasem Arena" --data D --server 127.0.0.1 --serverport P --mphost --time 240
 """
 import json
 import os

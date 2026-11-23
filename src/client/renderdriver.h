@@ -21,7 +21,7 @@
 #include <string_view>
 #include <vector>
 
-namespace tak::renderdriver {
+namespace ta::renderdriver {
 
 // Canonical stored form of a saved value: trimmed, lower-case, "auto" -> "". Anything
 // that cannot be an SDL driver id (empty after trimming, over 32 chars, or holding
@@ -233,4 +233,4 @@ inline std::string pendingNotice() {
     return label(a.failed) + " renderer unavailable - using Auto";
 }
 
-}  // namespace tak::renderdriver
+}  // namespace ta::renderdriver

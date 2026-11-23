@@ -7,7 +7,7 @@
 #include "retailflight.h"
 #include "retailpiecepose.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 4dd250: an attached unit's world point is the host's +0x68 position plus the
 // 4dd0f0 offset of the attach piece (retailPieceOrigin, which 4dd0f0 also

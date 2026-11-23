@@ -3,7 +3,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 struct RetailFlameScan {
     std::array<int32_t,3> endpoint{};
     uint32_t lifetime=1;
@@ -60,4 +60,4 @@ struct RetailFlameParticle {
         return product/lifetime;
     }
 };
-} // namespace tak
+} // namespace ta

@@ -23,7 +23,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 class World;
 class TypeRegistry;
@@ -36,7 +36,7 @@ public:
     // humanPlayer: the campaign player's slot (0-based). origin: for diagnostics.
     // playerMap: .ota player id (1-based) -> World slot, so the script's Create player
     // refs (0-based .ota) land in the same compacted slots as the placed units.
-    MissionScript(std::vector<uint8_t> cobBytes, const tak::tdf::Node& header,
+    MissionScript(std::vector<uint8_t> cobBytes, const ta::tdf::Node& header,
                   const TypeRegistry& reg, int humanPlayer, std::string origin,
                   std::vector<int> playerMap = {});
 
@@ -155,7 +155,7 @@ private:
     void sweepTriggers(World& w);
     void evalConditions(World& w, float dt);
     void emitConditionSound(World& w, Cond& condition);
-    void parseConditions(const tak::tdf::Node& header);
+    void parseConditions(const ta::tdf::Node& header);
     int conditionOwner(int player) const;
     // The condition deaths (523510) of a unit of `type` owned by `player`;
     // `dead` is the id whose unit no longer stands (0: none, the old object
@@ -195,4 +195,4 @@ private:
     std::vector<std::pair<std::string, int32_t>> heldSounds_;
 };
 
-}  // namespace tak::sim
+}  // namespace ta::sim

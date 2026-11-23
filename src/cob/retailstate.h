@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <optional>
 
-namespace tak::cob {
+namespace ta::cob {
 
 struct RetailScriptState {
     RetailVm vm;
@@ -107,7 +107,7 @@ struct RetailScriptState {
         Adapter<Host> adapter{*this,host};
         vm.tick(file,elapsed,adapter);
 #ifndef NDEBUG
-        static const bool verify=std::getenv("TAK_VERIFY_PIECE_INDEX")!=nullptr;
+        static const bool verify=std::getenv("TA_VERIFY_PIECE_INDEX")!=nullptr;
         if (verify) {
             uint64_t expected=0;
             for (size_t i=0;i<std::min(size_t(64),pieces.size());++i)
@@ -196,4 +196,4 @@ private:
     uint64_t activePieces_=0;
 };
 
-} // namespace tak::cob
+} // namespace ta::cob

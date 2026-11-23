@@ -3,7 +3,7 @@
 
 // Retail deaths no weapon causes (KINGDOMS.icd); tools/re/check_kill_credit.py
 // runs them natively.
-namespace tak::sim {
+namespace ta::sim {
 
 // Deadly water, the unit update's 51e0d5..51e14c: once a second (the game
 // tick a multiple of 30), when the map has waterdoesdamage (+0xd41) and a
@@ -97,4 +97,4 @@ inline int32_t retailCorpseDecayHold(int32_t remaining, int32_t decompose) {
 }
 
 
-} // namespace tak::sim
+} // namespace ta::sim

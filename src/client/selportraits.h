@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::selportraits {
+namespace ta::selportraits {
 
 struct Group {
     std::string type;        // UnitType::id
@@ -177,4 +177,4 @@ inline std::string squadLabel(int s) {
     return std::string(s < 0 ? "FORMATION " : "GROUP ") + key;
 }
 
-}  // namespace tak::selportraits
+}  // namespace ta::selportraits

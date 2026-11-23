@@ -5,7 +5,7 @@
 
 #include "sim/sim.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 void classicYardMapFlags(const std::string& yardMap, int footX, int footZ,
                          bool& manaSite, bool& lodestoneClass) {
@@ -26,7 +26,7 @@ void classicYardMapFlags(const std::string& yardMap, int footX, int footZ,
     }
 }
 
-ClassicTypeInfo ClassicTypeInfo::from(const tak::sim::UnitType& t, const tak::sim::TypeRegistry* registry) {
+ClassicTypeInfo ClassicTypeInfo::from(const ta::sim::UnitType& t, const ta::sim::TypeRegistry* registry) {
     ClassicTypeInfo info;
     info.armed = t.classicFbi.weaponBlocks != 0;
     info.builder = t.isBuilder;
@@ -52,8 +52,8 @@ ClassicTypeInfo ClassicTypeInfo::from(const tak::sim::UnitType& t, const tak::si
     return info;
 }
 
-tak::sim::RetailBuildPriority ClassicTypeInfo::priorityInputs(int count, int completed, int32_t limit) const {
-    tak::sim::RetailBuildPriority in;
+ta::sim::RetailBuildPriority ClassicTypeInfo::priorityInputs(int count, int completed, int32_t limit) const {
+    ta::sim::RetailBuildPriority in;
     in.flags = (armed ? 0x10000u : 0u) | (builder ? 0x100u : 0u) | (isFeature ? 0x1000000u : 0u);
     in.secondaryFlags = manaSite ? 0x80000000u : 0u;
     in.count = int16_t(count);
@@ -64,4 +64,4 @@ tak::sim::RetailBuildPriority ClassicTypeInfo::priorityInputs(int count, int com
     return in;
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

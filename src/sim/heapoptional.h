@@ -4,7 +4,7 @@
 #include <optional>
 #include <utility>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // A std::optional whose payload lives on the heap: the member itself is one
 // pointer, so a large, rarely engaged payload stops pushing a record's hot
@@ -71,4 +71,4 @@ private:
     std::unique_ptr<T> p_;
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

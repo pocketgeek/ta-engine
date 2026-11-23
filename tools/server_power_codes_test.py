@@ -70,7 +70,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--server', type=Path, required=True); ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-power-codes-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-power-codes-') as tmp:
         root = Path(tmp)
         try:
             run(a, root)

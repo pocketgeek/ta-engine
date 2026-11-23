@@ -3,8 +3,8 @@
 #include "cartographer/units.h"
 #include <string>
 #include <atomic>
-namespace tak::sim {class TypeRegistry;}
-namespace tak::hpi {class Vfs;}
+namespace ta::sim {class TypeRegistry;}
+namespace ta::hpi {class Vfs;}
 namespace cart {
 enum class OverlayKind { Movement, Buildability, WaterDepth, Slope };
 struct TerrainOverlay {
@@ -13,7 +13,7 @@ struct TerrainOverlay {
     std::string legend;
 };
 // Snapshot analysis using a private engine world. No simulation or map mutation.
-TerrainOverlay terrainOverlay(const tak::tnt::Map& map,const tak::sim::TypeRegistry& registry,
-    const tak::hpi::Vfs& vfs,OverlayKind kind,const std::string& unitType,const std::vector<PlacedUnit>& occupants={},
+TerrainOverlay terrainOverlay(const ta::tnt::Map& map,const ta::sim::TypeRegistry& registry,
+    const ta::hpi::Vfs& vfs,OverlayKind kind,const std::string& unitType,const std::vector<PlacedUnit>& occupants={},
     const std::atomic_bool* cancel=nullptr);
 }

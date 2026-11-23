@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::net { struct RoomView; }
+namespace ta::net { struct RoomView; }
 
-namespace tak {
+namespace ta {
 
 // One line of the room a change can light: the map and its MAP SCENARIO, each cell of the
 // options block, the slot table, the mods line.
@@ -41,4 +41,4 @@ RoomChanges roomChanges(const net::RoomView& before, const net::RoomView& after)
 // map; the host, of the guests its change unreadied. "" for none.
 std::string roomChangeNote(const RoomChanges&, bool host);
 
-}  // namespace tak
+}  // namespace ta

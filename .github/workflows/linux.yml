@@ -289,7 +289,7 @@ jobs:
           # Every target the Linux install() rules reference, or cpack fails at
           # package time with "file INSTALL cannot find build/<target>" -- which is
           # exactly how 0.6.0 broke when cartographer joined those rules.
-          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test takclient takserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test stream_test vashim_test menu_music_test nvml_test windowsgpu_test distant_models_test
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test taclient taserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test stream_test vashim_test menu_music_test nvml_test windowsgpu_test distant_models_test
 
       - name: Server, network and replay checks
         run: |
@@ -347,28 +347,28 @@ jobs:
       # fully static binary could not resolve a host or open a window.
       - name: Verify fully static (only libc/libm linked)
         run: |
-          ldd build/takclient build/takserver build/cartographer || true
-          leaked=$(ldd build/takclient build/takserver build/cartographer \
+          ldd build/taclient build/taserver build/cartographer || true
+          leaked=$(ldd build/taclient build/taserver build/cartographer \
             | awk '/=>/{print $1}' | sort -u \
             | grep -vE '^(libc|libm|libdl|libpthread|librt)\.so|^linux-vdso|^/lib64/ld-' || true)
           if [ -n "$leaked" ]; then
-            echo "::error::takclient/takserver link non-libc shared libraries:"
+            echo "::error::taclient/taserver link non-libc shared libraries:"
             echo "$leaked"
             exit 1
           fi
           echo "OK: only libc/libm linked -- as static as a Linux build can usefully be"
           # VA-API forwards to the system libva (tools/vashim.c); a bundled libva loader
           # could not open drivers built for a newer libva.
-          if grep -aq '__vaDriverInit_' build/takclient; then
-            echo "::error::takclient contains a bundled libva driver loader"
+          if grep -aq '__vaDriverInit_' build/taclient; then
+            echo "::error::taclient contains a bundled libva driver loader"
             exit 1
           fi
 
       - name: Verify native executables
         run: |
-          python3 tools/check-linux-architecture.py ${{ matrix.arch }} build/takclient build/takserver build/cartographer
-          ./build/takclient --version
-          ./build/takserver --version
+          python3 tools/check-linux-architecture.py ${{ matrix.arch }} build/taclient build/taserver build/cartographer
+          ./build/taclient --version
+          ./build/taserver --version
 
       - name: Package (.deb)
         if: matrix.family == 'deb'
@@ -376,16 +376,16 @@ jobs:
           (cd build && cpack -G DEB)
           expected=amd64
           if [ "${{ matrix.arch }}" = "arm64" ]; then expected=arm64; fi
-          test "$(dpkg-deb -f build/tak-engine-*.deb Architecture)" = "$expected"
-          dpkg-deb -I build/tak-engine-*.deb   # show control + auto deps
-          mkdir -p dist && cp build/tak-engine-*.deb dist/
+          test "$(dpkg-deb -f build/ta-engine-*.deb Architecture)" = "$expected"
+          dpkg-deb -I build/ta-engine-*.deb   # show control + auto deps
+          mkdir -p dist && cp build/ta-engine-*.deb dist/
       - name: Package (.rpm)
         if: matrix.family == 'rpm' || matrix.family == 'suse' || matrix.family == 'el'
         run: |
           (cd build && cpack -G RPM)
-          test "$(rpm -qp --qf '%{ARCH}' build/tak-engine-*.rpm)" = "${{ matrix.cpu }}"
-          rpm -qp --requires build/tak-engine-*.rpm
-          mkdir -p dist && cp build/tak-engine-*.rpm dist/
+          test "$(rpm -qp --qf '%{ARCH}' build/ta-engine-*.rpm)" = "${{ matrix.cpu }}"
+          rpm -qp --requires build/ta-engine-*.rpm
+          mkdir -p dist && cp build/ta-engine-*.rpm dist/
       - name: Package (.pkg.tar.zst)
         if: matrix.family == 'arch'
         run: |
@@ -395,16 +395,16 @@ jobs:
           useradd -m builder
           chown -R builder: .
           su builder -c 'cd packaging/arch && makepkg -f --nodeps'
-          pacman -Qip packaging/arch/tak-engine-*.pkg.tar.zst
-          mkdir -p dist && cp packaging/arch/tak-engine-*.pkg.tar.zst dist/
+          pacman -Qip packaging/arch/ta-engine-*.pkg.tar.zst
+          mkdir -p dist && cp packaging/arch/ta-engine-*.pkg.tar.zst dist/
 
       - name: Package (.txz)
         if: matrix.family == 'slack'
         run: |
           packaging/slackware/package.sh build dist
-          installpkg dist/tak-engine-*.txz
-          /usr/bin/takclient --version
-          /usr/bin/takserver --version
+          installpkg dist/ta-engine-*.txz
+          /usr/bin/taclient --version
+          /usr/bin/taserver --version
 
       # One AppImage per architecture: the same static binaries, so no bundled libraries.
       # Containers have no FUSE, so the checks run it extracted.
@@ -412,25 +412,25 @@ jobs:
         if: matrix.appimage == true
         run: |
           sh packaging/appimage/build.sh build dist
-          image=$(ls dist/tak-engine-*-${{ matrix.cpu }}.AppImage)
+          image=$(ls dist/ta-engine-*-${{ matrix.cpu }}.AppImage)
           APPIMAGE_EXTRACT_AND_RUN=1 "$image" --version
-          APPIMAGE_EXTRACT_AND_RUN=1 "$image" takserver --version
+          APPIMAGE_EXTRACT_AND_RUN=1 "$image" taserver --version
           APPIMAGE_EXTRACT_AND_RUN=1 "$image" cartographer --version
 
       # Debug tarball from the oldest-glibc leg only: the release binaries are
       # hardened (only --data/--version, no env vars), so devs get an unhardened
-      # DEBUG build with the CLI flags, TAK_* env hooks, and the --mp* harness.
+      # DEBUG build with the CLI flags, TA_* env hooks, and the --mp* harness.
       - name: Build + tar the debug binaries
         if: matrix.debug == true
         run: |
           export CC=gcc-12 CXX=g++-12
           cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-debug --target takclient takserver cartographer
-          python3 tools/check-linux-architecture.py ${{ matrix.arch }} build-debug/takclient build-debug/takserver build-debug/cartographer
+          cmake --build build-debug --target taclient taserver cartographer
+          python3 tools/check-linux-architecture.py ${{ matrix.arch }} build-debug/taclient build-debug/taserver build-debug/cartographer
           mkdir -p dist-linux-debug
           cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-linux-debug/
-          cp build-debug/takclient build-debug/takserver build-debug/cartographer dist-linux-debug/
-          tar -C dist-linux-debug -czf dist/tak-engine-linux-${{ matrix.arch }}-debug.tar.gz .
+          cp build-debug/taclient build-debug/taserver build-debug/cartographer dist-linux-debug/
+          tar -C dist-linux-debug -czf dist/ta-engine-linux-${{ matrix.arch }}-debug.tar.gz .
 
       - name: Compiler cache statistics
         if: always() && steps.ccache-restore.outcome == 'success'
@@ -447,7 +447,7 @@ jobs:
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-${{ matrix.tag }}-${{ matrix.arch }}
+          name: ta-engine-${{ matrix.tag }}-${{ matrix.arch }}
           path: dist/*
 
   # The repo's 10 GB cache quota is shared with the FFmpeg builds: keep only the newest
@@ -488,7 +488,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          pattern: tak-engine-*
+          pattern: ta-engine-*
           merge-multiple: true
           path: dist
       - name: Create release + upload packages
@@ -498,7 +498,7 @@ jobs:
           # Reuse an existing draft instead of creating a second release record.
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --title "TAK Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || \
+              --title "TA Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || \
               gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
           fi
           gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

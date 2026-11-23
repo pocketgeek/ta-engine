@@ -41,9 +41,9 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     // Both executors' stages (the stress fill's, the benchmark ramp's at its nominal ticks),
     // in tick order, the stress stage first on a tie.

@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace tak::cob {
+namespace ta::cob {
 
 // Piece animation state and integer updates observed at 56c9ef..56cd48 and
 // 56d850. Positions remain 16.16; rotations are unsigned 16-bit turns.
@@ -85,4 +85,4 @@ struct RetailPiece {
     }
 };
 
-} // namespace tak::cob
+} // namespace ta::cob

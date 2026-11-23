@@ -21,7 +21,7 @@
 // =0, fixed function) refuses the pass once and then for the whole context, and
 // the command-by-command fallback is identical; the software renderer refuses.
 //
-// Accelerated runs need TAK_GEOMETRY_TEST_ACCELERATED=1 (SDL_VIDEODRIVER=offscreen
+// Accelerated runs need TA_GEOMETRY_TEST_ACCELERATED=1 (SDL_VIDEODRIVER=offscreen
 // is fine); without it the test checks the software refusal only.
 #include "client/nativepass.h"
 
@@ -88,8 +88,8 @@ struct GL {
 
 // One renderer's worth of cases. Returns the number of compared cases.
 int runCases(SDL_Window* window, SDL_Renderer* renderer, std::mt19937& rng, int W, int H, bool resize) {
-    tak::GeometrySubmit submit;
-    tak::NativePassGL pass;
+    ta::GeometrySubmit submit;
+    ta::NativePassGL pass;
     CHECK(pass.ready(renderer));
     pass.setVerify(true);
     GL gl;
@@ -266,7 +266,7 @@ int runCases(SDL_Window* window, SDL_Renderer* renderer, std::mt19937& rng, int 
     {
         SDL_SetRenderTarget(renderer, target);
         SDL_RenderSetScale(renderer, 1.25f, 1.25f);
-        tak::GLStateSnapshot snap;
+        ta::GLStateSnapshot snap;
         SDL_RenderFlush(renderer);
         const auto before = snap.capture();
         CHECK(!pass.begin(submit, renderer, blendA, false));
@@ -307,13 +307,13 @@ int runCases(SDL_Window* window, SDL_Renderer* renderer, std::mt19937& rng, int 
 }  // namespace
 
 int main() {
-    const bool accelerated = std::getenv("TAK_GEOMETRY_TEST_ACCELERATED");
+    const bool accelerated = std::getenv("TA_GEOMETRY_TEST_ACCELERATED");
     if (!accelerated) {
         SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 64, 64, 32, SDL_PIXELFORMAT_RGBA32);
         SDL_Renderer* renderer = surface ? SDL_CreateSoftwareRenderer(surface) : nullptr;
         if (!renderer) { std::printf("%s\n", SDL_GetError()); return 2; }
-        tak::NativePassGL pass;
-        tak::GeometrySubmit submit;
+        ta::NativePassGL pass;
+        ta::GeometrySubmit submit;
         CHECK(!pass.ready(renderer));
         SDL_Texture* t = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, 4, 4);
         CHECK(!pass.begin(submit, renderer, t, false));
@@ -322,7 +322,7 @@ int main() {
         SDL_DestroyRenderer(renderer);
         SDL_FreeSurface(surface);
         if (failures) return 1;
-        std::printf("PASS: native pass (software renderer refused; set TAK_GEOMETRY_TEST_ACCELERATED=1 for GL)\n");
+        std::printf("PASS: native pass (software renderer refused; set TA_GEOMETRY_TEST_ACCELERATED=1 for GL)\n");
         return 0;
     }
     if (SDL_Init(SDL_INIT_VIDEO) != 0) return 2;
@@ -353,8 +353,8 @@ int main() {
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     CHECK(renderer != nullptr);
     if (renderer) {
-        tak::GeometrySubmit submit;
-        tak::NativePassGL pass;
+        ta::GeometrySubmit submit;
+        ta::NativePassGL pass;
         SDL_Texture* t = makeTexture(renderer, rng, SDL_PIXELFORMAT_ABGR8888, SDL_BLENDMODE_BLEND, false);
         CHECK(pass.ready(renderer));   // the program itself still links
         CHECK(!pass.begin(submit, renderer, t, false));

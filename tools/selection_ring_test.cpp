@@ -12,11 +12,11 @@ void expect(bool ok,const char* what) {
 bool near(float a,float b) {return std::fabs(a-b)<0.001f;}
 
 // A root plate of half size (hx,hz) at y=0 under a tall narrow child, as zonglyph.
-tak::tdo::Object tallModel(float hx,float hz) {
-    tak::tdo::Object root;
+ta::tdo::Object tallModel(float hx,float hz) {
+    ta::tdo::Object root;
     root.name="zonground";
     root.vertices={-hx,0,-hz, hx,0,-hz, hx,0,hz, -hx,0,hz};
-    tak::tdo::Object staff;
+    ta::tdo::Object staff;
     staff.name="staff";
     staff.y=20;
     staff.vertices={-30,0,-20, 30,0,20, 0,124,0};
@@ -33,25 +33,25 @@ int main() {
         expect(near(box.midX,0) && near(box.midY,0) && near(box.midZ,0),"ring centre is the plate's, at the feet");
     }
     {   // Offset plates centre the ring on all three axes (tarhell's is at z -19).
-        tak::tdo::Object root;
+        ta::tdo::Object root;
         root.vertices={-85,0,-97, 85,0,-97, 85,0,59, -85,0,59};
         const auto box=selectionRingBox(root);
         expect(near(box.midZ,-19) && near(box.halfZ,78),"ring centre follows an offset plate");
     }
     {   // Both corners start at zero, so the origin is always inside the box.
-        tak::tdo::Object root;
+        ta::tdo::Object root;
         root.vertices={10,0,10, 20,0,10, 20,0,30, 10,0,30};
         const auto box=selectionRingBox(root);
         expect(near(box.halfX,10) && near(box.midX,10) && near(box.halfZ,15) && near(box.midZ,15),
                "the box includes the origin");
     }
     {   // The root's own offset counts; a root of 2 vertices or fewer adds nothing.
-        tak::tdo::Object root;
+        ta::tdo::Object root;
         root.x=4;root.y=6;
         root.vertices={-4,0,-4, 4,0,-4, 4,0,4};
         const auto box=selectionRingBox(root);
         expect(near(box.midX,4) && near(box.midY,3),"the root's offset is added");
-        tak::tdo::Object two;
+        ta::tdo::Object two;
         two.vertices={-9,0,-9, 9,9,9};
         const auto none=selectionRingBox(two);
         expect(near(none.halfX,0) && near(none.halfZ,0) && near(none.midY,0),"a 2-vertex root adds nothing");

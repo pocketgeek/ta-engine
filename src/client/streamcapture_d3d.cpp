@@ -16,7 +16,7 @@
 #include <vector>
 #endif
 
-namespace tak {
+namespace ta {
 #ifndef _WIN32
 struct D3DCapture::Impl {};
 D3DCapture::D3DCapture() = default;

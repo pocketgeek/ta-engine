@@ -3,7 +3,7 @@
 #include "sim/retailweapon.h"
 #include <deque>
 
-namespace tak {
+namespace ta {
 
 // Simulation-to-display handoff. The caller owns synchronization; packets wait
 // until the render snapshot has reached their tick, and are consumed only once.
@@ -33,4 +33,4 @@ public:
     }
 };
 
-} // namespace tak
+} // namespace ta

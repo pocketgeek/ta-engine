@@ -10,9 +10,9 @@
 
 #include "sim/retailplayer.h"
 
-namespace tak::sim { class TypeRegistry; struct UnitType; }
+namespace ta::sim { class TypeRegistry; struct UnitType; }
 
-namespace tak::ai {
+namespace ta::ai {
 
 struct ClassicTypeInfo {
     bool armed = false;       // any [WEAPONn] block, damage or not (type+0x260 0x10000)
@@ -36,7 +36,7 @@ struct ClassicTypeInfo {
     bool menu = false;        // has a canbuild menu (type+0x132)
     int32_t firstWeaponRange = 0;   // the first weapon's range (type+0x1aa -> +0x90), 0 without one
 
-    static ClassicTypeInfo from(const tak::sim::UnitType& type, const tak::sim::TypeRegistry* registry);
+    static ClassicTypeInfo from(const ta::sim::UnitType& type, const ta::sim::TypeRegistry* registry);
 
     // sim::RetailBuildPriority names its inputs after other readings of the same
     // retail fields; this is what each one holds here:
@@ -44,7 +44,7 @@ struct ClassicTypeInfo {
     //   0x1000000 = isfeature; secondaryFlags bit 31 = mana site
     //   ("resourceProducer"); `weapon` = minwaterdepth; `desired` = the profile
     //   limit; count/completed = the owner's units of the type, all / finished.
-    tak::sim::RetailBuildPriority priorityInputs(int count, int completed, int32_t limit) const;
+    ta::sim::RetailBuildPriority priorityInputs(int count, int completed, int32_t limit) const;
 };
 
 // Retail's yardmap walk (FBI loader 0x4c0f2c..0x4c101f) over footX*footZ cells:
@@ -53,4 +53,4 @@ struct ClassicTypeInfo {
 void classicYardMapFlags(const std::string& yardMap, int footX, int footZ,
                          bool& manaSite, bool& lodestoneClass);
 
-}  // namespace tak::ai
+}  // namespace ta::ai

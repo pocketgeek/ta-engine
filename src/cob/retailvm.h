@@ -7,7 +7,7 @@
 #include <span>
 #include <stdexcept>
 
-namespace tak::cob {
+namespace ta::cob {
 
 // Integer thread interpreter observed at 56c540 / 56c870 / 56c8b0.
 // Piece operations and engine queries belong to the host. Unlike the display
@@ -188,7 +188,7 @@ public:
 
     template<class Host> void tick(const File& file,int32_t elapsed,Host& host,bool reference=false) {
 #ifndef NDEBUG
-        static const bool verify=std::getenv("TAK_VERIFY_THREAD_INDEX")!=nullptr;
+        static const bool verify=std::getenv("TA_VERIFY_THREAD_INDEX")!=nullptr;
         if(verify) {
             uint32_t expected=0;
             for(size_t i=0;i<threads.size();++i)if(threads[i].flags())expected|=uint32_t(1)<<i;
@@ -213,4 +213,4 @@ private:
     uint32_t threadMask_=0;
 };
 
-} // namespace tak::cob
+} // namespace ta::cob

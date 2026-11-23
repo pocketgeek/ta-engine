@@ -1,6 +1,6 @@
 #pragma once
 
-// The client's TrueType interface face: Noto Sans Bold, embedded in takclient
+// The client's TrueType interface face: Noto Sans Bold, embedded in taclient
 // (res/chat-font, SIL OFL 1.1 -- CHAT-FONT-LICENSE.txt) and rasterized by stb_truetype
 // (src/vendor/stb) at the exact pixel size drawn. The in-game chat box always uses it;
 // with UI FONT = MODERN (client/uitext.h) every plain interface text does too. It
@@ -44,7 +44,7 @@
 
 struct stbtt_fontinfo;
 
-namespace tak {
+namespace ta {
 
 // Decode UTF-8 to code points. Only well-formed sequences decode (no overlongs,
 // surrogates or values past U+10FFFF); any other byte stands for itself (Latin-1).
@@ -128,4 +128,4 @@ private:
 // goes.
 UiFont& uiFont();
 
-}  // namespace tak
+}  // namespace ta

@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     if (argc != 2 && argc != 3) return 2;
     const bool legion = argc == 3 && std::string_view(argv[2]) == "--legion";
     if (argc == 3 && !legion) return 2;
-    auto vfs = tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs = ta::hpi::mountRetailRoot(argv[1]);
     int failures = 0, cases = 0;
     auto check = [&](bool ok, const char* label, const std::string& what) {
         std::printf("[%s] %s: %s\n", ok ? "PASS" : "FAIL", what.c_str(), label);
@@ -36,32 +36,32 @@ int main(int argc, char** argv) {
             if ((x >= 40 && x < 100) || (x >= 150 && x < 190 && z >= 40 && z < 90))
                 heights[size_t(z) * W + x] = 10;
     for (bool crusades : {false, true}) {
-        tak::sim::TypeRegistry registry;
-        tak::sim::setupRegistry(registry, vfs, crusades);
-        auto world = [&](tak::sim::World& w) {
+        ta::sim::TypeRegistry registry;
+        ta::sim::setupRegistry(registry, vfs, crusades);
+        auto world = [&](ta::sim::World& w) {
             w.setTerrain(heights, W, H, 64);
             w.buildNavClasses(registry);
             w.setPathService(true);   // the async path service, as in a game
             if (legion) {
-                w.setPathfindingMode(tak::sim::PathfindingMode::Legion);
+                w.setPathfindingMode(ta::sim::PathfindingMode::Legion);
                 w.setMapPlacementFeatures(std::vector<uint16_t>(size_t(W) * H, 0xffff), {});
             }
             w.player(0).mana = 100000;
         };
-        const tak::sim::UnitType* flyer = nullptr;
+        const ta::sim::UnitType* flyer = nullptr;
         for (const auto& [id, t] : registry.types())
             if (t.isBuilder && t.canFly && !t.isStructure() && (!flyer || id < flyer->id)) flyer = &t;
         // Shipyards are ground-domain structures whose yard map wants water ('w');
         // a Zhon producer's water creature is a water-domain unit.
-        auto needsWater = [](const tak::sim::UnitType& t) {
-            if (t.domain == tak::sim::UnitType::Domain::Water) return true;
+        auto needsWater = [](const ta::sim::UnitType& t) {
+            if (t.domain == ta::sim::UnitType::Domain::Water) return true;
             return t.isStructure() && std::any_of(t.yardMap.begin(), t.yardMap.end(),
                                                   [](char c) { return c == 'w' || c == 'W'; });
         };
         std::vector<std::pair<std::string, std::string>> pairs;   // builder, water structure
         for (const auto& [id, t] : registry.types()) {
             if (!t.isBuilder || t.isStructure() || t.canFly ||
-                t.domain != tak::sim::UnitType::Domain::Ground) continue;
+                t.domain != ta::sim::UnitType::Domain::Ground) continue;
             std::string pick;
             for (const auto& s : registry.buildable(id))
                 if (const auto* st = registry.find(s); st && needsWater(*st) && (pick.empty() || s < pick)) pick = s;
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
             const float aX = 20 * 16, bX = 130 * 16;
             ++cases;
             {
-                tak::sim::World w; world(w);
+                ta::sim::World w; world(w);
                 const int a = w.spawn(bt, aX, z, 0.f, 0);
                 const int b = w.spawn(bt, bX, z, 0.f, 0);
                 check(w.canPlace(st, nearX, z, 0) && w.canPlace(st, farX, z, 0) && w.canPlace(st, lakeX, z, 0),
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
             }
             // The sim's own outcome for the orders the client now allows and refuses.
             for (bool reachable : {true, false}) {
-                tak::sim::World w; world(w);
+                ta::sim::World w; world(w);
                 const int a = w.spawn(bt, aX, z, 0.f, 0);
                 const float sx = reachable ? nearX : lakeX;
                 w.queueBuild(a, st, sx, z, false);

@@ -5,7 +5,7 @@
 #include "tdf/tdf.h"
 #include <map>
 
-namespace tak::gaf {
+namespace ta::gaf {
 
 // Nimbus art availability affects native projectile launch timing. Share this
 // resolution between simulation, display and the multiplayer data checksum.
@@ -36,4 +36,4 @@ inline std::map<std::string, std::string> factionNimbus(const hpi::Vfs& vfs) {
     return result;
 }
 
-} // namespace tak::gaf
+} // namespace ta::gaf

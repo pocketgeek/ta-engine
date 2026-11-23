@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Work classes. Each counts its own deterministic unit (see NavBudget for what one unit is).
 enum class NavWork : uint8_t {
@@ -323,4 +323,4 @@ struct NavAdmit {
     static void admitted(uint32_t& blockedSince) { blockedSince = kNever; }
 };
 
-}  // namespace tak::sim
+}  // namespace ta::sim

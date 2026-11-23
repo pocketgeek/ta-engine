@@ -1,7 +1,7 @@
 #include "sim/retailtrace.h"
 #include <iostream>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 struct Digest {

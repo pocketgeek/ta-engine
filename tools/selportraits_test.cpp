@@ -8,7 +8,7 @@
 static void check(bool yes,const char* message) {if(!yes)throw std::runtime_error(message);}
 static bool near(float a,float b) {return a-b<1e-3f && b-a<1e-3f;}
 int main() try {
-    namespace sp=tak::selportraits;
+    namespace sp=ta::selportraits;
     // The front unit's type leads even when outnumbered; then count desc, ties by id.
     auto g=sp::group({{7,"zarch"},{1,"sword"},{2,"bow"},{3,"sword"},{4,"bow"},{5,"sword"},{6,"axe"},{8,"cat"}});
     check(g.size()==5,"one group per type");

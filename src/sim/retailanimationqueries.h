@@ -5,7 +5,7 @@
 #include "sim/retailmotion.h"
 #include "sim/retailpiecepose.h"
 
-namespace tak::sim {
+namespace ta::sim {
 // 52c4e0: direct/guided weapon heading and pitch from a 16.16 aim vector.
 // Pitch uses signed whole-word height and horizontal length, unlike heading.
 // (The length is kept whole here: retail's signed word turns negative at

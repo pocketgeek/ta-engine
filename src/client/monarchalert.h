@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 // KINGDOMS.icd 50abf0: global AlarmMon, priority 7, 15000 ms cooldown.
 struct MonarchAlert {
     uint64_t nextMs = 0;

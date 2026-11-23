@@ -1,6 +1,6 @@
 #pragma once
 
-// The hashed match setup and the .takrep header that records it, built in ONE place.
+// The hashed match setup and the .tarep header that records it, built in ONE place.
 //
 // The referee (Server::tryStart), every client (GameView::startMpGame) and replay
 // playback (loadReplayFile) each turned the room's options and slot table into a
@@ -17,7 +17,7 @@
 #include "net/replayhdr.h"
 #include "sim/matchsetup.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // `slots` is the START table (kMaxSlots entries). The config holds one player per
 // slot up to the last used (human or AI) one, as setPlayerCount(maxUsed+1) expects:
@@ -39,4 +39,4 @@ ReplayHeader replayHeaderFor(const GameOptions& o, const std::string& mapId, con
 // header does not carry (speed, fog, slot names, ...) are left at their defaults.
 void matchInputsFrom(const ReplayHeader& h, GameOptions& o, SlotInfo* slots);
 
-}  // namespace tak::net
+}  // namespace ta::net

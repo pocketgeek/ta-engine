@@ -4,7 +4,7 @@
 #include "sim/retailinstantcorpse.h"
 #include "cob/vm.h"
 #include <cstdio>
-using namespace tak;
+using namespace ta;
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
     auto vfs=hpi::mountRetailRoot(argv[1]);

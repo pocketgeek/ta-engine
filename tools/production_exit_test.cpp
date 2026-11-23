@@ -21,23 +21,23 @@
 #include <vector>
 namespace {
 struct Rect {int x,z,w,h;};
-Rect footprint(const tak::sim::Unit& u) {
-    return {tak::sim::footprintOrigin(u.x,u.type->footX),tak::sim::footprintOrigin(u.z,u.type->footZ),u.type->footX,u.type->footZ};
+Rect footprint(const ta::sim::Unit& u) {
+    return {ta::sim::footprintOrigin(u.x,u.type->footX),ta::sim::footprintOrigin(u.z,u.type->footZ),u.type->footX,u.type->footZ};
 }
 bool intersects(const Rect& a,const Rect& b) {return a.x<b.x+b.w && b.x<a.x+a.w && a.z<b.z+b.h && b.z<a.z+a.h;}
-bool groundOutput(const tak::sim::UnitType* t) {
-    return t && !t->isStructure() && !t->canFly && t->domain==tak::sim::UnitType::Domain::Ground;
+bool groundOutput(const ta::sim::UnitType* t) {
+    return t && !t->isStructure() && !t->canFly && t->domain==ta::sim::UnitType::Domain::Ground;
 }
 // One factory at one birth heading (`side` -1/0/+1: either end or the middle of
 // its buildangle range, as spawn draws it), on its cell grid as a placed building
 // stands: `large` once and three `small`, the large one first or last. Returns
 // false on failure.
-bool largeOutputCase(const tak::sim::TypeRegistry& registry,const tak::sim::UnitType& factory,
-                     const tak::sim::UnitType* large,const tak::sim::UnitType* small,
+bool largeOutputCase(const ta::sim::TypeRegistry& registry,const ta::sim::UnitType& factory,
+                     const ta::sim::UnitType* large,const ta::sim::UnitType* small,
                      bool crusades,int side,bool legion,bool largeFirst) {
     auto producer=factory;producer.storage=1000000;
-    tak::sim::World world;
-    if(legion)world.setPathfindingMode(tak::sim::PathfindingMode::Legion);
+    ta::sim::World world;
+    if(legion)world.setPathfindingMode(ta::sim::PathfindingMode::Legion);
     // A loaded map's feature plane: movement and placement then take the
     // native rectangular footprint test, as in a real game.
     world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
@@ -56,7 +56,7 @@ bool largeOutputCase(const tak::sim::TypeRegistry& registry,const tak::sim::Unit
     std::string firstOverlap;
     for(;tick<16000 && (complete<4 || largeClear<0);++tick) {
         world.tick(1.f/30);complete=0;
-        std::vector<const tak::sim::Unit*> outputs;
+        std::vector<const ta::sim::Unit*> outputs;
         for(const auto& u:world.units()) {
             if(u.id==id || !u.alive() || !u.type)continue;
             outputs.push_back(&u);
@@ -93,9 +93,9 @@ bool largeOutputCase(const tak::sim::TypeRegistry& registry,const tak::sim::Unit
 }
 int main(int argc,char** argv) {
     if(argc!=2)return 2;
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);int failures=0,cases=0;
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);int failures=0,cases=0;
     for(bool crusades:{false,true}) {
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         struct Case {const char* producer;const char* output;bool infinite;int count;};
         std::array<Case,5> roster{{{"arakeep","arasword",false,24},
             {"zonhunt","zonhand",true,8},{"zonhand","zonter",true,8},{"verasy",nullptr,false,6},{"zonlord",nullptr,true,8}}};
@@ -104,15 +104,15 @@ int main(int argc,char** argv) {
             const auto* output=c.output ? registry.find(c.output) : nullptr;
             if(!c.output)for(const auto& id:registry.buildable(c.producer)) {
                 const auto* t=registry.find(id);
-                if(t && !t->isStructure() && t->domain==(std::string(c.producer)=="verasy" ? tak::sim::UnitType::Domain::Water : tak::sim::UnitType::Domain::Ground)) {output=t;break;}
+                if(t && !t->isStructure() && t->domain==(std::string(c.producer)=="verasy" ? ta::sim::UnitType::Domain::Water : ta::sim::UnitType::Domain::Ground)) {output=t;break;}
             }
             if(!output){std::puts("FAIL: production fixture output missing");++failures;continue;}
             const auto& menu=registry.buildable(c.producer);
             if(std::none_of(menu.begin(),menu.end(),[&](const auto& name){return registry.find(name)==output;})) {
                 std::printf("FAIL: %s cannot produce %s in this balance\n",c.producer,output->id.c_str());++failures;continue;
             }
-            tak::sim::World world;
-            const bool water=output->domain==tak::sim::UnitType::Domain::Water;
+            ta::sim::World world;
+            const bool water=output->domain==ta::sim::UnitType::Domain::Water;
             world.setTerrain(std::vector<uint8_t>(256*256,water?0:100),256,256,water?100:20);
             world.buildNavClasses(registry);world.setPathService(true);
             const int id=world.spawn(&producer,1800,1800,float(direction)*1.57079632679f,0);
@@ -135,7 +135,7 @@ int main(int argc,char** argv) {
         int factories=0;
         for(const auto& [name,type]:registry.types()) {
             if(!type.producesUnits() || !type.productionScript)continue;
-            const tak::sim::UnitType *large=nullptr,*small=nullptr;
+            const ta::sim::UnitType *large=nullptr,*small=nullptr;
             for(const auto& id:registry.buildable(name)) {
                 const auto* t=registry.find(id);
                 if(!groundOutput(t))continue;
@@ -156,7 +156,7 @@ int main(int argc,char** argv) {
             // one clicked again (kStanceNone) clears it. A computer's factory
             // never takes one from its own stance orders.
             const auto* keep=registry.find("arakeep");const auto* sword=registry.find("arasword");
-            auto made=[&](tak::sim::World& world,int factory) {
+            auto made=[&](ta::sim::World& world,int factory) {
                 const size_t before=world.units().size();
                 world.train(factory,sword,1);
                 for(int tick=0;tick<9000;++tick) {
@@ -169,7 +169,7 @@ int main(int argc,char** argv) {
                 return -9;
             };
             {
-                tak::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
+                ta::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
                 world.buildNavClasses(registry);world.player(0).mana=1000000;
                 const int factory=world.spawn(keep,1800,1800,0,0);
                 const int base=world.spawn(sword,600,600,0,0);
@@ -178,7 +178,7 @@ int main(int argc,char** argv) {
                       "a factory with no output stance makes units with their own default");
                 world.setStance(factory,2);
                 check(world.unit(factory)->outputStance==2 && made(world,factory)==2,"a factory's output stance goes to its new units");
-                world.setStance(factory,tak::sim::World::kStanceNone);
+                world.setStance(factory,ta::sim::World::kStanceNone);
                 check(world.unit(factory)->outputStance==-1 && made(world,factory)==fallback,
                       "clearing the output stance gives new units their own default again");
                 world.player(0).automaticGates=true;world.setStance(factory,0);
@@ -188,15 +188,15 @@ int main(int argc,char** argv) {
             // factory's ring round it (engine deviation), not one step south.
             {
                 const auto* tamer=registry.find("zontrain");const auto* wolf=registry.find("zonwolf");
-                tak::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
+                ta::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
                 world.buildNavClasses(registry);world.player(0).mana=1000000;
                 const int id=world.spawn(tamer,1800,1800,0,0);
                 world.setRepeat(id,wolf);
                 // Its stance buttons go through the command path, which keeps
                 // a repeating builder on its job and must let Stance through.
-                tak::net::Command stance;stance.kind=tak::net::Cmd::Stance;stance.player=0;
+                ta::net::Command stance;stance.kind=ta::net::Cmd::Stance;stance.player=0;
                 stance.unitId=id;stance.targetId=2;
-                tak::sim::applyCommand(world,registry,stance);
+                ta::sim::applyCommand(world,registry,stance);
                 check(world.unit(id)->outputStance==2 && world.unit(id)->repeatType==wolf,
                       "a repeating Beast Tamer takes a stance for its output and keeps producing");
                 for(int tick=0;tick<30*120;++tick) {

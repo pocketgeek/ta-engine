@@ -9,12 +9,12 @@
 #include <limits>
 #include <stdexcept>
 #include "util/u8path.h"
-using namespace tak::net;
+using namespace ta::net;
 namespace {
 int checks=0;
 void check(bool ok,const char* message){++checks;if(!ok)throw std::runtime_error(message);}
 Writer recording(uint32_t protocol=kNetVersion,const Command& command=Command{},uint8_t event=0,bool innerTrailing=false,
-                 tak::sim::PathfindingMode mode=tak::sim::PathfindingMode::Retail,const char* mission="",uint32_t format=kReplayFormat){
+                 ta::sim::PathfindingMode mode=ta::sim::PathfindingMode::Retail,const char* mission="",uint32_t format=kReplayFormat){
  Writer file;ReplayHeader header;header.mapId="Synthetic map";header.unitCap=2000;
  header.pathfindingMode=mode;header.mission=mission;
  header.slotType[0]=header.slotType[1]=1;header.slotFaction[1]=1;header.slotTeam[1]=1;
@@ -26,22 +26,22 @@ Writer recording(uint32_t protocol=kNetVersion,const Command& command=Command{},
  file.u32(1);file.u32(0);file.u64(1234);file.u64(5678);return file;
 }
 void run(){
- const auto root=std::filesystem::temp_directory_path()/("tak-replay-file-"+tak::crypto::toHex(tak::crypto::randomVec(12)));
+ const auto root=std::filesystem::temp_directory_path()/("ta-replay-file-"+ta::crypto::toHex(ta::crypto::randomVec(12)));
  std::filesystem::create_directories(root);struct Cleanup{std::filesystem::path p;~Cleanup(){std::error_code ec;std::filesystem::remove_all(p,ec);}}cleanup{root};
- const auto path=root/tak::u8path("replay-\xc3\xa9.takrep");
+ const auto path=root/ta::u8path("replay-\xc3\xa9.tarep");
  const auto utf=path.u8string();const std::string name(utf.begin(),utf.end());
  auto load=[&](const Writer& value,ReplayFile* decoded=nullptr){std::ofstream out(path,std::ios::binary|std::ios::trunc);out.write(reinterpret_cast<const char*>(value.b.data()),std::streamsize(value.b.size()));out.close();ReplayFile replay;const bool ok=loadReplayFile(name,replay);if(ok && decoded)*decoded=std::move(replay);return ok;};
  check(load(recording()),"current simulation recording refused");
  ReplayFile decoded;
- for(auto mode:{tak::sim::PathfindingMode::Retail,tak::sim::PathfindingMode::Legion})
+ for(auto mode:{ta::sim::PathfindingMode::Retail,ta::sim::PathfindingMode::Legion})
   check(load(recording(kNetVersion,Command{},0,false,mode),&decoded)&&decoded.cfg.pathfindingMode==mode,
         "recorded pathfinder did not reach match configuration");
- check(load(recording(kNetVersion,Command{},0,false,tak::sim::PathfindingMode::Legion,"campaign"),&decoded)&&
-       decoded.cfg.pathfindingMode==tak::sim::PathfindingMode::Retail,"campaign replay used Legion");
+ check(load(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode::Legion,"campaign"),&decoded)&&
+       decoded.cfg.pathfindingMode==ta::sim::PathfindingMode::Retail,"campaign replay used Legion");
  // 1-3 are reserved pathfinder values.
  for(int removed:{1,2,3,5})
-  check(!load(recording(kNetVersion,Command{},0,false,tak::sim::PathfindingMode(removed))),"unknown pathfinder accepted");
- check(!load(recording(kNetVersion,Command{},0,false,tak::sim::PathfindingMode(255))),"invalid pathfinder byte accepted");
+  check(!load(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode(removed))),"unknown pathfinder accepted");
+ check(!load(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode(255))),"invalid pathfinder byte accepted");
  Command area;area.kind=Cmd::BuildManaArea;area.unitId=1;area.x=100;area.z=200;area.x2=800;area.z2=900;
  std::snprintf(area.type,sizeof area.type,"aralode");
  check(load(recording(kNetVersion,area),&decoded) && decoded.cfg.patrolRepairs &&
@@ -55,7 +55,7 @@ void run(){
   const auto r=refused(recording(protocol),"another protocol's recording accepted");
   check(r.protocolVersion==protocol&&r.error.find("protocol v"+std::to_string(protocol))!=std::string::npos,"refusal does not name the protocol");}
  for(uint32_t format:{kReplayFormat-1,kReplayFormat+1,11u,0u}){
-  const auto r=refused(recording(kNetVersion,Command{},0,false,tak::sim::PathfindingMode::Retail,"",format),
+  const auto r=refused(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode::Retail,"",format),
                        "another replay format accepted");
   check(r.formatVersion==format&&r.error.find("format "+std::to_string(format))!=std::string::npos,"refusal does not name the format");}
  auto outer=recording();outer.u8(99);check(!load(outer),"outer trailing bytes accepted");
@@ -91,9 +91,9 @@ void run(){
  {const char* text="scn 1\nname pd\nticks 60\nmap flat 64 64\nplayers 2\ntype a mover 2 2500 10 1.8\n"
                    "group g 0 a 4 rect 5 5 20 20\nat 1 move all 40 40\n";
   auto digest=[&](bool order,int ticks){
-   auto scn=tak::scn::parse(text);if(!order)scn.orders.clear();
-   auto built=tak::scn::build(scn,{tak::sim::PathfindingMode::Legion,true,0,nullptr});
-   tak::scn::OrderFeed feed(scn,*built);
+   auto scn=ta::scn::parse(text);if(!order)scn.orders.clear();
+   auto built=ta::scn::build(scn,{ta::sim::PathfindingMode::Legion,true,0,nullptr});
+   ta::scn::OrderFeed feed(scn,*built);
    for(int t=0;t<ticks;++t){feed.apply(uint32_t(t));built->world->tick(1.f/30);}
    return std::pair<uint64_t,uint64_t>{built->world->posDigest(),built->world->stateHash()};};
   const auto a=digest(true,40),b=digest(true,40),idle=digest(false,40),later=digest(true,41);
@@ -109,7 +109,7 @@ void run(){
         peek.formatVersion==kReplayFormat&&peek.protocolVersion==kNetVersion,"a current recording is not listed as playable");
   put(recording(kNetVersion-1));
   check(peekReplayFile(name,peek)&&!peek.playable&&peek.protocolVersion==kNetVersion-1,"another protocol's recording listed as playable");
-  put(recording(kNetVersion,Command{},0,false,tak::sim::PathfindingMode::Retail,"",kReplayFormat-1));
+  put(recording(kNetVersion,Command{},0,false,ta::sim::PathfindingMode::Retail,"",kReplayFormat-1));
   check(peekReplayFile(name,peek)&&!peek.playable&&peek.formatVersion==kReplayFormat-1,"another format's recording listed as playable");
   // A long game's file is not read through: what follows the start of the file is never looked at.
   auto countAt=[](const Writer& file){   // where the tick count stands: right behind the header

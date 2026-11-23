@@ -10,7 +10,7 @@ import time
 
 binary, data = sys.argv[1:]
 env = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_SHUTDOWN_DBUS_ON_QUIT='1')
-with tempfile.TemporaryDirectory(prefix='tak-editor-recovery-') as folder:
+with tempfile.TemporaryDirectory(prefix='ta-editor-recovery-') as folder:
     root = Path(folder)
     # The fallback destination is isolated: a regression must never overwrite
     # the user's installed map while testing restored output-directory metadata.

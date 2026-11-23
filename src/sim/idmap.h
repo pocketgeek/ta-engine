@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 template<class T> class IdMap {
 public:
@@ -194,4 +194,4 @@ private:
     mutable uint32_t version_=1;
 };
 
-}  // namespace tak::sim
+}  // namespace ta::sim

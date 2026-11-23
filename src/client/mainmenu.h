@@ -14,7 +14,7 @@
 #include "client/sessionfailure.h"
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 class VoiceEngine;
 
@@ -83,7 +83,7 @@ public:
 
     // After run() returns Choice::Benchmark, the picked intensity level (1=Low..5=Absurd).
     int chosenBenchmarkLevel() const;
-    // Full path of the .takrep the user picked (Choice::Replay). Empty otherwise.
+    // Full path of the .tarep the user picked (Choice::Replay). Empty otherwise.
     const std::string& chosenReplay() const;
 
     // Play a fullscreen intro clip (Movies/<nameLower>, e.g. "logo.bik") once, scaled
@@ -98,4 +98,4 @@ private:
     Impl* d_;
 };
 
-}  // namespace tak
+}  // namespace ta

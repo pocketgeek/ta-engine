@@ -57,7 +57,7 @@ def authority(root):
     cert, key, config = root / 'ca.crt', root / 'ca.key', root / 'openssl.cnf'
     config.write_text(CONFIG)
     run_openssl('req', '-x509', '-config', config, '-extensions', 'root', '-newkey', 'rsa:2048',
-                '-nodes', '-sha256', '-keyout', key, '-out', cert, '-days', '1', '-subj', '/CN=TAK test root')
+                '-nodes', '-sha256', '-keyout', key, '-out', cert, '-days', '1', '-subj', '/CN=TA test root')
     return cert, key
 
 
@@ -209,7 +209,7 @@ def main():
     if not shutil.which('openssl'):
         print('SKIP: openssl not found')
         return 77
-    with tempfile.TemporaryDirectory(prefix='tak-rtmps-') as directory:
+    with tempfile.TemporaryDirectory(prefix='ta-rtmps-') as directory:
         root = pathlib.Path(directory)
         ca = authority(root)
         cert, key = certificate(root, ca)

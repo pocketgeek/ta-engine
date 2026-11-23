@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The headless harness keeps its seat, and reports the exact end tick, when it simulates slowly.
 
-Real takserver + headless takclient games (Inner Circle, --seed 1) with every client tick
-slowed by TAK_SIM_SLOW_US, standing in for a stress game on a loaded machine (the 0.9.4
+Real taserver + headless taclient games (Inner Circle, --seed 1) with every client tick
+slowed by TA_SIM_SLOW_US, standing in for a stress game on a loaded machine (the 0.9.4
 sweeps measured 200-500 ms per tick):
 
   seat    300 ms per tick. The client used to service its socket only every 64 ticks it
@@ -10,11 +10,11 @@ sweeps measured 200-500 ms per tick):
           the seat after its 15 s timeout ("peer closed"). The game must now run to its time
           limit with no error.
   result  150 ms per tick with the server far ahead; the player destroys its own Monarch
-          (TAK_DEFEAT_TEST=2). The client used to drain every buffered bundle past the
+          (TA_DEFEAT_TEST=2). The client used to drain every buffered bundle past the
           result, so the reported end tick (and hash) depended on how far behind it was.
           The run must now end at exactly the tick its result landed (tick == result).
 
-Debug builds only (the harness flags and TAK_SIM_SLOW_US).
+Debug builds only (the harness flags and TA_SIM_SLOW_US).
 """
 import argparse
 import concurrent.futures
@@ -39,11 +39,11 @@ def free_port():
 
 
 def environment(root, name):
-    env = {k: v for k, v in os.environ.items() if not k.startswith('TAK_')}
+    env = {k: v for k, v in os.environ.items() if not k.startswith('TA_')}
     for sub in ('data', 'config', 'home'):
         (root / name / sub).mkdir(parents=True, exist_ok=True)
     env.update(XDG_DATA_HOME=str(root / name / 'data'), XDG_CONFIG_HOME=str(root / name / 'config'),
-               TAK_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+               TA_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
     if os.name != 'nt':
         env['HOME'] = str(root / name / 'home')
     return env
@@ -64,7 +64,7 @@ def play(args, root, slow_us, seconds, extra):
                     raise AssertionError('server never listened:\n' + slog_path.read_text(errors='replace')[-3000:])
                 time.sleep(0.1)
             env = environment(root, 'client')
-            env.update(TAK_SPEED='80', TAK_SIM_SLOW_US=str(slow_us), **extra)
+            env.update(TA_SPEED='80', TA_SIM_SLOW_US=str(slow_us), **extra)
             run = subprocess.run([args.client, 'game', MAP, '--data', args.data, '--server', '127.0.0.1',
                                   '--serverport', str(port), '--mpai', '--time', str(seconds)],
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
@@ -91,7 +91,7 @@ def case_seat(args, root):
 
 
 def case_result(args, root):
-    log, _ = play(args, root, 150000, 20, {'TAK_DEFEAT_TEST': '2'})
+    log, _ = play(args, root, 150000, 20, {'TA_DEFEAT_TEST': '2'})
     tick, err, end, result = done(log)
     assert err == 'none', 'err=%s at tick %d' % (err, tick)
     assert end == 'concluded', 'the self-destroyed player never lost (ended %s at tick %d)' % (end, tick)
@@ -109,7 +109,7 @@ def main():
     args = ap.parse_args()
     cases = {'seat': case_seat, 'result': case_result}
     names = args.case or list(cases)
-    base = Path(tempfile.mkdtemp(prefix='tak-harness-seat-'))
+    base = Path(tempfile.mkdtemp(prefix='ta-harness-seat-'))
     failed = False
     try:
         with concurrent.futures.ThreadPoolExecutor(len(names)) as pool:

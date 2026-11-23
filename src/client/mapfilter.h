@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace tak::mapfilter {
+namespace ta::mapfilter {
 
 inline std::string lower(std::string_view text) {
     std::string out(text);
@@ -21,4 +21,4 @@ inline bool matches(std::string_view title, std::string_view name, const std::st
            lower(name).find(want) != std::string::npos;
 }
 
-}  // namespace tak::mapfilter
+}  // namespace ta::mapfilter

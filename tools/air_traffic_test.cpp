@@ -41,8 +41,8 @@ void check(bool ok,const std::string& message) {
     if(!ok)++failures;
 }
 
-using tak::sim::Order;
-using tak::sim::Unit;
+using ta::sim::Order;
+using ta::sim::Unit;
 
 // What a flyer of the case is doing: its front order, or the one a step-out
 // at the front was pushed by.
@@ -65,14 +65,14 @@ struct Case {
     int minStepOuts=0;        // the least step-outs the counted leg's mission must push
 };
 
-void run(const std::string& dir,const char* data,const Case& c,tak::sim::PathfindingMode mode) {
-    const char* modeName=mode==tak::sim::PathfindingMode::Legion ? "legion" : "retail";
-    const auto s=tak::scn::load(dir+"/"+c.file);
-    tak::scn::BuildOptions options;
+void run(const std::string& dir,const char* data,const Case& c,ta::sim::PathfindingMode mode) {
+    const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
+    const auto s=ta::scn::load(dir+"/"+c.file);
+    ta::scn::BuildOptions options;
     options.mode=mode;
     options.serial=true;
     options.data=data;
-    auto b=tak::scn::build(s,options);
+    auto b=ta::scn::build(s,options);
     if(!b->skipped.empty()) { check(false,std::string(c.file)+": "+b->skipped); return; }
     auto& w=*b->world;
     // The counted groups: one by name, or a trailing * for a name prefix.
@@ -83,7 +83,7 @@ void run(const std::string& dir,const char* data,const Case& c,tak::sim::Pathfin
         if(prefix ? name.compare(0,group.size()-1,group,0,group.size()-1)==0 : name==group)
             flyers.insert(flyers.end(),ids.begin(),ids.end());
     const int target=c.target ? b->groups.at(c.target).front() : 0;
-    tak::scn::OrderFeed feed(s,*b);
+    ta::scn::OrderFeed feed(s,*b);
     int counted=0,stacked=0,stepOuts=0,site=0;
     // The Retail AI's read of a builder stepping out (ClassicBrain's first
     // mission): VTOL_StepOutNoFormation (class 14, flags 0), not its job.
@@ -93,20 +93,20 @@ void run(const std::string& dir,const char* data,const Case& c,tak::sim::Pathfin
     for(uint32_t t=0;t<s.ticks;++t) {
         feed.apply(t);
         float fx=c.x,fz=c.z;
-        tak::sim::Fixed full;
+        ta::sim::Fixed full;
         if(target && c.count!=Count::Repair && c.count!=Count::Help) {
             auto* u=w.unit(target);
             if(!u || !u->alive()) { check(false,std::string(c.file)+" "+modeName+": the target died (topped up)"); return; }
             // Far above any type's maximum: three Fire Breaths in one tick
             // never kill it.
-            full=tak::sim::Fixed::fromInt(30000);
+            full=ta::sim::Fixed::fromInt(30000);
             u->hp=full;
             fx=u->x.toFloat();fz=u->z.toFloat();
         }
         if(c.count==Count::Repair && t==2) {
             // A fifth of the Keep's hit points, and every builder sent to mend it.
             auto* keep=w.unit(target);
-            keep->hp=tak::sim::Fixed::fromInt(keep->type->maxHp/5);
+            keep->hp=ta::sim::Fixed::fromInt(keep->type->maxHp/5);
             for(int id:flyers) w.repair(id,target,false);
         }
         if(c.count==Count::Help && t==2) {
@@ -116,7 +116,7 @@ void run(const std::string& dir,const char* data,const Case& c,tak::sim::Pathfin
             for(size_t k=1;k<flyers.size();++k) w.assist(flyers[k],site,false);
         }
         const int mendedUnit=c.count==Count::Help ? site : target;
-        const tak::sim::Fixed before=mendedUnit ? w.unit(mendedUnit)->hp : tak::sim::Fixed();
+        const ta::sim::Fixed before=mendedUnit ? w.unit(mendedUnit)->hp : ta::sim::Fixed();
         w.tick(1.f/30);
         if(mendedUnit) if(const auto* u=w.unit(mendedUnit)) {
             if(c.count==Count::Repair || c.count==Count::Help) mended+=std::max(0,(u->hp-before).floorInt());
@@ -147,7 +147,7 @@ void run(const std::string& dir,const char* data,const Case& c,tak::sim::Pathfin
             }
             if(builder && !u->orders.empty() && u->orders.front().stepOut==3) {
                 ++aiReads;
-                aiStepOuts+=tak::ai::ClassicBrain::firstMissionOf(w,*u)==std::pair<uint8_t,uint32_t>{14,0};
+                aiStepOuts+=ta::ai::ClassicBrain::firstMissionOf(w,*u)==std::pair<uint8_t,uint32_t>{14,0};
             }
         }
     }
@@ -176,24 +176,24 @@ void run(const std::string& dir,const char* data,const Case& c,tak::sim::Pathfin
 // guard, its last mission, goes on as VTOL_SeekGuard round where the Goblin
 // stood and guards a Goblin of the ring round that point once one is within
 // its sightdistance.
-void guardLost(const std::string& dir,const char* data,tak::sim::PathfindingMode mode) {
-    const char* modeName=mode==tak::sim::PathfindingMode::Legion ? "legion" : "retail";
-    const auto s=tak::scn::load(dir+"/air-guard-lost.scn");
-    tak::scn::BuildOptions options;
+void guardLost(const std::string& dir,const char* data,ta::sim::PathfindingMode mode) {
+    const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
+    const auto s=ta::scn::load(dir+"/air-guard-lost.scn");
+    ta::scn::BuildOptions options;
     options.mode=mode;
     options.serial=true;
     options.data=data;
-    auto b=tak::scn::build(s,options);
+    auto b=ta::scn::build(s,options);
     if(!b->skipped.empty()) { check(false,std::string("air-guard-lost.scn: ")+b->skipped); return; }
     auto& w=*b->world;
     const auto& drakes=b->groups.at("drakes");
     const int ward=b->groups.at("ward").front();
     const auto& ring=b->groups.at("ring");
-    tak::scn::OrderFeed feed(s,*b);
+    ta::scn::OrderFeed feed(s,*b);
     int guardingBefore=0,guardingRing=0,idleAfter=0;
     for(uint32_t t=0;t<s.ticks;++t) {
         feed.apply(t);
-        if(t==300) if(auto* u=w.unit(ward)) u->hp=tak::sim::Fixed();   // the death sweep takes it
+        if(t==300) if(auto* u=w.unit(ward)) u->hp=ta::sim::Fixed();   // the death sweep takes it
         w.tick(1.f/30);
         for(int id:drakes) {
             const auto* u=w.unit(id);
@@ -217,26 +217,26 @@ void guardLost(const std::string& dir,const char* data,tak::sim::PathfindingMode
 // Their attack is the strike, not the hover: it makes its passes (stage 6, the
 // turn after the release, comes round again and again), and its stage-4
 // air-traffic check steps a Drake out of the stack the three start in.
-void airStrike(const std::string& dir,const char* data,tak::sim::PathfindingMode mode) {
-    const char* modeName=mode==tak::sim::PathfindingMode::Legion ? "legion" : "retail";
-    const auto s=tak::scn::load(dir+"/air-stack-barracks.scn");
-    tak::scn::BuildOptions options;
+void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode mode) {
+    const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
+    const auto s=ta::scn::load(dir+"/air-stack-barracks.scn");
+    ta::scn::BuildOptions options;
     options.mode=mode;
     options.serial=true;
     options.data=data;
-    auto b=tak::scn::build(s,options);
+    auto b=ta::scn::build(s,options);
     if(!b->skipped.empty()) { check(false,std::string("air-stack-barracks.scn: ")+b->skipped); return; }
     auto& w=*b->world;
     const auto& drakes=b->groups.at("drakes");
     const int keep=b->groups.at("keep").front();
-    for(auto& weapon:const_cast<tak::sim::UnitType*>(w.unit(drakes.front())->type)->weapons) weapon.cursorAirstrike=true;
-    tak::scn::OrderFeed feed(s,*b);
+    for(auto& weapon:const_cast<ta::sim::UnitType*>(w.unit(drakes.front())->type)->weapons) weapon.cursorAirstrike=true;
+    ta::scn::OrderFeed feed(s,*b);
     std::map<int,uint8_t> stage;
     std::map<int,uint32_t> stepped;
     int turns=0,stepOuts=0;
     for(uint32_t t=0;t<s.ticks;++t) {
         feed.apply(t);
-        if(auto* u=w.unit(keep)) u->hp=tak::sim::Fixed::fromInt(30000);
+        if(auto* u=w.unit(keep)) u->hp=ta::sim::Fixed::fromInt(30000);
         w.tick(1.f/30);
         for(int id:drakes) {
             const auto* u=w.unit(id);
@@ -277,11 +277,11 @@ int main(int argc,char** argv) {
     };
     try {
         for(const auto& c:cases)
-            for(auto mode:{tak::sim::PathfindingMode::Retail,tak::sim::PathfindingMode::Legion})
+            for(auto mode:{ta::sim::PathfindingMode::Retail,ta::sim::PathfindingMode::Legion})
                 run(argv[2],argv[1],c,mode);
-        for(auto mode:{tak::sim::PathfindingMode::Retail,tak::sim::PathfindingMode::Legion})
+        for(auto mode:{ta::sim::PathfindingMode::Retail,ta::sim::PathfindingMode::Legion})
             guardLost(argv[2],argv[1],mode);
-        for(auto mode:{tak::sim::PathfindingMode::Retail,tak::sim::PathfindingMode::Legion})
+        for(auto mode:{ta::sim::PathfindingMode::Retail,ta::sim::PathfindingMode::Legion})
             airStrike(argv[2],argv[1],mode);
     } catch(const std::exception& e) {
         std::fprintf(stderr,"air_traffic_test: %s\n",e.what());

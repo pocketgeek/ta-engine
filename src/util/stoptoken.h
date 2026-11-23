@@ -3,7 +3,7 @@
 #include <memory>
 #include <utility>
 
-namespace tak {
+namespace ta {
 // Poll-only cancellation for SDKs without C++20 stop_token (macOS 14).
 // Tokens retain their state after the connection/source is destroyed. No
 // callbacks, thread ownership or connection pointers cross worker boundaries.

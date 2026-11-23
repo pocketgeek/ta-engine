@@ -5,8 +5,8 @@
 #include <stdexcept>
 static void check(bool yes,const char* message) {if(!yes)throw std::runtime_error(message);}
 int main() try {
-    namespace mc=tak::menuclick;
-    tak::gui::Gadget g;
+    namespace mc=ta::menuclick;
+    ta::gui::Gadget g;
     check(mc::soundOf(g).empty(),"no states, no click");
     // A button's states: "Default"-style entries and empties around the one WAV.
     g.states={"","Default","OK.WAV",""};

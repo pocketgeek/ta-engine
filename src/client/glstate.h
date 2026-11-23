@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 class GLStateSnapshot {
 public:
@@ -207,4 +207,4 @@ private:
     void (APIENTRY* clientActiveTexture_)(GLenum) = nullptr;
 };
 
-}  // namespace tak
+}  // namespace ta

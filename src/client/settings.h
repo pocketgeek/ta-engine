@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 // Completion index for a campaign's alternate-ending branch (it has no numbered slot).
 inline constexpr int kAltMission = -2;
@@ -40,11 +40,11 @@ struct Settings {
     // at startup only (restart required); see client/waylandchoice.h.
     int   nativeWayland = 0;
     // Linux bookkeeping, not preferences: the window the last session got
-    // (tak::wayland::Mode: 0 none yet, 1 x11-real, 2 x11-stretched, 3 wayland, 4 x11 not yet
+    // (ta::wayland::Mode: 0 none yet, 1 x11-real, 2 x11-stretched, 3 wayland, 4 x11 not yet
     // measured), the last native Wayland scale seen (0 = none), and what tells the two X11
     // kinds apart: the X11 desktop width an X11 window got and the Wayland logical desktop
     // width a native one saw (0 = none). A NATIVE WAYLAND switch then converts UI Scale and
-    // Cursor Size once, in the right direction (tak::wayland::advanceDisplay).
+    // Cursor Size once, in the right direction (ta::wayland::advanceDisplay).
     int   displayMode = 0;
     float displayScale = 0.0f;
     int   displayX11Width = 0;
@@ -163,14 +163,14 @@ struct Settings {
     // value above this machine's top (a profile from a bigger machine) stays in the file
     // and is used as that top. A game with its own local server (single player, a LOCAL
     // SERVER the player hosts, the Benchmark) gives half to the game's simulation and
-    // half to the server's (takserver --sim-threads); a game on someone else's server
+    // half to the server's (taserver --sim-threads); a game on someone else's server
     // uses them all (sim::SimPool::sessionThreads). Scheduling only: it never changes a
     // state hash or a replay. Latched when a game session opens. Persisted as simThreads.
     int   simThreads = 0;
     // PIN SIMULATION THREADS (Options > GAME), OFF by default: the system places every
     // thread. On: each simulation thread is pinned to a CPU of its own, performance
     // cores first, then efficiency cores, then hyperthreads, dealt alternately to the
-    // game and its local server (sim::SimPool::handOut; takserver --sim-cpus); threads
+    // game and its local server (sim::SimPool::handOut; taserver --sim-cpus); threads
     // beyond the computer's are not pinned. macOS pins nothing either way (the row is
     // greyed and this is kept). Scheduling only; latched with simThreads. Persisted as
     // simPin.
@@ -348,7 +348,7 @@ std::string videoDir();
 // Point settingsPath() at another file for the rest of the process ("" = back to the
 // default). Cartographer's test profile uses it so a UI test of the shared GAME DATA
 // FOLDER setting can never read or write the player's real game settings -- in any
-// build type, which the debug-only TAK_SETTINGS_FILE hook cannot promise.
+// build type, which the debug-only TA_SETTINGS_FILE hook cannot promise.
 void setSettingsPath(std::string path);
 
 // Read the config file; returns defaults for anything missing/corrupt (never throws).
@@ -365,7 +365,7 @@ Settings loadSettings(bool* fileFound = nullptr);
 // otherwise changing the folder in Cartographer while the game is open would be undone
 // by the game's next save of anything (an Options change, a won campaign mission).
 bool saveSettings(const Settings&);
-// A launch-only game-mod selection (takclient --game-mod, Cartographer's TEST IN GAME):
+// A launch-only game-mod selection (taclient --game-mod, Cartographer's TEST IN GAME):
 // this run's Settings::spRoom.gamePacks holds `packs`, the room's mods for the test (a
 // --play-map room is a single-player room). While a save still holds exactly them, the
 // file keeps the player's own spRoom.gamePack ticks (as the file has them then); once the
@@ -569,7 +569,7 @@ inline bool& dpiIgnoredAtStartup() { static bool v = false; return v; }
 // resolution. `displayScale`: the primary display's DPI / 96 on Windows (with IGNORE DPI
 // SCALING on; off, the OS stretches the window itself, so 1), the backing scale (drawable /
 // window, normally 2) on macOS, the settled compositor scale in a native Wayland window
-// (tak::wayland::firstRunScale), 1 in an X11 window. An existing profile is never rescaled
+// (ta::wayland::firstRunScale), 1 in an X11 window. An existing profile is never rescaled
 // here: its sizes are the player's. Returns true if the settings changed and should be saved.
 inline bool rescaleUi(Settings& s, float factor);
 inline bool applyFirstRunScale(Settings& s, bool freshProfile, float displayScale) {
@@ -607,4 +607,4 @@ inline int hardwareCursorScale(int cursorScale, float backing) {
     return std::max(1, int(float(cursorScale) / backing + 0.5f));
 }
 
-}  // namespace tak
+}  // namespace ta

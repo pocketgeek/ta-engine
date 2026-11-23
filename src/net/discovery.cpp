@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #endif
 
-namespace tak::net {
+namespace ta::net {
 
 namespace {
 constexpr char kMagic[8] = {'T', 'A', 'K', 'L', 'A', 'N', '1', 0};
@@ -111,4 +111,4 @@ void LanListener::poll(uint64_t nowMs) {
     std::erase_if(games_, [&](const LanGame& g) { return nowMs - g.seenMs > kForgetMs; });
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

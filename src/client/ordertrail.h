@@ -2,7 +2,7 @@
 #include "client/renderframe.h"
 #include <span>
 
-namespace tak {
+namespace ta {
 // Render-owned, visible work targets. Bounds are footprint origins in 16px
 // cells, not sprite bounds; a box can intersect a tree without its centre.
 struct OrderTrailTarget {
@@ -28,4 +28,4 @@ void expandOrderTrail(std::span<const RenderOrder> orders,const sim::UnitType& b
     int player,sim::Fixed x,sim::Fixed z,std::span<const OrderTrailTarget> targets,
     std::span<const OrderTrailSite> sites,std::span<const uint32_t> areaVisited,
     std::vector<RenderOrder>& output);
-} // namespace tak
+} // namespace ta

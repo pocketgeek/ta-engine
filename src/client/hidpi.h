@@ -16,7 +16,7 @@
 
 #include <SDL.h>
 
-namespace tak::hidpi {
+namespace ta::hidpi {
 
 // Output pixels per window point for this renderer's window.
 inline float scale(SDL_Renderer* ren) {
@@ -48,4 +48,4 @@ inline SDL_Rect toPoints(SDL_Renderer* ren, SDL_Rect r) {
                     pixelsToPoints(r.w, s), pixelsToPoints(r.h, s)};
 }
 
-}  // namespace tak::hidpi
+}  // namespace ta::hidpi

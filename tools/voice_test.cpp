@@ -36,7 +36,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using namespace tak;
+using namespace ta;
 
 static int g_fail = 0, g_checks = 0;
 static void check(bool ok, const std::string& what) {
@@ -559,9 +559,9 @@ static void testPage() {
         OptionsScreen page(ren, s, [&] { ++changes; }, [&] { ++saves; }, hooks, [&] { ++hotkeys; });
         check(page.page() == OptionsPage::Voice && monitorOn == 1, "the page opens and starts the meter");
         page.render(W, H);
-        // TAK_VOICE_SHOT_DIR=<dir>: also write the page as PNGs, to look at.
+        // TA_VOICE_SHOT_DIR=<dir>: also write the page as PNGs, to look at.
         auto shot = [&](const char* name) {
-            const char* dir = std::getenv("TAK_VOICE_SHOT_DIR");
+            const char* dir = std::getenv("TA_VOICE_SHOT_DIR");
             if (!dir) return;
             SDL_SetRenderDrawColor(ren, 40, 60, 40, 255); SDL_RenderClear(ren);
             page.render(W, H);
@@ -661,7 +661,7 @@ static void testPage() {
 
 int main() {
     SDL_SetMainReady();
-    const fs::path dir = fs::temp_directory_path() / ("tak-voice-test-" + std::to_string(SDL_GetPerformanceCounter()));
+    const fs::path dir = fs::temp_directory_path() / ("ta-voice-test-" + std::to_string(SDL_GetPerformanceCounter()));
     fs::create_directories(dir);
     testCodec();
     testJitter();

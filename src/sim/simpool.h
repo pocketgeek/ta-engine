@@ -29,7 +29,7 @@
 #include <thread>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 class SimPool {
 public:
@@ -79,7 +79,7 @@ public:
     // What a game session's simulations get of T. A game with its own local server
     // (single player, a LOCAL SERVER the player hosts, the Benchmark, --play-map)
     // shares T with it: ceil(T / 2) for the game's simulation and floor(T / 2) for
-    // the server's (passed as takserver --sim-threads), each at least 1. Any other
+    // the server's (passed as taserver --sim-threads), each at least 1. Any other
     // session (a game on someone else's server, a replay) has the one simulation,
     // which gets T; `server` is then 0. No simulation gets more than kMaxThreads.
     struct Session { unsigned total,game,server; };
@@ -88,7 +88,7 @@ public:
         if (!localServer) return {t,std::min(t,kMaxThreads),0};
         return {t,std::min(std::max((t+1)/2,1u),kMaxThreads),std::min(std::max(t/2,1u),kMaxThreads)};
     }
-    // sessionThreads as the game applies it: a debug build's TAK_SIM_WORKERS
+    // sessionThreads as the game applies it: a debug build's TA_SIM_WORKERS
     // decides AUTO, and only AUTO (debugWorkers; *debugAuto says it did): each
     // simulation then runs that many workers, and `total` is their sum.
     static Session session(int choice,const Cpus& cpus,bool localServer,bool* debugAuto=nullptr);
@@ -101,7 +101,7 @@ public:
     // off, a system that cannot pin): nothing is.
     struct HandOut { std::vector<int> game,server; };
     static HandOut handOut(const std::vector<int>& order,const Session& session,bool localServer,bool pin=true);
-    // takserver: each running game's share of the server's total S (--sim-threads;
+    // taserver: each running game's share of the server's total S (--sim-threads;
     // auto is usableCpus()): floor(S / running games), but never fewer than 2 --
     // than 1 when S is 1, so whoever asked for one thread gets one -- and never
     // more than kMaxThreads. The floor means a busy server can run more simulation
@@ -113,14 +113,14 @@ public:
     }
     // Workers per sim when nothing chooses a width: clamp(usableCpus() / 8, 0, 3).
     // The library default, for the tools and tests that build a World and set no
-    // width; the game and takserver always set one (World::setSimWorkers, from the
-    // rules above). Debug builds honour TAK_SIM_WORKERS here (debugWorkers). A
+    // width; the game and taserver always set one (World::setSimWorkers, from the
+    // rules above). Debug builds honour TA_SIM_WORKERS here (debugWorkers). A
     // World asks once and keeps the answer (World::simPool): this reads the CPU
     // mask anew on every call.
     static unsigned defaultWorkers();
-    // Debug builds: TAK_SIM_WORKERS (0..kMaxWorkers workers beside the ticking
+    // Debug builds: TA_SIM_WORKERS (0..kMaxWorkers workers beside the ticking
     // thread), else -1; always -1 in a release build. It overrides AUTO, and only
-    // AUTO, wherever a width is decided: here, the game's latch and takserver.
+    // AUTO, wherever a width is decided: here, the game's latch and taserver.
     static int debugWorkers();
 
     // cpus: pin worker k (slot k) to (*cpus)[k], a worker past the end to none
@@ -197,4 +197,4 @@ private:
     unsigned sleeping_=0;               // under sleepMutex_
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

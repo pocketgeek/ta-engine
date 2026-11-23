@@ -6,7 +6,7 @@
 #include <mutex>
 #include <thread>
 #include <stdexcept>
-namespace tak::srv {
+namespace ta::srv {
 // One validation at a time, two waiting jobs. Tasks own immutable input and must
 // not capture connections, rooms, or VFS objects owned by the network thread.
 class ValidationWorker {

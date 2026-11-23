@@ -32,7 +32,7 @@
 #include "ai/classicdefence.h"
 #include "ai/classicsquads.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 namespace detail {
 // 0x535e90, the octagonal distance: the larger magnitude plus a quarter of the
@@ -656,4 +656,4 @@ void classicVtolThink(ClassicSquads& s, std::vector<ClassicSquadUnit>& units, in
     }
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Navigator 4e54a0: selecting a pending request stamps it immediately,
 // even when the scheduler has no budget left to initialize the search.
@@ -110,4 +110,4 @@ public:
     }
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

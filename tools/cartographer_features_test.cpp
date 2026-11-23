@@ -8,7 +8,7 @@
 
 static void check(bool ok,const char* message) {if(!ok)throw std::runtime_error(message);}
 int main() try {
-    using namespace tak;
+    using namespace ta;
     auto files=std::make_shared<hpi::Vfs::Files>();
     std::vector<uint8_t> gaf(92);
     auto u16=[&](size_t at,uint16_t value) {gaf[at]=uint8_t(value);gaf[at+1]=uint8_t(value>>8);};

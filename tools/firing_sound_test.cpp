@@ -14,7 +14,7 @@ struct Host {
     uint32_t seed=12345;
     int tick=0;
     std::vector<Event> sounds;
-    uint32_t random(int32_t bound){return tak::sim::retailRandom(seed,bound);}
+    uint32_t random(int32_t bound){return ta::sim::retailRandom(seed,bound);}
     uint32_t get(int query,const std::array<uint32_t,4>&){return query==4?100:query==18?1:0;}
     void set(int,int){}
     uint32_t sound(int name,int32_t flags){sounds.emplace_back(tick,name,flags);return 0;}
@@ -23,9 +23,9 @@ struct Host {
 int main(int argc,char**argv) {
     if(argc!=2)return 2;
     SDL_SetMainReady();
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     // Report dormant engine-authored burst audio separately from COB audio.
-    // Shipped TAK definitions omit both legacy fields; mods may provide them.
+    // Shipped TA definitions omit both legacy fields; mods may provide them.
     std::set<std::string> definitions;
     int soundStarts=0,soundTriggers=0;
     for(const char* folder:{"units","unitscb"})for(const auto& path:vfs.list(folder)) {
@@ -41,14 +41,14 @@ int main(int argc,char**argv) {
     std::set<std::string> decoded;
     int failures=0,missingShipped=0;
     for(bool crusades:{false,true}) {
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         int slots=0,events=0,silent=0;
         for(const auto& [name,type]:registry.types()) {
             const auto* file=type.script();if(!file)continue;
             for(size_t slot=0;slot<type.weapons.size();++slot) {
                 ++slots;
-                tak::cob::Vm display(*file);display.enableRetailAnimation();
-                tak::cob::RetailScriptState reference(*file);Host host;
+                ta::cob::Vm display(*file);display.enableRetailAnimation();
+                ta::cob::RetailScriptState reference(*file);Host host;
                 std::vector<Event> actual;
                 display.onGet=[&](int query,const std::vector<int32_t>&){return host.get(query,{});};
                 display.onPlaySound=[&](int index,int32_t flags){actual.emplace_back(host.tick,index,flags);};

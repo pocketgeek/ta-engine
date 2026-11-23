@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <thread>
 
-namespace tak::mapgen {
+namespace ta::mapgen {
 using namespace detail;
 
 namespace {
@@ -1646,4 +1646,4 @@ Result generateBalanced(const Params& p,const hpi::Vfs& vfs) {
         }
     }
 }
-} // namespace tak::mapgen
+} // namespace ta::mapgen

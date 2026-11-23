@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """Settings -> Benchmark's PATHFINDING choice, from the screen to the running worlds.
 
-The screen: TAK_BENCH_MENU_TEST clicks the row where it is drawn and reads the settings
-file back. The launch: TAK_MENU_PICK=benchmark starts the same menu launch a RELEASE
+The screen: TA_BENCH_MENU_TEST clicks the row where it is drawn and reads the settings
+file back. The launch: TA_MENU_PICK=benchmark starts the same menu launch a RELEASE
 build makes, with the pick only in the settings file. A Legion game is told from a
 Retail one by the sims themselves: only a world running Legion prints LPROBE lines
-(TAK_LPROBE), and the client and its local server (the referee) both must. TAK_LEGION
+(TA_LPROBE), and the client and its local server (the referee) both must. TA_LEGION
 still forces Legion. The run's stats panel and results must name the mode the sims ran,
-and DONE must fit the window: TAK_BENCH_STOP_TICK ends each run with a full run's results,
-and TAK_BENCH_REPORT prints what those two screens drew. The results also name the
+and DONE must fit the window: TA_BENCH_STOP_TICK ends each run with a full run's results,
+and TA_BENCH_REPORT prints what those two screens drew. The results also name the
 SIMULATION THREADS the run was opened with, as the client logged them: the game's half and
 its local server's, then AUTO or the saved count, and under it PIN SIM THREADS ON or OFF:
 OFF unless the run's settings file turned PIN SIMULATION THREADS on. The AUTO run does
-(simPin = 1, and TAK_SIM_PIN=1 over the 0 ctest gives every client): the game and its
+(simPin = 1, and TA_SIM_PIN=1 over the 0 ctest gives every client): the game and its
 server each log the CPUs they were handed, and no CPU is in both. The profile is scratch and
 the settings file is named outright: SDL_GetPrefPath ignores XDG_* on macOS and Windows.
 
-usage: benchmark_pathfinding_test.py <takclient> <retail-install>
+usage: benchmark_pathfinding_test.py <taclient> <retail-install>
 """
 import os, re, subprocess, sys, tempfile
 
@@ -37,9 +37,9 @@ def run(root, name, saved, extra, args):
     with open(settings, "w") as f:
         f.write(saved)
     env = dict(os.environ, XDG_CONFIG_HOME=home, XDG_DATA_HOME=home, SDL_VIDEODRIVER="dummy",
-               SDL_AUDIODRIVER="dummy", TAK_SETTINGS_FILE=settings, **extra)
-    if "TAK_LEGION" not in extra:
-        env.pop("TAK_LEGION", None)
+               SDL_AUDIODRIVER="dummy", TA_SETTINGS_FILE=settings, **extra)
+    if "TA_LEGION" not in extra:
+        env.pop("TA_LEGION", None)
     shot = os.path.join(home, "shot.png")
     done = subprocess.run([client, "menu", "--data", data, "--shot", shot] + args, cwd=home, env=env,
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
@@ -86,14 +86,14 @@ def threads(log, name, saved, pinned=False):
     # Both processes logged it: the client its half and the server's, the server what it runs.
     if saved:
         logged = r"sim threads: %d \(of %d, half; local server %d\)" % (game, saved, server)
-    elif "TAK_SIM_WORKERS" in os.environ:   # a debug build's override of AUTO
-        logged = r"sim threads: %d \(auto: TAK_SIM_WORKERS; local server %d\)" % (game, server)
+    elif "TA_SIM_WORKERS" in os.environ:   # a debug build's override of AUTO
+        logged = r"sim threads: %d \(auto: TA_SIM_WORKERS; local server %d\)" % (game, server)
     else:   # AUTO is T threads, halved: the game's half is the bigger, and each is at least 1
         logged = r"sim threads: %d \(auto: (?:%d|%d), half; local server %d\)" % (game, game + server, 2 * game - 1, server)
     mine = re.search("^" + logged + PINNED + "$", log, re.M)
     if not mine:
         fail("%s: SIM THREADS reads '%s'; want the log line '%s'" % (name, row[1], logged), log)
-    served = re.search(r"^sim threads: (\d+) \((?:auto: TAK_SIM_WORKERS|\d+ over 1 game)\)" + PINNED + "$", log, re.M)
+    served = re.search(r"^sim threads: (\d+) \((?:auto: TA_SIM_WORKERS|\d+ over 1 game)\)" + PINNED + "$", log, re.M)
     if not served or int(served[1]) != server:
         fail("%s: the local server must log the %d threads the row names" % (name, server), log)
     # Pinned (not on macOS, which pins no thread): the game has the first CPU of the hand-out,
@@ -115,9 +115,9 @@ def threads(log, name, saved, pinned=False):
 
 def probes(root, name, saved, size, extra=None):
     """A menu Benchmark in a `size` window, up to its results; {tick: LPROBE lines printed} over both sims."""
-    log = run(root, name, saved + "fullscreen = 0\n", dict({"TAK_MENU_PICK": "benchmark", "TAK_LPROBE": "30", "TAK_SPEED": "80",
-                                                          "TAK_QUIT_TICK": "100000", "TAK_SHOT_MS": "100000", "TAK_BENCH_STOP_TICK": "45",
-                                                          "TAK_BENCH_REPORT": "1"}, **(extra or {})),
+    log = run(root, name, saved + "fullscreen = 0\n", dict({"TA_MENU_PICK": "benchmark", "TA_LPROBE": "30", "TA_SPEED": "80",
+                                                          "TA_QUIT_TICK": "100000", "TA_SHOT_MS": "100000", "TA_BENCH_STOP_TICK": "45",
+                                                          "TA_BENCH_REPORT": "1"}, **(extra or {})),
               ["--winsize", str(size[0]), str(size[1])])
     ticks = {}
     for m in re.finditer(r"^LPROBE tick=(\d+) ", log, re.M):
@@ -125,12 +125,12 @@ def probes(root, name, saved, size, extra=None):
     return ticks, log
 
 
-with tempfile.TemporaryDirectory(prefix="tak-bench-path-") as root:
-    log = run(root, "screen", "", {"TAK_BENCH_MENU_TEST": "1"}, [])
+with tempfile.TemporaryDirectory(prefix="ta-bench-path-") as root:
+    log = run(root, "screen", "", {"TA_BENCH_MENU_TEST": "1"}, [])
     if "PASS: Benchmark pathfinding row picks and saves" not in log:
         fail("the Benchmark screen's row", log)
 
-    ticks, log = probes(root, "legion", "benchmarkPathfinding = 4\nsimPin = 1\n", (1024, 768), {"TAK_SIM_PIN": "1"})
+    ticks, log = probes(root, "legion", "benchmarkPathfinding = 4\nsimPin = 1\n", (1024, 768), {"TA_SIM_PIN": "1"})
     if ticks.get(30, 0) < 2:
         fail("a saved Legion pick must run Legion on the client and the referee (got %s)" % ticks, log)
     named(log, "legion", "LEGION", (1024, 768))
@@ -144,8 +144,8 @@ with tempfile.TemporaryDirectory(prefix="tak-bench-path-") as root:
     named(log, "retail", "RETAIL", (1280, 800))
     threads(log, "retail", 1)
 
-    ticks, log = probes(root, "flag", "benchmarkPathfinding = 0\n", (640, 480), {"TAK_LEGION": "1"})
+    ticks, log = probes(root, "flag", "benchmarkPathfinding = 0\n", (640, 480), {"TA_LEGION": "1"})
     if ticks.get(30, 0) < 2:
-        fail("TAK_LEGION must still force Legion (got %s)" % ticks, log)
+        fail("TA_LEGION must still force Legion (got %s)" % ticks, log)
     named(log, "flag", "LEGION", (640, 480))
 print("PASS: the Benchmark's pathfinding pick reaches the running worlds")

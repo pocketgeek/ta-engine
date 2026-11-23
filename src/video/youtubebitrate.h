@@ -33,7 +33,7 @@
 #include <iterator>
 #include <string_view>
 
-namespace tak::video {
+namespace ta::video {
 
 enum class StreamCodec { H264, Hevc };
 

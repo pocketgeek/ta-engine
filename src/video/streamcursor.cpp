@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tak::video {
+namespace ta::video {
 namespace {
 // Per output coordinate, the source taps and their weights (summing to 1).
 struct Taps { std::vector<int> first, count; std::vector<int> index; std::vector<float> weight; };

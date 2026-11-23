@@ -37,12 +37,12 @@ void cart::Editor::updateLiveMinimap() {
         // Only immutable tile data is needed; avoid copying millions of
         // feature/height cells. The worker owns its decode cache; opening
         // a document joins it before replacing the borrowed asset index.
-        const auto& source=mapView.map();tak::tnt::Map snapshot;
+        const auto& source=mapView.map();ta::tnt::Map snapshot;
         snapshot.blocksX=source.blocksX;snapshot.blocksY=source.blocksY;snapshot.stockTerrain=source.stockTerrain;
         snapshot.tileKeys=source.tileKeys;snapshot.tileCols=source.tileCols;snapshot.tileRows=source.tileRows;
         minimapJobRevision=minimapRevision;minimapPreviewPending=false;minimapCancel=std::make_shared<std::atomic_bool>(false);
         minimapJob=std::async(std::launch::async,[map=std::move(snapshot),&assets=vfs,kingdom=world,stop=minimapCancel]() {
-            tak::terrain::Compositor compositor(assets);
+            ta::terrain::Compositor compositor(assets);
             return cart::minimapPreview(map,compositor,cart::loadWorldPalette(assets,kingdom),stop);
         });
     }
@@ -153,9 +153,9 @@ void cart::Editor::menuAction(int menu,int row) {
         if(row==11)openAiProfiles();
         if(row==5) {if(!mapIssues.empty())issueIndex=(issueIndex+1)%mapIssues.size();showMapIssue();}
     } else if(menu==4)symmetryMenu(row);
-    else openMessage(row?"ABOUT CARTOGRAPHER":"EDITOR CONTROLS",row?"TAK Engine map and scenario editor. Uses your original game assets.":
+    else openMessage(row?"ABOUT CARTOGRAPHER":"EDITOR CONTROLS",row?"TA Engine map and scenario editor. Uses your original game assets.":
         "Choose terrain or objects in the left browser. Left-click uses the chosen Place, Select, Erase or Pan mode. Right-drag always pans. In Select mode, drag a box or move selected units or features. Ctrl+C/X/V copies/cuts/pastes, Ctrl+D duplicates, Delete removes, and Enter opens properties. Tab changes tools. Ctrl+Z undoes; Ctrl+Y redoes. Ctrl+S saves a playable KMP. File offers Open, Save As and loose export. Double-click a unit or rule to edit it. Unsaved maps get recovery copies every minute. "
-        "Scenario > AI Profiles (A) edits the map's DEFAULT AI profile and ai/takengine.txt, the one file all our AI levels read. "
+        "Scenario > AI Profiles (A) edits the map's DEFAULT AI profile and ai/taengine.txt, the one file all our AI levels read. "
         "File > New AI mod (Ctrl+Shift+N) and Open AI mod (Ctrl+Shift+O) edit a game mod's AI files without a map; TEST IN GAME plays them on a map you pick. "
         "Symmetry: M mirrors placements, moves and erasures live across the chosen axis; Shift+M (Symmetrize) copies one half or quadrant onto the rest, using mirror-twin terrain sections. "
         "Terrain tool + Select: drag a block rectangle, Ctrl+C copies it, Ctrl+V makes it a click-to-paste brush (Esc returns to sections). "

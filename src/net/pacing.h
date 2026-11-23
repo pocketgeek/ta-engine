@@ -20,7 +20,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak::net {
+namespace ta::net {
 
 // The round trip a client reports in Msg::Progress, which the server sizes its lead from.
 inline uint32_t progressRttMs(float rttMs) {
@@ -84,4 +84,4 @@ inline int jitterTargetTicks(float jitterMs, float rttMs, float frameMs, int spe
     return std::clamp(2 + std::max({kJit, kRtt, kFrame}), 2, cap);
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

@@ -17,7 +17,7 @@
 // Units behaviour at every zoom. This header is the policy, free of SDL and GameView
 // so it can be tested on its own (tools/texture_filter_test.cpp).
 
-namespace tak::texturefilter {
+namespace ta::texturefilter {
 
 enum Level : int { Off = 0, Units = 1, Everything = 2 };
 
@@ -38,4 +38,4 @@ inline constexpr bool worldLinear(int level, float zoom, bool wasLinear) {
     return wasLinear ? zoom >= kSmoothZoom - kSmoothZoomBand : zoom > kSmoothZoom;
 }
 
-}  // namespace tak::texturefilter
+}  // namespace ta::texturefilter

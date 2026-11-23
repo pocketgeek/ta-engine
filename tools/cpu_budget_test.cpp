@@ -10,8 +10,8 @@
 #include <functional>
 #include <vector>
 
-using tak::render::TrimPolicy;
-using tak::render::TrimTracker;
+using ta::render::TrimPolicy;
+using ta::render::TrimTracker;
 
 namespace {
 int failures = 0;
@@ -121,12 +121,12 @@ void clockReset() {
 void shrink() {
     std::vector<int> v(10, 7);
     v.reserve(1000);
-    const size_t released = tak::render::shrinkVector(v, 100);
+    const size_t released = ta::render::shrinkVector(v, 100);
     check(v.size() == 10 && v[9] == 7, "contents kept");
     check(v.capacity() >= 100 && v.capacity() < 1000, "capacity reduced to the target");
     check(released == (1000 - v.capacity()) * sizeof(int), "released bytes");
-    check(tak::render::shrinkVector(v, 5) > 0 && v.capacity() >= 10, "never below the size");
-    check(tak::render::shrinkVector(v, 5000) == 0, "never grows");
+    check(ta::render::shrinkVector(v, 5) > 0 && v.capacity() >= 10, "never below the size");
+    check(ta::render::shrinkVector(v, 5000) == 0, "never grows");
 }
 } // namespace
 

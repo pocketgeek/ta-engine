@@ -7,7 +7,7 @@
 #include <span>
 #include <vector>
 
-namespace tak {
+namespace ta {
 // 4f40f0: color ramps use an integer per-entry increment, not interpolation
 // of the full fraction at each entry. Only the last entry gets the exact end.
 inline void retailEffectColorRamp(std::array<uint32_t,256>& palette,int first,int last,
@@ -149,4 +149,4 @@ struct RetailLightningEffect {
         return !particles.empty();
     }
 };
-} // namespace tak
+} // namespace ta

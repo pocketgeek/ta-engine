@@ -12,8 +12,8 @@
 
 #include <SDL.h>
 
-#include "terrain/terrain.h"   // tak::terrain::Compositor (by-value member)
-#include "tnt/tnt.h"           // tak::tnt::Map (by-value member)
+#include "terrain/terrain.h"   // ta::terrain::Compositor (by-value member)
+#include "tnt/tnt.h"           // ta::tnt::Map (by-value member)
 #include "client/geometrysubmit.h"
 #include "client/terrainchunks.h"
 
@@ -29,19 +29,19 @@
 #include <utility>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 class MapView {
 public:
-    MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& mapPath);
+    MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& mapPath);
     // Construct directly from an in-memory map (e.g. the editor's fresh/blank map).
-    MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, tak::tnt::Map map);
+    MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, ta::tnt::Map map);
     ~MapView();
 
     // Swap in a different map (discarding cached chunk textures). The compositor's
     // decoded-tile cache is content-addressed by tile key, so it stays valid. Used at
     // game start so the render terrain matches the map the sim actually loaded.
-    void reload(const tak::hpi::Vfs& vfs, const std::string& mapPath);
+    void reload(const ta::hpi::Vfs& vfs, const std::string& mapPath);
 
     void input(const SDL_Event& e);
 
@@ -98,24 +98,24 @@ public:
     float offX() const { return offX_; }
     float offY() const { return offY_; }
     float zoom() const { return zoom_; }
-    tak::terrain::Compositor& compositor() { return comp_; }
+    ta::terrain::Compositor& compositor() { return comp_; }
     void setZoom(float z) { zoom_ = z; }
     void setOffset(float x, float y) { offX_ = x; offY_ = y; }
     void setZoomSpeed(float m);
-    const tak::tnt::Map& map() const { return map_; }
+    const ta::tnt::Map& map() const { return map_; }
 
     // --- Editing (Cartographer) ------------------------------------------------
     // Mutable terrain access: edit map().tileKeys/tileCols/tileRows/heights/
     // features, then call tilesEdited() so any newly-referenced section textures
     // decode+upload and the tile-quad batch rebuilds next frame.
-    tak::tnt::Map& editMap() { return map_; }
+    ta::tnt::Map& editMap() { return map_; }
     void tilesEdited() { chunks_.clear(); queueAllSections(); tileBatchDirty_ = true; }
     void tilesEdited(int bx,int by,int width,int height);
-    tak::TerrainChunks::Stats chunkStats() const { return chunks_.stats(); }
+    ta::TerrainChunks::Stats chunkStats() const { return chunks_.stats(); }
     bool chunkCovers(int blockX, int blockY) const { return chunks_.covers(blockX, blockY); }   // tests
     void setMipBudget(size_t high, size_t low, uint64_t idleMs) { chunks_.setMipBudget(high, low, idleMs); }
     // Terrain work policy (workstream K; tests and debug: Params::legacy() = pre-K).
-    void setScheduleParams(const tak::terrainwork::Params& p) { chunks_.setParams(p); uploadBudget_.coordinate = p.coordinate; }
+    void setScheduleParams(const ta::terrainwork::Params& p) { chunks_.setParams(p); uploadBudget_.coordinate = p.coordinate; }
     size_t sectionBytes() const { return sectionBytes_; }   // resident section textures
     // Fallback tiles the last draw() left to the underlay (their section was not
     // resident): visible terrain shown only as the blurry overview (workstream K).
@@ -126,7 +126,7 @@ public:
         uint64_t prefetchSkipped = 0;   // load-time prefetches refused: the budget was full
         uint64_t reuses = 0;            // uploads into a kept texture (no allocation)
         size_t pooledBytes = 0;         // kept textures now (gauge)
-        tak::terrain::Compositor::Stats cpu;   // decoded images: bytes, pins, peak, evictions
+        ta::terrain::Compositor::Stats cpu;   // decoded images: bytes, pins, peak, evictions
     };
     SectionStats sectionStats() {
         SectionStats s = sectionStats_;
@@ -159,7 +159,7 @@ private:
 
     // Load a real map from the VFS, OR -- when mapPath is a "~gen1~" random-map id --
     // build it procedurally in memory (client & server share the deterministic gen).
-    static tak::tnt::Map genOrLoad(const tak::hpi::Vfs& vfs, const std::string& mapPath);
+    static ta::tnt::Map genOrLoad(const ta::hpi::Vfs& vfs, const std::string& mapPath);
 
     // Collect the map's unique section keys and queue them for decode (a speculative
     // prefetch: skipped once the decoded sections reach the CPU budget's low mark).
@@ -176,8 +176,8 @@ private:
     void sectionWorkerLoop();
 
     SDL_Renderer* ren_;
-    tak::tnt::Map map_;
-    tak::terrain::Compositor comp_;
+    ta::tnt::Map map_;
+    ta::terrain::Compositor comp_;
 
     // Fallback terrain: where TerrainChunks has no image yet (still baking, just panned
     // in) or is switched off, visible 32px tiles draw as batched quads sampling their
@@ -239,19 +239,19 @@ private:
     // Linear sampling only: half-texel fades across boundaries between unrelated
     // crops, drawn over every tileBatch_ quad (see rebuildTileBatch).
     std::map<SDL_Texture*, std::vector<SDL_Vertex>> apronBatch_;
-    tak::GeometrySubmit tileSubmit_;
+    ta::GeometrySubmit tileSubmit_;
     float builtOffX_ = 1e30f, builtOffY_ = 1e30f, builtZoom_ = -1;
     int builtW_ = -1, builtH_ = -1;
     bool tileBatchDirty_ = true;   // set when a section uploads / view changes
     size_t underlayTiles_ = 0;     // see underlayTiles()
 #ifndef NDEBUG
-    bool settleRestoreGate_ = false;   // debug TAK_TERRAIN_SETTLE lifted the calm gate this frame
+    bool settleRestoreGate_ = false;   // debug TA_TERRAIN_SETTLE lifted the calm gate this frame
 #endif
     void rebuildTileBatch(int winW, int winH);
-    tak::TerrainChunks chunks_{comp_};
+    ta::TerrainChunks chunks_{comp_};
     // One terrain upload budget per frame (workstream K): chunk images, and the fallback
     // sections that fill visible holes, priced by measured CPU submission cost.
-    tak::terrainwork::UploadBudget uploadBudget_;
+    ta::terrainwork::UploadBudget uploadBudget_;
     uint64_t chunkRevision_=0;
     bool chunksEnabled_=true;
 

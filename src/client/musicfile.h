@@ -12,9 +12,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::music {
+namespace ta::music {
 
 // Interleaved signed 16-bit PCM at its own rate.
 struct Pcm16 {
@@ -50,4 +50,4 @@ std::vector<SideTracks> sideTracks(const hpi::Vfs& vfs);
 // a custom file for it plays only in games.
 constexpr int kMenuTrack = 15;
 
-}  // namespace tak::music
+}  // namespace ta::music

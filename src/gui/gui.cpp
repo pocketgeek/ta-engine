@@ -3,7 +3,7 @@
 #include <cctype>
 #include <stdexcept>
 
-namespace tak::gui {
+namespace ta::gui {
 
 namespace {
 
@@ -143,4 +143,4 @@ Gui parse(const std::vector<uint8_t>& bytes, const std::string& origin) {
     return gui;
 }
 
-}  // namespace tak::gui
+}  // namespace ta::gui

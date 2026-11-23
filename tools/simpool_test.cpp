@@ -8,7 +8,7 @@
 // once. At each width every slot of the pool runs, one thread to a slot (what
 // per-slot scratch relies on). And the rules that decide a simulation's width
 // and its CPUs: the game's SIMULATION THREADS (AUTO, the split with a local
-// server), takserver's share per running game, the slider's colour bands, the
+// server), taserver's share per running game, the slider's colour bands, the
 // Linux CPU topology reader on fixture trees, and who is pinned to which CPU.
 #include "sim/simcpus.h"
 
@@ -24,7 +24,7 @@
 #include <vector>
 
 namespace fs=std::filesystem;
-using tak::sim::SimPool;
+using ta::sim::SimPool;
 
 static int failures=0;
 static void check(bool ok,const char* what,unsigned workers) {
@@ -39,7 +39,7 @@ static uint64_t mix(uint64_t h,uint64_t v) { return (h^v)*0x100000001b3ull; }
 // above the computer's threads.
 struct FakeCpu { int id;std::string siblings;int package,core,capacity; };   // siblings "": no such file; capacity 0: none
 static fs::path fakeSysfs(const char* name,const std::vector<FakeCpu>& cpus,const char* perf,const char* eff) {
-    const fs::path root=fs::temp_directory_path()/("tak-simpool-test-"+std::to_string(std::random_device{}()))/name;
+    const fs::path root=fs::temp_directory_path()/("ta-simpool-test-"+std::to_string(std::random_device{}()))/name;
     auto put=[](const fs::path& file,const std::string& text) {
         fs::create_directories(file.parent_path());
         std::ofstream(file)<<text<<"\n";
@@ -54,11 +54,11 @@ static fs::path fakeSysfs(const char* name,const std::vector<FakeCpu>& cpus,cons
     if (eff) put(root/"devices"/"cpu_atom"/"cpus",eff);
     return root;
 }
-static bool is(const tak::sim::CpuTopology& t,unsigned perf,unsigned eff,unsigned smt,const char* order) {
-    return t.perf==perf && t.eff==eff && t.smt==smt && t.canPin && tak::sim::cpuListText(t.order)==order;
+static bool is(const ta::sim::CpuTopology& t,unsigned perf,unsigned eff,unsigned smt,const char* order) {
+    return t.perf==perf && t.eff==eff && t.smt==smt && t.canPin && ta::sim::cpuListText(t.order)==order;
 }
 static void checkCpus() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     std::vector<fs::path> roots;
     // 8 performance + 16 efficiency cores, no hyperthreading (Intel's hybrid lists).
     std::vector<FakeCpu> cpus;
@@ -154,7 +154,7 @@ int main() {
     check(SimPool::usableCpus()>=1,"usable CPUs",0);
     check(SimPool::kMaxWorkers==63 && SimPool::defaultWorkers()<=SimPool::kMaxWorkers,"the widest pool",0);
     check(SimPool::debugWorkers()<0 || unsigned(SimPool::debugWorkers())==SimPool::defaultWorkers(),
-          "TAK_SIM_WORKERS is the default when set",0);
+          "TA_SIM_WORKERS is the default when set",0);
     // The game's rule (SimPool::sessionThreads), on a machine of P performance cores, E
     // efficiency cores and H hyperthreads (N threads in all): T is P at AUTO, a count
     // up to 2N as itself, one above as 2N. A game with its own local server takes
@@ -193,7 +193,7 @@ int main() {
           SimPool::band(6,Cpus{2,4,2})==Band::Efficiency && SimPool::band(7,Cpus{2,4,2})==Band::Hyperthread &&
           SimPool::band(8,Cpus{2,4,2})==Band::Hyperthread && SimPool::band(9,Cpus{2,4,2})==Band::Over,"bands: all four",8);
     checkCpus();
-    // takserver's rule (SimPool::serverShare): floor(S / running games), at least 2
+    // taserver's rule (SimPool::serverShare): floor(S / running games), at least 2
     // (1 when S is 1), at most kMaxThreads.
     check(SimPool::serverShare(24,1)==24 && SimPool::serverShare(24,2)==12 && SimPool::serverShare(24,3)==8 &&
           SimPool::serverShare(24,5)==4 && SimPool::serverShare(24,0)==24,"S over the running games, rounded down",24);

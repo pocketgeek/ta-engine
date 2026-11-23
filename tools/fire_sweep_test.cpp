@@ -21,7 +21,7 @@
 #include <tuple>
 #include <algorithm>
 #include <cmath>
-using namespace tak;
+using namespace ta;
 namespace {
 int failures=0;
 void check(bool ok,const char* label) {

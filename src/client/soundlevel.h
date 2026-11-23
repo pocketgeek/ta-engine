@@ -12,7 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 inline constexpr float kEvenTargetDb = -15.0f;   // loudest 200 ms, dBFS
 inline constexpr float kEvenMaxBoostDb = 10.0f;
@@ -48,4 +48,4 @@ inline float evenOutGain(const int16_t* s, size_t count, int rate, int channels)
     return std::max(gain, 1.0f);
 }
 
-}  // namespace tak
+}  // namespace ta

@@ -13,7 +13,7 @@
 
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 class MenuMusic;
 struct Settings;
@@ -68,4 +68,4 @@ public:
                             const std::string& menuTip = {}, const std::string& proceedTip = {});
 };
 
-}  // namespace tak
+}  // namespace ta

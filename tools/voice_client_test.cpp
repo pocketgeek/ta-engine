@@ -1,6 +1,6 @@
 // voice_client_test -- what a real MpClient puts on the wire for voice chat and makes of
 // what comes back (protocol 276), against a scripted loopback server (no game data, no
-// takserver; the server's routing is tools/server_voice_test.py).
+// taserver; the server's routing is tools/server_voice_test.py).
 //
 //  - VoiceListen goes out only once the host switches voice on (the server's default is
 //    off), and again after a reconnect.
@@ -18,7 +18,7 @@
 #include <string>
 #include <thread>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int checks = 0, failures = 0;

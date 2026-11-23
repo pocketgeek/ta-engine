@@ -6,11 +6,11 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace tak::srv {
+namespace ta::srv {
 namespace {
-using namespace tak::net;
+using namespace ta::net;
 using Clock = std::chrono::steady_clock;
-constexpr std::string_view kRequest = "takserver-status-v1\n";
+constexpr std::string_view kRequest = "taserver-status-v1\n";
 constexpr size_t kReplySize = kRequest.size() + 12;
 
 sockaddr_in localAddress(uint16_t port) {
@@ -112,7 +112,7 @@ bool queryStatus(uint16_t port, StatusCounts& counts, std::string& error) {
         }
         pollfd p{}; p.fd = socket.fd; p.events = POLLIN;
         const auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(std::min(deadline, retry) - Clock::now()).count();
-        const int polled = TAK_POLL(&p, 1, int(std::max<int64_t>(1, wait)));
+        const int polled = TA_POLL(&p, 1, int(std::max<int64_t>(1, wait)));
         if (polled < 0) {
             if (sockInterrupted(sockErr())) continue;
             return fail(sockErrStr(sockErr()));
@@ -133,7 +133,7 @@ bool queryStatus(uint16_t port, StatusCounts& counts, std::string& error) {
         }
         return true;
     }
-    return fail("timed out; check that an updated takserver is running on this port");
+    return fail("timed out; check that an updated taserver is running on this port");
 }
 
-} // namespace tak::srv
+} // namespace ta::srv

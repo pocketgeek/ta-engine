@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tak::srv {
+namespace ta::srv {
 
 struct StatusCounts {
     uint32_t runningGames = 0, lobbyGames = 0, connectedClients = 0;
@@ -31,4 +31,4 @@ private:
 // One bounded local query; failures leave stdout empty in the CLI.
 bool queryStatus(uint16_t port, StatusCounts& counts, std::string& error);
 
-} // namespace tak::srv
+} // namespace ta::srv

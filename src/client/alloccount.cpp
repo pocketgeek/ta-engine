@@ -29,12 +29,12 @@ void* allocate(std::size_t n, Allocate&& get) {
 
 }  // namespace
 
-namespace tak::client {
+namespace ta::client {
 
 AllocCount::AllocCount() { counted = &bytes_; }
 AllocCount::~AllocCount() { counted = nullptr; }
 
-}  // namespace tak::client
+}  // namespace ta::client
 
 void* operator new(std::size_t n) {
     return allocate(n, [&] { return std::malloc(n ? n : 1); });

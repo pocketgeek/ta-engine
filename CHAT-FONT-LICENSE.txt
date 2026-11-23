@@ -1,5 +1,5 @@
 The interface font -- the in-game chat box, and the menus, rooms, Options and HUD
-text under UI FONT = MODERN (res/chat-font/, embedded into takclient) -- is Noto Sans
+text under UI FONT = MODERN (res/chat-font/, embedded into taclient) -- is Noto Sans
 Bold, an SIL OFL 1.1 font, drawn with stb_truetype (public domain / MIT; its licence
 follows the OFL below).
 

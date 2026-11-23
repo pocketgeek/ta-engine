@@ -96,9 +96,9 @@
 #include <malloc.h>
 #endif
 
-namespace tak::legion_scale {
+namespace ta::legion_scale {
 
-namespace obs = tak::legion_observe;
+namespace obs = ta::legion_observe;
 
 // Machine-dependent memory gauges for the wall line (stderr only, never keys): the process's peak resident
 // set (Linux VmHWM; -1 elsewhere) and the bytes malloc holds in use now (glibc; -1 elsewhere).
@@ -136,7 +136,7 @@ public:
 
     // A non-queued click selected `id` at `tick`. point: a ground point (px, raw Fixed >> 16) and its
     // packed disc radius squared (px^2); otherwise a unit target (attack/guard: no arrival).
-    void click(const tak::sim::World& w, int id, int tick, bool point, int64_t px, int64_t pz, int64_t r2) {
+    void click(const ta::sim::World& w, int id, int tick, bool point, int64_t px, int64_t pz, int64_t r2) {
         Body* b = body(id);
         if (!b) return;
         const auto* u = w.unit(id);
@@ -163,7 +163,7 @@ public:
         if (Body* b = body(id); b && b->clicked) b->expect = n;
     }
     // A command for `id` landed in the sim on `tick` (call before World::tick of that tick).
-    void landed(const tak::sim::World& w, int id, int tick) {
+    void landed(const ta::sim::World& w, int id, int tick) {
         Body* b = body(id);
         if (!b) return;
         ++b->landedN;
@@ -173,7 +173,7 @@ public:
     }
 
     // After World::tick of tick t.
-    void sample(const tak::sim::World& w, const tak::sim::LegionNavigator* nav, int t) {
+    void sample(const ta::sim::World& w, const ta::sim::LegionNavigator* nav, int t) {
         int64_t moving = 0;
         for (size_t i = 0; i < b_.size(); ++i) {
             Body& b = b_[i];
@@ -221,13 +221,13 @@ public:
         last_ = t;
     }
     // The navigator's accounting (stage 4): the latest record, and the NavBytes at the largest total.
-    void account(const tak::sim::LegionNavigator& nav) {
+    void account(const ta::sim::LegionNavigator& nav) {
         acct_ = nav.accounting();
         hasAcct_ = true;
         if (acct_.bytes.total() >= peakBytes_.total()) peakBytes_ = acct_.bytes;
     }
 
-    void report(obs::Keys& k, const tak::sim::World& w, bool legion) const {
+    void report(obs::Keys& k, const ta::sim::World& w, bool legion) const {
         const std::string p = "scale.";
         int64_t n = 0, liveN = 0, pointN = 0, cancelled = 0, dead = 0, idle = 0, missing = 0, never = 0;
         int64_t outside = 0, openInside = 0, stuck = 0, livelock = 0;
@@ -311,8 +311,8 @@ public:
             k.emplace_back(p + "nav.bytes_peak", bytesPeak_);
             if (hasAcct_) {
                 const auto& a = acct_;
-                for (size_t c = 0; c < size_t(tak::sim::NavWork::Count); ++c) {
-                    const std::string n = p + "navwork." + tak::sim::kNavWorkNames[c];
+                for (size_t c = 0; c < size_t(ta::sim::NavWork::Count); ++c) {
+                    const std::string n = p + "navwork." + ta::sim::kNavWorkNames[c];
                     k.emplace_back(n + ".total", int64_t(a.total[c]));
                     k.emplace_back(n + ".tick_max", int64_t(a.tickMax[c]));
                 }
@@ -323,9 +323,9 @@ public:
                     {"planes", b.planes}, {"fields", b.fields}, {"tiles", b.tiles}, {"portals", b.portals},
                     {"queues", b.queues}, {"scratch", b.scratch}, {"metadata", b.metadata}, {"inflight", b.inflight}};
                 for (const auto& [name, v] : cats) k.emplace_back(p + "navbytes." + name + "_at_peak", int64_t(v));
-                for (size_t c = 0; c < size_t(tak::sim::NavClass::Count); ++c) {
-                    k.emplace_back(p + "sched.gap_max." + tak::sim::kNavClassNames[c], int64_t(a.serviceGapMax[c]));
-                    k.emplace_back(p + "sched.age_max." + tak::sim::kNavClassNames[c], int64_t(a.requestAgeMax[c]));
+                for (size_t c = 0; c < size_t(ta::sim::NavClass::Count); ++c) {
+                    k.emplace_back(p + "sched.gap_max." + ta::sim::kNavClassNames[c], int64_t(a.serviceGapMax[c]));
+                    k.emplace_back(p + "sched.age_max." + ta::sim::kNavClassNames[c], int64_t(a.requestAgeMax[c]));
                 }
                 k.emplace_back(p + "sched.gap_max.any", int64_t(a.serviceGapAny));
                 k.emplace_back(p + "sched.promotions", int64_t(a.promotions));
@@ -348,9 +348,9 @@ public:
                 k.emplace_back(p + "sched.init_max", int64_t(a.initMax));
                 k.emplace_back(p + "route.demand_peak", int64_t(a.demandPeak));
                 k.emplace_back(p + "route.demand_dropped", int64_t(a.demandDropped));
-                for (size_t c = 0; c < size_t(tak::sim::RouteNeed::Count); ++c) {
-                    k.emplace_back(p + "route.needs." + tak::sim::kRouteNeedNames[c], int64_t(a.routeNeeds[c]));
-                    k.emplace_back(p + "route.run_on." + tak::sim::kRouteNeedNames[c], int64_t(a.routeRunOns[c]));
+                for (size_t c = 0; c < size_t(ta::sim::RouteNeed::Count); ++c) {
+                    k.emplace_back(p + "route.needs." + ta::sim::kRouteNeedNames[c], int64_t(a.routeNeeds[c]));
+                    k.emplace_back(p + "route.run_on." + ta::sim::kRouteNeedNames[c], int64_t(a.routeRunOns[c]));
                 }
                 k.emplace_back(p + "route.corridors", int64_t(a.corridors));
                 k.emplace_back(p + "route.corridor_widens", int64_t(a.corridorWidens));
@@ -452,10 +452,10 @@ private:
     std::vector<int> index_;
     int64_t movingPeak_ = 0, movingTicks_ = 0, waitTicks_ = 0;
     int64_t groupsPeak_ = 0, fieldsPeak_ = 0, membersPeak_ = 0, bytesPeak_ = 0;
-    tak::sim::NavAccounting acct_;
-    tak::sim::NavBytes peakBytes_;
+    ta::sim::NavAccounting acct_;
+    ta::sim::NavBytes peakBytes_;
     bool hasAcct_ = false;
     int last_ = -1;
 };
 
-}  // namespace tak::legion_scale
+}  // namespace ta::legion_scale

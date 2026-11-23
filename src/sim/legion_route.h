@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace route {
 // Field potentials are 32-bit; kNone is "nothing known / no route". (At 16 bits they saturated at 65535, about 13,100
@@ -286,4 +286,4 @@ private:
     std::map<int, size_t> index_;   // cell -> position in e_
 };
 
-}  // namespace tak::sim
+}  // namespace ta::sim

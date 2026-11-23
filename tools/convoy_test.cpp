@@ -20,7 +20,7 @@
 //    per unit: round trip 0, 8 and 16 one convoy, 24 splits, no 64-unit part
 //    split), a patrol (outbound and return legs), a fight beside a patrol
 //    (separate classes), and two clicks 48 px apart 4 ticks apart (two convoys).
-// The World runs with TAK_LEGION_VERIFY's hook on, so every join is also
+// The World runs with TA_LEGION_VERIFY's hook on, so every join is also
 // checked against the scan and the indexes against a rebuild.
 #include "legion_issue_selection.h"
 #include "sim/convoy.h"
@@ -36,10 +36,10 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
-using tak::scn::CmdBatch;
-using tak::scn::SelectionOrder;
-using tak::scn::Verb;
+using namespace ta::sim;
+using ta::scn::CmdBatch;
+using ta::scn::SelectionOrder;
+using ta::scn::Verb;
 
 namespace {
 int failures = 0;
@@ -193,11 +193,11 @@ struct Field {
         o.verb = verb; o.x = x; o.z = z;
         std::vector<CmdBatch> b;
         if (perUnit) {
-            tak::scn::Uplink link(roundTrip);
-            link.issue(tak::scn::hudCommands(world, sel, o));
+            ta::scn::Uplink link(roundTrip);
+            link.issue(ta::scn::hudCommands(world, sel, o));
             for (uint32_t t = world.tickCount(); !link.idle(); ++t) b.push_back({t, link.land(t)});
         } else {
-            b = tak::scn::issueSelection(world, sel, o, world.tickCount(), 0, roundTrip, serial);
+            b = ta::scn::issueSelection(world, sel, o, world.tickCount(), 0, roundTrip, serial);
             for (const auto& x : b) for (const auto& c : x.cmds) if (c.order) serial = c.order->serial + 1;
         }
         land(b);
@@ -373,14 +373,14 @@ void selections(bool perUnit) {
         Field f;
         const auto a = f.block(kGround, 100, 20, 20, 10, 3);
         const auto c = f.block(kGround, 100, 60, 20, 10, 3);
-        tak::scn::Uplink link;
+        ta::scn::Uplink link;
         SelectionOrder oa, oc;
         oa.verb = oc.verb = Verb::Move;
         oa.x = kX; oa.z = kZ; oc.x = kX + 48; oc.z = kZ;
         const uint32_t t0 = f.world.tickCount();
         uint32_t serial = 1;
         auto items = [&](const std::vector<int>& sel, const SelectionOrder& o) {
-            return perUnit ? tak::scn::hudCommands(f.world, sel, o) : tak::scn::hudItems(f.world, sel, o, 0, serial);
+            return perUnit ? ta::scn::hudCommands(f.world, sel, o) : ta::scn::hudItems(f.world, sel, o, 0, serial);
         };
         link.issue(items(a, oa));
         for (uint32_t t = t0; !link.idle() || t <= t0 + 4; ++t) {

@@ -12,12 +12,12 @@
 #include <Security/Security.h>
 #endif
 
-namespace tak::net {
+namespace ta::net {
 // Socket BIO with MSG_NOSIGNAL: an abruptly closed TLS peer must never raise
 // SIGPIPE and terminate the server (OpenSSL's stock Unix socket BIO uses write).
 bool attachTlsSocket(SSL* ssl,int fd) {
     static BIO_METHOD* method=[] {
-        BIO_METHOD* m=BIO_meth_new(BIO_TYPE_SOURCE_SINK|BIO_get_new_index(),"TAK socket");
+        BIO_METHOD* m=BIO_meth_new(BIO_TYPE_SOURCE_SINK|BIO_get_new_index(),"TA socket");
         if(!m)return m;
         BIO_meth_set_create(m,[](BIO* b){BIO_set_init(b,1);return 1;});
         BIO_meth_set_destroy(m,[](BIO*){return 1;});

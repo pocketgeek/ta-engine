@@ -32,7 +32,7 @@
 #include <vector>
 
 namespace crowdbench_acceptance {
-using namespace tak::sim;
+using namespace ta::sim;
 
 constexpr int window=90;          // W: progress / spin window, ticks
 constexpr int progressPx=16;      // S: net displacement below this over W = no progress

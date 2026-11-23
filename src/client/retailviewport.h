@@ -1,6 +1,6 @@
 #pragma once
 
-namespace tak {
+namespace ta {
 
 // Retail's point admission helper rejects only centers strictly outside the
 // viewport rectangle; each edge itself is drawable.
@@ -8,4 +8,4 @@ inline bool retailViewportCenterAdmitted(float x, float y, float width, float he
     return !(x < 0.0f || x > width || y < 0.0f || y > height);
 }
 
-} // namespace tak
+} // namespace ta

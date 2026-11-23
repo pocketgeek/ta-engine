@@ -1,12 +1,12 @@
           |-----handy-ruler------------------------------------------------------|
-tak-engine: tak-engine (Total Annihilation: Kingdoms engine)
-tak-engine:
-tak-engine: Clean-room engine with the game client, dedicated server and
-tak-engine: Cartographer map editor. Requires separately supplied retail game
-tak-engine: data. Audio and graphics use the system drivers.
-tak-engine:
-tak-engine: https://github.com/pocketgeek/tak-engine
-tak-engine:
-tak-engine: Built for Slackware64 15.0. No server is enabled automatically.
-tak-engine:
-tak-engine:
+ta-engine: ta-engine (Total Annihilation: Kingdoms engine)
+ta-engine:
+ta-engine: Clean-room engine with the game client, dedicated server and
+ta-engine: Cartographer map editor. Requires separately supplied retail game
+ta-engine: data. Audio and graphics use the system drivers.
+ta-engine:
+ta-engine: https://github.com/pocketgeek/ta-engine
+ta-engine:
+ta-engine: Built for Slackware64 15.0. No server is enabled automatically.
+ta-engine:
+ta-engine:

@@ -6,10 +6,10 @@
 #include <string>
 #include <string_view>
 
-namespace tak {
+namespace ta {
 
 inline std::filesystem::path u8path(std::string_view utf8) {
     return std::filesystem::path(std::u8string(utf8.begin(), utf8.end()));
 }
 
-}  // namespace tak
+}  // namespace ta

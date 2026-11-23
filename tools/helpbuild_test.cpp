@@ -65,7 +65,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what, const std::string& detail = {}) {
@@ -148,8 +148,8 @@ static std::unique_ptr<World> makeWorld() {
 
 static const TypeRegistry& emptyRegistry() { static TypeRegistry reg; return reg; }
 
-static void command(World& w, tak::net::Cmd kind, int unitId, int targetId, int player = 0) {
-    tak::net::Command c;
+static void command(World& w, ta::net::Cmd kind, int unitId, int targetId, int player = 0) {
+    ta::net::Command c;
     c.kind = kind; c.player = uint8_t(player); c.unitId = unitId; c.targetId = targetId;
     applyCommand(w, emptyRegistry(), c);
 }
@@ -178,7 +178,7 @@ static ProductionRun runProduction(bool mobileProducer, bool help, bool moveAfte
     r.producer = mobileProducer ? w.spawn(&ty.conjurer, 1000, 1000, 0.0f, 0) : w.spawn(&ty.factory, 1000, 1000, 0.0f, 0);
     if (mobileProducer) w.spawn(&ty.factory, 300, 300, 0.0f, 0);   // storage for the pool
     if (help) r.helper = w.spawn(&ty.builder, 1000, mobileProducer ? 1110 : 1150, 0.0f, 0);
-    if (rally) { tak::net::Command c; c.kind = tak::net::Cmd::Move; c.unitId = r.producer; c.x = 1500; c.z = 1500; applyCommand(w, emptyRegistry(), c); }
+    if (rally) { ta::net::Command c; c.kind = ta::net::Cmd::Move; c.unitId = r.producer; c.x = 1500; c.z = 1500; applyCommand(w, emptyRegistry(), c); }
     w.train(r.producer, &ty.sol, 1);
     for (int tick = 0; tick < 1200; ++tick) {
         w.tick(1.0f / 30.0f);
@@ -203,7 +203,7 @@ static ProductionRun runProduction(bool mobileProducer, bool help, bool moveAfte
             }
             r.ordersAtFinish = s->orders.size();
             if (moveAfter) {
-                tak::net::Command c; c.kind = tak::net::Cmd::Move; c.unitId = r.site; c.x = 700; c.z = 1400;
+                ta::net::Command c; c.kind = ta::net::Cmd::Move; c.unitId = r.site; c.x = 700; c.z = 1400;
                 applyCommand(w, emptyRegistry(), c);
                 r.moved = true;
             }
@@ -291,7 +291,7 @@ static void eligibility() {
     const int finished = w.spawn(&ty.sol, 900, 1200, 0.0f, 0);
     const auto accepted = [&](int helper, int target) {
         if (Unit* u = w.unit(helper)) u->buildSiteId = 0;
-        command(w, tak::net::Cmd::Assist, helper, target);
+        command(w, ta::net::Cmd::Assist, helper, target);
         return w.unit(helper)->buildSiteId == target;
     };
     check(accepted(b, own), "a mobile builder helps its own factory's output");
@@ -328,10 +328,10 @@ static void repeatConjurer() {
     for (int i = 0; i < 10; ++i) w.tick(1.0f / 30.0f);
     const int own = w.unit(fac)->productionSiteId;
     const int mine = w.unit(conj)->productionSiteId;
-    tak::net::Command mv; mv.kind = tak::net::Cmd::Move; mv.unitId = conj; mv.x = 200; mv.z = 1800;
+    ta::net::Command mv; mv.kind = ta::net::Cmd::Move; mv.unitId = conj; mv.x = 200; mv.z = 1800;
     applyCommand(w, emptyRegistry(), mv);
     check(w.unit(conj)->orders.empty() && !w.unit(conj)->rally.empty(), "its Move is still a rally for its output");
-    command(w, tak::net::Cmd::Assist, conj, own);
+    command(w, ta::net::Cmd::Assist, conj, own);
     check(w.unit(conj)->buildSiteId == own, "an Assist on an unfinished own unit is accepted");
     check(w.unit(conj)->repeatType == &ty.sol, "...keeping its repeat queue");
     const int32_t before = w.unit(conj)->buildProgress;
@@ -377,7 +377,7 @@ static void guardHelps() {
         const int g = w.spawn(&ty.builder, 1060, 1150, 0.0f, 0);
         w.tick(1.0f / 30.0f);
         const int site = w.unit(fac)->productionSiteId;
-        command(w, tak::net::Cmd::Guard, g, fac);
+        command(w, ta::net::Cmd::Guard, g, fac);
         const int at = guardLatch(w, g, 5, site, false);
         std::snprintf(d, sizeof d, "latched after %d ticks", at);
         check(at >= 0, "guarding a busy factory, it helps the factory's output at once", d);
@@ -413,7 +413,7 @@ static void guardHelps() {
         const int site = w.unit(fac)->productionSiteId;
         w.assist(worker, site, false);
         for (int i = 0; i < 20; ++i) w.tick(1.0f / 30.0f);
-        command(w, tak::net::Cmd::Guard, g, worker);
+        command(w, ta::net::Cmd::Guard, g, worker);
         check(guardLatch(w, g, 3, site, false) >= 0, "guarding a helping builder, it helps that same output");
         // ally repair through the guarded unit's RepairUnit
         const int allyUnit = w.spawn(&ty.sol, 700, 1300, 0.0f, 1);
@@ -422,14 +422,14 @@ static void guardHelps() {
         const int repairer = w.spawn(&ty.builder, 650, 1350, 0.0f, 0);
         w.repair(repairer, allyUnit, false);
         for (int i = 0; i < 3; ++i) w.tick(1.0f / 30.0f);
-        command(w, tak::net::Cmd::Guard, g2, repairer);
+        command(w, ta::net::Cmd::Guard, g2, repairer);
         check(guardLatch(w, g2, 3, allyUnit, true) >= 0, "guarding a repairer, it repairs the ally being repaired");
         check(guardUnder(w, g2), "...guard order kept under the repair");
         // the guarded unit itself damaged -> repair it
         const int hurt = w.spawn(&ty.sol, 1600, 1600, 0.0f, 0);
         w.unit(hurt)->hp = Fixed::fromInt(50);
         const int g3 = w.spawn(&ty.builder, 1650, 1650, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g3, hurt);
+        command(w, ta::net::Cmd::Guard, g3, hurt);
         check(guardLatch(w, g3, 3, hurt, true) >= 0, "a damaged guarded unit is repaired");
         for (int i = 0; i < 900 && w.unit(g3)->repairId; ++i) w.tick(1.0f / 30.0f);
         check(w.unit(hurt)->hp.toFloat() >= 299.9f && !w.unit(g3)->orders.empty() && w.unit(g3)->orders.front().guard,
@@ -442,10 +442,10 @@ static void guardHelps() {
         const int hurt = w.spawn(&ty.sol, 1000, 1000, 0.0f, 0);
         w.unit(hurt)->hp = Fixed::fromInt(50);
         const int g = w.spawn(&ty.builder, 1300, 1000, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, hurt);
+        command(w, ta::net::Cmd::Guard, g, hurt);
         check(guardLatch(w, g, 3, hurt, true) >= 0, "a damaged guarded unit about to walk off is repaired");
-        tak::net::Command mv;
-        mv.kind = tak::net::Cmd::Move; mv.player = 0; mv.unitId = hurt; mv.x = 1000; mv.z = 1900;
+        ta::net::Command mv;
+        mv.kind = ta::net::Cmd::Move; mv.player = 0; mv.unitId = hurt; mv.x = 1000; mv.z = 1900;
         applyCommand(w, emptyRegistry(), mv);
         float worst = 0;
         for (int i = 0; i < 900; ++i) {
@@ -469,7 +469,7 @@ static void guardHelps() {
         World& w = *ownedWorld;
         const int idle = w.spawn(&ty.sol, 1000, 1000, 0.0f, 0);
         const int g = w.spawn(&ty.builder, 1100, 1100, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, idle);
+        command(w, ta::net::Cmd::Guard, g, idle);
         w.tick(1.0f / 30.0f);
         const Unit* gu = w.unit(g);
         const uint32_t wait = gu->guardHelpTick - (w.tickCount() - 1);
@@ -493,12 +493,12 @@ static void guardHelps() {
         w.train(fac, &ty.sol, 1);
         const int lim = w.spawn(&ty.limited, 500, 600, 0.0f, 0);
         w.tick(1.0f / 30.0f);
-        command(w, tak::net::Cmd::Guard, lim, fac);
+        command(w, ta::net::Cmd::Guard, lim, fac);
         check(guardLatch(w, lim, 40, w.unit(fac)->productionSiteId, false) < 0,
               "a builderlimited guard does not help an output off its menu");
         // A non-builder guard escorts only.
         const int s2 = w.spawn(&ty.sol, 500, 650, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, s2, fac);
+        command(w, ta::net::Cmd::Guard, s2, fac);
         for (int i = 0; i < 40; ++i) w.tick(1.0f / 30.0f);
         check(!w.unit(s2)->buildSiteId, "a non-builder guard only escorts");
     }
@@ -509,7 +509,7 @@ static void guardHelps() {
         const int walker = w.spawn(&ty.builder, 400, 400, 0.0f, 0);
         const int g = w.spawn(&ty.builder, 330, 480, 0.0f, 0);
         w.queueBuild(walker, &ty.factory, 1600, 1600, false);
-        command(w, tak::net::Cmd::Guard, g, walker);
+        command(w, ta::net::Cmd::Guard, g, walker);
         int site = 0, begunTick = -1, latchTick = -1;
         for (int i = 0; i < 1500 && latchTick < 0; ++i) {
             w.tick(1.0f / 30.0f);
@@ -601,7 +601,7 @@ static void flyingGuardHelps() {
         const int g = w.spawn(&ty.flyer, 1500, 1600, 0.0f, 0);
         w.tick(1.0f / 30.0f);
         const int site = w.unit(fac)->productionSiteId;
-        command(w, tak::net::Cmd::Guard, g, fac);
+        command(w, ta::net::Cmd::Guard, g, fac);
         const int at = guardLatch(w, g, 3, site, false);
         std::snprintf(d, sizeof d, "latched after %d ticks, %.0f px away", at, dist(w, g, site));
         check(at >= 0, "guarding a distant busy factory, it helps the output at once (no distance gate)", d);
@@ -640,8 +640,8 @@ static void flyingGuardHelps() {
         for (int i = 0; i < 5 && !w.unit(prod)->productionSiteId; ++i) w.tick(1.0f / 30.0f);
         const int site = w.unit(prod)->productionSiteId;
         check(site != 0, "a flying producer has its output under way");
-        command(w, tak::net::Cmd::Guard, fg, prod);
-        command(w, tak::net::Cmd::Guard, gg, prod);
+        command(w, ta::net::Cmd::Guard, fg, prod);
+        command(w, ta::net::Cmd::Guard, gg, prod);
         check(guardLatch(w, fg, 3, site, false) >= 0, "a flying guard helps a flying producer's output");
         int latched = 0;
         for (int i = 0; i < 90; ++i) { w.tick(1.0f / 30.0f); latched |= w.unit(gg)->buildSiteId; }
@@ -658,7 +658,7 @@ static void flyingGuardHelps() {
         const int fg = w.spawn(&ty.flyer, 1400, 1400, 0.0f, 0);
         w.repair(repairer, ally, false);
         for (int i = 0; i < 3; ++i) w.tick(1.0f / 30.0f);
-        command(w, tak::net::Cmd::Guard, fg, repairer);
+        command(w, ta::net::Cmd::Guard, fg, repairer);
         check(guardLatch(w, fg, 3, ally, true) >= 0, "a flying guard repairs the ally its guarded builder repairs");
         check(guardUnder(w, fg), "...guard order kept under the repair");
         const int ally2 = w.spawn(&ty.ground, 400, 1600, 1.0f, 1);
@@ -667,7 +667,7 @@ static void flyingGuardHelps() {
         const int gg = w.spawn(&ty.builder, 600, 1700, 0.0f, 0);
         w.repair(flyRepairer, ally2, false);
         for (int i = 0; i < 3; ++i) w.tick(1.0f / 30.0f);
-        command(w, tak::net::Cmd::Guard, gg, flyRepairer);
+        command(w, ta::net::Cmd::Guard, gg, flyRepairer);
         check(guardLatch(w, gg, 60, ally2, true) < 0,
               "a ground guard does not join a flyer's VTOL_RepairUnit");
     }
@@ -678,7 +678,7 @@ static void flyingGuardHelps() {
         const int hurt = w.spawn(&ty.ground, 1000, 1000, 0.0f, 0);
         w.unit(hurt)->hp = Fixed::fromInt(50);
         const int g = w.spawn(&ty.flyer, 1600, 1600, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, hurt);
+        command(w, ta::net::Cmd::Guard, g, hurt);
         check(guardLatch(w, g, 3, hurt, true) >= 0, "a damaged guarded unit is repaired by a flying guard");
         flyingRepairShape(w, g, hurt, "...");
         for (int i = 0; i < 5; ++i) w.tick(1.0f / 30.0f);
@@ -690,7 +690,7 @@ static void flyingGuardHelps() {
         World& w = *ownedWorld;
         const int idle = w.spawn(&ty.sol, 1000, 1000, 0.0f, 0);
         const int g = w.spawn(&ty.flyer, 1100, 1100, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, idle);
+        command(w, ta::net::Cmd::Guard, g, idle);
         w.tick(1.0f / 30.0f);
         const uint32_t wait = flyLook(w, g) - (w.tickCount() - 1);
         std::snprintf(d, sizeof d, "next look in %u ticks", wait);
@@ -719,14 +719,14 @@ static void flyingGuardHelps() {
         const int lim = w.spawn(&ty.flylimited, 500, 600, 0.0f, 0);
         const int nb = w.spawn(&ty.flysol, 550, 600, 0.0f, 0);
         w.tick(1.0f / 30.0f);
-        command(w, tak::net::Cmd::Guard, lim, fac);
-        command(w, tak::net::Cmd::Guard, nb, fac);
+        command(w, ta::net::Cmd::Guard, lim, fac);
+        command(w, ta::net::Cmd::Guard, nb, fac);
         check(guardLatch(w, lim, 40, w.unit(fac)->productionSiteId, false) < 0,
               "a builderlimited flying guard does not help an output off its menu");
         check(!w.unit(nb)->buildSiteId, "a flyer that is no builder only escorts");
         UnitType onMenu = ty.flylimited; onMenu.id = "flyonmenu"; onMenu.buildMenu = {"sol"};
         const int lim2 = w.spawn(&onMenu, 450, 650, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, lim2, fac);
+        command(w, ta::net::Cmd::Guard, lim2, fac);
         check(guardLatch(w, lim2, 3, w.unit(fac)->productionSiteId, false) >= 0,
               "...one with the output's type on its menu does");
     }
@@ -740,7 +740,7 @@ static void flyingGuardHelps() {
         const int hurt = w.spawn(&sub, 1000, 1000, 0.0f, 0);
         w.unit(hurt)->hp = Fixed::fromInt(50);
         const int g = w.spawn(&ty.flyer, 1100, 1100, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, hurt);
+        command(w, ta::net::Cmd::Guard, g, hurt);
         std::snprintf(d, sizeof d, "target ground y %d, sea 60", w.unit(hurt)->groundY.floorInt());
         check(guardLatch(w, g, 40, hurt, true) < 0, "a flying guard does not repair a unit under the sea", d);
         const int hurtFlyer = w.spawn(&ty.flysol, 1300, 1000, 0.0f, 0);
@@ -748,7 +748,7 @@ static void flyingGuardHelps() {
         for (int i = 0; i < 120; ++i) w.tick(1.0f / 30.0f);
         w.unit(hurtFlyer)->hp = Fixed::fromInt(50);
         const int g2 = w.spawn(&ty.flyer, 1400, 1100, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g2, hurtFlyer);
+        command(w, ta::net::Cmd::Guard, g2, hurtFlyer);
         std::snprintf(d, sizeof d, "flyer y %d", w.unit(hurtFlyer)->flightY.floorInt());
         check(guardLatch(w, g2, 3, hurtFlyer, true) >= 0, "...but does repair a flyer above it", d);
         const int f3 = w.spawn(&ty.flyer, 1050, 1150, 0.0f, 0);
@@ -768,7 +768,7 @@ static void flyingGuardHelps() {
         w.repair(diver, hurtFlyer2, false);
         w.tick(1.0f / 30.0f);
         const int g3 = w.spawn(&ty.flyer, 700, 700, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g3, diver);
+        command(w, ta::net::Cmd::Guard, g3, diver);
         std::snprintf(d, sizeof d, "diver y %d, its repair %d", w.unit(diver)->groundY.floorInt(), w.unit(diver)->repairId);
         check(w.unit(diver)->repairId == hurtFlyer2 && guardLatch(w, g3, 3, hurtFlyer2, true) >= 0,
               "a damaged guarded unit under the sea: the flying guard joins its repair instead", d);
@@ -839,7 +839,7 @@ static void flyingGuardOrbit() {
         World& w = *ownedWorld;
         const int idle = w.spawn(&ty.sol, 1000, 1000, 0.0f, 0);
         const int g = w.spawn(c.type, 1200, 1100, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, idle);
+        command(w, ta::net::Cmd::Guard, g, idle);
         w.tick(1.0f / 30.0f);
         const OrbitPoint p = orbitPoint(w, g, idle);
         std::snprintf(d, sizeof d, "point %.1f px out, accepts at %d (flags %#x)", p.distance, p.radius, p.flags);
@@ -901,7 +901,7 @@ static void flyingGuardOrbit() {
         World& w = *ownedWorld;
         const int walker = w.spawn(&ty.sol, 500, 1000, 0.0f, 0);
         const int g = w.spawn(&ty.flysol, 500, 800, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, walker);
+        command(w, ta::net::Cmd::Guard, g, walker);
         w.tick(1.0f / 30.0f);
         w.order(walker, 1500, 1000, false);
         float worstPoint = 0, worstFlyer = 0;
@@ -924,7 +924,7 @@ static void flyingGuardOrbit() {
         const int hurt = w.spawn(&ty.ground, 1000, 1000, 0.0f, 0);
         w.unit(hurt)->hp = Fixed::fromInt(250);
         const int g = w.spawn(&ty.flyer, 1300, 1300, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, hurt);
+        command(w, ta::net::Cmd::Guard, g, hurt);
         int mended = -1;
         for (int i = 0; i < 900 && mended < 0; ++i) {
             w.tick(1.0f / 30.0f);
@@ -952,7 +952,7 @@ static void flyingGuardStarts() {
         const int g = w.spawn(&ty.flysol, 2, 1000, 0.0f, 0);
         const Unit* f = w.unit(g);
         const bool off = footprintOrigin(f->x, f->type->footX) < 0;
-        command(w, tak::net::Cmd::Guard, g, idle);
+        command(w, ta::net::Cmd::Guard, g, idle);
         bool lost = false;
         for (int i = 0; i < 900 && !lost; ++i) {
             w.tick(1.0f / 30.0f);
@@ -970,7 +970,7 @@ static void flyingGuardStarts() {
         const int first = w.spawn(&ty.sol, 1000, 1000, 0.0f, 0);
         const int second = w.spawn(&ty.sol, 1400, 1000, 0.0f, 0);
         const int g = w.spawn(&ty.flysol, 1100, 1100, 0.0f, 0);
-        command(w, tak::net::Cmd::Guard, g, first);
+        command(w, ta::net::Cmd::Guard, g, first);
         w.guard(g, second, true);
         for (int i = 0; i < 3; ++i) w.tick(1.0f / 30.0f);
         w.destroy(first);   // a self-destruct countdown: the guard ends at its expiry
@@ -1011,7 +1011,7 @@ static DefendRun defendRun(const UnitType& guardType, float attackerDist, int fi
     const int g = w.spawn(&guardType, 1000, 1060, 0.0f, 0);
     w.unit(g)->fireState = uint8_t(fireState);
     const int enemy = w.spawn(&archer, 1000 + attackerDist, 1000, 0.0f, 1);
-    command(w, tak::net::Cmd::Guard, g, guarded);
+    command(w, ta::net::Cmd::Guard, g, guarded);
     w.attack(enemy, guarded, false);
     DefendRun r;
     for (int i = 0; i < 2400; ++i) {
@@ -1094,7 +1094,7 @@ static uint64_t defendRunHash() {
     archer.weapons.push_back(bow); archer.weapon = bow;
     const int guarded = w.spawn(&ty.sol, 1000, 1000, 0.0f, 0);
     for (int i = 0; i < 4; ++i)
-        command(w, tak::net::Cmd::Guard, w.spawn(i % 2 ? &hawk : &soldier, 950.0f + 30 * i, 1080, 0.0f, 0), guarded);
+        command(w, ta::net::Cmd::Guard, w.spawn(i % 2 ? &hawk : &soldier, 950.0f + 30 * i, 1080, 0.0f, 0), guarded);
     for (int i = 0; i < 3; ++i) w.attack(w.spawn(&archer, 1450, 900.0f + 100 * i, 0.0f, 1), guarded, false);
     for (int i = 0; i < 1500; ++i) w.tick(1.0f / 30.0f);
     return w.stateHash();
@@ -1113,7 +1113,7 @@ static uint64_t orbitRun() {
     std::vector<int> guards;
     for (int i = 0; i < 6; ++i)
         guards.push_back(w.spawn(i % 3 == 0 ? &ty.flysol : i % 3 == 1 ? &armed : &ty.flyer, 900.0f + 70 * i, 900, 0.0f, 0));
-    for (int i = 0; i < 6; ++i) command(w, tak::net::Cmd::Guard, guards[size_t(i)], i < 3 ? walker : idle);
+    for (int i = 0; i < 6; ++i) command(w, ta::net::Cmd::Guard, guards[size_t(i)], i < 3 ? walker : idle);
     for (int i = 0; i < 1200; ++i) {
         w.tick(1.0f / 30.0f);
         if (i == 100) w.order(walker, 1600, 600, false);
@@ -1137,10 +1137,10 @@ static uint64_t flyingRun() {
     w.repair(repairer, hurt, false);
     std::vector<int> guards;
     for (int i = 0; i < 4; ++i) guards.push_back(w.spawn(&ty.flyer, 1200.0f + 80 * i, 1600, 0.0f, 0));
-    command(w, tak::net::Cmd::Guard, guards[0], fac);
-    command(w, tak::net::Cmd::Guard, guards[1], prod);
-    command(w, tak::net::Cmd::Guard, guards[2], repairer);
-    command(w, tak::net::Cmd::Guard, guards[3], guards[0]);
+    command(w, ta::net::Cmd::Guard, guards[0], fac);
+    command(w, ta::net::Cmd::Guard, guards[1], prod);
+    command(w, ta::net::Cmd::Guard, guards[2], repairer);
+    command(w, ta::net::Cmd::Guard, guards[3], guards[0]);
     for (int i = 0; i < 1500; ++i) {
         w.tick(1.0f / 30.0f);
         if (i == 400) w.unit(guards[0])->hp = Fixed::fromInt(60);
@@ -1221,7 +1221,7 @@ static void approachHelpersSpread(PathfindingMode mode) {
     const From from[4] = {{1008, 704, "north"}, {1008, 1312, "south"}, {1312, 1008, "east"}, {704, 1008, "west"}};
     int ids[4];
     for (int i = 0; i < 4; ++i) ids[i] = w.spawn(&ty.builder, from[i].x, from[i].z, 0.0f, 0);
-    for (int id : ids) command(w, tak::net::Cmd::Assist, id, site);
+    for (int id : ids) command(w, ta::net::Cmd::Assist, id, site);
     uint32_t emitted[4];
     int started[4] = {-1, -1, -1, -1};
     bool touchAtStart[4] = {}, ownSide[4] = {};
@@ -1297,7 +1297,7 @@ static void approachStuckHelper() {
     w.spawn(&ty.factory, 300, 300, 0.0f, 0);
     const int site = spawnSite(w, hut, 1008, 1008);
     const int helper = w.spawn(&ty.builder, 1008, 600, 0.0f, 0);
-    command(w, tak::net::Cmd::Assist, helper, site);
+    command(w, ta::net::Cmd::Assist, helper, site);
     w.unit(helper)->paralyzedFor = 420;            // 14 s without a step
     int lost = -1;
     for (int tick = 0; tick < 420 && lost < 0; ++tick) {
@@ -1325,7 +1325,7 @@ static void approachBumped() {
     w.spawn(&ty.factory, 300, 300, 0.0f, 0);
     const int site = spawnSite(w, hut, 1008, 1008);
     const int helper = w.spawn(&ty.builder, 1008, 704, 0.0f, 0);
-    command(w, tak::net::Cmd::Assist, helper, site);
+    command(w, ta::net::Cmd::Assist, helper, site);
     uint32_t emitted = w.unit(helper)->constructionEmissions[0];
     for (int tick = 0; tick < 600 && w.unit(helper)->constructionEmissions[0] == emitted; ++tick) w.tick(1.0f / 30.0f);
     check(w.unit(helper)->constructionEmissions[0] != emitted, "a helper starts working on the site");
@@ -1374,7 +1374,7 @@ static void approachFailed() {
         // (109 > 60).
         if (inReach) wallRing(w, 58, 58, 67, 67, 2); else wallRing(w, 53, 53, 72, 72, 3);
         const int helper = w.spawn(&ty.builder, 1400, 1008, 0.0f, 0);
-        command(w, tak::net::Cmd::Assist, helper, site);
+        command(w, ta::net::Cmd::Assist, helper, site);
         const Fixed hp = w.unit(site)->hp;
         int worked = -1, ended = -1;
         for (int tick = 0; tick < 3000 && worked < 0 && ended < 0; ++tick) {
@@ -1498,8 +1498,8 @@ static void approachQueuedAssist() {
     const int site = spawnSite(w, hut, 1008, 1008);
     const int b = w.spawn(&ty.builder, 1008, 1500, 0.0f, 0);
     w.order(b, 1500, 1500, false);
-    tak::net::Command c;
-    c.kind = tak::net::Cmd::Assist; c.player = 0; c.unitId = b; c.targetId = site; c.queue = 1;
+    ta::net::Command c;
+    c.kind = ta::net::Cmd::Assist; c.player = 0; c.unitId = b; c.targetId = site; c.queue = 1;
     applyCommand(w, emptyRegistry(), c);
     bool early = w.unit(b)->buildSiteId != 0;
     int latched = -1;
@@ -1559,7 +1559,7 @@ static void approachYardRepeat() {
     w.unit(site)->underConstruction = true; w.unit(site)->buildBegun = true; w.unit(site)->hp = Fixed::fromInt(50);
     const int conj = w.spawn(&ty.conjurer, 1000, 1032, 0.0f, 0);   // touching it, in the yard
     w.setRepeat(conj, &ty.sol);
-    tak::net::Command mv; mv.kind = tak::net::Cmd::Move; mv.unitId = conj; mv.x = 200; mv.z = 1800;
+    ta::net::Command mv; mv.kind = ta::net::Cmd::Move; mv.unitId = conj; mv.x = 200; mv.z = 1800;
     applyCommand(w, emptyRegistry(), mv);
     w.tick(1.0f / 30.0f);
     w.assist(conj, site, false);
@@ -1583,7 +1583,7 @@ static uint64_t approachRun() {
     World& w = *ownedWorld;
     w.spawn(&ty.factory, 300, 300, 0.0f, 0);
     const int site = spawnSite(w, hut, 1008, 1008);
-    for (int i = 0; i < 6; ++i) command(w, tak::net::Cmd::Assist, w.spawn(&ty.builder, 700.0f + 120 * i, 700, 0.0f, 0), site);
+    for (int i = 0; i < 6; ++i) command(w, ta::net::Cmd::Assist, w.spawn(&ty.builder, 700.0f + 120 * i, 700, 0.0f, 0), site);
     const int hurt = w.spawn(&ty.sol, 1500, 1500, 0.0f, 0);
     w.unit(hurt)->hp = Fixed::fromInt(40);
     const int rep = w.spawn(&ty.builder, 1500, 1650, 0.0f, 0);
@@ -1610,9 +1610,9 @@ static uint64_t mixedRun() {
     std::vector<int> guards;
     for (int i = 0; i < 3; ++i) guards.push_back(w.spawn(&ty.builder, 1100.0f + 60 * i, 1400, 0.0f, 0));
     const int helper = w.spawn(&ty.builder, 1500, 1200, 0.0f, 0);
-    command(w, tak::net::Cmd::Guard, guards[0], fac);
-    command(w, tak::net::Cmd::Guard, guards[1], conj);
-    command(w, tak::net::Cmd::Guard, guards[2], guards[0]);
+    command(w, ta::net::Cmd::Guard, guards[0], fac);
+    command(w, ta::net::Cmd::Guard, guards[1], conj);
+    command(w, ta::net::Cmd::Guard, guards[2], guards[0]);
     for (int i = 0; i < 1500; ++i) {
         w.tick(1.0f / 30.0f);
         if (i % 97 == 0 && w.unit(conj)->productionSiteId) w.assist(helper, w.unit(conj)->productionSiteId, false);

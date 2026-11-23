@@ -1,2 +1,0 @@
-// Explorer, taskbar/pinned shortcuts and the installer use the same crown icon.
-1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/res/icons/takclient.ico"

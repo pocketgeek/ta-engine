@@ -1,6 +1,6 @@
 #pragma once
 #include "net/mappackage.h"
-namespace tak::net::mods {
+namespace ta::net::mods {
 using Package=maps::Package;
 std::shared_ptr<Package> build(const std::filesystem::path& root,const std::vector<std::string>& names);
 std::shared_ptr<Package> decode(std::vector<uint8_t> bytes,const std::string& digest);

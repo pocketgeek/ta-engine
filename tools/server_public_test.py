@@ -55,7 +55,7 @@ def room(p):
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--server',type=Path,required=True);ap.add_argument('--data',type=Path,required=True);ap.add_argument('--tls-tool',type=Path,required=True);ap.add_argument('--map-tool',type=Path,required=True);a=ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-public-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-public-') as tmp:
         root=Path(tmp)
         subprocess.run([str(a.tls_tool.resolve()),"--fixtures",str(root)],check=True)
         context=ssl.create_default_context(cafile=str(root/"cert.pem"))
@@ -75,7 +75,7 @@ def main():
                 p.send('MapOffer',struct.pack('<I',rid)+auth.field('missing-test-map')+auth.field('0'*64)+struct.pack('<I',1<<20))
                 error=p.receive('MapError');assert error.num('<I')==rid;assert b'budget' in error.field()
                 # Cache admission uses actual bytes, not a forged smaller offer.
-                cache=root/'maps'/'MapCache'/('0'*64+'.takmap')
+                cache=root/'maps'/'MapCache'/('0'*64+'.tamap')
                 cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(bytes(600000))
                 p.send('MapOffer',struct.pack('<I',rid)+auth.field('missing-test-map')+auth.field('0'*64)+struct.pack('<I',1000))
                 error=p.receive('MapError');assert error.num('<I')==rid
@@ -89,7 +89,7 @@ def main():
                 p.send('LeaveGame');p.send('Ping');p.receive('Pong')
                 create(q);room(q) # capacity and upload reservation released on leave
                 assert process.poll() is None
-        stock=root/'stock.takmap'
+        stock=root/'stock.tamap'
         subprocess.run([str(a.map_tool.resolve()),'--export-package',str(a.data.resolve()),str(stock)],check=True)
         digest=hashlib.sha256(stock.read_bytes()).hexdigest()
         assert stock.stat().st_size>1000
@@ -112,7 +112,7 @@ def main():
                 offer(p);error=p.receive('ModError');assert error.num('<I')==rid;assert b'off' in error.field()
                 mods=bytearray(options());mods[2]=1
                 p.send('SetGameOptions',mods)
-                cache=root/'maps'/'ModCache'/('1'*64+'.takmods')
+                cache=root/'maps'/'ModCache'/('1'*64+'.tamods')
                 cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(bytes(600000))
                 offer(p)
                 error=p.receive('ModError');assert error.num('<I')==rid

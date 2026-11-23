@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-namespace tak::video {
+namespace ta::video {
 // A hardware (OS) cursor is not part of the rendered frame, so a capture of the
 // frame never contains it. The stream worker stamps it back in instead: the
 // client passes the picture the OS is showing and where, and the worker draws it

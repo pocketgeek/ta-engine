@@ -67,7 +67,7 @@ compile_commands.json
 third_party/
 
 # Server-local account store (no passwords in it, but it is server state).
-takserver-accounts.conf
+taserver-accounts.conf
 
 # Python tooling caches
 __pycache__/

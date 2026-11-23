@@ -7,7 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace tak::terrain {
+namespace ta::terrain {
 
 namespace {
 constexpr int kBlock = 32;
@@ -218,4 +218,4 @@ jpeg::Image Compositor::renderMap(const tnt::Map& map) {
     return out;
 }
 
-} // namespace tak::terrain
+} // namespace ta::terrain

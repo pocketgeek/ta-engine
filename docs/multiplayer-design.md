@@ -1,22 +1,22 @@
 # Multiplayer Design: Client–Server, 8 Players, Teams
 
-How TAK Engine's multiplayer works: one server (`takserver`) relays every game, every
+How TA Engine's multiplayer works: one server (`taserver`) relays every game, every
 peer runs the same deterministic simulation, and only commands cross the wire
 (`src/net/lockstep.h` holds the command format). The protocol version is
 `kNetVersion` = 336 (`src/net/protocol.h`).
 
-Single player runs the same way: the client starts a private local `takserver`
+Single player runs the same way: the client starts a private local `taserver`
 (`--local --no-auth`) and plays through it ([sp-mp-equivalence.md](sp-mp-equivalence.md)).
 The server requires `--data`, runs the referee for every game and hosts the AI.
 Accounts with sign-in are the default and public listeners use native TLS
 ([public-server.md](public-server.md)). Allied mana sharing and unit gifting are
 described in [unit-gifting.md](unit-gifting.md). The headless test client is
-`TAK_HEADLESS=1 takclient game ... --mpai` (debug builds).
+`TA_HEADLESS=1 taclient game ... --mpai` (debug builds).
 
 ## 1. Goals
 
 - **Client–server topology.** All clients make one outbound TCP connection to a
-  central server (`takserver`) reachable on the LAN or internet. Everything —
+  central server (`taserver`) reachable on the LAN or internet. Everything —
   lobby, game traffic — is proxied through it. No NAT traversal or port
   forwarding on any player's side.
 - **Up to 8 players per game**, any mix of humans and AIs.
@@ -46,9 +46,9 @@ network only (resume tokens, §4).
 ## 2. Architecture
 
 ```
-   takclient (client)  ─┐
-   takclient (client)  ─┼─ TCP ──►  takserver ── per-game: GameRoom
-   takclient (client)  ─┘             │  ├─ command sequencer (tick authority)
+   taclient (client)  ─┐
+   taclient (client)  ─┼─ TCP ──►  taserver ── per-game: GameRoom
+   taclient (client)  ─┘             │  ├─ command sequencer (tick authority)
                                     │  ├─ headless World (referee + AI host)
                                     │  ├─ ai::Controller per AI slot
                                     │  └─ bundle log (reconnect + replay)
@@ -111,11 +111,11 @@ is pure pacing — the same bundles play in the same order, so every sim and has
 stays byte-identical (`mpStep()`, `src/client/gameview_net.cpp`).
 
 Two refinements make it self-tuning:
-- **Auto-sizing** (the default; `TAK_NET_DELAY` overrides in debug builds — `0`
+- **Auto-sizing** (the default; `TA_NET_DELAY` overrides in debug builds — `0`
   disables the buffer, a positive integer pins a fixed depth): an active RTT
   probe (one ping/sec) plus a decaying-max of the measured bundle-arrival jitter
   size the reserve each frame — `clamp(2 + max(kJit, kRtt, kFrame), 2, cap)`
-  ticks (`tak::net::jitterTargetTicks`, `src/net/pacing.h`) — so a clean LAN sits
+  ticks (`ta::net::jitterTargetTicks`, `src/net/pacing.h`) — so a clean LAN sits
   at 2 and a jittery WAN grows the cushion only as needed. The cap is
   `min(max(16, 16·speed), flowBufferLimit)`: never more than server flow control
   lets the client hold (`flowLeadTicks` less a Progress period, the round trip
@@ -135,9 +135,9 @@ render frame in `cameraFrame(dt)`, independent of the sim, so input feel is neve
 coupled to link latency.
 
 *Test harness.* A synthetic link model (debug builds) injects receive delay on the
-client with no server needed: `TAK_NET_BASE_MS` (constant one-way),
-`TAK_NET_JITTER_MS` (uniform 0..N added), `TAK_NET_LOSS_PCT` (probability of a
-~2·base retransmit spike). `TAK_NETBENCH=1` runs the headless client at a fixed
+client with no server needed: `TA_NET_BASE_MS` (constant one-way),
+`TA_NET_JITTER_MS` (uniform 0..N added), `TA_NET_LOSS_PCT` (probability of a
+~2·base retransmit spike). `TA_NETBENCH=1` runs the headless client at a fixed
 60 fps and reports `delay`, measured `rtt`, frames, and starved-frame `stalls`.
 Measured over 15 s of an `--mpai` game, the servo cuts stalls roughly 10–12× on
 lossy links against an unbuffered client (base60+jit60+loss5%: 28.2% → 2.3%;
@@ -186,7 +186,7 @@ agreed:
   **`Loaded`** the client sends its gameplay hash *with the room's game mods*, and
   the referee (mounted with the same package) rejects a mismatch — so a player
   lacking or differing on a game mod is caught before tick 0 rather than as a
-  mid-game desync. `takserver` refuses to host without `--data`, so every game
+  mid-game desync. `taserver` refuses to host without `--data`, so every game
   has the referee's hash.
 
 ## 3. Determinism contract
@@ -230,7 +230,7 @@ contract is stated, enforced, and narrow:
   plane every sim keeps and hashes (`height-and-fog.md`), so per-client team
   fog cannot desync. The referee draws nothing.
 
-## 4. The server (`takserver`)
+## 4. The server (`taserver`)
 
 A headless binary that needs the same game data as clients (it runs the sim
 and the AI): point it at the install with `--data`. No SDL, no rendering — it
@@ -420,7 +420,7 @@ links the sim, data loaders, `net` and the `ai` module only.
   `--max-running-games`, in the `--sim-threads` shares or in `--status`
   (`Room::playing`). It does not wait for ever: once no watcher has
   taken another bundle for 120 s (a silent watcher's own timeout;
-  `TAK_OVER_DRAIN_MS` on a test server) the room goes anyway, so a watcher
+  `TA_OVER_DRAIN_MS` on a test server) the room goes anyway, so a watcher
   that never takes the map cannot hold an ended game's room. `GameOver` is
   not recorded and is not sim state: the watcher's recording and the server's
   `--replaydir` replay simply end on the game's last tick, and play back to
@@ -681,7 +681,7 @@ nobody.
   0xFF, after which the client seats random-race AIs in the open seats when fewer
   than two are seated. A `--play-map` room keeps its map (no CHANGE MAP, LEAVE
   reads QUIT); mission and Benchmark rooms are read-only. Debug builds drive the
-  room through the same members with `TAK_ROOM_SCRIPT` (`tools/room_flow_test.py`).
+  room through the same members with `TA_ROOM_SCRIPT` (`tools/room_flow_test.py`).
 
 AI seats carry their level in `SlotInfo.aiLevel`: 0-4 our Defensive, Easy,
 Normal, Hard and Absurd, 5 Absurdly Defensive (every peer derives its double
@@ -817,7 +817,7 @@ slider (0-100 by player slot, 100 by default; humans other than yourself only,
 none for an AI), then applies OUTPUT VOLUME and a soft limiter. The sliders are
 local: never sent, hashed or recorded, reset to 100 each game, greyed while voice
 chat is off. Opus is built from its pinned source release (`cmake/Opus.cmake`)
-and linked only into takclient. Tests: `voice_test` (codec, jitter buffer,
+and linked only into taclient. Tests: `voice_test` (codec, jitter buffer,
 push-to-talk, engine on SDL's disk audio driver, the VOICE CHAT page, the
 per-player mix), `diplomacy_ui` (the VOLUME sliders), `voice_client_test`
 (MpClient on the wire), `server_voice_test.py` (routing, budgets, abuse against a
@@ -891,7 +891,7 @@ god-enabled (`gods.tdf GameChance=0.1`); ours deliberately does not
 One `ai::Controller` per AI player (`src/ai/ai.h`):
 
 ```cpp
-namespace tak::ai {
+namespace ta::ai {
   Profile loadProfile(const hpi::Vfs&, const std::string& name = "default");
   class Controller {
     Controller(int player, const sim::TypeRegistry&, const Profile&, uint32_t seed,
@@ -917,7 +917,7 @@ namespace tak::ai {
 Single player runs these controllers on its private local server, like any
 multiplayer game.
 
-## 8. Client (`takclient`)
+## 8. Client (`taclient`)
 
 - **Server browser:** game list with name, map, players/capacity, lobby/running
   state, lock icon; CREATE asks only the game's name and password, then opens
@@ -943,7 +943,7 @@ multiplayer game.
   line saying so. A replay standing at the end of a recording that ended
   decided shows the winner banner too.
 - `--server`, `--name` select a server from the command line (debug builds). LAN
-  play = run `takserver` on any machine on the LAN, or a LOCAL SERVER from the
+  play = run `taserver` on any machine on the LAN, or a LOCAL SERVER from the
   menu.
 
 ## 9. Maps, capacity, colors (retail facts)
@@ -980,7 +980,7 @@ never fewer than 2 (1 only when the total is 1) and never more than 64
 (`sim::SimPool::serverShare`, `kMaxThreads`). The share is recomputed as games
 start and end and applied between ticks, on the game's own worker; a tick takes
 the share of the moment it is submitted. The floor of 2 means a busy server can
-run more simulation threads than it has CPUs. Debug builds' `TAK_SIM_WORKERS`
+run more simulation threads than it has CPUs. Debug builds' `TA_SIM_WORKERS`
 overrides `auto` only.
 
 With `--sim-cpus` (a list such as `1,3,5-7`, or `auto`; the default `none` pins
@@ -1026,13 +1026,13 @@ loads the package from `ModCache/` (in the per-user folder, `hpi::userMapRoot`;
 never the game data folder). The room's game-mod ticks are part of the
 remembered room settings, kept separately for single player and multiplayer.
 
-The package also carries a pack's `ai/takengine.txt` (loose in the pack's `ai/`
+The package also carries a pack's `ai/taengine.txt` (loose in the pack's `ai/`
 folder or under `ai/` in an archive in it), and a map package carries it when
 the map's own archive (its `.kmp`) has it (`maps::build`, checked on decode). The
 server reads the room's one file, from the game-mod package, else from the map
 package, and each of its AI levels 0-5 applies it over that level's own built-in
 profile table (`src/ai/builtinprofile.h`). No other file name in `ai/` is read
-for them. A root `takengine.txt` is not read, cosmetic packs can never supply
+for them. A root `taengine.txt` is not read, cosmetic packs can never supply
 `ai/` files, and the base install's `ai/` folder is never consulted for these
 names. Classic reads the map's `ai/<aiprofile>.txt` / `ai/default.txt` with the
 same rule for `ai/` files: game mods, else the map package, else the base data
@@ -1056,7 +1056,7 @@ replay mode byte is rejected. Legion's groups and per-unit state are part of the
 simulation checksum only in mode 4. A Legion client sends each click as one
 explicit selection order (`Cmd::Order` in the tick bundles, carried up by the
 OrderBegin/OrderMembers/OrderCommit/OrderAbort transaction); Retail clients, the
-AI and scripts send per-unit commands. Debug-only `TAK_LEGION=1` selects Legion
+AI and scripts send per-unit commands. Debug-only `TA_LEGION=1` selects Legion
 in the headless multiplayer test harness, and `crowdbench` accepts `--mode
 retail` or `legion` for direct comparisons. How Legion works:
 [legion-pathfinding.md](legion-pathfinding.md).
@@ -1089,7 +1089,7 @@ game `SetGameOptions` adopts only speed.
   Use Only entry no unit type answers to is left out rather than refused (maps
   made for the original game name such units; NeverGlory names 44). Setup runs
   the scenario when the map's `.ota` carries the Test Map opt-in
-  (`[TAKPlaytest] authoredscenario=1`) or when the option is on and the `.ota`
+  (`[TAPlaytest] authoredscenario=1`) or when the option is on and the `.ota`
   declares `hasscenario`. `SetGameOptions` never changes it: the capacity it
   implies sizes the room's open seats (a scenario can need seats past the map's
   start positions), so it changes with the map's capacity in one `SetRoomMap`,
@@ -1166,9 +1166,9 @@ the `gameMods` byte with the shared package's `modDigest`. The
 
 ## 16. Testing
 
-- **Headless clients** (`TAK_HEADLESS=1 takclient game ... --mpai`, debug
+- **Headless clients** (`TA_HEADLESS=1 taclient game ... --mpai`, debug
   builds) let CI run scripted clients + a server on one machine and assert every
-  hash matches to game end; `takserver --seed` makes the hash repeatable.
+  hash matches to game end; `taserver --seed` makes the hash repeatable.
 - **Replay determinism:** a game's log re-run must reproduce the final hash —
   this also guards AI determinism.
 - **Fault injection:** socket kill, delayed delivery, malformed/oversized
@@ -1178,7 +1178,7 @@ the `gameMods` byte with the shared package's `modDigest`. The
   hook) must trigger the suspicion rule, not a mass drop. `server_disconnect`
   and `disconnect_client` cover the disconnect wait, holds, rejoin and takeover.
 - `fp_contract`, `room_worker`, the voice tests (§5) and
-  `tools/room_flow_test.py` (the room, scripted through `TAK_ROOM_SCRIPT`) run in
+  `tools/room_flow_test.py` (the room, scripted through `TA_ROOM_SCRIPT`) run in
   ctest.
 - Game end (§4): `room_standing` (the standing a tick reports, on constructed
   worlds), `server_endgame` (a real server at protocol level: a seated human's
@@ -1189,7 +1189,7 @@ the `gameMods` byte with the shared package's `modDigest`. The
   whose player left moments later; the watcher's three seconds, its plate,
   both replays).
 - `tools/desync-hunt-remote.sh`: `--minutes` limits simulated match time;
-  `TAK_WALL_TIMEOUT=3600` grants each client up to one real hour for a dense
+  `TA_WALL_TIMEOUT=3600` grants each client up to one real hour for a dense
   stress run (the default is simulated seconds plus 300). The same tick,
   completion and hash checks apply. `--only` retains each scenario's full-table
   seed so targeted retries reproduce its original map/start seed.

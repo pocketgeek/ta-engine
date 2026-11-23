@@ -21,7 +21,7 @@
 //     keeps the stored choice;
 //   - the Controls hint line has a band of its own: at every window size it lies below the
 //     rows' viewport (never over a row, scrolled or not) and above the footer buttons.
-//     TAK_LAYOUT_SHOT_DIR=<dir> also writes each case as a BMP, and the GAME page with
+//     TA_LAYOUT_SHOT_DIR=<dir> also writes each case as a BMP, and the GAME page with
 //     its RESET TO DEFAULTS? prompt open.
 
 #include "client/hotkeys.h"
@@ -43,7 +43,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using namespace tak;
+using namespace ta;
 
 static int g_fail = 0, g_checks = 0;
 static void check(bool ok, const std::string& what) {
@@ -234,7 +234,7 @@ static std::string joined(const std::vector<std::string>& lines) {
     return all;
 }
 
-// The screen as drawn, for TAK_LAYOUT_SHOT_DIR.
+// The screen as drawn, for TA_LAYOUT_SHOT_DIR.
 static void shoot(SDL_Renderer* ren, OptionsScreen& o, const std::string& path) {
     SDL_SetRenderDrawColor(ren, 12, 12, 16, 255); SDL_RenderClear(ren);   // the panel is translucent
     o.render(W, H);
@@ -390,7 +390,7 @@ static void testSimThreads(SDL_Renderer* ren) {
         // Off AUTO, the GAME page's DEFAULTS is live: it asks, and YES puts AUTO back.
         click(o, o.defaultsRect());
         check(o.defaultsYesRect().w > 0 && s.simThreads == 1 && saves == 1, "off AUTO, DEFAULTS asks first");
-        if (const char* dir = std::getenv("TAK_LAYOUT_SHOT_DIR")) {   // the prompt, to look at
+        if (const char* dir = std::getenv("TA_LAYOUT_SHOT_DIR")) {   // the prompt, to look at
             SDL_SetRenderDrawColor(ren, 12, 12, 16, 255); SDL_RenderClear(ren);   // the panel is translucent
             o.render(W, H);
             if (SDL_Surface* shot = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888)) {
@@ -410,9 +410,9 @@ static void testSimThreads(SDL_Renderer* ren) {
     }
 #ifndef NDEBUG
     {
-        // A system that cannot pin (macOS; here a debug build's TAK_CPU_NOPIN): the row is
+        // A system that cannot pin (macOS; here a debug build's TA_CPU_NOPIN): the row is
         // greyed, reads OFF, takes no click and keeps the stored choice (ON here), and says why.
-        putEnv("TAK_CPU_NOPIN", "1");
+        putEnv("TA_CPU_NOPIN", "1");
         s.simPin = true;
         check(saveSettings(s), "the stored choice is ON");
         OptionsScreen o(ren, s, [&] { ++changes; }, save, 2, {}, {}, {}, OptionsPage::Game);
@@ -426,9 +426,9 @@ static void testSimThreads(SDL_Renderer* ren) {
             check(joined(o.rowHelp("PIN SIMULATION THREADS")).find("MACOS DOES NOT LET A GAME PIN THREADS") != std::string::npos &&
                   joined(o.rowLines("PIN SIMULATION THREADS INFO")).find("MACOS DOES NOT LET A GAME PIN THREADS, SO THE SYSTEM PLACES THEM.") !=
                       std::string::npos, "its help and the line under it say macOS does not let a game pin threads");
-            if (const char* dir = std::getenv("TAK_LAYOUT_SHOT_DIR")) shoot(ren, o, std::string(dir) + "/game-pin-cannot.bmp");
+            if (const char* dir = std::getenv("TA_LAYOUT_SHOT_DIR")) shoot(ren, o, std::string(dir) + "/game-pin-cannot.bmp");
         } else check(false, "the PIN SIMULATION THREADS row is there");
-        putEnv("TAK_CPU_NOPIN", "0");
+        putEnv("TA_CPU_NOPIN", "0");
         s.simPin = false;
         check(saveSettings(s), "the profile is back at OFF");
     }
@@ -534,7 +534,7 @@ static void layoutCase(int w, int h) {
     Settings s;
     HotkeysScreen hk(ren, s, [] {}, [] {});
     auto shot = [&](const char* what) {
-        const char* dir = std::getenv("TAK_LAYOUT_SHOT_DIR");
+        const char* dir = std::getenv("TA_LAYOUT_SHOT_DIR");
         if (dir) SDL_SaveBMP(surf, (std::string(dir) + "/controls-" + tag + "-" + what + ".bmp").c_str());
     };
     auto verify = [&](const char* what) {

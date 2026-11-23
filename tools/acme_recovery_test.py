@@ -24,7 +24,7 @@ def main():
     ap.add_argument('--driver',type=Path,required=True)
     ap.add_argument('--tls-tool',type=Path,required=True)
     a=ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-acme-recovery-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-acme-recovery-') as tmp:
         root=Path(tmp)
         subprocess.run([str(a.tls_tool.resolve()),'--fixtures',str(root)],check=True)
         key=serialization.load_pem_private_key((root/'key.pem').read_bytes(),password=None)

@@ -1,6 +1,6 @@
 #pragma once
 
-// LAN game announcements. A takserver started as a player's LOCAL SERVER (--lan)
+// LAN game announcements. A taserver started as a player's LOCAL SERVER (--lan)
 // broadcasts one small UDP datagram a second while its game waits in the room, and
 // the CONNECT screen listens and lists what it hears under LOCAL SERVER. Nothing
 // here is trusted: an announcement only offers an address to connect to, and the
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::net {
+namespace ta::net {
 
 constexpr uint16_t kDiscoveryPort = 7678;   // UDP; the game itself is on the announced TCP port
 
@@ -66,4 +66,4 @@ private:
     std::vector<LanGame> games_;
 };
 
-}  // namespace tak::net
+}  // namespace ta::net

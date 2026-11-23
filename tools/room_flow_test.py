@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""The game room end to end, driven through its own buttons by TAK_ROOM_SCRIPT.
+"""The game room end to end, driven through its own buttons by TA_ROOM_SCRIPT.
 
-Each case runs the real debug client (a single-player one starts its own takserver, which
+Each case runs the real debug client (a single-player one starts its own taserver, which
 logs to the same stream) on a scratch profile with its own settings file, gives it a
-TAK_ROOM_SCRIPT -- room actions, each through the member its button calls, each ended by its
+TA_ROOM_SCRIPT -- room actions, each through the member its button calls, each ended by its
 own test within its limit -- and reads the log: the client prints "room script: <step>:
 done" per step and "room script: finished", and the server its room lines. A script that
-cannot finish prints why and ends the client. TAK_QUIT_TICK ends a game that started.
+cannot finish prints why and ends the client. TA_QUIT_TICK ends a game that started.
 
   1  single player (CLI game room): an AI seated, CHANGE MAP to Inner Circle, START; the
      game plays to the quit tick.
@@ -59,9 +59,9 @@ cannot finish prints why and ends the client. TAK_QUIT_TICK ends a game that sta
      when the room's table shows the lock gone the client forgets it (and says so, never
      the password), so a lock set again later is not shown as the one typed.
 
-Debug builds only (TAK_ROOM_SCRIPT, TAK_QUIT_TICK and the CLI game are debug hooks).
+Debug builds only (TA_ROOM_SCRIPT, TA_QUIT_TICK and the CLI game are debug hooks).
 
-usage: room_flow_test.py --client <takclient> --server <takserver> --data <retail-install>
+usage: room_flow_test.py --client <taclient> --server <taserver> --data <retail-install>
                          --hpitool <hpitool> [--case N ...]
 """
 import argparse
@@ -91,10 +91,10 @@ def profile(root, name, script, extra=None):
         (home / sub).mkdir(parents=True, exist_ok=True)
     settings = home / 'settings.ini'
     settings.write_text('fullscreen = 0\n')
-    env = {k: v for k, v in os.environ.items() if not k.startswith('TAK_')}
+    env = {k: v for k, v in os.environ.items() if not k.startswith('TA_')}
     env.update(XDG_DATA_HOME=str(home / 'data'), XDG_CONFIG_HOME=str(home / 'config'), HOME=str(home / 'home'),
-               TAK_SETTINGS_FILE=str(settings), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy',
-               TAK_ROOM_SCRIPT=script, TAK_QUIT_TICK=str(QUIT_TICK), TAK_SPEED='40')
+               TA_SETTINGS_FILE=str(settings), SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy',
+               TA_ROOM_SCRIPT=script, TA_QUIT_TICK=str(QUIT_TICK), TA_SPEED='40')
     env.update(extra or {})
     return home, env
 
@@ -227,7 +227,7 @@ def settings_of(home):
 def case_door(args, root):
     """PLAY THE MACHINE opens its room at once; the room's changes go to spRoom.*."""
     steps = ['ai:1', 'map:Inner Circle', 'opt:crusades=1', 'start']
-    home, env = profile(root, 'case5', ';'.join(steps), {'TAK_MENU_PICK': 'singleplayer'})
+    home, env = profile(root, 'case5', ';'.join(steps), {'TA_MENU_PICK': 'singleplayer'})
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
         assert re.search(r"client \d+ created game \d+ 'Single Player' on 'athri cay'", log, re.I), \
@@ -243,7 +243,7 @@ def case_door(args, root):
     except AssertionError as e:
         raise AssertionError('%s\n%s' % (e, log[-4000:]))
     # The next launch's room: that map, those rules.
-    env['TAK_ROOM_SCRIPT'] = 'ai:1;start'
+    env['TA_ROOM_SCRIPT'] = 'ai:1;start'
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
         assert re.search(r"client \d+ created game \d+ 'Single Player' on 'inner circle' \(crusades=1 ", log, re.I), \
@@ -288,7 +288,7 @@ def case_play_map(args, root):
 
 def case_fallback(args, root):
     """A remembered map that is not installed: the room opens on the launch's map, and says why."""
-    home, env = profile(root, 'case7', 'ai:1;start', {'TAK_MENU_PICK': 'singleplayer'})
+    home, env = profile(root, 'case7', 'ai:1;start', {'TA_MENU_PICK': 'singleplayer'})
     (home / 'settings.ini').write_text('fullscreen = 0\nspRoom.map = No Such Map\n')
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
@@ -306,7 +306,7 @@ def case_fallback(args, root):
 
 def case_lan_host(args, root):
     """LOCAL SERVER host: "<name>'s Game" with its password at once; SHOW; LEAVE to CONNECT."""
-    home, env = profile(root, 'case8', 'showpass:1;leave', {'TAK_MENU_PICK': 'lanhost:alice:pw'})
+    home, env = profile(root, 'case8', 'showpass:1;leave', {'TA_MENU_PICK': 'lanhost:alice:pw'})
     log = run_until(args.client, ['menu', '--data', args.data], env, home, 'menu: back to CONNECT TO SERVER')
     try:
         assert re.search(r"client \d+ created game \d+ 'alice's Game' on 'athri cay'", log, re.I), \
@@ -348,7 +348,7 @@ def case_online_create(args, root):
     try:
         steps = ['create', 'opt:crusades=1']
         home, env = profile(root, 'case9', ';'.join(steps),
-                            {'TAK_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
+                            {'TA_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
         log = run_until(args.client, ['menu', '--data', args.data], env, home, 'room script: finished')
         slog_text = slog_path.read_text(errors='replace')
         try:
@@ -376,7 +376,7 @@ def case_windows(args, root):
         # The host: CREATE's window with a name and a password, then SHOW and HIDE in the room.
         hsteps = ['create:Friday Night:' + right, 'showpass:1', 'showpass:0', 'wait:humans=2']
         hhome, henv = profile(root, 'case11-host', ';'.join(hsteps),
-                              {'TAK_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
+                              {'TA_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
         hlog_path = hhome / 'client.log'
         with open(hlog_path, 'w') as out:
             host = subprocess.Popen([args.client, 'menu', '--data', args.data, '--winsize', '960', '540'], cwd=hhome,
@@ -389,7 +389,7 @@ def case_windows(args, root):
         gsteps = ['join!:Friday Night', 'join!:Friday Night:' + wrong, 'showpass:1', 'join:Friday Night:' + right,
                   'showpass:1', 'ready', 'leave', 'join:Friday Night:' + right, 'showpass:1']
         ghome, genv = profile(root, 'case11-guest', ';'.join(gsteps),
-                              {'TAK_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
+                              {'TA_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
         glog = run_until(args.client, ['menu', '--data', args.data], genv, ghome, 'room script: finished')
         wait_for(hlog_path, 'room script: finished', host, 30)
         hlog, slog_text = hlog_path.read_text(errors='replace'), slog_path.read_text(errors='replace')
@@ -447,7 +447,7 @@ def case_leave_race(args, root):
         for n in range(RACE_ROUNDS):
             steps += ['create:Race %d:pw' % n, 'showpass:1', 'leave', 'browser:700']
         home, env = profile(root, 'case12', ';'.join(steps),
-                            {'TAK_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
+                            {'TA_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
         log = ''
         try:
             log = run_until(args.client, ['menu', '--data', args.data], env, home, 'room script: finished', timeout=120)
@@ -475,7 +475,7 @@ def case_game_limit(args, root):
         # The host's game is the one the server has room for.
         hsteps = ['create:First', 'wait:humans=2']
         hhome, henv = profile(root, 'case13-host', ';'.join(hsteps),
-                              {'TAK_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
+                              {'TA_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
         hlog_path = hhome / 'client.log'
         with open(hlog_path, 'w') as out:
             host = subprocess.Popen([args.client, 'menu', '--data', args.data, '--winsize', '960', '540'], cwd=hhome,
@@ -487,7 +487,7 @@ def case_game_limit(args, root):
         refused = 'create!:Second:pw'
         gsteps = [refused, 'showpass:1', 'join:First']
         ghome, genv = profile(root, 'case13-guest', ';'.join(gsteps),
-                              {'TAK_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
+                              {'TA_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
         glog = ''
         try:
             glog = run_until(args.client, ['menu', '--data', args.data], genv, ghome, 'room script: finished', timeout=90)
@@ -547,7 +547,7 @@ def case_running_limit(args, root):
         # The host (harness mode 1, which never starts by itself here) presses START once
         # its guest is ready; then changes a rule in the room the refusal left open.
         steps = ['wait:ready=2', 'start!', 'opt:crusades=1']
-        home, env = profile(root, 'case14', ';'.join(steps), {'TAK_MPAUTO': '1', 'TAK_MP_WAIT': '9'})
+        home, env = profile(root, 'case14', ';'.join(steps), {'TA_MPAUTO': '1', 'TA_MP_WAIT': '9'})
         path = home / 'client.log'
         with open(path, 'w') as out:
             proc = subprocess.Popen([args.client, 'game', 'Athri Cay', '--data', args.data, '--server', '127.0.0.1',
@@ -622,7 +622,7 @@ def case_stale_press(args, root):
         # Another player's game, for the list's first row.
         hsteps = ['create:First', 'wait:humans=2']
         hhome, henv = profile(root, 'case15-host', ';'.join(hsteps),
-                              {'TAK_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
+                              {'TA_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
         hlog_path = hhome / 'client.log'
         with open(hlog_path, 'w') as out:
             host = subprocess.Popen([args.client, 'menu', '--data', args.data, '--winsize', '960', '540'], cwd=hhome,
@@ -646,7 +646,7 @@ def case_stale_press(args, root):
         # What each press came to, in order.
         presses = ['taken', 'dropped', 'dropped', 'taken', 'dropped', 'taken']
         home, env = profile(root, 'case15', ';'.join(steps),
-                            {'TAK_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
+                            {'TA_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
         log = ''
         try:
             log = run_until(args.client, ['menu', '--data', args.data], env, home, 'room script: finished', timeout=90)
@@ -706,7 +706,7 @@ def case_password_dropped(args, root):
         assert host.pump(5, lambda p: p.other.get(auth.MSG['LobbyState'])) and table()[6] == 1, 'the room is not locked'
         steps = ['join:Locked:' + typed, 'showpass:1', 'wait:ready=1']
         home, env = profile(root, 'case16', ';'.join(steps),
-                            {'TAK_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
+                            {'TA_MENU_PICK': 'connect:bob:bobpass12@tcp://127.0.0.1:%d' % port})
         path = home / 'client.log'
         with open(path, 'w') as out:
             proc = subprocess.Popen([args.client, 'menu', '--data', args.data, '--winsize', '960', '540'], cwd=home,
@@ -787,7 +787,7 @@ def case_scenario_confirm(args, root):
     """Single player MAP SCENARIO off with AIs in the scenario's extra seats: arm, confirm."""
     data = seats_install(root, args.data, args.hpitool)
     # The room opens with the scenario on (four seats); three AIs fill them.
-    home, env = profile(root, 'case10', 'ai:1;ai:2;ai:3;scenario:0;start', {'TAK_MAP_SCENARIO': '1'})
+    home, env = profile(root, 'case10', 'ai:1;ai:2;ai:3;scenario:0;start', {'TA_MAP_SCENARIO': '1'})
     code, log = run_client(args.client, ['game', 'Scenario Seats', '--data', data], env, home)
     try:
         script_ran(log, ['ai:1', 'ai:2', 'ai:3', 'scenario:0', 'start'])
@@ -833,8 +833,8 @@ def case_unready(args, root):
         # (1) waits for nine READY (never) instead of starting itself, so its script STARTs;
         # the guest (2) joins, readies, and readies again when its READY is cleared.
         hhome, henv = profile(root, 'case4-host', 'wait:ready=2;opt:fog=2;wait:ready=2;start',
-                              {'TAK_MPAUTO': '1', 'TAK_MP_WAIT': '9'})
-        ghome, genv = profile(root, 'case4-guest', '', {'TAK_MPAUTO': '2'})
+                              {'TA_MPAUTO': '1', 'TA_MP_WAIT': '9'})
+        ghome, genv = profile(root, 'case4-guest', '', {'TA_MPAUTO': '2'})
         for name, home, env in (('host', hhome, henv), ('guest', ghome, genv)):
             log = open(home / 'client.log', 'w')
             clients.append((name, home, subprocess.Popen([args.client] + net + ['--winsize', '960', '540'], cwd=home,
@@ -891,7 +891,7 @@ def main():
     for name in ('client', 'server', 'data', 'hpitool'):
         setattr(args, name, os.path.abspath(getattr(args, name)))
     failed = 0
-    with tempfile.TemporaryDirectory(prefix='tak-room-flow-') as root:
+    with tempfile.TemporaryDirectory(prefix='ta-room-flow-') as root:
         for n in args.case or sorted(CASES):
             try:
                 CASES[n](args, root)

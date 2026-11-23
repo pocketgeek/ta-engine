@@ -16,7 +16,7 @@
 #include <sstream>
 #include <string>
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -33,7 +33,7 @@ void trim(std::string& t) {
 
 // Split one line into key and value; false for a blank or comment line. '#' starts a
 // comment, except inside a dataDir value, where it is part of a folder name
-// ("D:\Games\TAK #2"). serializeSettings never writes an inline comment, so only a
+// ("D:\Games\TA #2"). serializeSettings never writes an inline comment, so only a
 // hand-edited file could put one there.
 bool splitLine(const std::string& line, std::string& key, std::string& val) {
     const size_t eq = line.find('='), hash = line.find('#');
@@ -126,7 +126,7 @@ void setSettingsPath(std::string path) {
 
 std::string settingsPath() {
     if (!pathOverride().empty()) return pathOverride();
-    if (const char* o = devEnv("TAK_SETTINGS_FILE")) if (*o) return o;   // debug builds: test profile
+    if (const char* o = devEnv("TA_SETTINGS_FILE")) if (*o) return o;   // debug builds: test profile
     const std::string base = prefPath("TAKingdoms");
     return base.empty() ? std::string() : base + "settings.ini";
 }
@@ -453,4 +453,4 @@ bool saveDataFolderSetting(const std::string& folder, const std::string& manifes
     return saveSettings(s);
 }
 
-}  // namespace tak
+}  // namespace ta

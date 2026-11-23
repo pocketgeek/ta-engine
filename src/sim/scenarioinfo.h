@@ -16,9 +16,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::sim {
+namespace ta::sim {
 
 class TypeRegistry;
 
@@ -37,7 +37,7 @@ enum class ScenarioStatus : uint8_t {
 struct ScenarioInfo {
     ScenarioStatus status = ScenarioStatus::NoScenario;
     bool hasScenario = false;   // [GlobalHeader] hasscenario != 0
-    bool marker = false;        // [TAKPlaytest] authoredscenario != 0 (a Test Map copy)
+    bool marker = false;        // [TAPlaytest] authoredscenario != 0 (a Test Map copy)
     bool crtValid = false;      // .crt present and version 1
     int placed = 0;             // placed units, every owner
     uint8_t placedSeats = 0;    // bit p: owner p (0..7) has placed units
@@ -101,4 +101,4 @@ std::vector<ScenarioLine> scenarioSummary(const ScenarioInfo&, bool compact);
 // CAN BE BUILT"); "" for an unrestricted map in the compact form.
 std::string scenarioUseOnlyLine(const ScenarioInfo&, bool compact);
 
-}  // namespace tak::sim
+}  // namespace ta::sim

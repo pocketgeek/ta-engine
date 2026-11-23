@@ -17,7 +17,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 
@@ -118,7 +118,7 @@ Fight fight(const TypeRegistry& registry,const UnitType& attacker,const UnitType
 
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     int failures=0;
     auto check=[&](bool ok,const char* label) {
         std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);

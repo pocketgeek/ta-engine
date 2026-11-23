@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-namespace tak {
+namespace ta {
 
 HotkeysScreen::HotkeysScreen(SDL_Renderer* ren, Settings& s, std::function<void()> onChange,
                              std::function<void()> onSave)
@@ -180,7 +180,7 @@ void HotkeysScreen::render(int winW, int winH) {
 
     SDL_Rect clip{int(view_.x), int(view_.y), int(view_.w), int(view_.h)};
     // No room (a tiny window): no rows -- on Metal they would draw unclipped.
-    const bool rowsShow = tak::cliprect::set(ren_, clip);
+    const bool rowsShow = ta::cliprect::set(ren_, clip);
 
     float fpx = 2.0f * u_;
     for (size_t i = 0; rowsShow && i < rows_.size(); ++i) {
@@ -261,4 +261,4 @@ void HotkeysScreen::render(int winW, int winH) {
                            {"EVERY KEY GOES BACK TO ITS DEFAULT."}, "YES", "NO");
 }
 
-}  // namespace tak
+}  // namespace ta

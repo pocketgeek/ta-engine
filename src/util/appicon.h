@@ -10,11 +10,11 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::appicon {
+namespace ta::appicon {
 
 enum class Kind { Client, Cartographer, Server };
 
 // size x size RGBA8888 pixels. Supersampled + box-downsampled for clean edges.
 std::vector<uint8_t> render(Kind kind, int size);
 
-} // namespace tak::appicon
+} // namespace ta::appicon

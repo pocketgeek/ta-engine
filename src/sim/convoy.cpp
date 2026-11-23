@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 constexpr uint32_t kMax=std::numeric_limits<uint32_t>::max();

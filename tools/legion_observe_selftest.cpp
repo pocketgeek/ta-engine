@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
-namespace obs=tak::legion_observe;
+using namespace ta::sim;
+namespace obs=ta::legion_observe;
 
 namespace {
 int failures=0;

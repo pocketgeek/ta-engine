@@ -28,7 +28,7 @@ struct SoundBankTestAccess {
     // EVEN OUT SOUND LEVELS' boost for a WAV, as SoundBank::load measures it.
     static float evenGain(SoundBank& bank,const std::vector<uint8_t>& data) {
         auto pcm=bank.decodeWav(data.data(),data.size());
-        return pcm ? tak::evenOutGain(pcm->samples.data(),pcm->samples.size(),pcm->rate,pcm->channels) : 0.f;
+        return pcm ? ta::evenOutGain(pcm->samples.data(),pcm->samples.size(),pcm->rate,pcm->channels) : 0.f;
     }
 };
 
@@ -36,17 +36,17 @@ int main(int argc,char** argv) {
     if(argc==2 && std::string(argv[1])=="--victims") {
         int incoming;
         while(std::cin>>incoming) {
-            std::array<tak::SoundVoice,32> voices;
+            std::array<ta::SoundVoice,32> voices;
             for(auto& voice:voices)std::cin>>voice.active>>voice.looping>>voice.priority>>voice.started;
-            std::cout<<tak::retailSoundVoice(voices,incoming)<<'\n';
+            std::cout<<ta::retailSoundVoice(voices,incoming)<<'\n';
         }
         return 0;
     }
     if(argc==2 && std::string(argv[1])=="--routes") {
         int flags;bool visible,selected,free;
         while(std::cin>>flags>>visible>>selected>>free) {
-            const int priority=tak::retailSoundPriority(flags);
-            const bool admit=tak::retailUnitSoundAudible(flags,visible,selected) && (priority>1 || free);
+            const int priority=ta::retailSoundPriority(flags);
+            const bool admit=ta::retailUnitSoundAudible(flags,visible,selected) && (priority>1 || free);
             std::cout<<(admit?(priority==7?2:1):0)<<'\n';
         }
         return 0;
@@ -54,7 +54,7 @@ int main(int argc,char** argv) {
     int failures=0;
     const auto check=[&](bool ok,const char* message) {if(!ok){++failures;std::cerr<<"FAIL "<<message<<'\n';}};
     {
-        tak::MonarchAlert alert;
+        ta::MonarchAlert alert;
         check(!alert.admit(2,0,false,100), "other player's monarch does not alert");
         check(!alert.admit(1,0,true,100), "spectators do not hear a local monarch alarm");
         check(alert.admit(1,0,false,100), "first local monarch hit alerts immediately");
@@ -156,22 +156,22 @@ int main(int argc,char** argv) {
             if(spike)s[0]=int16_t(spike);
             return s;
         };
-        const auto gain=[](const std::vector<int16_t>& s) {return tak::evenOutGain(s.data(),s.size(),22050,1);};
+        const auto gain=[](const std::vector<int16_t>& s) {return ta::evenOutGain(s.data(),s.size(),22050,1);};
         check(std::abs(gain(tone(0.1f,22050))-1.778f)<0.02f,"a sound 20 dB down is raised to the target");
         check(std::abs(gain(tone(0.0178f,22050))-3.162f)<0.02f,"a sound far down is raised by at most +10 dB");
         check(gain(tone(0.4f,22050))==1.f,"a loud sound is left alone");
         check(gain(std::vector<int16_t>(2205,0))==1.f,"silence is left alone");
         check(std::abs(gain(tone(0.05f,22050,20000))-0.95f*32768.f/20000.f)<0.01f,"the boost stops short of clipping the peak");
     }
-    check(!tak::retailUnitSoundAudible(4,false,true),"hidden positional death cry is suppressed");
-    check(tak::retailUnitSoundAudible(7,false,false),"global authored sound bypasses visibility");
-    check(!tak::retailUnitSoundAudible(1,true,false),"unselected chatter is suppressed");
-    check(tak::retailUnitSoundAudible(1,true,true),"selected chatter is eligible");
+    check(!ta::retailUnitSoundAudible(4,false,true),"hidden positional death cry is suppressed");
+    check(ta::retailUnitSoundAudible(7,false,false),"global authored sound bypasses visibility");
+    check(!ta::retailUnitSoundAudible(1,true,false),"unselected chatter is suppressed");
+    check(ta::retailUnitSoundAudible(1,true,true),"selected chatter is eligible");
     for(bool retail:{false,true}) {
-        tak::cob::File file;file.names={"cry"};file.scripts={{"Dying",0}};
+        ta::cob::File file;file.names={"cry"};file.scripts={{"Dying",0}};
         file.numStatics=1;
         file.code={0x10021001,4,0x10072000,0,0x10023004,0,0x10021001,0,0x10065000};
-        tak::cob::Vm vm(std::move(file));if(retail)vm.enableRetailAnimation();
+        ta::cob::Vm vm(std::move(file));if(retail)vm.enableRetailAnimation();
         int calls=0;
         vm.onPlaySound=[&](int32_t index,int32_t flags) {
             ++calls;check(index==0 && flags==4,"VM preserves death sound name and authored priority");
@@ -180,7 +180,7 @@ int main(int argc,char** argv) {
         check(calls==1 && vm.getStatic(0)==0,"unit sound host returns native zero result");
     }
     if(argc==2) {
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         std::set<std::string> checkedSounds;
         SoundBank decoder;
         check(vfs.has("sounds/alarmmon.wav"), "retail monarch alarm exists");
@@ -210,7 +210,7 @@ int main(int argc,char** argv) {
             ++decoded;
         };
         for(bool crusades:{false,true}) {
-            tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
             int scripts=0,events=0;
             for(const auto& [name,type]:registry.types()) {
                 const auto* file=type.script();if(!file)continue;
@@ -222,10 +222,10 @@ int main(int argc,char** argv) {
                     if(sound.find("die")!=std::string::npos)auditSound(sound);
                 }
                 for(int deathType:{0,1,2,3,5,7,8,14,15}) {
-                    tak::cob::Vm vm(*file);vm.enableRetailAnimation();
+                    ta::cob::Vm vm(*file);vm.enableRetailAnimation();
                     bool stop=false,capture=false;
                     vm.onGet=[&](int query,const std::vector<int32_t>&){return query==4 && !capture ? 100:0;};
-                    vm.onSetUnitValue=[&](int32_t id,int32_t){if(tak::retailOwnerVmStopsOnSetUnitValue(id))stop=true;};
+                    vm.onSetUnitValue=[&](int32_t id,int32_t){if(ta::retailOwnerVmStopsOnSetUnitValue(id))stop=true;};
                     vm.onPlaySound=[&](int32_t index,int32_t flags) {
                         if(!capture)return;
                         ++events;

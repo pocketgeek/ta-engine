@@ -4,8 +4,8 @@
 #include <cstdio>
 #include <stdexcept>
 #include <string>
-using namespace tak::sim;
-namespace tak::sim { struct RetailReplayProbe {
+using namespace ta::sim;
+namespace ta::sim { struct RetailReplayProbe {
  static void shoot(World& w,int from,int target){w.fire(*w.unit(from),*w.unit(target),0);}
 }; }
 static void check(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}

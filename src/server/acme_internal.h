@@ -4,7 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
-namespace tak::srv::acme_detail {
+namespace ta::srv::acme_detail {
 // Internal HTTP-01 responder. The listener exists only for this object's lifetime.
 class Challenge {
 public:

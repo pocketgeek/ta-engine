@@ -3,7 +3,7 @@
 #include <optional>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 // Resolve a corpse-1 request from constant operations and, when supplied, the
 // death-type argument. Reject other runtime inputs and side effects rather than
 // guessing their values. The bounded walk also rejects nonterminating handlers.

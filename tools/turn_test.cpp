@@ -11,7 +11,7 @@
 #include "cob/vm.h"
 #include <cstdio>
 #include <memory>
-using namespace tak;
+using namespace ta;
 
 static int fails = 0;
 static void check(bool ok, const char* what) {

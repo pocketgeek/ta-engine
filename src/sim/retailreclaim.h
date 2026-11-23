@@ -4,7 +4,7 @@
 #include <climits>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 // Retail RECLAIM (406250), checked by emulation (2026-10-24, see
 // docs/retail-engine.md "Reclaim"). It pays no mana, and nothing about the
 // builder (workertime, builddistance) changes how long it takes.
@@ -50,4 +50,4 @@ inline RetailReclaimWake retailReclaimWork(RetailMissionState& m,int32_t& countd
 }
 inline bool retailReclaimRemoval(const RetailMissionState& m) { return m.stage>=5; }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -22,7 +22,7 @@ int main(int argc,char** argv) {
     // A fast/nonblocking present must still be paced. A slow frame must not
     // be followed by another whole interval of delay.
     if(checkVsync) {
-        tak::PresentationPacer pacer;
+        ta::PresentationPacer pacer;
         pacer.paceAtRefresh(60);
         const auto begin=SDL_GetPerformanceCounter();
         for(int i=0;i<6;++i)pacer.paceAtRefresh(60);
@@ -38,10 +38,10 @@ int main(int argc,char** argv) {
     const bool tempFile=argc<3||!*argv[2]; // "": a temporary file, removed afterwards
     // Unique: CTest runs streaming_capture and streaming_capture_cursor side by side.
     std::string path=!tempFile?argv[2]:(std::filesystem::temp_directory_path()/
-        ("tak-stream-capture-"+std::to_string(SDL_GetPerformanceCounter())+".flv")).string();
+        ("ta-stream-capture-"+std::to_string(SDL_GetPerformanceCounter())+".flv")).string();
     {
-        tak::Streaming streaming(ren);
-        tak::video::StreamConfig c;c.encoder=argc>6?argv[6]:"libx264";
+        ta::Streaming streaming(ren);
+        ta::video::StreamConfig c;c.encoder=argc>6?argv[6]:"libx264";
         if(argc>5 && std::string(argv[5])=="native") {c.width=w&~1;c.height=h&~1;c.bitrateKbps=30000;}
         if(argc>5 && std::string(argv[5])=="4k") {c.width=3840;c.height=2160;c.bitrateKbps=30000;}
         if(argc>5 && std::string(argv[5])=="cursor") {c.width=320;c.height=180;c.bitrateKbps=1000;}
@@ -55,9 +55,9 @@ int main(int argc,char** argv) {
         // 15x15 block at 120,90 of the picture, whichever capture backend shrank the
         // frame -- and must be gone once the cursor is cleared.
         const bool cursorCheck=argc>5 && std::string(argv[5])=="cursor";
-        auto image=std::make_shared<tak::video::CursorImage>();
+        auto image=std::make_shared<ta::video::CursorImage>();
         image->w=image->h=20;image->rgba.assign(20*20*4,255);
-        tak::video::StreamCursor cursor;cursor.image=image;cursor.x=float(w)/2;cursor.y=float(h)/2;
+        ta::video::StreamCursor cursor;cursor.image=image;cursor.x=float(w)/2;cursor.y=float(h)/2;
         cursor.scale=2;cursor.refW=w;cursor.refH=h;
         int cursorPhase=cursorCheck?1:0; // 1: want it stamped; 2: want it gone; 3: done
         if(cursorCheck)streaming.testCursor(&cursor);

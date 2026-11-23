@@ -86,7 +86,7 @@ struct Fixture {
     SDL_Rect staticRect{40, 30, 9, 7};
     SDL_Texture* shared = nullptr;                       // the same in every colour atlas
     SDL_Rect sharedRect{20, 2, 7, 7};
-    std::vector<tak::render::AnimatedRegion> regions;
+    std::vector<ta::render::AnimatedRegion> regions;
 };
 
 Fixture makeFixture() {
@@ -119,14 +119,14 @@ void clearTarget(SDL_Texture* atlas) {
 }
 
 // GameView::atlasFor + paintAtlasContents: complete paint of one colour atlas.
-SDL_Texture* createAtlas(const Fixture& f, int slot, tak::render::AtlasPaintCounts* counts = nullptr) {
+SDL_Texture* createAtlas(const Fixture& f, int slot, ta::render::AtlasPaintCounts* counts = nullptr) {
     SDL_Texture* atlas = newAtlas();
     clearTarget(atlas);
     {
-        tak::render::AtlasPainter painter(ren, counts);
+        ta::render::AtlasPainter painter(ren, counts);
         painter.copy(f.shared, f.sharedRect, nullptr);
         painter.copy(f.staticPerSlot[size_t(slot)], f.staticRect, nullptr);
-        for (const auto& r : f.regions) tak::render::paintAnimatedRegion(painter, r);
+        for (const auto& r : f.regions) ta::render::paintAnimatedRegion(painter, r);
         painter.finish();
     }
     SDL_SetRenderTarget(ren, nullptr);
@@ -136,15 +136,15 @@ SDL_Texture* createAtlas(const Fixture& f, int slot, tak::render::AtlasPaintCoun
 // GameView::atlasFor with another complete atlas: copy it whole, then clear and
 // repaint only the per-colour texture and every animated region.
 SDL_Texture* createAtlasFrom(const Fixture& f, int slot, SDL_Texture* from,
-                             tak::render::AtlasPaintCounts* counts = nullptr) {
+                             ta::render::AtlasPaintCounts* counts = nullptr) {
     SDL_Texture* atlas = newAtlas();
     clearTarget(atlas);
     {
-        tak::render::AtlasPainter painter(ren, counts);
+        ta::render::AtlasPainter painter(ren, counts);
         painter.duplicate(from);
         painter.clear(f.staticRect);
         painter.copy(f.staticPerSlot[size_t(slot)], f.staticRect, nullptr);
-        for (const auto& r : f.regions) tak::render::paintAnimatedRegion(painter, r);
+        for (const auto& r : f.regions) ta::render::paintAnimatedRegion(painter, r);
         painter.finish();
     }
     SDL_SetRenderTarget(ren, nullptr);
@@ -202,7 +202,7 @@ void legacyRepaintAll(const Fixture& f, const std::vector<SDL_Texture*>& atlases
 // Independent CPU expectation for one animated region of a read-back atlas: the
 // frame's texels (only when the frame has the rect's size), a gutter repeating its
 // edge texels, or transparent content AND gutter once expired.
-void checkRegionOracle(const Pixels& atlas, const tak::render::AnimatedRegion& r,
+void checkRegionOracle(const Pixels& atlas, const ta::render::AnimatedRegion& r,
                        const std::vector<Pixels>& frameBytes, const std::string& what) {
     const SDL_Rect& d = r.rect;
     const bool expired = r.frame >= r.frames->size();
@@ -246,11 +246,11 @@ int main() {
         for (SDL_Texture* t : seq) frameBytes.back().push_back(textureBytes(t));
     }
 
-    tak::render::GenerationCounter rendererGen, assetGen;
-    tak::render::AnimatedAtlasTracker tracker;
+    ta::render::GenerationCounter rendererGen, assetGen;
+    ta::render::AnimatedAtlasTracker tracker;
     std::vector<SDL_Texture*> atlases, legacy;
     for (int slot = 0; slot < 2; ++slot) {
-        tak::render::AtlasPaintCounts counts;
+        ta::render::AtlasPaintCounts counts;
         atlases.push_back(createAtlas(f, slot, &counts));
         check(counts.flushes == 0, "creation with NEAREST sources needs no flush");
         tracker.created(size_t(slot), rendererGen.current(), assetGen.current(), f.regions);
@@ -268,8 +268,8 @@ int main() {
         return fr;
     };
 
-    auto updateAll = [&](tak::render::AtlasPaintCounts& counts, size_t& painted) {
-        tak::render::AtlasPainter painter(ren, &counts);
+    auto updateAll = [&](ta::render::AtlasPaintCounts& counts, size_t& painted) {
+        ta::render::AtlasPainter painter(ren, &counts);
         for (size_t slot = 0; slot < atlases.size(); ++slot) {
             if (!atlases[slot]) continue;
             if (tracker.current(slot, rendererGen.current(), assetGen.current(), f.regions)) continue;
@@ -318,7 +318,7 @@ int main() {
         }
         if (step == 10) {
             SDL_SetTextureScaleMode(atlases[0], SDL_ScaleModeLinear);
-            tak::render::AtlasPaintCounts created;
+            ta::render::AtlasPaintCounts created;
             atlases.push_back(createAtlasFrom(f, 3, atlases[0], &created));
             SDL_ScaleMode mode = SDL_ScaleModeNearest;
             SDL_GetTextureScaleMode(atlases[0], &mode);
@@ -329,7 +329,7 @@ int main() {
             tracker.created(3, rendererGen.current(), assetGen.current(), f.regions);
             legacy.push_back(legacyCreate(f, 3));
         }
-        tak::render::AtlasPaintCounts counts;
+        ta::render::AtlasPaintCounts counts;
         size_t painted = 0;
         updateAll(counts, painted);
         // Only the regions whose frame changed, once per atlas that existed before.
@@ -352,7 +352,7 @@ int main() {
 
     // An unchanged frame paints nothing and switches to no atlas.
     {
-        tak::render::AtlasPaintCounts counts;
+        ta::render::AtlasPaintCounts counts;
         size_t painted = 0;
         updateAll(counts, painted);
         check(painted == 0 && counts.copies == 0 && counts.regions == 0, "unchanged frames paint nothing");
@@ -388,13 +388,13 @@ int main() {
         atlases[1] = newAtlas();
         clearTarget(atlases[1]);
         {
-            tak::render::AtlasPainter painter(ren);
+            ta::render::AtlasPainter painter(ren);
             painter.copy(f.shared, f.sharedRect, nullptr);
             painter.copy(f.staticPerSlot[1], f.staticRect, nullptr);
             painter.finish();
         }
         SDL_SetRenderTarget(ren, nullptr);
-        tak::render::AtlasPaintCounts counts;
+        ta::render::AtlasPaintCounts counts;
         size_t painted = 0;
         atlases.resize(2);
         updateAll(counts, painted);
@@ -409,7 +409,7 @@ int main() {
         check(tracker.known(0, rendererGen.current(), assetGen.current()), "updated slot is known");
         check(!tracker.known(0, rendererGen.current(), assetGen.current() + 1), "another generation is not known");
         tracker.forget(0);
-        check(tracker.painted(0, 0) == tak::render::AnimatedAtlasTracker::kUnpainted, "forget clears a slot");
+        check(tracker.painted(0, 0) == ta::render::AnimatedAtlasTracker::kUnpainted, "forget clears a slot");
         check(!tracker.known(0, rendererGen.current(), assetGen.current()), "a forgotten slot is not known");
         check(!tracker.known(7, rendererGen.current(), assetGen.current()), "a never-seen slot is not known");
     }

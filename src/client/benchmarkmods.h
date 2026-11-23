@@ -9,7 +9,7 @@
 #include "hpi/hpi.h"
 #include "net/client.h"
 
-namespace tak {
+namespace ta {
 
 inline constexpr hpi::ModUse kBenchmarkModUse{false, false};
 
@@ -21,4 +21,4 @@ inline void applyBenchmarkMods(hpi::ModUse& mods, net::MpClient* mp) {
     if (mp) mp->setGameModsAllowed(false);   // drops ticked AND always-enabled game packs
 }
 
-}  // namespace tak
+}  // namespace ta

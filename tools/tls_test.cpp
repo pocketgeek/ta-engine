@@ -16,7 +16,7 @@
 #include <thread>
 #include <stdexcept>
 
-using namespace tak::net;
+using namespace ta::net;
 static void check(bool ok,const char* why) {if(!ok)throw std::runtime_error(why);}
 static void certificate(const std::filesystem::path& certPath,const std::filesystem::path& keyPath,bool expired) {
     EVP_PKEY* key=EVP_RSA_gen(2048);check(key,"key generation");
@@ -136,11 +136,11 @@ struct CrlHost {
         check(getsockname(listener,reinterpret_cast<sockaddr*>(&address),&length)==0,"CRL port");port=ntohs(address.sin_port);
         worker=std::thread([this] {
             while(!stop.load()) {
-                pollfd p{};p.fd=listener;p.events=POLLIN;if(TAK_POLL(&p,1,20)<=0)continue;
+                pollfd p{};p.fd=listener;p.events=POLLIN;if(TA_POLL(&p,1,20)<=0)continue;
                 const int fd=int(accept(listener,nullptr,nullptr));if(fd<0)continue;
                 std::string request;char buf[2048];
                 for(int i=0;i<200 && request.find("\r\n\r\n")==request.npos;++i) {
-                    pollfd q{};q.fd=fd;q.events=POLLIN;if(TAK_POLL(&q,1,10)<=0)continue;
+                    pollfd q{};q.fd=fd;q.events=POLLIN;if(TA_POLL(&q,1,10)<=0)continue;
                     const int n=int(recv(fd,buf,sizeof buf,0));if(n<=0)break;request.append(buf,size_t(n));
                 }
                 const auto path=request.substr(4,request.find(' ',4)-4);std::string response;
@@ -171,7 +171,7 @@ static uint16_t closedPort() {
 static void revocationChecks(const std::filesystem::path& root) {
     KeyPtr caKey(EVP_RSA_gen(2048),EVP_PKEY_free),leafKey(EVP_RSA_gen(2048),EVP_PKEY_free),otherKey(EVP_RSA_gen(2048),EVP_PKEY_free);
     check(caKey && leafKey && otherKey,"revocation keys");
-    auto ca=issue(caKey.get(),nullptr,caKey.get(),1,"TAK Test CA","");
+    auto ca=issue(caKey.get(),nullptr,caKey.get(),1,"TA Test CA","");
     CrlHost host;
     const auto goodUrl=host.url("/good.crl"),revokedUrl=host.url("/revoked.crl");
     const auto deadUrl="http://127.0.0.1:"+std::to_string(closedPort())+"/dead.crl";
@@ -224,7 +224,7 @@ int main(int argc,char** argv) {
         const std::filesystem::path root=argv[2];std::filesystem::create_directories(root);
         certificate(root/"cert.pem",root/"key.pem",false);return 0;
     }
-    const auto root=std::filesystem::temp_directory_path()/("tak-tls-"+tak::crypto::toHex(tak::crypto::randomVec(8)));
+    const auto root=std::filesystem::temp_directory_path()/("ta-tls-"+ta::crypto::toHex(ta::crypto::randomVec(8)));
     std::filesystem::create_directories(root);
     int result=0;
     try {

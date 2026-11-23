@@ -4,7 +4,7 @@
 #include <cmath>
 #include <optional>
 
-namespace tak::client {
+namespace ta::client {
 
 // Reclaim target picking, shared by the broom cursor, the right-click order and the
 // armed CLEAR order (GameView::reclaimTargetAt), plus the right-drag area preview.

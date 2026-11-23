@@ -26,8 +26,8 @@
 // unit. Trivial getters, ctors, static, template, constexpr and default-arg
 // methods stay inline in the header. Grouping is by name heuristic.
 
-    GameView::GameView(SDL_Renderer* ren, tak::hpi::Vfs vfs, const std::string& mapPath,
-             const std::string& installRoot, tak::hpi::ModUse mods,
+    GameView::GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
+             const std::string& installRoot, ta::hpi::ModUse mods,
              bool demo, bool scenario,
              bool bare, const std::string& side, const std::string& aiSide,
              bool crusades)
@@ -46,7 +46,7 @@
         // Unit registry: MOVEINFO + units (unitscb for Crusades) + canbuild.
         // The VFS merges base + Iron Plague + community data into one namespace,
         // precedence resolved by the retail newest-date rule.
-        tak::sim::setupRegistry(registry_, vfs_, crusades_);
+        ta::sim::setupRegistry(registry_, vfs_, crusades_);
         if (crusades_)
             std::fprintf(stderr, "balance: Crusades (unitscb roster, standard canbuild)%s\n",
                          vfs_.list("unitscb").empty() ? " -- NOT FOUND" : "");
@@ -55,12 +55,12 @@
         // random 30-60min draw ported at matchsetup.cpp). It deliberately turns gods
         // ON every time and uses AppearTimeMin flat, because a dev harness that has
         // to lose a dice roll nine times out of ten to exercise gods is useless.
-        // TAK_GODTIME overrides the appear time in seconds. Not the real mechanic.
+        // TA_GODTIME overrides the appear time in seconds. Not the real mechanic.
         try {
             auto g = vtdf("gamedata/gods.tdf");
             if (const auto* tm = g.child("TIMING")) {
                 float appear = float(tm->numberOr("AppearTimeMin", 30.0)) * 60.0f;
-                if (const char* e = tak::devEnv("TAK_GODTIME")) appear = std::stof(e);
+                if (const char* e = ta::devEnv("TA_GODTIME")) appear = std::stof(e);
                 writableWorld().enableGods(appear);
             }
         } catch (const std::exception&) {}
@@ -74,8 +74,8 @@
         loadGui(side_);
 
 #ifndef NDEBUG
-        if (tak::devFlag("TAK_GUI_SMOOTH_TEST")) guiSmoothTest();
-        if (!bare && !scenario && tak::devFlag("TAK_PATROL_PERF")) {
+        if (ta::devFlag("TA_GUI_SMOOTH_TEST")) guiSmoothTest();
+        if (!bare && !scenario && ta::devFlag("TA_PATROL_PERF")) {
             setupPatrolPerf();
             return;
         }
@@ -87,7 +87,7 @@
         writableWorld().setTerrain(mapView_.map().heights, mapView_.map().width,
                           mapView_.map().height, mapView_.map().seaLevel,
                           &mapView_.map().features);
-        tak::sim::registerMapFeatures(writableWorld(), mapView_.map(), vfs_, &registry_);
+        ta::sim::registerMapFeatures(writableWorld(), mapView_.map(), vfs_, &registry_);
         loadFeatures();
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
 
@@ -114,7 +114,7 @@
         // Camera opens on the player's Monarch.
         mapView_.setOffset(px - 640 / 0.9f, pz - terrainLift(px, pz) - 400 / 0.9f);
 #ifndef NDEBUG
-        // Local dev/test match layouts (TAK_FFA, the 2-monarch start, demo armies):
+        // Local dev/test match layouts (TA_FFA, the 2-monarch start, demo armies):
         // gameview_devharness.cpp. A release build is always `bare` -- the match is built
         // from the server's GameStarting -- so none of that is compiled in.
         if (setupLocalMatch(demo, bare, side, aiSide, starts, cx, cz, px, pz, ax, az)) return;
@@ -126,13 +126,13 @@
 
         for (auto& u : world_.units()) {
             if (!u.type || u.type->canMove) continue;
-            tak::sim::blockFootprint(writableWorld().nav(), *u.type, u.x.toFloat(), u.z.toFloat(), true);
+            ta::sim::blockFootprint(writableWorld().nav(), *u.type, u.x.toFloat(), u.z.toFloat(), true);
         }
     }
 
     GameView::~GameView() {
 #ifndef NDEBUG
-        previewLifetimeProbe(true);   // TAK_PREVIEW_LIFETIME_TEST=teardown
+        previewLifetimeProbe(true);   // TA_PREVIEW_LIFETIME_TEST=teardown
 #endif
         stopPreviewReaders();   // no preview may read vfs_ past here
         stopSimThread(/*drain=*/false);
@@ -146,11 +146,11 @@
         if (gaitLog_) std::fclose(gaitLog_);
         // No game password typed in this session outlives it.
         for (std::string* typed : {&roomPass_, &roomPassAsked_, &roomStartPass_, &joinPass_, &browserWin_.password})
-            tak::crypto::wipe(*typed);
+            ta::crypto::wipe(*typed);
     }
 
     std::vector<std::pair<float, float>> GameView::parseStartPositions() const {
-        return tak::sim::parseStartPositions(vfs_, mapPath_);
+        return ta::sim::parseStartPositions(vfs_, mapPath_);
     }
 
     void GameView::discoSound() {
@@ -203,18 +203,18 @@
         // The menu-launched front-end owns the lobby BGM (so it plays continuously
         // from the menu into the lobby); suppress ours there, but still switch to
         // faction music once the game proper begins.
-        if (want == 1) { if (!externalLobbyMusic_) sounds_.startMusic(vfs_, {tak::music::kMenuTrack}, false); }
+        if (want == 1) { if (!externalLobbyMusic_) sounds_.startMusic(vfs_, {ta::music::kMenuTrack}, false); }
         else if (mp_ && mp_->isSpectator()) sounds_.startMusic(vfs_, allFactionMusicTracks());
         else sounds_.startMusic(vfs_, factionMusicTracks(side_));
     }
 
-    void GameView::applySettings(const tak::Settings& s) {
-        tak::music::setCustom(s.customMusicTracks);   // CUSTOM MUSIC: the next track plays it
+    void GameView::applySettings(const ta::Settings& s) {
+        ta::music::setCustom(s.customMusicTracks);   // CUSTOM MUSIC: the next track plays it
         // Push the display options that render code reads from globals (smooth art,
         // cursor factor, movie deblocking). This is GameView's one "settings changed"
         // hook, so wiring it here reaches the Esc-menu Options and its DEFAULTS button
         // without either of them having to know the globals exist.
-        tak::applyRuntimeSettings(s);
+        ta::applyRuntimeSettings(s);
         if (smoothArt_ != s.smoothArt) {
             smoothArt_ = s.smoothArt;
             reloadInterfaceArt(s);
@@ -235,15 +235,15 @@
         buildBarScale_ = std::clamp(s.buildBarScale, 0.5f, 4.0f);
         idleBuilders_ = std::clamp(s.idleBuilders, 0, 3);   // Options: IDLE BUILDERS
         idleBuildersScale_ = std::clamp(s.idleBuildersScale, 0.5f, 4.0f);
-        chatScale_ = std::clamp(s.chatScale, tak::chatbox::kMinScale, tak::chatbox::kMaxScale);   // Options: chat box
+        chatScale_ = std::clamp(s.chatScale, ta::chatbox::kMinScale, ta::chatbox::kMaxScale);   // Options: chat box
         chatAlign_ = std::clamp(s.chatAlign, 0, 1);
         setTextureFilter(s.textureFilter);
         healthBars_ = std::clamp(s.healthBars, 0, 2);
         statsPanel_ = s.statsPanel;                       // Options: minimap-strip readout
         tacticalDotsOpt_ = s.tacticalDots && s.mouseZoom; // Options: zoomed-out unit dots (none at retail 1:1)
         tacticalDotsZoom_ = s.tacticalDotsZoom;
-        hiddenUnitsMode_ = std::clamp(s.hiddenUnits, 0, tak::hiddenunits::kModeCount - 1);   // Options: units behind scenery
-        hiddenFadeOpacity_ = tak::hiddenunits::fadeOpacity(s.hiddenFadeOpacity);
+        hiddenUnitsMode_ = std::clamp(s.hiddenUnits, 0, ta::hiddenunits::kModeCount - 1);   // Options: units behind scenery
+        hiddenFadeOpacity_ = ta::hiddenunits::fadeOpacity(s.hiddenFadeOpacity);
         hotkeys_.load(s.hotkeys);                         // Options: rebindable hotkeys
     }
 
@@ -252,10 +252,10 @@
         // replay and the headless harness) plus k - 1 SimPool workers. Nothing has
         // ticked yet, and the World builds its pool at its first pooled pass, on the
         // thread that ticks it.
-        using tak::sim::SimPool;
+        using ta::sim::SimPool;
         simThreads_ = std::max(0, choice);
-        const tak::sim::CpuTopology cpus = tak::sim::detectCpus();
-        // A debug build's TAK_SIM_WORKERS overrides AUTO, and only AUTO: this simulation
+        const ta::sim::CpuTopology cpus = ta::sim::detectCpus();
+        // A debug build's TA_SIM_WORKERS overrides AUTO, and only AUTO: this simulation
         // runs it, and so does the local server's (started with auto, it reads it too).
         simSession_ = SimPool::session(simThreads_, cpus, localServer, &simDebugAuto_);
         writableWorld().setSimWorkers(int(simSession_.game) - 1);
@@ -273,12 +273,12 @@
         // thread takes no CPU: where it ticks the World, the first is left out.
         std::vector<int> pinned = simCpus_;
         if (!ownThread && !pinned.empty()) pinned.erase(pinned.begin());
-        const std::string cpus = tak::sim::pinnedText(tak::sim::cpuListText(pinned),
+        const std::string cpus = ta::sim::pinnedText(ta::sim::cpuListText(pinned),
                                                       simSession_.game - unsigned(pinned.size()));
         char from[96] = "";
         if (simDebugAuto_ && simSession_.server)
-            std::snprintf(from, sizeof from, " (auto: TAK_SIM_WORKERS; local server %u)", simSession_.server);
-        else if (simDebugAuto_) std::snprintf(from, sizeof from, " (auto: TAK_SIM_WORKERS)");
+            std::snprintf(from, sizeof from, " (auto: TA_SIM_WORKERS; local server %u)", simSession_.server);
+        else if (simDebugAuto_) std::snprintf(from, sizeof from, " (auto: TA_SIM_WORKERS)");
         else if (simSession_.server)
             std::snprintf(from, sizeof from, " (%s %u, half; local server %u)", simThreads_ > 0 ? "of" : "auto:",
                           simSession_.total, simSession_.server);
@@ -289,14 +289,14 @@
     // The AUDIO page (Esc menu > AUDIO): sound device, volumes, speakers, CUSTOM MUSIC.
     void GameView::openAudioOptions() {
         if (!settings_) return;
-        options_ = std::make_unique<tak::OptionsScreen>(ren_, *settings_, [this] { applySettings(*settings_); },
-            [this] { saveSettings(*settings_); }, tak::music::sideTracks(vfs_), sounds_.channelCount(),
+        options_ = std::make_unique<ta::OptionsScreen>(ren_, *settings_, [this] { applySettings(*settings_); },
+            [this] { saveSettings(*settings_); }, ta::music::sideTracks(vfs_), sounds_.channelCount(),
             [this] { sounds_.reopenDevice(); });
     }
 
-    void GameView::openOptions(tak::OptionsPage page) {
+    void GameView::openOptions(ta::OptionsPage page) {
         if (!settings_) return;
-        options_ = std::make_unique<tak::OptionsScreen>(ren_, *settings_,
+        options_ = std::make_unique<ta::OptionsScreen>(ren_, *settings_,
             [this, fsWas = settings_->fullscreen, vsWas = settings_->vsync]() mutable {
                 applySettings(*settings_);
                 // Only touch the window/renderer when that display setting actually changed
@@ -318,7 +318,7 @@
             [this] { sounds_.reopenDevice(); },
             // GAME DATA FOLDER: shown, never changeable here -- this view's whole session
             // (and in multiplayer, its agreed gameplay data) sits on the mounted install.
-            tak::DataFolderRow{installRoot_,
+            ta::DataFolderRow{installRoot_,
                 replayMode_ ? "Change it from Settings > Game on the main menu, not while watching a replay."
                 : inLobbyPhase() ? "Change it from Settings > Game on the main menu, not in a lobby."
                                  : "Change it from Settings > Game on the main menu, not during a game.", {}},
@@ -341,7 +341,7 @@
     }
 
     // World::reviveKind on the render snapshot: what a RESURRECT order from
-    // one of our units on that body would be (tak::sim::reviveKindFor), 0 for
+    // one of our units on that body would be (ta::sim::reviveKindFor), 0 for
     // none. The sim checks it again when it applies the command.
     uint8_t GameView::reviveKindOn(const UnitR& caster, const UnitR& body) const {
         if (!caster.alive() || caster.embarked() || caster.underConstruction || !caster.type ||
@@ -351,13 +351,13 @@
         if (body.alive() || !body.corpsePhase || body.corpseFading || body.corpseFeat < 0 ||
             size_t(body.corpseFeat) >= feats.size())
             return 0;
-        return tak::sim::reviveKindFor(*caster.type, feats[size_t(body.corpseFeat)]);
+        return ta::sim::reviveKindFor(*caster.type, feats[size_t(body.corpseFeat)]);
     }
 
     // The body under a world point that a selected unit can raise, with the
     // reclaim pick circle (nearest wins); 0 = none.
     int GameView::raiseTargetAt(float wx, float wz) const {
-        tak::client::ReclaimPick pick{wx, wz};
+        ta::client::ReclaimPick pick{wx, wz};
         const auto& live = front().live;
         for (uint32_t index : bodyCandidates(wx, wz)) {
             const UnitR* body = live[index];
@@ -389,8 +389,8 @@
         const auto ids = only.empty() ? reclaimers() : only;
         if (ids.empty()) return;
         for (int id : ids) {   // each its own RECLAIMAREA (4d78a0), Shift queues per unit
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::ReclaimArea;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::ReclaimArea;
             c.unitId = id;
             c.x = x0; c.z = z0; c.x2 = x1; c.z2 = z1;
             c.queue = uint8_t(queue);
@@ -412,10 +412,10 @@
         return { pick >= 0 ? pick : any, front().live.size() };
     }
 
-    void GameView::issue(tak::net::Command c) {
+    void GameView::issue(ta::net::Command c) {
         if (watchOnly()) return;   // the backstop: a command from a watcher disconnects it
         c.player = uint8_t(localPlayer_);
-        if (c.kind == tak::net::Cmd::Move || c.kind == tak::net::Cmd::AttackMove || c.kind == tak::net::Cmd::Patrol)
+        if (c.kind == ta::net::Cmd::Move || c.kind == ta::net::Cmd::AttackMove || c.kind == ta::net::Cmd::Patrol)
             noteSpotFlash(c.unitId);
         if (click_) { click_->cmds.push_back(std::move(c)); return; }
         if (mp_) outbox_.push_back(c);
@@ -430,19 +430,19 @@
         click_.reset();
         if (click.cmds.empty()) return;
         if (!mp_) { for (const auto& c : click.cmds) apply(c); return; }
-        if (!tak::sim::isLegionPathfinding(worldTables().pathfindingMode())) {
+        if (!ta::sim::isLegionPathfinding(worldTables().pathfindingMode())) {
             outbox_.insert(outbox_.end(), click.cmds.begin(), click.cmds.end());
             return;
         }
         // Serials are given when an order is sent (mpStep), so a click held through a
         // rejoin's catch-up still gets one above every order that activated before.
         uint32_t provisional = nextOrderSerial_;
-        for (auto& item : tak::net::packClick(click.cmds, click.shape, provisional))
+        for (auto& item : ta::net::packClick(click.cmds, click.shape, provisional))
             outbox_.push_back(std::move(item));
     }
 
-    void GameView::startReplay(tak::sim::MatchConfig cfg,
-                     std::vector<tak::net::Bundle> bundles,
+    void GameView::startReplay(ta::sim::MatchConfig cfg,
+                     std::vector<ta::net::Bundle> bundles,
                      const std::string& mission) {
         // Read through this view's own VFS (we own it), not a caller pointer.
         cfg.vfs = &vfs_;
@@ -456,19 +456,19 @@
             // a world that had nothing to do with the one they came from.
             missionStem_ = mission;
             int human = 0;
-            tak::sim::MissionSetup ms;
-            if (tak::sim::setupMission(writableWorld(), registry_, vfs_, mission, human, &ms))
+            ta::sim::MissionSetup ms;
+            if (ta::sim::setupMission(writableWorld(), registry_, vfs_, mission, human, &ms))
                 spots = ms.slotPos;
             else
                 std::fprintf(stderr, "replay: mission '%s' not in this data\n",
                              mission.c_str());
         } else {
-            spots = tak::sim::setupMatch(writableWorld(), registry_, cfg);
+            spots = ta::sim::setupMatch(writableWorld(), registry_, cfg);
         }
         logSimThreads(false);   // what this playback's simulation runs on (the main thread ticks it)
         replayBundles_ = std::move(bundles);
         replayMode_ = true;
-        replayKeyBudget_ = tak::replaybar::keyframeBudget(uint64_t(SDL_GetSystemRAM()) << 20);
+        replayKeyBudget_ = ta::replaybar::keyframeBudget(uint64_t(SDL_GetSystemRAM()) << 20);
         noFog_ = true;             // a spectator sees the whole map
         localPlayer_ = 0;
         side_ = "ara";
@@ -480,7 +480,7 @@
     }
 
     void GameView::replayStep(float dt) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         if (replayKeys_.empty() && replayTick_ == 0) replayCaptureKeyframe();   // what rewinds reach
         if (replayHeld_ && !(SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) replayHeld_ = 0;
         if (replayHeld_ && SDL_GetTicks64() >= replayHeldNextMs_) {   // << >> repeat while held
@@ -588,14 +588,14 @@
                 ++replayCheckAt_;   // checkpoint we stepped past; keep in step
             }
         }
-        if (replayTick_ % tak::replaybar::kKeyframeTicks == 0) replayCaptureKeyframe();
+        if (replayTick_ % ta::replaybar::kKeyframeTicks == 0) replayCaptureKeyframe();
 #ifndef NDEBUG
         if (replaySeekStraight_.erase(replayTick_)) replaySeekPrint();
 #endif
     }
 
     void GameView::replayAdvance(float dt) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         const float speed = speedMult();
         const bool jumping = replaySeekTo_.has_value();
         if (!paused_ && !jumping) replayAccum_ += dt * speed;
@@ -646,7 +646,7 @@
     }
 
     void GameView::replayCaptureKeyframe() {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         const uint32_t tick = uint32_t(replayTick_);
         const auto at = std::lower_bound(replayKeys_.begin(), replayKeys_.end(), tick,
                                          [](const ReplayKeyframe& k, uint32_t t) { return k.tick < t; });
@@ -664,7 +664,7 @@
             key.hash = world_.stateHash();
             std::copy(std::begin(playerAi_), std::end(playerAi_), key.playerAi.begin());
             {
-                tak::client::AllocCount counted;
+                ta::client::AllocCount counted;
                 key.world = world_.keyframe();
                 key.bytes = counted.bytes();
             }
@@ -701,7 +701,7 @@
     }
 
     bool GameView::replayThinKeys(uint64_t incoming) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         std::vector<uint64_t> bytes;
         bytes.reserve(replayKeys_.size());
         for (const auto& key : replayKeys_) bytes.push_back(key.bytes);
@@ -743,7 +743,7 @@
         replayTick_ = key.tick;
         replayAccum_ = 0;
         replayKeyLast_ = key.bytes;   // the world is this size again: what the next copy will take
-        replayCheckAt_ = tak::replaybar::checkAfter(replayChecks_, replayTick_);
+        replayCheckAt_ = ta::replaybar::checkAfter(replayChecks_, replayTick_);
         std::copy(key.playerAi.begin(), key.playerAi.end(), std::begin(playerAi_));
         worldEpoch_.fetch_add(1, std::memory_order_release);
         replayDisplayStale_ = true;
@@ -751,7 +751,7 @@
     }
 
     void GameView::replayJumpTo(size_t tick) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         if (!replayMode_ || replayHalted_) return;
         tick = std::min(tick, replayBundles_.size());
         if (replayKeys_.empty()) {
@@ -766,7 +766,7 @@
     }
 
     void GameView::replayNudge(int64_t ticks) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         const size_t from = replaySeekTo_.value_or(replayTick_);
         const size_t want = rb::nudgeTarget(replayTick_, from, ticks, replayBundles_.size());
         replayJumpTo(ticks < 0 ? rb::snapRewind(replayKeyTicks(), uint32_t(want), uint32_t(from)) : want);
@@ -775,7 +775,7 @@
     void GameView::replayHoldNudge(int direction) {
         // The next step waits for the last landing, so a hold never runs ahead of what the
         // game can simulate and keeps showing the units: every restore redraws them all.
-        if (!replayInTransit_) replayNudge(int64_t(direction) * tak::replaybar::kStepTicks);
+        if (!replayInTransit_) replayNudge(int64_t(direction) * ta::replaybar::kStepTicks);
     }
 
     void GameView::replayTogglePause() {
@@ -847,8 +847,8 @@
     // none of the five races (a mod's own) has no plate and gets Aramon's
     // (kPlateFallback), said in the log -- never the side_ the watcher's interface
     // opened with, which is only the first seat's.
-    tak::ResultStats GameView::resultStats() const {
-        tak::ResultStats st;
+    ta::ResultStats GameView::resultStats() const {
+        ta::ResultStats st;
         const Frame& f = front();
         st.matchSec = int(f.gameTick / 30);
         if (spectating_ && outcomeTick_ != 0) st.matchSec = std::min(st.matchSec, int(outcomeTick_ / 30));
@@ -861,7 +861,7 @@
         for (int p = 0; p < f.numPlayers && p < int(f.players.size()); ++p) {
             if (resultParticipants_ && !(*resultParticipants_ & (1u<<p))) continue;
             const PlayerR& pr = f.players[size_t(p)];
-            tak::ResultRow row;
+            ta::ResultRow row;
             row.name = !playerName_[p & 7].empty() ? playerName_[p & 7]
                                                    : "PLAYER " + std::to_string(p + 1);
             row.colorSlot = colorSlot_[p & 7];
@@ -886,17 +886,17 @@
             else st.watchLine = (winners == 1 ? winnerName : "Team " + std::to_string(winner + 1)) + " wins";
         }
         if (plate) {
-            st.faction = tak::factionIndex(plate->side);
+            st.faction = ta::factionIndex(plate->side);
             if (st.faction < 0) {
                 std::fprintf(stderr, "result: the winner's side '%s' has no victory plate: showing Aramon's\n", plate->side.c_str());
-                st.faction = tak::kPlateFallback;
+                st.faction = ta::kPlateFallback;
             }
         }
         return st;
     }
 
     void GameView::startAtMonarch() {
-        const tak::sim::Unit* target=nullptr;
+        const ta::sim::Unit* target=nullptr;
         for (const auto& u : world_.units()) {
             if (u.player!=localPlayer_ || !u.alive() || !u.type) continue;
             if (!target || u.type->commander) target=&u;
@@ -1019,8 +1019,8 @@
         if (!effectVisibility_ || effectVisibilityPlayer_!=localPlayer_ ||
             world_.tickCount()<=effectVisibilityTick_) {
             effectVisibilityPlayer_=localPlayer_;
-            effectVisibility_=std::make_unique<tak::RetailEffectVisibility>(map.width/2,map.height/2,
-                tak::sim::retailExplorationHeights(map.width,map.height,uint8_t(map.seaLevel),
+            effectVisibility_=std::make_unique<ta::RetailEffectVisibility>(map.width/2,map.height/2,
+                ta::sim::retailExplorationHeights(map.width,map.height,uint8_t(map.seaLevel),
                     [&](int x,int z) {return map.heights[size_t(z)*map.width+x];}));
         }
         effectVisibility_->expire(world_.tickCount());
@@ -1043,7 +1043,7 @@
         smokeCaptureTick_=smoke.tick;
         for(auto it=smokeOwners_.begin();it!=smokeOwners_.end();) {
             const auto* owner=world_.unit(*it);
-            if(!owner || tak::retailAttachedSfxOwnerRemoved(owner->alive(),owner->deadFor,
+            if(!owner || ta::retailAttachedSfxOwnerRemoved(owner->alive(),owner->deadFor,
                     owner->corpseStatue,owner->corpseAnimationTicks())) {
                 smoke.removedOwners.push_back(*it);it=smokeOwners_.erase(it);
             } else ++it;
@@ -1057,11 +1057,11 @@
             } else ++it;
         }
         for(const auto& feature:world_.features()) {
-            const auto bodyAge=tak::retailFeatureSmokeAge(smoke.tick,feature.burnStarted);
+            const auto bodyAge=ta::retailFeatureSmokeAge(smoke.tick,feature.burnStarted);
             if(!feature.alive || !feature.burn || feature.type<0 || !bodyAge)continue;
             const auto& map=mapView_.map();
             const auto x=feature.x.v,z=feature.z.v;
-            const int height=map.heights.empty() ? 0 : tak::sim::retailTerrainHeight(
+            const int height=map.heights.empty() ? 0 : ta::sim::retailTerrainHeight(
                 x,z,map.width,map.height,[&](int cx,int cz) {
                     return map.heights[size_t(cz)*map.width+size_t(cx)];
                 });
@@ -1070,14 +1070,14 @@
                 *bodyAge,feature.burnSequence,smoke.tick%3==0});
             featureSmokeOwners_[feature.id]={feature.burnStarted,feature.burnSequence};
         }
-        tak::retailOrderFeatureSmokeNewestFirst(smoke.features);
+        ta::retailOrderFeatureSmokeNewestFirst(smoke.features);
         for(const auto& event:world_.scriptEmissions()) {
             if(!(event.code>=2 && event.code<=5) && event.code!=257 && event.code!=258 && event.code!=265 &&
                (event.code<260 || event.code>264))continue;
             const auto* owner=world_.unit(event.unitId);
             if(event.code>=2 && event.code<=5 && owner && !owner->type->canFly)continue;
             const bool transient=event.code==263 || event.code==264;
-            if(owner && (transient || !tak::retailAttachedSfxOwnerRemoved(owner->alive(),
+            if(owner && (transient || !ta::retailAttachedSfxOwnerRemoved(owner->alive(),
                     owner->deadFor,owner->corpseStatue,owner->corpseAnimationTicks())) &&
                localSeesLive(*owner)) {
                 smoke.emissions.push_back(event);
@@ -1176,7 +1176,7 @@
                 const auto& old=*u.lodestoneReplacement;
                 s.replacementModel=old.type;
                 s.replacementX=old.x.toFloat();s.replacementZ=old.z.toFloat();
-                s.replacementHeading=tak::sim::radiansFromBam(old.heading);
+                s.replacementHeading=ta::sim::radiansFromBam(old.heading);
             }
         }
         s.cloaked = u.cloaked; s.cloakOn = u.cloakOn; s.active = u.active;
@@ -1185,7 +1185,7 @@
         s.frozenFor = float(u.frozenFor) / 30.0f;
         s.stonedFor = float(u.stonedFor) / 30.0f;
         s.paralyzedFor = float(u.paralyzedFor) / 30.0f;
-        s.selfDestructT = tak::client::selfDestructSeconds(u.selfDestructT);
+        s.selfDestructT = ta::client::selfDestructSeconds(u.selfDestructT);
         s.hasConstructionEmitter=bool(u.constructionEmitter || u.cosmeticConstructionEmitter);
         s.constructionEmissions=u.constructionEmissions;
         if (u.constructionEmitter) s.constructionParticles=u.constructionEmitter->particles;
@@ -1196,7 +1196,7 @@
         s.yardOpen = world_.scriptYardOpen(u.id);
         s.scriptHealthPercent = int32_t(int16_t(u.hp.floorInt()))*100/std::max(u.maximumHp(),1);
         s.constructionPercentLeft = u.retailSite
-            ? int(tak::sim::retailConstructionPercent(u.retailSite->progress.remaining))
+            ? int(ta::sim::retailConstructionPercent(u.retailSite->progress.remaining))
             : int(u.underConstruction);
         s.buildProgress = (float(u.buildProgress) + float(u.buildFraction) / 65536.0f) / 30.0f;   // ticks -> seconds
         // Orders/rally/areaVisited are read for the VIEWED player's units only (the order
@@ -1209,7 +1209,7 @@
             s.captureOrders(u);
             // The unit's own spot (destination markers, drawUnitSpots): one navigator
             // lookup, and only for a unit with orders, read like legionSwapTick below.
-            tak::sim::Fixed spotX, spotZ;
+            ta::sim::Fixed spotX, spotZ;
             s.hasSpot = !s.orders.empty() && u.alive() && world_.legionDestination(u.id, spotX, spotZ);
             if (s.hasSpot) { s.spotX = spotX.toFloat(); s.spotZ = spotZ.toFloat(); }
         }
@@ -1234,7 +1234,7 @@
             // The record's own fade (+0x2f) is drawn: the feature draw hands
             // +0x2f and the alpha to the model instance (4fd844..4fd85f), and
             // the model draw blends the body at ftol(alpha * 255.0f) (4ed04a).
-            s.corpseSinkAlpha=sink->fading ? tak::sim::retailFadeByte(sink->alpha) : uint8_t(255);
+            s.corpseSinkAlpha=sink->fading ? ta::sim::retailFadeByte(sink->alpha) : uint8_t(255);
         } else {s.corpseSinking=false;s.corpseSinkAlpha=255;}
         // A decayed body's last 60 updates (+0x40 counting, 495af6..): retail
         // lowers the model's root by 0x2000 (1/8 px) each update, 7.5 px in
@@ -1248,8 +1248,8 @@
         if (!u.alive() && s.corpseFeat>=0 && size_t(s.corpseFeat)<world_.featureTypes().size()) {
             const auto& corpse=world_.featureTypes()[size_t(s.corpseFeat)];
             s.corpseReclaimable=corpse.reclaimable && !u.corpseFading;
-            s.corpseCellX=tak::sim::footprintOrigin(u.x,u.type->footX)+u.type->corpseAdjX;
-            s.corpseCellZ=tak::sim::footprintOrigin(u.z,u.type->footZ)+u.type->corpseAdjZ;
+            s.corpseCellX=ta::sim::footprintOrigin(u.x,u.type->footX)+u.type->corpseAdjX;
+            s.corpseCellZ=ta::sim::footprintOrigin(u.z,u.type->footZ)+u.type->corpseAdjZ;
             s.corpseFootX=corpse.fx;s.corpseFootZ=corpse.fz;
         }
         s.corpseStatue = u.corpseStatue >= 0;
@@ -1263,7 +1263,7 @@
         // just built (a dying or dead unit is tested where it lies).
         s.losSeen = s.mapSeen = false;
         if (!noFog_ && !s.sightShared && !fb.fog.empty()) {
-            namespace rf = tak::retailfog;
+            namespace rf = ta::retailfog;
             const bool hidden = u.cloaked || u.embarked();
             const int32_t y = (u.type->canFly ? u.flightY : u.groundY).v;
             s.losSeen = rf::unitInView(fb.fog, fb.fogW, fb.fogH, hidden, u.x.v, y, u.z.v,
@@ -1284,30 +1284,30 @@
         // Flyers keep their flight scripts; Retail keeps retail's full-pace cycle.
         s.gaitRate=1;
         if (prev && !gaitPaceOff_ && u.alive() && !u.type->canFly && !u.type->isStructure() &&
-            tak::sim::isLegionPathfinding(world_.pathfindingMode()) &&
+            ta::sim::isLegionPathfinding(world_.pathfindingMode()) &&
             std::abs(u.x.toFloat()-prev->x)<=200.0f && std::abs(u.z.toFloat()-prev->z)<=200.0f) {
             const auto maximum=u.baseSpeed*(u.groundTerrainFlags&0x800 ? u.type->roadMult :
-                u.groundTerrainFlags&0x1000 ? u.type->waterMult : tak::sim::Fixed::fromInt(1));
-            s.gaitRate=tak::legionGaitRate(prev->gaitRate,
+                u.groundTerrainFlags&0x1000 ? u.type->waterMult : ta::sim::Fixed::fromInt(1));
+            s.gaitRate=ta::legionGaitRate(prev->gaitRate,
                 int64_t(s.worldPosition[0])-prev->worldPosition[0],
                 int64_t(s.worldPosition[2])-prev->worldPosition[2],
                 uint32_t(world_.tickCount()-pf.gameTick),maximum.v,s.animationSpeedPercent()>0);
         }
         s.captureMoveRate(u,prev ? std::bit_cast<int16_t>(uint16_t(u.heading.v-prev->headingWord)) : 0);
         const auto multiplier=u.groundTerrainFlags&0x800 ? u.type->roadMult :
-            u.groundTerrainFlags&0x1000 ? u.type->waterMult : tak::sim::Fixed::fromInt(1);
-        s.turnSpeedPercent=prev ? tak::sim::retailTurnAnimationPercent(
+            u.groundTerrainFlags&0x1000 ? u.type->waterMult : ta::sim::Fixed::fromInt(1);
+        s.turnSpeedPercent=prev ? ta::sim::retailTurnAnimationPercent(
             std::bit_cast<int16_t>(uint16_t(u.heading.v-prev->headingWord)),
             uint16_t(u.type->turnRate),uint16_t(u.type->turnInPlaceRate),
             multiplier.v,u.embarked()) : 0;
         if (u.alive() && prev &&
             std::abs(u.x.toFloat() - prev->x) <= 200.0f && std::abs(u.z.toFloat() - prev->z) <= 200.0f) {
             s.px = prev->x; s.pz = prev->z; s.ph = prev->heading;   // UnitR already holds radians
-            s.x = u.x.toFloat(); s.z = u.z.toFloat(); s.heading = tak::sim::radiansFromBam(u.heading);   // render boundary: radians
+            s.x = u.x.toFloat(); s.z = u.z.toFloat(); s.heading = ta::sim::radiansFromBam(u.heading);   // render boundary: radians
             s.seeded = true;
             s.turnReqBam = u.turnReqBam;   // sim's requested turn this tick (TurnDirection)
         } else {
-            s.x = u.x.toFloat(); s.z = u.z.toFloat(); s.heading = tak::sim::radiansFromBam(u.heading);   // render boundary: radians
+            s.x = u.x.toFloat(); s.z = u.z.toFloat(); s.heading = ta::sim::radiansFromBam(u.heading);   // render boundary: radians
             s.px = s.x; s.pz = s.z; s.ph = s.heading;
             s.turnReqBam = u.turnReqBam;
             s.seeded = u.alive();   // dead holds its pose (never interpolated)
@@ -1315,10 +1315,10 @@
         // Legion allies swap places in one tick; the display plays it out over a few (swapshow.h).
         s.swap = {}; s.pox = s.poz = 0;
         if (s.seeded && prev && !u.type->canFly && !u.type->isStructure() &&
-            tak::sim::isLegionPathfinding(world_.pathfindingMode())) {
+            ta::sim::isLegionPathfinding(world_.pathfindingMode())) {
             const uint32_t ticks = uint32_t(world_.tickCount() - pf.gameTick);
             const uint32_t swapped = world_.legionSwapTick(u.id);   // stamped after the counter advanced
-            s.swap = tak::swapShowStep(prev->swap, s.x - s.px, s.z - s.pz, ticks,
+            s.swap = ta::swapShowStep(prev->swap, s.x - s.px, s.z - s.pz, ticks,
                                        swapped != UINT32_MAX && swapped > pf.gameTick);
             s.pox = prev->swap.ox; s.poz = prev->swap.oz;
         }
@@ -1396,7 +1396,7 @@
                 if (!p || p->type!=r->type) continue;
                 const auto* u=world_.unit(r->id);
                 const auto maximum=u->baseSpeed*(u->groundTerrainFlags&0x800 ? u->type->roadMult :
-                    u->groundTerrainFlags&0x1000 ? u->type->waterMult : tak::sim::Fixed::fromInt(1));
+                    u->groundTerrainFlags&0x1000 ? u->type->waterMult : ta::sim::Fixed::fromInt(1));
                 const double dx=double(r->worldPosition[0]-p->worldPosition[0])/65536.0;
                 const double dz=double(r->worldPosition[2]-p->worldPosition[2])/65536.0;
                 std::fprintf(gaitLog_,"%u,%d,%s,%.1f,%.1f,%.4f,%.4f,%d,%d,%.4f\n",world_.tickCount(),r->id,
@@ -1503,8 +1503,8 @@
     }
 
     void GameView::playUnitSound(const std::string& name, int32_t flags, float x, float z, bool visible, bool selected) {
-        if (!tak::retailUnitSoundAudible(flags,visible,selected)) return;
-        const int priority=tak::retailSoundPriority(flags);
+        if (!ta::retailUnitSoundAudible(flags,visible,selected)) return;
+        const int priority=ta::retailSoundPriority(flags);
         if (priority==7) sounds_.play(name,1.f,1.f,priority,(flags&32)!=0);
         else sounds_.playWorld(name,x,z,priority);
     }
@@ -1521,21 +1521,21 @@
     uint8_t GameView::fogCellR(float x, float z) const {
         // No fog (spectator, replay, FULL VISION, a lineofsight=0 mission) sees every
         // cell, whatever plane a frame captured before the view stopped fogging.
-        if (noFog_) return tak::retailfog::kInView;
+        if (noFog_) return ta::retailfog::kInView;
         return projectedFogCellR(x, groundProjectedZ(x, z));
     }
 
     uint8_t GameView::projectedFogCellR(float x, float projectedZ) const {
-        if (noFog_) return tak::retailfog::kInView;
+        if (noFog_) return ta::retailfog::kInView;
         const Frame& f = front();
-        if (f.fog.empty()) return tak::retailfog::kInView;   // no terrain: nothing to fog
+        if (f.fog.empty()) return ta::retailfog::kInView;   // no terrain: nothing to fog
         const int cx = int(std::floor(x)) >> 5, cz = int(std::floor(projectedZ)) >> 5;
         if (uint32_t(cx) >= uint32_t(f.fogW) || uint32_t(cz) >= uint32_t(f.fogH))
-            return tak::retailfog::kUnexplored;
+            return ta::retailfog::kUnexplored;
         return f.fog[size_t(cz) * size_t(f.fogW) + size_t(cx)];
     }
 
-    bool GameView::localSeesLive(const tak::sim::Unit& u) const {
+    bool GameView::localSeesLive(const ta::sim::Unit& u) const {
         // The players whose sight the local plane holds (World::viewShareMask):
         // an allied passive neutral's units and eyes count only through them.
         if (noFog_ || sharesSightToLocal(u.player)) return true;
@@ -1549,7 +1549,7 @@
     // Mapping bits, the room's and the power codes' vision rules. Also collects
     // the local player's radar for the minimap dots.
     void GameView::captureFog(Frame& fb) {
-        namespace rf = tak::retailfog;
+        namespace rf = ta::retailfog;
         fogRadar_.clear();
         if (noFog_ || world_.viewPlaneW() <= 0 || world_.viewPlaneH() <= 0) {
             fb.fog.clear(); fb.fogW = fb.fogH = 0;
@@ -1571,17 +1571,17 @@
             const size_t cells = size_t(w) * size_t(h);
             const auto& map = mapView_.map();
             if (fogPreviewHeights_.size() != cells && map.width == 2 * w && map.height == 2 * h)
-                fogPreviewHeights_ = tak::sim::retailExplorationHeights(map.width, map.height,
+                fogPreviewHeights_ = ta::sim::retailExplorationHeights(map.width, map.height,
                     uint8_t(world_.mapSea()), [&](int x, int z) { return map.heights[size_t(z) * map.width + x]; });
             fogPreviewCounts_.assign(cells, 0);
             fogPreviewExplored_.assign(cells, 0);
             if (fogPreviewHeights_.size() == cells)
                 for (const auto& u : world_.units()) {
                     if (!u.alive() || !u.type || u.underConstruction || !sharesSightToLocal(u.player)) continue;
-                    tak::sim::RetailSightFootprint sight;
+                    ta::sim::RetailSightFootprint sight;
                     sight.distance = int16_t(world_.sightDistance(*u.type));
                     sight.sightHeight = u.type->sightHeight;
-                    tak::sim::retailUpdateSight(sight, u.x, u.type->canFly ? u.flightY : u.groundY, u.z,
+                    ta::sim::retailUpdateSight(sight, u.x, u.type->canFly ? u.flightY : u.groundY, u.z,
                         uint8_t(world_.mapSea()), false, w, h, 0,
                         [&](int x, int z) { return fogPreviewHeights_[size_t(z) * w + x]; },
                         [&](int x, int z, int delta, uint16_t) {
@@ -1596,7 +1596,7 @@
         // Only the squares the World marked since the last capture can differ, unless
         // the rules or the planes themselves changed (or there is no World pass yet).
         const auto& dirty = world_.viewDirty();
-        const int dw = world_.viewDirtyW(), shift = tak::sim::World::kViewDirtyShift;
+        const int dw = world_.viewDirtyW(), shift = ta::sim::World::kViewDirtyShift;
         const FogKey key{source.viewCounts.data(), source.explored.data(), w, h, source.viewers,
                          source.player, source.mapRevealed, source.losOff};
         bool changed = false;
@@ -1611,12 +1611,12 @@
                                              (bx + 1) << shift, (bz + 1) << shift) || changed;
                 }
 #ifndef NDEBUG
-            static const bool verify = tak::devFlag("TAK_FOG_VERIFY");
+            static const bool verify = ta::devFlag("TA_FOG_VERIFY");
             if (verify) {   // the squares must have caught every change
                 std::vector<uint8_t> whole;
                 rf::buildPlane(source, whole);
                 if (whole != fogPlane_)
-                    std::fprintf(stderr, "TAK_FOG_VERIFY tick %u: the incremental plane differs\n", world_.tickCount());
+                    std::fprintf(stderr, "TA_FOG_VERIFY tick %u: the incremental plane differs\n", world_.tickCount());
             }
 #endif
         }
@@ -1642,20 +1642,20 @@
         if (noFog_) return true;
         const auto& frame=front();
         if (frame.effectVisibility.empty()) return false;
-        return tak::RetailEffectVisibility::visible(frame.effectVisibility,
+        return ta::RetailEffectVisibility::visible(frame.effectVisibility,
             frame.effectVisW,frame.effectVisH,position);
     }
 
-    bool GameView::unitSoundVisibleR(int player,bool hidden,const tak::sim::UnitType* type,
+    bool GameView::unitSoundVisibleR(int player,bool hidden,const ta::sim::UnitType* type,
                                      const std::array<int32_t,3>& position) const {
         if (noFog_) return true;
         const auto& frame=front();
         if (frame.effectVisibility.empty() || !type) return false;
-        return tak::RetailEffectVisibility::unitSoundSeen(frame.effectVisibility,frame.effectVisW,
+        return ta::RetailEffectVisibility::unitSoundSeen(frame.effectVisibility,frame.effectVisW,
             frame.effectVisH,player==localPlayer_,hidden,position,type->footX,type->footZ,type->modelTop);
     }
 
-    int GameView::frameQueuedCount(int builderId, const tak::sim::UnitType* type) const {
+    int GameView::frameQueuedCount(int builderId, const ta::sim::UnitType* type) const {
         const UnitR* b = frameUnitP(builderId);
         if (!b || !type) return 0;
         int n = 0;
@@ -1682,7 +1682,7 @@
         }
         selfDestructSeen_ = true;
         if (!ours) { selfDestructWatch_.clear(); return; }   // another notice took over
-        notice_ = tak::client::selfDestructNotice(left);
+        notice_ = ta::client::selfDestructNotice(left);
         noticeTimer_ = std::max(noticeTimer_, 0.5f);
     }
 
@@ -1726,7 +1726,7 @@
                 if (!jumpPass) triggerShake(sr.mag, sr.dur);
             }
         }
-        std::vector<tak::sim::World::SoundReq> missionSounds;
+        std::vector<ta::sim::World::SoundReq> missionSounds;
         {
             std::lock_guard<std::mutex> lock(hitQueueMutex_);
             while(!missionSoundQueue_.empty() &&
@@ -1741,7 +1741,7 @@
             if(name.ends_with(".wav"))name.resize(name.size()-4);
             // Native mission host 4d3580: always global, non-looping, authored
             // low-three-bit priority. SoundBank enforces the 0/1 free-voice gate.
-            if(!name.empty())sounds_.play(name,1.f,1.f,tak::retailSoundPriority(request.flags),false);
+            if(!name.empty())sounds_.play(name,1.f,1.f,ta::retailSoundPriority(request.flags),false);
         }
         // Death sounds as the simulation's dying VMs played them (World::ScriptSound),
         // so every peer, replay and spectator hears the cry the shared game stream chose.
@@ -1756,7 +1756,7 @@
             }
         }
         for(const auto& sound:unitSounds) {
-            if(sound.name.empty() || !tak::unitSoundLive(sound.tick,cmdReplayEnd_)) continue;
+            if(sound.name.empty() || !ta::unitSoundLive(sound.tick,cmdReplayEnd_)) continue;
             const bool visible=unitSoundVisibleR(sound.player,sound.hidden,sound.type,sound.position);
             // Selecting a unit changes nothing a watcher hears.
             const bool selected=!watchOnly() && std::find(selection_.begin(),selection_.end(),sound.unitId)!=selection_.end();
@@ -1765,7 +1765,7 @@
         // Drained, not gated on newTick_: the whole point is to pick up impacts
         // from ticks whose snapshots the render never saw.
         // Released by the displayed tick, like the other tick-stamped queues below.
-        std::vector<tak::sim::World::HitFx> hitsToShow;
+        std::vector<ta::sim::World::HitFx> hitsToShow;
         uint8_t monarchAlerts = 0;
         {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
@@ -1787,7 +1787,7 @@
             // emitter, not a bolt.
             if (h.weapon && h.weapon->beam && h.weapon->projVel <= 0.0f && !h.weapon->straight &&
                 !h.weapon->lightning && h.weapon->flameKind<0 && !h.weapon->melee &&
-                h.weapon->fx != tak::sim::WeaponFx::Fire &&
+                h.weapon->fx != ta::sim::WeaponFx::Fire &&
                 (noFog_ || cellVisibleR(h.x, h.z))) {
                 BeamFx b;
                 b.model = h.weapon->shotModel;
@@ -1801,7 +1801,7 @@
                 if(h.position) {
                     b.x2=float((*h.position)[0]>>16);b.z2=float((*h.position)[2]>>16);
                 }
-                b.lightning = h.weapon->fx == tak::sim::WeaponFx::Lightning;
+                b.lightning = h.weapon->fx == ta::sim::WeaponFx::Lightning;
                 for (int i = 0; i < 3; ++i) {
                     b.inner[i] = h.weapon->inner[i];
                     b.middle[i] = h.weapon->middle[i];
@@ -1827,7 +1827,7 @@
             // ordinary impact path meant 30 generic dust bursts and 30 hit sounds a
             // second, each one a dozen-plus particles. The storm's own animation and
             // its one-shot cast sound carry it instead.
-            if (h.weapon && h.weapon->kind == tak::sim::Weapon::Kind::Wandering) continue;
+            if (h.weapon && h.weapon->kind == ta::sim::Weapon::Kind::Wandering) continue;
             // A status spell that lands (charm, stone, freeze) adds a silent event
             // carrying only its explosion, on the victim (HitFx::sound/explosion).
             if (h.weapon && h.sound && !h.weapon->soundHit.empty()) {
@@ -1877,7 +1877,7 @@
                             const auto cache = cobCache_.find(v->type->id);
                             if (pc >= 0 && cache != cobCache_.end() &&
                                 size_t(pc) < cache->second.pieceVertices.size()) {
-                                const auto offset = tak::sim::retailPieceDrawnCenter(
+                                const auto offset = ta::sim::retailPieceDrawnCenter(
                                     cache->second.modelPieces, vi->second.vm->retailPieces(), pc,
                                     cache->second.pieceVertices[size_t(pc)],
                                     uint16_t(v->headingWord + 32768), v->bodyPitch, v->bodyRoll);
@@ -1905,7 +1905,7 @@
         updateParticles(dt);
         updateEffects(dt);
         updateRings(dt);
-        if (tak::devEnv("TAK_STUCKSTAT")) {   // crowd-jam diagnostic
+        if (ta::devEnv("TA_STUCKSTAT")) {   // crowd-jam diagnostic
             static float acc = 0; acc += dt;
             if (acc >= 2.0f) {
                 acc = 0;
@@ -1965,10 +1965,10 @@
             if(!owner || !owner->alive())it=pointParticles_.erase(it);else ++it;
         }
         // Drain mission-time events even when whole render snapshots were skipped.
-        std::deque<tak::sim::World::TransportFx> transportEffects;
-        std::unordered_map<int,std::vector<tak::RetailWeaponAnimation>> weaponAnimations;
-        std::unordered_map<int,std::vector<tak::WeaponAnimationQueue::Shot>> weaponShots;
-        std::unordered_map<int,std::vector<tak::RetailFlightAnimationQueue::Snapshot>> flightSnapshots;
+        std::deque<ta::sim::World::TransportFx> transportEffects;
+        std::unordered_map<int,std::vector<ta::RetailWeaponAnimation>> weaponAnimations;
+        std::unordered_map<int,std::vector<ta::WeaponAnimationQueue::Shot>> weaponShots;
+        std::unordered_map<int,std::vector<ta::RetailFlightAnimationQueue::Snapshot>> flightSnapshots;
         {
             std::lock_guard<std::mutex> lock(hitQueueMutex_);
             flightAnimationQueue_.drain(front().gameTick,[&](const auto& snapshot) {
@@ -2052,12 +2052,12 @@
                 // ordinary and status Line-of-Sight classes, and lightning
                 // through 52cbf0). Remote/wandering initialization does not
                 // require projectile velocity.
-                using Kind = tak::sim::Weapon::Kind;
+                using Kind = ta::sim::Weapon::Kind;
                 if (w.nimbus && (((w.straight || w.lightning ||
-                                   w.losStatus != tak::sim::Weapon::LosStatus::None) && w.projVel > 0) ||
+                                   w.losStatus != ta::sim::Weapon::LosStatus::None) && w.projVel > 0) ||
                     w.kind == Kind::Remote || w.kind == Kind::Wandering)) {
                     if (!factionNimbusLoaded_) {
-                        factionNimbus_ = tak::gaf::factionNimbus(vfs_);
+                        factionNimbus_ = ta::gaf::factionNimbus(vfs_);
                         factionNimbusLoaded_ = true;
                     }
                     std::string side = u.type->side;
@@ -2090,7 +2090,7 @@
                     // upgrade. It is not a combat death and has no death script.
                     // Combat severity survives retirement, so a skipped render snapshot
                     // must not swallow the authored death sound and detached effects.
-                    if (u.embarked() || (u.deadFor>=float(tak::sim::World::kRetiredTicks)/30.0f &&
+                    if (u.embarked() || (u.deadFor>=float(ta::sim::World::kRetiredTicks)/30.0f &&
                                          !u.severity)) {
                         a.vm->reset();a.ownerVmStopRequested=true;continue;
                     }
@@ -2113,7 +2113,7 @@
                     } else {
                         // Keep the existing pose/statics and let the authored
                         // callbacks stop their own threads, as in the simulation.
-                        if (dtype!=tak::sim::Unit::kDeathSelfDestruct)
+                        if (dtype!=ta::sim::Unit::kDeathSelfDestruct)
                             a.vm->call("Killed", {int32_t(u.severity), 0, dtype});
                         if (!a.vm->start("Dying", {dtype})) a.ownerVmStopRequested=true;
                     }
@@ -2160,25 +2160,25 @@
                     // -- the loops must keep running.
                     const auto startFlightCallback=[&](auto call) {
                         switch (call) {
-                            case tak::RetailFlightAnimationCall::BeginFlight:
+                            case ta::RetailFlightAnimationCall::BeginFlight:
                                 a.vm->start("BeginFlight");
                                 break;
-                            case tak::RetailFlightAnimationCall::BeginLanding:
+                            case ta::RetailFlightAnimationCall::BeginLanding:
                                 a.vm->start("BeginLanding");
                                 break;
-                            case tak::RetailFlightAnimationCall::EndTransport:
+                            case ta::RetailFlightAnimationCall::EndTransport:
                                 a.vm->start("EndTransport");
                                 break;
                         }
                     };
                     if(const auto snapshots=flightSnapshots.find(u.id);snapshots!=flightSnapshots.end())
                         for(const auto& snapshot:snapshots->second)
-                            tak::updateRetailFlightAnimation(a.flightAnimation,snapshot.airborne,
+                            ta::updateRetailFlightAnimation(a.flightAnimation,snapshot.airborne,
                                 snapshot.beginFlightSerial,snapshot.landingSerial,
                                 u.type->canTransport,startFlightCallback);
                     // Also initialize newly registered units and retain the
                     // existing mode fallback when no transition packet is due.
-                    tak::updateRetailFlightAnimation(a.flightAnimation,air,
+                    ta::updateRetailFlightAnimation(a.flightAnimation,air,
                         u.flightBeginCallbackSerial,u.flightLandingCallbackSerial,
                         u.type->canTransport,startFlightCallback);
                 }
@@ -2197,7 +2197,7 @@
             // BAM), converted with retail's truncating /182. Retail notifies only
             // when its turn state changes sign, including the stop transition.
             const int turnDegrees=u.turnReqBam/182;
-            tak::updateRetailMovementAnimationCallbacks(a.hasTurnDir,turnDegrees,a.turnSign,
+            ta::updateRetailMovementAnimationCallbacks(a.hasTurnDir,turnDegrees,a.turnSign,
                 u.animationMoveRate,a.moveRate,u.animationOccupancy,a.occupancy,
                 [&](int degrees) { a.vm->start("TurnDirection",{degrees}); },
                 [&](uint32_t rate) { a.vm->start("MoveRate",{int32_t(rate)}); },
@@ -2207,23 +2207,23 @@
             if (const auto callbacks=weaponAnimations.find(u.id);callbacks!=weaponAnimations.end())
             for (const auto& event:callbacks->second) {
                 switch(event.kind) {
-                case tak::RetailWeaponAnimation::Aim:
+                case ta::RetailWeaponAnimation::Aim:
                     a.vm->start("AimWeapon",{event.heading,event.pitch,event.slot});
                     break;
-                case tak::RetailWeaponAnimation::Fire:
+                case ta::RetailWeaponAnimation::Fire:
                     a.vm->start("FireWeapon",{event.slot}) || a.vm->start("attack1") || a.vm->start("fire");
                     a.firing=true;
                     break;
-                case tak::RetailWeaponAnimation::Clear:
+                case ta::RetailWeaponAnimation::Clear:
                     a.vm->start("TargetCleared",{event.slot});
                     break;
-                case tak::RetailWeaponAnimation::Switch:
+                case ta::RetailWeaponAnimation::Switch:
                     a.vm->start("SwitchWeapon",{event.slot});
                     break;
-                case tak::RetailWeaponAnimation::Hit:
+                case ta::RetailWeaponAnimation::Hit:
                     a.vm->start("HitByWeapon",{event.slot,
-                        tak::sim::retailScaledCosine(event.heading,400),
-                        tak::sim::retailScaledSine(event.heading,400),event.damage});
+                        ta::sim::retailScaledCosine(event.heading,400),
+                        ta::sim::retailScaledSine(event.heading,400),event.damage});
                     break;
                 }
             }
@@ -2231,8 +2231,8 @@
             // retail heading convention, without normalizing that difference.
             if (u.type->receivesWind && a.hasWind && a.windStamp != windGen_) {
                 a.windStamp = windGen_;
-                const auto bodyHeading=tak::sim::portHeadingToRetail(
-                    tak::sim::bamFromRadians(u.heading));
+                const auto bodyHeading=ta::sim::portHeadingToRetail(
+                    ta::sim::bamFromRadians(u.heading));
                 const int32_t relativeHeading=int32_t(front().wind.heading)-int32_t(bodyHeading);
                 a.vm->start("WindChange", {front().wind.speed,relativeHeading});
             }
@@ -2246,7 +2246,7 @@
                 // Each queued output gets its own site id. A non-empty queue
                 // alone is not work: while capped there is no active conjure
                 // site, and consecutive products must retrigger one-shot poses.
-                tak::updateRetailBuilderAnimation(a.building,a.workId,
+                ta::updateRetailBuilderAnimation(a.building,a.workId,
                     u.buildSiteId,u.repairId,u.reclaimId,!u.buildQueue.empty(),
                     u.productionSiteId,u.conjuring,u.walking(),u.type->canFly,
                     [&](bool working) {
@@ -2273,16 +2273,16 @@
                         }
                     });
             }
-            // Buildings: yard/production anims. Detect via isStructure (maxVel <= tak::sim::Fixed()),
+            // Buildings: yard/production anims. Detect via isStructure (maxVel <= ta::sim::Fixed()),
             // NOT !canMove -- the Keep/Castle/Hell carry canmove=1 in their FBI, so
             // the old test skipped every factory and none of them ever animated
             // while training.
             if (u.type && isStructure(u.type)) {
                 // Use exported state-machine entry points rather than internal
                 // door routines; keep Create-owned ambient threads running.
-                tak::updateRetailFactoryAnimation(a.producing,a.workId,u.underConstruction,
+                ta::updateRetailFactoryAnimation(a.producing,a.workId,u.underConstruction,
                     !u.buildQueue.empty(),u.productionSiteId,[&](auto call) {
-                        using Call=tak::RetailFactoryAnimationCall;
+                        using Call=ta::RetailFactoryAnimationCall;
                         switch(call) {
                         case Call::Activate: a.vm->start("Activate");break;
                         case Call::Deactivate: a.vm->start("Deactivate");break;
@@ -2375,7 +2375,7 @@
         float dt = realDt * animSpeed() * pace;
         vmTick_.clear();explosionVmTick_.clear();
         for (auto& [id, a] : anims_) {
-            if(a.vm && tak::retailOwnerVmMayAdvance(a.ownerVmStopRequested)) {
+            if(a.vm && ta::retailOwnerVmMayAdvance(a.ownerVmStopRequested)) {
                 if(a.vm->mayReachExplosion(a.explosionReachability))explosionVmTick_.emplace_back(id,a.vm.get());
                 else vmTick_.push_back(a.vm.get());
             }
@@ -2415,7 +2415,7 @@
 
     float GameView::animSpeed() const {
         if (isNet() && mp_) return std::max(1, int(mp_->gameSpeed())) / 10.0f;
-        if (replayMode_) return std::min(speedMult(), tak::replaybar::kFullEffectsSpeed);
+        if (replayMode_) return std::min(speedMult(), ta::replaybar::kFullEffectsSpeed);
         return speedMult();
     }
 
@@ -2472,7 +2472,7 @@
             float initialZoom=mouseZoomOn_ ? 1.25f : 1.0f;   // MOUSE ZOOM off: retail's 1:1
             // Reproducible render profiling through the normal network path.
             // devEnv is disabled in release; ordinary starting views stay fixed.
-            if (const char* zoom=tak::devEnv("TAK_PROFILE_ZOOM"))
+            if (const char* zoom=ta::devEnv("TA_PROFILE_ZOOM"))
                 initialZoom=std::clamp(float(std::atof(zoom)),0.1f,4.0f);
             mapView_.setZoom(initialZoom);
             mapView_.setOffset(x-terrainLiftX(x,z)-float(mapViewW(winW))*0.5f/mapView_.zoom(),
@@ -2502,7 +2502,7 @@
     void GameView::takeProf(double& projMs, double& submitMs, double& shadowMs,
                             double& simMs, uint64_t& unitsDrawn, uint64_t& shadowVerts) {
         // Deltas since the last call -- the counters themselves are monotonic so that the
-        // per-frame TAK_SPIKES logger can take its own independent deltas off them.
+        // per-frame TA_SPIKES logger can take its own independent deltas off them.
         projMs   = profProjMs_   - profProjPrev_;    profProjPrev_   = profProjMs_;
         submitMs = profSubmitMs_ - profSubmitPrev_;  profSubmitPrev_ = profSubmitMs_;
         shadowMs = profShadowMs_ - profShadowPrev_;  profShadowPrev_ = profShadowMs_;
@@ -2517,15 +2517,15 @@
         float printed = 0;
         for (float t = 0; t < seconds; t += 1.0f / 30.0f) {
             update(1.0f / 30.0f);
-            if (tak::devFlag("TAK_CONJURE_TEST") ||
-                tak::devFlag("TAK_PROJECTILE_CAPTURE") || tak::devFlag("TAK_NIMBUS_CAPTURE") ||
-                tak::devFlag("TAK_STORM_CAPTURE")) {
+            if (ta::devFlag("TA_CONJURE_TEST") ||
+                ta::devFlag("TA_PROJECTILE_CAPTURE") || ta::devFlag("TA_NIMBUS_CAPTURE") ||
+                ta::devFlag("TA_STORM_CAPTURE")) {
                 beginFrame();
                 cosmeticStep(1.0f / 30.0f);
                 animFrame(1.0f / 30.0f);
                 endFrame();
             }
-            if (const char* phase=tak::devEnv("TAK_STORM_CAPTURE")) {
+            if (const char* phase=ta::devEnv("TA_STORM_CAPTURE")) {
                 for(const auto& storm:world_.storms()) if(int(storm.phase)==std::atoi(phase)) {
                     int width=0,height=0;SDL_GetRendererOutputSize(ren_,&width,&height);
                     mapView_.setOffset(storm.x.toFloat()-float(mapViewW(width))*0.5f/mapView_.zoom(),
@@ -2536,18 +2536,18 @@
                     paused_=true;return;
                 }
             }
-            if (tak::devFlag("TAK_NIMBUS_CAPTURE")) {
+            if (ta::devFlag("TA_NIMBUS_CAPTURE")) {
                 for (const auto& [id, effect] : nimbusEffects_)
                     if (front().gameTick - effect.started >= uint32_t(std::max(1,
-                            std::atoi(tak::devEnv("TAK_NIMBUS_CAPTURE"))))) {
+                            std::atoi(ta::devEnv("TA_NIMBUS_CAPTURE"))))) {
                         std::printf("nimbus capture: tick=%u caster=%d age=%u\n", front().gameTick,
                             id, front().gameTick - effect.started);
                         paused_ = true;
                         return;
                     }
             }
-            if(tak::devFlag("TAK_PROJECTILE_CAPTURE")) {
-                const uint32_t captureAge=uint32_t(std::max(1,std::atoi(tak::devEnv("TAK_PROJECTILE_CAPTURE"))));
+            if(ta::devFlag("TA_PROJECTILE_CAPTURE")) {
+                const uint32_t captureAge=uint32_t(std::max(1,std::atoi(ta::devEnv("TA_PROJECTILE_CAPTURE"))));
                 for (const auto& shot:world_.flames())
                     if (int32_t(world_.tickCount()-shot.start)>=int32_t(captureAge) && !shot.particles.empty()) {
                         std::printf("flame capture: tick=%u age=%u kind=%d particles=%zu\n",
@@ -2556,7 +2556,7 @@
                         paused_=true;return;
                     }
                 for(const auto& shot:world_.projectiles())if(shot.lightningEffect &&
-                    shot.age>=std::max(1,std::atoi(tak::devEnv("TAK_PROJECTILE_CAPTURE"))) &&
+                    shot.age>=std::max(1,std::atoi(ta::devEnv("TA_PROJECTILE_CAPTURE"))) &&
                     !shot.lightningEffect->particles.empty()) {
                     std::printf("projectile capture: tick=%u age=%d pixels=%zu nimbus=%zu\n",world_.tickCount(),shot.age,
                         shot.lightningEffect->pixels.size(), nimbusEffects_.size());
@@ -2566,9 +2566,9 @@
                 // A mind-control, stone or freeze ball in flight.
                 for(const auto& shot:world_.projectiles())
                     if(shot.straight && shot.life>0 && shot.wsrc &&
-                       shot.wsrc->losStatus!=tak::sim::Weapon::LosStatus::None && shot.age>=int32_t(captureAge)) {
+                       shot.wsrc->losStatus!=ta::sim::Weapon::LosStatus::None && shot.age>=int32_t(captureAge)) {
                         std::printf("status shot capture: tick=%u age=%d at=%.1f,%.1f\n",world_.tickCount(),shot.age,
-                            tak::sim::Fixed::raw(shot.position[0]).toFloat(),tak::sim::Fixed::raw(shot.position[2]).toFloat());
+                            ta::sim::Fixed::raw(shot.position[0]).toFloat(),ta::sim::Fixed::raw(shot.position[2]).toFloat());
                         paused_=true;
                         return;
                     }
@@ -2581,14 +2581,14 @@
                                     u.x.toFloat(),
                                     (u.type && u.type->canFly ? u.flightY : u.groundY).toFloat(),
                                     u.z.toFloat());
-                        if (tak::devFlag("TAK_CONJURE_TEST")) {
+                        if (ta::devFlag("TA_CONJURE_TEST")) {
                             std::printf("BUILDTRACE tick=%u site=%d orders=%zu events=%x\n",
                                         world_.tickCount(),u.buildSiteId,u.orders.size(),u.missionEvents);
                             for (const auto& o:u.orders)
                                 std::printf("  stage=%u pending=%x wait=%x goal=%.0f,%.0f build=%s\n",
                                             unsigned(o.mission.stage),o.mission.pending,o.mission.waitMask,
                                             o.x.toFloat(),o.z.toFloat(),o.buildType?o.buildType->id.c_str():"-");
-                            if (const char* name=tak::devEnv("TAK_CONJURE_TARGET"))
+                            if (const char* name=ta::devEnv("TA_CONJURE_TARGET"))
                                 if (const auto* type=registry_.find(name))
                                     std::printf("  target footprint=%dx%d\n",type->footX,type->footZ);
                         }
@@ -2610,7 +2610,7 @@
             if(!path.ends_with(".tdf"))continue;
             const auto definitions=vtdf(path);
             for(const auto& [name,node]:definitions.orderedChildren()) {
-                const auto key=tak::hpi::MountSet::key(std::string(name));
+                const auto key=ta::hpi::MountSet::key(std::string(name));
                 const int kind=key=="smallflame" ? 0 : key=="mediumflame" ? 1 : key=="largeflame" ? 2 : -1;
                 if(kind<0)continue;
                 const auto bank=node->valueOr("gaf","");
@@ -2630,7 +2630,7 @@
                 ticks.push_back(std::move(smokeTickQueue_.front()));smokeTickQueue_.pop_front();
             }
         }
-        const auto random=[&] {return tak::sim::retailCrtRandom(smokeRandom_);};
+        const auto random=[&] {return ta::sim::retailCrtRandom(smokeRandom_);};
         for(const auto& tick:ticks) {
             if(tick.tick<=smokeTick_) {smokeSprites_.clear();featureSmokeSprites_.clear();damageFlames_.clear();pointParticles_.clear();smokeRandom_=1;}
             smokeTick_=tick.tick;
@@ -2662,18 +2662,18 @@
                 if(sprites.size()>=10)return;
                 const auto* art=effectFor("bigsmoke");
                 if(!art || art->frames.size()<3)return;
-                tak::RetailSmokeParticle particle;particle.position=event.position;
+                ta::RetailSmokeParticle particle;particle.position=event.position;
                 particle.position[0]=std::bit_cast<int32_t>(uint32_t(particle.position[0])+(uint32_t(dx)<<16));
                 particle.position[1]=std::bit_cast<int32_t>(uint32_t(particle.position[1])+(uint32_t(dy)<<16));
                 particle.frameLimit=2+uint32_t(uint64_t(random())*(art->frames.size()-3)/32768);
                 sprites.push_back({particle,art});
             };
-            tak::retailStepFeatureSmoke(tick.features,updateFeatureSmoke,emitFeatureSmoke);
+            ta::retailStepFeatureSmoke(tick.features,updateFeatureSmoke,emitFeatureSmoke);
             const auto& terrain=mapView_.map();
             for(auto it=pointParticles_.begin();it!=pointParticles_.end();) {
                 std::erase_if(it->second,[&](auto& particle) {
                     return !particle.tick(int(uint8_t(terrain.seaLevel)),[&](const auto& position) {
-                        return terrain.heights.empty() ? -1 : tak::sim::retailTerrainHeight(
+                        return terrain.heights.empty() ? -1 : ta::sim::retailTerrainHeight(
                             position[0],position[2],terrain.width,terrain.height,[&](int x,int z) {
                                 return terrain.heights[size_t(z)*size_t(terrain.width)+size_t(x)];
                             });
@@ -2722,7 +2722,7 @@
                 const char* name=event.code==265 ? "steam" : event.code==258 ? "smoke:smoke01" : "bigsmoke";
                 const auto* art=effectFor(name);
                 if(!art || art->frames.size()<3)continue;
-                tak::RetailSmokeParticle particle;
+                ta::RetailSmokeParticle particle;
                 particle.position=event.position;particle.small=event.code==258;particle.steam=event.code==265;
                 particle.frameLimit=2+uint32_t(uint64_t(random())*(art->frames.size()-3)/32768);
                 sprites.push_back({particle,art});
@@ -2730,7 +2730,7 @@
         }
     }
 
-    void GameView::emitPoint(const tak::sim::World::ScriptEmission& event) {
+    void GameView::emitPoint(const ta::sim::World::ScriptEmission& event) {
         auto& particles=pointParticles_[event.unitId];
         if(particles.size()>=100 || event.pose.empty())return;
         std::array<std::array<int32_t,3>,2> endpoints;
@@ -2744,8 +2744,8 @@
             }
         }
         if(event.code>=4)std::swap(endpoints[0],endpoints[1]);
-        particles.push_back(tak::RetailPointParticle::emit(endpoints[0],endpoints[1],
-            event.code%2 ? 8:16,[&] {return tak::sim::retailCrtRandom(smokeRandom_);}));
+        particles.push_back(ta::RetailPointParticle::emit(endpoints[0],endpoints[1],
+            event.code%2 ? 8:16,[&] {return ta::sim::retailCrtRandom(smokeRandom_);}));
     }
 
     void GameView::emitSfx(const UnitR& /*u*/, Anim& a, int piece, int32_t sfx) {
@@ -2776,19 +2776,19 @@
                 : (visualName==unitType_.end()?visuals_.end():visuals_.find(visualName->second));
             if(visual!=visuals_.end()) {
                 const auto& wanted=(*a.pieceNames)[size_t(piece)];
-                const auto find=[&](auto&& self,const tak::tdo::Object& object)->const tak::tdo::Object* {
-                    if(tak::hpi::MountSet::key(object.name)==wanted)return &object;
+                const auto find=[&](auto&& self,const ta::tdo::Object& object)->const ta::tdo::Object* {
+                    if(ta::hpi::MountSet::key(object.name)==wanted)return &object;
                     for(const auto& child:object.children)if(const auto* found=self(self,child))return found;
                     return nullptr;
                 };
                 if(const auto* source=find(find,visual->second.model.root)) {
-                    tak::RetailDebrisMotion motion;
-                    tak::RetailDebrisMotion::launch(uint32_t(flags),[&](unsigned bound) {
-                        return unsigned(uint64_t(tak::sim::retailCrtRandom(smokeRandom_))*bound/32768u);
+                    ta::RetailDebrisMotion motion;
+                    ta::RetailDebrisMotion::launch(uint32_t(flags),[&](unsigned bound) {
+                        return unsigned(uint64_t(ta::sim::retailCrtRandom(smokeRandom_))*bound/32768u);
                     },motion);
                     if(detachedPieces_.size()<100) {
                         DetachedPiece debris;
-                        debris.model=tak::retailDebrisModel(*source,(flags&64)!=0);
+                        debris.model=ta::retailDebrisModel(*source,(flags&64)!=0);
                         debris.names=*a.pieceNames;
                         debris.poses.assign(a.capturedPose.begin(),a.capturedPose.end());
                         debris.motion=motion;debris.motion.position=u.worldPosition;
@@ -2801,9 +2801,9 @@
                             const auto& output=a.effectQueryVm->lastLocals();
                             if(!output.empty() && output[0]!=-1)
                                 for(unsigned i=0;i<100;++i)
-                                    debris.blood.push_back(tak::RetailBloodParticle::emit(
+                                    debris.blood.push_back(ta::RetailBloodParticle::emit(
                                         u.worldPosition,u.type->bloodColors,
-                                        [&]{return tak::sim::retailCrtRandom(smokeRandom_);}));
+                                        [&]{return ta::sim::retailCrtRandom(smokeRandom_);}));
                         }
                         detachedPieces_.push_back(std::move(debris));
                         accepted=true;
@@ -2862,14 +2862,14 @@
             configureExplosionHierarchy(anim->second,visuals_.at(vm).model.root);
     }
 
-    void GameView::configureExplosionHierarchy(Anim& a,const tak::tdo::Object& root) {
+    void GameView::configureExplosionHierarchy(Anim& a,const ta::tdo::Object& root) {
         if(!a.vm)return;
         std::vector<std::vector<int>> descendants(a.vm->file().pieces.size());
-        const auto visit=[&](auto&& self,const tak::tdo::Object& object,std::vector<int> ancestors)->void {
+        const auto visit=[&](auto&& self,const ta::tdo::Object& object,std::vector<int> ancestors)->void {
             const int index= [&] {
-                const auto name=tak::hpi::MountSet::key(object.name);
+                const auto name=ta::hpi::MountSet::key(object.name);
                 for(size_t i=0;i<a.vm->file().pieces.size();++i)
-                    if(tak::hpi::MountSet::key(a.vm->file().pieces[i])==name)return int(i);
+                    if(ta::hpi::MountSet::key(a.vm->file().pieces[i])==name)return int(i);
                 return -1;
             }();
             if(index>=0) {
@@ -2882,7 +2882,7 @@
         a.vm->setExplosionDescendants(std::move(descendants));
     }
 
-    void GameView::registerUnit(int id, const tak::sim::UnitType* type) {
+    void GameView::registerUnit(int id, const ta::sim::UnitType* type) {
         const std::string& typeId = type->id;
         if (!visuals_.count(typeId)) {
             try {
@@ -2902,17 +2902,17 @@
             if (ci == cobCache_.end()) {
                 std::string cobPath = "scripts/" + typeId + ".cob";
                 CobCache cc;
-                cc.file = std::make_shared<const tak::cob::File>(
-                    tak::cob::load(vread(cobPath), cobPath));
-                cc.explosionReachability=tak::cob::explosionReachability(*cc.file);
-                cc.gaitCode=tak::cob::gaitCode(*cc.file);
+                cc.file = std::make_shared<const ta::cob::File>(
+                    ta::cob::load(vread(cobPath), cobPath));
+                cc.explosionReachability=ta::cob::explosionReachability(*cc.file);
+                cc.gaitCode=ta::cob::gaitCode(*cc.file);
                 for (const auto& p : cc.file->pieces) {
                     std::string n = p;
                     std::transform(n.begin(), n.end(), n.begin(), ::tolower);
                     cc.pieceNames.push_back(n);
                 }
                 cc.pieceVertices.resize(cc.pieceNames.size());
-                auto appendModel=[&](auto&& self,const tak::tdo::Object& object,int parent)->void {
+                auto appendModel=[&](auto&& self,const ta::tdo::Object& object,int parent)->void {
                     auto name=object.name;
                     std::transform(name.begin(),name.end(),name.begin(),::tolower);
                     auto found=std::find(cc.pieceNames.begin(),cc.pieceNames.end(),name);
@@ -2956,7 +2956,7 @@
             // active snapshot's Activate, a gate's that became active before it
             // was visible and an activatewhenbuilt unit's (512301 / 429a8d) too.
             a.active = false;
-            a.vm = std::make_unique<tak::cob::Vm>(ci->second.file);
+            a.vm = std::make_unique<ta::cob::Vm>(ci->second.file);
             a.vm->enableRetailAnimation();
             {
                 // Every display VM used to start from the same RAND seed, so
@@ -2979,9 +2979,9 @@
                 // never live world_, which the sim thread mutates concurrently under Stage B.
                 const auto* su = frameUnitP(unitId);
                 if (!su || !su->type) return 0;
-                // TAK's GET_UNIT_VALUE numbering (icd getter table @0x50d394) --
+                // TA's GET_UNIT_VALUE numbering (icd getter table @0x50d394) --
                 // NOT TA-1997's. The old TA-numbered cases here answered ids no
-                // shipped TAK script asks for, while id 4 (HEALTH%) returned 0 --
+                // shipped TA script asks for, while id 4 (HEALTH%) returned 0 --
                 // making every building COB's SmokeControl/DamageFlameControl
                 // believe it was at 0 HP and belch damage smoke from spawn.
                 switch (valId) {
@@ -2995,7 +2995,7 @@
                     }
                     case 17: return su->constructionPercentLeft;
                     case 27:                                           // HEADING (16-bit angle)
-                        return tak::sim::portHeadingToRetail(tak::sim::bamFromRadians(su->heading));
+                        return ta::sim::portHeadingToRetail(ta::sim::bamFromRadians(su->heading));
                     // Native GET 28/34 report mover flags. Recomputing from
                     // the display map disagrees at shore/road transitions and
                     // for bodies whose support height differs from one cell.
@@ -3030,7 +3030,7 @@
                 if(!flying && sfx>=2 && sfx<=5) {
                     if(piece<0 || size_t(piece)>=cache->pieceVertices.size() ||
                        cache->pieceVertices[size_t(piece)].size()<2)return;
-                    tak::sim::World::ScriptEmission event;event.code=sfx;event.piece=piece;
+                    ta::sim::World::ScriptEmission event;event.code=sfx;event.piece=piece;
                     std::copy_n(cache->pieceVertices[size_t(piece)].begin(),2,event.vertices.begin());
                     int index=-1;
                     for(size_t i=0;i<cache->modelPieces.size();++i)
@@ -3038,7 +3038,7 @@
                     const auto states=vm->retailPieces();
                     for(;index>=0;index=cache->modelPieces[size_t(index)].parent) {
                         const auto& node=cache->modelPieces[size_t(index)];
-                        tak::cob::EmissionPose pose;pose.offset=node.offset;
+                        ta::cob::EmissionPose pose;pose.offset=node.offset;
                         if(node.scriptPiece>=0 && size_t(node.scriptPiece)<states.size())
                             for(size_t axis=0;axis<3;++axis) {
                                 pose.move[axis]=states[size_t(node.scriptPiece)].move[axis];
@@ -3058,14 +3058,14 @@
                 if (!state->dying) state->pendingSnd.emplace_back(idx,flags);
             };
             st.vm->onSetUnitValue = [state=&st](int32_t valueId,int32_t) {
-                if(tak::retailOwnerVmStopsOnSetUnitValue(valueId)) {
+                if(ta::retailOwnerVmStopsOnSetUnitValue(valueId)) {
                     state->ownerVmStopRequested=true;
                 }
             };
             st.vm->onExplode = [this,id, state=&st, vm=st.vm.get()](int piece, int32_t flags) {
                 const auto* unit=frameUnitP(id);
                 if(!unit || !unit->type || !unitShownR(*unit))return false;
-                std::vector<tak::cob::PieceState> pose;
+                std::vector<ta::cob::PieceState> pose;
                 const auto states=vm->retailPieces();
                 pose.resize(states.size());
                 constexpr float angle=2*3.14159265358979f/65536.0f;
@@ -3111,10 +3111,10 @@
         assetGeneration_.bump();   // the model texture registry changes below
         // Faction texture banks use their own palettes (palettes/<side>_textures.pcx).
         // The VFS merges base + Iron Plague (cre) texture GAFs into one namespace.
-        std::map<std::string, tak::gaf::Palette> pals;
+        std::map<std::string, ta::gaf::Palette> pals;
         for (const char* side : {"ara", "tar", "ver", "zon", "aid", "cre"}) {
             std::string pp = std::string("palettes/") + side + "_textures.pcx";
-            try { if (vfs_.has(pp)) pals[side] = tak::gaf::Palette::fromBytes(vread(pp), pp); }
+            try { if (vfs_.has(pp)) pals[side] = ta::gaf::Palette::fromBytes(vread(pp), pp); }
             catch (const std::exception&) {}
         }
         if (!pals.count("ara")) return;   // no palettes available
@@ -3122,8 +3122,8 @@
         // bank, shared by every texture of the bank.
         std::map<std::string, uint8_t> bankIndex;
         for (const std::string& path : vfs_.list("textures")) {
-            if (tak::vpath::extension(path) != ".gaf") continue;
-            std::string stem = tak::vpath::stem(path);
+            if (ta::vpath::extension(path) != ".gaf") continue;
+            std::string stem = ta::vpath::stem(path);
             std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
             const auto* pal = &pals.at("ara");
             auto pit = pals.find(stem.substr(0, 3));
@@ -3133,12 +3133,12 @@
                 // Decode through an index-identity palette as well: palette colours
                 // are not unique, so reconstructing indices from RGB loses authored
                 // shade mappings. This also preserves composite-frame transparency.
-                tak::gaf::Palette indexPalette{};
+                ta::gaf::Palette indexPalette{};
                 for(int i=0;i<256;++i) {
                     indexPalette.rgba[i][0]=uint8_t(i);
                     indexPalette.rgba[i][3]=255;
                 }
-                auto indexed=tak::gaf::load(bytes,indexPalette,5,path);
+                auto indexed=ta::gaf::load(bytes,indexPalette,5,path);
                 const std::string bank=pit!=pals.end() ? pit->first : "ara";
                 auto bankSlot=bankIndex.find(bank);
                 if(bankSlot==bankIndex.end()) {
@@ -3147,9 +3147,9 @@
                     std::vector<uint8_t> shades;
                     if(vfs_.has(shadePath)) shades=vread(shadePath);
                     uint8_t slot=0xff;
-                    if(shades.size()==tak::render::palette::kShadeTableBytes &&
-                       paletteBanks_.size()<size_t(tak::render::palette::kMaxBanks)) {
-                        tak::render::palette::Bank entry;
+                    if(shades.size()==ta::render::palette::kShadeTableBytes &&
+                       paletteBanks_.size()<size_t(ta::render::palette::kMaxBanks)) {
+                        ta::render::palette::Bank entry;
                         std::memcpy(entry.palette,pal->rgba,sizeof entry.palette);
                         entry.shades=std::move(shades);
                         slot=uint8_t(paletteBanks_.size());
@@ -3158,7 +3158,7 @@
                     bankSlot=bankIndex.emplace(bank,slot).first;
                 }
                 size_t sequenceIndex=0;
-                for (auto& seq : tak::gaf::load(bytes, *pal, 5, path)) {
+                for (auto& seq : ta::gaf::load(bytes, *pal, 5, path)) {
                     auto& indexSequence=indexed.at(sequenceIndex++);
                     if (seq.frames.empty()) continue;
                     std::string name = seq.name;
@@ -3170,7 +3170,7 @@
                         source.bank=bankSlot->second;
                         for(const auto& frame:indexSequence.frames) {
                             // Index-identity decode: R = palette index, A = coverage.
-                            tak::render::palette::Frame la;
+                            ta::render::palette::Frame la;
                             la.width=frame.width;la.height=frame.height;
                             la.la.resize(size_t(frame.width)*size_t(frame.height)*2);
                             for(size_t pixel=0;pixel*4+3<frame.rgba.size() && pixel*2+1<la.la.size();++pixel) {
@@ -3256,7 +3256,7 @@
                                                       int width,int height) {
         SDL_RendererInfo info{};SDL_GetRendererInfo(ren_,&info);
         const auto makeCoverage=[&](int w,int h) -> SDL_Texture* {
-            if(!((info.flags&SDL_RENDERER_ACCELERATED) || tak::devFlag("TAK_SHADOW_ATLAS_SOFTWARE")) ||
+            if(!((info.flags&SDL_RENDERER_ACCELERATED) || ta::devFlag("TA_SHADOW_ATLAS_SOFTWARE")) ||
                !SDL_RenderTargetSupported(ren_))return nullptr;
             constexpr size_t limit=16u*1024u*1024u;
             size_t used=0;
@@ -3272,7 +3272,7 @@
             auto* texture=gpuvram::create(ren_,SDL_PIXELFORMAT_RGBA32,
                 SDL_TEXTUREACCESS_STATIC,width,height);
             if(!texture)return {};
-            const auto pixels=tak::shadowMaskPixels(rgba,kShadowLevel);
+            const auto pixels=ta::shadowMaskPixels(rgba,kShadowLevel);
             if(SDL_UpdateTexture(texture,nullptr,pixels.data(),width*4)!=0) {
                 gpuvram::destroy(texture);return {};
             }
@@ -3281,7 +3281,7 @@
             // common to both paths so GPU reset destroys every texture once.
             auto* coverage=makeCoverage(width,height);
             if(coverage) {
-                const auto alpha=tak::shadowCoveragePixels(rgba);
+                const auto alpha=ta::shadowCoveragePixels(rgba);
                 if(SDL_UpdateTexture(coverage,nullptr,alpha.data(),width*4)!=0) {
                     gpuvram::destroy(coverage);coverage=nullptr;
                 } else shadowCoverageTextures_[texture]=coverage;
@@ -3319,11 +3319,11 @@
         }
         // Replicate a one-texel border: UV endpoints retain the standalone
         // texture's clamp behavior instead of sampling its atlas neighbor.
-        const auto pixels=tak::paddedShadowMaskPixels(rgba,width,height,kShadowLevel);
+        const auto pixels=ta::paddedShadowMaskPixels(rgba,width,height,kShadowLevel);
         const SDL_Rect rect{page->x,page->y,paddedWidth,paddedHeight};
         if(SDL_UpdateTexture(page->texture,&rect,pixels.data(),paddedWidth*4)!=0)return standalone();
         if(page->coverage) {
-            const auto alpha=tak::paddedShadowCoveragePixels(rgba,width,height);
+            const auto alpha=ta::paddedShadowCoveragePixels(rgba,width,height);
             if(SDL_UpdateTexture(page->coverage,&rect,alpha.data(),paddedWidth*4)!=0) {
                 shadowCoverageTextures_.erase(page->texture);
                 gpuvram::destroy(page->coverage);page->coverage=nullptr;
@@ -3335,11 +3335,11 @@
         return frame;
     }
 
-    const tak::cob::PieceState* GameView::pieceFor(const Anim* a, const std::string& objName) const {
+    const ta::cob::PieceState* GameView::pieceFor(const Anim* a, const std::string& objName) const {
         if (!a || !a->pieceNames) return nullptr;
         const auto poses=!a->capturedPose.empty() ? a->capturedPose :
-            a->vm ? std::span<const tak::cob::PieceState>(a->vm->pieces()) :
-                    std::span<const tak::cob::PieceState>{};
+            a->vm ? std::span<const ta::cob::PieceState>(a->vm->pieces()) :
+                    std::span<const ta::cob::PieceState>{};
         std::string n = objName;
         std::transform(n.begin(), n.end(), n.begin(), ::tolower);
         for (size_t i = 0; i < a->pieceNames->size(); ++i)
@@ -3357,13 +3357,13 @@
         return u.headbang && u.type && !u.type->isStructure() && frameHeadbangActive(u.player);
     }
 
-    tak::tdf::Node GameView::vtdf(const std::string& p) const {
+    ta::tdf::Node GameView::vtdf(const std::string& p) const {
         auto b = vfs_.read(p);
-        return tak::tdf::parseText(std::string(b.begin(), b.end()), p);
+        return ta::tdf::parseText(std::string(b.begin(), b.end()), p);
     }
 
     std::string GameView::mapSibling(const char* ext) const {
-        return tak::vpath::replaceExtension(mapPath_,ext);
+        return ta::vpath::replaceExtension(mapPath_,ext);
     }
 
     void GameView::remountMods() {
@@ -3380,21 +3380,21 @@
             // Debug local harnesses (no server): this launch's own always-enabled and
             // ticked game packs (the single-player set), as a room it hosted would apply;
             // none in a mission.
-            const auto root=tak::u8path(installRoot_);
+            const auto root=ta::u8path(installRoot_);
             const bool gamePacks=mods_.game && missionStem_.empty();
             auto game=gamePacks && settings_?settings_->spRoom.gamePacks:std::vector<std::string>{};
-            const auto have=tak::hpi::modPacks(root,tak::hpi::ModKind::Game);
+            const auto have=ta::hpi::modPacks(root,ta::hpi::ModKind::Game);
             std::erase_if(game,[&](const auto& n){return !std::binary_search(have.begin(),have.end(),n);});
-            if(gamePacks)for(const auto& name:tak::hpi::alwaysEnabledPacks(root,tak::hpi::ModKind::Game))game.push_back(name);
+            if(gamePacks)for(const auto& name:ta::hpi::alwaysEnabledPacks(root,ta::hpi::ModKind::Game))game.push_back(name);
             std::sort(game.begin(),game.end());game.erase(std::unique(game.begin(),game.end()),game.end());
             if(game.size()>64)game.resize(64);
-            vfs_=tak::hpi::mountPlayVfs(root,tak::hpi::modFiles(root,tak::hpi::ModKind::Game,game),
+            vfs_=ta::hpi::mountPlayVfs(root,ta::hpi::modFiles(root,ta::hpi::ModKind::Game,game),
                 missionStem_.empty()?cosmetic:std::vector<std::string>{},mods_.cosmetic,&skipped);
         }
         // A cosmetic mod left out (it cannot load, or its anims/ art would change
         // gameplay timing) is named in the game's chat rather than stopping it.
         alwaysOnLoaded_.clear();
-        if(mods_.cosmetic)for(const auto& name:tak::hpi::alwaysEnabledPacks(tak::u8path(installRoot_),tak::hpi::ModKind::Cosmetic))
+        if(mods_.cosmetic)for(const auto& name:ta::hpi::alwaysEnabledPacks(ta::u8path(installRoot_),ta::hpi::ModKind::Cosmetic))
             if(std::none_of(skipped.begin(),skipped.end(),[&](const std::string& why){return why.starts_with(name+" (");}))
                 alwaysOnLoaded_.push_back(name);
         for(const auto& why:skipped) {
@@ -3410,8 +3410,8 @@
         loadTextures();loadOrderButtons();
         loadInterfaceFonts();
         sounds_.reload(vfs_);soundClasses_.load(vfs_);musicMode_=0;
-        registry_ = tak::sim::TypeRegistry{};
-        tak::sim::setupRegistry(registry_, vfs_, crusades_);
+        registry_ = ta::sim::TypeRegistry{};
+        ta::sim::setupRegistry(registry_, vfs_, crusades_);
     }
 
     float GameView::birthProgress(int id) const {
@@ -3422,11 +3422,11 @@
 
     // Retail's banner for speed level d: "GAME SPEED NORMAL" or "GAME SPEED +5".
     static std::string speedNotice(int d) {
-        return "GAME SPEED " + tak::speedLevelText(d) + (d > 10 ? " (DEBUG)" : "");
+        return "GAME SPEED " + ta::speedLevelText(d) + (d > 10 ? " (DEBUG)" : "");
     }
 
     float GameView::speedMult() const {
-        if (replayMode_) return tak::replaybar::speedAt(replaySpeed_);
+        if (replayMode_) return ta::replaybar::speedAt(replaySpeed_);
         return mp_ ? 1.0f : float(gameSpeed_ + 10) / 10.0f;   // retail: linear, (d+10)/10
     }
 
@@ -3441,19 +3441,19 @@
     // reading the sampler's -1 sentinel.
     float GameView::rawHeight(float wx, float wz) {
         const auto& m = mapView_.map();
-        return tak::client::lift::terrainHeight(m.heights.data(), m.width, m.height, wx, wz);
+        return ta::client::lift::terrainHeight(m.heights.data(), m.width, m.height, wx, wz);
     }
 
     // The screen-Y offset (down positive) of a wading or floating body from the
     // terrain lift. Retail stands a canhover unit at max(terrain, sea - waterline)
     // and a floater at sea - waterline (0x51b220 / 0x51b2fa), so over deep water
     // the body rides near the surface, not on the seabed.
-    float GameView::waterSink(const tak::sim::UnitType* t, float wx, float wz) {
+    float GameView::waterSink(const ta::sim::UnitType* t, float wx, float wz) {
         if (!t || !(t->canHover || t->floater)) return 0.0f;
         const auto& m = mapView_.map();
         if (m.heights.empty()) return 0.0f;
         const float terrain = rawHeight(wx, wz);
-        const float body = tak::client::lift::bodyHeight(terrain, m.seaLevel, t->waterline,
+        const float body = ta::client::lift::bodyHeight(terrain, m.seaLevel, t->waterline,
                                                          t->canHover, t->floater);
         return std::floor(terrain * kHeightScale_) - std::floor(body * kHeightScale_);
     }
@@ -3468,9 +3468,9 @@
             long hist[256] = {0};
             for (uint8_t v : m.heights) hist[v]++;
             for (int i = 1; i < 256; ++i) if (hist[i] > hist[modalHeight_]) modalHeight_ = i;
-            if (const char* e = tak::devEnv("TAK_HSCALE")) kHeightScale_ = std::stof(e);
-            if (const char* e = tak::devEnv("TAK_HSCALEX")) kHeightScaleX_ = std::stof(e);
-            if (tak::devEnv("TAK_HDEBUG")) showHDebug_ = true;
+            if (const char* e = ta::devEnv("TA_HSCALE")) kHeightScale_ = std::stof(e);
+            if (const char* e = ta::devEnv("TA_HSCALEX")) kHeightScaleX_ = std::stof(e);
+            if (ta::devEnv("TA_HDEBUG")) showHDebug_ = true;
         }
         return rawHeight(wx, wz);
     }
@@ -3541,7 +3541,7 @@
                 (iz - mapView_.offY()) * zm - uLiftY(u) * zm - altLift(u) * zm - 12.0f * zm};
     }
 
-    const SDL_FRect& GameView::unitHitBox(const tak::sim::UnitType* type) {
+    const SDL_FRect& GameView::unitHitBox(const ta::sim::UnitType* type) {
         auto it = hitBoxes_.find(type->id);
         if (it != hitBoxes_.end()) return it->second;
         SDL_FRect box = kFallbackHitBox;   // model not loaded
@@ -3560,7 +3560,7 @@
     }
 
 
-    const GameView::RingBox& GameView::unitRingBox(const tak::sim::UnitType* type) {
+    const GameView::RingBox& GameView::unitRingBox(const ta::sim::UnitType* type) {
         auto it = ringBoxes_.find(type->id);
         if (it != ringBoxes_.end()) return it->second;
         RingBox rb;   // defaults cover a model that never loaded
@@ -3641,7 +3641,7 @@
 
     void GameView::simWorkerLoop() {
         // PIN SIMULATION THREADS: this thread is the simulation's first (latchSimThreads).
-        if (simPin_) tak::sim::placeThisThread(simCpus_.empty() ? -1 : simCpus_.front());
+        if (simPin_) ta::sim::placeThisThread(simCpus_.empty() ? -1 : simCpus_.front());
         for (;;) {
             SimJob job;
             {
@@ -3747,8 +3747,8 @@
 
     bool GameView::presentClockWanted() const {
 #ifndef NDEBUG
-        // TAK_PRESENT=0: the pre-S4 presentation (newest snapshot, wall-clock alpha), for A/B runs.
-        if (const char* e = tak::devEnv("TAK_PRESENT"); e && e[0] == '0') return false;
+        // TA_PRESENT=0: the pre-S4 presentation (newest snapshot, wall-clock alpha), for A/B runs.
+        if (const char* e = ta::devEnv("TA_PRESENT"); e && e[0] == '0') return false;
 #endif
         return isNet() && !replayMode_;
     }
@@ -3915,12 +3915,12 @@
     }
 
 
-    void GameView::issuePerUnit(tak::net::Cmd kind, int value) {
+    void GameView::issuePerUnit(ta::net::Cmd kind, int value) {
         ClickScope click(*this);   // one click: a Legion net game sends it as explicit orders
         for (int id : selection_) {
             const auto* u = frameUnitP(id);
             if (!u || u->player != localPlayer_) continue;
-            tak::net::Command c;
+            ta::net::Command c;
             c.kind = kind;
             c.unitId = id;
             c.targetId = value;
@@ -3930,7 +3930,7 @@
 
     // The status line (unitstatus.h).
     const char* GameView::unitStatusText(const UnitR* u) const {
-        return u ? tak::client::unitStatusLabel(*u) : "";
+        return u ? ta::client::unitStatusLabel(*u) : "";
     }
 
     bool GameView::handleKey(SDL_Keycode key, uint16_t mod) {
@@ -3943,7 +3943,7 @@
         const bool speedKey = key == SDLK_EQUALS || key == SDLK_PLUS || key == SDLK_KP_PLUS ||
                               key == SDLK_MINUS || key == SDLK_KP_MINUS;
         if (spectating_ && (key == SDLK_PAUSE || speedKey) &&
-            !tak::client::watchMayPace(singlePlayer_, mp_ && mp_->room().hostId == mp_->myClientId()))
+            !ta::client::watchMayPace(singlePlayer_, mp_ && mp_->room().hostId == mp_->myClientId()))
             return true;
         // Pause toggle works without a selection.
         if (key == SDLK_PAUSE) {
@@ -3969,13 +3969,13 @@
                 }
                 auto o = mp_->room().opts;
                 // Retail steps one level (0.1x) at a time, 0.1x .. 2x. Debug builds
-                // with TAK_FAST_SPEED=1 carry on past 2x in 0.5x steps up to 8x
+                // with TA_FAST_SPEED=1 carry on past 2x in 0.5x steps up to 8x
                 // (a debug test/loopback server accepts it; others clamp to 2x).
-                int maxSpeed = tak::net::kMaxGameSpeed;
-                if (tak::devFlag("TAK_FAST_SPEED")) maxSpeed = tak::net::kMaxDevGameSpeed;
+                int maxSpeed = ta::net::kMaxGameSpeed;
+                if (ta::devFlag("TA_FAST_SPEED")) maxSpeed = ta::net::kMaxDevGameSpeed;
                 const int cur = std::min(int(mp_->gameSpeed()), maxSpeed);
-                const int stepBy = (up ? cur >= tak::net::kMaxGameSpeed : cur > tak::net::kMaxGameSpeed) ? 5 : 1;
-                int ns = std::clamp(cur + (up ? stepBy : -stepBy), tak::net::kMinGameSpeed, maxSpeed);
+                const int stepBy = (up ? cur >= ta::net::kMaxGameSpeed : cur > ta::net::kMaxGameSpeed) ? 5 : 1;
+                int ns = std::clamp(cur + (up ? stepBy : -stepBy), ta::net::kMinGameSpeed, maxSpeed);
                 if (ns != o.speed) { o.speed = uint8_t(ns); mp_->setGameOptions(o); }
                 notice_ = speedNotice(ns - 10); noticeTimer_ = 2;
                 return true;
@@ -4003,10 +4003,10 @@
         // Everything below is a REBINDABLE action: resolve the pressed chord to an
         // Act via the user's hotkey config (src/client/hotkeys) and dispatch.
         // A watcher's order key does nothing at all, not even a notice.
-        if (watchOnly() && !tak::client::watchAllows(hotkeys_.match(int32_t(key), mod))) return true;
+        if (watchOnly() && !ta::client::watchAllows(hotkeys_.match(int32_t(key), mod))) return true;
         switch (hotkeys_.match(int32_t(key), mod)) {
-            case tak::Act::PushToTalk: return true;   // held for voice chat (voiceKey), no action here
-            case tak::Act::GiveUnits:
+            case ta::Act::PushToTalk: return true;   // held for voice chat (voiceKey), no action here
+            case ta::Act::GiveUnits:
                 if (!watchOnly() && missionStem_.empty()) {
                     giveUnitsMenu_ = true;
                     giveUnitsHots_.clear();
@@ -4014,11 +4014,11 @@
                     dragging_ = false;
                 }
                 return true;
-            case tak::Act::ToggleCounts: showCounts_ = !showCounts_; return true;
-            case tak::Act::MakePoster: if (powerCodesOn()) startPoster(); return true;   // +MakePoster
-            case tak::Act::UnitInfo: toggleUnitInfo(); return true;
-            case tak::Act::RetailZoom: retailZoom(winW_, winH_, true); return true;
-            case tak::Act::FullScreenRadar:
+            case ta::Act::ToggleCounts: showCounts_ = !showCounts_; return true;
+            case ta::Act::MakePoster: if (powerCodesOn()) startPoster(); return true;   // +MakePoster
+            case ta::Act::UnitInfo: toggleUnitInfo(); return true;
+            case ta::Act::RetailZoom: retailZoom(winW_, winH_, true); return true;
+            case ta::Act::FullScreenRadar:
                 // A VIEW action, so it belongs here and not in the order switch
                 // below -- that one returns early when nothing is selected, and
                 // the full-screen map is exactly what you want with an empty
@@ -4028,7 +4028,7 @@
                 fsRadar_ = !fsRadar_;
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::SelfDestruct: {   // self-destruct the selected unit(s)
+            case ta::Act::SelfDestruct: {   // self-destruct the selected unit(s)
                 // Through the command path (Cmd::Destroy), not a direct hp write --
                 // a local mutation would silently desync a networked game.
                 // Cmd::Destroy TOGGLES one unit's countdown; if any selected
@@ -4039,12 +4039,12 @@
                     if (auto* su = frameUnitP(id))
                         if (su->alive() && su->player == localPlayer_)
                             owned.emplace_back(id, su->selfDestructT >= 0.0f);
-                const auto send = tak::client::selfDestructPress(owned);
+                const auto send = ta::client::selfDestructPress(owned);
                 bool anyArmed = false;
                 for (const auto& o : owned) anyArmed |= o.second;
                 for (int id : send) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Destroy;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Destroy;
                     c.unitId = id;
                     issue(c);
                 }
@@ -4058,7 +4058,7 @@
                         for (int id : send)
                             if (const auto* su = frameUnitP(id); su && su->type)
                                 seconds = std::max(seconds, su->type->selfDestructCountdown);
-                        notice_ = tak::client::selfDestructNotice(float(seconds));
+                        notice_ = ta::client::selfDestructNotice(float(seconds));
                         selfDestructWatch_ = send;
                         selfDestructArmWait_ = kSelfDestructArmWait;
                         selfDestructSeen_ = false;
@@ -4067,8 +4067,8 @@
                 }
                 return true;
             }
-            case tak::Act::Disco:
-            case tak::Act::Headbang: {
+            case ta::Act::Disco:
+            case ta::Act::Headbang: {
                 // One emote at a time -- don't even send the command while a disco or
                 // headbang is already running on the real-time clock. The busy
                 // notice reflects what you're ACTUALLY doing, not the key you pressed.
@@ -4077,9 +4077,9 @@
                     notice_ = frameDiscoActive(localPlayer_) ? "ALREADY GROOVING" : "ALREADY ROCKING";
                     noticeTimer_ = 2; return true;
                 }
-                bool disco = hotkeys_.match(int32_t(key), mod) == tak::Act::Disco;
-                tak::net::Command c;
-                c.kind = disco ? tak::net::Cmd::Disco : tak::net::Cmd::Headbang;
+                bool disco = hotkeys_.match(int32_t(key), mod) == ta::Act::Disco;
+                ta::net::Command c;
+                c.kind = disco ? ta::net::Cmd::Disco : ta::net::Cmd::Headbang;
                 if (selection_.empty()) issue(c); // living monarch fallback
                 else for (int id : selection_) {
                     const auto* u = frameUnitP(id);
@@ -4093,11 +4093,11 @@
                 return true;
             }
             // Selection commands (no armed order, no selection prerequisite).
-            case tak::Act::SelectAll:
+            case ta::Act::SelectAll:
                 selectOwned([](const UnitR&){ return true; });
                 return true;
-            case tak::Act::SelectSameType: {   // expand every type in the original selection
-                std::set<const tak::sim::UnitType*> types;
+            case ta::Act::SelectSameType: {   // expand every type in the original selection
+                std::set<const ta::sim::UnitType*> types;
                 for (int id : selection_)
                     if (const auto* u = frameUnitP(id); u && u->type)
                         types.insert(u->type);
@@ -4106,10 +4106,10 @@
                     selectOwned([&types](const UnitR& u){ return types.contains(u.type); });
                 return true;
             }
-            case tak::Act::SelectOnScreen:
+            case ta::Act::SelectOnScreen:
                 selectOwned([this](const UnitR& u){ return onScreen(u); });
                 return true;
-            case tak::Act::SelectMonarch: {   // select the Monarch and track it
+            case ta::Act::SelectMonarch: {   // select the Monarch and track it
                 int monarch = playerMonarchId_;
                 if (watchOnly()) {   // the monarch of the player on show
                     const int owner = hudPlayer();
@@ -4134,55 +4134,55 @@
             }
             // Category selects: all owned units matching a predicate (workers, army,
             // navy, casters, flyers, ...). Any-weapon checks scan the weapons list.
-            case tak::Act::SelectBuilders:
+            case ta::Act::SelectBuilders:
                 selectOwned([](const UnitR& u){ return u.type->isBuilder; });
                 return true;
-            case tak::Act::SelectFactory:
+            case ta::Act::SelectFactory:
                 selectOwned([](const UnitR& u){ return u.type->isBuilder && u.type->isStructure(); });
                 return true;
-            case tak::Act::SelectMelee:
+            case ta::Act::SelectMelee:
                 selectOwned([](const UnitR& u){
                     if (!u.type->canMove) return false;
                     for (const auto& w : u.type->weapons) if (w.melee) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectMagic:   // casters carry a personal mana pool
+            case ta::Act::SelectMagic:   // casters carry a personal mana pool
                 selectOwned([](const UnitR& u){ return u.type->maxMana > 0 && u.type->canMove; });
                 return true;
-            case tak::Act::SelectBoats:
+            case ta::Act::SelectBoats:
                 selectOwned([](const UnitR& u){
-                    return u.type->domain == tak::sim::UnitType::Domain::Water;
+                    return u.type->domain == ta::sim::UnitType::Domain::Water;
                 });
                 return true;
-            case tak::Act::SelectBallistic:
+            case ta::Act::SelectBallistic:
                 selectOwned([](const UnitR& u){
                     for (const auto& w : u.type->weapons) if (w.ballistic) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectTroops:   // mobile armed, no navy, not the Monarch
+            case ta::Act::SelectTroops:   // mobile armed, no navy, not the Monarch
                 selectOwned([](const UnitR& u){
                     if (!u.type->canMove || u.type->commander) return false;
-                    if (u.type->domain == tak::sim::UnitType::Domain::Water) return false;
+                    if (u.type->domain == ta::sim::UnitType::Domain::Water) return false;
                     for (const auto& w : u.type->weapons) if (w.damage > 0) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectArmed:    // anything with a weapon except the Monarch
+            case ta::Act::SelectArmed:    // anything with a weapon except the Monarch
                 selectOwned([](const UnitR& u){
                     if (u.type->commander) return false;
                     for (const auto& w : u.type->weapons) if (w.damage > 0) return true;
                     return false;
                 });
                 return true;
-            case tak::Act::SelectOnScreenType: {   // on-screen units of the selected type
+            case ta::Act::SelectOnScreenType: {   // on-screen units of the selected type
                 const auto* first = selection_.empty() ? nullptr : frameUnitP(selection_.front());
                 const auto* t = first ? first->type : nullptr;
                 if (t) selectOwned([this, t](const UnitR& u){ return u.type == t && onScreen(u); });
                 return true;
             }
-            case tak::Act::SelectFlying:
+            case ta::Act::SelectFlying:
                 selectOwned([](const UnitR& u){ return u.type->canFly; });
                 return true;
             default: break;
@@ -4192,74 +4192,74 @@
         // Order commands need at least one selected unit.
         if (selection_.empty()) return false;
         switch (hotkeys_.match(int32_t(key), mod)) {
-            case tak::Act::FightMove: pendingCmd_ = 'f'; return true;
-            case tak::Act::Move:      pendingCmd_ = 'm'; return true;
-            case tak::Act::Attack:    pendingCmd_ = 'a'; return true;
-            case tak::Act::Patrol:    pendingCmd_ = 'p'; return true;
-            case tak::Act::Guard:     pendingCmd_ = 'g'; return true;
-            case tak::Act::Heal:      pendingCmd_ = 'r'; return true;   // repair a damaged friendly
-            case tak::Act::Load:      pendingCmd_ = 'l'; return true;   // click a unit to carry
-            case tak::Act::Unload:    pendingCmd_ = 'u'; return true;   // click the drop destination
-            case tak::Act::ClearOrders:                       // clear the whole order queue
+            case ta::Act::FightMove: pendingCmd_ = 'f'; return true;
+            case ta::Act::Move:      pendingCmd_ = 'm'; return true;
+            case ta::Act::Attack:    pendingCmd_ = 'a'; return true;
+            case ta::Act::Patrol:    pendingCmd_ = 'p'; return true;
+            case ta::Act::Guard:     pendingCmd_ = 'g'; return true;
+            case ta::Act::Heal:      pendingCmd_ = 'r'; return true;   // repair a damaged friendly
+            case ta::Act::Load:      pendingCmd_ = 'l'; return true;   // click a unit to carry
+            case ta::Act::Unload:    pendingCmd_ = 'u'; return true;   // click the drop destination
+            case ta::Act::ClearOrders:                       // clear the whole order queue
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::CycleWeapon:                       // cycle active weapon
+            case ta::Act::CycleWeapon:                       // cycle active weapon
                 if (const auto* u = multiWeaponSel()) {
                     int n = int(u->type->weapons.size());
                     selectWeapon((u->weaponSlot + 1) % n);
                 }
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::Stop:                              // stop (immediate)
+            case ta::Act::Stop:                              // stop (immediate)
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::ToggleCloak: {   // cloak on if any selected cloaker is off
+            case ta::Act::ToggleCloak: {   // cloak on if any selected cloaker is off
                 bool anyOn = false, anyCloaker = false;
                 for (int id : selection_)
                     if (const auto* u = frameUnitP(id); u && u->type && u->type->canCloak) {
                         anyCloaker = true;
                         if (u->cloakOn) anyOn = true;
                     }
-                if (anyCloaker) issuePerUnit(tak::net::Cmd::Cloak, anyOn ? 0 : 1);
+                if (anyCloaker) issuePerUnit(ta::net::Cmd::Cloak, anyOn ? 0 : 1);
                 pendingCmd_ = 0;
                 return true;
             }
-            case tak::Act::ToggleGate: {   // open/close: toggle active on gates (onoffable)
+            case ta::Act::ToggleGate: {   // open/close: toggle active on gates (onoffable)
                 bool anyActive = false, anyGate = false;
                 for (int id : selection_)
                     if (const auto* u = frameUnitP(id); u && u->type && u->type->onOffable) {
                         anyGate = true;
                         if (u->active) anyActive = true;
                     }
-                if (anyGate) issuePerUnit(tak::net::Cmd::SetActive, anyActive ? 0 : 1);
+                if (anyGate) issuePerUnit(ta::net::Cmd::SetActive, anyActive ? 0 : 1);
                 pendingCmd_ = 0;
                 return true;
             }
-            case tak::Act::TrackSelection:                    // track/untrack selection
+            case ta::Act::TrackSelection:                    // track/untrack selection
                 trackSel_ = !trackSel_;
                 if (trackSel_) centerOnSelection();
                 pendingCmd_ = 0;
                 return true;
-            case tak::Act::NextUnit: cycleNextUnit(); return true;
+            case ta::Act::NextUnit: cycleNextUnit(); return true;
             default: return false;
         }
     }
 
     void GameView::issueSquad(int unitId, int val) {   // val: 0 none, +N group N, -N formation N
-        tak::net::Command c;
-        c.kind = tak::net::Cmd::SetSquad;
+        ta::net::Command c;
+        c.kind = ta::net::Cmd::SetSquad;
         c.unitId = unitId;
         c.targetId = val;
         issue(c);
@@ -4338,12 +4338,12 @@
                  const std::string& value, int id, bool enabled, FieldText text) {
         // MODERN's descenders: the label rises by part of them to stay off the box, and
         // the value is a size smaller so ascenders and descenders both sit inside it.
-        blockText(label, x, y - tak::uiTextDescent(1.6f) * 0.6f, 1.6f, {150, 155, 170, 255});
+        blockText(label, x, y - ta::uiTextDescent(1.6f) * 0.6f, 1.6f, {150, 155, 170, 255});
         SDL_FRect r{x, y + 14, w, 22};
         // (A shown password is MODERN's in either UI FONT, at MODERN's size and place.)
         std::optional<ExactText> exact;
         if (text == FieldText::Shown) exact.emplace();
-        const float vpx = tak::modernUiText() ? 1.6f : 1.8f;
+        const float vpx = ta::modernUiText() ? 1.6f : 1.8f;
         bool active = enabled && (lbField_ == id);
         SDL_SetRenderDrawColor(ren_, 24, 26, 34, 255);
         SDL_RenderFillRectF(ren_, &r);
@@ -4352,7 +4352,7 @@
         SDL_RenderDrawRectF(ren_, &r);
         const SDL_Color ink = enabled ? SDL_Color{225, 230, 240, 255} : SDL_Color{110, 115, 125, 255};
         const std::string caret = active ? "_" : "";
-        const float ty = tak::modernUiText() ? r.y + (r.h - 7 * vpx - tak::uiTextDescent(vpx)) / 2 : y + 20;
+        const float ty = ta::modernUiText() ? r.y + (r.h - 7 * vpx - ta::uiTextDescent(vpx)) / 2 : y + 20;
         if (text == FieldText::Hidden) {
             // A password: one pip per character, as many as the box holds, then the caret.
             // (The pips sit on the box's middle: they have no descenders to leave room for.)
@@ -4362,7 +4362,7 @@
         } else {
             // The END of a long value shows (where typing happens), and the text sits in
             // the box with its descenders (MODERN) clear of the border.
-            blockText(tak::uiTextFitStart(value + caret, vpx, w - 12), x + 6, ty, vpx, ink);
+            blockText(ta::uiTextFitStart(value + caret, vpx, w - 12), x + 6, ty, vpx, ink);
         }
         if (enabled) lobbyHots_.push_back({r, [this, id] { lbFocus(id); }});
     }
@@ -4377,7 +4377,7 @@
     }
 
     std::string GameView::readOta(const std::string& tntPath) const {
-        const auto ota = tak::vpath::replaceExtension(tntPath,".ota");
+        const auto ota = ta::vpath::replaceExtension(tntPath,".ota");
         try { auto d = vfs_.read(ota); return std::string(d.begin(), d.end()); }
         catch (...) { return {}; }
     }
@@ -4401,7 +4401,7 @@
         // Snapped to the cells canPlace tests, so gap 0 really is edge to edge: the
         // old un-snapped spacing needed a spare cell to stop rounding pushing two
         // neighbours into one shared cell.
-        return tak::client::buildLineSites(placing_->footX, placing_->footZ, buildLineGap_, x0, z0, x1, z1);
+        return ta::client::buildLineSites(placing_->footX, placing_->footZ, buildLineGap_, x0, z0, x1, z1);
     }
 
     void GameView::voice(int unitId, const std::string& event) {
@@ -4462,7 +4462,7 @@
         } catch (const std::exception&) {}
     }
 
-    void GameView::spawnWeaponImpact(const tak::sim::Weapon& weapon,
+    void GameView::spawnWeaponImpact(const ta::sim::Weapon& weapon,
                                      float x, float z, float alt,
                                      std::optional<std::array<int32_t,3>> position, bool struckUnit) {
         // Native 529c10: only an environmental water hit selects the water
@@ -4482,7 +4482,7 @@
         }
     }
 
-    void GameView::buildPieceMeta(const tak::tdo::Object& o, PieceMeta& m, bool isRoot) {
+    void GameView::buildPieceMeta(const ta::tdo::Object& o, PieceMeta& m, bool isRoot) {
         // One record per texture animation (first use decides the order, which is the
         // order of the frame words in the local geometry key); a frame feeds the shadow
         // if any primitive using it has shadow masks.
@@ -4544,15 +4544,15 @@
         if (!statueSidesLoaded_) {
             statueSidesLoaded_=true;
             if (const auto data=vfs_.tryRead("gamedata/sidedata.tdf")) try {
-                const auto sides=tak::tdf::parseText(std::string(data->begin(),data->end()),"gamedata/sidedata.tdf");
+                const auto sides=ta::tdf::parseText(std::string(data->begin(),data->end()),"gamedata/sidedata.tdf");
                 for (const auto& [key,node]:sides.children)
-                    statueSides_.push_back({tak::hpi::MountSet::key(node.valueOr("nameprefix","")),
-                                            tak::hpi::MountSet::key(node.valueOr("stoneanim","")),
-                                            tak::hpi::MountSet::key(node.valueOr("frozenanim",""))});
+                    statueSides_.push_back({ta::hpi::MountSet::key(node.valueOr("nameprefix","")),
+                                            ta::hpi::MountSet::key(node.valueOr("stoneanim","")),
+                                            ta::hpi::MountSet::key(node.valueOr("frozenanim",""))});
             } catch (const std::exception&) {}
         }
         if (statueSides_.empty()) return {};
-        const std::string prefix=tak::hpi::MountSet::key(model.substr(0,3));
+        const std::string prefix=ta::hpi::MountSet::key(model.substr(0,3));
         const auto side=std::find_if(statueSides_.begin(),statueSides_.end(),
                                      [&](const auto& s){return !s[0].empty() && s[0]==prefix;});
         return (side==statueSides_.end() ? statueSides_.front() : *side)[frozen ? 2 : 1];
@@ -4583,7 +4583,7 @@
         auto it = explosionClasses_.find(cls);
         if (it == explosionClasses_.end() || it->second.empty()) return false;
         // Native 492fd0 scales one CRT draw into the class variant list.
-        const size_t variant = uint64_t(tak::sim::retailCrtRandom(smokeRandom_)) *
+        const size_t variant = uint64_t(ta::sim::retailCrtRandom(smokeRandom_)) *
                                it->second.size() / 32768u;
         const std::string& anim = it->second[variant];
         const EffectAnim* ea = effectFor(anim);
@@ -4591,7 +4591,7 @@
         // Native explosion classes advance their authored clock once per sim tick.
         effects_.push_back({ea, x, z, 0.0f, 0.0f, 0.0f, 1, alt,
                             true, front().gameTick});
-        static const bool kLog = tak::devEnv("TAK_FXLOG") != nullptr;
+        static const bool kLog = ta::devEnv("TA_FXLOG") != nullptr;
         if (kLog) std::fprintf(stderr, "t=%.2f effect '%s' anim '%s' (%zu frames)\n",
                                animClock_, cls.c_str(), anim.c_str(), ea->frames.size());
         return true;

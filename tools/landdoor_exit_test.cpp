@@ -48,7 +48,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 namespace {
 int failures=0,cases=0;
 std::string only;

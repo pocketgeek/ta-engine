@@ -1,6 +1,6 @@
 #pragma once
 
-namespace tak {
+namespace ta {
 
 // A mobile builder's queue is intent, not proof that a unit is being conjured.
 // Retail starts each production animation against the live output site. Keeping
@@ -44,4 +44,4 @@ void updateRetailFactoryAnimation(bool& active,int& lastSite,bool underConstruct
     }
 }
 
-} // namespace tak
+} // namespace ta

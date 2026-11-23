@@ -1,5 +1,5 @@
 // room_scope_test -- a room's messages count only while the server has the client in that
-// room: a real MpClient against a scripted loopback server (no game data, no takserver).
+// room: a real MpClient against a scripted loopback server (no game data, no taserver).
 //
 // The server answers a connection's messages in order, and what it sent a client as a
 // member of a room is still on its way when the client has left. The script plays the
@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 using S = net::MpClient::State;
 
 namespace {
@@ -395,7 +395,7 @@ void heldWatchCase(const std::filesystem::path& scratch) {
 int main() {
     // The client's data and cache folders: empty scratch ones (nothing here reads or writes a profile).
     const auto scratch = std::filesystem::temp_directory_path() /
-        ("tak-room-scope-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("ta-room-scope-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(scratch / "data");
     std::filesystem::create_directories(scratch / "cache");
     for (const auto& run : {lobbyCases, watchCase, heldWatchCase}) {

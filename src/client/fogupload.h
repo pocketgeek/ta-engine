@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace tak {
+namespace ta {
 // Uploads the local display plane (client/retailfog.h, one byte per 32 px cell)
 // into a texture. Overlay: the main view's fog, two texels per cell each way
 // (retailfog::writeTexels, retail's 0x498b60 blend), so the texture is

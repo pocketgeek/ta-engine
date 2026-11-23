@@ -27,7 +27,7 @@
 #include <limits>
 #include <string>
 
-using namespace tak::net;
+using namespace ta::net;
 
 static int g_fail = 0, g_checks = 0;
 static void check(bool cond, const char* what, const std::string& detail = {}) {
@@ -50,7 +50,7 @@ static GameOptions fxOpts(uint8_t stress) {
     GameOptions o;
     o.crusades = 3; o.forfeitSelfDestruct = 4; o.gameMods = 2; o.speed = 17; o.speedUnlock = 5;   // gameMods: a raw byte here (0/1 in use) so the golden bytes stay
     o.unitCap = 0xBEEF; o.monarchExpendable = 6; o.stressTest = stress; o.fogExplored = 8;
-    o.benchmark = 11; o.randomStarts = 9; o.doubleSight = 10; o.pathfindingMode = tak::sim::PathfindingMode::Legion;
+    o.benchmark = 11; o.randomStarts = 9; o.doubleSight = 10; o.pathfindingMode = ta::sim::PathfindingMode::Legion;
     o.allowSpectators = 12; o.mapScenario = 13; o.powerCodes = 14;
     return o;
 }
@@ -75,7 +75,7 @@ static void fxSlots(SlotInfo (&s)[kMaxSlots], bool empty) {
     s[7] = {3, 0, 0, 7, 0, 2, ""};
 }
 
-static std::string dumpCfg(const tak::sim::MatchConfig& c) {
+static std::string dumpCfg(const ta::sim::MatchConfig& c) {
     std::string s; char t[256];
     std::snprintf(t, sizeof t, "cap=%d mx=%d ds=%d pm=%d st=%d si=%d bm=%d rs=%d seed=%u crt=%d ms=%d pc=%d pmr=%d rmr=%d rlo=%d mana=%a pr=%d svp=%d n=%zu;",
         c.unitCap, c.monarchExpendable, c.doubleSight, int(c.pathfindingMode), c.stressTest, c.stressImmediate,
@@ -163,7 +163,7 @@ static void replayHeaders() {
     SlotInfo slots[kMaxSlots]; fxSlots(slots, false);
     for (const char* mission : {"", "camp03"}) {
         ReplayHeader h = header(fxOpts(7), slots, mission);
-        check(h.engineVersion == tak::kVersion, "replay header engine version");
+        check(h.engineVersion == ta::kVersion, "replay header engine version");
         h.engineVersion = "9.9.9";   // version-neutral golden: the release and protocol are not pinned here
         Writer w; writeReplayHeader(w, h);
         for (int i = 8; i < 12; ++i) w.b[size_t(i)] = 0;
@@ -201,7 +201,7 @@ static void matchConfigs() {
 // The real loader, through a file: header -> MatchConfig, skirmish and mission.
 static void replayLoader() {
     namespace fs = std::filesystem;
-    const fs::path path = fs::temp_directory_path() / ("tak-match-codec-" + tak::crypto::toHex(tak::crypto::randomVec(8)) + ".takrep");
+    const fs::path path = fs::temp_directory_path() / ("ta-match-codec-" + ta::crypto::toHex(ta::crypto::randomVec(8)) + ".tarep");
     SlotInfo slots[kMaxSlots]; fxSlots(slots, false);
     struct { const char* mission; uint8_t stress; const char* want; } cases[] = {
         {"", 1, "cap=48879 mx=1 ds=1 pm=4 st=1 si=1 bm=11 rs=1 seed=1592594996 crt=1 ms=1 pc=1 pmr=1 rmr=1 rlo=0 mana=0x0p+0 pr=1 svp=-1 n=6;[1 2 1 3f800000 0 0][1 4 0 40000000 1 0][0 2 6 3f800000 0 0][1 3 2 3f800000 1 1][0 1 5 3f800000 0 0][1 1 3 3f800000 1 0]"},

@@ -1,7 +1,7 @@
 #pragma once
 
 // A non-blocking, buffered TCP connection with the protocol's length-prefix
-// framing. Shared by takserver and the takclient client. One Conn per socket.
+// framing. Shared by taserver and the taclient client. One Conn per socket.
 
 #include <cstdint>
 #include <deque>
@@ -12,7 +12,7 @@
 
 #include "net/protocol.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // One received message: kind + payload bytes (the payload excludes the kind byte).
 struct Frame {
@@ -147,4 +147,4 @@ void limitUnsent(int fd);
 // BytesInFlight). -1 when the query fails or the platform has none.
 long kernelQueued(int fd, uint64_t written = 0);
 
-}  // namespace tak::net
+}  // namespace ta::net

@@ -6,8 +6,8 @@
 #include <memory>
 #include <stdexcept>
 namespace cart {
-TerrainOverlay terrainOverlay(const tak::tnt::Map& map,const tak::sim::TypeRegistry& registry,
-    const tak::hpi::Vfs& vfs,OverlayKind kind,const std::string& unitType,const std::vector<PlacedUnit>& occupants,const std::atomic_bool* cancel) {
+TerrainOverlay terrainOverlay(const ta::tnt::Map& map,const ta::sim::TypeRegistry& registry,
+    const ta::hpi::Vfs& vfs,OverlayKind kind,const std::string& unitType,const std::vector<PlacedUnit>& occupants,const std::atomic_bool* cancel) {
     const auto cancelled=[&] {return cancel && cancel->load(std::memory_order_relaxed);};
     if(cancelled())return {};
     if(map.width<=0 || map.height<=0 || map.heights.size()!=size_t(map.width)*map.height)
@@ -16,11 +16,11 @@ TerrainOverlay terrainOverlay(const tak::tnt::Map& map,const tak::sim::TypeRegis
     const auto* type=registry.find(unitType);
     const bool classify=kind==OverlayKind::Movement || kind==OverlayKind::Buildability;
     if(classify && !type)throw std::runtime_error("Choose a unit type in the Units palette first.");
-    std::unique_ptr<tak::sim::World> world;
+    std::unique_ptr<ta::sim::World> world;
     if(classify) {
-        world=std::make_unique<tak::sim::World>();
+        world=std::make_unique<ta::sim::World>();
         world->setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
-        world->buildNavClasses(registry);tak::sim::registerMapFeatures(*world,map,vfs,&registry);
+        world->buildNavClasses(registry);ta::sim::registerMapFeatures(*world,map,vfs,&registry);
         if(kind==OverlayKind::Buildability) {
             world->setPlayerCount(8);
             for(const auto& occupant:occupants) {

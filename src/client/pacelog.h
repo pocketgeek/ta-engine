@@ -1,5 +1,5 @@
 #pragma once
-// TAK_PACELOG=<1|path> -- a debug-only per-frame pacing record of the lockstep drain
+// TA_PACELOG=<1|path> -- a debug-only per-frame pacing record of the lockstep drain
 // (src/client/dev.h; nothing of it exists in a release build, and nothing it does touches
 // the sim or the wire). One record per rendered frame:
 //   wall ms since the previous frame, ticks the sim finished in it (what the player sees: the
@@ -8,7 +8,7 @@
 //   512-tick fast-forward fired.
 // At exit it prints one summary line: ticks-per-frame histogram, zero-tick frames, frames at
 // or over twice the nominal tick count (the median), the longest burst and where, p99 frame
-// ms, inbox p99 and the fast-forward count. TAK_PACELOG=<path> also writes the records, one
+// ms, inbox p99 and the fast-forward count. TA_PACELOG=<path> also writes the records, one
 // line each, to <path>. Report-only: tools/pace_check.sh runs it, no gate reads it.
 //
 // The presentation and worker columns (WE E0.1) follow the original seven on each record line:
@@ -31,8 +31,8 @@
 // The last column (WE E3.3) is the backlog: ticks delivered but not yet simulated (the jitter buffer
 // plus, with the sim worker, the ticks pushed to it and not finished), sampled after the frame's
 // drain. The PACE line gives its p99 and max: the command latency a client-bound game builds up.
-// TAK_SIM_SLOW_US=N (debug) sleeps N us per simulated tick, to play a slow client.
-// TAK_VSYNC_HZ=N paces the headless --mpai frame loop to an N Hz deadline (a fake vsync).
+// TA_SIM_SLOW_US=N (debug) sleeps N us per simulated tick, to play a slow client.
+// TA_VSYNC_HZ=N paces the headless --mpai frame loop to an N Hz deadline (a fake vsync).
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -41,7 +41,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 class PaceLog {
 public:
@@ -226,4 +226,4 @@ private:
     std::vector<Frame> frames_;
 };
 
-}  // namespace tak
+}  // namespace ta

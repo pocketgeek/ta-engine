@@ -8,7 +8,7 @@ from server_public_test import server
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--server',type=Path,required=True);p.add_argument('--client',type=Path,required=True);p.add_argument('--data',type=Path,required=True);a=p.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-mod-net-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-mod-net-') as tmp:
         root=Path(tmp)
         def install(name):
             target=root/name;target.mkdir()
@@ -26,8 +26,8 @@ def main():
             assert process.poll() is None
             log=(root/'log').read_text()
             assert 'DESYNCED' not in log and 'REFEREE SUSPECT' not in log,log
-            assert list((root/'server-cache'/'ModCache').glob('*.takmods'))
-            assert list((root/'peer-cache'/'ModCache').glob('*.takmods'))
+            assert list((root/'server-cache'/'ModCache').glob('*.tamods'))
+            assert list((root/'peer-cache'/'ModCache').glob('*.tamods'))
             # Downloads go to the per-user folders: no data folder gains a cache.
             for data in (host,peer,referee):
                 for name in ('ModCache','MapCache'):

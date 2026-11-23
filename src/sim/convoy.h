@@ -47,14 +47,14 @@
 //
 // Hashed state (World::stateHash folds checksum() while the table is not
 // empty): the table only. The indexes are derived from it and checked against
-// a rebuild by indexesMatch() under TAK_LEGION_VERIFY.
+// a rebuild by indexesMatch() under TA_LEGION_VERIFY.
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <set>
 #include <tuple>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // The order classes a convoy keeps apart: a fight and a patrol sent to one
 // point a moment apart stay separate orders.

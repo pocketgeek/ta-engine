@@ -574,7 +574,7 @@ CASES = {
 
 @contextlib.contextmanager
 def lan_server(binary, data, root):
-    """takserver --lan (a player's LOCAL SERVER): no accounts, every interface."""
+    """taserver --lan (a player's LOCAL SERVER): no accounts, every interface."""
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
@@ -607,10 +607,10 @@ def main():
     ap.add_argument('--case', choices=sorted(CASES), action='append')
     ap.add_argument('--only', action='append', help='run just these scenarios (names as printed)')
     a = ap.parse_args()
-    os.environ['TAK_STALL_MS'], os.environ['TAK_DROP_WAIT_MS'] = str(STALL_MS), str(WAIT_MS)
+    os.environ['TA_STALL_MS'], os.environ['TA_DROP_WAIT_MS'] = str(STALL_MS), str(WAIT_MS)
     failed = []
     for case in a.case or sorted(CASES):
-        with tempfile.TemporaryDirectory(prefix='tak-host-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='ta-host-') as tmp:
             root = Path(tmp)
             launch = (lan_server(a.server.resolve(), a.data.resolve(), root) if case == 'lan' else
                       server(a.server.resolve(), a.data.resolve(), root, '--no-auth', '--max-games', str(MAX_GAMES)))

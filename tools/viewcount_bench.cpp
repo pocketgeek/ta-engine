@@ -32,7 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 namespace {
 
@@ -248,13 +248,13 @@ bool load(const char* path,Terrain& t,int& players,std::vector<Move>& moves) {
 
 int situation(const char* file,const char* data,PathfindingMode mode,int warm,int ticks,int reps,bool atomic,
               const char* savePath) {
-    const auto s=tak::scn::load(file);
-    tak::scn::BuildOptions bo;
+    const auto s=ta::scn::load(file);
+    ta::scn::BuildOptions bo;
     bo.mode=mode;bo.serial=false;bo.data=data;
-    auto b=tak::scn::build(s,bo);
+    auto b=ta::scn::build(s,bo);
     if (!b->skipped.empty()) {std::fprintf(stderr,"%s\n",b->skipped.c_str());return 77;}
     World& w=*b->world;
-    tak::scn::OrderFeed feed(s,*b);
+    ta::scn::OrderFeed feed(s,*b);
     Terrain t;
     t.width=w.viewPlaneW();t.height=w.viewPlaneH();
     t.heights=retailExplorationHeights(w.mapW(),w.mapH(),uint8_t(w.mapSea()),

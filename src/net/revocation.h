@@ -4,7 +4,7 @@
 
 struct x509_st;
 struct ssl_st;
-namespace tak::net {
+namespace ta::net {
 // Online revocation for a verified certificate, from the CRL its issuer names in
 // the certificate's CRL Distribution Points. Let's Encrypt no longer runs OCSP, so
 // CRLs are the only online source. Fetching is soft-fail: an unreachable or

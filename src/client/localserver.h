@@ -1,6 +1,6 @@
 #pragma once
 
-// The private takserver a single-player / campaign / benchmark session runs on
+// The private taserver a single-player / campaign / benchmark session runs on
 // (AIs run only on a server). One owner per session: the destructor stops the
 // child, so every way out of a session -- a failed launch looping back to the
 // menu, an error return, the normal teardown -- takes the server with it. The
@@ -27,7 +27,7 @@
   #include <unistd.h>
 #endif
 
-namespace tak {
+namespace ta {
 
 class LocalServer {
 public:
@@ -42,9 +42,9 @@ public:
     bool start(const std::string& program, const std::vector<std::string>& args) {
         stop();
 #ifdef _WIN32
-        const auto executable = tak::u8path(program).wstring();
+        const auto executable = ta::u8path(program).wstring();
         std::wstring cmd = quoteWindowsArgument(executable);
-        for (const auto& a : args) cmd += L" " + quoteWindowsArgument(tak::u8path(a).wstring());
+        for (const auto& a : args) cmd += L" " + quoteWindowsArgument(ta::u8path(a).wstring());
         // Inheritable copies of the client's standard handles, passed as the only
         // handles the child inherits (a GUI launch with none keeps the child's empty).
         STARTUPINFOEXW si{}; si.StartupInfo.cb = sizeof(si);
@@ -181,4 +181,4 @@ private:
 #endif
 };
 
-}  // namespace tak
+}  // namespace ta

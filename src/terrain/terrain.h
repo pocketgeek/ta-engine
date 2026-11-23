@@ -13,9 +13,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::terrain {
+namespace ta::terrain {
 
 // Composites TNT map terrain from the content-addressed section JPGs the VFS
 // resolves as terrain/<hexkey>.jpg (from terrain.hpi). Each 32px map block
@@ -125,4 +125,4 @@ private:
     uint64_t decodes_ = 0, redecodes_ = 0, evictions_ = 0, evictedBytes_ = 0;
 };
 
-} // namespace tak::terrain
+} // namespace ta::terrain

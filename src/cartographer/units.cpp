@@ -12,16 +12,16 @@
 
 namespace cart {
 
-tak::crt::Scenario loadScenario(const tak::hpi::Vfs& vfs, const std::string& crtPath) {
+ta::crt::Scenario loadScenario(const ta::hpi::Vfs& vfs, const std::string& crtPath) {
     if(!vfs.has(crtPath))return {};
-    auto scenario=tak::crt::parse(vfs.read(crtPath));
+    auto scenario=ta::crt::parse(vfs.read(crtPath));
     if(scenario.version==0)throw std::runtime_error("Scenario file is damaged: "+crtPath);
-    try {const auto info=vfs.read(tak::vpath::replaceExtension(crtPath,".editor"));applyScenarioInfo(scenario,std::string(info.begin(),info.end()));}
+    try {const auto info=vfs.read(ta::vpath::replaceExtension(crtPath,".editor"));applyScenarioInfo(scenario,std::string(info.begin(),info.end()));}
     catch(const std::exception&) {} // Optional editor-only metadata.
     return scenario;
 }
 
-std::vector<PlacedUnit> toPlaced(const tak::crt::Scenario& s, const tak::sim::TypeRegistry* registry) {
+std::vector<PlacedUnit> toPlaced(const ta::crt::Scenario& s, const ta::sim::TypeRegistry* registry) {
     std::vector<PlacedUnit> out;
     out.reserve(s.units.size());
     for (const auto& u : s.units) {
@@ -45,14 +45,14 @@ std::vector<PlacedUnit> toPlaced(const tak::crt::Scenario& s, const tak::sim::Ty
     return out;
 }
 
-std::vector<uint8_t> saveScenario(tak::crt::Scenario base,
+std::vector<uint8_t> saveScenario(ta::crt::Scenario base,
                                   const std::vector<PlacedUnit>& units) {
     base.version = 1.0f;
     if (base.players.empty()) base.players.resize(9);   // retail always writes 9
     base.units.clear();
     base.units.reserve(units.size());
     for (const auto& p : units) {
-        tak::crt::Unit u;
+        ta::crt::Unit u;
         u.objectName = p.type;
         u.uniqueName = p.name;
         u.x = int32_t(std::floor((p.x-p.footX*8.0f) / 16.0f));   // pixel -> cell
@@ -67,14 +67,14 @@ std::vector<uint8_t> saveScenario(tak::crt::Scenario base,
         u.angle = int32_t(a);
         base.units.push_back(std::move(u));
     }
-    return tak::crt::write(base);
+    return ta::crt::write(base);
 }
 
-std::vector<std::string> loadUseOnly(const tak::hpi::Vfs& vfs, const std::string& tdfPath) {
+std::vector<std::string> loadUseOnly(const ta::hpi::Vfs& vfs, const std::string& tdfPath) {
     std::vector<std::string> out;
     std::vector<uint8_t> d;
     try { d = vfs.read(tdfPath); } catch (const std::exception&) { return out; }
-    tak::tdf::Node root = tak::tdf::parseText(std::string(d.begin(), d.end()), tdfPath);
+    ta::tdf::Node root = ta::tdf::parseText(std::string(d.begin(), d.end()), tdfPath);
     for (const std::string& name : root.childOrder) {   // childOrder is lowercased
         std::string up = name;
         std::transform(up.begin(), up.end(), up.begin(), [](unsigned char c){return char(std::toupper(c));});
@@ -89,13 +89,13 @@ std::string writeUseOnly(const std::vector<std::string>& types) {
     return s;
 }
 
-std::vector<std::string> unitTypeNames(const tak::hpi::Vfs& vfs) {
+std::vector<std::string> unitTypeNames(const ta::hpi::Vfs& vfs) {
     std::vector<std::string> names;
     for (const std::string& p : vfs.list("units")) {
-        std::string ext = tak::vpath::extension(p);
+        std::string ext = ta::vpath::extension(p);
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){return char(std::tolower(c));});
         if (ext != ".fbi") continue;
-        std::string stem = tak::vpath::stem(p);
+        std::string stem = ta::vpath::stem(p);
         std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char c){return char(std::toupper(c));});
         names.push_back(stem);
     }

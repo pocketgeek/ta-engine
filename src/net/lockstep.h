@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-namespace tak::net {
+namespace ta::net {
 
 // Player command wire format, shared by the client and server and reused by the
 // sim's applyCommand(). This was originally the payload of a 2-peer TCP lockstep
@@ -134,4 +134,4 @@ struct SelectionOrder {
     uint32_t bytes = 0;
 };
 
-} // namespace tak::net
+} // namespace ta::net

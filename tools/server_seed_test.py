@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""takserver --seed N pins every game's seed, N = 0 included; no --seed rolls one per game.
+"""taserver --seed N pins every game's seed, N = 0 included; no --seed rolls one per game.
 
 Regression for the Ulasem benchmark "irreproducible hash" report: `--seed 0` used to mean
 "unset" (a random seed per game), so a seed-0 benchmark run was a different game each time.
@@ -29,7 +29,7 @@ def game_seed(port,h,name):
 
 
 def seeds(binary,data,*options_):
-    with tempfile.TemporaryDirectory(prefix='tak-seed-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-seed-') as tmp:
         with server(binary,data,Path(tmp),*options_) as (port,h,process):
             return [game_seed(port,h,'Seed%d'%i) for i in range(3)]
 

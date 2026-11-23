@@ -13,8 +13,8 @@ namespace cart {
 
 namespace {
 
-using tak::ai::ClassicCatalogue;
-using tak::ai::Difficulty;
+using ta::ai::ClassicCatalogue;
+using ta::ai::Difficulty;
 
 // The DEFAULT grammar's tokenizer, as ai::ClassicProfile::execute reads a line
 // (retail 0x538a20): C isspace separates tokens and '#' ends the line.
@@ -132,7 +132,7 @@ std::string inQuotes(std::string_view s) { return "'" + std::string(s) + "'"; }
 // ---- kinds -------------------------------------------------------------------------
 
 bool aiEngineFile(const std::string& key) {
-    return tak::hpi::MountSet::key(key) == tak::ai::kEngineProfileFile;
+    return ta::hpi::MountSet::key(key) == ta::ai::kEngineProfileFile;
 }
 AiKind aiKindOf(const std::string& key) {
     return aiEngineFile(key) ? AiKind::Level : AiKind::Default;
@@ -308,7 +308,7 @@ bool verifyAiDraft(const AiDraft& draft, std::string_view bytes, const ClassicCa
     auto fail = [&](std::string what) { if (mismatch) *mismatch = std::move(what); return false; };
     if (draft.asWritten) return bytes == draft.original ? true : fail("the file's bytes");
     if (draft.kind == AiKind::Default) {
-        tak::ai::ClassicProfile actual(catalogue.size()), groups(catalogue.size());
+        ta::ai::ClassicProfile actual(catalogue.size()), groups(catalogue.size());
         actual.execute(bytes, catalogue);
         std::string groupText;
         for (const auto& g : draft.groups) groupText += groupLine(g) + "\n";
@@ -332,8 +332,8 @@ bool verifyAiDraft(const AiDraft& draft, std::string_view bytes, const ClassicCa
         }
         return true;
     }
-    tak::ai::Profile actual, expected;
-    tak::ai::applyProfileText(bytes, actual);
+    ta::ai::Profile actual, expected;
+    ta::ai::applyProfileText(bytes, actual);
     for (const auto& [key, rule] : draft.units) {
         if (rule.weight) expected.weight[key] = *rule.weight;
         if (rule.limit) expected.limit[key] = *rule.limit;
@@ -405,10 +405,10 @@ AiDraft parseAiDraft(std::string_view text, AiKind kind, const ClassicCatalogue&
             if (!classicCanSingleOut(catalogue, word)) return asWritten;
             if (weight) {
                 if (rule.chance) return asWritten;
-                rule.chance = tak::ai::classicScaledPref(100, tak::ai::classicAtof(parts[2]));
+                rule.chance = ta::ai::classicScaledPref(100, ta::ai::classicAtof(parts[2]));
             } else {
                 if (rule.limit) return asWritten;
-                rule.limit = tak::ai::classicAtoi(parts[2]);
+                rule.limit = ta::ai::classicAtoi(parts[2]);
             }
         } else {
             int v = 0;
@@ -460,7 +460,7 @@ bool makeEditable(AiDraft& draft, const ClassicCatalogue& catalogue, std::string
     }
     std::string bytes = writeAiDraft(out);
     if (draft.kind == AiKind::Default) {
-        tak::ai::ClassicProfile original(catalogue.size());
+        ta::ai::ClassicProfile original(catalogue.size());
         original.execute(draft.original, catalogue);
         for (auto& [key, rule] : out.units) {
             const auto i = catalogue.byName.at(key);
@@ -468,15 +468,15 @@ bool makeEditable(AiDraft& draft, const ClassicCatalogue& catalogue, std::string
             if (rule.limit) rule.limit = original.limit[i];
         }
         bytes = writeAiDraft(out);
-        tak::ai::ClassicProfile converted(catalogue.size());
+        ta::ai::ClassicProfile converted(catalogue.size());
         converted.execute(bytes, catalogue);
         for (size_t i = 0; i < catalogue.size(); ++i)
             if (converted.pref[i] != original.pref[i] || converted.limit[i] != original.limit[i])
                 return refuse("converting would change " + catalogue.names[i]);
     } else {
-        tak::ai::Profile original, converted;
-        tak::ai::applyProfileText(draft.original, original);
-        tak::ai::applyProfileText(bytes, converted);
+        ta::ai::Profile original, converted;
+        ta::ai::applyProfileText(draft.original, original);
+        ta::ai::applyProfileText(bytes, converted);
         if (original.weight != converted.weight || original.limit != converted.limit)
             return refuse("converting would change a unit's weight or limit");
     }
@@ -508,8 +508,8 @@ namespace {
 
 // What one side's builders can reach from its Monarch (TypeRegistry::buildable,
 // which also covers the Zhon's mobile builders).
-struct SideRoster { std::string side; std::vector<const tak::sim::UnitType*> units; };
-std::vector<SideRoster> sideRosters(const tak::sim::TypeRegistry& registry) {
+struct SideRoster { std::string side; std::vector<const ta::sim::UnitType*> units; };
+std::vector<SideRoster> sideRosters(const ta::sim::TypeRegistry& registry) {
     std::map<std::string, std::set<std::string>> reach;
     for (const auto& [id, type] : registry.types()) {
         if (!type.commander || type.side.empty()) continue;
@@ -532,14 +532,14 @@ std::vector<SideRoster> sideRosters(const tak::sim::TypeRegistry& registry) {
     }
     return out;
 }
-std::string classicName(const tak::sim::UnitType& t) {
+std::string classicName(const ta::sim::UnitType& t) {
     return lowered(t.classicFbi.unitName.empty() ? t.id : t.classicFbi.unitName);
 }
-std::string unitLabel(const tak::sim::UnitType& t) { return t.name.empty() ? t.id : t.name; }
+std::string unitLabel(const ta::sim::UnitType& t) { return t.name.empty() ? t.id : t.name; }
 
 } // namespace
 
-std::set<std::string> aiReachableUnits(const tak::sim::TypeRegistry& registry) {
+std::set<std::string> aiReachableUnits(const ta::sim::TypeRegistry& registry) {
     std::set<std::string> out;
     for (const auto& side : sideRosters(registry))
         for (const auto* t : side.units)
@@ -550,7 +550,7 @@ std::set<std::string> aiReachableUnits(const tak::sim::TypeRegistry& registry) {
 std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes, const AiRoster& roster) {
     using S = AiIssue::Severity;
     std::vector<AiIssue> out;
-    const std::string file = tak::hpi::MountSet::key(key);
+    const std::string file = ta::hpi::MountSet::key(key);
     auto issue = [&](S s, int line, std::string unit, std::string message) {
         out.push_back({s, file, line, std::move(unit), std::move(message)});
     };
@@ -571,7 +571,7 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
     for (size_t i = 1; i < catalogue.size(); ++i) classicWords.push_back(catalogue.names[i]);
     for (const auto& [word, members] : catalogue.categories) classicWords.push_back(word);
 
-    std::optional<tak::ai::ClassicProfile> classic;
+    std::optional<ta::ai::ClassicProfile> classic;
     if (kind == AiKind::Default) { classic.emplace(catalogue.size()); classic->execute(bytes, catalogue); }
 
     for (const auto& l : lines) {
@@ -658,15 +658,15 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
     if (!roster.registry) return out;
 
     // Sides: what this file switches off, by the engine's own reading -- for
-    // ai/takengine.txt in each level (over its own table), the levels a finding holds
+    // ai/taengine.txt in each level (over its own table), the levels a finding holds
     // for named once.
-    std::vector<std::pair<Difficulty, tak::ai::Profile>> profiles;
+    std::vector<std::pair<Difficulty, ta::ai::Profile>> profiles;
     if (engine)
         for (Difficulty d : kLevels) {
-            profiles.emplace_back(d, tak::ai::builtinProfile(d));
-            tak::ai::applyProfileText(bytes, profiles.back().second);
+            profiles.emplace_back(d, ta::ai::builtinProfile(d));
+            ta::ai::applyProfileText(bytes, profiles.back().second);
         }
-    auto off = [&](const tak::sim::UnitType& t, const tak::ai::Profile* profile) {
+    auto off = [&](const ta::sim::UnitType& t, const ta::ai::Profile* profile) {
         if (profile) {
             const auto w = profile->weight.find(t.id);
             const auto l = profile->limit.find(t.id);
@@ -677,13 +677,13 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
         return classic->pref[it->second] == 0 || classic->limit[it->second] == 0;
     };
     const auto sides = sideRosters(*roster.registry);
-    std::set<const tak::sim::UnitType*> reachable;
+    std::set<const ta::sim::UnitType*> reachable;
     for (const auto& side : sides)
         for (const auto* t : side.units) reachable.insert(t);
     std::vector<std::pair<std::string, std::vector<Difficulty>>> sideFindings;   // message, levels (in order)
     const size_t passes = engine ? profiles.size() : 1;
     for (size_t p = 0; p < passes; ++p) {
-        const tak::ai::Profile* profile = engine ? &profiles[p].second : nullptr;
+        const ta::ai::Profile* profile = engine ? &profiles[p].second : nullptr;
         for (const auto& side : sides) {
             bool anything = false, anyBuilder = false, builderOn = false, anyLode = false, lodeOn = false;
             for (const auto* t : side.units) {
@@ -718,7 +718,7 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
     std::set<std::string> named, unreachable;
     for (const auto& l : lines) {
         if (l.what != AiLine::What::Exact && l.what != AiLine::What::Overridden) continue;
-        const tak::sim::UnitType* t = nullptr;
+        const ta::sim::UnitType* t = nullptr;
         if (kind == AiKind::Default) t = l.unit < catalogue.types.size() ? catalogue.types[l.unit] : nullptr;
         else t = roster.registry->find(l.word);
         if (kind == AiKind::Level && l.weight) named.insert(l.word);
@@ -729,7 +729,7 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
         std::set<std::string> reported;
         auto anyBuiltin = [&](const std::string& id) {
             return std::any_of(std::begin(kLevels), std::end(kLevels),
-                               [&](Difficulty d) { return tak::ai::builtinProfile(d).weight.count(id) > 0; });
+                               [&](Difficulty d) { return ta::ai::builtinProfile(d).weight.count(id) > 0; });
         };
         for (const auto& side : sides)
             for (const auto* t : side.units)
@@ -739,7 +739,7 @@ std::vector<AiIssue> checkAiFile(const std::string& key, std::string_view bytes,
     return out;
 }
 
-std::vector<AiIssue> checkAiMap(const AiFiles& files, const std::string& aiProfile, const tak::hpi::Vfs& base,
+std::vector<AiIssue> checkAiMap(const AiFiles& files, const std::string& aiProfile, const ta::hpi::Vfs& base,
                                 const AiRoster& roster) {
     using S = AiIssue::Severity;
     std::vector<AiIssue> out;
@@ -755,8 +755,8 @@ std::vector<AiIssue> checkAiMap(const AiFiles& files, const std::string& aiProfi
                 out.push_back({S::Warning, {}, 0, {}, "aiprofile=" + aiProfile + " reads " + own +
                                ": the part after the last '.' is dropped"});
             const auto travel = travellingAiFiles(files, aiProfile);
-            const auto script = tak::ai::classicProfileScript(base, aiProfile, nullptr, &travel);
-            if (tak::hpi::MountSet::key(script.path) != own)
+            const auto script = ta::ai::classicProfileScript(base, aiProfile, nullptr, &travel);
+            if (ta::hpi::MountSet::key(script.path) != own)
                 out.push_back({S::Warning, {}, 0, {}, "no " + own + " in this map or the install; the AI falls back to ai/default.txt"});
         }
     }
@@ -781,7 +781,7 @@ std::string aiProfileFileKey(const std::string& name) {
         dot != std::string::npos && stem.find_first_of("/\\", dot) == std::string::npos)
         stem.erase(dot);
     if (stem.empty()) return {};
-    return tak::hpi::MountSet::key("ai/" + stem + ".txt");
+    return ta::hpi::MountSet::key("ai/" + stem + ".txt");
 }
 bool standardAiProfile(const std::string& name) {
     const auto key = aiProfileFileKey(name);
@@ -818,7 +818,7 @@ std::string aiProfileNameError(const std::string& name) {
 }
 
 bool aiFileTravels(const std::string& key, const std::string& aiProfile) {
-    const auto k = tak::hpi::MountSet::key(key);
+    const auto k = ta::hpi::MountSet::key(key);
     if (k == "ai/default.txt" || aiEngineFile(k)) return true;
     // net::maps' whitelist takes ai/<aiprofile>.txt when it is a safe single name.
     const auto own = aiProfileFileKey(aiProfile);
@@ -833,7 +833,7 @@ AiFiles travellingAiFiles(const AiFiles& files, const std::string& aiProfile) {
 }
 
 void setAiFile(AiFiles& files, const std::string& key, std::string_view bytes) {
-    const auto k = tak::hpi::MountSet::key(key);
+    const auto k = ta::hpi::MountSet::key(key);
     if (bytes.empty()) files.erase(k);
     else files[k].assign(bytes.begin(), bytes.end());
 }
@@ -854,30 +854,30 @@ bool renameAiProfile(AiFiles& files, const std::string& oldName, const std::stri
 
 // ---- which file plays -----------------------------------------------------------------
 
-AiFileChoice whichFile(Difficulty d, const tak::hpi::Vfs& base, const AiFiles& mapFiles, const std::string& aiProfile,
-                       const tak::hpi::Vfs::Files* gameModFiles) {
+AiFileChoice whichFile(Difficulty d, const ta::hpi::Vfs& base, const AiFiles& mapFiles, const std::string& aiProfile,
+                       const ta::hpi::Vfs::Files* gameModFiles) {
     AiFileChoice out;
     const auto travel = travellingAiFiles(mapFiles, aiProfile);
     if (d == Difficulty::Classic) {
-        tak::ai::ClassicProfileLayer layer = tak::ai::ClassicProfileLayer::None;
-        const auto script = tak::ai::classicProfileScript(base, aiProfile, gameModFiles, &travel, &layer);
-        out.path = tak::hpi::MountSet::key(script.path);
+        ta::ai::ClassicProfileLayer layer = ta::ai::ClassicProfileLayer::None;
+        const auto script = ta::ai::classicProfileScript(base, aiProfile, gameModFiles, &travel, &layer);
+        out.path = ta::hpi::MountSet::key(script.path);
         const std::string own = aiProfileFileKey(aiProfile);
         const bool standard = standardAiProfile(aiProfile);
         switch (layer) {
-            case tak::ai::ClassicProfileLayer::Map:
+            case ta::ai::ClassicProfileLayer::Map:
                 out.from = AiFileChoice::From::Map;
                 out.message = "DEFAULT AI on this map reads " + out.path + " from this map.";
                 if (!gameModFiles)
                     out.message += " A ticked game mod's " + out.path + " would replace it" +
                                    (out.path != "ai/default.txt" ? "; a game mod's ai/default.txt would not." : ".");
                 break;
-            case tak::ai::ClassicProfileLayer::GameMods:
+            case ta::ai::ClassicProfileLayer::GameMods:
                 out.from = AiFileChoice::From::GameMod;
                 out.message = "DEFAULT AI reads " + out.path + " from the game mod" +
                               (travel.count(out.path) ? ", which replaces this map's." : ".");
                 break;
-            case tak::ai::ClassicProfileLayer::Base:
+            case ta::ai::ClassicProfileLayer::Base:
                 out.from = AiFileChoice::From::Base;
                 if (standard) out.message = "DEFAULT AI reads the installed " + out.path + " (this map has no profile name).";
                 else if (out.path != own)
@@ -893,11 +893,11 @@ AiFileChoice whichFile(Difficulty d, const tak::hpi::Vfs& base, const AiFiles& m
     }
     std::string source;
     bool fromMap = false;
-    (void)tak::ai::levelProfile(d, gameModFiles, &travel, &source, &fromMap);
+    (void)ta::ai::levelProfile(d, gameModFiles, &travel, &source, &fromMap);
     const std::string name = aiLevelName(d);
     out.path = source;
     if (source.empty()) {
-        out.message = "Our six levels: built-in tables (no " + std::string(tak::ai::kEngineProfileFile) + ").";
+        out.message = "Our six levels: built-in tables (no " + std::string(ta::ai::kEngineProfileFile) + ").";
     } else if (fromMap) {
         out.from = AiFileChoice::From::Map;
         out.message = "All six levels (" + name + " shown) read " + source + " from this map, each over its own built-in table" +
@@ -942,15 +942,15 @@ std::string compareAiFiles(const std::string& key, std::string_view before, std:
             const auto it=m.find(unit);return it==m.end()?std::optional<int>():std::optional<int>(it->second);
         };
         for(Difficulty d:kLevels) {
-            auto x=tak::ai::builtinProfile(d),y=x;
-            tak::ai::applyProfileText(before,x);tak::ai::applyProfileText(after,y);
+            auto x=ta::ai::builtinProfile(d),y=x;
+            ta::ai::applyProfileText(before,x);ta::ai::applyProfileText(after,y);
             for(const auto* p:{&x,&y})for(const auto* m:{&p->weight,&p->limit})for(const auto& [unit,v]:*m)units.insert(unit);
             for(const auto& unit:units)
                 if(get(x.weight,unit)!=get(y.weight,unit) || get(x.limit,unit)!=get(y.limit,unit))differ.insert(unit);
         }
         changed.assign(differ.begin(),differ.end());
     } else {
-        tak::ai::ClassicProfile x(catalogue.size()),y(catalogue.size());
+        ta::ai::ClassicProfile x(catalogue.size()),y(catalogue.size());
         x.execute(before,catalogue);y.execute(after,catalogue);
         for(size_t i=0;i<catalogue.size();++i)
             if(x.pref[i]!=y.pref[i] || x.limit[i]!=y.limit[i])changed.push_back(catalogue.names[i]);
@@ -1005,9 +1005,9 @@ std::vector<AiGroupUnit> aiGroupLineUnits(const std::vector<AiLine>& lines, size
 }
 
 int aiGroupRuleChance(const AiGroupRule& g) {
-    return tak::ai::classicScaledPref(100, g.value.empty() ? 0.0f : tak::ai::classicAtof(g.value));
+    return ta::ai::classicScaledPref(100, g.value.empty() ? 0.0f : ta::ai::classicAtof(g.value));
 }
-int aiGroupRuleLimit(const AiGroupRule& g) { return g.value.empty() ? 0 : tak::ai::classicAtoi(g.value); }
+int aiGroupRuleLimit(const AiGroupRule& g) { return g.value.empty() ? 0 : ta::ai::classicAtoi(g.value); }
 
 // ---- our levels' limits in play ------------------------------------------------------------
 
@@ -1020,8 +1020,8 @@ int aiLevelLimitScale(Difficulty d) {
 }
 bool aiLevelIgnoresLimits(Difficulty d) { return d == Difficulty::Defensive || d == Difficulty::AbsurdlyDefensive; }
 
-AiLevelLimit aiEffectiveLimit(Difficulty d, std::optional<int> limit, const tak::sim::UnitType* type,
-                              const tak::sim::TypeRegistry* registry) {
+AiLevelLimit aiEffectiveLimit(Difficulty d, std::optional<int> limit, const ta::sim::UnitType* type,
+                              const ta::sim::TypeRegistry* registry) {
     AiLevelLimit out;
     const int lim = limit ? *limit : -1;
     if (lim < 0) { out.text = "no cap"; return out; }

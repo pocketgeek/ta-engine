@@ -14,8 +14,8 @@
 
     void GameView::benchmarkBaseline() {
         benchPrevWallMs_ = SDL_GetTicks64();
-        benchCliPrev_ = tak::proc::sample(0);
-        benchSrvPrev_ = localServerPid_ ? tak::proc::sample(localServerPid_) : tak::proc::Sample{};
+        benchCliPrev_ = ta::proc::sample(0);
+        benchSrvPrev_ = localServerPid_ ? ta::proc::sample(localServerPid_) : ta::proc::Sample{};
         benchStartMs_ = 0; benchNextSec_ = 10; benchSamples_.clear(); benchStatsShown_ = false;
         benchSavePending_ = benchSaved_ = benchSaveFailed_ = false;   // a new run, a new picture
         benchSaveNote_.clear(); benchSavePath_.clear();
@@ -28,11 +28,11 @@
     void GameView::pushBenchSample(int gameSec) {
         uint64_t nowMs = SDL_GetTicks64();
         double wallSec = benchPrevWallMs_ ? double(nowMs - benchPrevWallMs_) / 1000.0 : 0;
-        tak::proc::Sample cli = tak::proc::sample(0);
-        tak::proc::Sample srv = localServerPid_ ? tak::proc::sample(localServerPid_) : tak::proc::Sample{};
-        const int logicalCpus=tak::proc::numCpus();
-        auto pct = [&](const tak::proc::Sample& n, const tak::proc::Sample& p) {
-            return tak::proc::processCpuPercent(p,n,wallSec,logicalCpus);
+        ta::proc::Sample cli = ta::proc::sample(0);
+        ta::proc::Sample srv = localServerPid_ ? ta::proc::sample(localServerPid_) : ta::proc::Sample{};
+        const int logicalCpus=ta::proc::numCpus();
+        auto pct = [&](const ta::proc::Sample& n, const ta::proc::Sample& p) {
+            return ta::proc::processCpuPercent(p,n,wallSec,logicalCpus);
         };
         BenchSample s;
         s.gameSec = gameSec;
@@ -44,8 +44,8 @@
         s.fps = fps_;
         s.simSpeed = actualSpeed_;
         s.gpuBytes = gpuvram::bytes();       // accounted client GPU memory (see gpuvram.h)
-        tak::proc::GpuSample gpu = tak::proc::gpuSample();   // whole-device util % + VRAM
-        s.gpuPct = tak::proc::systemGpuPercent(gpu);
+        ta::proc::GpuSample gpu = ta::proc::gpuSample();   // whole-device util % + VRAM
+        s.gpuPct = ta::proc::systemGpuPercent(gpu);
         if (gpu.ok) {
             s.gpuSysUsed = gpu.memUsed;
             if (benchGpuName_.empty()) { benchGpuName_ = gpu.name; benchGpuTotal_ = gpu.memTotal; }
@@ -61,18 +61,18 @@
         const uint32_t gt = front().gameTick;
         if (gt > 0 && !benchStartMs_) benchStartMs_ = SDL_GetTicks64();
         if (front().benchEnded) {
-            pushBenchSample(tak::sim::kBenchmarkSeconds);
+            pushBenchSample(ta::sim::kBenchmarkSeconds);
             benchStatsShown_ = true;   // run complete -> show the stats overlay
             return;
         }
-        while (benchStartMs_ && benchNextSec_ < tak::sim::kBenchmarkSeconds && benchmarkElapsedSec() >= benchNextSec_) {
+        while (benchStartMs_ && benchNextSec_ < ta::sim::kBenchmarkSeconds && benchmarkElapsedSec() >= benchNextSec_) {
             pushBenchSample(benchNextSec_);
             benchNextSec_ += 10;
         }
 #ifndef NDEBUG
-        // TAK_BENCH_STOP_TICK=N: Esc at tick N, with the results filled out to a full run's
+        // TA_BENCH_STOP_TICK=N: Esc at tick N, with the results filled out to a full run's
         // size (all six samples, every row), so a short run lays out the tallest panel.
-        if (const char* st = tak::devEnv("TAK_BENCH_STOP_TICK"); st && !benchStatsShown_ && gt >= uint32_t(std::atoi(st))) {
+        if (const char* st = ta::devEnv("TA_BENCH_STOP_TICK"); st && !benchStatsShown_ && gt >= uint32_t(std::atoi(st))) {
             stopBenchmark();
             BenchSample full = benchSamples_.back();
             full.gpuSysUsed = std::max<size_t>(full.gpuSysUsed, 1u << 30);
@@ -92,7 +92,7 @@
 
     void GameView::benchmarkCamera(float dt, int winW, int winH) {
         if (!benchmarkMode_ || benchStatsShown_ || !worldTables().benchmarkMode()) return;
-        int leg = benchmarkElapsedSec() * 8 / tak::sim::kBenchmarkSeconds;   // 0..7, one per faction / 7.5 s leg (60 s / 8)
+        int leg = benchmarkElapsedSec() * 8 / ta::sim::kBenchmarkSeconds;   // 0..7, one per faction / 7.5 s leg (60 s / 8)
         if (leg < 0) leg = 0;
         if (leg > 7) leg = 7;
         if (leg != benchCamLeg_) { benchCamLeg_ = leg; benchLegT_ = 0.0f; }   // new leg -> reset
@@ -119,9 +119,9 @@
         const auto text = [](const fs::path& p) { const auto t = p.u8string(); return std::string(t.begin(), t.end()); };
         benchSaveFailed_ = true;   // until the file is in place
         benchSavePath_.clear();
-        const std::string profile = tak::replayDir();
+        const std::string profile = ta::replayDir();
         if (profile.empty()) { benchSaveNote_ = "COULD NOT SAVE: NO FOLDER FOR THIS PLAYER'S FILES"; return; }
-        const fs::path dir = tak::u8path(profile) / "benchmarks";
+        const fs::path dir = ta::u8path(profile) / "benchmarks";
         std::error_code ec;
         fs::create_directories(dir, ec);
         if (!fs::is_directory(dir, ec)) {
@@ -137,7 +137,7 @@
             const SDL_Rect area{0, 0, winW, winH};
             if (SDL_RenderReadPixels(ren_, &area, SDL_PIXELFORMAT_RGBA32, px.data(), winW * 4) != 0)
                 throw std::runtime_error(std::string("CANNOT READ THE SCREEN (") + SDL_GetError() + ")");
-            jpg = tak::jpeg::encode(winW, winH, px, 92);
+            jpg = ta::jpeg::encode(winW, winH, px, 92);
         } catch (const std::exception& e) {
             benchSaveNote_ = std::string("COULD NOT SAVE: ") + e.what();
             return;
@@ -184,9 +184,9 @@
         std::vector<std::string> settings;
         char b[64];
         // What the run's world really used, not what was asked for.
-        settings.push_back(std::string("PATHFINDING ") + tak::benchmarkPathLabel(worldTables().pathfindingMode()));
+        settings.push_back(std::string("PATHFINDING ") + ta::benchmarkPathLabel(worldTables().pathfindingMode()));
         // The room's game speed, as the run was paced.
-        if (mp_) settings.push_back(std::string("SPEED       ") + tak::speedLevelText(int(mp_->gameSpeed()) - 10));
+        if (mp_) settings.push_back(std::string("SPEED       ") + ta::speedLevelText(int(mp_->gameSpeed()) - 10));
         // SIMULATION THREADS as this run latched it (latchSimThreads): what its own
         // simulation and its local server's each ran on, then the setting they are the
         // halves of. Not the Options value now: a change in the Esc menu is for the next game.
@@ -213,9 +213,9 @@
         if (!benchGpuName_.empty()) settings.push_back(std::string("GPU         ") + benchGpuName_);
         {   // the backend that produced these numbers, and whether it was AUTO's pick
             SDL_RendererInfo ri{};
-            std::string id = SDL_GetRendererInfo(ren_, &ri) == 0 && ri.name ? tak::renderdriver::normalize(ri.name) : std::string();
-            settings.push_back("RENDERER    " + tak::renderdriver::label(id) +
-                               (tak::renderdriver::active().inEffect.empty() ? " (AUTO)" : ""));
+            std::string id = SDL_GetRendererInfo(ren_, &ri) == 0 && ri.name ? ta::renderdriver::normalize(ri.name) : std::string();
+            settings.push_back("RENDERER    " + ta::renderdriver::label(id) +
+                               (ta::renderdriver::active().inEffect.empty() ? " (AUTO)" : ""));
         }
         settings.push_back(std::string("FULLSCREEN  ") + (settings_ && settings_->fullscreen ? "ON" : "OFF"));
         settings.push_back(std::string("VSYNC       ") + (settings_ && settings_->vsync ? "ON" : "OFF"));
@@ -245,8 +245,8 @@
         char subBuf[160];
         std::snprintf(subBuf, sizeof subBuf,
                       "8-AI FFA -- ULASEM ARENA -- %s: 1 UNIT/FACTION EVERY %s FOR 60S",
-                      tak::sim::benchmarkLevelName(benchmarkLevel_),
-                      tak::sim::benchmarkLevelInterval(benchmarkLevel_));
+                      ta::sim::benchmarkLevelName(benchmarkLevel_),
+                      ta::sim::benchmarkLevelInterval(benchmarkLevel_));
         const char* sub = subBuf;
 
         // One scale factor drives the whole panel, so it stays big + legible at 4K and
@@ -311,7 +311,7 @@
             if (s.serverRss) std::snprintf(b, sizeof b, "%zuMB", s.serverRss / (1024 * 1024)); else std::snprintf(b, sizeof b, "N/A");
             cell(b); cx += colW[7];
             std::snprintf(b, sizeof b, "%.0f", s.fps); cell(b); cx += colW[8];
-            cell(tak::speedLevelText(tak::speedLevelOf(s.simSpeed)).c_str());
+            cell(ta::speedLevelText(ta::speedLevelOf(s.simSpeed)).c_str());
             y += rowH;
         }
         y += 30 * k;
@@ -326,7 +326,7 @@
         const SDL_FRect done{save.x + dw + gap, y, dw, dh};
         benchSaveRect_ = save; benchDoneRect_ = done; benchPanelRect_ = panel;
 #ifndef NDEBUG
-        std::string saveDrawn;   // TAK_BENCH_REPORT: SAVE AS JPG as button() last drew it
+        std::string saveDrawn;   // TA_BENCH_REPORT: SAVE AS JPG as button() last drew it
 #endif
         // `live` false is the greyed button (Options' colours for one); `hover` false
         // leaves the pointer's highlight off, for the picture.
@@ -360,18 +360,18 @@
         std::string note = benchSaveNote_;
         const float notePx = noteU * k, noteY = y + dh + 16 * k;
         if (!note.empty()) {
-            if (!benchSavePath_.empty()) note += tak::uiTextFitStart(benchSavePath_, notePx, tableW - blockWidth(note, notePx));
-            else note = tak::uiTextFit(note, notePx, tableW);
+            if (!benchSavePath_.empty()) note += ta::uiTextFitStart(benchSavePath_, notePx, tableW - blockWidth(note, notePx));
+            else note = ta::uiTextFit(note, notePx, tableW);
             blockText(note, px0 + (panelW - blockWidth(note, notePx)) * 0.5f, noteY, notePx,
                       benchSaveFailed_ ? SDL_Color{240, 130, 120, 255} : SDL_Color{165, 170, 185, 255});
         }
 #ifndef NDEBUG
-        // TAK_BENCH_REPORT: the list and the buttons where they were drawn, for
+        // TA_BENCH_REPORT: the list and the buttons where they were drawn, for
         // benchmark_pathfinding and benchmark_save; SAVE AS JPG and the note under it
         // again whenever either changes. LIVE or GREYED and the label are what button()
         // drew this frame (saveDrawn), not a second reading of benchSaved_.
         static bool reported = false;
-        if (tak::devFlag("TAK_BENCH_REPORT")) {
+        if (ta::devFlag("TA_BENCH_REPORT")) {
             if (!reported) {
                 reported = true;
                 for (const std::string& t : settings) std::printf("BENCHRESULT %s\n", t.c_str());
@@ -392,14 +392,14 @@
                 std::fflush(stdout);
             }
         }
-        // TAK_BENCH_CLICKS="save;shot:after.png;save": the pointer on this screen, one step
+        // TA_BENCH_CLICKS="save;shot:after.png;save": the pointer on this screen, one step
         // every few frames so each is handled and drawn before the next. "save" clicks the
         // middle of SAVE AS JPG where it was drawn, "hover" only moves the pointer there,
         // "miss" clicks the panel just left of the button, "away" moves the pointer off
         // the panel, "shot:<file>" writes this frame as a PNG (main(), with the cursor
         // on), and "until:<file>" waits for that file to exist (a test's go-ahead).
-        // TAK_QUIT_TICK then waits for the last step (benchClicksDone).
-        if (const char* script = tak::devEnv("TAK_BENCH_CLICKS"); script && !benchClicksDone_ && --benchClickWait_ < 0) {
+        // TA_QUIT_TICK then waits for the last step (benchClicksDone).
+        if (const char* script = ta::devEnv("TA_BENCH_CLICKS"); script && !benchClicksDone_ && --benchClickWait_ < 0) {
             std::vector<std::string> steps;
             for (const char* p = script; *p;) {
                 const char* e = std::strchr(p, ';');
@@ -428,7 +428,7 @@
                 else if (step == "miss") point(save.x - gap * 0.5f, save.y + save.h * 0.5f, true);
                 else if (step == "away") point(0, 0, false);
                 else if (step.rfind("shot:", 0) == 0) benchShotPath_ = step.substr(5);
-                else if (std::error_code ec; step.rfind("until:", 0) == 0 && !std::filesystem::exists(tak::u8path(step.substr(6)), ec)) {
+                else if (std::error_code ec; step.rfind("until:", 0) == 0 && !std::filesystem::exists(ta::u8path(step.substr(6)), ec)) {
                     --benchClickStep_;
                     benchClickWait_ = 0;
                 }

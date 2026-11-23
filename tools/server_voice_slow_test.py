@@ -220,7 +220,7 @@ def main():
     ap.add_argument('--case', choices=('link', 'cpu'), default='link')
     a = ap.parse_args()
     if a.case == 'cpu':
-        with tempfile.TemporaryDirectory(prefix='tak-voice-cpu-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='ta-voice-cpu-') as tmp:
             root = Path(tmp)
             with server(a.server.resolve(), a.data.resolve(), root) as (port, h, process), \
                     contextlib.ExitStack() as stack:
@@ -228,7 +228,7 @@ def main():
                 cpuCase(port, h, root, process, peers)
         print('server_voice_slow (cpu): all passed')
         return
-    with tempfile.TemporaryDirectory(prefix='tak-voice-slow-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-voice-slow-') as tmp:
         root = Path(tmp)
         with server(a.server.resolve(), a.data.resolve(), root) as (port, h, process), contextlib.ExitStack() as stack:
             peers = {n: stack.enter_context(contextlib.closing(login(port, h, n)))

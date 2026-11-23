@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TA Server
+GenericName=Dedicated Server
+Comment=Dedicated server for the TA engine
+Exec=taserver
+Icon=ta-server
+Terminal=true
+Categories=Game;

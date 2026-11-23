@@ -12,7 +12,7 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-using namespace tak;
+using namespace ta;
 static int fails=0;
 static void check(bool ok,const char* label) {
     std::printf("[%s] %s\n",ok ? "PASS" : "FAIL",label);if (!ok) ++fails;

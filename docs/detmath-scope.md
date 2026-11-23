@@ -26,7 +26,7 @@ serves.
 - **`-ffp-contract=off`** on EVERY target (directory-wide in CMakeLists.txt), so
   the compiler never fuses `a*b+c` into an FMA that rounds differently on
   different CPUs. **No `-ffast-math`.** Setting it per library is not enough: it
-  would miss `src/ai/ai.cpp` (a `takserver` source, not part of the library), and
+  would miss `src/ai/ai.cpp` (a `taserver` source, not part of the library), and
   Apple Clang on arm64 contracts by default, so a Mac-hosted server's AI would
   issue a door-clearing Move one ulp off (`factory.z + sin(a)*r`) and the game
   would diverge from the same game hosted on Linux/Windows. `fp_contract_test`
@@ -99,7 +99,7 @@ hit and pointless — the basic ops are already deterministic. Not chosen.
 ## 4. Design — `src/sim/detmath.{h,cpp}`
 
 ```cpp
-namespace tak::detmath {
+namespace ta::detmath {
     float sin(float x);              // fixed range-reduction + fixed polynomial
     float cos(float x);              // shared core with sin
     double atan(double x);           // double-precision, retail ballistic BAM angles
@@ -120,7 +120,7 @@ whole function. The rules that make this hold:
   return (x86-64 SSE and ARM NEON both keep `double` in 64-bit registers — no
   x87 80-bit extended precision to leak). Never rely on extended precision.
 - Keep `-ffp-contract=off` and round-to-nearest-even. The detmath TU lives in
-  `tak-formats`, so it inherits the flag.
+  `ta-formats`, so it inherits the flag.
 - Horner evaluation with explicit parenthesization, so the op order is fixed in
   source, not left to the optimizer.
 

@@ -33,18 +33,18 @@ int main(int argc,char** argv) try {
     if(!renderer)renderer=SDL_CreateRenderer(window,-1,SDL_RENDERER_SOFTWARE);
     check(renderer,SDL_GetError());
     const auto baseline=gpuvram::bytes();
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     for(int round=0;round<2;++round) {
         std::vector<std::unique_ptr<BigMapView>> views;
-        tak::ReadGate gate(vfs);   // after `views`: on a failure it lets the workers go first
+        ta::ReadGate gate(vfs);   // after `views`: on a failure it lets the workers go first
         gate.arm();
-        views.push_back(std::make_unique<BigMapView>(renderer,std::make_unique<tak::hpi::Vfs>(&vfs),
-                                                     tak::hpi::findMap(vfs,"Inner Circle"),"aramon"));
+        views.push_back(std::make_unique<BigMapView>(renderer,std::make_unique<ta::hpi::Vfs>(&vfs),
+                                                     ta::hpi::findMap(vfs,"Inner Circle"),"aramon"));
         {
-            tak::mapgen::Params params;
+            ta::mapgen::Params params;
             params.seed=uint64_t(7+round);
-            auto view=std::make_unique<tak::hpi::Vfs>(&vfs,true);
-            auto map=tak::mapgen::generate(params,*view).map;
+            auto view=std::make_unique<ta::hpi::Vfs>(&vfs,true);
+            auto map=ta::mapgen::generate(params,*view).map;
             views.push_back(std::make_unique<BigMapView>(renderer,std::move(view),std::move(map),"aramon"));
         }
         for(auto& view:views)view->draw({0,0,640,480});
@@ -62,7 +62,7 @@ int main(int argc,char** argv) try {
         releaser.join();
         check(!closedWhileHeld,"closing a view waits for its workers held at a read");
         check(gate.held()==0 && !gate.gone(),"the data set is intact once the views are closed");
-        vfs=tak::hpi::mountRetailRoot(argv[1]);   // the remount
+        vfs=ta::hpi::mountRetailRoot(argv[1]);   // the remount
         check(gate.gone(),"the remount drops the old data set");
         const auto at=gate.goneState();
         check(at.held==0 && at.released,"no reader was left in the old data set");

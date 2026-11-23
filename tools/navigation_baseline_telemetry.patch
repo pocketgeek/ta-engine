@@ -235,7 +235,7 @@ index 9cc596f..fbca33e 100644
 +    }
  }
  
- }   // namespace tak::sim
+ }   // namespace ta::sim
 diff --git a/src/sim/pathsearch.h b/src/sim/pathsearch.h
 index 7a6fcf8..5bdce31 100644
 --- a/src/sim/pathsearch.h
@@ -246,7 +246,7 @@ index 7a6fcf8..5bdce31 100644
  #include "retailscheduler.h"
 +#include "navigationtelemetry.h"
  
- namespace tak::sim {
+ namespace ta::sim {
  
 @@ -238,6 +239,11 @@ inline constexpr int kMaxActiveSearches = 1;
  

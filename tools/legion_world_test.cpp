@@ -26,7 +26,7 @@
 #include <string_view>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 namespace {
 void check(bool ok,const std::string& message) {if(!ok)throw std::runtime_error(message);}
 
@@ -95,19 +95,19 @@ struct Fixture {
 // heading change without any movement; a reversal is a return to a 16 px
 // cell the body left less than 90 ticks earlier).
 struct Watch {
-    tak::legion_observe::Config cfg;
-    std::unique_ptr<tak::legion_observe::Observer> obs;
+    ta::legion_observe::Config cfg;
+    std::unique_ptr<ta::legion_observe::Observer> obs;
     int64_t tick=0;
     Watch() {cfg.decisionEvery=0;}
     void observe(const World& w,const std::vector<int>& ids) {
         if(!obs) {
-            if(cfg.groups.empty()) {tak::legion_observe::Group g;g.name="all";g.ids=ids;cfg.groups.push_back(std::move(g));}
-            obs=std::make_unique<tak::legion_observe::Observer>(cfg);
+            if(cfg.groups.empty()) {ta::legion_observe::Group g;g.name="all";g.ids=ids;cfg.groups.push_back(std::move(g));}
+            obs=std::make_unique<ta::legion_observe::Observer>(cfg);
         }
         obs->sample(w,tick++);
     }
-    tak::legion_observe::Keys keys() const {return obs?obs->report():tak::legion_observe::Keys{};}
-    int64_t key(std::string_view name,int64_t fallback=0) const {return tak::legion_observe::Observer::get(keys(),name,fallback);}
+    ta::legion_observe::Keys keys() const {return obs?obs->report():ta::legion_observe::Keys{};}
+    int64_t key(std::string_view name,int64_t fallback=0) const {return ta::legion_observe::Observer::get(keys(),name,fallback);}
     uint64_t spins() const {return uint64_t(key("spins"));}
     uint64_t reversals() const {return uint64_t(key("reversals"));}
 };
@@ -115,8 +115,8 @@ struct Watch {
 // The observer's AR-08 completion-distance keys of one group, as one text:
 // how many members finished, how far from the click (cells) the median and
 // the farthest finished, and how many finished outside the packed-disc radius.
-std::string completionKeys(const tak::legion_observe::Keys& k,const std::string& group) {
-    using tak::legion_observe::Observer;
+std::string completionKeys(const ta::legion_observe::Keys& k,const std::string& group) {
+    using ta::legion_observe::Observer;
     const std::string p="g."+group+".";
     char buf[160];
     std::snprintf(buf,sizeof buf,"complete_n=%lld complete_outside_radius=%lld complete_dist_median=%lld complete_dist_max=%lld",
@@ -811,7 +811,7 @@ void trafficlane() {
 // off (LegionNavigator::setRouteIndexForTest) the checkpoint hashes, the reached groups' decisions
 // (routeIndexStats().decisions: ids and closure / improvement flags in visit order) and the closure / improvement
 // counts agree, serial equals workers, and the index visits far fewer groups than the walk of every group (the routes
-// of lanes 1 and 3 are never candidates). The ctest runs it under TAK_LEGION_VERIFY: every tick checks the index
+// of lanes 1 and 3 are never candidates). The ctest runs it under TA_LEGION_VERIFY: every tick checks the index
 // against the groups' fields, every static change against the walk.
 struct RouteIndexRun {uint64_t hash=0,trail=0,closed=0,opened=0;int alive=0,arrived=0;LegionNavigator::RouteIndexStats r;};
 RouteIndexRun routeindexRun(bool index,bool serial) {
@@ -1209,7 +1209,7 @@ void unfinishedsite() {
     f.world.unit(site)->underConstruction=true;
     f.start();
     const Fixed sx=f.world.unit(site)->x,sz=f.world.unit(site)->z;
-    tak::net::Command c;c.kind=tak::net::Cmd::Move;c.player=0;c.unitId=body;c.x=36*16.f;c.z=12*16.f;
+    ta::net::Command c;c.kind=ta::net::Cmd::Move;c.player=0;c.unitId=body;c.x=36*16.f;c.z=12*16.f;
     TypeRegistry reg;applyCommand(f.world,reg,c);
     int arrived=-1;
     // The straight walk takes ~267 ticks; an unattended site decays well after 300.
@@ -1252,7 +1252,7 @@ FlyerRun landedflyersRun(int layout,bool legion,int flyerFoot,bool serial=true) 
         // Ground group, plus the standing bodies as a second group: the
         // observer counts a landed flyer standing on a ground body
         // (illegal_overlap_ticks) in the group that holds the flyer.
-        tak::legion_observe::Group gg,gf;gg.name="ground";gg.ids=ids;gf.name="flyers";gf.ids=flyers;
+        ta::legion_observe::Group gg,gf;gg.name="ground";gg.ids=ids;gf.name="flyers";gf.ids=flyers;
         motion.cfg.groups.push_back(gg);
         if(!flyers.empty())motion.cfg.groups.push_back(gf);
     }
@@ -2034,7 +2034,7 @@ void planepin() {
 // Legion 10,000 stage 6: small squads sent across a big map take tile chains (hierarchical routes over shared
 // tiles). A wall with three gaps crosses the map; eight squads of six cross it to eight different points. Checked:
 // chains are built, transit tiles are shared between squads with DIFFERENT destinations (cross hits: a hit by a
-// route to other goals than the one that built the tile), every body arrives, and (TAK_LEGION_VERIFY) every
+// route to other goals than the one that built the tile), every body arrives, and (TA_LEGION_VERIFY) every
 // finished chain's estimate strictly falls along some legal step from every cell (no loop, no false minimum) and no
 // chain reads a tile of another mobility class. (48 bodies run no worker jobs, so serial == workers is not this
 // test's claim: the chain code runs on the sim thread; the gate's both-exec runs and the 2,500-body scale run
@@ -2057,7 +2057,7 @@ std::array<uint64_t,4> chainsRun(bool serial,bool churn=false) {
     for(const auto& q:squads)all+=int(q.size());
     for(;t<9000&&done<all;++t) {
         // churn: a wall dropped across the middle of the east half while the chains build, lifted later (the
-        // chains are touched, keep steering and refresh; TAK_LEGION_VERIFY must not take their older tiles for
+        // chains are touched, keep steering and refresh; TA_LEGION_VERIFY must not take their older tiles for
         // the current geometry).
         if(churn&&(t==5||t==400))for(int z=100;z<220;++z)
             f.world.addFeature(z*512+380,float(380*16+8),float(z*16+8),0,1,1,t==5,-1,true);
@@ -2083,7 +2083,7 @@ void chainschurn() {
 // Stage 6: a plane slot reused for another mobility class gets a new generation, so its routes never read the old
 // class's cached tiles. 25 classes (maxSlope 10..34) take turns on a 512 x 512 map: each sends one body far (a
 // chain), runs until the chain is built, and stops it, so its plane becomes the least recently used one nobody
-// refers to; the 25th class takes slot 0 over. Under TAK_LEGION_VERIFY every attach checks the tile's class.
+// refers to; the 25th class takes slot 0 over. Under TA_LEGION_VERIFY every attach checks the tile's class.
 void chainplane() {
     Fixture f(512,512);
     for(int z=100;z<400;++z)f.wall(256,z);
@@ -2228,7 +2228,7 @@ PinwheelResult pinwheelRun(int gap) {
     // above the end, and when 90% are round it (side "round", x >= 104).
     Watch motion;
     {
-        tak::legion_observe::Gate g;g.name="end";g.region={97,0,102,47};g.lateral=1;g.band=2;g.minCount=3;
+        ta::legion_observe::Gate g;g.name="end";g.region={97,0,102,47};g.lateral=1;g.band=2;g.minCount=3;
         motion.cfg.gates.push_back(g);
         motion.cfg.sides.push_back({"round",0,104});
     }
@@ -2252,7 +2252,7 @@ PinwheelResult pinwheelRun(int gap) {
     for(int id:ids)check(f.legal(id),"illegal footprint");
     {
         const auto k=motion.keys();
-        using tak::legion_observe::Observer;
+        using ta::legion_observe::Observer;
         r.rounded90=int(Observer::get(k,"side.round.t90",-1));
         r.lanes=double(Observer::get(k,"gate.end.files_x100",0))/100;
         r.spread=double(Observer::get(k,"gate.end.spread_x100",0))/100;
@@ -2467,7 +2467,7 @@ ForestResult forestRun() {
     for(int id:ids)f.world.order(id,150*16,110*16,false);
     Watch motion;
     {
-        tak::legion_observe::Gate g;g.name="end";g.region={95,0,104,47};g.lateral=1;g.band=2;g.minCount=3;
+        ta::legion_observe::Gate g;g.name="end";g.region={95,0,104,47};g.lateral=1;g.band=2;g.minCount=3;
         motion.cfg.gates.push_back(g);
     }
     ForestResult r;r.total=int(ids.size());
@@ -2481,7 +2481,7 @@ ForestResult forestRun() {
         }
     }
     for(int id:ids)check(f.legal(id),"illegal footprint round the forest");
-    r.files=double(tak::legion_observe::Observer::get(motion.keys(),"gate.end.files_x100",0))/100;
+    r.files=double(ta::legion_observe::Observer::get(motion.keys(),"gate.end.files_x100",0))/100;
     r.fro=watch.r;
     std::printf("forestedge shift=%d arrived=%d/%d files=%.2f pivot=%lld to_fro=%lld walking=%lld\n",g_shift,r.arrived,r.total,r.files,
         (long long)r.pivot,(long long)r.fro.ticks,(long long)r.fro.walking);
@@ -3282,17 +3282,17 @@ SquadResult squadRun() {
     for(int i=0;i<120;++i)ids.push_back(f.spawn(type,14+(i%12)*3,32+(i/12)*4));
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd kind,int id,int target,float x,float z) {
-        tak::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd kind,int id,int target,float x,float z) {
+        ta::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    for(int id:ids)command(tak::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:ids)command(ta::net::Cmd::SetSquad,id,-1,0,0);
     for(int t=0;t<600;++t)f.world.tick(1.f/30);      // assigning the formation gathers it
     const float px=160*16,pz=50*16;
-    for(int id:ids)command(tak::net::Cmd::Move,id,0,px,pz);
+    for(int id:ids)command(ta::net::Cmd::Move,id,0,px,pz);
     Watch motion;
     {
-        tak::legion_observe::Group g;g.name="squad";g.ids=ids;g.clickX=int(px);g.clickZ=int(pz);
+        ta::legion_observe::Group g;g.name="squad";g.ids=ids;g.clickX=int(px);g.clickZ=int(pz);
         motion.cfg.groups.push_back(g);
     }
     std::map<int,int> reorders;std::map<int,bool> idle;
@@ -3581,7 +3581,7 @@ bool landedBehind(World& w,const Unit& u,const std::vector<int>& ground,float dx
 struct MixedRun {int groundDone=-1,flyersDone=-1;float maxAway=0,meanAway=0,endAway=0;uint64_t hash=0;int landedAhead=0;
     int windows=0,stalls=0,moving=0,misaligned=0,maxHover=0,maxLandDelay=0,landed=0;double flown=0,marched=0;
     double leadTop=0,leadAll=0;int frontWindows=0,landedBehind=0;float maxOff=0;int cruising=0,crawling=0;};
-MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
+MixedRun mixedformationRun(bool legion,ta::net::Cmd kind,bool serial=true) {
     Fixture f(260,100,serial);
     // A wall across the straight line: the ground detours through the gap
     // at its south end, so the formation turns twice on the way.
@@ -3598,11 +3598,11 @@ MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
     all=ground;all.insert(all.end(),flyers.begin(),flyers.end());
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd k,int id,int target,float x,float z) {
-        tak::net::Command c;c.kind=k;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd k,int id,int target,float x,float z) {
+        ta::net::Command c;c.kind=k;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    for(int id:all)command(tak::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:all)command(ta::net::Cmd::SetSquad,id,-1,0,0);
     for(int t=0;t<300;++t)f.world.tick(1.f/30);
     const float px=220*16,pz=50*16;
     // As the move UI does: flyers keep their offset from the selection's
@@ -3612,7 +3612,7 @@ MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
     sx/=float(all.size());sz/=float(all.size());
     for(int id:all) {
         const auto& u=*f.world.unit(id);
-        const bool offset=kind==tak::net::Cmd::Move&&(u.type->canFly||!legion);
+        const bool offset=kind==ta::net::Cmd::Move&&(u.type->canFly||!legion);
         command(kind,id,0,offset?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px,
                 offset?pz+std::clamp(u.z.toFloat()-sz,-60.f,60.f):pz);
     }
@@ -3623,7 +3623,7 @@ MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
     std::map<int,float> path,pathAt;std::map<int,std::pair<float,float>> lastAt;
     std::vector<std::pair<float,float>> groundAt;   // the ground's positions at the window's start
     std::map<int,int> hover,idleAt,hoverRun;
-    const int ticks=kind==tak::net::Cmd::Patrol?3000:6000;
+    const int ticks=kind==ta::net::Cmd::Patrol?3000:6000;
     auto centroid=[&](float& cx,float& cz) {
         double sx=0,sz=0;for(int id:ground){sx+=f.world.unit(id)->x.toFloat();sz+=f.world.unit(id)->z.toFloat();}
         cx=float(sx/ground.size());cz=float(sz/ground.size());
@@ -3761,7 +3761,7 @@ MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
                     u.orders.empty()?"":u.orders.front().formationLevel?"F":"",int(u.flightGroundMode));}
             std::printf("\n");
         }
-        if(kind!=tak::net::Cmd::Patrol&&r.groundDone>=0&&r.flyersDone>=0&&t>r.groundDone+600)break;
+        if(kind!=ta::net::Cmd::Patrol&&r.groundDone>=0&&r.flyersDone>=0&&t>r.groundDone+600)break;
     }
     float cx,cz;centroid(cx,cz);
     for(int id:flyers)r.endAway=std::max(r.endAway,std::hypot(f.world.unit(id)->x.toFloat()-cx,f.world.unit(id)->z.toFloat()-cz));
@@ -3770,7 +3770,7 @@ MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
     r.meanAway=samples?float(sum/samples):0;r.hash=f.world.stateHash();
     for(int id:flyers)r.landedBehind+=landedBehind(f.world,*f.world.unit(id),ground,dirX,dirZ);
     if(r.frontWindows) {r.leadTop/=r.frontWindows;r.leadAll/=r.frontWindows;}
-    const char* name=kind==tak::net::Cmd::Move?"move":kind==tak::net::Cmd::AttackMove?"fight":"patrol";
+    const char* name=kind==ta::net::Cmd::Move?"move":kind==ta::net::Cmd::AttackMove?"fight":"patrol";
     std::printf("mixedformation %s %s ground_done=%d flyers_done=%d away_max=%.0f away_mean=%.0f end_away=%.0f landed_ahead=%d "
         "pace=%.2f stalls=%d/%d misaligned=%d/%d max_hover=%d land_delay=%d landed=%d spins=%llu lead_top=%.0f lead_all=%.0f "
         "max_off=%.0f landed_behind=%d crawling=%d/%d hash=%016llx\n",
@@ -3780,7 +3780,7 @@ MixedRun mixedformationRun(bool legion,tak::net::Cmd kind,bool serial=true) {
     return r;
 }
 void mixedformation() {
-    for(auto kind:{tak::net::Cmd::Move,tak::net::Cmd::AttackMove,tak::net::Cmd::Patrol}) {
+    for(auto kind:{ta::net::Cmd::Move,ta::net::Cmd::AttackMove,ta::net::Cmd::Patrol}) {
         mixedformationRun(false,kind);   // Retail: reported, the 417e02 re-forming port
         const auto r=mixedformationRun(true,kind);
         if(std::getenv("MIXED_REPORT"))continue;   // measurement only
@@ -3811,7 +3811,7 @@ void mixedformation() {
         // 21,600 ticks: forming up near the goal, a patrol turning at its points; on the stations before, 13,021 /
         // 12,186 / 20,237 of 13,540 / 13,189 / 21,600).
         check(r.cruising>0&&r.crawling*3<=r.cruising,"formation flyers crawled at the ground's pace");
-        if(kind!=tak::net::Cmd::Patrol) {
+        if(kind!=ta::net::Cmd::Patrol) {
             check(r.groundDone>=0&&r.flyersDone>=0,"the mixed formation never finished");
             check(r.endAway<=300.f,"formation flyers settled away from the ground");
             // Landing as soon as the order is done (retail's standby takes 3 ticks).
@@ -3821,7 +3821,7 @@ void mixedformation() {
             check(r.maxLandDelay<=10,"a formation flyer waited before landing");
         }
     }
-    const auto a=mixedformationRun(true,tak::net::Cmd::Move,true),b=mixedformationRun(true,tak::net::Cmd::Move,false);
+    const auto a=mixedformationRun(true,ta::net::Cmd::Move,true),b=mixedformationRun(true,ta::net::Cmd::Move,false);
     check(a.hash==b.hash,"mixed formation: serial and workers differ");
 }
 
@@ -3856,8 +3856,8 @@ FrontRun flyerfrontRun(bool serial=true,bool cold=false) {
     all=ground;all.insert(all.end(),flyers.begin(),flyers.end());
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd k,int id,float x,float z,int target=0) {
-        tak::net::Command c;c.kind=k;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd k,int id,float x,float z,int target=0) {
+        ta::net::Command c;c.kind=k;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
     // As the move UI does: flyers keep their offset from the selection's centre (clamped to 60 px per axis);
@@ -3867,18 +3867,18 @@ FrontRun flyerfrontRun(bool serial=true,bool cold=false) {
         float sx=0,sz=0;
         for(int id:all){sx+=f.world.unit(id)->x.toFloat();sz+=f.world.unit(id)->z.toFloat();}
         sx/=float(all.size());sz/=float(all.size());
-        std::vector<tak::net::Command> cmds;
+        std::vector<ta::net::Command> cmds;
         for(int id:all) {
             const auto& u=*f.world.unit(id);
-            tak::net::Command c;c.kind=tak::net::Cmd::Move;c.player=0;c.unitId=id;c.queue=0;
+            ta::net::Command c;c.kind=ta::net::Cmd::Move;c.player=0;c.unitId=id;c.queue=0;
             c.x=u.type->canFly?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px;
             c.z=u.type->canFly?pz+std::clamp(u.z.toFloat()-sz,-60.f,60.f):pz;
             cmds.push_back(c);
         }
-        if(cold)cmds=tak::net::packClick(cmds,{true,px,pz},orderSerial);
+        if(cold)cmds=ta::net::packClick(cmds,{true,px,pz},orderSerial);
         for(const auto& c:cmds)applyCommand(f.world,registry,c);
     };
-    for(int id:all)command(tak::net::Cmd::SetSquad,id,0,0,-1);
+    for(int id:all)command(ta::net::Cmd::SetSquad,id,0,0,-1);
     for(int t=0;t<(cold?0:300);++t)f.world.tick(1.f/30);
     click(190*16,74*16);
     FrontRun r;float wx=0,wz=0;
@@ -3947,12 +3947,12 @@ float flyerfrontAirOnly() {
     TypeRegistry registry;
     std::map<int,std::pair<float,float>> goal;
     for(int id:flyers) {
-        tak::net::Command c;c.kind=tak::net::Cmd::SetSquad;c.player=0;c.unitId=id;c.targetId=-1;applyCommand(f.world,registry,c);
+        ta::net::Command c;c.kind=ta::net::Cmd::SetSquad;c.player=0;c.unitId=id;c.targetId=-1;applyCommand(f.world,registry,c);
     }
     for(int t=0;t<300;++t)f.world.tick(1.f/30);
     for(int id:flyers) {
         const auto& u=*f.world.unit(id);
-        tak::net::Command c;c.kind=tak::net::Cmd::Move;c.player=0;c.unitId=id;c.x=190*16+u.x.toFloat()-(8+10)*16;c.z=u.z.toFloat();c.queue=0;
+        ta::net::Command c;c.kind=ta::net::Cmd::Move;c.player=0;c.unitId=id;c.x=190*16+u.x.toFloat()-(8+10)*16;c.z=u.z.toFloat();c.queue=0;
         goal[id]={c.x,c.z};applyCommand(f.world,registry,c);
     }
     for(int t=0;t<4000;++t)f.world.tick(1.f/30);
@@ -3984,15 +3984,15 @@ NarrowRun flyerfrontNarrow(int cols,int rows) {
     all=ground;all.insert(all.end(),flyers.begin(),flyers.end());
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd k,int id,float x,float z,int target=0) {
-        tak::net::Command c;c.kind=k;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd k,int id,float x,float z,int target=0) {
+        ta::net::Command c;c.kind=k;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    for(int id:all)command(tak::net::Cmd::SetSquad,id,0,0,-1);
+    for(int id:all)command(ta::net::Cmd::SetSquad,id,0,0,-1);
     for(int t=0;t<300;++t)f.world.tick(1.f/30);
     for(int id:all) {
         const auto& u=*f.world.unit(id);
-        command(tak::net::Cmd::Move,id,u.type->canFly?190*16+std::clamp(u.x.toFloat()-30*16,-60.f,60.f):190*16,
+        command(ta::net::Cmd::Move,id,u.type->canFly?190*16+std::clamp(u.x.toFloat()-30*16,-60.f,60.f):190*16,
                 u.type->canFly?104*16+std::clamp(u.z.toFloat()-104*16,-60.f,60.f):104*16);
     }
     NarrowRun r;float wx=0;
@@ -4104,7 +4104,7 @@ AwareResult awareRun(const char* name,int kind,int sightB) {
     // axes) and the detour; no pair loop here.
     Watch motion;AwareResult r;r.total=int(all.size());
     {
-        tak::legion_observe::Group ga,gb;ga.name="A";ga.ids=a;gb.name="B";gb.ids=b;
+        ta::legion_observe::Group ga,gb;ga.name="A";ga.ids=a;gb.name="B";gb.ids=b;
         motion.cfg.groups={ga,gb};
         motion.cfg.pairs.push_back({"A","B",2});
         motion.cfg.decisionEvery=10;
@@ -4125,7 +4125,7 @@ AwareResult awareRun(const char* name,int kind,int sightB) {
     }
     {
         const auto k=motion.keys();
-        using tak::legion_observe::Observer;
+        using ta::legion_observe::Observer;
         r.stopped=double(Observer::get(k,"stopped_permille",0))/10;
         r.contacts=double(Observer::get(k,"pair.A.B.permille_x100",0))/100;
         r.detour=double(Observer::get(k,"detour_permille",0))/10;
@@ -4321,19 +4321,19 @@ ProbeRun deadendRun(int width,int count,bool room,bool squad,bool retail,bool se
     for(int i=0;i<count;++i)ids.push_back(f.spawn(type,14+(i%12)*3,32+(i/12)*4));
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd kind,int id,float x,float z) {
-        tak::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=-1;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd kind,int id,float x,float z) {
+        ta::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=-1;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    if(squad) {for(int id:ids)command(tak::net::Cmd::SetSquad,id,0,0);for(int t=0;t<600;++t)f.world.tick(1.f/30);}
+    if(squad) {for(int id:ids)command(ta::net::Cmd::SetSquad,id,0,0);for(int t=0;t<600;++t)f.world.tick(1.f/30);}
     const float px=float((room?200+roomL/2:236)*16),pz=float(zc*16);
-    for(int id:ids)command(tak::net::Cmd::Move,id,px,pz);
+    for(int id:ids)command(ta::net::Cmd::Move,id,px,pz);
     std::map<int,int> doneAt;
     constexpr int kTicks=12000;
     int ticks=0;
     Watch watch;
     {
-        tak::legion_observe::Group g;g.name="all";g.ids=ids;g.clickX=int(px);g.clickZ=int(pz);
+        ta::legion_observe::Group g;g.name="all";g.ids=ids;g.clickX=int(px);g.clickZ=int(pz);
         watch.cfg.groups.push_back(g);
     }
     for(;ticks<kTicks&&doneAt.size()<ids.size();++ticks) {
@@ -4391,7 +4391,7 @@ ProbeRun pillarFieldRun(bool serial) {
     TypeRegistry registry;
     const float px=220*16,pz=50*16;
     for(int id:ids) {
-        tak::net::Command c;c.kind=tak::net::Cmd::Move;c.player=0;c.unitId=id;c.targetId=-1;c.x=px;c.z=pz;c.queue=0;
+        ta::net::Command c;c.kind=ta::net::Cmd::Move;c.player=0;c.unitId=id;c.targetId=-1;c.x=px;c.z=pz;c.queue=0;
         applyCommand(f.world,registry,c);
     }
     int ticks=0,open=int(ids.size());
@@ -4521,14 +4521,14 @@ ProbeRun settlelatencyRun(int stride,bool serial) {
     for(int i=0;i<120;++i)ids.push_back(f.spawn(type,14+(i%12)*3,32+(i/12)*4));
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd kind,int id,float x,float z) {
-        tak::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=-1;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd kind,int id,float x,float z) {
+        ta::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=-1;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    for(int id:ids)command(tak::net::Cmd::SetSquad,id,0,0);
+    for(int id:ids)command(ta::net::Cmd::SetSquad,id,0,0);
     for(int t=0;t<600;++t)f.world.tick(1.f/30);
     const float px=160*16,pz=50*16;
-    for(int id:ids)command(tak::net::Cmd::Move,id,px,pz);
+    for(int id:ids)command(ta::net::Cmd::Move,id,px,pz);
     std::map<int,int> doneAt,lastTravel;
     std::map<int,std::pair<int32_t,int32_t>> was;
     for(int id:ids) {const auto& u=*f.world.unit(id);was[id]={u.x.v,u.z.v};lastTravel[id]=-1;}
@@ -4648,14 +4648,14 @@ ProbeRun structsquadRun(int mode,bool serial) {
     f.start();
     if(mode==2)f.world.unit(extra)->underConstruction=true;
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd kind,int id,int target,float x,float z) {
-        tak::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd kind,int id,int target,float x,float z) {
+        ta::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    for(int id:ids)command(tak::net::Cmd::SetSquad,id,mode==4?1:-1,0,0);
-    if(extra>0)command(tak::net::Cmd::SetSquad,extra,mode==4?1:-1,0,0);
+    for(int id:ids)command(ta::net::Cmd::SetSquad,id,mode==4?1:-1,0,0);
+    if(extra>0)command(ta::net::Cmd::SetSquad,extra,mode==4?1:-1,0,0);
     for(int t=0;t<60;++t)f.world.tick(1.f/30);
-    for(int id:ids)command(tak::net::Cmd::Move,id,0,150*16,40*16);
+    for(int id:ids)command(ta::net::Cmd::Move,id,0,150*16,40*16);
     int firstDone=-1,allDone=-1;
     for(int t=0;t<1500;++t) {
         f.world.tick(1.f/30);
@@ -4698,12 +4698,12 @@ ProbeRun factorysquadRun(int mode,int movers,bool serial,bool direct=false) {
     if(direct)for(int i=0;i<movers;++i)standing.push_back(f.spawn(type,14+(i%4)*3,36+(i/4)*3));
     f.start();
     TypeRegistry registry;
-    auto command=[&](tak::net::Cmd kind,int id,int target,float x,float z) {
-        tak::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    auto command=[&](ta::net::Cmd kind,int id,int target,float x,float z) {
+        ta::net::Command c;c.kind=kind;c.player=0;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(f.world,registry,c);
     };
-    if(mode)command(tak::net::Cmd::SetSquad,fid,mode==1?-1:1,0,0);
-    if(direct&&mode)for(int id:standing)command(tak::net::Cmd::SetSquad,id,mode==1?-1:1,0,0);
+    if(mode)command(ta::net::Cmd::SetSquad,fid,mode==1?-1:1,0,0);
+    if(direct&&mode)for(int id:standing)command(ta::net::Cmd::SetSquad,id,mode==1?-1:1,0,0);
     if(!direct)f.world.setRepeat(fid,&type);
     std::vector<int> made=standing;int stopped=0;
     for(int t=0;t<4000&&!stopped&&!direct;++t) {
@@ -4717,7 +4717,7 @@ ProbeRun factorysquadRun(int mode,int movers,bool serial,bool direct=false) {
     int squadded=0;for(int id:made)squadded+=f.world.unit(id)->squad!=0;
     for(int t=0;t<60;++t)f.world.tick(1.f/30);
     const float startX=f.world.unit(made.front())->x.toFloat();
-    for(int id:made)command(tak::net::Cmd::Move,id,0,110*16,40*16);
+    for(int id:made)command(ta::net::Cmd::Move,id,0,110*16,40*16);
     int allDone=-1;
     for(int t=0;t<3000;++t) {
         f.world.tick(1.f/30);
@@ -4881,8 +4881,8 @@ Rb02Result rb02PlugRun(int mode,bool serial=true) {
     return r;
 }
 void rb02() {
-    const bool full=std::getenv("TAK_RB02_FULL")!=nullptr;
-    const int only=std::getenv("TAK_RB02_MODE")?std::atoi(std::getenv("TAK_RB02_MODE")):-1;
+    const bool full=std::getenv("TA_RB02_FULL")!=nullptr;
+    const int only=std::getenv("TA_RB02_MODE")?std::atoi(std::getenv("TA_RB02_MODE")):-1;
     auto want=[&](int mode) {return only<0?true:only==mode;};
     const int variants[]={1,2,0};
     for(int v:variants) {
@@ -4937,13 +4937,13 @@ ProbeRun streamRun(const StreamSpec& sp,bool serial) {
     Watch motion;
     auto streamName=[](size_t s) {return std::string(1,char('A'+s));};
     for(size_t s=0;s<ids.size();++s) {
-        tak::legion_observe::Group g;g.name=streamName(s);g.ids=ids[s];motion.cfg.groups.push_back(g);
+        ta::legion_observe::Group g;g.name=streamName(s);g.ids=ids[s];motion.cfg.groups.push_back(g);
         for(size_t t=s+1;t<ids.size();++t)motion.cfg.pairs.push_back({streamName(s),streamName(t),2});
     }
     motion.cfg.decisionEvery=10;
-    std::vector<tak::legion_observe::BehindProbe> behind;
+    std::vector<ta::legion_observe::BehindProbe> behind;
     for(const auto& [late,early] : sp.behind) {
-        tak::legion_observe::BehindProbe bp;bp.name=streamName(size_t(late))+"_after_"+streamName(size_t(early));
+        ta::legion_observe::BehindProbe bp;bp.name=streamName(size_t(late))+"_after_"+streamName(size_t(early));
         for(int id:ids[size_t(late)])bp.late.push_back({id,int64_t(sp.streams[size_t(late)].gx)*16,int64_t(sp.streams[size_t(late)].gz)*16});
         bp.early=ids[size_t(early)];
         behind.push_back(std::move(bp));
@@ -4972,7 +4972,7 @@ ProbeRun streamRun(const StreamSpec& sp,bool serial) {
         }
         if(arrived==int(all.size())) {done=t;break;}
     }
-    using tak::legion_observe::Observer;
+    using ta::legion_observe::Observer;
     const auto k=motion.keys();
     const auto st=f.world.legionStats();
     char buf[1800];int n=0;
@@ -4983,7 +4983,7 @@ ProbeRun streamRun(const StreamSpec& sp,bool serial) {
         (unsigned long long)st.parts,(unsigned long long)st.detours,(unsigned long long)st.awareEncounters,(unsigned long long)st.awareReplans,
         (unsigned long long)st.awareBuilds,(unsigned long long)st.awareLatencyMax,
         (unsigned long long)(st.awareLatencyN?st.awareLatencySum/st.awareLatencyN:0),(unsigned long long)st.giveWayTicks,(unsigned long long)st.giveWayTimeouts);
-    tak::legion_observe::Keys bk;for(const auto& b:behind)b.report(bk);
+    ta::legion_observe::Keys bk;for(const auto& b:behind)b.report(bk);
     for(const auto& [key,v]:bk) {
         const auto dot=key.find('.',7);   // "behind.NAME.metric"
         const auto metric=key.substr(dot+1);
@@ -5080,7 +5080,7 @@ MixedSettleRun mixedsettleRun(std::string_view layout,int rows,int pitch,int tic
     }
     for(size_t i=0;i<ids.size();++i)
         if(!f.world.unit(ids[i])->orders.empty())r.open+=" "+std::to_string(ids[i])+"("+layout[i]+"x"+layout[i]+")";
-    if(std::getenv("TAK_MIXDUMP"))   // every body at the end: id, footprint, centre px, open order, Legion state, slot
+    if(std::getenv("TA_MIXDUMP"))   // every body at the end: id, footprint, centre px, open order, Legion state, slot
         for(size_t i=0;i<ids.size();++i) {
             const auto& u=*f.world.unit(ids[i]);const auto* nav=f.world.legionNavigator();
             int32_t sx=-(1<<16),sz=-(1<<16);if(nav)nav->goalPoint(u.id,sx,sz);
@@ -5108,7 +5108,7 @@ void mixedsettle() {
 // review ran on a scratch harness (12,800 layouts), kept as a case. Layout `seed` (splitmix64): footprints
 // 4x4/2x2, 4x4/3x3 or 3x3/2x2, 30 to 100 bodies, 10-90% of the larger, shuffled, in column order (the larger
 // first) or alternating, 6 to 12 rows at a pitch of the larger footprint plus one, one click 100 cells east of
-// the column. Every order must end within 5,000 ticks. TAK_MIXRANDOM=FROM,TO screens that range of seeds and
+// the column. Every order must end within 5,000 ticks. TA_MIXRANDOM=FROM,TO screens that range of seeds and
 // reports each layout with an open order; without it the case runs the seeds listed below.
 std::string mixedRandomLayout(uint64_t seed,int& rows,int& pitch) {
     uint64_t z=seed*0x9e3779b97f4a7c15ull+0x632be59bd9b4e019ull;
@@ -5127,9 +5127,9 @@ void mixedrandom() {
     // The two layouts the base left open (5717: a 4x4, id 4; 9651: a 3x3, id 9), each held off its own slot by a
     // settled arrival of its own footprint standing across it.
     std::vector<uint64_t> seeds={5717,9651};
-    if(const char* range=std::getenv("TAK_MIXRANDOM")) {
+    if(const char* range=std::getenv("TA_MIXRANDOM")) {
         unsigned long long a=0,b=0;
-        if(std::sscanf(range,"%llu,%llu",&a,&b)!=2||b<a)throw std::runtime_error("TAK_MIXRANDOM=FROM,TO");
+        if(std::sscanf(range,"%llu,%llu",&a,&b)!=2||b<a)throw std::runtime_error("TA_MIXRANDOM=FROM,TO");
         seeds.clear();for(unsigned long long k=a;k<=b;++k)seeds.push_back(k);
     }
     std::string open;
@@ -5137,7 +5137,7 @@ void mixedrandom() {
         int rows=0,pitch=0;
         const std::string layout=mixedRandomLayout(seed,rows,pitch);
         const auto r=mixedsettleRun(layout,rows,pitch,5000);
-        if(!r.open.empty()||!std::getenv("TAK_MIXRANDOM"))
+        if(!r.open.empty()||!std::getenv("TA_MIXRANDOM"))
             std::printf("mixedrandom seed=%llu bodies=%zu rows=%d done=%d last_done=%d open:%s hash=%016llx\n",(unsigned long long)seed,
                         layout.size(),rows,r.done,r.last,r.open.empty()?" none":r.open.c_str(),(unsigned long long)r.hash);
         if(!r.open.empty())open+=" "+std::to_string(seed);

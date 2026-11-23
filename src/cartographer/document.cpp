@@ -51,15 +51,15 @@ bool validDocumentName(const std::string& name) {
 }
 
 bool aiFileKey(const std::string& path) {
-    const auto key=tak::hpi::MountSet::key(path);
+    const auto key=ta::hpi::MountSet::key(path);
     return key.starts_with("ai/") && key.ends_with(".txt") && key.find('/',3)==std::string::npos &&
            key.size()>7 && validDocumentName(key.substr(3));
 }
 
-AiFiles aiFilesFromArchive(const tak::hpi::Archive& archive) {
+AiFiles aiFilesFromArchive(const ta::hpi::Archive& archive) {
     AiFiles result;
     for(const auto& entry:archive.entries()) if(!entry.isDirectory && aiFileKey(entry.path))
-        result[tak::hpi::MountSet::key(entry.path)]=archive.read(entry);
+        result[ta::hpi::MountSet::key(entry.path)]=archive.read(entry);
     return result;
 }
 
@@ -67,28 +67,28 @@ AiFiles aiFilesFromFolder(const fs::path& mapFolder) {
     AiFiles result;std::error_code ec;
     for(const auto& folder:fs::directory_iterator(mapFolder.empty()?fs::path("."):mapFolder,ec)) {
         const auto name=folder.path().filename().u8string();
-        if(tak::hpi::MountSet::key(std::string(name.begin(),name.end()))!="ai" || !folder.is_directory(ec))continue;
+        if(ta::hpi::MountSet::key(std::string(name.begin(),name.end()))!="ai" || !folder.is_directory(ec))continue;
         for(const auto& file:fs::directory_iterator(folder.path(),ec)) {
             const auto text=file.path().filename().u8string();const std::string path="ai/"+std::string(text.begin(),text.end());
             if(!file.is_regular_file(ec) || !aiFileKey(path))continue;
             std::ifstream stream(file.path(),std::ios::binary);
-            if(stream)result[tak::hpi::MountSet::key(path)]={std::istreambuf_iterator<char>(stream),{}};
+            if(stream)result[ta::hpi::MountSet::key(path)]={std::istreambuf_iterator<char>(stream),{}};
         }
     }
     return result;
 }
 
-AiFiles aiFilesFromMapArchive(const tak::hpi::Vfs& vfs, const std::string& mapPath) {
+AiFiles aiFilesFromMapArchive(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
     AiFiles result;
     for(const auto& path:vfs.mapArchivePaths(mapPath)) if(aiFileKey(path))
-        if(auto data=vfs.readFromMapArchive(mapPath,path))result[tak::hpi::MountSet::key(path)]=std::move(*data);
+        if(auto data=vfs.readFromMapArchive(mapPath,path))result[ta::hpi::MountSet::key(path)]=std::move(*data);
     return result;
 }
 
-AiFiles liftAiFiles(tak::hpi::Vfs::Files& files) {
+AiFiles liftAiFiles(ta::hpi::Vfs::Files& files) {
     AiFiles result;
     for(auto it=files.begin();it!=files.end();) {
-        if(aiFileKey(it->first)) {result[tak::hpi::MountSet::key(it->first)]=std::move(it->second);it=files.erase(it);}
+        if(aiFileKey(it->first)) {result[ta::hpi::MountSet::key(it->first)]=std::move(it->second);it=files.erase(it);}
         else ++it;
     }
     return result;
@@ -130,11 +130,11 @@ std::string modPackNameError(const std::string& name) {
 }
 
 std::string modPackReservedError(const fs::path& dataRoot, const std::string& name) {
-    using tak::hpi::MountSet;
-    if(MountSet::key(name)==tak::hpi::kAlwaysEnabledDir)
+    using ta::hpi::MountSet;
+    if(MountSet::key(name)==ta::hpi::kAlwaysEnabledDir)
         return "always_enabled holds the packs the game always applies; pick another name.";
     std::vector<std::string> always;
-    try {always=tak::hpi::alwaysEnabledPacks(dataRoot,tak::hpi::ModKind::Game);} catch(const std::exception&) {}
+    try {always=ta::hpi::alwaysEnabledPacks(dataRoot,ta::hpi::ModKind::Game);} catch(const std::exception&) {}
     for(const auto& pack:always)if(MountSet::key(pack)==MountSet::key(name))
         return "mods/game/always_enabled/"+pack+" already uses that name, and its copy is the one the game loads. "
                "Move it out of always_enabled to edit it here.";
@@ -143,7 +143,7 @@ std::string modPackReservedError(const fs::path& dataRoot, const std::string& na
 
 std::string alwaysEnabledGameNote(const fs::path& dataRoot) {
     std::vector<std::string> always;
-    try {always=tak::hpi::alwaysEnabledPacks(dataRoot,tak::hpi::ModKind::Game);} catch(const std::exception&) {}
+    try {always=ta::hpi::alwaysEnabledPacks(dataRoot,ta::hpi::ModKind::Game);} catch(const std::exception&) {}
     if(always.empty())return {};
     std::string names;for(const auto& pack:always)names+=(names.empty()?"":", ")+pack;
     return " Always-enabled game packs (mods/game/always_enabled/: "+names+") also apply in the test game.";
@@ -155,7 +155,7 @@ bool ModProfilePlan::writes() const {
 
 bool planModProfiles(const fs::path& dataRoot, const std::string& packName, const AiFiles& files,
                      const std::set<std::string>& remove, ModProfilePlan& plan, std::string& error) {
-    using tak::hpi::MountSet;using Action=ModProfileChange::Action;
+    using ta::hpi::MountSet;using Action=ModProfileChange::Action;
     plan=ModProfilePlan{};error.clear();
     try {
         if(const auto why=modPackNameError(packName);!why.empty()) {error=why;return false;}
@@ -181,7 +181,7 @@ bool planModProfiles(const fs::path& dataRoot, const std::string& packName, cons
                     fileText(other)+" is not a folder.";
                 return false;
             }
-            if(next.empty()) {missing=true;next=dir/tak::u8path(parts[i]);plan.create.push_back(next);}
+            if(next.empty()) {missing=true;next=dir/ta::u8path(parts[i]);plan.create.push_back(next);}
             dir=next;
             if(i==2) {plan.packFolder=dir;plan.pack=nameOf(dir);}
         }
@@ -196,13 +196,13 @@ bool planModProfiles(const fs::path& dataRoot, const std::string& packName, cons
         }
         std::unique_ptr<MountSet> archives;
         if(fs::is_directory(plan.packFolder,ec))
-            try {archives=std::make_unique<MountSet>(plan.packFolder,tak::hpi::MountConfig{false,{".hpi",".ufo",".kmp"},{},{}});} catch(const std::exception&) {}
+            try {archives=std::make_unique<MountSet>(plan.packFolder,ta::hpi::MountConfig{false,{".hpi",".ufo",".kmp"},{},{}});} catch(const std::exception&) {}
         auto add=[&](const std::string& key,const std::vector<uint8_t>* data) {
             if(key!=MountSet::key(key) || !aiFileKey(key)) {error="Invalid AI profile file name: "+key;return false;}
-            if(links.count(key)) {error=fileText(dir/tak::u8path(key.substr(3)))+" is a symbolic link; it was not replaced.";return false;}
+            if(links.count(key)) {error=fileText(dir/ta::u8path(key.substr(3)))+" is a symbolic link; it was not replaced.";return false;}
             ModProfileChange change;change.key=key;
             const auto found=onDisk.find(key);const bool exists=found!=onDisk.end();
-            change.path=exists?found->second:dir/tak::u8path(key.substr(3));
+            change.path=exists?found->second:dir/ta::u8path(key.substr(3));
             if(exists)change.existing=readAll(change.path);
             if(data) {change.data=*data;change.action=!exists?Action::Create:change.existing==change.data?Action::Same:Action::Replace;}
             else if(exists)change.action=Action::Delete;
@@ -243,7 +243,7 @@ bool writeModProfiles(const fs::path& dataRoot, const ModProfilePlan& plan, cons
             if(backupRoot.empty())throw std::runtime_error("There is no Cartographer profile folder for the backups, so nothing was replaced.");
             char stamp[32]{};const std::time_t t=std::time(nullptr);
             if(const std::tm* utc=std::gmtime(&t))std::strftime(stamp,sizeof stamp,"%Y%m%d-%H%M%SZ",utc);
-            const auto base=backupRoot/"mod-backups"/tak::u8path(now.pack);
+            const auto base=backupRoot/"mod-backups"/ta::u8path(now.pack);
             backup=base/stamp;
             for(int n=2;fs::exists(backup);++n)backup=base/(std::string(stamp)+"-"+std::to_string(n));
             fs::create_directories(backup/"ai");
@@ -254,7 +254,7 @@ bool writeModProfiles(const fs::path& dataRoot, const ModProfilePlan& plan, cons
         // Staged beside the packs: files directly in mods/game/ are never mounted.
         const auto game=now.packFolder.parent_path();
         static std::atomic<unsigned> serial{0};
-        do stage=game/(".tak-ai-stage-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(serial++));
+        do stage=game/(".ta-ai-stage-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(serial++));
         while(!fs::create_directory(stage));
         for(size_t i=0;i<now.changes.size();++i) {
             const auto& change=now.changes[i];
@@ -288,11 +288,11 @@ bool writeModProfiles(const fs::path& dataRoot, const ModProfilePlan& plan, cons
 }
 
 AiFiles readModProfiles(const fs::path& dataRoot, const std::string& pack) {
-    const auto packs=tak::hpi::modPacks(dataRoot,tak::hpi::ModKind::Game);
+    const auto packs=ta::hpi::modPacks(dataRoot,ta::hpi::ModKind::Game);
     if(!std::binary_search(packs.begin(),packs.end(),pack))throw std::runtime_error("mod pack not found: "+pack);
     AiFiles result;
-    for(auto& [path,data]:tak::hpi::modFiles(dataRoot,tak::hpi::ModKind::Game,{pack}))
-        if(aiFileKey(path))result[tak::hpi::MountSet::key(path)]=std::move(data);
+    for(auto& [path,data]:ta::hpi::modFiles(dataRoot,ta::hpi::ModKind::Game,{pack}))
+        if(aiFileKey(path))result[ta::hpi::MountSet::key(path)]=std::move(data);
     return result;
 }
 
@@ -301,7 +301,7 @@ fs::path installMapsFolder(const fs::path& dataRoot) {
     if(dataRoot.empty())return {};
     for(const auto& entry:fs::directory_iterator(dataRoot,ec)) {
         const auto name=entry.path().filename().u8string();
-        if(tak::hpi::MountSet::key(std::string(name.begin(),name.end()))=="maps" && entry.is_directory(ec))return entry.path();
+        if(ta::hpi::MountSet::key(std::string(name.begin(),name.end()))=="maps" && entry.is_directory(ec))return entry.path();
     }
     return {};
 }
@@ -315,7 +315,7 @@ bool insideFolder(const fs::path& path, const fs::path& folder) {
     auto same=[](const fs::path& a,const fs::path& b) {
 #if defined(_WIN32) || defined(__APPLE__)
         const auto x=a.u8string(),y=b.u8string();
-        return tak::hpi::MountSet::key(std::string(x.begin(),x.end()))==tak::hpi::MountSet::key(std::string(y.begin(),y.end()));
+        return ta::hpi::MountSet::key(std::string(x.begin(),x.end()))==ta::hpi::MountSet::key(std::string(y.begin(),y.end()));
 #else
         return a==b;
 #endif
@@ -330,8 +330,8 @@ bool insideFolder(const fs::path& path, const fs::path& folder) {
 }
 
 DocumentFiles documentFiles(
-    const tak::tnt::Map& map, tak::tnt::Scenario metadata,
-    const tak::crt::Scenario& scenario, const std::vector<PlacedUnit>& units,
+    const ta::tnt::Map& map, ta::tnt::Scenario metadata,
+    const ta::crt::Scenario& scenario, const std::vector<PlacedUnit>& units,
     const std::set<std::string>& useOnly, const AiFiles& aiFiles, const std::string& name) {
     if (!validDocumentName(name)) throw std::runtime_error("Choose a map name without path separators or reserved filename characters");
     metadata.hasScenario = !units.empty() || !scenario.customTypes.empty() || !scenario.regions.empty();
@@ -346,14 +346,14 @@ DocumentFiles documentFiles(
             {name+".tdf",bytes(writeUseOnly({useOnly.begin(),useOnly.end()}))},
             {name+".txt",bytes(metadata.missionDescription.empty()?metadata.missionName:metadata.missionDescription)}};
     for(const auto& [path,data]:aiFiles) {
-        if(path!=tak::hpi::MountSet::key(path) || !aiFileKey(path))throw std::runtime_error("Invalid AI profile file name: "+path);
+        if(path!=ta::hpi::MountSet::key(path) || !aiFileKey(path))throw std::runtime_error("Invalid AI profile file name: "+path);
         // A map package rejects an empty AI file; empty means deleted.
         if(!data.empty())files.rootMembers.push_back({path,data});
     }
     return files;
 }
 
-bool writeDocumentFiles(const fs::path& directory, const std::vector<tak::hpi::PackFile>& files,
+bool writeDocumentFiles(const fs::path& directory, const std::vector<ta::hpi::PackFile>& files,
                         std::string& error, const std::atomic_bool* cancel) {
     fs::path stage;
     std::vector<bool> existed;
@@ -369,18 +369,18 @@ bool writeDocumentFiles(const fs::path& directory, const std::vector<tak::hpi::P
         for(const auto& file:files) {
             if(!validDocumentName(file.path) || !names.insert(file.path).second)
                 throw std::runtime_error("Invalid or duplicate export filename");
-            const auto target=dir/tak::u8path(file.path);
+            const auto target=dir/ta::u8path(file.path);
             if(fs::exists(target) && !fs::is_regular_file(target))
                 throw std::runtime_error("Save destination is not a regular file");
         }
         static std::atomic<unsigned> serial{0};
         do {
-            stage=dir/(".tak-save-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(serial++));
+            stage=dir/(".ta-save-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(serial++));
         } while(!fs::create_directory(stage));
         for(size_t i=0;i<files.size();++i) {
             checkCancel();
             write(stage/(std::to_string(i)+".new"),files[i].data);
-            const auto target=dir/tak::u8path(files[i].path);
+            const auto target=dir/ta::u8path(files[i].path);
             existed.push_back(fs::exists(target));
             if(existed.back()) {
                 fs::copy_file(target,stage/(std::to_string(i)+".old"));
@@ -392,9 +392,9 @@ bool writeDocumentFiles(const fs::path& directory, const std::vector<tak::hpi::P
         checkCancel();
         // Finish every write/backup before replacing any member of the document.
         for(size_t i=0;i<files.size();++i) if(existed[i])
-            replace(stage/(std::to_string(i)+".backup"),dir/tak::u8path(files[i].path+".bak"));
+            replace(stage/(std::to_string(i)+".backup"),dir/ta::u8path(files[i].path+".bak"));
         for(size_t i=0;i<files.size();++i) {
-            replace(stage/(std::to_string(i)+".new"),dir/tak::u8path(files[i].path));
+            replace(stage/(std::to_string(i)+".new"),dir/ta::u8path(files[i].path));
             ++installed;
         }
     } catch(const std::exception& e) {
@@ -402,7 +402,7 @@ bool writeDocumentFiles(const fs::path& directory, const std::vector<tak::hpi::P
         const fs::path dir=directory.empty()?fs::path("."):directory;
         for(size_t i=0;i<installed;++i) {
             try {
-                const auto target=dir/tak::u8path(files[i].path);
+                const auto target=dir/ta::u8path(files[i].path);
                 if(existed[i]) replace(stage/(std::to_string(i)+".old"),target);
                 else fs::remove(target);
             } catch(const std::exception& restore) {
@@ -427,7 +427,7 @@ bool writeDocumentBundle(const fs::path& path, const DocumentFiles& files,
         // AI profiles sit at the archive root, where the game's VFS reads ai/<x>.txt.
         for(const auto& member:files.rootMembers) members.push_back(member);
         const auto filename=path.filename().u8string();
-        return writeDocumentFiles(path.parent_path(),{{std::string(filename.begin(),filename.end()),tak::hpi::pack(members)}},error,cancel);
+        return writeDocumentFiles(path.parent_path(),{{std::string(filename.begin(),filename.end()),ta::hpi::pack(members)}},error,cancel);
     } catch(const std::exception& e) { error=e.what();return false; }
 }
 bool writeDocumentLoose(const fs::path& directory, const DocumentFiles& files, const fs::path& installMaps,
@@ -444,10 +444,10 @@ bool writeDocumentLoose(const fs::path& directory, const DocumentFiles& files, c
             fs::path ai;std::error_code ec;
             for(const auto& entry:fs::directory_iterator(dir,ec)) {
                 const auto name=entry.path().filename().u8string();
-                if(tak::hpi::MountSet::key(std::string(name.begin(),name.end()))=="ai") {ai=entry.path();break;}
+                if(ta::hpi::MountSet::key(std::string(name.begin(),name.end()))=="ai") {ai=entry.path();break;}
             }
             if(ai.empty()) {ai=dir/"ai";fs::create_directory(ai);}
-            std::vector<tak::hpi::PackFile> profiles;
+            std::vector<ta::hpi::PackFile> profiles;
             for(const auto& member:files.rootMembers) profiles.push_back({member.path.substr(3),member.data});
             // The profiles first: a failure here leaves the map files untouched.
             if(!writeDocumentFiles(ai,profiles,error,cancel))return false;

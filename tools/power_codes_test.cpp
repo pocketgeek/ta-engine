@@ -13,9 +13,9 @@
 #include <stdexcept>
 #include <string>
 
-using namespace tak::sim;
-using tak::net::Cmd;
-using tak::net::Command;
+using namespace ta::sim;
+using ta::net::Cmd;
+using ta::net::Command;
 
 static void check(bool ok, const std::string& message) {
     if (!ok) throw std::runtime_error(message);
@@ -158,7 +158,7 @@ static void simCodes() {
         // The local display plane (client/retailfog.h) of player 0 follows its codes.
         advance(w, 10);
         {
-            namespace rf = tak::retailfog;
+            namespace rf = ta::retailfog;
             rf::PlaneSource s;
             s.viewCounts = w.viewCounts(); s.explored = w.navigationExploration();
             s.width = w.viewPlaneW(); s.height = w.viewPlaneH(); s.viewers = 1; s.player = 0;
@@ -202,44 +202,44 @@ static void simCodes() {
 static void wire() {
     // The server accepts the seven sim codes and a valid argument, nothing else.
     const auto payload = [](const Command& c) {
-        tak::net::Writer w; w.u32(1); w.cmd(c); return w.b;
+        ta::net::Writer w; w.u32(1); w.cmd(c); return w.b;
     };
     for (int c = 1; c <= 7; ++c)
-        check(tak::srv::validPlayerCommands(payload(code(PowerCode(c)))), "server accepts a sim code");
-    check(!tak::srv::validPlayerCommands(payload(code(PowerCode::Radar))), "Radar never travels");
-    check(!tak::srv::validPlayerCommands(payload(code(PowerCode::None))), "code 0 is forged");
+        check(ta::srv::validPlayerCommands(payload(code(PowerCode(c)))), "server accepts a sim code");
+    check(!ta::srv::validPlayerCommands(payload(code(PowerCode::Radar))), "Radar never travels");
+    check(!ta::srv::validPlayerCommands(payload(code(PowerCode::None))), "code 0 is forged");
     Command bad = code(PowerCode::Los); bad.queue = 9;
-    check(!tak::srv::validPlayerCommands(payload(bad)), "an unknown argument is forged");
+    check(!ta::srv::validPlayerCommands(payload(bad)), "an unknown argument is forged");
     // Round trip through a strict (replay) bundle read.
-    tak::net::Writer w;
-    tak::net::putBundle(w, 7, {code(PowerCode::ManaMe, 3, PowerArg::None, 42)}, {});
-    tak::net::Reader r(w.b.data(), w.b.size());
-    uint32_t tick = 0; tak::net::Bundle out;
-    check(tak::net::getBundle(r, tick, out, true) && out.cmds.size() == 1 && out.cmds[0].kind == Cmd::PowerCode &&
+    ta::net::Writer w;
+    ta::net::putBundle(w, 7, {code(PowerCode::ManaMe, 3, PowerArg::None, 42)}, {});
+    ta::net::Reader r(w.b.data(), w.b.size());
+    uint32_t tick = 0; ta::net::Bundle out;
+    check(ta::net::getBundle(r, tick, out, true) && out.cmds.size() == 1 && out.cmds[0].kind == Cmd::PowerCode &&
           out.cmds[0].unitId == 42 && out.cmds[0].player == 3 && out.cmds[0].targetId == int32_t(PowerCode::ManaMe),
           "a power code survives a strict bundle read");
     // The option travels in GameOptions and the replay header.
-    tak::net::GameOptions o; o.powerCodes = 1;
-    tak::net::Writer ow; tak::net::put(ow, o);
-    tak::net::Reader orr(ow.b.data(), ow.b.size());
-    tak::net::GameOptions back; tak::net::get(orr, back);
+    ta::net::GameOptions o; o.powerCodes = 1;
+    ta::net::Writer ow; ta::net::put(ow, o);
+    ta::net::Reader orr(ow.b.data(), ow.b.size());
+    ta::net::GameOptions back; ta::net::get(orr, back);
     check(orr.ok && orr.p == orr.end && back.powerCodes == 1, "GameOptions carries POWER CODES");
     // The replay byte carries the option (bit 0) and the room's map-revealed start (bit 1),
     // so playback seeds +Mapping as the game did.
-    tak::net::SlotInfo slots[tak::net::kMaxSlots] = {};
+    ta::net::SlotInfo slots[ta::net::kMaxSlots] = {};
     for (uint8_t fog : {uint8_t(0), uint8_t(1), uint8_t(2)}) {
-        tak::net::GameOptions g; g.powerCodes = 1; g.fogExplored = fog;
-        const auto live = tak::net::matchConfigFor(g, slots, 1, false);
-        const auto h = tak::net::replayHeaderFor(g, "m", "", slots, 1);
-        tak::net::GameOptions replayed; tak::net::SlotInfo rs[tak::net::kMaxSlots];
-        tak::net::matchInputsFrom(h, replayed, rs);
-        const auto again = tak::net::matchConfigFor(replayed, rs, 1, false);
+        ta::net::GameOptions g; g.powerCodes = 1; g.fogExplored = fog;
+        const auto live = ta::net::matchConfigFor(g, slots, 1, false);
+        const auto h = ta::net::replayHeaderFor(g, "m", "", slots, 1);
+        ta::net::GameOptions replayed; ta::net::SlotInfo rs[ta::net::kMaxSlots];
+        ta::net::matchInputsFrom(h, replayed, rs);
+        const auto again = ta::net::matchConfigFor(replayed, rs, 1, false);
         check(live.powerCodes && live.powerMapRevealed == (fog >= 1) && again.powerCodes &&
               again.powerMapRevealed == live.powerMapRevealed, "a replay seeds +Mapping as the game did");
     }
-    tak::net::GameOptions plain; plain.fogExplored = 1;
-    check(tak::net::replayHeaderFor(plain, "m", "", slots, 1).powerCodes == 0 &&
-          !tak::net::matchConfigFor(plain, slots, 1, false).powerMapRevealed, "POWER CODES off records 0");
+    ta::net::GameOptions plain; plain.fogExplored = 1;
+    check(ta::net::replayHeaderFor(plain, "m", "", slots, 1).powerCodes == 0 &&
+          !ta::net::matchConfigFor(plain, slots, 1, false).powerMapRevealed, "POWER CODES off records 0");
 }
 
 int main() {

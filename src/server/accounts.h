@@ -16,7 +16,7 @@
 
 #include "net/auth.h"
 
-namespace tak::srv {
+namespace ta::srv {
 
 struct Account {
     std::string name;              // as its owner spelled it; the display name in game
@@ -166,4 +166,4 @@ private:
     std::map<std::string, Entry> keys_;
 };
 
-}  // namespace tak::srv
+}  // namespace ta::srv

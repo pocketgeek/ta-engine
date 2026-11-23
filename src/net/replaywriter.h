@@ -1,6 +1,6 @@
 #pragma once
 
-// Writes a .takrep WHILE the game is played, so a replay survives however the game
+// Writes a .tarep WHILE the game is played, so a replay survives however the game
 // ends -- a crash, a kill, a power cut, or simply play continuing after the result.
 //
 // It used to be written in one go at the end, from memory. Anything that ended the
@@ -10,12 +10,12 @@
 //
 // The file on disk is the finished format byte for byte (net/replayhdr.h), with
 // two differences while it is being written:
-//   * it is named <name>.takrep.part, so the replay picker (which lists *.takrep)
+//   * it is named <name>.tarep.part, so the replay picker (which lists *.tarep)
 //     never offers half a file;
 //   * the bundle count is kReplayOpenCount and the hash trail is missing; the trail
-//     goes to a small sidecar, <name>.takrep.part.chk, in its own 20-byte records.
+//     goes to a small sidecar, <name>.tarep.part.chk, in its own 20-byte records.
 // finish() writes the trail after the bundles, fills in the count, makes it durable
-// and renames it to <name>.takrep. A .part left behind by a process that never got
+// and renames it to <name>.tarep. A .part left behind by a process that never got
 // that far is finished by recoverReplayParts(), which keeps every complete bundle.
 //
 // A live recording is LOCKED, so recovery in another process (or a second client
@@ -34,7 +34,7 @@
 
 #include "net/replayhdr.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // The count field of a file still being written. A real count is bounded far below
 // it by the replay size cap, so it can never be mistaken for one.
@@ -47,7 +47,7 @@ public:
     ReplayWriter(const ReplayWriter&) = delete;
     ReplayWriter& operator=(const ReplayWriter&) = delete;
 
-    // Creates <dir>game-<gameId>-<stamp>.takrep.part (a later stamp when that name
+    // Creates <dir>game-<gameId>-<stamp>.tarep.part (a later stamp when that name
     // is taken) and writes the header. `dir` ends in a path separator. UTF-8 path.
     bool open(const std::string& dir, const ReplayHeader& h, uint32_t gameId, uint64_t stamp);
     bool isOpen() const { return file_ != -1; }
@@ -67,7 +67,7 @@ public:
     // helper thread: an fsync on a busy disk can take long enough to drop frames.
     void syncAsync();
     // Writes the hash trail, fills in the count, syncs and renames the file to
-    // .takrep. Returns that path; "" when no bundle was recorded (the .part is
+    // .tarep. Returns that path; "" when no bundle was recorded (the .part is
     // removed) or on an I/O failure (the .part is kept for recovery).
     std::string finish();
 
@@ -93,9 +93,9 @@ private:
     bool syncWanted_ = false, syncStop_ = false;
 };
 
-// Finishes every <dir>*.takrep.part that no live process is still recording:
+// Finishes every <dir>*.tarep.part that no live process is still recording:
 // keeps each complete bundle (a torn final write is cut off), adds the hash trail
-// recorded so far, and renames it to .takrep. A .part with no complete bundle is
+// recorded so far, and renames it to .tarep. A .part with no complete bundle is
 // removed, as is a sidecar whose recording is gone. Returns the replays it wrote.
 struct RecoveredReplay {
     std::string path;
@@ -103,4 +103,4 @@ struct RecoveredReplay {
 };
 std::vector<RecoveredReplay> recoverReplayParts(const std::string& dir);
 
-}  // namespace tak::net
+}  // namespace ta::net

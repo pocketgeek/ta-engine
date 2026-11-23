@@ -31,7 +31,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 struct TrimPolicy {
     uint64_t windowMs = 5000;      // a whole window of low demand, by time ...
@@ -111,4 +111,4 @@ size_t shrinkVector(std::vector<T>& v, size_t targetElems) {
     return (before - v.capacity()) * sizeof(T);
 }
 
-} // namespace tak::render
+} // namespace ta::render

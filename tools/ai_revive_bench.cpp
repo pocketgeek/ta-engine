@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::ai {
+namespace ta::ai {
 // Controller's existing test friend (ai_behavior_test defines its own; this is
 // a separate program).
 struct PlacementProbe {
@@ -30,7 +30,7 @@ struct PlacementProbe {
 }
 
 int main(int argc,char** argv) try {
-    using namespace tak;
+    using namespace ta;
     int units=4000,casters=64,bodies=0,mapPx=12288,calls=2000,warm=200;
     uint32_t seed=1;
     std::string layout="uniform";

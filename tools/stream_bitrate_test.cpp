@@ -25,7 +25,7 @@
 #include <memory>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 using video::StreamCodec;
 
 static int g_fail = 0;

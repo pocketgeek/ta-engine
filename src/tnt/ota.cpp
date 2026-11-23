@@ -4,7 +4,7 @@
 
 #include <cstdio>
 
-namespace tak::tnt {
+namespace ta::tnt {
 
 namespace {
 // OTA assignments are single lines, not quoted/escaped strings. Keep a readable
@@ -27,7 +27,7 @@ std::string hexText(const std::string& text) {
     for (unsigned char c : text) { out += digits[c >> 4]; out += digits[c & 15]; }
     return out;
 }
-void restoreText(const tak::tdf::Node* node, const char* key, std::string& text) {
+void restoreText(const ta::tdf::Node* node, const char* key, std::string& text) {
     const auto* encoded = node ? node->value(key) : nullptr;
     if (!encoded || encoded->size() % 2 || encoded->size() > 131072) return;
     auto digit = [](char c) -> int {
@@ -48,27 +48,27 @@ void restoreText(const tak::tdf::Node* node, const char* key, std::string& text)
 
 Scenario Scenario::parse(const std::string& text) {
     Scenario s;
-    tak::tdf::Node root = tak::tdf::parseText(text, "<ota>");
-    const tak::tdf::Node* gh = root.child("globalheader");
+    ta::tdf::Node root = ta::tdf::parseText(text, "<ota>");
+    const ta::tdf::Node* gh = root.child("globalheader");
     if (!gh) return s;
     s.copyright = gh->valueOr("copyright", s.copyright);
     s.missionName = gh->valueOr("missionname", "");
     s.missionDescription = gh->valueOr("missiondescription", "");
-    s.generatorRecipe = gh->valueOr("takgeneratorrecipe", "");
+    s.generatorRecipe = gh->valueOr("tageneratorrecipe", "");
     s.kingdom = gh->valueOr("kingdom", "");
     s.useOnlyUnits = gh->valueOr("useonlyunits", "");
     s.hasScenario = gh->numberOr("hasscenario", 0) != 0;
     // size = "W x H" (Units)
     if (const std::string* sz = gh->value("size"))
         std::sscanf(sz->c_str(), "%d x %d", &s.sizeW, &s.sizeH);
-    const tak::tdf::Node* md = gh->child("map data");
+    const ta::tdf::Node* md = gh->child("map data");
     if (md) {
         s.mapType = md->valueOr("type", s.mapType);
         s.aiProfile = md->valueOr("aiprofile", s.aiProfile);
-        if (const tak::tdf::Node* sp = md->child("specials")) {
+        if (const ta::tdf::Node* sp = md->child("specials")) {
             // [special0], [special1], ... each with specialwhat/XPos/ZPos.
             for (const std::string& nm : sp->childOrder) {
-                const tak::tdf::Node* one = sp->child(nm);
+                const ta::tdf::Node* one = sp->child(nm);
                 if (!one) continue;
                 std::string what = one->valueOr("specialwhat", "");
                 if (what.rfind("StartPos", 0) != 0 && what.rfind("startpos", 0) != 0)
@@ -85,7 +85,7 @@ Scenario Scenario::parse(const std::string& text) {
     restoreText(textFields, "copyright", s.copyright);
     restoreText(textFields, "missionname", s.missionName);
     restoreText(textFields, "missiondescription", s.missionDescription);
-    restoreText(textFields, "takgeneratorrecipe", s.generatorRecipe);
+    restoreText(textFields, "tageneratorrecipe", s.generatorRecipe);
     restoreText(textFields, "kingdom", s.kingdom);
     restoreText(textFields, "useonlyunits", s.useOnlyUnits);
     restoreText(textFields, "type", s.mapType);
@@ -106,7 +106,7 @@ std::string Scenario::write() const {
     line(1, "Copyright=" + legacyText(copyright) + ";");
     line(1, "missionname=" + legacyText(missionName) + ";");
     line(1, "missiondescription=" + legacyText(missionDescription) + ";");
-    if(!generatorRecipe.empty())line(1, "takgeneratorrecipe=" + legacyText(generatorRecipe) + ";");
+    if(!generatorRecipe.empty())line(1, "tageneratorrecipe=" + legacyText(generatorRecipe) + ";");
     line(1, "kingdom=" + legacyText(kingdom) + ";");
     line(1, "numplayers=" + std::to_string(starts.size()) + ";");
     line(1, "size=" + std::to_string(sizeW) + " x " + std::to_string(sizeH) + ";");
@@ -138,7 +138,7 @@ std::string Scenario::write() const {
     preserve("copyright", copyright);
     preserve("missionname", missionName);
     preserve("missiondescription", missionDescription);
-    preserve("takgeneratorrecipe", generatorRecipe);
+    preserve("tageneratorrecipe", generatorRecipe);
     preserve("kingdom", kingdom);
     preserve("useonlyunits", useOnlyUnits);
     preserve("type", mapType);
@@ -147,4 +147,4 @@ std::string Scenario::write() const {
     return o;
 }
 
-} // namespace tak::tnt
+} // namespace ta::tnt

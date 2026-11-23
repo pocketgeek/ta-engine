@@ -20,7 +20,7 @@
 #include <vector>
 #include <utility>
 
-namespace tak {
+namespace ta {
 namespace {
 // Double-buffered OpenGL readback: only map after the fence signals. Direct3D
 // shrinks on the GPU (streamcapture_d3d.h). SDL's Metal/software backends use a
@@ -214,7 +214,7 @@ struct Streaming::Impl {
     int resolution=5; // 720p, 1080p, 1440p, 4K, full window, max width 3840
     bool visible=false,editing=false,wasActive=false,wasTextInput=false;
     bool localCopy=false; // SAVE A LOCAL COPY: settings->streamLocalCopy when there are settings
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     bool testCursorSet=false;video::StreamCursor testCursor;
 #endif
     std::string error;
@@ -342,9 +342,9 @@ struct Streaming::Impl {
     }
     video::StreamStatus bannerStatus(video::StreamStatus s) const {
 #ifndef NDEBUG
-        // TAK_SHOT_STREAM_BANNER=1: show the banner of a live stream saving a local copy,
+        // TA_SHOT_STREAM_BANNER=1: show the banner of a live stream saving a local copy,
         // with no stream at all, so a screenshot can check what it shares the corner with.
-        if(!s.active && tak::devFlag("TAK_SHOT_STREAM_BANNER")) {s.active=true;s.state="LIVE";s.local="SAVING LOCAL COPY";}
+        if(!s.active && ta::devFlag("TA_SHOT_STREAM_BANNER")) {s.active=true;s.state="LIVE";s.local="SAVING LOCAL COPY";}
 #endif
         return s;
     }
@@ -495,7 +495,7 @@ SDL_FRect Streaming::recommendedRect(int w,int h){p_->layout(w,h);return p_->rec
 const std::string& Streaming::notice() const{return p_->notice;}
 bool Streaming::waitKeyStore(int ms){const bool idle=p_->keys->waitIdle(ms);p_->pollKeys();return idle;}
 video::Stream& Streaming::stream(){return p_->stream;}
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
 void Streaming::testCursor(const video::StreamCursor* c){p_->testCursorSet=c!=nullptr;p_->testCursor=c?*c:video::StreamCursor{};}
 #endif
 bool Streaming::shown() const{return p_->visible;}
@@ -617,7 +617,7 @@ void Streaming::frame(int w,int h,bool drawPanel) {
     p_->wasActive=active;
     if(active&&now>=p_->nextCapture&&w>0&&h>0){
         video::StreamCursor cursor=hardwareCursor(p_->ren,w,h);
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
         if(p_->testCursorSet)cursor=p_->testCursor;
 #endif
         p_->capture.get(p_->ren,w,h,p_->stream,cursor);

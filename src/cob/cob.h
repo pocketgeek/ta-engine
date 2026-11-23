@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::cob {
+namespace ta::cob {
 
-// COB unit-script bytecode (TAK version 6; same opcode set as TA's v4 with
+// COB unit-script bytecode (TA version 6; same opcode set as TA's v4 with
 // a 13-word header). Scripts animate 3DO pieces by name.
 
 struct Script {
@@ -71,4 +71,4 @@ std::vector<uint8_t> explosionReachability(const File& f);
 // the cycle it is playing. Empty when the script has no such cycle.
 std::vector<uint8_t> gaitCode(const File& f);
 
-} // namespace tak::cob
+} // namespace ta::cob

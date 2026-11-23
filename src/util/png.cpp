@@ -6,7 +6,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace tak::png {
+namespace ta::png {
 
 namespace {
 
@@ -121,4 +121,4 @@ void writeRgb(const std::filesystem::path& file, int width, int height,
     if (!out) throw std::runtime_error("write failed: " + file.string());
 }
 
-} // namespace tak::png
+} // namespace ta::png

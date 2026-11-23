@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace tak::client {
+namespace ta::client {
 
 // Offered: two or more CCDs, on a system that pins threads.
 inline bool ccdPinningAvailable(const std::vector<sim::Ccd>& ccds, const sim::CpuTopology& cpus) {
@@ -67,4 +67,4 @@ inline void applyGameCcd(const CcdPlan& plan) {
     else if (pinned) { sim::setProcessCpus({}); pinned = false; }
 }
 
-}  // namespace tak::client
+}  // namespace ta::client

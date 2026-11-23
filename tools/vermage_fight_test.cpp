@@ -39,7 +39,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static const auto& scriptStatics(const World& world, int id) { return world.unitScripts_.at(id).peek().vm.statics; }
     // The scripts its threads are in (by entry), for --trace.
@@ -58,9 +58,9 @@ struct RetailReplayProbe {
         return out;
     }
 };
-}  // namespace tak::sim
+}  // namespace ta::sim
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int failures = 0;

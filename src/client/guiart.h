@@ -11,9 +11,9 @@
 
 #include "gaf/gaf.h"
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak {
+namespace ta {
 
 std::string factionLogoSequence(std::string side);
 // The same side names as a faction index, 0=ara 1=tar 2=ver 3=zon 4=cre (the result
@@ -56,4 +56,4 @@ struct GuiLayout {
     }
 };
 
-}  // namespace tak
+}  // namespace ta

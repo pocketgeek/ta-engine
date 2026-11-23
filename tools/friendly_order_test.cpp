@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 using client::FriendlyOrder;
 
 namespace {

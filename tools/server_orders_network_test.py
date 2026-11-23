@@ -136,7 +136,7 @@ def mine(seen):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--server', type=Path, required=True)
     ap.add_argument('--data', type=Path, required=True); a = ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-orders-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-orders-') as tmp:
         root = Path(tmp)
         with server(a.server.resolve(), a.data.resolve(), root) as (port, h, process):
             with contextlib.closing(login(port, h, 'Orders')) as p, contextlib.closing(login(port, h, 'Observer')) as observer:

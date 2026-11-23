@@ -15,13 +15,13 @@
 #include <map>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 int main(int argc,char** argv) {
     if (argc==4 && std::strcmp(argv[1],"--map-features")==0) {
-        auto vfs=tak::hpi::mountRetailRoot(argv[2]);
-        const auto path=tak::hpi::findMap(vfs,argv[3]);
-        const auto map=tak::tnt::Map::load(vfs.read(path),path);
+        auto vfs=ta::hpi::mountRetailRoot(argv[2]);
+        const auto path=ta::hpi::findMap(vfs,argv[3]);
+        const auto map=ta::tnt::Map::load(vfs.read(path),path);
         World world;
         world.setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
         registerMapFeatures(world,map,vfs);
@@ -352,7 +352,7 @@ int main(int argc,char** argv) {
     }
     auto cacheHash=cached.stateHash();cache.resources.samples[0][1]=9;
     if (cached.stateHash()==cacheHash) return 1;
-    auto& planner=cache.planner.emplace(tak::sim::RetailBuildCache::Planner{});
+    auto& planner=cache.planner.emplace(ta::sim::RetailBuildCache::Planner{});
     planner.types.push_back({{1},"test",100,false});
     auto checkPlannerHash=[&](auto change) {
         const auto before=cached.stateHash();change();return before!=cached.stateHash();

@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace rb = tak::replaybar;
+namespace rb = ta::replaybar;
 
 static int failures = 0;
 static void check(bool ok, const std::string& what) {
@@ -414,8 +414,8 @@ static void checks() {
 }
 
 static void rules() {
-    using tak::Act;
-    using tak::client::watchAllows;
+    using ta::Act;
+    using ta::client::watchAllows;
     for (const Act act : {Act::Move, Act::Attack, Act::FightMove, Act::Patrol, Act::Guard, Act::Stop, Act::Heal,
                           Act::Load, Act::Unload, Act::ClearOrders, Act::CycleWeapon, Act::ToggleCloak,
                           Act::ToggleGate, Act::SelfDestruct, Act::GiveUnits, Act::Disco, Act::Headbang,
@@ -424,14 +424,14 @@ static void rules() {
     for (const Act act : {Act::NextUnit, Act::TrackSelection, Act::SelectAll, Act::SelectMonarch, Act::SelectFlying,
                           Act::ToggleCounts, Act::UnitInfo, Act::FullScreenRadar, Act::RetailZoom, Act::Count})
         check(watchAllows(act), "a look is allowed: " + std::to_string(int(act)));
-    const auto owner = [](std::vector<int> v) { return tak::client::boxOwner(v); };
+    const auto owner = [](std::vector<int> v) { return ta::client::boxOwner(v); };
     check(owner({}) == -1, "an empty box has no owner");
     check(owner({3, 3, 1}) == 3, "the most units win");
     check(owner({3, 1}) == 1, "a tie goes to the lower slot");
     check(owner({8, 8, 2}) == 8, "neutral can win a box");
-    check(tak::client::watchMayPace(true, true), "the host of a private game paces it");
-    check(!tak::client::watchMayPace(false, true), "not a multiplayer room, even a host");
-    check(!tak::client::watchMayPace(true, false) && !tak::client::watchMayPace(false, false), "nor a guest");
+    check(ta::client::watchMayPace(true, true), "the host of a private game paces it");
+    check(!ta::client::watchMayPace(false, true), "not a multiplayer room, even a host");
+    check(!ta::client::watchMayPace(true, false) && !ta::client::watchMayPace(false, false), "nor a guest");
 }
 
 // The keyframe budget stands on this, so every route a World::clone allocates by.
@@ -442,7 +442,7 @@ static void allocations() {
     std::vector<char> before(1000);
     uint64_t counted = 0;
     {
-        tak::client::AllocCount count;
+        ta::client::AllocCount count;
         std::vector<char> plain(1 << 20);
         const auto array = std::make_unique<int[]>(1000);
         std::vector<Aligned> aligned(100);
@@ -459,7 +459,7 @@ static void allocations() {
     check(counted < uint64_t(1) << 21, "nothing is counted after the scope");
     uint64_t fresh = 1;
     {
-        tak::client::AllocCount count;
+        ta::client::AllocCount count;
         fresh = count.bytes();
     }
     check(fresh == 0, "a new count starts at zero");

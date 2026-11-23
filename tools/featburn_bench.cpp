@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void ignite(World& w,size_t i) { w.igniteFeature(w.features_.at(i)); }
     static void fade(World& w,int id) { Unit caster;w.finishReclaim(caster,id); }
@@ -40,7 +40,7 @@ struct RetailReplayProbe {
 }
 
 int main(int argc,char** argv) try {
-    using namespace tak;
+    using namespace ta;
     std::string data="assets/game",mapName="Black Forest",scene="nofire",mode="routine";
     int ticks=3000,gen=0;
     for (int i=1;i<argc;++i) {

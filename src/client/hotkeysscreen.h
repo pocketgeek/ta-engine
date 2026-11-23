@@ -19,7 +19,7 @@
 #include "client/promptbox.h"
 #include "client/settings.h"
 
-namespace tak {
+namespace ta {
 
 class HotkeysScreen {
 public:
@@ -82,4 +82,4 @@ private:
     SDL_FRect defaultsRect_{}, backRect_{};
 };
 
-}  // namespace tak
+}  // namespace ta

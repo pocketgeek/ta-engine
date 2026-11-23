@@ -33,20 +33,20 @@
         // values via input(), so this is a no-op there.
         winW_ = winW;
         winH_ = winH;
-        topLeft_ = tak::hudcorner::Column(streamBannerBottom_ > 0 ? streamBannerBottom_ + tak::hudcorner::kGap : 0);
+        topLeft_ = ta::hudcorner::Column(streamBannerBottom_ > 0 ? streamBannerBottom_ + ta::hudcorner::kGap : 0);
         if (replayMode_) {
             const float top = std::max(8 * uiScale_, topLeft_.next());
-            replayBar_ = tak::replaybar::layout(float(mapViewW(winW)), uiScale_, top);
+            replayBar_ = ta::replaybar::layout(float(mapViewW(winW)), uiScale_, top);
             topLeft_.place(top, replayBar_.box.h);
         }
         // Render telemetry: reset every frame; recording only for debug harnesses.
-        // The render study records by default; TAK_RENDER_STATS=0 switches it off
+        // The render study records by default; TA_RENDER_STATS=0 switches it off
         // there, so the telemetry's own cost can be measured with one binary.
-        static const bool kRenderStats = tak::devFlag("TAK_RENDER_STATS", tak::devFlag("TAK_RENDER_STUDY"));
+        static const bool kRenderStats = ta::devFlag("TA_RENDER_STATS", ta::devFlag("TA_RENDER_STUDY"));
         renderStats_.begin(kRenderStats);
-        tak::render::gSubmit = {};
-        using RS = tak::render::Counter;
-        using RP = tak::render::Phase;
+        ta::render::gSubmit = {};
+        using RS = ta::render::Counter;
+        using RP = ta::render::Phase;
         emoteNowMs_ = SDL_GetTicks64();
         for (int p=0;p<8;++p)
             if (emoteTiming_[p].observe(framePlayer(p).emoteSequence, emoteNowMs_)) {
@@ -60,7 +60,7 @@
         // as well as during world setup; never expose the multiplayer lobby.
         if (!missionStem_.empty() && inLobbyPhase()) {
             if (!loadScreen_) {
-                loadScreen_ = std::make_unique<tak::LoadScreen>(ren_, vfs_, missionStem_, settings_);
+                loadScreen_ = std::make_unique<ta::LoadScreen>(ren_, vfs_, missionStem_, settings_);
                 loadScreen_->step("PREPARING MISSION", 0);
             }
             loadScreen_->draw();
@@ -174,10 +174,10 @@
         mapView_.setUnderlay(miniTex_);   // low-res gap filler (null until the overview bakes)
         // The study's fixed clock: section idle trimming (and so what a capped frame has
         // resident) must not follow the build's speed.
-        if (tak::devFlag("TAK_RENDER_STUDY")) mapView_.setClockMs(uint64_t(animClock_*1000));
+        if (ta::devFlag("TA_RENDER_STUDY")) mapView_.setClockMs(uint64_t(animClock_*1000));
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
-            tak::render::ScopedPhase terrainPhase(renderStats_, RP::Terrain);
+            ta::render::ScopedPhase terrainPhase(renderStats_, RP::Terrain);
             mapView_.draw(mvw, winH, mapViewH(winH));   // scroll limits: above the bar
             profTerrainMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
                               (double(SDL_GetPerformanceFrequency()) / 1000.0);
@@ -196,10 +196,10 @@
         auto& items = paintItems_;
         items.clear();
         {
-        tak::render::ScopedPhase candidatePhase(renderStats_, RP::Candidates);
-        unitFullScan_ = tak::devFlag("TAK_UNIT_FULL_SCAN");
+        ta::render::ScopedPhase candidatePhase(renderStats_, RP::Candidates);
+        unitFullScan_ = ta::devFlag("TA_UNIT_FULL_SCAN");
 #ifndef NDEBUG
-        unitIndexVerify_ = tak::devFlag("TAK_UNIT_INDEX_VERIFY");
+        unitIndexVerify_ = ta::devFlag("TA_UNIT_INDEX_VERIFY");
         if (unitIndexVerify_) ++unitIndexVerifyStats_.frames;
 #endif
         if (renderStats_.enabled()) {
@@ -208,7 +208,7 @@
             renderStats_.set(RS::UnitGridBytes, shown.unitGrid.capacityBytes());
             if (shown.gen != unitGridShownGen_) {   // first frame showing this snapshot
                 unitGridShownGen_ = shown.gen;
-                renderStats_.addWorkNs(tak::render::Work::UnitGridBuild, shown.unitGridBuildNs);
+                renderStats_.addWorkNs(ta::render::Work::UnitGridBuild, shown.unitGridBuildNs);
             }
         }
         if(featureIndexDirty_) {
@@ -220,14 +220,14 @@
         }
         // Same 200-screen-pixel apron as the exact cull below. One world pixel
         // extra protects its different floating-point evaluation order at edges.
-        const auto candidates=tak::devFlag("TAK_FEATURE_FULL_SCAN") ? featureIndex_.all() :
+        const auto candidates=ta::devFlag("TA_FEATURE_FULL_SCAN") ? featureIndex_.all() :
             featureIndex_.query(mapView_.offX()-200/zm0-1,mapView_.offY()-200/zm0-1,
                 mapView_.offX()+(winW+200)/zm0+1,mapView_.offY()+(winH+200)/zm0+1);
         for (size_t index:candidates) {
             const auto& f=features_[index];
             if (!f.tex) continue;   // burnt away to a stage with no art
             if (!f.aliveVis) continue;   // reclaimed away by a builder (snapshotted)
-            if (fogCellR(f.x, f.z) == tak::retailfog::kUnexplored) continue;   // unexplored
+            if (fogCellR(f.x, f.z) == ta::retailfog::kUnexplored) continue;   // unexplored
             // Cull on the LIFTED position (features lift onto the relief like units).
             float sx = (f.x - mapView_.offX()) * zm0 - terrainLiftX(f.x, f.z) * zm0;
             float sy = (f.z - mapView_.offY()) * zm0 - terrainLift(f.x, f.z) * zm0;
@@ -238,19 +238,19 @@
             // -24 sort bias to stay under the lodestone built on them; the low layer
             // keeps them under every unit, so the bias is gone -- the tall henge
             // stones of a mana site now sort by plain depth like any tall feature.)
-            namespace hu = tak::hiddenunits;
+            namespace hu = ta::hiddenunits;
             items.push_back({f.z, nullptr, &f, f.low ? hu::kLayerLowFeature : hu::kLayerGround});
         }
         renderStats_.add(RS::FeatureCandidates, candidates.size());
         renderStats_.add(RS::FeaturesPainted, items.size());
         // The frustum cull (unitpass::painter*, client/unitindex.h); the broad phase
         // queries the band of anchors it can accept.
-        namespace unitpass = tak::render::unitpass;
-        const tak::render::AnchorView anchorView{mapView_.offX(), mapView_.offY(), zm0, mvw, winH};
+        namespace unitpass = ta::render::unitpass;
+        const ta::render::AnchorView anchorView{mapView_.offX(), mapView_.offY(), zm0, mvw, winH};
         const auto unitCandidate = [&](const UnitR& r) {
             if ((r.deadFor >= float(r.corpseAnimationTicks)/30.0f && !r.corpsePhase) || r.embarked()) return;
             if (r.corpsePhase && r.corpseFeat >= 0) {
-                static const bool kCorpLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+                static const bool kCorpLog = ta::devEnv("TA_BURNLOG") != nullptr;
                 static float lastLog = -10;
                 if (kCorpLog && animClock_ >= lastLog + 2.0f) {
                     lastLog = animClock_;
@@ -325,11 +325,11 @@
         renderStats_.add(RS::UnitCandidates, items.size() - renderStats_.get(RS::FeaturesPainted));
         // Shots and effects join the list by depth (PaintItem::fx), after the units
         // and features, so the stable sort draws one with an equal key last. Debug
-        // TAK_FX_RETAIL_ORDER=1 queues none: every one in the late pass, retail's order.
-        collectWorldFx(mvw, winH, !tak::devFlag("TAK_FX_RETAIL_ORDER"));
+        // TA_FX_RETAIL_ORDER=1 queues none: every one in the late pass, retail's order.
+        collectWorldFx(mvw, winH, !ta::devFlag("TA_FX_RETAIL_ORDER"));
         }
         {
-        tak::render::ScopedPhase sortPhase(renderStats_, RP::PainterSort);
+        ta::render::ScopedPhase sortPhase(renderStats_, RP::PainterSort);
         std::stable_sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
             if (a.layer != b.layer) return a.layer < b.layer;   // low features, ground, then air
             // (Equal keys keep insertion order: features, then units, then effects.)
@@ -346,7 +346,7 @@
         // Each visible unit first resolves the geometry entry IT owns.
         claimGeometryEntries();
 #ifndef NDEBUG
-        if(tak::devFlag("TAK_GEOMETRY_OWNERSHIP_VERIFY"))verifyGeometryOwnership();
+        if(ta::devFlag("TA_GEOMETRY_OWNERSHIP_VERIFY"))verifyGeometryOwnership();
 #endif
         // Fraction through the current sim-tick interval, for motion interpolation this
         // frame (clamped: a late tick just holds at the newest pose until it arrives).
@@ -356,7 +356,7 @@
                 ? std::clamp(float(SDL_GetTicks64() - front().tickMs) / front().tickDurMs, 0.0f, 1.0f)
                 : 1.0f;
 #ifndef NDEBUG
-        if(tak::devFlag("TAK_RENDER_STUDY"))interpAlpha_=0.5f;
+        if(ta::devFlag("TA_RENDER_STUDY"))interpAlpha_=0.5f;
 #endif
         // Build the texture atlas for every colour slot in view (main thread; the
         // parallel pass below only reads the finished atlas pointers).
@@ -420,10 +420,10 @@
         // is only read during the pass; prepare() below uses the same clock.
         selSet_.clear();
         selSet_.insert(selection_.begin(),selection_.end());
-        distantNow_=tak::devFlag("TAK_RENDER_STUDY") ? uint64_t(animClock_*1000) : SDL_GetTicks64();
+        distantNow_=ta::devFlag("TA_RENDER_STUDY") ? uint64_t(animClock_*1000) : SDL_GetTicks64();
         SDL_RenderGetScale(ren_,&distantScaleX_,&distantScaleY_);
-        distantEarly_=!tak::devFlag("TAK_DISTANT_LOOKUP_LATE");
-        distantOff_=tak::devFlag("TAK_DISTANT_MODELS_OFF");
+        distantEarly_=!ta::devFlag("TA_DISTANT_LOOKUP_LATE");
+        distantOff_=ta::devFlag("TA_DISTANT_MODELS_OFF");
         double _pt0 = double(SDL_GetPerformanceCounter());
         {
         const auto buildRange = [this](size_t b, size_t e) {
@@ -441,9 +441,9 @@
             // a full-build estimate). Only a hint: a misprediction costs balance,
             // never correctness -- every unit still writes only its own entry.
             {
-                tak::render::ScopedPhase planPhase(renderStats_, RP::SchedulePlan);
+                ta::render::ScopedPhase planPhase(renderStats_, RP::SchedulePlan);
                 geomPlan_.begin(schedules_.geometry);
-                geomPlan_.addUnits(visCost_, tak::render::GeometryCostModel::kUnitNs);
+                geomPlan_.addUnits(visCost_, ta::render::GeometryCostModel::kUnitNs);
                 geomPlan_.finish(pool_.threads());
             }
             schedThreadsGeom_ += geomPlan_.participants();
@@ -466,11 +466,11 @@
         }
         double _ptFreq = double(SDL_GetPerformanceFrequency()) / 1000.0;
 #ifndef NDEBUG
-        // Calibration (TAK_SCHEDULE_SAMPLES, workstream I): every 15th frame, one
+        // Calibration (TA_SCHEDULE_SAMPLES, workstream I): every 15th frame, one
         // line per visible unit -- stages, body stages, key words, body vertices,
         // shadow points (opaque, masked), runs, key and build ns -- to fit
-        // GeometryCostModel against (run serially: TAK_RENDER_POOL_THREADS=1).
-        if (const char* path = tak::devEnv("TAK_SCHEDULE_SAMPLES"); path && renderStats_.enabled()) {
+        // GeometryCostModel against (run serially: TA_RENDER_POOL_THREADS=1).
+        if (const char* path = ta::devEnv("TA_SCHEDULE_SAMPLES"); path && renderStats_.enabled()) {
             static uint64_t sampleFrame = 0;
             if (++sampleFrame % 15 == 0) if (FILE* f = std::fopen(path, "a")) {
                 for (size_t i = 0; i < visUnits_.size(); ++i) {
@@ -513,12 +513,12 @@
         }
         size_t distantCatchup=0;
         {
-        tak::render::ScopedPhase distantPhase(renderStats_, RP::DistantPrepare);
+        ta::render::ScopedPhase distantPhase(renderStats_, RP::DistantPrepare);
 #ifndef NDEBUG
         // Debug/tests: sweep (expiry, page release, migration) every frame; run the
         // cache on SDL's software renderer (pages then composite with plain blending).
-        distantModelCache_.sweepEveryPrepare=tak::devFlag("TAK_DISTANT_SWEEP_EVERY_FRAME");
-        distantModelCache_.allowSoftware=tak::devFlag("TAK_DISTANT_SOFTWARE");
+        distantModelCache_.sweepEveryPrepare=ta::devFlag("TA_DISTANT_SWEEP_EVERY_FRAME");
+        distantModelCache_.allowSoftware=ta::devFlag("TA_DISTANT_SOFTWARE");
 #endif
         distantModelCache_.prepare(ren_,distantModelItems_,distantNow_,[](void* self,size_t index) {
             static_cast<GameView*>(self)->materializeDistantBody(index);
@@ -540,7 +540,7 @@
         renderStats_.set(RS::DistantTiles, distantModelCache_.liveTiles());
         renderStats_.set(RS::DistantMetadataBytes, distantModelCache_.metadataBytes());
 #ifndef NDEBUG
-        if(tak::devFlag("TAK_DISTANT_VERIFY"))verifyDistantDeferral(distantCatchup);
+        if(ta::devFlag("TA_DISTANT_VERIFY"))verifyDistantDeferral(distantCatchup);
 #endif
         renderStats_.add(RS::DistantImages, distantModelCache_.used);
         renderStats_.add(RS::DistantBakes, distantModelCache_.refreshed);
@@ -554,7 +554,7 @@
         renderStats_.add(RS::DistantRejectShape, distantModelCache_.rejectShape);
         renderStats_.add(RS::DistantRejectPages, distantModelCache_.rejectPages);
         static uint64_t distantLogAt=0;
-        if(tak::devFlag("TAK_DISTANT_STATS") && SDL_GetTicks64()-distantLogAt>=1000) {
+        if(ta::devFlag("TA_DISTANT_STATS") && SDL_GetTicks64()-distantLogAt>=1000) {
             distantLogAt=SDL_GetTicks64();
             size_t reused=0,buildings=0,vertices=0,runs=0,moving=0,walking=0;
             for(size_t i=0;i<visUnits_.size();++i) {
@@ -579,7 +579,7 @@
         size_t shadowPageLimit=0;
         const char* shadowAtlasFallback="not requested";
 #ifndef NDEBUG
-        const bool verifyShadowCache=tak::devFlag("TAK_SHADOW_CACHE_VERIFY");
+        const bool verifyShadowCache=ta::devFlag("TA_SHADOW_CACHE_VERIFY");
 #endif
         // Persistent tile cells (workstream F, client/shadowatlas.h). Policy, on the
         // presentation clock: a cell whose unit is not in the atlas is retained for
@@ -607,7 +607,7 @@
             uint64_t sparseMs=2000, sparseFrames=60, shrinkMs=5000, shrinkFrames=120, compactCooldown=60;
             uint64_t extendedEmptyMs=8000, extendedEmptyFrames=240, cooldownMs=10000, cooldownFrames=300;
             size_t migratePerFrame=64;
-            size_t maxPages=tak::render::kShadowMaxPages;
+            size_t maxPages=ta::render::kShadowMaxPages;
             int pageMax=2048;
             bool repack=false;
         };
@@ -616,34 +616,34 @@
 #ifndef NDEBUG
             // Debug: short windows and small pages, so a short verification run
             // expires, evicts, compacts, migrates, releases and shrinks
-            // (render_shadow_atlas*); TAK_SHADOW_REPACK runs the former per-frame
+            // (render_shadow_atlas*); TA_SHADOW_REPACK runs the former per-frame
             // packer (a reference for capture comparisons, slot for slot: four pages
-            // at most, like that packer); TAK_SHADOW_PAGES_MAX=N sets the page count
+            // at most, like that packer); TA_SHADOW_PAGES_MAX=N sets the page count
             // limit (4 = the base pages only, the pre-K limit).
-            if (const char* v=tak::devEnv("TAK_SHADOW_ATLAS_DELAY_MS")) {
+            if (const char* v=ta::devEnv("TA_SHADOW_ATLAS_DELAY_MS")) {
                 const uint64_t ms=uint64_t(std::max(0,std::atoi(v)));
                 t.retainMs=t.emptyMs=t.sparseMs=ms; t.shrinkMs=2*ms;
                 t.retainFrames=t.emptyFrames=t.sparseFrames=4; t.shrinkFrames=8; t.compactCooldown=8;
                 t.extendedEmptyMs=t.cooldownMs=4*ms; t.extendedEmptyFrames=t.cooldownFrames=16;
             }
-            if (const char* v=tak::devEnv("TAK_SHADOW_PAGE_MAX")) t.pageMax=std::max(64,std::atoi(v));
-            if (const char* v=tak::devEnv("TAK_SHADOW_PAGES_MAX")) t.maxPages=size_t(std::clamp(std::atoi(v),1,64));
-            t.repack=tak::devFlag("TAK_SHADOW_REPACK");
-            if (t.repack) t.maxPages=std::min(t.maxPages,tak::render::kShadowBasePages);
+            if (const char* v=ta::devEnv("TA_SHADOW_PAGE_MAX")) t.pageMax=std::max(64,std::atoi(v));
+            if (const char* v=ta::devEnv("TA_SHADOW_PAGES_MAX")) t.maxPages=size_t(std::clamp(std::atoi(v),1,64));
+            t.repack=ta::devFlag("TA_SHADOW_REPACK");
+            if (t.repack) t.maxPages=std::min(t.maxPages,ta::render::kShadowBasePages);
 #endif
             return t;
         }();
-        const size_t basePages=std::min(tak::render::kShadowBasePages,atlasTimes.maxPages);
+        const size_t basePages=std::min(ta::render::kShadowBasePages,atlasTimes.maxPages);
         const auto gpuBudget=[] {
-            return tak::render::ShadowGpuBudget{gpuvram::bytes(),gpuvram::cap(),gpuvram::tightened()};
+            return ta::render::ShadowGpuBudget{gpuvram::bytes(),gpuvram::cap(),gpuvram::tightened()};
         };
-        const uint64_t atlasNowMs=tak::devFlag("TAK_RENDER_STUDY") ? uint64_t(animClock_*1000) : SDL_GetTicks64();
+        const uint64_t atlasNowMs=ta::devFlag("TA_RENDER_STUDY") ? uint64_t(animClock_*1000) : SDL_GetTicks64();
         struct AtlasFrameCounts {
             uint64_t allocs=0,kept=0,freed=0,expired=0,evicted=0,compactions=0,freeCompactions=0,migrated=0,
                      releases=0,shrinks=0,pageAllocs=0,failures=0,sheds=0,extendedReleases=0;
         } atlasCounts;
         auto& atlas=shadowAtlas_;
-        using tak::render::RenderHandle;
+        using ta::render::RenderHandle;
         const auto fitCellStamps=[&] {
             if (shadowCellStamps_.size()<atlas.indexBound()) {
                 shadowCellStamps_.resize(atlas.indexBound());
@@ -673,8 +673,8 @@
             // atlas goes (cells and stamps with it) and is rebuilt on base pages only
             // -- or falls back -- until the cooldown ends.
             if (!shadowSparePages_.empty() &&
-                (gpuvram::overCap() || tak::render::shadowExtendedPressure(gpuBudget()))) dropShadowSpares();
-            if (atlas.livePages()>basePages && tak::render::shadowExtendedPressure(gpuBudget())) {
+                (gpuvram::overCap() || ta::render::shadowExtendedPressure(gpuBudget()))) dropShadowSpares();
+            if (atlas.livePages()>basePages && ta::render::shadowExtendedPressure(gpuBudget())) {
                 resetShadowAtlas(false);
                 pol.extendedAfterFrame=pol.frame+atlasTimes.cooldownFrames;
                 pol.extendedAfterMs=atlasNowMs+atlasTimes.cooldownMs;
@@ -682,7 +682,7 @@
                 return;
             }
             std::vector<RenderHandle> expired;
-            atlas.forEach([&](RenderHandle h,const tak::render::ShadowAllocation& a) {
+            atlas.forEach([&](RenderHandle h,const ta::render::ShadowAllocation& a) {
                 if (pol.frame-a.lastFrame>atlasTimes.retainFrames && atlasNowMs-a.lastMs>atlasTimes.retainMs)
                     expired.push_back(h);
             });
@@ -709,14 +709,14 @@
             // Telemetry: allocation/packing runs until the first page is drawn;
             // then each page alternates transform (prep) and clears + submission
             // (raster). Reference bakes (force) are verification, not timed.
-            std::optional<tak::render::ScopedPhase> allocPhase;
+            std::optional<ta::render::ScopedPhase> allocPhase;
             if (!force) allocPhase.emplace(renderStats_, RP::ShadowAlloc);
             if (!force) maintainShadowAtlas();
             SDL_RendererInfo info{};
-            // Debug: TAK_SHADOW_ATLAS_SOFTWARE also runs the atlas on SDL's software
+            // Debug: TA_SHADOW_ATLAS_SOFTWARE also runs the atlas on SDL's software
             // renderer, so tile reuse can be verified without a GPU (ctest).
             if (SDL_GetRendererInfo(ren_, &info) != 0 ||
-                !((info.flags & SDL_RENDERER_ACCELERATED) || tak::devFlag("TAK_SHADOW_ATLAS_SOFTWARE")) ||
+                !((info.flags & SDL_RENDERER_ACCELERATED) || ta::devFlag("TA_SHADOW_ATLAS_SOFTWARE")) ||
                 !SDL_RenderTargetSupported(ren_)) return fail("renderer has no accelerated targets");
             float scaleX=1.0f, scaleY=1.0f;
             SDL_RenderGetScale(ren_, &scaleX, &scaleY);
@@ -749,7 +749,7 @@
                 // (the stamps live in shadowTileStamps_/shadowTileBefore_, kept out
                 // of the sorted items).
                 RenderHandle tile{};
-                tak::render::TileVerdict verdict=tak::render::TileVerdict::New;
+                ta::render::TileVerdict verdict=ta::render::TileVerdict::New;
                 bool checkPoints=false;
             };
             std::vector<Work> work;
@@ -843,7 +843,7 @@
             // so the decision below reads Relocated and never inherits a stranger's
             // pixels.
             const auto cellW=[&](const Work& w){return w.width+2;};
-            const auto cellH=[&](const Work& w){return tak::render::shadowCellHeight(w.height+2,pageH);};
+            const auto cellH=[&](const Work& w){return ta::render::shadowCellHeight(w.height+2,pageH);};
             auto& before=shadowTileBefore_;
             auto& hasBefore=shadowTileHasBefore_;
             if (!force) {
@@ -858,7 +858,7 @@
             const uint64_t frame=pol.frame;
             const auto bind=[&](size_t wi,RenderHandle h) {
                 Work& w=work[wi];
-                tak::render::ShadowAllocation* a=atlas.get(h);
+                ta::render::ShadowAllocation* a=atlas.get(h);
                 a->ownerKey=w.geom->handleKey();a->entry=w.geom;a->lastFrame=frame;a->lastMs=atlasNowMs;
                 w.geom->shadowTile=h;w.tile=h;w.fresh=true;
                 fitCellStamps();
@@ -876,10 +876,10 @@
             bool budgetRefused=false;
             size_t pendingPages=0;
             // A base page needs only to fit the cap; an extended page must leave a
-            // quarter of it (tak::render::shadowPageFits). Pending pages count as held.
+            // quarter of it (ta::render::shadowPageFits). Pending pages count as held.
             const auto createPage=[&]() -> bool {
                 if (atlas.livePages()>=pageLimit) return false;
-                if (gpuAllocBlocked() || !tak::render::shadowPageFits(atlas.livePages(),pendingPages*pageBytes,pageBytes,
+                if (gpuAllocBlocked() || !ta::render::shadowPageFits(atlas.livePages(),pendingPages*pageBytes,pageBytes,
                                                                       gpuBudget(),basePages)) {
                     budgetRefused=true; return false;
                 }
@@ -932,7 +932,7 @@
                 // The verification re-bake redraws this frame's tiles in the cells
                 // the normal pass gave them; it changes no allocation.
                 for (Work& w:work) {
-                    const tak::render::ShadowAllocation* a=atlas.get(w.geom->shadowTile);
+                    const ta::render::ShadowAllocation* a=atlas.get(w.geom->shadowTile);
                     if (!a || a->ownerKey!=w.geom->handleKey() || a->lastFrame!=frame)
                         throw std::logic_error("shadow re-bake: tile without this frame's cell");
                     w.tile=w.geom->shadowTile;
@@ -952,7 +952,7 @@
                     Work& w=work[wi];
                     UnitGeom& g=*w.geom;
                     tilePx+=uint64_t(w.width+2)*uint64_t(w.height+2);
-                    tak::render::ShadowAllocation* a=atlas.get(g.shadowTile);
+                    ta::render::ShadowAllocation* a=atlas.get(g.shadowTile);
                     if (a && (a->ownerKey!=g.handleKey() || a->entry!=&g)) {
                         // The cell of this entry's previous occupant (generations are
                         // unique, so nobody else can reach it).
@@ -960,7 +960,7 @@
                     }
                     if (a) carry(wi,g.shadowTile);
                     {
-                        using tak::render::sameBits;
+                        using ta::render::sameBits;
                         const ShadowTileStamp& b=before[wi];
                         dirtyAnyway+=!hasBefore[wi] || b.source!=w.geom || b.owner!=g.owner ||
                             b.coverage!=g.shadowRevision || b.width!=w.width || b.height!=w.height ||
@@ -972,7 +972,7 @@
                                       g.shadowPlacement.sy-std::floor(g.shadowPlacement.sy));
                     }
                     if (a && !atlasTimes.repack &&
-                        tak::render::shadowCellKeeps(a->cell.w,a->cell.h,w.width+2,w.height+2,pageH)) {
+                        ta::render::shadowCellKeeps(a->cell.w,a->cell.h,w.width+2,w.height+2,pageH)) {
                         w.tile=g.shadowTile;a->lastFrame=frame;a->lastMs=atlasNowMs;
                     } else {
                         if (a) freeCell(g.shadowTile);
@@ -996,7 +996,7 @@
                     const size_t live=atlas.livePages();
                     size_t affordable=live;
                     while (affordable<frameMaxPages && !gpuAllocBlocked() &&
-                           tak::render::shadowPageFits(affordable,(affordable-live)*pageBytes,pageBytes,budget,basePages))
+                           ta::render::shadowPageFits(affordable,(affordable-live)*pageBytes,pageBytes,budget,basePages))
                         ++affordable;
                     if (tilePx>uint64_t(affordable)*pageArea) return fail("VRAM budget reached");
                     pageLimit=std::max(pageLimit,frameMaxPages);
@@ -1036,7 +1036,7 @@
                             // Space pressure: cells of units not in this frame's atlas go first.
                             evicted=true;
                             std::vector<RenderHandle> absent;
-                            atlas.forEach([&](RenderHandle c,const tak::render::ShadowAllocation& a) {
+                            atlas.forEach([&](RenderHandle c,const ta::render::ShadowAllocation& a) {
                                 if (a.lastFrame!=frame) absent.push_back(c);
                             });
                             for (RenderHandle c:absent) if (freeCell(c)) ++atlasCounts.evicted;
@@ -1077,14 +1077,14 @@
                     if (pol.migratePage>=0) {
                         const size_t p=size_t(pol.migratePage);
                         std::vector<RenderHandle> absent;
-                        atlas.forEach([&](RenderHandle c,const tak::render::ShadowAllocation& a) {
+                        atlas.forEach([&](RenderHandle c,const ta::render::ShadowAllocation& a) {
                             if (a.lastFrame!=frame && size_t(a.cell.page)==p) absent.push_back(c);
                         });
                         for (RenderHandle c:absent) if (freeCell(c)) ++atlasCounts.evicted;
                         size_t moved=0;
                         for (size_t wi=0;wi<work.size() && moved<atlasTimes.migratePerFrame;++wi) {
                             Work& w=work[wi];
-                            const tak::render::ShadowAllocation* a=atlas.get(w.tile);
+                            const ta::render::ShadowAllocation* a=atlas.get(w.tile);
                             if (!a || size_t(a->cell.page)!=p) continue;
                             const RenderHandle h=atlas.allocate(cellW(w),cellH(w),false,p);
                             if (!h.valid()) { pol.migratePage=-1; pol.sparseSinceFrame=0; break; }
@@ -1103,7 +1103,7 @@
                     // which places every tile exactly where the former code did, so the
                     // atlas never falls back where it did not. Every tile moves (redrawn;
                     // on a free repack nearly all were redrawn anyway).
-                    atlas.forEach([&](RenderHandle c,const tak::render::ShadowAllocation& a) {
+                    atlas.forEach([&](RenderHandle c,const ta::render::ShadowAllocation& a) {
                         if (a.lastFrame!=frame) ++atlasCounts.evicted;
                         (void)c;
                     });
@@ -1155,7 +1155,7 @@
             }
             std::vector<uint8_t> pageUsed(shadowSilhouettePages_.size(),0);
             for (Work& w:work) {
-                const tak::render::ShadowCell& c=atlas.get(w.tile)->cell;
+                const ta::render::ShadowCell& c=atlas.get(w.tile)->cell;
                 w.page=size_t(c.page);w.slotX=c.x;w.slotY=c.y;
                 pageUsed[w.page]=1;
                 ++shadowAtlasPackedUnits;
@@ -1168,7 +1168,7 @@
                 std::string why;
                 if (!atlas.validate(&why)) throw std::logic_error("shadow atlas inconsistent: "+why);
                 for (const Work& w:work) {
-                    const tak::render::ShadowCell& c=atlas.get(w.tile)->cell;
+                    const ta::render::ShadowCell& c=atlas.get(w.tile)->cell;
                     if (w.width+2>c.w || w.height+2>c.h) throw std::logic_error("shadow tile exceeds its cell");
                 }
                 ++shadowVerify_.validated;
@@ -1183,7 +1183,7 @@
             // those point checks are independent and read only finished geometry, so
             // many of them run on the pool. Decisions do not depend on the order
             // they are made in.
-            const bool noCache=tak::devFlag("TAK_SHADOW_NOCACHE");
+            const bool noCache=ta::devFlag("TA_SHADOW_NOCACHE");
             auto& workStamps=shadowTileStamps_;
             workStamps.resize(work.size());
             {
@@ -1201,7 +1201,7 @@
                     stamp.width=w.width;stamp.height=w.height;stamp.scaleX=scaleX;stamp.scaleY=scaleY;
                     if (force || noCache) continue;
                     const ShadowTileStamp* old=hasBefore[wi] ? &before[wi] : nullptr;
-                    w.verdict=tak::render::classifyShadowTile(old,stamp,[&] {w.checkPoints=true;return false;});
+                    w.verdict=ta::render::classifyShadowTile(old,stamp,[&] {w.checkPoints=true;return false;});
                     if (w.checkPoints) {
                         checks.push_back(wi);
                         checkPoints+=g.shadowLocal.size()+g.maskedShadowLocal.size();
@@ -1217,11 +1217,11 @@
                         // recomputed from them with the old placement.
                         const bool same=g.shadowVerts.size()==g.shadowLocal.size() &&
                             g.maskedShadowVerts.size()==g.maskedShadowLocal.size() &&
-                            tak::render::sameTilePoints(g.shadowLocal,
+                            ta::render::sameTilePoints(g.shadowLocal,
                                 [&](size_t i){return g.shadowVerts[i];},old,now) &&
-                            tak::render::sameTilePoints(g.maskedShadowLocal,
+                            ta::render::sameTilePoints(g.maskedShadowLocal,
                                 [&](size_t i){return g.maskedShadowVerts[i].position;},old,now);
-                        if (same) w.verdict=tak::render::TileVerdict::ReuseTranslated;
+                        if (same) w.verdict=ta::render::TileVerdict::ReuseTranslated;
                     }
                 };
                 if (scheduleUniform_) {
@@ -1229,9 +1229,9 @@
                     else check(0,checks.size());
                 } else if (!checks.empty()) {
                     // Workstream I: planned by points to recompute.
-                    using RSch=tak::render::RenderSchedules;
+                    using RSch=ta::render::RenderSchedules;
                     {
-                        tak::render::ScopedPhase planPhase(renderStats_, RP::SchedulePlan);
+                        ta::render::ScopedPhase planPhase(renderStats_, RP::SchedulePlan);
                         shadowPlan_.begin(schedules_.shadowCheck);
                         for (size_t c:checks) {
                             const UnitGeom& g=*work[c].geom;
@@ -1241,7 +1241,7 @@
                     }
                     schedThreadsShadow_+=shadowPlan_.participants();
 #ifndef NDEBUG
-                    std::vector<tak::render::TileVerdict> pre;
+                    std::vector<ta::render::TileVerdict> pre;
                     if (scheduleVerifyOn_) for (size_t c:checks) pre.push_back(work[c].verdict);
 #endif
                     runPlanned('s',shadowPlan_,check);
@@ -1251,7 +1251,7 @@
                         // verdicts: kept as translated exactly when the points recompute
                         // bit-identical.
                         verifyPlan(shadowPlan_,checks.size());
-                        std::vector<tak::render::TileVerdict> parallel;
+                        std::vector<ta::render::TileVerdict> parallel;
                         for (size_t c=0;c<checks.size();++c) {
                             parallel.push_back(work[checks[c]].verdict);
                             work[checks[c]].verdict=pre[c];
@@ -1297,9 +1297,9 @@
                 for(Work& w:work) if(w.page==p) {
                     const size_t wi=size_t(&w-work.data());
                     const ShadowTileStamp& stamp=workStamps[wi];
-                    using tak::render::TileVerdict;
+                    using ta::render::TileVerdict;
                     const TileVerdict verdict=w.verdict;
-                    w.dirty=force || noCache || !tak::render::reuses(verdict);
+                    w.dirty=force || noCache || !ta::render::reuses(verdict);
                     if(!force && renderStats_.enabled()) {
                         if(noCache)renderStats_.add(RS::ShadowDirtyForced);
                         else switch(verdict) {
@@ -1320,14 +1320,14 @@
                         // the old key kept (and more); the pixel comparison after the
                         // frame proves each kept tile equal to a complete re-bake.
                         const ShadowTileStamp* old=hasBefore[wi] ? &before[wi] : nullptr;
-                        const bool original=tak::render::originalRuleReuses(old,stamp);
-                        if(original && !tak::render::reuses(verdict))
+                        const bool original=ta::render::originalRuleReuses(old,stamp);
+                        if(original && !ta::render::reuses(verdict))
                             throw std::runtime_error("shadow tile redrawn although the pre-E key kept it");
                         ++shadowVerify_.tiles;shadowVerify_.original+=original;
-                        shadowVerify_.reused+=tak::render::reuses(verdict);
+                        shadowVerify_.reused+=ta::render::reuses(verdict);
                         shadowVerify_.body+=verdict==TileVerdict::ReuseBody;
                         shadowVerify_.translated+=verdict==TileVerdict::ReuseTranslated;
-                        shadowVerify_.kept+=tak::render::reuses(verdict) && !w.fresh;
+                        shadowVerify_.kept+=ta::render::reuses(verdict) && !w.fresh;
                     }
 #endif
                     if(!force) {
@@ -1343,7 +1343,7 @@
                 }
                 if(dirtyRects.empty())continue;
                 allocPhase.reset();
-                std::optional<tak::render::ScopedPhase> rasterPhase;
+                std::optional<ta::render::ScopedPhase> rasterPhase;
                 if(!force)rasterPhase.emplace(renderStats_, RP::ShadowRaster);
                 if(!force)renderStats_.add(RS::TargetSwitches);
                 if (SDL_SetRenderTarget(ren_,shadowSilhouettePages_[p].texture)!=0) {ok=false;break;}
@@ -1408,16 +1408,16 @@
                         const SDL_FPoint* __restrict src=w.geom->shadowVerts.data();
                         const size_t count=w.geom->shadowVerts.size();
                         SDL_FPoint* __restrict dst=count ? opaque.data()+w.opaqueOffset : nullptr;
-                        // The tile transform (tak::render::tilePoint) is also what the
+                        // The tile transform (ta::render::tilePoint) is also what the
                         // reuse check recomputes.
                         for (size_t i=0;i<count;++i)
-                            dst[i]=tak::render::tilePoint(src[i],scaleX,scaleY,w.pixelX,w.pixelY,w.slotX,w.slotY);
+                            dst[i]=ta::render::tilePoint(src[i],scaleX,scaleY,w.pixelX,w.pixelY,w.slotX,w.slotY);
                         for(size_t mi=w.maskBegin;mi<w.maskEnd;++mi) {
                             const auto& task=masks[mi];
                             SDL_Vertex* __restrict vertices=task.batch->data()+task.offset;
                             for(size_t i=0;i<task.count;++i) {
                                 SDL_Vertex v=task.source[i];
-                                v.position=tak::render::tilePoint(v.position,scaleX,scaleY,w.pixelX,w.pixelY,
+                                v.position=ta::render::tilePoint(v.position,scaleX,scaleY,w.pixelX,w.pixelY,
                                                                   w.slotX,w.slotY);
                                 vertices[i]=v;
                             }
@@ -1427,18 +1427,18 @@
                 // Forced reference bakes stay serial for atlas pixel comparisons.
                 rasterPhase.reset();
                 {
-                std::optional<tak::render::ScopedPhase> prepPhase;
+                std::optional<ta::render::ScopedPhase> prepPhase;
                 if(!force)prepPhase.emplace(renderStats_, RP::ShadowPrep);
-                if(force || tak::devFlag("TAK_SHADOW_SERIAL_PREP")) transform(0,work.size());
+                if(force || ta::devFlag("TA_SHADOW_SERIAL_PREP")) transform(0,work.size());
                 else if(scheduleUniform_) {
                     if(pointCount+maskPointCount>=32768) pool_.parallelFor(work.size(),transform);
                     else transform(0,work.size());
                 } else {
                     // Workstream I: only this page's dirty tiles, planned by their
                     // points (opaque positions and masked vertices to transform).
-                    using RSch=tak::render::RenderSchedules;
+                    using RSch=ta::render::RenderSchedules;
                     auto& items=shadowPrepItems_;
-                    std::optional<tak::render::ScopedPhase> planPhase(std::in_place,renderStats_,RP::SchedulePlan);
+                    std::optional<ta::render::ScopedPhase> planPhase(std::in_place,renderStats_,RP::SchedulePlan);
                     noteNeed(Retained::ShadowPrepItems,items);
                     items.clear();
                     shadowPlan_.begin(schedules_.shadowPrep);
@@ -1481,13 +1481,13 @@
                 if(!force)rasterPhase.emplace(renderStats_, RP::ShadowRaster);
                 SDL_SetRenderDrawBlendMode(ren_,SDL_BLENDMODE_NONE);
                 if (shadowOpaqueSubmit_.draw(ren_,opaque,
-                        !tak::devFlag("TAK_SHADOW_SDL_SUBMIT"))!=0) {
+                        !ta::devFlag("TA_SHADOW_SDL_SUBMIT"))!=0) {
                     ok=false;break;
                 }
                 for (auto& [coverage,vertices]:maskBatches) {
                     if (vertices.empty()) continue;
                     if (bodySubmit_.draw(ren_,coverage,vertices,
-                            !tak::devFlag("TAK_SHADOW_SDL_SUBMIT"))!=0) {ok=false;break;}
+                            !ta::devFlag("TA_SHADOW_SDL_SUBMIT"))!=0) {ok=false;break;}
                 }
             }
             allocPhase.reset();
@@ -1516,9 +1516,9 @@
         // what is beneath it, which is where retail's per-unit draw order puts it.
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
         const double _sh0 = double(SDL_GetPerformanceCounter());
-        if (!kNoShadow && !tak::devEnv("TAK_SHADOW_DIRECT")) {
+        if (!kNoShadow && !ta::devEnv("TA_SHADOW_DIRECT")) {
             {
-            tak::render::ScopedPhase packPhase(renderStats_, RP::ShadowPack);
+            ta::render::ScopedPhase packPhase(renderStats_, RP::ShadowPack);
             shadowSilhouetteAtlasActive_=buildShadowSilhouetteAtlas();
             }
             renderStats_.add(RS::ShadowUnits, shadowAtlasPackedUnits);
@@ -1540,7 +1540,7 @@
                 renderStats_.add(RS::ShadowPageShrinks, atlasCounts.shrinks);
                 const auto st=atlas.stats();
                 uint64_t retained=0;
-                atlas.forEach([&](tak::render::RenderHandle,const tak::render::ShadowAllocation& a) {
+                atlas.forEach([&](ta::render::RenderHandle,const ta::render::ShadowAllocation& a) {
                     retained+=a.lastFrame!=shadowAtlasPolicy_.frame;
                 });
                 renderStats_.set(RS::ShadowCells, st.cells);
@@ -1573,7 +1573,7 @@
                      atlas.livePages()>basePages)
                 shadowVerify_.regrowGap=shadowAtlasPolicy_.frame-shadowVerify_.lastShedFrame;
 #endif
-            if(shadowSilhouetteAtlasActive_ && tak::devFlag("TAK_SHADOW_CACHE_VERIFY")) {
+            if(shadowSilhouetteAtlasActive_ && ta::devFlag("TA_SHADOW_CACHE_VERIFY")) {
                 const auto readPages=[&] {
                     auto* target=SDL_GetRenderTarget(ren_);
                     float sx=1,sy=1;SDL_RenderGetScale(ren_,&sx,&sy);
@@ -1623,7 +1623,7 @@
             static const char* lastReason=nullptr;
             static size_t lastUnits=SIZE_MAX,lastPages=SIZE_MAX;
             const int state=shadowSilhouetteAtlasActive_ ? 1 : 0;
-            if (tak::devEnv("TAK_PROF") && (shadowAtlasFallback!=lastReason || state!=lastState ||
+            if (ta::devEnv("TA_PROF") && (shadowAtlasFallback!=lastReason || state!=lastState ||
                 shadowAtlasPackedUnits!=lastUnits || shadowAtlasPackedPages!=lastPages)) {
                 std::fprintf(stderr,"shadow-atlas %s: %zu units, %zu pages (%s)\n",
                     state ? "active" : "fallback",shadowAtlasPackedUnits,shadowAtlasPackedPages,
@@ -1640,7 +1640,7 @@
 #ifndef NDEBUG
         shadowVerify_.heldPages=atlas.livePages();
 #endif
-        if(tak::devFlag("TAK_CACHE_STATS") && ++geometryFrame_%120==0) {
+        if(ta::devFlag("TA_CACHE_STATS") && ++geometryFrame_%120==0) {
             size_t reused=0;
             for(size_t i=0;i<visUnits_.size();++i)reused+=visGeom(i).reused;
             std::fprintf(stderr,"CACHE geometry=%zu/%zu shadow_tiles=%zu/%zu\n",reused,
@@ -1654,7 +1654,7 @@
         // full-scene copy. Ground and airborne layers retain their existing
         // placement relative to bodies and scenery.
         if (!kNoShadow) {
-            tak::render::ScopedPhase compositePhase(renderStats_, RP::ShadowComposite);
+            ta::render::ScopedPhase compositePhase(renderStats_, RP::ShadowComposite);
             std::vector<const UnitGeom*> groundShadows;
             groundShadows.reserve(items.size());
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_MOD);
@@ -1809,7 +1809,7 @@
                 // it were, it gets no retained identity rather than a stale range.
                 const uint32_t src = uint32_t(bodySources_.size());
                 bodySources_.push_back({g.verts.data(), uint32_t(g.verts.size()),
-                                        g.bodyPending ? tak::render::kArenaNoSlot : g.handle.index,
+                                        g.bodyPending ? ta::render::kArenaNoSlot : g.handle.index,
                                         g.handle.generation, g.revision});
                 uint32_t offset = 0;
                 for (const auto& r : g.runs) {
@@ -1828,40 +1828,40 @@
         // arena storage no pending draw reads. Otherwise (camera motion, a moving
         // army, no capable renderer, GPU budget) every command is assembled and
         // streamed exactly as before.
-        using tak::render::ArenaMode;
+        using ta::render::ArenaMode;
         // Commands of at least this many vertices draw from the arena: the native
         // threshold (smaller batches take SDL's path, where priming costs more than
-        // SDL's conversion). Debug TAK_BODY_ARENA_MIN changes it (tests, experiments).
-        size_t kNativeMin = tak::GeometrySubmit::kNativeMinVertices;
-        if (const char* v = tak::devEnv("TAK_BODY_ARENA_MIN")) kNativeMin = size_t(std::max(1, std::atoi(v)));
-        const bool bodyDirect = !tak::devFlag("TAK_BODY_SDL_SUBMIT");
-        // Workstream N: native passes in the body replay (debug TAK_NATIVE_PASS=off|
-        // palette|all; TAK_NATIVE_PASS_VERIFY compares the GL state after every pass
+        // SDL's conversion). Debug TA_BODY_ARENA_MIN changes it (tests, experiments).
+        size_t kNativeMin = ta::GeometrySubmit::kNativeMinVertices;
+        if (const char* v = ta::devEnv("TA_BODY_ARENA_MIN")) kNativeMin = size_t(std::max(1, std::atoi(v)));
+        const bool bodyDirect = !ta::devFlag("TA_BODY_SDL_SUBMIT");
+        // Workstream N: native passes in the body replay (debug TA_NATIVE_PASS=off|
+        // palette|all; TA_NATIVE_PASS_VERIFY compares the GL state after every pass
         // with the state SDL primed it with). The pure-SDL reference opens none.
         nativeMin_ = kNativeMin;
         nativePassMode_ = NativePassMode::All;
-        if (const char* v = tak::devEnv("TAK_NATIVE_PASS")) {
+        if (const char* v = ta::devEnv("TA_NATIVE_PASS")) {
             if (!std::strcmp(v, "off")) nativePassMode_ = NativePassMode::Off;
             else if (!std::strcmp(v, "palette")) nativePassMode_ = NativePassMode::Palette;
         }
-        nativePass_.setVerify(tak::devFlag("TAK_NATIVE_PASS_VERIFY"));
+        nativePass_.setVerify(ta::devFlag("TA_NATIVE_PASS_VERIFY"));
         nativePassArena_ = true;
-        if (const char* v = tak::devEnv("TAK_NATIVE_PASS_ARENA")) nativePassArena_ = std::atoi(v) != 0;
+        if (const char* v = ta::devEnv("TA_NATIVE_PASS_ARENA")) nativePassArena_ = std::atoi(v) != 0;
         nativePassArenaMin_ = kNativePassArenaMin;
-        if (const char* v = tak::devEnv("TAK_NATIVE_PASS_ARENA_MIN")) nativePassArenaMin_ = size_t(std::max(1, std::atoi(v)));
-        // (A simulated arena -- debug TAK_BODY_ARENA_SOFTWARE -- has no GL buffer to draw from.)
+        if (const char* v = ta::devEnv("TA_NATIVE_PASS_ARENA_MIN")) nativePassArenaMin_ = size_t(std::max(1, std::atoi(v)));
+        // (A simulated arena -- debug TA_BODY_ARENA_SOFTWARE -- has no GL buffer to draw from.)
         nativePassesOn_ = bodyDirect && nativePassMode_ != NativePassMode::Off &&
-                          !tak::devFlag("TAK_BODY_ARENA_SOFTWARE") &&
+                          !ta::devFlag("TA_BODY_ARENA_SOFTWARE") &&
                           nativePass_.ready(ren_) && bodySubmit_.nativeCapable(ren_);
-        bodyArenaOn_ = bodyDirect && !tak::devFlag("TAK_BODY_ARENA_OFF");
-        bodyArenaVerifyOn_ = tak::devFlag("TAK_BODY_ARENA_VERIFY");
+        bodyArenaOn_ = bodyDirect && !ta::devFlag("TA_BODY_ARENA_OFF");
+        bodyArenaVerifyOn_ = ta::devFlag("TA_BODY_ARENA_VERIFY");
         for (auto& buffer : bodyArenaBuffers_) {
-            buffer.setSimulated(tak::devFlag("TAK_BODY_ARENA_SOFTWARE"));
+            buffer.setSimulated(ta::devFlag("TA_BODY_ARENA_SOFTWARE"));
             buffer.endFrame();
         }
         ++bodyArenaFrame_;
         bool arenaPlanned = false, arenaFrame = false;
-        if (const char* v = tak::devEnv("TAK_BODY_ARENA_HEADROOM")) {   // debug: tighter storage (tests)
+        if (const char* v = ta::devEnv("TA_BODY_ARENA_HEADROOM")) {   // debug: tighter storage (tests)
             auto policy = bodyArena_.policy();
             policy.headroom = std::max(1.2, std::atof(v));
             policy.minHeadroom = std::min(policy.minHeadroom, policy.headroom - 0.05);
@@ -1977,11 +1977,11 @@
             else {
                 // Workstream I: planned by bytes (plus a per-range cost).
                 {
-                    tak::render::ScopedPhase planPhase(renderStats_, RP::SchedulePlan);
+                    ta::render::ScopedPhase planPhase(renderStats_, RP::SchedulePlan);
                     copyPlan_.begin(schedules_.bodyCopy);
                     for (const CopyTask& t : copyTasks_)
-                        copyPlan_.add(tak::render::RenderSchedules::kCopyPerTaskNs +
-                                      tak::render::RenderSchedules::kCopyPerByteNs * double(t.count * sizeof(SDL_Vertex)));
+                        copyPlan_.add(ta::render::RenderSchedules::kCopyPerTaskNs +
+                                      ta::render::RenderSchedules::kCopyPerByteNs * double(t.count * sizeof(SDL_Vertex)));
                     copyPlan_.finish(pool_.threads());
                 }
                 schedThreadsCopy_ += copyPlan_.participants();
@@ -2010,9 +2010,9 @@
             const int cur = bodyArena_.curSlot();
             bool ok = bodyArenaBuffers_[cur].write(bodyArena_.writeBegin(), bodyVerts_.data() + staged, uploaded);
 #ifndef NDEBUG
-            // Debug TAK_BODY_ARENA_FAIL_WRITE=N: the first write with uploads in each
+            // Debug TA_BODY_ARENA_FAIL_WRITE=N: the first write with uploads in each
             // window of N frames fails (tests the fallback).
-            if (const char* v = tak::devEnv("TAK_BODY_ARENA_FAIL_WRITE"); v && ok && uploaded && std::atoi(v) > 0) {
+            if (const char* v = ta::devEnv("TA_BODY_ARENA_FAIL_WRITE"); v && ok && uploaded && std::atoi(v) > 0) {
                 static uint64_t failedWindow = 0;
                 if (const uint64_t window = bodyArenaFrame_ / uint64_t(std::atoi(v)); window > failedWindow) {
                     failedWindow = window;
@@ -2020,7 +2020,7 @@
                 }
             }
 #endif
-            const tak::render::ArenaFrameStats arenaStats = bodyArena_.stats();
+            const ta::render::ArenaFrameStats arenaStats = bodyArena_.stats();
             if (ok) {
                 if (bodyArenaVerifyOn_ && !bodyArenaBuffers_[cur].simulated())
                     std::copy(bodyVerts_.begin() + long(staged), bodyVerts_.begin() + long(staged + uploaded),
@@ -2034,7 +2034,7 @@
                     op.arenaSlot = int8_t(bodyArena_.commandSlot(command));
                     for (uint32_t k = 0; k < op.ranges; ++k) {
                         const BodyRange& r = bodyRanges_[op.firstRange + k];
-                        tak::render::appendArenaRange(bodyArenaFirsts_, bodyArenaCounts_, begin,
+                        ta::render::appendArenaRange(bodyArenaFirsts_, bodyArenaCounts_, begin,
                             bodyArena_.first(command, first + k), r.count);
                         if (!bodyArena_.written(bodySources_[r.source].arena)) arenaRetained += r.count;
                     }
@@ -2087,9 +2087,9 @@
         renderStats_.add(RS::ArenaVertsRetained, arenaRetained);
         renderStats_.add(RS::ArenaVertsUploaded, arenaUploaded);
         renderStats_.add(RS::ArenaVertsTwice, arenaTwice);
-        tak::render::countUploadBytes(arenaUploaded * sizeof(SDL_Vertex));
+        ta::render::countUploadBytes(arenaUploaded * sizeof(SDL_Vertex));
         size_t arenaBytes = 0, arenaInflight = 0, mirrorBytes = 0;
-        for (int k = 0; k < tak::render::kArenaSlots; ++k) {
+        for (int k = 0; k < ta::render::kArenaSlots; ++k) {
             if (!bodyArenaBuffers_[k].simulated()) arenaBytes += bodyArenaBuffers_[k].capacityBytes();
             arenaInflight += bodyArenaBuffers_[k].inFlightBytes();
             mirrorBytes += bodyArenaMirror_[k].capacity() * sizeof(SDL_Vertex);
@@ -2098,7 +2098,7 @@
         renderStats_.set(RS::ArenaInflightBytes, arenaInflight);
         renderStats_.set(RS::ArenaCpuBytes, bodyArena_.cpuBytes() +
             mirrorBytes + bodyArenaGather_.capacity() * sizeof(SDL_Vertex) +
-            bodyArenaRanges_.capacity() * sizeof(tak::render::ArenaRange));
+            bodyArenaRanges_.capacity() * sizeof(ta::render::ArenaRange));
         renderStats_.set(RS::BodyBufferCapacityBytes, bodyVerts_.capacity() * sizeof(SDL_Vertex));
         renderStats_.set(RS::BodyBufferUsedBytes, bodyVerts_.size() * sizeof(SDL_Vertex));
         renderStats_.addMs(RP::BodyAssembly, (double(SDL_GetPerformanceCounter()) - _asm0) / _ptFreq);
@@ -2145,18 +2145,18 @@
             }
             if (op.f) {
                 const auto& f = *op.f;
-                tak::render::countLogicalDraw();   // the feature body (its shadow/flames/smoke not counted)
+                ta::render::countLogicalDraw();   // the feature body (its shadow/flames/smoke not counted)
                 // Lift the decal onto the terrain relief just like a unit, so a mana
                 // deposit sits at the height its heightmap claims (and lodestones/units
                 // built on it line up) instead of the decal being flat.
                 float lfx = terrainLiftX(f.x, f.z) * zm0, lfy = terrainLift(f.x, f.z) * zm0;
                 // RECLAIMED, fading out: retail draws only a white silhouette of the
                 // frame at the fade's alpha -- no shadow, no flames (reclaimfade.h).
-                if (const int steps = f.aliveVis ? tak::reclaimfade::fadeSteps(f.fadeEnd, front().gameTick) : 0) {
+                if (const int steps = f.aliveVis ? ta::reclaimfade::fadeSteps(f.fadeEnd, front().gameTick) : 0) {
                     const FeatureSprite sprite = featureSprite(f, zm0);
                     SDL_Texture* white = sprite.tex && sprite.art && !sprite.burning
                         ? fadeSilhouette(*sprite.art, sprite.frame) : nullptr;
-                    const uint8_t alpha = uint8_t(unsigned(tak::reclaimfade::alphaByte(steps)) *
+                    const uint8_t alpha = uint8_t(unsigned(ta::reclaimfade::alphaByte(steps)) *
                                                   hiddenFeatureAlpha(f) / 255u);
                     if (!white || !alpha) continue;
                     if (sprite.sway) {
@@ -2188,12 +2188,12 @@
                 const FeatArt* shadowArt = dying ? f.dieArt
                     : f.burnVis && !overlayBurn ? f.burnArt : f.art;
                 const uint32_t shadowAge = dying
-                    ? uint32_t(tak::featuredie::elapsed(f.dieArt->totalTicks, f.dieEnd, front().gameTick))
+                    ? uint32_t(ta::featuredie::elapsed(f.dieArt->totalTicks, f.dieEnd, front().gameTick))
                     : f.burnVis ? (overlayBurn ? f.burnStarted : burnAge) : front().gameTick;
                 SDL_Texture* shadow = nullptr;
                 FeatArt::FGeom sg;
                 if (shadowArt) {
-                    const auto index = tak::retailEffectFrame(shadowArt->shadowDurations,
+                    const auto index = ta::retailEffectFrame(shadowArt->shadowDurations,
                         shadowArt->shadowLoop, shadowAge);
                     if (index && *index < shadowArt->shadowFrames.size()) {
                         shadow = shadowArt->shadowFrames[*index];
@@ -2237,7 +2237,7 @@
                         (void)heightAbove(float(x),float(z));
                         const float sx=(float(x)-mapView_.offX())*zm0;
                         const float sy=(float(z-(y>>1))-mapView_.offY())*zm0;
-                        if(!tak::retailViewportCenterAdmitted(sx,sy,
+                        if(!ta::retailViewportCenterAdmitted(sx,sy,
                                 float(mapViewW(winW_)),float(winH_)))continue;
                         SDL_FRect dst{sx-frame.ax*zm0,
                             sy-frame.ay*zm0,
@@ -2252,7 +2252,7 @@
                 };
                 const auto drawFlame = [&](const EffectAnim* animation) {
                     if (!f.burnVis || !animation || !worldFxFrame()) return;
-                    const auto index = tak::retailEffectFrame(animation->durations, false,
+                    const auto index = ta::retailEffectFrame(animation->durations, false,
                         burnAge);
                     if (!index || *index >= animation->frames.size()) return;
                     const auto& frame = animation->frames[*index];
@@ -2299,7 +2299,7 @@
                 drawFlame(f.frontFlame);
                 drawFeatureSmoke();
             } else if (op.u) {
-                tak::render::countLogicalDraw();   // one special unit (drawUnit issues several)
+                ta::render::countLogicalDraw();   // one special unit (drawUnit issues several)
                 drawUnit(*op.u, op.fade);   // (FADE: a faded building, see-through)
             } else if (op.count > 0 && op.tex) {   // null atlas page: skip, no white
                 renderStats_.add(RS::BodySubmissions);
@@ -2308,7 +2308,7 @@
                     const std::span<const GLsizei> counts(bodyArenaCounts_.data() + op.arenaFirst, op.arenaRanges);
                     const auto& arenaBuffer = bodyArenaBuffers_[op.arenaSlot];
                     const bool simulated = arenaBuffer.simulated();
-                    tak::NativeProgram* program = paletteProgram(op.tex);
+                    ta::NativeProgram* program = paletteProgram(op.tex);
                     const int drawn = simulated ? 1 : bodySubmit_.drawBuffer(ren_, op.tex, arenaBuffer.id(),
                                                                              firsts, counts, size_t(op.count), program);
                     if (program && drawn == 0) ++paletteIndexedDraws_;
@@ -2400,7 +2400,7 @@
         // order) can draw one (workstream L: no walk over every unit).
         // The order being worked has a site of its own, drawn in its painter place
         // (under any flyer); it gets no second ghost over everything
-        // (tak::render::buildGhostDrawn).
+        // (ta::render::buildGhostDrawn).
         const int hudOwner = hudPlayer();
         const auto buildGhosts = [&](const UnitR& u, bool draw) {
             if (!u.alive() || u.player != hudOwner) return false;
@@ -2409,7 +2409,7 @@
             // Every queued build is an order now; the order sits at the builder's
             // working position, so step back to where the site actually goes.
             for (size_t i = 0; i < u.orders.size(); ++i)
-                if (tak::render::buildGhostDrawn(u, i, site)) {
+                if (ta::render::buildGhostDrawn(u, i, site)) {
                     const auto& o = u.orders[i];
                     any = true;
                     if (draw) renderStats_.add(RS::GhostsQueued);
@@ -2432,8 +2432,8 @@
         {
             // Two names for the same scope: t_ghosts (measurement B's interactive cases)
             // and t_build_ghosts (workstream E's ghost scenes).
-            tak::render::ScopedPhase ghostPhase(renderStats_, RP::Ghosts);
-            tak::render::ScopedPhase buildGhostPhase(renderStats_, RP::BuildGhosts);
+            ta::render::ScopedPhase ghostPhase(renderStats_, RP::Ghosts);
+            ta::render::ScopedPhase buildGhostPhase(renderStats_, RP::BuildGhosts);
             const Frame& frame = front();
 #ifndef NDEBUG
             if (unitIndexVerify_) {
@@ -2452,12 +2452,12 @@
 #endif
             for (uint32_t i : frame.buildGhostUnits) buildGhosts(*frame.live[i], true);
 #ifndef NDEBUG
-            // TAK_GHOST_ALL_TYPES (render study, perf follow-up E): also a ghost of EVERY
+            // TA_GHOST_ALL_TYPES (render study, perf follow-up E): also a ghost of EVERY
             // registry type each frame, on a grid over the view and 30% around it (on
             // screen, straddling the edges, off screen), alternately red-washed. With
-            // TAK_GHOST_VERIFY this puts every model, including those textured from
+            // TA_GHOST_VERIFY this puts every model, including those textured from
             // outside the colour atlas, through the reference check.
-            static const bool allTypes = tak::devFlag("TAK_GHOST_ALL_TYPES");
+            static const bool allTypes = ta::devFlag("TA_GHOST_ALL_TYPES");
             if (allTypes) {
                 const float zmA = mapView_.zoom();
                 const float x0 = mapView_.offX() - 0.3f * float(mvw) / zmA, x1 = mapView_.offX() + 1.3f * float(mvw) / zmA;
@@ -2472,7 +2472,7 @@
             }
 #endif
         }
-        renderStats_.set(tak::render::Counter::GhostCacheBytes, ghostGeometryBytes_);
+        renderStats_.set(ta::render::Counter::GhostCacheBytes, ghostGeometryBytes_);
 
         // The late fx pass: only the world effects collectWorldFx left out of the
         // painter list (far outside the view), in the old family order -- shots,
@@ -2481,7 +2481,7 @@
         float zm = mapView_.zoom();
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
-            tak::render::ScopedPhase effectsPhase(renderStats_, RP::Effects);
+            ta::render::ScopedPhase effectsPhase(renderStats_, RP::Effects);
             if (worldFxFrame()) drawLateFx();
             profFxMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
                          (double(SDL_GetPerformanceFrequency()) / 1000.0);
@@ -2495,7 +2495,7 @@
         {
             const double _air0 = double(SDL_GetPerformanceCounter());
             const double fxBefore = fxSpanMs_;
-            tak::render::ScopedPhase airPhase(renderStats_, RP::BodySubmit);
+            ta::render::ScopedPhase airPhase(renderStats_, RP::BodySubmit);
             replayOps(airFirst, drawOps_.size());
             const double airFxMs = fxSpanMs_ - fxBefore;   // an airborne flyer's own effects
             renderStats_.addMs(RP::BodySubmit, -airFxMs);
@@ -2515,7 +2515,7 @@
 
         {
             const double _t0 = double(SDL_GetPerformanceCounter());
-            tak::render::ScopedPhase fogPhase(renderStats_, RP::Fog);
+            ta::render::ScopedPhase fogPhase(renderStats_, RP::Fog);
             drawFog();
             profFogMs_ += (double(SDL_GetPerformanceCounter()) - _t0) /
                           (double(SDL_GetPerformanceFrequency()) / 1000.0);
@@ -2598,13 +2598,13 @@
             };
             for (const auto& f : features_) {
                 if (!f.hasSim || !f.aliveVis || !f.reclaimable || !canPickPoint(f.x, f.z)) continue;
-                if (tak::client::reclaimFootprintInBox(f.simId % mapW, f.simId / mapW, f.fx, f.fz, minx, maxx, minz, maxz))
+                if (ta::client::reclaimFootprintInBox(f.simId % mapW, f.simId / mapW, f.fx, f.fz, minx, maxx, minz, maxz))
                     mark(f.x, f.z);
             }
             // Corpses / statues / rubble get the same box markers.
             for (const UnitR* cu : front().live) {
                 if (cu->alive() || !cu->corpsePhase || !cu->corpseReclaimable || !canPickPoint(cu->x, cu->z)) continue;
-                if (tak::client::reclaimFootprintInBox(cu->corpseCellX, cu->corpseCellZ, cu->corpseFootX, cu->corpseFootZ,
+                if (ta::client::reclaimFootprintInBox(cu->corpseCellX, cu->corpseCellZ, cu->corpseFootX, cu->corpseFootZ,
                                                        minx, maxx, minz, maxz))
                     mark(cu->x, cu->z);
             }
@@ -2634,7 +2634,7 @@
             //     unit+0x7c), so the ring keeps the plate's place and shape as the
             //     unit turns. [unit+2] is a per-unit phase added to the tick, so
             //     neighbouring units are out of step with each other.
-            const uint64_t ringTime=tak::devFlag("TAK_RENDER_STUDY")
+            const uint64_t ringTime=ta::devFlag("TA_RENDER_STUDY")
                 ? uint64_t(animClock_*1000) : SDL_GetTicks64();
             const float spin = float(ringTime % 4000) / 4000.0f;   // 1 rev / 4s
             // Iterate the (few) selected ids, not the whole world -- frameUnitP(id)
@@ -2701,9 +2701,9 @@
             drawOrderTrails(mvw, winH);
 
 #ifndef NDEBUG
-            // TAK_HITBOX=1: outline the box unitUnderCursor actually tests, so a
+            // TA_HITBOX=1: outline the box unitUnderCursor actually tests, so a
             // "I can't click its head" report can be measured instead of guessed at.
-            if (tak::devEnv("TAK_HITBOX")) {
+            if (ta::devEnv("TA_HITBOX")) {
                 for (int selId : selection_) {
                     const UnitR* hp = frameUnitP(selId);
                     if (!hp || !hp->alive() || !hp->type) continue;
@@ -2738,11 +2738,11 @@
         // lifted anchor, shifted by the overlay's offset -- in live order, so batches
         // keep their order; every exact test is unchanged. accept(u, draw) is the
         // overlay: it returns whether u is drawn and draws it when `draw`.
-        // TAK_UNIT_INDEX_VERIFY re-runs each test over every unit without drawing and
+        // TA_UNIT_INDEX_VERIFY re-runs each test over every unit without drawing and
         // compares the accepted ids, in order.
-        namespace unitpass = tak::render::unitpass;
-        const tak::render::AnchorView overlayView{mapView_.offX(), mapView_.offY(), zm, mvw, winH};
-        const auto overlayPass = [&](int kind, const tak::render::ScreenBand& band, auto&& accept) {
+        namespace unitpass = ta::render::unitpass;
+        const ta::render::AnchorView overlayView{mapView_.offX(), mapView_.offY(), zm, mvw, winH};
+        const auto overlayPass = [&](int kind, const ta::render::ScreenBand& band, auto&& accept) {
             const auto& live = front().live;
             const auto indices = unitCandidates(band);
             (void)kind;
@@ -2771,7 +2771,7 @@
         // ground anchors up to the highest flyer altitude below it.
         const float airLift = front().flyerUnits.empty() ? 0.0f
                             : (std::max(flyerAltitudeSeen_, pickBounds().cruiseAlt) * kProjY + 1.0f) * zm;
-        const auto withAir = [&](tak::render::ScreenBand b) { b.bottom += airLift; return b; };
+        const auto withAir = [&](ta::render::ScreenBand b) { b.bottom += airLift; return b; };
 
         // Health bars -- viewport-culled and batched into one draw call (each was two
         // state-changing FillRects, so a damaged crowd used to break the render batch
@@ -2959,9 +2959,9 @@
         if (showHDebug_) drawHDebug();
 
         if (mp_ && hudFont_.ok()) {
-            // Dev net-status readout (TAK_NETDEBUG): off by default -- it sat over the
+            // Dev net-status readout (TA_NETDEBUG): off by default -- it sat over the
             // bottom-right mana panel. The BEHIND-BY lag warning below always shows.
-            static const bool kNetDebug = tak::devEnv("TAK_NETDEBUG") != nullptr;
+            static const bool kNetDebug = ta::devEnv("TA_NETDEBUG") != nullptr;
             if (kNetDebug) {
                 char nb[64];
                 std::snprintf(nb, sizeof nb, "NET P%d  TICK %u", localPlayer_ + 1, netTick_);
@@ -2975,7 +2975,7 @@
             // can't keep up, or a link stall is draining faster than it refills.
             // Only shown past 2 s so ordinary jitter never flashes the warning.
             // Escalates amber -> red toward the ~10 s server reconnect threshold.
-            float behindSec = float(mp_->bufferedBundles()) / float(tak::net::kServerHz);
+            float behindSec = float(mp_->bufferedBundles()) / float(ta::net::kServerHz);
             if (behindSec > 2.0f && outcome_ == 0 && !paused_) {
                 char bb[48];
                 std::snprintf(bb, sizeof bb, "BEHIND BY %.1fs", behindSec);
@@ -3029,7 +3029,7 @@
         // the map when the camera moves (client/areadrag.h).
         if (const auto a = dragStartOnScreen(dragAnchor_);
             dragging_ && (armedPress_ ? areaBoxAt(dragAnchor_, dragX1_, dragY1_)
-                                      : tak::client::areadrag::isSelectBox(dragAnchor_, a, dragX1_, dragY1_, uiScale_))) {
+                                      : ta::client::areadrag::isSelectBox(dragAnchor_, a, dragX1_, dragY1_, uiScale_))) {
             SDL_FRect r{std::min(a.x, dragX1_), std::min(a.y, dragY1_),
                         std::abs(dragX1_ - a.x), std::abs(dragY1_ - a.y)};
             SDL_SetRenderDrawColor(ren_, 120, 255, 150, 200);
@@ -3042,7 +3042,7 @@
             std::string m = "SPECTATING";
             if (benchmarkMode_) {   // append a countdown from the benchmark duration to 0
                 // Real seconds left of the run (the server ends it on its own clock).
-                int rem = front().benchEnded ? 0 : std::max(0, tak::sim::kBenchmarkSeconds - benchmarkElapsedSec());
+                int rem = front().benchEnded ? 0 : std::max(0, ta::sim::kBenchmarkSeconds - benchmarkElapsedSec());
                 char buf[40];
                 std::snprintf(buf, sizeof buf, "BENCHMARKING  %d:%02d", rem / 60, rem % 60);
                 m = buf;
@@ -3077,7 +3077,7 @@
             // A seated player can give up: the server takes it as a Leave, so the units
             // go the room's forfeit way, and main() shows the defeat's result screen.
             const bool canSurrender = canReturnToMenu_ && mp_ && !watchOnly() && outcome_ == 0 &&
-                                      mp_->state() == tak::net::MpClient::State::InGame;
+                                      mp_->state() == ta::net::MpClient::State::InGame;
             // RESUME, GAME, GRAPHICS, USER INTERFACE, AUDIO, VOICE CHAT, CONTROLS and YOUTUBE
             // STREAMING, then SURRENDER, MAIN MENU or (launched without the menu) QUIT.
             const int nBtn = 8 + (canSurrender ? 1 : 0) + (canReturnToMenu_ && !canSurrender ? 1 : 0) +
@@ -3117,15 +3117,15 @@
                 by += bh + gap;
             };
             btn("RESUME", [this] { exitMenu_ = false; surrenderArmed_ = false; });
-            btn("GAME", [this] { exitMenu_ = false; openOptions(tak::OptionsPage::Game); });
-            btn("GRAPHICS", [this] { exitMenu_ = false; openOptions(tak::OptionsPage::Graphics); });
-            btn("USER INTERFACE", [this] { exitMenu_ = false; openOptions(tak::OptionsPage::Interface); });
+            btn("GAME", [this] { exitMenu_ = false; openOptions(ta::OptionsPage::Game); });
+            btn("GRAPHICS", [this] { exitMenu_ = false; openOptions(ta::OptionsPage::Graphics); });
+            btn("USER INTERFACE", [this] { exitMenu_ = false; openOptions(ta::OptionsPage::Interface); });
             btn("AUDIO", [this] { exitMenu_ = false; openAudioOptions(); });
             btn("VOICE CHAT", [this] { exitMenu_ = false; openVoiceOptions(); });
             btn("CONTROLS", [this] { exitMenu_ = false; openHotkeys(); });   // hotkey rebinding
             btn("YOUTUBE STREAMING", [this] {
                 exitMenu_ = false;
-                SDL_Event event{};event.type=SDL_USEREVENT;event.user.code=tak::kStreamingEvent;
+                SDL_Event event{};event.type=SDL_USEREVENT;event.user.code=ta::kStreamingEvent;
                 SDL_PushEvent(&event);
             });
             if (canSurrender) btn(surrenderArmed_ ? "CONFIRM SURRENDER" : "SURRENDER", [this] {
@@ -3146,7 +3146,7 @@
     // The replay transport, in the game's own menu colours and plain interface text, on a
     // solid fill so it reads the same over any terrain.
     void GameView::drawReplayBar() {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         const rb::Layout& l = replayBar_;
         if (l.box.w <= 0) return;
         const auto rect = [](const rb::Rect& r) { return SDL_FRect{r.x, r.y, r.w, r.h}; };
@@ -3243,14 +3243,14 @@
     // painter order, resolves the geometry entry it owns (client/geometryowners.h),
     // then entries of destroyed / long-absent units are reclaimed. Depth order only
     // decides the order of visGeom_; it never moves a unit to another entry.
-    // Debug calibration (TAK_SCHEDULE_SAMPLES=<file>, render telemetry on): one
+    // Debug calibration (TA_SCHEDULE_SAMPLES=<file>, render telemetry on): one
     // line per planned pass -- kind, items, chunks, participants, estimate and
-    // measured wall time (ns). Run with TAK_RENDER_POOL_THREADS=1 for serial
+    // measured wall time (ns). Run with TA_RENDER_POOL_THREADS=1 for serial
     // per-pass costs to fit the rates in client/workschedule.h against.
-    void GameView::runPlanned(char kind, const tak::render::WorkPlan& plan,
+    void GameView::runPlanned(char kind, const ta::render::WorkPlan& plan,
                               const std::function<void(size_t,size_t)>& fn) {
 #ifndef NDEBUG
-        static const char* const samples = tak::devEnv("TAK_SCHEDULE_SAMPLES");
+        static const char* const samples = ta::devEnv("TA_SCHEDULE_SAMPLES");
         if (samples && renderStats_.enabled()) {
             const auto t0 = std::chrono::steady_clock::now();
             pool_.parallelChunks(plan.bounds(), plan.participants(), fn);
@@ -3270,7 +3270,7 @@
     }
 
 #ifndef NDEBUG
-    void GameView::verifyPlan(const tak::render::WorkPlan& plan, size_t items) const {
+    void GameView::verifyPlan(const ta::render::WorkPlan& plan, size_t items) const {
         const auto b = plan.bounds();
         bool ok = !b.empty() && b.front() == 0 && b.back() == items && plan.items() == items &&
                   plan.participants() >= 1;
@@ -3283,19 +3283,19 @@
         if (schedulesRead_) return;
         schedulesRead_ = true;
 #ifndef NDEBUG
-        if (const char* v = tak::devEnv("TAK_RENDER_SCHEDULE")) scheduleUniform_ = std::strcmp(v, "uniform") == 0;
-        scheduleVerifyOn_ = tak::devFlag("TAK_SCHEDULE_VERIFY");
-        const auto policy = [](const char* name, tak::render::SchedulePolicy& p) {
-            const char* v = tak::devEnv(name);
+        if (const char* v = ta::devEnv("TA_RENDER_SCHEDULE")) scheduleUniform_ = std::strcmp(v, "uniform") == 0;
+        scheduleVerifyOn_ = ta::devFlag("TA_SCHEDULE_VERIFY");
+        const auto policy = [](const char* name, ta::render::SchedulePolicy& p) {
+            const char* v = ta::devEnv(name);
             if (!v) return;
             double a = 0, b = 0, c = 0; unsigned m = p.maxParticipants;
             const int n = std::sscanf(v, "%lf,%lf,%lf,%u", &a, &b, &c, &m);
             if (n >= 3) { p.serialBelowNs = a; p.workerNs = b; p.chunkNs = c; p.maxParticipants = n >= 4 ? m : p.maxParticipants; }
         };
-        policy("TAK_SCHEDULE_GEOMETRY", schedules_.geometry);
-        policy("TAK_SCHEDULE_SHADOW_CHECK", schedules_.shadowCheck);
-        policy("TAK_SCHEDULE_SHADOW_PREP", schedules_.shadowPrep);
-        policy("TAK_SCHEDULE_COPY", schedules_.bodyCopy);
+        policy("TA_SCHEDULE_GEOMETRY", schedules_.geometry);
+        policy("TA_SCHEDULE_SHADOW_CHECK", schedules_.shadowCheck);
+        policy("TA_SCHEDULE_SHADOW_PREP", schedules_.shadowPrep);
+        policy("TA_SCHEDULE_COPY", schedules_.bodyCopy);
 #endif
     }
 
@@ -3304,7 +3304,7 @@
     // terrain height); a flyer rides its datum, the dilated sector maximum of the same
     // heights floored at the sea; a wading or floating body rides at most the sea. So
     // all are at most max(highest height, sea level). Cached per map and height settings.
-    tak::render::LiftBounds GameView::unitLiftBounds() {
+    ta::render::LiftBounds GameView::unitLiftBounds() {
         const auto& m = mapView_.map();
         if (!liftReady_) (void)heightAbove(0, 0);   // reads the debug scales
         const LiftBoundsKey key{&m, m.heights.data(), m.heights.size(), kHeightScale_, kHeightScaleX_};
@@ -3344,8 +3344,8 @@
         return unitFoot_;
     }
 
-    std::span<const uint32_t> GameView::unitCandidates(const tak::render::ScreenBand& band) {
-        using RS = tak::render::Counter;
+    std::span<const uint32_t> GameView::unitCandidates(const ta::render::ScreenBand& band) {
+        using RS = ta::render::Counter;
         const Frame& f = front();
         renderStats_.add(RS::UnitIndexQueries);
         // The whole list, in order (kept as an identity table, grown as needed).
@@ -3359,11 +3359,11 @@
             renderStats_.add(RS::UnitIndexFullScans);
             return everything();
         }
-        const auto rect = tak::render::anchorBandToWorld(band.left, band.top, band.right, band.bottom, mapView_.offX(),
+        const auto rect = ta::render::anchorBandToWorld(band.left, band.top, band.right, band.bottom, mapView_.offX(),
                                                          mapView_.offY(), mapView_.zoom(), unitLiftBounds());
         // A view holding every unit (the 10,000-visible case) needs no gather.
         if (f.unitGrid.covers(rect.left, rect.top, rect.right, rect.bottom)) return everything();
-        tak::render::UnitGrid::QueryStats qs;
+        ta::render::UnitGrid::QueryStats qs;
         f.unitGrid.query(rect.left, rect.top, rect.right, rect.bottom, unitQueryBits_, unitQuery_, &qs);
         renderStats_.add(RS::UnitIndexReturned, unitQuery_.size());
         renderStats_.add(RS::UnitIndexRows, qs.rows);
@@ -3376,9 +3376,9 @@
         // recycles, expires and trims entries (render_geometry_ownership).
         static const bool configured = [this] {
             auto config = geomEntries_.config();
-            if (const char* v = tak::devEnv("TAK_GEOMETRY_RETAIN_MS")) config.retainMs = uint64_t(std::max(0, std::atoi(v)));
-            if (const char* v = tak::devEnv("TAK_GEOMETRY_TRIM_MS")) config.freeTrimMs = uint64_t(std::max(0, std::atoi(v)));
-            if (tak::devEnv("TAK_GEOMETRY_RETAIN_MS")) config.retainMinFrames = 2;
+            if (const char* v = ta::devEnv("TA_GEOMETRY_RETAIN_MS")) config.retainMs = uint64_t(std::max(0, std::atoi(v)));
+            if (const char* v = ta::devEnv("TA_GEOMETRY_TRIM_MS")) config.freeTrimMs = uint64_t(std::max(0, std::atoi(v)));
+            if (ta::devEnv("TA_GEOMETRY_RETAIN_MS")) config.retainMinFrames = 2;
             geomEntries_.setConfig(config);
             return true;
         }();
@@ -3386,7 +3386,7 @@
 #endif
         // Presentation clock: the study's fixed animation clock, wall time otherwise
         // (the same choice as the distant-image refresh).
-        geomEntries_.beginFrame(tak::devFlag("TAK_RENDER_STUDY") ? uint64_t(animClock_*1000) : SDL_GetTicks64());
+        geomEntries_.beginFrame(ta::devFlag("TA_RENDER_STUDY") ? uint64_t(animClock_*1000) : SDL_GetTicks64());
         const Frame& frame = front();
         visUnits_.clear();
         visGeom_.clear();
@@ -3395,7 +3395,7 @@
         for (const auto& it : paintItems_) if (it.u) {
             const int slot = frame.slot(it.u->id);
             if (slot < 0) continue;
-            tak::render::RenderHandle handle;
+            ta::render::RenderHandle handle;
             UnitGeom* g = geomEntries_.claim({it.u->id, frame.worldEpoch, it.u->type, it.u->replacementModel}, &handle);
             if (!g) continue;   // duplicate owner in one frame (never expected)
             g->handle = handle;
@@ -3406,7 +3406,7 @@
         }
         // Alive = still in this snapshot under the same identity. Corpses keep their
         // unit; a unit that switched model or type is a new identity.
-        geomEntries_.reclaim([&](const tak::render::UnitOwner& o) {
+        geomEntries_.reclaim([&](const ta::render::UnitOwner& o) {
             if (o.epoch != frame.worldEpoch) return false;
             const UnitR* u = frame.unit(o.id);
             return u && u->type == o.type && u->replacementModel == o.model;
@@ -3414,7 +3414,7 @@
     }
 
 #ifndef NDEBUG
-    // TAK_GEOMETRY_OWNERSHIP_VERIFY: every visible unit holds a distinct entry
+    // TA_GEOMETRY_OWNERSHIP_VERIFY: every visible unit holds a distinct entry
     // owned by exactly its identity, and no entry carries another unit's build.
     void GameView::verifyGeometryOwnership() {
         const Frame& frame = front();
@@ -3452,9 +3452,9 @@
     // Render thread, after the parallel geometry pass: fold the workers' per-entry
     // results into this frame's stats, and account the retained geometry pool.
     void GameView::tallyRenderStats() {
-        using RS = tak::render::Counter;
-        using MC = tak::render::MissCause;
-        using RW = tak::render::Work;
+        using RS = ta::render::Counter;
+        using MC = ta::render::MissCause;
+        using RW = ta::render::Work;
         renderStats_.add(RS::VisibleUnits, visUnits_.size());
         uint64_t keyNs = 0, buildNs = 0;
         for (size_t i = 0; i < visUnits_.size(); ++i) {
@@ -3468,7 +3468,7 @@
             if (g.reused) {
                 renderStats_.add(RS::GeometryHits);
                 if (g.bodyRun) buildNs += g.buildNs;
-                if (g.bodyRun & tak::render::kStageLocal) renderStats_.add(RS::VertsGenerated, bodyVerts);
+                if (g.bodyRun & ta::render::kStageLocal) renderStats_.add(RS::VertsGenerated, bodyVerts);
                 continue;
             }
             if (g.localKey.empty()) continue;   // nothing drawable (no model / unbegun site)
@@ -3477,7 +3477,7 @@
             renderStats_.addMiss(MC(g.missCause));
             renderStats_.add(RS::GeometryOwnerReassign, g.ownerChanged);
             renderStats_.add(RS::GeomReallocs, g.reallocs);
-            const auto changed = [&](MC c) { return (g.missMask & tak::render::missBit(c)) ? 1u : 0u; };
+            const auto changed = [&](MC c) { return (g.missMask & ta::render::missBit(c)) ? 1u : 0u; };
             renderStats_.add(RS::InvalPose, changed(MC::Pose));
             renderStats_.add(RS::InvalMaterial, changed(MC::Material));
             renderStats_.add(RS::InvalPlacement, changed(MC::Placement));
@@ -3487,22 +3487,22 @@
             // Work done (workstream D): a local rebuild generates every vertex; a
             // partial update rewrites positions and/or colours of retained ones.
             const size_t shadowVerts = g.shadowVerts.size() + g.maskedShadowVerts.size();
-            if (g.stages & tak::render::kStageLocal) {
+            if (g.stages & ta::render::kStageLocal) {
                 renderStats_.add(RS::GeomLocalBuilds);
                 renderStats_.add(RS::GeomShadowKept, g.shadowKept);
                 renderStats_.add(RS::GeomShadowSkipped, g.shadowSkipped);
-                if (g.bodyRun & tak::render::kStageLocal) renderStats_.add(RS::VertsGenerated, bodyVerts);
+                if (g.bodyRun & ta::render::kStageLocal) renderStats_.add(RS::VertsGenerated, bodyVerts);
                 renderStats_.add(RS::ShadowVertsGenerated, shadowVerts);
             } else {
-                if (g.bodyRun & tak::render::kStageLocal) renderStats_.add(RS::VertsGenerated, bodyVerts);
-                if (g.stages & tak::render::kStagePlacement) {
+                if (g.bodyRun & ta::render::kStageLocal) renderStats_.add(RS::VertsGenerated, bodyVerts);
+                if (g.stages & ta::render::kStagePlacement) {
                     renderStats_.add(RS::GeomPlacementOnly);
                     renderStats_.add(RS::VertsPlaced, shadowVerts +
-                        ((g.bodyRun & tak::render::kStagePlacement) ? bodyVerts : 0));
+                        ((g.bodyRun & ta::render::kStagePlacement) ? bodyVerts : 0));
                 }
-                if (g.stages & tak::render::kStageMaterial) {
+                if (g.stages & ta::render::kStageMaterial) {
                     renderStats_.add(RS::GeomMaterialOnly);
-                    if (g.bodyRun & tak::render::kStageMaterial) renderStats_.add(RS::VertsRecoloured, bodyVerts);
+                    if (g.bodyRun & ta::render::kStageMaterial) renderStats_.add(RS::VertsRecoloured, bodyVerts);
                 }
             }
         }
@@ -3584,9 +3584,9 @@
     // demand, never below their contents.
     void GameView::trimRetainedBuffers() {
         ++trimFrame_;
-        const uint64_t now = tak::devFlag("TAK_RENDER_STUDY") ? uint64_t(animClock_ * 1000) : SDL_GetTicks64();
+        const uint64_t now = ta::devFlag("TA_RENDER_STUDY") ? uint64_t(animClock_ * 1000) : SDL_GetTicks64();
 #ifndef NDEBUG
-        const bool verify = tak::devFlag("TAK_CPU_TRIM_VERIFY");
+        const bool verify = ta::devFlag("TA_CPU_TRIM_VERIFY");
         if (verify) ++cpuTrimVerify_.frames;
 #else
         constexpr bool verify = false;
@@ -3607,7 +3607,7 @@
                     if (verify) before.assign(reinterpret_cast<const uint8_t*>(v.data()),
                                               reinterpret_cast<const uint8_t*>(v.data() + v.size()));
                 const size_t size = v.size();
-                if (const size_t released = tak::render::shrinkVector(v, target / elem)) {
+                if (const size_t released = ta::render::shrinkVector(v, target / elem)) {
                     ++trimsThisFrame_;
                     trimBytesThisFrame_ += released;
                     if (verify) {
@@ -3706,9 +3706,9 @@
     // uploads (as deltas of their cumulative counters), GPU creations and the
     // CPU-side used/retained bytes.
     void GameView::foldRenderStats() {
-        using RS = tak::render::Counter;
-        using RP = tak::render::Phase;
-        using RW = tak::render::Work;
+        using RS = ta::render::Counter;
+        using RP = ta::render::Phase;
+        using RW = ta::render::Work;
         auto& stats = renderStats_;
         stats.add(RS::PoolDispatches, poolStats_.dispatches);
         stats.add(RS::PoolSerialRuns, poolStats_.serial);
@@ -3727,7 +3727,7 @@
         stats.addWorkNs(RW::PoolBusy, poolStats_.busyNs);
         stats.addWorkNs(RW::PoolWake, poolStats_.wakeNs);
 
-        const auto& submit = tak::render::gSubmit;
+        const auto& submit = ta::render::gSubmit;
         stats.add(RS::LogicalDraws, submit.logical);
         stats.add(RS::NativeDraws, submit.native);
         stats.add(RS::SdlGeometryDraws, submit.sdl);
@@ -3892,7 +3892,7 @@
             (frameCapacity - std::min(frameCapacity, frameUsed));
         cpuPeakBytes_ = std::max(cpuPeakBytes_, size_t(retained));
 #ifndef NDEBUG
-        if (tak::devFlag("TAK_CPU_TRIM_VERIFY")) {
+        if (ta::devFlag("TA_CPU_TRIM_VERIFY")) {
             cpuTrimVerify_.peakRetained = std::max<uint64_t>(cpuTrimVerify_.peakRetained, retained);
             cpuTrimVerify_.finalRetained = retained;
         }
@@ -3904,7 +3904,7 @@
         stats.set(RS::CpuCachePeakBytes, cpuPeakBytes_);
     }
 
-    const tak::tdo::Model* GameView::ghostModel(const std::string& typeId) {
+    const ta::tdo::Model* GameView::ghostModel(const std::string& typeId) {
         // Through loadVisual, which builds the PieceMeta tree. This used to insert the
         // entry with meta{} and a comment saying collect() would compute the answers
         // live -- true of the ghost's OWN draw, which passes no meta, but the entry it
@@ -3939,7 +3939,7 @@
     }
 
     void GameView::preparePaletteTexture(const std::string& name) {
-        namespace pal = tak::render::palette;
+        namespace pal = ta::render::palette;
         if(paletteTextureSheets_.count(name))return;
         const auto source=paletteTextureSources_.find(name);
         if(source==paletteTextureSources_.end())return;
@@ -4000,7 +4000,7 @@
                 SDL_Rect area{rect.x,rect.y,rect.w,rect.h};
                 if(SDL_UpdateTexture(page.texture,&area,pixels.data(),w*16)!=0)continue;
                 paletteUploadBytes_+=pixels.size();
-                if(tak::devFlag("TAK_PALETTE_VERIFY")) {
+                if(ta::devFlag("TA_PALETTE_VERIFY")) {
                     // Exercise the actual uploaded subrect, including the four-column
                     // band layout, on software and accelerated SDL backends alike.
                     auto* check=gpuvram::create(ren_,SDL_PIXELFORMAT_RGBA32,
@@ -4031,9 +4031,9 @@
 
     // Which palette form to hold: indexed on the OpenGL backend when the program
     // builds, native draws are possible (opengl, integer output scale), units are
-    // point-sampled (bilinear is not bit-identical; TAK_PALETTE_INDEXED_LINEAR
+    // point-sampled (bilinear is not bit-identical; TA_PALETTE_INDEXED_LINEAR
     // tries it) and no indexed draw has failed; baked otherwise (debug
-    // TAK_PALETTE_BAKED forces it: the same-binary reference). A change releases
+    // TA_PALETTE_BAKED forces it: the same-binary reference). A change releases
     // the held form and rebuilds everything that captured its textures.
     void GameView::updatePaletteMode() {
         // Bakes draw their runs through drawModelRun in EVERY build: SDL cannot draw
@@ -4041,13 +4041,13 @@
         // goes to SDL_RenderGeometry there exactly as without the drawer. Installed
         // here, next to the decision, so the indexed form is never chosen without it.
         distantModelCache_.setRunDrawer(&GameView::drawModelRunThunk,this);
-        const bool linear=tak::texturefilter::unitsLinear(textureFilter_);
-        paletteIndexed_.setMarkOutside(tak::devFlag("TAK_PALETTE_MARK_EDGES"));
-        // Debug TAK_BODY_SDL_SUBMIT (the pure-SDL submission reference) takes the
+        const bool linear=ta::texturefilter::unitsLinear(textureFilter_);
+        paletteIndexed_.setMarkOutside(ta::devFlag("TA_PALETTE_MARK_EDGES"));
+        // Debug TA_BODY_SDL_SUBMIT (the pure-SDL submission reference) takes the
         // baked form too: indexed runs, and the spans they open, are native draws.
-        bool indexed=!paletteIndexedFailed_ && !tak::devFlag("TAK_PALETTE_BAKED") &&
-                     !tak::devFlag("TAK_BODY_SDL_SUBMIT") &&
-                     (!linear || tak::devFlag("TAK_PALETTE_INDEXED_LINEAR")) &&
+        bool indexed=!paletteIndexedFailed_ && !ta::devFlag("TA_PALETTE_BAKED") &&
+                     !ta::devFlag("TA_BODY_SDL_SUBMIT") &&
+                     (!linear || ta::devFlag("TA_PALETTE_INDEXED_LINEAR")) &&
                      paletteIndexed_.ready(ren_) && bodySubmit_.nativeCapable(ren_);
         const PaletteMode wanted=indexed ? PaletteMode::Indexed : PaletteMode::Baked;
         paletteLinear_=indexed && linear;
@@ -4078,15 +4078,15 @@
 
     size_t GameView::paletteGpuBytes() const {
         return paletteIndexed_.gpuBytes()+palettePages_.size()*
-            (paletteMode_==PaletteMode::Indexed ? size_t(4) : tak::render::palette::kBakedPageBytes);
+            (paletteMode_==PaletteMode::Indexed ? size_t(4) : ta::render::palette::kBakedPageBytes);
     }
 
     // Sources (index + alpha per texel), banks, sheet records (capacities).
     size_t GameView::paletteCpuBytes() const {
-        size_t bytes=paletteBanks_.capacity()*sizeof(tak::render::palette::Bank);
+        size_t bytes=paletteBanks_.capacity()*sizeof(ta::render::palette::Bank);
         for(const auto& bank:paletteBanks_)bytes+=bank.shades.capacity();
         for(const auto& [name,source]:paletteTextureSources_) {
-            bytes+=sizeof(source)+name.capacity()+source.frames.capacity()*sizeof(tak::render::palette::Frame);
+            bytes+=sizeof(source)+name.capacity()+source.frames.capacity()*sizeof(ta::render::palette::Frame);
             for(const auto& frame:source.frames)bytes+=frame.la.capacity();
         }
         for(const auto& [name,sheets]:paletteTextureSheets_)
@@ -4100,7 +4100,7 @@
             if(palettePages_[page].texture==texture)return int(page);
         return -1;
     }
-    tak::NativeProgram* GameView::paletteProgram(SDL_Texture* texture) {
+    ta::NativeProgram* GameView::paletteProgram(SDL_Texture* texture) {
         const int page=palettePage(texture);
         return page<0 ? nullptr : paletteIndexed_.program(size_t(page),paletteLinear_);
     }
@@ -4110,7 +4110,7 @@
     // mod, normalized coordinates)? Cached for the frame's replay.
     const GameView::SpanTexture& GameView::spanTexture(SDL_Texture* texture) {
         for(const auto& entry:spanTextures_)if(entry.texture==texture)return entry;
-        const auto joinable=nativePass_.joinable(bodySubmit_,ren_,texture,tak::DistantModels::pageBlendMode());
+        const auto joinable=nativePass_.joinable(bodySubmit_,ren_,texture,ta::DistantModels::pageBlendMode());
         spanTextures_.push_back({texture,joinable.name,joinable.premultiplied});
         return spanTextures_.back();
     }
@@ -4205,7 +4205,7 @@
                 head.passPremultipliedPrime=scan.primePremultiplied;
                 head.passPalette=scan.palette;
                 // N2: every command of the pass may draw from the arena (a minimum size,
-                // debug TAK_NATIVE_PASS_ARENA_MIN, measured slower: Experiment 16).
+                // debug TA_NATIVE_PASS_ARENA_MIN, measured slower: Experiment 16).
                 if(arena)
                     for(size_t k=i;k<scan.end;++k)
                         drawOps_[k].inPass=drawOps_[k].tex && size_t(std::max(0,drawOps_[k].count))>=nativePassArenaMin_;
@@ -4215,7 +4215,7 @@
     }
 
     size_t GameView::drawNativeSpan(size_t first) {
-        using RS = tak::render::Counter;
+        using RS = ta::render::Counter;
         const DrawOp& head=drawOps_[first];
         const size_t end=size_t(head.passEnd);
         if(!nativePass_.begin(bodySubmit_,ren_,head.passPrime,head.passPremultipliedPrime)) {
@@ -4248,7 +4248,7 @@
     }
 
     int GameView::drawModelRun(SDL_Texture* texture, const SDL_Vertex* vertices, int count, bool countSdl) {
-        if(tak::NativeProgram* program=paletteProgram(texture)) {
+        if(ta::NativeProgram* program=paletteProgram(texture)) {
             const int drawn=bodySubmit_.draw(ren_,texture,std::span<const SDL_Vertex>(vertices,size_t(count)),
                                              true,0,{0,0},program);
             if(drawn==0) {++paletteIndexedDraws_;return 0;}
@@ -4257,7 +4257,7 @@
             paletteIndexedFailed_=true;
             return 1;
         }
-        if(countSdl)tak::render::countSdlGeometry(size_t(count),size_t(count)*sizeof(SDL_Vertex));
+        if(countSdl)ta::render::countSdlGeometry(size_t(count),size_t(count)*sizeof(SDL_Vertex));
         return SDL_RenderGeometry(ren_,texture,vertices,count,nullptr,0);
     }
     int GameView::drawModelRunThunk(void* self, SDL_Renderer*, SDL_Texture* texture, const SDL_Vertex* vertices, int count) {
@@ -4299,14 +4299,14 @@
         if (animatedTex_.empty()) return;
         bool changed = false;
         for (auto& [name, animation] : modelTextureAnimations_) {
-            const size_t frame = tak::retailEffectFrame(animation.durations,
+            const size_t frame = ta::retailEffectFrame(animation.durations,
                 animation.loop, front().gameTick).value_or(animation.durations.size());
             changed |= frame != animation.frame;
             animation.frame = frame;
         }
         const auto renderer = rendererGeneration_.current(), asset = assetGeneration_.current();
 #ifndef NDEBUG
-        static const bool verify = tak::devFlag("TAK_ATLAS_VERIFY");
+        static const bool verify = ta::devFlag("TA_ATLAS_VERIFY");
 #endif
         if (!changed) {
             // Every atlas recorded under the current generations was brought up to date
@@ -4325,31 +4325,31 @@
         // Only atlases holding a stale frame are visited, and a changed sequence
         // repaints its own region (and gutter) in each -- not every animated region of
         // every atlas.
-        tak::render::AtlasPaintCounts counts;
+        ta::render::AtlasPaintCounts counts;
         SDL_Texture* prev = nullptr;
         bool switched = false;
         {
-            tak::render::AtlasPainter painter(ren_, &counts);
+            ta::render::AtlasPainter painter(ren_, &counts);
             for (size_t slot = 0; slot < atlasTex_.size(); ++slot) {
                 SDL_Texture* atlas = atlasTex_[slot];
                 if (!atlas || atlasTracker_.current(slot, renderer, asset, animatedRegions_))
                     continue;
                 if (!switched) { prev = SDL_GetRenderTarget(ren_); switched = true; }
                 SDL_SetRenderTarget(ren_, atlas);
-                renderStats_.add(tak::render::Counter::TargetSwitches);
+                renderStats_.add(ta::render::Counter::TargetSwitches);
                 atlasTracker_.update(slot, renderer, asset, animatedRegions_, painter);
             }
             painter.finish();   // while the atlas is still the target its copies belong to
         }
         if (switched) {
             SDL_SetRenderTarget(ren_, prev);
-            renderStats_.add(tak::render::Counter::TargetSwitches);
-            renderStats_.add(tak::render::Counter::AtlasRepaintPasses);
+            renderStats_.add(ta::render::Counter::TargetSwitches);
+            renderStats_.add(ta::render::Counter::AtlasRepaintPasses);
         }
-        renderStats_.add(tak::render::Counter::AtlasRegionsPainted, counts.regions);
-        renderStats_.add(tak::render::Counter::AtlasPixelsPainted, counts.pixels);
-        renderStats_.add(tak::render::Counter::AtlasCopies, counts.copies);
-        renderStats_.add(tak::render::Counter::AtlasFlushes, counts.flushes);
+        renderStats_.add(ta::render::Counter::AtlasRegionsPainted, counts.regions);
+        renderStats_.add(ta::render::Counter::AtlasPixelsPainted, counts.pixels);
+        renderStats_.add(ta::render::Counter::AtlasCopies, counts.copies);
+        renderStats_.add(ta::render::Counter::AtlasFlushes, counts.flushes);
 #ifndef NDEBUG
         if (verify) verifyAtlases();
 #endif
@@ -4360,7 +4360,7 @@
     // shadowTile never names a later cell; every stamp is dropped with its cell.
     void GameView::spareShadowPage(SDL_Texture* texture,int w,int h) {
         if (!texture) return;
-        if (shadowSparePages_.size()>=tak::render::kShadowBasePages || w<=0 || h<=0) { gpuvram::destroy(texture); return; }
+        if (shadowSparePages_.size()>=ta::render::kShadowBasePages || w<=0 || h<=0) { gpuvram::destroy(texture); return; }
         shadowSparePages_.push_back({texture,w,h});
     }
 
@@ -4405,9 +4405,9 @@
     // Workstream H: the retained body vertex arena (client/vertexarena.h).
     void GameView::releaseBodyArena() {
         if (bodyArena_.capacity() || bodyArenaBuffers_[0].capacityBytes() || bodyArenaBuffers_[1].capacityBytes())
-            renderStats_.add(tak::render::Counter::ArenaReleases);
+            renderStats_.add(ta::render::Counter::ArenaReleases);
         bodyArena_.release();
-        for (int k = 0; k < tak::render::kArenaSlots; ++k) {
+        for (int k = 0; k < ta::render::kArenaSlots; ++k) {
             bodyArenaBuffers_[k].release();
             std::vector<SDL_Vertex>().swap(bodyArenaMirror_[k]);
         }
@@ -4425,11 +4425,11 @@
     bool GameView::bodyArenaPressure() const {
         return gpuvram::blocked() || gpuvram::tightened() || gpuvram::bytes() > gpuvram::cap() / 8 * 7;
     }
-    // Debug (TAK_BODY_ARENA_VERIFY): every arena command gathered from the arena
+    // Debug (TA_BODY_ARENA_VERIFY): every arena command gathered from the arena
     // contents (the simulated storage, or a CPU mirror of every GL upload)
     // through its merged ranges must equal the command assembled from its
     // sources -- exactly what the streaming path would draw.
-    void GameView::verifyBodyArena(const tak::render::ArenaFrameStats& stats) {
+    void GameView::verifyBodyArena(const ta::render::ArenaFrameStats& stats) {
 #ifdef NDEBUG
         (void)stats;   // debug verifier only
 #else
@@ -4468,14 +4468,14 @@
         bodyArenaVerify_.uploaded += stats.uploadedVerts;
         bodyArenaVerify_.retained += stats.verts - std::min(stats.verts, stats.uploadedVerts);
         bodyArenaVerify_.oldCommands += stats.oldCommands;
-        if (stats.mode == tak::render::ArenaMode::Append) ++bodyArenaVerify_.appends;
+        if (stats.mode == ta::render::ArenaMode::Append) ++bodyArenaVerify_.appends;
         else if (stats.rollover) ++bodyArenaVerify_.rollovers;
         else ++bodyArenaVerify_.rebuilds;
         bodyArenaVerify_.drains += bodyArena_.releaseSlot() >= 0;
 #endif
     }
 
-    // Debug (TAK_BODY_ARENA_VERIFY): every assembled command equals its sources,
+    // Debug (TA_BODY_ARENA_VERIFY): every assembled command equals its sources,
     // and the assembled commands and staged uploads fill bodyVerts_ without a gap
     // (a write failure re-assembles in place of the staged uploads).
     void GameView::verifyBodyAssembled(size_t stagedVerts) {
@@ -4584,7 +4584,7 @@
         bigFont_.destroyGlyphs();
         statFont_.destroyGlyphs();
         scoreboardFont_.destroyGlyphs();
-        tak::releaseUiTextGlyphs();   // the TrueType face's sheets (client/uitext.h)
+        ta::releaseUiTextGlyphs();   // the TrueType face's sheets (client/uitext.h)
         for (auto& [name, texture] : scoreboardLogos_) if (texture) gpuvram::destroy(texture);
         scoreboardLogos_.clear();
     }
@@ -4598,13 +4598,13 @@
     // pages -- and nothing else. That is Texture Filtering's UNITS level; pages created
     // later read the level when built.
     SDL_ScaleMode GameView::unitScaleMode() const {
-        return tak::texturefilter::unitsLinear(textureFilter_) ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
+        return ta::texturefilter::unitsLinear(textureFilter_) ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
     }
     void GameView::setTextureFilter(int level) {
-        level = tak::texturefilter::clampLevel(level);
-        const bool unitsWas = tak::texturefilter::unitsLinear(textureFilter_);
+        level = ta::texturefilter::clampLevel(level);
+        const bool unitsWas = ta::texturefilter::unitsLinear(textureFilter_);
         textureFilter_ = level;
-        if (unitsWas != tak::texturefilter::unitsLinear(level)) {
+        if (unitsWas != ta::texturefilter::unitsLinear(level)) {
             SDL_RenderFlush(ren_);   // queued draws must not pick up the new mode
             const SDL_ScaleMode mode = unitScaleMode();
             for (SDL_Texture* t : atlasTex_) if (t) SDL_SetTextureScaleMode(t, mode);
@@ -4620,7 +4620,7 @@
     // in client/texturefilter.h. Runs once a frame before drawing and touches textures
     // only when the answer flips; art loaded later reads worldScaleMode() when built.
     void GameView::updateWorldFilter() {
-        const bool on = tak::texturefilter::worldLinear(textureFilter_, mapView_.zoom(), worldLinear_);
+        const bool on = ta::texturefilter::worldLinear(textureFilter_, mapView_.zoom(), worldLinear_);
         if (on == worldLinear_) return;
         SDL_RenderFlush(ren_);
         worldLinear_ = on;
@@ -4686,8 +4686,8 @@
         SDL_SetTextureBlendMode(atlas, SDL_BLENDMODE_BLEND);
         SDL_Texture* prev = SDL_GetRenderTarget(ren_);
         SDL_SetRenderTarget(ren_, atlas);
-        renderStats_.add(tak::render::Counter::AtlasCreated);
-        renderStats_.add(tak::render::Counter::TargetSwitches, 2);   // in and back out
+        renderStats_.add(ta::render::Counter::AtlasCreated);
+        renderStats_.add(ta::render::Counter::TargetSwitches, 2);   // in and back out
         SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
         SDL_SetRenderDrawColor(ren_, 0, 0, 0, 0);
         SDL_RenderClear(ren_);
@@ -4699,14 +4699,14 @@
             if (atlasTex_[other] && int(other) != slot &&
                 atlasTracker_.known(other, rendererGeneration_.current(), assetGeneration_.current()))
                 from = atlasTex_[other];
-        tak::render::AtlasPaintCounts counts;
+        ta::render::AtlasPaintCounts counts;
         {
-            tak::render::AtlasPainter painter(ren_, &counts);
+            ta::render::AtlasPainter painter(ren_, &counts);
             paintAtlasContents(slot, painter, from);
             painter.finish();   // before leaving the atlas target
         }
-        renderStats_.add(tak::render::Counter::AtlasCopies, counts.copies);
-        renderStats_.add(tak::render::Counter::AtlasFlushes, counts.flushes);
+        renderStats_.add(ta::render::Counter::AtlasCopies, counts.copies);
+        renderStats_.add(ta::render::Counter::AtlasFlushes, counts.flushes);
         SDL_SetRenderTarget(ren_, prev);
         // NEAREST unless Bilinear Filtering is on; the gutters keep LINEAR in-rect.
         SDL_SetTextureScaleMode(atlas, unitScaleMode());
@@ -4722,14 +4722,14 @@
     // model texture's slot variant with its source blend mode, and each animated
     // region exactly as AnimatedAtlasTracker repaints it (blend NONE, the frame
     // selected now, transparent once expired). Leaves animatedRegions_ describing
-    // what was painted. Also the reference for TAK_ATLAS_VERIFY.
+    // what was painted. Also the reference for TA_ATLAS_VERIFY.
     //
     // With `from` (another complete colour atlas of this layout) the target starts as
     // a 1:1 copy of it, and only regions whose content can differ are cleared (rect +
     // gutter) and repainted: textures with per-colour variants, every animated
     // region, and the untracked sequences below. Everything else -- single-frame
     // textures, gutters and padding -- is the same in every colour atlas.
-    void GameView::paintAtlasContents(int slot, tak::render::AtlasPainter& painter, SDL_Texture* from) {
+    void GameView::paintAtlasContents(int slot, ta::render::AtlasPainter& painter, SDL_Texture* from) {
         collectAnimatedRegions();
         if (from) painter.duplicate(from);
         for (const auto& [name, r] : atlasRect_) {
@@ -4750,11 +4750,11 @@
             if (ci >= it->second.size()) continue;
             painter.copy(it->second[ci], r, nullptr);
         }
-        for (const auto& region : animatedRegions_) tak::render::paintAnimatedRegion(painter, region);
+        for (const auto& region : animatedRegions_) ta::render::paintAnimatedRegion(painter, region);
     }
 
 #ifndef NDEBUG
-    // TAK_ATLAS_VERIFY (debug): after each update, every colour atlas must equal, byte
+    // TA_ATLAS_VERIFY (debug): after each update, every colour atlas must equal, byte
     // for byte -- content, gutters and padding -- a fresh atlas completely painted
     // with the frames selected now. Covers frame changes, expiry, late creation and
     // renderer resets in whatever scene runs. Throws on the first mismatch.
@@ -4774,7 +4774,7 @@
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 0);
             SDL_RenderClear(ren_);
             {
-                tak::render::AtlasPainter painter(ren_);
+                ta::render::AtlasPainter painter(ren_);
                 paintAtlasContents(int(slot), painter);
                 painter.finish();
             }
@@ -4803,7 +4803,7 @@
     }
 #endif
 
-    void GameView::preparePiece(const tak::tdo::Object& object,const PieceMeta& meta,
+    void GameView::preparePiece(const ta::tdo::Object& object,const PieceMeta& meta,
                                 const Xform& parent,const Anim* anim,float cy,float sy,
                                 PreparedPiece& out) {
         const auto* piece=pieceFor(anim,object.name);
@@ -4827,21 +4827,21 @@
         shadowCompositeBatch_.clear();
         auto flush=[&] {
             if(!shadowCompositeBatch_.empty()) {
-                bodySubmit_.draw(ren_,texture,shadowCompositeBatch_,!tak::devFlag("TAK_SHADOW_SDL_SUBMIT"));
+                bodySubmit_.draw(ren_,texture,shadowCompositeBatch_,!ta::devFlag("TA_SHADOW_SDL_SUBMIT"));
                 noteNeed(Retained::ShadowComposite,shadowCompositeBatch_);
                 shadowCompositeBatch_.clear();
-                renderStats_.add(tak::render::Counter::ShadowCompositeRuns);
+                renderStats_.add(ta::render::Counter::ShadowCompositeRuns);
             }
         };
         for(const auto* g:shadows) {
-            if(!shadowSilhouetteAtlasActive_ || !g->shadowAtlasPage || tak::devFlag("TAK_SHADOW_BATCH_OFF")) {
+            if(!shadowSilhouetteAtlasActive_ || !g->shadowAtlasPage || ta::devFlag("TA_SHADOW_BATCH_OFF")) {
                 flush();texture=nullptr;drawUnitShadow(*g);
-                renderStats_.add(tak::render::Counter::ShadowDirectUnits);
-                renderStats_.add(tak::render::Counter::ShadowCompositeRuns);
+                renderStats_.add(ta::render::Counter::ShadowDirectUnits);
+                renderStats_.add(ta::render::Counter::ShadowCompositeRuns);
                 continue;
             }
             if(texture!=g->shadowAtlasPage) {flush();texture=g->shadowAtlasPage;}
-            tak::appendShadowComposite(shadowCompositeBatch_,g->shadowAtlasSrc,g->shadowAtlasDst,
+            ta::appendShadowComposite(shadowCompositeBatch_,g->shadowAtlasSrc,g->shadowAtlasDst,
                                        shadowSilhouetteWidth_,shadowSilhouetteHeight_,255-kShadowLevel);
             profShadowVerts_+=g->shadowVerts.size()+g->maskedShadowVerts.size();
         }
@@ -4849,7 +4849,7 @@
     }
 
     void GameView::buildUnitGeom(const UnitR& u, UnitGeom& g, std::vector<Tri>& scratch, bool mayDeferBody) {
-        using namespace tak::render;
+        using namespace ta::render;
 #ifndef NDEBUG
         if(scheduleVerifyOn_)geomBuildCalls_.fetch_add(1,std::memory_order_relaxed);
 #endif
@@ -4970,15 +4970,15 @@
 #endif
         // Texture playback may hold one frame for multiple simulation ticks.
         // Use its actual inputs, so an unchanged frame retains exact geometry.
-        if(!tak::devFlag("TAK_TEXTURE_TICK_REFERENCE"))
+        if(!ta::devFlag("TA_TEXTURE_TICK_REFERENCE"))
             for(const auto* frame:meta->animationFrames)word(*frame);
         else if(meta->animated)word(front().gameTick);
         const LocalKeyLayout layout{uint32_t(key.size())};
         if(anim) {
             word(reinterpret_cast<uintptr_t>(anim->pieceNames));
             const auto poses=!anim->capturedPose.empty() ? anim->capturedPose :
-                anim->vm ? std::span<const tak::cob::PieceState>(anim->vm->pieces()) :
-                           std::span<const tak::cob::PieceState>{};
+                anim->vm ? std::span<const ta::cob::PieceState>(anim->vm->pieces()) :
+                           std::span<const ta::cob::PieceState>{};
             for(const auto& pose:poses) {
                 word(pose.visible);word(pose.cached);word(pose.shaded);word(pose.rendered);
                 for(float value:pose.move)word(floatBits(value));
@@ -4994,7 +4994,7 @@
         // flyer altitude (shadow lean), wall occlusion line (draw-only clip).
         const PlacementKey placementKey{floatBits(zm),floatBits(ax),floatBits(ay),floatBits(discoBob),
             floatBits(altitude),floatBits(occlusion)};
-        const bool reference=tak::devFlag("TAK_GEOMETRY_NOCACHE") || tak::devFlag("TAK_GEOMETRY_REFERENCE");
+        const bool reference=ta::devFlag("TA_GEOMETRY_NOCACHE") || ta::devFlag("TA_GEOMETRY_REFERENCE");
         const bool localValid=!reference && !g.localKey.empty() && key==g.localKey;
         // "Materialising" = the summon fade-in/shimmer: either a site still conjuring
         // (progress = HP fraction) or a unit just summoned from a building (progress =
@@ -5004,7 +5004,7 @@
         const bool cacheHit=stages==0;
         g.reused=cacheHit;
         g.animatedTexture=meta->animated;
-        const bool verify=tak::devFlag("TAK_GEOMETRY_VERIFY");
+        const bool verify=ta::devFlag("TA_GEOMETRY_VERIFY");
         // Distant-image lookup before body generation (workstream G). When this
         // unit's image is shown without a repaint this frame (the cache reads
         // neither its revision nor its vertices then), the body stages are left
@@ -5014,7 +5014,7 @@
         // this frame's body would have (bodyVertexCountStable).
         bool deferBody=false;
         if(mayDeferBody && distantEarly_ && !reference && !g.localKey.empty() && (stages|g.bodyPending) &&
-           zm<=tak::DistantModels::kMaxZoom && g.verts.size()>=tak::DistantModels::kMinVertices &&
+           zm<=ta::DistantModels::kMaxZoom && g.verts.size()>=ta::DistantModels::kMinVertices &&
            distantEligible(u,flying,occlusion,ay) &&
            (localValid || bodyVertexCountStable(g.localKey,g.localLayout,key,layout)))
             deferBody=distantModelCache_.holds(g.handleKey(),zm,distantScaleX_,distantScaleY_,distantNow_);
@@ -5034,7 +5034,7 @@
         // A hit's estimate is the key check alone: it must not touch the vector
         // headers on the entry's later cache lines, which a hit never reads
         // (measured: reading them cost ~0.1 us per hit, Experiment 11).
-        using CM=tak::render::GeometryCostModel;
+        using CM=ta::render::GeometryCostModel;
         const auto predictNext=[&] {
             g.nextCost=CM::pack(CM::estimateNs(stages,bodyStages,key.size(),g.verts.size(),
                                                g.shadowLocal.size()+g.maskedShadowLocal.size()));
@@ -5046,7 +5046,7 @@
 
         UnitGeomInputs in;
         in.visual=&vt->second;in.meta=meta;in.anim=anim;in.atlas=atlas;in.facing=facing;
-        in.reuse=!tak::devFlag("TAK_GEOMETRY_REFERENCE");
+        in.reuse=!ta::devFlag("TA_GEOMETRY_REFERENCE");
         in.body={zm,ax,ay,discoBob};
         // The shadow leans by the flyer's altitude from the same anchor.
         in.shadow={zm,ax + kShadowLX * altitude * zm,ay + (kProjY - kShadowLZ) * altitude * zm};
@@ -5243,9 +5243,9 @@
     bool GameView::runUnitGeomStages(const UnitR& u, UnitGeom& g, uint8_t stages, uint8_t bodyStages,
                                      const UnitGeomInputs& in, std::vector<Tri>& scratch) {
         bool shadowChanged=false;
-        using namespace tak::render;
+        using namespace ta::render;
         const Visual& visual=*in.visual;
-        const bool verify=tak::devFlag("TAK_GEOMETRY_VERIFY");
+        const bool verify=ta::devFlag("TA_GEOMETRY_VERIFY");
         WorkerScratch& ws=workerScratch();
         PreparedPiece& prepared=ws.prepared;
         // Sorted compact indices into the collector output (scratch), kept for the
@@ -5361,7 +5361,7 @@
         }
         // Differential validation of the shadow fast path (positions, masks, order,
         // corpse culling) against the full collector, after placement.
-        static const bool verifyShadow=tak::devEnv("TAK_SHADOW_VERIFY")!=nullptr;
+        static const bool verifyShadow=ta::devEnv("TA_SHADOW_VERIFY")!=nullptr;
         // Lodestones are skipped: they cast their visible geometry including pieces
         // their scripts mark DONT_CACHE / RENDER_OFF (a deliberate retail deviation in
         // buildUnitShadow), which the reference collector does not model.
@@ -5461,7 +5461,7 @@
     // Positions are model-projected (before zoom, anchor and altitude lean);
     // placement turns them into screen positions.
     bool GameView::buildUnitShadow(const UnitR& u, UnitGeom& g,
-                                   const tak::tdo::Object& root, const PieceMeta& meta,
+                                   const ta::tdo::Object& root, const PieceMeta& meta,
                                    const Anim* anim, float facing,
                                    std::vector<Tri>& scratch, const PreparedPiece* prepared) {
         if (u.underConstruction || !castsBlobShadow(u.type)) {
@@ -5518,7 +5518,7 @@
         // needed for an opaque shadow. Keep its piece/fan order and arithmetic.
         using ShadowVertex=ShadowCollectVertex;
         std::vector<ShadowVertex>& vertices=workerScratch().shadowVerts;
-        const auto collectShadow=[&](auto&& self,const tak::tdo::Object& object,
+        const auto collectShadow=[&](auto&& self,const ta::tdo::Object& object,
                                      const Xform& parent,const PieceMeta* cached,bool isRoot,
                                      const PreparedPiece* pose)->void {
             const auto* piece=pose ? nullptr : pieceFor(anim,object.name);
@@ -5645,7 +5645,7 @@
             if (hadClip) SDL_RenderGetClipRect(ren_, &prevClip);
             int line = std::clamp(int(occY), 0, outH);
             SDL_Rect top{0, 0, outW, line};   // only pixels above the wall top show
-            topShows = tak::cliprect::set(ren_, top);   // an empty clip draws nothing (Metal: skip)
+            topShows = ta::cliprect::set(ren_, top);   // an empty clip draws nothing (Metal: skip)
         }
         // Shadows are emitted once by the dedicated ground/air passes. Special
         // body rendering must not composite the same shadow a second time.
@@ -5716,7 +5716,7 @@
             if (!effect || effect->frames.empty()) return;
             for (const auto& particle:u.constructionParticles) {
                 if ((particle.z>=0)!=frontPass) continue;
-                const auto index=tak::retailEffectFrame(effect->durations,effect->loop,particle.displayAge);
+                const auto index=ta::retailEffectFrame(effect->durations,effect->loop,particle.displayAge);
                 if (!index || *index>=effect->frames.size()) continue;
                 const auto& frame=effect->frames[*index];
                 auto high=[](int32_t base,int32_t offset) {
@@ -5761,7 +5761,7 @@
         if (occluded) {
             int line = std::clamp(int(occY), 0, outH);
             SDL_Rect bot{0, line, outW, std::max(0, outH - line)};
-            const bool botShows = tak::cliprect::set(ren_, bot);   // empty: no silhouette (Metal: skip)
+            const bool botShows = ta::cliprect::set(ren_, bot);   // empty: no silhouette (Metal: skip)
             SDL_Color tc = playerColor(u.player);
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             // The silhouette is flat, untextured and single-colour, so the whole
@@ -5858,7 +5858,7 @@
             shadowsLoaded_ = true;
             const auto* pal = featurePalette("aramon");
             if (pal) try {
-                for (auto& sq : tak::gaf::load(vread("anims/shadows.gaf"), *pal, -1,
+                for (auto& sq : ta::gaf::load(vread("anims/shadows.gaf"), *pal, -1,
                                                "anims/shadows.gaf")) {
                     if (sq.frames.empty() || sq.frames[0].width == 0) continue;
                     auto& fr = sq.frames[0];
@@ -5887,7 +5887,7 @@
         if (!featureDefs_.empty()) return;
         try {
             for (const std::string& path : vfs_.list("features")) {
-                if (tak::vpath::extension(path) != ".tdf") continue;
+                if (ta::vpath::extension(path) != ".tdf") continue;
                 try {
                     auto root = vtdf(path);
                     for (const auto& n : root.childOrder) {
@@ -5900,7 +5900,7 @@
         } catch (const std::exception&) {}
     }
 
-    const tak::gaf::Palette* GameView::featurePalette(std::string world) {
+    const ta::gaf::Palette* GameView::featurePalette(std::string world) {
         std::transform(world.begin(), world.end(), world.begin(), ::tolower);
         auto it = featurePals_.find(world);
         if (it != featurePals_.end()) return &it->second;
@@ -5910,7 +5910,7 @@
             try {
                 std::string pp = "palettes/" + cand;
                 return &featurePals_
-                            .emplace(world, tak::gaf::Palette::fromBytes(vread(pp), pp))
+                            .emplace(world, ta::gaf::Palette::fromBytes(vread(pp), pp))
                             .first->second;
             } catch (const std::exception&) {}
         }
@@ -5970,15 +5970,15 @@
                        (f.z - mapView_.offY() - float(fyo)) * zm - lfy,
                        float(fw) * zm, float(fh) * zm};
         };
-        const auto maskOf = [](const FeatArt* art, size_t idx) -> const tak::hiddenunits::AlphaMask* {
+        const auto maskOf = [](const FeatArt* art, size_t idx) -> const ta::hiddenunits::AlphaMask* {
             return art && idx < art->masks.size() ? &art->masks[idx] : nullptr;
         };
         // Destroyed, playing seqnamedie once (494ce0 mode 0): the frame its clock
         // has reached, counted back from the tick featuredead replaces it.
         if (f.dieEnd && f.dieArt && f.dieArt->tex) {
             const FeatArt* da = f.dieArt;
-            const size_t idx = std::min(da->frames.size() - 1, tak::featuredie::frame(da->tickEnd,
-                tak::featuredie::elapsed(da->totalTicks, f.dieEnd, front().gameTick)));
+            const size_t idx = std::min(da->frames.size() - 1, ta::featuredie::frame(da->tickEnd,
+                ta::featuredie::elapsed(da->totalTicks, f.dieEnd, front().gameTick)));
             out.tex = da->frames[idx];
             const auto& g = da->fgeom[idx];
             place(g.w, g.h, g.xoff, g.yoff);
@@ -6055,14 +6055,14 @@
         made = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
                                mask.width(), mask.height());
         if (!made) return nullptr;
-        const std::vector<uint8_t> px = tak::reclaimfade::silhouette(mask);
+        const std::vector<uint8_t> px = ta::reclaimfade::silhouette(mask);
         SDL_UpdateTexture(made, nullptr, px.data(), mask.width() * 4);
         SDL_SetTextureBlendMode(made, SDL_BLENDMODE_BLEND);
         SDL_SetTextureScaleMode(made, worldScaleMode());
         return made;
     }
 
-    GameView::FeatArt* GameView::featureArtFor(const tak::tdf::Node& def,
+    GameView::FeatArt* GameView::featureArtFor(const ta::tdf::Node& def,
                                                const char* seqKey, const char* shadKey) {
         std::string file = def.valueOr("filename", "");
         std::string seq = def.valueOr(seqKey, "");
@@ -6090,7 +6090,7 @@
                         if (std::tolower(x[i]) != std::tolower(y[i])) return false;
                     return true;
                 };
-                for (auto& sq : tak::gaf::load(vread("anims/" + f + ".gaf"), *pal, -1,
+                for (auto& sq : ta::gaf::load(vread("anims/" + f + ".gaf"), *pal, -1,
                                                "anims/" + f + ".gaf")) {
                     if (sq.frames.empty()) continue;
                     auto& fr = sq.frames[0];
@@ -6193,7 +6193,7 @@
         // The buildable spot is the animated Sacred Stone centre; the static
         // Standing Stones sharing the category are just ruins around it.
         inst.glowy = inst.mana && di->second.numberOr("animating", 0) != 0;
-        inst.low = tak::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
+        inst.low = ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
         features_.push_back(inst);
         featureIndexDirty_=true;
         // NO NAV BLOCKING HERE. Feature blocking belongs to the SIM, and
@@ -6218,7 +6218,7 @@
         fi.tree = fi.simType == fi.treeType;   // a burnt stump/smudge doesn't sway
         auto di = featureDefs_.find(name);
         fi.low = di != featureDefs_.end() &&
-                 tak::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
+                 ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
         FeatArt* a = di != featureDefs_.end() ? featureArtFor(di->second) : nullptr;
         if (!a) { fi.tex = nullptr; fi.frames = nullptr; fi.art = nullptr;
                   fi.shadow = nullptr; return; }   // no art: vanish (draw skips)
@@ -6246,7 +6246,7 @@
         std::vector<FeatSim>& simState = featSimState_;
         const uint32_t featGen = worldTables().featGeneration();   // atomic; no lock needed
         const bool featDirty = featGen != lastFeatGen_ || simState.size() != features_.size();
-        if (!featDirty && !tak::devFlag("TAK_FEATURE_FULL_SYNC")) return;
+        if (!featDirty && !ta::devFlag("TA_FEATURE_FULL_SYNC")) return;
         struct NewFeat { int id; std::string name; };
         std::vector<NewFeat> fresh;
         // A simulation tick can take seconds in a crowded match. Keep drawing
@@ -6257,7 +6257,7 @@
             if (!featDirty) return true;
             const auto live = tryLiveWorld();
             if (!live) return false;
-            const tak::sim::World& world = **live;
+            const ta::sim::World& world = **live;
             if (world.featureTypes().empty()) return false;
             simState.clear();
             simState.reserve(features_.size());
@@ -6265,7 +6265,7 @@
                 const auto* sf = world.feature(fi.simId);
                 simState.push_back(sf ? FeatSim{sf->type, sf->alive && sf->burn != 0,
                                                 sf->alive, sf->fx, sf->fz, true, sf->burnStarted, world.featureReclaimable(*sf),sf->blocks,
-                                                tak::reclaimfade::fadeEnd(world.tickCount(), sf->fadeLeft),
+                                                ta::reclaimfade::fadeEnd(world.tickCount(), sf->fadeLeft),
                                                 sf->dieLeft ? world.tickCount() + sf->dieLeft : 0}
                                       : FeatSim{-1, false, true, 1, 1, false});
             }
@@ -6330,7 +6330,7 @@
                     fi.frontFlame = flame("seqnamefrontflame");
                     fi.backFlame = flame("seqnamebackflame");
                 }
-                static const bool kBurnLog = tak::devEnv("TAK_BURNLOG") != nullptr;
+                static const bool kBurnLog = ta::devEnv("TA_BURNLOG") != nullptr;
                 if (kBurnLog)
                     std::fprintf(stderr, "burn-vis %s art=%d front=%zu back=%zu\n", fi.name.c_str(),
                                  fi.burnArt && fi.burnArt->tex ? 1 : 0,
@@ -6428,8 +6428,8 @@
         // surf rim; some maps have zero). Generated maps have no author, so
         // scatter them retail-style here. Display only: addFeature is a render
         // instance with no nav/mana/sim effect (nav blocking lives in the sim).
-        if (!tak::mapgen::isGeneratedMapId(mapPath_)) return;   // authored maps ship their own
-        if (tak::mapgen::lavaWorld(tak::mapgen::decodeMapId(mapPath_).mapType)) return;   // lava has no surf
+        if (!ta::mapgen::isGeneratedMapId(mapPath_)) return;   // authored maps ship their own
+        if (ta::mapgen::lavaWorld(ta::mapgen::decodeMapId(mapPath_).mapType)) return;   // lava has no surf
         const auto& map = mapView_.map();
         const int W = map.width, H = map.height, sea = map.seaLevel;
         if (W <= 0 || H <= 0 || map.heights.size() < size_t(W) * H) return;
@@ -6536,8 +6536,8 @@
             // A structure is always placed (the sim refuses to repeat one), so
             // Ctrl+click on its icon starts a placement like a plain click.
             if (lmb && ctrl && !shift && !isStructure(bt)) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::RepeatTrain;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::RepeatTrain;
                 c.unitId = b->id;
                 std::snprintf(c.type, sizeof c.type, "%s", bt->id.c_str());
                 issue(c);
@@ -6547,10 +6547,10 @@
                 if (lmb) { placing_ = bt;shiftBuildPlaced_=false; } // fresh manual placement
                 return true;
             }
-            tak::net::Command c;
+            ta::net::Command c;
             c.unitId = b->id;
             std::snprintf(c.type, sizeof c.type, "%s", bt->id.c_str());
-            c.kind = lmb ? tak::net::Cmd::Train : tak::net::Cmd::Unqueue;
+            c.kind = lmb ? ta::net::Cmd::Train : ta::net::Cmd::Unqueue;
             c.targetId = (ctrl && shift) ? 10 : shift ? 5 : 1;
             issue(c);
             return true;
@@ -6567,8 +6567,8 @@
             // the portrait is edge-upscaled 2x and filtered linearly, so it stops
             // looking blocky at large build-bar scales. Callers size from their own
             // boxes (or the texture's aspect), so the 2x dimensions change no layout.
-            auto img = tak::jpeg::load(vread("anims/buildpic/" + typeId + ".jpg"));
-            tex = tak::art::makeTexture(ren_, img.rgba, img.width, img.height);
+            auto img = ta::jpeg::load(vread("anims/buildpic/" + typeId + ".jpg"));
+            tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
         } catch (const std::exception&) {}
         icons_[typeId] = tex;
         return tex;
@@ -6686,10 +6686,10 @@
 
     double GameView::fogSeconds() {
         // Retail times RollingFog and WavyFog with the real clock (0x5ba760), not the
-        // game's: the mist keeps moving while the game is paused. TAK_FOG_STILL holds
+        // game's: the mist keeps moving while the game is paused. TA_FOG_STILL holds
         // it at t = 0 for captures that compare frames.
-        static const bool still = tak::devFlag("TAK_FOG_STILL");
-        static const char* fixed = tak::devEnv("TAK_FOG_TIME");   // captures: a chosen moment
+        static const bool still = ta::devFlag("TA_FOG_STILL");
+        static const char* fixed = ta::devEnv("TA_FOG_TIME");   // captures: a chosen moment
         if (fixed) return std::atof(fixed);
         if (still || fogStill_) return 0.0;
         const uint64_t now = SDL_GetPerformanceCounter();
@@ -6697,7 +6697,7 @@
         return double(now - fogClock0_) / double(SDL_GetPerformanceFrequency());
     }
 
-    bool GameView::syncFogTexture(SDL_Texture*& texture, tak::FogUpload& upload, uint32_t& generation) {
+    bool GameView::syncFogTexture(SDL_Texture*& texture, ta::FogUpload& upload, uint32_t& generation) {
         const Frame& f = front();
         const int tw = f.fogW * upload.scale(), th = f.fogH * upload.scale();
         int qw = 0, qh = 0;
@@ -6712,7 +6712,7 @@
         }
         // A changed plane need not change a texel; FogUpload sends only what did.
         if (generation != f.fogGen &&
-            upload.update(texture, f.fog, f.fogW, f.fogH, tak::devFlag("TAK_FOG_FULL_UPLOAD")))
+            upload.update(texture, f.fog, f.fogW, f.fogH, ta::devFlag("TA_FOG_FULL_UPLOAD")))
             generation = f.fogGen;
         return true;
     }
@@ -6735,14 +6735,14 @@
         const Frame& f = front();
         if (f.fog.empty() || f.fogW <= 0 || f.fogH <= 0) return;
         if (!syncFogTexture(fogTex_, fogUpload_, fogTexGen_)) return;
-        SDL_SetTextureScaleMode(fogTex_, tak::devFlag("TAK_FOG_DEBUG") ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+        SDL_SetTextureScaleMode(fogTex_, ta::devFlag("TA_FOG_DEBUG") ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
         if (fogColorSide_ != side_) {   // the local side's FogColor (sidedata.tdf, default white)
             fogColorSide_ = side_;
             fogColor_ = {255, 255, 255, 255};
             if (const auto data = vfs_.tryRead("gamedata/sidedata.tdf")) try {
-                const auto sides = tak::tdf::parseText(std::string(data->begin(), data->end()), "gamedata/sidedata.tdf");
+                const auto sides = ta::tdf::parseText(std::string(data->begin(), data->end()), "gamedata/sidedata.tdf");
                 for (const auto& [key, node] : sides.children) {
-                    if (tak::hpi::MountSet::key(node.valueOr("nameprefix", "")) != tak::hpi::MountSet::key(side_)) continue;
+                    if (ta::hpi::MountSet::key(node.valueOr("nameprefix", "")) != ta::hpi::MountSet::key(side_)) continue;
                     int r = 255, g = 255, b = 255;
                     if (std::sscanf(node.valueOr("fogcolor", "255 255 255").c_str(), "%d %d %d", &r, &g, &b) == 3)
                         fogColor_ = {Uint8(std::clamp(r, 0, 255)), Uint8(std::clamp(g, 0, 255)),
@@ -6773,8 +6773,8 @@
         lines(0.0f, mapW, ox, ox + float(winW_) / zm, xs);
         lines(pTop, pBottom, oy - lift, oy - lift + float(winH_) / zm, ps);
         if (xs.size() < 2 || ps.size() < 2) return;
-        static const bool rolling = !tak::devFlag("TAK_FOG_NO_ROLLING"), wavy = !tak::devFlag("TAK_FOG_NO_WAVY");
-        const tak::retailfog::Wave wave(fogSeconds());
+        static const bool rolling = !ta::devFlag("TA_FOG_NO_ROLLING"), wavy = !ta::devFlag("TA_FOG_NO_WAVY");
+        const ta::retailfog::Wave wave(fogSeconds());
         const size_t nx = xs.size(), np = ps.size();
         static thread_local std::vector<SDL_Vertex> grid;
         grid.resize(nx * np);
@@ -6801,7 +6801,7 @@
                                  &c = grid[(j + 1) * nx + i + 1], &d = grid[(j + 1) * nx + i];
                 fogVerts_.insert(fogVerts_.end(), {a, b, c, a, c, d});
             }
-        fogSubmit_.draw(ren_, fogTex_, fogVerts_, !tak::devFlag("TAK_FOG_SDL_SUBMIT"));
+        fogSubmit_.draw(ren_, fogTex_, fogVerts_, !ta::devFlag("TA_FOG_SDL_SUBMIT"));
     }
 
     void GameView::drawGhost() {
@@ -6838,8 +6838,8 @@
         EffectAnim ea;
         // Retail 4bd980 loads fx.pcx into game+17410, passed to effect banks
         // including smoke and damage flames. Feature palettes are different.
-        tak::gaf::Palette effectPalette;
-        try { effectPalette=tak::gaf::Palette::fromBytes(vread("palettes/fx.pcx"),"palettes/fx.pcx"); }
+        ta::gaf::Palette effectPalette;
+        try { effectPalette=ta::gaf::Palette::fromBytes(vread("palettes/fx.pcx"),"palettes/fx.pcx"); }
         catch(const std::exception&) {} // retain the decoder's missing-palette fallback
         // "file:sequence" targets a specific GAF sequence (e.g. "flames:flame large");
         // A bare name uses the file of that name and its like-named sequence.
@@ -6849,15 +6849,15 @@
             file = animName.substr(0, c);
             seqWant = animName.substr(c + 1);
         }
-        seqWant=tak::hpi::MountSet::key(seqWant);
+        seqWant=ta::hpi::MountSet::key(seqWant);
         for (const std::string suf : {"_4444.taf", "_1555.taf", ".taf", ".gaf"}) {
             if (!ea.frames.empty()) break;
             try {
                 std::string ap = "anims/" + file + suf;
-                auto seqs = tak::gaf::load(vread(ap), effectPalette, -1, ap);
-                const tak::gaf::Sequence* seq = nullptr;
+                auto seqs = ta::gaf::load(vread(ap), effectPalette, -1, ap);
+                const ta::gaf::Sequence* seq = nullptr;
                 for (auto& s : seqs) {
-                    if (tak::hpi::MountSet::key(s.name) == seqWant) { seq = &s; break; }
+                    if (ta::hpi::MountSet::key(s.name) == seqWant) { seq = &s; break; }
                 }
                 if (!seq) continue;
                 ea.loop=seq->loopFlag!=0;
@@ -6897,7 +6897,7 @@
         const auto& terrain=mapView_.map();
 #ifndef NDEBUG
         size_t bloodBefore=0;
-        if(tak::devEnv("TAK_BLOOD_TEST"))
+        if(ta::devEnv("TA_BLOOD_TEST"))
             for(const auto& debris:detachedPieces_)bloodBefore+=debris.blood.size();
 #endif
         std::erase_if(detachedPieces_,[&](DetachedPiece& debris) {
@@ -6905,7 +6905,7 @@
                 ++debris.tick;
                 const auto result=debris.motion.tick(uint8_t(terrain.seaLevel),8155,debrisLavaWorld_,debrisNoSeaTrigger_,
                     [&](const auto& position) {
-                        return terrain.heights.empty() ? -1 : tak::retailDebrisTerrainHeight(
+                        return terrain.heights.empty() ? -1 : ta::retailDebrisTerrainHeight(
                             position[0],position[2],terrain.width,terrain.height,[&](int x,int z) {
                                 return terrain.heights[size_t(z)*size_t(terrain.width)+size_t(x)];
                             });
@@ -6925,7 +6925,7 @@
                 }
                 std::erase_if(debris.blood,[&](auto& particle) {
                     const auto contact=particle.tick(8155,uint8_t(terrain.seaLevel),[&](const auto& p) {
-                        return terrain.heights.empty() ? -1 : tak::sim::retailTerrainHeight(
+                        return terrain.heights.empty() ? -1 : ta::sim::retailTerrainHeight(
                             p[0],p[2],terrain.width,terrain.height,[&](int x,int z) {
                                 return terrain.heights[size_t(z)*size_t(terrain.width)+size_t(x)];
                             });
@@ -6940,7 +6940,7 @@
             return false;
         });
 #ifndef NDEBUG
-        if(bloodBefore && tak::devEnv("TAK_BLOOD_TEST")) {
+        if(bloodBefore && ta::devEnv("TA_BLOOD_TEST")) {
             size_t bloodAfter=0;
             for(const auto& debris:detachedPieces_)bloodAfter+=debris.blood.size();
             if(!bloodAfter) {
@@ -6953,13 +6953,13 @@
         for (auto& b : beams_) b.age += dt;
         std::erase_if(beams_, [](const BeamFx& b) { return b.age > b.life; });
         std::erase_if(explosionGlows_,[this](const ExplosionGlow& glow) {
-            return front().gameTick-glow.started>uint32_t(tak::retailGlowEnvelope(glow.kind).duration);
+            return front().gameTick-glow.started>uint32_t(ta::retailGlowEnvelope(glow.kind).duration);
         });
         for (auto& e : effects_) e.age += dt;
         std::erase_if(effects_, [this](const EffectInst& e) {
             if (!e.anim || e.anim->frames.empty()) return true;
             if(e.authoredTiming) {
-                return !tak::retailEffectFrame(e.anim->durations,false,front().gameTick-e.started);
+                return !ta::retailEffectFrame(e.anim->durations,false,front().gameTick-e.started);
             }
             float local = e.age - e.delay;
             return local >= effLoopLen(e) * float(std::max(e.loops, 1));
@@ -7067,7 +7067,7 @@
     // pass after the ground replay is kept for the items left out of the painter
     // list (far outside the view) and draws them in the old family order.
     int GameView::fxOwnerLayer(int owner) const {
-        namespace hu = tak::hiddenunits;
+        namespace hu = ta::hiddenunits;
         const UnitR* u = frameUnitP(owner);
         if (!u || !u->type || !u->type->canFly) return hu::kLayerGround;
         // The painter list's own airborne test (unitCandidate): aloft unless landed.
@@ -7076,14 +7076,14 @@
     }
 
     void GameView::collectWorldFx(int mvw, int winH, bool painter) {
-        namespace hu = tak::hiddenunits;
+        namespace hu = ta::hiddenunits;
         fxItems_.clear();
 #ifndef NDEBUG
         debugFlameDrawCount_=0;
         debugGlowDrawCount_=0;debugNimbusDrawCount_=0;
         debugSmokeDrawCount_=0;debugDamageFlameDrawCount_=0;debugPointDrawCount_=0;
         debugFxReplayed_=0;debugFxLate_=0;
-        if(tak::devEnv("TAK_GLOW_TEST") && explosionGlows_.empty()) {
+        if(ta::devEnv("TA_GLOW_TEST") && explosionGlows_.empty()) {
             const float cx=mapView_.map().blocksX*16.f,cz=mapView_.map().blocksY*16.f;
             for(unsigned kind=0;kind<3;++kind)
                 explosionGlows_.push_back({cx+(float(kind)-1)*100,cz,0,front().gameTick,kind});
@@ -7117,11 +7117,11 @@
             return sx>=0 && sx<=mvw && sy>=0 && sy<=winH;
         };
         for(const auto& stream:frame.flames) {
-            if(!tak::retailFlameStreamVisible(stream.muzzle,stream.aimPoint,
-                [&](const auto& point) {return flameInViewport(tak::retailFlameEndpointPoint(point));},
+            if(!ta::retailFlameStreamVisible(stream.muzzle,stream.aimPoint,
+                [&](const auto& point) {return flameInViewport(ta::retailFlameEndpointPoint(point));},
                 [&](const auto& point) {return effectVisibleR(point);}))continue;
             for(const auto& particle:stream.particles)
-                if(flameInViewport(tak::retailFlameParticlePoint(particle.position)))
+                if(flameInViewport(ta::retailFlameParticlePoint(particle.position)))
                     add(FxKind::Flame,&particle,0,float(particle.position[0]>>16),float(particle.position[2]>>16));
         }
         // Wandering storms, at their foot.
@@ -7152,8 +7152,8 @@
                 continue;
             }
             const bool native3d=p.ballistic3d || p.guided3d;
-            const float x=native3d ? tak::sim::Fixed::raw(p.position[0]).toFloat() : p.x.toFloat();
-            const float z=native3d ? tak::sim::Fixed::raw(p.position[2]).toFloat() : p.z.toFloat();
+            const float x=native3d ? ta::sim::Fixed::raw(p.position[0]).toFloat() : p.x.toFloat();
+            const float z=native3d ? ta::sim::Fixed::raw(p.position[2]).toFloat() : p.z.toFloat();
             if(native3d ? !projectedVisibleR(x,z-float(int(whole(p.position[1]))>>1)) : !cellVisibleR(x,z))continue;
             add(FxKind::Projectile,&p,0,x,z);
         }
@@ -7190,7 +7190,7 @@
         for(const auto& glow:explosionGlows_) {
             if(!noFog_ && (glow.worldPosition ? !effectVisibleR(*glow.worldPosition) :
                                                !cellVisibleR(glow.x,glow.z)))continue;
-            if(frame.gameTick-glow.started>uint32_t(tak::retailGlowEnvelope(glow.kind).duration))continue;
+            if(frame.gameTick-glow.started>uint32_t(ta::retailGlowEnvelope(glow.kind).duration))continue;
             if(glow.worldPosition) add(FxKind::Glow,&glow,0,float((*glow.worldPosition)[0]>>16),float((*glow.worldPosition)[2]>>16));
             else add(FxKind::Glow,&glow,0,glow.x,glow.z);
         }
@@ -7211,7 +7211,7 @@
         const float viewW=float(mapViewW(winW_)),viewH=float(winH_);
         const auto admitted=[&](const std::array<int32_t,3>& position) {
             const int x=position[0]>>16,y=position[1]>>16,z=position[2]>>16;
-            return tak::retailViewportCenterAdmitted((float(x)-offX)*zm,(float(z-(y>>1))-offY)*zm,viewW,viewH);
+            return ta::retailViewportCenterAdmitted((float(x)-offX)*zm,(float(z-(y>>1))-offY)*zm,viewW,viewH);
         };
         // Native cargo's hidden flag skips the owner's entire drawable, including
         // attached effect lists (their lifetime state is kept).
@@ -7246,9 +7246,9 @@
             if (!u || !u->type || u->embarked() || !unitShownR(*u)) continue;
             add(FxKind::UnitFx,&a,uint32_t(id),u->x,u->z,fxOwnerLayer(id));
         }
-        renderStats_.add(tak::render::Counter::FxItems, fxItems_.size());
+        renderStats_.add(ta::render::Counter::FxItems, fxItems_.size());
         if (painter)
-            renderStats_.add(tak::render::Counter::FxQueued, size_t(std::count_if(fxItems_.begin(),fxItems_.end(),
+            renderStats_.add(ta::render::Counter::FxQueued, size_t(std::count_if(fxItems_.begin(),fxItems_.end(),
                 [](const FxItem& item) {return item.queued;})));
     }
 
@@ -7285,11 +7285,11 @@
         const float zm = mapView_.zoom();
         switch (item.kind) {
         case FxKind::Flame: {
-            const auto& particle = *static_cast<const tak::RetailFlameParticle*>(item.p);
+            const auto& particle = *static_cast<const ta::RetailFlameParticle*>(item.p);
             const char* name=particle.kind==1 ? "bluefire" : particle.kind==2 ? "dieselflame" : "flame";
             const auto* art=effectFor(name);
             if(!art || art->frames.empty())return;
-            const auto projected=tak::retailFlameParticlePoint(particle.position);
+            const auto projected=ta::retailFlameParticlePoint(particle.position);
             const int frame=particle.frame(uint16_t(art->frames.size()));
             if(frame<0 || size_t(frame)>=art->frames.size())return;
             const auto& f=art->frames[size_t(frame)];
@@ -7301,14 +7301,14 @@
 #endif
             return;
         }
-        case FxKind::Storm: drawFxStorm(*static_cast<const tak::sim::World::Storm*>(item.p)); return;
+        case FxKind::Storm: drawFxStorm(*static_cast<const ta::sim::World::Storm*>(item.p)); return;
         case FxKind::Beam:
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_ADD);
             drawFxBeam(*static_cast<const BeamFx*>(item.p));
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             return;
         case FxKind::Projectile:
-            drawFxProjectile(*static_cast<const tak::sim::Projectile*>(item.p));
+            drawFxProjectile(*static_cast<const ta::sim::Projectile*>(item.p));
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             return;
         case FxKind::Particle: {   // into partBatch_, which drawFxSpan draws
@@ -7340,7 +7340,7 @@
         }
         case FxKind::BloodStain:
         case FxKind::DebrisBlood: {
-            const auto& particle = *static_cast<const tak::RetailBloodParticle*>(item.p);
+            const auto& particle = *static_cast<const ta::RetailBloodParticle*>(item.p);
             const int x=particle.position[0]>>16,y=particle.position[1]>>16,z=particle.position[2]>>16;
             const float sx=(float(x)-mapView_.offX())*zm;
             const float sy=(float(z-(y>>1))-mapView_.offY())*zm;
@@ -7385,9 +7385,9 @@
         }
         case FxKind::Glow: {
             const auto& glow = *static_cast<const ExplosionGlow*>(item.p);
-            const auto envelope=tak::retailGlowEnvelope(glow.kind);
+            const auto envelope=ta::retailGlowEnvelope(glow.kind);
             const uint32_t elapsed=front().gameTick-glow.started;
-            const auto radii=tak::retailGlowRadii(int32_t(elapsed),envelope.duration,envelope.begin,envelope.end);
+            const auto radii=ta::retailGlowRadii(int32_t(elapsed),envelope.duration,envelope.begin,envelope.end);
             float x=(glow.x-mapView_.offX()-terrainLiftX(glow.x,glow.z))*zm;
             float y=(glow.z-mapView_.offY()-terrainLift(glow.x,glow.z)-glow.alt)*zm;
             if(glow.worldPosition) {
@@ -7395,7 +7395,7 @@
                 x=(float(p[0]>>16)-mapView_.offX())*zm;
                 y=(float((p[2]>>16)-((p[1]>>16)>>1))-mapView_.offY())*zm;
             }
-            const auto fan=tak::retailGlowMesh(x,y,float(radii[0])*zm,float(radii[1])*zm,196);
+            const auto fan=ta::retailGlowMesh(x,y,float(radii[0])*zm,float(radii[1])*zm,196);
             std::array<SDL_Vertex,36> triangles;
             for(unsigned i=0;i<12;++i)for(unsigned j=0;j<3;++j) {
                 const auto& vertex=fan[j==0 ? 0:i+j];
@@ -7434,7 +7434,7 @@
             const int nf = int(e.anim->frames.size());
             int fi=0;
             if(e.authoredTiming) {
-                const auto frame=tak::retailEffectFrame(e.anim->durations,false,front().gameTick-e.started);
+                const auto frame=ta::retailEffectFrame(e.anim->durations,false,front().gameTick-e.started);
                 if(!frame || *frame>=e.anim->frames.size())return;
                 fi=int(*frame);
             } else {
@@ -7457,7 +7457,7 @@
             return;
         }
         case FxKind::Point: {
-            const auto& particle = *static_cast<const tak::RetailPointParticle*>(item.p);
+            const auto& particle = *static_cast<const ta::RetailPointParticle*>(item.p);
             const int x=particle.position[0]>>16,y=particle.position[1]>>16,z=particle.position[2]>>16;
             const float sx=(float(x)-mapView_.offX())*zm;
             const float sy=(float(z-(y>>1))-mapView_.offY())*zm;
@@ -7527,11 +7527,11 @@
     // Wandering storms. These are roaming hazards with their own three-part
     // animation (wanderstartart while it spins up, wanderloopart while it roams);
     // without it a Tornado or a god's vortex tears through an army invisibly.
-    void GameView::drawFxStorm(const tak::sim::World::Storm& st) {
+    void GameView::drawFxStorm(const ta::sim::World::Storm& st) {
         const float zm = mapView_.zoom();
         if (!st.w) return;
         if (!noFog_ && !cellVisibleR(st.x.toFloat(), st.z.toFloat())) return;
-        using Phase=tak::sim::World::Storm::Phase;
+        using Phase=ta::sim::World::Storm::Phase;
         if(st.phase==Phase::Waiting || !st.animation.active)return;
         const std::string& artName=st.phase==Phase::Starting ? st.w->wanderStart :
             st.phase==Phase::Ending ? st.w->wanderEnd : st.w->wanderLoop;
@@ -7544,7 +7544,7 @@
         // signed whole coordinates. Keep that refresh local to rendering:
         // client visibility must not mutate deterministic simulation state.
         const auto& terrain=mapView_.map();
-        const int height=terrain.heights.empty() ? 0 : tak::sim::retailTerrainHeight(
+        const int height=terrain.heights.empty() ? 0 : ta::sim::retailTerrainHeight(
             st.x.v,st.z.v,terrain.width,terrain.height,[&](int x,int z) {
                 return terrain.heights[size_t(z)*size_t(terrain.width)+size_t(x)];
             });
@@ -7575,7 +7575,7 @@
             // Line-of-sight describes hit delivery, not appearance. Crossbow
             // bolts and harpoons use the same model path as travelling shots.
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
-            tak::sim::Projectile position;
+            ta::sim::Projectile position;
             const bool captured=b.fromPosition && b.position;
             if(captured)for(size_t axis=0;axis<3;++axis)
                 position.position[axis]=int32_t(double((*b.fromPosition)[axis])+
@@ -7591,7 +7591,7 @@
             // Status LOS classes share retail's ordinary projectile draw
             // routine (52c8c0): weaponart is a travelling sprite, not a beam.
             if (const auto* art = effectFor(b.sprite)) {
-                const auto index = tak::retailEffectFrame(art->durations, art->loop,
+                const auto index = ta::retailEffectFrame(art->durations, art->loop,
                                                          uint32_t(b.age * 30.0f));
                 if (index && *index < art->frames.size()) {
                     const auto& fr = art->frames[*index];
@@ -7605,7 +7605,7 @@
                         const float y2=float((*b.position)[1]>>16);
                         sy=(z-(y1+(y2-y1)*t)*0.5f-mapView_.offY())*zm;
                     }
-                    const auto origin = tak::retailEffectSpriteOrigin(sx, sy, fr.ax, fr.ay, zm);
+                    const auto origin = ta::retailEffectSpriteOrigin(sx, sy, fr.ax, fr.ay, zm);
                     SDL_FRect dst{origin.x, origin.y, fr.w * zm, fr.h * zm};
                     SDL_SetTextureAlphaMod(fr.tex, 255);
                     SDL_RenderCopyF(ren_, fr.tex, nullptr, &dst);
@@ -7654,7 +7654,7 @@
     }
 
     // One projectile, drawn per weapon family.
-    void GameView::drawFxProjectile(const tak::sim::Projectile& p) {
+    void GameView::drawFxProjectile(const ta::sim::Projectile& p) {
         const float zm = mapView_.zoom();
         const int winW = winW_, winH = winH_;
         if(p.straight) {
@@ -7671,7 +7671,7 @@
                 if(name.empty())return;
                 const auto* art=effectFor(name);
                 if(!art || art->frames.empty())return;
-                const auto index=tak::retailEffectFrame(art->durations,art->loop,uint32_t(p.age));
+                const auto index=ta::retailEffectFrame(art->durations,art->loop,uint32_t(p.age));
                 if(!index || *index>=art->frames.size())return;
                 const auto& f=art->frames[*index];
                 // effectFor loaded the native mode for each authored frame:
@@ -7703,7 +7703,7 @@
                             uint32_t((c>>8)&15)*17u<<16 | uint32_t((c>>4)&15)*17u<<8 | uint32_t(c&15)*17u;
                     }
                     SDL_UpdateTexture(texture,nullptr,pixels.data(),tw*int(sizeof(uint32_t)));
-                    const auto quad=tak::retailLightningQuad(
+                    const auto quad=ta::retailLightningQuad(
                         {mx-int(mapView_.offX()),mz-(my>>1)+int(-mapView_.offY())},
                         {x-int(mapView_.offX()),z-(y>>1)+int(-mapView_.offY())},
                         int(winW/zm),int(winH/zm),effect.width,effect.height,tw,th);
@@ -7725,8 +7725,8 @@
             return;
         }
         const bool native3d=p.ballistic3d || p.guided3d;
-        const float renderX=native3d ? tak::sim::Fixed::raw(p.position[0]).toFloat() : p.x.toFloat();
-        const float renderZ=native3d ? tak::sim::Fixed::raw(p.position[2]).toFloat() : p.z.toFloat();
+        const float renderX=native3d ? ta::sim::Fixed::raw(p.position[0]).toFloat() : p.x.toFloat();
+        const float renderZ=native3d ? ta::sim::Fixed::raw(p.position[2]).toFloat() : p.z.toFloat();
         // A native 3D shot carries its height: test its own projected cell.
         if (native3d ? !projectedVisibleR(renderX, renderZ -
                            float(int(std::bit_cast<int16_t>(uint16_t(uint32_t(p.position[1]) >> 16))) >> 1))
@@ -7735,10 +7735,10 @@
         // Legacy 2D fixture shots have no vertical trajectory. Production
         // weapons carry native XYZ; do not invent a height from live units.
         const float palt = 0.0f;
-        const float shotWorldY=native3d ? tak::sim::Fixed::raw(p.position[1]).toFloat() : 0.0f;
-        const float velocityX=native3d ? tak::sim::Fixed::raw(p.velocity[0]).toFloat() : p.vx.toFloat();
-        const float velocityY=native3d ? tak::sim::Fixed::raw(p.velocity[1]).toFloat() : 0.0f;
-        const float velocityZ=native3d ? tak::sim::Fixed::raw(p.velocity[2]).toFloat() : p.vz.toFloat();
+        const float shotWorldY=native3d ? ta::sim::Fixed::raw(p.position[1]).toFloat() : 0.0f;
+        const float velocityX=native3d ? ta::sim::Fixed::raw(p.velocity[0]).toFloat() : p.vx.toFloat();
+        const float velocityY=native3d ? ta::sim::Fixed::raw(p.velocity[1]).toFloat() : 0.0f;
+        const float velocityZ=native3d ? ta::sim::Fixed::raw(p.velocity[2]).toFloat() : p.vz.toFloat();
         const float velocityLength=std::max(std::sqrt(velocityX*velocityX+
             velocityY*velocityY+velocityZ*velocityZ),1e-3f);
         float nativeSpriteX=0,nativeSpriteY=0;
@@ -7760,8 +7760,8 @@
                 // fireball throws warm light on the ground as it passes.
                 float r = (10.0f + 8.0f * float(p.wsrc->lightMap)) * zm;
                 Uint8 lr = 255, lg = 230, lb = 160;
-                if (p.fx == tak::sim::WeaponFx::Lightning) { lr = 190; lg = 215; lb = 255; }
-                else if (p.fx == tak::sim::WeaponFx::Fire) { lr = 255; lg = 160; lb = 70; }
+                if (p.fx == ta::sim::WeaponFx::Lightning) { lr = 190; lg = 215; lb = 255; }
+                else if (p.fx == ta::sim::WeaponFx::Fire) { lr = 255; lg = 160; lb = 70; }
                 SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_ADD);
                 for (int ring = 3; ring >= 1; --ring) {
                     float rr = r * float(ring) / 3.0f;
@@ -7775,7 +7775,7 @@
                 // shadowgaf is always "shadows"; effectFor's "file:sequence"
                 // form picks the named sequence out of it.
                 if (const EffectAnim* sh = effectFor("shadows:" + p.wsrc->shadowArt)) {
-                    const auto index=tak::retailEffectFrame(sh->durations,sh->loop,uint32_t(p.age));
+                    const auto index=ta::retailEffectFrame(sh->durations,sh->loop,uint32_t(p.age));
                     if(index && *index<sh->frames.size()) {
                         const auto& fr=sh->frames[*index];
                         // effectFor caches its textures additively for glowing
@@ -7838,11 +7838,11 @@
                 float sy = native3d ? nativeSpriteY :
                     (renderZ - mapView_.offY()) * zm - h * zm
                         - terrainLift(renderX, renderZ) * zm - palt;
-                const auto index=tak::retailEffectFrame(ea->durations,ea->loop,uint32_t(p.age));
+                const auto index=ta::retailEffectFrame(ea->durations,ea->loop,uint32_t(p.age));
                 if(!index || *index>=ea->frames.size())return;
                 const auto& fr = ea->frames[*index];
                 float fw = float(fr.w) * zm, fh = float(fr.h) * zm;
-                const auto origin=tak::retailEffectSpriteOrigin(sx,sy,fr.ax,fr.ay,zm);
+                const auto origin=ta::retailEffectSpriteOrigin(sx,sy,fr.ax,fr.ay,zm);
                 SDL_FRect dst{origin.x,origin.y,fw,fh};
                 if (p.wsrc->spinRate != 0)
                     SDL_RenderCopyExF(ren_, fr.tex, nullptr, &dst,
@@ -7856,7 +7856,7 @@
                 return;
             }
         }
-        if (p.fx == tak::sim::WeaponFx::Lightning) {
+        if (p.fx == ta::sim::WeaponFx::Lightning) {
             // Flat, fast, jagged blue-white bolt from source toward target.
             float sx = native3d ? nativeSpriteX :
                 (renderX - mapView_.offX()) * zm - terrainLiftX(renderX, renderZ) * zm;
@@ -7877,7 +7877,7 @@
                 SDL_RenderDrawLineF(ren_, px, py, nx, ny);
                 px = nx; py = ny;
             }
-        } else if (p.fx == tak::sim::WeaponFx::Fire) {
+        } else if (p.fx == ta::sim::WeaponFx::Fire) {
             // Flame breath: a short stream of flickering orange/yellow puffs
             // trailing behind the leading tip, not a single fireball.
             float bx = -velocityX, by = -velocityY, bz = -velocityZ;
@@ -7932,7 +7932,7 @@
 
 
     void GameView::updateParticles(float dt) {
-        static const bool kLog = tak::devEnv("TAK_FXLOG") != nullptr;
+        static const bool kLog = ta::devEnv("TA_FXLOG") != nullptr;
         if (kLog && !particles_.empty()) {
             static size_t peak = 0;
             if (particles_.size() > peak) {
@@ -7986,18 +7986,18 @@
         orderTrailTargets_.clear();orderTrailSites_.clear();
         for(const auto& f:features_) {
             if(!f.aliveVis || !f.hasSim || !f.reclaimable || !canPickPoint(f.x,f.z))continue;
-            orderTrailTargets_.push_back({f.simId,tak::sim::Fixed::fromFloat(f.x),tak::sim::Fixed::fromFloat(f.z),
+            orderTrailTargets_.push_back({f.simId,ta::sim::Fixed::fromFloat(f.x),ta::sim::Fixed::fromFloat(f.z),
                 f.simId%mapView_.map().width,f.simId/mapView_.map().width,f.fx,f.fz,f.blocking});
         }
         for(const auto* u:front().live) {
             if(u->alive() || !u->corpsePhase || !u->corpseReclaimable || !canPickPoint(u->x,u->z))continue;
-            orderTrailTargets_.push_back({-u->id,tak::sim::Fixed::fromFloat(u->x),tak::sim::Fixed::fromFloat(u->z),
+            orderTrailTargets_.push_back({-u->id,ta::sim::Fixed::fromFloat(u->x),ta::sim::Fixed::fromFloat(u->z),
                 u->corpseCellX,u->corpseCellZ,u->corpseFootX,u->corpseFootZ,false});
         }
         const auto& frame=front();
         for(const auto& [x,z]:manaSpots_) {
-            const bool known=fogCellR(x,z)!=tak::retailfog::kUnexplored;
-            tak::OrderTrailSite site{tak::sim::Fixed::fromFloat(x),tak::sim::Fixed::fromFloat(z),known};
+            const bool known=fogCellR(x,z)!=ta::retailfog::kUnexplored;
+            ta::OrderTrailSite site{ta::sim::Fixed::fromFloat(x),ta::sim::Fixed::fromFloat(z),known};
             if(known)for(const auto* u:frame.live) {
                 if(!u->alive() || !u->type || !u->type->onMana || !canPickUnit(*u))continue;
                 const float dx=u->x-x,dz=u->z-z;
@@ -8021,21 +8021,21 @@
         orderTrailSceneSignature_=h;
     }
 
-    // The predicted stops of `u`'s area jobs (tak::expandOrderTrail), cached per
+    // The predicted stops of `u`'s area jobs (ta::expandOrderTrail), cached per
     // builder and replanned when its orders, the features, the fog or the
     // visible deposits change, or a second has passed.
     const std::vector<RenderOrder>& GameView::areaBuildPlan(const UnitR& u) {
         if(areaGhostCache_.size()>256 && !areaGhostCache_.contains(u.id))areaGhostCache_.clear();
         auto& cache=areaGhostCache_[u.id];
         const uint32_t tick=front().gameTick;
-        uint64_t signature=tak::orderTrailSignature(u.displayedOrders())^reinterpret_cast<uintptr_t>(u.type);
+        uint64_t signature=ta::orderTrailSignature(u.displayedOrders())^reinterpret_cast<uintptr_t>(u.type);
         for(uint32_t i:u.areaVisited)signature=(signature^i)*1099511628211ull;
         if(cache.unitId!=u.id || cache.signature!=signature || cache.featGen!=lastFeatGen_ ||
            cache.fogGen!=front().fogGen || cache.noFog!=noFog_ || tick-cache.tick>=30u) {
             // Several builders replanning in one tick share one scan.
             if(areaGhostTargetsTick_!=tick) {refreshOrderTrailTargets();areaGhostTargetsTick_=tick;}
-            tak::expandOrderTrail(u.displayedOrders(),*u.type,u.player,
-                tak::sim::Fixed::fromFloat(u.x),tak::sim::Fixed::fromFloat(u.z),
+            ta::expandOrderTrail(u.displayedOrders(),*u.type,u.player,
+                ta::sim::Fixed::fromFloat(u.x),ta::sim::Fixed::fromFloat(u.z),
                 orderTrailTargets_,orderTrailSites_,u.areaVisited,cache.orders);
             cache.unitId=u.id;cache.signature=signature;cache.featGen=lastFeatGen_;
             cache.fogGen=front().fogGen;cache.noFog=noFog_;cache.tick=tick;
@@ -8056,7 +8056,7 @@
         // call the waypoint rings already make.
         if (kSpacing * zm < 10.0f) return;
         const int scale = std::clamp(int(zm + 0.5f), 1, 3);
-        const size_t frames = std::max<size_t>(1, cursors_.frameCount(tak::CursorId::PathIcon));
+        const size_t frames = std::max<size_t>(1, cursors_.frameCount(ta::CursorId::PathIcon));
         // Retail shows the order line only while SHIFT is physically held -- the
         // whole overlay pass is behind a GetAsyncKeyState(VK_SHIFT) test at
         // 0x4fcc46. The beads are the part that reads as clutter when a big
@@ -8094,21 +8094,21 @@
                 const SDL_FPoint box[5]{corner(x0,z0),corner(x1,z0),corner(x1,z1),corner(x0,z1),corner(x0,z0)};
                 // Retail's 0x4d5180: white, yellow when the ordering unit is
                 // selected -- and every unit drawn here is.
-                const uint32_t argb=tak::client::retailAreaOrderArgb(true);
+                const uint32_t argb=ta::client::retailAreaOrderArgb(true);
                 SDL_SetRenderDrawColor(ren_,Uint8(argb>>16),Uint8(argb>>8),Uint8(argb),Uint8(argb>>24));
                 SDL_RenderDrawLinesF(ren_,box,5);
             }
             if(areas && beads) {
                 auto& cache=orderTrailCache_[size_t(drawn)];
-                auto signature=tak::orderTrailSignature(actual)^reinterpret_cast<uintptr_t>(up->type);
+                auto signature=ta::orderTrailSignature(actual)^reinterpret_cast<uintptr_t>(up->type);
                 for(uint32_t i:up->areaVisited)signature=(signature^i)*1099511628211ull;
                 if(cache.unitId!=selId || cache.signature!=signature || cache.featGen!=lastFeatGen_ ||
                    cache.fogGen!=front().fogGen || cache.noFog!=noFog_ || tick-cache.tick>=30u) {
                     if(!targetsRefreshed) {refreshOrderTrailTargets();targetsRefreshed=true;}
                     if(cache.unitId!=selId || cache.signature!=signature ||
                        cache.sceneSignature!=orderTrailSceneSignature_ || tick-cache.tick>=30u)
-                        tak::expandOrderTrail(actual,*up->type,up->player,
-                            tak::sim::Fixed::fromFloat(up->x),tak::sim::Fixed::fromFloat(up->z),
+                        ta::expandOrderTrail(actual,*up->type,up->player,
+                            ta::sim::Fixed::fromFloat(up->x),ta::sim::Fixed::fromFloat(up->z),
                             orderTrailTargets_,orderTrailSites_,up->areaVisited,cache.orders);
                     cache.unitId=selId;cache.signature=signature;cache.featGen=lastFeatGen_;
                     cache.fogGen=front().fogGen;cache.noFog=noFog_;cache.tick=tick;
@@ -8170,7 +8170,7 @@
                             float sy = (wz - mapView_.offY()) * zm - terrainLift(wx, wz) * zm;
                             if (sx < -16 || sx > float(mvw) + 16 || sy < -16 || sy > float(winH) + 16)
                                 continue;
-                            cursors_.drawFrame(ren_, tak::CursorId::PathIcon,
+                            cursors_.drawFrame(ren_, ta::CursorId::PathIcon,
                                                size_t(bead) % frames, int(sx), int(sy), scale);
                         }
                     }
@@ -8182,23 +8182,23 @@
                 // it is going, patrol shows CursorPatrol, attack CursorAttack, and
                 // so on. We drew a small green ring instead, which is nothing
                 // retail ever put on the map.
-                tak::CursorId marker = tak::CursorId::Move;
+                ta::CursorId marker = ta::CursorId::Move;
                 bool haveMarker = true;
                 if (o.buildType) {
-                    marker=tak::CursorId::FindSite;
+                    marker=ta::CursorId::FindSite;
                     haveMarker=o.trailPreview; // existing queued sites already have ghosts
                 }
-                else if (o.revive)          marker = tak::CursorId::Revive;
-                else if (o.reclaimFeat || o.reclaimArea) marker = tak::CursorId::Reclaim;
-                else if (o.repairTarget)    marker = tak::CursorId::Repair;
-                else if (o.load)            marker = tak::CursorId::Load;
-                else if (o.unload)          marker = tak::CursorId::Unload;
-                else if (o.guard)           marker = tak::CursorId::Defend;
-                else if (o.targetId)        marker = tak::CursorId::Attack;
-                else if (o.patrol)          marker = tak::CursorId::Patrol;
+                else if (o.revive)          marker = ta::CursorId::Revive;
+                else if (o.reclaimFeat || o.reclaimArea) marker = ta::CursorId::Reclaim;
+                else if (o.repairTarget)    marker = ta::CursorId::Repair;
+                else if (o.load)            marker = ta::CursorId::Load;
+                else if (o.unload)          marker = ta::CursorId::Unload;
+                else if (o.guard)           marker = ta::CursorId::Defend;
+                else if (o.targetId)        marker = ta::CursorId::Attack;
+                else if (o.patrol)          marker = ta::CursorId::Patrol;
                 // Fight-move: its waypoint is marked with the Attack glyph (ours;
                 // the armed pointer itself is Move, as retail's).
-                else if (o.attackMove)      marker = tak::CursorId::Attack;
+                else if (o.attackMove)      marker = ta::CursorId::Attack;
                 if (haveMarker) {
                     // Draw the marker where the PLAYER CLICKED, not where the
                     // unit will end up. order() snaps a destination the unit
@@ -8213,7 +8213,7 @@
                     float my = (kz - mapView_.offY()) * zm - terrainLift(kx, kz) * zm;
                     if (mx > -40 && mx < float(mvw) + 40 && my > -40 && my < float(winH) + 40) {
                         size_t n = std::max<size_t>(1, cursors_.frameCount(marker));
-                        const size_t markerFrame = tak::cursorOrderMarkerFrameAt(
+                        const size_t markerFrame = ta::cursorOrderMarkerFrameAt(
                             n, cursors_.firstFrameDelayTicks(marker), tick);
                         cursors_.drawFrame(ren_, marker, markerFrame,
                                            int(mx), int(my), scale);
@@ -8322,7 +8322,7 @@
     void GameView::drawRangeCircles(int mvw, int winH) {
         if (!(SDL_GetModState() & KMOD_SHIFT)) return;
         const auto area = pointerArea();
-        const bool pointerPicks = area == tak::client::PointerArea::World || area == tak::client::PointerArea::Minimap;
+        const bool pointerPicks = area == ta::client::PointerArea::World || area == ta::client::PointerArea::Minimap;
         if (selection_.empty() && !pointerPicks) return;
         const float zm = mapView_.zoom();
         const uint32_t tick = front().gameTick;
@@ -8331,16 +8331,16 @@
         const auto rings = [&](const UnitR& u) {
             if (!u.alive() || !u.type || u.embarked() || u.player != hudPlayer()) return;
             const auto& orders = u.orders;
-            if (!tak::client::missionsShowRangeCircles(orders.size(), [&](size_t i) {
+            if (!ta::client::missionsShowRangeCircles(orders.size(), [&](size_t i) {
                     return orders[i].load || orders[i].unload || orders[i].reclaimArea; }))
                 return;
             const auto& t = *u.type;
-            tak::client::RangeCircleInput in;
+            ta::client::RangeCircleInput in;
             in.minCloakDistance = t.minCloakDist; in.cloaked = u.cloaked;
             in.kamikaze = t.kamikaze; in.hasExplodeAs = t.hasExplodeAs; in.explodeAoe = t.explodeAs.aoe;
             in.kamikazeDistance = t.kamikazeDist; in.sightDistance = t.sight;
             in.mobile = !isStructure(&t);
-            const auto circles = tak::client::retailRangeCircles(in, tick);
+            const auto circles = ta::client::retailRangeCircles(in, tick);
             if (circles.empty()) return;
             float cx, cz, ch; interpPose(u, cx, cz, ch);
             const float unitLift = uLiftY(u) + altLift(u);
@@ -8351,7 +8351,7 @@
             };
             const auto onScreen = [&](SDL_FPoint p) { return p.x >= 0 && p.x < float(mvw) && p.y >= 0 && p.y < float(winH); };
             for (const auto& c : circles) {
-                const int n = tak::client::retailCircleSegments(c.radius);
+                const int n = ta::client::retailCircleSegments(c.radius);
                 if (n <= 0) continue;
                 // Whole ring off screen: skip it before sampling the relief.
                 const float reach = float(c.radius) * zm + 128.0f * zm;
@@ -8359,10 +8359,10 @@
                 if (mid.x + reach < 0 || mid.x - reach > float(mvw) || mid.y + reach < 0 || mid.y - reach > float(winH))
                     continue;
                 const SDL_Color col{Uint8(c.argb >> 16), Uint8(c.argb >> 8), Uint8(c.argb), Uint8(c.argb >> 24)};
-                auto o = tak::client::retailCirclePoint(c.radius, n, 0);
+                auto o = ta::client::retailCirclePoint(c.radius, n, 0);
                 SDL_FPoint prev = screen(cx + o.dx, cz + o.dz);
                 for (int k = 1; k <= n; ++k) {
-                    o = tak::client::retailCirclePoint(c.radius, n, k);
+                    o = ta::client::retailCirclePoint(c.radius, n, k);
                     const SDL_FPoint next = screen(cx + o.dx, cz + o.dz);
                     if (onScreen(prev) || onScreen(next))
                         pushSeg(overlayBatch_, prev.x, prev.y, next.x, next.y, th, col);
@@ -8384,8 +8384,8 @@
     }
 
     void GameView::drawShotModel(const std::string& name, int player, float x, float z,
-                       float altPx, float facing, const tak::sim::Projectile* native) {
-        const tak::tdo::Model* model = ghostModel(name);
+                       float altPx, float facing, const ta::sim::Projectile* native) {
+        const ta::tdo::Model* model = ghostModel(name);
         if (!model) return;
         // These retail bolt meshes have their arrowhead on -Z; the other
         // directional projectile meshes (including araarrow) point along +Z.
@@ -8420,7 +8420,7 @@
     // The model-local ghost of `model` under the current atlas (see GhostGeometry):
     // filled on first use and whenever the atlas or a generation it was made under
     // changed. Collection and sort are drawGhostAt's former code, unchanged.
-    const GameView::GhostGeometry& GameView::ghostGeometry(const tak::tdo::Model* model,
+    const GameView::GhostGeometry& GameView::ghostGeometry(const ta::tdo::Model* model,
                                                            SDL_Texture* atlas) {
         // A renderer reset or an asset reload makes every entry stale at once.
         if (ghostRendererGen_ != rendererGeneration_.current() ||
@@ -8434,7 +8434,7 @@
         GhostGeometry& g = it->second;
         if (!fresh && g.atlas == atlas && g.atlasW == atlasW_ && g.atlasH == atlasH_) return g;
         ghostGeometryBytes_ -= g.tris.capacity() * sizeof(Tri);
-        renderStats_.add(tak::render::Counter::GhostCollects);
+        renderStats_.add(ta::render::Counter::GhostCollects);
         g.tris.clear();
         workerScratch().unpackedTextures = 0;
         collect(g.tris, atlas, model->root, Xform{}, nullptr, 0.0f, hudPlayer());
@@ -8459,16 +8459,16 @@
         return g;
     }
 
-    void GameView::drawGhostAt(const tak::sim::UnitType* type, float x, float z,
+    void GameView::drawGhostAt(const ta::sim::UnitType* type, float x, float z,
                      bool invalid) {
-        renderStats_.add(tak::render::Counter::GhostDraws);
-        const tak::tdo::Model* model = ghostModel(type->id);
+        renderStats_.add(ta::render::Counter::GhostDraws);
+        const ta::tdo::Model* model = ghostModel(type->id);
         if (!model) return;
-        renderStats_.add(tak::render::Counter::GhostPreps);
+        renderStats_.add(ta::render::Counter::GhostPreps);
         SDL_Texture* atlas = atlasFor(playerColorSlot(hudPlayer()));
 #ifndef NDEBUG
-        static const bool reference = tak::devFlag("TAK_GHOST_REFERENCE");
-        static const bool verify = tak::devFlag("TAK_GHOST_VERIFY");
+        static const bool reference = ta::devFlag("TA_GHOST_REFERENCE");
+        static const bool verify = ta::devFlag("TA_GHOST_VERIFY");
 #else
         constexpr bool reference = false;
 #endif
@@ -8540,24 +8540,24 @@
         }
 #endif
         if (culled) {
-            renderStats_.add(tak::render::Counter::GhostCulled);
+            renderStats_.add(ta::render::Counter::GhostCulled);
             return;
         }
         noteNeed(Retained::ModelTris, tris_);
         if (g && g->exact) {
             tris_.assign(g->tris.begin(), g->tris.end());
-            renderStats_.add(tak::render::Counter::GhostCacheHits);
+            renderStats_.add(ta::render::Counter::GhostCacheHits);
         } else {
             tris_.clear();
             collect(tris_, atlas, model->root, Xform{}, nullptr, 0.0f, hudPlayer());
             std::stable_sort(tris_.begin(), tris_.end(),
                       [](const Tri& a, const Tri& b) { return a.depth > b.depth; });
-            renderStats_.add(tak::render::Counter::GhostCollects);
+            renderStats_.add(ta::render::Counter::GhostCollects);
 #ifndef NDEBUG
             if (verify && g) ++ghostVerify_.collected;
 #endif
         }
-        renderStats_.add(tak::render::Counter::GhostTris, tris_.size());
+        renderStats_.add(ta::render::Counter::GhostTris, tris_.size());
         for (auto& t : tris_) for (auto& v : t.v) {
             v.position.x = v.position.x * zm + ax;
             v.position.y = v.position.y * zm + ay;
@@ -8593,20 +8593,20 @@
                                   &color,0,uv,0,int(g.shadowVerts.size()),nullptr,0,0);
         int offset=0;
         for (const auto& run:g.maskedShadowRuns) {
-            tak::submitShadowMaskRun(ren_,run.first,g.maskedShadowVerts.data()+offset,
+            ta::submitShadowMaskRun(ren_,run.first,g.maskedShadowVerts.data()+offset,
                                      run.second,*batchShadowMasks_);
             offset+=run.second;
         }
     }
 
-    void GameView::collect(std::vector<Tri>& out, SDL_Texture* atlas, const tak::tdo::Object& o,
+    void GameView::collect(std::vector<Tri>& out, SDL_Texture* atlas, const ta::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
                  bool mirror, bool isRoot, bool shadow,
                  RadialExtent* ext, const PieceMeta* meta,
                  bool shadowCull, const PreparedPiece* prepared,
                  bool paletteLighting) {
         if (mirror || ext) prepared=nullptr; // special preview/extent paths use the reference transform
-        const tak::cob::PieceState* ps = prepared ? nullptr : pieceFor(anim, o.name);
+        const ta::cob::PieceState* ps = prepared ? nullptr : pieceFor(anim, o.name);
         // Retail tests visibility per piece; hidden parents still transform
         // their children (including after a non-subtree EXPLODE).
         const bool hidden = prepared ? prepared->hidden : ps && !ps->visible;
@@ -8695,7 +8695,7 @@
                 const float wx = mirror ? -w[0] : w[0];   // un-mirror Zhon models on X
                 const float rx = prepared ? prepared->rotated[vi/3][0] : wx * cy + w[2] * sy;
                 const float rz = prepared ? prepared->rotated[vi/3][2] : -wx * sy + w[2] * cy;
-                // TAK billboards lean back (+y and +z together); moving away (+z)
+                // TA billboards lean back (+y and +z together); moving away (+z)
                 // reads upward on screen, adding to height. The coefficients are
                 // retail's own (icd 0x421dad): all of z, half of y.
                 const float ry = w[1] * kProjY + rz * kProjZ;
@@ -8871,7 +8871,7 @@
                                 const float bx=c.px-a.px,by=c.py-a.py,bz=c.pz-a.pz;
                                 float nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
                                 if(mirror) {nx=-nx;ny=-ny;nz=-nz;}
-                                level=tak::retailModelShadeLevel(nx,ny,nz);
+                                level=ta::retailModelShadeLevel(nx,ny,nz);
                             }
                             const auto& sheet=lit->second[frame];
                             tri.tex=sheet.texture;
@@ -8882,8 +8882,8 @@
                                     sheet.uv.y+(float((level-5)/4)+c.y)*sheet.uv.h};
                                 // Indexed form: the sheet id as an exact integer offset
                                 // (palettesheets.h); the program recovers both.
-                                if(sheet.sheet!=tak::render::palette::kNoSheet)
-                                    tak::render::palette::encodeSheet(tri.v[k].tex_coord.x,
+                                if(sheet.sheet!=ta::render::palette::kNoSheet)
+                                    ta::render::palette::encodeSheet(tri.v[k].tex_coord.x,
                                         tri.v[k].tex_coord.y,sheet.sheet);
                             }
                         }
@@ -8904,7 +8904,7 @@
     // counting down to the AI takeover, and our own line while we reconnect. UI font,
     // centred on a dark panel, in the band below the status lines.
     void GameView::drawNetWaiting(int winW) {
-        const uint64_t now = SDL_GetTicks64(), wall = tak::net::MpClient::clockMs();
+        const uint64_t now = SDL_GetTicks64(), wall = ta::net::MpClient::clockMs();
         std::vector<std::string> lines;
         auto secs = [](uint64_t at, uint64_t t) { return at > t ? int((at - t + 999) / 1000) : 0; };
         if (reconnectUntilMs_)
@@ -8919,7 +8919,7 @@
         const float px = 3.0f, padX = 14, padY = 10;
         float y = 200;
         for (const auto& line : lines) {
-            const float tw = blockWidth(line, px), th = 7 * px + tak::uiTextInkDescent(line, px);
+            const float tw = blockWidth(line, px), th = 7 * px + ta::uiTextInkDescent(line, px);
             const SDL_FRect bg{(float(winW) - tw) / 2 - padX, y, tw + 2 * padX, th + 2 * padY};
             SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 190);

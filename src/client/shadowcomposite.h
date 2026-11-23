@@ -1,7 +1,7 @@
 #pragma once
 #include <SDL.h>
 #include <vector>
-namespace tak {
+namespace ta {
 // SDL geometry ignores texture color/alpha modulation, so encode the silhouette
 // tint explicitly. Keep each quad in painter order: overlapping units still
 // darken independently rather than being merged into one shadow.

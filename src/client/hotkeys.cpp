@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <sstream>
 
-namespace tak {
+namespace ta {
 
 const std::vector<HotkeyDef>& hotkeyDefs() {
     // key chords use SDL keycodes; sections group the config screen.
@@ -187,4 +187,4 @@ bool toggleFullscreenKey(const SDL_Event& e, const std::map<std::string, std::st
     return true;
 }
 
-}  // namespace tak
+}  // namespace ta

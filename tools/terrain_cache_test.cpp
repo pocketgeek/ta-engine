@@ -18,8 +18,8 @@ int main(int argc,char** argv) try {
     check(renderer,SDL_GetError());
     const auto baseline=gpuvram::bytes();
     {
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
-        MapView map(renderer,vfs,tak::hpi::findMap(vfs,argc==3 ? argv[2] : "Ulasem Arena"));map.finishChunks();
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
+        MapView map(renderer,vfs,ta::hpi::findMap(vfs,argc==3 ? argv[2] : "Ulasem Arena"));map.finishChunks();
         auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_TARGET,1280,960);
         check(target,SDL_GetError());SDL_SetRenderTarget(renderer,target);
         auto draw=[&] {
@@ -109,7 +109,7 @@ int main(int argc,char** argv) try {
         // The section decoder and chunk worker must both relinquish its images.
         for(int i=0;i<4;++i) {
             map.invalidateRenderTargets();map.setZoom(.1f);draw();
-            map.reload(vfs,tak::hpi::findMap(vfs,i%2 ? "Ulasem Arena" : "Cairbray Coast Landing"));
+            map.reload(vfs,ta::hpi::findMap(vfs,i%2 ? "Ulasem Arena" : "Cairbray Coast Landing"));
             check(map.chunkStats().bytes==0,"reload frees old chunk images");
         }
         warm();
@@ -118,7 +118,7 @@ int main(int argc,char** argv) try {
         // sections the same frame, and once chunks cover the view the duplicate sections
         // are released. Magenta clear = a hole (no underlay is set here).
         {
-            MapView fresh(renderer,vfs,tak::hpi::findMap(vfs,argc==3 ? argv[2] : "Ulasem Arena"));
+            MapView fresh(renderer,vfs,ta::hpi::findMap(vfs,argc==3 ? argv[2] : "Ulasem Arena"));
             SDL_RenderSetScale(renderer,1,1);SDL_RenderSetViewport(renderer,nullptr);SDL_RenderSetClipRect(renderer,&terrainClip);
             const auto start=SDL_GetTicks();
             while(!fresh.sectionsDecoded()) {fresh.ensureChunks(610,450);check(SDL_GetTicks()-start<60000,"sections failed to decode");SDL_Delay(1);}
@@ -232,8 +232,8 @@ int main(int argc,char** argv) try {
         // and the cache settles inside the budget.
         {
             const std::string name=argc==3 ? argv[2] : "Ulasem Arena";
-            MapView reference(renderer,vfs,tak::hpi::findMap(vfs,name));
-            MapView budgeted(renderer,vfs,tak::hpi::findMap(vfs,name));
+            MapView reference(renderer,vfs,ta::hpi::findMap(vfs,name));
+            MapView budgeted(renderer,vfs,ta::hpi::findMap(vfs,name));
             reference.compositor().setBudget(SIZE_MAX,SIZE_MAX);
             const size_t high=size_t(4)<<20,low=size_t(3)<<20;
             budgeted.compositor().setBudget(high,low);

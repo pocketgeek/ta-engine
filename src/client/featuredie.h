@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::featuredie {
+namespace ta::featuredie {
 
 // Ticks the clock has run in the snapshot of `gameTick`, for a playback of
 // `totalTicks` that ends (featuredead) at tick `end`.
@@ -33,4 +33,4 @@ inline size_t frame(const std::vector<int>& tickEnd, int ticks) {
     return std::min(index, tickEnd.size() - 1);
 }
 
-} // namespace tak::featuredie
+} // namespace ta::featuredie

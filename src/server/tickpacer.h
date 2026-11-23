@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace tak::srv {
+namespace ta::srv {
 
 // The deadline of tick `t` is base + (t - baseTick) * 1e7 / (30 * speed) microseconds (speed in
 // tenths), computed from the base each tick rather than accumulated, so a period that is not a
@@ -48,4 +48,4 @@ private:
     int speed_ = 10;         // tenths, as of the last rebase
 };
 
-}  // namespace tak::srv
+}  // namespace ta::srv

@@ -20,7 +20,7 @@
 #include <random>
 #include <set>
 
-using namespace tak::render::palette;
+using namespace ta::render::palette;
 
 static int failures = 0;
 #define CHECK(c) do { if (!(c)) { std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); ++failures; } } while (0)

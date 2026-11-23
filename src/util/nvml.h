@@ -1,7 +1,7 @@
 #pragma once
 #include "util/procmetrics.h"
 
-namespace tak::proc {
+namespace ta::proc {
 // Optional, driver-provided NVML. No SDK or bundled vendor library is required.
 GpuSample nvidiaGpuSample();
 

@@ -2,7 +2,7 @@
 #include "sim/sim.h"
 #include <iostream>
 #include <stdexcept>
-using namespace tak::sim;
+using namespace ta::sim;
 static void check(bool ok,const char* what) {if(!ok)throw std::runtime_error(what);}
 static UnitType fighter() {
     UnitType t;t.id="fighter";t.maxHp=2000;t.healTime=0;t.sight=600;

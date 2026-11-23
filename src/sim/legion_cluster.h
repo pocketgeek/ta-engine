@@ -30,7 +30,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim::cluster {
+namespace ta::sim::cluster {
 
 using Rect = std::array<int, 4>;   // {x, z, w, h}
 
@@ -165,4 +165,4 @@ inline void clusterRects(const std::vector<Rect>& rects, int grow, Clusters& out
     for (std::size_t i = 0; i < n; ++i) out.order[std::size_t(slot[std::size_t(root[i])]++)] = int(i);
 }
 
-}  // namespace tak::sim::cluster
+}  // namespace ta::sim::cluster

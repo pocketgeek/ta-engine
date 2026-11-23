@@ -15,7 +15,7 @@
 //   classic_ai_test --waves <retail-root>   the P6 game: a Classic seat's wave
 //       launches, marches by Move, sends a wounded member home and dissolves
 //   classic_ai_test --duels <retail-root>   Classic against Classic, three
-//       faction pairs, until a winner (TAK_DUEL_MAP, TAK_DUEL_MINUTES)
+//       faction pairs, until a winner (TA_DUEL_MAP, TA_DUEL_MINUTES)
 //   classic_ai_test --profile       oracle mode for tools/re/check_ai_profile.py:
 //       stdin  "types <n>" then n lines "<name> <category words...>", then any
 //              number of "case <hex script>" lines
@@ -74,7 +74,7 @@
 #include <tuple>
 #include <unordered_map>
 
-using namespace tak;
+using namespace ta;
 static int fails=0;
 static void check(bool ok,const char* label) {
     std::printf("[%s] %s\n",ok ? "PASS" : "FAIL",label);if (!ok) ++fails;
@@ -821,7 +821,7 @@ static void classicBases(const char* root) {
         struct Snapshot { uint32_t tick;int lodes,structures,units,builds,trains;std::map<std::string,int> byType; };
         std::vector<Snapshot> snaps;
         std::set<int> producedIds;
-        static const bool trace=std::getenv("TAK_CLASSIC_TRACE")!=nullptr;   // per-command log
+        static const bool trace=std::getenv("TA_CLASSIC_TRACE")!=nullptr;   // per-command log
         for (uint32_t tick=0;tick<18000;++tick) {
             controller.tick(w,tick,[&](const net::Command& c) {
                 if (c.kind==net::Cmd::Train) ++trains;
@@ -921,10 +921,10 @@ static void classicBases(const char* root) {
 static void classicExpansion(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
     sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const char* mapName=std::getenv("TAK_EXPAND_MAP") ? std::getenv("TAK_EXPAND_MAP") : "Abnar's Terrace";
+    const char* mapName=std::getenv("TA_EXPAND_MAP") ? std::getenv("TA_EXPAND_MAP") : "Abnar's Terrace";
     const auto map=hpi::findMap(vfs,mapName);
     static const char* const kNames[5]={"Aramon","Taros","Veruna","Zhon","Creon"};
-    const uint32_t minutes=std::getenv("TAK_EXPAND_MINUTES") ? uint32_t(std::atoi(std::getenv("TAK_EXPAND_MINUTES"))) : 20u;
+    const uint32_t minutes=std::getenv("TA_EXPAND_MINUTES") ? uint32_t(std::atoi(std::getenv("TA_EXPAND_MINUTES"))) : 20u;
     std::printf("  P7 games (%s, Classic seat vs an idle seat, %u min):\n",mapName,minutes);
     for (int faction=0;faction<5;++faction) {
         sim::World w;
@@ -1108,7 +1108,7 @@ static void classicRaid(const char* root) {
             sim::applyCommand(w,reg,c);
         });
         w.tick(1.f/30.f);
-        if (std::getenv("TAK_CLASSIC_TRACE") && tick>=kRaid-30 && tick%15==0) {
+        if (std::getenv("TA_CLASSIC_TRACE") && tick>=kRaid-30 && tick%15==0) {
             std::printf("t%u visible %zu:",tick,w.visibleEnemies(1).size());
             for (int id:defenders) if (const auto* d=w.unit(id))
                 std::printf(" [%d d%.0f c%.0f o%zu%s]",id,double(nearestRaider(d->x.toFloat(),d->z.toFloat())),
@@ -1363,24 +1363,24 @@ static void classicWaves(const char* root) {
 // one caster a side stands on a slot it cannot pay yet, and over eight seeds of each of the two pairs 15 of 16 end
 // within 120 minutes, as 15 of 16 did with full pools; Creon v Aramon's seed is 0xd0e4 since a land
 // corpse lasts its decomposition plus the 58-update sink, 4959c0, after which 0xd0e3 is the one even war
-// of those 16 that runs past 150 minutes, as 0xd0e8 was before: 15 of 16 end within 150 both ways) (TAK_DUEL_MAP /
-// TAK_DUEL_MINUTES pick another map or cap; on Abnar's Terrace the same pairs take 59 to 227 minutes, its terraces leaving
-// many members' reachability walks without a target). By hand: TAK_DUEL_PAIRS
-// ("0v2,1v3", factions 0-4) picks the pairs, TAK_DUEL_LEVEL gives the second
-// seat another level (2 = Normal), TAK_DUEL_TRACE prints both seats every
-// TAK_DUEL_TRACE game-minutes (default 10), TAK_DUEL_LOG=<seat> prints every
-// command that seat gives, TAK_DUEL_WATCH=<unit id> that unit's orders every 10
+// of those 16 that runs past 150 minutes, as 0xd0e8 was before: 15 of 16 end within 150 both ways) (TA_DUEL_MAP /
+// TA_DUEL_MINUTES pick another map or cap; on Abnar's Terrace the same pairs take 59 to 227 minutes, its terraces leaving
+// many members' reachability walks without a target). By hand: TA_DUEL_PAIRS
+// ("0v2,1v3", factions 0-4) picks the pairs, TA_DUEL_LEVEL gives the second
+// seat another level (2 = Normal), TA_DUEL_TRACE prints both seats every
+// TA_DUEL_TRACE game-minutes (default 10), TA_DUEL_LOG=<seat> prints every
+// command that seat gives, TA_DUEL_WATCH=<unit id> that unit's orders every 10
 // game-seconds, and a pair that ends without a winner is reported rather than
-// failed when TAK_DUEL_PAIRS is set.
+// failed when TA_DUEL_PAIRS is set.
 static void classicDuels(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
     sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const char* mapName=std::getenv("TAK_DUEL_MAP") ? std::getenv("TAK_DUEL_MAP") : "Edmont's Field";
+    const char* mapName=std::getenv("TA_DUEL_MAP") ? std::getenv("TA_DUEL_MAP") : "Edmont's Field";
     const auto map=hpi::findMap(vfs,mapName);
     static const char* const kNames[5]={"Aramon","Taros","Veruna","Zhon","Creon"};
     struct Pair { int a,b;uint32_t seed; };
     std::vector<Pair> pairs={{0,2,0xd0e1u},{1,3,0xd0e2u},{4,0,0xd0e4u}};
-    const char* chosen=std::getenv("TAK_DUEL_PAIRS");
+    const char* chosen=std::getenv("TA_DUEL_PAIRS");
     if (chosen) {
         pairs.clear();
         std::istringstream list(chosen);
@@ -1390,11 +1390,11 @@ static void classicDuels(const char* root) {
                 pairs.push_back({std::clamp(a,0,4),std::clamp(b,0,4),0xd0e1u+uint32_t(pairs.size())});
         }
     }
-    const ai::Difficulty levelB=std::getenv("TAK_DUEL_LEVEL") ? ai::Difficulty(std::clamp(std::atoi(std::getenv("TAK_DUEL_LEVEL")),0,6))
+    const ai::Difficulty levelB=std::getenv("TA_DUEL_LEVEL") ? ai::Difficulty(std::clamp(std::atoi(std::getenv("TA_DUEL_LEVEL")),0,6))
                                                               : ai::Difficulty::Classic;
     const ai::Profile& normalProfile=ai::builtinProfile(levelB);
-    const uint32_t minutes=std::getenv("TAK_DUEL_MINUTES") ? uint32_t(std::atoi(std::getenv("TAK_DUEL_MINUTES"))) : 150u;
-    const uint32_t traceEvery=std::getenv("TAK_DUEL_TRACE") ? uint32_t(std::max(1,std::atoi(std::getenv("TAK_DUEL_TRACE"))))*1800u : 18000u;
+    const uint32_t minutes=std::getenv("TA_DUEL_MINUTES") ? uint32_t(std::atoi(std::getenv("TA_DUEL_MINUTES"))) : 150u;
+    const uint32_t traceEvery=std::getenv("TA_DUEL_TRACE") ? uint32_t(std::max(1,std::atoi(std::getenv("TA_DUEL_TRACE"))))*1800u : 18000u;
     const uint32_t kCap=minutes*1800u;
     if (levelB==ai::Difficulty::Classic)
         std::printf("  Classic vs Classic (%s, the Monarch not expendable, cap %u min):\n",mapName,minutes);
@@ -1417,7 +1417,7 @@ static void classicDuels(const char* root) {
         uint32_t minuteOrders[2]={0,0},peakMinute[2]={0,0},total[2]={0,0};
         std::unordered_map<int,uint32_t> perUnit[2];
         for (uint32_t tick=0;tick<kCap && winner<0;++tick) {
-            static const int logSeat=std::getenv("TAK_DUEL_LOG") ? std::atoi(std::getenv("TAK_DUEL_LOG")) : -1;
+            static const int logSeat=std::getenv("TA_DUEL_LOG") ? std::atoi(std::getenv("TA_DUEL_LOG")) : -1;
             auto apply=[&](const net::Command& c){
                 const int p=c.player ? 1 : 0;
                 ++minuteOrders[p];++total[p];++perUnit[p][c.unitId];
@@ -1436,7 +1436,7 @@ static void classicDuels(const char* root) {
             end=tick+1;
             if (tick%300==0) for (int p=0;p<2;++p) peak[p]=std::max(peak[p],w.player(p).unitCount);
             if (tick%1800==1799) for (int p=0;p<2;++p) { peakMinute[p]=std::max(peakMinute[p],minuteOrders[p]);minuteOrders[p]=0; }
-            static const int watch=std::getenv("TAK_DUEL_WATCH") ? std::atoi(std::getenv("TAK_DUEL_WATCH")) : 0;
+            static const int watch=std::getenv("TA_DUEL_WATCH") ? std::atoi(std::getenv("TA_DUEL_WATCH")) : 0;
             if (watch && tick%300==0)
                 if (const auto* u=w.unit(watch)) {
                     std::printf("      watch t%u unit %d %s at %.0f,%.0f hp %d site %d orders %zu",tick,watch,u->type->id.c_str(),
@@ -1446,7 +1446,7 @@ static void classicDuels(const char* root) {
                                                 o.x.toFloat(),o.z.toFloat(),o.autoTarget ? " auto" : "");
                     std::printf(" | mana %.0f\n",w.player(u->player).mana);
                 }
-            static const bool trace=std::getenv("TAK_DUEL_TRACE")!=nullptr;
+            static const bool trace=std::getenv("TA_DUEL_TRACE")!=nullptr;
             if (trace && tick%traceEvery==0) {
                 for (int p=0;p<2;++p) {
                     const ai::Controller& owner=p ? c1 : c0;

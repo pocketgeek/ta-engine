@@ -1,6 +1,6 @@
 # Public server deployment
 
-`takserver` is the dedicated server for internet games. Only the server needs an
+`taserver` is the dedicated server for internet games. Only the server needs an
 open port: players connect out to it by typing its hostname, and single-player
 games run their own private server automatically, so you only need this guide to
 host games for other people.
@@ -12,19 +12,19 @@ independent security audit or protection against a volumetric DDoS.
 ## Versions
 
 Server and clients must speak the same network protocol: a 1.0.9 server plays
-with 1.0.9 clients. A `takserver` turns away a client of another protocol with a
+with 1.0.9 clients. A `taserver` turns away a client of another protocol with a
 *protocol version mismatch* message, so update the server and every client
 together. The [CHANGELOG](../CHANGELOG.md) says which releases play together.
 
 A server whose game has no human player left (AIs watched by spectators) does
 not compute the lockstep check nobody compares, except for a recorded replay's
-checkpoints. A release `takserver` reads only its five test timers
-(`TAK_TIMEOUT_MS`, `TAK_LOAD_TIMEOUT_MS`, `TAK_STALL_MS`, `TAK_DROP_WAIT_MS`,
-`TAK_OVER_DRAIN_MS`) from the environment; its other `TAK_*` diagnostic variables work only in debug
+checkpoints. A release `taserver` reads only its five test timers
+(`TA_TIMEOUT_MS`, `TA_LOAD_TIMEOUT_MS`, `TA_STALL_MS`, `TA_DROP_WAIT_MS`,
+`TA_OVER_DRAIN_MS`) from the environment; its other `TA_*` diagnostic variables work only in debug
 builds. A server allows a seat 30 s of silence while its game is loading (15 s
 elsewhere), and its own start-up work does not count as player silence.
 
-`takserver` refuses any option it does not know: it exits at start-up with
+`taserver` refuses any option it does not know: it exits at start-up with
 `unknown option or missing value: <option>`, so a service drop-in or script
 must pass only the options this guide lists.
 
@@ -34,19 +34,19 @@ These steps use the installed Linux package and built-in Let's Encrypt support.
 You do **not** need to download or copy a service unit from the source repository.
 
 1. **Choose a hostname and configure networking.** Point a hostname you control
-   (for example, `tak.example.org`) at the server. Allow inbound TCP **80** for
+   (for example, `ta.example.org`) at the server. Allow inbound TCP **80** for
    certificate validation and **7677** for the game, plus outbound HTTPS **443**.
    If you publish an IPv6 address, it must reach this server too. Another service
-   must not occupy port 80 when takserver validates its certificate.
+   must not occupy port 80 when taserver validates its certificate.
 
 2. **Copy your retail game data.** Replace `/path/to/retail-install` below with
    the actual directory containing your game's archives and maps:
 
    ```sh
-   sudo mkdir -p /srv/tak-data
-   sudo cp -a /path/to/retail-install/. /srv/tak-data/
-   sudo chown -R root:root /srv/tak-data
-   sudo chmod -R a+rX /srv/tak-data
+   sudo mkdir -p /srv/ta-data
+   sudo cp -a /path/to/retail-install/. /srv/ta-data/
+   sudo chown -R root:root /srv/ta-data
+   sudo chmod -R a+rX /srv/ta-data
    ```
 
    The service cannot read `/home` because of its sandbox. Do not use a symlink
@@ -55,24 +55,24 @@ You do **not** need to download or copy a service unit from the source repositor
 3. **Install the ACME override template.** For a first-time setup:
 
    ```sh
-   sudo mkdir -p /etc/systemd/system/takserver.service.d
-   sudo cp -i /usr/share/doc/tak-engine/systemd/takserver-acme.conf \
-     /etc/systemd/system/takserver.service.d/acme.conf
+   sudo mkdir -p /etc/systemd/system/taserver.service.d
+   sudo cp -i /usr/share/doc/ta-engine/systemd/taserver-acme.conf \
+     /etc/systemd/system/taserver.service.d/acme.conf
    ```
 
    If you already have `acme.conf`, keep it and edit it instead of overwriting
    your configuration. The packaged unit is already installed at
-   `/usr/lib/systemd/system/takserver.service`.
+   `/usr/lib/systemd/system/taserver.service`.
 
 4. **Set your hostname before starting.** Open the copied override:
 
    ```sh
-   sudoedit /etc/systemd/system/takserver.service.d/acme.conf
+   sudoedit /etc/systemd/system/taserver.service.d/acme.conf
    ```
 
    Replace **`YOUR.SERVER.NAME`** after `--acme-domain` with your actual hostname
-   (for example, `tak.example.org`), without `https://` or a port. The data path
-   defaults to `/srv/tak-data`; use the settings template below to change it.
+   (for example, `ta.example.org`), without `https://` or a port. The data path
+   defaults to `/srv/ta-data`; use the settings template below to change it.
    Keep the empty `LoadCredential=` and `ExecStart=` lines; they replace the default manual-certificate configuration.
    Using `--acme-agree-tos` accepts the CA subscriber agreement.
 
@@ -80,18 +80,18 @@ You do **not** need to download or copy a service unit from the source repositor
 
    ```sh
    sudo systemctl daemon-reload
-   sudo systemd-analyze verify takserver.service
-   sudo systemctl enable --now takserver
+   sudo systemd-analyze verify taserver.service
+   sudo systemctl enable --now taserver
    ```
 
-   If it was already running, also run `sudo systemctl restart takserver` to
+   If it was already running, also run `sudo systemctl restart taserver` to
    apply your changes. Systemd creates the private state directory automatically.
 
 6. **Check startup, then connect.**
 
    ```sh
-   sudo systemctl status takserver --no-pager
-   sudo journalctl -u takserver -f
+   sudo systemctl status taserver --no-pager
+   sudo journalctl -u taserver -f
    ```
 
    For first-time ACME setup, wait for `ACME: certificate installed` before connecting.
@@ -99,35 +99,35 @@ You do **not** need to download or copy a service unit from the source repositor
    Players then enter just your hostname in the multiplayer connection screen.
    Press Ctrl+C to leave the log viewer; this does not stop the server.
 
-   ![The Connect to Server panel with NEW SERVER... selected and tak.example.org typed in the address box](img/mp-connect-custom.jpg)
+   ![The Connect to Server panel with NEW SERVER... selected and ta.example.org typed in the address box](img/mp-connect-custom.jpg)
 
 **Optional: change server defaults.** Copy and edit the settings template:
 
 ```sh
-sudo mkdir -p /etc/systemd/system/takserver.service.d
-sudo cp -i /usr/share/doc/tak-engine/systemd/takserver-settings.conf \
-  /etc/systemd/system/takserver.service.d/settings.conf
-sudoedit /etc/systemd/system/takserver.service.d/settings.conf
+sudo mkdir -p /etc/systemd/system/taserver.service.d
+sudo cp -i /usr/share/doc/ta-engine/systemd/taserver-settings.conf \
+  /etc/systemd/system/taserver.service.d/settings.conf
+sudoedit /etc/systemd/system/taserver.service.d/settings.conf
 sudo systemctl daemon-reload
-sudo systemctl restart takserver
+sudo systemctl restart taserver
 ```
 
 The template lists the default paths, port, game/account limits, storage budgets
 and systemd resource limits. Change individual values such as
-`Environment="TAK_SERVER_MAX_RUNNING_GAMES=8"` without rewriting the startup
+`Environment="TA_SERVER_MAX_RUNNING_GAMES=8"` without rewriting the startup
 command. It works with both certificate modes. Restart between matches, since
 it disconnects active games. For examples, see
 [changing server defaults](#changing-server-defaults).
 
 The server renews its certificate automatically and opens port 80 only during
-validation. Local configuration stays in `/etc/systemd/system/takserver.service.d/`;
-accounts, maps, replays and certificate state live under `/var/lib/takserver`.
+validation. Local configuration stays in `/etc/systemd/system/taserver.service.d/`;
+accounts, maps, replays and certificate state live under `/var/lib/taserver`.
 Map and mod package checks run off the network loop with bounded admission and
 work limits (see [resource controls](#resource-controls)). Until the first
 certificate is issued, ACME retries automatically and the server refuses game
 connections.
 
-**Check who is playing.** On the server machine, run `takserver --status` (add
+**Check who is playing.** On the server machine, run `taserver --status` (add
 `--port 7678` for a different game port). It prints one JSON object with
 `running_games`, `lobby_games` and `connected_clients`, then exits. It needs no
 game data, account or certificate arguments, and works with TLS and ACME servers.
@@ -138,7 +138,7 @@ wrong, see [Linux service setup](#linux-service-setup).
 
 ## Running on Windows or macOS
 
-Every package includes `takserver`, but the supplied service unit and sandbox are
+Every package includes `taserver`, but the supplied service unit and sandbox are
 Linux-specific: there are no Windows or macOS service installers. Run it with the
 command lines under [Encrypted connections](#encrypted-connections) (your own
 certificate) or [Built-in Let’s Encrypt certificates](#built-in-lets-encrypt-certificates).
@@ -156,12 +156,12 @@ certificate) or [Built-in Let’s Encrypt certificates](#built-in-lets-encrypt-c
 A listener reachable off the machine requires a certificate and private key:
 
 ```sh
-takserver --data /srv/tak-data \
-  --accounts /var/lib/takserver/accounts.conf \
-  --map-cache-dir /var/lib/takserver/maps \
-  --replaydir /var/lib/takserver/replays \
-  --tls-cert /etc/takserver/fullchain.pem \
-  --tls-key /etc/takserver/private.pem
+taserver --data /srv/ta-data \
+  --accounts /var/lib/taserver/accounts.conf \
+  --map-cache-dir /var/lib/taserver/maps \
+  --replaydir /var/lib/taserver/replays \
+  --tls-cert /etc/taserver/fullchain.pem \
+  --tls-key /etc/taserver/private.pem
 ```
 
 Create the writable directories and restrict them to the server account before
@@ -214,32 +214,32 @@ port alongside TLS as a fallback.
 
 ## Built-in Let’s Encrypt certificates
 
-`takserver` can obtain and renew its own certificate without Certbot or another
+`taserver` can obtain and renew its own certificate without Certbot or another
 installed ACME program:
 
 ```sh
-takserver --data /srv/tak-data \
-  --accounts /var/lib/takserver/accounts.conf \
-  --map-cache-dir /var/lib/takserver/maps \
-  --replaydir /var/lib/takserver/replays \
-  --acme-domain tak.example.org --acme-agree-tos \
-  --acme-state /var/lib/takserver/acme
+taserver --data /srv/ta-data \
+  --accounts /var/lib/taserver/accounts.conf \
+  --map-cache-dir /var/lib/taserver/maps \
+  --replaydir /var/lib/taserver/replays \
+  --acme-domain ta.example.org --acme-agree-tos \
+  --acme-state /var/lib/taserver/acme
 ```
 
-Replace `tak.example.org` with a DNS hostname you control. Its A/AAAA records
+Replace `ta.example.org` with a DNS hostname you control. Its A/AAAA records
 must reach this machine, including IPv6 if published. Allow incoming TCP **80**
 through the firewall/router and outgoing HTTPS **443** to the CA. The game still
 uses TCP **7677**. The server opens an HTTP listener only while an HTTP-01
 challenge is pending, serves only its exact challenge token, and closes it after
 validation or failure. It does not run a general website, redirect service, or
 permanent port-80 listener, and does not change your firewall automatically.
-If another service already owns port 80, issuance fails cleanly; TAK will not stop
+If another service already owns port 80, issuance fails cleanly; TA will not stop
 that service or fall back to plaintext. Wildcards and IP certificates are not
 supported by this implementation.
 
 `--acme-agree-tos` records the operator’s agreement to the CA subscriber terms.
 `--acme-email you@example.org` optionally supplies an account contact. The state
-directory defaults to `takserver-acme`; use a persistent absolute directory for a
+directory defaults to `taserver-acme`; use a persistent absolute directory for a
 service. Keep it private and back it up: it contains the account key, certificate
 key, certificate chain and retry state. A process lease prevents two servers from
 managing the same directory. A directory is tied to its hostname and CA; use
@@ -280,12 +280,12 @@ the previous certificate and log the problem. An expired certificate will still
 be rejected by clients, so administrators must monitor renewal failures.
 
 On Linux, the listener needs permission to bind port 80. The optional
-[systemd ACME drop-in](../packaging/systemd/takserver-acme.conf) grants only
+[systemd ACME drop-in](../packaging/systemd/taserver-acme.conf) grants only
 `CAP_NET_BIND_SERVICE` while retaining the main service sandbox. Linux packages
-install the service in `/usr/lib/systemd/system/takserver.service` and the template
-plus setup notes in `/usr/share/doc/tak-engine/systemd/`. Neither the service nor
-ACME is enabled automatically. Copy the `takserver-acme.conf` template to
-`/etc/systemd/system/takserver.service.d/acme.conf`, replace its hostname, and
+install the service in `/usr/lib/systemd/system/taserver.service` and the template
+plus setup notes in `/usr/share/doc/ta-engine/systemd/`. Neither the service nor
+ACME is enabled automatically. Copy the `taserver-acme.conf` template to
+`/etc/systemd/system/taserver.service.d/acme.conf`, replace its hostname, and
 review the paths before restarting. It replaces the manual certificate options
 and credential entry. Do not run the game server as root just to bind port 80.
 On Windows and macOS, see [Running on Windows or macOS](#running-on-windows-or-macos).
@@ -369,7 +369,7 @@ it) and `--sim-threads` set to its share, and no `--sim-cpus`.
 The packaged service passes neither option, so it runs the defaults (`auto`,
 `none`). To change them, put them in the settings drop-in's extra arguments (see
 [changing server defaults](#changing-server-defaults)), for example
-`Environment="TAK_SERVER_EXTRA_ARGS=--sim-threads 16 --sim-cpus auto"`. A
+`Environment="TA_SERVER_EXTRA_ARGS=--sim-threads 16 --sim-cpus auto"`. A
 `CPUAffinity=` or cpuset in the unit narrows the CPUs `auto` counts.
 
 Map uploads reserve their advertised size before receiving data and expire
@@ -377,7 +377,7 @@ after 30 seconds without progress or five minutes total. Each package remains
 limited to 256 MiB. New disk writes are rejected at quota; old maps/replays are
 not silently deleted. Existing downloaded maps remain selectable. Uploaded maps and
 game mods and saved generated maps go in `--map-cache-dir`; without it, in
-`TAKengine/takserver` in the service account's per-user data folder (`$XDG_DATA_HOME`
+`TAengine/taserver` in the service account's per-user data folder (`$XDG_DATA_HOME`
 or `~/.local/share` on Linux, `%APPDATA%` on Windows, `~/Library/Application Support`
 on macOS). The `--data` folder is only
 read, so it can be read-only to the service account.
@@ -457,10 +457,10 @@ sides unable to reach each other, runs for as long as someone watches it:
 there is no stalemate rule and no time limit, and what it can cost is bounded
 by `--max-running-games` and the replay memory budget. An ended game's room
 stays only while a watcher who joined late is still being sent its history, and
-goes once that has not moved for 120 s (`TAK_OVER_DRAIN_MS` in tests); from the
+goes once that has not moved for 120 s (`TA_OVER_DRAIN_MS` in tests); from the
 moment the game ended it is off the game list and no longer counts as a running
 game (`--max-running-games`, `--sim-threads`, `--status`). See
-[game end](multiplayer-design.md#4-the-server-takserver);
+[game end](multiplayer-design.md#4-the-server-taserver);
 `server_endgame_test.py` checks each of these against a real server.
 
 A seated player the server stops hearing from (nothing for 8 seconds, or a
@@ -477,7 +477,7 @@ game (`Event::AiTakeover`, recorded in the replay). The accounting is wall-clock
 on the server, so a server whose own upload stalls for more than a second charges
 every seat it holds up. A player who quits the game
 deliberately leaves at once, without a wait. The two times can be shortened for tests
-with `TAK_STALL_MS` and `TAK_DROP_WAIT_MS` (milliseconds) in the server's
+with `TA_STALL_MS` and `TA_DROP_WAIT_MS` (milliseconds) in the server's
 environment; `server_disconnect_test.py` checks the wait, the takeover, a
 resume and a reconnect against a real server.
 
@@ -486,14 +486,14 @@ pings after 5 s of quiet). While a client is loading a game (from the server's
 `GameStarting` to the client's `Loaded`) the allowance is 30 seconds, because a slow
 machine or a huge map can load for longer than 15 s without reading its connection;
 the log then says `timed out while loading (30 s)`. The lobby and play keep 15 s, a
-spectator has 120 s. Tests can scale them with `TAK_TIMEOUT_MS` and
-`TAK_LOAD_TIMEOUT_MS`; `server_load_timeout_test.py` checks these cases.
+spectator has 120 s. Tests can scale them with `TA_TIMEOUT_MS` and
+`TA_LOAD_TIMEOUT_MS`; `server_load_timeout_test.py` checks these cases.
 The server's own blocking work at game start (map and package checks, AI profiles,
 the referee world build) is not client silence: when it ends, every connection's
 silence clock moves forward by the time it took, so a slow build cannot time out the
 room as the game begins. A client that is really gone gains only that time, never more
 than one normal timeout past the build (debug builds can slow the build with
-`TAK_TEST_REFEREE_DELAY_MS`).
+`TA_TEST_REFEREE_DELAY_MS`).
 
 Voice chat is relayed, never stored or recorded: a client's
 frames go only to the room members that have switched voice chat on and that
@@ -524,7 +524,7 @@ as a no-credit abort. With `--replaydir`, stopping the server with SIGTERM
 (`systemctl stop`) or Ctrl-C first writes the replays of the games still
 running. Every replay is written under a temporary name
 and renamed once complete, so a server stopped part way never leaves a
-truncated `.takrep`.
+truncated `.tarep`.
 
 `--closed-registration` allows existing accounts to log in while refusing new
 ones. It can be enabled after inviting the initial community. Keep the account
@@ -536,10 +536,10 @@ Linux packages include these files:
 
 | File | Purpose |
 | --- | --- |
-| `/usr/lib/systemd/system/takserver.service` | Packaged service unit |
-| `/usr/share/doc/tak-engine/systemd/takserver-acme.conf` | Optional ACME override template |
-| `/usr/share/doc/tak-engine/systemd/takserver-settings.conf` | Optional server settings and resource limits |
-| `/usr/share/doc/tak-engine/systemd/README.md` | Installed setup notes |
+| `/usr/lib/systemd/system/taserver.service` | Packaged service unit |
+| `/usr/share/doc/ta-engine/systemd/taserver-acme.conf` | Optional ACME override template |
+| `/usr/share/doc/ta-engine/systemd/taserver-settings.conf` | Optional server settings and resource limits |
+| `/usr/share/doc/ta-engine/systemd/README.md` | Installed setup notes |
 
 Installing the package does **not** start or enable the server. The ACME template
 is also inactive until copied into the service's override directory and edited.
@@ -547,30 +547,30 @@ Choose either built-in ACME or an existing certificate below before starting.
 
 For a packaged installation, the unit is already installed: **do not copy another
 unit into `/etc/systemd/system/`**. Follow the numbered steps below. Keep custom
-settings in `/etc/systemd/system/takserver.service.d/` so package upgrades can
+settings in `/etc/systemd/system/taserver.service.d/` so package upgrades can
 update the vendor unit without replacing your configuration. The
 [quick setup](#quick-setup-linux-package) above is the short version of these steps.
 
 ### 1. Install the retail data
 
-The default service expects retail files in `/srv/tak-data`. Replace the source
+The default service expects retail files in `/srv/ta-data`. Replace the source
 path in this example with your actual retail installation directory:
 
 ```sh
-sudo mkdir -p /srv/tak-data
-sudo cp -a /path/to/retail-install/. /srv/tak-data/
-sudo chown -R root:root /srv/tak-data
-sudo chmod -R a+rX /srv/tak-data
+sudo mkdir -p /srv/ta-data
+sudo cp -a /path/to/retail-install/. /srv/ta-data/
+sudo chown -R root:root /srv/ta-data
+sudo chmod -R a+rX /srv/ta-data
 ```
 
 The directory must contain the actual game archives and other retail data, not
 just an empty folder. Use matching base game files on the server and clients.
 The service has `ProtectHome=yes`: data under `/home` is hidden, even if it is
-world-readable. A symlink from `/srv/tak-data` into `/home` does not bypass that
+world-readable. A symlink from `/srv/ta-data` into `/home` does not bypass that
 sandbox. Copy the data outside `/home` as shown above.
 
-Systemd creates and manages `/var/lib/takserver` for writable accounts, downloaded
-maps, replays and ACME state. You do not need to create a permanent `takserver`
+Systemd creates and manages `/var/lib/taserver` for writable accounts, downloaded
+maps, replays and ACME state. You do not need to create a permanent `taserver`
 user or make that state directory world-writable.
 
 ### 2. Choose a certificate mode
@@ -578,40 +578,40 @@ user or make that state directory world-writable.
 **Built-in Let's Encrypt:** copy the supplied template and edit it:
 
 ```sh
-sudo mkdir -p /etc/systemd/system/takserver.service.d
-sudo cp -i /usr/share/doc/tak-engine/systemd/takserver-acme.conf \
-  /etc/systemd/system/takserver.service.d/acme.conf
-sudoedit /etc/systemd/system/takserver.service.d/acme.conf
+sudo mkdir -p /etc/systemd/system/taserver.service.d
+sudo cp -i /usr/share/doc/ta-engine/systemd/taserver-acme.conf \
+  /etc/systemd/system/taserver.service.d/acme.conf
+sudoedit /etc/systemd/system/taserver.service.d/acme.conf
 ```
 
 If `acme.conf` already exists, keep your existing file and edit it instead of
 overwriting it. The `cp -i` command prompts before replacing a file.
 
 **Replace `YOUR.SERVER.NAME` with your real public DNS hostname**, such as
-`tak.example.org`, without a URL scheme or port number. The complete drop-in
+`ta.example.org`, without a URL scheme or port number. The complete drop-in
 then looks like this:
 
 ```ini
 [Service]
 LoadCredential=
 ExecStart=
-ExecStart=/usr/bin/takserver \
-    --data ${TAK_SERVER_DATA} \
-    --accounts ${TAK_SERVER_ACCOUNTS} \
-    --map-cache-dir ${TAK_SERVER_MAP_CACHE} \
-    --replaydir ${TAK_SERVER_REPLAYS} \
-    --port ${TAK_SERVER_PORT} \
-    --max-games ${TAK_SERVER_MAX_GAMES} \
-    --max-running-games ${TAK_SERVER_MAX_RUNNING_GAMES} \
-    --max-accounts ${TAK_SERVER_MAX_ACCOUNTS} \
-    --map-memory-mib ${TAK_SERVER_MAP_MEMORY_MIB} \
-    --map-storage-mib ${TAK_SERVER_MAP_STORAGE_MIB} \
-    --replay-memory-mib ${TAK_SERVER_REPLAY_MEMORY_MIB} \
-    --replay-storage-mib ${TAK_SERVER_REPLAY_STORAGE_MIB} \
-    --acme-domain tak.example.org \
+ExecStart=/usr/bin/taserver \
+    --data ${TA_SERVER_DATA} \
+    --accounts ${TA_SERVER_ACCOUNTS} \
+    --map-cache-dir ${TA_SERVER_MAP_CACHE} \
+    --replaydir ${TA_SERVER_REPLAYS} \
+    --port ${TA_SERVER_PORT} \
+    --max-games ${TA_SERVER_MAX_GAMES} \
+    --max-running-games ${TA_SERVER_MAX_RUNNING_GAMES} \
+    --max-accounts ${TA_SERVER_MAX_ACCOUNTS} \
+    --map-memory-mib ${TA_SERVER_MAP_MEMORY_MIB} \
+    --map-storage-mib ${TA_SERVER_MAP_STORAGE_MIB} \
+    --replay-memory-mib ${TA_SERVER_REPLAY_MEMORY_MIB} \
+    --replay-storage-mib ${TA_SERVER_REPLAY_STORAGE_MIB} \
+    --acme-domain ta.example.org \
     --acme-agree-tos \
-    --acme-state /var/lib/takserver/acme \
-    $TAK_SERVER_EXTRA_ARGS
+    --acme-state /var/lib/taserver/acme \
+    $TA_SERVER_EXTRA_ARGS
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 ```
@@ -623,9 +623,9 @@ your acceptance of the CA subscriber agreement.
 
 Point the hostname's A/AAAA records at the server, allow inbound TCP **80** and
 **7677**, and allow outbound HTTPS **443**. Port 80 must be available for issuance
-and renewal; takserver listens there only during validation. Certificates and
-keys are managed under `/var/lib/takserver/acme`. You do not need manual
-`/etc/takserver` certificate files in this mode. See
+and renewal; taserver listens there only during validation. Certificates and
+keys are managed under `/var/lib/taserver/acme`. You do not need manual
+`/etc/taserver` certificate files in this mode. See
 [built-in certificate handling](#built-in-lets-encrypt-certificates) for renewal
 and port-conflict behavior.
 
@@ -633,29 +633,29 @@ and port-conflict behavior.
 certificate chain and private key at the paths used by the base unit:
 
 ```sh
-sudo install -d -m 755 /etc/takserver
-sudo install -m 644 /path/to/fullchain.pem /etc/takserver/fullchain.pem
-sudo install -m 600 /path/to/private.pem /etc/takserver/private.pem
+sudo install -d -m 755 /etc/taserver
+sudo install -m 644 /path/to/fullchain.pem /etc/taserver/fullchain.pem
+sudo install -m 600 /path/to/private.pem /etc/taserver/private.pem
 ```
 
 The certificate must cover the hostname players enter. Systemd reads the
 root-only key and passes it privately to the dynamic service user. Allow inbound
-TCP **7677**; takserver does not use port 80 in this mode. Renew the certificate
+TCP **7677**; taserver does not use port 80 in this mode. Renew the certificate
 externally and restart the service after replacing its files.
 
 ### 3. Start and check the service
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemd-analyze verify takserver.service
-sudo systemctl enable --now takserver
-sudo systemctl status takserver --no-pager
-sudo journalctl -u takserver -f
+sudo systemd-analyze verify taserver.service
+sudo systemctl enable --now taserver
+sudo systemctl status taserver --no-pager
+sudo journalctl -u taserver -f
 ```
 
 If the service was already running when you changed its configuration, run
-`sudo systemctl restart takserver` after `daemon-reload`; `enable --now` does not
-restart an already active service. `sudo systemctl cat takserver` shows the unit
+`sudo systemctl restart taserver` after `daemon-reload`; `enable --now` does not
+restart an already active service. `sudo systemctl cat taserver` shows the unit
 and its drop-ins, which is useful for checking the effective command and hostname.
 
 For first-time ACME setup, wait for `ACME: certificate installed` before connecting.
@@ -675,10 +675,10 @@ whether another process owns port 80.
 Run this on the machine hosting the server:
 
 ```sh
-takserver --status
+taserver --status
 ```
 
-For a nondefault game port, use `takserver --status --port 7678`. A successful
+For a nondefault game port, use `taserver --status --port 7678`. A successful
 query writes only JSON to standard output and exits with status 0:
 
 ```json
@@ -712,17 +712,17 @@ Status does not modify game state.
 
 ### Changing server defaults
 
-The packaged `takserver-settings.conf` works with either manual TLS or the current
+The packaged `taserver-settings.conf` works with either manual TLS or the current
 ACME template. You can change paths, port, game/account limits, storage budgets
 and systemd resource limits without rewriting `ExecStart`.
 
 1. Copy the settings template and open your local copy:
 
    ```sh
-   sudo mkdir -p /etc/systemd/system/takserver.service.d
-   sudo cp -i /usr/share/doc/tak-engine/systemd/takserver-settings.conf \
-     /etc/systemd/system/takserver.service.d/settings.conf
-   sudoedit /etc/systemd/system/takserver.service.d/settings.conf
+   sudo mkdir -p /etc/systemd/system/taserver.service.d
+   sudo cp -i /usr/share/doc/ta-engine/systemd/taserver-settings.conf \
+     /etc/systemd/system/taserver.service.d/settings.conf
+   sudoedit /etc/systemd/system/taserver.service.d/settings.conf
    ```
 
    Keep an existing `settings.conf` rather than overwriting your settings. The
@@ -733,22 +733,22 @@ and systemd resource limits without rewriting `ExecStart`.
 
    ```ini
    [Service]
-   Environment="TAK_SERVER_MAX_GAMES=32"
-   Environment="TAK_SERVER_MAX_RUNNING_GAMES=8"
-   Environment="TAK_SERVER_MAX_ACCOUNTS=20000"
+   Environment="TA_SERVER_MAX_GAMES=32"
+   Environment="TA_SERVER_MAX_RUNNING_GAMES=8"
+   Environment="TA_SERVER_MAX_ACCOUNTS=20000"
    MemoryMax=16G
    ```
 
-   The full template also includes `TAK_SERVER_PORT`, `TAK_SERVER_DATA`,
-   `TAK_SERVER_ACCOUNTS`, `TAK_SERVER_MAP_CACHE`, `TAK_SERVER_REPLAYS`,
-   `TAK_SERVER_MAP_MEMORY_MIB`, `TAK_SERVER_MAP_STORAGE_MIB`,
-   `TAK_SERVER_REPLAY_MEMORY_MIB`, and `TAK_SERVER_REPLAY_STORAGE_MIB`.
+   The full template also includes `TA_SERVER_PORT`, `TA_SERVER_DATA`,
+   `TA_SERVER_ACCOUNTS`, `TA_SERVER_MAP_CACHE`, `TA_SERVER_REPLAYS`,
+   `TA_SERVER_MAP_MEMORY_MIB`, `TA_SERVER_MAP_STORAGE_MIB`,
+   `TA_SERVER_REPLAY_MEMORY_MIB`, and `TA_SERVER_REPLAY_STORAGE_MIB`.
    Game-count limits must be 1–64; account and budget limits must be positive.
    Memory/storage budgets are in MiB. Changing `MemoryMax` alone does not change
    the application's limits. If changing the game port, update your firewall and
    tell players to enter `hostname:port`.
 
-   Keep writable paths under `/var/lib/takserver`; the sandbox makes most other
+   Keep writable paths under `/var/lib/taserver`; the sandbox makes most other
    locations read-only and hides home directories. Data paths may contain spaces:
    keep each complete `Environment="NAME=value"` assignment quoted as shown.
 
@@ -756,10 +756,10 @@ and systemd resource limits without rewriting `ExecStart`.
    entry to:
 
    ```ini
-   Environment="TAK_SERVER_EXTRA_ARGS=--closed-registration"
+   Environment="TA_SERVER_EXTRA_ARGS=--closed-registration"
    ```
 
-   Set it back to `Environment="TAK_SERVER_EXTRA_ARGS="` to allow registration.
+   Set it back to `Environment="TA_SERVER_EXTRA_ARGS="` to allow registration.
    Extra flags are split into arguments by systemd, not run through a shell.
    Do not put passwords or private keys in environment settings. TLS/ACME choices
    remain in the base unit or `acme.conf`; do not duplicate those options here.
@@ -768,11 +768,11 @@ and systemd resource limits without rewriting `ExecStart`.
 
    ```sh
    sudo systemctl daemon-reload
-   sudo systemd-analyze verify takserver.service
-   sudo systemctl restart takserver
-   sudo systemctl cat takserver
-   sudo systemctl show takserver -p Environment -p MemoryMax -p TasksMax -p LimitNOFILE
-   sudo journalctl -u takserver -n 50 --no-pager
+   sudo systemd-analyze verify taserver.service
+   sudo systemctl restart taserver
+   sudo systemctl cat taserver
+   sudo systemctl show taserver -p Environment -p MemoryMax -p TasksMax -p LimitNOFILE
+   sudo journalctl -u taserver -n 50 --no-pager
    ```
 
    Restarting disconnects active games, so apply changes between matches.
@@ -780,9 +780,9 @@ and systemd resource limits without rewriting `ExecStart`.
    this does not add environment-variable handling to the Release server.
 
 **A full service copy:** a service copied whole to
-`/etc/systemd/system/takserver.service`, or a drop-in with its own `ExecStart`,
+`/etc/systemd/system/taserver.service`, or a drop-in with its own `ExecStart`,
 fixes the command line, and environment settings will not change it. Use
-`systemctl cat takserver` to inspect it, then merge the packaged template's
+`systemctl cat taserver` to inspect it, then merge the packaged template's
 variable-based command into your local configuration, preserving your hostname
 and custom settings. Do not overwrite an existing ACME file with
 `YOUR.SERVER.NAME` still in it.
@@ -790,12 +790,12 @@ and custom settings. Do not overwrite an existing ACME file with
 ### Source installations
 
 If installing from source, use
-[the service unit](../packaging/systemd/takserver.service) and
-[ACME template](../packaging/systemd/takserver-acme.conf) from this checkout.
+[the service unit](../packaging/systemd/taserver.service) and
+[ACME template](../packaging/systemd/taserver-acme.conf) from this checkout.
 From the checkout root, install the service with:
 
 ```sh
-sudo install -m 644 packaging/systemd/takserver.service /etc/systemd/system/takserver.service
+sudo install -m 644 packaging/systemd/taserver.service /etc/systemd/system/taserver.service
 ```
 
 A unit in `/etc/systemd/system/` takes precedence over the packaged unit. For
@@ -809,7 +809,7 @@ system and home isolation, restricted system calls and address families, no
 executable writable memory, bounded logs, and process limits. The base unit has
 no capabilities; the ACME override grants only `CAP_NET_BIND_SERVICE`. Review the
 8 GiB process memory limit and the [game limits](#resource-controls) for your host.
-Do not run takserver as root to make certificate issuance work.
+Do not run taserver as root to make certificate issuance work.
 
 Keep SSH/admin access separately restricted. Back up private state and monitor
 certificate and quota errors. Use filesystem quotas if needed; application
@@ -870,7 +870,7 @@ Run the parser, worker, command, package and local server tests with:
 ctest --test-dir build --output-on-failure -R '^(tdf_limits|validationworker|server_commands|server_command_flood|map_transfer|map_transfer_data|mod_packs|mod_transfer|server_public|acme)$'
 ```
 
-Data-backed tests require CMake's `TAK_TEST_DATA` to point to a retail installation.
+Data-backed tests require CMake's `TA_TEST_DATA` to point to a retail installation.
 The additional local HTTPS ACME fixture requires Python `cryptography` (test-only):
 
 ```sh
@@ -898,7 +898,7 @@ CA endpoint and challenge port are not production server options. The native
 `acme` CTest covers responder bounds, exact paths, slow peers and cleanup.
 
 For the integration script, run Pebble with its default port 5002 for HTTP
-validation, `PEBBLE_AUTHZREUSE=0`, and DNS/hosts mapping `acme.tak.test` to this
+validation, `PEBBLE_AUTHZREUSE=0`, and DNS/hosts mapping `acme.ta.test` to this
 machine. Point `--ca` at Pebble’s API root certificate:
 
 ```sh

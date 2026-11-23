@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace rd = tak::renderdriver;
+namespace rd = ta::renderdriver;
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {

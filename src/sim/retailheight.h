@@ -7,7 +7,7 @@
 #include "sim/retailpiecepose.h"
 #include "sim/retailmotion.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 511170: discard subpixel fractions, then truncate each signed interpolation
 // separately. The last row/column cannot supply a complete terrain quad.
@@ -84,4 +84,4 @@ int32_t retailSupportedHeight(int32_t x,int32_t z,int32_t oldY,uint16_t heading,
     return std::bit_cast<int32_t>((uint32_t(h)<<16)|(uint32_t(oldY)&0xffff));
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

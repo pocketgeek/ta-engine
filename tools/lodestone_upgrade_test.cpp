@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <memory>
-using namespace tak;
+using namespace ta;
 static int failures=0;
 static void check(bool ok,const char* message) {
     if (!ok) {++failures;std::fprintf(stderr,"FAIL: %s\n",message);}

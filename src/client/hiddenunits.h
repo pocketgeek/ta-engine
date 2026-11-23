@@ -28,7 +28,7 @@
 #include <string_view>
 #include <vector>
 
-namespace tak::hiddenunits {
+namespace ta::hiddenunits {
 
 enum Mode : int { kOff = 0, kDots = 1, kFade = 2 };
 inline constexpr int kDefault = kFade;
@@ -371,4 +371,4 @@ private:
     std::vector<uint32_t> later_;
 };
 
-}  // namespace tak::hiddenunits
+}  // namespace ta::hiddenunits

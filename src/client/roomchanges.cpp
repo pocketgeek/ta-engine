@@ -5,7 +5,7 @@
 // The room's change display (see roomchanges.h): pure, so tools/room_changes_test.cpp can
 // drive it without SDL.
 
-namespace tak {
+namespace ta {
 
 const char* roomFieldCaption(RoomField field) {
     switch (field) {
@@ -115,4 +115,4 @@ std::string roomChangeNote(const RoomChanges& c, bool host) {
     return note;
 }
 
-}  // namespace tak
+}  // namespace ta

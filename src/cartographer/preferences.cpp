@@ -27,7 +27,7 @@ EditorPreferences loadEditorPreferences(const std::filesystem::path& folder) {
         if(key=="display") {
             std::string mode;float scale=0;int x11=0,logical=0;
             if(row>>mode) {
-                p.displayMode=tak::wayland::parseMode(mode);
+                p.displayMode=ta::wayland::parseMode(mode);
                 if(row>>scale && scale>=1 && scale<=8)p.displayScale=scale;
                 if(row>>x11>>logical) {p.displayX11Width=x11>=1 && x11<=65536?x11:0;p.displayLogicalWidth=logical>=1 && logical<=65536?logical:0;}
             }
@@ -50,7 +50,7 @@ bool saveEditorPreferences(const std::filesystem::path& folder,const EditorPrefe
     text<<"trace "<<p.tracePlaytest<<'\n';
     text<<"edgescroll "<<p.edgeScroll<<"\nfullscreen "<<p.fullscreen<<'\n';
     text<<"blocked "<<p.showBlocked<<'\n';
-    if(p.displayMode)text<<"display "<<tak::wayland::modeName(p.displayMode)<<' '<<p.displayScale<<' '<<p.displayX11Width<<' '<<p.displayLogicalWidth<<'\n';
+    if(p.displayMode)text<<"display "<<ta::wayland::modeName(p.displayMode)<<' '<<p.displayScale<<' '<<p.displayX11Width<<' '<<p.displayLogicalWidth<<'\n';
     for(size_t i=0;i<std::min(size_t(12),p.recent.size());++i)text<<"recent "<<std::quoted(p.recent[i])<<'\n';
     for(const auto& [world,group]:p.sectionGroups)
         if(!world.empty() && world.size()<=32 && world.find_first_of(" \t\r\n")==std::string::npos)text<<"sectiongroup "<<world<<' '<<std::quoted(group)<<'\n';

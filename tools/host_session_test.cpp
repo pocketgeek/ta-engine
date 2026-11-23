@@ -1,5 +1,5 @@
 // host_session_test -- the host's powers and the live game settings across a reconnect, as
-// a real MpClient sees them, against a real takserver (tools/host_session_test.py starts it
+// a real MpClient sees them, against a real taserver (tools/host_session_test.py starts it
 // with a short disconnect wait). Two players play a small generated map; each runs the sim
 // and reports its hashes, so the referee checks that no reconnect changes the game.
 //
@@ -25,7 +25,7 @@
 #include <string>
 #include <thread>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int checks = 0, failures = 0;
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     try {
         if (argc != 3) throw std::runtime_error("usage: host_session_test <port> <data-dir>");
         const uint16_t port = uint16_t(std::stoi(argv[1]));
-        const auto data = hpi::mountRetailRoot(tak::u8path(argv[2]));
+        const auto data = hpi::mountRetailRoot(ta::u8path(argv[2]));
         sim::TypeRegistry registry;
         sim::setupRegistry(registry, data, false);
         gRegistry = &registry;

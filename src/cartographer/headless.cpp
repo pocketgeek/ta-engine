@@ -88,7 +88,7 @@ void cart::Editor::captureShot() {
         std::vector<uint8_t> px(size_t(ow) * oh * 4);
         if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_RGBA32,
                                  px.data(), ow * 4) == 0) {
-            tak::png::write(shotPath, ow, oh, px);
+            ta::png::write(shotPath, ow, oh, px);
             std::fprintf(stderr, "shot %s (%dx%d)\n", shotPath.c_str(), ow, oh);
         }
         running = false;

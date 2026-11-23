@@ -17,7 +17,7 @@
 #include "hpi/hpi.h"
 #include "util/u8path.h"
 
-namespace tak {
+namespace ta {
 
 class DataFolderPicker {
 public:
@@ -33,8 +33,8 @@ public:
             const std::string picked = picker ? picker(kDataFolderPickerTitle, start)
                                               : pickDirectory(kDataFolderPickerTitle, start);
             return evaluateDataFolderPick(picked, saved,
-                [](const std::string& f, std::string* why) { return hpi::validInstall(tak::u8path(f), why); },
-                [](const std::string& f) { return hpi::rootManifest(tak::u8path(f)); });
+                [](const std::string& f, std::string* why) { return hpi::validInstall(ta::u8path(f), why); },
+                [](const std::string& f) { return hpi::rootManifest(ta::u8path(f)); });
         });
     }
     // The dialog (or the validation after it) is still running.
@@ -51,4 +51,4 @@ private:
     std::future<DataFolderPick> job_;   // destroying a running one waits for the dialog to close
 };
 
-}  // namespace tak
+}  // namespace ta

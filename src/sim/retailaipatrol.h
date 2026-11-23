@@ -7,7 +7,7 @@
 #include <optional>
 #include <utility>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 40d7ad..40db3f, when the threat-target candidate list is empty. The
 // placement host runs before separation rejection, preserving query order.
@@ -42,4 +42,4 @@ std::optional<std::array<std::pair<int32_t,int32_t>,2>> retailAiPatrolPoints(
     return points;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

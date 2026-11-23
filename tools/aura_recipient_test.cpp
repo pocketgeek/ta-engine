@@ -25,7 +25,7 @@
 //     the damage, so they reach hp and the state hash), and two priests raise an
 //     emitter's body, which takes up its aura on the very tick it rises: every
 //     unit's atkBuff/armBuff bits and the state hash agree every tick.
-// A debug build also sets TAK_VERIFY_POOL: every tiled pass is then redone with
+// A debug build also sets TA_VERIFY_POOL: every tiled pass is then redone with
 // the serial walk and compared, and any difference aborts.
 #include "net/lockstep.h"
 #include "sim/matchsetup.h"
@@ -40,7 +40,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void grid(World& w) { w.rebuildGrid(); }
     static void auras(World& w) { w.tickAuras(1.0f / 30); }
@@ -97,10 +97,10 @@ struct RetailReplayProbe {
         return out;
     }
 };
-}  // namespace tak::sim
+}  // namespace ta::sim
 
-using namespace tak;
-using namespace tak::sim;
+using namespace ta;
+using namespace ta::sim;
 
 namespace {
 int g_fail = 0;
@@ -516,9 +516,9 @@ void eligibilityAndSpawn(const Types& t) {
 int main() {
 #ifndef NDEBUG
 #ifdef _WIN32
-    _putenv_s("TAK_VERIFY_POOL", "1");
+    _putenv_s("TA_VERIFY_POOL", "1");
 #else
-    setenv("TAK_VERIFY_POOL", "1", 1);
+    setenv("TA_VERIFY_POOL", "1", 1);
 #endif
 #endif
     std::printf("aura_recipient_test\n");

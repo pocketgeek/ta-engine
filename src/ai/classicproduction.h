@@ -24,7 +24,7 @@
 
 #include "sim/retailai.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 // 0x412d00(player, unit, special): one pass over the builder type's menu (retail
 // type +0x132, in canbuild [Menu] Priority order). `weight(t)` is 0x412c90 for
@@ -236,4 +236,4 @@ void classicPlanConstructor(Host& h, const ClassicConstructorUnit& u, bool threa
     h.combat();
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

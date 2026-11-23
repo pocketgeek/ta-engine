@@ -37,7 +37,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int failures = 0;
@@ -270,8 +270,8 @@ int main(int argc, char** argv) {
     // Replacing active reclaim must switch the work and its emitter together.
     treeWorld.addFeature(1001,208,176,1000,1,1,false);
     treeWorld.addFeature(1002,240,176,1000,1,1,false);
-    tak::net::Command reclaimCommand;
-    reclaimCommand.kind=tak::net::Cmd::Reclaim;
+    ta::net::Command reclaimCommand;
+    reclaimCommand.kind=ta::net::Cmd::Reclaim;
     reclaimCommand.unitId=builder;
     reclaimCommand.player=0;
     reclaimCommand.targetId=1001;
@@ -290,7 +290,7 @@ int main(int argc, char** argv) {
           worker->orders.front().reclaimCountdown<sim::retailReclaimCountdown(1000),
           "replacement reclaim switches work and effects to the new target");
     const auto stoppedEmissions=treeWorld.unit(builder)->constructionEmissions[0];
-    reclaimCommand.kind=tak::net::Cmd::Stop;
+    reclaimCommand.kind=ta::net::Cmd::Stop;
     sim::applyCommand(treeWorld,reg,reclaimCommand);
     for(int i=0;i<180;++i)treeWorld.tick(1.f/30);
     worker=treeWorld.unit(builder);
@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
           "Stop cancels reclaim work and emission while old particles drain");
 
     treeWorld.addFeature(1003,208,176,0,1,1,false);
-    reclaimCommand.kind=tak::net::Cmd::Reclaim;
+    reclaimCommand.kind=ta::net::Cmd::Reclaim;
     reclaimCommand.targetId=1003;
     sim::applyCommand(treeWorld,reg,reclaimCommand);
     for(int i=0;i<150;++i)treeWorld.tick(1.f/30);

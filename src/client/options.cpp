@@ -26,7 +26,7 @@
 #include <map>
 #include <memory>
 
-namespace tak {
+namespace ta {
 
 namespace {
 // A folder path elided at its START (elidePathStart's rule: prefer a cut on a
@@ -449,7 +449,7 @@ void OptionsScreen::buildAudio() {
 
 
     // CUSTOM MUSIC: a file of the player's own for any original track, played wherever that
-    // track plays in games (tak::music); the title screen and the lobby keep the original.
+    // track plays in games (ta::music); the title screen and the lobby keep the original.
     // ORIGINAL (CLEAR) plays the original.
     section("CUSTOM MUSIC");
     for (const auto& side : musicSides_)
@@ -1320,7 +1320,7 @@ void OptionsScreen::render(int winW, int winH) {
     SDL_Rect clip{int(panel_.x), int(panel_.y + titleH), int(panel_.w),
                   int(panel_.h - titleH - footerH)};
     // No room (a tiny window): no rows -- on Metal they would draw unclipped.
-    const bool rowsShow = tak::cliprect::set(ren_, clip);
+    const bool rowsShow = ta::cliprect::set(ren_, clip);
 
     float fpx = 2.0f * u_;
     for (auto& c : ctls_) {
@@ -1569,7 +1569,7 @@ void OptionsScreen::render(int winW, int winH) {
         SDL_SetRenderDrawColor(ren_, 140, 150, 185, 255); SDL_RenderDrawRectF(ren_, &bg);
         // Clip the rows to the viewport so a list taller than the panel scrolls under it.
         SDL_Rect clip{int(x), int(y0), int(cw) + 1, int(viewH) + 1};
-        const bool rowsShow = tak::cliprect::set(ren_, clip);
+        const bool rowsShow = ta::cliprect::set(ren_, clip);
         for (size_t i = 0; rowsShow && i < opts.size(); ++i) {
             float iy = y0 + float(i) * itemH - dropScroll_;
             if (iy + itemH < y0 || iy > y0 + viewH) continue;   // fully scrolled out
@@ -1747,9 +1747,9 @@ bool OptionsScreen::restartPromptInput(const SDL_Event& e) {
     return true;
 }
 
-}  // namespace tak
+}  // namespace ta
 
-namespace tak {
+namespace ta {
 
 // ---- CUSTOM MUSIC rows ------------------------------------------------------------------
 // LABEL ............ [ chosen file / ORIGINAL ] [CHOOSE] [CLEAR]
@@ -1786,7 +1786,7 @@ void OptionsScreen::clickMusic(const Control& c, float mx, float my) {
         const std::string path = pickAudioFile("MUSIC FOR " + title, start);
         if (path.empty()) return {};
         // Try it now, so a file that will not play says so here and not in a game.
-        std::ifstream in(tak::u8path(path), std::ios::binary);
+        std::ifstream in(ta::u8path(path), std::ios::binary);
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         std::string why;
         if (bytes.empty()) why = "cannot read the file";
@@ -1822,7 +1822,7 @@ void OptionsScreen::drawMusicRow(const Control& c) {
         const auto cut = it->second.find_last_of("/\\");
         text = cut == std::string::npos ? it->second : it->second.substr(cut + 1);
         std::error_code ec;
-        if (!std::filesystem::exists(tak::u8path(it->second), ec)) { text = "MISSING: " + text; col = {240, 130, 120, 255}; }
+        if (!std::filesystem::exists(ta::u8path(it->second), ec)) { text = "MISSING: " + text; col = {240, 130, 120, 255}; }
         else if (const auto note = musicNote_.find(c.track); note != musicNote_.end()) {
             text = "WILL NOT PLAY: " + text; col = {240, 130, 120, 255};
         } else col = {215, 225, 245, 255};
@@ -1843,4 +1843,4 @@ void OptionsScreen::drawMusicRow(const Control& c) {
     button(clear, "CLEAR", chosen);
 }
 
-}  // namespace tak
+}  // namespace ta

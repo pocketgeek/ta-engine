@@ -7,7 +7,7 @@
 #include <cstring>
 #include <span>
 
-namespace tak {
+namespace ta {
 // Opaque atlas coverage needs positions and one constant black colour. The
 // compatibility OpenGL renderer otherwise expands that colour for every vertex.
 // Prime/flush SDL's solid draw state, then submit the same ordered triangles with
@@ -95,4 +95,4 @@ private:
     void (APIENTRY *vertex_)(GLint,GLenum,GLsizei,const GLvoid*)=nullptr;
     void (APIENTRY *draw_)(GLenum,GLint,GLsizei)=nullptr;
 };
-} // namespace tak
+} // namespace ta

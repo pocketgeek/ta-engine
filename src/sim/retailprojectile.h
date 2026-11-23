@@ -7,7 +7,7 @@
 #include <vector>
 #include <algorithm>
 
-namespace tak::sim {
+namespace ta::sim {
 // 52a6f3: environmental part of the projectile cell test. Feature height
 // is relative to the cell minimum; callers resolve multi-cell feature anchors.
 inline bool retailProjectileHitsEnvironment(int32_t y,int32_t& verticalSpeed,
@@ -59,4 +59,4 @@ inline bool retailProjectileInUnit(const std::array<int32_t,3>& point,
     }
     return true;
 }
-} // namespace tak::sim
+} // namespace ta::sim

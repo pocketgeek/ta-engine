@@ -29,8 +29,8 @@ struct Payload {
     size_t retainedBytes() const { return sizeof(*this) + key.capacity() * sizeof(int) + data.capacity(); }
     void releaseMemory() { std::vector<int>().swap(key); std::vector<char>().swap(data); }
 };
-using Pool = tak::render::StableEntryPool<Payload, 16>;   // small chunks: exercise growth/trim
-using tak::render::UnitOwner;
+using Pool = ta::render::StableEntryPool<Payload, 16>;   // small chunks: exercise growth/trim
+using ta::render::UnitOwner;
 
 int typeA, typeB, modelX;   // addresses only
 UnitOwner unit(int id, uint32_t epoch = 1, const void* type = &typeA, const void* model = nullptr) {
@@ -43,7 +43,7 @@ const auto allAlive = [](const UnitOwner&) { return true; };
 }
 
 int main() {
-    using namespace tak::render;
+    using namespace ta::render;
     {   // HandleSlots: lowest index first, generations never repeat, trailing trim.
         HandleSlots slots(8);
         RenderHandle h[4];

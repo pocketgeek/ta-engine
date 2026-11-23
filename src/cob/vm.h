@@ -10,7 +10,7 @@
 #include <random>
 #include <vector>
 
-namespace tak::cob {
+namespace ta::cob {
 
 // Minimal COB interpreter, sufficient to run unit animation scripts.
 // Unit-state queries return 0 and side effects outside piece animation
@@ -191,4 +191,4 @@ private:
     }
 };
 
-} // namespace tak::cob
+} // namespace ta::cob

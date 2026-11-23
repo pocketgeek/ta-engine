@@ -20,7 +20,7 @@ struct SelectionRingBox {
     float midX=0.0f,midY=0.0f,midZ=0.0f;
 };
 
-inline SelectionRingBox selectionRingBox(const tak::tdo::Object& root) {
+inline SelectionRingBox selectionRingBox(const ta::tdo::Object& root) {
     float lo[3]={0,0,0},hi[3]={0,0,0};
     const float offset[3]={root.x,root.y,root.z};
     if(root.vertices.size()/3>2)

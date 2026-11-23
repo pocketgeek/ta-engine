@@ -15,8 +15,8 @@
 #include <string>
 #include <vector>
 
-using namespace tak::net;
-using tak::srv::OrderInbox;
+using namespace ta::net;
+using ta::srv::OrderInbox;
 using R = OrderInbox::Result;
 
 namespace {

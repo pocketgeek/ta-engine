@@ -23,7 +23,7 @@
 #include <string>
 #include <string_view>
 
-using namespace tak::sim;
+using namespace ta::sim;
 namespace {
 void check(bool ok,const std::string& message) {if(!ok)throw std::runtime_error(message);}
 int32_t raw(double px) {return int32_t(std::lround(px*65536.0));}

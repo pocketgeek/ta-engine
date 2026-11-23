@@ -2,7 +2,7 @@
 #include <SDL.h>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 // Some drivers/compositors keep reporting VSync enabled while presents run
 // ahead (stream readback; macOS Metal/Core Animation). Bound presentation at
 // the display refresh whenever VSync is on, without double-pacing a swap that

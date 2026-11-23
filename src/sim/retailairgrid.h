@@ -7,7 +7,7 @@
 
 #include "sim/copymember.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail's secondary (airborne) map occupant: map cell word +2, with each
 // flyer's overlap list at unit +0x117 (count, -1 = overflow) / +0x118 (seven
@@ -247,4 +247,4 @@ bool retailLandingSiteFree(int32_t x,int32_t z,const RetailLandingLimits& limits
     return true;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -39,7 +39,7 @@
 #include <memory>
 #include <tuple>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static PathfindingMode g_pathfinding = PathfindingMode::Retail;
 static void setTestPathfinding(World& world) {
@@ -55,7 +55,7 @@ static void check(bool cond, const char* what, const std::string& detail = {}) {
 static UnitType factoryType() {
     UnitType t{};
     t.name = "factory"; t.id = "factory";
-    t.maxVel = tak::sim::Fixed::fromFloat(0.0f / 30.0f);                 // maxVel <= 0 => isStructure()
+    t.maxVel = ta::sim::Fixed::fromFloat(0.0f / 30.0f);                 // maxVel <= 0 => isStructure()
     t.maxHp = 5000;
     t.footX = 7; t.footZ = 12;
     t.isBuilder = true;
@@ -66,7 +66,7 @@ static UnitType factoryType() {
 static UnitType soldierType() {
     UnitType t{};
     t.name = "sol"; t.id = "sol";
-    t.maxVel = tak::sim::Fixed::fromFloat(60.0f / 30.0f); t.turnRate = 10000;
+    t.maxVel = ta::sim::Fixed::fromFloat(60.0f / 30.0f); t.turnRate = 10000;
     t.maxHp = 100; t.canMove = true;
     t.buildTime = 1;
     t.footX = 2; t.footZ = 2;
@@ -683,7 +683,7 @@ static void lodestoneUpgradeFinishesUnderShortShare() {
     UnitType lode{}, upgrade{};
     lode.name = lode.id = "zonlode"; lode.side = "ZON"; lode.maxHp = 1000;
     lode.footX = lode.footZ = 2; lode.onMana = true; lode.buildTime = 1; lode.buildCost = 1;
-    lode.maxVel = tak::sim::Fixed();                                     // a structure
+    lode.maxVel = ta::sim::Fixed();                                     // a structure
     upgrade = lode; upgrade.name = upgrade.id = "zonmana";
     upgrade.buildTime = 10; upgrade.buildCost = 1200;                      // 300 ticks, 4/tick
     UnitType shaman = soldierType(); shaman.id = "shaman";
@@ -691,7 +691,7 @@ static void lodestoneUpgradeFinishesUnderShortShare() {
     // A long, costly second build keeps the other demand at twice the income,
     // so the allocation stays below one half even when the upgrade asks for
     // nothing -- the playtest's shape (other demand 8.2/tick on 3.5 of income).
-    UnitType hall{}; hall.name = hall.id = "hall"; hall.maxVel = tak::sim::Fixed();
+    UnitType hall{}; hall.name = hall.id = "hall"; hall.maxVel = ta::sim::Fixed();
     hall.maxHp = 1000; hall.footX = hall.footZ = 2;
     hall.buildTime = 200; hall.buildCost = 48000;                        // 6000 ticks, 8/tick
     UnitType well{}; well.name = well.id = "well"; well.maxHp = 100;
@@ -704,7 +704,7 @@ static void lodestoneUpgradeFinishesUnderShortShare() {
     check(old != 0, "the base lodestone is placed");
     if (!old) return;
     w.unit(old)->underConstruction = false;
-    w.unit(old)->hp = tak::sim::Fixed::fromInt(lode.maxHp);
+    w.unit(old)->hp = ta::sim::Fixed::fromInt(lode.maxHp);
     w.cancelBuilds(bid); w.stop(bid);
     w.player(0).mana = 0;
     check(w.startBuild(helper, &hall, 1000, 1000, World::Approach::None) != 0,
@@ -913,7 +913,7 @@ static void rallyIsAdopted() {
     // heading toward its goal, so a structure in the mover is a spinning keep.
     check(f->orders.empty(), "the building's own order queue stays empty",
           std::to_string(f->orders.size()));
-    check(f->heading == tak::sim::Bam(0), "and its heading is untouched",
+    check(f->heading == ta::sim::Bam(0), "and its heading is untouched",
           std::to_string(f->heading.v));
     // Setting a rally must not cancel what it is building.
     check(!f->buildQueue.empty(), "the production queue survives the rally order",
@@ -1153,7 +1153,7 @@ static void scriptControlsReadinessAndPosition() {
     // before it reports ready, as the shipped factories do: BUILD stage 2
     // refuses a site on a solid or closed yard cell.
     fac.yardMap=std::string(7*2,'.')+std::string(7*6,'o')+std::string(7*4,'c');
-    auto script=std::make_shared<tak::cob::File>();
+    auto script=std::make_shared<ta::cob::File>();
     script->pieces={"emit","root"};
     script->scripts={{"Create",0},{"QueryBuildInfo",19}};
     script->code={0x10021001,5,0x10021001,0,0x10082000,
@@ -1179,7 +1179,7 @@ static void mobileScriptRandomRunsInWorld() {
     auto ownedWorld = makeWorld(64,64);
     World& w = *ownedWorld;
     UnitType mobile=soldierType();
-    auto script=std::make_shared<tak::cob::File>();
+    auto script=std::make_shared<ta::cob::File>();
     script->scripts={{"Create",0}};
     script->code={0x10021001,100,0x10013000,0x10021001,0,0x10021001,9,
                   0x10041000,0x10024000,0x10065000};
@@ -1261,14 +1261,14 @@ static void repairParticles() {
 // shipped buildings omit it, so a building with no bmcode line must take the
 // building branch. The rising ceiling is the owner's world Y plus the model height.
 static void constructionParticleSizing() {
-    auto files=std::make_shared<tak::hpi::Vfs::Files>();
+    auto files=std::make_shared<ta::hpi::Vfs::Files>();
     auto fbi=[&](const char* id,const char* fields) {
         const std::string text=std::string("[UNITINFO]\n{\nunitname=")+id+";\nobjectname="+id+
             ";\nside=ARA;\nmaxdamage=1000;\nbuildtime=100;\nbuildcost=100;\n"+fields+"\n}\n";
         (*files)[std::string("units/")+id+".fbi"]={text.begin(),text.end()};
     };
     fbi("plainhall","footprintx=4;\nfootprintz=6;");
-    tak::hpi::Vfs vfs;vfs.setMapFiles(files);
+    ta::hpi::Vfs vfs;vfs.setMapFiles(files);
     TypeRegistry reg;reg.loadDir(vfs,"units");
     check(reg.find("plainhall") && reg.find("plainhall")->buildMovementCode==0,
           "a building with no bmcode line reads bmcode 0 (retail's default)");
@@ -1599,7 +1599,7 @@ static void rallyOnAScriptedPad() {
     auto ownedWorld = makeWorld(160, 160);
     World& w = *ownedWorld;
     UnitType prod = producerType(true), sol = soldierType();
-    auto script = std::make_shared<tak::cob::File>();
+    auto script = std::make_shared<ta::cob::File>();
     script->pieces = {"emit", "root"};
     script->scripts = {{"Create", 0}, {"QueryBuildInfo", 19}};   // as scriptControlsReadinessAndPosition's
     script->code = {0x10021001, 5, 0x10021001, 0, 0x10082000,

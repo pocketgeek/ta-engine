@@ -29,7 +29,7 @@
 
 #include "sim/retailmotion.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 // One block grid (build manager +0x105 land, +0x111 water): block steps in cells,
 // the grid's offset, and the margin a building keeps from its block's far edge.
@@ -194,4 +194,4 @@ std::optional<std::pair<int32_t, int32_t>> classicPlaceSite(const ClassicSiteTyp
     return classicSiteCentre(*cell, type.footX, type.footZ);
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

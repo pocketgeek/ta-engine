@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace tak {
+namespace ta {
 // host carries a "tls://" prefix for TLS (what Conn::connect reads). plainFallback:
 // no scheme was typed, so after TLS fails the connect is tried again unencrypted.
 struct ServerAddress { std::string host; uint16_t port=7677; bool plainFallback=false; };

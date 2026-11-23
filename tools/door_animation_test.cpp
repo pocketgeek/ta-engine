@@ -12,7 +12,7 @@ bool check(bool condition, const char* what) {
 } // namespace
 
 int main() {
-    using namespace tak::menu;
+    using namespace ta::menu;
     bool ok = true;
 
     struct Expected {

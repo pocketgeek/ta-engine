@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using tak::terrainwork::Params;
+using ta::terrainwork::Params;
 // The policy without the calm gate (scenarios that test hysteresis, re-ranking or nearby
 // work under deliberately fast motion; the gate has its own scenario).
 static Params ungated(bool nearby=false) {Params p;p.calmGate=false;p.nearby=nearby;return p;}
@@ -28,10 +28,10 @@ int main(int argc,char** argv) try {
     check(renderer,SDL_GetError());
     const auto baseline=gpuvram::bytes();
     {
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
-        tak::mapgen::Params gp;gp.seed=7;gp.widthCells=gp.heightCells=1024;
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
+        ta::mapgen::Params gp;gp.seed=7;gp.widthCells=gp.heightCells=1024;
         gp.plateauDensity=gp.mountainDensity=gp.townDensity=0;   // the v9 terrain these gates were set on
-        const std::string mapId=tak::mapgen::encodeMapId(gp);
+        const std::string mapId=ta::mapgen::encodeMapId(gp);
         constexpr int W=1200,H=900;
         auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_TARGET,1280,960);
         check(target,SDL_GetError());SDL_SetRenderTarget(renderer,target);

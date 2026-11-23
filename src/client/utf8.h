@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tak::utf8 {
+namespace ta::utf8 {
 
 // The byte length (1..4) of the character starting at s[i] (i < s.size()); its code
 // point goes to *cp when given.
@@ -31,4 +31,4 @@ inline size_t next(const std::string& s, size_t i, uint32_t* cp = nullptr) {
     return good ? size_t(n) + 1 : 1;
 }
 
-}  // namespace tak::utf8
+}  // namespace ta::utf8

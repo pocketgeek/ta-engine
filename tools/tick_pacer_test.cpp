@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 
-using tak::srv::TickPacer;
+using ta::srv::TickPacer;
 
 namespace {
 int failures = 0;

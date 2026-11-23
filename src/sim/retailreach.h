@@ -4,7 +4,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Rectangle connectivity (4e1570). Two wall followers attempt to rejoin the
 // horizontal-then-vertical direct route. A failed long traversal ends the
@@ -87,4 +87,4 @@ bool retailRectangleReachable(int width,int height,int sx,int sz,int sw,int sh,
     return false;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """A watched game ends for its watcher when the server ends it, on the winner's plate.
 
-Real takserver (--seed 1, --replaydir) and headless takclients on Inner Circle, each in
-its own scratch profile. The watcher runs the watch probe (TAK_WATCH_END_TEST): it plays
+Real taserver (--seed 1, --replaydir) and headless taclients on Inner Circle, each in
+its own scratch profile. The watcher runs the watch probe (TA_WATCH_END_TEST): it plays
 on past the result until the server ends the game (Msg::GameOver), then through the
 three-second results transition, and reports the result plate it would show.
 
@@ -22,7 +22,7 @@ In both:
   - its plate is the winner's, not slot 1's: VICTORY on the winner's side, the winner
     named and its row the highlighted one, the match length the result's tick;
   - its recording and the server's own replay both end on the game's last tick, and
-    both play back (TAK_REPLAY_VERIFY) to that tick and to the hash the watcher ended on;
+    both play back (TA_REPLAY_VERIFY) to that tick and to the hash the watcher ended on;
     its log does not say the recording continues past the result, as a player's does;
   - played back, each ends under the banner naming the winner (the verify run's
     "replay result" line), as the game did for its watcher.
@@ -145,9 +145,9 @@ def watched(session, watcher, seconds):
 
 def replays_end(session, out):
     """Both recordings end on the game's last tick and play back to the watcher's end state."""
-    kept = sorted(session.served.glob('*.takrep'))
-    own = replays(session.roots['watcher'], '.takrep')
-    assert len(kept) == 1 and len(own) == 1 and not replays(session.roots['watcher'], '.takrep.part'), (kept, own)
+    kept = sorted(session.served.glob('*.tarep'))
+    own = replays(session.roots['watcher'], '.tarep')
+    assert len(kept) == 1 and len(own) == 1 and not replays(session.roots['watcher'], '.tarep.part'), (kept, own)
     for what, path in (('server', kept[0]), ('watcher', own[0])):
         ticks, played = verify(session.args, session.root('verify'), path)
         end = re.search(r'replay done: tick=\d+ hash=(\w+)', played).group(1)
@@ -160,11 +160,11 @@ def replays_end(session, out):
 def case_allai(args, base):
     session = Session(args, base)
     try:
-        # TAK_MP_WATCH: the host takes no seat; TAK_STRESS + TAK_UNITCAP=250: each AI opens
+        # TA_MP_WATCH: the host takes no seat; TA_STRESS + TA_UNITCAP=250: each AI opens
         # with an army, so they are at each other at once.
         watcher = session.client('watcher', '--mphost', {
-            'TAK_WATCH_END_TEST': '1', 'TAK_MP_WATCH': '1', 'TAK_MP_AIS': '2', 'TAK_STRESS': '1',
-            'TAK_UNITCAP': '250', 'TAK_SPEED': '80'}, 1800)
+            'TA_WATCH_END_TEST': '1', 'TA_MP_WATCH': '1', 'TA_MP_AIS': '2', 'TA_STRESS': '1',
+            'TA_UNITCAP': '250', 'TA_SPEED': '80'}, 1800)
         out = watched(session, watcher, 420)
     finally:
         session.close()
@@ -180,10 +180,10 @@ def case_leaver(args, base):
     session = Session(args, base)
     try:
         # The watcher first: it polls the game list and watches the game from its start.
-        watcher = session.client('watcher', '--mpspectate', {'TAK_WATCH_END_TEST': '1'}, 600)
+        watcher = session.client('watcher', '--mpspectate', {'TA_WATCH_END_TEST': '1'}, 600)
         wait_for(session.roots['server'] / 'server.log', 'joined lobby', session.server, 90)   # listed before the game exists
-        # TAK_DEFEAT_TEST=2: the player self-destroys its Monarch and the run ends at its result.
-        player = session.client('player', '--mpai', {'TAK_DEFEAT_TEST': '2'}, 120)
+        # TA_DEFEAT_TEST=2: the player self-destroys its Monarch and the run ends at its result.
+        player = session.client('player', '--mpai', {'TA_DEFEAT_TEST': '2'}, 120)
         assert player.wait(150) == 0, 'the player did not finish:\n' + text(session.roots['player'])
         out = watched(session, watcher, 60)
     finally:
@@ -208,7 +208,7 @@ def case_undecided(args, base):
     finally:
         session.close()
     assert 'end=timelimit' in text(session.roots['player']), text(session.roots['player'])
-    own = replays(session.roots['player'], '.takrep')
+    own = replays(session.roots['player'], '.tarep')
     assert len(own) == 1, own
     ticks, played = verify(args, session.root('verify'), own[0])
     assert 'replay result' not in played, 'an undecided game\'s replay ends naming a winner:\n' + played[-600:]
@@ -224,7 +224,7 @@ def main():
     args = ap.parse_args()
     cases = {'allai': case_allai, 'leaver': case_leaver, 'undecided': case_undecided}
     names = args.case or list(cases)
-    base = Path(tempfile.mkdtemp(prefix='tak-watch-end-'))
+    base = Path(tempfile.mkdtemp(prefix='ta-watch-end-'))
     failed = False
     try:
         with concurrent.futures.ThreadPoolExecutor(len(names)) as pool:

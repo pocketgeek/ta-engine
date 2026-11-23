@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <span>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 508bc1..508c6d: passable terrain can still carry the low-priority grade 4.
 // Roads suppress the slope penalty, but not the preferred-depth penalty.
@@ -166,4 +166,4 @@ int retailSearchGrade(const RetailGradeContext& c,int x,int z,Visible visible,
     return grade;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

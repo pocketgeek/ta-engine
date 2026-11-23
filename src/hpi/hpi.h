@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::hpi {
+namespace ta::hpi {
 
 // Total Annihilation ships its data in HPI version-1 archives (header version
 // 0x00010000; *.hpi, *.ufo, *.ccx, *.gp3). Layout, checked against TotalA.exe
@@ -26,7 +26,7 @@ namespace tak::hpi {
 //   A compressed file is a table of ceil(size/65536) u32 chunk sizes followed
 //   by SQSH chunks (method 1 = LZ77, 2 = zlib; same 19-byte header as v2).
 //
-// TAK Engine's own map bundles use the HPI version-2 revision (0x00020000),
+// TA Engine's own map bundles use the HPI version-2 revision (0x00020000),
 // a revision of Total Annihilation's HPI format. Layout, verified against
 // the GOG release and Joe D's HPIPack writer source:
 //
@@ -167,7 +167,7 @@ struct MountConfig {
     std::vector<std::string> archiveNames;
     // Total Annihilation precedence (TotalA.exe 0x41d4c0 mounts, 0x4bb320 looks
     // up): archives are searched in MOUNT order and the first one holding the
-    // path wins -- entry dates play no part. Off = the TAK newest-date rule.
+    // path wins -- entry dates play no part. Off = the TA newest-date rule.
     bool firstMountWins = false;
     // Optional archive filter on the LOWERCASED filename (after archiveNames).
     std::function<bool(const std::string&)> archiveFilter;
@@ -307,7 +307,7 @@ Vfs mountRetailRoot(const std::filesystem::path& root,
                     const std::vector<std::string>& cosmeticPacks = {});
 // The per-user folder for downloaded and test maps (MapCache/), game-mod downloads
 // (ModCache/) and saved generated maps (Maps/Generated-*.kmp): the game's profile
-// folder, or takserver's --map-cache-dir. Nothing is ever written to the game data
+// folder, or taserver's --map-cache-dir. Nothing is ever written to the game data
 // folder. Set once at startup, before any mount; empty (the default, and every test
 // that does not set it) means none. mountRetailRoot adds its Maps/ below the
 // install's own Maps/ and lists its MapCache/.
@@ -370,4 +370,4 @@ std::string findMap(const Vfs& vfs, const std::string& name);
 // Every map as {display name, .tnt VFS path}, sorted by name, deduped by name.
 std::vector<std::pair<std::string, std::string>> listMaps(const Vfs& vfs);
 
-} // namespace tak::hpi
+} // namespace ta::hpi

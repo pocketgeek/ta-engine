@@ -12,7 +12,7 @@
 
     void GameView::openHotkeys() {
         if (!settings_) return;
-        hotkeysScreen_ = std::make_unique<tak::HotkeysScreen>(ren_, *settings_,
+        hotkeysScreen_ = std::make_unique<ta::HotkeysScreen>(ren_, *settings_,
             [this] { hotkeys_.load(settings_->hotkeys); },   // live-apply the rebind
             [this] { saveSettings(*settings_); });
     }
@@ -122,7 +122,7 @@
         if (giveUnitsMenu_) {
             if (e.type == SDL_MOUSEMOTION) { mouseX_ = float(e.motion.x); mouseY_ = float(e.motion.y); }
             if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE ||
-                hotkeys_.match(e.key.keysym.sym, e.key.keysym.mod) == tak::Act::GiveUnits))
+                hotkeys_.match(e.key.keysym.sym, e.key.keysym.mod) == ta::Act::GiveUnits))
                 giveUnitsMenu_ = false;
             // VOLUME sliders: press on one to set it and drag along it (as the Options
             // sliders do). A slider only has a hot area while it is live.
@@ -170,7 +170,7 @@
                             uint8_t mask=requestedManaSharing_.value_or(framePlayer(localPlayer_).manaShareMask);
                             mask ^= uint8_t(1u<<hot.player);
                             requestedManaSharing_=mask;
-                            tak::net::Command c;c.kind=tak::net::Cmd::ShareMana;
+                            ta::net::Command c;c.kind=ta::net::Cmd::ShareMana;
                             c.targetId=hot.player;c.queue=bool(mask & (1u<<hot.player));
                             std::lock_guard<std::mutex> lock(simMutex_);issue(c);
                             break;
@@ -246,9 +246,9 @@
             float delta = float(e.wheel.y);
 #endif
             if (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) delta = -delta;
-            buildLineGap_ = std::clamp(buildLineGap_ + tak::client::buildLineWheelSteps(
+            buildLineGap_ = std::clamp(buildLineGap_ + ta::client::buildLineWheelSteps(
                                            delta, buildLineWheel_, e.wheel.timestamp, buildLineWheelMs_),
-                                       0, tak::client::kBuildLineMaxGap);
+                                       0, ta::client::kBuildLineMaxGap);
             buildLineGapShown_ = 1.5f;
         } else if (e.type == SDL_MOUSEWHEEL && mouseZoomOn_) {
             // Zoom toward the cursor: keep the world point under the mouse fixed.
@@ -357,8 +357,8 @@
                 bdZ0_ = wz;
                 buildLineWheel_ = 0;   // no half notch left over from the last line
             } else if (!selection_.empty() && canPlaceLocked(placing_, wx, wz)) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::Build;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::Build;
                 c.unitId = selectedBuilder() ? selectedBuilder()->id : selection_.front();
                 c.x = wx;
                 c.z = wz;
@@ -392,7 +392,7 @@
             } else if (placing_ && !selection_.empty()) {
                 std::vector<int> clearing;
                 if (canPlaceLocked(placing_,wx,wz) || clearableAt(placing_,wx,wz,clearing)) {
-                    tak::net::Command c;c.kind=tak::net::Cmd::Build;
+                    ta::net::Command c;c.kind=ta::net::Cmd::Build;
                     c.unitId=selectedBuilder() ? selectedBuilder()->id : selection_.front();
                     c.x=wx;c.z=wz;c.queue=bdQueue_;
                     std::snprintf(c.type,sizeof c.type,"%s",placing_->id.c_str());issue(c);
@@ -430,7 +430,7 @@
             // pressed ground is drawn now.
             if (areaBoxAt(rdAnchor_, ex, ey)) {
                 const auto a = dragStartOnScreen(rdAnchor_);
-                issueBoxPlan(planBox(tak::client::BoxMode::Right, std::min(a.x, ex), std::min(a.y, ey),
+                issueBoxPlan(planBox(ta::client::BoxMode::Right, std::min(a.x, ex), std::min(a.y, ey),
                                      std::max(a.x, ex), std::max(a.y, ey)),
                              rdX0_, rdZ0_, ewx, ewz, queue);
             } else {
@@ -474,11 +474,11 @@
             const auto a = dragStartOnScreen(dragAnchor_);
             float sx0 = std::min(a.x, dragX1_), sx1 = std::max(a.x, dragX1_);
             float sy0 = std::min(a.y, dragY1_), sy1 = std::max(a.y, dragY1_);
-            bool isClick = !tak::client::areadrag::isSelectBox(dragAnchor_, a, dragX1_, dragY1_, uiScale_);
+            bool isClick = !ta::client::areadrag::isSelectBox(dragAnchor_, a, dragX1_, dragY1_, uiScale_);
             std::vector<int> matched;
             // A click's own choice (2.11, clickrules.h selectClick); a box keeps the
             // modifier combine below.
-            std::optional<tak::client::SelectAction> clickAction;
+            std::optional<ta::client::SelectAction> clickAction;
             if (isClick) {
                 // The ONE unit under the press (hoveredUnitAt, the picker the cursor
                 // and every order use: the smallest drawn region wins), in SCREEN
@@ -487,36 +487,36 @@
                 // The click is at the press (re-projected), so a unit pressed on near
                 // the screen edge is still the one picked after edge scroll moved it
                 // under a held pointer.
-                const UnitR* picked = hoveredUnitAt(tak::client::PointerArea::World, a.x, a.y);
-                tak::client::SelectClick sc;
+                const UnitR* picked = hoveredUnitAt(ta::client::PointerArea::World, a.x, a.y);
+                ta::client::SelectClick sc;
                 sc.target = cursorHoverKind(picked);
                 // An own unit under construction is not selectable: retail deselects.
                 if (picked && picked->player == localPlayer_ && picked->underConstruction)
-                    sc.target = tak::client::HoverKind::None;
+                    sc.target = ta::client::HoverKind::None;
                 sc.shift = addSel;
                 sc.ctrl = subSel;
                 sc.watcher = watchOnly();
-                if (sc.watcher && picked && picked->underConstruction) sc.target = tak::client::HoverKind::None;
+                if (sc.watcher && picked && picked->underConstruction) sc.target = ta::client::HoverKind::None;
                 sc.alreadySelected = picked &&
                     std::find(selection_.begin(), selection_.end(), picked->id) != selection_.end();
                 sc.ownSelected = std::any_of(selection_.begin(), selection_.end(), [&](int id) {
                     const auto* u = frameUnitP(id);
                     return u && u->player == localPlayer_;
                 });
-                clickAction = tak::client::selectClick(sc);
-                const int hit = sc.target != tak::client::HoverKind::None ? picked->id : -1;
+                clickAction = ta::client::selectClick(sc);
+                const int hit = sc.target != ta::client::HoverKind::None ? picked->id : -1;
                 if (hit >= 0) matched.push_back(hit);
                 // Double-click on the same unit: every unit of its type drawn in the map
                 // view (Shift adds them to the selection, Ctrl removes them).
-                const bool dbl = tak::client::doubleclick::isDouble(dragClicks_, hit, lastClickHit_,
+                const bool dbl = ta::client::doubleclick::isDouble(dragClicks_, hit, lastClickHit_,
                                                                     lastClickCount_);
                 lastClickHit_ = hit;
                 lastClickCount_ = dragClicks_;
-                if (dbl && (sc.watcher || sc.target == tak::client::HoverKind::OwnSelectable)) {
+                if (dbl && (sc.watcher || sc.target == ta::client::HoverKind::OwnSelectable)) {
                     // A watcher's double-click expands within the clicked unit's owner.
                     const auto* clicked = watchOnly() ? frameUnitP(hit) : nullptr;
                     const int clickOwner = clicked ? int(clicked->player) : localPlayer_;
-                    std::vector<tak::client::doubleclick::Candidate> cands;
+                    std::vector<ta::client::doubleclick::Candidate> cands;
                     for (const UnitR* _up : front().live) {
                         const UnitR& u = *_up;
                         if (!u.alive() || !u.type) continue;
@@ -525,12 +525,12 @@
                         cands.push_back({u.id, u.type, u.player == clickOwner,
                                          !u.underConstruction && (watchOnly() || u.selectable), p.x, p.y});
                     }
-                    matched = tak::client::doubleclick::expand(
+                    matched = ta::client::doubleclick::expand(
                         hit, cands, {float(mapViewW(winW_)), float(mapViewH(winH_))});
                     // The whole type joins (Shift) or leaves (Ctrl), as before.
-                    clickAction = subSel ? tak::client::SelectAction::Remove
-                                : addSel ? tak::client::SelectAction::Add
-                                         : tak::client::SelectAction::Replace;
+                    clickAction = subSel ? ta::client::SelectAction::Remove
+                                : addSel ? ta::client::SelectAction::Add
+                                         : ta::client::SelectAction::Replace;
                 }
             } else {
                 lastClickHit_ = -1;
@@ -549,7 +549,7 @@
                 if (watchOnly()) {
                     std::vector<int> owners;
                     for (int id : matched) if (const auto* u = frameUnitP(id)) owners.push_back(int(u->player));
-                    const int owner = tak::client::boxOwner(owners);
+                    const int owner = ta::client::boxOwner(owners);
                     std::erase_if(matched, [&](int id) {
                         const auto* u = frameUnitP(id);
                         return !u || int(u->player) != owner;
@@ -574,12 +574,12 @@
             if (addSel && watchOnly() && !matched.empty())
                 if (const auto* u = frameUnitP(matched.front()); u && int(u->player) != hudPlayer()) {
                     addSel = false;
-                    if (clickAction == tak::client::SelectAction::Add) clickAction = tak::client::SelectAction::Replace;
+                    if (clickAction == ta::client::SelectAction::Add) clickAction = ta::client::SelectAction::Replace;
                 }
             if (clickAction) {
                 // A click: keep, replace, add, remove (Shift on a selected unit, Ctrl)
                 // or clear, as selectClick decided.
-                using tak::client::SelectAction;
+                using ta::client::SelectAction;
                 addSel = *clickAction == SelectAction::Add;
                 subSel = *clickAction == SelectAction::Remove;
                 if (*clickAction == SelectAction::Keep) matched.clear(), addSel = true;
@@ -615,7 +615,7 @@
     // The replay bar's mouse. The bar takes its presses ahead of everything below it; a
     // press on the bar between its controls is swallowed, so nothing lands on the map.
     bool GameView::replayBarInput(const SDL_Event& e) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         const rb::Layout& l = replayBar_;
         if (e.type == SDL_MOUSEMOTION) {
             if (!replayDragging_) return false;
@@ -664,7 +664,7 @@
     }
 
     bool GameView::replayKey(SDL_Keycode key, uint16_t mod) {
-        namespace rb = tak::replaybar;
+        namespace rb = ta::replaybar;
         if (key == SDLK_SPACE || key == SDLK_PAUSE) { replayTogglePause(); return true; }
         if (key == SDLK_EQUALS || key == SDLK_PLUS || key == SDLK_KP_PLUS) {
             replaySpeed_ = rb::stepSpeed(replaySpeed_, +1);
@@ -710,7 +710,7 @@
         if (shakeTime_ > 0) shakeTime_ = std::max(0.0f, shakeTime_ - dt);   // shake decay
     }
 
-    bool GameView::canPlaceLocked(const tak::sim::UnitType* type, float x, float z) {
+    bool GameView::canPlaceLocked(const ta::sim::UnitType* type, float x, float z) {
         const auto live = liveWorld();
         return live->canPlaceOrder(type, x, z, localPlayer_, placementBuilderId()) && siteReachable(*live, type, x, z);
     }
@@ -720,13 +720,13 @@
         return selection_.empty() ? 0 : selection_.front();
     }
 
-    bool GameView::siteReachable(const tak::sim::World& w, const tak::sim::UnitType* type,
+    bool GameView::siteReachable(const ta::sim::World& w, const ta::sim::UnitType* type,
                                  float x, float z) const {
         const int id = placementBuilderId();
         return !id || w.buildSiteReachable(id, type, x, z);
     }
 
-    GameView::PlacePreview& GameView::placePreviewEntry(const tak::sim::UnitType* type, float x, float z) {
+    GameView::PlacePreview& GameView::placePreviewEntry(const ta::sim::UnitType* type, float x, float z) {
         const int builder = placementBuilderId();
         for (auto& e : placePreview_)
             if (e.type == type && e.x == x && e.z == z && e.builder == builder) return e;
@@ -735,7 +735,7 @@
         return placePreview_.back();
     }
 
-    bool GameView::canPlacePreview(const tak::sim::UnitType* type, float x, float z) {
+    bool GameView::canPlacePreview(const ta::sim::UnitType* type, float x, float z) {
         PlacePreview& e = placePreviewEntry(type, x, z);
         const uint32_t tick = front().gameTick;
         if (e.tick != tick && !placePreviewBusy_) {
@@ -751,7 +751,7 @@
     }
 
     // Whether a blocked site is blocked only by clearable features (the ghost is not red-washed).
-    bool GameView::placePreviewClearable(const tak::sim::UnitType* type, float x, float z) {
+    bool GameView::placePreviewClearable(const ta::sim::UnitType* type, float x, float z) {
         PlacePreview& e = placePreviewEntry(type, x, z);
         const uint32_t tick = front().gameTick;
         if ((e.tick != tick || !e.haveClear) && !placePreviewBusy_) {
@@ -769,7 +769,7 @@
     }
 
 #ifndef NDEBUG
-    // TAK_PACELOG: how long the render thread waits for the sim worker on a per-frame check.
+    // TA_PACELOG: how long the render thread waits for the sim worker on a per-frame check.
     void GameView::lockSimTimed(std::unique_lock<std::mutex>& lk) const {
         if (!paceOn()) { lk.lock(); return; }
         const auto t0 = std::chrono::steady_clock::now();
@@ -779,7 +779,7 @@
     }
 #endif
 
-    bool GameView::clearableAt(const tak::sim::UnitType* type, float x, float z,
+    bool GameView::clearableAt(const ta::sim::UnitType* type, float x, float z,
                                std::vector<int>& outFeatures) {
         const auto* builder=selectedBuilder();
         if (!builder || !builder->type->canReclaim) return false;
@@ -789,13 +789,13 @@
     }
 
     // The simulation queues footprint reclamation before admitting construction.
-    void GameView::issueClearThenBuild(int builderId, const tak::sim::UnitType* type,
+    void GameView::issueClearThenBuild(int builderId, const ta::sim::UnitType* type,
                                        float x, float z, const std::vector<int>& feats,
                                        uint8_t queue) {
         const UnitR* b=frameUnitP(builderId);
         if (!type || feats.empty() || !b || !b->type || !b->type->canReclaim) return;
-        tak::net::Command bc;
-        bc.kind = tak::net::Cmd::Build;
+        ta::net::Command bc;
+        bc.kind = ta::net::Cmd::Build;
         bc.unitId = builderId;
         bc.x = x;
         bc.z = z;
@@ -873,7 +873,7 @@
         if (!placing_ || !placing_->onMana || selection_.empty()) return false;
         const auto* builder=selectedBuilder();
         if (!builder) return false;
-        tak::net::Command c;c.kind=tak::net::Cmd::BuildManaArea;
+        ta::net::Command c;c.kind=ta::net::Cmd::BuildManaArea;
         c.unitId=builder->id;c.x=x0;c.z=z0;c.x2=x1;c.z2=z1;c.queue=queue;
         std::snprintf(c.type,sizeof c.type,"%s",placing_->id.c_str());issue(c);
         return true;
@@ -911,24 +911,24 @@
             // computes its approach (navigationCell) only when it becomes active, from
             // where the work before it left the builder (prepareBuildApproach).
             if (walks) {
-                px = tak::sim::footprintOrigin(b->x, bt->footX);
-                pz = tak::sim::footprintOrigin(b->z, bt->footZ);
+                px = ta::sim::footprintOrigin(b->x, bt->footX);
+                pz = ta::sim::footprintOrigin(b->z, bt->footZ);
             }
             bool trailSeen = false;
             const auto& t = buildLineTrail_;
-            for (size_t i = tak::sim::World::currentLeg(b->orders); i < b->orders.size(); ++i) {
+            for (size_t i = ta::sim::World::currentLeg(b->orders); i < b->orders.size(); ++i) {
                 const auto& o = b->orders[i];
                 if (!walks) {
                 } else if (o.buildRectangle && o.mission.stage == 0) {
                     const auto [nx, nz] = o.buildRectangle->navigationCell(px, pz);
                     px = nx; pz = nz;
                 } else {
-                    px = tak::sim::footprintOrigin(o.x, bt->footX);
-                    pz = tak::sim::footprintOrigin(o.z, bt->footZ);
+                    px = ta::sim::footprintOrigin(o.x, bt->footX);
+                    pz = ta::sim::footprintOrigin(o.z, bt->footZ);
                 }
                 if (o.buildType && o.buildType->isStructure()) {
-                    const Rect r{tak::sim::footprintOrigin(o.buildX, o.buildType->footX),
-                                 tak::sim::footprintOrigin(o.buildZ, o.buildType->footZ),
+                    const Rect r{ta::sim::footprintOrigin(o.buildX, o.buildType->footX),
+                                 ta::sim::footprintOrigin(o.buildZ, o.buildType->footZ),
                                  o.buildType->footX, o.buildType->footZ};
                     queued.push_back(r);
                     trailSeen |= !t.sites.empty() && r.x == t.sites.back().x && r.z == t.sites.back().z;
@@ -944,7 +944,7 @@
         }
         std::vector<std::pair<int, int>> line;   // site footprint origins
         for (const auto& [x, z] : sites)
-            line.push_back({tak::sim::footprintOrigin(x, fx), tak::sim::footprintOrigin(z, fz)});
+            line.push_back({ta::sim::footprintOrigin(x, fx), ta::sim::footprintOrigin(z, fz)});
         // Does the builder's footprint at cell (x,z) overlap this line, or a queued site?
         const auto overlaps = [&](const std::vector<std::pair<int, int>>& set, int x, int z) {
             for (const auto& [ox, oz] : set)
@@ -987,8 +987,8 @@
             return true;
         };
         const auto move = [&](int x, int z) {
-            tak::net::Command m;
-            m.kind = tak::net::Cmd::Move;
+            ta::net::Command m;
+            m.kind = ta::net::Cmd::Move;
             m.unitId = builderId;
             m.x = float(x * 16 + bt->footX * 8);
             m.z = float(z * 16 + bt->footZ * 8);
@@ -1000,7 +1000,7 @@
         // shortest route over the cells near the site, around every queued site, to the
         // nearest clear rectangle cell -- ours side first -- as the few moves (each a
         // walk that clips nothing) that follow it. Empty when there is none.
-        const auto route = [&](const tak::sim::RetailRectGoal& rect, int& onSide) {
+        const auto route = [&](const ta::sim::RetailRectGoal& rect, int& onSide) {
             std::vector<std::pair<int, int>> moves;
             constexpr int kMargin = 10, kMaxSpan = 160;
             const int wx0 = std::min(px, rect.minX) - kMargin, wz0 = std::min(pz, rect.minZ) - kMargin;
@@ -1085,7 +1085,7 @@
             if (!siteReachable(*live,placing_,x,z)) continue;   // the builder can never get there
             if (walks && sites.size() > 1) {
                 const auto [sx, sz] = line[k];
-                const tak::sim::RetailRectGoal rect{sx - bt->footX, sx + fx, sz - bt->footZ, sz + fz};
+                const ta::sim::RetailRectGoal rect{sx - bt->footX, sx + fx, sz - bt->footZ, sz + fz};
                 auto [tx, tz] = rect.navigationCell(px, pz);
                 if (overlaps(line, tx, tz) || overlapsQueued(tx, tz) || sideOf(tx, tz) != side ||
                     !clearWalk(px, pz, tx, tz)) {
@@ -1124,8 +1124,8 @@
                 }
                 px = tx; pz = tz;
             }
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Build;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Build;
             c.unitId = builderId;
             c.x = x;
             c.z = z;
@@ -1155,8 +1155,8 @@
                                   {pick->x + 260, pick->z + 300},
                                   {pick->x - 60,  pick->z + 300}};
         for (int i = 0; i < 3; ++i) {
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::Move;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::Move;
             c.unitId = pick->id;
             c.x = legs[i][0];
             c.z = legs[i][1];
@@ -1185,8 +1185,8 @@ void GameView::giveSelectedUnits(int recipient) {
     const auto live = liveWorld();
     std::erase_if(selection_,[&](int id) {
         if (!live->canGiveUnit(id,localPlayer_,recipient)) return false;
-        tak::net::Command c;
-        c.kind = tak::net::Cmd::GiveUnit;
+        ta::net::Command c;
+        c.kind = ta::net::Cmd::GiveUnit;
         c.unitId = id;
         c.targetId = recipient;
         issue(c);

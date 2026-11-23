@@ -4,7 +4,7 @@
 #include "sim/retailrng.h"
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailWind {
     int32_t minimum = 100, maximum = 2000;
@@ -30,4 +30,4 @@ void retailTickWind(RetailWind& wind, uint32_t tick, Random random, CrtRandom cr
     ++wind.generation;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

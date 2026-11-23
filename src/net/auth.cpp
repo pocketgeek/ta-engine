@@ -3,7 +3,7 @@
 #include <cctype>
 #include <cstring>
 
-namespace tak::auth {
+namespace ta::auth {
 
 namespace {
 
@@ -14,7 +14,7 @@ constexpr std::string_view kServerKeyLabel = "Server Key";
 
 // Version tag opening every authMessage. If the exchange ever changes shape,
 // bumping this makes a proof from the old scheme unusable under the new one.
-constexpr std::string_view kTranscriptTag = "TAK-SCRAM-SHA-256-v1";
+constexpr std::string_view kTranscriptTag = "TA-SCRAM-SHA-256-v1";
 
 void putU32(std::vector<uint8_t>& v, uint32_t x) {
     v.push_back(uint8_t(x >> 24)); v.push_back(uint8_t(x >> 16));
@@ -97,7 +97,7 @@ crypto::Digest serverSignature(const crypto::Digest& serverKey, const std::vecto
 
 crypto::Digest tokenHash(const Credential& c, std::string_view user,
                          const std::vector<uint8_t>& token) {
-    constexpr std::string_view kLabel = "TAK-sign-in-token-v1";
+    constexpr std::string_view kLabel = "TA-sign-in-token-v1";
     const std::string fold = foldUsername(user);
     // Only tokens of kTokenLen are ever hashed, so the fields cannot shift.
     // Sized up front: a reallocation would free a copy of the token unwiped.
@@ -143,4 +143,4 @@ std::string foldUsername(std::string_view u) {
     return s;
 }
 
-}  // namespace tak::auth
+}  // namespace ta::auth

@@ -12,7 +12,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace hc = tak::hudcorner;
+namespace hc = ta::hudcorner;
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {

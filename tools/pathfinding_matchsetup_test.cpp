@@ -2,7 +2,7 @@
 #include "sim/matchsetup.h"
 #include <cstdio>
 #include <stdexcept>
-using namespace tak;
+using namespace ta;
 static void check(bool ok,const char* text){if(!ok)throw std::runtime_error(text);}
 static std::vector<uint8_t> mapBytes(int width) {
     tnt::Map map;map.width=width;map.height=64;map.blocksX=width/2;map.blocksY=32;

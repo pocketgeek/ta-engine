@@ -11,7 +11,7 @@ int main(int argc,char**argv) {
     if(argc==2 && std::string(argv[1])=="--routes") {
         int flags,free;
         while(std::cin>>flags>>free) {
-            const int priority=tak::retailSoundPriority(flags);
+            const int priority=ta::retailSoundPriority(flags);
             std::cout<<(priority>1 || free ? priority : -1)<<'\n';
         }
         return 0;
@@ -28,10 +28,10 @@ int main(int argc,char**argv) {
     std::memcpy(cob.data()+72,"Start",6);std::memcpy(cob.data()+80,"line_a.wav",11);
     std::memcpy(cob.data()+96,"line_b",7);
     for(size_t i=0;i<code.size();++i)put(128+i*4,code[i]);
-    tak::sim::TypeRegistry registry;tak::tdf::Node header;
+    ta::sim::TypeRegistry registry;ta::tdf::Node header;
     header.values["victorytimerrunsout"]="100";
-    tak::sim::World world;
-    tak::sim::MissionScript mission(cob,header,registry,0,"audio fixture");
+    ta::sim::World world;
+    ta::sim::MissionScript mission(cob,header,registry,0,"audio fixture");
     mission.start(world);
     check(world.takeSoundRequests().empty(),"mission Start audio waits for first script tick");
     mission.step(world,1.f/30);
@@ -60,10 +60,10 @@ int main(int argc,char**argv) {
     // Objective soundplayed is independent of completion: the polling rule can
     // become false again, whereas its sound must remain once-only.
     {
-        tak::sim::World w;tak::sim::UnitType type;type.id="fixture";
+        ta::sim::World w;ta::sim::UnitType type;type.id="fixture";
         const int enemy=w.spawn(&type,100,100,0,1);
-        tak::tdf::Node rules;rules.values={{"destroyallunits","1"},{"victorytimerrunsout","100"},{"deathtimerrunsout","100"}};
-        tak::sim::MissionScript m({},rules,registry,0,"objective sound");m.start(w);
+        ta::tdf::Node rules;rules.values={{"destroyallunits","1"},{"victorytimerrunsout","100"},{"deathtimerrunsout","100"}};
+        ta::sim::MissionScript m({},rules,registry,0,"objective sound");m.start(w);
         m.step(w,1.f/30);check(w.takeSoundRequests().empty(),"incomplete objective is silent");
         w.unit(enemy)->deadFor=0;m.step(w,1.f/30);
         auto cues=w.takeSoundRequests();
@@ -74,28 +74,28 @@ int main(int argc,char**argv) {
         check(w.takeSoundRequests().empty(),"objective sound does not repeat after false/true transition");
     }
     {
-        tak::sim::World w;tak::sim::UnitType type;type.id="commander";
+        ta::sim::World w;ta::sim::UnitType type;type.id="commander";
         const int enemy=w.spawn(&type,100,100,0,1);
-        tak::tdf::Node rules;rules.values={{"killenemycommander","1"},{"victorytimerrunsout","100"},{"deathtimerrunsout","100"}};
-        tak::sim::MissionScript m({},rules,registry,0,"event sound");m.setPlayerCommanders({&type,&type});m.start(w);
+        ta::tdf::Node rules;rules.values={{"killenemycommander","1"},{"victorytimerrunsout","100"},{"deathtimerrunsout","100"}};
+        ta::sim::MissionScript m({},rules,registry,0,"event sound");m.setPlayerCommanders({&type,&type});m.start(w);
         w.unit(enemy)->deadFor=0;m.unitDied(w,enemy);
         check(w.takeSoundRequests().size()==1,"death objective emits at event before next poll");
         m.unitDied(w,enemy);m.step(w,1.f/30);
         check(w.takeSoundRequests().empty(),"event plus poll cannot duplicate objective cue");
     }
     {
-        tak::sim::World w;tak::tdf::Node rules;
+        ta::sim::World w;ta::tdf::Node rules;
         rules.values={{"victorytimerrunsout","1"},{"deathtimerrunsout","1"}};
-        tak::sim::MissionScript m({},rules,registry,0,"timer sound");m.start(w);
+        ta::sim::MissionScript m({},rules,registry,0,"timer sound");m.start(w);
         for(int i=0;i<30;++i)m.step(w,1.f/30);
         check(w.takeSoundRequests().empty(),"timer victory and defeat have no invented success cue");
     }
     if(argc==2) {
-        SDL_SetMainReady();auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        SDL_SetMainReady();auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         std::set<std::string> referenced;int scripts=0,decoded=0,missing=0;
         for(const auto& path:vfs.list("missions")) {
             if(!path.ends_with(".cob"))continue;
-            auto file=tak::cob::load(vfs.read(path),path);bool hasSound=false;
+            auto file=ta::cob::load(vfs.read(path),path);bool hasSound=false;
             for(size_t pc=0;pc+1<file.code.size();++pc)if(file.code[pc]==0x10072000) {
                 const auto index=file.code[pc+1];if(index>=file.names.size())continue;
                 hasSound=true;auto name=file.names[index];

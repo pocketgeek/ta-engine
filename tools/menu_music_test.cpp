@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <tuple>
 
-namespace tak {
+namespace ta {
 // The test uses the ordinary SDL dummy device, without the Options UI, and picks
 // the "detected" speaker count itself.
 int testOutputChannels=2;
@@ -82,10 +82,10 @@ void require(bool ok,const std::string& what) {if(!ok)throw std::runtime_error(w
 int main(int argc,char**argv) {
     SDL_SetMainReady();SDL_setenv("SDL_AUDIODRIVER","dummy",1);
     if(SDL_Init(SDL_INIT_AUDIO)!=0)return 2;
-    using Access=tak::MenuMusicTestAccess;
-    constexpr int kTap=tak::audio::kMixRate;
+    using Access=ta::MenuMusicTestAccess;
+    constexpr int kTap=ta::audio::kMixRate;
     try {
-        tak::MenuMusic music;Capture capture;
+        ta::MenuMusic music;Capture capture;
         music.setAudioTap(&capture,Capture::tap);
         // One second of a constant level (L .25, R -.125) in several source formats:
         // the tap gets 44100 Hz in the device's layout, scaled by the music volume.
@@ -172,8 +172,8 @@ int main(int argc,char**argv) {
             put(root/"Music"/"track3.wav",wavFile(AUDIO_S16SYS,22050,2,retail));
             put(pack/"track3.wav",wavFile(AUDIO_S16SYS,44100,2,mod));
             {
-                auto vfs=tak::hpi::mountPlayVfs(root,{},{});
-                tak::testOutputChannels=2;
+                auto vfs=ta::hpi::mountPlayVfs(root,{},{});
+                ta::testOutputChannels=2;
                 music.setVolume(256,256);music.start(vfs,3);
                 require(music.playing(),"mod track starts");
                 Access::pause(music);
@@ -186,7 +186,7 @@ int main(int argc,char**argv) {
                 std::printf("menu mod track tap: L15k=%.0f R15k=%.0f R1k=%.0f\n",l15,r15,r1);
                 require(l15>8000 && r15<50 && r1>8000,"mod track's tap keeps 15 kHz stereo at 44100");
                 const size_t at=Access::position(music);
-                tak::testOutputChannels=6;music.reopen();Access::pause(music);
+                ta::testOutputChannels=6;music.reopen();Access::pause(music);
                 // (The unpaused device may pull a buffer before the test pauses it again.)
                 require(Access::deviceChannels(music)==6 && Access::position(music)>=at
                         && Access::position(music)<at+8192,
@@ -194,13 +194,13 @@ int main(int argc,char**argv) {
                 capture.pcm.clear();capture.channels=0;
                 auto out=Access::fill(music,4410);
                 require(tone(out,6,0,15000,44100)>4000 && tone(out,6,1,15000,44100)<50,"5.1 device keeps the image");
-                tak::testOutputChannels=2;
+                ta::testOutputChannels=2;
                 music.stop();
             }
             std::error_code ec;fs::remove_all(root,ec);
         }
         if(argc==2) {
-            auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+            auto vfs=ta::hpi::mountRetailRoot(argv[1]);
             capture.pcm.clear();capture.channels=0;
             music.setVolume(256,256);music.start(vfs,15);
             if(!music.playing())throw std::runtime_error("retail title track failed to start");

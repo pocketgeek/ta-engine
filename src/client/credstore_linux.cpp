@@ -23,7 +23,7 @@
 #include <mutex>
 #include <type_traits>
 
-namespace tak::credstore {
+namespace ta::credstore {
 namespace {
 
 using gboolean = int;
@@ -88,7 +88,7 @@ class SecretService final : public Store {
 public:
     explicit SecretService(const Slot& slot) : service_(slot.service), account_(slot.account),
         label_(slot.service + ": " + slot.account) {
-        schema_.name = "org.takengine.Credential";
+        schema_.name = "org.taengine.Credential";
         schema_.attributes[0] = {"service", 0};
         schema_.attributes[1] = {"account", 0};
     }
@@ -169,4 +169,4 @@ private:
 
 std::unique_ptr<Store> system(const Slot& slot) { return std::make_unique<SecretService>(slot); }
 
-}  // namespace tak::credstore
+}  // namespace ta::credstore

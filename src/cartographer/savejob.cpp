@@ -15,7 +15,7 @@ std::future<SaveResult> saveInBackground(SaveSnapshot snapshot,std::shared_ptr<S
                 auto world=snapshot.metadata.kingdom.empty()?std::string("aramon"):snapshot.metadata.kingdom;
                 std::transform(world.begin(),world.end(),world.begin(),[](unsigned char c){return char(std::tolower(c));});
                 if(!snapshot.vfs)throw std::runtime_error("Save has no terrain asset source");
-                tak::terrain::Compositor compositor(*snapshot.vfs);
+                ta::terrain::Compositor compositor(*snapshot.vfs);
                 auto cancel=std::shared_ptr<const std::atomic_bool>(progress,&progress->cancel);
                 generateMinimaps(snapshot.map,compositor,loadWorldPalette(*snapshot.vfs,world),cancel);
             }

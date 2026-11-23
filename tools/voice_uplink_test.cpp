@@ -35,7 +35,7 @@
 #include <thread>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int checks = 0, failures = 0;

@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <span>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailEffectClock {
     uint16_t frame = 0, remaining = 0;
     bool active = false;
@@ -21,4 +21,4 @@ struct RetailEffectClock {
         remaining = durations[frame];
     }
 };
-} // namespace tak::sim
+} // namespace ta::sim

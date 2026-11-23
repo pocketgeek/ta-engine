@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::chatbox {
+namespace ta::chatbox {
 
 // Options: CHAT SCALE (on top of UI SCALE) and CHAT POSITION.
 inline constexpr float kMinScale = 0.5f, kMaxScale = 3.0f;
@@ -120,4 +120,4 @@ inline Rect place(int align, float boxW, float boxH, float areaW, float bottom, 
     return r;
 }
 
-}  // namespace tak::chatbox
+}  // namespace ta::chatbox

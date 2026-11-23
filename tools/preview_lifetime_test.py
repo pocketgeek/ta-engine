@@ -4,7 +4,7 @@
 A generated map's preview is rolled on a worker, and the full-window map view decodes
 terrain on its own workers; all of them read the client's data set (GameView::vfs_).
 startMpGame remounts that data set for the room's mods, and GameView's destructor destroys
-it. The debug probe TAK_PREVIEW_LIFETIME_TEST puts a read gate on the data set, holds the
+it. The debug probe TA_PREVIEW_LIFETIME_TEST puts a read gate on the data set, holds the
 preview readers at a read, lets them go one at a time from two seconds on (the last held
 first, so waiting for anything less than all of them leaves one held), and ends the run with
 FAIL if the data set goes while one is still in it (it would read freed memory):
@@ -38,11 +38,11 @@ def free_port():
 
 
 def environment(root, name):
-    env = {k: v for k, v in os.environ.items() if not k.startswith('TAK_')}
+    env = {k: v for k, v in os.environ.items() if not k.startswith('TA_')}
     for sub in ('data', 'config', 'home'):
         (root / name / sub).mkdir(parents=True, exist_ok=True)
     env.update(XDG_DATA_HOME=str(root / name / 'data'), XDG_CONFIG_HOME=str(root / name / 'config'),
-               TAK_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+               TA_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
     if os.name != 'nt':
         env['HOME'] = str(root / name / 'home')
     return env
@@ -89,7 +89,7 @@ def main():
                 time.sleep(0.1)
             for mode in MODES:
                 env = environment(root, mode)
-                env.update(TAK_PREVIEW_LIFETIME_TEST=mode, TAK_SPEED='80')
+                env.update(TA_PREVIEW_LIFETIME_TEST=mode, TA_SPEED='80')
                 log = open(root / (mode + '.log'), 'w')
                 clients[mode] = (subprocess.Popen(
                     [args.client, 'game', MAP, '--data', args.data, '--server', '127.0.0.1', '--serverport', str(port),

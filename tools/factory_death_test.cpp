@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what, const std::string& detail = {}) {

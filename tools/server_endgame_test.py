@@ -32,7 +32,7 @@ Each scenario runs on its own and every failure is reported:
              limit on running games (--max-running-games 1 here).
   stuck      (needs --map-tool) a watcher that never takes the map does not hold the
              ended game's room: it goes once that watcher has taken none of the log for
-             the drain time (TAK_OVER_DRAIN_MS, shortened here).
+             the drain time (TA_OVER_DRAIN_MS, shortened here).
 """
 import argparse
 import hashlib
@@ -261,7 +261,7 @@ def scenario_seated_then_leave(port, h, root, _packages):
         assert log_says(root, 'game %d over after %d ticks (match over): team 2 wins' % (room, ticks)), 'the end was not logged'
         assert log_says(root, 'game %d ended (match over)' % room), 'the room was not torn down'
         assert log_says(root, '(%d ticks, ' % ticks), 'the server\'s replay does not end on the last tick'
-        assert list((root / 'replays').glob('game-%d-*.takrep' % room)), 'the server wrote no replay'
+        assert list((root / 'replays').glob('game-%d-*.tarep' % room)), 'the server wrote no replay'
         assert room not in listed(port, h), 'the ended game is still listed'
         assert refused_watch(port, h, 'Wendy', room) == b'game not found or ended'
     finally:
@@ -425,15 +425,15 @@ def main():
     ap.add_argument('--data', type=Path, required=True)
     ap.add_argument('--map-tool', type=Path)
     a = ap.parse_args()
-    os.environ['TAK_STALL_MS'], os.environ['TAK_DROP_WAIT_MS'] = str(STALL_MS), str(WAIT_MS)
-    os.environ['TAK_OVER_DRAIN_MS'] = str(DRAIN_MS)
+    os.environ['TA_STALL_MS'], os.environ['TA_DROP_WAIT_MS'] = str(STALL_MS), str(WAIT_MS)
+    os.environ['TA_OVER_DRAIN_MS'] = str(DRAIN_MS)
     failed = []
-    with tempfile.TemporaryDirectory(prefix='tak-endgame-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-endgame-') as tmp:
         root = Path(tmp)
         (root / 'replays').mkdir()
         packages = {}
         if a.map_tool:
-            out = root / 'Inner-Circle.takmap'
+            out = root / 'Inner-Circle.tamap'
             subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out), 'Inner Circle'],
                            check=True)
             packages['Inner Circle'] = out.read_bytes()

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include "sim/fixed.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Impact dispatch 529c10: a shot that struck a unit with a weapon whose
 // areaofeffect (WeaponType +8a, u16) is at most 16 is the direct hit 52a460
@@ -92,4 +92,4 @@ void retailSplashUnits(const std::array<int32_t,3>& impact,uint16_t aoe,float ed
             if(distance<window.radius)hit(id,retailSplashFraction(distance,window.radius,edge));
         }
 }
-} // namespace tak::sim
+} // namespace ta::sim

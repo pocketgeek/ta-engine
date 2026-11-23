@@ -251,7 +251,7 @@ def main():
     ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
     failed = []
-    with tempfile.TemporaryDirectory(prefix='tak-spectators-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-spectators-') as tmp:
         with server(a.server.resolve(), a.data.resolve(), Path(tmp)) as (port, h, process):
             for scenario in SCENARIOS:
                 name = scenario.__name__[len('scenario_'):]

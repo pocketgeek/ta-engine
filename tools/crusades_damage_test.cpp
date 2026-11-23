@@ -9,7 +9,7 @@
 
 int main() {
     namespace fs=std::filesystem;
-    const auto dir=fs::temp_directory_path()/("tak-damage-"+std::to_string(
+    const auto dir=fs::temp_directory_path()/("ta-damage-"+std::to_string(
         std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup {fs::path p;~Cleanup(){std::error_code e;fs::remove_all(p,e);}} cleanup{dir};
     fs::create_directories(dir/"units");
@@ -24,8 +24,8 @@ int main() {
         f<<"[UNITINFO]\n{\nObjectName=case"<<i<<";\nDamageCategory=fort;\nCategory=monster;\nTEDClass=factory;\n}\n"
          <<"[WEAPON1]\n{\n[DAMAGE]\n{\ndefault="<<c.base<<";\nfort="<<c.multiplier<<";\nmonster=0;\nfactory=0;\n}\n}\n";
     }
-    tak::hpi::Vfs vfs;vfs.addLayer(tak::hpi::MountSet(dir));
-    tak::sim::TypeRegistry registry;registry.loadDir(vfs,"units/");
+    ta::hpi::Vfs vfs;vfs.addLayer(ta::hpi::MountSet(dir));
+    ta::sim::TypeRegistry registry;registry.loadDir(vfs,"units/");
     int failures=0;
     auto check=[&](bool ok,const char* text){if(!ok){std::cerr<<text<<'\n';++failures;}};
     for(size_t i=0;i<std::size(cases);++i) {
@@ -37,11 +37,11 @@ int main() {
         check(w.damageVs(t)==cases[i].expected,"native category damage after interning");
         w.dmgVsIds.clear();
         check(w.damageVs(t)==cases[i].expected,"uninterned category damage agrees");
-        tak::sim::UnitType generic;generic.categories={"monster","factory"};
+        ta::sim::UnitType generic;generic.categories={"monster","factory"};
         check(w.damageVs(&generic)==w.damage,"generic CATEGORY/TEDClass must not match");
         generic.damageCategory="monster";
         check(w.damageVs(&generic)==0,"explicit category immunity");
-        check(tak::client::cursorDamageVs(w,generic)==0,"cursor and combat share category immunity");
+        check(ta::client::cursorDamageVs(w,generic)==0,"cursor and combat share category immunity");
     }
     return failures?1:0;
 }

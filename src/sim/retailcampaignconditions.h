@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-namespace tak::sim {
+namespace ta::sim {
 // Native campaign conditions (523670..524950). Victory conditions are combined
 // with AND; defeat conditions with OR by the condition manager.
 struct RetailCampaignConditionState {
@@ -61,4 +61,4 @@ inline void retailCampaignDeath(RetailCampaignConditionState::Kind kind,
     default:break;
     }
 }
-} // namespace tak::sim
+} // namespace ta::sim

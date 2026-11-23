@@ -19,7 +19,7 @@
 #include "gui/gui.h"
 #include "util/png.h"
 
-namespace tak {
+namespace ta {
 bool BriefingScreen::run(SDL_Renderer* ren,const hpi::Vfs& vfs,const std::string& stem,
                         const std::string& title,Settings* settings,MenuMusic* music,
                         SDL_Texture* background,std::function<bool()> idle,int chapter,
@@ -100,7 +100,7 @@ bool BriefingScreen::run(SDL_Renderer* ren,const hpi::Vfs& vfs,const std::string
             if(settings && settings->hardwareCursor && cursors.applyHardware(CursorId::Normal,scale))SDL_ShowCursor(SDL_ENABLE);
             else {SDL_ShowCursor(SDL_DISABLE);int mx=0,my=0;hidpi::mousePixels(ren,mx,my);cursors.draw(ren,CursorId::Normal,mx,my,scale);}
         }else SDL_ShowCursor(SDL_ENABLE);
-        if(const char* path=devEnv("TAK_SHOT_BRIEFING")) {
+        if(const char* path=devEnv("TA_SHOT_BRIEFING")) {
             std::vector<uint8_t> pixels(size_t(w)*size_t(h)*4);
             if(SDL_RenderReadPixels(ren,nullptr,SDL_PIXELFORMAT_ABGR8888,pixels.data(),w*4)==0)png::write(path,w,h,pixels);
             return true;

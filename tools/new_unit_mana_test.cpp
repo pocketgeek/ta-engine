@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-using namespace tak::sim;
+using namespace ta::sim;
 static void check(bool ok,const char* what) {if(!ok)throw std::runtime_error(what);}
 static UnitType caster() {
     UnitType t;t.id="caster";t.maxHp=651;t.healTime=0;t.sight=300;t.maxMana=150;t.manaRegen=3;
@@ -66,10 +66,10 @@ static int storageCredit() {
 // campaign mission's the storage of the units it places. Ours opened every
 // skirmish with 2800 and every mission with 500.
 static int shipped(const char* root) {
-    auto vfs=tak::hpi::mountRetailRoot(root);
+    auto vfs=ta::hpi::mountRetailRoot(root);
     TypeRegistry reg;setupRegistry(reg,vfs,false);
     {
-        World w;MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=tak::hpi::findMap(vfs,"ulasem arena");
+        World w;MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=ta::hpi::findMap(vfs,"ulasem arena");
         for (int f=0;f<5;++f) {MatchSlot s;s.used=true;s.faction=f;s.team=f;cfg.slots.push_back(s);}
         setupMatch(w,reg,cfg);
         for (int p=0;p<5;++p) {
@@ -115,7 +115,7 @@ static int shipped(const char* root) {
         for (int p=0;p<w.numPlayers();++p) check(w.player(p).losses==0,"a placed wall counted as a loss");
     }
     {
-        World w;MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=tak::hpi::findMap(vfs,"ulasem arena");
+        World w;MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=ta::hpi::findMap(vfs,"ulasem arena");
         MatchSlot s;s.used=true;s.faction=0;cfg.slots.push_back(s);
         setupMatch(w,reg,cfg);
         const Unit* monarch=nullptr;
@@ -147,7 +147,7 @@ static int shipped(const char* root) {
         // (check_change_owner.py, check_construction_completion.py). Ours set
         // the unit active at spawn, under construction too, and ran Activate
         // at neither point.
-        World w;MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=tak::hpi::findMap(vfs,"ulasem arena");
+        World w;MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=ta::hpi::findMap(vfs,"ulasem arena");
         MatchSlot s;s.used=true;s.faction=2;cfg.slots.push_back(s);
         setupMatch(w,reg,cfg);
         const Unit* monarch=nullptr;
@@ -248,7 +248,7 @@ int main(int argc,char** argv) try {
         w.unit(gone)->hp=Fixed();w.unit(gone)->deathType=1;w.tick(1.f/30.f);
         check(!w.unit(gone)->alive() && !w.unit(gone)->deathPending,"the fixture did not retire");
         TypeRegistry registry;
-        MissionScript mission(std::vector<uint8_t>{},tak::tdf::Node{},registry,0,"setattribute fixture");
+        MissionScript mission(std::vector<uint8_t>{},ta::tdf::Node{},registry,0,"setattribute fixture");
         mission.command(w,"SetAttribute HealthPercentage",{live,25});
         mission.command(w,"SetAttribute HealthPercentage",{gone,25});
         mission.command(w,"SetAttribute ManaPercentage",{gone,100});

@@ -1,10 +1,10 @@
-# ctest creon_death_sound_peers: the Creon death-sound harness (TAK_CREON_DEATH_SOUND_TEST,
+# ctest creon_death_sound_peers: the Creon death-sound harness (TA_CREON_DEATH_SOUND_TEST,
 # src/client/gameview_devharness.cpp; ctest creon_death_sound runs it once) run as two
 # peers of one game. Each run checks its own deaths against the simulation's choice; the
-# second (TAK_CREON_DEATH_SOUND_CATCHUP=1) presents every batch late, as a rejoining client
+# second (TA_CREON_DEATH_SOUND_CATCHUP=1) presents every batch late, as a rejoining client
 # or a spectator catching up does. Both must simulate the same world and hear the same
 # sounds for every death.
-#   cmake -DCLIENT=<takclient> -DDATA=<retail install> -DOUT=<dir> -P creon_death_sound.cmake
+#   cmake -DCLIENT=<taclient> -DDATA=<retail install> -DOUT=<dir> -P creon_death_sound.cmake
 foreach(var CLIENT DATA OUT)
   if(NOT DEFINED ${var})
     message(FATAL_ERROR "creon_death_sound.cmake needs -D${var}=...")
@@ -15,10 +15,10 @@ set(errors "")
 foreach(peer normal catchup)
   set(extra "")
   if(peer STREQUAL "catchup")
-    set(extra TAK_CREON_DEATH_SOUND_CATCHUP=1)
+    set(extra TA_CREON_DEATH_SOUND_CATCHUP=1)
   endif()
   execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env TAK_CREON_DEATH_SOUND_TEST=1 ${extra}
+    COMMAND "${CMAKE_COMMAND}" -E env TA_CREON_DEATH_SOUND_TEST=1 ${extra}
             "${CLIENT}" game "Ulasem Arena" --data "${DATA}" --firetest --time 0.1
             --shot "${OUT}/creon-death-sound-${peer}.png"
     OUTPUT_VARIABLE log ERROR_VARIABLE log RESULT_VARIABLE rc)

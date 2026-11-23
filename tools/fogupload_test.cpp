@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <stdexcept>
 static void check(bool yes,const char* message) {if(!yes)throw std::runtime_error(message);}
-namespace rf=tak::retailfog;
+namespace rf=ta::retailfog;
 int main() try {
     // retail's 0x498b60 on its three cell bytes: in view (0x0f) next to out of view
     // (0x8f) and unexplored (0xf0), nibble by nibble with weights 19/5/5/3 of 32.
@@ -67,7 +67,7 @@ int main() try {
     auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_TARGET,2*W,2*H);
     check(texture && mini && target,SDL_GetError());
     SDL_SetTextureBlendMode(texture,SDL_BLENDMODE_NONE);SDL_SetTextureBlendMode(mini,SDL_BLENDMODE_NONE);
-    tak::FogUpload upload,miniUpload(tak::FogUpload::Kind::Minimap);
+    ta::FogUpload upload,miniUpload(ta::FogUpload::Kind::Minimap);
     std::vector<uint8_t> plane(W*H,rf::kUnexplored);
     auto read=[&](SDL_Texture* t,int w,int h) {
         SDL_SetRenderTarget(renderer,target);SDL_RenderClear(renderer);
@@ -85,7 +85,7 @@ int main() try {
         const auto m=read(mini,W,H);
         for(int z=0;z<H;++z)for(int x=0;x<W;++x) {
             const uint8_t* p=&m[(size_t(z)*2*W+x)*4];
-            check(!p[0] && !p[1] && !p[2] && p[3]==tak::FogUpload::minimapAlpha(plane[size_t(z)*W+x]),
+            check(!p[0] && !p[1] && !p[2] && p[3]==ta::FogUpload::minimapAlpha(plane[size_t(z)*W+x]),
                   "minimap texel per cell");
         }
     };

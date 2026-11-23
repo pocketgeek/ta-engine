@@ -3,7 +3,7 @@
 #include <optional>
 #include <utility>
 
-namespace tak::sim {
+namespace ta::sim {
 // ReclaimArea selector (509cc0): sample the rectangle in 16-world-unit rows,
 // retain the first sample on ties, and compare the sum of the HIGH halves of
 // the two squared signed 16.16 differences. This is not float distance.
@@ -66,4 +66,4 @@ RetailReclaimAreaPick retailReclaimAreaPick(RetailReclaimArea& area,int32_t buil
     area.lastX=x;area.lastZ=z;
     return {RetailReclaimAreaStep::Child,x,z};
 }
-} // namespace tak::sim
+} // namespace ta::sim

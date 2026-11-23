@@ -10,7 +10,7 @@
 // where each string is stored as "<length> <bytes>". Coordinates are in a 640x480
 // base space. Format reverse-engineered from the shipped files (validated to parse
 // all 106 to EOF) and KINGDOMS.icd RTTI; see docs and the gadget-type table below.
-namespace tak::gui {
+namespace ta::gui {
 
 // A GAF image reference: sequence `seq` frame `frame` in `anims/<gaf>`. `flags` is the
 // per-image blit mode (0 = none, else 9/18).
@@ -44,4 +44,4 @@ struct Gui {
 // Parse a .gui byte stream. Throws std::runtime_error on a malformed record.
 Gui parse(const std::vector<uint8_t>& bytes, const std::string& origin);
 
-}  // namespace tak::gui
+}  // namespace ta::gui

@@ -5,7 +5,7 @@
 #include "tnt/tnt.h"
 #include <iostream>
 #include <stdexcept>
-using namespace tak;
+using namespace ta;
 static void check(bool value,const char* message) {if(!value)throw std::runtime_error(message);}
 int main() try {
     auto files=std::make_shared<hpi::Vfs::Files>();
@@ -16,7 +16,7 @@ int main() try {
     map.tileKeys.assign(1024,0);map.tileCols.assign(1024,0);map.tileRows.assign(1024,0);
     (*files)["kmap/placement.tnt"]=map.save();
     tnt::Scenario metadata;metadata.hasScenario=true;
-    text("kmap/placement.ota",metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n");
+    text("kmap/placement.ota",metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n");
     crt::Scenario scenario;scenario.version=1;scenario.players.resize(9);
     crt::Unit placed;placed.objectName="TOWER";placed.uniqueName="The west watchtower with a long name";placed.x=12;placed.z=19;placed.y=999;
     scenario.units={placed};(*files)["kmap/placement.crt"]=crt::write(scenario);

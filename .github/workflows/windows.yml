@@ -169,7 +169,7 @@ jobs:
         # + the WIN32 -static flag) so the .exe is fully self-contained -- no bundled DLLs.
         run: |
           cmake -B build -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test takclient takserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test menu_music_test vfs_names_test audio_device_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test taclient taserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test menu_music_test vfs_names_test audio_device_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
 
       - name: Server, network and replay checks
         run: |
@@ -216,7 +216,7 @@ jobs:
 
       - name: Verify fully static (only system DLL imports)
         run: |
-          for binary in takclient takserver cartographer; do
+          for binary in taclient taserver cartographer; do
             imports=$("$OBJDUMP" -p "build/$binary.exe" | awk '/DLL Name:/{print tolower($3)}')
             echo "$binary DLL imports: $imports"
             if echo "$imports" | grep -qE 'sdl2|opus|jpeg|zlib|libz|libpng|avcodec|avformat|swscale|swresample|avutil|x264|libssl|libcrypto|libvpl|nvml|sqlite|libstdc|libgcc|winpthread|libc\+\+|libunwind|msys-|cygwin'; then
@@ -226,7 +226,7 @@ jobs:
 
       - name: Verify executable architecture
         run: |
-          for binary in takclient takserver cartographer; do
+          for binary in taclient taserver cartographer; do
             header=$("$OBJDUMP" -f "build/$binary.exe")
             echo "$header"
             [[ "$header" == *"architecture: ${{ matrix.machine }}"* ]]
@@ -239,7 +239,7 @@ jobs:
           ./build/nvml_test.exe
           ./build/windowsgpu_test.exe
           SDL_VIDEODRIVER=dummy ./build/distant_models_test.exe
-          subsystem=$("$OBJDUMP" -p build/takclient.exe | grep '^Subsystem')
+          subsystem=$("$OBJDUMP" -p build/taclient.exe | grep '^Subsystem')
           [[ "$subsystem" == *"(Windows GUI)"* ]]
           editor_subsystem=$("$OBJDUMP" -p build/cartographer.exe | grep '^Subsystem')
           [[ "$editor_subsystem" == *"(Windows GUI)"* ]]
@@ -257,44 +257,44 @@ jobs:
       - name: Stage static executables
         run: |
           mkdir -p dist-win
-          cp build/takclient.exe build/takserver.exe build/cartographer.exe dist-win/
+          cp build/taclient.exe build/taserver.exe build/cartographer.exe dist-win/
           cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-win/
 
       - name: ZIP unsigned CI build
-        if: github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v')
-        run: (cd dist-win && zip -r "../takclient-$VERSION-windows-${{ matrix.arch }}.zip" .)
+        if: github.repository != 'pocketgeek/ta-engine' || !startsWith(github.ref, 'refs/tags/v')
+        run: (cd dist-win && zip -r "../taclient-$VERSION-windows-${{ matrix.arch }}.zip" .)
 
-      # Proper installer (NSIS via CPack): installs into Program Files\TAK Engine
+      # Proper installer (NSIS via CPack): installs into Program Files\TA Engine
       # with Start-menu shortcuts + an uninstaller. Same static binaries as the zip.
       - name: Build installer (NSIS)
-        if: matrix.arch == 'x64' && (github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v'))
+        if: matrix.arch == 'x64' && (github.repository != 'pocketgeek/ta-engine' || !startsWith(github.ref, 'refs/tags/v'))
         run: |
           if ! (cd build && cpack -G NSIS); then
             cat build/_CPack_Packages/win64/NSIS/NSISOutput.log || true
             exit 1
           fi
-          ls -l build/tak-engine-*-setup.exe
+          ls -l build/ta-engine-*-setup.exe
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-windows-${{ matrix.arch }}
+          name: taclient-windows-${{ matrix.arch }}
           path: dist-win/
 
       - name: Upload CI artifact (installer)
-        if: matrix.arch == 'x64' && (github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v'))
+        if: matrix.arch == 'x64' && (github.repository != 'pocketgeek/ta-engine' || !startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-windows-${{ matrix.arch }}-setup
-          path: build/tak-engine-*-setup.exe
+          name: ta-engine-windows-${{ matrix.arch }}-setup
+          path: build/ta-engine-*-setup.exe
 
       # Debug build: the release binaries are hardened (only --data/--version, no env
       # vars), so ship an unhardened DEBUG bundle for devs who need the CLI flags,
-      # TAK_* env hooks, and the headless --mp* harness.
+      # TA_* env hooks, and the headless --mp* harness.
       - name: Configure + build (debug)
         run: |
           cmake -B build-debug -G Ninja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Debug
-          cmake --build build-debug --target takclient takserver cartographer
+          cmake --build build-debug --target taclient taserver cartographer
           ccache --show-stats
 
       # Saved even when a test step failed, so the next push still starts warm.
@@ -307,7 +307,7 @@ jobs:
 
       - name: Verify Debug architecture and static dependencies
         run: |
-          for binary in takclient takserver cartographer; do
+          for binary in taclient taserver cartographer; do
             header=$("$OBJDUMP" -f "build-debug/$binary.exe")
             [[ "$header" == *"architecture: ${{ matrix.machine }}"* ]]
             imports=$("$OBJDUMP" -p "build-debug/$binary.exe" | awk '/DLL Name:/{print tolower($3)}')
@@ -319,17 +319,17 @@ jobs:
       - name: Stage static executables (debug)
         run: |
           mkdir -p dist-win-debug
-          cp build-debug/takclient.exe build-debug/takserver.exe build-debug/cartographer.exe dist-win-debug/
+          cp build-debug/taclient.exe build-debug/taserver.exe build-debug/cartographer.exe dist-win-debug/
           cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-win-debug/
 
       - name: ZIP unsigned CI build (debug)
-        if: github.repository != 'pocketgeek/tak-engine' || !startsWith(github.ref, 'refs/tags/v')
-        run: (cd dist-win-debug && zip -r ../takclient-windows-${{ matrix.arch }}-debug.zip .)
+        if: github.repository != 'pocketgeek/ta-engine' || !startsWith(github.ref, 'refs/tags/v')
+        run: (cd dist-win-debug && zip -r ../taclient-windows-${{ matrix.arch }}-debug.zip .)
 
       - name: Upload CI artifact (debug)
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-windows-${{ matrix.arch }}-debug
+          name: taclient-windows-${{ matrix.arch }}-debug
           path: dist-win-debug/
 
       - name: Determinism gate (cross-platform parity)
@@ -345,17 +345,17 @@ jobs:
           ./build/sim_driver_equiv_test.exe
 
       - name: Attach unsigned fork release
-        if: github.repository != 'pocketgeek/tak-engine' && startsWith(github.ref, 'refs/tags/v')
+        if: github.repository != 'pocketgeek/ta-engine' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh   # gh is on the Windows PATH, not inside msys2
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY `
-            --title "TAK Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag 2>$null
-          $zip = "takclient-$($env:VERSION)-windows-${{ matrix.arch }}.zip"
-          $files = @($zip, "takclient-windows-${{ matrix.arch }}-debug.zip")
+            --title "TA Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag 2>$null
+          $zip = "taclient-$($env:VERSION)-windows-${{ matrix.arch }}.zip"
+          $files = @($zip, "taclient-windows-${{ matrix.arch }}-debug.zip")
           if ("${{ matrix.arch }}" -eq "x64") {
-            $setup = Get-ChildItem build\tak-engine-*-setup.exe | Select-Object -First 1
+            $setup = Get-ChildItem build\ta-engine-*-setup.exe | Select-Object -First 1
             $files += $setup.FullName
           }
           gh release upload $env:GITHUB_REF_NAME @files `
@@ -398,7 +398,7 @@ jobs:
   sign-release:
     name: Sign and publish Windows release
     needs: build
-    if: github.repository == 'pocketgeek/tak-engine' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'pocketgeek/ta-engine' && startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-2022
     environment: windows-signing
     permissions:
@@ -411,7 +411,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v7
         with:
-          pattern: takclient-windows-*
+          pattern: taclient-windows-*
           path: unsigned-payloads
 
       - name: Validate release inputs and signing configuration
@@ -499,7 +499,7 @@ jobs:
       - name: Upload signed packages
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-windows-signed
+          name: ta-engine-windows-signed
           path: windows-release/*
           if-no-files-found: error
 
@@ -512,7 +512,7 @@ jobs:
           gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY `
-              --title "TAK Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag
+              --title "TA Engine $env:GITHUB_REF_NAME" --generate-notes --verify-tag
             # Other platform jobs may create the release concurrently.
             if ($LASTEXITCODE -ne 0) {
               gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY

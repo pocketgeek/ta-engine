@@ -22,17 +22,17 @@
   #include <unistd.h>
 #endif
 
-namespace tak::net {
+namespace ta::net {
 namespace {
 
-constexpr const char* kPartSuffix = ".part";       // <name>.takrep.part
-constexpr const char* kChecksSuffix = ".chk";      // <name>.takrep.part.chk
+constexpr const char* kPartSuffix = ".part";       // <name>.tarep.part
+constexpr const char* kChecksSuffix = ".chk";      // <name>.tarep.part.chk
 
 bool endsWith(const std::string& s, const std::string& tail) {
     return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0;
 }
 
-std::filesystem::path fsPath(const std::string& utf8) { return tak::u8path(utf8); }
+std::filesystem::path fsPath(const std::string& utf8) { return ta::u8path(utf8); }
 
 bool exists(const std::string& path) {
     std::error_code ec;
@@ -216,20 +216,20 @@ void syncDirOf(const std::string& path) {
 }
 #endif
 
-// <name>.takrep for <name>.takrep.part, or a numbered name beside it when a file
+// <name>.tarep for <name>.tarep.part, or a numbered name beside it when a file
 // already holds that one: a replay is never overwritten.
 std::string finalNameFor(const std::string& part) {
     const std::string base = part.substr(0, part.size() - std::char_traits<char>::length(kPartSuffix));
     if (!exists(base)) return base;
-    const std::string stem = base.substr(0, base.size() - 7);   // drop ".takrep"
+    const std::string stem = base.substr(0, base.size() - 7);   // drop ".tarep"
     for (int i = 1; i < 1000; ++i) {
-        std::string alt = stem + "-" + std::to_string(i) + ".takrep";
+        std::string alt = stem + "-" + std::to_string(i) + ".tarep";
         if (!exists(alt)) return alt;
     }
     return {};
 }
 
-// Renames a finished, synced recording to its .takrep name and releases it.
+// Renames a finished, synced recording to its .tarep name and releases it.
 // POSIX renames while still holding the lock, so no recovery pass can claim the
 // file between the two; Windows has to close it first (see renameClosed). Either
 // way the outcome is the same file: recovery of a finished .part only renames it.
@@ -353,7 +353,7 @@ bool ReplayWriter::open(const std::string& dir, const ReplayHeader& h, uint32_t 
     countAt_ = w.b.size();
     w.u32(kReplayOpenCount);
     for (uint64_t k = 0; k < 64; ++k) {
-        const std::string base = dir + "game-" + std::to_string(gameId) + "-" + std::to_string(stamp + k) + ".takrep";
+        const std::string base = dir + "game-" + std::to_string(gameId) + "-" + std::to_string(stamp + k) + ".tarep";
         if (exists(base)) continue;   // never reuse a finished replay's name
         const std::string part = base + kPartSuffix;
         const intptr_t f = createLocked(part);
@@ -507,8 +507,8 @@ std::vector<RecoveredReplay> recoverReplayParts(const std::string& dir) {
     for (const auto& e : std::filesystem::directory_iterator(fsPath(dir), ec)) {
         const auto u8 = e.path().filename().u8string();
         const std::string name(u8.begin(), u8.end());
-        if (endsWith(name, std::string(".takrep") + kPartSuffix)) parts.push_back(dir + name);
-        else if (endsWith(name, std::string(".takrep") + kPartSuffix + kChecksSuffix)) sidecars.push_back(dir + name);
+        if (endsWith(name, std::string(".tarep") + kPartSuffix)) parts.push_back(dir + name);
+        else if (endsWith(name, std::string(".tarep") + kPartSuffix + kChecksSuffix)) sidecars.push_back(dir + name);
     }
     for (const auto& p : parts) recoverOne(p, out);
     // A recording creates its .part before the sidecar and removes the sidecar after
@@ -519,4 +519,4 @@ std::vector<RecoveredReplay> recoverReplayParts(const std::string& dir) {
     return out;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

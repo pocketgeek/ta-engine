@@ -18,7 +18,7 @@
 struct Host {
     int phase=0;
     uint32_t seed=12345;
-    uint32_t random(int32_t bound) { return tak::sim::retailRandom(seed,bound); }
+    uint32_t random(int32_t bound) { return ta::sim::retailRandom(seed,bound); }
     uint32_t get(int id,const std::array<uint32_t,4>&) {
         switch(id) {
         case 4:return phase==3 ? 25:100;
@@ -41,10 +41,10 @@ int main(int argc,char**argv) {
     if((argc==3 || argc==5) &&
        (mode=="--death-sfx-timeline" || mode=="--death-render-timeline")) {
         const bool renderHost=mode=="--death-render-timeline";
-        auto file=tak::cob::load(std::filesystem::path(argv[2]));
+        auto file=ta::cob::load(std::filesystem::path(argv[2]));
         const int severity=argc==5 ? std::stoi(argv[3]) : 100;
         const int damageType=argc==5 ? std::stoi(argv[4]) : 1;
-        tak::cob::Vm dying(file);dying.enableRetailAnimation();
+        ta::cob::Vm dying(file);dying.enableRetailAnimation();
         int tick=0;
         bool ownerVmStopRequested=false;
         dying.onEmitSfx=[&](int piece,int32_t code) {
@@ -53,7 +53,7 @@ int main(int argc,char**argv) {
         };
         dying.onSetUnitValue=[&](int32_t id,int32_t value) {
             std::cout<<"U "<<tick<<' '<<id<<' '<<value<<'\n';
-            if(renderHost && tak::retailOwnerVmStopsOnSetUnitValue(id))
+            if(renderHost && ta::retailOwnerVmStopsOnSetUnitValue(id))
                 ownerVmStopRequested=true;
         };
         dying.onGet=[](int query,const std::vector<int32_t>&) {
@@ -68,7 +68,7 @@ int main(int argc,char**argv) {
             tick=frame+1;
             // GameView lets both death call-ins start synchronously, then its
             // render-host VM loop stops on native SET26/31 owner retirement.
-            if(!renderHost || tak::retailOwnerVmMayAdvance(ownerVmStopRequested))
+            if(!renderHost || ta::retailOwnerVmMayAdvance(ownerVmStopRequested))
                 dying.tick(1.f/30);
         }
         return 0;
@@ -76,9 +76,9 @@ int main(int argc,char**argv) {
     if(argc==2 && std::string_view(argv[1])=="--standing-order") {
         unsigned enabled,standing,move,fire,request;
         while(std::cin>>enabled>>standing>>move>>fire>>request) {
-            tak::sim::UnitType type;type.canSetStance=enabled;
+            ta::sim::UnitType type;type.canSetStance=enabled;
             type.defaultStandingOrder=standing;type.defaultMove=move;type.defaultFire=fire;
-            tak::sim::World world;
+            ta::sim::World world;
             const int id=world.spawn(&type,100,100,0,0);
             if(request<3)world.setStance(id,2-int(request));
             const auto& u=*world.unit(id);
@@ -88,8 +88,8 @@ int main(int argc,char**argv) {
         return 0;
     }
     if(argc!=2)return 2;
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
-    tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,false);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
     int scripts=0,failures=0;
     // Aradrag has 3s, 2.5s, and 5s weapons. The renderer used to notify
     // the first slot's 3000ms, shortening the script's restore delay.
@@ -106,16 +106,16 @@ int main(int argc,char**argv) {
         std::map<int32_t,int> deathLatestTick;
         int deathTick=0;
         bool captureDeathSfx=false;
-        tak::cob::Vm display(*file);display.enableRetailAnimation();
+        ta::cob::Vm display(*file);display.enableRetailAnimation();
         display.onEmitSfx=[&](int,int32_t code){++emissions[code];};
-        const auto reachability=tak::cob::explosionReachability(*file);
+        const auto reachability=ta::cob::explosionReachability(*file);
         bool serial=true;
         display.onExplode=[&](int,int32_t) {
             ++explosions;
             if(!serial) {std::printf("FAIL %s explosion classified parallel\n",name.c_str());++failures;}
             return true;
         };
-        tak::cob::RetailScriptState reference(*file);Host host;
+        ta::cob::RetailScriptState reference(*file);Host host;
         display.onGet=[&](int id,const std::vector<int32_t>&){return int32_t(host.get(id,{}));};
         auto notify=[&](const char* name,std::vector<int32_t> args={}) {
             const int script=file->scriptIndex(name);if(script<0)return;
@@ -158,7 +158,7 @@ int main(int argc,char**argv) {
         // Death sequences include branches and delayed child scripts that are
         // dormant during the normal callback timeline above.
         for(int severity:{1,100,1000})for(int damageType:{0,1}) {
-            tak::cob::Vm dying(*file);dying.enableRetailAnimation();
+            ta::cob::Vm dying(*file);dying.enableRetailAnimation();
             dying.onEmitSfx=[&](int,int32_t code){
                 ++emissions[code];
                 if(captureDeathSfx) {++deathEmissions[code];deathLatestTick[code]=deathTick;}
@@ -201,16 +201,16 @@ int main(int argc,char**argv) {
         };
         for(int32_t code:{260,261,262})requiresDeathEffect(code);
         for(const auto& [code,count]:deathEmissions) {
-            const auto family=tak::retailDeathSfxFamily(code);
-            if(count && family && *family!=tak::RetailDeathSfxFamily::DamageFlame) {
+            const auto family=ta::retailDeathSfxFamily(code);
+            if(count && family && *family!=ta::RetailDeathSfxFamily::DamageFlame) {
                 std::printf("FAIL %s reset-separated death timeline emitted live-only SFX code %d\n",
                             name.c_str(),code);
                 ++failures;
             }
         }
         for(const auto& [code,lastTick]:deathLatestTick) {
-            const auto family=tak::retailDeathSfxFamily(code);
-            if(family && *family!=tak::RetailDeathSfxFamily::Detached && lastTick>=120) {
+            const auto family=ta::retailDeathSfxFamily(code);
+            if(family && *family!=ta::RetailDeathSfxFamily::Detached && lastTick>=120) {
                 std::printf("FAIL %s death SFX %d emitted at tick %d, after owner handoff\n",
                             name.c_str(),code,lastTick);
                 ++failures;
@@ -223,8 +223,8 @@ int main(int argc,char**argv) {
     for(const char* name:{"verbers","vercrus"}) {
         const auto* type=registry.find(name);
         if(!type || !type->script()){++failures;continue;}
-        tak::sim::World world;const int id=world.spawn(type,100,100,0,0);
-        tak::cob::Vm display(*type->script());display.enableRetailAnimation();
+        ta::sim::World world;const int id=world.spawn(type,100,100,0,0);
+        ta::cob::Vm display(*type->script());display.enableRetailAnimation();
         display.onGet=[&](int query,const std::vector<int32_t>&) {
             if(query==46)return int32_t(world.unit(id)->standingOrder);
             return query==4 ? 100:0;
@@ -234,7 +234,7 @@ int main(int argc,char**argv) {
             world.setStance(id,stance);
             world.unit(id)->orders.clear();
             if(stance==2) {
-                tak::sim::Order attack;attack.targetId=123;
+                ta::sim::Order attack;attack.targetId=123;
                 world.unit(id)->orders.push_back(attack);
             }
             for(int tick=0;tick<600;++tick)display.tick(1.f/30);
@@ -246,8 +246,8 @@ int main(int argc,char**argv) {
     if(const auto* tower=registry.find("vertower");tower && tower->script()) {
         const auto& file=*tower->script();
         {
-            tak::cob::Vm display(file);display.enableRetailAnimation();
-            tak::RetailAimState aim;
+            ta::cob::Vm display(file);display.enableRetailAnimation();
+            ta::RetailAimState aim;
             display.onGet=[](int query,const std::vector<int32_t>&){return query==4 ? 100:0;};
             display.onSetUnitValue=[&](int query,int slot){if(slot==0)aim.set(query);};
             display.start("Create");
@@ -287,12 +287,12 @@ int main(int argc,char**argv) {
         auto cannon=std::find(file.pieces.begin(),file.pieces.end(),"cannon");
         if(cannon==file.pieces.end())++failures;
         else for(int height:{-100,0,100}) {
-            tak::cob::Vm display(file);display.enableRetailAnimation();
+            ta::cob::Vm display(file);display.enableRetailAnimation();
             display.onGet=[](int query,const std::vector<int32_t>&){return query==4 ? 100:0;};
             int ready=-1;
             display.onSetUnitValue=[&](int query,int value){if(query==22)ready=value;};
             display.start("Create");
-            const auto angles=tak::sim::retailDirectAim(0,height*65536,100*65536,32768);
+            const auto angles=ta::sim::retailDirectAim(0,height*65536,100*65536,32768);
             display.start("AimWeapon",{angles[0],angles[1],0});
             for(int tick=0;tick<300;++tick)display.tick(1.f/30);
             const auto& pose=display.retailPieces()[size_t(cannon-file.pieces.begin())];
@@ -303,11 +303,11 @@ int main(int argc,char**argv) {
     } else ++failures;
     if(const auto* mortar=registry.find("vermort");mortar && mortar->script()) {
         for(bool high:{false,true}) {
-            tak::cob::Vm display(*mortar->script());display.enableRetailAnimation();
+            ta::cob::Vm display(*mortar->script());display.enableRetailAnimation();
             display.onGet=[](int query,const std::vector<int32_t>&){return query==4 ? 100:0;};
             int ready=-1;display.onSetUnitValue=[&](int query,int value){if(query==22)ready=value;};
             display.start("Create");
-            const auto pitch=tak::retailBallisticPitch(0,0,100,10,1,high);
+            const auto pitch=ta::retailBallisticPitch(0,0,100,10,1,high);
             display.start("AimWeapon",{32768,pitch,0});
             for(int tick=0;tick<900;++tick)display.tick(1.f/30);
             const auto& names=mortar->script()->pieces;

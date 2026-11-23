@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // AirToAir (mission registry row 5ebd82, handler 41ca50): the attack mission
 // 4de530 gives a flyer whose target's type can fly, unless the selected
@@ -407,4 +407,4 @@ int retailAirEvade(RetailAirEvade& e,uint32_t tick,uint32_t events,const RetailA
     return 2;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

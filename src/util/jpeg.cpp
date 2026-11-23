@@ -7,7 +7,7 @@
 #include <iterator>
 #include <stdexcept>
 
-namespace tak::jpeg {
+namespace ta::jpeg {
 
 namespace {
 
@@ -138,4 +138,4 @@ std::vector<uint8_t> encode(int width, int height, const std::vector<uint8_t>& r
     }
 }
 
-} // namespace tak::jpeg
+} // namespace ta::jpeg

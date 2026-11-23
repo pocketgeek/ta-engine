@@ -12,7 +12,7 @@ namespace crowdbench_matrix {
 // When `quiet` names an allocation-counting switch, the observer's own
 // bookkeeping allocations are not counted as simulation allocations (serial
 // execution only: a paused switch would also hide concurrent worker allocations).
-struct LatencyObserver final:tak::sim::NavigationTelemetry {
+struct LatencyObserver final:ta::sim::NavigationTelemetry {
     using Clock=std::chrono::steady_clock;
     std::atomic<bool>* quiet=nullptr;
     struct Quiet {

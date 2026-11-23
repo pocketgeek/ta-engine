@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace tak::mapgen {
+namespace ta::mapgen {
 
 using namespace detail;
 
@@ -122,8 +122,8 @@ Params sanitize(Params p) {
     return p;
 }
 
-Result generate(const Params& raw, const tak::hpi::Vfs& input) {
-    tak::hpi::Vfs vfs(&input, true);
+Result generate(const Params& raw, const ta::hpi::Vfs& input) {
+    ta::hpi::Vfs vfs(&input, true);
     return generateBalanced(sanitize(raw), vfs);
 }
 
@@ -233,4 +233,4 @@ std::string friendlyLabel(const Params& pin) {
            std::to_string(int(p.players)) + "P " + kNames[p.mapType];
 }
 
-}  // namespace tak::mapgen
+}  // namespace ta::mapgen

@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static UnitType soldier() {
     UnitType t{};

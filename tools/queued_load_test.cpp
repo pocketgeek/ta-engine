@@ -35,8 +35,8 @@
 #include <functional>
 #include <vector>
 
-using namespace tak::sim;
-namespace net = tak::net;
+using namespace ta::sim;
+namespace net = ta::net;
 
 namespace {
 int failures = 0;

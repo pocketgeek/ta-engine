@@ -18,32 +18,32 @@ namespace cart {
 using AiFiles = std::map<std::string, std::vector<uint8_t>>;
 // A root ai/<name>.txt path: no further '/', a name usable as a file name.
 bool aiFileKey(const std::string& path);
-AiFiles aiFilesFromArchive(const tak::hpi::Archive&);
+AiFiles aiFilesFromArchive(const ta::hpi::Archive&);
 // <mapFolder>/ai/*.txt beside a loose .tnt (the folder name in any case).
 AiFiles aiFilesFromFolder(const std::filesystem::path& mapFolder);
 // An installed map opened by name: the root ai/<name>.txt files of its own archive
 // (Vfs::readFromMapArchive), not another installed map's that wins the same path.
 // None for a loose map or one in the base install.
-AiFiles aiFilesFromMapArchive(const tak::hpi::Vfs&, const std::string& mapPath);
+AiFiles aiFilesFromMapArchive(const ta::hpi::Vfs&, const std::string& mapPath);
 // Moves the root ai/ entries out of a recovery snapshot's files.
-AiFiles liftAiFiles(tak::hpi::Vfs::Files&);
+AiFiles liftAiFiles(ta::hpi::Vfs::Files&);
 
 struct DocumentFiles {
-    std::vector<tak::hpi::PackFile> members;      // kmap/<stem>/ in a .kmp; beside the .tnt loose
-    std::vector<tak::hpi::PackFile> rootMembers;  // ai/<x>.txt: the .kmp root; <dir>/ai/ loose
+    std::vector<ta::hpi::PackFile> members;      // kmap/<stem>/ in a .kmp; beside the .tnt loose
+    std::vector<ta::hpi::PackFile> rootMembers;  // ai/<x>.txt: the .kmp root; <dir>/ai/ loose
 };
 // One serialization path for normal saves, recovery, playtests and loose export.
 // The input document is never changed by saving it. Empty AI files are dropped.
 DocumentFiles documentFiles(
-    const tak::tnt::Map&, tak::tnt::Scenario metadata,
-    const tak::crt::Scenario&, const std::vector<PlacedUnit>&,
+    const ta::tnt::Map&, ta::tnt::Scenario metadata,
+    const ta::crt::Scenario&, const std::vector<PlacedUnit>&,
     const std::set<std::string>& useOnly, const AiFiles&, const std::string& name);
 
 // Atomic single-file replacement, with the previous file retained as .bak.
 // Loose exports stage every member before replacement and roll back failures;
 // use a KMP for an atomic whole-document save.
 bool writeDocumentFiles(const std::filesystem::path& directory,
-                        const std::vector<tak::hpi::PackFile>&,
+                        const std::vector<ta::hpi::PackFile>&,
                         std::string& error, const std::atomic_bool* cancel = nullptr);
 bool writeDocumentBundle(const std::filesystem::path&, const DocumentFiles&,
                          std::string& error, const std::atomic_bool* cancel = nullptr);
@@ -70,7 +70,7 @@ std::string modPackReservedError(const std::filesystem::path& dataRoot, const st
 std::string alwaysEnabledGameNote(const std::filesystem::path& dataRoot);
 struct ModProfileChange {
     enum class Action { Create, Same, Replace, Delete };
-    std::string key;                    // ai/takengine.txt
+    std::string key;                    // ai/taengine.txt
     Action action = Action::Create;
     std::filesystem::path path;         // the file on disk (an existing file's own spelling)
     std::vector<uint8_t> data;          // the new bytes (Create/Replace/Same)

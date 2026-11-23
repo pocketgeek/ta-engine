@@ -35,7 +35,7 @@
 // "legal for the planner" and "legal for the mover" the same predicate.
 
 
-namespace tak::sim {
+namespace ta::sim {
 namespace {
 // Field potentials are 32-bit; kUnreached is "no route". At 16 bits they
 // saturated at 65535, about 13,100 orthogonal steps, so a body farther than
@@ -100,8 +100,8 @@ static_assert(kStandDown<=kStandSwap&&kStandDown<=kStandPair&&kStandPair<=kStand
 static_assert(kStandPairMove+kGivenCool<kStandLong,"a body given way to walks its way live again before the long stand-down");
 static_assert(kLiveTrail==8,"Member::liveTrail's initialiser and the checksum's fold (two origins a word) are written for eight");
 // Process-wide hooks (see legion.h): the rest stride for the settlelatency
-// probe, TAK_LEGION_VERIFY and the LPROBE line. Set by tools before a run.
-// A debug build also starts with the verify hook on when TAK_LEGION_VERIFY
+// probe, TA_LEGION_VERIFY and the LPROBE line. Set by tools before a run.
+// A debug build also starts with the verify hook on when TA_LEGION_VERIFY
 // is set (no tool wires it yet: legion_identity.sh --verify, crowdbench and
 // the world tests only set the variable). Observation only, never hashed.
 uint32_t gRestStride=kRestStride;
@@ -120,25 +120,25 @@ bool gHierRoutes=true;   // LegionNavigator::setHierarchicalRoutesForTest (proce
 bool gRouteIndex=true;
 // Stage 9 (LegionNavigator::setParallelForTest; process-wide, never hashed, never a decision): run the parallel planning
 // jobs even with no SimPool workers (inline), and shuffle their execution order with random delays (seed; 0 off). A debug
-// build also reads the seed from TAK_LEGION_PAR_PERTURB, so whole-game harnesses (--mpai) can perturb too.
+// build also reads the seed from TA_LEGION_PAR_PERTURB, so whole-game harnesses (--mpai) can perturb too.
 bool gParForce=false;
 // Perf H (LegionNavigator::setStructureIndexForTest; process-wide, never hashed, never a decision): computeCells reads
 // structures through the spatial index (true, the game) or walks the whole list (the reference it must equal).
 bool gStructureIndex=true;
 #ifndef NDEBUG
-uint64_t gParPerturb=std::getenv("TAK_LEGION_PAR_PERTURB")?std::strtoull(std::getenv("TAK_LEGION_PAR_PERTURB"),nullptr,10):0;
+uint64_t gParPerturb=std::getenv("TA_LEGION_PAR_PERTURB")?std::strtoull(std::getenv("TA_LEGION_PAR_PERTURB"),nullptr,10):0;
 #else
 uint64_t gParPerturb=0;
 #endif
 // A per-tick budget of the registration / plane-build / awareness work, divided by the test divisor.
 uint64_t budgetOf(uint64_t units) {return std::max<uint64_t>(1,units/gBudgetDiv);}
 #ifndef NDEBUG
-bool gVerify=std::getenv("TAK_LEGION_VERIFY")!=nullptr;
-// W9 step 0: the members whose decisions are traced to stderr (LegionNavigator::setTrace, or TAK_LEGION_TRACE=ID[,ID...]
+bool gVerify=std::getenv("TA_LEGION_VERIFY")!=nullptr;
+// W9 step 0: the members whose decisions are traced to stderr (LegionNavigator::setTrace, or TA_LEGION_TRACE=ID[,ID...]
 // in the environment); debug builds only, observation only, never hashed.
 std::vector<int> traceFromEnvironment() {
     std::vector<int> ids;
-    if(const char* v=std::getenv("TAK_LEGION_TRACE"))
+    if(const char* v=std::getenv("TA_LEGION_TRACE"))
         for(const char* c=v;*c;) {
             ids.push_back(*c=='a'?-1:std::atoi(c));   // "all" traces every member
             while(*c&&*c!=',')++c;
@@ -151,8 +151,8 @@ std::vector<int> gTrace=traceFromEnvironment();
 bool gVerify=false;
 #endif
 #ifndef NDEBUG
-// ... and the LPROBE line every TAK_LPROBE ticks.
-uint32_t gProbe=std::getenv("TAK_LPROBE")?uint32_t(std::strtoul(std::getenv("TAK_LPROBE"),nullptr,10)):0;
+// ... and the LPROBE line every TA_LPROBE ticks.
+uint32_t gProbe=std::getenv("TA_LPROBE")?uint32_t(std::strtoul(std::getenv("TA_LPROBE"),nullptr,10)):0;
 #else
 uint32_t gProbe=0;
 #endif
@@ -611,7 +611,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         }
         uint64_t seq=0;                  // insertion order (eviction tie-break)
         // The mobility class it was built for (footprint, depths, slopes): not part of the key -- the plane's
-        // identity already separates classes -- but checked under TAK_LEGION_VERIFY on every attach, so a plane
+        // identity already separates classes -- but checked under TA_LEGION_VERIFY on every attach, so a plane
         // slot reused without a new generation would be caught reading its previous class's tiles.
         uint64_t classSig=0;
         uint64_t builtFor=0;   // the goals (seedsKey) of the route that built it: observation only (cross-destination hits)
@@ -1416,7 +1416,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // byBuilt: the groups with a field by (built, id), the eviction order.
     // Functions of each group's own field, next, stale, waited and built:
     // every write of those is followed by listGroup (waited: setWaited),
-    // and TAK_LEGION_VERIFY checks each list against a full scan. Never
+    // and TA_LEGION_VERIFY checks each list against a full scan. Never
     // hashed; a peer replaying the same commands lists the same groups.
     //   needIds      (stage 5) a consumer stated a region its group's paused
     //                build has not settled (need); served in the FirstRoute
@@ -1435,7 +1435,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     std::map<std::pair<int,uint64_t>,std::set<int>> routeIndex;
     // Route invalidation index for staticChanged (perf follow-up I, legion_routebins.h): per plane, bins of the map
     // listing every group whose field or next a change in the bin may reach; a superset, fieldTouched decides.
-    // Maintained by listGroup (listBins) and unlistGroup; never hashed (TAK_LEGION_VERIFY: against the groups'
+    // Maintained by listGroup (listBins) and unlistGroup; never hashed (TA_LEGION_VERIFY: against the groups'
     // fields, and every staticChanged against a walk of every group). binCands: staticChanged's scratch.
     routebins::Index routeBins;
     std::vector<int> binCands;
@@ -1447,7 +1447,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // A group outside a member's entry fails one of those equalities, so the
     // first group of the entry, in id order, to pass the whole predicate is
     // the first of every group to pass it. Maintained where groups are made
-    // and erased; never hashed (TAK_LEGION_VERIFY: against a scan of the
+    // and erased; never hashed (TA_LEGION_VERIFY: against a scan of the
     // groups, and each join against the brute-force walk).
     using JoinKey=std::tuple<int,int,int,bool,int64_t,int>;
     std::map<JoinKey,std::vector<int>> joinIndex;
@@ -1573,7 +1573,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     }
 #ifndef NDEBUG
     [[noreturn]] void verifyFail(const char* what) const {
-        std::fprintf(stderr,"TAK_LEGION_VERIFY tick %u: %s\n",w.tickCounter_,what);
+        std::fprintf(stderr,"TA_LEGION_VERIFY tick %u: %s\n",w.tickCounter_,what);
         std::abort();
     }
 #endif
@@ -1753,7 +1753,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // softHash: an order-independent wrapping sum of one term per stamped
     // cell (cell, id, kind) and one per owned id (id, command), kept by
     // stamp/unstamp; softHashFull() recomputes it from the stamps
-    // (TAK_LEGION_VERIFY checks the two every tick). softSerial counts the
+    // (TA_LEGION_VERIFY checks the two every tick). softSerial counts the
     // stamp changes.
     uint64_t softSerial=0,softHash=0;
     static uint64_t softTerm(size_t c,int id,uint8_t kind) {return mix(mix(0x736f6674ull,uint64_t(c)<<32|uint32_t(id)),kind);}
@@ -2168,7 +2168,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         b.stamped=false;
         ++softSerial;
     }
-    // softHash from scratch: every stamp's terms (TAK_LEGION_VERIFY, C31).
+    // softHash from scratch: every stamp's terms (TA_LEGION_VERIFY, C31).
     uint64_t softHashFull() const {
         uint64_t h=0;
         for(size_t id=0;id<softBodies.size();++id) {
@@ -2414,7 +2414,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         stats.stillPerResidueMax=std::max<uint64_t>(stats.stillPerResidueMax,processed);
     }
 #ifndef NDEBUG
-    // TAK_LEGION_VERIFY (C31): the incremental soft state against the
+    // TA_LEGION_VERIFY (C31): the incremental soft state against the
     // stamps. The hash every tick; the grid, owner and window counts once a
     // scan period.
     template<class Fail> void verifySoft(Fail&& fail) {
@@ -2541,13 +2541,13 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     };
     std::map<std::tuple<int,uint32_t,int32_t,int32_t>,Point> points;
     // C1: the points with an unseen cue (cueTick set) and the points with a latched meet, ascending.
-    // Functions of the points (TAK_LEGION_VERIFY checks both against a scan); never hashed. awareHeadOn:
+    // Functions of the points (TA_LEGION_VERIFY checks both against a scan); never hashed. awareHeadOn:
     // this tick's awareScan head-on entries of groups of kPivotMembers or more, (command, mover's point),
     // consumed by meetScan in the same tick.
     std::set<std::tuple<int,uint32_t,int32_t,int32_t>> pendingMeets,meetIds;
     std::vector<std::pair<uint64_t,std::tuple<int,uint32_t,int32_t,int32_t>>> awareHeadOn;
     // The formation slot hand-out (2026-10-14 Legion review, item 5; see serveHandOut). handIds: the points
-    // whose queue is not empty, ascending (a function of the points, TAK_LEGION_VERIFY checks it; never
+    // whose queue is not empty, ascending (a function of the points, TA_LEGION_VERIFY checks it; never
     // hashed). handNext: the point the next tick's round starts at, kept while two or more points wait
     // (hashed while handRotate). handTick: the tick of the last hand-out, handRing0: ringCells at its start
     // (the tick's budget is ringCells - handRing0; derived, never hashed).
@@ -3052,7 +3052,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // (clamped to the map), positions into structureList ascending within a bucket. A rectangle reads only the
     // buckets an overlapping footprint's origin can lie in (at most the largest footprint up-left of the rectangle,
     // up to its far corner) and stamps those structures in list order: the same structures, cells and work as the
-    // walk of the whole list (TAK_LEGION_VERIFY compares the two on every call). Built where structureList is
+    // walk of the whole list (TA_LEGION_VERIFY compares the two on every call). Built where structureList is
     // set, read-only until it is reset with it (computeRows' workers share it); derived, never hashed.
     struct StructureIndex {
         static constexpr int kBucket=16;
@@ -3285,10 +3285,10 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                           std::vector<StaticChange>* out=nullptr) {
         const int grow=kRelabelMargin+std::max(p.footX,p.footZ)+1;
         auto& clusters=scratch.clusters;
-        // TAK_LCLUSTER (debug builds): one line per refresh, the clustering's share of it. Its own switch, not
-        // TAK_LPROBE: a line per refresh would land inside the LPROBE line's refresh timings.
+        // TA_LCLUSTER (debug builds): one line per refresh, the clustering's share of it. Its own switch, not
+        // TA_LPROBE: a line per refresh would land inside the LPROBE line's refresh timings.
 #ifndef NDEBUG
-        static const bool clusterProbe=std::getenv("TAK_LCLUSTER")!=nullptr;
+        static const bool clusterProbe=std::getenv("TA_LCLUSTER")!=nullptr;
 #else
         constexpr bool clusterProbe=false;
 #endif
@@ -5545,7 +5545,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // victim, so a few fields shared by groups that never finish pinned the room a reservation waited for
     // for ever (many-1000 under a two-map allowance stopped admitting at tick ~1,600 for the rest of the run).
     // A share only lands within kStillScan of a field's start, so sharing extends no field's tenure by more.
-    // fullScan (TAK_LEGION_VERIFY): find the holders by a walk of every group instead of the index.
+    // fullScan (TA_LEGION_VERIFY): find the holders by a walk of every group instead of the index.
     bool evictionHolders(Group& o,std::vector<Group*>& holders,bool fullScan) {
         holders.clear();
         const std::shared_ptr<Field>& f=o.field;
@@ -5878,7 +5878,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         return spent;
     }
 #ifndef NDEBUG
-    // TAK_LEGION_VERIFY: on a finished chain every cell with an estimate above 0 has a legal step to a neighbour
+    // TA_LEGION_VERIFY: on a finished chain every cell with an estimate above 0 has a legal step to a neighbour
     // whose estimate is strictly lower (so every descent strictly lowers the estimate, across tiles too, and ends on
     // a goal: no loop, no false minimum).
     void verifyDescent(const Field& f) const {
@@ -5899,7 +5899,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                 if(nv<v&&(step(p,x,z,d[0],d[1])||(nv==0&&!legal(p,nx,nz)&&step(p,nx,nz,-d[0],-d[1])))) {lower=true;break;}
             }
             if(!lower) {
-                std::fprintf(stderr,"TAK_LEGION_VERIFY: chain %llu cell (%d,%d) estimate %u has no lower neighbour\n",
+                std::fprintf(stderr,"TA_LEGION_VERIFY: chain %llu cell (%d,%d) estimate %u has no lower neighbour\n",
                              (unsigned long long)f.serial,x,z,v);
                 verifyFail("a chain's estimate has a local minimum off its goals");
             }
@@ -6224,7 +6224,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // never inserted, never counted in NavBytes; a prepared key is good for its pass only. A speculation that missed (an
     // aimed region whose seeds turned out unreachable, a node re-resolved on new geometry) costs only the wasted job.
     // With no workers nothing is prepared (it would only add the serial pass's own work), unless a test forces it
-    // (setParallelForTest). Under TAK_LEGION_VERIFY every reused key is recomputed and every staged tile rebuilt from the
+    // (setParallelForTest). Under TA_LEGION_VERIFY every reused key is recomputed and every staged tile rebuilt from the
     // plane, and both compared.
     static constexpr uint32_t kStagedTicks=3;
     static constexpr size_t kPrefetchMax=256;   // regions picked per pass at most
@@ -7045,7 +7045,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         std::sort(out.begin(),out.end());
     }
 #ifndef NDEBUG
-    // TAK_LEGION_VERIFY: every group a change reaches (the walk's test, without its effects) is a candidate of the index.
+    // TA_LEGION_VERIFY: every group a change reaches (the walk's test, without its effects) is a candidate of the index.
     // Read-only (routebins::Index::collect): a verified run must count and choose exactly as an unverified one.
     void verifyReached(const std::vector<std::vector<StaticChange>>& changes) {
         if(!routeBins.usable())return;
@@ -7293,7 +7293,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         // The member's planned steps (detour route, else its group field's
         // descent, else the straight line to its goal), kLiftCells ahead;
         // asks every liftable flyer its footprint covers on the way to lift.
-        // `dry` (TAK_LEGION_VERIFY) only reports whether the walk covers
+        // `dry` (TA_LEGION_VERIFY) only reports whether the walk covers
         // any grounded or lift-home cell, and asks nothing.
         auto walk=[&](Unit* u,const Member& m,const Group& g,bool dry) {
             const auto& p=planes[size_t(g.plane)];
@@ -7785,7 +7785,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
 #endif
         if(gProbe&&w.tickCounter_%gProbe==0)probeLine();
     }
-    // TAK_LPROBE: the scheduler counters (cumulative) on one stderr line.
+    // TA_LPROBE: the scheduler counters (cumulative) on one stderr line.
     void probeLine() const {
         const Stats& s=stats;
         std::fprintf(stderr,"LPROBE tick=%u units=%zu groups=%zu members=%zu sched_group_visits=%llu sharedfield_full_scans=%llu softowner_lookups=%llu"
@@ -7808,12 +7808,12 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         probeSyncMaxMs=0;probeSyncMax={};
     }
 #ifndef NDEBUG
-    // TAK_LEGION_VERIFY: every derived index and work list against a full
+    // TA_LEGION_VERIFY: every derived index and work list against a full
     // scan (the W1 steps add theirs here), and the Stats' own invariants.
     void verifyIndexes() {
         const Stats& s=stats;
         auto fail=[&](const char* what) {
-            std::fprintf(stderr,"TAK_LEGION_VERIFY tick %u: %s\n",w.tickCounter_,what);
+            std::fprintf(stderr,"TA_LEGION_VERIFY tick %u: %s\n",w.tickCounter_,what);
             std::abort();
         };
         if(s.fieldWorkFirstSlot+s.fieldWorkFirstSolo+s.fieldWorkRefreshMoving+s.fieldWorkRefreshIdle!=s.fieldWork)
@@ -8007,7 +8007,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         size_t i=0;
         forEachStat(s,[&](const char* name,uint64_t now) {
             if(now<before[i++]) {
-                std::fprintf(stderr,"TAK_LEGION_VERIFY tick %u: counter %s decreased\n",w.tickCounter_,name);
+                std::fprintf(stderr,"TA_LEGION_VERIFY tick %u: counter %s decreased\n",w.tickCounter_,name);
                 std::abort();
             }
         });
@@ -8134,7 +8134,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
             // whatever their place, since a crossing stays planned off its box.
             // Candidates are visited in the movers' order, so every decision and
             // the plan's order are those of the walk over all movers
-            // (TAK_LEGION_VERIFY runs the conflict samples of every other mover
+            // (TA_LEGION_VERIFY runs the conflict samples of every other mover
             // and fails on a hit).
             awGridW=(int64_t(W)*16+kAwareCell-1)/kAwareCell;awGridH=(int64_t(height())*16+kAwareCell-1)/kAwareCell;
         }
@@ -8214,7 +8214,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
                         arc[k]=arc[k-1]+(chain[k]%W!=chain[k-1]%W&&chain[k]/W!=chain[k-1]/W?23:16);
                     const bool engages=g.kind==Kind::Fight||g.kind==Kind::Attack||g.kind==Kind::Guard||g.kind==Kind::Patrol;
 #ifndef NDEBUG
-                    // The reference forms (TAK_LEGION_VERIFY only; firstHitFast below must equal them).
+                    // The reference forms (TA_LEGION_VERIFY only; firstHitFast below must equal them).
                     // The group's position t ticks ahead (px): the chain point at
                     // arc length speed*t, the centroid at t=0, the chain's end after it.
                     auto at=[&](int64_t t,int64_t& x,int64_t& z) {
@@ -9370,7 +9370,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     //   fails a test now (re-tested on the state of the moment) makes some
     //   trace false. Sufficient, never necessary: no such origin, and the
     //   walk decides. A stale or off-map hint can only miss.
-    // TAK_LEGION_VERIFY compares every answer with the three walks.
+    // TA_LEGION_VERIFY compares every answer with the three walks.
     bool lineClear(const Unit& u,Member& m,const Group& g,const Plane& p,Fixed gx,Fixed gz,uint64_t command,int counts) {
         const int W=width(),H=height(),fx=u.type->footX,fz=u.type->footZ;
         const bool soft=softCellCount!=0,avoid=!g.avoidSeg.empty();
@@ -11023,7 +11023,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // c[k-1] = at: what descend(at) returns, without `check` (callers that
     // pass it hold a complete route, where it is off). Read in order from
     // c[1]; past kSteps, or out of order, it is descend itself.
-    // TAK_LEGION_VERIFY recomputes every answer the chain gives.
+    // TA_LEGION_VERIFY recomputes every answer the chain gives.
     int descentStep(const Unit& u,Member& m,const Plane& p,RouteView f,int k,int at) {
         auto& d=m.descent;
         const int W=width(),fx=u.type->footX,fz=u.type->footZ;
@@ -14715,7 +14715,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         // Every check before the soft bodies reads only the static plane, the
         // finished field (gateAim asks with a done field), the member's goal,
         // origin, footprint and band: the same inputs give the same static
-        // decline (see Member::gateMemo). TAK_LEGION_VERIFY recomputes a hit.
+        // decline (see Member::gateMemo). TA_LEGION_VERIFY recomputes a hit.
         auto& gm=m.gateMemo;
         const bool memo=f.complete()&&f.metric()!=0;
         const bool memoHit=memo&&gm.same(ox,oz,m.goal,band,u.type,f,epoch,p);
@@ -14903,7 +14903,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         }
         // Every read below is static (the plane, the finished field, the
         // goal, the footprint and the band), so a decline is memoised as
-        // gateCommit's is (Member::cornerMemo). TAK_LEGION_VERIFY recomputes
+        // gateCommit's is (Member::cornerMemo). TA_LEGION_VERIFY recomputes
         // a hit: it must decline again.
         auto& cm=m.cornerMemo;
         const bool memo=f.complete()&&f.metric()!=0;
@@ -15747,7 +15747,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         const Member* dbgOncoming=nullptr;
 #endif
 #ifndef NDEBUG
-        // TAK_LEGION_VERIFY: a skipped scan is run anyway and must find no
+        // TA_LEGION_VERIFY: a skipped scan is run anyway and must find no
         // oncoming body.
         const bool scan=opposed||gVerify;
 #else
@@ -17593,7 +17593,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // Before 2026-11-18 the key was the serial and n alone: a repair, or a
     // closure or opening in the destination area, left the old bound in
     // place until the route was replaced. Derived, never hashed;
-    // TAK_LEGION_VERIFY rescans on every hit.
+    // TA_LEGION_VERIFY rescans on every hit.
     bool boundKept(const Group& g,const Group::Bound& b,int n) const {
         const RouteView f=g.route();
         return f.complete()&&b.route==f.metric()&&b.n==n&&b.version==f.version();
@@ -17622,7 +17622,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
     // stamped Plane::lastUse (eviction order) and did any rebuild, so a hit
     // leaves the plane as the scan would. Only Stats::slotSearchCells
     // (accounting, never hashed or a decision) counts fewer cells. move() is
-    // serial. Derived, never hashed; TAK_LEGION_VERIFY rescans on every hit.
+    // serial. Derived, never hashed; TA_LEGION_VERIFY rescans on every hit.
     struct BoundMemo {uint64_t route,version,epoch;int plane,seed,n,fx,fz;uint32_t bound;};
     std::vector<BoundMemo> boundMemo;uint32_t boundMemoTick=kNoTick;
     // packedBound's scan of the window round `seed` on route `f`.
@@ -18147,8 +18147,8 @@ std::unique_ptr<LegionNavigator> LegionNavigator::clone(World& world) const {
 }
 LegionNavigator::~LegionNavigator() {
 #ifndef NDEBUG
-    // W9 step 0: TAK_LEGION_CENSUS=1 prints the predicate census when the navigator goes (debug builds only).
-    if(impl_&&std::getenv("TAK_LEGION_CENSUS"))
+    // W9 step 0: TA_LEGION_CENSUS=1 prints the predicate census when the navigator goes (debug builds only).
+    if(impl_&&std::getenv("TA_LEGION_CENSUS"))
         for(const auto& [name,v]:census())if(v)std::fprintf(stderr,"CENSUS %s=%llu\n",name.c_str(),(unsigned long long)v);
 #endif
 }
@@ -18440,7 +18440,7 @@ int LegionNavigator::routeLength(int id) const {
     return found==impl_->members.end()?0:int(found->second.route.size());
 }
 }
-namespace tak::sim {
+namespace ta::sim {
 int LegionNavigator::fieldPotential(int id,int x,int z) const {
     const auto found=impl_->members.find(id);
     if(found==impl_->members.end())return -1;

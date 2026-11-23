@@ -30,7 +30,7 @@
 // (Texture Filtering Units/Everything) filters resolved COLOURS of the four
 // texels, never indices; its weights cannot be bit-identical to the texture
 // unit's, so the linear program is experimental (GameView keeps the baked
-// pages for linear unit filtering unless TAK_PALETTE_INDEXED_LINEAR).
+// pages for linear unit filtering unless TA_PALETTE_INDEXED_LINEAR).
 //
 // Lifetime. GL objects belong to the GL context they were made in; when the
 // current context changes (renderer recreated) they are forgotten, not
@@ -50,7 +50,7 @@
 #include "client/gpuvram.h"
 #include "client/palettesheets.h"
 
-namespace tak {
+namespace ta {
 namespace palette = render::palette;
 
 class PaletteIndexedGL {
@@ -72,7 +72,7 @@ public:
         return usable_;
     }
     bool usable() const { return usable_; }
-    // Debug classification (TAK_PALETTE_MARK_EDGES): the programs paint a decode
+    // Debug classification (TA_PALETTE_MARK_EDGES): the programs paint a decode
     // outside its sheet magenta (the owner-lookup path; shows where it runs).
     // Takes effect when the programs are next built.
     void setMarkOutside(bool mark) { markOutside_ = mark; }
@@ -250,7 +250,7 @@ private:
     GLuint compile(GLenum type, const char* source) {
         const GLuint shader = createShader_(type);
         if (!shader) return 0;
-        const char* sources[2] = {markOutside_ && type == GL_FRAGMENT_SHADER ? "#define TAK_MARK_OUTSIDE\n" : "", source};
+        const char* sources[2] = {markOutside_ && type == GL_FRAGMENT_SHADER ? "#define TA_MARK_OUTSIDE\n" : "", source};
         shaderSource_(shader, 2, sources, nullptr);
         compileShader_(shader);
         GLint ok = 0;
@@ -369,7 +369,7 @@ private:
         "    v_texCoord = coord - 2.0 * sheet;\n"
         "    v_sheet = sheet;\n"
         "}";
-#define TAK_PALETTE_SHADER_COMMON \
+#define TA_PALETTE_SHADER_COMMON \
         "varying vec4 v_color;\n" \
         "varying vec2 v_texCoord;\n" \
         "varying vec2 v_sheet;\n" \
@@ -399,7 +399,7 @@ private:
         "vec4 resolve(float X, float Y, float x0q, float y0q, float w, float h, float bank) {\n" \
         "    float dx = X - x0q * 4.0, dy = Y - y0q * 5.0;\n" \
         "    if (dx < 0.0 || dy < 0.0 || dx >= 4.0 * w || dy >= 5.0 * h) {\n" \
-        "#ifdef TAK_MARK_OUTSIDE\n" \
+        "#ifdef TA_MARK_OUTSIDE\n" \
         "        return vec4(1.0, 0.0, 1.0, 1.0);\n" \
         "#endif\n" \
         "        /* outside the own sheet: the sheet the baked page holds there (owner + 1 at (X/4, Y/5)) */\n" \
@@ -422,7 +422,7 @@ private:
         "}\n"
     // NEAREST: the texture unit chooses the texel (identity lookups).
     static constexpr const char* kNearestShader =
-        TAK_PALETTE_SHADER_COMMON
+        TA_PALETTE_SHADER_COMMON
         "void main()\n"
         "{\n"
         "    float x0q, y0q, w, h, bank;\n"
@@ -437,7 +437,7 @@ private:
     // included, as the baked page bleeds them), 8-bit sub-texel weights,
     // page-edge clamp.
     static constexpr const char* kLinearShader =
-        TAK_PALETTE_SHADER_COMMON
+        TA_PALETTE_SHADER_COMMON
         "void main()\n"
         "{\n"
         "    float x0q, y0q, w, h, bank;\n"
@@ -452,7 +452,7 @@ private:
         "    vec4 c11 = resolve(b1.x, b1.y, x0q, y0q, w, h, bank);\n"
         "    gl_FragColor = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y) * v_color;\n"
         "}";
-#undef TAK_PALETTE_SHADER_COMMON
+#undef TA_PALETTE_SHADER_COMMON
     std::vector<std::unique_ptr<Page>> pages_;
     std::vector<uint8_t> scratch_;   // one frame's RGBA index texels (upload)
     GLuint identity_ = 0, lut_ = 0, nearest_ = 0, linear_ = 0;
@@ -491,4 +491,4 @@ private:
     void (APIENTRY* uniform1i_)(GLint, GLint) = nullptr;
 };
 
-}  // namespace tak
+}  // namespace ta

@@ -9,7 +9,7 @@
 #include <charconv>
 #include <bit>
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 std::string lower(std::string s) {
@@ -20,7 +20,7 @@ int toInt(const std::string& s) { return std::atoi(s.c_str()); }
 std::string flagKey(const std::string& name) { return name.empty() ? std::string(1,'\0') : name.substr(0,1); }
 }  // namespace
 
-ScenarioScript::ScenarioScript(const tak::crt::Scenario& scen, const TypeRegistry& reg,
+ScenarioScript::ScenarioScript(const ta::crt::Scenario& scen, const TypeRegistry& reg,
                                int viewPlayer, int maxPlayer, int mapWCells, int mapHCells,
                                uint32_t participants)
     : reg_(reg), view_(viewPlayer), maxPlayer_(std::max(1, maxPlayer)),
@@ -55,7 +55,7 @@ bool ScenarioScript::typeMatches(const Unit& unit, const std::string& name) cons
     return unit.type && (!type || unit.type==type);
 }
 
-const tak::crt::Region* ScenarioScript::region(const std::string& name) const {
+const ta::crt::Region* ScenarioScript::region(const std::string& name) const {
     const auto want=lower(name);
     for (const auto& r:regions_) if (lower(r.name)==want) return &r;
     return nullptr;
@@ -138,7 +138,7 @@ void ScenarioScript::applyOutcome(World& w, int player, int result, int recipien
 }
 
 // -------- conditions (opcode space per the RE table) --------
-bool ScenarioScript::evalCond(World& w, int player, const tak::crt::Rule& c, bool initial) {
+bool ScenarioScript::evalCond(World& w, int player, const ta::crt::Rule& c, bool initial) {
     const auto& s = c.slot;
     PState& ps = state_[size_t(player)];
     switch (c.opcode) {
@@ -194,7 +194,7 @@ bool ScenarioScript::evalCond(World& w, int player, const tak::crt::Rule& c, boo
 }
 
 // -------- actions (independent opcode space) --------
-void ScenarioScript::runAction(World& w, int player, int group, const tak::crt::Rule& a) {
+void ScenarioScript::runAction(World& w, int player, int group, const ta::crt::Rule& a) {
     const auto& s = a.slot;
     PState& ps = state_[size_t(player)];
     switch (a.opcode) {
@@ -373,4 +373,4 @@ void ScenarioScript::foldHash(uint64_t& h) const {
     }
 }
 
-}  // namespace tak::sim
+}  // namespace ta::sim

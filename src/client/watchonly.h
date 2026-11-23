@@ -10,7 +10,7 @@
 
 #include "client/hotkeys.h"
 
-namespace tak::client {
+namespace ta::client {
 
 // The actions that only look. Everything else is an order, or feeds one, and does
 // nothing for a watcher: no sound, no notice, no armed cursor.
@@ -45,4 +45,4 @@ inline int boxOwner(std::span<const int> owners) {
     return best;
 }
 
-}  // namespace tak::client
+}  // namespace ta::client

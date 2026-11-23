@@ -641,11 +641,11 @@ def main():
     ap.add_argument('--map-tool', type=Path, required=True)
     a = ap.parse_args()
     failed = []
-    with tempfile.TemporaryDirectory(prefix='tak-room-edit-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-room-edit-') as tmp:
         tmp = Path(tmp)
         env = Env()
         env.binary, env.data, env.map_tool = a.server.resolve(), a.data.resolve(), a.map_tool.resolve()
-        out = tmp / 'koth.takmap'
+        out = tmp / 'koth.tamap'
         subprocess.run([str(env.map_tool), '--export-package', str(env.data), str(out), KOTH], check=True)
         env.packages = {KOTH: out.read_bytes()}
         (tmp / 'public').mkdir()

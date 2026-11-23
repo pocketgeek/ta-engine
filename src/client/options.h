@@ -1,7 +1,7 @@
 #pragma once
 
 // A self-contained Options overlay, hosted by BOTH the main menu (MainMenu) and the
-// in-game Esc menu (GameView). It edits a tak::Settings live and calls onChange()
+// in-game Esc menu (GameView). It edits a ta::Settings live and calls onChange()
 // after every change so the host can apply it (audio / window / camera), and onSave()
 // once each change is finished so the host writes the settings file: there is no SAVE
 // button. It owns no game state; volumes/speeds/scale are all local display prefs
@@ -22,7 +22,7 @@
 #include "client/settings.h"
 #include "client/uitext.h"
 
-namespace tak {
+namespace ta {
 
 // The GAME DATA FOLDER row (client/datafolder.h). The host says which folder this
 // launch mounted and whether the setting may be changed from where Options is open.
@@ -102,7 +102,7 @@ public:
 
     // The AUDIO page: the sound device, volumes and speakers, and CUSTOM MUSIC -- a file of
     // the player's own for any original track (musicSides: each side's tracks, as the
-    // install lists them; tak::music::sideTracks).
+    // install lists them; ta::music::sideTracks).
     OptionsScreen(SDL_Renderer* ren, Settings& s, std::function<void()> onChange,
                   std::function<void()> onSave, std::vector<music::SideTracks> musicSides,
                   int audioChannels = 0, std::function<void()> onAudioDevice = {});
@@ -243,7 +243,7 @@ private:
     // (playerName / accountName / the remembered room sets are preserved by DEFAULTS,
     // so they're excluded).
     // "At defaults" and "what DEFAULTS does" are the same question, so they share one
-    // definition -- see tak::preferenceDefaults. They used to be two hand-maintained
+    // definition -- see ta::preferenceDefaults. They used to be two hand-maintained
     // lists that kept drifting apart.
     bool atDefaults() const {
         return s_ == pageDefaults();
@@ -305,14 +305,14 @@ private:
     std::vector<std::string> devSnapshot_;   // output devices ([0]="" system default, rest A-Z)
     std::vector<std::string> capSnapshot_;   // capture devices, the same way (VOICE CHAT page)
     OptionsPage page_ = OptionsPage::Game;
-    // This page's DEFAULTS: the settings with only its own fields reset (tak::*Defaults).
+    // This page's DEFAULTS: the settings with only its own fields reset (ta::*Defaults).
     Settings pageDefaults() const {
         switch (page_) {
-            case OptionsPage::Graphics: return tak::graphicsDefaults(s_);
-            case OptionsPage::Interface: return tak::uiDefaults(s_);
-            case OptionsPage::Game: return tak::gameDefaults(s_);
-            case OptionsPage::Voice: return tak::voiceDefaults(s_);
-            case OptionsPage::Audio: return tak::audioDefaults(s_);
+            case OptionsPage::Graphics: return ta::graphicsDefaults(s_);
+            case OptionsPage::Interface: return ta::uiDefaults(s_);
+            case OptionsPage::Game: return ta::gameDefaults(s_);
+            case OptionsPage::Voice: return ta::voiceDefaults(s_);
+            case OptionsPage::Audio: return ta::audioDefaults(s_);
         }
         return s_;
     }
@@ -324,4 +324,4 @@ private:
     SDL_FRect defaultsRect_{}, backRect_{};   // footer buttons (filled by layout())
 };
 
-}  // namespace tak
+}  // namespace ta

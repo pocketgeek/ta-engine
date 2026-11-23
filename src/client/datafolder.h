@@ -1,10 +1,10 @@
 #pragma once
 
-// The GAME DATA FOLDER setting, shared by takclient (Options) and Cartographer
+// The GAME DATA FOLDER setting, shared by taclient (Options) and Cartographer
 // (View > Preferences): which retail install a launch uses, what changing it does,
 // and the strings both programs show for it. Pure logic here (unit-tested by
 // tools/datafolder_test.cpp); the picker (client/dirpicker.h), the persistence
-// (tak::saveDataFolderSetting in client/settings.h) and the relaunch
+// (ta::saveDataFolderSetting in client/settings.h) and the relaunch
 // (util/relaunch.h) are the only side effects, and live in their own files.
 //
 // ONE setting for both programs: Settings::dataDir in the game's settings file.
@@ -30,7 +30,7 @@
 #include <vector>
 #include "util/u8path.h"
 
-namespace tak {
+namespace ta {
 
 // Where the folder a launch is using came from, in precedence order.
 enum class DataFolderOrigin {
@@ -72,12 +72,12 @@ inline std::string dataFolderOverrideReason(DataFolderOrigin origin) {
     }
 }
 
-// Two spellings of one folder ("C:\TAK\" and "c:/tak", "/x/y/" and "/x/y") compare
+// Two spellings of one folder ("C:\TA\" and "c:/ta", "/x/y/" and "/x/y") compare
 // equal, so re-picking the folder in use is not mistaken for a change. Case is only
 // folded on Windows, where the file system ignores it.
 inline std::string comparableFolder(const std::string& folder) {
     if (folder.empty()) return {};
-    const auto text = tak::u8path(folder).lexically_normal().generic_u8string();
+    const auto text = ta::u8path(folder).lexically_normal().generic_u8string();
     std::string s(text.begin(), text.end());
     while (s.size() > 1 && s.back() == '/') s.pop_back();
 #ifdef _WIN32
@@ -130,7 +130,7 @@ inline bool dataFolderNeedsRestart(const std::string& saved, const std::string& 
 }
 
 // A long path cut at its START, which is the part that matters least
-// ("/home/me/Games/TAK" -> ".../Games/TAK"). The cut prefers to land on a separator so
+// ("/home/me/Games/TA" -> ".../Games/TA"). The cut prefers to land on a separator so
 // the shown tail starts with a whole folder name, as long as that does not throw away
 // more than a third of the room. Never splits a UTF-8 sequence. maxChars counts bytes,
 // which is what the block fonts that draw this count (one glyph per byte).
@@ -159,7 +159,7 @@ inline std::vector<std::string> withoutOptions(const std::vector<std::string>& a
     return out;
 }
 
-// takclient's restart arguments: the launch's own arguments (so a debug launch keeps
+// taclient's restart arguments: the launch's own arguments (so a debug launch keeps
 // its mode and flags, and the working directory and --data rules apply as before),
 // minus --play-map, a one-shot Cartographer handoff that imported a snapshot into the
 // OLD install's map cache, and the --game-mod that went with it (a pack of that install).
@@ -167,4 +167,4 @@ inline std::vector<std::string> clientRestartArguments(const std::vector<std::st
     return withoutOptions(args, {{"--play-map", 1}, {"--game-mod", 1}});
 }
 
-}  // namespace tak
+}  // namespace ta

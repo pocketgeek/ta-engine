@@ -16,7 +16,7 @@
 #include <cstring>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 using Rect = cluster::Rect;
 
 namespace {

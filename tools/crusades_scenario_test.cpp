@@ -23,7 +23,7 @@
 #include <iostream>
 #include <stdexcept>
 
-using namespace tak;
+using namespace ta;
 static void check(bool value, const std::string& message) {
     if (!value) throw std::runtime_error(message);
 }
@@ -159,7 +159,7 @@ int main(int argc, char** argv) try {
         auto text = std::string((*files)[ota].begin(), (*files)[ota].end());
         auto metadata = tnt::Scenario::parse(text);
         metadata.useOnlyUnits = "crusades scenario.tdf";
-        text = metadata.write() + "\n[TAKPlaytest]\n{\nauthoredscenario=1;\n}\n";
+        text = metadata.write() + "\n[TAPlaytest]\n{\nauthoredscenario=1;\n}\n";
         (*files)[ota] = {text.begin(), text.end()};
         auto useOnly = [&](const char* list) {
             const std::string tdf = list;

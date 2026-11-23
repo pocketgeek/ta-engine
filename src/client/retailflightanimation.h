@@ -4,7 +4,7 @@
 #include <deque>
 #include <unordered_map>
 
-namespace tak {
+namespace ta {
 
 enum class RetailFlightAnimationCall {
     BeginFlight,
@@ -96,4 +96,4 @@ public:
     }
 };
 
-} // namespace tak
+} // namespace ta

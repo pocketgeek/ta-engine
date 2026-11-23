@@ -113,7 +113,7 @@ def stop(p):
 
 def main():
     exe = sys.argv[1]
-    with tempfile.TemporaryDirectory(prefix='tak-rtmps-') as directory:
+    with tempfile.TemporaryDirectory(prefix='ta-rtmps-') as directory:
         root = pathlib.Path(directory)
         cert, key = certificate(root, 'localhost')
         backend = port()
@@ -161,7 +161,7 @@ def main():
             stop(server)
             assert (root / 'second.flv').stat().st_size > 10000
             # SAVE A LOCAL COPY: one fragmented MP4 per connection, each playable.
-            copies = sorted(videos.glob('TAK-*.mp4'))
+            copies = sorted(videos.glob('TA-*.mp4'))
             assert len(copies) == 2, f'expected a local copy per connection: {copies}'
             for copy in copies:
                 streams, duration = probe(copy)

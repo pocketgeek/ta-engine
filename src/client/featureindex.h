@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak {
+namespace ta {
 // Broad-phase scenery culling in projected world coordinates. Features retain
 // their original painter-list order; the caller still performs exact screen/fog
 // tests. Rebuilt only when features are added or their footprint moves the anchor.

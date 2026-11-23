@@ -12,7 +12,7 @@
 #include <dxgi.h>
 #endif
 
-namespace tak::proc {
+namespace ta::proc {
 GpuSample windowsgpu_detail::aggregate(const std::vector<Counter>& engines,
                                       const std::vector<Counter>& dedicatedMemory,
                                       const std::vector<Adapter>& adapters) {

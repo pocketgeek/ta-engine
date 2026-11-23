@@ -16,16 +16,16 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 class BigMapView {
 public:
     // `vfs` is what the map is read through: a view over the game's data that holds a
     // downloaded or verified map's files. It is kept for this view's life (MapView and
     // the feature art borrow it). `world` (aramon, taros, ...) picks the feature files.
-    BigMapView(SDL_Renderer* ren, std::unique_ptr<tak::hpi::Vfs> vfs, const std::string& tntPath,
+    BigMapView(SDL_Renderer* ren, std::unique_ptr<ta::hpi::Vfs> vfs, const std::string& tntPath,
                const std::string& world);
-    BigMapView(SDL_Renderer* ren, std::unique_ptr<tak::hpi::Vfs> vfs, tak::tnt::Map map,
+    BigMapView(SDL_Renderer* ren, std::unique_ptr<ta::hpi::Vfs> vfs, ta::tnt::Map map,
                const std::string& world);
     ~BigMapView();
     BigMapView(const BigMapView&) = delete;
@@ -42,7 +42,7 @@ private:
     void loadFeatures(const std::string& world);
 
     SDL_Renderer* ren_;
-    std::unique_ptr<tak::hpi::Vfs> vfs_;   // declared before view_: MapView borrows it
+    std::unique_ptr<ta::hpi::Vfs> vfs_;   // declared before view_: MapView borrows it
     std::unique_ptr<MapView> view_;
     cart::FeatureLibrary features_;
     struct Sprite { SDL_Texture* tex = nullptr; int w = 0, h = 0, xoff = 0, yoff = 0; };

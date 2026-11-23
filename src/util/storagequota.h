@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace tak {
+namespace ta {
 // Count only regular files without following symlinks. Fail closed on I/O errors
 // or an excessive directory, rather than doing unbounded work on the game loop.
 inline uint64_t storageUsage(const std::filesystem::path& directory,

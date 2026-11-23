@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::client {
+namespace ta::client {
 
 // The HUD's self-destruct countdown in seconds from the sim's ticks
 // (Unit::selfDestructT): -1 when not armed. The wait after the countdown's
@@ -99,4 +99,4 @@ inline const char* unitStatusLabel(const UnitR& u) {
     return "STANDBY";   // retail's idle label
 }
 
-} // namespace tak::client
+} // namespace ta::client

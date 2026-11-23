@@ -5,7 +5,7 @@
 #include <cmath>
 #include <optional>
 
-namespace tak {
+namespace ta {
 struct RetailEffectVertex { float x=0,y=0,u=0,v=0; };
 
 // 52ce47..52d171: named lightning's screen-space textured quad. Inputs have
@@ -52,4 +52,4 @@ inline std::optional<std::array<RetailEffectVertex,4>> retailLightningQuad(
     }
     return result;
 }
-} // namespace tak
+} // namespace ta

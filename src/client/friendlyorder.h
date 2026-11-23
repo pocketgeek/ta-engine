@@ -2,7 +2,7 @@
 
 #include "sim/sim.h"
 
-namespace tak::client {
+namespace ta::client {
 
 // What a selected unit does when the player right-clicks a FINISHED friendly
 // unit (an unfinished one is a help-build site; see GameView::canAssistSite).
@@ -30,4 +30,4 @@ inline FriendlyOrder friendlyUnitOrder(const sim::UnitType& unit, bool unitFinis
     return unit.isStructure() ? FriendlyOrder::None : FriendlyOrder::Move;
 }
 
-} // namespace tak::client
+} // namespace ta::client

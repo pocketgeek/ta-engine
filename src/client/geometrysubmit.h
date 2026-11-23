@@ -10,7 +10,7 @@
 #include "client/gpuvram.h"
 #include "client/rendertelemetry.h"
 
-namespace tak {
+namespace ta {
 // A program the caller owns that replaces SDL's for one native draw (workstream
 // M: the indexed palette program, client/paletteindexed.h). GeometrySubmit primes
 // SDL's state as usual (target, viewport, scissor, projection, blend), then

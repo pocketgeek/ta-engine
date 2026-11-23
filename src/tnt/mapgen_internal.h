@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::mapgen::detail {
+namespace ta::mapgen::detail {
 
 
 // ---- deterministic integer helpers (no float -> identical on every peer) -------
@@ -396,4 +396,4 @@ constexpr int kMinStartGap = 72;
 bool startsSpacedForAnySeed(const Params& p);
 
 
-} // namespace tak::mapgen::detail
+} // namespace ta::mapgen::detail

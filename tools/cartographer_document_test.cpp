@@ -25,13 +25,13 @@ static std::vector<uint8_t> read(const std::filesystem::path& path) {
 
 // Symmetry math, section twins, Symmetrize, live mirroring and the terrain
 // clipboard, on synthetic maps (no retail data).
-static tak::tnt::Map blankMap(int blocksX,int blocksY) {
-    tak::tnt::Map map;map.blocksX=blocksX;map.blocksY=blocksY;map.width=blocksX*2;map.height=blocksY*2;
+static ta::tnt::Map blankMap(int blocksX,int blocksY) {
+    ta::tnt::Map map;map.blocksX=blocksX;map.blocksY=blocksY;map.width=blocksX*2;map.height=blocksY*2;
     map.heights.assign(size_t(map.width)*map.height,50);map.features.assign(map.heights.size(),0xFFFF);
     map.tileKeys.assign(size_t(blocksX)*blocksY,7);map.tileCols.assign(map.tileKeys.size(),0);map.tileRows.assign(map.tileKeys.size(),0);
     return map;
 }
-static tak::tnt::Map prefab(uint32_t key,uint8_t height) {   // 2x2 blocks, one key, distinct cols/rows
+static ta::tnt::Map prefab(uint32_t key,uint8_t height) {   // 2x2 blocks, one key, distinct cols/rows
     auto map=blankMap(2,2);
     for(int i=0;i<4;++i) {map.tileKeys[size_t(i)]=key;map.tileCols[size_t(i)]=uint8_t(i%2);map.tileRows[size_t(i)]=uint8_t(i/2);}
     for(size_t i=0;i<map.heights.size();++i)map.heights[i]=uint8_t(height+i);
@@ -103,7 +103,7 @@ static void symmetryTests() {
     check(transposed && std::abs(transposed->x/16-keep.z/16)<=.5 && std::abs(transposed->z/16-keep.x/16)<=.5 && transposed->footX==3,"non-square footprint keeps its shape, centred on the mirror");
     check(!cart::mirrorStart({1,0,5},Xf::FlipX,64,64) && cart::mirrorStart({1,1,5},Xf::FlipX,64,64)->xpos==63,"a start on the map edge mirrors off the map");
     check(cart::mirrorFeature(10,4,2,3,Xf::FlipX,64,64)==std::pair{52,4} && cart::mirrorFeature(10,4,2,3,Xf::FlipZ,64,64)==std::pair{10,57},"feature origin mirrors its footprint");
-    tak::crt::Region region{"Base",2,3,5,10};
+    ta::crt::Region region{"Base",2,3,5,10};
     const auto mirroredRegion=cart::mirrorRegion(region,Xf::FlipX,64,64),transposedRegion=cart::mirrorRegion(region,Xf::Transpose,64,64);
     check(mirroredRegion && mirroredRegion->x1==58 && mirroredRegion->x2==61 && mirroredRegion->z1==3 && mirroredRegion->z2==10,"region inclusive corners mirror");
     check(transposedRegion && transposedRegion->x1==3 && transposedRegion->x2==10 && transposedRegion->z1==2 && transposedRegion->z2==5,"region transposes");
@@ -144,19 +144,19 @@ static void symmetryTests() {
 
     // Terrain attribution and twins on a synthetic library.
     // A rescan frees the cached prefabs, so the editor rebuilds its matcher.
-    {tak::hpi::Vfs none;cart::SectionLibrary library;const auto generation=library.generation();library.scan(none,"zhon");
+    {ta::hpi::Vfs none;cart::SectionLibrary library;const auto generation=library.generation();library.scan(none,"zhon");
      check(library.generation()!=generation,"a section rescan is visible to the matcher's owner");}
     const auto ne=prefab(100,10),nw=prefab(200,40),river=prefab(300,70),flat=blankMap(2,2);
     std::vector<cart::SectionRef> refs{{"Cliffs","ne01","a"},{"Cliffs","nw01","b"},{"Rivers","river01","c"},{"Low Flats","flat01","d"}};
-    const tak::tnt::Map* prefabs[]={&ne,&nw,&river,&flat};
+    const ta::tnt::Map* prefabs[]={&ne,&nw,&river,&flat};
     cart::SectionMatcher matcher;matcher.build(refs,[&](size_t i){return prefabs[i];});matcher.setKey("test");
     check(matcher.twin(0,Xf::FlipX)==1 && matcher.twin(1,Xf::FlipX)==0 && matcher.twin(2,Xf::FlipX)<0 && matcher.twin(3,Xf::FlipX)==3,"matcher resolves twins by index");
     auto map=blankMap(8,4);
     cart::stampSection(map,ne,0,0);cart::stampSection(map,river,0,2);
     map.tileKeys[size_t(3)*8+2]=999;   // an unknown tile at block (2,3)
     map.featureNames={"Tree","Rock"};map.features[size_t(1)*16+2]=0;map.features[size_t(1)*16+14]=1;   // Rock on the target side
-    std::vector<tak::tnt::StartPos> starts{{1,4,4},{2,12,4},{3,5,6}};
-    tak::crt::Scenario scenario;scenario.regions={{"Left camp",1,1,3,3},{"Right camp",10,1,12,3}};
+    std::vector<ta::tnt::StartPos> starts{{1,4,4},{2,12,4},{3,5,6}};
+    ta::crt::Scenario scenario;scenario.regions={{"Left camp",1,1,3,3},{"Right camp",10,1,12,3}};
     std::vector<cart::PlacedUnit> units(3);
     units[0].type="ARCH";units[0].player=0;units[0].x=3*16+8;units[0].z=2*16+8;units[0].angle=90;units[0].name="Hero";
     units[1].type="ARCH";units[1].player=1;units[1].x=13*16+8;units[1].z=2*16+8;   // replaced
@@ -176,10 +176,10 @@ static void symmetryTests() {
     const auto& copy=units.back();
     check(copy.name.empty() && units[0].name=="Hero" && copy.x==12*16+8 && copy.angle==270,"copies drop unique names and mirror facing");
     check(copy.player==1,"copy belongs to the owner of the mirrored start");
-    auto map2=blankMap(8,4);std::vector<tak::tnt::StartPos> noStarts;std::vector<cart::PlacedUnit> noUnits;
+    auto map2=blankMap(8,4);std::vector<ta::tnt::StartPos> noStarts;std::vector<cart::PlacedUnit> noUnits;
     // Eight starts on one side leave no number for their mirrors.
-    std::vector<tak::tnt::StartPos> crowded;for(int n=1;n<=8;++n)crowded.push_back({n,1+(n-1)%4,n<=4?1:3});
-    tak::crt::Scenario empty;
+    std::vector<ta::tnt::StartPos> crowded;for(int n=1;n<=8;++n)crowded.push_back({n,1+(n-1)%4,n<=4?1:3});
+    ta::crt::Scenario empty;
     const auto full=cart::symmetrize(map2,crowded,empty,noUnits,request,{},nullptr);
     check(full.skippedStarts==8 && crowded.size()==8,"mirrored starts beyond eight are skipped");
     // Selection source: the image replaces an unselected unit under it.
@@ -207,7 +207,7 @@ static void symmetryTests() {
     fbefore=fmap.features;fmap.features[size_t(2)*16+1]=0xFFFF;
     cart::mirrorFeatureEdits(fbefore,fmap.featureNames,fmap,Mirror::Quad,[](const std::string&){return std::pair{2,1};});
     check(std::count(fmap.features.begin(),fmap.features.end(),uint16_t(0))==0,"erasing a feature erases its mirrors");
-    std::vector<tak::tnt::StartPos> liveStarts{{1,3,3}},beforeStarts;
+    std::vector<ta::tnt::StartPos> liveStarts{{1,3,3}},beforeStarts;
     cart::mirrorStartEdits(beforeStarts,liveStarts,Mirror::Rotate2,16,8);
     check(liveStarts.size()==2 && liveStarts[1].number==2 && liveStarts[1].xpos==13 && liveStarts[1].zpos==5,"a new start mirrors with the next number");
     beforeStarts=liveStarts;liveStarts[0].xpos=4;
@@ -268,15 +268,15 @@ static void blockerTests(const std::filesystem::path& root) {
     // Save and recovery keep the plane exactly, roads and other markers included.
     map=blankMap(4,4);map.featureNames={"Tree"};map.features[9]=0;map.features[10]=0xFFFB;map.features[12]=0xFFFE;
     cart::applyBlockers(map,0,2,7,3,cart::BlockOp::Paint);
-    tak::tnt::Scenario meta;tak::crt::Scenario scenario;
+    ta::tnt::Scenario meta;ta::crt::Scenario scenario;
     const auto files=cart::documentFiles(map,meta,scenario,{},{},{},"Blocked");
     const auto tnt=std::find_if(files.members.begin(),files.members.end(),[](const auto& f){return f.path.ends_with(".tnt");});
-    check(tnt!=files.members.end() && tak::tnt::Map::load(tnt->data).features==map.features,"blocked cells survive save and load");
+    check(tnt!=files.members.end() && ta::tnt::Map::load(tnt->data).features==map.features,"blocked cells survive save and load");
     {
         auto recovery=cart::RecoveryFile::create(root);std::string error;
         check(cart::writeDocumentBundle(recovery->path(),files,error),error.c_str());
         const auto snapshot=cart::readRecoverySnapshot(recovery->path());
-        check(tak::tnt::Map::load(snapshot.files->at(snapshot.mapPath)).features==map.features,"blocked cells survive a recovery snapshot");
+        check(ta::tnt::Map::load(snapshot.files->at(snapshot.mapPath)).features==map.features,"blocked cells survive a recovery snapshot");
         check(recovery->discard(error),error.c_str());
     }
     // One stroke is one undo step.
@@ -285,9 +285,9 @@ static void blockerTests(const std::filesystem::path& root) {
     cart::applyBlockerLine(map,0,0,7,0,2,cart::BlockOp::Paint);
     check(history.commit(cart::historyState(map,meta,scenario,{},{},{},"Blocked")),"a stroke commits to the history");
     const auto* undone=history.undo();
-    check(undone && tak::tnt::Map::load(undone->terrain).features==before,"undo restores the blocked cells");
+    check(undone && ta::tnt::Map::load(undone->terrain).features==before,"undo restores the blocked cells");
     const auto* redone=history.redo();
-    check(redone && tak::tnt::Map::load(redone->terrain).features==map.features,"redo paints them again");
+    check(redone && ta::tnt::Map::load(redone->terrain).features==map.features,"redo paints them again");
     // Live symmetry: painted and erased cells mirror; a feature keeps its cell.
     auto mirror=blankMap(8,4);mirror.featureNames={"Rock"};mirror.features[size_t(2)*16+12]=0;   // on the image of (3,2)
     auto liveBefore=mirror.features;
@@ -306,12 +306,12 @@ static void blockerTests(const std::filesystem::path& root) {
     // source side's blocked cells are copied onto empty image cells.
     const auto ne=prefab(100,10),nw=prefab(200,40);
     std::vector<cart::SectionRef> refs{{"Cliffs","ne01","a"},{"Cliffs","nw01","b"}};
-    const tak::tnt::Map* prefabs[]={&ne,&nw};
+    const ta::tnt::Map* prefabs[]={&ne,&nw};
     cart::SectionMatcher matcher;matcher.build(refs,[&](size_t i){return prefabs[i];});matcher.setKey("blocked");
     auto sym=blankMap(8,4);cart::stampSection(sym,ne,0,0);
     sym.features[size_t(2)*16+1]=0xFFFC;   // painted inside the section
     sym.features[2]=0xFFFC;                 // its image (13,0) gets the twin's road
-    std::vector<tak::tnt::StartPos> noStarts;std::vector<cart::PlacedUnit> noUnits;tak::crt::Scenario noScenario;
+    std::vector<ta::tnt::StartPos> noStarts;std::vector<cart::PlacedUnit> noUnits;ta::crt::Scenario noScenario;
     cart::SymmetryRequest request;request.kind=cart::Mirror::Vertical;request.source=0;
     const auto report=cart::symmetrize(sym,noStarts,noScenario,noUnits,request,{},&matcher);
     check(report.blocks>0 && sym.tileKeys[7]==200 && sym.features[size_t(2)*16+14]==0xFFFC && report.blocked==1,"Symmetrize copies a painted blocker onto its twin terrain");
@@ -330,7 +330,7 @@ static void aiFileTests(const std::filesystem::path& root) {
     namespace fs=std::filesystem;
     auto bytes=[](std::string_view text){return std::vector<uint8_t>(text.begin(),text.end());};
     const auto map=blankMap(4,4);
-    tak::tnt::Scenario meta;meta.aiProfile="islands";
+    ta::tnt::Scenario meta;meta.aiProfile="islands";
     const auto n=bytes("// level file\r\nweight testarch 0\r\nlimit testarch 2"),          // CRLF, no final newline
                islands=bytes("weight all 0.5 # tail\n// caf\xc3\xa9 \xe2\x80\x94 note\nlimit fly 2\n"),
                notes=bytes("plan attack 3\n");
@@ -340,14 +340,14 @@ static void aiFileTests(const std::filesystem::path& root) {
     const auto source=root/"Islands.kmp";
     {
         const auto base=cart::documentFiles(map,meta,{},{},{},{},"Islands");
-        std::vector<tak::hpi::PackFile> members;
+        std::vector<ta::hpi::PackFile> members;
         for(auto member:base.members) {member.path="kmap/Islands/"+member.path;members.push_back(member);}
         members.push_back({"AI/N.txt",n});members.push_back({"ai/islands.txt",islands});members.push_back({"ai/Notes.txt",notes});
         members.push_back({"ai/sub/deep.txt",notes});members.push_back({"ai/empty.txt",{}});
-        const auto packed=tak::hpi::pack(members);
+        const auto packed=ta::hpi::pack(members);
         std::ofstream out(source,std::ios::binary|std::ios::trunc);out.write(reinterpret_cast<const char*>(packed.data()),std::streamsize(packed.size()));
     }
-    auto opened=cart::aiFilesFromArchive(tak::hpi::Archive(source));
+    auto opened=cart::aiFilesFromArchive(ta::hpi::Archive(source));
     check(opened.size()==4 && opened.at("ai/n.txt")==n && opened.at("ai/islands.txt")==islands && opened.at("ai/notes.txt")==notes &&
           opened.count("ai/empty.txt"),"open keeps every root ai/ file, stray ones included, and nothing nested");
     const cart::AiFiles expected{{"ai/n.txt",n},{"ai/islands.txt",islands},{"ai/notes.txt",notes}};
@@ -357,15 +357,15 @@ static void aiFileTests(const std::filesystem::path& root) {
     const auto resaved=root/"Resaved.kmp";
     check(cart::writeDocumentBundle(resaved,files,error),error.c_str());
     {
-        tak::hpi::Archive archive(resaved);bool profile=false;
+        ta::hpi::Archive archive(resaved);bool profile=false;
         for(const auto& entry:archive.entries()) if(!entry.isDirectory) {
-            const auto key=tak::hpi::MountSet::key(entry.path);
+            const auto key=ta::hpi::MountSet::key(entry.path);
             check(!(key.starts_with("kmap/") && key.find("/ai/")!=std::string::npos),"AI files are not under kmap/");
-            if(key.ends_with(".ota")) {const auto ota=archive.read(entry);profile=tak::tnt::Scenario::parse(std::string(ota.begin(),ota.end())).aiProfile=="islands";}
+            if(key.ends_with(".ota")) {const auto ota=archive.read(entry);profile=ta::tnt::Scenario::parse(std::string(ota.begin(),ota.end())).aiProfile=="islands";}
         }
         check(profile,"aiprofile= survives the save");
     }
-    check(cart::aiFilesFromArchive(tak::hpi::Archive(resaved))==expected,"all three AI files re-save byte for byte");
+    check(cart::aiFilesFromArchive(ta::hpi::Archive(resaved))==expected,"all three AI files re-save byte for byte");
     // Undo/redo.
     cart::History history;history.reset(cart::historyState(map,meta,{},{},{},expected,"Islands"),true);
     auto edited=expected;edited["ai/n.txt"]=bytes("weight testarch 5\n");edited.erase("ai/notes.txt");
@@ -411,21 +411,21 @@ static void aiFileTests(const std::filesystem::path& root) {
             check(cart::writeDocumentBundle(clash/"Maps"/(std::string(name)+".kmp"),own,error),error.c_str());
         }
         fs::create_directories(clash/"Maps"/"ai");std::ofstream(clash/"Maps"/"ai"/"h.txt")<<"limit x 0\n";
-        const auto vfs=tak::hpi::mountRetailRoot(clash);
+        const auto vfs=ta::hpi::mountRetailRoot(clash);
         for(const char* name:{"Clash A","Clash B"}) {
-            const auto path=tak::hpi::findMap(vfs,name);
+            const auto path=ta::hpi::findMap(vfs,name);
             const cart::AiFiles want{{"ai/n.txt",bytes(std::string("// ")+name+"\n")},{"ai/islands.txt",bytes(name)}};
             check(!path.empty() && cart::aiFilesFromMapArchive(vfs,path)==want,"an installed map opens by name with its own archive's AI files");
         }
-        tak::hpi::Vfs view(&vfs);view.setMapFiles(std::make_shared<tak::hpi::Vfs::Files>(tak::hpi::Vfs::Files{{"kmap/x.tnt",{1}},{"ai/e.txt",{2}}}));
+        ta::hpi::Vfs view(&vfs);view.setMapFiles(std::make_shared<ta::hpi::Vfs::Files>(ta::hpi::Vfs::Files{{"kmap/x.tnt",{1}},{"ai/e.txt",{2}}}));
         check(cart::aiFilesFromMapArchive(view,"kmap/x.tnt")==cart::AiFiles{{"ai/e.txt",{2}}},"a view's own map files are its archive");
-        check(cart::aiFilesFromMapArchive(tak::hpi::Vfs(&vfs,true),tak::hpi::findMap(vfs,"Clash A")).empty(),"a view without map resources has none");
+        check(cart::aiFilesFromMapArchive(ta::hpi::Vfs(&vfs,true),ta::hpi::findMap(vfs,"Clash A")).empty(),"a view without map resources has none");
     }
     std::cout<<"PASS: AI profiles re-save byte for byte at the .kmp root, undo/redo, recovery, loose ai/ export, the Maps-folder refusal and by-name opens of clashing maps\n";
 }
 int main() {
     namespace fs=std::filesystem;
-    auto root=fs::temp_directory_path()/("tak-cartographer-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto root=fs::temp_directory_path()/("ta-cartographer-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     try {
         auto lease=cart::RecoveryFile::create(root);const auto snapshot=lease->path();
@@ -440,10 +440,10 @@ int main() {
         const auto legacy=root/"recovery-old.kmp";std::ofstream(legacy)<<"legacy";
         lease=cart::RecoveryFile::claimNewest(root);check(lease && lease->path()==legacy,"legacy recovery supported");
         check(lease->discard(recoveryError),"discard legacy recovery");lease.reset();
-        const auto destination=root/tak::u8path("été maps");
+        const auto destination=root/ta::u8path("été maps");
         const auto info=cart::recoveryInfo("Recovered map",destination);
         const auto decoded=cart::readRecoveryInfo(info.data);
-        check(decoded && decoded->name=="Recovered map" && tak::u8path(decoded->directory)==destination,"recovery destination UTF-8 roundtrip");
+        check(decoded && decoded->name=="Recovered map" && ta::u8path(decoded->directory)==destination,"recovery destination UTF-8 roundtrip");
         check(!cart::readRecoveryInfo({1,2,3}),"bad recovery metadata rejected");
         cart::EditorPreferences preferences;preferences.guideSeen=true;preferences.tracePlaytest=true;preferences.width=1440;preferences.height=900;preferences.scalePercent=125;preferences.showFeatures=false;preferences.showUnits=false;preferences.showStarts=false;preferences.showRegions=false;preferences.showGrid=true;preferences.showBlocked=true;
         for(int i=0;i<20;++i)preferences.remember("Map "+std::to_string(i));
@@ -477,7 +477,7 @@ int main() {
             check(cart::saveEditorPreferences(root,groups,prefsError),prefsError.c_str());
             check(cart::loadEditorPreferences(root).sectionGroups==groups.sectionGroups,"section browser group per world roundtrip");
         }
-        tak::tnt::Map map;map.width=map.height=32;map.blocksX=map.blocksY=16;
+        ta::tnt::Map map;map.width=map.height=32;map.blocksX=map.blocksY=16;
         map.heights.resize(1024,60);map.features.resize(1024,0xffff);
         map.tileKeys.resize(256);map.tileCols.resize(256);map.tileRows.resize(256);
         auto featureMap=map;featureMap.featureNames={"Tree","Rock"};featureMap.features[33]=0;featureMap.features[34]=1;
@@ -507,38 +507,38 @@ int main() {
         check(painted.features[0]==0xFFFF && painted.featureNames[painted.features[1]]=="Rock","normal stamp replaces/remaps objects");
         auto untouched=painted.features;
         check(!cart::stampSection(painted,prefab,16,16,{false}) && painted.features==untouched,"off-map protected stamp does nothing");
-        tak::tnt::Scenario meta;meta.kingdom="zhon";
+        ta::tnt::Scenario meta;meta.kingdom="zhon";
         meta.generatorRecipe="~gen1~test-metadata";
-        check(tak::tnt::Scenario::parse(meta.write()).generatorRecipe==meta.generatorRecipe,"generator metadata survives OTA roundtrip");
+        check(ta::tnt::Scenario::parse(meta.write()).generatorRecipe==meta.generatorRecipe,"generator metadata survives OTA roundtrip");
         for(const std::string text : {"First line\nSecond line", "\r\n\t", "  Leading and trailing ; ", "https://example.test/{map}", "été 水 ; test", "}\n[Other]\n{\nkey=value;\n}"}) {
             auto rich=meta;rich.missionDescription=text;rich.missionName=text;
-            const auto encoded=rich.write();const auto decoded=tak::tnt::Scenario::parse(encoded);
+            const auto encoded=rich.write();const auto decoded=ta::tnt::Scenario::parse(encoded);
             check(decoded.missionName==text && decoded.missionDescription==text,"OTA free text roundtrip without interpreting syntax");
             const auto extension=encoded.find("[TAKText]");
-            const auto legacy=tak::tnt::Scenario::parse(encoded.substr(0,extension));
+            const auto legacy=ta::tnt::Scenario::parse(encoded.substr(0,extension));
             check(legacy.kingdom=="zhon" && legacy.missionDescription.find('\n')==std::string::npos,"legacy metadata remains parseable with one-line description");
         }
         check(meta.write().find("[TAKText]")==std::string::npos,"ordinary OTA output needs no text extension");
-        check(tak::tnt::Scenario::parse(meta.write()+"[TAKText]\n{\nmissiondescription=zz;\n}\n").missionDescription.empty(),"invalid text extension ignored");
+        check(ta::tnt::Scenario::parse(meta.write()+"[TAKText]\n{\nmissiondescription=zz;\n}\n").missionDescription.empty(),"invalid text extension ignored");
         {
-            auto files=std::make_shared<tak::hpi::Vfs::Files>();
+            auto files=std::make_shared<ta::hpi::Vfs::Files>();
             (*files)["kmap/damaged.crt"]={0,1,2};
-            tak::hpi::Vfs vfs;vfs.setMapFiles(files);
+            ta::hpi::Vfs vfs;vfs.setMapFiles(files);
             bool rejected=false;
             try {(void)cart::loadScenario(vfs,"kmap/damaged.crt");}
             catch(const std::exception&) {rejected=true;}
             check(rejected,"damaged scenario must not silently become an empty editable map");
             check(cart::loadScenario(vfs,"kmap/absent.crt").version==1,"optional absent scenario remains supported");
         }
-        tak::crt::Scenario scenario;scenario.players.resize(9);
-        tak::crt::RuleGroup group;group.conditions.push_back({});group.actions.push_back({});
+        ta::crt::Scenario scenario;scenario.players.resize(9);
+        ta::crt::RuleGroup group;group.conditions.push_back({});group.actions.push_back({});
         scenario.players[0].push_back(group);
-        const auto unnamedCrt=tak::crt::write(scenario);
+        const auto unnamedCrt=ta::crt::write(scenario);
         scenario.players[0][0].editorName="Defend the bridge — été";
-        check(tak::crt::write(scenario)==unnamedCrt,"editor names do not change retail CRT bytes");
-        const auto names=cart::scenarioInfo(scenario);auto named=tak::crt::parse(unnamedCrt);
+        check(ta::crt::write(scenario)==unnamedCrt,"editor names do not change retail CRT bytes");
+        const auto names=cart::scenarioInfo(scenario);auto named=ta::crt::parse(unnamedCrt);
         check(cart::applyScenarioInfo(named,names) && named.players[0][0].editorName==scenario.players[0][0].editorName,"Unicode rule names roundtrip in sidecar");
-        check(!cart::applyScenarioInfo(named,"TAK_EDITOR_RULE_NAMES 1\n99 0 \"bad\"\n") && named.players[0][0].editorName==scenario.players[0][0].editorName,"invalid rule metadata is atomic");
+        check(!cart::applyScenarioInfo(named,"TA_EDITOR_RULE_NAMES 1\n99 0 \"bad\"\n") && named.players[0][0].editorName==scenario.players[0][0].editorName,"invalid rule metadata is atomic");
         cart::History namedHistory;namedHistory.reset(cart::historyState(map,meta,scenario,{}, {},{},"Review"),true);
         scenario.players[0][0].editorName="Victory";namedHistory.commit(cart::historyState(map,meta,scenario,{}, {},{},"Review"));
         check(cart::applyScenarioInfo(named,namedHistory.undo()->editorMetadata) && named.players[0][0].editorName=="Defend the bridge — été","rule name undo restores metadata");
@@ -546,13 +546,13 @@ int main() {
         auto files=cart::documentFiles(map,meta,scenario,{}, {},{},"Review");
         std::string error;
         check(cart::writeDocumentFiles(root,files.members,error),error.c_str());
-        auto crt=tak::crt::parse(read(root/"Review.crt"));
-        tak::hpi::Vfs namedVfs;auto namedFiles=std::make_shared<tak::hpi::Vfs::Files>();
+        auto crt=ta::crt::parse(read(root/"Review.crt"));
+        ta::hpi::Vfs namedVfs;auto namedFiles=std::make_shared<ta::hpi::Vfs::Files>();
         (*namedFiles)["review.crt"]=read(root/"Review.crt");(*namedFiles)["review.editor"]=read(root/"Review.editor");namedVfs.setMapFiles(namedFiles);
         check(cart::loadScenario(namedVfs,"review.crt").players[0][0].editorName=="Victory","normal scenario loading restores names");
         check(crt.players.size()==9 && crt.players[0].size()==1,"rule-only scenario saved");
         auto ota=read(root/"Review.ota");
-        check(tak::tnt::Scenario::parse(std::string(ota.begin(),ota.end())).hasScenario,"scenario metadata follows content");
+        check(ta::tnt::Scenario::parse(std::string(ota.begin(),ota.end())).hasScenario,"scenario metadata follows content");
         check(!meta.hasScenario,"saving does not mutate document metadata");
         check(cart::writeDocumentBundle(root/"Review.kmp",files,error),error.c_str());
         const auto original=read(root/"Review.kmp");
@@ -584,7 +584,7 @@ int main() {
             check(!recovery->discard(error) && !error.empty() && fs::exists(backup/"unrelated"),"cleanup failure preserves unrelated contents and reports error");
             fs::remove_all(backup);
         }
-        tak::hpi::Archive openArchive(root/"Review.kmp"); // editor may retain a mapped archive while saving over it
+        ta::hpi::Archive openArchive(root/"Review.kmp"); // editor may retain a mapped archive while saving over it
         const auto oldEntry=*std::find_if(openArchive.entries().begin(),openArchive.entries().end(),[](const auto& entry){return !entry.isDirectory;});const auto oldBytes=openArchive.read(oldEntry);
         scenario.players[0].clear();
         files=cart::documentFiles(map,meta,scenario,{}, {},{},"Review");
@@ -592,8 +592,8 @@ int main() {
         check(read(root/"Review.kmp.bak")==original,"previous bundle retained");
         check(openArchive.read(oldEntry)==oldBytes,"open archive remains a stable snapshot after replacement");
         check(cart::writeDocumentFiles(root,files.members,error),error.c_str());
-        check(tak::crt::parse(read(root/"Review.crt")).players[0].empty(),"deletion replaces stale scenario");
-        check(tak::crt::parse(read(root/"Review.crt.bak")).players[0].size()==1,"loose backup preserved");
+        check(ta::crt::parse(read(root/"Review.crt")).players[0].empty(),"deletion replaces stale scenario");
+        check(ta::crt::parse(read(root/"Review.crt.bak")).players[0].size()==1,"loose backup preserved");
         const auto unicodeDir=root/std::filesystem::path(u8"Cartes été");fs::create_directory(unicodeDir);
         const auto unicodePath=unicodeDir/std::filesystem::path(u8"Île.kmp");
         check(cart::writeDocumentBundle(unicodePath,files,error),error.c_str());
@@ -605,7 +605,7 @@ int main() {
         // Fail after staging all members, while publishing their backups.
         // Originals must still form a complete document and scratch files vanish.
         const auto backupFailure=root/"backup-failure";fs::create_directory(backupFailure);
-        const std::vector<tak::hpi::PackFile> previous{{"a.tnt",{1,2,3}},{"a.ota",{4,5,6}}};
+        const std::vector<ta::hpi::PackFile> previous{{"a.tnt",{1,2,3}},{"a.ota",{4,5,6}}};
         check(cart::writeDocumentFiles(backupFailure,previous,error),error.c_str());
         fs::create_directory(backupFailure/"a.ota.bak");
         std::ofstream(backupFailure/"a.ota.bak"/"keep")<<"unrelated";
@@ -613,7 +613,7 @@ int main() {
         for(const auto& member:previous)check(read(backupFailure/member.path)==member.data,"backup failure changed an original document member");
         check(fs::exists(backupFailure/"a.ota.bak"/"keep"),"backup failure removed unrelated content");
         for(const auto& entry:fs::directory_iterator(backupFailure))
-            check(!entry.path().filename().string().starts_with(".tak-save-"),"failed save leaked staging files");
+            check(!entry.path().filename().string().starts_with(".ta-save-"),"failed save leaked staging files");
         check(!cart::writeDocumentFiles(root,{{"../escape",{1}}},error),"reject traversal");
         check(!cart::writeDocumentFiles(root,{{"duplicate",{1}},{"duplicate",{2}}},error),"reject duplicate members");
         check(!cart::writeDocumentBundle(root/"missing"/"Review.kmp",files,error),"missing folder fails");

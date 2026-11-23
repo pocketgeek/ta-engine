@@ -22,27 +22,27 @@ namespace cart {
 namespace fs = std::filesystem;
 fs::path Playtest::clientPath(const fs::path& directory) {
 #ifdef _WIN32
-    const auto sibling=directory/"takclient.exe";
+    const auto sibling=directory/"taclient.exe";
 #else
-    const auto sibling=directory/"takclient";
+    const auto sibling=directory/"taclient";
 #endif
     if(fs::is_regular_file(sibling))return sibling;
-    // Packaged macOS layout: the base path is inside TAK Cartographer.app (Contents/Resources
+    // Packaged macOS layout: the base path is inside TA Cartographer.app (Contents/Resources
     // or Contents/MacOS), so look beside that bundle for the game app (DMG) or the bare
-    // takclient (ZIP). Path-only, so it is a no-op wherever no .app ancestor exists.
+    // taclient (ZIP). Path-only, so it is a no-op wherever no .app ancestor exists.
     auto folder=directory.lexically_normal();
     while(folder.has_filename() || folder.has_relative_path()) {
         if(!folder.has_filename()) {folder=folder.parent_path();continue;}
         const bool bundle=folder.extension()==".app";
         folder=folder.parent_path();
         if(!bundle)continue;
-        const auto bundled=folder/"Total Annihilation - Kingdoms.app"/"Contents"/"MacOS"/"takclient";
+        const auto bundled=folder/"Total Annihilation - Kingdoms.app"/"Contents"/"MacOS"/"taclient";
         if(fs::is_regular_file(bundled))return bundled;
-        const auto beside=folder/"takclient";
+        const auto beside=folder/"taclient";
         if(fs::is_regular_file(beside))return beside;
         break;
     }
-    throw std::runtime_error("Cannot find takclient beside Cartographer. Install both applications together.");
+    throw std::runtime_error("Cannot find taclient beside Cartographer. Install both applications together.");
 }
 void Playtest::cleanup() {
     if(!directory_.empty()) {std::error_code error;fs::remove_all(directory_,error);}
@@ -63,15 +63,15 @@ bool Playtest::start(const fs::path& client,const fs::path& data,
         if(!fs::is_regular_file(client))throw std::runtime_error("Game client executable is missing");
         const auto stamp=std::chrono::steady_clock::now().time_since_epoch().count();
         for(unsigned n=0;;++n) {
-            directory_=fs::temp_directory_path()/("tak-playtest-"+std::to_string(stamp)+"-"+std::to_string(n));
+            directory_=fs::temp_directory_path()/("ta-playtest-"+std::to_string(stamp)+"-"+std::to_string(n));
             if(fs::create_directory(directory_))break;
         }
         snapshot_=directory_/"Cartographer Test.kmp";
         if(!writeDocumentBundle(snapshot_,files,error)) {cleanup();return false;}
 #ifdef _WIN32
-        std::wstring command=tak::quoteWindowsArgument(fs::absolute(client).wstring())+L" --data "+tak::quoteWindowsArgument(fs::absolute(data).wstring())+
-            L" --play-map "+tak::quoteWindowsArgument(snapshot_.wstring());
-        if(!gameMod.empty())command+=L" --game-mod "+tak::quoteWindowsArgument(tak::u8path(gameMod).wstring());
+        std::wstring command=ta::quoteWindowsArgument(fs::absolute(client).wstring())+L" --data "+ta::quoteWindowsArgument(fs::absolute(data).wstring())+
+            L" --play-map "+ta::quoteWindowsArgument(snapshot_.wstring());
+        if(!gameMod.empty())command+=L" --game-mod "+ta::quoteWindowsArgument(ta::u8path(gameMod).wstring());
         STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION process{};
         if(!CreateProcessW(fs::absolute(client).c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,
                            nullptr,nullptr,&startup,&process))

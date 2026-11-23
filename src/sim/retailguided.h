@@ -9,7 +9,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // GuidedWeapon (KINGDOMS.icd 0x52c540 / 0x52e030 / 0x52c6d0) shares the
 // straight-shot 16.16 XYZ record. Unlike BallisticWeapon it has no gravity:
@@ -176,4 +176,4 @@ inline bool retailGuidedTick(RetailGuidedShot& shot,const std::array<int32_t,3>&
     return false;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

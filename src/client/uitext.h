@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 enum class UiFontStyle : uint8_t { Modern = 0, Classic = 1 };
 UiFontStyle uiFontStyle();
@@ -69,4 +69,4 @@ float uiFontScaleForCap(float capPx);
 // Free the TrueType glyph sheets (renderer reset / session teardown / exit).
 void releaseUiTextGlyphs();
 
-}  // namespace tak
+}  // namespace ta

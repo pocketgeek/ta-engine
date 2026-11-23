@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace tak::srv {
+namespace ta::srv {
 struct Limits {
     uint64_t rooms=16,running=4,accounts=10000;
     uint64_t mapMemory=512ull<<20,mapDisk=4ull<<30;

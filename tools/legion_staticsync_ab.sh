@@ -4,7 +4,7 @@
 # Perf follow-up H: A/B timing of tools/legion_staticsync_bench (a base-heavy world, several movement
 # planes, small localized static changes per step). Per round two swapped concurrent pairs, base on
 # core 2 + candidate on core 3, then swapped, all inside one hold of the timing lock
-# (/home/pocket_geek/tak-tmp/tools/timing.sh, cores 0-3). BUILD holds legion_staticsync_bench of an
+# (/home/pocket_geek/ta-tmp/tools/timing.sh, cores 0-3). BUILD holds legion_staticsync_bench of an
 # -O2 tree (Debug -O2 -g); both trees need the bench (cherry-pick its commit onto a base without it).
 # Default workloads (each with the given bench args appended):
 #   w3000       --structures 3000                         (the default 512x512 map, 6 planes, 4 changes/step)
@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do case $1 in
 for d in "$BASE" "$CAND"; do [ -x "$d/legion_staticsync_bench" ] || { echo "$d/legion_staticsync_bench missing" >&2; exit 2; }; done
 OUT=${OUT:-${TMPDIR:-/tmp}/staticsync-ab-$(date +%m%d-%H%M)}
 mkdir -p "$OUT"
-TIMING=${TAK_TIMING_SH:-/home/pocket_geek/tak-tmp/tools/timing.sh}
+TIMING=${TA_TIMING_SH:-/home/pocket_geek/ta-tmp/tools/timing.sh}
 if [ -z "${STATICSYNC_INNER:-}" ]; then
   "$TIMING" env STATICSYNC_INNER=1 bash "$0" --base "$BASE" --cand "$CAND" --rounds "$ROUNDS" --out "$OUT" -- "${EXTRA[@]}"
   python3 - "$OUT" <<'EOF'

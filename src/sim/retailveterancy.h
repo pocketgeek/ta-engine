@@ -5,7 +5,7 @@
 // Retail veterancy (KINGDOMS.icd). A unit's experience (+0xf0) is a sum of
 // experiencepoints, not a kill count, and its level is worked out from it on
 // every read; tools/re/check_veterancy.py runs all three routines natively.
-namespace tak::sim {
+namespace ta::sim {
 
 // The kill credit of the death routine 512ae0: the switch at 512b71 on the
 // death kind (+0x116 >> 4) reaches the credit at 512c9c only for kinds 1, 2,
@@ -72,4 +72,4 @@ inline int32_t retailExperienceForLevel(int32_t experience, int level, int32_t p
     return int32_t(uint32_t(uint64_t(int64_t(value))));            // the conversion truncates, as _ftol
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

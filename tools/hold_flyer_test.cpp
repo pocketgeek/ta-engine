@@ -25,7 +25,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-using namespace tak;
+using namespace ta;
 namespace {
 int failures=0;
 void check(bool ok,const std::string& label) {

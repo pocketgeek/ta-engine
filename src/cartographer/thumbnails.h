@@ -11,7 +11,7 @@ namespace cart {
 // replacing the borrowed VFS.
 class Thumbnails {
 public:
-    Thumbnails(SDL_Renderer* renderer,const tak::hpi::Vfs& assets,size_t limit=128);
+    Thumbnails(SDL_Renderer* renderer,const ta::hpi::Vfs& assets,size_t limit=128);
     ~Thumbnails();
     SDL_Texture* get(const std::string& path);
     void reset();
@@ -21,10 +21,10 @@ public:
     size_t entries() const {return cache_.size();}
 private:
     struct Entry {SDL_Texture* texture=nullptr;size_t bytes=0;uint64_t used=0;};
-    struct Result {std::string path;tak::jpeg::Image image;};
+    struct Result {std::string path;ta::jpeg::Image image;};
     SDL_Renderer* renderer_;
-    const tak::hpi::Vfs& assets_;
-    std::unique_ptr<tak::terrain::Compositor> compositor_;
+    const ta::hpi::Vfs& assets_;
+    std::unique_ptr<ta::terrain::Compositor> compositor_;
     std::map<std::string,Entry> cache_;
     std::future<Result> job_;
     size_t limit_,bytes_=0,decoded_=0;

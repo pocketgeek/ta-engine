@@ -19,7 +19,7 @@ bool cart::Session::stampByName(const std::string& name, int bx, int by) {
     MapView& mapView=*mapViewPtr;
     for (const auto& s : sections.list())
         if (s.name == name) {
-            const tak::tnt::Map* sec = sections.load(vfs, s.path);
+            const ta::tnt::Map* sec = sections.load(vfs, s.path);
             if (sec && cart::stampSection(mapView.editMap(), *sec, bx, by)) {
                 mapView.tilesEdited(bx,by,sec->blocksX,sec->blocksY);
                 edited = true; dirty = true; historyPending=true;
@@ -33,7 +33,7 @@ void cart::Editor::stampAtMouse(int mx, int my, int w, int h) {
     if (mx >= kPaletteW && clipboardBrush()) { pasteTerrainAtMouse(mx, my); return; }
     if (selected < 0 || mx < kPaletteW) return;   // palette side, not the canvas
     const auto& s = sections.list()[size_t(selected)];
-    const tak::tnt::Map* sec = sections.load(vfs, s.path);
+    const ta::tnt::Map* sec = sections.load(vfs, s.path);
     if (!sec || sec->blocksX <= 0) return;
     // Canvas-local -> world -> block, snapped to the section's own size so
     // sections tile cleanly.
@@ -461,7 +461,7 @@ void cart::Editor::drawCanvas() {
             SDL_RenderDrawLine(ren, 0, int(sy), canvasW, int(sy));
         }
     }
-    auto drawRegion=[&](const tak::crt::Region& region,bool selected) {
+    auto drawRegion=[&](const ta::crt::Region& region,bool selected) {
         const float zoom=mapView.zoom();
         SDL_FRect box{(std::min(region.x1,region.x2)*16-mapView.offX())*zoom,(std::min(region.z1,region.z2)*16-mapView.offY())*zoom,
             (std::abs(region.x2-region.x1)+1)*16*zoom,(std::abs(region.z2-region.z1)+1)*16*zoom};

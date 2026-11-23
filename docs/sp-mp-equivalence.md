@@ -4,11 +4,11 @@ A fair worry about a lockstep engine: could single-player and multiplayer *do
 things differently*? Here is the precise answer for this engine, with the
 guardrail that keeps it honest.
 
-Single-player launches a private local `takserver` (`--local --no-auth`) and
+Single-player launches a private local `taserver` (`--local --no-auth`) and
 plays through exactly the same server-sequenced bundles, fixed 1/30 step and
 server-run AI as multiplayer, so there are no latency, substep, ordering,
 AI-tick or AI-seed differences between the two. A room's RNG seed is rolled per
-room, or pinned with `takserver --seed`. The one remaining split is inside every
+room, or pinned with `taserver --seed`. The one remaining split is inside every
 game, single-player included: the server referee applies commands directly,
 while every client applies them after the wire. The regression test below
 guards exactly that.
@@ -17,8 +17,8 @@ guards exactly that.
 
 Every game reaches the world only through the same shared functions:
 
-- `tak::sim::setupMatch` — builds the initial world (`matchsetup.h`)
-- `tak::sim::applyCommand` / `applyEvent` — apply every order/event
+- `ta::sim::setupMatch` — builds the initial world (`matchsetup.h`)
+- `ta::sim::applyCommand` / `applyEvent` — apply every order/event
 - `World::tick` — the simulation step
 
 `GameView::apply` is a one-line wrapper over `applyCommand`, and the server

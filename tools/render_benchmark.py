@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Matched renderer benchmark matrix for the rendering optimization program.
 
-Runs the debug render study (takclient --testbuild with TAK_RENDER_STUDY) over a
+Runs the debug render study (taclient --testbuild with TA_RENDER_STUDY) over a
 fixed scene matrix and compares one or two optimized-Debug clients:
 
   A/A (variability):  --a CLIENT [--repeats N]          -> A A A A ...
@@ -23,7 +23,7 @@ GPU time is the GL_TIME_ELAPSED draw TIMELINE, which includes idle gaps waiting
 for CPU submission; it is not device busy time (nothing here measures busy
 time). Workstream-A clients read it from a query ring without waiting and print
 GPUTIMELINE lines, possibly frames later; older clients block on the result each
-frame (which makes their "pipelined" frames partly forced). TAK_PROF_FINISH adds
+frame (which makes their "pipelined" frames partly forced). TA_PROF_FINISH adds
 a glFinish before present so the frame includes completed GPU work
 (forced-completion diagnostic timing); pass --pipelined to measure normal
 pipelined frames instead. The two modes are never aggregated or compared
@@ -56,63 +56,63 @@ DEFAULT_MAP = "Ulasem Arena"
 # Per-size overrides: "env@WxH" entries are merged for that output size.
 SCENES = {
     "small-battle": dict(count=200, type="araarch", zoom=1.0,
-                         env={"TAK_RENDER_BATTLE": "1"},
+                         env={"TA_RENDER_BATTLE": "1"},
                          notes="ordinary small battle: 200 Archers, two sides"),
     "stationary-mixed": dict(count=2000, zoom=0.5,
                              notes="dense stationary mixed army (6-type roster)"),
-    "moving": dict(count=1200, type="araarch", zoom=0.5, env={"TAK_RENDER_MOTION": "1"},
+    "moving": dict(count=1200, type="araarch", zoom=0.5, env={"TA_RENDER_MOTION": "1"},
                    notes="dense continuously moving army (orders reissued every 240 frames)"),
     "total10k-subset": dict(count=10000, zoom=1.0,
-                            env={"TAK_RENDER_CENTER": "7600,7600", "TAK_RENDER_OFFSET": "4200,5400"},
-                            size_env={"7680x2160": {"TAK_RENDER_OFFSET": "0,3960"}},
+                            env={"TA_RENDER_CENTER": "7600,7600", "TA_RENDER_OFFSET": "4200,5400"},
+                            size_env={"7680x2160": {"TA_RENDER_OFFSET": "0,3960"}},
                             notes="10k units, camera on a small corner of the army"),
     "total10k-visible": dict(count=10000, zoom=0.25,
                              notes="10k units, (nearly) all on screen"),
-    "forest": dict(map="Sea Dragon Spine", count=300, zoom=1.0, env={"TAK_RENDER_FOREST": "1"},
+    "forest": dict(map="Sea Dragon Spine", count=300, zoom=1.0, env={"TA_RENDER_FOREST": "1"},
                    notes="densest scenery region of Sea Dragon Spine + 300 mixed units"),
-    "pan": dict(count=2000, zoom=0.75, env={"TAK_RENDER_CAMERA": "1"},
+    "pan": dict(count=2000, zoom=0.75, env={"TA_RENDER_CAMERA": "1"},
                 notes="sinusoidal pan (continuous motion with reversals)"),
-    "zoom": dict(count=2000, zoom=1.0, env={"TAK_RENDER_CAMERA": "1", "TAK_RENDER_ZOOM": "1"},
+    "zoom": dict(count=2000, zoom=1.0, env={"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"},
                  notes="pan + continuous zoom 0.25..1.0"),
-    "jump": dict(count=2000, zoom=0.75, env={"TAK_RENDER_JUMP": "60"},
+    "jump": dict(count=2000, zoom=0.75, env={"TA_RENDER_JUMP": "60"},
                  notes="camera jumps between four distant views every 60 frames"),
-    "effects": dict(count=600, zoom=0.75, env={"TAK_RENDER_BATTLE": "1", "TAK_RENDER_EXTRAS": "1"},
+    "effects": dict(count=600, zoom=0.75, env={"TA_RENDER_BATTLE": "1", "TA_RENDER_EXTRAS": "1"},
                     notes="battle + construction sites, ghosts, flyers, corpses, projectiles"),
-    "naval": dict(map="Athri Cay", count=1, zoom=0.75, env={"TAK_RENDER_NAVAL": "150"},
+    "naval": dict(map="Athri Cay", count=1, zoom=0.75, env={"TA_RENDER_NAVAL": "150"},
                   notes="150 floating hulls on the water nearest the centre of Athri Cay"),
     "churn": dict(count=2000, zoom=0.75,
-                  env={"TAK_RENDER_MOTION": "1", "TAK_RENDER_CAMERA": "1",
-                       "TAK_RENDER_CHURN": "60", "TAK_RENDER_RESET": "300"},
+                  env={"TA_RENDER_MOTION": "1", "TA_RENDER_CAMERA": "1",
+                       "TA_RENDER_CHURN": "60", "TA_RENDER_RESET": "300"},
                   notes="moving army + panning camera; 5% of the army dies/respawns every "
                         "60 frames; simulated render-target reset every 300 frames"),
     "colour-reset": dict(count=200, type="araarch", zoom=1.0,
-                         env={"TAK_RENDER_BATTLE": "1", "TAK_RENDER_RESET": "120"},
+                         env={"TA_RENDER_BATTLE": "1", "TA_RENDER_RESET": "120"},
                          notes="small battle (two player colours) with a simulated render-target "
                                "reset every 120 frames: both colour atlases are recreated"),
     "battle-sparse": dict(count=2000, zoom=0.5,
-                          env={"TAK_RENDER_BATTLE": "1", "TAK_RENDER_SPARSE_AFTER": "450",
-                               "TAK_RENDER_SPARSE_OFFSET": "8800,200"},
+                          env={"TA_RENDER_BATTLE": "1", "TA_RENDER_SPARSE_AFTER": "450",
+                               "TA_RENDER_SPARSE_OFFSET": "8800,200"},
                           segments={"battle": (300, 450), "sparse": (450, None)},
                           notes="large battle, then from frame 450 a sustained empty view"),
-    "constrained": dict(count=2000, zoom=1.0, env={"TAK_RENDER_CAMERA": "1", "TAK_RENDER_ZOOM": "1",
-                                                   "TAK_GPU_CAP_MIB": "128"},
+    "constrained": dict(count=2000, zoom=1.0, env={"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1",
+                                                   "TA_GPU_CAP_MIB": "128"},
                         settings={"gpuMemoryLimit": "512"},
                         notes="the zoom scene under a 128 MiB tracked-GPU cap (debug override below "
                               "the 512 MiB Options minimum, which no matrix scene reaches)"),
     # Workstream E: reuse that needs a still or whole-pixel camera.
-    "pan-snap": dict(count=2000, zoom=1.0, env={"TAK_RENDER_CAMERA_SNAP": "1"},
+    "pan-snap": dict(count=2000, zoom=1.0, env={"TA_RENDER_CAMERA_SNAP": "1"},
                      notes="sinusoidal pan rounded to whole world units at zoom 1: every camera "
                            "step is a whole-pixel translation (exact shadow-tile translation reuse)"),
-    "veteran": dict(count=2000, zoom=0.5, env={"TAK_RENDER_VETERAN": "30"},
+    "veteran": dict(count=2000, zoom=0.5, env={"TA_RENDER_VETERAN": "30"},
                     notes="dense stationary mixed army; every 30 frames every fifth unit changes "
                           "veteran level (material-only body change, shadow unchanged)"),
     # Workstream G: distant images under a moving camera (zoom <= 0.6, 1280x960; the
     # 7680x2160 view of Ulasem Arena clamps to zoom 0.73, above the image limit).
-    "pan-distant": dict(count=2000, zoom=0.5, env={"TAK_RENDER_CAMERA": "1"},
+    "pan-distant": dict(count=2000, zoom=0.5, env={"TA_RENDER_CAMERA": "1"},
                         notes="the stationary mixed army at zoom 0.5 under the sinusoidal pan: "
                               "held distant images re-placed every frame, re-baked every 67 ms"),
     "distant-sparse": dict(count=6000, zoom=0.25,
-                           env={"TAK_RENDER_SPARSE_AFTER": "450", "TAK_RENDER_SPARSE_OFFSET": "200,200"},
+                           env={"TA_RENDER_SPARSE_AFTER": "450", "TA_RENDER_SPARSE_OFFSET": "200,200"},
                            segments={"army": (300, 450), "corner": (450, None)},
                            notes="6000 units zoomed out (several distant-image pages), then from frame "
                                  "450 a corner of the army: images expire, pages are released"),
@@ -120,7 +120,7 @@ SCENES = {
     # pages), live geometry (zoom 0.75 is above the distant-image limit). The roster
     # is spelled out so builds without the harness's "structures" keyword run it too.
     "structures": dict(count=800, zoom=0.75,
-                       env={"TAK_RENDER_SPACING": "96", "TAK_RENDER_ROSTER":
+                       env={"TA_RENDER_SPACING": "96", "TA_RENDER_ROSTER":
                             "araat,aracastl,arakeep,aralode,aramana,arangate,aranull,arassh,aratre,arawall,"
                             "creacad,crebomb,cregate,cregatl,crelode,cremana,crenavy,crepris,cresmit,crewall,"
                             "npcflag,npctemp,npctemp2,npcthesh,tarcage,tarcastl,tardung,tarhell,tarlode,tarmana,"
@@ -133,23 +133,23 @@ SCENES = {
     # budget, under the pan + continuous zoom path: sections are evicted/re-decoded
     # and the mip cache fills (pre-J builds keep every section decoded).
     "bigmap-zoom": dict(map="Middle Earth V1", count=300, zoom=1.0,
-                        env={"TAK_RENDER_CAMERA": "1", "TAK_RENDER_ZOOM": "1"},
+                        env={"TA_RENDER_CAMERA": "1", "TA_RENDER_ZOOM": "1"},
                         notes="pan + continuous zoom 0.25..1.0 on Middle Earth V1 (255 sections, "
                               "238 MiB decoded: above the CPU section budget)"),
     # Workstream K: terrain work under camera motion on the largest shipped map
     # (Middle Earth V1, 1008x1008 blocks = 32x32 chunks; min zoom 0.24 at 7680x2160).
     "terrain-sweep": dict(map="Middle Earth V1", count=300, zoom=1.0,
-                          env={"TAK_RENDER_CENTER": "16128,16128",
-                               "TAK_RENDER_SWEEP": "16128,16128,9000,6000,480"},
+                          env={"TA_RENDER_CENTER": "16128,16128",
+                               "TA_RENDER_SWEEP": "16128,16128,9000,6000,480"},
                           notes="fast elliptical sweep (9000x6000 px, 480 frames: up to 118 px/frame) "
                                 "with reversals in both axes over Middle Earth V1"),
     "terrain-zoom-osc": dict(map="Middle Earth V1", count=300, zoom=0.5,
-                             env={"TAK_RENDER_CENTER": "16128,16128", "TAK_RENDER_ZOOM_OSC": "0.42,0.6,90"},
+                             env={"TA_RENDER_CENTER": "16128,16128", "TA_RENDER_ZOOM_OSC": "0.42,0.6,90"},
                              notes="zoom oscillating 0.42..0.6 every 90 frames: the chunk level flips "
                                    "between 0 and 1 (at 7680x2160 both levels exceed the chunk budget)"),
     "terrain-jumps": dict(map="Middle Earth V1", count=300, zoom=0.75,
-                          env={"TAK_RENDER_CENTER": "16128,16128", "TAK_RENDER_JUMP": "20",
-                               "TAK_RENDER_JUMP_AT": "4000,4000;28000,4000;28000,28000;4000,28000;16000,16000"},
+                          env={"TA_RENDER_CENTER": "16128,16128", "TA_RENDER_JUMP": "20",
+                               "TA_RENDER_JUMP_AT": "4000,4000;28000,4000;28000,28000;4000,28000;16000,16000"},
                           notes="camera jumps between five far-apart views every 20 frames (faster "
                                 "than a view's terrain finishes composing)"),
 }
@@ -164,17 +164,17 @@ HISTORICAL = list(SCENES)
 GHOST_SCENES = {
     # 16 monarchs x 32 queued builds of 4 repeated structure types on a 4096x3072 px
     # grid around the camera centre.
-    "ghost-queues": dict(count=1, zoom=0.5, env={"TAK_RENDER_GHOST_QUEUES": "16,32,4",
-                                                 "TAK_RENDER_CAMERA": "1"},
+    "ghost-queues": dict(count=1, zoom=0.5, env={"TA_RENDER_GHOST_QUEUES": "16,32,4",
+                                                 "TA_RENDER_CAMERA": "1"},
                          notes="512 queued-build ghosts (4 types), zoom 0.5 under the sinusoidal pan: "
                                "part of the grid on screen, the rest off it"),
-    "ghost-visible": dict(count=1, zoom=0.25, env={"TAK_RENDER_GHOST_QUEUES": "16,32,4"},
+    "ghost-visible": dict(count=1, zoom=0.25, env={"TA_RENDER_GHOST_QUEUES": "16,32,4"},
                           notes="the same 512 ghosts, zoom 0.25, still camera: (nearly) all on screen"),
-    "ghost-offscreen": dict(count=1, zoom=1.0, env={"TAK_RENDER_GHOST_QUEUES": "16,32,4,0,4000"},
+    "ghost-offscreen": dict(count=1, zoom=1.0, env={"TA_RENDER_GHOST_QUEUES": "16,32,4,0,4000"},
                             notes="the same 512 ghosts 4000 px south of the view: every queued "
                                   "ghost off screen"),
-    "ghost-few": dict(count=200, zoom=0.75, env={"TAK_RENDER_GHOST_QUEUES": "4,12,4,0,700",
-                                                 "TAK_RENDER_CAMERA": "1"},
+    "ghost-few": dict(count=200, zoom=0.75, env={"TA_RENDER_GHOST_QUEUES": "4,12,4,0,700",
+                                                 "TA_RENDER_CAMERA": "1"},
                       notes="ordinary case: 200 mixed units, 4 monarchs x 12 queued builds south of "
                             "them, panning camera"),
 }
@@ -192,31 +192,31 @@ SHADOW_PAGE_SCENES = {
     # after the spawn draw larger silhouettes, ~1.3x the area). Before K the atlas
     # stopped at four pages: a view needing more drew every shadow directly, for the
     # whole frame, and a view filling them repacked every tile each frame a tile did
-    # not fit. TAK_RENDER_OFFSET centres the army in the uhd view.
-    "shadow-pages-below": dict(count=5800, zoom=0.82, env={"TAK_RENDER_OFFSET": "442,3727"},
+    # not fit. TA_RENDER_OFFSET centres the army in the uhd view.
+    "shadow-pages-below": dict(count=5800, zoom=0.82, env={"TA_RENDER_OFFSET": "442,3727"},
                                notes="stationary mixed army whose settled shadow tiles fill ~95% of "
                                      "four silhouette pages at 7680x2160 (zoom 0.82)"),
     "shadow-pages-moving": dict(count=5400, zoom=0.82,
-                                env={"TAK_RENDER_MOTION": "1", "TAK_RENDER_OFFSET": "442,3727"},
+                                env={"TA_RENDER_MOTION": "1", "TA_RENDER_OFFSET": "442,3727"},
                                 notes="moving mixed army around four silhouette pages at 7680x2160 "
                                       "(zoom 0.82, orders reissued every 240 frames)"),
-    "shadow-pages-above": dict(count=6600, zoom=0.82, env={"TAK_RENDER_OFFSET": "442,3727"},
+    "shadow-pages-above": dict(count=6600, zoom=0.82, env={"TA_RENDER_OFFSET": "442,3727"},
                                notes="stationary mixed army needing ~108% of four silhouette pages "
                                      "at 7680x2160 (zoom 0.82)"),
-    "shadow-pages-dense": dict(count=10000, zoom=0.82, env={"TAK_RENDER_OFFSET": "442,3727"},
+    "shadow-pages-dense": dict(count=10000, zoom=0.82, env={"TA_RENDER_OFFSET": "442,3727"},
                                notes="10k mixed army, ~9800 in view at 7680x2160 (zoom 0.82): tiles "
                                      "of ~6.4 pages"),
-    "shadow-pages-pan": dict(count=10000, zoom=0.82, env={"TAK_RENDER_CAMERA": "1"},
+    "shadow-pages-pan": dict(count=10000, zoom=0.82, env={"TA_RENDER_CAMERA": "1"},
                              notes="10k mixed army (~7900 in view) under the sinusoidal pan at 7680x2160: "
                                    "every shadow tile is redrawn every frame (sub-pixel camera steps)"),
     "shadow-pages-osc": dict(count=5000, zoom=0.82,
-                             env={"TAK_RENDER_OFFSET": "442,3727", "TAK_RENDER_ZOOM_OSC": "0.8,1.0,600"},
+                             env={"TA_RENDER_OFFSET": "442,3727", "TA_RENDER_ZOOM_OSC": "0.8,1.0,600"},
                              notes="5000-unit army, zoom oscillating 0.8..1.0 every 600 frames at "
                                    "7680x2160: its tiles cross four pages twice per period"),
     # 448 MiB, not the 384 MiB floor: under 384 MiB this view crashes 461e9c4b in the body
     # arena's native draw (GeometrySubmit::passDrawBuffer, a pre-existing defect).
     "shadow-pages-constrained": dict(count=10000, zoom=0.82,
-                                     env={"TAK_RENDER_OFFSET": "442,3727", "TAK_GPU_CAP_MIB": "448"},
+                                     env={"TA_RENDER_OFFSET": "442,3727", "TA_GPU_CAP_MIB": "448"},
                                      notes="shadow-pages-dense under a 448 MiB tracked-GPU cap: pages past the "
                                            "first four fit only while the terrain loads, then give way"),
 }
@@ -226,57 +226,57 @@ SCENES.update(SHADOW_PAGE_SCENES)
 # pointer, so the in-game cursor is never classified (the pointer is unset), nothing is
 # selected, no build queue is long and nothing is behind a building. These scenes add
 # that work explicitly, without changing any scene above. They need a client with the
-# measurement-B harness knobs (TAK_RENDER_MOUSE / _SELECT / _ARM / _GHOSTS / _COVER /
+# measurement-B harness knobs (TA_RENDER_MOUSE / _SELECT / _ARM / _GHOSTS / _COVER /
 # _FADE_CLOCK); "expect" lists what every run must confirm (RENDER_INTERACTIVE and
 # "render interactive:" lines, per-frame counters), so a client without them is refused
 # instead of silently measuring the matrix scene. Run with --scenes interactive (or by
-# name). Mouse positions are fractions of the world view (TAK_RENDER_MOUSE).
+# name). Mouse positions are fractions of the world view (TA_RENDER_MOUSE).
 
 # The silhouette atlas the shadow scenes are sized against: four pages of 2048x2048
 # (gameview_render.cpp kMaxPages and the default page limit at 61f294ac).
 SHADOW_DESIGN_CAPACITY_PX = 4 * 2048 * 2048
-SUBSET_10K = {"TAK_RENDER_CENTER": "7600,7600", "TAK_RENDER_OFFSET": "4200,5400"}
-SUBSET_10K_UHD = {"TAK_RENDER_OFFSET": "0,3960"}
+SUBSET_10K = {"TA_RENDER_CENTER": "7600,7600", "TA_RENDER_OFFSET": "4200,5400"}
+SUBSET_10K_UHD = {"TA_RENDER_OFFSET": "0,3960"}
 # At 7680x2160 the total10k-subset view holds only the army's top edge (a strip a few
 # px deep): the pointer scenes look further down, at a corner of about 1600 units.
-HOVER_10K_UHD = {"TAK_RENDER_OFFSET": "0,5000", "TAK_RENDER_MOUSE": "sweep:0.62,0.42,1.0,1.0"}
+HOVER_10K_UHD = {"TA_RENDER_OFFSET": "0,5000", "TA_RENDER_MOUSE": "sweep:0.62,0.42,1.0,1.0"}
 INTERACTIVE = {
     # C: cursor classification. 10000 own units, a small corner of them in view.
     "hover-ground-10k": dict(count=10000, zoom=1.0,
-                             env=dict(SUBSET_10K, TAK_RENDER_MOUSE="0.2,0.2"),
+                             env=dict(SUBSET_10K, TA_RENDER_MOUSE="0.2,0.2"),
                              size_env={"7680x2160": SUBSET_10K_UHD},
                              expect={"mouse": "fixed", "cursor": True},
                              notes="10k own units, a corner in view; pointer held on empty ground, nothing "
                                    "selected: every frame tests every own unit and none is under it"),
     "hover-units-10k": dict(count=10000, type="araarch", zoom=1.0,
-                            env=dict(SUBSET_10K, TAK_RENDER_MOUSE="sweep:0.70,0.62,1.0,1.0",
-                                     TAK_RENDER_SELECT="1"),
+                            env=dict(SUBSET_10K, TA_RENDER_MOUSE="sweep:0.70,0.62,1.0,1.0",
+                                     TA_RENDER_SELECT="1"),
                             size_env={"7680x2160": HOVER_10K_UHD},
                             expect={"mouse": "sweep", "cursor": True, "selected": 1, "pick_hits": True},
                             notes="10k own Archers, a corner in view; one selected (a non-builder: no build "
                                   "strip over the map), pointer sweeping over the visible corner of the army "
                                   "and the ground beside it"),
     "hover-armed-10k": dict(count=10000, type="araarch", zoom=1.0,
-                            env=dict(SUBSET_10K, TAK_RENDER_MOUSE="sweep:0.70,0.62,1.0,1.0",
-                                     TAK_RENDER_SELECT="200", TAK_RENDER_ARM="g"),
+                            env=dict(SUBSET_10K, TA_RENDER_MOUSE="sweep:0.70,0.62,1.0,1.0",
+                                     TA_RENDER_SELECT="200", TA_RENDER_ARM="g"),
                             size_env={"7680x2160": HOVER_10K_UHD},
                             expect={"mouse": "sweep", "cursor": True, "selected": 200, "armed": "g",
                                     "pick_hits": True},
                             notes="as hover-units-10k with 200 units selected and Guard armed (the armed "
                                   "target scan: every unit under the pointer against the selection)"),
     "select-large": dict(count=2000, zoom=0.5,
-                         env={"TAK_RENDER_SELECT": "all", "TAK_RENDER_MOUSE": "sweep:0.05,0.05,0.95,0.95"},
+                         env={"TA_RENDER_SELECT": "all", "TA_RENDER_MOUSE": "sweep:0.05,0.05,0.95,0.95"},
                          expect={"mouse": "sweep", "cursor": True, "selected": 1500, "pick_hits": True},
                          notes="the stationary mixed army (2000) all selected, pointer sweeping the view "
                                "(7680x2160: zoom clamps to 0.73, fully out, so units are Tactical Dots)"),
     # E: queued-build ghosts (16 builders x 24 orders over three repeated types, half of
     # every queue at the far map corner).
-    "ghosts-queue": dict(count=1, type="araarch", zoom=0.75, env={"TAK_RENDER_GHOSTS": "16,24,50"},
+    "ghosts-queue": dict(count=1, type="araarch", zoom=0.75, env={"TA_RENDER_GHOSTS": "16,24,50"},
                          expect={"ghost_orders": 300, "ghost_offscreen": 120},
                          notes="16 builders with 24 queued builds each (3 repeated types), half of each "
                                "queue off screen at the far map corner"),
     "ghosts-queue-pan": dict(count=1, type="araarch", zoom=0.75,
-                             env={"TAK_RENDER_GHOSTS": "16,24,50", "TAK_RENDER_CAMERA": "1"},
+                             env={"TA_RENDER_GHOSTS": "16,24,50", "TA_RENDER_CAMERA": "1"},
                              expect={"ghost_orders": 300, "ghost_offscreen": 120},
                              notes="ghosts-queue under the sinusoidal pan"),
     # F: HIDDEN UNITS (Fade unless noted) with crowds under repeated trees and buildings;
@@ -284,20 +284,20 @@ INTERACTIVE = {
     # (Ulasem Arena, not the forest scene's Sea Dragon Spine: at 7680x2160 that small map
     # clamps the zoom so far out that units are Tactical Dots and nothing can fade.)
     "fade-forest": dict(count=1500, type="araarch", zoom=1.0,
-                        env={"TAK_RENDER_FOREST": "1", "TAK_RENDER_SPACING": "28",
-                             "TAK_RENDER_FADE_CLOCK": "1"},
+                        env={"TA_RENDER_FOREST": "1", "TA_RENDER_SPACING": "28",
+                             "TA_RENDER_FADE_CLOCK": "1"},
                         settings={"hiddenUnits": "fade"},
                         expect={"fade_clock": True, "hidden_faded": True},
                         notes="1500 Archers (28 px apart) in the densest scenery of Ulasem Arena; Fade"),
     "fade-buildings": dict(count=2000, type="araarch", zoom=1.0,
-                           env={"TAK_RENDER_COVER": "vertower,4", "TAK_RENDER_SPACING": "32",
-                                "TAK_RENDER_FADE_CLOCK": "1"},
+                           env={"TA_RENDER_COVER": "vertower,4", "TA_RENDER_SPACING": "32",
+                                "TA_RENDER_FADE_CLOCK": "1"},
                            settings={"hiddenUnits": "fade"},
                            expect={"fade_clock": True, "covers": 50, "hidden_faded": True},
                            notes="2000 Archers (32 px) around a grid of towers (every 4th row/column); Fade"),
     "dots-buildings": dict(count=2000, type="araarch", zoom=1.0,
-                           env={"TAK_RENDER_COVER": "vertower,4", "TAK_RENDER_SPACING": "32",
-                                "TAK_RENDER_FADE_CLOCK": "1"},
+                           env={"TA_RENDER_COVER": "vertower,4", "TA_RENDER_SPACING": "32",
+                                "TA_RENDER_FADE_CLOCK": "1"},
                            settings={"hiddenUnits": "dots"},
                            expect={"fade_clock": True, "covers": 50},
                            notes="fade-buildings with HIDDEN UNITS Dots (the other display path)"),
@@ -305,22 +305,22 @@ INTERACTIVE = {
     # 6-type roster at zoom 1, 40 px apart; at 1280x960 the view cannot hold that much
     # shadow (demand / view area stays far below 16x), so these run at 7680x2160 only.
     # shadow_demand_px is the frame's tile area as asked; "demand" bounds its mean.
-    "shadow-cap-below": dict(count=4500, zoom=1.0, env={"TAK_RENDER_SPACING": "40"}, sizes=("uhd",),
+    "shadow-cap-below": dict(count=4500, zoom=1.0, env={"TA_RENDER_SPACING": "40"}, sizes=("uhd",),
                              expect={"demand": (0.85, 0.97)},
                              notes="stationary mixed army whose shadow tiles take about 0.91 of the atlas"),
-    "shadow-cap-above": dict(count=5500, zoom=1.0, env={"TAK_RENDER_SPACING": "40"}, sizes=("uhd",),
+    "shadow-cap-above": dict(count=5500, zoom=1.0, env={"TA_RENDER_SPACING": "40"}, sizes=("uhd",),
                              expect={"demand": (1.02, 1.12)},
                              notes="stationary mixed army whose shadow tiles take about 1.06 of the atlas "
                                    "(more than four pages hold)"),
     "shadow-cap-cross": dict(count=5000, zoom=1.0,
-                             env={"TAK_RENDER_SPACING": "40", "TAK_RENDER_ZOOM_OSC": "0.92,1.08,240"},
+                             env={"TA_RENDER_SPACING": "40", "TA_RENDER_ZOOM_OSC": "0.92,1.08,240"},
                              sizes=("uhd",), expect={"demand": (0.9, 1.1)},
                              notes="zoom 0.92..1.08 every 240 frames: the demand crosses the atlas "
                                    "capacity (about 0.85..1.14) twice a period"),
-    "shadow-cap-below-pan": dict(count=4500, zoom=1.0, env={"TAK_RENDER_SPACING": "40", "TAK_RENDER_CAMERA": "1"},
+    "shadow-cap-below-pan": dict(count=4500, zoom=1.0, env={"TA_RENDER_SPACING": "40", "TA_RENDER_CAMERA": "1"},
                                  sizes=("uhd",), expect={"demand": (0.85, 0.97)},
                                  notes="shadow-cap-below under the sinusoidal pan"),
-    "shadow-cap-above-pan": dict(count=5500, zoom=1.0, env={"TAK_RENDER_SPACING": "40", "TAK_RENDER_CAMERA": "1"},
+    "shadow-cap-above-pan": dict(count=5500, zoom=1.0, env={"TA_RENDER_SPACING": "40", "TA_RENDER_CAMERA": "1"},
                                  sizes=("uhd",), expect={"demand": (1.02, 1.12)},
                                  notes="shadow-cap-above under the sinusoidal pan"),
 }
@@ -547,9 +547,9 @@ def process_sample(pid):
 
 def scene_env(scene, size_key):
     s = SCENES[scene]
-    env = {"TAK_SHADOW_BENCH": str(s["count"]), "TAK_PROFILE_ZOOM": str(s["zoom"])}
+    env = {"TA_SHADOW_BENCH": str(s["count"]), "TA_PROFILE_ZOOM": str(s["zoom"])}
     if s.get("type"):
-        env["TAK_SHADOW_BENCH_TYPE"] = s["type"]
+        env["TA_SHADOW_BENCH_TYPE"] = s["type"]
     env.update(s.get("env", {}))
     w, h = SIZES[size_key]
     env.update(s.get("size_env", {}).get(f"{w}x{h}", {}))
@@ -585,24 +585,24 @@ def run_one(args, client, label, scene, size_key, leg, capture=False):
     if root.exists():
         shutil.rmtree(root)
     profile = root / "profile"
-    pref = profile / "TAKengine" / "TAKingdoms"
+    pref = profile / "TAengine" / "TAKingdoms"
     pref.mkdir(parents=True, exist_ok=True)
     settings = dict(SETTINGS, **SCENES[scene].get("settings", {}))
     (pref / "settings.ini").write_text("".join(f"{k} = {v}\n" for k, v in settings.items()))
-    env = {k: v for k, v in os.environ.items() if not k.startswith("TAK_") and k != "DISPLAY"}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TA_") and k != "DISPLAY"}
     env.update(SDL_VIDEODRIVER=args.video_driver, SDL_RENDER_DRIVER=args.render_driver,
                SDL_AUDIODRIVER="dummy", XDG_CONFIG_HOME=str(profile), XDG_DATA_HOME=str(profile),
-               HOME=str(profile), TAK_PROF="1", TAK_PROF_FRAMES="1", TAK_RENDER_STUDY="1",
-               TAK_RENDER_FRAMES=str(args.frames))
+               HOME=str(profile), TA_PROF="1", TA_PROF_FRAMES="1", TA_RENDER_STUDY="1",
+               TA_RENDER_FRAMES=str(args.frames))
     if not args.pipelined:
-        env["TAK_PROF_FINISH"] = "1"
+        env["TA_PROF_FINISH"] = "1"
     env.update(scene_env(scene, size_key))
     for extra in args.env + (args.a_env if label == "A" else args.b_env):
         k, _, v = extra.partition("=")
         env[k] = v
     if capture:
         (root / "captures").mkdir(parents=True, exist_ok=True)
-        env["TAK_RENDER_CAPTURE_DIR"] = str(root / "captures")
+        env["TA_RENDER_CAPTURE_DIR"] = str(root / "captures")
     command = [str(client), "game", SCENES[scene].get("map", DEFAULT_MAP), "--data", str(args.data),
                "--testbuild", "--winsize", str(w), str(h), "--novsync", "--maxfps", "0"]
     if args.cpus:
@@ -664,8 +664,8 @@ def run_one(args, client, label, scene, size_key, leg, capture=False):
     interactive = check_interactive(name, scene, log.read_text() + "\n" + err.read_text(),
                                     summarize(parsed, args.warmup, args.frames))
     if result_zoom is not None and abs(result_zoom - SCENES[scene]["zoom"]) > 1e-3 and not (
-            SCENES[scene].get("env", {}).get("TAK_RENDER_ZOOM") or
-            SCENES[scene].get("env", {}).get("TAK_RENDER_ZOOM_OSC")):
+            SCENES[scene].get("env", {}).get("TA_RENDER_ZOOM") or
+            SCENES[scene].get("env", {}).get("TA_RENDER_ZOOM_OSC")):
         print(f"{name}: note: requested zoom {SCENES[scene]['zoom']} ran at {result_zoom:.4f} "
               "(map-fills-window clamp)", flush=True)
     result = {
@@ -701,7 +701,7 @@ def run_one(args, client, label, scene, size_key, leg, capture=False):
     return result
 
 
-# ---- PNG comparison (8-bit RGB/RGBA, non-interlaced: what tak::png writes) ----
+# ---- PNG comparison (8-bit RGB/RGBA, non-interlaced: what ta::png writes) ----
 
 def read_png(path):
     data = Path(path).read_bytes()
@@ -725,7 +725,7 @@ def read_png(path):
     for y in range(h):
         f = raw[y * (stride + 1)]
         line = bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
-        for i in range(stride if f else 0):   # filter 0 (what tak::png writes): bytes as stored
+        for i in range(stride if f else 0):   # filter 0 (what ta::png writes): bytes as stored
             a = line[i - bpp] if i >= bpp else 0
             b = prev[i]
             c = prev[i - bpp] if i >= bpp else 0
@@ -1024,8 +1024,8 @@ def markdown(report):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--a", type=Path, required=True, help="baseline optimized-Debug takclient")
-    p.add_argument("--b", type=Path, help="candidate takclient (omit for A/A)")
+    p.add_argument("--a", type=Path, required=True, help="baseline optimized-Debug taclient")
+    p.add_argument("--b", type=Path, help="candidate taclient (omit for A/A)")
     p.add_argument("--data", type=Path, required=True, help="legally owned retail install")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--scenes", nargs="+", default=QUICK,
@@ -1047,7 +1047,7 @@ def main(argv=None):
     p.add_argument("--capture-only", action="store_true")
     p.add_argument("--env", action="append", default=[], help="extra KEY=VALUE for every run")
     p.add_argument("--a-env", action="append", default=[],
-                   help="extra KEY=VALUE for label A runs only (same-binary A/B, e.g. TAK_RENDER_STATS=0)")
+                   help="extra KEY=VALUE for label A runs only (same-binary A/B, e.g. TA_RENDER_STATS=0)")
     p.add_argument("--b-env", action="append", default=[], help="extra KEY=VALUE for label B runs only")
     p.add_argument("--allow-unverified-env", action="store_true")
     p.add_argument("--list", action="store_true", help="print the scene matrix and exit")

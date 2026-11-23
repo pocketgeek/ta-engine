@@ -7,7 +7,7 @@ The game pauses only some first builds (solo groups; docs/legion-pathfinding.md 
 consumers that state their region -- the lanes (passage gate, passage lanes, pinwheel), packed slots, reach rings,
 the formation entrance, awareness -- rarely meet a paused route in the gate fixtures. This runs fixtures that
 exercise each of them with --pause-all (LegionNavigator::setPauseAllForTest: every first build may pause), serial
-and workers, under TAK_LEGION_VERIFY when the caller sets it (the ctest does), and checks:
+and workers, under TA_LEGION_VERIFY when the caller sets it (the ctest does), and checks:
 
   * every run exits 0 (no verify failure: indexes, the needs list, "a relaxation could lower a settled potential")
     and serial == workers;
@@ -55,7 +55,7 @@ def main():
         print(__doc__)
         return 2
     exe, scn = sys.argv[1], sys.argv[2]
-    data = sys.argv[sys.argv.index("--data") + 1] if "--data" in sys.argv else os.environ.get("TAK_TEST_DATA", "")
+    data = sys.argv[sys.argv.index("--data") + 1] if "--data" in sys.argv else os.environ.get("TA_TEST_DATA", "")
     fails, needs, run_on, paused = [], {}, {}, {}
     for name in FIXTURES:
         path = os.path.join(scn, name + ".scn")

@@ -106,13 +106,13 @@ static const Mp4Track* trackOf(const Mp4& m,const char* handler) {
     for(auto& [id,t]:m.tracks)if(t.handler==handler)return &t;
     return nullptr;
 }
-static void waitStopped(tak::video::Stream& stream) {
+static void waitStopped(ta::video::Stream& stream) {
     const auto deadline=std::chrono::steady_clock::now()+5s;
     while(stream.active() && std::chrono::steady_clock::now()<deadline)std::this_thread::sleep_for(1ms);
     require(!stream.active(),"stream stops");
 }
 // Feeds moving pixels and a tone for `seconds`, requiring the stream to stay up.
-static void feed(tak::video::Stream& stream,std::chrono::milliseconds length) {
+static void feed(ta::video::Stream& stream,std::chrono::milliseconds length) {
     std::vector<uint8_t> pixels(640*480*4);
     std::array<int16_t,1024*2> audio{};
     int samples=0,frame=0;
@@ -130,27 +130,27 @@ static void feed(tak::video::Stream& stream,std::chrono::milliseconds length) {
 // SAVE A LOCAL COPY: the stream's packets, also in a fragmented MP4 beside it. Returns
 // false (skipped) when this FFmpeg build has no MP4 writer -- tools/build-ffmpeg-bink.sh
 // predates it -- which CI never allows.
-static bool localCopy(tak::video::StreamConfig config) {
+static bool localCopy(ta::video::StreamConfig config) {
     if(!av_guess_format("mp4",nullptr,nullptr)) {
         std::printf("SKIP local copy: this static FFmpeg has no MP4 muxer; rerun tools/build-ffmpeg-bink.sh\n");
         require(!std::getenv("CI"),"CI FFmpeg has the MP4 muxer");
         return false;
     }
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-stream-copy-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-stream-copy-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     const auto videos=root/"videos"; // missing: the stream creates it
     const auto flv=root/"stream.flv";
     fs::create_directories(root);
     config.key.clear();config.localCopyDir=videos.string();
     {
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         require(stream.startRecording(config,flv.string()),"start with a local copy");
         feed(stream,2500ms);
         auto s=stream.status();
         require(s.local=="SAVING LOCAL COPY","status says SAVING LOCAL COPY");
         require(fs::path(s.localFile).parent_path()==videos,"the copy is in the videos folder");
         const auto name=fs::path(s.localFile).filename().string();
-        require(name.size()==23 && name.starts_with("TAK-") && name[12]=='-' && name.ends_with(".mp4"),"named TAK-YYYYMMDD-HHMMSS.mp4");
+        require(name.size()==23 && name.starts_with("TA-") && name[12]=='-' && name.ends_with(".mp4"),"named TA-YYYYMMDD-HHMMSS.mp4");
         stream.stop();waitStopped(stream);
         s=stream.status();
         require(s.local=="LOCAL COPY SAVED" && fs::exists(s.localFile),"status says LOCAL COPY SAVED, with the path");
@@ -171,7 +171,7 @@ static bool localCopy(tak::video::StreamConfig config) {
     }
     {
         // A full disk mid-stream: the copy stops, the stream does not.
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         require(stream.startRecording(config,flv.string()),"start with a local copy (disk fills)");
         stream.testFailLocalAfter(2, 20);   // a finished fragment first, whatever the runner's speed
         feed(stream,4000ms);
@@ -190,7 +190,7 @@ static bool localCopy(tak::video::StreamConfig config) {
     }
     {
         // A folder that cannot be created: the copy fails, the stream runs.
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         std::ofstream(root/"file").put('x');
         config.localCopyDir=(root/"file"/"videos").string();
         require(stream.startRecording(config,flv.string()),"start with an impossible local copy");
@@ -214,17 +214,17 @@ static int pacing(const std::string& encoder,int sw,int sh,int ow,int oh,int fps
     // Measured: a 3-core machine sits near the 10% limit and 2 cores fail it (the
     // encoder, the scaler and this feeder share them). Not a verdict on the scaler.
     if(std::thread::hardware_concurrency()<4){std::printf("SKIP pacing: fewer than 4 hardware threads\n");return 77;}
-    tak::video::StreamConfig config;
+    ta::video::StreamConfig config;
     config.encoder=encoder;config.width=ow;config.height=oh;config.fps=fps;config.bitrateKbps=3000;
-    auto path=std::filesystem::temp_directory_path()/("tak-stream-pacing-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".flv");
+    auto path=std::filesystem::temp_directory_path()/("ta-stream-pacing-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".flv");
     std::array<std::vector<uint8_t>,2> frames;
     for(int f=0;f<2;++f) {
         frames[f].resize(size_t(sw)*sh*4);
         for(int y=0;y<sh;++y)for(int x=0;x<sw;++x){uint8_t* p=&frames[f][(size_t(y)*sw+x)*4];p[0]=uint8_t(x/7+f*40);p[1]=uint8_t(y/5);p[2]=uint8_t((x^y)>>3);p[3]=255;}
     }
-    tak::video::StreamStatus warm{},end{};
+    ta::video::StreamStatus warm{},end{};
     {
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         require(stream.startRecording(config,path.string()),"start pacing recording");
         std::array<int16_t,735*2> audio{};
         const auto begin=std::chrono::steady_clock::now();
@@ -261,19 +261,19 @@ static int pacing(const std::string& encoder,int sw,int sh,int ow,int oh,int fps
 // window's centre must land at the picture's centre at 0.6x, and only while one is set.
 // A cursor set AFTER a submission belongs to the next one: frames carry their own.
 static int cursorStamp(const std::string& encoder) {
-    tak::video::StreamConfig config;
+    ta::video::StreamConfig config;
     config.encoder=encoder;config.width=320;config.height=180;config.fps=30;config.bitrateKbps=1000;
-    auto path=std::filesystem::temp_directory_path()/("tak-stream-cursor-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".flv");
+    auto path=std::filesystem::temp_directory_path()/("ta-stream-cursor-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".flv");
     const int sw=400,sh=300;
     std::vector<uint8_t> frame(size_t(sw)*sh*4,60);
     for(size_t i=3;i<frame.size();i+=4)frame[i]=255;
-    auto image=std::make_shared<tak::video::CursorImage>();
+    auto image=std::make_shared<ta::video::CursorImage>();
     image->w=20;image->h=20;image->hotX=0;image->hotY=0;image->rgba.assign(20*20*4,255);
-    tak::video::StreamCursor cursor;
+    ta::video::StreamCursor cursor;
     cursor.image=image;cursor.x=200;cursor.y=150;cursor.scale=1;cursor.refW=sw;cursor.refH=sh;
     int ok=0;
     {
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         require(stream.startRecording(config,path.string()),"start cursor recording");
         // Wait for a picture showing `want` (true: the cursor), feeding frames meanwhile.
         auto await=[&](bool want,const char* what) {
@@ -281,7 +281,7 @@ static int cursorStamp(const std::string& encoder) {
             while(std::chrono::steady_clock::now()-begin<5s) {
                 require(stream.active(),stream.status().state.c_str());
                 std::vector<uint8_t> buffer(frame);
-                stream.cursor(want?cursor:tak::video::StreamCursor{});
+                stream.cursor(want?cursor:ta::video::StreamCursor{});
                 stream.video(buffer,sw,sh);
                 if(!want)stream.cursor(cursor); // set after the submission: not this frame's
                 std::this_thread::sleep_for(40ms);
@@ -313,12 +313,12 @@ int main(int argc,char** argv) {
     if(argc>2 && std::string(argv[2])=="pacing")
         return pacing(argv[1],argc>3?std::atoi(argv[3]):7680,argc>4?std::atoi(argv[4]):2160,
                       argc>5?std::atoi(argv[5]):1280,argc>6?std::atoi(argv[6]):360,argc>7?std::atoi(argv[7]):60);
-    tak::video::StreamConfig config;
+    ta::video::StreamConfig config;
     config.encoder=argc>1?argv[1]:"libx264";
     if(config.encoder=="auto")config.encoder.clear();
-    auto path=std::filesystem::temp_directory_path()/("tak-stream-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".flv");
+    auto path=std::filesystem::temp_directory_path()/("ta-stream-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".flv");
     {
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         require(!stream.start(config),"missing key rejected without connection");
         config.key="invalid/secret?key";
         require(!stream.start(config),"URL injection rejected without connection");
@@ -423,7 +423,7 @@ int main(int argc,char** argv) {
     path += ".restart";
     // Failure is local, reported without throwing through the host or exposing a key.
     {
-        tak::video::Stream stream;
+        ta::video::Stream stream;
         auto bad=path/"missing"/"output.flv";
         require(stream.startRecording(config,bad.string()),"failed destination scheduled asynchronously");
         auto limit=std::chrono::steady_clock::now()+5s;

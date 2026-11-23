@@ -1,6 +1,6 @@
 #pragma once
 
-// Standalone 3DO model viewer (the `takclient model` mode): loads a model + its
+// Standalone 3DO model viewer (the `taclient model` mode): loads a model + its
 // textures + an optional COB script and draws it spinning. Extracted from
 // client/main.cpp; kept at global scope so its unqualified use sites there are
 // unchanged.
@@ -8,8 +8,8 @@
 #include <SDL.h>
 
 #include "client/modelmath.h"   // Tri / Xform (tris_ is std::vector<Tri>)
-#include "cob/vm.h"             // std::unique_ptr<tak::cob::Vm> member
-#include "tdo/tdo.h"            // tak::tdo::Model (by-value member) / Object
+#include "cob/vm.h"             // std::unique_ptr<ta::cob::Vm> member
+#include "tdo/tdo.h"            // ta::tdo::Model (by-value member) / Object
 #include "gaf/gaf.h"
 #include "hpi/hpi.h"
 
@@ -23,14 +23,14 @@
 class ModelView {
 public:
     struct Asset {
-        tak::tdo::Model model;
-        std::map<std::string,tak::gaf::Frame> textures;
-        std::optional<tak::cob::File> script;
-        tak::gaf::Palette palette{};
+        ta::tdo::Model model;
+        std::map<std::string,ta::gaf::Frame> textures;
+        std::optional<ta::cob::File> script;
+        ta::gaf::Palette palette{};
         std::vector<std::string> missingTextures;
     };
     // CPU-only decode for background editor previews. No extracted files needed.
-    static Asset loadAsset(const tak::hpi::Vfs&,const std::string& type,const std::atomic_bool* cancel=nullptr);
+    static Asset loadAsset(const ta::hpi::Vfs&,const std::string& type,const std::atomic_bool* cancel=nullptr);
     ModelView(SDL_Renderer*,Asset asset);
     // `staticMask` seeds the VM's static slots: bit i sets static i to 1. Walk and
     // attack scripts routinely open with a gate on an "am I moving" static, and
@@ -47,14 +47,14 @@ public:
 
 private:
     void loadTextures(const std::string& texDir, const std::string& palettePath);
-    void initializeScript(tak::cob::File file,const std::string& anim,uint32_t staticMask);
+    void initializeScript(ta::cob::File file,const std::string& anim,uint32_t staticMask);
     void project(float x, float y, float z, SDL_FPoint& out, float& depth) const;
-    const tak::cob::PieceState* pieceFor(const std::string& objName) const;
-    void walk(const tak::tdo::Object& o, const Xform& parent,bool root=false);
+    const ta::cob::PieceState* pieceFor(const std::string& objName) const;
+    void walk(const ta::tdo::Object& o, const Xform& parent,bool root=false);
 
     SDL_Renderer* ren_;
-    tak::tdo::Model model_;
-    std::unique_ptr<tak::cob::Vm> vm_;
+    ta::tdo::Model model_;
+    std::unique_ptr<ta::cob::Vm> vm_;
     std::vector<std::string> pieceNames_;
     struct TextureDeleter { void operator()(SDL_Texture*) const; };
     std::map<std::string, std::unique_ptr<SDL_Texture,TextureDeleter>> textures_;
@@ -63,5 +63,5 @@ private:
     bool spin_ = true, fitted_ = false;
     bool liveModel_=false;
     int lastW_=0,lastH_=0;
-    std::optional<tak::gaf::Palette> palette_;
+    std::optional<ta::gaf::Palette> palette_;
 };

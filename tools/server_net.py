@@ -111,7 +111,7 @@ class Peer:
         client_key = hmac.digest(salted, b'Client Key', 'sha256')
         stored_key = hashlib.sha256(client_key).digest()
         server_key = hmac.digest(salted, b'Server Key', 'sha256')
-        pieces = [b'TAK-SCRAM-SHA-256-v1', user.encode(), nonce, server_nonce, salt]
+        pieces = [b'TA-SCRAM-SHA-256-v1', user.encode(), nonce, server_nonce, salt]
         transcript = b''.join(struct.pack('>I', len(x)) + x for x in pieces) + struct.pack('>I', iterations)
         secrets.extend([password, salt, stored_key, server_key])
         if new:

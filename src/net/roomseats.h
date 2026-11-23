@@ -10,7 +10,7 @@
 
 #include "net/protocol.h"
 
-namespace tak::net {
+namespace ta::net {
 
 struct SeatPlan {
     bool ok = true;                         // false: more humans than seats (nothing planned)
@@ -51,4 +51,4 @@ inline SeatPlan planCapacity(const SlotInfo (&slots)[kMaxSlots], int newCap) {
     return plan;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

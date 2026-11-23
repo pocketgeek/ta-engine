@@ -133,7 +133,7 @@ const char* paramLabel(PKind k) {
     return "PARAM";
 }
 
-std::string formatRule(bool isAction, const tak::crt::Rule& r) {
+std::string formatRule(bool isAction, const ta::crt::Rule& r) {
     const auto& defs = isAction ? actionDefs() : conditionDefs();
     if (r.opcode < 0 || r.opcode >= int(defs.size()))
         return std::string(isAction ? "act " : "cond ") + std::to_string(r.opcode);

@@ -28,7 +28,7 @@ static std::string escaped(const std::string& s) {
     }
     return out;
 }
-static void flatten(const tak::tdf::Node& n,const std::string& prefix,Fields& out) {
+static void flatten(const ta::tdf::Node& n,const std::string& prefix,Fields& out) {
     for(const auto& [key,value]:n.values)out.emplace(prefix+key,value);
     std::map<std::string,int> counts;
     for(const auto& [name,child]:n.orderedChildren()) {
@@ -37,10 +37,10 @@ static void flatten(const tak::tdf::Node& n,const std::string& prefix,Fields& ou
         flatten(*child,prefix+label+"#"+std::to_string(occurrence)+"/",out);
     }
 }
-static Fields fields(const tak::hpi::Vfs& vfs,const std::string& path) {
+static Fields fields(const ta::hpi::Vfs& vfs,const std::string& path) {
     const auto bytes=vfs.read(path);
     Fields out;
-    flatten(tak::tdf::parseText(std::string(bytes.begin(),bytes.end()),path),"",out);
+    flatten(ta::tdf::parseText(std::string(bytes.begin(),bytes.end()),path),"",out);
     return out;
 }
 static bool prose(const std::string& key) {
@@ -51,24 +51,24 @@ int main(int argc,char**argv) {
     const bool manifest=argc==3 && std::string(argv[2])=="--manifest";
     if(argc!=2 && !manifest){std::cerr<<"usage: crusades_balance_audit <retail-data-root> [--manifest]\n";return 2;}
     try {
-        auto root=tak::hpi::mountRetailRoot(argv[1]);
-        tak::hpi::Vfs vfs(&root,true); // downloaded map resources cannot change this audit
+        auto root=ta::hpi::mountRetailRoot(argv[1]);
+        ta::hpi::Vfs vfs(&root,true); // downloaded map resources cannot change this audit
         if(manifest) {
-            tak::hpi::MountSet sources(argv[1],tak::hpi::MountConfig{
+            ta::hpi::MountSet sources(argv[1],ta::hpi::MountConfig{
                 .includeLoose=false,.archiveExts={".hpi"},.keep={},
-                .archiveNames=tak::hpi::kRootHpiNames});
+                .archiveNames=ta::hpi::kRootHpiNames});
             std::cout<<"kind\tpath\tsource\tsize\tsha256\n";
             for(const auto& path:sources.archiveFiles()) {
                 std::ifstream file(path,std::ios::binary);
                 if(!file)throw std::runtime_error("Cannot fingerprint archive");
-                tak::crypto::Sha256 hash;
+                ta::crypto::Sha256 hash;
                 std::array<char,65536> buffer{};size_t size=0;
                 while(file.read(buffer.data(),buffer.size()) || file.gcount()) {
                     const auto count=size_t(file.gcount());size+=count;hash.update(buffer.data(),count);
                 }
                 if(!file.eof())throw std::runtime_error("Archive fingerprint read failed");
                 std::cout<<"archive\t"<<escaped(path.filename().string())<<"\t-\t"<<size
-                         <<'\t'<<tak::crypto::toHex(hash.final())<<'\n';
+                         <<'\t'<<ta::crypto::toHex(hash.final())<<'\n';
             }
             for(const auto* prefix:{"units","unitscb","canbuild","canbuildcb","gamedata"})
                 for(const auto& path:vfs.list(prefix)) {
@@ -77,7 +77,7 @@ int main(int argc,char**argv) {
                         throw std::runtime_error("VFS/source disagreement: "+path);
                     std::cout<<"member\t"<<escaped(path)<<'\t'<<escaped(sources.sourceOf(path))
                              <<'\t'<<bytes.size()<<'\t'
-                             <<tak::crypto::toHex(tak::crypto::sha256(bytes.data(),bytes.size()))<<'\n';
+                             <<ta::crypto::toHex(ta::crypto::sha256(bytes.data(),bytes.size()))<<'\n';
                 }
             return 0;
         }

@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <algorithm>
 
-namespace tak {
+namespace ta {
 
 template<class Height>
 int retailDebrisTerrainHeight(int32_t x,int32_t z,int width,int height,Height sample) {
@@ -63,4 +63,4 @@ struct RetailDebrisMotion {
     }
 };
 
-} // namespace tak
+} // namespace ta

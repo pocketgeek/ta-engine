@@ -46,7 +46,7 @@ namespace {
         // then sends it as chat anyway, to every human (not the chosen recipients) --
         // so everyone sees a code typed. Here only a code that can act goes to all:
         // with POWER CODES off a +line is ordinary chat to the chosen recipients.
-        const auto code = tak::sim::parsePowerCode(line);
+        const auto code = ta::sim::parsePowerCode(line);
         const bool acts = code && powerCodesOn();
         if (acts) {
             if (chatEchoMs_) flushSystemChat();   // an earlier code's echo is overdue
@@ -59,7 +59,7 @@ namespace {
     }
 
     void GameView::powerScriptStep() {
-        static const char* script = tak::devEnv("TAK_POWER_SCRIPT");
+        static const char* script = ta::devEnv("TA_POWER_SCRIPT");
         static size_t at = 0;
         if (!script || !mp_) return;
         const std::string all(script);
@@ -70,7 +70,7 @@ namespace {
             const uint32_t tick = colon == std::string::npos ? 0 : uint32_t(std::atoi(item.c_str()));
             if (netTick_ < tick) return;
             const std::string line = colon == std::string::npos ? item : item.substr(colon + 1);
-            if (const auto code = tak::sim::parsePowerCode(line); code && code->code == tak::sim::PowerCode::ManaMe) {
+            if (const auto code = ta::sim::parsePowerCode(line); code && code->code == ta::sim::PowerCode::ManaMe) {
                 selection_.clear();
                 for (const UnitR* u : front().live)
                     if (u->alive() && u->player == localPlayer_) selection_.push_back(u->id);
@@ -87,8 +87,8 @@ namespace {
         return room.opts.powerCodes != 0 && room.mission.empty() && room.mySlot >= 0;
     }
 
-    void GameView::powerCode(const tak::sim::PowerCodeInput& in) {
-        using tak::sim::PowerCode;
+    void GameView::powerCode(const ta::sim::PowerCodeInput& in) {
+        using ta::sim::PowerCode;
         // Retail 0x428f10 skips a group-2 handler unless the match allows cheating:
         // with POWER CODES off the line is ordinary chat and does nothing else.
         if (!powerCodesOn()) return;
@@ -96,13 +96,13 @@ namespace {
             case PowerCode::Radar: radarCode_ = !radarCode_; return;
             case PowerCode::MakePoster: startPoster(); return;
             case PowerCode::Los:
-                if (in.arg == tak::sim::PowerArg::Invalid) return;   // retail ignores any other word
+                if (in.arg == ta::sim::PowerArg::Invalid) return;   // retail ignores any other word
                 break;
             default: break;
         }
-        if (!tak::sim::simPowerCode(in.code)) return;
-        tak::net::Command c;
-        c.kind = tak::net::Cmd::PowerCode;
+        if (!ta::sim::simPowerCode(in.code)) return;
+        ta::net::Command c;
+        c.kind = ta::net::Cmd::PowerCode;
         c.targetId = int32_t(in.code);
         c.queue = uint8_t(in.arg);
         std::lock_guard<std::mutex> lock(simMutex_);
@@ -125,15 +125,15 @@ namespace {
     std::string GameView::posterFolder() const {
         namespace fs = std::filesystem;
         std::vector<fs::path> candidates;
-        if (const char* dir = tak::devEnv("TAK_POSTER_DIR")) candidates.push_back(tak::u8path(dir));   // tests
-        if (!installRoot_.empty()) candidates.push_back(tak::u8path(installRoot_) / "screenshots");
-        if (const std::string profile = tak::replayDir(); !profile.empty())
-            candidates.push_back(tak::u8path(profile) / "screenshots");
+        if (const char* dir = ta::devEnv("TA_POSTER_DIR")) candidates.push_back(ta::u8path(dir));   // tests
+        if (!installRoot_.empty()) candidates.push_back(ta::u8path(installRoot_) / "screenshots");
+        if (const std::string profile = ta::replayDir(); !profile.empty())
+            candidates.push_back(ta::u8path(profile) / "screenshots");
         for (const auto& dir : candidates) {
             std::error_code ec;
             fs::create_directories(dir, ec);
             if (!fs::is_directory(dir, ec)) continue;
-            const fs::path probe = dir / ".tak-write-test";
+            const fs::path probe = dir / ".ta-write-test";
             if (FILE* f = std::fopen(probe.string().c_str(), "wb")) {
                 std::fclose(f);
                 fs::remove(probe, ec);
@@ -154,7 +154,7 @@ namespace {
         namespace fs = std::filesystem;
         int highest = 0;
         std::error_code ec;
-        for (const auto& entry : fs::directory_iterator(tak::u8path(folder), ec)) {
+        for (const auto& entry : fs::directory_iterator(ta::u8path(folder), ec)) {
             const auto name = entry.path().filename().string();
             int n = 0;
             // BIGSHOTnnnn.png, or .png.part while an earlier poster is still writing.
@@ -172,7 +172,7 @@ namespace {
             systemChat("POSTER NOT SAVED: THE MAP IS TOO LARGE FOR MEMORY");
             return;
         }
-        const auto path = tak::u8path(folder) / file;
+        const auto path = ta::u8path(folder) / file;
         const auto text = path.u8string();
         job->path.assign(text.begin(), text.end());
         job->startMs = SDL_GetTicks64();
@@ -261,12 +261,12 @@ namespace {
                      job.maxTileMs);
         posterWriters().start([rgb = job.rgb, path = job.path, w = job.width, h = job.height, notes = posterNotes_] {
             std::vector<std::string> lines;
-            const auto file = tak::u8path(path);
+            const auto file = ta::u8path(path);
             auto part = file;
             part += ".part";
             try {
                 const auto t0 = std::chrono::steady_clock::now();
-                tak::png::writeRgb(part, w, h, *rgb);
+                ta::png::writeRgb(part, w, h, *rgb);
                 std::filesystem::rename(part, file);
                 std::fprintf(stderr, "poster: wrote %s in %lld ms\n", path.c_str(), (long long)
                     std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());

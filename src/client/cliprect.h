@@ -17,7 +17,7 @@
 
 #include <cmath>
 
-namespace tak::cliprect {
+namespace ta::cliprect {
 
 // The output pixels of the current target that the clip rectangle r (logical units,
 // relative to the viewport) lets through, as SDL_render.c and the backends compute
@@ -53,4 +53,4 @@ inline bool set(SDL_Renderer* ren, const SDL_Rect& r) {
     return covers(ren, clip);
 }
 
-}  // namespace tak::cliprect
+}  // namespace ta::cliprect

@@ -1,6 +1,6 @@
 #pragma once
 
-// A parsed .takrep replay: enough to rebuild the world and replay it.
+// A parsed .tarep replay: enough to rebuild the world and replay it.
 // Extracted from client/main.cpp; kept at global scope so its existing
 // unqualified use sites there are unchanged.
 
@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "net/client.h"        // tak::net::Bundle (+ transitively net/protocol.h)
-#include "net/replayhdr.h"     // the shared .takrep header + ReplayCheck
-#include "sim/matchsetup.h"    // tak::sim::MatchConfig
+#include "net/client.h"        // ta::net::Bundle (+ transitively net/protocol.h)
+#include "net/replayhdr.h"     // the shared .tarep header + ReplayCheck
+#include "sim/matchsetup.h"    // ta::sim::MatchConfig
 
 struct ReplayFile {
     std::string mapId, mapDigest, modDigest;
@@ -21,11 +21,11 @@ struct ReplayFile {
     uint8_t gameMods = 0;   // 1 = the recorded game ran the host's game mods
     uint32_t formatVersion = 0, protocolVersion = 0;
     uint64_t dataHash = 0;        // gameplay data the recording ran on
-    tak::sim::MatchConfig cfg;
-    std::vector<tak::net::Bundle> bundles;
+    ta::sim::MatchConfig cfg;
+    std::vector<ta::net::Bundle> bundles;
     // (tick, hash) from the ORIGINAL game, so playback can be checked against what
     // actually happened rather than against another rerun of itself.
-    std::vector<tak::net::ReplayCheck> checks;
+    std::vector<ta::net::ReplayCheck> checks;
 };
 
 // Compares playback against the recorded checkpoints and tells a hash-LAYOUT change from a
@@ -38,7 +38,7 @@ class ReplayCheckTracker {
 public:
     // Returns true the first time the state hash diverges at a checkpoint.
     template <class PosFn>
-    bool observe(const tak::net::ReplayCheck& ck, uint64_t mine, PosFn&& posNow) {
+    bool observe(const ta::net::ReplayCheck& ck, uint64_t mine, PosFn&& posNow) {
         bool first = false;
         if (mine != ck.hash && !stateDiverged_) {
             stateDiverged_ = true; stateTick_ = ck.tick; stateRecorded_ = ck.hash; stateMine_ = mine; first = true;
@@ -77,10 +77,10 @@ private:
     uint64_t stateRecorded_ = 0, stateMine_ = 0;
 };
 
-// Load a .takrep (header + tick bundles). Returns false on a malformed file.
+// Load a .tarep (header + tick bundles). Returns false on a malformed file.
 bool loadReplayFile(const std::string& path, ReplayFile& out);
 
-// What the picker says about a .takrep without loading it: the start of the file only,
+// What the picker says about a .tarep without loading it: the start of the file only,
 // however long the game. `playable`: recorded under this build's format and protocol and
 // within the loader's size, so picking it can work; loadReplayFile still has the last word.
 struct ReplayPeek {
@@ -89,7 +89,7 @@ struct ReplayPeek {
     uint32_t ticks = 0;           // the game's length; 0 when the header does not say
     std::string mapId;
 };
-// False: not a replay at all (unreadable, or no .takrep header).
+// False: not a replay at all (unreadable, or no .tarep header).
 bool peekReplayFile(const std::string& path, ReplayPeek& out);
 
 // ---- writing ---------------------------------------------------------------
@@ -107,4 +107,4 @@ bool peekReplayFile(const std::string& path, ReplayPeek& out);
 // `gameplayHash` is the fingerprint of the data the GAME ran on (the client's
 // gameDataHash(), what it reports at Loaded) -- NOT the pure-retail handshake hash,
 // which differs when game mods are on.
-tak::net::ReplayHeader clientReplayHeader(const tak::net::MpClient& mp, uint64_t gameplayHash);
+ta::net::ReplayHeader clientReplayHeader(const ta::net::MpClient& mp, uint64_t gameplayHash);

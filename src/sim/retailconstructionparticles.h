@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 4f1310/4f12d0: construction particles move vertically relative to their
 // owner. Animation is display-owned; capacity and lifetime affect CRT draws.
@@ -48,4 +48,4 @@ struct RetailConstructionEmitter {
     }
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

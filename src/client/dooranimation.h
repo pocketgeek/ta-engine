@@ -3,7 +3,7 @@
 #include <array>
 #include <string_view>
 
-namespace tak::menu {
+namespace ta::menu {
 
 struct DoorHotspot {
     const char* gadget;
@@ -57,4 +57,4 @@ constexpr DoorTransition doorTransitionAtClipEnd(DoorState state) {
     return DoorTransition::None;
 }
 
-} // namespace tak::menu
+} // namespace ta::menu

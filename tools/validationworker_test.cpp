@@ -3,21 +3,21 @@
 #include "util/stoptoken.h"
 #include <chrono>
 int main() try {
-    if(tak::StopToken{}.stop_requested())throw std::runtime_error("empty token cancelled");
-    tak::StopToken retained;
+    if(ta::StopToken{}.stop_requested())throw std::runtime_error("empty token cancelled");
+    ta::StopToken retained;
     {
-        tak::StopSource source;
+        ta::StopSource source;
         retained=source.get_token();
         if(retained.stop_requested() || !source.request_stop() || source.request_stop())
             throw std::runtime_error("cancellation transition failure");
     }
     if(!retained.stop_requested())throw std::runtime_error("token lost source state");
-    tak::srv::ValidationWorker worker;
+    ta::srv::ValidationWorker worker;
     std::promise<void> entered,release;
     auto gate=release.get_future().share();
     auto first=worker.submit([&]{entered.set_value();gate.wait();return 1;});
     entered.get_future().wait();
-    tak::StopSource cancelled;
+    ta::StopSource cancelled;
     auto second=worker.submit([token=cancelled.get_token()]{return token.stop_requested();});
     auto third=worker.submit([]{return 3;});
     bool rejected=false;

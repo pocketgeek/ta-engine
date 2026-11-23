@@ -19,7 +19,7 @@
 
 #include "sim/retailheight.h"
 
-namespace tak::client::lift {
+namespace ta::client::lift {
 
 // Screen-Y per height unit (retail's `sar $1`).
 inline constexpr float kScaleY = 0.5f;
@@ -37,7 +37,7 @@ inline float terrainHeight(const uint8_t* heights, int width, int height, float 
         return std::min(int(std::floor(std::min(w, 1e6f))), cells * 16 - 17);
     };
     const int32_t x = int32_t(pixel(wx, width)) * 65536, z = int32_t(pixel(wz, height)) * 65536;
-    return float(tak::sim::retailTerrainHeight(x, z, width, height, [&](int cx, int cz) {
+    return float(ta::sim::retailTerrainHeight(x, z, width, height, [&](int cx, int cz) {
         return int(heights[size_t(cz) * size_t(width) + size_t(cx)]);
     }));
 }
@@ -56,4 +56,4 @@ inline float bodyHeight(float terrain, int seaLevel, int waterline, bool canHove
 // retail's `sar $1`: odd heights round down, negative ones toward -inf.
 inline float screenLift(int y) { return float(y >> 1); }
 
-}  // namespace tak::client::lift
+}  // namespace ta::client::lift

@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 
 static void check(bool ok, const std::string& what) {
     if (!ok) throw std::runtime_error(what);
@@ -107,7 +107,7 @@ int main(int, char**) {
         seed = seed * 1103515245u + 12345u;
         rgb[i] = (i / 3) % 7 == 0 ? uint8_t(seed >> 16) : uint8_t(i / 999);   // noise and flat runs
     }
-    const auto file = std::filesystem::temp_directory_path() / ("tak-poster-test-" + std::to_string(SDL_GetTicks64()) + ".png");
+    const auto file = std::filesystem::temp_directory_path() / ("ta-poster-test-" + std::to_string(SDL_GetTicks64()) + ".png");
     png::writeRgb(file, w, h, rgb);
     int rw = 0, rh = 0;
     const auto back = readRgb(file, rw, rh);

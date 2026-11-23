@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""takserver --sim-threads <auto|N>: how many CPU threads the running games' referee simulations share.
+"""taserver --sim-threads <auto|N>: how many CPU threads the running games' referee simulations share.
 
 The command line, on the binary alone (no game data): `auto` and a count from 1 are accepted
 (the next refusal is then about something else), 0, a negative number and junk are refused with
@@ -108,7 +108,7 @@ def sim_lines(root, count):
 
 
 def one_game(binary, data, *arguments):
-    with tempfile.TemporaryDirectory(prefix='tak-simthreads-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-simthreads-') as tmp:
         root = Path(tmp)
         with server(binary, data, root, '--seed', '7', *arguments) as (port, h, process):
             peer, seed = start_game(port, h, 'Solo')
@@ -119,7 +119,7 @@ def one_game(binary, data, *arguments):
 def several_games(binary, data, total, *arguments, after=4):
     """Three games start one after another on a server of `total` threads, then two of them end:
     the log has the share at each start, and again once it changes."""
-    with tempfile.TemporaryDirectory(prefix='tak-simthreads-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-simthreads-') as tmp:
         root = Path(tmp)
         with server(binary, data, root, '--sim-threads', str(total), *arguments) as (port, h, process):
             first, _ = start_game(port, h, 'First')
@@ -154,8 +154,8 @@ def server_checks(binary, data):
         outside = pool.submit(one_game, binary, data, '--sim-threads', '2', '--sim-cpus', '%d,65535' % mine[0]) if pins else None
         auto, auto_seed = default.result()
         assert len(auto) == 1 and re.fullmatch(r'sim threads: \d+ \(auto: .*\)', auto[0]), auto
-        # Every usable CPU thread, unless a debug server inherited TAK_SIM_WORKERS (which overrides auto, and only auto).
-        if 'TAK_SIM_WORKERS' not in os.environ:
+        # Every usable CPU thread, unless a debug server inherited TA_SIM_WORKERS (which overrides auto, and only auto).
+        if 'TA_SIM_WORKERS' not in os.environ:
             assert auto == ['sim threads: %d (auto: %d over 1 game)' % (share(cpus, 1), cpus)], (auto, cpus)
         assert explicit.result() == (auto, auto_seed)
         for n, game in zip(asked, counts):
@@ -193,11 +193,11 @@ def main():
     ap.add_argument('--data', type=Path)
     a = ap.parse_args()
     binary = a.server.resolve()
-    with tempfile.TemporaryDirectory(prefix='tak-simthreads-cli-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-simthreads-cli-') as tmp:
         cli_checks(binary, Path(tmp))
     if a.data:
         server_checks(binary, a.data.resolve())
-    print('PASS takserver --sim-threads: auto and a count accepted, junk refused with the usage error'
+    print('PASS taserver --sim-threads: auto and a count accepted, junk refused with the usage error'
           + ('; each game logs its share of the total, never fewer than 2 with several games, and its CPUs with --sim-cpus'
              if a.data else ' (no --data: command line only)'))
 

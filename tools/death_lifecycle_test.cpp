@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <limits>
 #include <string_view>
-using namespace tak;
+using namespace ta;
 
 int main(int argc,char** argv) {
     if(argc!=2) return 2;

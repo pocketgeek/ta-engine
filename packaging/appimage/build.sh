@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds tak-engine-<version>-<arch>.AppImage from a configured, built Release tree.
+# Builds ta-engine-<version>-<arch>.AppImage from a configured, built Release tree.
 #   packaging/appimage/build.sh <build-dir> <out-dir>
 # Run from the source root. The binaries link only libc/libm (everything else is
 # static), so the AppDir is just the install tree plus AppRun: no bundled libraries.
@@ -37,16 +37,16 @@ chmod +x "$work/appimagetool"
 app=$work/AppDir
 cmake --install "$build" --prefix "$app/usr"
 # The server's systemd unit and its notes only mean something to a system install.
-rm -rf "$app/usr/lib/systemd" "$app/usr/share/doc/tak-engine/systemd"
+rm -rf "$app/usr/lib/systemd" "$app/usr/share/doc/ta-engine/systemd"
 find "$app/usr" -type d -empty -delete
 cp packaging/appimage/AppRun "$app/AppRun"
 chmod +x "$app/AppRun"
-cp "$app/usr/share/applications/tak-client.desktop" "$app/"
-cp "$app/usr/share/icons/hicolor/256x256/apps/tak-client.png" "$app/"
-ln -s tak-client.png "$app/.DirIcon"
+cp "$app/usr/share/applications/ta-client.desktop" "$app/"
+cp "$app/usr/share/icons/hicolor/256x256/apps/ta-client.png" "$app/"
+ln -s ta-client.png "$app/.DirIcon"
 
 mkdir -p "$out"
-image="$out/tak-engine-$version-$cpu.AppImage"
+image="$out/ta-engine-$version-$cpu.AppImage"
 # No FUSE inside build containers: the tool runs extracted.
 ARCH=$cpu APPIMAGE_EXTRACT_AND_RUN=1 "$work/appimagetool" --runtime-file "$work/runtime" "$app" "$image"
 chmod +x "$image"

@@ -1,5 +1,5 @@
 // Shadow silhouette tile reuse (client/shadowtiles.h) and the body/shadow input
-// split (tak::render::shadowInputsEqual), workstream E.
+// split (ta::render::shadowInputsEqual), workstream E.
 //
 // The central property: a retained tile is kept exactly when everything it is
 // rasterized from is bit-identical. The raster inputs are computed here with the
@@ -20,7 +20,7 @@
 #include <vector>
 
 namespace {
-using namespace tak::render;
+using namespace ta::render;
 int failures = 0;
 void check(bool ok, const char* what) {
     if (!ok) { std::fprintf(stderr, "FAIL: %s\n", what); ++failures; }
@@ -172,7 +172,7 @@ void namedCauses() {
         Unit v = u; v.placement.sx += d;
         const Tile t1 = makeTile(v, 10, 20, 1.f, 1.f);
         // Moved, or Resized when the shift also changes the tile's pixel extent.
-        check(!tak::render::reuses(decide(t0, v, t1)), "sub-pixel translation redraws");
+        check(!ta::render::reuses(decide(t0, v, t1)), "sub-pixel translation redraws");
         check(!sameRaster(t0, t1), "sub-pixel translation changes the raster input");
     }
     // Zoom change and flyer altitude lean.
@@ -195,7 +195,7 @@ void namedCauses() {
         const Tile b = makeTile(w, 0, 0, 1.f, 1.f);
         check(decide(a, w, b) == TileVerdict::ReuseTranslated, "masked-only tile translates");
         Unit x = v; x.placement.sx = 103.5f;
-        check(!tak::render::reuses(decide(a, x, makeTile(x, 0, 0, 1.f, 1.f))), "masked-only sub-pixel shift redraws");
+        check(!ta::render::reuses(decide(a, x, makeTile(x, 0, 0, 1.f, 1.f))), "masked-only sub-pixel shift redraws");
     }
     // Binade crossing: a whole-pixel shift whose points change floating-point
     // exponent may round differently; the decision must follow the actual points.
@@ -205,7 +205,7 @@ void namedCauses() {
         const Tile a = makeTile(v, 0, 0, 1.f, 1.f);
         Unit w = v; w.placement.sx += 1.f; w.placement.sy += 1.f;
         const Tile b = makeTile(w, 0, 0, 1.f, 1.f);
-        check(tak::render::reuses(decide(a, w, b)) == sameRaster(a, b), "binade crossing follows the actual points");
+        check(ta::render::reuses(decide(a, w, b)) == sameRaster(a, b), "binade crossing follows the actual points");
     }
 }
 
@@ -235,7 +235,7 @@ void randomizedDifferential() {
         }
         const Tile t1 = makeTile(v, t0.stamp.slotX, t0.stamp.slotY, scale, scale);
         const TileVerdict verdict = decide(t0, v, t1);
-        const bool keep = tak::render::reuses(verdict);
+        const bool keep = ta::render::reuses(verdict);
         kept += keep;
         translated += verdict == TileVerdict::ReuseTranslated;
         moved += verdict == TileVerdict::Moved;
@@ -282,7 +282,7 @@ void shadowInputs() {
         check(!shadowInputsEqual(std::vector<uint64_t>(5), LocalKeyLayout{}, std::vector<uint64_t>(5),
                                  LocalKeyLayout{}, masks), "malformed key differs");
     }
-    {   // Unmapped frame words (TAK_TEXTURE_TICK_REFERENCE: one tick word) compare all.
+    {   // Unmapped frame words (TA_TEXTURE_TICK_REFERENCE: one tick word) compare all.
         const std::vector<uint8_t> two = {0, 0};
         check(!shadowInputsEqual(base, layout, changed(kLocalKeyFixedWords), layout, two),
               "unmapped frame words are all shadow inputs");

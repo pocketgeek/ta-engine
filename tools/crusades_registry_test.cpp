@@ -15,43 +15,43 @@ static std::string lower(std::string s) {
     for(auto& c:s)c=char(std::tolower(static_cast<unsigned char>(c)));
     return s;
 }
-static tak::tdf::Node read(const tak::hpi::Vfs& vfs,const std::string& path) {
+static ta::tdf::Node read(const ta::hpi::Vfs& vfs,const std::string& path) {
     auto bytes=vfs.read(path);
-    return tak::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
+    return ta::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
 }
 int main(int argc,char** argv) {
     if(argc!=2)return 2;
     SDL_SetMainReady();
     try {
-        auto mounts=tak::hpi::mountRetailRoot(argv[1]);
-        tak::hpi::Vfs vfs(&mounts,true);
+        auto mounts=ta::hpi::mountRetailRoot(argv[1]);
+        ta::hpi::Vfs vfs(&mounts,true);
         int failures=0,checks=0,units=0,menus=0,weapons=0,explosions=0,overrides=0;
         auto check=[&](bool ok,const std::string& context) {
             ++checks;if(!ok){++failures;std::cerr<<"FAIL "<<context<<'\n';}
         };
         // These are independent source contracts, not a serialization of UnitType.
-        struct Scalar {const char* key;float tak::sim::UnitType::* member;double fallback;};
+        struct Scalar {const char* key;float ta::sim::UnitType::* member;double fallback;};
         const Scalar scalars[]={
-            {"buildcost",&tak::sim::UnitType::buildCost,0},
-            {"buildtime",&tak::sim::UnitType::buildTime,0},
-            {"healtime",&tak::sim::UnitType::healTime,0},
-            {"workertime",&tak::sim::UnitType::workerTime,1},
-            {"mogriumincome",&tak::sim::UnitType::income,0},
-            {"mogriumstorage",&tak::sim::UnitType::storage,0},
-            {"maxmana",&tak::sim::UnitType::maxMana,0},
-            {"manarechargerate",&tak::sim::UnitType::manaRegen,0},
+            {"buildcost",&ta::sim::UnitType::buildCost,0},
+            {"buildtime",&ta::sim::UnitType::buildTime,0},
+            {"healtime",&ta::sim::UnitType::healTime,0},
+            {"workertime",&ta::sim::UnitType::workerTime,1},
+            {"mogriumincome",&ta::sim::UnitType::income,0},
+            {"mogriumstorage",&ta::sim::UnitType::storage,0},
+            {"maxmana",&ta::sim::UnitType::maxMana,0},
+            {"manarechargerate",&ta::sim::UnitType::manaRegen,0},
         };
-        struct Integer {const char* key;int32_t tak::sim::UnitType::* member;int fallback;};
+        struct Integer {const char* key;int32_t ta::sim::UnitType::* member;int fallback;};
         const Integer integers[]={
-            {"maxdamage",&tak::sim::UnitType::maxHp,100},
-            {"sightdistance",&tak::sim::UnitType::sight,180},
-            {"radardistance",&tak::sim::UnitType::radar,0},
-            {"builddistance",&tak::sim::UnitType::buildDist,0},
-            {"experiencepoints",&tak::sim::UnitType::experiencePoints,666},
-            {"maneuverleashlength",&tak::sim::UnitType::leash,0},
-            {"cruisealt",&tak::sim::UnitType::cruiseAlt,0},
-            {"turnrate",&tak::sim::UnitType::turnRate,500},
-            {"waterline",&tak::sim::UnitType::waterline,0}
+            {"maxdamage",&ta::sim::UnitType::maxHp,100},
+            {"sightdistance",&ta::sim::UnitType::sight,180},
+            {"radardistance",&ta::sim::UnitType::radar,0},
+            {"builddistance",&ta::sim::UnitType::buildDist,0},
+            {"experiencepoints",&ta::sim::UnitType::experiencePoints,666},
+            {"maneuverleashlength",&ta::sim::UnitType::leash,0},
+            {"cruisealt",&ta::sim::UnitType::cruiseAlt,0},
+            {"turnrate",&ta::sim::UnitType::turnRate,500},
+            {"waterline",&ta::sim::UnitType::waterline,0}
         };
         // Retail: the roster is ONE directory (units, or unitscb for Crusades, no
         // fallback); menus are always canbuild/ filtered by the roster.
@@ -80,11 +80,11 @@ int main(int argc,char** argv) {
             builders.insert(builder);
         }
         auto moveInfo=read(vfs,"gamedata/moveinfo.tdf");
-        std::map<std::string,const tak::tdf::Node*> movement;
+        std::map<std::string,const ta::tdf::Node*> movement;
         for(const auto& [name,node]:moveInfo.orderedChildren())
             movement[lower(node->valueOr("name",""))]=node;
         for(bool cb:{false,true}) {
-            tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,cb);
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,cb);
             std::string mode=cb?"Crusades ":"standard ";
             const auto& ids=idsFor[cb];const auto& aliases=aliasesFor[cb];
             check(registry.types().size()==ids.size(),mode+" complete canonical roster");
@@ -103,7 +103,7 @@ int main(int argc,char** argv) {
                     check(type->*(field.member)==float(info->numberOr(field.key,field.fallback)),mode+id+" "+field.key);
                 for(auto field:integers)
                     check(type->*(field.member)==int32_t(info->numberOr(field.key,field.fallback)),mode+id+" "+field.key);
-                using Type=tak::sim::UnitType;
+                using Type=ta::sim::UnitType;
                 struct Flag {const char* key;bool Type::* member;};
                 for(auto field:{Flag{"cantbecaptured",&Type::cantBeCaptured},
                     {"cantransport",&Type::canTransport},{"floater",&Type::floater},
@@ -116,7 +116,7 @@ int main(int argc,char** argv) {
                     {"transportdistance",type->transportDist},{"turninplacerate",type->turnInPlaceRate}})
                     check(actual==uint16_t(int32_t(info->numberOr(key,0))),mode+id+" "+key);
                 check(type->hoverAttackAltitude==int32_t(info->numberOr("hoverattackaltitude",type->cruiseAlt)),mode+id+" hoverattackaltitude");
-                struct FixedField {const char* key;tak::sim::Fixed Type::* member;double fallback;};
+                struct FixedField {const char* key;ta::sim::Fixed Type::* member;double fallback;};
                 for(auto field:{FixedField{"maxvelocity",&Type::maxVel,0},
                     {"acceleration",&Type::accel,.5},{"brakerate",&Type::brake,.5}}) {
                     auto expected=int32_t(info->numberOr(field.key,field.fallback)*65536.0);
@@ -172,7 +172,7 @@ int main(int argc,char** argv) {
                 const int crossing=bestSpeed<=0?255:int(std::clamp<int64_t>((8ll<<16)/bestSpeed,1,255));
                 check(type->halfCellTicks==crossing,mode+id+" native movement time scale");
                 const auto* joy=info->child("adjustjoy");
-                auto actualJoy=std::find_if(type->auras.begin(),type->auras.end(),[](const auto& aura){return aura.kind==tak::sim::Aura::Kind::Joy;});
+                auto actualJoy=std::find_if(type->auras.begin(),type->auras.end(),[](const auto& aura){return aura.kind==ta::sim::Aura::Kind::Joy;});
                 check((actualJoy!=type->auras.end())==(joy!=nullptr),mode+id+" joy aura presence");
                 if(joy && actualJoy!=type->auras.end()) {
                     check(actualJoy->amount==float(joy->numberOr("adjustment",1)),mode+id+" joy adjustment");
@@ -180,7 +180,7 @@ int main(int argc,char** argv) {
                     check(actualJoy->affectsEnemy==(joy->numberOr("affectsenemy",0)!=0),mode+id+" joy enemy");
                     check(actualJoy->edge==float(joy->numberOr("edgeeffectiveness",1)),mode+id+" joy edge");
                 }
-                auto checkWeapon=[&](const tak::tdf::Node& source,const tak::sim::Weapon& actual,
+                auto checkWeapon=[&](const ta::tdf::Node& source,const ta::sim::Weapon& actual,
                                      const std::string& label) {
                     auto context=mode+id+" "+label+" ";
                     auto integer=[&](const char* key,int32_t got,int fallback=0) {
@@ -222,7 +222,7 @@ int main(int argc,char** argv) {
                     check(actual.dmgType==expectedDamageType,context+"damagetype");
                     const auto family=lower(source.valueOr("type",""));
                     const auto subtype=lower(source.valueOr("subtype",""));
-                    using Kind=tak::sim::Weapon::Kind;
+                    using Kind=ta::sim::Weapon::Kind;
                     auto expectedKind=subtype=="dropped"?Kind::Dropped:family=="guided"?Kind::Guided:
                         family=="remote effect"?Kind::Remote:family=="wandering"?Kind::Wandering:Kind::Normal;
                     check(actual.kind==expectedKind,context+"weapon family");
@@ -234,12 +234,12 @@ int main(int argc,char** argv) {
                     // The changed name is consumed by today's visual fallback;
                     // this checks that branch, not retail-rendering equivalence.
                     if(id=="vercen" && label=="weapon1")
-                        check(actual.fx==(cb?tak::sim::WeaponFx::Fire:tak::sim::WeaponFx::Arrow),context+"changed-name visual fallback");
-                    using Remote=tak::sim::Weapon::RemoteKind;
+                        check(actual.fx==(cb?ta::sim::WeaponFx::Fire:ta::sim::WeaponFx::Arrow),context+"changed-name visual fallback");
+                    using Remote=ta::sim::Weapon::RemoteKind;
                     auto expectedRemote=subtype=="earthquake"?Remote::Earthquake:subtype=="hailstorm"?Remote::Hailstorm:
                         subtype=="mindcontrol"?Remote::MindCtl:subtype=="turntofrozen"?Remote::Freeze:Remote::Plain;
                     check(actual.remote==expectedRemote,context+"remote subtype");
-                    using Status=tak::sim::Weapon::Status;
+                    using Status=ta::sim::Weapon::Status;
                     auto expectedStatus=subtype=="turntofrozen"?Status::Frozen:subtype=="turntostone"?Status::Stoned:
                         damageType=="paralyzer"?Status::Paralyzed:Status::None;
                     check(actual.status==expectedStatus,context+"status dispatch");
@@ -266,14 +266,14 @@ int main(int argc,char** argv) {
                         }
                     check(actual.dmgVs==expected,context+"complete category damage table");
                     for(const auto& [category,value]:expected) {
-                        tak::sim::UnitType target;target.damageCategory=category;
+                        ta::sim::UnitType target;target.damageCategory=category;
                         target.damageCategoryId=registry.categoryId(category);
                         check(actual.damageVs(&target)==float(value),context+category+" effective damage");
                         auto uninterned=actual;uninterned.dmgVsIds.clear();
                         check(uninterned.damageVs(&target)==actual.damageVs(&target),context+category+" interned parity");
                         ++overrides;
                     }
-                    tak::sim::UnitType target;target.damageCategory="__audit_unmatched__";
+                    ta::sim::UnitType target;target.damageCategory="__audit_unmatched__";
                     check(actual.damageVs(&target)==actual.damage,context+"unmatched category fallback");
                     for(const auto& [targetId,targetType]:registry.types()) {
                         auto found=expected.find(targetType.damageCategory);

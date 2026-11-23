@@ -1,6 +1,6 @@
 # Pinned Opus release (BSD-3-Clause; OPUS-LICENSE.txt ships beside the binaries), the
 # voice chat codec. Built from source on every platform: a static archive compiled by our own toolchain, so no system libopus and no extra DLL
-# or dylib. Only the client links it (tak-voice); takserver relays voice as opaque bytes.
+# or dylib. Only the client links it (ta-voice); taserver relays voice as opaque bytes.
 enable_language(C)
 # CMake appends C's implicit libraries when this archive joins a C++ link. Fedora
 # names its shared unwinder gcc_s_asneeded, unlike C++'s gcc_s, so the extra -l can
@@ -21,7 +21,7 @@ FetchContent_Declare(tak_opus
   URL_HASH SHA256=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
   TLS_VERIFY TRUE
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-  SOURCE_SUBDIR tak-not-a-directory
+  SOURCE_SUBDIR ta-not-a-directory
 )
 # For offline builds, set FETCHCONTENT_SOURCE_DIR_TAK_OPUS to an extracted copy of
 # opus-1.5.2.tar.gz.
@@ -45,12 +45,12 @@ if(MINGW)
 endif()
 # Opus registers its tests whenever BUILD_TESTING is on (it is, through our
 # enable_testing); keep its directory from adding any to ctest.
-set(_tak_build_testing "${BUILD_TESTING}")
+set(_ta_build_testing "${BUILD_TESTING}")
 set(BUILD_TESTING OFF)
-set(_tak_shared_libs "${BUILD_SHARED_LIBS}")
+set(_ta_shared_libs "${BUILD_SHARED_LIBS}")
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("${tak_opus_SOURCE_DIR}" "${tak_opus_BINARY_DIR}" EXCLUDE_FROM_ALL)
-set(BUILD_TESTING "${_tak_build_testing}")
-set(BUILD_SHARED_LIBS "${_tak_shared_libs}")
+set(BUILD_TESTING "${_ta_build_testing}")
+set(BUILD_SHARED_LIBS "${_ta_shared_libs}")
 set_target_properties(opus PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(opus PRIVATE -w)   # third-party code; our -Wall -Wextra is not for it

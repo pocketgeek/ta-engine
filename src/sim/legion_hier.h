@@ -14,7 +14,7 @@
 // across a boundary needs both of its orthogonal cells legal, and one of them is an orthogonal crossing of the same
 // boundary from the same cell (or into the same cell), so the portals carry every legal connection: two origins
 // are in one static component of the plane exactly when their regions are joined by a chain of portals
-// (legion_hier_test, and connectivityMatches under TAK_LEGION_VERIFY). Clearance is the plane's: `legal` is the
+// (legion_hier_test, and connectivityMatches under TA_LEGION_VERIFY). Clearance is the plane's: `legal` is the
 // exact footprint-origin predicate (rectangle clearance by run lengths), so nothing here approximates a footprint
 // by a radius, and the diagonal / halo rules are the step rule's own.
 //
@@ -37,7 +37,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim::hier {
+namespace ta::sim::hier {
 
 inline constexpr uint16_t kNoRegion = 0xffff;
 
@@ -208,7 +208,7 @@ public:
         return b;
     }
 
-    // ---- checks (tests, TAK_LEGION_VERIFY) ----------------------------------------------------------------------
+    // ---- checks (tests, TA_LEGION_VERIFY) ----------------------------------------------------------------------
     // A built sector equals a fresh labelling of the current plane, and its built sides fresh portal scans.
     bool sectorMatches(int s, const uint8_t* legal) const {
         const Sector& S = sectors_[size_t(s)];
@@ -498,4 +498,4 @@ private:
     size_t built_ = 0;
 };
 
-}  // namespace tak::sim::hier
+}  // namespace ta::sim::hier

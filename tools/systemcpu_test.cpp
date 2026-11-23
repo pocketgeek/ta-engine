@@ -1,7 +1,7 @@
 #include "util/procmetrics.h"
 #include <cstdio>
 int main() {
-    using namespace tak::proc;
+    using namespace ta::proc;
     // Eight cores supply 800 counter ticks: two busy cores mean 25%, not 200%.
     const SystemCpuSample before{1000,500,true};
     if(systemCpuPercent(before,{1800,1100,true})!=25 ||

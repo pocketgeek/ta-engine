@@ -223,13 +223,13 @@ void copyIsSmall() {
     (void)world.pathExists(&army.type,float(900*16),float(900*16),float(10*16),float(10*16));
     uint64_t bytes=0,keptBytes=0;
     {
-        tak::client::AllocCount counted;
+        ta::client::AllocCount counted;
         const auto copy=world.clone();
         bytes=counted.bytes();
         require(copy->stateHash()==world.stateHash(),"a copy hashes differently from its original");
     }
     {
-        tak::client::AllocCount counted;
+        ta::client::AllocCount counted;
         const auto kept=world.keyframe();
         keptBytes=counted.bytes();
     }
@@ -340,8 +340,8 @@ void keyframes(PathfindingMode mode,const char* what) {
     const uint64_t at=world.stateHash();
     uint64_t runBytes=0,keptBytes=0;
     std::unique_ptr<World> kept;
-    {tak::client::AllocCount counted;const auto copy=world.clone();runBytes=counted.bytes();}
-    {tak::client::AllocCount counted;kept=world.keyframe();keptBytes=counted.bytes();}
+    {ta::client::AllocCount counted;const auto copy=world.clone();runBytes=counted.bytes();}
+    {ta::client::AllocCount counted;kept=world.keyframe();keptBytes=counted.bytes();}
     require(kept->isKeyframe()&&!world.isKeyframe(),"a keyframe is not marked as one");
     require(keptBytes*4<runBytes*3,"a keyframe is no smaller than a copy that runs");
     bool refused=false;
@@ -399,7 +399,7 @@ void poolAndObserversStay() {
 }
 
 void missionData(const std::string& data) {
-    auto vfs=tak::hpi::mountPlayVfs(data,{},{},true,nullptr);
+    auto vfs=ta::hpi::mountPlayVfs(data,{},{},true,nullptr);
     TypeRegistry registry;setupRegistry(registry,vfs,false);
     const char* stem="takmission22_ph";
     World world,other;int human=0,otherHuman=0;

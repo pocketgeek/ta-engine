@@ -3,7 +3,7 @@
 #include <bit>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 // 4ec7cb..4ec879: visual refresh decision. This state belongs to the outer
 // renderer, whose cadence and visible-unit order must be supplied by its host.
@@ -27,4 +27,4 @@ struct RetailVisualQuality {
     }
 };
 
-} // namespace tak
+} // namespace ta

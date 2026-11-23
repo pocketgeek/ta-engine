@@ -1,6 +1,6 @@
 #pragma once
 
-// Start this program again with the given arguments: how takclient and Cartographer
+// Start this program again with the given arguments: how taclient and Cartographer
 // apply a new GAME DATA FOLDER (client/datafolder.h says why a restart and not a live
 // remount). Called after the old process has torn SDL down, so no window, audio
 // device or socket is held twice.
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 // The running executable's own path (/proc/self/exe, _NSGetExecutablePath, the module
 // file name), UTF-8. Empty if the platform will not say.
@@ -47,4 +47,4 @@ inline std::string windowsCommandLine(const std::vector<std::string>& argv) {
     return out;
 }
 
-}  // namespace tak
+}  // namespace ta

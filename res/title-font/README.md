@@ -5,5 +5,5 @@ the repository root), unmodified, from https://github.com/NDISCOVER/Cinzel
 (`fonts/ttf/Cinzel-Bold.ttf`). Classical Roman capitals, close to the retail logo's
 lettering.
 
-`cmake/EmbedFiles.cmake` writes it into `takclient` as a byte array (no runtime data
+`cmake/EmbedFiles.cmake` writes it into `taclient` as a byte array (no runtime data
 file), and `src/client/uifont.cpp` rasterizes it with stb_truetype (`src/vendor/stb`).

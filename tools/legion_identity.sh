@@ -9,7 +9,7 @@
 #       [-j <n>] [--no-cache] [--cache-dir <dir>]
 #
 # Speed: the base side is deterministic, so every base result is cached under
-# ~/.cache/tak-identity/<base commit>/<build type>-v<harness version>/ (a chain of
+# ~/.cache/ta-identity/<base commit>/<build type>-v<harness version>/ (a chain of
 # steps runs each base only once). A run that passes with every row SAME also stores
 # the candidate's results under the CANDIDATE's commit (if its tree is clean and its
 # build dir builds): they are what a base run of it would produce, so in a chain A->B,
@@ -19,21 +19,21 @@
 # is read or written); only complete, successful base results are stored (a
 # replay that diverged, a failed ctest, an --mpai with err, are never cached).
 # Every hit is printed ("cache hit: <row>") and listed in meta.txt. --no-cache
-# neither reads nor writes the cache; --cache-dir (or TAK_IDENTITY_CACHE) moves
+# neither reads nor writes the cache; --cache-dir (or TA_IDENTITY_CACHE) moves
 # it. The candidate is never read from the cache, so a difference is always
 # detected against real, fresh candidate output. Bump HARNESS_VERSION in legion_identity.py
 # when a base row's definition changes. -j <n> sets the job width (default: the
 # number of CPUs in --cores, e.g. --cores 20-23 -j 4); crowdbench starts as soon
 # as every replay/golden job has been launched instead of after the longest one.
 #
-# Both build dirs need takclient, takserver, crowdbench, navigation_checkpoint_test
+# Both build dirs need taclient, taserver, crowdbench, navigation_checkpoint_test
 # and the test executables of the ctest selection below. Debug builds
 # (e.g. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS=-O2) run every section; a
-# Release takclient reads no TAK_* variables and has no replay/--mpai harness,
+# Release taclient reads no TA_* variables and has no replay/--mpai harness,
 # so those rows are SKIP for it. Sections, in run order:
 #
-#   mpai        --mpai Legion (TAK_LEGION=1) and Retail on "Inner Circle": takserver
-#               --local --no-auth --seed 1 on a free port, client TAK_HEADLESS=1
+#   mpai        --mpai Legion (TA_LEGION=1) and Retail on "Inner Circle": taserver
+#               --local --no-auth --seed 1 on a free port, client TA_HEADLESS=1
 #               with a fresh empty XDG_DATA_HOME, --time 300 (60 with --quick), each
 #               twice per build; must be reproducible run-to-run and equal across
 #               builds. Runs in the background beside the other sections.
@@ -41,7 +41,7 @@
 #               --replays, copied to the output dir with the protocol at byte 8
 #               patched to each build's kNetVersion (the recordings must be the
 #               current replay format). Final hash plus the per-checkpoint
-#               section hashes (TAK_HASHDETAIL, every 300 ticks).
+#               section hashes (TA_HASHDETAIL, every 300 ticks).
 #   golden      navigation_checkpoint_test legion|retail serial: all 24 checkpoints.
 #   crowdbench  the matrix in legion_identity.py (full: 504 rows per build, both
 #               modes, seeds 0/1/2, serial and --workers; --quick: 12 rows).
@@ -50,7 +50,7 @@
 #               hash= values a test prints.
 #   determinism tools/check-determinism.sh in each build's source tree.
 #
-# --verify sets TAK_LEGION_VERIFY=1 on every candidate run (an unknown variable
+# --verify sets TA_LEGION_VERIFY=1 on every candidate run (an unknown variable
 # is ignored by builds without the verify scaffold). Output: a table on stdout,
 # <out>/identity.txt (every row), <out>/identity.json, and all raw logs. Exit 0
 # only if every row is SAME (or SKIP) and every test passes. Wall time on 4 cores
@@ -66,7 +66,7 @@ set -u
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
 
 BASE= CAND= QUICK=0 VERIFY=0 OUT= SKIP= MPAI_TIME= JOBS= NOCACHE=0 CACHE_DIR=
-REPLAYS=/home/pocket_geek/tak-tmp/we-replays
+REPLAYS=/home/pocket_geek/ta-tmp/we-replays
 DATA=
 CORES=$(taskset -cp $$ 2>/dev/null | sed 's/.*: //')
 while [ $# -gt 0 ]; do
@@ -116,7 +116,7 @@ for role in base cand; do
     PROTO[$role]=$(sed -n 's/^constexpr uint32_t kNetVersion = \([0-9]*\);.*/\1/p' "${SRC[$role]}/src/net/protocol.h")
     [ -n "${PROTO[$role]}" ] || { echo "${SRC[$role]}: no kNetVersion" >&2; exit 2; }
 done
-[ -n "$DATA" ] || DATA=$(cache "$BASE" TAK_TEST_DATA)
+[ -n "$DATA" ] || DATA=$(cache "$BASE" TA_TEST_DATA)
 [ -n "$DATA" ] || DATA=${SRC[base]}/assets/game
 DATA=$(cd "$DATA" && pwd) || { echo "no game data dir; pass --data" >&2; exit 2; }
 if [ $QUICK = 1 ]; then REPLAY_NAMES="L-bench R-bench"; else REPLAY_NAMES="L-bench L-2h R-bench R-2h"; fi
@@ -127,11 +127,11 @@ CT_ROW=ctest CT_LABELS=()
 [ $QUICK = 1 ] && { CT_ROW=ctest-quick; CT_LABELS=(-LE nightly); }
 skipped mpai && MPAI_RUNS=0
 skipped replays && REPLAY_NAMES=
-# A release takclient cannot run the replay or --mpai harness; the report shows SKIP rows.
+# A release taclient cannot run the replay or --mpai harness; the report shows SKIP rows.
 BOTH_DEBUG=$(( DEBUG[base] && DEBUG[cand] ))
 # --- base result cache ----------------------------------------------------------
 BKEY= CACHE_HITS=() CACHE_STORED=0
-[ -z "$CACHE_DIR" ] || export TAK_IDENTITY_CACHE=$CACHE_DIR
+[ -z "$CACHE_DIR" ] || export TA_IDENTITY_CACHE=$CACHE_DIR
 if [ $NOCACHE = 0 ]; then
     BKEY=$($PY cache-key --src "${SRC[base]}" --build "$BASE" --type "${TYPE[base]}-d${DEBUG[base]}-data$(printf %s "$DATA" | sha256sum | cut -c1-6)") || BKEY=
     [ -n "$BKEY" ] && mkdir -p "$BKEY"
@@ -147,7 +147,7 @@ put_all() {  # key dir -- store every complete, valid result found in <dir> (a n
         $PY cache-put --dir "$key" --row "golden-$mode" --out "$dir" || true
     done
     for name in $REPLAY_NAMES; do
-        [ -f "$REPLAYS/$name.takrep" ] && $PY cache-put --dir "$key" --row "replay-$name-$(sha256sum "$REPLAYS/$name.takrep" | cut -c1-12)" --out "$dir" || true
+        [ -f "$REPLAYS/$name.tarep" ] && $PY cache-put --dir "$key" --row "replay-$name-$(sha256sum "$REPLAYS/$name.tarep" | cut -c1-12)" --out "$dir" || true
     done
     $PY cache-put --dir "$key" --row "$CT_ROW" --out "$dir" || true
     $PY cache-put --dir "$key" --row determinism --out "$dir" || true
@@ -173,7 +173,7 @@ echo "legion_identity: output $OUT (cores $CORES, quick=$QUICK, verify=$VERIFY)"
 # --- process bookkeeping ------------------------------------------------------
 # Every command is started as `setsid <cmd>` from a background subshell, so its PID
 # is also the id of a fresh process group holding it and its children (ctest and
-# its tests, timeout and takclient). Cleanup signals only those groups, and only
+# its tests, timeout and taclient). Cleanup signals only those groups, and only
 # while they are still unreaped children of this shell (`jobs -p`), so a PID can
 # never have been recycled to someone else's process.
 PIDS=()
@@ -196,8 +196,8 @@ launch() {  # log cwd cmd... -> $LAUNCHED (the PID and process-group id)
 }
 
 role_env() {  # the per-role environment, as env(1) arguments
-    printf '%s\n' -u TAK_LEGION_VERIFY
-    [ "$1" = cand ] && [ $VERIFY = 1 ] && printf '%s\n' TAK_LEGION_VERIFY=1
+    printf '%s\n' -u TA_LEGION_VERIFY
+    [ "$1" = cand ] && [ $VERIFY = 1 ] && printf '%s\n' TA_LEGION_VERIFY=1
 }
 T0=$(date +%s)
 section_time() { echo "$1 $(( $(date +%s) - $2 ))" >> "$OUT/timings.txt"; }
@@ -208,13 +208,13 @@ mpai_game() {  # role mode run -- one server+client pair; signals only its own t
     local role=$1 mode=$2 run=$3 b=${BUILD[$1]} log=$OUT/$1/mpai-$2-$3.log
     local xdg spid= cpid= port attempt legion=()
     trap '[ -n "$cpid" ] && kill -TERM -- -$cpid 2>/dev/null; [ -n "$spid" ] && kill -TERM -- -$spid 2>/dev/null; exit 1' TERM
-    [ "$mode" = legion ] && legion=(TAK_LEGION=1)
+    [ "$mode" = legion ] && legion=(TA_LEGION=1)
     mapfile -t renv < <(role_env "$role")
     for attempt in 1 2 3; do
         xdg=$(mktemp -d "$OUT/xdg/$role-$mode-$run.XXXX")
         port=$(free_port)
         ( exec setsid env "${renv[@]}" "${legion[@]}" XDG_DATA_HOME="$xdg" taskset -c "$CORES" \
-            "$b/takserver" --port "$port" --data "$DATA" --no-auth --local --seed 1 \
+            "$b/taserver" --port "$port" --data "$DATA" --no-auth --local --seed 1 \
             > "$log.server" 2>&1 ) &
         spid=$!
         for _ in $(seq 1 240); do
@@ -225,10 +225,10 @@ mpai_game() {  # role mode run -- one server+client pair; signals only its own t
         grep -q listening "$log.server" && break
         kill -TERM -- -$spid 2>/dev/null; wait $spid 2>/dev/null; spid=
     done
-    [ -n "$spid" ] || { echo "takserver did not start" > "$log"; return 1; }
-    ( exec setsid env "${renv[@]}" "${legion[@]}" XDG_DATA_HOME="$xdg" TAK_HEADLESS=1 \
+    [ -n "$spid" ] || { echo "taserver did not start" > "$log"; return 1; }
+    ( exec setsid env "${renv[@]}" "${legion[@]}" XDG_DATA_HOME="$xdg" TA_HEADLESS=1 \
         SDL_VIDEODRIVER=dummy timeout -k 10 $((MPAI_TIME * 4 + 300)) taskset -c "$CORES" \
-        "$b/takclient" game "Inner Circle" --data "$DATA" --server 127.0.0.1 \
+        "$b/taclient" game "Inner Circle" --data "$DATA" --server 127.0.0.1 \
         --serverport "$port" --mpai --time "$MPAI_TIME" > "$log" 2>&1 ) &
     cpid=$!
     wait $cpid; cpid=
@@ -271,16 +271,16 @@ if [ -n "$REPLAY_NAMES" ] && [ $BOTH_DEBUG = 1 ]; then
     ORDER=$(for n in $REPLAY_NAMES; do case $n in *2h*) echo "0 $n";; *) echo "1 $n";; esac; done | sort | cut -d' ' -f2)
     for name in $ORDER; do
         for role in base cand; do
-            src=$REPLAYS/$name.takrep
+            src=$REPLAYS/$name.tarep
             [ -f "$src" ] || { echo "missing replay $src" > "$OUT/$role/replay-$name.log"; continue; }
             [ $role = base ] && cache_get "replay-$name-$(sha256sum "$src" | cut -c1-12)" && continue
-            dst=$OUT/replays/$name-p${PROTO[$role]}.takrep
+            dst=$OUT/replays/$name-p${PROTO[$role]}.tarep
             [ -f "$dst" ] || $PY patch-replay "$src" "$dst" "${PROTO[$role]}" >> "$OUT/replays/patch.log" || continue
             xdg=$(mktemp -d "$OUT/xdg/replay-$role-$name.XXXX")
             mapfile -t renv < <(role_env "$role")
-            pool_run "$OUT/$role/replay-$name.log" "$OUT" env "${renv[@]}" TAK_REPLAY_VERIFY=1 \
-                TAK_HASHDETAIL=4294967295 XDG_DATA_HOME="$xdg" TAK_HEADLESS=1 SDL_VIDEODRIVER=dummy \
-                timeout -k 10 5400 taskset -c "$CORES" "${BUILD[$role]}/takclient" replay "$dst" --data "$DATA"
+            pool_run "$OUT/$role/replay-$name.log" "$OUT" env "${renv[@]}" TA_REPLAY_VERIFY=1 \
+                TA_HASHDETAIL=4294967295 XDG_DATA_HOME="$xdg" TA_HEADLESS=1 SDL_VIDEODRIVER=dummy \
+                timeout -k 10 5400 taskset -c "$CORES" "${BUILD[$role]}/taclient" replay "$dst" --data "$DATA"
         done
     done
 fi

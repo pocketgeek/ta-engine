@@ -13,7 +13,7 @@
 // The client must end up NOT signed in for every attack, and signed in for the
 // one honest control.
 //
-// --live instead drives the client's sign-in token against a REAL takserver over TLS
+// --live instead drives the client's sign-in token against a REAL taserver over TLS
 // (account_auth_network_test.py runs it; SSL_CERT_FILE must trust the server).
 //
 // A dev harness; not shipped in a game.
@@ -33,8 +33,8 @@
 #include <thread>
 #include <vector>
 
-using namespace tak;
-using namespace tak::net;
+using namespace ta;
+using namespace ta::net;
 
 namespace {
 

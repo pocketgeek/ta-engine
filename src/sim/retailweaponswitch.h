@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail's AI weapon switching (icd 40f411..40fb92), the decision only. The
 // fire-at-will walker runs it for each visited computer-owned unit whose type
@@ -66,4 +66,4 @@ int retailWeaponSwitchChoice(const RetailWeaponSwitchInput& in,Enemies enemies,A
     return random(10)==0 ? 0 : -1;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

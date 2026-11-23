@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailPlacementCell {
     // `entity` is the occupant's unit id (0: none). Retail keeps a 16-bit slot
@@ -51,4 +51,4 @@ bool retailMobilePlacement(int x,int z,int footX,int footZ,int width,int height,
     return true;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

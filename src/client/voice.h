@@ -26,7 +26,7 @@
 
 #include "client/settings.h"
 
-namespace tak {
+namespace ta {
 
 class VoiceEngine {
 public:
@@ -59,7 +59,7 @@ public:
     VoiceEngine& operator=(const VoiceEngine&) = delete;
 
     // Apply the settings (call every frame; cheap when nothing changed). gameOutput is
-    // the device the game's sound uses (tak::currentAudioDevice(), "" = system default),
+    // the device the game's sound uses (ta::currentAudioDevice(), "" = system default),
     // followed when voice output is SAME AS GAME.
     void configure(const Settings& s, const std::string& gameOutput);
     // The VOICE CHAT screen is open: keep the microphone running for its level meter.
@@ -100,4 +100,4 @@ private:
     std::unique_ptr<Impl> p_;
 };
 
-}  // namespace tak
+}  // namespace ta

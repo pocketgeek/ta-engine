@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::hpi { class Vfs; }
+namespace ta::hpi { class Vfs; }
 
 namespace cart {
 
@@ -24,17 +24,17 @@ struct SectionRef {
 class SectionLibrary {
 public:
     // Scan Sections/<world>/** for prefab .TNTs (world = aramon/taros/veruna/zhon).
-    void scan(const tak::hpi::Vfs& vfs, const std::string& world);
+    void scan(const ta::hpi::Vfs& vfs, const std::string& world);
     const std::vector<SectionRef>& list() const { return sections_; }
     // Load (and cache) a prefab by VFS path; nullptr if it won't parse.
-    const tak::tnt::Map* load(const tak::hpi::Vfs& vfs, const std::string& path);
+    const ta::tnt::Map* load(const ta::hpi::Vfs& vfs, const std::string& path);
     // Bumped by scan(), which frees every map load() returned.
     unsigned generation() const { return generation_; }
 
 private:
     unsigned generation_ = 0;
     std::vector<SectionRef> sections_;
-    std::map<std::string, tak::tnt::Map> cache_;
+    std::map<std::string, ta::tnt::Map> cache_;
 };
 
 // Stamp `section` into `map` with its top-left block at (bx, by), clipped to the
@@ -46,7 +46,7 @@ private:
 // protected, preserve existing object anchors, add no prefab objects, and update
 // terrain-only road/blocker markers where there is no object anchor.
 struct StampLayers { bool objects=true; };
-bool stampSection(tak::tnt::Map& map, const tak::tnt::Map& section, int bx, int by,
+bool stampSection(ta::tnt::Map& map, const ta::tnt::Map& section, int bx, int by,
                   StampLayers layers={});
 
 } // namespace cart

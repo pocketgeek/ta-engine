@@ -57,21 +57,21 @@ def install(root, data, name):
 def play(a, data, work, mission=None, settings=''):
     work.mkdir()
     roster = work / 'roster.jsonl'
-    os.environ['TAK_ROSTER_DUMP'] = str(roster)   # the server reads it at its first sample
-    os.environ['TAK_ROSTER_EVERY'] = '150'
+    os.environ['TA_ROSTER_DUMP'] = str(roster)   # the server reads it at its first sample
+    os.environ['TA_ROSTER_EVERY'] = '150'
     try:
         with server(a.server.resolve(), data, work, '--no-auth', '--seed', '1') as (port, _, process):
             settings_file = work / 'settings.ini'
             settings_file.write_text(settings)
             env = dict(os.environ, HOME=str(work), XDG_DATA_HOME=str(work), XDG_CONFIG_HOME=str(work),
-                       TAK_SETTINGS_FILE=str(settings_file), TAK_HEADLESS='1', TAK_SPEED='80',
+                       TA_SETTINGS_FILE=str(settings_file), TA_HEADLESS='1', TA_SPEED='80',
                        SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
-            env.pop('TAK_ROSTER_DUMP')
-            env.pop('TAK_AI_LEVEL', None)
+            env.pop('TA_ROSTER_DUMP')
+            env.pop('TA_AI_LEVEL', None)
             if mission:
                 mode = [mission, '--mpmission', mission, '--time', '20']
             else:
-                env['TAK_AI_LEVEL'] = '6'
+                env['TA_AI_LEVEL'] = '6'
                 mode = [a.map, '--mpai', '--time', SECONDS]
             result = subprocess.run([str(a.client.resolve()), 'game', mode[0], '--data', str(data),
                                      '--server', '127.0.0.1', '--serverport', str(port), *mode[1:]],
@@ -81,8 +81,8 @@ def play(a, data, work, mission=None, settings=''):
                 result.stdout + result.stderr + '\n' + log
             assert process.poll() is None, log
     finally:
-        os.environ.pop('TAK_ROSTER_DUMP', None)
-        os.environ.pop('TAK_ROSTER_EVERY', None)
+        os.environ.pop('TA_ROSTER_DUMP', None)
+        os.environ.pop('TA_ROSTER_EVERY', None)
     built, initial, levels = set(), None, {}
     if roster.exists():
         for line in roster.read_text().splitlines():
@@ -105,7 +105,7 @@ def main():
     p.add_argument('--data', type=Path, required=True)
     a = p.parse_args()
     a.data = a.data.resolve()
-    with tempfile.TemporaryDirectory(prefix='tak-classic-map-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-classic-map-') as tmp:
         root = Path(tmp)
         base_profile = hpi_read(a.hpitool, a.data, 'ai/default.txt')
 

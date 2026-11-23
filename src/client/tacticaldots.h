@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tak::tacticaldots {
+namespace ta::tacticaldots {
 
 // WHEN dots show is the player's TACTICAL DOTS ZOOM slider, 0-100%. It is a
 // position along this window's zoom-out range, not an absolute zoom, because the
@@ -84,4 +84,4 @@ inline float dotSide(int footX, int footZ, float zoom, float uiScale = 1.0f) {
     return std::clamp(cells * kCellWorldPx * zoom * kFootFill, lo, hi);
 }
 
-}  // namespace tak::tacticaldots
+}  // namespace ta::tacticaldots

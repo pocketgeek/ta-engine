@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 // GameView's unit id -> model (visual) name registry, with a compact record of its
 // key set (workstream L). The painter pass asks "is this unit registered?" for every
@@ -46,4 +46,4 @@ private:
     std::vector<uint8_t> flags_;
 };
 
-}  // namespace tak::render
+}  // namespace ta::render

@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 class World;
 struct Unit;
 
@@ -106,7 +106,7 @@ public:
         // Ids prune's backstop cursor validates (members plus the anchors,
         // approachDone and parts records; at most 256 a tick since B3, which
         // erases those records by event instead of a whole walk); soft-hash recomputations checked by
-        // TAK_LEGION_VERIFY (B2: one a tick while it is on); stale refreshes
+        // TA_LEGION_VERIFY (B2: one a tick while it is on); stale refreshes
         // left unstarted for want of demand (B1: one per inactive group visit).
         uint64_t anchorWalkIters=0,softHashVerifyTicks=0,refreshSuppressed=0;
         // ---- army throughput (T1 I4) ---------------------------------------
@@ -543,7 +543,7 @@ public:
     static void setRouteIndexForTest(bool on);
     // Test hook (process-wide; default off, 0): stage 9's parallel planning jobs (tile builds ahead of the serial
     // pass, plane first-build row chunks) run even with no SimPool workers (`force`, inline), and their execution
-    // order is shuffled with random delays (`perturbSeed`, 0 off; debug builds also read TAK_LEGION_PAR_PERTURB).
+    // order is shuffled with random delays (`perturbSeed`, 0 off; debug builds also read TA_LEGION_PAR_PERTURB).
     // Never changes behaviour or hashes: the jobs decide nothing and are consumed in a fixed order.
     static void setParallelForTest(bool force,uint64_t perturbSeed);
     // Perf H: static refreshes read structures through a spatial index (true, the default) or walk them all (the
@@ -551,7 +551,7 @@ public:
     static void setStructureIndexForTest(bool on);
     // Debug builds (NDEBUG undefined): check derived indexes and the Stats
     // after every tick() (aborts on a mismatch). A no-op in release. A debug
-    // build starts with it on when TAK_LEGION_VERIFY is set (the only
+    // build starts with it on when TA_LEGION_VERIFY is set (the only
     // environment read, debug-only and never hashed). Process-wide.
     static void setVerify(bool on);
     // Is the verify hook on? (Always false in release.) World's convoy table

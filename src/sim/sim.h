@@ -67,13 +67,13 @@
 #include <string>
 #include <vector>
 
-namespace tak { struct RetailLightningDefinition; }
-namespace tak::hpi { class Vfs; }
+namespace ta { struct RetailLightningDefinition; }
+namespace ta::hpi { class Vfs; }
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Cheat: when true, construction and production complete instantly and cost no
-// mana (set via the takclient `--cheat` flag).
+// mana (set via the taclient `--cheat` flag).
 extern bool gInstantBuild;
 
 // Unit stats loaded from .fbi files. Velocities are in map pixels per
@@ -1080,34 +1080,34 @@ struct alignas(64) Order {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
-#define TAK_ORDER_LINE(field, line) \
+#define TA_ORDER_LINE(field, line) \
     static_assert(offsetof(Order, field) / 64 == (line) && \
                   (offsetof(Order, field) + sizeof(Order::field) - 1) / 64 == (line), \
                   "Order::" #field " must sit on cache line " #line)
-TAK_ORDER_LINE(x, 0); TAK_ORDER_LINE(z, 0); TAK_ORDER_LINE(targetId, 0);
-TAK_ORDER_LINE(load, 0); TAK_ORDER_LINE(unload, 0); TAK_ORDER_LINE(attackMove, 0);
-TAK_ORDER_LINE(patrol, 0); TAK_ORDER_LINE(guard, 0); TAK_ORDER_LINE(waitAttack, 0);
-TAK_ORDER_LINE(goal, 0); TAK_ORDER_LINE(groundMission, 0); TAK_ORDER_LINE(wait, 0);
-TAK_ORDER_LINE(buildType, 0); TAK_ORDER_LINE(reclaimArea, 0); TAK_ORDER_LINE(manaBuildArea, 0);
-TAK_ORDER_LINE(reclaimFeat, 0); TAK_ORDER_LINE(repairTarget, 0);
-TAK_ORDER_LINE(transportUnloadApproach, 0); TAK_ORDER_LINE(navigationConsumed, 0);
-TAK_ORDER_LINE(autoTarget, 0); TAK_ORDER_LINE(flightMoveMission, 0); TAK_ORDER_LINE(landing, 0);
-TAK_ORDER_LINE(transportPickup, 0); TAK_ORDER_LINE(navigationExhausted, 0);
-TAK_ORDER_LINE(hasSegment, 0);
-TAK_ORDER_LINE(issuedTick, 1); TAK_ORDER_LINE(convoyTick, 1); TAK_ORDER_LINE(controller, 1);
-TAK_ORDER_LINE(park, 1); TAK_ORDER_LINE(buildRectangle, 1); TAK_ORDER_LINE(flightGoal, 1);
-TAK_ORDER_LINE(missionTarget, 1); TAK_ORDER_LINE(patrolRepair, 1); TAK_ORDER_LINE(patrolOpen, 1);
-TAK_ORDER_LINE(guardRepair, 1);
-TAK_ORDER_LINE(transportUnloadReleasePending, 1); TAK_ORDER_LINE(transportUnloadTransferDeferred, 1);
-TAK_ORDER_LINE(formationLevel, 1); TAK_ORDER_LINE(stationFree, 1); TAK_ORDER_LINE(missionRadius, 1);
-TAK_ORDER_LINE(orderSerial, 4);
+TA_ORDER_LINE(x, 0); TA_ORDER_LINE(z, 0); TA_ORDER_LINE(targetId, 0);
+TA_ORDER_LINE(load, 0); TA_ORDER_LINE(unload, 0); TA_ORDER_LINE(attackMove, 0);
+TA_ORDER_LINE(patrol, 0); TA_ORDER_LINE(guard, 0); TA_ORDER_LINE(waitAttack, 0);
+TA_ORDER_LINE(goal, 0); TA_ORDER_LINE(groundMission, 0); TA_ORDER_LINE(wait, 0);
+TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(reclaimArea, 0); TA_ORDER_LINE(manaBuildArea, 0);
+TA_ORDER_LINE(reclaimFeat, 0); TA_ORDER_LINE(repairTarget, 0);
+TA_ORDER_LINE(transportUnloadApproach, 0); TA_ORDER_LINE(navigationConsumed, 0);
+TA_ORDER_LINE(autoTarget, 0); TA_ORDER_LINE(flightMoveMission, 0); TA_ORDER_LINE(landing, 0);
+TA_ORDER_LINE(transportPickup, 0); TA_ORDER_LINE(navigationExhausted, 0);
+TA_ORDER_LINE(hasSegment, 0);
+TA_ORDER_LINE(issuedTick, 1); TA_ORDER_LINE(convoyTick, 1); TA_ORDER_LINE(controller, 1);
+TA_ORDER_LINE(park, 1); TA_ORDER_LINE(buildRectangle, 1); TA_ORDER_LINE(flightGoal, 1);
+TA_ORDER_LINE(missionTarget, 1); TA_ORDER_LINE(patrolRepair, 1); TA_ORDER_LINE(patrolOpen, 1);
+TA_ORDER_LINE(guardRepair, 1);
+TA_ORDER_LINE(transportUnloadReleasePending, 1); TA_ORDER_LINE(transportUnloadTransferDeferred, 1);
+TA_ORDER_LINE(formationLevel, 1); TA_ORDER_LINE(stationFree, 1); TA_ORDER_LINE(missionRadius, 1);
+TA_ORDER_LINE(orderSerial, 4);
 static_assert(offsetof(Order, mission) == 128, "line 1 ends at byte 127; line 2 starts with mission");
-TAK_ORDER_LINE(suppress, 5); TAK_ORDER_LINE(suppressFeature, 5); TAK_ORDER_LINE(suppressSlot, 5);
-TAK_ORDER_LINE(suppressReach, 5); TAK_ORDER_LINE(suppressApproach, 5); TAK_ORDER_LINE(suppressInner, 5);
-TAK_ORDER_LINE(airPoint, 5); TAK_ORDER_LINE(attackFormation, 5); TAK_ORDER_LINE(resumeSite, 5);
+TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(suppressFeature, 5); TA_ORDER_LINE(suppressSlot, 5);
+TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(suppressInner, 5);
+TA_ORDER_LINE(airPoint, 5); TA_ORDER_LINE(attackFormation, 5); TA_ORDER_LINE(resumeSite, 5);
 static_assert(offsetof(Order, suppress) == 320, "lines 0-4 are full; line 5 starts with SUPPRESS");
 static_assert(sizeof(Order) == 384, "Order is six cache lines (line 5 has room left); a new field names its line above");
-#undef TAK_ORDER_LINE
+#undef TA_ORDER_LINE
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
@@ -1133,7 +1133,7 @@ struct LegionHeadway {
 };
 
 // Laid out by cache line (WE D1), alignas(64), with offset static_asserts after
-// the struct (TAK_UNIT_LINE): a new field has to name its line.
+// the struct (TA_UNIT_LINE): a new field has to name its line.
 // - line 0: what a neighbour probe reads (forEachNear callbacks, rebuildGrid/
 //   rebuildOccupancy, the economy and live-count passes, unit(id) probes):
 //   identity, position, liveness, hp, speed, heading and the hot flag bytes.
@@ -1294,8 +1294,8 @@ struct alignas(64) Unit {
     uint8_t groundMovementMode = 0; // retail mover +36 bits 5..7; mode transitions remain partial
     uint8_t groundSpeedMode=0; // mover +36 bits 8..10
     int scriptAimTarget = 0;
-    std::vector<tak::RetailWeaponAnimation> pendingWeaponAnimations; // command callbacks for next display tick
-    tak::RetailWeaponAnimations weaponAnimations;
+    std::vector<ta::RetailWeaponAnimation> pendingWeaponAnimations; // command callbacks for next display tick
+    ta::RetailWeaponAnimations weaponAnimations;
     // Line 6: the mover's own state and what exploration reads (flightY/groundY,
     // sightFootprint), so updateNavigationExploration touches lines 0 and 6.
     Fixed flightY;     // absolute simulation height, not a render animation
@@ -1478,7 +1478,7 @@ struct alignas(64) Unit {
     bool fireStartPending=false;
     uint8_t unreleasedFires=0;
     uint32_t fireStartTick=0;   // the tick of the pending start
-    std::array<tak::RetailAimState,3> weaponAim{{{0,0,0},{0,0,1},{0,0,2}}};
+    std::array<ta::RetailAimState,3> weaponAim{{{0,0,0},{0,0,1},{0,0,2}}};
     std::array<std::array<int32_t,3>,3> weaponMuzzlePoints{}; // display-only captured QueryWeapon geometry
     std::array<std::array<int32_t,3>,3> weaponAimPoints{}; // display-only captured aim geometry
     // Retail's per-slot weapon record layer under the missions (icd 52aae0,
@@ -1706,59 +1706,59 @@ struct alignas(64) Unit {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
-#define TAK_UNIT_LINE(field, line) \
+#define TA_UNIT_LINE(field, line) \
     static_assert(offsetof(Unit, field) / 64 == (line) && \
                   (offsetof(Unit, field) + sizeof(Unit::field) - 1) / 64 == (line), \
                   "Unit::" #field " must sit on cache line " #line)
-TAK_UNIT_LINE(id, 0); TAK_UNIT_LINE(player, 0); TAK_UNIT_LINE(type, 0);
-TAK_UNIT_LINE(x, 0); TAK_UNIT_LINE(z, 0); TAK_UNIT_LINE(deadFor, 0); TAK_UNIT_LINE(inTransport, 0);
-TAK_UNIT_LINE(hp, 0); TAK_UNIT_LINE(speed, 0); TAK_UNIT_LINE(heading, 0); TAK_UNIT_LINE(weaponSlot, 0);
-TAK_UNIT_LINE(underConstruction, 0); TAK_UNIT_LINE(cloaked, 0); TAK_UNIT_LINE(beingBuilt, 0);
-TAK_UNIT_LINE(squad, 0); TAK_UNIT_LINE(flightGroundMode, 0); TAK_UNIT_LINE(legionLift, 0);
-TAK_UNIT_LINE(legionStill, 0); TAK_UNIT_LINE(standingOrder, 0); TAK_UNIT_LINE(moveState, 0);
-TAK_UNIT_LINE(fireState, 0); TAK_UNIT_LINE(active, 0); TAK_UNIT_LINE(standbyActive, 0);
-TAK_UNIT_LINE(guardNoMoveActive, 0); TAK_UNIT_LINE(constructionHolding, 0); TAK_UNIT_LINE(justFired, 0);
-TAK_UNIT_LINE(weaponAuto, 0);
-TAK_UNIT_LINE(retailSite, 1); TAK_UNIT_LINE(retailBuild, 1); TAK_UNIT_LINE(constructionEmitter, 1);
-TAK_UNIT_LINE(cosmeticConstructionEmitter, 1); TAK_UNIT_LINE(landing, 1);
-TAK_UNIT_LINE(frozenFor, 1); TAK_UNIT_LINE(stonedFor, 1); TAK_UNIT_LINE(paralyzedFor, 1);
-TAK_UNIT_LINE(selfDestructT, 1); TAK_UNIT_LINE(turnReqBam, 1); TAK_UNIT_LINE(animationTurnBam, 1);
-TAK_UNIT_LINE(tickStartHeadingBam, 1);
-TAK_UNIT_LINE(orders, 2); TAK_UNIT_LINE(buildQueue, 2); TAK_UNIT_LINE(repeatType, 2);
-TAK_UNIT_LINE(buildSiteId, 2); TAK_UNIT_LINE(reclaimId, 2);
-TAK_UNIT_LINE(repairId, 3); TAK_UNIT_LINE(productionSiteId, 3); TAK_UNIT_LINE(buildProgress, 3);
-TAK_UNIT_LINE(justBuilt, 3); TAK_UNIT_LINE(conjureHoverTarget, 3); TAK_UNIT_LINE(reloads, 3);
-TAK_UNIT_LINE(firedWeapons, 3); TAK_UNIT_LINE(fireAnimations, 3); TAK_UNIT_LINE(homeX, 3);
-TAK_UNIT_LINE(homeZ, 3); TAK_UNIT_LINE(routeStamp, 3); TAK_UNIT_LINE(routeCrowded, 3);
-TAK_UNIT_LINE(routeTraffic, 3); TAK_UNIT_LINE(routeFailed, 3); TAK_UNIT_LINE(routeDetour, 3);
-TAK_UNIT_LINE(groundTerrainFlags, 3); TAK_UNIT_LINE(groundMovementMode, 3);
-TAK_UNIT_LINE(groundSpeedMode, 3); TAK_UNIT_LINE(scriptAimTarget, 3);
-TAK_UNIT_LINE(pendingWeaponAnimations, 4);
-TAK_UNIT_LINE(flightY, 6); TAK_UNIT_LINE(groundY, 6); TAK_UNIT_LINE(sightFootprint, 6);
-TAK_UNIT_LINE(baseSpeed, 6); TAK_UNIT_LINE(groundMoveTick, 6); TAK_UNIT_LINE(groundScanTick, 6);
-TAK_UNIT_LINE(groundGradeTick, 6); TAK_UNIT_LINE(repathLeft, 6); TAK_UNIT_LINE(stuckFor, 6);
-TAK_UNIT_LINE(stuckX, 6); TAK_UNIT_LINE(stuckZ, 6); TAK_UNIT_LINE(bodyBlockStreak, 6);
-TAK_UNIT_LINE(groundPitch, 6); TAK_UNIT_LINE(groundRoll, 6); TAK_UNIT_LINE(legionWindow, 6);
-TAK_UNIT_LINE(legionShuffle, 6); TAK_UNIT_LINE(variationPhase, 6);
+TA_UNIT_LINE(id, 0); TA_UNIT_LINE(player, 0); TA_UNIT_LINE(type, 0);
+TA_UNIT_LINE(x, 0); TA_UNIT_LINE(z, 0); TA_UNIT_LINE(deadFor, 0); TA_UNIT_LINE(inTransport, 0);
+TA_UNIT_LINE(hp, 0); TA_UNIT_LINE(speed, 0); TA_UNIT_LINE(heading, 0); TA_UNIT_LINE(weaponSlot, 0);
+TA_UNIT_LINE(underConstruction, 0); TA_UNIT_LINE(cloaked, 0); TA_UNIT_LINE(beingBuilt, 0);
+TA_UNIT_LINE(squad, 0); TA_UNIT_LINE(flightGroundMode, 0); TA_UNIT_LINE(legionLift, 0);
+TA_UNIT_LINE(legionStill, 0); TA_UNIT_LINE(standingOrder, 0); TA_UNIT_LINE(moveState, 0);
+TA_UNIT_LINE(fireState, 0); TA_UNIT_LINE(active, 0); TA_UNIT_LINE(standbyActive, 0);
+TA_UNIT_LINE(guardNoMoveActive, 0); TA_UNIT_LINE(constructionHolding, 0); TA_UNIT_LINE(justFired, 0);
+TA_UNIT_LINE(weaponAuto, 0);
+TA_UNIT_LINE(retailSite, 1); TA_UNIT_LINE(retailBuild, 1); TA_UNIT_LINE(constructionEmitter, 1);
+TA_UNIT_LINE(cosmeticConstructionEmitter, 1); TA_UNIT_LINE(landing, 1);
+TA_UNIT_LINE(frozenFor, 1); TA_UNIT_LINE(stonedFor, 1); TA_UNIT_LINE(paralyzedFor, 1);
+TA_UNIT_LINE(selfDestructT, 1); TA_UNIT_LINE(turnReqBam, 1); TA_UNIT_LINE(animationTurnBam, 1);
+TA_UNIT_LINE(tickStartHeadingBam, 1);
+TA_UNIT_LINE(orders, 2); TA_UNIT_LINE(buildQueue, 2); TA_UNIT_LINE(repeatType, 2);
+TA_UNIT_LINE(buildSiteId, 2); TA_UNIT_LINE(reclaimId, 2);
+TA_UNIT_LINE(repairId, 3); TA_UNIT_LINE(productionSiteId, 3); TA_UNIT_LINE(buildProgress, 3);
+TA_UNIT_LINE(justBuilt, 3); TA_UNIT_LINE(conjureHoverTarget, 3); TA_UNIT_LINE(reloads, 3);
+TA_UNIT_LINE(firedWeapons, 3); TA_UNIT_LINE(fireAnimations, 3); TA_UNIT_LINE(homeX, 3);
+TA_UNIT_LINE(homeZ, 3); TA_UNIT_LINE(routeStamp, 3); TA_UNIT_LINE(routeCrowded, 3);
+TA_UNIT_LINE(routeTraffic, 3); TA_UNIT_LINE(routeFailed, 3); TA_UNIT_LINE(routeDetour, 3);
+TA_UNIT_LINE(groundTerrainFlags, 3); TA_UNIT_LINE(groundMovementMode, 3);
+TA_UNIT_LINE(groundSpeedMode, 3); TA_UNIT_LINE(scriptAimTarget, 3);
+TA_UNIT_LINE(pendingWeaponAnimations, 4);
+TA_UNIT_LINE(flightY, 6); TA_UNIT_LINE(groundY, 6); TA_UNIT_LINE(sightFootprint, 6);
+TA_UNIT_LINE(baseSpeed, 6); TA_UNIT_LINE(groundMoveTick, 6); TA_UNIT_LINE(groundScanTick, 6);
+TA_UNIT_LINE(groundGradeTick, 6); TA_UNIT_LINE(repathLeft, 6); TA_UNIT_LINE(stuckFor, 6);
+TA_UNIT_LINE(stuckX, 6); TA_UNIT_LINE(stuckZ, 6); TA_UNIT_LINE(bodyBlockStreak, 6);
+TA_UNIT_LINE(groundPitch, 6); TA_UNIT_LINE(groundRoll, 6); TA_UNIT_LINE(legionWindow, 6);
+TA_UNIT_LINE(legionShuffle, 6); TA_UNIT_LINE(variationPhase, 6);
 static_assert(offsetof(Unit, weaponAnimations) / 64 == 4 &&
-              (offsetof(Unit, weaponAnimations) + offsetof(tak::RetailWeaponAnimations, events) - 1) / 64 == 4,
+              (offsetof(Unit, weaponAnimations) + offsetof(ta::RetailWeaponAnimations, events) - 1) / 64 == 4,
               "Unit::weaponAnimations' count and overflow (what the per-tick clear touches) must sit on line 4");
 // World::tick's unit loop prefetches lines 0-8 of every unit ahead and lines
 // 9-11 only for flyers and the dead: those must hold what they read.
 inline constexpr size_t kUnitPrefetchHot=9*64;
-#define TAK_UNIT_LINES(field, first, last) \
+#define TA_UNIT_LINES(field, first, last) \
     static_assert(offsetof(Unit, field) / 64 >= (first) && \
                   (offsetof(Unit, field) + sizeof(Unit::field) - 1) / 64 <= (last), \
                   "Unit::" #field " must sit on cache lines " #first "-" #last)
-TAK_UNIT_LINE(standbyState, 8); TAK_UNIT_LINE(guardNoMoveState, 8); TAK_UNIT_LINE(standbyAllowed, 8);
-TAK_UNIT_LINES(deathAnimationTicks, 8, 11); TAK_UNIT_LINES(corpseUntil, 8, 11); TAK_UNIT_LINES(corpseStatue, 8, 11);
-TAK_UNIT_LINES(corpseFading, 8, 11); TAK_UNIT_LINES(airTraffic, 9, 11); TAK_UNIT_LINES(airOccupant, 9, 11);
-TAK_UNIT_LINES(flightVelocity, 9, 11);
-TAK_UNIT_LINES(flightAcceleration, 9, 11); TAK_UNIT_LINES(flightNavigation, 9, 11);
-TAK_UNIT_LINES(retainedFlightGoal, 9, 11); TAK_UNIT_LINES(flightSectorZ, 9, 11);
-TAK_UNIT_LINES(legionLiftUntil, 9, 11); TAK_UNIT_LINES(legionLiftEnded, 9, 11);
-#undef TAK_UNIT_LINES
-#undef TAK_UNIT_LINE
+TA_UNIT_LINE(standbyState, 8); TA_UNIT_LINE(guardNoMoveState, 8); TA_UNIT_LINE(standbyAllowed, 8);
+TA_UNIT_LINES(deathAnimationTicks, 8, 11); TA_UNIT_LINES(corpseUntil, 8, 11); TA_UNIT_LINES(corpseStatue, 8, 11);
+TA_UNIT_LINES(corpseFading, 8, 11); TA_UNIT_LINES(airTraffic, 9, 11); TA_UNIT_LINES(airOccupant, 9, 11);
+TA_UNIT_LINES(flightVelocity, 9, 11);
+TA_UNIT_LINES(flightAcceleration, 9, 11); TA_UNIT_LINES(flightNavigation, 9, 11);
+TA_UNIT_LINES(retainedFlightGoal, 9, 11); TA_UNIT_LINES(flightSectorZ, 9, 11);
+TA_UNIT_LINES(legionLiftUntil, 9, 11); TA_UNIT_LINES(legionLiftEnded, 9, 11);
+#undef TA_UNIT_LINES
+#undef TA_UNIT_LINE
 
 // The ids of the units of a few rare classes, each in units_ order, so a
 // pass that wants only those walks them alone, in the order the all-unit
@@ -1933,7 +1933,7 @@ struct FlameShot {
     std::array<int32_t,3> muzzle{},aimPoint{}; // display-only native admission endpoints
     uint32_t start=0,end=0,lifetime=1,speed=0,substeps=1;
     bool impacted=false,expired=false;
-    std::vector<tak::RetailFlameParticle> particles;
+    std::vector<ta::RetailFlameParticle> particles;
 };
 
 // Walkability grid derived from TNT heights: a cell is blocked when the
@@ -2646,7 +2646,7 @@ public:
     // its own writers, so this drops them and the next exploration pass rebuilds
     // them from what the caller wrote: finish writing before that pass.
     std::vector<uint16_t>& editNavigationExploration() { explorationBlocks_.clear(); return navigationExplored_; }
-    // Tests and TAK_VERIFY_LISTS: the block summaries are present and equal a
+    // Tests and TA_VERIFY_LISTS: the block summaries are present and equal a
     // fresh rebuild from the plane.
     bool explorationBlocksMatchPlane() const;
     // `player`'s Mapping-plane bit at the 32 px cell under (x,z), as tickManaBuildArea
@@ -2886,7 +2886,7 @@ public:
     // Assign a player's team, clamped to a valid team id [0, numPlayers). Teams
     // are 0..n-1 by construction; keeping them in range is the invariant that the
     // outcome check and the viewer's per-team arrays rely on -- so the sim owns
-    // it rather than trusting setup (a lobby, or the TAK_FFA dev harness).
+    // it rather than trusting setup (a lobby, or the TA_FFA dev harness).
     void setTeam(int player, int team) {
         if (player < 0 || player >= numPlayers()) return;
         players_[size_t(player)].team = std::clamp(team, 0, numPlayers() - 1);
@@ -2970,7 +2970,7 @@ public:
     // tick 30 x the appear seconds (5195e0, emulated) brings the side's god to a
     // free spot beside itself (509f10); a player with no priest then gets none.
     // No favour pool (we once required one, filled to 3000 by priest income).
-    // Gods are off in every game (matchsetup); this runs only under TAK_GODS.
+    // Gods are off in every game (matchsetup); this runs only under TA_GODS.
     bool godReady(int t) const {
         return godsEnabled_ && !players_[size_t(t)].godSummoned &&
                int64_t(tickCounter_) >= godAppearTick_;
@@ -3032,12 +3032,12 @@ public:
     bool monarchExpendable() const { return monarchExpendable_; }
     // Keep this World's intra-tick work on the calling thread (no worker pool): the
     // sim's SimPool then runs its identical fixed chunks inline. For tests and tools;
-    // the game and takserver choose a width instead (setSimWorkers).
+    // the game and taserver choose a width instead (setSimWorkers).
     // Never affects results -- purely scheduling.
     void setSerialThreads(bool s) { serialThreads_ = s; }
     // The SimPool's worker count (-1: SimPool::defaultWorkers(), AUTO), at most
     // SimPool::kMaxWorkers: the client's SIMULATION THREADS setting
-    // (SimPool::sessionThreads), a game's share of takserver --sim-threads
+    // (SimPool::sessionThreads), a game's share of taserver --sim-threads
     // (SimPool::serverShare, set again before each tick), and tests.
     // setSerialThreads(true) still means 0. Scheduling only, like the above.
     // AUTO is read once, at the first simPool() call after this, and kept as a
@@ -3048,8 +3048,8 @@ public:
     // Pin the SimPool's workers (scheduling only, like the above): worker k to
     // cpus[k], a worker past the end to no CPU. cpus[0] is for the thread that
     // ticks this World, which whoever owns that thread pins (sim/simcpus.h): the
-    // client's sim worker and takserver's per-game worker do, a main thread never
-    // is. From SimPool::handOut, or a game's part of takserver --sim-cpus; call it
+    // client's sim worker and taserver's per-game worker do, a main thread never
+    // is. From SimPool::handOut, or a game's part of taserver --sim-cpus; call it
     // as setSimWorkers is called. The pool is rebuilt at the next simPool() call
     // if the CPUs changed. Never called: no thread's CPUs are touched.
     void setSimCpus(std::vector<int> cpus) { simCpus_ = std::move(cpus); simPin_ = true; }
@@ -3113,7 +3113,7 @@ public:
     bool searchGradeRefreshMatchesReference(int x,int z,int w,int h);
 #ifndef NDEBUG
     // Debug-only divergence locator, and the first thing to reach for when the referee
-    // reports a desync. TAK_HASHTRACE="lo:hi" dumps a PER-COMPONENT checksum every tick
+    // reports a desync. TA_HASHTRACE="lo:hi" dumps a PER-COMPONENT checksum every tick
     // in [lo,hi]: units (position / hp / orders / misc), projectiles, effects, storms,
     // players, features, the shared game RNG stream, and -- deliberately -- the nav
     // overlay and grid cells, which stateHash does NOT fold.
@@ -3805,7 +3805,7 @@ private:
     // asks. Never compare raw labels.
     struct CompGrid {
         uint64_t ver = 0; int w = 0, h = 0;
-        uint64_t checkedVer = ~uint64_t(0);   // TAK_COMPCHECK: last version verified
+        uint64_t checkedVer = ~uint64_t(0);   // TA_COMPCHECK: last version verified
 
         // ASK THROUGH THESE. The stored ids are NOT comparable: an unblock merges two
         // components by uniting their ids rather than rewriting a map of cells, so two
@@ -3867,7 +3867,7 @@ private:
                       std::vector<std::vector<int>>& cut) const;
     // The whole-grid flood fill behind components(): `cg` relabelled from scratch.
     static void labelComponents(const NavGrid& g, int foot, CompGrid& cg);
-    // TAK_COMPCHECK (debug): recompute the whole labelling from scratch and abort unless
+    // TA_COMPCHECK (debug): recompute the whole labelling from scratch and abort unless
     // it partitions the cells exactly as `cg`'s roots do.
     void verifyComponents(const NavGrid& g, int foot, const CompGrid& cg) const;
     // (Sized on use, so a copy of the world does without them.)
@@ -3920,7 +3920,7 @@ private:
     // (WE A2b): every cell in it would fail the per-cell test anyway, so the cells
     // visited -- and the units, in the same order -- are exactly those of the plain scan.
     // gPlayersValid_ is re-read at every cell, as before: a capture inside fn turns the
-    // masks off for the rest of the scan. TAK_VERIFY_NEAR (debug) checks the sequence
+    // masks off for the rest of the scan. TA_VERIFY_NEAR (debug) checks the sequence
     // against the plain scan on every call.
     // There is deliberately no geometric cull (A2c: drop cells whose box lies outside a
     // search disk): units stay in the cell rebuildGrid bucketed them in while they move
@@ -3932,14 +3932,14 @@ private:
         if (gW_ <= 0) return;
 #ifndef NDEBUG
         if (probe::kStats) probeNear(x, z, radius, players, false);
-        static const bool verify = probe::envOn("TAK_VERIFY_NEAR");
+        static const bool verify = probe::envOn("TA_VERIFY_NEAR");
         if (verify) verifyNear(x, z, radius, players);
         if (probe::kStats) { scanNear<true, true>(x, z, radius, players, fn); return; }
 #endif
         scanNear<true, false>(x, z, radius, players, fn);
     }
-    // forEachNear's cell walk; kBlockSkip=false is the plain square scan (TAK_VERIFY_NEAR's
-    // reference), kCount counts the cells tested (TAK_SIMSTATS near_cells_tested).
+    // forEachNear's cell walk; kBlockSkip=false is the plain square scan (TA_VERIFY_NEAR's
+    // reference), kCount counts the cells tested (TA_SIMSTATS near_cells_tested).
     template <bool kBlockSkip, bool kCount, class F>
     void scanNear(float x, float z, float radius, uint64_t players, F&& fn) const {
         int r = int(radius / gCell_) + 1;
@@ -4387,12 +4387,12 @@ private:
     int gW_ = 0, gH_ = 0;
     float gCell_ = 32.0f, gOx_ = 0, gOz_ = 0;
 #ifndef NDEBUG
-    // TAK_SIMSTATS (simprobe.h) only. probeNear walks forEachNear's cells a second time and
+    // TA_SIMSTATS (simprobe.h) only. probeNear walks forEachNear's cells a second time and
     // counts the plain scan's cells and what the A2 culls skip or would skip: an 8x8-cell
     // block whose owner mask has none of the wanted players, and, for findTarget (disk), a
     // cell whose box lies wholly outside the search radius + 2 px.
     void probeNear(float x, float z, float radius, uint64_t players, bool disk) const;
-    // TAK_VERIFY_NEAR: the unit sequence of the block-skipping scan must equal the plain
+    // TA_VERIFY_NEAR: the unit sequence of the block-skipping scan must equal the plain
     // square scan's (every in-bounds cell, per-cell mask only); throws if not.
     void verifyNear(float x, float z, float radius, uint64_t players) const;
 #endif
@@ -4843,7 +4843,7 @@ private:
     // (debt()). Exact by construction: the skip never passes the tick a sleeper wakes
     // on (words[3] is already in ticks: the SLEEP opcode converts its milliseconds at
     // ticksPerSecond), and nothing else in the VM changes on a skipped tick.
-    // TAK_VERIFY_SCRIPT_SKIP (debug): every payment re-runs the skipped ticks on a copy
+    // TA_VERIFY_SCRIPT_SKIP (debug): every payment re-runs the skipped ticks on a copy
     // with a host that throws, and compares.
     struct UnitScript {
     private:
@@ -4900,9 +4900,9 @@ private:
         bool willSkip() const { return skipLeft_!=0; }       // the next tick is skipped (prefetch hint)
         const void* skipLine() const { return &skipLeft_; }
     private:
-        void pay(bool touch);   // touch: from outside the VM's own tick (TAK_SIMSTATS vm_debt_flushes)
+        void pay(bool touch);   // touch: from outside the VM's own tick (TA_SIMSTATS vm_debt_flushes)
 #ifndef NDEBUG
-        const cob::File* file_=nullptr;   // TAK_VERIFY_SCRIPT_SKIP re-runs the skipped ticks
+        const cob::File* file_=nullptr;   // TA_VERIFY_SCRIPT_SKIP re-runs the skipped ticks
 #endif
     };
     std::map<int,UnitScript> unitScripts_;
@@ -5009,4 +5009,4 @@ private:
     uint64_t nextMovementController_ = 0;
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

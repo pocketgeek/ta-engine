@@ -6,7 +6,7 @@
 #include <set>
 #include <unordered_set>
 
-namespace tak {
+namespace ta {
 namespace {
 using sim::Fixed;
 constexpr int64_t step=16*int64_t(Fixed::kOne);
@@ -237,4 +237,4 @@ void expandOrderTrail(std::span<const RenderOrder> orders,const sim::UnitType& b
         }
     }
 }
-} // namespace tak
+} // namespace ta

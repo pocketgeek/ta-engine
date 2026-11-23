@@ -5,7 +5,7 @@
 #include "retailmission.h"
 #include "fixed.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 405756..405809: failed MobileBuild paths may still leave the builder close
 // enough to place the site. Each footprint diagonal is truncated separately.
@@ -263,4 +263,4 @@ inline uint16_t retailAddHitPoints(uint16_t hp,uint16_t points,uint32_t maxHp) {
     return uint16_t(sum>=maxHp ? maxHp : sum);
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

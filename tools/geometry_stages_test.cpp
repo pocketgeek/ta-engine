@@ -15,7 +15,7 @@
 #include <vector>
 
 namespace {
-using namespace tak::render;
+using namespace ta::render;
 int failures = 0;
 void check(bool ok, const char* what) {
     if (!ok) { std::fprintf(stderr, "FAIL: %s\n", what); ++failures; }

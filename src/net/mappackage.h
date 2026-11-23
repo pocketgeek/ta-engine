@@ -7,7 +7,7 @@
 #include <memory>
 #include "util/stoptoken.h"
 
-namespace tak::net::maps {
+namespace ta::net::maps {
 constexpr size_t kMaxBytes = 256u << 20;
 constexpr size_t kChunkBytes = 64u << 10;
 struct Package {
@@ -19,7 +19,7 @@ struct Package {
 // Feature definitions, their burn/death chains, sprites and palettes travel too.
 // Unit definitions/scripts remain covered by the base gameplay-data agreement.
 std::shared_ptr<Package> build(const hpi::Vfs& vfs, const std::string& mapId);
-std::shared_ptr<Package> decode(std::vector<uint8_t> bytes, const std::string& digest, tak::StopToken stop = {});
+std::shared_ptr<Package> decode(std::vector<uint8_t> bytes, const std::string& digest, ta::StopToken stop = {});
 // Validate a local single-map KMP using the same whitelist as network maps.
 std::shared_ptr<Package> importSnapshot(const hpi::Vfs& base, const std::filesystem::path& path);
 // Only explicit, structurally valid authored scenarios may start with one player.
@@ -55,7 +55,7 @@ struct Sender {
 };
 // Content-addressed cache; never extract network paths into the filesystem.
 void saveCache(const std::filesystem::path& root, const Package& package,uint64_t quota=0);
-std::shared_ptr<Package> loadCache(const std::filesystem::path& root, const std::string& digest, size_t maxBytes=kMaxBytes, size_t expected=0, tak::StopToken stop = {});
+std::shared_ptr<Package> loadCache(const std::filesystem::path& root, const std::string& digest, size_t maxBytes=kMaxBytes, size_t expected=0, ta::StopToken stop = {});
 // A reusable .kmp, including stock tile artwork and authored start positions.
 // Called on game start, not while previewing or creating a room. Empty for an id
 // that is not a "~gen1~" recipe; throws for one mapgen::parseMapId refuses.

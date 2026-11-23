@@ -1,14 +1,14 @@
-# TAK Engine Arch package. The CI (linux.yml, arch matrix leg) compiles the
-# binaries first (cmake --build build --target takclient takserver, with the
+# TA Engine Arch package. The CI (linux.yml, arch matrix leg) compiles the
+# binaries first (cmake --build build --target taclient taserver, with the
 # static SDL2/jpeg/zlib + Bink FFmpeg baked in) and stamps @VERSION@; makepkg
 # here only packages the prebuilt binaries -- so every distro leg shares one
 # build recipe. Run from this directory: makepkg -f.
-pkgname=tak-engine
+pkgname=ta-engine
 pkgver=@VERSION@
 pkgrel=1
 pkgdesc="Clean-room engine recreation of Total Annihilation: Kingdoms"
 arch=('x86_64')
-url="https://github.com/pocketgeek/tak-engine"
+url="https://github.com/pocketgeek/ta-engine"
 license=('GPL-3.0-or-later')
 # Statically linked SDL2/libjpeg/zlib/FFmpeg -> only the C/C++ runtime is a
 # hard dependency. SDL2 dlopens its video/audio backends at runtime.
@@ -22,17 +22,17 @@ optdepends=('libx11: X11 video backend'
 options=('!debug')
 
 package() {
-  install -Dm644 "$startdir/../systemd/takserver.service" "$pkgdir/usr/lib/systemd/system/takserver.service"
-  install -Dm644 "$startdir/../systemd/takserver-acme.conf" "$pkgdir/usr/share/doc/$pkgname/systemd/takserver-acme.conf"
-  install -Dm644 "$startdir/../systemd/takserver-settings.conf" "$pkgdir/usr/share/doc/$pkgname/systemd/takserver-settings.conf"
+  install -Dm644 "$startdir/../systemd/taserver.service" "$pkgdir/usr/lib/systemd/system/taserver.service"
+  install -Dm644 "$startdir/../systemd/taserver-acme.conf" "$pkgdir/usr/share/doc/$pkgname/systemd/taserver-acme.conf"
+  install -Dm644 "$startdir/../systemd/taserver-settings.conf" "$pkgdir/usr/share/doc/$pkgname/systemd/taserver-settings.conf"
   install -Dm644 "$startdir/../systemd/README.md" "$pkgdir/usr/share/doc/$pkgname/systemd/README.md"
-  install -Dm755 "$startdir/../../build/takclient" "$pkgdir/usr/bin/takclient"
-  install -Dm755 "$startdir/../../build/takserver" "$pkgdir/usr/bin/takserver"
+  install -Dm755 "$startdir/../../build/taclient" "$pkgdir/usr/bin/taclient"
+  install -Dm755 "$startdir/../../build/taserver" "$pkgdir/usr/bin/taserver"
   install -Dm755 "$startdir/../../build/cartographer" "$pkgdir/usr/bin/cartographer"
-  install -Dm644 "$startdir/../../res/linux/tak-cartographer.desktop" "$pkgdir/usr/share/applications/tak-cartographer.desktop"
-  install -Dm644 "$startdir/../../res/icons/cartographer.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/tak-cartographer.png"
-  install -Dm644 "$startdir/../../res/linux/tak-client.desktop" "$pkgdir/usr/share/applications/tak-client.desktop"
-  install -Dm644 "$startdir/../../res/icons/takclient.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/tak-client.png"
+  install -Dm644 "$startdir/../../res/linux/ta-cartographer.desktop" "$pkgdir/usr/share/applications/ta-cartographer.desktop"
+  install -Dm644 "$startdir/../../res/icons/cartographer.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/ta-cartographer.png"
+  install -Dm644 "$startdir/../../res/linux/ta-client.desktop" "$pkgdir/usr/share/applications/ta-client.desktop"
+  install -Dm644 "$startdir/../../res/icons/taclient.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/ta-client.png"
   install -Dm644 "$startdir/../../STREAMING-LICENSES.txt" "$pkgdir/usr/share/licenses/$pkgname/STREAMING-LICENSES.txt"
   install -Dm644 "$startdir/../../EDITOR-FONT-LICENSE.txt" "$pkgdir/usr/share/licenses/$pkgname/EDITOR-FONT-LICENSE.txt"
   install -Dm644 "$startdir/../../CHAT-FONT-LICENSE.txt" "$pkgdir/usr/share/licenses/$pkgname/CHAT-FONT-LICENSE.txt"

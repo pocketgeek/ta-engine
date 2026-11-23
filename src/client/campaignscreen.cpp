@@ -18,7 +18,7 @@
 #include "gui/gui.h"
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 struct CampaignScreen::Impl {
     SDL_Renderer* ren;
     const Settings& settings;
@@ -74,7 +74,7 @@ struct CampaignScreen::Impl {
                                 dst[3]=255;
                             }
                     }
-                    frames.push_back({tak::art::makeTexture(ren,frame.rgba,frame.width,frame.height),frame.width,frame.height});
+                    frames.push_back({ta::art::makeTexture(ren,frame.rgba,frame.width,frame.height),frame.width,frame.height});
                 }else frames.push_back({});
             }
         }
@@ -266,4 +266,4 @@ void CampaignScreen::render(int w,int h) {
         d.text(lay,d.label,line,names,true,kSize,kInk);
     }
 }
-} // namespace tak
+} // namespace ta

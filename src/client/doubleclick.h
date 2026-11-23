@@ -11,7 +11,7 @@
 
 #include <vector>
 
-namespace tak::client::doubleclick {
+namespace ta::client::doubleclick {
 
 // One candidate, as the client sees it: where it is DRAWN (terrain lift, flyer
 // altitude, or its tactical dot), already projected to the screen.
@@ -57,4 +57,4 @@ inline std::vector<int> expand(int hitId, const std::vector<Candidate>& all, con
     return out;
 }
 
-}  // namespace tak::client::doubleclick
+}  // namespace ta::client::doubleclick

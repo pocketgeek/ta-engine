@@ -24,7 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace tak::terrainwork {
+namespace ta::terrainwork {
 
 // Chunk-cell rectangle, inclusive bounds; empty when x1 < x0.
 struct Rect {
@@ -250,4 +250,4 @@ struct UploadBudget {
     }
 };
 
-}  // namespace tak::terrainwork
+}  // namespace ta::terrainwork

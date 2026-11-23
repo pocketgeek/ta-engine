@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailMapBoundaryCell {
     uint16_t feature=0xffff;
@@ -133,4 +133,4 @@ void retailMapBoundary(int width,int height,int pixelHeight,int sea,bool blockWa
             if (int(cellAt(x,z).low)<=sea) mark(x,z);
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

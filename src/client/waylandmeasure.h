@@ -1,4 +1,4 @@
-// waylandmeasure -- Linux: the numbers tak::wayland::advanceDisplay compares, read from SDL.
+// waylandmeasure -- Linux: the numbers ta::wayland::advanceDisplay compares, read from SDL.
 // See client/waylandchoice.h for what they decide.
 #pragma once
 
@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tak::wayland {
+namespace ta::wayland {
 
 // Width of the desktop as SDL's driver reports it: the union of the display bounds. On
 // the x11 driver that is XWayland's screen (real pixels or not); on the wayland driver it
@@ -65,4 +65,4 @@ inline float settledNativeScale(SDL_Window* win, SDL_Renderer* ren, int budgetMs
     return got > 1.005f ? got : 0.0f;
 }
 
-}  // namespace tak::wayland
+}  // namespace ta::wayland

@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::ai {
+namespace ta::ai {
 struct PlacementProbe {
     static bool reach(const Controller& c,const sim::World& w,const sim::UnitType* ship,
                       float fx,float fz,float tx,float tz) {
@@ -42,7 +42,7 @@ struct PlacementProbe {
 };
 }
 
-using namespace tak;
+using namespace ta;
 namespace {
 int failures=0,cases=0;
 void check(bool ok,const std::string& label) {

@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
-using namespace tak::sim;
+using namespace ta::sim;
 int main(int argc,char** argv) {
     if (argc==2 && std::strcmp(argv[1],"--build-reach")==0) {
         int32_t x,z,gx,gz;int fx,fz,sx,sz;unsigned reach;

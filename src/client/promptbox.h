@@ -13,7 +13,7 @@
 
 #include "client/uitext.h"
 
-namespace tak {
+namespace ta {
 
 struct PromptBox {
     bool open = false;
@@ -70,4 +70,4 @@ struct PromptBox {
     }
 };
 
-}  // namespace tak
+}  // namespace ta

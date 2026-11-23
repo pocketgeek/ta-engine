@@ -122,7 +122,7 @@ void cart::Editor::applySymmetrize() {
     request.terrain=mf[2]==symmetryTerrainOpts[0];
     symmetryKind=request.kind;
     // A dry run on copies gives the exact counts for the confirmation.
-    struct Result {tak::tnt::Map map;std::vector<tak::tnt::StartPos> starts;tak::crt::Scenario scenario;std::vector<cart::PlacedUnit> units;cart::SymmetryReport report;};
+    struct Result {ta::tnt::Map map;std::vector<ta::tnt::StartPos> starts;ta::crt::Scenario scenario;std::vector<cart::PlacedUnit> units;cart::SymmetryReport report;};
     auto result=std::make_shared<Result>(Result{mapView.map(),scenario.starts,scen,units,{}});
     result->report=cart::symmetrize(result->map,result->starts,result->scenario,result->units,request,featureFootprint(),request.terrain?&symmetrySections():nullptr);
     const auto& r=result->report;

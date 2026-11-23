@@ -10,7 +10,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static bool corpse(World& w,Unit& u,int type) {return w.placeCorpse(u,type);}
     static Feature& feature(World& w,int id) {return w.features_[w.featureIdx_.at(id)];}
@@ -20,7 +20,7 @@ struct RetailReplayProbe {
     static bool hasCorpseFootprint(const World& w,int id) {return w.corpseFootprints_.contains(id);}
 };
 }
-using namespace tak;
+using namespace ta;
 using Probe=sim::RetailReplayProbe;
 static int failures=0;
 static void check(bool ok,const std::string& what) {

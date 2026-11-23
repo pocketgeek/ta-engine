@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void boundary(World& world,uint32_t tick,uint32_t seed) {
         world.tickCounter_=tick;world.gameRng_=seed;
@@ -29,7 +29,7 @@ struct RetailReplayProbe {
     static uint32_t seed(const World& world) { return world.gameRng_; }
 };
 }
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what, const std::string& detail = {}) {

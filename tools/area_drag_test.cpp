@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <stdexcept>
 
-using namespace tak::client::areadrag;
+using namespace ta::client::areadrag;
 static void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 static bool near(float a, float b) { return std::fabs(a - b) < 1e-3f; }
 

@@ -19,7 +19,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace tak {
+namespace ta {
 
 struct Settings;   // client/settings.h -- only a pointer is needed here
 
@@ -150,4 +150,4 @@ private:
 
 };
 
-}  // namespace tak
+}  // namespace ta

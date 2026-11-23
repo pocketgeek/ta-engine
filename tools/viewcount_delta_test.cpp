@@ -22,8 +22,8 @@
 #include <string>
 #include <vector>
 
-using namespace tak;
-using namespace tak::sim;
+using namespace ta;
+using namespace ta::sim;
 
 namespace {
 int failures=0;

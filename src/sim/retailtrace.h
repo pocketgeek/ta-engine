@@ -5,7 +5,7 @@
 // positive closest-distance threshold for a partial cost search.
 #include "retailcost.h"
 
-namespace tak::sim {
+namespace ta::sim {
 // 4161b0 and the range check in 415170. The caller supplies the current
 // scheduler player's wrap timestamp, which need not be the entity's player.
 inline int retailInitialPathWeight(uint32_t tick, uint32_t& lastWrapTick,
@@ -357,4 +357,4 @@ public:
         return {Result::Complete, result.work};
     }
 };
-} // namespace tak::sim
+} // namespace ta::sim

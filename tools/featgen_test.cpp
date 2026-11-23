@@ -22,7 +22,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void ignite(World& world,int id) {
         world.igniteFeature(world.features_.at(world.featureIdx_.at(id)));
@@ -102,7 +102,7 @@ struct RetailReplayProbe {
 };
 }
 
-using tak::sim::World;
+using ta::sim::World;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what) {
@@ -117,7 +117,7 @@ int main() {
     // a corpse-less drake. The stale mapping stayed invisible until its death,
     // when only the client gave it a permanent corpse (live replay tick 77549).
     for (int reset=0;reset<3;++reset) {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World reused,fresh;
         UnitType type;type.id="old-building";type.maxHp=100;
         FeatType corpse;corpse.name="old-corpse";corpse.decomposeTicks=0;
@@ -127,8 +127,8 @@ int main() {
         if (reset==0) reused.clearFeatures();
         else if (reset==1) reused.resetForReplay();
         else {
-            tak::hpi::Vfs vfs;
-            tak::tnt::Map map;
+            ta::hpi::Vfs vfs;
+            ta::tnt::Map map;
             registerMapFeatures(reused,map,vfs);
         }
         check(reused.corpseTypeOf(&type)==-1 && reused.statueTypeOf(&type,false)==-1 &&
@@ -147,7 +147,7 @@ int main() {
     }
 
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World fire;
         FeatType tree;tree.name="tree";tree.flamable=true;tree.hasBurnAnim=true;tree.burnTicks=30;
         fire.setFeatureTypes({tree});
@@ -175,7 +175,7 @@ int main() {
     }
 
     for (uint32_t lifetime : {1u,2u}) {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World fire;
         fire.setTerrain(std::vector<uint8_t>(16*16,0),16,16,0);
         FeatType tree;tree.name="spark-tree";tree.flamable=true;tree.hasBurnAnim=true;
@@ -226,7 +226,7 @@ int main() {
 
     // Occupancy must follow runtime features, including replacement geometry.
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World map;
         std::vector<uint8_t> heights(32*32,0);
         std::vector<uint16_t> cells(32*32,0xffff);
@@ -279,13 +279,13 @@ int main() {
     }
 
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World map;
         map.setTerrain(std::vector<uint8_t>(32*32,100),32,32,0);
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
         UnitType building;building.footX=building.footZ=2;building.maxHp=100;
         building.corpseAdjX=-1;building.corpseAdjZ=2;
-        auto death=std::make_shared<tak::cob::File>();
+        auto death=std::make_shared<ta::cob::File>();
         death->scripts={{"Killed",0}};
         death->code={0x10022000,0x10022000,0x10022000,
             0x10021001,1,0x10023002,1,0x10021001,0,0x10065000};
@@ -305,7 +305,7 @@ int main() {
               "decomposition clears the wreck footprint, including cells outside the old unit");
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World map;
         map.setTerrain(std::vector<uint8_t>(32*32,100),32,32,0);
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
@@ -342,7 +342,7 @@ int main() {
     }
 
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         World map;
         map.setTerrain(std::vector<uint8_t>(32*32,100),32,32,0);
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
@@ -368,7 +368,7 @@ int main() {
     // other the reference full passes. Every feature field, the RNG draws and
     // the state hash must agree after every step.
     for (uint32_t seed : {1u,2u,3u,4u}) {
-        using namespace tak::sim;
+        using namespace ta::sim;
         constexpr int kSide=48;
         auto build=[&](World& w) {
             w.setTerrain(std::vector<uint8_t>(kSide*kSide,100),kSide,kSide,0);
@@ -450,7 +450,7 @@ int main() {
     // (clearFeatures, resetForReplay), and every mark is dropped once the
     // fires and fades are over, so the no-fire early exit comes back.
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         constexpr int kSide=40;
         auto setup=[&](World& w) {
             w.setTerrain(std::vector<uint8_t>(kSide*kSide,100),kSide,kSide,0);
@@ -510,7 +510,7 @@ int main() {
     // base-vs-candidate comparison (tools/featburn_bench.cpp workloads too).
     for (const bool higher : {true,false})
         for (const int gap : {1,70}) {
-            using namespace tak::sim;
+            using namespace ta::sim;
             World fire;
             fire.setTerrain(std::vector<uint8_t>(96*96,100),96,96,0);
             FeatType tree;tree.name="tree";tree.flamable=tree.hasBurnAnim=true;

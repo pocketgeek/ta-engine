@@ -18,7 +18,7 @@
 // screen shows: the fog overlay, which other players' units the main view draws
 // and lets the cursor pick, and the minimap's dots. Display only: nothing here
 // is read by the simulation.
-namespace tak::retailfog {
+namespace ta::retailfog {
 
 // One 32 px projected cell of the local display plane.
 enum : uint8_t { kUnexplored = 0, kExplored = 1, kInView = 2 };
@@ -267,4 +267,4 @@ struct Wave {
     float wave(float X, float P) const { return 10.0f * field(X, P) * wavyPhase; }
 };
 
-}  // namespace tak::retailfog
+}  // namespace ta::retailfog

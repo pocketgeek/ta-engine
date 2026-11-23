@@ -29,10 +29,10 @@
 // sort alone. The arithmetic of placement and material is exactly the
 // arithmetic of the former single pass (same expressions, same order; the
 // build uses -ffp-contract=off), so outputs are bit-identical; the debug
-// TAK_GEOMETRY_VERIFY check compares every partial update with a complete
+// TA_GEOMETRY_VERIFY check compares every partial update with a complete
 // rebuild and with the former single-pass loop.
 //
-// Telemetry: which input category changed (tak::render::MissCause) is read
+// Telemetry: which input category changed (ta::render::MissCause) is read
 // from the stage keys. It never decides reuse.
 
 #include "client/rendertelemetry.h"
@@ -48,12 +48,12 @@
 #include <limits>
 #include <span>
 
-namespace tak::render {
+namespace ta::render {
 
 // ---- local stage key layout ------------------------------------------------
 //   [0, kLocalKeyFixedWords)  fixed words, one cause each (kLocalKeyWordCause)
 //   [kLocalKeyFixedWords, poseBegin)  animated texture frame indices (or the game
-//                                     tick under TAK_TEXTURE_TICK_REFERENCE)
+//                                     tick under TA_TEXTURE_TICK_REFERENCE)
 //   [poseBegin]               piece-name table pointer (only with a VM pose)
 //   (poseBegin, end)          piece poses
 inline constexpr size_t kLocalKeyFixedWords = 13;
@@ -78,7 +78,7 @@ struct LocalKeyLayout {
 // that carry no shadow mask (their frame recolours the body; a masked texture's
 // frame selects the cutout, so it stays a shadow input). `frameMasks` is the
 // visual's flag per animated texture, parallel to the frame words (1 = masked);
-// any other frame-word count (TAK_TEXTURE_TICK_REFERENCE's single tick word)
+// any other frame-word count (TA_TEXTURE_TICK_REFERENCE's single tick word)
 // compares every frame word. Exact word comparison; never a hash.
 inline constexpr size_t kLocalKeyAtlasWord = 3;
 inline bool shadowInputsEqual(std::span<const uint64_t> before, LocalKeyLayout beforeLayout,
@@ -292,4 +292,4 @@ inline MissCause primaryMissCause(uint32_t mask) {
     return MissCause::Changed;
 }
 
-}  // namespace tak::render
+}  // namespace ta::render

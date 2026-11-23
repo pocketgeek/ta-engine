@@ -24,7 +24,7 @@
 
 #include <algorithm>
 
-namespace tak::hud {
+namespace ta::hud {
 
 struct StatsFit {
     bool visible = false;   // false = draw nothing (columns do not fit, or no room)
@@ -57,4 +57,4 @@ inline StatsFit fitStats(int candidates, float availW, float availH, int colBudg
     return f;
 }
 
-}  // namespace tak::hud
+}  // namespace ta::hud

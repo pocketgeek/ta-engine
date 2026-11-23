@@ -5,7 +5,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace tak {
+namespace ta {
 inline std::filesystem::path scenarioTracePath(const std::filesystem::path& preferences,
                                               const std::filesystem::path& snapshot) {
     auto name=snapshot.parent_path().filename();if(name.empty())name=snapshot.stem();name+=".log";
@@ -19,7 +19,7 @@ public:
         std::filesystem::create_directories(path.parent_path());
         out_.open(path,std::ios::binary|std::ios::trunc);
         if(!out_)throw std::runtime_error("Cannot create trigger execution log");
-        out_<<"TAK Test Map trigger execution log\nTicks are game ticks (30 per second); player, group and action numbers are 1-based.\nAction records describe attempted execution, not successful outcomes.\n";
+        out_<<"TA Test Map trigger execution log\nTicks are game ticks (30 per second); player, group and action numbers are 1-based.\nAction records describe attempted execution, not successful outcomes.\n";
         out_.flush();
     }
     void append(int32_t tick,int player,int group,int action,const crt::Rule* rule) {

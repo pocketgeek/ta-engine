@@ -9,12 +9,12 @@
                          [--base OLD/results.jsonl]
 
 run: every tools/scenarios/scale/*.scn (or --files) in each mode, ONE run each at offset 0, workers exec
-(the sim's worker pool at --workers threads, TAK_SIM_WORKERS, as a 24-thread machine runs a real game),
+(the sim's worker pool at --workers threads, TA_SIM_WORKERS, as a 24-thread machine runs a real game),
 each job pinned to its own --per-job cores. Retail runs only the --retail-files (default: the 100 and
 1000 files plus one-10000 and many-10000). A job writes DIR/runs/NAME.MODE.{jsonl,err}; results.jsonl
 gets one line per job: the scenario's JSON keys, its SCALE_WALL wall line (tick mean/p50/p99/max,
 ticks over the 33.3 ms budget, peak RSS, malloc heap at the end) and, unless --no-phase, the per-phase
-wall time from TAK_PHASE's SIMPHASE lines (sum and p99 per phase over the run). The machine (CPU model,
+wall time from TA_PHASE's SIMPHASE lines (sum and p99 per phase over the run). The machine (CPU model,
 compiler, build type) goes in DIR/machine.json. Wall time is never a gate: it is reported for A/B runs
 on the same machine (CLAUDE.md: timing on cores 0-3 via the user's timing tool when it matters).
 
@@ -137,11 +137,11 @@ def cmd_run(a):
         raise ValueError(f"--cores {a.cores} has fewer than --per-job {a.per_job} cores: no job slot")
     env = dict(os.environ)
     for k in list(env):
-        if k.startswith("TAK_") and k not in ("TAK_SETTINGS_FILE",):
+        if k.startswith("TA_") and k not in ("TA_SETTINGS_FILE",):
             env.pop(k)
-    env["TAK_SIM_WORKERS"] = str(a.workers)
+    env["TA_SIM_WORKERS"] = str(a.workers)
     if not a.no_phase:
-        env.update(TAK_PHASE="1", TAK_PHASE_MS="0")
+        env.update(TA_PHASE="1", TA_PHASE_MS="0")
     free, procs, t0 = list(range(len(slots))), {}, time.time()
     while jobs or procs:
         while jobs and free:

@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <set>
 
-using namespace tak;
+using namespace ta;
 
 static bool waterFighter(const sim::UnitType* t) {
     return t && !t->isStructure() && !t->canFly && !t->isBuilder &&

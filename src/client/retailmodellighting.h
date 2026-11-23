@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tak {
+namespace ta {
 // The body transform already converts native heading zero to the authored
 // model's half-turn. Final model-space vertices share the native rasterizer's
 // axes; flipping light X/Z again lights the opposite faces (4ed7ba).

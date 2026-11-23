@@ -3,8 +3,8 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
-using namespace tak::proc;
-using namespace tak::proc::nvml_detail;
+using namespace ta::proc;
+using namespace ta::proc::nvml_detail;
 namespace {
 int deviceError=0,utilError=0,memoryError=0;
 unsigned int busy=35;

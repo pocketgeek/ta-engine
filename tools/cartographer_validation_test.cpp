@@ -14,7 +14,7 @@
 static void check(bool value,const char* message) {if(!value)throw std::runtime_error(message);}
 int main() {
     try {
-        cart::RegionDrag drag;std::vector<tak::crt::Region> regions{{"Region 1",10,10,20,20}};
+        cart::RegionDrag drag;std::vector<ta::crt::Region> regions{{"Region 1",10,10,20,20}};
         check(drag.begin(regions,-1,30,30,.5f,true,64,64),"begin region drawing");
         drag.update(25,22,64,64);
         check(drag.preview.name=="Region 2" && drag.preview.x1==25 && drag.preview.z1==22 && drag.preview.x2==30 && drag.preview.z2==30,"reversed region drawing and unique default name");
@@ -30,16 +30,16 @@ int main() {
         drag.update(-100,-100,64,64);
         check(drag.preview.x2==10 && drag.preview.z2==10,"resize cannot invert region");
         check(!drag.begin(regions,-1,-.1f,3,.5f,true,64,64),"negative canvas coordinate is outside map");
-        std::vector<tak::crt::RuleGroup> rules(2);
+        std::vector<ta::crt::RuleGroup> rules(2);
         rules[0].conditions.push_back({0,{}});rules[0].actions.push_back({18,{"100"}});rules[0].actions.push_back({14,{}});
         rules[1].conditions.push_back({1,{"60"}});rules[1].actions.push_back({5,{}});
-        tak::crt::RuleGroup detailed;detailed.conditions.push_back({1,{"12345"}});
+        ta::crt::RuleGroup detailed;detailed.conditions.push_back({1,{"12345"}});
         detailed.actions.push_back({25,{"Player 3",std::string(63,'x'),"progress",std::string(63,'y')}});
         const auto detail=cart::ruleDetails(detailed,cart::RuleColumn::Group,-1);
         check(detail.find("Condition 1: Gametime greater than 12345")!=std::string::npos && detail.find(std::string(63,'x'))!=std::string::npos && detail.find(std::string(63,'y'))!=std::string::npos,"full rule details preserve every long operand");
         check(cart::ruleDetails(detailed,cart::RuleColumn::Action,0).find("Condition")==std::string::npos,"selected-action detail does not include other columns");
         check(cart::ruleDetails(detailed,cart::RuleColumn::Action,5).empty(),"stale rule detail selection is safe");
-        tak::crt::RuleGroup flags;
+        ta::crt::RuleGroup flags;
         flags.conditions={{17,{"z","2"}},{18,{"a","3"}},{999,{"ignored"}}};
         flags.actions={{2,{"z","1"}},{3,{"5","new_flag"}},{4,{"2",""}}};
         check(cart::ruleFlags({flags})==std::vector<std::string>({"a","new_flag","z"}),"flag choices use typed operands, sort, deduplicate and ignore invalid opcodes/empty values");
@@ -55,44 +55,44 @@ int main() {
         check(cart::moveRule(rules,group,row,cart::RuleColumn::Action,1) && row==2 && rules[0].actions[1].opcode==14,"reorder action updates selection");
         check(!cart::moveRule(rules,group,row,cart::RuleColumn::Action,1),"cannot move beyond action list");
         check(clipboard.copy(rules,0,0,cart::RuleColumn::Group,true),"copy player rules");
-        std::vector<tak::crt::RuleGroup> other;group=row=-1;
+        std::vector<ta::crt::RuleGroup> other;group=row=-1;
         check(clipboard.paste(other,group,row,cart::RuleColumn::Group) && other.size()==2,"paste complete player rules");
         other[0].actions[0].slot[0]="200";
         check(rules[0].actions[0].slot[0]=="100","clipboard creates independent records");
         check(cart::moveRule(other,group,row,cart::RuleColumn::Group,1) && group==1 && other[0].conditions[0].opcode==1,"reorder rule groups");
-        tak::mapgen::Params params;params.seed=UINT64_MAX;params.players=8;params.layout=tak::mapgen::Islands;
+        ta::mapgen::Params params;params.seed=UINT64_MAX;params.players=8;params.layout=ta::mapgen::Islands;
         auto fields=cart::generatorFields(params);std::string generatorError;
-        tak::mapgen::Params parsed;
+        ta::mapgen::Params parsed;
         check(cart::parseGeneratorFields(fields,parsed,generatorError),"generator fields parse");
-        check(tak::mapgen::encodeMapId(params)==tak::mapgen::encodeMapId(parsed),"all generator options roundtrip exactly");
-        const auto original=tak::mapgen::encodeMapId(parsed);
-        tak::mapgen::Params restored;
-        check(cart::restoreGeneratorRecipe(original,restored,generatorError) && tak::mapgen::encodeMapId(restored)==original,"saved generator recipe restores");
-        check(!cart::restoreGeneratorRecipe(original+"garbage",restored,generatorError) && tak::mapgen::encodeMapId(restored)==original,"invalid recipe does not fall back to defaults");
+        check(ta::mapgen::encodeMapId(params)==ta::mapgen::encodeMapId(parsed),"all generator options roundtrip exactly");
+        const auto original=ta::mapgen::encodeMapId(parsed);
+        ta::mapgen::Params restored;
+        check(cart::restoreGeneratorRecipe(original,restored,generatorError) && ta::mapgen::encodeMapId(restored)==original,"saved generator recipe restores");
+        check(!cart::restoreGeneratorRecipe(original+"garbage",restored,generatorError) && ta::mapgen::encodeMapId(restored)==original,"invalid recipe does not fall back to defaults");
         check(!cart::restoreGeneratorRecipe("",restored,generatorError) && generatorError.find("no saved generator recipe")!=std::string::npos,"missing recipe gives a visible error");
         {
-            // The recipe is the .ota's takgeneratorrecipe only: a description line that
+            // The recipe is the .ota's tageneratorrecipe only: a description line that
             // looks like one is the author's text, never read as the map's recipe.
-            const auto ota=tak::tnt::Scenario::parse("[GlobalHeader]\n{\n\tmissionname=Described;\n\tmissiondescription=Generator recipe: "+original+";\n}\n");
+            const auto ota=ta::tnt::Scenario::parse("[GlobalHeader]\n{\n\tmissionname=Described;\n\tmissiondescription=Generator recipe: "+original+";\n}\n");
             check(ota.generatorRecipe.empty() && ota.missionDescription=="Generator recipe: "+original,"fixture description parses");
             check(!cart::restoreGeneratorRecipe(ota.generatorRecipe,restored,generatorError) && generatorError.find("no saved generator recipe")!=std::string::npos,
                   "a recipe in the description is not read as the map's recipe");
         }
         fields[0]="18446744073709551616";
-        check(!cart::parseGeneratorFields(fields,parsed,generatorError) && tak::mapgen::encodeMapId(parsed)==original,"seed overflow leaves settings unchanged");
-        for(int layout=tak::mapgen::Maze;layout<tak::mapgen::kLayouts;++layout) {
+        check(!cart::parseGeneratorFields(fields,parsed,generatorError) && ta::mapgen::encodeMapId(parsed)==original,"seed overflow leaves settings unchanged");
+        for(int layout=ta::mapgen::Maze;layout<ta::mapgen::kLayouts;++layout) {
             auto themed=params;
-            auto themeFields=cart::generatorFields(themed);themeFields[2]=tak::mapgen::layoutName(layout);
+            auto themeFields=cart::generatorFields(themed);themeFields[2]=ta::mapgen::layoutName(layout);
             check(cart::parseGeneratorFields(themeFields,themed,generatorError),"themed editor layout rejected");
-            check(tak::mapgen::sanitize(themed).layout==layout,"themed editor layout lost");
+            check(ta::mapgen::sanitize(themed).layout==layout,"themed editor layout lost");
         }
         {
             // v10 kit amounts: edited, range-checked, and carried in the recipe.
             auto kits=params;auto kitFields=cart::generatorFields(kits);
             kitFields[8]="Max";kitFields[9]="0";kitFields[10]="200";kitFields[11]="255";
-            check(cart::parseGeneratorFields(kitFields,kits,generatorError) && kits.manaScatter==tak::mapgen::ScatterMax &&
+            check(cart::parseGeneratorFields(kitFields,kits,generatorError) && kits.manaScatter==ta::mapgen::ScatterMax &&
                   kits.plateauDensity==0 && kits.mountainDensity==200 && kits.townDensity==255,"kit amounts parse");
-            const auto decoded=tak::mapgen::decodeMapId(tak::mapgen::encodeMapId(kits));
+            const auto decoded=ta::mapgen::decodeMapId(ta::mapgen::encodeMapId(kits));
             check(decoded.plateauDensity==0 && decoded.mountainDensity==200 && decoded.townDensity==255,"kit amounts ride in the recipe");
             kitFields[8]="Lots";check(!cart::parseGeneratorFields(kitFields,kits,generatorError),"unknown scattered mana level accepted");
             kitFields[8]="None";kitFields[10]="256";check(!cart::parseGeneratorFields(kitFields,kits,generatorError),"kit amount range checked");
@@ -104,8 +104,8 @@ int main() {
         check(!cart::parseGeneratorFields(fields,parsed,generatorError),"density range checked");
         fields=cart::generatorFields(params);fields[1]="3players";
         check(!cart::parseGeneratorFields(fields,parsed,generatorError),"partial numeric input rejected");
-        tak::hpi::Vfs vfs;tak::sim::TypeRegistry registry;
-        const auto root=std::filesystem::temp_directory_path()/("tak-editor-generator-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ta::hpi::Vfs vfs;ta::sim::TypeRegistry registry;
+        const auto root=std::filesystem::temp_directory_path()/("ta-editor-generator-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         struct Cleanup {std::filesystem::path path;~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);}} cleanup{root};
         std::filesystem::create_directories(root/"features"/"aramon");
         {
@@ -113,14 +113,14 @@ int main() {
             for(int i=1;i<=3;++i)file<<"[AraMana0"<<i<<"] {\nfootprintx=2;\nfootprintz=2;\nblocking=0;\n}\n";
             for(int i=1;i<=9;++i)file<<"[AraHenge0"<<i<<"] {\nfootprintx=3;\nfootprintz=3;\nblocking=1;\n}\n";
         }
-        vfs.addLayer(tak::hpi::MountSet(root));
-        params.layout=tak::mapgen::Mainland;params.waterDensity=params.reliefDensity=0;
+        vfs.addLayer(ta::hpi::MountSet(root));
+        params.layout=ta::mapgen::Mainland;params.waterDensity=params.reliefDensity=0;
         fields=cart::generatorFields(params);check(cart::parseGeneratorFields(fields,parsed,generatorError),"edited generator settings parse");
-        const auto first=tak::mapgen::generate(params,vfs),second=tak::mapgen::generate(parsed,vfs);
+        const auto first=ta::mapgen::generate(params,vfs),second=ta::mapgen::generate(parsed,vfs);
         check(first.starts==second.starts && first.map.heights==second.map.heights && first.map.features==second.map.features &&
               first.map.tileKeys==second.map.tileKeys && first.map.tileCols==second.map.tileCols && first.map.tileRows==second.map.tileRows,
               "editor settings reproduce actual generator output");
-        auto files=std::make_shared<tak::hpi::Vfs::Files>();
+        auto files=std::make_shared<ta::hpi::Vfs::Files>();
         (*files)["kmap/recipe-test.recipe"]={original.begin(),original.end()};vfs.setMapFiles(files);
         check(cart::mapGeneratorRecipe(vfs,"kmap/recipe-test.tnt","")==original,"game-generated map recipe sidecar imports");
         check(cart::mapGeneratorRecipe(vfs,"kmap/recipe-test.tnt","embedded")=="embedded","explicit metadata recipe wins over sidecar");
@@ -134,7 +134,7 @@ int main() {
         (*files)["units/test.fbi"]={fbi.begin(),fbi.end()};vfs.setMapFiles(files);registry.loadDir(vfs,"units");
         check(registry.find("test")!=nullptr,"synthetic unit loaded");
         {
-            tak::crt::Scenario authored;authored.regions.push_back({"Bridge",1,1,3,3});
+            ta::crt::Scenario authored;authored.regions.push_back({"Bridge",1,1,3,3});
             const auto templates=cart::ruleTemplates(2,"TEST","Bridge");
             check(templates.size()==6,"objective catalog covers common tasks");
             for(const auto& item:templates) {
@@ -154,7 +154,7 @@ int main() {
             check(cart::ruleTemplates(8,"TEST","Bridge")[0].group.actions[0].slot[0]=="Player 8","last rule bank targets Player 8");
             check(cart::ruleTemplates(0,"TEST","Bridge")[0].group.actions[0].slot[0]=="All Players","broadcast rule bank targets All Players");
         }
-        auto operandHas=[&](bool action,const tak::crt::Rule& r,const std::string& message) {
+        auto operandHas=[&](bool action,const ta::crt::Rule& r,const std::string& message) {
             const auto issues=cart::validateRuleOperands(action,r,{},registry);
             return std::any_of(issues.begin(),issues.end(),[&](const auto& issue){return issue.message.find(message)!=std::string::npos;});
         };
@@ -175,9 +175,9 @@ int main() {
         check(!operandHas(false,{9,{"Any Unit","0","Anywhere"}},"not supported"),"Any Unit control wildcard accepted");
         check(!operandHas(true,{8,{"Any Unit","Anywhere"}},"not supported"),"Any Unit action wildcard accepted");
         check(operandHas(true,{7,{"Any Unit","Anywhere"}},"not supported"),"creation requires a concrete type");
-        tak::crt::Rule truncated{13,{"Player 1",std::string("a\0b",3)}};
+        ta::crt::Rule truncated{13,{"Player 1",std::string("a\0b",3)}};
         check(operandHas(true,truncated,"embedded NUL"),"embedded NUL cannot silently truncate CRT operand");
-        tak::tnt::Map map;map.width=map.height=32;map.heights.resize(1024,60);map.features.resize(1024,0xffff);
+        ta::tnt::Map map;map.width=map.height=32;map.heights.resize(1024,60);map.features.resize(1024,0xffff);
         map.blocksX=map.blocksY=16;map.tileKeys.assign(256,1);map.tileCols.assign(256,0);map.tileRows.assign(256,0);
         check(cart::validateTerrainResources(map,vfs).empty(),"valid synthetic terrain image resolves and decodes");
         {
@@ -191,7 +191,7 @@ int main() {
         }
         {
             auto isolated=map;for(int z=0;z<32;++z)isolated.heights[z*32+16]=255;
-            tak::sim::World observer;observer.setTerrain(isolated.heights,32,32,0,&isolated.features);observer.buildNavClasses(registry);
+            ta::sim::World observer;observer.setTerrain(isolated.heights,32,32,0,&isolated.features);observer.buildNavClasses(registry);
             const auto* type=registry.find("test");const auto& grid=observer.navFor(type);
             const auto regions=cart::movementRegions(grid,1);
             check(regions.size()==2,"whole-map scan finds both isolated land regions");
@@ -202,11 +202,11 @@ int main() {
                 check(observer.pathExists(type,regions[i].x*16.f+8,regions[i].z*16.f+8,regions[j].x*16.f+8,regions[j].z*16.f+8)==(i==j),"region representatives agree with engine connectivity");
             auto wide=cart::movementRegions(grid,3);int wideTotal=0;for(const auto& region:wide)wideTotal+=region.cells;
             check(wide.size()==2 && wideTotal<total,"larger footprints use engine clearance");
-            auto tiny=tak::sim::NavGrid(std::vector<uint8_t>(16,60),4,4);tiny.block(1,0,1,1,true);tiny.block(0,1,1,1,true);
+            auto tiny=ta::sim::NavGrid(std::vector<uint8_t>(16,60),4,4);tiny.block(1,0,1,1,true);tiny.block(0,1,1,1,true);
             check(cart::movementRegions(tiny,1).size()==2,"diagonal contact does not join regions through blocked corners");
             std::vector<uint8_t> water(64,0);for(int z=0;z<8;++z)water[z*8+4]=100;
-            tak::sim::NavGrid::Limits limits;limits.minWaterDepth=1;limits.maxWaterDepth=100;limits.maxSlope=limits.maxWaterSlope=20;
-            tak::sim::NavGrid naval(water,8,8,50,limits);
+            ta::sim::NavGrid::Limits limits;limits.minWaterDepth=1;limits.maxWaterDepth=100;limits.maxSlope=limits.maxWaterSlope=20;
+            ta::sim::NavGrid naval(water,8,8,50,limits);
             const auto pools=cart::movementRegions(naval,1);
             check(pools.size()==2 && pools[0].cells+pools[1].cells==48,"naval profiles detect two pools separated by land");
         }
@@ -222,7 +222,7 @@ int main() {
         auto slope=cart::terrainOverlay(map,registry,vfs,cart::OverlayKind::Slope,"");
         check(slope.rgba[(11*32+11)*4]==255 && slope.rgba[0]==0,"slope overlay reads four-corner spread");
         auto build=cart::terrainOverlay(map,registry,vfs,cart::OverlayKind::Buildability,"test");
-        tak::sim::World reference;reference.setTerrain(map.heights,32,32,0,&map.features);reference.buildNavClasses(registry);
+        ta::sim::World reference;reference.setTerrain(map.heights,32,32,0,&map.features);reference.buildNavClasses(registry);
         for(int z=0;z<32;++z)for(int x=0;x<32;++x)
             check((build.rgba[(z*32+x)*4+1]==210)==reference.canPlace(registry.find("test"),x*16.f+8,z*16.f+8),"buildability overlay agrees with engine placement at every cell");
         std::vector<cart::PlacedUnit> occupants{{"TEST",0,88,88}};
@@ -254,8 +254,8 @@ int main() {
             check(cart::terrainOverlay(map,registry,vfs,cart::OverlayKind::Buildability,"test",occupants,&cancel).rgba.empty(),"cancelled overlay produces no pixels");
         }
         map.heights[12*32+12]=60;
-        tak::tnt::Scenario metadata;metadata.starts={{1,12,12},{2,24,24}};
-        tak::crt::Scenario scenario;scenario.regions.push_back({"Area",15,15,5,5});
+        ta::tnt::Scenario metadata;metadata.starts={{1,12,12},{2,24,24}};
+        ta::crt::Scenario scenario;scenario.regions.push_back({"Area",15,15,5,5});
         std::vector<cart::PlacedUnit> units(1);units[0].type="TEST";units[0].x=200;units[0].z=200;units[0].name="First";
         auto run=[&] {return cart::validateMap(map,metadata,scenario,units,{},registry,vfs);};
         auto has=[](const auto& issues,const std::string& text) {for(const auto& issue:issues)if(issue.message.find(text)!=std::string::npos)return true;return false;};
@@ -295,7 +295,7 @@ int main() {
         check(!cart::setRegion(scenario,-1,{"Anywhere",1,1,2,2},32,32,error),"whole map token reserved");
         check(!cart::setRegion(scenario,0,{"Outside",0,0,32,32},32,32,error),"inclusive bounds stay within map");
         check(scenario.regions[0].name=="Renamed" && rule.slot[location]=="Renamed","failed region edit is atomic");
-        auto roundtrip=tak::crt::parse(tak::crt::write(scenario));
+        auto roundtrip=ta::crt::parse(ta::crt::write(scenario));
         check(roundtrip.regions[0].x2==12 && roundtrip.players[0][0].conditions[0].slot[location]=="Renamed","region and rewritten rules survive CRT roundtrip");
         rule.slot[location]="Anywhere";check(cart::removeRegion(scenario,0,error),"unused region can be deleted");
         check(map.heights[0]==60 && units[0].name=="First","validation preserves document");
@@ -304,7 +304,7 @@ int main() {
         const std::string deposit="[TestMana] {\ncategory=mana;\nanimating=1;\nblocking=0;\nfootprintx=1;\nfootprintz=1;\n}";
         (*files)["units/araking.fbi"]={monarch.begin(),monarch.end()};(*files)["units/teststone.fbi"]={stone.begin(),stone.end()};
         (*files)["features/aramon/testmana.tdf"]={deposit.begin(),deposit.end()};vfs.setMapFiles(files);
-        tak::sim::TypeRegistry diagnostics;diagnostics.loadDir(vfs,"units");
+        ta::sim::TypeRegistry diagnostics;diagnostics.loadDir(vfs,"units");
         check(diagnostics.find("teststone")->onMana,"fixture is a lodestone");
         check(has(cart::validateMap(map,metadata,{}, {},{},diagnostics,vfs),"No recognized mana deposits"),"missing mana economy diagnosed");
         auto disconnected=map;disconnected.featureNames={"TestMana"};disconnected.features[8*32+24]=0;
@@ -314,8 +314,8 @@ int main() {
         auto connectivity=cart::validateMap(disconnected,metadata,{}, {},{},diagnostics,vfs);
         check(has(connectivity,"no ground approach route to another start") && has(connectivity,"no ground approach route to a mana deposit"),"engine connectivity diagnoses isolated starts and mana");
         check(!has(connectivity,"rejects lodestone footprint"),"flat mana deposit accepts lodestone footprint");
-        tak::sim::World deposits;deposits.setTerrain(disconnected.heights,32,32,0,&disconnected.features);deposits.buildNavClasses(diagnostics);
-        tak::sim::registerMapFeatures(deposits,disconnected,vfs,&diagnostics);
+        ta::sim::World deposits;deposits.setTerrain(disconnected.heights,32,32,0,&disconnected.features);deposits.buildNavClasses(diagnostics);
+        ta::sim::registerMapFeatures(deposits,disconnected,vfs,&diagnostics);
         check(!deposits.manaSpots().empty(),"occupancy fixture has mana spot");
         const auto [mx,mz]=deposits.manaSpots().front();
         occupants={{"TEST",0,mx,mz}};
@@ -332,17 +332,17 @@ int main() {
             const std::string boat="[UNITINFO]{\nunitname=boat;\nname=Longship;\nmaxdamage=100;\nfootprintx=2;\nfootprintz=2;\nmaxvelocity=1;\nminwaterdepth=8;\nmaxwaterdepth=255;\nmovementclass=water;\nfloater=1;\nbuildtime=30000;\n}";
             (*files)["units/port.fbi"]={port.begin(),port.end()};(*files)["units/boat.fbi"]={boat.begin(),boat.end()};
             (*files)["canbuild/port/boat.tdf"]={};
-            tak::sim::TypeRegistry navy;navy.loadDir(vfs,"units");navy.loadBuildTree(vfs,"canbuild");
+            ta::sim::TypeRegistry navy;navy.loadDir(vfs,"units");navy.loadBuildTree(vfs,"canbuild");
             auto water=map;water.seaLevel=100;water.heights.assign(water.heights.size(),95);
             water.features.assign(water.features.size(),0xffff);
             std::vector<cart::PlacedUnit> harbor{{"PORT",0,264,264}};
             check(has(cart::validateMap(water,{}, {},harbor,{},navy,vfs),"initial naval output site"),"shallow naval factory output not diagnosed");
             water.heights.assign(water.heights.size(),30);
             check(!has(cart::validateMap(water,{}, {},harbor,{},navy,vfs),"initial naval output site"),"deep-water output incorrectly rejected");
-            tak::sim::World production;production.setTerrain(water.heights,water.width,water.height,water.seaLevel);
+            ta::sim::World production;production.setTerrain(water.heights,water.width,water.height,water.seaLevel);
             production.buildNavClasses(navy);
             const int id=production.spawn(navy.find("port"),264,264,0,0);
-            tak::sim::Fixed x,y,z;
+            ta::sim::Fixed x,y,z;
             check(production.productionPosition(id,navy.find("boat"),x,y,z),"deep-water output query failed");
             production.train(id,navy.find("boat"));production.tick(1.f/30);
             const auto* site=production.unit(production.unit(id)->productionSiteId);
@@ -350,32 +350,32 @@ int main() {
             check(water.heights[0]==30 && harbor[0].x==264,"naval diagnostics changed the source document");
         }
         {   // Check Map carries the AI Profiles checks (aiprofiles.h checkAiMap), notes left out.
-            tak::hpi::Vfs none;tak::sim::TypeRegistry empty;
+            ta::hpi::Vfs none;ta::sim::TypeRegistry empty;
             auto bytes=[](std::string_view text){return std::vector<uint8_t>(text.begin(),text.end());};
-            const cart::AiFiles ai{{"ai/takengine.txt",bytes("Weight araarch 3\n")},{"ai/notes.txt",bytes("x\n")}};
+            const cart::AiFiles ai{{"ai/taengine.txt",bytes("Weight araarch 3\n")},{"ai/notes.txt",bytes("x\n")}};
             const auto issues=cart::validateAiProfiles(ai,"islands",empty,none);
             auto has=[&](std::string_view text){return std::any_of(issues.begin(),issues.end(),[&](const auto& i){return i.message.find(text)!=std::string::npos;});};
-            check(has("AI profile ai/takengine.txt: line 1: levels need lowercase 'weight'"),"Check Map reports a level line the parser skips");
+            check(has("AI profile ai/taengine.txt: line 1: levels need lowercase 'weight'"),"Check Map reports a level line the parser skips");
             check(has("AI profile ai/notes.txt: ai/notes.txt is kept in the .kmp but not sent"),"Check Map reports an ai/ file that does not travel");
             check(has("AI profile aiprofile: no ai/islands.txt in this map or the install"),"Check Map reports an aiprofile name with no file");
             check(cart::validateAiProfiles({},"DEFAULT",empty,none).empty(),"a map on the standard profile with no AI files has no AI issues");
         }
         {   // Check Map names what the scenario loses with CRUSADES on (unitscb/ alone).
             auto roster=[](std::initializer_list<const char*> names) {
-                auto files=std::make_shared<tak::hpi::Vfs::Files>();
+                auto files=std::make_shared<ta::hpi::Vfs::Files>();
                 for(const char* name:names) {
                     const auto text=std::string("[UNITINFO]{\nunitname=")+name+";\nobjectname="+name+";\nname=Display "+name+
                         ";\nmaxdamage=100;\nfootprintx=1;\nfootprintz=1;\ncanmove=1;\nmaxvelocity=1;\n}";
                     (*files)[std::string("units/")+name+".fbi"]={text.begin(),text.end()};
                 }
-                tak::hpi::Vfs vfs;vfs.setMapFiles(files);tak::sim::TypeRegistry registry;registry.loadDir(vfs,"units");
+                ta::hpi::Vfs vfs;vfs.setMapFiles(files);ta::sim::TypeRegistry registry;registry.loadDir(vfs,"units");
                 return registry;
             };
             const auto standard=roster({"zonhand","zonspide"}),crusades=roster({"zonhand"});
-            tak::crt::Scenario scenario;scenario.players.resize(9);
+            ta::crt::Scenario scenario;scenario.players.resize(9);
             scenario.customTypes.push_back({"ZONSPIDE",{100,200,200,0}});
             scenario.customTypes.push_back({"zonhand",{100,200,200,0}});
-            tak::crt::RuleGroup group;
+            ta::crt::RuleGroup group;
             group.conditions.push_back({15,{"1","zonspide","Anywhere"}});
             group.actions.push_back({7,{"ZONSPIDE","Anywhere"}});
             group.actions.push_back({7,{"ZONHAND","Anywhere"}});

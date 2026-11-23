@@ -4,7 +4,7 @@
 
 struct ssl_ctx_st;
 struct ssl_st;
-namespace tak::net {
+namespace ta::net {
 bool attachTlsSocket(ssl_st* ssl,int fd);
 // OpenSSL is statically linked. Certificates/keys stay outside the executable.
 struct TlsContext {

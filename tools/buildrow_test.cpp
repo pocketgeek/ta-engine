@@ -13,7 +13,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace br = tak::buildrow;
+namespace br = ta::buildrow;
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {
@@ -163,11 +163,11 @@ int main() {
     // ---- the chat box floor follows a wrapped menu up ----
     {
         const auto L = br::layout(13, 696, 72, 1.6f, 1920, 1716, br::Centered);
-        const float floorY = tak::chatbox::hudFloor(696, 72, 1.6f, L.bandTop, true, 10);
+        const float floorY = ta::chatbox::hudFloor(696, 72, 1.6f, L.bandTop, true, 10);
         check(L.rows == 2 && floorY <= L.top - 28 * 1.6f + eps &&
-                  floorY < tak::chatbox::buildRowTop(696, 72, 1.6f),
+                  floorY < ta::chatbox::buildRowTop(696, 72, 1.6f),
               "the chat box floor sits over the top row's tooltip");
-        check(near(tak::chatbox::buildRowTop(533, 72, 1), 438), "one-row estimate unchanged (605 high)");
+        check(near(ta::chatbox::buildRowTop(533, 72, 1), 438), "one-row estimate unchanged (605 high)");
     }
 
     // ---- a scale too big for the window is shrunk to the largest that fits ----

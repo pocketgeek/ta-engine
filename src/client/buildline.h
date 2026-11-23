@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::client {
+namespace ta::client {
 
 // The widest gap the mouse wheel reaches, in empty cells between neighbours.
 constexpr int kBuildLineMaxGap = 12;
@@ -42,7 +42,7 @@ inline std::vector<std::pair<float, float>> buildLineSites(int footX, int footZ,
     footX = std::max(footX, 1);
     footZ = std::max(footZ, 1);
     gap = std::clamp(gap, 0, kBuildLineMaxGap);
-    const int ox = tak::sim::footprintOrigin(x0, footX), oz = tak::sim::footprintOrigin(z0, footZ);
+    const int ox = ta::sim::footprintOrigin(x0, footX), oz = ta::sim::footprintOrigin(z0, footZ);
     std::vector<std::pair<float, float>> out{buildLineSite(ox, oz, footX, footZ)};
     const float dx = x1 - x0, dz = z1 - z0;
     const float ax = std::abs(dx), az = std::abs(dz);
@@ -52,8 +52,8 @@ inline std::vector<std::pair<float, float>> buildLineSites(int footX, int footZ,
     // clears stepZ rows, so x is the axis that keeps neighbours apart.
     const bool alongX = float(stepX) * az <= float(stepZ) * ax;
     const int step = alongX ? stepX : stepZ;
-    const int tip = alongX ? tak::sim::footprintOrigin(x1, footX) - ox
-                           : tak::sim::footprintOrigin(z1, footZ) - oz;
+    const int tip = alongX ? ta::sim::footprintOrigin(x1, footX) - ox
+                           : ta::sim::footprintOrigin(z1, footZ) - oz;
     const float major = alongX ? dx : dz, minor = alongX ? dz : dx;
     const int dir = major < 0 ? -1 : 1;
     const int n = std::abs(tip) / step;   // footprintOrigin is monotonic: tip has major's sign
@@ -88,4 +88,4 @@ inline int buildLineWheelSteps(float delta, float& carry, uint32_t ms, uint32_t&
     return step;
 }
 
-} // namespace tak::client
+} // namespace ta::client

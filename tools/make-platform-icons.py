@@ -17,10 +17,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('renderer', type=Path)
     parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1] / 'res/icons')
-    parser.add_argument('--app', choices=('takclient', 'cartographer'), default='takclient')
+    parser.add_argument('--app', choices=('taclient', 'cartographer'), default='taclient')
     args = parser.parse_args()
     images = {}
-    with tempfile.TemporaryDirectory(prefix='tak-icons-') as temp:
+    with tempfile.TemporaryDirectory(prefix='ta-icons-') as temp:
         for size in (16, 24, 32, 48, 64, 128, 256, 512, 1024):
             folder = Path(temp) / str(size)
             subprocess.run([str(args.renderer.resolve()), str(folder), str(size)], check=True,

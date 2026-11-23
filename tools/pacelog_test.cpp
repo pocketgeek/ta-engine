@@ -1,4 +1,4 @@
-// PaceLog (src/client/pacelog.h): the ticks-per-frame summary behind TAK_PACELOG / tools/pace_check.sh.
+// PaceLog (src/client/pacelog.h): the ticks-per-frame summary behind TA_PACELOG / tools/pace_check.sh.
 // A run shaped like the audited 8x one (12 ticks a frame, a few 11s and 13s, one 93-tick burst) must report the
 // same histogram, the burst and its tick, and count the zero-tick and double-nominal frames.
 #include "client/pacelog.h"
@@ -14,11 +14,11 @@ static void check(bool ok, const char* what) {
 }
 
 int main() {
-    tak::PaceLog log;   // not opened: records nothing
+    ta::PaceLog log;   // not opened: records nothing
     log.frame({50, 12, 0, 5, 1, false, 12});
     check(log.summarize().frames == 0, "a log that was not opened records nothing");
 
-    tak::PaceLog on;
+    ta::PaceLog on;
     on.open("1");
     uint32_t tick = 0;
     auto frame = [&](int ticks, int inbox, bool ff = false) {
@@ -38,16 +38,16 @@ int main() {
     check(s.histogram.at(12) == 100 && s.histogram.at(11) == 10 && s.histogram.at(13) == 5 && s.histogram.at(0) == 1 &&
           s.histogram.at(93) == 1, "the histogram has every bin");
     check(s.inboxP99 >= 30, "inbox p99 sees the deep frames");
-    const std::string text = tak::PaceLog::format(s);
+    const std::string text = ta::PaceLog::format(s);
     check(text.find("max_burst=93@") != std::string::npos && text.find("zero_tick=1") != std::string::npos &&
           text.find("hist={0:1, 11:10, 12:100, 13:5, 93:1}") != std::string::npos, "the summary line carries them");
     check(on.summarize(10).frames == 107, "frames before the skip point are ignored");
     // PRESENT (WE E3.2): the displayed-time CV, freeze share and over-1.3x frames; gate and paused frames are
     // left out, a snap is counted but not judged as an over-step.
-    tak::PaceLog pr;
+    ta::PaceLog pr;
     pr.open("1");
     auto present = [&](double dtd, double nominal, bool freeze = false, bool gate = false, bool snap = false) {
-        tak::PaceLog::Frame fr;
+        ta::PaceLog::Frame fr;
         fr.wallMs = 4.17; fr.dtd = dtd; fr.nominal = nominal; fr.freeze = freeze; fr.gate = gate; fr.snap = snap;
         fr.lagTarget = 2;
         pr.frame(fr);
@@ -63,14 +63,14 @@ int main() {
     check(p.freeze == 1 && p.over13 == 1 && p.snaps == 1, "one freeze, one over 1.3x, one snap");
     check(p.maxRatio == 2.0, "the snap is not the max ratio");
     check(p.cv > 0.4 && p.cv < 0.6, "the CV reflects the jump, freeze and snap");
-    check(tak::PaceLog::format(p).find("freeze=1 (1.01%)") != std::string::npos, "the PRESENT line carries the freeze share");
-    tak::PaceLog smooth;
+    check(ta::PaceLog::format(p).find("freeze=1 (1.01%)") != std::string::npos, "the PRESENT line carries the freeze share");
+    ta::PaceLog smooth;
     smooth.open("1");
-    for (int i = 0; i < 100; ++i) { tak::PaceLog::Frame fr; fr.dtd = i % 2 ? 1.02 : 0.98; fr.nominal = 1; smooth.frame(fr); }
+    for (int i = 0; i < 100; ++i) { ta::PaceLog::Frame fr; fr.dtd = i % 2 ? 1.02 : 0.98; fr.nominal = 1; smooth.frame(fr); }
     check(std::abs(smooth.present().cv - 0.02) < 1e-6, "a +-2% alternation is a 2% CV");
-    tak::PaceLog jitter;   // a frame clock that alternates 0.8 and 1.2 ticks, the display time following it exactly
+    ta::PaceLog jitter;   // a frame clock that alternates 0.8 and 1.2 ticks, the display time following it exactly
     jitter.open("1");
-    for (int i = 0; i < 100; ++i) { tak::PaceLog::Frame fr; fr.nominal = i % 2 ? 1.2 : 0.8; fr.dtd = fr.nominal; jitter.frame(fr); }
+    for (int i = 0; i < 100; ++i) { ta::PaceLog::Frame fr; fr.nominal = i % 2 ? 1.2 : 0.8; fr.dtd = fr.nominal; jitter.frame(fr); }
     check(jitter.present().cv > 0.19 && jitter.present().rateCv < 1e-6, "frame-clock jitter shows in cv, not in rate_cv");
     if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     std::printf("pacelog_test: all passed\n");

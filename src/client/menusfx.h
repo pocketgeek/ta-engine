@@ -11,11 +11,11 @@
 #include <vector>
 
 #include "client/menuclick.h"
-#include "client/options.h"    // tak::openAudioDevice (routes to the chosen device)
+#include "client/options.h"    // ta::openAudioDevice (routes to the chosen device)
 #include "client/settings.h"
 #include "hpi/hpi.h"
 
-namespace tak {
+namespace ta {
 
 class MenuSfx {
 public:
@@ -63,7 +63,7 @@ public:
             // click is queued at once (never a partial fill), so a short device
             // period can't underrun it. ~128/11025 ~= 12ms vs ~46ms at 512.
             want.samples = 128;
-            dev_ = tak::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
+            dev_ = ta::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
             if (dev_) SDL_PauseAudioDevice(dev_, 0);
         }
     }
@@ -90,4 +90,4 @@ private:
     std::unordered_map<std::string, std::vector<uint8_t>> pcm_;
 };
 
-}  // namespace tak
+}  // namespace ta

@@ -12,7 +12,7 @@
 #include <string>
 
 int main(int argc,char** argv) try {
-    using namespace tak;
+    using namespace ta;
     std::string mode="movement",data="assets/game",mapName;
     int count=16000,ticks=3600,unitCap=0;
     bool crusades=false,serial=false;

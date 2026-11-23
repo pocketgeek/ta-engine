@@ -1,20 +1,20 @@
 #pragma once
 // orderShape(World): a one-line summary of the movers' order queues. Used to judge a harvested situation against its
-// recording (src/client/situation.h logs it at the snapshot and +300; legion_scenario prints it with TAK_ORDER_STATS).
+// recording (src/client/situation.h logs it at the snapshot and +300; legion_scenario prints it with TA_ORDER_STATS).
 #include "sim/sim.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <string>
 
-namespace tak::situation {
-// A one-line shape of the world's order queues, for judging a situation against its recording (TAK_ORDER_STATS in
+namespace ta::situation {
+// A one-line shape of the world's order queues, for judging a situation against its recording (TA_ORDER_STATS in
 // legion_scenario prints the same line for the rebuilt world): bodies by queue length and by queued player goals, and
 // how many carry an attack target, an attack-move or a patrol.
-inline std::string orderShape(const tak::sim::World& w) {
+inline std::string orderShape(const ta::sim::World& w) {
     int n = 0, moving = 0, len[5] = {}, goals[4] = {}, atk = 0, amove = 0, patrol = 0, guard = 0;
     for (const auto& u : w.units()) {
-        if (!u.alive() || !u.type || u.type->maxVel <= tak::sim::Fixed()) continue;
+        if (!u.alive() || !u.type || u.type->maxVel <= ta::sim::Fixed()) continue;
         ++n;
         if (u.speed.v) ++moving;
         ++len[std::min<size_t>(u.orders.size() == 0 ? 0 : u.orders.size() == 1 ? 1 : u.orders.size() <= 3 ? 2 : u.orders.size() <= 7 ? 3 : 4, 4)];
@@ -33,4 +33,4 @@ inline std::string orderShape(const tak::sim::World& w) {
 }
 
 
-}  // namespace tak::situation
+}  // namespace ta::situation

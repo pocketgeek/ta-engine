@@ -27,9 +27,9 @@ int main() { std::printf("conn_test: skipped (no socketpair on Windows)\n"); ret
 #include <sys/socket.h>
 #include <unistd.h>
 
-using tak::net::Conn;
-using tak::net::Frame;
-using tak::net::Msg;
+using ta::net::Conn;
+using ta::net::Frame;
+using ta::net::Msg;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what) {
@@ -183,7 +183,7 @@ int main() {
 
     {
         Conn c;
-        c.send(Msg::Chat,std::vector<uint8_t>(tak::net::kMaxFrame));
+        c.send(Msg::Chat,std::vector<uint8_t>(ta::net::kMaxFrame));
         check(!c.ok() && c.txPending()==0,"oversized outbound frame rejected before allocation");
     }
     {
@@ -247,7 +247,7 @@ int main() {
         // would spin on a writable socket), then goes once the peer has read them.
         p.conn.send(Msg::TickBundle, std::vector<uint8_t>(8192, 7));
         p.conn.flushWrite();
-        if (p.conn.txPending() == 0 && tak::net::kernelQueued(p.conn.fd()) >= Conn::kLowKernelMax) {
+        if (p.conn.txPending() == 0 && ta::net::kernelQueued(p.conn.fd()) >= Conn::kLowKernelMax) {
             p.conn.sendLow(Msg::VoiceDown, bytes("held"));
             p.conn.flushWrite();
             check(p.conn.lowPending() == 1 && p.conn.lowWaiting() && !p.conn.wantWrite(),

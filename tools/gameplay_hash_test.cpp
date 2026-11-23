@@ -14,12 +14,12 @@
 #include <vector>
 #include "util/u8path.h"
 
-using namespace tak;
+using namespace ta;
 using Entries = std::vector<std::pair<std::string, std::string>>;
 
 int main() {
     namespace fs = std::filesystem;
-    const auto root = fs::temp_directory_path() / ("tak-gameplay-hash-" +
+    const auto root = fs::temp_directory_path() / ("ta-gameplay-hash-" +
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup { fs::path path; ~Cleanup() { std::error_code e; fs::remove_all(path, e); } } cleanup{root};
     int failures = 0;

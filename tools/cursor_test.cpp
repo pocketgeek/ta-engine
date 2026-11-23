@@ -15,30 +15,30 @@
 
 namespace {
 struct TimedFrame { uint16_t delayTicks; };
-struct ExpectedCursor { tak::CursorId id; const char* name; };
+struct ExpectedCursor { ta::CursorId id; const char* name; };
 
 constexpr std::array<ExpectedCursor, 21> roster{{
-    {tak::CursorId::Normal, "cursornormal"},
-    {tak::CursorId::Select, "cursorselect"},
-    {tak::CursorId::Move, "CursorMove"},
-    {tak::CursorId::Attack, "CursorAttack"},
-    {tak::CursorId::Airstrike, "cursorairstrike"},
-    {tak::CursorId::TooFar, "cursortoofar"},
-    {tak::CursorId::Patrol, "CursorPatrol"},
-    {tak::CursorId::Defend, "CursorDefend"},
-    {tak::CursorId::Repair, "cursorrepair"},
-    {tak::CursorId::Load, "Cursorload"},
-    {tak::CursorId::Unload, "CursorUnload"},
-    {tak::CursorId::Reclaim, "Cursorreclamate"},
-    {tak::CursorId::Revive, "cursorrevive"},
-    {tak::CursorId::FindSite, "cursorfindsite"},
-    {tak::CursorId::Green, "cursorgrn"},
-    {tak::CursorId::Red, "cursorred"},
-    {tak::CursorId::Hourglass, "cursorhourglass"},
-    {tak::CursorId::PathIcon, "pathicon"},
-    {tak::CursorId::Capture, "cursorcapture"},
-    {tak::CursorId::Teleport, "cursorteleport"},
-    {tak::CursorId::Pickup, "cursorpickup"},
+    {ta::CursorId::Normal, "cursornormal"},
+    {ta::CursorId::Select, "cursorselect"},
+    {ta::CursorId::Move, "CursorMove"},
+    {ta::CursorId::Attack, "CursorAttack"},
+    {ta::CursorId::Airstrike, "cursorairstrike"},
+    {ta::CursorId::TooFar, "cursortoofar"},
+    {ta::CursorId::Patrol, "CursorPatrol"},
+    {ta::CursorId::Defend, "CursorDefend"},
+    {ta::CursorId::Repair, "cursorrepair"},
+    {ta::CursorId::Load, "Cursorload"},
+    {ta::CursorId::Unload, "CursorUnload"},
+    {ta::CursorId::Reclaim, "Cursorreclamate"},
+    {ta::CursorId::Revive, "cursorrevive"},
+    {ta::CursorId::FindSite, "cursorfindsite"},
+    {ta::CursorId::Green, "cursorgrn"},
+    {ta::CursorId::Red, "cursorred"},
+    {ta::CursorId::Hourglass, "cursorhourglass"},
+    {ta::CursorId::PathIcon, "pathicon"},
+    {ta::CursorId::Capture, "cursorcapture"},
+    {ta::CursorId::Teleport, "cursorteleport"},
+    {ta::CursorId::Pickup, "cursorpickup"},
 }};
 
 int fail(const char* message) {
@@ -47,12 +47,12 @@ int fail(const char* message) {
 }
 
 bool checkAssets(const char* root) {
-    tak::hpi::Vfs vfs;
-    vfs.addLayer(tak::hpi::MountSet(root));
-    const auto palette = tak::gaf::Palette::fromBytes(vfs.read("palettes/cursors.pcx"));
-    const auto sequences = tak::gaf::load(vfs.read("anims/cursors.gaf"), palette, -1,
+    ta::hpi::Vfs vfs;
+    vfs.addLayer(ta::hpi::MountSet(root));
+    const auto palette = ta::gaf::Palette::fromBytes(vfs.read("palettes/cursors.pcx"));
+    const auto sequences = ta::gaf::load(vfs.read("anims/cursors.gaf"), palette, -1,
                                           "anims/cursors.gaf");
-    std::unordered_map<std::string, const tak::gaf::Sequence*> byName;
+    std::unordered_map<std::string, const ta::gaf::Sequence*> byName;
     for (const auto& sequence : sequences) {
         std::string key = sequence.name;
         for (char& c : key) c = char(std::tolower(static_cast<unsigned char>(c)));
@@ -76,9 +76,9 @@ bool checkAssets(const char* root) {
         for (char& c : key) c = char(std::tolower(static_cast<unsigned char>(c)));
         const auto it = byName.find(key);
         if (it == byName.end() || it->second->frames.empty()) return false;
-        if (tak::hpi::MountSet::key(tak::cursorSequenceName(entry.id)) != key) return false;
-        if (entry.id == tak::CursorId::Capture || entry.id == tak::CursorId::Teleport ||
-            entry.id == tak::CursorId::Pickup) {
+        if (ta::hpi::MountSet::key(ta::cursorSequenceName(entry.id)) != key) return false;
+        if (entry.id == ta::CursorId::Capture || entry.id == ta::CursorId::Teleport ||
+            entry.id == ta::CursorId::Pickup) {
             const auto& frame = it->second->frames.front();
             const auto& arrow = normal->frames.front();
             if (frame.width != arrow.width || frame.height != arrow.height ||
@@ -92,9 +92,9 @@ bool checkAssets(const char* root) {
 
 int main(int argc, char** argv) {
     for (const auto& entry : roster)
-        if (std::strcmp(tak::cursorSequenceName(entry.id), entry.name) != 0)
+        if (std::strcmp(ta::cursorSequenceName(entry.id), entry.name) != 0)
             return fail("cursor ID to retail sequence-name mapping");
-    if (static_cast<size_t>(tak::CursorId::Count) != roster.size())
+    if (static_cast<size_t>(ta::CursorId::Count) != roster.size())
         return fail("cursor enum and retail sequence roster size");
 
     // Which cursor shows when: tools/cursor_rules_test.cpp.
@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
         std::vector<TimedFrame>{{2}, {2}, {2}},
         std::vector<TimedFrame>{{2}, {2}, {2}}
     }};
-    tak::CursorAnimationClock<2> liveClock;
+    ta::CursorAnimationClock<2> liveClock;
     // The software and hardware entry points share this clock. Retail advances
     // the first selected frame on the first 30 Hz update, retains each sequence's
     // frame index, and keeps consuming the one countdown while another is active.
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
         liveClock.frameAt(0, 234, liveSequences) != 2)       // shared timer then advances A
         return fail("live cursor switches retain sequence frames and share retail countdown");
 
-    tak::CursorAnimationClock<1> cappedClock;
+    ta::CursorAnimationClock<1> cappedClock;
     const std::array<std::vector<TimedFrame>, 1> cappedSequence{{
         std::vector<TimedFrame>{{1}, {1}, {1}, {1}, {1}, {1}, {1}, {1}}
     }};
@@ -125,23 +125,23 @@ int main(int argc, char** argv) {
         cappedClock.frameAt(0, 1000, cappedSequence) != 3)
         return fail("live cursor manager caps a delayed catch-up to five native updates");
 
-    if (tak::cursorOrderMarkerFrameAt(12, 2, 0) != 0 ||
-        tak::cursorOrderMarkerFrameAt(12, 2, 3) != 0 ||
-        tak::cursorOrderMarkerFrameAt(12, 2, 4) != 1 ||
-        tak::cursorOrderMarkerFrameAt(12, 2, 100) != 1 ||
-        tak::cursorOrderMarkerFrameAt(12, 2, 48) != 0 ||
-        tak::cursorOrderMarkerFrameAt(10, 3, 5) != 0 ||
-        tak::cursorOrderMarkerFrameAt(10, 3, 6) != 1 ||
-        tak::cursorOrderMarkerFrameAt(10, 3, 59) != 9 ||
-        tak::cursorOrderMarkerFrameAt(10, 3, 60) != 0 ||
-        tak::cursorOrderMarkerFrameAt(0, 2, 99) != 0)
+    if (ta::cursorOrderMarkerFrameAt(12, 2, 0) != 0 ||
+        ta::cursorOrderMarkerFrameAt(12, 2, 3) != 0 ||
+        ta::cursorOrderMarkerFrameAt(12, 2, 4) != 1 ||
+        ta::cursorOrderMarkerFrameAt(12, 2, 100) != 1 ||
+        ta::cursorOrderMarkerFrameAt(12, 2, 48) != 0 ||
+        ta::cursorOrderMarkerFrameAt(10, 3, 5) != 0 ||
+        ta::cursorOrderMarkerFrameAt(10, 3, 6) != 1 ||
+        ta::cursorOrderMarkerFrameAt(10, 3, 59) != 9 ||
+        ta::cursorOrderMarkerFrameAt(10, 3, 60) != 0 ||
+        ta::cursorOrderMarkerFrameAt(0, 2, 99) != 0)
         return fail("waypoint marker frames use the global game tick and twice the first GAF delay");
 
-    using tak::client::CursorWeaponRange;
-    using tak::client::cursorWeaponRange;
-    using tak::client::unitHasAirstrikeCursor;
-    using tak::sim::UnitType;
-    using tak::sim::Weapon;
+    using ta::client::CursorWeaponRange;
+    using ta::client::cursorWeaponRange;
+    using ta::client::unitHasAirstrikeCursor;
+    using ta::sim::UnitType;
+    using ta::sim::Weapon;
     UnitType attacker, target;
     const std::array<int32_t, 3> origin{0, 0, 0};
     std::array<int32_t, 3> at100{100 * 65536, 0, 0};
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
         return fail("cursor range matches strict native minrange boundary");
 
     const std::array<int32_t, 3> fractionalDiagonal{111411, 0, 111411};
-    if (tak::client::cursorDistanceSquaredPixels(origin, fractionalDiagonal) != 4)
+    if (ta::client::cursorDistanceSquaredPixels(origin, fractionalDiagonal) != 4)
         return fail("native range drops carry between fractional x/z square products");
     ranged.range = 2;
     ranged.minRange = 0;
@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
         std::numeric_limits<int32_t>::max(), 0, std::numeric_limits<int32_t>::max()};
     const std::array<int32_t, 3> minCorner{
         std::numeric_limits<int32_t>::min(), 0, std::numeric_limits<int32_t>::min()};
-    if (tak::client::cursorDistanceSquaredPixels(maxCorner, minCorner) != 8589934588ULL)
+    if (ta::client::cursorDistanceSquaredPixels(maxCorner, minCorner) != 8589934588ULL)
         return fail("range arithmetic remains exact across full signed 16.16 coordinates");
 
     Weapon melee;
@@ -222,17 +222,17 @@ int main(int argc, char** argv) {
     categoryWeapon.dmgVs.emplace("monster", 0.0f);
     target.categories = {"monster"};
     target.damageCategory.clear();
-    if (tak::client::cursorDamageVs(categoryWeapon, target) != 100.0f)
+    if (ta::client::cursorDamageVs(categoryWeapon, target) != 100.0f)
         return fail("cursor damage lookup ignores broad categories when damagecategory is absent");
     target.damageCategory = "monster";
-    if (tak::client::cursorDamageVs(categoryWeapon, target) != 0.0f)
+    if (ta::client::cursorDamageVs(categoryWeapon, target) != 0.0f)
         return fail("cursor damage lookup uses the native damagecategory field");
 
     const std::vector<TimedFrame> load(10, {3});
     const std::vector<TimedFrame> revive(22, {10});
     const std::array<std::vector<TimedFrame>, 1> loadSequence{{load}};
     const std::array<std::vector<TimedFrame>, 1> reviveSequence{{revive}};
-    tak::CursorAnimationClock<1> loadClock, reviveClock;
+    ta::CursorAnimationClock<1> loadClock, reviveClock;
     if (loadClock.frameAt(0, 0, loadSequence) != 0 ||
         loadClock.frameAt(0, 34, loadSequence) != 1 ||
         loadClock.frameAt(0, 134, loadSequence) != 1 ||

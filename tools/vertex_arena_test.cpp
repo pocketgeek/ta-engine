@@ -27,9 +27,9 @@
 #include <random>
 #include <string>
 
-using tak::render::ArenaMode;
-using tak::render::ArenaSource;
-using tak::render::VertexArenaPlanner;
+using ta::render::ArenaMode;
+using ta::render::ArenaSource;
+using ta::render::VertexArenaPlanner;
 
 namespace {
 int failures = 0;
@@ -77,7 +77,7 @@ void rebuildUnit(Unit& u, bool newCount) {
 }
 void moveQuad(Unit& u) { for (auto& v : u.quad) v = vertex(uint32_t(rng())); }
 
-struct Command { int texture; std::vector<tak::render::ArenaRange> ranges; };
+struct Command { int texture; std::vector<ta::render::ArenaRange> ranges; };
 
 bool sameVerts(const SDL_Vertex* a, const SDL_Vertex* b, size_t n) {
     return std::memcmp(a, b, n * sizeof(SDL_Vertex)) == 0;
@@ -88,7 +88,7 @@ bool sameVerts(const SDL_Vertex* a, const SDL_Vertex* b, size_t n) {
 // must finish within ceil(1 / migrateFraction) + 1 frames, and every command
 // must gather correctly from the storage it is assigned.
 void rolloverScenario(uint64_t& drainFrames, uint64_t& maxDrainCopy) {
-    tak::render::ArenaPolicy policy;
+    ta::render::ArenaPolicy policy;
     policy.minCapacity = 256; policy.granule = 64; policy.headroom = 1.25; policy.minHeadroom = 1.1;
     policy.migrateMin = 64; policy.migrateFraction = 0.125;
     VertexArenaPlanner planner(policy);
@@ -110,7 +110,7 @@ void rolloverScenario(uint64_t& drainFrames, uint64_t& maxDrainCopy) {
         for (size_t i = 0; i < data.size(); ++i) planner.add({data[i].data(), 30, uint32_t(i), 1, revision[i]});
         std::vector<uint32_t> ids;
         for (uint32_t c = 0; c < 12; ++c) {
-            std::vector<tak::render::ArenaRange> ranges;
+            std::vector<ta::render::ArenaRange> ranges;
             for (uint32_t i = c * 10; i < c * 10 + 10; ++i) ranges.push_back({i, 0, 30});
             ids.push_back(planner.addCommand(ranges));
         }
@@ -156,7 +156,7 @@ void rolloverScenario(uint64_t& drainFrames, uint64_t& maxDrainCopy) {
 int main() {
     uint64_t drainFrames = 0, maxDrainCopy = 0;
     rolloverScenario(drainFrames, maxDrainCopy);
-    tak::render::ArenaPolicy policy;
+    ta::render::ArenaPolicy policy;
     policy.minCapacity = 4096;
     policy.granule = 1024;
     policy.maxCapacity = 1 << 20;
@@ -182,10 +182,10 @@ int main() {
     for (int i = 0; i < 400; ++i) spawn();
 
     // Simulated GPU buffers, one per storage slot.
-    std::vector<SDL_Vertex> storage[tak::render::kArenaSlots];
-    std::vector<uint8_t> written[tak::render::kArenaSlots];
+    std::vector<SDL_Vertex> storage[ta::render::kArenaSlots];
+    std::vector<uint8_t> written[ta::render::kArenaSlots];
     const SDL_Vertex poison = vertex(0xdeadbeef);
-    auto dropAll = [&] { for (int k = 0; k < tak::render::kArenaSlots; ++k) { storage[k].clear(); written[k].clear(); } };
+    auto dropAll = [&] { for (int k = 0; k < ta::render::kArenaSlots; ++k) { storage[k].clear(); written[k].clear(); } };
     uint64_t rolloversSeen = 0, drainsSeen = 0, budgetFrames = 0, spikeFrames = 0;
 
     uint64_t frames = 0, appendFrames = 0, rebuildFrames = 0, streamFrames = 0, uploaded = 0, retained = 0;
@@ -299,14 +299,14 @@ int main() {
                 const auto& c = commands[ci];
                 const uint32_t id = commandIds[ci];
                 const int slot = planner.commandSlot(id);
-                check(slot >= 0 && slot < tak::render::kArenaSlots, "command without a storage", uint64_t(frame));
+                check(slot >= 0 && slot < ta::render::kArenaSlots, "command without a storage", uint64_t(frame));
                 std::vector<GLint> firsts; std::vector<GLsizei> counts;
                 std::vector<SDL_Vertex> expected, drawn;
                 for (size_t ri = 0; ri < c.ranges.size(); ++ri) {
                     const auto& r = c.ranges[ri];
                     const ArenaSource& s = planner.sources()[r.source];
                     expected.insert(expected.end(), s.data + r.offset, s.data + r.offset + r.count);
-                    tak::render::appendArenaRange(firsts, counts, 0, planner.first(id, planner.commandFirstRange(id) + uint32_t(ri)), r.count);
+                    ta::render::appendArenaRange(firsts, counts, 0, planner.first(id, planner.commandFirstRange(id) + uint32_t(ri)), r.count);
                     if (!uploadedNow[r.source] || slot != planner.curSlot()) {
                         retained += r.count;
                         if (s.revision == 0) ++quadResident;
@@ -359,7 +359,7 @@ int main() {
         if (planner.shouldRelease(uint64_t(frame), uint64_t(frame) * 16)) {
             dropAll(); planner.release(); ++releasedIdle; lastDisturb = frame;
         }
-        for (int k = 0; k < tak::render::kArenaSlots; ++k)
+        for (int k = 0; k < ta::render::kArenaSlots; ++k)
             check(planner.slotLive(k) == !storage[k].empty() || !ok, "storage bookkeeping differs from the planner", uint64_t(frame));
         if (mode == ArenaMode::Stream || !allowed) lastDisturb = std::max(lastDisturb, frame);
         maxRecords = std::max(maxRecords, planner.recordCount());

@@ -53,19 +53,19 @@ static void text(const std::string& value) {
     }
 }
 // Point every editor profile lookup at <root>: XDG_* isolates SDL_GetPrefPath on Linux only, so the editor's
-// own TAK_CARTOGRAPHER_PROFILE override keeps Windows/macOS runs off the user's real profile.
+// own TA_CARTOGRAPHER_PROFILE override keeps Windows/macOS runs off the user's real profile.
 static void isolateProfile(const char* root) {
     SDL_setenv("XDG_CONFIG_HOME",root,1);SDL_setenv("XDG_DATA_HOME",root,1);
-    const auto profile=std::filesystem::path(root)/"TAKengine"/"Cartographer";
+    const auto profile=std::filesystem::path(root)/"TAengine"/"Cartographer";
     std::error_code ec;std::filesystem::create_directories(profile,ec);
-    SDL_setenv("TAK_CARTOGRAPHER_PROFILE",profile.string().c_str(),1);
+    SDL_setenv("TA_CARTOGRAPHER_PROFILE",profile.string().c_str(),1);
 }
 static int objectsWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-objects-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-objects-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);tak::tnt::Scenario metadata;metadata.kingdom="zhon";
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
     std::vector<cart::PlacedUnit> units{{"ARAARCH",0,168,168},{"ARAARCH",1,808,808}};
     units[0].name="East watch";units[1].name="West watch";std::string error;
     if(!cart::writeDocumentBundle(root/"Objects.kmp",cart::documentFiles(map,metadata,{},units,{},{},"Objects"),error))throw std::runtime_error(error);
@@ -97,9 +97,9 @@ static int objectsWorkflow(const char* data) {
         }
     });
     bool found=false;{
-        tak::hpi::Archive archive(root/"Objects.kmp");
+        ta::hpi::Archive archive(root/"Objects.kmp");
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt")) {
-            const auto saved=cart::toPlaced(tak::crt::parse(archive.read(entry)));
+            const auto saved=cart::toPlaced(ta::crt::parse(archive.read(entry)));
             if(saved.size()!=2 || saved[0].health!=100 || saved[1].health!=75 || saved[1].name!="West watch")throw std::runtime_error("object list edited the wrong unit");
             found=true;
         }
@@ -109,11 +109,11 @@ static int objectsWorkflow(const char* data) {
 }
 static int modelWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-model-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-model-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    const auto vfs=tak::hpi::mountRetailRoot(data);
-    for(const char* id:tak::sim::kMonarchs) {
+    const auto vfs=ta::hpi::mountRetailRoot(data);
+    for(const char* id:ta::sim::kMonarchs) {
         const auto asset=ModelView::loadAsset(vfs,id);
         if(asset.model.root.vertices.empty() && asset.model.root.children.empty())throw std::runtime_error("empty monarch preview");
         if(asset.textures.empty())throw std::runtime_error("untextured monarch preview");
@@ -133,8 +133,8 @@ static int modelWorkflow(const char* data) {
         else if(stage==1 && title=="Cartographer -- Ulasem Arena") {key(SDLK_F6);++stage;}
         else if(stage==2 && title.find("[Unit model]")!=std::string::npos) {if(++frames<10)return;
             int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);
-            if(const char* path=SDL_getenv("TAK_EDITOR_TEST_CAPTURE")) {
-                std::vector<uint8_t> pixels(size_t(w)*h*4);if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,pixels.data(),w*4)==0)tak::png::write(path,w,h,pixels);
+            if(const char* path=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {
+                std::vector<uint8_t> pixels(size_t(w)*h*4);if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,pixels.data(),w*4)==0)ta::png::write(path,w,h,pixels);
             }
             SDL_Event rotate{};rotate.type=SDL_MOUSEMOTION;rotate.motion.x=w/2;rotate.motion.y=h/2;
             rotate.motion.state=SDL_BUTTON_LMASK;rotate.motion.xrel=50;rotate.motion.yrel=20;SDL_PushEvent(&rotate);
@@ -149,26 +149,26 @@ static int modelWorkflow(const char* data) {
 }
 static int generationWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-generation-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-generation-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::vector<uint8_t> originalTerrain;
-    auto readTerrain=[&] {tak::hpi::Archive archive(root/"Generated preview.kmp");for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt"))return archive.read(entry);return std::vector<uint8_t>{};};
+    auto readTerrain=[&] {ta::hpi::Archive archive(root/"Generated preview.kmp");for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt"))return archive.read(entry);return std::vector<uint8_t>{};};
     auto readMetadata=[&] {
-        tak::hpi::Archive archive(root/"Generated preview.kmp");
-        for(const auto& entry:archive.entries())if(entry.path.ends_with(".ota")) {const auto bytes=archive.read(entry);return tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));}
-        return tak::tnt::Scenario{};
+        ta::hpi::Archive archive(root/"Generated preview.kmp");
+        for(const auto& entry:archive.entries())if(entry.path.ends_with(".ota")) {const auto bytes=archive.read(entry);return ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));}
+        return ta::tnt::Scenario{};
     };
     auto useSidecarRecipe=[&] {
-        std::vector<tak::hpi::PackFile> files;
+        std::vector<ta::hpi::PackFile> files;
         {
-            tak::hpi::Archive archive(root/"Generated preview.kmp");
+            ta::hpi::Archive archive(root/"Generated preview.kmp");
             for(const auto& entry:archive.entries())if(!entry.isDirectory) {
                 auto bytes=archive.read(entry);
                 if(entry.path.ends_with(".ota")) {
-                    auto metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+                    auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
                     files.push_back({entry.path.substr(0,entry.path.size()-4)+".recipe",{metadata.generatorRecipe.begin(),metadata.generatorRecipe.end()}});
                     metadata.generatorRecipe.clear();const auto ota=metadata.write();bytes={ota.begin(),ota.end()};
                 }
@@ -176,7 +176,7 @@ static int generationWorkflow(const char* data) {
             }
         }
         std::string error;
-        if(!cart::writeDocumentFiles(root,{{"Generated preview.kmp",tak::hpi::pack(files)}},error))throw std::runtime_error(error);
+        if(!cart::writeDocumentFiles(root,{{"Generated preview.kmp",ta::hpi::pack(files)}},error))throw std::runtime_error(error);
     };
     int stage=0;bool correctedSize=false;std::string failure;const auto begun=std::chrono::steady_clock::now();
     const auto result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int) {
@@ -217,7 +217,7 @@ static int generationWorkflow(const char* data) {
         case 12: {
             check(!title.ends_with(" *"),"generated map saved");originalTerrain=readTerrain();
             const auto metadata=readMetadata();   // the recipe rides in its own key; the description starts empty
-            check(tak::mapgen::isGeneratedMapId(metadata.generatorRecipe) && metadata.missionDescription.empty(),"a new random map's description is not empty");
+            check(ta::mapgen::isGeneratedMapId(metadata.generatorRecipe) && metadata.missionDescription.empty(),"a new random map's description is not empty");
             key(SDLK_RETURN);key(SDLK_p);++stage;break;
         }
         case 13: key(SDLK_TAB);text("Authored description");key(SDLK_RETURN);key(SDLK_s,KMOD_CTRL);++stage;break;
@@ -237,9 +237,9 @@ static int generationWorkflow(const char* data) {
         case 24: text("789012");for(int i=0;i<8;++i)key(SDLK_TAB);text("16");key(SDLK_TAB);text("0");key(SDLK_RETURN);++stage;break;
         case 25:
             if(!correctedSize) {
-                if(const char* path=SDL_getenv("TAK_EDITOR_TEST_CAPTURE")) {
+                if(const char* path=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {
                     int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);std::vector<uint8_t> pixels(size_t(w)*h*4);
-                    if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,pixels.data(),w*4)==0)tak::png::write(path,w,h,pixels);
+                    if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,pixels.data(),w*4)==0)ta::png::write(path,w,h,pixels);
                 }
                 check(title=="Cartographer -- Generated preview","invalid generator dimensions leave the map untouched");
                 key(SDLK_a,KMOD_CTRL);text("12");key(SDLK_RETURN);correctedSize=true;
@@ -258,20 +258,20 @@ static int generationWorkflow(const char* data) {
     try {
         if(result || !failure.empty())throw std::runtime_error(failure.empty()?"editor failed":failure);
         if(stage!=33)throw std::runtime_error("generation workflow exited early");
-        tak::hpi::Archive archive(root/"Generated preview.kmp");bool found=false;
+        ta::hpi::Archive archive(root/"Generated preview.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".ota")) {
-            const auto bytes=archive.read(entry);const auto metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+            const auto bytes=archive.read(entry);const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
             if(metadata.starts.size()!=8 || metadata.missionDescription!="Authored description")throw std::runtime_error("generated metadata missing");
-            const auto params=tak::mapgen::decodeMapId(metadata.generatorRecipe);
+            const auto params=ta::mapgen::decodeMapId(metadata.generatorRecipe);
             if(params.seed!=123456 || params.players!=8)throw std::runtime_error("generated recipe differs from chosen options");
             found=true;
         }
         if(!found)throw std::runtime_error("generated metadata absent");
         if(readTerrain()!=originalTerrain)throw std::runtime_error("undo regeneration did not preserve saved terrain");
-        tak::hpi::Archive backup(root/"Generated preview.kmp.bak");bool variant=false;
+        ta::hpi::Archive backup(root/"Generated preview.kmp.bak");bool variant=false;
         for(const auto& entry:backup.entries())if(entry.path.ends_with(".ota")) {
-            const auto bytes=backup.read(entry);const auto metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
-            const auto params=tak::mapgen::decodeMapId(metadata.generatorRecipe);
+            const auto bytes=backup.read(entry);const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+            const auto params=ta::mapgen::decodeMapId(metadata.generatorRecipe);
             variant=params.seed==789012 && params.widthCells==16*32 && params.heightCells==12*32;
         }
         if(!variant)throw std::runtime_error("preview Settings did not regenerate with the edited seed");
@@ -280,7 +280,7 @@ static int generationWorkflow(const char* data) {
 }
 static int overlayWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-overlay-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-overlay-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
@@ -303,20 +303,20 @@ static int overlayWorkflow(const char* data) {
     if(result || failed || stage!=3) {std::cerr<<"overlay menu workflow failed\n";return 1;}
     std::cout<<"PASS: background water overlay, unchanged document and hide control\n";return 0;
 }
-// SCENARIO > AI Profiles (A) end to end through real input: a TAK ENGINE AI row edited
-// in its cell (ai/takengine.txt, previewed on Normal and then Hard), the map's own
+// SCENARIO > AI Profiles (A) end to end through real input: a TA ENGINE AI row edited
+// in its cell (ai/taengine.txt, previewed on Normal and then Hard), the map's own
 // DEFAULT profile chosen and started empty, a preset applied
 // after its confirmation, undo/redo after closing, and Save As writing the files at
 // the .kmp root with aiprofile= in the .ota. The map also carries ai/n.txt, which no
 // profile reads: it is not shown, never written, and saved byte for byte.
-// TAK_EDITOR_TEST_CAPTURE=<prefix> also writes <prefix>-level.png and
+// TA_EDITOR_TEST_CAPTURE=<prefix> also writes <prefix>-level.png and
 // <prefix>-default.png of the window.
 static int aiProfileWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-aiprofile-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-aiprofile-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);tak::tnt::Scenario metadata;metadata.kingdom="zhon";
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
     const std::string unrelated="weight araarch 9\n";   // ai/n.txt: a file no profile of this map reads
     cart::AiFiles fixture;fixture["ai/n.txt"].assign(unrelated.begin(),unrelated.end());
     std::string error;
@@ -338,9 +338,9 @@ static int aiProfileWorkflow(const char* data) {
             e.button.x=int((r.x+r.w/2)*sx);e.button.y=int((r.y+r.h/2)*sy);SDL_PushEvent(&e);e.type=SDL_MOUSEBUTTONUP;SDL_PushEvent(&e);
         };
         auto capture=[&](const char* suffix) {
-            const char* prefix=SDL_getenv("TAK_EDITOR_TEST_CAPTURE");if(!prefix)return;
+            const char* prefix=SDL_getenv("TA_EDITOR_TEST_CAPTURE");if(!prefix)return;
             int pw=0,ph=0;SDL_GetRendererOutputSize(renderer,&pw,&ph);std::vector<uint8_t> rgba(size_t(pw)*ph*4);
-            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(std::string(prefix)+suffix,pw,ph,rgba);
+            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(std::string(prefix)+suffix,pw,ph,rgba);
         };
         auto cell=[&](const std::string& key,int column) {
             for(const auto& c:editor->aiCells)if(c.key==key && c.column==column)return c.rect;
@@ -353,23 +353,23 @@ static int aiProfileWorkflow(const char* data) {
         case 3:check(editor->aiOpen && title.find("[AI]")!=std::string::npos,"A did not open the AI Profiles window");
             check(editor->aiTabKey()!="ai/n.txt" && editor->aiKeyFor(0)!="ai/n.txt" && editor->aiKeyFor(1)!="ai/n.txt","ai/n.txt is shown as a profile");
             click(editor->aiTabRects[1]);break;
-        case 4:check(editor->aiTab==1 && editor->aiTabKey()=="ai/takengine.txt" && editor->aiTabLevel()==tak::ai::Difficulty::Normal,
-                     "the TAK ENGINE AI tab was not selected, previewing Normal");click(editor->aiSearchBox);break;
+        case 4:check(editor->aiTab==1 && editor->aiTabKey()=="ai/taengine.txt" && editor->aiTabLevel()==ta::ai::Difficulty::Normal,
+                     "the TA ENGINE AI tab was not selected, previewing Normal");click(editor->aiSearchBox);break;
         case 5:text("araarch");break;
         case 6:click(cell("araarch",0));break;
         case 7:check(editor->aiFocus==cart::Editor::AI_CELL,"the weight cell did not take focus");text("0");key(SDLK_RETURN);break;
-        case 8:check(file("ai/takengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"the archer weight 0 was not written to ai/takengine.txt");
-            check(file("ai/takengine.txt").starts_with(cart::kAiProfileMagic) && file("ai/takengine.txt").find("TAK ENGINE AI (all six levels) profile for map")!=std::string::npos,
-                  "ai/takengine.txt is not in the canonical form with its header");
-            check(editor->aiFiles.size()==2 && file("ai/n.txt")==unrelated,"a level edit wrote more than ai/takengine.txt");
+        case 8:check(file("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"the archer weight 0 was not written to ai/taengine.txt");
+            check(file("ai/taengine.txt").starts_with(cart::kAiProfileMagic) && file("ai/taengine.txt").find("TA ENGINE AI (all six levels) profile for map")!=std::string::npos,
+                  "ai/taengine.txt is not in the canonical form with its header");
+            check(editor->aiFiles.size()==2 && file("ai/n.txt")==unrelated,"a level edit wrote more than ai/taengine.txt");
             capture("-level.png");click(editor->aiPreviewBox);break;
         case 9:{
-            check(editor->aiTabLevel()==tak::ai::Difficulty::Hard && editor->aiTabView().preview==tak::ai::Difficulty::Hard,"PREVIEW LEVEL did not step to Hard");
+            check(editor->aiTabLevel()==ta::ai::Difficulty::Hard && editor->aiTabView().preview==ta::ai::Difficulty::Hard,"PREVIEW LEVEL did not step to Hard");
             // The shown values are the engine's: Hard's own table with the file on top.
-            const auto want=tak::ai::levelProfileFrom(tak::ai::Difficulty::Hard,&editor->aiFiles.at("ai/takengine.txt"));
+            const auto want=ta::ai::levelProfileFrom(ta::ai::Difficulty::Hard,&editor->aiFiles.at("ai/taengine.txt"));
             const auto& view=editor->aiTabView();
-            check(view.level.weight==want.weight && view.level.limit==want.limit && view.builtin.weight==tak::ai::builtinProfile(tak::ai::Difficulty::Hard).weight,
-                  "the Hard preview is not levelProfileFrom(Hard, ai/takengine.txt)");
+            check(view.level.weight==want.weight && view.level.limit==want.limit && view.builtin.weight==ta::ai::builtinProfile(ta::ai::Difficulty::Hard).weight,
+                  "the Hard preview is not levelProfileFrom(Hard, ai/taengine.txt)");
             check(view.level.weight.at("araarch")==0,"the file's row is not applied on Hard");
             click(editor->aiTabRects[0]);break;
         }
@@ -392,20 +392,20 @@ static int aiProfileWorkflow(const char* data) {
     },hooks);
     if(failure.empty()) {
         std::set<std::string> entries;std::string ota,kept;
-        tak::hpi::Archive archive(root/"AiSaved.kmp");
+        ta::hpi::Archive archive(root/"AiSaved.kmp");
         for(const auto& entry:archive.entries()) {
-            entries.insert(tak::hpi::MountSet::key(entry.path));
+            entries.insert(ta::hpi::MountSet::key(entry.path));
             if(entry.path.ends_with(".ota")) {const auto bytes=archive.read(entry);ota.assign(bytes.begin(),bytes.end());}
-            if(tak::hpi::MountSet::key(entry.path)=="ai/n.txt") {const auto bytes=archive.read(entry);kept.assign(bytes.begin(),bytes.end());}
+            if(ta::hpi::MountSet::key(entry.path)=="ai/n.txt") {const auto bytes=archive.read(entry);kept.assign(bytes.begin(),bytes.end());}
         }
         check(kept==unrelated,"the saved .kmp does not carry ai/n.txt byte for byte");
-        check(entries.count("ai/takengine.txt") && entries.count("ai/aitest.txt"),"the saved .kmp lacks root ai/takengine.txt or ai/aitest.txt");
+        check(entries.count("ai/taengine.txt") && entries.count("ai/aitest.txt"),"the saved .kmp lacks root ai/taengine.txt or ai/aitest.txt");
         for(const auto& entry:entries)check(!(entry.starts_with("kmap/") && entry.find("/ai/")!=std::string::npos),"an AI file was written under kmap/");
         check(ota.find("aiprofile=aitest;")!=std::string::npos,"the saved .ota does not say aiprofile=aitest");
     }
     fs::remove_all(root);
     if(result || !failure.empty() || lastFrame>23) {std::cerr<<failure<<'\n';return 1;}
-    std::cout<<"PASS: AI Profiles window: TAK ENGINE AI cell and Hard preview, own DEFAULT profile, preset, undo/redo, Save As with root ai/ files and aiprofile=\n";return 0;
+    std::cout<<"PASS: AI Profiles window: TA ENGINE AI cell and Hard preview, own DEFAULT profile, preset, undo/redo, Save As with root ai/ files and aiprofile=\n";return 0;
 }
 // The AI window's game-mod half, against a SCRATCH data root (the install's entries
 // linked in, a fresh real mods/ folder): Save as game mod into an existing pack in
@@ -413,21 +413,21 @@ static int aiProfileWorkflow(const char* data) {
 // compare, the old copy backed up in the profile folder, never in the pack), then
 // Open from game mod: an edit that is the pack's and not the map's, SAVE TO PACK
 // creating a file without asking, an emptied draft offered for deletion unticked,
-// and the ticked delete confirmed and backed up. TAK_EDITOR_TEST_CAPTURE=<prefix> also
+// and the ticked delete confirmed and backed up. TA_EDITOR_TEST_CAPTURE=<prefix> also
 // writes <prefix>-modsave.png and <prefix>-pack.png.
 static int aiModWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-aimod-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-aimod-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     const auto install=root/"data";fs::create_directory(install);
     for(const auto& entry:fs::directory_iterator(data))
-        if(tak::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
+        if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     const auto ai=install/"Mods"/"Game"/"Harder"/"AI";fs::create_directories(ai);
     auto put=[](const fs::path& p,const std::string& text) {std::ofstream(p,std::ios::binary)<<text;};
     auto slurp=[](const fs::path& p) {std::ifstream f(p,std::ios::binary);return std::string(std::istreambuf_iterator<char>(f),{});};
-    put(ai/"TakEngine.TXT","weight araarch 7\n");put(ai/"notes.txt","keep\n");
+    put(ai/"TaEngine.TXT","weight araarch 7\n");put(ai/"notes.txt","keep\n");
     put(ai/"n.txt","weight araarch 9\n");   // another DEFAULT profile of the pack: never touched
-    const auto backups=root/"TAKengine"/"Cartographer"/"mod-backups"/"Harder";
+    const auto backups=root/"TAengine"/"Cartographer"/"mod-backups"/"Harder";
     auto backedUp=[&](const std::string& name) {   // every backup copy of `name`, oldest first
         std::vector<std::string> out;std::error_code ec;std::vector<fs::path> stamps;
         for(const auto& d:fs::directory_iterator(backups,ec))stamps.push_back(d.path());
@@ -457,9 +457,9 @@ static int aiModWorkflow(const char* data) {
         };
         auto click=[&](const SDL_Rect& r) {press(r,SDL_BUTTON_LEFT);};
         auto capture=[&](const char* suffix) {
-            const char* prefix=SDL_getenv("TAK_EDITOR_TEST_CAPTURE");if(!prefix)return;
+            const char* prefix=SDL_getenv("TA_EDITOR_TEST_CAPTURE");if(!prefix)return;
             int pw=0,ph=0;SDL_GetRendererOutputSize(renderer,&pw,&ph);std::vector<uint8_t> rgba(size_t(pw)*ph*4);
-            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(std::string(prefix)+suffix,pw,ph,rgba);
+            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(std::string(prefix)+suffix,pw,ph,rgba);
         };
         auto cell=[&](const std::string& key,int column) {
             for(const auto& c:editor->aiCells)if(c.key==key && c.column==column)return c.rect;
@@ -477,26 +477,26 @@ static int aiModWorkflow(const char* data) {
         case 3:text("araarch");break;
         case 4:click(cell("araarch",0));break;
         case 5:text("0");key(SDLK_RETURN);break;
-        case 6:check(mapFile("ai/takengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"the weight was not written to the map's ai/takengine.txt");
+        case 6:check(mapFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"the weight was not written to the map's ai/taengine.txt");
             click(editor->aiModSaveButton);break;
         case 7:check(editor->aiModSaveOpen,"SAVE AS GAME MOD did not open its dialog");
-            check(editor->aiModRows.size()==1 && editor->aiModRows[0].target=="ai/takengine.txt" && editor->aiModRows[0].tick,"the dialog does not offer ai/takengine.txt, ticked");
+            check(editor->aiModRows.size()==1 && editor->aiModRows[0].target=="ai/taengine.txt" && editor->aiModRows[0].tick,"the dialog does not offer ai/taengine.txt, ticked");
             click(editor->aiModPackBox);break;
         case 8:key(SDLK_a,KMOD_CTRL);key(SDLK_BACKSPACE);text("harder");break;
         case 9:{
-            const auto* n=change("ai/takengine.txt");
+            const auto* n=change("ai/taengine.txt");
             check(editor->aiModPlanError.empty(),"plan error: "+editor->aiModPlanError);
             check(editor->aiModPlan.pack=="Harder" && editor->aiModPlan.folder==ai,"the existing Mods/Game/Harder/AI was not reused in its own case");
-            check(n && n->action==A::Replace && n->path==ai/"TakEngine.TXT","the pack's different TakEngine.TXT is not planned as a replace");
+            check(n && n->action==A::Replace && n->path==ai/"TaEngine.TXT","the pack's different TaEngine.TXT is not planned as a replace");
             check(!change("ai/n.txt"),"the pack's ai/n.txt is planned");
             capture("-modsave.png");click(editor->aiModWriteButton);break;
         }
         case 10:check(editor->modal==cart::Editor::M_CONFIRM && editor->mTitle=="REPLACE PACK FILES","a different pack file was replaced without the compare");key(SDLK_RETURN);break;
         case 11:check(editor->modal==cart::Editor::M_MESSAGE && editor->mTitle=="SAVED","no after-save notice");
-            check(slurp(ai/"TakEngine.TXT")==mapFile("ai/takengine.txt"),"TakEngine.TXT does not hold the map's ai/takengine.txt");
-            check(listing(ai)==std::set<std::string>{"TakEngine.TXT","n.txt","notes.txt"},"the pack's ai/ gained or lost files");
+            check(slurp(ai/"TaEngine.TXT")==mapFile("ai/taengine.txt"),"TaEngine.TXT does not hold the map's ai/taengine.txt");
+            check(listing(ai)==std::set<std::string>{"TaEngine.TXT","n.txt","notes.txt"},"the pack's ai/ gained or lost files");
             check(slurp(ai/"notes.txt")=="keep\n" && slurp(ai/"n.txt")=="weight araarch 9\n","another pack file was touched");
-            check(backedUp("TakEngine.TXT")==std::vector<std::string>{"weight araarch 7\n"},"the replaced file was not backed up in the profile folder");
+            check(backedUp("TaEngine.TXT")==std::vector<std::string>{"weight araarch 7\n"},"the replaced file was not backed up in the profile folder");
             check(listing(install/"Mods"/"Game")==std::set<std::string>{"Harder"} && listing(install/"Mods"/"Game"/"Harder")==std::set<std::string>{"AI"},"staging or backups were left beside the pack");
             key(SDLK_RETURN);break;
         case 12:click(editor->aiModOpenButton);break;
@@ -505,18 +505,18 @@ static int aiModWorkflow(const char* data) {
             SDL_Rect row{};for(const auto& [r,pack]:editor->aiModPackRows)if(pack=="Harder")row=r;
             click(row);break;
         }
-        case 14:check(editor->aiMod && editor->aiMod->pack=="Harder" && packFile("ai/takengine.txt")==mapFile("ai/takengine.txt"),"the pack's files were not opened");
+        case 14:check(editor->aiMod && editor->aiMod->pack=="Harder" && packFile("ai/taengine.txt")==mapFile("ai/taengine.txt"),"the pack's files were not opened");
             check(packFile("ai/n.txt")=="weight araarch 9\n","the pack's ai/n.txt is not kept");
             check(title.find("[AI]")!=std::string::npos,"the window closed");click(editor->aiTabRects[1]);break;
         case 15:capture("-pack.png");click(cell("araarch",0));break;
         case 16:text("5");key(SDLK_RETURN);break;
-        case 17:check(packFile("ai/takengine.txt").find("\nweight araarch 5\n")!=std::string::npos,"the edit did not go to the pack's set");
-            check(mapFile("ai/takengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"a pack edit leaked into the map");
+        case 17:check(packFile("ai/taengine.txt").find("\nweight araarch 5\n")!=std::string::npos,"the edit did not go to the pack's set");
+            check(mapFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"a pack edit leaked into the map");
             check(editor->aiModDirty(),"the pack set is not marked unsaved");
             click(editor->aiModSaveButton);break;
         case 18:{
             bool eTicked=false,nTicked=false;
-            for(const auto& row:editor->aiModRows) {if(row.target=="ai/takengine.txt")eTicked=row.tick;if(row.target=="ai/n.txt")nTicked=row.tick;}
+            for(const auto& row:editor->aiModRows) {if(row.target=="ai/taengine.txt")eTicked=row.tick;if(row.target=="ai/n.txt")nTicked=row.tick;}
             check(editor->aiModSaveOpen && eTicked && !nTicked,"SAVE TO PACK should tick only the changed file");
             check(editor->aiModPackBox.w==0,"the pack name is editable when saving back to the pack");
             click(editor->aiModWriteButton);break;
@@ -524,21 +524,21 @@ static int aiModWorkflow(const char* data) {
         case 19:check(editor->modal==cart::Editor::M_CONFIRM && editor->mTitle=="REPLACE PACK FILES","replacing the pack's file did not show the compare");
             key(SDLK_RETURN);break;
         case 20:check(editor->modal==cart::Editor::M_MESSAGE && editor->mTitle=="SAVED","saving back to the pack failed");
-            check(slurp(ai/"TakEngine.TXT")==packFile("ai/takengine.txt") && !editor->aiModDirty(),"TakEngine.TXT was not replaced, or the set stays unsaved");
+            check(slurp(ai/"TaEngine.TXT")==packFile("ai/taengine.txt") && !editor->aiModDirty(),"TaEngine.TXT was not replaced, or the set stays unsaved");
             key(SDLK_RETURN);break;
         case 21:press(cell("araarch",0),SDL_BUTTON_RIGHT);break;   // the file's only row: the draft is now empty
-        case 22:check(packFile("ai/takengine.txt").empty() && editor->aiModDirty(),"clearing the row did not empty ai/takengine.txt");click(editor->aiModSaveButton);break;
+        case 22:check(packFile("ai/taengine.txt").empty() && editor->aiModDirty(),"clearing the row did not empty ai/taengine.txt");click(editor->aiModSaveButton);break;
         case 23:check(editor->aiModSaveOpen && editor->aiModDeleteBoxes.size()==1 && editor->aiModDeleteTicked.empty(),"the emptied draft is not offered for deletion, unticked");
             click(editor->aiModDeleteBoxes.empty()?SDL_Rect{}:editor->aiModDeleteBoxes[0].first);break;
-        case 24:check(editor->aiModDeleteTicked.count("ai/takengine.txt")==1,"the delete box did not tick");click(editor->aiModWriteButton);break;
+        case 24:check(editor->aiModDeleteTicked.count("ai/taengine.txt")==1,"the delete box did not tick");click(editor->aiModWriteButton);break;
         case 25:check(editor->modal==cart::Editor::M_CONFIRM,"deleting a pack file did not ask");key(SDLK_RETURN);break;
-        case 26:check(editor->modal==cart::Editor::M_MESSAGE && !fs::exists(ai/"TakEngine.TXT") && slurp(ai/"n.txt")=="weight araarch 9\n","TakEngine.TXT was not deleted, or n.txt was touched");
-            check(backedUp("TakEngine.TXT").size()==3 && backedUp("TakEngine.TXT")[2].find("weight araarch 5")!=std::string::npos,"the deleted file was not backed up");
+        case 26:check(editor->modal==cart::Editor::M_MESSAGE && !fs::exists(ai/"TaEngine.TXT") && slurp(ai/"n.txt")=="weight araarch 9\n","TaEngine.TXT was not deleted, or n.txt was touched");
+            check(backedUp("TaEngine.TXT").size()==3 && backedUp("TaEngine.TXT")[2].find("weight araarch 5")!=std::string::npos,"the deleted file was not backed up");
             check(!editor->aiModDirty(),"the set stays unsaved after the delete");
             key(SDLK_RETURN);break;
         case 27:click(editor->aiModOpenButton);break;   // CLOSE PACK: nothing unsaved, so no question
         case 28:check(!editor->aiMod && editor->modal==cart::Editor::M_NONE,"CLOSE PACK did not return to the map's profiles");
-            check(mapFile("ai/takengine.txt").find("\nweight araarch 0\n")!=std::string::npos && editor->aiFiles.size()==1,"the map's files changed");
+            check(mapFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos && editor->aiFiles.size()==1,"the map's files changed");
             click(editor->aiTabRects[0]);break;
         case 29:click(editor->aiOwnRadio);break;
         // The map's own DEFAULT profile saved into the pack as ai/default.txt: its header
@@ -579,19 +579,19 @@ static int aiModWorkflow(const char* data) {
 }
 // TEST IN GAME's stand-in for the game: `cartographer_ui_test --data <root> --play-map
 // <snapshot> --game-mod <pack>` (the workflow below names this executable as the client)
-// writes its arguments, and what the snapshot holds, to $TAK_AIMOD_TEST_RECORD.
+// writes its arguments, and what the snapshot holds, to $TA_AIMOD_TEST_RECORD.
 static int recordTestClient(int argc,char** argv) {
-    const char* record=SDL_getenv("TAK_AIMOD_TEST_RECORD");
+    const char* record=SDL_getenv("TA_AIMOD_TEST_RECORD");
     if(!record)return 2;
     std::string out;
     for(int i=1;i<argc;++i)out+=std::string(argv[i])+"\n";
     try {
-        tak::hpi::Archive snapshot(tak::u8path(argc>4?argv[4]:""));
+        ta::hpi::Archive snapshot(ta::u8path(argc>4?argv[4]:""));
         int maps=0;for(const auto& entry:snapshot.entries())maps+=entry.path.ends_with(".tnt");
         out+="snapshot maps="+std::to_string(maps)+"\n";
     } catch(const std::exception& e) {out+=std::string("snapshot error=")+e.what()+"\n";}
-    std::ofstream(tak::u8path(std::string(record)+".tmp"),std::ios::binary)<<out;
-    std::error_code ec;std::filesystem::rename(tak::u8path(std::string(record)+".tmp"),tak::u8path(record),ec);
+    std::ofstream(ta::u8path(std::string(record)+".tmp"),std::ios::binary)<<out;
+    std::error_code ec;std::filesystem::rename(ta::u8path(std::string(record)+".tmp"),ta::u8path(record),ec);
     return ec?3:0;
 }
 // File > New AI mod / Open AI mod: an AI mod made and edited without a map, through real
@@ -600,26 +600,26 @@ static int recordTestClient(int argc,char** argv) {
 // keeps the map; OK leaves no document in its place), then asks for the pack name (an existing
 // pack's is refused). The window opens with the pack as the only document: the map is not
 // drawn and map menus are off.
-// One TAK ENGINE AI cell, the DEFAULT AI's ai/default.txt (Start from Empty, one chance)
+// One TA ENGINE AI cell, the DEFAULT AI's ai/default.txt (Start from Empty, one chance)
 // and a named profile ai/islands.txt (NEW NAME...) are edited; SAVE TO PACK creates
 // mods/game/Harder AI/ai/ with exactly those three files. CLOSE returns to the empty editor;
 // Ctrl+Shift+O lists the packs and reopens it with the same values. TEST IN GAME on
 // Ulasem Arena starts the client (this executable, see recordTestClient) with
 // --play-map <test copy> --game-mod "Harder AI"; with an unsaved edit it asks, saves (the
 // replace compare and backup) and then shows the map picker. Quitting with an unsaved
-// edit asks first and leaves the pack as saved. TAK_EDITOR_TEST_CAPTURE=<prefix> also
-// writes <prefix>-aimod.png (the TAK ENGINE AI tab) and <prefix>-aimod-default.png.
+// edit asks first and leaves the pack as saved. TA_EDITOR_TEST_CAPTURE=<prefix> also
+// writes <prefix>-aimod.png (the TA ENGINE AI tab) and <prefix>-aimod-default.png.
 static int aiModNoMapWorkflow(const char* data,const char* self) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-aimodnomap-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-aimodnomap-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     const auto install=root/"data";fs::create_directory(install);
     for(const auto& entry:fs::directory_iterator(data))
-        if(tak::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
+        if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     fs::create_directories(install/"mods"/"game"/"Other"/"ai");   // another pack: listed, never touched
-    std::ofstream(install/"mods"/"game"/"Other"/"ai"/"takengine.txt",std::ios::binary)<<"weight araarch 2\n";
+    std::ofstream(install/"mods"/"game"/"Other"/"ai"/"taengine.txt",std::ios::binary)<<"weight araarch 2\n";
     const auto record=root/"client-args.txt";
-    SDL_setenv("TAK_AIMOD_TEST_RECORD",record.string().c_str(),1);
+    SDL_setenv("TA_AIMOD_TEST_RECORD",record.string().c_str(),1);
     const auto pack=install/"mods"/"game"/"Harder AI"/"ai";
     auto slurp=[](const fs::path& p) {std::ifstream f(p,std::ios::binary);return std::string(std::istreambuf_iterator<char>(f),{});};
     auto listing=[](const fs::path& dir) {std::set<std::string> out;std::error_code ec;for(const auto& e:fs::directory_iterator(dir,ec))out.insert(e.path().filename().string());return out;};
@@ -650,9 +650,9 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
             e.button.x=int((r.x+r.w/2)*sx);e.button.y=int((r.y+r.h/2)*sy);SDL_PushEvent(&e);e.type=SDL_MOUSEBUTTONUP;SDL_PushEvent(&e);
         };
         auto capture=[&](const char* suffix) {
-            const char* prefix=SDL_getenv("TAK_EDITOR_TEST_CAPTURE");if(!prefix)return;
+            const char* prefix=SDL_getenv("TA_EDITOR_TEST_CAPTURE");if(!prefix)return;
             int pw=0,ph=0;SDL_GetRendererOutputSize(renderer,&pw,&ph);std::vector<uint8_t> rgba(size_t(pw)*ph*4);
-            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(std::string(prefix)+suffix,pw,ph,rgba);
+            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(std::string(prefix)+suffix,pw,ph,rgba);
         };
         auto cell=[&](const std::string& key,int column) {
             for(const auto& c:editor->aiCells)if(c.key==key && c.column==column)return c.rect;
@@ -690,7 +690,7 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
         case 5:click(cell("araarch",0));break;
         case 6:text("0");key(SDLK_RETURN);break;
         case 7:
-            check(packFile("ai/takengine.txt").find("\nweight araarch 0\n")!=std::string::npos && weight("araarch")==0,"the weight did not reach the pack's ai/takengine.txt");
+            check(packFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos && weight("araarch")==0,"the weight did not reach the pack's ai/taengine.txt");
             check(editor->aiFiles.empty() && !editor->dirty,"the edit touched the map");
             check(editor->aiModDirty() && title.ends_with(" *"),"the pack is not marked unsaved");
             capture("-aimod.png");click(editor->aiTabRects[0]);break;
@@ -716,11 +716,11 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
         }
         case 19:
             check(editor->modal==M::M_MESSAGE && editor->mTitle=="SAVED","the new pack was not saved");
-            check(listing(pack)==std::set<std::string>{"default.txt","islands.txt","takengine.txt"},"the pack's ai/ does not hold exactly the three files");
-            check(slurp(pack/"takengine.txt")==packFile("ai/takengine.txt") && slurp(pack/"default.txt")==packFile("ai/default.txt") &&
+            check(listing(pack)==std::set<std::string>{"default.txt","islands.txt","taengine.txt"},"the pack's ai/ does not hold exactly the three files");
+            check(slurp(pack/"taengine.txt")==packFile("ai/taengine.txt") && slurp(pack/"default.txt")==packFile("ai/default.txt") &&
                   slurp(pack/"islands.txt")==packFile("ai/islands.txt"),"the files on disk differ from the window's");
-            check(!editor->aiModDirty() && slurp(install/"mods"/"game"/"Other"/"ai"/"takengine.txt")=="weight araarch 2\n","unsaved after the save, or another pack touched");
-            saved=packFile("ai/takengine.txt");
+            check(!editor->aiModDirty() && slurp(install/"mods"/"game"/"Other"/"ai"/"taengine.txt")=="weight araarch 2\n","unsaved after the save, or another pack touched");
+            saved=packFile("ai/taengine.txt");
             key(SDLK_RETURN);break;
         case 20:click(editor->aiDoneButton);break;
         case 21:check(!editor->aiModOnly && !editor->aiOpen && !editor->aiMod && editor->modal==M::M_NONE && editor->noDocument && !editor->dirty && title=="Cartographer",
@@ -733,7 +733,7 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
             click(row);break;
         }
         case 24:check(editor->aiModOnly && editor->aiMod && editor->aiMod->pack=="Harder AI" && editor->aiMod->files.size()==3 && !editor->aiModDirty(),"Open AI mod did not open the saved pack");
-            check(editor->aiTab==1 && weight("araarch")==0 && packFile("ai/takengine.txt")==saved,"the reopened TAK ENGINE AI value differs");
+            check(editor->aiTab==1 && weight("araarch")==0 && packFile("ai/taengine.txt")==saved,"the reopened TA ENGINE AI value differs");
             click(editor->aiTabRects[0]);break;
         case 25:check(editor->aiTabKey()=="ai/default.txt" && chance(unit)==40,"the reopened DEFAULT chance differs");
             click(editor->aiModDefaultButton);break;
@@ -760,11 +760,11 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
         case 34:check(editor->modal==M::M_CONFIRM && editor->mTitle=="TEST IN GAME","an unsaved pack was tested without asking");key(SDLK_RETURN);break;
         case 35:check(editor->aiModSaveOpen,"the save dialog did not open");click(editor->aiModWriteButton);break;
         case 36:check(editor->modal==M::M_CONFIRM && editor->mTitle=="REPLACE PACK FILES","replacing the pack's file did not show the compare");key(SDLK_RETURN);break;
-        case 37:check(editor->modal==M::M_OPENPATH && editor->openForTest && !editor->aiModDirty() && slurp(pack/"takengine.txt").find("\nweight araarch 3\n")!=std::string::npos,
+        case 37:check(editor->modal==M::M_OPENPATH && editor->openForTest && !editor->aiModDirty() && slurp(pack/"taengine.txt").find("\nweight araarch 3\n")!=std::string::npos,
                       "after the save the map picker did not follow, or the pack was not saved");
             key(SDLK_ESCAPE);break;
         // Quitting with an unsaved edit asks first; the pack stays as saved.
-        case 38:saved=slurp(pack/"takengine.txt");click(cell("araarch",0));break;
+        case 38:saved=slurp(pack/"taengine.txt");click(cell("araarch",0));break;
         case 39:text("8");key(SDLK_RETURN);break;
         case 40:{check(editor->aiModDirty(),"the last edit is not unsaved");SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);break;}
         case 41:check(editor->modal==M::M_CONFIRM && editor->mTitle=="CLOSE PACK" && editor->running,"quitting did not ask about the pack");key(SDLK_RETURN);break;
@@ -772,27 +772,27 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
         }
         ++stage;
     },hooks);
-    const bool unchanged=slurp(pack/"takengine.txt")==saved;
+    const bool unchanged=slurp(pack/"taengine.txt")==saved;
     fs::remove_all(root);
     if(result || !failure.empty() || !unchanged) {std::cerr<<failure<<(unchanged?"":" (the quit wrote the unsaved edit)")<<'\n';return 1;}
-    std::cout<<"PASS: AI mod without a map: New AI mod (no map shown, map menus off), TAK ENGINE + DEFAULT + named profile saved into a new pack, reopened by Open AI mod, TEST IN GAME --game-mod (asks and saves first), quit asks\n";return 0;
+    std::cout<<"PASS: AI mod without a map: New AI mod (no map shown, map menus off), TA ENGINE + DEFAULT + named profile saved into a new pack, reopened by Open AI mod, TEST IN GAME --game-mod (asks and saves first), quit asks\n";return 0;
 }
 // OPEN FROM GAME MOD with more packs than its 14 rows, against a SCRATCH data root
-// with 22 synthetic game packs (an ai/takengine.txt each): the wheel, a track click, a thumb
+// with 22 synthetic game packs (an ai/taengine.txt each): the wheel, a track click, a thumb
 // drag and End all reach the last pack, the selection stays in view, Enter opens it.
-// TAK_EDITOR_TEST_CAPTURE=<prefix> also writes <prefix>-packs.png (scrolled to the end).
+// TA_EDITOR_TEST_CAPTURE=<prefix> also writes <prefix>-packs.png (scrolled to the end).
 static int aiPackListWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-aipacks-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-aipacks-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     const auto install=root/"data";fs::create_directory(install);
     for(const auto& entry:fs::directory_iterator(data))
-        if(tak::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
+        if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     constexpr int kPacks=22;
     for(int i=0;i<kPacks;++i) {
         char name[16];std::snprintf(name,sizeof name,"Pack%02d",i);
         const auto ai=install/"mods"/"game"/name/"ai";fs::create_directories(ai);
-        std::ofstream(ai/"takengine.txt",std::ios::binary)<<"weight araarch "<<i<<"\n";
+        std::ofstream(ai/"taengine.txt",std::ios::binary)<<"weight araarch "<<i<<"\n";
     }
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",install.string(),"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
@@ -818,9 +818,9 @@ static int aiPackListWorkflow(const char* data) {
             mouse(SDL_MOUSEBUTTONDOWN,r.x+r.w/2,r.y+r.h/2);mouse(SDL_MOUSEBUTTONUP,r.x+r.w/2,r.y+r.h/2);
         };
         auto capture=[&](const char* suffix) {
-            const char* prefix=SDL_getenv("TAK_EDITOR_TEST_CAPTURE");if(!prefix)return;
+            const char* prefix=SDL_getenv("TA_EDITOR_TEST_CAPTURE");if(!prefix)return;
             int pw=0,ph=0;SDL_GetRendererOutputSize(renderer,&pw,&ph);std::vector<uint8_t> rgba(size_t(pw)*ph*4);
-            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(std::string(prefix)+suffix,pw,ph,rgba);
+            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(std::string(prefix)+suffix,pw,ph,rgba);
         };
         const auto bar=editor?editor->aiModPackBar():cart::ScrollBar{};
         switch(frame) {
@@ -868,15 +868,15 @@ static int aiPackListWorkflow(const char* data) {
 // rules (a word from this install's catalogue picked, a unit set individually shown
 // as skipped, the value edited; a second rule moved down and back up, one undo step
 // each, to the same bytes), Ctrl+Z / Ctrl+Y inside the window down to where it
-// opened, and a limit in play previewed on Hard (Hard raises 3 to 4). TAK_EDITOR_TEST_CAPTURE=
+// opened, and a limit in play previewed on Hard (Hard raises 3 to 4). TA_EDITOR_TEST_CAPTURE=
 // <prefix> also writes <prefix>-groups.png and <prefix>-hard.png.
 static int aiExtrasWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-aiextras-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-aiextras-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     const auto install=root/"data";fs::create_directory(install);
     for(const auto& entry:fs::directory_iterator(data))
-        if(tak::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
+        if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     const auto pack=install/"mods"/"game"/"Extra";fs::create_directories(pack/"units");
     // A synthetic unit: no retail text.
     std::ofstream(pack/"units"/"zzpack.fbi",std::ios::binary)<<"[UNITINFO]\n{\n\tUnitName=zzpack;\n\tName=Pack Test Unit;\n\tSide=ARAMON;\n\tCategory=ARA LAND;\n\tMaxVelocity=1;\n}\n";
@@ -901,9 +901,9 @@ static int aiExtrasWorkflow(const char* data) {
             e.button.x=int((r.x+r.w/2)*sx);e.button.y=int((r.y+r.h/2)*sy);SDL_PushEvent(&e);e.type=SDL_MOUSEBUTTONUP;SDL_PushEvent(&e);
         };
         auto capture=[&](const char* suffix) {
-            const char* prefix=SDL_getenv("TAK_EDITOR_TEST_CAPTURE");if(!prefix)return;
+            const char* prefix=SDL_getenv("TA_EDITOR_TEST_CAPTURE");if(!prefix)return;
             int pw=0,ph=0;SDL_GetRendererOutputSize(renderer,&pw,&ph);std::vector<uint8_t> rgba(size_t(pw)*ph*4);
-            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(std::string(prefix)+suffix,pw,ph,rgba);
+            if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(std::string(prefix)+suffix,pw,ph,rgba);
         };
         auto cell=[&](const std::string& key,int column) {
             for(const auto& c:editor->aiCells)if(c.key==key && c.column==column)return c.rect;
@@ -1012,13 +1012,13 @@ static int aiExtrasWorkflow(const char* data) {
         case 27:check(groups().size()==2 && groups()[0].word==word2,"Ctrl+Y did not redo MOVE DOWN");
             click(editor->aiGroupRows.size()<2?SDL_Rect{}:editor->aiGroupRows[1].up);break;
         case 28:check(file(own)==ordered && editor->aiGroupSelected==0,"MOVE DOWN then MOVE UP did not give back the same bytes");
-            click(editor->aiTabRects[1]);click(editor->aiPreviewBox);break;   // TAK ENGINE AI, previewing Hard
-        case 29:check(editor->aiTab==1 && editor->aiTabLevel()==tak::ai::Difficulty::Hard,"the TAK ENGINE AI tab is not previewing Hard");
+            click(editor->aiTabRects[1]);click(editor->aiPreviewBox);break;   // TA ENGINE AI, previewing Hard
+        case 29:check(editor->aiTab==1 && editor->aiTabLevel()==ta::ai::Difficulty::Hard,"the TA ENGINE AI tab is not previewing Hard");
             click(editor->aiSearchBox);key(SDLK_a,KMOD_CTRL);key(SDLK_BACKSPACE);text(unitId);break;
         case 30:click(cell(unitId,1));break;
         case 31:text("3");key(SDLK_RETURN);break;
         case 32:{
-            check(file("ai/takengine.txt").find("\nlimit "+unitId+" 3\n")!=std::string::npos,"the limit was not written to ai/takengine.txt");
+            check(file("ai/taengine.txt").find("\nlimit "+unitId+" 3\n")!=std::string::npos,"the limit was not written to ai/taengine.txt");
             const auto* row=listed(editor->aiLevelRoster,unitId);
             const auto why=row?editor->aiRowExplanation(*row):std::string();
             check(why.find("In play on Hard: 4 in play")!=std::string::npos,"Hard's limit in play is not shown: "+why);
@@ -1051,11 +1051,11 @@ static int aiExtrasWorkflow(const char* data) {
 }
 static int resizeSaveWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-resize-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-resize-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=tak::tnt::Map::load(vfs.read(path),path);tak::tnt::Scenario metadata;metadata.kingdom="zhon";
-    tak::crt::Scenario scenario;scenario.regions.push_back({"Edge region",map.width-10,map.height-10,map.width-5,map.height-5});
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    ta::crt::Scenario scenario;scenario.regions.push_back({"Edge region",map.width-10,map.height-10,map.width-5,map.height-5});
     const auto width=std::to_string(map.width/32),height=std::to_string(map.height/32);
     const auto wider=std::to_string(map.width/32+1),higher=std::to_string(map.height/32+1);
     std::string error;
@@ -1100,9 +1100,9 @@ static int resizeSaveWorkflow(const char* data) {
     });
     check(read(root/"Existing.kmp.bak")==existing,"overwrite did not retain previous bytes");
     {
-        tak::hpi::Archive archive(root/"Existing.kmp");bool found=false;
+        ta::hpi::Archive archive(root/"Existing.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
-            const auto saved=tak::tnt::Map::load(archive.read(entry),entry.path);found=saved.width==map.width+32 && saved.height==map.height+32;
+            const auto saved=ta::tnt::Map::load(archive.read(entry),entry.path);found=saved.width==map.width+32 && saved.height==map.height+32;
             for(int y=0;y<map.height;++y)for(int x=0;x<map.width;++x)
                 check(saved.heights[y*saved.width+x]==map.heights[y*map.width+x] && saved.features[y*saved.width+x]==map.features[y*map.width+x],"resize/undo changed retained terrain or features");
         }
@@ -1114,11 +1114,11 @@ static int resizeSaveWorkflow(const char* data) {
 }
 static int templateWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-templates-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-templates-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=tak::tnt::Map::load(vfs.read(path),path);tak::tnt::Scenario metadata;metadata.kingdom="zhon";
-    tak::crt::Scenario scenario;scenario.players.resize(9);scenario.regions.push_back({"Bridge",10,10,20,20});
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    ta::crt::Scenario scenario;scenario.players.resize(9);scenario.regions.push_back({"Bridge",10,10,20,20});
     std::string error;
     if(!cart::writeDocumentBundle(root/"Templates.kmp",cart::documentFiles(map,metadata,scenario,{}, {},{},"Templates"),error))throw std::runtime_error(error);
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
@@ -1140,7 +1140,7 @@ static int templateWorkflow(const char* data) {
         case 6:click(w/2-80,h/2-225);break;
         case 7:text("reinforce");break;
         case 8:
-            if(const char* capture=SDL_getenv("TAK_EDITOR_TEST_CAPTURE")) {std::vector<uint8_t> rgba(size_t(pw)*ph*4);if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(capture,pw,ph,rgba);}
+            if(const char* capture=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {std::vector<uint8_t> rgba(size_t(pw)*ph*4);if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(capture,pw,ph,rgba);}
             key(SDLK_ESCAPE);break;
         case 9:click(w/2-80,h/2-225);break;
         case 10:text("ReAcH");break;
@@ -1157,9 +1157,9 @@ static int templateWorkflow(const char* data) {
         default:if(frame>24) {failed=true;key(SDLK_ESCAPE);key(SDLK_RETURN);}
         }
     });
-    tak::hpi::Archive archive(root/"Templates.kmp");bool found=false;
+    ta::hpi::Archive archive(root/"Templates.kmp");bool found=false;
     for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt")) {
-        const auto saved=tak::crt::parse(archive.read(entry));
+        const auto saved=ta::crt::parse(archive.read(entry));
         if(!saved.players.empty() && saved.players[0].size()==1) {
             const auto& group=saved.players[0][0];
             found=group.conditions.size()==1 && group.conditions[0].opcode==15 &&
@@ -1173,11 +1173,11 @@ static int templateWorkflow(const char* data) {
 }
 static int ruleTextWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-rules-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-rules-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=tak::tnt::Map::load(vfs.read(path),path);tak::tnt::Scenario metadata;metadata.kingdom="zhon";
-    tak::crt::Scenario scenario;scenario.players.resize(9);scenario.players[0].resize(1);
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    ta::crt::Scenario scenario;scenario.players.resize(9);scenario.players[0].resize(1);
     auto& group=scenario.players[0][0];group.conditions.push_back({1,{"12345"}});
     for(int i=0;i<12;++i)group.actions.push_back({25,{"Player 1","Message "+std::to_string(i)+" "+std::string(45,'x'),"progress",std::string(63,'y')}});
     const auto expected=cart::ruleDetails(group,cart::RuleColumn::Group,0);
@@ -1203,7 +1203,7 @@ static int ruleTextWorkflow(const char* data) {
         case 6: failed|=before==pixels();key(SDLK_PAGEUP);break;
         case 7: {
             failed|=before!=pixels();
-            if(const char* capture=SDL_getenv("TAK_EDITOR_TEST_CAPTURE")) {std::vector<uint8_t> rgba(size_t(pw)*ph*4);if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(capture,pw,ph,rgba);}
+            if(const char* capture=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {std::vector<uint8_t> rgba(size_t(pw)*ph*4);if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(capture,pw,ph,rgba);}
             break;
         }
         case 8: click(w/2+180,h/2-166);key(SDLK_RETURN);break;
@@ -1228,9 +1228,9 @@ static int ruleTextWorkflow(const char* data) {
         }
     });
     {
-        tak::hpi::Archive archive(root/"Rules.kmp");bool found=false;
+        ta::hpi::Archive archive(root/"Rules.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt")) {
-            const auto saved=tak::crt::parse(archive.read(entry));
+            const auto saved=ta::crt::parse(archive.read(entry));
             found=!saved.players.empty() && !saved.players[0].empty() && !saved.players[0][0].actions.empty() && saved.players[0][0].actions[0].slot[2]=="new_flag";
         }
         failed|=!found;
@@ -1241,7 +1241,7 @@ static int ruleTextWorkflow(const char* data) {
 }
 static int regionWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-regions-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-regions-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
@@ -1278,9 +1278,9 @@ static int regionWorkflow(const char* data) {
     });
     try {
         if(result || failed || lastFrame>20)throw std::runtime_error("region canvas UI workflow failed");
-        tak::hpi::Archive archive(root/"Ulasem Arena.kmp");bool found=false;
+        ta::hpi::Archive archive(root/"Ulasem Arena.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt")) {
-            const auto scenario=tak::crt::parse(archive.read(entry));
+            const auto scenario=ta::crt::parse(archive.read(entry));
             for(const auto& r:scenario.regions)if(r.name=="Canvas region") {
                 if(r.x1!=12 || r.z1!=12 || r.x2!=24 || r.z2!=23)throw std::runtime_error("region bounds differ after draw/move/resize/cancel/undo/reopen");
                 found=true;
@@ -1398,7 +1398,7 @@ static int fontSheet(const char* out) {
         for(const char* line:lines) {cart::drawText(renderer,line,10,y,1,235,235,240);cart::drawText(renderer,line,10,y+20,2,200,225,255);y+=54;}
         SDL_RenderPresent(renderer);
         std::vector<uint8_t> rgba(size_t(width)*height*4);
-        SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),width*4);tak::png::write(out,width,height,rgba);
+        SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),width*4);ta::png::write(out,width,height,rgba);
     }
     SDL_DestroyRenderer(renderer);SDL_FreeSurface(surface);SDL_Quit();return 0;
 }
@@ -1406,7 +1406,7 @@ static int thumbnailWorkflow(const char* data) {
     if(SDL_Init(SDL_INIT_VIDEO)!=0)return 2;
     int result=0;
     {
-        auto assets=tak::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(assets,"zhon");
+        auto assets=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(assets,"zhon");
         if(sections.list().size()<5) {SDL_Quit();return 2;}
         auto* surface=SDL_CreateRGBSurfaceWithFormat(0,512,512,32,SDL_PIXELFORMAT_RGBA32);
         auto* renderer=surface?SDL_CreateSoftwareRenderer(surface):nullptr;
@@ -1424,7 +1424,7 @@ static int thumbnailWorkflow(const char* data) {
             };
             try {
                 const auto& path=sections.list().front().path;
-                const auto* source=sections.load(assets,path);tak::terrain::Compositor compositor(assets);
+                const auto* source=sections.load(assets,path);ta::terrain::Compositor compositor(assets);
                 const auto reference=compositor.renderMap(*source);
                 auto* texture=awaitTexture(path);int w=0,h=0;SDL_QueryTexture(texture,nullptr,nullptr,&w,&h);
                 if(w!=reference.width || h!=reference.height)throw std::runtime_error("thumbnail lost source resolution");
@@ -1439,7 +1439,7 @@ static int thumbnailWorkflow(const char* data) {
                 if(thumbnails.loading() || thumbnails.entries())throw std::runtime_error("thumbnail reset retained work");
                 awaitTexture(path);
                 const std::string portraitPath="anims/buildpic/araarch.jpg";
-                const auto portrait=tak::jpeg::load(assets.read(portraitPath));
+                const auto portrait=ta::jpeg::load(assets.read(portraitPath));
                 auto* icon=awaitTexture(portraitPath);SDL_QueryTexture(icon,nullptr,nullptr,&w,&h);
                 if(w!=portrait.width || h!=portrait.height)throw std::runtime_error("unit portrait aspect/resolution changed");
                 dst={0,0,w,h};SDL_RenderCopy(renderer,icon,nullptr,&dst);SDL_RenderPresent(renderer);
@@ -1454,13 +1454,13 @@ static int thumbnailWorkflow(const char* data) {
 }
 static int minimapWorkflow(const char* data,const char* mapName="Ulasem Arena") {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-minimap-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-minimap-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,mapName);
-    const auto original=tak::tnt::Map::load(vfs.read(path),path);tak::terrain::Compositor compositor(vfs);
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,mapName);
+    const auto original=ta::tnt::Map::load(vfs.read(path),path);ta::terrain::Compositor compositor(vfs);
     auto cancelled=std::make_shared<std::atomic_bool>(true);
     const auto otaBytes=vfs.read(path.substr(0,path.size()-4)+".ota");
-    auto world=tak::tnt::Scenario::parse(std::string(otaBytes.begin(),otaBytes.end())).kingdom;
+    auto world=ta::tnt::Scenario::parse(std::string(otaBytes.begin(),otaBytes.end())).kingdom;
     std::transform(world.begin(),world.end(),world.begin(),[](unsigned char c){return char(std::tolower(c));});
     const auto palette=cart::loadWorldPalette(vfs,world);
     if(!cart::minimapPreview(original,compositor,palette,cancelled).rgba.empty())throw std::runtime_error("cancelled minimap produced pixels");
@@ -1490,9 +1490,9 @@ static int minimapWorkflow(const char* data,const char* mapName="Ulasem Arena") 
     },hooks);
     try {
         if(result || failed || stage!=7)throw std::runtime_error("live minimap workflow failed");
-        tak::hpi::Archive archive(root/(std::string(mapName)+".kmp"));bool found=false;
+        ta::hpi::Archive archive(root/(std::string(mapName)+".kmp"));bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
-            const auto saved=tak::tnt::Map::load(archive.read(entry),entry.path);
+            const auto saved=ta::tnt::Map::load(archive.read(entry),entry.path);
             std::vector<uint8_t> expected(saved.minimap.size()*4);
             for(size_t i=0;i<saved.minimap.size();++i)std::copy(palette.rgba[saved.minimap[i]],palette.rgba[saved.minimap[i]]+4,expected.begin()+i*4);
             if(expected!=paintedPixels)throw std::runtime_error("background preview differs from saved minimap");
@@ -1504,14 +1504,14 @@ static int minimapWorkflow(const char* data,const char* mapName="Ulasem Arena") 
 }
 static int featureWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-features-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-features-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=tak::tnt::Map::load(vfs.read(path),path);
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);
     if(map.featureNames.empty())return 2;
     map.features.assign(map.features.size(),0xFFFF);map.features[10*map.width+10]=0;map.features[10*map.width+12]=0;
-    tak::tnt::Scenario metadata;metadata.kingdom="zhon";
+    ta::tnt::Scenario metadata;metadata.kingdom="zhon";
     std::string error;
     if(!cart::writeDocumentBundle(root/"Features.kmp",cart::documentFiles(map,metadata,{}, {},{},{},"Features"),error))throw std::runtime_error(error);
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
@@ -1552,9 +1552,9 @@ static int featureWorkflow(const char* data) {
     });
     try {
         if(result || failed || lastFrame<18 || lastFrame>19)throw std::runtime_error("feature UI workflow failed at frame "+std::to_string(lastFrame));
-        tak::hpi::Archive archive(root/"Features.kmp");bool found=false;
+        ta::hpi::Archive archive(root/"Features.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
-            const auto saved=tak::tnt::Map::load(archive.read(entry),entry.path);
+            const auto saved=ta::tnt::Map::load(archive.read(entry),entry.path);
             auto expected=map.features;expected[10*map.width+10]=expected[10*map.width+12]=0xFFFF;
             expected[13*map.width+12]=expected[13*map.width+14]=0;
             if(saved.features!=expected)throw std::runtime_error("feature group positions not preserved");
@@ -1566,15 +1566,15 @@ static int featureWorkflow(const char* data) {
 }
 static int validationWorkflow(const char* data,const char* mapName="Ulasem Arena") {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-validation-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-validation-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,mapName);
-    auto map=tak::tnt::Map::load(vfs.read(path),path);
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,mapName);
+    auto map=ta::tnt::Map::load(vfs.read(path),path);
     std::cout<<"Validation fixture: "<<mapName<<" ("<<map.width/32<<" x "<<map.height/32<<")\n";
     map.features[size_t(map.height/2)*map.width+map.width/2]=uint16_t(map.featureNames.size());
     map.featureNames.push_back("MissingEditorTestFeature");
-    tak::tnt::Scenario metadata;metadata.kingdom="aramon";metadata.starts={{1,10,10},{2,20,20}};
+    ta::tnt::Scenario metadata;metadata.kingdom="aramon";metadata.starts={{1,10,10},{2,20,20}};
     std::string error;
     if(!cart::writeDocumentBundle(root/"Validation.kmp",cart::documentFiles(map,metadata,{}, {},{},{},"Validation"),error))throw std::runtime_error(error);
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
@@ -1631,10 +1631,10 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
             if(frame==2)now=61000;
             if(frame>2)for(const auto& entry:fs::recursive_directory_iterator(root)) {
                 if(!entry.is_regular_file() || !entry.path().filename().string().starts_with("recovery-") || entry.path().extension()!=".kmp")continue;
-                tak::hpi::Archive archive(entry.path());
+                ta::hpi::Archive archive(entry.path());
                 for(const auto& member:archive.entries())if(member.path.ends_with(".ota")) {
                     const auto bytes=archive.read(member);
-                    const auto metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+                    const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
                     if(metadata.missionName=="Recovered unsaved map") {
                         if(phase=="write")std::_Exit(0); // deliberately bypass editor cleanup
                         std::ofstream(root/"writer-ready")<<"ready";
@@ -1652,9 +1652,9 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
     if(probe && prompts)return 5;
     if(restore) {
         if(prompts!=1)return 6;
-        tak::hpi::Archive archive(destination/"Ulasem Arena.kmp");bool found=false;
+        ta::hpi::Archive archive(destination/"Ulasem Arena.kmp");bool found=false;
         for(const auto& member:archive.entries())if(member.path.ends_with(".ota")) {
-            const auto bytes=archive.read(member);const auto metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+            const auto bytes=archive.read(member);const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
             found=metadata.missionName=="Recovered unsaved map";
         }
         if(!found)return 2;
@@ -1667,9 +1667,9 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
 // reopen the remembered group (its first thumbnail is that folder's piece).
 static int sectionsWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-sections-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-sections-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=tak::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"zhon");
+    auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"zhon");
     cart::SectionCatalog catalog;catalog.build(sections.list());
     const std::string groupId="folder:coast cliffs sandy";int groupRow=-1;
     for(size_t i=0;i<catalog.groups().size();++i)if(catalog.groups()[i].id==groupId)groupRow=int(i);
@@ -1682,9 +1682,9 @@ static int sectionsWorkflow(const char* data) {
     auto stampedAt=[&](int section) {
         const auto* prefab=sections.load(vfs,sections.list()[size_t(section)].path);
         if(!prefab || prefab->blocksX!=16 || prefab->blocksY!=16)return -1;
-        int found=0;tak::hpi::Archive archive(root/"Ulasem Arena.kmp");
+        int found=0;ta::hpi::Archive archive(root/"Ulasem Arena.kmp");
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
-            const auto map=tak::tnt::Map::load(archive.read(entry),entry.path);
+            const auto map=ta::tnt::Map::load(archive.read(entry),entry.path);
             for(int by=0;by+16<=map.blocksY;++by)for(int bx=0;bx+16<=map.blocksX;++bx) {
                 bool same=true;
                 for(int y=0;y<16 && same;++y)for(int x=0;x<16 && same;++x) {
@@ -1736,7 +1736,7 @@ static int sectionsWorkflow(const char* data) {
     if(failure.empty()) {
         check(stampedAt(piece.variants[1])>0,"second click stamps the piece's second variant");
         check(stampedAt(piece.variants[0])==0,"first variant was not left selected");
-        const auto preferences=cart::loadEditorPreferences(root/"TAKengine"/"Cartographer");
+        const auto preferences=cart::loadEditorPreferences(root/"TAengine"/"Cartographer");
         const auto remembered=preferences.sectionGroups.find("zhon");   // Ulasem says "Zhon"; new maps "zhon"
         check(remembered!=preferences.sectionGroups.end() && remembered->second==groupId,"chosen group remembered for the world");
     }
@@ -1776,14 +1776,14 @@ static int sectionsWorkflow(const char* data) {
 // --shot renders one frame of the real editor to a PNG.
 static int headlessWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-headless-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-headless-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     auto run=[](std::vector<std::string> args) {
         args.insert(args.begin(),"cartographer");std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
         return cart::runEditor(int(raw.size()),raw.data());
     };
     auto written=[](const fs::path& path) {return fs::exists(path) && fs::file_size(path)>0;};
-    const auto vfs=tak::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"zhon");
+    const auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"zhon");
     if(sections.list().empty()) {std::cerr<<"no zhon sections\n";return 1;}
     const auto tnt=root/"Saved.tnt",stamped=root/"Stamped.tnt",kmp=root/"Saved.kmp",png=root/"shot.png";
     std::string failure;auto check=[&](bool value,const char* message){if(!value && failure.empty())failure=message;};
@@ -1822,13 +1822,13 @@ static int headlessWorkflow(const char* data) {
 }
 
 // A saved KMP read back: terrain, metadata (starts) and placed units.
-struct SavedMap {tak::tnt::Map map;tak::tnt::Scenario metadata;std::vector<cart::PlacedUnit> units;};
-static SavedMap readSaved(const std::filesystem::path& path,const tak::sim::TypeRegistry* registry=nullptr) {
-    SavedMap saved;tak::hpi::Archive archive(path);
+struct SavedMap {ta::tnt::Map map;ta::tnt::Scenario metadata;std::vector<cart::PlacedUnit> units;};
+static SavedMap readSaved(const std::filesystem::path& path,const ta::sim::TypeRegistry* registry=nullptr) {
+    SavedMap saved;ta::hpi::Archive archive(path);
     for(const auto& entry:archive.entries()) {
-        if(entry.path.ends_with(".tnt"))saved.map=tak::tnt::Map::load(archive.read(entry),entry.path);
-        if(entry.path.ends_with(".ota")) {const auto bytes=archive.read(entry);saved.metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));}
-        if(entry.path.ends_with(".crt"))saved.units=cart::toPlaced(tak::crt::parse(archive.read(entry)),registry);
+        if(entry.path.ends_with(".tnt"))saved.map=ta::tnt::Map::load(archive.read(entry),entry.path);
+        if(entry.path.ends_with(".ota")) {const auto bytes=archive.read(entry);saved.metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));}
+        if(entry.path.ends_with(".crt"))saved.units=cart::toPlaced(ta::crt::parse(archive.read(entry)),registry);
     }
     return saved;
 }
@@ -1837,12 +1837,12 @@ static SavedMap readSaved(const std::filesystem::path& path,const tak::sim::Type
 // then live symmetry mirroring a unit placement as one undo step.
 static int symmetryWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-symmetry-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-symmetry-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);
-    tak::tnt::Scenario metadata;metadata.kingdom="zhon";metadata.starts={{1,40,40}};
-    tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,false);
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);
+    ta::tnt::Scenario metadata;metadata.kingdom="zhon";metadata.starts={{1,40,40}};
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
     cart::PlacedUnit guard;guard.type="ARAARCH";guard.player=0;guard.angle=90;guard.name="Left guard";
     if(const auto* type=registry.find("araarch")) {guard.footX=type->footX;guard.footZ=type->footZ;}
     guard.x=100*16+guard.footX*8.f;guard.z=50*16+guard.footZ*8.f;
@@ -1851,7 +1851,7 @@ static int symmetryWorkflow(const char* data) {
     // The expected result, computed outside the editor.
     cart::SectionLibrary sections;sections.scan(vfs,"zhon");cart::FeatureLibrary features;features.scan(vfs,"zhon");
     cart::SectionMatcher matcher;matcher.build(sections.list(),[&](size_t i){return sections.load(vfs,sections.list()[i].path);});
-    auto expected=map;auto expectedStarts=metadata.starts;tak::crt::Scenario expectedScenario;std::vector<cart::PlacedUnit> expectedUnits{guard};
+    auto expected=map;auto expectedStarts=metadata.starts;ta::crt::Scenario expectedScenario;std::vector<cart::PlacedUnit> expectedUnits{guard};
     cart::SymmetryRequest request;request.kind=cart::Mirror::Vertical;request.source=0;
     const auto report=cart::symmetrize(expected,expectedStarts,expectedScenario,expectedUnits,request,
         [&](const std::string& name){const auto* ref=features.byName(name);return ref?std::pair{ref->footX,ref->footZ}:std::pair{1,1};},&matcher);
@@ -1883,7 +1883,7 @@ static int symmetryWorkflow(const char* data) {
             if(file.map.tileKeys!=expected.tileKeys || file.map.heights!=expected.heights)fail("saved terrain differs from the expected mirror");
             if(file.map.features.size()!=expected.features.size())fail("saved feature plane size changed");
             else for(size_t i=0;i<expected.features.size();++i) {
-                const auto name=[](const tak::tnt::Map& m,size_t c){const auto v=m.features[c];return v<0xFFFA && v<m.featureNames.size()?m.featureNames[v]:std::to_string(v);};
+                const auto name=[](const ta::tnt::Map& m,size_t c){const auto v=m.features[c];return v<0xFFFA && v<m.featureNames.size()?m.featureNames[v]:std::to_string(v);};
                 if(name(file.map,i)!=name(expected,i)) {fail("saved features differ from the expected mirror");break;}
             }
             if(file.metadata.starts.size()!=2 || file.metadata.starts[1].number!=2 || file.metadata.starts[1].xpos!=600)fail("mirrored start missing");
@@ -1916,27 +1916,27 @@ static int symmetryWorkflow(const char* data) {
 // the copy, and the clipboard survives File > Open of a map of another world.
 static int terrainClipboardWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-terrainclip-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-terrainclip-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);
-    tak::tnt::Scenario metadata;metadata.kingdom="zhon";std::string error;
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);
+    ta::tnt::Scenario metadata;metadata.kingdom="zhon";std::string error;
     if(!cart::writeDocumentBundle(root/"Clip.kmp",cart::documentFiles(map,metadata,{},{},{},{},"Clip"),error))throw std::runtime_error(error);
     // Another world's map to paste into after File > Open.
     std::string other;
-    for(const auto& [name,mapPath]:tak::hpi::listMaps(vfs)) {
+    for(const auto& [name,mapPath]:ta::hpi::listMaps(vfs)) {
         const auto ota=mapPath.substr(0,mapPath.rfind('.'))+".ota";if(!vfs.has(ota))continue;
-        const auto bytes=vfs.read(ota);const auto scenario=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+        const auto bytes=vfs.read(ota);const auto scenario=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
         auto kingdom=scenario.kingdom;std::transform(kingdom.begin(),kingdom.end(),kingdom.begin(),[](unsigned char c){return char(std::tolower(c));});
-        if(kingdom=="aramon" && cart::validDocumentName(name)) {const auto m=tak::tnt::Map::load(vfs.read(mapPath),mapPath);if(m.blocksX>=16 && m.blocksY>=12) {other=name;break;}}
+        if(kingdom=="aramon" && cart::validDocumentName(name)) {const auto m=ta::tnt::Map::load(vfs.read(mapPath),mapPath);if(m.blocksX>=16 && m.blocksY>=12) {other=name;break;}}
     }
     if(other.empty()) {std::cerr<<"no aramon map\n";return 1;}
-    auto block=[&](const tak::tnt::Map& m,int x,int z){const size_t i=size_t(z)*m.blocksX+x;return std::tuple{m.tileKeys[i],m.tileCols[i],m.tileRows[i]};};
+    auto block=[&](const ta::tnt::Map& m,int x,int z){const size_t i=size_t(z)*m.blocksX+x;return std::tuple{m.tileKeys[i],m.tileCols[i],m.tileRows[i]};};
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;
     auto fail=[&](const std::string& why){if(failure.empty())failure=why;};
-    auto pastedFrom=[&](const tak::tnt::Map& saved,int ox,int oz) {
+    auto pastedFrom=[&](const ta::tnt::Map& saved,int ox,int oz) {
         for(int z=0;z<2;++z)for(int x=0;x<3;++x)if(block(saved,ox+x,oz+z)!=block(map,1+x,1+z))return false;
         for(int z=0;z<4;++z)for(int x=0;x<6;++x)if(saved.heights[size_t(oz*2+z)*saved.width+ox*2+x]!=map.heights[size_t(2+z)*map.width+2+x])return false;
         return true;
@@ -1994,26 +1994,26 @@ struct Pointer {
 };
 static void savePng(SDL_Renderer* renderer,const std::filesystem::path& path) {
     int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);std::vector<uint8_t> rgba(size_t(w)*h*4);
-    if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),w*4)==0)tak::png::write(path.string(),w,h,rgba);
+    if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),w*4)==0)ta::png::write(path.string(),w,h,rgba);
 }
 
 // The left browser scrolls in every tool: the wheel, a thumb drag (which must not
 // paint the canvas it ends over), track paging, and clicks on scrolled rows/cells.
-// TAK_CARTO_SHOT_DIR=<dir> also writes each tool's scrolled browser as a PNG.
+// TA_CARTO_SHOT_DIR=<dir> also writes each tool's scrolled browser as a PNG.
 static int paletteScrollWorkflow(const char* data) {
     namespace fs=std::filesystem;
     constexpr int kPaletteW=200,kPaletteTop=120,kStatusH=22,kCellH=106;   // editorstate.h layout
-    const auto root=fs::temp_directory_path()/("tak-editor-scroll-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-scroll-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);
-    tak::tnt::Scenario metadata;metadata.kingdom="zhon";
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);
+    ta::tnt::Scenario metadata;metadata.kingdom="zhon";
     for(int i=0;i<30;++i)metadata.starts.push_back({i+1,40+(i%6)*60,40+(i/6)*60});   // 30 rows overflow the STARTS list
     std::string error;
     if(!cart::writeDocumentBundle(root/"Scroll.kmp",cart::documentFiles(map,metadata,{},{},{},{},"Scroll"),error))throw std::runtime_error(error);
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
-    const char* shots=std::getenv("TAK_CARTO_SHOT_DIR");
+    const char* shots=std::getenv("TA_CARTO_SHOT_DIR");
     cart::EditorHooks hooks;cart::EditorHooks::FrameState state;hooks.frameState=[&](const auto& s) {state=s;};
     std::string failure;int lastFrame=0,before=-1,expected=-1,toolScroll=0,held=0;float expectX=0;Uint64 holdUntil=0;
     auto check=[&](bool value,const std::string& message) {if(!value && failure.empty())failure=message+" (frame "+std::to_string(lastFrame)+", tool "+std::to_string(state.tool)+", scroll "+std::to_string(state.paletteScroll)+"/"+std::to_string(state.paletteMaxScroll)+")";};
@@ -2087,14 +2087,14 @@ static std::string readText(const std::filesystem::path& path) {std::ifstream in
 static int displayWorkflow(const char* data) {
     namespace fs=std::filesystem;
     constexpr int kPaletteW=200;
-    const auto root=fs::temp_directory_path()/("tak-editor-display-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-display-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto profile=root/"TAKengine"/"Cartographer";
-    const auto vfs=tak::hpi::mountRetailRoot(data);const auto path=tak::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);
+    const auto profile=root/"TAengine"/"Cartographer";
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
-    const char* shots=std::getenv("TAK_CARTO_SHOT_DIR");
+    const char* shots=std::getenv("TA_CARTO_SHOT_DIR");
     cart::EditorHooks hooks;cart::EditorHooks::FrameState state;hooks.frameState=[&](const auto& s) {state=s;};
     std::string failure;int lastFrame=0,phase=0,windowedW=0,windowedH=0;Uint64 since=0;float mark=0,markZ=0;
     auto check=[&](bool value,const std::string& message) {if(!value && failure.empty())failure=message+" (phase "+std::to_string(phase)+", frame "+std::to_string(lastFrame)+")";};
@@ -2191,12 +2191,12 @@ static int displayWorkflow(const char* data) {
 // settings file at once and offers RESTART NOW, which relaunches with this document;
 // the restarted editor mounts the new folder; unsaved work is asked about first (CANCEL
 // keeps the editor, DISCARD restarts); a --data launch greys the row. The game's file is
-// the profile's copy (TAK_CARTOGRAPHER_PROFILE), never the player's.
+// the profile's copy (TA_CARTOGRAPHER_PROFILE), never the player's.
 static int dataFolderWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-datafolder-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-datafolder-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto gameSettings=root/"TAKengine"/"Cartographer"/"game-settings.ini";
+    const auto gameSettings=root/"TAengine"/"Cartographer"/"game-settings.ini";
     const auto text=[](const fs::path& p) {const auto t=p.u8string();return std::string(t.begin(),t.end());};
     // A second spelling of the install that does not compare equal to the first: a
     // directory symlink, else the root archives hard-linked into a folder of their own.
@@ -2209,7 +2209,7 @@ static int dataFolderWorkflow(const char* data) {
     fs::create_directory(root/"not-an-install");
     const std::string original=data,other=text(alt),bad=text(root/"not-an-install");
     {std::ofstream seed(gameSettings);seed<<"dataDir = "<<original<<"\n";}
-    const char* shots=std::getenv("TAK_CARTO_SHOT_DIR");
+    const char* shots=std::getenv("TA_CARTO_SHOT_DIR");
     std::string failure;int phase=0,lastFrame=0;Uint64 since=0;
     auto check=[&](bool value,const std::string& message) {if(!value && failure.empty())failure=message+" (phase "+std::to_string(phase)+", frame "+std::to_string(lastFrame)+")";};
     auto savedDir=[&] {const auto t=readText(gameSettings);const auto at=t.find("dataDir = ");return at==std::string::npos?std::string():t.substr(at+10,t.find('\n',at)-at-10);};
@@ -2257,7 +2257,7 @@ static int dataFolderWorkflow(const char* data) {
             {const auto c=center(editor->mFolderChange);pointer.click(c.x,c.y);}next();break;
         case 7:
             check(savedDir()==other && editor->folderSaved==other,"a valid pick is written to the game's settings at once ("+savedDir()+")");
-            check(readText(gameSettings).find("dataManifest = "+tak::hpi::rootManifest(alt))!=std::string::npos,"a valid pick saves its manifest");
+            check(readText(gameSettings).find("dataManifest = "+ta::hpi::rootManifest(alt))!=std::string::npos,"a valid pick saves its manifest");
             check(editor->mFolderRestart.w>0 && editor->dataRoot==original,"a valid pick offers RESTART NOW and the open install stays mounted");
             if(shots)savePng(renderer,fs::path(shots)/"preferences-datafolder-restart.png");
             {const auto c=center(editor->mFolderRestart);pointer.click(c.x,c.y);}next();break;
@@ -2274,7 +2274,7 @@ static int dataFolderWorkflow(const char* data) {
     if(failure.empty())result=run(args,[&](SDL_Window*,SDL_Renderer* renderer,const Pointer& pointer,Uint64) {
         switch(phase) {
         case 0:
-            check(editor->dataRoot==other && editor->dataOrigin==tak::DataFolderOrigin::Saved,"the restarted editor mounts the folder chosen ("+editor->dataRoot+")");
+            check(editor->dataRoot==other && editor->dataOrigin==ta::DataFolderOrigin::Saved,"the restarted editor mounts the folder chosen ("+editor->dataRoot+")");
             editor->dirty=true;   // unsaved work, as any edit would leave
             openPreferences(pointer);next();break;
         case 1:check(editor->mFolderRestart.w==0,"nothing to restart for while the setting is the folder in use");
@@ -2304,7 +2304,7 @@ static int dataFolderWorkflow(const char* data) {
         case 1:{
             check(editor->mFolderChange.w==0 && editor->mFolderRestart.w==0,"a --data launch has no CHANGE button");
             if(shots)savePng(renderer,fs::path(shots)/"preferences-datafolder-locked.png");
-            check(editor->dataOrigin==tak::DataFolderOrigin::CommandLine,"--data is the folder's origin");
+            check(editor->dataOrigin==ta::DataFolderOrigin::CommandLine,"--data is the folder's origin");
             editor->clickDataFolder();next();break;   // the handler itself refuses, not just the missing button
         }
         case 2:check(!editor->folderPick.busy() && picked==0,"a locked row never opens the picker");key(SDLK_ESCAPE);quit();next();break;
@@ -2332,14 +2332,14 @@ static int dataFolderWorkflow(const char* data) {
     });
     std::error_code same;
     check(result==0 && relaunches.size()==3 && relaunches.back().size()==3 && relaunches.back()[0]=="--out" &&
-          fs::equivalent(tak::u8path(relaunches.back()[2]),saved,same),"SAVE relaunches with the saved file");
+          fs::equivalent(ta::u8path(relaunches.back()[2]),saved,same),"SAVE relaunches with the saved file");
     std::vector<std::string> reopened={"cartographer"};
     if(relaunches.size()==3)reopened.insert(reopened.end(),relaunches.back().begin(),relaunches.back().end());
     editor=nullptr;
     if(failure.empty())result=run(reopened,[&](SDL_Window*,SDL_Renderer*,const Pointer&,Uint64) {
         if(phase!=0)return;
         check(editor && editor->dataRoot==other && editor->modal!=cart::Editor::M_MESSAGE && editor->mapName=="Ulasem Arena" &&
-              !editor->dirty && fs::equivalent(tak::u8path(editor->documentRequest),saved,same),
+              !editor->dirty && fs::equivalent(ta::u8path(editor->documentRequest),saved,same),
               "the restarted editor reopens the saved file on the new folder ("+(editor?editor->mapName+", "+editor->mTitle:std::string())+")");
         if(editor)editor->dirty=false;   // leave without the save prompt, whatever was open
         quit();next();
@@ -2387,10 +2387,10 @@ static int dataFolderWorkflow(const char* data) {
 // the toolbar, browser and minimap, map shortcuts, the greyed menu rows. File > New map
 // (menu) and Ctrl+O open their dialogs without asking about unsaved changes; cancelling
 // either stays empty. No recovery copy is written, and quitting asks nothing.
-// TAK_EDITOR_TEST_CAPTURE=<prefix> also writes <prefix>-blank.png (the empty editor).
+// TA_EDITOR_TEST_CAPTURE=<prefix> also writes <prefix>-blank.png (the empty editor).
 static int blankLaunchWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-blank-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-blank-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     std::vector<std::string> args={"cartographer","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
@@ -2441,9 +2441,9 @@ static int blankLaunchWorkflow(const char* data) {
                   !editor->playtest.running() && !editor->aiOpen && !editor->useOnlyOpen && !editor->scriptOpen && !editor->regionsOpen && editor->menuOpen<0,
                   "a tool, view, dialog or test changed");
             check(!fs::exists(root/"Untitled.kmp") && !fs::exists(root/"Untitled.tnt"),"something was saved");
-            if(const char* prefix=SDL_getenv("TAK_EDITOR_TEST_CAPTURE")) {
+            if(const char* prefix=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {
                 int pw=0,ph=0;SDL_GetRendererOutputSize(renderer,&pw,&ph);std::vector<uint8_t> rgba(size_t(pw)*ph*4);
-                if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)tak::png::write(std::string(prefix)+"-blank.png",pw,ph,rgba);
+                if(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,rgba.data(),pw*4)==0)ta::png::write(std::string(prefix)+"-blank.png",pw,ph,rgba);
             }
             menuRow(0,0);break;   // File > New map
         case 3:check(editor->modal==M::M_NEW,"File > New map did not open New Map (or asked about unsaved changes)");key(SDLK_ESCAPE);break;
@@ -2471,7 +2471,7 @@ static int blankLaunchWorkflow(const char* data) {
 // A map named at launch that cannot be opened: OPEN FAILED, then the same empty editor as a bare launch.
 static int failedOpenWorkflow(const char* data) {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-failopen-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-failopen-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     std::vector<std::string> args={"cartographer","--data",data,"--out",root.string(),"No Such Map Here"};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
@@ -2529,7 +2529,7 @@ int main(int argc,char** argv) {
     if(argc==3 && std::string(argv[2])=="datafolder")return dataFolderWorkflow(argv[1]);
     if(argc!=2)return 2;
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-editor-ui-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::temp_directory_path()/("ta-editor-ui-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
     std::vector<std::string> args={"cartographer","Ulasem Arena","--data",argv[1],"--out",root.string()};
@@ -2594,9 +2594,9 @@ int main(int argc,char** argv) {
         if(result!=0)throw std::runtime_error("editor returned failure");
         if(!failure.empty())throw std::runtime_error(failure);
         for(const auto& file:{"Ulasem Arena.kmp","Copied map.kmp"}) {
-            tak::hpi::Archive archive(root/file);bool found=false;
+            ta::hpi::Archive archive(root/file);bool found=false;
             for(const auto& entry:archive.entries())if(entry.path.ends_with(".ota")) {
-                const auto bytes=archive.read(entry);const auto metadata=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+                const auto bytes=archive.read(entry);const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
                 if(metadata.missionName!="Editor integration test" || metadata.missionDescription!="Saved after undo and redo\nSecond description line")throw std::runtime_error("saved metadata differs after UI workflow");
                 found=true;
             }
@@ -2604,14 +2604,14 @@ int main(int argc,char** argv) {
             if(std::string(file)=="Ulasem Arena.kmp") {
                 bool neutral=false;
                 for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt"))
-                    for(const auto& unit:cart::toPlaced(tak::crt::parse(archive.read(entry))))
+                    for(const auto& unit:cart::toPlaced(ta::crt::parse(archive.read(entry))))
                         if(unit.name=="UI neutral unit" && unit.player==8)neutral=true;
                 if(!neutral)throw std::runtime_error("corrected owner and retained unit fields not saved");
             }
             if(std::string(file)=="Copied map.kmp") {
                 bool regionFound=false;
                 for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt")) {
-                    const auto scenario=tak::crt::parse(archive.read(entry));
+                    const auto scenario=ta::crt::parse(archive.read(entry));
                     if(scenario.players.empty() || scenario.players[0].size()!=2)throw std::runtime_error("script duplicate workflow did not save two rules");
                     for(const auto& r:scenario.regions)if(r.name=="UI test region" && r.x1==10 && r.z1==11 && r.x2==20 && r.z2==21)regionFound=true;
                 }

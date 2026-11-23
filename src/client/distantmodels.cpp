@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-namespace tak {
+namespace ta {
 namespace {
 // SDL target changes reset viewport/scale/clip. Restore all of them, including
 // when an allocation or submission fails partway through a frame.

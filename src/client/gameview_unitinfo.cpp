@@ -31,13 +31,13 @@ struct Geom {
     std::string bgGaf = "genericdialogue", bgSeq = "GenericBG";
 };
 
-const Geom& geom(const tak::hpi::Vfs& vfs) {
+const Geom& geom(const ta::hpi::Vfs& vfs) {
     static Geom g = [&] {
         Geom r;
         try {
-            tak::gui::Gui ui = tak::gui::parse(vfs.read("guis/unitinfo.gui"), "guis/unitinfo.gui");
+            ta::gui::Gui ui = ta::gui::parse(vfs.read("guis/unitinfo.gui"), "guis/unitinfo.gui");
             auto take = [&](const char* n, Rect& out) {
-                if (const tak::gui::Gadget* w = ui.find(n))
+                if (const ta::gui::Gadget* w = ui.find(n))
                     out = {float(w->x), float(w->y), float(w->w), float(w->h)};
             };
             take("UnitInfo", r.dialog);   // the root gadget shares the title's name
@@ -73,9 +73,9 @@ const Geom& geom(const tak::hpi::Vfs& vfs) {
 
 // Pick the unit whose info to show, retail's way: the conjure/build icon under the
 // cursor wins, else the first selected unit. Returns nullptr if neither yields one.
-const tak::sim::UnitType* GameView::unitInfoSubject() const {
+const ta::sim::UnitType* GameView::unitInfoSubject() const {
     int mx = 0, my = 0;
-    tak::hidpi::mousePixels(ren_, mx, my);   // iconRects_ are output pixels
+    ta::hidpi::mousePixels(ren_, mx, my);   // iconRects_ are output pixels
     if (selectedBuilder())
         for (const auto& [r, bt] : iconRects_)
             if (bt && float(mx) >= r.x && float(mx) <= r.x + r.w &&
@@ -99,12 +99,12 @@ bool GameView::inputUnitInfo(const SDL_Event& e, int winW, int winH) {
     bool close = false;
     if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
         const auto& g = geom(vfs_);
-        close = tak::GuiLayout(winW, winH).hit(g.ok.x, g.ok.y, g.ok.w, g.ok.h,
+        close = ta::GuiLayout(winW, winH).hit(g.ok.x, g.ok.y, g.ok.w, g.ok.h,
                                              float(e.button.x), float(e.button.y));
     } else if (e.type == SDL_KEYDOWN) {
         close = e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER ||
                 e.key.keysym.sym == SDLK_ESCAPE ||
-                hotkeys_.match(e.key.keysym.sym, e.key.keysym.mod) == tak::Act::UnitInfo;
+                hotkeys_.match(e.key.keysym.sym, e.key.keysym.mod) == ta::Act::UnitInfo;
     }
     if (close) { sounds_.play("ok.wav"); unitInfoType_ = nullptr; }
     // A modal dialog owns input while the simulation continues behind it.
@@ -113,11 +113,11 @@ bool GameView::inputUnitInfo(const SDL_Event& e, int winW, int winH) {
 
 void GameView::drawUnitInfo(int winW, int winH) {
     if (!unitInfoType_) return;
-    const tak::sim::UnitType* t = unitInfoType_;
+    const ta::sim::UnitType* t = unitInfoType_;
     const Geom& g = geom(vfs_);
-    tak::GuiLayout lay(winW, winH);
+    ta::GuiLayout lay(winW, winH);
 
-    if (!unitInfoBg_) unitInfoBg_ = tak::gafTexture(ren_, vfs_, g.bgGaf, g.bgSeq, 0);
+    if (!unitInfoBg_) unitInfoBg_ = ta::gafTexture(ren_, vfs_, g.bgGaf, g.bgSeq, 0);
     SDL_FRect dlg = lay.rect(g.dialog.x, g.dialog.y, g.dialog.w, g.dialog.h);
     SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
     if (unitInfoBg_) {
@@ -162,8 +162,8 @@ void GameView::drawUnitInfo(int winW, int winH) {
         if (unitInfoIcon_) { gpuvram::destroy(unitInfoIcon_); unitInfoIcon_ = nullptr; }
         std::string up = t->id;
         for (char& c : up) c = char(std::toupper((unsigned char)c));
-        unitInfoIcon_ = tak::gafTexture(ren_, vfs_, "buildbuttons", up, 0);
-        if (!unitInfoIcon_) unitInfoIcon_ = tak::gafTexture(ren_, vfs_, "buildbuttons", t->id, 0);
+        unitInfoIcon_ = ta::gafTexture(ren_, vfs_, "buildbuttons", up, 0);
+        if (!unitInfoIcon_) unitInfoIcon_ = ta::gafTexture(ren_, vfs_, "buildbuttons", t->id, 0);
         unitInfoIconFor_ = t->id;
     }
     if (unitInfoIcon_) {
@@ -199,7 +199,7 @@ void GameView::drawUnitInfo(int winW, int winH) {
     SDL_FRect ok = lay.rect(g.ok.x, g.ok.y, g.ok.w, g.ok.h);
     unitInfoOkRect_ = ok;
     for (int i = 0; i < 2; ++i)
-        if (!unitInfoOk_[i]) unitInfoOk_[i] = tak::gafTexture(ren_, vfs_, g.bgGaf, "OkButtons", i);
+        if (!unitInfoOk_[i]) unitInfoOk_[i] = ta::gafTexture(ren_, vfs_, g.bgGaf, "OkButtons", i);
     bool hover = lay.hit(g.ok.x, g.ok.y, g.ok.w, g.ok.h, mouseX_, mouseY_);
     SDL_Texture* button = unitInfoOk_[hover && unitInfoOk_[1] ? 1 : 0];
     if (button) {

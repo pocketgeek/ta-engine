@@ -18,7 +18,7 @@
 #include <map>
 #include <vector>
 
-namespace tak::voice {
+namespace ta::voice {
 
 inline constexpr uint8_t kFlagStart = 1;   // first frame of a transmission
 inline constexpr uint8_t kFlagEnd = 2;     // the talker released the key (no audio)
@@ -153,4 +153,4 @@ private:
     Stats stats_;
 };
 
-}  // namespace tak::voice
+}  // namespace ta::voice

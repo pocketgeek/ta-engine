@@ -2,7 +2,7 @@
 #include "net/protocol.h"
 #include <cstdio>
 #include <memory>
-using namespace tak;
+using namespace ta;
 static int failures=0;
 static void check(bool ok,const char* why) {
     if (!ok) { std::fprintf(stderr,"FAIL: %s\n",why); ++failures; }

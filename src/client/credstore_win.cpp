@@ -15,7 +15,7 @@
 #include <windows.h>
 #include <wincred.h>
 
-namespace tak::credstore {
+namespace ta::credstore {
 namespace {
 
 std::wstring wide(const std::string& s) {
@@ -78,4 +78,4 @@ private:
 
 std::unique_ptr<Store> system(const Slot& slot) { return std::make_unique<CredentialManager>(slot); }
 
-}  // namespace tak::credstore
+}  // namespace ta::credstore

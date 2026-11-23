@@ -9,16 +9,16 @@
 #include <memory>
 #include <mutex>
 #include <string>
-namespace tak::srv {
+namespace ta::srv {
 namespace {
 struct Dump {
     std::FILE* file=nullptr;
     ~Dump() {if(file)std::fclose(file);}
 };
 struct Settings {
-    const char* path=std::getenv("TAK_ROSTER_DUMP");
+    const char* path=std::getenv("TA_ROSTER_DUMP");
     uint32_t every=[] {
-        const char* e=std::getenv("TAK_ROSTER_EVERY");
+        const char* e=std::getenv("TA_ROSTER_EVERY");
         const long v=e?std::strtol(e,nullptr,10):30;
         return uint32_t(v>0?v:30);
     }();
@@ -55,8 +55,8 @@ void rosterDump(uint32_t roomId,const sim::World& world,const std::vector<ai::Co
             if(gFirstTaken)path+=".room"+std::to_string(roomId);
             gFirstTaken=true;
             slot->file=std::fopen(path.c_str(),"w");
-            if(!slot->file) {std::fprintf(stderr,"TAK_ROSTER_DUMP: cannot write %s\n",path.c_str());return;}
-            std::fprintf(slot->file,"{\"kind\":\"meta\",\"schema\":1,\"engine\":\"tak\",\"tick_rate\":30,"
+            if(!slot->file) {std::fprintf(stderr,"TA_ROSTER_DUMP: cannot write %s\n",path.c_str());return;}
+            std::fprintf(slot->file,"{\"kind\":\"meta\",\"schema\":1,\"engine\":\"ta\",\"tick_rate\":30,"
                          "\"every\":%u,\"room\":%u,\"players\":[",s.every,roomId);
             for(int p=0;p<world.numPlayers();++p) {
                 int level=-1;

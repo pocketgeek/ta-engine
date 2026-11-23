@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 using RetailExplorationHeight = std::array<uint8_t,2>;
 
@@ -175,4 +175,4 @@ void retailUpdateExploration(RetailSightFootprint& sight,Fixed x,Fixed y,Fixed z
         }
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

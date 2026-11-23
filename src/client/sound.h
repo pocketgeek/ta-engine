@@ -12,10 +12,10 @@
 
 #include "util/audiolayout.h"
 #include "client/retailsound.h"
-#include "client/options.h"   // tak::detectOutputChannels / tak::openAudioDevice
-#include "hpi/hpi.h"          // tak::hpi::Vfs
-#include "client/musicfile.h" // tak::music::loadTrack (CUSTOM MUSIC, MP3/FLAC/Ogg)
-#include "tdf/tdf.h"          // tak::tdf::parseText (SoundClasses::load)
+#include "client/options.h"   // ta::detectOutputChannels / ta::openAudioDevice
+#include "hpi/hpi.h"          // ta::hpi::Vfs
+#include "client/musicfile.h" // ta::music::loadTrack (CUSTOM MUSIC, MP3/FLAC/Ogg)
+#include "tdf/tdf.h"          // ta::tdf::parseText (SoundClasses::load)
 
 #include <algorithm>
 #include <array>
@@ -39,7 +39,7 @@
 // a rate above 44100 is converted down): the 11025 Hz 8-bit mono unit sounds, the
 // 22050 Hz stereo music tracks and a mod's 44.1 kHz or 5.1 files alike. Each voice
 // steps through its source at srcRate/kMixRate through a windowed-sinc interpolator
-// (tak::sinc below), and its channels meet the output layout at mix time, so a device
+// (ta::sinc below), and its channels meet the output layout at mix time, so a device
 // switch needs no reload. Failing to open audio is non-fatal: play() no-ops.
 
 // Polyphase Kaiser-windowed sinc for the mixer's rate stepping. A source played slower
@@ -51,7 +51,7 @@
 //   0.405; >= 81 dB down from 0.5 = the source Nyquist up), 256 phases + linear blend.
 // 16 taps cannot both pass 4 kHz of an 11025 Hz sound and stop 5.5 kHz; 32 voices of
 // 32 taps cost well under a millisecond per callback. Built once at static init.
-namespace tak::sinc {
+namespace ta::sinc {
 inline constexpr int kTaps = 32;         // source frames under the kernel at step <= 1
 inline constexpr int kPhaseBits = 8;     // 256 phases per source frame
 inline constexpr int kPhases = 1 << kPhaseBits;
@@ -93,12 +93,12 @@ inline float kernel(double u) {
     const float a = float(pos - j), lo = kTable.row[size_t(j)][size_t(m)];
     return lo + a * (kTable.row[size_t(j) + 1][size_t(m)] - lo);
 }
-}  // namespace tak::sinc
+}  // namespace ta::sinc
 
 class SoundBank {
     friend struct SoundBankTestAccess;
 public:
-    static constexpr int kMixRate = tak::audio::kMixRate;   // device rate
+    static constexpr int kMixRate = ta::audio::kMixRate;   // device rate
     static constexpr int kSfxRate = 11025;   // the shipped unit WAVs (and the synth tracks)
     // Cached PCM: interleaved S16 at its own rate, 1..8 channels in SDL's order.
     struct Pcm {
@@ -108,7 +108,7 @@ public:
         float evenGain = 1.0f;   // EVEN OUT SOUND LEVELS' boost (client/soundlevel.h), set at load
         size_t frames() const { return samples.size() / size_t(std::max(channels, 1)); }
     };
-    const tak::hpi::Vfs* vfs_ = nullptr;   // runtime read-path (owned by main)
+    const ta::hpi::Vfs* vfs_ = nullptr;   // runtime read-path (owned by main)
 
     SoundBank() = default;
     // Owns an SDL audio device + the buffers its callback reads; never copy it.
@@ -134,23 +134,23 @@ public:
         if (dev_) SDL_UnlockAudioDevice(dev_);
     }
 
-    void reload(const tak::hpi::Vfs& vfs) {
+    void reload(const ta::hpi::Vfs& vfs) {
         releaseOutput();
         for(auto& channel:channels_)channel=Channel{};
         index_.clear();cache_.clear();peaks_.clear();playlist_.clear();music_=Pcm{};
         musicPos_=musicTrack_=0;musicDone_=false;
         init(vfs);
     }
-    void init(const tak::hpi::Vfs& vfs) {
+    void init(const ta::hpi::Vfs& vfs) {
         vfs_ = &vfs;
         // Index the sounds/ namespace by stem (user mods already win via the
         // VFS). A missing sounds dir must NOT skip audio init (music shares the
         // device); just index whatever's there.
         for (const std::string& path : vfs.list("sounds")) {
-            std::string ext = tak::vpath::extension(path);
+            std::string ext = ta::vpath::extension(path);
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             if (ext != ".wav") continue;
-            std::string stem = tak::vpath::stem(path);
+            std::string stem = ta::vpath::stem(path);
             std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
             index_[stem] = path;
         }
@@ -158,17 +158,17 @@ public:
         openOutput();
     }
 
-    // Open (or re-open) the output device on the current tak::g_audioDevice. Safe to call
+    // Open (or re-open) the output device on the current ta::g_audioDevice. Safe to call
     // again to switch devices live (Options): it closes the old device first, which stops
     // and joins the mix thread, so there's no concurrent access to chan_/spec_ while we
     // reconfigure. The detected channel layout follows the newly-chosen device.
     void openOutput() {
         if (dev_) { SDL_CloseAudioDevice(dev_); dev_ = 0; }
         if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return;
-        // The process-wide detected layout (see tak::detectOutputChannels) -- shared
+        // The process-wide detected layout (see ta::detectOutputChannels) -- shared
         // with the Options per-speaker sliders so they always match what we mix into,
         // and it reveals surround even when the default sink advertises stereo.
-        int chans = tak::detectOutputChannels();
+        int chans = ta::detectOutputChannels();
         SDL_AudioSpec want{};
         want.freq = kMixRate;
         want.format = AUDIO_S16SYS;
@@ -180,11 +180,11 @@ public:
         want.samples = 1024;
         want.callback = &SoundBank::mixThunk;
         want.userdata = this;
-        dev_ = tak::openAudioDevice(0, &want, &spec_, SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
+        dev_ = ta::openAudioDevice(0, &want, &spec_, SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
         chan_ = dev_ ? (spec_.channels ? spec_.channels : 2) : 1;
         std::fprintf(stderr, "audio: %d output channels%s%s\n", chan_,
                      chan_ >= 4 ? " (surround: front/rear enabled)" : "",
-                     tak::audio::hasLfe(chan_) ? ", LFE subwoofer driven" : "");
+                     ta::audio::hasLfe(chan_) ? ", LFE subwoofer driven" : "");
         if (dev_) SDL_PauseAudioDevice(dev_, 0);
     }
 
@@ -519,7 +519,7 @@ public:
         const auto* samples = load(n, it->second);
         if (!samples || samples->frames() == 0 || !dev_) return;
         SDL_LockAudioDevice(dev_);
-        std::array<tak::SoundVoice,kMaxVoices> voices;
+        std::array<ta::SoundVoice,kMaxVoices> voices;
         bool free=false;
         const size_t limit=size_t(voiceLimit_);
         for (size_t i=0;i<limit;++i) {
@@ -530,7 +530,7 @@ public:
         }
         // Retail class 0/1 chatter requires a free voice, even if it could
         // otherwise preempt a lower class. Classes 2..7 use priority eviction.
-        const int slot=(priority<=1 && !free) ? -1 : tak::retailSoundVoice(std::span(voices).first(limit),priority);
+        const int slot=(priority<=1 && !free) ? -1 : ta::retailSoundVoice(std::span(voices).first(limit),priority);
         if (slot>=0) {
             auto& c=channels_[size_t(slot)];
             c.data=samples;c.pos=0;c.pan=pan;c.depth=depth;
@@ -582,7 +582,7 @@ private:
     // blended phase; faster, it is stretched by the step (cutoff / step) and its taps
     // are renormalised. Allocation- and lock-free: it runs on the audio thread.
     static void framesAt(const Pcm& p, uint64_t fpos, uint64_t step, bool loop, bool wrapped, int* out) {
-        namespace s = tak::sinc;
+        namespace s = ta::sinc;
         const int c = std::clamp(p.channels, 1, 8);
         const int64_t n = int64_t(fpos >> 32), total = int64_t(p.frames());
         if (step == kUnitStep) {
@@ -729,7 +729,7 @@ private:
         try { bytes = vfs_->read(path); } catch (const std::exception&) { return nullptr; }
         auto pcm = decodeWav(bytes.data(), bytes.size());
         if (!pcm) return nullptr;
-        pcm->evenGain = tak::evenOutGain(pcm->samples.data(), pcm->samples.size(), pcm->rate, pcm->channels);
+        pcm->evenGain = ta::evenOutGain(pcm->samples.data(), pcm->samples.size(), pcm->rate, pcm->channels);
         return &cache_.emplace(key, std::move(*pcm)).first->second;
     }
 
@@ -748,7 +748,7 @@ private:
         std::memset(out, 0, size_t(n) * 2);
         int ch = std::max(chan_, 1);
         int frames = n / ch;
-        int lfe = tak::audio::speakerIndex(ch, tak::audio::Speaker::LFE);   // the sub, if any
+        int lfe = ta::audio::speakerIndex(ch, ta::audio::Speaker::LFE);   // the sub, if any
         if (lfe >= 0) lfeMono_.assign(size_t(frames), 0);   // full-range mono for the sub
         auto add = [&](int f, int ci, int v) {
             int idx = f * ch + ci;
@@ -756,8 +756,8 @@ private:
         };
         // The sub feed of a source without its own LFE: the mono sum of its stereo fold.
         auto subFeed = [](int sc, float* w) {
-            const auto two = tak::audio::downmixMatrix(sc, 2);
-            const bool own = tak::audio::hasLfe(sc);
+            const auto two = ta::audio::downmixMatrix(sc, 2);
+            const bool own = ta::audio::hasLfe(sc);
             for (int k = 0; k < sc; ++k)
                 w[k] = sc == 1 ? 1.f : own ? 0.f : 0.5f * (two[0][size_t(k)] + two[1][size_t(k)]);
         };
@@ -769,7 +769,7 @@ private:
         // track's own LFE channel.
         if (!music_.samples.empty()) {
             const int mc = music_.channels;
-            const auto mm = tak::audio::musicMatrix(mc, ch);
+            const auto mm = ta::audio::musicMatrix(mc, ch);
             float feed[8];
             subFeed(mc, feed);
             const size_t total = music_.frames();
@@ -810,9 +810,9 @@ private:
             const size_t total = p.frames();
             channelGains(c.pan, c.depth, g);
             const bool multi = sc > 2 && !c.positional;
-            const auto fold = sc > 2 ? tak::audio::downmixMatrix(sc, 2) : tak::audio::Matrix{};
-            const auto mm = multi ? tak::audio::downmixMatrix(sc, ch) : tak::audio::Matrix{};
-            const auto roles = tak::audio::speakers(ch);
+            const auto fold = sc > 2 ? ta::audio::downmixMatrix(sc, 2) : ta::audio::Matrix{};
+            const auto mm = multi ? ta::audio::downmixMatrix(sc, ch) : ta::audio::Matrix{};
+            const auto roles = ta::audio::speakers(ch);
             float feed[8];
             if (multi) subFeed(sc, feed);
             const float width = c.positional ? 1.0f - std::fabs(c.pan) : 1.0f;
@@ -860,7 +860,7 @@ private:
                 const int ls = scale(mid + side), rs = scale(mid - side), ms = scale(mid);
                 for (int ci = 0; ci < ch; ++ci) {
                     if (g[ci] == 0.0f) continue;
-                    using S = tak::audio::Speaker;
+                    using S = ta::audio::Speaker;
                     const S role = roles[size_t(ci)];
                     const int v = (role == S::FL || role == S::BL || role == S::SL) ? ls
                                 : (role == S::FR || role == S::BR || role == S::SR) ? rs : ms;
@@ -897,14 +897,14 @@ public:
     // faction's tracks, per sidedata.tdf). Empty = all 20. `dataRoot` is
     // the extracted data dir; music may live there or in the game install.
     // `custom` false plays the originals only (the lobby: CUSTOM MUSIC is for games).
-    void startMusic(const tak::hpi::Vfs& vfs, const std::vector<int>& tracks, bool custom = true) {
+    void startMusic(const ta::hpi::Vfs& vfs, const std::vector<int>& tracks, bool custom = true) {
         vfs_ = &vfs;
         musicCustom_ = custom;
         std::vector<int> want = tracks;
         if (want.empty())
             for (int i = 1; i <= 20; ++i) want.push_back(i);
         for (int n : want)   // an original the install has, or a custom file for it
-            if (vfs.has("music/track" + std::to_string(n) + ".wav") || (custom && !tak::music::customFile(n).empty()))
+            if (vfs.has("music/track" + std::to_string(n) + ".wav") || (custom && !ta::music::customFile(n).empty()))
                 playlist_.push_back(n);
         std::fprintf(stderr, "music: %zu faction tracks, audio=%s\n", playlist_.size(),
                      dev_ ? "yes" : "NO DEVICE");
@@ -973,17 +973,17 @@ private:
         // At the track's own rate and channels: the retail tracks are 22050 Hz stereo
         // (decoded from IMA ADPCM, kept at 22050: half the memory of 44100), a mod's
         // replacement keeps its 44.1 kHz or its 5.1; mix() steps and lays it out.
-        // CUSTOM MUSIC: the player's own file for this track, if set (tak::music).
-        std::optional<tak::music::Pcm16> pcm;
+        // CUSTOM MUSIC: the player's own file for this track, if set (ta::music).
+        std::optional<ta::music::Pcm16> pcm;
         if (nextMusic_.valid() && nextMusicIdx_ == idx) pcm = nextMusic_.get();
-        else if (vfs_) pcm = tak::music::loadTrack(*vfs_, playlist_[idx], kMixRate, musicCustom_);
+        else if (vfs_) pcm = ta::music::loadTrack(*vfs_, playlist_[idx], kMixRate, musicCustom_);
         if (nextMusic_.valid()) nextMusic_.get();   // a stale prefetch (the list changed)
         if (!pcm) return;   // loadTrack said why
         // Decode the one after while this one plays.
         if (vfs_ && playlist_.size() > 1) {
             nextMusicIdx_ = (idx + 1) % playlist_.size();
             nextMusic_ = std::async(std::launch::async, [vfs = vfs_, track = playlist_[nextMusicIdx_], custom = musicCustom_] {
-                return tak::music::loadTrack(*vfs, track, kMixRate, custom);
+                return ta::music::loadTrack(*vfs, track, kMixRate, custom);
             });
         }
         SDL_LockAudioDevice(dev_);
@@ -1006,7 +1006,7 @@ private:
     bool evenOut_ = false;             // EVEN OUT SOUND LEVELS
     uint64_t soundSequence_=0;
     std::vector<int> playlist_;    // original track numbers (music/track<n>.wav)
-    std::future<std::optional<tak::music::Pcm16>> nextMusic_;   // the next track, decoding
+    std::future<std::optional<ta::music::Pcm16>> nextMusic_;   // the next track, decoding
     size_t nextMusicIdx_ = 0;
     Pcm music_;                    // the current track, at its own rate and channels
     uint64_t musicPos_ = 0;        // 32.32 position in music_'s frames
@@ -1033,14 +1033,14 @@ private:
 // candidate WAV names.
 class SoundClasses {
 public:
-    void load(const tak::hpi::Vfs& vfs) {
+    void load(const ta::hpi::Vfs& vfs) {
         classes_.clear();
         try {
             for (const std::string& path : vfs.list("gamedata/soundclasses")) {
-                if (tak::vpath::extension(path) != ".tdf") continue;
+                if (ta::vpath::extension(path) != ".tdf") continue;
                 try {
                     auto sb = vfs.read(path);
-                    auto root = tak::tdf::parseText(std::string(sb.begin(), sb.end()), path);
+                    auto root = ta::tdf::parseText(std::string(sb.begin(), sb.end()), path);
                     for (const auto& clsName : root.childOrder) {
                         auto& cls = classes_[clsName];
                         const auto& node = root.children.at(clsName);

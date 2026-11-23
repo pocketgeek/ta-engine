@@ -5,7 +5,7 @@
 #include <cstdint>
 #include "sim/fixed.h"
 
-namespace tak {
+namespace ta {
 
 // Display-only particles emitted by script effects 2..5. Positions and
 // velocities are 16.16; the caller supplies the retail terrain sampler.
@@ -58,4 +58,4 @@ struct RetailPointParticle {
     }
 };
 
-} // namespace tak
+} // namespace ta

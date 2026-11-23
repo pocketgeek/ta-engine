@@ -31,7 +31,7 @@
 #include <vector>
 #include <cmath>
 
-namespace tak::client {
+namespace ta::client {
 
 // 0x4d5c40's segment count: fild r, fmul 2pi, fmul 0.125, _ftol (truncate).
 inline int retailCircleSegments(int radius) {
@@ -106,4 +106,4 @@ inline bool missionsShowRangeCircles(size_t orders, NoFlag noFlag) {
     return false;
 }
 
-}  // namespace tak::client
+}  // namespace ta::client

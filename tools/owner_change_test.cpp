@@ -17,8 +17,8 @@
 #include <string>
 #include <stdexcept>
 #include <vector>
-using namespace tak::sim;
-namespace tak::sim { struct RetailReplayProbe {
+using namespace ta::sim;
+namespace ta::sim { struct RetailReplayProbe {
     static void charm(World& w,int id,int player) { w.captureUnit(*w.unit(id),player); }
     static World::UnitScript* script(World& w,int id) { return w.unitScript(id); }
 }; }
@@ -41,7 +41,7 @@ static void terrain(World& w,int players=3,uint8_t height=50,int sea=0) {
 // activation (1 active, 4 cloaked) and whether every field 511990 starts
 // fresh is fresh while HP and the construction left were kept.
 static int native() {
-    auto file=std::make_shared<tak::cob::File>();
+    auto file=std::make_shared<ta::cob::File>();
     file->code={0x10021001u,0u,0x10065000u};
     for (const char* name:{"Create","Activate","Deactivate","SetMaxReloadTime"}) file->scripts.push_back({name,0});
     const UnitType t0=caster();
@@ -94,13 +94,13 @@ int main(int argc,char** argv) try {
         // and only it activates a new unit (512301 finished, 429990 at
         // completion; 511990 zeroes +0x114). The four gates, onoffable
         // without the key, start closed. Ours read a missing key as 1.
-        auto files=std::make_shared<tak::hpi::Vfs::Files>();
+        auto files=std::make_shared<ta::hpi::Vfs::Files>();
         const std::string gate="[UNITINFO]{\nunitname=gate;\nobjectname=gate;\nmaxdamage=100;\nonoffable=1;\n}";
         const std::string fire="[UNITINFO]{\nunitname=fire;\nobjectname=fire;\nmaxdamage=100;\nonoffable=1;\n"
                                "activatewhenbuilt=1;\n}";
         (*files)["units/gate.fbi"]={gate.begin(),gate.end()};
         (*files)["units/fire.fbi"]={fire.begin(),fire.end()};
-        tak::hpi::Vfs vfs;vfs.setMapFiles(files);
+        ta::hpi::Vfs vfs;vfs.setMapFiles(files);
         TypeRegistry registry;registry.loadDir(vfs,"units");
         const UnitType* g=registry.find("gate");const UnitType* f=registry.find("fire");
         check(g && f,"synthetic on/off types missing");
@@ -167,7 +167,7 @@ int main(int argc,char** argv) try {
         // 4cd600): the scenario counts it lost by that owner, and killed by
         // the player of its last hit (+0xfc) when that is another player.
         World w;terrain(w);
-        tak::crt::Scenario scene;scene.players.resize(9);TypeRegistry registry;
+        ta::crt::Scenario scene;scene.players.resize(9);TypeRegistry registry;
         auto rules=std::make_unique<ScenarioScript>(scene,registry,-1,w.numPlayers(),64,64);
         ScenarioScript* scenario=rules.get();
         w.setScenario(std::move(rules));

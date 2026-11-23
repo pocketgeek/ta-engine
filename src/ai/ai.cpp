@@ -24,9 +24,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace tak::ai {
+namespace ta::ai {
 
-Profile loadProfile(const tak::hpi::Vfs& vfs, const std::string& name) {
+Profile loadProfile(const ta::hpi::Vfs& vfs, const std::string& name) {
     Profile prof;
     // ai/<name>.txt, falling back to default.txt when the named one is absent.
     std::string path = "ai/" + name + ".txt";
@@ -61,7 +61,7 @@ DiffParams paramsFor(Difficulty d) {
     }
 }
 
-Controller::Controller(int player, const tak::sim::TypeRegistry& registry,
+Controller::Controller(int player, const ta::sim::TypeRegistry& registry,
                        const Profile& profile, uint32_t seed, Difficulty difficulty,
                        std::vector<std::pair<float, float>> enemyStarts)
     : player_(player), registry_(registry), profile_(profile),
@@ -129,9 +129,9 @@ void Controller::setClassicCampaign(const std::string& otaPlayer) {
 Controller::Controller(Controller&&) noexcept = default;
 Controller::~Controller() = default;
 
-void Controller::emit(const CommandSink& sink, tak::net::Cmd kind, int unitId,
+void Controller::emit(const CommandSink& sink, ta::net::Cmd kind, int unitId,
                       const std::string& type, float x, float z) const {
-    tak::net::Command c;
+    ta::net::Command c;
     c.kind = kind;
     c.player = uint8_t(player_);
     c.unitId = unitId;
@@ -149,7 +149,7 @@ void Controller::emit(const CommandSink& sink, tak::net::Cmd kind, int unitId,
 //   Defense  - any other structure (towers, walls)
 //   Builder  - a mobile unit that builds/expands (Monarch, mason, priest, arabuild)
 //   Army     - any other mobile unit (the combatants)
-BuildCat Controller::categoryOf(const tak::sim::UnitType* t) const {
+BuildCat Controller::categoryOf(const ta::sim::UnitType* t) const {
     if (t->isStructure()) {
         if (!registry_.buildable(t->id).empty()) return BuildCat::Factory;
         if (t->income > 0 || t->storage > 0) return BuildCat::Economy;
@@ -178,12 +178,12 @@ BuildCat Controller::categoryOf(const tak::sim::UnitType* t) const {
 }
 
 // A builder=1 unit that walks: the Monarch, constructors, priests, Zhon's producers.
-static bool mobileBuilder(const tak::sim::UnitType* t) {
+static bool mobileBuilder(const ta::sim::UnitType* t) {
     return t && !t->isStructure() && t->isBuilder;
 }
 
 // A building that pays mana: a lodestone, a Divine one, a sacred-site building.
-static bool incomeBuilding(const tak::sim::UnitType* t) {
+static bool incomeBuilding(const ta::sim::UnitType* t) {
     return t && t->isStructure() && t->income > 0;
 }
 
@@ -199,38 +199,38 @@ bool Controller::mobileProduction(const std::string& side) const {
     return it->second;
 }
 
-bool Controller::navalFactory(const tak::sim::UnitType* type) const {
+bool Controller::navalFactory(const ta::sim::UnitType* type) const {
     if (!type || !type->isStructure()) return false;
     bool ships = false;
     for (const auto& id : registry_.buildable(type->id)) {
         const auto* child = registry_.find(id);
         if (!child || child->isStructure()) continue;
-        if (child->canFly || child->domain != tak::sim::UnitType::Domain::Water) return false;
+        if (child->canFly || child->domain != ta::sim::UnitType::Domain::Water) return false;
         ships = true;
     }
     return ships;
 }
 
-bool Controller::navalProducer(const tak::sim::UnitType* type) const {
+bool Controller::navalProducer(const ta::sim::UnitType* type) const {
     if (!type) return false;
     for (const auto& id:registry_.buildable(type->id)) {
         const auto* child=registry_.find(id);
         const auto weight=profile_.weight.find(id),limit=profile_.limit.find(id);
         if (child && !child->isStructure() && !child->canFly && !child->isBuilder &&
-            child->domain==tak::sim::UnitType::Domain::Water && child->weapon.damage>0 &&
+            child->domain==ta::sim::UnitType::Domain::Water && child->weapon.damage>0 &&
             weight!=profile_.weight.end() && weight->second>0 &&
             (limit==profile_.limit.end() || limit->second!=0)) return true;
     }
     return false;
 }
 
-const std::vector<std::pair<float,float>>& Controller::navalLaunchOffsets(const tak::sim::UnitType* type) const {
+const std::vector<std::pair<float,float>>& Controller::navalLaunchOffsets(const ta::sim::UnitType* type) const {
     auto [it,inserted] = navalOffsets_.try_emplace(type);
     if (!inserted || !type->productionScript) return it->second;
-    const tak::sim::UnitType* ship = nullptr;
+    const ta::sim::UnitType* ship = nullptr;
     for (const auto& id:registry_.buildable(type->id)) {
         const auto* child=registry_.find(id);
-        if (child && !child->isStructure() && child->domain==tak::sim::UnitType::Domain::Water) {ship=child;break;}
+        if (child && !child->isStructure() && child->domain==ta::sim::UnitType::Domain::Water) {ship=child;break;}
     }
     if (!ship) return it->second;
     // QueryBuildInfo can change script statics/pieces. Evaluate the authored
@@ -238,13 +238,13 @@ const std::vector<std::pair<float,float>>& Controller::navalLaunchOffsets(const 
     // Cache both query phases and birth orientations once per shipyard type.
     const int samples=type->buildAngle ? 16 : 1;
     for (int angle=0; angle<samples; ++angle) {
-        tak::sim::World preview;
-        const auto heading=tak::sim::bamWrap(int(type->orientation)-int(type->buildAngle)/2+
+        ta::sim::World preview;
+        const auto heading=ta::sim::bamWrap(int(type->orientation)-int(type->buildAngle)/2+
             (samples>1 ? angle*(int(type->buildAngle)-1)/(samples-1) : 0));
-        const int id=preview.spawn(type,2000,2000,tak::sim::radiansFromBam(heading),0);
+        const int id=preview.spawn(type,2000,2000,ta::sim::radiansFromBam(heading),0);
         preview.tick(1.f/30.f); // Create counter-rotates the yard where the script requests it.
         for (int phase=0; phase<2; ++phase) {
-            tak::sim::Fixed x,y,z;
+            ta::sim::Fixed x,y,z;
             preview.productionPosition(id,ship,x,y,z);
             it->second.emplace_back(x.toFloat()-2000,z.toFloat()-2000);
         }
@@ -257,11 +257,11 @@ const std::vector<std::pair<float,float>>& Controller::navalLaunchOffsets(const 
 // Whether the water a ship launched at (x,z) can move in holds at least
 // `cells` positions it fits in (a bounded 4-neighbour flood of its nav grid).
 // A yard needs a sea to send its fleet into, not a pond.
-bool Controller::navalBodyAtLeast(const tak::sim::World& world,const tak::sim::UnitType* ship,
+bool Controller::navalBodyAtLeast(const ta::sim::World& world,const ta::sim::UnitType* ship,
                                   float x,float z,int cells) const {
     const auto& grid=world.navFor(ship);
     const int foot=std::clamp(std::max(ship->footX,ship->footZ),1,15);
-    const int sx=tak::sim::footprintCell(x,foot),sz=tak::sim::footprintCell(z,foot);
+    const int sx=ta::sim::footprintCell(x,foot),sz=ta::sim::footprintCell(z,foot);
     if (grid.empty() || !grid.fits(sx,sz,foot)) return false;
     std::vector<std::pair<int,int>> queue{{sx,sz}};
     std::set<std::pair<int,int>> seen{{sx,sz}};
@@ -273,11 +273,11 @@ bool Controller::navalBodyAtLeast(const tak::sim::World& world,const tak::sim::U
     return int(queue.size())>=cells;
 }
 
-bool Controller::navalLaunchClear(const tak::sim::World& world,const tak::sim::UnitType* factory,
-                                  const tak::sim::UnitType* ship,float x,float z,float dx,float dz) const {
+bool Controller::navalLaunchClear(const ta::sim::World& world,const ta::sim::UnitType* factory,
+                                  const ta::sim::UnitType* ship,float x,float z,float dx,float dz) const {
     const auto& grid=world.navFor(ship);
-    const int ox=tak::sim::footprintOrigin(x,factory->footX),oz=tak::sim::footprintOrigin(z,factory->footZ);
-    const int sx=tak::sim::footprintOrigin(x+dx,ship->footX),sz=tak::sim::footprintOrigin(z+dz,ship->footZ);
+    const int ox=ta::sim::footprintOrigin(x,factory->footX),oz=ta::sim::footprintOrigin(z,factory->footZ);
+    const int sx=ta::sim::footprintOrigin(x+dx,ship->footX),sz=ta::sim::footprintOrigin(z+dz,ship->footZ);
     // The pad alone can fit while the mouth of the yard opens onto shallow
     // water. Check a short route out of the planned open yard, including its
     // solid cells. This is an AI site test; it never changes the live nav grid.
@@ -310,18 +310,18 @@ bool Controller::navalLaunchClear(const tak::sim::World& world,const tak::sim::U
     return false;
 }
 
-int Controller::navalDoorReach(const tak::sim::UnitType* factory,const tak::sim::UnitType* ship) {
+int Controller::navalDoorReach(const ta::sim::UnitType* factory,const ta::sim::UnitType* ship) {
     // PARK's inner radius (retailParkRadius) at its least padding, (0+0+3)*16.
     const uint64_t diagonal=uint64_t(factory->footX*factory->footX+factory->footZ*factory->footZ);
-    const int inner=ship->footX*16+48+int(tak::sim::isqrt64(diagonal*256)/2);
+    const int inner=ship->footX*16+48+int(ta::sim::isqrt64(diagonal*256)/2);
     const int beyond=inner-std::min(factory->footX,factory->footZ)*8-std::max(ship->footX,ship->footZ)*8;
     return std::max(2,(beyond+15)/16);
 }
 
-int Controller::navalDoorSteps(const tak::sim::World& world,const tak::sim::UnitType* factory,
-                               const tak::sim::UnitType* ship,float x,float z,float dx,float dz) const {
-    const int ox=tak::sim::footprintOrigin(x,factory->footX),oz=tak::sim::footprintOrigin(z,factory->footZ);
-    const int sx=tak::sim::footprintOrigin(x+dx,ship->footX),sz=tak::sim::footprintOrigin(z+dz,ship->footZ);
+int Controller::navalDoorSteps(const ta::sim::World& world,const ta::sim::UnitType* factory,
+                               const ta::sim::UnitType* ship,float x,float z,float dx,float dz) const {
+    const int ox=ta::sim::footprintOrigin(x,factory->footX),oz=ta::sim::footprintOrigin(z,factory->footZ);
+    const int sx=ta::sim::footprintOrigin(x+dx,ship->footX),sz=ta::sim::footprintOrigin(z+dz,ship->footZ);
     const auto key=std::tuple{factory,ship,ox,oz,sx,sz};
     if (const auto it=navalDoorSteps_.find(key); it!=navalDoorSteps_.end()) return it->second;
     const auto& grid=world.navFor(ship);
@@ -366,13 +366,13 @@ int Controller::navalDoorSteps(const tak::sim::World& world,const tak::sim::Unit
     return found;
 }
 
-Controller::Rect Controller::footprintRect(const tak::sim::UnitType* type,float x,float z) {
-    const float x0=float(tak::sim::footprintOrigin(x,type->footX)*16);
-    const float z0=float(tak::sim::footprintOrigin(z,type->footZ)*16);
+Controller::Rect Controller::footprintRect(const ta::sim::UnitType* type,float x,float z) {
+    const float x0=float(ta::sim::footprintOrigin(x,type->footX)*16);
+    const float z0=float(ta::sim::footprintOrigin(z,type->footZ)*16);
     return {x0,z0,x0+float(type->footX*16),z0+float(type->footZ*16)};
 }
 
-const std::vector<Controller::Rect>& Controller::doorStrips(const tak::sim::UnitType* type) const {
+const std::vector<Controller::Rect>& Controller::doorStrips(const ta::sim::UnitType* type) const {
     auto [it,inserted]=doorStrips_.try_emplace(type);
     const int fx=type->footX,fz=type->footZ;
     // Naval yards open onto water (placeSite ranks their doors); Zhon's mobile
@@ -412,13 +412,13 @@ const std::vector<Controller::Rect>& Controller::doorStrips(const tak::sim::Unit
     return it->second;
 }
 
-void Controller::addDoorStrips(const tak::sim::UnitType* type,float x,float z,std::vector<Rect>& out) const {
+void Controller::addDoorStrips(const ta::sim::UnitType* type,float x,float z,std::vector<Rect>& out) const {
     const auto origin=footprintRect(type,x,z);
     for (const auto& s:doorStrips(type))
         out.push_back({origin.x0+s.x0,origin.z0+s.z0,origin.x0+s.x1,origin.z0+s.z1});
 }
 
-Controller::BaseLayout Controller::baseLayout(const tak::sim::World& world) const {
+Controller::BaseLayout Controller::baseLayout(const ta::sim::World& world) const {
     BaseLayout layout;
     for (const auto& u:world.units()) {
         if (!u.alive() || u.player!=player_ || !u.type || !u.type->isStructure()) continue;
@@ -444,7 +444,7 @@ static bool spendSizedProduction(Difficulty d) {
 static int producersOut(int producers) { return std::max(2, producers / 4); }
 
 // Count the empire by category and set the targets the planner steers toward.
-Needs Controller::assessNeeds(const tak::sim::World& world) const {
+Needs Controller::assessNeeds(const ta::sim::World& world) const {
     Needs n;
     const auto& me = world.player(player_);
     n.income = me.income;   // spend the income actually available
@@ -472,7 +472,7 @@ Needs Controller::assessNeeds(const tak::sim::World& world) const {
         ++n.counts[u.type];
         if (incomeBuilding(u.type)) ++n.lodestones;
         if (u.underConstruction) ++n.unfinished[u.type];
-        if (u.type->isStructure() && !tak::sim::World::lodestoneUpgradeBase(*u.type).empty()) {
+        if (u.type->isStructure() && !ta::sim::World::lodestoneUpgradeBase(*u.type).empty()) {
             ++n.upgrades;
             if (u.underConstruction) ++n.upgradeProjects;
         }
@@ -480,7 +480,7 @@ Needs Controller::assessNeeds(const tak::sim::World& world) const {
         if (navalFactory(u.type)) ++n.navalFactories;
         if (navalProducer(u.type)) ++n.navalProducers;
         if (!u.type->isStructure() && !u.type->canFly && !u.type->isBuilder &&
-            u.type->domain==tak::sim::UnitType::Domain::Water) ++n.navalArmy;
+            u.type->domain==ta::sim::UnitType::Domain::Water) ++n.navalArmy;
         switch (categoryOf(u.type)) {
             case BuildCat::Economy:  ++n.economy;   break;
             case BuildCat::Factory:  ++n.factories; break;
@@ -497,9 +497,9 @@ Needs Controller::assessNeeds(const tak::sim::World& world) const {
         // not retail, whose planners order freely at the cap. A builder is
         // counted by type as well, or every think hands the next idle producer
         // one more builder.
-        auto planned = [&](const tak::sim::UnitType* t) {
+        auto planned = [&](const ta::sim::UnitType* t) {
             ++n.population;
-            if (t->isStructure() && !tak::sim::World::lodestoneUpgradeBase(*t).empty()) {
+            if (t->isStructure() && !ta::sim::World::lodestoneUpgradeBase(*t).empty()) {
                 ++n.upgrades;++n.upgradeProjects;
             } else if (incomeBuilding(t)) ++n.lodestones;
             if (upgrader(t)) ++n.priests;
@@ -668,7 +668,7 @@ int Controller::desire(BuildCat c, const Needs& n) const {
 // whose over-commit throttle (tick) otherwise stops the lodestone that would end
 // the shortage along with everything else. Theirs goes wherever their own
 // expansion reaches (weightedPick), not only inside retail's base radius.
-bool Controller::manaShort(const tak::sim::World& world, const Needs& needs) const {
+bool Controller::manaShort(const ta::sim::World& world, const Needs& needs) const {
     if (!world.hasManaSpots() || needs.lodestoneProjects > 0) return false;
     const auto& me = world.player(player_);
     const float capacity = me.manaCapacity();
@@ -676,12 +676,12 @@ bool Controller::manaShort(const tak::sim::World& world, const Needs& needs) con
         me.displayResources.shortfall(float(me.mana));
 }
 
-const tak::sim::UnitType* Controller::divineIn(const tak::sim::UnitType* type) const {
+const ta::sim::UnitType* Controller::divineIn(const ta::sim::UnitType* type) const {
     auto [it,inserted]=divineIn_.try_emplace(type,nullptr);
     if (inserted && type)
         for (const auto& id:registry_.buildable(type->id)) {
             const auto* child=registry_.find(id);
-            if (child && child->isStructure() && !tak::sim::World::lodestoneUpgradeBase(*child).empty()) {
+            if (child && child->isStructure() && !ta::sim::World::lodestoneUpgradeBase(*child).empty()) {
                 it->second=child;
                 break;
             }
@@ -689,11 +689,11 @@ const tak::sim::UnitType* Controller::divineIn(const tak::sim::UnitType* type) c
     return it->second;
 }
 
-bool Controller::upgrader(const tak::sim::UnitType* type) const {
+bool Controller::upgrader(const ta::sim::UnitType* type) const {
     return mobileBuilder(type) && divineIn(type);
 }
 
-bool Controller::armedEnemyNear(const tak::sim::World& world, float x, float z, float r) const {
+bool Controller::armedEnemyNear(const ta::sim::World& world, float x, float z, float r) const {
     for (const auto& e:world.units()) {
         if (!e.alive() || !e.type || e.embarked() || e.underConstruction || e.cloaked ||
             world.isNeutralPlayer(e.player) || world.allied(player_,e.player)) continue;
@@ -719,7 +719,7 @@ bool Controller::armedEnemyNear(const tak::sim::World& world, float x, float z, 
 // no spotted armed enemy within kSafe, the richest deposit first, then the
 // nearest. A threat in home territory stops the saving at once; a stage not
 // bought within kSaveTicks gives up for kRetryTicks.
-void Controller::planUpgrade(const tak::sim::World& world, Needs& needs) {
+void Controller::planUpgrade(const ta::sim::World& world, Needs& needs) {
     constexpr float kBase = 1600, kSafe = 600, kTerritory = 900;
     constexpr uint32_t kSaveTicks = 3 * 60 * 30, kRetryTicks = 5 * 60 * 30;
     const UpgradeLevel level = upgradeLevelFor(diff_);
@@ -737,14 +737,14 @@ void Controller::planUpgrade(const tak::sim::World& world, Needs& needs) {
         return dx * dx + dz * dz <= r * r;
     };
     // Our plain lodestones and what each upgrades to.
-    std::unordered_map<std::string, const tak::sim::UnitType*> upgrades;
+    std::unordered_map<std::string, const ta::sim::UnitType*> upgrades;
     for (const auto& [id, type] : registry_.types())
         if (type.isStructure())
-            if (auto base = tak::sim::World::lodestoneUpgradeBase(type); !base.empty())
+            if (auto base = ta::sim::World::lodestoneUpgradeBase(type); !base.empty())
                 if (const auto* plain = registry_.find(base); plain && plain->side == type.side)
                     upgrades.emplace(base, &type);
-    const tak::sim::UnitType* plainType = nullptr;
-    struct Candidate { const tak::sim::Unit* lode; const tak::sim::UnitType* divine; float x, z, mult, d2; };
+    const ta::sim::UnitType* plainType = nullptr;
+    struct Candidate { const ta::sim::Unit* lode; const ta::sim::UnitType* divine; float x, z, mult, d2; };
     std::vector<Candidate> candidates;
     const auto& deposits = world.manaSpots();
     for (const auto& u : world.units()) {
@@ -753,7 +753,7 @@ void Controller::planUpgrade(const tak::sim::World& world, Needs& needs) {
         if (up == upgrades.end()) continue;
         plainType = u.type;
         const float ux = u.x.toFloat(), uz = u.z.toFloat();
-        if (!near(ux, uz, kBase) || u.hp < tak::sim::Fixed::fromInt(u.maximumHp())) continue;
+        if (!near(ux, uz, kBase) || u.hp < ta::sim::Fixed::fromInt(u.maximumHp())) continue;
         const std::pair<float, float>* spot = nullptr;
         float best = 24.0f * 24.0f;
         for (const auto& d : deposits) {
@@ -786,12 +786,12 @@ void Controller::planUpgrade(const tak::sim::World& world, Needs& needs) {
     }
     // Who builds it: a priest we have (or have ordered), else one an existing
     // factory can train -- no factory is built for this alone.
-    auto mult = [&](const tak::sim::UnitType* type, float x, float z) {
+    auto mult = [&](const ta::sim::UnitType* type, float x, float z) {
         if (!type->sacredIncome) return 1.0f;
-        return world.sacredIncomeMultiplier(tak::sim::footprintOrigin(x, type->footX),
-                                            tak::sim::footprintOrigin(z, type->footZ), type->footX, type->footZ);
+        return world.sacredIncomeMultiplier(ta::sim::footprintOrigin(x, type->footX),
+                                            ta::sim::footprintOrigin(z, type->footZ), type->footX, type->footZ);
     };
-    const auto weighted = [&](const tak::sim::UnitType* type) {
+    const auto weighted = [&](const ta::sim::UnitType* type) {
         const auto w = profile_.weight.find(type->id);
         const auto l = profile_.limit.find(type->id);
         return w != profile_.weight.end() && w->second > 0 && (l == profile_.limit.end() || l->second != 0) &&
@@ -817,7 +817,7 @@ void Controller::planUpgrade(const tak::sim::World& world, Needs& needs) {
         }
         // The priest: one standing (finished or not) or ordered, else the type an
         // existing factory trains.
-        const tak::sim::UnitType* priest = nullptr;
+        const ta::sim::UnitType* priest = nullptr;
         bool ready = false;
         for (const auto& u : world.units())
             if (u.alive() && u.player == player_ && u.type && upgrader(u.type) && divineIn(u.type) == c.divine) {
@@ -901,21 +901,21 @@ void Controller::planUpgrade(const tak::sim::World& world, Needs& needs) {
 // ladder reaches 1600 from home: with the trigger firing nearly every think on a
 // one-deposit-per-player map, a Normal builder walked 1250 px into an enemy's
 // base for a freed home deposit and was lost there with the lodestone.
-float Controller::retailLodestoneRadius(const tak::sim::World& world,
-                                        const tak::sim::Unit& builder) const {
+float Controller::retailLodestoneRadius(const ta::sim::World& world,
+                                        const ta::sim::Unit& builder) const {
     int32_t footprint = 0;
     for (const auto& u : world.units())
         if (u.alive() && u.player == player_ && u.type && u.type->isStructure())
             footprint += u.type->footX + u.type->footZ;
-    return float(tak::sim::retailAiBaseRadius(footprint, builder.type->commander ? 2 : 1));
+    return float(ta::sim::retailAiBaseRadius(footprint, builder.type->commander ? 2 : 1));
 }
 
 // Pick what a producer should build: the most-needed category its menu can supply
 // (desire()), then a weighted-random draw WITHIN that category (profile weights, for
 // variety + retail flavour). A candidate must be affordable to finish and under its
 // difficulty-scaled limit. Returns nullptr if nothing worth building is affordable now.
-const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
-                                                   const tak::sim::Unit& producer,
+const ta::sim::UnitType* Controller::weightedPick(const ta::sim::World& world,
+                                                   const ta::sim::Unit& producer,
                                                    const Needs& needs, int excludeCats,
                                                    bool lodestoneOnly, float* siteLimit) {
     if (siteLimit) *siteLimit = 0;
@@ -937,16 +937,16 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
     // A Divine Lodestone is built only where planUpgrade names its lodestone, and
     // the priest it needs only when it asks for one; until the store holds the
     // plan's reserve, nothing else is started but the short-of-mana lodestone.
-    auto divine = [](const tak::sim::UnitType* type) {
-        return type->isStructure() && !tak::sim::World::lodestoneUpgradeBase(*type).empty();
+    auto divine = [](const ta::sim::UnitType* type) {
+        return type->isStructure() && !ta::sim::World::lodestoneUpgradeBase(*type).empty();
     };
-    auto planPick = [&](const tak::sim::UnitType* type) {
+    auto planPick = [&](const ta::sim::UnitType* type) {
         return (upgrade_.stage == 3 && upgrade_.target && type == upgrade_.divine) ||
                (upgrade_.stage == 1 && type == upgrade_.priest);
     };
     if (needs.reserve > 0 && mana < double(needs.reserve)) lodestoneOnly = true;
-    std::unordered_map<const tak::sim::UnitType*,bool> coastalProduction;
-    auto coastalProducer = [&](const tak::sim::UnitType* type) {
+    std::unordered_map<const ta::sim::UnitType*,bool> coastalProduction;
+    auto coastalProducer = [&](const ta::sim::UnitType* type) {
         auto [it,inserted]=coastalProduction.try_emplace(type,false);
         if (!inserted) return it->second;
         if (navalFactory(type)) return it->second=true; // terrainWeight checks its launch
@@ -955,7 +955,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
             const auto* ship=registry_.find(id);
             const auto weight=profile_.weight.find(id),limit=profile_.limit.find(id);
             if (!ship || ship->isStructure() || ship->canFly || ship->isBuilder ||
-                ship->domain!=tak::sim::UnitType::Domain::Water || !world.buildAllowed(ship) ||
+                ship->domain!=ta::sim::UnitType::Domain::Water || !world.buildAllowed(ship) ||
                 weight==profile_.weight.end() || weight->second<=0 ||
                 (limit!=profile_.limit.end() && limit->second==0)) continue;
             if (terrainWeight(world,future,ship,1)>0) return it->second=true;
@@ -969,8 +969,8 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
     const bool lodestoneTrigger = manaShort(world, needs) && !producer.type->isStructure() &&
                                   producer.type->isBuilder;
     const float triggerRadius = lodestoneTrigger && !aggressive ? retailLodestoneRadius(world, producer) : 0.0f;
-    std::unordered_map<const tak::sim::UnitType*,bool> triggerSites;
-    auto triggered = [&](const tak::sim::UnitType* type) {
+    std::unordered_map<const ta::sim::UnitType*,bool> triggerSites;
+    auto triggered = [&](const ta::sim::UnitType* type) {
         if (!lodestoneTrigger || !type->onMana || !type->isStructure() || divine(type) ||
             needs.unfinished.count(type)) return false;
         auto [it,inserted] = triggerSites.try_emplace(type,false);
@@ -981,7 +981,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
         }
         return it->second;
     };
-    auto priority = [&](const tak::sim::UnitType* type) {
+    auto priority = [&](const ta::sim::UnitType* type) {
         if (triggered(type)) return 96;
         if (lodestoneOnly) return 0;
         // The upgrade outranks the Dragon (army, 50); its priest comes just
@@ -1001,7 +1001,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
         if (needs.navalProducers==0 && needs.factories>0 && navalBudget &&
             navalProducer(type) && coastalProducer(type)) value=std::max(value,70);
         if (cat==BuildCat::Army && !type->canFly &&
-            type->domain==tak::sim::UnitType::Domain::Water && navalBudget &&
+            type->domain==ta::sim::UnitType::Domain::Water && navalBudget &&
             needs.navalArmy<4) value=std::max(value,70);
         if (mobileFactory && needs.income >= 20 && value > 0) {
             // Zhon's factories can ALSO build economy. Keep them producing an
@@ -1016,8 +1016,8 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
         }
         return value;
     };
-    std::unordered_map<const tak::sim::UnitType*,int> terrainWeights;
-    auto usable = [&](const tak::sim::UnitType* ut) -> int {
+    std::unordered_map<const ta::sim::UnitType*,int> terrainWeights;
+    auto usable = [&](const ta::sim::UnitType* ut) -> int {
         if (!world.buildAllowed(ut) || (world.unitCap() > 0 && needs.population >= world.unitCap())) return 0;
         auto count = needs.counts.find(ut);
         const int have = count == needs.counts.end() ? 0 : count->second;
@@ -1092,7 +1092,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
             const bool firstNavy=income>0 &&
                 ((needs.navalProducers==0 && needs.factories>0 && navalProducer(ut)) ||
                  (needs.navalArmy==0 && !ut->isStructure() && !ut->canFly && !ut->isBuilder &&
-                  ut->domain==tak::sim::UnitType::Domain::Water));
+                  ut->domain==ta::sim::UnitType::Domain::Water));
             // Every pick but the plan's own and the short-of-mana lodestone
             // leaves the plan's reserve in the store.
             const double avail = planPick(ut) || triggered(ut) ? mana : mana - double(needs.reserve);
@@ -1111,9 +1111,9 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
         if (value<=0 || usable(ut)<=0) continue;
         best = std::max(best, value);
     }
-    // TAK_AI_PICK: why a producer chose nothing. A stalled economy is almost always
+    // TA_AI_PICK: why a producer chose nothing. A stalled economy is almost always
     // "every menu entry scored 0", and this says which gate did it.
-    static const bool kPickLog = tak::devEnv("TAK_AI_PICK") != nullptr;
+    static const bool kPickLog = ta::devEnv("TA_AI_PICK") != nullptr;
     if (kPickLog && best <= 0) {
         std::fprintf(stderr, "    pick %s: nothing usable (mana=%.0f income=%.0f)\n",
                      producer.type->id.c_str(), world.player(player_).mana, income);
@@ -1136,7 +1136,7 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
     }
     if (best <= 0) return nullptr;   // nothing needed is affordable -> wait (no spiral)
     // Pass 2: weighted-random among the usable entries in that top category.
-    const tak::sim::UnitType* chosen = nullptr;
+    const ta::sim::UnitType* chosen = nullptr;
     int total = 0;
     for (const auto& id : menu) {
         const auto* ut = registry_.find(id);
@@ -1152,13 +1152,13 @@ const tak::sim::UnitType* Controller::weightedPick(const tak::sim::World& world,
 
 // These are read-only terrain queries. Orders still go through the normal
 // command stream and the existing retail movement controllers.
-bool Controller::reachablePoint(const tak::sim::World& world, const tak::sim::UnitType* type,
+bool Controller::reachablePoint(const ta::sim::World& world, const ta::sim::UnitType* type,
                                  float fx,float fz,float tx,float tz,float& x,float& z,float pad) const {
     if (type->canFly) { x=tx;z=tz;return true; }
     const auto& nav=world.navFor(type);
     const int foot=std::clamp(std::max(type->footX,type->footZ),1,15);
     auto reachable=[&](float px,float pz) {
-        return nav.fits(tak::sim::footprintCell(px,foot),tak::sim::footprintCell(pz,foot),foot) &&
+        return nav.fits(ta::sim::footprintCell(px,foot),ta::sim::footprintCell(pz,foot),foot) &&
             world.pathExists(type,px,pz,fx,fz);
     };
     if (reachable(tx,tz)) { x=tx;z=tz;return true; }
@@ -1171,7 +1171,7 @@ bool Controller::reachablePoint(const tak::sim::World& world, const tak::sim::Un
             const float px=tx+detmath::cos(a)*r,pz=tz+detmath::sin(a)*r;
             if (reachable(px,pz)) { x=px;z=pz;return true; }
         }
-    if (type->domain == tak::sim::UnitType::Domain::Water) {
+    if (type->domain == ta::sim::UnitType::Domain::Water) {
         // An inland starting position is a strategic destination, not a firing
         // target. Project it onto the enemy's NEAREST coast so ships can contest
         // the sea even when they cannot bombard the Monarch from there: the first
@@ -1187,7 +1187,7 @@ bool Controller::reachablePoint(const tak::sim::World& world, const tak::sim::Un
             for (int i = 0; i < 16; ++i) {
                 const float a = float(i) * 0.392699082f;
                 const float px = tx + detmath::cos(a) * r, pz = tz + detmath::sin(a) * r;
-                if (!nav.fits(tak::sim::footprintCell(px,foot),tak::sim::footprintCell(pz,foot),foot)) continue;
+                if (!nav.fits(ta::sim::footprintCell(px,foot),ta::sim::footprintCell(pz,foot),foot)) continue;
                 if (!firstWet) firstWet = ring;
                 if (world.pathExists(type,px,pz,fx,fz)) { x=px;z=pz;return true; }
             }
@@ -1196,8 +1196,8 @@ bool Controller::reachablePoint(const tak::sim::World& world, const tak::sim::Un
     return false;
 }
 
-int Controller::terrainWeight(const tak::sim::World& world,const tak::sim::Unit& producer,
-                               const tak::sim::UnitType* type,int weight) const {
+int Controller::terrainWeight(const ta::sim::World& world,const ta::sim::Unit& producer,
+                               const ta::sim::UnitType* type,int weight) const {
     if (type->isStructure()) {
         if (!navalFactory(type)) return weight;
         float nx = producer.x.toFloat(), nz = producer.z.toFloat();
@@ -1205,7 +1205,7 @@ int Controller::terrainWeight(const tak::sim::World& world,const tak::sim::Unit&
         float x, z;
         if (!placeSite(world,type,producer,nx,nz,x,z)) return 0;
         auto yard = producer; yard.type=type;
-        yard.x = tak::sim::Fixed::fromFloat(x); yard.z = tak::sim::Fixed::fromFloat(z);
+        yard.x = ta::sim::Fixed::fromFloat(x); yard.z = ta::sim::Fixed::fromFloat(z);
         for (const auto& id : registry_.buildable(type->id)) {
             const auto* ship = registry_.find(id);
             const auto wi = profile_.weight.find(id), li = profile_.limit.find(id);
@@ -1218,7 +1218,7 @@ int Controller::terrainWeight(const tak::sim::World& world,const tak::sim::Unit&
     }
     float px=producer.x.toFloat(),pz=producer.z.toFloat();
     bool launch=false;
-    if (!producer.type->isStructure() && type->domain==tak::sim::UnitType::Domain::Water && !type->canFly) {
+    if (!producer.type->isStructure() && type->domain==ta::sim::UnitType::Domain::Water && !type->canFly) {
         // Mobile conjurers can walk to a coast. Looking only beside their
         // current inland position silently excluded Aramon and Zhon navies.
         if (!placeSite(world,type,producer,px,pz,px,pz)) return 0;
@@ -1248,14 +1248,14 @@ int Controller::terrainWeight(const tak::sim::World& world,const tak::sim::Unit&
         if (reachablePoint(world,type,px,pz,tx,tz,x,z)) return weight;
     // Keep a smaller home defense on isolated land; don't fill a landlocked
     // lake with ships that cannot threaten any enemy shore.
-    return type->domain==tak::sim::UnitType::Domain::Water ? 0 : std::max(1,weight/5);
+    return type->domain==ta::sim::UnitType::Domain::Water ? 0 : std::max(1,weight/5);
 }
 
 // Turn a pick into a command: a factory (keep/castle) trains a mobile unit; a
 // mobile builder places a structure or conjures a mobile unit near itself. The
 // placement spot is probed against the (const) world, then issued as a Build.
-bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
-                         const tak::sim::UnitType* pick, const CommandSink& sink, float siteLimit) {
+bool Controller::produce(const ta::sim::World& world, const ta::sim::Unit& p,
+                         const ta::sim::UnitType* pick, const CommandSink& sink, float siteLimit) {
     if (pick->isStructure()) {                  // structure
         if (!p.type->isStructure() && p.type->isBuilder) {
             // The Monarch builds relative to HOME, not wherever it has drifted -- so a
@@ -1272,10 +1272,10 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
                     plannedSites_.push_back({pick,x,z});
                     issuedBuilds_.push_back({p.id,pick,x,z,now_});
                 }
-                emit(sink, tak::net::Cmd::Build, p.id, pick->id, x, z);
+                emit(sink, ta::net::Cmd::Build, p.id, pick->id, x, z);
                 return true;
             } else {
-                static const bool kPickLog = tak::devEnv("TAK_AI_PICK") != nullptr;
+                static const bool kPickLog = ta::devEnv("TA_AI_PICK") != nullptr;
                 if (kPickLog)
                     std::fprintf(stderr, "    NO SITE: %s#%d cannot site %s near (%.0f,%.0f)\n",
                                  p.type->id.c_str(), p.id, pick->id.c_str(), ox, oz);
@@ -1283,13 +1283,13 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
         }
         return false;
     } else if (p.type->isStructure()) {         // factory trains mobile
-        emit(sink, tak::net::Cmd::Train, p.id, pick->id, 0, 0);
+        emit(sink, ta::net::Cmd::Train, p.id, pick->id, 0, 0);
         return true;
     } else if (p.type->isBuilder) {             // mobile builder conjures mobile
-        if (!pick->canFly && pick->domain==tak::sim::UnitType::Domain::Water) {
+        if (!pick->canFly && pick->domain==ta::sim::UnitType::Domain::Water) {
             float x,z;
             if (!placeSite(world,pick,p,p.x.toFloat(),p.z.toFloat(),x,z)) return false;
-            emit(sink,tak::net::Cmd::Build,p.id,pick->id,x,z);
+            emit(sink,ta::net::Cmd::Build,p.id,pick->id,x,z);
             return true;
         }
         // A conjurer works where it stands: not in a factory's open yard, where it
@@ -1306,18 +1306,18 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
         // place it by (World::canPlaceSite): a point's own position passed a
         // test its site then failed, with the conjurer itself in the way.
         const auto snap = [](float v, int foot) {
-            return tak::sim::footprintSnap(tak::sim::Fixed::fromFloat(v), foot).toFloat();
+            return ta::sim::footprintSnap(ta::sim::Fixed::fromFloat(v), foot).toFloat();
         };
         for (float r = 40; r < 170; r += 20)
             for (float a = 0; a < 6.28f; a += 0.6f) {
                 const float x = snap(p.x.toFloat() + detmath::cos(a) * r, pick->footX);
                 const float z = snap(p.z.toFloat() + detmath::sin(a) * r, pick->footZ);
                 if (world.canPlaceSite(pick, x, z) && (pick->canFly || !layout.blocks(footprintRect(pick, x, z)))) {
-                    emit(sink, tak::net::Cmd::Build, p.id, pick->id, x, z);
+                    emit(sink, ta::net::Cmd::Build, p.id, pick->id, x, z);
                     return true;
                 }
             }
-        static const bool kPickLog = tak::devEnv("TAK_AI_PICK") != nullptr;
+        static const bool kPickLog = ta::devEnv("TA_AI_PICK") != nullptr;
         if (kPickLog)
             std::fprintf(stderr, "    NO SPOT: %s#%d at (%.0f,%.0f) cannot place %s "
                                  "anywhere in r=40..170\n",
@@ -1329,14 +1329,14 @@ bool Controller::produce(const tak::sim::World& world, const tak::sim::Unit& p,
 // Find a build site for the AI: lodestones go on the nearest free mana deposit
 // (when the map has any), everything else probes outward from the builder.
 // Returns true and the chosen (outX,outZ) if a spot was found.
-bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitType* t,
-                           const tak::sim::Unit& builder, float nx, float nz, float& outX, float& outZ,
+bool Controller::placeSite(const ta::sim::World& world, const ta::sim::UnitType* t,
+                           const ta::sim::Unit& builder, float nx, float nz, float& outX, float& outZ,
                            float limit) const {
     if (!t) return false;
     const auto home=homeOf(world);
     const bool aggressive=diff_==Difficulty::Hard || diff_==Difficulty::Absurd;
     const bool naval=navalFactory(t);
-    const bool waterUnit=!t->isStructure() && !t->canFly && t->domain==tak::sim::UnitType::Domain::Water;
+    const bool waterUnit=!t->isStructure() && !t->canFly && t->domain==ta::sim::UnitType::Domain::Water;
     // Defensive builds within 600 of home. The unbounded levels' base grows with it:
     // they build within retail's AI base radius (retailLodestoneRadius -- 8*b*sqrt(n)
     // for n the summed footprint, b 7 for the Monarch and 10 for other builders), never
@@ -1415,7 +1415,7 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
     std::vector<Rect> siteDoors;
     if (doors) {
         layout=baseLayout(world);
-        auto pending=[&](const tak::sim::UnitType* type,float px,float pz) {
+        auto pending=[&](const ta::sim::UnitType* type,float px,float pz) {
             layout.rects.push_back(footprintRect(type,px,pz));
             addDoorStrips(type,px,pz,layout.doors);
         };
@@ -1502,10 +1502,10 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
             if (!output) return false;
         }
         if (manaFootX>0) for (const auto& [mx,mz]:world.manaSpots()) {
-            const int x0=tak::sim::footprintOrigin(x,t->footX);
-            const int z0=tak::sim::footprintOrigin(z,t->footZ);
-            const int mx0=tak::sim::footprintOrigin(mx,manaFootX);
-            const int mz0=tak::sim::footprintOrigin(mz,manaFootZ);
+            const int x0=ta::sim::footprintOrigin(x,t->footX);
+            const int z0=ta::sim::footprintOrigin(z,t->footZ);
+            const int mx0=ta::sim::footprintOrigin(mx,manaFootX);
+            const int mz0=ta::sim::footprintOrigin(mz,manaFootZ);
             if (x0<mx0+manaFootX && x0+t->footX>mx0 &&
                 z0<mz0+manaFootZ && z0+t->footZ>mz0) return false;
             const float mdx=x-mx,mdz=z-mz;
@@ -1519,13 +1519,13 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
             // Check the position where MobileBuild will bring the constructor,
             // too. A rectangular factory can be clear now but reject its own
             // builder after a short-side approach enters the placement radius.
-            const int sx=tak::sim::footprintOrigin(x,t->footX);
-            const int sz=tak::sim::footprintOrigin(z,t->footZ);
-            const tak::sim::RetailRectGoal rectangle{sx-builder.type->footX,sx+t->footX,
+            const int sx=ta::sim::footprintOrigin(x,t->footX);
+            const int sz=ta::sim::footprintOrigin(z,t->footZ);
+            const ta::sim::RetailRectGoal rectangle{sx-builder.type->footX,sx+t->footX,
                                                      sz-builder.type->footZ,sz+t->footZ};
             const auto [cx,cz]=rectangle.navigationCell(
-                tak::sim::footprintOrigin(builder.x,builder.type->footX),
-                tak::sim::footprintOrigin(builder.z,builder.type->footZ));
+                ta::sim::footprintOrigin(builder.x,builder.type->footX),
+                ta::sim::footprintOrigin(builder.z,builder.type->footZ));
             // Nor from a door strip or a building's open yard, where it holds the
             // next output in (a Mechanic building an Academy from a Smithy's door
             // kept a fire wagon in for 2.5 minutes). A newborn builder stands in
@@ -1540,9 +1540,9 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
                 const auto& nav=world.navFor(builder.type);
                 const int foot=std::max(builder.type->footX,builder.type->footZ);
                 auto reachable=[&](float px,float pz) {
-                    return nav.fits(tak::sim::footprintCell(px,foot),tak::sim::footprintCell(pz,foot),foot) &&
-                        tak::sim::retailBuildWithinReach(tak::sim::Fixed::fromFloat(px),tak::sim::Fixed::fromFloat(pz),
-                            tak::sim::Fixed::fromFloat(x),tak::sim::Fixed::fromFloat(z),builder.type->footX,builder.type->footZ,
+                    return nav.fits(ta::sim::footprintCell(px,foot),ta::sim::footprintCell(pz,foot),foot) &&
+                        ta::sim::retailBuildWithinReach(ta::sim::Fixed::fromFloat(px),ta::sim::Fixed::fromFloat(pz),
+                            ta::sim::Fixed::fromFloat(x),ta::sim::Fixed::fromFloat(z),builder.type->footX,builder.type->footZ,
                             t->footX,t->footZ,uint16_t(builder.type->buildDist)) &&
                         world.pathExists(builder.type,px,pz,builder.x.toFloat(),builder.z.toFloat());
                 };
@@ -1562,7 +1562,7 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
         }
         if (!ownGathered) {
             ownGathered=true;
-            std::unordered_map<const tak::sim::UnitType*,bool> menus;
+            std::unordered_map<const ta::sim::UnitType*,bool> menus;
             for (const auto& u : world.units()) {
                 if (!u.alive() || u.player!=player_ || !u.type || !u.type->isStructure()) continue;
                 auto m=menus.find(u.type);
@@ -1599,7 +1599,7 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
     // A Divine Lodestone goes only on the lodestone planUpgrade names, never on a
     // free deposit: the plain one there pays back in seconds, and upgrading it
     // later costs less than building the Divine Lodestone outright.
-    if (t->isStructure() && !tak::sim::World::lodestoneUpgradeBase(*t).empty()) {
+    if (t->isStructure() && !ta::sim::World::lodestoneUpgradeBase(*t).empty()) {
         if (!upgrade_.target || t!=upgrade_.divine || !usable(upgrade_.x,upgrade_.z)) return false;
         outX=upgrade_.x;outZ=upgrade_.z;
         return true;
@@ -1625,7 +1625,7 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
                     reservedSites.emplace_back(order.buildX.toFloat(),order.buildZ.toFloat());
         }
         const auto& deposits=world.manaSpots();
-        const bool upgrade=!tak::sim::World::lodestoneUpgradeBase(*t).empty();
+        const bool upgrade=!ta::sim::World::lodestoneUpgradeBase(*t).empty();
         // Nearest first: the first deposit to pass is the nearest that can pass, so the
         // costly usable() test runs on a handful of them rather than on all (an Absurd
         // builder's radius is the whole map). Ties go to the lower index, as the strict
@@ -1675,7 +1675,7 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
     // door (a detour of at most kStraight moves), its straightest; else the first
     // ring holding any door-clear site, its straightest; else the first usable
     // site, as before -- a preference, never a veto, so a navy still gets built.
-    const tak::sim::UnitType* largestShip=nullptr;
+    const ta::sim::UnitType* largestShip=nullptr;
     if (launches && !launches->empty())
         for (const auto& id:registry_.buildable(t->id)) {
             const auto* ship=registry_.find(id);
@@ -1703,8 +1703,8 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
         for (float r = 70; r < searchRadius && (!first || r<=firstR+kDoorSearch); r += 30) {
             Pick ring;
             for (float a = 0; a < 6.28f; a += std::min(0.5f,48.0f/r)) {
-                const float x = tak::sim::footprintWaypoint(tak::sim::footprintCell(nx + detmath::cos(a) * r,t->footX),t->footX).toFloat();
-                const float z = tak::sim::footprintWaypoint(tak::sim::footprintCell(nz + detmath::sin(a) * r,t->footZ),t->footZ).toFloat();
+                const float x = ta::sim::footprintWaypoint(ta::sim::footprintCell(nx + detmath::cos(a) * r,t->footX),t->footX).toFloat();
+                const float z = ta::sim::footprintWaypoint(ta::sim::footprintCell(nz + detmath::sin(a) * r,t->footZ),t->footZ).toFloat();
                 // Past the first usable site only a better door can win: test the
                 // door first, far cheaper than usable() (and cached).
                 if (first) {
@@ -1726,8 +1726,8 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
     }
     for (float r = 70; r < searchRadius; r += 30)
         for (float a = 0; a < 6.28f; a += (naval || waterUnit) ? std::min(0.5f,48.0f/r) : 0.5f) {
-            float x = tak::sim::footprintWaypoint(tak::sim::footprintCell(nx + detmath::cos(a) * r,t->footX),t->footX).toFloat();
-            float z = tak::sim::footprintWaypoint(tak::sim::footprintCell(nz + detmath::sin(a) * r,t->footZ),t->footZ).toFloat();
+            float x = ta::sim::footprintWaypoint(ta::sim::footprintCell(nx + detmath::cos(a) * r,t->footX),t->footX).toFloat();
+            float z = ta::sim::footprintWaypoint(ta::sim::footprintCell(nz + detmath::sin(a) * r,t->footZ),t->footZ).toFloat();
             if (usable(x, z)) { outX = x; outZ = z; return true; }
         }
     // Nothing fits within 340 of the builder (for the Monarch, of home). The unbounded
@@ -1738,8 +1738,8 @@ bool Controller::placeSite(const tak::sim::World& world, const tak::sim::UnitTyp
         const auto [hx,hz]=home;
         for (float r = 70; r <= radius; r += 30)
             for (float a = 0; a < 6.28f; a += std::min(0.5f,48.0f/r)) {
-                const float x = tak::sim::footprintWaypoint(tak::sim::footprintCell(hx + detmath::cos(a) * r,t->footX),t->footX).toFloat();
-                const float z = tak::sim::footprintWaypoint(tak::sim::footprintCell(hz + detmath::sin(a) * r,t->footZ),t->footZ).toFloat();
+                const float x = ta::sim::footprintWaypoint(ta::sim::footprintCell(hx + detmath::cos(a) * r,t->footX),t->footX).toFloat();
+                const float z = ta::sim::footprintWaypoint(ta::sim::footprintCell(hz + detmath::sin(a) * r,t->footZ),t->footZ).toFloat();
                 if (usable(x, z)) { outX = x; outZ = z; return true; }
             }
     }
@@ -1753,23 +1753,23 @@ bool Controller::enemySide(float x, float z, float hx, float hz) const {
     });
 }
 
-float Controller::strength(const tak::sim::Unit& u) {
+float Controller::strength(const ta::sim::Unit& u) {
     const float health = u.type->maxHp > 0 ? std::clamp(u.hp.toFloat() / float(u.type->maxHp), 0.1f, 1.0f) : 1.0f;
     return std::max(u.type->buildCost, 20.0f) * health;
 }
 
-bool Controller::armed(const tak::sim::UnitType* t) {
+bool Controller::armed(const ta::sim::UnitType* t) {
     return t->weapon.damage > 0 ||
         std::any_of(t->weapons.begin(), t->weapons.end(), [](const auto& w) { return w.damage > 0; });
 }
 
-bool Controller::canHurt(const tak::sim::UnitType* a, const tak::sim::UnitType* t) {
+bool Controller::canHurt(const ta::sim::UnitType* a, const ta::sim::UnitType* t) {
     if (!a || !t) return false;
-    const auto hurts = [&](const tak::sim::Weapon& w) { return !(t->canFly && w.noAir) && w.damageVs(t) > 0; };
+    const auto hurts = [&](const ta::sim::Weapon& w) { return !(t->canFly && w.noAir) && w.damageVs(t) > 0; };
     return a->weapons.empty() ? hurts(a->weapon) : std::any_of(a->weapons.begin(), a->weapons.end(), hurts);
 }
 
-bool Controller::reachesNow(const tak::sim::Unit& u, const tak::sim::Unit& t) {
+bool Controller::reachesNow(const ta::sim::Unit& u, const ta::sim::Unit& t) {
     const auto& weapons = u.type->weapons;
     const auto& weapon = weapons.empty() ? u.type->weapon
                                          : weapons[size_t(std::clamp(u.weaponSlot, 0, int(weapons.size()) - 1))];
@@ -1783,11 +1783,11 @@ bool Controller::reachesNow(const tak::sim::Unit& u, const tak::sim::Unit& t) {
 // and factories, or anything at all with their side at the unit cap, Basilisks
 // to stone buildings and the immune -- and the unit stood idle under fire until
 // the next think sent it the same order.
-bool Controller::canTake(const tak::sim::World& world, const tak::sim::Unit& u, const tak::sim::Unit& t) const {
-    using Status = tak::sim::Weapon::Status;
+bool Controller::canTake(const ta::sim::World& world, const ta::sim::Unit& u, const ta::sim::Unit& t) const {
+    using Status = ta::sim::Weapon::Status;
     // What a charm, a stone and a freeze each need: a mobile unit (bmcode 1), finished, no Monarch.
     const bool body = t.type->buildMovementCode == 1 && !t.type->commander && !t.underConstruction;
-    const auto serves = [&](const tak::sim::Weapon& w) {
+    const auto serves = [&](const ta::sim::Weapon& w) {
         if ((w.noAir && t.flightGroundMode == 2) || (w.toAir && t.flightGroundMode != 2) || w.damageVs(t.type) <= 0)
             return false;
         if (w.mindControl && !(body && !t.type->cantBeCaptured && !t.embarked() && t.stonedFor <= 0 &&
@@ -1817,7 +1817,7 @@ bool Controller::canTake(const tak::sim::World& world, const tak::sim::Unit& u, 
 // is taken to be at least as strong as this AI's own fighters, with kUnseenUnits
 // more units: an AI that has not looked cannot believe itself far ahead. Being
 // ahead of what it knows alone (knownAhead) is reason enough to go and look.
-Controller::StrikeBoard Controller::scanTargets(const tak::sim::World& world) const {
+Controller::StrikeBoard Controller::scanTargets(const ta::sim::World& world) const {
     constexpr float kUnseenUnits = 20;
     constexpr uint32_t kLookedTicks = 5 * 60 * 30;
     StrikeBoard board;
@@ -1926,7 +1926,7 @@ Controller::StrikeBoard Controller::scanTargets(const tak::sim::World& world) co
     return board;
 }
 
-float Controller::sitePad(const StrikeSite& site, const tak::sim::UnitType* type) {
+float Controller::sitePad(const StrikeSite& site, const ta::sim::UnitType* type) {
     if (!site.anchorType || !type) return 0;
     return float(std::max(site.anchorType->footX, site.anchorType->footZ) + std::max(type->footX, type->footZ)) * 8;
 }
@@ -1946,8 +1946,8 @@ float Controller::siteNeed(const StrikeSite& site) const {
 // site already given its share this think counts for a quarter. Reachability is
 // tried in score order, for the first 48: a fleet's sites out at sea can fill
 // the top of an army's list.
-int Controller::pickSite(const tak::sim::World& world, const StrikeBoard& board, float x, float z, float force,
-                         const tak::sim::UnitType* type, bool raid, const std::vector<float>& taken) const {
+int Controller::pickSite(const ta::sim::World& world, const StrikeBoard& board, float x, float z, float force,
+                         const ta::sim::UnitType* type, bool raid, const std::vector<float>& taken) const {
     std::vector<std::pair<float, int>> ranked;
     for (size_t i = 0; i < board.sites.size(); ++i) {
         const auto& site = board.sites[i];
@@ -1975,7 +1975,7 @@ int Controller::pickSite(const tak::sim::World& world, const StrikeBoard& board,
     return -1;
 }
 
-bool Controller::strikeOrder(const tak::sim::World& world, const tak::sim::Unit& u, const StrikeSite& site,
+bool Controller::strikeOrder(const ta::sim::World& world, const ta::sim::Unit& u, const StrikeSite& site,
                              uint32_t simTick, const CommandSink& sink) {
     constexpr int kTries = 4;                       // thinks re-sent at an anchor it is not hurting
     constexpr uint32_t kPassOverTicks = 120 * 30;
@@ -2020,7 +2020,7 @@ bool Controller::strikeOrder(const tak::sim::World& world, const tak::sim::Unit&
         // Creon army sent 3000 px at an Aramon Stronghold going up died walking
         // through the defenders); a fight-move gets it there fighting.
         if (close && !charmRefused && canTake(world, u, *e) && reachesNow(u, *e)) {
-            tak::net::Command c; c.kind = tak::net::Cmd::Attack; c.player = uint8_t(player_);
+            ta::net::Command c; c.kind = ta::net::Cmd::Attack; c.player = uint8_t(player_);
             c.unitId = u.id; c.targetId = e->id;
             sink(c);
             return true;
@@ -2032,13 +2032,13 @@ bool Controller::strikeOrder(const tak::sim::World& world, const tak::sim::Unit&
         if (constexpr float kArrived = 48; close && !canTake(world, u, *e) &&
             (tx - ux) * (tx - ux) + (tz - uz) * (tz - uz) <= kArrived * kArrived) return true;
     }
-    emit(sink, tak::net::Cmd::AttackMove, u.id, "", tx, tz);
+    emit(sink, ta::net::Cmd::AttackMove, u.id, "", tx, tz);
     return true;
 }
 
 // A player's base anchor: the centroid of its buildings, else its Monarch, else
 // the centroid of its units (0,0 with none).
-static std::pair<float, float> anchorOf(const tak::sim::World& world, int player) {
+static std::pair<float, float> anchorOf(const ta::sim::World& world, int player) {
     double sx = 0, sz = 0; int n = 0;
     float kx = 0, kz = 0; bool haveKing = false;
     for (const auto& u : world.units()) {
@@ -2053,13 +2053,13 @@ static std::pair<float, float> anchorOf(const tak::sim::World& world, int player
     return n ? std::pair{float(sx/n),float(sz/n)} : std::pair{0.0f,0.0f};
 }
 
-std::pair<float, float> Controller::homeOf(const tak::sim::World& world) const {
+std::pair<float, float> Controller::homeOf(const ta::sim::World& world) const {
     if (home_) return *home_;
     return anchorOf(world, player_);
 }
 
 // Whether a builder of this type can claim a deposit: a lodestone in its menu.
-bool Controller::buildsLodestone(const tak::sim::UnitType* type) const {
+bool Controller::buildsLodestone(const ta::sim::UnitType* type) const {
     auto [it,inserted]=lodestoneBuilders_.try_emplace(type,false);
     if (inserted)
         for (const auto& id:registry_.buildable(type->id)) {
@@ -2096,7 +2096,7 @@ bool Controller::buildsLodestone(const tak::sim::UnitType* type) const {
 // deposit whose nearest other ally never builds there -- a human, or a Normal
 // AI whose builders do not reach that far -- stays empty, though a farther AI
 // would take it.
-void Controller::updateAllyClaims(const tak::sim::World& world, uint32_t simTick) {
+void Controller::updateAllyClaims(const ta::sim::World& world, uint32_t simTick) {
     constexpr float kAllyHome=900;
     constexpr uint32_t kAllyClaimTicks=2*60*30;   // two minutes of game time
     const auto& deposits=world.manaSpots();
@@ -2107,7 +2107,7 @@ void Controller::updateAllyClaims(const tak::sim::World& world, uint32_t simTick
     // builders that could claim a deposit.
     struct Claim { float x, z; uint32_t tick; };
     std::vector<Claim> claims;
-    std::vector<std::vector<const tak::sim::Unit*>> claimers(allyHomes_.size());
+    std::vector<std::vector<const ta::sim::Unit*>> claimers(allyHomes_.size());
     for (const auto& u:world.units()) {
         if (!u.alive() || !u.type || !world.allied(player_,u.player)) continue;
         if (u.type->onMana) claims.push_back({u.x.toFloat(),u.z.toFloat(),simTick});
@@ -2145,7 +2145,7 @@ void Controller::updateAllyClaims(const tak::sim::World& world, uint32_t simTick
         }
         if (owner==allyHomes_.size()) continue;   // nobody's home but perhaps ours
         if (simTick-depositClaimedAt_[i]<kAllyClaimTicks &&
-            std::any_of(claimers[owner].begin(),claimers[owner].end(),[&](const tak::sim::Unit* b) {
+            std::any_of(claimers[owner].begin(),claimers[owner].end(),[&](const ta::sim::Unit* b) {
                 return b->type->canFly || world.pathExists(b->type,sx,sz,b->x.toFloat(),b->z.toFloat());
             })) { allyHeldDeposits_[i]=1; continue; }
         allyHeldDeposits_[i]=std::any_of(allyHomes_.begin(),allyHomes_.end(),[&](const AllyHome& ally) {
@@ -2174,14 +2174,14 @@ void Controller::updateAllyClaims(const tak::sim::World& world, uint32_t simTick
 // across the map gains every few seconds and keeps its claim however long the
 // walk. One that arrives to find units on its site gives up on its own within
 // the sim's 31 retries (310 ticks).
-void Controller::updateBuilderProgress(const tak::sim::World& world, uint32_t simTick,
+void Controller::updateBuilderProgress(const ta::sim::World& world, uint32_t simTick,
                                        const CommandSink& sink) {
     constexpr float kGain=64;
     constexpr uint32_t kBuilderStallTicks=60*30;   // a minute of game time
     std::erase_if(stalledSites_,[&](const StalledSite& site) {
         const auto* u=world.unit(site.unit);return !u || !u->alive();
     });
-    auto holds=[](const tak::sim::Order& order) {
+    auto holds=[](const ta::sim::Order& order) {
         return order.buildType && order.buildType->onMana && (order.buildX.v || order.buildZ.v);
     };
     std::unordered_map<int,BuilderProgress> next;
@@ -2190,7 +2190,7 @@ void Controller::updateBuilderProgress(const tak::sim::World& world, uint32_t si
             std::none_of(u.orders.begin(),u.orders.end(),holds)) continue;
         // The job, read past a flying builder's leading step-out (its air
         // traffic), which stands where the builder was.
-        size_t leg=tak::sim::World::currentLeg(u.orders);
+        size_t leg=ta::sim::World::currentLeg(u.orders);
         if (u.orders[leg].stepOut)
             for (size_t i=leg+1;i<u.orders.size();++i)
                 if (u.orders[i].goal) { leg=i;break; }
@@ -2221,7 +2221,7 @@ void Controller::updateBuilderProgress(const tak::sim::World& world, uint32_t si
             if (!listed) stalledSites_.push_back({u.id,ox,oz});
         }
         if (known) continue;   // stopped already; the Stop has not reached the world yet
-        tak::net::Command stop;stop.kind=tak::net::Cmd::Stop;stop.player=uint8_t(player_);stop.unitId=u.id;
+        ta::net::Command stop;stop.kind=ta::net::Cmd::Stop;stop.player=uint8_t(player_);stop.unitId=u.id;
         sink(stop);
     }
     builderProgress_.swap(next);
@@ -2246,7 +2246,7 @@ bool Controller::stalledBuilder(int unitId) const {
 // it set out, on another leg of its route, or farther off bans nothing: of 54
 // builders that died with a lodestone order in five 20-minute rooms, 4 died
 // where they stood when ordered and 9 more than 1,000 px from the deposit.
-void Controller::updateLostSites(const tak::sim::World& world) {
+void Controller::updateLostSites(const ta::sim::World& world) {
     std::erase_if(lostSites_,[&](const LostSite& l){return l.until<=now_;});
     auto lost=[&](float x,float z) {
         for (auto& l:lostSites_)
@@ -2275,7 +2275,7 @@ void Controller::updateLostSites(const tak::sim::World& world) {
             const float dx=x-u.x.toFloat(),dz=z-u.z.toFloat(),d=std::sqrt(dx*dx+dz*dz);
             const auto seen=lodestoneTrips_.find(u.id);
             const float from=seen!=lodestoneTrips_.end() && seen->second.x==x && seen->second.z==z ? seen->second.from : d;
-            const bool onItsWay=i==tak::sim::World::currentLeg(u.orders) && d<=from-kTripGain && d<kTripReach;
+            const bool onItsWay=i==ta::sim::World::currentLeg(u.orders) && d<=from-kTripGain && d<kTripReach;
             trips[u.id]={x,z,from,d<kThreatRadius || onItsWay};
             break;
         }
@@ -2283,7 +2283,7 @@ void Controller::updateLostSites(const tak::sim::World& world) {
     lodestoneTrips_.swap(trips);
 }
 
-void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& sink) {
+void Controller::sendDefenders(const ta::sim::World& world, const CommandSink& sink) {
     constexpr float kHomeRadius = 900, kSiteRadius = 400;
     // An enemy shooting into the territory from outside it is answered out to this
     // far from home, and melee defenders give up the chase beyond it.
@@ -2331,7 +2331,7 @@ void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& 
         const float dx=x-home.first,dz=z-home.second;
         return dx*dx+dz*dz<=kPursuitRadius*kPursuitRadius;
     };
-    auto attackerOf=[&](const tak::sim::Unit& v)->const tak::sim::Unit* {
+    auto attackerOf=[&](const ta::sim::Unit& v)->const ta::sim::Unit* {
         const auto* e=v.lastHitBy ? world.unit(v.lastHitBy) : nullptr;
         if (!e || !e->alive() || !e->type || e->embarked() || e->underConstruction ||
             world.isNeutralPlayer(e->player) || world.allied(player_,e->player)) return nullptr;
@@ -2404,14 +2404,14 @@ void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& 
         }
         float tx=0,tz=0;
         // A melee defender leaves a flyer in the air alone (it cannot reach it).
-        auto answer=[&](const tak::sim::Unit& e) {
+        auto answer=[&](const ta::sim::Unit& e) {
             return reachesNow(u,e) && reachablePoint(world,u.type,u.x.toFloat(),u.z.toFloat(),
                 e.x.toFloat(),e.z.toFloat(),tx,tz) &&
                 (shooter(e.id) ? nearHome(tx,tz) : local(tx,tz));
         };
         // A melee defender goes for the unit hitting it, not for whichever threat
         // is nearest home: a Swordsman shot from 400 away has nothing else to do.
-        const tak::sim::Unit* attacker=nullptr;
+        const ta::sim::Unit* attacker=nullptr;
         if (melee) if (const auto* e=attackerOf(u);e && isThreat(e->id)) attacker=e;
         // It keeps chasing its target while that stays within kPursuitRadius,
         // instead of switching whenever another one edges nearer to home or the
@@ -2455,7 +2455,7 @@ void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& 
             next.goalX=tx;next.goalZ=tz;next.returning=false;next.targetId=targetId;
             next.ownAttacker=ownAttacker;
             defenders_[u.id]=next;
-            tak::net::Command c;c.kind=tak::net::Cmd::Attack;c.player=uint8_t(player_);
+            ta::net::Command c;c.kind=ta::net::Cmd::Attack;c.player=uint8_t(player_);
             c.unitId=u.id;c.targetId=targetId;
             sink(c);++issued;
         } else if (targetId) {
@@ -2469,7 +2469,7 @@ void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& 
                 DefenseResponse{u.x.toFloat(),u.z.toFloat(),tx,tz};
             next.goalX=tx;next.goalZ=tz;next.returning=false;next.targetId=0;next.ownAttacker=false;
             defenders_[u.id]=next;
-            emit(sink,tak::net::Cmd::AttackMove,u.id,"",tx,tz);++issued;
+            emit(sink,ta::net::Cmd::AttackMove,u.id,"",tx,tz);++issued;
         } else if (assigned) {
             auto& next=response->second;
             const float dx=u.x.toFloat()-next.homeX,dz=u.z.toFloat()-next.homeZ;
@@ -2478,7 +2478,7 @@ void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& 
             }
             if (ownsOrder && next.returning) continue;
             next.goalX=next.homeX;next.goalZ=next.homeZ;next.returning=true;next.targetId=0;next.ownAttacker=false;
-            emit(sink,tak::net::Cmd::Move,u.id,"",next.homeX,next.homeZ);++issued;
+            emit(sink,ta::net::Cmd::Move,u.id,"",next.homeX,next.homeZ);++issued;
         }
     }
 }
@@ -2490,7 +2490,7 @@ void Controller::sendDefenders(const tak::sim::World& world, const CommandSink& 
 // filled. So an order whose builder is idle (or doing something else) with nothing
 // started on the site marks that site refused for kRefusedSiteTicks, and placeSite
 // passes it over meanwhile.
-void Controller::updateIssuedBuilds(const tak::sim::World& world, uint32_t simTick) {
+void Controller::updateIssuedBuilds(const ta::sim::World& world, uint32_t simTick) {
     constexpr uint32_t kRefusedSiteTicks = 60 * 30;
     std::erase_if(refusedSites_, [&](const RefusedSite& r) { return simTick >= r.until; });
     std::erase_if(issuedBuilds_, [&](const IssuedBuild& b) {
@@ -2518,7 +2518,7 @@ void Controller::updateIssuedBuilds(const tak::sim::World& world, uint32_t simTi
 // counts as one) and its income stayed on one deposit. Retail keeps a factory
 // trying too; the unbounded levels, which rely on every producer working, give
 // that order up after kQueueStallTicks and train something else there for a while.
-void Controller::unqueueStalled(const tak::sim::World& world, uint32_t simTick,
+void Controller::unqueueStalled(const ta::sim::World& world, uint32_t simTick,
                                 const CommandSink& sink) {
     constexpr uint32_t kQueueStallTicks = 30 * 30, kRefusedTicks = 120 * 30;
     std::unordered_map<int, QueueWait> next;
@@ -2530,7 +2530,7 @@ void Controller::unqueueStalled(const tak::sim::World& world, uint32_t simTick,
         if (const auto it = queueWait_.find(u.id); it != queueWait_.end() && it->second.type == head)
             wait = it->second;
         if (simTick - wait.since < kQueueStallTicks) { next.emplace(u.id, wait); continue; }
-        tak::net::Command c; c.kind = tak::net::Cmd::Unqueue; c.player = uint8_t(player_);
+        ta::net::Command c; c.kind = ta::net::Cmd::Unqueue; c.player = uint8_t(player_);
         c.unitId = u.id; c.targetId = 1;
         std::snprintf(c.type, sizeof c.type, "%s", head->id.c_str());
         sink(c);
@@ -2549,7 +2549,7 @@ void Controller::unqueueStalled(const tak::sim::World& world, uint32_t simTick,
 // out from there and back). Outward along their own bearing first, so they do not
 // cross the base, then turning further from it -- a base in a map corner has only
 // a quarter of each ring. Never onto the enemy's side of the map (enemySide).
-void Controller::stationArmy(const tak::sim::World& world, std::vector<int>& assigned,
+void Controller::stationArmy(const ta::sim::World& world, std::vector<int>& assigned,
                              const CommandSink& sink) {
     constexpr float kBaseRadius = 420, kSpacing = 48, kNearHome = 900, kReach = 1600;
     constexpr int kMaxCommands = 64;
@@ -2593,7 +2593,7 @@ void Controller::stationArmy(const tak::sim::World& world, std::vector<int>& ass
     // The base builds out to retail's base radius (placeSite), so buildings that
     // far out still count as the base; stationing troops among them would cover
     // their sites again.
-    const float nearHome = std::max(kNearHome, float(tak::sim::retailAiBaseRadius(footprint, 1)) + 300);
+    const float nearHome = std::max(kNearHome, float(ta::sim::retailAiBaseRadius(footprint, 1)) + 300);
     for (const auto& u : world.units()) {
         if (!u.alive() || u.player != player_ || !u.type || !u.type->isStructure()) continue;
         // A remote lodestone is not the base.
@@ -2611,7 +2611,7 @@ void Controller::stationArmy(const tak::sim::World& world, std::vector<int>& ass
         if (!u.alive() || u.player != player_ || !u.type || u.type->isStructure() || u.type->isBuilder ||
             u.type->commander || u.underConstruction || u.embarked() || u.incapacitated() ||
             !idle(u) || u.buildSiteId || defenders_.count(u.id) ||
-            (!u.type->canFly && u.type->domain == tak::sim::UnitType::Domain::Water) ||
+            (!u.type->canFly && u.type->domain == ta::sim::UnitType::Domain::Water) ||
             std::find(assigned.begin(), assigned.end(), u.id) != assigned.end()) continue;
         const float ux = u.x.toFloat(), uz = u.z.toFloat();
         const float dx = ux - hx, dz = uz - hz;
@@ -2626,13 +2626,13 @@ void Controller::stationArmy(const tak::sim::World& world, std::vector<int>& ass
                 if (isTaken(x, z) || enemySide(x, z, hx, hz) || !world.canPlace(u.type, x, z) ||
                     (!u.type->canFly && layout.blocks(footprintRect(u.type, x, z))) ||
                     (!u.type->canFly && !world.pathExists(u.type, x, z, ux, uz))) continue;
-                emit(sink, tak::net::Cmd::Move, u.id, "", x, z);
+                emit(sink, ta::net::Cmd::Move, u.id, "", x, z);
                 take(x, z);
                 assigned.push_back(u.id);
                 ++issued;
                 moved = true;
             }
-        static const bool kStationLog = tak::devEnv("TAK_AI_STATION") != nullptr;
+        static const bool kStationLog = ta::devEnv("TA_AI_STATION") != nullptr;
         if (!moved && kStationLog)   // a fighter with no free spot it can walk to
             std::fprintf(stderr, "    STATION FAIL %s#%d at (%.0f,%.0f) d=%.0f base=%.0f\n", u.type->id.c_str(), u.id, ux, uz,
                          std::sqrt(dx*dx+dz*dz), base);
@@ -2642,11 +2642,11 @@ void Controller::stationArmy(const tak::sim::World& world, std::vector<int>& ass
 // What this AI sees: whatever its own and its allies' units see (the shared team
 // vision a player's screen shows), by the sim's per-player view counters
 // (World::playerSees, viewCount) -- never the display fog, which is local.
-bool Controller::teamSees(const tak::sim::World& world, const tak::sim::Unit& u) const {
+bool Controller::teamSees(const ta::sim::World& world, const ta::sim::Unit& u) const {
     return std::any_of(team_.begin(), team_.end(), [&](int p) { return world.playerSees(p, u); });
 }
 
-bool Controller::teamViews(const tak::sim::World& world, int cx, int cz) const {
+bool Controller::teamViews(const ta::sim::World& world, int cx, int cz) const {
     if (world.viewCounts().empty()) return true;   // no view plane: everything is in sight, as playerSees
     return std::any_of(team_.begin(), team_.end(), [&](int p) { return world.viewCount(p, cx, cz) > 0; });
 }
@@ -2658,8 +2658,8 @@ int Controller::sectorOf(float x, float z) const {
 }
 
 // A unit's projected 32 px view cell (World::playerSees' corner rule, at its centre).
-static std::pair<int, int> viewCell(const tak::sim::Unit& u) {
-    const tak::sim::Fixed y = u.type->canFly ? u.flightY : u.groundY;
+static std::pair<int, int> viewCell(const ta::sim::Unit& u) {
+    const ta::sim::Fixed y = u.type->canFly ? u.flightY : u.groundY;
     const int px = int16_t(uint32_t(u.x.v) >> 16), py = int16_t(uint32_t(y.v) >> 16), pz = int16_t(uint32_t(u.z.v) >> 16);
     return {px >> 5, (pz - (py >> 1)) >> 5};
 }
@@ -2690,7 +2690,7 @@ void Controller::stampRadar(int qx, int qz, int r, int delta) {
     }
 }
 
-void Controller::updateRadar(const tak::sim::World& world) {
+void Controller::updateRadar(const ta::sim::World& world) {
     const int w = (world.mapW() * 16 + kRadarCell - 1) / kRadarCell, h = (world.mapH() * 16 + kRadarCell - 1) / kRadarCell;
     if (w != radarW_ || h != radarH_) {
         radarW_ = w; radarH_ = h;
@@ -2722,14 +2722,14 @@ bool Controller::radarAt(float x, float z) const {
     return cx < radarW_ && cz < radarH_ && radar_[size_t(cz) * size_t(radarW_) + size_t(cx)];
 }
 
-bool Controller::knowsGround(const tak::sim::World& world, float x, float z) const {
+bool Controller::knowsGround(const ta::sim::World& world, float x, float z) const {
     if (world.mapRevealedFor(player_) || world.roomLosOff() || world.exploredAt(player_, x, z)) return true;
     if (!(x >= 0) || !(z >= 0)) return false;
     const int cx = int(x) / kRadarCell, cz = int(z) / kRadarCell;
     return cx < radarW_ && cz < radarH_ && radarSeen_[size_t(cz) * size_t(radarW_) + size_t(cx)];
 }
 
-bool Controller::inView(const tak::sim::World& world, float x, float z) const {
+bool Controller::inView(const ta::sim::World& world, float x, float z) const {
     if (world.roomLosOff() || radarAt(x, z)) return true;
     const float mapX = float(world.mapW()) * 16, mapZ = float(world.mapH()) * 16;
     return teamViews(world, int(std::clamp(x, 0.0f, std::max(mapX - 1, 0.0f))) >> 5,
@@ -2738,7 +2738,7 @@ bool Controller::inView(const tak::sim::World& world, float x, float z) const {
 
 // Before the first view pass (tick 0) only radar and FULL VISION show anything:
 // World::playerSees would answer "in sight" for every unit (updateKnowledge).
-bool Controller::sees(const tak::sim::World& world, const tak::sim::Unit& u) const {
+bool Controller::sees(const ta::sim::World& world, const ta::sim::Unit& u) const {
     if (!u.alive() || !u.type || u.cloaked || u.embarked()) return false;
     if (world.roomLosOff()) return true;
     if (const int x = u.x.floorInt(), z = u.z.floorInt(); x >= 0 && z >= 0 && x / kRadarCell < radarW_ && z / kRadarCell < radarH_ &&
@@ -2747,7 +2747,7 @@ bool Controller::sees(const tak::sim::World& world, const tak::sim::Unit& u) con
 }
 
 template <class F>
-void Controller::forDepositsNear(const tak::sim::World& world, float x, float z, float r, F&& fn) const {
+void Controller::forDepositsNear(const ta::sim::World& world, float x, float z, float r, F&& fn) const {
     const auto& deposits = world.manaSpots();
     const int x0 = int(std::floor((x - r) / kDepositCell)), x1 = int(std::floor((x + r) / kDepositCell));
     const int z0 = int(std::floor((z - r) / kDepositCell)), z1 = int(std::floor((z + r) / kDepositCell));
@@ -2804,7 +2804,7 @@ bool Controller::unsafeDeposit(float x, float z) const {
 // an enemy lodestone out of view within the 44 px one deposit allows is learned:
 // known at the next think (heard, not sighted: an attack-move to it, never an
 // attack by id), and the deposit taken at once.
-void Controller::learnSiteBlockers(const tak::sim::World& world, const tak::sim::UnitType* t, float x, float z) const {
+void Controller::learnSiteBlockers(const ta::sim::World& world, const ta::sim::UnitType* t, float x, float z) const {
     if (!t || !t->onMana) return;
     for (const HiddenLode& h : hiddenLodes_) {
         const float dx = h.x - x, dz = h.z - z;
@@ -2830,7 +2830,7 @@ void Controller::learnSiteBlockers(const tak::sim::World& world, const tak::sim:
 // after a tick), and World::playerSees then answers "in sight" for everything:
 // the think at tick 0 (player 0's) sees only what radar shows (sees) instead --
 // unless the room plays with FULL VISION, where every seat sees everything.
-void Controller::updateKnowledge(const tak::sim::World& world) {
+void Controller::updateKnowledge(const ta::sim::World& world) {
     constexpr uint32_t kHeardTicks = 5 * 30;
     constexpr float kStartFound = 600;
     const bool blind = world.viewCounts().empty() && world.tickCount() == 0 && !world.roomLosOff();
@@ -2848,7 +2848,7 @@ void Controller::updateKnowledge(const tak::sim::World& world) {
         allies[size_t(p)] = world.allied(player_, p);
     }
     auto enemy = [&](int p) { return p >= 0 && p < players && enemies[size_t(p)]; };
-    auto note = [&](const tak::sim::Unit& u, bool sighted) {
+    auto note = [&](const ta::sim::Unit& u, bool sighted) {
         const auto [cx, cz] = viewCell(u);
         knowledge_[u.id] = {u.type, u.player, u.x.toFloat(), u.z.toFloat(), strength(u), cx, cz, now_, u.underConstruction,
                             sighted};
@@ -3081,7 +3081,7 @@ bool Controller::sectorCentre(int s, float mapX, float mapZ, float& x, float& z)
 // a sector as less worth it, for each loss along the way. Reachability is tried
 // in that order for the first kProbes, and a spot this type cannot reach is
 // passed over for kUnreachableTicks.
-bool Controller::exploreTarget(const tak::sim::World& world, const tak::sim::UnitType* type, float x, float z,
+bool Controller::exploreTarget(const ta::sim::World& world, const ta::sim::UnitType* type, float x, float z,
                                float& tx, float& tz, int& slot, bool scout) {
     if (stayHome_) return false;   // Passive looks nowhere: not with scouts, nor with its army or fleet
     constexpr uint32_t kNeverSeen = 3 * 60 * 30, kRecent = 60 * 30, kUnreachableTicks = 3 * 60 * 30;
@@ -3148,11 +3148,11 @@ void Controller::claimSlot(int slot, uint32_t ticks) {
     else sectorClaim_[size_t(slot)] = now_ + ticks;
 }
 
-int Controller::explore(const tak::sim::World& world, const std::vector<int>& ids, const CommandSink& sink,
+int Controller::explore(const ta::sim::World& world, const std::vector<int>& ids, const CommandSink& sink,
                         bool scout, int* slotOut) {
     constexpr uint32_t kClaimTicks = 3 * 60 * 30;
     // Each kind of mover (flyer or not, and domain) goes where its first unit can.
-    std::vector<const tak::sim::Unit*> units;
+    std::vector<const ta::sim::Unit*> units;
     for (int id : ids)
         if (const auto* u = world.unit(id); u && u->alive() && u->type) units.push_back(u);
     std::stable_sort(units.begin(), units.end(), [](const auto* a, const auto* b) {
@@ -3163,7 +3163,7 @@ int Controller::explore(const tak::sim::World& world, const std::vector<int>& id
     for (size_t first = 0; first < units.size(); ++first) {
         if (done[first]) continue;
         const auto* lead = units[first]->type;
-        auto sameKind = [&](const tak::sim::Unit* u) {
+        auto sameKind = [&](const ta::sim::Unit* u) {
             return u->type->canFly == lead->canFly && u->type->domain == lead->domain;
         };
         float ex = 0, ez = 0;
@@ -3175,7 +3175,7 @@ int Controller::explore(const tak::sim::World& world, const std::vector<int>& id
             float tx = 0, tz = 0;
             if (!found || !reachablePoint(world, units[i]->type, units[i]->x.toFloat(), units[i]->z.toFloat(), ex, ez, tx, tz))
                 continue;
-            emit(sink, tak::net::Cmd::AttackMove, units[i]->id, "", tx, tz);
+            emit(sink, ta::net::Cmd::AttackMove, units[i]->id, "", tx, tz);
             ++ordered;
         }
         if (found) {
@@ -3194,7 +3194,7 @@ int Controller::explore(const tak::sim::World& world, const std::vector<int>& id
 // the levels that keep scouting, else rejoins the army. A scout killed on its
 // trip is a loss (losses_, slotLosses_): later picks steer round it, and while
 // the level's maxLosses fell within kLossWindow no new party goes out.
-void Controller::sendScouts(const tak::sim::World& world, uint32_t simTick, const CommandSink& sink,
+void Controller::sendScouts(const ta::sim::World& world, uint32_t simTick, const CommandSink& sink,
                             const StrikeBoard& board, std::vector<Fighter>& pool) {
     constexpr uint32_t kTripTicks = 4 * 60 * 30, kRetryTicks = 10 * 30, kClaimTicks = 3 * 60 * 30;
     constexpr uint32_t kLossWindow = 5 * 60 * 30, kLossMemory = 10 * 60 * 30;
@@ -3246,7 +3246,7 @@ void Controller::sendScouts(const tak::sim::World& world, uint32_t simTick, cons
     // explores the sea as a wave, and a scout taken from it could keep it home.
     auto ship = [&](const Fighter& f) {
         const auto* t = world.unit(f.id)->type;
-        return !t->canFly && t->domain == tak::sim::UnitType::Domain::Water;
+        return !t->canFly && t->domain == ta::sim::UnitType::Domain::Water;
     };
     const int ships = int(std::count_if(pool.begin(), pool.end(), ship));
     auto faster = [&](const Fighter& a, const Fighter& b) {
@@ -3286,7 +3286,7 @@ void Controller::sendScouts(const tak::sim::World& world, uint32_t simTick, cons
     for (const auto& f : party) {
         float tx = 0, tz = 0;
         if (!reachablePoint(world, world.unit(f.id)->type, f.x, f.z, ex, ez, tx, tz)) continue;
-        emit(sink, tak::net::Cmd::AttackMove, f.id, "", tx, tz);
+        emit(sink, ta::net::Cmd::AttackMove, f.id, "", tx, tz);
         scouts_[f.id] = {simTick, slot, f.x, f.z, lead.id};
         sent.push_back(f.id);
     }
@@ -3322,7 +3322,7 @@ void Controller::sendScouts(const tak::sim::World& world, uint32_t simTick, cons
 // kTripTicks). Ours, not retail, which watches no unit's headway: a strike
 // squad's think sends a marching member its MOVE again one time in ten or in
 // fifty, whatever it is doing (0x40e180, classicwaves.h).
-void Controller::updateStrikeProgress(const tak::sim::World& world, uint32_t simTick, const CommandSink& sink) {
+void Controller::updateStrikeProgress(const ta::sim::World& world, uint32_t simTick, const CommandSink& sink) {
     constexpr float kHeadway = 64;
     constexpr uint32_t kStrikeStallTicks = 60 * 30;   // a minute of game time, as a builder's (updateBuilderProgress)
     constexpr int kFightDoublings = 2, kMaxDoublings = 3;   // four minutes at a fight; eight at most
@@ -3330,10 +3330,10 @@ void Controller::updateStrikeProgress(const tak::sim::World& world, uint32_t sim
     auto cellAt = [](float x, float z) {
         return std::pair{int(std::floor(x / kSiteCell)), int(std::floor(z / kSiteCell))};
     };
-    auto cellOf = [&](const tak::sim::Unit& u) { return cellAt(u.x.toFloat(), u.z.toFloat()); };
-    auto fighting = [](const tak::sim::Unit& u) {
+    auto cellOf = [&](const ta::sim::Unit& u) { return cellAt(u.x.toFloat(), u.z.toFloat()); };
+    auto fighting = [](const ta::sim::Unit& u) {
         return std::any_of(u.slotTarget.begin(), u.slotTarget.end(), [](int32_t target) { return target != 0; }) ||
-            std::any_of(u.orders.begin(), u.orders.end(), [](const tak::sim::Order& o) { return o.targetId && !o.guard; });
+            std::any_of(u.orders.begin(), u.orders.end(), [](const ta::sim::Order& o) { return o.targetId && !o.guard; });
     };
     std::vector<std::pair<int, int>> fights;
     for (const auto& u : world.units())
@@ -3349,7 +3349,7 @@ void Controller::updateStrikeProgress(const tak::sim::World& world, uint32_t sim
         return false;
     };
     // Around the unit, or around the point it marches on.
-    auto atFight = [&](const tak::sim::Unit& u) {
+    auto atFight = [&](const ta::sim::Unit& u) {
         if (fightNear(cellOf(u))) return true;
         for (auto o = u.orders.rbegin(); o != u.orders.rend(); ++o)
             if (o->attackMove) {
@@ -3373,7 +3373,7 @@ void Controller::updateStrikeProgress(const tak::sim::World& world, uint32_t sim
             if (dx * dx + dz * dz >= kHeadway * kHeadway) progress = {x, z, simTick, 0};
         }
         const bool marching = !defenders_.count(u.id) && !scouts_.count(u.id) &&
-            std::any_of(u.orders.begin(), u.orders.end(), [](const tak::sim::Order& o) { return o.attackMove; });
+            std::any_of(u.orders.begin(), u.orders.end(), [](const ta::sim::Order& o) { return o.attackMove; });
         if (!marching || u.incapacitated() || fighting(u)) progress.since = simTick;
         else {
             // The wait away from a fight first: only a unit that has stood that
@@ -3381,7 +3381,7 @@ void Controller::updateStrikeProgress(const tak::sim::World& world, uint32_t sim
             const uint32_t stood = simTick - progress.since;
             const auto wait = [&](int more) { return kStrikeStallTicks << std::min(progress.stops + more, kMaxDoublings); };
             if (stops < kMaxStops && stood >= wait(0) && stood >= wait(atFight(u) ? kFightDoublings : 0)) {
-                tak::net::Command stop; stop.kind = tak::net::Cmd::Stop; stop.player = uint8_t(player_); stop.unitId = u.id;
+                ta::net::Command stop; stop.kind = ta::net::Cmd::Stop; stop.player = uint8_t(player_); stop.unitId = u.id;
                 sink(stop);
                 ++stops;
                 progress.since = simTick;
@@ -3401,7 +3401,7 @@ void Controller::updateStrikeProgress(const tak::sim::World& world, uint32_t sim
 // start first, else the map sector longest out of sight. Fighters already sent
 // (strikers_) that are idle again go on to the next site at once, or explore on
 // from where they stand. Scouting parties go out besides (sendScouts).
-void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
+void Controller::sendWaves(const ta::sim::World& world, uint32_t simTick,
                            const CommandSink& sink, const std::vector<int>& assigned) {
     std::erase_if(strikers_, [&](int id) { const auto* u = world.unit(id); return !u || !u->alive() || u->player != player_; });
     std::erase_if(pursuits_, [&](const auto& p) {
@@ -3422,7 +3422,7 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
     // A defensive level goes out only to scout and clean up; one that no longer
     // clearly is ahead calls its strikers home.
     if (!dp_.attack && !board.ahead) {
-        for (const auto& f : loose) { emit(sink, tak::net::Cmd::Move, f.id, "", home.first, home.second); strikers_.erase(f.id); }
+        for (const auto& f : loose) { emit(sink, ta::net::Cmd::Move, f.id, "", home.first, home.second); strikers_.erase(f.id); }
         return;
     }
     const bool split = diff_ == Difficulty::Hard || diff_ == Difficulty::Absurd;
@@ -3432,9 +3432,9 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
     // has a site it can reach and hurt: a fleet or the flyers go on where the army
     // cannot.
     auto pickFor = [&](const std::vector<Fighter>& group, float force, bool raid) {
-        struct Kind { const tak::sim::UnitType* type; float x = 0, z = 0; int n = 0; const Fighter* at = nullptr; float d = 0; };
+        struct Kind { const ta::sim::UnitType* type; float x = 0, z = 0; int n = 0; const Fighter* at = nullptr; float d = 0; };
         std::vector<Kind> kinds;
-        auto kindOf = [&](const tak::sim::UnitType* t) {
+        auto kindOf = [&](const ta::sim::UnitType* t) {
             return std::find_if(kinds.begin(), kinds.end(), [&](const Kind& k) {
                 return k.type->canFly == t->canFly && k.type->domain == t->domain; });
         };
@@ -3478,7 +3478,7 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
             const bool outmatched = sites == 0 && ((needMet && siteNeed(site) > force) ||
                 (striking && diff_ != Difficulty::Easy && !board.winning && siteNeed(site) > 3 * force));
             if (outmatched && striking)
-                for (const auto& f : group) { emit(sink, tak::net::Cmd::Move, f.id, "", home.first, home.second); strikers_.erase(f.id); }
+                for (const auto& f : group) { emit(sink, ta::net::Cmd::Move, f.id, "", home.first, home.second); strikers_.erase(f.id); }
             if (outmatched) return -1;
             const float want = sites + 1 == maxSites ? 1e30f : std::max(siteNeed(site) * 1.5f - taken[size_t(i)], force / 4);
             float sent = 0;
@@ -3553,7 +3553,7 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
         std::vector<Fighter> fleet;
         for (const auto& f : pool) {
             const auto* t = world.unit(f.id)->type;
-            if (!t->canFly && t->domain == tak::sim::UnitType::Domain::Water &&
+            if (!t->canFly && t->domain == ta::sim::UnitType::Domain::Water &&
                 std::none_of(idle.begin(), idle.end(), [&](const Ready& r) { return r.f.id == f.id; }))
                 fleet.push_back(f);
         }
@@ -3602,7 +3602,7 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
         int sent = 0;
         for (size_t i = from; i < idle.size() && size_t(sent) < n; ++i) {
             if (seaborneOnly && !seaborne(world.unit(idle[i].f.id))) continue;
-            emit(sink, tak::net::Cmd::AttackMove, idle[i].f.id, "", idle[i].x, idle[i].z);
+            emit(sink, ta::net::Cmd::AttackMove, idle[i].f.id, "", idle[i].x, idle[i].z);
             strikers_.insert(idle[i].f.id);
             ++sent;
         }
@@ -3634,11 +3634,11 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
     // ground army can walk there, they stay with it for the big push.
     const bool groundReaches=std::any_of(idle.begin(),idle.end(),[&](const auto& r) {
         const auto* u=world.unit(r.f.id);
-        return u && !u->type->canFly && u->type->domain==tak::sim::UnitType::Domain::Ground;
+        return u && !u->type->canFly && u->type->domain==ta::sim::UnitType::Domain::Ground;
     });
-    auto seaborne=[&](const tak::sim::Unit* u) {
-        return u && !u->type->canFly && (u->type->domain==tak::sim::UnitType::Domain::Water ||
-            (!groundReaches && u->type->domain==tak::sim::UnitType::Domain::Hover));
+    auto seaborne=[&](const ta::sim::Unit* u) {
+        return u && !u->type->canFly && (u->type->domain==ta::sim::UnitType::Domain::Water ||
+            (!groundReaches && u->type->domain==ta::sim::UnitType::Domain::Hover));
     };
     const int navalCount=int(std::count_if(idle.begin(),idle.end(),[&](const auto& r) {
         return seaborne(world.unit(r.f.id));
@@ -3682,13 +3682,13 @@ void Controller::sendWaves(const tak::sim::World& world, uint32_t simTick,
     }
 }
 
-// Debug builds, TAK_AI_EXPLORE: once a game minute, how much of the map this
+// Debug builds, TA_AI_EXPLORE: once a game minute, how much of the map this
 // AI's player has explored, how many enemies it has left, what it knows and how
 // many scouting parties and exploring groups it has sent and how many scouts it
 // has lost, and when each beaten enemy's start was last in sight; once, when no
 // enemy is left. A measuring hook only: it changes
 // nothing the AI does.
-void Controller::logExploration(const tak::sim::World& world, uint32_t simTick) {
+void Controller::logExploration(const ta::sim::World& world, uint32_t simTick) {
     int left = 0;
     for (int p = 0; p < world.numPlayers(); ++p)
         if (p != player_ && !world.isNeutralPlayer(p) && !world.allied(player_, p) && !world.player(p).defeated) ++left;
@@ -3722,12 +3722,12 @@ void Controller::logExploration(const tak::sim::World& world, uint32_t simTick) 
 }
 
 namespace {
-// Debug hook, TAK_AI_REVIVE_STATS: reviveIdle's work and time over the whole
+// Debug hook, TA_AI_REVIVE_STATS: reviveIdle's work and time over the whole
 // process (every AI), printed at exit as one AIREVIVE line. A measuring hook
 // only: it changes nothing the AI does. Each running room thinks on its own
 // worker thread, so a call counts locally and merges under the lock.
 struct ReviveStats {
-    bool on = tak::devEnv("TAK_AI_REVIVE_STATS") != nullptr;
+    bool on = ta::devEnv("TA_AI_REVIVE_STATS") != nullptr;
     std::mutex m;
     uint64_t calls = 0, casters = 0, records = 0, bodies = 0, visits = 0, commands = 0;
     std::vector<double> us;
@@ -3768,7 +3768,7 @@ struct ReviveCall {
 // computer player's revive then ends unraised, 0x406e79). The Retail AI never
 // gets here (Classic returns first): retail's AI orders no revive -- its group
 // order 0x50b5d0 takes only modes 2 and 9.
-void Controller::reviveIdle(const tak::sim::World& world, std::vector<int>& assigned,
+void Controller::reviveIdle(const ta::sim::World& world, std::vector<int>& assigned,
                             const CommandSink& sink) const {
     std::optional<ReviveCall> stats;
     if (reviveStats.on) stats.emplace();
@@ -3779,7 +3779,7 @@ void Controller::reviveIdle(const tak::sim::World& world, std::vector<int>& assi
     // earlier body). Gathered once, at the first idle caster, rather than
     // every caster scanning every unit record: nothing this think changes
     // them (a Resurrect only gives the caster its order). No body, no raise.
-    struct Body { float x, z; int id; const tak::sim::UnitType* type; bool claimed; };
+    struct Body { float x, z; int id; const ta::sim::UnitType* type; bool claimed; };
     std::vector<Body> bodies;
     bool gathered = false;
     for (const auto& u : world.units()) {
@@ -3813,7 +3813,7 @@ void Controller::reviveIdle(const tak::sim::World& world, std::vector<int>& assi
             best = &c; bestD = d;
         }
         if (!best) continue;
-        tak::net::Command c; c.kind = tak::net::Cmd::Resurrect; c.player = uint8_t(player_);
+        ta::net::Command c; c.kind = ta::net::Cmd::Resurrect; c.player = uint8_t(player_);
         c.unitId = u.id; c.targetId = best->id;
         sink(c);
         if (stats) ++stats->commands;
@@ -3822,7 +3822,7 @@ void Controller::reviveIdle(const tak::sim::World& world, std::vector<int>& assi
     }
 }
 
-void Controller::tick(const tak::sim::World& world, uint32_t simTick,
+void Controller::tick(const ta::sim::World& world, uint32_t simTick,
                       const CommandSink& sink) {
     // Classic runs retail's own clocks and bookkeeping: hand it every tick before
     // any of the other levels' cadence, home or ally setup runs.
@@ -3846,7 +3846,7 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
 
     now_ = simTick;
     updateKnowledge(world);
-    static const bool kExploreLog = tak::devEnv("TAK_AI_EXPLORE") != nullptr;
+    static const bool kExploreLog = ta::devEnv("TA_AI_EXPLORE") != nullptr;
     if (kExploreLog) logExploration(world, simTick);
     // Door clearance reads the live obstacle overlay, which new buildings change:
     // keep it for one think only.
@@ -3884,7 +3884,7 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
                     forDepositsNear(world, order.buildX.toFloat(), order.buildZ.toFloat(), 24,
                                     [&](size_t i) { taken = taken || (i < depositTaken_.size() && depositTaken_[i]); });
             if (!taken) continue;
-            tak::net::Command stop; stop.kind = tak::net::Cmd::Stop; stop.player = uint8_t(player_); stop.unitId = u.id;
+            ta::net::Command stop; stop.kind = ta::net::Cmd::Stop; stop.player = uint8_t(player_); stop.unitId = u.id;
             sink(stop);
         }
     if (!allyHomes_.empty() && world.hasManaSpots()) updateAllyClaims(world,simTick);
@@ -3953,12 +3953,12 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
         // traffic) or the sim's walk to a firing spot leads for a moment, and
         // the order behind it is the task. A Creon Sage backing out of its
         // Mortar's minimum range was sent the Attack again on every think.
-        if (std::any_of(u.orders.begin(), u.orders.end(), [](const tak::sim::Order& o) {
+        if (std::any_of(u.orders.begin(), u.orders.end(), [](const ta::sim::Order& o) {
                 return o.targetId || o.attackMove || o.patrol || o.guard || o.load || o.unload;
             })) break;   // already fighting, or a deliberate task
         int target = 0;
         float best = 1e18f;
-        auto consider = [&](const tak::sim::Unit* e, bool heard) {
+        auto consider = [&](const ta::sim::Unit* e, bool heard) {
             if (!e || !e->alive() || !e->type || e->embarked() || e->underConstruction ||
                 world.isNeutralPlayer(e->player) || world.allied(player_, e->player)) return;
             const float dx = e->x.toFloat() - u.x.toFloat(), dz = e->z.toFloat() - u.z.toFloat();
@@ -3976,10 +3976,10 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
         if (target) {
             const auto& e = *world.unit(target);
             if (sees(world, e)) {
-                tak::net::Command c; c.kind = tak::net::Cmd::Attack; c.player = uint8_t(player_);
+                ta::net::Command c; c.kind = ta::net::Cmd::Attack; c.player = uint8_t(player_);
                 c.unitId = u.id; c.targetId = target;
                 sink(c);
-            } else emit(sink, tak::net::Cmd::AttackMove, u.id, "", e.x.toFloat(), e.z.toFloat());
+            } else emit(sink, ta::net::Cmd::AttackMove, u.id, "", e.x.toFloat(), e.z.toFloat());
             assigned.push_back(u.id);
             commanderActed = true;   // the home leash below must not override it
         }
@@ -4024,10 +4024,10 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
                     if (navalFactory(pick)) ++needs.navalFactories;
                     if (navalProducer(pick)) ++needs.navalProducers;
                     if (pick->onMana && pick->isStructure()) ++needs.lodestoneProjects;
-                    if (incomeBuilding(pick) && tak::sim::World::lodestoneUpgradeBase(*pick).empty()) ++needs.lodestones;
+                    if (incomeBuilding(pick) && ta::sim::World::lodestoneUpgradeBase(*pick).empty()) ++needs.lodestones;
                     if (mobileBuilder(pick)) ++needs.mobileBuilders;
                     if (!pick->isStructure() && !pick->canFly && !pick->isBuilder &&
-                        pick->domain==tak::sim::UnitType::Domain::Water) ++needs.navalArmy;
+                        pick->domain==ta::sim::UnitType::Domain::Water) ++needs.navalArmy;
                     switch (categoryOf(pick)) {
                         case BuildCat::Army: ++needs.army; break;
                         case BuildCat::Factory: ++needs.factories; break;
@@ -4082,13 +4082,13 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
                     const float a=float((u.id+i)%16)*0.392699082f;
                     const float x=factory.x.toFloat()+detmath::cos(a)*r;
                     const float z=factory.z.toFloat()+detmath::sin(a)*r;
-                    const auto home=u.type->domain==tak::sim::UnitType::Domain::Water ?
+                    const auto home=u.type->domain==ta::sim::UnitType::Domain::Water ?
                         std::pair{factory.x.toFloat(),factory.z.toFloat()} : homeOf(world);
                     if (!dp_.attack && (x-home.first)*(x-home.first)+(z-home.second)*(z-home.second)>600*600) continue;
                     if (!world.canPlace(u.type,x,z) || (!u.type->canFly &&
                         (layout.blocks(footprintRect(u.type,x,z)) ||
                          !world.pathExists(u.type,x,z,u.x.toFloat(),u.z.toFloat())))) continue;
-                    emit(sink,tak::net::Cmd::Move,u.id,"",x,z);
+                    emit(sink,ta::net::Cmd::Move,u.id,"",x,z);
                     assigned.push_back(u.id);++cleared;moved=true;break;
                 }
                 if (moved) break;
@@ -4108,14 +4108,14 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
         float dx = u.x.toFloat() - h.first, dz = u.z.toFloat() - h.second;
         constexpr float kHomeLeash = 520.0f;   // ~a third of a small map's span
         if (dx * dx + dz * dz > kHomeLeash * kHomeLeash)
-            emit(sink, tak::net::Cmd::Move, u.id, "", h.first, h.second);
+            emit(sink, ta::net::Cmd::Move, u.id, "", h.first, h.second);
         break;
     }
     if (!dp_.attack) {
         for (const auto& u : world.units()) {
             if (!u.alive() || u.player!=player_ || u.underConstruction || !u.type ||
                 !u.type->canSetStance || (u.moveState==0 && u.fireState==2)) continue;
-            tak::net::Command c; c.kind=tak::net::Cmd::Stance;
+            ta::net::Command c; c.kind=ta::net::Cmd::Stance;
             c.player=uint8_t(player_);c.unitId=u.id;c.targetId=1;
             sink(c); // explicit interception moves; no autonomous long-distance chase
         }
@@ -4125,4 +4125,4 @@ void Controller::tick(const tak::sim::World& world, uint32_t simTick,
     sendWaves(world, simTick, sink, assigned);
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

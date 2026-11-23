@@ -2,8 +2,8 @@
 #include <cstdio>
 #include <limits>
 #include <stdexcept>
-using namespace tak::proc;
-using namespace tak::proc::windowsgpu_detail;
+using namespace ta::proc;
+using namespace ta::proc::windowsgpu_detail;
 namespace {
 void require(bool ok,const char* why) { if(!ok)throw std::runtime_error(why); }
 Counter engine(unsigned pid,unsigned low,unsigned physical,unsigned id,double value) {

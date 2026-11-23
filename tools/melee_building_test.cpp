@@ -43,26 +43,26 @@ struct Case {
     int biters=0,total=0;                 // 0: every attacker lands kMinHits; else this many bite, this many hits
 };
 
-void run(const std::string& dir,const char* data,const Case& c,tak::sim::PathfindingMode mode) {
-    const char* modeName=mode==tak::sim::PathfindingMode::Legion ? "legion" : "retail";
-    const auto s=tak::scn::load(dir+"/"+c.file);
-    tak::scn::BuildOptions options;
+void run(const std::string& dir,const char* data,const Case& c,ta::sim::PathfindingMode mode) {
+    const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
+    const auto s=ta::scn::load(dir+"/"+c.file);
+    ta::scn::BuildOptions options;
     options.mode=mode;
     options.serial=true;
     options.data=data;
-    auto b=tak::scn::build(s,options);
+    auto b=ta::scn::build(s,options);
     if(!b->skipped.empty()) { check(false,std::string(c.file)+": "+b->skipped); return; }
     auto& w=*b->world;
     const int target=b->groups.at(c.target).front();
     std::vector<int> attackers;
     for(const char* g:c.attackers) for(int id:b->groups.at(g)) attackers.push_back(id);
     std::vector<int> hits(attackers.size(),0),first(attackers.size(),-1);
-    tak::scn::OrderFeed feed(s,*b);
+    ta::scn::OrderFeed feed(s,*b);
     for(uint32_t t=0;t<s.ticks;++t) {
         feed.apply(t);
         auto* u=w.unit(target);
         if(!u || !u->alive()) { check(false,std::string(c.file)+" "+modeName+": the target died (topped up)"); return; }
-        const auto full=tak::sim::Fixed::fromInt(u->type->maxHp);
+        const auto full=ta::sim::Fixed::fromInt(u->type->maxHp);
         u->hp=full;u->lastHitBy=0;
         w.tick(1.f/30);
         u=w.unit(target);
@@ -99,7 +99,7 @@ int main(int argc,char** argv) {
     };
     try {
         for(const auto& c:cases)
-            for(auto mode:{tak::sim::PathfindingMode::Retail,tak::sim::PathfindingMode::Legion})
+            for(auto mode:{ta::sim::PathfindingMode::Retail,ta::sim::PathfindingMode::Legion})
                 run(argv[2],argv[1],c,mode);
     } catch(const std::exception& e) {
         std::fprintf(stderr,"melee_building_test: %s\n",e.what());

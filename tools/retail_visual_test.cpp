@@ -47,7 +47,7 @@ static bool testFeatureIndex() {
     // Bucket boundaries, including negative projected positions.
     for(int i=-2;i<34;++i)for(float edge:{-0.01f,0.f,0.01f})
         points.push_back({i*1024.f+edge,i*1024.f+edge,0,0});
-    tak::FeatureIndex index;
+    ta::FeatureIndex index;
     auto rebuild=[&]{index.rebuild(points.size(),[&](size_t i) {
         const auto& p=points[i];return std::pair{p.x-p.liftX,p.z-p.liftZ};
     });};
@@ -78,11 +78,11 @@ static bool testScriptEffectPosition() {
         return seed;
     };
     for(int caseIndex=0;caseIndex<4096;++caseIndex) {
-        std::vector<tak::sim::RetailModelPiece> model(2);
+        std::vector<ta::sim::RetailModelPiece> model(2);
         model[0].parent=-1;model[0].scriptPiece=0;
         model[1].parent=0;model[1].scriptPiece=1;
         for(auto& node:model)for(auto& value:node.offset)value=int32_t(random());
-        std::vector<tak::cob::RetailPiece> pose(2);
+        std::vector<ta::cob::RetailPiece> pose(2);
         for(auto& piece:pose) {
             for(auto& value:piece.move)value=int32_t(random());
             for(auto& value:piece.turn)value=int32_t(random());
@@ -90,11 +90,11 @@ static bool testScriptEffectPosition() {
         std::array<int32_t,3> base{};
         for(auto& value:base)value=int32_t(random());
         const uint16_t heading=uint16_t(random()),pitch=uint16_t(random()),roll=uint16_t(random());
-        const auto offset=tak::sim::retailPieceOrigin(model,pose,1,heading,pitch,roll);
+        const auto offset=ta::sim::retailPieceOrigin(model,pose,1,heading,pitch,roll);
         std::array<int32_t,3> expected{};
         for(size_t axis=0;axis<3;++axis)
             expected[axis]=std::bit_cast<int32_t>(uint32_t(base[axis])+uint32_t(offset[axis]));
-        if(tak::sim::retailScriptEffectPosition(base,model,pose,1,heading,pitch,roll)!=expected) {
+        if(ta::sim::retailScriptEffectPosition(base,model,pose,1,heading,pitch,roll)!=expected) {
             std::fprintf(stderr,"script effect origin overflow/placement mismatch at case %d\n",caseIndex);
             return false;
         }
@@ -103,57 +103,57 @@ static bool testScriptEffectPosition() {
 }
 
 static bool testDeathSfxLifecycle() {
-    using Family=tak::RetailDeathSfxFamily;
+    using Family=ta::RetailDeathSfxFamily;
     for(const auto& [code,family]:std::array{
             std::pair{257,Family::Smoke},std::pair{258,Family::Smoke},
             std::pair{265,Family::Smoke},std::pair{260,Family::DamageFlame},
             std::pair{261,Family::DamageFlame},std::pair{262,Family::DamageFlame},
             std::pair{263,Family::Detached},std::pair{264,Family::Detached}}) {
-        const auto actual=tak::retailDeathSfxFamily(code);
+        const auto actual=ta::retailDeathSfxFamily(code);
         if(!actual || *actual!=family) {
             std::fprintf(stderr,"death SFX family %d was classified incorrectly\n",code);
             return false;
         }
     }
-    if(tak::retailDeathSfxFamily(259) || tak::retailDeathSfxFamily(256)) {
+    if(ta::retailDeathSfxFamily(259) || ta::retailDeathSfxFamily(256)) {
         std::fprintf(stderr,"native no-op/unknown SFX code was admitted as a death effect\n");
         return false;
     }
-    if(!tak::retailOwnerVmStopsOnSetUnitValue(26) ||
-       !tak::retailOwnerVmStopsOnSetUnitValue(31) ||
-       tak::retailOwnerVmStopsOnSetUnitValue(30) ||
-       tak::retailOwnerVmMayAdvance(true) ||
-       !tak::retailOwnerVmMayAdvance(false) ||
-       tak::retailOwnerVmRetirementDelayTicks(26)!=1 ||
-       tak::retailOwnerVmRetirementDelayTicks(31)!=35 ||
-       tak::retailOwnerVmRetirementDelayTicks(30)!=-1 ||
-       tak::retailOwnerVmRetirementTick(100,26)!=101 ||
-       tak::retailOwnerVmRetirementTick(100,31)!=135 ||
-       tak::retailOwnerVmRetirementTick(0xfffffff0u,31)!=0x13u ||
-       tak::retailOwnerVmRetirementTick(100,30).has_value()) {
+    if(!ta::retailOwnerVmStopsOnSetUnitValue(26) ||
+       !ta::retailOwnerVmStopsOnSetUnitValue(31) ||
+       ta::retailOwnerVmStopsOnSetUnitValue(30) ||
+       ta::retailOwnerVmMayAdvance(true) ||
+       !ta::retailOwnerVmMayAdvance(false) ||
+       ta::retailOwnerVmRetirementDelayTicks(26)!=1 ||
+       ta::retailOwnerVmRetirementDelayTicks(31)!=35 ||
+       ta::retailOwnerVmRetirementDelayTicks(30)!=-1 ||
+       ta::retailOwnerVmRetirementTick(100,26)!=101 ||
+       ta::retailOwnerVmRetirementTick(100,31)!=135 ||
+       ta::retailOwnerVmRetirementTick(0xfffffff0u,31)!=0x13u ||
+       ta::retailOwnerVmRetirementTick(100,30).has_value()) {
         std::fprintf(stderr,"death COB VM did not honor its native SET26/SET31 stop boundary\n");
         return false;
     }
-    if(tak::retailAttachedSfxOwnerRemoved(true,200,-1,120) ||
-       tak::retailAttachedSfxOwnerRemoved(false,119,-1,120) ||
-       !tak::retailAttachedSfxOwnerRemoved(false,120,-1,120) ||
-       !tak::retailAttachedSfxOwnerRemoved(false,0,0,120) ||
-       tak::retailAttachedSfxOwnerRemovedSnapshot(true,200,false,120) ||
-       tak::retailAttachedSfxOwnerRemovedSnapshot(false,119,false,120) ||
-       !tak::retailAttachedSfxOwnerRemovedSnapshot(false,120,false,120) ||
-       !tak::retailAttachedSfxOwnerRemovedSnapshot(false,0,true,120)) {
+    if(ta::retailAttachedSfxOwnerRemoved(true,200,-1,120) ||
+       ta::retailAttachedSfxOwnerRemoved(false,119,-1,120) ||
+       !ta::retailAttachedSfxOwnerRemoved(false,120,-1,120) ||
+       !ta::retailAttachedSfxOwnerRemoved(false,0,0,120) ||
+       ta::retailAttachedSfxOwnerRemovedSnapshot(true,200,false,120) ||
+       ta::retailAttachedSfxOwnerRemovedSnapshot(false,119,false,120) ||
+       !ta::retailAttachedSfxOwnerRemovedSnapshot(false,120,false,120) ||
+       !ta::retailAttachedSfxOwnerRemovedSnapshot(false,0,true,120)) {
         std::fprintf(stderr,"attached death SFX owner retirement boundary is incorrect\n");
         return false;
     }
-    const uint32_t retirement=tak::retailAttachedSfxRetirementTick(0xfffffffcu,118,120);
-    if(retirement!=0xfffffffeu || tak::retailTickAtOrAfter(0xfffffffdu,retirement) ||
-       !tak::retailTickAtOrAfter(0u,retirement)) {
+    const uint32_t retirement=ta::retailAttachedSfxRetirementTick(0xfffffffcu,118,120);
+    if(retirement!=0xfffffffeu || ta::retailTickAtOrAfter(0xfffffffdu,retirement) ||
+       !ta::retailTickAtOrAfter(0u,retirement)) {
         std::fprintf(stderr,"attached death SFX retirement tick mishandles wraparound\n");
         return false;
     }
-    if(tak::retailEarlierTick(120,1)!=1 || tak::retailEarlierTick(1,120)!=1 ||
-       tak::retailEarlierTick(0xfffffffeu,1)!=0xfffffffeu ||
-       tak::retailEarlierTick(1,0xfffffffeu)!=0xfffffffeu) {
+    if(ta::retailEarlierTick(120,1)!=1 || ta::retailEarlierTick(1,120)!=1 ||
+       ta::retailEarlierTick(0xfffffffeu,1)!=0xfffffffeu ||
+       ta::retailEarlierTick(1,0xfffffffeu)!=0xfffffffeu) {
         std::fprintf(stderr,"attached death SFX owner deadlines do not preserve the earliest wrap-safe tick\n");
         return false;
     }
@@ -164,13 +164,13 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--model-shade")==0) {
         float nx,ny,nz;
         while(std::scanf("%f %f %f",&nx,&ny,&nz)==3)
-            std::printf("%d\n",tak::retailModelShadeLevel(nx,ny,nz));
+            std::printf("%d\n",ta::retailModelShadeLevel(nx,ny,nz));
         return 0;
     }
-    if(argc==1 && (tak::retailModelShadeLevel(0,16,0)!=20 ||
-                   tak::retailModelShadeLevel(0,0,-16)!=11 ||
-                   tak::retailModelShadeLevel(-16,0,0)!=13 ||
-                   tak::retailModelShadeLevel(16,0,0)!=5)) {
+    if(argc==1 && (ta::retailModelShadeLevel(0,16,0)!=20 ||
+                   ta::retailModelShadeLevel(0,0,-16)!=11 ||
+                   ta::retailModelShadeLevel(-16,0,0)!=13 ||
+                   ta::retailModelShadeLevel(16,0,0)!=5)) {
         std::puts("FAIL: building light must illuminate camera-facing surfaces");return 1;
     }
     if(argc==1) {
@@ -179,30 +179,30 @@ int main(int argc,char** argv) {
         {
             // Three simulation steps between display frames: an intervening
             // shot and target clear must not disappear with the old snapshot.
-            tak::WeaponAnimationQueue queue;
-            tak::RetailWeaponAnimations events;
-            events.add(tak::RetailWeaponAnimation::Aim,2,0x1200,0x3400);
+            ta::WeaponAnimationQueue queue;
+            ta::RetailWeaponAnimations events;
+            events.add(ta::RetailWeaponAnimation::Aim,2,0x1200,0x3400);
             queue.push(100,7,events);
-            events.clear();events.add(tak::RetailWeaponAnimation::Fire,2);
+            events.clear();events.add(ta::RetailWeaponAnimation::Fire,2);
             queue.push(101,7,events);
-            events.clear();events.add(tak::RetailWeaponAnimation::Clear,2);
+            events.clear();events.add(ta::RetailWeaponAnimation::Clear,2);
             queue.push(102,7,events);
-            events.clear();events.add(tak::RetailWeaponAnimation::Aim,0);
+            events.clear();events.add(ta::RetailWeaponAnimation::Aim,0);
             queue.push(103,8,events);
             events.clear();
             // FireWeapon's callback may precede actual discharge. Capture the
             // later shot even though that tick has no new script callbacks.
             queue.push(104,7,events,4,123.0f,456.0f);
-            std::vector<std::pair<int,tak::WeaponAnimationQueue::Shot>> shots;
+            std::vector<std::pair<int,ta::WeaponAnimationQueue::Shot>> shots;
             const auto collectShot=[&](int id,const auto& shot) { shots.emplace_back(id,shot); };
             std::vector<std::tuple<int,int,int,int,int>> actual;
-            const auto collect=[&](int id,const tak::RetailWeaponAnimation& e) {
+            const auto collect=[&](int id,const ta::RetailWeaponAnimation& e) {
                 actual.emplace_back(id,int(e.kind),e.slot,e.heading,e.pitch);
             };
             queue.drain(102,collect,collectShot);
-            const decltype(actual) expected{{7,tak::RetailWeaponAnimation::Aim,2,0x1200,0x3400},
-                {7,tak::RetailWeaponAnimation::Fire,2,0,0},
-                {7,tak::RetailWeaponAnimation::Clear,2,0,0}};
+            const decltype(actual) expected{{7,ta::RetailWeaponAnimation::Aim,2,0x1200,0x3400},
+                {7,ta::RetailWeaponAnimation::Fire,2,0,0},
+                {7,ta::RetailWeaponAnimation::Clear,2,0,0}};
             if(actual!=expected) {
                 std::fprintf(stderr,"skipped render snapshots lost weapon callbacks or aiming arguments\n");return 1;
             }
@@ -217,19 +217,19 @@ int main(int argc,char** argv) {
             queue.drain(105,collect,collectShot);
             if(shots.size()!=1)return 1;
             events.clear();
-            events.add(tak::RetailWeaponAnimation::Clear,0);
-            for(int i=0;i<20;++i)events.add(tak::RetailWeaponAnimation::Switch,(i+1)%3);
+            events.add(ta::RetailWeaponAnimation::Clear,0);
+            for(int i=0;i<20;++i)events.add(ta::RetailWeaponAnimation::Switch,(i+1)%3);
             queue.push(106,7,events);
             events.clear();actual.clear();
             queue.drain(106,collect,collectShot);
-            if(actual.size()!=21 || std::get<1>(actual[0])!=tak::RetailWeaponAnimation::Clear)return 1;
+            if(actual.size()!=21 || std::get<1>(actual[0])!=ta::RetailWeaponAnimation::Clear)return 1;
             for(size_t i=1;i<actual.size();++i)
-                if(std::get<1>(actual[i])!=tak::RetailWeaponAnimation::Switch || std::get<2>(actual[i])!=int(i%3))return 1;
-            events.add(tak::RetailWeaponAnimation::Hit,3,0x4000,0,123);
+                if(std::get<1>(actual[i])!=ta::RetailWeaponAnimation::Switch || std::get<2>(actual[i])!=int(i%3))return 1;
+            events.add(ta::RetailWeaponAnimation::Hit,3,0x4000,0,123);
             queue.push(107,7,events);
             bool retainedHit=false;
             queue.drain(107,[&](int id,const auto& event) {
-                if(event.kind==tak::RetailWeaponAnimation::Hit)
+                if(event.kind==ta::RetailWeaponAnimation::Hit)
                     retainedHit=id==7 && event.slot==3 && event.heading==0x4000 && event.damage==123;
             },collectShot);
             if(!retainedHit)return 1;
@@ -237,14 +237,14 @@ int main(int argc,char** argv) {
 
         struct BurnEvent { int id; uint64_t activationSequence; bool emit; };
         std::vector<BurnEvent> events{{13,1,true},{2,2,true},{9,3,true}};
-        tak::retailOrderFeatureSmokeNewestFirst(events);
+        ta::retailOrderFeatureSmokeNewestFirst(events);
         if(events.size()!=3 || events[0].id!=9 || events[1].id!=2 || events[2].id!=13) {
             std::fprintf(stderr,"feature smoke order helper did not return 9,2,13 newest-first\n");return 1;
         }
 
-        std::map<int,std::vector<tak::RetailSmokeParticle>> particles;
+        std::map<int,std::vector<ta::RetailSmokeParticle>> particles;
         auto seedParticle=[&](int id,uint32_t countdown,uint32_t frameLimit) {
-            tak::RetailSmokeParticle particle;
+            ta::RetailSmokeParticle particle;
             particle.position={id*65536,id*2*65536,-id*65536};
             particle.countdown=countdown;particle.frameLimit=frameLimit;
             particles[id].push_back(particle);
@@ -273,14 +273,14 @@ int main(int argc,char** argv) {
             owner=event.id;order.emplace_back(1,event.id);
             std::array<uint32_t,3> rolls{};
             for(auto& roll:rolls)roll=random();
-            tak::RetailSmokeParticle particle;
+            ta::RetailSmokeParticle particle;
             particle.position={event.id*65536,event.id*2*65536,-event.id*65536};
             particle.frameLimit=rolls[2];
             emittedPositions[event.id].push_back(particle.position);
             emittedFrameLimits[event.id].push_back(particle.frameLimit);
             particles[event.id].push_back(particle);
         };
-        tak::retailStepFeatureSmoke(events,update,emit);
+        ta::retailStepFeatureSmoke(events,update,emit);
         const std::vector<std::pair<int,int>> expectedOrder{
             {0,9},{1,9},{0,2},{1,2},{0,13},{1,13}};
         const std::vector<std::pair<int,uint32_t>> expectedDraws{
@@ -306,7 +306,7 @@ int main(int argc,char** argv) {
 
         for(auto& event:events)event.emit=false;
         order.clear();
-        tak::retailStepFeatureSmoke(events,update,emit);
+        ta::retailStepFeatureSmoke(events,update,emit);
         if(order!=std::vector<std::pair<int,int>>{{0,9},{0,2},{0,13}} ||
            emittedFrameLimits[9].size()!=1 || emittedFrameLimits[2].size()!=1 ||
            emittedFrameLimits[13].size()!=1) {
@@ -315,13 +315,13 @@ int main(int argc,char** argv) {
         std::puts("PASS: feature smoke burns run newest-first, update then emit per burn, and retire expired particles before emission");
     }
     {
-        using Call=tak::RetailFlightAnimationCall;
-        tak::RetailFlightAnimationState state;
+        using Call=ta::RetailFlightAnimationCall;
+        ta::RetailFlightAnimationState state;
         std::vector<Call> calls;
         const auto update=[&](bool air,uint32_t flightSerial,uint32_t landingSerial,
                               bool transport=false) {
             calls.clear();
-            tak::updateRetailFlightAnimation(state,air,flightSerial,landingSerial,transport,
+            ta::updateRetailFlightAnimation(state,air,flightSerial,landingSerial,transport,
                 [&](Call call){calls.push_back(call);});
         };
         update(true,0,0);
@@ -334,57 +334,57 @@ int main(int argc,char** argv) {
         if(!calls.empty())return 1;
         update(true,0,1,true);
         if(calls!=std::vector<Call>{Call::BeginFlight})return 1;
-        tak::RetailFlightAnimationState skipped;
+        ta::RetailFlightAnimationState skipped;
         calls.clear();
-        tak::updateRetailFlightAnimation(skipped,true,0,0,false,
+        ta::updateRetailFlightAnimation(skipped,true,0,0,false,
             [&](Call call){calls.push_back(call);});
         calls.clear();
-        tak::updateRetailFlightAnimation(skipped,false,0,1,true,
+        ta::updateRetailFlightAnimation(skipped,false,0,1,true,
             [&](Call call){calls.push_back(call);});
         if(calls!=std::vector<Call>{Call::EndTransport,Call::BeginLanding})return 1;
-        tak::RetailFlightAnimationState fallback;
+        ta::RetailFlightAnimationState fallback;
         calls.clear();
-        tak::updateRetailFlightAnimation(fallback,true,0,0,false,
+        ta::updateRetailFlightAnimation(fallback,true,0,0,false,
             [&](Call call){calls.push_back(call);});
         calls.clear();
-        tak::updateRetailFlightAnimation(fallback,false,0,0,false,
+        ta::updateRetailFlightAnimation(fallback,false,0,0,false,
             [&](Call call){calls.push_back(call);});
         if(calls!=std::vector<Call>{Call::BeginLanding})return 1;
-        tak::RetailFlightAnimationState landedAttack;
+        ta::RetailFlightAnimationState landedAttack;
         calls.clear();
-        tak::updateRetailFlightAnimation(landedAttack,false,1,0,false,
+        ta::updateRetailFlightAnimation(landedAttack,false,1,0,false,
             [&](Call call){calls.push_back(call);});
         if(calls!=std::vector<Call>{Call::BeginFlight})return 1;
         calls.clear();
-        tak::updateRetailFlightAnimation(landedAttack,true,1,0,false,
+        ta::updateRetailFlightAnimation(landedAttack,true,1,0,false,
             [&](Call call){calls.push_back(call);});
         if(!calls.empty())return 1;
-        tak::RetailFlightAnimationState takeoff;
+        ta::RetailFlightAnimationState takeoff;
         calls.clear();
-        tak::updateRetailFlightAnimation(takeoff,true,1,0,false,
+        ta::updateRetailFlightAnimation(takeoff,true,1,0,false,
             [&](Call call){calls.push_back(call);});
         if(calls!=std::vector<Call>{Call::BeginFlight})return 1;
-        tak::RetailFlightAnimationState multiple;
+        ta::RetailFlightAnimationState multiple;
         calls.clear();
-        tak::updateRetailFlightAnimation(multiple,false,2,0,false,
+        ta::updateRetailFlightAnimation(multiple,false,2,0,false,
             [&](Call call){calls.push_back(call);});
         if(calls!=std::vector<Call>{Call::BeginFlight,Call::BeginFlight})return 1;
         calls.clear();
-        tak::updateRetailFlightAnimation(multiple,true,2,0,false,
+        ta::updateRetailFlightAnimation(multiple,true,2,0,false,
             [&](Call call){calls.push_back(call);});
         if(!calls.empty())return 1;
         if(argc==1)
             std::puts("PASS: flight/landing call-ins are mirrored once and suppress duplicate mode-transition fallbacks");
     }
     {
-        using Call=tak::RetailFlightAnimationCall;
-        tak::RetailFlightAnimationQueue queue;
-        tak::RetailFlightAnimationState state;
+        using Call=ta::RetailFlightAnimationCall;
+        ta::RetailFlightAnimationQueue queue;
+        ta::RetailFlightAnimationState state;
         std::vector<Call> calls;
         const auto start=[&](Call call){calls.push_back(call);};
         const auto consume=[&](const auto& snapshot) {
             if(snapshot.unit!=7)std::abort();
-            tak::updateRetailFlightAnimation(state,snapshot.airborne,
+            ta::updateRetailFlightAnimation(state,snapshot.airborne,
                 snapshot.beginFlightSerial,snapshot.landingSerial,true,start);
         };
         queue.capture(1,7,true,1,0);queue.drain(1,consume);calls.clear();
@@ -394,7 +394,7 @@ int main(int argc,char** argv) {
         queue.capture(3,7,false,1,1);
         queue.capture(4,7,true,2,1);
         queue.drain(4,consume);
-        tak::updateRetailFlightAnimation(state,true,2,1,true,start);
+        ta::updateRetailFlightAnimation(state,true,2,1,true,start);
         if(calls!=std::vector<Call>{Call::EndTransport,Call::BeginLanding,Call::BeginFlight}) {
             std::fprintf(stderr,"skipped render frames reordered landing and takeoff callbacks\n");return 1;
         }
@@ -410,15 +410,15 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--smoke-viewport")==0) {
         float x,y,width,height;
         while(std::scanf("%f %f %f %f",&x,&y,&width,&height)==4)
-            std::printf("%d\n",int(tak::retailViewportCenterAdmitted(x,y,width,height)));
+            std::printf("%d\n",int(ta::retailViewportCenterAdmitted(x,y,width,height)));
         return 0;
     }
     if (argc==1) {
         for (const auto& durations:std::vector<std::vector<uint16_t>>{{},{0},{1},{2,2,2},{0,2,1},{65535,0,3}})
             for (bool loop:{false,true}) {
-                tak::sim::RetailEffectClock clock;clock.start(durations);
+                ta::sim::RetailEffectClock clock;clock.start(durations);
                 for (uint32_t age=0;age<200000;++age) {
-                    const auto frame=tak::retailEffectFrame(durations,loop,age);
+                    const auto frame=ta::retailEffectFrame(durations,loop,age);
                     if (bool(frame)!=clock.active || (frame && *frame!=clock.frame)) {
                         std::fprintf(stderr,"effect frame mismatch at age %u\n",age);return 1;
                     }
@@ -429,11 +429,11 @@ int main(int argc,char** argv) {
     if(argc==1) {
         for(const auto& durations:std::vector<std::vector<uint16_t>>{{1},{0,2,1},{2,4,1,3},{65535,0,3}}) {
             for(bool loop:{false,true}) {
-                tak::sim::RetailEffectClock clock;clock.start(durations);
+                ta::sim::RetailEffectClock clock;clock.start(durations);
                 for(uint32_t elapsed=1;elapsed<200;++elapsed) {
-                    const auto age=tak::retailFeatureSmokeAge(elapsed,0);
+                    const auto age=ta::retailFeatureSmokeAge(elapsed,0);
                     if(!age)return 1;
-                    const auto sampled=tak::retailEffectFrame(durations,loop,*age);
+                    const auto sampled=ta::retailEffectFrame(durations,loop,*age);
                     const auto native=clock.active ? std::optional<size_t>{clock.frame} : std::nullopt;
                     if(sampled!=native) {
                         std::fprintf(stderr,"feature smoke frame phase mismatch at elapsed %u\n",elapsed);return 1;
@@ -442,8 +442,8 @@ int main(int argc,char** argv) {
                 }
             }
         }
-        if(tak::retailFeatureSmokeAge(17,17) || tak::retailFeatureSmokeAge(16,17) ||
-           tak::retailFeatureSmokeAge(0,0xffffffffu)!=std::optional<uint32_t>{0})return 1;
+        if(ta::retailFeatureSmokeAge(17,17) || ta::retailFeatureSmokeAge(16,17) ||
+           ta::retailFeatureSmokeAge(0,0xffffffffu)!=std::optional<uint32_t>{0})return 1;
         std::puts("PASS: feature smoke samples the pre-advance burn-body frame across loop, expiry and tick-wrap cases");
     }
     if(argc==1) {
@@ -453,12 +453,12 @@ int main(int argc,char** argv) {
                 std::tuple{width,20.0f,true},std::tuple{width+1.0f,20.0f,false},
                 std::tuple{20.0f,-1.0f,false},std::tuple{20.0f,0.0f,true},
                 std::tuple{20.0f,height,true},std::tuple{20.0f,height+1.0f,false}})
-            if(tak::retailViewportCenterAdmitted(x,y,width,height)!=admitted)return 1;
+            if(ta::retailViewportCenterAdmitted(x,y,width,height)!=admitted)return 1;
         std::puts("PASS: smoke sprite centers use retail's inclusive viewport edges");
     }
     if(argc==1) {
-        const auto fireball=tak::retailEffectSpriteOrigin(100,200,31,33,1);
-        const auto zoomed=tak::retailEffectSpriteOrigin(100,200,31,33,2);
+        const auto fireball=ta::retailEffectSpriteOrigin(100,200,31,33,1);
+        const auto zoomed=ta::retailEffectSpriteOrigin(100,200,31,33,2);
         if(fireball.x!=69 || fireball.y!=167 || zoomed.x!=38 || zoomed.y!=134)
             return 1;
         std::puts("PASS: authored projectile sprites preserve per-frame anchors at native and zoomed scale");
@@ -466,7 +466,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--debris-height")==0) {
         int x,z;std::array<int,4> heights;
         while(std::scanf("%d %d %d %d %d %d",&x,&z,&heights[0],&heights[1],&heights[2],&heights[3])==6)
-            std::printf("%d\n",tak::retailDebrisTerrainHeight(x,z,2,2,[&](int cx,int cz){return heights[cz*2+cx];}));
+            std::printf("%d\n",ta::retailDebrisTerrainHeight(x,z,2,2,[&](int cx,int cz){return heights[cz*2+cx];}));
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--blood-emit")==0) {
@@ -474,14 +474,14 @@ int main(int argc,char** argv) {
         std::array<unsigned,4> random;
         while(std::scanf("%d %d %d %u %u %u %u %u %u %u",&position[0],&position[1],&position[2],
             &colors[0],&colors[1],&colors[2],&random[0],&random[1],&random[2],&random[3])==10) {
-            unsigned index=0;auto p=tak::RetailBloodParticle::emit(position,colors,[&]{return random[index++];});
+            unsigned index=0;auto p=ta::RetailBloodParticle::emit(position,colors,[&]{return random[index++];});
             std::printf("%d %d %d %d %d %d %u %u\n",p.position[0],p.position[1],p.position[2],
                 p.velocity[0],p.velocity[1],p.velocity[2],p.color,index);
         }
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--blood-step")==0) {
-        tak::RetailBloodParticle p;int gravity,height;unsigned sea;
+        ta::RetailBloodParticle p;int gravity,height;unsigned sea;
         while(std::scanf("%d %d %d %d %d %d %d %u %d",&p.position[0],&p.position[1],
             &p.position[2],&p.velocity[0],&p.velocity[1],&p.velocity[2],&gravity,&sea,&height)==9) {
             int queries=0;auto result=p.tick(gravity,uint8_t(sea),[&](const auto&){++queries;return height;});
@@ -494,8 +494,8 @@ int main(int argc,char** argv) {
         unsigned flags,x,y,z;
         while(std::scanf("%u %u %u %u",&flags,&x,&y,&z)==4) {
             unsigned draws=0;const unsigned values[]={x,y,z};
-            tak::RetailDebrisMotion state;
-            const bool created=tak::RetailDebrisMotion::launch(flags,
+            ta::RetailDebrisMotion state;
+            const bool created=ta::RetailDebrisMotion::launch(flags,
                 [&](unsigned bound) {const unsigned value=values[draws++];
                     if(value>=bound)std::abort();
                     return value;},state);
@@ -507,9 +507,9 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--glow-class")==0) {
         unsigned kind,elapsed;
         while(std::scanf("%u %u",&kind,&elapsed)==2) {
-            const auto envelope=tak::retailGlowEnvelope(kind);
+            const auto envelope=ta::retailGlowEnvelope(kind);
             const bool alive=elapsed<=unsigned(envelope.duration);
-            const auto radii=alive?tak::retailGlowRadii(int(elapsed),envelope.duration,
+            const auto radii=alive?ta::retailGlowRadii(int(elapsed),envelope.duration,
                 envelope.begin,envelope.end):std::array<int32_t,2>{0,0};
             std::printf("%d %d %d\n",int(alive),radii[0],radii[1]);
         }
@@ -519,7 +519,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--glow-radii")==0) {
         int elapsed,duration,begin,end;
         while(std::scanf("%d %d %d %d",&elapsed,&duration,&begin,&end)==4) {
-            const auto radii=tak::retailGlowRadii(elapsed,duration,begin,end);
+            const auto radii=ta::retailGlowRadii(elapsed,duration,begin,end);
             std::printf("%d %d\n",radii[0],radii[1]);
         }
         return 0;
@@ -528,7 +528,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--glow-mesh")==0) {
         float x,y,rx,ry;unsigned alpha;
         while(std::scanf("%f %f %f %f %u",&x,&y,&rx,&ry,&alpha)==5) {
-            const auto vertices=tak::retailGlowMesh(x,y,rx,ry,uint8_t(alpha));
+            const auto vertices=ta::retailGlowMesh(x,y,rx,ry,uint8_t(alpha));
             for(const auto& v:vertices)std::printf("%.9g %.9g %u ",v.x,v.y,v.color);
             std::puts("");
         }
@@ -536,7 +536,7 @@ int main(int argc,char** argv) {
     }
 
     if(argc==2 && std::strcmp(argv[1],"--debris-step")==0) {
-        tak::RetailDebrisMotion d;
+        ta::RetailDebrisMotion d;
         unsigned rx,ry,rz,sx,sy,sz,sea,wet,suppressed;
         int gravity,height;
         while(std::scanf("%d %d %d %d %d %d %u %u %u %u %u %u %u %u %u %d %u %u %d",
@@ -563,14 +563,14 @@ int main(int argc,char** argv) {
         unsigned period,random;
         while(std::scanf("%d %d %d %d %d %d %u %u",&origin[0],&origin[1],&origin[2],
                 &target[0],&target[1],&target[2],&period,&random)==8) {
-            const auto point=tak::RetailPointParticle::emit(origin,target,period,[&] {return random;});
+            const auto point=ta::RetailPointParticle::emit(origin,target,period,[&] {return random;});
             std::printf("%d %d %d %d %d %d\n",point.position[0],point.position[1],point.position[2],
                 point.velocity[0],point.velocity[1],point.velocity[2]);
         }
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--point-step")==0) {
-        tak::RetailPointParticle point;
+        ta::RetailPointParticle point;
         int terrain,seaLevel;
         while(std::scanf("%d %d %d %d %d %d %u %u %u %d %d",
                 &point.position[0],&point.position[1],&point.position[2],
@@ -583,7 +583,7 @@ int main(int argc,char** argv) {
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--smoke-step")==0) {
-        tak::RetailSmokeParticle smoke;
+        ta::RetailSmokeParticle smoke;
         int wx,wz,gravity;unsigned random;
         while(std::scanf("%d %d %d %d %u %u %u %d %d %d %u",
                 &smoke.position[0],&smoke.position[1],&smoke.position[2],
@@ -606,10 +606,10 @@ int main(int argc,char** argv) {
             const auto viewport=[&](const std::array<int,2>& point) {
                 return point[0]>=cx && point[0]<=cx+320 && point[1]>=cy && point[1]<=cy+240;
             };
-            const bool stream=tak::retailFlameStreamVisible(muzzle,aim,
-                [&](const auto& point) {return viewport(tak::retailFlameEndpointPoint(point));},
+            const bool stream=ta::retailFlameStreamVisible(muzzle,aim,
+                [&](const auto& point) {return viewport(ta::retailFlameEndpointPoint(point));},
                 [&](const auto& point) {return (&point==&muzzle ? a:b)!=0;});
-            std::printf("%d\n",int(stream && viewport(tak::retailFlameParticlePoint(particle))));
+            std::printf("%d\n",int(stream && viewport(ta::retailFlameParticlePoint(particle))));
         }
         return 0;
     }
@@ -620,14 +620,14 @@ int main(int argc,char** argv) {
         for(auto& count:counts) {unsigned value;if(std::scanf("%u",&value)!=1)return 2;count=uint8_t(value);}
         int x,y,z;
         while(std::scanf("%d %d %d",&x,&y,&z)==3)
-            std::printf("%d\n",int(tak::RetailEffectVisibility::visible(counts,width,height,{x,y,z})));
+            std::printf("%d\n",int(ta::RetailEffectVisibility::visible(counts,width,height,{x,y,z})));
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--effect-sight-lifecycle")==0) {
         unsigned now,count;
         while(std::scanf("%u %u",&now,&count)==2) {
-            tak::RetailEffectVisibility view(16,16,
-                std::vector<tak::sim::RetailExplorationHeight>(256,{0,0}));
+            ta::RetailEffectVisibility view(16,16,
+                std::vector<ta::sim::RetailExplorationHeight>(256,{0,0}));
             const auto output=[&] {
                 std::printf("%zu ",view.retainedCount());
                 for(auto value:view.counts())std::printf("%u ",unsigned(value));
@@ -635,7 +635,7 @@ int main(int argc,char** argv) {
             for(unsigned i=0;i<count;++i) {
                 int x,z;unsigned delay;
                 if(std::scanf("%d %d %u",&x,&z,&delay)!=3)return 2;
-                tak::sim::RetailSightFootprint sight;
+                ta::sim::RetailSightFootprint sight;
                 sight.x=int16_t(x);sight.z=int16_t(z);sight.distance=16;sight.sightHeight=1;
                 view.set(sight,true);view.retain(sight,now,delay);output();
             }
@@ -647,7 +647,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--storm-launch")==0) {
         int x,y,z,ax,ay,az,variation;unsigned speed,steps;
         while(std::scanf("%d %d %d %d %d %d %u %u %d",&x,&y,&z,&ax,&ay,&az,&speed,&steps,&variation)==9) {
-            const auto result=tak::sim::retailStormLaunch({x,y,z},{ax,ay,az},speed,steps,variation);
+            const auto result=ta::sim::retailStormLaunch({x,y,z},{ax,ay,az},speed,steps,variation);
             for(auto value:result.position)std::printf("%d ",value);
             for(auto value:result.baseVelocity)std::printf("%d ",value);
             for(float value:result.variation)std::printf("%u ",std::bit_cast<uint32_t>(value));
@@ -659,7 +659,7 @@ int main(int argc,char** argv) {
         unsigned seed,bits;
         while(std::scanf("%u %u",&seed,&bits)==2) {
             uint32_t state=seed;
-            const double value=tak::sim::retailWanderRandom(state,std::bit_cast<float>(uint32_t(bits)));
+            const double value=ta::sim::retailWanderRandom(state,std::bit_cast<float>(uint32_t(bits)));
             std::printf("%u %llu\n",state,static_cast<unsigned long long>(std::bit_cast<uint64_t>(value)));
         }
         return 0;
@@ -669,7 +669,7 @@ int main(int argc,char** argv) {
         while(std::scanf("%u %u %u %u",&count,&loop,&initial,&steps)==4) {
             std::vector<uint16_t> durations(count);
             for(auto& duration:durations) {unsigned value;if(std::scanf("%u",&value)!=1)return 2;duration=uint16_t(value);}
-            tak::sim::RetailEffectClock clock;clock.start(durations,initial);
+            ta::sim::RetailEffectClock clock;clock.start(durations,initial);
             for(unsigned step=0;step<=steps;++step) {
                 std::printf("%u %u %u ",unsigned(clock.frame),unsigned(clock.remaining),unsigned(clock.active));
                 if(step<steps)clock.tick(durations,loop!=0);
@@ -681,7 +681,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--lightning-quad")==0) {
         int x0,y0,x1,y1,vw,vh,w,h,tw,th;
         while(std::scanf("%d %d %d %d %d %d %d %d %d %d",&x0,&y0,&x1,&y1,&vw,&vh,&w,&h,&tw,&th)==10) {
-            const auto quad=tak::retailLightningQuad({x0,y0},{x1,y1},vw,vh,w,h,tw,th);
+            const auto quad=ta::retailLightningQuad({x0,y0},{x1,y1},vw,vh,w,h,tw,th);
             std::printf("%d",int(quad.has_value()));
             if(quad)for(const auto& vertex:*quad)for(float value:{vertex.x,vertex.y,vertex.u,vertex.v})
                 std::printf(" %u",std::bit_cast<uint32_t>(value));
@@ -690,9 +690,9 @@ int main(int argc,char** argv) {
         return 0;
     }
     if(argc==3 && std::strcmp(argv[1],"--effect-definitions")==0) {
-        const auto root=tak::tdf::parse(argv[2]);
+        const auto root=ta::tdf::parse(argv[2]);
         for(const auto& [name,node]:root.orderedChildren()) {
-            const auto definition=tak::retailLightningDefinition(*node);
+            const auto definition=ta::retailLightningDefinition(*node);
             const auto& effect=definition.initial;
             std::printf("%.*s %d %d %zu %u %d %d\n",int(name.size()),name.data(),effect.width,effect.height,
                 effect.sources.size(),effect.capacity,effect.intensity,effect.decay);
@@ -709,10 +709,10 @@ int main(int argc,char** argv) {
                 int ramp,first,last;unsigned start,end;
                 if(std::scanf("%d %d %d %u %u",&ramp,&first,&last,&start,&end)!=5)return 2;
                 if(first<0 || first>255 || last<0 || last>255)return 2;
-                if(ramp)tak::retailEffectColorRamp(colors,first,last,start,end);
+                if(ramp)ta::retailEffectColorRamp(colors,first,last,start,end);
                 else colors[size_t(first)]=start;
             }
-            const auto packed=tak::retailEffectPalette(colors,intensity);
+            const auto packed=ta::retailEffectPalette(colors,intensity);
             for(auto color:colors)std::printf("%u ",color);
             for(auto color:packed)std::printf("%u ",unsigned(color));
             std::puts("");
@@ -720,7 +720,7 @@ int main(int argc,char** argv) {
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--lightning-emitter")==0) {
-        tak::RetailLightningEffect effect;unsigned seed;int count,steps,rise;
+        ta::RetailLightningEffect effect;unsigned seed;int count,steps,rise;
         while(std::scanf("%d %d %u %d %d %d %d %d %u",&effect.width,&effect.height,&effect.capacity,
                 &effect.intensity,&effect.decay,&rise,&count,&steps,&seed)==9) {
             if(effect.width<3 || effect.height<4 || count<0 || steps<0)return 2;
@@ -755,7 +755,7 @@ int main(int argc,char** argv) {
         while(std::scanf("%d %d %d %d %d %d %d %d %u",&width,&height,&x0,&y0,&x1,&y1,&intensity,&fade,&seed)==9) {
             if(width<3 || height<4)return 2;
             std::vector<uint8_t> pixels(size_t(width)*height);unsigned calls=0;
-            tak::retailEffectLightning(pixels,width,height,{x0,y0},{x1,y1},intensity,fade!=0,[&] {
+            ta::retailEffectLightning(pixels,width,height,{x0,y0},{x1,y1},intensity,fade!=0,[&] {
                 ++calls;seed=seed*214013u+2531011u;return (seed>>16)&32767u;
             });
             std::printf("%u %u",seed,calls);
@@ -770,12 +770,12 @@ int main(int argc,char** argv) {
             if(width<3 || height<4 || count<0)return 2;
             std::vector<uint8_t> pixels(size_t(width)*height);
             for(auto& pixel:pixels) {unsigned value;if(std::scanf("%u",&value)!=1)return 2;pixel=uint8_t(value);}
-            std::vector<tak::RetailEffectParticle> particles(static_cast<size_t>(count));
+            std::vector<ta::RetailEffectParticle> particles(static_cast<size_t>(count));
             for(auto& particle:particles)for(auto* values:{&particle.position,&particle.velocity})
                 for(auto& value:*values)if(std::scanf("%d",&value)!=1)return 2;
-            tak::retailEffectAdvance(particles,width,height);
-            tak::retailEffectDiffuse(pixels,width,height,rise!=0);
-            tak::retailEffectStamp(pixels,width,particles);
+            ta::retailEffectAdvance(particles,width,height);
+            ta::retailEffectDiffuse(pixels,width,height,rise!=0);
+            ta::retailEffectStamp(pixels,width,particles);
             std::printf("%zu",particles.size());
             for(const auto& particle:particles)for(auto value:particle.position)std::printf(" %d",value);
             for(auto pixel:pixels)std::printf(" %u",unsigned(pixel));
@@ -789,7 +789,7 @@ int main(int argc,char** argv) {
         int width,height,owner,units,cells;unsigned aoe,edge;std::array<int32_t,3> impact;
         while(std::scanf("%d %d %u %u %d %d %d %d %d %d",&width,&height,&aoe,&edge,&owner,
                 &impact[0],&impact[1],&impact[2],&units,&cells)==10) {
-            struct Body { int live=0; tak::sim::RetailSplashBody body; };
+            struct Body { int live=0; ta::sim::RetailSplashBody body; };
             std::map<int,Body> bodies;
             for(int i=0;i<units;++i) {
                 int id;Body b;
@@ -809,10 +809,10 @@ int main(int argc,char** argv) {
                 int groundAt(int x,int z) const { return words[size_t(z)*width+x][0]; }
                 int airAt(int x,int z) const { return words[size_t(z)*width+x][1]; }
                 bool live(int id) const { const auto it=bodies.find(id);return it!=bodies.end() && it->second.live; }
-                tak::sim::RetailSplashBody body(int id) const { return bodies.at(id).body; }
+                ta::sim::RetailSplashBody body(int id) const { return bodies.at(id).body; }
             } host{bodies,words,width};
             std::vector<std::pair<int,float>> hits;
-            tak::sim::retailSplashUnits(impact,uint16_t(aoe),std::bit_cast<float>(uint32_t(edge)),owner,
+            ta::sim::retailSplashUnits(impact,uint16_t(aoe),std::bit_cast<float>(uint32_t(edge)),owner,
                 width,height,host,[&](int id,float fraction){hits.emplace_back(id,fraction);});
             std::printf("%zu",hits.size());
             for(const auto& [id,fraction]:hits)std::printf(" %d:%08x",id,std::bit_cast<uint32_t>(fraction));
@@ -824,7 +824,7 @@ int main(int argc,char** argv) {
         std::array<int32_t,3> point,target;unsigned radius;
         while(std::scanf("%d %d %d %d %d %d %u",&point[0],&point[1],&point[2],
                 &target[0],&target[1],&target[2],&radius)==7)
-            std::printf("%d\n",int(tak::sim::retailProjectileProximity(point,target,uint16_t(radius))));
+            std::printf("%d\n",int(ta::sim::retailProjectileProximity(point,target,uint16_t(radius))));
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--air-occupancy")==0) {
@@ -832,15 +832,15 @@ int main(int argc,char** argv) {
         // silent deaths, then the clear (507050 mode 1) and insert (506c40) passes.
         int width,height,count,ticks;unsigned seed;
         while(std::scanf("%d %d %d %d %u",&width,&height,&count,&ticks,&seed)==5) {
-            std::vector<tak::sim::RetailAirCollisionBody> bodies(static_cast<size_t>(count));
-            std::vector<tak::sim::RetailAirOccupant> states(static_cast<size_t>(count));
+            std::vector<ta::sim::RetailAirCollisionBody> bodies(static_cast<size_t>(count));
+            std::vector<ta::sim::RetailAirOccupant> states(static_cast<size_t>(count));
             std::vector<int> live(static_cast<size_t>(count),1);
             for(int i=0;i<count;++i)bodies[size_t(i)].id=i+1;
             struct Host {
-                std::vector<tak::sim::RetailAirCollisionBody>& bodies;
-                std::vector<tak::sim::RetailAirOccupant>& states;
+                std::vector<ta::sim::RetailAirCollisionBody>& bodies;
+                std::vector<ta::sim::RetailAirOccupant>& states;
                 std::vector<int>& live;
-                tak::sim::RetailAirOccupant* state(int id) {
+                ta::sim::RetailAirOccupant* state(int id) {
                     return id>=1 && id<=int(bodies.size()) && live[size_t(id-1)] ? &states[size_t(id-1)] : nullptr;
                 }
                 bool footprint(int id,int& x,int& z,int& fx,int& fz) const {
@@ -849,7 +849,7 @@ int main(int argc,char** argv) {
                 bool airborne(int id) const { return bodies[size_t(id-1)].airborne; }
                 void forEachFlyer(const std::function<void(int)>& f) const { for(size_t i=0;i<bodies.size();++i)if(live[i])f(int(i)+1); }
             } host{bodies,states,live};
-            tak::sim::RetailAirOccupancy grid;grid.reset(width,height);
+            ta::sim::RetailAirOccupancy grid;grid.reset(width,height);
             unsigned calls=0;
             auto random=[&](unsigned n){++calls;seed=seed*214013u+2531011u;return ((seed>>16)&32767u)*n/32768u;};
             for(int tick=0;tick<ticks;++tick) {
@@ -904,23 +904,23 @@ int main(int argc,char** argv) {
                 int sea() const { return seaLevel; }
             };
             Host host{width,height,sea,self,alive,blocking,exploration,cells};
-            const tak::sim::RetailLandingLimits limits{int16_t(fx),int16_t(fz),int16_t(maxDepth),int16_t(minDepth),
+            const ta::sim::RetailLandingLimits limits{int16_t(fx),int16_t(fz),int16_t(maxDepth),int16_t(minDepth),
                 uint8_t(maxSlope),canFly!=0,floater!=0,uint8_t(player)};
-            std::printf("%d\n",int(tak::sim::retailLandingSiteFree(x,z,limits,host)));
+            std::printf("%d\n",int(ta::sim::retailLandingSiteFree(x,z,limits,host)));
         }
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--air-collision-grid")==0) {
         int width,height,count;unsigned seed;
         while(std::scanf("%d %d %d %u",&width,&height,&count,&seed)==4) {
-            std::vector<tak::sim::RetailAirCollisionBody> bodies(static_cast<size_t>(count));
+            std::vector<ta::sim::RetailAirCollisionBody> bodies(static_cast<size_t>(count));
             for(auto& body:bodies) {
                 int airborne;
                 if(std::scanf("%d %d %d %d %d %d",&body.id,&body.x,&body.z,&body.width,&body.height,&airborne)!=6)return 2;
                 body.airborne=airborne!=0;
             }
             unsigned calls=0;
-            const auto cells=tak::sim::retailAirCollisionGrid(width,height,bodies,[&](unsigned n) {
+            const auto cells=ta::sim::retailAirCollisionGrid(width,height,bodies,[&](unsigned n) {
                 ++calls;seed=seed*214013u+2531011u;return ((seed>>16)&32767u)*n/32768u;
             });
             std::printf("%u %u",seed,calls);
@@ -932,7 +932,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--projectile-environment")==0) {
         int y,speed,feature;unsigned flags,minimum,sea,waterPass;
         while(std::scanf("%d %d %u %u %u %d %u",&y,&speed,&flags,&minimum,&sea,&feature,&waterPass)==7) {
-            const bool hit=tak::sim::retailProjectileHitsEnvironment(y,speed,flags,uint8_t(minimum),uint8_t(sea),
+            const bool hit=ta::sim::retailProjectileHitsEnvironment(y,speed,flags,uint8_t(minimum),uint8_t(sea),
                 feature<0 ? std::optional<uint8_t>{} : std::optional<uint8_t>{uint8_t(feature)},waterPass!=0);
             std::printf("%d %d\n",int(hit),speed);
         }
@@ -942,9 +942,9 @@ int main(int argc,char** argv) {
         std::array<int32_t,3> point,origin;int top;unsigned heading;
         while(std::scanf("%d %d %d %d %d %d %d %u",&point[0],&point[1],&point[2],
                 &origin[0],&origin[1],&origin[2],&top,&heading)==8) {
-            tak::sim::RetailCollisionQuad quad;
+            ta::sim::RetailCollisionQuad quad;
             for(auto& vertex:quad)if(std::scanf("%d %d",&vertex[0],&vertex[1])!=2)return 2;
-            std::printf("%d\n",int(tak::sim::retailProjectileInUnit(point,origin,top,uint16_t(heading),quad)));
+            std::printf("%d\n",int(ta::sim::retailProjectileInUnit(point,origin,top,uint16_t(heading),quad)));
         }
         return 0;
     }
@@ -953,7 +953,7 @@ int main(int argc,char** argv) {
         while(std::scanf("%d %d %d %d %d %d %u %u %u %u %u",&origin[0],&origin[1],&origin[2],
                 &step[0],&step[1],&step[2],&range,&speed,&substeps,&hit,&clip)==11) {
             unsigned calls=0;uint64_t hash=1469598103934665603ull;
-            const auto scan=tak::retailFlameScan(origin,step,range,speed,substeps,[&](auto& point) {
+            const auto scan=ta::retailFlameScan(origin,step,range,speed,substeps,[&](auto& point) {
                 ++calls;
                 for(auto v:point) {hash^=uint32_t(v);hash*=1099511628211ull;}
                 if(calls!=hit)return 0;
@@ -969,7 +969,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--flame-particle")==0) {
         int x,y,z,vx,vy,vz,life,remaining;unsigned frames;
         while(std::scanf("%d %d %d %d %d %d %d %d %u",&x,&y,&z,&vx,&vy,&vz,&life,&remaining,&frames)==9) {
-            tak::RetailFlameParticle particle{{x,y,z},{vx,vy,vz},remaining,life,0};
+            ta::RetailFlameParticle particle{{x,y,z},{vx,vy,vz},remaining,life,0};
             const int frame=particle.frame(uint16_t(frames));
             const bool alive=particle.tick();
             std::printf("%d %d %d %d %d %d\n",frame,int(alive),particle.remaining,
@@ -981,7 +981,7 @@ int main(int argc,char** argv) {
         std::array<int32_t,3> origin,endpoint;int life;unsigned a,b,c;
         while(std::scanf("%d %d %d %d %d %d %d %u %u %u",&origin[0],&origin[1],&origin[2],
                 &endpoint[0],&endpoint[1],&endpoint[2],&life,&a,&b,&c)==10) {
-            const auto v=tak::retailFlameVelocity(origin,endpoint,life,{uint16_t(a),uint16_t(b),uint16_t(c)});
+            const auto v=ta::retailFlameVelocity(origin,endpoint,life,{uint16_t(a),uint16_t(b),uint16_t(c)});
             std::printf("%d %d %d\n",v[0],v[1],v[2]);
         }
         return 0;
@@ -989,8 +989,8 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--weapon-animation")==0) {
         unsigned heading,pitch,slot;
         while(std::scanf("%u %u %u",&heading,&pitch,&slot)==3) {
-            tak::RetailWeaponAnimations events;
-            events.add(tak::RetailWeaponAnimation::Aim,int(slot),uint16_t(heading),uint16_t(pitch));
+            ta::RetailWeaponAnimations events;
+            events.add(ta::RetailWeaponAnimation::Aim,int(slot),uint16_t(heading),uint16_t(pitch));
             const auto& event=events.events[0];
             std::printf("%u %u %u\n",unsigned(event.heading),unsigned(event.pitch),unsigned(event.slot));
         }
@@ -999,8 +999,8 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--weapon-fire")==0) {
         unsigned nominal,roll,weaponFlags,typeFlags,unitFlags,aimFlags;
         while(std::scanf("%u %u %u %u %u %u",&nominal,&roll,&weaponFlags,&typeFlags,&unitFlags,&aimFlags)==6)
-            std::printf("%u %u\n",unsigned(tak::sim::retailWeaponReload(uint16_t(nominal),uint16_t(roll))),
-                tak::sim::retailWeaponFireEvent(weaponFlags,typeFlags,unitFlags,uint16_t(aimFlags)));
+            std::printf("%u %u\n",unsigned(ta::sim::retailWeaponReload(uint16_t(nominal),uint16_t(roll))),
+                ta::sim::retailWeaponFireEvent(weaponFlags,typeFlags,unitFlags,uint16_t(aimFlags)));
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--weapon-update")==0) {
@@ -1011,10 +1011,10 @@ int main(int argc,char** argv) {
                 if(std::scanf("%u %u %u %u %u %u",&flags[i],&reloads[i],&present[i],&admit[i],&ready[i],&signal[i])!=6)return 2;
             unsigned long long trace=0;uint32_t combatUntil=0;
             for(int i=0;i<3;++i) {
-                tak::RetailAimState state{0,0,uint16_t(flags[i])};
+                ta::RetailAimState state{0,0,uint16_t(flags[i])};
                 uint16_t reload=uint16_t(reloads[i]);
                 if(enabled && present[i] && (selected==3 || selected==unsigned(i)))
-                    tak::sim::retailWeaponUpdate(reload,state,100,combatUntil,
+                    ta::sim::retailWeaponUpdate(reload,state,100,combatUntil,
                         [&]{trace=trace*16+unsigned(i*4+1);return admit[i]!=0;},
                         [&]{trace=trace*16+unsigned(i*4+2);return ready[i]!=0;},
                         [&]{trace=trace*16+unsigned(i*4+3);if(signal[i])state.set(23);},
@@ -1032,7 +1032,7 @@ int main(int argc,char** argv) {
         int operation,available,aligned;
         while(std::scanf("%d %u %u %u %u %u %u %d %d",&operation,&heading,&pitch,&flags,
                 &nextHeading,&nextPitch,&tolerance,&available,&aligned)==9) {
-            tak::RetailAimState state{uint16_t(heading),uint16_t(pitch),uint16_t(flags)};
+            ta::RetailAimState state{uint16_t(heading),uint16_t(pitch),uint16_t(flags)};
             bool result=false;
             if(operation==0)result=state.start(uint16_t(nextHeading),uint16_t(nextPitch));
             else if(operation==1)result=state.ready(uint16_t(nextHeading),uint16_t(nextPitch),
@@ -1050,14 +1050,14 @@ int main(int argc,char** argv) {
         while(std::scanf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",&origin[0],&origin[2],
                 &targetOrigin[0],&targetOrigin[2],&led[0],&led[2],&melee,&mover,&canFly,&hover,&pivot,
                 &request,&moverFlags,&heading,&tolerance,&flags,&angleHeading,&anglePitch)==18) {
-            const bool posted=tak::sim::retailPostsFacing(mover!=0,canFly!=0,hover!=0,uint16_t(pivot));
+            const bool posted=ta::sim::retailPostsFacing(mover!=0,canFly!=0,hover!=0,uint16_t(pivot));
             if(posted) {
-                request=tak::sim::retailSlotFacing(origin,targetOrigin,led,melee!=0);
+                request=ta::sim::retailSlotFacing(origin,targetOrigin,led,melee!=0);
                 moverFlags|=0x10;
             }
-            tak::RetailAimState state{uint16_t(angleHeading),uint16_t(anglePitch),uint16_t(flags)};
+            ta::RetailAimState state{uint16_t(angleHeading),uint16_t(anglePitch),uint16_t(flags)};
             state.start(uint16_t(angleHeading),uint16_t(anglePitch));
-            const bool aligned=!posted || tak::sim::retailFacingAligned(uint16_t(heading),uint16_t(request),uint16_t(tolerance));
+            const bool aligned=!posted || ta::sim::retailFacingAligned(uint16_t(heading),uint16_t(request),uint16_t(tolerance));
             const bool ready=state.ready(uint16_t(angleHeading),uint16_t(anglePitch),uint16_t(tolerance),true,aligned);
             std::printf("%d %d %d %d %u\n",int(posted),request,moverFlags,int(ready),unsigned(state.flags));
         }
@@ -1067,7 +1067,7 @@ int main(int argc,char** argv) {
         std::array<int32_t,3> source{},target{},velocity{};int32_t speed;int noLead;
         while(std::scanf("%d %d %d %d %d %d %d %d %d %d %d",&source[0],&source[1],&source[2],
             &target[0],&target[1],&target[2],&velocity[0],&velocity[1],&velocity[2],&speed,&noLead)==11) {
-            const auto point=tak::retailAimLead(source,target,velocity,speed,noLead!=0);
+            const auto point=ta::retailAimLead(source,target,velocity,speed,noLead!=0);
             std::printf("%d %d %d\n",point[0],point[1],point[2]);
         }
         return 0;
@@ -1075,24 +1075,24 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--ballistic-aim")==0) {
         float x,y,z,speed,scale;int high,gravity;
         while(std::scanf("%f %f %f %f %f %d %d",&x,&y,&z,&speed,&scale,&high,&gravity)==7)
-            std::printf("%u\n",unsigned(tak::retailBallisticPitch(x,y,z,speed,scale,high!=0,gravity)));
+            std::printf("%u\n",unsigned(ta::retailBallisticPitch(x,y,z,speed,scale,high!=0,gravity)));
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--ballistic-inrange")==0) {
         int32_t dx,dy,dz,speed,range,gravity;float scale;int high;
         while(std::scanf("%d %d %d %d %f %d %d %d",&dx,&dy,&dz,&speed,&scale,&high,&gravity,&range)==8)
-            std::printf("%d\n",int(tak::retailBallisticInRange(dx,dy,dz,speed,scale,high!=0,gravity,range)));
+            std::printf("%d\n",int(ta::retailBallisticInRange(dx,dy,dz,speed,scale,high!=0,gravity,range)));
         return 0;
     }
     if(argc==2 && std::strcmp(argv[1],"--ballistic-projectile")==0) {
         char operation;
         while(std::scanf(" %c",&operation)==1) {
-            tak::sim::RetailBallisticShot shot;
+            ta::sim::RetailBallisticShot shot;
             if(operation=='L') {
                 uint16_t body,relative,pitch;int32_t speed;
                 if(std::scanf("%d %d %d %hu %hu %hu %d",&shot.position[0],&shot.position[1],
                     &shot.position[2],&body,&relative,&pitch,&speed)!=7)return 2;
-                shot=tak::sim::retailBallisticLaunch(shot.position,body,relative,pitch,speed);
+                shot=ta::sim::retailBallisticLaunch(shot.position,body,relative,pitch,speed);
             } else if(operation=='T') {
                 int32_t gravity;float adjustment;uint32_t steps;
                 std::array<uint16_t,3> spin{};
@@ -1101,7 +1101,7 @@ int main(int argc,char** argv) {
                 for(auto& value:shot.angles)if(std::scanf("%hu",&value)!=1)return 2;
                 if(std::scanf("%d %f %u %hu %hu %hu",&gravity,&adjustment,&steps,
                     &spin[0],&spin[1],&spin[2])!=6)return 2;
-                tak::sim::retailBallisticTick(shot,gravity,adjustment,steps,spin);
+                ta::sim::retailBallisticTick(shot,gravity,adjustment,steps,spin);
             } else return 2;
             std::printf("%d %d %d %d %d %d %u %u %u\n",shot.position[0],shot.position[1],
                 shot.position[2],shot.velocity[0],shot.velocity[1],shot.velocity[2],
@@ -1114,7 +1114,7 @@ int main(int argc,char** argv) {
         while(std::scanf("%d %d %d %d %d %d %d",&muzzle[0],&muzzle[1],&muzzle[2],
                 &target[0],&target[1],&target[2],&gravity)==7) {
             uint32_t ticks=0;
-            const auto shot=tak::sim::retailDroppedBallisticLaunch(muzzle,target,gravity,&ticks);
+            const auto shot=ta::sim::retailDroppedBallisticLaunch(muzzle,target,gravity,&ticks);
             std::printf("%u %d %d %d %d %d %d %u %u %u\n",ticks,
                 shot.position[0],shot.position[1],shot.position[2],shot.velocity[0],
                 shot.velocity[1],shot.velocity[2],unsigned(shot.angles[0]),
@@ -1125,12 +1125,12 @@ int main(int argc,char** argv) {
     if(argc==2 && std::strcmp(argv[1],"--guided-projectile")==0) {
         char operation;
         while(std::scanf(" %c",&operation)==1) {
-            tak::sim::RetailGuidedShot shot;
+            ta::sim::RetailGuidedShot shot;
             if(operation=='L') {
                 uint16_t body,heading,pitch;int32_t speed;
                 if(std::scanf("%d %d %d %hu %hu %hu %d",&shot.position[0],&shot.position[1],
                     &shot.position[2],&body,&heading,&pitch,&speed)!=7)return 2;
-                shot=tak::sim::retailGuidedLaunch(shot.position,body,heading,pitch,speed);
+                shot=ta::sim::retailGuidedLaunch(shot.position,body,heading,pitch,speed);
             } else if(operation=='T') {
                 std::array<int32_t,3> target{};float turn;int32_t speed;uint32_t steps;
                 std::array<uint16_t,3> spin{};int updateAngles,hitAt;
@@ -1141,7 +1141,7 @@ int main(int argc,char** argv) {
                 if(std::scanf("%f %d %u %hu %hu %hu %d %d",&turn,&speed,&steps,
                     &spin[0],&spin[1],&spin[2],&updateAngles,&hitAt)!=8)return 2;
                 unsigned collisions=0;
-                const bool hit=tak::sim::retailGuidedTick(shot,target,turn,speed,steps,spin,
+                const bool hit=ta::sim::retailGuidedTick(shot,target,turn,speed,steps,spin,
                     updateAngles!=0,[&](const auto&,int32_t&) {return ++collisions==unsigned(hitAt) ? 2 : 0;});
                 std::printf("%d %d %d %d %d %d %u %u %u %u %u\n",shot.position[0],shot.position[1],
                     shot.position[2],shot.velocity[0],shot.velocity[1],shot.velocity[2],
@@ -1159,7 +1159,7 @@ int main(int argc,char** argv) {
         std::array<int32_t,3> state{},delta{};unsigned heading;int32_t bank,pitch,gravity;
         while(std::scanf("%d %d %d %d %d %d %u %d %d %d",&state[0],&state[1],&state[2],
                 &delta[0],&delta[1],&delta[2],&heading,&bank,&pitch,&gravity)==10) {
-            const auto angles=tak::sim::retailFlightAttitude(state,delta,uint16_t(heading),bank,pitch,gravity);
+            const auto angles=ta::sim::retailFlightAttitude(state,delta,uint16_t(heading),bank,pitch,gravity);
             std::printf("%d %d %d %u %u\n",state[0],state[1],state[2],unsigned(angles[0]),unsigned(angles[1]));
         }
         return 0;
@@ -1167,7 +1167,7 @@ int main(int argc,char** argv) {
     if (argc==2 && std::strcmp(argv[1],"--piece-bounds")==0) {
         unsigned count;
         while(std::scanf("%u",&count)==1) {
-            tak::sim::RetailPieceBounds bounds;
+            ta::sim::RetailPieceBounds bounds;
             for(unsigned i=0;i<count;++i) {
                 std::array<int32_t,3> vertex{};
                 if(std::scanf("%d %d %d",&vertex[0],&vertex[1],&vertex[2])!=3)return 2;
@@ -1181,7 +1181,7 @@ int main(int argc,char** argv) {
     if (argc==2 && std::strcmp(argv[1],"--direct-aim")==0) {
         int32_t dx,dy,dz;unsigned heading;
         while(std::scanf("%d %d %d %u",&dx,&dy,&dz,&heading)==4) {
-            const auto result=tak::sim::retailDirectAim(dx,dy,dz,uint16_t(heading));
+            const auto result=ta::sim::retailDirectAim(dx,dy,dz,uint16_t(heading));
             std::printf("%u %u\n",unsigned(result[0]),unsigned(result[1]));
         }
         return 0;
@@ -1190,18 +1190,18 @@ int main(int argc,char** argv) {
         int speed,turn,dx,dz,slow,fast,road,water,flags,attached,flying;
         while(std::scanf("%d %d %d %d %d %d %d %d %d %d %d",&speed,&turn,&dx,&dz,&slow,
                 &fast,&road,&water,&flags,&attached,&flying)==11) {
-            const auto mult=tak::sim::Fixed::raw(flags&0x800 ? road : flags&0x1000 ? water : 65536);
-            const auto horizontal=flying ? int32_t(tak::sim::isqrt64(
+            const auto mult=ta::sim::Fixed::raw(flags&0x800 ? road : flags&0x1000 ? water : 65536);
+            const auto horizontal=flying ? int32_t(ta::sim::isqrt64(
                 uint64_t(int64_t(dx)*dx)+uint64_t(int64_t(dz)*dz))) : speed;
-            std::printf("%u\n",tak::sim::retailAnimationMoveRate(speed,int16_t(turn),horizontal,
-                (tak::sim::Fixed::raw(slow)*mult).v,(tak::sim::Fixed::raw(fast)*mult).v,flags&4,attached));
+            std::printf("%u\n",ta::sim::retailAnimationMoveRate(speed,int16_t(turn),horizontal,
+                (ta::sim::Fixed::raw(slow)*mult).v,(ta::sim::Fixed::raw(fast)*mult).v,flags&4,attached));
         }
         return 0;
     }
     if (argc==2 && std::strcmp(argv[1],"--animation-occupancy")==0) {
         unsigned previous,mode,sea,waterline;int height,top;
         while(std::scanf("%u %u %d %u %u %d",&previous,&mode,&height,&sea,&waterline,&top)==6)
-            std::printf("%u\n",tak::sim::retailAnimationOccupancy(previous,uint8_t(mode),
+            std::printf("%u\n",ta::sim::retailAnimationOccupancy(previous,uint8_t(mode),
                 int16_t(height),uint8_t(sea),uint8_t(waterline),int16_t(top)));
         return 0;
     }
@@ -1209,24 +1209,24 @@ int main(int argc,char** argv) {
         int dx,dz,base,road,water,flags,turn,moving,pivot,attached;
         while(std::scanf("%d %d %d %d %d %d %d %d %d %d",&dx,&dz,&base,&road,&water,
                          &flags,&turn,&moving,&pivot,&attached)==10) {
-            const auto multiplier=tak::sim::Fixed::raw(flags&0x800 ? road : flags&0x1000 ? water : 65536);
-            const auto maximum=tak::sim::Fixed::raw(base)*multiplier;
-            std::printf("%d %d\n",tak::sim::retailHorizontalAnimationPercent(dx,dz,maximum.v,flags&4,attached),
-                tak::sim::retailTurnAnimationPercent(int16_t(turn),uint16_t(moving),uint16_t(pivot),multiplier.v,attached));
+            const auto multiplier=ta::sim::Fixed::raw(flags&0x800 ? road : flags&0x1000 ? water : 65536);
+            const auto maximum=ta::sim::Fixed::raw(base)*multiplier;
+            std::printf("%d %d\n",ta::sim::retailHorizontalAnimationPercent(dx,dz,maximum.v,flags&4,attached),
+                ta::sim::retailTurnAnimationPercent(int16_t(turn),uint16_t(moving),uint16_t(pivot),multiplier.v,attached));
         }
         return 0;
     }
     if (argc==2 && std::strcmp(argv[1],"--vertical-animation")==0) {
         int velocity,speed,blocked,attached;
         while(std::scanf("%d %d %d %d",&velocity,&speed,&blocked,&attached)==4)
-            std::printf("%d\n",tak::sim::retailFlightVerticalPercent(velocity,speed,blocked,attached));
+            std::printf("%d\n",ta::sim::retailFlightVerticalPercent(velocity,speed,blocked,attached));
         return 0;
     }
     if(argc==1) {
-        tak::RetailAimState aim;uint16_t reload=0;uint32_t combatUntil=0;
+        ta::RetailAimState aim;uint16_t reload=0;uint32_t combatUntil=0;
         bool ready=true;int callbacks=0,projectiles=0;
         auto update=[&](uint32_t tick) {
-            tak::sim::retailWeaponUpdate(reload,aim,tick,combatUntil,[]{return true;},
+            ta::sim::retailWeaponUpdate(reload,aim,tick,combatUntil,[]{return true;},
                 [&]{return ready;},[&]{++callbacks;reload=20;},
                 [&]{++projectiles;aim.projectileCreated();});
         };
@@ -1242,17 +1242,17 @@ int main(int argc,char** argv) {
     }
     if (argc==1) {
         static_assert(sizeof(RenderOrder)<=64);
-        tak::sim::UnitType producer;producer.isBuilder=true;producer.maxVel=tak::sim::Fixed::fromInt(1);
-        tak::sim::Unit source;source.type=&producer;
+        ta::sim::UnitType producer;producer.isBuilder=true;producer.maxVel=ta::sim::Fixed::fromInt(1);
+        ta::sim::Unit source;source.type=&producer;
         for(unsigned bits=0;bits<256;++bits) {
-            tak::sim::Order o;
-            o.x=tak::sim::Fixed::raw(int32_t(bits*17451)-150000);
-            o.z=tak::sim::Fixed::raw(240000-int32_t(bits*9203));
+            ta::sim::Order o;
+            o.x=ta::sim::Fixed::raw(int32_t(bits*17451)-150000);
+            o.z=ta::sim::Fixed::raw(240000-int32_t(bits*9203));
             o.clickX=o.z;o.clickZ=o.x;o.buildX=o.x;o.buildZ=o.z;
             o.targetId=int(bits);o.reclaimFeat=-int(bits);o.repairTarget=int(bits+1);o.issuedTick=bits*37;
             o.load=bits&1;o.unload=bits&2;o.attackMove=bits&4;o.patrol=bits&8;o.guard=bits&16;o.goal=bits&32;
             if(bits&64) {
-                o.reclaimArea=tak::sim::RetailReclaimArea{o.x.v,o.z.v,o.buildX.v,o.buildZ.v,uint8_t(bits&1 ? 2 : 0)};
+                o.reclaimArea=ta::sim::RetailReclaimArea{o.x.v,o.z.v,o.buildX.v,o.buildZ.v,uint8_t(bits&1 ? 2 : 0)};
             }
             if(bits&128){o.buildRectangle.emplace();o.buildType=&producer;}
             source.orders.push_back(o);
@@ -1275,9 +1275,9 @@ int main(int argc,char** argv) {
         if(!frame.orders.empty() || !frame.rally.empty() || frame.hasQueuedWork() || frame.hasQueuedBuild() ||
            &frame.displayedOrders()!=&frame.orders)return 1;
         std::puts("PASS: compact render orders preserve queue, rally, markers and work status");
-        tak::sim::Order area;area.goal=true;
-        area.manaBuildArea=tak::sim::ManaBuildArea{&producer,tak::sim::Fixed::fromInt(100),
-            tak::sim::Fixed::fromInt(800),tak::sim::Fixed::fromInt(200),tak::sim::Fixed::fromInt(900),7,true};
+        ta::sim::Order area;area.goal=true;
+        area.manaBuildArea=ta::sim::ManaBuildArea{&producer,ta::sim::Fixed::fromInt(100),
+            ta::sim::Fixed::fromInt(800),ta::sim::Fixed::fromInt(200),ta::sim::Fixed::fromInt(900),7,true};
         const RenderOrder r(area);
         if(!r.manaBuildArea || r.buildType!=&producer || r.areaNextSpot!=7 || !r.areaExploring ||
             r.x!=area.manaBuildArea->minX || r.z!=area.manaBuildArea->minZ ||
@@ -1285,35 +1285,35 @@ int main(int argc,char** argv) {
         std::puts("PASS: compact area orders retain bounds, progress and exploration state");
     }
     if (argc==1) {
-        tak::sim::UnitType type;type.maxVel=tak::sim::Fixed::fromInt(1);
+        ta::sim::UnitType type;type.maxVel=ta::sim::Fixed::fromInt(1);
         type.modelTop=10*65536;type.waterline=2;
-        tak::sim::Unit unit;unit.type=&type;
+        ta::sim::Unit unit;unit.type=&type;
         UnitR frame;
-        unit.groundY=tak::sim::Fixed::fromInt(101);frame.captureOccupancy(unit,100,0);
+        unit.groundY=ta::sim::Fixed::fromInt(101);frame.captureOccupancy(unit,100,0);
         if (frame.animationOccupancy!=4) return 1;
-        unit.groundY=tak::sim::Fixed::fromInt(98);frame.captureOccupancy(unit,100,4);
+        unit.groundY=ta::sim::Fixed::fromInt(98);frame.captureOccupancy(unit,100,4);
         if (frame.animationOccupancy!=2) return 1;
-        unit.groundY=tak::sim::Fixed::fromInt(94);frame.captureOccupancy(unit,100,2);
+        unit.groundY=ta::sim::Fixed::fromInt(94);frame.captureOccupancy(unit,100,2);
         if (frame.animationOccupancy!=2) return 1; // native retained band
-        unit.groundY=tak::sim::Fixed::fromInt(89);frame.captureOccupancy(unit,100,2);
+        unit.groundY=ta::sim::Fixed::fromInt(89);frame.captureOccupancy(unit,100,2);
         if (frame.animationOccupancy!=3) return 1;
         type.canFly=true;unit.flightGroundMode=2;frame.captureOccupancy(unit,100,3);
         if (frame.animationOccupancy!=5) return 1;
-        unit.flightGroundMode=1;unit.flightY=tak::sim::Fixed::fromInt(101);
+        unit.flightGroundMode=1;unit.flightY=ta::sim::Fixed::fromInt(101);
         frame.captureOccupancy(unit,100,5);
         if (frame.animationOccupancy!=4) return 1;
         std::puts("PASS: animation snapshot preserves native ground, water and landing occupancy");
-        type.canFly=false;type.animationMoveRate1=tak::sim::Fixed::fromInt(1);
-        type.animationMoveRate2=tak::sim::Fixed::fromInt(2);
-        unit.speed=tak::sim::Fixed::fromInt(3);frame.captureMovement(unit);frame.captureMoveRate(unit,0);
+        type.canFly=false;type.animationMoveRate1=ta::sim::Fixed::fromInt(1);
+        type.animationMoveRate2=ta::sim::Fixed::fromInt(2);
+        unit.speed=ta::sim::Fixed::fromInt(3);frame.captureMovement(unit);frame.captureMoveRate(unit,0);
         if (frame.animationMoveRate!=3) return 1;
-        type.roadMult=tak::sim::Fixed::fromInt(2);unit.groundTerrainFlags=0x800;
+        type.roadMult=ta::sim::Fixed::fromInt(2);unit.groundTerrainFlags=0x800;
         frame.captureMovement(unit);frame.captureMoveRate(unit,0);
         if (frame.animationMoveRate!=2) return 1;
         unit.speed={};frame.captureMovement(unit);frame.captureMoveRate(unit,100);
         if (frame.animationMoveRate!=1) return 1;
         frame.captureMoveRate(unit,0);if (frame.animationMoveRate!=0) return 1;
-        unit.speed=tak::sim::Fixed::fromInt(3);unit.bodyBlockStreak=2;
+        unit.speed=ta::sim::Fixed::fromInt(3);unit.bodyBlockStreak=2;
         frame.captureMovement(unit);frame.captureMoveRate(unit,100);
         if (frame.animationMoveRate!=0) return 1;
         type.canFly=true;unit.groundTerrainFlags=0;unit.flightVelocity={0,0,65536};
@@ -1324,7 +1324,7 @@ int main(int argc,char** argv) {
         std::puts("PASS: animation snapshot uses native speed tiers for boats, aircraft and pivots");
     }
     if (argc==1) {
-        tak::sim::Player player;player.mana=500;player.storage=1000;
+        ta::sim::Player player;player.mana=500;player.storage=1000;
         for (int tick=0;tick<30;++tick) {
             player.creditMana(10.0/30);player.debitMana(4.0/30);
             player.displayResources.advance();
@@ -1339,7 +1339,7 @@ int main(int argc,char** argv) {
                                      std::pair{1000.f,23},std::pair{2000.f,23}}) {
             frame.mana=mana;if (frame.manaBulbFrame(24)!=index) return 1;
         }
-        player.retailResources=tak::sim::RetailConstructionResources{};
+        player.retailResources=ta::sim::RetailConstructionResources{};
         player.retailResources->capacity=25;player.mana=12.5;
         frame.captureEconomy(player);
         if (frame.storage!=25 || frame.manaBulbFrame(24)!=11) return 1;
@@ -1349,16 +1349,16 @@ int main(int argc,char** argv) {
     if (argc==2 && std::strcmp(argv[1],"--movement-animation")==0) {
         int blocked,attached,speed,maximum;
         while (std::scanf("%d %d %d %d",&blocked,&attached,&speed,&maximum)==4) {
-            tak::sim::UnitType type;type.maxVel=tak::sim::Fixed::raw(maximum);
-            tak::sim::Unit unit;unit.type=&type;unit.baseSpeed=type.maxVel;unit.speed=tak::sim::Fixed::raw(speed);unit.bodyBlockStreak=blocked;
+            ta::sim::UnitType type;type.maxVel=ta::sim::Fixed::raw(maximum);
+            ta::sim::Unit unit;unit.type=&type;unit.baseSpeed=type.maxVel;unit.speed=ta::sim::Fixed::raw(speed);unit.bodyBlockStreak=blocked;
             UnitR frame;frame.type=&type;frame.inTransport=attached;frame.captureMovement(unit);
             std::printf("%d %d\n",frame.animationSpeedPercent(),int(frame.walking()));
         }
         return 0;
     }
     if (argc==1) {
-        tak::sim::UnitType type;type.maxVel=tak::sim::Fixed::fromInt(5);
-        tak::sim::Unit unit;unit.type=&type;unit.baseSpeed=type.maxVel;unit.speed=tak::sim::Fixed::fromInt(1);
+        ta::sim::UnitType type;type.maxVel=ta::sim::Fixed::fromInt(5);
+        ta::sim::Unit unit;unit.type=&type;unit.baseSpeed=type.maxVel;unit.speed=ta::sim::Fixed::fromInt(1);
         UnitR frame;frame.type=&type;
         for (int blocked : {0,1,2,2,0}) {
             unit.bodyBlockStreak=blocked;frame.captureMovement(unit);
@@ -1366,7 +1366,7 @@ int main(int argc,char** argv) {
         }
     }
     if (argc==1) {
-        using namespace tak::sim;
+        using namespace ta::sim;
         UnitType type;type.maxVel=Fixed::fromInt(5);type.roadMult=Fixed::fromInt(2);
         Unit unit;unit.type=&type;unit.baseSpeed=Fixed::fromInt(4);unit.speed=Fixed::fromInt(2);
         UnitR frame;frame.type=&type;frame.captureMovement(unit);
@@ -1381,18 +1381,18 @@ int main(int argc,char** argv) {
         std::puts("PASS: animation normalization uses individual speed, terrain and actual flight velocity");
     }
     if (argc==1) {
-        tak::sim::UnitType type;type.canFly=true;type.cruiseAlt=150;
-        tak::sim::Unit unit;unit.type=&type;
+        ta::sim::UnitType type;type.canFly=true;type.cruiseAlt=150;
+        ta::sim::Unit unit;unit.type=&type;
         UnitR frame;frame.type=&type;
         // A low flyer next to high terrain must stay at its simulated height,
         // even with an active conjure order and a much higher clearance datum.
         frame.buildSiteId=42;frame.conjuring=true;
         for (const auto [height,mode] : {std::pair{40,1},std::pair{65,2},
                                         std::pair{190,2},std::pair{55,2},std::pair{40,1}}) {
-            unit.flightY=tak::sim::Fixed::fromInt(height);unit.flightGroundMode=mode;
+            unit.flightY=ta::sim::Fixed::fromInt(height);unit.flightGroundMode=mode;
             frame.captureMovement(unit);
             // Later sim updates cannot alter the pinned render snapshot.
-            unit.flightY=tak::sim::Fixed::fromInt(511);
+            unit.flightY=ta::sim::Fixed::fromInt(511);
             for (float datum : {0.0f,100.0f,215.0f}) {
                 const auto [ground,altitude]=frame.flightRenderHeight(datum);
                 if (ground<0 || altitude<0 || (ground+altitude)*0.5f!=height*0.5f ||
@@ -1404,7 +1404,7 @@ int main(int argc,char** argv) {
     if (argc==2 && std::strcmp(argv[1],"--quality")==0) {
         int setting,smooth;double fps;float threshold,bias,probability;unsigned seed;
         while (std::scanf("%d %d %lf %f %f %f %u",&setting,&smooth,&fps,&threshold,&bias,&probability,&seed)==7) {
-            tak::RetailVisualQuality state{smooth,probability};unsigned calls=0,origin=0;
+            ta::RetailVisualQuality state{smooth,probability};unsigned calls=0,origin=0;
             const bool chosen=state.choose(setting,fps,threshold,bias,[&](uint32_t caller) {
                 ++calls;origin=caller;seed=seed*214013u+2531011u;return (seed>>16)&32767u;
             });
@@ -1414,19 +1414,19 @@ int main(int argc,char** argv) {
         return 0;
     }
     {
-        using tak::sim::RetailAirCollisionBody;
+        using ta::sim::RetailAirCollisionBody;
         std::vector<RetailAirCollisionBody> bodies;
         for(int id=1;id<=8;++id)bodies.push_back({id,2,2,1,1,true});
         unsigned draws=0;
-        const auto grid=tak::sim::retailAirCollisionGrid(8,8,bodies,[&](unsigned n){++draws;return n-1;});
+        const auto grid=ta::sim::retailAirCollisionGrid(8,8,bodies,[&](unsigned n){++draws;return n-1;});
         if(grid[2*8+2]!=-1 || draws!=6)return 1;
         bodies={{1,7,2,1,1,true},{2,2,2,1,1,false}};
-        const auto empty=tak::sim::retailAirCollisionGrid(8,8,bodies,[](unsigned){return 0;});
+        const auto empty=ta::sim::retailAirCollisionGrid(8,8,bodies,[](unsigned){return 0;});
         if(std::any_of(empty.begin(),empty.end(),[](int cell){return cell!=0;}))return 1;
         // The persistent grid (clear every live flyer's recorded footprint,
         // then insert all) must equal a fresh build while every body stays live.
-        tak::sim::RetailAirOccupancy persistent;
-        std::vector<tak::sim::RetailAirOccupant> states;
+        ta::sim::RetailAirOccupancy persistent;
+        std::vector<ta::sim::RetailAirOccupant> states;
         unsigned state=520640;
         auto next=[&] {state=state*214013u+2531011u;return state;};
         for(int frame=0;frame<200;++frame) {
@@ -1446,8 +1446,8 @@ int main(int argc,char** argv) {
             auto random=[](unsigned& seed,unsigned n) {
                 seed=seed*214013u+2531011u;return ((seed>>16)&32767u)*n/32768u;
             };
-            const auto fresh=tak::sim::retailAirCollisionGrid(width,height,bodies,[&](unsigned n){return random(a,n);});
-            tak::sim::RetailAirCollisionHost host{bodies,states};
+            const auto fresh=ta::sim::retailAirCollisionGrid(width,height,bodies,[&](unsigned n){return random(a,n);});
+            ta::sim::RetailAirCollisionHost host{bodies,states};
             for(const auto& body:bodies)persistent.clear(body.id,host);
             for(const auto& body:bodies)persistent.insert(body.id,host,[&](unsigned n){return random(b,n);});
             if(!std::equal(fresh.begin(),fresh.end(),persistent.cells().begin(),persistent.cells().end()) || a!=b) {
@@ -1457,7 +1457,7 @@ int main(int argc,char** argv) {
         std::puts("PASS: airborne collision overflow, map-edge exclusion and grounded exclusion");
     }
     {
-        auto parsed=tak::tdf::parseText(R"(
+        auto parsed=ta::tdf::parseText(R"(
 [effect] {
  [emitters] {
   [line lightning] { x=11; }
@@ -1482,7 +1482,7 @@ int main(int argc,char** argv) {
         std::puts("PASS: repeated effect sections preserve order, independent values and legacy named lookup");
     }
     {
-        const auto root=tak::tdf::parseText(R"(
+        const auto root=ta::tdf::parseText(R"(
 [effect] {
  width=8;
  height=8;
@@ -1521,7 +1521,7 @@ int main(int argc,char** argv) {
  }
 }
 )");
-        const auto definition=tak::retailLightningDefinition(*root.child("effect"));
+        const auto definition=ta::retailLightningDefinition(*root.child("effect"));
         auto effect=definition.initial;
         if(effect.sources.size()!=2 || effect.sources[0].position[0]!=256 || effect.sources[1].position[0]!=512 ||
            effect.capacity!=3 || effect.intensity!=1024 || effect.decay!=-128 ||
@@ -1532,17 +1532,17 @@ int main(int argc,char** argv) {
         std::puts("PASS: named-effect loading retains distinct sources, overlapping ramps and fresh clone clocks");
     }
     {
-        const auto quad=tak::retailLightningQuad({10,20},{110,20},640,480,256,31,256,32);
+        const auto quad=ta::retailLightningQuad({10,20},{110,20},640,480,256,31,256,32);
         if(!quad || (*quad)[0].x!=10 || (*quad)[0].y!=5 || (*quad)[1].x!=110 ||
            (*quad)[1].y!=5 || (*quad)[2].y!=35 || (*quad)[3].y!=35 ||
            (*quad)[0].v!=31.f/32.f || (*quad)[1].u!=1)return 1;
-        if(tak::retailLightningQuad({-600,20},{-600,120},640,480,256,32,256,32))return 1;
+        if(ta::retailLightningQuad({-600,20},{-600,120},640,480,256,32,256,32))return 1;
         std::puts("PASS: lightning quad uses authored thickness, padded UVs and native clipping rejection");
     }
     {
-        tak::RetailEffectVisibility view(16,16,
-            std::vector<tak::sim::RetailExplorationHeight>(256,{0,0}));
-        tak::sim::RetailSightFootprint sight{4,4,0,16,1,true};
+        ta::RetailEffectVisibility view(16,16,
+            std::vector<ta::sim::RetailExplorationHeight>(256,{0,0}));
+        ta::sim::RetailSightFootprint sight{4,4,0,16,1,true};
         const std::array<int32_t,3> center{128*65536,0,128*65536};
         view.track(1,0,0,true,true,sight,1);
         view.track(1,0,0,true,true,sight,2);
@@ -1571,7 +1571,7 @@ int main(int argc,char** argv) {
     // units-only ignores everything, and the water boundary is exclusive.
     auto environment=[](int y,unsigned flags,int feature,bool pass=false) {
         int32_t speed=-19;
-        const bool hit=tak::sim::retailProjectileHitsEnvironment(y,speed,flags,10,20,
+        const bool hit=ta::sim::retailProjectileHitsEnvironment(y,speed,flags,10,20,
             feature<0 ? std::optional<uint8_t>{} : std::optional<uint8_t>{uint8_t(feature)},pass);
         return std::pair{hit,speed};
     };
@@ -1584,15 +1584,15 @@ int main(int argc,char** argv) {
        environment(19*65536,0,-1,true)!=std::pair{false,-19} ||
        environment(10*65536,0x2000,-1,true)!=std::pair{true,-19})return 1;
     std::puts("PASS: projectile feature, ground, bounce and water collision precedence");
-    const auto unobstructed=tak::retailFlameScan({0,0,0},{16*65536,0,0},100,16*65536,2,[](auto&){return 0;});
+    const auto unobstructed=ta::retailFlameScan({0,0,0},{16*65536,0,0},100,16*65536,2,[](auto&){return 0;});
     if(unobstructed.endpoint[0]!=96*65536 || unobstructed.lifetime!=4)return 1;
-    const auto blocked=tak::retailFlameScan({0,0,0},{16*65536,0,0},100,16*65536,2,[](auto& point){
+    const auto blocked=ta::retailFlameScan({0,0,0},{16*65536,0,0},100,16*65536,2,[](auto& point){
         if(point[0]<40*65536)return 0;
         point[0]=40*65536;return 2;
     });
     if(blocked.endpoint[0]!=40*65536 || blocked.lifetime!=2)return 1;
     std::puts("PASS: flame pre-scan preserves clipped endpoint and native flight duration");
-    tak::RetailFlameParticle flame{{0,0,0},{65536,-32768,0},3,3,0};
+    ta::RetailFlameParticle flame{{0,0,0},{65536,-32768,0},3,3,0};
     if(flame.frame(12)!=0 || !flame.tick() || flame.position[0]!=65536 || flame.frame(12)!=4)return 1;
     if(!flame.tick() || flame.frame(12)!=8 || flame.tick() || flame.position[0]!=131072)return 1;
     std::puts("PASS: flame particles advance, select lifetime-scaled frames and expire before final motion");
@@ -1630,8 +1630,8 @@ int main(int argc,char** argv) {
          {35436388,-45555584,61307816},{0,0,0},{65524,53974,61388}},
     };
     for(const auto& row:guidedRows) {
-        tak::sim::RetailGuidedShot shot{row.position,row.velocity,row.angles};
-        tak::sim::retailGuidedTick(shot,row.target,row.turn,row.speed,row.steps,row.spin,
+        ta::sim::RetailGuidedShot shot{row.position,row.velocity,row.angles};
+        ta::sim::retailGuidedTick(shot,row.target,row.turn,row.speed,row.steps,row.spin,
             row.updateAngles,[](const auto&,int32_t&) {return 0;});
         if(shot.position!=row.wantPosition || shot.velocity!=row.wantVelocity || shot.angles!=row.wantAngles) {
             std::printf("FAIL: guided update near dead ahead: velocity %d %d %d, native %d %d %d\n",
@@ -1641,7 +1641,7 @@ int main(int argc,char** argv) {
         }
     }
     std::puts("PASS: guided steering judges a near-ahead target by the native float cosine");
-    tak::RetailVisualQuality state;unsigned calls=0;
+    ta::RetailVisualQuality state;unsigned calls=0;
     for (int i=0;i<24;++i) state.choose(101,0.824,40,5,[&](uint32_t) { ++calls;return 12345u; });
     if (state.smoothedFps!=36 || calls!=5) return 1;
     std::puts("PASS: adaptive visual refresh crosses the random-draw threshold per visible unit");

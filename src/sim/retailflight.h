@@ -8,7 +8,7 @@
 #include <cmath>
 #include <optional>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailFlightVector { int32_t x = 0, y = 0, z = 0; };
 
@@ -291,4 +291,4 @@ inline RetailFlightVector retailFlightVelocity(RetailFlightVector velocity,
     return velocity;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

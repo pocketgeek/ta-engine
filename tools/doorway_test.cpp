@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 namespace {
-using namespace tak::sim;
+using namespace ta::sim;
 struct Rect {int x,z,w,h;};
 Rect footprint(const Unit& u) {
     return {footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ),u.type->footX,u.type->footZ};
@@ -164,7 +164,7 @@ bool navalDoor(const TypeRegistry& registry,bool legion,int side) {
 int main(int argc,char** argv) {
     if(argc<2)return 2;
     const std::string only=argc>2 ? argv[2] : "";
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);int failures=0,cases=0;
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);int failures=0,cases=0;
     for(bool crusades:{false,true}) {
         TypeRegistry registry;setupRegistry(registry,vfs,crusades);
         for(const auto& [name,type]:registry.types()) {

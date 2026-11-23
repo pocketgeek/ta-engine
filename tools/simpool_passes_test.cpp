@@ -11,7 +11,7 @@
 // hashed state. The aura tiles are the one pass whose chunk size follows the
 // width (tiles / (threads * 8), World::applyAuraTiles): this world's 96 tiles
 // fold in chunks of 6, 4, 3, 2 and 1 tiles across those widths. A debug
-// build also sets TAK_VERIFY_POOL, which redoes each pooled pass serially and
+// build also sets TA_VERIFY_POOL, which redoes each pooled pass serially and
 // aborts on any difference in its lists, sums, chains or stamps.
 //
 // Then the width itself (World::simPool): AUTO is read once and kept, whatever
@@ -32,11 +32,11 @@
 #include <sched.h>
 #endif
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static SimPool& pool(World& w) { return w.simPool(); }
 };
-}  // namespace tak::sim
+}  // namespace ta::sim
 
 namespace {
 [[maybe_unused]] void setEnv(const char* name, const char* value) {
@@ -47,19 +47,19 @@ namespace {
 #endif
 }
 // Every unit's aura buffs, bit for bit (as aura_recipient_test's buffDigest).
-uint64_t buffDigest(const tak::sim::World& w) {
+uint64_t buffDigest(const ta::sim::World& w) {
     uint64_t h = 1469598103934665603ULL;
     auto mix = [&](uint32_t v) { h = (h ^ v) * 1099511628211ULL; };
-    for (const tak::sim::Unit& u : w.units()) { mix(std::bit_cast<uint32_t>(u.atkBuff)); mix(std::bit_cast<uint32_t>(u.armBuff)); }
+    for (const ta::sim::Unit& u : w.units()) { mix(std::bit_cast<uint32_t>(u.atkBuff)); mix(std::bit_cast<uint32_t>(u.armBuff)); }
     return h;
 }
 // Make SimPool::defaultWorkers() give another count than `was`, as a CPU mask
-// that changes during a game does: a debug build through TAK_SIM_WORKERS, a
+// that changes during a game does: a debug build through TA_SIM_WORKERS, a
 // release build on Linux by narrowing this thread's mask to one CPU (so from 8
 // usable CPUs up). False where neither can change it.
 bool changeDefaultWorkers(unsigned was) {
 #ifndef NDEBUG
-    setEnv("TAK_SIM_WORKERS", was == 5 ? "6" : "5");
+    setEnv("TA_SIM_WORKERS", was == 5 ? "6" : "5");
 #elif defined(__linux__)
     cpu_set_t set;
     if (sched_getaffinity(0, sizeof(set), &set) == 0)
@@ -72,15 +72,15 @@ bool changeDefaultWorkers(unsigned was) {
                 break;
             }
 #endif
-    return tak::sim::SimPool::defaultWorkers() != was;
+    return ta::sim::SimPool::defaultWorkers() != was;
 }
 }  // namespace
 
 int main() {
 #ifndef NDEBUG
-    setEnv("TAK_VERIFY_POOL", "1");
+    setEnv("TA_VERIFY_POOL", "1");
 #endif
-    using namespace tak::sim;
+    using namespace ta::sim;
     UnitType soldier{}, big{}, shaman{}, lode{}, reclaimer{}, flyer{};
     auto mobile = [](UnitType& t, const char* id, int foot) {
         t.name = t.id = id; t.maxHp = 100; t.maxVel = Fixed::fromInt(1); t.canMove = true;

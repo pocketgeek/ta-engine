@@ -15,7 +15,7 @@
   #include <unistd.h>
 #endif
 
-namespace tak::srv {
+namespace ta::srv {
 
 namespace {
 
@@ -397,4 +397,4 @@ void LoginThrottle::expire(uint64_t nowMs) {
     }
 }
 
-}  // namespace tak::srv
+}  // namespace ta::srv

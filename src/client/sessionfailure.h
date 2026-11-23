@@ -12,7 +12,7 @@
 #include <string>
 #include <utility>
 
-namespace tak {
+namespace ta {
 
 // What the player picked to get here. Cli = no menu (a direct debug launch).
 enum class LaunchOrigin { Cli, SinglePlayer, Campaign, Benchmark, Multiplayer, Replay };
@@ -49,7 +49,7 @@ inline bool routeFailure(LaunchOrigin origin, std::string message, SessionFailur
     return true;
 }
 
-// The reason shown when the local takserver died before the game could connect.
+// The reason shown when the local taserver died before the game could connect.
 // 127 is the POSIX shell/exec convention for "could not run the program" (our own
 // child exits with it when exec fails), so it names the binary instead of a code.
 inline std::string localServerExitMessage(int code, const std::string& serverBin) {
@@ -57,4 +57,4 @@ inline std::string localServerExitMessage(int code, const std::string& serverBin
     return "the local server stopped while starting (exit code " + std::to_string(code) + ")";
 }
 
-}  // namespace tak
+}  // namespace ta

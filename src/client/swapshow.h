@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 // Legion allies swap places (display only, never hashed). The sim trades two
 // allied bodies' places in one tick (legion.cpp swapBodies): a jump of one
@@ -41,4 +41,4 @@ inline SwapShow swapShowStep(const SwapShow& prev,float jumpX,float jumpZ,uint32
     return s;
 }
 
-} // namespace tak
+} // namespace ta

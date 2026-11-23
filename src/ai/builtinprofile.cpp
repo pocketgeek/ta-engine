@@ -9,7 +9,7 @@
 
 #include "ai/classicprofile.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 namespace {
 
@@ -126,8 +126,8 @@ void applyProfileText(std::string_view text, Profile& prof) {
     }
 }
 
-const std::vector<uint8_t>* engineProfileText(const tak::hpi::Vfs::Files* gameModFiles,
-                                              const tak::hpi::Vfs::Files* mapFiles, bool* fromMap) {
+const std::vector<uint8_t>* engineProfileText(const ta::hpi::Vfs::Files* gameModFiles,
+                                              const ta::hpi::Vfs::Files* mapFiles, bool* fromMap) {
     if (fromMap) *fromMap = false;
     // Package keys are already lowercased (MountSet::key), so this is the
     // case-insensitive lookup every VFS read makes. A game mod's file wins.
@@ -148,8 +148,8 @@ Profile levelProfileFrom(Difficulty d, const std::vector<uint8_t>* text) {
     return prof;
 }
 
-Profile levelProfile(Difficulty d, const tak::hpi::Vfs::Files* gameModFiles,
-                     const tak::hpi::Vfs::Files* mapFiles, std::string* source, bool* fromMap) {
+Profile levelProfile(Difficulty d, const ta::hpi::Vfs::Files* gameModFiles,
+                     const ta::hpi::Vfs::Files* mapFiles, std::string* source, bool* fromMap) {
     if (source) source->clear();
     if (fromMap) *fromMap = false;
     if (!levelProfileFile(d)) return builtinProfile(d);
@@ -158,4 +158,4 @@ Profile levelProfile(Difficulty d, const tak::hpi::Vfs::Files* gameModFiles,
     return levelProfileFrom(d, text);
 }
 
-} // namespace tak::ai
+} // namespace ta::ai

@@ -8,9 +8,9 @@
 #include "sim/sim.h"
 #include <cmath>
 #include <cstdio>
-using namespace tak;
+using namespace ta;
 
-namespace tak::sim { struct RetailReplayProbe {
+namespace ta::sim { struct RetailReplayProbe {
     static void hit(World& w,const Weapon& weapon,int from,int target) {
         auto* victim=w.unit(target);
         w.applyHit(weapon,victim->x.toFloat(),victim->z.toFloat(),w.unit(from)->player,from,victim);

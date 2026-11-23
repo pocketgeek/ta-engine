@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <array>
 
-namespace tak::audio {
+namespace ta::audio {
 
 // The output mix rate (retail's Miles ran at 22050; mods may ship 44.1 kHz).
 inline constexpr int kMixRate = 44100;
@@ -122,4 +122,4 @@ inline Matrix musicMatrix(int in, int out) {
     return m;
 }
 
-}  // namespace tak::audio
+}  // namespace ta::audio

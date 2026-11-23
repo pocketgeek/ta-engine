@@ -20,7 +20,7 @@
 #include <cstring>
 #include <thread>
 
-using namespace tak::credstore;
+using namespace ta::credstore;
 
 static const char* kDummyA = "dummy-credstore-roundtrip-0001";
 static const char* kDummyB = "dummy-credstore-roundtrip-0002-longer";
@@ -29,7 +29,7 @@ static int skip(const char* why) { std::printf("SKIP: %s\n", why); std::fflush(s
 static int fail(const char* what) { std::printf("FAIL: %s\n", what); return 1; }
 
 static int run(int argc, char** argv) {
-    auto store = tak::credstore::system(testSlot());
+    auto store = ta::credstore::system(testSlot());
     const std::string reason = store->probe();
     std::printf("credstore_test: %s, service \"%s\", account \"%s\"\n", store->name().c_str(),
                 testSlot().service.c_str(), testSlot().account.c_str());

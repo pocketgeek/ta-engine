@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 // Retail's common mover tail dispatches TurnDirection from inside the mover,
 // then reports MoveRate and surface/flight occupancy. These callbacks can
@@ -29,4 +29,4 @@ void updateRetailMovementAnimationCallbacks(bool hasTurnDirection,
     }
 }
 
-} // namespace tak
+} // namespace ta

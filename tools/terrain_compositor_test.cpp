@@ -22,8 +22,8 @@
 #include <thread>
 #include <vector>
 
-using tak::terrain::Compositor;
-using tak::terrain::SectionRef;
+using ta::terrain::Compositor;
+using ta::terrain::SectionRef;
 
 namespace {
 int failures = 0;
@@ -74,14 +74,14 @@ std::string path(uint32_t key) {
 }
 
 struct Fixture {
-    tak::hpi::Vfs vfs;
-    std::map<uint32_t, tak::jpeg::Image> reference;
+    ta::hpi::Vfs vfs;
+    std::map<uint32_t, ta::jpeg::Image> reference;
     size_t bytes = 0;   // decoded bytes of one section (capacity, as the cache counts it)
     explicit Fixture(uint32_t keys) {
-        auto files = std::make_shared<tak::hpi::Vfs::Files>();
+        auto files = std::make_shared<ta::hpi::Vfs::Files>();
         for (uint32_t k = 1; k <= keys; ++k) {
             auto data = encode(k);
-            reference[k] = tak::jpeg::load(data);
+            reference[k] = ta::jpeg::load(data);
             (*files)[path(k)] = std::move(data);
         }
         vfs.setModFiles(files);
@@ -115,7 +115,7 @@ void basics() {
     check(c.stats().usedBytes == 0, "clear empties the accounting");
     check(!c.cachedSection(99, false, &absent) && !absent, "clear forgets absent keys");
     // renderBlock crops through a pin.
-    tak::tnt::Map map;
+    ta::tnt::Map map;
     map.blocksX = 2; map.blocksY = 1;
     map.tileKeys = {2, 3}; map.tileCols = {1, 0}; map.tileRows = {1, 0};
     std::vector<uint8_t> dst(64 * 32 * 4, 0);
@@ -228,7 +228,7 @@ void concurrent() {
     Fixture f(24);
     Compositor c(f.vfs);
     c.setBudget(f.bytes * 6, f.bytes * 4);
-    tak::tnt::Map map;
+    ta::tnt::Map map;
     map.blocksX = 24; map.blocksY = 1;
     for (uint32_t k = 1; k <= 24; ++k) { map.tileKeys.push_back(k); map.tileCols.push_back(0); map.tileRows.push_back(0); }
     std::atomic<int> bad{0};

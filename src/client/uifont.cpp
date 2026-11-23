@@ -13,7 +13,7 @@
 #include <cmath>
 #include <memory>
 
-namespace tak {
+namespace ta {
 
 std::vector<uint32_t> decodeUtf8Lenient(const std::string& s) {
     std::vector<uint32_t> out;
@@ -274,4 +274,4 @@ UiFont& uiFont() {
     return f;
 }
 
-}  // namespace tak
+}  // namespace ta

@@ -5,7 +5,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace tak {
+namespace ta {
 struct RetailLightningDefinition {
     RetailLightningEffect initial;
     std::array<uint16_t,256> palette{};
@@ -70,4 +70,4 @@ inline RetailLightningDefinition retailLightningDefinition(const tdf::Node& node
     result.palette=retailEffectPalette(colors,effect.intensity);
     return result;
 }
-} // namespace tak
+} // namespace ta

@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace dc = tak::client::doubleclick;
+namespace dc = ta::client::doubleclick;
 static int g_fail = 0;
 static void check(bool ok, const char* what) { if (!ok) { std::printf("  FAIL %s\n", what); ++g_fail; } }
 static bool has(const std::vector<int>& v, int id) { return std::find(v.begin(), v.end(), id) != v.end(); }

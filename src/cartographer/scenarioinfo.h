@@ -4,17 +4,17 @@
 #include <sstream>
 #include <set>
 namespace cart {
-inline std::string scenarioInfo(const tak::crt::Scenario& scenario) {
-    std::ostringstream out;out<<"TAK_EDITOR_RULE_NAMES 1\n";
+inline std::string scenarioInfo(const ta::crt::Scenario& scenario) {
+    std::ostringstream out;out<<"TA_EDITOR_RULE_NAMES 1\n";
     for(size_t p=0;p<scenario.players.size();++p)for(size_t g=0;g<scenario.players[p].size();++g)
         if(!scenario.players[p][g].editorName.empty())out<<p<<' '<<g<<' '<<std::quoted(scenario.players[p][g].editorName)<<'\n';
     return out.str();
 }
 // Reject malformed metadata atomically; ordinary retail scenarios have no sidecar.
-inline bool applyScenarioInfo(tak::crt::Scenario& scenario,const std::string& text) {
+inline bool applyScenarioInfo(ta::crt::Scenario& scenario,const std::string& text) {
     if(text.size()>4*1024*1024)return false;
     std::istringstream in(text);std::string magic;int version=0;
-    if(!(in>>magic>>version) || magic!="TAK_EDITOR_RULE_NAMES" || version!=1)return false;
+    if(!(in>>magic>>version) || magic!="TA_EDITOR_RULE_NAMES" || version!=1)return false;
     struct Name {size_t player,group;std::string text;};std::vector<Name> names;
     std::set<std::pair<size_t,size_t>> seen;
     while(in>>std::ws && !in.eof()) {

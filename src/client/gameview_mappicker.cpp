@@ -16,8 +16,8 @@ const SDL_Color kDimText{150, 155, 165, 255}, kRed{255, 130, 110, 255}, kAmber{2
 // Two ids name one map: a recipe exactly, a file map in any case (the data finds a map by
 // its name whatever its case, and the server's map id is what the client sent).
 bool sameMapId(const std::string& a, const std::string& b) {
-    if (tak::mapgen::isGeneratedMapId(a) || tak::mapgen::isGeneratedMapId(b)) return a == b;
-    return tak::mapfilter::lower(a) == tak::mapfilter::lower(b);
+    if (ta::mapgen::isGeneratedMapId(a) || ta::mapgen::isGeneratedMapId(b)) return a == b;
+    return ta::mapfilter::lower(a) == ta::mapfilter::lower(b);
 }
 // The map list's row named `name` (any case), or -1.
 template <class List> int listRow(const List& list, const std::string& name) {
@@ -28,9 +28,9 @@ template <class List> int listRow(const List& list, const std::string& name) {
 // The rows the FILTER leaves on show, as indices into the list.
 template <class List> std::vector<int> shownRows(const List& list, const std::string& filter) {
     std::vector<int> shown;
-    const std::string want = tak::mapfilter::lower(filter);
+    const std::string want = ta::mapfilter::lower(filter);
     for (int i = 0; i < int(list.size()); ++i)
-        if (tak::mapfilter::matches(list[size_t(i)].title, list[size_t(i)].name, want)) shown.push_back(i);
+        if (ta::mapfilter::matches(list[size_t(i)].title, list[size_t(i)].name, want)) shown.push_back(i);
     return shown;
 }
 // The first row on show for list row `row`: a few above it, so it is in view (0 when filtered out).
@@ -45,7 +45,7 @@ template <class Picker, class Facts> void syncScenario(Picker& p, Facts&& facts)
     if (p.scenarioFor == p.file.path) return;
     p.scenarioFor = p.file.path;
     p.scenario = false;
-    p.scenarioInfo = p.file.path.empty() || tak::mapgen::isGeneratedMapId(p.file.path) ? tak::sim::ScenarioInfo{}
+    p.scenarioInfo = p.file.path.empty() || ta::mapgen::isGeneratedMapId(p.file.path) ? ta::sim::ScenarioInfo{}
                                                                                          : facts(p.file.path);
 }
 // "6, 7": seats as the slot table numbers them.
@@ -54,7 +54,7 @@ std::string seatNumbers(const std::vector<int>& slots) {
     for (int s : slots) out += (out.empty() ? "" : ", ") + std::to_string(s + 1);
     return out;
 }
-int seatedHumans(const tak::net::RoomView& room) {
+int seatedHumans(const ta::net::RoomView& room) {
     int n = 0;
     for (const auto& s : room.slots) n += s.type == 1;
     return n;
@@ -85,7 +85,7 @@ int seatedHumans(const tak::net::RoomView& room) {
                 if (mapFilter_.empty() && !active)
                     blockText("FILTER", fx + 6, sy + 5, 1.5f, {110, 116, 132, 255});
                 else
-                    blockText(tak::uiTextFitStart(mapFilter_ + (active ? "_" : ""), 1.5f, fw - 12), fx + 6, sy + 5, 1.5f,
+                    blockText(ta::uiTextFitStart(mapFilter_ + (active ? "_" : ""), 1.5f, fw - 12), fx + 6, sy + 5, 1.5f,
                               {225, 230, 240, 255});
                 lobbyHots_.push_back({r, [this] { lbField_ = 6; SDL_StartTextInput(); }});
             }
@@ -149,7 +149,7 @@ int seatedHumans(const tak::net::RoomView& room) {
                          : hot ? SDL_Color{40, 46, 62, 255} : SDL_Color{24, 26, 34, 255};
             SDL_SetRenderDrawColor(ren_, rc.r, rc.g, rc.b, 255); SDL_RenderFillRectF(ren_, &row);
             const std::string& title = m.title.empty() ? nm : m.title;
-            std::string label = tak::uiTextFit(title, 2.0f, nameW, false);
+            std::string label = ta::uiTextFit(title, 2.0f, nameW, false);
             // Keep part of a generated map's recipe suffix visible even when a
             // long title needs shortening, so duplicate titles can be told apart.
             if (label != title && title.size() > 17 &&
@@ -158,7 +158,7 @@ int seatedHumans(const tak::net::RoomView& room) {
                     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
                 })) {
                 const std::string tail = "~" + title.substr(title.size()-8);
-                label = tak::uiTextFit(title, 2.0f, nameW - blockWidth(tail, 2.0f), false) + tail;
+                label = ta::uiTextFit(title, 2.0f, nameW - blockWidth(tail, 2.0f), false) + tail;
             }
             const SDL_Color greyText{130, 135, 150, 255};
             blockText(label,
@@ -206,14 +206,14 @@ int seatedHumans(const tak::net::RoomView& room) {
         const float kHalfW = (kBtnW - kGap) / 2;
         float px = x, py = y;
         lbField(px, py, kBtnW, "MAP NAME (OPTIONAL)", genParams_.name, 5); py += 44;
-        lbCycle(px, py, kBtnW, kRowH, std::string("TYPE:  ") + tak::mapgen::worldTitle(genParams_.mapType),
-              true, [this](int direction) { genParams_.mapType = uint8_t((genParams_.mapType + direction + tak::mapgen::kMapTypes) % tak::mapgen::kMapTypes);
-                             genParams_.layout=tak::mapgen::layoutForSlot(genParams_.mapType,tak::mapgen::slotOfLayout(genParams_.layout));
+        lbCycle(px, py, kBtnW, kRowH, std::string("TYPE:  ") + ta::mapgen::worldTitle(genParams_.mapType),
+              true, [this](int direction) { genParams_.mapType = uint8_t((genParams_.mapType + direction + ta::mapgen::kMapTypes) % ta::mapgen::kMapTypes);
+                             genParams_.layout=ta::mapgen::layoutForSlot(genParams_.mapType,ta::mapgen::slotOfLayout(genParams_.layout));
                              applyGenParams(); }); py += kRowH + kGap;
         // Mainland, Lakes, Islands (the volcano's Industrial Zone) and the world's own layout.
-        lbCycle(px, py, kBtnW, kRowH, std::string("LAYOUT:  ") + tak::mapgen::layoutName(genParams_.layout),
-              true, [this](int direction) { const int next=(tak::mapgen::slotOfLayout(genParams_.layout)+direction+4)%4;
-                             genParams_.layout=tak::mapgen::layoutForSlot(genParams_.mapType,next);
+        lbCycle(px, py, kBtnW, kRowH, std::string("LAYOUT:  ") + ta::mapgen::layoutName(genParams_.layout),
+              true, [this](int direction) { const int next=(ta::mapgen::slotOfLayout(genParams_.layout)+direction+4)%4;
+                             genParams_.layout=ta::mapgen::layoutForSlot(genParams_.mapType,next);
                              applyGenParams(); }); py += kRowH + kGap;
         char pl[32]; std::snprintf(pl, sizeof pl, "PLAYERS:  %d", int(genParams_.players));
         lbCycle(px, py, kBtnW, kRowH, pl, true, [this](int direction) {
@@ -225,10 +225,10 @@ int seatedHumans(const tak::net::RoomView& room) {
         const auto sizeCycle = [this](bool height, int direction) {
             const int cur = (height ? genParams_.heightCells : genParams_.widthCells) / 32;
             std::vector<int> sizes;
-            for (int size : tak::mapgen::kSizeSteps) {
+            for (int size : ta::mapgen::kSizeSteps) {
                 auto candidate = genParams_;
                 (height ? candidate.heightCells : candidate.widthCells) = uint16_t(size * 32);
-                const auto kept = tak::mapgen::sanitize(candidate);
+                const auto kept = ta::mapgen::sanitize(candidate);
                 if (kept.widthCells == candidate.widthCells && kept.heightCells == candidate.heightCells)
                     sizes.push_back(size);
             }
@@ -258,38 +258,38 @@ int seatedHumans(const tak::net::RoomView& room) {
             SDL_FRect handle{bx + bw * t - 3, by - 2, 6, bh + 4};
             SDL_SetRenderDrawColor(ren_, 200, 220, 200, 255); if (enabled) SDL_RenderFillRectF(ren_, &handle);
             SDL_SetRenderDrawColor(ren_, 70, 76, 96, 255); SDL_RenderDrawRectF(ren_, &bar);
-            static const char* kScatterShort[tak::mapgen::kScatterLevels] = {"NONE", "MIN", "MED", "HIGH", "MAX"};
-            const std::string level = !enabled ? off : idx==2 ? "+" + std::to_string(tak::mapgen::extraManaRounds(val)) + "/P" :
-                idx==5 ? kScatterShort[std::min<int>(genParams_.manaScatter, tak::mapgen::kScatterLevels - 1)] :
+            static const char* kScatterShort[ta::mapgen::kScatterLevels] = {"NONE", "MIN", "MED", "HIGH", "MAX"};
+            const std::string level = !enabled ? off : idx==2 ? "+" + std::to_string(ta::mapgen::extraManaRounds(val)) + "/P" :
+                idx==5 ? kScatterShort[std::min<int>(genParams_.manaScatter, ta::mapgen::kScatterLevels - 1)] :
                 val == 0 ? "NONE" : val < 86 ? "LOW" : val < 171 ? "MED" : "HIGH";
             const float levelW = blockWidth(level, 1.3f);
             // The label shrinks, if it must, to leave the level its room on the line.
-            blockText(label, bx, py + 2, tak::uiTextFitPx(label, 1.3f, bw - levelW - 8), {180, 185, 195, 255});
+            blockText(label, bx, py + 2, ta::uiTextFitPx(label, 1.3f, bw - levelW - 8), {180, 185, 195, 255});
             blockText(level, bx + bw - levelW, py + 2, 1.3f, {160, 165, 180, 255});
             if (++column == 2) { column = 0; py += kSliderH + kGap; }
         };
         const uint8_t world = genParams_.mapType, layout = genParams_.layout;
         // The volcano has no trees or hill sections; its rocks are ruined Creon works.
-        slider(0, "FORESTS", genParams_.treeDensity, tak::mapgen::worldHasForests(world), "NONE");
-        slider(1, tak::mapgen::lavaWorld(world) ? "RUINS" : "ROCKS", genParams_.rockDensity);
+        slider(0, "FORESTS", genParams_.treeDensity, ta::mapgen::worldHasForests(world), "NONE");
+        slider(1, ta::mapgen::lavaWorld(world) ? "RUINS" : "ROCKS", genParams_.rockDensity);
         slider(2, "EXTRA MANA", genParams_.manaDensity);
         // Neutral spots scattered by AREA, apart from the per-player extra spots (a
         // level, not a count: the same level puts four times as many on a map twice as
         // wide). Five notches, NONE..MAX; MAX = a six-spot home's density.
-        slider(5, "SCATTERED MANA", uint8_t(genParams_.manaScatter * 255 / (tak::mapgen::kScatterLevels - 1)));
+        slider(5, "SCATTERED MANA", uint8_t(genParams_.manaScatter * 255 / (ta::mapgen::kScatterLevels - 1)));
         // Industrial Zone's lava is its own; the slider sets its cut-off pads instead.
-        const bool pads = layout == tak::mapgen::IndustrialZone;
-        slider(3, pads ? "LAVA PADS" : tak::mapgen::lavaWorld(world) ? "LAVA" : "WATER", genParams_.waterDensity,
-               pads || !tak::mapgen::automaticWater(layout));
-        slider(4, layout==tak::mapgen::Highlands?"HIGHLANDS":"HILLS", genParams_.reliefDensity,
-               tak::mapgen::hillsPossible(world, layout), layout==tak::mapgen::Maze ? "AUTO" : "NONE");
+        const bool pads = layout == ta::mapgen::IndustrialZone;
+        slider(3, pads ? "LAVA PADS" : ta::mapgen::lavaWorld(world) ? "LAVA" : "WATER", genParams_.waterDensity,
+               pads || !ta::mapgen::automaticWater(layout));
+        slider(4, layout==ta::mapgen::Highlands?"HIGHLANDS":"HILLS", genParams_.reliefDensity,
+               ta::mapgen::hillsPossible(world, layout), layout==ta::mapgen::Maze ? "AUTO" : "NONE");
         // v10 retail kits. Maze walls and Creon highlands are the layout's own high
         // ground; Veruna ships no mountain kit.
-        slider(6, "PLATEAUS", genParams_.plateauDensity, !tak::mapgen::automaticPlateaus(layout) &&
-               tak::mapgen::kitAvailable(world, tak::mapgen::KitPlateaus));
-        slider(7, "MOUNTAINS", genParams_.mountainDensity, tak::mapgen::kitAvailable(world, tak::mapgen::KitMountains), "NONE");
-        slider(8, world==tak::mapgen::Zhon?"VILLAGES":"TOWNS", genParams_.townDensity,
-               tak::mapgen::kitAvailable(world, tak::mapgen::KitTowns), "NONE");
+        slider(6, "PLATEAUS", genParams_.plateauDensity, !ta::mapgen::automaticPlateaus(layout) &&
+               ta::mapgen::kitAvailable(world, ta::mapgen::KitPlateaus));
+        slider(7, "MOUNTAINS", genParams_.mountainDensity, ta::mapgen::kitAvailable(world, ta::mapgen::KitMountains), "NONE");
+        slider(8, world==ta::mapgen::Zhon?"VILLAGES":"TOWNS", genParams_.townDensity,
+               ta::mapgen::kitAvailable(world, ta::mapgen::KitTowns), "NONE");
         // The seed button shares the last row with TOWNS.
         py += 8;
         px += kHalfW + kGap;
@@ -303,7 +303,7 @@ int seatedHumans(const tak::net::RoomView& room) {
         // A real map shows its embedded minimap; a generated map shows a live thumbnail
         // rolled from its seed (both go through buildMapPreview -> mapPreviewTex_). The
         // dims line goes under it.
-        const bool gen = tak::mapgen::isGeneratedMapId(id);
+        const bool gen = ta::mapgen::isGeneratedMapId(id);
         const float pvx = box.x, pvy = box.y, pvW = box.w, pvH = box.h;
         const SDL_FRect pbox = box;
         SDL_SetRenderDrawColor(ren_, 18, 20, 28, 255); SDL_RenderFillRectF(ren_, &pbox);
@@ -344,7 +344,7 @@ int seatedHumans(const tak::net::RoomView& room) {
         // EXISTING candidate's.
         if (!withScenario || gen || path.empty()) return;
         bool& chosen = picker_.scenario;
-        const tak::sim::ScenarioInfo& info = picker_.scenarioInfo;
+        const ta::sim::ScenarioInfo& info = picker_.scenarioInfo;
         const float y0 = pvy + pvH + 26, cycleH = 24;
         const bool testCopy = info.marker && info.runnable();
         // A Test Map copy of a map whose only scenario content is a Use Only list
@@ -357,27 +357,27 @@ int seatedHumans(const tak::net::RoomView& room) {
         const SDL_Color grey{150, 155, 165, 255}, dim{130, 135, 150, 255}, normal{205, 210, 225, 255};
         if (testCopy) {
             lines.push_back({"TEST COPY: ALWAYS ON", grey});
-            for (const auto& l : tak::sim::scenarioSummary(info, true))
+            for (const auto& l : ta::sim::scenarioSummary(info, true))
                 lines.push_back({l.text, l.warning ? kAmber : normal});
         } else if (testUseOnly) {
             lines.push_back({"TEST COPY: USE ONLY LIST", grey});
-            lines.push_back({tak::sim::scenarioUseOnlyLine(info, true), normal});
+            lines.push_back({ta::sim::scenarioUseOnlyLine(info, true), normal});
         } else if (!offered) {
-            for (const auto& l : tak::sim::scenarioReason(info)) lines.push_back({l, grey});
+            for (const auto& l : ta::sim::scenarioReason(info)) lines.push_back({l, grey});
         } else {
             // Offered only because a game mod pack may supply a missing unit type.
             if (!info.offerable()) {
                 // The pack's own name (its capitals under MODERN), cut to the column.
                 lines.push_back({"PACK NEEDED: " + info.detail, kAmber});
             }
-            for (const auto& l : tak::sim::scenarioSummary(info, true))
+            for (const auto& l : ta::sim::scenarioSummary(info, true))
                 lines.push_back({l.text, !chosen ? dim : l.warning ? kAmber : normal});
         }
         // Four lines at a 16 pitch, or a fifth (a test copy's or the pack warning on
         // top of a full summary) at 14, each cut to the preview's width.
         const float pitch = lines.size() > 4 ? 14.0f : 16.0f;
         for (size_t i = 0; i < lines.size() && i < 5; ++i)
-            blockText(tak::uiTextFit(lines[i].first, 1.2f, pvW - 2), pvx, y0 + cycleH + 6 + float(i) * pitch, 1.2f,
+            blockText(ta::uiTextFit(lines[i].first, 1.2f, pvW - 2), pvx, y0 + cycleH + 6 + float(i) * pitch, 1.2f,
                       lines[i].second);
     }
 
@@ -385,8 +385,8 @@ int seatedHumans(const tak::net::RoomView& room) {
 
     void GameView::openMapPicker() {
         const auto& room = mpRoom();
-        const tak::Settings::RoomPrefs pref = settings_ ? settings_->prefsFor(singlePlayer_) : tak::Settings::RoomPrefs{};
-        const bool roomGen = tak::mapgen::isGeneratedMapId(room.mapId);
+        const ta::Settings::RoomPrefs pref = settings_ ? settings_->prefsFor(singlePlayer_) : ta::Settings::RoomPrefs{};
+        const bool roomGen = ta::mapgen::isGeneratedMapId(room.mapId);
         if (!picker_.open) {
             if (!mp_->roomEditable()) { roomActError_ = "only the host changes the map, before the game starts"; return; }
             if (!roomForcedMap_.empty()) { roomActError_ = "a test map's room keeps its map"; return; }
@@ -406,11 +406,11 @@ int seatedHumans(const tak::net::RoomView& room) {
             genParams_ = {};
             if (roomGen) {
                 picker_.random = true;
-                try { genParams_ = tak::mapgen::parseMapId(room.mapId); } catch (const std::exception&) {}
+                try { genParams_ = ta::mapgen::parseMapId(room.mapId); } catch (const std::exception&) {}
                 picker_.gen = {room.mapId, room.mapId};
             } else {
-                if (tak::mapgen::isGeneratedMapId(pref.generator))
-                    try { genParams_ = tak::mapgen::parseMapId(pref.generator); } catch (const std::exception&) { genParams_ = {}; }
+                if (ta::mapgen::isGeneratedMapId(pref.generator))
+                    try { genParams_ = ta::mapgen::parseMapId(pref.generator); } catch (const std::exception&) { genParams_ = {}; }
                 applyGenParams();   // the panel is open: its RANDOM candidate
             }
         }
@@ -446,10 +446,10 @@ int seatedHumans(const tak::net::RoomView& room) {
     void GameView::pickerSelect(const std::string& id) {
         if (!picker_.open) { roomActError_ = "the map panel is not open"; return; }
         picker_.message.clear();
-        if (tak::mapgen::isGeneratedMapId(id)) {
-            // The recipe as given (a TAK_ROOM_SCRIPT step names the exact map it wants), shown
+        if (ta::mapgen::isGeneratedMapId(id)) {
+            // The recipe as given (a TA_ROOM_SCRIPT step names the exact map it wants), shown
             // in the generator's controls.
-            try { genParams_ = tak::mapgen::parseMapId(id); }
+            try { genParams_ = ta::mapgen::parseMapId(id); }
             catch (const std::exception& e) { roomActError_ = e.what(); return; }
             picker_.random = true;
             picker_.gen = {id, id};
@@ -458,8 +458,8 @@ int seatedHumans(const tak::net::RoomView& room) {
         // A file map: its list row (the name in any case), else wherever the data has it (the
         // list is read when the panel first draws).
         const int at = listRow(mapList_, id);
-        const std::string path = at >= 0 ? mapList_[size_t(at)].path : tak::hpi::findMap(vfs_, id);
-        if (path.empty() || tak::mapgen::isGeneratedMapId(path)) { roomActError_ = "map not installed: " + id; return; }
+        const std::string path = at >= 0 ? mapList_[size_t(at)].path : ta::hpi::findMap(vfs_, id);
+        if (path.empty() || ta::mapgen::isGeneratedMapId(path)) { roomActError_ = "map not installed: " + id; return; }
         picker_.random = false;
         picker_.file = {at >= 0 ? mapList_[size_t(at)].name : id, path};
         syncScenario(picker_, [this](const std::string& p) { return mapScenarioInfo(p); });
@@ -517,13 +517,13 @@ int seatedHumans(const tak::net::RoomView& room) {
             return;
         }
         picker_.pickSerial = 0;
-        using A = tak::net::MpClient::RoomMapAnswer;
+        using A = ta::net::MpClient::RoomMapAnswer;
         if (answer.kind == A::Accepted) {
             const auto& room = mpRoom();
             rememberRoomPrefs(RoomField::Map);
             // A random map's preview is the room's now: the room takes it over rather than
             // rolling the map again.
-            if (tak::mapgen::isGeneratedMapId(room.mapId) && mapPreviewFor_ == room.mapId)
+            if (ta::mapgen::isGeneratedMapId(room.mapId) && mapPreviewFor_ == room.mapId)
                 mapPreviewFor_ = "room:" + room.mapId + "#";
             closeMapPicker();
             return;
@@ -607,7 +607,7 @@ int seatedHumans(const tak::net::RoomView& room) {
         const bool sc = !picker_.random && picker_.scenario && scenarioOffered(picker_.scenarioInfo);
         const int humans = seatedHumans(room);
         int cap = 0;
-        if (tak::mapgen::isGeneratedMapId(c.id)) cap = std::clamp<int>(tak::mapgen::decodeMapId(c.id).players, 2, tak::net::kMaxSlots);
+        if (ta::mapgen::isGeneratedMapId(c.id)) cap = std::clamp<int>(ta::mapgen::decodeMapId(c.id).players, 2, ta::net::kMaxSlots);
         else if (!c.id.empty()) {
             const int at = listRow(mapList_, c.id);
             cap = at >= 0 ? seatsFor(mapList_[size_t(at)].starts, picker_.scenarioInfo, sc) : capacityFor(c.id, c.path, sc);
@@ -625,7 +625,7 @@ int seatedHumans(const tak::net::RoomView& room) {
         } else if (genError) { text = "MAP UNAVAILABLE: CHECK RETAIL DATA"; color = kRed; }
         else if (!unchanged) {
             // What the server's capacity change would do to the seats (the plan it applies).
-            const auto plan = tak::net::planCapacity(room.slots, cap);
+            const auto plan = ta::net::planCapacity(room.slots, cap);
             const size_t removed = plan.removedAi.size(), moved = plan.moves.size();
             const std::string players = std::to_string(moved) + (moved == 1 ? " PLAYER" : " PLAYERS");
             if (removed) {
@@ -642,8 +642,8 @@ int seatedHumans(const tak::net::RoomView& room) {
         lbBtn(P.x + 548, fy, 120, 28, "PICK", pickOk, [this] { pickerPick(); }, {70, 110, 70, 255});
         if (!text.empty()) {
             constexpr float kTextW = 392;
-            const float px = tak::uiTextFitPx(text, 1.3f, kTextW, 1.0f);
-            const std::string shown = tak::uiTextFit(text, px, kTextW);
+            const float px = ta::uiTextFitPx(text, 1.3f, kTextW, 1.0f);
+            const std::string shown = ta::uiTextFit(text, px, kTextW);
             blockText(shown, P.x + 144 + (kTextW - blockWidth(shown, px)) / 2, fy + 14 - 3.5f * px, px, color);
         }
     }

@@ -73,10 +73,10 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
         for(int i=0;i<3;++i)mfNumeric[i]=false;
         // GAME DATA FOLDER below the fields: the shared setting as it is NOW (the game
         // may have changed it since this editor started).
-        folderSaved=tak::loadSettings().dataDir;folderNote.clear();folderNoteError=false;
+        folderSaved=ta::loadSettings().dataDir;folderNote.clear();folderNoteError=false;
     } else if(m==M_REGION) {
         editRegion=unitIdx;
-        tak::crt::Region region;
+        ta::crt::Region region;
         if(unitIdx>=0 && unitIdx<int(scen.regions.size()))region=scen.regions[unitIdx];
         else {
             region.name="Region "+std::to_string(scen.regions.size()+1);
@@ -101,14 +101,14 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
         mLabel[0]="SEARCH MAPS OR ENTER KMP / TNT PATH";mf[0]="";mfNumeric[0]=false;
         openCatalog.clear();openScroll=0;openFilterDirty=true;
         for(const auto& recent:preferences.recent)openCatalog.emplace_back("Recent: "+recent,recent);
-        for(const auto& [name,path]:tak::hpi::listMaps(vfs))openCatalog.emplace_back(name,path);
+        for(const auto& [name,path]:ta::hpi::listMaps(vfs))openCatalog.emplace_back(name,path);
         filterOpenMaps();
     } else if(m==M_NEWAIMOD) {
         // A pack name the install does not have yet (Open AI mod edits an existing one).
         std::vector<std::string> packs;
-        try {packs=tak::hpi::modPacks(tak::u8path(dataRoot),tak::hpi::ModKind::Game);} catch(const std::exception&) {}
+        try {packs=ta::hpi::modPacks(ta::u8path(dataRoot),ta::hpi::ModKind::Game);} catch(const std::exception&) {}
         auto taken=[&](const std::string& name) {return std::any_of(packs.begin(),packs.end(),[&](const std::string& p){return lowerText(p)==lowerText(name);}) ||
-                                                        !cart::modPackReservedError(tak::u8path(dataRoot),name).empty();};
+                                                        !cart::modPackReservedError(ta::u8path(dataRoot),name).empty();};
         std::string name="my-ai";
         for(int n=2;taken(name);++n)name="my-ai-"+std::to_string(n);
         mTitle="NEW AI MOD";mN=1;
@@ -165,7 +165,7 @@ void cart::Editor::adoptFreshMap(FreshMap fm,const std::string& nm,const std::st
     mapView.tilesEdited();
     mapView.setOffset(0, 0);
     world = wld;
-    scenario = tak::tnt::Scenario{};
+    scenario = ta::tnt::Scenario{};
     scenario.kingdom = wld; scenario.sizeW = mapView.map().width/32; scenario.sizeH = mapView.map().height/32;
     scenario.missionName = nm;
     scenario.generatorRecipe=fm.recipe;
@@ -175,7 +175,7 @@ void cart::Editor::adoptFreshMap(FreshMap fm,const std::string& nm,const std::st
     mapName = nm;
     selectedUnits.indices.clear();selectedUnits.dragOrigins.clear();selectedFeatures.clear();
     regionDrag.cancel();regionSelected=-1;
-    units.clear(); scen = tak::crt::Scenario{}; useOnly.clear(); aiFiles.clear();
+    units.clear(); scen = ta::crt::Scenario{}; useOnly.clear(); aiFiles.clear();
     resetHistory=!regeneratingCurrent;regeneratingCurrent=false;
     selected = sections.list().empty() ? -1 : 0;
     selectedFeat = features.list().empty() ? -1 : 0;
@@ -194,21 +194,21 @@ void cart::Editor::applyNewMap(bool random) {
     std::transform(wld.begin(),wld.end(),wld.begin(),[](unsigned char c){return char(std::tolower(c));});
     if(random) {
         auto params=generatorParams;params.widthCells=uint16_t(wu*32);params.heightCells=uint16_t(hu*32);
-        for(uint8_t i=0;i<tak::mapgen::kMapTypes;++i)if(wld==tak::mapgen::worldKey(i))params.mapType=i;
-        params=tak::mapgen::sanitize(params);
-        wld=tak::mapgen::worldKey(params.mapType);
+        for(uint8_t i=0;i<ta::mapgen::kMapTypes;++i)if(wld==ta::mapgen::worldKey(i))params.mapType=i;
+        params=ta::mapgen::sanitize(params);
+        wld=ta::mapgen::worldKey(params.mapType);
         generatorDraft[3]=wld;
         generatorParams=params;
         generatingName=nm;generatingWorld=wld;cancelGeneration=quitAfterGeneration=false;
         // The busy modal prevents VFS replacement until this read-only job ends.
         generatorJob=std::async(std::launch::async,[&,params,wld] {
-            const auto recipe=tak::mapgen::encodeMapId(params);
-            auto result=tak::mapgen::generate(params,vfs);FreshMap map;
+            const auto recipe=ta::mapgen::encodeMapId(params);
+            auto result=ta::mapgen::generate(params,vfs);FreshMap map;
             map.map=std::move(result.map);map.recipe=recipe;
-            tak::terrain::Compositor compositor(vfs);
+            ta::terrain::Compositor compositor(vfs);
             cart::generateMinimaps(map.map,compositor,cart::loadWorldPalette(vfs,wld));
             int number=1;for(auto [x,z]:result.starts)map.starts.push_back({number++,x,z});
-            if(params.mountainDensity&&tak::mapgen::kitAvailable(params.mapType,tak::mapgen::KitMountains)&&!result.mountains)
+            if(params.mountainDensity&&ta::mapgen::kitAvailable(params.mapType,ta::mapgen::KitMountains)&&!result.mountains)
                 map.note="No room for mountains on this map: try it larger or with fewer players.";
             return map;
         });
@@ -228,7 +228,7 @@ void cart::Editor::openGeneratorRecipe() {
     if(!cart::restoreGeneratorRecipe(scenario.generatorRecipe,params,error)) {openMessage("GENERATOR RECIPE",error);return;}
     generatorParams=params;
     regeneratingCurrent=true;
-    generatorDraft={mapName,std::to_string(params.widthCells/32),std::to_string(params.heightCells/32),tak::mapgen::worldKey(params.mapType)};
+    generatorDraft={mapName,std::to_string(params.widthCells/32),std::to_string(params.heightCells/32),ta::mapgen::worldKey(params.mapType)};
     openModal(M_GENERATOR);
 }
 
@@ -260,13 +260,13 @@ void cart::Editor::applyModal() {
     } else if(modal==M_SAVEAS) {
         if(!cart::validDocumentName(mf[0])) {modalError="Choose a map name without path separators or reserved filename characters.";return;}
         const auto nextName=mf[0],nextDir=mf[1];
-        const auto path=pathText(tak::u8path(nextDir)/tak::u8path(nextName+".kmp"));
+        const auto path=pathText(ta::u8path(nextDir)/ta::u8path(nextName+".kmp"));
         auto performSave=[&,path,nextName,nextDir] {
             if(!saveBundle(path)) {openMessage("SAVE FAILED",saveError);return;}
             mapName=nextName;outDir=nextDir;historyPending=true;commitHistory();history.markSaved();dirty=false;
             openMessage("SAVED",path);
         };
-        if(std::filesystem::exists(tak::u8path(path)) && (nextName!=mapName || nextDir!=outDir)) {
+        if(std::filesystem::exists(ta::u8path(path)) && (nextName!=mapName || nextDir!=outDir)) {
             openConfirm("REPLACE MAP", "Replace the existing map? Its previous version will be retained as a .bak file.",performSave);return;
         }
         performSave();return;
@@ -286,9 +286,9 @@ void cart::Editor::applyModal() {
         while(!name.empty() && name.back()==' ')name.pop_back();
         while(!name.empty() && name.front()==' ')name.erase(name.begin());
         if(const auto why=cart::modPackNameError(name);!why.empty()) {modalError=why;return;}
-        if(const auto why=cart::modPackReservedError(tak::u8path(dataRoot),name);!why.empty()) {modalError=why;return;}
+        if(const auto why=cart::modPackReservedError(ta::u8path(dataRoot),name);!why.empty()) {modalError=why;return;}
         std::vector<std::string> packs;
-        try {packs=tak::hpi::modPacks(tak::u8path(dataRoot),tak::hpi::ModKind::Game);} catch(const std::exception&) {}
+        try {packs=ta::hpi::modPacks(ta::u8path(dataRoot),ta::hpi::ModKind::Game);} catch(const std::exception&) {}
         for(const auto& pack:packs)if(lowerText(pack)==lowerText(name)) {
             modalError="mods/game/"+pack+" already exists: File > Open AI mod edits its AI files.";return;
         }
@@ -407,7 +407,7 @@ void cart::Editor::applyModal() {
 
 // Open the param editor for a condition/action rule (fields = its opcode's
 // parameters, in slot order).
-void cart::Editor::openRuleEditor(tak::crt::Rule* r, bool isAction) {
+void cart::Editor::openRuleEditor(ta::crt::Rule* r, bool isAction) {
     modalError.clear();
     const auto& defs = isAction ? cart::actionDefs() : cart::conditionDefs();
     int op = std::clamp(r->opcode, 0, int(defs.size()) - 1);
@@ -435,7 +435,7 @@ void cart::Editor::openRuleEditor(tak::crt::Rule* r, bool isAction) {
     if (mN > 0) SDL_StartTextInput();
 }
 
-void cart::Editor::openRuleName(tak::crt::RuleGroup* group) {
+void cart::Editor::openRuleName(ta::crt::RuleGroup* group) {
     if(!group)return;
     editRuleGroup=group;modal=M_RULENAME;modalError.clear();mTitle="RULE NAME";mN=1;mfocus=0;mDropOpen=-1;
     mf[0]=group->editorName;mLabel[0]="NAME (BLANK USES RULE NUMBER)";mfNumeric[0]=false;mfChoices[0]=nullptr;mfEditableChoice[0]=false;
@@ -1043,8 +1043,8 @@ void cart::Editor::drawUseOnly() {
 // ---- GAME DATA FOLDER (View > Preferences) -----------------------------------------
 
 void cart::Editor::clickDataFolder() {
-    if(!tak::dataFolderOverrideReason(dataOrigin).empty() || folderPick.busy())return;
-    if(!hooks.pickFolder && !tak::haveDirPicker()) {
+    if(!ta::dataFolderOverrideReason(dataOrigin).empty() || folderPick.busy())return;
+    if(!hooks.pickFolder && !ta::haveDirPicker()) {
         folderNote="No folder picker: install kdialog or zenity, or start Cartographer with --data.";folderNoteError=true;return;
     }
     folderNote.clear();folderNoteError=false;
@@ -1053,11 +1053,11 @@ void cart::Editor::clickDataFolder() {
 
 void cart::Editor::pollDataFolder() {
     const auto pick=folderPick.poll();if(!pick)return;
-    if(pick->outcome==tak::DataFolderPick::Invalid) {
-        folderNote=tak::dataFolderInvalidMessage(pick->reason)+" The current folder is kept.";folderNoteError=true;
-    } else if(pick->outcome==tak::DataFolderPick::Accepted) {
+    if(pick->outcome==ta::DataFolderPick::Invalid) {
+        folderNote=ta::dataFolderInvalidMessage(pick->reason)+" The current folder is kept.";folderNoteError=true;
+    } else if(pick->outcome==ta::DataFolderPick::Accepted) {
         // Saved straight away and only that key: the game reads the same setting.
-        if(!tak::saveDataFolderSetting(pick->folder,pick->manifest)) {folderNote="Could not save the setting. The current folder is kept.";folderNoteError=true;return;}
+        if(!ta::saveDataFolderSetting(pick->folder,pick->manifest)) {folderNote="Could not save the setting. The current folder is kept.";folderNoteError=true;return;}
         folderSaved=pick->folder;folderNote.clear();folderNoteError=false;
         std::fprintf(stderr,"preferences: data folder set to %s\n",folderSaved.c_str());
     }
@@ -1072,22 +1072,22 @@ void cart::Editor::requestRestart() {
 }
 
 void cart::Editor::drawDataFolder(const SDL_Rect& ct) {
-    const std::string locked=tak::dataFolderOverrideReason(dataOrigin);
-    const bool busy=folderPick.busy(),pending=tak::dataFolderNeedsRestart(folderSaved,dataRoot);
+    const std::string locked=ta::dataFolderOverrideReason(dataOrigin);
+    const bool busy=folderPick.busy(),pending=ta::dataFolderNeedsRestart(folderSaved,dataRoot);
     const int y=ct.y+mN*40,buttonW=84,boxW=ct.w-buttonW-6;
     cart::drawText(ren,"GAME DATA FOLDER (SHARED WITH THE GAME)",ct.x,y,1,locked.empty()?190:120,locked.empty()?195:124,locked.empty()?205:134);
     // The folder in use, elided at its start (the tail is what tells installs apart).
     SDL_Rect box{ct.x,y+10,boxW,16};
     fillRect(ren,box.x,box.y,box.w,box.h,24,26,34);
     SDL_SetRenderDrawColor(ren,90,92,104,255);SDL_RenderDrawRect(ren,&box);
-    cart::drawText(ren,tak::elidePathStart(dataRoot,size_t(std::max(4,(boxW-8)/6))),box.x+4,box.y+4,1,locked.empty()?230:140,locked.empty()?235:145,locked.empty()?245:155);
+    cart::drawText(ren,ta::elidePathStart(dataRoot,size_t(std::max(4,(boxW-8)/6))),box.x+4,box.y+4,1,locked.empty()?230:140,locked.empty()?235:145,locked.empty()?245:155);
     if(locked.empty() && !busy)mFolderChange=cart::drawButton(ren,ct.x+ct.w-buttonW,y+10,buttonW,16,"CHANGE...",false);
     else {   // greyed: nothing to click
         fillRect(ren,ct.x+ct.w-buttonW,y+10,buttonW,16,34,36,44);
         cart::drawText(ren,"CHANGE...",ct.x+ct.w-buttonW+(buttonW-cart::textWidth("CHANGE...",1))/2,y+14,1,110,112,122);
     }
     std::string note=!locked.empty()?locked:busy?"Choosing a folder...":!folderNote.empty()?folderNote:
-        pending?"Saved. Restart Cartographer to load "+tak::elidePathStart(folderSaved,48)+". The game uses it from its next start.":
+        pending?"Saved. Restart Cartographer to load "+ta::elidePathStart(folderSaved,48)+". The game uses it from its next start.":
         "The game reads this folder too. A new one loads when Cartographer restarts.";
     const auto lines=cart::TextEdit::lines(note,std::max(1,ct.w/6));
     const bool warn=folderNoteError,amber=busy || (pending && folderNote.empty());

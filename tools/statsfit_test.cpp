@@ -36,8 +36,8 @@ float narrowestStrip(float uiScale) {
     return 180.0f * uiScale + 12.0f - 2.0f * std::max(4.0f, 6.0f * uiScale);
 }
 
-tak::hud::StatsFit fit(float w, float h, int rows = 9, float uiScale = 0.75f) {
-    return tak::hud::fitStats(rows, w, h, kBudget, kGlyphW, kGlyphH, pxFor(uiScale),
+ta::hud::StatsFit fit(float w, float h, int rows = 9, float uiScale = 0.75f) {
+    return ta::hud::fitStats(rows, w, h, kBudget, kGlyphW, kGlyphH, pxFor(uiScale),
                               /*rowPad=*/6.0f * uiScale);
 }
 
@@ -110,7 +110,7 @@ int main() {
     // The live panel reserves the full GAME TIME label plus a seven-character
     // value. All eleven rows fit a 200px gap at normal UI scale.
     for (float ui : {0.75f, 1.0f, 1.25f, 1.5f, 2.0f}) {
-        auto f = tak::hud::fitStats(11, narrowestStrip(ui), 200 * ui,
+        auto f = ta::hud::fitStats(11, narrowestStrip(ui), 200 * ui,
                                   17, 6, 7, 1.7f * ui, 6 * ui);
         check("expanded clock and metrics panel fits", f.visible && f.rows == 11);
     }

@@ -11,14 +11,14 @@ waiting for a job still running -- so the state hash and every observer key must
 whatever the worker count and whatever order the jobs finish in. Per fixture this runs:
 
   * the reference: --serial (no SimPool workers: nothing is built ahead, every tile is built in the serial pass);
-  * --workers with TAK_SIM_WORKERS = 1, 2, 3, 7 and 63: every count the default rule picks (1, 2, 3), and the
-    widest pool there is (SimPool::kMaxWorkers, the top of the SIMULATION THREADS setting and of takserver
+  * --workers with TA_SIM_WORKERS = 1, 2, 3, 7 and 63: every count the default rule picks (1, 2, 3), and the
+    widest pool there is (SimPool::kMaxWorkers, the top of the SIMULATION THREADS setting and of taserver
     --sim-threads on a 64-thread machine), so far more workers than this machine has CPUs. Plain runs are the
     cheap arms (2 to 17 s a fixture; the perturbed and verifying arms below cost several times that), which is
     why the widths added for that setting, 2 and 63, are plain ones;
   * --workers with 3 and 7 workers and --par-perturb SEED (the jobs run in a shuffled order with random delays,
     so they complete in a different order on every run);
-  * --serial --par-force --par-perturb SEED under TAK_LEGION_VERIFY (the jobs inline, shuffled; every staged tile
+  * --serial --par-force --par-perturb SEED under TA_LEGION_VERIFY (the jobs inline, shuffled; every staged tile
     the serial pass takes is rebuilt there and compared, and every derived index is checked each tick);
 
 and checks: every run exits 0; every run's state hash and observer keys equal the reference's; and the parallel
@@ -43,9 +43,9 @@ def run(exe, path, data, ticks, workers, extra, env_extra):
     cmd = [exe, path, "--mode", "legion", "--offsets", "0", "--json", "--ticks", str(ticks)] + extra
     if data:
         cmd += ["--data", data]
-    env = {k: v for k, v in os.environ.items() if not k.startswith("TAK_") or k == "TAK_SETTINGS_FILE"}
-    env.pop("TAK_SETTINGS_FILE", None)
-    env["TAK_SIM_WORKERS"] = str(workers)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TA_") or k == "TA_SETTINGS_FILE"}
+    env.pop("TA_SETTINGS_FILE", None)
+    env["TA_SIM_WORKERS"] = str(workers)
     env.update(env_extra)
     p = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if p.returncode == 77:
@@ -79,7 +79,7 @@ def main(argv):
         ("w63", 63, ["--workers"], {}),
         ("w3-perturb", 3, ["--workers", "--par-perturb", "11"], {}),
         ("w7-perturb", 7, ["--workers", "--par-perturb", "4242"], {}),
-        ("serial-forced-perturb-verify", 0, ["--serial", "--par-force", "--par-perturb", "7"], {"TAK_LEGION_VERIFY": "1"}),
+        ("serial-forced-perturb-verify", 0, ["--serial", "--par-force", "--par-perturb", "7"], {"TA_LEGION_VERIFY": "1"}),
     )
     failures, staged, used, rows = [], 0, 0, 0
     for name, ticks in (QUICK if quick else FIXTURES):
@@ -96,9 +96,9 @@ def main(argv):
                 used += par.get("used", 0)
                 rows += par.get("plane_rows", 0)
                 same_hash = d["hash"] == ref[0]["hash"]
-                # Under TAK_LEGION_VERIFY the navigator counts its own soft-hash checks (a verify-only work counter,
+                # Under TA_LEGION_VERIFY the navigator counts its own soft-hash checks (a verify-only work counter,
                 # folded into work.legion_all): the one difference a verify run may show (section 7.2 of the record).
-                verify_only = ("work.soft_hash_verify_ticks.", "work.legion_all.") if "TAK_LEGION_VERIFY" in env else ()
+                verify_only = ("work.soft_hash_verify_ticks.", "work.legion_all.") if "TA_LEGION_VERIFY" in env else ()
                 diff = sorted(k for k in set(d["keys"]) | set(ref[0]["keys"])
                               if d["keys"].get(k) != ref[0]["keys"].get(k) and not k.startswith(verify_only))
                 status = "ok" if same_hash and not diff else "DIFF"

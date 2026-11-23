@@ -1,4 +1,4 @@
-// modeltool — inspect TAK 3DO unit models.
+// modeltool — inspect TA 3DO unit models.
 //
 //   modeltool info <model.3do>              object tree + textures
 //   modeltool obj <model.3do> <out.obj>     export to Wavefront OBJ
@@ -12,7 +12,7 @@
 #include <iostream>
 #include <fstream>
 
-using tak::tdo::Object;
+using ta::tdo::Object;
 
 static void printTree(const Object& o, int depth) {
     std::cout << std::string(size_t(depth) * 2, ' ') << (o.name.empty() ? "(unnamed)" : o.name)
@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
     std::string cmd = argv[1];
     if (!(cmd == "info" || ((cmd == "obj" || cmd == "wire") && argc >= 4))) return usage();
     try {
-        auto m = tak::tdo::load(argv[2]);
+        auto m = ta::tdo::load(argv[2]);
 
         if (cmd == "info") {
             printTree(m.root, 0);
@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
                     auto [x1, y1] = toPx(poly[(i + 1) % poly.size()]);
                     drawLine(img, W, H, x0, y0, x1, y1);
                 }
-            tak::png::write(argv[3], W, H, img);
+            ta::png::write(argv[3], W, H, img);
             std::cout << "wrote " << argv[3] << " (" << polys.size() << " polys)\n";
         }
     } catch (const std::exception& e) {

@@ -15,7 +15,7 @@
 int main(int argc,char** argv) {
     auto check=[](bool ok,const char* message){if(!ok)throw std::runtime_error(message);};
     try {
-        using namespace tak::sim;
+        using namespace ta::sim;
         for(bool sameOwner:{false,true})for(bool allied:{false,true})for(bool unfinished:{false,true}) {
             UnitType attacker,victim;attacker.maxHp=victim.maxHp=100;victim.experiencePoints=1234;
             World world;world.setTerrain(std::vector<uint8_t>(64*64,0),64,64,0);
@@ -43,7 +43,7 @@ int main(int argc,char** argv) {
             put(36,128);put(44,60);put(52,0);put(56,72);
             std::memcpy(cob.data()+72,"Start",6);
             for(size_t i=0;i<code.size();++i)put(128+i*4,code[i]);
-            TypeRegistry registry;tak::tdf::Node header;World world;
+            TypeRegistry registry;ta::tdf::Node header;World world;
             world.player(0).score=2500;world.player(1).score=-17;
             world.setMission(std::make_unique<MissionScript>(cob,header,registry,0,"score fixture"));
             world.mission()->step(world,1.f/30);
@@ -62,8 +62,8 @@ int main(int argc,char** argv) {
             world.resetForReplay();check(!world.scoreAutomaticDisabled(),"replay reset must restore automatic scoring");
         }
         if(argc<2) {std::puts("PASS: native score accumulation and one-shot death accounting");return 0;}
-        const auto vfs=tak::hpi::mountRetailRoot(argv[1]);
-        const auto camps=tak::loadCampaigns(vfs);check(camps.size()>=2,"campaign roster absent");
+        const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
+        const auto camps=ta::loadCampaigns(vfs);check(camps.size()>=2,"campaign roster absent");
         for(bool crusades:{false,true}) {
             TypeRegistry types;setupRegistry(types,vfs,crusades);
             const auto* archer=types.find("araarch");
@@ -72,19 +72,19 @@ int main(int argc,char** argv) {
         SDL_setenv("SDL_VIDEODRIVER","dummy",1);check(SDL_Init(SDL_INIT_VIDEO)==0,SDL_GetError());
         auto* surface=SDL_CreateRGBSurfaceWithFormat(0,960,720,32,SDL_PIXELFORMAT_ABGR8888);
         auto* ren=SDL_CreateSoftwareRenderer(surface);check(ren!=nullptr,SDL_GetError());
-        tak::Settings settings;
+        ta::Settings settings;
         for(size_t tab=0;tab<2;++tab) {
             const auto before=gpuvram::count();
             {
                 std::vector<std::string> sounds;
-                tak::CampaignScreen screen(ren,vfs,settings,int(tab),[&](const auto& sound){sounds.push_back(sound);});
+                ta::CampaignScreen screen(ren,vfs,settings,int(tab),[&](const auto& sound){sounds.push_back(sound);});
                 screen.render(960,720);
                 check(gpuvram::count()>before+75,"authored book/chapter/font art missing");
                 if(argc>2) {
                     const std::string name=std::string(argv[2])+"-"+std::to_string(tab)+".png";
                     std::vector<uint8_t> rgba(960*720*4);
                     SDL_RenderReadPixels(ren,nullptr,SDL_PIXELFORMAT_ABGR8888,rgba.data(),960*4);
-                    tak::png::write(name,960,720,rgba);
+                    ta::png::write(name,960,720,rgba);
                 }
                 SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_HOME;
                 screen.input(e,960,720);e.key.keysym.sym=SDLK_RIGHT;screen.input(e,960,720);
@@ -92,16 +92,16 @@ int main(int argc,char** argv) {
                 check(screen.pickedStem()==camps[tab].missions[1].stem,"chapter paging chose wrong mission");
                 check(sounds==std::vector<std::string>{"ok.wav"},"Play must route authored GUI click sound");
             }
-            tak::releaseUiTextGlyphs();   // the shared interface-font cache, not the screen's
+            ta::releaseUiTextGlyphs();   // the shared interface-font cache, not the screen's
             check(gpuvram::count()==before,"campaign screen leaked authored textures");
         }
         {
-            tak::CampaignScreen screen(ren,vfs,settings,1);
+            ta::CampaignScreen screen(ren,vfs,settings,1);
             SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_END;screen.input(e,960,720);
             e.key.keysym.sym=SDLK_RETURN;screen.input(e,960,720);
             const auto& c=camps[1];check(screen.pickedStem()==(c.altFinal.empty()?c.missions.back().stem:c.altFinal),"last chapter/alternate inaccessible");
         }
-        tak::releaseUiTextGlyphs();SDL_DestroyRenderer(ren);SDL_FreeSurface(surface);SDL_Quit();
+        ta::releaseUiTextGlyphs();SDL_DestroyRenderer(ren);SDL_FreeSurface(surface);SDL_Quit();
         std::puts("PASS: campaign book assets, chapter input, all chapters accessible, texture teardown and score accounting");return 0;
     }catch(const std::exception& e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
 }

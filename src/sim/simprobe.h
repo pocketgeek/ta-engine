@@ -3,7 +3,7 @@
 // exists in a release build (NDEBUG), nothing is hashed, and nothing changes what the
 // sim computes: every counter only observes. Two switches, both read once:
 //
-//   TAK_SIMSTATS=1  one SIMSTATS line per tick (stderr) with work counters:
+//   TA_SIMSTATS=1  one SIMSTATS line per tick (stderr) with work counters:
 //                   vm_ticks / vm_skippable / vm_empty / vm_debt_flushes (the A1 COB
 //                   sleep skip: VM ticks due, ticks skipped, skipped with no thread able
 //                   to wake by itself, and skipped-tick debts paid by a touch from
@@ -29,22 +29,22 @@
 //                   legion.cpp are not counted), and minflt / minflt_sim / heap_grow (D6: minor page faults
 //                   of the process and of the sim thread alone, and the change in malloc'd
 //                   bytes, inside the tick; Linux/glibc only, 0 elsewhere).
-//   TAK_PMU=1       one SIMPMU line per tick (stderr, needs TAK_PHASE): user-mode cycles,
+//   TA_PMU=1       one SIMPMU line per tick (stderr, needs TA_PHASE): user-mode cycles,
 //                   instructions, cycles stalled on L1-miss loads and LLC misses, read with
-//                   rdpmc at the same phase boundaries TAK_PHASE times (Linux only). Pin the
+//                   rdpmc at the same phase boundaries TA_PHASE times (Linux only). Pin the
 //                   process to ONE core type: the events differ between P- and E-cores and
 //                   are opened for the core type the sim thread first runs on.
 //
-// The counters slow the run down (TAK_SIMSTATS walks VM threads and scans the near grid a
-// second time; TAK_PMU reads four counters at every per-unit phase boundary), so a timing
+// The counters slow the run down (TA_SIMSTATS walks VM threads and scans the near grid a
+// second time; TA_PMU reads four counters at every per-unit phase boundary), so a timing
 // run sets neither: counters first, then milliseconds, from separate runs.
 
-namespace tak::sim::probe {
+namespace ta::sim::probe {
 // Phases for the PMU split; the same buckets as the SIMPHASE line plus the prologue and the
 // compaction (which runs after the tick total is taken, so it is not inside "tick").
-// Declared in every build: the TAK_PHASE timers name their bucket with it.
+// Declared in every build: the TA_PHASE timers name their bucket with it.
 enum Phase : int { kTotal, kCombat, kSep, kExplore, kVis, kBurn, kGrid, kScripts, kMovement, kNav, kPrologue, kCompact, kPhases };
-}  // namespace tak::sim::probe
+}  // namespace ta::sim::probe
 
 #ifndef NDEBUG
 #include <cstdint>
@@ -61,7 +61,7 @@ enum Phase : int { kTotal, kCombat, kSep, kExplore, kVis, kBurn, kGrid, kScripts
 #include <cstdio>
 #include <fstream>
 #include <string>
-#define TAK_PROBE_HAVE_PMU 1
+#define TA_PROBE_HAVE_PMU 1
 #endif
 #if defined(__linux__)
 #include <sys/resource.h>
@@ -70,14 +70,14 @@ enum Phase : int { kTotal, kCombat, kSep, kExplore, kVis, kBurn, kGrid, kScripts
 #include <malloc.h>
 #endif
 
-namespace tak::sim::probe {
+namespace ta::sim::probe {
 
 inline bool envOn(const char* name) {
     const char* v = std::getenv(name);
     return v && *v && !(v[0] == '0' && !v[1]);
 }
-inline const bool kStats = envOn("TAK_SIMSTATS");
-inline const bool kPmu = envOn("TAK_PMU");
+inline const bool kStats = envOn("TA_SIMSTATS");
+inline const bool kPmu = envOn("TA_PMU");
 
 struct Counters {
     uint64_t vmTicks = 0, vmSkippable = 0, vmEmpty = 0, vmDebtFlushes = 0;
@@ -89,7 +89,7 @@ struct Counters {
     uint64_t compactMoved = 0, passes = 0;
     uint64_t missionScans = 0;   // retailMissionScan calls (4d8370)
 };
-// Per thread, like the TAK_PHASE accumulators: the server may tick rooms on several threads.
+// Per thread, like the TA_PHASE accumulators: the server may tick rooms on several threads.
 inline thread_local Counters tl;
 
 inline const char* const kPhaseNames[kPhases] = {"tick", "combat", "sep", "explore", "vis", "burn",
@@ -98,7 +98,7 @@ inline const char* const kPhaseNames[kPhases] = {"tick", "combat", "sep", "explo
 
 struct PmuSample { uint64_t v[4] = {}; };   // cycles, instructions, L1-miss load stall cycles, LLC misses
 
-#ifdef TAK_PROBE_HAVE_PMU
+#ifdef TA_PROBE_HAVE_PMU
 class Pmu {
 public:
     bool ok() const { return ok_; }
@@ -151,7 +151,7 @@ private:
             page_[i] = mmap(nullptr, size_t(sysconf(_SC_PAGESIZE)), PROT_READ, MAP_SHARED, fd_[i], 0);
             if (page_[i] == MAP_FAILED) { page_[i] = nullptr; ok_ = false; }
         }
-        if (!ok_) std::fprintf(stderr, "TAK_PMU: perf_event_open/mmap failed (perf_event_paranoid?)\n");
+        if (!ok_) std::fprintf(stderr, "TA_PMU: perf_event_open/mmap failed (perf_event_paranoid?)\n");
     }
     static bool inList(const std::string& list, int cpu) {
         size_t i = 0;
@@ -241,11 +241,11 @@ inline void pmuAdd(int phase, const PmuSample& from) {
     for (int i = 0; i < 4; ++i) tlPmu[phase].v[i] += now.v[i] - from.v[i];
 }
 
-}  // namespace tak::sim::probe
+}  // namespace ta::sim::probe
 
-#define TAK_PROBE(...) do { if (::tak::sim::probe::kStats) { __VA_ARGS__; } } while (0)
-#define TAK_PASS() TAK_PROBE(++::tak::sim::probe::tl.passes)
+#define TA_PROBE(...) do { if (::ta::sim::probe::kStats) { __VA_ARGS__; } } while (0)
+#define TA_PASS() TA_PROBE(++::ta::sim::probe::tl.passes)
 #else
-#define TAK_PROBE(...) do {} while (0)
-#define TAK_PASS() do {} while (0)
+#define TA_PROBE(...) do {} while (0)
+#define TA_PASS() do {} while (0)
 #endif

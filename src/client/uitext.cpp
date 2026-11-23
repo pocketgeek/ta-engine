@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tak {
+namespace ta {
 
 namespace {
 UiFontStyle g_style = UiFontStyle::Modern;
@@ -111,4 +111,4 @@ std::vector<std::string> uiTextWrap(const std::string& s, float px, float maxW) 
 
 void releaseUiTextGlyphs() { uiFont().destroyGlyphs(); }
 
-}  // namespace tak
+}  // namespace ta

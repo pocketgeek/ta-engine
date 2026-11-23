@@ -3,7 +3,7 @@
 #include "client/gpuvram.h"
 #include "client/rendertelemetry.h"
 #include "client/dev.h"
-#include "hpi/hpi.h"           // tak::hpi::Vfs::read (ctor / reload)
+#include "hpi/hpi.h"           // ta::hpi::Vfs::read (ctor / reload)
 #include "tnt/mapgen.h"        // "~gen1~" random-map ids -> procedural map
 
 #include <algorithm>
@@ -18,46 +18,46 @@ uint64_t steadyNs() {
     return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count());
 }
-// Debug: TAK_TERRAIN_SECTION_BUDGET_MIB=N sets the decoded-section budget's high
-// mark (low = 7/8 of it), TAK_TERRAIN_SECTION_MIN_IDLE_MS=N the working-set window;
+// Debug: TA_TERRAIN_SECTION_BUDGET_MIB=N sets the decoded-section budget's high
+// mark (low = 7/8 of it), TA_TERRAIN_SECTION_MIN_IDLE_MS=N the working-set window;
 // release builds always use the defaults.
-void applySectionBudget(tak::terrain::Compositor& comp) {
+void applySectionBudget(ta::terrain::Compositor& comp) {
     size_t high = MapView::kSectionCpuHigh, low = MapView::kSectionCpuLow;
     uint64_t minIdle = MapView::kSectionMinIdleMs;
-    if (const char* v = tak::devEnv("TAK_TERRAIN_SECTION_BUDGET_MIB")) {
+    if (const char* v = ta::devEnv("TA_TERRAIN_SECTION_BUDGET_MIB")) {
         high = size_t(std::max(1L, std::atol(v))) << 20;
         low = high - high / 8;
     }
-    if (const char* v = tak::devEnv("TAK_TERRAIN_SECTION_MIN_IDLE_MS")) minIdle = uint64_t(std::max(0L, std::atol(v)));
+    if (const char* v = ta::devEnv("TA_TERRAIN_SECTION_MIN_IDLE_MS")) minIdle = uint64_t(std::max(0L, std::atol(v)));
     comp.setBudget(high, low, minIdle);
 }
-// Debug: TAK_TERRAIN_MIP_BUDGET_MIB=N (low = 7/8 of it), TAK_TERRAIN_MIP_IDLE_MS=N.
-void applyMipBudget(tak::TerrainChunks& chunks) {
-    size_t high = tak::TerrainChunks::kMipHigh, low = tak::TerrainChunks::kMipLow;
-    uint64_t idle = tak::TerrainChunks::kMipIdleMs;
-    if (const char* v = tak::devEnv("TAK_TERRAIN_MIP_BUDGET_MIB")) {
+// Debug: TA_TERRAIN_MIP_BUDGET_MIB=N (low = 7/8 of it), TA_TERRAIN_MIP_IDLE_MS=N.
+void applyMipBudget(ta::TerrainChunks& chunks) {
+    size_t high = ta::TerrainChunks::kMipHigh, low = ta::TerrainChunks::kMipLow;
+    uint64_t idle = ta::TerrainChunks::kMipIdleMs;
+    if (const char* v = ta::devEnv("TA_TERRAIN_MIP_BUDGET_MIB")) {
         high = size_t(std::max(1L, std::atol(v))) << 20;
         low = high - high / 8;
     }
-    if (const char* v = tak::devEnv("TAK_TERRAIN_MIP_IDLE_MS")) idle = uint64_t(std::max(0L, std::atol(v)));
+    if (const char* v = ta::devEnv("TA_TERRAIN_MIP_IDLE_MS")) idle = uint64_t(std::max(0L, std::atol(v)));
     chunks.setMipBudget(high, low, idle);
 }
-// Debug: TAK_TERRAIN_SCHEDULE=legacy restores the pre-K terrain work policy (FIFO, no
+// Debug: TA_TERRAIN_SCHEDULE=legacy restores the pre-K terrain work policy (FIFO, no
 // cancellation, no calm gate, plain LRU, separate upload caps) in the same binary; a
 // comma list of fifo,nocancel,nogate,nostandin,nocoord switches single parts off,
 // nearby switches the experimental leading-edge prefetch on, gateall applies the calm
 // gate's fast-motion rule at every level (the rejected K5 scope; default: level 0 only)
 // and stormlevel0 limits its jump-storm rule to level 0 (the rejected K6 scope; default:
 // every level).
-tak::terrainwork::Params scheduleParams() {
-    tak::terrainwork::Params p;
-    const char* v = tak::devEnv("TAK_TERRAIN_SCHEDULE");
+ta::terrainwork::Params scheduleParams() {
+    ta::terrainwork::Params p;
+    const char* v = ta::devEnv("TA_TERRAIN_SCHEDULE");
     if (!v) return p;
     std::string list = v;
     for (size_t at = 0; at <= list.size();) {
         const size_t end = std::min(list.find(',', at), list.size());
         const std::string token = list.substr(at, end - at);
-        if (token == "legacy") p = tak::terrainwork::Params::legacy();
+        if (token == "legacy") p = ta::terrainwork::Params::legacy();
         else if (token == "fifo") p.prioritize = false;
         else if (token == "nocancel") p.cancel = false;
         else if (token == "nogate") p.calmGate = false;
@@ -72,13 +72,13 @@ tak::terrainwork::Params scheduleParams() {
 }
 }
 
-tak::tnt::Map MapView::genOrLoad(const tak::hpi::Vfs& vfs, const std::string& mapPath) {
-    if (tak::mapgen::isGeneratedMapId(mapPath))
-        return tak::mapgen::generate(tak::mapgen::parseMapId(mapPath), vfs).map;
-    return tak::tnt::Map::load(vfs.read(mapPath), mapPath);
+ta::tnt::Map MapView::genOrLoad(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
+    if (ta::mapgen::isGeneratedMapId(mapPath))
+        return ta::mapgen::generate(ta::mapgen::parseMapId(mapPath), vfs).map;
+    return ta::tnt::Map::load(vfs.read(mapPath), mapPath);
 }
 
-MapView::MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string& mapPath)
+MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, const std::string& mapPath)
     : ren_(ren), map_(genOrLoad(vfs, mapPath)), comp_(vfs) {
     applySectionBudget(comp_);
     applyMipBudget(chunks_);
@@ -88,7 +88,7 @@ MapView::MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, const std::string&
     queueAllSections();
 }
 
-MapView::MapView(SDL_Renderer* ren, const tak::hpi::Vfs& vfs, tak::tnt::Map map)
+MapView::MapView(SDL_Renderer* ren, const ta::hpi::Vfs& vfs, ta::tnt::Map map)
     : ren_(ren), map_(std::move(map)), comp_(vfs) {
     applySectionBudget(comp_);
     applyMipBudget(chunks_);
@@ -113,7 +113,7 @@ MapView::~MapView() {
     dropFreeSections();
 }
 
-void MapView::reload(const tak::hpi::Vfs& vfs, const std::string& mapPath) {
+void MapView::reload(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
     invalidateRenderTargets();
     quiesce();
     comp_.clear();
@@ -369,7 +369,7 @@ void MapView::draw(int winW, int winH, int viewH) {
         int ux0 = int(std::lround((0 - offX_) * zoom_)), uy0 = int(std::lround((0 - offY_) * zoom_));
         int ux1 = int(std::lround((mapW - offX_) * zoom_)), uy1 = int(std::lround((mapH - offY_) * zoom_));
         SDL_Rect udst{ux0, uy0, ux1 - ux0, uy1 - uy0};
-        tak::render::countLogicalDraw();
+        ta::render::countLogicalDraw();
         SDL_RenderCopy(ren_, underlay_, nullptr, &udst);
     }
 
@@ -379,24 +379,24 @@ void MapView::draw(int winW, int winH, int viewH) {
     pinning_=std::exchange(pinNext_,false);
     comp_.setClockMs(nowMs());
     comp_.trim();   // over the CPU budget only while pins or the working set held more
-    chunksEnabled_=!tak::devFlag("TAK_TERRAIN_CACHE_OFF");
+    chunksEnabled_=!ta::devFlag("TA_TERRAIN_CACHE_OFF");
     uploadBudget_.beginFrame(pinning_);
     if(chunksEnabled_) {
         chunks_.prepare(ren_,map_,offX_,offY_,zoom_,winW,winH,bilinear_,nowMs(),uploadBudget_);
 #ifndef NDEBUG
-        // Debug (capture runs): TAK_TERRAIN_SETTLE=1 waits until every visible chunk is
+        // Debug (capture runs): TA_TERRAIN_SETTLE=1 waits until every visible chunk is
         // ready at its wanted level, so a capture shows finished terrain whatever order
         // or speed the work had (bounded: after one 10 s wait it gives up for good).
         // The calm gate is lifted while settling: this compares finished terrain, and the
         // loop runs on the owner's (possibly fixed) clock.
         static bool settleGaveUp=false;
-        if(!settleGaveUp && tak::devFlag("TAK_TERRAIN_SETTLE"))
+        if(!settleGaveUp && ta::devFlag("TA_TERRAIN_SETTLE"))
             for(const uint64_t start=SDL_GetTicks64();;) {
                 if(chunks_.params().calmGate) {auto p=chunks_.params();p.calmGate=false;chunks_.setParams(p);settleRestoreGate_=true;}
                 const auto settled=chunks_.stats();
                 if(settled.visible && settled.ready==settled.visible)break;
                 if(SDL_GetTicks64()-start>=10000) {
-                    std::fprintf(stderr,"TAK_TERRAIN_SETTLE: terrain did not settle; giving up\n");
+                    std::fprintf(stderr,"TA_TERRAIN_SETTLE: terrain did not settle; giving up\n");
                     settleGaveUp=true;break;
                 }
                 SDL_Delay(1);uploadBudget_.beginFrame(pinning_);
@@ -429,11 +429,11 @@ void MapView::draw(int winW, int winH, int viewH) {
 
     for (auto& [tex, verts] : tileBatch_)
         if (tex && !verts.empty())
-            tileSubmit_.draw(ren_, tex, verts, !tak::devFlag("TAK_TERRAIN_SDL_SUBMIT"));
+            tileSubmit_.draw(ren_, tex, verts, !ta::devFlag("TA_TERRAIN_SDL_SUBMIT"));
     // Linear-only blends across unrelated tile boundaries, over every base tile.
     for (auto& [tex, verts] : apronBatch_)
         if (tex && !verts.empty()) {
-            tak::render::countSdlGeometry(verts.size(), verts.size() * sizeof(SDL_Vertex));
+            ta::render::countSdlGeometry(verts.size(), verts.size() * sizeof(SDL_Vertex));
             SDL_RenderGeometry(ren_, tex, verts.data(), int(verts.size()), nullptr, 0);
         }
     // Chunk results that are not hole fills (upgrades over a stand-in, nearby and kept
@@ -482,7 +482,7 @@ bool MapView::uploadWantedSections() {
         // the decode worker, ahead of the prefetch. finishChunks() frames (captures,
         // the briefing backdrop) decode here instead, so they show complete terrain.
         bool absent = false;
-        tak::terrain::SectionRef img = comp_.cachedSection(key, map_.stockTerrain, &absent);   // pinned until uploaded
+        ta::terrain::SectionRef img = comp_.cachedSection(key, map_.stockTerrain, &absent);   // pinned until uploaded
         if (absent) { sections_[key] = {}; continue; }
         if (!img && !pinning_) { decode.push_back(key); continue; }
         if (n >= perFrame) continue;   // the rest next frame; the underlay shows meanwhile
@@ -494,7 +494,7 @@ bool MapView::uploadWantedSections() {
         // A section fills a visible hole: an urgent upload of the frame's terrain budget,
         // shared with the chunk images (finishChunks frames: unlimited). The rest waits
         // for the next frame; the underlay shows meanwhile.
-        if (!uploadBudget_.admit(tak::terrainwork::UploadBudget::Section, true, size)) continue;
+        if (!uploadBudget_.admit(ta::terrainwork::UploadBudget::Section, true, size)) continue;
         // A kept texture of this size takes it with no new GPU memory. Otherwise kept
         // textures, then idle sections, make room; the budget never refuses one needed
         // now. Under the GPU cap, off-screen chunks go next: terrain on screen comes first.
@@ -525,14 +525,14 @@ bool MapView::uploadWantedSections() {
         SDL_SetTextureScaleMode(t, bilinear_ ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
         const uint64_t uploadNs = steadyNs() - uploadStart;   // CPU submission only
         sectionStats_.uploadNs += uploadNs;
-        uploadBudget_.record(tak::terrainwork::UploadBudget::Section, size, uploadNs);
+        uploadBudget_.record(ta::terrainwork::UploadBudget::Section, size, uploadNs);
         ++sectionStats_.uploads;
         sectionStats_.uploadBytes += size;
-        tak::render::countTextureUpload(size);
+        ta::render::countTextureUpload(size);
         sections_[key] = {t, img->width, img->height, frame_, now};
         sectionBytes_ += size;
         ++n;
-        if (tak::devFlag("TAK_TERRAINLOG"))
+        if (ta::devFlag("TA_TERRAINLOG"))
             std::fprintf(stderr, "terrain: section %08x %dx%d uploaded; %zu resident (%zu MiB), gpu=%zuMiB\n",
                          key, img->width, img->height, sections_.size(), sectionBytes_ >> 20,
                          gpuvram::bytes() >> 20);

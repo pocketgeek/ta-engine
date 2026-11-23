@@ -6,7 +6,7 @@
 namespace cart {
 namespace {
 std::string lower(std::string s) {for(char& c:s)c=char(std::tolower(static_cast<unsigned char>(c)));return s;}
-template<class F> void locations(tak::crt::Scenario& scenario,F fn) {
+template<class F> void locations(ta::crt::Scenario& scenario,F fn) {
     for(auto& player:scenario.players)for(auto& group:player)for(bool action:{false,true}) {
         auto& rules=action?group.actions:group.conditions;
         const auto& defs=action?actionDefs():conditionDefs();
@@ -16,7 +16,7 @@ template<class F> void locations(tak::crt::Scenario& scenario,F fn) {
     }
 }
 }
-bool setRegion(tak::crt::Scenario& scenario,int index,tak::crt::Region region,int width,int height,std::string& error) {
+bool setRegion(ta::crt::Scenario& scenario,int index,ta::crt::Region region,int width,int height,std::string& error) {
     error.clear();
     if(index<-1 || index>=int(scenario.regions.size())) {error="Region no longer exists.";return false;}
     const auto name=lower(region.name);
@@ -41,7 +41,7 @@ bool setRegion(tak::crt::Scenario& scenario,int index,tak::crt::Region region,in
     }
     return true;
 }
-bool removeRegion(tak::crt::Scenario& scenario,int index,std::string& error) {
+bool removeRegion(ta::crt::Scenario& scenario,int index,std::string& error) {
     error.clear();
     if(index<0 || index>=int(scenario.regions.size())) {error="Select a region first.";return false;}
     const auto name=lower(scenario.regions[index].name);bool referenced=false;
@@ -49,7 +49,7 @@ bool removeRegion(tak::crt::Scenario& scenario,int index,std::string& error) {
     if(referenced) {error="A scenario rule uses this region. Change its location before deleting the region.";return false;}
     scenario.regions.erase(scenario.regions.begin()+index);return true;
 }
-int RegionDrag::hit(const tak::crt::Region& r,float x,float z,float tolerance) {
+int RegionDrag::hit(const ta::crt::Region& r,float x,float z,float tolerance) {
     if(x<r.x1-tolerance || x>r.x2+1+tolerance || z<r.z1-tolerance || z>r.z2+1+tolerance)return None;
     int p=None;
     const float left=std::abs(x-r.x1),right=std::abs(x-r.x2-1);
@@ -58,7 +58,7 @@ int RegionDrag::hit(const tak::crt::Region& r,float x,float z,float tolerance) {
     if(std::min(top,bottom)<=tolerance)p|=top<=bottom?Top:Bottom;
     return p?p:Move;
 }
-bool RegionDrag::begin(const std::vector<tak::crt::Region>& regions,int preferred,float x,float z,
+bool RegionDrag::begin(const std::vector<ta::crt::Region>& regions,int preferred,float x,float z,
                        float tolerance,bool create,int width,int height) {
     cancel();if(width<1 || height<1)return false;
     grabX=int(std::floor(x));grabZ=int(std::floor(z));startX=x;startZ=z;

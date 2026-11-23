@@ -153,7 +153,7 @@ def main():
     failed = []
     for name, case in CASES:
         # A server of its own per case: no game of one counts against the other's limits.
-        with tempfile.TemporaryDirectory(prefix='tak-limits-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='ta-limits-') as tmp:
             root = Path(tmp)
             with server(a.server.resolve(), a.data.resolve(), root, '--no-auth', '--max-games', str(MAX_GAMES),
                         '--max-running-games', str(MAX_RUNNING)) as (port, h, process):

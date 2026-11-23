@@ -3,7 +3,7 @@
 #include <memory>
 #include "video/stream.h"
 
-namespace tak {
+namespace ta {
 // Stream capture for SDL's Windows Direct3D renderers. SDL_RenderReadPixels
 // copies the whole back buffer and waits for the GPU on the render thread: 31 ms
 // a frame at 7680x2160 under Direct3D 9 (240 FPS fell to 31), 13.6 ms under

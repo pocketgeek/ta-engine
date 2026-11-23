@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <stdexcept>
 
-using namespace tak::client;
+using namespace ta::client;
 static void check(bool ok,const char* message) {if(!ok)throw std::runtime_error(message);}
 
 int main()try {

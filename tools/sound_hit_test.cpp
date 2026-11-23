@@ -11,7 +11,7 @@
 #include <set>
 
 // SoundBank's output path is linked in but never opened here: index-only use.
-namespace tak {
+namespace ta {
 int detectOutputChannels() { return 2; }
 SDL_AudioDeviceID openAudioDevice(int capture, const SDL_AudioSpec* want,
                                   SDL_AudioSpec* have, int allowed) {
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
           !SoundClasses::isVariantKey("soundx1"), "voice names are not variants");
     check(SoundClasses::wavStem("RHITFLS1.wav") == "rhitfls1", "WAV value -> bank stem");
     if (argc == 2) {
-        auto vfs = tak::hpi::mountRetailRoot(argv[1]);
+        auto vfs = ta::hpi::mountRetailRoot(argv[1]);
         SoundBank bank; bank.reload(vfs);
         SoundClasses classes; classes.load(vfs);
         // Every impact class a shipped weapon names, with each body material.

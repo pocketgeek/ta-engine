@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::tdf {
+namespace ta::tdf {
 
 // TDF: the TA-family text config format used by .fbi (units), .tdf, .ota
 // (maps), .gui files. Nested [SECTION] { key=value; ... } blocks.
@@ -37,11 +37,11 @@ struct ParseUsage {size_t sections=0,nodes=0,memory=0;};
 struct ParseLimitError:std::runtime_error {using std::runtime_error::runtime_error;};
 struct ParseLimits {
     size_t sections = 65536, nodes = 262144, memory = 64u << 20;
-    tak::StopToken stop;
+    ta::StopToken stop;
     ParseUsage* usage=nullptr;
 };
 // Parse a TDF file or an in-memory buffer. Throws on malformed input.
 Node parse(const std::filesystem::path& file);
 Node parseText(const std::string& text, const std::string& originName = "<memory>", ParseLimits limits = {});
 
-} // namespace tak::tdf
+} // namespace ta::tdf

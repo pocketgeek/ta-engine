@@ -4,7 +4,7 @@
 A seated client that has been sent GameStarting and has not answered Loaded is loading
 on its main thread and does not read its socket, so the server gives it 30 s of silence
 instead of the 15 s of play and the lobby. The server runs with both scaled down by 5
-(TAK_TIMEOUT_MS=3000, TAK_LOAD_TIMEOUT_MS=6000) so nothing here waits the real times:
+(TA_TIMEOUT_MS=3000, TA_LOAD_TIMEOUT_MS=6000) so nothing here waits the real times:
 
   kept       Bob goes silent right after GameStarting for 4.5 s (the "20 s" case: past the
              play timeout, inside the loading one) and is still connected; he then reports
@@ -15,7 +15,7 @@ instead of the 15 s of play and the lobby. The server runs with both scaled down
              the log says 'silent past the player timeout'.
   lobby      Bob has joined a room that has not started (seated, never loaded) and goes
              silent for 4.5 s: dropped at the play timeout, not the loading one.
-  refbuild   The server's own referee build takes 7.5 s (TAK_TEST_REFEREE_DELAY_MS, debug
+  refbuild   The server's own referee build takes 7.5 s (TA_TEST_REFEREE_DELAY_MS, debug
              builds), longer than even the loading timeout, while it reads no socket. Both
              seats are still connected afterwards and the game ticks: the build is not
              client silence. A client that then goes quiet is still dropped.
@@ -132,9 +132,9 @@ def scenario_refbuild(port, h, log):
     started = time.monotonic()
     alice, bob = begin(port, h, 'Alice5', 'Bob5', True)   # begin() asserts ticks reach both
     try:
-        # The hook is debug-only: a release takserver starts at once, which proves nothing.
+        # The hook is debug-only: a release taserver starts at once, which proves nothing.
         if time.monotonic() - started < SILENT_DROPPED:
-            raise Skipped('TAK_TEST_REFEREE_DELAY_MS not honoured (a release takserver)')
+            raise Skipped('TA_TEST_REFEREE_DELAY_MS not honoured (a release taserver)')
         assert not alice.closed and not bob.closed, 'a slow referee build dropped the room'
         silent(alice, SILENT_KEPT)
         bob.pump(2)
@@ -152,19 +152,19 @@ def main():
     ap.add_argument('--data', type=Path, required=True)
     ap.add_argument('--load-ms', type=int, default=LOAD_MS)   # the "before" check sets it to PLAY_MS
     a = ap.parse_args()
-    os.environ['TAK_TIMEOUT_MS'], os.environ['TAK_LOAD_TIMEOUT_MS'] = str(PLAY_MS), str(a.load_ms)
+    os.environ['TA_TIMEOUT_MS'], os.environ['TA_LOAD_TIMEOUT_MS'] = str(PLAY_MS), str(a.load_ms)
     # No disconnect wait: a silent seat must meet the plain silence timeout.
-    os.environ['TAK_STALL_MS'] = '60000'
+    os.environ['TA_STALL_MS'] = '60000'
     failed = []
     # A fresh server per scenario: one server refuses new accounts from one address
     # after a few registrations, and every scenario registers two.
     for scenario in SCENARIOS:
         name = scenario.__name__[len('scenario_'):]
         if name == 'refbuild':
-            os.environ['TAK_TEST_REFEREE_DELAY_MS'] = str(int(SILENT_DROPPED * 1000))
+            os.environ['TA_TEST_REFEREE_DELAY_MS'] = str(int(SILENT_DROPPED * 1000))
         else:
-            os.environ.pop('TAK_TEST_REFEREE_DELAY_MS', None)
-        with tempfile.TemporaryDirectory(prefix='tak-loadto-') as tmp:
+            os.environ.pop('TA_TEST_REFEREE_DELAY_MS', None)
+        with tempfile.TemporaryDirectory(prefix='ta-loadto-') as tmp:
             root = Path(tmp)
             with server(a.server.resolve(), a.data.resolve(), root) as (port, h, process):
                 try:

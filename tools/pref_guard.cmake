@@ -3,19 +3,19 @@
 # CMakeLists.txt ("Per-user files") gives every test its own XDG_DATA_HOME,
 # XDG_CONFIG_HOME and, on Linux, HOME under <build>/test-profiles/<test>/. That HOME is
 # a sentinel: only a process that dropped the test's XDG_DATA_HOME ends up writing
-# there -- which, outside ctest, is the real ~/.local/share/TAKengine.
+# there -- which, outside ctest, is the real ~/.local/share/TAengine.
 #
 #   cmake -DMODE=setup    -DPROFILES=<dir> -P pref_guard.cmake  # clear old sentinels
-#   cmake -DMODE=check    -DPROFILES=<dir> -P pref_guard.cmake  # fail on a TAKengine in one
+#   cmake -DMODE=check    -DPROFILES=<dir> -P pref_guard.cmake  # fail on a TAengine in one
 #   cmake -DMODE=lint     -DSOURCE=<repo>  -P pref_guard.cmake  # SDL_GetPrefPath only in prefpath.h
-#   cmake -DMODE=selftest -DCLIENT=<takclient> -DDATA=<install> -DROOT=<dir> -P pref_guard.cmake
+#   cmake -DMODE=selftest -DCLIENT=<taclient> -DDATA=<install> -DROOT=<dir> -P pref_guard.cmake
 #
 # selftest replays the 2026-10-14 leak: the pre-isolation command line of the
 # diplomacy_ui test, which saved its --data folder as the player's dataDir, and passes
 # only if `check` names it.
 cmake_minimum_required(VERSION 3.24)
 
-# The tests whose sentinel HOME (<root>/<test>/home) holds a TAKengine folder, and the
+# The tests whose sentinel HOME (<root>/<test>/home) holds a TAengine folder, and the
 # files there.
 function(tak_pref_leaks root out_tests out_files)
     set(tests "")
@@ -27,7 +27,7 @@ function(tak_pref_leaks root out_tests out_files)
         endif()
         file(GLOB_RECURSE hits LIST_DIRECTORIES true "${home}/*")
         foreach(hit IN LISTS hits)
-            if(hit MATCHES "/TAKengine(/|$)")
+            if(hit MATCHES "/TAengine(/|$)")
                 get_filename_component(test "${home}" DIRECTORY)
                 get_filename_component(test "${test}" NAME)
                 list(APPEND tests "${test}")
@@ -53,7 +53,7 @@ elseif(MODE STREQUAL "check")
     tak_pref_leaks("${PROFILES}" tests files)
     if(tests)
         string(REPLACE ";" "\n  " files "${files}")
-        message(FATAL_ERROR "pref guard: these tests wrote a per-user TAKengine folder outside "
+        message(FATAL_ERROR "pref guard: these tests wrote a per-user TAengine folder outside "
             "their own XDG_DATA_HOME -- outside ctest that is the player's real profile:\n  ${tests}\n"
             "files:\n  ${files}")
     endif()
@@ -74,10 +74,10 @@ elseif(MODE STREQUAL "lint")
     endforeach()
     if(bad)
         string(REPLACE ";" "\n  " bad "${bad}")
-        message(FATAL_ERROR "pref guard: call tak::prefPath (src/util/prefpath.h), not SDL_GetPrefPath: "
+        message(FATAL_ERROR "pref guard: call ta::prefPath (src/util/prefpath.h), not SDL_GetPrefPath: "
             "SDL ignores a test's XDG_DATA_HOME on Windows and macOS\n  ${bad}")
     endif()
-    message("PASS: every per-user folder lookup goes through tak::prefPath")
+    message("PASS: every per-user folder lookup goes through ta::prefPath")
 elseif(MODE STREQUAL "selftest")
     file(REMOVE_RECURSE "${ROOT}")
     set(home "${ROOT}/diplomacy_ui/home")
@@ -87,13 +87,13 @@ elseif(MODE STREQUAL "selftest")
     set(ENV{HOME} "${home}")
     unset(ENV{XDG_DATA_HOME})
     unset(ENV{XDG_CONFIG_HOME})
-    unset(ENV{TAK_SETTINGS_FILE})
+    unset(ENV{TA_SETTINGS_FILE})
     set(ENV{SDL_VIDEODRIVER} dummy)
     set(ENV{SDL_AUDIODRIVER} dummy)
     execute_process(COMMAND "${CLIENT}" game "Ulasem Arena" --data "${DATA}" --testbuild --time 0
                             --shot "${ROOT}/diplomacy-test.png"
                     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out TIMEOUT 50)
-    set(written "${home}/.local/share/TAKengine/TAKingdoms/settings.ini")
+    set(written "${home}/.local/share/TAengine/TAKingdoms/settings.ini")
     if(NOT EXISTS "${written}")
         message(FATAL_ERROR "selftest: the leaking client (exit ${rc}) wrote no ${written}; "
             "the sentinel no longer sees this leak\n${out}")

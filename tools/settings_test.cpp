@@ -22,14 +22,14 @@
 
 #include <cstdio>
 #include <string>
-#ifdef TAK_SETTINGS_FILE_TEST
+#ifdef TA_SETTINGS_FILE_TEST
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <random>
 #endif
 
-using tak::Settings;
+using ta::Settings;
 
 static int g_fail = 0;
 
@@ -124,7 +124,7 @@ int main() {
     flips("streamFps", [](Settings& s) { s.streamFps = 30; });
     flips("streamCpuEncoder", [](Settings& s) { s.streamCpuEncoder = true; });
     flips("streamLocalCopy", [](Settings& s) { s.streamLocalCopy = !s.streamLocalCopy; });
-    flips("benchmarkPathfinding", [](Settings& s) { s.benchmarkPathfinding = tak::sim::PathfindingMode::Legion; });
+    flips("benchmarkPathfinding", [](Settings& s) { s.benchmarkPathfinding = ta::sim::PathfindingMode::Legion; });
     flips("benchmarkSpeed",  [](Settings& s) { s.benchmarkSpeed = 0; });
     // The remembered room sets: every field of the single-player and of the multiplayer one.
     for (auto set : {&Settings::spRoom, &Settings::mpRoom}) {
@@ -132,14 +132,14 @@ int main() {
         auto room = [&](const char* field, auto mutate) {
             flips((pre + field).c_str(), [&](Settings& s) { mutate(s.*set); });
         };
-        using tak::RoomPrefs;
+        using ta::RoomPrefs;
         room("crusades",          [](RoomPrefs& p) { p.crusades = !p.crusades; });
         room("doubleSight",       [](RoomPrefs& p) { p.doubleSight = !p.doubleSight; });
         room("speedUnlock",       [](RoomPrefs& p) { p.speedUnlock = !p.speedUnlock; });
         room("monarchExpendable", [](RoomPrefs& p) { p.monarchExpendable = !p.monarchExpendable; });
         room("allowSpectators",   [](RoomPrefs& p) { p.allowSpectators = !p.allowSpectators; });
         room("powerCodes",        [](RoomPrefs& p) { p.powerCodes = !p.powerCodes; });
-        room("pathfindingMode",   [](RoomPrefs& p) { p.pathfindingMode = tak::sim::PathfindingMode::Legion; });
+        room("pathfindingMode",   [](RoomPrefs& p) { p.pathfindingMode = ta::sim::PathfindingMode::Legion; });
         room("unitCap",           [](RoomPrefs& p) { p.unitCap = 500; });
         room("fog",               [](RoomPrefs& p) { p.fog = 2; });
         room("randomStarts",      [](RoomPrefs& p) { p.randomStarts = (p.randomStarts + 1) % 3; });
@@ -212,7 +212,7 @@ int main() {
         cur.mpRoom.generator = "saved recipe";
         cur.mpRoom.generated = true;
         cur.mpRoom.gamePacks = {"Pack B"};
-        cur.benchmarkPathfinding = tak::sim::PathfindingMode::Legion;
+        cur.benchmarkPathfinding = ta::sim::PathfindingMode::Legion;
         cur.benchmarkSpeed = 0;
         cur.hotkeys["selectAll"] = "ctrl+a";
         // Voice chat has its own screen and DEFAULTS: the Options reset leaves it alone.
@@ -240,7 +240,7 @@ int main() {
         cur.simThreads = 6;
         cur.simPin = true;
 
-        const Settings d = tak::preferenceDefaults(cur);
+        const Settings d = ta::preferenceDefaults(cur);
         auto keep = [&](const char* what, bool ok) {
             std::printf("  keeps %-18s %s\n", what, ok ? "ok" : "FAIL (destroyed by DEFAULTS)");
             if (!ok) ++g_fail;
@@ -252,7 +252,7 @@ int main() {
         keep("campaign progress", d.campaignCompleted == cur.campaignCompleted &&
                                   d.missionCompleted("aramon", 4));
         keep("known servers",     d.knownServers == cur.knownServers);
-        keep("benchmarkPathfinding", d.benchmarkPathfinding == tak::sim::PathfindingMode::Legion);
+        keep("benchmarkPathfinding", d.benchmarkPathfinding == ta::sim::PathfindingMode::Legion);
         keep("benchmarkSpeed",    d.benchmarkSpeed == 0);
         keep("dataDir",           d.dataDir == cur.dataDir);
         keep("dataManifest",      d.dataManifest == cur.dataManifest);
@@ -273,7 +273,7 @@ int main() {
 
         // ...and the VOICE CHAT screen's DEFAULTS resets exactly the voice fields: voice
         // off (the default), system devices, full volumes; everything else untouched.
-        const Settings v = tak::voiceDefaults(cur);
+        const Settings v = ta::voiceDefaults(cur);
         const Settings fresh0{};
         reset("voice (own page)", !v.voiceEnabled && !fresh0.voiceEnabled && v.voiceMicDevice.empty() &&
                                   v.voiceOutputSameAsGame && v.voiceOutputDevice.empty() &&
@@ -291,10 +291,10 @@ int main() {
         Settings withMusic = cur;
         withMusic.customMusicTracks[15] = "/music/menu.mp3";
         withMusic.audioDevice = "speakers";
-        const Settings a = tak::audioDefaults(withMusic);
+        const Settings a = ta::audioDefaults(withMusic);
         reset("audio (own page)", a.masterVol == fresh.masterVol && a.customMusicTracks.empty() && a.audioDevice.empty());
         keep("non-audio on audio DEFAULTS", a.uiScale == cur.uiScale && a.voiceEnabled == cur.voiceEnabled);
-        keep("music on Options DEFAULTS", tak::preferenceDefaults(withMusic).customMusicTracks == withMusic.customMusicTracks);
+        keep("music on Options DEFAULTS", ta::preferenceDefaults(withMusic).customMusicTracks == withMusic.customMusicTracks);
         reset("uiScale",          d.uiScale == fresh.uiScale);
         reset("textureFilter",    d.textureFilter == fresh.textureFilter && d.textureFilter == 2);
         reset("tacticalDots",     d.tacticalDots == fresh.tacticalDots && d.tacticalDots);
@@ -318,27 +318,27 @@ int main() {
             all.buildBarAlign = 2; all.buildBarScale = 2.5f; all.idleBuilders = 3; all.idleBuildersScale = 2.0f;
             all.chatAlign = 1; all.chatScale = 2.0f; all.hardwareCursor = !all.hardwareCursor; all.cursorScale = 5;
             all.mouseZoomSpeed = 2.0f; all.mouseZoom = !all.mouseZoom; all.edgeScroll = !all.edgeScroll; all.edgeScrollSpeed = 3.0f;
-            const Settings pages = tak::gameDefaults(tak::uiDefaults(tak::graphicsDefaults(all)));
-            const bool same = pages == tak::preferenceDefaults(all);
+            const Settings pages = ta::gameDefaults(ta::uiDefaults(ta::graphicsDefaults(all)));
+            const bool same = pages == ta::preferenceDefaults(all);
             std::printf("  %-23s %s\n", "pages => full reset", same ? "ok" : "FAIL (a field is on no Options page)");
             if (!same) ++g_fail;
-            const bool own = tak::graphicsDefaults(all).uiScale == all.uiScale && tak::uiDefaults(all).unitShadows == all.unitShadows &&
-                             tak::gameDefaults(all).uiScale == all.uiScale && tak::gameDefaults(all).playerName == all.playerName &&
-                             tak::gameDefaults(all).mouseZoom == all.mouseZoom && tak::uiDefaults(all).mouseZoom != all.mouseZoom &&
+            const bool own = ta::graphicsDefaults(all).uiScale == all.uiScale && ta::uiDefaults(all).unitShadows == all.unitShadows &&
+                             ta::gameDefaults(all).uiScale == all.uiScale && ta::gameDefaults(all).playerName == all.playerName &&
+                             ta::gameDefaults(all).mouseZoom == all.mouseZoom && ta::uiDefaults(all).mouseZoom != all.mouseZoom &&
                              // SIMULATION THREADS is the GAME page's: its DEFAULTS alone puts it back to AUTO,
                              // and PIN SIMULATION THREADS back OFF.
-                             all.simThreads == 6 && tak::gameDefaults(all).simThreads == 0 &&
-                             tak::graphicsDefaults(all).simThreads == 6 && tak::uiDefaults(all).simThreads == 6 &&
-                             tak::audioDefaults(all).simThreads == 6 && tak::voiceDefaults(all).simThreads == 6 &&
-                             all.simPin && !tak::gameDefaults(all).simPin && tak::graphicsDefaults(all).simPin &&
-                             tak::uiDefaults(all).simPin && tak::audioDefaults(all).simPin && tak::voiceDefaults(all).simPin;
+                             all.simThreads == 6 && ta::gameDefaults(all).simThreads == 0 &&
+                             ta::graphicsDefaults(all).simThreads == 6 && ta::uiDefaults(all).simThreads == 6 &&
+                             ta::audioDefaults(all).simThreads == 6 && ta::voiceDefaults(all).simThreads == 6 &&
+                             all.simPin && !ta::gameDefaults(all).simPin && ta::graphicsDefaults(all).simPin &&
+                             ta::uiDefaults(all).simPin && ta::audioDefaults(all).simPin && ta::voiceDefaults(all).simPin;
             std::printf("  %-23s %s\n", "each page its own", own ? "ok" : "FAIL");
             if (!own) ++g_fail;
         }
 
         // And the two questions must agree: after a reset we ARE at defaults, which is
         // the invariant that broke when the preserve list and atDefaults() diverged.
-        const bool agree = (d == tak::preferenceDefaults(d));
+        const bool agree = (d == ta::preferenceDefaults(d));
         std::printf("  %-23s %s\n", "reset => atDefaults",
                     agree ? "ok" : "FAIL (reset does not settle at defaults)");
         if (!agree) ++g_fail;
@@ -361,32 +361,32 @@ int main() {
             if (!ok) ++g_fail;
         };
         Settings w{};   // Windows, a 150% primary display: DPI 144 / 96
-        check("first: windows dpi", tak::applyFirstRunScale(w, true, 144.0f / 96.0f) &&
+        check("first: windows dpi", ta::applyFirstRunScale(w, true, 144.0f / 96.0f) &&
                                     w.uiScale == 1.5f && w.cursorScale == 2);
         Settings m{};   // macOS Retina: the backing scale, drawable / window
-        check("first: mac backing", tak::applyFirstRunScale(m, true, tak::backingScale(1440, 2880)) &&
+        check("first: mac backing", ta::applyFirstRunScale(m, true, ta::backingScale(1440, 2880)) &&
                                     m.uiScale == 2.0f && m.cursorScale == 2);
         Settings c{}; c.uiScale = 1.5f; c.cursorScale = 6;
-        tak::applyFirstRunScale(c, true, 3.0f);
+        ta::applyFirstRunScale(c, true, 3.0f);
         check("first: clamped", c.uiScale == 2.0f && c.cursorScale == 8);
         Settings h{};
-        check("first: 100% untouched", !tak::applyFirstRunScale(h, true, 1.0f) && h.uiScale == 1.0f &&
+        check("first: 100% untouched", !ta::applyFirstRunScale(h, true, 1.0f) && h.uiScale == 1.0f &&
                                        h.cursorScale == 1);
         Settings e{}; e.uiScale = 1.25f; e.cursorScale = 3;
-        check("first: existing kept", !tak::applyFirstRunScale(e, false, 2.0f) && e.uiScale == 1.25f &&
+        check("first: existing kept", !ta::applyFirstRunScale(e, false, 2.0f) && e.uiScale == 1.25f &&
                                       e.cursorScale == 3);
         // macOS Retina: points vs pixels. Every non-Retina case is an identity.
-        check("dpi: backing 1x", tak::backingScale(1280, 1280) == 1.0f && tak::backingScale(0, 0) == 1.0f);
-        check("dpi: backing 2x", tak::backingScale(1280, 2560) == 2.0f);
-        check("dpi: points 1x", tak::pixelsToPoints(1201, 1.0f) == 1201);
-        check("dpi: points 2x up", tak::pixelsToPoints(1201, 2.0f) == 601 && tak::pixelsToPoints(480, 2.0f) == 240);
-        check("dpi: hw cursor 1x", tak::hardwareCursorScale(3, 1.0f) == 3 && tak::hardwareCursorScale(0, 1.0f) == 1);
-        check("dpi: hw cursor 2x", tak::hardwareCursorScale(2, 2.0f) == 1 && tak::hardwareCursorScale(4, 2.0f) == 2 &&
-                                   tak::hardwareCursorScale(1, 2.0f) == 1);
+        check("dpi: backing 1x", ta::backingScale(1280, 1280) == 1.0f && ta::backingScale(0, 0) == 1.0f);
+        check("dpi: backing 2x", ta::backingScale(1280, 2560) == 2.0f);
+        check("dpi: points 1x", ta::pixelsToPoints(1201, 1.0f) == 1201);
+        check("dpi: points 2x up", ta::pixelsToPoints(1201, 2.0f) == 601 && ta::pixelsToPoints(480, 2.0f) == 240);
+        check("dpi: hw cursor 1x", ta::hardwareCursorScale(3, 1.0f) == 3 && ta::hardwareCursorScale(0, 1.0f) == 1);
+        check("dpi: hw cursor 2x", ta::hardwareCursorScale(2, 2.0f) == 1 && ta::hardwareCursorScale(4, 2.0f) == 2 &&
+                                   ta::hardwareCursorScale(1, 2.0f) == 1);
         // Linux native Wayland at a fractional desktop scale (e.g. 150%, 1.45 measured on KDE).
-        check("dpi: backing 1.5x", tak::backingScale(1280, 1920) == 1.5f);
-        check("dpi: points 1.5x up", tak::pixelsToPoints(1201, 1.5f) == 801 && tak::pixelsToPoints(480, 1.5f) == 320);
-        check("dpi: hw cursor 1.5x", tak::hardwareCursorScale(2, 1.5f) == 1 && tak::hardwareCursorScale(3, 1.5f) == 2);
+        check("dpi: backing 1.5x", ta::backingScale(1280, 1920) == 1.5f);
+        check("dpi: points 1.5x up", ta::pixelsToPoints(1201, 1.5f) == 801 && ta::pixelsToPoints(480, 1.5f) == 320);
+        check("dpi: hw cursor 1.5x", ta::hardwareCursorScale(2, 1.5f) == 1 && ta::hardwareCursorScale(3, 1.5f) == 2);
     }
 
     // NATIVE WAYLAND decision (client/waylandchoice.h).
@@ -395,7 +395,7 @@ int main() {
             std::printf("  %-22s %s\n", what, ok ? "ok" : "FAIL");
             if (!ok) ++g_fail;
         };
-        namespace wl = tak::wayland;
+        namespace wl = ta::wayland;
         check("wl: kwinrc default", wl::kwinXwaylandClientsScale("") &&
                                     wl::kwinXwaylandClientsScale("[Xwayland]\nScale=1.45\nXwaylandEisNoPromptApps=x\n"));
         check("wl: kwinrc system", !wl::kwinXwaylandClientsScale("[General]\nX=1\n[Xwayland]\nScale=2\nXwaylandClientsScale=false\n"));
@@ -437,10 +437,10 @@ int main() {
         auto start = [&](Settings& s, int now, float scale, int x11W, int logicalW,
                          int fallback = wl::kModeX11Real, bool fresh = false) {
             wl::Observation o{now, scale, x11W, logicalW};
-            tak::applyFirstRunScale(s, fresh, wl::firstRunScale(o));
+            ta::applyFirstRunScale(s, fresh, wl::firstRunScale(o));
             wl::DisplayHistory h{s.displayMode, s.displayScale, s.displayX11Width, s.displayLogicalWidth};
             const float f = wl::advanceDisplay(h, o, wl::Units::GamePixels, fallback);
-            tak::rescaleUi(s, f);
+            ta::rescaleUi(s, f);
             s.displayMode = h.mode; s.displayScale = h.scale;
             s.displayX11Width = h.x11Width; s.displayLogicalWidth = h.logicalWidth;
             return f;
@@ -585,9 +585,9 @@ int main() {
         }
         {   // Clamped at the range ends: 2.0 cannot grow, so the way back is not exact.
             Settings s; s.uiScale = 2.0f; s.cursorScale = 8;
-            tak::rescaleUi(s, 1.45f);
+            ta::rescaleUi(s, 1.45f);
             check("kind: clamped", s.uiScale == 2.0f && s.cursorScale == 8);
-            check("kind: factor 1 no-op", !tak::rescaleUi(s, 1.0f));
+            check("kind: factor 1 no-op", !ta::rescaleUi(s, 1.0f));
         }
     }
 
@@ -599,8 +599,8 @@ int main() {
             std::printf("  %-22s %s\n", what, ok ? "ok" : "FAIL");
             if (!ok) ++g_fail;
         };
-        using tak::parseGpuMemoryLimit; using tak::gpuMemoryLimitValue; using tak::gpuMemoryLimitLabel;
-        check("gpu: default 1280", Settings{}.gpuMemoryLimit == 1280 && tak::kGpuMemoryDefaultMiB == 1280);
+        using ta::parseGpuMemoryLimit; using ta::gpuMemoryLimitValue; using ta::gpuMemoryLimitLabel;
+        check("gpu: default 1280", Settings{}.gpuMemoryLimit == 1280 && ta::kGpuMemoryDefaultMiB == 1280);
         check("gpu: unlimited", parseGpuMemoryLimit("unlimited") == -1 && parseGpuMemoryLimit("Unlimited") == -1 &&
                                 parseGpuMemoryLimit("-1") == -1);
         check("gpu: listed sizes", parseGpuMemoryLimit("512") == 512 && parseGpuMemoryLimit("1280") == 1280 &&
@@ -612,9 +612,9 @@ int main() {
                                    parseGpuMemoryLimit("1 GB") == 1280 && parseGpuMemoryLimit("-7") == 1280 &&
                                    parseGpuMemoryLimit("0") == 1280);
         bool roundTrip = true, listed = false;
-        for (int mib : tak::kGpuMemoryLimits) {
+        for (int mib : ta::kGpuMemoryLimits) {
             roundTrip = roundTrip && parseGpuMemoryLimit(gpuMemoryLimitValue(mib)) == mib;
-            listed = listed || mib == tak::kGpuMemoryDefaultMiB;
+            listed = listed || mib == ta::kGpuMemoryDefaultMiB;
         }
         check("gpu: every choice round-trips", roundTrip);
         check("gpu: default is listed", listed);
@@ -624,12 +624,12 @@ int main() {
                              gpuMemoryLimitLabel(1024) == "1 GB" && gpuMemoryLimitLabel(1536) == "1.5 GB" &&
                              gpuMemoryLimitLabel(3072) == "3 GB" && gpuMemoryLimitLabel(-1) == "Unlimited");
         bool noAuto = true;
-        for (int mib : tak::kGpuMemoryLimits)
+        for (int mib : ta::kGpuMemoryLimits)
             noAuto = noAuto && gpuMemoryLimitLabel(mib).find("Auto") == std::string::npos;
         check("gpu: no Auto entry", noAuto);
     }
 
-#ifdef TAK_SETTINGS_FILE_TEST
+#ifdef TA_SETTINGS_FILE_TEST
     // A fresh profile is one with no settings file: loadSettings says whether it found one
     // (the first-run rule keys on it), and an empty file is a profile all the same.
     {
@@ -639,18 +639,18 @@ int main() {
         };
         const auto path = std::filesystem::temp_directory_path() /
                           ("settings_test_" + std::to_string(std::random_device{}()) + ".ini");
-        tak::setSettingsPath(path.string());
+        ta::setSettingsPath(path.string());
         bool found = true;
-        const Settings none = tak::loadSettings(&found);
+        const Settings none = ta::loadSettings(&found);
         check("fresh: no file", !found && none == Settings{});
         { std::ofstream(path) << "uiScale = 1.5\n"; }
-        check("fresh: file found", tak::loadSettings(&found).uiScale == 1.5f && found);
+        check("fresh: file found", ta::loadSettings(&found).uiScale == 1.5f && found);
         { std::ofstream(path, std::ios::trunc); }
-        check("fresh: empty file found", tak::loadSettings(&found) == Settings{} && found);
+        check("fresh: empty file found", ta::loadSettings(&found) == Settings{} && found);
         // Campaign progress is campaigndone.<id> = the completed mission indices; a
         // campaign.<id> count is not a key the game reads.
         { std::ofstream(path) << "campaigndone.aramon = 0,2\ncampaign.taros = 3\n"; }
-        const Settings camp = tak::loadSettings();
+        const Settings camp = ta::loadSettings();
         check("campaign: done read", camp.campaignCompleted.size() == 1 &&
                                      camp.campaignCompleted.at("aramon") == std::set<int>{0, 2});
         std::error_code ec;
@@ -665,33 +665,33 @@ int main() {
         };
         const auto path = std::filesystem::temp_directory_path() /
                           ("settings_test_voices_" + std::to_string(std::random_device{}()) + ".ini");
-        tak::setSettingsPath(path.string());
+        ta::setSettingsPath(path.string());
         auto voicesFrom = [&](const std::string& body) {
             { std::ofstream(path) << body; }
-            return tak::loadSettings().soundVoices;
+            return ta::loadSettings().soundVoices;
         };
-        check("voices: default 128", tak::Settings{}.soundVoices == 128 && voicesFrom("masterVol = 7\n") == 128);
+        check("voices: default 128", ta::Settings{}.soundVoices == 128 && voicesFrom("masterVol = 7\n") == 128);
         Settings saved;
         saved.soundVoices = 96;
-        check("voices: save", tak::saveSettings(saved));
-        check("voices: 96 kept", tak::loadSettings().soundVoices == 96);
+        check("voices: save", ta::saveSettings(saved));
+        check("voices: 96 kept", ta::loadSettings().soundVoices == 96);
         check("voices: 2 -> 8", voicesFrom("soundVoices = 2\n") == 8);
         check("voices: 999 -> 256", voicesFrom("soundVoices = 999\n") == 256);
         check("voices: 256 kept", voicesFrom("soundVoices = 256\n") == 256);
-        check("even: default on", tak::Settings{}.evenSoundLevels);
+        check("even: default on", ta::Settings{}.evenSoundLevels);
         saved.evenSoundLevels = false;
-        check("even: save", tak::saveSettings(saved));
-        check("even: off kept", !tak::loadSettings().evenSoundLevels);
+        check("even: save", ta::saveSettings(saved));
+        check("even: off kept", !ta::loadSettings().evenSoundLevels);
         // CUSTOM MUSIC: each track's file (any path: spaces, quotes, UTF-8); none by default.
-        check("music: default original", tak::Settings{}.customMusicTracks.empty());
+        check("music: default original", ta::Settings{}.customMusicTracks.empty());
         saved.customMusicTracks[15] = "/home/a b/It's \xc3\xa9t\xc3\xa9.mp3";
         saved.customMusicTracks[2] = "C:\\Music\\theme.flac";
-        check("music: save", tak::saveSettings(saved));
-        const Settings back = tak::loadSettings();
+        check("music: save", ta::saveSettings(saved));
+        const Settings back = ta::loadSettings();
         check("music: kept", back.customMusicTracks == saved.customMusicTracks);
         check("music: bad hex ignored", [&] {
             { std::ofstream(path) << "customMusic.track4 = zz\ncustomMusic.track0 = 41\n"; }
-            return tak::loadSettings().customMusicTracks.empty();
+            return ta::loadSettings().customMusicTracks.empty();
         }());
         std::error_code ec;
         std::filesystem::remove(path, ec);
@@ -699,25 +699,25 @@ int main() {
     // The Benchmark's PATHFINDING pick round-trips through the file on its own key, leaves
     // the game-create pick alone, and anything but a valid mode byte loads as Retail.
     {
-        using Mode = tak::sim::PathfindingMode;
+        using Mode = ta::sim::PathfindingMode;
         auto check = [&](const char* what, bool ok) {
             std::printf("  %-22s %s\n", what, ok ? "ok" : "FAIL");
             if (!ok) ++g_fail;
         };
         const auto path = std::filesystem::temp_directory_path() /
                           ("settings_test_bench_" + std::to_string(std::random_device{}()) + ".ini");
-        tak::setSettingsPath(path.string());
+        ta::setSettingsPath(path.string());
         auto modeFrom = [&](const std::string& body) {
             { std::ofstream(path) << body; }
-            return tak::loadSettings().benchmarkPathfinding;
+            return ta::loadSettings().benchmarkPathfinding;
         };
-        check("benchPath: default", tak::Settings{}.benchmarkPathfinding == Mode::Retail);
-        check("benchSpeed: default +10", tak::Settings{}.benchmarkSpeed == 10);
-        { { std::ofstream(path) << "benchmarkSpeed = 0\n"; } check("benchSpeed: 0 is NORMAL", tak::loadSettings().benchmarkSpeed == 0); }
-        { { std::ofstream(path) << "benchmarkSpeed = 7\n"; } check("benchSpeed: 7 -> +10", tak::loadSettings().benchmarkSpeed == 10); }
-        { { std::ofstream(path) << "benchmarkSpeed = 100\n"; } check("benchSpeed: 100 is +100", tak::loadSettings().benchmarkSpeed == 100); }
-        { { std::ofstream(path) << "benchmarkSpeed = 999\n"; } check("benchSpeed: 999 -> +100", tak::loadSettings().benchmarkSpeed == 100); }
-        { { std::ofstream(path) << "benchmarkSpeed = -3\n"; } check("benchSpeed: -3 -> NORMAL", tak::loadSettings().benchmarkSpeed == 0); }
+        check("benchPath: default", ta::Settings{}.benchmarkPathfinding == Mode::Retail);
+        check("benchSpeed: default +10", ta::Settings{}.benchmarkSpeed == 10);
+        { { std::ofstream(path) << "benchmarkSpeed = 0\n"; } check("benchSpeed: 0 is NORMAL", ta::loadSettings().benchmarkSpeed == 0); }
+        { { std::ofstream(path) << "benchmarkSpeed = 7\n"; } check("benchSpeed: 7 -> +10", ta::loadSettings().benchmarkSpeed == 10); }
+        { { std::ofstream(path) << "benchmarkSpeed = 100\n"; } check("benchSpeed: 100 is +100", ta::loadSettings().benchmarkSpeed == 100); }
+        { { std::ofstream(path) << "benchmarkSpeed = 999\n"; } check("benchSpeed: 999 -> +100", ta::loadSettings().benchmarkSpeed == 100); }
+        { { std::ofstream(path) << "benchmarkSpeed = -3\n"; } check("benchSpeed: -3 -> NORMAL", ta::loadSettings().benchmarkSpeed == 0); }
         {   // up to 64 remembered servers load, most recent first; the rest are dropped
             std::ofstream o(path);
             o << "knownServers = ";
@@ -725,15 +725,15 @@ int main() {
             o << "\n";
         }
         {
-            const auto ks = tak::loadSettings().knownServers;
+            const auto ks = ta::loadSettings().knownServers;
             check("servers: 64 of 70 kept", ks.size() == Settings::kMaxKnownServers && ks.front() == "host0:7677"
                                             && ks.back() == "host63:7677");
         }
         check("benchPath: absent", modeFrom("masterVol = 7\n") == Mode::Retail);
         Settings saved;
         saved.benchmarkPathfinding = Mode::Legion;
-        check("benchPath: save", tak::saveSettings(saved));
-        const Settings loaded = tak::loadSettings();
+        check("benchPath: save", ta::saveSettings(saved));
+        const Settings loaded = ta::loadSettings();
         check("benchPath: Legion kept", loaded.benchmarkPathfinding == Mode::Legion);
         check("benchPath: lobby alone", loaded.spRoom.pathfindingMode == Mode::Retail &&
                                         loaded.mpRoom.pathfindingMode == Mode::Retail);
@@ -752,8 +752,8 @@ int main() {
             const auto path = std::filesystem::temp_directory_path() /
                               ("settings_test_fps_" + std::to_string(std::random_device{}()) + ".ini");
             { std::ofstream(path) << body; }
-            tak::setSettingsPath(path.string());
-            const int v = tak::loadSettings().maxFps;
+            ta::setSettingsPath(path.string());
+            const int v = ta::loadSettings().maxFps;
             std::error_code ec;
             std::filesystem::remove(path, ec);
             return v;
@@ -769,7 +769,7 @@ int main() {
         check("maxFps: -5 unlimited", fpsFrom("maxFps = -5\n") == 0);
         Settings w{};
         w.maxFps = 0;
-        check("maxFps: 0 round trip", fpsFrom(tak::serializeSettings(w)) == 0);
+        check("maxFps: 0 round trip", fpsFrom(ta::serializeSettings(w)) == 0);
     }
     // The streaming panel's BITRATE: saved, reloaded, and invalid values snap to 6000.
     {
@@ -777,8 +777,8 @@ int main() {
             const auto path = std::filesystem::temp_directory_path() /
                               ("settings_test_br_" + std::to_string(std::random_device{}()) + ".ini");
             { std::ofstream(path) << body; }
-            tak::setSettingsPath(path.string());
-            const Settings v = tak::loadSettings();
+            ta::setSettingsPath(path.string());
+            const Settings v = ta::loadSettings();
             std::error_code ec;
             std::filesystem::remove(path, ec);
             return v;
@@ -790,7 +790,7 @@ int main() {
         };
         Settings w{};
         w.streamBitrate = 45000;
-        check("bitrate: round trip", bitrateFrom(tak::serializeSettings(w)) == 45000);
+        check("bitrate: round trip", bitrateFrom(ta::serializeSettings(w)) == 45000);
         check("bitrate: absent=6000", bitrateFrom("masterVol = 7\n") == 6000);
         check("bitrate: 7777 snaps", bitrateFrom("streamBitrate = 7777\n") == 6000);
         check("bitrate: 0 snaps", bitrateFrom("streamBitrate = 0\n") == 6000);
@@ -802,7 +802,7 @@ int main() {
         // Resolution, frame rate and encoder: round trip, then invalid values snap to default.
         Settings w2{};
         w2.streamResolution = 1; w2.streamFps = 30; w2.streamCpuEncoder = true;
-        const Settings r2 = loadFrom(tak::serializeSettings(w2));
+        const Settings r2 = loadFrom(ta::serializeSettings(w2));
         check("panel: res round trip", r2.streamResolution == 1);
         check("panel: fps round trip", r2.streamFps == 30);
         check("panel: enc round trip", r2.streamCpuEncoder);
@@ -815,25 +815,25 @@ int main() {
         // NATIVE WAYLAND: saved as auto/on/off, Auto when absent or unknown.
         Settings nw{};
         nw.nativeWayland = 2;
-        check("wayland: off trip", loadFrom(tak::serializeSettings(nw)).nativeWayland == 2);
+        check("wayland: off trip", loadFrom(ta::serializeSettings(nw)).nativeWayland == 2);
         nw.nativeWayland = 1;
-        check("wayland: on trip", loadFrom(tak::serializeSettings(nw)).nativeWayland == 1);
+        check("wayland: on trip", loadFrom(ta::serializeSettings(nw)).nativeWayland == 1);
         check("wayland: absent auto", loadFrom("masterVol = 7\n").nativeWayland == 0);
         check("wayland: junk auto", loadFrom("nativeWayland = maybe\n").nativeWayland == 0);
         Settings dm{};
         dm.displayMode = 3; dm.displayScale = 1.45f; dm.displayX11Width = 7680; dm.displayLogicalWidth = 5297;
-        check("display: trip", loadFrom(tak::serializeSettings(dm)).displayMode == 3 &&
-                               std::abs(loadFrom(tak::serializeSettings(dm)).displayScale - 1.45f) < 0.001f);
-        check("display: widths", loadFrom(tak::serializeSettings(dm)).displayX11Width == 7680 &&
-                                 loadFrom(tak::serializeSettings(dm)).displayLogicalWidth == 5297 &&
-                                 tak::preferenceDefaults(dm).displayX11Width == 7680 &&
-                                 loadFrom("displayMode = x11\ndisplayX11Width = -3\n").displayMode == tak::wayland::kModeX11 &&
+        check("display: trip", loadFrom(ta::serializeSettings(dm)).displayMode == 3 &&
+                               std::abs(loadFrom(ta::serializeSettings(dm)).displayScale - 1.45f) < 0.001f);
+        check("display: widths", loadFrom(ta::serializeSettings(dm)).displayX11Width == 7680 &&
+                                 loadFrom(ta::serializeSettings(dm)).displayLogicalWidth == 5297 &&
+                                 ta::preferenceDefaults(dm).displayX11Width == 7680 &&
+                                 loadFrom("displayMode = x11\ndisplayX11Width = -3\n").displayMode == ta::wayland::kModeX11 &&
                                  loadFrom("displayX11Width = -3\n").displayX11Width == 0);
         check("display: absent", loadFrom("masterVol = 7\n").displayMode == 0 && loadFrom("masterVol = 7\n").displayScale == 0.0f);
         check("display: junk", loadFrom("displayMode = x\ndisplayScale = 99\n").displayMode == 0 &&
                                loadFrom("displayMode = x\ndisplayScale = 99\n").displayScale == 0.0f);
-        check("display: kept by defaults", tak::preferenceDefaults(dm).displayMode == 3 &&
-                                           tak::preferenceDefaults(dm).displayScale == 1.45f);
+        check("display: kept by defaults", ta::preferenceDefaults(dm).displayMode == 3 &&
+                                           ta::preferenceDefaults(dm).displayScale == 1.45f);
         // HIDDEN UNITS: off | dots | fade; no key and an unknown value load as FADE, the
         // default.
         check("hidden: default 2", Settings{}.hiddenUnits == 2);
@@ -849,9 +849,9 @@ int main() {
         for (int mode = 0; mode < 3; ++mode) {
             Settings hs{};
             hs.hiddenUnits = mode;
-            check("hidden: round trip", loadFrom(tak::serializeSettings(hs)).hiddenUnits == mode);
+            check("hidden: round trip", loadFrom(ta::serializeSettings(hs)).hiddenUnits == mode);
         }
-        check("hidden: saved as name", tak::serializeSettings(Settings{}).find("hiddenUnits = fade") != std::string::npos);
+        check("hidden: saved as name", ta::serializeSettings(Settings{}).find("hiddenUnits = fade") != std::string::npos);
         // FADE OPACITY: percent 0..100, clamped; absent = 50.
         check("fade opacity: default 50", Settings{}.hiddenFadeOpacity == 50);
         check("fade opacity: absent", loadFrom("masterVol = 7\n").hiddenFadeOpacity == 50);
@@ -861,7 +861,7 @@ int main() {
         for (int pct : {0, 1, 42, 65, 99, 100}) {
             Settings hs{};
             hs.hiddenFadeOpacity = pct;
-            check("fade opacity: round trip", loadFrom(tak::serializeSettings(hs)).hiddenFadeOpacity == pct);
+            check("fade opacity: round trip", loadFrom(ta::serializeSettings(hs)).hiddenFadeOpacity == pct);
         }
         check("fps: 30 ok", loadFrom("streamFps = 30\n").streamFps == 30);
         check("fps: 45 snaps", loadFrom("streamFps = 45\n").streamFps == 60);
@@ -871,7 +871,7 @@ int main() {
         // stored and read back as written, more is clamped to 128. The machine's own top,
         // twice its threads, applies where the value is used (SimPool::configured), so the
         // file keeps a bigger machine's choice.
-        using tak::sim::SimPool;
+        using ta::sim::SimPool;
         check("sim threads: default auto", Settings{}.simThreads == 0);
         check("sim threads: absent", loadFrom("masterVol = 7\n").simThreads == 0);
         check("sim threads: read", loadFrom("simThreads = 8\n").simThreads == 8);
@@ -886,20 +886,20 @@ int main() {
         for (int n : {0, 1, 2, 8, 24, 48, 64, 127, 128}) {
             Settings ts{};
             ts.simThreads = n;
-            check("sim threads: round trip", loadFrom(tak::serializeSettings(ts)).simThreads == n);
+            check("sim threads: round trip", loadFrom(ta::serializeSettings(ts)).simThreads == n);
         }
         {
             Settings ts{};
             ts.simThreads = 8;
-            check("sim threads: saved as a number", tak::serializeSettings(ts).find("\nsimThreads = 8\n") != std::string::npos &&
-                                                    tak::serializeSettings(Settings{}).find("\nsimThreads = 0\n") != std::string::npos);
+            check("sim threads: saved as a number", ta::serializeSettings(ts).find("\nsimThreads = 8\n") != std::string::npos &&
+                                                    ta::serializeSettings(Settings{}).find("\nsimThreads = 0\n") != std::string::npos);
             ts.simThreads = 500;   // never written out of range
-            check("sim threads: written clamped", tak::serializeSettings(ts).find("\nsimThreads = 128\n") != std::string::npos);
+            check("sim threads: written clamped", ta::serializeSettings(ts).find("\nsimThreads = 128\n") != std::string::npos);
         }
         // As used on this machine of N threads: AUTO is its performance cores (its cores,
         // without that split), a count runs as itself up to 2N, and one above that as 2N
         // (a profile moved from a bigger machine).
-        const tak::sim::CpuTopology cpus = tak::sim::detectCpus();
+        const ta::sim::CpuTopology cpus = ta::sim::detectCpus();
         const unsigned top = SimPool::maxChoice(cpus.threads());
         check("sim threads: auto as used", SimPool::configured(loadFrom("simThreads = 0\n").simThreads, cpus) == cpus.perf &&
                                            cpus.perf >= 1 && cpus.perf <= cpus.threads());
@@ -912,10 +912,10 @@ int main() {
         check("sim pin: read", !loadFrom("simPin = 0\n").simPin && loadFrom("simPin = 1\n").simPin);
         {
             Settings ts{};
-            check("sim pin: saved off", tak::serializeSettings(ts).find("\nsimPin = 0\n") != std::string::npos);
+            check("sim pin: saved off", ta::serializeSettings(ts).find("\nsimPin = 0\n") != std::string::npos);
             ts.simPin = true;
-            check("sim pin: saved on", tak::serializeSettings(ts).find("\nsimPin = 1\n") != std::string::npos &&
-                                       loadFrom(tak::serializeSettings(ts)).simPin);
+            check("sim pin: saved on", ta::serializeSettings(ts).find("\nsimPin = 1\n") != std::string::npos &&
+                                       loadFrom(ta::serializeSettings(ts)).simPin);
         }
         const SimPool::Session local = SimPool::sessionThreads(0, cpus, true);
         const auto on = SimPool::handOut(cpus.order, local, true, loadFrom("simPin = 1\n").simPin);
@@ -928,8 +928,8 @@ int main() {
     // they replaced (gameCreate.*, lastMap, mods.gamePack) are not read, and the next save
     // drops them.
     {
-        using Mode = tak::sim::PathfindingMode;
-        using tak::RoomPrefs;
+        using Mode = ta::sim::PathfindingMode;
+        using ta::RoomPrefs;
         using Packs = std::vector<std::string>;
         auto check = [&](const char* what, bool ok) {
             std::printf("  %-22s %s\n", what, ok ? "ok" : "FAIL");
@@ -937,8 +937,8 @@ int main() {
         };
         const auto path = std::filesystem::temp_directory_path() /
                           ("settings_test_rooms_" + std::to_string(std::random_device{}()) + ".ini");
-        tak::setSettingsPath(path.string());
-        auto loadFrom = [&](const std::string& body) { { std::ofstream(path) << body; } return tak::loadSettings(); };
+        ta::setSettingsPath(path.string());
+        auto loadFrom = [&](const std::string& body) { { std::ofstream(path) << body; } return ta::loadSettings(); };
         auto fileText = [&] { std::ifstream in(path); return std::string(std::istreambuf_iterator<char>(in), {}); };
         auto hex = [](const std::string& name) {
             static constexpr char digits[] = "0123456789abcdef";
@@ -966,8 +966,8 @@ int main() {
         mp.gamePacks = {"Textures"};
         Settings a;
         a.spRoom = sp; a.mpRoom = mp;
-        check("rooms: save", tak::saveSettings(a));
-        const Settings b = tak::loadSettings();
+        check("rooms: save", ta::saveSettings(a));
+        const Settings b = ta::loadSettings();
         check("rooms: sp round trip", b.spRoom == sp);
         check("rooms: mp round trip", b.mpRoom == mp);
         check("rooms: file round trip", b == a);
@@ -987,14 +987,14 @@ int main() {
         Settings c = b;
         c.spRoom.crusades = false;
         c.spRoom.gamePacks = {"Other"};
-        check("rooms: sp change", tak::saveSettings(c));
-        const Settings c2 = tak::loadSettings();
+        check("rooms: sp change", ta::saveSettings(c));
+        const Settings c2 = ta::loadSettings();
         check("rooms: mp untouched", c2.mpRoom == mp && !c2.spRoom.crusades && c2.spRoom.gamePacks == Packs{"Other"});
         Settings d = b;
         d.mpRoom.crusades = true;
         d.mpRoom.gamePacks.clear();
-        check("rooms: mp change", tak::saveSettings(d));
-        const Settings d2 = tak::loadSettings();
+        check("rooms: mp change", ta::saveSettings(d));
+        const Settings d2 = ta::loadSettings();
         check("rooms: sp untouched", d2.spRoom == sp && d2.mpRoom.crusades && d2.mpRoom.gamePacks.empty());
 
         // Each key keeps today's validation: clamps, -1/1, a mode byte, a well-formed pack.
@@ -1020,7 +1020,7 @@ int main() {
                                       "mods.cosmeticPack = " + hex("Skin") + "\n");
         check("old keys: defaults", old.spRoom == RoomPrefs{} && old.mpRoom == RoomPrefs{});
         check("old keys: cosmetic kept", old.cosmeticModPacks == Packs{"Skin"});
-        check("old keys: save", tak::saveSettings(old));
+        check("old keys: save", ta::saveSettings(old));
         const std::string dropped = fileText();
         check("old keys: dropped", dropped.find("gameCreate.") == std::string::npos &&
                                    dropped.find("lastMap") == std::string::npos &&
@@ -1029,17 +1029,17 @@ int main() {
 
         // A launch-only selection (--game-mod: a --play-map room is single player) keeps the
         // file's spRoom.gamePack lines while it applies; the multiplayer set saves as usual.
-        check("launch: player's ticks", tak::saveSettings(a));
+        check("launch: player's ticks", ta::saveSettings(a));
         Settings run = a;
         run.spRoom.gamePacks = {"Test Pack"};
-        tak::setLaunchGameModPacks(run.spRoom.gamePacks);
+        ta::setLaunchGameModPacks(run.spRoom.gamePacks);
         run.mpRoom.crusades = true;
         run.mpRoom.gamePacks = {"Net Pack"};
-        check("launch: save", tak::saveSettings(run));
-        const Settings back = tak::loadSettings();
+        check("launch: save", ta::saveSettings(run));
+        const Settings back = ta::loadSettings();
         check("launch: sp file kept", back.spRoom.gamePacks == sp.gamePacks);
         check("launch: mp saved", back.mpRoom.crusades && back.mpRoom.gamePacks == Packs{"Net Pack"});
-        tak::setLaunchGameModPacks(std::nullopt);
+        ta::setLaunchGameModPacks(std::nullopt);
         std::error_code ec;
         std::filesystem::remove(path, ec);
     }

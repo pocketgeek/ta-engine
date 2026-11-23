@@ -2,7 +2,7 @@
 
 #include "tdo/tdo.h"
 
-namespace tak {
+namespace ta {
 
 // Detached geometry owns its arrays independently of the source visual. Retail
 // drops the selected root's authored offset and parent/sibling links, retaining
@@ -18,4 +18,4 @@ inline tdo::Object retailDebrisModel(const tdo::Object& source,bool subtree) {
     return result;
 }
 
-} // namespace tak
+} // namespace ta

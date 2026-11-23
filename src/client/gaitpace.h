@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 // Legion display gait pacing (deliberate, not retail; display only, never
 // hashed). A walker's cycle is a script playing fixed keyframes, so a body
@@ -37,4 +37,4 @@ inline float legionGaitRate(float previous,int64_t dx,int64_t dz,uint32_t ticks,
     return std::clamp(target+(previous-target)*keep,0.0f,1.0f);
 }
 
-} // namespace tak
+} // namespace ta

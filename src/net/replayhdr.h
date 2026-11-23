@@ -1,6 +1,6 @@
 #pragma once
 
-// The .takrep header, in ONE place: both writers (Server::writeReplay and the
+// The .tarep header, in ONE place: both writers (Server::writeReplay and the
 // client's net/replaywriter.h) fill this struct and the loader reads it, so a
 // field that is added is added once.
 //
@@ -19,12 +19,12 @@
 
 #include "net/protocol.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // Bump when the layout changes.
 inline constexpr uint32_t kReplayFormat = 15;
 
-// The largest .takrep the loaders accept (the client picker and the writer's re-read).
+// The largest .tarep the loaders accept (the client picker and the writer's re-read).
 inline constexpr uint64_t kMaxReplayBytes = 512ull * 1024 * 1024;
 
 // A replay plays only on the engine that recorded it: the same format and protocol.
@@ -36,7 +36,7 @@ struct ReplayHeader {
     std::string mapId;
     std::string mapDigest, modDigest;
     std::string mission;          // campaign mission stem ("" = skirmish)
-    std::string engineVersion;    // tak::kVersion of the build that recorded it
+    std::string engineVersion;    // ta::kVersion of the build that recorded it
     uint8_t crusades = 0, forfeitSelfDestruct = 0;
     uint8_t gameMods = 0;          // 1 = the room ran the host's game mods (modDigest)
     uint32_t unitCap = 0;
@@ -145,4 +145,4 @@ inline bool readReplayHeader(Reader& r, ReplayHeader& h, uint32_t& fmt, uint32_t
     return r.ok;
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

@@ -9,7 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 
-using namespace tak;
+using namespace ta;
 static void check(bool value,const char* message) {
     if(!value)throw std::runtime_error(message);
 }
@@ -96,10 +96,10 @@ int main() try {
         failed.start(world);failed.step(world,1.f/30);uint64_t failedHash=0;failed.foldHash(failedHash);
         check(calls==1 && failedHash==serverHash,"failed trace sink changed execution or was not disabled");
         human.step(world,1.f/30);check(actions.size()==4,"initial-only rule repeated");
-        const auto root=std::filesystem::temp_directory_path()/("tak-trigger-log-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-        const auto path=tak::scenarioTracePath(root,root/"test-source"/"snapshot.kmp");
+        const auto root=std::filesystem::temp_directory_path()/("ta-trigger-log-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const auto path=ta::scenarioTracePath(root,root/"test-source"/"snapshot.kmp");
         {
-            tak::ScenarioTraceLog log(path,200);
+            ta::ScenarioTraceLog log(path,200);
             crt::Rule rule{13,{"Player 1","line\nbreak\r\t\"quote\\"}};
             for(int i=0;i<20;++i)log.append(i,0,1,0,&rule);
         }
@@ -175,7 +175,7 @@ int main() try {
             files->erase("kmap/authored.tdf");
             (*files)["kmap/authored.ota"]={ota.begin(),ota.end()};
         }
-        const std::string optIn=ota+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n";
+        const std::string optIn=ota+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n";
         (*files)["kmap/authored.ota"]={optIn.begin(),optIn.end()};
         sim::World client,server;
         const auto positions=sim::setupMatch(client,registry,config);

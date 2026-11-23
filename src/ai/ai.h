@@ -27,7 +27,7 @@
 #include "net/lockstep.h"
 #include "sim/sim.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 class ClassicBrain;   // ai/classicbrain.h: the Classic level's brain
 struct ClassicProfileScript;   // ai/classicprofile.h
@@ -46,7 +46,7 @@ struct Profile {
 // never read these files -- they play their built-in tables (builtinProfile) --
 // and the Classic AI bakes them its own way (classicprofile.h), so this serves only
 // the check that the built-in tables still reproduce the shipped default profile.
-Profile loadProfile(const tak::hpi::Vfs& vfs, const std::string& name = "default");
+Profile loadProfile(const ta::hpi::Vfs& vfs, const std::string& name = "default");
 
 // Opponent skill, loosely modelled on retail's easy/normal/hard. It scales HOW the
 // AI plays (economy pace, army size before it commits, aggression, reaction rate)
@@ -176,8 +176,8 @@ struct Needs {
     float income = 0;          // actual spendable income, including difficulty bonus
     // Own live units per type, filled in the same assessNeeds pass -- weightedPick's
     // limit checks read this instead of re-scanning all units per menu entry.
-    std::unordered_map<const tak::sim::UnitType*, int> counts;
-    std::unordered_map<const tak::sim::UnitType*, int> unfinished; // of counts, still under construction
+    std::unordered_map<const ta::sim::UnitType*, int> counts;
+    std::unordered_map<const ta::sim::UnitType*, int> unfinished; // of counts, still under construction
     int   economyProjects = 0; // producers committed to income/storage construction
     int   lodestoneProjects = 0; // builders whose job is a lodestone (onMana), placed or queued
     int   population = 0;      // includes construction, and every unit ordered but not yet
@@ -210,7 +210,7 @@ struct Needs {
 
 // Sink for the commands a Controller decides to issue this tick. Offline this
 // applies them immediately; on the server it queues them into the tick sequencer.
-using CommandSink = std::function<void(const tak::net::Command&)>;
+using CommandSink = std::function<void(const ta::net::Command&)>;
 
 // One AI brain, driving a single player.
 class Controller {
@@ -218,7 +218,7 @@ public:
     // enemyStarts: the start positions of the players this AI is NOT allied with, so
     // it can march on a base under fog before it has actually spotted enemy units
     // (owners unknown: setStartSpots gives them).
-    Controller(int player, const tak::sim::TypeRegistry& registry,
+    Controller(int player, const ta::sim::TypeRegistry& registry,
                const Profile& profile, uint32_t seed,
                Difficulty difficulty = Difficulty::Normal,
                std::vector<std::pair<float, float>> enemyStarts = {});
@@ -228,7 +228,7 @@ public:
     // Evaluate the AI for sim tick `simTick`. Does nothing off its think cadence.
     // A Classic controller hands every tick to its ClassicBrain instead.
     // Reads `world` (never mutates it) and emits any orders through `sink`.
-    void tick(const tak::sim::World& world, uint32_t simTick, const CommandSink& sink);
+    void tick(const ta::sim::World& world, uint32_t simTick, const CommandSink& sink);
 
     // Difficulty::Classic only (a no-op otherwise): the AI profile script the
     // ClassicBrain bakes its per-type preferences and limits from -- the map's
@@ -264,13 +264,13 @@ private:
     // Unbounded levels: building sites already spoken for -- ordered this think
     // (plannedSites_), or ordered earlier and refused when the builder got there
     // (refusedSites_, held for kRefusedSiteTicks; issuedBuilds_ watches each order).
-    struct PlannedSite { const tak::sim::UnitType* type; float x, z; };
+    struct PlannedSite { const ta::sim::UnitType* type; float x, z; };
     std::vector<PlannedSite> plannedSites_;
-    struct IssuedBuild { int unit; const tak::sim::UnitType* type; float x, z; uint32_t tick; };
+    struct IssuedBuild { int unit; const ta::sim::UnitType* type; float x, z; uint32_t tick; };
     std::vector<IssuedBuild> issuedBuilds_;
     struct RefusedSite { float x, z; uint32_t until; };
     std::vector<RefusedSite> refusedSites_;
-    void updateIssuedBuilds(const tak::sim::World&, uint32_t simTick);
+    void updateIssuedBuilds(const ta::sim::World&, uint32_t simTick);
     // --- deterministic RNG (retail-style LCG) --------------------------------
     int rand(int n) {
         rng_ = rng_ * 1103515245u + 12345u;
@@ -280,31 +280,31 @@ private:
     // --- decision helpers (all read-only over the world) ---------------------
     // Needs-based build planner: assess the empire, score each category against its
     // target, and let a producer build the most-needed thing its menu offers.
-    Needs assessNeeds(const tak::sim::World&) const;
-    BuildCat categoryOf(const tak::sim::UnitType*) const;
+    Needs assessNeeds(const ta::sim::World&) const;
+    BuildCat categoryOf(const ta::sim::UnitType*) const;
     // True for a side with no factory buildings (Zhon): its mobile builders do the
     // production other sides' factories do as well as the construction.
     bool mobileProduction(const std::string& side) const;
     mutable std::unordered_map<std::string,bool> mobileProduction_;
-    bool navalFactory(const tak::sim::UnitType*) const;
-    bool navalProducer(const tak::sim::UnitType*) const;
-    const std::vector<std::pair<float,float>>& navalLaunchOffsets(const tak::sim::UnitType*) const;
+    bool navalFactory(const ta::sim::UnitType*) const;
+    bool navalProducer(const ta::sim::UnitType*) const;
+    const std::vector<std::pair<float,float>>& navalLaunchOffsets(const ta::sim::UnitType*) const;
     // A ship's water body at (x,z) holds at least `cells` positions it fits in.
     static constexpr int kMinNavalBodyCells = 256;
-    bool navalBodyAtLeast(const tak::sim::World&, const tak::sim::UnitType* ship, float x, float z, int cells) const;
-    bool navalLaunchClear(const tak::sim::World&,const tak::sim::UnitType* factory,
-                          const tak::sim::UnitType* ship,float x,float z,float dx,float dz) const;
+    bool navalBodyAtLeast(const ta::sim::World&, const ta::sim::UnitType* ship, float x, float z, int cells) const;
+    bool navalLaunchClear(const ta::sim::World&,const ta::sim::UnitType* factory,
+                          const ta::sim::UnitType* ship,float x,float z,float dx,float dz) const;
     // Open water out of a yard's door (placeSite prefers it; never a veto): the
     // moves a ship launched at (x+dx,z+dz) needs, beyond a straight run out of the
     // door, to get navalDoorReach cells clear of the yard's rectangle by
     // navalLaunchClear's cell rules -- 0 for open water straight out -- or -1 when
     // it cannot within a short budget: the door opens onto a shore pocket and the
     // way out runs round the yard.
-    int navalDoorSteps(const tak::sim::World&,const tak::sim::UnitType* factory,
-                       const tak::sim::UnitType* ship,float x,float z,float dx,float dz) const;
+    int navalDoorSteps(const ta::sim::World&,const ta::sim::UnitType* factory,
+                       const ta::sim::UnitType* ship,float x,float z,float dx,float dz) const;
     // The clear depth in cells: the PARK ring's inner radius for that ship (its
     // smallest padding), less the yard's half-depth and the ship's half-width.
-    static int navalDoorReach(const tak::sim::UnitType* factory,const tak::sim::UnitType* ship);
+    static int navalDoorReach(const ta::sim::UnitType* factory,const ta::sim::UnitType* ship);
     // Our levels' base layout -- not retail, whose block-grid streets know no
     // doors. A production building's door is each yardmap edge holding 'c'/'C'
     // cells, the side its output leaves by. In front of it lies a strip -- the
@@ -315,10 +315,10 @@ private:
         float x0, z0, x1, z1;
         bool overlaps(const Rect& o) const { return x0<o.x1 && o.x0<x1 && z0<o.z1 && o.z0<z1; }
     };
-    const std::vector<Rect>& doorStrips(const tak::sim::UnitType*) const;
-    mutable std::unordered_map<const tak::sim::UnitType*,std::vector<Rect>> doorStrips_;
-    static Rect footprintRect(const tak::sim::UnitType*, float x, float z);
-    void addDoorStrips(const tak::sim::UnitType*, float x, float z, std::vector<Rect>& out) const;
+    const std::vector<Rect>& doorStrips(const ta::sim::UnitType*) const;
+    mutable std::unordered_map<const ta::sim::UnitType*,std::vector<Rect>> doorStrips_;
+    static Rect footprintRect(const ta::sim::UnitType*, float x, float z);
+    void addDoorStrips(const ta::sim::UnitType*, float x, float z, std::vector<Rect>& out) const;
     // Every own structure's footprint (yard cells included) and every own
     // production building's door strip, gathered once per use.
     struct BaseLayout {
@@ -328,8 +328,8 @@ private:
             return std::any_of(rects.begin(),rects.end(),hit) || std::any_of(doors.begin(),doors.end(),hit);
         }
     };
-    BaseLayout baseLayout(const tak::sim::World&) const;
-    mutable std::map<std::tuple<const tak::sim::UnitType*,const tak::sim::UnitType*,int,int,int,int>,int>
+    BaseLayout baseLayout(const ta::sim::World&) const;
+    mutable std::map<std::tuple<const ta::sim::UnitType*,const ta::sim::UnitType*,int,int,int,int>,int>
         navalDoorSteps_;   // per yard type, ship and site, for one think
     // Divine Lodestone upgrades (planUpgrade). `target` is the own finished
     // lodestone the plan names this think (0: none), at deposit (x,z); `priest`
@@ -340,42 +340,42 @@ private:
     struct UpgradePlan {
         int target = 0;
         float x = 0, z = 0;
-        const tak::sim::UnitType* divine = nullptr;
-        const tak::sim::UnitType* priest = nullptr;
+        const ta::sim::UnitType* divine = nullptr;
+        const ta::sim::UnitType* priest = nullptr;
         int stage = 0;
         uint32_t saveStart = 0, retryAt = 0;
     };
     UpgradePlan upgrade_;
-    void planUpgrade(const tak::sim::World&, Needs&);
+    void planUpgrade(const ta::sim::World&, Needs&);
     // The Divine Lodestone in `type`'s menu, else nullptr (cached).
-    const tak::sim::UnitType* divineIn(const tak::sim::UnitType* type) const;
-    mutable std::unordered_map<const tak::sim::UnitType*,const tak::sim::UnitType*> divineIn_;
+    const ta::sim::UnitType* divineIn(const ta::sim::UnitType* type) const;
+    mutable std::unordered_map<const ta::sim::UnitType*,const ta::sim::UnitType*> divineIn_;
     // A mobile builder with a Divine Lodestone in its menu (Taros's Priest, Aramon's...).
-    bool upgrader(const tak::sim::UnitType* type) const;
+    bool upgrader(const ta::sim::UnitType* type) const;
     // A spotted, armed enemy within `r` of (x,z).
-    bool armedEnemyNear(const tak::sim::World&, float x, float z, float r) const;
+    bool armedEnemyNear(const ta::sim::World&, float x, float z, float r) const;
     int   desire(BuildCat, const Needs&) const;
     // Retail's lodestone trigger, at every level: short of mana, with no
     // lodestone under way.
-    bool  manaShort(const tak::sim::World&, const Needs&) const;
+    bool  manaShort(const ta::sim::World&, const Needs&) const;
     // Retail's base radius around home for that lodestone's deposit (icd 0x40cf30).
-    float retailLodestoneRadius(const tak::sim::World&, const tak::sim::Unit& builder) const;
+    float retailLodestoneRadius(const ta::sim::World&, const ta::sim::Unit& builder) const;
     // `excludeCats` is a bitmask of 1<<int(BuildCat): categories already tried and
     // found unproducible this think, so the pick falls through to the next best.
     // `lodestoneOnly` limits the pick to the lodestone manaShort() asks for.
     // `siteLimit`, when given, receives the radius from home the pick's site must
     // lie within (retail's base radius for the trigger's lodestone), else 0.
-    const tak::sim::UnitType* weightedPick(const tak::sim::World&,
-                                           const tak::sim::Unit& producer, const Needs&,
+    const ta::sim::UnitType* weightedPick(const ta::sim::World&,
+                                           const ta::sim::Unit& producer, const Needs&,
                                            int excludeCats = 0, bool lodestoneOnly = false,
                                            float* siteLimit = nullptr);
     // True if an order was actually emitted. False means the pick could not be
     // acted on (no build site, nowhere to conjure) -- the caller then retries in
     // another category rather than burning the producer's turn on it.
-    bool produce(const tak::sim::World&, const tak::sim::Unit& producer,
-                 const tak::sim::UnitType* pick, const CommandSink&, float siteLimit = 0);
+    bool produce(const ta::sim::World&, const ta::sim::Unit& producer,
+                 const ta::sim::UnitType* pick, const CommandSink&, float siteLimit = 0);
     // `limit` > 0 narrows the radius from home a site may lie within.
-    bool placeSite(const tak::sim::World&, const tak::sim::UnitType*, const tak::sim::Unit& builder, float nx, float nz,
+    bool placeSite(const ta::sim::World&, const ta::sim::UnitType*, const ta::sim::Unit& builder, float nx, float nz,
                    float& outX, float& outZ, float limit = 0) const;
     // Offensive targets, from what this AI knows (knowledge_): the enemy units
     // its own and its allies' sight shows it now (World::playerSees), the units
@@ -386,7 +386,7 @@ private:
     // whatever stands around it.
     struct StrikeSite {
         int anchor = 0;               // 0: an exploration point (no unit known)
-        const tak::sim::UnitType* anchorType = nullptr;
+        const ta::sim::UnitType* anchorType = nullptr;
         bool anchorUnfinished = false;
         float x = 0, z = 0;           // the anchor's position, last seen
         float value = 0;              // what destroying the site's units is worth
@@ -403,44 +403,44 @@ private:
         bool winning = false;         // ahead with a site known: clean up even at the defensive levels
     };
     static constexpr float kSiteCell = 400;
-    StrikeBoard scanTargets(const tak::sim::World&) const;
+    StrikeBoard scanTargets(const ta::sim::World&) const;
     // A unit's fighting strength: its cost, scaled by the health it has left.
-    static float strength(const tak::sim::Unit&);
-    static bool armed(const tak::sim::UnitType*);
+    static float strength(const ta::sim::Unit&);
+    static bool armed(const ta::sim::UnitType*);
     // Some weapon of `a` can hurt `t` (flyers need a weapon that is not noair).
-    static bool canHurt(const tak::sim::UnitType* a, const tak::sim::UnitType* t);
+    static bool canHurt(const ta::sim::UnitType* a, const ta::sim::UnitType* t);
     // `u`'s attack weapon (a switcher's selected slot, else the first) can
     // reach `t` where it is now: a melee one never reaches a unit in the air,
     // and the sim drops such an attack order at once (Attack_Melee's head).
-    static bool reachesNow(const tak::sim::Unit& u, const tak::sim::Unit& t);
+    static bool reachesNow(const ta::sim::Unit& u, const ta::sim::Unit& t);
     // Some weapon of `u` can do something to `t` as it stands, by the sim's own
     // test of an attack order (World::canAttackTarget for a computer's unit):
     // the damage table, the layer it is on, and what a charm, a stone or a
     // freeze can take -- a mobile unit that is finished, no Monarch and not
     // immune, and for a charm an owner below the unit cap. canHurt asks only
     // the damage table, by type.
-    bool canTake(const tak::sim::World&, const tak::sim::Unit& u, const tak::sim::Unit& t) const;
+    bool canTake(const ta::sim::World&, const ta::sim::Unit& u, const ta::sim::Unit& t) const;
     // The best site for a force of `force` strength at (x,z) whose units move as
     // `type`, by value (economy, production, the Monarch, finishing a player off),
     // threat (armed units, nearer our base) and practicality (distance, whether the
     // force outweighs the defence there, whether it can get there at all). `taken`
     // is the strength already sent to each site this think. -1 when nothing is.
-    int pickSite(const tak::sim::World&, const StrikeBoard&, float x, float z, float force,
-                 const tak::sim::UnitType* type, bool raid, const std::vector<float>& taken) const;
+    int pickSite(const ta::sim::World&, const StrikeBoard&, float x, float z, float force,
+                 const ta::sim::UnitType* type, bool raid, const std::vector<float>& taken) const;
     // The strength a site needs sent at it (its defence, with this level's margin).
     float siteNeed(const StrikeSite&) const;
     // Where unit `u` goes for `site`: an Attack on the anchor once it is close (or
     // the anchor is a site still building, which auto-acquisition takes only
     // behind finished targets), else an attack-move to the nearest point it can
     // reach. False when it cannot get there.
-    bool strikeOrder(const tak::sim::World&, const tak::sim::Unit& u, const StrikeSite& site,
+    bool strikeOrder(const ta::sim::World&, const ta::sim::Unit& u, const StrikeSite& site,
                      uint32_t simTick, const CommandSink&);
     // What this AI knows of an enemy unit, by id: its type, owner and position
     // when last seen (cx,cz: its projected 32 px view cell, World::viewCount),
     // the think tick it was, and its strength then; `sighted` when that was by
     // sight, not only heard (a unit hitting ours from out of sight).
     struct Known {
-        const tak::sim::UnitType* type = nullptr;
+        const ta::sim::UnitType* type = nullptr;
         int player = -1;
         float x = 0, z = 0, strength = 0;
         int cx = 0, cz = 0;
@@ -452,8 +452,8 @@ private:
     // The players whose sight this AI shares: itself and its allies but a
     // passive neutral (World::viewShareMask).
     std::vector<int> team_;
-    bool teamSees(const tak::sim::World&, const tak::sim::Unit&) const;
-    bool teamViews(const tak::sim::World&, int cx, int cz) const;
+    bool teamSees(const ta::sim::World&, const ta::sim::Unit&) const;
+    bool teamViews(const ta::sim::World&, int cx, int cz) const;
     // What this side knows, as a human player of it is shown it under the room's
     // FOG OF WAR rule. Our client draws the ground (terrain, features, mana
     // deposits) on every explored cell, and enemy units only on cells in view now:
@@ -471,14 +471,14 @@ private:
     std::vector<uint8_t> radarSeen_;  // ... and whether one ever was
     std::vector<std::tuple<int, int, int>> radarSources_;   // the discs counted: 32 px spot, range
     void stampRadar(int qx, int qz, int r, int delta);
-    void updateRadar(const tak::sim::World&);
+    void updateRadar(const ta::sim::World&);
     bool radarAt(float x, float z) const;
     // The ground at (x,z) -- terrain, features, a mana deposit -- is known.
-    bool knowsGround(const tak::sim::World&, float x, float z) const;
+    bool knowsGround(const ta::sim::World&, float x, float z) const;
     // The ground point (x,z) is in view now.
-    bool inView(const tak::sim::World&, float x, float z) const;
+    bool inView(const ta::sim::World&, float x, float z) const;
     // An enemy unit is in view now (never cloaked or carried).
-    bool sees(const tak::sim::World&, const tak::sim::Unit&) const;
+    bool sees(const ta::sim::World&, const ta::sim::Unit&) const;
     // Mana deposits (World::manaSpots() index) this AI holds taken by an enemy: a
     // lodestone of one seen there, or remembered there (knowledge_), or learned
     // from a refused site (learnSiteBlockers). Refreshed per think; mutable so a
@@ -490,7 +490,7 @@ private:
     // Deposits bucketed on a kDepositCell grid (they never move), built once.
     static constexpr int kDepositCell = 128;
     std::vector<std::pair<int64_t, int>> depositGrid_;
-    template <class F> void forDepositsNear(const tak::sim::World&, float x, float z, float r, F&& fn) const;
+    template <class F> void forDepositsNear(const ta::sim::World&, float x, float z, float r, F&& fn) const;
     // Enemy lodestones out of view this think: what a lodestone site's real
     // placement test (World::canPlace) can be refused by unseen.
     struct HiddenLode { int id; float x, z; };
@@ -500,9 +500,9 @@ private:
     // as known (heard, not sighted) at the next think, the deposit taken from now.
     // Other sites refused are only passed over, as before.
     mutable std::vector<int> learned_;
-    void learnSiteBlockers(const tak::sim::World&, const tak::sim::UnitType*, float x, float z) const;
+    void learnSiteBlockers(const ta::sim::World&, const ta::sim::UnitType*, float x, float z) const;
     // Refresh knowledge_ and the exploration state from this think's sight.
-    void updateKnowledge(const tak::sim::World&);
+    void updateKnowledge(const ta::sim::World&);
     // Exploration: the start spots an enemy may hold (starts_), then a coarse
     // grid of map sectors, each with the think tick + 1 it was last in sight (0
     // never) and the tick until which a party sent there holds it. A start is
@@ -538,8 +538,8 @@ private:
     std::vector<float> sectorLure_;   // per sector, 1 + what may draw an enemy there (deposits)
     int sectorsX_ = 0, sectorsZ_ = 0;
     float sectorSize_ = 0;
-    std::map<std::pair<int, const tak::sim::UnitType*>, uint32_t> unreachable_;   // slot, type -> until
-    bool exploreTarget(const tak::sim::World&, const tak::sim::UnitType* type, float x, float z,
+    std::map<std::pair<int, const ta::sim::UnitType*>, uint32_t> unreachable_;   // slot, type -> until
+    bool exploreTarget(const ta::sim::World&, const ta::sim::UnitType* type, float x, float z,
                        float& tx, float& tz, int& slot, bool scout = false);
     void claimSlot(int slot, uint32_t ticks);
     bool sectorCentre(int sector, float mapX, float mapZ, float& x, float& z) const;
@@ -548,7 +548,7 @@ private:
     // (ground first): every unit that can reach the point picked attack-moves
     // there. Returns the units ordered; with `scout`, a scouting party's pick,
     // whose slot comes back in `*slotOut`.
-    int explore(const tak::sim::World&, const std::vector<int>& ids, const CommandSink&,
+    int explore(const ta::sim::World&, const std::vector<int>& ids, const CommandSink&,
                 bool scout = false, int* slotOut = nullptr);
     // Scouting parties (exploreLevelFor): the scouts out, by unit id, each with
     // the tick its trip began, the slot it was sent to, where it was last seen
@@ -567,35 +567,35 @@ private:
     // Losses within kLossRouteRadius of the way from (x,z) to (tx,tz).
     int lossesOnRoute(float x, float z, float tx, float tz) const;
     uint32_t nextScoutTick_ = 0;
-    int scoutsSent_ = 0, explorations_ = 0;   // dispatch counts, for the TAK_AI_EXPLORE log
+    int scoutsSent_ = 0, explorations_ = 0;   // dispatch counts, for the TA_AI_EXPLORE log
     int scoutsLost_ = 0;                       // scouts killed on a trip, for the same log
     int vacatedTrips_ = 0, vacatedLost_ = 0;   // scouts sent to / lost going to a beaten player's base
     uint32_t loggedMinute_ = 0;                // minute + 1 last logged
     bool loggedWin_ = false;
-    void logExploration(const tak::sim::World&, uint32_t simTick);
+    void logExploration(const ta::sim::World&, uint32_t simTick);
     struct Fighter { int id; float x, z, s; };   // a fighter free for sendWaves, its strength s
     // Bring scouts home to the army, send the next one on, and, when one is due,
     // take the pool's fastest fighter for a new scouting party.
-    void sendScouts(const tak::sim::World&, uint32_t simTick, const CommandSink&,
+    void sendScouts(const ta::sim::World&, uint32_t simTick, const CommandSink&,
                     const StrikeBoard&, std::vector<Fighter>& pool);
     // (x,z) lies nearer some enemy start than home (hx,hz): the enemy's side of the map.
     bool enemySide(float x, float z, float hx, float hz) const;
     // `pad` pushes the approach rings out, so a unit stands clear of a body at
     // (tx,tz) rather than in it (sitePad).
-    bool reachablePoint(const tak::sim::World&, const tak::sim::UnitType*,
+    bool reachablePoint(const ta::sim::World&, const ta::sim::UnitType*,
                         float fx, float fz, float tx, float tz, float& x, float& z, float pad = 0) const;
     // That pad for a unit of `type` going for `site`'s anchor.
-    static float sitePad(const StrikeSite& site, const tak::sim::UnitType* type);
-    int terrainWeight(const tak::sim::World&, const tak::sim::Unit&,
-                      const tak::sim::UnitType*, int weight) const;
-    void sendWaves(const tak::sim::World&, uint32_t simTick, const CommandSink&,
+    static float sitePad(const StrikeSite& site, const ta::sim::UnitType* type);
+    int terrainWeight(const ta::sim::World&, const ta::sim::Unit&,
+                      const ta::sim::UnitType*, int weight) const;
+    void sendWaves(const ta::sim::World&, uint32_t simTick, const CommandSink&,
                    const std::vector<int>& assigned);
-    void sendDefenders(const tak::sim::World&, const CommandSink&);
+    void sendDefenders(const ta::sim::World&, const CommandSink&);
     // Unbounded levels: walk idle fighters out of the base to a ring around it.
-    void stationArmy(const tak::sim::World&, std::vector<int>& assigned, const CommandSink&);
+    void stationArmy(const ta::sim::World&, std::vector<int>& assigned, const CommandSink&);
     // The initial base anchor stays fixed as expansion adds remote buildings.
     // The Monarch and defensive AI use it to remain near home.
-    std::pair<float, float> homeOf(const tak::sim::World&) const;
+    std::pair<float, float> homeOf(const ta::sim::World&) const;
 
     // Idle, or only holding a factory's PARK release: retail parks every factory
     // output with no rally (GetBuilt 0x402220) and that PARK lasts until the next
@@ -606,27 +606,27 @@ private:
     // a flying builder after each building): it is on its standby, and a new order
     // replaces the landing. Waiting for the touchdown cost a flying builder (the Zhon
     // Monarch) about four seconds after every building.
-    static bool idle(const tak::sim::Unit& u) {
+    static bool idle(const ta::sim::Unit& u) {
         const auto first=u.orders.begin()+(!u.orders.empty() && u.orders.front().stepOut ? 1 : 0);
-        return std::all_of(first,u.orders.end(),[](const tak::sim::Order& o) {
+        return std::all_of(first,u.orders.end(),[](const ta::sim::Order& o) {
             return o.park || o.landing || (!o.goal && !o.groundMission && !o.buildType && !o.targetId && !o.reclaimFeat &&
                 !bool(o.reclaimArea) && !o.repairTarget && !o.load && !o.unload && !o.patrol &&
                 !o.attackMove && !o.guard);
         }) && (first==u.orders.end() || std::any_of(first,u.orders.end(),
-            [](const tak::sim::Order& o){return o.park || o.landing;}));
+            [](const ta::sim::Order& o){return o.park || o.landing;}));
     }
     // Only raising a body (a RESURRECT leg, which reviveIdle gives): as free to
     // produce as an idle builder -- a build order simply replaces it.
-    static bool raising(const tak::sim::Unit& u) {
+    static bool raising(const ta::sim::Unit& u) {
         return !u.orders.empty() && u.orders.back().reviveKind &&
-               std::none_of(u.orders.begin(),u.orders.end(),[](const tak::sim::Order& o) {
+               std::none_of(u.orders.begin(),u.orders.end(),[](const ta::sim::Order& o) {
                    return o.goal && !o.reviveKind;
                });
     }
     // Our levels raise the dead by order now that nothing in the sim raises a
     // body on its own: each idle caster with a body it can raise within the
     // old idle search's 56 px is sent to raise the nearest (Cmd::Resurrect).
-    void reviveIdle(const tak::sim::World&, std::vector<int>& assigned, const CommandSink&) const;
+    void reviveIdle(const ta::sim::World&, std::vector<int>& assigned, const CommandSink&) const;
     // A fighter is free to be committed to a wave when it's idle or only doing a plain
     // move -- NOT while it's already fight-moving or attacking (so re-commanding it each
     // think doesn't reset its march and thrash it in place).
@@ -637,8 +637,8 @@ private:
     // unit is doing. Read by its head alone, a Catapult backing off was free on
     // every think: the Attack was sent again, its queue replaced, the walk begun
     // again until the sim's three were spent, and it never fired.
-    static bool waveFree(const tak::sim::Unit& u) {
-        return std::none_of(u.orders.begin(), u.orders.end(), [](const tak::sim::Order& o) {
+    static bool waveFree(const ta::sim::Unit& u) {
+        return std::none_of(u.orders.begin(), u.orders.end(), [](const ta::sim::Order& o) {
             return o.targetId != 0 || o.attackMove || o.buildType || o.load || o.unload || o.guard;
         });
     }
@@ -649,12 +649,12 @@ private:
     struct StrikeProgress { float x, z; uint32_t since; uint8_t stops; };
     std::unordered_map<int, StrikeProgress> strikeProgress_;
     uint32_t strikeProgressAt_ = 0;   // the think strikeProgress_ was last brought up to
-    void updateStrikeProgress(const tak::sim::World&, uint32_t simTick, const CommandSink&);
-    void emit(const CommandSink& sink, tak::net::Cmd kind, int unitId,
+    void updateStrikeProgress(const ta::sim::World&, uint32_t simTick, const CommandSink&);
+    void emit(const CommandSink& sink, ta::net::Cmd kind, int unitId,
               const std::string& type, float x, float z) const;
 
     int player_;
-    const tak::sim::TypeRegistry& registry_;
+    const ta::sim::TypeRegistry& registry_;
     const Profile& profile_;
     uint32_t rng_;
     Difficulty diff_;     // Passive runs as Easy: every Easy branch is its own
@@ -682,7 +682,7 @@ private:
     // think leaves it to an ally.
     std::vector<uint32_t> depositClaimedAt_;
     std::vector<uint8_t> allyHeldDeposits_;
-    void updateAllyClaims(const tak::sim::World&, uint32_t simTick);
+    void updateAllyClaims(const ta::sim::World&, uint32_t simTick);
     // Each allied builder whose orders hold a deposit, by unit id: the point of
     // the task it is on now (its build site, or its leg's goal), the nearest it
     // has come to it, and the think tick it last came 64 px nearer than that or
@@ -693,7 +693,7 @@ private:
     std::unordered_map<int, BuilderProgress> builderProgress_;
     struct StalledSite { int unit; float x, z; };
     std::vector<StalledSite> stalledSites_;
-    void updateBuilderProgress(const tak::sim::World&, uint32_t simTick, const CommandSink&);
+    void updateBuilderProgress(const ta::sim::World&, uint32_t simTick, const CommandSink&);
     bool stalledBuilder(int unitId) const;
     // Hard's and Absurd's builders reach the whole map for deposits (placeSite).
     // Ours, not retail, whose AI builds only inside its bases. A deposit is not
@@ -723,9 +723,9 @@ private:
     // and whether its death now would make the deposit unsafe (updateLostSites).
     struct LodestoneTrip { float x, z, from; bool unsafe; };
     std::map<int, LodestoneTrip> lodestoneTrips_;
-    void updateLostSites(const tak::sim::World&);
-    bool buildsLodestone(const tak::sim::UnitType*) const;
-    mutable std::unordered_map<const tak::sim::UnitType*,bool> lodestoneBuilders_;
+    void updateLostSites(const ta::sim::World&);
+    bool buildsLodestone(const ta::sim::UnitType*) const;
+    mutable std::unordered_map<const ta::sim::UnitType*,bool> lodestoneBuilders_;
     struct DefenseResponse {
         float homeX, homeZ, goalX, goalZ;
         bool returning = false;
@@ -735,14 +735,14 @@ private:
     // Server-local assignments, not simulation state. Commands still use the
     // ordinary sequencer and movement controllers on every peer.
     std::unordered_map<int, DefenseResponse> defenders_;
-    mutable std::unordered_map<const tak::sim::UnitType*,std::vector<std::pair<float,float>>> navalOffsets_;
+    mutable std::unordered_map<const ta::sim::UnitType*,std::vector<std::pair<float,float>>> navalOffsets_;
     // Unbounded levels: a factory whose queue head has waited kQueueStallTicks
     // without a site (its output pad blocked, say) has it unqueued, and that factory
     // trains anything but that type for kRefusedTicks (refused_).
-    struct QueueWait { const tak::sim::UnitType* type; uint32_t since; };
+    struct QueueWait { const ta::sim::UnitType* type; uint32_t since; };
     std::unordered_map<int, QueueWait> queueWait_;
     std::unordered_map<int, QueueWait> refused_;   // since = the tick it may try again
-    void unqueueStalled(const tak::sim::World&, uint32_t simTick, const CommandSink&);
+    void unqueueStalled(const ta::sim::World&, uint32_t simTick, const CommandSink&);
     // Difficulty::Classic only: the retail-AI port that drives this player in place
     // of everything above (which then stays idle).
     std::unique_ptr<ClassicBrain> classic_;
@@ -761,4 +761,4 @@ private:
     uint32_t lastRaidTick_ = 0;   // last tick a harassing raid was sent (raid cooldown)
 };
 
-}  // namespace tak::ai
+}  // namespace ta::ai

@@ -47,13 +47,13 @@ static void differentialTest(SDL_Renderer* renderer,SDL_Texture* texture) {
         u.run={texture,96};
     };
     for(int k=0;k<units;++k)unit[size_t(k)].id=uint64_t(k)+1;
-    tak::DistantModels cache;legacy::DistantModels reference;
+    ta::DistantModels cache;legacy::DistantModels reference;
     cache.allowSoftware=reference.allowSoftware=true;
-    std::vector<tak::DistantModels::Item> a,b;
+    std::vector<ta::DistantModels::Item> a,b;
     std::vector<int> visible;
     bool pagesDiverged=false;
     size_t predicted=0,late=0,boundsReused=0,releases=0,migrated=0,fewerSwitches=0,pixelChecks=0,frames=0,shown=0;
-    struct Context {std::vector<tak::DistantModels::Item>* items;std::vector<Unit>* unit;std::vector<int>* visible;size_t* late;} ctx{&a,&unit,&visible,&late};
+    struct Context {std::vector<ta::DistantModels::Item>* items;std::vector<Unit>* unit;std::vector<int>* visible;size_t* late;} ctx{&a,&unit,&visible,&late};
     const auto materialize=[](void* p,size_t index) {
         auto& c=*static_cast<Context*>(p);
         auto& item=(*c.items)[index];const auto& u=(*c.unit)[size_t((*c.visible)[index])];
@@ -99,7 +99,7 @@ static void differentialTest(SDL_Renderer* renderer,SDL_Texture* texture) {
         // the image.
         std::vector<char> deferred(visible.size(),0);
         for(size_t i=0;i<visible.size();++i)
-            if(tak::DistantModels::candidate(a[i]) && cache.holds(a[i].id,a[i].zoom,sx,sy,now)) {
+            if(ta::DistantModels::candidate(a[i]) && cache.holds(a[i].id,a[i].zoom,sx,sy,now)) {
                 auto& u=unit[size_t(visible[i])];
                 std::copy(u.stale.begin(),u.stale.end(),u.verts.begin());
                 a[i].bodyDeferred=true;deferred[i]=1;++predicted;
@@ -208,8 +208,8 @@ int main() try {
         for(int i:{0,1,2,0,2,3})vertices.push_back(q[i]);
     }
     std::pair<SDL_Texture*,int> run{texture,int(vertices.size())};
-    tak::DistantModels cache;
-    tak::DistantModels::Item item;item.id=1;item.revision=1;item.x=20;item.y=20;
+    ta::DistantModels cache;
+    ta::DistantModels::Item item;item.id=1;item.revision=1;item.x=20;item.y=20;
     item.zoom=.25;item.eligible=true;item.source=vertices;item.runs={&run,1};
     auto read=[&] {std::vector<unsigned char> p(96*96*4);check(SDL_RenderReadPixels(renderer,nullptr,SDL_PIXELFORMAT_RGBA32,p.data(),96*4)==0,SDL_GetError());return p;};
     auto background=[&] {SDL_SetRenderDrawColor(renderer,80,90,100,255);SDL_RenderClear(renderer);};
@@ -218,7 +218,7 @@ int main() try {
     cache.prepare(renderer,{&item,1},100);
     if(!item.texture) {
         check(!cache.used,"unsupported renderer must retain full geometry");
-        if(std::getenv("TAK_REQUIRE_DISTANT_GPU"))throw std::runtime_error("accelerated distant path unavailable");
+        if(std::getenv("TA_REQUIRE_DISTANT_GPU"))throw std::runtime_error("accelerated distant path unavailable");
         std::puts("PASS: unsupported renderer keeps full geometry (GPU comparisons skipped)");
     } else {
         background();SDL_RenderGeometry(renderer,item.texture,item.quad.data(),6,nullptr,0);
@@ -285,12 +285,12 @@ int main() try {
     SDL_RenderCopyF(renderer,texture,&src,&first);SDL_RenderCopyF(renderer,texture,&src,&second);
     const auto shadows=read();
     std::vector<SDL_Vertex> shadowBatch;
-    tak::appendShadowComposite(shadowBatch,src,first,2,2,127);
-    tak::appendShadowComposite(shadowBatch,src,second,2,2,127);
+    ta::appendShadowComposite(shadowBatch,src,first,2,2,127);
+    ta::appendShadowComposite(shadowBatch,src,second,2,2,127);
     // Degenerate padding exercises the direct-submit threshold without
     // saturating the overlapping shadows to black and hiding blend errors.
     shadowBatch.resize(600);
-    background();tak::GeometrySubmit submit;submit.draw(renderer,texture,shadowBatch);
+    background();ta::GeometrySubmit submit;submit.draw(renderer,texture,shadowBatch);
     const auto batched=read();int shadowError=0;
     for(size_t i=0;i<shadows.size();++i)shadowError=std::max(shadowError,std::abs(int(shadows[i])-int(batched[i])));
     check(shadowError<=2,"batched shadows preserve modulation and overlapping coverage");

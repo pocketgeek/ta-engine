@@ -18,7 +18,7 @@ failures = []
 
 def run(cmd, **kw):
     env = dict(os.environ)
-    home = tempfile.mkdtemp(prefix="tak-cli-")   # never touch the real profile
+    home = tempfile.mkdtemp(prefix="ta-cli-")   # never touch the real profile
     env.update(HOME=home, XDG_DATA_HOME=home, XDG_CONFIG_HOME=home, SDL_VIDEODRIVER="dummy")
     return subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env, **kw)
 
@@ -68,7 +68,7 @@ def main():
     if a.cartographer:
         # Neither flag may reach the editor: no window, no data-folder prompt, no profile.
         r = run([a.cartographer, "--version"])
-        check("cartographer --version", r.returncode == 0 and r.stdout.startswith("cartographer (TAK engine) ")
+        check("cartographer --version", r.returncode == 0 and r.stdout.startswith("cartographer (TA engine) ")
               and " (build " in r.stdout, f"rc={r.returncode} out={r.stdout!r} err={r.stderr!r}")
         r2 = run([a.cartographer, "-v"])
         check("cartographer -v matches --version", r2.returncode == 0 and r2.stdout == r.stdout)

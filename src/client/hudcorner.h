@@ -12,7 +12,7 @@
 
 #include <algorithm>
 
-namespace tak::hudcorner {
+namespace ta::hudcorner {
 
 // Clear space between two stacked overlays.
 inline constexpr float kGap = 4.0f;
@@ -60,4 +60,4 @@ inline Board scoreboard(float requested, bool teams, int players, float areaW, f
     return {scale, top};
 }
 
-}  // namespace tak::hudcorner
+}  // namespace ta::hudcorner

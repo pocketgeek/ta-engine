@@ -37,8 +37,8 @@ namespace {
     bool openGateDoorwayAt(const UnitR& u,float wx,float wz) {
         if (!u.yardOpen || !u.type || !u.type->gate || u.type->yardMap.empty()) return false;
         const auto& type=*u.type;
-        const int dx=int(std::floor(wx/16))-tak::sim::footprintOrigin(u.x,type.footX);
-        const int dz=int(std::floor(wz/16))-tak::sim::footprintOrigin(u.z,type.footZ);
+        const int dx=int(std::floor(wx/16))-ta::sim::footprintOrigin(u.x,type.footX);
+        const int dz=int(std::floor(wz/16))-ta::sim::footprintOrigin(u.z,type.footZ);
         if (dx<0 || dz<0 || dx>=type.footX || dz>=type.footZ) return false;
         const char yard=type.yardMap[size_t(dz)*type.footX+dx];
         return yard=='c' || yard=='C';
@@ -50,7 +50,7 @@ namespace {
     // returns. No simMutex_ anywhere -- the snapshot can be a frame stale, and the sim
     // validates the target when it applies the Reclaim (a gone feature is dropped).
     std::optional<int> GameView::reclaimTargetAt(float wx,float wz) const {
-        tak::client::ReclaimPick pick{wx,wz};
+        ta::client::ReclaimPick pick{wx,wz};
         for (const auto& f:features_) {
             if (!f.hasSim || !f.aliveVis || !f.reclaimable || !canPickPoint(f.x,f.z)) continue;
             pick.offer(f.simId,f.x,f.z,f.fx,f.fz);
@@ -93,13 +93,13 @@ namespace {
                 ++count;used+=uint16_t(c->type->transportSize);
             }
         }
-        return tak::sim::retailTransportCapacity(uint16_t(u.type->transportSize),
+        return ta::sim::retailTransportCapacity(uint16_t(u.type->transportSize),
             uint16_t(t.type->maxTransportSize),count,uint16_t(t.type->transportCap),
             used,uint16_t(t.type->transportSizeCap));
     }
 
     bool GameView::hardwareCursorInUse() const {
-        return settings_ && tak::useHardwareCursor(settings_->hardwareCursor, hwCursorFailed_);
+        return settings_ && ta::useHardwareCursor(settings_->hardwareCursor, hwCursorFailed_);
     }
 
     void GameView::drawCursorOverlay(bool uiOverlay) {
@@ -119,10 +119,10 @@ namespace {
         const auto cursorStart = std::chrono::steady_clock::now();
         debugPickTests_ = 0;
 #endif
-        tak::CursorId c = tak::CursorId::Normal;
+        ta::CursorId c = ta::CursorId::Normal;
         if (!uiOverlay) {
-            tak::render::ScopedPhase phase(renderStats_, tak::render::Phase::Cursor);
-            renderStats_.add(tak::render::Counter::CursorEvals);
+            ta::render::ScopedPhase phase(renderStats_, ta::render::Phase::Cursor);
+            renderStats_.add(ta::render::Counter::CursorEvals);
             c = desiredCursor(fightTint);
         }
 #ifndef NDEBUG
@@ -130,12 +130,12 @@ namespace {
             cursorStudy_ = {uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                 std::chrono::steady_clock::now() - cursorStart).count()),
                             debugPickTests_, int(c), fightTint, mouseX_, mouseY_};
-        static const bool pickVerify = tak::devFlag("TAK_PICK_INDEX_VERIFY");
+        static const bool pickVerify = ta::devFlag("TA_PICK_INDEX_VERIFY");
         if (pickVerify && !uiOverlay) {
             // The same decision from a scan over every unit (pickCandidates' reference).
             bool fullTint = false;
             pickForceFull_ = true;
-            const tak::CursorId full = desiredCursor(fullTint);
+            const ta::CursorId full = desiredCursor(fullTint);
             pickForceFull_ = false;
             ++pickVerify_.decisions;
             if (full != c || fullTint != fightTint)
@@ -170,11 +170,11 @@ namespace {
         cursors_.draw(ren_, c, mx, my, sc, tint);
     }
 
-    tak::CursorId GameView::desiredCursor(bool& fightTint) {
+    ta::CursorId GameView::desiredCursor(bool& fightTint) {
         // Retail draws fight-move with the plain MOVE cursor (the selector never
         // reads the fight flag), so nothing is tinted any more.
         fightTint = false;
-        using namespace tak::client;
+        using namespace ta::client;
         const PointerArea area = pointerArea();
         CursorFrame frame;
         // The Benchmark's results screen lies over the frozen game: the pointer there is on
@@ -212,14 +212,14 @@ namespace {
         // An armed press of another command past the threshold is a box select.
         frame.boxDrag = armedPress_ ? areaBox && !boxMode : dragging_;
         frame.armed = pendingCmd_ != 0;
-        tak::CursorId fixed = tak::CursorId::Normal;
+        ta::CursorId fixed = ta::CursorId::Normal;
         const CursorStage stage = cursorStage(frame, fixed);
         if (stage == CursorStage::Fixed) return fixed;
 
         // Ours: with nothing armed the minimap keeps Normal. Retail's hover cursor
         // describes the LEFT click in the right-click interface, and on the minimap
         // that is the camera.
-        if (stage == CursorStage::Hover && area == PointerArea::Minimap) return tak::CursorId::Normal;
+        if (stage == CursorStage::Hover && area == PointerArea::Minimap) return ta::CursorId::Normal;
         float wx = 0, wz = 0;
         if (area == PointerArea::Minimap) minimapToWorld(mouseX_, mouseY_, winW_, winH_, wx, wz);
         else pickWorld(mouseX_, mouseY_, wx, wz);
@@ -234,8 +234,8 @@ namespace {
     // Where the pointer is, as retail's 0x528430 sorts it: the main view, the
     // minimap, or interface (the command panel, the bottom bar, the build strip,
     // the replay bar), where every cursor is Normal.
-    tak::client::PointerArea GameView::pointerArea() const {
-        using tak::client::PointerArea;
+    ta::client::PointerArea GameView::pointerArea() const {
+        using ta::client::PointerArea;
         if (mouseX_ < 0) return PointerArea::Unknown;
         // Build icons and their strip cover the map. Do not classify world
         // targets behind them, even with a placement or command armed.
@@ -258,10 +258,10 @@ namespace {
     // region measures -- a tie to the nearer centre, then the earlier entry. A
     // carried unit is not drawn and never picked. On the minimap, the nearest dot
     // within 2 px, from the units the minimap draws (0x5213ae S).
-    const UnitR* GameView::hoveredUnitAt(tak::client::PointerArea area, float mx, float my) {
+    const UnitR* GameView::hoveredUnitAt(ta::client::PointerArea area, float mx, float my) {
         const UnitR* best = nullptr;
         float bestD = 1e30f, bestSize = 1e30f;
-        if (area == tak::client::PointerArea::Minimap) {
+        if (area == ta::client::PointerArea::Minimap) {
             const SDL_FRect r = minimapRect(winW_, winH_);
             const float mapW = float(mapView_.map().blocksX) * 32, mapH = float(mapView_.map().blocksY) * 32;
             if (mapW <= 0 || mapH <= 0) return nullptr;
@@ -275,7 +275,7 @@ namespace {
             }
             return best;
         }
-        if (area != tak::client::PointerArea::World) return nullptr;
+        if (area != ta::client::PointerArea::World) return nullptr;
         const auto& live = front().live;
         for (uint32_t index : pickCandidates(mx, my)) {
             const UnitR& u = *live[index];
@@ -291,8 +291,8 @@ namespace {
     // Select needs our own FINISHED unit (0x4de03b's test); anything else of
     // ours or an ally's is friendly, the rest enemy. One a mission script runs
     // (+0x130 & 0x20 clear) is not selectable.
-    tak::client::HoverKind GameView::cursorHoverKind(const UnitR* u) const {
-        using tak::client::HoverKind;
+    ta::client::HoverKind GameView::cursorHoverKind(const UnitR* u) const {
+        using ta::client::HoverKind;
         if (!u) return HoverKind::None;
         if (u->player == localPlayer_ && !u->underConstruction && !u->embarked() && u->selectable)
             return HoverKind::OwnSelectable;
@@ -314,18 +314,18 @@ namespace {
     // selected builder is working on included) is Green, and a body or feature a
     // selected unit could raise or reclaim is Green. Attack, Repair, Load, Unload,
     // Revive and Reclaim appear only with the command armed. cursorrules.h.
-    tak::CursorId GameView::hoverCursor(float wx, float wz, const UnitR* hovered) {
-        tak::client::HoverFacts f;
+    ta::CursorId GameView::hoverCursor(float wx, float wz, const UnitR* hovered) {
+        ta::client::HoverFacts f;
         f.target = cursorHoverKind(hovered);
         f.othersSelected = std::any_of(selection_.begin(), selection_.end(), [&](int id) {
             const auto* u = frameUnitP(id);
             return u && u->alive() && u->player == localPlayer_ && (!hovered || u->id != hovered->id);
         });
-        if (f.othersSelected && f.target == tak::client::HoverKind::None) {
+        if (f.othersSelected && f.target == ta::client::HoverKind::None) {
             f.raisableAtPoint = raiseTargetAt(wx, wz) != 0;
             f.reclaimableAtPoint = !f.raisableAtPoint && haveReclaimer() && reclaimTargetAt(wx, wz);
         }
-        return tak::client::cursorForHover(f);
+        return ta::client::cursorForHover(f);
     }
 
     void GameView::postNotice(std::string msg, float t) {
@@ -351,7 +351,7 @@ namespace {
         return std::max(miniSize() + 12, int(128 * guiS()) + 8);
     }
 
-    SDL_FRect GameView::guiCmdRect(const tak::gui::Gadget& g) const {
+    SDL_FRect GameView::guiCmdRect(const ta::gui::Gadget& g) const {
         float s = guiS();
         // 640-space y=480 (screen bottom in retail) maps just above our info bar so
         // the command panel and the existing bottom bar don't overlap.
@@ -359,7 +359,7 @@ namespace {
         return {winW_ - (640 - g.x) * s, baseY - (480 - g.y) * s, g.w * s, g.h * s};
     }
 
-    SDL_FRect GameView::guiBarRect(const tak::gui::Gadget& g) const {
+    SDL_FRect GameView::guiBarRect(const ta::gui::Gadget& g) const {
         float vs = float(barH()) / 49.0f;   // 49-tall retail bar -> barH() px
         float barTop = winH_ - barH();
         return {g.x * vs, barTop + (g.y - 431) * vs, g.w * vs, g.h * vs};
@@ -472,10 +472,10 @@ namespace {
         }
         if (actualSpeed_ > 0) {
             // The measured speed as retail's level (NORMAL, +5, -3), not a multiplier.
-            rows.push_back({"SIM", tak::speedLevelText(tak::speedLevelOf(actualSpeed_))});
+            rows.push_back({"SIM", ta::speedLevelText(ta::speedLevelOf(actualSpeed_))});
         }
         // A benchmark run's identity, so two runs on screen can be told apart.
-        if (benchmarkMode_) rows.push_back({"PATHFINDER", tak::benchmarkPathLabel(worldTables().pathfindingMode())});
+        if (benchmarkMode_) rows.push_back({"PATHFINDER", ta::benchmarkPathLabel(worldTables().pathfindingMode())});
 
         // Living units owned by the player on show, including embarked units. With
         // nobody on show (a watcher, nothing selected) the match-wide living count.
@@ -508,20 +508,20 @@ namespace {
         std::snprintf(b, sizeof b, "%llu:%02llu",
                       (unsigned long long)(elapsed / 60), (unsigned long long)(elapsed % 60));
         rows.push_back({"REAL TIME", b});
-        const uint32_t gameSecs = front().gameTick / uint32_t(tak::net::kServerHz);
+        const uint32_t gameSecs = front().gameTick / uint32_t(ta::net::kServerHz);
         std::snprintf(b, sizeof b, "%u:%02u", gameSecs / 60, gameSecs % 60);
         rows.push_back({"GAME TIME", b});
 
         const uint64_t now = SDL_GetTicks64();
         if (!statsSampleAt_ || now - statsSampleAt_ >= 1000) {
-            const auto client = tak::proc::sample(0);
-            statsCpuPct_ = tak::proc::processCpuPercent(statsProcess_, client,
-                statsSampleAt_ ? double(now-statsSampleAt_)/1000.0 : 0.0, tak::proc::numCpus());
+            const auto client = ta::proc::sample(0);
+            statsCpuPct_ = ta::proc::processCpuPercent(statsProcess_, client,
+                statsSampleAt_ ? double(now-statsSampleAt_)/1000.0 : 0.0, ta::proc::numCpus());
             statsProcess_ = client;
             if(localServerPid_>0) {
-                const auto server=tak::proc::sample(localServerPid_);
-                statsServerCpuPct_=tak::proc::processCpuPercent(statsServer_,server,
-                    statsSampleAt_ ? double(now-statsSampleAt_)/1000.0 : 0.0,tak::proc::numCpus());
+                const auto server=ta::proc::sample(localServerPid_);
+                statsServerCpuPct_=ta::proc::processCpuPercent(statsServer_,server,
+                    statsSampleAt_ ? double(now-statsSampleAt_)/1000.0 : 0.0,ta::proc::numCpus());
                 statsServer_=server;
             }
             statsSampleAt_ = now;
@@ -533,7 +533,7 @@ namespace {
             statsGpu_ = statsGpuPending_.get();
         if (!statsGpuPending_.valid() && (!statsGpuAt_ || now - statsGpuAt_ >= 2000)) {
             statsGpuAt_ = now;
-            statsGpuPending_ = std::async(std::launch::async, [] { return tak::proc::gpuSample(); });
+            statsGpuPending_ = std::async(std::launch::async, [] { return ta::proc::gpuSample(); });
         }
         if (statsCpuPct_ >= 0) std::snprintf(b, sizeof b, "%.0f%%", statsCpuPct_);
         else std::snprintf(b, sizeof b, "N/A");
@@ -543,7 +543,7 @@ namespace {
             else std::snprintf(b,sizeof b,"N/A");
             rows.push_back({"SERVER CPU",b});
         }
-        const double gpuPct=tak::proc::systemGpuPercent(statsGpu_);
+        const double gpuPct=ta::proc::systemGpuPercent(statsGpu_);
         if (gpuPct >= 0)
             std::snprintf(b, sizeof b, "%.0f%%", gpuPct);
         else std::snprintf(b, sizeof b, "N/A");
@@ -555,7 +555,7 @@ namespace {
         }
         std::snprintf(b, sizeof b, "%zu MB", gpuvram::bytes() >> 20);
         rows.push_back({"VID", b});
-        rows.push_back({"RENDERER", tak::renderdriver::shortLabel(tak::renderdriver::active().created)});
+        rows.push_back({"RENDERER", ta::renderdriver::shortLabel(ta::renderdriver::active().created)});
 
         // The face the mana readout uses (client/uitext.h), so the panel matches the HUD
         // it sits in rather than introducing a second face.
@@ -567,8 +567,8 @@ namespace {
         constexpr int kColBudget = 18;
         const float px = 1.7f * uiScale_;
         const float glyphW = std::max(6.0f, blockWidth("SERVER CPU 9999 MB", 1.0f) / float(kColBudget));
-        const tak::hud::StatsFit fit =
-            tak::hud::fitStats(int(rows.size()), availW, availH, kColBudget,
+        const ta::hud::StatsFit fit =
+            ta::hud::fitStats(int(rows.size()), availW, availH, kColBudget,
                                glyphW, /*glyphH=*/7.0f, px,
                                // Breathing room between rows. The gap under the minimap
                                // runs to hundreds of pixels while nine rows need barely a
@@ -589,9 +589,9 @@ namespace {
             y += fit.rowH;
         }
 #ifndef NDEBUG
-        // TAK_BENCH_REPORT: the rows as drawn during a run, for benchmark_pathfinding.
+        // TA_BENCH_REPORT: the rows as drawn during a run, for benchmark_pathfinding.
         static bool reported = false;
-        if (!reported && worldTables().benchmarkMode() && tak::devFlag("TAK_BENCH_REPORT")) {
+        if (!reported && worldTables().benchmarkMode() && ta::devFlag("TA_BENCH_REPORT")) {
             reported = true;
             for (const auto& r : rows) std::printf("BENCHSTATS %s %s\n", r.label, r.value.c_str());
             std::fflush(stdout);
@@ -691,10 +691,10 @@ namespace {
         scoreboardFont_.setLetterSpacing(0);
         // The embedded TrueType face (client/uifont.h) is not art; only its glyph sheets
         // go, and the next draw rebuilds them.
-        tak::releaseUiTextGlyphs();
+        ta::releaseUiTextGlyphs();
     }
 
-    void GameView::reloadInterfaceArt(const tak::Settings& s) {
+    void GameView::reloadInterfaceArt(const ta::Settings& s) {
         clearSideArt();
         loadInterfaceFonts();
         loadPanel(side_);
@@ -721,8 +721,8 @@ namespace {
         gpuvram::destroy(botTex_); botTex_ = nullptr;
         std::string base = "anims/" + side + "ingame";
         try {
-            auto pal = tak::gaf::Palette::fromBytes(vread(base + ".pcx"), base + ".pcx");
-            for (auto& sq : tak::gaf::load(vread(base + ".gaf"), pal, -1, base + ".gaf")) {
+            auto pal = ta::gaf::Palette::fromBytes(vread(base + ".pcx"), base + ".pcx");
+            for (auto& sq : ta::gaf::load(vread(base + ".gaf"), pal, -1, base + ".gaf")) {
                 if (sq.frames.empty()) continue;
                 auto& f = sq.frames[0];
                 // Iron Plague's Creon art (creingame.gaf) names the same two panels
@@ -730,12 +730,12 @@ namespace {
                 if (sq.name == "AidPanel" || sq.name == "MainPanel" || sq.name == "ButtonPanel") {
                     // panelW_/panelH_ keep the 1x LOGICAL size, which is what the HUD
                     // lays out in -- so the texture being built at 2x is invisible here.
-                    panelTex_ = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                    panelTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                     panelW_ = f.width;
                     panelH_ = f.height;
                 } else if (sq.name == "AidBotPanel" || sq.name == "BottomPanel" ||
                            sq.name == "InfoPanel") {
-                    botTex_ = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                    botTex_ = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                     botW_ = f.width;
                     botH_ = f.height;
                 }
@@ -743,13 +743,13 @@ namespace {
         } catch (const std::exception&) {}
     }
 
-    tak::gaf::Palette GameView::guiPalette(const std::string& gaf) {
+    ta::gaf::Palette GameView::guiPalette(const std::string& gaf) {
         std::string pp = "anims/" + gaf + ".pcx";
         try {
-            return tak::gaf::Palette::fromBytes(vread(pp), pp);
+            return ta::gaf::Palette::fromBytes(vread(pp), pp);
         } catch (const std::exception&) {}
         try {
-            return tak::gaf::Palette::fromBytes(vread("palettes/guipal.pal"),
+            return ta::gaf::Palette::fromBytes(vread("palettes/guipal.pal"),
                                                 "palettes/guipal.pal");
         } catch (const std::exception&) {}
         return {};
@@ -763,13 +763,13 @@ namespace {
             auto pal = guiPalette(gaf.size() >= 4 && gaf.substr(gaf.size() - 4) == ".gaf"
                                       ? gaf.substr(0, gaf.size() - 4)
                                       : gaf);
-            for (auto& sq : tak::gaf::load(vread(gp), pal, -1, gp)) {
+            for (auto& sq : ta::gaf::load(vread(gp), pal, -1, gp)) {
                 if (sq.name != seq) continue;
                 if (frame < 0 || size_t(frame) >= sq.frames.size()) frame = 0;
                 if (sq.frames.empty()) return nullptr;
                 auto& f = sq.frames[size_t(frame)];
                 if (f.width == 0 || f.height == 0) return nullptr;
-                SDL_Texture* t = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                SDL_Texture* t = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                 return t;
             }
         } catch (const std::exception&) {}
@@ -783,10 +783,10 @@ namespace {
         guiTex_.clear();
         gui_ = {};
         artSide_ = side;
-        if (tak::devFlag("TAK_NOGUI")) return;   // debug: shoot the fallback stone HUD instead
+        if (ta::devFlag("TA_NOGUI")) return;   // debug: shoot the fallback stone HUD instead
         std::string path = "guis/" + side + "ingame.gui";
         try {
-            gui_ = tak::gui::parse(vread(path), path);
+            gui_ = ta::gui::parse(vread(path), path);
         } catch (const std::exception& e) {
             std::fprintf(stderr, "loadGui: %s: %s\n", path.c_str(), e.what());
             return;
@@ -797,7 +797,7 @@ namespace {
             for (const auto& im : g.imgs)
                 guiTex_[i].push_back(loadGuiFrame(im.gaf, im.seq, im.frame));
         }
-        if (tak::devEnv("TAK_GUIDEBUG")) {
+        if (ta::devEnv("TA_GUIDEBUG")) {
             std::fprintf(stderr, "== %s: %zu gadgets ==\n", path.c_str(),
                          gui_.gadgets.size());
             for (size_t i = 0; i < gui_.gadgets.size(); ++i) {
@@ -875,8 +875,8 @@ namespace {
             try {
                 std::string pp = "anims/" + std::string(gaf) + ".pcx";
                 std::string gp = "anims/" + std::string(gaf) + ".gaf";
-                auto pal = tak::gaf::Palette::fromBytes(vread(pp), pp);
-                for (auto& sq : tak::gaf::load(vread(gp), pal, -1, gp)) {
+                auto pal = ta::gaf::Palette::fromBytes(vread(pp), pp);
+                for (auto& sq : ta::gaf::load(vread(gp), pal, -1, gp)) {
                     if (sq.name != seq || sq.frames.size() < 3) continue;
                     OrderBtn b;
                     b.cmd = cmd;
@@ -886,7 +886,7 @@ namespace {
                         auto& f = sq.frames[size_t(idx[i])];
                         if (f.width == 0) continue;
                         // b.w/b.h keep the 1x logical size the button lays out in.
-                        b.frames[i] = tak::art::makeTexture(ren_, f.rgba, f.width, f.height);
+                        b.frames[i] = ta::art::makeTexture(ren_, f.rgba, f.width, f.height);
                         b.w = f.width;
                         b.h = f.height;
                     }
@@ -999,8 +999,8 @@ namespace {
         for (int id : selection_) {
             const auto* u = frameUnitP(id);
             if (!u || !u->type || int(u->type->weapons.size()) <= slot) continue;
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::SetWeapon;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::SetWeapon;
             c.unitId = id;
             c.targetId = slot;
             issue(c);
@@ -1050,7 +1050,7 @@ namespace {
             int i = guiIdx(nm);
             if (i >= 0) out.push_back({i, c});
         };
-        bool mobile = front->type->maxVel > tak::sim::Fixed();        // inverse of isStructure()
+        bool mobile = front->type->maxVel > ta::sim::Fixed();        // inverse of isStructure()
         bool armed = !front->type->weapons.empty();
         // A production building, or a mobile builder repeating production, takes
         // Move/Patrol/Attack as RALLY orders for its output (World::setRally);
@@ -1286,8 +1286,8 @@ namespace {
             guiPressedMs_ = SDL_GetTicks();
             if (cmd == 's') {
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
@@ -1299,12 +1299,12 @@ namespace {
                 // output keeps its own default.
                 const UnitR* f = selection_.empty() ? nullptr : frameUnitP(selection_.front());
                 if (f && f->type && f->showsOutputStance() && f->outputStance == st)
-                    st = tak::sim::World::kStanceNone;
-                issuePerUnit(tak::net::Cmd::Stance, st);
+                    st = ta::sim::World::kStanceNone;
+                issuePerUnit(ta::net::Cmd::Stance, st);
             } else if (cmd == 'K' || cmd == 'k') {
-                issuePerUnit(tak::net::Cmd::Cloak, cmd == 'K' ? 1 : 0);
+                issuePerUnit(ta::net::Cmd::Cloak, cmd == 'K' ? 1 : 0);
             } else if (cmd == 'N' || cmd == 'F') {
-                issuePerUnit(tak::net::Cmd::SetActive, cmd == 'N' ? 1 : 0);
+                issuePerUnit(ta::net::Cmd::SetActive, cmd == 'N' ? 1 : 0);
             } else {
                 pendingCmd_ = cmd;
             }
@@ -1422,7 +1422,7 @@ namespace {
                 SDL_FRect pr = place(ii);
                 SDL_Texture* ic = iconFor(u->type->id);
                 if (!ic) ic = modelIconTex(u->type->id, playerColorSlot(hudPlayer()),
-                                           u->type->maxVel > tak::sim::Fixed());
+                                           u->type->maxVel > ta::sim::Fixed());
                 if (ic) {   // no image at all: no bare box either
                     SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
                     SDL_RenderFillRectF(ren_, &pr);
@@ -1432,7 +1432,7 @@ namespace {
                 }
                 // 4b26c0..4b26ef: frame _ftol(level / 10 * 3) - 1, none below 1:
                 // ranks 0-3 show nothing, 4-6 the first, 7-9 the second, 10 the third.
-                if (const int mark = tak::client::experienceFrame(u->veteran); mark >= 0) {
+                if (const int mark = ta::client::experienceFrame(u->veteran); mark >= 0) {
                     int xi = guiIdxLeft("Experience");
                     int tier = mark;
                     if (xi >= 0 && tier < int(guiTex_[xi].size()) && guiTex_[xi][size_t(tier)]) {
@@ -1448,7 +1448,7 @@ namespace {
                 // (the front one too) shrink, fold, or cap with "+K".
                 const SDL_FRect pr = place(ii);
                 const float gap = 3 * vs, margin = 4 * vs;
-                const float room = tak::selportraits::room(0, pr.x, margin);
+                const float room = ta::selportraits::room(0, pr.x, margin);
                 drawSelPortraits(pr, room, gap, 1.5f * vs);
             }
             // The name row: the unit's name (in its own capitals under MODERN) or the
@@ -1463,11 +1463,11 @@ namespace {
                 // the full row), a UI-scaled pixel clear of the bar.
                 if (barSlot >= 0)
                     px = std::min(px, tpx * (place(barSlot).y - std::max(1.0f, vs) - nr.y)
-                                          / (7 * tpx + tak::uiTextInkDescent(text, tpx)));
+                                          / (7 * tpx + ta::uiTextInkDescent(text, tpx)));
                 blockText(text, nr.x, nr.y, std::max(1.0f, px), {236, 226, 192, 255});
             };
             if (int t1 = guiIdxLeft("UnitText"); u && !multi && t1 >= 0)
-                nameText(t1, tak::client::panelName(*u, !singlePlayer_, playerName_[u->player & 7]),
+                nameText(t1, ta::client::panelName(*u, !singlePlayer_, playerName_[u->player & 7]),
                          guiIdxRight("UnitText"), guiIdxLeft("HealthBar"));
             else if (const std::string sq = multi ? selSquadLabel() : std::string(); !sq.empty() && t1 >= 0)
                 nameText(t1, sq, guiIdxRight("UnitText"), guiIdxLeft("HealthBar"));
@@ -1531,22 +1531,22 @@ namespace {
         return true;
     }
 
-    std::vector<tak::selportraits::Group> GameView::selTypeGroups() const {
+    std::vector<ta::selportraits::Group> GameView::selTypeGroups() const {
         std::vector<std::pair<int, std::string>> live;
         live.reserve(selection_.size());
         for (int id : selection_)
             if (const UnitR* u = frameUnitP(id); u && u->alive() && u->type)
                 live.push_back({id, u->type->id});
-        return tak::selportraits::group(live);
+        return ta::selportraits::group(live);
     }
 
-    tak::selportraits::Totals GameView::selTotals() const {
-        std::vector<tak::selportraits::Vitals> v;
+    ta::selportraits::Totals GameView::selTotals() const {
+        std::vector<ta::selportraits::Vitals> v;
         v.reserve(selection_.size());
         for (int id : selection_)
             if (const UnitR* u = frameUnitP(id); u && u->alive() && u->type)
                 v.push_back({u->hp, float(u->type->maxHp), u->mana, u->type->maxMana});
-        return tak::selportraits::total(v);
+        return ta::selportraits::total(v);
     }
 
     std::string GameView::selSquadLabel() const {
@@ -1565,11 +1565,11 @@ namespace {
             if (u->alive() && u->player == hudPlayer() && u->type && u->squad &&
                 !u->underConstruction && !std::binary_search(sel.begin(), sel.end(), u->id))
                 rest.push_back({int(u->squad), u->type->isBuilder});
-        return tak::selportraits::squadLabel(tak::selportraits::selectionSquad(squads, rest));
+        return ta::selportraits::squadLabel(ta::selportraits::selectionSquad(squads, rest));
     }
 
     float GameView::drawSelPortraits(SDL_FRect primary, float room, float gap, float px) {
-        namespace sp = tak::selportraits;
+        namespace sp = ta::selportraits;
         if (selection_.size() < 2) return 0;
         const auto groups = selTypeGroups();
         if (groups.empty()) return 0;
@@ -1603,7 +1603,7 @@ namespace {
             SDL_RenderFillRectF(ren_, &r);
             SDL_Texture* ic = iconFor(g.type);
             if (!ic && t) ic = modelIconTex(g.type, playerColorSlot(hudPlayer()),
-                                            t->maxVel > tak::sim::Fixed());
+                                            t->maxVel > ta::sim::Fixed());
             if (ic) SDL_RenderCopyF(ren_, ic, nullptr, &r);
             const bool h = hot(r);
             SDL_SetRenderDrawColor(ren_, h ? 255 : 96, h ? 230 : 84, h ? 120 : 60, 255);
@@ -1628,7 +1628,7 @@ namespace {
             selPortraitRects_.push_back({r, std::string()});
         }
         if (!tip.empty()) {   // the hovered portrait's unit name, just above the bar
-            const float tpx = std::max(1.0f, px), tw = blockWidth(tip, tpx), dh = tak::uiTextDescent(tpx);
+            const float tpx = std::max(1.0f, px), tw = blockWidth(tip, tpx), dh = ta::uiTextDescent(tpx);
             const float tx = std::clamp(tipAt.x + tipAt.w / 2 - tw / 2, 6.0f,
                                         std::max(6.0f, float(winW_) - tw - 6));
             const float ty = float(winH_ - barH()) - 7 * tpx - dh - 10;
@@ -1651,7 +1651,7 @@ namespace {
             if (ids.empty()) return true;   // that type left the selection since the draw
             const bool remove = (SDL_GetModState() & KMOD_SHIFT) != 0;
             playClickTone();
-            selection_ = tak::selportraits::click(selection_, ids, remove);
+            selection_ = ta::selportraits::click(selection_, ids, remove);
             if (!remove && !selection_.empty()) voice(selection_.front(), "select");
             return true;
         }
@@ -1692,8 +1692,8 @@ namespace {
                 pendingCmd_ = b.cmd;
             } else {
                 for (int id : selection_) {
-                    tak::net::Command c;
-                    c.kind = tak::net::Cmd::Stop;
+                    ta::net::Command c;
+                    c.kind = ta::net::Cmd::Stop;
                     c.unitId = id;
                     issue(c);
                 }
@@ -1716,8 +1716,8 @@ namespace {
                                          : "anims/weaponpic/default_up.jpg"};
         for (const auto& path : paths) {
             try {
-                auto img = tak::jpeg::load(vread(path));
-                tex = tak::art::makeTexture(ren_, img.rgba, img.width, img.height);
+                auto img = ta::jpeg::load(vread(path));
+                tex = ta::art::makeTexture(ren_, img.rgba, img.width, img.height);
                 break;
             } catch (const std::exception&) {}
         }
@@ -1736,8 +1736,8 @@ namespace {
     }
 
     void GameView::drawUnitCounts(int winW) {
-        int cnt[tak::sim::kMaxPlayers] = {};
-        std::string sides[tak::sim::kMaxPlayers];
+        int cnt[ta::sim::kMaxPlayers] = {};
+        std::string sides[ta::sim::kMaxPlayers];
         const int np = frameNumPlayers();
         for (const UnitR* up : front().live) {
             if (!up->alive() || !up->type || up->player < 0 || up->player >= np) continue;
@@ -1761,7 +1761,7 @@ namespace {
         // map view (never under the minimap strip). It sits in the top-left column, under
         // the stream banner and the GAME TIME clock.
         const float requestedScale = (settings_ ? settings_->scorecardScale : 1.0f) * kHudBase;
-        const auto board = tak::hudcorner::scoreboard(requestedScale, showTeams, np, float(mapViewW(winW)),
+        const auto board = ta::hudcorner::scoreboard(requestedScale, showTeams, np, float(mapViewW(winW)),
                                                       float(winH_ - barH()), topLeft_.next());
         const float scale = board.scale, top = board.top;
         topLeft_.place(top, 32 * scale * float(rows.size() + 1));
@@ -1814,7 +1814,7 @@ namespace {
             if (!side.empty()) scoreboardSides_[t & 7] = side;
             else side = scoreboardSides_[t & 7];
             if (!player.side.empty()) side = player.side;
-            const std::string seq = tak::factionLogoSequence(side);
+            const std::string seq = ta::factionLogoSequence(side);
             const std::string key = seq + std::to_string(colorSlot_[t & 7]);
             auto [it, inserted] = scoreboardLogos_.try_emplace(key, nullptr);
             if (inserted && !seq.empty())
@@ -1949,11 +1949,11 @@ namespace {
                 float px = 8;
                 // The strip's room runs from the panel's right edge to the mana panel
                 // (winW - 200), less a gap: full size until it would reach the mana.
-                const float gap = 4, room = tak::selportraits::room(px + 288, float(winW) - 200, 8);
+                const float gap = 4, room = ta::selportraits::room(px + 288, float(winW) - 200, 8);
                 SDL_FRect pr{px + 4, bar.y + 8, 56, barH() - 20.0f};
                 float strip = 0;
                 if (selection_.size() > 1)
-                    strip = tak::selportraits::layout(int(selTypeGroups().size()), pr.w, pr.h, gap,
+                    strip = ta::selportraits::layout(int(selTypeGroups().size()), pr.w, pr.h, gap,
                                                       room, kSelPortraitMinScale).width;
                 pr.x += strip;
                 shade(px, 288 + strip);
@@ -1995,13 +1995,13 @@ namespace {
         const auto* b = selectedBuilder();
         if (b) {
             // Mission-filtered; an entry naming no known type takes no slot.
-            std::vector<const tak::sim::UnitType*> menu;
+            std::vector<const ta::sim::UnitType*> menu;
             for (const auto& id : conjureMenu(b->type->id))
                 if (const auto* bt = registry_.find(id)) menu.push_back(bt);
             int n = int(menu.size());
             // Row size: the bar height (already uiScale-scaled) times the user's
             // extra BUILD MENU SCALE, so the row can grow independently of the HUD.
-            const auto lay = tak::buildrow::layout(n, bar.y, float(barH()), buildBarScale_,
+            const auto lay = ta::buildrow::layout(n, bar.y, float(barH()), buildBarScale_,
                                                    float(winW), float(mapViewW(winW)),
                                                    buildBarAlign_);
             // Everything drawn INSIDE an icon (the +++ badge, the queue count, the
@@ -2112,8 +2112,8 @@ namespace {
                                   b->buildQueue.size());
                 // From the top row's first icon, but never on into the command panel
                 // (a short right-aligned menu leaves the line little room).
-                const float qx = std::max(tak::buildrow::kEdge,
-                    std::min(lay.textX, float(mapViewW(winW)) - tak::buildrow::kEdge -
+                const float qx = std::max(ta::buildrow::kEdge,
+                    std::min(lay.textX, float(mapViewW(winW)) - ta::buildrow::kEdge -
                                             blockWidth(q, 1.8f * bScale)));
                 blockText(q, qx, iconTop - 24 * bScale, 1.8f * bScale,
                           {160, 210, 255, 255});
@@ -2177,13 +2177,13 @@ void GameView::drawIdleBuilders(int winW, int winH, float barTop) {
     // The Monarch, then the mobile builders, then the factories; within each, basic to
     // advanced, which in TA:K's data is cheapest to dearest (no tech level is
     // authored), and by name on a tie.
-    const auto rank = [](const tak::sim::UnitType* t) { return t->commander ? 0 : t->isStructure() ? 2 : 1; };
+    const auto rank = [](const ta::sim::UnitType* t) { return t->commander ? 0 : t->isStructure() ? 2 : 1; };
     std::stable_sort(idleRects_.begin(), idleRects_.end(), [&](const IdleBuilderIcon& a, const IdleBuilderIcon& b) {
         if (rank(a.type) != rank(b.type)) return rank(a.type) < rank(b.type);
         if (a.type->buildCost != b.type->buildCost) return a.type->buildCost < b.type->buildCost;
         return a.type->name < b.type->name;
     });
-    const float edge = tak::buildrow::kEdge;
+    const float edge = ta::buildrow::kEdge;
     const float unitH = float(barH()) - 10.0f, unitW = unitH * (4.0f / 3.0f), unitGap = 6.0f;
     // The column's room: the play area's height, above any build menu whose box
     // reaches under the column.
@@ -2411,7 +2411,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
             for (size_t i = pickAll_.size(); i < n; ++i) pickAll_.push_back(uint32_t(i));
             return std::span<const uint32_t>(pickAll_.data(), n);
         };
-        static const bool fullScan = tak::devFlag("TAK_PICK_FULL_SCAN");
+        static const bool fullScan = ta::devFlag("TA_PICK_FULL_SCAN");
         // Every typed record registered, so its type's model is loaded (see pickRegistered_).
         const bool registered = pickRegistered_.complete && f.gen >= pickRegistered_.gen &&
                                 f.unitSlots.size() <= pickRegistered_.idBound;
@@ -2421,11 +2421,11 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         } else {
             const PickBounds& b = pickBounds();
             const float zm = mapView_.zoom();
-            const float dotHalf = std::max(tak::tacticaldots::dotSide(b.maxCells, b.maxCells, zm, uiScale_) * 0.5f + 1.0f,
-                                           tak::render::kPickMinHalf);
+            const float dotHalf = std::max(ta::tacticaldots::dotSide(b.maxCells, b.maxCells, zm, uiScale_) * 0.5f + 1.0f,
+                                           ta::render::kPickMinHalf);
             // interpPose stays within maxInterpStep of the snapshot position (+1: rounding).
-            const auto band = tak::render::pickBand(mx, my, zm, b.boxes, dotHalf, f.maxInterpStep + 1.0f, b.sinkLo, b.sinkHi);
-            const auto rect = tak::render::anchorBandToWorld(band.left, band.top, band.right, band.bottom,
+            const auto band = ta::render::pickBand(mx, my, zm, b.boxes, dotHalf, f.maxInterpStep + 1.0f, b.sinkLo, b.sinkHi);
+            const auto rect = ta::render::anchorBandToWorld(band.left, band.top, band.right, band.bottom,
                                                              mapView_.offX(), mapView_.offY(), zm, unitLiftBounds());
             if (f.unitGrid.covers(rect.left, rect.top, rect.right, rect.bottom)) {
                 out = everything();
@@ -2438,9 +2438,9 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
                     // negative sink); their own query's units that fly join the ground
                     // candidates. All lists ascending: merges, each index once.
                     const float altitude = std::max(flyerAltitudeSeen_, b.cruiseAlt) * kProjY + 1.0f;
-                    const auto airBand = tak::render::pickBand(mx, my, zm, b.boxes, dotHalf, f.maxInterpStep + 1.0f,
+                    const auto airBand = ta::render::pickBand(mx, my, zm, b.boxes, dotHalf, f.maxInterpStep + 1.0f,
                                                                std::min(b.sinkLo, 0.0f) - altitude, b.sinkHi);
-                    const auto air = tak::render::anchorBandToWorld(airBand.left, airBand.top, airBand.right,
+                    const auto air = ta::render::anchorBandToWorld(airBand.left, airBand.top, airBand.right,
                                                                     airBand.bottom, mapView_.offX(), mapView_.offY(),
                                                                     zm, unitLiftBounds());
                     f.unitGrid.query(air.left, air.top, air.right, air.bottom, pickQueryBits_, pickFlyers_);
@@ -2456,7 +2456,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
             }
         }
 #ifndef NDEBUG
-        static const bool verify = tak::devFlag("TAK_PICK_INDEX_VERIFY");
+        static const bool verify = ta::devFlag("TA_PICK_INDEX_VERIFY");
         if (verify && !pickForceFull_) {
             ++pickVerify_.queries;
             pickVerify_.live += n;
@@ -2484,7 +2484,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
     std::span<const uint32_t> GameView::bodyCandidates(float wx, float wz) const {
         const Frame& f = front();
         const size_t n = f.live.size();
-        static const bool fullScan = tak::devFlag("TAK_PICK_FULL_SCAN");
+        static const bool fullScan = ta::devFlag("TA_PICK_FULL_SCAN");
         std::span<const uint32_t> out;
         if (fullScan || pickForceFull_ || unitFullScan_ || f.unitGrid.size() != n) {
             for (size_t i = bodyAll_.size(); i < n; ++i) bodyAll_.push_back(uint32_t(i));
@@ -2492,12 +2492,12 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         } else {
             // ReclaimPick::offer accepts only dx*dx + dz*dz < r*r: |dx|, |dz| < r. One
             // world px of slack for the float evaluation.
-            const float r = tak::client::reclaimPickRadius(f.maxCorpseFoot, f.maxCorpseFoot) + 1.0f;
+            const float r = ta::client::reclaimPickRadius(f.maxCorpseFoot, f.maxCorpseFoot) + 1.0f;
             f.unitGrid.query(wx - r, wz - r, wx + r, wz + r, bodyQueryBits_, bodyQuery_);
             out = bodyQuery_;
         }
 #ifndef NDEBUG
-        static const bool verify = tak::devFlag("TAK_PICK_INDEX_VERIFY");
+        static const bool verify = ta::devFlag("TA_PICK_INDEX_VERIFY");
         if (verify && !pickForceFull_) {
             ++pickVerify_.bodyQueries;
             pickVerify_.bodyCandidates += out.size();
@@ -2506,7 +2506,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
                 throw std::runtime_error("pick index verify: body candidates are not ascending live indices");
             for (size_t i = 0; i < n; ++i) {
                 const UnitR& u = *f.live[i];
-                tak::client::ReclaimPick probe{wx, wz};
+                ta::client::ReclaimPick probe{wx, wz};
                 probe.offer(0, u.x, u.z, u.corpseFootX, u.corpseFootZ);
                 if (!probe.id) continue;
                 ++pickVerify_.bodyHits;
@@ -2522,11 +2522,11 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
                 if (!bodies.empty()) {
                     const size_t i = bodies[size_t(pickVerify_.bodyQueries) % bodies.size()];
                     const UnitR& u = *f.live[i];
-                    const float r = tak::client::reclaimPickRadius(f.maxCorpseFoot, f.maxCorpseFoot) + 1.0f;
+                    const float r = ta::client::reclaimPickRadius(f.maxCorpseFoot, f.maxCorpseFoot) + 1.0f;
                     std::vector<uint64_t> bits;
                     std::vector<uint32_t> probeOut;
                     f.unitGrid.query(u.x - r, u.z - r, u.x + r, u.z + r, bits, probeOut);
-                    tak::client::ReclaimPick probe{u.x, u.z};
+                    ta::client::ReclaimPick probe{u.x, u.z};
                     probe.offer(0, u.x, u.z, u.corpseFootX, u.corpseFootZ);
                     if (probe.id) {
                         ++pickVerify_.bodyHits;
@@ -2541,7 +2541,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
     }
 
     bool GameView::unitUnderCursor(const UnitR& u, float mx, float my, float* d2, float* size) {
-        renderStats_.add(tak::render::Counter::CursorPickTests);
+        renderStats_.add(ta::render::Counter::CursorPickTests);
 #ifndef NDEBUG
         ++debugPickTests_;
 #endif
@@ -2554,7 +2554,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
             if (std::fabs(mx - c.x) > half || std::fabs(my - c.y) > half) return false;
             if (d2) { float dx = c.x - mx, dy = c.y - my; *d2 = dx * dx + dy * dy; }
             if (size) *size = 4 * half * half;
-            renderStats_.add(tak::render::Counter::CursorPickHits);
+            renderStats_.add(ta::render::Counter::CursorPickHits);
             return true;
         }
         // A HIDDEN UNITS dot on screen (the unit behind scenery) is clickable like a
@@ -2565,7 +2565,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
             if (std::fabs(mx - c.x) <= half && std::fabs(my - c.y) <= half) {
                 if (d2) { float dx = c.x - mx, dy = c.y - my; *d2 = dx * dx + dy * dy; }
                 if (size) *size = 4 * half * half;
-                renderStats_.add(tak::render::Counter::CursorPickHits);
+                renderStats_.add(ta::render::Counter::CursorPickHits);
                 return true;
             }
         }
@@ -2588,7 +2588,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
         }
         if (d2) { float dx = cx - mx, dy = cy - my; *d2 = dx * dx + dy * dy; }
         if (size) *size = 4 * hw * hh;
-        renderStats_.add(tak::render::Counter::CursorPickHits);
+        renderStats_.add(ta::render::Counter::CursorPickHits);
         return true;
     }
 
@@ -2650,13 +2650,13 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
     // a builder's row is up (chatbox.h hudFloor).
     void GameView::drawGameChat(int winW, int winH) {
         // The embedded face; the HUD font only if it ever failed to load.
-        if (tak::uiFont().ok()) drawGameChatIn(tak::uiFont(), winW, winH);
+        if (ta::uiFont().ok()) drawGameChatIn(ta::uiFont(), winW, winH);
         else drawGameChatIn(hudFont_, winW, winH);
     }
 
     template <class Face>
     void GameView::drawGameChatIn(const Face& font, int winW, int winH) {
-        namespace cb = tak::chatbox;
+        namespace cb = ta::chatbox;
         if (!mp_ || !font.ok() || (!chatTyping_ && gameChat_.empty())) return;
 
         const float areaW = float(mapViewW(winW));
@@ -2761,7 +2761,7 @@ void GameView::drawGiveUnitsMenu(int winW, int winH) {
 
         // Clip so a row can never draw outside the box (a long unbroken name, say).
         SDL_Rect clip{int(box.x), int(box.y), int(std::ceil(box.w)), int(std::ceil(box.h))};
-        const bool inSight = tak::cliprect::set(ren_, clip);   // off the target: no rows (Metal)
+        const bool inSight = ta::cliprect::set(ren_, clip);   // off the target: no rows (Metal)
         float y = box.y + pad;
         for (size_t i = 0; inSight && i < rows.size(); ++i) {
             const Row& r = rows[i];

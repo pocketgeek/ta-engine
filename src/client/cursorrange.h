@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::client {
+namespace ta::client {
 
 enum class CursorWeaponRange { InRange, OutOfRange, Unknown };
 
@@ -148,4 +148,4 @@ inline bool cursorCanAttackEnemy(const sim::UnitType& attacker, int weaponSlot,
                              targetFlightGroundMode) != CursorWeaponRange::OutOfRange;
 }
 
-} // namespace tak::client
+} // namespace ta::client

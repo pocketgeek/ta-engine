@@ -10,7 +10,7 @@
 #include <cmath>
 #include <cstdlib>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void gateComposedStart(World& world,Unit& u,int32_t base,bool missions=false) {
         world.setPathService(true);
@@ -154,7 +154,7 @@ struct RetailReplayProbe {
     }
     static void startSearchMovement(World& world,Unit& u,int32_t gx,int32_t gz,int budget,int first,int count,bool reset=true) {
         if (reset) { world.paths_.clear();world.paths_.restoreTraversal(0,{},{}); }
-        if (std::getenv("TAK_SEARCH_DIAG")) world.paths_.setGradeHost({
+        if (std::getenv("TA_SEARCH_DIAG")) world.paths_.setGradeHost({
             [&](int id,bool last){world.prepareSearchGrade(id,last);},
             [&](int id,int x,int z,int retry,PathCell start) {
                 const int result=world.searchGrade(id,x,z,retry,start);
@@ -255,7 +255,7 @@ struct RetailReplayProbe {
         return u.orders.empty()?0:u.orders[World::currentLeg(u.orders)].navigationConsumed?1:
             World::currentLeg(u.orders)+2;
     }
-    static const tak::cob::RetailScriptState* scriptState(const World& world,int id) {
+    static const ta::cob::RetailScriptState* scriptState(const World& world,int id) {
         const auto it=world.unitScripts_.find(id);
         // Callers read thread words: pay any skipped ticks first.
         return it==world.unitScripts_.end() ? nullptr : &const_cast<World::UnitScript&>(it->second).state();
@@ -409,7 +409,7 @@ struct RetailReplayProbe {
         return world.rawSearchGrade(plane,x,z,width,height);
     }
     static void restoreSearchDiagnostics(World& world) {
-        if (!std::getenv("TAK_RESTORE_SEARCH_DIAG")) return;
+        if (!std::getenv("TA_RESTORE_SEARCH_DIAG")) return;
         world.paths_.setGradeHost({
             [&](int id,bool last) {
                 std::fprintf(stderr,"PREP %u %d %d\n",world.tickCounter_,id,int(last));
@@ -568,7 +568,7 @@ struct RetailReplayProbe {
 }
 
 namespace {
-void frame(FILE* output, const tak::sim::World& world) {
+void frame(FILE* output, const ta::sim::World& world) {
     std::fprintf(output, "{\"kind\":\"frame\",\"tick\":%u,\"units\":[", world.tickCount());
     bool first = true;
     for (const auto& value : world.units()) {
@@ -576,7 +576,7 @@ void frame(FILE* output, const tak::sim::World& world) {
         if (!unit->alive()) continue;
         std::fprintf(output, "%s{\"id\":%d,\"y_raw\":%d,\"x_raw\":%d,\"z_raw\":%d,\"heading\":%u,"
                      "\"speed_raw\":%d,\"base_speed_raw\":%d,\"route\":[", first ? "" : ",", unit->id,
-                     unit->type->canFly?unit->flightY.v:unit->groundY.v, unit->x.v, unit->z.v, unsigned(tak::sim::portHeadingToRetail(unit->heading)),
+                     unit->type->canFly?unit->flightY.v:unit->groundY.v, unit->x.v, unit->z.v, unsigned(ta::sim::portHeadingToRetail(unit->heading)),
                      unit->speed.v, unit->baseSpeed.v);
         bool firstOrder = true;
         bool buildApproach=false;
@@ -607,7 +607,7 @@ void frame(FILE* output, const tak::sim::World& world) {
             firstMission=false;
         }
         std::fprintf(output, "],\"build_approach\":%s,\"script_threads\":[",buildApproach ? "true" : "false");
-        if (const auto* script=tak::sim::RetailReplayProbe::scriptState(world,unit->id)) {
+        if (const auto* script=ta::sim::RetailReplayProbe::scriptState(world,unit->id)) {
             for (size_t i=0;i<script->vm.threads.size();++i) {
                 std::fprintf(output,"%s[",i ? "," : "");
                 for (size_t j=0;j<8;++j) std::fprintf(output,"%s%u",j ? "," : "",script->vm.threads[i].words[j]);
@@ -615,12 +615,12 @@ void frame(FILE* output, const tak::sim::World& world) {
             }
         }
         std::fprintf(output, "],\"scores_7x7\":[");
-        const int cx = tak::sim::footprintCell(unit->x, unit->type->footX);
-        const int cz = tak::sim::footprintCell(unit->z, unit->type->footZ);
+        const int cx = ta::sim::footprintCell(unit->x, unit->type->footX);
+        const int cz = ta::sim::footprintCell(unit->z, unit->type->footZ);
         for (int dz = -3; dz <= 3; ++dz)
             for (int dx = -3; dx <= 3; ++dx)
                 std::fprintf(output, "%s%d", dx == -3 && dz == -3 ? "" : ",",
-                    tak::sim::RetailReplayProbe::score(world, *unit, cx + dx, cz + dz));
+                    ta::sim::RetailReplayProbe::score(world, *unit, cx + dx, cz + dz));
         std::fprintf(output, "]");
         if (unit->retailSite) {
             if (unit->retailSite->mission) {
@@ -684,8 +684,8 @@ void frame(FILE* output, const tak::sim::World& world) {
 }
 
 int main(int argc, char** argv) {
-    using namespace tak;
-    using namespace tak::sim;
+    using namespace ta;
+    using namespace ta::sim;
     if (argc==3 && std::string(argv[1])=="--ground-owner") return RetailReplayProbe::groundOwner(argv[2]);
     if (argc==7 && std::string(argv[2])=="--crowd-movement") {
         auto vfs=hpi::mountRetailRoot(argv[1]);
@@ -732,7 +732,7 @@ int main(int argc, char** argv) {
             ids.push_back(world.spawn(type,float(x),float(z)));goals.emplace_back();
             for (int leg=0;leg<legs;++leg) { int gx,gz;if (!(input>>gx>>gz)) return 2;goals.back().emplace_back(gx,gz); }
         }
-        if (std::getenv("TAK_CROWD_RNG")) world.setRngObserver([](const World::RngObservation& o) {
+        if (std::getenv("TA_CROWD_RNG")) world.setRngObserver([](const World::RngObservation& o) {
             std::fprintf(stderr,"RNG tick=%u bound=%d before=%u after=%u ret=%x %s:%u %s\n",o.tick,o.bound,o.seedBefore,o.seedAfter,
                 o.retailReturnAddress,o.caller.file_name(),unsigned(o.caller.line()),o.caller.function_name());
         });
@@ -775,7 +775,7 @@ int main(int argc, char** argv) {
         // Optional authored relief (64x64 height bytes, sea 0) for ramp routes;
         // the native harness writes the same heights into its cell records.
         std::vector<uint8_t> gateHeights(64*64,0);
-        if (const char* path=std::getenv("TAK_GATE_HEIGHTS"); path && *path) {
+        if (const char* path=std::getenv("TA_GATE_HEIGHTS"); path && *path) {
             std::ifstream relief(path,std::ios::binary);
             if (!relief.read(reinterpret_cast<char*>(gateHeights.data()),std::streamsize(gateHeights.size())))
                 return 2;
@@ -831,7 +831,7 @@ int main(int argc, char** argv) {
         int version, count, steps, players;
         uint32_t tick, rng;
         if (!(input >> magic >> version >> tick >> rng >> count >> steps >> players >> std::quoted(mapName)) ||
-            magic != "TAK_MOVEMENT_PROBE" || version < 1 || version > 37 || count < 1 || count > 20000 ||
+            magic != "TA_MOVEMENT_PROBE" || version < 1 || version > 37 || count < 1 || count > 20000 ||
             steps < 0 || steps > 3000 || players < 1 || players > 10)
             throw std::runtime_error("invalid diagnostic input header");
         const bool staticQueries=steps==0 && argc>=5 &&
@@ -1287,7 +1287,7 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("invalid build planner catalogue");
                 unsigned actual=0;for (const auto& entry:cache->entries) actual+=unsigned(entry.inputs.count);
                 if (population!=actual) throw std::runtime_error("build planner population disagrees");
-                auto& planner=cache->planner.emplace(tak::sim::RetailBuildCache::Planner{});planner.limited=limited!=0;
+                auto& planner=cache->planner.emplace(ta::sim::RetailBuildCache::Planner{});planner.limited=limited!=0;
                 for (unsigned i=0;i<count;++i) {
                     RetailBuildCache::PlannerType type;
                     unsigned weight,special,size;

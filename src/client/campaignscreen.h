@@ -6,7 +6,7 @@
 #include <functional>
 #include <string>
 
-namespace tak {
+namespace ta {
 namespace hpi { class Vfs; }
 struct Settings;
 
@@ -32,4 +32,4 @@ private:
     struct Impl;
     std::unique_ptr<Impl> d_;
 };
-} // namespace tak
+} // namespace ta

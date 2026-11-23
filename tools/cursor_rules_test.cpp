@@ -9,12 +9,12 @@
 #include <string>
 
 namespace {
-using tak::CursorId;
-using namespace tak::client;
+using ta::CursorId;
+using namespace ta::client;
 
 int failures = 0;
 
-const char* name(CursorId c) { return tak::cursorSequenceName(c); }
+const char* name(CursorId c) { return ta::cursorSequenceName(c); }
 
 void expect(CursorId got, CursorId want, const std::string& row) {
     if (got == want) return;

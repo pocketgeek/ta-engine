@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 struct RetailGlowVertex { float x,y; uint32_t color; };
 struct RetailGlowEnvelope { int32_t duration,begin,end; };
@@ -45,4 +45,4 @@ inline std::array<RetailGlowVertex,14> retailGlowMesh(float x,float y,
     return result;
 }
 
-} // namespace tak
+} // namespace ta

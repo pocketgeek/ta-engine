@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <iostream>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static bool retiredPointKeepsDetachedStamp(bool detached,bool recent) {
         World world;UnitType type;
@@ -73,7 +73,7 @@ struct RetailReplayProbe {
             : !handoff && u.orders.empty() && u.standbyActive && u.routeStamp==199;
     }
     static int gateOwnerGrade(int fx,int fz,int retry,bool capable,int owner,bool opened,bool frame,int dx,int dz) {
-        tak::cob::File script;
+        ta::cob::File script;
         World world;world.setTerrain(std::vector<uint8_t>(32*32,0),32,32,0);
         world.setPlayerCount(2);world.player(0).automaticGates=capable;
         world.editNavigationExploration().assign(16*16,0xffff);
@@ -106,7 +106,7 @@ struct RetailReplayProbe {
         return world.unit(id)->active==active ? -1 : int(world.unit(id)->active);
     }
     static int gateGrade(bool gate,bool open,bool flooded,int x,int z,int width,int height) {
-        tak::cob::File script;
+        ta::cob::File script;
         World world;world.setTerrain(std::vector<uint8_t>(8*8,0),8,8,flooded?32:0);
         world.setMapPlacementFeatures(std::vector<uint16_t>(8*8,0xffff),{});
         UnitType type;type.footX=type.footZ=3;type.gate=gate;type.maxVel=Fixed();
@@ -289,7 +289,7 @@ struct RetailReplayProbe {
                 explored[size_t(z)*16+x]=exploration==0?65535:exploration==1?0:uint16_t(1<<((x/4+z/4)%2));
         }
         uint64_t queries=0;
-        const bool trace=std::getenv("TAK_SEARCH_DIAG")!=nullptr;
+        const bool trace=std::getenv("TA_SEARCH_DIAG")!=nullptr;
         auto word=[&](int value) {
             for (int byte=0;byte<4;++byte) { queries^=(uint32_t(value)>>(byte*8))&255;queries*=1099511628211ull; }
         };
@@ -651,7 +651,7 @@ static void word(uint64_t& hash, int value) {
     }
 }
 static bool profilingPreservesSearch() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     std::array<PathService,2> services;
     std::array<std::vector<int>,2> events;
     services[0].setProfiling(true);
@@ -691,7 +691,7 @@ static bool profilingPreservesSearch() {
     return false;
 }
 static int selfTest() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     int failures = 0;
     auto check = [&](bool condition, const char* label) {
         if (!condition) { std::cerr << "FAIL: " << label << '\n'; ++failures; }
@@ -989,38 +989,38 @@ int main(int argc, char** argv) {
     if (argc==2 && std::string(argv[1])=="--gate-owner") {
         int fx,fz,retry,capable,owner,opened,frame,dx,dz;
         while (std::cin>>fx>>fz>>retry>>capable>>owner>>opened>>frame>>dx>>dz)
-            std::cout<<tak::sim::RetailReplayProbe::gateOwnerGrade(fx,fz,retry,capable,owner,opened,frame,dx,dz)<<'\n';
+            std::cout<<ta::sim::RetailReplayProbe::gateOwnerGrade(fx,fz,retry,capable,owner,opened,frame,dx,dz)<<'\n';
         return 0;
     }
     if (argc==2 && std::string(argv[1])=="--automatic-gate") {
         int active,owner,mover,moving,allocated,size,dx,dz;
         while (std::cin>>active>>owner>>mover>>moving>>allocated>>size>>dx>>dz)
-            std::cout<<tak::sim::RetailReplayProbe::automaticGate(active,owner,mover,moving,allocated,size,dx,dz)<<'\n';
+            std::cout<<ta::sim::RetailReplayProbe::automaticGate(active,owner,mover,moving,allocated,size,dx,dz)<<'\n';
         return 0;
     }
     if (argc==2 && std::string(argv[1])=="--gate-grade") {
         int gate,open,flooded,x,z,width,height;
         while (std::cin>>gate>>open>>flooded>>x>>z>>width>>height)
-            std::cout<<tak::sim::RetailReplayProbe::gateGrade(gate,open,flooded,x,z,width,height)<<'\n';
+            std::cout<<ta::sim::RetailReplayProbe::gateGrade(gate,open,flooded,x,z,width,height)<<'\n';
         return 0;
     }
     if (argc==2 && std::string(argv[1])=="--world-reset") {
         int fx,fz,boat,active,count;uint32_t flags;int32_t ux,uz,gx,gz;
         while (std::cin>>fx>>fz>>boat>>flags>>active>>ux>>uz>>gx>>gz>>count) {
             if (count<2 || count>64) return 2;
-            std::vector<tak::sim::RetailSteeringPoint> points(count);
+            std::vector<ta::sim::RetailSteeringPoint> points(count);
             for (auto& point:points) {
                 int x,z;if (!(std::cin>>x>>z)) return 2;
-                point={tak::sim::Fixed::fromInt(x),tak::sim::Fixed::fromInt(z)};
+                point={ta::sim::Fixed::fromInt(x),ta::sim::Fixed::fromInt(z)};
             }
-            const auto result=tak::sim::RetailReplayProbe::resetRoute(fx,fz,boat!=0,flags,active!=0,ux,uz,gx,gz,points);
+            const auto result=ta::sim::RetailReplayProbe::resetRoute(fx,fz,boat!=0,flags,active!=0,ux,uz,gx,gz,points);
             for (size_t i=0;i<result.size();++i) std::cout<<(i?" ":"")<<result[i];
             std::cout<<'\n';
         }
         return 0;
     }
     if (argc==2 && std::string(argv[1])=="--world-destination") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         int fx,fz,boat,x,z,blocked,reset;
         while (std::cin>>fx>>fz>>boat>>x>>z>>blocked>>reset) {
             World world;world.setPathService(true);
@@ -1045,18 +1045,18 @@ int main(int argc, char** argv) {
         while (std::cin>>fx>>fz>>boat>>budget>>gx>>gz>>exploration>>admission>>moving>>terrain) {
             if (exploration< -1 || exploration>2 || (terrain && exploration<0)) return 2;
             std::vector<int> grades(32*32);for (auto& grade:grades) if (!(std::cin>>grade)) return 2;
-            tak::sim::RetailReplayProbe::search(fx,fz,boat!=0,budget,gx,gz,exploration,admission!=0,moving!=0,terrain!=0,grades);
+            ta::sim::RetailReplayProbe::search(fx,fz,boat!=0,budget,gx,gz,exploration,admission!=0,moving!=0,terrain!=0,grades);
         }
         return 0;
     }
     if (argc==2 && std::string(argv[1])=="--world-search2") {
         int fx,fz,boat,budget,gx,gz,exploration,admission,moving,terrain;
-        tak::sim::RetailReplayProbe::SearchVariant v;
+        ta::sim::RetailReplayProbe::SearchVariant v;
         while (std::cin>>fx>>fz>>boat>>budget>>gx>>gz>>exploration>>admission>>moving>>terrain
                        >>v.sx>>v.sz>>v.heading>>v.turn>>v.road>>v.water) {
             if (exploration< -1 || exploration>2 || (terrain && exploration<0)) return 2;
             std::vector<int> grades(32*32);for (auto& grade:grades) if (!(std::cin>>grade)) return 2;
-            tak::sim::RetailReplayProbe::search(fx,fz,boat!=0,budget,gx,gz,exploration,admission!=0,moving!=0,terrain!=0,grades,v);
+            ta::sim::RetailReplayProbe::search(fx,fz,boat!=0,budget,gx,gz,exploration,admission!=0,moving!=0,terrain!=0,grades,v);
         }
         return 0;
     }
@@ -1067,7 +1067,7 @@ int main(int argc, char** argv) {
             for (auto& grade:grades) std::cin >> grade;
             int n=0;
             std::vector<int> queries;
-            const int result=tak::sim::retailCachedFootprintGrade(x,z,fx,fz,[&](int qx,int qz,int w,int h) {
+            const int result=ta::sim::retailCachedFootprintGrade(x,z,fx,fz,[&](int qx,int qz,int w,int h) {
                 queries.insert(queries.end(),{qx,qz,w,h}); return grades.at(size_t(n++));
             });
             std::cout << result;
@@ -1080,19 +1080,19 @@ int main(int argc, char** argv) {
         bool mover,requester;
         uint32_t stamp,recent,stale;
         while (std::cin >> mover >> requester >> stamp >> recent >> stale)
-            std::cout << tak::sim::retailCachedBodyGrade(mover,requester,stamp,recent,stale) << '\n';
+            std::cout << ta::sim::retailCachedBodyGrade(mover,requester,stamp,recent,stale) << '\n';
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--ring-point") {
-        tak::sim::RetailRingGoal goal;int32_t x,z;int fx,fz;
+        ta::sim::RetailRingGoal goal;int32_t x,z;int fx,fz;
         while (std::cin>>goal.x>>goal.z>>goal.innerRadius>>goal.outerTolerance>>x>>z>>fx>>fz) {
-            const auto point=goal.navigationPoint(tak::sim::Fixed::raw(x),tak::sim::Fixed::raw(z),fx,fz);
+            const auto point=goal.navigationPoint(ta::sim::Fixed::raw(x),ta::sim::Fixed::raw(z),fx,fz);
             std::cout<<point.x.v<<' '<<point.z.v<<'\n';
         }
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--rect-point") {
-        tak::sim::RetailRectGoal goal;
+        ta::sim::RetailRectGoal goal;
         int x,z,fx,fz;
         while (std::cin >> goal.minX >> goal.maxX >> goal.minZ >> goal.maxZ >> x >> z >> fx >> fz) {
             const auto [cx,cz]=goal.navigationCell(x,z);
@@ -1102,11 +1102,11 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && std::string(argv[1]) == "--circle-radius") {
         int32_t radius;
-        while (std::cin >> radius) std::cout << tak::sim::retailCircleRadiusSquared(radius) << '\n';
+        while (std::cin >> radius) std::cout << ta::sim::retailCircleRadiusSquared(radius) << '\n';
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--prepare-grade") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         RetailGradePreparation state;
         uint32_t tick;
         int requester,last,count,finish;
@@ -1130,7 +1130,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--age-grade") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         RetailGradeContext c;
         int x,z,fx,fz,stale;
         while (std::cin >> c.width >> c.height >> c.footX >> c.footZ >> x >> z >> fx >> fz >> stale) {
@@ -1152,12 +1152,12 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--terrain-grade") {
         int low,high,sea,maxDepth,minDepth,badMax,badMin,maxSlope,badSlope,maxWater,badWater,road;
         while (std::cin>>low>>high>>sea>>maxDepth>>minDepth>>badMax>>badMin>>maxSlope>>badSlope>>maxWater>>badWater>>road)
-            std::cout<<tak::sim::retailTerrainGrade(low,high,sea,maxDepth,minDepth,badMax,badMin,
+            std::cout<<ta::sim::retailTerrainGrade(low,high,sea,maxDepth,minDepth,badMax,badMin,
                 maxSlope,badSlope,maxWater,badWater,road!=0)<<'\n';
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--visible") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         RetailGradeContext c;
         int mw,mh,x,z,mask;
         while (std::cin >> c.width >> c.height >> c.footX >> c.footZ >> mw >> mh >> c.player >> x >> z >> mask) {
@@ -1175,20 +1175,20 @@ int main(int argc, char** argv) {
         int fx,fz,accepted,inactive,flags,count;
         while (std::cin>>fx>>fz>>accepted>>inactive>>flags>>count) {
             if (count<0 || count>256) return 2;
-            std::vector<tak::sim::PathCell> route(static_cast<size_t>(count));
+            std::vector<ta::sim::PathCell> route(static_cast<size_t>(count));
             for (auto& p:route) if (!(std::cin>>p.x>>p.z)) return 2;
-            tak::sim::RetailReplayProbe::delivery(fx,fz,accepted,inactive,flags,route);
+            ta::sim::RetailReplayProbe::delivery(fx,fz,accepted,inactive,flags,route);
         }
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--world-grade") {
         int fx,fz,player,sx,sz,retry,x,z,grade,mask;
         while (std::cin>>fx>>fz>>player>>sx>>sz>>retry>>x>>z>>grade>>mask)
-            std::cout<<tak::sim::RetailReplayProbe::grade(fx,fz,player,sx,sz,retry,x,z,grade,mask)<<'\n';
+            std::cout<<ta::sim::RetailReplayProbe::grade(fx,fz,player,sx,sz,retry,x,z,grade,mask)<<'\n';
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--grade") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         RetailGradeContext c;
         int probe,x,z,visible,grade,live,bx,bz,owner;
         while (std::cin >> c.width >> c.height >> c.footX >> c.footZ >> c.startX >> c.startZ
@@ -1208,7 +1208,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--goal") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         int shape,a,b,c,d,e,x,z;
         while (std::cin >> shape >> a >> b >> c >> d >> e >> x >> z) {
             bool accepted; int distance;
@@ -1235,7 +1235,7 @@ int main(int argc, char** argv) {
         while (std::cin >> seed >> capacity >> allocated) {
             std::vector<int> flags(size_t(capacity),0);
             for (auto& f : flags) std::cin >> f;
-            const int slot=tak::sim::retailAllocateSlot(seed,capacity,allocated,[&](int i) { return (flags[size_t(i)] & 0x1000000)!=0; });
+            const int slot=ta::sim::retailAllocateSlot(seed,capacity,allocated,[&](int i) { return (flags[size_t(i)] & 0x1000000)!=0; });
             std::cout << slot << ' ' << seed << '\n';
         }
         return 0;
@@ -1243,11 +1243,11 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--pool-capacity") {
         // The pool World starts a player with under each unit cap.
         int cap;
-        while (std::cin >> cap) std::cout << tak::sim::World::entityPoolCapacity(cap) << '\n';
+        while (std::cin >> cap) std::cout << ta::sim::World::entityPoolCapacity(cap) << '\n';
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--worker") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         int width,height,sx,sz,gx,gz,budget,exhaust;
         while (std::cin >> width >> height >> sx >> sz >> gx >> gz >> budget >> exhaust) {
             std::vector<int> grades(size_t(width)*height);
@@ -1302,7 +1302,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--init") {
-        using namespace tak::sim;
+        using namespace ta::sim;
         RetailSearchAttempt::Parameters params;
         int accepted, distanceValue, count, oldX, oldZ;
         while (std::cin >> params.width >> params.height >> params.start.x >> params.start.z
@@ -1330,13 +1330,13 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string(argv[1]) == "--weight") {
         uint32_t tick, last; int pending, retry, heavy, threshold;
         while (std::cin >> tick >> last >> pending >> retry >> heavy >> threshold) {
-            const int weight = tak::sim::retailInitialPathWeight(tick, last, pending, retry, heavy != 0, threshold);
+            const int weight = ta::sim::retailInitialPathWeight(tick, last, pending, retry, heavy != 0, threshold);
             std::cout << weight << ' ' << last << '\n';
         }
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--attempt") {
-        tak::sim::RetailSearchAttempt attempt;
+        ta::sim::RetailSearchAttempt attempt;
         auto& trace = attempt.trace;
         int budget;
         while (std::cin >> trace.width >> trace.height >> trace.start.x >> trace.start.z
@@ -1358,7 +1358,7 @@ int main(int argc, char** argv) {
                     word(queries, x); word(queries, z); word(queries, direction);
                     return x < 0 || z < 0 || x >= trace.width || z >= trace.height ? 0 : grades[size_t(z * trace.width + x)];
                 }, [&](int x, int z) {
-                    return tak::sim::retailGoalDistance(x - trace.goal.x, z - trace.goal.z);
+                    return ta::sim::retailGoalDistance(x - trace.goal.x, z - trace.goal.z);
                 }, budget);
                 const auto& cells = attempt.cost.cells.empty() ? trace.cells : attempt.cost.cells;
                 for (auto cell : cells) word(hash, cell.flags | int(cell.direction) << 8);
@@ -1367,7 +1367,7 @@ int main(int argc, char** argv) {
                           << ' ' << attempt.route.flags << ' ' << attempt.route.points.size();
                 for (auto p : attempt.route.points) std::cout << ' ' << p.x * 16 + 8 << ' ' << p.z * 16 + 8;
                 std::cout << '\n';
-                if (result.result != tak::sim::RetailSearchAttempt::Result::Searching) break;
+                if (result.result != ta::sim::RetailSearchAttempt::Result::Searching) break;
             }
             std::cout << "END\n";
             attempt = {};
@@ -1376,27 +1376,27 @@ int main(int argc, char** argv) {
     }
     if (argc == 2 && std::string(argv[1]) == "--direction") {
         int x, z;
-        while (std::cin >> x >> z) std::cout << tak::sim::retailSearchDirection(x, z) << '\n';
+        while (std::cin >> x >> z) std::cout << ta::sim::retailSearchDirection(x, z) << '\n';
         return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--route") {
         int width, height, partial, radius;
-        tak::sim::RetailReachability::Point start, end;
+        ta::sim::RetailReachability::Point start, end;
         while (std::cin >> width >> height >> start.x >> start.z >> end.x >> end.z >> partial >> radius) {
-            std::vector<tak::sim::RetailCostSearch::Cell> cells(size_t(width) * height);
+            std::vector<ta::sim::RetailCostSearch::Cell> cells(size_t(width) * height);
             for (auto& cell : cells) {
                 int flags, direction;
                 std::cin >> flags >> direction;
                 cell.flags = uint8_t(flags); cell.direction = uint8_t(direction);
             }
-            auto route = tak::sim::retailReconstructRoute(cells, width, start, end, partial, radius);
+            auto route = ta::sim::retailReconstructRoute(cells, width, start, end, partial, radius);
             std::cout << route.flags << ' ' << route.points.size();
             for (auto p : route.points) std::cout << ' ' << p.x * 16 + 8 << ' ' << p.z * 16 + 8;
             std::cout << '\n';
         }
         return 0;
     }
-    using tak::sim::RetailReachability;
+    using ta::sim::RetailReachability;
     RetailReachability trace;
     int budget, limit, tolerance;
     while (std::cin >> trace.width >> trace.height >> trace.start.x >> trace.start.z
@@ -1415,7 +1415,7 @@ int main(int argc, char** argv) {
                 return x < 0 || z < 0 || x >= trace.width || z >= trace.height ? 0 : grades[size_t(z * trace.width + x)];
             };
             const int result = trace.step(grade, [&](int x, int z) {
-                return tak::sim::retailGoalDistance(x - trace.goal.x, z - trace.goal.z, tolerance);
+                return ta::sim::retailGoalDistance(x - trace.goal.x, z - trace.goal.z, tolerance);
             }, budget);
             for (auto c : trace.cells) word(cells, c.flags | int(c.direction) << 8);
             std::cout << result << ' ' << trace.work;

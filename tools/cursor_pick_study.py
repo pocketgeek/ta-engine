@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Cursor-picking study (perf follow-up C): matched A/B runs of the debug render
-study with the scripted pointer (TAK_RENDER_CURSOR, GameView::renderStudyCursor).
+study with the scripted pointer (TA_RENDER_CURSOR, GameView::renderStudyCursor).
 
 Every run prints one CURSORSTATS line per frame (desiredCursor wall time, the
 unitUnderCursor calls it made, the cursor it chose) and the usual FRAME lines.
@@ -9,13 +9,13 @@ whole frame (mean/median/p95/p99/max after the warm-up), and REFUSES a result
 whose world hash or per-frame cursor sequence differs between any two runs of a
 scene: picking must choose exactly what a scan over every unit chooses.
 
-  python3 tools/cursor_pick_study.py --a <A takclient> --b <B takclient> \\
-      --data ~/tak_data --output <dir> [--scenes subset10k-sel ...] [--repeats 2] \\
-      [--wrap /home/pocket_geek/tak-tmp/tools/timing.sh]
+  python3 tools/cursor_pick_study.py --a <A taclient> --b <B taclient> \\
+      --data ~/ta_data --output <dir> [--scenes subset10k-sel ...] [--repeats 2] \\
+      [--wrap /home/pocket_geek/ta-tmp/tools/timing.sh]
 
 --wrap prefixes every client command (e.g. the timing-core lock script).
 --a-env/--b-env KEY=VALUE apply to one side (same-binary references such as
-TAK_PICK_FULL_SCAN=1). Uses only the Python standard library.
+TA_PICK_FULL_SCAN=1). Uses only the Python standard library.
 """
 
 import argparse
@@ -29,28 +29,28 @@ import subprocess
 import sys
 
 DEFAULT_MAP = "Ulasem Arena"
-SUBSET = {"TAK_SHADOW_BENCH": "10000", "TAK_PROFILE_ZOOM": "1.0",
-          "TAK_RENDER_CENTER": "7600,7600", "TAK_RENDER_OFFSET": "4200,5400"}
+SUBSET = {"TA_SHADOW_BENCH": "10000", "TA_PROFILE_ZOOM": "1.0",
+          "TA_RENDER_CENTER": "7600,7600", "TA_RENDER_OFFSET": "4200,5400"}
 SCENES = {
     # 10,000 units, a small corner of the army in view, 20 units selected: the
     # selected-hover pass classifies every unit (the case the index targets).
-    "subset10k-sel": dict(env=dict(SUBSET, TAK_RENDER_CURSOR_SELECT="20")),
+    "subset10k-sel": dict(env=dict(SUBSET, TA_RENDER_CURSOR_SELECT="20")),
     # The same view with nothing selected (own-unit highlight pass).
     "subset10k-nosel": dict(env=dict(SUBSET)),
     # The same view with Attack armed (the armed-attack cursor's hover pass).
-    "subset10k-attack": dict(env=dict(SUBSET, TAK_RENDER_CURSOR_SELECT="20", TAK_RENDER_CURSOR_CMD="a")),
+    "subset10k-attack": dict(env=dict(SUBSET, TA_RENDER_CURSOR_SELECT="20", TA_RENDER_CURSOR_CMD="a")),
     # 10,000 units all in view: the index answers with the whole list (overhead only).
-    "visible10k-sel": dict(env={"TAK_SHADOW_BENCH": "10000", "TAK_PROFILE_ZOOM": "0.25",
-                                "TAK_RENDER_CURSOR_SELECT": "20"}),
+    "visible10k-sel": dict(env={"TA_SHADOW_BENCH": "10000", "TA_PROFILE_ZOOM": "0.25",
+                                "TA_RENDER_CURSOR_SELECT": "20"}),
     # An ordinary small battle (200 units, two sides), 20 selected.
-    "small-battle-sel": dict(env={"TAK_SHADOW_BENCH": "200", "TAK_SHADOW_BENCH_TYPE": "araarch",
-                                  "TAK_PROFILE_ZOOM": "1.0", "TAK_RENDER_BATTLE": "1",
-                                  "TAK_RENDER_CURSOR_SELECT": "20"}),
+    "small-battle-sel": dict(env={"TA_SHADOW_BENCH": "200", "TA_SHADOW_BENCH_TYPE": "araarch",
+                                  "TA_PROFILE_ZOOM": "1.0", "TA_RENDER_BATTLE": "1",
+                                  "TA_RENDER_CURSOR_SELECT": "20"}),
     # 2,000-unit battle with flyers, construction, corpses, panning camera, moving units.
-    "effects-pan-sel": dict(env={"TAK_SHADOW_BENCH": "2000", "TAK_PROFILE_ZOOM": "0.75",
-                                 "TAK_RENDER_BATTLE": "1", "TAK_RENDER_EXTRAS": "1",
-                                 "TAK_RENDER_CAMERA": "1", "TAK_RENDER_MOTION": "1",
-                                 "TAK_RENDER_CURSOR_SELECT": "20"}),
+    "effects-pan-sel": dict(env={"TA_SHADOW_BENCH": "2000", "TA_PROFILE_ZOOM": "0.75",
+                                 "TA_RENDER_BATTLE": "1", "TA_RENDER_EXTRAS": "1",
+                                 "TA_RENDER_CAMERA": "1", "TA_RENDER_MOTION": "1",
+                                 "TA_RENDER_CURSOR_SELECT": "20"}),
 }
 SETTINGS = {
     "fullscreen": "0", "vsync": "0", "maxFps": "0", "uiScale": "1", "scorecardScale": "1",
@@ -83,14 +83,14 @@ def run(args, client, label, scene, leg):
     if root.exists():
         shutil.rmtree(root)
     profile = root / "profile"
-    pref = profile / "TAKengine" / "TAKingdoms"
+    pref = profile / "TAengine" / "TAKingdoms"
     pref.mkdir(parents=True, exist_ok=True)
     (pref / "settings.ini").write_text("".join(f"{k} = {v}\n" for k, v in SETTINGS.items()))
-    env = {k: v for k, v in os.environ.items() if not k.startswith("TAK_") and k != "DISPLAY"}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TA_") and k != "DISPLAY"}
     env.update(SDL_VIDEODRIVER=args.video_driver, SDL_RENDER_DRIVER=args.render_driver, SDL_AUDIODRIVER="dummy",
                XDG_CONFIG_HOME=str(profile), XDG_DATA_HOME=str(profile), HOME=str(profile),
-               TAK_PROF="1", TAK_PROF_FRAMES="1", TAK_RENDER_STUDY="1", TAK_RENDER_FRAMES=str(args.frames),
-               TAK_RENDER_CURSOR="1", TAK_RENDER_STATS="0")
+               TA_PROF="1", TA_PROF_FRAMES="1", TA_RENDER_STUDY="1", TA_RENDER_FRAMES=str(args.frames),
+               TA_RENDER_CURSOR="1", TA_RENDER_STATS="0")
     env.update(SCENES[scene]["env"])
     for extra in args.env + (args.a_env if label == "A" else args.b_env):
         k, _, v = extra.partition("=")

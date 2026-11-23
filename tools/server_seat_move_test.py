@@ -65,7 +65,7 @@ def main():
     ap.add_argument('--server', type=Path, required=True)
     ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-seat-move-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-seat-move-') as tmp:
         with server(a.server.resolve(), a.data.resolve(), Path(tmp)) as (port, h, process), \
              contextlib.closing(login(port, h, 'Alice')) as host, \
              contextlib.closing(login(port, h, 'Bobby')) as player:

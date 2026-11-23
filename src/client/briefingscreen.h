@@ -3,7 +3,7 @@
 #include <functional>
 #include <string>
 #include "hpi/hpi.h"
-namespace tak {
+namespace ta {
 class MenuMusic;
 struct Settings;
 class BriefingScreen {

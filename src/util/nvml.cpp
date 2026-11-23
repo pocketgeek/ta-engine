@@ -10,7 +10,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace tak::proc {
+namespace ta::proc {
 GpuSample nvml_detail::sampleDevice(const Api& api) {
     GpuSample g;
     Device device = nullptr;

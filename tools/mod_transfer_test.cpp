@@ -9,9 +9,9 @@
 #include <regex>
 #include <thread>
 #include "util/u8path.h"
-using namespace tak;
+using namespace ta;
 static void check(bool b,const char* why){if(!b)throw std::runtime_error(why);}
-static void put(const std::filesystem::path& root,const std::string& p,const std::string& b){auto f=root/tak::u8path(p);std::filesystem::create_directories(f.parent_path());std::ofstream(f,std::ios::binary)<<b;}
+static void put(const std::filesystem::path& root,const std::string& p,const std::string& b){auto f=root/ta::u8path(p);std::filesystem::create_directories(f.parent_path());std::ofstream(f,std::ios::binary)<<b;}
 static void archive(const std::filesystem::path& root,const std::string& p,const std::vector<std::pair<std::string,std::string>>& entries){
  std::vector<hpi::PackFile> files;for(const auto& [name,value]:entries)files.push_back({name,std::vector<uint8_t>(value.begin(),value.end())});
  const auto bytes=hpi::pack(files);put(root,p,std::string(bytes.begin(),bytes.end()));}
@@ -109,7 +109,7 @@ int main(int argc,char** argv){try{
     check(host.room().roomRev>readyRev && host.room().changeBits==net::kChangeMods && !host.room().slots[1].ready &&
           !peer.room().slots[1].ready && peer.room().roomRev==host.room().roomRev,"a new pack selection did not unready the guest");
     alphaDigest=host.modPackage()->digest;check(alphaDigest!=initialDigest,"selection did not replace pack");host.setGameModPacks({"Beta","Alpha"});peer.setGameModPacks({"PeerGame"});transition=4;
-   } else if(transition==4 && !host.modPending() && host.room().mapsReady && peer.modPackage() && peer.modPackage()->digest==initialDigest){check(std::filesystem::exists(peerCache/"ModCache"/(initialDigest+".takmods")),"peer cache not saved after recovery");peer.setSlot(1,1,1,1,1,1);transition=5;}
+   } else if(transition==4 && !host.modPending() && host.room().mapsReady && peer.modPackage() && peer.modPackage()->digest==initialDigest){check(std::filesystem::exists(peerCache/"ModCache"/(initialDigest+".tamods")),"peer cache not saved after recovery");peer.setSlot(1,1,1,1,1,1);transition=5;}
   }
   if(!started && transition==5 && ready && host.room().mapsReady && host.room().slots[1].ready){check(host.modPackage()&&peer.modPackage(),"start allowed before packs received");check(host.modPackage()->digest==peer.modPackage()->digest,"pack digest mismatch");host.startGame();started=true;}
   if(!loaded && !campaign && host.starting() && peer.starting()){

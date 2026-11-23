@@ -37,12 +37,12 @@ def main():
     ap.add_argument('--driver', type=Path, required=True)
     ap.add_argument('--ca', type=Path, required=True)
     ap.add_argument('--directory', default='https://localhost:14000/dir')
-    ap.add_argument('--domain', default='acme.tak.test')
+    ap.add_argument('--domain', default='acme.ta.test')
     ap.add_argument('--port', type=int, default=5002)
     a = ap.parse_args()
     assert a.directory.startswith('https://localhost:'), 'local test CA only'
     env = dict(os.environ, SSL_CERT_FILE=str(a.ca.resolve()))
-    with tempfile.TemporaryDirectory(prefix='tak-acme-integration-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-acme-integration-') as tmp:
         state = Path(tmp)/'state'
         def run(hold=1):
             return subprocess.run([str(a.driver.resolve()), str(state), a.domain,

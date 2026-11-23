@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-namespace tak::client {
+namespace ta::client {
 
 class AllocCount {
 public:
@@ -21,4 +21,4 @@ private:
     uint64_t bytes_ = 0;
 };
 
-}  // namespace tak::client
+}  // namespace ta::client

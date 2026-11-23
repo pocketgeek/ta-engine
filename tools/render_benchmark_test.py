@@ -123,8 +123,8 @@ def main():
     check(rb.aggregate([result("A", 10.0), busy], exclude_contended=True)[0]["labels"]["A"]["runs"] == 1, "contended run excluded")
     for name, scene in rb.SCENES.items():
         env = rb.scene_env(name, "normal")
-        check(env["TAK_SHADOW_BENCH"] == str(scene["count"]) and scene.get("notes"), f"scene {name}")
-    check(rb.scene_env("total10k-subset", "uhd")["TAK_RENDER_OFFSET"] == "0,3960", "per-size scene override")
+        check(env["TA_SHADOW_BENCH"] == str(scene["count"]) and scene.get("notes"), f"scene {name}")
+    check(rb.scene_env("total10k-subset", "uhd")["TA_RENDER_OFFSET"] == "0,3960", "per-size scene override")
     interactive_checks()
     print("PASS: render benchmark parser, windows, PNG compare and aggregation")
 
@@ -135,8 +135,8 @@ def interactive_checks():
     check(not set(rb.INTERACTIVE) & set(rb.HISTORICAL), "interactive scenes are not in the historical 'all'")
     check(len(rb.HISTORICAL) == 24 and set(rb.QUICK) <= set(rb.HISTORICAL) and rb.HISTORICAL[-1] == "terrain-jumps",
           "historical matrix unchanged")
-    check(rb.scene_env("hover-units-10k", "uhd")["TAK_RENDER_OFFSET"] == "0,5000" and
-          rb.scene_env("hover-units-10k", "uhd")["TAK_RENDER_CENTER"] == "7600,7600", "interactive size override")
+    check(rb.scene_env("hover-units-10k", "uhd")["TA_RENDER_OFFSET"] == "0,5000" and
+          rb.scene_env("hover-units-10k", "uhd")["TA_RENDER_CENTER"] == "7600,7600", "interactive size override")
     stats = "cursor_evals=1 cursor_pick_tests=200 cursor_pick_hits=3 hidden_faded=0"
     good = (log(10).replace("RENDERSTATS frame=", "RENDERSTATS " + stats + " frame=")
             + "RENDER_INTERACTIVE mouse=sweep fade_clock=0\n"

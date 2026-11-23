@@ -1,4 +1,4 @@
-TAK's built-in ACME support uses the existing statically linked OpenSSL
+TA's built-in ACME support uses the existing statically linked OpenSSL
 (see STREAMING-LICENSES.txt) and the following header-only JSON parser.
 No JSON runtime library or external ACME program is required.
 

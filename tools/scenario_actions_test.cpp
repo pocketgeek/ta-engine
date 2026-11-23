@@ -3,7 +3,7 @@
 #include "hpi/hpi.h"
 #include <iostream>
 #include <stdexcept>
-using namespace tak;
+using namespace ta;
 static void check(bool ok,const char* why) { if(!ok)throw std::runtime_error(why); }
 static void run(sim::World& w,const sim::TypeRegistry& reg,int opcode,std::initializer_list<const char*> slots) {
     crt::Scenario scene;scene.players.resize(9);

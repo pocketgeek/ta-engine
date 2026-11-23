@@ -32,7 +32,7 @@
 #include <stdexcept>
 #include "util/u8path.h"
 
-namespace tak::hpi {
+namespace ta::hpi {
 
 namespace {
 
@@ -45,7 +45,7 @@ std::string utf8(const std::filesystem::path& p) {
 std::optional<std::filesystem::path> looseFile(const std::filesystem::path& root,
                                                const std::string& name) {
     try {
-        auto p=root/tak::u8path(name);
+        auto p=root/ta::u8path(name);
         std::error_code ec;
         if (std::filesystem::is_regular_file(p,ec)) return p;
     } catch (const std::runtime_error&) {
@@ -675,7 +675,7 @@ std::vector<std::string> MountSet::list(const std::string& prefix) const {
         if (under(k)) out[k] = w.entry.path;
     // ...then loose files override (same precedence as read()).
     if (cfg_.includeLoose) {
-        fs::path base = kp.empty() ? dir_ : dir_ / tak::u8path(prefix);
+        fs::path base = kp.empty() ? dir_ : dir_ / ta::u8path(prefix);
         std::error_code ec;
         if (fs::is_directory(base, ec))
             for (auto it = fs::recursive_directory_iterator(base, ec);
@@ -756,7 +756,7 @@ void Vfs::refreshMapCache(const std::filesystem::path& root) {
             for (const auto& file : archive->entries()) {
                 auto path = MountSet::key(file.path);
                 if (file.isDirectory || !path.ends_with(".tnt")) continue;
-                const auto alias = "kmap/" + tak::vpath::stem(path) + " [" + digest.substr(0,16) + "].tnt";
+                const auto alias = "kmap/" + ta::vpath::stem(path) + " [" + digest.substr(0,16) + "].tnt";
                 cachedMaps_.emplace(alias, CachedMap{archive,path});
                 break;
             }
@@ -796,9 +796,9 @@ std::optional<std::vector<uint8_t>> Vfs::tryRead(const std::string& path, bool s
         if (it->ms.has(sub)) return it->ms.read(sub);
     }
     if (!skipMapResources) {
-        auto it = cachedMaps_.find(tak::vpath::replaceExtension(kp,".tnt"));
+        auto it = cachedMaps_.find(ta::vpath::replaceExtension(kp,".tnt"));
         if (it != cachedMaps_.end() && (kp.ends_with(".tnt") || kp.ends_with(".ota"))) {
-            const auto source = tak::vpath::replaceExtension(it->second.path,tak::vpath::extension(kp));
+            const auto source = ta::vpath::replaceExtension(it->second.path,ta::vpath::extension(kp));
             if (auto entry = it->second.archive->find(source)) return it->second.archive->read(*entry);
         }
     }
@@ -874,9 +874,9 @@ bool Vfs::has(const std::string& path, bool skipMapResources) const {
         if (it->ms.has(path.substr(it->prefix.size()))) return true;
     }
     if (!skipMapResources && (kp.ends_with(".tnt") || kp.ends_with(".ota"))) {
-        auto it = cachedMaps_.find(tak::vpath::replaceExtension(kp,".tnt"));
+        auto it = cachedMaps_.find(ta::vpath::replaceExtension(kp,".tnt"));
         if (it != cachedMaps_.end())
-            return it->second.archive->find(tak::vpath::replaceExtension(it->second.path,tak::vpath::extension(kp))) != nullptr;
+            return it->second.archive->find(ta::vpath::replaceExtension(it->second.path,ta::vpath::extension(kp))) != nullptr;
     }
     return base_ && base_->has(path, skipMapResources || bool(mapFiles_));
 }
@@ -912,8 +912,8 @@ std::vector<std::string> Vfs::list(const std::string& prefix, bool skipMapResour
     if (!skipMapResources) for (const auto& [p, archive] : cachedMaps_) {
         if (kp.empty() || p.starts_with(kp.back() == '/' ? kp : kp + '/')) {
             out[p] = p;
-            const auto ota = tak::vpath::replaceExtension(p,".ota");
-            if (archive.archive->find(tak::vpath::replaceExtension(archive.path,".ota"))) out[ota] = ota;
+            const auto ota = ta::vpath::replaceExtension(p,".ota");
+            if (archive.archive->find(ta::vpath::replaceExtension(archive.path,".ota"))) out[ota] = ota;
         }
     }
     if (modFiles_) for (const auto& [p, bytes] : *modFiles_)
@@ -1069,12 +1069,12 @@ uint64_t gameplayHash(const Vfs& input) {
             featFiles[k] = p;
         }
         for (const auto& [k, p] : featFiles) {
-            tak::tdf::Node root;
+            ta::tdf::Node root;
             try {
                 auto b = vfs.read(p);
-                root = tak::tdf::parseText(std::string(b.begin(), b.end()), p);
+                root = ta::tdf::parseText(std::string(b.begin(), b.end()), p);
             } catch (const std::exception&) { continue; }   // loader skips it too
-            std::map<std::string, const tak::tdf::Node*> secs;   // sorted sections
+            std::map<std::string, const ta::tdf::Node*> secs;   // sorted sections
             for (const auto& n : root.childOrder) {
                 std::string lo = n;
                 for (char& c : lo) c = char(std::tolower(static_cast<unsigned char>(c)));
@@ -1242,8 +1242,8 @@ Vfs::Files modFiles(const std::filesystem::path& root,ModKind kind,const std::ve
     std::vector<std::filesystem::path> paths,later;
     const auto alwaysDir=modAlwaysDirectory(root,kind),dir=modDirectory(root,kind);
     for(const auto& name:names) {
-        if(std::binary_search(always.begin(),always.end(),name))paths.push_back(alwaysDir/tak::u8path(name));
-        else if(std::binary_search(available.begin(),available.end(),name))later.push_back(dir/tak::u8path(name));
+        if(std::binary_search(always.begin(),always.end(),name))paths.push_back(alwaysDir/ta::u8path(name));
+        else if(std::binary_search(available.begin(),available.end(),name))later.push_back(dir/ta::u8path(name));
         else throw std::runtime_error("mod pack not found: "+name);
     }
     paths.insert(paths.end(),later.begin(),later.end());
@@ -1379,10 +1379,10 @@ std::vector<std::pair<std::string, std::string>> listMaps(const Vfs& vfs) {
     std::unordered_map<std::string, std::string> byName;   // lower(name) -> path
     for (const char* ns : {"Maps", "kmap"})
         for (const std::string& p : vfs.list(ns)) {
-            std::string ext = tak::vpath::extension(p);
+            std::string ext = ta::vpath::extension(p);
             for (char& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
             if (ext != ".tnt") continue;
-            std::string name = tak::vpath::stem(p);
+            std::string name = ta::vpath::stem(p);
             std::string lname = name;
             for (char& c : lname) c = char(std::tolower(static_cast<unsigned char>(c)));
             byName.emplace(lname, p);   // first namespace (Maps) wins a name tie
@@ -1390,7 +1390,7 @@ std::vector<std::pair<std::string, std::string>> listMaps(const Vfs& vfs) {
     std::vector<std::pair<std::string, std::string>> out;
     out.reserve(byName.size());
     for (const auto& [ln, path] : byName)
-        out.push_back({tak::vpath::stem(path), path});
+        out.push_back({ta::vpath::stem(path), path});
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -1398,7 +1398,7 @@ std::vector<std::pair<std::string, std::string>> listMaps(const Vfs& vfs) {
 std::string findMap(const Vfs& vfs, const std::string& name) {
     // A "~gen1~" random-map id carries its recipe, not a file -- resolve it to itself
     // so every call site (client, server referee, MP lobby) generates in memory.
-    if (tak::mapgen::isGeneratedMapId(name)) return name;
+    if (ta::mapgen::isGeneratedMapId(name)) return name;
     std::string want = name;
     // Accept either a bare name or a name with a .tnt suffix.
     if (want.size() > 4) {
@@ -1409,14 +1409,14 @@ std::string findMap(const Vfs& vfs, const std::string& name) {
     for (char& c : want) c = char(std::tolower(static_cast<unsigned char>(c)));
     for (const char* ns : {"Maps", "kmap"})
         for (const std::string& p : vfs.list(ns)) {
-            std::string ext = tak::vpath::extension(p);
+            std::string ext = ta::vpath::extension(p);
             for (char& c : ext) c = char(std::tolower(static_cast<unsigned char>(c)));
             if (ext != ".tnt") continue;
-            std::string stem = tak::vpath::stem(p);
+            std::string stem = ta::vpath::stem(p);
             for (char& c : stem) c = char(std::tolower(static_cast<unsigned char>(c)));
             if (stem == want) return p;
         }
     return {};
 }
 
-} // namespace tak::hpi
+} // namespace ta::hpi

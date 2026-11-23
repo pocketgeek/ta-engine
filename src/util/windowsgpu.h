@@ -2,7 +2,7 @@
 #include "util/procmetrics.h"
 #include <vector>
 
-namespace tak::proc {
+namespace ta::proc {
 GpuSample windowsGpuSample();
 namespace windowsgpu_detail {
 struct Counter { std::wstring instance; double value; bool valid = true; };

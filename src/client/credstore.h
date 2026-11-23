@@ -17,15 +17,15 @@
 #include <memory>
 #include <string>
 
-namespace tak::credstore {
+namespace ta::credstore {
 
 // Windows: TargetName "service/account" (CRED_TYPE_GENERIC). macOS: kSecClassGenericPassword
 // with kSecAttrService/kSecAttrAccount. Secret Service: attributes service/account under
-// the schema "org.takengine.Credential".
+// the schema "org.taengine.Credential".
 struct Slot { std::string service, account; };
-inline Slot streamKeySlot() { return {"TAK Engine", "YouTube stream key"}; }
+inline Slot streamKeySlot() { return {"TA Engine", "YouTube stream key"}; }
 // Round-trip tests and debug screenshots use this; never the real slot.
-inline Slot testSlot() { return {"TAK Engine Test", "credstore round-trip"}; }
+inline Slot testSlot() { return {"TA Engine Test", "credstore round-trip"}; }
 
 enum class Result { Ok, Missing, Failed };
 
@@ -62,4 +62,4 @@ inline void wipe(std::string& s) {
     s.clear();
 }
 
-}  // namespace tak::credstore
+}  // namespace ta::credstore

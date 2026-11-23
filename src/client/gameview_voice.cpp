@@ -8,7 +8,7 @@
         // Single-player and campaign games run on a private local server with nobody to
         // talk to; replays and benchmark runs never open the microphone.
         if (!mp_ || replayMode_ || benchmarkMode_ || singlePlayer_ || !missionStem_.empty()) return false;
-        using S = tak::net::MpClient::State;
+        using S = ta::net::MpClient::State;
         const S st = mp_->state();
         return st == S::InRoom || st == S::Starting || st == S::InGame;
     }
@@ -34,14 +34,14 @@
 
     void GameView::pumpVoice() {
         if (!voice_) return;
-        if (settings_) voice_->configure(*settings_, tak::currentAudioDevice());
+        if (settings_) voice_->configure(*settings_, ta::currentAudioDevice());
         const bool room = voiceRoomActive();
         const bool on = room && voice_->enabled();
         if (mp_) {
             mp_->setVoiceListen(on);
             for (auto& f : mp_->takeVoice()) {
                 if (!on) continue;
-                tak::VoiceEngine::Incoming in;
+                ta::VoiceEngine::Incoming in;
                 in.talker = f.talker; in.slot = f.slot; in.seq = f.seq; in.flags = f.flags;
                 in.name = std::move(f.name); in.opus = std::move(f.opus);
                 voice_->push(std::move(in));
@@ -51,7 +51,7 @@
         // losing focus, a text field taking it, or talking no longer being allowed all
         // end the transmission at once.
         bool down = false;
-        if (const tak::KeyChord k = hotkeys_.chord(tak::Act::PushToTalk); k.bound()) {
+        if (const ta::KeyChord k = hotkeys_.chord(ta::Act::PushToTalk); k.bound()) {
             const SDL_Scancode sc = SDL_GetScancodeFromKey(SDL_Keycode(k.key));
             const Uint8* keys = SDL_GetKeyboardState(nullptr);
             down = sc != SDL_SCANCODE_UNKNOWN && keys && keys[sc];
@@ -64,15 +64,15 @@
         ptt_.frame(talk && !hotkeysScreen_ && !activation, textEntryActive(), focused, down);
         // The diplomacy VOLUME sliders, by slot. They belong to the game: in a room the
         // slots may hold other people, so everyone plays at 100 there.
-        const bool inGame = mp_ && mp_->state() == tak::net::MpClient::State::InGame;
+        const bool inGame = mp_ && mp_->state() == ta::net::MpClient::State::InGame;
         for (int p = 0; p < 8; ++p) voice_->setPlayerVolume(p, inGame ? voiceVolume_[size_t(p)] : 100);
         // Before the game runs the server sends to the whole room whatever the mask says,
         // as it does chat.
         const uint8_t mask = voiceRecipients_;
-        const uint8_t spectators = voiceSpectators_ ? tak::net::kVoiceSpectators : 0;
+        const uint8_t spectators = voiceSpectators_ ? ta::net::kVoiceSpectators : 0;
         // Voice activation: allowed whenever voice is on in the room; the engine's gate
         // opens on the microphone's level, typing or not, focused or not.
-        voice_->update(room, activation ? talk : ptt_.talking(), [this, mask, spectators](const tak::VoiceEngine::Frame& f) {
+        voice_->update(room, activation ? talk : ptt_.talking(), [this, mask, spectators](const ta::VoiceEngine::Frame& f) {
             if (mp_) mp_->sendVoice(f.seq, mask, uint8_t(f.flags | spectators), f.opus);
         });
     }
@@ -90,16 +90,16 @@
 
     void GameView::openVoiceOptions() {
         if (!settings_) return;
-        tak::VoicePageHooks hooks;
+        ta::VoicePageHooks hooks;
         if (voice_) {
             hooks.micLevel = [this] { return voice_->micLevel(); };
-            hooks.micNote = [this] { return tak::VoiceEngine::note(voice_->micState()); };
-            hooks.outNote = [this] { return tak::VoiceEngine::note(voice_->outState()); };
+            hooks.micNote = [this] { return ta::VoiceEngine::note(voice_->micState()); };
+            hooks.outNote = [this] { return ta::VoiceEngine::note(voice_->outState()); };
             hooks.monitor = [this](bool on) { voice_->setMonitoring(on); };
         }
         // pumpVoice() applies every change on the next frame; each is saved as made.
-        options_ = std::make_unique<tak::OptionsScreen>(ren_, *settings_, [] {},
-            [this] { tak::saveSettings(*settings_); }, std::move(hooks), [this] { openHotkeys(); });
+        options_ = std::make_unique<ta::OptionsScreen>(ren_, *settings_, [] {},
+            [this] { ta::saveSettings(*settings_); }, std::move(hooks), [this] { openHotkeys(); });
     }
 
     // Who is talking, top-left, in the HUD's own block style: YOU while you transmit (MIC
@@ -124,7 +124,7 @@
         const float px = 1.8f, rowH = 7 * px + 8, icon = 7 * px + 10;
         float w = 0;
         for (auto& r : rows) {
-            r.text = tak::uiTextFit(r.text, px, 20 * 6 * px);   // a player's own capitals under MODERN
+            r.text = ta::uiTextFit(r.text, px, 20 * 6 * px);   // a player's own capitals under MODERN
             w = std::max(w, blockWidth(r.text, px));
         }
         const float x = 12, y0 = topLeft_.place(panelTex_ ? 7.0f : 55.0f, float(rows.size()) * rowH + 6) + 5;

@@ -14,7 +14,7 @@
 #include <random>
 #include <string>
 
-namespace cb = tak::chatbox;
+namespace cb = ta::chatbox;
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {
@@ -28,22 +28,22 @@ int main() {
     // ---- settings ----
     namespace fs = std::filesystem;
     std::mt19937_64 rng(std::random_device{}());
-    const fs::path dir = fs::temp_directory_path() / ("tak-chatbox-" + std::to_string(rng()));
+    const fs::path dir = fs::temp_directory_path() / ("ta-chatbox-" + std::to_string(rng()));
     fs::create_directories(dir);
     const fs::path file = dir / "settings.ini";
-    tak::setSettingsPath(file.string());
+    ta::setSettingsPath(file.string());
     {
-        tak::Settings d;
+        ta::Settings d;
         check(d.chatScale == 1.0f && d.chatAlign == cb::Centered, "defaults: 100%, centered");
         std::ofstream(file) << "uiScale = 1.5\n";
-        const auto old = tak::loadSettings();
+        const auto old = ta::loadSettings();
         check(old.chatScale == 1.0f && old.chatAlign == cb::Centered, "a file without the keys loads the defaults");
 
-        tak::Settings s;
+        ta::Settings s;
         s.chatScale = 2.5f;
         s.chatAlign = cb::Left;
-        check(tak::saveSettings(s), "save");
-        const auto back = tak::loadSettings();
+        check(ta::saveSettings(s), "save");
+        const auto back = ta::loadSettings();
         check(back.chatScale == 2.5f && back.chatAlign == cb::Left, "chatScale / chatAlign round-trip");
         std::ifstream in(file);
         const std::string text((std::istreambuf_iterator<char>(in)), {});
@@ -51,22 +51,22 @@ int main() {
               text.find("chatAlign = 0\n") != std::string::npos, "written under chatScale / chatAlign");
 
         std::ofstream(file) << "chatScale = 9\nchatAlign = 7\n";
-        auto hi = tak::loadSettings();
+        auto hi = ta::loadSettings();
         check(hi.chatScale == 3.0f && hi.chatAlign == 1, "too high: clamped to 300% / centered");
         std::ofstream(file) << "chatScale = 0.1\nchatAlign = -3\n";
-        auto lo = tak::loadSettings();
+        auto lo = ta::loadSettings();
         check(lo.chatScale == 0.5f && lo.chatAlign == 0, "too low: clamped to 50% / left");
 
-        tak::Settings a, b;
+        ta::Settings a, b;
         b.chatScale = 2.0f;
         check(!(a == b), "chatScale visible to operator== (DEFAULTS button)");
         b = a; b.chatAlign = cb::Left;
         check(!(a == b), "chatAlign visible to operator==");
-        tak::Settings cur; cur.chatScale = 0.5f; cur.chatAlign = cb::Left;
-        const auto reset = tak::preferenceDefaults(cur);
+        ta::Settings cur; cur.chatScale = 0.5f; cur.chatAlign = cb::Left;
+        const auto reset = ta::preferenceDefaults(cur);
         check(reset.chatScale == 1.0f && reset.chatAlign == cb::Centered, "DEFAULTS resets both");
     }
-    tak::setSettingsPath("");
+    ta::setSettingsPath("");
     std::error_code ec;
     fs::remove_all(dir, ec);
 

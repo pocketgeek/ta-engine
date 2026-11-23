@@ -16,14 +16,14 @@ std::vector<uint16_t> cells(size_t n) {
     for (auto& c:v) { s^=s<<13;s^=s>>7;s^=s<<17;c=(s&7)<3 ? uint16_t(s>>20) : 0; }
     return v;
 }
-uint64_t plane(tak::sim::SimPool* pool,const std::vector<uint16_t>& v) {
-    return tak::sim::foldPlane(pool,v.size(),[&](size_t begin,size_t end) {
-        return tak::sim::foldCells16(end-begin,[&](size_t i){return v[begin+i];});
+uint64_t plane(ta::sim::SimPool* pool,const std::vector<uint16_t>& v) {
+    return ta::sim::foldPlane(pool,v.size(),[&](size_t begin,size_t end) {
+        return ta::sim::foldCells16(end-begin,[&](size_t i){return v[begin+i];});
     });
 }
 }
 int main() {
-    using namespace tak::sim;
+    using namespace ta::sim;
     // Pinned: a change here changes every lockstep hash (a protocol bump).
     const struct { size_t n; uint64_t fold; } pinned[]={
         {0,0x3fdf455f9dcf1e62ull},{1,0x9fbf3a3707d89113ull},{5,0x9dc2a3147c26def9ull},

@@ -22,7 +22,7 @@
 #include <sys/sysctl.h>
 #endif
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 // Set once a thread of this process is pinned: until then no thread's CPUs are touched.
@@ -327,7 +327,7 @@ std::vector<Ccd> readLinuxCcds(const std::filesystem::path& root) {
 }
 
 std::vector<Ccd> detectCcds() {
-    if (const char* fixture=tak::devEnv("TAK_CPU_SYSFS"); fixture && *fixture) return readLinuxCcds(fixture);
+    if (const char* fixture=ta::devEnv("TA_CPU_SYSFS"); fixture && *fixture) return readLinuxCcds(fixture);
 #if defined(__linux__)
     return readLinuxCcds("/sys");
 #elif defined(_WIN32)
@@ -449,9 +449,9 @@ bool setProcessCpus(const std::vector<int>& cpus) {
 }
 
 CpuTopology detectCpus() {
-    const char* fixture=tak::devEnv("TAK_CPU_SYSFS");
+    const char* fixture=ta::devEnv("TA_CPU_SYSFS");
     CpuTopology t=fixture && *fixture ? readLinuxCpus(fixture,{}) : nativeCpus();
-    if (tak::devFlag("TAK_CPU_NOPIN")) t.canPin=false;
+    if (ta::devFlag("TA_CPU_NOPIN")) t.canPin=false;
     return t;
 }
 
@@ -495,4 +495,4 @@ void unpinThisThread() {
 #endif
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

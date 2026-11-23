@@ -11,8 +11,8 @@
 
 namespace cart {
 
-void resizeMap(tak::tnt::Map& map, tak::terrain::Compositor& comp,
-               const tak::gaf::Palette& pal, int wUnits, int hUnits) {
+void resizeMap(ta::tnt::Map& map, ta::terrain::Compositor& comp,
+               const ta::gaf::Palette& pal, int wUnits, int hUnits) {
     int nw = std::max(1, wUnits) * 32, nh = std::max(1, hUnits) * 32;
     int nbx = nw / 2, nby = nh / 2;
     if (nw == map.width && nh == map.height) return;
@@ -47,8 +47,8 @@ void resizeMap(tak::tnt::Map& map, tak::terrain::Compositor& comp,
     generateMinimaps(map, comp, pal);
 }
 
-tak::tnt::Map newBlankMap(const tak::hpi::Vfs& vfs, SectionLibrary& sections,
-                          tak::terrain::Compositor& comp, const std::string& world,
+ta::tnt::Map newBlankMap(const ta::hpi::Vfs& vfs, SectionLibrary& sections,
+                          ta::terrain::Compositor& comp, const std::string& world,
                           int wUnits, int hUnits) {
     // Pick a flat ground section for the fill (prefer a "flat"/"ground" category)
     // with nothing in its feature plane: the first Taros and Veruna flats are
@@ -61,16 +61,16 @@ tak::tnt::Map newBlankMap(const tak::hpi::Vfs& vfs, SectionLibrary& sections,
         std::transform(c.begin(), c.end(), c.begin(), ::tolower);
         if (c.find("flat") == std::string::npos && c.find("ground") == std::string::npos) continue;
         if (!fill) fill = &s;
-        const tak::tnt::Map* m = sections.load(vfs, s.path);
+        const ta::tnt::Map* m = sections.load(vfs, s.path);
         if (m && std::all_of(m->features.begin(), m->features.end(), [](uint16_t v) { return v == 0xFFFF; })) { plain = &s; break; }
     }
     if (plain) fill = plain;
     if (!fill && !sections.list().empty()) fill = &sections.list().front();
     if (!fill) return {};
-    const tak::tnt::Map* sec = sections.load(vfs, fill->path);
+    const ta::tnt::Map* sec = sections.load(vfs, fill->path);
     if (!sec) return {};
 
-    tak::tnt::Map m;
+    ta::tnt::Map m;
     m.width = std::max(1, wUnits) * 32;    // 1 Unit = 32 cells
     m.height = std::max(1, hUnits) * 32;
     m.blocksX = m.width / 2;

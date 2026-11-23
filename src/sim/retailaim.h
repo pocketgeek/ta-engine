@@ -8,7 +8,7 @@
 #include "sim/retailmotion.h"
 #include "sim/detmath.h"
 
-namespace tak {
+namespace ta {
 // Native weapon speed after fixed-point conversion and substep truncation.
 inline int32_t retailAimSpeed(float speed) {
     const int32_t raw=int32_t(double(speed)*2184.5333333333333);
@@ -69,7 +69,7 @@ inline bool retailBallisticInRange(int32_t dx,int32_t dy,int32_t dz,int32_t spee
 }
 }
 
-namespace tak::sim {
+namespace ta::sim {
 // 52fe30's facing request (51b340 -> 4dc0b0) as a native heading: 53612a of
 // the unit's origin minus the point its slot aims at, wrapping. The handler's
 // vtable +0x14 picks the point. Only MeleeWeapon's (531f00) answers true and

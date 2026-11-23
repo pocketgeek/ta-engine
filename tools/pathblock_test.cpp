@@ -30,7 +30,7 @@
 #include <tuple>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int g_fail = 0;
 static void check(bool cond, const std::string& what, const std::string& detail = {}) {
@@ -42,7 +42,7 @@ static void check(bool cond, const std::string& what, const std::string& detail 
 static UnitType soldier() {
     UnitType t{};
     t.name = "sol"; t.id = "sol";
-    t.maxVel = tak::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 10000;
+    t.maxVel = ta::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 10000;
     t.maxHp = 100; t.canMove = true;
     t.footX = 2; t.footZ = 2;
     return t;
@@ -60,7 +60,7 @@ static float runWall(int thick) {
     for (int t = 0; t < thick; ++t)
         for (int k = 0; k < 40; ++k)
             w.spawn(&s, 600.0f + float(k) * 32.0f, 1000.0f + float(t) * 32.0f, 0, 1);
-    for (auto& u : w.units()) u.speed = tak::sim::Fixed();
+    for (auto& u : w.units()) u.speed = ta::sim::Fixed();
     const int id = w.spawn(&s, 900, 500, 0, 0);
     w.order(id, 900, 1600, /*queue=*/false);
     float px = w.unit(id)->x.toFloat(), pz = w.unit(id)->z.toFloat(), travelled = 0;
@@ -85,11 +85,11 @@ static float runWall(int thick) {
 struct BlockerRun {float travelled=-1;bool touched=false;};
 static BlockerRun runBlockerWall(bool legion,bool gap) {
     const int W=96,H=64;
-    tak::tnt::Map map;map.width=W;map.height=H;map.blocksX=W/2;map.blocksY=H/2;map.seaLevel=20;
+    ta::tnt::Map map;map.width=W;map.height=H;map.blocksX=W/2;map.blocksY=H/2;map.seaLevel=20;
     map.heights.assign(size_t(W)*H,100);map.features.assign(map.heights.size(),cart::kCellEmpty);
     map.tileKeys.assign(size_t(map.blocksX)*map.blocksY,0);map.tileCols.assign(map.tileKeys.size(),0);map.tileRows.assign(map.tileKeys.size(),0);
     cart::applyBlockers(map,40,0,41,gap?47:H-1,cart::BlockOp::Paint);
-    const auto saved=tak::tnt::Map::load(map.save(),"blocker wall");
+    const auto saved=ta::tnt::Map::load(map.save(),"blocker wall");
     World w;
     w.setTerrain(saved.heights,saved.width,saved.height,saved.seaLevel,&saved.features);
     w.setPathService(true);
@@ -892,7 +892,7 @@ int main() {
         w.setPathService(true);
         UnitType s = soldier();
         for (int k = 0; k < 6; ++k) w.spawn(&s, 1200.0f + float(k) * 24.0f, 1200.0f, 0, 1);
-        for (auto& u : w.units()) u.speed = tak::sim::Fixed();
+        for (auto& u : w.units()) u.speed = ta::sim::Fixed();
         const int id = w.spawn(&s, 400, 400, 0, 0);
         w.order(id, 1200, 1200, false);
         bool close = false;

@@ -36,7 +36,7 @@
 #include <string_view>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 // World keeps its flight stations private (sim.h grants this probe friendship).
 struct RetailReplayProbe {
     // 0: none; 1: a station is active; 2: active and holding the leg open.
@@ -53,7 +53,7 @@ struct RetailReplayProbe {
 };
 }
 
-using namespace tak::sim;
+using namespace ta::sim;
 namespace {
 void check(bool ok,const std::string& message) {if(!ok)throw std::runtime_error(message);}
 int envInt(const char* key,int fallback) {const char* e=std::getenv(key);return e?std::atoi(e):fallback;}
@@ -107,21 +107,21 @@ struct Fixture {
         const auto& u=*world.unit(id);
         return world.mobilePlacement(u,footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ),false);
     }
-    void command(tak::net::Cmd k,int id,int target,float x,float z,int player=0) {
-        tak::net::Command c;c.kind=k;c.player=player;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
+    void command(ta::net::Cmd k,int id,int target,float x,float z,int player=0) {
+        ta::net::Command c;c.kind=k;c.player=player;c.unitId=id;c.targetId=target;c.x=x;c.z=z;c.queue=0;
         applyCommand(world,registry,c);
     }
     void tick(int n=1) {for(int i=0;i<n;++i)world.tick(1.f/30);}
     // Land a click's batches tick by tick, as the sim applies them.
-    void land(const std::vector<tak::scn::CmdBatch>& batches) {
+    void land(const std::vector<ta::scn::CmdBatch>& batches) {
         for(const auto& b:batches) {
             while(world.tickCount()<b.tick)world.tick(1.f/30);
             for(const auto& c:b.cmds)applyCommand(world,registry,c);
         }
     }
-    size_t click(const std::vector<int>& sel,tak::scn::Verb verb,float x,float z) {
-        tak::scn::SelectionOrder o;o.verb=verb;o.x=x;o.z=z;
-        auto b=tak::scn::issueSelection(world,sel,o,world.tickCount(),0,-1);
+    size_t click(const std::vector<int>& sel,ta::scn::Verb verb,float x,float z) {
+        ta::scn::SelectionOrder o;o.verb=verb;o.x=x;o.z=z;
+        auto b=ta::scn::issueSelection(world,sel,o,world.tickCount(),0,-1);
         land(b);return b.size();
     }
 };
@@ -181,7 +181,7 @@ uint32_t convoyOf(const Unit& u) {return u.orders.empty()?ConvoyTable::kNone:u.o
 // the ground walks to the wall and holds with its order kept.
 // ---------------------------------------------------------------------------
 struct MixedOpts {
-    int squad=-1;bool legion=true;tak::net::Cmd kind=tak::net::Cmd::Move;bool seal=false;bool serial=true;int ticks=0;
+    int squad=-1;bool legion=true;ta::net::Cmd kind=ta::net::Cmd::Move;bool seal=false;bool serial=true;int ticks=0;
 };
 struct MixedRun {
     int groundDone=-1,flyersDone=-1;float maxAway=0,meanAway=0,endAway=0;uint64_t hash=0;int landedAhead=0;
@@ -208,7 +208,7 @@ MixedRun mixedRun(const MixedOpts& o) {
     for(int i=0;i<8;++i)flyers.push_back(f.spawn(flyer,16+(i%4)*4,58+(i/4)*4));
     all=ground;all.insert(all.end(),flyers.begin(),flyers.end());
     f.start();
-    if(o.squad)for(int id:all)f.command(tak::net::Cmd::SetSquad,id,o.squad,0,0);
+    if(o.squad)for(int id:all)f.command(ta::net::Cmd::SetSquad,id,o.squad,0,0);
     for(int t=0;t<300;++t)f.world.tick(1.f/30);
     const float px=220*16,pz=50*16;
     // As the move UI does: flyers keep their offset from the selection's centre, clamped to
@@ -218,7 +218,7 @@ MixedRun mixedRun(const MixedOpts& o) {
     sx/=float(all.size());sz/=float(all.size());
     for(int id:all) {
         const auto& u=*f.world.unit(id);
-        const bool offset=o.kind==tak::net::Cmd::Move&&(u.type->canFly||!o.legion);
+        const bool offset=o.kind==ta::net::Cmd::Move&&(u.type->canFly||!o.legion);
         f.command(o.kind,id,0,offset?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px,
                   offset?pz+std::clamp(u.z.toFloat()-sz,-60.f,60.f):pz);
     }
@@ -227,7 +227,7 @@ MixedRun mixedRun(const MixedOpts& o) {
     std::map<int,int> idleAt,hoverRun;
     const uint32_t groundConvoy=modalConvoy(f.world,ground);
     for(int id:flyers)r.convoyMatch+=groundConvoy!=ConvoyTable::kNone&&convoyOf(*f.world.unit(id))==groundConvoy;
-    const int ticks=o.ticks?o.ticks:o.kind==tak::net::Cmd::Patrol?3000:6000;
+    const int ticks=o.ticks?o.ticks:o.kind==ta::net::Cmd::Patrol?3000:6000;
     auto centroid=[&](float& cx,float& cz) {
         double ax=0,az=0;for(int id:ground){ax+=f.world.unit(id)->x.toFloat();az+=f.world.unit(id)->z.toFloat();}
         cx=float(ax/ground.size());cz=float(az/ground.size());
@@ -295,7 +295,7 @@ MixedRun mixedRun(const MixedOpts& o) {
                 std::printf(" %.0f,%.0f/%zu%d",u.x.toFloat(),u.z.toFloat(),u.orders.size(),int(u.flightGroundMode));}
             std::printf("\n");
         }
-        if(o.kind!=tak::net::Cmd::Patrol&&r.groundDone>=0&&r.flyersDone>=0&&t>r.groundDone+600)break;
+        if(o.kind!=ta::net::Cmd::Patrol&&r.groundDone>=0&&r.flyersDone>=0&&t>r.groundDone+600)break;
     }
     float cx,cz;centroid(cx,cz);
     for(int id:flyers)r.endAway=std::max(r.endAway,dist(*f.world.unit(id),cx,cz));
@@ -303,7 +303,7 @@ MixedRun mixedRun(const MixedOpts& o) {
     for(const auto& [id,at]:idleAt)if(at>=0)r.maxLandDelay=std::max(r.maxLandDelay,9999);
     r.meanAway=samples?float(sum/samples):0;r.hash=f.world.stateHash();
     const auto stats=f.world.legionStats();r.lifts=stats.lifts;r.relifts=stats.relifts;
-    const char* kind=o.kind==tak::net::Cmd::Move?"move":o.kind==tak::net::Cmd::AttackMove?"fight":"patrol";
+    const char* kind=o.kind==ta::net::Cmd::Move?"move":o.kind==ta::net::Cmd::AttackMove?"fight":"patrol";
     char buf[700];
     std::snprintf(buf,sizeof buf,"%s %s %s squad=%d ground_done=%d flyers_done=%d away_max=%.0f away_mean=%.0f end_away=%.0f landed_ahead=%d "
         "pace=%.2f stalls=%d/%d misaligned=%d/%d max_hover=%d land_delay=%d landed=%d overlap=%d illegal_ticks=%d hold_ticks=%d convoy_match=%d/8 lifts=%llu relifts=%llu "
@@ -317,7 +317,7 @@ MixedRun mixedRun(const MixedOpts& o) {
 Out asOut(const MixedRun& r) {return {r.text,r.hash};}
 
 void mixedsquad() {
-    using tak::net::Cmd;
+    using ta::net::Cmd;
     // Retail (reported: the 417e02 re-forming port) beside Legion, for the three squads.
     for(int squad:{-1,1})print(asOut(mixedRun({squad,false,Cmd::Move})));
     MixedRun ctrl,alt,none;
@@ -356,7 +356,7 @@ void mixedsquad() {
     checkWorkers("mixedsquad",[&](bool serial) {return asOut(mixedRun({1,true,Cmd::Move,false,serial}));},asOut(ctrl));
 }
 void mixedseal() {
-    using tak::net::Cmd;
+    using ta::net::Cmd;
     const auto retail=mixedRun({-1,false,Cmd::Move,true,true,6000});
     const auto r=mixedRun({-1,true,Cmd::Move,true,true,6000});
     print(asOut(retail));print(asOut(r));
@@ -386,7 +386,7 @@ Out mv08Run(int squad,bool legion,bool serial=true) {
     for(int i=0;i<8;++i)flyers.push_back(f.spawn(flyer,16+(i%4)*4,58+(i/4)*4));
     all=cat(ground,flyers);
     f.start();
-    if(squad)for(int id:all)f.command(tak::net::Cmd::SetSquad,id,squad,0,0);
+    if(squad)for(int id:all)f.command(ta::net::Cmd::SetSquad,id,squad,0,0);
     f.tick(300);
     const float px=220*16,pz=50*16;
     float sx=0,sz=0;
@@ -395,7 +395,7 @@ Out mv08Run(int squad,bool legion,bool serial=true) {
     for(int id:all) {
         const auto& u=*f.world.unit(id);
         const bool offset=u.type->canFly||!legion;
-        f.command(tak::net::Cmd::Move,id,0,offset?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px,
+        f.command(ta::net::Cmd::Move,id,0,offset?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px,
                   offset?pz+std::clamp(u.z.toFloat()-sz,-60.f,60.f):pz);
     }
     auto centroidOf=[&](const std::vector<int>& ids,float& cx,float& cz) {
@@ -470,9 +470,9 @@ Out deadendRejoinRun(int width,bool squad,bool serial=true,int count=120) {
     std::vector<int> ids;
     for(int i=0;i<count;++i)ids.push_back(f.spawn(type,14+(i%12)*3,32+(i/12)*4));
     f.start();
-    if(squad) {for(int id:ids)f.command(tak::net::Cmd::SetSquad,id,-1,0,0);f.tick(600);}
+    if(squad) {for(int id:ids)f.command(ta::net::Cmd::SetSquad,id,-1,0,0);f.tick(600);}
     const float px=236*16,pz=float(zc*16);
-    for(int id:ids)f.command(tak::net::Cmd::Move,id,0,px,pz);
+    for(int id:ids)f.command(ta::net::Cmd::Move,id,0,px,pz);
     std::map<int,bool> wasIdle;int reorders=0,anchored=0,allIdle=-1,lastReorder=-1;
     std::set<int> reordered;
     constexpr int kTicks=12000;
@@ -566,20 +566,20 @@ CtrlRun ctrlRun(int kind,bool serial=true) {
         for(int i=0;i<nF;++i)sets[0].flyers.push_back(f.spawn(flyer,i<nF/2?4+(i%6)*4:90+(i%6)*4,i<nF/2?24+(i/6)*4:130+(i/6)*4));
     }
     f.start();
-    for(const auto& s:sets)for(int id:cat(s.ground,s.flyers))f.command(tak::net::Cmd::SetSquad,id,1,0,0);
+    for(const auto& s:sets)for(int id:cat(s.ground,s.flyers))f.command(ta::net::Cmd::SetSquad,id,1,0,0);
     f.tick(60);
     CtrlRun r;
     auto sel=[&](const Set& s,bool flyersFirst) {return flyersFirst?cat(s.flyers,s.ground):cat(s.ground,s.flyers);};
     if(!big) {
         sets[0].px=250*16;sets[0].pz=30*16;
-        size_t parts=f.click(sel(sets[0],false),tak::scn::Verb::Move,sets[0].px,sets[0].pz);
+        size_t parts=f.click(sel(sets[0],false),ta::scn::Verb::Move,sets[0].px,sets[0].pz);
         if(kind==1)f.tick(12);else if(kind==2)f.tick(2);else f.tick(2);
         sets[1].px=kind==0?250*16:250*16+48;sets[1].pz=kind==0?110*16:30*16+48;
-        parts+=f.click(sel(sets[1],false),tak::scn::Verb::Move,sets[1].px,sets[1].pz);
+        parts+=f.click(sel(sets[1],false),ta::scn::Verb::Move,sets[1].px,sets[1].pz);
         r.parts=int(parts);
     } else {
         sets[0].px=340*16;sets[0].pz=74*16;
-        r.parts=int(f.click(sel(sets[0],kind==3||kind==5),tak::scn::Verb::Move,sets[0].px,sets[0].pz));
+        r.parts=int(f.click(sel(sets[0],kind==3||kind==5),ta::scn::Verb::Move,sets[0].px,sets[0].pz));
     }
     for(auto& s:sets)s.convoy=modalConvoy(f.world,s.ground);
     for(size_t k=0;k<sets.size();++k)for(int id:sets[k].flyers) {
@@ -676,10 +676,10 @@ Out factoryJoinRun(bool serial=true) {
     std::vector<int> crowd;
     for(int i=0;i<60;++i)crowd.push_back(f.spawn(type,70+(i%10)*3,30+(i/10)*4));
     f.start();
-    for(int id:cat(crowd,{fid}))f.command(tak::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:cat(crowd,{fid}))f.command(ta::net::Cmd::SetSquad,id,-1,0,0);
     f.tick(300);
     const float px=100*16,pz=45*16;
-    for(int id:crowd)f.command(tak::net::Cmd::Move,id,0,px,pz);
+    for(int id:crowd)f.command(ta::net::Cmd::Move,id,0,px,pz);
     int rest=-1;
     for(int t=0;t<5000&&rest<0;++t) {
         f.world.tick(1.f/30);
@@ -753,8 +753,8 @@ DescentRun descentRun(int who,int column,int foot,int start,bool legion=true,boo
     f.start();
     auto& v=*f.world.unit(fid);
     v.flightGroundMode=2;v.flightY=Fixed::fromInt(180);v.standbyActive=true;v.standbyState={1,0,0xffffffffu,0,0};
-    if(who==1)for(int id:cat(ids,{fid}))f.command(tak::net::Cmd::SetSquad,id,-1,0,0);
-    for(int id:ids)f.command(tak::net::Cmd::Move,id,0,44*16,32*16);
+    if(who==1)for(int id:cat(ids,{fid}))f.command(ta::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:ids)f.command(ta::net::Cmd::Move,id,0,44*16,32*16);
     DescentRun r;
     int stage3=-1;
     for(int t=0;t<1500;++t) {
@@ -933,7 +933,7 @@ Out fl04Run(const std::string& scen,bool serial=true) {
     for(int i=0;i<nFlyers;++i)flyers.push_back(f.spawn(flyer,16+(i%8)*4,(H/2+(nGround/cols)*2+6)+(i/8)*4));
     all=cat(ground,flyers);
     f.start();
-    for(int id:all)f.command(tak::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:all)f.command(ta::net::Cmd::SetSquad,id,-1,0,0);
     f.tick(300);
     float sx=0,sz=0;
     for(int id:all) {sx+=f.world.unit(id)->x.toFloat();sz+=f.world.unit(id)->z.toFloat();}
@@ -941,7 +941,7 @@ Out fl04Run(const std::string& scen,bool serial=true) {
     for(int id:all) {
         const auto& u=*f.world.unit(id);
         const bool offset=u.type->canFly;
-        f.command(tak::net::Cmd::Move,id,0,offset?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px,
+        f.command(ta::net::Cmd::Move,id,0,offset?px+std::clamp(u.x.toFloat()-sx,-60.f,60.f):px,
                   offset?pz+std::clamp(u.z.toFloat()-sz,-60.f,60.f):pz);
     }
     auto centroid=[&](float& cx,float& cz) {
@@ -1055,14 +1055,14 @@ Out fl05Run(const char* label,bool fullWall,float gx,float gz,const std::functio
     for(int i=0;i<8;++i)flyers.push_back(f.spawn(flyer,16+(i%4)*4,58+(i/4)*4));
     all=cat(ground,flyers);
     f.start();
-    for(int id:all)f.command(tak::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:all)f.command(ta::net::Cmd::SetSquad,id,-1,0,0);
     f.tick(300);
     {
         float sx=0,sz=0;for(int id:all){sx+=f.world.unit(id)->x.toFloat();sz+=f.world.unit(id)->z.toFloat();}
         sx/=float(all.size());sz/=float(all.size());
         for(int id:ground) {
             const auto& u=*f.world.unit(id);
-            f.command(tak::net::Cmd::Move,id,0,legion?gx:gx+std::clamp(u.x.toFloat()-sx,-60.f,60.f),legion?gz:gz+std::clamp(u.z.toFloat()-sz,-60.f,60.f));
+            f.command(ta::net::Cmd::Move,id,0,legion?gx:gx+std::clamp(u.x.toFloat()-sx,-60.f,60.f),legion?gz:gz+std::clamp(u.z.toFloat()-sz,-60.f,60.f));
         }
     }
     struct Fl {int id;int done=-1,hoverRun=0,maxHover=0,landedAt=-1;};
@@ -1070,7 +1070,7 @@ Out fl05Run(const char* label,bool fullWall,float gx,float gz,const std::functio
     int groundDone=-1;
     std::vector<int> hoverAfterLand(fl.size(),0);   // longest airborne-still run that begins after the flyer first landed
     for(int t=0;t<ticks;++t) {
-        if(t==flyerOrderTick)for(int i=0;i<8;++i) {auto [x,z]=flyerPoint(i);f.command(tak::net::Cmd::Move,flyers[size_t(i)],0,x,z);}
+        if(t==flyerOrderTick)for(int i=0;i<8;++i) {auto [x,z]=flyerPoint(i);f.command(ta::net::Cmd::Move,flyers[size_t(i)],0,x,z);}
         f.world.tick(1.f/30);
         bool groundBusy=false;
         for(int id:ground)groundBusy|=!f.world.unit(id)->orders.empty();
@@ -1147,14 +1147,14 @@ Out splitPatrolRun(bool sameRoute,bool serial=true) {
     for(int i=0;i<8;++i)flyers.push_back(f.spawn(flyer,16+(i%4)*4,58+(i/4)*4));
     all=cat(ground,flyers);
     f.start();
-    for(int id:all)f.command(tak::net::Cmd::SetSquad,id,-1,0,0);
+    for(int id:all)f.command(ta::net::Cmd::SetSquad,id,-1,0,0);
     f.tick(300);
-    for(int id:ground)f.command(tak::net::Cmd::Patrol,id,0,60*16,40*16);
+    for(int id:ground)f.command(ta::net::Cmd::Patrol,id,0,60*16,40*16);
     // The air click lands a tick after the ground's, as a player's second click does. (Two clicks of one class
     // applied in the same tick open two convoys with the same convoyTick, which the stations' (class,
     // convoyTick) key cannot tell apart: a disclosed limit of PLAN C4's key.)
     if(!sameRoute)f.tick(1);
-    for(int id:flyers)f.command(tak::net::Cmd::Patrol,id,0,sameRoute?60*16:200*16,sameRoute?40*16:80*16);
+    for(int id:flyers)f.command(ta::net::Cmd::Patrol,id,0,sameRoute?60*16:200*16,sameRoute?40*16:80*16);
     int stationTicks=0,holdTicks=0;float awayMax=0,speedMax=0;
     for(int t=0;t<1500;++t) {
         f.world.tick(1.f/30);
@@ -1254,7 +1254,7 @@ struct EdgeRun {
     float minCap=-1,topSpeed=0,endFar=0,endEdge=1e9f,maxOff=0;double flown=0,marched=0;
     std::string text;uint64_t hash=0;
 };
-EdgeRun edgeRun(int squad,tak::scn::Verb verb,int clickCell,bool serial=true) {
+EdgeRun edgeRun(int squad,ta::scn::Verb verb,int clickCell,bool serial=true) {
     constexpr int kW=260,kH=100;
     Fixture f(kW,kH,serial);f.publish();
     const auto type=mover(2);
@@ -1264,7 +1264,7 @@ EdgeRun edgeRun(int squad,tak::scn::Verb verb,int clickCell,bool serial=true) {
     for(int i=0;i<6;++i)flyers.push_back(f.spawn(flyer,202+(i%3)*4,58+(i/3)*4));
     const auto all=cat(ground,flyers);
     f.start();
-    if(squad)for(int id:all)f.command(tak::net::Cmd::SetSquad,id,squad,0,0);
+    if(squad)for(int id:all)f.command(ta::net::Cmd::SetSquad,id,squad,0,0);
     f.tick(300);
     f.click(all,verb,float(clickCell*16),float(50*16));
     // Each flyer's own point: what its order got from the click (that order: its issue tick; a lift later gives
@@ -1349,7 +1349,7 @@ EdgeRun edgeRun(int squad,tak::scn::Verb verb,int clickCell,bool serial=true) {
     }
     r.moved=int(moved.size());
     r.hash=f.world.stateHash();
-    const char* name=verb==tak::scn::Verb::Fight?"fight":verb==tak::scn::Verb::Move?"move":"other";
+    const char* name=verb==ta::scn::Verb::Fight?"fight":verb==ta::scn::Verb::Move?"move":"other";
     char buf[600];
     std::snprintf(buf,sizeof buf,"edgeclick %s squad=%d click_x=%d station_ticks=%d capped_ticks=%d min_cap=%.2f top_speed=%.2f moved=%d reached=%d/6 "
         "last_reach=%d ground_done=%d flyers_done=%d landed=%d end_far=%.0f end_edge=%.0f pace=%.2f stalls=%d/%d off_max=%.0f",
@@ -1363,13 +1363,13 @@ Out asOut(const EdgeRun& r) {return {r.text,r.hash};}
 void edgeclick() {
     const char* verb=std::getenv("EDGE_VERB");
     const bool fight=verb&&std::string_view(verb)=="fight";
-    print(asOut(edgeRun(envInt("EDGE_SQUAD",-1),fight?tak::scn::Verb::Fight:tak::scn::Verb::Move,envInt("EDGE_CELL",8))));
+    print(asOut(edgeRun(envInt("EDGE_SQUAD",-1),fight?ta::scn::Verb::Fight:ta::scn::Verb::Move,envInt("EDGE_CELL",8))));
 }
 // A Ctrl+1 group's flyers fly their own orders: never on a station, never capped, at their own speed to the
 // click (a fight-move: the click itself; a move: retail's spread), long before the ground; their points never
 // move and they land there, not at the map's edge. The click is the replay's distance from the edge (18 cells).
 void ctrlfree() {
-    using tak::scn::Verb;
+    using ta::scn::Verb;
     const auto none=edgeRun(0,Verb::Fight,18);print(asOut(none));
     for(const Verb verb:{Verb::Fight,Verb::Move}) {
         const auto r=edgeRun(1,verb,18);print(asOut(r));
@@ -1391,7 +1391,7 @@ void ctrlfree() {
 // (where the rule before 2026-10-30 landed them, as it landed the replay's drakes at x 35 and 87), so the
 // flyers keep their own points.
 void formationedge() {
-    using tak::scn::Verb;
+    using ta::scn::Verb;
     for(const int cell:{40,14})for(const Verb verb:{Verb::Move,Verb::Fight}) {
         const auto r=edgeRun(-1,verb,cell);print(asOut(r));
         check(r.stationTicks>0,"formationedge: the formation's flyers kept no station");
@@ -1427,7 +1427,7 @@ void predicates() {
     auto* legion=f.world.legionNavigator();
     check(legion!=nullptr,"predicates: no Legion navigator");
     check(!legion->advancing(id,LegionNavigator::kLiftStall),"predicates: an idle body is not advancing");
-    f.command(tak::net::Cmd::Move,id,0,100*16,30*16);
+    f.command(ta::net::Cmd::Move,id,0,100*16,30*16);
     int firstAdv=-1,lastAdv=-1,lastAdvStation=-1;
     for(int t=0;t<1200;++t) {
         f.tick();
@@ -1446,7 +1446,7 @@ void predicates() {
     check(lastAdvStation-lastAdv>=int(LegionNavigator::kStationStall-LegionNavigator::kLiftStall)-1,"predicates: kStationStall outlasts kLiftStall");
     // flyerGrounded: airborne under an order, grounded through the descent and once landed.
     check(!RetailReplayProbe::grounded(*f.world.unit(fid))||f.world.unit(fid)->flightGroundMode==1,"predicates: flyerGrounded off the ground");
-    f.command(tak::net::Cmd::Move,fid,0,30*16,10*16);
+    f.command(ta::net::Cmd::Move,fid,0,30*16,10*16);
     int airborne=-1,stage3=-1,landed=-1;
     for(int t=0;t<1500&&landed<0;++t) {
         f.tick();

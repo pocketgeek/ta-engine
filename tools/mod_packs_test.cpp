@@ -11,11 +11,11 @@
 #include <fstream>
 #include <iostream>
 #include "util/u8path.h"
-using namespace tak;
+using namespace ta;
 int main(){
- auto root=std::filesystem::temp_directory_path()/("tak-packs-"+crypto::toHex(crypto::randomVec(8)));
+ auto root=std::filesystem::temp_directory_path()/("ta-packs-"+crypto::toHex(crypto::randomVec(8)));
  int failures=0;auto check=[&](bool value,const char* label){if(!value){std::cerr<<"FAIL: "<<label<<'\n';++failures;}};
- auto put=[&](const std::string& path,const std::string& value){auto p=root/tak::u8path(path);std::filesystem::create_directories(p.parent_path());std::ofstream(p,std::ios::binary)<<value;};
+ auto put=[&](const std::string& path,const std::string& value){auto p=root/ta::u8path(path);std::filesystem::create_directories(p.parent_path());std::ofstream(p,std::ios::binary)<<value;};
  auto archive=[&](const std::string& path,std::vector<std::pair<std::string,std::string>> entries){
    std::vector<hpi::PackFile> files;for(auto& [name,value]:entries)files.push_back({name,std::vector<uint8_t>(value.begin(),value.end())});
    const auto bytes=hpi::pack(files);put(path,std::string(bytes.begin(),bytes.end()));};
@@ -183,18 +183,18 @@ int main(){
   net::mods::saveCache(root,*p);auto cached=net::mods::loadCache(root,p->digest);check(cached&&*cached->files==*p->files,"verified cache round trip");
   rejects([&]{net::mods::loadCache(root,p->digest,p->bytes.size()-1);},"mod actual budget");
   rejects([&]{net::mods::loadCache(root,p->digest,net::maps::kMaxBytes,p->bytes.size()-1);},"mod advertised size");
-  put("ModCache/"+p->digest+".takmods","corrupt");
+  put("ModCache/"+p->digest+".tamods","corrupt");
   check(!net::mods::loadCache(root,p->digest),"corrupt cache rejected");
   net::mods::saveCache(root,*p);check(bool(net::mods::loadCache(root,p->digest)),"corrupt cache repaired");
   {   // A full disk or tight quota must never cost an existing good entry.
-    const auto entry=root/"ModCache"/(p->digest+".takmods");
+    const auto entry=root/"ModCache"/(p->digest+".tamods");
     net::mods::saveCache(root,*p,1);check(bool(net::mods::loadCache(root,p->digest)),"existing cache needs no quota and survives it");
-    put("ModCache/"+p->digest+".takmods","corrupt");
+    put("ModCache/"+p->digest+".tamods","corrupt");
     rejects([&]{net::mods::saveCache(root,*p,1);},"quota accepted a replacement");
     check(std::filesystem::file_size(entry)==7,"quota failure deleted the existing entry first");
     net::mods::saveCache(root,*p);check(bool(net::mods::loadCache(root,p->digest)),"damaged entry replaced in place");
     auto fresh=net::mods::build(root,{"Alpha"});rejects([&]{net::mods::saveCache(root,*fresh,1);},"quota accepted a new entry");
-    check(!std::filesystem::exists(root/"ModCache"/(fresh->digest+".takmods")),"quota rejection left a partial entry");
+    check(!std::filesystem::exists(root/"ModCache"/(fresh->digest+".tamods")),"quota rejection left a partial entry");
   }
   auto base=hpi::mountRetailRoot(root);hpi::Vfs roomA(&base),roomB(&base);roomA.setModFiles(p->files);check(roomA.has("units/test.fbi")&&!roomB.has("units/test.fbi"),"room mods do not leak");
   {   // A saved game-pack selection naming a folder since removed is dropped, so a

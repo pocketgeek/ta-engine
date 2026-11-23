@@ -22,7 +22,7 @@
 #include <cstdlib>
 #include <map>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void hit(World& world,const Weapon& weapon,float x,float z,int from,int target) {
         world.applyHit(weapon,x,z,0,from,world.unit(target));
@@ -38,7 +38,7 @@ struct RetailReplayProbe {
     // The A1 sleep skip: touching a VM pays its debt and makes it run next tick.
     static void touchScript(World& world,int id) {world.unitScripts_.at(id).state();}
     static uint32_t scriptDebt(const World& world,int id) {return world.unitScripts_.at(id).debt();}
-    static const tak::cob::RetailVm& paidVm(World& world,int id) {return world.unitScripts_.at(id).state().vm;}
+    static const ta::cob::RetailVm& paidVm(World& world,int id) {return world.unitScripts_.at(id).state().vm;}
     static void repairTick(World& world,int id) {world.tickRepair(*world.unit(id),1.f/30);}
     // COB INBUILDSTANCE (SET 5), which the reclaim and build stance waits poll.
     static void setStance(World& world,int id,bool ready) {world.unitScripts_.at(id).ready=ready;}
@@ -118,9 +118,9 @@ struct Host {
     uint32_t seed=1;
     std::vector<int32_t> events;
     bool waiting(bool,int,int) { return false; }
-    uint32_t random(int32_t bound) { return tak::sim::retailRandom(seed,bound); }
+    uint32_t random(int32_t bound) { return ta::sim::retailRandom(seed,bound); }
     uint32_t get(int id,const std::array<uint32_t,4>&) {
-        if (const char* profile=std::getenv("TAK_SCRIPT_ORACLE_PROFILE")) {
+        if (const char* profile=std::getenv("TA_SCRIPT_ORACLE_PROFILE")) {
             const int mode=std::atoi(profile);
             if (id==4) return mode==3 ? 25 : 100;
             if (id==18) return 1;
@@ -146,7 +146,7 @@ int main(int argc,char** argv) {
         // before the release, the vetOverride (+0xf4), noveteran, the
         // experience (+0xf0) and the type's experiencepoints (+0x1c2). Prints
         // the selector and the mana after the release in 1/1024 units.
-        using namespace tak::sim;
+        using namespace ta::sim;
         int selected,noVeteran,experience,points;float c0,c1,c2,vet;double mana;
         while(std::cin>>selected>>c0>>c1>>c2>>mana>>vet>>noVeteran>>experience>>points) {
             UnitType type;type.maxHp=100;type.maxMana=1000;type.noVeteran=noVeteran!=0;
@@ -173,21 +173,21 @@ int main(int argc,char** argv) {
         return 0;
     }
     if (argc==3 && std::string(argv[1])=="--features") {
-        using namespace tak::sim;
-        auto vfs=tak::hpi::mountRetailRoot(argv[2]);
-        std::map<std::string,tak::tdf::Node> defs;
+        using namespace ta::sim;
+        auto vfs=ta::hpi::mountRetailRoot(argv[2]);
+        std::map<std::string,ta::tdf::Node> defs;
         int spacing=4;
         for(const auto& path:vfs.list("features")) {
             if(!path.ends_with(".tdf"))continue;
             const auto bytes=vfs.read(path);
-            const auto root=tak::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
+            const auto root=ta::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
             for(const auto& name:root.childOrder) {
                 std::string key=name;std::transform(key.begin(),key.end(),key.begin(),::tolower);
                 const auto& node=root.children.at(name);defs[key]=node;
                 spacing=std::max(spacing,4+int(std::max(node.numberOr("footprintx",1),node.numberOr("footprintz",1))));
             }
         }
-        tak::tnt::Map map;std::vector<std::string> names;
+        ta::tnt::Map map;std::vector<std::string> names;
         for(const auto& [name,node]:defs) {
             std::string category=node.valueOr("category","");
             std::transform(category.begin(),category.end(),category.begin(),::tolower);
@@ -246,8 +246,8 @@ int main(int argc,char** argv) {
         return 0;
     }
     if (argc==5 && std::string(argv[1])=="--gate-timeline") {
-        using namespace tak::sim;
-        auto vfs=tak::hpi::mountRetailRoot(argv[2]);
+        using namespace ta::sim;
+        auto vfs=ta::hpi::mountRetailRoot(argv[2]);
         TypeRegistry registry;setupRegistry(registry,vfs,std::stoi(argv[4])!=0);
         const auto* type=registry.find(argv[3]);
         if (!type || !type->gate || !type->script()) return 2;
@@ -266,8 +266,8 @@ int main(int argc,char** argv) {
         return 0;
     }
     if (argc==3 && std::string(argv[1])=="--gates") {
-        using namespace tak::sim;
-        auto vfs=tak::hpi::mountRetailRoot(argv[2]);
+        using namespace ta::sim;
+        auto vfs=ta::hpi::mountRetailRoot(argv[2]);
         unsigned count=0;
         for (bool crusades:{false,true}) {
             TypeRegistry registry;setupRegistry(registry,vfs,crusades);
@@ -370,13 +370,13 @@ int main(int argc,char** argv) {
     }
     if (argc==3 && (std::string(argv[1])=="--factories" || std::string(argv[1])=="--units")) {
         const bool allUnits=std::string(argv[1])=="--units";
-        auto vfs=tak::hpi::mountRetailRoot(argv[2]);
-        tak::sim::TypeRegistry registry; tak::sim::setupRegistry(registry,vfs,false);
+        auto vfs=ta::hpi::mountRetailRoot(argv[2]);
+        ta::sim::TypeRegistry registry; ta::sim::setupRegistry(registry,vfs,false);
         unsigned count=0;
         for (const auto& [id,type]:registry.types()) {
             if (allUnits ? !type.script() : !type.productionScript) continue;
             const auto& file=*type.script();
-            tak::cob::RetailScriptState state(file);
+            ta::cob::RetailScriptState state(file);
             struct FactoryHost:Host {
                 uint32_t get(int id,const std::array<uint32_t,4>&) {
                     if (id==4) return 100;
@@ -408,15 +408,15 @@ int main(int argc,char** argv) {
     // vertices. Outputs are unit-relative raw fixed point.
     if ((argc==7 || argc==9) && (std::string(argv[1])=="--origin" || std::string(argv[1])=="--bounds" ||
                                  std::string(argv[1])=="--local-bounds")) {
-        auto file=tak::cob::load(std::filesystem::path(argv[2]));
-        auto model=tak::tdo::load(std::filesystem::path(argv[3]));
+        auto file=ta::cob::load(std::filesystem::path(argv[2]));
+        auto model=ta::tdo::load(std::filesystem::path(argv[3]));
         std::ifstream input(argv[4],std::ios::binary);
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)),{});
-        tak::cob::RetailScriptState state(file); state.restore(file,bytes);
-        std::vector<tak::sim::RetailModelPiece> pieces;
+        ta::cob::RetailScriptState state(file); state.restore(file,bytes);
+        std::vector<ta::sim::RetailModelPiece> pieces;
         std::vector<std::array<int32_t,3>> vertices;
         auto lower=[](std::string s) { for (auto& c:s) c=char(std::tolower(static_cast<unsigned char>(c))); return s; };
-        auto append=[&](auto&& self,const tak::tdo::Object& object,int parent)->void {
+        auto append=[&](auto&& self,const ta::tdo::Object& object,int parent)->void {
             int piece=-1;
             for (size_t i=0;i<file.pieces.size();++i)
                 if (lower(file.pieces[i])==lower(object.name)) { piece=int(i); break; }
@@ -428,13 +428,13 @@ int main(int argc,char** argv) {
         append(append,model.root,-1);
         const uint16_t heading=uint16_t(std::stoi(argv[5]));
         const uint16_t pitch=argc==9 ? uint16_t(std::stoi(argv[7])) : 0,roll=argc==9 ? uint16_t(std::stoi(argv[8])) : 0;
-        auto point=tak::sim::retailPieceOrigin(pieces,state.pieces,std::stoi(argv[6]),heading,pitch,roll);
+        auto point=ta::sim::retailPieceOrigin(pieces,state.pieces,std::stoi(argv[6]),heading,pitch,roll);
         for(auto& vertex:vertices)
             for(int axis:{0,2})vertex[size_t(axis)]=std::bit_cast<int32_t>(0u-uint32_t(vertex[size_t(axis)]));
         if(std::string(argv[1])=="--bounds")
-            point=tak::sim::retailPieceDrawnCenter(pieces,state.pieces,std::stoi(argv[6]),vertices,heading,pitch,roll);
+            point=ta::sim::retailPieceDrawnCenter(pieces,state.pieces,std::stoi(argv[6]),vertices,heading,pitch,roll);
         if(std::string(argv[1])=="--local-bounds") {
-            tak::sim::RetailPieceBounds bounds;
+            ta::sim::RetailPieceBounds bounds;
             for(const auto& vertex:vertices)bounds.add(vertex);
             point=bounds.center();
         }
@@ -444,7 +444,7 @@ int main(int argc,char** argv) {
     if (argc>1 && std::string(argv[1])=="--rotate") {
         int32_t a,b; unsigned angle;
         while (std::cin>>a>>b>>angle) {
-            tak::sim::retailRotatePair(a,b,uint16_t(angle));
+            ta::sim::retailRotatePair(a,b,uint16_t(angle));
             std::cout<<a<<' '<<b<<'\n';
         }
         return 0;
@@ -454,20 +454,20 @@ int main(int argc,char** argv) {
     if (argc==2 && std::string(argv[1])=="--hp-sample") {
         int hp,maxDamage;
         while (std::cin>>hp>>maxDamage)
-            std::cout<<int(tak::sim::retailHpSample(int16_t(hp),maxDamage))<<'\n';
+            std::cout<<int(ta::sim::retailHpSample(int16_t(hp),maxDamage))<<'\n';
         return 0;
     }
     // damage kind activated modifier(16.16) -> the damage 51a140 hands on.
     if (argc==2 && std::string(argv[1])=="--damage-modifier") {
         int32_t damage,modifier;int kind,activated;
         while (std::cin>>damage>>kind>>activated>>modifier)
-            std::cout<<int(int16_t(tak::sim::retailDamageModifier(damage,uint8_t(kind),activated!=0,modifier)))<<'\n';
+            std::cout<<int(int16_t(ta::sim::retailDamageModifier(damage,uint8_t(kind),activated!=0,modifier)))<<'\n';
         return 0;
     }
     if (argc==2 && std::string(argv[1])=="--severity") {
         int kind,hp,maxDamage,previous;
         while (std::cin>>kind>>hp>>maxDamage>>previous)
-            std::cout<<int(tak::sim::retailDeathSeverity(uint8_t(kind),int16_t(hp),maxDamage,uint8_t(previous)))<<'\n';
+            std::cout<<int(ta::sim::retailDeathSeverity(uint8_t(kind),int16_t(hp),maxDamage,uint8_t(previous)))<<'\n';
         return 0;
     }
     // tools/re/check_kill_credit.py: tick height(16.16) sea canhover enabled
@@ -475,7 +475,7 @@ int main(int argc,char** argv) {
     if (argc==2 && std::string(argv[1])=="--deadly-water") {
         uint32_t tick;int32_t height,amount;int sea,hover,enabled;
         while (std::cin>>tick>>height>>sea>>hover>>enabled>>amount)
-            std::cout<<tak::sim::retailDeadlyWaterDamage(tick,height,sea,hover!=0,enabled!=0,amount)<<'\n';
+            std::cout<<ta::sim::retailDeadlyWaterDamage(tick,height,sea,hover!=0,enabled!=0,amount)<<'\n';
         return 0;
     }
     // tools/re/check_water_grave.py: y(16.16) bed sea -> the updates a water
@@ -484,12 +484,12 @@ int main(int argc,char** argv) {
     if (argc==2 && std::string(argv[1])=="--water-grave") {
         int32_t y;int bed,sea;
         while (std::cin>>y>>bed>>sea) {
-            tak::sim::RetailFeatureSink f{(3*16+5)<<16,y,(3*16+5)<<16,0,tak::sim::kRetailSinkVelocity,0};
+            ta::sim::RetailFeatureSink f{(3*16+5)<<16,y,(3*16+5)<<16,0,ta::sim::kRetailSinkVelocity,0};
             int32_t life=-1;
             for (int32_t update=1;update<(1<<20);++update) {
-                const auto r=tak::sim::retailFeatureSinkStep(f,[&](int32_t,int32_t) { return bed; },uint8_t(sea),0x1fdb);
-                if (r==tak::sim::RetailSinkResult::Moving) continue;
-                if (r==tak::sim::RetailSinkResult::Removed) life=update-1;
+                const auto r=ta::sim::retailFeatureSinkStep(f,[&](int32_t,int32_t) { return bed; },uint8_t(sea),0x1fdb);
+                if (r==ta::sim::RetailSinkResult::Moving) continue;
+                if (r==ta::sim::RetailSinkResult::Removed) life=update-1;
                 break;
             }
             std::cout<<life<<'\n';
@@ -505,20 +505,20 @@ int main(int argc,char** argv) {
     if (argc==2 && std::string(argv[1])=="--corpse-decay") {
         int32_t decompose,wake,reload;
         while (std::cin>>decompose>>wake>>reload) {
-            int32_t life=tak::sim::retailCorpseDecayLife(decompose);
+            int32_t life=ta::sim::retailCorpseDecayLife(decompose);
             // A corpse at rest left the update list at its first update: a
             // reload never counts there.
             if (wake>=0 && life>=0 && wake<=life) {
-                const int32_t left=tak::sim::retailCorpseDecayHold(life-wake,reload);
+                const int32_t left=ta::sim::retailCorpseDecayHold(life-wake,reload);
                 life=left<0 ? -1 : wake+left;
             }
-            tak::sim::RetailFeatureSink f;f.decay=decompose;
+            ta::sim::RetailFeatureSink f;f.decay=decompose;
             int32_t stepped=-1;
             for (int32_t update=1;update<(1<<20);++update) {
                 if (update==wake+1) f.decay=reload;
-                const auto r=tak::sim::retailFeatureSinkStep(f,[](int32_t,int32_t) { return 0; },0,0);
-                if (r==tak::sim::RetailSinkResult::Moving) continue;
-                if (r==tak::sim::RetailSinkResult::Removed) stepped=update-1;
+                const auto r=ta::sim::retailFeatureSinkStep(f,[](int32_t,int32_t) { return 0; },0,0);
+                if (r==ta::sim::RetailSinkResult::Moving) continue;
+                if (r==ta::sim::RetailSinkResult::Removed) stepped=update-1;
                 break;
             }
             if (stepped!=life) {
@@ -535,9 +535,9 @@ int main(int argc,char** argv) {
     if (argc==2 && std::string(argv[1])=="--carried-water") {
         int32_t height,amount;int floater,waterline,sea;uint32_t tick;
         while (std::cin>>height>>floater>>waterline>>sea>>amount>>tick) {
-            const auto at=tak::sim::retailAttachedPosition(tak::sim::retailAttachPoint({4096<<16,height,2048<<16},{},{},-1,0),
+            const auto at=ta::sim::retailAttachedPosition(ta::sim::retailAttachPoint({4096<<16,height,2048<<16},{},{},-1,0),
                 floater!=0,uint8_t(waterline),uint8_t(sea));
-            std::cout<<tak::sim::retailDeadlyWaterDamage(tick,at[1],sea,false,true,amount)<<'\n';
+            std::cout<<ta::sim::retailDeadlyWaterDamage(tick,at[1],sea,false,true,amount)<<'\n';
         }
         return 0;
     }
@@ -553,31 +553,31 @@ int main(int argc,char** argv) {
             if (row=="c") {
                 int kind,finished,hitter,victim,killer,scoreOff;int32_t points,xp;unsigned count;
                 std::cin>>kind>>finished>>hitter>>victim>>killer>>points>>xp>>scoreOff>>count;
-                if (killer && tak::sim::retailKillCreditsExperience(uint8_t(kind),finished!=0,hitter,victim)) {
-                    xp=tak::sim::retailAddExperience(xp,points);
+                if (killer && ta::sim::retailKillCreditsExperience(uint8_t(kind),finished!=0,hitter,victim)) {
+                    xp=ta::sim::retailAddExperience(xp,points);
                     count=uint16_t(count+1u);   // World::creditKill's ++kills
                 }
-                const bool counted=tak::sim::retailKillCountsForPlayer(uint8_t(kind),finished!=0,hitter,victim);
+                const bool counted=ta::sim::retailKillCountsForPlayer(uint8_t(kind),finished!=0,hitter,victim);
                 std::cout<<xp<<' '<<(counted ? 1 : 0)<<' '<<(counted && !scoreOff ? points : 0)<<' '<<count<<'\n';
             } else if (row=="l") {
-                tak::sim::UnitType type;tak::sim::Unit unit;int noVeteran;
+                ta::sim::UnitType type;ta::sim::Unit unit;int noVeteran;
                 std::cin>>unit.xp>>type.experiencePoints>>noVeteran>>unit.vetOverride;
                 type.noVeteran=noVeteran!=0;unit.type=&type;unit.veteran=unit.veteranLevel();
                 std::cout<<unit.veteran<<' '<<std::bit_cast<uint32_t>(unit.vetMul())<<'\n';
             } else {
                 int32_t xp,points;int level,noVeteran;float multiplier;
                 std::cin>>xp>>level>>points>>noVeteran>>multiplier;
-                std::cout<<tak::sim::retailExperienceForLevel(xp,level,points,noVeteran!=0,multiplier)<<'\n';
+                std::cout<<ta::sim::retailExperienceForLevel(xp,level,points,noVeteran!=0,multiplier)<<'\n';
             }
         }
         return 0;
     }
     if ((argc==5 && std::string(argv[1])=="--state") ||
         ((argc==6 || argc==7) && std::string(argv[1])=="--state-start")) {
-        auto file=tak::cob::load(std::filesystem::path(argv[2]));
+        auto file=ta::cob::load(std::filesystem::path(argv[2]));
         std::ifstream input(argv[3],std::ios::binary);
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(input)),{});
-        tak::cob::RetailScriptState state(file); state.restore(file,bytes);
+        ta::cob::RetailScriptState state(file); state.restore(file,bytes);
         Host host;
         struct Event {int script;unsigned count;std::array<uint32_t,4> args;};
         std::multimap<int,Event> events;
@@ -615,7 +615,7 @@ int main(int argc,char** argv) {
     if (argc>1 && std::string(argv[1])=="--pieces") {
         uint32_t op; int axis,target,speed,elapsed;
         while (std::cin>>op>>axis>>target>>speed>>elapsed) {
-            tak::cob::RetailPiece p;
+            ta::cob::RetailPiece p;
             for (auto* values:{&p.moveTarget,&p.moveSpeed,&p.turnTarget,&p.turnSpeed,
                               &p.spinTarget,&p.spinAcceleration,&p.move,&p.turn})
                 for (auto& value:*values) std::cin>>value;
@@ -632,11 +632,11 @@ int main(int argc,char** argv) {
     if (argc>1 && std::string(argv[1])=="--oracle") {
         unsigned nc,ns,nv,nt;
         while (std::cin>>nc>>ns>>nv>>nt) {
-            tak::cob::File file;
+            ta::cob::File file;
             file.code.resize(nc); file.scripts.resize(ns); file.numStatics=nv;
             for (auto& word:file.code) std::cin>>word;
             for (auto& script:file.scripts) std::cin>>script.entry;
-            tak::cob::RetailVm vm(nv); Host host;
+            ta::cob::RetailVm vm(nv); Host host;
             for (auto& value:vm.statics) std::cin>>value;
             for (auto& thread:vm.threads) for (auto& value:thread.words) std::cin>>value;
             std::cin>>vm.active>>host.seed;
@@ -655,7 +655,7 @@ int main(int argc,char** argv) {
         return 0;
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
         {
             UnitType monarch, soldier, building;monarch.id="zonhunt";
@@ -667,7 +667,7 @@ int main(int argc,char** argv) {
             const int a=emotes.spawn(&soldier,200,100,0,0), b=emotes.spawn(&soldier,300,100,0,0);
             const int enemy=emotes.spawn(&soldier,400,100,0,1);
             const int keep=emotes.spawn(&building,500,100,0,0);
-            tak::net::Command cmd;cmd.kind=tak::net::Cmd::Disco;
+            ta::net::Command cmd;cmd.kind=ta::net::Cmd::Disco;
             const auto hash=emotes.stateHash();
             cmd.unitId=enemy;applyCommand(emotes,registry,cmd);
             cmd.unitId=keep;applyCommand(emotes,registry,cmd);
@@ -687,21 +687,21 @@ int main(int argc,char** argv) {
             for(int tick=0;tick<2400;++tick) emotes.tick(1.f/30.f);
             require(emotes.player(0).emoteSequence==sequence && emotes.discoTarget(0,a),
                 "eight-times-speed simulation ticks cannot expire the viewer's emote");
-            cmd.queue=0;cmd.kind=tak::net::Cmd::Headbang;cmd.unitId=0;applyCommand(emotes,registry,cmd);
+            cmd.queue=0;cmd.kind=ta::net::Cmd::Headbang;cmd.unitId=0;applyCommand(emotes,registry,cmd);
             require(emotes.headbangTarget(0,king) && !emotes.headbangTarget(0,a) && !emotes.headbangTarget(0,b),
                 "empty selection falls back to living monarch only");
             const auto second=emotes.player(0).emoteSequence;
             emotes.unit(king)->hp={};emotes.tick(1.f/30.f);
-            cmd.kind=tak::net::Cmd::Disco;applyCommand(emotes,registry,cmd);
+            cmd.kind=ta::net::Cmd::Disco;applyCommand(emotes,registry,cmd);
             cmd.unitId=king;applyCommand(emotes,registry,cmd);
             require(emotes.player(0).emoteSequence==second,"dead monarch and dead selection cannot trigger an emote");
-            cmd.kind=tak::net::Cmd::Headbang;cmd.unitId=a;applyCommand(emotes,registry,cmd);
+            cmd.kind=ta::net::Cmd::Headbang;cmd.unitId=a;applyCommand(emotes,registry,cmd);
             cmd.queue=1;cmd.unitId=b;applyCommand(emotes,registry,cmd);
             cmd.unitId=keep;applyCommand(emotes,registry,cmd);
             require(emotes.headbangTarget(0,a) && emotes.headbangTarget(0,b) && !emotes.headbangTarget(0,keep),
                 "headbang includes selected mobile units but excludes buildings");
             for(int speed : {0,1,4,8}) {
-                tak::EmoteTiming timing;
+                ta::EmoteTiming timing;
                 require(timing.observe(1,1000),"new emote starts the real-time track");
                 const auto trigger=emotes.player(0).emoteSequence;
                 uint64_t ticks=0;
@@ -717,7 +717,7 @@ int main(int argc,char** argv) {
                     "a subsequent emote resets animation and music together");
             }
         }
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->pieces={"root","muzzle"};file->scripts={{"Emit",0}};
         file->code={0x10021001,257,0x1000f000,1,
                     0x10021001,4*65536,0x1000b000,1,0,
@@ -763,9 +763,9 @@ int main(int argc,char** argv) {
         // holds, exactly what a world whose VMs run every tick does. B's VMs are touched before
         // every tick, so they never skip. Sleeps of 1000 ms and 50-59 ms (RAND), and an outside
         // start (Poke) that lands mid-sleep and pays the debt.
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->numStatics=2;file->scripts={{"Create",0},{"Poke",21}};
         file->code={0x10021001,1000,0x10013000,                 // sleep 1000 ms
                     0x10021004,0,0x10021001,1,0x10031000,0x10023004,0,   // static0 += 1
@@ -805,17 +805,17 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: COB sleep skip (max debt "<<maxDebt<<" ticks) hashes and pays like running every tick\n";
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
         for (bool lightning : {false, true}) for (bool flag : {false, true})
         for (bool available : {false, true}) {
-            tak::sim::UnitType type, victim;
+            ta::sim::UnitType type, victim;
             type.maxHp=victim.maxHp=1000;type.hasNimbusArt=available;
-            tak::sim::Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
+            ta::sim::Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
             weapon.projVel=300;weapon.straight=!lightning;weapon.lightning=lightning;
             weapon.nimbus=flag;weapon.buildUp=0.25f;weapon.buildUpTicks=11;weapon.nimbusTicks=7;
             type.weapon=weapon;type.weapons={weapon};
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=world.spawn(&type,200,200,0,0),target=world.spawn(&victim,350,200,0,1);
             RetailReplayProbe::shoot(world,from,target);
@@ -935,7 +935,7 @@ int main(int argc,char** argv) {
         {
             // Damageable is independent of reclaimable and flamable: authored
             // walls must enter the simulation even if builders cannot clear them.
-            tak::hpi::Vfs vfs;auto files=std::make_shared<tak::hpi::Vfs::Files>();
+            ta::hpi::Vfs vfs;auto files=std::make_shared<ta::hpi::Vfs::Files>();
             const std::string text=R"(
                 [Wall] {
                     footprintx=4;
@@ -952,7 +952,7 @@ int main(int argc,char** argv) {
                 }
             )";
             (*files)["features/wall.tdf"]={text.begin(),text.end()};vfs.setMapFiles(files);
-            tak::tnt::Map map;map.width=map.height=64;map.heights.assign(64*64,10);
+            ta::tnt::Map map;map.width=map.height=64;map.heights.assign(64*64,10);
             map.features.assign(64*64,0xffff);map.featureNames={"Wall"};
             const int id=20*64+20;map.features[id]=0;
             World walls;walls.setTerrain(map.heights,64,64,0);registerMapFeatures(walls,map,vfs);
@@ -1328,7 +1328,7 @@ int main(int argc,char** argv) {
             UnitType shooter;shooter.maxHp=100;
             Weapon weapon;weapon.beam=true;weapon.lightning=true;weapon.projVel=240;
             weapon.range=240;weapon.damage=10;weapon.reload=100;
-            auto definition=std::make_shared<tak::RetailLightningDefinition>();
+            auto definition=std::make_shared<ta::RetailLightningDefinition>();
             auto& effect=definition->initial;
             effect.width=16;effect.height=8;effect.capacity=16;
             effect.intensity=4*256;effect.decay=-256;effect.pixels.resize(128);
@@ -1484,7 +1484,7 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: world projectile point query uses native model quad and altitude\n";
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
         {
             UnitType monarch;monarch.maxHp=1000;monarch.commander=true;
@@ -1506,7 +1506,7 @@ int main(int argc,char** argv) {
             alerts.tick(1.f/30);
             require(alerts.hits().empty(),"monarch events clear with tick impacts");
         }
-        auto hitFile=std::make_shared<tak::cob::File>();
+        auto hitFile=std::make_shared<ta::cob::File>();
         hitFile->numStatics=4;hitFile->scripts={{"HitByWeapon",0}};
         for(uint32_t i=0;i<4;++i)
             hitFile->code.insert(hitFile->code.end(),{0x10021002,i,0x10023004,i});
@@ -1523,7 +1523,7 @@ int main(int argc,char** argv) {
         for(int id:{direct,splash}) {
             const auto* victim=impacts.unit(id);
             const auto& callbacks=victim->weaponAnimations;
-            require(callbacks.count==1 && callbacks.at(0).kind==tak::RetailWeaponAnimation::Hit,
+            require(callbacks.count==1 && callbacks.at(0).kind==ta::RetailWeaponAnimation::Hit,
                 "direct and splash damage each publish one HitByWeapon callback");
             const auto& hit=callbacks.at(0);
             require(hit.slot==3 && hit.damage==1000-victim->hp.floorInt() && hit.damage!=100,
@@ -1544,7 +1544,7 @@ int main(int argc,char** argv) {
         require(impacts.unit(direct)->weaponAnimations.count==0 && impacts.unit(splash)->weaponAnimations.count==0,
             "status damage does not produce direct or splash flinch callbacks");
 
-        auto takeoffFile=std::make_shared<tak::cob::File>();
+        auto takeoffFile=std::make_shared<ta::cob::File>();
         takeoffFile->numStatics=2;
         takeoffFile->scripts={{"Activate",0},{"BeginFlight",8}};
         takeoffFile->code={0x10021004,0,0x10021001,1,0x10031000,0x10023004,0,0x10065000,
@@ -1569,7 +1569,7 @@ int main(int argc,char** argv) {
         require(RetailReplayProbe::scriptStatics(takeoffWorld,flyingWorker)==std::vector<uint32_t>{1,1},
             "ongoing placed construction does not restart takeoff callbacks");
 
-        auto repairFile=std::make_shared<tak::cob::File>();
+        auto repairFile=std::make_shared<ta::cob::File>();
         repairFile->numStatics=4;
         repairFile->scripts={{"StartBuilding",0},{"StopBuilding",18}};
         repairFile->code={0x10022000,0x10022000,
@@ -1653,8 +1653,8 @@ int main(int argc,char** argv) {
             "reclaim cancellation stops its controller exactly once");
 
         TypeRegistry workRegistry;
-        tak::net::Command workCommand;workCommand.unitId=worker;workCommand.player=0;
-        workCommand.kind=tak::net::Cmd::Repair;workCommand.targetId=repaired;
+        ta::net::Command workCommand;workCommand.unitId=worker;workCommand.player=0;
+        workCommand.kind=ta::net::Cmd::Repair;workCommand.targetId=repaired;
         applyCommand(repairWorld,workRegistry,workCommand);
         for(int tick=0;tick<4;++tick)repairWorld.tick(1.f/30);
         require(repairWorld.unit(worker)->repairId==repaired &&
@@ -1681,7 +1681,7 @@ int main(int argc,char** argv) {
         for(int tick=0;tick<30 && !repairWorld.unit(worker)->workScriptWorking;++tick)repairWorld.tick(1.f/30);
         require(repairWorld.unit(worker)->workScriptWorking,"the repair resumes once its target stands still");
         repairWorld.addFeature(101,220,200,0,1,1,false,-1,false);
-        workCommand.kind=tak::net::Cmd::Reclaim;workCommand.targetId=101;
+        workCommand.kind=ta::net::Cmd::Reclaim;workCommand.targetId=101;
         applyCommand(repairWorld,workRegistry,workCommand);
         require(!repairWorld.unit(worker)->workScriptWorking,
             "Reclaim command retires the preceding repair controller");
@@ -1690,7 +1690,7 @@ int main(int argc,char** argv) {
             repairWorld.unit(worker)->workScriptWorking,
             "Reclaim command starts its controller through the ordinary update loop");
         const auto beforeStop=RetailReplayProbe::scriptStatics(repairWorld,worker);
-        workCommand.kind=tak::net::Cmd::Stop;applyCommand(repairWorld,workRegistry,workCommand);
+        workCommand.kind=ta::net::Cmd::Stop;applyCommand(repairWorld,workRegistry,workCommand);
         applyCommand(repairWorld,workRegistry,workCommand);
         require(!repairWorld.unit(worker)->workScriptWorking &&
             RetailReplayProbe::scriptStatics(repairWorld,worker)[3]==beforeStop[3]+1,
@@ -1708,14 +1708,14 @@ int main(int argc,char** argv) {
             // Reclaim works on the installed corpse feature.
             require(RetailReplayProbe::corpse(repairWorld,corpse,mode),"the body installs its corpse feature");
             repairWorld.unit(corpse)->corpseStatue=mode ? mode : -1;
-            workCommand.kind=tak::net::Cmd::Reclaim;workCommand.targetId=-corpse;
+            workCommand.kind=ta::net::Cmd::Reclaim;workCommand.targetId=-corpse;
             applyCommand(repairWorld,workRegistry,workCommand);
             for(int tick=0;tick<2;++tick)repairWorld.tick(1.f/30);
             require(repairWorld.unit(worker)->workScriptWorking &&
                 RetailReplayProbe::scriptStatics(repairWorld,worker)[2]==beforeCorpse[2]+1,
                 "corpse/stone/frozen Reclaim command starts the authored work controller");
             if(mode==1) {
-                workCommand.kind=tak::net::Cmd::Stop;
+                workCommand.kind=ta::net::Cmd::Stop;
                 applyCommand(repairWorld,workRegistry,workCommand);
                 require(repairWorld.unit(corpse)->corpseUntil!=0,
                     "stopping corpse reclaim preserves its unfinished target");
@@ -1729,7 +1729,7 @@ int main(int argc,char** argv) {
                 "corpse reclaim completion or cancellation stops its controller once");
         }
 
-        auto activationFile=std::make_shared<tak::cob::File>();
+        auto activationFile=std::make_shared<ta::cob::File>();
         activationFile->numStatics=1;
         activationFile->scripts={{"Activate",0},{"Deactivate",8}};
         // Count both transitions so duplicate command notifications are visible.
@@ -1751,7 +1751,7 @@ int main(int argc,char** argv) {
         require(RetailReplayProbe::scriptStatics(activationWorld,fireId)[0]==11,
             "non-gate deactivation reaches its controller exactly once");
 
-        auto cloakFile=std::make_shared<tak::cob::File>();
+        auto cloakFile=std::make_shared<ta::cob::File>();
         cloakFile->numStatics=1;cloakFile->scripts={{"StartCloaking",0},{"StopCloaking",5}};
         cloakFile->code={0x10021001,1,0x10023004,0,0x10065000,
                          0x10021001,2,0x10023004,0,0x10065000};
@@ -1779,7 +1779,7 @@ int main(int argc,char** argv) {
         require(RetailReplayProbe::scriptStatics(cloakWorld,spy)[0]==2,
             "StopCloaking reaches the script when the requested mode is disabled");
 
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->numStatics=5;file->scripts={{"ReadMovement",0}};
         const int ids[]={28,29,30,33,34};
         for(unsigned i=0;i<5;++i) {
@@ -1832,9 +1832,9 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: authoritative movement speed, terrain and turn script queries\n";
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->scripts={{"AimWeapon",0},{"FireWeapon",9},{"TargetCleared",18}};
         file->code={0x10021001,100,0x10013000,0x10021001,22,0x10021002,2,0x10082000,0x10065000,
                     0x10021001,100,0x10013000,0x10021001,23,0x10021002,0,0x10082000,0x10065000,
@@ -1849,7 +1849,7 @@ int main(int argc,char** argv) {
         unsigned draws=0;world.setCrtRngObserver([&](const World::RngObservation& o){if(o.retailReturnAddress==0x530167)++draws;});
         world.attack(sid,tid,false);
         int callback=0,shot=0,reloadAtCallback=0;
-        std::vector<tak::RetailWeaponAnimation::Kind> callbacks;
+        std::vector<ta::RetailWeaponAnimation::Kind> callbacks;
         for(int tick=1;tick<=20;++tick) {
             world.tick(1.f/30);const auto* u=world.unit(sid);
             for(unsigned i=0;i<u->weaponAnimations.count;++i) {
@@ -1863,7 +1863,7 @@ int main(int argc,char** argv) {
             }
             if(u->justFired) {require(!shot,"SET 23 produces only one shot");shot=tick;}
         }
-        require(callbacks==std::vector<tak::RetailWeaponAnimation::Kind>{tak::RetailWeaponAnimation::Aim,tak::RetailWeaponAnimation::Fire,tak::RetailWeaponAnimation::Aim},
+        require(callbacks==std::vector<ta::RetailWeaponAnimation::Kind>{ta::RetailWeaponAnimation::Aim,ta::RetailWeaponAnimation::Fire,ta::RetailWeaponAnimation::Aim},
             "display receives aim, fire and the native re-aim after projectile retirement");
         require(callback>1 && shot>callback,"live combat waits for aim acknowledgement then delayed fire acknowledgement");
         require(draws==1 && reloadAtCallback>=240 && reloadAtCallback<360,"callback consumes one native reload draw");
@@ -1926,7 +1926,7 @@ int main(int argc,char** argv) {
             edge.attack(from,atRange,false);edge.tick(1.f/30);
             const auto& inRangeEvents=edge.unit(from)->weaponAnimations;
             require(inRangeEvents.count>0 &&
-                    inRangeEvents.events[0].kind==tak::RetailWeaponAnimation::Aim,
+                    inRangeEvents.events[0].kind==ta::RetailWeaponAnimation::Aim,
                 "scripted combat starts AimWeapon at the native inclusive maximum range");
 
             World outside;
@@ -1960,7 +1960,7 @@ int main(int argc,char** argv) {
                 blocked.tick(1.f/30);
                 const auto& events=blocked.unit(from)->weaponAnimations;
                 for(unsigned i=0;i<events.count;++i)
-                    aimed|=events.at(i).kind==tak::RetailWeaponAnimation::Aim;
+                    aimed|=events.at(i).kind==ta::RetailWeaponAnimation::Aim;
             }
             require(aimed,"clearing the terrain obstruction admits the pending AimWeapon callback");
             std::cout<<"PASS: blocked-LOS World gate suppresses callbacks and projectile until the wall clears\n";
@@ -1969,11 +1969,11 @@ int main(int argc,char** argv) {
         const auto expected=world.queryWeaponAim(sid,next,0);
         world.attack(sid,next,false);world.tick(1.f/30);
         const auto& clearEvents=world.unit(sid)->weaponAnimations;
-        require(clearEvents.count==1 && clearEvents.events[0].kind==tak::RetailWeaponAnimation::Clear,
+        require(clearEvents.count==1 && clearEvents.events[0].kind==ta::RetailWeaponAnimation::Clear,
             "retargeting queues TargetCleared before a new aim can start");
         world.tick(1.f/30);
         const auto& aimEvents=world.unit(sid)->weaponAnimations;
-        require(aimEvents.count==1 && aimEvents.events[0].kind==tak::RetailWeaponAnimation::Aim,
+        require(aimEvents.count==1 && aimEvents.events[0].kind==ta::RetailWeaponAnimation::Aim,
             "the regular script pass clears the old aim before starting the new AimWeapon callback");
         require(aimEvents.events[0].heading==(expected->heading&0xff00) &&
             aimEvents.events[0].pitch==(expected->pitch&0xff00),"display angles use native packet precision");
@@ -1981,7 +1981,7 @@ int main(int argc,char** argv) {
         require(world.unit(sid)->weaponAnimations.count==0,"callback events expire on the next simulation update");
         std::cout<<"PASS: live script-timed aim, firing callback, reload and delayed projectile\n";
         for(const auto missing:std::array<std::array<bool,2>,3>{{{true,false},{false,true},{true,true}}}) {
-            auto incomplete=std::make_shared<tak::cob::File>(*file);
+            auto incomplete=std::make_shared<ta::cob::File>(*file);
             if(missing[0])incomplete->scripts[0]={"AbsentAim",0};
             if(missing[1])incomplete->scripts[1]={"AbsentFire",9};
             UnitType type=shooter;type.simulationScript=incomplete;
@@ -2005,7 +2005,7 @@ int main(int argc,char** argv) {
         for(bool clearAcknowledges:{false,true})for(bool removed:{false,true}) {
             UnitType type=shooter;
             if(!clearAcknowledges) {
-                auto absent=std::make_shared<tak::cob::File>(*file);
+                auto absent=std::make_shared<ta::cob::File>(*file);
                 absent->scripts[2]={"AbsentTargetCleared",18};type.simulationScript=absent;
             }
             World loss;
@@ -2021,7 +2021,7 @@ int main(int argc,char** argv) {
             const auto* unit=loss.unit(from);
             require(!unit->justFired && loss.projectiles().empty() && unit->mana==20,
                 "target death prevents a pending release from spending mana or creating a shot");
-            require(unit->weaponAnimations.count==1 && unit->weaponAnimations.events[0].kind==tak::RetailWeaponAnimation::Clear &&
+            require(unit->weaponAnimations.count==1 && unit->weaponAnimations.events[0].kind==ta::RetailWeaponAnimation::Clear &&
                 unit->scriptAimTarget==0,"dying target is cleared during the same combat update");
             require(unit->weaponAim[0].flags&16,
                 "target retirement queues TargetCleared without executing it inline");
@@ -2050,10 +2050,10 @@ int main(int argc,char** argv) {
             switching.tick(1.f/30);
             require(!(unit->weaponAim[0].flags&16),"next script update executes the old slot's TargetCleared");
             const auto& callbacks=unit->weaponAnimations;
-            require(callbacks.count==22 && callbacks.at(0).kind==tak::RetailWeaponAnimation::Clear &&
+            require(callbacks.count==22 && callbacks.at(0).kind==ta::RetailWeaponAnimation::Clear &&
                 callbacks.at(0).slot==0,"command target-clear survives the tick boundary before switch callbacks");
             for(size_t i=1;i<callbacks.count;++i)
-                require(callbacks.at(i).kind==tak::RetailWeaponAnimation::Switch && callbacks.at(i).slot==i%3,
+                require(callbacks.at(i).kind==ta::RetailWeaponAnimation::Switch && callbacks.at(i).slot==i%3,
                     "repeated weapon selections retain every display callback in order");
             switching.tick(1.f/30);
             require(unit->weaponAnimations.count==0,"command callbacks are published once");
@@ -2114,7 +2114,7 @@ int main(int argc,char** argv) {
             std::vector<int> cleared;
             const auto& events=clearing.unit(from)->weaponAnimations;
             for(unsigned i=0;i<events.count;++i)
-                if(events.at(i).kind==tak::RetailWeaponAnimation::Clear)cleared.push_back(events.at(i).slot);
+                if(events.at(i).kind==ta::RetailWeaponAnimation::Clear)cleared.push_back(events.at(i).slot);
             require(cleared==(switching?std::vector<int>{1}:std::vector<int>{0,1,2}),
                 "target-clear callback respects selected versus independent weapon slots");
             if(switching)require(clearing.unit(from)->weaponAim[0].flags==0xe8 &&
@@ -2191,8 +2191,8 @@ int main(int argc,char** argv) {
                     "the release falls back to the cheaper weapon in the same update");
                 bool cleared=false,switched=false;
                 for(unsigned i=0;i<unit->weaponAnimations.count;++i) {
-                    cleared|=unit->weaponAnimations.at(i).kind==tak::RetailWeaponAnimation::Clear && unit->weaponAnimations.at(i).slot==2;
-                    switched|=unit->weaponAnimations.at(i).kind==tak::RetailWeaponAnimation::Switch && unit->weaponAnimations.at(i).slot==1;
+                    cleared|=unit->weaponAnimations.at(i).kind==ta::RetailWeaponAnimation::Clear && unit->weaponAnimations.at(i).slot==2;
+                    switched|=unit->weaponAnimations.at(i).kind==ta::RetailWeaponAnimation::Switch && unit->weaponAnimations.at(i).slot==1;
                 }
                 require(cleared && switched,"the fallback clears the fired slot and starts SwitchWeapon on the new one");
                 require(!(unit->missionEvents&0x40u),"a walker's unit attack is not given the 0x40 event");
@@ -2218,7 +2218,7 @@ int main(int argc,char** argv) {
                     released=unit->justFired;
                     if(released)
                         for(unsigned i=0;i<unit->weaponAnimations.count;++i)
-                            aimed|=unit->weaponAnimations.at(i).kind==tak::RetailWeaponAnimation::Aim &&
+                            aimed|=unit->weaponAnimations.at(i).kind==ta::RetailWeaponAnimation::Aim &&
                                 unit->weaponAnimations.at(i).slot==1;
                 }
                 require(released && unit->weaponSlot==1,"the walker's release falls back to the cheaper weapon");
@@ -2242,7 +2242,7 @@ int main(int argc,char** argv) {
 
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
         World world;
         UnitType shooter,targetType;shooter.maxHp=targetType.maxHp=100;
@@ -2272,9 +2272,9 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: simulation-owned direct, leading and ballistic weapon aim\n";
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->pieces={"root","muzzle"};
         file->scripts={{"QueryWeapon",0},{"SweetSpot",0}};
         file->code={0x10021002,1,0x10023002,0,0x10065000};
@@ -2308,9 +2308,9 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: authoritative weapon and SweetSpot piece queries\n";
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->numStatics=2;file->pieces={"root","emitjim"};
         file->scripts={{"QueryWeapon",0},{"MoveRate",5}};
         file->code={0x10021001,1,0x10023002,0,0x10065000,
@@ -2343,9 +2343,9 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: authoritative movement callback updates weapon source and preserves edge delivery\n";
     }
     {
-        using namespace tak::sim;
+        using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
-        auto file=std::make_shared<tak::cob::File>();
+        auto file=std::make_shared<ta::cob::File>();
         file->scripts={{"Create",0}};
         file->code={0x10021001,21,0x10021001,0,0x10082000,
                     0x10021001,22,0x10021001,1,0x10082000,
@@ -2368,8 +2368,8 @@ int main(int argc,char** argv) {
         std::cout<<"PASS: authoritative weapon SET handshakes, owner wake and hashed aim state\n";
     }
     {
-        using namespace tak::sim;
-        auto script=std::make_shared<tak::cob::File>();
+        using namespace ta::sim;
+        auto script=std::make_shared<ta::cob::File>();
         script->scripts={{"Open",0},{"Close",6}};
         script->code={0x10021001,18,0x10021001,1,0x10082000,0x10065000,
                       0x10021001,18,0x10021001,0,0x10082000,0x10065000};
@@ -2445,7 +2445,7 @@ int main(int argc,char** argv) {
             World world;
             world.setTerrain(std::vector<uint8_t>(32*32,0),32,32,0);
             world.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
-            auto gateScript=std::make_shared<tak::cob::File>(*script);
+            auto gateScript=std::make_shared<ta::cob::File>(*script);
             gateScript->scripts={{"Activate",0},{"Deactivate",6}};
             UnitType gate;gate.id="command-gate";gate.maxVel=Fixed();gate.gate=true;
             gate.onOffable=true;gate.activateWhenBuilt=false;
@@ -2454,7 +2454,7 @@ int main(int argc,char** argv) {
             RetailReplayProbe::tickYard(world,id);
             RetailReplayProbe::cacheYard(world);
             TypeRegistry registry;
-            tak::net::Command command;command.kind=tak::net::Cmd::SetActive;
+            ta::net::Command command;command.kind=ta::net::Cmd::SetActive;
             command.unitId=id;command.targetId=1;command.player=1;
             applyCommand(world,registry,command);
             if (world.unit(id)->active || RetailReplayProbe::cachedYard(world,8,8)!=3) return 1;
@@ -2470,11 +2470,11 @@ int main(int argc,char** argv) {
         }
     }
     {
-        tak::cob::File animation;animation.pieces.resize(70);
-        tak::cob::RetailScriptState indexed(animation);
-        std::vector<tak::cob::RetailPiece> reference(70);
+        ta::cob::File animation;animation.pieces.resize(70);
+        ta::cob::RetailScriptState indexed(animation);
+        std::vector<ta::cob::RetailPiece> reference(70);
         Host animationHost;
-        tak::cob::RetailScriptState::Adapter<Host> adapter{indexed,animationHost};
+        ta::cob::RetailScriptState::Adapter<Host> adapter{indexed,animationHost};
         const std::array<uint32_t,6> operations={0x10001000,0x10002000,0x10003000,
                                                0x10004000,0x1000b000,0x1000c000};
         uint32_t seed=73;
@@ -2521,14 +2521,14 @@ int main(int argc,char** argv) {
         if (!std::all_of(seen.begin(),seen.end(),[](bool value){return value;})) return 1;
         std::cout<<"PASS: indexed animation matches full scan through commands and restoration\n";
     }
-    tak::cob::File file;
+    ta::cob::File file;
     file.scripts={{"parent",0},{"child",7}};
     file.code={0x10062000,1,0,0x10021001,0,0x10065000,0,
                0x10021001,34,0x10013000,0x10021001,0,0x10065000};
-    tak::cob::RetailVm vm;
+    ta::cob::RetailVm vm;
     Host host;
     {
-        tak::cob::RetailVm indexed,reference;
+        ta::cob::RetailVm indexed,reference;
         Host indexedHost,referenceHost;
         for(unsigned step=0;step<300;++step) {
             if(step%41==0){indexed.clearThreads();reference.clearThreads();}
@@ -2559,7 +2559,7 @@ int main(int argc,char** argv) {
             for (size_t word=0;word<vm.threads[slot].words.size();++word)
                 put(4+slot*0xa4+word*4,vm.threads[slot].words[word]);
         put(0xa44,vm.active);
-        tak::cob::RetailScriptState restored(file);restored.restore(file,bytes);
+        ta::cob::RetailScriptState restored(file);restored.restore(file,bytes);
         auto uninterrupted=vm;
         Host originalHost=host,restoredHost=host;
         for (int step=0;step<4;++step) {

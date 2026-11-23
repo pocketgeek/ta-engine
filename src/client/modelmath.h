@@ -9,7 +9,7 @@
 #include <SDL.h>
 
 #include "cob/emissionpose.h"
-#include "cob/vm.h"   // tak::cob::PieceState (scriptRot)
+#include "cob/vm.h"   // ta::cob::PieceState (scriptRot)
 
 #include <cmath>
 #include <bit>
@@ -61,7 +61,7 @@ struct Xform {
 // The retail model loader mirrors authored X/Z. Expressing its renderer
 // (4ee620/4eea20) in our authored coordinates conjugates each piece transform:
 // all three script angles negate, and script MOVE X/Z negate while Y stays.
-inline const float* scriptRot(const tak::cob::PieceState* ps, float (&tmp)[3]) {
+inline const float* scriptRot(const ta::cob::PieceState* ps, float (&tmp)[3]) {
     static const float kZero[3] = {0, 0, 0};
     if (!ps) return kZero;
     for(int axis=0;axis<3;++axis)tmp[axis]=-ps->rot[axis];
@@ -69,7 +69,7 @@ inline const float* scriptRot(const tak::cob::PieceState* ps, float (&tmp)[3]) {
 }
 
 inline Xform scriptTransform(const Xform& parent,float x,float y,float z,
-                             const tak::cob::PieceState* pose) {
+                             const ta::cob::PieceState* pose) {
     float rotation[3];
     return parent.then(x-(pose ? pose->move[0]:0),y+(pose ? pose->move[1]:0),
                        z-(pose ? pose->move[2]:0),scriptRot(pose,rotation));
@@ -84,7 +84,7 @@ inline Xform modelBodyTransform(uint16_t pitch,uint16_t roll) {
 
 // A compact instruction-time pose, ordered from root to emitting piece.
 // Keep this display transform separate from integer gameplay point queries.
-using ModelEmissionPose=tak::cob::EmissionPose;
+using ModelEmissionPose=ta::cob::EmissionPose;
 
 // Rendered vertices use x87's 64-bit rounded conversion, retaining the low
 // word. Invalid conversion has a zero low word, rather than a saturated i32.
@@ -100,7 +100,7 @@ inline std::array<float,3> modelEmissionPoint(std::span<const ModelEmissionPose>
     constexpr float radians=6.28318530717959f/65536.f;
     auto transform=modelBodyTransform(pitch,roll);
     for(const auto& piece:chain) {
-        tak::cob::PieceState pose;
+        ta::cob::PieceState pose;
         for(size_t axis=0;axis<3;++axis) {
             pose.move[axis]=float(piece.move[axis])/65536.f;
             pose.rot[axis]=float(piece.turn[axis])*radians;

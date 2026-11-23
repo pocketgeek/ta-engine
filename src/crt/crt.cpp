@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace tak::crt {
+namespace ta::crt {
 
 namespace {
 
@@ -196,4 +196,4 @@ std::vector<uint8_t> write(const Scenario& s) {
     return std::move(w.b);
 }
 
-} // namespace tak::crt
+} // namespace ta::crt

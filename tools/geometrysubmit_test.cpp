@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstdio>
 int main() {
-    const bool accelerated=std::getenv("TAK_GEOMETRY_TEST_ACCELERATED");
+    const bool accelerated=std::getenv("TA_GEOMETRY_TEST_ACCELERATED");
     SDL_Window* window=nullptr;SDL_Surface* surface=nullptr;SDL_Renderer* renderer=nullptr;
     if(accelerated) {
         if(SDL_Init(SDL_INIT_VIDEO)!=0)return 2;
@@ -34,7 +34,7 @@ int main() {
                             {{x+4-(i%3)*.237f,y+4},color,{1,1}},{{x+(i%4)*.183f,y+4-(i%3)*.127f},color,{0,1}}};
         for(int index:{0,1,2,0,2,3})vertices.push_back(quad[index]);
     }
-    tak::GeometrySubmit submit;
+    ta::GeometrySubmit submit;
     bool ok=true;int cases=0;
     const auto baselineBytes=gpuvram::bytes();
     for(uint64_t revision:{0,1,2}) {
@@ -107,7 +107,7 @@ int main() {
         // lists them in the original order (non-contiguous ranges).
         const size_t chunks=7,per=big.size()/chunks/3*3;   // whole triangles per range, as body runs
         for(int pass=0;pass<1;++pass) {
-            tak::render::VertexArenaBuffer arena;
+            ta::render::VertexArenaBuffer arena;
             const size_t arenaBefore=gpuvram::bytes();
             const bool ready=arena.ready();
             if(opengl)ok &= ready;
@@ -163,7 +163,7 @@ int main() {
             ok &= arena.allocate(capacity*sizeof(SDL_Vertex));
             ok &= gpuvram::bytes()==arenaBefore+2*capacity*sizeof(SDL_Vertex);
             arena.release();
-            for(uint32_t f=0;f<tak::render::VertexArenaBuffer::kInFlightFrames;++f)arena.endFrame();
+            for(uint32_t f=0;f<ta::render::VertexArenaBuffer::kInFlightFrames;++f)arena.endFrame();
             ok &= gpuvram::bytes()==arenaBefore && arena.inFlightBytes()==0;
             // No storage: nothing can be written.
             ok &= !arena.write(0,big.data(),3);

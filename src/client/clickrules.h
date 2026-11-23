@@ -23,7 +23,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::client {
+namespace ta::client {
 
 // One unit's share of a click. Load is the passenger boarding (Cmd::Load with
 // the passenger as the unit); Pickup is the same command sent for the transport
@@ -235,21 +235,21 @@ inline bool isOrderCursor(CursorId c) {
 // back a queued order of the same kind on the same target or within 16 px
 // (0x4d7a5b..0x4d7ab2 S). Alt is never read. Plain replaces.
 inline uint8_t clickQueue(bool shift, bool ctrl) {
-    if (ctrl) return tak::net::kQueueFront | tak::net::kQueueToggle;
-    if (shift) return tak::net::kQueueAppend | tak::net::kQueueToggle;
-    return tak::net::kQueueReplace;
+    if (ctrl) return ta::net::kQueueFront | ta::net::kQueueToggle;
+    if (shift) return ta::net::kQueueAppend | ta::net::kQueueToggle;
+    return ta::net::kQueueReplace;
 }
 // Whether the order goes behind the unit's queue (Shift), so that something
 // queued ahead of it -- a pickup ahead of an unload -- runs first. Ctrl's goes
 // first and plain's alone.
 inline bool queuesBehind(uint8_t queue) {
-    return (queue & tak::net::kQueuePlace) == tak::net::kQueueAppend;
+    return (queue & ta::net::kQueuePlace) == ta::net::kQueueAppend;
 }
 // A click's follow-on orders for one unit (a box's second and later targets):
 // behind a replacing first order they append; a Shift or Ctrl click's go as
 // the first went, each a Shift or Ctrl order of its own that may toggle.
 inline uint8_t followQueue(uint8_t first) {
-    return (first & tak::net::kQueuePlace) == tak::net::kQueueReplace ? tak::net::kQueueAppend : first;
+    return (first & ta::net::kQueuePlace) == ta::net::kQueueReplace ? ta::net::kQueueAppend : first;
 }
 
 // ---- Boxes: the right-drag box (2.2) and the armed left-drag box (2.9) ----
@@ -362,4 +362,4 @@ inline SelectAction selectClick(const SelectClick& s) {
     return SelectAction::Keep;
 }
 
-} // namespace tak::client
+} // namespace ta::client

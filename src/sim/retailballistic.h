@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // The state written by BallisticWeapon::initShot (0x52be80) and advanced by
 // BallisticWeapon::update (0x52bf90). Coordinates and velocities are 16.16;
@@ -81,7 +81,7 @@ inline uint16_t retailBallisticPitchFromVelocity(const std::array<int32_t,3>& ve
     const double ny=double(normalizedY);
     const double remainder=std::max(0.0,1.0-ny*ny);
     const double tangent=ny==1.0 ? INFINITY : ny==-1.0 ? -INFINITY : ny/std::sqrt(remainder);
-    const double bam=tak::detmath::atan(tangent)*10430.378350470464;
+    const double bam=ta::detmath::atan(tangent)*10430.378350470464;
     if(!std::isfinite(bam))return bam<0.0 ? 0xc000 : 0x4000;
     return uint16_t(static_cast<int32_t>(bam));
 }
@@ -125,4 +125,4 @@ inline int32_t retailBallisticGravityRaw(double mapGravity) {
     return static_cast<int32_t>(raw);
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

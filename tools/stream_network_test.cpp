@@ -1,4 +1,4 @@
-// Test-only RTMPS sink injection; never compiled into takclient.
+// Test-only RTMPS sink injection; never compiled into taclient.
 #include "video/stream.h"
 extern "C" {
 #include <libavformat/avformat.h>
@@ -49,7 +49,7 @@ int sink(int port,int seconds){
 // GlobalSign), or every real RTMPS stream fails as TLS CERTIFICATE NOT TRUSTED.
 // With a FILE argument the bundle is also written there, for a manual check.
 int systemRoots(const char* file){
-    const std::string pem=tak::net::systemRootsPem();
+    const std::string pem=ta::net::systemRootsPem();
     if(file){
         FILE* out=std::fopen(file,"wb");if(!out)return 1;
         const bool written=std::fwrite(pem.data(),1,pem.size(),out)==pem.size();
@@ -83,7 +83,7 @@ int main(int argc,char** argv){
     // url ca-file seconds [encoder [local-copy-folder]]; ca-file "-" keeps the
     // production trust store (no test CA).
     if(argc<4 || argc>6)return 2;
-    tak::video::Stream stream;tak::video::StreamConfig c;c.encoder=argc>4?argv[4]:"libx264";
+    ta::video::Stream stream;ta::video::StreamConfig c;c.encoder=argc>4?argv[4]:"libx264";
     if(argc>5)c.localCopyDir=argv[5];
     if(!stream.startTestEndpoint(c,argv[1],std::strcmp(argv[2],"-")==0?"":argv[2]))return 3;
     std::vector<uint8_t> pixels(320*240*4,100);

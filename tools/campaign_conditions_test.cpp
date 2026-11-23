@@ -6,8 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-using namespace tak;
-namespace tak::sim { struct RetailReplayProbe {
+using namespace ta;
+namespace ta::sim { struct RetailReplayProbe {
     // A charm shot's impact on the victim, as World's weapon code makes it.
     static void impact(World& w,const Weapon& weapon,int from,int target) {
         const auto* source=w.unit(from);auto* victim=w.unit(target);
@@ -34,7 +34,7 @@ int main(int argc,char** argv) {
     int failed=0;
     auto check=[&](bool ok,const char* label){std::cout<<(ok?"PASS ":"FAIL ")<<label<<'\n';failed+=!ok;};
     const auto root=std::filesystem::temp_directory_path()/
-        ("tak-campaign-conditions-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("ta-campaign-conditions-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup {std::filesystem::path path;~Cleanup(){std::error_code ec;std::filesystem::remove_all(path,ec);}} cleanup{root};
     std::filesystem::create_directories(root/"units");
     for(const char* name:{"soldier","monarch","pretender","building","thrall","dyer","wide"}) {

@@ -16,16 +16,16 @@ bool run(bool exerciseDisplayVm,const char* scriptPath) {
     int workId=0;
     std::vector<Event> events;
     std::vector<std::pair<int,int>> unitValueWrites;
-    std::unique_ptr<tak::cob::Vm> vm;
+    std::unique_ptr<ta::cob::Vm> vm;
     if(exerciseDisplayVm) {
-        auto file=std::make_shared<tak::cob::File>(tak::cob::load(scriptPath));
-        vm=std::make_unique<tak::cob::Vm>(std::move(file));
+        auto file=std::make_shared<ta::cob::File>(ta::cob::load(scriptPath));
+        vm=std::make_unique<ta::cob::Vm>(std::move(file));
         vm->enableRetailAnimation();
         vm->onSetUnitValue=[&](int id,int value) { unitValueWrites.emplace_back(id,value); };
     }
     const auto update=[&](bool productionQueued,int productionSiteId,bool siteActive,
                           bool walking=false,bool flying=false) {
-        tak::updateRetailBuilderAnimation(building,workId,
+        ta::updateRetailBuilderAnimation(building,workId,
             0,0,0,productionQueued,productionSiteId,siteActive,walking,flying,
             [&](bool start) {
                 const int eventWorkId=workId;
@@ -88,7 +88,7 @@ bool run(bool exerciseDisplayVm,const char* scriptPath) {
         return false;
     }
     bool placedBuilding=false;int placedWorkId=0;
-    tak::updateRetailBuilderAnimation(placedBuilding,placedWorkId,
+    ta::updateRetailBuilderAnimation(placedBuilding,placedWorkId,
         73,0,0,false,0,false,false,false,
         [&](bool start) { events.push_back({start,placedWorkId}); });
     if(!placedBuilding || placedWorkId!=73 || events.back().workId!=73) {
@@ -96,7 +96,7 @@ bool run(bool exerciseDisplayVm,const char* scriptPath) {
         return false;
     }
     bool flyingBuilding=false;int flyingWorkId=0;
-    tak::updateRetailBuilderAnimation(flyingBuilding,flyingWorkId,
+    ta::updateRetailBuilderAnimation(flyingBuilding,flyingWorkId,
         0,0,0,true,44,true,true,true,
         [&](bool start) { events.push_back({start,flyingWorkId}); });
     if(!flyingBuilding || flyingWorkId!=44 || events.back().workId!=44) {
@@ -113,11 +113,11 @@ bool run(bool exerciseDisplayVm,const char* scriptPath) {
 
 int main(int argc,char** argv) {
     {
-        using Call=tak::RetailFactoryAnimationCall;
+        using Call=ta::RetailFactoryAnimationCall;
         bool active=false;int site=0;
         std::vector<Call> calls;
         const auto update=[&](bool constructing,bool queued,int output) {
-            tak::updateRetailFactoryAnimation(active,site,constructing,queued,output,
+            ta::updateRetailFactoryAnimation(active,site,constructing,queued,output,
                 [&](Call call){calls.push_back(call);});
         };
         update(true,true,0); // a queued order cannot open an unfinished factory

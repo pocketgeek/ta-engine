@@ -16,7 +16,7 @@
 # work counters hidden_cover_visits / hidden_cover_reaches exist only in clients with
 # the item-F telemetry (visits = the exact tests the old pass ran, reaches = those run
 # now); hidden_cover_tests (sprite/triangle tests) is in every client with measurement B.
-# Run timing on the reserved cores through /home/pocket_geek/tak-tmp/tools/timing.sh
+# Run timing on the reserved cores through /home/pocket_geek/ta-tmp/tools/timing.sh
 # with --cpus 0-3; captures (--capture) are separate runs and need no quiet cores.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -48,6 +48,6 @@ run() {
 }
 extra=("$@")
 run fade-forest forest
-run fade-forest1200 forest TAK_SHADOW_BENCH=1200 TAK_RENDER_SPACING=24
-run fade-keeps stationary-mixed TAK_PROFILE_ZOOM=1.0 TAK_SHADOW_BENCH=1000 TAK_RENDER_SPACING=32 \
-    TAK_RENDER_ROSTER=arakeep,araarch,araarch,araarch,araarch,araarch,araarch,araarch
+run fade-forest1200 forest TA_SHADOW_BENCH=1200 TA_RENDER_SPACING=24
+run fade-keeps stationary-mixed TA_PROFILE_ZOOM=1.0 TA_SHADOW_BENCH=1000 TA_RENDER_SPACING=32 \
+    TA_RENDER_ROSTER=arakeep,araarch,araarch,araarch,araarch,araarch,araarch,araarch

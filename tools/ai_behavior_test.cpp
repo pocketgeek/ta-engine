@@ -10,7 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
-namespace tak::ai {
+namespace ta::ai {
 struct PlacementProbe {
     static bool place(const Controller& c,const sim::World& w,const sim::UnitType* t,
                       const sim::Unit& builder,float& x,float& z) {
@@ -48,12 +48,12 @@ struct PlacementProbe {
     static bool idle(const sim::Unit& u) {return Controller::idle(u);}
 };
 }
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static bool corpse(World& w,Unit& u,int type) {return w.placeCorpse(u,type);}
 };
 }
-using namespace tak;
+using namespace ta;
 static int fails=0;
 static void check(bool ok,const char* label) {
     std::printf("[%s] %s\n",ok ? "PASS" : "FAIL",label);if (!ok) ++fails;

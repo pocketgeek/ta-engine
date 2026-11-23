@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int fails = 0;
 static void check(bool ok, const std::string& what, const std::string& detail = {}) {
@@ -28,7 +28,7 @@ static void check(bool ok, const std::string& what, const std::string& detail = 
 static UnitType soldier() {
     UnitType t{};
     t.name = "sol"; t.id = "sol";
-    t.maxVel = tak::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 10000;
+    t.maxVel = ta::sim::Fixed::fromFloat(70.0f / 30.0f); t.turnRate = 10000;
     t.maxHp = 100; t.canMove = true;
     t.footX = 2; t.footZ = 2;
     t.sight = 200;
@@ -38,7 +38,7 @@ static UnitType soldier() {
 static UnitType tower() {
     UnitType t{};
     t.name = "twr"; t.id = "twr";
-    t.maxVel = tak::sim::Fixed::fromFloat(0.0f / 30.0f);                      // isStructure() == maxVel <= 0
+    t.maxVel = ta::sim::Fixed::fromFloat(0.0f / 30.0f);                      // isStructure() == maxVel <= 0
     t.maxHp = 500;
     t.footX = 3; t.footZ = 3;
     return t;
@@ -142,7 +142,7 @@ int main() {
         check(w.unit(amb)->orders.empty(), "the watched unit's hit does");
         w.orderWaitAttack(amb, false, ward);
         run(w, 0.5f);
-        w.unit(ward)->hp = tak::sim::Fixed();
+        w.unit(ward)->hp = ta::sim::Fixed();
         run(w, 0.2f);
         check(w.unit(amb)->orders.empty(), "and so does the watched unit's death");
         delete &w;

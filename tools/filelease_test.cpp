@@ -12,7 +12,7 @@
 #endif
 
 namespace {
-using tak::srv::FileLease;
+using ta::srv::FileLease;
 namespace fs = std::filesystem;
 fs::path utf8Path(std::string_view text) {
     return fs::path(std::u8string(reinterpret_cast<const char8_t*>(text.data()),text.size()));
@@ -21,8 +21,8 @@ int checks = 0;
 void check(bool value, const char* message) { ++checks; if(!value) throw std::runtime_error(message); }
 int child(const fs::path& executable, const fs::path& target, bool crash = false) {
 #ifdef _WIN32
-    std::wstring command = tak::quoteWindowsArgument(executable.native()) + (crash ? L" --crash " : L" --child ") +
-        tak::quoteWindowsArgument(target.native());
+    std::wstring command = ta::quoteWindowsArgument(executable.native()) + (crash ? L" --crash " : L" --child ") +
+        ta::quoteWindowsArgument(target.native());
     STARTUPINFOW start{}; start.cb = sizeof start;
     PROCESS_INFORMATION process{};
     if(!CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,nullptr,&start,&process))
@@ -47,7 +47,7 @@ int run(int argc, char** argv) {
         try { FileLease lease(utf8Path(argv[2])); if(std::string(argv[1]) == "--crash") std::_Exit(7); return 0; }
         catch(const std::exception&) { return 1; }
     }
-    const auto root = fs::temp_directory_path() / utf8Path("tak-lease-\xc3\xa9-" +
+    const auto root = fs::temp_directory_path() / utf8Path("ta-lease-\xc3\xa9-" +
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Remove { fs::path root; ~Remove() { std::error_code ec; fs::remove_all(root,ec); } } remove{root};
     try {
@@ -97,7 +97,7 @@ int run(int argc, char** argv) {
 int main(int argc, char** argv) {
 #ifdef _WIN32
     (void)argc; (void)argv;
-    return tak::utf8Main(run);
+    return ta::utf8Main(run);
 #else
     return run(argc,argv);
 #endif

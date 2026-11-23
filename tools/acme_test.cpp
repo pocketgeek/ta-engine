@@ -17,8 +17,8 @@
 #include <fstream>
 #include <openssl/pem.h>
 #include <openssl/x509v3.h>
-using namespace tak::net;
-using tak::srv::acme_detail::Challenge;
+using namespace ta::net;
+using ta::srv::acme_detail::Challenge;
 namespace {
 void check(bool ok,const char* message) {if(!ok)throw std::runtime_error(message);}
 uint16_t unusedPort() {
@@ -56,7 +56,7 @@ std::string request(uint16_t port,const std::string& text) {
     sockSetNonBlock(fd);std::string response;char bytes[2048];
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(4);
     while(std::chrono::steady_clock::now()<deadline) {
-        pollfd p{};p.fd=fd;p.events=POLLIN;TAK_POLL(&p,1,100);
+        pollfd p{};p.fd=fd;p.events=POLLIN;TA_POLL(&p,1,100);
         int n=int(recv(fd,bytes,sizeof bytes,0));if(n>0)response.append(bytes,size_t(n));else if(n==0)break;
         else if(!sockWouldBlock(sockErr()) && !sockInterrupted(sockErr()))break;
     }
@@ -65,8 +65,8 @@ std::string request(uint16_t port,const std::string& text) {
 }
 int main() {
     try {
-        netStartup();using tak::srv::acme_detail::validDomain;
-        check(validDomain("tak.pgnet.us"),"valid hostname");
+        netStartup();using ta::srv::acme_detail::validDomain;
+        check(validDomain("ta.pgnet.us"),"valid hostname");
         for(const char* value:{"","localhost","*.example.org","127.0.0.1","bad_name.test","x..test","-a.test","a-.test","tls://a.test","a.test:80","a.test\r\n"})check(!validDomain(value),"invalid hostname accepted");
         const auto port=unusedPort();const std::string token(43,'a'),auth=token+".thumbprint";
         check(connectTo(port)<0,"port should start closed");
@@ -92,7 +92,7 @@ int main() {
         // ACME Renewal Information (RFC 9773). certID uses the RFC's own example
         // values: AKI 69:88:5B:...:C8:D4 and serial 0x87654321 (DER 00 87 65 43 21).
         {
-            using namespace tak::srv::acme_detail;
+            using namespace ta::srv::acme_detail;
             EVP_PKEY* key=EVP_RSA_gen(2048);X509* cert=X509_new();check(key && cert,"ARI fixture");
             X509_set_version(cert,2);ASN1_INTEGER_set_uint64(X509_get_serialNumber(cert),0x87654321u);
             X509_gmtime_adj(X509_getm_notBefore(cert),-60);X509_gmtime_adj(X509_getm_notAfter(cert),90*86400);X509_set_pubkey(cert,key);
@@ -121,13 +121,13 @@ int main() {
             check(!ariRenewalTime(window("2026-01-04T04:00:00Z","2026-01-05T04:00:00Z"),id,notAfter,now),"window after expiry accepted");
             for(const char* bad:{"","{}","{\"suggestedWindow\":{\"start\":1}}","not json"})check(!ariRenewalTime(bad,id,notAfter,now),"malformed renewalInfo accepted");
         }
-        tak::srv::AcmeOptions options;options.domain="tak.pgnet.us";options.state="unused-acme-test-state";
-        rejected=false;try {tak::srv::AcmeCertificates certificates(options);}catch(const std::exception&) {rejected=true;}
+        ta::srv::AcmeOptions options;options.domain="ta.pgnet.us";options.state="unused-acme-test-state";
+        rejected=false;try {ta::srv::AcmeCertificates certificates(options);}catch(const std::exception&) {rejected=true;}
         check(rejected,"terms agreement not enforced");
         // Saved-state startup must work offline, including Unicode state paths
         // and owner-only Windows ACLs. No certificate authority is contacted.
         const auto root=std::filesystem::temp_directory_path()/
-            (std::filesystem::path(u8"tak-acme-é-")+=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            (std::filesystem::path(u8"ta-acme-é-")+=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root);
         try {
             EVP_PKEY* key=EVP_RSA_gen(2048);check(key,"fixture key");
@@ -147,8 +147,8 @@ int main() {
             BIO_free(bio);X509_free(cert);EVP_PKEY_free(key);
             options.domain="acme.example.test";options.state=root;options.agreeTerms=true;
             {
-                tak::srv::AcmeCertificates saved(options);check(bool(saved.context()),"offline saved certificate");
-                rejected=false;try {tak::srv::AcmeCertificates duplicate(options);}catch(const std::exception&) {rejected=true;}
+                ta::srv::AcmeCertificates saved(options);check(bool(saved.context()),"offline saved certificate");
+                rejected=false;try {ta::srv::AcmeCertificates duplicate(options);}catch(const std::exception&) {rejected=true;}
                 check(rejected,"shared state lease not enforced");
                 check(!std::filesystem::exists(root/"account.pem"),"offline startup contacted CA");
             }
@@ -158,7 +158,7 @@ int main() {
             options.directory="https://localhost:"+std::to_string(unusedPort())+"/dir";
             std::filesystem::remove(root/"identity.json");
             {
-                tak::srv::AcmeCertificates failed(options);
+                ta::srv::AcmeCertificates failed(options);
                 auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
                 while(!std::filesystem::exists(root/"retry.json") && std::chrono::steady_clock::now()<deadline)
                     std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -166,7 +166,7 @@ int main() {
             }
             {std::ofstream retry(root/"retry.json");retry<<"{\"next\":"<<(std::time(nullptr)+7200)<<",\"failures\":2}";}
             auto began=std::chrono::steady_clock::now();
-            {tak::srv::AcmeCertificates waiting(options);check(!waiting.context(),"backoff served plaintext context");}
+            {ta::srv::AcmeCertificates waiting(options);check(!waiting.context(),"backoff served plaintext context");}
             check(std::chrono::steady_clock::now()-began<std::chrono::seconds(1),"persisted backoff blocked startup/shutdown");
             std::filesystem::remove_all(root);
         }catch(...) {std::filesystem::remove_all(root);throw;}

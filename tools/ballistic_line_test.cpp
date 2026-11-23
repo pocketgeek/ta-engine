@@ -39,7 +39,7 @@
 #include <cstdio>
 #include <string>
 
-using namespace tak;
+using namespace ta;
 
 namespace {
 int failures = 0;

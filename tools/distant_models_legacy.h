@@ -19,7 +19,7 @@
 namespace legacy {
 class DistantModels {
 public:
-    using Item=tak::DistantModels::Item;
+    using Item=ta::DistantModels::Item;
     void prepare(SDL_Renderer*,std::span<Item>,uint64_t now);
     void clear();
     size_t used=0, refreshed=0;

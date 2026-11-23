@@ -2,7 +2,7 @@
 """The disconnect wait (protocol 289) on a real server, at protocol level.
 
 Two seated players on a generated map; the server runs with a short stall threshold and
-wait (TAK_STALL_MS / TAK_DROP_WAIT_MS) so nothing here waits the real 8 s and 30 s. The
+wait (TA_STALL_MS / TA_DROP_WAIT_MS) so nothing here waits the real 8 s and 30 s. The
 budget counts from a player's last contact, so the silence before a wait is spent too:
 
   takeover   Bob goes silent: Alice is told the room is WAITING for him with a countdown of
@@ -414,9 +414,9 @@ def main():
     ap.add_argument('--server', type=Path, required=True)
     ap.add_argument('--data', type=Path, required=True)
     a = ap.parse_args()
-    os.environ['TAK_STALL_MS'], os.environ['TAK_DROP_WAIT_MS'] = str(STALL_MS), str(WAIT_MS)
+    os.environ['TA_STALL_MS'], os.environ['TA_DROP_WAIT_MS'] = str(STALL_MS), str(WAIT_MS)
     failed = []
-    with tempfile.TemporaryDirectory(prefix='tak-disconnect-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-disconnect-') as tmp:
         root = Path(tmp)
         with server(a.server.resolve(), a.data.resolve(), root) as (port, h, process):
             for scenario in SCENARIOS:

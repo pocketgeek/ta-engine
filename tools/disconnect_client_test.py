@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""The disconnect wait (protocol 289) end to end: real takserver, two headless takclients.
+"""The disconnect wait (protocol 289) end to end: real taserver, two headless taclients.
 
 A host (--mphost) and a joiner (--mpjoin) play Inner Circle (--seed 1, 4x speed) on a
-server with a short stall threshold and wait (TAK_STALL_MS / TAK_DROP_WAIT_MS):
+server with a short stall threshold and wait (TA_STALL_MS / TA_DROP_WAIT_MS):
 
   takeover   the joiner is frozen (SIGSTOP) past the wait: the server hands its seat to a
              Normal AI and the host plays on to the end with no desync against the
              referee; the host's replay then plays back to the hashes it recorded
-             (TAK_REPLAY_VERIFY), takeover included.
+             (TA_REPLAY_VERIFY), takeover included.
   resume     the joiner is frozen past the stall threshold but not past the wait: the game
              waits, goes on when it thaws, and both clients finish on the same state hash.
-  reconnect  the joiner loses its link mid-game (TAK_DROP_LINK_AT_TICK): it reconnects inside
+  reconnect  the joiner loses its link mid-game (TA_DROP_LINK_AT_TICK): it reconnects inside
              the wait, catches up from the first tick it lacked, and both clients finish on
              the same state hash; its own replay, recorded across the reconnect, verifies.
   reconnect-login  the same on a server that requires accounts: the reconnect signs in again
@@ -46,11 +46,11 @@ def free_port():
 
 
 def environment(root, name):
-    env = {k: v for k, v in os.environ.items() if not k.startswith('TAK_')}
+    env = {k: v for k, v in os.environ.items() if not k.startswith('TA_')}
     for sub in ('data', 'config', 'home'):
         (root / name / sub).mkdir(parents=True, exist_ok=True)
     env.update(XDG_DATA_HOME=str(root / name / 'data'), XDG_CONFIG_HOME=str(root / name / 'config'),
-               HOME=str(root / name / 'home'), TAK_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
+               HOME=str(root / name / 'home'), TA_HEADLESS='1', SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
     return env
 
 
@@ -59,14 +59,14 @@ class Match:
         self.args, self.root, self.login = args, root, login
         self.port = free_port()
         env = environment(root, 'server')
-        env.update(TAK_STALL_MS=str(STALL_MS), TAK_DROP_WAIT_MS=str(WAIT_MS))
+        env.update(TA_STALL_MS=str(STALL_MS), TA_DROP_WAIT_MS=str(WAIT_MS))
         self.server_log = open(root / 'server.log', 'w')
         self.server = subprocess.Popen(
             [args.server, '--port', str(self.port), '--data', args.data, '--local', '--seed', '1',
              *(['--accounts', str(root / 'accounts.conf')] if login else ['--no-auth'])],
             stdout=self.server_log, stderr=subprocess.STDOUT, env=env)
         self.wait_log('listening', 90)
-        self.host = self.client('host', ['--mphost'], {'TAK_SPEED': '40'})
+        self.host = self.client('host', ['--mphost'], {'TA_SPEED': '40'})
         self.wait_log('created game', 60)
         self.joiner = self.client('joiner', ['--mpjoin'], joiner_env or {})
         self.wait_log('starting with 2 players', 90)
@@ -118,12 +118,12 @@ class Match:
 
 
 def verify_replay(args, root, name):
-    found = sorted((root / name / 'data').rglob('*.takrep'))
+    found = sorted((root / name / 'data').rglob('*.tarep'))
     assert len(found) == 1, ('replays', found)
     # The recording player's own profile, as a player watches: it holds the verified
     # game mods a data folder with game mods recorded into the replay.
     env = environment(root, name)
-    env['TAK_REPLAY_VERIFY'] = '1'
+    env['TA_REPLAY_VERIFY'] = '1'
     out = subprocess.run([args.client, 'replay', str(found[0]), '--data', args.data], env=env,
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace',
                          timeout=300).stdout
@@ -136,7 +136,7 @@ def started(match, name, ticks=150):
     """Wait until `name` has played `ticks` ticks (its replay recording holds them)."""
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        parts = replays(match.root / name, '.takrep.part')
+        parts = replays(match.root / name, '.tarep.part')
         if parts and complete_ticks(parts[0]) >= ticks:
             return
         time.sleep(0.1)
@@ -182,7 +182,7 @@ def case_resume(args, root):
 
 
 def case_reconnect(args, root, login=False):
-    m = Match(args, root, {'TAK_DROP_LINK_AT_TICK': '300'}, login)
+    m = Match(args, root, {'TA_DROP_LINK_AT_TICK': '300'}, login)
     try:
         m.wait_log('RESEATED', 60)
         host, joiner = m.finish(m.host, 'host'), m.finish(m.joiner, 'joiner')
@@ -213,7 +213,7 @@ def main():
     a.server, a.client, a.data = a.server.resolve(), a.client.resolve(), a.data.resolve()
     failed = []
     for name in a.case or list(CASES):
-        with tempfile.TemporaryDirectory(prefix='tak-disconnect-client-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='ta-disconnect-client-') as tmp:
             root = Path(tmp)
             try:
                 CASES[name](a, root)

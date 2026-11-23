@@ -83,13 +83,13 @@ inline void fillRect(SDL_Renderer* r, int x, int y, int w, int h, Uint8 cr, Uint
 }
 
 // The browser's unit groups (the Units palette and the AI Profiles window).
-inline std::string unitGroupOf(const tak::sim::UnitType* type) {
+inline std::string unitGroupOf(const ta::sim::UnitType* type) {
     if(!type)return "OTHER";
     if(type->onMana)return "MANA";
     if(type->isBuilder)return "BUILDERS";
     if(type->isStructure())return "BUILDINGS";
     if(type->canFly)return "AIR";
-    if(type->domain==tak::sim::UnitType::Domain::Water)return "NAVAL";
+    if(type->domain==ta::sim::UnitType::Domain::Water)return "NAVAL";
     return "GROUND";
 }
 
@@ -97,14 +97,14 @@ inline std::string unitGroupOf(const tak::sim::UnitType* type) {
 // procedural terrain from the engine's map generator (the "~gen1~" generator the
 // lobby uses -- coastlines, relief, trees/rocks/mana, and start positions).
 struct FreshMap {
-    tak::tnt::Map map;
+    ta::tnt::Map map;
     std::string recipe;
-    std::vector<tak::tnt::StartPos> starts;   // only for random terrain
+    std::vector<ta::tnt::StartPos> starts;   // only for random terrain
     std::string note;   // random terrain: what the generator could not fit (shown on its preview)
 };
-FreshMap buildFreshMap(const tak::hpi::Vfs& vfs, cart::SectionLibrary& sections,
-                       tak::terrain::Compositor& comp, const std::string& world,
-                       int wUnits, int hUnits, bool random, const tak::mapgen::Params* requested=nullptr);
+FreshMap buildFreshMap(const ta::hpi::Vfs& vfs, cart::SectionLibrary& sections,
+                       ta::terrain::Compositor& comp, const std::string& world,
+                       int wUnits, int hUnits, bool random, const ta::mapgen::Params* requested=nullptr);
 
 // The open document and the app services it needs, built by the constructor
 // (main.cpp). Usage errors, startup failures and headless one-shots end the
@@ -124,7 +124,7 @@ struct Session {
     // GAME DATA FOLDER (client/datafolder.h): where dataRoot came from (a --data or
     // launch-folder override greys the Preferences row), the launch's arguments and
     // what reopens the open document, for the restart that applies a new folder.
-    tak::DataFolderOrigin dataOrigin=tak::DataFolderOrigin::Picker;
+    ta::DataFolderOrigin dataOrigin=ta::DataFolderOrigin::Picker;
     std::vector<std::string> launchArgs;
     std::string documentRequest;   // its saved file, or the installed map's name ("" = none)
     std::string pendingOpen;       // a .kmp/.tnt FILE named at launch: opened once the editor is up
@@ -146,7 +146,7 @@ struct Session {
 
     // Mount the retail install exactly like the engine (loose + *.hpi, retail
     // precedence). The Vfs must outlive the MapView (it borrows it by ref).
-    tak::hpi::Vfs vfs;
+    ta::hpi::Vfs vfs;
     bool interactive=false;
     std::filesystem::path recoveryFolder, recoveredFrom;
     std::string recoveredMapPath;
@@ -159,12 +159,12 @@ struct Session {
     // placeholder that is never drawn or edited; File > New map / Open map replace it.
     bool noDocument=false;
     std::string mapPath;
-    tak::tnt::Scenario scenario;
+    ta::tnt::Scenario scenario;
     std::unique_ptr<MapView> mapViewPtr;
     // The map's scenario .crt, kept in full so a save preserves the trigger
     // rules, regions, and custom types the unit tool doesn't edit. `units` is
     // the editor's working view (map pixels); `scen` is everything else.
-    tak::crt::Scenario scen;
+    ta::crt::Scenario scen;
     std::vector<PlacedUnit> units;
     bool unitsEdited = false;
     // Use-only restriction: the allowed unit types (UPPERCASE). Loaded from the
@@ -206,10 +206,10 @@ struct Session {
     std::string world;
     FeatureLibrary features;
     std::vector<std::string> unitTypes;
-    tak::sim::TypeRegistry unitRegistry;
+    ta::sim::TypeRegistry unitRegistry;
     // The same install's CRUSADES roster (unitscb/ alone): Check Map names what the
     // map's scenario loses with CRUSADES on (validateCrusadesRoster).
-    tak::sim::TypeRegistry crusadesRegistry;
+    ta::sim::TypeRegistry crusadesRegistry;
     // Stamp a named section into the map at block (bx,by) (canvas.cpp).
     bool stampByName(const std::string& name, int bx, int by);
 };
@@ -284,7 +284,7 @@ struct Editor : Session {
     std::vector<int> paletteItems;
     std::vector<std::string> paletteCategories{"ALL"};
     std::string paletteKey;
-    const tak::sim::UnitType* unitInfo(int index);
+    const ta::sim::UnitType* unitInfo(int index);
     std::string unitCategory(int index);
     std::string paletteLabel(int index);
     void refreshPalette();
@@ -357,7 +357,7 @@ struct Editor : Session {
     // One setting shared with the game (Settings::dataDir). A valid pick is saved at
     // once; it is LOADED by restarting, after the usual save prompt, and the restarted
     // editor reopens this document (cart::restartArguments).
-    tak::DataFolderPicker folderPick;
+    ta::DataFolderPicker folderPick;
     std::string folderSaved;            // the shared setting, as last read or written
     std::string folderNote;             // the last pick's outcome, if it needs saying
     bool folderNoteError=false;
@@ -393,7 +393,7 @@ struct Editor : Session {
     const std::vector<std::string> kWorldOpts = {"aramon", "veruna", "taros", "zhon", "creon", "volcano"};
     const std::vector<std::string> kDisplayOpts={"WINDOWED","BORDERLESS FULLSCREEN"},kOnOffOpts={"OFF","ON"},
         kScaleOpts={"50%","75%","100%","125%","150%","175%","200%"};
-    tak::mapgen::Params generatorParams;
+    ta::mapgen::Params generatorParams;
     bool regeneratingCurrent=false;
     std::array<std::string,4> generatorDraft;
     std::vector<std::string> generatorLayouts,generatorScatter;
@@ -415,8 +415,8 @@ struct Editor : Session {
     SDL_Rect regionList{},regionNew{},regionEdit{},regionDelete{},regionDone{},regionOnMap{};
     int editUnit = -1;                       // UNITS: index being edited (M_UNIT)
     bool editRuleAction=false;
-    tak::crt::RuleGroup* editRuleGroup=nullptr;
-    tak::crt::Rule* editRule = nullptr;      // M_RULE: rule whose params are edited
+    ta::crt::RuleGroup* editRuleGroup=nullptr;
+    ta::crt::Rule* editRule = nullptr;      // M_RULE: rule whose params are edited
     std::vector<std::string> mMsg;           // M_MESSAGE: wrapped text lines
     SDL_Rect mBox[kMaxFields]{}, mOK{}, mCancel{}, mQuit{};   // render-computed hit rects
     void openMessage(const std::string& title, const std::string& text);
@@ -431,8 +431,8 @@ struct Editor : Session {
     void applyNewMap(bool random);
     void openGeneratorRecipe();
     void applyModal();
-    void openRuleEditor(tak::crt::Rule* r, bool isAction);
-    void openRuleName(tak::crt::RuleGroup* group);
+    void openRuleEditor(ta::crt::Rule* r, bool isAction);
+    void openRuleName(ta::crt::RuleGroup* group);
 
     // --- Use Only restriction list, placed units, model, overlay, Check Map ---
     bool useOnlyOpen = false;
@@ -503,8 +503,8 @@ struct Editor : Session {
     RuleColumn ruleColumn=RuleColumn::Group;
     RuleClipboard ruleClipboard;
     SDL_Rect ruleCopy{},rulePaste{},ruleDuplicate{},ruleUp{},ruleDown{},playerCopy{},playerPaste{};
-    std::vector<tak::crt::RuleGroup>& scrGroups();
-    tak::crt::RuleGroup* curGroup();
+    std::vector<ta::crt::RuleGroup>& scrGroups();
+    ta::crt::RuleGroup* curGroup();
     void ruleOperation(int operation);
     void openScripting();
     void openTemplates();
@@ -519,33 +519,33 @@ struct Editor : Session {
     // the steps made since it opened (aiUndo); older map steps undo after DONE.
     struct AiRosterRow {
         std::string key;                         // DEFAULT: FBI unitname; levels: UnitType::id
-        const tak::sim::UnitType* type=nullptr;
+        const ta::sim::UnitType* type=nullptr;
         std::string label,group,side;
         bool variant=false,reachable=true,lockedForDefault=false,fromPack=false;
     };
     struct AiTabView {                           // the shown file and what it does
         bool built=false;std::string key,bytes;bool readOnly=false;
         AiDraft draft;std::vector<AiLine> lines;std::vector<AiIssue> issues;
-        tak::ai::ClassicProfile classic;tak::ai::Profile level,builtin;
-        tak::ai::Difficulty preview=tak::ai::Difficulty::Normal;   // the level `level` and `builtin` are for
+        ta::ai::ClassicProfile classic;ta::ai::Profile level,builtin;
+        ta::ai::Difficulty preview=ta::ai::Difficulty::Normal;   // the level `level` and `builtin` are for
     };
     enum class AiView {Table,Text,Issues,Groups};   // Groups: the DEFAULT tab's group rules (Advanced)
     enum AiFocus {AI_NONE,AI_SEARCH,AI_NAME,AI_CELL,AI_TEXT,AI_PACK,AI_GROUP,AI_WORD};
     bool aiOpen=false,aiStartOpen=false,aiSetOnly=false,aiShowUnbuildable=false,aiTextFollow=true;
     std::string aiPendingName;                   // own profile chosen, waiting for Start from (one undo step with its file)
     std::map<std::string,std::pair<std::string,bool>> aiWrittenCache;   // key -> (bytes, opens as written)
-    int aiTab=0;                                 // 0 = DEFAULT AI, 1 = TAK ENGINE AI (ai/takengine.txt, all six levels)
-    tak::ai::Difficulty aiPreviewLevel=tak::ai::Difficulty::Normal;   // the level whose built-in table and limits the TAK ENGINE tab shows
+    int aiTab=0;                                 // 0 = DEFAULT AI, 1 = TA ENGINE AI (ai/taengine.txt, all six levels)
+    ta::ai::Difficulty aiPreviewLevel=ta::ai::Difficulty::Normal;   // the level whose built-in table and limits the TA ENGINE tab shows
     AiView aiView=AiView::Table;
     AiFocus aiFocus=AI_NONE;
     int aiSide=0,aiGroup=0,aiScroll=0,aiTextScroll=0,aiIssueScroll=0,aiPack=0;
     std::string aiSearch,aiName,aiCellText,aiText,aiTextKey,aiSelected,aiCellKey,aiNote,aiHint;
     int aiCellColumn=-1;                         // 0 = chance/weight, 1 = limit
     TextEdit aiSearchEdit,aiNameEdit,aiCellEdit,aiTextEdit;
-    std::optional<tak::ai::ClassicCatalogue> aiCatalogue;
+    std::optional<ta::ai::ClassicCatalogue> aiCatalogue;
     std::vector<AiRosterRow> aiDefaultRoster,aiLevelRoster;
     std::vector<std::string> aiPacks;
-    std::optional<tak::hpi::Vfs::Files> aiPackFiles;
+    std::optional<ta::hpi::Vfs::Files> aiPackFiles;
     AiFiles aiOpened;                            // the files as the window opened ('*' = edited since)
     AiTabView aiViewCache;
     std::vector<AiIssue> aiIssues;
@@ -556,7 +556,7 @@ struct Editor : Session {
     SDL_Rect aiTabRects[2]{},aiPreviewBox{},aiPresetRects[3]{},aiSearchBox{},aiSideBox{},aiGroupBox{},aiSetOnlyBox{},aiUnbuildableBox{},
              aiList{},aiStandardRadio{},aiOwnRadio{},aiNameBox{},aiStartButton{},aiViewButton{},aiCheckButton{},
              aiEditableButton{},aiInsertButton{},aiPackButton{},aiDoneButton{},aiTextBox{},aiStartStandard{},aiStartEmpty{},aiStartCancel{};
-    std::optional<tak::ai::Difficulty> aiTabLevel() const;   // the preview level on the TAK ENGINE tab
+    std::optional<ta::ai::Difficulty> aiTabLevel() const;   // the preview level on the TA ENGINE tab
     void aiStepPreview(int by);
     std::string aiKeyFor(int tab) const;
     std::string aiTabKey() const {return aiKeyFor(aiTab);}   // the file this tab edits ("" = DEFAULT on the standard profile, no map file)
@@ -601,10 +601,10 @@ struct Editor : Session {
     // The unit roster of a game mod (design 7.2, phase 5): when a pack is edited or
     // previewed, the window lists the base install's units with that pack mounted
     // (an AI-window-only registry; the map's own registry is untouched).
-    struct AiPackRoster {std::string pack;tak::sim::TypeRegistry registry;std::set<std::string> added;};
+    struct AiPackRoster {std::string pack;ta::sim::TypeRegistry registry;std::set<std::string> added;};
     std::unique_ptr<AiPackRoster> aiPackRoster;  // the last pack's, cached
     std::string aiRosterPack;                    // the pack whose units are listed ("" = the base install)
-    const tak::sim::TypeRegistry& aiRegistry() const {return !aiRosterPack.empty() && aiPackRoster && aiPackRoster->pack==aiRosterPack?aiPackRoster->registry:unitRegistry;}
+    const ta::sim::TypeRegistry& aiRegistry() const {return !aiRosterPack.empty() && aiPackRoster && aiPackRoster->pack==aiRosterPack?aiPackRoster->registry:unitRegistry;}
     void aiUseRoster(const std::string& pack);
     bool aiRosterLists(const std::string& pack) const;   // the units listed are this pack's
     void aiBuildRoster();
@@ -674,7 +674,7 @@ struct Editor : Session {
     Playtest playtest;
     bool playtestAiMod=false;                    // the running test is an AI mod's TEST IN GAME, not TEST MAP
     void testMap();
-    std::filesystem::path gameClient() const;    // takclient beside the editor (a test hook may stand in)
+    std::filesystem::path gameClient() const;    // taclient beside the editor (a test hook may stand in)
 
     // --- Menus, toolbar, shortcuts, status, hints (chrome.cpp) ----------------
     int menuOpen=-1;
@@ -740,7 +740,7 @@ struct Editor : Session {
     // mirrors whatever the handler changed (live symmetry).
     struct LiveEdit {
         Editor& editor;bool active=false;
-        std::vector<PlacedUnit> units;std::vector<tak::tnt::StartPos> starts;
+        std::vector<PlacedUnit> units;std::vector<ta::tnt::StartPos> starts;
         std::vector<uint16_t> features;std::vector<std::string> featureNames;
         LiveEdit(Editor& owner,const SDL_Event& e,bool keyboard);
         ~LiveEdit();

@@ -10,7 +10,7 @@
 #include <memory>
 #include <mutex>
 
-namespace tak::net {
+namespace ta::net {
 namespace {
 using Clock=std::chrono::steady_clock;
 constexpr size_t maxCrl=10*1024*1024;
@@ -34,7 +34,7 @@ bool waitFor(int fd,short events,Clock::time_point deadline) {
     for(;;) {
         const auto left=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-Clock::now()).count();
         if(left<=0)return false;
-        pollfd p{};p.fd=fd;p.events=events;const int n=TAK_POLL(&p,1,int(std::min<long long>(left,100)));
+        pollfd p{};p.fd=fd;p.events=events;const int n=TA_POLL(&p,1,int(std::min<long long>(left,100)));
         if(n>0)return true;
         if(n<0 && !sockInterrupted(sockErr()))return false;
     }
@@ -62,7 +62,7 @@ bool fetch(const std::string& text,int timeoutMs,std::string& body,std::string& 
 #ifdef SO_NOSIGPIPE
     int one=1;setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&one,sizeof one);
 #endif
-    const std::string request="GET "+u.path+" HTTP/1.0\r\nHost: "+u.host+"\r\nUser-Agent: TAK-CRL/1\r\nAccept: application/pkix-crl\r\nConnection: close\r\n\r\n";
+    const std::string request="GET "+u.path+" HTTP/1.0\r\nHost: "+u.host+"\r\nUser-Agent: TA-CRL/1\r\nAccept: application/pkix-crl\r\nConnection: close\r\n\r\n";
     for(size_t sent=0;sent<request.size();) {
         const int n=int(::send(fd,request.data()+sent,int(request.size()-sent),MSG_NOSIGNAL));
         if(n>0) {sent+=size_t(n);continue;}

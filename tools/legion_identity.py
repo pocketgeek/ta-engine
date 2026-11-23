@@ -4,7 +4,7 @@
 tools/legion_identity.sh is the driver; it calls this file for three jobs:
 
   patch-replay SRC DST PROTOCOL
-      Copy a .takrep and retarget it at another simulation build: the u32
+      Copy a .tarep and retarget it at another simulation build: the u32
       protocol at byte offset 8 becomes PROTOCOL. SRC must be replay format
       REPLAY_FORMAT (src/net/replayhdr.h kReplayFormat), the only one a build
       reads; anything else is refused here.
@@ -18,7 +18,7 @@ tools/legion_identity.sh is the driver; it calls this file for three jobs:
   cache-key --src DIR --build DIR --type T
   cache-get / cache-put --dir KEY --row ID --out DIR
       The base-side result cache (see tools/legion_identity.sh --help): KEY is
-      ~/.cache/tak-identity/<commit>/<build type>-v<HARNESS_VERSION>; cache-key
+      ~/.cache/ta-identity/<commit>/<build type>-v<HARNESS_VERSION>; cache-key
       prints it, or nothing (reason on stderr) for a dirty tree or a stale
       build. cache-put validates a result before storing it.
 
@@ -27,7 +27,7 @@ tools/legion_identity.sh is the driver; it calls this file for three jobs:
       (base value, candidate value, SAME/DIFF/FAIL/SKIP), write
       DIR/identity.txt (every row) and DIR/identity.json, and exit 0 only when
       no row is DIFF or FAIL. SKIP (a check a build cannot run, e.g. replays
-      on a Release takclient, which reads no TAK_* variables) does not fail.
+      on a Release taclient, which reads no TA_* variables) does not fail.
 
 Hashes are compared, never timings: everything here is deterministic.
 """
@@ -112,7 +112,7 @@ REPLAY_FORMAT = 15   # src/net/replayhdr.h kReplayFormat
 def patch_replay(args):
     data = bytearray(Path(args.src).read_bytes())
     if data[:4] != b"TAKR":
-        raise SystemExit(f"{args.src}: not a .takrep")
+        raise SystemExit(f"{args.src}: not a .tarep")
     fmt, old = struct.unpack_from("<II", data, 4)
     if fmt != REPLAY_FORMAT:
         raise SystemExit(f"{args.src}: replay format {fmt}, builds read format {REPLAY_FORMAT} only")
@@ -229,9 +229,9 @@ def crowdbench(args):
     for row in rows:
         for role, binary in (("base", args.base), ("cand", args.cand)):
             env = dict(os.environ)
-            env.pop("TAK_LEGION_VERIFY", None)
+            env.pop("TA_LEGION_VERIFY", None)
             if role == "cand" and args.verify:
-                env["TAK_LEGION_VERIFY"] = "1"
+                env["TA_LEGION_VERIFY"] = "1"
             jobs.append((role, binary, row, env))
     # Longest first so the pool drains evenly.
     jobs.sort(key=lambda j: -(j[2][1] * j[2][2]))
@@ -314,7 +314,7 @@ HASHDETAIL = re.compile(r"^HASHDETAIL t=(\d+) section=(\S+) hash=([0-9a-f]+)")
 def parse_replay(path):
     """Final hash plus the per-checkpoint section hashes.
 
-    A debug takclient with TAK_HASHDETAIL prints every section prefix of
+    A debug taclient with TA_HASHDETAIL prints every section prefix of
     World::stateHash() each time it is computed; in replay mode that is at each
     recorded checkpoint (every 300 ticks) and at the end. The section hashes up
     to 'players' cover units, Legion, scripts and grades; the full hash adds the
@@ -346,7 +346,7 @@ def report_replays(report, meta, details):
         skipped = None
         for role in ROLES:
             if meta.get(f"{role}_debug") != "1":
-                skipped = f"{role} is a release takclient (no TAK_REPLAY_VERIFY)"
+                skipped = f"{role} is a release taclient (no TA_REPLAY_VERIFY)"
             parsed[role] = parse_replay(report.out / role / f"replay-{name}.log")
         if skipped:
             report.add("replay", f"{name} final", None, None, "SKIP", skipped)
@@ -501,7 +501,7 @@ def report_mpai(report, meta, details):
         skip = None
         for role in ROLES:
             if meta.get(f"{role}_debug") != "1":
-                skip = f"{role} is a release takclient (no --mpai)"
+                skip = f"{role} is a release taclient (no --mpai)"
             values[role] = []
             for run in range(1, runs + 1):
                 path = report.out / role / f"mpai-{mode}-{run}.log"
@@ -627,7 +627,7 @@ def report(args):
 # the crowdbench runner itself, one json file per matrix row.
 
 def cache_root():
-    return Path(os.environ.get("TAK_IDENTITY_CACHE") or Path.home() / ".cache" / "tak-identity")
+    return Path(os.environ.get("TA_IDENTITY_CACHE") or Path.home() / ".cache" / "ta-identity")
 
 
 def git_out(src, *argv):

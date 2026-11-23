@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <span>
 
-namespace tak {
+namespace ta {
 struct SoundVoice {
     bool active=false, looping=false;
     int priority=0;
@@ -41,4 +41,4 @@ constexpr bool retailUnitSoundAudible(int32_t flags,bool visible,bool selected) 
 constexpr bool unitSoundLive(uint32_t soundTick,uint32_t historyEnd) {
     return soundTick>=historyEnd;
 }
-} // namespace tak
+} // namespace ta

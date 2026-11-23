@@ -2,7 +2,7 @@
 
 #include "sim/fixed.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail's seed initializer, 0x535d30.
 constexpr uint32_t retailSeed(uint32_t seed) { return (seed ^ 0x66e29572u) | 1u; }
@@ -72,4 +72,4 @@ constexpr Fixed individualSpeed(Fixed nominal, unsigned roll) {
     return nominal * Fixed::raw(int32_t((uint64_t(900 + roll) * 65536) / 1000));
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

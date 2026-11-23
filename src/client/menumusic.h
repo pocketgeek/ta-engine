@@ -18,11 +18,11 @@
 #include <vector>
 
 #include "hpi/hpi.h"
-#include "client/musicfile.h"   // tak::music::loadTrack (CUSTOM MUSIC, MP3/FLAC/Ogg)
+#include "client/musicfile.h"   // ta::music::loadTrack (CUSTOM MUSIC, MP3/FLAC/Ogg)
 #include "util/audiolayout.h"
-#include "client/options.h"   // tak::openAudioDevice / tak::detectOutputChannels
+#include "client/options.h"   // ta::openAudioDevice / ta::detectOutputChannels
 
-namespace tak {
+namespace ta {
 
 class MenuMusic {
 public:
@@ -41,7 +41,7 @@ public:
     }
 
     // Play original track n on a loop. The front-end always plays the original: a
-    // CUSTOM MUSIC file for the track plays only in games (tak::music::kMenuTrack).
+    // CUSTOM MUSIC file for the track plays only in games (ta::music::kMenuTrack).
     // Idempotent: if this track is already playing, does nothing (so it does NOT restart
     // across menu -> lobby).
     void start(const hpi::Vfs& vfs, int track) {
@@ -115,13 +115,13 @@ private:
         return !src_.empty();
     }
     // Open on the current device at the track's rate, in the device's own speaker
-    // layout (tak::detectOutputChannels, as SoundBank uses): S16, flags 0, so the
+    // layout (ta::detectOutputChannels, as SoundBank uses): S16, flags 0, so the
     // device takes exactly what fill() writes and SDL converts nothing more.
     bool openDevice() {
         SDL_AudioSpec want{}, have{};
         want.freq = rate_;
         want.format = AUDIO_S16SYS;
-        want.channels = Uint8(std::clamp(tak::detectOutputChannels(), 1, 8));
+        want.channels = Uint8(std::clamp(ta::detectOutputChannels(), 1, 8));
         // Callback-driven, NOT queue-driven: the audio thread pulls chunks itself, so a
         // long synchronous load on the main thread (map + texture atlases when a
         // game starts) can't starve the queue and stutter the BGM the way a poll()
@@ -130,7 +130,7 @@ private:
         want.callback = &MenuMusic::mixThunk;
         want.userdata = this;
         openWant_ = want;
-        dev_ = tak::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
+        dev_ = ta::openAudioDevice(0, &want, &have, 0);   // flags 0 => have == want
         if (!dev_) return false;
         setLayout(want.channels);
         resetTapConverter();
@@ -199,4 +199,4 @@ private:
     std::string file_;                // the custom file playing for track_, "" = the original
 };
 
-}  // namespace tak
+}  // namespace ta

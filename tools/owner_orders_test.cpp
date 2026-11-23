@@ -30,8 +30,8 @@
 #include <vector>
 
 namespace {
-using namespace tak::sim;
-using tak::net::Cmd;
+using namespace ta::sim;
+using ta::net::Cmd;
 
 int failures=0;
 void check(bool ok,const std::string& what) {
@@ -237,7 +237,7 @@ void syntheticCases() {
 
 void command(World& w,const TypeRegistry& reg,Cmd kind,int player,int unit,int target=0,uint8_t queue=0,
              float x=0,float z=0,const char* type=nullptr) {
-    tak::net::Command c;c.kind=kind;c.player=uint8_t(player);c.unitId=unit;c.targetId=target;c.queue=queue;c.x=x;c.z=z;
+    ta::net::Command c;c.kind=kind;c.player=uint8_t(player);c.unitId=unit;c.targetId=target;c.queue=queue;c.x=x;c.z=z;
     if (type) std::snprintf(c.type,sizeof c.type,"%s",type);
     applyCommand(w,reg,c);
 }
@@ -299,7 +299,7 @@ void selectionCase(const TypeRegistry& reg,PathfindingMode mode,const std::vecto
     const float restX=2000,restZ=2150;   // a short walk from where the charm finds them
     for (int id:ids) {
         command(w,reg,Cmd::Attack,0,id,v);
-        command(w,reg,Cmd::Move,0,id,0,tak::net::kQueueAppend,restX,restZ);
+        command(w,reg,Cmd::Move,0,id,0,ta::net::kQueueAppend,restX,restZ);
     }
     command(w,reg,Cmd::Attack,0,lone,v);
     const bool took=f.charm(casterType,casterOwner,v);
@@ -345,8 +345,8 @@ void queuedCase(const TypeRegistry& reg,PathfindingMode mode,const char* holder,
     const std::string tag=f.label+", queued attack ("+holder+", "+casterType+")";
     const int a=f.spawn(holder,2000,2000,0),first=f.spawn("zontrain",2000,2200,1),second=f.spawn("zontrain",2420,2000,1);
     if (!a || !first || !second) return;
-    command(w,reg,Cmd::Attack,0,a,first,tak::net::kQueueReplace);
-    command(w,reg,Cmd::Attack,0,a,second,tak::net::kQueueAppend);
+    command(w,reg,Cmd::Attack,0,a,first,ta::net::kQueueReplace);
+    command(w,reg,Cmd::Attack,0,a,second,ta::net::kQueueAppend);
     f.run(30);
     check(names(*w.unit(a),first) && names(*w.unit(a),second),tag+": both legs are held before the charm");
     // The first target must outlast the charm.
@@ -495,9 +495,9 @@ void sharedIdCase(const TypeRegistry& reg) {
     const int v1=f.spawn("zontrain",2420,1960,1),v2=f.spawn("zontrain",2420,2060,1);
     const int c1=f.spawn("zonharp",2620,1960,0),c2=f.spawn("zonharp",2620,2060,0);
     if (!a || !b || !first || !v1 || !v2 || !c1 || !c2) return;
-    for (int id:{a,b}) command(w,reg,Cmd::Attack,0,id,first,tak::net::kQueueReplace);
-    command(w,reg,Cmd::Attack,0,a,v1,tak::net::kQueueAppend);
-    command(w,reg,Cmd::Attack,0,b,v2,tak::net::kQueueAppend);
+    for (int id:{a,b}) command(w,reg,Cmd::Attack,0,id,first,ta::net::kQueueReplace);
+    command(w,reg,Cmd::Attack,0,a,v1,ta::net::kQueueAppend);
+    command(w,reg,Cmd::Attack,0,b,v2,ta::net::kQueueAppend);
     f.run(30);
     check(names(*w.unit(a),first) && names(*w.unit(a),v1) && names(*w.unit(b),first) && names(*w.unit(b),v2),
           tag+": each attacker holds a queued attack on its own unit before the charms");
@@ -560,7 +560,7 @@ int main(int argc,char** argv) {
     std::setvbuf(stdout,nullptr,_IOLBF,0);
     syntheticCases();
     if (argc==2) {
-        auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         TypeRegistry registry;setupRegistry(registry,vfs,false);
         rosterCases(registry);
     }

@@ -9,7 +9,7 @@
 
 #include "client/terrainlift.h"
 
-namespace lift = tak::client::lift;
+namespace lift = ta::client::lift;
 
 static int failures = 0;
 static void check(bool ok, const char* what, double got, double want) {

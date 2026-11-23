@@ -6,7 +6,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 // Render-only impostors for tiny on-screen models. Cache memory and repaint work
 // are bounded; unsupported targets/blending and overflow retain full geometry.
 class DistantModels {

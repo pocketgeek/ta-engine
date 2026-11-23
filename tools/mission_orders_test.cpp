@@ -50,7 +50,7 @@
 #include <tuple>
 #include <vector>
 
-using namespace tak;
+using namespace ta;
 using sim::Fixed;
 using sim::Order;
 using sim::ScriptedOrder;
@@ -90,7 +90,7 @@ struct Fixture {
     sim::TypeRegistry reg;
     Fixture() {
         root = std::filesystem::temp_directory_path() /
-               ("tak-mission-orders-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+               ("ta-mission-orders-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root / "units");
         std::filesystem::create_directories(root / "canbuild" / "builder");
         std::filesystem::create_directories(root / "canbuild" / "fort");

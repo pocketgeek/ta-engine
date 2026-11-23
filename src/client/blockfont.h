@@ -15,7 +15,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace tak {
+namespace ta {
 
 inline const uint8_t* blockGlyph(char c) {
     static const std::unordered_map<char, std::array<uint8_t, 5>> F = {
@@ -100,4 +100,4 @@ inline void drawClassicBlock(SDL_Renderer* r, const std::string& s, float x, flo
     }
 }
 
-}  // namespace tak
+}  // namespace ta

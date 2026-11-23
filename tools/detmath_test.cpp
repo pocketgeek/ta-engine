@@ -31,7 +31,7 @@ void mixBits(float f) {
 
 }  // namespace
 
-namespace tak::sim {
+namespace ta::sim {
 inline Bam referenceDirection(Fixed y, Fixed x) {
     if (!x.v && !y.v) return Bam(0);
     int64_t vx = int64_t(x.v) * (int64_t(1) << 28);
@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     // sin / cos over several full turns, fine step (covers reduction + all folds).
     for (int i = -20000; i <= 20000; ++i) {
         float x = float(i) * 0.001f;               // [-20, 20] rad, step 0.001
-        float ds = tak::detmath::sin(x), dc = tak::detmath::cos(x);
+        float ds = ta::detmath::sin(x), dc = ta::detmath::cos(x);
         mixBits(ds); mixBits(dc);
         sinMax = std::max(sinMax, std::fabs(double(ds) - std::sin(double(x))));
         cosMax = std::max(cosMax, std::fabs(double(dc) - std::cos(double(x))));
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     for (int iy = -50; iy <= 50; ++iy)
         for (int ix = -50; ix <= 50; ++ix) {
             float y = float(iy) * 0.37f, x = float(ix) * 0.41f;
-            float da = tak::detmath::atan2(y, x);
+            float da = ta::detmath::atan2(y, x);
             mixBits(da);
             double ref = (x == 0.0f && y == 0.0f) ? 0.0 : std::atan2(double(y), double(x));
             atanMax = std::max(atanMax, std::fabs(double(da) - ref));
@@ -81,13 +81,13 @@ int main(int argc, char** argv) {
 
     // Exploration's stored binary32 slope feeds hashed movement inputs. Include
     // its terrain producer and admitted cells in the cross-compiler golden.
-    const auto heights=tak::sim::retailExplorationHeights(24,28,32,
+    const auto heights=ta::sim::retailExplorationHeights(24,28,32,
         [](int x,int z){return uint8_t((x*37+z*13)%256);});
     for (const auto& h:heights) {mixBits(float(h[0]));mixBits(float(h[1]));}
     for (int i=0;i<512;++i) {
-        tak::sim::RetailSightFootprint sight{int16_t(i%16-2),int16_t(i/16%18-2),
+        ta::sim::RetailSightFootprint sight{int16_t(i%16-2),int16_t(i/16%18-2),
             i%385-64,int16_t(i*17%512),uint8_t(i),false};
-        tak::sim::retailSightFootprint(sight,true,true,12,14,uint8_t(i%16),
+        ta::sim::retailSightFootprint(sight,true,true,12,14,uint8_t(i%16),
             [&](int x,int z){return heights[size_t(z)*12+x];},
             [](int x,int z,int delta,uint16_t mask){
                 mixBits(float(x));mixBits(float(z));mixBits(float(delta));mixBits(float(mask));
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
 
     double preciseAtanMax=0;
     auto sampleAtan=[&](double x) {
-        const double value=tak::detmath::atan(x);
+        const double value=ta::detmath::atan(x);
         const auto bits=std::bit_cast<uint64_t>(value);
         for(int j=0;j<8;++j) {g_hash^=(bits>>(j*8))&255;g_hash*=1099511628211ULL;}
         preciseAtanMax=std::max(preciseAtanMax,std::abs(value-std::atan(x)));
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
         sampleAtan(value);sampleAtan(-value);
     }
     for(int i=1;i<=4096;++i)
-        mixBits(float(tak::retailBallisticPitch(float(i%317)-158,float(i%101)-50,
+        mixBits(float(ta::retailBallisticPitch(float(i%317)-158,float(i%101)-50,
             float(i%593)-296,float(i%59)+0.25f,float(i%13+1)/8,i%2)));
     if(preciseAtanMax>5e-16) {std::printf("FAIL: double atan error %.17g\n",preciseAtanMax);return 1;}
 
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
     // Integer-root invariants are exact and also exercise UINT64_MAX, where
     // the old n+1 Newton seed overflowed. Division avoids squaring overflow.
     auto rootValid=[](uint64_t n) {
-        const uint64_t r=tak::sim::isqrt64(n);
+        const uint64_t r=ta::sim::isqrt64(n);
         return n==0 ? r==0 : r>0 && r<=n/r && r+1>n/(r+1);
     };
     uint64_t rootRng=0x987654321abcdefULL;
@@ -145,18 +145,18 @@ int main(int argc, char** argv) {
     uint32_t rng=0x87654321;
     for (int i=0;i<200000;++i) {
         rng=rng*1664525u+1013904223u;
-        const auto x=tak::sim::Fixed::raw(std::bit_cast<int32_t>(rng));
+        const auto x=ta::sim::Fixed::raw(std::bit_cast<int32_t>(rng));
         rng=rng*1664525u+1013904223u;
-        const auto y=tak::sim::Fixed::raw(std::bit_cast<int32_t>(rng));
-        if (tak::sim::retailDirection(y,x)!=tak::sim::referenceDirection(y,x)) {
+        const auto y=ta::sim::Fixed::raw(std::bit_cast<int32_t>(rng));
+        if (ta::sim::retailDirection(y,x)!=ta::sim::referenceDirection(y,x)) {
             std::printf("FAIL: direction early exit differs at %d,%d\n",y.v,x.v);
             return 1;
         }
     }
     for (int y:{0,1,-1,32767,-32768,2147483647,(-2147483647-1)})
         for (int x:{0,1,-1,32767,-32768,2147483647,(-2147483647-1)})
-            if (tak::sim::retailDirection(tak::sim::Fixed::raw(y),tak::sim::Fixed::raw(x))!=
-                tak::sim::referenceDirection(tak::sim::Fixed::raw(y),tak::sim::Fixed::raw(x))) return 1;
+            if (ta::sim::retailDirection(ta::sim::Fixed::raw(y),ta::sim::Fixed::raw(x))!=
+                ta::sim::referenceDirection(ta::sim::Fixed::raw(y),ta::sim::Fixed::raw(x))) return 1;
 
 
     std::printf("accuracy vs libm: sin<=%.3e cos<=%.3e atan2<=%.3e\n", sinMax, cosMax, atanMax);

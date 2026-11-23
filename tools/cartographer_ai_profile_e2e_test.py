@@ -3,20 +3,20 @@
 
 Headless Cartographer --bundle writes two maps from Inner Circle's terrain, each with
 the DEFAULT AI profile named by its .ota (aiprofile=e2e, so ai/e2e.txt) and the file
-all our levels read, ai/takengine.txt, both in the editor's canonical form and kept at
+all our levels read, ai/taengine.txt, both in the editor's canonical form and kept at
 the .kmp root. The
 profiles put a limit on every side's factories (category FACTORY): 0 in the first map,
 2 in the second. Both maps sit in one scratch Maps/ folder, so their ai/e2e.txt and
-ai/takengine.txt collide. Headless --mpai games (seed 1, the AI seat on DEFAULT, 60 s):
+ai/taengine.txt collide. Headless --mpai games (seed 1, the AI seat on DEFAULT, 60 s):
 
   stock    Inner Circle, with the two maps installed and an unticked game pack: the
            same state hash as in a plain install, and no factory limit in the AI's
-           weight dump (TAK_CLASSIC_WEIGHTS)
-  alpha    the first map: the server log names ai/e2e.txt and ai/takengine.txt from the map
+           weight dump (TA_CLASSIC_WEIGHTS)
+  alpha    the first map: the server log names ai/e2e.txt and ai/taengine.txt from the map
            package, and the dump shows every factory at limit 0
   beta     the second map: its own files, not the first map's (limit 2)
   mod      the first map with a ticked game pack carrying ai/e2e.txt (limit 1) and
-           ai/takengine.txt: the log names both from the game mods, and the dump shows 1
+           ai/taengine.txt: the log names both from the game mods, and the dump shows 1
 """
 import argparse
 import os
@@ -30,7 +30,7 @@ from server_public_test import server
 SECONDS = '60'
 PROFILE = 'e2e'
 PACK = 'e2e_ai'
-MAGIC = '// TAK Cartographer AI profile 1\n'
+MAGIC = '// TA Cartographer AI profile 1\n'
 
 
 def hpi_read(hpitool, data, path):
@@ -91,25 +91,25 @@ def bundle(a, data, root, name, units, limit):
     (kit / 'kmap' / 'E2E Source.ota').write_bytes(ota.encode('latin-1'))
     (kit / 'kmap' / 'E2E Source.tnt').write_bytes(hpi_read(a.hpitool, data, 'maps/Inner Circle.tnt'))
     (kit / 'ai' / (PROFILE + '.txt')).write_bytes(profile('default', units, limit))
-    (kit / 'ai' / 'takengine.txt').write_bytes(profile('level', units, limit))
+    (kit / 'ai' / 'taengine.txt').write_bytes(profile('level', units, limit))
     subprocess.run([str(a.hpitool), 'pack', str(kit), str(author / 'Maps' / 'E2E Source.kmp')],
                    check=True, capture_output=True)
     home = root / ('home-' + name.replace(' ', '-'))
     home.mkdir()
     out = root / (name + '.kmp')
     env = dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home), XDG_CONFIG_HOME=str(home),
-               TAK_CARTOGRAPHER_PROFILE=str(home / 'cartographer'), TAK_SETTINGS_FILE=str(home / 'settings.ini'),
+               TA_CARTOGRAPHER_PROFILE=str(home / 'cartographer'), TA_SETTINGS_FILE=str(home / 'settings.ini'),
                SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy')
     result = subprocess.run([str(a.cartographer), 'E2E Source', '--data', str(author), '--bundle', str(out)],
                             env=env, capture_output=True, text=True, timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
     listing = subprocess.run([str(a.hpitool), 'list', str(out)], capture_output=True, text=True, check=True).stdout
     entries = {e.lower() for e in re.findall(r'^\s*\d+\s+(\S.*?)\s*$', listing, re.M)}
-    for want in ('ai/%s.txt' % PROFILE, 'ai/takengine.txt', 'kmap/%s/%s.tnt' % (name.lower(), name.lower()),
+    for want in ('ai/%s.txt' % PROFILE, 'ai/taengine.txt', 'kmap/%s/%s.tnt' % (name.lower(), name.lower()),
                  'kmap/%s/%s.ota' % (name.lower(), name.lower())):
         assert want in entries, '%s not in %s: %s' % (want, out, sorted(entries))
     assert not any(e.startswith('kmap/') and '/ai/' in e for e in entries), sorted(entries)
-    for path, want in (('ai/%s.txt' % PROFILE, profile('default', units, limit)), ('ai/takengine.txt', profile('level', units, limit))):
+    for path, want in (('ai/%s.txt' % PROFILE, profile('default', units, limit)), ('ai/taengine.txt', profile('level', units, limit))):
         got = subprocess.run([str(a.hpitool), 'cat', str(out), path], capture_output=True, check=True).stdout
         assert got == want, '%s in %s changed: %r' % (path, out, got)
     ota = subprocess.run([str(a.hpitool), 'cat', str(out), 'kmap/%s/%s.ota' % (name, name)],
@@ -121,15 +121,15 @@ def bundle(a, data, root, name, units, limit):
 def play(a, data, work, map_name, settings=''):
     work.mkdir()
     dump = work / 'weights'
-    os.environ['TAK_CLASSIC_WEIGHTS'] = str(dump)   # the server's DEFAULT brains write it at tick 600
+    os.environ['TA_CLASSIC_WEIGHTS'] = str(dump)   # the server's DEFAULT brains write it at tick 600
     try:
         with server(a.server.resolve(), data, work, '--no-auth', '--seed', '1') as (port, _, process):
             settings_file = work / 'settings.ini'
             settings_file.write_text(settings)
             env = dict(os.environ, HOME=str(work), XDG_DATA_HOME=str(work), XDG_CONFIG_HOME=str(work),
-                       TAK_SETTINGS_FILE=str(settings_file), TAK_HEADLESS='1', TAK_SPEED='80',
-                       SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', TAK_AI_LEVEL='6')
-            env.pop('TAK_CLASSIC_WEIGHTS')
+                       TA_SETTINGS_FILE=str(settings_file), TA_HEADLESS='1', TA_SPEED='80',
+                       SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', TA_AI_LEVEL='6')
+            env.pop('TA_CLASSIC_WEIGHTS')
             result = subprocess.run([str(a.client), 'game', map_name, '--data', str(data), '--server', '127.0.0.1',
                                      '--serverport', str(port), '--mpai', '--time', SECONDS],
                                     env=env, capture_output=True, text=True, timeout=600)
@@ -138,7 +138,7 @@ def play(a, data, work, map_name, settings=''):
             assert result.returncode == 0 and 'hash=' in out, out + '\n' + log
             assert process.poll() is None, log
     finally:
-        os.environ.pop('TAK_CLASSIC_WEIGHTS', None)
+        os.environ.pop('TA_CLASSIC_WEIGHTS', None)
     limits = {}
     dumps = sorted(work.glob('weights.p*'))
     assert dumps, 'no DEFAULT AI weight dump in %s:\n%s' % (work, log)
@@ -165,7 +165,7 @@ def main():
     a.data = a.data.resolve()
     for tool in ('server', 'client', 'cartographer', 'hpitool'):
         setattr(a, tool, getattr(a, tool).resolve())
-    with tempfile.TemporaryDirectory(prefix='tak-carto-ai-e2e-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='ta-carto-ai-e2e-') as tmp:
         root = Path(tmp)
         units = factories(a.hpitool, a.data)
         assert len(units) >= 4, 'too few factories found: %s' % units
@@ -180,7 +180,7 @@ def main():
         pack = data / 'mods' / 'game' / PACK / 'ai'
         pack.mkdir(parents=True)
         (pack / (PROFILE + '.txt')).write_bytes(profile('default', units, 1))
-        (pack / 'takengine.txt').write_bytes(profile('level', units, 1))
+        (pack / 'taengine.txt').write_bytes(profile('level', units, 1))
 
         stock_hash, limits, log = play(a, data, root / 'stock', 'Inner Circle')
         assert stock_hash == plain_hash, 'Inner Circle hash %s with the AI maps installed, %s without' % (
@@ -192,18 +192,18 @@ def main():
         for name, limit in (('E2E Alpha', 0), ('E2E Beta', 2)):
             _, limits, log = play(a, data, root / name.replace(' ', '-'), name)
             assert re.search(r'DEFAULT AI profile ai/%s\.txt from the map package' % PROFILE, log, re.I), log
-            assert re.search(r"our AI levels play their built-in profiles adjusted by the map package's ai/takengine\.txt",
+            assert re.search(r"our AI levels play their built-in profiles adjusted by the map package's ai/taengine\.txt",
                              log, re.I), log
             expect_limits(limits, units, str(limit), name)
 
         _, limits, log = play(a, data, root / 'mod', 'E2E Alpha',
                               settings='mpRoom.gamePack = ' + PACK.encode().hex() + '\n')
         assert re.search(r'DEFAULT AI profile ai/%s\.txt from the game mods' % PROFILE, log, re.I), log
-        assert re.search(r"our AI levels play their built-in profiles adjusted by the game mods' ai/takengine\.txt",
+        assert re.search(r"our AI levels play their built-in profiles adjusted by the game mods' ai/taengine\.txt",
                          log, re.I), log
         expect_limits(limits, units, '1', 'E2E Alpha with the ticked pack')
 
-        print('PASS: Cartographer --bundle carries ai/%s.txt and ai/takengine.txt at the .kmp root; each of two '
+        print('PASS: Cartographer --bundle carries ai/%s.txt and ai/taengine.txt at the .kmp root; each of two '
               'colliding maps plays its own files (limit 0 / 2 on %d factories), a ticked game pack\'s files '
               'win (limit 1), and the stock map hash %s is unchanged' % (PROFILE, len(units), stock_hash))
 

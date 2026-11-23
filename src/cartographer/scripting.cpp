@@ -5,11 +5,11 @@
 #include "cartographer/dialog.h"
 #include "cartographer/triggers.h"
 
-std::vector<tak::crt::RuleGroup>& cart::Editor::scrGroups() {
+std::vector<ta::crt::RuleGroup>& cart::Editor::scrGroups() {
     return scen.players[size_t(scrPlayer)];
 }
 
-tak::crt::RuleGroup* cart::Editor::curGroup() {
+ta::crt::RuleGroup* cart::Editor::curGroup() {
     auto& gs = scrGroups();
     return (scrGroup >= 0 && scrGroup < int(gs.size())) ? &gs[size_t(scrGroup)] : nullptr;
 }
@@ -130,9 +130,9 @@ void cart::Editor::handleScripting(SDL_Event& e) {
             if (cart::pointIn(mx, my, rPickCancel)) pickOpen = false;
             else if (cart::pointIn(mx, my, rPickList)) {
                 int row = (my - rPickList.y + pickScroll) / kRow;
-                tak::crt::RuleGroup* g = curGroup();
+                ta::crt::RuleGroup* g = curGroup();
                 if (g && row >= 0 && row < int(defs.size())) {
-                    tak::crt::Rule r; r.opcode = row;
+                    ta::crt::Rule r; r.opcode = row;
                     for (size_t i = 0; i < defs[size_t(row)].params.size() && i < 5; ++i)
                         r.slot[i] = cart::defaultParam(defs[size_t(row)].params[i]);
                     if (pickAction) { g->actions.push_back(r); scrActSel = int(g->actions.size()) - 1; dirty = true; historyPending=true; }
@@ -144,7 +144,7 @@ void cart::Editor::handleScripting(SDL_Event& e) {
         return;
     }
     auto& gs = scrGroups();
-    tak::crt::RuleGroup* g = curGroup();
+    ta::crt::RuleGroup* g = curGroup();
     if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
         scriptOpen = false;
     } else if (e.type == SDL_MOUSEWHEEL) {
@@ -217,7 +217,7 @@ void cart::Editor::drawScripting() {
         constexpr int kRow = 12;
         SDL_Rect ct = cart::drawPanel(ren, w, h, 780, 520, "SCENARIO SCRIPTING");
         auto& gs = scen.players[size_t(scrPlayer)];
-        tak::crt::RuleGroup* g = curGroup();
+        ta::crt::RuleGroup* g = curGroup();
         // Header row: player nav, rule count, Done.
         rPrevP = cart::drawButton(ren, ct.x, ct.y, 18, 14, "<", false);
         cart::drawText(ren, scrPlayer==0 ? "ALL PLAYERS" : "PLAYER " + std::to_string(scrPlayer), ct.x + 24, ct.y + 3, 1, 220, 224, 235);
@@ -260,7 +260,7 @@ void cart::Editor::drawScripting() {
         }
         SDL_RenderSetClipRect(ren, nullptr);
         // Conditions + actions of the selected group.
-        auto drawRules = [&](const SDL_Rect& area, int scroll, const std::vector<tak::crt::Rule>* rules,
+        auto drawRules = [&](const SDL_Rect& area, int scroll, const std::vector<ta::crt::Rule>* rules,
                              bool isAct, int selRow) {
             if (!rules) return;
             SDL_RenderSetClipRect(ren, &area);

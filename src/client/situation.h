@@ -1,5 +1,5 @@
 #pragma once
-// TAK_SITUATION=<tick>:<path> -- a debug-only replay hook (src/client/dev.h) that cuts a
+// TA_SITUATION=<tick>:<path> -- a debug-only replay hook (src/client/dev.h) that cuts a
 // "situation" out of a recording: the world as it stood at <tick>, the next 600 ticks of
 // the human commands, and where every body was 300 ticks in, written as a .scn file
 // (tools/scenarios/README.scn-format.txt) that tools/legion_scenario runs on any later
@@ -40,12 +40,12 @@
 #include <utility>
 #include <vector>
 
-namespace tak::situation {
+namespace ta::situation {
 
-inline constexpr uint32_t kCommandWindow = 600;   // ticks of commands kept (TAK_SITUATION_CMDS=N overrides: timing runs
+inline constexpr uint32_t kCommandWindow = 600;   // ticks of commands kept (TA_SITUATION_CMDS=N overrides: timing runs
                                                   // that simulate more than 600 ticks keep the recording's commands for all of them)
 inline uint32_t commandWindow() {
-    if (const char* e = tak::devEnv("TAK_SITUATION_CMDS")) if (const unsigned long n = std::strtoul(e, nullptr, 10)) return uint32_t(n);
+    if (const char* e = ta::devEnv("TA_SITUATION_CMDS")) if (const unsigned long n = std::strtoul(e, nullptr, 10)) return uint32_t(n);
     return kCommandWindow;
 }
 inline constexpr uint32_t kTruthTicks[] = {100, 300};   // where the recording's positions are sampled (the last ends the harvest)
@@ -83,17 +83,17 @@ struct Meta {
 
 class Harvester {
 public:
-    // TAK_SITUATION_SHAPES=N: after the cut, keep logging the order shape every 100 ticks up to +N (judging how fast a rebuilt
+    // TA_SITUATION_SHAPES=N: after the cut, keep logging the order shape every 100 ticks up to +N (judging how fast a rebuilt
     // situation converges on the recording's queues).
     void arm(const Request& r, const Meta& m) {
         req_ = r; meta_ = m; armed_ = r.valid;
-        if (const char* e = tak::devEnv("TAK_SITUATION_SHAPES")) shapeEnd_ = r.valid ? uint32_t(std::strtoul(e, nullptr, 10)) : 0;
+        if (const char* e = ta::devEnv("TA_SITUATION_SHAPES")) shapeEnd_ = r.valid ? uint32_t(std::strtoul(e, nullptr, 10)) : 0;
     }
     bool armed() const { return armed_ || shapeEnd_ != 0; }
 
     // Call with the world as it stands after `tick` ticks, before applying bundle `tick`.
     // Returns true when the file was written (once).
-    bool observe(uint32_t tick, const tak::sim::World& w, const std::vector<tak::net::Bundle>& bundles) {
+    bool observe(uint32_t tick, const ta::sim::World& w, const std::vector<ta::net::Bundle>& bundles) {
         if (shapeEnd_ && captured_ && tick > req_.tick) {
             const uint32_t k = tick - req_.tick;
             if (k % 100 == 0) std::fprintf(stderr, "situation: order shape at +%u: %s\n", k, orderShape(w).c_str());
@@ -159,7 +159,7 @@ private:
         return (uint64_t(a) << 32) | b;
     }
 
-    void capture(const tak::sim::World& w, const std::vector<tak::net::Bundle>& bundles) {
+    void capture(const ta::sim::World& w, const std::vector<ta::net::Bundle>& bundles) {
         captured_ = true;
         std::fprintf(stderr, "situation: order shape at tick %u: %s\n", req_.tick, orderShape(w).c_str());
         explored_ = w.navigationExploration();
@@ -181,7 +181,7 @@ private:
                 u.fireState != u.type->defaultFire)
                 b.stand = int32_t(uint32_t(u.standingOrder) | uint32_t(u.moveState) << 8 | uint32_t(u.fireState) << 16 |
                                   uint32_t(u.stance + 1) << 24);
-            b.moves = u.type->maxVel > tak::sim::Fixed();
+            b.moves = u.type->maxVel > ta::sim::Fixed();
             bodies_.push_back(b);
             inSnapshot.insert(u.id);
         }
@@ -189,8 +189,8 @@ private:
         {
             std::map<std::tuple<int, int, uint64_t, int>, Click> pend;
             for (const auto& u : w.units()) {
-                if (!inSnapshot.count(u.id) || u.orders.empty() || !u.type || u.type->maxVel <= tak::sim::Fixed()) continue;
-                const tak::sim::Order* last = &u.orders.back();
+                if (!inSnapshot.count(u.id) || u.orders.empty() || !u.type || u.type->maxVel <= ta::sim::Fixed()) continue;
+                const ta::sim::Order* last = &u.orders.back();
                 for (const auto& o : u.orders) if (o.goal) last = &o;
                 if (last->buildType) continue;
                 Click c;
@@ -237,19 +237,19 @@ private:
             }
             for (const auto& c : bundles[req_.tick + k].cmds) {
                 V v;
-                if (c.kind == tak::net::Cmd::Order) {
+                if (c.kind == ta::net::Cmd::Order) {
                     // An explicit selection order is a click already: its verb, point,
                     // target and exact members, no clustering needed.
                     if (!c.order) continue;
                     const auto& t = c.order->tmpl;
                     switch (t.kind) {
-                    case tak::net::Cmd::Move: v = V::Move; break;
-                    case tak::net::Cmd::AttackMove: v = V::Fight; break;
-                    case tak::net::Cmd::Patrol: v = V::Patrol; break;
-                    case tak::net::Cmd::Attack: v = V::Attack; break;
-                    case tak::net::Cmd::Guard: v = V::Guard; break;
-                    case tak::net::Cmd::Stop: v = V::Stop; break;
-                    case tak::net::Cmd::SetSquad: v = V::Squad; break;
+                    case ta::net::Cmd::Move: v = V::Move; break;
+                    case ta::net::Cmd::AttackMove: v = V::Fight; break;
+                    case ta::net::Cmd::Patrol: v = V::Patrol; break;
+                    case ta::net::Cmd::Attack: v = V::Attack; break;
+                    case ta::net::Cmd::Guard: v = V::Guard; break;
+                    case ta::net::Cmd::Stop: v = V::Stop; break;
+                    case ta::net::Cmd::SetSquad: v = V::Squad; break;
                     default: continue;
                     }
                     if (v == V::Squad && t.targetId == 0) continue;   // eviction of the old members
@@ -264,13 +264,13 @@ private:
                     continue;
                 }
                 switch (c.kind) {
-                case tak::net::Cmd::Move: v = V::Move; break;
-                case tak::net::Cmd::AttackMove: v = V::Fight; break;
-                case tak::net::Cmd::Patrol: v = V::Patrol; break;
-                case tak::net::Cmd::Attack: v = V::Attack; break;
-                case tak::net::Cmd::Guard: v = V::Guard; break;
-                case tak::net::Cmd::Stop: v = V::Stop; break;
-                case tak::net::Cmd::SetSquad: v = V::Squad; break;
+                case ta::net::Cmd::Move: v = V::Move; break;
+                case ta::net::Cmd::AttackMove: v = V::Fight; break;
+                case ta::net::Cmd::Patrol: v = V::Patrol; break;
+                case ta::net::Cmd::Attack: v = V::Attack; break;
+                case ta::net::Cmd::Guard: v = V::Guard; break;
+                case ta::net::Cmd::Stop: v = V::Stop; break;
+                case ta::net::Cmd::SetSquad: v = V::Squad; break;
                 default: continue;
                 }
                 if (!inSnapshot.count(c.unitId)) continue;
@@ -334,7 +334,7 @@ private:
         if (auto s = name.find_last_of("/\\"); s != std::string::npos) name = name.substr(s + 1);
         if (name.size() > 4 && name.compare(name.size() - 4, 4, ".scn") == 0) name.resize(name.size() - 4);
         std::fprintf(f, "scn 1\nname %s\n", name.c_str());
-        std::fprintf(f, "# Situation cut by TAK_SITUATION (src/client/situation.h) from %s,\n", meta_.source.c_str());
+        std::fprintf(f, "# Situation cut by TA_SITUATION (src/client/situation.h) from %s,\n", meta_.source.c_str());
         std::fprintf(f, "# the world at tick %u of the recording and the next %u ticks of its commands.\n",
                      req_.tick, commandWindow());
         std::fprintf(f, "# Bodies are exact (raw 16.16 px, raw BAM, raw hp, raw individual speed); `truth` holds the recording's own\n"
@@ -411,4 +411,4 @@ private:
     }
 };
 
-}  // namespace tak::situation
+}  // namespace ta::situation

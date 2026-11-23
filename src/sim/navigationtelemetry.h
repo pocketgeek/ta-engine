@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 // Optional service-lifecycle observer for diagnostics. The caller supplies its
 // own simulation-tick clock; no wall-clock time, observer result, or token is
 // used by navigation, checksums, saves, or scheduling. A duplicate request that

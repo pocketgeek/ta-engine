@@ -1,4 +1,4 @@
-// The GAME DATA FOLDER setting shared by takclient's Options and Cartographer's
+// The GAME DATA FOLDER setting shared by taclient's Options and Cartographer's
 // Preferences (client/datafolder.h): launch precedence, what a pick means, path
 // elision, restart arguments for both programs, the Windows command line a restart
 // builds, and the settings file -- a dataDir round trip, a folder-only write that
@@ -70,24 +70,24 @@ std::string slurp(const std::filesystem::path& p) {
 }  // namespace
 
 int main() {
-    using namespace tak;
+    using namespace ta;
     namespace fs = std::filesystem;
 
     // ---- launch precedence: --data > launch folder > saved > picker -----------------
     {
-        const std::set<std::string> installs = {"/games/tak", "/elsewhere/tak"};
+        const std::set<std::string> installs = {"/games/ta", "/elsewhere/ta"};
         const DataFolderValidator valid = [&](const std::string& f, std::string*) { return installs.count(f) > 0; };
         auto pick = [&](const std::string& cli, const std::string& here, const std::string& saved) {
             return chooseDataFolder(cli, here, saved, valid);
         };
-        auto c = pick("/not/an/install", "/games/tak", "/elsewhere/tak");
+        auto c = pick("/not/an/install", "/games/ta", "/elsewhere/ta");
         check(c.origin == DataFolderOrigin::CommandLine && c.folder == "/not/an/install",
               "--data wins over everything, even when it does not validate");
-        c = pick("", "/games/tak", "/elsewhere/tak");
-        check(c.origin == DataFolderOrigin::LaunchFolder && c.folder == "/games/tak", "a valid launch folder beats the saved one");
-        c = pick("", "/home/me", "/elsewhere/tak");
-        check(c.origin == DataFolderOrigin::Saved && c.folder == "/elsewhere/tak", "an invalid launch folder falls through to the saved one");
-        c = pick("", "/home/me", "/gone/tak");
+        c = pick("", "/games/ta", "/elsewhere/ta");
+        check(c.origin == DataFolderOrigin::LaunchFolder && c.folder == "/games/ta", "a valid launch folder beats the saved one");
+        c = pick("", "/home/me", "/elsewhere/ta");
+        check(c.origin == DataFolderOrigin::Saved && c.folder == "/elsewhere/ta", "an invalid launch folder falls through to the saved one");
+        c = pick("", "/home/me", "/gone/ta");
         check(c.origin == DataFolderOrigin::Picker && c.folder.empty(), "a saved folder that no longer validates asks");
         c = pick("", "", "");
         check(c.origin == DataFolderOrigin::Picker, "nothing at all asks");
@@ -138,15 +138,15 @@ int main() {
         const std::string e = elidePathStart(p, 30);
         check(e.size() <= 30 && e.rfind("...", 0) == 0, "a long path is cut to fit, with a ... prefix (" + e + ")");
         check(e == "...Total Annihilation Kingdoms", "a cut right after a separator keeps that whole name (" + e + ")");
-        const std::string q = elidePathStart("/home/someone/Games/TAK Kingdoms Install", 25);
-        check(q == ".../TAK Kingdoms Install", "a cut inside a name moves to the next separator (" + q + ")");
+        const std::string q = elidePathStart("/home/someone/Games/TA Kingdoms Install", 25);
+        check(q == ".../TA Kingdoms Install", "a cut inside a name moves to the next separator (" + q + ")");
         check(p.substr(p.size() - (e.size() - 3)) == e.substr(3), "the tail kept is the path's real tail");
         const std::string w = "C:\\Program Files (x86)\\Cavedog\\Kingdoms";
         check(elidePathStart(w, 20) == "...\\Cavedog\\Kingdoms", "Windows separators count too (" + elidePathStart(w, 20) + ")");
         const std::string longName = "/x/" + std::string(40, 'a');
         const std::string ln = elidePathStart(longName, 20);
         check(ln.size() == 20 && ln.rfind("...", 0) == 0, "a single long name is cut mid-name when no separator is near");
-        const std::string u = "/home/j\xc3\xb6rg/\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9/tak";   // jörg / éééé
+        const std::string u = "/home/j\xc3\xb6rg/\xc3\xa9\xc3\xa9\xc3\xa9\xc3\xa9/ta";   // jörg / éééé
         for (size_t n = 4; n < u.size(); ++n) {
             const std::string cut = elidePathStart(u, n);
             check(cut.size() <= n, "elision never exceeds the room (" + std::to_string(n) + ")");
@@ -159,11 +159,11 @@ int main() {
     // ---- restart arguments -------------------------------------------------------------
     {
         check(clientRestartArguments({"--data", "/x", "--play-map", "/t/m.kmp"}) == Args{"--data", "/x"},
-              "takclient drops the one-shot --play-map handoff");
+              "taclient drops the one-shot --play-map handoff");
         check(clientRestartArguments({"--data", "/x", "--play-map", "/t/m.kmp", "--game-mod", "My AI"}) == Args{"--data", "/x"},
-              "takclient drops the --game-mod that came with --play-map");
+              "taclient drops the --game-mod that came with --play-map");
         check(clientRestartArguments({"game", "Ulasem Arena", "--side", "zon"}) == Args{"game", "Ulasem Arena", "--side", "zon"},
-              "takclient keeps everything else, in order");
+              "taclient keeps everything else, in order");
         check(clientRestartArguments({}).empty(), "a bare launch restarts bare");
         check(withoutOptions({"a", "--x", "1", "2", "b"}, {{"--x", 2}}) == Args{"a", "b"}, "an option drops its values");
 
@@ -181,10 +181,10 @@ int main() {
     // ---- the Windows command line a restart builds ---------------------------------------
     {
         const Args samples[] = {
-            {"C:\\Program Files\\TAK\\takclient.exe", "--data", "D:\\Games\\TAK #2"},
+            {"C:\\Program Files\\TA\\taclient.exe", "--data", "D:\\Games\\TA #2"},
             {"x.exe", "", "a b", "tab\there", "quote\"inside", "trail\\", "trail space\\", "\\\\server\\share\\"},
             {"x.exe", "back\\\\\"quote", "\"", "\\\"", "plain"},
-            {"x.exe", "C:\\Users\\J\xc3\xb6rg\\TAK"},
+            {"x.exe", "C:\\Users\\J\xc3\xb6rg\\TA"},
         };
         for (const auto& a : samples) {
             const std::string line = windowsCommandLine(a);
@@ -198,14 +198,14 @@ int main() {
     {
         const std::string self = selfExecutable();
         std::error_code ec;
-        check(!self.empty() && fs::is_regular_file(tak::u8path(self), ec) &&
-              tak::u8path(self).filename().u8string().find(u8"datafolder_test") != std::u8string::npos,
+        check(!self.empty() && fs::is_regular_file(ta::u8path(self), ec) &&
+              ta::u8path(self).filename().u8string().find(u8"datafolder_test") != std::u8string::npos,
               "selfExecutable names this program (" + self + ")");
     }
 
     // ---- the settings file ----------------------------------------------------------------
     {
-        const fs::path dir = fs::temp_directory_path() / ("tak-datafolder-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const fs::path dir = fs::temp_directory_path() / ("ta-datafolder-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         fs::create_directories(dir);
         const fs::path file = dir / "settings.ini";
         setSettingsPath(file.string());
@@ -213,7 +213,7 @@ int main() {
 
         // A folder name with '#', spaces and a trailing space-free tail round-trips.
         Settings s;
-        s.dataDir = "D:\\Games\\TAK #2 (copy)";
+        s.dataDir = "D:\\Games\\TA #2 (copy)";
         s.dataManifest = "0123456789abcdef";
         s.playerName = "alice";
         check(saveSettings(s), "save");

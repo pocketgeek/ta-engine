@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace tak::video {
+namespace ta::video {
 namespace {
 constexpr int kOne = 1 << 14; // Q14 filter weights
 }

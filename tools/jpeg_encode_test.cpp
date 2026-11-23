@@ -1,6 +1,6 @@
-// jpeg_encode_test — tak::jpeg::encode on synthetic pictures: what it writes is a whole
+// jpeg_encode_test — ta::jpeg::encode on synthetic pictures: what it writes is a whole
 // baseline JPEG of the size asked for, every colour plane at the picture's own size
-// (4:4:4), that tak::jpeg::load reads back close to the original -- one-pixel coloured
+// (4:4:4), that ta::jpeg::load reads back close to the original -- one-pixel coloured
 // lines on a dark ground included, which is what the text of a saved Benchmark results
 // screen is. Sizes that are not whole 8x8 blocks work, alpha is ignored, and a buffer of
 // the wrong size is refused.
@@ -37,7 +37,7 @@ std::vector<uint8_t> picture(int w, int h) {
 void roundTrip(int w, int h) {
     const std::string size = std::to_string(w) + "x" + std::to_string(h);
     const std::vector<uint8_t> rgba = picture(w, h);
-    const std::vector<uint8_t> jpg = tak::jpeg::encode(w, h, rgba, 92);
+    const std::vector<uint8_t> jpg = ta::jpeg::encode(w, h, rgba, 92);
     check(jpg.size() > 4 && jpg[0] == 0xFF && jpg[1] == 0xD8 && jpg[jpg.size() - 2] == 0xFF && jpg.back() == 0xD9,
           size + ": must start with SOI and end with EOI");
     // The frame header: baseline (SOF0), 8 bits, this size, three planes each sampled 1x1.
@@ -56,7 +56,7 @@ void roundTrip(int w, int h) {
     }
     check(frame, size + ": no SOF0 segment");
 
-    const tak::jpeg::Image back = tak::jpeg::load(jpg);
+    const ta::jpeg::Image back = ta::jpeg::load(jpg);
     check(back.width == w && back.height == h, size + ": decodes to another size");
     long total = 0;
     int worst = 0;
@@ -80,12 +80,12 @@ int main() {
         // The same picture with other alpha is the same file.
         std::vector<uint8_t> a = picture(37, 23), b = a;
         for (size_t i = 3; i < b.size(); i += 4) b[i] = 255;
-        check(tak::jpeg::encode(37, 23, a, 92) == tak::jpeg::encode(37, 23, b, 92), "alpha must be ignored");
-        check(tak::jpeg::encode(37, 23, a, 60).size() < tak::jpeg::encode(37, 23, a, 92).size(), "quality must matter");
+        check(ta::jpeg::encode(37, 23, a, 92) == ta::jpeg::encode(37, 23, b, 92), "alpha must be ignored");
+        check(ta::jpeg::encode(37, 23, a, 60).size() < ta::jpeg::encode(37, 23, a, 92).size(), "quality must matter");
         for (const auto& [w, h, bytes] : {std::tuple{37, 23, size_t(37 * 23 * 3)}, {0, 23, size_t(0)}, {37, -1, size_t(37 * 4)},
                                           {70000, 1, size_t(70000 * 4)}}) {
             bool refused = false;
-            try { tak::jpeg::encode(w, h, std::vector<uint8_t>(bytes), 92); } catch (const std::runtime_error&) { refused = true; }
+            try { ta::jpeg::encode(w, h, std::vector<uint8_t>(bytes), 92); } catch (const std::runtime_error&) { refused = true; }
             check(refused, std::to_string(w) + "x" + std::to_string(h) + " with " + std::to_string(bytes) + " bytes must be refused");
         }
     } catch (const std::exception& e) {

@@ -1,7 +1,7 @@
 #pragma once
 
 // Client-side handler for the multiplayer protocol (docs/multiplayer-design.md).
-// Owns the connection to takserver and the lobby/in-game state. The viewer polls
+// Owns the connection to taserver and the lobby/in-game state. The viewer polls
 // it, reads the lobby view for its UI, and in game pulls one TickBundle per tick.
 // This class does protocol only -- it never touches the sim; the viewer applies
 // the bundle's commands and advances the World.
@@ -28,7 +28,7 @@
 #include "net/protocol.h"
 #include "net/replayhdr.h"
 
-namespace tak::net {
+namespace ta::net {
 
 // A game's setup as the client sees it in the lobby / at start: the server's RoomState
 // (net/protocol.h) and this player's seat (-1: none, watching).
@@ -164,7 +164,7 @@ public:
     // The account we are signed in as -- empty on a server that asks for none.
     // This, not the local settings name, is who the player is in a lobby.
     const std::string& account() const { return account_; }
-    // The server is a player's LOCAL SERVER (takserver --lan): the Welcome said so.
+    // The server is a player's LOCAL SERVER (taserver --lan): the Welcome said so.
     bool lanServer() const { return lanServer_; }
 
     // Pump the socket: read frames, dispatch, flush writes. Call every frame.
@@ -328,7 +328,7 @@ public:
     //
     // Every TickBundle payload this client received, in tick order, byte-for-byte as
     // the server broadcast it -- which is the SAME buffer the server appends to its
-    // own replay log, so a client-written .takrep is identical to a server-written
+    // own replay log, so a client-written .tarep is identical to a server-written
     // one. Filled only while recording (see startRecording).
     //
     // A spectator is sent the whole backlog before the live stream, so a recording
@@ -393,7 +393,7 @@ public:
     // the units go inert) before the connection closes.
     void leaveRunningGame();
     // Close the socket with no Bye, as a failed link would (the debug harness's
-    // TAK_DROP_LINK_AT_TICK). The next poll() reports the connection lost.
+    // TA_DROP_LINK_AT_TICK). The next poll() reports the connection lost.
     void dropLink() { conn_.closeNow(); }
     // Watch a running game (no slot): connect() first, then spectate(). The server
     // replies with GameStarting (slot 0xFF -> mySlot -1) and the bundle log, then
@@ -616,14 +616,14 @@ private:
     std::atomic<bool> deriveDone_{false};
     auth::Keys keys_;
 
-    // Artificial receive jitter for testing (TAK_NET_JITTER_MS): hold each bundle
+    // Artificial receive jitter for testing (TA_NET_JITTER_MS): hold each bundle
     // then release it after a random 0..N ms delay, modelling uneven server->client
     // delivery. Test-only; does not touch command/sim state.
     struct HeldBundle { uint64_t releaseMs; uint32_t tick; Bundle bd; };
     std::vector<HeldBundle> jitterHeld_;
     int jitterMs_ = -1;                 // <0 = read env once; then 0 = off
-    int baseMs_ = 0;                    // TAK_NET_BASE_MS: constant one-way delay
-    int lossPct_ = 0;                   // TAK_NET_LOSS_PCT: retransmit-spike probability
+    int baseMs_ = 0;                    // TA_NET_BASE_MS: constant one-way delay
+    int lossPct_ = 0;                   // TA_NET_LOSS_PCT: retransmit-spike probability
     uint32_t rng_ = 0x2545F491u;        // xorshift (non-sim, non-determinism OK)
     uint32_t xorshift() { rng_ ^= rng_ << 13; rng_ ^= rng_ >> 17; rng_ ^= rng_ << 5; return rng_; }
     // Modelled one-way receive delay for a message: base + uniform jitter, plus an
@@ -650,4 +650,4 @@ public:
 private:
 };
 
-}  // namespace tak::net
+}  // namespace ta::net

@@ -9,9 +9,9 @@
 #include <memory>
 #include <vector>
 
-using tak::video::CursorImage;
-using tak::video::CursorStamper;
-using tak::video::StreamCursor;
+using ta::video::CursorImage;
+using ta::video::CursorStamper;
+using ta::video::StreamCursor;
 
 namespace {
 int failures = 0;
@@ -152,21 +152,21 @@ int main() {
     // 9. The decisions. Streaming does not change the path; the stamp needs our own
     //    cursor shown by the OS with the pointer over the window.
     {
-        check(tak::useHardwareCursor(true, false), "hardware on -> hardware");
-        check(!tak::useHardwareCursor(true, true), "refused -> software");
-        check(!tak::useHardwareCursor(false, false), "hardware off -> software");
-        check(tak::stampHardwareCursor(true, true, true, true), "shown hardware cursor -> stamp");
-        check(!tak::stampHardwareCursor(true, false, true, true), "software (OS hidden) -> no stamp");
-        check(!tak::stampHardwareCursor(true, true, false, true), "system arrow -> no stamp");
-        check(!tak::stampHardwareCursor(true, true, true, false), "pointer outside -> no stamp");
-        check(!tak::stampHardwareCursor(false, true, true, true), "no image -> no stamp");
-        tak::HardwareCursorStatus st;
-        check(tak::hardwareCursorNote(true, st).empty(), "note before any bake");
+        check(ta::useHardwareCursor(true, false), "hardware on -> hardware");
+        check(!ta::useHardwareCursor(true, true), "refused -> software");
+        check(!ta::useHardwareCursor(false, false), "hardware off -> software");
+        check(ta::stampHardwareCursor(true, true, true, true), "shown hardware cursor -> stamp");
+        check(!ta::stampHardwareCursor(true, false, true, true), "software (OS hidden) -> no stamp");
+        check(!ta::stampHardwareCursor(true, true, false, true), "system arrow -> no stamp");
+        check(!ta::stampHardwareCursor(true, true, true, false), "pointer outside -> no stamp");
+        check(!ta::stampHardwareCursor(false, true, true, true), "no image -> no stamp");
+        ta::HardwareCursorStatus st;
+        check(ta::hardwareCursorNote(true, st).empty(), "note before any bake");
         st.tried = true; st.w = 64; st.h = 100;
-        check(tak::hardwareCursorNote(true, st) == "OS CURSOR 64X100", "note when ok");
-        check(tak::hardwareCursorNote(false, st).empty(), "note when the option is off");
+        check(ta::hardwareCursorNote(true, st) == "OS CURSOR 64X100", "note when ok");
+        check(ta::hardwareCursorNote(false, st).empty(), "note when the option is off");
         st.failed = true;
-        check(tak::hardwareCursorNote(true, st) == "UNAVAILABLE - SOFTWARE", "note when refused");
+        check(ta::hardwareCursorNote(true, st) == "UNAVAILABLE - SOFTWARE", "note when refused");
     }
     if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     std::printf("streamcursor: all checks passed\n");

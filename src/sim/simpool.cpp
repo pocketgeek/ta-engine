@@ -11,7 +11,7 @@
 #include <immintrin.h>
 #endif
 
-namespace tak::sim {
+namespace ta::sim {
 
 namespace {
 inline void cpuRelax() {
@@ -40,7 +40,7 @@ unsigned SimPool::usableCpus() {
 
 int SimPool::debugWorkers() {
 #ifndef NDEBUG
-    if (const char* e=std::getenv("TAK_SIM_WORKERS"))
+    if (const char* e=std::getenv("TA_SIM_WORKERS"))
         return std::clamp(std::atoi(e),0,int(kMaxWorkers));
 #endif
     return -1;
@@ -185,4 +185,4 @@ void SimPool::work(unsigned slot) {
     }
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

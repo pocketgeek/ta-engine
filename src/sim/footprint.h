@@ -2,7 +2,7 @@
 
 #include "sim/fixed.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Retail 0x4daf1c: floor((position - (size-1)*8) / 16).
 // Keep the subtraction in 64 bits and retain subpixel precision at boundaries.
@@ -46,4 +46,4 @@ constexpr Fixed footprintClamp(Fixed current, Fixed proposed, int size, bool rep
     return proposed;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

@@ -112,7 +112,7 @@ jobs:
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_FIND_FRAMEWORK=LAST
-          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test takclient takserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test stream_network_test menu_music_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
+          cmake --build build --target acme_test server_address_test server_commands_test room_worker_test state_hash_test mod_packs_test tls_test replay_file_test spectator_client_test filelease_test taclient taserver cartographer cartographer_document_test cartographer_validation_test cartographer_placement_test datafolder_test detmath_test sim_driver_equiv_test stream_test stream_network_test menu_music_test nvml_test windowsgpu_test distant_models_test retail_script_test pathsearch_test retail_visual_test mapgen_test map_transfer_test unit_gift_test
 
       - name: Server, network and replay checks
         run: |
@@ -141,7 +141,7 @@ jobs:
 
       - name: Verify Release architecture and static dependencies
         run: |
-          for binary in takclient takserver cartographer; do
+          for binary in taclient taserver cartographer; do
             [[ "$(lipo -archs "build/$binary")" == "${{ matrix.machine }}" ]]
             otool -L "build/$binary"
             imports=$(otool -L "build/$binary" | tail -n +2 | awk '{print $1}')
@@ -197,9 +197,9 @@ jobs:
           APPDIR="dist-dmg/Total Annihilation - Kingdoms.app"
           mkdir -p "$APPDIR/Contents/MacOS" "$APPDIR/Contents/Resources"
           cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt "$APPDIR/Contents/Resources/"
-          cp res/icons/takclient.icns "$APPDIR/Contents/Resources/"
-          iconutil -c iconset "$APPDIR/Contents/Resources/takclient.icns" -o /tmp/takclient.iconset
-          cp build/takclient build/takserver "$APPDIR/Contents/MacOS/"
+          cp res/icons/taclient.icns "$APPDIR/Contents/Resources/"
+          iconutil -c iconset "$APPDIR/Contents/Resources/taclient.icns" -o /tmp/taclient.iconset
+          cp build/taclient build/taserver "$APPDIR/Contents/MacOS/"
           sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APPDIR/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $MACOSX_DEPLOYMENT_TARGET" "$APPDIR/Contents/Info.plist"
           plutil -lint "$APPDIR/Contents/Info.plist"
@@ -207,7 +207,7 @@ jobs:
           # FinderInfo attributes invalidate strict bundle signature verification.
           # Let Finder apply its normal application-extension display preference.
           codesign --verify --deep --strict "$APPDIR"
-          EDITOR_APP="dist-dmg/TAK Cartographer.app"
+          EDITOR_APP="dist-dmg/TA Cartographer.app"
           mkdir -p "$EDITOR_APP/Contents/MacOS" "$EDITOR_APP/Contents/Resources"
           cp EDITOR-FONT-LICENSE.txt "$EDITOR_APP/Contents/Resources/"
           cp build/cartographer "$EDITOR_APP/Contents/MacOS/"
@@ -219,11 +219,11 @@ jobs:
           codesign --verify --deep --strict "$EDITOR_APP"
           ln -s /Applications dist-dmg/Applications
           hdiutil create -volname "Total Annihilation - Kingdoms" -srcfolder dist-dmg -ov -format UDZO \
-            "tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg"
+            "ta-engine-$VERSION-macos-${{ matrix.arch }}.dmg"
           # hdiutil can briefly report the new image busy ("Resource temporarily
           # unavailable"); retry before calling it a bad image.
           for attempt in 1 2 3 4 5; do
-            hdiutil verify "tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg" && break
+            hdiutil verify "ta-engine-$VERSION-macos-${{ matrix.arch }}.dmg" && break
             [ "$attempt" -lt 5 ] || exit 1
             sleep 10
           done
@@ -235,31 +235,31 @@ jobs:
           mkdir -p dist-macos
           ditto --rsrc --extattr "dist-dmg/Total Annihilation - Kingdoms.app" \
             "dist-macos/Total Annihilation - Kingdoms.app"
-          ditto --rsrc --extattr "dist-dmg/TAK Cartographer.app" "dist-macos/TAK Cartographer.app"
-          cp build/takclient build/takserver build/cartographer dist-macos/
+          ditto --rsrc --extattr "dist-dmg/TA Cartographer.app" "dist-macos/TA Cartographer.app"
+          cp build/taclient build/taserver build/cartographer dist-macos/
           # Preserve the signed bundle intact in the zip.
-          ditto -c -k --sequesterRsrc dist-macos "takclient-$VERSION-macos-${{ matrix.arch }}.zip"
+          ditto -c -k --sequesterRsrc dist-macos "taclient-$VERSION-macos-${{ matrix.arch }}.zip"
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-macos-${{ matrix.arch }}
-          path: takclient-*-macos-${{ matrix.arch }}.zip
+          name: taclient-macos-${{ matrix.arch }}
+          path: taclient-*-macos-${{ matrix.arch }}.zip
 
       - name: Upload CI artifact (DMG)
         uses: actions/upload-artifact@v7
         with:
-          name: tak-engine-macos-${{ matrix.arch }}-dmg
-          path: tak-engine-*.dmg
+          name: ta-engine-macos-${{ matrix.arch }}-dmg
+          path: ta-engine-*.dmg
 
       # Debug build: the release binaries are hardened (only --data/--version, no env
       # vars), so ship an unhardened DEBUG bundle for devs who need the CLI flags,
-      # TAK_* env hooks, and the headless --mp* harness.
+      # TA_* env hooks, and the headless --mp* harness.
       - name: Configure + build (debug)
         run: |
           cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_FIND_FRAMEWORK=LAST
-          cmake --build build-debug --target takclient takserver cartographer
+          cmake --build build-debug --target taclient taserver cartographer
           ccache --show-stats
 
       # Saved even when a test step failed, so the next push still starts warm.
@@ -282,7 +282,7 @@ jobs:
 
       - name: Verify Debug architecture and static dependencies
         run: |
-          for binary in takclient takserver cartographer; do
+          for binary in taclient taserver cartographer; do
             [[ "$(lipo -archs "build-debug/$binary")" == "${{ matrix.machine }}" ]]
             imports=$(otool -L "build-debug/$binary" | tail -n +2 | awk '{print $1}')
             if echo "$imports" | grep -qvE '^(/usr/lib/|/System/Library/)'; then
@@ -294,13 +294,13 @@ jobs:
         run: |
           mkdir -p dist-macos-debug
           cp STREAMING-LICENSES.txt EDITOR-FONT-LICENSE.txt CHAT-FONT-LICENSE.txt TITLE-FONT-LICENSE.txt ACME-LICENSES.txt OPUS-LICENSE.txt dist-macos-debug/
-          cp build-debug/takclient build-debug/takserver build-debug/cartographer dist-macos-debug/
-          (cd dist-macos-debug && zip -r ../takclient-macos-${{ matrix.arch }}-debug.zip .)
+          cp build-debug/taclient build-debug/taserver build-debug/cartographer dist-macos-debug/
+          (cd dist-macos-debug && zip -r ../taclient-macos-${{ matrix.arch }}-debug.zip .)
 
       - name: Upload CI artifact (debug)
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-macos-${{ matrix.arch }}-debug
+          name: taclient-macos-${{ matrix.arch }}-debug
           path: dist-macos-debug/
 
       - name: Determinism gate (cross-platform parity)
@@ -323,12 +323,12 @@ jobs:
           # Reuse an existing draft instead of creating a second release record.
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --title "TAK Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || \
+              --title "TA Engine $GITHUB_REF_NAME" --generate-notes --verify-tag || \
               gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
           fi
           gh release upload "$GITHUB_REF_NAME" \
-            "takclient-$VERSION-macos-${{ matrix.arch }}.zip" takclient-macos-${{ matrix.arch }}-debug.zip \
-            "tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            "taclient-$VERSION-macos-${{ matrix.arch }}.zip" taclient-macos-${{ matrix.arch }}-debug.zip \
+            "ta-engine-$VERSION-macos-${{ matrix.arch }}.dmg" \
             --repo "$GITHUB_REPOSITORY" --clobber
 
   # Developer ID signing + notarization (distribution outside the App Store). Runs on its own
@@ -366,7 +366,7 @@ jobs:
         if: steps.secrets.outputs.enabled == 'true'
         uses: actions/download-artifact@v7
         with:
-          pattern: takclient-macos-${{ matrix.arch }}*
+          pattern: taclient-macos-${{ matrix.arch }}*
           path: unsigned
 
       - name: Import signing certificate into a temporary keychain
@@ -413,10 +413,10 @@ jobs:
               --sign "$MACOS_SIGN_IDENTITY" "$@"
           }
           # Voice chat records the microphone. Under the hardened runtime that needs this
-          # entitlement on takclient (and on the game bundle, whose signature re-signs its
+          # entitlement on taclient (and on the game bundle, whose signature re-signs its
           # main executable), or macOS hands it silence without ever asking the player.
           # Info.plist carries the NSMicrophoneUsageDescription the permission prompt shows.
-          MIC="$RUNNER_TEMP/takclient.entitlements"
+          MIC="$RUNNER_TEMP/taclient.entitlements"
           cat > "$MIC" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -428,8 +428,8 @@ jobs:
           </plist>
           PLIST
           plutil -lint "$MIC"
-          signbin() {   # takclient gets the microphone entitlement, the others nothing extra
-            if [ "$(basename "$1")" = takclient ]; then sign --entitlements "$MIC" "$1"; else sign "$1"; fi
+          signbin() {   # taclient gets the microphone entitlement, the others nothing extra
+            if [ "$(basename "$1")" = taclient ]; then sign --entitlements "$MIC" "$1"; else sign "$1"; fi
           }
           # notarytool prints its JSON on stdout on success but on stderr on failure (a --wait
           # timeout included), so both streams are kept and parsed.
@@ -476,13 +476,13 @@ jobs:
             fi
           }
 
-          zip=$(ls unsigned/takclient-macos-"$ARCH"/takclient-*-macos-"$ARCH".zip)
-          VERSION=$(basename "$zip" | sed -E "s/^takclient-(.*)-macos-$ARCH\.zip$/\1/")
+          zip=$(ls unsigned/taclient-macos-"$ARCH"/taclient-*-macos-"$ARCH".zip)
+          VERSION=$(basename "$zip" | sed -E "s/^taclient-(.*)-macos-$ARCH\.zip$/\1/")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p work signed
           ditto -x -k "$zip" work/release
           GAME="work/release/Total Annihilation - Kingdoms.app"
-          EDITOR="work/release/TAK Cartographer.app"
+          EDITOR="work/release/TA Cartographer.app"
 
           # Nested code first (every Mach-O in Contents/MacOS), then the bundle itself; no --deep.
           for app in "$GAME" "$EDITOR"; do
@@ -492,25 +492,25 @@ jobs:
           done
           codesign -d --entitlements - "$GAME" 2>/dev/null | grep -q com.apple.security.device.audio-input \
             || { echo "::error::the game bundle lost its microphone entitlement"; exit 1; }
-          for bin in takclient takserver cartographer; do
+          for bin in taclient taserver cartographer; do
             signbin "work/release/$bin"
           done
 
           # Debug CLI binaries: bare Mach-Os cannot hold a stapled ticket; Gatekeeper checks online.
           mkdir -p work/debug
-          ditto unsigned/takclient-macos-"$ARCH"-debug work/debug
+          ditto unsigned/taclient-macos-"$ARCH"-debug work/debug
           # upload-artifact drops Unix modes on a loose directory; restore the execute bit.
-          chmod 755 work/debug/takclient work/debug/takserver work/debug/cartographer
-          for bin in takclient takserver cartographer; do
+          chmod 755 work/debug/taclient work/debug/taserver work/debug/cartographer
+          for bin in taclient taserver cartographer; do
             signbin "work/debug/$bin"
           done
-          (cd work/debug && zip -qr "$GITHUB_WORKSPACE/signed/takclient-macos-$ARCH-debug.zip" .)
+          (cd work/debug && zip -qr "$GITHUB_WORKSPACE/signed/taclient-macos-$ARCH-debug.zip" .)
 
           # Release zip and debug zip are notarized together; the apps are stapled and
           # re-zipped so the tickets ship inside. The DMG is built from the stapled apps after.
           ditto -c -k --sequesterRsrc work/release "$RUNNER_TEMP/release-submit.zip"
           release_id=$(submit "$RUNNER_TEMP/release-submit.zip")
-          debug_id=$(submit "signed/takclient-macos-$ARCH-debug.zip")
+          debug_id=$(submit "signed/taclient-macos-$ARCH-debug.zip")
           await "$release_id" "the release zip"
           await "$debug_id" "the debug zip"
           xcrun stapler staple "$GAME"
@@ -519,14 +519,14 @@ jobs:
             xcrun stapler validate "$app"
             spctl --assess --type execute --verbose=2 "$app" || echo "::warning::spctl rejected $app"
           done
-          ditto -c -k --sequesterRsrc work/release "signed/takclient-$VERSION-macos-$ARCH.zip"
+          ditto -c -k --sequesterRsrc work/release "signed/taclient-$VERSION-macos-$ARCH.zip"
 
           # DMG rebuilt from the stapled apps, signed, notarized and stapled itself.
           mkdir -p work/dmg
           ditto "$GAME" "work/dmg/Total Annihilation - Kingdoms.app"
-          ditto "$EDITOR" "work/dmg/TAK Cartographer.app"
+          ditto "$EDITOR" "work/dmg/TA Cartographer.app"
           ln -s /Applications work/dmg/Applications
-          DMG="signed/tak-engine-$VERSION-macos-$ARCH.dmg"
+          DMG="signed/ta-engine-$VERSION-macos-$ARCH.dmg"
           hdiutil create -volname "Total Annihilation - Kingdoms" -srcfolder work/dmg -ov -format UDZO "$DMG"
           codesign --force --timestamp --keychain "$KEYCHAIN" --sign "$MACOS_SIGN_IDENTITY" "$DMG"
           dmg_id=$(submit "$DMG")
@@ -539,11 +539,11 @@ jobs:
         if: steps.secrets.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: takclient-macos-${{ matrix.arch }}-signed
+          name: taclient-macos-${{ matrix.arch }}-signed
           path: |
-            signed/takclient-*-macos-${{ matrix.arch }}.zip
-            signed/tak-engine-*-macos-${{ matrix.arch }}.dmg
-            signed/takclient-macos-${{ matrix.arch }}-debug.zip
+            signed/taclient-*-macos-${{ matrix.arch }}.zip
+            signed/ta-engine-*-macos-${{ matrix.arch }}.dmg
+            signed/taclient-macos-${{ matrix.arch }}-debug.zip
 
       # Replaces the unsigned files the build job attached (same names, --clobber).
       - name: Attach signed files to release
@@ -552,9 +552,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "$GITHUB_REF_NAME" \
-            "signed/takclient-$VERSION-macos-${{ matrix.arch }}.zip" \
-            "signed/takclient-macos-${{ matrix.arch }}-debug.zip" \
-            "signed/tak-engine-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            "signed/taclient-$VERSION-macos-${{ matrix.arch }}.zip" \
+            "signed/taclient-macos-${{ matrix.arch }}-debug.zip" \
+            "signed/ta-engine-$VERSION-macos-${{ matrix.arch }}.dmg" \
             --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Remove signing keychain and keys

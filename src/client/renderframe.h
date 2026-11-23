@@ -9,7 +9,7 @@
 #include "client/swapshow.h"
 #include "client/unitindex.h"
 #include "sim/retailanimationqueries.h"
-#include "sim/sim.h"   // tak::sim::UnitType / Order / Projectile / World::HitFx
+#include "sim/sim.h"   // ta::sim::UnitType / Order / Projectile / World::HitFx
 
 #include <algorithm>
 #include <array>
@@ -21,8 +21,8 @@
 // mission scratch belong to the simulation, not to each of three frame buffers.
 // Keep every waypoint and every field consumed by overlays/status/cursors.
 struct RenderOrder {
-    tak::sim::Fixed x,z,clickX,clickZ,buildX,buildZ;
-    const tak::sim::UnitType* buildType=nullptr;
+    ta::sim::Fixed x,z,clickX,clickZ,buildX,buildZ;
+    const ta::sim::UnitType* buildType=nullptr;
     int targetId=0,reclaimFeat=0,repairTarget=0;
     uint32_t issuedTick=0;
     uint32_t areaNextSpot=0;
@@ -35,7 +35,7 @@ struct RenderOrder {
     // the IDLE BUILDERS strip counts a unit holding only these as idle (as ai::idle does).
     bool park:1=false,landing:1=false;
     RenderOrder()=default;
-    RenderOrder(const tak::sim::Order& o)
+    RenderOrder(const ta::sim::Order& o)
         :x(o.x),z(o.z),clickX(o.clickX),clickZ(o.clickZ),buildX(o.buildX),buildZ(o.buildZ),
          buildType(o.buildType),targetId(o.targetId),reclaimFeat(o.reclaimFeat),repairTarget(o.repairTarget),
          issuedTick(o.issuedTick),load(o.load),unload(o.unload),attackMove(o.attackMove),patrol(o.patrol),
@@ -43,8 +43,8 @@ struct RenderOrder {
         revive=o.reviveKind!=0;
         park=bool(o.park);landing=o.landing;
         if (o.reclaimArea) {
-            x=tak::sim::Fixed::raw(o.reclaimArea->minX);z=tak::sim::Fixed::raw(o.reclaimArea->minZ);
-            buildX=tak::sim::Fixed::raw(o.reclaimArea->maxX);buildZ=tak::sim::Fixed::raw(o.reclaimArea->maxZ);
+            x=ta::sim::Fixed::raw(o.reclaimArea->minX);z=ta::sim::Fixed::raw(o.reclaimArea->minZ);
+            buildX=ta::sim::Fixed::raw(o.reclaimArea->maxX);buildZ=ta::sim::Fixed::raw(o.reclaimArea->maxZ);
             areaApproached=o.reclaimArea->stage>=2;   // its approach leg is queued (or done)
         }
         if (o.manaBuildArea) {
@@ -63,14 +63,14 @@ struct RenderOrder {
 struct UnitR {
     float px = 0, pz = 0, ph = 0;   // previous-tick pose (for interpolation)
     bool  seeded = false;           // has a valid prev pose to interpolate from
-    tak::SwapShow swap;             // a Legion swap still playing out (swapshow.h); swap.ox/oz is drawn at x/z
+    ta::SwapShow swap;             // a Legion swap still playing out (swapshow.h); swap.ox/oz is drawn at x/z
     float pox = 0, poz = 0;         // ... and the offset that was drawn at px/pz
     uint32_t gen = 0;               // captureFrame generation this record was last written
                                     // (== frame gen means the unit is live THIS tick)
     // --- snapshot of Unit's render-read surface (same NAMES as sim::Unit, so render code
     //     that reads u.<field> works unchanged once its parameter is a UnitR) ---
     int id = 0;
-    const tak::sim::UnitType* type = nullptr;
+    const ta::sim::UnitType* type = nullptr;
     int player = 0;
     float x = 0, z = 0, heading = 0;   // current-tick pose
     uint16_t headingWord = 0;
@@ -99,15 +99,15 @@ struct UnitR {
     bool conjuring = false;
     bool hasConstructionEmitter = false;
     std::array<uint32_t,2> constructionEmissions{};
-    std::vector<tak::sim::RetailConstructionParticle> constructionParticles;
+    std::vector<ta::sim::RetailConstructionParticle> constructionParticles;
     float buildProgress = 0;
     int constructionPercentLeft = 0;
-    const tak::sim::UnitType* replacementModel = nullptr;
+    const ta::sim::UnitType* replacementModel = nullptr;
     float replacementX=0,replacementZ=0,replacementHeading=0;
     float replacementOpacity=-1; // negative: ordinary construction presentation
     int scriptHealthPercent = 100;
     bool yardOpen = false;
-    std::vector<const tak::sim::UnitType*> buildQueue;
+    std::vector<const ta::sim::UnitType*> buildQueue;
     std::vector<RenderOrder> orders, rally;
     // Its own Legion spot on its current move-like leg (World::legionDestination), for
     // the destination markers; captured with the orders, so only for the units whose
@@ -117,7 +117,7 @@ struct UnitR {
     // Deposits the first lodestone area job has already tried (sorted spot
     // indices); the order-line preview plans the remaining ones from it.
     std::vector<uint32_t> areaVisited;
-    void captureOrders(const tak::sim::Unit& unit) {
+    void captureOrders(const ta::sim::Unit& unit) {
         orders.assign(unit.orders.begin(),unit.orders.end());
         rally.assign(unit.rally.begin(),unit.rally.end());
         areaVisited.clear();
@@ -149,7 +149,7 @@ struct UnitR {
         return false;
     }
     std::vector<int> cargo;
-    const tak::sim::UnitType* repeatType = nullptr;
+    const ta::sim::UnitType* repeatType = nullptr;
     bool moving_ = false, walking_ = false;   // cached u.moving()/u.walking()
     float speed = 0;                           // px/s (diagnostic use)
     int horizontalSpeedPercent = 0;
@@ -162,24 +162,24 @@ struct UnitR {
     float gaitRate = 1;                       // Legion display gait pace (gaitpace.h)
     uint32_t flightBeginCallbackSerial = 0;
     uint32_t flightLandingCallbackSerial = 0;
-    void captureMoveRate(const tak::sim::Unit& u,int16_t turn) {
+    void captureMoveRate(const ta::sim::Unit& u,int16_t turn) {
         const auto multiplier=u.groundTerrainFlags&0x800 ? u.type->roadMult :
-            u.groundTerrainFlags&0x1000 ? u.type->waterMult : tak::sim::Fixed::fromInt(1);
+            u.groundTerrainFlags&0x1000 ? u.type->waterMult : ta::sim::Fixed::fromInt(1);
         const auto& v=u.flightVelocity;
-        const int32_t horizontal=u.type->canFly ? int32_t(tak::sim::isqrt64(
+        const int32_t horizontal=u.type->canFly ? int32_t(ta::sim::isqrt64(
             uint64_t(int64_t(v.x)*v.x)+uint64_t(int64_t(v.z)*v.z))) : u.speed.v;
-        animationMoveRate=tak::sim::retailAnimationMoveRate(u.speed.v,turn,horizontal,
+        animationMoveRate=ta::sim::retailAnimationMoveRate(u.speed.v,turn,horizontal,
             (u.type->animationMoveRate1*multiplier).v,(u.type->animationMoveRate2*multiplier).v,
             movementRefused,u.embarked());
     }
-    void captureOccupancy(const tak::sim::Unit& u,int sea,uint32_t previous) {
-        animationOccupancy=u.type->maxVel>tak::sim::Fixed() ?
-            tak::sim::retailAnimationOccupancy(previous,u.flightGroundMode,
+    void captureOccupancy(const ta::sim::Unit& u,int sea,uint32_t previous) {
+        animationOccupancy=u.type->maxVel>ta::sim::Fixed() ?
+            ta::sim::retailAnimationOccupancy(previous,u.flightGroundMode,
                 int16_t((u.type->canFly ? u.flightY : u.groundY).floorInt()),
                 uint8_t(sea),uint8_t(u.type->waterline),int16_t(u.type->modelTop>>16)) : 0;
     }
     bool movementRefused = false;             // retail mover's repeated-refusal bit
-    void captureMovement(const tak::sim::Unit& u) {
+    void captureMovement(const ta::sim::Unit& u) {
         moving_ = u.moving(); walking_ = u.walking();
         speed = u.speed.toFloat() * 30.0f;
         bodyPitch=u.groundPitch;bodyRoll=u.groundRoll;
@@ -191,16 +191,16 @@ struct UnitR {
         movementTerrainFlags=u.groundTerrainFlags;
         movementRefused = !u.type->canFly && (u.bodyBlockStreak >= 2 || u.legionStill);
         const auto multiplier=u.groundTerrainFlags&0x800 ? u.type->roadMult :
-            u.groundTerrainFlags&0x1000 ? u.type->waterMult : tak::sim::Fixed::fromInt(1);
+            u.groundTerrainFlags&0x1000 ? u.type->waterMult : ta::sim::Fixed::fromInt(1);
         const auto maximum=u.baseSpeed*multiplier;
-        const auto step=tak::sim::retailGroundStep(u.heading,u.speed);
+        const auto step=ta::sim::retailGroundStep(u.heading,u.speed);
         aimVelocity=u.type->canFly ? std::array<int32_t,3>{u.flightVelocity.x,u.flightVelocity.y,u.flightVelocity.z}
                                   : std::array<int32_t,3>{step.s.v,0,step.c.v};
-        horizontalSpeedPercent=tak::sim::retailHorizontalAnimationPercent(
+        horizontalSpeedPercent=ta::sim::retailHorizontalAnimationPercent(
             u.type->canFly ? u.flightVelocity.x : step.s.v,
             u.type->canFly ? u.flightVelocity.z : step.c.v,
             maximum.v,movementRefused,u.embarked());
-        verticalSpeedPercent = u.type->canFly ? tak::sim::retailFlightVerticalPercent(
+        verticalSpeedPercent = u.type->canFly ? ta::sim::retailFlightVerticalPercent(
             u.flightVelocity.y,maximum.v,false,u.embarked()) : 0;
     }
     // Split the authoritative height for the existing body/shadow/effect paths.
@@ -258,7 +258,7 @@ struct PlayerR {
     std::string side; // Stable faction identity, including after elimination.
     uint8_t manaShareMask = 0xff;
     float mana = 0, storage = 0, income = 0, expenditure = 0; // expenditure: requested mana/s
-    void captureEconomy(const tak::sim::Player& player) {
+    void captureEconomy(const ta::sim::Player& player) {
         mana=float(player.mana);
         storage=player.manaCapacity();
         // Retail HUD calls 401330/401350: the oldest 29 tick samples of
@@ -307,7 +307,7 @@ struct Frame {
     std::vector<const UnitR*> live;      // compact list of units live this tick (points into units)
     // Broad phase over `live` (workstream L): built by captureFrame from the positions it
     // copied, indices into `live`. Presentation only -- never read by the simulation.
-    tak::render::UnitGrid unitGrid;
+    ta::render::UnitGrid unitGrid;
     uint64_t unitGridBuildNs = 0;        // capture-thread time of that build (telemetry)
     // Indices into `live` of the units whose captured orders hold a build order the
     // queued-build ghosts draw (buildType, not an area job), ascending: every other
@@ -335,12 +335,12 @@ struct Frame {
     std::vector<uint8_t> effectVisibility;
     int effectVisW = 0, effectVisH = 0;
 
-    std::vector<tak::sim::Projectile> projectiles;
-    std::vector<tak::sim::FlameShot> flames;
-    std::vector<tak::sim::World::Storm> storms;   // roaming wandering-weapon hazards
-    std::vector<tak::sim::World::HitFx> hits;   // weapon impacts this tick (cosmeticStep FX)
+    std::vector<ta::sim::Projectile> projectiles;
+    std::vector<ta::sim::FlameShot> flames;
+    std::vector<ta::sim::World::Storm> storms;   // roaming wandering-weapon hazards
+    std::vector<ta::sim::World::HitFx> hits;   // weapon impacts this tick (cosmeticStep FX)
     int winningTeam = -1;                // world_.winningTeam() (victory overlay)
-    tak::sim::RetailWind wind;
+    ta::sim::RetailWind wind;
     uint32_t gameTick = 0;               // world_.tickCount() (benchmark timing)
     bool benchEnded = false;             // world_.benchmarkEnded(): the server ended the run
     bool scenarioClock = false;         // CRT Display gameclock action
@@ -354,5 +354,5 @@ struct Frame {
     uint32_t worldEpoch = 0;
     // Shake state is snapshotted; mission audio uses an ordered event queue
     // captured under the worker's lock so skipped snapshots cannot drop lines.
-    tak::sim::World::ShakeReq shakeReq;
+    ta::sim::World::ShakeReq shakeReq;
 };

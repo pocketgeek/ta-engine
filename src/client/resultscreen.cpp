@@ -24,7 +24,7 @@
 #include "client/settings.h"
 #include "gui/gui.h"
 
-namespace tak {
+namespace ta {
 
 namespace {
 
@@ -196,11 +196,11 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     sfx.load(g.proceedSound);
     std::optional<ResultChoice> chosen;
     int leaving = 0;   // frames drawn since the choice; bounded well above the ~140ms clicks
-    // Debug: TAK_RESULT_PRESS=menu|proceed presses that button on the first frame (as
+    // Debug: TA_RESULT_PRESS=menu|proceed presses that button on the first frame (as
     // a real left-button press event) and reports the click it played; with
-    // TAK_SHOT_RESULT and dummy video the screen then waits out the click before it
+    // TA_SHOT_RESULT and dummy video the screen then waits out the click before it
     // returns (the result_click test).
-    const char* press = devEnv("TAK_RESULT_PRESS");
+    const char* press = devEnv("TA_RESULT_PRESS");
     if (press && !*press) press = nullptr;
     bool pressPending = press != nullptr;
     auto choose = [&](ResultChoice c, const std::string& sound) {
@@ -295,7 +295,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             float y = lay.py(r.y) + (r.h * lay.scale - height) * 0.5f - top;
             // Over the mural, MODERN's flat face needs the dark rim the Times art carries
             // in its glyphs, or tan text on tan paint all but vanishes.
-            if (overArt && f.ok() && tak::modernUiText()) {
+            if (overArt && f.ok() && ta::modernUiText()) {
                 const float o = std::max(1.0f, lay.scale);
                 for (const auto& [dx, dy] : {std::pair{-o, 0.0f}, {o, 0.0f}, {0.0f, -o}, {0.0f, o}, {o, o}})
                     f.drawSolid(ren, s, x + dx, y + dy, sc, {24, 16, 8, 220});
@@ -400,7 +400,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                 cursors.draw(ren, CursorId::Normal, mx, my, sc);
             }
         }
-        if (const char* sp = devEnv("TAK_SHOT_RESULT"); sp && !chosen) {
+        if (const char* sp = devEnv("TA_SHOT_RESULT"); sp && !chosen) {
             std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
             if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_ABGR8888, px.data(), w * 4) == 0)
                 png::write(sp, w, h, px);
@@ -417,4 +417,4 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     }
 }
 
-}  // namespace tak
+}  // namespace ta

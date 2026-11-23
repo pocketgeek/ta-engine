@@ -22,37 +22,37 @@
 # from overlapping; only this run's own recorded PIDs are ever signalled.
 #
 # Environment (all optional):
-#   TAK_NIGHTLY_REPO      repository the worktree belongs to          (default /home/pocket_geek/TAK)
-#   TAK_NIGHTLY_WORKTREE  default $REPO/.claude/worktrees/legion-nightly
-#   TAK_NIGHTLY_REF       default origin/main (fetched first; set a local ref to skip the fetch)
-#   TAK_NIGHTLY_CORES     taskset list, default 16-23
-#   TAK_NIGHTLY_DATA      retail install for the data-gated scenarios, default $REPO/assets/game
-#   TAK_NIGHTLY_OUT       default ~/.local/share/tak-legion-nightly
-#   TAK_NIGHTLY_KEEP      reports kept, default 30
-#   TAK_NIGHTLY_BASELINE  baseline.json to gate on (default: the worktree's tools/scenarios/baseline.json)
-#   TAK_NIGHTLY_SCREEN_BASELINE / TAK_NIGHTLY_SCREEN_ANCHOR / TAK_NIGHTLY_ANCHOR
+#   TA_NIGHTLY_REPO      repository the worktree belongs to          (default /home/pocket_geek/TA)
+#   TA_NIGHTLY_WORKTREE  default $REPO/.claude/worktrees/legion-nightly
+#   TA_NIGHTLY_REF       default origin/main (fetched first; set a local ref to skip the fetch)
+#   TA_NIGHTLY_CORES     taskset list, default 16-23
+#   TA_NIGHTLY_DATA      retail install for the data-gated scenarios, default $REPO/assets/game
+#   TA_NIGHTLY_OUT       default ~/.local/share/ta-legion-nightly
+#   TA_NIGHTLY_KEEP      reports kept, default 30
+#   TA_NIGHTLY_BASELINE  baseline.json to gate on (default: the worktree's tools/scenarios/baseline.json)
+#   TA_NIGHTLY_SCREEN_BASELINE / TA_NIGHTLY_SCREEN_ANCHOR / TA_NIGHTLY_ANCHOR
 #                         screen baseline JSONL, frozen screen anchor JSONL, frozen anchor-b8a4110.json
-#   TAK_NIGHTLY_SCN_GLOB  shell glob of scenario names to run (default '*'; for trial runs)
-#   TAK_NIGHTLY_SCREEN_ARGS  extra crowdbench_screen.py arguments, e.g. "--scenarios open --seeds 0"
-#   TAK_NIGHTLY_OFFSETS   --offsets list for legion_scenario (default `gate`: the gate's
+#   TA_NIGHTLY_SCN_GLOB  shell glob of scenario names to run (default '*'; for trial runs)
+#   TA_NIGHTLY_SCREEN_ARGS  extra crowdbench_screen.py arguments, e.g. "--scenarios open --seeds 0"
+#   TA_NIGHTLY_OFFSETS   --offsets list for legion_scenario (default `gate`: the gate's
 #                         eleven 0,+-1..+-5, or a file's own `gateoffsets`; legion_check
 #                         reads the small-count keys over them and the rest over 0,+-1,+-2)
-#   TAK_NIGHTLY_STAGE_TIMEOUT  seconds per stage, default 3600 (builds get twice)
+#   TA_NIGHTLY_STAGE_TIMEOUT  seconds per stage, default 3600 (builds get twice)
 set -u
 umask 022
 
 SELF=$(readlink -f "${BASH_SOURCE[0]}")
-REPO=${TAK_NIGHTLY_REPO:-/home/pocket_geek/TAK}
-WT=${TAK_NIGHTLY_WORKTREE:-$REPO/.claude/worktrees/legion-nightly}
-REF=${TAK_NIGHTLY_REF:-origin/main}
-CORES=${TAK_NIGHTLY_CORES:-16-23}
-DATA=${TAK_NIGHTLY_DATA:-$REPO/assets/game}
-OUT_ROOT=${TAK_NIGHTLY_OUT:-$HOME/.local/share/tak-legion-nightly}
-KEEP=${TAK_NIGHTLY_KEEP:-30}
-STAGE_TIMEOUT=${TAK_NIGHTLY_STAGE_TIMEOUT:-3600}
-SCN_GLOB=${TAK_NIGHTLY_SCN_GLOB:-*}
-SCREEN_EXTRA=${TAK_NIGHTLY_SCREEN_ARGS:-}
-OFFSETS=${TAK_NIGHTLY_OFFSETS-gate}
+REPO=${TA_NIGHTLY_REPO:-/home/pocket_geek/TA}
+WT=${TA_NIGHTLY_WORKTREE:-$REPO/.claude/worktrees/legion-nightly}
+REF=${TA_NIGHTLY_REF:-origin/main}
+CORES=${TA_NIGHTLY_CORES:-16-23}
+DATA=${TA_NIGHTLY_DATA:-$REPO/assets/game}
+OUT_ROOT=${TA_NIGHTLY_OUT:-$HOME/.local/share/ta-legion-nightly}
+KEEP=${TA_NIGHTLY_KEEP:-30}
+STAGE_TIMEOUT=${TA_NIGHTLY_STAGE_TIMEOUT:-3600}
+SCN_GLOB=${TA_NIGHTLY_SCN_GLOB:-*}
+SCREEN_EXTRA=${TA_NIGHTLY_SCREEN_ARGS:-}
+OFFSETS=${TA_NIGHTLY_OFFSETS-gate}
 
 UNIT_DIR=$HOME/.config/systemd/user
 BIN_DIR=$OUT_ROOT/bin
@@ -60,18 +60,18 @@ BIN_DIR=$OUT_ROOT/bin
 # ---------------------------------------------------------------- install
 if [ "${1:-}" = "--install" ]; then
     src=$(dirname "$SELF")
-    [ -f "$src/nightly/tak-legion-nightly.service" ] || { echo "no unit files next to $SELF" >&2; exit 2; }
+    [ -f "$src/nightly/ta-legion-nightly.service" ] || { echo "no unit files next to $SELF" >&2; exit 2; }
     mkdir -p "$BIN_DIR" "$UNIT_DIR"
     # The unit runs a private copy, so the job never executes a file it is about to check out over.
     install -m 755 "$SELF" "$BIN_DIR/legion_nightly.sh"
-    install -m 644 "$src/nightly/tak-legion-nightly.service" "$src/nightly/tak-legion-nightly.timer" "$UNIT_DIR/"
-    systemctl --user daemon-reload && systemctl --user enable --now tak-legion-nightly.timer || exit 2
-    systemctl --user list-timers tak-legion-nightly.timer --no-pager
+    install -m 644 "$src/nightly/ta-legion-nightly.service" "$src/nightly/ta-legion-nightly.timer" "$UNIT_DIR/"
+    systemctl --user daemon-reload && systemctl --user enable --now ta-legion-nightly.timer || exit 2
+    systemctl --user list-timers ta-legion-nightly.timer --no-pager
     exit 0
 fi
 if [ "${1:-}" = "--uninstall" ]; then
-    systemctl --user disable --now tak-legion-nightly.timer
-    rm -f "$UNIT_DIR/tak-legion-nightly.service" "$UNIT_DIR/tak-legion-nightly.timer"
+    systemctl --user disable --now ta-legion-nightly.timer
+    rm -f "$UNIT_DIR/ta-legion-nightly.service" "$UNIT_DIR/ta-legion-nightly.timer"
     systemctl --user daemon-reload
     exit 0
 fi
@@ -160,8 +160,8 @@ COMMIT=$(cat "$OUT/commit")
 build() {   # DIR BUILD_TYPE CXX_FLAGS TARGETS...
     local dir=$1 type=$2 flags=$3; shift 3
     cmake -S "$WT" -B "$dir" -G Ninja \
-        -DTAK_STATIC_DEPS_PREFIX=/home/pocket_geek/TAK/third_party/static-deps \
-        -DTAK_FFMPEG_PREFIX=/home/pocket_geek/TAK/third_party/ffmpeg-bink \
+        -DTAK_STATIC_DEPS_PREFIX=/home/pocket_geek/TA/third_party/static-deps \
+        -DTAK_FFMPEG_PREFIX=/home/pocket_geek/TA/third_party/ffmpeg-bink \
         -DTAK_TEST_DATA="$DATA" -DCMAKE_BUILD_TYPE="$type" -DCMAKE_CXX_FLAGS="$flags" &&
         cmake --build "$dir" -j"$JOBS" --target "$@"
 }
@@ -172,10 +172,10 @@ run_stage build-o2 $((STAGE_TIMEOUT * 2)) "${NICE[@]}" bash -c "$BODY; build '$W
 REL=$WT/build-nightly-rel
 O2=$WT/build-nightly-o2
 SCN_DIR=$WT/tools/scenarios
-BASELINE=${TAK_NIGHTLY_BASELINE:-$SCN_DIR/baseline.json}
-SCREEN_BASE=${TAK_NIGHTLY_SCREEN_BASELINE:-$SCN_DIR/crowdbench_screen_baseline.jsonl}
-SCREEN_ANCHOR=${TAK_NIGHTLY_SCREEN_ANCHOR:-$SCN_DIR/crowdbench_screen_anchor.jsonl}
-ANCHOR=${TAK_NIGHTLY_ANCHOR:-$SCN_DIR/anchor-b8a4110.json}
+BASELINE=${TA_NIGHTLY_BASELINE:-$SCN_DIR/baseline.json}
+SCREEN_BASE=${TA_NIGHTLY_SCREEN_BASELINE:-$SCN_DIR/crowdbench_screen_baseline.jsonl}
+SCREEN_ANCHOR=${TA_NIGHTLY_SCREEN_ANCHOR:-$SCN_DIR/crowdbench_screen_anchor.jsonl}
+ANCHOR=${TA_NIGHTLY_ANCHOR:-$SCN_DIR/anchor-b8a4110.json}
 
 # ------------------------------------------------------------------- screen
 if [ "${STAGE_STATUS[build-release]}" = 0 ]; then

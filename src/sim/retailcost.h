@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // Scratch planes retain direction bytes between attempts. Once initialization
 // owns the plane, flags never return to zero until the next reset, so that byte
@@ -309,4 +309,4 @@ inline RetailCostSearch::Costs retailPathCosts(uint16_t turnRate, int footprint,
     return costs;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

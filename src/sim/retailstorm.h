@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailStormLaunch {
     std::array<int32_t,3> position{}, baseVelocity{};
     std::array<float,2> variation{};
@@ -37,4 +37,4 @@ inline RetailStormLaunch retailStormLaunch(std::array<int32_t,3> source,
     result.variation={float(double(maxVariation)*z),float(double(maxVariation)*double(x))};
     return result;
 }
-} // namespace tak::sim
+} // namespace ta::sim

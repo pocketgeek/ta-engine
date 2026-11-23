@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "sim/retailmotion.h"
 
-namespace tak {
+namespace ta {
 struct RetailBloodParticle {
     std::array<int32_t,3> position{},velocity{};
     uint32_t color=0;

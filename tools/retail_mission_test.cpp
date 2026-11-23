@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
+using namespace ta::sim;
 struct Action { int result, stage; uint32_t mask, pending, events; bool disable; };
 struct Fixture {
     std::vector<RetailMissionState> states;

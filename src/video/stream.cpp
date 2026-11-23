@@ -37,7 +37,7 @@ extern "C" {
 #include <windows.h>
 #endif
 
-namespace tak::video {
+namespace ta::video {
 namespace {
 using Clock = std::chrono::steady_clock;
 int64_t micros() { return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count(); }
@@ -67,7 +67,7 @@ void logCallback(void* obj, int level, const char* fmt, va_list args) {
     std::vsnprintf(text, sizeof text, fmt, copy);
     va_end(copy);
     if (certificateError(text)) tlsCertificateRejected = true;
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     std::fprintf(stderr, "TLS ERROR %s", text); // the test prints why a handshake failed
 #endif
     std::fill(std::begin(text), std::end(text), '\0');
@@ -81,10 +81,10 @@ void check(int result) { if (result < 0) throw result; }
 class SystemRootsFile {
 public:
     SystemRootsFile() {
-        const std::string pem = tak::net::systemRootsPem();
+        const std::string pem = ta::net::systemRootsPem();
         if (pem.empty()) return;
         std::error_code error;
-        std::string name = (std::filesystem::temp_directory_path(error) / "tak-roots-XXXXXX").string();
+        std::string name = (std::filesystem::temp_directory_path(error) / "ta-roots-XXXXXX").string();
         if (error) return;
         const int fd = mkstemp(name.data());
         if (fd < 0) return;
@@ -181,13 +181,13 @@ bool valid(const StreamConfig& c) {
 }
 }
 struct Stream::Impl {
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     std::string testCaFile;
 #endif
     std::atomic<bool> running{false}, cancel{false};
     std::atomic<int64_t> deadline{0};
     std::atomic<uint64_t> dropped{0}, replaced{0};
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     std::atomic<int> testDelay{0};
     std::atomic<bool> testDelaying{false};
     std::atomic<int> testCopyFailKeys{-1}, testCopyFail{-1};   // testFailLocalAfter
@@ -205,7 +205,7 @@ struct Stream::Impl {
     // so the cursor always travels with the picture it was captured beside.
     std::mutex cursorMutex;
     StreamCursor nextCursor, pixelsCursor;
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     mutable std::mutex testPictureMutex;
     std::vector<uint8_t> testPicture;
     int testPictureW = 0, testPictureH = 0;
@@ -219,7 +219,7 @@ struct Stream::Impl {
     enum class Stage { Setup, Connect, Live } stage = Stage::Setup;
     bool youtube = false; // the destination is a YouTube ingest. Worker only.
 
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
     void testKeep(const uint8_t* picture, ptrdiff_t pitch, int w, int h) {
         std::lock_guard lock(testPictureMutex);
         testPicture.resize(size_t(w)*h*4);
@@ -235,7 +235,7 @@ struct Stream::Impl {
         std::lock_guard lock(stateMutex); state.local = s;
         if (!file.empty()) state.localFile = file;
     }
-    // TAK-YYYYMMDD-HHMMSS.mp4 in `dir` (local time), "-2", "-3"... if that name exists
+    // TA-YYYYMMDD-HHMMSS.mp4 in `dir` (local time), "-2", "-3"... if that name exists
     // (a CPU-fallback restart can begin a second file within the same second).
     static std::string copyName(std::string dir) {
         if (dir.back() != '/' && dir.back() != '\\') dir += '/';
@@ -247,7 +247,7 @@ struct Stream::Impl {
         localtime_r(&now, &tm);
 #endif
         char stamp[32];
-        std::strftime(stamp, sizeof stamp, "TAK-%Y%m%d-%H%M%S", &tm);
+        std::strftime(stamp, sizeof stamp, "TA-%Y%m%d-%H%M%S", &tm);
         std::string file = dir + stamp + ".mp4";
         for (int n = 2; n < 100 && avio_check(("file:" + file).c_str(), 0) >= 0; ++n)
             file = dir + stamp + "-" + std::to_string(n) + ".mp4";
@@ -300,7 +300,7 @@ struct Stream::Impl {
         if (!l.mux) return;
         AVStream* out = stream == e.vs ? l.vs : l.as;
         bool ok = av_packet_ref(l.packet, packet) >= 0;
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
         if (ok && testCopyFailKeys > 0 && stream == e.vs && (packet->flags & AV_PKT_FLAG_KEY)) --testCopyFailKeys;
         if (ok && testCopyFailKeys == 0 && testCopyFail >= 0 && testCopyFail-- == 0) ok = false;
 #endif
@@ -451,7 +451,7 @@ struct Stream::Impl {
         const SystemRootsFile roots;
         if (!roots.path().empty()) av_dict_set(&opts, "ca_file", roots.path().c_str(), 0);
 #endif
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
         if (!testCaFile.empty()) av_dict_set(&opts, "ca_file", testCaFile.c_str(), 0);
 #endif
         stage = Stage::Connect;
@@ -532,7 +532,7 @@ struct Stream::Impl {
                 StreamCursor frameCursor;
                 CursorStamper stamper;
                 while (!cancel) {
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
                     if (int delay = testDelay.exchange(0)) {
                         std::unique_lock lock(inputMutex);
                         testDelaying = true;
@@ -588,7 +588,7 @@ struct Stream::Impl {
                             if (packed) {
                                 resize.scale(frame.data(), width, height, width*4, out[0], dw, dh, e.vf->linesize[0]);
                                 stamper.stamp(out[0], e.vf->linesize[0], dw, dh, frameCursor);
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
                                 testKeep(out[0], e.vf->linesize[0], dw, dh);
 #endif
                             } else {
@@ -599,7 +599,7 @@ struct Stream::Impl {
                                     source = resized.data();
                                 }
                                 stamper.stamp(source, ptrdiff_t(dw)*4, dw, dh, frameCursor);
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
                                 testKeep(source, ptrdiff_t(dw)*4, dw, dh);
 #endif
                                 e.scale = sws_getCachedContext(e.scale, dw, dh, AV_PIX_FMT_RGBA,
@@ -709,7 +709,7 @@ bool Stream::startRecording(const StreamConfig& c, const std::string& path) {
     if (path.empty() || path.find("://") != std::string::npos) return false;
     return p_->start(c, "file:" + path, true);
 }
-#ifdef TAK_STREAM_TESTING
+#ifdef TA_STREAM_TESTING
 void Stream::testDelayOnce(int milliseconds) { p_->testDelay = milliseconds; }
 void Stream::testFailLocalAfter(int keyframes, int packets) {
     p_->testCopyFail = packets;
@@ -765,7 +765,7 @@ void Stream::audio(const int16_t* samples, int frames, int channels) {
     std::unique_lock lock(p_->audioMutex,std::try_to_lock); if (!lock.owns_lock()) return;
     // Any device layout (SDL order) folds to stereo, ITU-style: centre and surrounds
     // at -3 dB, the LFE dropped, each side weighted to unity (util/audiolayout.h).
-    const auto fold=tak::audio::downmixMatrix(channels,2);
+    const auto fold=ta::audio::downmixMatrix(channels,2);
     for (int f=0;f<frames;++f) {
         // Bounded latency: when the upload stalls, retain the newest audio.
         if (p_->count == Impl::kRing) { p_->read=(p_->read+1)%Impl::kRing; --p_->count; }

@@ -2,10 +2,10 @@
 // .scn scenario files: parser, canonical writer, world builder and order feed.
 // Header-only, tools only; the grammar is in tools/scenarios/README.scn-format.txt.
 //
-//   auto scn   = tak::scn::load("tools/scenarios/corner.scn");
-//   auto built = tak::scn::build(scn, {PathfindingMode::Legion, true, offset, data});
+//   auto scn   = ta::scn::load("tools/scenarios/corner.scn");
+//   auto built = ta::scn::build(scn, {PathfindingMode::Legion, true, offset, data});
 //   if (!built->skipped.empty()) { report it; return; }       // data-gated file
-//   tak::scn::OrderFeed feed(scn, *built);
+//   ta::scn::OrderFeed feed(scn, *built);
 //   for (uint32_t t = 0; t < scn.ticks; ++t) { feed.apply(t); built->world->tick(1.f/30); }
 //
 // A file never names a pathfinding mode: the runner builds it once per mode.
@@ -38,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::scn {
+namespace ta::scn {
 
 constexpr int kFormatVersion = 1;
 
@@ -395,7 +395,7 @@ inline Scenario parse(const std::string& text, const std::string& origin = "<scn
                 s.map.height = int(c.integer(w[3], 8, 2048));
             } else if (w[1] == "gen1") {
                 need(3, 3);
-                if (!tak::mapgen::isGeneratedMapId(w[2])) c.fail("not a ~gen1~ recipe: " + w[2]);
+                if (!ta::mapgen::isGeneratedMapId(w[2])) c.fail("not a ~gen1~ recipe: " + w[2]);
                 s.map.kind = MapSpec::Gen1;
                 s.map.recipe = w[2];
             } else if (w[1] == "named") {   // a map of the install, by name (situations cut from retail-map recordings)
@@ -867,21 +867,21 @@ inline std::string format(const Scenario& s) {
 // ---- building the world ----------------------------------------------------
 
 struct BuildOptions {
-    tak::sim::PathfindingMode mode = tak::sim::PathfindingMode::Legion;
+    ta::sim::PathfindingMode mode = ta::sim::PathfindingMode::Legion;
     bool serial = true;
     int offset = 0;               // start offset in cells: 0, +1, -1
     const char* data = nullptr;   // retail install (--data); nullptr = asset-free
     // Or an install view the caller has mounted (a test's synthetic features).
-    const tak::hpi::Vfs* install = nullptr;
+    const ta::hpi::Vfs* install = nullptr;
     bool crusades = false;
 };
 
 struct Built {
     std::string skipped;                       // non-empty: data-gated, not built
-    std::unique_ptr<tak::hpi::Vfs> vfs;
-    tak::sim::TypeRegistry registry;
-    std::deque<tak::sim::UnitType> types;      // synthetic types (stable addresses)
-    std::unique_ptr<tak::sim::World> world;
+    std::unique_ptr<ta::hpi::Vfs> vfs;
+    ta::sim::TypeRegistry registry;
+    std::deque<ta::sim::UnitType> types;      // synthetic types (stable addresses)
+    std::unique_ptr<ta::sim::World> world;
     std::map<std::string, std::vector<int>> groups;   // unit ids in spawn order
     int width = 0, height = 0;                 // cells
 };
@@ -901,9 +901,9 @@ inline TypeSpec rosterVariant(const TypeSpec& base, int k) {
     t.name = base.name + "-r" + std::to_string(k % 60);
     return t;
 }
-inline tak::sim::UnitType synth(const TypeSpec& t, bool armed) {
-    using tak::sim::Fixed;
-    using tak::sim::UnitType;
+inline ta::sim::UnitType synth(const TypeSpec& t, bool armed) {
+    using ta::sim::Fixed;
+    using ta::sim::UnitType;
     UnitType u{};
     u.id = u.name = "scn-" + t.name + (armed ? "" : "-unarmed");
     u.maxHp = t.hp;
@@ -943,7 +943,7 @@ inline tak::sim::UnitType synth(const TypeSpec& t, bool armed) {
     }
     if (t.turnInPlace >= 0) u.turnInPlaceRate = t.turnInPlace;
     if (armed) {
-        tak::sim::Weapon w;
+        ta::sim::Weapon w;
         w.name = "scn-gun";
         w.range = t.hasGun ? t.gunRange : 120;
         w.damage = t.hasGun ? t.gunDamage : 100;
@@ -957,21 +957,21 @@ inline tak::sim::UnitType synth(const TypeSpec& t, bool armed) {
 }  // namespace detail
 
 inline std::unique_ptr<Built> build(const Scenario& s, const BuildOptions& opt) {
-    using namespace tak::sim;
+    using namespace ta::sim;
     auto b = std::make_unique<Built>();
     if (auto why = s.needsData(); !why.empty() && !opt.data && !opt.install) {
         b->skipped = "needs --data: " + why;
         return b;
     }
     if (opt.install) {
-        b->vfs = std::make_unique<tak::hpi::Vfs>(opt.install);   // a local view: map files stay ours
+        b->vfs = std::make_unique<ta::hpi::Vfs>(opt.install);   // a local view: map files stay ours
         setupRegistry(b->registry, *opt.install, opt.crusades || s.crusades);
     } else if (opt.data) {
-        b->vfs = std::make_unique<tak::hpi::Vfs>(
-            tak::hpi::mountRetailRoot(opt.data));
+        b->vfs = std::make_unique<ta::hpi::Vfs>(
+            ta::hpi::mountRetailRoot(opt.data));
         setupRegistry(b->registry, *b->vfs, opt.crusades || s.crusades);
     } else {
-        b->vfs = std::make_unique<tak::hpi::Vfs>();
+        b->vfs = std::make_unique<ta::hpi::Vfs>();
     }
     b->world = std::make_unique<World>();
     World& w = *b->world;
@@ -1022,19 +1022,19 @@ inline std::unique_ptr<Built> build(const Scenario& s, const BuildOptions& opt) 
         cfg.slots.resize(size_t(s.players));   // unused slots: no monarchs
         if (s.map.kind == MapSpec::Gen1) cfg.mapPath = s.map.recipe;
         else if (s.map.kind == MapSpec::Named) {
-            cfg.mapPath = tak::hpi::findMap(*b->vfs, s.map.recipe);
+            cfg.mapPath = ta::hpi::findMap(*b->vfs, s.map.recipe);
             if (cfg.mapPath.empty()) throw std::runtime_error(s.origin + ": map '" + s.map.recipe + "' is not in the install");
         } else {
             const auto path = std::filesystem::path(s.dir) / s.map.file;
             if (s.map.file.size() > 4 && s.map.file.compare(s.map.file.size() - 4, 4, ".kmp") == 0) {
-                auto pkg = tak::net::maps::importSnapshot(*b->vfs, path);
+                auto pkg = ta::net::maps::importSnapshot(*b->vfs, path);
                 if (!pkg) throw std::runtime_error("snapshot rejected: " + path.string());
                 b->vfs->setMapFiles(pkg->files);
                 cfg.mapPath = pkg->mapPath;
             } else {
                 std::ifstream in(path, std::ios::binary);
                 if (!in) throw std::runtime_error("cannot read snapshot " + path.string());
-                auto files = std::make_shared<tak::hpi::Vfs::Files>();
+                auto files = std::make_shared<ta::hpi::Vfs::Files>();
                 (*files)["maps/scn-snapshot.tnt"] =
                     std::vector<uint8_t>(std::istreambuf_iterator<char>(in), {});
                 b->vfs->setMapFiles(files);
@@ -1193,7 +1193,7 @@ public:
         return out;
     }
 
-    std::vector<tak::net::Command> commandsFor(uint32_t tick) {
+    std::vector<ta::net::Command> commandsFor(uint32_t tick) {
         const auto& world = *b_.world;
         for (; next_ < pending_.size() && pending_[next_].tick <= tick; ++next_) {
             const auto& o = pending_[next_];
@@ -1230,7 +1230,7 @@ public:
                 if (click) clicks_.push_back({id, issued_[size_t(id)]});
             };
             for (const auto& c : cmds) {
-                if (c.kind == tak::net::Cmd::Order && c.order) for (const int id : c.order->members) count(id);
+                if (c.kind == ta::net::Cmd::Order && c.order) for (const int id : c.order->members) count(id);
                 else count(c.unitId);
             }
             link_.issue(cmds);
@@ -1245,10 +1245,10 @@ public:
         landed_ = commandsFor(tick);
         landedUnits_.clear();
         const auto start = std::chrono::steady_clock::now();
-        for (const auto& c : landed_) tak::sim::applyCommand(*b_.world, b_.registry, c);
+        for (const auto& c : landed_) ta::sim::applyCommand(*b_.world, b_.registry, c);
         applyMs_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         for (const auto& c : landed_) {
-            if (c.kind == tak::net::Cmd::Order && c.order)
+            if (c.kind == ta::net::Cmd::Order && c.order)
                 landedUnits_.insert(landedUnits_.end(), c.order->members.begin(), c.order->members.end());
             else landedUnits_.push_back(c.unitId);
         }
@@ -1257,7 +1257,7 @@ public:
     // Wall time of the last apply()'s applyCommand calls (ms; observation only, stderr reports).
     double lastApplyMs() const { return applyMs_; }
     // The commands (and explicit orders) the last apply() landed, in application order.
-    const std::vector<tak::net::Command>& landed() const { return landed_; }
+    const std::vector<ta::net::Command>& landed() const { return landed_; }
     // The unit of every command the last apply() landed, an explicit order's members each once.
     const std::vector<int>& landedUnits() const { return landedUnits_; }
     // The non-queued clicks the last apply() issued: (unit id, that click's command's position in the unit's
@@ -1288,7 +1288,7 @@ private:
     Uplink link_;
     std::vector<OrderSpec> pending_;
     size_t next_ = 0;
-    std::vector<tak::net::Command> landed_;
+    std::vector<ta::net::Command> landed_;
     std::vector<int> landedUnits_;
     double applyMs_ = 0;
     std::vector<uint32_t> issued_;   // per unit id
@@ -1349,4 +1349,4 @@ inline TruthReport truthReport(const Scenario& s, const Built& b, const Scenario
     return r;
 }
 
-}  // namespace tak::scn
+}  // namespace ta::scn

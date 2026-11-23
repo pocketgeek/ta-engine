@@ -1,8 +1,8 @@
 // GameView local dev/test harness: the standalone (server-less) scenario/demo/FFA
-// match setup and the TAK_* / --testbuild / --firetest style fixtures that spawn
+// match setup and the TA_* / --testbuild / --firetest style fixtures that spawn
 // units, issue orders and fast-forward the LOCAL sim. DEBUG builds only -- the
 // whole file compiles to nothing under NDEBUG, and the callers (the ctor, and the
-// localHarness block in main.cpp) are #ifndef NDEBUG too, so a release takclient
+// localHarness block in main.cpp) are #ifndef NDEBUG too, so a release taclient
 // carries none of it. Shared helpers the harness leans on (startAtMonarch, lookAt,
 // collect, spawn) stay in gameview_impl.cpp / gameview.h.
 #include "util/virtualpath.h"
@@ -52,25 +52,25 @@
             for (int cz=0;cz<h;++cz) for (int cx=0;cx<w;++cx) {
                 const float dx=float(cx)*32+16-px,dz=float(cz)*32+16-pz;
                 plane[size_t(cz)*size_t(w)+size_t(cx)]=dx*dx+dz*dz<radius*radius ?
-                    tak::retailfog::kInView : tak::retailfog::kExplored;
+                    ta::retailfog::kInView : ta::retailfog::kExplored;
             }
         };
     }
 
     void GameView::debugWatchPoke() {
-        static const char* const poke = tak::devEnv("TAK_WATCHONLY_POKE");
+        static const char* const poke = ta::devEnv("TA_WATCHONLY_POKE");
         static bool done = false;
         if (!poke || done || !spectating_ || netTick_ < uint32_t(std::atoi(poke)) || front().live.empty()) return;
         done = true;
         for (const UnitR* u : front().live) if (u->alive() && u->type) { selection_ = {u->id}; break; }
         constexpr int W = 1024, H = 768;
-        for (const auto& def : tak::hotkeyDefs()) {
+        for (const auto& def : ta::hotkeyDefs()) {
             const auto chord = hotkeys_.chord(def.act);
-            if (!chord.bound() || def.act == tak::Act::UnitInfo) continue;
+            if (!chord.bound() || def.act == ta::Act::UnitInfo) continue;
             uint16_t mod = 0;
-            if (chord.mod & tak::HK_CTRL) mod |= KMOD_CTRL;
-            if (chord.mod & tak::HK_SHIFT) mod |= KMOD_SHIFT;
-            if (chord.mod & tak::HK_ALT) mod |= KMOD_ALT;
+            if (chord.mod & ta::HK_CTRL) mod |= KMOD_CTRL;
+            if (chord.mod & ta::HK_SHIFT) mod |= KMOD_SHIFT;
+            if (chord.mod & ta::HK_ALT) mod |= KMOD_ALT;
             handleKey(chord.key, mod);
             selection_.resize(std::min<size_t>(selection_.size(), 1));
         }
@@ -84,7 +84,7 @@
         std::fprintf(stderr, "watch poke at tick %u: %zu commands queued\n", netTick_, outbox_.size());
     }
 
-    // TAK_PREVIEW_LIFETIME_TEST=gen|big|teardown: the lobby's map previews against a change
+    // TA_PREVIEW_LIFETIME_TEST=gen|big|teardown: the lobby's map previews against a change
     // of the data set they read. A read gate on vfs_ holds every preview worker at a read --
     // three generated-map rolls (the first two superseded) for gen, the full-window view's
     // terrain workers for big, all of them for teardown -- and from two seconds on lets
@@ -93,7 +93,7 @@
     // data set must outlive them: startMpGame remounts it (gen, big), the destructor
     // destroys it (teardown). tools/preview_lifetime_test.py runs all three.
     void GameView::previewLifetimeProbe(bool teardown) {
-        static const char* const mode = tak::devEnv("TAK_PREVIEW_LIFETIME_TEST");
+        static const char* const mode = ta::devEnv("TA_PREVIEW_LIFETIME_TEST");
         if (!mode || (std::strcmp(mode, "teardown") == 0) != teardown) return;
         const bool gen = teardown || std::strcmp(mode, "gen") == 0;
         const bool big = teardown || std::strcmp(mode, "big") == 0;
@@ -102,7 +102,7 @@
             std::fflush(stderr);
             std::_Exit(1);   // a released reader would read freed memory
         };
-        auto waitHeld = [&](tak::ReadGate& gate, size_t n) {
+        auto waitHeld = [&](ta::ReadGate& gate, size_t n) {
             if (!gate.waitHeld(n, std::chrono::seconds(60)))
                 fail("only " + std::to_string(gate.held()) + " of " + std::to_string(n) +
                      " preview readers reached a read");
@@ -111,9 +111,9 @@
         // holds is a preview's.
         resetMinimap();
         mapView_.quiesce();
-        auto gate = std::make_shared<tak::ReadGate>(vfs_, mainThreadId_);
+        auto gate = std::make_shared<ta::ReadGate>(vfs_, mainThreadId_);
         const auto start = std::chrono::steady_clock::now();
-        gate->onGone([start, fail](const tak::ReadGate::Gone& at) {
+        gate->onGone([start, fail](const ta::ReadGate::Gone& at) {
             const auto ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start).count();
             if (at.held || !at.released)
@@ -128,9 +128,9 @@
             // A generated map: its view reads vfs_ itself (an installed map's room view
             // reads the verified package's own files). Opened as from the CHANGE MAP panel's
             // RANDOM tab, and drawn once, as the lobby draws it, so the chunk worker has work too.
-            tak::mapgen::Params params;
+            ta::mapgen::Params params;
             params.seed = 4;
-            const std::string id = tak::mapgen::encodeMapId(params);
+            const std::string id = ta::mapgen::encodeMapId(params);
             const MapPicker panel = picker_;
             picker_.open = picker_.random = true;
             picker_.gen = {id, id};
@@ -145,9 +145,9 @@
         if (gen) {
             const size_t before = gate->held();
             for (uint64_t seed = 1; seed <= 3; ++seed) {   // each supersedes the one before
-                tak::mapgen::Params params;
+                ta::mapgen::Params params;
                 params.seed = seed;
-                buildMapPreview(tak::mapgen::encodeMapId(params));
+                buildMapPreview(ta::mapgen::encodeMapId(params));
                 waitHeld(*gate, before + seed);   // held in the order they were asked for
             }
         }
@@ -166,8 +166,8 @@
         const auto initial = smoothArt_;
         // The HUD face's GLYPH ART is what is checked below: UI FONT = CLASSIC draws it
         // (MODERN draws the TrueType face over the same metrics).
-        const auto initialFont = tak::uiFontStyle();
-        tak::Settings s; s.hardwareCursor = false; s.smoothArt = false; s.uiFont = 1;
+        const auto initialFont = ta::uiFontStyle();
+        ta::Settings s; s.hardwareCursor = false; s.smoothArt = false; s.uiFont = 1;
         applySettings(s);
         cursorsInit_ = true; cursors_.load(ren_, vfs_, &s);
         const auto bytes = gpuvram::bytes(), count = gpuvram::count();
@@ -231,7 +231,7 @@
             }
         }
         s.smoothArt = initial; applySettings(s);
-        tak::setUiFontStyle(initialFont);
+        ta::setUiFontStyle(initialFont);
         std::puts("PASS: HUD smoothing applies live, keeps layout/state and releases textures");
         std::puts("PASS: solid HUD text is one flat colour in the glyph shapes");
     }
@@ -240,10 +240,10 @@
         writableWorld().setTerrain(mapView_.map().heights, mapView_.map().width,
                           mapView_.map().height, mapView_.map().seaLevel,
                           &mapView_.map().features);
-        tak::sim::registerMapFeatures(writableWorld(), mapView_.map(), vfs_, &registry_);
+        ta::sim::registerMapFeatures(writableWorld(), mapView_.map(), vfs_, &registry_);
         std::string crtPath = mapSibling(".crt");
-        tak::crt::Scenario scen = vhas(crtPath) ? tak::crt::parse(vread(crtPath))
-                                                : tak::crt::Scenario{};
+        ta::crt::Scenario scen = vhas(crtPath) ? ta::crt::parse(vread(crtPath))
+                                                : ta::crt::Scenario{};
         std::printf("scenario: %zu placements, %zu regions\n",
                     scen.units.size(), scen.regions.size());
         float cx = 0, cz = 0;
@@ -257,9 +257,9 @@
             float heading = float(u.angle) * 3.14159265f / 180.0f;
             int uid = spawn(id, wx, wz, heading, player);
             if (uid >= 0) {
-                if (tak::sim::Unit* su = writableWorld().unit(uid)) {   // apply the .crt stats
+                if (ta::sim::Unit* su = writableWorld().unit(uid)) {   // apply the .crt stats
                     if (su->type)
-                        su->hp = tak::sim::Fixed::fromFloat(su->type->maxHp * float(std::clamp(u.health, 0, 100)) / 100.0f);
+                        su->hp = ta::sim::Fixed::fromFloat(su->type->maxHp * float(std::clamp(u.health, 0, 100)) / 100.0f);
                     writableWorld().setVeteranLevel(*su, u.veteran);
                 }
                 if (player == 0) { cx += wx; cz += wz; ++n; }
@@ -275,28 +275,28 @@
         // are evaluated in World::tick and folded into stateHash. Display
         // actions surface as HUD notices (drained in simStep).
         if (!scen.players.empty() || !scen.regions.empty())
-            writableWorld().setScenario(std::make_unique<tak::sim::ScenarioScript>(
+            writableWorld().setScenario(std::make_unique<ta::sim::ScenarioScript>(
                 scen, registry_, localPlayer_, world_.numPlayers(),
                 mapView_.map().width, mapView_.map().height));
     }
 
-    // The local (server-less) match layouts: TAK_FFA=N, then the 2-player monarch
+    // The local (server-less) match layouts: TA_FFA=N, then the 2-player monarch
     // start (+ the demo armies). Returns true when it fully set the match up (FFA),
     // false to fall through to the ctor's startAtMonarch tail. Dev path only: it does
-    // not call setupMatch, so it can drift from the real match setup (TAK_FFA resolves
+    // not call setupMatch, so it can drift from the real match setup (TA_FFA resolves
     // godType by hand below for exactly that reason).
     bool GameView::setupLocalMatch(bool demo, bool bare, const std::string& side,
                                    const std::string& aiSide,
                                    const std::vector<std::pair<float, float>>& starts,
                                    float cx, float cz, float px, float pz, float ax, float az) {
-        // Dev harness: TAK_FFA=N or TAK_FFA=N,t0.t1.t2... sets up an N-player
+        // Dev harness: TA_FFA=N or TA_FFA=N,t0.t1.t2... sets up an N-player
         // game (each on its own team unless a team list is given), one monarch +
         // a small army per player at N start positions, all AI-driven. Verifies
         // the 8-player / team / shared-vision / win-condition paths before the
         // real lobby exists. (multiplayer M1)
-        if (const char* ff = tak::devEnv("TAK_FFA")) {
+        if (const char* ff = ta::devEnv("TA_FFA")) {
             int n = std::atoi(ff);
-            n = std::clamp(n, 2, tak::sim::kMaxPlayers);
+            n = std::clamp(n, 2, ta::sim::kMaxPlayers);
             std::vector<int> teams(size_t(n), 0);
             for (int i = 0; i < n; ++i) teams[size_t(i)] = i;   // default: FFA
             if (const char* comma = std::strchr(ff, ',')) {     // optional team list
@@ -339,7 +339,7 @@
             ffaPlayers_ = n;
             for (auto& u : world_.units()) {
                 if (!u.type || u.type->canMove) continue;
-                tak::sim::blockFootprint(writableWorld().nav(), *u.type, u.x.toFloat(), u.z.toFloat(), true);
+                ta::sim::blockFootprint(writableWorld().nav(), *u.type, u.x.toFloat(), u.z.toFloat(), true);
             }
             return true;
         }
@@ -361,11 +361,11 @@
             // Showcase: skip the slow build-up and pit two ready armies at the
             // start positions against each other.
             std::vector<int> playerA, playerB;
-            // TAK_SHOT_SQUADS=1: a still life for the under-unit squad marker -- the
+            // TA_SHOT_SQUADS=1: a still life for the under-unit squad marker -- the
             // first three troops in control group 1, the rest in formation 2, the
             // monarch in group 10 ("0"), spread out with no keeps and no attack orders
             // so the labels neither overlap nor walk away.
-            const bool squadShot = tak::devFlag("TAK_SHOT_SQUADS");
+            const bool squadShot = ta::devFlag("TA_SHOT_SQUADS");
             const float sp = squadShot ? 2.5f : 1.0f;
             for (int i = 0; i < 6; ++i) {
                 int a = spawn(pk.squad[i % 4], px + float(i % 2) * 26 * sp + (sp - 1) * 40,
@@ -402,7 +402,7 @@
     void GameView::setupPatrolPerf() {
         // Exactly 16,000 living units: eight monarchs plus 1,999 troops per
         // faction. This is a local developer fixture, not a lobby cap option.
-        tak::sim::MatchConfig cfg;
+        ta::sim::MatchConfig cfg;
         cfg.vfs = &vfs_;
         cfg.mapPath = mapPath_;
         cfg.stressTest = true;
@@ -410,7 +410,7 @@
         cfg.unitCap = (1999 * 100 + 94) / 95;
         for (int p = 0; p < 8; ++p)
             cfg.slots.push_back({true, p % 5, 0, 2, true, false});
-        const auto spots = tak::sim::setupMatch(writableWorld(), registry_, cfg);
+        const auto spots = ta::sim::setupMatch(writableWorld(), registry_, cfg);
         if (world_.units().size() != 16000)
             throw std::runtime_error("patrol performance map must fit exactly 16000 units");
         writableWorld().setUnitCap(2000);
@@ -422,7 +422,7 @@
         edgeScrollOn_ = false;
         patrolPerfAccum_ = 0.0f;
         float zoom = 0.9f;
-        if (const char* value = tak::devEnv("TAK_PATROL_PERF_ZOOM"))
+        if (const char* value = ta::devEnv("TA_PATROL_PERF_ZOOM"))
             zoom = std::clamp(float(std::atof(value)), 0.1f, 3.0f);
         mapView_.setZoom(zoom);
         if (!spots.empty()) lookAt(spots[0].first, spots[0].second);
@@ -476,18 +476,18 @@
 
     void GameView::testBuild() {
         // Formation flyers over the front (Legion, for --shot captures mid-move and on arrival with --time):
-        // an Alt+1 formation of 30 swordsmen and 8 flyers right-clicked TAK_FLYER_FRONT px east of the map's
-        // centre (negative: west). TAK_FLYER_FRONT_RETAIL=1 keeps Retail pathfinding for a comparison;
-        // TAK_FLYER_FRONT_GROUND=N spawns N swordsmen instead of 30 (1: a squad narrower than its flyers).
-        if (const char* front=tak::devEnv("TAK_FLYER_FRONT")) {
-            writableWorld().setPathfindingMode(tak::devFlag("TAK_FLYER_FRONT_RETAIL") ? tak::sim::PathfindingMode::Retail
-                                                                                       : tak::sim::PathfindingMode::Legion);
+        // an Alt+1 formation of 30 swordsmen and 8 flyers right-clicked TA_FLYER_FRONT px east of the map's
+        // centre (negative: west). TA_FLYER_FRONT_RETAIL=1 keeps Retail pathfinding for a comparison;
+        // TA_FLYER_FRONT_GROUND=N spawns N swordsmen instead of 30 (1: a squad narrower than its flyers).
+        if (const char* front=ta::devEnv("TA_FLYER_FRONT")) {
+            writableWorld().setPathfindingMode(ta::devFlag("TA_FLYER_FRONT_RETAIL") ? ta::sim::PathfindingMode::Retail
+                                                                                       : ta::sim::PathfindingMode::Legion);
             writableWorld().setPathService(true);   // as a real match's setup (sim/matchsetup.cpp): Legion plans through it
             const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f,east=float(std::atof(front));
             const float side=east<0?1.f:-1.f;   // the block starts on the far side of the centre from its goal
-            const char* flyer=tak::devEnv("TAK_FLYER_FRONT_TYPE");
+            const char* flyer=ta::devEnv("TA_FLYER_FRONT_TYPE");
             selection_.clear();
-            const char* ground=tak::devEnv("TAK_FLYER_FRONT_GROUND");
+            const char* ground=ta::devEnv("TA_FLYER_FRONT_GROUND");
             for(int i=0,n=ground?std::max(std::atoi(ground),1):30;i<n;++i)selection_.push_back(spawn("arasword",x0+side*(300+float(i/6)*40),z0-100+float(i%6)*40,0,localPlayer_));
             for(int i=0;i<8;++i)selection_.push_back(spawn(flyer?flyer:"arafly",x0+side*(500+float(i/4)*60),z0-90+float(i%4)*60,0,localPlayer_));
             std::erase_if(selection_,[](int id){return id<0;});
@@ -496,10 +496,10 @@
             rightClickOrder(x0+east,z0,false);
             return;
         }
-        // Info-bar portrait strip still life (--testbuild --shot): TAK_SELPORTRAITS=
+        // Info-bar portrait strip still life (--testbuild --shot): TA_SELPORTRAITS=
         // "arasword:5,araarch:3,..." spawns that many of each type at the map centre and
         // selects them all, in that order (the first type leads the strip).
-        if (const char* list=tak::devEnv("TAK_SELPORTRAITS")) {
+        if (const char* list=ta::devEnv("TA_SELPORTRAITS")) {
             const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f;
             selection_.clear();
             std::string spec(list);
@@ -516,23 +516,23 @@
                 p=comma+1;
             }
             std::erase_if(selection_,[](int id){return id<0;});
-            // TAK_SELPORTRAITS_HURT: every other unit at a partial HP and every caster at a
+            // TA_SELPORTRAITS_HURT: every other unit at a partial HP and every caster at a
             // partial mana pool, so the bar's group totals differ from any one unit's.
-            // TAK_SELPORTRAITS_SQUAD=N (-N formation): put them all in that squad.
-            const bool hurt=tak::devFlag("TAK_SELPORTRAITS_HURT");
-            const char* sq=tak::devEnv("TAK_SELPORTRAITS_SQUAD");
+            // TA_SELPORTRAITS_SQUAD=N (-N formation): put them all in that squad.
+            const bool hurt=ta::devFlag("TA_SELPORTRAITS_HURT");
+            const char* sq=ta::devEnv("TA_SELPORTRAITS_SQUAD");
             for (size_t i=0;i<selection_.size();++i) {
                 auto* su=writableWorld().unit(selection_[i]);
                 if (!su || !su->type) continue;
-                if (hurt && i%2==0) su->hp=tak::sim::Fixed::fromFloat(float(su->type->maxHp)*(0.25f+0.1f*float(i%5)));
+                if (hurt && i%2==0) su->hp=ta::sim::Fixed::fromFloat(float(su->type->maxHp)*(0.25f+0.1f*float(i%5)));
                 if (hurt && su->type->maxMana>0) su->mana=double(su->type->maxMana)*(i%3==0?0.2:0.9);
                 if (sq) su->squad=int8_t(std::atoi(sq));
             }
-            // TAK_SELPORTRAITS_ORDERS: the order overlay's still life (shoot it with
-            // TAK_SHOT_SHIFT=1). Cloakers cloak on a full pool, the first unit that
+            // TA_SELPORTRAITS_ORDERS: the order overlay's still life (shoot it with
+            // TA_SHOT_SHIFT=1). Cloakers cloak on a full pool, the first unit that
             // cannot cloak attacks an enemy Swordsman to the south-east, and a reclaimer is
             // given an area clear round the tree to the north-east.
-            if (tak::devFlag("TAK_SELPORTRAITS_ORDERS")) {
+            if (ta::devFlag("TA_SELPORTRAITS_ORDERS")) {
                 const int enemy=spawn("versword",x0+100,z0+120,0,localPlayer_==0?1:0);
                 bool attacker=false,clearer=false;
                 for (int id:selection_) {
@@ -545,16 +545,16 @@
                     }
                 }
             }
-            // TAK_SELPORTRAITS_CONJURE=type: the front unit (a builder) lays that site at
+            // TA_SELPORTRAITS_CONJURE=type: the front unit (a builder) lays that site at
             // the first legal spot near it, a third built, so the bar shows a conjure target.
-            if (const char* ct=tak::devEnv("TAK_SELPORTRAITS_CONJURE"); ct && !selection_.empty())
+            if (const char* ct=ta::devEnv("TA_SELPORTRAITS_CONJURE"); ct && !selection_.empty())
                 if (const auto* tt=registry_.find(ct); tt)
                     if (const auto* b=world_.unit(selection_.front()))
                         for (float r=90,bx=b->x.toFloat(),bz=b->z.toFloat();r<400;r+=24)
                             for (float a=0;a<6.28f;a+=0.5f)
                                 if (const float x=bx+std::cos(a)*r,z=bz+std::sin(a)*r;world_.canPlace(tt,x,z))
                                     if (const int site=writableWorld().startBuild(selection_.front(),tt,x,z)) {
-                                        writableWorld().unit(site)->hp=tak::sim::Fixed::fromFloat(float(tt->maxHp)/3);
+                                        writableWorld().unit(site)->hp=ta::sim::Fixed::fromFloat(float(tt->maxHp)/3);
                                         r=400;break;
                                     }
             noFog_=true;edgeScrollOn_=false;
@@ -563,12 +563,12 @@
             std::fprintf(stderr,"selportraits: %zu units selected\n",selection_.size());
             return;
         }
-        if (tak::devFlag("TAK_RETAIL_FOG_TEST")) {
+        if (ta::devFlag("TA_RETAIL_FOG_TEST")) {
             // The display fog is retail's single sight plane (World::viewCounts) seen
             // through LosOn: on flat ground an enemy at 0.9x our unit's sight is drawn
             // and at 1.1x is not; from a hill the cone reaches 1.5x; radar puts an
             // enemy on the minimap but never in the main view. Fixtures are found on
-            // the loaded map. TAK_RETAIL_FOG_CAPTURE=<prefix> writes
+            // the loaded map. TA_RETAIL_FOG_CAPTURE=<prefix> writes
             // <prefix>-flat/-hill/-radar.png (the whole frame, minimap included).
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("retail fog: "+what);
@@ -590,16 +590,16 @@
                 return int(m.heights[size_t(std::clamp(z,0,m.height-1))*size_t(m.width)+size_t(std::clamp(x,0,m.width-1))]);
             };
             const float S=float(world_.sightDistance(*sword)),R=float(world_.radarDistance(*keep));
-            const auto heights=tak::sim::retailExplorationHeights(m.width,m.height,uint8_t(sea),h16);
+            const auto heights=ta::sim::retailExplorationHeights(m.width,m.height,uint8_t(sea),h16);
             const int pw=m.width/2,ph=m.height/2;
             // Would retail's cone (4c6800) admit a target unit standing on (tx,tz)
             // for a swordsman on (x,z)? Its LosOn corners, as World::playerSees.
             const auto admits=[&](float x,float z,float tx,float tz) {
-                tak::sim::RetailSightFootprint f;
+                ta::sim::RetailSightFootprint f;
                 f.x=int16_t(int(x)/32);f.z=int16_t(int(z)/32);f.distance=int16_t(S);f.sightHeight=sword->sightHeight;
                 f.eyeHeight=std::max(h16(int(x)/16,int(z)/16),sea+1)+sword->sightHeight;
-                const int radius=tak::sim::retailSightRadius(f);
-                const float slope=tak::sim::retailSightSlope(f);
+                const int radius=ta::sim::retailSightRadius(f);
+                const float slope=ta::sim::retailSightSlope(f);
                 auto at=[&](int cx,int cz){return heights[size_t(cz)*size_t(pw)+size_t(cx)];};
                 const int y=h16(int(tx)/16,int(tz)/16),top=y+(sword->modelTop>>16);
                 for (const auto& [cx,cy,cz]:{std::array<float,3>{tx-8*sword->footX,float(top),tz-8*sword->footZ},
@@ -607,7 +607,7 @@
                         {tx-8*sword->footX,float(y),tz+8*sword->footZ}}) {
                     const int px=int(cx)>>5,pz=(int(cz)-(int(cy)>>1))>>5;
                     if (px<0 || pz<0 || px>=pw || pz>=ph) continue;
-                    if (tak::sim::retailSightAdmits(f,px,pz,radius*radius,slope,at)) return true;
+                    if (ta::sim::retailSightAdmits(f,px,pz,radius*radius,slope,at)) return true;
                 }
                 return false;
             };
@@ -665,7 +665,7 @@
             const int blip=spawn("arasword",kx+rd,kz,0,1);
             check(own>0 && inside>0 && outside>0 && high>0 && below>0 && tower>0 && blip>0,"fixture spawned");
             for (int i=0;i<30;++i) writableWorld().tick(1.f/30);
-            const char* capture=tak::devEnv("TAK_RETAIL_FOG_CAPTURE");
+            const char* capture=ta::devEnv("TA_RETAIL_FOG_CAPTURE");
             const auto frame=[&](float cx,float cz,const char* tag,float zoom=1.0f) {
                 captureFrame();beginFrame();cosmeticStep(0);
                 mapView_.setZoom(zoom);
@@ -675,7 +675,7 @@
                     int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                     std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
                     if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)
-                        tak::png::write(std::string(capture)+"-"+tag+".png",ow,oh,px);
+                        ta::png::write(std::string(capture)+"-"+tag+".png",ow,oh,px);
                 }
                 endFrame();
             };
@@ -693,14 +693,14 @@
             check(dot && radarVisible(*dot),"radar: the enemy is a minimap dot");
             check(!drawn(blip),"radar: the enemy is not drawn in the main view");
             if (capture) {   // and what was seen and is no longer: our unit walks west
-                if (auto* u=writableWorld().unit(own)) u->x=tak::sim::Fixed::fromFloat(fx-0.9f*S);
+                if (auto* u=writableWorld().unit(own)) u->x=ta::sim::Fixed::fromFloat(fx-0.9f*S);
                 for (int i=0;i<10;++i) writableWorld().tick(1.f/30);
                 frame(fx-0.45f*S,fz,"explored",0.8f);
             }
             std::fprintf(stderr,"PASS: retail fog (sight %.0f, radar %.0f)\n",S,R);
             return;
         }
-        if (tak::devFlag("TAK_SPECTATOR_BARS_TEST")) {
+        if (ta::devFlag("TA_SPECTATOR_BARS_TEST")) {
             // A spectator sees every side's health bars. Spectating stops the fog
             // pass, but the world keeps the last fog it built for the seat the client
             // was given (localPlayer_), so the overlays must answer from noFog_ and
@@ -727,7 +727,7 @@
             // A third of a second of sim builds the seat's fog the way a game's opening does.
             for (int i=0;i<10;++i) writableWorld().tick(1.f/30);
             for (const int id:{own,foeSeen,foeHidden,thirdHidden})
-                if (auto* u=writableWorld().unit(id)) u->hp=tak::sim::Fixed::fromFloat(float(u->type->maxHp)/2);
+                if (auto* u=writableWorld().unit(id)) u->hp=ta::sim::Fixed::fromFloat(float(u->type->maxHp)/2);
             const auto frame=[&] {
                 captureFrame();beginFrame();cosmeticStep(0);
                 mapView_.setZoom(zoom);
@@ -751,7 +751,7 @@
             std::fprintf(stderr,"PASS: spectator bars (%zu bars)\n",debugHealthBarIds_.size());
             return;
         }
-        if (const char* prefix = tak::devEnv("TAK_REPLAYBAR_SHOT")) {
+        if (const char* prefix = ta::devEnv("TA_REPLAYBAR_SHOT")) {
             // The replay bar for the eye: <prefix>-<size>-ui<scale>-<font>[-hud].png.
             noFog_=true;edgeScrollOn_=false;
             writableWorld().setPlayerCount(2);
@@ -777,18 +777,18 @@
                         SDL_GetRendererOutputSize(ren_,&ow,&oh);
                         std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4,0);
                         SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
-                        tak::png::write(std::string(prefix)+"-"+name+".png",ow,oh,px);
+                        ta::png::write(std::string(prefix)+"-"+name+".png",ow,oh,px);
                     }
                     endFrame();
                 }
             };
-            const auto initialFont=tak::uiFontStyle();
-            for (const auto style:{tak::UiFontStyle::Modern,tak::UiFontStyle::Classic})
+            const auto initialFont=ta::uiFontStyle();
+            for (const auto style:{ta::UiFontStyle::Modern,ta::UiFontStyle::Classic})
                 for (const float scale:{1.0f,2.0f}) {
-                    tak::setUiFontStyle(style);
+                    ta::setUiFontStyle(style);
                     uiScale_=scale;
                     const std::string name=std::string("1024-ui")+std::to_string(int(scale))+
-                        (style==tak::UiFontStyle::Modern ? "-modern" : "-classic");
+                        (style==ta::UiFontStyle::Modern ? "-modern" : "-classic");
                     selection_.clear();
                     mouseX_=1;mouseY_=400;
                     shot(1024,768,name);
@@ -798,7 +798,7 @@
                     mouseY_=replayBar_.track.y+2;
                     shot(1024,768,name+"-hud");
                 }
-            tak::setUiFontStyle(initialFont);uiScale_=1;
+            ta::setUiFontStyle(initialFont);uiScale_=1;
             selection_={b};mouseX_=1;mouseY_=400;
             shot(1024,768,"1024-ui1-taros");
             selection_={a};
@@ -807,7 +807,7 @@
             std::fprintf(stderr,"PASS: replay bar shots\n");
             return;
         }
-        if (const char* mode = tak::devEnv("TAK_WATCHONLY_TEST")) {
+        if (const char* mode = ta::devEnv("TA_WATCHONLY_TEST")) {
             // A watcher (replay or spectator) through the real input() and draw(): it
             // can select anything and see that player's interface, and nothing it does
             // reaches the game or is acknowledged in any way.
@@ -851,7 +851,7 @@
                 check(!giveUnitsMenu_,what+": no diplomacy");
                 check(!guiPressed_,what+": no press flash");
                 const auto cursor=desiredCursor(tint);
-                check((cursor==tak::CursorId::Normal || cursor==tak::CursorId::Select) && !tint,what+": a watcher's cursor");
+                check((cursor==ta::CursorId::Normal || cursor==ta::CursorId::Select) && !tint,what+": a watcher's cursor");
             };
             const auto mouse=[&](Uint32 type,float x,float y,Uint8 button,int clicks=1) {
                 SDL_Event e{};e.type=type;e.button.x=int(x);e.button.y=int(y);e.button.button=button;e.button.clicks=Uint8(clicks);
@@ -874,7 +874,7 @@
             {
                 const auto p=at(b1);
                 mouseX_=p.x;mouseY_=p.y;
-                check(desiredCursor(tint)==tak::CursorId::Select,"Select over another player's unit");
+                check(desiredCursor(tint)==ta::CursorId::Select,"Select over another player's unit");
             }
             clickUnit(b1);
             check(selection_==std::vector<int>{b1},"a click selects any player's unit");
@@ -926,24 +926,24 @@
             }
             check(selection_==std::vector<int>{b1},"right clicks leave the selection");
             untouched("right clicks");
-            const auto press=[&](tak::Act act) {
+            const auto press=[&](ta::Act act) {
                 const auto chord=hotkeys_.chord(act);
                 uint16_t mod=0;
-                if (chord.mod & tak::HK_CTRL) mod|=KMOD_CTRL;
-                if (chord.mod & tak::HK_SHIFT) mod|=KMOD_SHIFT;
-                if (chord.mod & tak::HK_ALT) mod|=KMOD_ALT;
+                if (chord.mod & ta::HK_CTRL) mod|=KMOD_CTRL;
+                if (chord.mod & ta::HK_SHIFT) mod|=KMOD_SHIFT;
+                if (chord.mod & ta::HK_ALT) mod|=KMOD_ALT;
                 handleKey(chord.key,mod);
             };
             // Every key the rule blocks, as the player has them bound.
-            for (const auto& def:tak::hotkeyDefs()) {
-                if (tak::client::watchAllows(def.act) || !hotkeys_.chord(def.act).bound()) continue;
+            for (const auto& def:ta::hotkeyDefs()) {
+                if (ta::client::watchAllows(def.act) || !hotkeys_.chord(def.act).bound()) continue;
                 const float ox=mapView_.offX();
                 press(def.act);
                 check(mapView_.offX()==ox,std::string(def.id)+": the camera stays");
                 untouched(def.id);
             }
             // Pause and speed sit outside the table, and only a private game's host paces it
-            // (tak::client::watchMayPace). In a replay they are the transport's, below.
+            // (ta::client::watchMayPace). In a replay they are the transport's, below.
             if (!replay) {
                 const bool wasPaused=paused_;
                 const int pace=gameSpeed_;
@@ -972,8 +972,8 @@
             mouse(SDL_MOUSEBUTTONUP,vw*0.5f,H*0.25f,SDL_BUTTON_RIGHT);
             // And the backstop, for anything that ever gets past the gates.
             {
-                tak::net::Command c;
-                c.kind=tak::net::Cmd::Move;c.unitId=a1;c.x=cx+500;c.z=cz+500;
+                ta::net::Command c;
+                c.kind=ta::net::Cmd::Move;c.unitId=a1;c.x=cx+500;c.z=cz+500;
                 issue(c);
             }
             untouched("a command forced at issue()");
@@ -1026,20 +1026,20 @@
             check(selection_.empty(),"Ctrl+Esc empties the group");
             // T tracks, N steps through the player on show, select keys reach them.
             clickUnit(b1);
-            press(tak::Act::TrackSelection);
+            press(ta::Act::TrackSelection);
             check(trackSel_,"T tracks the selection");
-            press(tak::Act::TrackSelection);
+            press(ta::Act::TrackSelection);
             check(!trackSel_,"T again stops");
-            press(tak::Act::SelectAll);frame();
+            press(ta::Act::SelectAll);frame();
             check(selection_.size()>=3 && hudPlayer()==1,"select all stays on the player on show");
-            selection_={b1};press(tak::Act::NextUnit);frame();
+            selection_={b1};press(ta::Act::NextUnit);frame();
             check(selection_.size()==1 && hudPlayer()==1,"next unit stays on the player on show");
             selection_.clear();frame();
             check(!hudShown(),"Esc-cleared selection drops the interface");
             untouched("the whole run");
             // The transport, through the bar's own rects. A fixture recording of empty ticks.
             if (replay) {
-                namespace rb=tak::replaybar;
+                namespace rb=ta::replaybar;
                 replayBundles_.resize(3000);
                 replayKeyBudget_=uint64_t(1)<<30;
                 std::map<size_t,uint64_t> straight;
@@ -1050,8 +1050,8 @@
                 const auto base=world_.tickCount()-replayTick_;
                 straight[replayTick_]=world_.stateHash();
                 while (replayTick_<1800) {
-                    if (replayTick_==500) writableWorld().unit(body)->hp=tak::sim::Fixed();
-                    if (replayTick_==895) writableWorld().unit(falling)->hp=tak::sim::Fixed();
+                    if (replayTick_==500) writableWorld().unit(body)->hp=ta::sim::Fixed();
+                    if (replayTick_==895) writableWorld().unit(falling)->hp=ta::sim::Fixed();
                     replayTickOnce();straight[replayTick_]=world_.stateHash();
                 }
                 check(replayKeys_.size()==3 && replayKeys_[2].tick==1800,"a keyframe every 30 s of game");
@@ -1059,13 +1059,13 @@
                     uint64_t held=0;
                     for (const auto& key:replayKeys_) held+=key.bytes;
                     check(held==replayKeyBytes_,"the budget holds the keyframes' own sizes");
-                    check(replayKeys_[1].bytes>=sizeof(tak::sim::World)+world_.units().size()*sizeof(tak::sim::Unit),
+                    check(replayKeys_[1].bytes>=sizeof(ta::sim::World)+world_.units().size()*sizeof(ta::sim::Unit),
                           "a keyframe's size is what the copy really took");
                 }
                 paused_=true;   // the bar works paused, and a jump runs regardless
                 frame();
                 // Something dies in the part about to be undone: the display must forget it.
-                writableWorld().unit(b3)->hp=tak::sim::Fixed();
+                writableWorld().unit(b3)->hp=ta::sim::Fixed();
                 for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
                 frame();
                 check(anims_.count(b3) && anims_.at(b3).dying,"fixture: the dead unit shows dying");
@@ -1137,13 +1137,13 @@
                 check(unitType_.registered(keeper),"and the landing has them");
                 // Silent, and no effects, up to and including the frame that shows the landing.
                 {
-                    tak::sim::UnitType fleshy=*registry_.find("arasword");
+                    ta::sim::UnitType fleshy=*registry_.find("arasword");
                     fleshy.bodyType="flesh";
                     const auto queueEffects=[&] {
                         std::lock_guard<std::mutex> lock(hitQueueMutex_);
-                        tak::sim::World::SoundReq sound;sound.name="alarmmon";sound.tick=world_.tickCount();
+                        ta::sim::World::SoundReq sound;sound.name="alarmmon";sound.tick=world_.tickCount();
                         missionSoundQueue_.push_back(sound);
-                        tak::sim::World::HitFx hit;hit.x=cx;hit.z=cz;
+                        ta::sim::World::HitFx hit;hit.x=cx;hit.z=cz;
                         hit.target=&fleshy;
                         hitQueue_.push_back({world_.tickCount(),hit});
                     };
@@ -1181,7 +1181,7 @@
                 replayJumpTo(950);land();
                 check(!playerAi_[1],"a rewind takes back a takeover");
                 {
-                    tak::net::Event takeover;takeover.kind=tak::net::Event::Kind::AiTakeover;takeover.player=1;
+                    ta::net::Event takeover;takeover.kind=ta::net::Event::Kind::AiTakeover;takeover.player=1;
                     notice_.clear();
                     replayInTransit_=true;noteEvent(takeover);replayInTransit_=false;
                     check(playerAi_[1] && notice_.empty(),"a jump keeps the state and posts no notice");
@@ -1334,15 +1334,15 @@
             clickAt(button.x+button.w/2,button.y+button.h/2);
             check(sounded>0,"a seated player's button press is heard: the sound check can fail");
             pendingCmd_=0;
-            press(tak::Act::Move);
+            press(ta::Act::Move);
             check(pendingCmd_=='m',"a seated player's order key still arms");
             pendingCmd_=0;
             sounds_.requestHook=nullptr;
             std::fprintf(stderr,"PASS: watch only (%s)\n",mode);
             return;
         }
-        if (tak::devFlag("TAK_AIR_OVER_FX_TEST")) {
-            namespace hu = tak::hiddenunits;
+        if (ta::devFlag("TA_AIR_OVER_FX_TEST")) {
+            namespace hu = ta::hiddenunits;
             // Retail's world pass (0x4fc648) draws the airborne units after the
             // shots (52b210) and the effect manager (492070: debris, explosions):
             // a ground fight's explosion never paints over a flyer passing above.
@@ -1375,7 +1375,7 @@
                 SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.assign(size_t(ow)*size_t(oh)*4,0);
                 SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
-                if (capture) tak::png::write(capture,ow,oh,px);
+                if (capture) ta::png::write(capture,ow,oh,px);
                 endFrame();
             };
             // Up and well clear of the ground.
@@ -1386,7 +1386,7 @@
                 if (const auto a=anims_.find(flyer);a!=anims_.end()) altitude=a->second.altitude;
             }
             check(altitude>=40,"the flyer is airborne");
-            const char* capture=tak::devEnv("TAK_AIR_OVER_FX_CAPTURE");
+            const char* capture=ta::devEnv("TA_AIR_OVER_FX_CAPTURE");
             const std::string base=capture ? capture : "";
             explosionGlows_.clear();
             frame(true,capture ? (base+"-plain.png").c_str() : nullptr);
@@ -1437,15 +1437,15 @@
             std::fprintf(stderr,"PASS: air over fx (altitude %.0f)\n",altitude);
             return;
         }
-        if (tak::devFlag("TAK_DEPTH_FX_TEST")) {
+        if (ta::devFlag("TA_DEPTH_FX_TEST")) {
             // Shots and effects in depth order (PaintItem::fx; the owner's request,
             // not retail): an explosion glow and a Hunter's spear BEHIND a tree are
             // covered by its crown and the same IN FRONT of it paint over it, through
             // the real draw(): the painter ops around the tree's op, the crown's own
             // pixels, and the late pass drawing none of them. A shot or effect is
             // never a HIDDEN UNITS cover or covered (FADE leaves the tree alone).
-            // TAK_DEPTH_FX_CAPTURE=<prefix> writes <prefix>-plain/-behind/-front.png.
-            namespace hu = tak::hiddenunits;
+            // TA_DEPTH_FX_CAPTURE=<prefix> writes <prefix>-plain/-behind/-front.png.
+            namespace hu = ta::hiddenunits;
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("depth fx: "+what);
                 std::fprintf(stderr,"PASS: depth fx: %s\n",what.c_str());
@@ -1473,10 +1473,10 @@
                 SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.assign(size_t(ow)*size_t(oh)*4,0);
                 SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
-                if (!capture.empty()) tak::png::write(capture.c_str(),ow,oh,px);
+                if (!capture.empty()) ta::png::write(capture.c_str(),ow,oh,px);
                 endFrame();
             };
-            const char* capture=tak::devEnv("TAK_DEPTH_FX_CAPTURE");
+            const char* capture=ta::devEnv("TA_DEPTH_FX_CAPTURE");
             const auto shot=[&](const char* name) {return capture ? std::string(capture)+"-"+name+".png" : std::string();};
             explosionGlows_.clear();beams_.clear();effects_.clear();particles_.clear();rings_.clear();
             frame(shot("plain"));
@@ -1600,7 +1600,7 @@
             std::fprintf(stderr,"PASS: depth fx (behind %d, front %d px)\n",behind,infront);
             return;
         }
-        if (tak::devFlag("TAK_TACTICAL_DOTS_TEST")) {
+        if (ta::devFlag("TA_TACTICAL_DOTS_TEST")) {
             // Tactical Dots through the real draw(): dots replace models past the
             // threshold, the hysteresis band holds either state, fog-hidden enemies
             // get no dot, and click/box selection land on the dots.
@@ -1612,7 +1612,7 @@
             noFog_=false;edgeScrollOn_=false;
             writableWorld().setPlayerCount(2);
             const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f;
-            const tak::sim::UnitType* flyerType=nullptr;
+            const ta::sim::UnitType* flyerType=nullptr;
             for (const auto& [name,type]:registry_.types())
                 if (type.canFly && !type.isStructure() && !type.commander) {flyerType=&type;break;}
             const int infantry=spawn("arasword",x0,z0,0,0);
@@ -1634,18 +1634,18 @@
                 // rule and not the viewport cull.
                 mapView_.setOffset(x0+300-float(W-300)*0.5f/zoom,z0+100-float(H)*0.5f/zoom);
                 prepare(W,H);draw(W,H);
-                if (capture) {   // TAK_TACTICAL_DOTS_CAPTURE: the frame as drawn
+                if (capture) {   // TA_TACTICAL_DOTS_CAPTURE: the frame as drawn
                     int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                     std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
                     if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)
-                        tak::png::write(capture,ow,oh,px);
+                        ta::png::write(capture,ow,oh,px);
                 }
                 endFrame();
             };
             const auto has=[&](int id) {
                 return std::find(debugDotIds_.begin(),debugDotIds_.end(),id)!=debugDotIds_.end();
             };
-            namespace td=tak::tacticaldots;
+            namespace td=ta::tacticaldots;
             // Slider at 50%: halfway (in wheel notches) from this window's floor to 1.0,
             // leaving room both below and above the threshold.
             tacticalDotsZoom_=50;
@@ -1713,7 +1713,7 @@
                   "box around a dot selects own unit, never an enemy");
             SDL_SetModState(savedMod);
             selection_={infantry,keep,flyer};
-            frame(zIn,tak::devEnv("TAK_TACTICAL_DOTS_CAPTURE"));
+            frame(zIn,ta::devEnv("TA_TACTICAL_DOTS_CAPTURE"));
             check(debugDotCount_>0 && dotsFrame_,"selected dots still drawn");
             tacticalDotsOpt_=false;frame(zIn);
             check(!dotsFrame_ && !visUnits_.empty(),"turning the option off restores models at once");
@@ -1746,13 +1746,13 @@
                          zT,zT*td::kBuffer,floorZ);
             return;
         }
-        if (tak::devFlag("TAK_ZOOM_FLOOR_TEST")) {
+        if (ta::devFlag("TA_ZOOM_FLOOR_TEST")) {
             // Full zoom-out through the real wheel handler and frame: the map fills the
             // WORLD VIEW (left of the right panel, above the bottom bar) in one dimension,
             // shows nothing past its edges, and every edge can be scrolled into that view;
             // the frame's own clamp and Tactical Dots use the same floor. Runs at the launch's window
             // size (--winsize), at UI SCALE 100% and 200%, then as a spectator (no bar).
-            // TAK_ZOOM_FLOOR_CAPTURE=<prefix> writes <prefix>-ui1.png/-ui2.png/-spec.png.
+            // TA_ZOOM_FLOOR_CAPTURE=<prefix> writes <prefix>-ui1.png/-ui2.png/-spec.png.
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("zoom floor: "+what);
                 std::fprintf(stderr,"PASS: zoom floor: %s\n",what.c_str());
@@ -1768,7 +1768,7 @@
                     int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                     std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
                     if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)
-                        tak::png::write(capture,ow,oh,px);
+                        ta::png::write(capture,ow,oh,px);
                 }
                 endFrame();
             };
@@ -1786,7 +1786,7 @@
                 frame("");
                 wheelOut();
                 tacticalDotsOpt_=true;tacticalDotsZoom_=0;
-                const char* cap=tak::devEnv("TAK_ZOOM_FLOOR_CAPTURE");
+                const char* cap=ta::devEnv("TA_ZOOM_FLOOR_CAPTURE");
                 frame(cap ? std::string(cap)+"-"+tag+".png" : "");
                 tacticalDotsOpt_=false;
                 const float z=mapView_.zoom(),ox=mapView_.offX(),oy=mapView_.offY();
@@ -1811,14 +1811,14 @@
             std::fprintf(stderr,"PASS: zoom floor fits the world view (%dx%d)\n",W,H);
             return;
         }
-        if (tak::devFlag("TAK_HIDDEN_UNITS_TEST")) {
+        if (ta::devFlag("TA_HIDDEN_UNITS_TEST")) {
             // HIDDEN UNITS through the real draw(): a flat feature sorts under every
             // unit; units behind a tree or a building get a dot (DOTS) or fade that
             // tree or building (FADE); units in the open, in front of the tree or on a
             // flat feature get nothing; fog still hides enemies; OFF and Tactical Dots
             // frames do nothing; a hidden dot is clickable.
-            // TAK_HIDDEN_UNITS_CAPTURE=<prefix> writes <prefix>-off/-dots/-fade-off/-fade.png.
-            namespace hu = tak::hiddenunits;
+            // TA_HIDDEN_UNITS_CAPTURE=<prefix> writes <prefix>-off/-dots/-fade-off/-fade.png.
+            namespace hu = ta::hiddenunits;
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("hidden units: "+what);
                 std::fprintf(stderr,"PASS: hidden units: %s\n",what.c_str());
@@ -1874,7 +1874,7 @@
                 int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.resize(size_t(ow)*size_t(oh)*4);
                 if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)!=0) px.clear();
-                else if (capture) tak::png::write(capture,ow,oh,px);
+                else if (capture) ta::png::write(capture,ow,oh,px);
                 endFrame();
                 return std::pair{px,ow};
             };
@@ -1897,7 +1897,7 @@
             const int behindLode=spawn("arasword",x0+120,z0+270,0,0);
             check(behind>=0 && open>=0 && front>=0 && foeSeen>=0 && foeFog>=0 && onSmudge>=0 && keep>=0 &&
                   behindKeep>=0 && behindTwo>=0 && lode>=0 && behindLode>=0,"fixture spawned");
-            const char* capture=tak::devEnv("TAK_HIDDEN_UNITS_CAPTURE");
+            const char* capture=ta::devEnv("TA_HIDDEN_UNITS_CAPTURE");
             const auto shot=[&](const std::string& mode) {
                 return capture ? std::string(capture)+"-"+mode+".png" : std::string();
             };
@@ -2074,7 +2074,7 @@
             std::fprintf(stderr,"PASS: hidden units (%s)\n",info.name ? info.name : "?");
             return;
         }
-        if (tak::devFlag("TAK_RUIN_TEST")) {
+        if (ta::devFlag("TA_RUIN_TEST")) {
             const bool previousShadows=shadowsOnFrame_;
             shadowsOnFrame_=true;
             int checked=0;
@@ -2100,10 +2100,10 @@
             if (checked!=45) throw std::runtime_error("explosion corpse roster changed");
             return;
         }
-        if (tak::devFlag("TAK_DIPLOMACY_TEST")) {
+        if (ta::devFlag("TA_DIPLOMACY_TEST")) {
             int retiredFixtureId=0;
-            if(tak::devFlag("TAK_RETIREMENT_TEST")) {
-                tak::sim::UnitType dummy;dummy.id="retired-ui";dummy.maxHp=100;dummy.footX=dummy.footZ=1;
+            if(ta::devFlag("TA_RETIREMENT_TEST")) {
+                ta::sim::UnitType dummy;dummy.id="retired-ui";dummy.maxHp=100;dummy.footX=dummy.footZ=1;
                 for(int i=0;i<240;++i) {
                     retiredFixtureId=writableWorld().spawn(&dummy,1800,2100,0,0);
                     writableWorld().scenarioDestroy(retiredFixtureId);
@@ -2117,7 +2117,7 @@
             playerName_[0]="PLAYER";playerName_[1]="ALLY";playerName_[2]="ENEMY";playerName_[7]="DEFEATED";
             {   // Humans in slots 0 (you), 1 and 7; the ENEMY in slot 2 is a computer player.
                 // You and ALLY are team 0; ENEMY and DEFEATED have teams of their own.
-                tak::net::RoomView room;
+                ta::net::RoomView room;
                 for(int i:{0,1,7})room.slots[i].type=1;
                 room.slots[2].type=2;
                 room.slots[2].team=1;room.slots[7].team=2;room.mySlot=0;
@@ -2141,7 +2141,7 @@
                 input(e,1000,700);
             };
             selection_.clear();publish();
-            if(tak::devFlag("TAK_RETIREMENT_TEST") &&
+            if(ta::devFlag("TA_RETIREMENT_TEST") &&
                (front().units.size()!=world_.units().size() || !frameUnitP(monarch) || frameUnitP(retiredFixtureId)))
                 throw std::runtime_error("compacted render snapshot lost high-ID units");
             SDL_Event key{};key.type=SDL_KEYDOWN;key.key.keysym.sym=SDLK_d;
@@ -2188,8 +2188,8 @@
             check(voiceVolumeSlider(1) && voiceVolumeSlider(7),"a VOLUME slider for every other human");
             check(!voiceVolumeSlider(0) && !voiceVolumeSlider(2) && !voiceVolumeSlider(3),"none for yourself, a computer player or an empty slot");
             check(!has(DiplomacyAction::Volume,1) && !has(DiplomacyAction::Volume,7),"no voice engine: the sliders are greyed");
-            tak::VoiceEngine engine;   // opens nothing: it is never pumped, only asked whether voice is on
-            tak::Settings voiceCfg;
+            ta::VoiceEngine engine;   // opens nothing: it is never pumped, only asked whether voice is on
+            ta::Settings voiceCfg;
             engine.configure(voiceCfg,"");voice_=&engine;drawGiveUnitsMenu(1000,700);
             check(!has(DiplomacyAction::Volume,1) && !has(DiplomacyAction::Volume,7),"voice chat off: the sliders are greyed");
             {   // ...and inert: a press where ALLY's slider sits changes nothing.
@@ -2209,7 +2209,7 @@
                 check(voiceVolume_[1]>=29 && voiceVolume_[1]<=31,"a press sets ALLY's VOLUME where it lands");
                 mouse(SDL_MOUSEBUTTONUP,r.x+r.w*0.3f,r.y+r.h/2,false);
                 // A new game puts every slider back to 100.
-                tak::net::RoomView room;
+                ta::net::RoomView room;
                 for(int i:{0,1,7})room.slots[i].type=1;
                 room.slots[2].type=2;
                 resetDiplomacy(room);
@@ -2233,15 +2233,15 @@
                 mouse(SDL_MOUSEBUTTONDOWN,r7.x+r7.w*0.25f,r7.y+r7.h/2,true);mouse(SDL_MOUSEBUTTONUP,r7.x+r7.w*0.25f,r7.y+r7.h/2,false);
                 check(voiceVolume_[7]>=24 && voiceVolume_[7]<=26 && voiceVolume_[1]>=49 && voiceVolume_[1]<=51,"DEFEATED's slider on its own");
             }
-            if(const char* cap=tak::devEnv("TAK_DIPLOMACY_CAPTURE")) {   // the screen as drawn, to look at
+            if(const char* cap=ta::devEnv("TA_DIPLOMACY_CAPTURE")) {   // the screen as drawn, to look at
                 SDL_SetRenderDrawColor(ren_,40,60,40,255);SDL_RenderClear(ren_);drawGiveUnitsMenu(1000,700);
                 int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
-                if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)tak::png::write(cap,ow,oh,px);
+                if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)ta::png::write(cap,ow,oh,px);
                 voiceCfg.voiceEnabled=false;engine.configure(voiceCfg,"");
                 SDL_SetRenderDrawColor(ren_,40,60,40,255);SDL_RenderClear(ren_);drawGiveUnitsMenu(1000,700);
                 if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0)
-                    tak::png::write(std::string(cap)+".off.png",ow,oh,px);
+                    ta::png::write(std::string(cap)+".off.png",ow,oh,px);
                 voiceCfg.voiceEnabled=true;engine.configure(voiceCfg,"");
             }
             // Push to talk never fires while a text field has focus.
@@ -2267,7 +2267,7 @@
         // 2.1-2.11): per-unit right-clicks on release, the right-drag and armed boxes,
         // P4 (an armed click obeys its cursor), the one picker, the minimap's orders
         // and placement, and the left-click select rules.
-        if (tak::devFlag("TAK_CLICK_TEST")) {
+        if (ta::devFlag("TA_CLICK_TEST")) {
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("clicks: "+what);
                 std::fprintf(stderr,"PASS: clicks: %s\n",what.c_str());
@@ -2276,13 +2276,13 @@
             winW_=W;winH_=H;noFog_=true;edgeScrollOn_=false;uiScale_=1.0f;
             writableWorld().setPlayerCount(2);
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
-            const tak::sim::UnitType *flyerType=nullptr,*transportType=nullptr;
+            const ta::sim::UnitType *flyerType=nullptr,*transportType=nullptr;
             for (const auto& [id,t]:registry_.types()) {
                 if (!flyerType && t.canFly && t.canMove && !t.canTransport && !t.isBuilder && t.canGuard) flyerType=&t;
                 if (!transportType && t.canTransport && t.canFly && t.canMove && !t.hasPrimaryWeaponBlock) transportType=&t;
             }
             check(flyerType && transportType,"fixture has a flyer and a weaponless flying transport");
-            const tak::sim::UnitType* masonType=nullptr;
+            const ta::sim::UnitType* masonType=nullptr;
             for (const auto& [id,t]:registry_.types())
                 if (t.isBuilder && !t.isStructure() && t.canReclaim && !t.hasPrimaryWeaponBlock && !t.canFly &&
                     t.canGuard && !t.canResurrect && !registry_.buildable(id).empty() &&
@@ -2314,14 +2314,14 @@
             };
             // The commands one gesture issues (captured, not applied).
             const auto capture=[&](auto&& gesture) {
-                std::vector<tak::net::Command> cmds;
+                std::vector<ta::net::Command> cmds;
                 ClickScope outer(*this);
                 gesture();
                 cmds=click_->cmds;
                 click_->cmds.clear();
                 return cmds;
             };
-            const auto count=[](const std::vector<tak::net::Command>& cmds,int unit,tak::net::Cmd kind,int target=-999) {
+            const auto count=[](const std::vector<ta::net::Command>& cmds,int unit,ta::net::Cmd kind,int target=-999) {
                 int n=0;
                 for (const auto& c:cmds) n+=c.unitId==unit && c.kind==kind && (target==-999 || c.targetId==target);
                 return n;
@@ -2341,22 +2341,22 @@
             selection_={archer,mason};publish();
             {
                 const auto p=at(enemy1);
-                std::vector<tak::net::Command> pressCmds;
+                std::vector<ta::net::Command> pressCmds;
                 const auto cmds=capture([&] {
                     event(SDL_MOUSEMOTION,0,p.x,p.y);event(SDL_MOUSEBUTTONDOWN,SDL_BUTTON_RIGHT,p.x,p.y);
                     pressCmds=click_->cmds;
                     event(SDL_MOUSEBUTTONUP,SDL_BUTTON_RIGHT,p.x,p.y);
                 });
                 check(pressCmds.empty(),"P3 a right press orders nothing until the release");
-                check(count(cmds,archer,tak::net::Cmd::Attack,enemy1)==1,"2.1 right-click an enemy: the archer attacks it");
-                check(count(cmds,mason,tak::net::Cmd::Move)==1 && cmds.size()==2,"2.1 right-click an enemy: the mason moves there");
+                check(count(cmds,archer,ta::net::Cmd::Attack,enemy1)==1,"2.1 right-click an enemy: the archer attacks it");
+                check(count(cmds,mason,ta::net::Cmd::Move)==1 && cmds.size()==2,"2.1 right-click an enemy: the mason moves there");
             }
             // 2.1 right-click an own unit: the archer guards it.
             selection_={archer,mason};publish();
             {
                 const auto p=at(sword);
                 const auto cmds=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_RIGHT);});
-                check(count(cmds,archer,tak::net::Cmd::Guard,sword)==1,"2.1 right-click an own unit: the archer guards it");
+                check(count(cmds,archer,ta::net::Cmd::Guard,sword)==1,"2.1 right-click an own unit: the archer guards it");
             }
             // 2.2 the right-drag box over both enemies: the archer attacks each, nearest
             // first, the mason clears the box; the cursor says Attack while dragging.
@@ -2364,46 +2364,46 @@
             {
                 const auto p1=at(enemy1),p2=at(enemy2);
                 const float x0=std::min(p1.x,p2.x)-40,y0=std::min(p1.y,p2.y)-40,x1=std::max(p1.x,p2.x)+40,y1=std::max(p1.y,p2.y)+40;
-                tak::CursorId boxCursor=tak::CursorId::Hourglass;
+                ta::CursorId boxCursor=ta::CursorId::Hourglass;
                 const auto cmds=capture([&] {
                     dragTo(x0,y0,x1,y1,SDL_BUTTON_RIGHT);
                     boxCursor=desiredCursor(tint);
                     event(SDL_MOUSEBUTTONUP,SDL_BUTTON_RIGHT,x1,y1);
                 });
-                check(boxCursor==tak::CursorId::Attack,"2.2 the box cursor over enemies with an archer: Attack");
+                check(boxCursor==ta::CursorId::Attack,"2.2 the box cursor over enemies with an archer: Attack");
                 int first=-1,firstQueue=-1,second=-1,secondQueue=-1;
                 for (const auto& c:cmds)
-                    if (c.unitId==archer && c.kind==tak::net::Cmd::Attack) {
+                    if (c.unitId==archer && c.kind==ta::net::Cmd::Attack) {
                         if (first<0) {first=c.targetId;firstQueue=c.queue;}
                         else {second=c.targetId;secondQueue=c.queue;}
                     }
                 check(first==enemy1 && second==enemy2 && firstQueue==0 && secondQueue==1,
                       "2.2 the archer attacks both enemies, nearest first, the second queued");
-                check(count(cmds,mason,tak::net::Cmd::ReclaimArea)==1,"2.2 the mason (no attack order) clears the box");
+                check(count(cmds,mason,ta::net::Cmd::ReclaimArea)==1,"2.2 the mason (no attack order) clears the box");
                 // An empty box with only an attacker: Normal, and nothing.
                 selection_={archer};publish();
                 const auto p=at(sword);
-                tak::CursorId emptyCursor=tak::CursorId::Hourglass;
+                ta::CursorId emptyCursor=ta::CursorId::Hourglass;
                 const auto none=capture([&] {
                     dragTo(p.x-200,p.y-150,p.x-100,p.y-80,SDL_BUTTON_RIGHT);
                     emptyCursor=desiredCursor(tint);
                     event(SDL_MOUSEBUTTONUP,SDL_BUTTON_RIGHT,p.x-100,p.y-80);
                 });
-                check(emptyCursor==tak::CursorId::Normal && none.empty(),"2.2 an empty box with only an attacker: Normal, nothing");
+                check(emptyCursor==ta::CursorId::Normal && none.empty(),"2.2 an empty box with only an attacker: Normal, nothing");
             }
             // 2.2 step L: a lone weaponless transport loads the own units in the box.
             selection_={carrier};publish();
             {
                 const auto p1=at(sword),p2=at(mason);
                 const float x0=std::min(p1.x,p2.x)-40,y0=std::min(p1.y,p2.y)-40,x1=std::max(p1.x,p2.x)+40,y1=std::max(p1.y,p2.y)+40;
-                tak::CursorId boxCursor=tak::CursorId::Hourglass;
+                ta::CursorId boxCursor=ta::CursorId::Hourglass;
                 const auto cmds=capture([&] {
                     dragTo(x0,y0,x1,y1,SDL_BUTTON_RIGHT);
                     boxCursor=desiredCursor(tint);
                     event(SDL_MOUSEBUTTONUP,SDL_BUTTON_RIGHT,x1,y1);
                 });
-                check(boxCursor==tak::CursorId::Load,"2.2 the box cursor for a lone transport: Load");
-                check(count(cmds,sword,tak::net::Cmd::Load,carrier)==1 && count(cmds,mason,tak::net::Cmd::Load,carrier)==1,
+                check(boxCursor==ta::CursorId::Load,"2.2 the box cursor for a lone transport: Load");
+                check(count(cmds,sword,ta::net::Cmd::Load,carrier)==1 && count(cmds,mason,ta::net::Cmd::Load,carrier)==1,
                       "2.2 a lone transport picks up the units in the box");
             }
             // C5: a loaded transport moves on a right-click; Alt+right-click unloads.
@@ -2415,11 +2415,11 @@
                 const auto q=at(archer);
                 const float gx=q.x-150,gy=q.y+120;
                 auto cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_RIGHT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Move,"C5 a loaded transport moves on a right-click");
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Move,"C5 a loaded transport moves on a right-click");
                 SDL_SetModState(KMOD_LALT);
                 cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_RIGHT);});
                 SDL_SetModState(KMOD_NONE);
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Unload,"C5 Alt+right-click unloads it");
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Unload,"C5 Alt+right-click unloads it");
                 t.cargo.clear();p.inTransport=0;publish();
             }
             // P4 / C3: armed GUARD, a ground unit over an own flyer: Normal, nothing,
@@ -2428,14 +2428,14 @@
             {
                 const auto p=at(flyerA);
                 event(SDL_MOUSEMOTION,0,p.x,p.y);
-                check(desiredCursor(tint)==tak::CursorId::Normal,"C3 armed G, ground unit over a flyer: Normal");
+                check(desiredCursor(tint)==ta::CursorId::Normal,"C3 armed G, ground unit over a flyer: Normal");
                 const auto cmds=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_LEFT);});
                 check(cmds.empty() && pendingCmd_=='g',"P4 / C3 the click does nothing and G stays armed");
                 selection_={archer,flyerB};publish();
                 event(SDL_MOUSEMOTION,0,p.x,p.y);
-                check(desiredCursor(tint)==tak::CursorId::Defend,"C3 a flyer in the selection: Defend");
+                check(desiredCursor(tint)==ta::CursorId::Defend,"C3 a flyer in the selection: Defend");
                 const auto both=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_LEFT);});
-                check(count(both,archer,tak::net::Cmd::Guard,flyerA)==1 && count(both,flyerB,tak::net::Cmd::Guard,flyerA)==1 &&
+                check(count(both,archer,ta::net::Cmd::Guard,flyerA)==1 && count(both,flyerB,ta::net::Cmd::Guard,flyerA)==1 &&
                       pendingCmd_==0,"C3 every unit guards the flyer, and G disarms");
             }
             // C1: armed ATTACK over an own unit or ground fires at the click point
@@ -2444,10 +2444,10 @@
             {
                 const auto p=at(mason);
                 event(SDL_MOUSEMOTION,0,p.x,p.y);
-                check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A over an own unit: Attack");
+                check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A over an own unit: Attack");
                 const auto cmds=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_LEFT);});
                 float wx=0,wz=0;pickWorld(p.x,p.y,wx,wz);
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::AttackGround && cmds[0].unitId==archer &&
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackGround && cmds[0].unitId==archer &&
                       cmds[0].targetId==0 && std::abs(cmds[0].x-wx)<2 && std::abs(cmds[0].z-wz)<2,
                       "C1 armed A over an own unit: the archer fires at the click point, not at the unit");
             }
@@ -2459,14 +2459,14 @@
                 check(!liveWorld()->clearableBlockerAtPoint(wx,wz),"fixture: bare ground at the point");
                 selection_={archer,sword};pendingCmd_='a';publish();
                 event(SDL_MOUSEMOTION,0,gx,gy);
-                check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A on ground, archer + swordsman: Attack");
+                check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A on ground, archer + swordsman: Attack");
                 auto cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::AttackGround && cmds[0].unitId==archer &&
-                      cmds[0].queue==tak::net::kQueueReplace && pendingCmd_==0,
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackGround && cmds[0].unitId==archer &&
+                      cmds[0].queue==ta::net::kQueueReplace && pendingCmd_==0,
                       "C1 armed A on ground: only the archer fires at the point, plain replaces, A disarms");
                 selection_={sword};pendingCmd_='a';publish();
                 event(SDL_MOUSEMOTION,0,gx,gy);
-                check(desiredCursor(tint)==tak::CursorId::TooFar,"C1 armed A on bare ground, a swordsman alone: TooFar");
+                check(desiredCursor(tint)==ta::CursorId::TooFar,"C1 armed A on bare ground, a swordsman alone: TooFar");
                 cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
                 check(cmds.empty(),"C1 armed A on bare ground: the swordsman gets nothing");
                 // Over a clearable blocking feature the swordsman fires (fells) there too.
@@ -2474,46 +2474,46 @@
                 for (float y=60;y<H-160 && tx<0;y+=6)
                     for (float x=60;x<W-60 && tx<0;x+=6) {
                         float fx=0,fz=0;pickWorld(x,y,fx,fz);
-                        if (!hoveredUnitAt(tak::client::PointerArea::World,x,y) && liveWorld()->clearableBlockerAtPoint(fx,fz)) {tx=x;ty=y;}
+                        if (!hoveredUnitAt(ta::client::PointerArea::World,x,y) && liveWorld()->clearableBlockerAtPoint(fx,fz)) {tx=x;ty=y;}
                     }
                 if (tx>=0) {
                     selection_={sword};pendingCmd_='a';publish();
                     event(SDL_MOUSEMOTION,0,tx,ty);
-                    check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A over a clearable blocker, a swordsman: Attack");
+                    check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A over a clearable blocker, a swordsman: Attack");
                     cmds=capture([&] {clickAt(tx,ty,SDL_BUTTON_LEFT);});
-                    check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::AttackGround && cmds[0].unitId==sword,
+                    check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackGround && cmds[0].unitId==sword,
                           "C1 armed A over a clearable blocker: the swordsman fires at the point");
                 } else std::fprintf(stderr,"clicks: no clearable blocker in view; melee-over-feature row skipped\n");
                 // Shift appends with the toggle; Ctrl goes to the front with it.
                 selection_={archer};pendingCmd_='a';publish();
                 SDL_SetModState(KMOD_LSHIFT);
                 cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::AttackGround &&
-                      cmds[0].queue==(tak::net::kQueueAppend|tak::net::kQueueToggle) && pendingCmd_=='a',
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackGround &&
+                      cmds[0].queue==(ta::net::kQueueAppend|ta::net::kQueueToggle) && pendingCmd_=='a',
                       "C1 Shift armed A on ground: appended, toggling, A stays armed");
                 SDL_SetModState(KMOD_NONE);event(SDL_MOUSEMOTION,0,gx,gy);   // Shift let go: A disarms
                 pendingCmd_='a';SDL_SetModState(KMOD_LCTRL);
                 cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].queue==(tak::net::kQueueFront|tak::net::kQueueToggle),
+                check(cmds.size()==1 && cmds[0].queue==(ta::net::kQueueFront|ta::net::kQueueToggle),
                       "C1 Ctrl armed A on ground: at the front, toggling");
                 SDL_SetModState(KMOD_NONE);
                 // A Legion net game packs the click's run as one explicit order.
-                const tak::sim::UnitType* gunship=nullptr;
+                const ta::sim::UnitType* gunship=nullptr;
                 for (const auto& [id,t]:registry_.types())
                     if (t.canFly && t.canMove && !t.isBuilder && t.hasPrimaryWeaponBlock &&
-                        tak::sim::World::suppressRule(t,0)==tak::sim::World::SuppressRule::Fire &&
+                        ta::sim::World::suppressRule(t,0)==ta::sim::World::SuppressRule::Fire &&
                         (!gunship || id<gunship->id)) gunship=&t;
                 check(gunship!=nullptr,"fixture: an armed flyer the resolver gives a point attack");
                 const int g1=spawn(gunship->id,cx-200,cz-200,0,localPlayer_),g2=spawn(gunship->id,cx-260,cz-200,0,localPlayer_);
                 selection_={archer,g1,g2};pendingCmd_='a';publish();
                 event(SDL_MOUSEMOTION,0,gx,gy);
-                check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A on ground, archer + flyers: Attack");
+                check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A on ground, archer + flyers: Attack");
                 cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
                 uint32_t serial=1;
-                const auto packed=tak::net::packClick(cmds,{},serial);
-                check(cmds.size()==3 && count(cmds,g1,tak::net::Cmd::AttackGround)==1 &&
-                      packed.size()==1 && packed[0].kind==tak::net::Cmd::Order &&
-                      packed[0].order->members.size()==3 && packed[0].order->tmpl.kind==tak::net::Cmd::AttackGround,
+                const auto packed=ta::net::packClick(cmds,{},serial);
+                check(cmds.size()==3 && count(cmds,g1,ta::net::Cmd::AttackGround)==1 &&
+                      packed.size()==1 && packed[0].kind==ta::net::Cmd::Order &&
+                      packed[0].order->members.size()==3 && packed[0].order->tmpl.kind==ta::net::Cmd::AttackGround,
                       "C1 armed A on ground with an archer and two flyers: one AttackGround order over all three ("+
                       gunship->id+")");
                 for (int id:{g1,g2}) writableWorld().destroy(id);
@@ -2525,7 +2525,7 @@
             // factory or a repeating mobile builder, armed or not, sets a fight-move
             // rally at the point and keeps producing. Applied, not only captured.
             {
-                const tak::sim::UnitType* factoryType=nullptr;
+                const ta::sim::UnitType* factoryType=nullptr;
                 for (const auto& [id,t]:registry_.types())
                     if (t.producesUnits() && !t.hasPrimaryWeaponBlock && !registry_.buildable(id).empty() &&
                         id.rfind("ara",0)==0 && (!factoryType || id<factoryType->id)) factoryType=&t;
@@ -2544,9 +2544,9 @@
                 check(world_.unit(lordId)->repeatType && world_.unit(tamerId)->repeatType,"fixture: both builders repeat");
                 publish();
                 const float gx=float(W)/2+40,gy=float(H)/2+200;
-                check(!hoveredUnitAt(tak::client::PointerArea::World,gx,gy),"fixture: no unit under the ground point");
-                const auto apply=[&](const std::vector<tak::net::Command>& cmds) {
-                    for (auto c:cmds) {c.player=uint8_t(localPlayer_);tak::sim::applyCommand(writableWorld(),registry_,c);}
+                check(!hoveredUnitAt(ta::client::PointerArea::World,gx,gy),"fixture: no unit under the ground point");
+                const auto apply=[&](const std::vector<ta::net::Command>& cmds) {
+                    for (auto c:cmds) {c.player=uint8_t(localPlayer_);ta::sim::applyCommand(writableWorld(),registry_,c);}
                     publish();
                 };
                 const auto fightLeg=[&](int id) {
@@ -2556,9 +2556,9 @@
                 // A factory alone: Attack cursor, one AttackMove, a fight leg on its rally.
                 selection_={factory};pendingCmd_='a';publish();
                 event(SDL_MOUSEMOTION,0,gx,gy);
-                check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A on ground, a factory alone: Attack");
+                check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A on ground, a factory alone: Attack");
                 auto cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::AttackMove && cmds[0].unitId==factory,
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackMove && cmds[0].unitId==factory,
                       "C1 armed A on ground, a factory alone: exactly one AttackMove");
                 apply(cmds);
                 check(fightLeg(factory) && world_.unit(factory)->orders.empty(),
@@ -2567,10 +2567,10 @@
                 writableWorld().unit(factory)->rally.clear();
                 selection_={factory,archer};pendingCmd_='a';publish();
                 event(SDL_MOUSEMOTION,0,gx,gy);
-                check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A on ground, factory + archer: Attack");
+                check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A on ground, factory + archer: Attack");
                 cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
-                check(cmds.size()==2 && count(cmds,archer,tak::net::Cmd::AttackGround)==1 &&
-                      count(cmds,factory,tak::net::Cmd::AttackMove)==1,
+                check(cmds.size()==2 && count(cmds,archer,ta::net::Cmd::AttackGround)==1 &&
+                      count(cmds,factory,ta::net::Cmd::AttackMove)==1,
                       "C1 armed A on ground, factory + archer: AttackGround for the archer, AttackMove for the factory");
                 apply(cmds);
                 check(fightLeg(factory),"C1 factory + archer: the factory's rally gains a fight leg");
@@ -2582,10 +2582,10 @@
                     const auto* repeat=world_.unit(b)->repeatType;
                     selection_={b};pendingCmd_='a';publish();
                     event(SDL_MOUSEMOTION,0,gx,gy);
-                    check(desiredCursor(tint)==tak::CursorId::Attack,"C1 armed A on ground, "+name+": Attack");
+                    check(desiredCursor(tint)==ta::CursorId::Attack,"C1 armed A on ground, "+name+": Attack");
                     cmds=capture([&] {clickAt(gx,gy,SDL_BUTTON_LEFT);});
-                    check(cmds.size()==1 && count(cmds,b,tak::net::Cmd::AttackMove)==1 &&
-                          count(cmds,b,tak::net::Cmd::AttackGround)==0,
+                    check(cmds.size()==1 && count(cmds,b,ta::net::Cmd::AttackMove)==1 &&
+                          count(cmds,b,ta::net::Cmd::AttackGround)==0,
                           "C1 armed A on ground, "+name+": one AttackMove, no AttackGround");
                     apply(cmds);
                     check(fightLeg(b) && world_.unit(b)->repeatType==repeat && world_.unit(b)->orders.empty(),
@@ -2596,7 +2596,7 @@
                 writableWorld().unit(factory)->rally.clear();
                 selection_={factory};pendingCmd_='a';publish();
                 const auto f=at(factory);
-                check(hoveredUnitAt(tak::client::PointerArea::World,f.x,f.y)==frameUnitP(factory),
+                check(hoveredUnitAt(ta::client::PointerArea::World,f.x,f.y)==frameUnitP(factory),
                       "fixture: the pointer is over the factory");
                 cmds=capture([&] {clickAt(f.x,f.y,SDL_BUTTON_LEFT);});
                 check(cmds.empty() && world_.unit(factory)->rally.empty(),
@@ -2609,26 +2609,26 @@
             {
                 const auto p1=at(enemy1),p2=at(enemy2);
                 const float x0=std::min(p1.x,p2.x)-40,y0=std::min(p1.y,p2.y)-40,x1=std::max(p1.x,p2.x)+40,y1=std::max(p1.y,p2.y)+40;
-                tak::CursorId boxCursor=tak::CursorId::Hourglass;
+                ta::CursorId boxCursor=ta::CursorId::Hourglass;
                 const auto cmds=capture([&] {
                     dragTo(x0,y0,x1,y1,SDL_BUTTON_LEFT);
                     boxCursor=desiredCursor(tint);
                     event(SDL_MOUSEBUTTONUP,SDL_BUTTON_LEFT,x1,y1);
                 });
-                check(boxCursor==tak::CursorId::Attack,"2.9 the armed A box cursor: Attack");
-                check(count(cmds,archer,tak::net::Cmd::Attack)==2 && count(cmds,mason,tak::net::Cmd::ReclaimArea)==0 &&
+                check(boxCursor==ta::CursorId::Attack,"2.9 the armed A box cursor: Attack");
+                check(count(cmds,archer,ta::net::Cmd::Attack)==2 && count(cmds,mason,ta::net::Cmd::ReclaimArea)==0 &&
                       pendingCmd_==0,"2.9 the armed A box attacks both, the mason does not clear, A disarms");
                 check(selection_==std::vector<int>({archer,mason}),"2.9 the armed box leaves the selection");
             }
             // 2.3 armed MOVE over a damaged own unit: the mason repairs it.
             selection_={mason};pendingCmd_='m';
-            writableWorld().unit(sword)->hp=tak::sim::Fixed::fromInt(10);publish();
+            writableWorld().unit(sword)->hp=ta::sim::Fixed::fromInt(10);publish();
             {
                 const auto p=at(sword);
                 event(SDL_MOUSEMOTION,0,p.x,p.y);
-                check(desiredCursor(tint)==tak::CursorId::Repair,"2.3 armed M over a damaged unit with a mason: Repair");
+                check(desiredCursor(tint)==ta::CursorId::Repair,"2.3 armed M over a damaged unit with a mason: Repair");
                 const auto cmds=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_LEFT);});
-                check(count(cmds,mason,tak::net::Cmd::Repair,sword)==1,"2.3 armed M over a damaged unit: the mason repairs it");
+                check(count(cmds,mason,ta::net::Cmd::Repair,sword)==1,"2.3 armed M over a damaged unit: the mason repairs it");
             }
             // 2.10 the minimap: a right-click on an enemy dot attacks it, the camera stays.
             selection_={archer};pendingCmd_=0;publish();
@@ -2640,20 +2640,20 @@
                 const float ox=mapView_.offX();
                 auto cmds=capture([&] {clickAt(mx,my,SDL_BUTTON_RIGHT);});
                 check(mapView_.offX()==ox,"2.10 a right press on the minimap leaves the camera");
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Attack,"2.10 a minimap right-click on an enemy dot attacks it");
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Attack,"2.10 a minimap right-click on an enemy dot attacks it");
                 cmds=capture([&] {clickAt(r.x+2,r.y+r.h-2,SDL_BUTTON_RIGHT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Move,"2.10 a minimap right-click on ground moves");
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Move,"2.10 a minimap right-click on ground moves");
                 pendingCmd_='a';
                 cmds=capture([&] {clickAt(mx,my,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Attack && mapView_.offX()==ox,
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Attack && mapView_.offX()==ox,
                       "2.10 armed A on an enemy dot attacks it");
                 pendingCmd_='a';
                 float gx=0,gz=0;minimapToWorld(r.x+2,r.y+r.h-2,W,H,gx,gz);
                 cmds=capture([&] {clickAt(r.x+2,r.y+r.h-2,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::AttackGround && std::abs(cmds[0].x-gx)<2 && std::abs(cmds[0].z-gz)<2 &&
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::AttackGround && std::abs(cmds[0].x-gx)<2 && std::abs(cmds[0].z-gz)<2 &&
                       mapView_.offX()==ox,"2.10 / C1 armed A on minimap ground fires at that point");
                 // C2b placement: the mason places a building at a valid minimap point.
-                const tak::sim::UnitType* site=nullptr;
+                const ta::sim::UnitType* site=nullptr;
                 for (const auto& id:registry_.buildable(masonType->id))
                     if (const auto* t=registry_.find(id); t && t->isStructure() && !t->onMana) {site=t;break;}
                 check(site!=nullptr,"fixture: the mason builds a structure");
@@ -2667,9 +2667,9 @@
                     }
                 check(px>=0,"fixture: a valid minimap site");
                 event(SDL_MOUSEMOTION,0,px,py);
-                check(desiredCursor(tint)==tak::CursorId::FindSite,"C2 placement over a valid minimap point: FindSite");
+                check(desiredCursor(tint)==ta::CursorId::FindSite,"C2 placement over a valid minimap point: FindSite");
                 cmds=capture([&] {clickAt(px,py,SDL_BUTTON_LEFT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Build && !placing_ && mapView_.offX()==ox,
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Build && !placing_ && mapView_.offX()==ox,
                       "C2 a minimap click places the building there; the camera stays");
                 placing_=nullptr;
             }
@@ -2678,7 +2678,7 @@
             {
                 const auto p=at(carrier);
                 const auto cmds=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_RIGHT);});
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Load && cmds[0].unitId==sword &&
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Load && cmds[0].unitId==sword &&
                       cmds[0].targetId==carrier,"C4 a passenger that fits boards its own transport");
             }
             // P1 / 2.11: the click picks the smallest unit under the pointer, here a
@@ -2694,7 +2694,7 @@
                 const bool overK=unitUnderCursor(*frameUnitP(keep),p.x,p.y,&dk,&sk);
                 const bool overS=unitUnderCursor(*frameUnitP(sword),p.x,p.y,&ds,&ss);
                 check(overK && overS && ss<sk,"fixture: the pointer is over both, the swordsman smaller");
-                check(hoveredUnitAt(tak::client::PointerArea::World,p.x,p.y)==frameUnitP(sword),
+                check(hoveredUnitAt(ta::client::PointerArea::World,p.x,p.y)==frameUnitP(sword),
                       "P1 the hovered unit is the smallest under the pointer");
                 selection_.clear();publish();
                 clickAt(p.x,p.y,SDL_BUTTON_LEFT);
@@ -2724,7 +2724,7 @@
         // and the armed CLEAR click each give the three builders one command apiece,
         // the soldier none (its queue untouched). Also: a map feature the sim removed
         // at load (an earlier overlapped one, 495360) is not drawn or pickable.
-        if (tak::devFlag("TAK_RECLAIM_FANOUT_TEST")) {
+        if (ta::devFlag("TA_RECLAIM_FANOUT_TEST")) {
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("reclaim fan-out: "+what);
                 std::fprintf(stderr,"PASS: reclaim fan-out: %s\n",what.c_str());
@@ -2750,7 +2750,7 @@
                 std::fprintf(stderr,"reclaim fan-out: %zu removed map features, %zu drawn\n",ghosts,drawn);
                 check(drawn==0,"no feature removed at load is drawn ("+std::to_string(ghosts)+" removed)");
             }
-            const tak::sim::UnitType* builderType=nullptr;
+            const ta::sim::UnitType* builderType=nullptr;
             for (const char* id:{"aramage","araking"})
                 if (const auto* t=registry_.find(id); t && t->isBuilder && t->canMove && t->canReclaim) {builderType=t;break;}
             check(builderType!=nullptr,"fixture has a mobile reclaimer type");
@@ -2766,7 +2766,7 @@
             const auto reset=[&] {
                 for (int id:builders) {writableWorld().stop(id);writableWorld().unit(id)->orders.clear();}
                 writableWorld().stop(soldier);
-                tak::net::Command m;m.kind=tak::net::Cmd::Move;m.unitId=soldier;m.player=uint8_t(localPlayer_);
+                ta::net::Command m;m.kind=ta::net::Cmd::Move;m.unitId=soldier;m.player=uint8_t(localPlayer_);
                 m.x=cx-400;m.z=cz-300;apply(m);   // a queue the clear must not touch
                 selection_=builders;selection_.push_back(soldier);publish();
             };
@@ -2775,7 +2775,7 @@
                 return o.size()==1 && o.front().goal && !o.front().reclaimArea;
             };
             // Every builder got exactly one command of `kind`; the soldier got none.
-            const auto fanned=[&](const std::vector<tak::net::Command>& cmds,tak::net::Cmd kind) {
+            const auto fanned=[&](const std::vector<ta::net::Command>& cmds,ta::net::Cmd kind) {
                 if (cmds.size()!=builders.size()) return false;
                 for (int id:builders) {
                     int n=0;
@@ -2793,7 +2793,7 @@
             };
             // Right-drag box through the real input().
             reset();
-            std::vector<tak::net::Command> cmds;
+            std::vector<ta::net::Command> cmds;
             {
                 ClickScope outer(*this);
                 event(SDL_MOUSEBUTTONDOWN,SDL_BUTTON_RIGHT,300,200);
@@ -2802,7 +2802,7 @@
                 cmds=click_->cmds;
             }
             std::fprintf(stderr,"reclaim fan-out: box issued %zu commands\n",cmds.size());
-            check(fanned(cmds,tak::net::Cmd::ReclaimArea),"a box gives each of 3 reclaimers one ReclaimArea, the soldier none");
+            check(fanned(cmds,ta::net::Cmd::ReclaimArea),"a box gives each of 3 reclaimers one ReclaimArea, the soldier none");
             check(cmds[0].x==cmds[1].x && cmds[0].z2==cmds[2].z2 && !cmds[0].queue,"every builder clears the same box, unqueued");
             for (int id:builders) {
                 const auto& o=world_.unit(id)->orders;
@@ -2812,7 +2812,7 @@
             // Shift queues per unit.
             reset();
             for (int id:builders) {
-                tak::net::Command m;m.kind=tak::net::Cmd::Move;m.unitId=id;m.player=uint8_t(localPlayer_);
+                ta::net::Command m;m.kind=ta::net::Cmd::Move;m.unitId=id;m.player=uint8_t(localPlayer_);
                 m.x=cx;m.z=cz+200;apply(m);
             }
             publish();
@@ -2825,7 +2825,7 @@
                 cmds=click_->cmds;
             }
             SDL_SetModState(KMOD_NONE);
-            check(fanned(cmds,tak::net::Cmd::ReclaimArea) && cmds[0].queue && cmds[2].queue,"Shift-box queues one ReclaimArea per builder");
+            check(fanned(cmds,ta::net::Cmd::ReclaimArea) && cmds[0].queue && cmds[2].queue,"Shift-box queues one ReclaimArea per builder");
             for (int id:builders) {
                 const auto& o=world_.unit(id)->orders;
                 check(o.size()>=2 && !o.front().reclaimArea && o.back().reclaimArea,
@@ -2853,13 +2853,13 @@
             {
                 // Retail's mode 1 (0x4de530): a unit that can neither raise nor reclaim
                 // moves to the point.
-                std::vector<tak::net::Command> reclaims;
+                std::vector<ta::net::Command> reclaims;
                 int soldierMoves=0;
                 for (const auto& c:cmds) {
-                    if (c.unitId==soldier) soldierMoves+=c.kind==tak::net::Cmd::Move;
+                    if (c.unitId==soldier) soldierMoves+=c.kind==ta::net::Cmd::Move;
                     else reclaims.push_back(c);
                 }
-                check(fanned(reclaims,tak::net::Cmd::Reclaim) && reclaims[0].targetId==fid && reclaims[2].targetId==fid &&
+                check(fanned(reclaims,ta::net::Cmd::Reclaim) && reclaims[0].targetId==fid && reclaims[2].targetId==fid &&
                       soldierMoves==1 && cmds.size()==builders.size()+1,
                       "a right-click on a feature gives each reclaimer one Reclaim of it, the soldier a Move there");
             }
@@ -2869,7 +2869,7 @@
                 issueArmedOrder('c',fx,fz,false,false);
                 cmds=click_->cmds;
             }
-            check(fanned(cmds,tak::net::Cmd::Reclaim) && cmds[1].targetId==fid,
+            check(fanned(cmds,ta::net::Cmd::Reclaim) && cmds[1].targetId==fid,
                   "an armed CLEAR click gives each reclaimer one Reclaim, the soldier none");
             check(soldierKept(),"armed CLEAR leaves the soldier's order alone");
             // A body: retail's resolver runs per unit (4de530 mode 1
@@ -2896,18 +2896,18 @@
                 check(raiseTargetAt(bx,bz)==dead,"the body picks as a raise target under its centre");
                 // Right-click interface: a body a selected unit can raise shows the green
                 // gem; Revive is the armed command's cursor.
-                check(hoverCursor(bx,bz,nullptr)==tak::CursorId::Green,"the cursor over it is Green");
-                const auto raised=[&](const std::vector<tak::net::Command>& cmds,const char* what,bool soldierMoves) {
+                check(hoverCursor(bx,bz,nullptr)==ta::CursorId::Green,"the cursor over it is Green");
+                const auto raised=[&](const std::vector<ta::net::Command>& cmds,const char* what,bool soldierMoves) {
                     int resurrect=0,reclaim=0,moves=0,other=0;
                     for (const auto& c:cmds) {
-                        if (c.kind==tak::net::Cmd::Resurrect && c.unitId==caster && c.targetId==dead) ++resurrect;
-                        else if (c.kind==tak::net::Cmd::Reclaim && c.unitId==mason && c.targetId==-dead) ++reclaim;
-                        else if (c.kind==tak::net::Cmd::Move && c.unitId==soldier) ++moves;
+                        if (c.kind==ta::net::Cmd::Resurrect && c.unitId==caster && c.targetId==dead) ++resurrect;
+                        else if (c.kind==ta::net::Cmd::Reclaim && c.unitId==mason && c.targetId==-dead) ++reclaim;
+                        else if (c.kind==ta::net::Cmd::Move && c.unitId==soldier) ++moves;
                         else ++other;
                     }
                     check(resurrect==1 && reclaim==1 && other==0 && moves==(soldierMoves ? 1 : 0),what);
                 };
-                std::vector<tak::net::Command> bodyCmds;
+                std::vector<ta::net::Command> bodyCmds;
                 {
                     ClickScope outer(*this);
                     rightClickOrder(bx,bz,false);
@@ -2929,7 +2929,7 @@
             std::fprintf(stderr,"PASS: reclaim fan-out to every selected reclaimer\n");
             return;
         }
-        if (tak::devFlag("TAK_SELFDESTRUCT_NOTICE_TEST")) {
+        if (ta::devFlag("TA_SELFDESTRUCT_NOTICE_TEST")) {
             // Ctrl+Shift+D through the real key path: the notice reads the unit's
             // own countdown (selfdestructcountdown, 2 s) and counts it down with
             // the sim, then lets go once the unit has left.
@@ -2966,7 +2966,7 @@
             std::fprintf(stderr,"PASS: self-destruct notice follows the countdown\n");
             return;
         }
-        if (tak::devFlag("TAK_IDLE_BUILDERS_TEST")) {
+        if (ta::devFlag("TA_IDLE_BUILDERS_TEST")) {
             // IDLE BUILDERS: one portrait per type of idle builder or factory of the local
             // player, a click selects the next one and goes to it, Shift selects them all,
             // TOP / MIDDLE / BOTTOM stack in that order, OFF and a watcher show none.
@@ -3004,7 +3004,7 @@
             check(idleRects_.front().type->commander,"the Monarch comes first");
             check(iconOf("zonhand") && !idleRects_.back().type->commander && idleRects_.back().type->isStructure(),
                   "factories come last");
-            const auto rank=[](const tak::sim::UnitType* t){return t->commander ? 0 : t->isStructure() ? 2 : 1;};
+            const auto rank=[](const ta::sim::UnitType* t){return t->commander ? 0 : t->isStructure() ? 2 : 1;};
             bool ordered=true;
             for (size_t i=1;i<idleRects_.size();++i) {
                 const auto *a=idleRects_[i-1].type,*b=idleRects_[i].type;
@@ -3039,7 +3039,7 @@
             if (settings_) {
                 settings_->idleBuilders=2;applySettings(*settings_);frame();
                 const float before=idleRects_.empty() ? -1 : idleRects_.front().r.y;
-                openOptions(tak::OptionsPage::Interface);   // IDLE BUILDERS is on USER INTERFACE
+                openOptions(ta::OptionsPage::Interface);   // IDLE BUILDERS is on USER INTERFACE
                 check(options_!=nullptr,"Options opens in game");
                 options_->render(W,H);
                 const auto press=[&](float x,float y) {
@@ -3071,7 +3071,7 @@
             std::fprintf(stderr,"PASS: idle builders strip\n");
             return;
         }
-        if (tak::devFlag("TAK_STATUE_TEST")) {
+        if (ta::devFlag("TA_STATUE_TEST")) {
             // A unit that dies petrified or frozen stands as a statue drawn in its
             // side's stone or ice texture (Visual::statue), not in its own colours.
             const auto check=[](bool ok,const std::string& what) {
@@ -3087,7 +3087,7 @@
             // Petrified units take no damage: the stone one is petrified between
             // the killing blow and the death, as when its Monarch falls.
             writableWorld().unit(frozen)->frozenFor=300;
-            {tak::sim::Weapon k;k.damage=100000;k.range=100;
+            {ta::sim::Weapon k;k.damage=100000;k.range=100;
              writableWorld().debugApplyHit(k,frozen,0);writableWorld().debugApplyHit(k,stoned,0);}
             writableWorld().unit(stoned)->stonedFor=300;
             for (int i=0;i<90;++i) writableWorld().tick(1.f/30);
@@ -3098,7 +3098,7 @@
             int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
             std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
             check(SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4)==0,"frame read back");
-            if (const char* shot=tak::devEnv("TAK_STATUE_SHOT")) tak::png::write(shot,ow,oh,px);
+            if (const char* shot=ta::devEnv("TA_STATUE_SHOT")) ta::png::write(shot,ow,oh,px);
             // Pixels round each body: icy blue, neutral grey, or the archer's red.
             struct Count {int ice=0,grey=0,red=0;};
             const auto count=[&](int id) {
@@ -3125,7 +3125,7 @@
             check(stone.grey>150 && stone.red<10 && stone.ice<10,"the petrified archer is drawn in stone");
             return;
         }
-        if (tak::devFlag("TAK_OUTPUT_STANCE_TEST")) {
+        if (ta::devFlag("TA_OUTPUT_STANCE_TEST")) {
             // A finished production building offers the stance buttons, none lit
             // until one is chosen; the chosen one is lit (its output stance, not
             // the building's own), and a new unit takes it.
@@ -3147,7 +3147,7 @@
             const auto has=[&](char c){return std::any_of(buttons.begin(),buttons.end(),[&](const auto& b){return b.second==c;});};
             check(has('O') && has('D') && has('H'),"an idle finished Barracks shows Offensive, Defensive and Passive");
             check(!lit('O') && !lit('D') && !lit('H'),"none is lit until one is chosen");
-            issuePerUnit(tak::net::Cmd::Stance,2);publish();
+            issuePerUnit(ta::net::Cmd::Stance,2);publish();
             check(lit('H') && !lit('D'),"Passive chosen is lit");
             writableWorld().player(localPlayer_).mana=1e6;
             writableWorld().train(keep,registry_.find("arasword"),1);
@@ -3160,11 +3160,11 @@
             check(made && world_.unit(made)->stance==2,"its new unit starts Passive");
             return;
         }
-        if (tak::devFlag("TAK_AREA_GHOST_TEST")) {
+        if (ta::devFlag("TA_AREA_GHOST_TEST")) {
             // A lodestone area job ghosts every deposit it will build, not only the
             // next (GameView::areaBuildPlan). An Elsin is given the box round the
             // deposits nearest the map's centre; the frame is drawn and, with
-            // TAK_AREA_GHOST_CAPTURE, saved.
+            // TA_AREA_GHOST_CAPTURE, saved.
             constexpr int W=1200,H=800;
             winW_=W;winH_=H;noFog_=true;edgeScrollOn_=false;uiScale_=1.0f;
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
@@ -3208,26 +3208,26 @@
             if (const UnitR* u=frameUnitP(builder))
                 for (const auto& o:areaBuildPlan(*u)) planned+=o.trailPreview && o.buildType && o.buildRectangle;
             for (int i=0;i<20;++i) {beginFrame();prepare(W,H);draw(W,H);}   // terrain tiles stream in
-            if (const char* cap=tak::devEnv("TAK_AREA_GHOST_CAPTURE")) {
+            if (const char* cap=ta::devEnv("TA_AREA_GHOST_CAPTURE")) {
                 int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 std::vector<uint8_t> px4(size_t(ow)*size_t(oh)*4);
                 if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px4.data(),ow*4)==0)
-                    tak::png::write(cap,ow,oh,px4);
+                    ta::png::write(cap,ow,oh,px4);
             }
             std::fprintf(stderr,"area ghosts: %zu deposits in the box, %zu planned ghosts\n",spots.size(),planned);
             if (planned<spots.size()) throw std::runtime_error("area ghosts: not every deposit has a ghost");
             std::fprintf(stderr,"PASS: an area lodestone job ghosts every deposit it will build\n");
             return;
         }
-        if (tak::devFlag("TAK_UNIT_SPOTS_TEST")) {
+        if (ta::devFlag("TA_UNIT_SPOTS_TEST")) {
             // Destination markers (GameView::drawUnitSpots): a mixed-speed right-click
             // move of swordsmen, knights and catapults under Legion. Every unit's own
             // spot is captured (UnitR::hasSpot), no two alike, and outlined; with
-            // TAK_UNIT_SPOTS_CAPTURE=<prefix> the flash and the Shift view are saved.
+            // TA_UNIT_SPOTS_CAPTURE=<prefix> the flash and the Shift view are saved.
             constexpr int W=1200,H=800;
             winW_=W;winH_=H;noFog_=true;edgeScrollOn_=false;uiScale_=1.0f;
             if(!cursors_.ok()) {cursorsInit_=true;cursors_.load(ren_,vfs_,settings_);}
-            writableWorld().setPathfindingMode(tak::sim::PathfindingMode::Legion);
+            writableWorld().setPathfindingMode(ta::sim::PathfindingMode::Legion);
             writableWorld().setPathService(true);   // as a real match's setup (sim/matchsetup.cpp): Legion plans through it
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
             static constexpr const char* kinds[]={"arasword","araknigh","arapult"};
@@ -3251,7 +3251,7 @@
                 if (const UnitR* u=frameUnitP(id); u && spotLeg(*u,0)) spots.insert({u->spotX,u->spotZ});
             mapView_.setZoom(1.0f);
             mapView_.setOffset((cx-300+tx)*0.5f-float(W-300)*0.5f,cz-terrainLift(cx,cz)-float(H)*0.5f);
-            const char* cap=tak::devEnv("TAK_UNIT_SPOTS_CAPTURE");
+            const char* cap=ta::devEnv("TA_UNIT_SPOTS_CAPTURE");
             const auto frame=[&](SDL_Keymod mods,const char* tag) {
                 SDL_SetModState(mods);
                 for (int i=0;i<20;++i) {beginFrame();prepare(W,H);draw(W,H);}   // terrain tiles stream in
@@ -3259,7 +3259,7 @@
                     int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                     std::vector<uint8_t> px4(size_t(ow)*size_t(oh)*4);
                     if (SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px4.data(),ow*4)==0)
-                        tak::png::write(std::string(cap)+"-"+tag+".png",ow,oh,px4);
+                        ta::png::write(std::string(cap)+"-"+tag+".png",ow,oh,px4);
                 }
             };
             frame(KMOD_NONE,"flash");
@@ -3274,7 +3274,7 @@
             std::fprintf(stderr,"PASS: every unit of a mixed Legion move shows its own spot\n");
             return;
         }
-        if (tak::devFlag("TAK_AREA_DRAG_TEST")) {
+        if (ta::devFlag("TA_AREA_DRAG_TEST")) {
             // Map drags through the real input() and draw(): a small right-drag with a
             // reclaimer is the ordinary order, only a deliberate box clears an area,
             // and a pan mid-drag keeps the box (drawn and commanded) on the ground the
@@ -3305,7 +3305,7 @@
                 writableWorld().stop(builder);writableWorld().unit(builder)->orders.clear();
                 selection_={builder};publish();
             };
-            const auto areaOrder=[&]()->const tak::sim::RetailReclaimArea* {
+            const auto areaOrder=[&]()->const ta::sim::RetailReclaimArea* {
                 const auto& orders=world_.unit(builder)->orders;
                 return !orders.empty() && orders.front().reclaimArea ? &*orders.front().reclaimArea : nullptr;
             };
@@ -3333,13 +3333,13 @@
             {
                 float tx,tz;pickWorld(px,py,tx,tz);
                 reset();
-                std::vector<tak::net::Command> cmds;
+                std::vector<ta::net::Command> cmds;
                 {
                     ClickScope outer(*this);
                     rightDrag(px,py,px+20,py+20);
                     cmds=click_->cmds;
                 }
-                check(cmds.size()==1 && cmds[0].kind==tak::net::Cmd::Move &&
+                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Move &&
                       std::fabs(cmds[0].x-tx)<1 && std::fabs(cmds[0].z-tz)<1,
                       "a 20 px twitch orders at the pressed ground");
             }
@@ -3349,7 +3349,7 @@
             {
                 const auto* area=areaOrder();
                 check(area!=nullptr,"a 60x50 px box is an area clear");
-                const auto closeTo=[](int32_t v,float f) {return std::fabs(tak::sim::Fixed::raw(v).toFloat()-f)<1.0f;};
+                const auto closeTo=[](int32_t v,float f) {return std::fabs(ta::sim::Fixed::raw(v).toFloat()-f)<1.0f;};
                 check(closeTo(area->minX,std::min(wx0,wx1)) && closeTo(area->maxX,std::max(wx0,wx1)) &&
                       closeTo(area->minZ,std::min(wz0,wz1)) && closeTo(area->maxZ,std::max(wz0,wz1)),
                       "the clear covers press to release on the ground");
@@ -3380,7 +3380,7 @@
                 const bool read=SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px4.data(),ow*4)==0;
                 check(read,"the drawn frame reads back");
                 {
-                    if (const char* cap=tak::devEnv("TAK_AREA_DRAG_CAPTURE")) tak::png::write(cap,ow,oh,px4);
+                    if (const char* cap=ta::devEnv("TA_AREA_DRAG_CAPTURE")) ta::png::write(cap,ow,oh,px4);
                     const auto outline=[&](int x,int y) {
                         const uint8_t* q=&px4[(size_t(y)*size_t(ow)+size_t(x))*4];
                         return q[0]>=215 && q[1]>=155 && q[1]<=210 && q[2]<=110;
@@ -3400,7 +3400,7 @@
                 pickWorld(px+50,py+40,wx1,wz1);
                 const auto* area=areaOrder();
                 check(area!=nullptr,"the panned drag clears");
-                const auto closeTo=[](int32_t v,float f) {return std::fabs(tak::sim::Fixed::raw(v).toFloat()-f)<1.0f;};
+                const auto closeTo=[](int32_t v,float f) {return std::fabs(ta::sim::Fixed::raw(v).toFloat()-f)<1.0f;};
                 check(closeTo(area->minX,std::min(wx0,wx1)) && closeTo(area->minZ,std::min(wz0,wz1)) &&
                       closeTo(area->maxX,std::max(wx0,wx1)) && closeTo(area->maxZ,std::max(wz0,wz1)),
                       "the panned clear covers what the box showed");
@@ -3440,7 +3440,7 @@
             if (const auto* lode=registry_.find("aralode")) {
                 const auto leftDrag=[&](float qx,float qy,float panX,float panZ) {
                     reset();placing_=lode;
-                    std::vector<tak::net::Command> cmds;
+                    std::vector<ta::net::Command> cmds;
                     {
                         ClickScope outer(*this);
                         event(SDL_MOUSEBUTTONDOWN,SDL_BUTTON_LEFT,px,py);
@@ -3452,8 +3452,8 @@
                     placing_=nullptr;
                     return cmds;
                 };
-                const auto boxed=[](const std::vector<tak::net::Command>& c) {
-                    return c.size()==1 && c[0].kind==tak::net::Cmd::BuildManaArea;
+                const auto boxed=[](const std::vector<ta::net::Command>& c) {
+                    return c.size()==1 && c[0].kind==ta::net::Cmd::BuildManaArea;
                 };
                 check(!boxed(leftDrag(px+12,py+9,0,0)),"lodestone: a 12x9 twitch is not a box");
                 check(!boxed(leftDrag(px+31,py+31,0,0)),"lodestone: 31x31 is not a box");
@@ -3471,13 +3471,13 @@
             reset();
             SDL_SetModState(savedMod);
             std::fprintf(stderr,"PASS: area drag threshold %.0f UI px both ways, map-anchored boxes\n",
-                         tak::client::areadrag::kAreaCommandMinPx);
+                         ta::client::areadrag::kAreaCommandMinPx);
             return;
         }
-        // TAK_BUILDLINE_SHOT=dx,dy[,notches]: a monarch mid shift-drag of a wall line,
+        // TA_BUILDLINE_SHOT=dx,dy[,notches]: a monarch mid shift-drag of a wall line,
         // dx,dy screen px from (300,300) at zoom 1.5, the wheel turned `notches` --
         // left in progress so --shot captures the preview (and its GAP label).
-        if (const char* spec=tak::devEnv("TAK_BUILDLINE_SHOT")) {
+        if (const char* spec=ta::devEnv("TA_BUILDLINE_SHOT")) {
             noFog_=true;edgeScrollOn_=false;
             winW_=1024;winH_=768;   // --winsize 1024 768: the renderer has no size yet
             int dx=0,dy=0,notches=0;std::sscanf(spec,"%d,%d,%d",&dx,&dy,&notches);
@@ -3512,7 +3512,7 @@
         // them stands finished on its own cells -- no site refused for a neighbour in
         // its own line. Gap 0 touching, a wheel-widened gap, the gap held across later
         // drags and building types, clamped at 0, and the camera untouched by the wheel.
-        if (tak::devFlag("TAK_BUILDLINE_TEST")) {
+        if (ta::devFlag("TA_BUILDLINE_TEST")) {
             noFog_=true;edgeScrollOn_=false;
             winW_=1280;winH_=960;
             mapView_.setZoom(1);
@@ -3520,8 +3520,8 @@
             const auto fail=[](const std::string& m) {throw std::runtime_error("buildline: "+m);};
             // The monarch's menu: the smallest building, a non-square one and a 4x4-ish
             // square, so the lines cover different footprints in both proportions.
-            const tak::sim::UnitType *small=nullptr,*oblong=nullptr,*square=nullptr;
-            const auto area=[](const tak::sim::UnitType* t) {return t->footX*t->footZ;};
+            const ta::sim::UnitType *small=nullptr,*oblong=nullptr,*square=nullptr;
+            const auto area=[](const ta::sim::UnitType* t) {return t->footX*t->footZ;};
             for (const auto& id:registry_.buildable("araking")) {
                 const auto* t=registry_.find(id);
                 if (!t || !t->isStructure() || t->onMana || t->footX<1 || t->footZ<1) continue;
@@ -3533,7 +3533,7 @@
             if (!small || !oblong || !square) fail("araking's menu lacks the footprints this test needs");
             for (const auto* t:{small,oblong,square})
                 std::fprintf(stderr,"buildline: type %s footprint %dx%d\n",t->id.c_str(),t->footX,t->footZ);
-            struct Case {const tak::sim::UnitType* type;int dx,dy;int wheel;int gap;const char* name;};
+            struct Case {const ta::sim::UnitType* type;int dx,dy;int wheel;int gap;const char* name;};
             // Screen-pixel drags at zoom 1; wheel = notches during the drag; gap = expected.
             std::vector<Case> cases={
                 {small,  240,  0,  0, 0, "small horizontal"},
@@ -3548,16 +3548,16 @@
                 {square,-260,130,  0, 3, "square leftward, gap held"},
                 {small,  200,  0, -9, 0, "small horizontal, wheel down past 0"},
             };
-            // TAK_BUILDLINE_PROBE=dx,dy,wheel,bx,bz[,type]: just one drag (type 0 small, 1
+            // TA_BUILDLINE_PROBE=dx,dy,wheel,bx,bz[,type]: just one drag (type 0 small, 1
             // oblong, 2 square), its monarch at (bx,bz) px from the line's start -- for
             // sweeping approaches.
             float probeBx=-40,probeBz=-60;
-            if (const char* pr=tak::devEnv("TAK_BUILDLINE_PROBE")) {
+            if (const char* pr=ta::devEnv("TA_BUILDLINE_PROBE")) {
                 int dx=0,dy=0,w=0,t=0;std::sscanf(pr,"%d,%d,%d,%f,%f,%d",&dx,&dy,&w,&probeBx,&probeBz,&t);
                 cases={{t==1?oblong:t==2?square:small,dx,dy,w,std::max(0,w),"probe"}};
             }
             const float cx0=float(mapView_.map().blocksX)*16.0f,cz0=float(mapView_.map().blocksY)*16.0f;
-            struct Line {int builder;const tak::sim::UnitType* type;std::vector<std::pair<float,float>> sites;int gap;std::string name;};
+            struct Line {int builder;const ta::sim::UnitType* type;std::vector<std::pair<float,float>> sites;int gap;std::string name;};
             std::vector<Line> lines;
             const auto savedMod=SDL_GetModState();
             const auto send=[&](uint32_t kind,int x,int y) {
@@ -3576,14 +3576,14 @@
             };
             // Camera on a patch of open ground, clear of the earlier (queued, not yet
             // built) lines, where this drag's sites can all go; wx,wz its start.
-            const auto findPatch=[&](const tak::sim::UnitType* type,int gap,int sx,int sy,int dx,int dy,float& wx,float& wz) {
+            const auto findPatch=[&](const ta::sim::UnitType* type,int gap,int sx,int sy,int dx,int dy,float& wx,float& wz) {
                 const int across=int(cx0*2/100)-4,down=int(cz0*2/100)-4;
                 for (int i=0;i<across*down;++i) {
                     wx=200+float(i%across)*100;wz=200+float(i/across)*100;
                     mapView_.setOffset(wx-float(sx),wz-float(sy));
                     float x0,z0,x1,z1;pickWorld(float(sx),float(sy),x0,z0);pickWorld(float(sx+dx),float(sy+dy),x1,z1);
                     bool open=true;
-                    const auto sites=tak::client::buildLineSites(type->footX,type->footZ,gap,x0,z0,x1,z1);
+                    const auto sites=ta::client::buildLineSites(type->footX,type->footZ,gap,x0,z0,x1,z1);
                     for (const auto& [x,z]:sites) {
                         if (!world_.canPlace(type,x,z,localPlayer_)) open=false;
                         for (const auto& l:lines) for (const auto& [px,pz]:l.sites)
@@ -3676,18 +3676,18 @@
                 std::vector<std::pair<int,int>> cells;
                 for (const auto& [x,z]:l.sites) {
                     ++expected;
-                    const int ox=tak::sim::footprintOrigin(x,l.type->footX),oz=tak::sim::footprintOrigin(z,l.type->footZ);
+                    const int ox=ta::sim::footprintOrigin(x,l.type->footX),oz=ta::sim::footprintOrigin(z,l.type->footZ);
                     bool found=false;
                     for (const auto& u:world_.units())
                         if (world_.finishedHere(u) && u.type==l.type && int(u.player)==localPlayer_ &&
-                            tak::sim::footprintOrigin(u.x,l.type->footX)==ox && tak::sim::footprintOrigin(u.z,l.type->footZ)==oz)
+                            ta::sim::footprintOrigin(u.x,l.type->footX)==ox && ta::sim::footprintOrigin(u.z,l.type->footZ)==oz)
                             found=true;
                     if (!found) {
                         const auto* b=world_.unit(l.builder);
                         std::string lineCells;
                         for (const auto& [sx2,sz2]:l.sites)
-                            lineCells+=" "+std::to_string(tak::sim::footprintOrigin(sx2,l.type->footX))+","+
-                                       std::to_string(tak::sim::footprintOrigin(sz2,l.type->footZ));
+                            lineCells+=" "+std::to_string(ta::sim::footprintOrigin(sx2,l.type->footX))+","+
+                                       std::to_string(ta::sim::footprintOrigin(sz2,l.type->footZ));
                         fail(l.name+": the site at cells "+std::to_string(ox)+","+std::to_string(oz)+
                              " was not built ("+std::to_string(ticks)+" ticks; line"+lineCells+"; builder "+
                              (b?std::to_string(b->x.toFloat()/16)+","+std::to_string(b->z.toFloat()/16)+" orders "+
@@ -3710,12 +3710,12 @@
             publish();
             return;
         }
-        // TAK_BUILDLINE_CHAIN=type;gap;bx,bz;dx,dy;dx,dy... (';' or '/'): ONE monarch, (bx,bz) px from
+        // TA_BUILDLINE_CHAIN=type;gap;bx,bz;dx,dy;dx,dy... (';' or '/'): ONE monarch, (bx,bz) px from
         // the first corner, lays a chain of shift-drags (each starting where the last
         // ended: an L, a U, a box) of type 0 arawall, 1 arangate or 2 araat at that gap.
         // Every distinct site must get built: chained lines plan their approach from
         // where the earlier ones leave the builder. Exits 1 on a stranded site.
-        if (const char* spec=tak::devEnv("TAK_BUILDLINE_CHAIN")) {
+        if (const char* spec=ta::devEnv("TA_BUILDLINE_CHAIN")) {
             noFog_=true;edgeScrollOn_=false;winW_=1280;winH_=960;mapView_.setZoom(1);
             const auto publish=[&] {captureFrame();beginFrame();cosmeticStep(0);};
             std::vector<std::string> parts;
@@ -3788,7 +3788,7 @@
             // The chain's distinct sites (a corner is the end of one line and the start of the next).
             std::vector<std::pair<int,int>> uniq;
             for (const auto& [x,z]:all) {
-                const int ox=tak::sim::footprintOrigin(x,type->footX),oz=tak::sim::footprintOrigin(z,type->footZ);
+                const int ox=ta::sim::footprintOrigin(x,type->footX),oz=ta::sim::footprintOrigin(z,type->footZ);
                 bool dup=false;
                 for (const auto& [a,c]:uniq) if (std::abs(a-ox)<type->footX && std::abs(c-oz)<type->footZ) dup=true;
                 if (!dup) uniq.push_back({ox,oz});
@@ -3798,7 +3798,7 @@
                 bool found=false;
                 for (const auto& u:world_.units())
                     if (world_.finishedHere(u) && u.type==type &&
-                        tak::sim::footprintOrigin(u.x,type->footX)==ox && tak::sim::footprintOrigin(u.z,type->footZ)==oz) found=true;
+                        ta::sim::footprintOrigin(u.x,type->footX)==ox && ta::sim::footprintOrigin(u.z,type->footZ)==oz) found=true;
                 if (found) ++built; else miss+=" "+std::to_string(ox)+","+std::to_string(oz);
             }
             const auto* b=world_.unit(builder);
@@ -3814,12 +3814,12 @@
         // right-click fall through to the ground, or to a unit standing in it. Posts,
         // and the whole closed gate, still pick it. Every gate=1 type in the data runs
         // the same cases, each on its own patch of flat ground with its own soldier.
-        if (tak::devFlag("TAK_GATE_PICK_TEST")) {
+        if (ta::devFlag("TA_GATE_PICK_TEST")) {
             noFog_=true;edgeScrollOn_=false;
             winW_=1000;winH_=700;
             const std::map<std::string,std::string> soldiers{
                 {"ara","arasword"},{"ver","versword"},{"tar","tartroop"},{"cre","creshoc"}};
-            std::vector<const tak::sim::UnitType*> gates;
+            std::vector<const ta::sim::UnitType*> gates;
             for (const auto& [id,type]:registry_.types())
                 if (type.gate) gates.push_back(&type);
             if (gates.size()<4) throw std::runtime_error("gate pick: expected the four shipped gates, found "+
@@ -3838,9 +3838,9 @@
             std::vector<std::pair<float,float>> used;
             const auto& heights=world_.mapHeights();
             const int mw=world_.mapW(),mh=world_.mapH();
-            const auto flat=[&](const tak::sim::UnitType* type,float x,float z) {
-                const int ox=tak::sim::footprintOrigin(tak::sim::Fixed::fromFloat(x),type->footX)-2;
-                const int oz=tak::sim::footprintOrigin(tak::sim::Fixed::fromFloat(z),type->footZ)-2;
+            const auto flat=[&](const ta::sim::UnitType* type,float x,float z) {
+                const int ox=ta::sim::footprintOrigin(ta::sim::Fixed::fromFloat(x),type->footX)-2;
+                const int oz=ta::sim::footprintOrigin(ta::sim::Fixed::fromFloat(z),type->footZ)-2;
                 if (ox<0 || oz<0 || ox+type->footX+4>mw || oz+type->footZ+4>mh) return false;
                 int lo=255,hi=0;
                 for (int cz=oz;cz<oz+type->footZ+4;++cz)
@@ -3882,8 +3882,8 @@
                 publish();
                 const auto* g=frameUnitP(gate);
                 if (!g || !g->type || !g->type->gate || g->yardOpen) fail("fixture needs a closed gate");
-                const int ox=tak::sim::footprintOrigin(g->x,g->type->footX);
-                const int oz=tak::sim::footprintOrigin(g->z,g->type->footZ);
+                const int ox=ta::sim::footprintOrigin(g->x,g->type->footX);
+                const int oz=ta::sim::footprintOrigin(g->z,g->type->footZ);
                 // Screen points inside the gate's pick box whose GROUND cell is a doorway
                 // ('c') or a post ('o') yard cell, found through pickWorld like the game.
                 // A post can be a single corner cell (cregate), so a coarse miss retries
@@ -3916,7 +3916,7 @@
                     selection_={soldier};mouseX_=x;mouseY_=y;bool tint=false;return desiredCursor(tint);
                 };
                 if (!unitUnderCursor(*g,doorX,doorY)) fail("closed gate's doorway does not pick the gate");
-                if (hover(doorX,doorY)!=tak::CursorId::Select) fail("closed gate's doorway hover is not Select");
+                if (hover(doorX,doorY)!=ta::CursorId::Select) fail("closed gate's doorway hover is not Select");
                 if (rightClick(doorX,doorY)!='g') fail("right-click on a closed gate does not guard it");
                 selection_.clear();click(doorX,doorY);
                 if (selection_!=std::vector<int>{gate}) fail("click on a closed gate does not select it");
@@ -3932,8 +3932,8 @@
                 if (!g->yardOpen) fail("open yard missing from the render frame");
                 if (unitUnderCursor(*g,doorX,doorY)) fail("open gate's doorway still picks the gate");
                 if (!unitUnderCursor(*g,postX,postY)) fail("open gate's post no longer picks the gate");
-                if (hover(doorX,doorY)!=tak::CursorId::Normal) fail("open doorway hover is not the ground arrow");
-                if (hover(postX,postY)!=tak::CursorId::Select) fail("open gate's post hover lost the gate");
+                if (hover(doorX,doorY)!=ta::CursorId::Normal) fail("open doorway hover is not the ground arrow");
+                if (hover(postX,postY)!=ta::CursorId::Select) fail("open gate's post hover lost the gate");
                 if (rightClick(doorX,doorY)!='m') fail("right-click into an open doorway is not a Move");
                 if (rightClick(postX,postY)!='g') fail("right-click on an open gate's post does not guard it");
                 selection_.clear();click(doorX,doorY);
@@ -3969,13 +3969,13 @@
         // caches the fallback hit box for the type, for the rest of the game. A scan over
         // every unit always reaches it (nothing selected, the pointer on bare ground); the
         // grid's candidates must leave the same cache, so the type picks the same later.
-        if (tak::devFlag("TAK_PICK_LATE_MODEL_TEST")) {
+        if (ta::devFlag("TA_PICK_LATE_MODEL_TEST")) {
             noFog_=true;edgeScrollOn_=false;
             winW_=1000;winH_=700;
             const auto publish=[&] {captureFrame();beginFrame();cosmeticStep(0);};
             const auto fail=[](const std::string& m) {throw std::runtime_error("late model pick: "+m);};
             const auto* filler=registry_.find("arasword");
-            const tak::sim::UnitType* late=nullptr;
+            const ta::sim::UnitType* late=nullptr;
             const float lx=3000,lz=3000;
             // The structure with the largest footprint whose model is not loaded (first wins a tie).
             for (const auto& [id,type]:registry_.types())
@@ -3996,7 +3996,7 @@
             if (unitType_.count(lateId) || visuals_.count(late->id)) fail("the late unit registered in the first frame");
             mouseX_=600;mouseY_=60;   // bare ground above the fillers
             bool tint=false;
-            const tak::CursorId first=desiredCursor(tint);
+            const ta::CursorId first=desiredCursor(tint);
             const bool cached=hitBoxes_.count(late->id)!=0;
             for (int i=0;i<16 && !unitType_.count(lateId);++i) publish();
             if (!unitType_.count(lateId)) fail("the late unit never registered");
@@ -4007,21 +4007,21 @@
             const SDL_FPoint p=unitScreen(*u);
             const SDL_FRect& hb=unitHitBox(late);
             mouseX_=p.x;mouseY_=p.y+12.0f-60.0f;   // 60 px above the anchor: past the fallback box
-            const tak::CursorId probe=desiredCursor(tint);
+            const ta::CursorId probe=desiredCursor(tint);
             std::fprintf(stderr,"PICK_LATE_MODEL type=%s first=%d cached=%d box=%.1f,%.1f,%.1f,%.1f probe=%d\n",
                          late->id.c_str(),int(first),cached ? 1 : 0,hb.x,hb.y,hb.w,hb.h,int(probe));
             if (!cached) fail("the cursor pass left "+late->id+"'s hit box uncached, as a full scan does not");
             std::fprintf(stderr,"PASS: late model pick leaves the full scan's hit-box cache\n");
             return;
         }
-        if (tak::devFlag("TAK_CURSOR_TEST")) {
+        if (ta::devFlag("TA_CURSOR_TEST")) {
             noFog_=true;edgeScrollOn_=false;winW_=1000;winH_=700;   // the pointer must be in the main view
             writableWorld().setPlayerCount(8);
             const int builder=spawn("araking",1800,2100,0,0);
             const int soldier=spawn("arasword",1650,2100,0,0);
             const int site=spawn("creacad",2000,2000,0,0);
             writableWorld().unit(site)->underConstruction=true;writableWorld().unit(site)->buildBegun=true;
-            writableWorld().unit(site)->hp=tak::sim::Fixed::fromInt(10);
+            writableWorld().unit(site)->hp=ta::sim::Fixed::fromInt(10);
             mapView_.setZoom(1);
             mapView_.setOffset(1400,1500);
             const auto publish=[&] {captureFrame();beginFrame();cosmeticStep(0);};
@@ -4031,18 +4031,18 @@
                 mouseX_=p.x+(box.x+box.w*.5f)*zoom;
                 mouseY_=p.y+(12+box.y+box.h*.5f)*zoom;
             };
-            const auto expect=[&](tak::CursorId expected,const char* message) {
+            const auto expect=[&](ta::CursorId expected,const char* message) {
                 bool tint=false;const auto got=desiredCursor(tint);
                 if (got!=expected) throw std::runtime_error(std::string(message)+": cursor "+
                     std::to_string(int(got))+" expected "+std::to_string(int(expected)));
                 std::fprintf(stderr,"PASS: %s\n",message);
             };
             publish();point(site);selection_={soldier};
-            expect(tak::CursorId::Green,"non-builder cannot assist unfinished construction");
+            expect(ta::CursorId::Green,"non-builder cannot assist unfinished construction");
             selection_={builder};
             // Retail's right-click interface: the site keeps the green gem even for the
             // builder that is building it (the owner's report; 0x4de03b).
-            expect(tak::CursorId::Green,"a builder over the construction it can build shows Green, not Repair");
+            expect(ta::CursorId::Green,"a builder over the construction it can build shows Green, not Repair");
             winW_=1000;winH_=700;drawPanel(winW_,winH_);
             if (iconRects_.empty() || selectedBuilder()->id!=builder)
                 throw std::runtime_error("single builder lost its build controls");
@@ -4053,18 +4053,18 @@
             // Put unfinished construction directly behind a real build icon.
             mapView_.setOffset(offX+mouseX_-ix,offY+mouseY_-iy);point(site);
             const auto strip=buildMenuRect_;buildMenuRect_={};
-            expect(tak::CursorId::Green,"construction remains pickable beneath the build strip");
+            expect(ta::CursorId::Green,"construction remains pickable beneath the build strip");
             buildMenuRect_=strip;
-            expect(tak::CursorId::Normal,"build icon hides the construction cursor behind it");
+            expect(ta::CursorId::Normal,"build icon hides the construction cursor behind it");
             placing_=buildType;
-            expect(tak::CursorId::Normal,"build icon hides an armed placement cursor");
+            expect(ta::CursorId::Normal,"build icon hides an armed placement cursor");
             placing_=nullptr;pendingCmd_='f';
             bool tint=true;
-            if (desiredCursor(tint)!=tak::CursorId::Normal || tint)
+            if (desiredCursor(tint)!=ta::CursorId::Normal || tint)
                 throw std::runtime_error("build icon retained an armed fight cursor/tint");
             pendingCmd_=0;
             mouseX_=buildMenuRect_.x+1;mouseY_=buildMenuRect_.y+1;
-            expect(tak::CursorId::Normal,"build strip padding is also UI");
+            expect(ta::CursorId::Normal,"build strip padding is also UI");
             SDL_Event click{};click.type=SDL_MOUSEBUTTONDOWN;click.button.button=SDL_BUTTON_RIGHT;
             click.button.x=int(mouseX_);click.button.y=int(mouseY_);
             input(click,winW_,winH_);
@@ -4263,28 +4263,28 @@
             const auto* original=world_.unit(builder)->type;
             auto restricted=*original;restricted.builderLimited=true;
             writableWorld().unit(builder)->type=&restricted;publish();point(site);
-            expect(tak::CursorId::Green,"restricted builder cannot assist an unavailable type");
-            pendingCmd_='r';expect(tak::CursorId::Normal,"armed repair refuses unavailable construction");
+            expect(ta::CursorId::Green,"restricted builder cannot assist an unavailable type");
+            pendingCmd_='r';expect(ta::CursorId::Normal,"armed repair refuses unavailable construction");
             pendingCmd_=0;writableWorld().unit(builder)->type=original;publish();point(site);
             rightClickOrder(2000,2000,false);
             if (world_.unit(builder)->buildSiteId!=site) throw std::runtime_error("right-click on the site did not assist");
             writableWorld().cancelBuilds(builder);writableWorld().stop(builder);
-            writableWorld().unit(site)->underConstruction=false;writableWorld().unit(site)->hp=tak::sim::Fixed::fromInt(10);
+            writableWorld().unit(site)->underConstruction=false;writableWorld().unit(site)->hp=ta::sim::Fixed::fromInt(10);
             publish();point(site);
-            expect(tak::CursorId::Select,"a damaged own unit is Select (the click still repairs)");
+            expect(ta::CursorId::Select,"a damaged own unit is Select (the click still repairs)");
             rightClickOrder(2000,2000,false);
             if (world_.unit(builder)->orders.empty() || world_.unit(builder)->orders.back().repairTarget!=site)
                 throw std::runtime_error("right-click on the damaged unit did not repair");
             writableWorld().stop(builder);selection_.clear();
-            expect(tak::CursorId::Select,"unselected building uses its displayed bounds");
+            expect(ta::CursorId::Select,"unselected building uses its displayed bounds");
             selection_={soldier};pendingCmd_='r';
-            expect(tak::CursorId::Normal,"non-builder cannot arm repair");
-            pendingCmd_='u';expect(tak::CursorId::Normal,"non-transport cannot arm unload");
-            pendingCmd_='c';expect(tak::CursorId::Normal,"non-reclaimer cannot arm reclaim");
+            expect(ta::CursorId::Normal,"non-builder cannot arm repair");
+            pendingCmd_='u';expect(ta::CursorId::Normal,"non-transport cannot arm unload");
+            pendingCmd_='c';expect(ta::CursorId::Normal,"non-reclaimer cannot arm reclaim");
             pendingCmd_=0;
             const auto savedPathfinding=world_.pathfindingMode();
             selection_={builder,soldier};mouseX_=mouseY_=-1000;
-            for(const auto mode:{tak::sim::PathfindingMode::Retail,tak::sim::PathfindingMode::Legion}) {
+            for(const auto mode:{ta::sim::PathfindingMode::Retail,ta::sim::PathfindingMode::Legion}) {
                 writableWorld().setPathfindingMode(mode);publish();
                 rightClickOrder(2400,2400,false);
                 for(const int id:selection_) {
@@ -4293,7 +4293,7 @@
                     const auto& order=u->orders.back();
                     const auto target=order.missionTarget.value_or(std::pair{order.x,order.z});
                     // Legion gives every unit it plans one shared point (docs/legion-pathfinding.md).
-                    const bool shared=mode==tak::sim::PathfindingMode::Legion;
+                    const bool shared=mode==ta::sim::PathfindingMode::Legion;
                     const float expected=shared?2400.f:
                         (id==builder?2460.f:2340.f);
                     if(target.first.toFloat()!=expected || target.second.toFloat()!=2400.f)
@@ -4342,9 +4342,9 @@
                     throw std::runtime_error("attack-marker fixture lost its attack order");
                 if(lit(plain)!=0)throw std::runtime_error("order overlay drawn without Shift");
                 if(lit(shifted)<20)throw std::runtime_error("Shift shows no Attack cursor on an attack order's target");
-                const size_t frames=cursors_.frameCount(tak::CursorId::Attack);
+                const size_t frames=cursors_.frameCount(ta::CursorId::Attack);
                 const auto frameAt=[&](uint64_t tick) {
-                    return tak::cursorOrderMarkerFrameAt(frames,cursors_.firstFrameDelayTicks(tak::CursorId::Attack),tick);
+                    return ta::cursorOrderMarkerFrameAt(frames,cursors_.firstFrameDelayTicks(ta::CursorId::Attack),tick);
                 };
                 const size_t first=frameAt(front().gameTick);
                 bool stepped=false;
@@ -4366,16 +4366,16 @@
             // Aramon's (kPlateFallback) for a side that is none of the five -- never the
             // side the watcher's own interface opened with (side_, Taros here).
             {
-                const tak::sim::UnitType* const god=world_.player(0).godType;
-                const tak::sim::UnitType* const aramon=registry_.find("aragod");
-                const tak::sim::UnitType* const veruna=registry_.find("vergod");
-                if(!aramon || !veruna || tak::factionIndex(veruna->side)!=2)
+                const ta::sim::UnitType* const god=world_.player(0).godType;
+                const ta::sim::UnitType* const aramon=registry_.find("aragod");
+                const ta::sim::UnitType* const veruna=registry_.find("vergod");
+                if(!aramon || !veruna || ta::factionIndex(veruna->side)!=2)
                     throw std::runtime_error("watch-plate fixture needs the Aramon and Veruna gods");
-                tak::sim::UnitType stranger=*veruna;stranger.side="OTHER";
+                ta::sim::UnitType stranger=*veruna;stranger.side="OTHER";
                 const std::string own=side_;
                 spectating_=true;side_="tar";
                 writableWorld().setTeam(1,0);writableWorld().tick(1.f/30);   // one team left: player 0's
-                const auto plateOf=[&](const tak::sim::UnitType* type) {   // a frame's side is its player's god's
+                const auto plateOf=[&](const ta::sim::UnitType* type) {   // a frame's side is its player's god's
                     writableWorld().player(0).godType=type;publish();
                     return resultStats();
                 };
@@ -4387,7 +4387,7 @@
                 if(race.watchLine!="PLAYER wins" || other.watchLine!="PLAYER wins" || !race.rows[0].isLocal)
                     throw std::runtime_error("watch-plate fixture has no single winner");
                 if(race.faction!=2)throw std::runtime_error("a watcher's plate is not its winner's race");
-                if(other.faction!=tak::kPlateFallback)
+                if(other.faction!=ta::kPlateFallback)
                     throw std::runtime_error("a watcher's plate for a winner of no race is not the stated fallback");
                 std::fprintf(stderr,"PASS: a watcher's plate is its winner's race, Aramon's for a side that is none\n");
             }
@@ -4397,26 +4397,26 @@
         // Repeatable rendering workload for the shadow performance regression.
         // This entry point is only reached by the local development harness.
         // Render-optimization matrix knobs (tools/render_benchmark.py):
-        //   TAK_RENDER_CENTER=x,z   army centre (default 5000,5000)
-        //   TAK_RENDER_OFFSET=x,z   camera top-left world offset after setup
-        //   TAK_RENDER_EXTRAS=1     add construction sites, ghosts, flyers, corpses
-        //   TAK_RENDER_NAVAL=N      N floating units on the water nearest the centre
-        //   TAK_RENDER_FOREST=1     centre army + camera on the densest scenery region
-        //   TAK_RENDER_ROSTER=a,b   unit types replacing the 6-type roster ("structures": all of them)
-        //   TAK_RENDER_OVERLAYS=1   control squads, factories with production queues,
+        //   TA_RENDER_CENTER=x,z   army centre (default 5000,5000)
+        //   TA_RENDER_OFFSET=x,z   camera top-left world offset after setup
+        //   TA_RENDER_EXTRAS=1     add construction sites, ghosts, flyers, corpses
+        //   TA_RENDER_NAVAL=N      N floating units on the water nearest the centre
+        //   TA_RENDER_FOREST=1     centre army + camera on the densest scenery region
+        //   TA_RENDER_ROSTER=a,b   unit types replacing the 6-type roster ("structures": all of them)
+        //   TA_RENDER_OVERLAYS=1   control squads, factories with production queues,
         //                           builders with queued build orders (ghosts)
-        //   TAK_RENDER_GHOST_QUEUES=B,Q[,T[,dx,dz]]  B monarchs, each with Q queued (shift)
+        //   TA_RENDER_GHOST_QUEUES=B,Q[,T[,dx,dz]]  B monarchs, each with Q queued (shift)
         //                           builds cycling through T small structure types (repeated
         //                           types), on a grid centred dx,dz from the army centre:
         //                           long queues, mostly off screen at zoom >= 0.5
         // All of them only shape the local harness scene; none run in a real game.
-        if (const char* countText=tak::devEnv("TAK_SHADOW_BENCH")) {
+        if (const char* countText=ta::devEnv("TA_SHADOW_BENCH")) {
             const int count=std::clamp(std::atoi(countText),1,16000);
             float centerX=5000,centerZ=5000;
-            if(const char* center=tak::devEnv("TAK_RENDER_CENTER"))
+            if(const char* center=ta::devEnv("TA_RENDER_CENTER"))
                 std::sscanf(center,"%f,%f",&centerX,&centerZ);
             int forestTrees=0;
-            if(tak::devFlag("TAK_RENDER_FOREST")) {
+            if(ta::devFlag("TA_RENDER_FOREST")) {
                 // Centre on the 512px region holding the most scenery (trees count
                 // double, since they sway and carry shadows); first wins a tie.
                 std::map<std::pair<int,int>,int> trees;
@@ -4425,9 +4425,9 @@
                     forestTrees=n;centerX=float(cell.first)*512+256;centerZ=float(cell.second)*512+256;
                 }
             }
-            const char* only=tak::devEnv("TAK_SHADOW_BENCH_TYPE");
+            const char* only=ta::devEnv("TA_SHADOW_BENCH_TYPE");
             std::vector<std::string> roster={"zonter","araarch","aralode","tarlode","zonroc","versword"};
-            if(const char* custom=tak::devEnv("TAK_RENDER_ROSTER")) {
+            if(const char* custom=ta::devEnv("TA_RENDER_ROSTER")) {
                 // Comma-separated unit types replacing the 6-type roster.
                 roster.clear();
                 std::string list=custom;
@@ -4448,24 +4448,24 @@
                 if(roster.empty())roster.push_back("araarch");
             }
             const int columns=std::max(1,int(std::ceil(std::sqrt(float(count)*1.6f))));
-            const char* spacingText=tak::devEnv("TAK_RENDER_SPACING");
+            const char* spacingText=ta::devEnv("TA_RENDER_SPACING");
             const float spacing=spacingText?std::clamp(float(std::atof(spacingText)),16.f,256.f):40.f;
             const int rows=(count+columns-1)/columns;
-            // Interactive case (measurement B), TAK_RENDER_COVER=type[,every]: a structure
+            // Interactive case (measurement B), TA_RENDER_COVER=type[,every]: a structure
             // of `type` (default vertower) on every `every`-th row and column of the army
             // grid (default 4), the army filling the rest of it around their footprints:
             // units stand just behind each structure (painted before it), the HIDDEN UNITS
             // cover workload under repeated buildings.
             std::vector<std::array<float,4>> coverRects;
             int covers=0;
-            if(const char* coverText=tak::devEnv("TAK_RENDER_COVER")) {
+            if(const char* coverText=ta::devEnv("TA_RENDER_COVER")) {
                 std::string spec=coverText;
                 int every=4;
                 if(const size_t comma=spec.find(',');comma!=std::string::npos) {
                     every=std::clamp(std::atoi(spec.c_str()+comma+1),2,64);spec.resize(comma);
                 }
                 const auto* type=registry_.find(spec.empty() ? "vertower" : spec);
-                if(!type || !isStructure(type))throw std::runtime_error("TAK_RENDER_COVER: not a structure type: "+spec);
+                if(!type || !isStructure(type))throw std::runtime_error("TA_RENDER_COVER: not a structure type: "+spec);
                 for(int i=0;i<count;++i) {
                     if((i%columns)%every!=every/2 || (i/columns)%every!=every/2)continue;
                     const float x=centerX+(float(i%columns)-float(columns-1)*0.5f)*spacing;
@@ -4486,17 +4486,17 @@
                 const float z=centerZ+(float(i/columns)-float(rows-1)*0.5f)*spacing;
                 if(std::any_of(coverRects.begin(),coverRects.end(),[&](const std::array<float,4>& r) {
                     return x>=r[0] && x<=r[2] && z>=r[1] && z<=r[3];
-                })) continue;   // TAK_RENDER_COVER: the structure stands here
-                const bool battle=tak::devFlag("TAK_RENDER_BATTLE");
+                })) continue;   // TA_RENDER_COVER: the structure stands here
+                const bool battle=ta::devFlag("TA_RENDER_BATTLE");
                 const int owner=battle?i%2:localPlayer_;
                 if(const int id=spawn(name,x,z,float(i%8)*0.785398163f,owner)) {
                     ++spawned;spawnedIds.push_back(id);
-                    if(tak::devFlag("TAK_RENDER_MOTION"))writableWorld().order(id,x+320,z+160,false);
+                    if(ta::devFlag("TA_RENDER_MOTION"))writableWorld().order(id,x+320,z+160,false);
                     if(battle)writableWorld().attackMove(id,centerX,centerZ,false);
                 }
             }
             int sites=0,ghosts=0,flyers=0,corpses=0,boats=0;
-            if(tak::devFlag("TAK_RENDER_EXTRAS")) {
+            if(ta::devFlag("TA_RENDER_EXTRAS")) {
                 // Construction: monarchs start real build sites south of the army.
                 const float siteZ=centerZ+float(rows)*spacing*0.5f+160;
                 for(int k=0;k<6;++k) {
@@ -4523,7 +4523,7 @@
                 for(size_t k=0;k<spawnedIds.size();k+=9) {writableWorld().destroy(spawnedIds[k]);++corpses;}
             }
             int squads=0,factories=0,ghostQueues=0;
-            if(tak::devFlag("TAK_RENDER_OVERLAYS")) {
+            if(ta::devFlag("TA_RENDER_OVERLAYS")) {
                 // Per-unit overlays (workstream L): control squads on every fifth grid unit
                 // (every third of those a formation), factories across the middle of the
                 // army with long production queues (the units they make draw health
@@ -4535,7 +4535,7 @@
                 for(const auto& [id,type]:registry_.types()) {
                     if(factories>=4)break;
                     if(!type.producesUnits())continue;
-                    const tak::sim::UnitType* product=nullptr;
+                    const ta::sim::UnitType* product=nullptr;
                     for(const auto& option:registry_.buildable(id))
                         if(const auto* t=registry_.find(option);t && !isStructure(t)) {product=t;break;}
                     if(!product)continue;
@@ -4558,7 +4558,7 @@
                 }
             }
             int queueBuilders=0,queueOrders=0,queueTypes=0;
-            if(const char* queues=tak::devEnv("TAK_RENDER_GHOST_QUEUES")) {
+            if(const char* queues=ta::devEnv("TA_RENDER_GHOST_QUEUES")) {
                 // Long queued-build lists (the build-ghost workload): builder k stands at the
                 // west end of row k and queues its Q builds eastwards along the row, 128 px
                 // apart (rows 192 px apart), types cycling through the first T small
@@ -4569,7 +4569,7 @@
                 int builders=0,perQueue=0,typeCount=4;float dx=0,dz=0;
                 std::sscanf(queues,"%d,%d,%d,%f,%f",&builders,&perQueue,&typeCount,&dx,&dz);
                 builders=std::clamp(builders,0,64);perQueue=std::clamp(perQueue,0,256);
-                std::vector<const tak::sim::UnitType*> sites;
+                std::vector<const ta::sim::UnitType*> sites;
                 for(const auto& option:registry_.buildable("araking"))
                     if(const auto* site=registry_.find(option);site && isStructure(site) && site->footX<=4 &&
                        site->footZ<=4 && int(sites.size())<std::max(1,typeCount))sites.push_back(site);
@@ -4590,9 +4590,9 @@
                     }
                 }
             }
-            if(const char* navalText=tak::devEnv("TAK_RENDER_NAVAL")) {
+            if(const char* navalText=ta::devEnv("TA_RENDER_NAVAL")) {
                 const int wanted=std::clamp(std::atoi(navalText),1,2000);
-                std::vector<const tak::sim::UnitType*> hulls;
+                std::vector<const ta::sim::UnitType*> hulls;
                 for(const auto& [id,type]:registry_.types())
                     if(type.floater && type.canMove && !type.canFly && !isStructure(&type))hulls.push_back(&type);
                 const auto& map=mapView_.map();
@@ -4613,22 +4613,22 @@
                     centerX=(float(water[0].second.first)+0.5f)*16;centerZ=(float(water[0].second.second)+0.5f)*16;
                 }
             }
-            noFog_=!tak::devFlag("TAK_PROFILE_FOG");edgeScrollOn_=false;
+            noFog_=!ta::devFlag("TA_PROFILE_FOG");edgeScrollOn_=false;
             float zoom=std::min(1.5f,std::min(1400.f/(columns*40),760.f/(rows*40)));
-            if(const char* requested=tak::devEnv("TAK_PROFILE_ZOOM"))
+            if(const char* requested=ta::devEnv("TA_PROFILE_ZOOM"))
                 zoom=std::clamp(float(std::atof(requested)),0.05f,4.0f);   // the game's zoom range
             mapView_.setZoom(zoom);
             mapView_.setOffset(centerX-760/zoom,centerZ-terrainLift(centerX,centerZ)-420/zoom);
-            if(const char* offset=tak::devEnv("TAK_RENDER_OFFSET")) {
+            if(const char* offset=ta::devEnv("TA_RENDER_OFFSET")) {
                 float ox=0,oz=0;
                 if(std::sscanf(offset,"%f,%f",&ox,&oz)==2)mapView_.setOffset(ox,oz);
             }
             // Interactive cases (measurement B, tools/render_benchmark.py --scenes
             // interactive). Presentation and local-harness state only, like the knobs
-            // above; the frame-indexed pointer path is TAK_RENDER_MOUSE (main.cpp).
-            //   TAK_RENDER_SELECT=N|all   the first N of the army's own units selected
-            //   TAK_RENDER_ARM=<key>      that order armed (pendingCmd_: a g r m f p c l u)
-            //   TAK_RENDER_GHOSTS=builders,queue[,offscreen%[,builder]]
+            // above; the frame-indexed pointer path is TA_RENDER_MOUSE (main.cpp).
+            //   TA_RENDER_SELECT=N|all   the first N of the army's own units selected
+            //   TA_RENDER_ARM=<key>      that order armed (pendingCmd_: a g r m f p c l u)
+            //   TA_RENDER_GHOSTS=builders,queue[,offscreen%[,builder]]
             //                             builders (default arabuild) each with `queue`
             //                             queued (shift) build orders cycling over its
             //                             first three plain structure options; the first
@@ -4639,19 +4639,19 @@
             //                             centre, one order a cell (a placed order blocks
             //                             another one over it). Use a tiny army.
             int ghostBuilders=0,ghostOrders=0,ghostOffscreen=0;
-            if(const char* ghostText=tak::devEnv("TAK_RENDER_GHOSTS")) {
+            if(const char* ghostText=ta::devEnv("TA_RENDER_GHOSTS")) {
                 int builders=0,queue=0,offPercent=0;
                 char builderName[64]="arabuild";
                 if(std::sscanf(ghostText,"%d,%d,%d,%63s",&builders,&queue,&offPercent,builderName)<2)
-                    throw std::runtime_error(std::string("TAK_RENDER_GHOSTS: expected builders,queue[,offscreen%[,builder]], got ")+ghostText);
+                    throw std::runtime_error(std::string("TA_RENDER_GHOSTS: expected builders,queue[,offscreen%[,builder]], got ")+ghostText);
                 builders=std::clamp(builders,1,256);queue=std::clamp(queue,1,200);offPercent=std::clamp(offPercent,0,100);
-                std::vector<const tak::sim::UnitType*> options;
+                std::vector<const ta::sim::UnitType*> options;
                 for(const auto& option:registry_.buildable(builderName)) {
                     const auto* site=registry_.find(option);
                     if(site && isStructure(site) && !site->onMana && site->footX<=4 && site->footZ<=4)options.push_back(site);
                     if(options.size()==3)break;
                 }
-                if(options.empty())throw std::runtime_error(std::string("TAK_RENDER_GHOSTS: no plain structure option for ")+builderName);
+                if(options.empty())throw std::runtime_error(std::string("TA_RENDER_GHOSTS: no plain structure option for ")+builderName);
                 int outW=1280,outH=960;
                 SDL_GetRendererOutputSize(ren_,&outW,&outH);
                 const float viewW=float(mapViewW(outW))/mapView_.zoom(),viewH=float(std::max(1,outH-barH()))/mapView_.zoom();
@@ -4686,7 +4686,7 @@
                 }
             }
             int selected=0;
-            if(const char* selectText=tak::devEnv("TAK_RENDER_SELECT")) {
+            if(const char* selectText=ta::devEnv("TA_RENDER_SELECT")) {
                 captureFrame();   // publish the army, or the next frame pin prunes the selection
                 const size_t want=std::strcmp(selectText,"all")==0 ? spawnedIds.size() : size_t(std::max(0,std::atoi(selectText)));
                 selection_.clear();
@@ -4697,21 +4697,21 @@
                 }
                 selected=int(selection_.size());
             }
-            if(const char* armText=tak::devEnv("TAK_RENDER_ARM"))pendingCmd_=armText[0];
-            if(covers || ghostBuilders || tak::devEnv("TAK_RENDER_SELECT") || pendingCmd_)
+            if(const char* armText=ta::devEnv("TA_RENDER_ARM"))pendingCmd_=armText[0];
+            if(covers || ghostBuilders || ta::devEnv("TA_RENDER_SELECT") || pendingCmd_)
                 std::fprintf(stderr,"render interactive: selected=%d armed=%c covers=%d ghost_builders=%d ghost_orders=%d ghost_offscreen=%d\n",
                     selected,pendingCmd_ ? pendingCmd_ : '-',covers,ghostBuilders,ghostOrders,ghostOffscreen);
             std::fprintf(stderr,"shadow benchmark: requested=%d spawned=%d columns=%d zoom=%.3f type=%s\n",
                 count,spawned,columns,zoom,only ? only : "mixed");
             std::fprintf(stderr,"render scene: sites=%d ghosts=%d flyers=%d corpses=%d boats=%d scenery=%d squads=%d factories=%d build_queues=%d center=%.0f,%.0f offset=%.0f,%.0f\n",
                 sites,ghosts,flyers,corpses,boats,forestTrees,squads,factories,ghostQueues,centerX,centerZ,mapView_.offX(),mapView_.offY());
-            if(tak::devEnv("TAK_RENDER_GHOST_QUEUES"))
+            if(ta::devEnv("TA_RENDER_GHOST_QUEUES"))
                 std::fprintf(stderr,"render ghost queues: builders=%d queued=%d types=%d\n",queueBuilders,queueOrders,queueTypes);
             return;
         }
         // Capture the reclaim particle fix through the existing local build harness.
-        if (tak::devFlag("TAK_RECLAIM_CAPTURE")) {
-            const char* name=tak::devEnv("TAK_CONJURE_BUILDER");
+        if (ta::devFlag("TA_RECLAIM_CAPTURE")) {
+            const char* name=ta::devEnv("TA_CONJURE_BUILDER");
             if (!name) name="araking";
             const auto* type=registry_.find(name);
             if (!type || !type->canReclaim) return;
@@ -4722,10 +4722,10 @@
                          {{-96,0},{96,0},{0,-96},{0,96}}}) {
                     if (!world_.canPlace(type,x+dx,z+dz)) continue;
                     const int id=spawn(name,x+dx,z+dz,0,localPlayer_);
-                    tak::net::Command command;
-                    command.kind=tak::net::Cmd::Reclaim;command.player=localPlayer_;
+                    ta::net::Command command;
+                    command.kind=ta::net::Cmd::Reclaim;command.player=localPlayer_;
                     command.unitId=id;command.targetId=feature.id;
-                    tak::sim::applyCommand(writableWorld(),registry_,command);
+                    ta::sim::applyCommand(writableWorld(),registry_,command);
                     selection_={id};noFog_=true;edgeScrollOn_=false;
                     mapView_.setZoom(3);
                     mapView_.setOffset(x+dx-500/3.f,
@@ -4738,13 +4738,13 @@
             std::fprintf(stderr,"reclaim capture: no suitable feature/site\n");
             return;
         }
-        if (tak::devFlag("TAK_CONJURE_TEST")) {
-            const char* builder=tak::devEnv("TAK_CONJURE_BUILDER");
-            const char* target=tak::devEnv("TAK_CONJURE_TARGET");
-            const char* builderXEnv=tak::devEnv("TAK_CONJURE_BUILDER_X");
-            const char* builderZEnv=tak::devEnv("TAK_CONJURE_BUILDER_Z");
-            const char* siteXEnv=tak::devEnv("TAK_CONJURE_SITE_X");
-            const char* siteZEnv=tak::devEnv("TAK_CONJURE_SITE_Z");
+        if (ta::devFlag("TA_CONJURE_TEST")) {
+            const char* builder=ta::devEnv("TA_CONJURE_BUILDER");
+            const char* target=ta::devEnv("TA_CONJURE_TARGET");
+            const char* builderXEnv=ta::devEnv("TA_CONJURE_BUILDER_X");
+            const char* builderZEnv=ta::devEnv("TA_CONJURE_BUILDER_Z");
+            const char* siteXEnv=ta::devEnv("TA_CONJURE_SITE_X");
+            const char* siteZEnv=ta::devEnv("TA_CONJURE_SITE_Z");
             if (!builder) builder="zonhunt";
             if (!target) target="zonter";
             if (!registry_.find(builder) || !registry_.find(target)) {
@@ -4768,25 +4768,25 @@
             const bool explicitSite=siteXEnv && siteZEnv;
             float builderX=1920,builderZ=1616,siteX=0,siteZ=0;
             if (explicitBuilder &&
-                (!parseFloat("TAK_CONJURE_BUILDER_X",builderXEnv,builderX) ||
-                 !parseFloat("TAK_CONJURE_BUILDER_Z",builderZEnv,builderZ))) return;
+                (!parseFloat("TA_CONJURE_BUILDER_X",builderXEnv,builderX) ||
+                 !parseFloat("TA_CONJURE_BUILDER_Z",builderZEnv,builderZ))) return;
             if (explicitSite &&
-                (!parseFloat("TAK_CONJURE_SITE_X",siteXEnv,siteX) ||
-                 !parseFloat("TAK_CONJURE_SITE_Z",siteZEnv,siteZ))) return;
+                (!parseFloat("TA_CONJURE_SITE_X",siteXEnv,siteX) ||
+                 !parseFloat("TA_CONJURE_SITE_Z",siteZEnv,siteZ))) return;
             float zoom=3.0f,screenX=500,screenY=400;
-            if (const char* value=tak::devEnv("TAK_CONJURE_ZOOM"))
-                if (!parseFloat("TAK_CONJURE_ZOOM",value,zoom) || zoom<=0) return;
-            const char* screenXEnv=tak::devEnv("TAK_CONJURE_SCREEN_X");
-            const char* screenYEnv=tak::devEnv("TAK_CONJURE_SCREEN_Y");
+            if (const char* value=ta::devEnv("TA_CONJURE_ZOOM"))
+                if (!parseFloat("TA_CONJURE_ZOOM",value,zoom) || zoom<=0) return;
+            const char* screenXEnv=ta::devEnv("TA_CONJURE_SCREEN_X");
+            const char* screenYEnv=ta::devEnv("TA_CONJURE_SCREEN_Y");
             if (bool(screenXEnv)!=bool(screenYEnv)) {
                 std::fprintf(stderr,"conjure fixture: screen coordinates require both X and Y\n");
                 return;
             }
             if (screenXEnv &&
-                (!parseFloat("TAK_CONJURE_SCREEN_X",screenXEnv,screenX) ||
-                 !parseFloat("TAK_CONJURE_SCREEN_Y",screenYEnv,screenY))) return;
+                (!parseFloat("TA_CONJURE_SCREEN_X",screenXEnv,screenX) ||
+                 !parseFloat("TA_CONJURE_SCREEN_Y",screenYEnv,screenY))) return;
             int id=0;
-            if (!explicitBuilder && tak::devEnv("TAK_CONJURE_BUILDER"))
+            if (!explicitBuilder && ta::devEnv("TA_CONJURE_BUILDER"))
                 for (const auto& u:world_.units())
                     if (u.alive() && u.player==localPlayer_ && u.type==registry_.find(builder)) {
                         id=u.id;break;
@@ -4804,17 +4804,17 @@
                                  target,siteX,siteZ);
                     return;
                 }
-            } else if (tak::devEnv("TAK_CONJURE_REPLACE") && targetType->onMana) {
+            } else if (ta::devEnv("TA_CONJURE_REPLACE") && targetType->onMana) {
                 float best=std::numeric_limits<float>::max();
                 for (const auto& [x,z]:world_.manaSpots()) {
-                    const float sx=tak::sim::footprintWaypoint(tak::sim::footprintCell(x,targetType->footX),targetType->footX).toFloat();
-                    const float sz=tak::sim::footprintWaypoint(tak::sim::footprintCell(z,targetType->footZ),targetType->footZ).toFloat();
+                    const float sx=ta::sim::footprintWaypoint(ta::sim::footprintCell(x,targetType->footX),targetType->footX).toFloat();
+                    const float sz=ta::sim::footprintWaypoint(ta::sim::footprintCell(z,targetType->footZ),targetType->footZ).toFloat();
                     const float d=(sx-originX)*(sx-originX)+(sz-originZ)*(sz-originZ);
                     if (d<best && world_.canPlace(targetType,sx,sz)) {best=d;siteX=sx;siteZ=sz;}
                 }
                 if (best==std::numeric_limits<float>::max())
                     throw std::runtime_error("conjure replacement fixture has no free mana spot");
-            } else if (tak::devEnv("TAK_CONJURE_TARGET")) {
+            } else if (ta::devEnv("TA_CONJURE_TARGET")) {
                 bool found=false;
                 for (int r=0;r<=640 && !found;r+=32)
                     for (int dz=-r;dz<=r && !found;dz+=32)
@@ -4829,7 +4829,7 @@
                     return;
                 }
             }
-            if (const char* base=tak::devEnv("TAK_CONJURE_REPLACE")) {
+            if (const char* base=ta::devEnv("TA_CONJURE_REPLACE")) {
                 const auto* baseType=registry_.find(base);
                 float bx=siteX,bz=siteZ,best=24.0f*24.0f;
                 for (const auto& [x,z]:world_.manaSpots()) {
@@ -4840,19 +4840,19 @@
                     throw std::runtime_error("conjure replacement fixture has no legal base");
                 spawn(base,bx,bz,0,localPlayer_);
             }
-            if (tak::devFlag("TAK_CONJURE_REPAIR")) {
+            if (ta::devFlag("TA_CONJURE_REPAIR")) {
                 const int targetId=spawn(target,siteX,siteZ,0,localPlayer_);
-                writableWorld().unit(targetId)->hp=tak::sim::Fixed::fromFloat(targetType->maxHp*0.5f);
-                tak::net::Command command;command.kind=tak::net::Cmd::Repair;
+                writableWorld().unit(targetId)->hp=ta::sim::Fixed::fromFloat(targetType->maxHp*0.5f);
+                ta::net::Command command;command.kind=ta::net::Cmd::Repair;
                 command.unitId=id;command.targetId=targetId;command.player=localPlayer_;
-                tak::sim::applyCommand(writableWorld(),registry_,command);
+                ta::sim::applyCommand(writableWorld(),registry_,command);
                 std::printf("repair capture: worker #%d -> target #%d\n",id,targetId);
             } else writableWorld().queueBuild(id,targetType,siteX,siteZ,false);
-            // TAK_CONJURE_MANA=<n>: start the local pool at n, so a capture can show
+            // TA_CONJURE_MANA=<n>: start the local pool at n, so a capture can show
             // the bulb short of mana (-N requested above +N income).
-            if (const char* value=tak::devEnv("TAK_CONJURE_MANA")) {
+            if (const char* value=ta::devEnv("TA_CONJURE_MANA")) {
                 float mana=0;
-                if (!parseFloat("TAK_CONJURE_MANA",value,mana) || mana<0) return;
+                if (!parseFloat("TA_CONJURE_MANA",value,mana) || mana<0) return;
                 auto& p=writableWorld().player(localPlayer_);p.mana=mana;
                 if (p.retailResources) p.retailResources->stored=mana;
             }
@@ -4901,7 +4901,7 @@
     }
 
     void GameView::fireTest() {
-        if(tak::devFlag("TAK_PALETTE_ROSTER_TEST")) {
+        if(ta::devFlag("TA_PALETTE_ROSTER_TEST")) {
             std::set<std::string> names;
             const auto gather=[&](const auto& self,const PieceMeta& meta)->void {
                 if(!meta.skip)names.insert(meta.primTex.begin(),meta.primTex.end());
@@ -4932,9 +4932,9 @@
             // and sheet records, which are unchanged).
             size_t before=0,after=0;
             for(const auto& [n,source]:paletteTextureSources_) {
-                before+=sizeof(tak::gaf::Palette)+tak::render::palette::kShadeTableBytes+
-                        source.frames.size()*sizeof(tak::gaf::Frame);
-                after+=source.frames.capacity()*sizeof(tak::render::palette::Frame);
+                before+=sizeof(ta::gaf::Palette)+ta::render::palette::kShadeTableBytes+
+                        source.frames.size()*sizeof(ta::gaf::Frame);
+                after+=source.frames.capacity()*sizeof(ta::render::palette::Frame);
                 for(const auto& frame:source.frames) {before+=size_t(frame.width)*frame.height*4;after+=frame.la.capacity();}
             }
             for(const auto& bank:paletteBanks_)after+=sizeof(bank)+bank.shades.capacity();
@@ -4949,7 +4949,7 @@
             return;
         }
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
-        if (tak::devFlag("TAK_CREON_DEATH_SOUND_TEST")) {
+        if (ta::devFlag("TA_CREON_DEATH_SOUND_TEST")) {
             // Every Creon unit whose Killed/Dying authors PLAY_SOUND, plus two
             // non-Creon archers as controls, killed through the combat damage
             // path and heard through the real client pipeline: the simulation
@@ -4959,7 +4959,7 @@
             // VM's own death sounds. Per death:
             //  (a) the client requests exactly the sounds the simulation chose
             //      for that unit, in order;
-            //  (b) another peer hears the same. TAK_CREON_DEATH_SOUND_CATCHUP=1
+            //  (b) another peer hears the same. TA_CREON_DEATH_SOUND_CATCHUP=1
             //      replays this game with each batch presented late, as after a
             //      rejoin or a spectator catch-up, so its display VMs register
             //      later and roll fewer idle RANDs before the hit;
@@ -4989,16 +4989,16 @@
                 {"cremech",1,0,3,0,0},{"cretort",1,0,3,0,0},{"crefire",1,1,2,0,1},
                 {"cregod",1,1,3,3,0},{"cregatl",.25,.25,1,1,0},{"creshoc",.25,0,1,0,0},
                 {"crebomb",1,1,0,0,13},{"araarch",.25,0,1,0,0},{"tararch",.25,0,1,0,0}};
-            const auto* normalWeapon=static_cast<const tak::sim::Weapon*>(nullptr);
+            const auto* normalWeapon=static_cast<const ta::sim::Weapon*>(nullptr);
             const auto* blastWeapon=normalWeapon;
             std::string normalFrom,blastFrom;
             for (const auto& [id,type]:registry_.types()) for (const auto& weapon:type.weapons) {
-                if (weapon.status!=tak::sim::Weapon::Status::None || weapon.mindControl || weapon.damage<=0) continue;
+                if (weapon.status!=ta::sim::Weapon::Status::None || weapon.mindControl || weapon.damage<=0) continue;
                 if (!normalWeapon && weapon.dmgType==1) {normalWeapon=&weapon;normalFrom=id+":"+weapon.name;}
                 if (!blastWeapon && weapon.dmgType==3) {blastWeapon=&weapon;blastFrom=id+":"+weapon.name;}
             }
             if (!normalWeapon || !blastWeapon) throw std::runtime_error("no shipped dmgType 1/3 weapon");
-            const bool catchUp=tak::devFlag("TAK_CREON_DEATH_SOUND_CATCHUP");
+            const bool catchUp=ta::devFlag("TA_CREON_DEATH_SOUND_CATCHUP");
             std::fprintf(stderr,"CREON_DEATH weapons normal=%s explosion=%s noFog=%d players=%d catchup=%d\n",
                 normalFrom.c_str(),blastFrom.c_str(),int(noFog_),world_.numPlayers(),int(catchUp));
             const auto lower=[](std::string s) {
@@ -5008,8 +5008,8 @@
             sounds_.requestHook=[&](const SoundBank::RequestTrace& r){requests.push_back(r);};
             // The simulation's choice: what each dying VM played, per unit id
             // (scriptSounds() holds the last tick's).
-            std::map<int,std::vector<tak::sim::World::ScriptSound>> chosen;
-            const auto soundName=[&](const tak::sim::World::ScriptSound& s) {
+            std::map<int,std::vector<ta::sim::World::ScriptSound>> chosen;
+            const auto soundName=[&](const ta::sim::World::ScriptSound& s) {
                 return lower(s.type->script()->name(uint32_t(s.name)));
             };
             const int enemy=localPlayer_==0 ? 1 : 0;
@@ -5050,11 +5050,11 @@
                 const auto* u=world_.unit(id);
                 if (!u || !u->alive()) throw std::runtime_error("victim died before the hit");
                 const int from=u->player==localPlayer_ ? enemy : localPlayer_;
-                tak::sim::Weapon w=death==3 ? *blastWeapon : *normalWeapon;
+                ta::sim::Weapon w=death==3 ? *blastWeapon : *normalWeapon;
                 w.aoe=0;w.dmgVs.clear();w.dmgVsIds.clear();
                 w.damage=std::min(30000,int32_t(float(u->maximumHp())*(1.25f+float(id%3)))); // HP is 16.16
                 // Armour and veterancy scale damage; strike until the hit is lethal.
-                for (int hit=0;hit<8 && world_.unit(id)->hp>tak::sim::Fixed();++hit)
+                for (int hit=0;hit<8 && world_.unit(id)->hp>ta::sim::Fixed();++hit)
                     writableWorld().debugApplyHit(w,id,from);
             };
             lookAt(cx,cz);
@@ -5386,10 +5386,10 @@
             // (g) Petrified and frozen bodies stand as statues without Killed or
             // Dying: the simulation chooses no cry and the client hears none.
             {
-                const tak::sim::Weapon* statusWeapon[2]={nullptr,nullptr};
+                const ta::sim::Weapon* statusWeapon[2]={nullptr,nullptr};
                 for (const auto& [id,type]:registry_.types()) for (const auto& weapon:type.weapons) {
-                    if (weapon.status==tak::sim::Weapon::Status::Stoned && !statusWeapon[0]) statusWeapon[0]=&weapon;
-                    if (weapon.status==tak::sim::Weapon::Status::Frozen && !statusWeapon[1]) statusWeapon[1]=&weapon;
+                    if (weapon.status==ta::sim::Weapon::Status::Stoned && !statusWeapon[0]) statusWeapon[0]=&weapon;
+                    if (weapon.status==ta::sim::Weapon::Status::Frozen && !statusWeapon[1]) statusWeapon[1]=&weapon;
                 }
                 if (!statusWeapon[0] || !statusWeapon[1]) throw std::runtime_error("no shipped petrify/freeze weapon");
                 // A cry on every normal death, and both statues.
@@ -5411,14 +5411,14 @@
                     const auto* u=world_.unit(victims[i]);
                     if (!u || !u->alive()) throw std::runtime_error("statue victim died before the hit");
                     where[victims[i]]={u->x.toFloat(),u->z.toFloat()};
-                    tak::sim::Weapon w=*statusWeapon[i&1];
+                    ta::sim::Weapon w=*statusWeapon[i&1];
                     w.aoe=0;w.dmgVs.clear();w.dmgVsIds.clear();
                     // A green unit falls to the status roll 80 times in 100
                     // (World::retailStatusRoll): repeat the hit until it takes.
                     for (int attempt=0;attempt<64;++attempt) {
                         writableWorld().debugApplyHit(w,victims[i],enemy);
                         const auto* hit=world_.unit(victims[i]);
-                        if (!hit || hit->hp<=tak::sim::Fixed()) break;
+                        if (!hit || hit->hp<=ta::sim::Fixed()) break;
                     }
                 }
                 for (int t=0;t<240;++t) frame();
@@ -5448,12 +5448,12 @@
                 "through the client pipeline\n");
             return;
         }
-        if (tak::devEnv("TAK_WEAPON_IMPACT_EFFECT_TEST")) {
+        if (ta::devEnv("TA_WEAPON_IMPACT_EFFECT_TEST")) {
             // Every shipped travelling projectile has authoritative XYZ. Only
             // deliberately incomplete synthetic Weapon fixtures use the old 2D path.
             for(const auto& [id,type]:registry_.types())for(const auto& weapon:type.weapons)
                 if(weapon.projVel>0 && !weapon.melee && !weapon.beam &&
-                   weapon.kind==tak::sim::Weapon::Kind::Normal && !weapon.ballistic)
+                   weapon.kind==ta::sim::Weapon::Kind::Normal && !weapon.ballistic)
                     throw std::runtime_error("production weapon reaches legacy 2D path: "+id);
             const auto* arapult = registry_.find("arapult");
             if (!arapult || arapult->weapons.empty())
@@ -5490,7 +5490,7 @@
                 throw std::runtime_error("ordinary arrow created an unrequested muzzle flash");
 
             const auto testAt = [&](float x, float z, const std::string& expectedClass,
-                                    const tak::sim::Weapon& weapon, bool struckUnit=false) {
+                                    const ta::sim::Weapon& weapon, bool struckUnit=false) {
                 effects_.clear();
                 const size_t particleCount = particles_.size();
                 const uint32_t tick = front().gameTick;
@@ -5560,7 +5560,7 @@
             if (!harpy || harpy->weapons.empty())
                 throw std::runtime_error("Harpy presentation fixture has no weapon");
             const auto& spell = harpy->weapons.front();
-            tak::sim::World::HitFx hit;
+            ta::sim::World::HitFx hit;
             hit.weapon = &spell;
             hit.fromX = cx - 120; hit.fromZ = cz;
             hit.x = cx + 120; hit.z = cz;
@@ -5571,7 +5571,7 @@
             effects_.clear();
             hitQueue_.push_back({front().gameTick, hit});
             cosmeticStep(0);
-            if (spell.losStatus != tak::sim::Weapon::LosStatus::MindControl || !effectFor(spell.weaponArt) ||
+            if (spell.losStatus != ta::sim::Weapon::LosStatus::MindControl || !effectFor(spell.weaponArt) ||
                 beams_.size() != beamsBefore || !effects_.empty() || !sounds_.has(spell.soundHit) ||
                 sounds_.peakOf(spell.soundHit) <= 0)
                 throw std::runtime_error("Harpy authored projectile/sound failed to load");
@@ -5581,8 +5581,8 @@
             cosmeticStep(0);
             if (effects_.size() != 1 || effects_.back().worldPosition != landed.position)
                 throw std::runtime_error("Harpy charm explosion did not land on its victim");
-            auto cob = tak::cob::load(vfs_.read("scripts/zonharp.cob"));
-            tak::cob::Vm vm(std::move(cob), true);
+            auto cob = ta::cob::load(vfs_.read("scripts/zonharp.cob"));
+            ta::cob::Vm vm(std::move(cob), true);
             vm.enableRetailAnimation();
             std::string firedSound;
             vm.onPlaySound = [&](int32_t index,int32_t) { firedSound = vm.file().name(uint32_t(index)); };
@@ -5615,7 +5615,7 @@
                 landVariants, waterVariants, directVariants);
             return;
         }
-        if(tak::devFlag("TAK_SCRIPT_263_TEST")) {
+        if(ta::devFlag("TA_SCRIPT_263_TEST")) {
             // Kirenna's live MoveControl script emits detached SFX 263 when its
             // water movement state changes. Ulasem Arena has no water, so this
             // fixture is run on a shipped water map (for example Lake Lokken).
@@ -5647,7 +5647,7 @@
                 simStep(1.0f/30.0f);
                 beginFrame();endFrame();
             };
-            std::optional<tak::sim::World::ScriptEmission> emission;
+            std::optional<ta::sim::World::ScriptEmission> emission;
             for(int tick=0;tick<1200 && !emission;++tick) {
                 stepWithoutRender();
                 std::lock_guard<std::mutex> lock(hitQueueMutex_);
@@ -5670,10 +5670,10 @@
                 throw std::runtime_error("SFX 263 fixture did not create a live skipped-render interval");
             auto* owner=writableWorld().unit(ownerId);
             if(!owner)throw std::runtime_error("SFX 263 fixture owner vanished before retirement check");
-            owner->deadFor=tak::sim::World::kRetiredTicks;
+            owner->deadFor=ta::sim::World::kRetiredTicks;
             captureFrame();beginFrame();endFrame();
             const auto* retired=frameUnitP(ownerId);
-            if(!retired || retired->alive() || retired->deadFor*30.0f<tak::sim::World::kRetiredTicks)
+            if(!retired || retired->alive() || retired->deadFor*30.0f<ta::sim::World::kRetiredTicks)
                 throw std::runtime_error("SFX 263 fixture failed to retire its source unit");
             const auto before=effects_.size();
             cosmeticStep(0);
@@ -5699,7 +5699,7 @@
             std::fprintf(stderr,"PASS: live vermage SFX 263 survives two skipped render ticks and owner retirement with exact XYZ/tick, then expires at authored duration\n");
             return;
         }
-        if(tak::devFlag("TAK_SCRIPT_TRANSIENT_TEST")) {
+        if(ta::devFlag("TA_SCRIPT_TRANSIENT_TEST")) {
             // verpill's real Create script emits extended SFX 264 (pillaroflight).
             // Do not call cosmeticStep while collecting ticks: this deliberately
             // exercises the same queue used when rendering skips simulation ticks.
@@ -5709,7 +5709,7 @@
                 simStep(1.0f/30.0f);
                 beginFrame();endFrame();
             };
-            std::optional<tak::sim::World::ScriptEmission> emission;
+            std::optional<ta::sim::World::ScriptEmission> emission;
             for(int tick=0;tick<1200 && !emission;++tick) {
                 stepWithoutRender();
                 std::lock_guard<std::mutex> lock(hitQueueMutex_);
@@ -5738,10 +5738,10 @@
             }
             auto* owner=writableWorld().unit(ownerId);
             if(!owner)throw std::runtime_error("script transient owner vanished before retirement check");
-            owner->deadFor=tak::sim::World::kRetiredTicks;
+            owner->deadFor=ta::sim::World::kRetiredTicks;
             captureFrame();beginFrame();endFrame();
             const auto* retired=frameUnitP(ownerId);
-            if(!retired || retired->alive() || retired->deadFor*30.0f<tak::sim::World::kRetiredTicks)
+            if(!retired || retired->alive() || retired->deadFor*30.0f<ta::sim::World::kRetiredTicks)
                 throw std::runtime_error("script transient fixture failed to retire its source unit");
 
             const auto before=effects_.size();
@@ -5774,8 +5774,8 @@
             std::fprintf(stderr,"PASS: live verpill SFX 264 survives two skipped render ticks and owner retirement with exact XYZ/tick, then expires at authored duration\n");
             return;
         }
-        if (tak::devFlag("TAK_TRANSPORT_EFFECT_TEST")) {
-            tak::sim::World::TransportFx event;
+        if (ta::devFlag("TA_TRANSPORT_EFFECT_TEST")) {
+            ta::sim::World::TransportFx event;
             event.tick=front().gameTick-4;
             event.passenger={int32_t(cx*65536),101*65536+32768,int32_t(cz*65536)};
             event.carrier={int32_t((cx+80)*65536),181*65536+32768,int32_t(cz*65536)};
@@ -5814,9 +5814,9 @@
                 throw std::runtime_error("transport attached-effect assets unavailable");
             smokeSprites_.clear();pointParticles_.clear();damageFlames_.clear();nimbusEffects_.clear();
             const std::array<int32_t,3> point{int32_t(cx*65536),0,int32_t(cz*65536)};
-            tak::RetailSmokeParticle smoke;smoke.position=point;
+            ta::RetailSmokeParticle smoke;smoke.position=point;
             smokeSprites_[passengerId].push_back({smoke,art});
-            tak::RetailPointParticle wake;wake.position=point;
+            ta::RetailPointParticle wake;wake.position=point;
             pointParticles_[passengerId].push_back(wake);
             DamageFlameSprite flame;flame.position=point;flame.art=art;flame.clock.start(art->durations);
             damageFlames_[passengerId].push_back(flame);
@@ -5892,7 +5892,7 @@
             std::fprintf(stderr,"PASS: transport effects, cargo hide/release, authored deaths, and frozen statue poses\n");
             return;
         }
-        if(tak::devEnv("TAK_FEATURE_CACHE_TEST")) {
+        if(ta::devEnv("TA_FEATURE_CACHE_TEST")) {
             auto definition = featureDefs_.at("vertree01");
             definition.values["animating"] = "0";
             definition.values["animatable"] = "0";
@@ -5912,13 +5912,13 @@
             std::fprintf(stderr, "PASS: feature cache separates static, animated, burn and shadow variants; repeated lookup reuses art\n");
             return;
         }
-        if(tak::devEnv("TAK_FEATURE_SMOKE_QUEUE_TEST")) {
+        if(ta::devEnv("TA_FEATURE_SMOKE_QUEUE_TEST")) {
             const auto definition=featureDefs_.find("vertree01");
             const auto* art=effectFor("bigsmoke");
             if(definition==featureDefs_.end() || !art)throw std::runtime_error("feature smoke fixture art unavailable");
             smokeTickQueue_.clear();smokeSprites_.clear();featureSmokeSprites_.clear();
             smokeTick_=front().gameTick-4;
-            tak::RetailSmokeParticle unitSmoke;unitSmoke.frameLimit=100;
+            ta::RetailSmokeParticle unitSmoke;unitSmoke.frameLimit=100;
             smokeSprites_[77].push_back({unitSmoke,art});
             SmokeTick first;first.tick=front().gameTick-3;
             for(int i=0;i<12;++i)first.features.push_back({77,"vertree01",{0,0,0},0});
@@ -5948,7 +5948,7 @@
             std::fprintf(stderr,"PASS: feature smoke cap10, delayed tick motion, single consumption and unit/feature retirement isolation\n");
             return;
         }
-        if(tak::devEnv("TAK_DEBRIS_TEST") || tak::devEnv("TAK_BLOOD_TEST")) {
+        if(ta::devEnv("TA_DEBRIS_TEST") || ta::devEnv("TA_BLOOD_TEST")) {
             edgeScrollOn_=false;follow_=false;initialCamera_.reset();
             Visual visual;auto& root=visual.model.root;root.name="piece";
             root.vertices={-30,0,0,30,0,0,0,50,0};
@@ -5958,12 +5958,12 @@
             UnitR unit;unit.id=-123;unit.x=cx;unit.z=cz;
             unit.worldPosition={int32_t(cx*65536),int32_t((rawHeight(cx,cz)+100)*65536),int32_t(cz*65536)};
             const std::vector<std::string> names={"piece"};
-            std::vector<tak::cob::PieceState> poses(1);
+            std::vector<ta::cob::PieceState> poses(1);
             Anim snapshot;snapshot.pieceNames=&names;snapshot.capturedPose=poses;
-            tak::cob::File bloodScript;bloodScript.scripts={{"QueryBlood",0}};
+            ta::cob::File bloodScript;bloodScript.scripts={{"QueryBlood",0}};
             bloodScript.code={0x10021001,0,0x10023002,0,0x10021001,0,0x10065000};
-            tak::cob::Vm bloodVm(std::move(bloodScript),true);bloodVm.enableRetailAnimation();
-            tak::sim::UnitType bloodType;unit.type=&bloodType;snapshot.effectQueryVm=&bloodVm;
+            ta::cob::Vm bloodVm(std::move(bloodScript),true);bloodVm.enableRetailAnimation();
+            ta::sim::UnitType bloodType;unit.type=&bloodType;snapshot.effectQueryVm=&bloodVm;
             if(!explodePiece(unit,snapshot,0,0))
                 throw std::runtime_error("detached model admission rejected an empty pool");
             if(detachedPieces_.size()!=1 || detachedPieces_[0].model.vertices.size()!=9 ||
@@ -5988,7 +5988,7 @@
             visuals_.erase("__debris_fixture");unitType_.erase(-123);
             if(detachedPieces_[0].model.vertices[0]!=-30)
                 throw std::runtime_error("detached geometry depended on source lifetime");
-            if(tak::devEnv("TAK_BLOOD_TEST")) {
+            if(ta::devEnv("TA_BLOOD_TEST")) {
                 mapView_.setZoom(2);
                 int width,height;SDL_GetRendererOutputSize(ren_,&width,&height);
                 mapView_.setOffset(cx-float(mapViewW(width))/4,cz-float(height-barH())/4);
@@ -6042,14 +6042,14 @@
             std::fprintf(stderr,"PASS: production EXPLODE retains independent model geometry without generic particles\n");
             return;
         }
-        if (tak::devEnv("TAK_PIECE_VISIBILITY_TEST")) {
+        if (ta::devEnv("TA_PIECE_VISIBILITY_TEST")) {
             {
-                tak::cob::File script;script.pieces={"root","arm","hand"};
+                ta::cob::File script;script.pieces={"root","arm","hand"};
                 script.scripts={{"Test",0}};
                 script.code={0x10021001,64,0x10071000,1,0x10021001,0,0x10065000};
-                Anim test;test.vm=std::make_unique<tak::cob::Vm>(std::move(script));
+                Anim test;test.vm=std::make_unique<ta::cob::Vm>(std::move(script));
                 test.vm->enableRetailAnimation();
-                tak::tdo::Object model;model.name="ROOT";model.children.resize(1);
+                ta::tdo::Object model;model.name="ROOT";model.children.resize(1);
                 model.children[0].name="arm";model.children[0].children.resize(1);
                 model.children[0].children[0].name="hand";
                 configureExplosionHierarchy(test,model);
@@ -6062,13 +6062,13 @@
                     throw std::runtime_error("replacement model retained stale detachment hierarchy");
             }
             // Exercise the production collector with a hidden, transformed parent.
-            tak::tdo::Object root;root.name="parent";root.x=7;root.y=3;
+            ta::tdo::Object root;root.name="parent";root.x=7;root.y=3;
             root.vertices={0,0,0, 12,0,0, 0,12,4};
             root.primitives={{0,"",{0,1,2}},{0,"",{2,1,0}}};
             root.children.push_back(root);
             root.children[0].name="child";root.children[0].x=19;
             const std::vector<std::string> names={"parent","child"};
-            std::vector<tak::cob::PieceState> poses(2);
+            std::vector<ta::cob::PieceState> poses(2);
             poses[0].move[0]=11;poses[0].rot[1]=0.6f;
             Anim snapshot;snapshot.pieceNames=&names;snapshot.capturedPose=poses;
             for(bool shadow:{false,true}) {
@@ -6120,14 +6120,14 @@
                 const auto& meta=visuals_.at("arakeep").meta;
                 preparePaletteTextures(meta);
                 std::vector<std::string> pieceNames;
-                const auto gather=[&](const auto& self,const tak::tdo::Object& object)->void {
+                const auto gather=[&](const auto& self,const ta::tdo::Object& object)->void {
                     pieceNames.push_back(object.name);
                     std::transform(pieceNames.back().begin(),pieceNames.back().end(),
                                    pieceNames.back().begin(),::tolower);
                     for(const auto& child:object.children)self(self,child);
                 };
                 gather(gather,model->root);
-                std::vector<tak::cob::PieceState> state(pieceNames.size());
+                std::vector<ta::cob::PieceState> state(pieceNames.size());
                 Anim pose;pose.pieceNames=&pieceNames;pose.capturedPose=state;
                 std::vector<Tri> shaded,neutral,preparedGeometry;
                 auto* atlas=atlasFor(0);
@@ -6164,7 +6164,7 @@
             std::fprintf(stderr,"PASS: production body/shadow collector preserves visible children and hidden-parent transforms\n");
             return;
         }
-        if (tak::devEnv("TAK_EXPLOSION_CLASSES_TEST")) {
+        if (ta::devEnv("TA_EXPLOSION_CLASSES_TEST")) {
             loadExplosionClasses();
             if(explosionClassOrder_.size()<9)throw std::runtime_error("missing numeric explosion classes");
             UnitR unit{};unit.x=cx;unit.z=cz;
@@ -6203,7 +6203,7 @@
             std::fprintf(stderr,"PASS: all nine authored explosion classes and combined flags spawn independently\n");
             return;
         }
-        if (tak::devEnv("TAK_GLOW_TEST")) {
+        if (ta::devEnv("TA_GLOW_TEST")) {
             edgeScrollOn_=false;follow_=false;initialCamera_.reset();
             for(unsigned kind=0;kind<3;++kind)
                 explosionGlows_.push_back({cx+(float(kind)-1)*100,cz,0,front().gameTick,kind});
@@ -6213,7 +6213,7 @@
                 cz-float(height-barH())*0.5f/mapView_.zoom());
             return;
         }
-        if (tak::devEnv("TAK_POINT_TEST")) {
+        if (ta::devEnv("TA_POINT_TEST")) {
             edgeScrollOn_=false;follow_=false;initialCamera_.reset();
             const auto& map=mapView_.map();
             bool found=false;
@@ -6233,24 +6233,24 @@
                 cz-float(height-barH())*0.5f/mapView_.zoom());
             return;
         }
-        if (tak::devEnv("TAK_SMOKE_TEST")) {
+        if (ta::devEnv("TA_SMOKE_TEST")) {
             edgeScrollOn_=false;follow_=false;initialCamera_.reset();
             const int owner=spawn("arakeep",cx,cz,0,0);
-            if(auto* unit=writableWorld().unit(owner))unit->hp=tak::sim::Fixed::fromInt(unit->maximumHp()/5);
+            if(auto* unit=writableWorld().unit(owner))unit->hp=ta::sim::Fixed::fromInt(unit->maximumHp()/5);
             int width=0,height=0;SDL_GetRendererOutputSize(ren_,&width,&height);
             mapView_.setZoom(1.5f);
             mapView_.setOffset(cx-float(mapViewW(width))*0.5f/mapView_.zoom(),
                 cz-float(height-barH())*0.5f/mapView_.zoom());
             return;
         }
-        if (const char* type=tak::devEnv("TAK_PROJECTILE_TEST")) {
+        if (const char* type=ta::devEnv("TA_PROJECTILE_TEST")) {
             // Screenshot fixtures must not drift with the dummy driver's
             // pointer at (0,0), and must fit the actual map viewport.
             edgeScrollOn_=false;follow_=false;initialCamera_.reset();
             const int shooter=spawn(type,cx-200,cz,1.57f,0);
             const int target=spawn("tarzom",cx+200,cz,-1.57f,1);
             if (auto* u=writableWorld().unit(target)) {
-                u->hp=tak::sim::Fixed::fromInt(25000);writableWorld().setStance(target,2);
+                u->hp=ta::sim::Fixed::fromInt(25000);writableWorld().setStance(target,2);
             }
             if (shooter>=0 && target>=0) writableWorld().attack(shooter,target,false);
             int width=0,height=0;SDL_GetRendererOutputSize(ren_,&width,&height);
@@ -6275,7 +6275,7 @@
         float tx = cx + 60, tz = cz - 60;
         bool burnTarget=false;
         std::string burnType;
-        const bool flameProbe=tak::devFlag("TAK_FEATURE_FLAME_TEST");
+        const bool flameProbe=ta::devFlag("TA_FEATURE_FLAME_TEST");
         float closest=std::numeric_limits<float>::max();
         for (const auto& ft : world_.features())
             if (ft.alive && ft.type >= 0 &&
@@ -6314,7 +6314,7 @@
         // Ordered corpse-reclaim check: a builder is sent (negative target id)
         // to consume a fresh corpse -- the body must vanish when it arrives.
         int rcv = spawn("arasword", cx - 200, cz + 120, 0.0f, 0);
-        if (auto* rd = writableWorld().unit(rcv)) rd->hp = tak::sim::Fixed();   // dies this tick, normal corpse
+        if (auto* rd = writableWorld().unit(rcv)) rd->hp = ta::sim::Fixed();   // dies this tick, normal corpse
         int rcb = spawn("arabuild", cx - 250, cz + 160, 1.57f, 0);
         writableWorld().reclaim(rcb, -rcv, false);
         // Animate check: an idle necromancer beside the (soon) archer corpse
@@ -6324,7 +6324,7 @@
         if (auto* np = writableWorld().unit(nec)) np->stance = 2;
         // Watch the burn, not the tower: centre the camera on the target tree.
         mapView_.setOffset(tx - 640 / mapView_.zoom(), tz - 400 / mapView_.zoom());
-        if (tak::devEnv("TAK_FEATURE_FLAME_TEST")) {
+        if (ta::devEnv("TA_FEATURE_FLAME_TEST")) {
             edgeScrollOn_=false;follow_=false;initialCamera_.reset();
             int width=0,height=0;SDL_GetRendererOutputSize(ren_,&width,&height);
             mapView_.setZoom(1.5f);
@@ -6355,8 +6355,8 @@
         float cx = mapView_.map().blocksX * 16.0f, cz = mapView_.map().blocksY * 16.0f;
         for (auto& u : world_.units())
             if (u.player == localPlayer_ && u.type && u.type->canMove) {
-                tak::net::Command c;
-                c.kind = tak::net::Cmd::AttackMove;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::AttackMove;
                 c.unitId = u.id;
                 c.x = cx + dx;
                 c.z = cz + dz;
@@ -6469,7 +6469,7 @@
         std::vector<uint32_t> inView;
         if (f.unitGrid.size() == f.live.size()) {
             std::vector<uint64_t> bits;
-            const auto rect = tak::render::anchorBandToWorld(-64.0f, -64.0f, w + 64.0f, h + 160.0f, mapView_.offX(),
+            const auto rect = ta::render::anchorBandToWorld(-64.0f, -64.0f, w + 64.0f, h + 160.0f, mapView_.offX(),
                                                              mapView_.offY(), mapView_.zoom(), unitLiftBounds());
             f.unitGrid.query(rect.left, rect.top, rect.right, rect.bottom, bits, inView);
         } else {

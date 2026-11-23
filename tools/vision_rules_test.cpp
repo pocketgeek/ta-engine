@@ -3,8 +3,8 @@
 #include <cstdio>
 #include <stdexcept>
 
-using namespace tak::sim;
-namespace rf = tak::retailfog;
+using namespace ta::sim;
+namespace rf = ta::retailfog;
 static void check(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
 }

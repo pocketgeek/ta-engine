@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-namespace tak::render {
+namespace ta::render {
 
 // Broad-phase unit candidates (workstream L), the unit counterpart of FeatureIndex.
 //
@@ -307,4 +307,4 @@ inline ScreenBand pickBand(float mx, float my, float zoom, const PickBoxes& boxe
             mx - left + slack, my - top - sinkLo * zoom + slack};
 }
 
-}  // namespace tak::render
+}  // namespace ta::render

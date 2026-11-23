@@ -13,7 +13,7 @@
 #include <signal.h>   // sigaction: query SIGHUP's disposition
 #endif
 
-namespace tak {
+namespace ta {
 
 inline std::atomic<bool> g_termRequested{false};
 
@@ -34,4 +34,4 @@ inline void installSignalHandlers() {
 #endif
 }
 
-}  // namespace tak
+}  // namespace ta

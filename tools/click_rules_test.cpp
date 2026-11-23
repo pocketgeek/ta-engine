@@ -12,8 +12,8 @@
 #include <vector>
 
 namespace {
-using tak::CursorId;
-using namespace tak::client;
+using ta::CursorId;
+using namespace ta::client;
 
 int failures = 0;
 
@@ -45,8 +45,8 @@ void expect(ClickOrder got, ClickOrder want, const std::string& row) {
 }
 void expectCursor(CursorId got, CursorId want, const std::string& row) {
     if (got == want) return;
-    std::fprintf(stderr, "FAIL: %s: cursor %s, want %s\n", row.c_str(), tak::cursorSequenceName(got),
-                 tak::cursorSequenceName(want));
+    std::fprintf(stderr, "FAIL: %s: cursor %s, want %s\n", row.c_str(), ta::cursorSequenceName(got),
+                 ta::cursorSequenceName(want));
     ++failures;
 }
 void expectAction(SelectAction got, SelectAction want, const std::string& row) {
@@ -275,9 +275,9 @@ void armedRows() {
     for (CursorId cur : {CursorId::Attack, CursorId::Airstrike, CursorId::TooFar, CursorId::Defend, CursorId::Repair,
                          CursorId::Patrol, CursorId::Revive, CursorId::Reclaim, CursorId::Load, CursorId::Unload,
                          CursorId::Move, CursorId::FindSite})
-        if (!isOrderCursor(cur)) { std::fprintf(stderr, "FAIL: P4 %s is an order cursor\n", tak::cursorSequenceName(cur)); ++failures; }
+        if (!isOrderCursor(cur)) { std::fprintf(stderr, "FAIL: P4 %s is an order cursor\n", ta::cursorSequenceName(cur)); ++failures; }
     for (CursorId cur : {CursorId::Select, CursorId::Red, CursorId::Green, CursorId::Normal})
-        if (isOrderCursor(cur)) { std::fprintf(stderr, "FAIL: P4 %s does nothing\n", tak::cursorSequenceName(cur)); ++failures; }
+        if (isOrderCursor(cur)) { std::fprintf(stderr, "FAIL: P4 %s does nothing\n", ta::cursorSequenceName(cur)); ++failures; }
 }
 
 // 2.2 / 2.9 boxes.
@@ -406,7 +406,7 @@ void parity() {
                     if (!cursorNames(c.cursor, c.order)) {
                         if (failures < 20)
                             std::fprintf(stderr, "FAIL: parity %c bits=%x kind=%d sel=%d: cursor %s, order %s\n", cmd,
-                                         bits, int(k), s, tak::cursorSequenceName(c.cursor), name(c.order));
+                                         bits, int(k), s, ta::cursorSequenceName(c.cursor), name(c.order));
                         ++failures;
                     }
                 }
@@ -438,7 +438,7 @@ void parity() {
 // the head, Shift appended, both toggling; plain replaces. A box's follow-on
 // targets go behind the first: appended untoggled, or (Ctrl) each at the head.
 void modifierRows() {
-    using namespace tak::net;
+    using namespace ta::net;
     const auto row = [](uint8_t got, uint8_t want, const char* what) {
         if (got == want) return;
         std::fprintf(stderr, "FAIL: %s: queue %d, want %d\n", what, int(got), int(want));

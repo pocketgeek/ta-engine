@@ -15,7 +15,7 @@
 #include <unistd.h>
 #endif
 
-namespace tak::srv {
+namespace ta::srv {
 struct FileLease::Impl {
     std::filesystem::path path;
 #ifdef _WIN32
@@ -55,7 +55,7 @@ FileLease::FileLease(const std::filesystem::path& path)
     OVERLAPPED offset{};
     if(!LockFileEx(impl_->handle, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
                   0, 1, 0, &offset))
-        throw std::runtime_error("already in use by another running takserver");
+        throw std::runtime_error("already in use by another running taserver");
 #else
     impl_->fd = open(lock.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
     if(impl_->fd < 0)
@@ -64,10 +64,10 @@ FileLease::FileLease(const std::filesystem::path& path)
     if(fstat(impl_->fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_nlink != 1)
         throw std::runtime_error("lease file must be a regular file without aliases");
     if(flock(impl_->fd, LOCK_EX | LOCK_NB) != 0)
-        throw std::runtime_error("already in use by another running takserver");
+        throw std::runtime_error("already in use by another running taserver");
 #endif
 }
 
 FileLease::~FileLease() = default;
 const std::filesystem::path& FileLease::path() const { return impl_->path; }
-} // namespace tak::srv
+} // namespace ta::srv

@@ -9,7 +9,7 @@
 #include <span>
 #include "cob/retailpieces.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 // 536143 rotates an integer pair and rounds each result to nearest/even.
 // Q60 Taylor evaluation preserves that precision without host x87/libm state.
@@ -241,4 +241,4 @@ struct RetailDrawnCenterCache {
     }
 };
 
-} // namespace tak::sim
+} // namespace ta::sim

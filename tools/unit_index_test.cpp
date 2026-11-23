@@ -43,9 +43,9 @@
 #include <unordered_map>
 #include <vector>
 
-using tak::render::UnitGrid;
-using tak::render::LiftBounds;
-using tak::render::anchorBandToWorld;
+using ta::render::UnitGrid;
+using ta::render::LiftBounds;
+using ta::render::anchorBandToWorld;
 
 namespace {
 
@@ -156,7 +156,7 @@ void testCull(std::mt19937& rng) {
         const float offX = (u01(rng) - 0.1f) * 12000, offY = (u01(rng) - 0.1f) * 12000;
         const float L = -160, T = -260, R = float(mvw + 160), B = float(winH + 120);
         // Lift bounds as GameView builds them: [0, (top - datum + 1) * scale], the
-        // scales possibly negative or zero (debug TAK_HSCALE/TAK_HSCALEX).
+        // scales possibly negative or zero (debug TA_HSCALE/TA_HSCALEX).
         const float above = float(rng() % 256) + 1.0f;
         const float sy = trial % 11 == 0 ? -0.5f : trial % 5 == 0 ? 0.0f : 0.5f;
         const float sxs = trial % 3 == 0 ? 0.25f : trial % 17 == 0 ? -0.3f : 0.0f;
@@ -217,10 +217,10 @@ void testCull(std::mt19937& rng) {
     CHECK(accepted > 10000 && edge > 10000, "cull test exercised too little (%zu accepted, %zu on edges)", accepted, edge);
 }
 
-namespace up = tak::render::unitpass;
-using tak::render::AnchorView;
-using tak::render::ScreenBand;
-using tak::render::ScreenPoint;
+namespace up = ta::render::unitpass;
+using ta::render::AnchorView;
+using ta::render::ScreenBand;
+using ta::render::ScreenPoint;
 
 struct Pass {
     const char* name;
@@ -366,7 +366,7 @@ void testMovement(std::mt19937& rng) {
 }  // namespace
 
 void testTypeTable(std::mt19937& rng) {
-    tak::render::UnitTypeTable table;
+    ta::render::UnitTypeTable table;
     std::unordered_map<int, std::string> reference;
     for (int step = 0; step < 200000; ++step) {
         const int id = int(rng() % 5000) - 200 + (step % 1000 == 0 ? 100000 : 0);
@@ -431,10 +431,10 @@ void testPick(std::mt19937& rng) {
             const float lo = -u01(rng) * 160, hi = lo + (tiny ? u01(rng) * 4 : u01(rng) * 180) + 0.5f;
             boxes.push_back({cx - r, lo, 2 * r, hi - lo});
         }
-        tak::render::PickBoxes union_;
+        ta::render::PickBoxes union_;
         for (const auto& b : boxes) union_.add(b.x, b.y, b.w, b.h);
         const float dotHalf = tiny ? 9.0f : std::max(9.0f, 1.0f + u01(rng) * 40);
-        const auto band = tak::render::pickBand(mx, my, zm, union_, dotHalf, interp, sinkLo, sinkHi);
+        const auto band = ta::render::pickBand(mx, my, zm, union_, dotHalf, interp, sinkLo, sinkHi);
         const auto rect = anchorBandToWorld(band.left, band.top, band.right, band.bottom, offX, offY, zm, lift);
         std::vector<PickUnit> pop;
         const auto randomUnit = [&](size_t i) {

@@ -110,11 +110,11 @@ struct Input {
     void pointer(int x,int y) const {SDL_WarpMouseInWindow(window,physical(x),physical(y));}
 };
 
-// With TAK_CARTO_CAPTURE=<folder>, a PNG of the frame just drawn (for review).
+// With TA_CARTO_CAPTURE=<folder>, a PNG of the frame just drawn (for review).
 void capture(const Input& in,const std::string& name) {
-    const char* folder=std::getenv("TAK_CARTO_CAPTURE");if(!folder || !*folder)return;
+    const char* folder=std::getenv("TA_CARTO_CAPTURE");if(!folder || !*folder)return;
     int w=0,h=0;SDL_GetRendererOutputSize(in.renderer,&w,&h);std::vector<uint8_t> pixels(size_t(w)*h*4);
-    if(SDL_RenderReadPixels(in.renderer,nullptr,SDL_PIXELFORMAT_RGBA32,pixels.data(),w*4)==0)tak::png::write((fs::path(folder)/(name+".png")).string(),w,h,pixels);
+    if(SDL_RenderReadPixels(in.renderer,nullptr,SDL_PIXELFORMAT_RGBA32,pixels.data(),w*4)==0)ta::png::write((fs::path(folder)/(name+".png")).string(),w,h,pixels);
 }
 
 // Toolbar and canvas geometry, from the editor's own layout constants.
@@ -153,15 +153,15 @@ std::string browserProblem(const Editor& e) {
 
 std::string tempRoot(const std::string& tag) {
     const char* base=std::getenv("TMPDIR");
-    const auto root=fs::path(base && *base?base:fs::temp_directory_path().string())/("tak-carto-"+tag+"-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto root=fs::path(base && *base?base:fs::temp_directory_path().string())/("ta-carto-"+tag+"-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(root);return root.string();
 }
 // Point every editor profile lookup at a private folder (see cartographer_ui_test).
 void isolateProfile(const std::string& root) {
     SDL_setenv("XDG_CONFIG_HOME",root.c_str(),1);SDL_setenv("XDG_DATA_HOME",root.c_str(),1);
-    const auto profile=fs::path(root)/"TAKengine"/"Cartographer";
+    const auto profile=fs::path(root)/"TAengine"/"Cartographer";
     std::error_code ec;fs::create_directories(profile,ec);
-    SDL_setenv("TAK_CARTOGRAPHER_PROFILE",profile.string().c_str(),1);
+    SDL_setenv("TA_CARTOGRAPHER_PROFILE",profile.string().c_str(),1);
 }
 
 // One editor session: `frame` runs after every drawn frame and returns false to
@@ -185,11 +185,11 @@ bool drive(std::vector<std::string> args,const std::function<bool(Editor&,const 
 // (maps/) one, else the first downloaded one.
 std::map<std::string,std::string> mapsByWorld(const std::string& data) {
     std::map<std::string,std::pair<bool,std::string>> found;
-    const auto vfs=tak::hpi::mountRetailRoot(tak::u8path(data));
-    for(const auto& [name,path]:tak::hpi::listMaps(vfs)) {
+    const auto vfs=ta::hpi::mountRetailRoot(ta::u8path(data));
+    for(const auto& [name,path]:ta::hpi::listMaps(vfs)) {
         try {
             const auto bytes=vfs.read(path.substr(0,path.rfind('.'))+".ota");
-            auto world=tak::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end())).kingdom;
+            auto world=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end())).kingdom;
             for(char& c:world)c=char(std::tolower((unsigned char)c));
             const std::pair<bool,std::string> rank{!path.starts_with("maps/"),name};
             if(std::find(kWorlds.begin(),kWorlds.end(),world)!=kWorlds.end() && (!found.count(world) || rank<found[world]))found[world]=rank;
@@ -355,13 +355,13 @@ struct BrowserPick {
 
 // The first difference between two documents' terrain planes; features compare
 // by name (a reload keeps 63 bytes of each name, like the game).
-std::string planeDifference(const tak::tnt::Map& a,const tak::tnt::Map& b) {
+std::string planeDifference(const ta::tnt::Map& a,const ta::tnt::Map& b) {
     if(a.width!=b.width || a.height!=b.height || a.blocksX!=b.blocksX || a.blocksY!=b.blocksY)return "map size";
     if(a.tileKeys!=b.tileKeys || a.tileCols!=b.tileCols || a.tileRows!=b.tileRows)return "tile plane";
     if(a.heights!=b.heights)return "heights";
     if(a.features.size()!=b.features.size())return "feature plane size";
     if(a.features==b.features && a.featureNames==b.featureNames)return {};
-    auto name=[](const tak::tnt::Map& m,size_t i) {
+    auto name=[](const ta::tnt::Map& m,size_t i) {
         const auto v=m.features[i];
         return v>=0xFFFA?"#"+std::to_string(v):v<m.featureNames.size()?m.featureNames[v].substr(0,63):std::string("?");
     };
@@ -371,11 +371,11 @@ std::string planeDifference(const tak::tnt::Map& a,const tak::tnt::Map& b) {
 }
 
 // An engine world over the document's terrain and features (Check Map's view).
-std::unique_ptr<tak::sim::World> engineWorld(const Editor& e) {
-    const auto& map=e.mapView.map();auto world=std::make_unique<tak::sim::World>();
+std::unique_ptr<ta::sim::World> engineWorld(const Editor& e) {
+    const auto& map=e.mapView.map();auto world=std::make_unique<ta::sim::World>();
     world->setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
     world->buildNavClasses(e.unitRegistry);
-    tak::sim::registerMapFeatures(*world,map,e.vfs,&e.unitRegistry);
+    ta::sim::registerMapFeatures(*world,map,e.vfs,&e.unitRegistry);
     return world;
 }
 // What the game makes of the document: unreadable terrain images and feature
@@ -420,8 +420,8 @@ bool reopened(const Editor& e,const std::string& label) {
 size_t terrainSession(const std::string& data,const std::string& world,size_t first,Tally& tally) {
     const auto root=tempRoot("terrain");isolateProfile(root);
     enum {START,SEARCH,PICK,PLACED,UNDONE,REDONE,REOPENED} phase=START;
-    size_t item=first;BrowserPick pick;tak::tnt::Map expected,prior;
-    int slot=0,slotsX=0,slots=0,slotBlocks=1;const tak::tnt::Map* prefab=nullptr;
+    size_t item=first;BrowserPick pick;ta::tnt::Map expected,prior;
+    int slot=0,slotsX=0,slots=0,slotBlocks=1;const ta::tnt::Map* prefab=nullptr;
     const std::string label=world+" terrain";
     drive({"cartographer","--new","16x16","--world",world,"--data",data,"--out",root},[&](Editor& e,const Input& in) {
         const auto& sections=e.sections.list();
@@ -501,18 +501,18 @@ int terrainWorkflow(const std::string& data,std::vector<std::string> worlds) {
 // a mod pack (mod / modded), or only a downloaded map in Maps/
 // (downloaded-map; downloaded-map-shadowed when such a map replaces a retail
 // file). Retail mounts every Maps/ archive globally, so the browser offers them.
-std::string definitionSource(const tak::hpi::Vfs& vfs,const tak::hpi::Vfs& plain,const std::string& path,const std::string& sharedDir) {
+std::string definitionSource(const ta::hpi::Vfs& vfs,const ta::hpi::Vfs& plain,const std::string& path,const std::string& sharedDir) {
     const auto full=vfs.tryRead(path),installed=vfs.tryRead(path,true),retail=plain.tryRead(path,true);
     return !installed?"downloaded-map":*installed!=full?"downloaded-map-shadowed":!retail?"mod":*retail!=*installed?"modded":
         !sharedDir.empty() && path.starts_with(sharedDir)?"shared":"world";
 }
 struct FeatureTraits {bool animated=false,reclaimable=false,blocking=false;int height=0;std::string source;};
-std::map<std::string,FeatureTraits> featureTraits(const tak::hpi::Vfs& vfs,const tak::hpi::Vfs& plain,const std::string& world) {
+std::map<std::string,FeatureTraits> featureTraits(const ta::hpi::Vfs& vfs,const ta::hpi::Vfs& plain,const std::string& world) {
     std::map<std::string,FeatureTraits> out;
     for(const std::string& dir:{"features/"+world,std::string("features/all worlds")})for(const auto& path:vfs.list(dir)) {
         if(!path.ends_with(".tdf"))continue;
         try {
-            const auto bytes=vfs.read(path);const auto root=tak::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
+            const auto bytes=vfs.read(path);const auto root=ta::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
             const auto source=definitionSource(vfs,plain,path,"features/all worlds");
             for(const auto& name:root.childOrder)if(const auto* n=root.child(name)) {
                 auto& traits=out[name];
@@ -529,9 +529,9 @@ std::map<std::string,FeatureTraits> featureTraits(const tak::hpi::Vfs& vfs,const
 // resolves each name with the browser's footprint.
 bool featureSession(const std::string& data,const std::string& world,Tally& tally) {
     const auto root=tempRoot("features");isolateProfile(root);
-    const auto traits=featureTraits(tak::hpi::mountRetailRoot(tak::u8path(data)),tak::hpi::mountRetailRoot(tak::u8path(data)),world);
+    const auto traits=featureTraits(ta::hpi::mountRetailRoot(ta::u8path(data)),ta::hpi::mountRetailRoot(ta::u8path(data)),world);
     enum {START,SEARCH,PICK,PLACED,UNDONE,REDONE,ERASED,RESTORED,REOPENED} phase=START;
-    size_t item=0;int cellX=0,cellZ=0;BrowserPick pick;tak::tnt::Map expected,prior;
+    size_t item=0;int cellX=0,cellZ=0;BrowserPick pick;ta::tnt::Map expected,prior;
     std::vector<std::pair<cart::FeatureRef,size_t>> placed;   // browser entry, cell
     const std::string label=world+" features";bool finished=false;
     drive({"cartographer","--new","8x8","--world",world,"--data",data,"--out",root},[&](Editor& e,const Input& in) {
@@ -633,12 +633,12 @@ int featuresWorkflow(const std::string& data,std::vector<std::string> worlds) {
 // click, undo; then save, reopen and compare (the .crt round trip).
 bool unitSession(const std::string& data,const std::string& world,Tally& tally) {
     const auto root=tempRoot("units");isolateProfile(root);
-    tak::hpi::Vfs plain=tak::hpi::mountRetailRoot(tak::u8path(data));
+    ta::hpi::Vfs plain=ta::hpi::mountRetailRoot(ta::u8path(data));
     enum {START,WATER,WATERED,SEARCH,PICK,PLACED,UNDONE,REDONE,ERASED,RESTORED,REOPENED} phase=START;
-    size_t item=0;int water=-1;BrowserPick pick;tak::tnt::Map expectedMap;
+    size_t item=0;int water=-1;BrowserPick pick;ta::tnt::Map expectedMap;
     std::vector<cart::PlacedUnit> expected;std::vector<bool> legal;
     std::vector<SDL_Point> land,sea,shore;size_t usedLand=0,usedSea=0,usedShore=0;
-    std::unique_ptr<tak::sim::World> game;int cellX=0,cellZ=0,player=0;
+    std::unique_ptr<ta::sim::World> game;int cellX=0,cellZ=0,player=0;
     const std::string label=world+" units";bool finished=false;
     drive({"cartographer","--new","8x8","--world",world,"--data",data,"--out",root},[&](Editor& e,const Input& in) {
         const auto& types=e.unitTypes;const auto& map=e.mapView.map();
@@ -781,7 +781,7 @@ int unitsWorkflow(const std::string& data,std::vector<std::string> worlds) {
 bool slotSession(const std::string& data,const std::string& world,Tally& tally) {
     const auto root=tempRoot("slots");isolateProfile(root);
     enum {START,PLACE,PLACED,UNDONE,REDONE,ERASED,RESTORED,NINTH,REGION,REGION_UNDONE,REGION_REDONE,REGION_ERASED,REGION_RESTORED,REOPENED} phase=START;
-    int number=0;std::vector<tak::tnt::StartPos> expected;tak::crt::Region region;
+    int number=0;std::vector<ta::tnt::StartPos> expected;ta::crt::Region region;
     const std::string label=world+" start slots";bool finished=false;
     drive({"cartographer","--new","8x8","--world",world,"--data",data,"--out",root},[&](Editor& e,const Input& in) {
         const auto& starts=e.scenario.starts;
@@ -791,7 +791,7 @@ bool slotSession(const std::string& data,const std::string& world,Tally& tally) 
             return true;
         };
         auto fail=[&](const std::string& what) {check(false,label+" "+std::to_string(number)+": "+what);};
-        auto startPoint=[&](const tak::tnt::StartPos& s) {return focus(e,s.xpos*16+8.f,s.zpos*16+8.f);};
+        auto startPoint=[&](const ta::tnt::StartPos& s) {return focus(e,s.xpos*16+8.f,s.zpos*16+8.f);};
         auto regionPoint=[&](float x,float z) {return cellScreen(e,x*16+8,z*16+8);};
         for(;;)switch(phase) {
         case START: check(starts.empty(),label+": a blank map has no starts");tool(in,Editor::STARTS);mode(in,Editor::MODE_PLACE);phase=PLACE;return true;
@@ -877,18 +877,18 @@ int slotsWorkflow(const std::string& data,std::vector<std::string> worlds) {
 // opened from disk replaces the view and the library is rescanned without them.
 std::optional<std::string> packInstall(const std::string& data,const std::string& root) {
     const auto install=fs::path(root)/"install";fs::create_directories(install/"Maps");
-    for(const auto& entry:fs::directory_iterator(tak::u8path(data))) {
+    for(const auto& entry:fs::directory_iterator(ta::u8path(data))) {
         if(!entry.is_regular_file())continue;   // root archives are all validInstall needs
         std::error_code ec;fs::create_symlink(fs::absolute(entry.path()),install/entry.path().filename(),ec);
         if(ec)fs::create_hard_link(entry.path(),install/entry.path().filename(),ec);
         if(ec)return std::nullopt;
     }
-    cart::FeatureLibrary library;library.scan(tak::hpi::mountRetailRoot(tak::u8path(data)),"aramon");
+    cart::FeatureLibrary library;library.scan(ta::hpi::mountRetailRoot(ta::u8path(data)),"aramon");
     if(library.list().empty())return std::nullopt;
     const auto& art=library.list().front();   // borrowed sprite
     std::string tdf;
     for(int i=1;i<=3;++i)tdf+="[CartoTestStone"+std::to_string(i)+"]\r\n{\r\nworld=Aramon;\r\ncategory=rocks;\r\nfootprintx=2;\r\nfootprintz=2;\r\nfilename="+art.filename+";\r\nseqname="+art.seqname+";\r\n}\r\n";
-    const auto packed=tak::hpi::pack({{"features/aramon/cartotest.tdf",{tdf.begin(),tdf.end()}}});
+    const auto packed=ta::hpi::pack({{"features/aramon/cartotest.tdf",{tdf.begin(),tdf.end()}}});
     std::ofstream(install/"Maps"/"Carto Test Pack.kmp",std::ios::binary).write(reinterpret_cast<const char*>(packed.data()),std::streamsize(packed.size()));
     return install.string();
 }
@@ -967,8 +967,8 @@ SDL_Point overview(Editor& e,float zoom,int cx,int cz) {
     e.mapView.setZoom(zoom);e.mapView.setOffset(0,0);
     return cellScreen(e,cx*16+8.f,cz*16+8.f);
 }
-size_t cellOf(const tak::tnt::Map& map,int x,int z) {return size_t(z)*map.width+x;}
-std::string nameAt(const tak::tnt::Map& map,size_t cell) {
+size_t cellOf(const ta::tnt::Map& map,int x,int z) {return size_t(z)*map.width+x;}
+std::string nameAt(const ta::tnt::Map& map,size_t cell) {
     const auto v=cell<map.features.size()?map.features[cell]:0xFFFF;
     return v<0xFFFA && size_t(v)<map.featureNames.size()?map.featureNames[v]:std::string{};
 }
@@ -1216,7 +1216,7 @@ bool featureOpsSession(const std::string& data,const std::string& world) {
     // Terrain over features: a stamp with objects protected keeps them, an
     // unprotected one replaces them with the section's own; Clear Area; the
     // terrain clipboard carries them; Resize crops and grows.
-    auto stampOver=std::make_shared<tak::tnt::Map>();
+    auto stampOver=std::make_shared<ta::tnt::Map>();
     s.then([&,stampOver](Editor& e,const Input& in) {
         int section=-1;
         for(size_t i=0;i<e.sections.list().size() && section<0;++i)if(const auto* m=e.sections.load(e.vfs,e.sections.list()[i].path))
@@ -1337,16 +1337,16 @@ bool featureOpsSession(const std::string& data,const std::string& world) {
         try {
             const auto path=fs::path(ops.root)/"Test snapshot.kmp";std::string error;
             if(!cart::writeDocumentBundle(path,cart::documentFiles(e.mapView.map(),e.scenario,e.scen,e.units,e.useOnly,{},"Test snapshot"),error))throw std::runtime_error(error);
-            const auto package=tak::net::maps::importSnapshot(e.vfs,path);
-            tak::hpi::Vfs view(&e.vfs);view.setMapFiles(package->files);
-            const auto map=tak::tnt::Map::load(package->files->at(package->mapPath),package->mapPath);
-            auto game=std::make_unique<tak::sim::World>();
+            const auto package=ta::net::maps::importSnapshot(e.vfs,path);
+            ta::hpi::Vfs view(&e.vfs);view.setMapFiles(package->files);
+            const auto map=ta::tnt::Map::load(package->files->at(package->mapPath),package->mapPath);
+            auto game=std::make_unique<ta::sim::World>();
             game->setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
-            tak::sim::registerMapFeatures(*game,map,view,&e.unitRegistry);
+            ta::sim::registerMapFeatures(*game,map,view,&e.unitRegistry);
             // Names only a downloaded map in Maps/ defines: the install alone does not resolve them either.
-            tak::hpi::Vfs installed(&e.vfs,true);auto own=std::make_unique<tak::sim::World>();
+            ta::hpi::Vfs installed(&e.vfs,true);auto own=std::make_unique<ta::sim::World>();
             own->setTerrain(map.heights,map.width,map.height,map.seaLevel,&map.features);
-            tak::sim::registerMapFeatures(*own,map,installed,&e.unitRegistry);
+            ta::sim::registerMapFeatures(*own,map,installed,&e.unitRegistry);
             const auto& types=game->mapPlacementTypes();const auto& installedTypes=own->mapPlacementTypes();int resolved=0,downloaded=0;
             for(size_t i=0;i<map.featureNames.size();++i) {
                 if(i<types.size() && !types[i].name.empty()) {++resolved;continue;}
@@ -1528,11 +1528,11 @@ int featureOpsWorkflow(const std::string& data,std::vector<std::string> worlds) 
 // ---- blocked cells: the BLOCKED tool -----------------------------------------
 
 // The terrain file inside a saved .kmp.
-std::optional<tak::tnt::Map> savedTerrain(const fs::path& kmp) {
+std::optional<ta::tnt::Map> savedTerrain(const fs::path& kmp) {
     try {
-        tak::hpi::Archive archive(kmp);
+        ta::hpi::Archive archive(kmp);
         for(const auto& entry:archive.entries())
-            if(!entry.isDirectory && lowerText(entry.path).ends_with(".tnt"))return tak::tnt::Map::load(archive.read(entry),entry.path);
+            if(!entry.isDirectory && lowerText(entry.path).ends_with(".tnt"))return ta::tnt::Map::load(archive.read(entry),entry.path);
     } catch(const std::exception&) {}
     return std::nullopt;
 }
@@ -1546,7 +1546,7 @@ int blockedWorkflow(const std::string& data) {
     const auto root=tempRoot("blocked");isolateProfile(root);
     const std::string label="blocked cells";
     Script s;BrowserPick pick;
-    tak::tnt::Map expected,beforePaint,reopenedMap;   // the expectation; the save made before painting; the reopened document
+    ta::tnt::Map expected,beforePaint,reopenedMap;   // the expectation; the save made before painting; the reopened document
     std::vector<std::vector<uint16_t>> states;        // the plane before painting and after each painting step
     size_t featureCell=0;std::string featureName;int player=0;
     auto expect=[&](bool ok,const std::string& what) {return check(ok,label+": "+what);};
@@ -1682,7 +1682,7 @@ int blockedWorkflow(const std::string& data) {
     });
     s.then([&](Editor& e,const Input& in) {
         expect(e.tool==Editor::TERRAIN && e.blockedShown(),"the overlay stays with the Terrain tool");
-        std::ifstream file(fs::path(root)/"TAKengine"/"Cartographer"/"preferences.txt");const std::string text{std::istreambuf_iterator<char>(file),{}};
+        std::ifstream file(fs::path(root)/"TAengine"/"Cartographer"/"preferences.txt");const std::string text{std::istreambuf_iterator<char>(file),{}};
         expect(text.find("blocked 1")!=std::string::npos,"the setting is saved with the editor preferences");
         in.key(SDLK_b);return true;
     });
@@ -1869,7 +1869,7 @@ int smokeWorkflow(const std::string& data,std::vector<std::string> worlds) {
 int main(int argc,char** argv) {
     if(argc<3)return 2;
     const std::string data=argv[1],mode=argv[2];
-    if(data.empty() || !tak::hpi::validInstall(tak::u8path(data),nullptr)) {std::cout<<"SKIP: no game data at '"<<data<<"'\n";return 77;}
+    if(data.empty() || !ta::hpi::validInstall(ta::u8path(data),nullptr)) {std::cout<<"SKIP: no game data at '"<<data<<"'\n";return 77;}
     std::vector<std::string> rest(argv+3,argv+argc);
     if(mode=="starts")return startsWorkflow(data,rest);
     if(mode=="terrain")return terrainWorkflow(data,rest);

@@ -1,7 +1,7 @@
 #pragma once
 
 // Wire protocol for the client-server multiplayer (docs/multiplayer-design.md).
-// A central takserver relays a server-sequenced deterministic lockstep: clients
+// A central taserver relays a server-sequenced deterministic lockstep: clients
 // send commands, the server assigns them to ticks and broadcasts one TickBundle
 // per tick. This header is shared by the server and the client.
 //
@@ -17,7 +17,7 @@
 
 #include "net/lockstep.h"   // Command / Cmd (the 35-byte command wire format is reused)
 
-namespace tak::net {
+namespace ta::net {
 
 // The protocol number. Client and server must match it exactly (Hello/Welcome), and a
 // replay plays only under the number it was recorded with (supportedReplayProtocol).
@@ -40,7 +40,7 @@ constexpr int kHashPeriod = 30;            // ticks between StateHash reports; t
 // up): a stall waits only what is left less the silence before it, and one whose silence
 // has used it all is taken over at once. A shorter silence that still holds the game
 // (flow control) is charged past a 1 s grace (server.cpp trackHolds). A test server may shorten
-// both (TAK_STALL_MS, TAK_DROP_WAIT_MS); the client reconnects within the same window.
+// both (TA_STALL_MS, TA_DROP_WAIT_MS); the client reconnects within the same window.
 constexpr uint32_t kStallMs = 8000;
 constexpr uint32_t kDropWaitMs = 30000;
 // Commands one client may land in one tick. The server enforces it as flood
@@ -375,7 +375,7 @@ struct GameInfo {
 // Live game speed, in tenths (10 = 1x). Retail's -10..+10 setting is linear:
 // level d runs (d+10)/10 x normal, 0.1x steps up to 2x (multiplayer floors at
 // 0.1x). The UI shows d = speed - 10. kMaxDevGameSpeed is only for the headless
-// timing harnesses (TAK_SPEED) on a test/loopback server. kMaxBenchmarkGameSpeed is the
+// timing harnesses (TA_SPEED) on a test/loopback server. kMaxBenchmarkGameSpeed is the
 // menu Benchmark's +100 (11x), allowed only in a benchmark room (private, local only).
 inline constexpr int kMinGameSpeed = 1, kMaxGameSpeed = 20, kMaxDevGameSpeed = 80, kMaxBenchmarkGameSpeed = 110;
 
@@ -410,7 +410,7 @@ struct GameOptions {
     uint8_t monarchExpendable = 0;
     // Stress test (SP all-AI spectate): spawn each AI at ~95% of the unit cap in its
     // faction's combat units at the start, to load-test the sim. 0 = off;
-    // kStressStaged (2, what TAK_STRESS asks for) spreads the fill over the first
+    // kStressStaged (2, what TA_STRESS asks for) spreads the fill over the first
     // kStressStageTicks ticks; kStressImmediate (1) spawns it all at setup.
     uint8_t stressTest = 0;
     // Fog of war (client-only display, never hashed -- every client applies the
@@ -449,7 +449,7 @@ struct GameOptions {
     // generated maps, stress and benchmark rooms, forces randomStarts off with it, and
     // refuses START when the verified map has no scenario content or a seat the
     // scenario needs is empty. Sim-affecting
-    // (MatchConfig::mapScenario, in the replay header). A Test Map copy's [TAKPlaytest]
+    // (MatchConfig::mapScenario, in the replay header). A Test Map copy's [TAPlaytest]
     // opt-in plays its scenario even with this 0.
     uint8_t mapScenario = 0;
     // POWER CODES (retail's "Power Codes" battle-room box, GameOptions+0x18): 1 lets
@@ -641,4 +641,4 @@ struct Bundle {
 void putBundle(Writer& w, uint32_t tick, const std::vector<Command>& cmds, const std::vector<Event>& events);
 bool getBundle(Reader& r, uint32_t& tick, Bundle& out, bool strict);
 
-}  // namespace tak::net
+}  // namespace ta::net

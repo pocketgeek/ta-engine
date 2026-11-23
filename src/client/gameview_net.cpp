@@ -18,42 +18,42 @@
         // A generated map's capacity is the player count baked into its "~gen1~" id.
         // The lobby sets mpMapId_; the headless "game" flow only has mapPath_ -- honour
         // either, since sim::parseStartPositions can't parse a synthetic id.
-        const std::string& gid = tak::mapgen::isGeneratedMapId(mapId) ? mapId : path;
-        if (tak::mapgen::isGeneratedMapId(gid))
-            return uint8_t(std::clamp<int>(tak::mapgen::decodeMapId(gid).players, 2, tak::net::kMaxSlots));
-        const int n = int(tak::sim::parseStartPositions(vfs_, path).size());
+        const std::string& gid = ta::mapgen::isGeneratedMapId(mapId) ? mapId : path;
+        if (ta::mapgen::isGeneratedMapId(gid))
+            return uint8_t(std::clamp<int>(ta::mapgen::decodeMapId(gid).players, 2, ta::net::kMaxSlots));
+        const int n = int(ta::sim::parseStartPositions(vfs_, path).size());
         // Capacity is available seats, not a minimum player count. A room that plays
         // its map's scenario opens every seat that scenario needs (its placement owners
         // and the rule banks that do something), which can lie past the start positions;
         // the verified lobby may still start a solo scenario without filling the rest.
         auto scenarioPath=path;
-        tak::hpi::Vfs scenarioData(&vfs_);
+        ta::hpi::Vfs scenarioData(&vfs_);
         if(const auto cached=vfs_.cachedMap(scenarioPath)) {
             scenarioPath=cached->first;scenarioData.setMapFiles(cached->second);
         }
-        return seatsFor(n, tak::sim::inspectScenario(scenarioData,scenarioPath), mapScenario);
+        return seatsFor(n, ta::sim::inspectScenario(scenarioData,scenarioPath), mapScenario);
     }
 
-    uint8_t GameView::seatsFor(int starts, const tak::sim::ScenarioInfo& s, bool scenarioOn) {
+    uint8_t GameView::seatsFor(int starts, const ta::sim::ScenarioInfo& s, bool scenarioOn) {
         int n = starts;
         if(s.active(scenarioOn))
-            for(int i=0;i<tak::net::kMaxSlots;++i)
+            for(int i=0;i<ta::net::kMaxSlots;++i)
                 if(s.requiredSeats()>>i & 1)n=std::max(n,i+1);
-        return uint8_t(std::clamp(n < 2 ? 2 : n, 2, tak::net::kMaxSlots));
+        return uint8_t(std::clamp(n < 2 ? 2 : n, 2, ta::net::kMaxSlots));
     }
 
-    tak::sim::ScenarioInfo GameView::mapScenarioInfo(const std::string& path) const {
+    ta::sim::ScenarioInfo GameView::mapScenarioInfo(const std::string& path) const {
         try {
             auto mapPath=path;
-            tak::hpi::Vfs view(&vfs_);
+            ta::hpi::Vfs view(&vfs_);
             if(const auto cached=vfs_.cachedMap(path)) {
                 mapPath=cached->first;view.setMapFiles(cached->second);
             }
-            return tak::sim::inspectScenario(view,mapPath,&registry_);
+            return ta::sim::inspectScenario(view,mapPath,&registry_);
         } catch(const std::exception&) {return {};}   // an unreadable MapCache archive
     }
 
-    void GameView::setMpClient(tak::net::MpClient* mp) {
+    void GameView::setMpClient(ta::net::MpClient* mp) {
         if (mp_ && mp_ != mp) mp_->setRecordingRestartHook(nullptr);
         mp_ = mp;
         // A new game on this connection: finish the old game's file while its bundles
@@ -85,12 +85,12 @@
     void GameView::tryOpenReplayRecording(bool first) {
         const uint64_t now = SDL_GetTicks64();
         replayRecRetryMs_ = now + 5000;
-        const std::string dir = tak::replayDir();
+        const std::string dir = ta::replayDir();
         if (dir.empty()) {
             if (first) std::fprintf(stderr, "replay: no replay folder yet; will keep trying\n");
             return;
         }
-        auto rec = std::make_unique<tak::net::ReplayWriter>();
+        auto rec = std::make_unique<ta::net::ReplayWriter>();
         if (!rec->open(dir, replayRecHeader_, replayRecGame_, uint64_t(std::time(nullptr)))) {
             if (first)
                 std::fprintf(stderr, "replay: cannot record yet (%s); will keep trying\n", rec->error().c_str());
@@ -161,13 +161,13 @@
         replayRec_.reset();
     }
 
-    void GameView::resetDiplomacy(const tak::net::RoomView& room) {
+    void GameView::resetDiplomacy(const ta::net::RoomView& room) {
         // Chat and voice start with your allies only: the occupied slots on your team
         // (you included). A spectator has no team and keeps everyone.
         uint8_t allies=0xff;
-        if (room.mySlot>=0 && room.mySlot<tak::net::kMaxSlots && room.mySlot<8) {
+        if (room.mySlot>=0 && room.mySlot<ta::net::kMaxSlots && room.mySlot<8) {
             allies=0;
-            for (int i=0;i<tak::net::kMaxSlots && i<8;++i)
+            for (int i=0;i<ta::net::kMaxSlots && i<8;++i)
                 if ((room.slots[i].type==1 || room.slots[i].type==2) && room.slots[i].team==room.slots[room.mySlot].team)
                     allies|=uint8_t(1u<<i);
         }
@@ -176,12 +176,12 @@
         // chats or talks in a running game at all.
         chatSpectators_=voiceSpectators_=false;
         voiceVolume_.fill(100);voiceVolumeDrag_=-1;humanSlots_=0;
-        for (int i=0;i<tak::net::kMaxSlots && i<8;++i)
+        for (int i=0;i<ta::net::kMaxSlots && i<8;++i)
             if (room.slots[i].type==1) humanSlots_|=uint8_t(1u<<i);
         giveUnitsMenu_=false;giveUnitsHots_.clear();
     }
 
-    void GameView::startMpGame(const tak::net::RoomView& room, uint32_t seed) {
+    void GameView::startMpGame(const ta::net::RoomView& room, uint32_t seed) {
         {
             std::lock_guard<std::mutex> lock(hitQueueMutex_);
             missionSoundQueue_.clear();
@@ -200,16 +200,16 @@
         resultParticipants_.reset();
         if (room.mission.empty()) {
             resultParticipants_=0;
-            for (int i=0;i<tak::net::kMaxSlots;++i)
+            for (int i=0;i<ta::net::kMaxSlots;++i)
                 if (room.slots[i].type==1 || room.slots[i].type==2)
                     *resultParticipants_|=uint8_t(1u<<i);
         }
         int maxSlot = 0;
-        for (int i = 0; i < tak::net::kMaxSlots; ++i)
+        for (int i = 0; i < ta::net::kMaxSlots; ++i)
             if (room.slots[i].type == 1 || room.slots[i].type == 2) maxSlot = i;
         // Retail's loading screen covers the whole start: everything below blocks the
         // render loop for a second or more, and the wait on the other players after it.
-        loadScreen_ = std::make_unique<tak::LoadScreen>(
+        loadScreen_ = std::make_unique<ta::LoadScreen>(
             ren_, vfs_, room.mission.empty() ? room.mapId : room.mission, settings_);
         {
             std::array<std::string, 8> names{};
@@ -236,7 +236,7 @@
         // referee. remountMods already rebuilds the registry for the current
         // crusades setting; handle a crusades-only change separately.
 #ifndef NDEBUG
-        previewLifetimeProbe(false);   // TAK_PREVIEW_LIFETIME_TEST=gen|big
+        previewLifetimeProbe(false);   // TA_PREVIEW_LIFETIME_TEST=gen|big
 #endif
         resetMinimap();
         mapView_.quiesce();
@@ -246,15 +246,15 @@
         stopPreviewReaders();
         remountMods();
         vfs_.setMapFiles(mp_ && mp_->mapPackage() && room.mission.empty() &&
-            !tak::mapgen::isGeneratedMapId(room.mapId) ? mp_->mapPackage()->files : room.mission.empty()
-                ? std::make_shared<const tak::hpi::Vfs::Files>() : nullptr);
+            !ta::mapgen::isGeneratedMapId(room.mapId) ? mp_->mapPackage()->files : room.mission.empty()
+                ? std::make_shared<const ta::hpi::Vfs::Files>() : nullptr);
         featureDefs_.clear(); featurePals_.clear();
         for (auto& [name, art] : featureArt_) art.destroyTextures();
         featureArt_.clear();
         if ((room.opts.crusades != 0) != crusades_) {
             crusades_ = room.opts.crusades != 0;
-            registry_ = tak::sim::TypeRegistry{};
-            tak::sim::setupRegistry(registry_, vfs_, crusades_);
+            registry_ = ta::sim::TypeRegistry{};
+            ta::sim::setupRegistry(registry_, vfs_, crusades_);
             pickBoundsValid_ = false;   // cursor picking's per-type bounds
         }
         // Campaign mission: build the SAME world the referee did. setupMission is
@@ -267,8 +267,8 @@
             loadScreen_->step("LOADING TERRAIN", 30);
             mapView_.reload(vfs_, mapPath_);
             int human = 0;
-            tak::sim::MissionSetup ms;
-            tak::sim::setupMission(writableWorld(), registry_, vfs_, room.mission, human, &ms);
+            ta::sim::MissionSetup ms;
+            ta::sim::setupMission(writableWorld(), registry_, vfs_, room.mission, human, &ms);
             missionFullVision_ = ms.fullVision;
             missionPreMapped_ = ms.preMapped;
             loadFeatures();
@@ -279,10 +279,10 @@
             missionAllowed_.clear();
             if (std::string tdfp = "missions/" + room.mission + ".tdf"; vfs_.has(tdfp)) {
                 std::vector<uint8_t> tb = vfs_.read(tdfp);
-                tak::tdf::Node root = tak::tdf::parseText(std::string(tb.begin(), tb.end()), tdfp);
+                ta::tdf::Node root = ta::tdf::parseText(std::string(tb.begin(), tb.end()), tdfp);
                 for (const auto& [name, node] : root.children) { (void)node; missionAllowed_.push_back(name); }
             }
-            missionObjectives_ = tak::loadObjectives(vfs_, room.mission);   // in-game panel
+            missionObjectives_ = ta::loadObjectives(vfs_, room.mission);   // in-game panel
             showObjectives_ = true;
             // The player commands the mission's human player: always the .ota's
             // Player1, world slot 0, as in retail (setupMission). A campaign room
@@ -309,8 +309,8 @@
         // (mapView_), so the rendered map, the local sim, and the referee all agree.
         // Without this, picking a non-default map drew the launch map's terrain under a
         // different map's sim -- phantom water, a monarch out in it, and misaligned fog.
-        mapPath_ = mp_ && mp_->mapPackage() && !tak::mapgen::isGeneratedMapId(room.mapId)
-            ? mp_->mapPackage()->mapPath : tak::hpi::findMap(vfs_, room.mapId);
+        mapPath_ = mp_ && mp_->mapPackage() && !ta::mapgen::isGeneratedMapId(room.mapId)
+            ? mp_->mapPackage()->mapPath : ta::hpi::findMap(vfs_, room.mapId);
         if (mapPath_.empty()) throw std::runtime_error("selected map is missing: " + room.mapId);
         resetMinimap();   // its thread reads the map being swapped
         loadScreen_->step("LOADING TERRAIN", 30);
@@ -318,7 +318,7 @@
         loadScreen_->step("BUILDING THE WORLD", 65);
         // The referee's own builder (net/matchconfig.h) -- the same seed, slot table,
         // Absurd AI income and player count -- so hashed state matches (lockstep).
-        tak::sim::MatchConfig cfg = tak::net::matchConfigFor(room.opts, room.slots, seed);
+        ta::sim::MatchConfig cfg = ta::net::matchConfigFor(room.opts, room.slots, seed);
         cfg.vfs = &vfs_;
         cfg.mapPath = mapPath_;
         cfg.scenarioViewPlayer = localPlayer_;
@@ -333,7 +333,7 @@
                                      : s.type == 2 ? ("AI " + std::to_string(i + 1))
                                                    : ("Player " + std::to_string(i + 1));
         }
-        auto spots = tak::sim::setupMatch(writableWorld(), registry_, cfg);
+        auto spots = ta::sim::setupMatch(writableWorld(), registry_, cfg);
         if (world_.hasScenarioOutcomes())   // the map's own scenario (MAP SCENARIO or a Test Map copy)
             std::fprintf(stderr, "map scenario: %zu units at the start\n", world_.units().size());
         // Rebuild the rendered feature sprites (features_) from the map we actually
@@ -394,9 +394,9 @@
         // Headless synchronization runs do not need a modal render; screenshot
         // runs still exercise the loaded-world briefing and its first-tick gate.
         const char* driver=SDL_GetCurrentVideoDriver();
-        if (driver && std::strcmp(driver,"dummy")==0 && !tak::devEnv("TAK_SHOT_BRIEFING")) return true;
+        if (driver && std::strcmp(driver,"dummy")==0 && !ta::devEnv("TA_SHOT_BRIEFING")) return true;
 #ifndef NDEBUG
-        const bool verifyBriefing=tak::devEnv("TAK_SHOT_BRIEFING")!=nullptr;
+        const bool verifyBriefing=ta::devEnv("TA_SHOT_BRIEFING")!=nullptr;
         const auto briefingHash=verifyBriefing ? world_.stateHash() : 0;
 #endif
         // mpAutoStep can run mid-frame with a render target, scale, viewport or clip
@@ -421,8 +421,8 @@
         } renderState(ren_);
         std::string title=stem;
         int chapterNumber=0;
-        for (const auto& campaign:tak::loadCampaigns(vfs_))
-            if (const auto chapter=tak::campaignChapter(campaign,stem)) {
+        for (const auto& campaign:ta::loadCampaigns(vfs_))
+            if (const auto chapter=ta::campaignChapter(campaign,stem)) {
                 title=chapter->title;chapterNumber=chapter->index+1;break;
             }
 
@@ -447,7 +447,7 @@
                 if (background) SDL_UpdateTexture(background.get(),nullptr,pixels.data(),width*4);
             }
         }
-        const bool dismissed=tak::BriefingScreen::run(ren_,vfs_,stem,title,settings_,nullptr,
+        const bool dismissed=ta::BriefingScreen::run(ren_,vfs_,stem,title,settings_,nullptr,
             background.get(),[this]{return mp_->poll();},chapterNumber,alwaysOnNote());
         briefingPaused_=true;
         loadScreen_=std::move(loading);
@@ -489,20 +489,20 @@
         }
         if (mp_->desynced()) { netError_ = mp_->desyncReason(); return false; }
 #ifndef NDEBUG
-        // TAK_DROP_LINK_AT_TICK=N: lose the connection at tick N (no Bye, no Leave), once,
+        // TA_DROP_LINK_AT_TICK=N: lose the connection at tick N (no Bye, no Leave), once,
         // so a harness can watch the reconnect inside the disconnect wait.
-        if (const char* e = tak::devEnv("TAK_DROP_LINK_AT_TICK"); e && !linkDropped_ && netTick_ >= uint32_t(std::atoi(e))) {
+        if (const char* e = ta::devEnv("TA_DROP_LINK_AT_TICK"); e && !linkDropped_ && netTick_ >= uint32_t(std::atoi(e))) {
             linkDropped_ = true;
             std::fprintf(stderr, "drop-link: closing the connection at tick %u\n", netTick_);
             mp_->dropLink();
             return true;
         }
         // Regression probe: an eliminated, non-acking client must not stall survivors.
-        if (outcome_ < 0 && tak::devFlag("TAK_DEFEAT_STALL")) return true;
-        // TAK_STALL_AT=<tick>:<ms>: freeze this client's main thread once for <ms> when the played
+        if (outcome_ < 0 && ta::devFlag("TA_DEFEAT_STALL")) return true;
+        // TA_STALL_AT=<tick>:<ms>: freeze this client's main thread once for <ms> when the played
         // tick reaches <tick> -- an alt-tab, a menu or a hitch -- so a harness can check that the
         // client's own stall is not read back as network jitter (tools/speed_stall_check.sh).
-        if (const char* e = tak::devEnv("TAK_STALL_AT"); e && !stallDone_ && netTick_ >= uint32_t(std::atoi(e))) {
+        if (const char* e = ta::devEnv("TA_STALL_AT"); e && !stallDone_ && netTick_ >= uint32_t(std::atoi(e))) {
             stallDone_ = true;
             const char* c = std::strchr(e, ':');
             const int ms = c ? std::max(0, std::atoi(c + 1)) : 0;
@@ -523,7 +523,7 @@
         // overflow stops being reachable without the loss being the client's own
         // doing. See cmdSendCredit.
         if (netTick_ != lastSendTick_) {
-            cmdCredit_ = tak::net::cmdSendCredit(cmdCredit_, netTick_ - lastSendTick_);
+            cmdCredit_ = ta::net::cmdSendCredit(cmdCredit_, netTick_ - lastSendTick_);
             lastSendTick_ = netTick_;
         }
         // Rate AND window: the credit above says how fast, cmdInFlight_ says how
@@ -543,15 +543,15 @@
         for (const auto& d : mp_->takeInputDropped()) {
             cmdInFlight_ -= std::min(cmdInFlight_, int(std::min<uint32_t>(d.commands, uint32_t(INT32_MAX))));
             if (d.serial) orderWindow_.retire(d.serial);
-            if (tak::devEnv("TAK_NETLOG"))
+            if (ta::devEnv("TA_NETLOG"))
                 std::fprintf(stderr, "server dropped %u commands, order %u\n", d.commands, d.serial);
         }
         if (outboxHead_ < outbox_.size() && !cmdCatchUp_) {
-            int sendable = tak::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
+            int sendable = ta::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
             size_t at = outboxHead_;
             while (at < outbox_.size()) {
                 size_t end = at;
-                while (end < outbox_.size() && outbox_[end].kind != tak::net::Cmd::Order &&
+                while (end < outbox_.size() && outbox_[end].kind != ta::net::Cmd::Order &&
                        int(end - at) < sendable) ++end;
                 if (end > at) {
                     const int n = int(end - at);
@@ -563,15 +563,15 @@
                     continue;
                 }
                 auto& item = outbox_[at];
-                if (item.kind != tak::net::Cmd::Order || !item.order) break;   // out of command credit
-                const size_t bytes = tak::net::orderRecordBytes(*item.order);
+                if (item.kind != ta::net::Cmd::Order || !item.order) break;   // out of command credit
+                const size_t bytes = ta::net::orderRecordBytes(*item.order);
                 if (!orderWindow_.fits(bytes)) break;
                 // The serial is the one current when the order LEAVES, not when it was clicked: an
                 // order clicked during a rejoin's catch-up waits here, and nextOrderSerial_ only
                 // passes the orders that activated before the drop as that history is replayed.
                 // flushClick made this order (non-const) and nothing else holds it until it is
                 // sent, so the serial is set in place.
-                std::const_pointer_cast<tak::net::SelectionOrder>(item.order)->serial = nextOrderSerial_++;
+                std::const_pointer_cast<ta::net::SelectionOrder>(item.order)->serial = nextOrderSerial_++;
                 mp_->sendOrder(*item.order);
                 orderWindow_.sent(item.order->serial, bytes);
                 ++at;
@@ -589,18 +589,18 @@
         // Decide once whether to run the sim on its own worker thread. On for interactive
         // net games (the whole point -- keeps world_.tick off the render thread); off for the
         // headless harness/replay (inline, byte-identical + deterministic) unless
-        // TAK_SIM_THREAD forces it on to VERIFY the threaded sim against the referee.
+        // TA_SIM_THREAD forces it on to VERIFY the threaded sim against the referee.
         if (!simThreadDecided_) {
             simThreadDecided_ = true;
             wantSimThread_ = simThreadMode_;
 #ifndef NDEBUG
-            if (const char* e = tak::devEnv("TAK_SIM_SLOW_US")) simSlowUs_ = std::max(0, std::atoi(e));
+            if (const char* e = ta::devEnv("TA_SIM_SLOW_US")) simSlowUs_ = std::max(0, std::atoi(e));
 #endif
             if (wantSimThread_) startSimThread();
         }
         // Simulate every delivered tick, but cap per frame so a big catch-up
         // (rejoin replay) stays responsive rather than freezing for seconds.
-        tak::net::Bundle bd;
+        ta::net::Bundle bd;
         int drained = 0;
 #ifndef NDEBUG
         int paceBuffered = int(mp_->bufferedBundles());
@@ -620,23 +620,23 @@
             // legitimate to retire here.
             if (int ms = mp_->room().mySlot; ms >= 0)
                 for (const auto& c : bd.cmds)   // serials continue above every own order that activated
-                    if (int(c.player) == ms && c.kind == tak::net::Cmd::Order && c.order)
+                    if (int(c.player) == ms && c.kind == ta::net::Cmd::Order && c.order)
                         nextOrderSerial_ = std::max(nextOrderSerial_, c.order->serial + 1);
             if (!cmdCatchUp_)
                 if (int ms = mp_->room().mySlot; ms >= 0) {
                     for (const auto& c : bd.cmds) {
                         if (int(c.player) != ms) continue;
-                        if (c.kind == tak::net::Cmd::Order) {
+                        if (c.kind == ta::net::Cmd::Order) {
                             if (c.order) orderWindow_.retire(c.order->serial);
                         } else if (cmdInFlight_ > 0) --cmdInFlight_;
                     }
 #ifndef NDEBUG
-                    // TAK_AUTOPLAY_FORMATION delivery probe: own commands applied this tick (stderr only).
+                    // TA_AUTOPLAY_FORMATION delivery probe: own commands applied this tick (stderr only).
                     if (formPending_ > 0) {
                         int own = 0;   // unit commands: an explicit order counts each member
                         for (const auto& c : bd.cmds)
                             if (int(c.player) == ms)
-                                own += c.kind == tak::net::Cmd::Order && c.order ? int(c.order->members.size()) : 1;
+                                own += c.kind == ta::net::Cmd::Order && c.order ? int(c.order->members.size()) : 1;
                         if (own && !formLanded_) formFirstTick_ = netTick_;
                         formLanded_ += own;
                         if (formLanded_ >= formPending_) {
@@ -655,7 +655,7 @@
                 SimJob job;
                 job.bundle = bd;
                 job.tick = netTick_;
-                job.wantHash = (netTick_ % uint32_t(tak::net::kHashPeriod) == 0);
+                job.wantHash = (netTick_ % uint32_t(ta::net::kHashPeriod) == 0);
                 job.spectator = mp_->isSpectator();
                 job.wantPos = job.wantHash && mp_->recording() && !job.spectator;
                 { std::lock_guard<std::mutex> lk(inboxMutex_); simInbox_.push_back(std::move(job)); }
@@ -680,7 +680,7 @@
                 // to what the spectator can sustain (its hash is never desync-checked, since
                 // an all-AI room has no seated players to form a consensus). A spectator's
                 // hash is a progress ACK only, so skip the O(units) stateHash for it.
-                if (netTick_ % uint32_t(tak::net::kHashPeriod) == 0)
+                if (netTick_ % uint32_t(ta::net::kHashPeriod) == 0)
                     mp_->sendHash(netTick_, reportedHash(mp_->isSpectator(), netTick_),
                                   mp_->recording() && !mp_->isSpectator() ? world_.posDigest() : 0);
             }
@@ -714,10 +714,10 @@
         };
         if (netDelay_ == -2) {   // one-time init from the env
             // The adaptive jitter buffer is ON by default: it only ever reduces
-            // stalls and is pure pacing (byte-identical sim). TAK_NET_DELAY overrides
+            // stalls and is pure pacing (byte-identical sim). TA_NET_DELAY overrides
             // -- "0" disables it (drain every bundle immediately), a positive integer
             // pins a fixed reserve depth, "auto" (or unset) self-sizes to the link.
-            const char* e = tak::devEnv("TAK_NET_DELAY");
+            const char* e = ta::devEnv("TA_NET_DELAY");
             if (!e || std::string(e) == "auto") { netAuto_ = true; netDelay_ = 3; mp_->enableRttProbe(); }
             else netDelay_ = std::max(0, std::atoi(e));
         }
@@ -731,7 +731,7 @@
         if (netAuto_) {
             // Size the buffer to cover the measured bundle-arrival jitter, with an RTT-scaled
             // floor and a frame term, never past what the server's flow control lets the buffer
-            // reach (tak::net::jitterTargetTicks, net/pacing.h). Recomputed each frame so it
+            // reach (ta::net::jitterTargetTicks, net/pacing.h). Recomputed each frame so it
             // tracks the link and the game speed.
             const uint64_t nowF = SDL_GetTicks64();
             if (netFrameAt_) {
@@ -739,7 +739,7 @@
                 netFrameMs_ += 0.1f * (f - netFrameMs_);
             }
             netFrameAt_ = nowF;
-            netDelay_ = tak::net::jitterTargetTicks(mp_->arrivalJitterMs(), mp_->rttMs(), netFrameMs_,
+            netDelay_ = ta::net::jitterTargetTicks(mp_->arrivalJitterMs(), mp_->rttMs(), netFrameMs_,
                                                     std::max(1, int(mp_->gameSpeed())),
                                                     useSimThread_ ? int(kSimInboxCap) : 0);
         }
@@ -816,10 +816,10 @@
         // acknowledgement bug straight back.
         if (cmdCatchUp_ && netTick_ >= cmdReplayEnd_) {
             cmdCatchUp_ = false;
-            if (tak::devEnv("TAK_NETLOG"))
+            if (ta::devEnv("TA_NETLOG"))
                 std::fprintf(stderr, "catch-up complete at tick %u\n", netTick_);
             cmdInFlight_ = 0;
-            cmdCredit_ = tak::net::kCmdCapPerTick;
+            cmdCredit_ = ta::net::kCmdCapPerTick;
             orderWindow_.clear();
         }
         // Send the worker's finished per-tick state hashes to the server (lockstep desync
@@ -839,19 +839,19 @@
             const uint32_t done = useSimThread_ ? std::min(simProcessedTick_.load(std::memory_order_relaxed), pushed)
                                                 : pushed;
             if (!progressSent_ || done < progressSentTick_ ||
-                done - progressSentTick_ >= uint32_t(tak::net::kProgressPeriod)) {
+                done - progressSentTick_ >= uint32_t(ta::net::kProgressPeriod)) {
                 mp_->sendProgress(done);
                 progressSent_ = true;
                 progressSentTick_ = done;
             }
         }
 #ifndef NDEBUG
-        if (!paceInit_) { paceInit_ = true; pace_.open(tak::devEnv("TAK_PACELOG")); }
+        if (!paceInit_) { paceInit_ = true; pace_.open(ta::devEnv("TA_PACELOG")); }
         if (pace_.on()) {
             // What the player saw this frame: the worker's finished ticks with the sim thread on, the
             // drained count inline. The wall clock is read here, so a long sim stall shows in wallMs.
             const uint64_t nowMs = SDL_GetTicks64();
-            tak::PaceLog::Frame fr;
+            ta::PaceLog::Frame fr;
             fr.wallMs = paceLastMs_ ? double(nowMs - paceLastMs_) : 0.0;
             paceLastMs_ = nowMs;
             if (useSimThread_) {
@@ -1026,13 +1026,13 @@
     }
 
 #ifndef NDEBUG
-// TAK_SPEED_AT=<tick>:<speed>[,<tick>:<speed>...] -- the host changes the game speed (tenths)
+// TA_SPEED_AT=<tick>:<speed>[,<tick>:<speed>...] -- the host changes the game speed (tenths)
 // in-game when the played tick reaches <tick>, exactly as the +/- keys do. Each change, and one
 // line per wall second, is printed as SPEEDLOG (wall ms, played tick, requested speed) so a
 // harness can measure the real playout rate across a change. Debug-only, pacing only.
 void GameView::speedProbe() {
-    static const char* spec = tak::devEnv("TAK_SPEED_AT");
-    if (!spec || !mp_ || mp_->state() != tak::net::MpClient::State::InGame) return;
+    static const char* spec = ta::devEnv("TA_SPEED_AT");
+    if (!spec || !mp_ || mp_->state() != ta::net::MpClient::State::InGame) return;
     if (speedAt_.empty() && !speedAtParsed_) {
         speedAtParsed_ = true;
         std::string s = spec;
@@ -1049,7 +1049,7 @@ void GameView::speedProbe() {
     if (!speedLogMs_) speedLogMs_ = now;
     if (speedAtNext_ < speedAt_.size() && netTick_ >= speedAt_[speedAtNext_].first) {
         auto o = mp_->room().opts;
-        o.speed = uint8_t(std::clamp(speedAt_[speedAtNext_].second, 1, tak::net::kMaxDevGameSpeed));
+        o.speed = uint8_t(std::clamp(speedAt_[speedAtNext_].second, 1, ta::net::kMaxDevGameSpeed));
         mp_->setGameOptions(o);
         std::fprintf(stderr, "SPEEDLOG set %llu tick %u speed %d\n", (unsigned long long)now, netTick_, int(o.speed));
         ++speedAtNext_;
@@ -1061,17 +1061,17 @@ void GameView::speedProbe() {
     }
 }
 
-// TAK_BUILDLINE_NET: the local player's monarch lays three build lines of its smallest
+// TA_BUILDLINE_NET: the local player's monarch lays three build lines of its smallest
 // building through placeBuildLine (the code a shift-drag release runs) -- horizontal and
 // diagonal at the tight default, vertical at gap 2 -- so the Build/Move orders travel the
 // real path through the server and come back in tick bundles. Every site must then stand
 // finished: BUILDLINE_NET prints sites/built once all are, or at the deadline.
 void GameView::buildlineNetProbe() {
-    if (!tak::devFlag("TAK_BUILDLINE_NET") || netLinesDone_ || spectating_ || localPlayer_ < 0) return;
+    if (!ta::devFlag("TA_BUILDLINE_NET") || netLinesDone_ || spectating_ || localPlayer_ < 0) return;
     if (netLines_.empty()) {
         if (netTick_ < 90) return;
         int monarch = -1;
-        const tak::sim::UnitType* small = nullptr;
+        const ta::sim::UnitType* small = nullptr;
         std::vector<std::vector<std::pair<float, float>>> plans;
         float mx = 0, mz = 0;
         {
@@ -1129,10 +1129,10 @@ void GameView::buildlineNetProbe() {
         for (const auto& l : netLines_)
             for (const auto& [x, z] : l.sites) {
                 ++sites;
-                const int ox = tak::sim::footprintOrigin(x, l.type->footX), oz = tak::sim::footprintOrigin(z, l.type->footZ);
+                const int ox = ta::sim::footprintOrigin(x, l.type->footX), oz = ta::sim::footprintOrigin(z, l.type->footZ);
                 for (const auto& u : live->units())
                     if (live->finishedHere(u) && u.type == l.type && int(u.player) == localPlayer_ &&
-                        tak::sim::footprintOrigin(u.x, l.type->footX) == ox && tak::sim::footprintOrigin(u.z, l.type->footZ) == oz) {
+                        ta::sim::footprintOrigin(u.x, l.type->footX) == ox && ta::sim::footprintOrigin(u.z, l.type->footZ) == oz) {
                         ++built; break;
                     }
             }
@@ -1149,15 +1149,15 @@ void GameView::buildlineNetProbe() {
 void GameView::autoplayStep() {
     ClickScope click(*this);   // one click: a Legion net game sends it as explicit orders
     static const int rate = [] {
-        const char* e = tak::devEnv("TAK_AUTOPLAY");
+        const char* e = ta::devEnv("TA_AUTOPLAY");
         return e ? std::clamp(std::atoi(e), 0, 60) : 0;
     }();
-    // TAK_AUTOPLAY_FORMATION: the human seat plays like a player who forms armies -- every 600 ticks it puts
+    // TA_AUTOPLAY_FORMATION: the human seat plays like a player who forms armies -- every 600 ticks it puts
     // all its mobile units in formation 1 (Alt+1) and sends them to fight at the enemy's base, one command per
     // unit through GameView::issue, so the client's rate credit spreads a big selection over the same ticks a
     // real click does. Without it the --mpai human never forms a group and the AI never does, so no Legion group
     // code runs at all in that harness.
-    static const bool formation = tak::devFlag("TAK_AUTOPLAY_FORMATION");
+    static const bool formation = ta::devFlag("TA_AUTOPLAY_FORMATION");
     if ((!rate && !formation) || spectating_ || replayMode_ || localPlayer_ < 0) return;
     if (netTick_ < autoplayNext_) return;
     if (formation) {
@@ -1170,7 +1170,7 @@ void GameView::autoplayStep() {
                 if (!u.alive() || !u.type) continue;
                 if (int(u.player) == localPlayer_) {
                     // The monarch stays home: sending it into the enemy base ends the game, and with it the run.
-                    if (u.type->maxVel > tak::sim::Fixed() && !u.type->commander && !u.embarked() && !u.underConstruction)
+                    if (u.type->maxVel > ta::sim::Fixed() && !u.type->commander && !u.embarked() && !u.underConstruction)
                         mine.push_back(u.id);
                 } else if (!live->allied(localPlayer_, int(u.player)) && (tx < 0 || (u.type->commander && !u.type->canFly))) {
                     tx = u.x.toFloat(); tz = u.z.toFloat();   // the first enemy seen, or better, an enemy monarch
@@ -1179,15 +1179,15 @@ void GameView::autoplayStep() {
         }
         if (mine.empty() || tx < 0) return;
         for (int id : mine) {
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::SetSquad;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::SetSquad;
             c.unitId = id;
             c.targetId = -1;     // formation 1
             issue(c);
         }
         for (int id : mine) {
-            tak::net::Command c;
-            c.kind = tak::net::Cmd::AttackMove;
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::AttackMove;
             c.unitId = id;
             c.x = tx; c.z = tz;  // one shared point: the Legion group's click
             c.queue = 0;
@@ -1222,14 +1222,14 @@ void GameView::autoplayStep() {
     // Collect this player's mobile units. Stable order (units_ is append-only and
     // identical on every peer), so indexing into it is reproducible.
     //
-    // UNDER simMutex_ (liveWorld): with TAK_SIM_THREAD the worker mutates world_ while this
+    // UNDER simMutex_ (liveWorld): with TA_SIM_THREAD the worker mutates world_ while this
     // runs on the main thread, and a spawn that reallocates units_ invalidates the iteration
     // outright -- not a torn read, a crash.
     std::vector<int> mine;
     {
         const auto live = liveWorld();
         for (const auto& u : live->units())
-            if (u.alive() && u.type && int(u.player) == localPlayer_ && u.type->maxVel > tak::sim::Fixed() &&
+            if (u.alive() && u.type && int(u.player) == localPlayer_ && u.type->maxVel > ta::sim::Fixed() &&
                 !u.embarked() && !u.underConstruction &&
                 // A builder at work is left to it (autoplayHelpStep's jobs would never finish),
                 // and so is a flyer on guard: VTOL_Follow's help, repair and orbit are what
@@ -1247,20 +1247,20 @@ void GameView::autoplayStep() {
     const float w = float(mapView_.map().width) * 16.0f;
     const float h = float(mapView_.map().height) * 16.0f;
     for (int i = 0; i < batch; ++i) {
-        tak::net::Command c;
+        ta::net::Command c;
         c.unitId = mine[rnd() % mine.size()];
         c.x = float(rnd() % uint32_t(w > 32 ? w - 32 : 32)) + 16.0f;
         c.z = float(rnd() % uint32_t(h > 32 ? h - 32 : 32)) + 16.0f;
         // Mostly plain moves, some attack-moves: attack-move drives acquisition and
         // combat, which is where the sim has the most state to disagree about.
-        c.kind = (rnd() % 4 == 0) ? tak::net::Cmd::AttackMove : tak::net::Cmd::Move;
+        c.kind = (rnd() % 4 == 0) ? ta::net::Cmd::AttackMove : ta::net::Cmd::Move;
         c.queue = 0;
         issue(c);
     }
     autoplayHelpStep(rnd);
 }
 
-// TAK_AUTOPLAY's production and HelpBuild orders: now and then
+// TA_AUTOPLAY's production and HelpBuild orders: now and then
 // the seat has a builder put down a factory (or anything on its menu) near
 // itself, trains at its factories, puts a conjurer on a repeat queue, has a
 // builder guard a busy unit of its own (guard-help: repair, HelpBuild on a
@@ -1269,12 +1269,12 @@ void GameView::autoplayStep() {
 // cadence; its idle orbit when there is nothing to do) and has a builder
 // assist an unfinished unit -- so autoplay desync sweeps run construction, shared
 // production progress and guard-help between clients and the referee. (A
-// seat with flying builders from the start: TAK_START_FLYERS on every peer,
-// TAK_AUTOPLAY_SIDE ara|tar|zon for the seat.) All
+// seat with flying builders from the start: TA_START_FLYERS on every peer,
+// TA_AUTOPLAY_SIDE ara|tar|zon for the seat.) All
 // through issue(); the sim judges every order, so an ineligible one (a
 // blocked spot, an off-menu type) is refused on every peer alike.
 void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
-    struct Mine { int id; const tak::sim::UnitType* type; float x, z; };
+    struct Mine { int id; const ta::sim::UnitType* type; float x, z; };
     std::vector<Mine> factories, builders, flyers, orbiting;
     std::vector<int> busy, unfinished, damaged;
     int flyGuards = 0, flyHelping = 0, flyRepairing = 0;
@@ -1283,7 +1283,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         for (const auto& u : live->units()) {
             if (!u.alive() || !u.type || int(u.player) != localPlayer_ || u.embarked()) continue;
             if (u.underConstruction) { unfinished.push_back(u.id); continue; }
-            if (u.hp < tak::sim::Fixed::fromFloat(u.type->maxHp)) damaged.push_back(u.id);
+            if (u.hp < ta::sim::Fixed::fromFloat(u.type->maxHp)) damaged.push_back(u.id);
             if (u.type->canFly && !u.orders.empty() && u.orders.back().guard) {
                 ++flyGuards;
                 flyHelping += u.buildSiteId != 0;
@@ -1306,7 +1306,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         }
     }
     const auto menu = [&](const Mine& m, bool structures) {
-        std::vector<const tak::sim::UnitType*> out;
+        std::vector<const ta::sim::UnitType*> out;
         for (const auto& name : registry_.buildable(m.type->id))
             if (const auto* t = registry_.find(name); t && t->isStructure() == structures) out.push_back(t);
         return out;
@@ -1317,7 +1317,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         std::fprintf(stderr, "AUTOPLAY_FLYGUARD tick=%u guards=%d helping=%d repairing=%d\n", netTick_,
                      flyGuards, flyHelping, flyRepairing);
     }
-    tak::net::Command c;
+    ta::net::Command c;
     c.queue = 0;
     switch (rnd() % 8) {
     case 0: {   // a builder puts a structure down near itself
@@ -1325,11 +1325,11 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         const Mine& b = builders[rnd() % builders.size()];
         auto types = menu(b, true);
         // Mostly something that builds in turn: a factory gives the guards work.
-        std::vector<const tak::sim::UnitType*> producers;
+        std::vector<const ta::sim::UnitType*> producers;
         for (const auto* t : types) if (t->isBuilder) producers.push_back(t);
         if (!producers.empty() && rnd() % 4) types = producers;
         if (types.empty()) return;
-        c.kind = tak::net::Cmd::Build; c.unitId = b.id;
+        c.kind = ta::net::Cmd::Build; c.unitId = b.id;
         c.x = b.x + float(int(rnd() % 321) - 160); c.z = b.z + 96.0f + float(rnd() % 160);
         std::snprintf(c.type, sizeof c.type, "%s", types[rnd() % types.size()]->id.c_str());
         break;
@@ -1339,7 +1339,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         const Mine& f = factories[rnd() % factories.size()];
         const auto types = menu(f, false);
         if (types.empty()) return;
-        c.kind = tak::net::Cmd::Train; c.unitId = f.id; c.targetId = 1 + int(rnd() % 3);
+        c.kind = ta::net::Cmd::Train; c.unitId = f.id; c.targetId = 1 + int(rnd() % 3);
         std::snprintf(c.type, sizeof c.type, "%s", types[rnd() % types.size()]->id.c_str());
         break;
     }
@@ -1348,27 +1348,27 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         const Mine& b = builders[rnd() % builders.size()];
         const auto types = menu(b, false);
         if (types.empty() || b.type->commander) return;   // the monarch keeps building
-        c.kind = tak::net::Cmd::RepeatTrain; c.unitId = b.id;
+        c.kind = ta::net::Cmd::RepeatTrain; c.unitId = b.id;
         std::snprintf(c.type, sizeof c.type, "%s", types[rnd() % types.size()]->id.c_str());
         break;
     }
     case 3:
     case 4:     // a builder guards a busy unit: it helps / repairs what that unit works on
         if (builders.empty() || busy.empty()) return;
-        c.kind = tak::net::Cmd::Guard; c.unitId = builders[rnd() % builders.size()].id;
+        c.kind = ta::net::Cmd::Guard; c.unitId = builders[rnd() % builders.size()].id;
         c.targetId = busy[rnd() % busy.size()];
         if (c.unitId == c.targetId) return;
         break;
     case 6:     // a flying builder guards a busy unit (flyers are few: give them their own turn)
         if (flyers.empty() || busy.empty()) return;
-        c.kind = tak::net::Cmd::Guard; c.unitId = flyers[rnd() % flyers.size()].id;
+        c.kind = ta::net::Cmd::Guard; c.unitId = flyers[rnd() % flyers.size()].id;
         c.targetId = busy[rnd() % busy.size()];
         if (c.unitId == c.targetId) return;
         break;
     case 7: {   // an idle (or idly orbiting) flying builder guards a damaged unit, else a busy one
         const std::vector<Mine>& pick = !flyers.empty() ? flyers : orbiting;
         if (pick.empty()) return;
-        c.kind = tak::net::Cmd::Guard; c.unitId = pick[rnd() % pick.size()].id;
+        c.kind = ta::net::Cmd::Guard; c.unitId = pick[rnd() % pick.size()].id;
         const std::vector<int>& pool = !damaged.empty() ? damaged : busy;
         if (pool.empty()) return;
         c.targetId = pool[rnd() % pool.size()];
@@ -1377,7 +1377,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
     }
     case 5:     // a builder assists an unfinished unit (a site, or a factory's output)
         if (builders.empty() || unfinished.empty()) return;
-        c.kind = tak::net::Cmd::Assist; c.unitId = builders[rnd() % builders.size()].id;
+        c.kind = ta::net::Cmd::Assist; c.unitId = builders[rnd() % builders.size()].id;
         c.targetId = unfinished[rnd() % unfinished.size()];
         break;
     default:
@@ -1401,7 +1401,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         if (lanHostGone()) return false;   // a LOCAL SERVER went with its host: nothing to reconnect to
         const int mine = mp_->room().mySlot;
         bool others = false;
-        for (int i = 0; i < tak::net::kMaxSlots; ++i)
+        for (int i = 0; i < ta::net::kMaxSlots; ++i)
             others |= i != mine && mp_->startSlots()[i].type == 1;
         if (!others) return false;
         const uint64_t now = SDL_GetTicks64();
@@ -1414,7 +1414,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
     }
 
     bool GameView::reconnectStep() {
-        using S = tak::net::MpClient::State;
+        using S = ta::net::MpClient::State;
         const uint64_t now = SDL_GetTicks64();
         if (mp_->state() != S::Done) mp_->poll();
         uint32_t from = 0, end = 0;
@@ -1445,8 +1445,8 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
     }
 
     // Display side of a bundle's lifecycle events (main thread; the sim applies them).
-    void GameView::noteEvent(const tak::net::Event& e) {
-        if (e.kind != tak::net::Event::Kind::AiTakeover || e.player >= 8) return;
+    void GameView::noteEvent(const ta::net::Event& e) {
+        if (e.kind != ta::net::Event::Kind::AiTakeover || e.player >= 8) return;
         playerAi_[e.player] = true;
         if (replayInTransit_) return;   // a jump passes it by
         const std::string& name = playerName_[e.player];
@@ -1457,7 +1457,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
     }
 
     bool GameView::mpAutoStep(int autoMode, const std::string& mapId, bool crusades) {
-        using S = tak::net::MpClient::State;
+        using S = ta::net::MpClient::State;
         lobbyAutoMode_ = autoMode;
         if (autoMode) rememberRoom_ = false;   // a harness room writes no remembered settings
         // Reconnecting after the link dropped mid-game: mpStep owns it (a reconnect
@@ -1482,7 +1482,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (netError_.empty()) netError_ = mp_->error();
             return false;
         }
-        if (st == S::InGame) powerScriptStep();   // TAK_POWER_SCRIPT (debug builds)
+        if (st == S::InGame) powerScriptStep();   // TA_POWER_SCRIPT (debug builds)
         // A START the server refused ends a harness run, with the reason as its error. Only
         // the auto-start paths set mpStarted_; a player in the room reads the refusal there.
         if (st == S::InRoom && mpStarted_ && !mp_->startError().empty()) {
@@ -1502,78 +1502,78 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (netError_.empty()) netError_ = "create game refused: " + mp_->joinError();
             return false;
         }
-        // TAK_ROOM_SCRIPT (debug builds): room actions, after this mode's own seating step.
+        // TA_ROOM_SCRIPT (debug builds): room actions, after this mode's own seating step.
         if (!roomScriptStep(autoMode)) return false;
         if (st == S::Lobby && autoMode == 0 && roomAutoCreate_ && !roomCreateSent_) {
             // PLAY THE MACHINE, a LOCAL SERVER host, --play-map: the room opens straight away,
             // from the remembered settings (headless too, so a menu pick reaches the room).
             createRoomFromPrefs();
         } else if (st == S::Lobby && (autoMode == 1 || autoMode == 4 || autoMode == 7 || autoMode == 8)) {
-            if (const char* be = tak::devEnv("TAK_BENCH")) {   // headless: benchmark run
-                int lv = std::atoi(be);                        // TAK_BENCH=<level 1..6>, default High
-                benchmarkLevel_ = (lv >= 1 && lv <= tak::sim::kBenchLevels) ? lv : 3;
+            if (const char* be = ta::devEnv("TA_BENCH")) {   // headless: benchmark run
+                int lv = std::atoi(be);                        // TA_BENCH=<level 1..6>, default High
+                benchmarkLevel_ = (lv >= 1 && lv <= ta::sim::kBenchLevels) ? lv : 3;
                 benchmarkMode_ = true;                         // (forces watch + 8 AI + cap 8 + Ulasem below)
             }
             // The Benchmark runs with no mod packs at all (a menu run already applied this).
-            if (benchmarkMode_) tak::applyBenchmarkMods(mods_, mp_);
-            tak::net::GameOptions o; o.crusades = crusades ? 1 : 0;
+            if (benchmarkMode_) ta::applyBenchmarkMods(mods_, mp_);
+            ta::net::GameOptions o; o.crusades = crusades ? 1 : 0;
             o.gameMods = mods_.game ? 1 : 0;   // debug --mods override (the lobby always sends 1)
-            // TAK_SPEED: set the game speed in tenths (10 = 1x) for headless timing
+            // TA_SPEED: set the game speed in tenths (10 = 1x) for headless timing
             // tests -- re-cadences the server without touching the (deterministic) sim.
-            if (const char* sp = tak::devEnv("TAK_SPEED")) o.speed = uint8_t(std::clamp(std::atoi(sp), 1, tak::net::kMaxDevGameSpeed));
+            if (const char* sp = ta::devEnv("TA_SPEED")) o.speed = uint8_t(std::clamp(std::atoi(sp), 1, ta::net::kMaxDevGameSpeed));
             // The menu Benchmark runs at its SPEED pick: NORMAL, +10 (2x, retail's fastest,
             // the default) or +100 (11x, a benchmark room only), for 60 real seconds either
             // way; the results show where the sim falls short.
             else if (benchmarkMode_) o.speed = uint8_t(10 + benchmarkSpeed_);
-            // TAK_SPEED_AT schedules in-game speed changes (see mpStep), so the room must
+            // TA_SPEED_AT schedules in-game speed changes (see mpStep), so the room must
             // allow them.
-            if (tak::devEnv("TAK_SPEED_AT")) o.speedUnlock = 1;
-            o.stressTest = tak::devFlag("TAK_STRESS") ? tak::net::kStressStaged : 0;   // headless: spawn ~95% cap per AI
-            if (const char* uc = tak::devEnv("TAK_UNITCAP")) o.unitCap = uint16_t(std::atoi(uc));
+            if (ta::devEnv("TA_SPEED_AT")) o.speedUnlock = 1;
+            o.stressTest = ta::devFlag("TA_STRESS") ? ta::net::kStressStaged : 0;   // headless: spawn ~95% cap per AI
+            if (const char* uc = ta::devEnv("TA_UNITCAP")) o.unitCap = uint16_t(std::atoi(uc));
             // The remaining room options, as headless knobs. Without these a harness
             // could not reach the code they gate -- and GODS in particular is where a
             // desync has already hidden once: summoning used to run only on the client,
             // so the referee's world ran a unit short from the first god onward. A
             // desync hunt that cannot turn gods on cannot find that class of bug.
-            // TAK_RANDOM_STARTS=2 picks BY SLOT; any other set value but 0 RANDOM.
-            const char* starts = tak::devEnv("TAK_RANDOM_STARTS");
-            o.randomStarts = starts && std::atoi(starts) == tak::net::kStartsBySlot ? tak::net::kStartsBySlot
-                           : tak::devFlag("TAK_RANDOM_STARTS") ? tak::net::kStartsRandom : tak::net::kStartsFixed;
-            o.monarchExpendable = tak::devFlag("TAK_MONARCH_EXPENDABLE") ? 1 : 0;
-            o.forfeitSelfDestruct = tak::devFlag("TAK_FORFEIT_SELFDESTRUCT") ? 1 : 0;
-            o.doubleSight = tak::devFlag("TAK_DOUBLE_SIGHT") ? 1 : 0;
-            // The menu Benchmark's pick; every other auto launch is Retail. TAK_LEGION
-            // forces Legion for any of them (a TAK_BENCH run has no pick of its own).
-            o.pathfindingMode = tak::devFlag("TAK_LEGION") ? tak::sim::PathfindingMode::Legion :
+            // TA_RANDOM_STARTS=2 picks BY SLOT; any other set value but 0 RANDOM.
+            const char* starts = ta::devEnv("TA_RANDOM_STARTS");
+            o.randomStarts = starts && std::atoi(starts) == ta::net::kStartsBySlot ? ta::net::kStartsBySlot
+                           : ta::devFlag("TA_RANDOM_STARTS") ? ta::net::kStartsRandom : ta::net::kStartsFixed;
+            o.monarchExpendable = ta::devFlag("TA_MONARCH_EXPENDABLE") ? 1 : 0;
+            o.forfeitSelfDestruct = ta::devFlag("TA_FORFEIT_SELFDESTRUCT") ? 1 : 0;
+            o.doubleSight = ta::devFlag("TA_DOUBLE_SIGHT") ? 1 : 0;
+            // The menu Benchmark's pick; every other auto launch is Retail. TA_LEGION
+            // forces Legion for any of them (a TA_BENCH run has no pick of its own).
+            o.pathfindingMode = ta::devFlag("TA_LEGION") ? ta::sim::PathfindingMode::Legion :
                 benchmarkPathfinding_;
-            // TAK_FOG=0|1|2 forces the room's fog rule (not explored / explored /
+            // TA_FOG=0|1|2 forces the room's fog rule (not explored / explored /
             // full vision) so the setting can be tested end to end without driving
             // the lobby by hand.
-            if (const char* fg = tak::devEnv("TAK_FOG"))
+            if (const char* fg = ta::devEnv("TA_FOG"))
                 o.fogExplored = uint8_t(std::clamp(std::atoi(fg), 0, 2));
-            // TAK_NO_SPECTATORS=1: the room refuses watchers (ALLOW SPECTATORS off), so
+            // TA_NO_SPECTATORS=1: the room refuses watchers (ALLOW SPECTATORS off), so
             // a --mpspectate client can be shown the server's refusal.
-            o.allowSpectators = tak::devFlag("TAK_NO_SPECTATORS") ? 0 : 1;
-            // TAK_POWER_CODES=1: the room plays with POWER CODES on (the server clears it
-            // for a mission), so a harness can type codes (TAK_POWER_SCRIPT).
-            o.powerCodes = tak::devFlag("TAK_POWER_CODES") ? 1 : 0;
-            // TAK_MP_WATCH: host creates the game as a spectator (no slot) so every
+            o.allowSpectators = ta::devFlag("TA_NO_SPECTATORS") ? 0 : 1;
+            // TA_POWER_CODES=1: the room plays with POWER CODES on (the server clears it
+            // for a mission), so a harness can type codes (TA_POWER_SCRIPT).
+            o.powerCodes = ta::devFlag("TA_POWER_CODES") ? 1 : 0;
+            // TA_MP_WATCH: host creates the game as a spectator (no slot) so every
             // slot can be an AI -- an all-AI game to watch.
             if (benchmarkMode_) o.benchmark = uint8_t(benchmarkLevel_);   // menu Benchmark: intensity level
             // Benchmark is an all-AI WATCH run (host takes no slot) on Ulasem Arena, forced
             // to 8 slots regardless of the map's start-position count (setupMatch synthesises
             // the extra starts), private (not in the browser).
-            bool watch = (autoMode == 1 && tak::devEnv("TAK_MP_WATCH")) || benchmarkMode_;
+            bool watch = (autoMode == 1 && ta::devEnv("TA_MP_WATCH")) || benchmarkMode_;
             // Mode 7 is interactive SINGLE-PLAYER: a private game (hidden from the
             // browser) with one server-run AI opponent.
             // Mode 8 is a single-player CAMPAIGN mission: a private game whose world is
             // built from the mission bundle (server + every peer run setupMission).
             bool priv = autoMode == 7 || autoMode == 8 || benchmarkMode_;
             std::string mission = autoMode == 8 ? missionStem_ : std::string();
-            // TAK_MAP_SCENARIO=1: create the room with MAP SCENARIO on (the server refuses START when
+            // TA_MAP_SCENARIO=1: create the room with MAP SCENARIO on (the server refuses START when
             // the map has no scenario or a needed seat is empty -- a harness can test both).
-            o.mapScenario = autoMode != 8 && tak::devFlag("TAK_MAP_SCENARIO") ? 1 : 0;
-            uint8_t cap = (autoMode == 8 || benchmarkMode_) ? tak::net::kMaxSlots : mpCapacity(o.mapScenario != 0);
+            o.mapScenario = autoMode != 8 && ta::devFlag("TA_MAP_SCENARIO") ? 1 : 0;
+            uint8_t cap = (autoMode == 8 || benchmarkMode_) ? ta::net::kMaxSlots : mpCapacity(o.mapScenario != 0);
             // Exact stem match (findMap): the map file is "ulasem arena.tnt".
             std::string createMap = benchmarkMode_ ? std::string("Ulasem Arena") : mapId;
             mp_->createGame(benchmarkMode_ ? "Benchmark" : (priv ? "Single Player" : "headless"),
@@ -1591,25 +1591,25 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (SDL_GetTicks64() - mpListMs_ > 300) { mp_->listGames(); mpListMs_ = SDL_GetTicks64(); }
             if (!mp_->games().empty()) mp_->joinGame(mp_->games().front().id, "");
             else if (autoMode == 3 && mpListMs_ && SDL_GetTicks64() - mpFirstListMs_ > 800) {
-                tak::net::GameOptions o; o.crusades = crusades ? 1 : 0;
+                ta::net::GameOptions o; o.crusades = crusades ? 1 : 0;
             o.gameMods = mods_.game ? 1 : 0;   // debug --mods override (the lobby always sends 1)
-                o.mapScenario = tak::devFlag("TAK_MAP_SCENARIO") ? 1 : 0;   // as for modes 1/4/7
-                o.powerCodes = tak::devFlag("TAK_POWER_CODES") ? 1 : 0;
+                o.mapScenario = ta::devFlag("TA_MAP_SCENARIO") ? 1 : 0;   // as for modes 1/4/7
+                o.powerCodes = ta::devFlag("TA_POWER_CODES") ? 1 : 0;
                 mp_->createGame(mapId, "", mapId, o, mpCapacity(o.mapScenario != 0));
             }
             if (!mpFirstListMs_) mpFirstListMs_ = SDL_GetTicks64();
         } else if (st == S::InRoom && autoMode && !mpReadied_) {
             const auto& r = mp_->room();
-            // Host-spectator (TAK_MP_WATCH): seat AIs in the LOW slots (0..N-1) and
+            // Host-spectator (TA_MP_WATCH): seat AIs in the LOW slots (0..N-1) and
             // don't seat self -- an all-AI game the host just watches.
-            if (r.mySlot < 0 && (benchmarkMode_ || (autoMode == 1 && tak::devEnv("TAK_MP_WATCH")))) {
-                const char* ai = tak::devEnv("TAK_MP_AIS");
+            if (r.mySlot < 0 && (benchmarkMode_ || (autoMode == 1 && ta::devEnv("TA_MP_WATCH")))) {
+                const char* ai = ta::devEnv("TA_MP_AIS");
                 // Benchmark: always a full 8-faction FFA (each AI its own team -> they fight,
                 // which is the point of the load test). FIXED factions by slot (k%5):
                 // AI1 Aramon, AI2 Taros, AI3 Veruna, AI4 Zhon, AI5 Creon, AI6 Aramon,
                 // AI7 Taros, AI8 Veruna -- never random.
-                int nAi = benchmarkMode_ ? int(tak::net::kMaxSlots)
-                                         : std::clamp(ai ? std::atoi(ai) : 2, 2, int(tak::net::kMaxSlots));
+                int nAi = benchmarkMode_ ? int(ta::net::kMaxSlots)
+                                         : std::clamp(ai ? std::atoi(ai) : 2, 2, int(ta::net::kMaxSlots));
                 for (int k = 0; k < nAi; ++k)
                     mp_->setSlot(k, 2, uint8_t(k % 5), uint8_t(k), uint8_t(k), 1, aiLevelEnv(k));
                 mpReadied_ = true;
@@ -1627,15 +1627,15 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                 // up and starts.
                 mp_->setSlot(r.mySlot, 1, facIdx(side_), uint8_t(r.mySlot),
                              uint8_t(r.mySlot), 0);
-                // Headless test hook: TAK_SP_AIS=N seats N AI opponents and starts
+                // Headless test hook: TA_SP_AIS=N seats N AI opponents and starts
                 // immediately (the interactive path leaves this to the player).
-                if (const char* na = tak::devEnv("TAK_SP_AIS")) {
+                if (const char* na = ta::devEnv("TA_SP_AIS")) {
                     // The auto-start hook must ready-up the host (interactive SP now
                     // seats unready, which would otherwise block startGame()).
                     mp_->setSlot(r.mySlot, 1, facIdx(side_), uint8_t(r.mySlot),
                                  uint8_t(r.mySlot), 1);
-                    int n = std::clamp(std::atoi(na), 1, int(tak::net::kMaxSlots) - 1);
-                    for (int k = 0; k < n && k + 1 < int(tak::net::kMaxSlots); ++k) {
+                    int n = std::clamp(std::atoi(na), 1, int(ta::net::kMaxSlots) - 1);
+                    for (int k = 0; k < n && k + 1 < int(ta::net::kMaxSlots); ++k) {
                         int slot = k + 1;
                         mp_->setSlot(slot, 2, uint8_t((facIdx(aiSide_) + k) % 5),
                                      uint8_t(slot), uint8_t(slot), 1, aiLevelEnv(k));
@@ -1645,21 +1645,21 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                 }
                 mpReadied_ = true;
             } else if (r.mySlot >= 0) {
-                // TAK_AUTOPLAY_SIDE=ara|tar|ver|zon|cre: the seat's faction (default by
-                // slot), e.g. a side with flying builders for TAK_START_FLYERS.
-                const char* autoSide = tak::devEnv("TAK_AUTOPLAY_SIDE");
+                // TA_AUTOPLAY_SIDE=ara|tar|ver|zon|cre: the seat's faction (default by
+                // slot), e.g. a side with flying builders for TA_START_FLYERS.
+                const char* autoSide = ta::devEnv("TA_AUTOPLAY_SIDE");
                 mp_->setSlot(r.mySlot, 1, autoSide ? facIdx(autoSide) : uint8_t(r.mySlot % 5),
                              uint8_t(r.mySlot), uint8_t(r.mySlot), 1);
                 // autoMode 4 (AI-game host): also seat one AI opponent in slot 1.
                 if (autoMode == 4 && r.mySlot == 0)
                     mp_->setSlot(1, 2, 1, 1, 1, 1, aiLevelEnv());   // AI, tar, colour 1, team 1
-                // Host stress harness: TAK_MP_AIS=N seats N server AIs in the TOP
+                // Host stress harness: TA_MP_AIS=N seats N server AIs in the TOP
                 // slots, leaving the low slots for human joiners.
                 if (autoMode == 1 && r.mySlot == 0)
-                    if (const char* ai = tak::devEnv("TAK_MP_AIS")) {
-                        int nAi = std::clamp(std::atoi(ai), 0, tak::net::kMaxSlots - 1);
+                    if (const char* ai = ta::devEnv("TA_MP_AIS")) {
+                        int nAi = std::clamp(std::atoi(ai), 0, ta::net::kMaxSlots - 1);
                         for (int k = 0; k < nAi; ++k) {
-                            int slot = tak::net::kMaxSlots - 1 - k;
+                            int slot = ta::net::kMaxSlots - 1 - k;
                             mp_->setSlot(slot, 2, uint8_t(slot % 5), uint8_t(slot),
                                          uint8_t(slot), 1, aiLevelEnv(k));   // AI, distinct colour/team
                         }
@@ -1676,7 +1676,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             const auto& r = mp_->room();
             if (readiedAt != std::pair<uint32_t, uint32_t>{r.id, r.roomRev}) {
                 readiedAt = {r.id, r.roomRev};
-                const char* autoSide = tak::devEnv("TAK_AUTOPLAY_SIDE");
+                const char* autoSide = ta::devEnv("TA_AUTOPLAY_SIDE");
                 mp_->setSlot(r.mySlot, 1, autoSide ? facIdx(autoSide) : uint8_t(r.mySlot % 5),
                              uint8_t(r.mySlot), uint8_t(r.mySlot), 1);
             }
@@ -1686,13 +1686,13 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // (mode 7 single-player does NOT auto-start: the player adds AIs and
             //  clicks START in the Room.)
             int ready = 0;
-            for (int i = 0; i < tak::net::kMaxSlots; ++i) {
+            for (int i = 0; i < ta::net::kMaxSlots; ++i) {
                 const auto& s = mp_->room().slots[i];
                 if ((s.type == 1 && s.ready) || s.type == 2) ++ready;   // human-ready or AI
             }
-            // Default: start with any 2 ready. TAK_MP_WAIT=N holds for a full lobby.
+            // Default: start with any 2 ready. TA_MP_WAIT=N holds for a full lobby.
             static const int wantReady = [] {
-                const char* w = tak::devEnv("TAK_MP_WAIT"); return w ? std::atoi(w) : 2;
+                const char* w = ta::devEnv("TA_MP_WAIT"); return w ? std::atoi(w) : 2;
             }();
             if (ready >= wantReady && mp_->room().mapsReady) { mp_->startGame(); mpStarted_ = true; }
         } else if (mp_->isCatchUp()) {
@@ -1736,13 +1736,13 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // (Starting: a watched game the server ended before its first tick sends no
             // bundle to start on; mpStep still ends the watch.)
 #ifndef NDEBUG
-            autoplayStep();   // TAK_AUTOPLAY: headless humans that actually give orders
+            autoplayStep();   // TA_AUTOPLAY: headless humans that actually give orders
             buildlineNetProbe();
             // Exercise defeat through the ordinary synchronized Ctrl+D command.
-            if (tak::devFlag("TAK_DEFEAT_TEST") && !debugDefeatSent_ && netTick_ >= 60) {
+            if (ta::devFlag("TA_DEFEAT_TEST") && !debugDefeatSent_ && netTick_ >= 60) {
                 for (const auto* u : front().live) {
                     if (u->player != localPlayer_ || !u->type || !u->type->commander) continue;
-                    tak::net::Command c; c.kind = tak::net::Cmd::Destroy; c.unitId = u->id;
+                    ta::net::Command c; c.kind = ta::net::Cmd::Destroy; c.unitId = u->id;
                     issue(c); debugDefeatSent_ = true; break;
                 }
             }
@@ -1753,33 +1753,33 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
     }
 
 namespace {
-// TAK_ROOM_SCRIPT's opt: rules, by the name a step gives them, and the room's value of each.
-struct RoomScriptRule { const char* name; tak::RoomField field; };
+// TA_ROOM_SCRIPT's opt: rules, by the name a step gives them, and the room's value of each.
+struct RoomScriptRule { const char* name; ta::RoomField field; };
 constexpr RoomScriptRule kRoomScriptRules[] = {
-    {"crusades", tak::RoomField::Crusades}, {"doubleSight", tak::RoomField::DoubleSight},
-    {"unitCap", tak::RoomField::UnitCap}, {"monarchExpendable", tak::RoomField::Monarch},
-    {"speedUnlock", tak::RoomField::SpeedUnlock}, {"fog", tak::RoomField::Fog},
-    {"randomStarts", tak::RoomField::StartLocations}, {"pathfinding", tak::RoomField::Pathfinding},
-    {"powerCodes", tak::RoomField::PowerCodes}, {"allowSpectators", tak::RoomField::AllowSpectators}};
-int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
+    {"crusades", ta::RoomField::Crusades}, {"doubleSight", ta::RoomField::DoubleSight},
+    {"unitCap", ta::RoomField::UnitCap}, {"monarchExpendable", ta::RoomField::Monarch},
+    {"speedUnlock", ta::RoomField::SpeedUnlock}, {"fog", ta::RoomField::Fog},
+    {"randomStarts", ta::RoomField::StartLocations}, {"pathfinding", ta::RoomField::Pathfinding},
+    {"powerCodes", ta::RoomField::PowerCodes}, {"allowSpectators", ta::RoomField::AllowSpectators}};
+int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
     switch (field) {
-    case tak::RoomField::Crusades: return o.crusades;
-    case tak::RoomField::DoubleSight: return o.doubleSight;
-    case tak::RoomField::UnitCap: return o.unitCap;
-    case tak::RoomField::Monarch: return o.monarchExpendable;
-    case tak::RoomField::SpeedUnlock: return o.speedUnlock;
-    case tak::RoomField::Fog: return o.fogExplored;
-    case tak::RoomField::StartLocations: return o.randomStarts;
-    case tak::RoomField::Pathfinding: return int(o.pathfindingMode);
-    case tak::RoomField::PowerCodes: return o.powerCodes;
-    case tak::RoomField::AllowSpectators: return o.allowSpectators;
+    case ta::RoomField::Crusades: return o.crusades;
+    case ta::RoomField::DoubleSight: return o.doubleSight;
+    case ta::RoomField::UnitCap: return o.unitCap;
+    case ta::RoomField::Monarch: return o.monarchExpendable;
+    case ta::RoomField::SpeedUnlock: return o.speedUnlock;
+    case ta::RoomField::Fog: return o.fogExplored;
+    case ta::RoomField::StartLocations: return o.randomStarts;
+    case ta::RoomField::Pathfinding: return int(o.pathfindingMode);
+    case ta::RoomField::PowerCodes: return o.powerCodes;
+    case ta::RoomField::AllowSpectators: return o.allowSpectators;
     default: return -1;
     }
 }
 }  // namespace
 
     void GameView::createRoomFromPrefs() {
-        if (!mp_ || mp_->state() != tak::net::MpClient::State::Lobby) { roomActError_ = "not in the game list"; return; }
+        if (!mp_ || mp_->state() != ta::net::MpClient::State::Lobby) { roomActError_ = "not in the game list"; return; }
         if (roomCreateSent_) { roomActError_ = "a game is already being opened"; return; }
         roomOpenError_.clear();
         // The browser's CREATE makes a multiplayer room; the doors named theirs.
@@ -1789,12 +1789,12 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         // The rules: the kind's remembered set, each value one the room's cells can show. A
         // private single-player room is never listed, so ALLOW SPECTATORS stays at its default
         // there. MAP SCENARIO starts off (a Test Map copy plays its scenario by its opt-in).
-        const tak::Settings::RoomPrefs p = settings_ ? settings_->prefsFor(sp) : tak::Settings::RoomPrefs{};
-        tak::net::GameOptions o;
+        const ta::Settings::RoomPrefs p = settings_ ? settings_->prefsFor(sp) : ta::Settings::RoomPrefs{};
+        ta::net::GameOptions o;
         o.crusades = p.crusades ? 1 : 0;
         o.doubleSight = p.doubleSight ? 1 : 0;
-        o.pathfindingMode = tak::sim::validPathfindingMode(uint8_t(p.pathfindingMode)) ? p.pathfindingMode
-                                                                                      : tak::sim::PathfindingMode::Retail;
+        o.pathfindingMode = ta::sim::validPathfindingMode(uint8_t(p.pathfindingMode)) ? p.pathfindingMode
+                                                                                      : ta::sim::PathfindingMode::Retail;
         o.speedUnlock = p.speedUnlock ? 1 : 0;
         o.unitCap = p.unitCap == 250 || p.unitCap == 500 || p.unitCap == 1000 ? uint16_t(p.unitCap) : uint16_t(2000);
         o.monarchExpendable = p.monarchExpendable ? 1 : 0;
@@ -1815,22 +1815,22 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         std::vector<Try> tries;
         std::string why;   // the remembered map was passed over: why
         if (!roomForcedMap_.empty()) {
-            tries.push_back({roomForcedMap_, tak::hpi::findMap(vfs_, roomForcedMap_), false});
+            tries.push_back({roomForcedMap_, ta::hpi::findMap(vfs_, roomForcedMap_), false});
         } else {
             if (p.generated) {
-                bool made = tak::mapgen::isGeneratedMapId(p.generator);
-                if (made) try { tak::mapgen::parseMapId(p.generator); } catch (const std::exception&) { made = false; }
+                bool made = ta::mapgen::isGeneratedMapId(p.generator);
+                if (made) try { ta::mapgen::parseMapId(p.generator); } catch (const std::exception&) { made = false; }
                 if (made) tries.push_back({p.generator, p.generator, true});
                 else why = "its random map cannot be made";
             }
             if (!p.map.empty()) {
-                if (std::string path = tak::hpi::findMap(vfs_, p.map); !path.empty()) tries.push_back({p.map, path, true});
+                if (std::string path = ta::hpi::findMap(vfs_, p.map); !path.empty()) tries.push_back({p.map, path, true});
                 else if (why.empty() && !p.generated) why = "it is not installed";
             }
             if (!roomDefaultMap_.empty())
-                if (std::string path = tak::hpi::findMap(vfs_, roomDefaultMap_); !path.empty())
+                if (std::string path = ta::hpi::findMap(vfs_, roomDefaultMap_); !path.empty())
                     tries.push_back({roomDefaultMap_, path, false});
-            const std::string recipe = tak::mapgen::encodeMapId(tak::mapgen::Params{});
+            const std::string recipe = ta::mapgen::encodeMapId(ta::mapgen::Params{});
             tries.push_back({recipe, recipe, false});
         }
         std::string opened, failed;
@@ -1845,9 +1845,9 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
             if (t.remembered && why.empty()) why = failed;
         }
         // The password is sent, or never to be: the room shows it to its host (roomPasswordStep).
-        tak::crypto::wipe(roomPassAsked_);
+        ta::crypto::wipe(roomPassAsked_);
         if (!opened.empty()) roomPassAsked_ = roomStartPass_;
-        tak::crypto::wipe(roomStartPass_);
+        ta::crypto::wipe(roomStartPass_);
         if (opened.empty()) {   // a --play-map map that cannot be built here: the lobby says why
             roomActError_ = roomOpenError_ = failed;
             roomAutoCreate_ = false;
@@ -1862,10 +1862,10 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
     }
 
     bool GameView::roomScriptStep(int autoMode) {
-        using S = tak::net::MpClient::State;
+        using S = ta::net::MpClient::State;
         if (!roomScriptRead_) {
             roomScriptRead_ = true;
-            const char* script = tak::devEnv("TAK_ROOM_SCRIPT");
+            const char* script = ta::devEnv("TA_ROOM_SCRIPT");
             const std::string all = script ? script : "";
             for (size_t at = 0; at < all.size();) {
                 const size_t end = std::min(all.find(';', at), all.size());
@@ -1911,7 +1911,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         };
         const auto slotArg = [&](int& slot) {
             slot = std::atoi(step.arg.c_str());
-            return !step.arg.empty() && slot >= 0 && slot < tak::net::kMaxSlots;
+            return !step.arg.empty() && slot >= 0 && slot < ta::net::kMaxSlots;
         };
         const auto& room = mp_->room();
         std::string refused;   // the action did nothing: why
@@ -1953,7 +1953,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
             } else if (!roomScriptActed_) {
                 const auto& games = mp_->games();
                 const auto game = std::find_if(games.begin(), games.end(),
-                                               [&](const tak::net::GameInfo& g) { return g.name == name; });
+                                               [&](const ta::net::GameInfo& g) { return g.name == name; });
                 if (game == games.end()) {   // not listed yet: ask again (nothing may be drawing the list)
                     if (now - mpListMs_ > 300) { mp_->listGames(); mpListMs_ = now; }
                 } else {
@@ -2021,7 +2021,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
             }
             // Then the server's answer to that PICK, and the new map verified.
             const auto& answer = mp_->roomMapAnswer();
-            using A = tak::net::MpClient::RoomMapAnswer;
+            using A = ta::net::MpClient::RoomMapAnswer;
             if (!done && refused.empty() && !roomScriptSerial_) {
                 if (wantRefusal) return fail("nothing was sent to refuse");
                 done = room.mapsReady;
@@ -2120,7 +2120,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         } else if (step.verb == "shot") {
             if (!roomScriptActed_) { roomShotPath_ = step.arg; roomScriptActed_ = true; }
             std::error_code ec;
-            done = roomShotPath_.empty() && std::filesystem::exists(tak::u8path(step.arg), ec);
+            done = roomShotPath_.empty() && std::filesystem::exists(ta::u8path(step.arg), ec);
         } else {
             return fail("unknown step");
         }
@@ -2138,7 +2138,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         return true;
     }
 
-    // TAK_ROOM_SCRIPT shot: the whole window as the room drew it, out of the lobby's
+    // TA_ROOM_SCRIPT shot: the whole window as the room drew it, out of the lobby's
     // viewport and scale for the read (put back for anything drawn after).
     void GameView::roomShotCapture() {
         SDL_RenderSetViewport(ren_, nullptr);
@@ -2148,7 +2148,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         std::vector<uint8_t> px(size_t(std::max(w, 0)) * size_t(std::max(h, 0)) * 4);
         const SDL_Rect area{0, 0, w, h};
         if (w > 0 && h > 0 && SDL_RenderReadPixels(ren_, &area, SDL_PIXELFORMAT_RGBA32, px.data(), w * 4) == 0) {
-            tak::png::write(roomShotPath_, w, h, px);
+            ta::png::write(roomShotPath_, w, h, px);
             std::fprintf(stderr, "room script: wrote %s\n", roomShotPath_.c_str());
         }
         roomShotPath_.clear();
@@ -2163,7 +2163,7 @@ int roomRuleValue(const tak::net::GameOptions& o, tak::RoomField field) {
         if (it == kingdomPals_.end()) {
             std::vector<uint8_t> rgba;
             try {
-                auto pal = tak::gaf::Palette::fromBytes(vfs_.read("palettes/" + kingdom + ".pcx"),
+                auto pal = ta::gaf::Palette::fromBytes(vfs_.read("palettes/" + kingdom + ".pcx"),
                                                         kingdom + ".pcx");
                 rgba.assign(&pal.rgba[0][0], &pal.rgba[0][0] + 256 * 4);
             } catch (...) { rgba.clear(); }

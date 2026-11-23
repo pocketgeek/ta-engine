@@ -8,7 +8,7 @@
 #include <thread>
 #include <utility>
 
-namespace tak::srv {
+namespace ta::srv {
 // One persistent worker per running room. The network thread submits one frozen
 // tick and polls its future; it never joins a tick batch or waits for a busy room.
 class RoomWorker {

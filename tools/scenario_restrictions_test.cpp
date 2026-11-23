@@ -8,7 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 
-using namespace tak;
+using namespace ta;
 static void check(bool value,const char* message) {
     if (!value) throw std::runtime_error(message);
 }
@@ -68,7 +68,7 @@ int main() try {
         files->erase("kmap/restricted.crt");
         textFile("kmap/restricted.ota",ota);
     }
-    textFile("kmap/restricted.ota",ota+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n");
+    textFile("kmap/restricted.ota",ota+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n");
     sim::World client,referee;
     config.scenarioViewPlayer=0;sim::setupMatch(client,registry,config);
     config.scenarioViewPlayer=-1;sim::setupMatch(referee,registry,config);
@@ -128,7 +128,7 @@ int main() try {
     scene.players[1].push_back({{{0,{}},{15,{"0","araking","Anywhere"}}},
                                {{13,{"All Players","ready"}},{14,{}}}});
     (*files)["kmap/restricted.crt"]=crt::write(scene);
-    textFile("kmap/restricted.ota",metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n");
+    textFile("kmap/restricted.ota",metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n");
     {
         int initialActions=0;
         config.scenarioTrace=[&](int tick,int player,int,int action,const crt::Rule*) {
@@ -141,7 +141,7 @@ int main() try {
         config.scenarioTrace={};
     }
     metadata.useOnlyUnits="../restricted.tdf";
-    textFile("kmap/restricted.ota",metadata.write()+"\n[TAKPlaytest]{\nauthoredscenario=1;\n}\n");
+    textFile("kmap/restricted.ota",metadata.write()+"\n[TAPlaytest]{\nauthoredscenario=1;\n}\n");
     {
         sim::World world;bool rejected=false;
         try {sim::setupMatch(world,registry,config);}catch(const std::exception&) {rejected=true;}

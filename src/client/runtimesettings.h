@@ -23,7 +23,7 @@
 #include "client/uitext.h"
 #include "client/videofilter.h"
 
-namespace tak {
+namespace ta {
 
 inline size_t gpuMemoryLimitBytes(int mib) {
     mib = snapGpuMemoryLimit(mib);
@@ -47,9 +47,9 @@ inline void applyRuntimeSettings(const Settings& s) {
     // Render benchmark only (tools/render_benchmark.py "constrained"): a cap that
     // actually binds. The Options minimum (512 MiB) and the policy floor (384 MiB)
     // sit above what most benchmark scenes hold, so neither constrains them.
-    if (const char* cap = devEnv("TAK_GPU_CAP_MIB"); cap && std::atoi(cap) > 0)
+    if (const char* cap = devEnv("TA_GPU_CAP_MIB"); cap && std::atoi(cap) > 0)
         gpuvram::g_policy.limit = gpuvram::g_policy.cap = size_t(std::atoi(cap)) * gpuvram::kMiB;
 #endif
 }
 
-}  // namespace tak
+}  // namespace ta

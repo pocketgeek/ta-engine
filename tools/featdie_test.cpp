@@ -21,7 +21,7 @@
 #include <cstdio>
 #include <string>
 
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void hit(World& w, const Weapon& weapon, float x, float z) {
         w.applyHit(weapon, x, z, 0, 0, nullptr);
@@ -34,7 +34,7 @@ struct RetailReplayProbe {
 };
 }
 
-using namespace tak::sim;
+using namespace ta::sim;
 
 static int g_fail = 0;
 static void check(bool cond, const char* what) {
@@ -127,21 +127,21 @@ int main(int argc, char** argv) {
         std::vector<int> ends; for (int i = 1; i <= 10; ++i) ends.push_back(2 * i);
         bool ok = true;
         for (int k = 0; k < 20; ++k) {
-            const int e = tak::featuredie::elapsed(20, 120, 100 + k);
-            ok = ok && e == k && tak::featuredie::frame(ends, e) == size_t(k / 2);
+            const int e = ta::featuredie::elapsed(20, 120, 100 + k);
+            ok = ok && e == k && ta::featuredie::frame(ends, e) == size_t(k / 2);
         }
         check(ok, "the client draws frame k/2 at tick k of the death");
-        check(tak::featuredie::elapsed(20, 120, 90) == 0 && tak::featuredie::frame(ends, 25) == 9,
+        check(ta::featuredie::elapsed(20, 120, 90) == 0 && ta::featuredie::frame(ends, 25) == 9,
               "an early snapshot shows frame 0; the last frame holds");
     }
     if (argc > 1) {
-        auto vfs = tak::hpi::mountRetailRoot(argv[1]);
-        tak::gaf::FeatureBurnTiming timing(vfs);
-        auto node = [&](const char* path, const char* section) -> tak::tdf::Node {
+        auto vfs = ta::hpi::mountRetailRoot(argv[1]);
+        ta::gaf::FeatureBurnTiming timing(vfs);
+        auto node = [&](const char* path, const char* section) -> ta::tdf::Node {
             const auto bytes = vfs.read(path);
-            const auto root = tak::tdf::parseText(std::string(bytes.begin(), bytes.end()), path);
+            const auto root = ta::tdf::parseText(std::string(bytes.begin(), bytes.end()), path);
             for (const auto& [name, child] : root.children)
-                if (tak::hpi::MountSet::key(name) == section) return child;
+                if (ta::hpi::MountSet::key(name) == section) return child;
             return {};
         };
         check(timing.dieDuration(node("features/aramon/aratree.tdf", "aratree01")) == 20,

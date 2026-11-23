@@ -11,12 +11,12 @@
 #include <string>
 #include <vector>
 
-namespace tak::sim { struct RetailReplayProbe {
+namespace ta::sim { struct RetailReplayProbe {
     static void shoot(World& w,int from,int target){w.fire(*w.unit(from),*w.unit(target),0);}
     static size_t pending(const World& w){return w.pendingEffects_.size();}
 }; }
 
-using namespace tak::sim;
+using namespace ta::sim;
 namespace {
 int failures=0;
 void check(bool ok,const std::string& what,const std::string& detail={}) {

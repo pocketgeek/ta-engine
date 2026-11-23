@@ -7,7 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace tak::cob {
+namespace ta::cob {
 
 namespace {
 
@@ -96,7 +96,7 @@ struct OpInfo {
     int args;   // trailing argument words
 };
 
-// TA/TAK COB opcode set.
+// TA/TA COB opcode set.
 const OpInfo kOps[] = {
     {0x10001000, "MOVE", 2},          // piece, axis; target+speed on stack
     {0x10002000, "TURN", 2},
@@ -127,7 +127,7 @@ const OpInfo kOps[] = {
     {0x10032000, "SUB", 0},
     {0x10033000, "MUL", 0},
     {0x10034000, "DIV", 0},
-    {0x10035000, "AND", 0},           // TAK numbering (retail KINGDOMS.icd @0x56c966):
+    {0x10035000, "AND", 0},           // TA numbering (retail KINGDOMS.icd @0x56c966):
     {0x10036000, "OR", 0},            // 5=AND 6=OR 7=XOR 8=NOT 9=SHL A=SHR B=MOD
     {0x10037000, "XOR", 0},
     {0x10038000, "NOT", 0},           // unary
@@ -151,7 +151,7 @@ const OpInfo kOps[] = {
     {0x1005A000, "NOT", 0},
     {0x10061000, "START_SCRIPT", 2},  // script, paramCount
     {0x10062000, "CALL_SCRIPT", 2},
-    {0x10063000, "START_CALL_V", 2},  // start/call variant (absent from TAK data)
+    {0x10063000, "START_CALL_V", 2},  // start/call variant (absent from TA data)
     {0x10064000, "JUMP", 1},
     {0x10065000, "RETURN", 0},
     {0x10066000, "JUMP_IF_FALSE", 1},
@@ -307,4 +307,4 @@ std::string disassemble(const File& f, int script) {
     return out.str();
 }
 
-} // namespace tak::cob
+} // namespace ta::cob

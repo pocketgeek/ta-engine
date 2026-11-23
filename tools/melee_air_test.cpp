@@ -21,9 +21,9 @@
 #include <vector>
 
 namespace {
-using tak::sim::Fixed;
-using tak::sim::UnitType;
-using tak::sim::World;
+using ta::sim::Fixed;
+using ta::sim::UnitType;
+using ta::sim::World;
 
 int failures=0;
 void check(bool ok,const std::string& label) {
@@ -42,7 +42,7 @@ int meleeSlot(const UnitType& t) {
     return t.weapons.front().melee ? 0 : -1;
 }
 
-UnitType target(const tak::sim::TypeRegistry& registry,const char* name) {
+UnitType target(const ta::sim::TypeRegistry& registry,const char* name) {
     UnitType t=*registry.find(name);
     t.maxHp=32767;t.healTime=0;t.weapons.clear();t.weapon.damage=0;
     return t;
@@ -50,7 +50,7 @@ UnitType target(const tak::sim::TypeRegistry& registry,const char* name) {
 
 struct Field {
     World w;
-    explicit Field(const tak::sim::TypeRegistry& registry) {
+    explicit Field(const ta::sim::TypeRegistry& registry) {
         w.setPlayerCount(2);
         w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
         w.buildNavClasses(registry);
@@ -79,10 +79,10 @@ struct Field {
 
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     for (bool crusades:{false,true}) {
         const char* balance=crusades ? "Crusades" : "standard";
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         const UnitType gryphon=target(registry,"zongryp");
         const UnitType dummy=target(registry,"tarzom");
         // The Titan, and every other mobile unit whose attack weapon is melee.

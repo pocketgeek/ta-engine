@@ -6,7 +6,7 @@
 #include <utility>
 #include <bit>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailParkState {
     int target=0;
@@ -77,4 +77,4 @@ int retailGroundPark(RetailMissionState& mission,uint32_t events,
     mission.waitMask=0x2708;return 2;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

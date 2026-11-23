@@ -17,7 +17,7 @@ from server_net import BufferedPeer as Peer, lobby
 from server_public_test import login, options, server
 
 
-REQUEST = b'takserver-status-v1\n'
+REQUEST = b'taserver-status-v1\n'
 KEYS = ('running_games', 'lobby_games', 'connected_clients')
 
 
@@ -238,7 +238,7 @@ def main():
     parser.add_argument('--data', type=Path)
     parser.add_argument('--tls-tool', type=Path)
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix='tak-status-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='ta-status-') as temporary:
         root = Path(temporary)
         query_root = root / 'query'
         query_root.mkdir()

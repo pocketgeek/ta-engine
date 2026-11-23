@@ -1,7 +1,7 @@
 #pragma once
 // The CPUs this process may use, by kind, and pinning a thread to one of them: what
 // SIMULATION THREADS (Options > GAME) describes and hands out (SimPool::handOut), and
-// what takserver --sim-cpus pins to. Scheduling only: nothing here can change a
+// what taserver --sim-cpus pins to. Scheduling only: nothing here can change a
 // simulation's results.
 
 #include "sim/simpool.h"
@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct CpuTopology : SimPool::Cpus {
     // L: the logical CPU ids in the order threads take them: one of each performance
@@ -28,8 +28,8 @@ struct CpuTopology : SimPool::Cpus {
 // every call. Linux: sysfs (readLinuxCpus). Windows: GetLogicalProcessorInformationEx,
 // processor group 0. macOS: sysctl hw.perflevel*, and canPin is false. Anything else,
 // or any failure: std::thread::hardware_concurrency() plain cores, no hyperthreads.
-// Debug builds: TAK_CPU_SYSFS=<root> reads a fixture tree in place of this machine
-// (every cpuN it has), and TAK_CPU_NOPIN=1 reports a system that cannot pin.
+// Debug builds: TA_CPU_SYSFS=<root> reads a fixture tree in place of this machine
+// (every cpuN it has), and TA_CPU_NOPIN=1 reports a system that cannot pin.
 CpuTopology detectCpus();
 
 // The Linux reader, on the sysfs tree at `root` (/sys; a fixture in tests) for the CPUs
@@ -54,7 +54,7 @@ struct Ccd {
 // CPUs this process may use, so the list does not shrink once the game is pinned to one.
 // One entry for a CPU with a single L3 (or none reported); empty where the system says
 // nothing (macOS). Linux: sysfs cache/index*; Windows: GetLogicalProcessorInformationEx,
-// processor group 0. Debug builds: TAK_CPU_SYSFS reads a fixture tree, as detectCpus.
+// processor group 0. Debug builds: TA_CPU_SYSFS reads a fixture tree, as detectCpus.
 std::vector<Ccd> detectCcds();
 // The Linux reader, on the sysfs tree at `root` (/sys; a fixture in tests).
 std::vector<Ccd> readLinuxCcds(const std::filesystem::path& root);
@@ -73,7 +73,7 @@ const std::vector<int>& launchCpus();
 // where the system cannot pin (macOS) or no listed CPU may be used.
 bool setProcessCpus(const std::vector<int>& cpus);
 
-// "1,3,5-7" (a kernel cpulist, and takserver --sim-cpus): the ids in the order given.
+// "1,3,5-7" (a kernel cpulist, and taserver --sim-cpus): the ids in the order given.
 // False for anything else, an empty text included.
 bool parseCpuList(std::string_view text,std::vector<int>& out);
 std::string cpuListText(const std::vector<int>& cpus);   // "1,3,5,6,7"
@@ -97,4 +97,4 @@ void unpinThisThread();
 // A simulation thread's place: pinned to `cpu`, or (-1, or the pin failed) unpinned.
 inline void placeThisThread(int cpu) { if (cpu<0 || !pinThisThread(cpu)) unpinThisThread(); }
 
-} // namespace tak::sim
+} // namespace ta::sim

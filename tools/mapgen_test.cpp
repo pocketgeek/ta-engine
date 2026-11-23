@@ -13,7 +13,7 @@
 
 namespace {
 void check(bool value,const char* message) {if(!value)throw std::runtime_error(message);}
-uint64_t hash(const tak::mapgen::Result& r) {
+uint64_t hash(const ta::mapgen::Result& r) {
     uint64_t h=1469598103934665603ULL;
     const auto mix=[&](uint64_t n){for(int i=0;i<8;++i){h^=(n>>(i*8))&255;h*=1099511628211ULL;}};
     const auto& m=r.map;mix(m.width);mix(m.height);mix(m.seaLevel);
@@ -26,20 +26,20 @@ uint64_t hash(const tak::mapgen::Result& r) {
     for(auto [x,z]:r.starts){mix(x);mix(z);}
     return h;
 }
-int manaCount(const tak::mapgen::Result& r) {
+int manaCount(const ta::mapgen::Result& r) {
     int count=0;
     for(auto f:r.map.features)
-        if(f<r.map.featureNames.size() && tak::hpi::MountSet::key(r.map.featureNames[f]).find("mana")!=std::string::npos)++count;
+        if(f<r.map.featureNames.size() && ta::hpi::MountSet::key(r.map.featureNames[f]).find("mana")!=std::string::npos)++count;
     return count;
 }
 // Industrial Zone stones on a pad (lava within 20 cells on three or four sides): the
 // stone's middle sits midway (within a cell) between the lava on each side it closes in, so
 // it is in the pad's middle, not off to one side. Returns the stones checked.
-int padStonesCentred(const tak::mapgen::Result& r) {
+int padStonesCentred(const ta::mapgen::Result& r) {
     const auto& m=r.map;int checked=0;
     for(int z=0;z<m.height;++z)for(int x=0;x<m.width;++x) {
         const auto f=m.features[size_t(z)*m.width+x];
-        if(f>=m.featureNames.size()||tak::hpi::MountSet::key(m.featureNames[f]).find("mana")==std::string::npos)continue;
+        if(f>=m.featureNames.size()||ta::hpi::MountSet::key(m.featureNames[f]).find("mana")==std::string::npos)continue;
         // Cells from the stone's 2x2 middle to the first lava cell along a ray.
         const auto reach=[&](int dx,int dz) {
             for(int n=1;n<=20;++n) {
@@ -57,8 +57,8 @@ int padStonesCentred(const tak::mapgen::Result& r) {
     }
     return checked;
 }
-void manaSlider(const tak::hpi::Vfs& vfs) {
-    using namespace tak::mapgen;
+void manaSlider(const ta::hpi::Vfs& vfs) {
+    using namespace ta::mapgen;
     for(const auto [size,players]:std::array<std::pair<int,int>,3>{{{256,2},{512,2},{2048,8}}}) {
         int previous=-1;
         for(int density:{0,43,85,128,170,213,255}) {
@@ -77,8 +77,8 @@ void manaSlider(const tak::hpi::Vfs& vfs) {
 // v9 scattered neutral mana. None must leave the map exactly as it was; each level
 // must scale with map AREA (not player count), roughly double the level below, and
 // Max must approach a six-spot home's density (6 / 87^2).
-void scatteredMana(const tak::hpi::Vfs& vfs) {
-    using namespace tak::mapgen;
+void scatteredMana(const ta::hpi::Vfs& vfs) {
+    using namespace ta::mapgen;
     Params base;base.players=8;base.seed=0xfedcba9876543210ULL;
     base.waterDensity=base.reliefDensity=0;base.treeDensity=base.rockDensity=base.manaDensity=255;
     base.plateauDensity=base.mountainDensity=base.townDensity=0;
@@ -115,7 +115,7 @@ void scatteredMana(const tak::hpi::Vfs& vfs) {
 }
 void syntheticMaps() {
     namespace fs=std::filesystem;
-    const auto root=fs::temp_directory_path()/("tak-mapgen-"+
+    const auto root=fs::temp_directory_path()/("ta-mapgen-"+
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup { fs::path path;~Cleanup(){std::error_code ec;fs::remove_all(path,ec);} } cleanup{root};
     fs::create_directories(root/"features"/"aramon");
@@ -129,25 +129,25 @@ void syntheticMaps() {
                    <<";\nblocking="<<(!mana)<<"; }\n";
             }
     }
-    tak::hpi::Vfs vfs;vfs.addLayer(tak::hpi::MountSet(root));
+    ta::hpi::Vfs vfs;vfs.addLayer(ta::hpi::MountSet(root));
     for(int density=0;density<=255;++density) {
-        const int rounds=tak::mapgen::extraManaRounds(uint8_t(density));
+        const int rounds=ta::mapgen::extraManaRounds(uint8_t(density));
         check(rounds>=0 && rounds<=6,"extra mana scale is unbounded");
-        if(density)check(rounds>=tak::mapgen::extraManaRounds(uint8_t(density-1)),"extra mana scale is not monotone");
+        if(density)check(rounds>=ta::mapgen::extraManaRounds(uint8_t(density-1)),"extra mana scale is not monotone");
     }
-    check(tak::mapgen::extraManaRounds(0)==0 && tak::mapgen::extraManaRounds(128)==3 &&
-          tak::mapgen::extraManaRounds(255)==6,"extra mana endpoints/default changed");
+    check(ta::mapgen::extraManaRounds(0)==0 && ta::mapgen::extraManaRounds(128)==3 &&
+          ta::mapgen::extraManaRounds(255)==6,"extra mana endpoints/default changed");
     for(int players=2;players<=8;++players) {
-        tak::mapgen::Params p;p.players=players;p.seed=0xfedcba9876543210ULL;
+        ta::mapgen::Params p;p.players=players;p.seed=0xfedcba9876543210ULL;
         p.waterDensity=p.reliefDensity=0;p.treeDensity=p.rockDensity=p.manaDensity=255;
-        const auto r=tak::mapgen::generate(p,vfs);
-        const auto repeated=tak::mapgen::generate(tak::mapgen::decodeMapId(tak::mapgen::encodeMapId(p)),vfs);
+        const auto r=ta::mapgen::generate(p,vfs);
+        const auto repeated=ta::mapgen::generate(ta::mapgen::decodeMapId(ta::mapgen::encodeMapId(p)),vfs);
         check(hash(r)==hash(repeated),"synthetic map not deterministic");
         check(r.waterPercent==0&&r.reliefPatches==0,"dry flat synthetic map changed terrain");
         // The synthetic install has no kit sections: the default kit amounts are a no-op.
         check(r.plateaus==0&&r.mountains==0&&r.towns==0&&r.kitFallback==0,"kits appeared without their sections");
         auto bare=p;bare.plateauDensity=bare.mountainDensity=bare.townDensity=0;
-        check(hash(tak::mapgen::generate(bare,vfs))==hash(r),"kit amounts changed a map without kit sections");
+        check(hash(ta::mapgen::generate(bare,vfs))==hash(r),"kit amounts changed a map without kit sections");
         if(players==8) {
             check(hash(r)==0x6bf977a42891c638ULL,"cross-platform generator golden changed");
             std::printf("synthetic generator golden: %016llx\n",(unsigned long long)hash(r));
@@ -173,24 +173,24 @@ void syntheticMaps() {
     manaSlider(vfs);
     scatteredMana(vfs);
 }
-void verify(const tak::mapgen::Params& input,const tak::mapgen::Result& r) {
-    const auto p=tak::mapgen::sanitize(input);const auto& m=r.map;
+void verify(const ta::mapgen::Params& input,const ta::mapgen::Result& r) {
+    const auto p=ta::mapgen::sanitize(input);const auto& m=r.map;
     check(m.width==p.widthCells&&m.height==p.heightCells,"wrong dimensions");
     check(r.starts.size()==p.players,"wrong start count");
     check(m.features.size()==m.heights.size()&&m.heights.size()==size_t(m.width)*m.height,"wrong cell planes");
     check(m.tileKeys.size()==size_t(m.width/2)*(m.height/2),"wrong tile plane");
-    check(p.waterDensity||tak::mapgen::automaticWater(p.layout)||r.waterPercent==0,"zero water produced water");
-    check(p.layout!=tak::mapgen::Lakes||!p.waterDensity||r.waterPercent>0,"lake layout has no water");
+    check(p.waterDensity||ta::mapgen::automaticWater(p.layout)||r.waterPercent==0,"zero water produced water");
+    check(p.layout!=ta::mapgen::Lakes||!p.waterDensity||r.waterPercent>0,"lake layout has no water");
     check(p.reliefDensity||r.reliefPatches==0,"zero relief produced hills");
-    check(tak::mapgen::worldHasHills(p.mapType)||r.reliefPatches==0,"a world without hill sections got hills");
-    if(!tak::mapgen::worldHasForests(p.mapType))
+    check(ta::mapgen::worldHasHills(p.mapType)||r.reliefPatches==0,"a world without hill sections got hills");
+    if(!ta::mapgen::worldHasForests(p.mapType))
         for(const auto& name:r.map.featureNames)
-            check(tak::hpi::MountSet::key(name).find("tree")==std::string::npos,"a world without trees got a forest");
-    check(p.plateauDensity||p.mountainDensity||tak::mapgen::automaticPlateaus(p.layout)||r.plateaus==0,"zero plateaus produced plateaus");
+            check(ta::hpi::MountSet::key(name).find("tree")==std::string::npos,"a world without trees got a forest");
+    check(p.plateauDensity||p.mountainDensity||ta::mapgen::automaticPlateaus(p.layout)||r.plateaus==0,"zero plateaus produced plateaus");
     check(p.mountainDensity||r.mountains==0,"zero mountains produced mountains");
     check(p.townDensity||r.towns==0,"zero towns produced towns");
     // Lava is never open ground: retail blocks every cell of it (0xfffc).
-    if(tak::mapgen::lavaWorld(p.mapType))
+    if(ta::mapgen::lavaWorld(p.mapType))
         for(size_t i=0;i<m.heights.size();++i)
             check(m.heights[i]>=m.seaLevel||m.features[i]==0xfffc,"open lava");
     for(size_t i=0;i<r.starts.size();++i) {
@@ -210,7 +210,7 @@ void verify(const tak::mapgen::Params& input,const tak::mapgen::Result& r) {
         for(int tier=0;tier<3;++tier) {
             const auto [dx,dz]=offsets[tier];const auto f=m.features[size_t(z+dz)*m.width+x+dx];
             check(f<m.featureNames.size(),"missing home mana");
-            const auto name=tak::hpi::MountSet::key(m.featureNames[f]);
+            const auto name=ta::hpi::MountSet::key(m.featureNames[f]);
             check(name.ends_with("mana0"+std::to_string(tier+1)),"wrong home mana tier");
         }
     }
@@ -218,29 +218,29 @@ void verify(const tak::mapgen::Params& input,const tak::mapgen::Result& r) {
     for(auto f:m.features) {
         if(f>=0xfffb)continue;
         check(f<m.featureNames.size(),"invalid feature index");
-        if(tak::hpi::MountSet::key(m.featureNames[f]).find("mana")!=std::string::npos)++mana;
+        if(ta::hpi::MountSet::key(m.featureNames[f]).find("mana")!=std::string::npos)++mana;
     }
     for (int z=0;z<m.height;++z) for (int x=0;x<m.width;++x) {
         const auto f=m.features[size_t(z)*m.width+x];
-        if (f>=m.featureNames.size() || tak::hpi::MountSet::key(m.featureNames[f]).find("mana")==std::string::npos) continue;
+        if (f>=m.featureNames.size() || ta::hpi::MountSet::key(m.featureNames[f]).find("mana")==std::string::npos) continue;
         bool ruins=false;
         for (int dz=-24;dz<=24 && !ruins;++dz) for (int dx=-24;dx<=24;++dx) {
             const int nx=x+dx,nz=z+dz;
             if(nx<0||nz<0||nx>=m.width||nz>=m.height)continue;
             const auto r=m.features[size_t(nz)*m.width+nx];
-            if(r<m.featureNames.size() && tak::hpi::MountSet::key(m.featureNames[r]).find("henge")!=std::string::npos) { ruins=true; break; }
+            if(r<m.featureNames.size() && ta::hpi::MountSet::key(m.featureNames[r]).find("henge")!=std::string::npos) { ruins=true; break; }
         }
-        check(ruins||tak::mapgen::lavaWorld(p.mapType),"mana spot has no surrounding ruins");   // volcano deposits are bare
+        check(ruins||ta::mapgen::lavaWorld(p.mapType),"mana spot has no surrounding ruins");   // volcano deposits are bare
     }
     mana-=r.scatteredMana+r.padMana;
     check(mana>=p.players*3&&mana%p.players==0,"unequal resource rounds");
-    check(p.layout==tak::mapgen::IndustrialZone||r.padMana==0,"pad mana off Industrial Zone");
-    check((p.layout!=tak::mapgen::Islands&&p.layout!=tak::mapgen::Ports)||r.harbors.size()==p.players,"missing island harbors");
+    check(p.layout==ta::mapgen::IndustrialZone||r.padMana==0,"pad mana off Industrial Zone");
+    check((p.layout!=ta::mapgen::Islands&&p.layout!=ta::mapgen::Ports)||r.harbors.size()==p.players,"missing island harbors");
 }
 }
 int main(int argc,char** argv) {
     try {
-        using namespace tak::mapgen;
+        using namespace ta::mapgen;
         for(int layout=0;layout<3;++layout)for(int players=2;players<=8;++players) {
             Params p;p.layout=layout;p.players=players;p.seed=0xfedcba9876543210ULL;
             p.widthCells=768;p.heightCells=640;
@@ -291,7 +291,7 @@ int main(int argc,char** argv) {
               "longest name with kits round trip");
         syntheticMaps();
         if(argc<2){std::puts("mapgen codec/bounds passed (retail sweep takes a data path)");return 0;}
-        const auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         if(argc>2 && std::string(argv[2])=="--mana") {
             Params cramped;cramped.mapType=Veruna;cramped.players=7;cramped.widthCells=cramped.heightCells=384;
             const auto limited=generate(cramped,vfs);verify(cramped,limited);
@@ -316,10 +316,10 @@ int main(int argc,char** argv) {
             // v10 retail kits on every world and layout: deterministic, fair (the
             // generator's own checks plus an independent flood below), and every
             // stamped kit section carries its retail heights with its artwork.
-            std::map<uint32_t,const tak::tnt::Map*> pieceByKey;
-            tak::mapgen::detail::SectionCache sections(vfs);
-            for(const auto& dir:tak::mapgen::detail::kitDirectories())
-                for(const auto& path:tak::hpi::MountSet::key(dir).ends_with(".tnt")?std::vector<std::string>{dir}:sections.list(dir))
+            std::map<uint32_t,const ta::tnt::Map*> pieceByKey;
+            ta::mapgen::detail::SectionCache sections(vfs);
+            for(const auto& dir:ta::mapgen::detail::kitDirectories())
+                for(const auto& path:ta::hpi::MountSet::key(dir).ends_with(".tnt")?std::vector<std::string>{dir}:sections.list(dir))
                     if(const auto* piece=sections.load(path);piece&&piece->width==32&&piece->height==32)
                         if(std::all_of(piece->tileKeys.begin(),piece->tileKeys.end(),[&](uint32_t k){return k==piece->tileKeys[0];}))
                             pieceByKey.emplace(piece->tileKeys[0],piece);
@@ -340,13 +340,13 @@ int main(int argc,char** argv) {
                 const auto& m=r.map;
                 // Independent flood with the generator's validation class: every start
                 // reaches every other (not across Islands' sea) and all of its mana.
-                tak::sim::NavGrid::Limits limits;limits.maxSlope=16;limits.maxWaterDepth=0;
-                tak::sim::NavGrid ground(m.heights,m.width,m.height,m.seaLevel,limits);
+                ta::sim::NavGrid::Limits limits;limits.maxSlope=16;limits.maxWaterDepth=0;
+                ta::sim::NavGrid ground(m.heights,m.width,m.height,m.seaLevel,limits);
                 std::vector<uint8_t> blocked(m.heights.size());
                 for(size_t i=0;i<blocked.size();++i)blocked[i]=m.features[i]==0xfffc;
                 for(int z=0;z<m.height;++z)for(int x=0;x<m.width;++x) {
                     const auto f=m.features[size_t(z)*m.width+x];if(f>=m.featureNames.size())continue;
-                    const auto name=tak::hpi::MountSet::key(m.featureNames[f]);
+                    const auto name=ta::hpi::MountSet::key(m.featureNames[f]);
                     if(name.find("mana")!=std::string::npos)continue;
                     // Blocking scenery: a conservative 3x3 claim (real footprints are smaller or equal for trees/rocks).
                     if(name.find("tree")!=std::string::npos||name.find("rock")!=std::string::npos||name.find("henge")!=std::string::npos)
@@ -427,7 +427,7 @@ int main(int argc,char** argv) {
         }
         if(argc>2&&(std::string(argv[2])=="--naval"||std::string(argv[2])=="--ports")) {
             for(bool crusades:{false,true}) {
-                tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+                ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
                 const auto* fort=registry.find("verasy");check(fort,"Sea Fort definition");
                 for(int world=0;world<5;++world) {
                     const bool ports=std::string(argv[2])=="--ports";
@@ -436,10 +436,10 @@ int main(int argc,char** argv) {
                     const auto generated=generate(p,vfs);
                     for(const auto& name:registry.buildable("verasy")) {
                         const auto* ship=registry.find(name);check(ship,"ship definition");
-                        tak::sim::World simulation;
-                        tak::sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=encodeMapId(p);
+                        ta::sim::World simulation;
+                        ta::sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=encodeMapId(p);
                         cfg.slots={{true,2,0,1.f,false,false}};
-                        tak::sim::setupMatch(simulation,registry,cfg);
+                        ta::sim::setupMatch(simulation,registry,cfg);
                         for(const auto [x,z]:generated.harbors)
                             check(simulation.canPlace(fort,float(x*16),float(z*16)),"harbor cannot fit actual Sea Fort yard");
                         const auto [x,z]=generated.harbors[0];
@@ -473,10 +473,10 @@ int main(int argc,char** argv) {
         for(int world:{int(Taros),int(Veruna)}) {
             std::vector<uint32_t> incompatible;
             for(const auto& path:vfs.list(world==Taros?"sections/taros/low specials":"sections/veruna/low specials")) {
-                const auto key=tak::hpi::MountSet::key(path);
+                const auto key=ta::hpi::MountSet::key(path);
                 if(!(key.ends_with(".tnt") && ((world==Veruna && key.find("/breaker")!=std::string::npos) ||
                     key.ends_with("/unique23.tnt")||key.ends_with("/unique25.tnt")||key.ends_with("/unique27.tnt"))))continue;
-                auto piece=tak::tnt::Map::load(vfs.read(path));
+                auto piece=ta::tnt::Map::load(vfs.read(path));
                 incompatible.push_back(piece.tileKeys[piece.tileKeys.size()/2]);
             }
             Params p;p.mapType=world;p.widthCells=p.heightCells=768;p.reliefDensity=255;p.waterDensity=0;

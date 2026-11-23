@@ -8,7 +8,7 @@
 #include <memory>
 #include <stdexcept>
 
-using namespace tak;
+using namespace ta;
 namespace {
 void check(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);

@@ -36,12 +36,12 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
-using tak::net::Cmd;
-using tak::net::Command;
-using tak::scn::CmdBatch;
-using tak::scn::SelectionOrder;
-using tak::scn::Verb;
+using namespace ta::sim;
+using ta::net::Cmd;
+using ta::net::Command;
+using ta::scn::CmdBatch;
+using ta::scn::SelectionOrder;
+using ta::scn::Verb;
 
 namespace {
 int failures = 0;
@@ -57,14 +57,14 @@ struct ClientRef {
     // gameview.h (cmdCredit_, cmdInFlight_, the order window) and the send state mpStep keeps.
     std::vector<Command> outbox_;
     size_t outboxHead_ = 0;
-    int cmdCredit_ = tak::net::kCmdCapPerTick;
+    int cmdCredit_ = ta::net::kCmdCapPerTick;
     int cmdInFlight_ = 0;
     uint32_t lastSendTick_ = 0;
     uint32_t nextOrderSerial_ = 1;
-    tak::net::OrderWindow orderWindow_;
+    ta::net::OrderWindow orderWindow_;
     // The open click (GameView::ClickScope / flushClick).
     std::vector<Command> click_;
-    tak::net::ClickShape shape_;
+    ta::net::ClickShape shape_;
 
     explicit ClientRef(const World& w) : world_(w) {}
     const Unit* frameUnitP(int id) const {
@@ -80,7 +80,7 @@ struct ClientRef {
     void flushClick() {
         uint32_t provisional = nextOrderSerial_;   // the serial is given at send (mpStep)
         if (!isLegionPathfinding(world_.pathfindingMode())) outbox_.insert(outbox_.end(), click_.begin(), click_.end());
-        else for (auto& c : tak::net::packClick(click_, shape_, provisional)) outbox_.push_back(std::move(c));
+        else for (auto& c : ta::net::packClick(click_, shape_, provisional)) outbox_.push_back(std::move(c));
         click_.clear();
         shape_ = {};
     }
@@ -105,7 +105,7 @@ struct ClientRef {
             c.unitId = id;
             const bool shared = u->type && legion &&
                 legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ);
-            if (u->type && u->type->canFly) tak::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
+            if (u->type && u->type->canFly) ta::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
             else {
                 c.x = shared ? wx : wx + std::clamp(u->x.toFloat() - cx, -60.0f, 60.0f);
                 c.z = shared ? wz : wz + std::clamp(u->z.toFloat() - cz, -60.0f, 60.0f);
@@ -154,7 +154,7 @@ struct ClientRef {
             c.x = wx;
             c.z = wz;
             const auto* u = spread ? frameUnitP(id) : nullptr;
-            if (u && u->type && u->type->canFly) tak::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
+            if (u && u->type && u->type->canFly) ta::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
             c.unitId = id;
             c.queue = queue ? 1 : 0;
             issue(c);
@@ -192,12 +192,12 @@ struct ClientRef {
     // netTick_ is the last bundle this client has simulated.
     std::vector<Command> mpStepSend(uint32_t netTick_) {
         if (netTick_ != lastSendTick_) {
-            cmdCredit_ = tak::net::cmdSendCredit(cmdCredit_, netTick_ - lastSendTick_);
+            cmdCredit_ = ta::net::cmdSendCredit(cmdCredit_, netTick_ - lastSendTick_);
             lastSendTick_ = netTick_;
         }
         std::vector<Command> sent;
         if (outboxHead_ < outbox_.size()) {
-            int sendable = tak::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
+            int sendable = ta::net::cmdSendWindow(cmdCredit_, cmdInFlight_);
             size_t at = outboxHead_;
             while (at < outbox_.size()) {
                 size_t end = at;
@@ -211,9 +211,9 @@ struct ClientRef {
                 }
                 auto& item = outbox_[at];
                 if (item.kind != Cmd::Order || !item.order) break;
-                const size_t bytes = tak::net::orderRecordBytes(*item.order);
+                const size_t bytes = ta::net::orderRecordBytes(*item.order);
                 if (!orderWindow_.fits(bytes)) break;
-                std::const_pointer_cast<tak::net::SelectionOrder>(item.order)->serial = nextOrderSerial_++;
+                std::const_pointer_cast<ta::net::SelectionOrder>(item.order)->serial = nextOrderSerial_++;
                 sent.push_back(item);
                 orderWindow_.sent(item.order->serial, bytes);
                 ++at;
@@ -265,10 +265,10 @@ struct Wire {
         while (!cmdQueue.empty()) {
             const Command& head = cmdQueue.front();
             if (head.kind == Cmd::Order) {
-                const size_t b = head.order ? tak::net::orderRecordBytes(*head.order) : 0;
-                if (orderBytes + b > tak::net::kTickOrderBytes) break;
+                const size_t b = head.order ? ta::net::orderRecordBytes(*head.order) : 0;
+                if (orderBytes + b > ta::net::kTickOrderBytes) break;
                 orderBytes += b;
-            } else if (taken < tak::net::kCmdCapPerTick) ++taken;
+            } else if (taken < ta::net::kCmdCapPerTick) ++taken;
             else break;
             pending.push_back(head);
             cmdQueue.pop_front();
@@ -378,7 +378,7 @@ constexpr uint32_t kIssueTick = 100;   // an idle client: its credit has saturat
 void compare(const World& w, const std::vector<int>& sel, const SelectionOrder& o, int roundTrip,
              const std::function<void(ClientRef&)>& click, const std::string& what,
              std::vector<CmdBatch>* keep = nullptr) {
-    const auto mine = tak::scn::issueSelection(w, sel, o, kIssueTick, 0, roundTrip, 1);   // serials from 1, as ClientRef
+    const auto mine = ta::scn::issueSelection(w, sel, o, kIssueTick, 0, roundTrip, 1);   // serials from 1, as ClientRef
     if (keep) *keep = mine;
     // No window (roundTrip < 0) is an uplink whose acks come back before the
     // window can fill: R = 1, the client one frame behind the server.
@@ -416,7 +416,7 @@ std::vector<int> unitsOf(const std::vector<CmdBatch>& b) {
     return ids;
 }
 // Legion: the click landed as ONE explicit order in the click's tick, over exactly `ids`.
-const tak::net::SelectionOrder* oneOrder(const std::vector<CmdBatch>& b, std::vector<int> ids, Cmd verb,
+const ta::net::SelectionOrder* oneOrder(const std::vector<CmdBatch>& b, std::vector<int> ids, Cmd verb,
                                          const std::string& what) {
     std::sort(ids.begin(), ids.end());
     const bool ok = !b.empty() && b[0].tick == kIssueTick && b[0].cmds.size() == 1 &&
@@ -429,7 +429,7 @@ const tak::net::SelectionOrder* oneOrder(const std::vector<CmdBatch>& b, std::ve
 }
 // Apply batches in a world from its current tick.
 void landAll(World& w, const std::vector<CmdBatch>& b) {
-    tak::sim::TypeRegistry reg;
+    ta::sim::TypeRegistry reg;
     for (const auto& x : b) {
         while (w.tickCount() < x.tick) w.tick(1.f / 30);
         for (const auto& c : x.cmds) applyCommand(w, reg, c);
@@ -544,8 +544,8 @@ void flyerSpread() {
             else compare(f.world, sel, o, -1, [&](ClientRef& c) { c.armedOrder(verb == Verb::Patrol ? 'p' : 'f', o.x, o.z, -1, false); }, what, &b);
             if (legion) {
                 if (const auto* order = oneOrder(b, sel, verb == Verb::Move ? Cmd::Move : verb == Verb::Patrol ? Cmd::Patrol : Cmd::AttackMove, what))
-                    check(order->shape == (verb == Verb::Move ? tak::net::OrderShape::Offsets
-                                                              : tak::net::OrderShape::FlyerOffsets),
+                    check(order->shape == (verb == Verb::Move ? ta::net::OrderShape::Offsets
+                                                              : ta::net::OrderShape::FlyerOffsets),
                           what + ": the order's shape");
             }
             // The expected goals, from the positions the click saw (goalsOf lands a Legion order later).
@@ -597,7 +597,7 @@ void selections() {
             compare(f.world, ids, o, -1, [&](ClientRef& c) { c.rightClickMove(o.x, o.z, false); }, what, &b);
             if (mode == PathfindingMode::Legion) {
                 if (const auto* order = oneOrder(b, ids, Cmd::Move, what))
-                    check(order->shape == tak::net::OrderShape::Offsets && order->tmpl.x == o.x && order->tmpl.z == o.z,
+                    check(order->shape == ta::net::OrderShape::Offsets && order->tmpl.x == o.x && order->tmpl.z == o.z,
                           what + ": the right-click move carries the click, shape Offsets");
             } else {
                 shape(b, split(n), what);
@@ -722,7 +722,7 @@ void selections() {
         const auto ids = f.block(idsType, 200, 20, 20, 20, 3);
         static const auto oldType = ground(2);   // the World keeps a pointer to the type
         const auto old = f.block(oldType, 10, 100, 100, 5, 3);
-        tak::sim::TypeRegistry reg;
+        ta::sim::TypeRegistry reg;
         for (int id : old) {
             Command c;
             c.kind = Cmd::SetSquad; c.unitId = id; c.targetId = -3;
@@ -751,13 +751,13 @@ void selections() {
             check(two, what + ": the old members are evicted first, as an order of their own");
         }
         // The press and the click together, as one outbox: three orders in one tick.
-        tak::scn::Uplink link;
+        ta::scn::Uplink link;
         SelectionOrder sq, mv;
         sq.verb = Verb::Squad; sq.squad = -3;
         mv.verb = Verb::Move; mv.x = 300 * 16; mv.z = 300 * 16;
         uint32_t serial = 1;
-        link.issue(tak::scn::hudItems(f.world, ids, sq, 0, serial));
-        link.issue(tak::scn::hudItems(f.world, ids, mv, 0, serial));
+        link.issue(ta::scn::hudItems(f.world, ids, sq, 0, serial));
+        link.issue(ta::scn::hudItems(f.world, ids, mv, 0, serial));
         std::vector<CmdBatch> mine;
         for (uint32_t t = kIssueTick; !link.idle(); ++t) mine.push_back({t, link.land(t)});
         ClientRef client(f.world);
@@ -787,7 +787,7 @@ void selections() {
         oneOrder(b, ids, Cmd::Move, "window 974 R12");
         compare(f.world, ids, o, 8, [&](ClientRef& c) { c.rightClickMove(o.x, o.z, false); }, "window 974 R8", &b);
         oneOrder(b, ids, Cmd::Move, "window 974 R8");
-        b = tak::scn::issueSelection(f.world, ids, o, kIssueTick);
+        b = ta::scn::issueSelection(f.world, ids, o, kIssueTick);
         oneOrder(b, ids, Cmd::Move, "974 no window");
     }
     // Retail keeps the per-unit stream: 974 bodies with a 12-tick round trip land as
@@ -810,7 +810,7 @@ void selections() {
         compare(f.world, ids, o, 8, [&](ClientRef& c) { c.rightClickMove(o.x, o.z, false); }, "retail window 974 R8", &b);
         shape(b, split(974), "retail window 974 R8");
         // No window: the server's drain alone.
-        b = tak::scn::issueSelection(f.world, ids, o, kIssueTick);
+        b = ta::scn::issueSelection(f.world, ids, o, kIssueTick);
         shape(b, split(974), "retail 974 no window");
     }
 }
@@ -900,8 +900,8 @@ at 0 move A 140.5 60.25
 
 std::string gen1Text() {
     return std::string("scn 1\nname sample-gen1\nticks 300\nplayers 2\nmap gen1 ") +
-           tak::mapgen::encodeMapId([] {
-               tak::mapgen::Params p;
+           ta::mapgen::encodeMapId([] {
+               ta::mapgen::Params p;
                p.seed = 0x5eed;
                p.widthCells = p.heightCells = 256;
                p.waterDensity = 0;
@@ -934,12 +934,12 @@ at 0 fight H @K
 )";
 
 // Build, feed orders for `ticks` ticks, return the hash.
-uint64_t runHash(const tak::scn::Scenario& s, const tak::scn::BuildOptions& opt, uint32_t ticks,
+uint64_t runHash(const ta::scn::Scenario& s, const ta::scn::BuildOptions& opt, uint32_t ticks,
                  uint64_t* initial = nullptr) {
-    auto b = tak::scn::build(s, opt);
+    auto b = ta::scn::build(s, opt);
     if (!b->skipped.empty()) throw std::runtime_error("unexpectedly skipped: " + b->skipped);
     if (initial) *initial = b->world->stateHash();
-    tak::scn::OrderFeed feed(s, *b);
+    ta::scn::OrderFeed feed(s, *b);
     for (uint32_t t = 0; t < ticks; ++t) {
         feed.apply(t);
         b->world->tick(1.f / 30);
@@ -948,17 +948,17 @@ uint64_t runHash(const tak::scn::Scenario& s, const tak::scn::BuildOptions& opt,
 }
 
 void roundTrip(const std::string& text, const std::string& what, const std::string& dir = {}) {
-    const auto a = tak::scn::parse(text, what, dir);
-    const auto canon = tak::scn::format(a);
-    const auto b = tak::scn::parse(canon, what + " (canonical)", dir);
-    check(tak::scn::format(b) == canon, what + ": parse(format(parse(file))) formats identically");
+    const auto a = ta::scn::parse(text, what, dir);
+    const auto canon = ta::scn::format(a);
+    const auto b = ta::scn::parse(canon, what + " (canonical)", dir);
+    check(ta::scn::format(b) == canon, what + ": parse(format(parse(file))) formats identically");
 }
 
-void determinism(const tak::scn::Scenario& s, const std::string& what, uint32_t ticks, const char* data = nullptr,
-                 const tak::hpi::Vfs* install = nullptr) {
+void determinism(const ta::scn::Scenario& s, const std::string& what, uint32_t ticks, const char* data = nullptr,
+                 const ta::hpi::Vfs* install = nullptr) {
     for (auto mode : {PathfindingMode::Legion, PathfindingMode::Retail}) {
         const std::string m = what + (mode == PathfindingMode::Legion ? " legion" : " retail");
-        tak::scn::BuildOptions opt;
+        ta::scn::BuildOptions opt;
         opt.mode = mode;
         opt.data = data;
         opt.install = install;
@@ -983,7 +983,7 @@ void determinism(const tak::scn::Scenario& s, const std::string& what, uint32_t 
 void scenarios(const char* data, const std::filesystem::path& scratch) {
     // Ascii: every directive in one file.
     roundTrip(kAscii, "ascii");
-    const auto ascii = tak::scn::parse(kAscii, "ascii");
+    const auto ascii = ta::scn::parse(kAscii, "ascii");
     check(ascii.map.width == 64 && ascii.map.height == 24, "ascii: size from the rows");
     check(ascii.groups.size() == 4 && ascii.orders.size() == 7 && ascii.shapes.size() == 10, "ascii: counts");
     {
@@ -1016,13 +1016,13 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
     check(ascii.orders[1].queue && ascii.orders[1].target == "E", "ascii: fight @E queue");
     check(ascii.needsData().empty(), "ascii: asset-free");
     {
-        auto b = tak::scn::build(ascii, {});
+        auto b = ta::scn::build(ascii, {});
         check(b->groups["A"].size() == 24 && b->groups["E"].size() == 12, "ascii: groups spawned");
         check(b->world->unit(b->groups["E"][0])->type->weapons.size() == 1 &&
                   b->world->unit(b->groups["A"][0])->type->weapons.empty(),
               "ascii: weapons on/off per group");
         // The F,A,B click at tick 30 lands as ONE explicit order (Legion) over its 34 bodies, flyers included.
-        tak::scn::OrderFeed feed(ascii, *b);
+        ta::scn::OrderFeed feed(ascii, *b);
         size_t at0 = 0, at30 = 0;
         auto units = [](const std::vector<Command>& cmds) {
             size_t n = 0;
@@ -1042,7 +1042,7 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
         }
         check(at0 == 24 && at30 == 34, "ascii: tick-0 Alt+1 (24) and the tick-30 click (34)");
         // The churn: an event every 5 ticks from 0 to 55 (12 events: six cells, placed then lifted).
-        tak::scn::OrderFeed churn(ascii, *b);
+        ta::scn::OrderFeed churn(ascii, *b);
         const size_t before = b->world->features().size();
         for (uint32_t t = 0; t < 120; ++t) churn.applyChurn(t);
         const auto& fs = b->world->features();
@@ -1055,11 +1055,11 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
 
     // Flat with overlays and the command window.
     roundTrip(kFlat, "flat");
-    const auto flat = tak::scn::parse(kFlat, "flat");
+    const auto flat = ta::scn::parse(kFlat, "flat");
     check(flat.roundTrip == 12 && flat.map.overlays.size() == 3, "flat: uplink and overlays");
     {
-        auto b = tak::scn::build(flat, {});
-        tak::scn::OrderFeed feed(flat, *b);
+        auto b = ta::scn::build(flat, {});
+        ta::scn::OrderFeed feed(flat, *b);
         std::vector<size_t> sizes;
         for (uint32_t t = 0; t < 25; ++t) {
             const auto cmds = feed.commandsFor(t);
@@ -1088,43 +1088,43 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
                     << ";\nblocking=" << (!mana) << "; }\n";
             }
     }
-    tak::hpi::Vfs synthetic;
-    synthetic.addLayer(tak::hpi::MountSet(scratch));
+    ta::hpi::Vfs synthetic;
+    synthetic.addLayer(ta::hpi::MountSet(scratch));
     const auto genText = gen1Text();
     roundTrip(genText, "gen1");
-    const auto gen = tak::scn::parse(genText, "gen1");
-    check(tak::scn::build(gen, {})->skipped == "needs --data: gen1 map", "gen1: skipped without an install");
+    const auto gen = ta::scn::parse(genText, "gen1");
+    check(ta::scn::build(gen, {})->skipped == "needs --data: gen1 map", "gen1: skipped without an install");
     determinism(gen, "gen1", 200, nullptr, &synthetic);
 
     // Snapshot: a .tnt beside the file.
     {
-        const auto g = tak::mapgen::generate(tak::mapgen::decodeMapId(gen.map.recipe), synthetic);
+        const auto g = ta::mapgen::generate(ta::mapgen::decodeMapId(gen.map.recipe), synthetic);
         const auto bytes = g.map.save();
         std::ofstream(scratch / "sample.tnt", std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
                                                                      std::streamsize(bytes.size()));
         roundTrip(kSnapshot, "snapshot", scratch.string());
-        const auto snap = tak::scn::parse(kSnapshot, "snapshot", scratch.string());
-        check(tak::scn::build(snap, {})->skipped == "needs --data: snapshot sample.tnt",
+        const auto snap = ta::scn::parse(kSnapshot, "snapshot", scratch.string());
+        check(ta::scn::build(snap, {})->skipped == "needs --data: snapshot sample.tnt",
               "snapshot: skipped without an install");
         determinism(snap, "snapshot", 100, nullptr, &synthetic);
     }
 
     // Data-gated: skipped with a status without an install, built with one.
     roundTrip(kData, "data");
-    const auto gated = tak::scn::parse(kData, "data");
+    const auto gated = ta::scn::parse(kData, "data");
     {
-        auto b = tak::scn::build(gated, {});
+        auto b = ta::scn::build(gated, {});
         check(b->skipped == "needs --data: fbi type 'zonter'", "data: skipped without --data ('" + b->skipped + "')");
         std::printf("data sample without --data: %s\n", b->skipped.c_str());
     }
     if (data) {
         determinism(gated, "data", 100, data);
         // The user's map (movement_orders_test's recipe family) with the real install.
-        const auto user = tak::scn::parse(
+        const auto user = ta::scn::parse(
             "scn 1\nname user-gen1\nplayers 2\nmap gen1 ~gen1~0a0001000000000000000100030003020000ff60800300000000\n"
             "type inf mover 2 2500 10 1.8\ngroup A 0 inf 32 rect 100 100 124 124\nat 0 move A 160 160\n",
             "user-gen1");
-        roundTrip(tak::scn::format(user), "user-gen1");
+        roundTrip(ta::scn::format(user), "user-gen1");
         determinism(user, "user-gen1", 100, data);
     }
 
@@ -1138,7 +1138,7 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
             "group b 1 m 1 spots 4194304,4194304,0,0\n"
             "clock 1234 987654321\nat 3 move %2,%0,%1 50 50\ntruth 50 1,2 3,4 5,6 7,8\ntruth 100 1,2 -2147483648,-2147483648 3,4 5,6\n";
         roundTrip(text, "situation");
-        const auto sc = tak::scn::parse(text, "situation");
+        const auto sc = ta::scn::parse(text, "situation");
         check(sc.seed == 4000000000u && sc.hasClock && sc.clockTick == 1234 && sc.clockRng == 987654321u,
               "situation: seed above 2^31 and the clock survive");
         check(sc.groups[0].spots.size() == 3 && sc.groups[0].spots[0].id == 17 && sc.groups[0].spots[0].vel == 1000 &&
@@ -1151,12 +1151,12 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
                   "situation: a body number locates its group and its index inside it");
             const std::string named = "scn 1\nname n\nplayers 2\nmap named Ulasem Arena\ntype m fbi aracommander\ngroup a 0 m 1 cells 5,5\n";
             roundTrip(named, "named map");
-            const auto nm = tak::scn::parse(named, "named map");
-            check(nm.map.kind == tak::scn::MapSpec::Named && nm.map.recipe == "Ulasem Arena" && !nm.needsData().empty(),
+            const auto nm = ta::scn::parse(named, "named map");
+            check(nm.map.kind == ta::scn::MapSpec::Named && nm.map.recipe == "Ulasem Arena" && !nm.needsData().empty(),
                   "situation: `map named` keeps a multi-word name and needs the install");
         }
-        tak::scn::BuildOptions opt;
-        auto b = tak::scn::build(sc, opt);
+        ta::scn::BuildOptions opt;
+        auto b = ta::scn::build(sc, opt);
         const auto& ids = b->groups.at("a");
         const auto* u0 = b->world->unit(ids[0]);
         const auto* u2 = b->world->unit(ids[2]);
@@ -1167,7 +1167,7 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
         check(b->world->tickCount() == 1234 && b->world->gameRngState() == 987654321u, "situation: the world resumes the recorded clocks");
         // The click lists bodies 2, 0, 1: the selection (and hudCommands, which walks it) keeps that order;
         // in Legion the click is then one explicit order over the three (members in id order).
-        tak::scn::OrderFeed feed(sc, *b);
+        ta::scn::OrderFeed feed(sc, *b);
         const auto sel = feed.selection(sc.orders[0]);
         check(sel.size() == 3 && sel[0] == ids[2] && sel[1] == ids[0] && sel[2] == ids[1],
               "situation: a %N selection keeps the recording's command order");
@@ -1183,14 +1183,14 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
         check(items == 1 && members == sorted, "situation: the %N click is one explicit order over its three bodies");
         // The shifted start offset moves the truth the same way (whole cells on both axes).
         bool threw2 = false;
-        try { tak::scn::parse("scn 1\nmap flat 64 64\ntype m mover 2 2500 10 1.8\ngroup a 0 m 1 rect 0 0 4 4\nat 0 move %5 1 1\n", "bad%.scn"); }
+        try { ta::scn::parse("scn 1\nmap flat 64 64\ntype m mover 2 2500 10 1.8\ngroup a 0 m 1 rect 0 0 4 4\nat 0 move %5 1 1\n", "bad%.scn"); }
         catch (const std::runtime_error&) { threw2 = true; }
         check(threw2, "situation: a body number past the last body is an error");
     }
 
     // Errors carry the file and line.
     bool threw = false;
-    try { tak::scn::parse("scn 1\nmap flat 64 64\ngroup A 0 nope 3 rect 0 0 9 9\n", "bad.scn"); }
+    try { ta::scn::parse("scn 1\nmap flat 64 64\ngroup A 0 nope 3 rect 0 0 9 9\n", "bad.scn"); }
     catch (const std::runtime_error& e) { threw = std::string(e.what()).rfind("bad.scn:3:", 0) == 0; }
     check(threw, "a bad line is reported as file:line");
 }

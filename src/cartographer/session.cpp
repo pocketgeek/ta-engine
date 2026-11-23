@@ -39,8 +39,8 @@ bool cart::Session::saveDocument(const std::string& destination,bool bundle) {
         cart::SaveSnapshot snapshot;
         snapshot.map=mapView.map();snapshot.metadata=scenario;snapshot.scenario=scen;
         snapshot.units=units;snapshot.useOnly=useOnly;snapshot.aiFiles=aiFiles;snapshot.vfs=&vfs;
-        snapshot.installMaps=cart::installMapsFolder(tak::u8path(dataRoot));
-        snapshot.destination=tak::u8path(destination);
+        snapshot.installMaps=cart::installMapsFolder(ta::u8path(dataRoot));
+        snapshot.destination=ta::u8path(destination);
         snapshot.bundle=bundle;snapshot.rebuildMinimaps=edited;
         const auto path=snapshot.destination;
         auto progress=std::make_shared<cart::SaveProgress>();
@@ -91,39 +91,39 @@ bool cart::Session::saveBundle(const std::string& path) {return saveDocument(pat
 
 bool cart::Editor::openDocument(const std::string& request) {
     try {
-        auto nextVfs=tak::hpi::mountRetailRoot(tak::u8path(dataRoot));
+        auto nextVfs=ta::hpi::mountRetailRoot(ta::u8path(dataRoot));
         std::string path,chosen=request;
         cart::AiFiles nextAiFiles;
-        const auto disk=tak::u8path(request);
+        const auto disk=ta::u8path(request);
         if(std::filesystem::is_regular_file(disk)) {
-            auto files=std::make_shared<tak::hpi::Vfs::Files>();
+            auto files=std::make_shared<ta::hpi::Vfs::Files>();
             if(lowerText(pathText(disk.extension()))==".kmp") {
-                tak::hpi::Archive archive(disk);
+                ta::hpi::Archive archive(disk);
                 nextAiFiles=cart::aiFilesFromArchive(archive);   // root ai/ members, all of them
                 for(const auto& entry:archive.entries()) if(!entry.isDirectory && entry.path.starts_with("kmap/")) {
-                    (*files)[tak::hpi::MountSet::key(entry.path)]=archive.read(entry);
-                    if(tak::vpath::extension(entry.path)==".tnt")path=tak::hpi::MountSet::key(entry.path);
+                    (*files)[ta::hpi::MountSet::key(entry.path)]=archive.read(entry);
+                    if(ta::vpath::extension(entry.path)==".tnt")path=ta::hpi::MountSet::key(entry.path);
                 }
             } else if(lowerText(pathText(disk.extension()))==".tnt") {
                 const auto base=pathText(disk.stem());path="kmap/"+base+".tnt";
                 // A sibling ai/ folder, except the install's Maps/ai (read for every map).
                 const auto folder=disk.parent_path();
-                if(!cart::insideFolder(folder,cart::installMapsFolder(tak::u8path(dataRoot))))nextAiFiles=cart::aiFilesFromFolder(folder);
+                if(!cart::insideFolder(folder,cart::installMapsFolder(ta::u8path(dataRoot))))nextAiFiles=cart::aiFilesFromFolder(folder);
                 for(const char* ext:{".tnt",".ota",".crt",".tdf",".recipe",".editor"}) {
-                    const auto input=disk.parent_path()/tak::u8path(base+ext);std::ifstream stream(input,std::ios::binary);
-                    if(stream)(*files)[tak::hpi::MountSet::key("kmap/"+base+ext)]={std::istreambuf_iterator<char>(stream),{}};
+                    const auto input=disk.parent_path()/ta::u8path(base+ext);std::ifstream stream(input,std::ios::binary);
+                    if(stream)(*files)[ta::hpi::MountSet::key("kmap/"+base+ext)]={std::istreambuf_iterator<char>(stream),{}};
                 }
             }
             if(path.empty())throw std::runtime_error("Choose a KMP bundle or TNT map");
-            nextVfs.setMapFiles(files);chosen=tak::vpath::stem(path);
-        } else if(tak::vpath::extension(request)==".tnt" && nextVfs.has(request)) {path=request;chosen=tak::vpath::stem(request);}
-        else path=tak::hpi::findMap(nextVfs,request);
+            nextVfs.setMapFiles(files);chosen=ta::vpath::stem(path);
+        } else if(ta::vpath::extension(request)==".tnt" && nextVfs.has(request)) {path=request;chosen=ta::vpath::stem(request);}
+        else path=ta::hpi::findMap(nextVfs,request);
         if(path.empty())throw std::runtime_error("Map not found: "+request+". Enter an installed map name or a full KMP / TNT path.");
         if(!std::filesystem::is_regular_file(disk))nextAiFiles=cart::aiFilesFromMapArchive(nextVfs,path);   // its own archive's
-        (void)tak::tnt::Map::load(nextVfs.read(path),path);
+        (void)ta::tnt::Map::load(nextVfs.read(path),path);
         const auto stem=path.substr(0,path.rfind('.'));
-        tak::tnt::Scenario nextMetadata;
-        if(nextVfs.has(stem+".ota")) {const auto data=nextVfs.read(stem+".ota");nextMetadata=tak::tnt::Scenario::parse(std::string(data.begin(),data.end()));}
+        ta::tnt::Scenario nextMetadata;
+        if(nextVfs.has(stem+".ota")) {const auto data=nextVfs.read(stem+".ota");nextMetadata=ta::tnt::Scenario::parse(std::string(data.begin(),data.end()));}
         nextMetadata.generatorRecipe=cart::mapGeneratorRecipe(nextVfs,path,nextMetadata.generatorRecipe);
         auto nextScenario=cart::loadScenario(nextVfs,stem+".crt");
         auto nextUnits=cart::toPlaced(nextScenario,&unitRegistry);
@@ -151,17 +151,17 @@ bool cart::Editor::openDocument(const std::string& request) {
 }
 
 std::filesystem::path cart::Editor::gameClient() const {
-    if(hooks.gameClient)return tak::u8path(hooks.gameClient());
+    if(hooks.gameClient)return ta::u8path(hooks.gameClient());
     std::unique_ptr<char,decltype(&SDL_free)> base(SDL_GetBasePath(),SDL_free);
     if(!base)throw std::runtime_error("Cannot locate the game executable");
-    return cart::Playtest::clientPath(tak::u8path(base.get()));
+    return cart::Playtest::clientPath(ta::u8path(base.get()));
 }
 
 cart::DocumentFiles cart::Session::installedMapFiles(const std::string& path,const std::string& name) const {
     const auto stem=path.substr(0,path.rfind('.'));
-    const auto map=tak::tnt::Map::load(vfs.read(path),path);
-    tak::tnt::Scenario metadata;
-    try {const auto b=vfs.read(stem+".ota");metadata=tak::tnt::Scenario::parse(std::string(b.begin(),b.end()));}
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);
+    ta::tnt::Scenario metadata;
+    try {const auto b=vfs.read(stem+".ota");metadata=ta::tnt::Scenario::parse(std::string(b.begin(),b.end()));}
     catch(const std::exception&) {}   // no .ota: defaults, as the editor opens it
     metadata.generatorRecipe=cart::mapGeneratorRecipe(vfs,path,metadata.generatorRecipe);
     const auto scenarioFile=cart::loadScenario(vfs,stem+".crt");
@@ -185,15 +185,15 @@ void cart::Editor::testMap() {
         }
         auto files=cart::documentFiles(snapshot,scenario,scen,units,useOnly,aiFiles,name);
         if(preferences.tracePlaytest)for(auto& file:files.members)if(file.path.ends_with(".ota")) {
-            const std::string marker="\n[TAKPlaytest]\n{\nauthoredscenario=1;\ntrace=1;\n}\n";
+            const std::string marker="\n[TAPlaytest]\n{\nauthoredscenario=1;\ntrace=1;\n}\n";
             file.data.insert(file.data.end(),marker.begin(),marker.end());
         }
         std::string error;
-        if(!playtest.start(client,tak::u8path(dataRoot),files,error))throw std::runtime_error(error);
+        if(!playtest.start(client,ta::u8path(dataRoot),files,error))throw std::runtime_error(error);
         playtestAiMod=false;
-        const auto log=preferences.tracePlaytest?" Trigger log: "+pathText(tak::scenarioTracePath(preferencesFolder,playtest.snapshot())):std::string{};
+        const auto log=preferences.tracePlaytest?" Trigger log: "+pathText(ta::scenarioTracePath(preferencesFolder,playtest.snapshot())):std::string{};
         openMessage("TEST MAP", "Opened a private game lobby from a snapshot. Seat the players used by your scenario, then start. Close the game to return here. Your document and save destination are unchanged."+log+
-            cart::alwaysEnabledGameNote(tak::u8path(dataRoot)));
+            cart::alwaysEnabledGameNote(ta::u8path(dataRoot)));
     } catch(const std::exception& e) {openMessage("TEST MAP FAILED",e.what());}
 }
 
@@ -225,7 +225,7 @@ void cart::Editor::autosaveRecovery() {
             nextRecovery=recoveryClock()+60000;
             try {
                 auto files=cart::documentFiles(mapView.map(),scenario,scen,units,useOnly,aiFiles,mapName);
-                files.members.push_back(cart::recoveryInfo(mapName,tak::u8path(outDir)));
+                files.members.push_back(cart::recoveryInfo(mapName,ta::u8path(outDir)));
                 recoveryFilesPresent=true;
                 recoveryJob=std::async(std::launch::async,[files=std::move(files),path=recoverySession->path()]() {
                     std::string error;cart::writeDocumentBundle(path,files,error);return error;
@@ -239,11 +239,11 @@ void cart::Editor::restoreHistory(const cart::HistoryState* state) {
     if(!state)return;
     overlayInvalidated=true;
     mapView.quiesce();
-    auto map=tak::tnt::Map::load(state->terrain,"undo history");
+    auto map=ta::tnt::Map::load(state->terrain,"undo history");
     map.seaLevel=state->seaLevel;map.stockTerrain=state->stockTerrain;
     mapView.editMap()=std::move(map);mapView.tilesEdited();minimapSource=nullptr;invalidateMinimap();
-    scenario=tak::tnt::Scenario::parse(state->metadata);
-    scen=tak::crt::parse(state->scenario);cart::applyScenarioInfo(scen,state->editorMetadata);units=cart::toPlaced(scen,&unitRegistry);
+    scenario=ta::tnt::Scenario::parse(state->metadata);
+    scen=ta::crt::parse(state->scenario);cart::applyScenarioInfo(scen,state->editorMetadata);units=cart::toPlaced(scen,&unitRegistry);
     regionDrag.cancel();regionSelected=-1;
     useOnly=state->useOnly;aiFiles=state->aiFiles;mapName=state->name;dirty=history.dirty();edited=true;
     selectedUnits.indices.clear();selectedUnits.dragOrigins.clear();selectedFeatures.clear();

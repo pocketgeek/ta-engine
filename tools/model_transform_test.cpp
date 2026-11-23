@@ -26,15 +26,15 @@ static std::array<float,3> point(std::span<const std::array<int32_t,15>> chain) 
 }
 int main(int argc,char** argv) {
     {
-        tak::tdo::Object source;
+        ta::tdo::Object source;
         source.name="arm";source.x=3;source.y=4;source.z=5;
         source.offsetRaw={3*65536,4*65536,5*65536};
         source.vertices={1,2,3};source.verticesRaw={{65536,131072,196608}};
         source.primitives.push_back({7,"metal",{0}});
         source.children.resize(2);source.children[0].x=17;
         source.children[0].children.resize(1);
-        auto single=tak::retailDebrisModel(source,false);
-        auto tree=tak::retailDebrisModel(source,true);
+        auto single=ta::retailDebrisModel(source,false);
+        auto tree=ta::retailDebrisModel(source,true);
         source.vertices[0]=99;source.primitives[0].texture="changed";
         source.children[0].x=99;source.children.clear();
         if(single.name!="arm" || single.x || single.y || single.z ||

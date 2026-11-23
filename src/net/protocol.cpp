@@ -3,7 +3,7 @@
 #include <climits>
 #include <cmath>
 
-namespace tak::net {
+namespace ta::net {
 
 // Base command layout is unchanged; area commands append their second endpoint.
 // An order (Cmd::Order, 267) is its own record: u8 kind, u8 player, u32 serial,
@@ -228,4 +228,4 @@ bool getBundle(Reader& r, uint32_t& tick, Bundle& out, bool strict) {
     return r.ok && (!strict || r.p == r.end);   // truncated or trailing inner data
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

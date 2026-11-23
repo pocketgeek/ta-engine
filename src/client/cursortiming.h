@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 
 // Retail keeps one frame index per registered sequence but a single countdown for
 // the whole live-pointer animation manager. Only the selected sequence advances;
@@ -67,4 +67,4 @@ inline size_t cursorOrderMarkerFrameAt(size_t frameCount, uint16_t firstFrameDel
     return size_t((gameTick / interval) % frameCount);
 }
 
-} // namespace tak
+} // namespace ta

@@ -3,9 +3,9 @@
 #include <filesystem>
 #include <memory>
 
-namespace tak::srv {
+namespace ta::srv {
 
-// Exclusive process lease on a path (takserver's ACME state directory uses it so two
+// Exclusive process lease on a path (taserver's ACME state directory uses it so two
 // servers never share one certificate store). The lock lives in a companion file,
 // "<path>.service-lock"; the kernel releases it after a crash, and a leftover
 // companion file is harmless and must never be deleted to bypass an active lease.
@@ -21,4 +21,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace tak::srv
+} // namespace ta::srv

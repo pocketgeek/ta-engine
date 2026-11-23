@@ -3,18 +3,18 @@
 #include <array>
 #include <optional>
 #include <vector>
-namespace tak::sim {class World;class TypeRegistry;}
-namespace tak::ai {class Controller;}
-namespace tak::srv {
+namespace ta::sim {class World;class TypeRegistry;}
+namespace ta::ai {class Controller;}
+namespace ta::srv {
 struct TickInput {
     uint32_t tick=0,roomId=0;
     std::vector<net::Command> commands,scheduled;
     std::vector<net::Event> events;
     uint64_t replayBudget=0;
     // The threads this tick's simulation may use, its own included (the game's
-    // share of takserver --sim-threads at submission); 0 leaves the World's width.
+    // share of taserver --sim-threads at submission); 0 leaves the World's width.
     unsigned simThreads=0;
-    // takserver --sim-cpus: this game's CPUs at submission, by slot (its worker
+    // taserver --sim-cpus: this game's CPUs at submission, by slot (its worker
     // thread, then its pool's workers; a slot past the end, or one holding -1, is
     // not pinned). simPin false: the server pins nothing, and no thread's CPUs are
     // touched.

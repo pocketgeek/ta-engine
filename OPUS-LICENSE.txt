@@ -3,7 +3,7 @@ Opus (voice chat codec)
 
 Opus 1.5.2, built from the pinned source release in cmake/Opus.cmake
 (https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz) and linked
-statically into takclient. Its license (BSD-3-Clause) follows.
+statically into taclient. Its license (BSD-3-Clause) follows.
 
 Copyright 2001-2023 Xiph.Org, Skype Limited, Octasic,
                     Jean-Marc Valin, Timothy B. Terriberry,

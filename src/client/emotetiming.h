@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace tak {
+namespace ta {
 // A sequenced cosmetic trigger starts a viewer-local, monotonic ten-second
 // track. Simulation speed, paused ticks and delayed selection batches do not
 // advance or restart it.

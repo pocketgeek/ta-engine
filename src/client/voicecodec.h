@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tak::voice {
+namespace ta::voice {
 
 inline constexpr int kRate = 48000;          // samples per second
 inline constexpr int kFrame = 960;           // samples per 20 ms frame
@@ -54,4 +54,4 @@ private:
     void* st_ = nullptr;
 };
 
-}  // namespace tak::voice
+}  // namespace ta::voice

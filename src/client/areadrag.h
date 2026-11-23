@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tak::client::areadrag {
+namespace ta::client::areadrag {
 
 // Smallest side, in UI pixels at 100% UI scale, of a dragged box that becomes an area
 // command (area clear, lodestone box). Retail's distance, required of both sides.
@@ -79,4 +79,4 @@ inline bool isSelectBox(const Anchor& a, ScreenPoint now, float px, float py, fl
     return eitherAxis(a.sx, a.sy, px, py, t) && eitherAxis(now.x, now.y, px, py, t);
 }
 
-}  // namespace tak::client::areadrag
+}  // namespace ta::client::areadrag

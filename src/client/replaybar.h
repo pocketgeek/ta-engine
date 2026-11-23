@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tak::replaybar {
+namespace ta::replaybar {
 
 inline constexpr int kTicksPerSecond = 30;
 
@@ -256,4 +256,4 @@ size_t checkAfter(const std::vector<Check>& checks, size_t tick) {
     }) - checks.begin());
 }
 
-}  // namespace tak::replaybar
+}  // namespace ta::replaybar

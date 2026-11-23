@@ -130,9 +130,9 @@
 #include <sys/wait.h>
 #endif
 
-using tak::sim::PathfindingMode;
-namespace obs = tak::legion_observe;
-namespace scn = tak::scn;
+using ta::sim::PathfindingMode;
+namespace obs = ta::legion_observe;
+namespace scn = ta::scn;
 
 namespace {
 
@@ -288,15 +288,15 @@ std::vector<uint32_t> directiveConvoys(const scn::Scenario& s) {
         const auto* g = s.group(t);
         return g ? g->owner : 0;
     };
-    tak::sim::ConvoyTable table;
+    ta::sim::ConvoyTable table;
     for (size_t i : byTick) {
         const auto& o = s.orders[i];
         if (o.queue || o.append || !o.point || o.selection.empty()) continue;
-        tak::sim::ConvoyClass cls;
+        ta::sim::ConvoyClass cls;
         switch (o.verb) {
-        case scn::Verb::Move: cls = tak::sim::ConvoyClass::Move; break;
-        case scn::Verb::Fight: cls = tak::sim::ConvoyClass::Fight; break;
-        case scn::Verb::Patrol: cls = tak::sim::ConvoyClass::Patrol; break;
+        case scn::Verb::Move: cls = ta::sim::ConvoyClass::Move; break;
+        case scn::Verb::Fight: cls = ta::sim::ConvoyClass::Fight; break;
+        case scn::Verb::Patrol: cls = ta::sim::ConvoyClass::Patrol; break;
         default: continue;
         }
         const auto raw = [](float cells) { return int32_t(std::lround(double(cells) * 16 * 65536)); };
@@ -492,7 +492,7 @@ struct ApproachProbe {
     explicit ApproachProbe(const std::vector<int>& all)
         : ids(all), arrive(all.size(), -1), complete(all.size(), -1), gain(all.size(), -1),
           best(all.size(), 1e300), had(all.size(), 0) {}
-    void sample(const tak::sim::World& w, const tak::sim::LegionNavigator* nav, int t) {
+    void sample(const ta::sim::World& w, const ta::sim::LegionNavigator* nav, int t) {
         std::fill(std::begin(endState), std::end(endState), 0);
         for (size_t i = 0; i < ids.size(); ++i) {
             const auto* u = w.unit(ids[i]);
@@ -500,7 +500,7 @@ struct ApproachProbe {
             if (nav && !u->orders.empty()) ++endState[std::clamp(nav->unitState(ids[i]), 0, 5)];
             if (nav && arrive[i] < 0 && nav->unitState(ids[i]) == 5) arrive[i] = t;
             if (!u->orders.empty()) {
-                const auto& leg = u->orders[tak::sim::World::currentLeg(u->orders)];
+                const auto& leg = u->orders[ta::sim::World::currentLeg(u->orders)];
                 const auto [tx, tz] = leg.missionTarget.value_or(std::pair{leg.x, leg.z});
                 const double d = std::hypot(double(u->x.toFloat() - tx.toFloat()), double(u->z.toFloat() - tz.toFloat()));
                 if (gain[i] < 0 || d <= best[i] - 1.0) { best[i] = d; gain[i] = t; }
@@ -539,7 +539,7 @@ struct ApproachProbe {
         k.emplace_back("approach.stopwait_p50", stop.empty() ? -1 : stop[(stop.size() - 1) / 2]);
         k.emplace_back("approach.stopwait_p90", stop.empty() ? -1 : stop[(stop.size() * 9 + 9) / 10 - 1]);
         k.emplace_back("approach.stopwait_max", stop.empty() ? -1 : int64_t(stop.back()));
-        if (std::getenv("TAK_APPROACH_STOPWAIT")) {
+        if (std::getenv("TA_APPROACH_STOPWAIT")) {
             std::fprintf(stderr, "approach stopwait (%s):", legion ? "legion" : "retail");
             for (int v : stop) std::fprintf(stderr, " %d", v);
             std::fprintf(stderr, "\n");
@@ -591,7 +591,7 @@ struct ReachProbe {
     // Hit points the targets have lost to damage, summed tick by tick (a target's regeneration is never
     // credited back, a death takes what it had left).
     int64_t damage() const { return dealt >> 16; }
-    void sample(const tak::sim::World& w, const tak::sim::LegionNavigator* nav, int t) {
+    void sample(const ta::sim::World& w, const ta::sim::LegionNavigator* nav, int t) {
         for (size_t i = 0; i < tgt.size(); ++i) {
             const auto* u = w.unit(tgt[i]);
             if (!tgtMaxHp[i] && u && u->type) { tgtMaxHp[i] = u->type->maxHp; prevHp[i] = int64_t(u->hp.v); }
@@ -615,7 +615,7 @@ struct ReachProbe {
                 const int64_t dx = (int64_t(v->x.v) - u->x.v) >> 12, dz = (int64_t(v->z.v) - u->z.v) >> 12;   // 1/16 px
                 const int64_t d2 = dx * dx + dz * dz;
                 nearest = std::min(nearest, d2);
-                const float pad = v->type->maxVel <= tak::sim::Fixed()
+                const float pad = v->type->maxVel <= ta::sim::Fixed()
                                       ? 8.0f * float(std::max(v->type->footX, v->type->footZ)) + 24.0f : 0.0f;
                 const int64_t reach = int64_t((range ? float(range) : u->type->maxRange() + pad) * 16.0f);
                 in |= d2 <= reach * reach;
@@ -623,13 +623,13 @@ struct ReachProbe {
             if (in) { ++nowInReach; if (first[i] < 0) { first[i] = t; ++ever; } }
             const int st = nav ? nav->unitState(att[i]) : 0;
             holdOut[i] = !in && st == 2 ? holdOut[i] + 1 : 0;
-            hold0[i] = holdOut[i] && nav->fieldPotential(att[i], tak::sim::footprintOrigin(u->x, u->type->footX),
-                                                         tak::sim::footprintOrigin(u->z, u->type->footZ)) == 0 ? hold0[i] + 1 : 0;
+            hold0[i] = holdOut[i] && nav->fieldPotential(att[i], ta::sim::footprintOrigin(u->x, u->type->footX),
+                                                         ta::sim::footprintOrigin(u->z, u->type->footZ)) == 0 ? hold0[i] + 1 : 0;
             holdOutMax = std::max(holdOutMax, holdOut[i]);
             hold0Max = std::max(hold0Max, hold0[i]);
             if (!in && t - lastMove[i] >= 600) {
                 ++out600;
-                if (nearest != INT64_MAX) held = std::max<int64_t>(held, int64_t(tak::sim::isqrt64(uint64_t(nearest)) / 16 / 16));   // 1/16 px -> cells
+                if (nearest != INT64_MAX) held = std::max<int64_t>(held, int64_t(ta::sim::isqrt64(uint64_t(nearest)) / 16 / 16));   // 1/16 px -> cells
             }
         }
         out600Peak = std::max(out600Peak, out600);
@@ -637,7 +637,7 @@ struct ReachProbe {
         for (int m : marks)
             if (t + 1 == m) atMark.push_back({m, {ever, damage()}});
     }
-    void report(obs::Keys& k, const tak::sim::World& w) const {
+    void report(obs::Keys& k, const ta::sim::World& w) const {
         const std::string p = "reach." + name + ".";
         std::vector<int> f;
         for (int v : first) if (v >= 0) f.push_back(v);
@@ -671,7 +671,7 @@ struct ReachProbe {
 //                                        a settled body that left the navigator keeps its cells)
 struct ClaimsProbe {
     int audits = 0, bad = 0, overlaps = 0, missing = 0, dangling = 0, orphans = 0, orphansEnd = 0;
-    void sample(const tak::sim::LegionNavigator* nav, int t) {
+    void sample(const ta::sim::LegionNavigator* nav, int t) {
         if (!nav || t % 10) return;
         const auto a = nav->claimsAudit();
         ++audits;
@@ -702,7 +702,7 @@ struct CreepProbe {
     struct Body { int id; int64_t cx, cz, r2; int32_t px = INT32_MIN, pz = INT32_MIN; };
     std::vector<Body> bodies;
     int64_t creep = 0, inside = 0;
-    void sample(const tak::sim::World& w) {
+    void sample(const ta::sim::World& w) {
         for (auto& b : bodies) {
             const auto* u = w.unit(b.id);
             if (!u || !u->alive() || !u->type) continue;
@@ -759,7 +759,7 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
         std::vector<int> ids = opt.trace;
         for (const auto& name : opt.traceGroups)
             if (const auto g = b->groups.find(name); g != b->groups.end()) ids.insert(ids.end(), g->second.begin(), g->second.end());
-        tak::sim::LegionNavigator::setTrace(ids);
+        ta::sim::LegionNavigator::setTrace(ids);
     }
     scn::OrderFeed feed(s, *b, opt.window);
     std::optional<obs::Observer> o;
@@ -774,12 +774,12 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
             o->setStaticBlocked(wallMask(s, b->width, b->height), b->width, b->height);
     }
     // The navigator is made on the world's first Legion tick: re-read it.
-    const tak::sim::LegionNavigator* nav = nullptr;
+    const ta::sim::LegionNavigator* nav = nullptr;
     std::optional<ApproachProbe> approach;
     if (observe && s.probeApproach) approach.emplace(all);
     // `probe scale` / --scale (tools/legion_scale.h): each order's packed disc (the observer's, sized for every
     // body of the convoy the click joined, at the selection's largest footprint) and the bodies it selects.
-    std::optional<tak::legion_scale::ScaleProbe> scale;
+    std::optional<ta::legion_scale::ScaleProbe> scale;
     std::vector<int64_t> scaleR2(s.orders.size(), 0);
     if (observe && (s.probeScale || opt.scale)) {
         scale.emplace(all);
@@ -889,8 +889,8 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
     // A harvested situation (`truth`): the recording's body positions TICK ticks in, against ours.
     const auto startPos = s.truths.empty() ? std::vector<std::pair<int32_t, int32_t>>{} : scn::startPositions(s, *b);
     std::vector<std::pair<uint32_t, scn::TruthReport>> truthNow;   // (tick, report) per `truth` line the run reaches
-    // TAK_ORDER_STATS=N: log the movers' order-queue shape every N ticks (src/client/ordershape.h; compare a harvested situation with its recording).
-    const uint32_t orderStatsEvery = std::getenv("TAK_ORDER_STATS") ? uint32_t(std::strtoul(std::getenv("TAK_ORDER_STATS"), nullptr, 10)) : 0;
+    // TA_ORDER_STATS=N: log the movers' order-queue shape every N ticks (src/client/ordershape.h; compare a harvested situation with its recording).
+    const uint32_t orderStatsEvery = std::getenv("TA_ORDER_STATS") ? uint32_t(std::strtoul(std::getenv("TA_ORDER_STATS"), nullptr, 10)) : 0;
     std::vector<double> tickMs, wholeMs;
     tickMs.reserve(s.ticks);
     const auto start = std::chrono::steady_clock::now();
@@ -926,7 +926,7 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
         if (feed.lastApplyMs() > applyMaxMs) { applyMaxMs = feed.lastApplyMs(); applyMaxAt = t; }
         if (landed) {
             commands += int64_t(feed.landedUnits().size());   // unit commands: an explicit order's members each
-            for (const auto& c : feed.landed()) orders += c.kind == tak::net::Cmd::Order;
+            for (const auto& c : feed.landed()) orders += c.kind == ta::net::Cmd::Order;
             lastCommand = t;
         }
         if (scale) {
@@ -937,7 +937,7 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
         }
         if (opt.catchup) {
             if (t == 0) w.setPathBudget(1 << 28);
-            else if (t == opt.catchup) w.setPathBudget(tak::sim::kPathBudgetDefault);
+            else if (t == opt.catchup) w.setPathBudget(ta::sim::kPathBudgetDefault);
         }
         const auto tickStart = std::chrono::steady_clock::now();
         w.tick(1.f / 30);
@@ -977,7 +977,7 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
                 truthNow.push_back({tr.tick, scn::truthReport(s, *b, tr, startPos, offset,
                                                               std::getenv("LEGION_TRUTH_DETAIL") ? "" : nullptr)});
         if (orderStatsEvery && (t + 1) % orderStatsEvery == 0)
-            std::fprintf(stderr, "order shape at +%u: %s\n", t + 1, tak::situation::orderShape(w).c_str());
+            std::fprintf(stderr, "order shape at +%u: %s\n", t + 1, ta::situation::orderShape(w).c_str());
         if ((t + 1) % 100 == 0) r.digest = mix(r.digest, w.stateHash());
     }
     r.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -1012,8 +1012,8 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
                          "navbytes=%lld nav_capacity_bytes=%lld\n",
                          s.name.c_str(), mode == PathfindingMode::Legion ? "legion" : "retail", offset,
                          serial ? "serial" : "workers", tickMs.size(), sum / double(tickMs.size()), tickMs[mid],
-                         r.tickP99Ms, r.tickMaxMs, r.tickMaxAt, over, tak::legion_scale::peakRssKb(),
-                         tak::legion_scale::heapKb(), applyMaxMs, applyMaxAt, wholeP99, wholeMax, wholeAt, wholeOver,
+                         r.tickP99Ms, r.tickMaxMs, r.tickMaxAt, over, ta::legion_scale::peakRssKb(),
+                         ta::legion_scale::heapKb(), applyMaxMs, applyMaxAt, wholeP99, wholeMax, wholeAt, wholeOver,
                          navDet, navCap);
         }
     }
@@ -1097,7 +1097,7 @@ Run runOnce(const scn::Scenario& s, PathfindingMode mode, int offset, bool seria
             if (s.probeW9 || opt.w9) {   // W9 step 0: the mechanism counters (0 until their step) and the debug census
                 for (const auto& [name, v] : navWork.w9())
                     r.keys.emplace_back("w9." + name, int64_t(v));
-                if (const auto* ln = const_cast<tak::sim::World&>(w).legionNavigator())
+                if (const auto* ln = const_cast<ta::sim::World&>(w).legionNavigator())
                     for (const auto& [name, v] : ln->census())
                         r.keys.emplace_back("census." + name, int64_t(v));
                 if (o) {   // the tails (members not arrived at the end), so a second run can trace them
@@ -1285,14 +1285,14 @@ int main(int argc, char** argv) {
     if (opt.files.empty()) usage("no scenario file");
     const bool gate = !opt.gate.empty();
     if (opt.files.size() > 1 && !opt.neutral && !gate) usage("one scenario file (several only with --neutral or a gate mode)");
-    if (!opt.trace.empty() && opt.traceGroups.empty()) tak::sim::LegionNavigator::setTrace(opt.trace);   // debug builds; a no-op in release
-    tak::sim::LegionNavigator::setInstrumentProbes(opt.vertexProbe);   // the lanes.vertex_* keys (Stats only)
-    tak::sim::LegionNavigator::setBudgetDivisorForTest(opt.budgetDiv);
-    tak::sim::LegionNavigator::setPauseAllForTest(opt.pauseAll);
-    if (opt.sector) tak::sim::LegionNavigator::setSectorSizeForTest(opt.sector);
-    tak::sim::LegionNavigator::setHierarchicalRoutesForTest(opt.hierRoutes);
-    tak::sim::LegionNavigator::setRouteIndexForTest(opt.routeIndex);
-    if (opt.parForce || opt.parPerturb) tak::sim::LegionNavigator::setParallelForTest(opt.parForce, opt.parPerturb);
+    if (!opt.trace.empty() && opt.traceGroups.empty()) ta::sim::LegionNavigator::setTrace(opt.trace);   // debug builds; a no-op in release
+    ta::sim::LegionNavigator::setInstrumentProbes(opt.vertexProbe);   // the lanes.vertex_* keys (Stats only)
+    ta::sim::LegionNavigator::setBudgetDivisorForTest(opt.budgetDiv);
+    ta::sim::LegionNavigator::setPauseAllForTest(opt.pauseAll);
+    if (opt.sector) ta::sim::LegionNavigator::setSectorSizeForTest(opt.sector);
+    ta::sim::LegionNavigator::setHierarchicalRoutesForTest(opt.hierRoutes);
+    ta::sim::LegionNavigator::setRouteIndexForTest(opt.routeIndex);
+    if (opt.parForce || opt.parPerturb) ta::sim::LegionNavigator::setParallelForTest(opt.parForce, opt.parPerturb);
     if (gate && opt.neutral) usage("--neutral and a gate mode do not combine");
     for (size_t i = 0; i + 1 < opt.gateArgs.size(); ++i)
         if (opt.gateArgs[i] == "--ratchet" && opt.gate != "check") usage("--ratchet goes with --check");
@@ -1335,7 +1335,7 @@ int runFile(const std::string& file, Options opt) {
     if (opt.wanderers >= 0) s.wanderers = opt.wanderers == 1;
     // The field byte allowance: --field-bytes, else the file's `navbytes`, else the game's (per file:
     // a gate run loads several files in one process).
-    tak::sim::LegionNavigator::setFieldBytesForTest(opt.fieldBytes ? opt.fieldBytes : s.navBytes);
+    ta::sim::LegionNavigator::setFieldBytesForTest(opt.fieldBytes ? opt.fieldBytes : s.navBytes);
     const std::string name = !s.name.empty() ? s.name : std::filesystem::path(file).stem().string();
     if (const auto why = s.needsData(); !why.empty() && !opt.data) {
         if (opt.json) emit("{\"scenario\":\"" + name + "\",\"skipped\":\"needs --data: " + why + "\"}");

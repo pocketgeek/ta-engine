@@ -7,7 +7,7 @@
 #include "sim/retailmission.h"
 #include <cstdint>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // What AirToGround (41bf80), AirToAir (41ca50) and AirToGroundHover (41d820)
 // do when they lose their target: AirToGround's head sends events 0x2a and a
@@ -218,4 +218,4 @@ int retailVtolSeekGuard(RetailMissionState& m,RetailFlightVector& point,uint16_t
     }
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

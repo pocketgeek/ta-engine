@@ -49,7 +49,7 @@
 #include <optional>
 #include <vector>
 
-namespace tak::render::palette {
+namespace ta::render::palette {
 
 inline constexpr int kPageSide = 2048;           // baked page (and layout) size
 inline constexpr size_t kMaxPages = 16;          // 256 MiB of baked pages; the roster uses nine
@@ -314,4 +314,4 @@ private:
     std::vector<uint8_t> texels_;
 };
 
-}  // namespace tak::render::palette
+}  // namespace ta::render::palette

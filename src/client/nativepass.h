@@ -52,7 +52,7 @@
 #include "client/geometrysubmit.h"
 #include "client/glstate.h"
 
-namespace tak {
+namespace ta {
 
 class NativePassGL {
 public:
@@ -353,4 +353,4 @@ private:
     void (APIENTRY* blendFuncSeparate_)(GLenum, GLenum, GLenum, GLenum) = nullptr;
 };
 
-}  // namespace tak
+}  // namespace ta

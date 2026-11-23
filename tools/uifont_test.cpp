@@ -43,7 +43,7 @@ static bool same(const std::vector<uint32_t>& a, std::initializer_list<uint32_t>
 
 int main() {
     std::printf("uifont_test\n");
-    tak::UiFont f;
+    ta::UiFont f;
     check(f.ok(), "the embedded Noto Sans Bold loads");
     if (!f.ok()) return 1;
 
@@ -74,7 +74,7 @@ int main() {
     auto width = [&](const std::string& t) { return f.width(t); };
     const std::string para = "the quick brown fox jumps over the lazy dog again and again";
     const float wrapW = 150;
-    const auto rows = tak::chatbox::wrap(para, wrapW, wrapW, width);
+    const auto rows = ta::chatbox::wrap(para, wrapW, wrapW, width);
     bool fits = rows.size() >= 3;
     std::string joined;
     for (const auto& r : rows) {
@@ -83,18 +83,18 @@ int main() {
     }
     check(fits, "a sentence wraps to rows that each fit 150 px");
     check(joined == para, "and the rows rejoin to the sentence");
-    const auto broken = tak::chatbox::wrap(std::string(60, 'W'), 100, 100, width);
+    const auto broken = ta::chatbox::wrap(std::string(60, 'W'), 100, 100, width);
     bool bfits = broken.size() > 1;
     for (const auto& r : broken) bfits = bfits && f.width(r) <= 100;
     check(bfits, "an unbroken word is split between characters to fit");
-    const auto u = tak::chatbox::wrap("\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9", 20, 20, width);
+    const auto u = ta::chatbox::wrap("\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9", 20, 20, width);
     bool whole = u.size() > 1;
     for (const auto& r : u) whole = whole && r.size() % 2 == 0;
     check(whole, "a split never cuts a UTF-8 character");
     // Stray bytes (a run of continuation bytes, or one after a valid character) are each
     // a glyph of their own, so wrap may break between them like any other characters.
     for (const std::string& stray : {std::string(150, '\x80'), "\xE2\x80\x8B" + std::string(150, '\x80')}) {
-        const auto sr = tak::chatbox::wrap(stray, 200, 300, width);
+        const auto sr = ta::chatbox::wrap(stray, 200, 300, width);
         bool sfits = sr.size() > 1;
         std::string sj;
         for (size_t k = 0; k < sr.size(); ++k) {
@@ -105,7 +105,7 @@ int main() {
     }
 
     // ---- UTF-8 ----
-    using tak::decodeUtf8Lenient;
+    using ta::decodeUtf8Lenient;
     check(same(decodeUtf8Lenient("A\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80"), {'A', 0xE9, 0x20AC, 0x1F600}),
           "1-, 2-, 3- and 4-byte sequences decode");
     check(same(decodeUtf8Lenient("caf\xE9"), {'c', 'a', 'f', 0xE9}), "a Latin-1 byte stands for itself");
@@ -117,11 +117,11 @@ int main() {
               same(decodeUtf8Lenient("\xF4\x90\x80\x80"), {0xF4, 0x90, 0x80, 0x80}),
           "surrogates and values past U+10FFFF are not decoded");
     check(same(decodeUtf8Lenient("\xC3x"), {0xC3, 'x'}), "a lead byte before a non-continuation: both kept");
-    check(tak::UiFont::mapped(0x1F600) == '?' && tak::UiFont::mapped(0x4E2D) == '?' &&
-              tak::UiFont::mapped(7) == '?' && tak::UiFont::mapped(0x85) == '?',
+    check(ta::UiFont::mapped(0x1F600) == '?' && ta::UiFont::mapped(0x4E2D) == '?' &&
+              ta::UiFont::mapped(7) == '?' && ta::UiFont::mapped(0x85) == '?',
           "emoji, CJK and control codes map to '?'");
-    check(tak::UiFont::mapped(0xE9) == 0xE9 && tak::UiFont::mapped(0x20AC) == 0x20AC &&
-              tak::UiFont::mapped(0x2019) == 0x2019,
+    check(ta::UiFont::mapped(0xE9) == 0xE9 && ta::UiFont::mapped(0x20AC) == 0x20AC &&
+              ta::UiFont::mapped(0x2019) == 0x2019,
           "Latin-1 and the typographic extras are carried");
     check(std::fabs(f.width("\xE4\xB8\xAD\xF0\x9F\x98\x80") - f.width("??")) < 0.01f,
           "two missing characters measure as two '?'");
@@ -157,7 +157,7 @@ int main() {
             check(f.sheetBuilds() - b0 <= 2, "a size that creeps each frame rebuilds only at whole pixels");
         }
         for (int i = 0; i < 40; ++i) f.drawSolid(ren, hello, 10, 10, 0.5f + 0.25f * float(i), {255, 255, 255, 255});
-        check(f.sheetCount() <= tak::UiFont::kMaxSheets, "forty sizes: the cache stays within its bound");
+        check(f.sheetCount() <= ta::UiFont::kMaxSheets, "forty sizes: the cache stays within its bound");
         const int before = f.sheetBuilds();
         f.drawSolid(ren, hello, 10, 10, 0.5f + 0.25f * 39, {255, 255, 255, 255});
         check(f.sheetBuilds() == before, "the most recent size is still held");
@@ -216,7 +216,7 @@ int main() {
     auto inkOf = [&](const std::string& t, float x, float y, float px) {
         SDL_SetRenderDrawColor(tr, 0, 0, 0, 255);
         SDL_RenderClear(tr);
-        tak::uiText(tr, t, x, y, px, {255, 255, 255, 255});
+        ta::uiText(tr, t, x, y, px, {255, 255, 255, 255});
         SDL_RenderPresent(tr);
         Ink k;
         SDL_LockSurface(ts);
@@ -229,17 +229,17 @@ int main() {
         SDL_UnlockSurface(ts);
         return k;
     };
-    check(tak::uiFontStyle() == tak::UiFontStyle::Modern, "MODERN is the style before any setting");
-    for (const auto style : {tak::UiFontStyle::Modern, tak::UiFontStyle::Classic}) {
-        tak::setUiFontStyle(style);
-        const bool modern = style == tak::UiFontStyle::Modern;
+    check(ta::uiFontStyle() == ta::UiFontStyle::Modern, "MODERN is the style before any setting");
+    for (const auto style : {ta::UiFontStyle::Modern, ta::UiFontStyle::Classic}) {
+        ta::setUiFontStyle(style);
+        const bool modern = style == ta::UiFontStyle::Modern;
         const char* tag = modern ? "MODERN" : "CLASSIC";
         char what[96];
         if (!tr) break;
         const float px = 2;
         const std::string line = "SETTINGS HOST READY";
         const Ink k = inkOf(line, 20, 40, px);
-        const float w = tak::uiTextWidth(line, px);
+        const float w = ta::uiTextWidth(line, px);
         std::snprintf(what, sizeof what, "%s: ink starts at x and ends within the measured width", tag);
         check(k.x1 > k.x0 && k.x0 >= 20 && k.x0 <= 23 && float(k.x1 + 1) <= 20 + w + 1, what);
         std::snprintf(what, sizeof what, "%s: ...and fills it (no hidden slack)", tag);
@@ -247,59 +247,59 @@ int main() {
         std::snprintf(what, sizeof what, "%s: the caps fill the cell band [y, y + 7 px]", tag);
         check(std::abs(k.y0 - 40) <= 1 && std::abs(k.y1 + 1 - (40 + 14)) <= 1, what);
         std::snprintf(what, sizeof what, "%s: widths add up across a split", tag);
-        check(std::fabs(tak::uiTextWidth("SETTINGS", px) + tak::uiTextWidth(" HOST READY", px) - w) < (modern ? 1.0f : 0.01f), what);
+        check(std::fabs(ta::uiTextWidth("SETTINGS", px) + ta::uiTextWidth(" HOST READY", px) - w) < (modern ? 1.0f : 0.01f), what);
         std::snprintf(what, sizeof what, "%s: descenders %s", tag, modern ? "reach below the baseline" : "do not exist");
         const Ink g = inkOf("gjpqy", 20, 40, px);
-        check(modern ? (g.y1 + 1 > 54 && float(g.y1 + 1) <= 54 + tak::uiTextDescent(px) + 1)
-                     : tak::uiTextDescent(px) == 0 && g.y1 + 1 <= 54, what);
+        check(modern ? (g.y1 + 1 > 54 && float(g.y1 + 1) <= 54 + ta::uiTextDescent(px) + 1)
+                     : ta::uiTextDescent(px) == 0 && g.y1 + 1 <= 54, what);
         std::snprintf(what, sizeof what, "%s: a text's own descent: none for caps, the ink's for 'gjpqy'", tag);
-        const float gd = tak::uiTextInkDescent("gjpqy", px);
-        check(tak::uiTextInkDescent(line, px) == 0 &&
-                  (modern ? gd > 0 && gd <= tak::uiTextDescent(px) && std::fabs(54 + gd - float(g.y1 + 1)) <= 1.5f
+        const float gd = ta::uiTextInkDescent("gjpqy", px);
+        check(ta::uiTextInkDescent(line, px) == 0 &&
+                  (modern ? gd > 0 && gd <= ta::uiTextDescent(px) && std::fabs(54 + gd - float(g.y1 + 1)) <= 1.5f
                           : gd == 0), what);
         // Fit: whole characters, within the width, "..." when cut.
         const std::string longName = "Lord Kirenna's Great Northern Expanse (8 players)";
-        const std::string cut = tak::uiTextFit(longName, px, 200);
+        const std::string cut = ta::uiTextFit(longName, px, 200);
         std::snprintf(what, sizeof what, "%s: fit cuts to the width and ends in ...", tag);
-        check(tak::uiTextWidth(cut, px) <= 200 && cut.size() > 3 && cut.substr(cut.size() - 3) == "...", what);
+        check(ta::uiTextWidth(cut, px) <= 200 && cut.size() > 3 && cut.substr(cut.size() - 3) == "...", what);
         std::snprintf(what, sizeof what, "%s: text that fits is untouched", tag);
-        check(tak::uiTextFit("OK", px, 200) == "OK", what);
+        check(ta::uiTextFit("OK", px, 200) == "OK", what);
         const std::string path = "/home/someone/games/Total Annihilation Kingdoms/data";
-        const std::string tail = tak::uiTextFitStart(path, px, 180);
+        const std::string tail = ta::uiTextFitStart(path, px, 180);
         std::snprintf(what, sizeof what, "%s: fitStart keeps the end of a path", tag);
-        check(tak::uiTextWidth(tail, px) <= 180 && tail.substr(0, 3) == "..." &&
+        check(ta::uiTextWidth(tail, px) <= 180 && tail.substr(0, 3) == "..." &&
                   path.substr(path.size() - (tail.size() - 3)) == tail.substr(3), what);
         const std::string accents = "\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9";
-        const std::string ucut = tak::uiTextFit(accents, px, 40, false);
+        const std::string ucut = ta::uiTextFit(accents, px, 40, false);
         std::snprintf(what, sizeof what, "%s: fit never cuts a UTF-8 character", tag);
-        check(ucut.size() % 2 == 0 && tak::uiTextWidth(ucut, px) <= 40, what);
+        check(ucut.size() % 2 == 0 && ta::uiTextWidth(ucut, px) <= 40, what);
         // Wrap.
-        const auto rows = tak::uiTextWrap("THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG AGAIN AND AGAIN", px, 160);
+        const auto rows = ta::uiTextWrap("THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG AGAIN AND AGAIN", px, 160);
         bool fits = rows.size() >= 3;
-        for (const auto& r : rows) fits = fits && tak::uiTextWidth(r, px) <= 160 && !r.empty();
+        for (const auto& r : rows) fits = fits && ta::uiTextWidth(r, px) <= 160 && !r.empty();
         std::snprintf(what, sizeof what, "%s: wrap gives rows that each fit", tag);
         check(fits, what);
     }
-    tak::setUiFontStyle(tak::UiFontStyle::Classic);
-    const float classicW = tak::uiTextWidth("Hello world", 2);
+    ta::setUiFontStyle(ta::UiFontStyle::Classic);
+    const float classicW = ta::uiTextWidth("Hello world", 2);
     check(classicW == (10 * 6 + 4) * 2.0f, "CLASSIC: 6 px a glyph, 4 px a space");
-    tak::setUiFontStyle(tak::UiFontStyle::Modern);
-    check(std::fabs(tak::uiTextWidth("Hello world", 2) - classicW) > 1 &&
-              tak::uiTextWidth("Hello world", 2) < tak::uiTextWidth("HELLO WORLD", 2),
+    ta::setUiFontStyle(ta::UiFontStyle::Modern);
+    check(std::fabs(ta::uiTextWidth("Hello world", 2) - classicW) > 1 &&
+              ta::uiTextWidth("Hello world", 2) < ta::uiTextWidth("HELLO WORLD", 2),
           "MODERN: proportional, in the case given (lower case is narrower)");
     // Measuring is free; drawing a dozen sizes keeps a dozen sheets, and releasing frees them.
-    tak::releaseUiTextGlyphs();
+    ta::releaseUiTextGlyphs();
     if (tr) {
         for (float px : {1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 1.8f, 2.0f, 2.2f, 2.5f, 3.0f, 3.4f})
-            tak::uiText(tr, "Abc", 10, 10, px, {255, 255, 255, 255});
-        const int builds = tak::uiFont().sheetBuilds();
+            ta::uiText(tr, "Abc", 10, 10, px, {255, 255, 255, 255});
+        const int builds = ta::uiFont().sheetBuilds();
         for (int frame = 0; frame < 3; ++frame)
             for (float px : {1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 1.8f, 2.0f, 2.2f, 2.5f, 3.0f, 3.4f})
-                tak::uiText(tr, "Abc", 10, 10, px, {255, 255, 255, 255});
-        check(tak::uiFont().sheetBuilds() == builds && tak::uiFont().sheetCount() == 12,
+                ta::uiText(tr, "Abc", 10, 10, px, {255, 255, 255, 255});
+        check(ta::uiFont().sheetBuilds() == builds && ta::uiFont().sheetCount() == 12,
               "twelve sizes a frame: twelve sheets, none rebuilt on later frames");
-        tak::releaseUiTextGlyphs();
-        check(tak::uiFont().sheetCount() == 0, "releaseUiTextGlyphs frees every sheet");
+        ta::releaseUiTextGlyphs();
+        check(ta::uiFont().sheetCount() == 0, "releaseUiTextGlyphs frees every sheet");
         SDL_DestroyRenderer(tr);
     }
     if (ts) SDL_FreeSurface(ts);
@@ -308,36 +308,36 @@ int main() {
     {
         namespace fs = std::filesystem;
         std::mt19937_64 rng(std::random_device{}());
-        const fs::path dir = fs::temp_directory_path() / ("tak-uifont-" + std::to_string(rng()));
+        const fs::path dir = fs::temp_directory_path() / ("ta-uifont-" + std::to_string(rng()));
         fs::create_directories(dir);
         const fs::path file = dir / "settings.ini";
-        tak::setSettingsPath(file.string());
-        check(tak::Settings{}.uiFont == 0, "default: MODERN");
+        ta::setSettingsPath(file.string());
+        check(ta::Settings{}.uiFont == 0, "default: MODERN");
         std::ofstream(file) << "uiScale = 1.5\n";
-        check(tak::loadSettings().uiFont == 0, "a settings file without the key: MODERN");
-        tak::Settings s;
+        check(ta::loadSettings().uiFont == 0, "a settings file without the key: MODERN");
+        ta::Settings s;
         s.uiFont = 1;
-        check(tak::saveSettings(s), "save");
-        check(tak::loadSettings().uiFont == 1, "CLASSIC round-trips");
+        check(ta::saveSettings(s), "save");
+        check(ta::loadSettings().uiFont == 1, "CLASSIC round-trips");
         {
             std::ifstream in(file);
             const std::string text((std::istreambuf_iterator<char>(in)), {});
             check(text.find("uiFont = classic\n") != std::string::npos, "written as uiFont = classic");
         }
         s.uiFont = 0;
-        tak::saveSettings(s);
-        check(tak::loadSettings().uiFont == 0, "MODERN round-trips");
+        ta::saveSettings(s);
+        check(ta::loadSettings().uiFont == 0, "MODERN round-trips");
         std::ofstream(file) << "uiFont = 7\n";
-        check(tak::loadSettings().uiFont == 0, "an unknown value: MODERN");
-        tak::Settings a, b;
+        check(ta::loadSettings().uiFont == 0, "an unknown value: MODERN");
+        ta::Settings a, b;
         b.uiFont = 1;
         check(!(a == b), "visible to operator== (the DEFAULTS button)");
-        check(tak::preferenceDefaults(b).uiFont == 0, "DEFAULTS resets it to MODERN");
-        tak::applyRuntimeSettings(b);
-        check(tak::uiFontStyle() == tak::UiFontStyle::Classic, "applyRuntimeSettings applies CLASSIC");
-        tak::applyRuntimeSettings(a);
-        check(tak::uiFontStyle() == tak::UiFontStyle::Modern, "...and MODERN");
-        tak::setSettingsPath("");
+        check(ta::preferenceDefaults(b).uiFont == 0, "DEFAULTS resets it to MODERN");
+        ta::applyRuntimeSettings(b);
+        check(ta::uiFontStyle() == ta::UiFontStyle::Classic, "applyRuntimeSettings applies CLASSIC");
+        ta::applyRuntimeSettings(a);
+        check(ta::uiFontStyle() == ta::UiFontStyle::Modern, "...and MODERN");
+        ta::setSettingsPath("");
         std::error_code ec;
         fs::remove_all(dir, ec);
     }

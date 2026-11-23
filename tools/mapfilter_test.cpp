@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-namespace mf = tak::mapfilter;
+namespace mf = ta::mapfilter;
 
 static int g_fail = 0;
 static void check(bool ok, const char* what) {

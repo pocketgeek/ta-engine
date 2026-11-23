@@ -9,7 +9,7 @@
 #include "retailconstruction.h"
 #include "retailconstructionparticles.h"
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct UnitType;
 
@@ -137,4 +137,4 @@ bool retailTickPlayerCache(RetailPlayerCacheClock& clock,uint32_t tick,Random ra
     return random(30)==0;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim

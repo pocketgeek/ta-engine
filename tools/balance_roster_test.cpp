@@ -25,15 +25,15 @@ int main(int argc,char** argv) {
     if(argc!=2)return 2;
     SDL_SetMainReady();
     try {
-        auto mounts=tak::hpi::mountRetailRoot(argv[1]);
-        tak::hpi::Vfs vfs(&mounts,true);
+        auto mounts=ta::hpi::mountRetailRoot(argv[1]);
+        ta::hpi::Vfs vfs(&mounts,true);
         int failures=0,checks=0;
         auto check=[&](bool ok,const std::string& context) {
             ++checks;if(!ok){++failures;std::cerr<<"FAIL "<<context<<'\n';}
         };
-        tak::sim::TypeRegistry standard,crusades;
-        tak::sim::setupRegistry(standard,vfs,false);
-        tak::sim::setupRegistry(crusades,vfs,true);
+        ta::sim::TypeRegistry standard,crusades;
+        ta::sim::setupRegistry(standard,vfs,false);
+        ta::sim::setupRegistry(crusades,vfs,true);
         if(!crusades.find("zontrain")){std::cerr<<"no Crusades data\n";return 1;}
 
         // Units with a units/ FBI but none in unitscb/ do not exist in a Crusades game.
@@ -53,7 +53,7 @@ int main(int argc,char** argv) {
                                              "zonharp","zonglyph","zonhand","zonlord"};
         check(crusades.buildable("zontrain")==tamer,"Crusades zontrain menu is retail's nine");
         check(standard.buildable("zontrain")==tamer,"standard zontrain menu is retail's nine");
-        auto has=[](const tak::sim::TypeRegistry& r,const char* builder,const char* id) {
+        auto has=[](const ta::sim::TypeRegistry& r,const char* builder,const char* id) {
             const auto& m=r.buildable(builder);
             return std::find(m.begin(),m.end(),id)!=m.end();
         };
@@ -77,7 +77,7 @@ int main(int argc,char** argv) {
             auto slash=key.find('/',9);
             if(slash==std::string::npos || key.find('/',slash+1)!=std::string::npos)continue;
             auto bytes=vfs.read(path);
-            auto doc=tak::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
+            auto doc=ta::tdf::parseText(std::string(bytes.begin(),bytes.end()),path);
             auto menu=doc.child("menu");
             check(menu && menu->value("priority")!=nullptr,key+" has a priority");
             source[key.substr(9,slash-9)].push_back({menu?menu->numberOr("priority",99):99,
@@ -102,7 +102,7 @@ int main(int argc,char** argv) {
         // builder without builder=1 give nothing; and an install with no unitscb/
         // plays Crusades on the standard roster, as the referee does (haveCb).
         {
-            const auto root=std::filesystem::temp_directory_path()/("tak-balance-roster-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            const auto root=std::filesystem::temp_directory_path()/("ta-balance-roster-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
             struct Cleanup {std::filesystem::path path;~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);}} cleanup{root};
             auto put=[&](const std::string& path,const std::string& text) {
                 std::filesystem::create_directories((root/path).parent_path());
@@ -116,9 +116,9 @@ int main(int argc,char** argv) {
             put("canbuild/bld/c.tdf","[Menu]\n{\nPriority=5;\n}\n");
             put("canbuild/bld/ghost.tdf","[Menu]\n{\nPriority=1;\n}\n");
             put("canbuild/nob/a.tdf","[Menu]\n{\nPriority=1;\n}\n");
-            tak::hpi::Vfs tiny;tiny.addLayer(tak::hpi::MountSet(root));
+            ta::hpi::Vfs tiny;tiny.addLayer(ta::hpi::MountSet(root));
             for(bool cb:{false,true}) {
-                tak::sim::TypeRegistry r;tak::sim::setupRegistry(r,tiny,cb);
+                ta::sim::TypeRegistry r;ta::sim::setupRegistry(r,tiny,cb);
                 const std::string mode=cb?"no-unitscb Crusades: ":"synthetic: ";
                 check(r.find("bld") && r.find("a"),mode+"standard roster loaded");
                 check(r.buildable("bld")==std::vector<std::string>{"b","c","a"},mode+"ties stable, missing priority last, ghost dropped");

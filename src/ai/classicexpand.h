@@ -30,7 +30,7 @@
 #include "ai/classicsquads.h"
 #include "ai/classicwaves.h"
 
-namespace tak::ai {
+namespace ta::ai {
 
 // One navigator grid's zone labels (grid +0x1c start records, +0x2c sacred-site
 // records): -1 for an empty record, else the number of the zone it was put in.
@@ -270,4 +270,4 @@ bool classicExpand(ClassicSquads& s, std::vector<ClassicSquadUnit>& units, int s
     return true;
 }
 
-}  // namespace tak::ai
+}  // namespace ta::ai

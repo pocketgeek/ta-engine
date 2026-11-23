@@ -32,11 +32,11 @@
 #include <string>
 #include <vector>
 
-using namespace tak::sim;
-using tak::net::Cmd;
-using tak::net::Command;
-using tak::net::OrderShape;
-using tak::net::SelectionOrder;
+using namespace ta::sim;
+using ta::net::Cmd;
+using ta::net::Command;
+using ta::net::OrderShape;
+using ta::net::SelectionOrder;
 
 namespace {
 int failures = 0;
@@ -65,7 +65,7 @@ Command verb(Cmd k, float x = 0, float z = 0, int target = 0, uint8_t queue = 0)
 
 // ---- 1. codec ---------------------------------------------------------------
 void codec() {
-    using namespace tak::net;
+    using namespace ta::net;
     for (uint32_t v : {0u, 1u, 127u, 128u, 16383u, 16384u, 0x7fffffffu, 0xffffffffu}) {
         Writer w; w.varint(v);
         Reader r(w.b.data(), w.b.size());
@@ -162,12 +162,12 @@ void codec() {
 
 // ---- 2. packClick -------------------------------------------------------------
 void packing() {
-    using tak::net::packClick;
+    using ta::net::packClick;
     auto unit = [](Command c, int id) { c.unitId = id; return c; };
     std::vector<Command> cmds;
     for (int id : {9, 3, 7}) cmds.push_back(unit(verb(Cmd::Move, 50 + float(id), 60), id));   // offsets per unit
     uint32_t serial = 5;
-    tak::net::ClickShape shape;
+    ta::net::ClickShape shape;
     shape.moveOffsets = true; shape.x = 50; shape.z = 60;
     auto out = packClick(cmds, shape, serial);
     check(out.size() == 1 && out[0].order && out[0].order->members == std::vector<int32_t>{3, 7, 9} &&
@@ -197,7 +197,7 @@ void packing() {
     for (int id : {12, 4}) cmds.push_back(unit(verb(Cmd::Attack, 0, 0, 77), id));
     for (int id : {8, 5}) cmds.push_back(unit(verb(Cmd::Move, 300 + float(id), 400), id));
     serial = 1;
-    tak::net::ClickShape click;
+    ta::net::ClickShape click;
     click.moveOffsets = true; click.x = 300; click.z = 400;
     out = packClick(cmds, click, serial);
     check(out.size() == 2 && out[0].order && out[0].order->tmpl.kind == Cmd::Attack &&
@@ -226,10 +226,10 @@ void packing() {
           "a right-drag box: one order per enemy, queued after the first; the clears go per unit");
     // kOrderMaxMembers.
     cmds.clear();
-    for (int id = 0; id < int(tak::net::kOrderMaxMembers) + 10; ++id) cmds.push_back(unit(verb(Cmd::Stop), id));
+    for (int id = 0; id < int(ta::net::kOrderMaxMembers) + 10; ++id) cmds.push_back(unit(verb(Cmd::Stop), id));
     serial = 1;
     out = packClick(cmds, {}, serial);
-    check(out.size() == 2 && out[0].order->members.size() == tak::net::kOrderMaxMembers && out[1].order->members.size() == 10,
+    check(out.size() == 2 && out[0].order->members.size() == ta::net::kOrderMaxMembers && out[1].order->members.size() == 10,
           "a run longer than kOrderMaxMembers is two orders");
 }
 
@@ -415,7 +415,7 @@ void sameTick() {
         // Ctrl (kQueueFront, C9): the order's leg goes to the head, the earlier legs
         // keep their own identities behind it; then a Shift toggle on the queued
         // leg's point takes that leg back.
-        f.apply(orderCmd(0, 4, verb(Cmd::Move, 120 * 16, 40 * 16, 0, tak::net::kQueueFront | tak::net::kQueueToggle),
+        f.apply(orderCmd(0, 4, verb(Cmd::Move, 120 * 16, 40 * 16, 0, ta::net::kQueueFront | ta::net::kQueueToggle),
                          sorted(ids), OrderShape::Offsets));
         bool front = true;
         for (int id : ids) {
@@ -424,7 +424,7 @@ void sameTick() {
             front &= serials == std::vector<uint32_t>{4, 2, 3};
         }
         check(front, "a Ctrl order goes to the head; the earlier legs keep their identities behind it");
-        f.apply(orderCmd(0, 5, verb(Cmd::Move, 40 * 16, 40 * 16, 0, tak::net::kQueueAppend | tak::net::kQueueToggle),
+        f.apply(orderCmd(0, 5, verb(Cmd::Move, 40 * 16, 40 * 16, 0, ta::net::kQueueAppend | ta::net::kQueueToggle),
                          sorted(ids), OrderShape::Offsets));
         bool toggled = true;
         for (int id : ids) {
@@ -476,7 +476,7 @@ void sameTick() {
 // per-unit setters over a shuffled selection give the state the per-unit commands
 // give in issue order, in both modes.
 void issueOrder() {
-    using tak::net::packClick;
+    using ta::net::packClick;
     auto unit = [](Command c, int id) { c.unitId = id; return c; };
     {
         std::vector<Command> cmds;
@@ -487,7 +487,7 @@ void issueOrder() {
         bool same = out.size() == cmds.size() && serial == 1;
         for (size_t i = 0; same && i < out.size(); ++i) same = !out[i].order && out[i].unitId == cmds[i].unitId;
         check(same, "Load and GiveUnit stay per-unit commands, in issue order");
-        check(!tak::net::orderVerb(Cmd::Load) && !tak::net::orderVerb(Cmd::GiveUnit), "Load and GiveUnit are not order verbs");
+        check(!ta::net::orderVerb(Cmd::Load) && !ta::net::orderVerb(Cmd::GiveUnit), "Load and GiveUnit are not order verbs");
     }
     for (PathfindingMode mode : {PathfindingMode::Retail, PathfindingMode::Legion}) {
         const std::string tag = mode == PathfindingMode::Retail ? "Retail" : "Legion";
@@ -529,27 +529,27 @@ void issueOrder() {
 void delivery() {
     Field f(PathfindingMode::Legion);
     const auto ids = f.block(kGround, 10000, 2, 2, 100, 2);
-    tak::scn::SelectionOrder o;
-    o.verb = tak::scn::Verb::Move; o.x = 200 * 16; o.z = 200 * 16;
+    ta::scn::SelectionOrder o;
+    o.verb = ta::scn::Verb::Move; o.x = 200 * 16; o.z = 200 * 16;
     for (int rt : {-1, 16, 64}) {
-        const auto b = tak::scn::issueSelection(f.world, ids, o, 500, 0, rt);
+        const auto b = ta::scn::issueSelection(f.world, ids, o, 500, 0, rt);
         const bool whole = b.size() == 1 && b[0].tick == 500 && b[0].cmds.size() == 1 && b[0].cmds[0].order &&
                            b[0].cmds[0].order->members.size() == 10000;
         check(whole, "a 10,000-unit click lands whole in its own tick (round trip " + std::to_string(rt) + ")");
-        if (whole) check(tak::net::orderRecordBytes(*b[0].cmds[0].order) <= tak::net::kOrderMaxBytes, "and fits one record");
+        if (whole) check(ta::net::orderRecordBytes(*b[0].cmds[0].order) <= ta::net::kOrderMaxBytes, "and fits one record");
     }
     // An ordinary command behind the big order lands with it: the order does not take command credit.
-    tak::scn::Uplink link(16);
+    ta::scn::Uplink link(16);
     uint32_t serial = 1;
-    link.issue(tak::scn::hudItems(f.world, ids, o, 0, serial));
+    link.issue(ta::scn::hudItems(f.world, ids, o, 0, serial));
     Command train; train.kind = Cmd::Train; train.unitId = ids[0];
     link.issue({train});
     const auto first = link.land(500);
     check(first.size() == 2 && first[0].order && first[1].kind == Cmd::Train,
           "an ordinary command behind a 10,000-unit order lands in the same tick, after it");
     // The per-unit stream (the AI's and scripts' path) takes 157 ticks without a window.
-    tak::scn::Uplink perUnit;
-    perUnit.issue(tak::scn::hudCommands(f.world, ids, o));
+    ta::scn::Uplink perUnit;
+    perUnit.issue(ta::scn::hudCommands(f.world, ids, o));
     int ticks = 0;
     for (uint32_t t = 500; !perUnit.idle(); ++t) ticks += !perUnit.land(t).empty();
     check(ticks == 157, "per-unit commands land 64 a tick (157 ticks for 10,000)");

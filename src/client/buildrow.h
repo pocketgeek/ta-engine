@@ -22,7 +22,7 @@
 #include <cmath>
 #include <vector>
 
-namespace tak::buildrow {
+namespace ta::buildrow {
 
 enum Align : int { Left = 0, Centered = 1, Right = 2 };
 
@@ -100,4 +100,4 @@ inline Layout layout(int n, float barTop, float barH, float buildScale, float wi
     return L;
 }
 
-}  // namespace tak::buildrow
+}  // namespace ta::buildrow

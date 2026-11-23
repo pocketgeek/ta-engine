@@ -5,7 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace tak::gaf {
+namespace ta::gaf {
 
 namespace {
 
@@ -202,7 +202,7 @@ Palette Palette::fromBytes(const std::vector<uint8_t>& d, const std::string& ori
     Palette pal{};
 
     if (!d.empty() && d[0] == 0x0A) {
-        // PCX: TAK ships palettes as 1x1 PCX files. The 256-color palette is
+        // PCX: TA ships palettes as 1x1 PCX files. The 256-color palette is
         // the last 768 bytes, preceded by a 0x0C marker byte.
         if (d.size() < 769 || d[d.size() - 769] != 0x0C)
             throw std::runtime_error(origin + ": PCX without VGA palette");
@@ -279,4 +279,4 @@ std::vector<Sequence> load(const std::vector<uint8_t>& d, const Palette& pal,
     return out;
 }
 
-} // namespace tak::gaf
+} // namespace ta::gaf

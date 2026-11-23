@@ -3,7 +3,7 @@
 #include "ai/ai.h"   // incomeMultFor / difficultyFromLevel (inline)
 #include "version.h"
 
-namespace tak::net {
+namespace ta::net {
 
 sim::MatchConfig matchConfigFor(const GameOptions& o, const SlotInfo* slots, uint32_t seed, bool mission) {
     sim::MatchConfig cfg;
@@ -40,7 +40,7 @@ ReplayHeader replayHeaderFor(const GameOptions& o, const std::string& mapId, con
     ReplayHeader h;
     h.mapId = mapId;
     h.mission = mission;
-    h.engineVersion = tak::kVersion;
+    h.engineVersion = ta::kVersion;
     h.crusades = o.crusades;
     h.forfeitSelfDestruct = o.forfeitSelfDestruct;
     h.gameMods = o.gameMods;
@@ -95,4 +95,4 @@ void matchInputsFrom(const ReplayHeader& h, GameOptions& o, SlotInfo* slots) {
     }
 }
 
-}  // namespace tak::net
+}  // namespace ta::net

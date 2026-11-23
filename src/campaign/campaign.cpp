@@ -7,7 +7,7 @@
 #include "hpi/hpi.h"
 #include "tdf/tdf.h"
 
-namespace tak {
+namespace ta {
 namespace {
 
 // "camps/Book Of Darien.tdf" -> "book of darien"
@@ -186,4 +186,4 @@ std::optional<CampaignChapter> campaignChapter(const Campaign& campaign, const s
     return {};
 }
 
-}  // namespace tak
+}  // namespace ta

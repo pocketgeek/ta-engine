@@ -9,7 +9,7 @@
 #include <optional>
 #include <bit>
 
-namespace tak::sim { struct RetailReplayProbe {
+namespace ta::sim { struct RetailReplayProbe {
     static void capture(World& w,int id,int owner) {w.captureUnit(*w.unit(id),owner);}
     static void impact(World& w,const Weapon& weapon,int from,int target) {
         const auto* source=w.unit(from);auto* victim=w.unit(target);
@@ -28,7 +28,7 @@ namespace tak::sim { struct RetailReplayProbe {
 
 // A switcher takes an order only when its selected weapon can serve it:
 // select the first weapon that hurts the target, as a player would.
-static void selectWeaponFor(tak::sim::World& w,int unit,int target) {
+static void selectWeaponFor(ta::sim::World& w,int unit,int target) {
     auto* u=w.unit(unit);const auto* t=w.unit(target);
     if (!u || !t || !u->type->weaponSwitching) return;
     for (size_t s=0;s<u->type->weapons.size() && s<3;++s)
@@ -37,14 +37,14 @@ static void selectWeaponFor(tak::sim::World& w,int unit,int target) {
 
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
-    auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+    auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     int failures=0;
     auto check=[&](bool ok,const char* label) {
         std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);
         if (!ok) ++failures;
     };
     for (bool crusades:{false,true}) {
-        tak::sim::TypeRegistry registry;tak::sim::setupRegistry(registry,vfs,crusades);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
         // A different converter can turn the target while this Harpy is still
         // aiming. Both explicit AI orders and automatic attack-move targets
         // must release it and preserve the queued destination.
@@ -52,13 +52,13 @@ int main(int argc,char** argv) {
             const auto* harpy=registry.find("zonharp");
             auto victim=*registry.find("arasword");victim.maxHp=25000;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            tak::sim::World world;world.setPlayerCount(3);world.setTeam(2,0);
+            ta::sim::World world;world.setPlayerCount(3);world.setTeam(2,0);
             world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
             const int from=world.spawn(harpy,1000,1000,0,0),target=world.spawn(&victim,1180,1000,0,1);
             world.attack(from,target,false);world.unit(from)->orders.front().autoTarget=automatic;
             world.order(from,1800,1800,true);
             world.tick(1.f/30);
-            tak::sim::RetailReplayProbe::capture(world,target,newOwner);
+            ta::sim::RetailReplayProbe::capture(world,target,newOwner);
             world.tick(1.f/30);
             const auto* unit=world.unit(from);
             check(std::none_of(unit->orders.begin(),unit->orders.end(),[&](const auto& o){return o.targetId==target;}),
@@ -67,7 +67,7 @@ int main(int argc,char** argv) {
                   "conversion cancels Harpy aim and further weapon releases");
             check(!unit->orders.empty(),"conversion preserves the Harpy's queued move");
             const auto& charm=registry.find("tarmind")->weapons.front();
-            for(int i=0;i<20;++i)tak::sim::RetailReplayProbe::impact(world,charm,from,target);
+            for(int i=0;i<20;++i)ta::sim::RetailReplayProbe::impact(world,charm,from,target);
             // 52da10 spares only the caster's own player: a late charm that
             // strikes a unit turned to an ally takes it.
             check(world.unit(target)->player==0,newOwner==0 ? "late charm impacts leave the caster's own unit alone" :
@@ -93,17 +93,17 @@ int main(int argc,char** argv) {
             const auto* rat=registry.find("tarkam");
             auto victim=*registry.find("tarzom");victim.maxHp=25000;victim.healTime=0;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);world.buildNavClasses(registry);
             const int from=world.spawn(rat,1000,1000,0,0),target=world.spawn(&victim,1040,1000,0,1);
             world.attack(from,target,false);
             for(int tick=0;tick<180;++tick)world.tick(1.f/30);
-            check(world.unit(target)->hp==tak::sim::Fixed::fromInt(victim.maxHp),
+            check(world.unit(target)->hp==ta::sim::Fixed::fromInt(victim.maxHp),
                   "Kamikaze Rat's absent weapon callbacks do not invent bite damage");
             // The death weapon fires at retirement (512ae0), once Dying ends.
             world.unit(from)->hp={};world.tick(1.f/30);
             for(int tick=0;tick<600 && world.unit(from)->deathPending;++tick)world.tick(1.f/30);
-            check(world.unit(target)->hp<tak::sim::Fixed::fromInt(victim.maxHp),
+            check(world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp),
                   "Kamikaze Rat retains its authored death explosion without weapon callbacks");
         }
 
@@ -118,7 +118,7 @@ int main(int argc,char** argv) {
             auto type=definition;
             auto victim=*registry.find("tarzom");victim.maxHp=25000;victim.healTime=0;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
             world.buildNavClasses(registry);
             const int from=world.spawn(&type,1000,1000,0,0),
@@ -129,7 +129,7 @@ int main(int argc,char** argv) {
                 world.tick(1.f/30.f);
                 for(const auto& shot:world.projectiles())if(shot.fromId==from && shot.slot==int(slot) && shot.wsrc==&type.weapons[slot] && shot.lightningEffect &&
                     !shot.lightningEffect->particles.empty())emitted=true;
-                hit=world.unit(target)->hp<tak::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
+                hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
             }
             std::printf("lightning balance=%s unit=%s slot=%zu side=%s emitted=%d hit=%d hash=%016llx\n",
                 crusades?"Crusades":"standard",name.c_str(),slot,side ? "north-west" : "east",int(emitted),int(hit),
@@ -138,10 +138,10 @@ int main(int argc,char** argv) {
             if(side)check(emitted && hit,"selected shipped lightning slot emits and reaches the enemy through live combat");
         }
 
-        check(tak::hpi::affectsGameplay("gamedata/effects/effects.tdf"),
+        check(ta::hpi::affectsGameplay("gamedata/effects/effects.tdf"),
               "named effect definitions are protected multiplayer data");
         {
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             world.buildNavClasses(registry);
             const auto* type=registry.find("zonhunt");
@@ -164,7 +164,7 @@ int main(int argc,char** argv) {
             check(!type.weapons.empty() && type.weapons[0].flameKind>=0,"flame subclass loads independently of hit-effect art");
             auto victim=*registry.find("tarzom");victim.maxHp=25000;victim.healTime=0;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
             world.buildNavClasses(registry);
             const int from=world.spawn(&type,1000,1000,0,0),target=world.spawn(&victim,1180,1000,0,1);
@@ -175,7 +175,7 @@ int main(int argc,char** argv) {
                 for(const auto& flame:world.flames())if(flame.fromId==from && !flame.particles.empty()) {
                     emitted=true;kind=int(flame.particles.back().kind);
                 }
-                hit=world.unit(target)->hp<tak::sim::Fixed::fromInt(victim.maxHp);
+                hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp);
             }
             std::printf("flame balance=%s unit=%s emitted=%d hit=%d kind=%d hash=%016llx\n",
                 crusades?"Crusades":"standard",name,int(emitted),int(hit),kind,
@@ -191,7 +191,7 @@ int main(int argc,char** argv) {
             const bool naval=type.minWaterDepth>0;
             auto victim=*registry.find(naval ? "verharp" : "tarzom");victim.maxHp=25000;victim.healTime=0;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(128*128,naval ? 20 : 100),128,128,naval ? 100 : 20);
             world.buildNavClasses(registry);
             const int from=world.spawn(&type,1000,1000,0,0),target=world.spawn(&victim,1180,1000,0,1);
@@ -202,7 +202,7 @@ int main(int argc,char** argv) {
                 for(const auto& shot:world.projectiles())if(shot.fromId==from && shot.straight) {
                     launched=true;moved=moved || shot.age>0;
                 }
-                hit=world.unit(target)->hp<tak::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
+                hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
             }
             std::printf("straight balance=%s unit=%s launched=%d moved=%d hit=%d hash=%016llx\n",
                 crusades?"Crusades":"standard",name,int(launched),int(moved),int(hit),
@@ -214,7 +214,7 @@ int main(int argc,char** argv) {
             if (type.canFly && !type.onOffable && type.weapon.damage>0) flyers.push_back(id);
         std::sort(flyers.begin(),flyers.end());
         for (const auto& name:flyers) for (int order=0;order<3;++order) {
-            tak::sim::World world;
+            ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             world.buildNavClasses(registry);
             const auto* type=registry.find(name);
@@ -283,7 +283,7 @@ int main(int argc,char** argv) {
             auto type=*registry.find(name);
             if (!type.hoverAttack && !type.weapon.hoverAttack) continue;
             for (bool close:{false,true}) {
-                tak::sim::World w;
+                ta::sim::World w;
                 const bool overrides=name=="zondrake" && close;
                 const int ground=overrides?240:100;
                 w.setTerrain(std::vector<uint8_t>(256*256,overrides?230:100),256,256,overrides?240:20);
@@ -304,7 +304,7 @@ int main(int argc,char** argv) {
                 const auto& weapon=type.weapons.front();
                 const int distance=weapon.hoverAttackDistance?weapon.hoverAttackDistance:type.hoverAttackDistance;
                 const int altitude=weapon.hoverAttackAltitude?weapon.hoverAttackAltitude:type.hoverAttackAltitude;
-                const float radius=tak::sim::fxLen(u->x-t->x,u->z-t->z).toFloat();
+                const float radius=ta::sim::fxLen(u->x-t->x,u->z-t->z).toFloat();
                 std::printf("hover balance=%d unit=%s close=%d distance=%.2f wanted=%d height=%.2f wanted=%d\n",
                     int(crusades),name.c_str(),int(close),radius,distance,u->flightY.toFloat(),std::min(511,ground+altitude));
                 check(std::abs(radius-distance)<20,"hover flyer settles at authored attack distance");
@@ -316,7 +316,7 @@ int main(int argc,char** argv) {
                 for (int tick=0;tick<900;++tick) w.tick(1.f/30.f);
                 u=w.unit(a);t=w.unit(b);
                 check(t->z.toFloat()>previousZ+100,"pursuit fixture target actually moved");
-                check(std::abs(tak::sim::fxLen(u->x-t->x,u->z-t->z).toFloat()-distance)<20,
+                check(std::abs(ta::sim::fxLen(u->x-t->x,u->z-t->z).toFloat()-distance)<20,
                       "hover flyer follows a moving target");
             }
         }
@@ -336,7 +336,7 @@ int main(int argc,char** argv) {
             auto dummy=*registry.find("tarzom");dummy.maxHp=30000;dummy.healTime=0;
             dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();
             const auto& shooter=*registry.find("tarnecro");
-            tak::sim::World w;
+            ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int ground=w.spawn(&dummy,2300,2000,0,0),flyer=w.spawn(&type,2300,2600,0,1);
@@ -346,7 +346,7 @@ int main(int argc,char** argv) {
             const float range=type.weapons.front().range;
             const auto* g=w.unit(ground);
             int held=0,runs=0,onLine=0,shots=0,hits=0;bool near=false,fired=false;
-            std::optional<tak::sim::RetailFlightGoal> last;
+            std::optional<ta::sim::RetailFlightGoal> last;
             for (int tick=0;tick<1800;++tick) {
                 if (tick==120) w.attack(lokken,flyer,false);   // WEAPON1, the unguided Fire Ball
                 const auto* before=w.unit(flyer);
@@ -355,7 +355,7 @@ int main(int argc,char** argv) {
                 const auto* u=w.unit(flyer);
                 if (u->orders.empty() || u->orders.front().targetId!=ground) break;
                 if (u->flightGroundMode==2 && u->x.v==x && u->flightY.v==y && u->z.v==z) ++held;
-                near=near || tak::sim::fxLen(u->x-g->x,u->z-g->z).toFloat()<=range/2;
+                near=near || ta::sim::fxLen(u->x-g->x,u->z-g->z).toFloat()<=range/2;
                 fired=fired || u->firedWeapons;
                 if (w.unit(lokken)->firedWeapons&1) ++shots;
                 for (const auto& hit:w.hits())
@@ -398,7 +398,7 @@ int main(int argc,char** argv) {
             type.maxHp=30000;type.healTime=0;
             auto dummy=*registry.find("tarzom");dummy.maxHp=30000;dummy.healTime=0;
             dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();
-            tak::sim::World w;
+            ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int ground=w.spawn(&dummy,2300,2000,0,0),flyer=w.spawn(&type,2300,2600,0,1);
@@ -407,7 +407,7 @@ int main(int argc,char** argv) {
             const auto* hp=w.unit(ground);
             int shots=0,hits=0;double damage=0;
             for (int tick=0;tick<3600;++tick) {
-                w.unit(ground)->hp=tak::sim::Fixed::fromInt(dummy.maxHp);
+                w.unit(ground)->hp=ta::sim::Fixed::fromInt(dummy.maxHp);
                 w.tick(1.f/30.f);
                 const auto* u=w.unit(flyer);
                 if (!u || u->orders.empty() || u->orders.front().targetId!=ground) break;
@@ -433,8 +433,8 @@ int main(int argc,char** argv) {
         // stop, and the body faces from the tick after (World::tickCombat).
         // Those held ticks are not counted.
         auto nativeFrom=[](const std::array<int32_t,3>& origin,const std::array<int32_t,3>& point) {
-            using tak::sim::Fixed;
-            return uint16_t(tak::sim::retailDirection(
+            using ta::sim::Fixed;
+            return uint16_t(ta::sim::retailDirection(
                 Fixed::raw(std::bit_cast<int32_t>(uint32_t(origin[0])-uint32_t(point[0]))),
                 Fixed::raw(std::bit_cast<int32_t>(uint32_t(origin[2])-uint32_t(point[2])))).v);
         };
@@ -443,7 +443,7 @@ int main(int argc,char** argv) {
             gryphon.weapons.clear();gryphon.weapon={};
             const auto& lokken=*registry.find("tarnecro");
             const auto& fireBall=lokken.weapons.front();
-            tak::sim::World w;
+            ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int shooter=w.spawn(&lokken,2000,2000,0,0),flyer=w.spawn(&gryphon,2300,1500,0,1);
@@ -454,19 +454,19 @@ int main(int argc,char** argv) {
             for (int tick=0;tick<900;++tick) {
                 const auto* s=w.unit(shooter);const auto* f=w.unit(flyer);
                 const std::array<int32_t,3> origin{s->x.v,s->groundY.v,s->z.v},middle{f->x.v,f->flightY.v,f->z.v};
-                const auto lead=tak::retailAimLead(origin,w.queryUnitScriptPoint(flyer,true),
+                const auto lead=ta::retailAimLead(origin,w.queryUnitScriptPoint(flyer,true),
                     {f->flightVelocity.x,f->flightVelocity.y,f->flightVelocity.z},
-                    tak::retailAimSpeed(fireBall.projVel),fireBall.noLead);
+                    ta::retailAimSpeed(fireBall.projVel),fireBall.noLead);
                 const uint16_t toLead=nativeFrom(origin,lead),toCentre=nativeFrom(origin,middle);
-                const bool rest=s->speed==tak::sim::Fixed();
+                const bool rest=s->speed==ta::sim::Fixed();
                 const uint32_t simulated=w.tickCount();
                 w.tick(1.f/30.f);
                 s=w.unit(shooter);
-                if (!rest || s->speed!=tak::sim::Fixed() ||
-                    tak::sim::fxLen(f->x-s->x,f->z-s->z).toFloat()>fireBall.range) continue;
+                if (!rest || s->speed!=ta::sim::Fixed() ||
+                    ta::sim::fxLen(f->x-s->x,f->z-s->z).toFloat()>fireBall.range) continue;
                 if (!s->orders.empty() && simulated<=s->orders.front().attackAimTick) continue;
                 ++aiming;
-                const uint16_t heading=tak::sim::portHeadingToRetail(s->heading);
+                const uint16_t heading=ta::sim::portHeadingToRetail(s->heading);
                 led+=heading==toLead;centre+=heading==toCentre;
             }
             std::printf("facing balance=%s lokken vs crossing gryphon aiming=%d facing led=%d centre=%d\n",
@@ -484,7 +484,7 @@ int main(int argc,char** argv) {
             wisp.weapon=wisp.weapons.front();
             auto barracks=*registry.find("arakeep");barracks.maxHp=30000;barracks.healTime=0;
             barracks.weapons.clear();barracks.weapon={};
-            tak::sim::World w;
+            ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int target=w.spawn(&barracks,2000,2000,0,0),flyer=w.spawn(&wisp,2000,2600,0,1);
@@ -493,7 +493,7 @@ int main(int argc,char** argv) {
             const std::array<int32_t,3> middle{b->x.v,b->groundY.v,b->z.v};
             const auto sweetSpot=w.queryUnitScriptPoint(target,true);
             int ticks=0,headed=0,refreshes=0,ringed=0;
-            tak::sim::RetailFlightVector last{};
+            ta::sim::RetailFlightVector last{};
             for (int tick=0;tick<1200;++tick) {
                 const auto* f=w.unit(flyer);
                 const std::array<int32_t,3> from{f->x.v,f->flightY.v,f->z.v};
@@ -527,22 +527,22 @@ int main(int argc,char** argv) {
         // reclaim point kept a velocity with no speed. Shooters lead by the
         // velocity (51aa50), the COB speed queries and MoveRate read both, and
         // the next flight step starts from them, so a held flyer reports neither.
-        auto still=[](const tak::sim::Unit& u,int32_t x,int32_t y,int32_t z) {
+        auto still=[](const ta::sim::Unit& u,int32_t x,int32_t y,int32_t z) {
             return u.flightGroundMode==2 && u.x.v==x && u.flightY.v==y && u.z.v==z;
         };
-        auto reportHold=[&](tak::sim::World& w,int id,const char* hold,bool held,bool turning) {
+        auto reportHold=[&](ta::sim::World& w,int id,const char* hold,bool held,bool turning) {
             const auto& u=*w.unit(id);
             const auto& v=u.flightVelocity;
-            const uint32_t rate=tak::sim::RetailReplayProbe::moveRate(w,id);
+            const uint32_t rate=ta::sim::RetailReplayProbe::moveRate(w,id);
             std::printf("hold balance=%s unit=%s hold=%s held=%d velocity=(%d,%d,%d) speed=%d rate=%u\n",
                 crusades?"Crusades":"standard",u.type->id.c_str(),hold,int(held),v.x,v.y,v.z,u.speed.v,rate);
             check(held,"the flyer holds still");
-            check(v.x==0 && v.y==0 && v.z==0 && u.speed==tak::sim::Fixed(),"a held flyer reports no velocity or speed");
+            check(v.x==0 && v.y==0 && v.z==0 && u.speed==ta::sim::Fixed(),"a held flyer reports no velocity or speed");
             if (!turning) check(rate==0,"a held flyer that is not turning reports MoveRate 0");
         };
         for (const char* name:{"zongryp","creaeri"}) for (int hold=0;hold<4;++hold) {
             static const char* const holds[]={"wait","ambush","queued wait","stop"};
-            tak::sim::World w;
+            ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int flyer=w.spawn(registry.find(name),1000,1000,0,0);
@@ -569,7 +569,7 @@ int main(int argc,char** argv) {
         // VTOL_Follow (0x418860) never holds: it circles the guarded unit at
         // its weapon range + 160 (320 px unarmed), so the flyer keeps flying.
         for (const char* name:{"zongryp","creaeri"}) {
-            tak::sim::World w;
+            ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int charge=w.spawn(registry.find("tarzom"),1600,1000,0,0);
@@ -593,10 +593,10 @@ int main(int argc,char** argv) {
         }
         for (int hold=0;hold<3;++hold) {
             static const char* const holds[]={"repair","reclaim","placement retry"};
-            tak::sim::World w;w.setPlayerCount(2);
+            ta::sim::World w;w.setPlayerCount(2);
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
-            tak::sim::FeatType rock;rock.reclaimable=true;w.setFeatureTypes({rock});
+            ta::sim::FeatType rock;rock.reclaimable=true;w.setFeatureTypes({rock});
             w.player(0).mana=100000;
             const int flyer=w.spawn(registry.find("arafly"),1000,1000,0,0);
             w.order(flyer,1050,1000,false);
@@ -605,7 +605,7 @@ int main(int argc,char** argv) {
             auto blocker=*registry.find("tarzom");blocker.weapons.clear();blocker.weapon.damage=0;
             if (hold==0) {
                 const int id=w.spawn(&patient,1400,1000,0,0);
-                w.unit(id)->hp=tak::sim::Fixed::fromInt(patient.maxHp/2);
+                w.unit(id)->hp=ta::sim::Fixed::fromInt(patient.maxHp/2);
                 w.repair(flyer,id,false);
             }
             if (hold==1) { w.addFeature(4242,1400,1000,50,1,1,true,0);w.reclaim(flyer,4242,false); }
@@ -630,7 +630,7 @@ int main(int argc,char** argv) {
         // (529dc0). World measured flat distance to unit centres, so a shell
         // bursting on the ground hurt a Gryphon cruising over it.
         {
-            auto weaponNamed=[&](const char* unit,const char* name) -> const tak::sim::Weapon* {
+            auto weaponNamed=[&](const char* unit,const char* name) -> const ta::sim::Weapon* {
                 for (const auto& weapon:registry.find(unit)->weapons) if (weapon.name==name) return &weapon;
                 return nullptr;
             };
@@ -639,18 +639,18 @@ int main(int argc,char** argv) {
             check(shell && shell->aoe>16 && swirl && swirl->aoe>0 && swirl->aoe<=16,
                   "splash fixtures: a blast and a small-area weapon");
             if (shell && swirl) {
-                using tak::sim::Fixed;
+                using ta::sim::Fixed;
                 auto dummy=*registry.find("tarzom");dummy.maxHp=30000;dummy.healTime=0;
                 dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();
                 auto gryphon=*registry.find("zongryp");gryphon.maxHp=30000;gryphon.healTime=0;
-                tak::sim::World w;w.setPlayerCount(2);
+                ta::sim::World w;w.setPlayerCount(2);
                 w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
                 w.buildNavClasses(registry);
-                tak::sim::FeatType tree;tree.name="tree";tree.hp=100000;w.setFeatureTypes({tree});
+                ta::sim::FeatType tree;tree.name="tree";tree.hp=100000;w.setFeatureTypes({tree});
                 const int32_t ground=100*65536;
                 auto loss=[&](int id,Fixed before) { return (before-w.unit(id)->hp).floorInt(); };
                 // retail's fraction for a unit `gap` px from the blast
-                auto fraction=[](const tak::sim::Weapon& weapon,int gap) {
+                auto fraction=[](const ta::sim::Weapon& weapon,int gap) {
                     const double t=double(gap)/double(weapon.aoe/2)-1.0;
                     return gap ? float(t*t*(1.0-double(weapon.edge))+double(weapon.edge)) : 1.0f;
                 };
@@ -664,15 +664,15 @@ int main(int argc,char** argv) {
                 const int altitude=(f->flightY.v-ground)>>16;
                 check(f->flightGroundMode==2 && altitude>shell->aoe/2,"fixture flyer cruises above the blast radius");
                 Fixed hp=f->hp;
-                tak::sim::RetailReplayProbe::blast(w,*shell,{f->x.v,ground,f->z.v},0);
+                ta::sim::RetailReplayProbe::blast(w,*shell,{f->x.v,ground,f->z.v},0);
                 const int under=loss(flyer,hp);
                 hp=w.unit(flyer)->hp;
-                tak::sim::RetailReplayProbe::blast(w,*shell,{f->x.v,f->flightY.v,f->z.v},0);
+                ta::sim::RetailReplayProbe::blast(w,*shell,{f->x.v,f->flightY.v,f->z.v},0);
                 const int burst=loss(flyer,hp);
                 const int centre=w.spawn(&dummy,1500,1500,0,1),side=w.spawn(&dummy,1530,1500,0,1);
                 w.tick(1.f/30.f);   // World's old splash read the grid of the last tick
                 const Fixed full=w.unit(centre)->hp;
-                tak::sim::RetailReplayProbe::blast(w,*shell,{1500*65536,ground,1500*65536},0);
+                ta::sim::RetailReplayProbe::blast(w,*shell,{1500*65536,ground,1500*65536},0);
                 const int centreLoss=loss(centre,full),sideLoss=loss(side,full);
                 const int gap=30-8*dummy.footX;
                 const float base=shell->damageVs(&dummy);
@@ -681,11 +681,11 @@ int main(int argc,char** argv) {
                 w.addFeature(93*256+93,1500,1500,0,1,1,false,0);
                 w.tick(1.f/30.f);
                 Fixed centreHp=w.unit(centre)->hp;
-                tak::sim::RetailReplayProbe::blast(w,*swirl,{1500*65536,ground,1500*65536},0,centre);
+                ta::sim::RetailReplayProbe::blast(w,*swirl,{1500*65536,ground,1500*65536},0,centre);
                 const int struck=loss(centre,centreHp),bystander=loss(close,full);
                 const int scenery=w.feature(93*256+93) ? w.feature(93*256+93)->dmg : -1;
                 // ...and the ground 4 px from a unit's box, with nobody struck.
-                tak::sim::RetailReplayProbe::blast(w,*swirl,{1616*65536,ground,1500*65536},0);
+                ta::sim::RetailReplayProbe::blast(w,*swirl,{1616*65536,ground,1500*65536},0);
                 const int grazed=loss(edgeUnit,full);
                 std::printf("splash balance=%s gryphon altitude=%d under=%d burst=%d dummy centre=%d side=%d"
                     " (%d px from its box, fraction %.4f of %.0f) swirl struck=%d bystander=%d scenery=%d grazed=%d\n",
@@ -704,7 +704,7 @@ int main(int argc,char** argv) {
         // Preserve the intentional off switch for units that actually support it.
         auto turret=*registry.find("zondrake");turret.onOffable=true;
         auto victim=*registry.find("tarzom");victim.maxHp=30000;victim.healTime=0;victim.weapon.damage=0;victim.weapons.clear();
-        tak::sim::World world;
+        ta::sim::World world;
         world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
         int a=world.spawn(&turret,800,800,1.570796327f,0),b=world.spawn(&victim,950,800,0,1);
         world.setActive(a,false);world.attack(a,b,false);

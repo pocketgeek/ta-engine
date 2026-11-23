@@ -7,8 +7,8 @@
 #include <cstdio>
 #include <iostream>
 #include <stdexcept>
-using namespace tak::sim;
-namespace tak::sim { struct RetailReplayProbe {
+using namespace ta::sim;
+namespace ta::sim { struct RetailReplayProbe {
     static void hit(World& w,const Weapon& weapon,float x,float z,int player,int from,Unit* victim) {
         w.applyHit(weapon,x,z,player,from,victim);
     }
@@ -210,7 +210,7 @@ int main(int argc,char** argv) try {
         const int a=w.spawn(&t,400,400,0,0),b=w.spawn(&t,600,400,0,1),c=w.spawn(&t,800,400,0,2);
         w.unit(b)->lastHitBy=a;w.unit(b)->lastHitPlayer=0;
         TypeRegistry registry;
-        MissionScript mission(std::vector<uint8_t>{},tak::tdf::Node{},registry,0,"kill fixture");
+        MissionScript mission(std::vector<uint8_t>{},ta::tdf::Node{},registry,0,"kill fixture");
         mission.command(w,"Kill",{a});   // names one unit; retail ignores it
         w.tick(1.f/30);
         for (int id:{a,b,c}) check(!w.unit(id)->alive() && w.unit(id)->deathType==10,"Kill left a unit alive");
@@ -373,7 +373,7 @@ int main(int argc,char** argv) try {
     if (argc==2) {
         // The death weapon at retirement: the Bomb Sprinkler's Dying runs for
         // a while before 512ae0 fires its [EXPLODEAS].
-        const auto vfs=tak::hpi::mountRetailRoot(argv[1]);
+        const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         TypeRegistry registry;setupRegistry(registry,vfs,false);
         const UnitType* bomb=registry.find("crebomb");
         check(bomb && bomb->hasExplodeAs,"crebomb has no death weapon");
@@ -395,7 +395,7 @@ int main(int argc,char** argv) try {
         // so shipped walkers whose Killed leaves one get a destructible
         // corpse and a death weapon here; killed alone on open ground, the
         // corpse has taken no damage.
-        World definitions;registerMapFeatures(definitions,tak::tnt::Map{},vfs,&registry);
+        World definitions;registerMapFeatures(definitions,ta::tnt::Map{},vfs,&registry);
         int reached=0;
         for (const auto& [id,shipped]:registry.types()) {
             if (reached>=4) break;

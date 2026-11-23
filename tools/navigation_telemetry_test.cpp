@@ -4,7 +4,7 @@
 
 using namespace navigation_test;
 using crowdbench_matrix::LatencyObserver;
-namespace tak::sim {
+namespace ta::sim {
 struct RetailReplayProbe {
     static void observe(World& world,NavigationTelemetry* observer) {
         world.paths_.setTelemetry(observer);

@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace tak::sim {
+namespace ta::sim {
 
 // A member a defaulted copy leaves empty, for the owner to fill by hand afterwards:
 // an owning pointer whose target needs its own clone, a table of owned arrays, a
@@ -244,4 +244,4 @@ private:
     ArrayRuns<T> runs_;
 };
 
-}  // namespace tak::sim
+}  // namespace ta::sim

@@ -11,7 +11,7 @@
 #include <tuple>
 #include <vector>
 
-using namespace tak::terrainwork;
+using namespace ta::terrainwork;
 static int checks=0;
 static void check(bool value,const std::string& message) {++checks;if(!value)throw std::runtime_error(message);}
 

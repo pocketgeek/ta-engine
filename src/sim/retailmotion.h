@@ -5,7 +5,7 @@
 #include <array>
 #include <bit>
 
-namespace tak::sim {
+namespace ta::sim {
 
 struct RetailSteeringPoint { Fixed x, z; };
 
@@ -277,4 +277,4 @@ bool retailBoatScanVisible(Fixed x, Fixed y, Fixed z, int width, int height,
     return (wordAt(cx,cz)&(uint32_t(1)<<(player&31)))!=0;
 }
 
-} // namespace tak::sim
+} // namespace ta::sim
