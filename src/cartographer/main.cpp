@@ -356,7 +356,7 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
     dirty = (mapPath.empty() && !noDocument) || !recoveredFrom.empty();   // no document: nothing to lose
     history.reset(historySnapshot(),!dirty);
 
-    world = scenario.kingdom.empty() ? "aramon" : scenario.kingdom;
+    world = scenario.kingdom.empty() ? "green" : scenario.kingdom;
     sections.scan(vfs, world);
     features.scan(vfs, world);
     std::fprintf(stderr, "cartographer: %zu placeable features for '%s'\n",

@@ -134,7 +134,7 @@ bool cart::Editor::openDocument(const std::string& request) {
         mapView.quiesce();vfs=std::move(nextVfs);mapView.reload(vfs,path);mapView.setOffset(0,0);minimapSource=nullptr;invalidateMinimap();
         scenario=std::move(nextMetadata);scen=std::move(nextScenario);units=std::move(nextUnits);useOnly=std::move(nextUseOnly);
         aiFiles=std::move(nextAiFiles);
-        mapName=chosen;mapPath=path;world=scenario.kingdom.empty()?"aramon":scenario.kingdom;
+        mapName=chosen;mapPath=path;world=scenario.kingdom.empty()?"green":scenario.kingdom;
         sections.scan(vfs,world);features.scan(vfs,world);
         for(auto& [key,t]:featTex)if(t)SDL_DestroyTexture(t);
         featTex.clear();

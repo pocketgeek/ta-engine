@@ -405,8 +405,22 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
         auto b = vfs.read(otaPath);
         auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), otaPath);
         const auto* gh = root.child("globalheader");
+        // Total Annihilation: [Schema N]\[specials], XPos/ZPos in PIXELS (0x436860;
+        // e.g. Ashap Plateau StartPos1 at 3504,304 on a 4128 px map). The first
+        // "Network" schema serves skirmish, else Schema 0. TAK-era engine maps keep
+        // [Map Data]\[specials] in cells.
+        const ta::tdf::Node* schema = nullptr;
+        if (gh)
+            for (int i = 0; i < 16 && !schema; ++i)
+                if (const auto* sc = gh->child("schema " + std::to_string(i))) {
+                    std::string type = sc->valueOr("type", "");
+                    for (char& c : type) c = char(std::tolower(static_cast<unsigned char>(c)));
+                    if (type.rfind("network", 0) == 0) schema = sc;
+                }
+        if (gh && !schema) schema = gh->child("schema 0");
+        const bool pixels = schema && schema->child("specials");
         const auto* md = gh ? gh->child("map data") : nullptr;
-        const auto* sp = md ? md->child("specials") : nullptr;
+        const auto* sp = pixels ? schema->child("specials") : (md ? md->child("specials") : nullptr);
         if (!sp) return out;
         std::map<int, std::pair<float, float>> byIndex;
         for (const auto& name : sp->childOrder) {
@@ -416,8 +430,8 @@ std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
             if (what.rfind("StartPos", 0) != 0 && what.rfind("startpos", 0) != 0) continue;
             int n = std::atoi(what.c_str() + 8);
             if (n <= 0) continue;
-            byIndex[n] = {float(s->numberOr("xpos", 0) * 16),
-                          float(s->numberOr("zpos", 0) * 16)};
+            const float k = pixels ? 1.0f : 16.0f;
+            byIndex[n] = {float(s->numberOr("xpos", 0) * k), float(s->numberOr("zpos", 0) * k)};
         }
         for (auto& [n, pos] : byIndex) out.push_back(pos);
     } catch (const std::exception&) {}

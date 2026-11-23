@@ -12,7 +12,7 @@ namespace ta::tnt {
 
 struct StartPos {
     int number = 1;      // StartPos<number> (1-based)
-    int xpos = 0, zpos = 0;   // in CELLS (16px); world px = *16
+    int xpos = 0, zpos = 0;   // in CELLS (16px); world px = *16 (TA's OTA stores pixels)
 };
 
 struct Scenario {
@@ -22,7 +22,12 @@ struct Scenario {
     std::string missionName;
     std::string missionDescription;
     std::string generatorRecipe;      // optional TA engine extension, independent of the description
-    std::string kingdom;              // lowercase world: aramon/taros/veruna/zhon
+    std::string kingdom;              // the world: TA's planet= (Mars, Lush, Metal...), else TAK kingdom=
+    // Total Annihilation [GlobalHeader] / [Schema 0] economy and environment.
+    int tidalStrength = 0, solarStrength = 0, minWindSpeed = 0, maxWindSpeed = 2000, gravity = 112;
+    int lavaWorld = 0, killMul = 50;
+    int surfaceMetal = 3, mohoMetal = 40;
+    int humanMetal = 1000, computerMetal = 1000, humanEnergy = 1000, computerEnergy = 1000;
     int sizeW = 0, sizeH = 0;         // in Units (cells>>5); OTA "size = W x H"
     std::string useOnlyUnits;         // "<name>.tdf", or empty when unrestricted
     bool hasScenario = false;
