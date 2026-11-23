@@ -10648,10 +10648,15 @@ void searchBoxMin(const std::vector<uint8_t>& cell,int width,int height,int w,in
 // test fails exactly when that ring leaves the map. foot() is the minimum over
 // the footprint at (cx,cz), ring() the minimum over (footX+2)x(footZ+2) at
 // (cx-1,cz-1); each is read only where its box lies inside the map.
+// mapLoad: TotalA.exe's full build 0x440500 counts off-map cells as 0 but does
+// not exclude the last row/column, which the local re-rate 0x47dfc0 does
+// (docs/retail-pathfinding.md 1.4/1.5, change list item 17).
 template<class Foot,class Ring>
-int boxMinFootprintGrade(int cx,int cz,int footX,int footZ,int width,int height,Foot foot,Ring ring) {
-    int grade=cx+footX>=width || cz+footZ>=height ? 0 : foot();
-    if (grade>4 && (cx<1 || cz<1 || cx+footX+1>=width || cz+footZ+1>=height || ring()<6)) grade=4;
+int boxMinFootprintGrade(int cx,int cz,int footX,int footZ,int width,int height,Foot foot,Ring ring,
+                         bool mapLoad=false) {
+    const int edge=mapLoad ? 0 : 1;   // the local re-rate also refuses touching the last row/column
+    int grade=cx+footX+edge>width || cz+footZ+edge>height ? 0 : foot();
+    if (grade>4 && (cx<1 || cz<1 || cx+footX+1+edge>width || cz+footZ+1+edge>height || ring()<6)) grade=4;
     return grade;
 }
 } // namespace
@@ -10826,7 +10831,7 @@ void World::buildSearchPlane(SearchGradePlane& plane) {
     for (int cz=0;cz<height;++cz) for (int cx=0;cx<width;++cx) {
         const int grade=boxMinFootprintGrade(cx,cz,footX,footZ,width,height,
             [&] { return foot[size_t(cz)*width+cx]; },
-            [&] { return ring[size_t(cz-1)*width+cx-1]; });
+            [&] { return ring[size_t(cz-1)*width+cx-1]; },/*mapLoad=*/true);
         if (!grade) continue;
         const size_t index=size_t(cz)*width+cx;
         plane.cells[index]=uint8_t(grade);
@@ -10843,7 +10848,13 @@ bool World::searchGradeBuildMatchesReference() {
         buildSearchPlane(fast);
         reference.cells.assign(size_t(reference.nav->width())*reference.nav->height(),0);
         refreshSearchRectPerCell(reference,0,0,reference.nav->width(),reference.nav->height());
-        if (fast.cells!=reference.cells || fast.checksum!=reference.checksum) return false;
+        // The map-load build differs from the per-cell re-rate only in the last
+        // row/column band (x+fx >= W-1 or z+fz >= H-1), as TotalA.exe's does.
+        const int w=reference.nav->width(),h=reference.nav->height();
+        for (int z=0;z<h;++z) for (int x=0;x<w;++x) {
+            if (x+fast.footX>=w-1 || z+fast.footZ>=h-1) continue;
+            if (fast.cells[size_t(z)*w+x]!=reference.cells[size_t(z)*w+x]) return false;
+        }
     }
     return true;
 }
