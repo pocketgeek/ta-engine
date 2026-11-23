@@ -57,12 +57,10 @@ ModelView::Asset ModelView::loadAsset(const ta::hpi::Vfs& vfs,const std::string&
     result.model=ta::tdo::load(vfs.read("objects3d/"+id+".3do"));
     if(const auto bytes=vfs.tryRead("scripts/"+id+".cob"))result.script=ta::cob::load(*bytes,id);
     std::map<std::string,ta::gaf::Palette> palettes;
-    for(const char* side:{"ara","tar","ver","zon","cre","aid","mon","npc","lif","mis"}) {
-        const auto path="palettes/"+std::string(side)+"_textures.pcx";
-        if(const auto bytes=vfs.tryRead(path))palettes.emplace(side,ta::gaf::Palette::fromBytes(*bytes,path));
-    }
-    if(!palettes.count("ara"))throw std::runtime_error("Missing model texture palette");
-    result.palette=palettes.count(id.substr(0,3))?palettes.at(id.substr(0,3)):palettes.at("ara");
+    // Total Annihilation: every model texture uses the game palette.
+    if(const auto bytes=vfs.tryRead("palettes/palette.pal"))palettes.emplace("ta",ta::gaf::Palette::fromBytes(*bytes,"palettes/palette.pal"));
+    if(!palettes.count("ta"))throw std::runtime_error("Missing model texture palette");
+    result.palette=palettes.at("ta");
     std::set<std::string> needed;
     const auto gather=[&](auto&& self,const ta::tdo::Object& object,bool root)->void {
         if(!skipLiveModelPiece(lower(object.name),root))for(size_t i=0;i<object.primitives.size();++i) {
@@ -76,7 +74,8 @@ ModelView::Asset ModelView::loadAsset(const ta::hpi::Vfs& vfs,const std::string&
         check();if(needed.empty())break;
         if(ta::vpath::extension(path)!=".gaf")continue;
         const auto bank=lower(ta::vpath::stem(path)).substr(0,3);
-        const auto& palette=palettes.count(bank)?palettes.at(bank):palettes.at("ara");
+        (void)bank;
+        const auto& palette=palettes.at("ta");
         for(auto& sequence:ta::gaf::load(vfs.read(path),palette,5,path)) {
             const auto name=lower(sequence.name);
             if(!sequence.frames.empty() && needed.erase(name))result.textures.emplace(name,std::move(sequence.frames.front()));

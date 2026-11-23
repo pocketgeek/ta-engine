@@ -3096,13 +3096,12 @@
         assetGeneration_.bump();   // the model texture registry changes below
         // Faction texture banks use their own palettes (palettes/<side>_textures.pcx).
         // The VFS merges base + Iron Plague (cre) texture GAFs into one namespace.
+        // Total Annihilation draws every model texture through the one game palette
+        // (palettes/palette.pal) with its shade table (palettes/palette.shd).
         std::map<std::string, ta::gaf::Palette> pals;
-        for (const char* side : {"ara", "tar", "ver", "zon", "aid", "cre"}) {
-            std::string pp = std::string("palettes/") + side + "_textures.pcx";
-            try { if (vfs_.has(pp)) pals[side] = ta::gaf::Palette::fromBytes(vread(pp), pp); }
-            catch (const std::exception&) {}
-        }
-        if (!pals.count("ara")) return;   // no palettes available
+        try { pals["ta"] = ta::gaf::Palette::fromBytes(vread("palettes/palette.pal"), "palettes/palette.pal"); }
+        catch (const std::exception&) {}
+        if (!pals.count("ta")) return;   // no palette available
         // Palette lighting banks (workstream M): one palette + shade table per faction
         // bank, shared by every texture of the bank.
         std::map<std::string, uint8_t> bankIndex;
@@ -3110,9 +3109,8 @@
             if (ta::vpath::extension(path) != ".gaf") continue;
             std::string stem = ta::vpath::stem(path);
             std::transform(stem.begin(), stem.end(), stem.begin(), ::tolower);
-            const auto* pal = &pals.at("ara");
-            auto pit = pals.find(stem.substr(0, 3));
-            if (pit != pals.end()) pal = &pit->second;
+            const auto* pal = &pals.at("ta");
+            auto pit = pals.find("ta");
             try {
                 const auto bytes=vread(path);
                 // Decode through an index-identity palette as well: palette colours
@@ -3124,11 +3122,11 @@
                     indexPalette.rgba[i][3]=255;
                 }
                 auto indexed=ta::gaf::load(bytes,indexPalette,5,path);
-                const std::string bank=pit!=pals.end() ? pit->first : "ara";
+                const std::string bank="ta";
                 auto bankSlot=bankIndex.find(bank);
                 if(bankSlot==bankIndex.end()) {
                     // A bank without its shade table gets no palette lighting (as before).
-                    const std::string shadePath="palettes/"+bank+"_textures.shd";
+                    const std::string shadePath="palettes/palette.shd";
                     std::vector<uint8_t> shades;
                     if(vfs_.has(shadePath)) shades=vread(shadePath);
                     uint8_t slot=0xff;
