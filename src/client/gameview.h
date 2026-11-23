@@ -1,4 +1,5 @@
 #pragma once
+#include "client/battlemusic.h"
 #include "client/areadrag.h"
 #include "client/emotetiming.h"
 #include "client/retailmodellighting.h"
@@ -209,6 +210,9 @@ public:
     // faction playlist once the match starts. Called every frame; only (re)starts the
     // playlist on a state change so it doesn't restart the current track.
     int musicMode_ = 0;   // 0 = none yet, 1 = lobby, 2 = in-game
+    ta::battlemusic::BattleMusic battleMusic_;   // in-game music by battle status
+    uint32_t musicEventsSeen_ = 0;
+    int musicKillsSeen_ = 0;
     ta::EmoteTiming emoteTiming_[8];
     uint64_t emoteNowMs_ = 0; // captured once per rendered frame, safe for geometry workers
     bool discoWas_[8] = {};       // per-player disco state, to fire the track once on start

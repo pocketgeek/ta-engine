@@ -192,7 +192,9 @@ std::optional<Pcm16> loadTrack(const hpi::Vfs& vfs, int track, int maxRate, bool
                      file.c_str(), bytes.empty() ? "cannot read the file" : why.c_str());
     }
     std::vector<uint8_t> bytes;
-    try { bytes = vfs.read("music/track" + std::to_string(track) + ".wav"); } catch (...) { return std::nullopt; }
+    // Logical CD track L plays music/(L+1).mp3 (the GOG shim maps "play cdaudio from N"
+    // to music/N.mp3, and data track 1 is skipped: docs/retail-music.md section 4).
+    try { bytes = vfs.read("music/" + std::to_string(track + 1) + ".mp3"); } catch (...) { return std::nullopt; }
     std::string why;
     auto pcm = decode(bytes, maxRate, &why);
     if (!pcm) std::fprintf(stderr, "music: track %d will not play: %s\n", track, why.c_str());

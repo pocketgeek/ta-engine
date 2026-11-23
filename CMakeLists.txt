@@ -546,6 +546,9 @@ set_tests_properties(legion_idmap_test PROPERTIES LABELS legion)
 add_executable(selportraits_test tools/selportraits_test.cpp)   # header-only client logic, no SDL
 target_include_directories(selportraits_test PRIVATE src)
 add_test(NAME selportraits COMMAND selportraits_test)
+add_executable(battle_music_test tools/battle_music_test.cpp)   # header-only client logic, no SDL
+target_include_directories(battle_music_test PRIVATE src)
+add_test(NAME battle_music COMMAND battle_music_test)
 add_executable(menuclick_test tools/menuclick_test.cpp)   # header-only client logic, no SDL
 target_include_directories(menuclick_test PRIVATE src)
 add_test(NAME menuclick COMMAND menuclick_test)

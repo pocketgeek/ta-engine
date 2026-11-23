@@ -196,16 +196,43 @@
         }
     }
 
+    // Music: retail plays no CD music in the front end or the lobby, and in a game it
+    // plays by battle status (client/battlemusic.h, docs/retail-music.md).
     void GameView::manageMusic() {
-        int want = inLobbyPhase() ? 1 : 2;
-        if (want == musicMode_) return;
-        musicMode_ = want;
-        // The menu-launched front-end owns the lobby BGM (so it plays continuously
-        // from the menu into the lobby); suppress ours there, but still switch to
-        // faction music once the game proper begins.
-        if (want == 1) { if (!externalLobbyMusic_) sounds_.startMusic(vfs_, {ta::music::kMenuTrack}, false); }
-        else if (mp_ && mp_->isSpectator()) sounds_.startMusic(vfs_, allFactionMusicTracks());
-        else sounds_.startMusic(vfs_, factionMusicTracks(side_));
+        const bool inGame = !inLobbyPhase();
+        const uint32_t now = uint32_t(SDL_GetTicks64() * 30 / 1000);   // retail clock: 1/30 s
+        auto apply = [&](const ta::battlemusic::Action& a) {
+            if (a.kind == ta::battlemusic::Action::Kind::Play) { sounds_.setMusicFade(1.0f); sounds_.playTrack(vfs_, a.track); }
+            else if (a.kind == ta::battlemusic::Action::Kind::Stop) sounds_.stopMusic();
+            else sounds_.setMusicFade(a.gain);
+        };
+        if (!inGame) {
+            if (musicMode_ == 2) apply(battleMusic_.stop());
+            musicMode_ = 1;
+            return;
+        }
+        const bool spectator = mp_ && mp_->isSpectator();
+        const int me = localPlayer_;
+        const bool havePlayer = !spectator && me >= 0 && me < frameNumPlayers();
+        if (musicMode_ != 2) {
+            musicMode_ = 2;
+            if (havePlayer) {
+                musicKillsSeen_ = framePlayer(me).kills;
+                musicEventsSeen_ = framePlayer(me).combatEvents;
+            }
+            apply(battleMusic_.startGame(now));
+            return;
+        }
+        int units = 0;
+        if (havePlayer) {   // only the local player's fights count (0x494e70)
+            const auto& p = framePlayer(me);
+            for (uint32_t e = musicEventsSeen_; e != p.combatEvents; ++e) battleMusic_.onDamage();
+            for (int k = musicKillsSeen_; k < p.kills; ++k) battleMusic_.onKill();
+            musicEventsSeen_ = p.combatEvents;
+            musicKillsSeen_ = p.kills;
+            units = p.unitCount;
+        }
+        apply(battleMusic_.tick(now, units, sounds_.musicEnded()));
     }
 
     void GameView::applySettings(const ta::Settings& s) {
@@ -1421,7 +1448,7 @@
                     }
             }
             r.manaShareMask = pl.manaShareMask;
-            r.kills = pl.kills; r.unitCount = pl.unitCount;
+            r.kills = pl.kills; r.unitCount = pl.unitCount; r.combatEvents = pl.combatEvents;
             r.built = pl.built; r.losses = pl.losses; r.score = pl.score;
             // sim keeps these in TICKS now; the scoreboard wants seconds.
             r.defeatedAt = pl.defeatedAt < 0 ? -1.0f : float(pl.defeatedAt) / 30.0f;

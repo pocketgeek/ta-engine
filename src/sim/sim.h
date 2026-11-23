@@ -2200,6 +2200,9 @@ struct Player {
     const UnitType* godType = nullptr;
     int32_t score = 0;   // authored kill points; GET40 reads this in campaign scripts
     int   kills = 0;     // enemy units this player has destroyed (F4 overlay)
+    // Damage events this player took part in, as attacker or victim (display only,
+    // not hashed): the battle-music monitor's +1 input (TotalA.exe 0x489de6).
+    uint32_t combatEvents = 0;
     // End-of-game scoreboard counters (retail's victory/defeat screen columns).
     // Derived from hashed events and incremented in exactly one place each, so they
     // stay identical on every peer without being folded into stateHash -- same

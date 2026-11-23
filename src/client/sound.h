@@ -777,7 +777,7 @@ private:
                 const size_t frame = size_t(musicPos_ >> 32);
                 if (frame >= total) { musicDone_ = true; break; }
                 framesAt(music_, musicPos_, musicStep_, false, false, src);
-                for (int k = 0; k < mc; ++k) src[k] = src[k] * musicVol_ / 256;
+                for (int k = 0; k < mc; ++k) src[k] = src[k] * musicVol_ * musicFade_ / (256 * 256);
                 musicPos_ += musicStep_;
                 for (int o = 0; o < ch; ++o) {
                     float v = 0;
@@ -899,6 +899,7 @@ public:
     // `custom` false plays the originals only (the lobby: CUSTOM MUSIC is for games).
     void startMusic(const ta::hpi::Vfs& vfs, const std::vector<int>& tracks, bool custom = true) {
         vfs_ = &vfs;
+        singleShot_ = false;
         musicCustom_ = custom;
         std::vector<int> want = tracks;
         if (want.empty())
@@ -915,11 +916,30 @@ public:
         }
     }
 
+    // Battle-status music (client/battlemusic.h) drives single tracks: play logical
+    // track L (music/(L+1).mp3) once, report its end, fade, stop. Clears any playlist.
+    void playTrack(const ta::hpi::Vfs& vfs, int logical) {
+        vfs_ = &vfs;
+        if (nextMusic_.valid()) nextMusic_.get();
+        playlist_.assign(1, logical);
+        singleShot_ = true;
+        if (dev_) loadTrack(0);
+    }
+    void stopMusic() {
+        playlist_.clear();
+        if (nextMusic_.valid()) nextMusic_.get();
+        underMixLock([&] { music_.samples.clear(); musicPos_ = 0; musicDone_ = false; });
+    }
+    // The single track finished (or nothing is loaded).
+    bool musicEnded() const { return musicDone_ || music_.samples.empty(); }
+    // Fade gain 0..1 over the music volume (battle-music fade-outs).
+    void setMusicFade(float g) { underMixLock([&] { musicFade_ = std::clamp(int(g * 256 + 0.5f), 0, 256); }); }
+
     // Advance to the next track when the current one finishes (call per frame). The next
     // one was decoded in the background meanwhile (a custom MP3 or FLAC takes a moment);
     // if it is not ready yet, the music waits a frame or two rather than the game.
     void pollMusic() {
-        if (!musicDone_ || playlist_.empty()) return;
+        if (!musicDone_ || playlist_.empty() || singleShot_) return;
         if (playlist_.size() == 1 && !music_.samples.empty()) {   // one track: play it again
             SDL_LockAudioDevice(dev_);
             musicPos_ = 0;
@@ -980,7 +1000,7 @@ private:
         if (nextMusic_.valid()) nextMusic_.get();   // a stale prefetch (the list changed)
         if (!pcm) return;   // loadTrack said why
         // Decode the one after while this one plays.
-        if (vfs_ && playlist_.size() > 1) {
+        if (vfs_ && playlist_.size() > 1 && !singleShot_) {
             nextMusicIdx_ = (idx + 1) % playlist_.size();
             nextMusic_ = std::async(std::launch::async, [vfs = vfs_, track = playlist_[nextMusicIdx_], custom = musicCustom_] {
                 return ta::music::loadTrack(*vfs, track, kMixRate, custom);
@@ -1014,6 +1034,8 @@ private:
     size_t musicTrack_ = 0;
     bool musicCustom_ = true;   // the playlist may play CUSTOM MUSIC files (not in the lobby)
     int musicVol_ = 128;  // out of 256 (BGM); 50% default
+    int musicFade_ = 256; // battle-music fade, out of 256
+    bool singleShot_ = false;   // playTrack(): no playlist advance
     int masterVol_ = 256; // out of 256, global gain over the whole mix
     int sfxVol_ = 256;    // out of 256, sound effects
     float chanGain_[8] = {1, 1, 1, 1, 1, 1, 1, 1};   // per-output-channel trim 0..1

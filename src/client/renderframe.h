@@ -280,6 +280,7 @@ struct PlayerR {
     }
     int32_t score = 0;
     int kills = 0, unitCount = 0, team = 0;
+    uint32_t combatEvents = 0;      // battle-music input (Player::combatEvents)
     int built = 0, losses = 0;      // end-of-game scoreboard counters
     float defeatedAt = -1;          // world clock at elimination (-1 = still in)
     bool defeated = false, godSummoned = false;

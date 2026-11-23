@@ -6898,6 +6898,11 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // 51a35a: +0xf8 and +0xfc change only when the hit names a hitter;
         // otherwise the earlier hitter keeps the credit.
         if (attacker) { e.lastHitBy = fromId; e.lastHitPlayer = fromPlayer; }
+        if (attacker) {   // battle-music input: one per damage event with an attacker
+            if (e.player >= 0 && e.player < numPlayers()) ++players_[size_t(e.player)].combatEvents;
+            if (fromPlayer != e.player && fromPlayer >= 0 && fromPlayer < numPlayers())
+                ++players_[size_t(fromPlayer)].combatEvents;
+        }
         retailHitResponse(e,attacker,w.dmgType);
         // Stone and freeze returned above; the paralyzer is the one status left.
         if (w.status == Weapon::Status::Paralyzed && e.type) {
