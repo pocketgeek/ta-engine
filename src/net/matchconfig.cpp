@@ -44,7 +44,6 @@ ReplayHeader replayHeaderFor(const GameOptions& o, const std::string& mapId, con
     h.mapId = mapId;
     h.mission = mission;
     h.engineVersion = ta::kVersion;
-    h.crusades = o.crusades;
     h.forfeitSelfDestruct = o.forfeitSelfDestruct;
     h.gameMods = o.gameMods;
     h.unitCap = o.unitCap;
@@ -73,7 +72,6 @@ ReplayHeader replayHeaderFor(const GameOptions& o, const std::string& mapId, con
 
 void matchInputsFrom(const ReplayHeader& h, GameOptions& o, SlotInfo* slots) {
     o = GameOptions{};
-    o.crusades = h.crusades;
     o.forfeitSelfDestruct = h.forfeitSelfDestruct;
     o.gameMods = h.gameMods;
     o.unitCap = uint16_t(h.unitCap);

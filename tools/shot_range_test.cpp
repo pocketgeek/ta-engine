@@ -13,17 +13,12 @@
 // runs all 17 natively. Retail's Attack_Chase (403bb0) approaches a ring of
 // the weapon's range round the target's centre.
 // The engine padded a structure target's range by its footprint (8 * larger
-// side + 24 px). 0.9.12 dropped the pad for a shot that dies at its range (a
-// Crusades Death Totem took a lodestone 584 px off and its bolts died ~540
-// px out); a Dropped bomb, a Remote or Wandering spell and an instant or
+// side + 24 px). 0.9.12 dropped the pad for a shot that dies at its range; a Dropped bomb, a Remote or Wandering spell and an instant or
 // status Line-of-Sight shot kept it, so each was cast at a building up to
 // the pad past its range (Weapon::centreReach now: every class but melee).
 //
 // Checks (flat 128x128 map, shipped units):
-//   - every shipped weapon of either roster, by retail class: no pad but for
-//     melee;
-//   - Crusades: a zonglyph 584.5 px from an enemy tarlode never targets it
-//     and fires nothing; at ~538 px it targets it and its bolts hit;
+//   - every shipped weapon, by retail class: no pad but for melee;
 //   - a unit of each class on Hold Position half the old pad past its range
 //     from an enemy building never targets it and does it no damage; 20 px
 //     inside its range it does;
@@ -319,25 +314,11 @@ int main(int argc, char** argv) {
     for (int i = 2; i < argc; ++i)
         if (std::string(argv[i]) == "--legion") mode = sim::PathfindingMode::Legion;
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry standard, crusades;
-    sim::setupRegistry(standard, vfs, false);
-    sim::setupRegistry(crusades, vfs, false);
+    sim::TypeRegistry standard;
+    sim::setupRegistry(standard, vfs);
     std::printf("[%s pathfinding]\n", mode == sim::PathfindingMode::Legion ? "Legion" : "Retail");
 
     survey(standard, "standard");
-    survey(crusades, "Crusades");
-
-    // The 0.9.12 replay's geometry: totem at (2600, 2952), lodestone at
-    // (2304, 3456), 584.49 px apart. Retail's 530580 at range 550: out.
-    {
-        const Static far = staticShooter(vfs, crusades, "zonglyph", "tarlode", -296, 504, 900);
-        std::printf("  Death Totem, lodestone 584.5 px off: %s\n", describe(far).c_str());
-        check(far.held == 0 && far.shots == 0,
-              "a Crusades Death Totem (range 550) never targets a lodestone 584.5 px off");
-        const Static near = staticShooter(vfs, crusades, "zonglyph", "tarlode", -272, 464, 900);
-        std::printf("  Death Totem, lodestone 537.8 px off: %s\n", describe(near).c_str());
-        check(near.held > 0 && near.damage > 0, "at 537.8 px it targets the lodestone and its bolts hit");
-    }
 
     // The target: an Aramon Barracks (7x12: the old pad was 120 px, its half
     // width 56).

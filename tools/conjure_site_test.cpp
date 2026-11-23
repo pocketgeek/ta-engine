@@ -409,7 +409,7 @@ int main(int argc,char** argv) {
     if(argc<2) {std::fprintf(stderr,"usage: conjure_site_test <retail-install-dir> [--legion]\n");return 2;}
     const bool legion=argc>2 && std::strcmp(argv[2],"--legion")==0;
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
 
     // A cell-centred conjurer and one off the grid.
     for(const auto [bx,bz] : {std::pair{768.f,768.f},std::pair{774.5f,763.25f}}) {

@@ -80,9 +80,9 @@ struct Field {
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-    for (bool crusades:{false,true}) {
-        const char* balance=crusades ? "Crusades" : "standard";
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        const char* balance="standard";
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         const UnitType gryphon=target(registry,"zongryp");
         const UnitType dummy=target(registry,"tarzom");
         // The Titan, and every other mobile unit whose attack weapon is melee.

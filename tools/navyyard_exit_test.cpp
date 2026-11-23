@@ -216,7 +216,7 @@ int main(int argc,char** argv) {
     if(trace)traceIndex=std::atol(std::getenv("EXIT_TRACE"));
     if(const char* e=std::getenv("EXIT_EVERY"))traceEvery=std::max(1,std::atoi(e));
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     constexpr int kShips=6;
     for(auto mode:{sim::PathfindingMode::Retail,sim::PathfindingMode::Legion})
         for(auto layout:{Layout::Open,Layout::Shore})

@@ -930,7 +930,7 @@ int main(int argc, char** argv) {
         if (std::string(argv[i]) == "--legion") mode = sim::PathfindingMode::Legion;
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, false);
+    sim::setupRegistry(reg,vfs);
     std::printf("[%s pathfinding]\n", mode == sim::PathfindingMode::Legion ? "Legion" : "Retail");
 
     const auto ground = [](const sim::UnitType& t) { return !t.canFly && !t.isStructure() && t.canMove; };

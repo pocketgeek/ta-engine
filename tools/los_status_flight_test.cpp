@@ -205,9 +205,9 @@ bool inFlight(const World& w,int from,const Weapon& weapon) {
 
 // The caster fires at a still enemy; the effect must land on the tick its
 // shot strikes, one flight after the release, never on the release tick.
-void shotLandsOnArrival(const Caster& c,const UnitType& victimType,bool crusades) {
+void shotLandsOnArrival(const Caster& c,const UnitType& victimType) {
     const Weapon& weapon=c.type->weapons[size_t(c.slot)];
-    const std::string label=c.type->id+std::string(crusades ? " (Crusades) " : " ")+weapon.name;
+    const std::string label=c.type->id+" "+weapon.name;
     World w;setup(w);
     const int a=w.spawn(c.type,1000,1000,0,0);
     const float d=std::min(220.f,float(weapon.range)-60.f);
@@ -351,19 +351,19 @@ int main(int argc,char** argv) {
     }
     if(argc==2) {
         auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        for(bool crusades:{false,true}) {
-            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+        {
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
             const auto casters=roster(registry);
-            std::printf("balance=%d: %zu status casters\n",int(crusades),casters.size());
+            std::printf("%zu status casters\n",casters.size());
             check(casters.size()==7,"seven casters carry a Line-of-Sight status weapon");
             for(const auto& c:casters) {
                 const Weapon& weapon=c.type->weapons[size_t(c.slot)];
                 const UnitType* pick=victimFor(registry,weapon);
                 check(pick!=nullptr,std::string("an eligible victim for ")+c.type->id);
                 if(!pick)continue;
-                shotLandsOnArrival(c,still(*pick),crusades);
+                shotLandsOnArrival(c,still(*pick));
             }
-            if(!crusades)flightCases(registry);
+            flightCases(registry);
         }
     }
     return failures?1:0;

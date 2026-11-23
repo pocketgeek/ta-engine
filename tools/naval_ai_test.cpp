@@ -24,8 +24,8 @@ int main(int argc,char** argv) {
         std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);
         ++cases;if (!ok) ++failures;
     };
-    for (bool crusades:{false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,crusades);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         {
             sim::World world;
             world.setTerrain(std::vector<uint8_t>(256*256,0),256,256,32);
@@ -106,7 +106,7 @@ int main(int argc,char** argv) {
                     for (const auto& u:world.units())
                         if (u.alive() && u.type==ship && !u.underConstruction) completed=u.id;
                 }
-                std::printf("balance=%d defensive=%d %s -> %s: ",crusades,defensive,parentId.c_str(),child.c_str());
+                std::printf("defensive=%d %s -> %s: ",defensive,parentId.c_str(),child.c_str());
                 check(completed!=0,"AI finishes its water-unit build through normal commands");
                 if (completed && !ship->isBuilder) {
                     for (uint32_t tick=18000;tick<18120 && !attackOrders;++tick) {
@@ -148,7 +148,7 @@ int main(int argc,char** argv) {
                         completed.insert(u.id);
                 }
             }
-            std::printf("balance=%d faction=%d completed=%zu attacks=%d: ",crusades,faction,completed.size(),attacks);
+            std::printf("faction=%d completed=%zu attacks=%d: ",faction,completed.size(),attacks);
             check(!completed.empty() && attacks>0,"natural AI opening produces and deploys its faction's water-capable force");
         }
     }

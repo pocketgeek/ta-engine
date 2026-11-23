@@ -102,7 +102,7 @@ int main(int argc,char** argv) {
     const std::string only=argc==3 ? argv[2] : "";
     createHoldShapes();
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     int factories=0;
     for(const auto& [id,factory]:registry.types()) {
         if(!factory.producesUnits() || !factory.productionScript)continue;

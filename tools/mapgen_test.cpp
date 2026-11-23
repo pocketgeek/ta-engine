@@ -426,8 +426,8 @@ int main(int argc,char** argv) {
             std::puts("retail terrain kits passed");return 0;
         }
         if(argc>2&&(std::string(argv[2])=="--naval"||std::string(argv[2])=="--ports")) {
-            for(bool crusades:{false,true}) {
-                ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+            {
+                ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
                 const auto* fort=registry.find("verasy");check(fort,"Sea Fort definition");
                 for(int world=0;world<5;++world) {
                     const bool ports=std::string(argv[2])=="--ports";
@@ -450,7 +450,7 @@ int main(int argc,char** argv) {
                         }
                         int complete=0;
                         for(const auto& u:simulation.units())complete+=u.alive()&&u.type==ship&&!u.underConstruction;
-                        std::printf("naval world=%d balance=%d ship=%s complete=%d\n",world,crusades,name.c_str(),complete);
+                        std::printf("naval world=%d ship=%s complete=%d\n",world,name.c_str(),complete);
                         check(complete==2&&simulation.unit(id)->buildQueue.empty(),"generated harbor ship production failed");
                     }
                 }

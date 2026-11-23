@@ -45,10 +45,10 @@ SPEED = 3            # GameOptions byte: speed in tenths
 
 
 def options(speed=10):
-    # crusades, forfeitSelfDestruct, gameMods, speed (tenths), speedUnlock (on), unitCap,
+    # forfeitSelfDestruct, gameMods, speed (tenths), speedUnlock (on), unitCap,
     # monarchExpendable, stressTest, fogExplored, benchmark, randomStarts, doubleSight, pathMode,
-    # allowSpectators (on), mapScenario, powerCodes
-    return bytes([0, 1, 0, speed, 1]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0])
+    # allowSpectators (on), mapScenario, powerCodes, startMetal100, startEnergy100
+    return bytes([1, 0, speed, 1]) + struct.pack('<I', 2000) + bytes([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 10, 10])
 
 
 def room_state(body):

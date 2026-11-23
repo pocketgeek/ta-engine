@@ -79,8 +79,7 @@ sim::PathfindingMode pathModeValue(const std::string& val) {
 // One spRoom.<field> / mpRoom.<field> value into its set. Unknown fields are skipped, as
 // every unknown key is.
 void parseRoomPref(RoomPrefs& p, const std::string& field, const std::string& val) {
-    if      (field == "crusades")          p.crusades = boolValue(val);
-    else if (field == "doubleSight")       p.doubleSight = boolValue(val);
+    if      (field == "doubleSight")       p.doubleSight = boolValue(val);
     else if (field == "speedUnlock")       p.speedUnlock = boolValue(val);
     else if (field == "monarchExpendable") p.monarchExpendable = boolValue(val);
     else if (field == "allowSpectators")   p.allowSpectators = boolValue(val);
@@ -99,7 +98,6 @@ void parseRoomPref(RoomPrefs& p, const std::string& field, const std::string& va
 
 // Every field of one set, as "<prefix>.<field> = <value>" lines.
 void writeRoomPrefs(std::ostream& o, const std::string& prefix, const RoomPrefs& p) {
-    o << prefix << ".crusades = " << p.crusades << "\n";
     o << prefix << ".doubleSight = " << p.doubleSight << "\n";
     o << prefix << ".speedUnlock = " << p.speedUnlock << "\n";
     o << prefix << ".monarchExpendable = " << p.monarchExpendable << "\n";

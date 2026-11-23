@@ -88,7 +88,7 @@ static int constructionFlightTrace(int argc,char** argv) {
     const int32_t speed=number(argv[14]);
 
     hpi::Vfs vfs=hpi::mountRetailRoot(argv[2]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     const auto* monarch=registry.find("zonhunt");
     if(!monarch || !monarch->canFly) return 2;
     sim::World world;
@@ -147,7 +147,7 @@ static int persistentConstructionFlightTrace(int argc,char** argv) {
     const int32_t speed=number(argv[11]);
     const uint32_t seed=uint32_t(number(argv[12]));
     hpi::Vfs vfs=hpi::mountRetailRoot(argv[2]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     const auto* monarch=registry.find("zonhunt");const auto* output=registry.find("zonter");
     if(!monarch || !output || !monarch->canFly) return 2;
 
@@ -252,8 +252,8 @@ int main(int argc, char** argv) {
               goal.flags==0x60 && goal.heading==43016,
               "placed conjure orbit matches the native seed-50 goal and heading");
     }
-    for (bool crusades : {false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,crusades);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         {
             sim::World placement;
             placement.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
                 placement.tick(1.0f/30.0f);
                 started=placement.unit(builder)->buildSiteId!=0;
             }
-            std::printf("barracks approach balance=%d offset=%d,%d\n",int(crusades),dx,dz);
+            std::printf("barracks approach offset=%d,%d\n",dx,dz);
             check(started,"ground builder starts rectangular barracks from each side");
             if (started) {
                 placement.player(0).mana=10000;
@@ -353,7 +353,7 @@ int main(int argc, char** argv) {
             sim::applyCommand(world,registry,c);
             check(world.unit(id)->repeatType==output,"mobile infinite production starts through command path");
             check(world.unit(id)->orders.empty(),"infinite production retires previous movement orders");
-            std::printf("infinite producer=%s balance=%d\n",name.c_str(),int(crusades));
+            std::printf("infinite producer=%s\n",name.c_str());
             for (bool emptyQueue : {false,true}) {
                 if (emptyQueue) world.unit(id)->buildQueue.clear();
                 // Resource/output stalls and between-item gaps must remain locked.
@@ -434,8 +434,8 @@ int main(int argc, char** argv) {
         sim::applyCommand(world,registry,c);
         check(!world.unit(id)->rally.empty(),"stationary infinite factories retain rally commands");
     }
-    for (bool crusades : {false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,crusades);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         const auto* monarch=registry.find("zonhunt");
         const auto* hunter=registry.find("zonter");
         if (!monarch || !hunter) return 2;
@@ -465,16 +465,15 @@ int main(int argc, char** argv) {
             check(site && site->underConstruction,"queued Hunter remains under construction");
             if (site) {
                 const auto wanted=sim::retailHeadingToPort(uint16_t(sim::retailDirection(builder->x-site->x,builder->z-site->z).v));
-                check(std::abs(sim::bamDiff(wanted,builder->heading))<8192,
-                      crusades ? "Crusades Zhon monarch faces her conjured unit" : "standard Zhon monarch faces her conjured unit");
+                check(std::abs(sim::bamDiff(wanted,builder->heading))<8192,"standard Zhon monarch faces her conjured unit");
                 check(builder->conjureHoverTarget==site->id,
                       "queued conjurer uses the active site's hover controller");
             }
             checkStopHover(world,registry,id);
         }
     }
-    for (bool crusades : {false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,crusades);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         const auto* monarch=registry.find("zonhunt");
         sim::UnitType output=*registry.find("zonter");output.buildTime=10000;
         for (const char* flyerName : {"zonhunt","arafly","tarpries","tarprie2"}) {

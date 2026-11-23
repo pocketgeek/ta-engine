@@ -17,7 +17,6 @@ struct ReplayFile {
     std::string mission;          // campaign mission stem ("" = skirmish)
     std::string engineVersion;    // build that recorded it
     std::string error;            // why a load was refused (shown to the user)
-    bool crusades = false;
     uint8_t gameMods = 0;   // 1 = the recorded game ran the host's game mods
     uint32_t formatVersion = 0, protocolVersion = 0;
     uint64_t dataHash = 0;        // gameplay data the recording ran on

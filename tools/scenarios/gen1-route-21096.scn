@@ -2,14 +2,13 @@ scn 1
 name gen1-route-21096
 # The user's map (the ~gen1~ recipe of the legion-r9 replay) and one of its seven big army orders:
 # the right-click at tick 21096 of that game, 56 real ground units placed where the replay had them one
-# tick earlier (floored to cells), unarmed, Crusades balance, order issued through the client's
+# tick earlier (floored to cells), unarmed, order issued through the client's
 # HUD split. Armies stand idle; the other players' bases and units are not placed. Data-gated.
 # Harvest: legion-r9 replayed on 02aa55a (exact), unit positions dumped at tick 21095.
 # Route start 472,198 .. 536,219 cells; click 340,206.
 ticks 6000
 seed 1
 players 8
-crusades on
 wanderers off
 map gen1 ~gen1~0a0001000000000000000100030003020000ff60800300000000
 type zongob fbi zongob

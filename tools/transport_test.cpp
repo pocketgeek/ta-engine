@@ -1567,8 +1567,8 @@ static void pickupNearbySelection(bool air,bool slowBrake=false) {
 
 static void retailRoster(const char* root) {
     auto vfs=ta::hpi::mountRetailRoot(root);
-    for(bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         for(bool air:{false,true}) {
             World w;setTestPathfinding(w);
             w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
@@ -1675,8 +1675,8 @@ static void retailRoster(const char* root) {
             done.loadInto(doneBuilder,doneCarrier,true);
             for(int tick=0;tick<300 && !done.unit(doneBuilder)->embarked();++tick)done.tick(1.f/30);
             if(!done.unit(doneBuilder)->embarked() || !done.unit(doneBuilder)->buildQueue.empty())
-                std::printf("queued-production air=%d balance=%d cargo=%d queue=%zu progress=%d site=%d mana=%.1f passengerOrders=%zu carrierOrders=%zu\n",
-                    air,crusades,done.unit(doneBuilder)->inTransport,done.unit(doneBuilder)->buildQueue.size(),
+                std::printf("queued-production air=%d cargo=%d queue=%zu progress=%d site=%d mana=%.1f passengerOrders=%zu carrierOrders=%zu\n",
+                    air,done.unit(doneBuilder)->inTransport,done.unit(doneBuilder)->buildQueue.size(),
                     done.unit(doneBuilder)->buildProgress,done.unit(doneBuilder)->productionSiteId,done.player(0).mana,
                     done.unit(doneBuilder)->orders.size(),done.unit(doneCarrier)->orders.size());
             check(done.unit(doneBuilder)->inTransport==doneCarrier && done.unit(doneBuilder)->buildQueue.empty(),
@@ -1686,8 +1686,8 @@ static void retailRoster(const char* root) {
         for(const auto& [name,type]:registry.types()) {
             if(!type.canTransport) continue;
             ++carriers;
-            std::printf("carrier=%s crusades=%d count=%d budget=%d maximum=%d distance=%d\n",
-                name.c_str(),crusades,type.transportCap,type.transportSizeCap,type.maxTransportSize,type.transportDist);
+            std::printf("carrier=%s count=%d budget=%d maximum=%d distance=%d\n",
+                name.c_str(),type.transportCap,type.transportSizeCap,type.maxTransportSize,type.transportDist);
             check(type.transportCap>0 && type.transportSizeCap>=type.transportCap &&
                 type.maxTransportSize>0,"retail carrier has separate nonzero capacity limits");
             World w;setTestPathfinding(w);
@@ -1723,7 +1723,7 @@ static void retailRoster(const char* root) {
                 }
             }
         }
-        check(carriers==(crusades ? 14 : 13),"all balance-specific retail carriers covered");
+        check(carriers==13,"all retail carriers covered");
     }
 }
 
@@ -1733,8 +1733,8 @@ static void retailRoster(const char* root) {
 // emptied list its default mission in that same call (4d856a); VTOL_Standby
 // installs VTOL_LANDIFCAN two ticks later, whose 32px brake point replaces the
 // controller. World let the controller run on instead: the user's Roc (replay
-// game-1-1791860558, Legion, Crusades) flew 1400px past its drop point, and the
-// Ghost Ship and Aerial Juggernaut did the same. Each carrier of both balances,
+// game-1-1791860558, Legion) flew 1400px past its drop point, and the
+// Ghost Ship and Aerial Juggernaut did the same. Each carrier,
 // in both pathfinding modes, with one passenger and with a full load, unloading
 // in range and after an approach: once released it comes to rest within its own
 // stopping distance of where it let go (flyers: plus the landing search's reach).
@@ -1744,11 +1744,11 @@ static void postUnloadRoster(const char* root) {
     std::printf("every carrier stays at its drop point after unloading:\n");
     auto vfs=ta::hpi::mountRetailRoot(root);
     int carriers=0,cases=0,drifted=0;
-    for(bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         const auto* foot=registry.find("araarch");
         check(foot!=nullptr,"post-unload roster passenger type is available");
-        if(!foot)continue;
+        if(!foot)return;
         for(const auto& [name,type]:registry.types()) {
             if(!type.canTransport)continue;
             ++carriers;
@@ -1776,8 +1776,7 @@ static void postUnloadRoster(const char* root) {
                     };
                     for(int tick=0;tick<3000 && !aboard();++tick)w.tick(1.f/30);
                     char what[160];
-                    std::snprintf(what,sizeof what,"%s%s %s x%d %s: boards",name.c_str(),
-                        crusades?" (crusades)":"",mode==PathfindingMode::Retail?"retail":"legion",
+                    std::snprintf(what,sizeof what,"%s %s x%d %s: boards",name.c_str(),mode==PathfindingMode::Retail?"retail":"legion",
                         count,near?"near":"far");
                     check(aboard(),what);
                     if(!aboard())continue;
@@ -1788,8 +1787,7 @@ static void postUnloadRoster(const char* root) {
                         (Fixed::fromFloat(dropZ)-t->z).v,uint16_t(type.transportDist));
                     w.unloadAt(tid,dropX,dropZ);
                     const bool released=runUntilUnloaded(w,tid,6000);
-                    std::snprintf(what,sizeof what,"%s%s %s x%d %s: unloads",name.c_str(),
-                        crusades?" (crusades)":"",mode==PathfindingMode::Retail?"retail":"legion",
+                    std::snprintf(what,sizeof what,"%s %s x%d %s: unloads",name.c_str(),mode==PathfindingMode::Retail?"retail":"legion",
                         count,near?"near":"far");
                     check(released,what);
                     if(!released)continue;
@@ -1814,20 +1812,19 @@ static void postUnloadRoster(const char* root) {
                     const bool atRest=t->speed==Fixed() && t->orders.empty() && t->cargo.empty() &&
                         t->standbyActive && (!type.canFly || t->flightGroundMode==1);
                     ++cases;drifted+=drift>allowance;
-                    std::printf("    post-unload %-9s %-10s %-6s x%d %-4s inRange=%d v0=%.2f default=%d drift=%.0f "
-                                "allowance=%.0f drop=%.0f rest=%d\n",name.c_str(),crusades?"crusades":"standard",
+                    std::printf("    post-unload %-9s %-6s x%d %-4s inRange=%d v0=%.2f default=%d drift=%.0f "
+                                "allowance=%.0f drop=%.0f rest=%d\n",name.c_str(),
                                 mode==PathfindingMode::Retail?"retail":"legion",count,near?"near":"far",
                                 int(inRange),v0,int(defaulted),drift,allowance,
                                 std::hypot(t->x.toFloat()-dropX,t->z.toFloat()-dropZ),int(atRest));
-                    std::snprintf(what,sizeof what,"%s%s %s x%d %s: stays at its drop point",name.c_str(),
-                        crusades?" (crusades)":"",mode==PathfindingMode::Retail?"retail":"legion",
+                    std::snprintf(what,sizeof what,"%s %s x%d %s: stays at its drop point",name.c_str(),mode==PathfindingMode::Retail?"retail":"legion",
                         count,near?"near":"far");
                     check(defaulted && drift<=allowance && atRest,what);
                 }
             }
         }
     }
-    check(carriers==27,"post-unload roster covers all 13 standard and 14 Crusades carriers");
+    check(carriers==13,"post-unload roster covers all 13 carriers");
     std::printf("  post-unload: %d carriers, %d cases, %d drifted\n",carriers,cases,drifted);
 }
 
@@ -1837,10 +1834,10 @@ static void postUnloadQueued(const char* root) {
     using ta::sim::PathfindingMode;
     std::printf("queued orders after an air unload:\n");
     auto vfs=ta::hpi::mountRetailRoot(root);
-    for(bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         const auto* foot=registry.find("araarch");
-        if(!foot)continue;
+        if(!foot)return;
         for(const char* id:{"zonroc","tarship","creaeri"}) {
             const auto* type=registry.find(id);
             if(!type)continue;
@@ -1865,7 +1862,7 @@ static void postUnloadQueued(const char* root) {
                 }
                 const auto& t=*w.unit(tid);
                 char what[160];
-                std::snprintf(what,sizeof what,"%s%s %s: %s after unload (at %.0f,%.0f)",id,crusades?" (crusades)":"",
+                std::snprintf(what,sizeof what,"%s %s: %s after unload (at %.0f,%.0f)",id,
                     mode==PathfindingMode::Retail?"retail":"legion",kind ? "queued pickup boards" : "queued move arrives",
                     t.x.toFloat(),t.z.toFloat());
                 check(done && w.unit(a)->inTransport==0,what);
@@ -2507,8 +2504,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
                                          int startCellX,int startCellZ,
                                          int goalCellX,int goalCellZ,int footprint,
                                          const char* carrierName=nullptr,
-                                         const char* passengerName=nullptr,
-                                         bool crusades=false) {
+                                         const char* passengerName=nullptr) {
     auto vfs=ta::hpi::mountRetailRoot(retailRoot);
     const std::string mapPath=ta::hpi::findMap(vfs,mapName);
     if(mapPath.empty()) throw std::runtime_error(std::string("map not found: ")+mapName);
@@ -2526,7 +2522,7 @@ static void surfaceUnloadMapRouteFixture(const char* retailRoot,const char* mapN
         if(!carrierName || !passengerName)
             throw std::runtime_error("both retail carrier and passenger names are required");
         registry=std::make_unique<ta::sim::TypeRegistry>();
-        ta::sim::setupRegistry(*registry,vfs,crusades);
+        ta::sim::setupRegistry(*registry,vfs);
         carrierType=registry->find(carrierName);
         passengerType=registry->find(passengerName);
         if(!carrierType || !passengerType)
@@ -2789,7 +2785,7 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
                                           int goalCellX,int goalCellZ,
                                           const char* carrierName=nullptr,
                                           const char* passengerName=nullptr,
-                                          bool crusades=false,bool loadOrder=false) {
+                                          bool loadOrder=false) {
     auto vfs=ta::hpi::mountRetailRoot(retailRoot);
     const std::string mapPath=ta::hpi::findMap(vfs,mapName);
     if(mapPath.empty()) throw std::runtime_error(std::string("map not found: ")+mapName);
@@ -2807,7 +2803,7 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
         if(!carrierName || !passengerName)
             throw std::runtime_error("both retail carrier and passenger names are required");
         registry=std::make_unique<ta::sim::TypeRegistry>();
-        ta::sim::setupRegistry(*registry,vfs,crusades);
+        ta::sim::setupRegistry(*registry,vfs);
         carrierType=registry->find(carrierName);
         passengerType=registry->find(passengerName);
         if(!carrierType || !passengerType)
@@ -3071,7 +3067,7 @@ static void airUnloadFlightTraceFixture(unsigned steps,bool heightStep=false,
 // 0x50e740 and the live 0x4d8450/0x4dc800 unload path.
 static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* mapName,
         const char* carrierName,const char* passengerName,int startCellX,int startCellZ,
-        int targetCellX,int targetCellZ,unsigned steps,bool crusades) {
+        int targetCellX,int targetCellZ,unsigned steps) {
     auto vfs=ta::hpi::mountRetailRoot(retailRoot);
     const std::string mapPath=ta::hpi::findMap(vfs,mapName);
     if(mapPath.empty()) throw std::runtime_error(std::string("map not found: ")+mapName);
@@ -3082,7 +3078,7 @@ static void airUnloadMapFlightTraceFixture(const char* retailRoot,const char* ma
         throw std::runtime_error("air-unload map trace coordinates outside the map");
 
     ta::sim::TypeRegistry registry;
-    ta::sim::setupRegistry(registry,vfs,crusades);
+    ta::sim::setupRegistry(registry,vfs);
     const auto* carrierType=registry.find(carrierName);
     const auto* passengerType=registry.find(passengerName);
     if(!carrierType || !passengerType)
@@ -3204,23 +3200,16 @@ int main(int argc,char** argv) {
                                     true,&profile);
         return 0;
     }
-    if(argc==12 && !std::strcmp(argv[1],"--air-unload-map-flight-trace")) {
+    if(argc==11 && !std::strcmp(argv[1],"--air-unload-map-flight-trace")) {
         airUnloadMapFlightTraceFixture(argv[2],argv[3],argv[4],argv[5],
             std::atoi(argv[6]),std::atoi(argv[7]),std::atoi(argv[8]),std::atoi(argv[9]),
-            unsigned(std::clamp(std::atoi(argv[10]),1,10000)),
-            std::atoi(argv[11])!=0);
+            unsigned(std::clamp(std::atoi(argv[10]),1,10000)));
         return 0;
     }
     if(argc==10 && !std::strcmp(argv[1],"--surface-unload-map-route-type")) {
         surfaceUnloadMapRouteFixture(argv[2],argv[3],std::atoi(argv[6]),std::atoi(argv[7]),
                                      std::atoi(argv[8]),std::atoi(argv[9]),0,
-                                     argv[4],argv[5],false);
-        return 0;
-    }
-    if(argc==11 && !std::strcmp(argv[1],"--surface-unload-map-route-type")) {
-        surfaceUnloadMapRouteFixture(argv[2],argv[3],std::atoi(argv[6]),std::atoi(argv[7]),
-                                     std::atoi(argv[8]),std::atoi(argv[9]),0,
-                                     argv[4],argv[5],std::atoi(argv[10])!=0);
+                                     argv[4],argv[5]);
         return 0;
     }
     if(argc==8 && !std::strcmp(argv[1],"--surface-unload-map-route")) {
@@ -3237,15 +3226,13 @@ int main(int argc,char** argv) {
         return surfaceUnloadMapTravelFixture(argv[2],argv[3],std::atoi(argv[4]),
             std::atoi(argv[5]),std::atoi(argv[6]),std::atoi(argv[7])) ? 0 : 1;
     }
-    if((argc==10 || argc==11) && !std::strcmp(argv[1],"--surface-unload-map-travel-type")) {
+    if(argc==10 && !std::strcmp(argv[1],"--surface-unload-map-travel-type")) {
         return surfaceUnloadMapTravelFixture(argv[2],argv[3],std::atoi(argv[6]),
-            std::atoi(argv[7]),std::atoi(argv[8]),std::atoi(argv[9]),argv[4],argv[5],
-            argc==11 && std::atoi(argv[10])!=0) ? 0 : 1;
+            std::atoi(argv[7]),std::atoi(argv[8]),std::atoi(argv[9]),argv[4],argv[5]) ? 0 : 1;
     }
-    if((argc==10 || argc==11) && !std::strcmp(argv[1],"--surface-transport-map-roundtrip-type")) {
+    if(argc==10 && !std::strcmp(argv[1],"--surface-transport-map-roundtrip-type")) {
         return surfaceUnloadMapTravelFixture(argv[2],argv[3],std::atoi(argv[6]),
-            std::atoi(argv[7]),std::atoi(argv[8]),std::atoi(argv[9]),argv[4],argv[5],
-            argc==11 && std::atoi(argv[10])!=0,true) ? 0 : 1;
+            std::atoi(argv[7]),std::atoi(argv[8]),std::atoi(argv[9]),argv[4],argv[5],true) ? 0 : 1;
     }
     if((argc==2 || argc==3) && !std::strcmp(argv[1],"--surface-unload-route-fixture")) {
         const int variant=argc==3 ? std::atoi(argv[2]) : 0;

@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: registry_dump <install-dir> [unit...]\n"); return 2; }
     auto vfs = ta::hpi::mountRetailRoot(argv[1]);
     ta::sim::TypeRegistry reg;
-    ta::sim::setupRegistry(reg, vfs, false);
+    ta::sim::setupRegistry(reg,vfs);
     size_t armed = 0, builders = 0;
     for (const auto& [id, t] : reg.types()) {
         if (!t.weapons.empty()) ++armed;

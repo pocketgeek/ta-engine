@@ -416,7 +416,7 @@ std::unique_ptr<GameView> makeReplayView(SDL_Renderer* ren, const std::string& p
                      (unsigned long long)rf.dataHash, (unsigned long long)myDataHash);
     }
     auto view = std::make_unique<GameView>(ren, std::move(rvfs), mapPath, dataRoot,
-        ta::hpi::ModUse{}, false, false, true, "ara", "tar", rf.crusades);
+        ta::hpi::ModUse{}, false, false, true, "ara", "tar");
     view->applySettings(settings); view->setSettings(&settings);
     // One simulation: it gets them all, or its CCD's (PIN TO CCDS).
     if (const auto ccd = ta::client::planCcds(settings, false); ccd.on && ta::devFlag("TA_SIM_PIN", true)) {
@@ -427,8 +427,8 @@ std::unique_ptr<GameView> makeReplayView(SDL_Renderer* ren, const std::string& p
         view->latchSimThreads(settings.simThreads, false, settings.simPin && ta::devFlag("TA_SIM_PIN", true));
     }
     if (canReturn) view->setCanReturnToMenu();
-    std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks%s (format %u, recorded by %s, %zu hash checkpoints)\n",
-                 path.c_str(), rf.mapId.c_str(), rf.bundles.size(), rf.crusades ? " (Crusades)" : "",
+    std::fprintf(stderr, "replay: %s -- map '%s', %zu ticks (format %u, recorded by %s, %zu hash checkpoints)\n",
+                 path.c_str(), rf.mapId.c_str(), rf.bundles.size(),
                  rf.formatVersion, rf.engineVersion.c_str(), rf.checks.size());
     view->setReplayChecks(std::move(rf.checks));
 #ifndef NDEBUG
@@ -437,7 +437,6 @@ std::unique_ptr<GameView> makeReplayView(SDL_Renderer* ren, const std::string& p
     if (const auto req = ta::situation::parseRequest(ta::devEnv("TA_SITUATION")); req.valid) {
         ta::situation::Meta meta;
         meta.mapId = rf.mapId;
-        meta.crusades = rf.crusades;
         meta.players = int(rf.cfg.slots.size());
         meta.seed = rf.cfg.startSeed;
         meta.source = std::filesystem::path(path).filename().string() + " (engine " + rf.engineVersion + ")";
@@ -537,7 +536,6 @@ int main(int argc, char** argv) {
     [[maybe_unused]] bool doMarch = false, testbuild = false, misstest = false,
         creon = false, guardtest = false, lodetest = false,
         soundtest = false;
-    bool crusades = false;
     float lookX = 0, lookZ = 0;
     std::vector<std::string> args;
     for (int i = argStart; i < argc; ++i) {
@@ -576,7 +574,6 @@ int main(int argc, char** argv) {
         }
         else if (a == "--maxfps" && i + 1 < argc) maxFps = std::atoi(argv[++i]);
         else if (a == "--novsync") noVsync = true;
-        else if (a == "--crusades") crusades = true;
 
 
         else if (a == "--lodeunit" && i + 1 < argc) lodeUnitName = argv[++i];
@@ -1808,7 +1805,7 @@ int main(int argc, char** argv) {
                                                   mapPath, dataRoot, modUse, demo,
                                                   scenario,
                                                   navy || amphib || firetest || facetest || mp,
-                                                  side, aiSide, crusades);
+                                                  side, aiSide);
 #ifndef NDEBUG
             if (ta::devEnv("TA_SHOT_BRIEFING") && !campaignId.empty()) {
                 const auto campaigns=ta::loadCampaigns(vfs);
@@ -2012,7 +2009,7 @@ int main(int argc, char** argv) {
             // cosmeticStep's front() reads can't tear against the worker under TA_SIM_THREAD.
             // presentFrame advances the presentation clock exactly as a rendered frame does.
             gameView->presentFrame();
-            bool cont = gameView->mpAutoStep(mpHeadless, mapId, crusades);
+            bool cont = gameView->mpAutoStep(mpHeadless, mapId);
 #ifndef NDEBUG
             gameView->debugWatchPoke();   // TA_WATCHONLY_POKE
 #endif
@@ -2507,7 +2504,7 @@ int main(int argc, char** argv) {
                 (void)netAccum;
                 // autoOv (computed once per session above) drives the lobby: 0 =
                 // UI-driven, 1 = auto-host, etc. TA_MPAUTO can override it.
-                gameView->mpAutoStep(autoOv, serverMapId, crusades);
+                gameView->mpAutoStep(autoOv, serverMapId);
 #ifndef NDEBUG
                 // TA_QUIT_TICK=N: leave once the game reaches tick N (or the benchmark's stats
                 // screen is up, above), so a short real-display pacing run (TA_PACELOG) ends by itself.

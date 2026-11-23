@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
         const uint16_t port = uint16_t(std::stoi(argv[1]));
         const auto data = hpi::mountRetailRoot(ta::u8path(argv[2]));
         sim::TypeRegistry registry;
-        sim::setupRegistry(registry, data, false);
+        sim::setupRegistry(registry,data);
         gRegistry = &registry;
         const uint64_t dataHash = hpi::gameplayHash(data);
         // A small generated map: no map transfer, a quick world.

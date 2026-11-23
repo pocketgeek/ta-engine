@@ -164,18 +164,18 @@ int main(int argc,char** argv) {
     }
     if(argc==2) {
         auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        for(bool crusades:{false,true}) {
-            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+        {
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
             int count=0;
             for(const auto& [name,type]:registry.types()) {
                 if(!charmOf(type))continue;
-                std::printf("capture roster balance=%d unit=%s\n",crusades,name.c_str());
+                std::printf("capture roster unit=%s\n",name.c_str());
                 rejectedTargets(type);++count;
             }
             check(count>=3,"shipped capture roster includes Harpy, Mind Mage and campaign caster");
             const auto* harpy=registry.find("zonharp");
             check(harpy && charmOf(*harpy),"the Harpy carries a mind-control weapon");
-            if(!harpy || !charmOf(*harpy))continue;
+            if(!harpy || !charmOf(*harpy))return 1;
             auto victim=*registry.find("arasword");victim.maxVel={};
             victim.weapon.damage=0;victim.weapons.clear();victim.healTime=0;
             conversionKeepsDamage(*harpy,victim,true);

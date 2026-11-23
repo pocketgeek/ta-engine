@@ -22,7 +22,7 @@
 namespace ta::net {
 
 // Bump when the layout changes.
-inline constexpr uint32_t kReplayFormat = 15;
+inline constexpr uint32_t kReplayFormat = 16;   // 16: no Crusades byte
 
 // The largest .tarep the loaders accept (the client picker and the writer's re-read).
 inline constexpr uint64_t kMaxReplayBytes = 512ull * 1024 * 1024;
@@ -37,7 +37,7 @@ struct ReplayHeader {
     std::string mapDigest, modDigest;
     std::string mission;          // campaign mission stem ("" = skirmish)
     std::string engineVersion;    // ta::kVersion of the build that recorded it
-    uint8_t crusades = 0, forfeitSelfDestruct = 0;
+    uint8_t forfeitSelfDestruct = 0;
     uint8_t gameMods = 0;          // 1 = the room ran the host's game mods (modDigest)
     uint32_t unitCap = 0;
     uint8_t monarchExpendable = 0, stressTest = 0, randomStarts = 0;
@@ -75,7 +75,6 @@ inline void writeReplayHeader(Writer& w, const ReplayHeader& h) {
     w.u32(kReplayFormat);
     w.u32(kNetVersion);
     w.str(h.mapId);
-    w.u8(h.crusades);
     w.u8(h.forfeitSelfDestruct);
     w.u8(h.gameMods);
     w.u32(h.unitCap);
@@ -112,7 +111,6 @@ inline bool readReplayHeader(Reader& r, ReplayHeader& h, uint32_t& fmt, uint32_t
     proto = r.u32();
     if (!r.ok || fmt != kReplayFormat) return false;
     h.mapId = r.str();
-    h.crusades = r.u8();
     h.forfeitSelfDestruct = r.u8();
     h.gameMods = r.u8();
     h.unitCap = r.u32();

@@ -1249,7 +1249,7 @@ static void regions(Fixture& f) {
 static void shipped(const char* data) {
     hpi::Vfs vfs = hpi::mountRetailRoot(data);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, false);
+    sim::setupRegistry(reg,vfs);
     const auto* arafly = reg.find("arafly"), *arassh = reg.find("arassh"), *aralode = reg.find("aralode");
     const auto* arakeep = reg.find("arakeep"), *araat = reg.find("araat");
     {

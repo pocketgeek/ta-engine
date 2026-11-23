@@ -133,7 +133,6 @@ int main() {
             flips((pre + field).c_str(), [&](Settings& s) { mutate(s.*set); });
         };
         using ta::RoomPrefs;
-        room("crusades",          [](RoomPrefs& p) { p.crusades = !p.crusades; });
         room("doubleSight",       [](RoomPrefs& p) { p.doubleSight = !p.doubleSight; });
         room("speedUnlock",       [](RoomPrefs& p) { p.speedUnlock = !p.speedUnlock; });
         room("monarchExpendable", [](RoomPrefs& p) { p.monarchExpendable = !p.monarchExpendable; });
@@ -207,7 +206,7 @@ int main() {
         cur.streamFps = 30;
         cur.streamCpuEncoder = true;
         cur.spRoom.map = "Inner Circle";
-        cur.spRoom.crusades = true;
+        cur.spRoom.doubleSight = true;
         cur.spRoom.gamePacks = {"Pack A"};
         cur.mpRoom.generator = "saved recipe";
         cur.mpRoom.generated = true;
@@ -954,7 +953,7 @@ int main() {
 
         // Every field, in both sets, with values that differ between the sets.
         RoomPrefs sp;
-        sp.crusades = sp.doubleSight = sp.speedUnlock = sp.monarchExpendable = sp.powerCodes = true;
+        sp.doubleSight = sp.speedUnlock = sp.monarchExpendable = sp.powerCodes = true;
         sp.allowSpectators = false;
         sp.pathfindingMode = Mode::Legion;
         sp.unitCap = 500; sp.fog = 2; sp.randomStarts = 2;
@@ -973,29 +972,30 @@ int main() {
         check("rooms: file round trip", b == a);
         check("rooms: prefsFor", &a.prefsFor(true) == &a.spRoom && &a.prefsFor(false) == &a.mpRoom);
         const std::string text = fileText();
-        check("rooms: own keys", text.find("\nspRoom.crusades = 1\n") != std::string::npos &&
-                                 text.find("\nmpRoom.crusades = 0\n") != std::string::npos &&
+        check("rooms: own keys", text.find("\nspRoom.doubleSight = 1\n") != std::string::npos &&
+                                 text.find("\nmpRoom.doubleSight = 0\n") != std::string::npos &&
                                  text.find("\nspRoom.map = Inner Circle\n") != std::string::npos &&
                                  text.find("\nmpRoom.unitCap = 1000\n") != std::string::npos);
         check("rooms: a pack a line", count(text, "\nspRoom.gamePack = ") == 2 && count(text, "\nmpRoom.gamePack = ") == 1 &&
                                       text.find("\nspRoom.gamePack = " + hex("My AI") + "\n") != std::string::npos);
         check("rooms: no old keys", text.find("gameCreate.") == std::string::npos &&
                                     text.find("lastMap") == std::string::npos &&
+                                    text.find("crusades") == std::string::npos &&
                                     text.find("mods.gamePack") == std::string::npos);
 
         // Independence: changing one set leaves the other as it was, across save and reload.
         Settings c = b;
-        c.spRoom.crusades = false;
+        c.spRoom.doubleSight = false;
         c.spRoom.gamePacks = {"Other"};
         check("rooms: sp change", ta::saveSettings(c));
         const Settings c2 = ta::loadSettings();
-        check("rooms: mp untouched", c2.mpRoom == mp && !c2.spRoom.crusades && c2.spRoom.gamePacks == Packs{"Other"});
+        check("rooms: mp untouched", c2.mpRoom == mp && !c2.spRoom.doubleSight && c2.spRoom.gamePacks == Packs{"Other"});
         Settings d = b;
-        d.mpRoom.crusades = true;
+        d.mpRoom.doubleSight = true;
         d.mpRoom.gamePacks.clear();
         check("rooms: mp change", ta::saveSettings(d));
         const Settings d2 = ta::loadSettings();
-        check("rooms: sp untouched", d2.spRoom == sp && d2.mpRoom.crusades && d2.mpRoom.gamePacks.empty());
+        check("rooms: sp untouched", d2.spRoom == sp && d2.mpRoom.doubleSight && d2.mpRoom.gamePacks.empty());
 
         // Each key keeps today's validation: clamps, -1/1, a mode byte, a well-formed pack.
         const Settings v = loadFrom("spRoom.unitCap = 99999\nmpRoom.unitCap = 7\nspRoom.fog = 9\n"
@@ -1009,8 +1009,9 @@ int main() {
         check("rooms: path mode", v.spRoom.pathfindingMode == Mode::Legion && v.mpRoom.pathfindingMode == Mode::Retail);
         check("rooms: bools", v.spRoom.generated && !v.mpRoom.powerCodes);
         check("rooms: bad packs", v.spRoom.gamePacks.empty() && v.mpRoom.gamePacks.empty());
-        const Settings u = loadFrom("spRoom.crusades = 1\nspRoom.bogus = 3\nmpRoom. = 1\nmpRoom = 1\n");
-        check("rooms: unknown skipped", u.spRoom.crusades && u.mpRoom == RoomPrefs{});
+        // spRoom.crusades: the retired Kingdoms balance key in an old file, now unknown.
+        const Settings u = loadFrom("spRoom.crusades = 1\nspRoom.doubleSight = 1\nspRoom.bogus = 3\nmpRoom. = 1\nmpRoom = 1\n");
+        check("rooms: unknown skipped", u.spRoom.doubleSight && u.mpRoom == RoomPrefs{});
 
         // No migration: a file with only the old keys loads both sets at their defaults
         // (no game packs ticked), and the next save drops those keys.
@@ -1033,12 +1034,12 @@ int main() {
         Settings run = a;
         run.spRoom.gamePacks = {"Test Pack"};
         ta::setLaunchGameModPacks(run.spRoom.gamePacks);
-        run.mpRoom.crusades = true;
+        run.mpRoom.doubleSight = true;
         run.mpRoom.gamePacks = {"Net Pack"};
         check("launch: save", ta::saveSettings(run));
         const Settings back = ta::loadSettings();
         check("launch: sp file kept", back.spRoom.gamePacks == sp.gamePacks);
-        check("launch: mp saved", back.mpRoom.crusades && back.mpRoom.gamePacks == Packs{"Net Pack"});
+        check("launch: mp saved", back.mpRoom.doubleSight && back.mpRoom.gamePacks == Packs{"Net Pack"});
         ta::setLaunchGameModPacks(std::nullopt);
         std::error_code ec;
         std::filesystem::remove(path, ec);

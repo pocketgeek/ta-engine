@@ -34,7 +34,7 @@ bool groundOutput(const UnitType* t) {
     return t && !t->isStructure() && !t->canFly && t->domain==UnitType::Domain::Ground;
 }
 enum class Mode {Guard,Assist};
-bool doorCase(const TypeRegistry& registry,const UnitType& factory,const UnitType* output,const UnitType& helper,Mode mode,bool legion,bool crusades,int side) {
+bool doorCase(const TypeRegistry& registry,const UnitType& factory,const UnitType* output,const UnitType& helper,Mode mode,bool legion,int side) {
     auto producer=factory;producer.storage=1000000;
     World world;
     if(legion)world.setPathfindingMode(PathfindingMode::Legion);
@@ -89,8 +89,8 @@ bool doorCase(const TypeRegistry& registry,const UnitType& factory,const UnitTyp
             ++inYard;who+=" "+u.type->id+(u.id==builder?"(helper)":"");
         }
     const bool pass=complete>=4 && inYard==0 && helped;
-    std::printf("%s: balance=%s mode=%s %s side=%d factory=%s output=%s helper=%s completed=%d helped=%d inYard=%d%s ticks=%d stray=%d walked=%d hash=%016llx\n",
-        pass?"PASS":"FAIL",crusades?"Crusades":"standard",legion?"Legion":"Retail",mode==Mode::Guard?"guard":"assist",side,
+    std::printf("%s: mode=%s %s side=%d factory=%s output=%s helper=%s completed=%d helped=%d inYard=%d%s ticks=%d stray=%d walked=%d hash=%016llx\n",
+        pass?"PASS":"FAIL",legion?"Legion":"Retail",mode==Mode::Guard?"guard":"assist",side,
         factory.id.c_str(),output->id.c_str(),helper.id.c_str(),complete,helped,inYard,who.c_str(),tick,stray,int(walked),
         (unsigned long long)world.stateHash());
     return pass;
@@ -165,8 +165,8 @@ int main(int argc,char** argv) {
     if(argc<2)return 2;
     const std::string only=argc>2 ? argv[2] : "";
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);int failures=0,cases=0;
-    for(bool crusades:{false,true}) {
-        TypeRegistry registry;setupRegistry(registry,vfs,crusades);
+    {
+        TypeRegistry registry;setupRegistry(registry,vfs);
         for(const auto& [name,type]:registry.types()) {
             if(!type.producesUnits() || !type.productionScript)continue;
             if(!only.empty() && name!=only)continue;
@@ -190,12 +190,12 @@ int main(int argc,char** argv) {
                    (!helper || b.buildDist<helper->buildDist))helper=&b;
             if(!helper){std::printf("FAIL: %s has no helper for %s\n",name.c_str(),small->id.c_str());++failures;continue;}
             for(bool legion:{false,true})for(Mode mode:{Mode::Guard,Mode::Assist})for(int side:{-1,0,1}) {
-                ++cases;if(!doorCase(registry,type,small,*helper,mode,legion,crusades,side))++failures;
+                ++cases;if(!doorCase(registry,type,small,*helper,mode,legion,side))++failures;
             }
         }
     }
     if(only.empty()) {
-        TypeRegistry registry;setupRegistry(registry,vfs,false);
+        TypeRegistry registry;setupRegistry(registry,vfs);
         for(bool legion:{false,true}) {
             for(const char* g:{"arapult","zongiant","arasword"}) {++cases;if(!ringRest(registry,"arakeep",g,false,legion))++failures;}
             for(const char* g:{"verflag","verscout"}) {++cases;if(!ringRest(registry,"crenavy",g,true,legion))++failures;}

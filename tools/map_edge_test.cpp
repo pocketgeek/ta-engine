@@ -289,7 +289,7 @@ void legionGoalOffTheMap() {
 // ---- Gryphons on attack runs at the east and south edges (shipped units) ------------------
 int gryphons(const char* data) {
     auto vfs=ta::hpi::mountRetailRoot(data);
-    TypeRegistry registry;setupRegistry(registry,vfs,false);
+    TypeRegistry registry;setupRegistry(registry,vfs);
     const UnitType* gryphon=registry.find("zongryp");
     const UnitType* soldier=registry.find("arasword");
     if(!gryphon || !soldier) { std::printf("FAIL: the Gryphon or the Swordsman is missing from %s\n",data);return 1; }

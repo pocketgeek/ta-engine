@@ -30,8 +30,8 @@ int main(int argc,char**argv) {
         std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);
         if (!ok) ++failures;
     };
-    for (bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         std::vector<std::string> ships;
         for (const auto& [id,t]:registry.types())
             if (t.domain==ta::sim::UnitType::Domain::Water && !t.isStructure() &&
@@ -67,8 +67,8 @@ int main(int argc,char**argv) {
                 seen=seen || w.playerSees(0,*w.unit(b));
             }
             const float actual=ta::sim::fxLen(w.unit(a)->x-w.unit(b)->x,w.unit(a)->z-w.unit(b)->z).toFloat();
-            std::printf("balance=%d unit=%s shore=%d order=%d fired=%d seen=%d distance=%.1f range=%d\n",
-                crusades,name.c_str(),shore,order,fired,seen,actual,type->weapon.range);
+            std::printf("unit=%s shore=%d order=%d fired=%d seen=%d distance=%.1f range=%d\n",
+                name.c_str(),shore,order,fired,seen,actual,type->weapon.range);
             // Idle, the ship has only Standby's scan and the sweep, and both
             // take only an enemy its player sees (4d8370, 40f330: list +5): a
             // submarine whose sight falls short of the target leaves it alone.
@@ -107,7 +107,7 @@ int main(int argc,char**argv) {
                 if (order==2) w.attack(a,b,false);
                 bool fired=false,routed=false;
                 for (int tick=0;tick<1800 && !fired;++tick) { w.tick(1.f/30.f);fired=w.unit(a)->justFired;served(w,a,routed); }
-                std::printf("melee balance=%d unit=%s order=%d fired=%d\n",crusades,name.c_str(),order,fired);
+                std::printf("melee unit=%s order=%d fired=%d\n",name.c_str(),order,fired);
                 ++cases;check(fired,"melee water creature closes and attacks");
                 // An explicit attack on this mover-less target is Attack_Melee's
                 // rectangle approach (protocol 307), which the original-style
@@ -179,7 +179,7 @@ int main(int argc,char**argv) {
     // flat into the water at their own bow. Never in Legion: no movement here
     // that Legion routes differently matters to what is checked.
     if (!legion) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);   // range 800, as in the game
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);   // range 800, as in the game
         const auto* sub=registry.find("cresubm");
         const auto* mana=registry.find("aramana");
         check(sub && mana && sub->weapon.ballistic,"shipped cresubm (ballistic) and aramana load");
@@ -285,7 +285,7 @@ int main(int argc,char**argv) {
     // (engine deviation, World::aimPointSubmerged). Standing in the shallows
     // of a shore, its SweetSpot above the surface, it is shot as before.
     if (!legion) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         const auto* ship=registry.find("verflag");
         auto mer=*registry.find("vermer");
         check(ship && registry.find("vermer"),"the Crusades flagship and Mer Warrior load");
@@ -319,7 +319,7 @@ int main(int argc,char**argv) {
     // under a cow on the shore sails to a spot with a clear shot (its chord
     // starts at its own height) or, finding none, gives the attack up.
     if (!legion) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         auto still=[&](const char* id) {
             auto t=*registry.find(id);
             t.weapons.clear();t.weapon.damage=0;t.maxVel={};t.healTime=0;t.maxHp=100000;

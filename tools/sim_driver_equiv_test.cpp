@@ -216,7 +216,7 @@ int testSimEquivalence(const std::string& mapArg, const std::string& dataRoot) {
         return 0;
     }
     ta::sim::TypeRegistry reg;
-    ta::sim::setupRegistry(reg, vfs, /*crusades=*/false);
+    ta::sim::setupRegistry(reg,vfs);
 
     ta::sim::MatchConfig cfg;
     cfg.vfs = &vfs;

@@ -364,8 +364,7 @@ cart::Session::Session(int argc,char** argv,const FrameHook& frameHook,const Edi
 
     // Unit-type list for the palette (units + scen loaded above, before saveMap).
     unitTypes = cart::unitTypeNames(vfs);
-    ta::sim::setupRegistry(unitRegistry,vfs,false);
-    ta::sim::setupRegistry(crusadesRegistry,vfs,true);
+    ta::sim::setupRegistry(unitRegistry,vfs);
     // Offer only types the game spawns by that name: a scenario naming any other
     // stops the match ("Scenario unit type is missing"). Iron Plague's campaign
     // tarnecr2.fbi declares objectname TARNECRO, so the registry has no TARNECR2.

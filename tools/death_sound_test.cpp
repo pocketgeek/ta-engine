@@ -209,8 +209,8 @@ int main(int argc,char** argv) {
             check(SoundBankTestAccess::decodes(decoder,vfs.read(path)),"authored death sound decodes to PCM");
             ++decoded;
         };
-        for(bool crusades:{false,true}) {
-            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+        {
+            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
             int scripts=0,events=0;
             for(const auto& [name,type]:registry.types()) {
                 const auto* file=type.script();if(!file)continue;
@@ -242,7 +242,7 @@ int main(int argc,char** argv) {
                     for(int t=0;t<600 && !stop && callbacks;++t)vm.tick(1.f/30);
                 }
             }
-            std::cout<<(crusades?"Crusades":"Standard")<<": "<<scripts<<" scripts, "<<events<<" death sound events\n";
+            std::cout<<"Standard"<<": "<<scripts<<" scripts, "<<events<<" death sound events\n";
         }
         std::cout<<decoded<<" distinct death WAVs decoded; "<<missingShipped<<" known absent shipped WAVs remain silent\n";
     }

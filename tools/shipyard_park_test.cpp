@@ -67,7 +67,7 @@ void setupPondMap(sim::World& w,const sim::TypeRegistry& registry,hpi::Vfs& vfs,
 
 // A Navy Yard on the pond, building Submersibles. Each must leave the pad and
 // the yard must go on to the next.
-void pondYard(const sim::TypeRegistry& registry,hpi::Vfs& vfs,sim::PathfindingMode mode,bool crusades) {
+void pondYard(const sim::TypeRegistry& registry,hpi::Vfs& vfs,sim::PathfindingMode mode) {
     sim::World w;setupPondMap(w,registry,vfs,mode);
     const auto* sub=registry.find("cresubm");
     auto yardType=*registry.find("crenavy");yardType.workerTime*=20;yardType.storage=1000000;
@@ -93,8 +93,7 @@ void pondYard(const sim::TypeRegistry& registry,hpi::Vfs& vfs,sim::PathfindingMo
     for(int id:subs)if(const auto* u=w.unit(id);u && u->alive() && !u->underConstruction) {
         ++finished;onPad+=intersects(footprint(*u),pad);
     }
-    std::printf("pond balance=%s mode=%s subs=%zu finished=%d firstClearAfter=%d onPad=%d ticks=%d hash=%016llx\n",
-        crusades?"Crusades":"standard",mode==sim::PathfindingMode::Legion?"Legion":"Retail",subs.size(),finished,
+    std::printf("pond mode=%s subs=%zu finished=%d firstClearAfter=%d onPad=%d ticks=%d hash=%016llx\n",mode==sim::PathfindingMode::Legion?"Legion":"Retail",subs.size(),finished,
         firstClear<0?-1:firstClear-firstDone,onPad,tick,(unsigned long long)w.stateHash());
     check(firstClear>=0 && firstClear-firstDone<=600,"a Submersible built on the pond yard leaves the pad");
     check(finished==3 && onPad==0,"the pond yard builds its next Submersibles, none left on the pad");
@@ -426,14 +425,14 @@ int main(int argc,char** argv) {
     auto vfs=hpi::mountRetailRoot(argv[1]);
     auto generated=mapgen::generate(mapgen::decodeMapId(kRecipe),vfs);
     auto files=std::make_shared<hpi::Vfs::Files>();(*files)["maps/shipyard-pond.tnt"]=generated.map.save();vfs.setMapFiles(files);
-    for(bool crusades:{true,false}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,crusades);
-        if(crusades)pondSiting(registry,vfs);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
+        pondSiting(registry,vfs);
         for(auto mode:{sim::PathfindingMode::Retail,sim::PathfindingMode::Legion}) {
-            pondYard(registry,vfs,mode,crusades);
-            if(crusades)for(bool rally:{false,true})landFactory(registry,mode,rally);
-            if(crusades && mode==sim::PathfindingMode::Legion)landFactory(registry,mode,false,8);
-            if(crusades)deadRally(registry,mode);
+            pondYard(registry,vfs,mode);
+            for(bool rally:{false,true})landFactory(registry,mode,rally);
+            if(mode==sim::PathfindingMode::Legion)landFactory(registry,mode,false,8);
+            deadRally(registry,mode);
             {
                 for(bool rally:{false,true}) {
                     flyerFactory(registry,mode,"arakeep","arafast",rally);
@@ -445,7 +444,7 @@ int main(int argc,char** argv) {
                 flyerParkFallback(registry,mode);
             }
         }
-        if(!crusades)flyerPlacement(registry);
+        flyerPlacement(registry);
     }
     std::printf("shipyard park: %d cases, %d failures\n",cases,failures);
     return failures?1:0;

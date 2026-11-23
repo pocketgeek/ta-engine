@@ -17,7 +17,7 @@ cannot finish prints why and ends the client. TA_QUIT_TICK ends a game that star
   4  multiplayer unready: a guest READY, the host changes FOG OF WAR, the server clears the
      guest's READY (the guest is told so), the guest readies again and the host STARTs.
   5  PLAY THE MACHINE (the menu's door): the room opens at once from the single-player
-     settings; an AI, CHANGE MAP and CRUSADES are remembered in spRoom.* (mpRoom.* untouched),
+     settings; an AI, CHANGE MAP and DOUBLE SIGHT are remembered in spRoom.* (mpRoom.* untouched),
      and the next launch's room opens on that map with those rules.
   6  --play-map: the room opens on the Test Map copy and keeps it (CHANGE MAP is refused
      here), starts with one AI and no second human, and writes no remembered map.
@@ -226,7 +226,7 @@ def settings_of(home):
 
 def case_door(args, root):
     """PLAY THE MACHINE opens its room at once; the room's changes go to spRoom.*."""
-    steps = ['ai:1', 'map:Inner Circle', 'opt:crusades=1', 'start']
+    steps = ['ai:1', 'map:Inner Circle', 'opt:doubleSight=1', 'start']
     home, env = profile(root, 'case5', ';'.join(steps), {'TA_MENU_PICK': 'singleplayer'})
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
@@ -236,9 +236,9 @@ def case_door(args, root):
         played_to_quit(log, code)
         saved = settings_of(home)
         assert saved.get('spRoom.map', '').lower() == 'inner circle', 'the picked map was not remembered: %r' % saved
-        assert saved.get('spRoom.crusades') == '1' and saved.get('spRoom.generated') == '0', \
-            'CRUSADES was not remembered: %r' % saved
-        assert saved.get('mpRoom.map') == '' and saved.get('mpRoom.crusades') == '0', \
+        assert saved.get('spRoom.doubleSight') == '1' and saved.get('spRoom.generated') == '0', \
+            'DOUBLE SIGHT was not remembered: %r' % saved
+        assert saved.get('mpRoom.map') == '' and saved.get('mpRoom.doubleSight') == '0', \
             'the multiplayer set changed: %r' % saved
     except AssertionError as e:
         raise AssertionError('%s\n%s' % (e, log[-4000:]))
@@ -246,7 +246,7 @@ def case_door(args, root):
     env['TA_ROOM_SCRIPT'] = 'ai:1;start'
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
-        assert re.search(r"client \d+ created game \d+ 'Single Player' on 'inner circle' \(crusades=1 ", log, re.I), \
+        assert re.search(r"client \d+ created game \d+ 'Single Player' on 'inner circle' \(sight=1 ", log, re.I), \
             'the next room did not open on the remembered map and rules'
         script_ran(log, ['ai:1', 'start'])
         played_to_quit(log, code)
@@ -346,19 +346,19 @@ def case_online_create(args, root):
     """Online CREATE: the window's default "<account>'s Game", from the multiplayer settings, remembered there."""
     server, port, slog_path = account_server(args, root, 'case9-server')
     try:
-        steps = ['create', 'opt:crusades=1']
+        steps = ['create', 'opt:doubleSight=1']
         home, env = profile(root, 'case9', ';'.join(steps),
                             {'TA_MENU_PICK': 'connect:alice:alicepass1@tcp://127.0.0.1:%d' % port})
         log = run_until(args.client, ['menu', '--data', args.data], env, home, 'room script: finished')
         slog_text = slog_path.read_text(errors='replace')
         try:
             script_ran(log, steps)
-            assert re.search(r"client \d+ created game \d+ 'alice's Game' on '[^']+' \(crusades=0 ", slog_text), \
+            assert re.search(r"client \d+ created game \d+ 'alice's Game' on '[^']+' \(sight=0 ", slog_text), \
                 'CREATE did not open "alice\'s Game" from the multiplayer defaults'
-            assert re.search(r'game \d+: host changed the rules \(crusades', slog_text), 'the rule did not reach the server'
+            assert re.search(r'game \d+: host changed the rules \(sight', slog_text), 'the rule did not reach the server'
             saved = settings_of(home)
-            assert saved.get('mpRoom.crusades') == '1', 'CRUSADES was not remembered: %r' % saved
-            assert saved.get('spRoom.crusades') == '0' and saved.get('spRoom.map') == '', \
+            assert saved.get('mpRoom.doubleSight') == '1', 'DOUBLE SIGHT was not remembered: %r' % saved
+            assert saved.get('spRoom.doubleSight') == '0' and saved.get('spRoom.map') == '', \
                 'the single-player set changed: %r' % saved
         except AssertionError as e:
             raise AssertionError('%s\nclient:\n%s\nserver:\n%s' % (e, log[-3000:], slog_text[-3000:]))
@@ -546,7 +546,7 @@ def case_running_limit(args, root):
         assert other.pump(20, lambda p: p.last_tick() >= 15), "the other player's game never ticked"
         # The host (harness mode 1, which never starts by itself here) presses START once
         # its guest is ready; then changes a rule in the room the refusal left open.
-        steps = ['wait:ready=2', 'start!', 'opt:crusades=1']
+        steps = ['wait:ready=2', 'start!', 'opt:doubleSight=1']
         home, env = profile(root, 'case14', ';'.join(steps), {'TA_MPAUTO': '1', 'TA_MP_WAIT': '9'})
         path = home / 'client.log'
         with open(path, 'w') as out:
@@ -593,7 +593,7 @@ def case_running_limit(args, root):
                 'the room did not say why START was refused'
             refusal = re.search(r'game \d+: start refused -- server running-game capacity reached; retry later', slog_text)
             assert refusal, 'the server did not refuse the START at its limit'
-            assert re.search(r'game \d+: host changed the rules \(crusades', slog_text[refusal.end():]), \
+            assert re.search(r'game \d+: host changed the rules \(sight', slog_text[refusal.end():]), \
                 'the room did not take its host\'s change after the refusal'
             assert 'reject client' not in slog_text, 'the server ended a connection'
             assert proc.poll() is None, 'the client did not stay in its room'

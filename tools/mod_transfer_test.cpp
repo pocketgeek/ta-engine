@@ -59,7 +59,7 @@ int main(int argc,char** argv){try{
  auto setup=[&](Load& l){
   auto& data=*l.data;auto& world=*l.world;const bool isHost=l.c==&host;
   check(hpi::gameplayHash(data)!=stockHash,"game pack did not change gameplay");
-  if(isHost) {sim::setupRegistry(registry,data,false);check(registry.find("araking")->maxHp==23456,"alphabetical pack precedence lost");check(data.has("sounds/host-art.wav"),"host cosmetic pack not loaded");
+  if(isHost) {sim::setupRegistry(registry,data);check(registry.find("araking")->maxHp==23456,"alphabetical pack precedence lost");check(data.has("sounds/host-art.wav"),"host cosmetic pack not loaded");
    check(data.has("sounds/host-always.wav") && !data.has("sounds/peer-always.wav"),"host always-enabled cosmetic pack not loaded (or a guest's was sent)");
    check(data.has("sounds/host-rules.wav") && !data.has("sounds/peer-rules.wav"),"host always-enabled game pack not applied (or a guest's was)");}
   else {check(hpi::gameplayHash(data)==hpi::gameplayHash(hostData),"peer cosmetics changed gameplay");check(data.read("sounds/pack-test.wav")==std::vector<uint8_t>({'l','o','c','a','l'}),"peer cosmetic pack not loaded over its always-on archive");check(!data.has("sounds/host-art.wav"),"host cosmetic pack was transferred");
@@ -67,7 +67,7 @@ int main(int argc,char** argv){try{
    check(!data.has("sounds/peer-root.wav"),"an archive directly in mods/cosmetic/ was loaded");
    check(data.has("sounds/host-rules.wav") && l.mod->mapPath.find("HostRules")!=std::string::npos,"the host's always-enabled game pack was not sent");
    check(!data.has("sounds/peer-rules.wav") && l.mod->mapPath.find("PeerRules")==std::string::npos,"a guest's own always-enabled game pack applied in the host's room");
-   {sim::TypeRegistry mine;sim::setupRegistry(mine,data,false);check(mine.find("araking")->maxHp==23456,"the guest's always-enabled game pack changed the host's units");}
+   {sim::TypeRegistry mine;sim::setupRegistry(mine,data);check(mine.find("araking")->maxHp==23456,"the guest's always-enabled game pack changed the host's units");}
    check(!l.mod->files->count("sounds/host-always.wav") && !l.mod->files->count("sounds/host-art.wav"),"the game-mod package carried cosmetic files");}
   data.setMapFiles(l.map->files);sim::MatchConfig cfg;cfg.vfs=&data;cfg.mapPath=l.map->mapPath;cfg.startSeed=l.seed;cfg.slots={{true,0,0,1,false,false},{true,1,1,1,false,false}};cfg.unitCap=2000;
   cfg.roomMapRevealed=l.fog>=1;cfg.roomLosOff=l.fog==2;   // hashed room vision, as net::matchConfigFor sets it

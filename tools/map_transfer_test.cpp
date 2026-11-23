@@ -86,7 +86,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
     net::MpClient host,observer;host.setMapRoot(hostRoot);observer.setMapRoot(peerRoot);
     host.setDataHash(hpi::gameplayHash(hostData));observer.setDataHash(hpi::gameplayHash(peerData));
     check(host.connect("127.0.0.1",port,"solo-author"),"solo host connect");
-    sim::TypeRegistry registry;sim::setupRegistry(registry,hostData,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,hostData);
     sim::World wh,wo;
     bool created=false,ready=false,started=false,loaded=false,connected=false,spectating=false,observerLoaded=false,sent=false;
     uint32_t ht=0,ot=0;std::map<uint32_t,uint64_t> hashes;
@@ -374,7 +374,7 @@ static int roomEdit(uint16_t port, const std::filesystem::path& hostRoot, const 
     hostOnlyMap(hostRoot, base, "Ulasem Arena", "room edit c");
     const auto cacheBase = std::filesystem::temp_directory_path() / ("ta-room-edit-" + crypto::toHex(crypto::randomVec(8)));
     struct CleanCache { std::filesystem::path p; ~CleanCache() { std::error_code ec; std::filesystem::remove_all(p, ec); } } clean{cacheBase};
-    sim::TypeRegistry reg; sim::setupRegistry(reg, base,false);
+    sim::TypeRegistry reg; sim::setupRegistry(reg,base);
     int made = 0;
     std::map<const net::MpClient*, std::vector<std::string>> history;   // each client's map status changes
     auto client = [&](const std::filesystem::path& root, const std::string& name) {
@@ -692,7 +692,7 @@ int main(int argc, char** argv) try {
         uint32_t ht=0, pt=0, st=0;
         std::map<uint32_t,uint64_t> hashes;
         sim::World wh, wp, ws; sim::TypeRegistry reg;
-        sim::setupRegistry(reg, peerData,false);
+        sim::setupRegistry(reg,peerData);
         const std::string mapId = argc > 5 ? argv[5] : "Transfer Test";
         auto setup = [&](net::MpClient& client, hpi::Vfs& base, sim::World& world) {
             auto room = client.startRoom();
@@ -1022,7 +1022,7 @@ int main(int argc, char** argv) try {
             // scenario (an .ota with no hasscenario, no .crt, no Use Only list), so
             // none is offered; each package carries its own tile art (no section JPG).
             using S=sim::ScenarioStatus;
-            sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+            sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
             for (const char* name:{"Ashap Plateau","King of the Hill","Lusch Puppy","Coast To Coast","Great Divide"}) {
                 const auto package=net::maps::build(vfs,name);
                 check(package && package->files->count(package->mapPath),(std::string(name)+": package lacks its map").c_str());

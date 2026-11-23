@@ -192,7 +192,7 @@ class BufferedPeer(Peer):
                 self.pending[message[0]].append(message[1:])
 
 
-OPTIONS_BYTES = 19  # GameOptions on the wire; its last three bytes are allowSpectators, mapScenario, powerCodes
+OPTIONS_BYTES = 20  # GameOptions on the wire; it ends allowSpectators, mapScenario, powerCodes, startMetal100, startEnergy100
 
 
 def lobby(r):

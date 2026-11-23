@@ -43,8 +43,8 @@ int main(int argc,char** argv) {
         std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);
         if (!ok) ++failures;
     };
-    for (bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         // A different converter can turn the target while this Harpy is still
         // aiming. Both explicit AI orders and automatic attack-move targets
         // must release it and preserve the queued destination.
@@ -131,8 +131,7 @@ int main(int argc,char** argv) {
                     !shot.lightningEffect->particles.empty())emitted=true;
                 hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
             }
-            std::printf("lightning balance=%s unit=%s slot=%zu side=%s emitted=%d hit=%d hash=%016llx\n",
-                crusades?"Crusades":"standard",name.c_str(),slot,side ? "north-west" : "east",int(emitted),int(hit),
+            std::printf("lightning balance=%s unit=%s slot=%zu side=%s emitted=%d hit=%d hash=%016llx\n","standard",name.c_str(),slot,side ? "north-west" : "east",int(emitted),int(hit),
                 static_cast<unsigned long long>(world.stateHash()));
             if(!side && emitted && hit)break;
             if(side)check(emitted && hit,"selected shipped lightning slot emits and reaches the enemy through live combat");
@@ -177,8 +176,7 @@ int main(int argc,char** argv) {
                 }
                 hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp);
             }
-            std::printf("flame balance=%s unit=%s emitted=%d hit=%d kind=%d hash=%016llx\n",
-                crusades?"Crusades":"standard",name,int(emitted),int(hit),kind,
+            std::printf("flame balance=%s unit=%s emitted=%d hit=%d kind=%d hash=%016llx\n","standard",name,int(emitted),int(hit),kind,
                 static_cast<unsigned long long>(world.stateHash()));
             check(emitted && hit && kind==type.weapons[0].flameKind,
                 "shipped flame weapon emits its subclass and reaches the enemy through live combat");
@@ -204,8 +202,7 @@ int main(int argc,char** argv) {
                 }
                 hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
             }
-            std::printf("straight balance=%s unit=%s launched=%d moved=%d hit=%d hash=%016llx\n",
-                crusades?"Crusades":"standard",name,int(launched),int(moved),int(hit),
+            std::printf("straight balance=%s unit=%s launched=%d moved=%d hit=%d hash=%016llx\n","standard",name,int(launched),int(moved),int(hit),
                 static_cast<unsigned long long>(world.stateHash()));
             check(launched && moved && hit,"shipped ordinary LOS weapon flies and hits through live combat");
         }
@@ -245,7 +242,7 @@ int main(int argc,char** argv) {
                 attacked=attacked || (!o.empty() && o.front().targetId==target);
                 seen=seen || world.playerSees(0,*world.unit(target));
             }
-            std::printf("balance=%s unit=%s order=%d fired=%d seen=%d\n",crusades?"Crusades":"standard",
+            std::printf("balance=%s unit=%s order=%d fired=%d seen=%d\n","standard",
                         name.c_str(),order,int(fired),int(seen));
             // Idle on Hold Position (standingunitorder 1), VTOL_Standby's
             // 4d7de0(unit, found, 0, 0, 1, 0) refuses: the flyer stays landed
@@ -305,8 +302,8 @@ int main(int argc,char** argv) {
                 const int distance=weapon.hoverAttackDistance?weapon.hoverAttackDistance:type.hoverAttackDistance;
                 const int altitude=weapon.hoverAttackAltitude?weapon.hoverAttackAltitude:type.hoverAttackAltitude;
                 const float radius=ta::sim::fxLen(u->x-t->x,u->z-t->z).toFloat();
-                std::printf("hover balance=%d unit=%s close=%d distance=%.2f wanted=%d height=%.2f wanted=%d\n",
-                    int(crusades),name.c_str(),int(close),radius,distance,u->flightY.toFloat(),std::min(511,ground+altitude));
+                std::printf("hover unit=%s close=%d distance=%.2f wanted=%d height=%.2f wanted=%d\n",
+                    name.c_str(),int(close),radius,distance,u->flightY.toFloat(),std::min(511,ground+altitude));
                 check(std::abs(radius-distance)<20,"hover flyer settles at authored attack distance");
                 check(std::abs(u->flightY.toFloat()-std::min(511,ground+altitude))<2,
                       "hover flyer uses attack altitude and remains airborne");
@@ -377,7 +374,7 @@ int main(int argc,char** argv) {
                 if (goal) last=*goal; else last.reset();
             }
             std::printf("attack runs balance=%s unit=%s runlength=%d range=%.0f held=%d near=%d runs=%d on line=%d fired=%d"
-                " lokken shots=%d hits=%d\n",crusades?"Crusades":"standard",name.c_str(),int(type.attackRunLength),range,
+                " lokken shots=%d hits=%d\n","standard",name.c_str(),int(type.attackRunLength),range,
                 held,int(near),runs,onLine,int(fired),shots,hits);
             check(held==0,"a flyer attacking a ground target never holds still");
             check(near,"its runs carry it within half its range of the target");
@@ -417,8 +414,7 @@ int main(int argc,char** argv) {
                     if (hit.victimId==ground && hit.weapon>=type.weapons.data() &&
                         hit.weapon<type.weapons.data()+type.weapons.size()) ++hits;
             }
-            std::printf("attack-run aim balance=%s unit=%s shots=%d hits=%d damage=%.0f\n",
-                crusades?"Crusades":"standard",name.c_str(),shots,hits,damage);
+            std::printf("attack-run aim balance=%s unit=%s shots=%d hits=%d damage=%.0f\n","standard",name.c_str(),shots,hits,damage);
             if (name=="zongryp")
                 check(shots>=8 && hits*2>shots,"a Gryphon on attack runs strikes the target with most of its spears");
         }
@@ -469,8 +465,7 @@ int main(int argc,char** argv) {
                 const uint16_t heading=ta::sim::portHeadingToRetail(s->heading);
                 led+=heading==toLead;centre+=heading==toCentre;
             }
-            std::printf("facing balance=%s lokken vs crossing gryphon aiming=%d facing led=%d centre=%d\n",
-                crusades?"Crusades":"standard",aiming,led,centre);
+            std::printf("facing balance=%s lokken vs crossing gryphon aiming=%d facing led=%d centre=%d\n","standard",aiming,led,centre);
             check(aiming>100 && led>=aiming-2,"a pivoting shooter faces the led SweetSpot of a moving flyer");
         }
         // A HOVERATTACK flyer's target controller (4e4140, flags 0xa3) heads it
@@ -515,7 +510,7 @@ int main(int argc,char** argv) {
             }
             const float offset=std::hypot(float(sweetSpot[0]-middle[0])/65536.f,float(sweetSpot[2]-middle[2])/65536.f);
             std::printf("hover controller balance=%s wisp vs barracks (SweetSpot %.1f px off) ticks=%d headed=%d"
-                " refreshes=%d ringed=%d\n",crusades?"Crusades":"standard",offset,ticks,headed,refreshes,ringed);
+                " refreshes=%d ringed=%d\n","standard",offset,ticks,headed,refreshes,ringed);
             check(offset>16 && ticks>1000 && headed==ticks,"a hover attacker heads at its target's SweetSpot");
             check(refreshes>20 && ringed==refreshes,"a hover attacker rings the led SweetSpot at its hover distance");
         }
@@ -534,8 +529,7 @@ int main(int argc,char** argv) {
             const auto& u=*w.unit(id);
             const auto& v=u.flightVelocity;
             const uint32_t rate=ta::sim::RetailReplayProbe::moveRate(w,id);
-            std::printf("hold balance=%s unit=%s hold=%s held=%d velocity=(%d,%d,%d) speed=%d rate=%u\n",
-                crusades?"Crusades":"standard",u.type->id.c_str(),hold,int(held),v.x,v.y,v.z,u.speed.v,rate);
+            std::printf("hold balance=%s unit=%s hold=%s held=%d velocity=(%d,%d,%d) speed=%d rate=%u\n","standard",u.type->id.c_str(),hold,int(held),v.x,v.y,v.z,u.speed.v,rate);
             check(held,"the flyer holds still");
             check(v.x==0 && v.y==0 && v.z==0 && u.speed==ta::sim::Fixed(),"a held flyer reports no velocity or speed");
             if (!turning) check(rate==0,"a held flyer that is not turning reports MoveRate 0");
@@ -587,8 +581,7 @@ int main(int argc,char** argv) {
                 far=std::max(far,std::hypot((w.unit(flyer)->x-w.unit(charge)->x).toFloat(),
                                             (w.unit(flyer)->z-w.unit(charge)->z).toFloat()));
             }
-            std::printf("guard balance=%s unit=%s ring=%.0f still=%d farthest=%.0f\n",
-                crusades?"Crusades":"standard",name,ring,stillTicks,far);
+            std::printf("guard balance=%s unit=%s ring=%.0f still=%d farthest=%.0f\n","standard",name,ring,stillTicks,far);
             check(stillTicks==0 && far<ring+60,"a guarding flyer circles its charge instead of holding");
         }
         for (int hold=0;hold<3;++hold) {
@@ -688,8 +681,7 @@ int main(int argc,char** argv) {
                 ta::sim::RetailReplayProbe::blast(w,*swirl,{1616*65536,ground,1500*65536},0);
                 const int grazed=loss(edgeUnit,full);
                 std::printf("splash balance=%s gryphon altitude=%d under=%d burst=%d dummy centre=%d side=%d"
-                    " (%d px from its box, fraction %.4f of %.0f) swirl struck=%d bystander=%d scenery=%d grazed=%d\n",
-                    crusades?"Crusades":"standard",altitude,under,burst,centreLoss,sideLoss,gap,
+                    " (%d px from its box, fraction %.4f of %.0f) swirl struck=%d bystander=%d scenery=%d grazed=%d\n","standard",altitude,under,burst,centreLoss,sideLoss,gap,
                     fraction(*shell,gap),base,struck,bystander,scenery,grazed);
                 check(under==0,"a ground blast misses a flyer cruising over it");
                 check(burst>0 && spread(burst,shell->damageVs(&gryphon)),"a blast at the flyer's height hits it in full");

@@ -217,7 +217,7 @@ struct Settings {
     // SERVER game, mpRoom.*). The host's changes in a room update the set of that room's kind.
     // They only seed a room: the authoritative rules live in GameOptions/MatchConfig.
     struct RoomPrefs {
-        bool crusades = false, doubleSight = false, speedUnlock = false;
+        bool doubleSight = false, speedUnlock = false;
         bool monarchExpendable = false;
         bool allowSpectators = true;   // multiplayer only (single player rooms are private)
         bool powerCodes = false;       // off, as in retail

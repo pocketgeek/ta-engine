@@ -1,5 +1,5 @@
 scn 1
-# Five armed Drakes (Crusades) standing in one cell sent on one patrol: every flyer's patrol is VTOL_Patrol,
+# Five armed Drakes standing in one cell sent on one patrol: every flyer's patrol is VTOL_Patrol,
 # armed or not, and past stage 0 its air-traffic check (419ee0) steps it out of the stack (VTOL_StepOut) and
 # picks the patrol up again at stage 1. Through protocol 307's first cut an armed flyer patrolled without a
 # mission and the five lapped as one stack.
@@ -7,7 +7,6 @@ name air-stack-patrol
 ticks 1800
 seed 7
 players 2
-crusades on
 weapons on
 map flat 160 160
 type drake fbi zondrake

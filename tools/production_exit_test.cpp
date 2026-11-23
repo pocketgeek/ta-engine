@@ -34,7 +34,7 @@ bool groundOutput(const ta::sim::UnitType* t) {
 // false on failure.
 bool largeOutputCase(const ta::sim::TypeRegistry& registry,const ta::sim::UnitType& factory,
                      const ta::sim::UnitType* large,const ta::sim::UnitType* small,
-                     bool crusades,int side,bool legion,bool largeFirst) {
+                     int side,bool legion,bool largeFirst) {
     auto producer=factory;producer.storage=1000000;
     ta::sim::World world;
     if(legion)world.setPathfindingMode(ta::sim::PathfindingMode::Legion);
@@ -83,9 +83,9 @@ bool largeOutputCase(const ta::sim::TypeRegistry& registry,const ta::sim::UnitTy
     for(const auto& u:world.units())
         if(u.id!=id && u.alive() && u.type && intersects(footprint(u),yard))++inYard;
     const bool pass=complete>=4 && largeClear>=0 && overlapTicks==0 && inYard==0;
-    std::printf("%s: large balance=%s mode=%s factory=%s large=%s small=%s order=%s heading=%d completed=%d "
+    std::printf("%s: large mode=%s factory=%s large=%s small=%s order=%s heading=%d completed=%d "
                 "largeClearAfter=%d overlapTicks=%d inYard=%d ticks=%d hash=%016llx%s%s\n",
-        pass?"PASS":"FAIL",crusades?"Crusades":"standard",legion?"Legion":"Retail",factory.id.c_str(),
+        pass?"PASS":"FAIL",legion?"Legion":"Retail",factory.id.c_str(),
         large->id.c_str(),small->id.c_str(),largeFirst?"large-first":"large-last",int(heading),complete,largeClear<0 ? -1 : largeClear-largeDone,overlapTicks,inYard,tick,
         (unsigned long long)world.stateHash(),firstOverlap.empty()?"":" first overlap ",firstOverlap.c_str());
     return pass;
@@ -94,8 +94,8 @@ bool largeOutputCase(const ta::sim::TypeRegistry& registry,const ta::sim::UnitTy
 int main(int argc,char** argv) {
     if(argc!=2)return 2;
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);int failures=0,cases=0;
-    for(bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         struct Case {const char* producer;const char* output;bool infinite;int count;};
         std::array<Case,5> roster{{{"arakeep","arasword",false,24},
             {"zonhunt","zonhand",true,8},{"zonhand","zonter",true,8},{"verasy",nullptr,false,6},{"zonlord",nullptr,true,8}}};
@@ -125,8 +125,8 @@ int main(int argc,char** argv) {
             }
             const bool pass=complete>=c.count && world.unit(id)->rally.empty() &&
                 (!c.infinite || world.unit(id)->repeatType==output);
-            std::printf("%s: balance=%s producer=%s output=%s direction=%d repeat=%d completed=%d ticks=%d hash=%016llx\n",
-                pass?"PASS":"FAIL",crusades?"Crusades":"standard",c.producer,output->id.c_str(),direction,
+            std::printf("%s: producer=%s output=%s direction=%d repeat=%d completed=%d ticks=%d hash=%016llx\n",
+                pass?"PASS":"FAIL",c.producer,output->id.c_str(),direction,
                 c.infinite,complete,tick,(unsigned long long)world.stateHash());
             ++cases;if(!pass)++failures;
         }
@@ -145,11 +145,11 @@ int main(int argc,char** argv) {
             if(!large || large->footX*large->footZ==small->footX*small->footZ)continue;
             ++factories;
             for(int side:{-1,0,1})for(bool legion:{false,true})for(bool largeFirst:{true,false}) {
-                ++cases;if(!largeOutputCase(registry,type,large,small,crusades,side,legion,largeFirst))++failures;
+                ++cases;if(!largeOutputCase(registry,type,large,small,side,legion,largeFirst))++failures;
             }
         }
         if(factories<8){std::printf("FAIL: only %d shipped ground factories found\n",factories);++failures;}
-        if(!crusades) {
+        {
             const auto check=[&](bool ok,const char* what){std::printf("%s: %s\n",ok?"PASS":"FAIL",what);++cases;if(!ok)++failures;};
             // A factory's output stance (engine addition): none at first, so the
             // output keeps its own default; set, every new unit takes it; the lit
@@ -217,7 +217,7 @@ int main(int argc,char** argv) {
         const auto *barracks=registry.find("arakeep"),*catapult=registry.find("arapult"),*knight=registry.find("araknigh");
         if(!barracks || !catapult || !knight){std::puts("FAIL: Barracks/Catapult/Knight missing");++failures;}
         else for(int side:{-1,0,1})for(bool legion:{false,true}) {
-            ++cases;if(!largeOutputCase(registry,*barracks,catapult,knight,crusades,side,legion,true))++failures;
+            ++cases;if(!largeOutputCase(registry,*barracks,catapult,knight,side,legion,true))++failures;
         }
     }
     std::printf("production exits: %d cases, %d failures\n",cases,failures);

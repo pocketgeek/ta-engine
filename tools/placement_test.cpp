@@ -343,7 +343,7 @@ int main(int argc, char** argv) {
     auto vfs = hpi::mountRetailRoot(argv[1]);
     {
         sim::TypeRegistry reg;
-        sim::setupRegistry(reg, vfs, false);
+        sim::setupRegistry(reg,vfs);
         for (const auto& c : kCases) runCase(vfs, reg, c);
         stagedStressCase(vfs, reg, 0);
         stagedStressCase(vfs, reg, 1);

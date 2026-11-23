@@ -64,8 +64,8 @@ int main(int argc,char** argv) {
         if(argc<2) {std::puts("PASS: native score accumulation and one-shot death accounting");return 0;}
         const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         const auto camps=ta::loadCampaigns(vfs);check(camps.size()>=2,"campaign roster absent");
-        for(bool crusades:{false,true}) {
-            TypeRegistry types;setupRegistry(types,vfs,crusades);
+        {
+            TypeRegistry types;setupRegistry(types,vfs);
             const auto* archer=types.find("araarch");
             check(archer && archer->experiencePoints>0,"authored experiencepoints not loaded");
         }

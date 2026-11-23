@@ -230,12 +230,10 @@
         // Build the world through the SHARED setup so the server's referee sim and
         // every client produce a bit-identical world (and hash). Client-only bits
         // (colours, camera, local player, panel) stay here.
-        // The game's balance AND game mods are the ROOM's (lobby choices), which
-        // may differ from how this client was launched. Remount with the room's
-        // game mods (so gameplay data -- or its absence -- matches the referee) and
-        // rebuild the registry, so our world and hash agree with the server's
-        // referee. remountMods already rebuilds the registry for the current
-        // crusades setting; handle a crusades-only change separately.
+        // The game mods are the ROOM's (lobby choices), which may differ from how
+        // this client was launched. Remount with the room's game mods (so gameplay
+        // data -- or its absence -- matches the referee); remountMods rebuilds the
+        // registry, so our world and hash agree with the server's referee.
 #ifndef NDEBUG
         previewLifetimeProbe(false);   // TA_PREVIEW_LIFETIME_TEST=gen|big
 #endif
@@ -252,12 +250,6 @@
         featureDefs_.clear(); featurePals_.clear();
         for (auto& [name, art] : featureArt_) art.destroyTextures();
         featureArt_.clear();
-        if ((room.opts.crusades != 0) != crusades_) {
-            crusades_ = room.opts.crusades != 0;
-            registry_ = ta::sim::TypeRegistry{};
-            ta::sim::setupRegistry(registry_, vfs_, crusades_);
-            pickBoundsValid_ = false;   // cursor picking's per-type bounds
-        }
         // Campaign mission: build the SAME world the referee did. setupMission is
         // deterministic (terrain + placed units + the in-sim god script), so our sim,
         // the referee, and every peer stay byte-identical -- the mission runs in
@@ -1455,7 +1447,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
         std::fprintf(stderr, "player %d: AI takeover at tick %u\n", int(e.player), netTick_);
     }
 
-    bool GameView::mpAutoStep(int autoMode, const std::string& mapId, bool crusades) {
+    bool GameView::mpAutoStep(int autoMode, const std::string& mapId) {
         using S = ta::net::MpClient::State;
         lobbyAutoMode_ = autoMode;
         if (autoMode) rememberRoom_ = false;   // a harness room writes no remembered settings
@@ -1515,7 +1507,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             }
             // The Benchmark runs with no mod packs at all (a menu run already applied this).
             if (benchmarkMode_) ta::applyBenchmarkMods(mods_, mp_);
-            ta::net::GameOptions o; o.crusades = crusades ? 1 : 0;
+            ta::net::GameOptions o;
             o.gameMods = mods_.game ? 1 : 0;   // debug --mods override (the lobby always sends 1)
             // TA_SPEED: set the game speed in tenths (10 = 1x) for headless timing
             // tests -- re-cadences the server without touching the (deterministic) sim.
@@ -1601,7 +1593,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (SDL_GetTicks64() - mpListMs_ > 300) { mp_->listGames(); mpListMs_ = SDL_GetTicks64(); }
             if (!mp_->games().empty()) mp_->joinGame(mp_->games().front().id, "");
             else if (autoMode == 3 && mpListMs_ && SDL_GetTicks64() - mpFirstListMs_ > 800) {
-                ta::net::GameOptions o; o.crusades = crusades ? 1 : 0;
+                ta::net::GameOptions o;
             o.gameMods = mods_.game ? 1 : 0;   // debug --mods override (the lobby always sends 1)
                 o.mapScenario = ta::devFlag("TA_MAP_SCENARIO") ? 1 : 0;   // as for modes 1/4/7
                 o.powerCodes = ta::devFlag("TA_POWER_CODES") ? 1 : 0;
@@ -1789,14 +1781,13 @@ namespace {
 // TA_ROOM_SCRIPT's opt: rules, by the name a step gives them, and the room's value of each.
 struct RoomScriptRule { const char* name; ta::RoomField field; };
 constexpr RoomScriptRule kRoomScriptRules[] = {
-    {"crusades", ta::RoomField::Crusades}, {"doubleSight", ta::RoomField::DoubleSight},
+    {"doubleSight", ta::RoomField::DoubleSight},
     {"unitCap", ta::RoomField::UnitCap}, {"monarchExpendable", ta::RoomField::Monarch},
     {"speedUnlock", ta::RoomField::SpeedUnlock}, {"fog", ta::RoomField::Fog},
     {"randomStarts", ta::RoomField::StartLocations}, {"pathfinding", ta::RoomField::Pathfinding},
     {"powerCodes", ta::RoomField::PowerCodes}, {"allowSpectators", ta::RoomField::AllowSpectators}};
 int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
     switch (field) {
-    case ta::RoomField::Crusades: return o.crusades;
     case ta::RoomField::DoubleSight: return o.doubleSight;
     case ta::RoomField::UnitCap: return o.unitCap;
     case ta::RoomField::Monarch: return o.monarchExpendable;
@@ -1824,7 +1815,6 @@ int roomRuleValue(const ta::net::GameOptions& o, ta::RoomField field) {
         // there. MAP SCENARIO starts off (a Test Map copy plays its scenario by its opt-in).
         const ta::Settings::RoomPrefs p = settings_ ? settings_->prefsFor(sp) : ta::Settings::RoomPrefs{};
         ta::net::GameOptions o;
-        o.crusades = p.crusades ? 1 : 0;
         o.doubleSight = p.doubleSight ? 1 : 0;
         o.pathfindingMode = ta::sim::validPathfindingMode(uint8_t(p.pathfindingMode)) ? p.pathfindingMode
                                                                                       : ta::sim::PathfindingMode::Retail;

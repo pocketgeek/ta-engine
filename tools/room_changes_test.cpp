@@ -84,9 +84,9 @@ int main() {
     }
     {
         const RoomView a = room();
-        RoomView b = bumped(a, net::kChangeOptions); b.opts.crusades = 1; b.opts.unitCap = 500;
+        RoomView b = bumped(a, net::kChangeOptions); b.opts.doubleSight = 1; b.opts.unitCap = 500;
         const auto c = roomChanges(a, b);
-        check(has(c.options, RoomField::Crusades) && has(c.options, RoomField::UnitCap) && c.options.size() == 2,
+        check(has(c.options, RoomField::DoubleSight) && has(c.options, RoomField::UnitCap) && c.options.size() == 2,
               "two rules: both cells");
         checkNote(roomChangeNote(c, false), "HOST CHANGED THE RULES -- READY AGAIN", "several rules");
     }
@@ -129,8 +129,8 @@ int main() {
         check(!c.unreadied && !c.bits && c.seats.empty(), "the guest's own UNREADY is no change");
         checkNote(roomChangeNote(c, false), "", "no note for the guest's own UNREADY");
         // A guest not ready before is not unreadied.
-        RoomView d = bumped(b, net::kChangeOptions); d.opts.crusades = 1;
-        checkNote(roomChangeNote(roomChanges(b, d), false), "HOST CHANGED CRUSADES", "not ready before: no READY AGAIN");
+        RoomView d = bumped(b, net::kChangeOptions); d.opts.doubleSight = 1;
+        checkNote(roomChangeNote(roomChanges(b, d), false), "HOST CHANGED DOUBLE SIGHT/RADAR", "not ready before: no READY AGAIN");
         // Another guest changing its side moves no revision: nothing lights.
         RoomView e = a; e.slots[1].faction = 3;
         const auto g = roomChanges(a, e);
@@ -196,7 +196,7 @@ int main() {
         auto c = roomChanges(a, b);
         check(!c.unreadied && c.othersUnreadied == 1, "the host's READY stays; the guest's went");
         checkNote(roomChangeNote(c, true), "PLAYERS MUST READY AGAIN", "the host is told to wait");
-        RoomView d = bumped(b, net::kChangeOptions); d.opts.crusades = 1;   // nobody ready now
+        RoomView d = bumped(b, net::kChangeOptions); d.opts.doubleSight = 1;   // nobody ready now
         checkNote(roomChangeNote(roomChanges(b, d), true), "", "no rule notes for the host's own change");
     }
 

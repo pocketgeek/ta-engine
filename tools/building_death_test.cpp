@@ -12,8 +12,8 @@ int main(int argc,char** argv) {
     auto check=[&](bool ok,const char* message) {
         if (!ok) {++failures;std::fprintf(stderr,"FAIL: %s\n",message);}
     };
-    for (bool balance:{false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,balance);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         sim::World definitions;
         sim::registerMapFeatures(definitions,tnt::Map{},vfs,&registry);
         check(registry.find("arakeep")->instantCorpse,"Keep has immediate constant corpse handler");
@@ -65,7 +65,7 @@ int main(int argc,char** argv) {
                 }
                 hash=(hash*1099511628211ULL)^w.stateHash();
             }
-            if(!balance)std::printf("EXPLOSION_CORPSE %s\n",name.c_str());
+            std::printf("EXPLOSION_CORPSE %s\n",name.c_str());
         }
         // 512ee0 (512f8f..512fab, emulated over 3000 layouts): the corpse is a
         // water grave when 511170's interpolated ground height under the body
@@ -151,8 +151,7 @@ int main(int argc,char** argv) {
             check(sinking(sword,10,true,gone,rest)>=0 && gone<0 && rest==(10<<16),
                   "a statue in water lies on its sea bed");
         }
-        // The Crusades roster has no Cult of Lokken Ship (tarcship has no unitscb FBI).
-        check(restored==(balance?28:29),"all 29 (Crusades 28) omitted corpse types restored");
+        check(restored==29,"all 29 omitted corpse types restored");
         check(waterStays>0 && waterFades>0,"both a wreck at rest on a bed of 0 and a fading one were seen");
         check(!registry.find("arasword")->explosionCorpse,"ordinary soldier explosion still gibs");
         check(!registry.find("arafly")->explosionCorpse,"handler that refuses a corpse stays excluded");
@@ -174,12 +173,12 @@ int main(int argc,char** argv) {
             check(w.unit(id)->corpseUntil<=w.unit(id)->corpseAnimationTicks(),
                   "unfinished and self-destructed units remain excluded");
         }
-        std::printf("explosion corpses balance=%d hash=%016llx\n",balance,(unsigned long long)hash);
+        std::printf("explosion corpses hash=%016llx\n",(unsigned long long)hash);
         for (const auto& [name,type]:registry.types()) {
             if (!type.instantCorpse) continue;
             const int ct=definitions.corpseTypeOf(&type);
             check(ct>=0,"instant wreck has feature definition");if (ct<0) continue;
-            if (!balance) std::printf("INSTANT %s\n",name.c_str());
+            std::printf("INSTANT %s\n",name.c_str());
             for (int death:{1,3}) {
                 sim::World w;
                 w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);

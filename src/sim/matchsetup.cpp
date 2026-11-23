@@ -361,39 +361,25 @@ void applyEvent(World& world, const ta::net::Event& e) {
         if (u.alive() && u.player == p) world.stop(u.id);
 }
 
-void setupRegistry(TypeRegistry& reg, const hpi::Vfs& input, bool crusades) {
+void setupRegistry(TypeRegistry& reg, const hpi::Vfs& input) {
     // Map sprite banks must not change unit weapon/nimbus timing in one room.
     hpi::Vfs vfs(&input, true);
     reg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
-    // The roster is ONE unit directory: units/ for the standard balance, unitscb/
-    // for Crusades. Retail 0x518080 looks a name up only in the dictionary the
-    // Crusades flag selects and never falls back, so a unit with no unitscb FBI
-    // (monelem, monmum, tarcship, tarhel, tarnecr2, zonspide) does not exist in a
-    // Crusades game. The VFS already merges base + Iron Plague + community units
-    // into one namespace, resolved by retail newest-date precedence.
-    // An install with no unitscb/ at all has no Crusades balance to select: the
-    // referee then plays the standard registry (Server::buildDataSet haveCb), so
-    // every peer must do the same rather than load an empty roster.
-    const bool cb = crusades && !vfs.list("unitscb").empty();
-    reg.loadDir(vfs, cb ? "unitscb" : "units");
-    // Build menus always come from the standard canbuild/ tree, filtered by that
-    // roster (retail 0x4c1950). Retail has no canbuildcb path: that shipped tree
-    // is data the game never reads.
+    // The roster is the units/ directory. The VFS already merges base + expansion +
+    // community units into one namespace, resolved by retail newest-date precedence.
+    reg.loadDir(vfs, "units");
+    // Build menus come from the canbuild/ tree, filtered by that roster (retail 0x4c1950).
     reg.loadBuildTree(vfs, "canbuild");
 }
 
-std::string scenarioTypeMissingText(const ScenarioTypeMissing& missing, const TypeRegistry* standard) {
-    auto lower = missing.type, upper = missing.type;
-    for (char& c : lower) c = char(std::tolower(static_cast<unsigned char>(c)));
+std::string scenarioTypeMissingText(const ScenarioTypeMissing& missing) {
+    auto upper = missing.type;
     for (char& c : upper) c = char(std::toupper(static_cast<unsigned char>(c)));
-    const auto* type = standard ? standard->find(lower) : nullptr;
-    if (!type) return "this scenario places " + upper + ", a unit this game's data does not have";
-    const auto named = type->name.empty() ? upper : type->name + " (" + upper + ")";
-    return "this scenario's " + named + " does not exist with the CRUSADES balance on -- turn CRUSADES off to play it";
+    return "this scenario places " + upper + ", a unit this game's data does not have";
 }
 
 bool balanceUnitFile(const hpi::Vfs& vfs, const std::string& name) {
-    return vfs.has("units/" + name + ".fbi") || vfs.has("unitscb/" + name + ".fbi");
+    return vfs.has("units/" + name + ".fbi");
 }
 
 std::vector<std::pair<float, float>> parseStartPositions(const hpi::Vfs& vfs,
@@ -838,7 +824,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                             // can name units no install has (NeverGlory: 44 of its 242). A name
                             // no unit answers to permits nothing, so it is left out. A Test Map
                             // copy still refuses it: there it is the author's own typo,
-                            // unless the other balance has it (zonspide with CRUSADES on).
+                            // unless a unit file of that name exists.
                             if (!authoredPlaytest || balanceUnitFile(vfs, name)) continue;
                             throw std::runtime_error("Unknown authored Use Only unit: " + name);
                         }
@@ -956,9 +942,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::tolower(c)); });
                 // Retail skips a custom type no unit answers to, silently: its resolve loop
                 // (0x4cd243) stores the lookup's 0 for an unknown name with no test and no
-                // message, and 0x4cd590 then matches no unit (type ids start at 1). That is
-                // how a scenario made for the standard balance plays with CRUSADES on, where
-                // zonspide, monmum and four others do not exist (check_scenario_missing_type.py).
+                // message, and 0x4cd590 then matches no unit (type ids start at 1).
                 if (!reg.find(name)) continue;
                 world.setScenarioTypeStats(name, std::clamp(type.stat[1],0,1000),
                     std::clamp(type.stat[2],0,1000), std::clamp(type.stat[3],0,10));

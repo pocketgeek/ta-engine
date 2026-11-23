@@ -95,7 +95,6 @@ MONARCH_DEFAULT="TA_MONARCH_EXPENDABLE=1"
 
 RUNS=(
   "baseline|Ulasem Arena||"
-  "crusades|Ulasem Arena||--crusades"
   "gods|Ulasem Arena|TA_GODS=1|"
   "stress|Ulasem Arena|TA_STRESS=1|"
   "unitcap-250|Ulasem Arena|TA_UNITCAP=250|"
@@ -112,22 +111,19 @@ RUNS=(
   "cramped-sudden-death|Inner Circle|TA_MONARCH_EXPENDABLE=0|"
   "cramped-stress|Inner Circle|TA_STRESS=1|"
   "naval|Aibel's Seaport||"
-  "naval-crusades|Aibel's Seaport||--crusades"
   "lake|Lake Lokken|TA_STRESS=1|"
   "mods-all|Ulasem Arena||--mods all"
-  "crusades-absurd|Tarosian Plain|TA_AI_LEVEL=4|--crusades"
-  "everything|Tarosian Plain|TA_GODS=1 TA_STRESS=1 TA_AI_LEVEL=4 TA_FOG=1|--crusades"
+  "everything|Tarosian Plain|TA_GODS=1 TA_STRESS=1 TA_AI_LEVEL=4 TA_FOG=1|"
   "gods-random-starts|Ulasem Arena|TA_GODS=1 TA_RANDOM_STARTS=1|"
   "gods-cramped|Inner Circle|TA_GODS=1|"
-  "gods-crusades|Rift of Grief|TA_GODS=1|--crusades"
   "monarch-sudden-death|Ulasem Arena|TA_MONARCH_EXPENDABLE=0 TA_GODS=1|"
   "forfeit-selfdestruct|Ulasem Arena|TA_FORFEIT_SELFDESTRUCT=1|"
   "random-starts|Sand River Plain|TA_RANDOM_STARTS=1|"
   "speed-1x-control|Ulasem Arena|TA_SPEED=10|"
   "mods-cosmetic|Ulasem Arena||--mods cosmetic"
   "blood-and-roses|Blood and Roses|TA_GODS=1 TA_STRESS=1|"
-  "two-castles|Two Castles|TA_GODS=1|--crusades"
-  "everything-2|Lake Lokken|TA_GODS=1 TA_STRESS=1 TA_RANDOM_STARTS=1 TA_AI_LEVEL=4 TA_FOG=2|--crusades"
+  "two-castles|Two Castles|TA_GODS=1|"
+  "everything-2|Lake Lokken|TA_GODS=1 TA_STRESS=1 TA_RANDOM_STARTS=1 TA_AI_LEVEL=4 TA_FOG=2|"
 )
 [ "$QUICK" = "1" ] && RUNS=("${RUNS[@]:0:4}")
 

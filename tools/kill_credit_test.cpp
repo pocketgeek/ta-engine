@@ -374,7 +374,7 @@ int main(int argc,char** argv) try {
         // The death weapon at retirement: the Bomb Sprinkler's Dying runs for
         // a while before 512ae0 fires its [EXPLODEAS].
         const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        TypeRegistry registry;setupRegistry(registry,vfs,false);
+        TypeRegistry registry;setupRegistry(registry,vfs);
         const UnitType* bomb=registry.find("crebomb");
         check(bomb && bomb->hasExplodeAs,"crebomb has no death weapon");
         World w;w.setPlayerCount(2);w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);

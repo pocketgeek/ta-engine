@@ -11,8 +11,8 @@ int main(int argc,char** argv) {
     auto check=[&](bool ok,const char* message) {
         if (!ok) {++failures;std::fprintf(stderr,"FAIL: %s\n",message);}
     };
-    for (bool balance:{false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,balance);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         for (const char* worker:{"araking","zonhunt"})
         for (int pathMode:{0,1,3})
         for (bool queued:{false,true}) {
@@ -65,7 +65,7 @@ int main(int argc,char** argv) {
             }
             if (!built || w.unit(built)->underConstruction) {
                 const auto* b=w.unit(bid);
-                std::fprintf(stderr,"stalled %s balance=%d pos=%.1f,%.1f reclaim=%d features=%d,%d orders=%zu built=%d\n",worker,balance,b->x.toFloat(),b->z.toFloat(),b->reclaimId,w.feature(101)->alive,w.feature(102)->alive,b->orders.size(),built);
+                std::fprintf(stderr,"stalled %s pos=%.1f,%.1f reclaim=%d features=%d,%d orders=%zu built=%d\n",worker,b->x.toFloat(),b->z.toFloat(),b->reclaimId,w.feature(101)->alive,w.feature(102)->alive,b->orders.size(),built);
                 for (const auto& o:b->orders) std::fprintf(stderr,"  order goal=%d reclaim=%d build=%p pos=%.1f,%.1f\n",o.goal,o.reclaimFeat,(void*)o.buildType,o.x.toFloat(),o.z.toFloat());
             }
             check(built && !w.unit(built)->underConstruction,"builder clears and finishes construction");
@@ -79,7 +79,7 @@ int main(int argc,char** argv) {
             check(w.unit(bid)->orders.empty(),"invalid site adds no reclaim orders");
             site.onMana=true;w.setManaSpots({{128,128}});
             check(!w.clearableForPlacement(&site,592,512,clearing,0),"clearing cannot bypass mana-site rules");
-            std::printf("%s balance=%d pathMode=%d queued=%d hash=%016llx\n",worker,balance,pathMode,queued,(unsigned long long)w.stateHash());
+            std::printf("%s pathMode=%d queued=%d hash=%016llx\n",worker,pathMode,queued,(unsigned long long)w.stateHash());
         }
     }
     return failures?1:0;

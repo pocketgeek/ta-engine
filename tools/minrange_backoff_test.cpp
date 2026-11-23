@@ -12,8 +12,7 @@
 // back: after three back-offs in a unit's life an Attack on any enemy inside the
 // minimum range was dropped the tick it was given, and the unit stood idle.
 //
-// A shipped Tortoise (cretort, standard balance, minrange 64) and a shipped
-// Veruna Catapult (verpult, Crusades balance, minrange 180), each ordered onto
+// A shipped Tortoise (cretort, minrange 64), ordered onto
 // six enemies in turn, every one placed inside its minimum range: each order
 // must hold, the unit must walk out of the minimum range, and it must fire.
 // The enemies are a shipped Beast Tamer that cannot move, fight or die here.
@@ -117,11 +116,9 @@ int main(int argc, char** argv) {
         return 2;
     }
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry standard, crusades;
-    sim::setupRegistry(standard, vfs, false);
-    sim::setupRegistry(crusades, vfs, false);
+    sim::TypeRegistry standard;
+    sim::setupRegistry(standard, vfs);
     backOffSixTimes(standard, "standard", "cretort");
-    backOffSixTimes(crusades, "Crusades", "verpult");
     if (failures) {
         std::printf("minrange_backoff: %d failure(s)\n", failures);
         return 1;

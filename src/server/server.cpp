@@ -314,8 +314,7 @@ static_assert(ta::srv::TickPacer::kHz == kServerHz, "TickPacer paces kServerHz t
 
     struct DataSet {
         ta::hpi::Vfs vfs;
-        ta::sim::TypeRegistry reg, regCb;
-        bool haveCb = false;
+        ta::sim::TypeRegistry reg;
         uint64_t hash = 0;
         bool built = false;
     };
@@ -530,10 +529,9 @@ public:
         // per room the first time such a game starts.
         buildDataSet(retail_);
         aiNames_ = loadAiNames(retail_.vfs);
-        haveCb_ = retail_.haveCb;
-        std::fprintf(stderr, "taserver: loaded game data from %s (referee sim + AI%s), "
+        std::fprintf(stderr, "taserver: loaded game data from %s (referee sim + AI), "
                      "retail gameplay hash %016llx\n",
-                     dataRoot_.c_str(), haveCb_ ? ", +Crusades" : "",
+                     dataRoot_.c_str(),
                      (unsigned long long)retail_.hash);
     }
     int run();
@@ -636,10 +634,9 @@ private:
     Writer replayBytes(Room& room);
     ta::srv::LoginThrottle throttle_;
     ta::srv::SessionTokens tokens_;
-    // A mounted data set (retail, or retail + one room's game mods): the VFS, its base + Crusades
-    // registries, and the gameplay-data fingerprint peers are held to.
+    // A mounted data set (retail, or retail + one room's game mods): the VFS, its unit
+    // registry, and the gameplay-data fingerprint peers are held to.
     DataSet retail_;                   // shared immutable retail data; game-mod sets are room-local
-    bool haveCb_ = false;
     std::vector<std::string> aiNames_;   // retail's gamedata/ainames.tdf pool
 
     static std::vector<std::string> loadAiNames(const ta::hpi::Vfs& vfs) {
@@ -671,11 +668,7 @@ private:
     }
     void buildDataSet(DataSet& ds) {
         ds.vfs = ta::hpi::mountRetailRoot(ta::u8path(dataRoot_));
-        ta::sim::setupRegistry(ds.reg, ds.vfs, false);
-        if (!ds.vfs.list("unitscb").empty()) {
-            ta::sim::setupRegistry(ds.regCb, ds.vfs, true);
-            ds.haveCb = true;
-        }
+        ta::sim::setupRegistry(ds.reg, ds.vfs);
         ds.hash = ta::hpi::gameplayHash(ds.vfs);
         ds.built = true;
     }
@@ -807,11 +800,11 @@ private:
     void setRoomInfo(Client& c, Room& r, const Frame& f);
 };
 
-// A short form of a room's rules for the log ("crusades=1 fog=1 starts=0 ...").
+// A short form of a room's rules for the log ("sight=0 fog=1 starts=0 ...").
 static std::string optionsSummary(const GameOptions& o) {
     char b[192];
-    std::snprintf(b, sizeof b, "crusades=%d fog=%d starts=%d cap=%d path=%d codes=%d scenario=%d spectators=%d mods=%d",
-                  o.crusades, o.fogExplored, o.randomStarts, o.unitCap, int(o.pathfindingMode), o.powerCodes,
+    std::snprintf(b, sizeof b, "sight=%d fog=%d starts=%d cap=%d path=%d codes=%d scenario=%d spectators=%d mods=%d",
+                  o.doubleSight, o.fogExplored, o.randomStarts, o.unitCap, int(o.pathfindingMode), o.powerCodes,
                   o.mapScenario, o.allowSpectators, o.gameMods);
     return b;
 }
@@ -822,7 +815,6 @@ static std::string optionsChanged(const GameOptions& a, const GameOptions& b) {
     const auto field = [&](bool differs, const char* name) {
         if (differs) { if (!out.empty()) out += ' '; out += name; }
     };
-    field(a.crusades != b.crusades, "crusades");
     field(a.forfeitSelfDestruct != b.forfeitSelfDestruct, "forfeit");
     field(a.gameMods != b.gameMods, "mods");
     field(a.speedUnlock != b.speedUnlock, "speedunlock");
@@ -2348,8 +2340,7 @@ void Server::tryStart(Client& c) {
         try {
             auto ds=std::make_unique<DataSet>();ds->vfs=ta::hpi::Vfs(&retail_.vfs);
             ds->vfs.setModFiles(r->modPackage->files);
-            ta::sim::setupRegistry(ds->reg,ds->vfs,false);
-            if(retail_.haveCb){ta::sim::setupRegistry(ds->regCb,ds->vfs,true);ds->haveCb=true;}
+            ta::sim::setupRegistry(ds->reg,ds->vfs);
             ds->hash=ta::hpi::gameplayHash(ds->vfs);
             ds->built=true;r->modData=std::move(ds);
             if(r->mapPackage){r->mapVfs=std::make_unique<ta::hpi::Vfs>(&r->modData->vfs);r->mapVfs->setMapFiles(r->mapPackage->files);}
@@ -2397,7 +2388,7 @@ void Server::tryStart(Client& c) {
     // failure refuses the start).
     const std::string& mapPath = mapResolved;
     {
-        r->reg = r->opts.crusades && dataSet.haveCb ? &dataSet.regCb : &dataSet.reg;
+        r->reg = &dataSet.reg;
         r->ref = std::make_unique<ta::sim::World>();
         // --sim-threads: this game's share as it starts (it is counted as running);
         // each tick then runs on the share of that moment (closeTick).
@@ -2470,10 +2461,9 @@ void Server::tryStart(Client& c) {
             std::vector<std::pair<float,float>> spots, startTable;
             try { spots = ta::sim::setupMatch(*r->ref, *r->reg, cfg, &startTable); }
             catch (const ta::sim::ScenarioTypeMissing& e) {
-                // Named for the player: under CRUSADES it is usually a standard unit the
-                // Crusades roster leaves out, and turning CRUSADES off is the way to play.
+                // Named for the player.
                 r->ref.reset(); r->running = false; r->ai.clear();
-                refuseStart(c, *r, ta::sim::scenarioTypeMissingText(e, r->reg == &ds->regCb ? &ds->reg : nullptr));
+                refuseStart(c, *r, ta::sim::scenarioTypeMissingText(e));
                 return;
             }
             catch (const std::exception& e) {

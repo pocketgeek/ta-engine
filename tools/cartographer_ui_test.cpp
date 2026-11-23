@@ -1843,7 +1843,7 @@ static int symmetryWorkflow(const char* data) {
     const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
     ta::tnt::Scenario metadata;metadata.kingdom="red planet";metadata.starts={{1,40,40}};
-    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
     cart::PlacedUnit guard;guard.type="ARMPW";guard.player=0;guard.angle=90;guard.name="Left guard";
     if(const auto* type=registry.find("armpw")) {guard.footX=type->footX;guard.footZ=type->footZ;}
     guard.x=100*16+guard.footX*8.f;guard.z=50*16+guard.footZ*8.f;

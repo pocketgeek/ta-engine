@@ -419,8 +419,8 @@
             zoom = std::clamp(float(std::atof(value)), 0.1f, 3.0f);
         mapView_.setZoom(zoom);
         if (!spots.empty()) lookAt(spots[0].first, spots[0].second);
-        std::printf("PATROL_PERF initial=%zu balance=%s (local, no AI/combat/network)\n",
-                    world_.units().size(), crusades_ ? "crusades" : "standard");
+        std::printf("PATROL_PERF initial=%zu (local, no AI/combat/network)\n",
+                    world_.units().size());
         std::fflush(stdout);
     }
 

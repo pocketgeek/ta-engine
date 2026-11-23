@@ -1,5 +1,5 @@
 scn 1
-# Six Drakes (Crusades) fight-moved together onto one point. Retail has no fight-move: a flyer's leg flies
+# Six Drakes fight-moved together onto one point. Retail has no fight-move: a flyer's leg flies
 # VTOL_Move, whose resolved descriptor carries the group-spread flag (0x5214b0), so each keeps its offset from
 # the selection's centre within sqrt(3000 n) px; past stage 0 its air-traffic check (417d4e) steps it out of a
 # stack. Through protocol 307's first cut every flyer flew to the click without a mission and piled onto it.
@@ -7,7 +7,6 @@ name air-stack-fight
 ticks 1500
 seed 7
 players 2
-crusades on
 weapons on
 map flat 160 160
 type drake fbi zondrake

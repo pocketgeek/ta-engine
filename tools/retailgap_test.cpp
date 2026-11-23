@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: retailgap_test <retail-install-dir> [slice[,slice...]]\n"); return 2; }
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, false);   // units/, weapons/*.tdf and the build menus
+    sim::setupRegistry(reg,vfs);   // units/, weapons/*.tdf and the build menus
     kMap = hpi::findMap(vfs, "Ashap Plateau");
     if (argc >= 3) {
         const std::string list = argv[2];

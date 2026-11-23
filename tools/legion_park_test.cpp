@@ -189,11 +189,10 @@ int main(int argc,char** argv) {
     if(argc!=2 && argc!=3)return 2;
     if(argc==3)only=argv[2];
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    for(bool crusades:{false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,crusades);
-        const std::string balance=crusades?"Crusades":"standard";
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
+        const std::string balance="standard";
         parkCase(registry,balance,Layout::Open,"arakeep","arasword",40);
-        if(crusades)continue;
         parkCase(registry,balance,Layout::Cliff,"arakeep","arasword",24);
         parkCase(registry,balance,Layout::Corner,"arakeep","arasword",24);
         parkCase(registry,balance,Layout::Open,"arakeep","arapult",8);

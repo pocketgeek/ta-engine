@@ -79,7 +79,7 @@ int main(int argc,char** argv) {
     if(argc<2)return 2;
     const bool trace=argc>2 && std::strcmp(argv[2],"trace")==0;
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     for(const char* id:{"verdrag","araarch","aralode"})
         if(!registry.find(id)){std::printf("FAIL missing type %s\n",id);return 1;}
     const auto& dragon=*registry.find("verdrag");

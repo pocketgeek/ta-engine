@@ -40,8 +40,8 @@ int main(int argc,char**argv) {
              <<" soundstart, "<<soundTriggers<<" soundtrigger references\n";
     std::set<std::string> decoded;
     int failures=0,missingShipped=0;
-    for(bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         int slots=0,events=0,silent=0;
         for(const auto& [name,type]:registry.types()) {
             const auto* file=type.script();if(!file)continue;
@@ -97,7 +97,7 @@ int main(int argc,char**argv) {
                 }
             }
         }
-        std::cout<<(crusades?"Crusades":"Standard")<<": "<<slots<<" slots, "<<events<<" authored sound events, "<<silent<<" silent timelines\n";
+        std::cout<<"Standard"<<": "<<slots<<" slots, "<<events<<" authored sound events, "<<silent<<" silent timelines\n";
     }
     std::cout<<(failures?"FAIL":"PASS")<<": firing audio ("<<failures<<" failures), "<<decoded.size()-size_t(missingShipped)<<" WAVs decoded, "<<missingShipped<<" known absent references\n";
     return failures?1:0;

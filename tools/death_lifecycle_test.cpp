@@ -12,8 +12,8 @@ int main(int argc,char** argv) {
     if(argc!=2) return 2;
     const auto vfs=hpi::mountRetailRoot(argv[1]);
     int failures=0, cases=0;
-    for(bool balance:{false,true}) {
-        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,balance);
+    {
+        sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         sim::World definitions;sim::registerMapFeatures(definitions,tnt::Map{},vfs,&registry);
         auto run=[&](const sim::UnitType& type,int death,bool warm,bool unfinished,
                      int expectedHandoff=-1,bool checkQuery=true) {
@@ -39,8 +39,8 @@ int main(int argc,char** argv) {
             }
             w.tick(1.f/30);u=w.unit(id);
             auto check=[&](bool ok,const char* detail) {
-                if(!ok){++failures;std::fprintf(stderr,"FAIL %s balance=%d death=%d warm=%d unfinished=%d: %s (handoff=%d corpse=%d)\n",
-                    type.id.c_str(),balance,death,warm,unfinished,detail,u->corpseAnimationTicks(),u->deathHasCorpse);}
+                if(!ok){++failures;std::fprintf(stderr,"FAIL %s death=%d warm=%d unfinished=%d: %s (handoff=%d corpse=%d)\n",
+                    type.id.c_str(),death,warm,unfinished,detail,u->corpseAnimationTicks(),u->deathHasCorpse);}
             };
             check(!u->alive() && u->deadFor==0,"actual death dispatcher ran (not abandoned construction)");
             bool expectedCorpse=false;
@@ -65,8 +65,8 @@ int main(int argc,char** argv) {
             check(u->corpseAnimationTicks()!=std::numeric_limits<int32_t>::max(),"authored death retires within bounded trace");
             if(expectedHandoff>=0)check(u->corpseAnimationTicks()==expectedHandoff,"native retirement tick matches");
             if(!u->deathHasCorpse)check(u->corpseUntil<=u->corpseAnimationTicks(),"refused corpse never gains a reclaim window");
-            std::printf("DEATH %s balance=%d death=%d warm=%d unfinished=%d corpse=%d handoff=%d\n",
-                        type.id.c_str(),balance,death,warm,unfinished,u->deathHasCorpse,u->corpseAnimationTicks());
+            std::printf("DEATH %s death=%d warm=%d unfinished=%d corpse=%d handoff=%d\n",
+                        type.id.c_str(),death,warm,unfinished,u->deathHasCorpse,u->corpseAnimationTicks());
             ++cases;
         };
         for(const auto& [name,type]:registry.types()) {

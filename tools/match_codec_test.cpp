@@ -5,8 +5,8 @@
 // landing in only some of the copies (060e660a, 3f439b67, 2ff96607). The builders in
 // net/protocol and net/matchconfig replaced them, and the goldens below were
 // captured from the hand-written copies (main @ 6528b01f) BEFORE that refactor, so
-// this pins the wire bytes, the replay header, the hashed config and the Crusades
-// rules digest to what shipped. A golden that changes is a protocol change: bump
+// this pins the wire bytes, the replay header and the hashed config to what
+// shipped (protocol 337 / replay format 16 dropped the Kingdoms Crusades byte). A golden that changes is a protocol change: bump
 // kNetVersion (or kReplayFormat) deliberately, never re-capture to make it pass.
 
 // GCC 16 sees Writer::str's copy of a short literal as running past the string's
@@ -48,7 +48,7 @@ static void golden(const std::vector<uint8_t>& got, const char* want, const char
 // Every field distinct and off its default, so a dropped or swapped field shows.
 static GameOptions fxOpts(uint8_t stress) {
     GameOptions o;
-    o.crusades = 3; o.forfeitSelfDestruct = 4; o.gameMods = 2; o.speed = 17; o.speedUnlock = 5;   // gameMods: a raw byte here (0/1 in use) so the golden bytes stay
+    o.forfeitSelfDestruct = 4; o.gameMods = 2; o.speed = 17; o.speedUnlock = 5;   // gameMods: a raw byte here (0/1 in use) so the golden bytes stay
     o.unitCap = 0xBEEF; o.monarchExpendable = 6; o.stressTest = stress; o.fogExplored = 8;
     o.benchmark = 11; o.randomStarts = 9; o.doubleSight = 10; o.pathfindingMode = ta::sim::PathfindingMode::Legion;
     o.allowSpectators = 12; o.mapScenario = 13; o.powerCodes = 14;
@@ -91,7 +91,7 @@ static std::string dumpCfg(const ta::sim::MatchConfig& c) {
 }
 
 static bool sameOpts(const GameOptions& a, const GameOptions& b) {
-    return a.crusades == b.crusades && a.forfeitSelfDestruct == b.forfeitSelfDestruct &&
+    return a.forfeitSelfDestruct == b.forfeitSelfDestruct &&
            a.gameMods == b.gameMods && a.speed == b.speed && a.speedUnlock == b.speedUnlock &&
            a.unitCap == b.unitCap && a.monarchExpendable == b.monarchExpendable && a.stressTest == b.stressTest &&
            a.fogExplored == b.fogExplored && a.benchmark == b.benchmark && a.randomStarts == b.randomStarts &&
@@ -108,15 +108,15 @@ static void optionsCodec() {
     Writer w; put(w, o);
     // CreateGame / SetGameOptions carry exactly these bytes; LobbyState/GameStarting embed them.
     // After the pathfinder byte come allowSpectators (0c), mapScenario (0d) and powerCodes (0e).
-    golden(w.b, "0304021105efbe00000607080b090a040c0d0e", "GameOptions wire bytes");
+    golden(w.b, "04021105efbe00000607080b090a040c0d0e", "GameOptions wire bytes");
     GameOptions back; back.gameMods = 0; back.speed = 0; back.fogExplored = 0; back.allowSpectators = 0;
     Reader r(w.b.data(), w.b.size()); get(r, back);
     check(r.ok && r.p == r.end && sameOpts(o, back), "GameOptions round trip");
     // unitCap travels as a u32; the raw get() keeps the low 16 bits (the server clamps).
-    { Writer big; put(big, o); big.b[7] = 0x12; Reader rb(big.b.data(), big.b.size()); GameOptions g; get(rb, g);
+    { Writer big; put(big, o); big.b[6] = 0x12; Reader rb(big.b.data(), big.b.size()); GameOptions g; get(rb, g);
       check(rb.ok && g.unitCap == 0xBEEF, "GameOptions unitCap high bytes not truncated"); }
     // An unknown pathfinder fails the read but keeps the byte, so the server can say why.
-    { Writer bad; put(bad, o); bad.b[15] = 2; Reader rb(bad.b.data(), bad.b.size()); GameOptions g; get(rb, g);
+    { Writer bad; put(bad, o); bad.b[14] = 2; Reader rb(bad.b.data(), bad.b.size()); GameOptions g; get(rb, g);
       check(!rb.ok && uint8_t(g.pathfindingMode) == 2, "invalid pathfinding mode accepted or lost"); }
     for (size_t cut = 0; cut < w.b.size(); ++cut) {
         Reader rt(w.b.data(), cut); GameOptions g; get(rt, g);
@@ -134,7 +134,7 @@ static void slotCodec() {
     room.capacity = 6; room.passworded = true; room.roomRev = 0x11223344; room.changeBits = 0x29; room.mapSerial = 0x55667788;
     for (int i = 0; i < kMaxSlots; ++i) room.slots[i] = slots[i];
     Writer w; put(w, room);
-    golden(w.b, "040302010900726f6f6d206e616d650c00496e6e657220436972636c6500000304021105efbe00000607080b090a040c0d0ed0c0b0a00106014433221129887766550107030101090500616c7068610204090000040600414920626f740002050601000000020301020000070070617373697665030108050003000002010703010101007800090204000200000300000700020000", "LobbyState slot table bytes");
+    golden(w.b, "040302010900726f6f6d206e616d650c00496e6e657220436972636c65000004021105efbe00000607080b090a040c0d0ed0c0b0a00106014433221129887766550107030101090500616c7068610204090000040600414920626f740002050601000000020301020000070070617373697665030108050003000002010703010101007800090204000200000300000700020000", "LobbyState slot table bytes");
     {
         Reader r(w.b.data(), w.b.size()); RoomState back; get(r, back);
         bool same = r.ok && r.p == r.end && back.id == room.id && back.name == room.name && back.mapId == room.mapId &&
@@ -169,7 +169,7 @@ static void replayHeaders() {
         for (int i = 8; i < 12; ++i) w.b[size_t(i)] = 0;
         // POWER CODES is 03: on (bit 0), map revealed at start (bit 1). The last byte is
         // the room's FOG OF WAR option as given (format 15).
-        golden(w.b, *mission ? "54414b520f000000000000000c00496e6e657220436972636c65030402efbe000006073412ed5e090b060063616d7030330500392e392e3988776655443322110a40006d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d40006f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f0408010703010902040900040002050600020301020003010805030201070301000902040203000007020d0308" : "54414b520f000000000000000c00496e6e657220436972636c65030402efbe000006073412ed5e090b00000500392e392e3988776655443322110a40006d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d40006f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f0408010703010902040900040002050600020301020003010805030201070301000902040203000007020d0308", *mission ? "mission replay header bytes" : "replay header bytes");
+        golden(w.b, *mission ? "54414b5210000000000000000c00496e6e657220436972636c650402efbe000006073412ed5e090b060063616d7030330500392e392e3988776655443322110a40006d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d40006f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f0408010703010902040900040002050600020301020003010805030201070301000902040203000007020d0308" : "54414b5210000000000000000c00496e6e657220436972636c650402efbe000006073412ed5e090b00000500392e392e3988776655443322110a40006d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d40006f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f0408010703010902040900040002050600020301020003010805030201070301000902040203000007020d0308", *mission ? "mission replay header bytes" : "replay header bytes");
     }
     // Header -> inputs -> config is the live config (every recorded field carried across).
     for (bool empty : {false, true}) {

@@ -15,13 +15,12 @@ int main(int argc,char** argv) try {
     using namespace ta;
     std::string mode="movement",data="assets/game",mapName;
     int count=16000,ticks=3600,unitCap=0;
-    bool crusades=false,serial=false;
+    bool serial=false;
     for (int i=1;i<argc;++i) {
         const std::string arg=argv[i];
         if (arg=="--serial") {serial=true;continue;}
-        if (arg=="--crusades") {crusades=true;continue;}
         if (arg=="--help") {
-            std::puts("simperf [--mode movement|match|patrol|crowd] [--units 16000] [--unit-cap 2000] [--ticks 3600] [--data assets/game] [--map NAME] [--crusades] [--serial]\n"
+            std::puts("simperf [--mode movement|match|patrol|crowd] [--units 16000] [--unit-cap 2000] [--ticks 3600] [--data assets/game] [--map NAME] [--serial]\n"
                       "movement: synthetic flat terrain, unarmed moving units; excludes scripts/AI/rendering.\n"
                       "match: generated flat map, mixed retail armies and eight Absurd AIs; includes combat/deaths.\n"
                       "patrol: same mixed retail armies, allied and patrolling; includes scripts, excludes AI/combat/rendering.\n"
@@ -76,7 +75,7 @@ int main(int argc,char** argv) try {
         }
     } else {
         vfs=hpi::mountRetailRoot(data);
-        sim::setupRegistry(registry,vfs,crusades);
+        sim::setupRegistry(registry,vfs);
         mapgen::Params map;
         // Flat and empty: no water, trees, rocks, relief, kits or neutral mana.
         map.widthCells=map.heightCells=768;map.players=8;

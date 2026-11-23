@@ -3,7 +3,6 @@
 // for tuning the AI -- not shipped in a game.
 //
 //   aitool <retail-install-dir> [map] [defensive|easy|normal|hard|absurd|absurdly-defensive|retail] [seconds]
-//          [standard|crusades]
 //
 // `retail` is the lobby's RETAIL level (internally Classic, the retail AI); the
 // older spellings `default` and `classic` are still accepted.
@@ -25,7 +24,7 @@
 using namespace ta;
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr, "usage: aitool <install> [map] [defensive|easy|normal|hard|absurd|absurdly-defensive|retail] [seconds] [standard|crusades]\n"); return 2; }
+    if (argc < 2) { std::fprintf(stderr, "usage: aitool <install> [map] [defensive|easy|normal|hard|absurd|absurdly-defensive|retail] [seconds]\n"); return 2; }
     std::string dataRoot = argv[1];
     std::string map = argc >= 3 ? argv[2] : "Inner Circle";
     std::string dstr = argc >= 4 ? argv[3] : "normal";
@@ -41,7 +40,7 @@ int main(int argc, char** argv) {
 
     hpi::Vfs vfs = hpi::mountRetailRoot(dataRoot);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, argc>5 && std::string(argv[5])=="crusades");
+    sim::setupRegistry(reg, vfs);
     const ai::Profile& profile = ai::builtinProfile(diff);
 
     // 2-player 1v1: slot 0 = idle human (Aramon), slot 1 = the AI under test (Taros).

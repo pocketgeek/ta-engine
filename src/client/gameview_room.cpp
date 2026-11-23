@@ -24,7 +24,6 @@ const char* onOff(bool value) { return value ? "ON" : "OFF"; }
 std::string ruleValue(RoomField field, const ta::net::GameOptions& o) {
     switch (field) {
     case RoomField::Scenario: return onOff(o.mapScenario);
-    case RoomField::Crusades: return onOff(o.crusades);
     case RoomField::DoubleSight: return onOff(o.doubleSight);
     case RoomField::UnitCap: return std::to_string(o.unitCap);
     case RoomField::Monarch: return onOff(o.monarchExpendable);
@@ -55,7 +54,7 @@ std::string ruleLabel(RoomField field, const ta::net::GameOptions& o) {
 // never resizes its text. Measured in the current UI FONT.
 float roomRulePx(float maxW) {
     static const char* const kCaptions[] = {
-        "CRUSADES: OFF", "DOUBLE SIGHT/RADAR: OFF", "UNIT CAP: 2000", "MONARCH EXPENDABLE: SCENARIO",
+        "DOUBLE SIGHT/RADAR: OFF", "UNIT CAP: 2000", "MONARCH EXPENDABLE: SCENARIO",
         "MONARCH EXPENDABLE: OFF", "ALLOW SPEED CHANGE: OFF", "POWER CODES: OFF", "ALLOW SPECTATORS: OFF",
         "MAP SCENARIO: OFF", "MAP SCENARIO: ON (TEST MAP)"};
     float px = 1.6f;
@@ -217,7 +216,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             if (roomOptsDraft_) {
                 const auto& d = *roomOptsDraft_;
                 const auto& o = room.opts;
-                const bool answered = d.crusades == o.crusades && d.doubleSight == o.doubleSight && d.unitCap == o.unitCap &&
+                const bool answered = d.doubleSight == o.doubleSight && d.unitCap == o.unitCap &&
                     d.monarchExpendable == o.monarchExpendable && d.speedUnlock == o.speedUnlock &&
                     d.fogExplored == o.fogExplored && d.randomStarts == o.randomStarts &&
                     d.pathfindingMode == o.pathfindingMode && d.powerCodes == o.powerCodes &&
@@ -625,7 +624,6 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         const auto forced = [&](RoomField field, const std::string& value) {
             add(field, std::string(ta::roomFieldCaption(field)) + ": " + value, false, true, nullptr);
         };
-        toggle(RoomField::Crusades, o.crusades);
         toggle(RoomField::DoubleSight, o.doubleSight);
         add(RoomField::UnitCap, ruleLabel(RoomField::UnitCap, o), true, false, [this, cap = o.unitCap](int direction) {
             const auto at = std::find(std::begin(kUnitCaps), std::end(kUnitCaps), cap);
@@ -762,7 +760,7 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         ta::net::GameOptions o = room.opts;
         if (roomChosenSet_) {
             const auto& c = roomChosen_;
-            o.crusades = c.crusades; o.doubleSight = c.doubleSight; o.unitCap = c.unitCap;
+            o.doubleSight = c.doubleSight; o.unitCap = c.unitCap;
             o.monarchExpendable = c.monarchExpendable; o.speedUnlock = c.speedUnlock; o.fogExplored = c.fogExplored;
             o.randomStarts = c.randomStarts; o.pathfindingMode = c.pathfindingMode; o.powerCodes = c.powerCodes;
             o.allowSpectators = c.allowSpectators;
@@ -806,7 +804,6 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         }
         auto& c = roomChosen_;
         switch (field) {
-        case RoomField::Crusades: c.crusades = uint8_t(value); break;
         case RoomField::DoubleSight: c.doubleSight = uint8_t(value); break;
         case RoomField::UnitCap: c.unitCap = uint16_t(value); break;
         case RoomField::Monarch: c.monarchExpendable = uint8_t(value); break;
@@ -935,7 +932,6 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
         auto& p = roomKind_ == RoomKind::SinglePlayer ? settings_->spRoom : settings_->mpRoom;
         const auto& c = roomChosen_;
         switch (field) {
-        case RoomField::Crusades: p.crusades = c.crusades != 0; break;
         case RoomField::DoubleSight: p.doubleSight = c.doubleSight != 0; break;
         case RoomField::UnitCap: p.unitCap = c.unitCap; break;
         case RoomField::Monarch: p.monarchExpendable = c.monarchExpendable != 0; break;

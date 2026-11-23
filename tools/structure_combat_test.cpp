@@ -84,7 +84,7 @@ float reachOf(const ta::sim::UnitType& t,int slot) {
 }
 int reachCases(const char* data) {
     auto vfs=ta::hpi::mountRetailRoot(data);
-    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
     int failures=0;
     for(const char* id:{"crepris","arassh","cresage","tarmage","arapries","araarch","aralode"})
         if(!registry.find(id)){std::printf("FAIL missing type %s\n",id);return 1;}
@@ -132,7 +132,7 @@ int reachCases(const char* data) {
 // Mirror picks the Trebuchet itself and shoots it.
 int siteCase(const char* data) {
     auto vfs=ta::hpi::mountRetailRoot(data);
-    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
     const auto* mirror=registry.find("crepris");const auto* trebuchet=registry.find("aratre");
     if(!mirror || !trebuchet){std::printf("FAIL missing crepris or aratre\n");return 1;}
     const float distance=1469.0f;   // the duel's: inside the Mirror's 1478, the Trebuchet's 500..2700
@@ -190,8 +190,8 @@ int main(int argc,char** argv) {
     if(argc!=2)return 2;
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     int failures=0,cases=0;
-    for(bool crusades:{false,true}) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,crusades);
+    {
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         for(const auto& [id,type]:registry.types()) {
             if(!type.isStructure() || type.weapon.damage<=0 || type.weapon.melee)continue;
             for(float fraction:{0.6f,0.98f,1.1f}) for(int direction=0;direction<4;++direction) {
@@ -216,7 +216,7 @@ int main(int argc,char** argv) {
                     turned|=w.unit(a)->heading.v!=initial.v;
                 }
                 ++cases;
-                std::printf("%s balance=%d direction=%d range=%.2f fired=%d turned=%d\n",id.c_str(),crusades,direction,fraction,fired,turned);
+                std::printf("%s direction=%d range=%.2f fired=%d turned=%d\n",id.c_str(),direction,fraction,fired,turned);
                 if(turned || (fraction<1 && !fired))++failures;
             }
         }

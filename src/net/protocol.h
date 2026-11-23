@@ -24,7 +24,7 @@ namespace ta::net {
 // Bump it whenever the wire layout changes or the simulation can compute a different
 // result from the same inputs -- a peer or replay of another number would desync.
 // The CHANGELOG records what each release changed.
-constexpr uint32_t kNetVersion = 336;      // 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
+constexpr uint32_t kNetVersion = 337;      // 337: GameOptions/replay header drop the Kingdoms Crusades byte; 336: Legion: unfinished ground bodies (conjures, sites) block and are walked round
 constexpr uint32_t kMaxFrame = 1u << 18;   // 256 KB frame cap (hardening) -- headroom for a
                                            // big tick bundle when many units are ordered at once
 constexpr int kMaxSlots = 8;               // players per game (= max map start positions)
@@ -389,7 +389,6 @@ constexpr uint8_t normalizeStartMode(uint8_t v) {
 }
 
 struct GameOptions {
-    uint8_t crusades = 0;
     // Total Annihilation start resources, in hundreds (retail's lobby keeps the value
     // / 100 and multiplies on start: docs/retail-economy.md section 9). 10 = 1000.
     uint8_t startMetal100 = 10, startEnergy100 = 10;

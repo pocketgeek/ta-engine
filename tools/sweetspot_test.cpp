@@ -50,12 +50,11 @@ void flatGround(sim::World& w) {
 int main(int argc, char** argv) {
     if (argc != 2) { std::fprintf(stderr, "usage: sweetspot_test <retail-install-dir>\n"); return 2; }
     const hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
-    for (const bool crusades : {false, true}) {
-        std::printf("[%s balance]\n", crusades ? "Crusades" : "Original");
+    {
         sim::TypeRegistry reg;
-        sim::setupRegistry(reg, vfs, crusades);
+        sim::setupRegistry(reg,vfs);
         const sim::UnitType* hunter = reg.find("zonter");
-        if (!hunter) { check(false, "shipped zonter loads"); continue; }
+        if (!hunter) { check(false, "shipped zonter loads"); return 1; }
 
         // Retail heading -> SweetSpot offset (px) of four drawn Hunters at rest.
         struct Captured { uint16_t heading; float x, y, z; };
@@ -123,7 +122,7 @@ int main(int argc, char** argv) {
         {
             const sim::UnitType* thirsha = reg.find("zonhunt");
             const sim::UnitType* subType = reg.find("cresubm");
-            if (!thirsha || !subType) { check(false, "shipped zonhunt and cresubm load"); continue; }
+            if (!thirsha || !subType) { check(false, "shipped zonhunt and cresubm load"); return 1; }
             auto sub = *subType;
             sub.maxHp = 10000000;
             sub.healTime = 0;

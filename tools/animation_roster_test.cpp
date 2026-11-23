@@ -89,7 +89,7 @@ int main(int argc,char**argv) {
     }
     if(argc!=2)return 2;
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
     int scripts=0,failures=0;
     // Aradrag has 3s, 2.5s, and 5s weapons. The renderer used to notify
     // the first slot's 3000ms, shortening the script's restore delay.

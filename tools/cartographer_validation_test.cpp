@@ -360,42 +360,6 @@ int main() {
             check(has("AI profile aiprofile: no ai/islands.txt in this map or the install"),"Check Map reports an aiprofile name with no file");
             check(cart::validateAiProfiles({},"DEFAULT",empty,none).empty(),"a map on the standard profile with no AI files has no AI issues");
         }
-        {   // Check Map names what the scenario loses with CRUSADES on (unitscb/ alone).
-            auto roster=[](std::initializer_list<const char*> names) {
-                auto files=std::make_shared<ta::hpi::Vfs::Files>();
-                for(const char* name:names) {
-                    const auto text=std::string("[UNITINFO]{\nunitname=")+name+";\nobjectname="+name+";\nname=Display "+name+
-                        ";\nmaxdamage=100;\nfootprintx=1;\nfootprintz=1;\ncanmove=1;\nmaxvelocity=1;\n}";
-                    (*files)[std::string("units/")+name+".fbi"]={text.begin(),text.end()};
-                }
-                ta::hpi::Vfs vfs;vfs.setMapFiles(files);ta::sim::TypeRegistry registry;registry.loadDir(vfs,"units");
-                return registry;
-            };
-            const auto standard=roster({"zonhand","zonspide"}),crusades=roster({"zonhand"});
-            ta::crt::Scenario scenario;scenario.players.resize(9);
-            scenario.customTypes.push_back({"ZONSPIDE",{100,200,200,0}});
-            scenario.customTypes.push_back({"zonhand",{100,200,200,0}});
-            ta::crt::RuleGroup group;
-            group.conditions.push_back({15,{"1","zonspide","Anywhere"}});
-            group.actions.push_back({7,{"ZONSPIDE","Anywhere"}});
-            group.actions.push_back({7,{"ZONHAND","Anywhere"}});
-            scenario.players[2].push_back(group);
-            std::vector<cart::PlacedUnit> placed(3);
-            placed[0].type="ZONHAND";placed[1].type="ZONSPIDE";placed[1].x=40;placed[1].z=56;placed[2].type="zonspide";
-            const auto issues=cart::validateCrusadesRoster(scenario,placed,standard,crusades);
-            auto has=[&](std::string_view text){return std::any_of(issues.begin(),issues.end(),[&](const auto& i){return i.message.find(text)!=std::string::npos;});};
-            check(issues.size()==4 && std::all_of(issues.begin(),issues.end(),[](const auto& i){return i.severity==cart::MapIssue::Severity::Warning;}),
-                  "Crusades roster check reports one line per lost placed type, custom type and rule operand, as warnings");
-            check(has("Display zonspide (ZONSPIDE) does not exist with CRUSADES on: 2 placed units stop a CRUSADES game from starting this scenario"),
-                  "Crusades roster check names a placed unit Crusades lacks");
-            check(issues[0].x==40 && issues[0].z==56,"Crusades placement warning points at the first such unit");
-            check(has("Custom stats for Display zonspide (ZONSPIDE) are skipped with CRUSADES on"),"Crusades roster check names a skipped custom type");
-            check(has("Player 2, rule 1, action 1: Display zonspide (ZONSPIDE) does not exist with CRUSADES on, so there this rule creates nothing"),
-                  "Crusades roster check names a Create of a lost type");
-            check(has("Player 2, rule 1, condition 1: Display zonspide (ZONSPIDE) does not exist with CRUSADES on, so there this rule counts other units instead"),
-                  "Crusades roster check names a condition on a lost type");
-            check(cart::validateCrusadesRoster(scenario,placed,standard,standard).empty(),"an install without a Crusades balance has no Crusades warnings");
-        }
         std::cout<<"PASS: editor engine placement and scenario validation\n";
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

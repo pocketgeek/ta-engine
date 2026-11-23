@@ -142,7 +142,7 @@ bool validOrder(const SelectionOrder& o) {
 // The byte order is the wire format and the replay header's (match_codec_test pins
 // it): append new fields at the end, matching get().
 void put(Writer& w, const GameOptions& o) {
-    w.u8(o.crusades); w.u8(o.forfeitSelfDestruct); w.u8(o.gameMods);
+    w.u8(o.forfeitSelfDestruct); w.u8(o.gameMods);
     w.u8(o.speed); w.u8(o.speedUnlock); w.u32(o.unitCap); w.u8(o.monarchExpendable);
     w.u8(o.stressTest); w.u8(o.fogExplored); w.u8(o.benchmark); w.u8(o.randomStarts);
     w.u8(o.doubleSight); w.u8(uint8_t(o.pathfindingMode));
@@ -153,7 +153,7 @@ void put(Writer& w, const GameOptions& o) {
 }
 
 void get(Reader& r, GameOptions& o) {
-    o.crusades = r.u8(); o.forfeitSelfDestruct = r.u8(); o.gameMods = r.u8();
+    o.forfeitSelfDestruct = r.u8(); o.gameMods = r.u8();
     o.speed = r.u8(); o.speedUnlock = r.u8(); o.unitCap = uint16_t(r.u32()); o.monarchExpendable = r.u8();
     o.stressTest = r.u8(); o.fogExplored = r.u8(); o.benchmark = r.u8(); o.randomStarts = r.u8();
     o.doubleSight = r.u8();

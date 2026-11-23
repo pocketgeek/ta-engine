@@ -14,9 +14,9 @@ int main(int argc, char** argv) {
     const auto vfs = ta::hpi::mountRetailRoot(argv[1]);
     if(weaponAudit) {
         size_t moving=0,artless=0,missingModels=0,unreadableModels=0,emptyModels=0;
-        for(bool crusades:{false,true}) {
+        {
             ta::sim::TypeRegistry registry;
-            ta::sim::setupRegistry(registry,vfs,crusades);
+            ta::sim::setupRegistry(registry,vfs);
             for(const auto& [id,type]:registry.types())for(const auto& weapon:type.weapons) {
                 const bool renderedShot=!weapon.melee && weapon.kind==ta::sim::Weapon::Kind::Normal &&
                     weapon.flameKind<0 && !weapon.lightning &&
@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
                 ++moving;
                 if(!weapon.weaponArt.empty() || !weapon.shotArt.empty() ||
                    weapon.spinRate!=0 || weapon.shotSpin[0]!=0 || weapon.shotSpin[2]!=0)
-                    std::cout << "WEAPON_ART " << (crusades?"Crusades":"standard") << ' '
+                    std::cout << "WEAPON_ART " << "standard" << ' '
                               << id << " / " << weapon.name << " art=" << weapon.weaponArt
                               << " shotart=" << weapon.shotArt << " model=" << weapon.shotModel
                               << " straight=" << weapon.straight << " beam=" << weapon.beam
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
                 const bool noShotArt=weapon.shotArt.empty();
                 if(noModel && noSprite && noShotArt) {
                     ++artless;
-                    std::cout << "ARTLESS " << (crusades?"Crusades":"standard") << ' '
+                    std::cout << "ARTLESS " << "standard" << ' '
                               << id << " / " << weapon.name << " vel=" << weapon.projVel
                               << " beam=" << weapon.beam << '\n';
                 }
@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
                     const auto bytes=vfs.tryRead(path);
                     if(!bytes) {
                         ++missingModels;
-                        std::cout << "MISSING_MODEL " << (crusades?"Crusades":"standard") << ' '
+                        std::cout << "MISSING_MODEL " << "standard" << ' '
                                   << id << " / " << weapon.name << " model=" << weapon.shotModel << '\n';
                     } else {
                         try {
@@ -58,13 +58,13 @@ int main(int argc, char** argv) {
                             countGeometry(countGeometry,model.root);
                             if(primitives==0 || vertices==0) {
                                 ++emptyModels;
-                                std::cout << "EMPTY_MODEL " << (crusades?"Crusades":"standard") << ' '
+                                std::cout << "EMPTY_MODEL " << "standard" << ' '
                                           << id << " / " << weapon.name << " model=" << weapon.shotModel
                                           << " vertices=" << vertices << " polygons=" << primitives << '\n';
                             }
                         } catch(const std::exception& error) {
                             ++unreadableModels;
-                            std::cout << "UNREADABLE_MODEL " << (crusades?"Crusades":"standard") << ' '
+                            std::cout << "UNREADABLE_MODEL " << "standard" << ' '
                                       << id << " / " << weapon.name << " model=" << weapon.shotModel
                                       << " error=" << error.what() << '\n';
                         }
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
                    !vfs.has("anims/"+weapon.weaponArt+"_4444.taf") &&
                    !vfs.has("anims/"+weapon.weaponArt+"_1555.taf") &&
                    !vfs.has("anims/"+weapon.weaponArt+".gaf")) {
-                    std::cout << "MISSING_SPRITE_BANK " << (crusades?"Crusades":"standard") << ' '
+                    std::cout << "MISSING_SPRITE_BANK " << "standard" << ' '
                               << id << " / " << weapon.name << " art=" << weapon.weaponArt << '\n';
                 }
             }
@@ -91,9 +91,9 @@ int main(int argc, char** argv) {
         "smoke:smoke01", "bigsmoke", "steam", "aramonbuild", "zhonbuild", "tarosbuild",
         "verunabuild", "creonbuild", "mindspin", "transportfx:transswirl", "deathmagic:purpledeath", "pillaroflight"
     };
-    for (bool crusades : {false, true}) {
+    {
         ta::sim::TypeRegistry registry;
-        ta::sim::setupRegistry(registry, vfs, crusades);
+        ta::sim::setupRegistry(registry,vfs);
         for (const auto& [name, type] : registry.types()) {
             for (const auto& weapon : type.weapons) {
                 for (const auto& art : {weapon.weaponArt, weapon.shotArt,

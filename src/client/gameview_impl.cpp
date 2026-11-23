@@ -30,13 +30,12 @@
     GameView::GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, ta::hpi::ModUse mods,
              bool demo, bool scenario,
-             bool bare, const std::string& side, const std::string& aiSide,
-             bool crusades)
+             bool bare, const std::string& side, const std::string& aiSide)
         // (side_ initialized below before loadPanel uses it; vfs_ must precede
         //  mapView_ in the member list so the Compositor can borrow it)
         : ren_(ren), vfs_(std::move(vfs)), mapView_(ren, vfs_, mapPath),
           installRoot_(installRoot), mods_(mods),
-          mapPath_(mapPath), crusades_(crusades), side_(side), aiSide_(aiSide) {
+          mapPath_(mapPath), side_(side), aiSide_(aiSide) {
         if(vfs_.has(mapSibling(".ota"))) {
             const auto ota=vtdf(mapSibling(".ota"));
             if(const auto* header=ota.child("globalheader")) {
@@ -44,13 +43,10 @@
                 debrisNoSeaTrigger_=header->numberOr("nosealeveltrigger",0)!=0;
             }
         }
-        // Unit registry: MOVEINFO + units (unitscb for Crusades) + canbuild.
+        // Unit registry: MOVEINFO + units + canbuild.
         // The VFS merges base + Iron Plague + community data into one namespace,
         // precedence resolved by the retail newest-date rule.
-        ta::sim::setupRegistry(registry_, vfs_, crusades_);
-        if (crusades_)
-            std::fprintf(stderr, "balance: Crusades (unitscb roster, standard canbuild)%s\n",
-                         vfs_.list("unitscb").empty() ? " -- NOT FOUND" : "");
+        ta::sim::setupRegistry(registry_, vfs_);
         loadTextures();
         mapView_.setZoom(0.9f);
         loadInterfaceFonts();
@@ -3381,7 +3377,7 @@
         loadInterfaceFonts();
         sounds_.reload(vfs_);soundClasses_.load(vfs_);musicMode_=0;
         registry_ = ta::sim::TypeRegistry{};
-        ta::sim::setupRegistry(registry_, vfs_, crusades_);
+        ta::sim::setupRegistry(registry_, vfs_);
     }
 
     float GameView::birthProgress(int id) const {

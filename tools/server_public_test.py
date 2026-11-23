@@ -42,8 +42,8 @@ def login(port, fingerprint, name, context=None):
     p.hello(fingerprint);p.login(name,[]);return p
 
 def options(stress=0,benchmark=0,spectators=1,scenario=0,random_starts=0,power_codes=0):
-    # GameOptions wire bytes: ... pathMode, then allowSpectators, mapScenario, powerCodes
-    return bytes([0,1,0,10,0])+struct.pack('<I',2000)+bytes([0,stress,0,benchmark,random_starts,0,0,spectators,scenario,power_codes])
+    # GameOptions wire bytes: ... pathMode, then allowSpectators, mapScenario, powerCodes, start metal/energy (hundreds)
+    return bytes([1,0,10,0])+struct.pack('<I',2000)+bytes([0,stress,0,benchmark,random_starts,0,0,spectators,scenario,power_codes,10,10])
 
 def create(p,stress=0,benchmark=0,mission='',map_id='missing-test-map'):
     p.send('CreateGame',auth.field('test')+auth.field('')+auth.field(map_id)+

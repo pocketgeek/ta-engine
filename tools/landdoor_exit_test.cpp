@@ -301,7 +301,7 @@ int main(int argc,char** argv) {
     if(argc!=2 && argc!=3)return 2;
     if(argc==3)only=argv[2];
     auto vfs=hpi::mountRetailRoot(argv[1]);
-    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
     struct Case {const char* factory;const char* small;const char* large;const char* crowd;};
     const Case factories[]{
         {"arakeep","arasword","arapult","arasword"},

@@ -522,7 +522,7 @@ static void squadAssignment() {
 // stop to engage, and arrive; AttackMove is what stops and fights.
 static void classicMoveVsAttackMove(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
+    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs);
     // Two light-cannon tanks, the Stumpy and the Raider.
     const auto* mine=reg.find("armstump");
     const auto* theirs=reg.find("corraid");
@@ -1398,7 +1398,7 @@ static int squadCtorOracle() {
 // priority pass (ClassicBrain::recomputePriorities' steps) over retail's table.
 static int printWeightsOracle(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
+    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs);
     ai::ClassicBrain brain(1,7,reg);
     brain.useProfile(ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,hpi::findMap(vfs,"Abnar's Terrace"))));
     const auto& c=brain.catalogue();const auto& p=brain.profile();const auto& info=brain.typeInfo();

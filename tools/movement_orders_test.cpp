@@ -535,7 +535,7 @@ uint64_t queuedGroupMoves(PathfindingMode mode,bool serial) {
 }
 void mazeProduction(const char* data) {
     auto vfs=ta::hpi::mountRetailRoot(data);
-    TypeRegistry registry;setupRegistry(registry,vfs,false);
+    TypeRegistry registry;setupRegistry(registry,vfs);
     constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
     auto generated=ta::mapgen::generate(ta::mapgen::decodeMapId(recipe),vfs);
     auto files=std::make_shared<ta::hpi::Vfs::Files>();(*files)["maps/orders-maze.tnt"]=generated.map.save();vfs.setMapFiles(files);
@@ -614,18 +614,15 @@ uint64_t trollRally(const TypeRegistry& registry,bool serial,const ta::hpi::Vfs*
 // cohort, serial and threaded.
 void trollProduction(const char* data,bool open=false,bool mazeOnly=false) {
     auto vfs=ta::hpi::mountRetailRoot(data);
-    for(bool crusades:{false,true}) {
-        TypeRegistry registry;setupRegistry(registry,vfs,crusades);
-        if(mazeOnly&&!crusades)continue;
+    {
+        TypeRegistry registry;setupRegistry(registry,vfs);
         if(!mazeOnly) {
             const auto serial=trollRally(registry,true);
             check(serial==trollRally(registry,false),"authored Troll arrivals match serial and threaded preparation");
+            const auto large=trollRally(registry,true,nullptr,256);
+            check(large==trollRally(registry,false,nullptr,256),"256-Troll arrivals match serial and threaded preparation");
         }
-        if(crusades) {
-            if(!mazeOnly) {
-                const auto large=trollRally(registry,true,nullptr,256);
-                check(large==trollRally(registry,false,nullptr,256),"256-Troll arrivals match serial and threaded preparation");
-            }
+        {
             constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
             auto generated=ta::mapgen::generate(ta::mapgen::decodeMapId(recipe),vfs);
             auto files=std::make_shared<ta::hpi::Vfs::Files>();(*files)["maps/orders-troll-maze.tnt"]=generated.map.save();

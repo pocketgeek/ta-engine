@@ -400,7 +400,7 @@ void poolAndObserversStay() {
 
 void missionData(const std::string& data) {
     auto vfs=ta::hpi::mountPlayVfs(data,{},{},true,nullptr);
-    TypeRegistry registry;setupRegistry(registry,vfs,false);
+    TypeRegistry registry;setupRegistry(registry,vfs);
     const char* stem="takmission22_ph";
     World world,other;int human=0,otherHuman=0;
     require(setupMission(world,registry,vfs,stem,human)&&setupMission(other,registry,vfs,stem,otherHuman),

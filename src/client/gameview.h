@@ -205,8 +205,7 @@ public:
     GameView(SDL_Renderer* ren, ta::hpi::Vfs vfs, const std::string& mapPath,
              const std::string& installRoot, ta::hpi::ModUse mods,
              bool demo, bool scenario,
-             bool bare, const std::string& side = "arm", const std::string& aiSide = "cor",
-             bool crusades = false);
+             bool bare, const std::string& side = "arm", const std::string& aiSide = "cor");
 
     // True while the multiplayer lobby is showing (before the game world exists).
     // Play the menu theme (track15) while in the lobby / not yet in a game, and the
@@ -703,7 +702,7 @@ public:
         return uint8_t(std::clamp(v, 0, int(ta::ai::kAiLevels) - 1));
     }
 
-    bool mpAutoStep(int autoMode, const std::string& mapId, bool crusades);
+    bool mpAutoStep(int autoMode, const std::string& mapId);
 
     void applyEvent(const ta::net::Event& e) { ta::sim::applyEvent(writableWorld(), e); }
 
@@ -2344,7 +2343,6 @@ private:
     void remountMods();
     // Fingerprint of the gameplay data THIS client will feed its sim (current mods).
     uint64_t gameDataHash() const { return ta::hpi::gameplayHash(vfs_); }
-    bool crusades_ = false; // which balance registry_ currently holds
     std::string side_ = "arm";   // lowercased sidedata nameprefix
     // Retail loading screen. Alive from the start of world setup until the first
     // tick lands, so the plate covers both our own load and the wait on peers.
@@ -4593,7 +4591,7 @@ private:
     // The options block: one cell per rule, clickable for the host, plain text for guests.
     struct RoomRule {
         RoomField field;
-        std::string label;            // "CRUSADES: ON"
+        std::string label;            // "FOG OF WAR: EXPLORED"
         bool live = false;            // this viewer may click it now
         bool dim = false;             // a rule forces it (WATCH, MAP SCENARIO)
         std::function<void(int)> cycle;

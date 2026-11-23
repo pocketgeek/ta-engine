@@ -35,9 +35,9 @@ int main(int argc, char** argv) {
         for (int x = 0; x < W; ++x)
             if ((x >= 40 && x < 100) || (x >= 150 && x < 190 && z >= 40 && z < 90))
                 heights[size_t(z) * W + x] = 10;
-    for (bool crusades : {false, true}) {
+    {
         ta::sim::TypeRegistry registry;
-        ta::sim::setupRegistry(registry, vfs, crusades);
+        ta::sim::setupRegistry(registry,vfs);
         auto world = [&](ta::sim::World& w) {
             w.setTerrain(heights, W, H, 64);
             w.buildNavClasses(registry);
@@ -68,11 +68,11 @@ int main(int argc, char** argv) {
             if (!pick.empty()) pairs.push_back({id, pick});
         }
         std::sort(pairs.begin(), pairs.end());
-        check(!pairs.empty(), "a land builder with a water structure exists", crusades ? "crusades" : "retail");
+        check(!pairs.empty(), "a land builder with a water structure exists", "retail");
         for (const auto& [bid, sid] : pairs) {
             const auto* bt = registry.find(bid);
             const auto* st = registry.find(sid);
-            const std::string what = std::string(crusades ? "crusades " : "retail ") + bid + " -> " + sid;
+            const std::string what = std::string("retail ") + bid + " -> " + sid;
             const float z = 64 * 16;
             // Footprint against A's shore; far out at sea, past any shore's reach; the lake.
             const float nearX = float(40 * 16 + st->footX * 8);

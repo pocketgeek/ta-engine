@@ -179,7 +179,7 @@ void cart::Editor::aiUseRoster(const std::string& pack) {
         try {
             auto roster=std::make_unique<AiPackRoster>();roster->pack=pack;
             const auto packVfs=ta::hpi::mountRetailRoot(ta::u8path(dataRoot),{pack});
-            ta::sim::setupRegistry(roster->registry,packVfs,false);
+            ta::sim::setupRegistry(roster->registry,packVfs);
             for(const auto& [id,type]:roster->registry.types())if(!unitRegistry.find(id))roster->added.insert(id);
             aiPackRoster=std::move(roster);
         } catch(const std::exception& error) {

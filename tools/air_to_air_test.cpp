@@ -123,9 +123,9 @@ int main(int argc,char** argv) {
         std::printf("[%s] %s\n",ok?"PASS":"FAIL",label);
         if (!ok) ++failures;
     };
-    for (bool crusades:{false,true}) {
-        const char* balance=crusades?"Crusades":"standard";
-        TypeRegistry registry;setupRegistry(registry,vfs,crusades);
+    {
+        const char* balance="standard";
+        TypeRegistry registry;setupRegistry(registry,vfs);
         const UnitType roc=dummy(*registry.find("zonroc"));
         // 4de530: every armed flyer that may attack a flyer gets AirToAir,
         // hoverattack or not, and keeps flying; against a target that cannot
@@ -180,7 +180,7 @@ int main(int argc,char** argv) {
         check(juggernaut->airToAirDistance==100 && beak->airToAirDistance==212 &&
               registry.find("zondrag")->airToAirDistance==282 && registry.find("tarknigh")->airToAirDistance==230 &&
               registry.find("tarship")->airToAirDistance==70 &&
-              registry.find("zonflies")->airToAirDistance==(crusades ? 156 : 212),
+              registry.find("zonflies")->airToAirDistance==212,
               "airtoairdistance defaults: the hover distance and altitude's hypotenuse, else 100");
         for (float circle:{0.f,500.f}) {
             const Fight j=fight(registry,*juggernaut,roc,circle,1800);

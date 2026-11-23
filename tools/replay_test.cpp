@@ -29,7 +29,6 @@ static ReplayHeader sample() {
     h.modDigest = std::string(64, 'b');
     h.mission = "camp03";
     h.engineVersion = "9.9.9";
-    h.crusades = 1;
     h.forfeitSelfDestruct = 1;
     h.gameMods = 1;
     h.unitCap = 1234;

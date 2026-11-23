@@ -1663,9 +1663,6 @@ if(TA_TEST_DATA)
     add_test(NAME transport_map_roundtrip COMMAND transport_test
         --surface-transport-map-roundtrip-type "${TA_TEST_DATA}"
         "Lake Lokken" vertrans araarch 240 120 240 350)
-    add_test(NAME transport_map_roundtrip_crusades COMMAND transport_test
-        --surface-transport-map-roundtrip-type "${TA_TEST_DATA}"
-        "Lake Lokken" vertrans araarch 240 120 240 350 1)
     add_test(NAME animation_roster COMMAND animation_roster_test "${TA_TEST_DATA}")
     add_test(NAME production_exit COMMAND production_exit_test "${TA_TEST_DATA}")
     add_test(NAME doorway COMMAND doorway_test "${TA_TEST_DATA}")
@@ -3279,10 +3276,6 @@ if(TA_BUILD_CLIENT)
       target_compile_definitions(firing_sound_test PRIVATE SDL_MAIN_HANDLED)
       target_link_libraries(firing_sound_test PRIVATE ta-formats ${_ta_sdl2})
       add_test(NAME firing_sound_roster COMMAND firing_sound_test "${TA_TEST_DATA}")
-      add_executable(balance_roster_test tools/balance_roster_test.cpp)
-      target_compile_definitions(balance_roster_test PRIVATE SDL_MAIN_HANDLED)
-      target_link_libraries(balance_roster_test PRIVATE ta-formats ${_ta_sdl2})
-      add_test(NAME balance_roster COMMAND balance_roster_test "${TA_TEST_DATA}")
     endif()
                 add_executable(model_transform_test tools/model_transform_test.cpp)
     target_include_directories(model_transform_test PRIVATE src)
@@ -3417,15 +3410,6 @@ if(TA_BUILD_CLIENT)
     add_test(NAME cartographer_savejob COMMAND cartographer_savejob_test)
 
             
-                # A map scenario under the CRUSADES roster (skipped custom types, the named refusal,
-    # Check Map's warning). Needs the retail unitscb/, so only with -DTAK_TEST_DATA.
-    if(TA_TEST_DATA)
-      add_executable(crusades_scenario_test tools/crusades_scenario_test.cpp
-        src/cartographer/validation.cpp src/cartographer/triggers.cpp src/cartographer/aiprofiles.cpp
-        src/cartographer/document.cpp src/cartographer/units.cpp src/ai/classicprofile.cpp src/ai/builtinprofile.cpp)
-      target_link_libraries(crusades_scenario_test PRIVATE ta-formats)
-      add_test(NAME crusades_scenario COMMAND crusades_scenario_test "${TA_TEST_DATA}")
-    endif()
     # The AI-profile editor's model, checked against the engine's own profile parsers.
     # It links the whole AI, so the levels' limits in play are checked against ai::paramsFor.
                 add_executable(cartographer_features_test tools/cartographer_features_test.cpp src/cartographer/features.cpp)

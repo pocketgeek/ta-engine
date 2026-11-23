@@ -54,7 +54,7 @@ from server_net import MAX_SLOTS, OPTIONS_BYTES, BufferedPeer as Peer
 from server_public_test import login as sign_in, server
 from map_cache_readonly_test import install
 
-CRUSADES, MODS, SPEED, CAP, STARTS, FOG, PATH, SPECTATORS, SCENARIO, CODES = 0, 2, 3, 5, 13, 11, 15, 16, 17, 18
+DOUBLE, MODS, SPEED, CAP, STARTS, FOG, PATH, SPECTATORS, SCENARIO, CODES = 13, 1, 2, 4, 12, 10, 14, 15, 16, 17
 CHANGE_MAP, CHANGE_SCENARIO, CHANGE_OPTIONS, CHANGE_PLAYERS, CHANGE_MODS, CHANGE_CAPACITY = 1, 2, 4, 8, 16, 32
 REQUEST_MAP, REQUEST_INFO = 1, 2
 WATCH = 0xFF
@@ -66,11 +66,11 @@ def recipe(players):
     return '~gen1~' + (struct.pack('<HQBHH', 10, 1234, 0, 128, 128) + bytes([players, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0])).hex()
 
 
-def opts(crusades=0, mods=0, speed=10, unit_cap=2000, fog=1, starts=0, path=0, spectators=1, scenario=0, codes=0,
+def opts(double=0, mods=0, speed=10, unit_cap=2000, fog=1, starts=0, path=0, spectators=1, scenario=0, codes=0,
          stress=0, bench=0):
     """GameOptions on the wire (net::put)."""
-    return (bytes([crusades, 0, mods, speed, 0]) + struct.pack('<I', unit_cap) +
-            bytes([0, stress, fog, bench, starts, 0, path, spectators, scenario, codes]))
+    return (bytes([0, mods, speed, 0]) + struct.pack('<I', unit_cap) +
+            bytes([0, stress, fog, bench, starts, double, path, spectators, scenario, codes, 10, 10]))
 
 
 def room_of(r):
@@ -241,27 +241,27 @@ def case_options(env):
         room = readied(host, 1)
         rev = room['rev']
         assert room['slots'][0][0][4] == 1
-        host.send('SetGameOptions', opts(crusades=1))
+        host.send('SetGameOptions', opts(double=1))
         room = latest(host)
-        assert room['opts'][CRUSADES] == 1 and room['rev'] == rev + 1 and room['bits'] == CHANGE_OPTIONS, room
+        assert room['opts'][DOUBLE] == 1 and room['rev'] == rev + 1 and room['bits'] == CHANGE_OPTIONS, room
         assert room['slots'][1][0][4] == 0, 'the guest stayed ready over a rules change'
         assert room['slots'][0][0][4] == 1, "the host's READY changed with its own change"
-        assert log_says(env.root, 'host changed the rules (crusades; rev %d, 1 unreadied)' % (rev + 1)), 'the rules line'
+        assert log_says(env.root, 'host changed the rules (sight; rev %d, 1 unreadied)' % (rev + 1)), 'the rules line'
         sync(guest)
         ready(guest, 1)
         rev = readied(host, 1)['rev']
-        host.send('SetGameOptions', opts(crusades=1, spectators=0))
+        host.send('SetGameOptions', opts(double=1, spectators=0))
         room = latest(host)
         assert room['rev'] == rev + 1 and room['opts'][SPECTATORS] == 0 and room['slots'][1][0][4] == 0, \
             'ALLOW SPECTATORS is a change too'
         sync(guest)
         ready(guest, 1)
         rev = readied(host, 1)['rev']
-        host.send('SetGameOptions', opts(crusades=1, spectators=0, speed=14))
+        host.send('SetGameOptions', opts(double=1, spectators=0, speed=14))
         room = latest(host)
         assert room['opts'][SPEED] == 14 and room['rev'] == rev and room['slots'][1][0][4] == 1, \
             'a speed change unreadied the guest'
-        host.send('SetGameOptions', opts(crusades=1, spectators=0, speed=14, unit_cap=500, path=4, codes=1, scenario=1))
+        host.send('SetGameOptions', opts(double=1, spectators=0, speed=14, unit_cap=500, path=4, codes=1, scenario=1))
         room = latest(host)
         assert struct.unpack_from('<I', room['opts'], CAP)[0] == 500 and room['opts'][PATH] == 4 and \
             room['opts'][CODES] == 1, ('unit limit, pathfinder and POWER CODES are adopted in the lobby', room['opts'])
@@ -269,11 +269,11 @@ def case_options(env):
     # A campaign mission's rules are its own: only the speed and ALLOW SPECTATORS change.
     with contextlib.closing(local_peer(env.local_port, env.local_h, 'Mission')) as host:
         _, room = create(host, KOTH, 8, mission='camp01')
-        host.send('SetGameOptions', opts(crusades=1, speed=14, spectators=0, codes=1, unit_cap=500, fog=2))
+        host.send('SetGameOptions', opts(double=1, speed=14, spectators=0, codes=1, unit_cap=500, fog=2))
         room = latest(host)
         o = room['opts']
         assert o[SPEED] == 14 and o[SPECTATORS] == 0, 'a mission room did not adopt the speed and ALLOW SPECTATORS'
-        assert o[CRUSADES] == 0 and o[CODES] == 0 and o[FOG] == 1 and struct.unpack_from('<I', o, CAP)[0] == 2000, \
+        assert o[DOUBLE] == 0 and o[CODES] == 0 and o[FOG] == 1 and struct.unpack_from('<I', o, CAP)[0] == 2000, \
             ('a mission room adopted its rules', o)
 
 
@@ -282,7 +282,7 @@ def case_stale(env):
          contextlib.closing(login(env.port, env.h, 'Bobby')) as guest:
         _, room = create(host, recipe(2), 2)
         assert join(guest, room['id'])[0]
-        host.send('SetGameOptions', opts(crusades=1))
+        host.send('SetGameOptions', opts(double=1))
         rev = latest(host)['rev']
         assert rev == 2
         sync(guest)
@@ -301,7 +301,7 @@ def case_join_rev(env):
          contextlib.closing(login(env.port, env.h, 'Carol')) as late:
         _, room = create(host, recipe(4), 4)
         for flag in (1, 0, 1):
-            host.send('SetGameOptions', opts(crusades=flag))
+            host.send('SetGameOptions', opts(double=flag))
         rev = latest(host)['rev']
         assert rev == 4
         late.send('JoinGame', struct.pack('<I', room['id']) + auth.field(''))
@@ -408,7 +408,7 @@ def case_create(env):
     with contextlib.closing(login(env.port, env.h, 'Alice')) as host:
         (ok, slot, _, rev), room = create(host, recipe(2), 2, name='')
         assert ok and rev == 1 and room['name'] == "Alice's Game", room['name']
-        assert log_says(env.root, "created game %d 'Alice's Game' on '%s' (crusades=0 fog=1 starts=0 cap=2000 path=0 "
+        assert log_says(env.root, "created game %d 'Alice's Game' on '%s' (sight=0 fog=1 starts=0 cap=2000 path=0 "
                         "codes=0 scenario=0 spectators=1 mods=0)" % (room['id'], recipe(2))), 'the created-game line'
         host.send('LeaveGame')
         (ok, _, why, _), _ = create(host, recipe(2), 2, name='n' * 33)

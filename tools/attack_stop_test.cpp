@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
         if (std::string(argv[i]) == "--legion") mode = sim::PathfindingMode::Legion;
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, false);
+    sim::setupRegistry(reg,vfs);
     std::printf("[%s pathfinding]\n", mode == sim::PathfindingMode::Legion ? "Legion" : "Retail");
     constexpr float kFacing = 1.5707963f;
 

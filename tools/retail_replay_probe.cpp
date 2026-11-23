@@ -689,7 +689,8 @@ int main(int argc, char** argv) {
     if (argc==3 && std::string(argv[1])=="--ground-owner") return RetailReplayProbe::groundOwner(argv[2]);
     if (argc==7 && std::string(argv[2])=="--crowd-movement") {
         auto vfs=hpi::mountRetailRoot(argv[1]);
-        TypeRegistry registry;setupRegistry(registry,vfs,std::stoi(argv[4])!=0);
+        if (std::stoi(argv[4])!=0) return 2;   // argv[4]: the retired Kingdoms balance selector, 0 only
+        TypeRegistry registry;setupRegistry(registry,vfs);
         MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,argv[3]);config.slots.resize(1);
         World world;setupMatch(world,registry,config);
         std::ifstream input(argv[5]);
@@ -714,7 +715,8 @@ int main(int argc, char** argv) {
         // per unit; legs after the first are queued. unitCap sizes the
         // production pools (World::entityPoolCapacity).
         auto vfs=hpi::mountRetailRoot(argv[1]);
-        TypeRegistry registry;setupRegistry(registry,vfs,std::stoi(argv[4])!=0);
+        if (std::stoi(argv[4])!=0) return 2;   // argv[4]: the retired Kingdoms balance selector, 0 only
+        TypeRegistry registry;setupRegistry(registry,vfs);
         MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,argv[3]);config.slots.resize(1);
         config.pathfindingMode=PathfindingMode::Retail;
         World world;setupMatch(world,registry,config);
@@ -765,7 +767,8 @@ int main(int argc, char** argv) {
         const int replaceAt=replace?std::stoi(argv[7]):0;
         const int replaceX=argc==10?std::stoi(argv[8]):512,replaceZ=argc==10?std::stoi(argv[9]):696;
         auto vfs=hpi::mountRetailRoot(argv[1]);
-        TypeRegistry registry;setupRegistry(registry,vfs,std::stoi(argv[4])!=0);
+        if (std::stoi(argv[4])!=0) return 2;   // argv[4]: the retired Kingdoms balance selector, 0 only
+        TypeRegistry registry;setupRegistry(registry,vfs);
         const auto* gateType=registry.find(argv[3]);const auto* moverType=registry.find("verpult");
         const int rounds=std::stoi(argv[5]);const int32_t base=std::stoi(argv[6]);
         if (!gateType || !gateType->gate || !moverType || rounds<1 || rounds>5000 || base<=0) return 2;
@@ -847,10 +850,11 @@ int main(int argc, char** argv) {
              std::string(argv[4])=="--corpse-features");
         auto vfs = hpi::mountRetailRoot(argv[1]);
         TypeRegistry registry;
-        unsigned crusades=0;
-        if (version>=34 && (!(input>>crusades) || crusades>1))
+        // Version 34+ captures carry Kingdoms' roster selection; only the standard roster exists.
+        unsigned roster=0;
+        if (version>=34 && (!(input>>roster) || roster!=0))
             throw std::runtime_error("invalid captured roster selection");
-        setupRegistry(registry, vfs, crusades!=0);
+        setupRegistry(registry, vfs);
         MatchConfig config;
         config.vfs = &vfs;
         config.mapPath = hpi::findMap(vfs, mapName);
@@ -1414,10 +1418,10 @@ int main(int argc, char** argv) {
             return 0;
         }
         std::fprintf(output.get(), "{\"kind\":\"metadata\",\"schema\":1,\"complete_state\":false,"
-                     "\"rng_before\":%u,\"crusades\":%u,\"limitations\":[\"routes absent from older captures\",\"pending path-search state\",\"unsupported mission scheduling; outer-render CRT consumers; missing wind in older captures\","
+                     "\"rng_before\":%u,\"limitations\":[\"routes absent from older captures\",\"pending path-search state\",\"unsupported mission scheduling; outer-render CRT consumers; missing wind in older captures\","
                      "\"unsupported orders\",\"factory production lifecycle and yard occupancy\",\"saved features\","
                      "\"combat and economy defaults\",\"occupied AI planners, special group assignment and per-unit AI maintenance\","
-                     "\"retail resource production, consumption and availability classification\",\"COB host queries and lifecycle notifications\",\"retired unit slot reuse and pool exhaustion\",\"movement timers and flags\"]}\n", rng,crusades);
+                     "\"retail resource production, consumption and availability classification\",\"COB host queries and lifecycle notifications\",\"retired unit slot reuse and pool exhaustion\",\"movement timers and flags\"]}\n", rng);
         world.setRngObserver([&](const World::RngObservation& draw) {
             std::fprintf(output.get(), "{\"kind\":\"rng\",\"tick\":%u,\"bound\":%d,"
                          "\"seed_before\":%u,\"seed_after\":%u,\"result\":%u,\"source_line\":%u}\n",

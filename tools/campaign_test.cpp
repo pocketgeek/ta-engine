@@ -46,7 +46,7 @@ int main(int argc,char** argv) {
             // the city the player defends; a synthetic mission adds a plain
             // Player2, which the old "first non-AI player" guess would have seated.
             ta::sim::TypeRegistry registry;
-            ta::sim::setupRegistry(registry,vfs,false);
+            ta::sim::setupRegistry(registry,vfs);
             auto seatCheck=[&](const ta::hpi::Vfs& from,const std::string& stem,int aiSlot,const char* what) {
                 ta::sim::World world;world.setSerialThreads(true);
                 int human=-1;
@@ -100,9 +100,9 @@ int main(int argc,char** argv) {
             // A condition rewrite must not silently end real missions as soon
             // as their initial script runs. Exercise every chapter's actual
             // placements/conditions, not only synthetic predicate fixtures.
-            for(bool crusades:{false,true}) {
+            {
                 ta::sim::TypeRegistry registry;
-                ta::sim::setupRegistry(registry,vfs,crusades);
+                ta::sim::setupRegistry(registry,vfs);
                 for(const auto& c:campaigns) {
                     std::vector<std::string> stems;
                     for(const auto& m:c.missions)stems.push_back(m.stem);
@@ -118,7 +118,7 @@ int main(int argc,char** argv) {
                         check(world.sightDistance(eye)==123 && world.radarDistance(eye)==234,
                               "campaign resets skirmish sight/radar multiplier");
                         for(int tick=0;tick<30 && !world.missionOutcome();++tick)world.tick(1.f/30.f);
-                        std::printf("startup %s crusades=%d tick=%u outcome=%d units=%zu\n",stem.c_str(),crusades,
+                        std::printf("startup %s tick=%u outcome=%d units=%zu\n",stem.c_str(),
                                     world.tickCount(),world.missionOutcome(),world.units().size());
                         check(world.missionOutcome()==0,"mission must remain playable through its opening second");
                         std::fflush(stdout);

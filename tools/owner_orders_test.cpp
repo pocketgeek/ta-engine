@@ -559,7 +559,7 @@ int main(int argc,char** argv) {
     syntheticCases();
     if (argc==2) {
         auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        TypeRegistry registry;setupRegistry(registry,vfs,false);
+        TypeRegistry registry;setupRegistry(registry,vfs);
         rosterCases(registry);
     }
     std::printf("%s: %d failure(s)\n",failures ? "FAIL" : "PASS",failures);

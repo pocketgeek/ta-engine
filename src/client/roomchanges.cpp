@@ -11,7 +11,6 @@ const char* roomFieldCaption(RoomField field) {
     switch (field) {
     case RoomField::Map: return "THE MAP";
     case RoomField::Scenario: return "MAP SCENARIO";
-    case RoomField::Crusades: return "CRUSADES";
     case RoomField::DoubleSight: return "DOUBLE SIGHT/RADAR";
     case RoomField::UnitCap: return "UNIT CAP";
     case RoomField::Monarch: return "MONARCH EXPENDABLE";
@@ -40,7 +39,6 @@ RoomChanges roomChanges(const net::RoomView& before, const net::RoomView& after)
     const auto changed = [&](RoomField field, bool differs) { if (differs) c.options.push_back(field); };
     changed(RoomField::Map, before.mapId != after.mapId);
     changed(RoomField::Scenario, a.mapScenario != b.mapScenario);
-    changed(RoomField::Crusades, a.crusades != b.crusades);
     changed(RoomField::DoubleSight, a.doubleSight != b.doubleSight);
     changed(RoomField::UnitCap, a.unitCap != b.unitCap);
     changed(RoomField::Monarch, a.monarchExpendable != b.monarchExpendable);

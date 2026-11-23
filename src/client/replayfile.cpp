@@ -48,7 +48,6 @@ bool loadReplayFile(const std::string& path, ReplayFile& out) {
     out.mapDigest = h.mapDigest;
     out.modDigest = h.modDigest;
     out.mission = h.mission;
-    out.crusades = h.crusades != 0;
     out.gameMods = h.gameMods;
     out.dataHash = h.dataHash;
     out.engineVersion = h.engineVersion;

@@ -122,9 +122,9 @@ int main(int argc,char** argv) {
         std::printf("[%s] %s: %s\n",ok?"PASS":"FAIL",what.c_str(),label);
         if (!ok) ++failures;
     };
-    for (bool crusades:{false,true}) {
-        TypeRegistry registry;setupRegistry(registry,vfs,crusades);
-        const std::string balance=crusades ? "Crusades" : "standard";
+    {
+        TypeRegistry registry;setupRegistry(registry,vfs);
+        const std::string balance="standard";
         // Armed flyers that fly attack runs (AirToGround: no hoverattack).
         std::vector<std::string> flyers;
         for (const auto& [id,type]:registry.types())

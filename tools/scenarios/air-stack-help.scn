@@ -8,7 +8,6 @@ name air-stack-help
 ticks 1800
 seed 7
 players 2
-crusades on
 weapons on
 map flat 160 160
 type flyb fbi arafly

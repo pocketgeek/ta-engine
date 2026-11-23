@@ -68,7 +68,7 @@ int main(int argc,char** argv) try {
 
     hpi::Vfs vfs=hpi::mountRetailRoot(data);
     sim::TypeRegistry registry;
-    sim::setupRegistry(registry,vfs,false);
+    sim::setupRegistry(registry,vfs);
     sim::World world;
     sim::MatchConfig config;
     config.vfs=&vfs;

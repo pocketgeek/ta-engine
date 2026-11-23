@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     }
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry reg;
-    sim::setupRegistry(reg, vfs, false);
+    sim::setupRegistry(reg,vfs);
 
     sim::World w;
     w.setSerialThreads(true);

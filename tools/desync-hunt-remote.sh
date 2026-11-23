@@ -409,7 +409,6 @@ echo "logs: $OUT"
 RUNS=(
   "h-baseline|Ulasem Arena|||human|light"
   "h-gods|Ulasem Arena|TA_GODS=1||human|light"
-  "h-crusades|Ulasem Arena||--crusades|human|light"
   "h-stress|Ulasem Arena|TA_STRESS=1||human|heavy"
   "h-absurd|Ulasem Arena|TA_AI_LEVEL=4||human|light"
   "h-fog-explored|Ulasem Arena|TA_FOG=1||human|light"
@@ -420,21 +419,19 @@ RUNS=(
   # faithful, not a desync), which left this entry testing almost nothing.
   "h-cramped|Inner Circle|TA_GODS=1 TA_MONARCH_EXPENDABLE=1||human|light"
   "h-naval|Aibel's Seaport|||human|light"
-  "h-naval-crus|Aibel's Seaport||--crusades|human|light"
   "h-lake|Lake Lokken|TA_STRESS=1||human|heavy"
   "h-random-starts|Sand River Plain|TA_RANDOM_STARTS=1||human|light"
   "h-monarch-exp|Ulasem Arena|TA_MONARCH_EXPENDABLE=1 TA_GODS=1||human|light"
   "h-mods-all|Ulasem Arena||--mods all|human|light"
-  "h-everything|Tarosian Plain|TA_GODS=1 TA_STRESS=1 TA_AI_LEVEL=4 TA_FOG=1|--crusades|human|heavy"
+  "h-everything|Tarosian Plain|TA_GODS=1 TA_STRESS=1 TA_AI_LEVEL=4 TA_FOG=1||human|heavy"
   "h-speed-1x|Ulasem Arena|TA_SPEED=10||human|light"
-  "h-two-castles|Two Castles|TA_GODS=1|--crusades|human|light"
+  "h-two-castles|Two Castles|TA_GODS=1||human|light"
   # --- multi-human: two independent client sims, compared to each other and to the
   # referee. These are the only entries that can reach the live>=2 consensus logic.
   # ALL ON AN 8-SEAT MAP: these hold the start until the table is full (TA_MP_WAIT),
   # and a map with fewer start positions can never fill it.
   "2h-baseline|Ulasem Arena|||human|light|2"
   "2h-gods|Ulasem Arena|TA_GODS=1||human|light|2"
-  "2h-crusades|Ulasem Arena||--crusades|human|light|2"
   "2h-stress|Ulasem Arena|TA_STRESS=1||human|heavy|2"
   # ORDER-ISSUING humans (TA_AUTOPLAY). Everything above has its humans standing
   # still, so several clients landing commands on the SAME tick -- the ordinary case in

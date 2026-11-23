@@ -126,32 +126,27 @@ inline const char* benchmarkLevelInterval(int level) {
 }
 
 
-// Load the unit registry from the VFS: MOVEINFO, the roster (units, or unitscb
-// alone for the Crusades balance -- no fallback, as retail), then canbuild menus
-// filtered by that roster. Iron Plague and community units are already merged
+// Load the unit registry from the VFS: MOVEINFO, the units/ roster, then canbuild
+// menus filtered by that roster. Expansion and community units are already merged
 // into these namespaces by the VFS. Deterministic.
-void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs, bool crusades);
+void setupRegistry(TypeRegistry& reg, const hpi::Vfs& vfs);
 
 // setupMatch's refusal of a scenario that PLACES a unit type its registry lacks.
 // Retail cannot play one either: its CRT loader dereferences the failed name lookup
-// (0x4cc8e1 -> 0x4cc8e6). The type rides along so a caller can say why: under the
-// Crusades balance it is usually a standard unit the Crusades roster leaves out
-// (monelem, monmum, tarcship, tarhel, tarnecr2, zonspide). A custom type the registry
-// lacks is not refused: retail skips it (see setupMatch).
+// (0x4cc8e1 -> 0x4cc8e6). The type rides along so a caller can name it. A custom
+// type the registry lacks is not refused: retail skips it (see setupMatch).
 struct ScenarioTypeMissing : std::runtime_error {
     std::string type;   // as the CRT spells it
     explicit ScenarioTypeMissing(const std::string& name)
         : std::runtime_error("Scenario unit type is missing: " + name), type(name) {}
 };
-// The player-facing text for that refusal. `standard` is the standard-balance registry
-// when the game plays the Crusades one (else null): a type it has is named as a unit
-// that does not exist with CRUSADES on.
-std::string scenarioTypeMissingText(const ScenarioTypeMissing& missing, const TypeRegistry* standard);
+// The player-facing text for that refusal.
+std::string scenarioTypeMissingText(const ScenarioTypeMissing& missing);
 
-// Whether either balance's unit directory (units/, unitscb/) has `name`.fbi. A Test Map
-// copy refuses a Use Only entry its roster lacks as the author's typo, but not one the
-// other balance has (zonspide with CRUSADES on): that entry permits nothing, as an
-// unknown entry does on a retail map. setupMatch and inspectScenario agree on it.
+// Whether the unit directory (units/) has `name`.fbi. A Test Map copy refuses a Use
+// Only entry its roster lacks as the author's typo, but not one with a unit file:
+// that entry permits nothing, as an unknown entry does on a retail map. setupMatch
+// and inspectScenario agree on it.
 bool balanceUnitFile(const hpi::Vfs& vfs, const std::string& name);
 
 // Start positions from the map's .ota (world pixels), ordered by StartPos index.

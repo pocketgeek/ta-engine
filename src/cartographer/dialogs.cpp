@@ -505,7 +505,6 @@ void cart::Editor::checkMap() {
     commitHistory();checkRevision=history.revision();discardCheck=quitAfterCheck=false;
     checkJob=std::async(std::launch::async,[&,map=mapView.map(),metadata=scenario,scenario=scen,placed=units,restrictions=useOnly,profiles=aiFiles] {
         auto issues=cart::validateMap(map,metadata,scenario,placed,restrictions,unitRegistry,vfs);
-        for(auto& issue:cart::validateCrusadesRoster(scenario,placed,unitRegistry,crusadesRegistry))issues.push_back(std::move(issue));
         for(auto& issue:cart::validateAiProfiles(profiles,metadata.aiProfile,unitRegistry,vfs))issues.push_back(std::move(issue));
         return issues;
     });

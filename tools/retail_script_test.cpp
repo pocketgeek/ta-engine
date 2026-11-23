@@ -209,7 +209,8 @@ int main(int argc,char** argv) {
     if (argc==5 && std::string(argv[1])=="--gate-timeline") {
         using namespace ta::sim;
         auto vfs=ta::hpi::mountRetailRoot(argv[2]);
-        TypeRegistry registry;setupRegistry(registry,vfs,std::stoi(argv[4])!=0);
+        if (std::stoi(argv[4])!=0) return 2;   // argv[4]: the retired Kingdoms balance selector, 0 only
+        TypeRegistry registry;setupRegistry(registry,vfs);
         const auto* type=registry.find(argv[3]);
         if (!type || !type->gate || !type->script()) return 2;
         World world;
@@ -230,8 +231,8 @@ int main(int argc,char** argv) {
         using namespace ta::sim;
         auto vfs=ta::hpi::mountRetailRoot(argv[2]);
         unsigned count=0;
-        for (bool crusades:{false,true}) {
-            TypeRegistry registry;setupRegistry(registry,vfs,crusades);
+        {
+            TypeRegistry registry;setupRegistry(registry,vfs);
             for (const auto& [name,type]:registry.types()) {
                 if (!type.gate) continue;
                 if (!type.script() || !type.onOffable) {
@@ -247,7 +248,7 @@ int main(int argc,char** argv) {
                     bool actual=false;
                     for (int tick=0;tick<1000;++tick) actual=RetailReplayProbe::tickYard(world,id);
                     if (actual!=open) {
-                        std::cerr<<name<<": balance="<<crusades<<" requested="<<open<<" yard="<<actual<<'\n';return 1;
+                        std::cerr<<name<<": requested="<<open<<" yard="<<actual<<'\n';return 1;
                     }
                 }
                 world.setActive(id,true);
@@ -317,7 +318,7 @@ int main(int argc,char** argv) {
                     const auto& arrived=*world.unit(occupant);
                     if (!crossed || std::abs(arrived.x.floorInt()-targetX)>16 ||
                         std::abs(arrived.z.floorInt()-targetZ)>16 || RetailReplayProbe::yardOpen(world,id)) {
-                        std::cerr<<name<<": traversal failed balance="<<crusades<<" crossed="<<crossed
+                        std::cerr<<name<<": traversal failed crossed="<<crossed
                                  <<" position="<<arrived.x.floorInt()<<','<<arrived.z.floorInt()
                                  <<" target="<<targetX<<','<<targetZ<<" open="<<RetailReplayProbe::yardOpen(world,id)<<'\n';
                         return 1;
@@ -332,7 +333,7 @@ int main(int argc,char** argv) {
     if (argc==3 && (std::string(argv[1])=="--factories" || std::string(argv[1])=="--units")) {
         const bool allUnits=std::string(argv[1])=="--units";
         auto vfs=ta::hpi::mountRetailRoot(argv[2]);
-        ta::sim::TypeRegistry registry; ta::sim::setupRegistry(registry,vfs,false);
+        ta::sim::TypeRegistry registry; ta::sim::setupRegistry(registry,vfs);
         unsigned count=0;
         for (const auto& [id,type]:registry.types()) {
             if (allUnits ? !type.script() : !type.productionScript) continue;

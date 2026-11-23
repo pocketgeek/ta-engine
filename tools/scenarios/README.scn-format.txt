@@ -24,8 +24,6 @@ never names a pathfinding mode: the runner builds it once per mode.
   wanderers on|off              fbi types keep (default) or lose Standby_wander,
                                 the home-pull that re-orders idle wanderers every
                                 240 ticks (legion_scenario --wanderers overrides)
-  crusades on|off               load the Crusades balance overlay for fbi types
-                                (default off)
   uplink R                      command window: at most 512 commands
                                 outstanding, round trip R ticks (default: none,
                                 only the server's 64-per-tick drain); explicit

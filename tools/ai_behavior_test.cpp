@@ -120,7 +120,7 @@ static Opening playOpening(const hpi::Vfs& vfs,const sim::TypeRegistry& reg,ai::
 
 static void retailOpenings(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
+    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs);
     check(sides::count()==2,"TA has two sides (ARM, CORE)");
     for (int side=0;side<sides::count();++side) {
         const auto* commander=reg.find(sides::commander(side));

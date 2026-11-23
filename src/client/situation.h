@@ -76,7 +76,6 @@ inline Request parseRequest(const char* text) {
 struct Meta {
     std::string mapId;      // a ~gen1~ recipe; any other map cannot be written (see write)
     std::string source;     // free text for the file's header comment
-    bool crusades = false;
     int players = 2;
     uint32_t seed = 1;
 };
@@ -352,7 +351,6 @@ private:
             }
             std::fprintf(f, "\n");
         }
-        if (meta_.crusades) std::fprintf(f, "crusades on\n");
         std::fprintf(f, gen1 ? "map gen1 %s\n" : "map named %s\n", meta_.mapId.c_str());
         for (const auto& t : types) std::fprintf(f, "type %s fbi %s\n", t.c_str(), t.c_str());
         for (const auto& run : runs) {
