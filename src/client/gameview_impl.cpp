@@ -1762,6 +1762,18 @@
         }
         if (monarchAlert_.admit(monarchAlerts, localPlayer_, watchOnly(), SDL_GetTicks64()))
             sounds_.play("alarmmon", 1.f, 1.f, 7, false);
+        // Total Annihilation firing sounds: each shot launched since the last frame
+        // plays its weapon's soundstart (a WAV stem) where it left the barrel.
+        {
+            const Frame& sf = front();
+            for (const auto& shot : sf.projectiles) {
+                const ta::sim::Weapon* w = shot.wsrc;
+                if (!w || w->soundStart.empty() || shot.start <= lastFireSoundTick_) continue;
+                if (!noFog_ && !cellVisibleR(shot.x.toFloat(), shot.z.toFloat())) continue;
+                if (sounds_.has(w->soundStart)) sounds_.playWorld(w->soundStart, shot.x.toFloat(), shot.z.toFloat());
+            }
+            lastFireSoundTick_ = std::max(lastFireSoundTick_, sf.gameTick);
+        }
         for (const auto& h : hitsToShow) {
             // A Line-of-Sight weapon with no weaponvelocity (none shipped) still
             // lands at once and spawns no projectile: draw a bolt struck from the

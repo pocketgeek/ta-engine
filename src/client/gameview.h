@@ -261,6 +261,7 @@ public:
     std::string taHudPage_;
     ta::GuiLayout taHudLayout_;
     bool taBuildTab_ = true;
+    uint32_t lastFireSoundTick_ = 0;   // TA soundstart: shots launched after this tick play
     int taBuildPage_ = 1;
     ta::TaGuiView* taPage(const std::string& name);
     std::string taSidebarPage();
