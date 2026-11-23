@@ -23,6 +23,12 @@ namespace ta::tnt {
 // as an impassable void marker (0x483aca), 0xFFFF = empty. Retail also accepts an
 // older 0x1020 layout (0x48363c) that no shipped map uses.
 
+// TA's planet= names (OTA [GlobalHeader]) onto the features/ and sections/
+// folders: "Green planet" -> green / greenworld, "Red Planet" -> mars, ... A name
+// that is already a folder (or unknown) comes back lowercased.
+std::string taFeatureFolder(const std::string& planet);
+std::string taSectionFolder(const std::string& planet);
+
 struct Map {
     // Runtime render provenance, not part of the TNT file format. Generated maps
     // use retail sections; unrelated downloaded-map reskins must not override them.
@@ -61,6 +67,9 @@ struct Map {
     // Parse from an in-memory buffer (a VFS-resolved archive entry). `origin`
     // names the source in error messages.
     static Map load(const std::vector<uint8_t>& d, const std::string& origin = "<memory>");
+    // A TA terrain section (worlds.hpi sections/<world>/**/*.sct, v2): its own
+    // tiles, tile map and per-cell heights, as a Map with no features.
+    static Map loadSct(const std::vector<uint8_t>& d, const std::string& origin = "<memory>");
 
     // Serialize to the retail TNT 0x2000 byte layout (round-trips a loaded map):
     // 64-byte header, tile map, attributes, tile graphics, feature names, minimap.

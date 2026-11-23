@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <cctype>
 #include <stdexcept>
 
 namespace ta::tnt {
@@ -144,6 +145,67 @@ std::vector<uint8_t> Map::save() const {
     for (int i = 0; i < 16; ++i)
         for (int k = 0; k < 4; ++k) d[size_t(i) * 4 + k] = uint8_t(hdr[i] >> (8 * k));
     return d;
+}
+
+namespace {
+std::string lowerStr(std::string s) {
+    for (char& c : s) c = char(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+struct PlanetFolders { const char* planet; const char* features; const char* sections; };
+// Feature folders from features/ on the GOG install; section folders from sections/.
+const PlanetFolders kPlanets[] = {
+    {"green planet", "green", "greenworld"}, {"red planet", "mars", "mars"},
+    {"archipelago", "archi", "archipelago"}, {"lunar", "moon", "moon"}, {"lunar2", "moon", "moon"},
+    {"moon", "moon", "moon"}, {"metal", "metal", "metal"}, {"lava", "lava", "lava"},
+    {"wet desert", "wetdesert", "wetdesert"}, {"water world", "water", "water"},
+    {"desert", "desert", "desert"}, {"ice", "ice", "ice"}, {"lush", "lush", "lush"},
+    {"slate", "slate", "slate"}, {"acid", "acid", "acid"}, {"crystal", "crystal", "crystal"},
+    {"urban", "urban", "urban"},
+};
+}  // namespace
+
+std::string taFeatureFolder(const std::string& planet) {
+    const std::string p = lowerStr(planet);
+    for (const auto& e : kPlanets) if (p == e.planet || p == e.sections) return e.features;
+    return p;
+}
+
+std::string taSectionFolder(const std::string& planet) {
+    const std::string p = lowerStr(planet);
+    for (const auto& e : kPlanets) if (p == e.planet || p == e.features) return e.sections;
+    return p;
+}
+
+Map Map::loadSct(const std::vector<uint8_t>& d, const std::string& origin) {
+    auto rd32 = [&](size_t o) {
+        return uint32_t(d[o]) | uint32_t(d[o + 1]) << 8 | uint32_t(d[o + 2]) << 16 | uint32_t(d[o + 3]) << 24;
+    };
+    if (d.size() < 28 || rd32(0) != 2) throw std::runtime_error(origin + ": not a v2 .sct section");
+    const uint32_t nt = rd32(8), pt = rd32(12), w = rd32(16), h = rd32(20), pd = rd32(24);
+    if (!w || !h || w > 256 || h > 256 || nt > 65535 ||
+        uint64_t(pt) + uint64_t(nt) * 1024 > d.size() ||
+        uint64_t(pd) + uint64_t(w) * h * 2 + uint64_t(w) * h * 4 * 8 > d.size())
+        throw std::runtime_error(origin + ": truncated .sct section");
+    Map m;
+    m.blocksX = int(w); m.blocksY = int(h);
+    m.width = int(w) * 2; m.height = int(h) * 2;
+    m.tileCount = int(nt);
+    m.tileGfx.assign(d.begin() + pt, d.begin() + pt + size_t(nt) * 1024);
+    m.tileIndex.resize(size_t(w) * h);
+    for (size_t i = 0; i < m.tileIndex.size(); ++i) {
+        const uint16_t t = uint16_t(d[pd + i * 2] | d[pd + i * 2 + 1] << 8);
+        m.tileIndex[i] = t < nt ? t : 0;
+    }
+    m.tileKeys.assign(m.tileIndex.begin(), m.tileIndex.end());
+    m.tileCols.assign(m.tileIndex.size(), 0);
+    m.tileRows.assign(m.tileIndex.size(), 0);
+    const size_t cells = size_t(m.width) * m.height, ha = pd + size_t(w) * h * 2;
+    m.heights.resize(cells);
+    for (size_t i = 0; i < cells; ++i) m.heights[i] = d[ha + i * 8];   // 8 bytes per cell, height first
+    m.features.assign(cells, 0xFFFF);
+    m.cellExtra.assign(cells, 0);
+    return m;
 }
 
 } // namespace ta::tnt

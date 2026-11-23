@@ -3,6 +3,8 @@
 #include "hpi/hpi.h"
 
 #include <algorithm>
+#include <string_view>
+#include <unordered_map>
 #include "util/virtualpath.h"
 
 namespace cart {
@@ -12,12 +14,15 @@ void SectionLibrary::scan(const ta::hpi::Vfs& vfs, const std::string& world) {
     cache_.clear();++generation_;
     std::string normalized=world;
     std::transform(normalized.begin(),normalized.end(),normalized.begin(),[](unsigned char c){return char(std::tolower(c));});
+    // TA worlds name a planet ("Green planet" -> sections/greenworld).
+    if (!vfs.list("sections/" + normalized).size()) normalized = ta::tnt::taSectionFolder(normalized);
     std::string root = "sections/" + normalized + "/";   // VFS keys are lowercased
     for (const std::string& p : vfs.list("sections")) {
         std::string lo = p;
         std::transform(lo.begin(), lo.end(), lo.begin(), [](unsigned char c){return char(std::tolower(c));});
         if (lo.rfind(root, 0) != 0) continue;
-        if (ta::vpath::extension(lo) != ".tnt") continue;
+        // Kingdoms sections are .tnt; TA's are .sct (Map::loadSct).
+        if (ta::vpath::extension(lo) != ".tnt" && ta::vpath::extension(lo) != ".sct") continue;
         // sections/<world>/<category>/<name>.tnt
 
         SectionRef r;
@@ -36,7 +41,7 @@ const ta::tnt::Map* SectionLibrary::load(const ta::hpi::Vfs& vfs, const std::str
     if (it != cache_.end()) return &it->second;
     try {
         auto d = vfs.read(path);
-        auto m = ta::tnt::Map::load(d, path);
+        auto m = ta::vpath::extension(path) == ".sct" ? ta::tnt::Map::loadSct(d, path) : ta::tnt::Map::load(d, path);
         return &cache_.emplace(path, std::move(m)).first->second;
     } catch (const std::exception&) {
         return nullptr;
@@ -48,6 +53,40 @@ bool stampSection(ta::tnt::Map& map, const ta::tnt::Map& section, int bx, int by
         bx >= map.blocksX || by >= map.blocksY)
         return false;
 
+    // A TA map carries its own tiles: copy the section's in (once each, by
+    // content) and point the blocks at them. tileKeys mirror tileIndex.
+    if (map.tileCount > 0 && section.tileCount > 0) {
+        std::unordered_map<std::string_view, uint16_t> have;
+        auto tileView = [](const std::vector<uint8_t>& gfx, size_t t) {
+            return std::string_view(reinterpret_cast<const char*>(gfx.data()) + t * 1024, 1024);
+        };
+        std::vector<uint16_t> remap(size_t(section.tileCount), 0);
+        std::vector<std::pair<size_t, size_t>> pending;   // (section tile, slot) added this stamp
+        for (size_t t = 0; t < size_t(map.tileCount); ++t) have.emplace(tileView(map.tileGfx, t), uint16_t(t));
+        for (size_t t = 0; t < size_t(section.tileCount); ++t) {
+            const auto sv = tileView(section.tileGfx, t);
+            if (auto it = have.find(sv); it != have.end()) { remap[t] = it->second; continue; }
+            if (map.tileCount + pending.size() >= 0xFFFF) { remap[t] = 0; continue; }
+            remap[t] = uint16_t(map.tileCount + int(pending.size()));
+            pending.push_back({t, remap[t]});
+            have.emplace(tileView(section.tileGfx, t), remap[t]);   // keyed into section memory until copied
+        }
+        for (const auto& [t, slot] : pending)
+            map.tileGfx.insert(map.tileGfx.end(), section.tileGfx.begin() + std::ptrdiff_t(t * 1024),
+                               section.tileGfx.begin() + std::ptrdiff_t(t * 1024 + 1024));
+        map.tileCount += int(pending.size());
+        for (int sy = 0; sy < section.blocksY; ++sy)
+            for (int sx = 0; sx < section.blocksX; ++sx) {
+                const int mx = bx + sx, my = by + sy;
+                if (mx < 0 || my < 0 || mx >= map.blocksX || my >= map.blocksY) continue;
+                const size_t si = size_t(sy) * section.blocksX + sx, mi = size_t(my) * map.blocksX + mx;
+                const uint16_t t = remap[section.tileIndex[si]];
+                map.tileIndex[mi] = t;
+                map.tileKeys[mi] = t;
+                map.tileCols[mi] = 0;
+                map.tileRows[mi] = 0;
+            }
+    } else
     // Tile plane: one entry per 32px block, row-major over blocksX x blocksY.
     for (int sy = 0; sy < section.blocksY; ++sy) {
         int my = by + sy;

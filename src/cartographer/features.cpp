@@ -1,3 +1,4 @@
+#include "tnt/tnt.h"
 #include "cartographer/features.h"
 
 #include "gaf/gaf.h"
@@ -21,7 +22,9 @@ void FeatureLibrary::scan(const ta::hpi::Vfs& vfs, const std::string& world) {
     quiesce();
     refs_.clear();names_.clear();
     spriteCache_.clear();++generation_;
-    const std::string dirs[] = {"features/" + lower(world), "features/all worlds"};
+    // TA worlds name a planet ("Green planet" -> features/green).
+    const std::string folder = vfs.list("features/" + lower(world)).empty() ? ta::tnt::taFeatureFolder(world) : lower(world);
+    const std::string dirs[] = {"features/" + folder, "features/all worlds"};
     for (const std::string& dir : dirs) {
         for (const std::string& path : vfs.list(dir)) {
             if (ta::vpath::extension(lower(path)) != ".tdf") continue;

@@ -13,13 +13,13 @@
   <description>
     <p>
       TA Engine is a modern, clean-room re-implementation of Total Annihilation
-      (Cavedog, 1999), written in C++20 with SDL2. It plays the original campaign,
+      (Cavedog, 1997), written in C++20 with SDL2. It plays the original campaign,
       skirmishes against the computer and online multiplayer, and includes Cartographer,
       a port of the original map editor, and taserver, a dedicated multiplayer server.
     </p>
     <p>
       The game's data is not included: point the engine at your own retail Total
-      Annihilation: Kingdoms install.
+      Annihilation install (the GOG Commander Pack works).
     </p>
   </description>
   <launchable type="desktop-id">ta-client.desktop</launchable>

@@ -73,7 +73,10 @@ std::vector<uint8_t> saveScenario(ta::crt::Scenario base,
 std::vector<std::string> loadUseOnly(const ta::hpi::Vfs& vfs, const std::string& tdfPath) {
     std::vector<std::string> out;
     std::vector<uint8_t> d;
-    try { d = vfs.read(tdfPath); } catch (const std::exception&) { return out; }
+    // Next to the map, else TA's camps/useonly/<file> (0x431740).
+    const std::string file = tdfPath.substr(tdfPath.find_last_of("/\\") + 1);
+    const std::string path = vfs.has(tdfPath) || !vfs.has("camps/useonly/" + file) ? tdfPath : "camps/useonly/" + file;
+    try { d = vfs.read(path); } catch (const std::exception&) { return out; }
     ta::tdf::Node root = ta::tdf::parseText(std::string(d.begin(), d.end()), tdfPath);
     for (const std::string& name : root.childOrder) {   // childOrder is lowercased
         std::string up = name;

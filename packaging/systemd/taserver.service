@@ -1,5 +1,5 @@
 [Unit]
-Description=Total Annihilation Kingdoms public server
+Description=Total Annihilation engine public server
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300

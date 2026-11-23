@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -28,12 +29,21 @@ struct Scenario {
     int lavaWorld = 0, killMul = 50;
     int surfaceMetal = 3, mohoMetal = 40;
     int humanMetal = 1000, computerMetal = 1000, humanEnergy = 1000, computerEnergy = 1000;
+    int numPlayers = 0;               // numplayers= as read (a mission may declare more than its starts)
     int sizeW = 0, sizeH = 0;         // in Units (cells>>5); OTA "size = W x H"
     std::string useOnlyUnits;         // "<name>.tdf", or empty when unrestricted
     bool hasScenario = false;
     std::string mapType = "Network 1";
     std::string aiProfile = "DEFAULT";
     std::vector<StartPos> starts;
+    // Everything else an .ota carries, kept so a re-save loses nothing: a mission's
+    // GlobalHeader keys (conditions, brief, narration, ...), Schema 0's other keys
+    // and sections ([units], [features], non-start specials) and Schemas 1..N.
+    // Keys are lowercased (TDF lookups are case-insensitive). TDF text per entry.
+    std::map<std::string, std::string> headerExtra, schemaExtra;
+    std::string schemaChildren;                // serialized child sections of Schema 0
+    std::string otherSpecials;                 // serialized non-StartPos [special*] of Schema 0
+    std::vector<std::string> otherSchemas;     // serialized [Schema 1..N], body only
 
     // Parse an .ota (GlobalHeader TDF). Missing fields keep their defaults.
     static Scenario parse(const std::string& text);

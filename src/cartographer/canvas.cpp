@@ -1,6 +1,8 @@
 // The map canvas: terrain stamping, feature / unit / start placement, select /
 // erase / pan modes, region drawing, Clear Area, and everything drawn on the map.
 
+#include <cctype>
+#include <algorithm>
 #include "cartographer/editorstate.h"
 #include "cartographer/dialog.h"
 
@@ -17,8 +19,12 @@ const Uint8 kPlayerCol[9][3] = {
 // matched a section. The editor calls this on canvas click; --stamp tests it.
 bool cart::Session::stampByName(const std::string& name, int bx, int by) {
     MapView& mapView=*mapViewPtr;
+    auto same=[](const std::string& a,const std::string& b) {   // TA archives mix case
+        return a.size()==b.size() && std::equal(a.begin(),a.end(),b.begin(),[](char x,char y){
+            return std::tolower(static_cast<unsigned char>(x))==std::tolower(static_cast<unsigned char>(y));});
+    };
     for (const auto& s : sections.list())
-        if (s.name == name) {
+        if (same(s.name, name)) {
             const ta::tnt::Map* sec = sections.load(vfs, s.path);
             if (sec && cart::stampSection(mapView.editMap(), *sec, bx, by)) {
                 mapView.tilesEdited(bx,by,sec->blocksX,sec->blocksY);
