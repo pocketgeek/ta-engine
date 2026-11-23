@@ -72,7 +72,6 @@ Run run(const TypeRegistry& registry,const UnitType& attacker,const UnitType& vi
     const auto& weapons=attacker.weapons;
     const float idleGap=std::min(150.f,0.75f*float(weapons.front().range));
     const int me=w.spawn(&attacker,vx,setup==Setup::Idle ? vz+idleGap : vz+600,0.f,0);
-    w.unit(me)->mana=attacker.maxMana;
     w.unit(me)->fireState=uint8_t(fireState);
     w.unit(me)->moveState=2;   // Roam: some flyers' FBI holds position, and 4d7de0 refuses those
     if (setup!=Setup::Idle) w.attack(me,them,false);

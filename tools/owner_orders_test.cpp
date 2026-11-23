@@ -94,7 +94,7 @@ struct Plain {
     // A caster on Hold Fire: it charms what it is ordered onto and nothing else.
     int spawnCaster(const UnitType& type,float x,float z,int player) {
         const int id=w.spawn(&type,x,z,0,player);
-        w.unit(id)->mana=1e6;w.unit(id)->fireState=0;
+        w.unit(id)->fireState=0;
         return id;
     }
     // A real charm: the caster is ordered onto the unit and casts until it is
@@ -271,7 +271,6 @@ struct Field {
         const int player=w.unit(casterId)->player;
         command(w,reg,Cmd::Attack,player,casterId,victim);
         for (int t=0;t<limit && w.unit(victim)->alive() && w.unit(victim)->player!=player;++t) {
-            w.unit(casterId)->mana=w.unit(casterId)->type->maxMana;   // every cast affordable: the roll may fail
             if (Unit* k=w.unit(keep);k && k->alive()) k->hp=Fixed::fromInt(int(k->type->maxHp));
             run(1);
         }
@@ -507,7 +506,6 @@ void sharedIdCase(const TypeRegistry& reg) {
     command(w,reg,Cmd::Attack,0,c1,v1);command(w,reg,Cmd::Attack,0,c2,v2);
     const auto ours=[&](int id) { const Unit* u=w.unit(id);return u && u->alive() && u->player==0; };
     for (int t=0;t<1800 && !(ours(v1) && ours(v2));++t) {
-        for (int id:{c1,c2}) w.unit(id)->mana=w.unit(id)->type->maxMana;
         for (int id:{first,v1,v2}) if (Unit* k=w.unit(id);k && k->alive()) k->hp=Fixed::fromInt(int(k->type->maxHp));
         f.run(1);
     }

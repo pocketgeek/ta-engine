@@ -46,7 +46,6 @@ Result runCase(const sim::TypeRegistry& registry,const sim::UnitType& flyer,bool
     w.setPowerCodes(true);
     w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
     const int a=w.spawn(&flyer,4096,4096,1.5707963f,0);
-    w.unit(a)->mana=flyer.maxMana;
     w.unit(a)->moveState=moveState;w.unit(a)->fireState=2;
     // Let it settle into its standby (landed, or hovering for one that
     // cannot land) before the enemy shows up.
@@ -145,7 +144,7 @@ int main(int argc,char** argv) {
         w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
         const int a=thirsha ? w.spawn(thirsha,4096,4096,0,0) : 0;
         if (a) {
-            w.unit(a)->mana=thirsha->maxMana;w.unit(a)->moveState=0;w.unit(a)->fireState=2;
+            w.unit(a)->moveState=0;w.unit(a)->fireState=2;
             for (int i=0;i<90;++i) w.tick(1.f/30);
             sim::UnitType target=*registry.find("araarch");
             target.maxHp=30000;target.healTime=0;target.weapons.clear();target.weapon.damage=0;target.maxVel={};
@@ -166,7 +165,7 @@ int main(int argc,char** argv) {
         w.buildNavClasses(registry);w.setPathService(true);
         w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
         const int a=w.spawn(thirsha,4096,4096,0,0);
-        w.unit(a)->mana=thirsha->maxMana;w.unit(a)->moveState=0;w.unit(a)->fireState=fireState;
+        w.unit(a)->moveState=0;w.unit(a)->fireState=fireState;
         for (int i=0;i<90;++i) w.tick(1.f/30);
         const bool landed=w.unit(a)->flightGroundMode==1;
         const float postX=w.unit(a)->x.toFloat(),postZ=w.unit(a)->z.toFloat();

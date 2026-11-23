@@ -32,7 +32,7 @@ static int survey(const char* install, const char* root) {
     auto base = hpi::mountRetailRoot(install);
     sim::TypeRegistry standard, crusades;
     sim::setupRegistry(standard, base, false);
-    sim::setupRegistry(crusades, base, true);
+    sim::setupRegistry(crusades, base, false);
     auto vfs = hpi::mountRetailRoot(root);
     int hits = 0, scenarios = 0;
     for (const auto& path : vfs.list("kmap")) {
@@ -61,7 +61,7 @@ int main(int argc, char** argv) try {
     auto data = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry standard, crusades;
     sim::setupRegistry(standard, data, false);
-    sim::setupRegistry(crusades, data, true);
+    sim::setupRegistry(crusades, data, false);
     check(standard.find("zonspide") && !crusades.find("zonspide") && crusades.find("araking"),
           "fixture needs an install whose Crusades roster leaves out zonspide");
 

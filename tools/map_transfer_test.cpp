@@ -86,7 +86,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
     net::MpClient host,observer;host.setMapRoot(hostRoot);observer.setMapRoot(peerRoot);
     host.setDataHash(hpi::gameplayHash(hostData));observer.setDataHash(hpi::gameplayHash(peerData));
     check(host.connect("127.0.0.1",port,"solo-author"),"solo host connect");
-    sim::TypeRegistry registry;sim::setupRegistry(registry,hostData,true);
+    sim::TypeRegistry registry;sim::setupRegistry(registry,hostData,false);
     sim::World wh,wo;
     bool created=false,ready=false,started=false,loaded=false,connected=false,spectating=false,observerLoaded=false,sent=false;
     uint32_t ht=0,ot=0;std::map<uint32_t,uint64_t> hashes;
@@ -116,7 +116,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
     while(std::chrono::steady_clock::now()<until) {
         check(host.poll(),host.error().c_str());
         if(!created && host.state()==net::MpClient::State::Lobby) {
-            net::GameOptions opts;opts.crusades=1;opts.gameMods=0;
+            net::GameOptions opts;opts.gameMods=0;
             host.createGame("solo authored test","","Solo Authored",opts,2);created=true;
         }
         if(!ready && host.room().id) {host.setSlot(0,1,0,0,0,1);ready=true;}
@@ -374,7 +374,7 @@ static int roomEdit(uint16_t port, const std::filesystem::path& hostRoot, const 
     hostOnlyMap(hostRoot, base, "Ulasem Arena", "room edit c");
     const auto cacheBase = std::filesystem::temp_directory_path() / ("ta-room-edit-" + crypto::toHex(crypto::randomVec(8)));
     struct CleanCache { std::filesystem::path p; ~CleanCache() { std::error_code ec; std::filesystem::remove_all(p, ec); } } clean{cacheBase};
-    sim::TypeRegistry reg; sim::setupRegistry(reg, base, true);
+    sim::TypeRegistry reg; sim::setupRegistry(reg, base,false);
     int made = 0;
     std::map<const net::MpClient*, std::vector<std::string>> history;   // each client's map status changes
     auto client = [&](const std::filesystem::path& root, const std::string& name) {
@@ -564,7 +564,7 @@ static int roomEdit(uint16_t port, const std::filesystem::path& hostRoot, const 
 int main(int argc, char** argv) try {
     if(argc>=4 && argc<=6 && std::string(argv[1])=="--export-package") {
         auto data=hpi::mountRetailRoot(argv[2]);
-        const auto package=net::maps::build(data,argc>=5 ? argv[4] : "Ulasem Arena");
+        const auto package=net::maps::build(data,argc>=5 ? argv[4] : "Ashap Plateau");
         if(argc==6) {
             // A crafted host's package: the same map with one companion (argv[5] is its
             // suffix, e.g. ".tdf") left out. decode accepts it -- companions are optional --
@@ -692,7 +692,7 @@ int main(int argc, char** argv) try {
         uint32_t ht=0, pt=0, st=0;
         std::map<uint32_t,uint64_t> hashes;
         sim::World wh, wp, ws; sim::TypeRegistry reg;
-        sim::setupRegistry(reg, peerData, true);
+        sim::setupRegistry(reg, peerData,false);
         const std::string mapId = argc > 5 ? argv[5] : "Transfer Test";
         auto setup = [&](net::MpClient& client, hpi::Vfs& base, sim::World& world) {
             auto room = client.startRoom();
@@ -723,7 +723,7 @@ int main(int argc, char** argv) try {
         while (std::chrono::steady_clock::now() < until) {
             check(host.poll(), host.error().c_str()); check(peer.poll(), peer.error().c_str());
             if (!created && host.state() == net::MpClient::State::Lobby) {
-                net::GameOptions opts; opts.crusades = 1; opts.gameMods = 0;
+                net::GameOptions opts; opts.gameMods = 0;
                 host.createGame("map transfer test", "", mapId, opts, diplomacy ? 3 : 2); created = true;
             }
             if (!joined && host.room().id && peer.state() == net::MpClient::State::Lobby) {
@@ -826,9 +826,10 @@ int main(int argc, char** argv) try {
     struct Clean { std::filesystem::path p; ~Clean() { std::error_code ec; std::filesystem::remove_all(p,ec); } } clean{root};
     tnt::Map map; map.width=map.height=64; map.blocksX=map.blocksY=32; map.seaLevel=0;
     map.heights.assign(4096,40); map.features.assign(4096,0xffff);
-    map.tileKeys.assign(1024,0x1234); map.tileCols.assign(1024,0); map.tileRows.assign(1024,0);
+    // A TA map carries its own tile art (TNT 0x2000): one 32x32 tile, every block on it.
+    map.tileCount=1; map.tileGfx.assign(1024,7); map.tileIndex.assign(1024,0);
     auto files = std::make_shared<hpi::Vfs::Files>();
-    (*files)["kmap/test.tnt"] = map.save(); (*files)["terrain/00001234.jpg"] = {1,2,3};
+    (*files)["kmap/test.tnt"] = map.save();
     std::string ota="[GlobalHeader]\n{\ngravity=99;\n}\n";
     (*files)["kmap/test.ota"] = {ota.begin(),ota.end()};
     crt::Scenario scenario;
@@ -928,7 +929,7 @@ int main(int argc, char** argv) try {
     hpi::Vfs catalog; catalog.refreshMapCache(root);
     const auto listed=hpi::listMaps(catalog);
     check(listed.size()==1,"download absent from subsequent map picker");
-    check(!catalog.has("terrain/00001234.jpg"),"cached map art leaked globally");
+    check(!catalog.has("kmap/test.txt"),"cached map companion leaked globally");
     check(net::maps::build(catalog,listed.front().first)->digest==p->digest,"reselected download changed identity");
     {
         const auto snapshotPath=root/"Test Snapshot.kmp";
@@ -953,10 +954,14 @@ int main(int argc, char** argv) try {
     auto bad = std::make_shared<hpi::Vfs::Files>(*files);
     (*bad)["kmap/test.ota"].push_back(' '); hpi::Vfs changed; changed.setMapFiles(bad);
     check(net::maps::build(changed,"test")->digest != p->digest, "scenario mismatch ignored");
-    (*bad)["terrain/00001234.jpg"].push_back(4);
+    {   // The tile art is inside the TNT: a changed tile is a changed map.
+        auto art=map; art.tileGfx[5]^=1;
+        (*bad)["kmap/test.tnt"]=art.save();
+    }
     check(net::maps::build(changed,"test")->digest != p->digest, "art mismatch ignored");
     hpi::Vfs room(&source); room.setMapFiles(bad);
-    check(source.read("terrain/00001234.jpg").size()==3 && room.read("terrain/00001234.jpg").size()==4,"room data leaked");
+    check(source.read("kmap/test.ota").size()+1==room.read("kmap/test.ota").size() &&
+          source.read("kmap/test.tnt")!=room.read("kmap/test.tnt"),"room data leaked");
     net::maps::Receiver receive; receive.begin(1,7,uint32_t(p->bytes.size()),p->digest);
     for (size_t off=0; off<p->bytes.size();) {
         net::Writer w; w.u32(1); w.u32(7); w.u32(uint32_t(off));
@@ -996,9 +1001,8 @@ int main(int argc, char** argv) try {
         rejects([&]{net::maps::decode(rawPackage(extra,{1}),"");},"unrelated or duplicate companion accepted");
     auto legacyFiles = std::make_shared<hpi::Vfs::Files>();
     (*legacyFiles)["kmap/test.tnt"] = map.save();
-    (*legacyFiles)["terrain/00001234.jpg"] = {1,2,3};
     hpi::Vfs legacy; legacy.setMapFiles(legacyFiles);
-    check(net::maps::build(legacy,"test")->files->size()==2,"map without companions rejected");
+    check(net::maps::build(legacy,"test")->files->size()==1,"map without companions rejected");
     {   // A saved random map is an ordinary map: its .recipe companion is only carried,
         // so one from another generator version still plays from its saved terrain.
         auto savedFiles = std::make_shared<hpi::Vfs::Files>(*legacyFiles);
@@ -1013,29 +1017,22 @@ int main(int argc, char** argv) try {
     if (argc == 2) {
         auto vfs=hpi::mountRetailRoot(argv[1]);
         {
-            // MAP SCENARIO (259) on the shipped maps, read from the very packages a room
-            // verifies: what the CHANGE MAP panel offers and the seats the room requires.
+            // MAP SCENARIO on the shipped maps, read from the very packages a room
+            // verifies. Total Annihilation's multiplayer maps carry no Kingdoms CRT
+            // scenario (an .ota with no hasscenario, no .crt, no Use Only list), so
+            // none is offered; each package carries its own tile art (no section JPG).
             using S=sim::ScenarioStatus;
             sim::TypeRegistry registry;sim::setupRegistry(registry,vfs,false);
-            auto info=[&](const char* name){return net::maps::scenarioInfo(*net::maps::build(vfs,name),&registry);};
-            const auto koth=info("King of the Hill");
-            check(koth.status==S::Ok && koth.requiredSeats()==0x0F && koth.useOnlyTypes==6 && koth.outcomes,
-                  "King of the Hill: offered, seats 1-4, six Use Only types, victory rules");
-            check(!koth.useOnlyMissing && (koth.armySeats&0x0F)==0x0F,
-                  "King of the Hill: its package carries the Use Only list, and every seat gets an army");
-            const auto strength=info("Increasing Strength");
-            check(strength.status==S::Ok && strength.placed==0 && strength.requiredSeats()==0x0F,
-                  "Increasing Strength: offered, rules only, seats 1-4");
-            const auto savannah=info("Savannah Hunt");
-            check(savannah.status==S::Ok && savannah.requiredSeats()==0xFF,"Savannah Hunt: offered, all eight seats");
-            check(info("Iapur Narrows").status==S::Leftover,"Iapur Narrows: retail's unused rules are a leftover");
-            check(info("Angvir's Maze").status==S::Leftover,"Angvir's Maze: retail's unused rules are a leftover");
-            check(info("Crab Cove").status==S::Empty,"Crab Cove: an empty scenario");
-            check(info("Inner Circle").status==S::NoScenario,"Inner Circle: no scenario");
-            for (const char* name:{"Cairbray Coast Landing","Frey River Plain","Ground War","Increasing Strength",
-                                   "King of the Hill","Riparian Conflict","Savannah Hunt","Temple of Blood",
-                                   "threesacharm","Ulin's Folly","Varro Passage"})
-                check(info(name).offerable(),(std::string(name)+": shipped scenario not offered").c_str());
+            for (const char* name:{"Ashap Plateau","King of the Hill","Lusch Puppy","Coast To Coast","Great Divide"}) {
+                const auto package=net::maps::build(vfs,name);
+                check(package && package->files->count(package->mapPath),(std::string(name)+": package lacks its map").c_str());
+                const auto stem=package->mapPath.substr(0,package->mapPath.size()-4);
+                check(package->files->count(stem+".ota")!=0,(std::string(name)+": package lacks its .ota").c_str());
+                for (const auto& [file,data]:*package->files)
+                    check(!file.starts_with("terrain/"),(std::string(name)+": a TA map package carries section art").c_str());
+                const auto info=net::maps::scenarioInfo(*package,&registry);
+                check(info.status==S::NoScenario && !info.offerable(),(std::string(name)+": a TA map offers a scenario").c_str());
+            }
         }
         mapgen::Params params; params.waterDensity=0; params.name="My Lake";
         auto recipe=mapgen::encodeMapId(params);
@@ -1065,8 +1062,7 @@ int main(int argc, char** argv) try {
         auto loaded=tnt::Map::load(saved.read(path));
         // The save adds the radar pictures the generator leaves out; the rest is the map as rolled.
         const auto geometry=[](tnt::Map m) {m.minimap.clear();m.overview.clear();m.minimapW=m.minimapH=m.overviewW=m.overviewH=0;return m.save();};
-        check(loaded.minimapW==126 && loaded.minimap.size()==126u*126u && loaded.overviewW>0 &&
-              loaded.overview.size()==size_t(loaded.overviewW)*size_t(loaded.overviewH),"saved generated map has no radar pictures");
+        // (Its radar picture is checked last, below.)
         check(geometry(loaded)==generated.map.save(),"saved generated geometry differs");
         {
             const auto ota=saved.read(vpath::replaceExtension(path,".ota"));
@@ -1104,6 +1100,10 @@ int main(int argc, char** argv) try {
             }
             check(found==2,"duplicate titles not independently listed");
         }
+        // The saved map carries the minimap TA's TNT holds (+0x28, the SELMAP preview and
+        // the in-game radar); TA's TNT has no Kingdoms overview picture.
+        check(loaded.minimapW>0 && loaded.minimapH>0 &&
+              loaded.minimap.size()==size_t(loaded.minimapW)*size_t(loaded.minimapH),"saved generated map has no minimap");
 
     }
     std::cout << "map transfer: package identity, isolation, cache, chunks, and validation passed\n";

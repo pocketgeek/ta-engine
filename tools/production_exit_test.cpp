@@ -200,7 +200,6 @@ int main(int argc,char** argv) {
                 check(world.unit(id)->outputStance==2 && world.unit(id)->repeatType==wolf,
                       "a repeating Beast Tamer takes a stance for its output and keeps producing");
                 for(int tick=0;tick<30*120;++tick) {
-                    if(auto* b=world.unit(id))b->mana=std::max(b->mana,double(b->type->maxMana));
                     world.player(0).mana=1000000;   // no storage here: the cap would empty it
                     world.tick(1.f/30);
                 }

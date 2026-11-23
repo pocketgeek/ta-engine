@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry standard, crusades;
     sim::setupRegistry(standard, vfs, false);
-    sim::setupRegistry(crusades, vfs, true);
+    sim::setupRegistry(crusades, vfs, false);
     backOffSixTimes(standard, "standard", "cretort");
     backOffSixTimes(crusades, "Crusades", "verpult");
     if (failures) {

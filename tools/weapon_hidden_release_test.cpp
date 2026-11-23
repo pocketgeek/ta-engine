@@ -28,14 +28,13 @@ int main() {
     targetType.maxVel=Fixed::fromInt(1);
     shooter.simulationScript=script;
     shooter.maxHp=targetType.maxHp=1000;
-    shooter.maxMana=20;
     Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
-    weapon.projVel=300;weapon.manaCost=3;
+    weapon.projVel=300;weapon.energyPerShot=3;   // paid from the player's store (econPayShot)
     shooter.weapons.push_back(weapon);shooter.weapon=weapon;
 
     const int shooterId=world.spawn(&shooter,200,200,{},0);
     const int targetId=world.spawn(&targetType,300,200,{},1);
-    world.unit(shooterId)->mana=20;   // a new unit's pool starts empty (511990)
+    world.setStartResources(0,20,0);
     world.tick(1.f/30.f);
     require(world.playerSees(1,*world.unit(targetId)),"fixture begins with the target visible to its owner");
     world.attack(shooterId,targetId,false);
@@ -68,7 +67,7 @@ int main() {
         target->z=archer->z;
         world.tick(1.f/30.f);
         require((world.unit(shooterId)->weaponAim[0].flags&16) &&
-                world.projectiles().empty() && world.unit(shooterId)->mana==20,
+                world.projectiles().empty() && world.books(0).stored[0]==20,
                 "an out-of-range SET 23 remains pending while visibility changes");
     }
     require(!world.playerSees(2,*world.unit(targetId)),
@@ -82,7 +81,7 @@ int main() {
     require(!world.playerSees(2,*world.unit(targetId)),
             "the target remains hidden on the release tick");
     require(world.unit(shooterId)->justFired && world.projectiles().size()==1 &&
-            world.unit(shooterId)->mana==17 &&
+            world.books(0).stored[0]==17 &&
             !(world.unit(shooterId)->weaponAim[0].flags&16),
             "the hidden live target receives exactly one pending projectile release");
 

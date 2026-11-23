@@ -1,21 +1,14 @@
 // The Classic AI level's building blocks (src/ai/classic*): the retail AI profile
 // baker, the per-type facts and the bookkeeping clock with its dynamic build
 // priorities on a fixed World, the squad layer (constructor rolls, assignment),
-// and (with a data directory) the shipped profile through the real VFS and a
-// Classic seat's squads and its factories' production in games on Abnar's Terrace.
+// and (with a data directory) TA's map AI-profile lookup through the real VFS.
 //
 //   classic_ai_test                 unit tests
 //   classic_ai_test <retail-root>   + the shipped data checks
-//   classic_ai_test --bases <retail-root>   the P4b games: a Classic seat of each
-//       faction builds its base on Abnar's Terrace for 10 game-minutes
-//   classic_ai_test --raid <retail-root>    the P5 game: a scripted raid into a
-//       Classic base (defenders sent at the raiders, the Monarch's retreat)
 //   classic_ai_test --u13 <retail-root>     U13: a column on Move and on
-//       AttackMove walking through enemies
-//   classic_ai_test --waves <retail-root>   the P6 game: a Classic seat's wave
-//       launches, marches by Move, sends a wounded member home and dissolves
-//   classic_ai_test --duels <retail-root>   Classic against Classic, three
-//       faction pairs, until a winner (TA_DUEL_MAP, TA_DUEL_MINUTES)
+//       AttackMove (TA's Fight) walking through enemies
+//   (--bases, --raid, --waves, --duels and --expansion, Kingdoms' Classic seat
+//   games, are gone: ai::Controller no longer builds a ClassicBrain.)
 //   classic_ai_test --profile       oracle mode for tools/re/check_ai_profile.py:
 //       stdin  "types <n>" then n lines "<name> <category words...>", then any
 //              number of "case <hex script>" lines
@@ -199,6 +192,8 @@ static void typeFacts() {
 }
 
 // A self-contained registry (the same synthetic-VFS trick as ai_behavior_test).
+// Each FBI carries TA's copyright line: TotalA.exe's pre-pass (0x42a8d0) skips a
+// unit without it.
 static sim::TypeRegistry syntheticRegistry() {
     auto files=std::make_shared<hpi::Vfs::Files>();
     auto file=[&](const std::string& path,const std::string& text) {
@@ -208,18 +203,22 @@ static sim::TypeRegistry syntheticRegistry() {
     };
     auto type=[&](const char* id,const char* fields,const char* extra="") {
         file(std::string("units/")+id+".fbi",std::string("[UNITINFO]{unitname=")+id+";objectname="+id+
-             ";side=ARA;maxdamage=100;footprintx=2;footprintz=2;buildtime=30;buildcost=10;"+fields+"}"+extra);
+             ";side=ARA;maxdamage=100;footprintx=2;footprintz=2;buildtime=30;buildcostmetal=10;"
+             "copyright=Copyright 1997 Humongous Entertainment. All rights reserved.;"+fields+"}"+extra);
     };
-    type("soldier","canmove=1;maxvelocity=1;category=ARA LAND;","[WEAPON1]{damage=5;range=100;}");
-    type("tower","yardmap=oooo;","[WEAPON2]{range=200;}");            // a weapon block, no damage
-    type("lode","buildcost=0;buildtime=92;yardmap=S;mogriumincome=10;category=ARA;");
+    // TA names its weapons from the FBI (weapon1..3=) as weapons/*.tdf sections.
+    file("weapons/test.tdf","[GUN]{id=1;range=100;[DAMAGE]{default=5;}}[DUD]{id=2;range=200;[DAMAGE]{default=0;}}");
+    type("soldier","canmove=1;maxvelocity=1;category=ARA LAND;weapon1=GUN;");
+    type("tower","yardmap=oooo;weapon2=DUD;");            // a weapon, no damage
+    type("lode","buildcostmetal=0;buildtime=92;yardmap=S;category=ARA;");
     type("mobilelode","canmove=1;maxvelocity=1;bmcode=1;yardmap=S;");  // yardmap ignored: bmcode 1
     type("ship","canmove=1;maxvelocity=1;minwaterdepth=20;floater=1;");
     type("worker","builder=1;workertime=30;canmove=1;maxvelocity=1;builddistance=90;sightdistance=300;");
-    type("castle","builder=1;workertime=30;buildcost=2000;");
+    type("castle","builder=1;workertime=30;buildcostmetal=2000;");
     type("plain","isfeature=1;");
-    file("canbuild/worker/lode.tdf","[CANBUILD]{sortbias=0;}");
-    file("canbuild/castle/soldier.tdf","[CANBUILD]{sortbias=0;}");
+    // TA build menus: guis/<builder>1.gui, one button gadget (id 1) per unit.
+    file("guis/worker1.gui","[GADGET0]{[COMMON]{id=0;name=worker1;}}[GADGET1]{[COMMON]{id=1;name=lode;}}");
+    file("guis/castle1.gui","[GADGET0]{[COMMON]{id=0;name=castle1;}}[GADGET1]{[COMMON]{id=1;name=soldier;}}");
     hpi::Vfs vfs;vfs.setMapFiles(files);
     sim::TypeRegistry reg;reg.loadDir(vfs,"units");reg.loadBuildTree(vfs,"canbuild");
     return reg;
@@ -232,8 +231,8 @@ static void typeInfoAndPriorities() {
     const auto& c=brain.catalogue();
     auto idx=[&](const char* n){return size_t(c.byName.at(n));};
     const auto& info=brain.typeInfo();
-    check(c.size()==9 && info[idx("tower")].armed && reg.find("tower")->weapons.empty() && info[idx("soldier")].armed &&
-          !info[idx("worker")].armed,"armed = any [WEAPONn] block, even one with no damage");
+    check(c.size()==9 && info[idx("tower")].armed && info[idx("soldier")].armed &&
+          !info[idx("worker")].armed,"armed = any weapon1..3 naming a weapon, even one with no damage");
     check(info[idx("lode")].manaSite && info[idx("lode")].lodestoneClass && info[idx("lode")].cost==92 &&
           info[idx("lode")].bmcode==0 && info[idx("tower")].structure && !info[idx("tower")].manaSite,
           "a yardmap S building is a mana site in the lodestone class; buildcost 0 falls back to buildtime");
@@ -308,33 +307,22 @@ static void typeInfoAndPriorities() {
 }
 
 static void shippedData(const char* root) {
+    // The map's AI profile lookup, which the server and TA's own AI still use
+    // (docs/retail-ai.md, "AI profile"): the chosen schema's aiprofile= names
+    // ai\<value>.txt; an empty value or a file that fails to load is ai\default.txt.
     auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    const auto key=ai::classicMapAiProfile(vfs,map);
-    check(key=="DEFAULT" || key=="default","a skirmish map's .ota names the DEFAULT profile");
-    const auto script=ai::classicProfileScript(vfs,key);
-    check(ai::classicProfileScript(vfs,"").path=="ai/default.txt" &&
-          ai::classicProfileScript(vfs,"no such profile").path=="ai/default.txt" &&
-          ai::classicProfileScript(vfs,"default.txt").text==script.text && script.path=="ai/"+key+".txt",
+    const auto sea=hpi::findMap(vfs,"Anteer Strait");
+    check(ai::classicMapAiProfile(vfs,sea)=="SeaBattle","a sea map's .ota names its SeaBattle profile");
+    const auto script=ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,sea));
+    check(script.path=="ai/SeaBattle.txt" && !script.text.empty(),"aiprofile=SeaBattle reads ai\\SeaBattle.txt");
+    const auto plain=hpi::findMap(vfs,"Ashap Plateau");
+    check(ai::classicMapAiProfile(vfs,plain).empty(),"Ashap Plateau's schema leaves aiprofile empty");
+    const auto fallback=ai::classicProfileScript(vfs,"");
+    check(fallback.path=="ai/default.txt" && ai::classicProfileScript(vfs,"AIR").path=="ai/default.txt" &&
+          ai::classicProfileScript(vfs,"default.txt").text==fallback.text,
           "an empty or unreadable aiprofile falls back to ai/default.txt; an extension is dropped");
-    // IPData.hpi's copy is the one that names Creon units.
-    check(script.text.find("cre")!=std::string::npos,"the VFS serves IPData's default.txt (it covers Creon)");
-    ai::ClassicBrain brain(1,7,reg);brain.useProfile(script);
-    const auto& c=brain.catalogue();const auto& p=brain.profile();
-    auto idx=[&](const char* n){auto it=c.byName.find(n);return it==c.byName.end() ? size_t(0) : size_t(it->second);};
-    check(idx("arasiege") && p.pref[idx("arasiege")]==100 && p.limit[idx("arasiege")]==10,
-          "shipped default.txt's araseige lines give arasiege its limit of 10");
-    check(idx("aratrans") && p.limit[idx("aratrans")]==-1 && idx("araking") && p.limit[idx("araking")]==-1,
-          "unlisted types (the Ark, the Monarch) are unlimited");
-    check(idx("aragod") && p.pref[idx("aragod")]==0 && p.limit[idx("aragod")]==0 &&
-          idx("araarch") && p.pref[idx("araarch")]==100 && p.limit[idx("araarch")]>0,
-          "gods are switched off; ordinary troops are on with a limit");
-    bool onOff=true;
-    for (size_t t=1;t<c.size();++t) onOff=onOff && (p.pref[t]==0 || p.pref[t]==100);
-    check(onOff,"every shipped weight is an integer, so every preference is 0 or 100");
-    check(c.categories.count("ara") && c.categories.count("all") && c.categories.at("all").size()==c.size()-1,
-          "categories come from the FBI category= words, plus ALL");
+    check(fallback.text.find("plan easy")!=std::string::npos && fallback.text.find("ARMACK")!=std::string::npos,
+          "the VFS serves TA's shipped default.txt (plan blocks, ARM/CORE weights)");
 }
 
 
@@ -521,600 +509,12 @@ static void squadAssignment() {
 }
 
 
-// The engine game test for P3: a Classic Taros seat on Abnar's Terrace against
-// an idle seat. Units appear for it (finished ones, one that finishes later, a
-// building), one is destroyed; every finished unit must be in a base squad
-// within 10 ticks of being finished, the Monarch in base 1 anchored on its start
-// with no Stance order, every other one given Stance 0 (applied by the World).
-static void abnarSquads(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    sim::World w;
-    sim::MatchConfig config;config.vfs=&vfs;
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    config.mapPath=map;
-    config.slots={{true,0,0,1.0f},{true,1,1,1.0f,true,false}};
-    const auto starts=sim::setupMatch(w,reg,config);
-    if (starts.size()<2) { check(false,"Abnar's Terrace seats two players");return; }
-    ai::Controller controller(1,reg,ai::Profile{},0x5eed,ai::Difficulty::Classic,{starts[0]});
-    controller.setClassicProfile(ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,map)));
-    controller.setClassicStart(1,starts[1].first,starts[1].second);
-    const ai::ClassicBrain& brain=*controller.classicBrain();
-    auto pick=[&](auto want)->const sim::UnitType* {
-        for (const auto& [id,t]:reg.types()) if (t.side=="TAR" && want(t)) return &t;
-        return nullptr;
-    };
-    const auto* soldier=pick([](const sim::UnitType& t){return !t.isStructure() && !t.weapons.empty() && !t.isBuilder && !t.canFly;});
-    const auto* worker=pick([](const sim::UnitType& t){return !t.isStructure() && t.isBuilder && !t.commander;});
-    const auto* flyer=pick([](const sim::UnitType& t){return t.canFly && !t.weapons.empty();});
-    const auto* tower=pick([](const sim::UnitType& t){return t.isStructure() && !t.weapons.empty();});
-    if (!soldier || !worker || !flyer || !tower) { check(false,"Taros has a soldier, a builder, a flyer and a tower");return; }
-    int monarch=0;
-    for (const auto& u:w.units()) if (u.player==1 && u.type && u.type->commander) monarch=u.id;
-    const float sx=starts[1].first,sz=starts[1].second;
-    std::map<int,uint32_t> finishedAt;   // unit -> tick it was first seen finished
-    std::map<int,uint32_t> joinedAt;     // unit -> tick it was first seen in a base squad
-    std::map<int,int> stances;
-    std::set<int> spawned;   // the test's own units (the Monarch also builds, since P4b)
-    int late=0,doomed=0;
-    for (uint32_t tick=0;tick<400;++tick) {
-        if (tick==40) {
-            spawned.insert(w.spawn(soldier,sx+120,sz,0.0f,1));spawned.insert(w.spawn(soldier,sx-120,sz+40,0.0f,1));
-            spawned.insert(w.spawn(worker,sx,sz+120,0.0f,1));spawned.insert(w.spawn(flyer,sx+60,sz-120,0.0f,1));
-            doomed=w.spawn(soldier,sx+200,sz+200,0.0f,1);spawned.insert(doomed);
-        }
-        if (tick==55) spawned.insert(w.spawn(tower,sx-200,sz-160,0.0f,1));
-        if (tick==60) { late=w.spawn(soldier,sx-60,sz-60,0.0f,1);w.unit(late)->underConstruction=true;spawned.insert(late); }
-        if (tick==131) w.unit(late)->underConstruction=false;
-        if (tick==200) {
-            net::Command kill;kill.kind=net::Cmd::Destroy;kill.player=1;kill.unitId=doomed;
-            sim::applyCommand(w,reg,kill);
-        }
-        controller.tick(w,tick,[&](const net::Command& c) {
-            if (c.kind==net::Cmd::Stance) ++stances[c.unitId];
-            sim::applyCommand(w,reg,c);
-        });
-        w.tick(1.f/30.f);
-        for (const auto& u:w.units()) {
-            if (u.player!=1 || !u.alive() || (u.id!=monarch && !spawned.count(u.id))) continue;
-            if (!u.underConstruction) finishedAt.emplace(u.id,tick);
-            const int32_t q=brain.squadOf(u.id);
-            if (q>=1 && q<=20) joinedAt.emplace(u.id,tick);
-        }
-    }
-    bool within=true;uint32_t worst=0;int units=0;
-    for (const auto& [id,at]:finishedAt) {
-        // The Monarch is there from tick 0 and waits for the first pass, which
-        // the manager's 30-tick initial countdown holds back (checked below).
-        if (id==doomed || id==monarch) continue;
-        const auto j=joinedAt.find(id);
-        const uint32_t delay=j==joinedAt.end() ? 9999 : j->second-at;
-        within=within && delay<=10;worst=std::max(worst,delay);++units;
-    }
-    std::printf("  Abnar's Terrace: %d finished units besides the Monarch, worst delay to a base squad %u ticks\n",units,worst);
-    check(units==6 && within,"every finished unit of the Classic seat is in a base squad within 10 ticks of being finished");
-    const auto& sq=brain.squads();
-    check(brain.squadOf(monarch)==1 && joinedAt.at(monarch)<=30 && sq.squads[1].parameters[0]==2 && !stances.count(monarch),
-          "the Monarch joins base 1 by tick 30, base 1 is anchored on start 2, and it gets no Stance order");
-    {
-        const auto cell=*sq.starts[1];
-        const int cx=cell.first*16+8,cz=cell.second*16+8;
-        check(std::abs(cx-int(sx))<=8 && std::abs(cz-int(sz))<=8,"the anchor is the start location's 16-pixel cell");
-    }
-    bool stanced=true;
-    for (const auto& [id,at]:finishedAt) {
-        if (id==monarch || id==doomed) continue;
-        const auto* u=w.unit(id);
-        stanced=stanced && stances[id]==1 && u &&
-                (!u->type->canSetStance || (u->stance==0 && u->moveState==1 && u->fireState==2));
-    }
-    check(stanced,"every other unit got exactly one Stance 0 order, and the World applied it (move 1, fire 2)");
-    bool gone=brain.squadOf(doomed)<=0;
-    for (const auto& q:sq.squads) gone=gone && std::find(q.members.begin(),q.members.end(),doomed)==q.members.end();
-    check(gone,"a destroyed unit is in no squad");
-    // Member counts per kind, of the test's units and the Monarch: every unit
-    // joins base 1 (the only occupied base); since P6 a wave the base launches
-    // takes some of them on into a strike, its backup or a VTOL squad, and since
-    // P7 the spare builder founds a base on a sacred site, its escort with it.
-    int bases=0,strikes=0,vtol=0,other=0,inBase1=0,expansion=0;
-    for (int slot=1;slot<=98;++slot)
-        for (int id:sq.squads[size_t(slot)].members) {
-            if (id!=monarch && !spawned.count(id)) continue;
-            (slot<=20 ? bases : slot<=80 || slot==97 || slot==98 ? strikes : slot<=95 ? vtol : other)+=1;
-            inBase1+=slot==1;
-            expansion+=slot>=2 && slot<=20 && sq.squads[size_t(slot)].parameters[0]<0;
-        }
-    std::printf("  members: bases %d (base 1: %d, expansions: %d), strikes/backups %d, VTOL %d, homeless %d\n",bases,
-                inBase1,expansion,strikes,vtol,other);
-    check(bases==inBase1+expansion && other==0 && bases+strikes+vtol==units+1 && brain.squadOf(monarch)==1,
-          "all of them are in base 1, an expansion base on a sacred site, or in a wave it launched");
-}
-
-// The engine game test for P4a: a Classic seat of each faction with a factory
-// (Aramon keep, Veruna keep, Taros dungeon) given at the start on Abnar's
-// Terrace, against an idle seat, for 2 minutes of the World's own economy. The
-// factory joins base 1 and is planned by the base think: every Train is one unit
-// of a same-side type from its menu with a draw weight > 0 (so under its profile
-// limit), queued only while the factory has nothing in production; live counts
-// never pass a profile limit; and trained units come out and join the base.
-static void classicFactories(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    // The last seat runs its own profile: the Swordsman locked at 2 (the first,
-    // exact line wins), every other type at 0, so only Swordsmen may come out.
-    struct Seat { int faction;const char* factory;const char* label;const char* script; };
-    for (const Seat seat:{Seat{0,"arakeep","Aramon keep",nullptr},Seat{2,"verkeep","Veruna keep",nullptr},
-                          Seat{1,"tardung","Taros dungeon",nullptr},
-                          Seat{0,"arakeep","Aramon keep, limits 2 Swordsmen / 0 others","limit arasword 2\nlimit ALL 0\n"}}) {
-        sim::World w;
-        sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;
-        config.slots={{true,0,0,1.0f},{true,seat.faction,1,1.0f,true,false}};
-        const auto starts=sim::setupMatch(w,reg,config);
-        const auto* factoryType=reg.find(seat.factory);
-        if (starts.size()<2 || !factoryType) { check(false,"Abnar's Terrace seats two players, and the factory type exists");return; }
-        ai::Controller controller(1,reg,ai::Profile{},0x5eed+uint32_t(seat.faction),ai::Difficulty::Classic,{starts[0]});
-        controller.setClassicProfile(seat.script ? ai::ClassicProfileScript{"test",seat.script}
-                                                 : ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,map)));
-        controller.setClassicStart(1,starts[1].first,starts[1].second);
-        const ai::ClassicBrain& brain=*controller.classicBrain();
-        const auto& cat=brain.catalogue();
-        const float sx=starts[1].first,sz=starts[1].second;
-        // Toward the map's middle, clear of the Monarch.
-        const float dx=sx<w.mapW()*8.0f ? 1.f : -1.f,dz=sz<w.mapH()*8.0f ? 1.f : -1.f;
-        const int factory=w.spawn(factoryType,sx+dx*192,sz+dz*192,0.0f,1);
-        const size_t ft=[&]{auto it=cat.byName.find(seat.factory);return it==cat.byName.end() ? size_t(0) : size_t(it->second);}();
-        const auto& menu=brain.menu(ft);
-        int trains=0,offMenu=0,busy=0,unweighted=0,wrongUnit=0,overLimit=0,produced=0;
-        std::map<std::string,int> byType;
-        std::set<int> seen;std::map<int,uint32_t> born;
-        uint32_t firstOut=0,joined=0;
-        for (uint32_t tick=0;tick<3600;++tick) {
-            controller.tick(w,tick,[&](const net::Command& c) {
-                // Since P4b the Monarch builds too; only the given factory's
-                // production is checked here (classicBases covers the rest).
-                if (c.kind==net::Cmd::Train && c.unitId==factory) {
-                    ++trains;
-                    if (c.targetId!=1) ++wrongUnit;
-                    const std::string id=c.type;++byType[id];
-                    const auto* t=reg.find(id);
-                    const auto it=t ? cat.byName.find(t->classicFbi.unitName.empty() ? t->id : t->classicFbi.unitName)
-                                    : cat.byName.end();
-                    if (it==cat.byName.end() || std::find(menu.begin(),menu.end(),it->second)==menu.end() ||
-                        t->side!=factoryType->side) ++offMenu;
-                    else if (brain.buildWeight(it->second)<=0) ++unweighted;
-                    if (const auto* f=w.unit(factory);!f || !f->buildQueue.empty()) ++busy;
-                }
-                sim::applyCommand(w,reg,c);
-            });
-            w.tick(1.f/30.f);
-            std::map<const sim::UnitType*,int> live;
-            for (const auto& u:w.units()) {
-                if (u.player!=1 || !u.alive() || !u.type) continue;
-                ++live[u.type];
-                if (u.id!=factory && !u.type->commander && seen.insert(u.id).second) { ++produced;born[u.id]=tick; }
-                if (!firstOut && born.count(u.id) && !u.underConstruction) firstOut=tick;
-                if (!joined && born.count(u.id) && brain.squadOf(u.id)>=1 && brain.squadOf(u.id)<=20) joined=tick;
-            }
-            for (const auto& [t,n]:live) {
-                const auto it=cat.byName.find(t->classicFbi.unitName.empty() ? t->id : t->classicFbi.unitName);
-                if (it!=cat.byName.end() && t!=factoryType && !t->commander && !brain.profile().allows(it->second,n-1)) ++overLimit;
-            }
-        }
-        std::string mix;
-        for (const auto& [id,n]:byType) mix+=" "+id+" x"+std::to_string(n);
-        std::printf("  %s: menu %zu, %d Train commands (%u queues),%s; %d units produced, first out at tick %u, "
-                    "first in a base at %u\n",seat.label,menu.size(),trains,brain.factoryQueues(),mix.c_str(),produced,
-                    firstOut,joined);
-        const std::string what=std::string(seat.label)+": ";
-        check(!menu.empty() && trains>=2 && wrongUnit==0,(what+"the factory trains, one unit per Train command").c_str());
-        check(offMenu==0 && unweighted==0,(what+"every pick is a same-side type of its menu with a draw weight > 0").c_str());
-        check(busy==0,(what+"a unit is queued only while the factory has nothing in production").c_str());
-        check(overLimit==0,(what+"live counts stay within the profile's limits").c_str());
-        check(produced>=1 && firstOut>0 && joined>=firstOut,(what+"trained units come out and join a base squad").c_str());
-        if (seat.script)
-            check(byType.size()==1 && byType.count("arasword") && byType["arasword"]==2,
-                  (what+"exactly two Swordsmen are trained, nothing else").c_str());
-    }
-}
-
-// A Classic seat's start table as the server gives it: the map's starts in
-// StartPos order, and the seat's own record, the one it opened at.
-static void setClassicStarts(ai::Controller& c,const hpi::Vfs& vfs,const std::string& map,std::pair<float,float> at) {
-    auto table=sim::parseStartPositions(vfs,map);
-    int index=-1;
-    for (size_t k=0;k<table.size() && index<0;++k) if (table[k]==at) index=int(k);
-    if (index<0) { index=int(table.size());table.push_back(at); }
-    c.setClassicStarts(table);
-    c.setClassicStart(index,at.first,at.second);
-}
-
-// The engine game test for P4b: a Classic seat of each of the five factions on
-// Abnar's Terrace from a bare start (its Monarch only), against an idle seat, for
-// 10 game-minutes of the World's own economy. Its Monarch and builders run
-// retail's constructor planner and placers; factories (and Zhon's conjurers) the
-// production planners. Recorded at 3, 6 and 10 minutes: finished lodestones,
-// other structures by type, units produced, and the Build / Train commands. It
-// must not stall: by 10 minutes it has built lodestones and structures and
-// produced units. Every Build site lies inside the base's ring radius plus one
-// grid block, a lodestone goes on a sacred site, no factory type is ordered
-// while an idle one of that type stands in the base, and no lodestone while
-// another member of the base is already building a mana site.
-static void classicBases(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    static const char* const kNames[5]={"Aramon","Taros","Veruna","Zhon","Creon"};
-    std::printf("  P4b games (Abnar's Terrace, Classic seat vs an idle seat):\n");
-    // A sixth game: a Zhon seed whose builders meet the busy-deposit test inside
-    // one base think (two lodestone picks in a row), which the stale member
-    // snapshot used to miss.
-    for (int game=0;game<6;++game) {
-        const int faction=game<5 ? game : 3;
-        const uint32_t seed=game<5 ? 0xb450u+uint32_t(faction) : 36u;
-        const std::string name=game<5 ? kNames[faction] : std::string(kNames[faction])+" (seed 36)";
-        sim::World w;
-        sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;
-        config.slots={{true,0,0,1.0f},{true,faction,1,1.0f,true,false}};
-        const auto starts=sim::setupMatch(w,reg,config);
-        if (starts.size()<2) { check(false,"Abnar's Terrace seats two players");return; }
-        ai::Controller controller(1,reg,ai::Profile{},seed,ai::Difficulty::Classic,{starts[0]});
-        controller.setClassicProfile(ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,map)));
-        setClassicStarts(controller,vfs,map,starts[1]);
-        const ai::ClassicBrain& brain=*controller.classicBrain();
-        int builds=0,trains=0,outside=0,offDeposit=0,duplicate=0,refused=0,doubleDeposit=0;
-        // A type's mana-site bit (type +0x264 bit 31), from the brain's own facts.
-        auto manaSite=[&](const sim::UnitType* t) {
-            const auto& types=brain.catalogue().types;
-            for (size_t i=1;i<types.size();++i) if (types[i]==t) return brain.typeInfo()[i].manaSite;
-            return false;
-        };
-        // What a unit is building or ordered to build (its first build mission).
-        auto building=[&](const sim::Unit& u) -> const sim::UnitType* {
-            if (u.buildSiteId) if (const auto* s=w.unit(u.buildSiteId)) return s->type;
-            for (const auto& o:u.orders) if (o.buildType) return o.buildType;
-            return nullptr;
-        };
-        int32_t worst=0;
-        struct Snapshot { uint32_t tick;int lodes,structures,units,builds,trains;std::map<std::string,int> byType; };
-        std::vector<Snapshot> snaps;
-        std::set<int> producedIds;
-        static const bool trace=std::getenv("TA_CLASSIC_TRACE")!=nullptr;   // per-command log
-        for (uint32_t tick=0;tick<18000;++tick) {
-            controller.tick(w,tick,[&](const net::Command& c) {
-                if (c.kind==net::Cmd::Train) ++trains;
-                if (trace && (c.kind==net::Cmd::Build || c.kind==net::Cmd::Train || c.kind==net::Cmd::Stop)) {
-                    const auto* b=w.unit(c.unitId);
-                    std::printf("      t%u %s %s -> %s (%.0f,%.0f) mana %.0f alloc %.2f\n",tick,
-                                c.kind==net::Cmd::Build ? "Build" : c.kind==net::Cmd::Train ? "Train" : "Stop",
-                                b && b->type ? b->type->id.c_str() : "?",c.type,c.x,c.z,w.player(1).mana,
-                                double(w.player(1).constructionAllocation));
-                }
-                if (c.kind==net::Cmd::Build) {
-                    ++builds;
-                    const auto* t=reg.find(c.type);
-                    // The ring radius from the structures of the builder's base,
-                    // around its anchor (home on the start, an expansion on its site).
-                    const int slot=brain.squadOf(c.unitId);
-                    const auto cell=slot>=1 && slot<=20
-                        ? ai::classicAnchor(brain.squads(),brain.squads().squads[size_t(slot)].parameters[0]) : std::nullopt;
-                    if (cell) {
-                        int32_t foot=0;
-                        for (const auto& u:w.units())
-                            if (u.player==1 && u.alive() && u.type && u.type->isStructure() && brain.squadOf(u.id)==slot)
-                                foot+=u.type->footX+u.type->footZ;
-                        const int32_t ring1=sim::retailAiBaseRadius(foot,1);
-                        const float d=std::hypot(c.x-(float(cell->first)*16+8),c.z-(float(cell->second)*16+8));
-                        worst=std::max(worst,int32_t(d));
-                        if (d>float(ring1)+40*16) ++outside;
-                    }
-                    if (t && t->onMana && w.hasManaSpots() && !w.canPlace(t,c.x,c.z,1)) ++offDeposit;
-                    // The rule reads the base's members (finished units the
-                    // assignment pass has placed in base 1..20).
-                    if (t && t->isStructure() && !reg.buildable(t->id).empty())
-                        for (const auto& u:w.units())
-                            if (u.player==1 && u.alive() && u.type==t && u.buildQueue.empty() &&
-                                brain.squadOf(u.id)>=1 && brain.squadOf(u.id)<=20) ++duplicate;
-                    // 0x40c830: no lodestone while another member of the builder's
-                    // base is already on a mana site (an order given earlier in
-                    // the same base think counts: retail's order is immediate).
-                    if (t && manaSite(t))
-                        for (const auto& u:w.units())
-                            if (u.player==1 && u.alive() && u.id!=c.unitId && brain.squadOf(u.id)==brain.squadOf(c.unitId))
-                                if (const auto* b=building(u);b && manaSite(b)) ++doubleDeposit;
-                    sim::applyCommand(w,reg,c);
-                    if (const auto* b=w.unit(c.unitId);!b || b->orders.empty() || !b->orders.back().buildType) ++refused;
-                    return;
-                }
-                sim::applyCommand(w,reg,c);
-            });
-            w.tick(1.f/30.f);
-            for (const auto& u:w.units())
-                if (u.player==1 && u.alive() && u.type && !u.type->isStructure() && !u.type->commander && !u.underConstruction)
-                    producedIds.insert(u.id);
-            if (tick+1==5400 || tick+1==10800 || tick+1==18000) {
-                Snapshot snap{tick+1,0,0,int(producedIds.size()),builds,trains,{}};
-                for (const auto& u:w.units()) {
-                    if (u.player!=1 || !u.alive() || !u.type || u.underConstruction) continue;
-                    if (u.type->isStructure()) {
-                        (u.type->onMana ? snap.lodes : snap.structures)++;
-                        ++snap.byType[u.type->id];
-                    } else if (!u.type->commander) ++snap.byType[u.type->id];
-                }
-                snaps.push_back(snap);
-            }
-        }
-        for (const auto& snap:snaps) {
-            std::string mix;
-            for (const auto& [id,n]:snap.byType) mix+=" "+id+" x"+std::to_string(n);
-            std::printf("    %s %2u min: %d lodestones, %d other structures, %d units produced; %d Build, %d Train;%s\n",
-                        name.c_str(),snap.tick/1800,snap.lodes,snap.structures,snap.units,snap.builds,snap.trains,
-                        mix.c_str());
-        }
-        std::printf("    %s: %u Build commands (%u lodestones), %d refused by the World, farthest site %d px\n",
-                    name.c_str(),brain.builds(),brain.lodestoneBuilds(),refused,worst);
-        const auto& last=snaps.back();
-        const std::string what=name+": ";
-        check(last.lodes>=1,(what+"lodestones are built within 10 minutes").c_str());
-        check(last.structures>=1 || faction==3,(what+"basic structures are built within 10 minutes").c_str());
-        check(last.units>=1,(what+"units are trained or conjured within 10 minutes").c_str());
-        check(outside==0,(what+"every site is inside the ring radius plus a grid block").c_str());
-        check(offDeposit==0,(what+"every lodestone is ordered onto a free deposit").c_str());
-        check(duplicate==0,(what+"no factory type is ordered while an idle one stands in the base").c_str());
-        check(doubleDeposit==0,(what+"no lodestone is ordered while another base member builds a mana site").c_str());
-    }
-}
-
-// The engine game test for P7: one Classic seat of each faction from a bare
-// start against an idle seat, 20 game-minutes on Abnar's Terrace. The base
-// think's transfers and expansion run (ai/classicexpand.h): with a builder to
-// spare a free builder founds a new base anchored on the nearest free sacred
-// site in its zone (outside every base's ring-2 radius, no enemy within 50 px)
-// and builds lodestones around it; units the bases are short of are sent to
-// them. Recorded at 5, 10 and 20 minutes: occupied bases (and how many are
-// anchored on a site), finished lodestones (and how many stand in an expansion
-// base), the expansions and transfers so far. Every expansion base must be
-// anchored on its own site, and every Build order must lie within its builder's
-// base ring (plus a grid block).
-static void classicExpansion(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const char* mapName=std::getenv("TA_EXPAND_MAP") ? std::getenv("TA_EXPAND_MAP") : "Abnar's Terrace";
-    const auto map=hpi::findMap(vfs,mapName);
-    static const char* const kNames[5]={"Aramon","Taros","Veruna","Zhon","Creon"};
-    const uint32_t minutes=std::getenv("TA_EXPAND_MINUTES") ? uint32_t(std::atoi(std::getenv("TA_EXPAND_MINUTES"))) : 20u;
-    std::printf("  P7 games (%s, Classic seat vs an idle seat, %u min):\n",mapName,minutes);
-    for (int faction=0;faction<5;++faction) {
-        sim::World w;
-        sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;
-        config.slots={{true,0,0,1.0f},{true,faction,1,1.0f,true,false}};
-        const auto starts=sim::setupMatch(w,reg,config);
-        if (starts.size()<2) { check(false,"the map seats two players");return; }
-        ai::Controller controller(1,reg,ai::Profile{},0xe7a0u+uint32_t(faction),ai::Difficulty::Classic,{starts[0]});
-        controller.setClassicProfile(ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,map)));
-        setClassicStarts(controller,vfs,map,starts[1]);
-        const ai::ClassicBrain& brain=*controller.classicBrain();
-        const std::string name=kNames[faction];
-        int outside=0,builds=0;
-        // A base's centre and ring-1 radius from the brain's squads (anchored
-        // bases only: home on its start, expansions on their site).
-        auto anchorCentre=[&](int slot) -> std::optional<std::pair<float,float>> {
-            if (slot<1 || slot>20) return std::nullopt;
-            const auto cell=ai::classicAnchor(brain.squads(),brain.squads().squads[size_t(slot)].parameters[0]);
-            if (!cell) return std::nullopt;
-            return std::pair{float(cell->first)*16+8,float(cell->second)*16+8};
-        };
-        auto baseFootprint=[&](int slot) {
-            int32_t foot=0;
-            for (const auto& u:w.units())
-                if (u.player==1 && u.alive() && u.type && u.type->isStructure() && brain.squadOf(u.id)==slot)
-                    foot+=u.type->footX+u.type->footZ;
-            return foot;
-        };
-        struct Snapshot { uint32_t minute;int bases,sited,lodes,lodesAway,units;ai::ClassicBrain::WaveStats st; };
-        std::vector<Snapshot> snaps;
-        std::set<int> sitesUsed;bool sharedSite=false;
-        for (uint32_t tick=0;tick<minutes*1800u;++tick) {
-            // A Build is judged against its builder's base once the think is
-            // over: an expansion moves its founder into the new base in the
-            // same think that orders the first lodestone there, and squadOf
-            // only reports the move after it. A base may also give a member a
-            // Build and the expansion take that member as its founder later in
-            // the same think: such a Build is its old base's, so the base the
-            // builder belonged to when the Build was issued counts too.
-            std::vector<std::tuple<int,float,float,int>> thinkBuilds;
-            controller.tick(w,tick,[&](const net::Command& c) {
-                if (c.kind==net::Cmd::Build) thinkBuilds.emplace_back(c.unitId,c.x,c.z,brain.squadOf(c.unitId));
-                sim::applyCommand(w,reg,c);
-            });
-            for (const auto& [unitId,x,z,issued]:thinkBuilds) {
-                ++builds;
-                auto inside=[&](int slot) {
-                    const auto centre=anchorCentre(slot);
-                    return !centre || std::hypot(x-centre->first,z-centre->second)<=
-                                      float(sim::retailAiBaseRadius(baseFootprint(slot),1))+40*16;
-                };
-                if (!inside(brain.squadOf(unitId)) && !inside(issued)) ++outside;
-            }
-            w.tick(1.f/30.f);
-            const uint32_t now=tick+1;
-            if (now==5u*1800u || now==10u*1800u || now==minutes*1800u) {
-                Snapshot snap{now/1800u,0,0,0,0,0,brain.waveStats()};
-                std::set<int32_t> anchors;
-                for (int b=1;b<=20;++b) {
-                    const auto& q=brain.squads().squads[size_t(b)];
-                    if (q.members.empty()) continue;
-                    ++snap.bases;
-                    if (q.parameters[0]<0) {
-                        ++snap.sited;
-                        if (!anchors.insert(q.parameters[0]).second) sharedSite=true;
-                        sitesUsed.insert(q.parameters[0]);
-                    }
-                }
-                for (const auto& u:w.units()) {
-                    if (u.player!=1 || !u.alive() || !u.type) continue;
-                    if (!u.type->isStructure()) { if (!u.underConstruction) ++snap.units; continue; }
-                    if (u.underConstruction || !u.type->onMana) continue;
-                    ++snap.lodes;
-                    const int slot=brain.squadOf(u.id);
-                    if (slot>=2 && slot<=20 && brain.squads().squads[size_t(slot)].parameters[0]<0) ++snap.lodesAway;
-                }
-                snaps.push_back(snap);
-            }
-        }
-        for (const auto& s:snaps)
-            std::printf("    %s %2u min: %d bases (%d on a sacred site), %d lodestones (%d in an expansion base), %d units; "
-                        "expansions %u, transfers %u builders / %u ground / %u air\n",name.c_str(),s.minute,s.bases,
-                        s.sited,s.lodes,s.lodesAway,s.units,s.st.expansions,s.st.builderTransfers,s.st.groundTransfers,
-                        s.st.airTransfers);
-        std::printf("    %s: %d Build commands, %d outside their base ring\n",name.c_str(),builds,outside);
-        const auto& first=snaps.front();const auto& last=snaps.back();
-        const std::string what=name+": ";
-        check(last.st.expansions>=1 && last.sited>=1,(what+"a builder founds a base on a sacred site").c_str());
-        check(last.bases>first.bases || last.bases>=2,(what+"the bases grow").c_str());
-        check(last.lodes>first.lodes,(what+"the lodestones grow").c_str());
-        check(!sharedSite,(what+"no two bases are anchored on one site").c_str());
-        check(outside==0,(what+"every site is inside its builder's base ring plus a grid block").c_str());
-    }
-}
-
-// The engine game test for P5: a scripted raid into a Classic base on Abnar's
-// Terrace. An Aramon seat (the Monarch and six armed soldiers given at its
-// start) against an idle Veruna seat whose raiders the test places. Before the
-// raid the soldiers are idle base members: they patrol inside the base ring
-// (0x40d370 without a threat: points rand(r/2)+rand(r) from the centre). Raiders
-// put inside the ring-0 radius, where the seat sees them, are a threat (0x412000):
-// the soldiers are sent at them (points around a candidate, within its sight or
-// weapon range), while the Monarch at full HP with that ground army around it
-// does not flee. Below its HP threshold (1/8 with full mana and a castable
-// weapon) it retreats (0x40d010): a move to a point inside the ring-0 radius
-// farther from the raiders than it stands.
-static void classicRaid(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    sim::World w;
-    sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;
-    config.slots={{true,2,0,1.0f},{true,0,1,1.0f,true,false}};
-    const auto starts=sim::setupMatch(w,reg,config);
-    if (starts.size()<2) { check(false,"Abnar's Terrace seats two players");return; }
-    ai::Controller controller(1,reg,ai::Profile{},0x5a1du,ai::Difficulty::Classic,{starts[0]});
-    // No building at all, so the Monarch's own choices do not muddy the test.
-    controller.setClassicProfile(ai::ClassicProfileScript{"test","limit ALL 0\n"});
-    controller.setClassicStart(1,starts[1].first,starts[1].second);
-    const ai::ClassicBrain& brain=*controller.classicBrain();
-    const auto* soldier=reg.find("arasword");   // Aramon Swordsman
-    const auto* raider=reg.find("verman");      // Veruna Man-at-arms
-    if (!soldier || !raider) { check(false,"the Swordsman and Man-at-arms types exist");return; }
-    int monarch=0;
-    for (const auto& u:w.units()) if (u.player==1 && u.type && u.type->commander) monarch=u.id;
-    const float sx=starts[1].first,sz=starts[1].second;
-    // Toward the map's middle.
-    const float dx=sx<w.mapW()*8.0f ? 1.f : -1.f,dz=sz<w.mapH()*8.0f ? 1.f : -1.f;
-    std::vector<int> defenders,raiders;
-    const float centreX=std::floor(sx/16)*16+8,centreZ=std::floor(sz/16)*16+8;   // base 1's anchor cell
-    auto distance=[](float ax,float az,float bx,float bz){return std::hypot(ax-bx,az-bz);};
-    auto nearestRaider=[&](float x,float z){
-        float best=1e9f;
-        for (int id:raiders) if (const auto* r=w.unit(id);r && r->alive()) best=std::min(best,distance(x,z,r->x.toFloat(),r->z.toFloat()));
-        return best;
-    };
-    // The ring radii with no structures in the base: 1120 / 800 px (rings 0 / 1).
-    const float ring0=float(sim::retailAiBaseRadius(0,0)),ring1=float(sim::retailAiBaseRadius(0,1));
-    int idlePatrols=0,idleOutside=0,threatOrders=0,threatNear=0,threatFar=0,earlyRetreats=0;
-    std::set<int> reacted;
-    struct Retreat { uint32_t tick;float x,z;float from; } retreat{0,0,0,0};
-    constexpr uint32_t kRaid=900,kWound=1200,kEnd=1500;
-    for (uint32_t tick=0;tick<kEnd;++tick) {
-        if (tick==40)
-            for (int k=0;k<6;++k)
-                defenders.push_back(w.spawn(soldier,sx+dx*(60+40*float(k%3)),sz+dz*(80+60*float(k/3)),0.0f,1));
-        if (tick==kRaid)
-            // Between the Monarch and the map's middle, inside the ring-0 radius
-            // and the Monarch's sight. They hold their ground and fire (passive
-            // stance), so they stay where the seat sees them.
-            for (int k=0;k<4;++k) {
-                raiders.push_back(w.spawn(raider,sx+dx*(300+30*float(k)),sz+dz*(280-30*float(k)),0.0f,0));
-                net::Command hold;hold.kind=net::Cmd::Stance;hold.player=0;hold.unitId=raiders.back();hold.targetId=2;
-                sim::applyCommand(w,reg,hold);
-            }
-        if (tick==kWound) if (auto* m=w.unit(monarch)) m->hp=sim::Fixed::fromInt(m->type->maxHp/12);
-        controller.tick(w,tick,[&](const net::Command& c) {
-            const bool defender=std::find(defenders.begin(),defenders.end(),c.unitId)!=defenders.end();
-            if (defender && (c.kind==net::Cmd::Move || c.kind==net::Cmd::Patrol)) {
-                if (tick<kRaid) {
-                    // 0x40d370 with no threat: around the centre.
-                    if (c.kind==net::Cmd::Patrol) { ++idlePatrols;idleOutside+=distance(c.x,c.z,centreX,centreZ)>1.5f*ring1; }
-                } else if (c.kind==net::Cmd::Move) {
-                    // The first point: around a candidate raider (within its
-                    // reach), unless it fell back to the centre. (The centre leg
-                    // is dropped inside the ring, where retail's ends at once.)
-                    ++threatOrders;
-                    const float near=nearestRaider(c.x,c.z);
-                    const auto* d=w.unit(c.unitId);
-                    const float reach=d ? float(std::max(w.sightDistance(*d->type),d->type->weapons.front().range)) : 0.f;
-                    if (near<=reach+16) { ++threatNear;reacted.insert(c.unitId); } else ++threatFar;
-                }
-            }
-            if (c.unitId==monarch && c.kind==net::Cmd::Move && !c.queue && tick>=kRaid) {
-                if (tick<kWound) ++earlyRetreats;
-                else if (!retreat.tick) {
-                    const auto* m=w.unit(monarch);
-                    retreat={tick,c.x,c.z,m ? nearestRaider(m->x.toFloat(),m->z.toFloat()) : 0.f};
-                }
-            }
-            sim::applyCommand(w,reg,c);
-        });
-        w.tick(1.f/30.f);
-        if (std::getenv("TA_CLASSIC_TRACE") && tick>=kRaid-30 && tick%15==0) {
-            std::printf("t%u visible %zu:",tick,w.visibleEnemies(1).size());
-            for (int id:defenders) if (const auto* d=w.unit(id))
-                std::printf(" [%d d%.0f c%.0f o%zu%s]",id,double(nearestRaider(d->x.toFloat(),d->z.toFloat())),
-                            double(distance(d->x.toFloat(),d->z.toFloat(),centreX,centreZ)),d->orders.size(),
-                            d->orders.empty() ? "" : d->orders.front().autoTarget ? "A" : d->orders.front().patrol ? "P" : "M");
-            std::printf("\n");
-        }
-    }
-    std::printf("  raid on Abnar's Terrace: %d idle patrols before it (%d outside 1.5 x ring 1), %d defenders sent "
-                "(%d first points within reach of a raider, %d not), %u retreats; ring 0 %.0f px\n",idlePatrols,
-                idleOutside,int(reacted.size()),threatNear,threatFar,brain.retreats(),double(ring0));
-    check(idlePatrols>=6 && idleOutside==0,"before the raid every idle soldier patrols inside the base ring");
-    // How many: a member whose target, goal or position is within max(sight,
-    // range) of a raider keeps what it is doing on 49 of 50 base thinks
-    // (classicPlanCombat), so past the first think, which sends the others (two
-    // here), the count is those draws and the fight's course: main 259d26a5
-    // sends 2-5 with the raiders shifted 0-24 px.
-    check(reacted.size()>=2,"raiders inside the ring-0 radius send the soldiers at them");
-    check(threatNear>=threatFar,"most of the defenders' first points lie within reach of a raider");
-    check(earlyRetreats==0,"the Monarch at full HP does not retreat with its ground army around it");
-    check(retreat.tick>0 && retreat.tick<kWound+120,"below its HP threshold the Monarch retreats within 4 s");
-    if (retreat.tick) {
-        const float from=distance(retreat.x,retreat.z,centreX,centreZ);
-        std::printf("    the Monarch retreats at tick %u to %.0f px from the centre; its nearest raider %.0f px -> %.0f px\n",
-                    retreat.tick,double(from),double(retreat.from),double(nearestRaider(retreat.x,retreat.z)));
-        check(from<=ring0+8,"the retreat point is inside the ring-0 radius");
-        check(nearestRaider(retreat.x,retreat.z)>retreat.from,"the retreat point is farther from the raiders");
-    }
-}
-
-// A side's cheapest ranged, walking, non-building combat type (the game tests'
-// soldiers): armed, its first weapon not melee with a range of at least 150 px.
-static const sim::UnitType* rangedType(const sim::TypeRegistry& reg,const char* side) {
-    const sim::UnitType* best=nullptr;
-    for (const auto& [id,t]:reg.types()) {
-        if (t.side!=side || t.isStructure() || t.canFly || t.commander || t.isBuilder || t.weapons.empty()) continue;
-        const auto& w=t.weapons.front();
-        if (w.melee || w.range<150 || w.damage<=0 || t.floater) continue;
-        if (!best || t.buildCost<best->buildCost || (t.buildCost==best->buildCost && id<best->id)) best=&t;
-    }
-    return best;
-}
-
 // U13, the engine half: what our Move and AttackMove do to a column walking
-// past enemies, the question a strike's MOVE-only orders turn on. Ten ranged
-// Aramon soldiers on Abnar's Terrace (both seats' standing orders: Stance 0)
-// are ordered 1000 px down a lane that runs through ten Veruna soldiers, once
-// with Move and once with AttackMove. Retail's MOVE_GROUND (the strike's order)
+// past enemies. Ten ARM Stumpies on open ground (both seats' standing
+// orders: Stance 0) are ordered 1000 px down a lane that runs through ten CORE
+// Raiders, once with Move and once with AttackMove (TA's Fight). The addresses
+// below are KINGDOMS.icd's, inherited from TAK and unverified for TotalA.exe:
+// retail's MOVE_GROUND
 // is a point move without the interruptible flag 0x10000: the idle retaliation
 // mission (0x409a50) takes only units with no mission, 0x10000 or a class-7
 // one, and the fire-at-will sweep (0x40f330) fires every unit's auto weapon
@@ -1123,18 +523,18 @@ static const sim::UnitType* rangedType(const sim::TypeRegistry& reg,const char* 
 static void classicMoveVsAttackMove(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
     sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    const auto* mine=rangedType(reg,"ARA");
-    const auto* theirs=rangedType(reg,"VER");
-    if (!mine || !theirs) { check(false,"ranged Aramon and Veruna soldiers exist");return; }
-    std::printf("  U13 (Abnar's Terrace, 10 %s through 10 %s):\n",mine->id.c_str(),theirs->id.c_str());
+    // Two light-cannon tanks, the Stumpy and the Raider.
+    const auto* mine=reg.find("armstump");
+    const auto* theirs=reg.find("corraid");
+    if (!mine || !theirs) { check(false,"armstump and corraid exist");return; }
+    std::printf("  U13 (open ground, 10 %s through 10 %s):\n",mine->id.c_str(),theirs->id.c_str());
     for (int mode=0;mode<2;++mode) {
-        sim::World w;
-        sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;
-        config.slots={{true,2,0,1.0f},{true,0,1,1.0f}};
-        const auto starts=sim::setupMatch(w,reg,config);
-        if (starts.size()<2) { check(false,"Abnar's Terrace seats two players");return; }
-        // The lane: from beside the Aramon start toward the other start.
+        // Open, level ground: the lane must not hang on a map's cliffs.
+        sim::World w;w.setPlayerCount(2);
+        w.setTerrain(std::vector<uint8_t>(256*256,70),256,256,20);
+        w.buildNavClasses(reg);w.setPathService(true);
+        const std::vector<std::pair<float,float>> starts{{3600,2048},{500,2048}};
+        // The lane: from beside the ARM start toward the other start.
         const float sx=starts[1].first,sz=starts[1].second;
         float dx=starts[0].first-sx,dz=starts[0].second-sz;
         const float len=std::hypot(dx,dz);dx/=len;dz/=len;
@@ -1193,265 +593,6 @@ static void classicMoveVsAttackMove(const char* root) {
         } else {
             check(!engaged.empty(),"U13: a column on AttackMove stops to engage (not what a strike gives)");
         }
-    }
-}
-
-// The P6 game test: a Classic Aramon seat (no building: every limit 0) with an
-// army given at the start, against an idle Veruna seat, on Abnar's Terrace.
-// The base think launches a wave into a strike's backup; the backup gathers on
-// the strike, the strike picks a target over every enemy unit (the AI is
-// omniscient) and marches on it, and every order the army squads give is a
-// Move (no Attack, no AttackMove from the brain at all). A member hurt below
-// its threshold is sent home; then most of the wave is destroyed and the strike
-// dissolves: its survivors are cleared (Stop) and rejoin a base.
-static void classicWaves(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const auto map=hpi::findMap(vfs,"Abnar's Terrace");
-    const auto* soldier=rangedType(reg,"ARA");
-    if (!soldier) { check(false,"a ranged Aramon soldier exists");return; }
-    sim::World w;
-    sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;
-    config.slots={{true,2,0,1.0f},{true,0,1,1.0f,true,false}};
-    const auto starts=sim::setupMatch(w,reg,config);
-    if (starts.size()<2) { check(false,"Abnar's Terrace seats two players");return; }
-    ai::Controller controller(1,reg,ai::Profile{},0x3a7eu,ai::Difficulty::Classic,{starts[0]});
-    controller.setClassicProfile(ai::ClassicProfileScript{"test","limit ALL 0\n"});
-    controller.setClassicStart(1,starts[1].first,starts[1].second);
-    const ai::ClassicBrain& brain=*controller.classicBrain();
-    const float sx=starts[1].first,sz=starts[1].second,ex=starts[0].first,ez=starts[0].second;
-    const float dx=sx<w.mapW()*8.0f ? 1.f : -1.f,dz=sz<w.mapH()*8.0f ? 1.f : -1.f;
-    std::vector<int> army;
-    std::map<net::Cmd,int> kinds;
-    int armyMoves=0,armyOther=0,homeMoves=0,dissolveStops=0,groupCommands=0;
-    bool formationSeen=false,pacedSeen=false,plainBase=true;
-    uint32_t launchTick=0,marchTick=0,woundTick=0,killTick=0,dissolveTick=0;
-    float closest=1e9f,startGap=0;
-    int wounded=0;
-    auto inArmy=[&](int slot){return slot>=21 && slot<=95;};
-    auto gap=[&](const sim::Unit& u){return std::hypot(u.x.toFloat()-ex,u.z.toFloat()-ez);};
-    constexpr uint32_t kEnd=27000;
-    for (uint32_t tick=0;tick<kEnd;++tick) {
-        if (tick==40)
-            for (int k=0;k<40;++k)
-                army.push_back(w.spawn(soldier,sx+dx*(80+40*float(k%8)),sz+dz*(120+50*float(k/8)),std::nullopt,1));
-        // Once the wave marches: wound one strike member, then destroy all but
-        // two of the wave so the strike and backup fall to its gate p2.
-        if (marchTick && !woundTick && tick>marchTick+300) {
-            for (int id:army) if (const auto* u=w.unit(id);u && u->alive() && brain.squadOf(id)>=21 && brain.squadOf(id)<=49 && brain.squadOf(id)%2) {
-                w.unit(id)->hp=sim::Fixed::fromInt(std::max(1,u->type->maxHp/10));wounded=id;woundTick=tick;break;
-            }
-        }
-        if (woundTick && !killTick && tick>woundTick+300) {
-            killTick=tick;
-            int keep=2;
-            for (int id:army) if (const auto* u=w.unit(id);u && u->alive() && inArmy(brain.squadOf(id))) {
-                if (keep>0) { --keep;continue; }
-                net::Command c;c.kind=net::Cmd::Destroy;c.player=1;c.unitId=id;sim::applyCommand(w,reg,c);
-            }
-        }
-        controller.tick(w,tick,[&](const net::Command& c) {
-            ++kinds[c.kind];
-            if (c.kind==net::Cmd::AiGroup) { ++groupCommands;sim::applyCommand(w,reg,c);return; }
-            const int slot=brain.squadOf(c.unitId);
-            const auto* u=w.unit(c.unitId);
-            if (u && inArmy(slot)) {
-                if (c.kind==net::Cmd::Move) ++armyMoves; else if (c.kind!=net::Cmd::Stop) ++armyOther;
-                if (c.kind==net::Cmd::Move && !marchTick && slot%2) marchTick=tick;
-            }
-            if (c.kind==net::Cmd::Move && c.unitId==wounded && woundTick && tick>=woundTick &&
-                std::hypot(c.x-sx,c.z-sz)<std::hypot(u ? u->x.toFloat()-sx : 0.f,u ? u->z.toFloat()-sz : 0.f)) ++homeMoves;
-            if (c.kind==net::Cmd::Stop && killTick && tick>killTick && inArmy(slot) && !dissolveTick) { dissolveTick=tick; }
-            if (c.kind==net::Cmd::Stop && dissolveTick==tick) ++dissolveStops;
-            sim::applyCommand(w,reg,c);
-        });
-        w.tick(1.f/30.f);
-        if (!launchTick && brain.waveStats().groundLaunches) launchTick=tick;
-        if (marchTick)
-            for (int id:army) if (const auto* u=w.unit(id);u && u->alive() && inArmy(brain.squadOf(id))) {
-                if (!startGap) startGap=gap(*u);
-                closest=std::min(closest,gap(*u));
-            }
-        // The World's view of the squads (Cmd::AiGroup): a strike or VTOL
-        // member is in its squad's record, a marching strike's record is a
-        // formation the Retail movement paces, and a base member is in none.
-        for (int id:army) if (const auto* u=w.unit(id);u && u->alive()) {
-            const int slot=brain.squadOf(id);
-            if (slot>=1 && slot<=20) plainBase&=u->aiGroup==0;
-            if (slot<21 || slot>49 || !(slot%2) || u->aiGroup!=slot || !w.aiFormation(1,slot)) continue;
-            formationSeen=true;
-            if (const auto* g=w.retailGroupRecord(id);g && g->active && g->all[0].count>1) pacedSeen=true;
-        }
-    }
-    const auto& st=brain.waveStats();
-    int home=0;for (int id:army) if (const auto* u=w.unit(id);u && u->alive() && brain.squadOf(id)>=1 && brain.squadOf(id)<=20) ++home;
-    std::printf("  waves on Abnar's Terrace (40 %s): %u ground, %u VTOL, %u naval launches; %u target picks (%u found one); "
-                "%u march and %u contact moves, %u backup moves, %u members sent home, %u dissolves\n",
-                soldier->id.c_str(),st.groundLaunches,st.vtolLaunches,st.navalLaunches,st.picks,st.targets,st.strikeMoves,
-                st.contactMoves,st.backupMoves,st.withdrawals,st.dissolves);
-    std::printf("    first launch at %.1f s, first march order at %.1f s; the army came from %.0f px to %.0f px of the "
-                "enemy start; the wounded member was sent home %d time(s); the dissolve at %.1f s stopped %d; %d of the "
-                "army back in a base; the brain's commands:",double(launchTick)/30.0,double(marchTick)/30.0,
-                double(startGap),double(closest),homeMoves,double(dissolveTick)/30.0,dissolveStops,home);
-    for (const auto& [k,n]:kinds) std::printf(" %d:%d",int(k),n);
-    std::printf("\n");
-    check(st.groundLaunches>=1,"waves: the base launches a ground wave");
-    check(st.targets>=1,"waves: the strike picks a target");
-    check(armyOther==0 && armyMoves>0,"waves: the army squads only ever give Move orders (and Stop)");
-    check(!kinds.count(net::Cmd::Attack) && !kinds.count(net::Cmd::AttackMove),"waves: the brain gives no Attack or AttackMove");
-    check(startGap>0 && closest<startGap*0.6f,"waves: the wave marches toward the enemy");
-    check(homeMoves>=1,"waves: a wounded strike member is sent home with a Move");
-    check(st.dissolves>=1 && dissolveStops>=1,"waves: a wave cut down to its gate dissolves (its survivors are stopped)");
-    check(home>=1,"waves: the dissolved wave's survivors rejoin a base");
-    std::printf("    %d group commands; a marching strike flagged a formation: %d, paced: %d\n",groupCommands,
-                int(formationSeen),int(pacedSeen));
-    check(formationSeen,"waves: a marching strike's members are in its squad's record, flagged a formation (50b700)");
-    check(pacedSeen,"waves: the Retail movement aggregates that formation (51b890)");
-    check(plainBase,"waves: a base member is in no paced record");
-}
-
-// Classic against Classic (P6): two Classic seats on Edmont's Field, the
-// Monarch not expendable (losing it loses the game), building and fighting
-// with nothing but the retail AI's own decisions, until one side wins or the
-// 150-minute cap (90 until 0.9.12, whose retail help/repair approach left the
-// default Aramon v Veruna seed an even war that Aramon wins at 91.9 minutes;
-// over eight seeds 7 end within 90 minutes, mean 31.9; 120 until every new
-// unit started with retail's empty mana pool, 511990, after which the default
-// Creon v Aramon seed is an even war Creon wins at 120.7 minutes -- at most
-// one caster a side stands on a slot it cannot pay yet, and over eight seeds of each of the two pairs 15 of 16 end
-// within 120 minutes, as 15 of 16 did with full pools; Creon v Aramon's seed is 0xd0e4 since a land
-// corpse lasts its decomposition plus the 58-update sink, 4959c0, after which 0xd0e3 is the one even war
-// of those 16 that runs past 150 minutes, as 0xd0e8 was before: 15 of 16 end within 150 both ways) (TA_DUEL_MAP /
-// TA_DUEL_MINUTES pick another map or cap; on Abnar's Terrace the same pairs take 59 to 227 minutes, its terraces leaving
-// many members' reachability walks without a target). By hand: TA_DUEL_PAIRS
-// ("0v2,1v3", factions 0-4) picks the pairs, TA_DUEL_LEVEL gives the second
-// seat another level (2 = Normal), TA_DUEL_TRACE prints both seats every
-// TA_DUEL_TRACE game-minutes (default 10), TA_DUEL_LOG=<seat> prints every
-// command that seat gives, TA_DUEL_WATCH=<unit id> that unit's orders every 10
-// game-seconds, and a pair that ends without a winner is reported rather than
-// failed when TA_DUEL_PAIRS is set.
-static void classicDuels(const char* root) {
-    auto vfs=hpi::mountRetailRoot(root);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
-    const char* mapName=std::getenv("TA_DUEL_MAP") ? std::getenv("TA_DUEL_MAP") : "Edmont's Field";
-    const auto map=hpi::findMap(vfs,mapName);
-    static const char* const kNames[5]={"Aramon","Taros","Veruna","Zhon","Creon"};
-    struct Pair { int a,b;uint32_t seed; };
-    std::vector<Pair> pairs={{0,2,0xd0e1u},{1,3,0xd0e2u},{4,0,0xd0e4u}};
-    const char* chosen=std::getenv("TA_DUEL_PAIRS");
-    if (chosen) {
-        pairs.clear();
-        std::istringstream list(chosen);
-        for (std::string item;std::getline(list,item,',');) {
-            int a=0,b=0;
-            if (std::sscanf(item.c_str(),"%dv%d",&a,&b)==2)
-                pairs.push_back({std::clamp(a,0,4),std::clamp(b,0,4),0xd0e1u+uint32_t(pairs.size())});
-        }
-    }
-    const ai::Difficulty levelB=std::getenv("TA_DUEL_LEVEL") ? ai::Difficulty(std::clamp(std::atoi(std::getenv("TA_DUEL_LEVEL")),0,6))
-                                                              : ai::Difficulty::Classic;
-    const ai::Profile& normalProfile=ai::builtinProfile(levelB);
-    const uint32_t minutes=std::getenv("TA_DUEL_MINUTES") ? uint32_t(std::atoi(std::getenv("TA_DUEL_MINUTES"))) : 150u;
-    const uint32_t traceEvery=std::getenv("TA_DUEL_TRACE") ? uint32_t(std::max(1,std::atoi(std::getenv("TA_DUEL_TRACE"))))*1800u : 18000u;
-    const uint32_t kCap=minutes*1800u;
-    if (levelB==ai::Difficulty::Classic)
-        std::printf("  Classic vs Classic (%s, the Monarch not expendable, cap %u min):\n",mapName,minutes);
-    else std::printf("  Classic vs level %d (%s, the Monarch not expendable, cap %u min):\n",int(levelB),mapName,minutes);
-    for (const auto& pair:pairs) {
-        sim::World w;
-        sim::MatchConfig config;config.vfs=&vfs;config.mapPath=map;config.monarchExpendable=false;
-        config.slots={{true,pair.a,0,1.0f,true,false},{true,pair.b,1,1.0f,true,false}};
-        const auto starts=sim::setupMatch(w,reg,config);
-        if (starts.size()<2) { check(false,"Abnar's Terrace seats two players");return; }
-        // (A Controller keeps a reference to its profile.)
-        ai::Controller c0(0,reg,normalProfile,pair.seed,ai::Difficulty::Classic,{starts[1]});
-        ai::Controller c1(1,reg,normalProfile,pair.seed+7,levelB,{starts[0]});
-        for (auto* c:{&c0,&c1}) c->setClassicProfile(ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,map)));
-        setClassicStarts(c0,vfs,map,starts[0]);
-        setClassicStarts(c1,vfs,map,starts[1]);
-        int winner=-1;uint32_t end=0;
-        int peak[2]={0,0};
-        // Order spam: the most commands a seat gave in one game-minute, and to one unit.
-        uint32_t minuteOrders[2]={0,0},peakMinute[2]={0,0},total[2]={0,0};
-        std::unordered_map<int,uint32_t> perUnit[2];
-        for (uint32_t tick=0;tick<kCap && winner<0;++tick) {
-            static const int logSeat=std::getenv("TA_DUEL_LOG") ? std::atoi(std::getenv("TA_DUEL_LOG")) : -1;
-            auto apply=[&](const net::Command& c){
-                const int p=c.player ? 1 : 0;
-                ++minuteOrders[p];++total[p];++perUnit[p][c.unitId];
-                if (p==logSeat) {
-                    const auto* u=w.unit(c.unitId);
-                    std::printf("      cmd t%u p%d %d unit %d (%s at %.0f,%.0f) -> %.0f,%.0f q%d %s\n",tick,p,int(c.kind),c.unitId,
-                                u && u->type ? u->type->id.c_str() : "?",u ? u->x.toFloat() : 0.f,u ? u->z.toFloat() : 0.f,
-                                double(c.x),double(c.z),int(c.queue),c.type);
-                }
-                sim::applyCommand(w,reg,c);
-            };
-            c0.tick(w,tick,apply);
-            c1.tick(w,tick,apply);
-            w.tick(1.f/30.f);
-            winner=w.updateOutcome();
-            end=tick+1;
-            if (tick%300==0) for (int p=0;p<2;++p) peak[p]=std::max(peak[p],w.player(p).unitCount);
-            if (tick%1800==1799) for (int p=0;p<2;++p) { peakMinute[p]=std::max(peakMinute[p],minuteOrders[p]);minuteOrders[p]=0; }
-            static const int watch=std::getenv("TA_DUEL_WATCH") ? std::atoi(std::getenv("TA_DUEL_WATCH")) : 0;
-            if (watch && tick%300==0)
-                if (const auto* u=w.unit(watch)) {
-                    std::printf("      watch t%u unit %d %s at %.0f,%.0f hp %d site %d orders %zu",tick,watch,u->type->id.c_str(),
-                                u->x.toFloat(),u->z.toFloat(),u->hp.floorInt(),u->buildSiteId,u->orders.size());
-                    for (const auto& o:u->orders)
-                        if (o.goal) std::printf(" [%s %.0f,%.0f%s]",o.buildType ? o.buildType->id.c_str() : o.patrol ? "patrol" : o.targetId ? "target" : "move",
-                                                o.x.toFloat(),o.z.toFloat(),o.autoTarget ? " auto" : "");
-                    std::printf(" | mana %.0f\n",w.player(u->player).mana);
-                }
-            static const bool trace=std::getenv("TA_DUEL_TRACE")!=nullptr;
-            if (trace && tick%traceEvery==0) {
-                for (int p=0;p<2;++p) {
-                    const ai::Controller& owner=p ? c1 : c0;
-                    if (!owner.classicBrain()) {
-                        std::printf("      t%5.1f p%d units %d mana %.0f (level %d)\n",double(tick)/1800.0,p,w.player(p).unitCount,
-                                    w.player(p).mana,int(levelB));
-                        continue;
-                    }
-                    const auto& b=*owner.classicBrain();const auto& st=b.waveStats();
-                    int army=0,base=0,mhp=0;
-                    for (const auto& u:w.units()) if (u.player==p && u.alive() && u.type) {
-                        const int q=b.squadOf(u.id);
-                        if (q>=21 && q<=95) ++army; else if (q>=1 && q<=20) ++base;
-                        if (u.type->commander) mhp=u.hp.floorInt();
-                    }
-                    std::printf("      t%5.1f p%d units %d (army %d, base %d) mana %.0f monarch %d | launches %u picks %u/%u "
-                                "march %u contact %u home %u dissolves %u builds %u trains %u\n",double(tick)/1800.0,p,
-                                w.player(p).unitCount,army,base,w.player(p).mana,mhp,st.groundLaunches,st.targets,st.picks,
-                                st.strikeMoves,st.contactMoves,st.withdrawals,st.dissolves,b.builds(),b.factoryQueues());
-                    // The casters: how many, their mean pool, and how many stand on a
-                    // slot they cannot pay for yet (no shot until they regenerate).
-                    int casters=0,dry=0;double fill=0;
-                    for (const auto& u:w.units()) if (u.player==p && u.alive() && u.type && u.type->maxMana>0 &&
-                                                      !u.underConstruction && !u.type->weapons.empty()) {
-                        ++casters;fill+=u.mana/double(u.type->maxMana);
-                        const size_t s=size_t(std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1));
-                        if (double(u.type->weapons[s].manaCost)>u.mana) ++dry;
-                    }
-                    std::printf("        casters %d (mean pool %.0f%%, %d cannot pay their slot) kills %d losses %d\n",casters,
-                                casters ? 100.0*fill/casters : 0.0,dry,w.player(p).kills,w.player(p).losses);
-                }
-            }
-        }
-        const ai::ClassicBrain::WaveStats none{};
-        const auto& s0=c0.classicBrain()->waveStats();const auto& s1=c1.classicBrain() ? c1.classicBrain()->waveStats() : none;
-        std::printf("    %s vs %s: %s after %.1f game-minutes; peak units %d / %d; ground waves %u / %u, VTOL %u / %u, "
-                    "dissolves %u / %u, expansions %u / %u\n",kNames[pair.a],kNames[pair.b],
-                    winner<0 ? "no winner" : winner==0 ? (std::string(kNames[pair.a])+" wins").c_str()
-                                                       : (std::string(kNames[pair.b])+" wins").c_str(),
-                    double(end)/1800.0,peak[0],peak[1],s0.groundLaunches,s1.groundLaunches,s0.vtolLaunches,
-                    s1.vtolLaunches,s0.dissolves,s1.dissolves,s0.expansions,s1.expansions);
-        uint32_t busiest[2]={0,0};
-        for (int p=0;p<2;++p) for (const auto& [id,n]:perUnit[p]) busiest[p]=std::max(busiest[p],n);
-        std::printf("      commands %u / %u (%.1f / %.1f a minute, peak minute %u / %u, most to one unit %u / %u)\n",
-                    total[0],total[1],double(total[0])*1800.0/double(end),double(total[1])*1800.0/double(end),
-                    std::max(peakMinute[0],minuteOrders[0]),std::max(peakMinute[1],minuteOrders[1]),busiest[0],busiest[1]);
-        if (!chosen) check(winner>=0,(std::string(kNames[pair.a])+" vs "+kNames[pair.b]+": the game ends with a winner within the cap").c_str());
     }
 }
 
@@ -2485,33 +1626,17 @@ int main(int argc,char** argv) {
     if (argc==2 && std::strcmp(argv[1],"--expand")==0) return expandOracle();
     if (argc==2 && (std::strcmp(argv[1],"--strike")==0 || std::strcmp(argv[1],"--backup")==0 ||
                     std::strcmp(argv[1],"--vtol")==0)) return strikeOracle(argv[1]+2);
-    if (argc==3 && std::strcmp(argv[1],"--raid")==0) {
-        classicRaid(argv[2]);
-        std::printf("%s\n",fails ? "FAILED" : "all passed");
-        return fails ? 1 : 0;
-    }
+    // The Controller-driven Classic games (--bases, --raid, --waves, --duels,
+    // --expansion) are gone: ai::Controller no longer builds a ClassicBrain (every
+    // level runs TA's own AI, ai/taretail.h), and they played Kingdoms' factions,
+    // Monarchs, sacred sites and lodestones.
+    for (const char* gone:{"--bases","--raid","--waves","--duels","--expansion"})
+        if (argc==3 && std::strcmp(argv[1],gone)==0) {
+            std::printf("%s: removed (Kingdoms' Classic seat; TA runs ai/taretail)\n",gone);
+            return 1;
+        }
     if (argc==3 && std::strcmp(argv[1],"--u13")==0) {
         classicMoveVsAttackMove(argv[2]);
-        std::printf("%s\n",fails ? "FAILED" : "all passed");
-        return fails ? 1 : 0;
-    }
-    if (argc==3 && std::strcmp(argv[1],"--waves")==0) {
-        classicWaves(argv[2]);
-        std::printf("%s\n",fails ? "FAILED" : "all passed");
-        return fails ? 1 : 0;
-    }
-    if (argc==3 && std::strcmp(argv[1],"--duels")==0) {
-        classicDuels(argv[2]);
-        std::printf("%s\n",fails ? "FAILED" : "all passed");
-        return fails ? 1 : 0;
-    }
-    if (argc==3 && std::strcmp(argv[1],"--expansion")==0) {
-        classicExpansion(argv[2]);
-        std::printf("%s\n",fails ? "FAILED" : "all passed");
-        return fails ? 1 : 0;
-    }
-    if (argc==3 && std::strcmp(argv[1],"--bases")==0) {
-        classicBases(argv[2]);
         std::printf("%s\n",fails ? "FAILED" : "all passed");
         return fails ? 1 : 0;
     }
@@ -2521,7 +1646,9 @@ int main(int argc,char** argv) {
     squadConstruction();
     squadAssignment();
     strikeWideTargetIds();
-    if (argc>1) { shippedData(argv[1]);abnarSquads(argv[1]);classicFactories(argv[1]); }
+    // The Controller-driven Classic games on Abnar's Terrace (a seat's squads, its
+    // factories) went with the modes above: a Classic seat has no ClassicBrain now.
+    if (argc>1) shippedData(argv[1]);
     std::printf("%s\n",fails ? "FAILED" : "all passed");
     return fails ? 1 : 0;
 }

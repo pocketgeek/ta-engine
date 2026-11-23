@@ -337,7 +337,8 @@ struct Roster {
     }
     void type(const std::string& id,const std::string& fields) {
         file("units/"+id+".fbi","[UNITINFO]{unitname="+id+";objectname="+id+
-            ";maxdamage=100;footprintx=2;footprintz=2;buildtime=30;buildcost=10;sightdistance=600;"+fields+"}");
+            ";maxdamage=100;footprintx=2;footprintz=2;buildtime=30;buildcost=10;sightdistance=600;"
+            "copyright=Copyright 1997 Humongous Entertainment. All rights reserved.;"+fields+"}");
     }
     const sim::UnitType* operator()(const char* id) const {return reg.find(id);}
     Roster() {
@@ -407,59 +408,13 @@ static void seatSide() {
     }
 }
 
-// The audited defect itself, on the shipped data (Crusades balance): a Veruna
-// Catapult ordered onto a unit inside its minimum range walks out to fire. The
-// AI used to send the Attack again on every think of the walk, the sim's three
-// walks were spent in two seconds and every later order was dropped: no shot.
-static void catapultBackOff(const char* dataRoot) {
-    auto vfs=hpi::mountRetailRoot(dataRoot);
-    sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,true);
-    const auto* catapult=reg.find("verpult");
-    const auto* tamer=reg.find("zontrain");
-    if (!catapult || !tamer || catapult->weapons.empty() || catapult->weapons.front().minRange<=0) {
-        check(false,"the Crusades roster has a Veruna Catapult with a minimum range");
-        return;
-    }
-    // A Beast Tamer that neither moves nor fights nor falls.
-    auto victim=*tamer;victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();victim.maxHp=30000;
-    for (auto mode:{sim::PathfindingMode::Retail,sim::PathfindingMode::Legion}) {
-        const char* name=mode==sim::PathfindingMode::Retail ? "Retail pathfinding" : "Legion pathfinding";
-        char label[200];
-        auto say=[&](const char* what) {std::snprintf(label,sizeof label,"%s: %s",name,what);return label;};
-        sim::World w;
-        w.setPlayerCount(2);
-        w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
-        w.setMapPlacementFeatures(std::vector<uint16_t>(256*256,0xffff),{});
-        w.buildNavClasses(reg);w.setPathService(true);w.setPathfindingMode(mode);
-        w.setRoomVision(true,true);
-        w.player(0).income=100;
-        const int id=w.spawn(catapult,2000,2000,0,0);
-        for (int i=0;i<30;++i) w.tick(1.f/30.f);
-        const int target=w.spawn(&victim,2000+float(catapult->weapons.front().minRange)/2,2000,0,1);
-        ai::Profile profile;
-        ai::Controller controller(0,reg,profile,1,ai::Difficulty::Normal,{{3400,800}});
-        int attacks=0,shots=0,walks=0;
-        for (uint32_t tick=30;tick<30+1500;++tick) {
-            const auto cs=think(controller,w,tick);
-            for (const auto& c:cs) if (c.unitId==id && c.kind==net::Cmd::Attack && c.targetId==target) ++attacks;
-            apply(w,reg,cs);
-            w.tick(1.f/30.f);
-            const auto* u=w.unit(id);
-            if (u->justFired) ++shots;
-            walks=std::max(walks,int(u->repositions));
-        }
-        std::printf("  %s: %d Attack orders, %d walks, %d shots, target %.0f of 30000 hp\n",name,attacks,walks,shots,
-                    w.unit(target)->hp.toFloat());
-        check(attacks==1,say("the Catapult is ordered onto the unit inside its minimum range once"));
-        check(walks==1 && shots>0 && w.unit(target)->hp.toFloat()<30000,say("it backs off once and fires"));
-    }
-}
+// The shipped-data case (a Veruna Catapult backing off from a unit inside its
+// minimum range) is gone: TA's weapons/*.tdf have no minimum range.
 
-int main(int argc,char** argv) {
+int main(int argc,char**) {
     if (argc>1) {
-        catapultBackOff(argv[1]);
-        std::printf("%d failed\n",fails);
-        return fails ? 1 : 0;
+        std::printf("no shipped-data case: TA weapons have no minimum range\n");
+        return 0;
     }
     sim::TypeRegistry empty;ai::Profile profile;
     stalledMarch(empty,profile);

@@ -217,7 +217,6 @@ void shotLandsOnArrival(const Caster& c,const UnitType& victimType,bool crusades
     w.attack(a,b,false);
     int fired=-1,landed=-1;float fireDistance=0;bool flew=false,struckThen=false;
     for(int tick=0;tick<900 && landed<0;++tick) {
-        if(c.type->maxMana>0)w.unit(a)->mana=c.type->maxMana;
         w.tick(1.f/30);
         const int now=int(w.tickCount());
         const Unit* victim=w.unit(b);
@@ -275,7 +274,6 @@ void flightCases(const ta::sim::TypeRegistry& registry) {
             w.attack(a,first,false);
             int fired=-1,released=0;bool firstTaken=false,behindTaken=false;
             for(int tick=0;tick<240;++tick) {
-                if(Unit* u=w.unit(a))u->mana=casterType->maxMana;
                 w.tick(1.f/30);
                 const int now=int(w.tickCount());
                 const Unit* shooter=w.unit(a);
@@ -325,7 +323,6 @@ void flightCases(const ta::sim::TypeRegistry& registry) {
             targetType.cantBeStoned=targetType.cantBeFrozen=false;
             World w;setup(w);
             const int a=w.spawn(casterType,1000,1000,0,0);
-            w.unit(a)->mana=casterType->maxMana;   // a new unit's pool starts empty (511990)
             const int b=w.spawn(&targetType,1000,1200,0,1);
             const Fixed hp=w.unit(b)->hp;
             w.attack(a,b,false);

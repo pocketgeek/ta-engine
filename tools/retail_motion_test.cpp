@@ -921,7 +921,9 @@ int main(int argc, char** argv) {
         world.setRngObserver([&](const auto& draw){draws.push_back(draw);});
         world.tick(1.0f/30.0f);
         const auto first=world.wind();
-        check(draws.size()==2 && draws[0].bound==4975 && draws[1].bound==16384 &&
+        // TotalA.exe 0x490c40 (docs/retail-economy.md section 6): speed = min + R(max-min),
+        // then the bearing R(65536) on the synced RNG (Kingdoms drew R(16384)).
+        check(draws.size()==2 && draws[0].bound==4975 && draws[1].bound==65536 &&
               first.generation==1 && (first.flags&1), "live wind uses the shared speed and bearing RNG in order");
         for (uint32_t tick=1;tick<first.nextTick;++tick) world.tick(1.0f/30.0f);
         check(draws.size()==2 && world.wind().generation==1 && !(world.wind().flags&1),

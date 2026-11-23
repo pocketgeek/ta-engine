@@ -78,8 +78,7 @@ static Command code(PowerCode c, int player = 0, PowerArg arg = PowerArg::None, 
 static void simCodes() {
     TypeRegistry reg;
     UnitType eyes; eyes.id = eyes.name = "eyes"; eyes.maxHp = 100; eyes.sight = 128; eyes.sightHeight = 40;
-    eyes.footX = eyes.footZ = 1; eyes.maxMana = 250;
-    UnitType mute = eyes; mute.id = mute.name = "mute"; mute.maxMana = 0;
+    eyes.footX = eyes.footZ = 1;
     const auto setup = [](World& w, bool codes) {
         w.setSerialThreads(true); w.setPlayerCount(2);
         w.setTerrain(std::vector<uint8_t>(128 * 128, 0), 128, 128, 0);
@@ -88,10 +87,8 @@ static void simCodes() {
     for (bool on : {false, true}) {
         World w; setup(w, on);
         const int mine = w.spawn(&eyes, 512, 512, {}, 0);
-        const int plain = w.spawn(&mute, 540, 512, {}, 0);
         const int theirs = w.spawn(&eyes, 1700, 1700, {}, 1);
         const int far = w.spawn(&eyes, 1400, 512, {}, 1);
-        w.unit(mine)->mana = 10; w.unit(theirs)->mana = 10;
         advance(w);
         check(!w.playerSees(0, *w.unit(far)), "an enemy out of sight is not seen");
 
@@ -101,14 +98,6 @@ static void simCodes() {
         const double full = w.player(0).manaCapacity();
         check(on ? w.player(0).mana == full : w.player(0).mana == 40, on ? "ATM fills the pool" : "ATM refused while off");
         check(w.player(1).mana == 40, "ATM is the issuer's alone");
-
-        // ManaMe: the issuer's own units with a pool, one command per unit.
-        applyCommand(w, reg, code(PowerCode::ManaMe, 0, PowerArg::None, mine));
-        applyCommand(w, reg, code(PowerCode::ManaMe, 0, PowerArg::None, theirs));   // not the issuer's
-        applyCommand(w, reg, code(PowerCode::ManaMe, 0, PowerArg::None, plain));
-        check(w.unit(mine)->mana == (on ? 250.0 : 10.0), on ? "ManaMe fills a selected unit" : "ManaMe refused while off");
-        check(w.unit(theirs)->mana == 10.0, "ManaMe never touches another player's unit");
-        check(w.unit(plain)->mana == 0.0, "ManaMe leaves a unit without a pool");
 
         // DoubleShot / HalfShot: one game-wide mode, each clearing the other.
         applyCommand(w, reg, code(PowerCode::DoubleShot, 1));

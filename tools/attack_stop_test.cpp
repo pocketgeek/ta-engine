@@ -120,7 +120,6 @@ Run attack(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const char* shoote
     s.w.unit(target)->hp = sim::Fixed::fromInt(30000);
     const int shooter = s.w.spawn(st, sx, sz, heading, 0);
     s.w.unit(shooter)->fireState = fireState;
-    s.w.unit(shooter)->mana = st->maxMana;
     for (int i = 0; i < 30; ++i) s.w.tick(kTick);   // Create's controllers settle
     r.order = int(s.w.tickCount());
     s.w.attack(shooter, target, false);

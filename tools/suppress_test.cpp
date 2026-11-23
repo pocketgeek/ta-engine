@@ -158,7 +158,6 @@ Run fireAt(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const Shooter& sh,
     const sim::UnitType* st = reg.find(sh.id);
     if (!st) { check(false, std::string("shipped ") + sh.id + " loads"); return r; }
     const int shooter = s.w.spawn(st, sh.x, sh.z, sh.heading, sh.player);
-    s.w.unit(shooter)->mana = st->maxMana;
     s.w.unit(shooter)->fireState = 0;   // hold fire: only the order shoots
     for (int i = 0; i < 30; ++i) s.w.tick(kTick);
     const float x0 = s.w.unit(shooter)->x.toFloat(), z0 = s.w.unit(shooter)->z.toFloat();
@@ -262,7 +261,6 @@ Run flyCopy(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitTy
     build(s, vfs, reg);
     Run r;
     const int id = s.w.spawn(&copy, 300, 768, 1.5707963f, 0);
-    s.w.unit(id)->mana = copy.maxMana;
     s.w.unit(id)->fireState = 0;
     for (int i = 0; i < 30; ++i) s.w.tick(kTick);
     attackGround(s.w, reg, id, 900, 768);
@@ -590,7 +588,7 @@ GroupRun flyGroup(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::
     const int target = targetType ? s.w.spawn(targetType, px, pz, 0, 1) : 0;
     for (int g : ids) {
         if (!aimed || g != id) s.w.setSquad(g, groupSquad());
-        s.w.unit(g)->fireState = 0; s.w.unit(g)->mana = t.maxMana;
+        s.w.unit(g)->fireState = 0; 
     }
     if (target) s.w.unit(target)->fireState = 0;
     for (int i = 0; i < 30; ++i) s.w.tick(kTick);

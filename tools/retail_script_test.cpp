@@ -46,15 +46,7 @@ struct RetailReplayProbe {
     static void clearScriptEvents(World& world) {world.scriptEmissions_.clear();}
 
     static void shoot(World& world,int from,int target) {world.fire(*world.unit(from),*world.unit(target),0);}
-    static float manaShotCost(const Unit& u,int slot) {return World::manaShotCost(u,slot);}
-    static void manaFallback(World& world,Unit& u,int slot) {world.manaFallback(u,slot);}
     static bool switchWeapon(World& world,Unit& u,int slot) {return world.switchWeaponSlot(u,slot,false);}
-    // The release (530220, script-triggered) at a point, then 52af72's
-    // fallback: tools/re/check_mana_fallback.py.
-    static void release(World& world,Unit& u,int slot) {
-        world.fire(u,World::WeaponTarget{nullptr,{300*65536,0,200*65536}},slot,true);
-        world.manaFallback(u,slot);
-    }
     static void flameTick(World& world,uint32_t tick) {
         world.tickCounter_=tick;const auto aircraft=world.updateAirOccupancy();world.tickFlames(aircraft);
     }
@@ -141,37 +133,6 @@ struct Host {
 };
 
 int main(int argc,char** argv) {
-    if (argc==2 && std::string(argv[1])=="--mana-fallback") {
-        // Rows: selector (3 = every slot), three manapershot costs, mana
-        // before the release, the vetOverride (+0xf4), noveteran, the
-        // experience (+0xf0) and the type's experiencepoints (+0x1c2). Prints
-        // the selector and the mana after the release in 1/1024 units.
-        using namespace ta::sim;
-        int selected,noVeteran,experience,points;float c0,c1,c2,vet;double mana;
-        while(std::cin>>selected>>c0>>c1>>c2>>mana>>vet>>noVeteran>>experience>>points) {
-            UnitType type;type.maxHp=100;type.maxMana=1000;type.noVeteran=noVeteran!=0;
-            type.experiencePoints=points;
-            type.weaponSwitching=selected<3;
-            Weapon gun;gun.range=400;gun.damage=1;gun.projVel=300;gun.reload=1;
-            for(const float cost:{c0,c1,c2}) {gun.manaCost=cost;type.weapons.push_back(gun);}
-            type.weapon=type.weapons.front();
-            World world;
-            world.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const int id=world.spawn(&type,200,200,{},0);
-            Unit& u=*world.unit(id);
-            u.weaponSlot=selected<3 ? selected : 0;u.mana=mana;
-            // The experience as the kill credit sums it (a noveteran unit gains
-            // it too); the override then sets the rank (getLevel 519310: 0 for
-            // noveteran, 10 while +0xf4 is set, else experience over
-            // experiencepoints capped at 10).
-            u.xp=experience;world.setVeterancyOverride(id,vet);
-            // A non-switcher releases every slot it holds (52ae90's selector 3).
-            for(int slot=type.weaponSwitching ? u.weaponSlot : 0;slot<=(type.weaponSwitching ? u.weaponSlot : 2);++slot)
-                RetailReplayProbe::release(world,u,slot);
-            std::cout<<(type.weaponSwitching ? u.weaponSlot : 3)<<' '<<std::llround(u.mana*1024)<<'\n';
-        }
-        return 0;
-    }
     if (argc==3 && std::string(argv[1])=="--features") {
         using namespace ta::sim;
         auto vfs=ta::hpi::mountRetailRoot(argv[2]);
@@ -833,105 +794,6 @@ int main(int argc,char** argv) {
             require(!world.projectiles().empty() && world.projectiles().front().position!=shot.position,
                   "projectile begins motion after activation");
         }
-        for(bool startArt:{false,true}) for(bool endArt:{false,true}) {
-            UnitType type,victim;type.maxHp=victim.maxHp=1000;type.hasNimbusArt=true;
-            Weapon weapon;weapon.kind=Weapon::Kind::Wandering;weapon.nimbus=true;weapon.buildUpTicks=9;weapon.nimbusTicks=2;
-            weapon.durationTicks=3;weapon.variationTicks=99;weapon.projVel=30;
-            weapon.reload=100;weapon.damage=1;weapon.aoe=80;weapon.range=400;
-            if(startArt)weapon.wanderStartTicks={2,1};
-            weapon.wanderLoopTicks={2};
-            if(endArt)weapon.wanderEndTicks={2,1};
-            type.weapons={weapon};type.weapon=weapon;
-            World stormWorld;
-            stormWorld.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const int from=stormWorld.spawn(&type,200,200,0,0),target=stormWorld.spawn(&victim,234,200,0,1);
-            // A model-less mover has no support quad to stand on the terrain,
-            // and the storm drifts at terrain height: 529dc0 measures in 3D.
-            stormWorld.unit(target)->groundY=Fixed::fromInt(100);
-            stormWorld.setStance(from,2);stormWorld.setStance(target,2);
-            RetailReplayProbe::shoot(stormWorld,from,target);
-            const auto origin=stormWorld.storms().front().x;
-            const uint32_t activeAt=startArt ? 6 : 3;
-            for(uint32_t tick=1;tick<=activeAt;++tick) {
-                stormWorld.tick(1.f/30.f);
-                require(stormWorld.storms().size()==1 && stormWorld.storms().front().x==origin,
-                        "storm does not drift during waiting/start animation/activation");
-                require(stormWorld.unit(target)->hp==Fixed::fromInt(1000),"startup cannot damage target");
-            }
-            require(stormWorld.storms().front().phase==World::Storm::Phase::Active &&
-                    stormWorld.storms().front().end==activeAt+3,"storm duration starts after start art ends");
-            stormWorld.unit(from)->hp={};
-            for(unsigned step=1;step<=3;++step) {
-                const auto before=stormWorld.unit(target)->hp;
-                stormWorld.tick(1.f/30.f);
-                require(stormWorld.unit(target)->hp<before,"active storm damages through expiry tick after caster death");
-            }
-            const auto after=stormWorld.unit(target)->hp;
-            if(endArt) {
-                require(stormWorld.storms().size()==1 && stormWorld.storms().front().phase==World::Storm::Phase::Ending,
-                        "expiry starts ending art");
-                auto previous=stormWorld.storms().front().x;
-                for(unsigned step=0;step<2;++step) {
-                    stormWorld.tick(1.f/30.f);
-                    require(stormWorld.storms().size()==1 && stormWorld.storms().front().x>previous,
-                            "ending storm continues moving");
-                    require(stormWorld.unit(target)->hp==after,"ending storm cannot damage");
-                    previous=stormWorld.storms().front().x;
-                }
-                stormWorld.tick(1.f/30.f);
-            }
-            require(stormWorld.storms().empty(),"storm retires after authored ending duration");
-            require(stormWorld.unit(target)->hp==after,"retirement cannot damage");
-        }
-        {
-            UnitType type,victim;type.hasNimbusArt=true;
-            Weapon weapon;weapon.kind=Weapon::Kind::Wandering;weapon.nimbus=true;weapon.nimbusTicks=5;
-            type.weapons={weapon};World stormWorld;
-            stormWorld.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const int from=stormWorld.spawn(&type,200,200,0,0),target=stormWorld.spawn(&victim,300,200,0,1);
-            RetailReplayProbe::shoot(stormWorld,from,target);stormWorld.unit(from)->hp={};
-            stormWorld.tick(1.f/30.f);
-            require(stormWorld.storms().empty(),"caster death during waiting cancels storm");
-        }
-        {
-            UnitType type,victim;type.maxHp=victim.maxHp=1000;
-            Weapon weapon;weapon.kind=Weapon::Kind::Wandering;weapon.durationTicks=100;
-            weapon.variationTicks=1;weapon.maxVariation=2;weapon.projVel=30;weapon.reload=100;
-            weapon.wanderLoopTicks={2};type.weapons={weapon};type.weapon=weapon;
-            World storms;
-            storms.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const int from=storms.spawn(&type,200,200,0,0),target=storms.spawn(&victim,400,300,0,1);
-            storms.setStance(from,2);storms.setStance(target,2);
-            RetailReplayProbe::shoot(storms,from,target);RetailReplayProbe::shoot(storms,from,target);
-            unsigned sharedVariationDraws=0;
-            storms.setRngObserver([&](const World::RngObservation& observation) {
-                if(observation.bound==2001)++sharedVariationDraws;
-            });
-            for(unsigned tick=0;tick<10;++tick) {
-                storms.tick(1.f/30.f);
-                require(storms.storms().size()==2,"both private-stream storms remain active");
-                const auto& a=storms.storms()[0];const auto& b=storms.storms()[1];
-                require(a.wanderSeed==b.wanderSeed && a.velocity==b.velocity && a.x==b.x && a.z==b.z,
-                        "identically aimed storms do not perturb one another's random stream");
-            }
-            require(sharedVariationDraws==0,"wandering no longer consumes fire-spread RNG samples");
-        }
-        {
-            UnitType type,victim;type.maxHp=victim.maxHp=1000;
-            Weapon weapon;weapon.kind=Weapon::Kind::Wandering;weapon.durationTicks=100;
-            weapon.variationTicks=99;weapon.projVel=960;weapon.reload=100;weapon.wanderLoopTicks={2};
-            type.weapons={weapon};World storms;
-            storms.setTerrain(std::vector<uint8_t>(8*8,100),8,8,20);
-            const int from=storms.spawn(&type,96,64,0,0),target=storms.spawn(&victim,112,64,0,1);
-            storms.setStance(from,2);storms.setStance(target,2);
-            RetailReplayProbe::shoot(storms,from,target);
-            require(storms.storms().front().substeps==2 && storms.storms().front().baseVelocity[0]==32*65536,
-                    "storm retains native quantized speed and substep count");
-            storms.tick(1.f/30.f);storms.tick(1.f/30.f);
-            require(storms.storms().front().x==Fixed::fromInt(192),
-                    "storm integrates native substeps without clamping at the map edge");
-        }
-        std::cout<<"PASS: native storm waiting/start/active/end timeline and owner-death gates\n";
         {
             // Damageable is independent of reclaimable and flamable: authored
             // walls must enter the simulation even if builders cannot clear them.
@@ -1771,7 +1633,7 @@ int main(int argc,char** argv) {
         cloakWorld.unit(nearby)->hp={};cloakWorld.player(0).mana=0;
         cloakWorld.tick(1.f/30);
         require(!cloakWorld.unit(spy)->cloaked && RetailReplayProbe::scriptStatics(cloakWorld,spy)[0]==1,
-            "insufficient cloak mana does not restore the uncloaked script pose");
+            "insufficient cloak energy does not restore the uncloaked script pose");
         cloakWorld.setCloak(spy,false);
         require(RetailReplayProbe::scriptStatics(cloakWorld,spy)[0]==1,
             "decloak callback is also deferred to the script phase");
@@ -1841,11 +1703,11 @@ int main(int argc,char** argv) {
                     0x10022000,0x10021001,21,0x10021002,0,0x10082000,0x10065000};
         World world;world.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
         UnitType shooter,targetType;shooter.simulationScript=file;shooter.maxHp=targetType.maxHp=1000;
-        shooter.maxMana=20;
-        Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;weapon.projVel=300;weapon.manaCost=3;
+        // TA pays a shot from the player's stored energy (econPayShot), not a unit pool.
+        Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;weapon.projVel=300;weapon.energyPerShot=3;
         shooter.weapons.push_back(weapon);shooter.weapon=weapon;
         const int sid=world.spawn(&shooter,200,200,{},0),tid=world.spawn(&targetType,300,200,{},1);
-        world.unit(sid)->mana=20;   // a new unit's pool starts empty (511990)
+        world.setStartResources(0,20,0);
         unsigned draws=0;world.setCrtRngObserver([&](const World::RngObservation& o){if(o.retailReturnAddress==0x530167)++draws;});
         world.attack(sid,tid,false);
         int callback=0,shot=0,reloadAtCallback=0;
@@ -1859,7 +1721,7 @@ int main(int argc,char** argv) {
             }
             if(u->fireAnimations) {
                 require(!callback,"reload prevents duplicate FireWeapon callbacks");callback=tick;reloadAtCallback=u->reloads[0];
-                require(!u->justFired && u->mana==20,"callback precedes projectile and mana deduction");
+                require(!u->justFired && world.books(0).stored[0]==20,"callback precedes projectile and energy deduction");
             }
             if(u->justFired) {require(!shot,"SET 23 produces only one shot");shot=tick;}
         }
@@ -1867,7 +1729,7 @@ int main(int argc,char** argv) {
             "display receives aim, fire and the native re-aim after projectile retirement");
         require(callback>1 && shot>callback,"live combat waits for aim acknowledgement then delayed fire acknowledgement");
         require(draws==1 && reloadAtCallback>=240 && reloadAtCallback<360,"callback consumes one native reload draw");
-        require(world.unit(sid)->mana==17,"mana is spent when the script releases the projectile");
+        require(world.books(0).stored[0]==17,"energy is spent when the script releases the projectile");
         {
             // Retail keeps SET 23 pending while the assigned target is just
             // outside weapon range, then releases the same shot when range is
@@ -1879,7 +1741,7 @@ int main(int argc,char** argv) {
             World rangeLoss;
             rangeLoss.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=rangeLoss.spawn(&mobileShooter,200,200,{},0);
-            rangeLoss.unit(from)->mana=mobileShooter.maxMana;   // a new unit's pool starts empty (511990)
+            rangeLoss.setStartResources(0,20,0);
             const int victim=rangeLoss.spawn(&mobileTarget,300,200,{},1);
             rangeLoss.attack(from,victim,false);
             bool fireCallback=false,pendingRelease=false;
@@ -1901,8 +1763,8 @@ int main(int argc,char** argv) {
                 rangeLoss.tick(1.f/30);
                 archer=rangeLoss.unit(from);
                 require((archer->weaponAim[0].flags&16) && !archer->justFired &&
-                    rangeLoss.projectiles().empty() && archer->mana==20,
-                    "out-of-range ticks retain SET 23 without releasing a shot or mana");
+                    rangeLoss.projectiles().empty() && rangeLoss.books(0).stored[0]==20,
+                    "out-of-range ticks retain SET 23 without releasing a shot or paying for it");
             }
             {
                 const auto* archer=rangeLoss.unit(from);auto* target=rangeLoss.unit(victim);
@@ -1911,7 +1773,7 @@ int main(int argc,char** argv) {
             rangeLoss.tick(1.f/30);
             const auto* archer=rangeLoss.unit(from);
             require(archer->justFired && !(archer->weaponAim[0].flags&16) &&
-                rangeLoss.projectiles().size()==1 && archer->mana==17,
+                rangeLoss.projectiles().size()==1 && rangeLoss.books(0).stored[0]==17,
                 "returning to the inclusive range boundary releases the one pending shot");
             std::cout<<"PASS: pending script release waits outside native weapon range and resumes at the range boundary\n";
         }
@@ -1921,7 +1783,7 @@ int main(int argc,char** argv) {
             UnitType stationary=shooter;stationary.canMove=false;
             UnitType mobileTarget=targetType;mobileTarget.maxVel=Fixed::fromInt(1);
             const int from=edge.spawn(&stationary,200,200,{},0);
-            edge.unit(from)->mana=stationary.maxMana;   // a new unit's pool starts empty (511990)
+            edge.setStartResources(0,20,0);
             const int atRange=edge.spawn(&mobileTarget,600,200,{},1);
             edge.attack(from,atRange,false);edge.tick(1.f/30);
             const auto& inRangeEvents=edge.unit(from)->weaponAnimations;
@@ -1932,7 +1794,7 @@ int main(int argc,char** argv) {
             World outside;
             outside.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int outsideFrom=outside.spawn(&stationary,200,200,{},0);
-            outside.unit(outsideFrom)->mana=stationary.maxMana;   // a new unit's pool starts empty (511990)
+            outside.setStartResources(0,20,0);
             const int outsideTarget=outside.spawn(&mobileTarget,601,200,{},1);
             outside.attack(outsideFrom,outsideTarget,false);outside.tick(1.f/30);
             require(outside.unit(outsideFrom)->weaponAnimations.count==0,
@@ -1946,13 +1808,13 @@ int main(int argc,char** argv) {
                 "the blocked-LOS weapon fixture has an actual terrain obstruction");
             UnitType stationary=shooter;stationary.canMove=false;
             const int from=blocked.spawn(&stationary,200,200,{},0);
-            blocked.unit(from)->mana=stationary.maxMana;   // a new unit's pool starts empty (511990)
+            blocked.setStartResources(0,20,0);
             const int victim=blocked.spawn(&targetType,300,200,{},1);
             blocked.attack(from,victim,false);
             for(int tick=0;tick<12;++tick)blocked.tick(1.f/30);
             require(blocked.unit(from)->weaponAnimations.count==0 &&
                     !blocked.unit(from)->fireAnimations && !blocked.unit(from)->justFired &&
-                    blocked.projectiles().empty() && blocked.unit(from)->mana==20,
+                    blocked.projectiles().empty() && blocked.books(0).stored[0]==20,
                 "World holds AimWeapon/FireWeapon and projectile release while clear line is blocked");
             blocked.blockCells(15,12,1,1,false);
             bool aimed=false;
@@ -1988,7 +1850,7 @@ int main(int argc,char** argv) {
             World callbacksWorld;
             callbacksWorld.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=callbacksWorld.spawn(&type,200,200,{},0),target=callbacksWorld.spawn(&targetType,300,200,{},1);
-            callbacksWorld.unit(from)->mana=type.maxMana;   // a new unit's pool starts empty (511990)
+            callbacksWorld.setStartResources(0,20,0);
             callbacksWorld.attack(from,target,false);
             bool firedCallback=false;
             for(int tick=0;tick<60;++tick) {
@@ -1999,7 +1861,7 @@ int main(int argc,char** argv) {
                     "missing weapon callback cannot bypass script acknowledgement and fire instantly");
             }
             require(firedCallback==!missing[0],"missing AimWeapon prevents readiness; missing FireWeapon still starts reload");
-            require(callbacksWorld.unit(from)->mana==20,"missing callback does not spend projectile mana");
+            require(callbacksWorld.books(0).stored[0]==20,"missing callback does not spend shot energy");
         }
 
         for(bool clearAcknowledges:{false,true})for(bool removed:{false,true}) {
@@ -2011,7 +1873,7 @@ int main(int argc,char** argv) {
             World loss;
             loss.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=loss.spawn(&type,200,200,{},0),target=loss.spawn(&targetType,300,200,{},1);
-            loss.unit(from)->mana=type.maxMana;   // a new unit's pool starts empty (511990)
+            loss.setStartResources(0,20,0);
             loss.setStance(from,2);loss.attack(from,target,false);loss.tick(1.f/30);
             require(loss.unit(from)->scriptAimTarget==target,"target loss fixture establishes script target");
             loss.unit(from)->weaponAim[0].set(23);
@@ -2019,8 +1881,8 @@ int main(int argc,char** argv) {
             require(!loss.queryWeaponAim(from,target,0),"aim query rejects dead and pending-death unit targets");
             loss.tick(1.f/30);
             const auto* unit=loss.unit(from);
-            require(!unit->justFired && loss.projectiles().empty() && unit->mana==20,
-                "target death prevents a pending release from spending mana or creating a shot");
+            require(!unit->justFired && loss.projectiles().empty() && loss.books(0).stored[0]==20,
+                "target death prevents a pending release from spending energy or creating a shot");
             require(unit->weaponAnimations.count==1 && unit->weaponAnimations.events[0].kind==ta::RetailWeaponAnimation::Clear &&
                 unit->scriptAimTarget==0,"dying target is cleared during the same combat update");
             require(unit->weaponAim[0].flags&16,
@@ -2039,7 +1901,7 @@ int main(int argc,char** argv) {
             World switching;
             switching.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=switching.spawn(&type,200,200,{},0);
-            switching.unit(from)->mana=type.maxMana;   // a new unit's pool starts empty (511990)
+            switching.setStartResources(0,20,0);
             auto* unit=switching.unit(from);
             switching.setStance(from,2);
             unit->scriptAimTarget=123;unit->weaponAim[0].set(23);
@@ -2063,7 +1925,7 @@ int main(int argc,char** argv) {
             World delayed;
             delayed.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=delayed.spawn(&type,200,200,{},0),target=delayed.spawn(&targetType,300,200,{},1);
-            delayed.unit(from)->mana=type.maxMana;   // a new unit's pool starts empty (511990)
+            delayed.setStartResources(0,20,0);
             delayed.setStance(from,2);delayed.unit(from)->reloads[1]=1000;
             delayed.attack(from,target,false);
             bool callback=false;
@@ -2078,7 +1940,7 @@ int main(int argc,char** argv) {
                     "late acknowledgement cannot release while targetless or deselected");
             }
             require(delayed.unit(from)->weaponAim[0].flags&16,"late script acknowledgement remains pending during interruption");
-            require(delayed.unit(from)->mana==20,"pending acknowledgement spends no projectile mana");
+            require(delayed.books(0).stored[0]==20,"pending acknowledgement spends no shot energy");
             delayed.setWeapon(from,0);
             if(interruption==2) {
                 delayed.stop(from);delayed.tick(1.f/30);
@@ -2093,7 +1955,7 @@ int main(int argc,char** argv) {
             require(delayed.unit(from)->justFired,
                 "retargeting or reselection releases SET 23 that arrived after the target-clear callback");
             require(delayed.unit(from)->fireAnimations==0,"resuming a pending release does not start another FireWeapon callback");
-            require(delayed.unit(from)->mana==17,"resumed acknowledgement charges mana exactly once");
+            require(delayed.books(0).stored[0]==17,"resumed acknowledgement charges energy exactly once");
             require(!(delayed.unit(from)->weaponAim[0].flags&16),"pending release is retired or canceled");
             delayed.tick(1.f/30);
             require(!delayed.unit(from)->justFired,"resumed release is not repeated on the next update");
@@ -2104,7 +1966,7 @@ int main(int argc,char** argv) {
             clearing.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=clearing.spawn(&type,200,200,{},0),first=clearing.spawn(&targetType,300,200,{},1),
                 next=clearing.spawn(&targetType,320,240,{},1);
-                clearing.unit(from)->mana=type.maxMana;   // a new unit's pool starts empty (511990)
+                clearing.setStartResources(0,20,0);
             clearing.setWeapon(from,1);clearing.attack(from,first,false);clearing.tick(1.f/30);
             if(switching) {
                 clearing.unit(from)->weaponAim[0].flags=0xe8;
@@ -2140,90 +2002,6 @@ int main(int argc,char** argv) {
                 unit->reloads[2]==(switching?12:3),"returning to a weapon replaces its saved countdown with switch reload");
         }
         {
-            // 52af72..52af9a (emulated, probe_mana_fallback.py): after a
-            // release a switcher steps down from the fired slot while the
-            // slot's cost (531ea0: manapershot / 5193c0) is above the mana
-            // left, and selects what it lands on.
-            struct Row {int selected;std::array<float,3> cost;double mana;int slot;float vet;bool noVet;};
-            const Row rows[]={
-                {2,{0,10,30},40,1,0,false},{2,{0,10,30},35,0,0,false},{2,{0,10,30},60,2,0,false},
-                {2,{0,10,30},59.5,1,0,false},{2,{0,10,30},25,1,0,false},{2,{5,50,30},40,0,0,false},
-                {2,{50,50,30},40,0,0,false},{1,{50,30,0},40,0,0,false},{0,{30,0,0},40,0,0,false},
-                {2,{0,0,0},0,2,0,false},{2,{0,10,30},40,2,2.f,false},{2,{0,10,30},40,1,2.f,true}};
-            for(const Row& row:rows) {
-                UnitType type=shooter;type.weaponSwitching=true;type.maxMana=100;type.noVeteran=row.noVet;
-                type.weapons.assign(3,weapon);
-                for(int s=0;s<3;++s)type.weapons[size_t(s)].manaCost=row.cost[size_t(s)];
-                World table;
-                table.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-                const int id=table.spawn(&type,200,200,{},0);auto* unit=table.unit(id);
-                unit->weaponSlot=row.selected;unit->vetOverride=row.vet;
-                // The mana left after the release paid the fired slot.
-                const float paid=RetailReplayProbe::manaShotCost(*unit,row.selected);
-                unit->mana=double(paid)<=row.mana ? row.mana-paid : row.mana;
-                RetailReplayProbe::manaFallback(table,*unit,row.selected);
-                require(unit->weaponSlot==row.slot,"mana fallback lands where the native release does");
-                require(row.slot==row.selected || unit->reloads[size_t(row.slot)]==type.weapons[size_t(row.slot)].switchReloadTicks,
-                    "the fallback slot starts its switch reload");
-            }
-            // Live: the script's SET 23 releases on slot 2 and the unit ends on
-            // slot 1. A release it cannot pay still leaves (mana 25 < 30: the
-            // shot is made, nothing is taken) and still falls back.
-            for(bool unpaid:{false,true}) {
-                UnitType type=shooter;type.weaponSwitching=true;type.maxMana=100;
-                type.weapons.assign(3,weapon);
-                type.weapons[0].manaCost=0;type.weapons[1].manaCost=10;type.weapons[2].manaCost=30;
-                World live;
-                live.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-                const int from=live.spawn(&type,200,200,{},0),target=live.spawn(&targetType,300,200,{},1);
-                live.setStance(from,2);live.setWeapon(from,2);
-                auto* unit=live.unit(from);unit->mana=40;unit->reloads[2]=0;
-                live.attack(from,target,false);
-                bool callback=false,released=false;
-                for(int tick=0;tick<40 && !released;++tick) {
-                    live.tick(1.f/30);unit=live.unit(from);
-                    if(unit->fireAnimations && !callback) {callback=true;if(unpaid)unit->mana=25;}
-                    released=unit->justFired;
-                }
-                require(callback && released && live.projectiles().size()==1,"the switcher releases one shot");
-                require(unit->mana==(unpaid?25:10),"the release pays only a cost the mana covers");
-                require(unit->weaponSlot==1 && unit->reloads[1]==type.weapons[1].switchReloadTicks,
-                    "the release falls back to the cheaper weapon in the same update");
-                bool cleared=false,switched=false;
-                for(unsigned i=0;i<unit->weaponAnimations.count;++i) {
-                    cleared|=unit->weaponAnimations.at(i).kind==ta::RetailWeaponAnimation::Clear && unit->weaponAnimations.at(i).slot==2;
-                    switched|=unit->weaponAnimations.at(i).kind==ta::RetailWeaponAnimation::Switch && unit->weaponAnimations.at(i).slot==1;
-                }
-                require(cleared && switched,"the fallback clears the fired slot and starts SwitchWeapon on the new one");
-                require(!(unit->missionEvents&0x40u),"a walker's unit attack is not given the 0x40 event");
-            }
-            // A walker's unit attack (Attack_Chase) in reach: the switch's 0x40
-            // wakes it in the same dispatch, and its fire stage gives the new
-            // slot the target at once (51a700; E, probe_attack_chase_stop.py
-            // --switch-tick): the new slot's aim starts in the release update.
-            {
-                UnitType type=shooter;type.weaponSwitching=true;type.maxMana=100;
-                type.canMove=true;type.maxVel=Fixed::fromInt(1);type.turnInPlaceRate=0;
-                type.weapons.assign(3,weapon);
-                type.weapons[0].manaCost=0;type.weapons[1].manaCost=10;type.weapons[2].manaCost=30;
-                World live;
-                live.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-                const int from=live.spawn(&type,200,200,{},0),target=live.spawn(&targetType,300,200,{},1);
-                live.setStance(from,2);live.setWeapon(from,2);
-                auto* unit=live.unit(from);unit->mana=40;unit->reloads[2]=0;
-                live.attack(from,target,false);
-                bool released=false,aimed=false;
-                for(int tick=0;tick<40 && !released;++tick) {
-                    live.tick(1.f/30);unit=live.unit(from);
-                    released=unit->justFired;
-                    if(released)
-                        for(unsigned i=0;i<unit->weaponAnimations.count;++i)
-                            aimed|=unit->weaponAnimations.at(i).kind==ta::RetailWeaponAnimation::Aim &&
-                                unit->weaponAnimations.at(i).slot==1;
-                }
-                require(released && unit->weaponSlot==1,"the walker's release falls back to the cheaper weapon");
-                require(aimed,"a walker's attack aims the new slot in the update its switch happened (it waited a tick)");
-            }
             // The 0x40 event reaches a flyer's unit attack (AirToGround's
             // and the other air heads' readers).
             {
@@ -2237,7 +2015,7 @@ int main(int argc,char** argv) {
                 require(RetailReplayProbe::switchWeapon(air,*unit,1) && (unit->missionEvents&0x40u),
                     "a flyer's unit attack hears the switch");
             }
-            std::cout<<"PASS: a switcher short of mana after a release falls back to a cheaper weapon\n";
+            std::cout<<"PASS: a flyer's unit attack hears a weapon switch\n";
         }
 
     }

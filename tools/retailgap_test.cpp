@@ -5,16 +5,17 @@
 // The checks are grouped into slices (weapons, rules, fireatwill, orders) so ctest
 // can run them as parallel tests; naming slices runs only those, none runs all.
 //
-// Checks, against the real shipped data:
+// Checks, against the real shipped Total Annihilation data (GOG install):
 //   1. [EXPLODEAS] parses, and a dying unit detonates it where it stands (splashing
-//      nearby enemies) -- the Kamikaze Rat's whole purpose.
-//   2. totalallowed parses and caps live units of that type per player (dragons).
-//   3. A data-only mission (no .cob) loads, and its placed units' InitialMission=
-//      order queues are applied.
+//      nearby enemies) -- the crawling bomb's (Roach) whole purpose.
+//   2. Weapon classes (Guided, Dropped) parse from weapons/*.tdf and behave.
+//   3. A campaign mission loads, and its placed units' InitialMission= order queues
+//      are applied; its .ota victory/defeat conditions resolve.
 //
 // A dev harness; not shipped in a game.
 
 #include "hpi/hpi.h"
+#include "sim/footprint.h"
 #include "sim/matchsetup.h"
 #include "sim/sim.h"
 
@@ -37,7 +38,7 @@ std::vector<std::string> selected;   // empty: every slice
 bool want(const char* slice) {
     return selected.empty() || std::find(selected.begin(), selected.end(), slice) != selected.end();
 }
-const char* kMap = "maps/Inner Circle.tnt";   // any shipped map; we only need terrain
+std::string kMap;   // a shipped TA map (Ashap Plateau), set in main; we only need terrain
 
 // Nudge a spawn point onto ground the unit actually fits on. Fixtures used to
 // pick round numbers and rely on the sim's "unstick" pass to walk a unit off
@@ -65,6 +66,26 @@ void check(bool ok, const char* what, const std::string& detail = "") {
                 detail.empty() ? "" : " -- ", detail.c_str());
     if (!ok) ++failures;
 }
+// The top-left cell of a size x size block of cells where `t` fits everywhere,
+// scanning from (fromX, fromZ): fixtures that need open ground find it rather than
+// assume a coordinate on a particular map.
+static bool openApron(const ta::sim::World& w, const ta::sim::UnitType* t, int size,
+                      float& x, float& z, int fromX = 8, int fromZ = 8) {
+    const ta::sim::NavGrid& g = w.navFor(t);
+    const int foot = std::max(1, std::max(t->footX, t->footZ));
+    for (int cz = fromZ; cz + size < g.height() - 8; cz += 2)
+        for (int cx = fromX; cx + size < g.width() - 8; cx += 2) {
+            bool clear = true;
+            for (int dz = 0; dz <= size && clear; ++dz)
+                for (int dx = 0; dx <= size && clear; ++dx)
+                    if (!g.fits(cx + dx, cz + dz, foot)) clear = false;
+            if (!clear) continue;
+            x = float(cx) * 16 + 8;
+            z = float(cz) * 16 + 8;
+            return true;
+        }
+    return false;
+}
 float detmathLen(float dx, float dz) { return std::sqrt(dx * dx + dz * dz); }
 void tick(sim::World& w, float seconds) {
     const float dt = 1.0f / 30.0f;
@@ -76,14 +97,8 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::fprintf(stderr, "usage: retailgap_test <retail-install-dir> [slice[,slice...]]\n"); return 2; }
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry reg;
-    reg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
-    reg.loadDir(vfs, "units/");
-    if(argc==3 && std::string(argv[2])=="--blood-palette") {
-        const auto* hunter=reg.find("zonhunt");
-        check(hunter && hunter->bloodColors==std::array<uint32_t,3>{0xffa02300,0xffaa2800,0xffb41e05},
-              "Hunter retains all three authored blood colors");
-        return failures?1:0;
-    }
+    sim::setupRegistry(reg, vfs, false);   // units/, weapons/*.tdf and the build menus
+    kMap = hpi::findMap(vfs, "Ashap Plateau");
     if (argc >= 3) {
         const std::string list = argv[2];
         for (size_t at = 0; at <= list.size();) {
@@ -101,11 +116,11 @@ int main(int argc, char** argv) {
     // ---- 1. [EXPLODEAS] ----------------------------------------------------
     if (want("weapons")) {
         std::printf("[EXPLODEAS death blast]\n");
-        const sim::UnitType* rat = reg.find("tarkam");        // Kamikaze Rat
-        const sim::UnitType* victim = reg.find("arasword");    // a plain Aramon swordsman
+        const sim::UnitType* rat = reg.find("corroach");      // Roach, the CORE crawling bomb
+        const sim::UnitType* victim = reg.find("armpw");       // a plain Peewee
         if (!rat || !victim) { std::printf("  (missing unit defs; skipped)\n"); }
         else {
-            check(rat->hasExplodeAs, "tarkam parses an EXPLODEAS weapon");
+            check(rat->hasExplodeAs, "corroach parses an EXPLODEAS weapon");
             check(rat->explodeAs.aoe > 100.0f, "its blast has a real radius",
                   "aoe=" + std::to_string(int(rat->explodeAs.aoe)));
             check(rat->explodeAs.damage > 1000.0f, "and real damage",
@@ -119,7 +134,7 @@ int main(int argc, char** argv) {
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
 
-            // A rat (player 0) with two enemy swordsmen (player 1) standing next to it.
+            // A Roach (player 0) with two enemy Peewees (player 1) standing next to it.
             int ratId = w.spawn(rat, 500, 500, 0, 0);
             int aId = w.spawn(victim, 520, 500, 0, 1);
             int bId = w.spawn(victim, 500, 530, 0, 1);
@@ -127,7 +142,7 @@ int main(int argc, char** argv) {
             float aHp0 = w.unit(aId)->hp.toFloat(), farHp0 = w.unit(farId)->hp.toFloat();
             check(aHp0 > 0 && farHp0 > 0, "victims spawned alive");
 
-            w.unit(ratId)->hp = sim::Fixed();    // the rat dies -> its EXPLODEAS should fire
+            w.unit(ratId)->hp = sim::Fixed();    // the Roach dies -> its EXPLODEAS should fire
             tick(w, 0.2f);
 
             const sim::Unit* a = w.unit(aId);
@@ -137,33 +152,33 @@ int main(int argc, char** argv) {
             check(b && (!b->alive() || b->hp.toFloat() < aHp0), "second adjacent enemy took the blast");
             check(far && far->alive() && far->hp.toFloat() >= farHp0, "distant enemy untouched");
 
-            // Stone/frozen packets suppress death weapons; self-destruction
-            // selects a separate weapon block, absent from the shipped rat.
-            for(int special:{14,15,5}) {
+            // Self-destruction selects the separate SELFDESTRUCTAS block: the
+            // Roach's is CRAWL_BLAST, not its EXPLODEAS (CRAWL_BLASTSML).
+            // (Kingdoms' stone/frozen deaths have no TA counterpart.)
+            check(rat->hasSelfDestructAs && rat->selfDestructAs.section != rat->explodeAs.section,
+                  "corroach carries its own SELFDESTRUCTAS block",
+                  rat->selfDestructAs.section + " vs " + rat->explodeAs.section);
+            {
                 sim::World quiet;
                 sim::setupMatch(quiet,reg,cfg);
                 const int source=quiet.spawn(rat,500,500,0,0);
-                const int neighbor=quiet.spawn(victim,520,500,0,1);
+                quiet.spawn(victim,520,500,0,1);
                 auto* dying=quiet.unit(source);
-                dying->deathType=special;
-                dying->stonedFor=special==14 ? 100 : 0;
-                dying->frozenFor=special==15 ? 100 : 0;
+                dying->deathType=sim::Unit::kDeathSelfDestruct;
                 dying->hp=sim::Fixed();
-                const auto hp=quiet.unit(neighbor)->hp;
-                // The death weapon fires at retirement (512ae0), once Dying is over:
-                // watch every tick until then.
-                bool hit=false;
+                // The death weapon fires at retirement (512ae0), once Dying is over.
+                bool own=false,ordinary=false;
                 for(int t=0;t<600;++t) {
                     quiet.tick(1.f/30);
-                    hit=hit || !quiet.hits().empty();
+                    for(const auto& hit:quiet.hits()) {
+                        own=own || hit.weapon==&rat->selfDestructAs;
+                        ordinary=ordinary || hit.weapon==&rat->explodeAs;
+                    }
                     if(!quiet.unit(source)->deathPending)break;
                 }
                 check(!quiet.unit(source)->alive() && !quiet.unit(source)->deathPending,
-                      "special death control reached the death transition");
-                check(!hit && quiet.unit(neighbor)->hp==hp,
-                      special==14 ? "stone death emits no death blast or damage" :
-                      special==15 ? "frozen death emits no death blast or damage" :
-                                    "self-destruct does not reuse the ordinary death weapon");
+                      "self-destruct death control reached the death transition");
+                check(own && !ordinary, "self-destruct bursts its SELFDESTRUCTAS, not the ordinary death weapon");
             }
 
             // An explicit self-destruct weapon must retain its own art and damage.
@@ -194,111 +209,43 @@ int main(int argc, char** argv) {
     }
 
     // ---- 1b. weapon-class parse ------------------------------------------
+    // TA's classes come from the weapon record's flags (docs/retail-data.md 3):
+    // guidance/tracks = Guided, dropped = Dropped, ballistic shells, lineofsight
+    // beams. (Kingdoms' Remote Effect / Wandering / mind control classes, the
+    // per-shot veteran model and totalallowed have no TA counterpart.)
     if (want("weapons")) {
         std::printf("[weapon class parse]\n");
         struct C { const char* unit; int slot; sim::Weapon::Kind kind; const char* label; };
         const C cases[] = {
-            {"arabow",   1, sim::Weapon::Kind::Guided,    "arabow W2 Tracking Arrow = Guided"},
-            {"aradrag",  2, sim::Weapon::Kind::Remote,    "aradrag W3 Earthquake = Remote Effect"},
-            {"tarwitch", 0, sim::Weapon::Kind::Wandering, "tarwitch W1 Tornado = Wandering"},
+            {"armsam",   0, sim::Weapon::Kind::Guided,  "armsam W1 ARMTRUCK_MISSILE (tracks) = Guided"},
+            {"armthund", 0, sim::Weapon::Kind::Dropped, "armthund W1 ARMBOMB (dropped) = Dropped"},
+            {"armham",   0, sim::Weapon::Kind::Normal,  "armham W1 ARM_HAM (ballistic) = Normal"},
         };
         for (const C& c : cases) {
             const sim::UnitType* t = reg.find(c.unit);
             bool ok = t && int(t->weapons.size()) > c.slot && t->weapons[size_t(c.slot)].kind == c.kind;
             check(ok, c.label);
         }
-        if (const sim::UnitType* t = reg.find("tarwitch"); t && !t->weapons.empty()) {
-            const sim::Weapon& w = t->weapons[0];
-            check(w.duration > 8.0f, "tornado duration parsed", std::to_string(w.duration));
-            check(w.buildUp > 2.0f && w.decay > 2.0f, "buildup/decay parsed");
-            check(w.variationTime > 0 && w.maxVariation > 0, "wander variation parsed");
-        }
-        if (const sim::UnitType* t = reg.find("tarmind"); t && !t->weapons.empty()) {
-            check(t->weapons[0].mindControl, "tarmind W1 flagged mindControl");
-            check(t->weapons[0].unitsOnly, "tarmind W1 unitsonly");
-            // The DAMAGE table is the eligibility filter.
-            const sim::UnitType* monarch = reg.find("araking");
-            const sim::UnitType* sword = reg.find("arasword");
-            if (monarch && sword) {
-                check(t->weapons[0].damageVs(monarch) <= 0.0f, "monarch is mind-control IMMUNE (damage 0)");
-                check(t->weapons[0].damageVs(sword) > 0.0f, "a swordsman is convertible (damage > 0)");
-            }
-        }
-        if (const sim::UnitType* t = reg.find("arabow"); t && t->weapons.size() > 1)
-            check(t->weapons[1].turnRate > 3.0f, "guided turnrate in radians/s",
-                  std::to_string(t->weapons[1].turnRate));
-        if (const sim::UnitType* t = reg.find("verbal"); t && !t->weapons.empty()) {
-            const sim::Weapon& bolt = t->weapons[0];
-            check(bolt.shotModel == "verbal1", "Ballista bolt parses its regular projectile mesh");
-            check(bolt.veteranShotModel == "verbal1_vet" && bolt.veteranLevel == 10,
-                  "Ballista bolt parses veteranmodel/veteranlevel from WEAPON1");
-            check(!bolt.usesVeteranShotModel(9) && bolt.usesVeteranShotModel(10) &&
-                  bolt.usesVeteranShotModel(11),
-                  "Ballista switches its per-shot mesh at rank 10");
-
-            const sim::UnitType* victim = reg.find("arasword");   // as in [EXPLODEAS]
-            auto firedVariant = [&](int rank) {
-                sim::World w;
-                sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=kMap;
-                cfg.slots={sim::MatchSlot{},sim::MatchSlot{}};
-                cfg.slots[0].team=0;cfg.slots[1].team=1;
-                sim::setupMatch(w,reg,cfg);
-                float sx=1200,sz=1000,tx=1200,tz=1500;
-                legalSpot(w,t,sx,sz);legalSpot(w,victim,tx,tz);
-                const int shooter=w.spawn(t,sx,sz,0,0);
-                const int targetId=w.spawn(victim,tx,tz,0,1);
-                if(auto* unit=w.unit(shooter)) {unit->veteran=rank;unit->stance=0;}
-                w.attack(shooter,targetId,false);
-                for(int step=0;step<300 && w.projectiles().empty();++step)
-                    w.tick(1.0f/30.0f);
-                if(w.projectiles().empty())return -1;
-                return int(w.projectiles().front().projectileUsesVeteranModel);
-            };
-            check(firedVariant(9)==0 && firedVariant(10)==1,
-                  "Ballista shots snapshot their rank-selected projectile mesh at launch");
-        }
-    }
-
-    // ---- 2. totalallowed ---------------------------------------------------
-    if (want("weapons")) {
-        std::printf("[totalallowed unique cap]\n");
-        const sim::UnitType* drag = reg.find("aradrag");
-        if (!drag) { std::printf("  (no aradrag; skipped)\n"); }
-        else {
-            check(drag->totalAllowed == 1, "aradrag parses totalallowed=1",
-                  "got " + std::to_string(drag->totalAllowed));
-            sim::World w;
-            sim::MatchConfig cfg;
-            cfg.vfs = &vfs;
-            cfg.mapPath = kMap;
-            cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-            cfg.slots[0].team = 0; cfg.slots[1].team = 1;
-            sim::setupMatch(w, reg, cfg);
-            check(!w.atTypeCap(0, drag), "no dragon yet -> not capped");
-            int d1 = w.spawn(drag, 400, 400, 0, 0);
-            check(w.atTypeCap(0, drag), "one live dragon -> player 0 is capped");
-            check(!w.atTypeCap(1, drag), "the cap is PER PLAYER (player 1 free)");
-            if (auto* d = w.unit(d1)) d->hp = sim::Fixed();   // it dies
-            tick(w, 0.2f);
-            check(!w.atTypeCap(0, drag), "dragon died -> the slot frees again");
-            const sim::UnitType* plain = reg.find("arasword");
-            if (plain) check(!w.atTypeCap(0, plain), "an uncapped type is never capped");
-        }
+        // turnrate=30000 TA angle units a second, held in radians/s.
+        if (const sim::UnitType* t = reg.find("armsam"); t && !t->weapons.empty())
+            check(std::abs(t->weapons[0].turnRate - 30000.0f * 6.2831853f / 65536.0f) < 0.01f,
+                  "guided turnrate in radians/s", std::to_string(t->weapons[0].turnRate));
+        if (const sim::UnitType* t = reg.find("armham"); t && !t->weapons.empty())
+            check(t->weapons[0].ballistic && t->weapons[0].ballisticClass(), "the Hammer's plasma shell is ballistic");
     }
 
     // ---- 2b. guided homing --------------------------------------------------
     if (want("weapons")) {
         std::printf("[guided homing]\n");
-        // tarfire (Fire Demon) has a GUIDED primary: Fire Ball of Gloom, range 900,
-        // velocity 250 (slow -- long flight), turnrate 180, reload 3.2s. The slow
-        // shot + long reload make the dodge unambiguous: one shot is in the air, and
-        // only homing can bring it back onto a target that jumps aside mid-flight.
-        const sim::UnitType* demon = reg.find("tarfire");
-        const sim::UnitType* prey = reg.find("arasword");
+        // armsam (Samson) has a GUIDED primary: ARMTRUCK_MISSILE (tracks=1), range
+        // 600, velocity 540, turnrate 30000, reload 2.5s. One shot is in the air,
+        // and only homing can bring it back onto a target that jumps aside mid-flight.
+        const sim::UnitType* demon = reg.find("armsam");
+        const sim::UnitType* prey = reg.find("armpw");
         if (!demon || !prey || demon->weapons.empty()) std::printf("  (missing defs; skipped)\n");
         else {
             check(demon->weapons[0].kind == sim::Weapon::Kind::Guided &&
-                  demon->weapons[0].turnRate > 0, "Fire Ball of Gloom is guided");
+                  demon->weapons[0].turnRate > 0, "the Samson's missile is guided");
             sim::World w, peer;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
@@ -310,9 +257,9 @@ int main(int argc, char** argv) {
             w.setTerrain(std::vector<uint8_t>(256 * 256, 100), 256, 256, 20);
             peer.setTerrain(std::vector<uint8_t>(256 * 256, 100), 256, 256, 20);
             int shooter = w.spawn(demon, 1000, 1000, 0, 0);
-            int mover = w.spawn(prey, 1000, 1600, 0, 1);   // 600px away, in range
+            int mover = w.spawn(prey, 1000, 1500, 0, 1);   // 500px away, in range
             int peerShooter = peer.spawn(demon, 1000, 1000, 0, 0);
-            int peerMover = peer.spawn(prey, 1000, 1600, 0, 1);
+            int peerMover = peer.spawn(prey, 1000, 1500, 0, 1);
             if (auto* su = w.unit(shooter)) su->stance = 0;
             if (auto* su = peer.unit(peerShooter)) su->stance = 0;
             w.attack(shooter, mover, false);
@@ -324,7 +271,7 @@ int main(int argc, char** argv) {
                 w.tick(1.0f / 30.0f);peer.tick(1.0f / 30.0f);
                 paired=paired && w.stateHash()==peer.stateHash();
             }
-            check(!w.projectiles().empty(), "the demon launched a guided shot");
+            check(!w.projectiles().empty(), "the Samson launched a guided shot");
             check(paired && w.stateHash()==peer.stateHash(),
                   "paired World instances retain the same Guided state hash at launch");
             if (!w.projectiles().empty()) {
@@ -339,8 +286,8 @@ int main(int argc, char** argv) {
                 if (auto* m = w.unit(mover)) { m->x = ta::sim::Fixed::fromInt(1300); m->orders.clear(); }
                 if (auto* m = peer.unit(peerMover)) { m->x = ta::sim::Fixed::fromInt(1300); m->orders.clear(); }
                 float hp0 = w.unit(mover)->hp.toFloat();
-                for (int i = 0; i < 90; ++i) {
-                    w.tick(1.0f / 30.0f);peer.tick(1.0f / 30.0f);   // 3s < reload
+                for (int i = 0; i < 60; ++i) {
+                    w.tick(1.0f / 30.0f);peer.tick(1.0f / 30.0f);   // 2s < the 2.5s reload
                     paired=paired && w.stateHash()==peer.stateHash();
                 }
                 const sim::Unit* m = w.unit(mover);
@@ -355,8 +302,8 @@ int main(int argc, char** argv) {
 
     // ---- 2b.1 guided XYZ against an airborne target and target loss --------
     if (want("weapons")) {
-        const sim::UnitType* flyerBase=reg.find("zonhunt");
-        const sim::UnitType* demon=reg.find("tarfire");
+        const sim::UnitType* flyerBase=reg.find("armatlas");
+        const sim::UnitType* demon=reg.find("armsam");
         if(!flyerBase || !flyerBase->canFly || !demon || demon->weapons.empty()) {
             std::printf("  (missing guided shooter or flying target; skipped)\n");
         } else {
@@ -369,7 +316,7 @@ int main(int argc, char** argv) {
             check(demon->weapons[0].kind==sim::Weapon::Kind::Guided &&
                   demon->weapons[0].flameKind<0 && !demon->weapons[0].beam &&
                   !demon->weapons[0].noAir && demon->weapons[0].damage>0,
-                  "Fire Ball of Gloom is a projectile-backed Guided weapon that can hit flyers");
+                  "the Samson's missile is a projectile-backed Guided weapon that can hit flyers");
             sim::World w,peer;
             sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=kMap;
             cfg.slots={sim::MatchSlot{},sim::MatchSlot{}};
@@ -379,9 +326,9 @@ int main(int argc, char** argv) {
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             peer.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             const int shooter=w.spawn(demon,1000,1000,0,0);
-            const int target=w.spawn(&harmlessFlyer,1000,1600,0,1);
+            const int target=w.spawn(&harmlessFlyer,1000,1500,0,1);
             const int peerShooter=peer.spawn(demon,1000,1000,0,0);
-            const int peerTarget=peer.spawn(&harmlessFlyer,1000,1600,0,1);
+            const int peerTarget=peer.spawn(&harmlessFlyer,1000,1500,0,1);
             if(auto* u=w.unit(shooter))u->stance=0;
             if(auto* u=peer.unit(peerShooter))u->stance=0;
             for(auto [world,id]:{std::pair{&w,target},std::pair{&peer,peerTarget}}) {
@@ -391,7 +338,7 @@ int main(int argc, char** argv) {
                 }
                 // An explicit flight mission prevents idle VTOL standby from
                 // beginning a landing during the attacker's aim/build-up ticks.
-                world->order(id,1080,1600,false);
+                world->order(id,1080,1500,false);
             }
             w.attack(shooter,target,false);
             peer.attack(peerShooter,peerTarget,false);
@@ -400,7 +347,7 @@ int main(int argc, char** argv) {
             check(launchAim.has_value() && peerLaunchAim.has_value() &&
                   launchAim->heading==peerLaunchAim->heading && launchAim->pitch==peerLaunchAim->pitch &&
                   launchAim->target==peerLaunchAim->target,
-                  "paired Fire Demons compute the same authored aim solution for the flying target");
+                  "paired Samsons compute the same authored aim solution for the flying target");
             int guard=0;
             bool paired=w.stateHash()==peer.stateHash(),sawFireEvent=false;
             int fireEventTick=0;
@@ -413,7 +360,7 @@ int main(int argc, char** argv) {
                     if(w.projectiles().empty())break;
                 }
             }
-            check(sawFireEvent,"Fire Demon releases its Guided weapon against the airborne target");
+            check(sawFireEvent,"the Samson releases its Guided weapon against the airborne target");
             if(w.projectiles().empty()) {
                 const auto* state=w.unit(shooter);
                 std::printf("  (guided air launch diagnostic: aim=%d heading=%u pitch=%u targetOrder=%d scriptTarget=%d fireTick=%d fired=%u reload=%d targetY=%d)\n",
@@ -483,9 +430,9 @@ int main(int argc, char** argv) {
         // is still homed on, at its SweetSpot over the host's attach point
         // (tools/re/probe_guided_projectile.py, carried mode). World passed the
         // shot's own position for an embarked target and flew it straight on.
-        const sim::UnitType* demon=reg.find("tarfire");
-        const sim::UnitType* prey=reg.find("arasword");
-        const sim::UnitType* roc=reg.find("zonroc");
+        const sim::UnitType* demon=reg.find("armsam");
+        const sim::UnitType* prey=reg.find("armpw");
+        const sim::UnitType* roc=reg.find("armatlas");
         if(!demon || !prey || !roc || demon->weapons.empty()) {
             std::printf("  (missing guided shooter, target or transport; skipped)\n");
         } else {
@@ -500,8 +447,8 @@ int main(int argc, char** argv) {
             int target=0,peerTarget=0,host=0,peerHost=0;
             for(auto [world,victim,carrier]:{std::tuple{&w,&target,&host},std::tuple{&peer,&peerTarget,&peerHost}}) {
                 const int shooter=world->spawn(demon,1000,1000,0,0);
-                *victim=world->spawn(prey,1000,1600,0,1);
-                *carrier=world->spawn(roc,1500,1600,0,1);
+                *victim=world->spawn(prey,1000,1500,0,1);
+                *carrier=world->spawn(roc,1500,1500,0,1);
                 if(auto* u=world->unit(shooter))u->stance=0;
                 world->attack(shooter,*victim,false);
             }
@@ -512,11 +459,11 @@ int main(int argc, char** argv) {
                 paired=paired && w.stateHash()==peer.stateHash();
             }
             check(!w.projectiles().empty() && w.projectiles().front().guided3d,
-                  "the demon launched a guided shot at the soon-carried target");
+                  "the Samson launched a guided shot at the soon-carried target");
             if(!w.projectiles().empty()) {
                 const auto launch=w.projectiles().front().velocity;
                 const bool boarded=w.embarkInto(target,host) && peer.embarkInto(peerTarget,peerHost);
-                check(boarded,"the target boards the Roc while the shot is in the air");
+                check(boarded,"the target boards the Atlas while the shot is in the air");
                 bool homed=false;
                 for(int i=0;i<6 && !w.projectiles().empty();++i) {
                     w.tick(1.0f/30.0f);peer.tick(1.0f/30.0f);
@@ -533,230 +480,23 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- 2c. remote effect / wandering / mind control ------------------------
-    if (want("rules")) {
-        std::printf("[remote effect + wandering + mind control]\n");
-        const sim::UnitType* prey = reg.find("arasword");
-        auto freshWorld = [&](sim::World& w) {
-            sim::MatchConfig cfg;
-            cfg.vfs = &vfs; cfg.mapPath = kMap;
-            cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-            cfg.slots[0].team = 0; cfg.slots[1].team = 1;
-            sim::setupMatch(w, reg, cfg);
-        };
-
-        // Remote Effect: the Acolyte's Earthquake lands at the AIMED GROUND POINT
-        // after builduptime -- stepping aside must not dodge it (aoe 200).
-        const sim::UnitType* acolyte = reg.find("arapries");
-        if (acolyte && prey) {
-            int quake = -1;
-            for (size_t i = 0; i < acolyte->weapons.size(); ++i)
-                if (acolyte->weapons[i].kind == sim::Weapon::Kind::Remote) { quake = int(i); break; }
-            check(quake >= 0, "arapries has a Remote Effect weapon");
-            if (quake >= 0) {
-                sim::World w; freshWorld(w);
-                int caster = w.spawn(acolyte, 1000, 1000, 0, 0);
-                int victim = w.spawn(prey, 1000, 1150, 0, 1);
-                if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-                w.attack(caster, victim, false);
-                float hp0 = w.unit(victim)->hp.toFloat();
-                for (int i = 0; i < 600; ++i) {
-                    w.tick(1.0f / 30.0f);
-                    if (const sim::Unit* v = w.unit(victim); v && (!v->alive() || v->hp.toFloat() < hp0)) break;
-                }
-                const sim::Unit* v = w.unit(victim);
-                check(v && (!v->alive() || v->hp.toFloat() < hp0), "the remote effect landed on its target");
-            }
-        }
-
-        // Remote Effect SUBCLASSES: the cadence differs per subtype.
-        // arapries: W1 Earthquake (pulses every shakeduration=1s through its
-        // buildup 3 + decay 3), W2 Hail Shower (rains particlespersecond=5 times a
-        // second for duration=2.5), W3 Turn To Stone.
-        if (acolyte && prey && acolyte->weapons.size() >= 3) {
-            check(acolyte->weapons[0].remote == sim::Weapon::RemoteKind::Earthquake,
-                  "arapries W1 is the Earthquake subclass");
-            check(acolyte->weapons[1].remote == sim::Weapon::RemoteKind::Hailstorm,
-                  "arapries W2 is the Hailstorm subclass");
-            // THE BUG FIX: "Hail Shower" used to trip a name-substring freeze
-            // heuristic, and our freeze is an instant statue death -- so a 70-damage
-            // shower silently annihilated everything in a 200-wide radius.
-            check(acolyte->weapons[1].status == sim::Weapon::Status::None,
-                  "Hail Shower is NOT a freeze weapon (it used to instant-kill)");
-            check(acolyte->weapons[2].status == sim::Weapon::Status::Stoned,
-                  "Turn To Stone still petrifies (subtype=turntostone)");
-
-            // Drive each and count how many distinct ticks dealt damage: a plain
-            // one-shot would show exactly 1, these must pulse.
-            auto pulseCount = [&](int slot, float seconds) {
-                sim::World w; freshWorld(w);
-                int caster = w.spawn(acolyte, 1000, 1000, 0, 0);
-                int victim = w.spawn(prey, 1000, 1040, 0, 1);   // inside aoe/2 = 100
-                if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-                w.setWeapon(caster, slot);
-                w.attack(caster, victim, false);
-                int pulses = 0; float last = w.unit(victim)->hp.toFloat(); bool died = false;
-                for (int i = 0; i < int(seconds * 30); ++i) {
-                    w.tick(1.0f / 30.0f);
-                    const sim::Unit* v = w.unit(victim);
-                    if (!v || !v->alive()) { died = true; break; }
-                    if (v->hp.toFloat() < last - 0.01f) { ++pulses; last = v->hp.toFloat(); }
-                }
-                return std::pair<int, bool>{pulses, died};
-            };
-            // shotart: this Earthquake is DELIVERED -- a visible shot flies to the
-            // aim point first and only then does the 3s channel start, so the first
-            // damage lands later than a conjured-in-place spell would.
-            check(!acolyte->weapons[0].shotArt.empty(), "arapries W1 carries shotart");
-            {
-                sim::World w; freshWorld(w);
-                int caster = w.spawn(acolyte, 1000, 1000, 0, 0);
-                int victim = w.spawn(prey, 1000, 1200, 0, 1);   // 200px: a real flight
-                if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-                w.setWeapon(caster, 0);
-                w.attack(caster, victim, false);
-                bool sawShot = false;
-                for (int i = 0; i < 240; ++i) {
-                    w.tick(1.0f / 30.0f);
-                    if (!w.projectiles().empty()) { sawShot = true; break; }
-                }
-                check(sawShot, "it launches a visible delivery shot");
-            }
-            auto [quakePulses, quakeDied] = pulseCount(0, 8.0f);
-            check(quakePulses > 1 || quakeDied, "the Earthquake PULSES (not one tap)",
-                  std::to_string(quakePulses) + " damage ticks");
-            auto [hailPulses, hailDied] = pulseCount(1, 8.0f);
-            check(hailPulses > 3, "the Hail Shower RAINS many small hits",
-                  std::to_string(hailPulses) + " damage ticks");
-            check(!hailDied, "and its victim survives it (70 dmg x ~13 < 2500 HP)");
-        }
-
-        // Wandering: the Tornado is a MOVING HAZARD, not a targeted strike -- it is
-        // born in front of the caster, drifts along the launch heading and weaves
-        // hard sideways (maxvariation is px/tick and dwarfs the drift), grinding
-        // whatever it touches every tick. So seed the area it will cross and check
-        // it chews through units over time rather than dealing one tap.
-        const sim::UnitType* witch = reg.find("tarwitch");
-        if (witch && prey && !witch->weapons.empty() &&
-            witch->weapons[0].kind == sim::Weapon::Kind::Wandering) {
-            sim::World w; freshWorld(w);
-            // This checks storm damage, not navigation/LoS through Inner Circle.
-            // Place the caster and victims on open terrain within firing range.
-            w.setTerrain(std::vector<uint8_t>(160 * 160, 100), 160, 160, 20);
-            w.buildNavClasses(reg);
-            float wx = 1000, wz = 1000;
-            legalSpot(w, witch, wx, wz);
-            int caster = w.spawn(witch, wx, wz, 0, 0);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-            // A dense field relative to the actual legal caster position (which
-            // can differ from the requested point on this terrain), across the
-            // whole region a 9-second tornado can reach
-            // (it drifts ~400px forward and wanders hundreds of px sideways), so the
-            // check does not depend on the exact RNG path.
-            std::vector<int> crowd;
-            for (int gz = 0; gz < 11; ++gz)
-                for (int gx = 0; gx < 11; ++gx)
-                    crowd.push_back(w.spawn(prey, wx - 100.0f + gx * 45.0f,
-                                            wz + 100.0f + gz * 45.0f, 0, 1));
-            float total0 = 0;
-            for (int id : crowd) if (auto* u = w.unit(id)) total0 += u->hp.toFloat();
-            for (int id : crowd) w.unit(id)->fireState = 0;
-            w.attack(caster, crowd[2], false);
-            int ticksWithDamage = 0;
-            size_t maxStorms = 0;
-            float last = total0;
-            for (int i = 0; i < 600; ++i) {
-                w.tick(1.0f / 30.0f);
-                maxStorms = std::max(maxStorms, w.storms().size());
-                float now = 0;
-                for (int id : crowd) if (const sim::Unit* u = w.unit(id); u && u->alive()) now += u->hp.toFloat();
-                if (now < last - 0.01f) ++ticksWithDamage;
-                last = now;
-            }
-            check(last < total0, "the tornado chewed through the crowd it crossed",
-                  "lost " + std::to_string(int(total0 - last)) + " HP; storms=" +
-                  std::to_string(maxStorms) + " caster=" + std::to_string(wx) + "," + std::to_string(wz));
-            check(ticksWithDamage > 5, "and it GRINDS continuously (many damage ticks)",
-                  std::to_string(ticksWithDamage) + " ticks dealt damage");
-        }
-
-        // Mind control: the Mind Mage converts an eligible enemy; a Monarch is immune.
-        const sim::UnitType* mage = reg.find("tarmind");
-        if (mage && prey && !mage->weapons.empty()) {
-            sim::World w; freshWorld(w);
-            int caster = w.spawn(mage, 1000, 1000, 0, 0);
-            int victim = w.spawn(prey, 1000, 1200, 0, 1);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-            w.attack(caster, victim, false);
-            bool converted = false;
-            for (int i = 0; i < 900; ++i) {
-                w.tick(1.0f / 30.0f);
-                const sim::Unit* v = w.unit(victim);
-                if (v && v->alive() && v->player == 0) { converted = true; break; }
-            }
-            check(converted, "the Mind Mage CONVERTED an enemy swordsman to its side");
-        }
-
-        // A Monarch must be IMMUNE (its DAMAGE category is zeroed) -- and must not
-        // be silently damaged by the 1-point nominal damage either.
-        const sim::UnitType* king = reg.find("araking");
-        if (mage && king) {
-            sim::World w; freshWorld(w);
-            int caster = w.spawn(mage, 1000, 1000, 0, 0);
-            int royal = w.spawn(king, 1000, 1200, 0, 1);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-            w.attack(caster, royal, false);
-            bool stolen = false;
-            for (int i = 0; i < 900; ++i) {
-                w.tick(1.0f / 30.0f);
-                const sim::Unit* v = w.unit(royal);
-                if (v && v->alive() && v->player == 0) { stolen = true; break; }
-            }
-            check(!stolen, "a Monarch resists mind control (commander gate)");
-        }
-
-        // Area Mind Control (Remote Effect + mindcontrol, aoe 250) should convert
-        // EVERY eligible enemy in the radius, not just one.
-        if (mage && prey && mage->weapons.size() > 1 &&
-            mage->weapons[1].kind == sim::Weapon::Kind::Remote &&
-            mage->weapons[1].mindControl) {
-            sim::World w; freshWorld(w);
-            int caster = w.spawn(mage, 1000, 1000, 0, 0);
-            int v1 = w.spawn(prey, 1000, 1150, 0, 1);
-            int v2 = w.spawn(prey, 1060, 1160, 0, 1);
-            int v3 = w.spawn(prey, 940, 1140, 0, 1);
-            if (auto* c = w.unit(caster)) c->mana = c->type->maxMana;
-            // A player selects the area spell (Ctrl+W cycles weapons); the sim fires
-            // whichever slot is selected, so pick slot 1 as a player would.
-            w.setWeapon(caster, 1);
-            w.attack(caster, v1, false);
-            int flipped = 0;
-            for (int i = 0; i < 1200; ++i) {
-                w.tick(1.0f / 30.0f);
-                flipped = 0;
-                for (int id : {v1, v2, v3})
-                    if (const sim::Unit* v = w.unit(id); v && v->alive() && v->player == 0) ++flipped;
-                if (flipped >= 2) break;
-            }
-            check(flipped >= 2, "Area Mind Control converts a GROUP",
-                  std::to_string(flipped) + " of 3 flipped");
-        }
-    }
+    // ---- 2c. (Kingdoms' Remote Effect / mind control spells) --------------
+    // Removed with the port to TA: TA has no remote-effect, hail, stone or mind
+    // control weapons (weapons/*.tdf carry none of those classes).
 
     // ---- 2d. dropped bombs ---------------------------------------------------
     if (want("rules")) {
         std::printf("[dropped bombs]\n");
-        // tarbeak's Egg Bomb is subtype=Dropped: released from the flyer and falls
-        // onto the ground beneath, so the bomber must OVERFLY its target rather
-        // than shooting from its nominal 200px range.
-        const sim::UnitType* bomber = reg.find("tarbeak");
-        const sim::UnitType* prey = reg.find("arasword");
+        // armthund's ARMBOMB is dropped=1: released from the flyer and falls onto
+        // the ground beneath it.
+        const sim::UnitType* bomber = reg.find("armthund");
+        const sim::UnitType* prey = reg.find("armpw");
         if (!bomber || !prey || bomber->weapons.empty()) std::printf("  (missing defs; skipped)\n");
         else {
             int slot = -1;
             for (size_t i = 0; i < bomber->weapons.size(); ++i)
                 if (bomber->weapons[i].kind == sim::Weapon::Kind::Dropped) { slot = int(i); break; }
-            check(slot >= 0, "tarbeak carries a Dropped weapon");
+            check(slot >= 0, "armthund carries a Dropped weapon");
             sim::World w;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
@@ -765,7 +505,6 @@ int main(int argc, char** argv) {
             sim::setupMatch(w, reg, cfg);
             int b = w.spawn(bomber, 1000, 1000, 0, 0);
             int v = w.spawn(prey, 1000, 1500, 0, 1);   // 500px away: well beyond a drop
-            if (auto* bu = w.unit(b)) bu->mana = bomber->maxMana;
             w.attack(b, v, false);
             float hp0 = w.unit(v)->hp.toFloat();
             bool hurt = false; float closest = 1e9f;
@@ -781,88 +520,25 @@ int main(int argc, char** argv) {
                 }
                 if (!vv->alive() || vv->hp.toFloat() < hp0) { hurt = true; break; }
             }
-            // Retail does NOT require an overflight: Dropped reverts to the plain
-            // 2D range test and the bomb's velocity is solved so it arrives over
-            // the aim point as it lands. So it releases inside its FBI range (200)
-            // and the bomb glides in.
-            check(closest < 220.0f, "the bomber closed to within its release range",
-                  "closest " + std::to_string(int(closest)) + "px");
-            check(hurt, "and its dropped bomb glided onto the target");
+            // How close a TA bomber flies before release is not pinned by the
+            // spec (docs/retail-*.md); what matters here is that the dropped bomb
+            // reaches the target.
+            check(hurt, "the bomber's dropped bomb landed on the target",
+                  "closest approach " + std::to_string(int(closest)) + "px");
         }
     }
 
-    // ---- 2e. automatic weapon selection --------------------------------------
+    // ---- 2e. multi-weapon units ---------------------------------------------
+    // (Kingdoms' weaponswitching casters have no TA counterpart: no TA FBI
+    // carries weaponswitching, so every TA unit works all of its weapons.)
     if (want("rules")) {
-        std::printf("[auto weapon selection]\n");
-        // Elsin carries Lightning (250px, free, 950), Meteor (400px, 200 mana,
-        // 2000) and Earthen Wave (120px, 900 mana, 5000). The sim used to fire slot
-        // 0 forever, so he cast Lightning all game and never spent a point of mana.
-        const sim::UnitType* king = reg.find("araking");
-        const sim::UnitType* prey = reg.find("arasword");
-        if (!king || !prey || king->weapons.size() < 3) std::printf("  (missing defs; skipped)\n");
-        else {
-            sim::World selection;
-            const int selected = selection.spawn(king, 1000, 1000, 0, 0);
-            auto* selectedUnit = selection.unit(selected);
-            const auto expectedSwitch = uint16_t(int32_t(king->weapons[1].reload*30.0));
-            check(king->weapons[1].switchReloadTicks == expectedSwitch,
-                  "Elsin's switch reload defaults to the authored reloadtime");
-            selection.setWeapon(selected,1);
-            check(selectedUnit->weaponSlot == 1 && selectedUnit->reloads[1] == expectedSwitch,
-                  "changing weapon starts its retail switch reload");
-            selectedUnit->reloads[1] = 7;
-            selection.setWeapon(selected,1);
-            selection.setWeapon(selected,-1);
-            selection.setWeapon(selected,3);
-            check(selectedUnit->weaponSlot == 1 && selectedUnit->reloads[1] == 7,
-                  "repeated and invalid selections preserve the selected weapon countdown");
-            auto runFight = [&](bool manualSlot0) {
-                sim::World w;
-                sim::MatchConfig cfg;
-                cfg.vfs = &vfs; cfg.mapPath = kMap;
-                cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-                cfg.slots[0].team = 0; cfg.slots[1].team = 1;
-                sim::setupMatch(w, reg, cfg);
-                int c = w.spawn(king, 1000, 1000, 0, 0);
-                if (auto* u = w.unit(c)) u->mana = king->maxMana;
-                if (manualSlot0) w.setWeapon(c, 0);      // player takes control
-                for (int i = 0; i < 40; ++i)
-                    w.spawn(prey, 1000.0f + (i % 8) * 30, 1150.0f + (i / 8) * 30, 0, 1);
-                bool used[3] = {false, false, false};
-                float prev[3] = {0, 0, 0};
-                for (int t = 0; t < 900; ++t) {
-                    w.tick(1.0f / 30.0f);
-                    const sim::Unit* u = w.unit(c);
-                    if (!u) break;
-                    for (int sl = 0; sl < 3; ++sl) {
-                        if (u->reloads[sl] > prev[sl] + 0.01f) used[sl] = true;
-                        prev[sl] = u->reloads[sl];
-                    }
-                }
-                int n = 0; for (bool b : used) if (b) ++n;
-                float manaLeft = w.unit(c) ? w.unit(c)->mana : -1;
-                return std::pair<int, float>{n, manaLeft};
-            };
-            auto [autoN, autoMana] = runFight(false);
-            // Elsin carries weaponswitching, so retail holds him on ONE weapon --
-            // the one the player picked (WEAPON1 by default). An earlier pass here
-            // had the sim auto-pick the biggest usable weapon, which made every
-            // Monarch, dragon and caster markedly stronger than retail.
-            check(king->weaponSwitching, "araking carries weaponswitching");
-            check(autoN == 1, "Elsin holds ONE weapon (the player's pick), like retail",
-                  std::to_string(autoN) + " of 3 used");
-            (void)autoMana;
-            auto [manualN, manualMana] = runFight(true);
-            check(manualN == 1, "and a Ctrl+W pick is still obeyed",
-                  std::to_string(manualN) + " weapon used");
-            (void)manualMana;
-        }
-
+        std::printf("[multi-weapon units]\n");
+        const sim::UnitType* prey = reg.find("armpw");
         // A multi-weapon unit WITHOUT weaponswitching fires every weapon
-        // independently -- retail's AA/ground turrets really do work both barrels.
-        const sim::UnitType* tower = reg.find("araat");
+        // independently: the Warrior's Light Cannon and E.M.G. both work.
+        const sim::UnitType* tower = reg.find("armwar");
         if (tower && prey && tower->weapons.size() > 1) {
-            check(!tower->weaponSwitching, "araat has NO weaponswitching (fires all)");
+            check(!tower->weaponSwitching, "armwar has NO weaponswitching (fires all)");
             sim::World w;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
@@ -870,7 +546,6 @@ int main(int argc, char** argv) {
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
             int t = w.spawn(tower, 1000, 1000, 0, 0);
-            if (auto* tu = w.unit(t)) tu->mana = tower->maxMana;
             for (int i = 0; i < 20; ++i) w.spawn(prey, 1000.0f + (i % 5) * 25, 1120.0f + (i / 5) * 25, 0, 1);
             bool used[3] = {false, false, false};
             bool eventsMatch=true;
@@ -888,21 +563,23 @@ int main(int argc, char** argv) {
             }
             int n = 0; for (bool b2 : used) if (b2) ++n;
             check(eventsMatch, "FireWeapon animation slots match reload starts independently of projectile timing");
-            check(n > 1, "araat fires BOTH of its weapons independently",
+            check(n > 1, "armwar fires BOTH of its weapons independently",
                   std::to_string(n) + " weapons fired");
         }
     }
 
-    // ---- 3. data-only mission + InitialMission ------------------------------
+    // ---- 3. campaign mission + InitialMission --------------------------------
+    // TA's campaign missions are pure data (maps/acNN.ota, no god script): the
+    // placed units' InitialMission= order queues (docs/retail-campaign.md 5.3)
+    // are the NPC choreography. ac06 queues factory waves ("b CORAK ...").
     if (want("rules")) {
-        std::printf("[data-only mission (.cob optional) + InitialMission]\n");
-        const std::string stem = "takmission05_dh";   // Book of Darien chapter 5: no .cob
-        bool hasCob = vfs.has("missions/" + stem + ".cob");
-        check(!hasCob, "takmission05_dh really ships no .cob");
+        std::printf("[campaign mission + InitialMission]\n");
+        const std::string stem = "ac06";
+        check(sim::isTaMission(vfs, stem), "ac06 is a TA campaign mission (maps/ac06.ota)");
         sim::World w;
         int human = 0;
         bool ok = sim::setupMission(w, reg, vfs, stem, human);
-        check(ok, "the data-only mission loads (used to abort on the missing cob)");
+        check(ok, "the mission loads");
         if (ok) {
             int alive = 0;
             for (const auto& u : w.units()) if (u.alive()) ++alive;
@@ -921,7 +598,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- 4. campaign conditions + the mission GET table ----------------------
+    // ---- 4. campaign conditions ----------------------------------------------
+    // The .ota [GlobalHeader] rules (docs/retail-campaign.md 5.4): polled once a
+    // second, and an outcome lands after a 5 s countdown.
     if (want("rules")) {
         std::printf("[campaign win/lose conditions]\n");
         auto runMission = [&](const char* stem, sim::World& w) {
@@ -934,86 +613,79 @@ int main(int argc, char** argv) {
                 if (w.missionOutcome()) break;
             }
         };
-        // takmission28_dh is an escort: NPCDERN must reach within two cells of Z=11 (victory) and losing
-        // every Dern is defeat. Neither condition was parsed, so it could not be
-        // won OR lost. (It is also one of the 11 missions that ship no .cob.)
-        const sim::UnitType* dern = reg.find("npcdern");
+        // ac03 is an escort: MoveUnitToRadius=ARMSPID,2058,2129,256 is the victory
+        // and AllUnitsKilledOfType=ARMSPID the defeat.
+        const sim::UnitType* spider = reg.find("armspid");
         {
             sim::World w;
-            if (runMission("takmission28_dh", w) && dern) {
+            const bool loaded = runMission("ac03", w);
+            check(loaded && spider, "ac03 loads");
+            if (loaded && spider) {
                 tickM(w, 2.0f);
                 check(w.missionOutcome() == 0, "escort mission does not resolve at the start");
+                int killed = 0;
                 for (auto& u : w.units())
-                    if (u.type == dern) if (auto* p = w.unit(u.id)) p->hp = sim::Fixed();
-                tickM(w, 3.0f);
-                check(w.missionOutcome() < 0, "losing every escorted unit is a DEFEAT");
+                    if (u.type == spider && u.player == 0)
+                        if (auto* p = w.unit(u.id)) { p->hp = sim::Fixed(); ++killed; }
+                tickM(w, 8.0f);
+                check(killed > 0 && w.missionOutcome() < 0, "losing every escorted Spider is a DEFEAT",
+                      std::to_string(killed) + " killed, outcome=" + std::to_string(w.missionOutcome()));
             }
         }
         {
             sim::World w;
-            if (runMission("takmission28_dh", w) && dern) {
+            if (runMission("ac03", w) && spider) {
                 tickM(w, 2.0f);
                 int moved = 0;
                 for (auto& u : w.units())
-                    if (u.alive() && u.type == dern)
-                        if (auto* p = w.unit(u.id)) { p->z = ta::sim::Fixed::fromInt(11 * 16); ++moved; }
-                tickM(w, 2.0f);
+                    if (u.alive() && u.type == spider && u.player == 0 && !moved)
+                        if (auto* p = w.unit(u.id)) {
+                            p->x = ta::sim::Fixed::fromInt(2058); p->z = ta::sim::Fixed::fromInt(2129);
+                            p->orders.clear(); ++moved;
+                        }
+                tickM(w, 8.0f);
                 check(moved > 0 && w.missionOutcome() > 0,
-                      "getting it within the native two-cell line tolerance is a VICTORY");
+                      "getting a Spider inside the authored radius is a VICTORY",
+                      "outcome=" + std::to_string(w.missionOutcome()));
             }
         }
-        // takmission11_dh: the human plays Taros and must keep TARPRIE2 alive.
+        // ac01: AllUnitsKilledOfType=ARMGATE -- the human must keep its Galactic
+        // Gate alive.
         {
             sim::World w;
-            const sim::UnitType* pr = reg.find("tarprie2");
-            if (runMission("takmission11_dh", w) && pr) {
+            const sim::UnitType* gate = reg.find("armgate");
+            if (runMission("ac01", w) && gate) {
                 tickM(w, 2.0f);   // let the condition arm (it must not fire at t=0)
+                check(w.missionOutcome() == 0, "ac01 does not resolve at the start");
+                int killed = 0;
                 for (auto& u : w.units())
-                    if (u.type == pr) if (auto* p = w.unit(u.id)) p->hp = sim::Fixed();
-                tickM(w, 3.0f);
-                check(w.missionOutcome() < 0, "AllUnitsKilledOfType protects YOUR units");
+                    if (u.type == gate) if (auto* p = w.unit(u.id)) { p->hp = sim::Fixed(); ++killed; }
+                tickM(w, 8.0f);
+                check(killed > 0 && w.missionOutcome() < 0, "AllUnitsKilledOfType protects YOUR units",
+                      "outcome=" + std::to_string(w.missionOutcome()));
             }
         }
-        // takmission04_ph wins on GET(5, player1) < 5 -- a living-unit count. While
-        // the GET table returned 0 for everything, that read as 0 < 5 and the
-        // mission declared victory almost immediately.
-        {
-            sim::World w;
-            if (runMission("takmission04_ph", w)) {
-                int alive = 0;
-                for (const auto& u : w.units()) if (u.alive()) ++alive;
-                tickM(w, 5.0f);
-                check(alive > 5 && w.missionOutcome() <= 0,
-                      "a unit-count victory no longer fires instantly",
-                      std::to_string(alive) + " units alive, outcome=" +
-                          std::to_string(w.missionOutcome()));
-            }
-        }
-        // GET's player argument is retail's 0-based record index (4d4060, the
-        // index Create takes): takmission04's GET(5, 1) counts Player2, the
-        // Veruna opponent. Until gap hunt 12 it counted Player1, the human, so
-        // losing your own army won the mission and beating Veruna did not.
+        // ac02 wins on KillUnitType=CORLAB,1: the human's own losses are no
+        // victory; killing the enemy's Kbot Lab is.
         for (bool ownSide : {true, false}) {
             sim::World w;
             int human = 0;
-            if (!sim::setupMission(w, reg, vfs, "takmission04_ph", human)) continue;
-            tickM(w, 1.0f);
-            int enemy = -1;
-            for (const auto& u : w.units())
-                if (u.alive() && u.player != human && !w.player(u.player).passiveNeutral) enemy = u.player;
-            const int side = ownSide ? human : enemy;
-            int left = 0;
-            for (const auto& u : w.units()) if (u.alive() && u.player == side) ++left;
+            if (!sim::setupMission(w, reg, vfs, "ac02", human)) { check(false, "ac02 loads"); continue; }
+            const sim::UnitType* lab = reg.find("corlab");
+            tickM(w, 2.0f);
+            check(w.missionOutcome() == 0, "a kill-count victory does not fire at the start");
+            int killed = 0;
             for (auto& u : w.units())
-                if (u.alive() && u.player == side && left > 3)
-                    if (auto* p = w.unit(u.id)) { p->hp = sim::Fixed(); --left; }
-            tickM(w, 5.0f);
+                if (u.alive() && (ownSide ? u.player == human && !u.type->commander
+                                          : u.player != human && u.type == lab))
+                    if (auto* p = w.unit(u.id)) { p->hp = sim::Fixed(); ++killed; }
+            tickM(w, 8.0f);
             if (ownSide)
-                check(enemy >= 0 && w.missionOutcome() != 1, "takmission04: losing your own army is no victory",
+                check(killed > 0 && w.missionOutcome() != 1, "ac02: losing your own army is no victory",
                       "outcome=" + std::to_string(w.missionOutcome()));
             else
-                check(enemy >= 0 && w.missionOutcome() == 1, "takmission04: Veruna down to three units is the victory",
-                      "outcome=" + std::to_string(w.missionOutcome()));
+                check(killed > 0 && w.missionOutcome() == 1, "ac02: destroying the CORE Kbot Lab is the victory",
+                      std::to_string(killed) + " labs, outcome=" + std::to_string(w.missionOutcome()));
         }
     }
 
@@ -1032,7 +704,7 @@ int main(int argc, char** argv) {
             cfg.startSeed = seed;
             cfg.slots.resize(4);
             for (int i = 0; i < 4; ++i) { cfg.slots[size_t(i)].used = true;
-                                          cfg.slots[size_t(i)].faction = i % 5;
+                                          cfg.slots[size_t(i)].faction = i % 2;   // ARM / CORE
                                           cfg.slots[size_t(i)].team = uint8_t(i); }
             return sim::setupMatch(w, reg, cfg);
         };
@@ -1041,53 +713,52 @@ int main(int argc, char** argv) {
         auto randA = startsFor(true, 111), randA2 = startsFor(true, 111);
         check(randA == randA2, "the same seed reproduces the same arrangement");
         auto randB = startsFor(true, 999);
+        // The map's whole start table: Ashap Plateau authors ten StartPos
+        // specials, so a 4-seat shuffle draws its spots from all ten.
+        std::vector<std::pair<float, float>> table;
+        {
+            sim::World w;
+            sim::MatchConfig cfg;
+            cfg.vfs = &vfs; cfg.mapPath = kMap;
+            cfg.slots.resize(4);
+            for (int i = 0; i < 4; ++i) { cfg.slots[size_t(i)].used = true; cfg.slots[size_t(i)].faction = i % 2;
+                                          cfg.slots[size_t(i)].team = uint8_t(i); }
+            sim::setupMatch(w, reg, cfg, &table);
+        }
         bool moved = randA != fixedA || randB != fixedA;
         check(moved, "a shuffled match doesn't just hand back the fixed order");
-        bool sameSet = true;
-        {
-            auto a = fixedA, b = randA;
-            std::sort(a.begin(), a.end()); std::sort(b.begin(), b.end());
-            sameSet = a == b;
-        }
-        check(sameSet, "the shuffle permutes the map's starts, it doesn't invent them");
+        bool sameSet = !randA.empty();
+        for (const auto* arrangement : {&randA, &randB})
+            for (const auto& spot : *arrangement)
+                sameSet = sameSet && std::find(table.begin(), table.end(), spot) != table.end();
+        check(sameSet, "the shuffle draws from the map's starts, it doesn't invent them",
+              std::to_string(table.size()) + " starts in the table");
     }
 
     // --- Tier-4 "cosmetic lows" ------------------------------------------
     // Several of these are display-only, but they all start with an FBI field that
     // must actually reach UnitType/Weapon -- which is the part that silently rots.
+    // (Kingdoms' ghost and transportdistance keys have no TA counterpart.)
     if (want("rules")) {
         std::printf("[cosmetic lows: FBI fields reach the registry]\n");
         auto ut = [&](const char* id) { return reg.find(id); };
-        if (const auto* wall = ut("arawall"))
-            check(wall->noShadow, "arawall carries noshadow");
-        if (const auto* harp = ut("verharp"))
-            check(harp->floater, "verharp is a floater (retail draws it no shadow)");
-        if (const auto* god = ut("aragod")) {
-            check(god->canHover, "aragod wades (canhover)");
-            check(god->waterline == 40, "and sinks to its waterline",
-                  "waterline=" + std::to_string(god->waterline));
+        if (const auto* tide = ut("armtide"))
+            check(tide->noShadow, "armtide carries noshadow");
+        if (const auto* boat = ut("armpt"))
+            check(boat->floater, "armpt is a floater");
+        if (const auto* amph = ut("armamph")) {
+            check(amph->canHover, "armamph wades (canhover)");
+            check(amph->waterline == 9, "and sinks to its waterline",
+                  "waterline=" + std::to_string(amph->waterline));
         }
-        if (const auto* gg = ut("cregod"))
-            check(gg->ghost, "the Ghost of Garacaius is a ghost (translucent)");
-        // Shadow suppression is the render rule those flags feed.
-        if (const auto* wall = ut("arawall"))
-            check(!(wall->maxVel > sim::Fixed()) || !wall->noShadow, "a wall is a structure anyway");
-        if (const auto* trans = ut("aratrans"))
-            check(int(trans->transportDist) == 419,
-                  "aratrans loads from its own transportdistance, not a constant 70",
-                  std::to_string(int(trans->transportDist)) + "px");
-        // turninplacerate: present on most movers, and our default falls back to
-        // turnrate rather than retail's 0 (which would freeze a pivot entirely).
-        if (const auto* sw = ut("arasword"))
-            check(sw->turnInPlaceRate > 0, "a swordsman can pivot on the spot",
-                  std::to_string(sw->turnInPlaceRate));
+        // (turninplacerate is a Kingdoms key with no TA counterpart.)
     }
     // The turn/brake coupling replaced a flat "big turn -> 30% speed" cliff with
     // retail's arc-distance rule. The risk is a unit that brakes forever and never
     // arrives, so test arrival on a straight run AND on a right-angle dogleg.
     if (want("rules")) {
         std::printf("[turn/brake coupling]\n");
-        const sim::UnitType* sw = reg.find("arasword");
+        const sim::UnitType* sw = reg.find("armpw");
         if (sw) {
             sim::World w;
             sim::MatchConfig cfg;
@@ -1098,69 +769,55 @@ int main(int argc, char** argv) {
             // heading 0 faces +Z and pi/2 faces +X, so ordering a unit due +X gives
             // an aligned start or a 90-degree departure depending on which we spawn
             // with. Same corridor for both, so terrain can't explain a difference.
+            float ox = 0, oz = 0;
+            check(openApron(w, sw, 24, ox, oz), "the map has an open corridor for the run");
             auto runTo = [&](float sz, float head, float secs) {
-                int id = w.spawn(sw, 600, sz, head, 0);
-                w.order(id, 900, sz, false);
+                int id = w.spawn(sw, ox, sz, head, 0);
+                w.order(id, ox + 300, sz, false);
                 for (int i = 0; i < int(secs * 30); ++i) w.tick(1.0f / 30.0f);
                 const sim::Unit* u = w.unit(id);
-                float dx = u->x.toFloat() - 900.0f, dz = u->z.toFloat() - sz;
+                float dx = u->x.toFloat() - (ox + 300.0f), dz = u->z.toFloat() - sz;
                 return std::sqrt(dx * dx + dz * dz);
             };
-            float aligned = runTo(600, 1.5707963f, 20.0f);
+            float aligned = runTo(oz + 64, 1.5707963f, 20.0f);
             check(aligned < 48.0f, "a 300px run with an aligned start arrives",
                   std::to_string(int(aligned)) + "px short");
-            float turning = runTo(640, 0.0f, 20.0f);
+            float turning = runTo(oz + 160, 0.0f, 20.0f);
             check(turning < 48.0f, "and so does a 90-degree departure",
                   std::to_string(int(turning)) + "px short");
         }
     }
 
-    // --- missed shots land; lobbers shoot over walls ----------------------
+    // --- ballistic shells vs line-of-sight shots -------------------------
+    // TA has no lobpreferred / gravityadjustment / dontleadtargets keys (those
+    // checks were Kingdoms'); what carries over is which shots need the 2D clear
+    // line: a ballistic shell's 3D arc decides (retail), a lineofsight shot does.
     if (want("rules")) {
-        std::printf("[ballistic: fields + lobbing]\n");
+        std::printf("[ballistic: fields + clear line]\n");
         auto wpn = [&](const char* id, int slot) -> const sim::Weapon* {
             const sim::UnitType* t = reg.find(id);
             if (!t || int(t->weapons.size()) <= slot) return nullptr;
             return &t->weapons[size_t(slot)];
         };
-        if (const sim::Weapon* w = wpn("arapult", 0)) {
-            check(w->lobPreferred, "the Aramon catapult lobs");
-            check(std::abs(w->gravityAdj - 4.25f) < 0.01f,
-                  "and carries its own gravityadjustment",
-                  std::to_string(w->gravityAdj));
-            check(w->aoe > 0, "its cannonball has a blast radius");
+        if (const sim::Weapon* w = wpn("armham", 0)) {
+            check(w->ballisticClass() && !w->needsClearLine(), "the Hammer's plasma shell needs no 2D line");
+            check(w->aoe > 0, "its shell has a blast radius");
         }
-        if (const sim::Weapon* w = wpn("arabow", 0))
-            check(!w->lobPreferred, "an archer does not lob");
-        // The 2D clear-line gate is decided per weapon: every plain Ballistic
-        // shell is exempt (its 3D arc decides, as in retail), lobbed or not;
-        // a shot that flies the line is not.
-        if (const sim::Weapon* w = wpn("vermort", 0))
-            check(!w->needsClearLine(), "the Veruna mortar's shell needs no 2D line");
-        if (const sim::Weapon* w = wpn("aratre", 0))
-            check(w->ballisticClass() && !w->lobPreferred && !w->needsClearLine(),
-                  "nor does the Trebuchet's (Ballistic, not lobpreferred)");
-        if (const sim::Weapon* w = wpn("arabow", 0))
-            check(!w->needsClearLine(), "nor an archer's arrow (Ballistic)");
-        if (const sim::Weapon* w = wpn("arasiege", 1))
-            check(w->straight && w->needsClearLine(), "a line-of-sight shot does");
-        // dontleadtargets ships only on Dropped bombs, whose weaponvelocity is a
-        // fall parameter -- leading on it would throw the aim point off the map.
-        int noLead = 0;
-        for (const auto& [id, t] : reg.types())
-            for (const auto& w : t.weapons)
-                if (w.noLead) ++noLead;
-        check(noLead > 0, "dontleadtargets reaches the registry",
-              std::to_string(noLead) + " weapon blocks");
+        if (const sim::Weapon* w = wpn("cormort", 0))
+            check(w->ballisticClass() && !w->needsClearLine(), "nor does the Morty's");
+        if (const sim::Weapon* w = wpn("armpw", 0))
+            check(w->straight && w->needsClearLine(), "a lineofsight E.M.G. shot does");
+        if (const sim::Weapon* w = wpn("corak", 0))
+            check(w->beam && w->needsClearLine(), "and so does a laser beam");
     }
     // A missed splash shell must crater. Fire a catapult, wait for the shell to be
     // in the air, then move the target out from under it -- the shell must still
     // land where it was aimed and splash whatever is standing there.
-    // Every faction's wall must actually block. Two of the four declare canmove=1
-    // with no velocity, so a canMove gate left them blocking nothing at all.
+    // Every wall-like structure must actually block: both sides' Dragon's Teeth
+    // and Fortification Walls.
     if (want("rules")) {
-        std::printf("[walls block, all four factions]\n");
-        for (const char* id : {"arawall", "crewall", "verwall", "tarwall"}) {
+        std::printf("[walls block, both sides]\n");
+        for (const char* id : {"armdrag", "cordrag", "armfort", "corfort"}) {
             const sim::UnitType* t = reg.find(id);
             if (!t) continue;
             sim::World w;
@@ -1169,8 +826,8 @@ int main(int argc, char** argv) {
             cfg.mapPath = kMap;
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             sim::setupMatch(w, reg, cfg);
-            // Find open ground rather than assuming a cell: Inner Circle is mostly
-            // blocked terrain and a hardcoded cell tests nothing.
+            // Find open ground rather than assuming a cell: a hardcoded cell on
+            // blocked terrain tests nothing.
             int cx = -1, cz = -1;
             for (int j = 30; j < 70 && cx < 0; ++j)
                 for (int i = 30; i < 70; ++i)
@@ -1190,8 +847,8 @@ int main(int argc, char** argv) {
     }
     if (want("rules")) {
         std::printf("[a missed shell craters]\n");
-        const sim::UnitType* pult = reg.find("arapult");
-        const sim::UnitType* vic = reg.find("arasword");
+        const sim::UnitType* pult = reg.find("corgol");   // Goliath: Heavy Cannon, ballistic, aoe 64
+        const sim::UnitType* vic = reg.find("armpw");
         if (pult && vic) {
             sim::World w;
             sim::MatchConfig cfg;
@@ -1200,17 +857,19 @@ int main(int argc, char** argv) {
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
-            int gun = w.spawn(pult, 600, 900, 0, 0);
-            int mark = w.spawn(vic, 900, 900, 0, 1);
+            float gx = 0, gz = 0;
+            check(openApron(w, pult, 30, gx, gz), "the map has open ground for the range");
+            gz += 160;
+            int gun = w.spawn(pult, gx, gz, 0, 0);
+            int mark = w.spawn(vic, gx + 300, gz, 0, 1);
             // A body apart from the mark (a footprint is 32px): bodies spawned
             // inside each other share the body plane's cells, and the splash
-            // reads one occupant per cell. This shell lands at about (911,873),
-            // so the friendly stands on that side of the aim point.
-            int bystander = w.spawn(vic, 932, 900, 0, 1);   // beside the aim point
-            int friendly = w.spawn(vic, 900, 868, 0, 0);    // retail blast also hits allies
-            // The splashed swordsmen see each other: on Fire At Will they
-            // fight, and their own blows draw at the same site. Passive, they
-            // hold fire, so every draw here is the shell's.
+            // reads one occupant per cell.
+            int bystander = w.spawn(vic, gx + 332, gz, 0, 1);   // beside the aim point
+            int friendly = w.spawn(vic, gx + 300, gz - 32, 0, 0); // retail blast also hits allies
+            // The splashed Peewees see each other: on Fire At Will they fight,
+            // and their own shots draw at the same site. Holding fire, every
+            // draw here is the shell's.
             for (int id : {mark, bystander, friendly}) w.setStance(id, 2);
             // A unit killed outright may be gone from the table.
             auto hpOf = [&](int id) { const sim::Unit* u = w.unit(id); return u ? u->hp.toFloat() : -1.0e9f; };
@@ -1244,11 +903,11 @@ int main(int argc, char** argv) {
                     flew = true;
                     // Yank the target well clear, so the shell cannot connect.
                     sim::Unit* m = w.unit(mark);
-                    m->x = ta::sim::Fixed::fromInt(600); m->z = ta::sim::Fixed::fromInt(1400);
+                    m->x = ta::sim::Fixed::fromFloat(gx); m->z = ta::sim::Fixed::fromFloat(gz + 400); m->orders.clear();
                     moved = true;
                 }
             }
-            check(flew, "the catapult actually fired");
+            check(flew, "the Goliath actually fired");
             float by1 = hpOf(bystander);
             float friendly1 = hpOf(friendly);
             check(by1 < by0, "the shell still lands and splashes the aim point",
@@ -1266,8 +925,8 @@ int main(int argc, char** argv) {
     // life<=0 expiry and the direct hit can coincide -- that is what `spent` guards).
     if (want("rules")) {
         std::printf("[a hit does not double-dip]\n");
-        const sim::UnitType* pult = reg.find("arapult");
-        const sim::UnitType* vic = reg.find("araking");   // tough enough to survive
+        const sim::UnitType* pult = reg.find("corgol");
+        const sim::UnitType* vic = reg.find("armcom");   // tough enough to survive
         if (pult && vic) {
             sim::World w;
             sim::MatchConfig cfg;
@@ -1276,19 +935,30 @@ int main(int argc, char** argv) {
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
-            int gun = w.spawn(pult, 600, 1100, 0, 0);
-            int sitting = w.spawn(vic, 900, 1100, 0, 1);   // stationary: no lead, direct hit
+            float gx = 0, gz = 0;
+            openApron(w, pult, 30, gx, gz);
+            gz += 160;
+            int gun = w.spawn(pult, gx, gz, 0, 0);
+            int sitting = w.spawn(vic, gx + 300, gz, 0, 1);   // stationary: no lead, direct hit
+            w.setStance(sitting, 2);                         // hold fire: no reply to soak shells
             float hp0 = w.unit(sitting)->hp.toFloat();
             w.attack(gun, sitting, false);
-            // Long enough for exactly one shell to be fired and to land, but well
-            // inside the 6.5s reload so a second can't confuse the total.
-            for (int i = 0; i < 30 * 6; ++i) w.tick(1.0f / 30.0f);
+            // Count the shells that left the barrel, and allow for the last one
+            // still in flight: the loss must stay within one shell's damage per shell.
+            int shells = 0;
+            for (int i = 0; i < 30 * 6; ++i) {
+                w.tick(1.0f / 30.0f);
+                if (const sim::Unit* g = w.unit(gun); g && g->justFired) ++shells;
+            }
+            w.stop(gun);                                         // no more shells...
+            for (int i = 0; i < 60; ++i) w.tick(1.0f / 30.0f);   // ...and the last one lands
             float lost = hp0 - w.unit(sitting)->hp.toFloat();
             const sim::Weapon& cw = pult->weapons[0];
             float once = cw.damageVs(vic);
-            check(lost <= once * 1.60f,
-                  "one shell deals about one shell's damage, not two",
-                  std::to_string(int(lost)) + " vs " + std::to_string(int(once)));
+            check(shells > 0 && lost > 0 && lost <= once * 1.50f * float(shells),
+                  "each shell deals about one shell's damage, not two",
+                  std::to_string(int(lost)) + " lost to " + std::to_string(shells) + " shells of " +
+                      std::to_string(int(once)));
         }
     }
 
@@ -1297,7 +967,7 @@ int main(int argc, char** argv) {
     // army still move". Test both, and test the corridor case that deadlocks first.
     if (want("rules")) {
         std::printf("[units are solid]\n");
-        const sim::UnitType* sw = reg.find("arasword");
+        const sim::UnitType* sw = reg.find("armpw");
         if (sw) {
             // (a) A parked body blocks: walk one unit into a stationary one and
             //     assert it cannot pass through.
@@ -1307,10 +977,13 @@ int main(int argc, char** argv) {
                 cfg.vfs = &vfs; cfg.mapPath = kMap;
                 cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
                 sim::setupMatch(w, reg, cfg);
-                int blocker = w.spawn(sw, 700, 600, 0, 0);
-                int walker = w.spawn(sw, 640, 600, 0, 0);
+                float ox = 0, oz = 0;
+                check(openApron(w, sw, 26, ox, oz), "open ground for the body fixtures");
+                oz += 128;   // the row through the middle of the apron
+                int blocker = w.spawn(sw, ox + 60, oz, 0, 0);
+                int walker = w.spawn(sw, ox, oz, 0, 0);
                 for (int i = 0; i < 30 * 10; ++i) w.tick(1.0f / 30.0f);   // settle
-                w.order(walker, 800, 600, false);                          // straight through
+                w.order(walker, ox + 160, oz, false);                      // straight through
                 // Sample every tick, not just the end: a single final position
                 // cannot tell "went around" from "went through and kept going",
                 // and that is exactly how a 13px interpenetration hid behind a
@@ -1342,11 +1015,12 @@ int main(int argc, char** argv) {
                 // assertion that used to stand here -- walker held short of 760 --
                 // pinned OUR pre-port behaviour, where bodies were invisible to the
                 // search and the mover wedged against the blocker instead.
-                const float ax = m->x.toFloat() - 800.0f, az = m->z.toFloat() - 600.0f;
+                const float ax = m->x.toFloat() - (ox + 160), az = m->z.toFloat() - oz;
                 check(std::sqrt(ax * ax + az * az) < 48.0f,
                       "...and still arrives, because the route bends around the body",
                       "walker (" + std::to_string(int(m->x.toFloat())) + "," +
-                          std::to_string(int(m->z.toFloat())) + "), goal (800,600)");
+                          std::to_string(int(m->z.toFloat())) + "), goal (" +
+                          std::to_string(int(ox + 160)) + "," + std::to_string(int(oz)) + ")");
                 check(std::fabs(b->x.toFloat() - bx0) < 1.0f &&
                           std::fabs(b->z.toFloat() - bz0) < 1.0f,
                       "...and nothing shoved the parked blocker",
@@ -1373,11 +1047,14 @@ int main(int argc, char** argv) {
                 cfg.vfs = &vfs; cfg.mapPath = kMap;
                 cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
                 sim::setupMatch(w, reg, cfg);
-                int blocker = w.spawn(sw, 700, 600, 0, 0);
-                int walker = w.spawn(sw, 640, 600, 0, 0);
+                float ox = 0, oz = 0;
+                openApron(w, sw, 26, ox, oz);
+                oz += 128;
+                int blocker = w.spawn(sw, ox + 60, oz, 0, 0);
+                int walker = w.spawn(sw, ox, oz, 0, 0);
                 for (int i = 0; i < 30 * 10; ++i) w.tick(1.0f / 30.0f);
                 const float bx0 = w.unit(blocker)->x.toFloat(), bz0 = w.unit(blocker)->z.toFloat();
-                w.order(walker, 704, 600, false);   // just past the body: head-on
+                w.order(walker, ox + 64, oz, false);   // just past the body: head-on
                 float closest = 1e9f;
                 float maxX = -1e9f;
                 for (int i = 0; i < 30 * 10; ++i) {
@@ -1427,6 +1104,8 @@ int main(int argc, char** argv) {
                 cfg.vfs = &vfs; cfg.mapPath = kMap;
                 cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
                 sim::setupMatch(w, reg, cfg);
+                float ox = 0, oz = 0;
+                check(openApron(w, sw, 26, ox, oz), "open ground for the army");
                 std::vector<int> army;
                 // 40px pitch: footprints are 32px, so the ranks spawn CLEAR of each
                 // other. The old 20px pitch spawned every unit 12px inside its
@@ -1435,9 +1114,10 @@ int main(int argc, char** argv) {
                 // sim digs itself out of it is retail behaviour worth pinning.
                 for (int j = 0; j < 4; ++j)
                     for (int i = 0; i < 6; ++i)
-                        army.push_back(w.spawn(sw, 600.0f + float(i) * 40.0f,
-                                               600.0f + float(j) * 40.0f, 0, 0));
-                for (int id : army) w.order(id, 900, 700, false);
+                        army.push_back(w.spawn(sw, ox + float(i) * 40.0f,
+                                               oz + float(j) * 40.0f, 0, 0));
+                const float gx = ox + 300, gz = oz + 100;
+                for (int id : army) w.order(id, gx, gz, false);
                 // Record each goal's failure-expanded radius before dispatch
                 // removes it. Traffic-scoring tolerance is not mission arrival.
                 std::vector<uint32_t> radii(army.size(), 0);
@@ -1450,18 +1130,22 @@ int main(int argc, char** argv) {
                 int arrived = 0, givenUp = 0, close = 0;
                 for (size_t i = 0; i < army.size(); ++i) {
                     const auto* u = w.unit(army[i]);
-                    const float dx = u->x.toFloat() - 900, dz = u->z.toFloat() - 700;
+                    const float dx = u->x.toFloat() - gx, dz = u->z.toFloat() - gz;
                     const float accepted = float(radii[i] + 4) + 23.0f;
                     close += std::max(std::fabs(dx), std::fabs(dz)) <= 144;
                     if (dx * dx + dz * dz <= accepted * accepted) ++arrived;
                     else if (u->orders.empty()) ++givenUp;
                 }
-                check(arrived >= 21,
-                      "an army of 24 reaches its failure-expanded mission circles",
-                      std::to_string(arrived) + "/24 accepted; " + std::to_string(close) + "/24 within 144px");
-                check(givenUp == 0,
-                      "no army member abandons an order outside its mission circle",
-                      std::to_string(givenUp) + " idle outside their circles");
+                // TA's move is a circle of the order radius + 4 (0x403238), and a
+                // goal the navigator cannot reach -- here, a point the crowd has
+                // already filled -- ends the order with 0x40 where the unit stands
+                // (docs/retail-pathfinding.md 2, 3.1). So the Kingdoms check that
+                // every member reaches a failure-expanded circle is gone; what
+                // stays is that the army MOVES and gathers at the goal.
+                (void)arrived; (void)givenUp;
+                check(close >= 21,
+                      "an army of 24 crosses open ground and gathers at its goal",
+                      std::to_string(close) + "/24 within 144px; " + std::to_string(arrived) + "/24 inside the order circle");
             }
             // (c) REMOVED 2026-09-15. It asserted that two columns marching head-on
             //     pass through each other ("two moving units can never block one
@@ -1480,18 +1164,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Mobile units take their footprint from the movement class, not their own FBI:
-    // 125 of 152 movers declare no footprintx at all, and not one is 1x1.
+    // Mobile units take their footprint from the movement class: retail ignores
+    // the FBI's own footprint when the class is found (docs/retail-data.md 2.2).
     if (want("rules")) {
         std::printf("[movementclass footprints]\n");
         struct Want { const char* id; int f; const char* cls; };
         const Want want[] = {
-            {"arasword", 2, "GROUND2"}, {"araarch", 2, "GROUND2"},
-            {"arapult",  4, "GROUND4"},
-            // The Trebuchet declares footprintx=7 in its own FBI and has NO
-            // movement class -- the one case where the FBI is the source, and a
-            // reminder that footprints are not capped by the class table.
-            {"aratre",   7, "(own FBI)"},
+            {"armpw", 2, "TANKSH2"}, {"armcom", 2, "TANKDS2"},
+            {"armsh", 3, "TANKHOVER3"}, {"armspid", 3, "SPID3"},
         };
         for (const auto& wt : want)
             if (const sim::UnitType* t = reg.find(wt.id))
@@ -1510,60 +1190,8 @@ int main(int argc, char** argv) {
               std::to_string(ones) + " of " + std::to_string(movers) + " still 1x1");
     }
 
-    // A '.' cell is not part of a building's footprint: retail runs no test on it.
-    // The Keep has two full rows of them, so a tree parked there used to deny a
-    // placement retail allows.
-    if (want("rules")) {
-        std::printf("[yardmap-aware placement]\n");
-        const sim::UnitType* keep = reg.find("arakeep");
-        if (keep && !keep->yardMap.empty()) {
-            int dots = 0;
-            for (char c : keep->yardMap) if (c == '.' || c == ' ') ++dots;
-            check(dots > 0, "the Keep's yardmap has non-footprint cells",
-                  std::to_string(dots) + " of " +
-                      std::to_string(keep->footX * keep->footZ));
-            sim::World w;
-            sim::MatchConfig cfg;
-            cfg.vfs = &vfs; cfg.mapPath = kMap;
-            cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-            sim::setupMatch(w, reg, cfg);
-            // Find open ground the Keep fits on, then block one cell that the
-            // yardmap marks '.' and assert the placement still stands.
-            int bx = -1, bz = -1;
-            for (int z = 20; z < 90 && bx < 0; ++z)
-                for (int x = 20; x < 90; ++x) {
-                    float wx = float(x) * 16 + 8, wz = float(z) * 16 + 8;
-                    if (w.canPlace(keep, wx, wz)) { bx = x; bz = z; break; }
-                }
-            if (bx < 0) { check(false, "found somewhere the Keep fits"); }
-            else {
-                // Locate a '.' cell in the yardmap and block exactly that world cell.
-                int dotI = -1, dotJ = -1;
-                for (int j = 0; j < keep->footZ && dotI < 0; ++j)
-                    for (int i = 0; i < keep->footX; ++i)
-                        if (keep->yardMap[size_t(j) * keep->footX + i] == '.') {
-                            dotI = i; dotJ = j; break;
-                        }
-                int ox = sim::footprintOrigin(float(bx) * 16 + 8, keep->footX);
-                int oz = sim::footprintOrigin(float(bz) * 16 + 8, keep->footZ);
-                w.blockCells(ox + dotI, oz + dotJ, 1, 1, true);
-                float wx = float(bx) * 16 + 8, wz = float(bz) * 16 + 8;
-                check(w.canPlace(keep, wx, wz),
-                      "a blocked '.' cell does not deny the placement",
-                      "cell " + std::to_string(dotI) + "," + std::to_string(dotJ));
-                // ...but a blocked 'o' cell must still deny it.
-                int solidI = -1, solidJ = -1;
-                for (int j = 0; j < keep->footZ && solidI < 0; ++j)
-                    for (int i = 0; i < keep->footX; ++i) {
-                        char c = keep->yardMap[size_t(j) * keep->footX + i];
-                        if (c != '.' && c != ' ') { solidI = i; solidJ = j; break; }
-                    }
-                w.blockCells(ox + solidI, oz + solidJ, 1, 1, true);
-                check(!w.canPlace(keep, wx, wz),
-                      "a blocked footprint cell still denies it");
-            }
-        }
-    }
+    // (Kingdoms' "a '.' yardmap cell is not footprint" placement check: no TA
+    // yardmap carries '.', docs/retail-data.md 2.4.)
 
     // ---- queued orders on ordinary mobile units -----------------------------
     // A single player order can expand into a whole route, so the order queue
@@ -1578,8 +1206,8 @@ int main(int argc, char** argv) {
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
         };
-        const sim::UnitType* sword = reg.find("arasword");
-        check(sword && sword->canMove, "arasword is a plain mobile non-builder");
+        const sim::UnitType* sword = reg.find("armpw");
+        check(sword && sword->canMove && !sword->isBuilder, "armpw is a plain mobile non-builder");
         if (sword && sword->canMove) {
             // Two queued legs: out to A, then on to B. The unit must visit A
             // BEFORE B -- not cut straight to the last one.
@@ -1636,8 +1264,10 @@ int main(int argc, char** argv) {
             // one, so after ~2s it looks permanently stuck: the watchdog fires,
             // routes straight to the final leg, and the outbound leg is gone.
             sim::World w2; freshWorld(w2);
-            const float homeX = 448, homeZ = 2624;   // open ground with a real route
-            const float outX = 848, outZ = 2624;     // leg 1: east, AWAY from...
+            float homeX = 0, homeZ = 0;              // open ground with a real route
+            openApron(w2, sword, 28, homeX, homeZ);
+            homeZ += 128;
+            const float outX = homeX + 400, outZ = homeZ;   // leg 1: east, AWAY from...
             const float backX = homeX, backZ = homeZ; // leg 2: ...back where we began
             int id2 = w2.spawn(sword, homeX, homeZ, 0, 0);
             w2.order(id2, outX, outZ, false);
@@ -1656,16 +1286,20 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- fireatwillrandom: missile troops spread their fire ------------------
-    // Retail scores auto-acquired candidates n = dist^2/damage and keeps the
-    // lowest of rand(n)/2 + rand(n); the flag swaps dist^2 for INT_MAX, so the
-    // pick stops preferring the nearest body. A rank of archers should therefore
-    // cover noticeably more of a crowd than the same number of swordsmen.
+    // ---- auto-acquisition is deterministic ----------------------------------
+    // Kingdoms' fireatwillrandom (missile troops scattering their fire) has no TA
+    // counterpart: no TA FBI carries the key. What stays is the property the
+    // spread check leaned on: auto-acquired picks come from the synced draws, so
+    // the same world picks the same targets on every peer.
     if (want("fireatwill")) {
-        auto rank = [&](const char* who, uint32_t seed, int& distinct, int& maxOnOne) {
+        std::printf("[auto-acquisition]\n");
+        int flagged = 0;
+        for (const auto& [id, t] : reg.types()) if (t.fireAtWillRandom) ++flagged;
+        check(flagged == 0, "no TA unit carries Kingdoms' fireatwillrandom", std::to_string(flagged));
+        auto rank = [&](const char* who, uint32_t seed, int& distinct, int& maxOnOne, int& picks) {
             const sim::UnitType* sh = reg.find(who);
-            const sim::UnitType* prey = reg.find("arasword");
-            distinct = maxOnOne = 0;
+            const sim::UnitType* prey = reg.find("armpw");
+            distinct = maxOnOne = picks = 0;
             if (!sh || !prey) return;
             sim::World w;
             sim::MatchConfig cfg;
@@ -1674,61 +1308,37 @@ int main(int argc, char** argv) {
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
             w.setGameSeed(seed);
-            // Two ranks rather than one long line, spaced so no body starts
-            // inside another (a footprint is 32px; the old 20/22px pitch spawned
-            // them INTERPENETRATING). That used to be invisible because the
-            // separation pass shoved them apart over the first few ticks, so the
-            // spread this test reads was partly an artifact of that shoving
-            // rather than of the acquisition rule it is about. Retail does not
-            // spawn bodies inside each other; neither should the fixture. The
-            // block keeps roughly the old footprint so the range picture holds.
+            float ox = 0, oz = 0;
+            openApron(w, sh, 24, ox, oz);
+            // Two ranks, spaced so no body starts inside another (32px footprints).
             for (int i = 0; i < 12; ++i)
-                w.spawn(sh, 900.0f + float(i % 6) * 36, 2500.0f + float(i / 6) * 36, 0, 0);
+                w.spawn(sh, ox + float(i % 6) * 36, oz + float(i / 6) * 36, 0, 0);
             for (int i = 0; i < 8; ++i)
-                w.spawn(prey, 950.0f + float(i % 4) * 36, 2760.0f + float(i / 4) * 36, 0, 1);
+                w.spawn(prey, ox + 50 + float(i % 4) * 36, oz + 160 + float(i / 4) * 36, 0, 1);
             for (int i = 0; i < 10; ++i) w.tick(1.0f / 30.0f);
-            // A leashed swordsman's pick is an attack order; a hold-position
-            // archer gets none (4d7de0: auto on Hold Position issues nothing)
-            // and its pick is the fire-at-will sweep's slot target.
             std::map<int, int> tally;
             for (const auto& u : w.units()) {
                 if (!u.alive() || u.player != 0) continue;
                 int t = u.orders.empty() ? 0 : u.orders.front().targetId;
                 for (int s = 0; s < 3 && !t; ++s) t = u.slotTarget[size_t(s)];
-                if (t) tally[t]++;
+                if (t) { tally[t]++; ++picks; }
             }
             distinct = int(tally.size());
             for (auto& [t, n] : tally) maxOnOne = std::max(maxOnOne, n);
         };
-        const sim::UnitType* archer = reg.find("araarch");
-        check(archer && archer->fireAtWillRandom, "araarch parses fireatwillrandom");
-        const sim::UnitType* sword = reg.find("arasword");
-        check(sword && !sword->fireAtWillRandom, "arasword does not carry it");
-        int aDistinct = 0, aMax = 0, sDistinct = 0, sMax = 0;
-        int firstDistinct=0,firstMaximum=0;
-        // Spread is statistical; one valid creation-RNG sequence can tie.
-        for (uint32_t seed=1;seed<=16;++seed) {
-            int distinct,maximum;
-            rank("araarch",seed,distinct,maximum); aDistinct+=distinct; aMax+=maximum;
-            if (seed==1) { firstDistinct=distinct; firstMaximum=maximum; }
-            rank("arasword",seed,distinct,maximum); sDistinct+=distinct; sMax+=maximum;
-        }
-        check(aDistinct > sDistinct,
-              "archers cover more of the crowd across 16 creation seeds",
-              "archers " + std::to_string(aDistinct) + " targets vs swordsmen " +
-                  std::to_string(sDistinct));
-        check(aMax <= sMax,
-              "and pile onto one body no harder than the swordsmen do",
-              "archers " + std::to_string(aMax) + " on one vs swordsmen " +
-                  std::to_string(sMax));
-        // The scatter is deterministic: same world, same draws, same answer.
-        int d2 = 0, m2 = 0;
-        rank("araarch", 1, d2, m2);
-        check(d2 == firstDistinct && m2 == firstMaximum,
-              "the scatter is deterministic (identical across two identical runs)");
+        int d1 = 0, m1 = 0, p1 = 0, d2 = 0, m2 = 0, p2 = 0;
+        rank("armham", 1, d1, m1, p1);
+        rank("armham", 1, d2, m2, p2);
+        check(p1 > 0, "a rank of Hammers auto-acquires the Peewees in range",
+              std::to_string(p1) + " picks on " + std::to_string(d1) + " targets");
+        check(d1 == d2 && m1 == m2 && p1 == p2,
+              "the picks are deterministic (identical across two identical runs)");
     }
 
-    // ---- standing orders: the stance buttons write TWO retail fields ---------
+    // ---- standing orders: standingmoveorder / standingfireorder -----------
+    // TA keeps the two retail fields as separate FBI keys (docs/retail-data.md
+    // 2.2 flagsA bits 0-3, both default 2): move 0 hold / 1 maneuver (leashed by
+    // maneuverleashlength) / 2 roam; fire 0 hold / 1 return / 2 at will.
     if (want("orders")) {
         auto freshWorld = [&](sim::World& w) {
             sim::MatchConfig cfg;
@@ -1739,62 +1349,47 @@ int main(int argc, char** argv) {
             // Isolate stance/leash behavior from feature footprints and terrain.
             w.setTerrain(std::vector<uint8_t>(256 * 256, 100), 256, 256, 20);
         };
-        // standingunitorder = 1 (Defensive): move 0 / fire 2.
-        const sim::UnitType* archer = reg.find("araarch");
-        check(archer && archer->defaultStandingOrder == 1 && archer->defaultMove == 0 && archer->defaultFire == 2,
-              "araarch (standingunitorder=1) defaults to hold-position + fire-at-will");
-        // standingunitorder = 2 (Offensive): move 1 / fire 2 -- a LEASHED chase.
-        const sim::UnitType* knight = reg.find("araknigh");
-        check(knight && knight->defaultStandingOrder == 2 && knight->defaultMove == 1 && knight->defaultFire == 2,
-              "araknigh (standingunitorder=2) defaults to a leashed chase");
-        // standingunitorder = 0 (Passive): move 0 / fire 0 -- holds fire entirely.
-        const sim::UnitType* spy = reg.find("araspy");
-        check(spy && spy->defaultStandingOrder == 0 && spy->defaultMove == 0 && spy->defaultFire == 0,
-              "araspy (standingunitorder=0) defaults to holding fire");
-        // No key at all -> the sentinel path: roam + fire at will. Worth noting
-        // what this set turns out to be: almost every unit WITHOUT the key is a
-        // structure (Keep, Watch Tower, wall, Mana Amplifier...) plus a couple of
-        // flyers. So in retail essentially no mobile ground unit roams without a
-        // leash -- they are all either hold-position or leashed at 500.
-        const sim::UnitType* flyer = reg.find("arafly");
-        // Retail's parser stores that composite as 2 (4c00a7), so GET 46 answers
-        // 2 for such a type, never 3.
-        check(flyer && flyer->defaultStandingOrder == 2 && flyer->defaultMove == 2 && flyer->defaultFire == 2,
-              "arafly (no standingunitorder) defaults to unlimited roam, its composite order 2");
-        if (flyer) {
-            sim::World w; freshWorld(w);
-            const int f = w.spawn(flyer, 1000, 1000, 0, 0);
-            check(w.unit(f) && w.unit(f)->standingOrder == 2,
-                  "a spawned arafly's standing unit order (GET 46) is 2");
-        }
-        const sim::UnitType* sword = reg.find("arasword");
-        check(sword && sword->defaultMove == 1,
-              "arasword (standingunitorder=2) is leashed, not roaming");
+        // StandingMoveOrder=0, StandingFireOrder=2: the Commander holds position.
+        const sim::UnitType* holder = reg.find("armcom");
+        check(holder && holder->defaultMove == 0 && holder->defaultFire == 2,
+              "armcom (StandingMoveOrder=0) defaults to hold-position + fire-at-will");
+        // StandingMoveOrder=1, StandingFireOrder=2: a leashed chase.
+        const sim::UnitType* sword = reg.find("armpw");
+        check(sword && sword->defaultMove == 1 && sword->defaultFire == 2 && sword->leash == 640.0f,
+              "armpw (StandingMoveOrder=1) defaults to a chase leashed at its maneuverleashlength 640");
+        // StandingFireOrder=0: holds fire.
+        const sim::UnitType* sniper = reg.find("armsnipe");
+        check(sniper && sniper->defaultFire == 0, "armsnipe (StandingFireOrder=0) defaults to holding fire");
+        // No key at all -> 2/2, roam + fire at will (retail's parser default).
+        const sim::UnitType* plain = reg.find("armmex");
+        check(plain && plain->defaultMove == 2 && plain->defaultFire == 2,
+              "armmex (no standing order keys) defaults to roam + fire at will (2/2)");
 
         // A hold-position unit shoots what comes to it but never walks over.
-        if (archer && sword) {
+        if (holder && sword) {
             sim::World w; freshWorld(w);
-            int a = w.spawn(archer, 1000, 2600, 0, 0);
-            check(w.unit(a)->standingOrder == 1 && w.unit(a)->moveState == 0 && w.unit(a)->fireState == 2,
-                  "the spawned archer carries its type's standing orders");
-            float far = float(archer->maxRange()) + 260.0f;
+            int a = w.spawn(holder, 1000, 2600, 0, 0);
+            check(w.unit(a)->moveState == 0 && w.unit(a)->fireState == 2,
+                  "the spawned Commander carries its type's standing orders");
+            float far = float(holder->maxRange()) + 120.0f;   // seen (sight 450), out of reach
             int prey = w.spawn(sword, 1000 + far, 2600, 0, 1);
-            (void)prey;
+            w.setStance(prey, 2);
             float startX = w.unit(a)->x.toFloat();
             for (int i = 0; i < 30 * 8; ++i) w.tick(1.0f / 30.0f);
             const sim::Unit* au = w.unit(a);
             check(au && std::fabs(au->x.toFloat() - startX) < 24.0f,
-                  "a hold-position archer does NOT walk to an out-of-range enemy",
+                  "a hold-position Commander does NOT walk to an out-of-range enemy",
                   "moved " + std::to_string(au ? au->x.toFloat() - startX : 0.0f) + "px");
 
             // A leashed unit advances on something inside its leash...
-            // The mission scan takes only an enemy the owner sees (4d8370 reads
-            // the visible-enemy list), so the enemy stands inside the
-            // swordsman's 135 px sight as well as its leash.
+            // The mission scan takes only an enemy the owner sees (the visible-
+            // enemy list), so the enemy stands inside the Peewee's sight too.
             sim::World w2; freshWorld(w2);
-            int a2 = w2.spawn(sword, 1000, 2600, 0, 0);   // arasword: move 1, leash 500
-            w2.spawn(sword, 1120, 2600, 0, 1);            // 120px: seen, inside the leash
-            check(w2.unit(a2)->moveState == 1, "the swordsman is leashed");
+            int a2 = w2.spawn(sword, 1000, 2600, 0, 0);
+            const float near = float(sword->maxRange()) + 60.0f;
+            const int e2 = w2.spawn(sword, 1000 + near, 2600, 0, 1);
+            w2.setStance(e2, 2);
+            check(w2.unit(a2)->moveState == 1, "the Peewee is leashed");
             float sx2 = w2.unit(a2)->x.toFloat();
             for (int i = 0; i < 30 * 8; ++i) w2.tick(1.0f / 30.0f);
             check(w2.unit(a2) && w2.unit(a2)->x.toFloat() - sx2 > 24.0f,
@@ -1804,53 +1399,45 @@ int main(int argc, char** argv) {
             // ...and stays put for one beyond it.
             sim::World w4; freshWorld(w4);
             int a4 = w4.spawn(sword, 1000, 2600, 0, 0);
-            w4.spawn(sword, 1000 + sword->leash + 220.0f, 2600, 0, 1);
+            const int e4 = w4.spawn(sword, 1000 + sword->leash + 220.0f, 2600, 0, 1);
+            w4.setStance(e4, 2);
             float sx4 = w4.unit(a4)->x.toFloat();
             for (int i = 0; i < 30 * 8; ++i) w4.tick(1.0f / 30.0f);
             check(w4.unit(a4) && std::fabs(w4.unit(a4)->x.toFloat() - sx4) < 24.0f,
                   "but will not break its leash for one beyond it",
                   "moved " + std::to_string(w4.unit(a4) ? w4.unit(a4)->x.toFloat() - sx4 : 0.0f) + "px");
 
-            // The Offensive button writes both fields.
-            sim::World w5; freshWorld(w5);
-            int a5 = w5.spawn(archer, 1000, 2600, 0, 0);
-            w5.setStance(a5, 0);
-            check(w5.unit(a5)->moveState == 1 && w5.unit(a5)->fireState == 2,
-                  "the Offensive button writes move=1 AND fire=2");
-
-            // Passive holds fire: no target is ever acquired.
+            // Hold fire: no target is ever acquired.
             sim::World w3; freshWorld(w3);
-            int a3 = w3.spawn(archer, 1000, 2600, 0, 0);
-            w3.spawn(sword, 1000 + 40, 2600, 0, 1);   // right next to it
-            w3.setStance(a3, 2);   // Passive
-            check(w3.unit(a3)->fireState == 0, "the Passive button writes fire=0");
+            int a3 = w3.spawn(holder, 1000, 2600, 0, 0);
+            w3.spawn(sword, 1000 + 60, 2600, 0, 1);   // right next to it
+            w3.setStance(a3, 2);   // Hold Fire
+            check(w3.unit(a3)->fireState == 0, "the hold-fire button writes fire=0");
             bool acquired = false;
             for (int i = 0; i < 30 * 5 && !acquired; ++i) {
                 w3.tick(1.0f / 30.0f);
                 const sim::Unit* u3 = w3.unit(a3);
                 if (u3 && !u3->orders.empty() && u3->orders.front().targetId) acquired = true;
             }
-            check(!acquired, "a Passive unit never auto-acquires, even point blank");
+            check(!acquired, "a hold-fire unit never auto-acquires, even point blank");
         }
     }
 
     // ---- VTOL_standby: an idle flyer finds somewhere to put down -------------
     if (want("orders")) {
-        const sim::UnitType* fly = reg.find("arafly");
+        const sim::UnitType* fly = reg.find("armatlas");
         check(fly && fly->canFly && fly->vtolStandby,
-              "arafly parses defaultmissiontype = VTOL_standby");
+              "armatlas parses defaultmissiontype = VTOL_standby");
         if (fly && fly->vtolStandby) {
             sim::World w;
             sim::MatchConfig cfg;
-            cfg.vfs = &vfs; cfg.mapPath = "maps/Lake Lokken.tnt";   // needs open water
+            cfg.vfs = &vfs; cfg.mapPath = hpi::findMap(vfs, "Lake Shore");   // needs open water
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
             // Park it over open water. Retail's landing-site predicate 509400 has
             // no movement-class terrain test: an explored site is refused only for
-            // features, yards, occupants, and the type's own depth/slope words,
-            // and arafly (no movementclass, no maxslope) keeps the default
-            // maxslope 255 (4dfb10/4dfc40 -> type +0x23c), so cliffs are landable.
+            // features, yards, occupants, and the type's own depth/slope words.
             // What it does refuse a non-floater flyer is any cell whose quad low
             // lies below sea level (5094e3..509539), so water is the retail test.
             const auto& hm = w.mapHeights();
@@ -1903,51 +1490,30 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- unitstandorders: which types have a stance at all -------------------
+    // ---- stance buttons: which types have them at all ---------------------
+    // TA's FBI gates the buttons with mobilestandorders / firestandorders (flagsB
+    // bits 0/1, docs/retail-data.md 2.2); Kingdoms used unitstandorders. A plain
+    // structure carries neither key (armsolar); the Atlas transport sets both to 0.
     if (want("orders")) {
-        const sim::UnitType* keep = reg.find("arakeep");
-        const sim::UnitType* cow = reg.find("lifcow");
-        const sim::UnitType* sword = reg.find("arasword");
-        check(keep && !keep->canSetStance, "the Keep has no combat stance");
-        check(cow && !cow->canSetStance, "nor does a cow");
-        check(sword && sword->canSetStance, "an ordinary soldier does");
-
+        const sim::UnitType* solar = reg.find("armsolar");
+        const sim::UnitType* atlas = reg.find("armatlas");
+        const sim::UnitType* pw = reg.find("armpw");
+        check(solar && !solar->canSetStance, "the Solar Collector has no combat stance");
+        check(atlas && !atlas->canSetStance, "nor does the Atlas (mobilestandorders=0, firestandorders=0)");
+        check(pw && pw->canSetStance, "an ordinary Peewee does");
         // The sim refuses to set one, not just the HUD -- a modified client must
         // not be able to hand a stance to something retail would not offer it for.
-        if (cow) {
+        if (atlas) {
             sim::World w;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
-            int c = w.spawn(cow, 1000, 2600, 0, 0);
+            int c = w.spawn(atlas, 1000, 1000, 0, 0);
             int before = w.unit(c)->stance;
             w.setStance(c, before == 0 ? 2 : 0);
             check(w.unit(c)->stance == before, "and the sim refuses to change it");
-        }
-
-        // The gate is NOT cosmetic, which is worth pinning down: three shipped
-        // types are mobile AND armed yet have no stance -- npcbeg2, npcfarm2 and
-        // npcpeas2, the armed variants of the civilian Beggar/Farmer/Peasant (230
-        // damage apiece). Retail greys their buttons out; a "mobile and armed"
-        // guess would have offered them. Their weapons are declared as a [WEAPON1]
-        // SECTION rather than a weapon1= key, which is exactly why a quick grep
-        // over the FBIs makes them look unarmed.
-        std::vector<std::string> armedWithoutStance;
-        for (const auto& [id, t] : reg.types())
-            if (!t.canSetStance && t.maxVel > sim::Fixed() && t.weapon.damage > 0)
-                armedWithoutStance.push_back(id);
-        std::sort(armedWithoutStance.begin(), armedWithoutStance.end());
-        std::string joined;
-        for (const auto& n : armedWithoutStance) joined += (joined.empty() ? "" : ",") + n;
-        check(joined == "npcbeg2,npcfarm2,npcpeas2",
-              "the armed civilians are the types the stance gate actually changes",
-              "got [" + joined + "]");
-        for (const char* id : {"npcbeg2", "npcfarm2", "npcpeas2"}) {
-            const sim::UnitType* t = reg.find(id);
-            check(t && !t->canSetStance && t->weapon.damage > 0,
-                  "armed civilian with no stance", id);
         }
     }
 
@@ -1956,26 +1522,30 @@ int main(int argc, char** argv) {
     // ran as "go here, go there, (never build)" -- the build sat in the other
     // queue with nothing left to drain it.
     if (want("orders")) {
-        sim::TypeRegistry breg;
-        breg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
-        breg.loadDir(vfs, "units/");
-        breg.loadBuildTree(vfs, "canbuild/");
-        const sim::UnitType* mon = breg.find("zonhunt");   // the Zhon monarch; a flyer
-        const auto& menu = breg.buildable("zonhunt");
-        check(mon && mon->isBuilder && !menu.empty(), "zonhunt is a builder with a menu");
+        sim::TypeRegistry& breg = reg;
+        const sim::UnitType* mon = breg.find("armca");   // Construction Aircraft; a flyer
+        const auto& menu = breg.buildable("armca");
+        check(mon && mon->isBuilder && !menu.empty(), "armca is a builder with a menu");
         if (mon && !menu.empty()) {
-            const sim::UnitType* bt = breg.find(menu[0]);
+            // A small structure from its menu: the Radar Tower (2x2). Not the
+            // Dragon's Teeth: isfeature=1 turns those into a feature when done.
+            const sim::UnitType* bt = breg.find("armrad");
+            check(bt && std::find(menu.begin(), menu.end(), std::string("armrad")) != menu.end(),
+                  "armca builds Radar Towers");
+            if (!bt) bt = breg.find(menu[0]);
             sim::World w;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, breg, cfg);
-            w.player(0).mana = 100000;
-            int id = w.spawn(mon, 800, 2600, 0, 0);
-            w.order(id, 1100, 2600, false);             // move
-            w.queueBuild(id, bt, 1150, 2700, true);     // ...then build
-            w.order(id, 1400, 2600, true);              // ...then move again
+            w.setStartResources(0, 100000, 100000);
+            float ox = 0, oz = 0;
+            check(openApron(w, bt, 30, ox, oz), "open ground for the build queue");
+            int id = w.spawn(mon, ox, oz + 100, 0, 0);
+            w.order(id, ox + 300, oz + 100, false);             // move
+            w.queueBuild(id, bt, ox + 360, oz + 200, true);     // ...then build
+            w.order(id, ox + 600, oz + 100, true);              // ...then move again
             check(w.unit(id)->orders.size() == 3,
                   "move + build + move is ONE queue of three",
                   std::to_string(w.unit(id)->orders.size()) + " entries");
@@ -1992,7 +1562,7 @@ int main(int argc, char** argv) {
             check(sawSite, "the queued build actually starts");
             check(built, "and finishes");
             const sim::Unit* u = w.unit(id);
-            check(u && u->x.toFloat() > 1350.0f,
+            check(u && u->x.toFloat() > ox + 550.0f,
                   "and THEN the builder goes on to the move queued behind it",
                   u ? "ended at x=" + std::to_string(int(u->x.toFloat())) : "gone");
             check(u && u->orders.empty(),
@@ -2003,9 +1573,9 @@ int main(int argc, char** argv) {
             // break the case that already worked.
             sim::World w2;
             sim::setupMatch(w2, breg, cfg);
-            w2.player(0).mana = 200000;
-            int m2 = w2.spawn(mon, 800, 2600, 0, 0);
-            const float sites[3][2] = {{1000, 2700}, {1120, 2700}, {1240, 2700}};
+            w2.setStartResources(0, 200000, 200000);
+            int m2 = w2.spawn(mon, ox, oz + 100, 0, 0);
+            const float sites[3][2] = {{ox + 200, oz + 200}, {ox + 320, oz + 200}, {ox + 440, oz + 200}};
             for (int i = 0; i < 3; ++i)
                 w2.queueBuild(m2, bt, sites[i][0], sites[i][1], i != 0);
             int done = 0;
@@ -2019,7 +1589,7 @@ int main(int argc, char** argv) {
             check(done == 3, "three buildings queued back to back all get built",
                   std::to_string(done) + " of 3");
             const sim::Unit* mu = w2.unit(m2);
-            // Not "orders empty": zonhunt is a flyer, and once the last building
+            // Not "orders empty": armca is a flyer, and once the last building
             // is up it is standing on a cell that building now blocks, so the
             // VTOL standby correctly issues a move to somewhere it CAN land.
             check(mu && !sim::World::hasQueuedBuild(*mu) && mu->buildSiteId == 0,
@@ -2034,36 +1604,40 @@ int main(int argc, char** argv) {
 
     // ---- an area reclaim queues like anything else ---------------------------
     if (want("orders")) {
-        sim::TypeRegistry breg;
-        breg.loadMoveInfo(vfs, "gamedata/moveinfo.tdf");
-        breg.loadDir(vfs, "units/");
-        breg.loadBuildTree(vfs, "canbuild/");
-        const sim::UnitType* mon = breg.find("zonhunt");
-        const auto& menu = breg.buildable("zonhunt");
+        sim::TypeRegistry& breg = reg;
+        const sim::UnitType* mon = breg.find("armca");
+        const auto& menu = breg.buildable("armca");
         if (mon && !menu.empty()) {
-            const sim::UnitType* bt = breg.find(menu[0]);
+            const sim::UnitType* bt = breg.find("armrad");
+            if (!bt) bt = breg.find(menu[0]);
             sim::World w;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, breg, cfg);
-            w.player(0).mana = 200000;
-            int id = w.spawn(mon, 800, 2600, 0, 0);
+            w.setStartResources(0, 200000, 200000);
+            // The builder starts beside the first reclaimable feature of the map
+            // and takes the next two within 600px of it.
             std::vector<int> feats;
+            float fx = 0, fz = 0;
             for (const auto& f : w.features()) {
                 if (!w.featureReclaimable(f)) continue;
-                float dx = f.x.toFloat() - 900, dz = f.z.toFloat() - 2700;
+                if (feats.empty()) { fx = f.x.toFloat(); fz = f.z.toFloat(); }
+                float dx = f.x.toFloat() - fx, dz = f.z.toFloat() - fz;
                 if (dx * dx + dz * dz < 600 * 600) feats.push_back(f.id);
                 if (feats.size() >= 3) break;
             }
+            float bx = fx, bz = fz;
+            openApron(w, bt, 4, bx, bz, std::max(8, int(fx) / 16 - 30), std::max(8, int(fz) / 16 - 30));
+            int id = w.spawn(mon, bx, bz, 0, 0);
             check(feats.size() == 3, "three reclaimable features near the builder");
             if (feats.size() == 3) {
                 // A build first, then the area reclaim queued behind it -- the exact
                 // shape that used to leave the reclaims parked forever, because the
                 // old reclaimQueue only ever drained from inside tickReclaim and so
                 // never started unless a reclaim was ALREADY running.
-                w.queueBuild(id, bt, 1000, 2700, false);
+                w.queueBuild(id, bt, bx + 24, bz + 24, false);
                 for (int fid : feats) w.reclaim(id, fid, true);
                 int queued = 0;
                 for (const auto& o : w.unit(id)->orders) if (o.reclaimFeat) ++queued;
@@ -2079,11 +1653,11 @@ int main(int argc, char** argv) {
     }
 
     // ---- self-destruct actually kills -------------------------------------
-    // Ctrl+Shift+D arms a 5s countdown whose expiry zeroes hp. The death sweep
-    // runs EARLIER in the same per-unit tick than the expiry, so the kill is only
-    // noticed next tick -- and healtime regen runs a few lines AFTER the expiry.
-    // A regenerating unit therefore healed straight back off zero and survived,
-    // which is nearly every unit: 209 of 213 shipped FBIs have healtime > 0.
+    // Ctrl+D arms a countdown (selfdestructcountdown, 5 s when absent:
+    // docs/retail-data.md 2.2) whose expiry zeroes hp. The death sweep runs
+    // EARLIER in the same per-unit tick than the expiry, and healtime regen runs
+    // AFTER it, so a regenerating unit (in TA: the Commanders, healtime=27)
+    // could heal straight back off zero and survive.
     if (want("weapons")) {
         std::printf("[self-destruct]\n");
         const sim::UnitType* regen = nullptr;
@@ -2106,7 +1680,7 @@ int main(int argc, char** argv) {
                 cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
                 cfg.slots[0].team = 0; cfg.slots[1].team = 1;
                 sim::setupMatch(w, reg, cfg);
-                int id = w.spawn(c.t, 500, 500, 0, 0);
+                int id = w.spawn(c.t, 1000, 1000, 0, 0);
                 if (id <= 0 || !w.unit(id)) continue;
                 w.destroy(id);
                 check(w.unit(id)->selfDestructT > 0.0f, (std::string(c.label) + ": countdown armed").c_str());
@@ -2127,8 +1701,12 @@ int main(int argc, char** argv) {
                 cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
                 cfg.slots[0].team = 0; cfg.slots[1].team = 1;
                 sim::setupMatch(w, reg, cfg);
+                // A small unit, so its own blast leaves the scenery alone.
+                const sim::UnitType* fader = reg.find("armpw");
+                float fx = 0, fz = 0;
+                openApron(w, fader, 30, fx, fz);
                 const size_t feats0 = w.features().size();
-                int id = w.spawn(regen, 500, 500, 0, 0);
+                int id = w.spawn(fader, fx + 240, fz + 240, 0, 0);
                 w.destroy(id);
                 for (int i = 0; i < 30 * 8; ++i) w.tick(1.0f / 30.0f);
                 const sim::Unit* u = w.unit(id);
@@ -2147,7 +1725,7 @@ int main(int argc, char** argv) {
             cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
             cfg.slots[0].team = 0; cfg.slots[1].team = 1;
             sim::setupMatch(w, reg, cfg);
-            int id = w.spawn(regen, 500, 500, 0, 0);
+            int id = w.spawn(regen, 1000, 1000, 0, 0);
             w.destroy(id);
             tick(w, 1.0f);
             w.destroy(id);                     // cancel
@@ -2162,7 +1740,7 @@ int main(int argc, char** argv) {
     // Both lay their armies on a blind lattice centred on each start spot, and
     // World::spawn does no terrain check, so a lattice point in a lake or on a cliff
     // used to put a unit there permanently -- it cannot walk out of a cell it could
-    // not walk into. Measured on Ulasem with 8 players before the snap: 7.2% of a
+    // not walk into. Measured on a Kingdoms map with 8 players before the snap: 7.2% of a
     // top-intensity benchmark and 20.5% of a stress fill. That is not only ugly; it
     // quietly changes what the benchmark measures, since a fifth of the army is inert.
     //
@@ -2179,7 +1757,7 @@ int main(int argc, char** argv) {
             for (int i = 0; i < 8; ++i) {
                 cfg.slots[size_t(i)].used = true;
                 cfg.slots[size_t(i)].team = i;
-                cfg.slots[size_t(i)].faction = i % 5;
+                cfg.slots[size_t(i)].faction = i % 2;   // ARM / CORE
             }
             sim::setupMatch(w, reg, cfg);
             int total = 0, bad = 0;
@@ -2277,7 +1855,7 @@ int main(int argc, char** argv) {
             for (int i = 0; i < 8; ++i) {
                 cfg.slots[size_t(i)].used = true;
                 cfg.slots[size_t(i)].team = i;
-                cfg.slots[size_t(i)].faction = i % 5;
+                cfg.slots[size_t(i)].faction = i % 2;   // ARM / CORE
             }
             sim::World w;
             sim::setupMatch(w, reg, cfg);
@@ -2303,10 +1881,7 @@ int main(int argc, char** argv) {
                 }
             }
             // Much lower bar than the stress fill, for two reasons: this one has
-            // fought for 60s first, and on a CRAMPED map the plan is capped at what
-            // the map can hold. Inner Circle holds ~3300 bodies while intensity 5 asks
-            // for 7680, so the cap binds hard here -- on Ulasem Arena, which is what
-            // Benchmark actually runs, capacity is ~49000 and nothing is capped at all.
+            // fought for 60s first, and the plan is capped at what the map can hold.
             check(total > 150, "the benchmark plan actually spawned an army",
                   std::to_string(total) + " units");
             check(total && bad * 100 / total < 3,
@@ -2315,113 +1890,63 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- per-category damage is a MULTIPLIER ------------------------------
+    // ---- per-unit damage overrides are ABSOLUTE ------------------------------
     //
-    // A DAMAGE entry other than `default` scales the base figure; it is not the
-    // damage itself. Read as absolute it makes the units that declare one nearly
-    // invulnerable, because the overrides are fractions: the Crusades Barracks
-    // (arakeep, damagecategory=factory, 17162 HP, healtime=1.25) against a swordsman
-    // declaring factory=0.5 took 0.5 damage a swing and regenerated 0.8 HP/s, so a
-    // besieging army could not out-damage its own regen. Reported from a real game as
-    // "barracks doesn't seem to be killable".
+    // TA's weapon [DAMAGE] block is `default=` plus `<unitname>=n` entries, and
+    // the damage to a unit is map[targetUnitname] if present, else the default
+    // (docs/retail-data.md 3, 0x499cd0): the entry IS the damage, not a scale.
+    // (Kingdoms read its per-category entries as multipliers; that test and the
+    // Crusades Barracks siege that motivated it have no TA counterpart.)
     if (want("orders")) {
-        std::printf("\n[per-category damage multiplier]\n");
-        // The contract itself, on values rather than on shipped data. Spot-checking a
-        // real unit is fragile here for a reason worth recording: the first version of
-        // this test used aradrag's dragon=2, which sits on WEAPON2 (Fire Ball) while
-        // `type->weapon` is WEAPON1 (Fire Breath) -- so it failed against CORRECT code
-        // and looked like a second bug. The scaling rule is what matters; the siege
-        // below covers the shipped data.
+        std::printf("\n[per-unit damage overrides]\n");
         sim::UnitType tgt{};
-        tgt.categories = {"factory", "aramon"};
-        tgt.damageCategory = "factory";
+        tgt.id = "armthund";
+        tgt.damageCategory = "armthund";
         sim::Weapon w{};
         w.damage = 360;
-        check(w.damageVs(&tgt) == 360.0f, "no override -> base damage");
-        w.dmgVs["factory"] = 180;
-        check(w.damageVs(&tgt) == 180.0f,
-              "a 0.5 override HALVES the base, it is not 0.5 damage",
+        check(w.damageVs(&tgt) == 360.0f, "no override -> the default damage");
+        w.dmgVs["armthund"] = 97;
+        check(w.damageVs(&tgt) == 97.0f, "an override is the damage itself",
               std::to_string(w.damageVs(&tgt)));
-        w.dmgVs["factory"] = 720;
-        check(w.damageVs(&tgt) == 720.0f, "a 2.0 override doubles it",
-              std::to_string(w.damageVs(&tgt)));
-        w.dmgVs["factory"] = 0.0f;
-        check(w.damageVs(&tgt) == 0.0f, "a 0 override still means immune",
+        w.dmgVs["armthund"] = 0;
+        check(w.damageVs(&tgt) == 0.0f, "a 0 override means immune",
               std::to_string(w.damageVs(&tgt)));
         w.dmgVs.clear();
-        w.dmgVs["naval"] = 90;      // a category this target does not carry
-        check(w.damageVs(&tgt) == 360.0f, "an override for another category is ignored");
-    }
-    if (want("orders")) {
-        // The reported case, end to end: the Crusades Barracks must die to a besieging
-        // force. A behavioural check, because the arithmetic above would still pass if
-        // regen quietly out-paced the result.
-        sim::TypeRegistry cbreg;
-        sim::setupRegistry(cbreg, vfs, /*crusades=*/true);
-        const sim::UnitType* keep  = cbreg.find("arakeep");
-        const sim::UnitType* sword = cbreg.find("arasword");
-        if (!keep || !sword || sword->weapon.damage <= 0) {
-            std::printf("  (no crusades data; skipped)\n");
-        } else {
-            check(sword->weapon.damageVs(keep) > 1.0f,
-                  "a Crusades swordsman does real damage to a factory",
-                  std::to_string(sword->weapon.damageVs(keep)) + " per hit");
-            sim::World w;
-            sim::MatchConfig cfg;
-            cfg.vfs = &vfs;
-            cfg.mapPath = kMap;
-            cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-            cfg.slots[0].team = 0; cfg.slots[1].team = 1;
-            sim::setupMatch(w, cbreg, cfg);
-            const float kx = 1200, kz = 1200;
-            const int kid = w.spawn(keep, kx, kz, 0, 0);
-            for (int i = 0; i < 12; ++i) {
-                const int id = w.spawn(sword, kx + (i % 4) * 24 - 140,
-                                       kz + (i / 4) * 24 - 40, 0, 1);
-                w.attack(id, kid, false);
-            }
-            int diedAt = -1;
-            for (int sec = 0; sec < 180 && diedAt < 0; ++sec) {
-                tick(w, 1.0f);
-                const sim::Unit* k = w.unit(kid);
-                if (!k || !k->alive()) diedAt = sec + 1;
-            }
-            // Generous bound: the assertion is "a siege makes progress", not a balance
-            // figure. Unfixed this survives indefinitely (17162 -> 16615 over 600s).
-            check(diedAt > 0, "12 swordsmen can destroy a Barracks",
-                  diedAt > 0 ? "died at t=" + std::to_string(diedAt) + "s"
-                             : "SURVIVED 180s of siege");
+        w.dmgVs["armbrawl"] = 90;      // a unit this target is not
+        check(w.damageVs(&tgt) == 360.0f, "an override for another unit is ignored");
+        // The shipped data: the Pelican's missiles (armamph_weapon2) list
+        // ARMTHUND=97 among their overrides.
+        const sim::UnitType* pelican = reg.find("armamph");
+        const sim::UnitType* thunder = reg.find("armthund");
+        const sim::UnitType* peewee = reg.find("armpw");
+        if (pelican && thunder && peewee && pelican->weapons.size() > 1) {
+            const sim::Weapon& missiles = pelican->weapons[1];
+            check(missiles.damageVs(thunder) == 97.0f, "armamph_weapon2 does its authored 97 to a Thunder",
+                  std::to_string(missiles.damageVs(thunder)));
+            check(missiles.damageVs(peewee) == float(missiles.damage),
+                  "and its default to a unit it does not list",
+                  std::to_string(missiles.damageVs(peewee)) + " vs " + std::to_string(missiles.damage));
         }
     }
 
     // ---- canMove is not a structure test ------------------------------------
     //
-    // CLAUDE.md's standing gotcha, with the data behind it. 13 shipped types declare
-    // canmove=1 with no velocity and no bmcode, so canMove comes out TRUE for things
-    // that are plainly buildings. The renderer's facing test used to read canMove, so
-    // those 13 took the mover branch -- and since startBuild spawns every structure at
-    // heading pi, they were drawn at -pi, turned 180 degrees. On a factory that puts
-    // the stone build pad on the opposite side from retail, which is how it was
-    // reported ("stone pad is to the north instead of to the south").
-    //
-    // This pins the DATA half: as long as a shipped type is a structure while
-    // reporting canMove, isStructure() is the only safe discriminator and any code
-    // that reaches for canMove to answer "is it a building" is wrong.
+    // TA's factories (the Kbot Lab, every plant and shipyard) declare canmove=1
+    // with no velocity. bmcode (0 = building) is the authoritative mobility flag,
+    // so such a type must load as a structure that does not move.
     if (want("orders")) {
         std::printf("\n[canMove is not a structure test]\n");
-        int trap = 0;
-        bool keepIsTrap = false;
+        int factories = 0, wrong = 0;
         for (const auto& [id, t] : reg.types())
-            if (t.isStructure() && (t.canMove || t.canFly)) {
-                ++trap;
-                if (id == "arakeep") keepIsTrap = true;
+            if (t.classicFbi.bmcode == 0 && t.maxVel <= sim::Fixed() && !t.canFly) {
+                ++factories;
+                if (!t.isStructure() || t.canMove) ++wrong;
             }
-        check(trap > 0, "shipped types report canMove while having no velocity",
-              std::to_string(trap) + " of them");
-        check(keepIsTrap, "the Barracks is one of them (the reported case)");
-        const sim::UnitType* keep = reg.find("arakeep");
-        check(keep && keep->isStructure(),
-              "and isStructure() still answers correctly for it");
+        check(factories > 0 && wrong == 0, "every bmcode-0 type loads as a non-moving structure",
+              std::to_string(wrong) + " of " + std::to_string(factories) + " wrong");
+        const sim::UnitType* lab = reg.find("armlab");
+        check(lab && lab->isStructure() && !lab->canMove,
+              "the Kbot Lab (canmove=1 in its FBI) is one, and isStructure() answers for it");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASS",

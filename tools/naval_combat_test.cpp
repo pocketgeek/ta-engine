@@ -179,7 +179,7 @@ int main(int argc,char**argv) {
     // flat into the water at their own bow. Never in Legion: no movement here
     // that Legion routes differently matters to what is checked.
     if (!legion) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,true);   // range 800, as in the game
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);   // range 800, as in the game
         const auto* sub=registry.find("cresubm");
         const auto* mana=registry.find("aramana");
         check(sub && mana && sub->weapon.ballistic,"shipped cresubm (ballistic) and aramana load");
@@ -285,7 +285,7 @@ int main(int argc,char**argv) {
     // (engine deviation, World::aimPointSubmerged). Standing in the shallows
     // of a shore, its SweetSpot above the surface, it is shot as before.
     if (!legion) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,true);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
         const auto* ship=registry.find("verflag");
         auto mer=*registry.find("vermer");
         check(ship && registry.find("vermer"),"the Crusades flagship and Mer Warrior load");
@@ -319,7 +319,7 @@ int main(int argc,char**argv) {
     // under a cow on the shore sails to a spot with a clear shot (its chord
     // starts at its own height) or, finding none, gives the attack up.
     if (!legion) {
-        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,true);
+        ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
         auto still=[&](const char* id) {
             auto t=*registry.find(id);
             t.weapons.clear();t.weapon.damage=0;t.maxVel={};t.healTime=0;t.maxHp=100000;
@@ -376,7 +376,6 @@ int main(int argc,char**argv) {
             ta::sim::World w;w.setTerrain(sea(false),256,256,58);w.buildNavClasses(registry);
             w.player(0).automaticGates=true;
             const int a=w.spawn(registry.find("tarang"),1700,2000,0,0),b=w.spawn(&flagship,1850,2000,0,1);
-            w.unit(a)->mana=float(w.unit(a)->type->maxMana);
             for (int i=0;i<30;++i) w.tick(1.f/30);
             const auto hp=w.unit(b)->hp;
             w.attack(a,b,false);

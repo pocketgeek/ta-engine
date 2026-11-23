@@ -33,7 +33,7 @@ int main(int argc,char** argv) {
         };
         ta::sim::TypeRegistry standard,crusades;
         ta::sim::setupRegistry(standard,vfs,false);
-        ta::sim::setupRegistry(crusades,vfs,true);
+        ta::sim::setupRegistry(crusades,vfs, false);
         if(!crusades.find("zontrain")){std::cerr<<"no Crusades data\n";return 1;}
 
         // Units with a units/ FBI but none in unitscb/ do not exist in a Crusades game.

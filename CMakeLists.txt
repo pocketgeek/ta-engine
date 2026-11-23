@@ -1210,6 +1210,10 @@ add_executable(retail_search_scratch_test tools/retail_search_scratch_test.cpp)
 target_include_directories(retail_search_scratch_test PRIVATE src)
 add_executable(retail_group_test tools/retail_group_test.cpp)
 target_link_libraries(retail_group_test PRIVATE ta-formats)
+# Retail flight, air-attack, wind, height and exploration rules (TotalA.exe routines;
+# its --air-run etc. modes are the tools/re/ emulation harness's port side).
+add_executable(retail_motion_test tools/retail_motion_test.cpp)
+target_link_libraries(retail_motion_test PRIVATE ta-formats)
 add_executable(cobanim_test tools/cobanim_test.cpp)
 add_executable(unit_gift_test tools/unit_gift_test.cpp)
 target_link_libraries(unit_gift_test PRIVATE ta-formats)
@@ -1480,6 +1484,7 @@ add_test(NAME retail_scheduler COMMAND retail_scheduler_test)
 add_test(NAME retail_trace COMMAND retail_trace_test --selftest)
 add_test(NAME retail_search_scratch COMMAND retail_search_scratch_test)
 add_test(NAME retail_group COMMAND retail_group_test)
+add_test(NAME retail_motion COMMAND retail_motion_test)
 add_test(NAME auth COMMAND authtest)
 add_test(NAME unit_gift COMMAND unit_gift_test)
 add_test(NAME cmdflow COMMAND cmdflow_test)
@@ -1894,16 +1899,11 @@ target_link_libraries(ai_behavior_test PRIVATE ta-formats)
 if(TA_TEST_DATA)
     add_test(NAME ai_behavior_data COMMAND ai_behavior_test "${TA_TEST_DATA}")
 endif()
-# Hard's and Absurd's economy and army make-up, and the factory rule Normal
-# shares with them, as a real Controller's orders on constructed bases
-# (factories, lodestones, deposits, Zhon's producers, limits).
-# Our levels' army orders, as a real Controller's commands on constructed worlds;
-# with the game data, a Catapult's back-off from its minimum range under the real sim.
+# Our levels' old army orders, as a real Controller's commands on constructed worlds.
+# Every level now runs TA's own AI (TaRetailBrain), so the cases test a dead path
+# and the binary is not registered.
 add_executable(ai_orders_test tools/ai_orders_test.cpp ${TA_AI_SOURCES})
 target_link_libraries(ai_orders_test PRIVATE ta-formats)
-if(TA_TEST_DATA)
-    add_test(NAME ai_orders_data COMMAND ai_orders_test "${TA_TEST_DATA}")
-endif()
 
 # The Classic level's pieces (profile baker, type info, priority clock); with
 # --profile it is the native side of tools/re/check_ai_profile.py, with
@@ -1912,18 +1912,10 @@ add_executable(classic_ai_test tools/classic_ai_test.cpp ${TA_AI_SOURCES})
 target_link_libraries(classic_ai_test PRIVATE ta-formats)
 if(TA_TEST_DATA)
     add_test(NAME classic_ai_data COMMAND classic_ai_test "${TA_TEST_DATA}")
-    # A Classic seat of each faction builds its base on Abnar's Terrace (10 game-minutes each).
-    add_test(NAME classic_ai_bases COMMAND classic_ai_test --bases "${TA_TEST_DATA}")
-    # A scripted raid into a Classic base: defenders sent at the raiders, the Monarch's retreat.
-    add_test(NAME classic_ai_raid COMMAND classic_ai_test --raid "${TA_TEST_DATA}")
+    # The Kingdoms ClassicBrain games (--bases/--raid/--waves/--duels/--expansion) are
+    # gone: no TA level runs ClassicBrain.
     # U13: what a Move and an AttackMove do to a column walking through enemies.
     add_test(NAME classic_ai_u13 COMMAND classic_ai_test --u13 "${TA_TEST_DATA}")
-    # A Classic seat's waves: launch, march by Move, a member sent home, dissolve.
-    add_test(NAME classic_ai_waves COMMAND classic_ai_test --waves "${TA_TEST_DATA}")
-    # Classic against Classic: three faction pairs on Edmont's Field end with a winner.
-    add_test(NAME classic_ai_duels COMMAND classic_ai_test --duels "${TA_TEST_DATA}")
-    # A Classic seat of each faction founds bases on sacred sites and its lodestones grow (20 game-minutes each).
-    add_test(NAME classic_ai_expansion COMMAND classic_ai_test --expansion "${TA_TEST_DATA}")
 endif()
 # Opt-in (it needs the retail binary for emulation, Python's unicorn, and a
 # directory of captured retail PrintWeights dumps, none of which CI has):
@@ -3287,10 +3279,6 @@ if(TA_BUILD_CLIENT)
       target_compile_definitions(firing_sound_test PRIVATE SDL_MAIN_HANDLED)
       target_link_libraries(firing_sound_test PRIVATE ta-formats ${_ta_sdl2})
       add_test(NAME firing_sound_roster COMMAND firing_sound_test "${TA_TEST_DATA}")
-      add_executable(crusades_registry_test tools/crusades_registry_test.cpp)
-      target_compile_definitions(crusades_registry_test PRIVATE SDL_MAIN_HANDLED)
-      target_link_libraries(crusades_registry_test PRIVATE ta-formats ${_ta_sdl2})
-      add_test(NAME crusades_registry COMMAND crusades_registry_test "${TA_TEST_DATA}")
       add_executable(balance_roster_test tools/balance_roster_test.cpp)
       target_compile_definitions(balance_roster_test PRIVATE SDL_MAIN_HANDLED)
       target_link_libraries(balance_roster_test PRIVATE ta-formats ${_ta_sdl2})

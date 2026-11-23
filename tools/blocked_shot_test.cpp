@@ -390,7 +390,6 @@ HarpyOutcome runHarpy(const sim::TypeRegistry& reg, Blocker blocker, bool attack
     HarpyOutcome out;
     int run = 0, lastRepositions = 0;
     for (int i = 0; i < ticks; ++i) {
-        if (sim::Unit* a = w.unit(shooter)) a->mana = a->type->maxMana;   // a charm every reload
         w.tick(1.f / 30);
         const sim::Unit* a = w.unit(shooter);
         if (!a || !a->alive()) break;

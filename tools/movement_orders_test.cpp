@@ -535,7 +535,7 @@ uint64_t queuedGroupMoves(PathfindingMode mode,bool serial) {
 }
 void mazeProduction(const char* data) {
     auto vfs=ta::hpi::mountRetailRoot(data);
-    TypeRegistry registry;setupRegistry(registry,vfs,true);
+    TypeRegistry registry;setupRegistry(registry,vfs,false);
     constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
     auto generated=ta::mapgen::generate(ta::mapgen::decodeMapId(recipe),vfs);
     auto files=std::make_shared<ta::hpi::Vfs::Files>();(*files)["maps/orders-maze.tnt"]=generated.map.save();vfs.setMapFiles(files);

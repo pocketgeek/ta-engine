@@ -47,7 +47,6 @@ Result runCase(const sim::TypeRegistry& registry,const char* targetId,float dist
     w.setStance(t,2);w.unit(t)->moveState=0;w.unit(t)->fireState=0;
     for(int i=0;i<15;++i)w.tick(1.f/30);
     const int a=w.spawn(&dragon,4096-dist,4096,1.5707963f,0);
-    w.unit(a)->mana=dragon.maxMana;
     w.unit(a)->moveState=0;w.unit(a)->fireState=2;
     Result r;
     int lastSlot=w.unit(a)->weaponSlot,run=0;
@@ -69,9 +68,9 @@ Result runCase(const sim::TypeRegistry& registry,const char* targetId,float dist
         run=u.weaponSlot==0 ? run+1 : 0;
         r.longestBreath=std::max(r.longestBreath,run);
         if(trace && (tick%5==0 || u.firedWeapons))
-            std::printf("t=%4d slot=%d tgt=%d,%d,%d fired=%x reload=%d/%d/%d mana=%.0f pos=%.1f,%.1f orders=%zu\n",
+            std::printf("t=%4d slot=%d tgt=%d,%d,%d fired=%x reload=%d/%d/%d pos=%.1f,%.1f orders=%zu\n",
                         tick,u.weaponSlot,u.slotTarget[0],u.slotTarget[1],u.slotTarget[2],u.firedWeapons,
-                        u.reloads[0],u.reloads[1],u.reloads[2],u.mana,u.x.toFloat(),u.z.toFloat(),u.orders.size());
+                        u.reloads[0],u.reloads[1],u.reloads[2],u.x.toFloat(),u.z.toFloat(),u.orders.size());
     }
     return r;
 }

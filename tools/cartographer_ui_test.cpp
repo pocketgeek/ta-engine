@@ -65,12 +65,12 @@ static int objectsWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-objects-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
-    std::vector<cart::PlacedUnit> units{{"ARAARCH",0,168,168},{"ARAARCH",1,808,808}};
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
+    std::vector<cart::PlacedUnit> units{{"ARMPW",0,168,168},{"ARMPW",1,808,808}};
     units[0].name="East watch";units[1].name="West watch";std::string error;
     if(!cart::writeDocumentBundle(root/"Objects.kmp",cart::documentFiles(map,metadata,{},units,{},{},"Objects"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     bool failed=false;int lastFrame=0;
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
         lastFrame=frame;const std::string title=SDL_GetWindowTitle(window);const bool dirty=title.ends_with(" *");
@@ -120,18 +120,18 @@ static int modelWorkflow(const char* data) {
         if(asset.textures.empty())throw std::runtime_error("untextured commander preview");
     }
     bool rejected=false;std::atomic_bool cancelled=true;
-    try {ModelView::loadAsset(vfs,"araarch",&cancelled);}catch(const std::exception&){rejected=true;}
+    try {ModelView::loadAsset(vfs,"armpw",&cancelled);}catch(const std::exception&){rejected=true;}
     if(!rejected)throw std::runtime_error("cancelled model load completed");
     rejected=false;try {ModelView::loadAsset(vfs,"no-such-model");}catch(const std::exception&){rejected=true;}
     if(!rejected)throw std::runtime_error("missing model accepted");
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     int stage=0,frames=0;bool failed=false;const auto started=std::chrono::steady_clock::now();
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int) {
         const std::string title=SDL_GetWindowTitle(window);failed|=title.ends_with(" *");
         if(std::chrono::steady_clock::now()-started>std::chrono::seconds(30)) {std::cerr<<"model workflow timed out at "<<stage<<'\n';std::_Exit(3);}
         if(stage==0) {key(SDLK_TAB);key(SDLK_TAB);key(SDLK_F6);key(SDLK_ESCAPE);++stage;}
-        else if(stage==1 && title=="Cartographer -- Ulasem Arena") {key(SDLK_F6);++stage;}
+        else if(stage==1 && title=="Cartographer -- Ashap Plateau") {key(SDLK_F6);++stage;}
         else if(stage==2 && title.find("[Unit model]")!=std::string::npos) {if(++frames<10)return;
             int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);
             if(const char* path=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {
@@ -141,19 +141,19 @@ static int modelWorkflow(const char* data) {
             rotate.motion.state=SDL_BUTTON_LMASK;rotate.motion.xrel=50;rotate.motion.yrel=20;SDL_PushEvent(&rotate);
             SDL_Event zoom{};zoom.type=SDL_MOUSEWHEEL;zoom.wheel.y=1;SDL_PushEvent(&zoom);++stage;
         } else if(stage==3) {key(SDLK_ESCAPE);++stage;}
-        else if(stage==4) {failed|=title!="Cartographer -- Ulasem Arena";SDL_Event q{};q.type=SDL_QUIT;SDL_PushEvent(&q);++stage;}
+        else if(stage==4) {failed|=title!="Cartographer -- Ashap Plateau";SDL_Event q{};q.type=SDL_QUIT;SDL_PushEvent(&q);++stage;}
         SDL_Delay(1);
     });
     fs::remove_all(root);
     if(result || failed || stage!=5)return 1;
-    std::cout<<"PASS: five faction model assets, preview/cancel/rotate/zoom/close, unchanged document\n";return 0;
+    std::cout<<"PASS: every side's commander model asset, preview/cancel/rotate/zoom/close, unchanged document\n";return 0;
 }
 static int generationWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-generation-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::vector<uint8_t> originalTerrain;
     auto readTerrain=[&] {ta::hpi::Archive archive(root/"Generated preview.kmp");for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt"))return archive.read(entry);return std::vector<uint8_t>{};};
@@ -201,15 +201,15 @@ static int generationWorkflow(const char* data) {
         case 1: text("bad/name");randomButton();key(SDLK_a,KMOD_CTRL);text("Generated preview");randomButton();++stage;break;
         case 2: text("123456");key(SDLK_TAB);text("8");key(SDLK_RETURN);++stage;break;
         case 3:
-            check(title.find("Ulasem Arena")!=std::string::npos && !title.ends_with(" *"),"generation changed original before acceptance");
+            check(title.find("Ashap Plateau")!=std::string::npos && !title.ends_with(" *"),"generation changed original before acceptance");
             if(title.find("[Generated preview]")!=std::string::npos) {key(SDLK_ESCAPE);++stage;}break;
-        case 4: check(title=="Cartographer -- Ulasem Arena","discard preserves original document");key(SDLK_n,KMOD_CTRL);++stage;break;
+        case 4: check(title=="Cartographer -- Ashap Plateau","discard preserves original document");key(SDLK_n,KMOD_CTRL);++stage;break;
         case 5: text("Generated preview");randomButton();++stage;break;
         case 6: text("123456");key(SDLK_TAB);text("8");key(SDLK_RETURN);key(SDLK_ESCAPE);++stage;break;
         case 7:
             check(title.find("[Generated preview]")==std::string::npos,"cancelled generation must not present preview");
             if(title.find("[Generating]")==std::string::npos) {
-                check(title=="Cartographer -- Ulasem Arena","cancelled generation preserves original");key(SDLK_n,KMOD_CTRL);++stage;
+                check(title=="Cartographer -- Ashap Plateau","cancelled generation preserves original");key(SDLK_n,KMOD_CTRL);++stage;
             }break;
         case 8: text("Generated preview");randomButton();++stage;break;
         case 9: text("123456");key(SDLK_TAB);text("8");key(SDLK_RETURN);++stage;break;
@@ -284,7 +284,7 @@ static int overlayWorkflow(const char* data) {
     const auto root=fs::temp_directory_path()/("ta-editor-overlay-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     int stage=0;bool failed=false;auto began=std::chrono::steady_clock::now();
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int) {
@@ -297,7 +297,7 @@ static int overlayWorkflow(const char* data) {
         if(std::chrono::steady_clock::now()-began>std::chrono::seconds(30)) {failed=true;key(SDLK_ESCAPE);SDL_Event q{};q.type=SDL_QUIT;SDL_PushEvent(&q);return;}
         if(stage==0) {click(250,10);click(250,212);++stage;}
         else if(stage==1 && title.find("[Terrain overlay]")!=std::string::npos) {failed|=title.ends_with(" *");click(250,10);click(250,252);++stage;}
-        else if(stage==2) {failed|=title!="Cartographer -- Ulasem Arena";SDL_Event q{};q.type=SDL_QUIT;SDL_PushEvent(&q);++stage;}
+        else if(stage==2) {failed|=title!="Cartographer -- Ashap Plateau";SDL_Event q{};q.type=SDL_QUIT;SDL_PushEvent(&q);++stage;}
         SDL_Delay(1);
     });
     fs::remove_all(root);
@@ -316,13 +316,13 @@ static int aiProfileWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-aiprofile-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
-    const auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
-    const std::string unrelated="weight araarch 9\n";   // ai/n.txt: a file no profile of this map reads
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    const auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
+    const std::string unrelated="weight armpw 9\n";   // ai/n.txt: a file no profile of this map reads
     cart::AiFiles fixture;fixture["ai/n.txt"].assign(unrelated.begin(),unrelated.end());
     std::string error;
     if(!cart::writeDocumentBundle(root/"AiTest.kmp",cart::documentFiles(map,metadata,{},{},{},fixture,"AiTest"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     cart::Editor* editor=nullptr;cart::EditorHooks hooks;hooks.attached=[&](cart::Editor& e){editor=&e;};
     std::string failure;int lastFrame=0;
@@ -356,10 +356,10 @@ static int aiProfileWorkflow(const char* data) {
             click(editor->aiTabRects[1]);break;
         case 4:check(editor->aiTab==1 && editor->aiTabKey()=="ai/taengine.txt" && editor->aiTabLevel()==ta::ai::Difficulty::Normal,
                      "the TA ENGINE AI tab was not selected, previewing Normal");click(editor->aiSearchBox);break;
-        case 5:text("araarch");break;
-        case 6:click(cell("araarch",0));break;
+        case 5:text("armpw");break;
+        case 6:click(cell("armpw",0));break;
         case 7:check(editor->aiFocus==cart::Editor::AI_CELL,"the weight cell did not take focus");text("0");key(SDLK_RETURN);break;
-        case 8:check(file("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"the archer weight 0 was not written to ai/taengine.txt");
+        case 8:check(file("ai/taengine.txt").find("\nweight armpw 0\n")!=std::string::npos,"the archer weight 0 was not written to ai/taengine.txt");
             check(file("ai/taengine.txt").starts_with(cart::kAiProfileMagic) && file("ai/taengine.txt").find("TA ENGINE AI (all six levels) profile for map")!=std::string::npos,
                   "ai/taengine.txt is not in the canonical form with its header");
             check(editor->aiFiles.size()==2 && file("ai/n.txt")==unrelated,"a level edit wrote more than ai/taengine.txt");
@@ -371,7 +371,7 @@ static int aiProfileWorkflow(const char* data) {
             const auto& view=editor->aiTabView();
             check(view.level.weight==want.weight && view.level.limit==want.limit && view.builtin.weight==ta::ai::builtinProfile(ta::ai::Difficulty::Hard).weight,
                   "the Hard preview is not levelProfileFrom(Hard, ai/taengine.txt)");
-            check(view.level.weight.at("araarch")==0,"the file's row is not applied on Hard");
+            check(view.level.weight.at("armpw")==0,"the file's row is not applied on Hard");
             click(editor->aiTabRects[0]);break;
         }
         case 10:check(editor->aiTab==0,"the DEFAULT tab was not selected");click(editor->aiOwnRadio);break;
@@ -426,8 +426,8 @@ static int aiModWorkflow(const char* data) {
     const auto ai=install/"Mods"/"Game"/"Harder"/"AI";fs::create_directories(ai);
     auto put=[](const fs::path& p,const std::string& text) {std::ofstream(p,std::ios::binary)<<text;};
     auto slurp=[](const fs::path& p) {std::ifstream f(p,std::ios::binary);return std::string(std::istreambuf_iterator<char>(f),{});};
-    put(ai/"TaEngine.TXT","weight araarch 7\n");put(ai/"notes.txt","keep\n");
-    put(ai/"n.txt","weight araarch 9\n");   // another DEFAULT profile of the pack: never touched
+    put(ai/"TaEngine.TXT","weight armpw 7\n");put(ai/"notes.txt","keep\n");
+    put(ai/"n.txt","weight armpw 9\n");   // another DEFAULT profile of the pack: never touched
     const auto backups=root/"TAengine"/"Cartographer"/"mod-backups"/"Harder";
     auto backedUp=[&](const std::string& name) {   // every backup copy of `name`, oldest first
         std::vector<std::string> out;std::error_code ec;std::vector<fs::path> stamps;
@@ -437,7 +437,7 @@ static int aiModWorkflow(const char* data) {
         return out;
     };
     auto listing=[](const fs::path& dir) {std::set<std::string> out;std::error_code ec;for(const auto& e:fs::directory_iterator(dir,ec))out.insert(e.path().filename().string());return out;};
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",install.string(),"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",install.string(),"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     cart::Editor* editor=nullptr;cart::EditorHooks hooks;hooks.attached=[&](cart::Editor& e){editor=&e;};
     std::string failure;int lastFrame=0;
@@ -475,10 +475,10 @@ static int aiModWorkflow(const char* data) {
         case 0:key(SDLK_a);break;
         case 1:check(editor->aiOpen,"A did not open the AI Profiles window");click(editor->aiTabRects[1]);break;
         case 2:click(editor->aiSearchBox);break;
-        case 3:text("araarch");break;
-        case 4:click(cell("araarch",0));break;
+        case 3:text("armpw");break;
+        case 4:click(cell("armpw",0));break;
         case 5:text("0");key(SDLK_RETURN);break;
-        case 6:check(mapFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"the weight was not written to the map's ai/taengine.txt");
+        case 6:check(mapFile("ai/taengine.txt").find("\nweight armpw 0\n")!=std::string::npos,"the weight was not written to the map's ai/taengine.txt");
             click(editor->aiModSaveButton);break;
         case 7:check(editor->aiModSaveOpen,"SAVE AS GAME MOD did not open its dialog");
             check(editor->aiModRows.size()==1 && editor->aiModRows[0].target=="ai/taengine.txt" && editor->aiModRows[0].tick,"the dialog does not offer ai/taengine.txt, ticked");
@@ -496,8 +496,8 @@ static int aiModWorkflow(const char* data) {
         case 11:check(editor->modal==cart::Editor::M_MESSAGE && editor->mTitle=="SAVED","no after-save notice");
             check(slurp(ai/"TaEngine.TXT")==mapFile("ai/taengine.txt"),"TaEngine.TXT does not hold the map's ai/taengine.txt");
             check(listing(ai)==std::set<std::string>{"TaEngine.TXT","n.txt","notes.txt"},"the pack's ai/ gained or lost files");
-            check(slurp(ai/"notes.txt")=="keep\n" && slurp(ai/"n.txt")=="weight araarch 9\n","another pack file was touched");
-            check(backedUp("TaEngine.TXT")==std::vector<std::string>{"weight araarch 7\n"},"the replaced file was not backed up in the profile folder");
+            check(slurp(ai/"notes.txt")=="keep\n" && slurp(ai/"n.txt")=="weight armpw 9\n","another pack file was touched");
+            check(backedUp("TaEngine.TXT")==std::vector<std::string>{"weight armpw 7\n"},"the replaced file was not backed up in the profile folder");
             check(listing(install/"Mods"/"Game")==std::set<std::string>{"Harder"} && listing(install/"Mods"/"Game"/"Harder")==std::set<std::string>{"AI"},"staging or backups were left beside the pack");
             key(SDLK_RETURN);break;
         case 12:click(editor->aiModOpenButton);break;
@@ -507,12 +507,12 @@ static int aiModWorkflow(const char* data) {
             click(row);break;
         }
         case 14:check(editor->aiMod && editor->aiMod->pack=="Harder" && packFile("ai/taengine.txt")==mapFile("ai/taengine.txt"),"the pack's files were not opened");
-            check(packFile("ai/n.txt")=="weight araarch 9\n","the pack's ai/n.txt is not kept");
+            check(packFile("ai/n.txt")=="weight armpw 9\n","the pack's ai/n.txt is not kept");
             check(title.find("[AI]")!=std::string::npos,"the window closed");click(editor->aiTabRects[1]);break;
-        case 15:capture("-pack.png");click(cell("araarch",0));break;
+        case 15:capture("-pack.png");click(cell("armpw",0));break;
         case 16:text("5");key(SDLK_RETURN);break;
-        case 17:check(packFile("ai/taengine.txt").find("\nweight araarch 5\n")!=std::string::npos,"the edit did not go to the pack's set");
-            check(mapFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos,"a pack edit leaked into the map");
+        case 17:check(packFile("ai/taengine.txt").find("\nweight armpw 5\n")!=std::string::npos,"the edit did not go to the pack's set");
+            check(mapFile("ai/taengine.txt").find("\nweight armpw 0\n")!=std::string::npos,"a pack edit leaked into the map");
             check(editor->aiModDirty(),"the pack set is not marked unsaved");
             click(editor->aiModSaveButton);break;
         case 18:{
@@ -527,19 +527,19 @@ static int aiModWorkflow(const char* data) {
         case 20:check(editor->modal==cart::Editor::M_MESSAGE && editor->mTitle=="SAVED","saving back to the pack failed");
             check(slurp(ai/"TaEngine.TXT")==packFile("ai/taengine.txt") && !editor->aiModDirty(),"TaEngine.TXT was not replaced, or the set stays unsaved");
             key(SDLK_RETURN);break;
-        case 21:press(cell("araarch",0),SDL_BUTTON_RIGHT);break;   // the file's only row: the draft is now empty
+        case 21:press(cell("armpw",0),SDL_BUTTON_RIGHT);break;   // the file's only row: the draft is now empty
         case 22:check(packFile("ai/taengine.txt").empty() && editor->aiModDirty(),"clearing the row did not empty ai/taengine.txt");click(editor->aiModSaveButton);break;
         case 23:check(editor->aiModSaveOpen && editor->aiModDeleteBoxes.size()==1 && editor->aiModDeleteTicked.empty(),"the emptied draft is not offered for deletion, unticked");
             click(editor->aiModDeleteBoxes.empty()?SDL_Rect{}:editor->aiModDeleteBoxes[0].first);break;
         case 24:check(editor->aiModDeleteTicked.count("ai/taengine.txt")==1,"the delete box did not tick");click(editor->aiModWriteButton);break;
         case 25:check(editor->modal==cart::Editor::M_CONFIRM,"deleting a pack file did not ask");key(SDLK_RETURN);break;
-        case 26:check(editor->modal==cart::Editor::M_MESSAGE && !fs::exists(ai/"TaEngine.TXT") && slurp(ai/"n.txt")=="weight araarch 9\n","TaEngine.TXT was not deleted, or n.txt was touched");
-            check(backedUp("TaEngine.TXT").size()==3 && backedUp("TaEngine.TXT")[2].find("weight araarch 5")!=std::string::npos,"the deleted file was not backed up");
+        case 26:check(editor->modal==cart::Editor::M_MESSAGE && !fs::exists(ai/"TaEngine.TXT") && slurp(ai/"n.txt")=="weight armpw 9\n","TaEngine.TXT was not deleted, or n.txt was touched");
+            check(backedUp("TaEngine.TXT").size()==3 && backedUp("TaEngine.TXT")[2].find("weight armpw 5")!=std::string::npos,"the deleted file was not backed up");
             check(!editor->aiModDirty(),"the set stays unsaved after the delete");
             key(SDLK_RETURN);break;
         case 27:click(editor->aiModOpenButton);break;   // CLOSE PACK: nothing unsaved, so no question
         case 28:check(!editor->aiMod && editor->modal==cart::Editor::M_NONE,"CLOSE PACK did not return to the map's profiles");
-            check(mapFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos && editor->aiFiles.size()==1,"the map's files changed");
+            check(mapFile("ai/taengine.txt").find("\nweight armpw 0\n")!=std::string::npos && editor->aiFiles.size()==1,"the map's files changed");
             click(editor->aiTabRects[0]);break;
         case 29:click(editor->aiOwnRadio);break;
         // The map's own DEFAULT profile saved into the pack as ai/default.txt: its header
@@ -605,7 +605,7 @@ static int recordTestClient(int argc,char** argv) {
 // and a named profile ai/islands.txt (NEW NAME...) are edited; SAVE TO PACK creates
 // mods/game/Harder AI/ai/ with exactly those three files. CLOSE returns to the empty editor;
 // Ctrl+Shift+O lists the packs and reopens it with the same values. TEST IN GAME on
-// Ulasem Arena starts the client (this executable, see recordTestClient) with
+// Ashap Plateau starts the client (this executable, see recordTestClient) with
 // --play-map <test copy> --game-mod "Harder AI"; with an unsaved edit it asks, saves (the
 // replace compare and backup) and then shows the map picker. Quitting with an unsaved
 // edit asks first and leaves the pack as saved. TA_EDITOR_TEST_CAPTURE=<prefix> also
@@ -618,7 +618,7 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
     for(const auto& entry:fs::directory_iterator(data))
         if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     fs::create_directories(install/"mods"/"game"/"Other"/"ai");   // another pack: listed, never touched
-    std::ofstream(install/"mods"/"game"/"Other"/"ai"/"taengine.txt",std::ios::binary)<<"weight araarch 2\n";
+    std::ofstream(install/"mods"/"game"/"Other"/"ai"/"taengine.txt",std::ios::binary)<<"weight armpw 2\n";
     const auto record=root/"client-args.txt";
     SDL_setenv("TA_AIMOD_TEST_RECORD",record.string().c_str(),1);
     const auto pack=install/"mods"/"game"/"Harder AI"/"ai";
@@ -687,16 +687,16 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
                   "map menus are not disabled (or the AI mod commands are)");
             check(!fs::exists(install/"mods"/"game"/"Harder AI"),"the pack was written before SAVE");
             check(editor->scenario.starts.empty() && !editor->dirty && editor->noDocument,"the discarded map was kept, or something is left to save");
-            find("araarch");break;
-        case 5:click(cell("araarch",0));break;
+            find("armpw");break;
+        case 5:click(cell("armpw",0));break;
         case 6:text("0");key(SDLK_RETURN);break;
         case 7:
-            check(packFile("ai/taengine.txt").find("\nweight araarch 0\n")!=std::string::npos && weight("araarch")==0,"the weight did not reach the pack's ai/taengine.txt");
+            check(packFile("ai/taengine.txt").find("\nweight armpw 0\n")!=std::string::npos && weight("armpw")==0,"the weight did not reach the pack's ai/taengine.txt");
             check(editor->aiFiles.empty() && !editor->dirty,"the edit touched the map");
             check(editor->aiModDirty() && title.ends_with(" *"),"the pack is not marked unsaved");
             capture("-aimod.png");click(editor->aiTabRects[0]);break;
         case 8:check(editor->aiTabKey()=="ai/default.txt" && editor->aiOwnRadio.w==0 && editor->aiStandardRadio.w==0,"the DEFAULT tab shows the map's profile choice");
-            for(const auto& row:editor->aiDefaultRoster)if(row.type && row.reachable && !row.lockedForDefault && !row.variant && row.key!="araarch") {unit=row.key;break;}
+            for(const auto& row:editor->aiDefaultRoster)if(row.type && row.reachable && !row.lockedForDefault && !row.variant && row.key!="armpw") {unit=row.key;break;}
             check(!unit.empty(),"no DEFAULT unit to set");
             click(editor->aiStartButton);break;
         case 9:check(editor->aiStartOpen,"no Start from");click(editor->aiStartEmpty);break;
@@ -720,7 +720,7 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
             check(listing(pack)==std::set<std::string>{"default.txt","islands.txt","taengine.txt"},"the pack's ai/ does not hold exactly the three files");
             check(slurp(pack/"taengine.txt")==packFile("ai/taengine.txt") && slurp(pack/"default.txt")==packFile("ai/default.txt") &&
                   slurp(pack/"islands.txt")==packFile("ai/islands.txt"),"the files on disk differ from the window's");
-            check(!editor->aiModDirty() && slurp(install/"mods"/"game"/"Other"/"ai"/"taengine.txt")=="weight araarch 2\n","unsaved after the save, or another pack touched");
+            check(!editor->aiModDirty() && slurp(install/"mods"/"game"/"Other"/"ai"/"taengine.txt")=="weight armpw 2\n","unsaved after the save, or another pack touched");
             saved=packFile("ai/taengine.txt");
             key(SDLK_RETURN);break;
         case 20:click(editor->aiDoneButton);break;
@@ -734,14 +734,14 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
             click(row);break;
         }
         case 24:check(editor->aiModOnly && editor->aiMod && editor->aiMod->pack=="Harder AI" && editor->aiMod->files.size()==3 && !editor->aiModDirty(),"Open AI mod did not open the saved pack");
-            check(editor->aiTab==1 && weight("araarch")==0 && packFile("ai/taengine.txt")==saved,"the reopened TA ENGINE AI value differs");
+            check(editor->aiTab==1 && weight("armpw")==0 && packFile("ai/taengine.txt")==saved,"the reopened TA ENGINE AI value differs");
             click(editor->aiTabRects[0]);break;
         case 25:check(editor->aiTabKey()=="ai/default.txt" && chance(unit)==40,"the reopened DEFAULT chance differs");
             click(editor->aiModDefaultButton);break;
         case 26:check(editor->aiTabKey()=="ai/islands.txt","the file button does not step to the named profile");
             click(editor->aiTestButton);break;
         case 27:check(editor->modal==M::M_OPENPATH && editor->openForTest && !editor->openCatalog.empty(),"TEST IN GAME did not open the map picker");
-            text("Ulasem Arena");key(SDLK_RETURN);break;
+            text("Ashap Plateau");key(SDLK_RETURN);break;
         case 28:check(editor->modal==M::M_MESSAGE && editor->mTitle=="TEST IN GAME","the test did not start: "+editor->mTitle+" "+(editor->mMsg.empty()?"":editor->mMsg[0]));
             key(SDLK_RETURN);break;
         case 29:
@@ -754,18 +754,18 @@ static int aiModNoMapWorkflow(const char* data,const char* self) {
             }
             // An unsaved edit: TEST IN GAME asks, saves (replacing, so the compare), then picks.
             click(editor->aiTabRects[1]);break;
-        case 30:find("araarch");break;
-        case 31:click(cell("araarch",0));break;
+        case 30:find("armpw");break;
+        case 31:click(cell("armpw",0));break;
         case 32:text("3");key(SDLK_RETURN);break;
         case 33:check(editor->aiModDirty(),"the edit is not unsaved");click(editor->aiTestButton);break;
         case 34:check(editor->modal==M::M_CONFIRM && editor->mTitle=="TEST IN GAME","an unsaved pack was tested without asking");key(SDLK_RETURN);break;
         case 35:check(editor->aiModSaveOpen,"the save dialog did not open");click(editor->aiModWriteButton);break;
         case 36:check(editor->modal==M::M_CONFIRM && editor->mTitle=="REPLACE PACK FILES","replacing the pack's file did not show the compare");key(SDLK_RETURN);break;
-        case 37:check(editor->modal==M::M_OPENPATH && editor->openForTest && !editor->aiModDirty() && slurp(pack/"taengine.txt").find("\nweight araarch 3\n")!=std::string::npos,
+        case 37:check(editor->modal==M::M_OPENPATH && editor->openForTest && !editor->aiModDirty() && slurp(pack/"taengine.txt").find("\nweight armpw 3\n")!=std::string::npos,
                       "after the save the map picker did not follow, or the pack was not saved");
             key(SDLK_ESCAPE);break;
         // Quitting with an unsaved edit asks first; the pack stays as saved.
-        case 38:saved=slurp(pack/"taengine.txt");click(cell("araarch",0));break;
+        case 38:saved=slurp(pack/"taengine.txt");click(cell("armpw",0));break;
         case 39:text("8");key(SDLK_RETURN);break;
         case 40:{check(editor->aiModDirty(),"the last edit is not unsaved");SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);break;}
         case 41:check(editor->modal==M::M_CONFIRM && editor->mTitle=="CLOSE PACK" && editor->running,"quitting did not ask about the pack");key(SDLK_RETURN);break;
@@ -793,9 +793,9 @@ static int aiPackListWorkflow(const char* data) {
     for(int i=0;i<kPacks;++i) {
         char name[16];std::snprintf(name,sizeof name,"Pack%02d",i);
         const auto ai=install/"mods"/"game"/name/"ai";fs::create_directories(ai);
-        std::ofstream(ai/"taengine.txt",std::ios::binary)<<"weight araarch "<<i<<"\n";
+        std::ofstream(ai/"taengine.txt",std::ios::binary)<<"weight armpw "<<i<<"\n";
     }
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",install.string(),"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",install.string(),"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     cart::Editor* editor=nullptr;cart::EditorHooks hooks;hooks.attached=[&](cart::Editor& e){editor=&e;};
     std::string failure,last;int lastFrame=0;
@@ -880,8 +880,8 @@ static int aiExtrasWorkflow(const char* data) {
         if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     const auto pack=install/"mods"/"game"/"Extra";fs::create_directories(pack/"units");
     // A synthetic unit: no retail text.
-    std::ofstream(pack/"units"/"zzpack.fbi",std::ios::binary)<<"[UNITINFO]\n{\n\tUnitName=zzpack;\n\tName=Pack Test Unit;\n\tSide=ARAMON;\n\tCategory=ARA LAND;\n\tMaxVelocity=1;\n}\n";
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",install.string(),"--out",root.string()};
+    std::ofstream(pack/"units"/"zzpack.fbi",std::ios::binary)<<"[UNITINFO]\n{\n\tUnitName=zzpack;\n\tName=Pack Test Unit;\n\tSide=ARM;\n\tCategory=ARM LAND;\n\tMaxVelocity=1;\n}\n";
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",install.string(),"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     cart::Editor* editor=nullptr;cart::EditorHooks hooks;hooks.attached=[&](cart::Editor& e){editor=&e;};
     std::string failure;int lastFrame=0;
@@ -913,7 +913,7 @@ static int aiExtrasWorkflow(const char* data) {
         auto groups=[&]() {return editor->aiTabView().draft.groups;};
         switch(frame) {
         case 0:   // a map edit from before the window: Ctrl+Z inside it must not reach this
-            editor->useOnly.insert("araarch");editor->dirty=editor->historyPending=true;key(SDLK_a);break;
+            editor->useOnly.insert("armpw");editor->dirty=editor->historyPending=true;key(SDLK_a);break;
         case 1:check(editor->aiOpen && editor->aiRosterPack.empty(),"the window did not open on the base install's units");
             check(!listed(editor->aiLevelRoster,"zzpack"),"a pack unit is listed without the pack");
             check(editor->aiPacks==std::vector<std::string>{"Extra"},"the scratch pack is not found");
@@ -921,7 +921,7 @@ static int aiExtrasWorkflow(const char* data) {
         case 2:{
             const auto* level=listed(editor->aiLevelRoster,"zzpack");const auto* def=listed(editor->aiDefaultRoster,"zzpack");
             check(editor->aiRosterPack=="Extra" && level && level->fromPack && def && def->fromPack,"PREVIEW WITH GAME MOD does not list the pack's unit");
-            check(!listed(editor->aiLevelRoster,"araarch") || !listed(editor->aiLevelRoster,"araarch")->fromPack,"a base unit is marked as the pack's");
+            check(!listed(editor->aiLevelRoster,"armpw") || !listed(editor->aiLevelRoster,"armpw")->fromPack,"a base unit is marked as the pack's");
             click(editor->aiPackButton);break;
         }
         case 3:check(editor->aiRosterPack.empty() && !listed(editor->aiLevelRoster,"zzpack"),"the base roster did not come back");
@@ -982,7 +982,7 @@ static int aiExtrasWorkflow(const char* data) {
             break;
         case 20:check(editor->aiOpen && cart::standardAiProfile(editor->scenario.aiProfile) && editor->aiFiles.empty(),"undo did not walk back to the window's start");
             check(editor->aiNote.starts_with("Nothing to undo in this window"),"undo went past where the window opened: "+editor->aiNote);
-            check(editor->useOnly.count("araarch")==1,"undo in the window took back a map edit from before it opened");
+            check(editor->useOnly.count("armpw")==1,"undo in the window took back a map edit from before it opened");
             for(int i=0;i<4;++i)key(SDLK_y,KMOD_CTRL);
             break;
         case 21:check(!cart::standardAiProfile(editor->scenario.aiProfile) && file(own).find("\nweight "+word+" "+cart::classicChanceText(25)+"\n")!=std::string::npos,
@@ -1054,8 +1054,8 @@ static int resizeSaveWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-resize-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
     ta::crt::Scenario scenario;scenario.regions.push_back({"Edge region",map.width-10,map.height-10,map.width-5,map.height-5});
     const auto width=std::to_string(map.width/32),height=std::to_string(map.height/32);
     const auto wider=std::to_string(map.width/32+1),higher=std::to_string(map.height/32+1);
@@ -1064,7 +1064,7 @@ static int resizeSaveWorkflow(const char* data) {
     if(!cart::writeDocumentBundle(root/"Resize.kmp",files,error) || !cart::writeDocumentBundle(root/"Existing.kmp",files,error))throw std::runtime_error(error);
     auto read=[&](const fs::path& file) {std::ifstream in(file,std::ios::binary);return std::vector<uint8_t>(std::istreambuf_iterator<char>(in),{});};
     const auto existing=read(root/"Existing.kmp");
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;
     auto check=[&](bool value,const char* message) {if(!value && failure.empty())failure=message;};
@@ -1117,12 +1117,12 @@ static int templateWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-templates-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
     ta::crt::Scenario scenario;scenario.players.resize(9);scenario.regions.push_back({"Bridge",10,10,20,20});
     std::string error;
     if(!cart::writeDocumentBundle(root/"Templates.kmp",cart::documentFiles(map,metadata,scenario,{}, {},{},"Templates"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     bool failed=false;int lastFrame=0;
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
@@ -1176,15 +1176,15 @@ static int ruleTextWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-rules-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
-    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
     ta::crt::Scenario scenario;scenario.players.resize(9);scenario.players[0].resize(1);
     auto& group=scenario.players[0][0];group.conditions.push_back({1,{"12345"}});
     for(int i=0;i<12;++i)group.actions.push_back({25,{"Player 1","Message "+std::to_string(i)+" "+std::string(45,'x'),"progress",std::string(63,'y')}});
     const auto expected=cart::ruleDetails(group,cart::RuleColumn::Group,0);
     std::string error;
     if(!cart::writeDocumentBundle(root/"Rules.kmp",cart::documentFiles(map,metadata,scenario,{}, {},{},"Rules"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     bool failed=false;int lastFrame=0;std::vector<uint8_t> before;
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
@@ -1245,7 +1245,7 @@ static int regionWorkflow(const char* data) {
     const auto root=fs::temp_directory_path()/("ta-editor-regions-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     bool failed=false;int lastFrame=0;
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
@@ -1270,7 +1270,7 @@ static int regionWorkflow(const char* data) {
         case 7: mouse(SDL_MOUSEBUTTONDOWN,393,333);mouse(SDL_MOUSEMOTION,280,333);key(SDLK_ESCAPE);mouse(SDL_MOUSEBUTTONUP,280,333);break;
         case 8: key(SDLK_s,KMOD_CTRL);break;
         case 9: failed|=dirty;key(SDLK_RETURN);key(SDLK_o,KMOD_CTRL);break;
-        case 10: text((root/"Ulasem Arena.kmp").string());key(SDLK_RETURN);break;
+        case 10: text((root/"Ashap Plateau.kmp").string());key(SDLK_RETURN);break;
         case 11: failed|=dirty;key(SDLK_s,KMOD_CTRL);break; // serialize the reopened document too
         case 12: failed|=dirty;key(SDLK_RETURN);break;
         case 13: {SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);break;}
@@ -1279,7 +1279,7 @@ static int regionWorkflow(const char* data) {
     });
     try {
         if(result || failed || lastFrame>20)throw std::runtime_error("region canvas UI workflow failed");
-        ta::hpi::Archive archive(root/"Ulasem Arena.kmp");bool found=false;
+        ta::hpi::Archive archive(root/"Ashap Plateau.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt")) {
             const auto scenario=ta::crt::parse(archive.read(entry));
             for(const auto& r:scenario.regions)if(r.name=="Canvas region") {
@@ -1407,7 +1407,7 @@ static int thumbnailWorkflow(const char* data) {
     if(SDL_Init(SDL_INIT_VIDEO)!=0)return 2;
     int result=0;
     {
-        auto assets=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(assets,"zhon");
+        auto assets=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(assets,"red planet");
         if(sections.list().size()<5) {SDL_Quit();return 2;}
         auto* surface=SDL_CreateRGBSurfaceWithFormat(0,512,512,32,SDL_PIXELFORMAT_RGBA32);
         auto* renderer=surface?SDL_CreateSoftwareRenderer(surface):nullptr;
@@ -1453,7 +1453,7 @@ static int thumbnailWorkflow(const char* data) {
     }
     SDL_Quit();if(!result)std::cout<<"PASS: background thumbnail raster, cache eviction and reset with work pending\n";return result;
 }
-static int minimapWorkflow(const char* data,const char* mapName="Ulasem Arena") {
+static int minimapWorkflow(const char* data,const char* mapName="Ashap Plateau") {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-minimap-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
@@ -1508,14 +1508,14 @@ static int featureWorkflow(const char* data) {
     const auto root=fs::temp_directory_path()/("ta-editor-features-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     auto map=ta::tnt::Map::load(vfs.read(path),path);
     if(map.featureNames.empty())return 2;
     map.features.assign(map.features.size(),0xFFFF);map.features[10*map.width+10]=0;map.features[10*map.width+12]=0;
-    ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    ta::tnt::Scenario metadata;metadata.kingdom="red planet";
     std::string error;
     if(!cart::writeDocumentBundle(root/"Features.kmp",cart::documentFiles(map,metadata,{}, {},{},{},"Features"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     bool failed=false;int lastFrame=0;
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
@@ -1565,7 +1565,7 @@ static int featureWorkflow(const char* data) {
         fs::remove_all(root);std::cout<<"PASS: feature box selection, layer hiding, protected hidden selection, group drag, delete, undo/redo, save and reopen\n";return 0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<"; files: "<<root<<'\n';return 1;}
 }
-static int validationWorkflow(const char* data,const char* mapName="Ulasem Arena") {
+static int validationWorkflow(const char* data,const char* mapName="Ashap Plateau") {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-validation-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
@@ -1575,10 +1575,10 @@ static int validationWorkflow(const char* data,const char* mapName="Ulasem Arena
     std::cout<<"Validation fixture: "<<mapName<<" ("<<map.width/32<<" x "<<map.height/32<<")\n";
     map.features[size_t(map.height/2)*map.width+map.width/2]=uint16_t(map.featureNames.size());
     map.featureNames.push_back("MissingEditorTestFeature");
-    ta::tnt::Scenario metadata;metadata.kingdom="aramon";metadata.starts={{1,10,10},{2,20,20}};
+    ta::tnt::Scenario metadata;metadata.kingdom="green planet";metadata.starts={{1,10,10},{2,20,20}};
     std::string error;
     if(!cart::writeDocumentBundle(root/"Validation.kmp",cart::documentFiles(map,metadata,{}, {},{},{},"Validation"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     int stage=0;bool failed=false;auto began=std::chrono::steady_clock::now();
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int) {
@@ -1616,7 +1616,7 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
     isolateProfile(folder);
     const bool restore=phase=="restore",probe=phase=="probe";
     const auto destination=root/"original-destination";fs::create_directories(destination);
-    std::vector<std::string> args={"cartographer"};if(!restore && !probe)args.push_back("Ulasem Arena");
+    std::vector<std::string> args={"cartographer"};if(!restore && !probe)args.push_back("Ashap Plateau");
     args.insert(args.end(),{"--data",data});
     if(!restore)args.insert(args.end(),{"--out",destination.string()});
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
@@ -1653,7 +1653,7 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
     if(probe && prompts)return 5;
     if(restore) {
         if(prompts!=1)return 6;
-        ta::hpi::Archive archive(destination/"Ulasem Arena.kmp");bool found=false;
+        ta::hpi::Archive archive(destination/"Ashap Plateau.kmp");bool found=false;
         for(const auto& member:archive.entries())if(member.path.ends_with(".ota")) {
             const auto bytes=archive.read(member);const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
             found=metadata.missionName=="Recovered unsaved map";
@@ -1670,7 +1670,7 @@ static int sectionsWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-sections-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"zhon");
+    auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"red planet");
     cart::SectionCatalog catalog;catalog.build(sections.list());
     const std::string groupId="folder:coast cliffs sandy";int groupRow=-1;
     for(size_t i=0;i<catalog.groups().size();++i)if(catalog.groups()[i].id==groupId)groupRow=int(i);
@@ -1683,7 +1683,7 @@ static int sectionsWorkflow(const char* data) {
     auto stampedAt=[&](int section) {
         const auto* prefab=sections.load(vfs,sections.list()[size_t(section)].path);
         if(!prefab || prefab->blocksX!=16 || prefab->blocksY!=16)return -1;
-        int found=0;ta::hpi::Archive archive(root/"Ulasem Arena.kmp");
+        int found=0;ta::hpi::Archive archive(root/"Ashap Plateau.kmp");
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
             const auto map=ta::tnt::Map::load(archive.read(entry),entry.path);
             for(int by=0;by+16<=map.blocksY;++by)for(int bx=0;bx+16<=map.blocksX;++bx) {
@@ -1698,7 +1698,7 @@ static int sectionsWorkflow(const char* data) {
         }
         return found;
     };
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;auto check=[&](bool value,const char* message){if(!value && failure.empty())failure=message;};
     auto session=[&](std::vector<std::function<void(SDL_Renderer*,bool)>> steps) {
@@ -1738,7 +1738,7 @@ static int sectionsWorkflow(const char* data) {
         check(stampedAt(piece.variants[1])>0,"second click stamps the piece's second variant");
         check(stampedAt(piece.variants[0])==0,"first variant was not left selected");
         const auto preferences=cart::loadEditorPreferences(root/"TAengine"/"Cartographer");
-        const auto remembered=preferences.sectionGroups.find("zhon");   // Ulasem says "Zhon"; new maps "zhon"
+        const auto remembered=preferences.sectionGroups.find("red planet");   // Ulasem says "Zhon"; new maps "red planet"
         check(remembered!=preferences.sectionGroups.end() && remembered->second==groupId,"chosen group remembered for the world");
     }
     if(failure.empty()) session({
@@ -1784,17 +1784,17 @@ static int headlessWorkflow(const char* data) {
         return cart::runEditor(int(raw.size()),raw.data());
     };
     auto written=[](const fs::path& path) {return fs::exists(path) && fs::file_size(path)>0;};
-    const auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"zhon");
-    if(sections.list().empty()) {std::cerr<<"no zhon sections\n";return 1;}
+    const auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"red planet");
+    if(sections.list().empty()) {std::cerr<<"no red planet sections\n";return 1;}
     const auto tnt=root/"Saved.tnt",stamped=root/"Stamped.tnt",kmp=root/"Saved.kmp",png=root/"shot.png";
     std::string failure;auto check=[&](bool value,const char* message){if(!value && failure.empty())failure=message;};
-    check(run({"Ulasem Arena","--save",tnt.string()})==2,"no data root prints usage and exits 2");
+    check(run({"Ashap Plateau","--save",tnt.string()})==2,"no data root prints usage and exits 2");
     check(run({"No Such Map Anywhere","--data",data,"--save",tnt.string()})==1 && !fs::exists(tnt),"a missing map exits 1 without writing");
-    check(run({"Ulasem Arena","--data",data,"--save",tnt.string()})==0 && written(tnt),"--save writes the map and exits 0");
-    check(run({"Ulasem Arena","--data",data,"--stamp","no such section","0","0","--save",stamped.string()})==1 && !fs::exists(stamped),"an unknown --stamp section exits 1");
-    check(run({"Ulasem Arena","--data",data,"--stamp",sections.list().front().name,"0","0","--save",stamped.string()})==0 && written(stamped),"--stamp edits, saves and exits 0");
-    check(run({"Ulasem Arena","--data",data,"--bundle",kmp.string()})==0 && written(kmp),"--bundle writes the KMP and exits 0");
-    check(run({"Ulasem Arena","--data",data,"--shot",png.string()})==0 && written(png),"--shot writes one frame and exits 0");
+    check(run({"Ashap Plateau","--data",data,"--save",tnt.string()})==0 && written(tnt),"--save writes the map and exits 0");
+    check(run({"Ashap Plateau","--data",data,"--stamp","no such section","0","0","--save",stamped.string()})==1 && !fs::exists(stamped),"an unknown --stamp section exits 1");
+    check(run({"Ashap Plateau","--data",data,"--stamp",sections.list().front().name,"0","0","--save",stamped.string()})==0 && written(stamped),"--stamp edits, saves and exits 0");
+    check(run({"Ashap Plateau","--data",data,"--bundle",kmp.string()})==0 && written(kmp),"--bundle writes the KMP and exits 0");
+    check(run({"Ashap Plateau","--data",data,"--shot",png.string()})==0 && written(png),"--shot writes one frame and exits 0");
     // --shot waits for the async palette art: the first frame draws empty boxes (workers have not
     // started), so the captured (last) frame must differ from it and carry real texture detail.
     auto shotCell=[&](const char* shotTool,SDL_Rect logical,const char* name) {
@@ -1805,7 +1805,7 @@ static int headlessWorkflow(const char* data) {
             std::vector<uint8_t> rgba(size_t(physical.w)*physical.h*4);
             SDL_RenderReadPixels(renderer,&physical,SDL_PIXELFORMAT_RGBA32,rgba.data(),physical.w*4);return rgba;
         };
-        std::vector<std::string> args{"cartographer","Ulasem Arena","--data",data,"--shot",png.string(),"--shot-tool",shotTool};std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
+        std::vector<std::string> args{"cartographer","Ashap Plateau","--data",data,"--shot",png.string(),"--shot-tool",shotTool};std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
         const int code=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window*,SDL_Renderer* renderer,int frame) {
             frames=frame+1;last=read(renderer);if(!frame)first=last;
         });
@@ -1840,24 +1840,24 @@ static int symmetryWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-symmetry-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
-    ta::tnt::Scenario metadata;metadata.kingdom="zhon";metadata.starts={{1,40,40}};
+    ta::tnt::Scenario metadata;metadata.kingdom="red planet";metadata.starts={{1,40,40}};
     ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs,false);
-    cart::PlacedUnit guard;guard.type="ARAARCH";guard.player=0;guard.angle=90;guard.name="Left guard";
-    if(const auto* type=registry.find("araarch")) {guard.footX=type->footX;guard.footZ=type->footZ;}
+    cart::PlacedUnit guard;guard.type="ARMPW";guard.player=0;guard.angle=90;guard.name="Left guard";
+    if(const auto* type=registry.find("armpw")) {guard.footX=type->footX;guard.footZ=type->footZ;}
     guard.x=100*16+guard.footX*8.f;guard.z=50*16+guard.footZ*8.f;
     std::string error;
     if(!cart::writeDocumentBundle(root/"Symmetry.kmp",cart::documentFiles(map,metadata,{},{guard},{},{},"Symmetry"),error))throw std::runtime_error(error);
     // The expected result, computed outside the editor.
-    cart::SectionLibrary sections;sections.scan(vfs,"zhon");cart::FeatureLibrary features;features.scan(vfs,"zhon");
+    cart::SectionLibrary sections;sections.scan(vfs,"red planet");cart::FeatureLibrary features;features.scan(vfs,"red planet");
     cart::SectionMatcher matcher;matcher.build(sections.list(),[&](size_t i){return sections.load(vfs,sections.list()[i].path);});
     auto expected=map;auto expectedStarts=metadata.starts;ta::crt::Scenario expectedScenario;std::vector<cart::PlacedUnit> expectedUnits{guard};
     cart::SymmetryRequest request;request.kind=cart::Mirror::Vertical;request.source=0;
     const auto report=cart::symmetrize(expected,expectedStarts,expectedScenario,expectedUnits,request,
         [&](const std::string& name){const auto* ref=features.byName(name);return ref?std::pair{ref->footX,ref->footZ}:std::pair{1,1};},&matcher);
     if(report.blocks<40000 || expectedUnits.size()!=2)throw std::runtime_error("fixture symmetrize did not mirror the map");
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;
     auto fail=[&](const std::string& why){if(failure.empty())failure=why;};
@@ -1919,9 +1919,9 @@ static int terrainClipboardWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-terrainclip-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
-    ta::tnt::Scenario metadata;metadata.kingdom="zhon";std::string error;
+    ta::tnt::Scenario metadata;metadata.kingdom="red planet";std::string error;
     if(!cart::writeDocumentBundle(root/"Clip.kmp",cart::documentFiles(map,metadata,{},{},{},{},"Clip"),error))throw std::runtime_error(error);
     // Another world's map to paste into after File > Open.
     std::string other;
@@ -1929,11 +1929,11 @@ static int terrainClipboardWorkflow(const char* data) {
         const auto ota=mapPath.substr(0,mapPath.rfind('.'))+".ota";if(!vfs.has(ota))continue;
         const auto bytes=vfs.read(ota);const auto scenario=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
         auto kingdom=scenario.kingdom;std::transform(kingdom.begin(),kingdom.end(),kingdom.begin(),[](unsigned char c){return char(std::tolower(c));});
-        if(kingdom=="aramon" && cart::validDocumentName(name)) {const auto m=ta::tnt::Map::load(vfs.read(mapPath),mapPath);if(m.blocksX>=16 && m.blocksY>=12) {other=name;break;}}
+        if(kingdom=="green planet" && cart::validDocumentName(name)) {const auto m=ta::tnt::Map::load(vfs.read(mapPath),mapPath);if(m.blocksX>=16 && m.blocksY>=12) {other=name;break;}}
     }
-    if(other.empty()) {std::cerr<<"no aramon map\n";return 1;}
+    if(other.empty()) {std::cerr<<"no green planet map\n";return 1;}
     auto block=[&](const ta::tnt::Map& m,int x,int z){const size_t i=size_t(z)*m.blocksX+x;return std::tuple{m.tileKeys[i],m.tileCols[i],m.tileRows[i]};};
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;
     auto fail=[&](const std::string& why){if(failure.empty())failure=why;};
@@ -2006,13 +2006,13 @@ static int paletteScrollWorkflow(const char* data) {
     constexpr int kPaletteW=200,kPaletteTop=120,kStatusH=22,kCellH=106;   // editorstate.h layout
     const auto root=fs::temp_directory_path()/("ta-editor-scroll-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
-    ta::tnt::Scenario metadata;metadata.kingdom="zhon";
+    ta::tnt::Scenario metadata;metadata.kingdom="red planet";
     for(int i=0;i<30;++i)metadata.starts.push_back({i+1,40+(i%6)*60,40+(i/6)*60});   // 30 rows overflow the STARTS list
     std::string error;
     if(!cart::writeDocumentBundle(root/"Scroll.kmp",cart::documentFiles(map,metadata,{},{},{},{},"Scroll"),error))throw std::runtime_error(error);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     const char* shots=std::getenv("TA_CARTO_SHOT_DIR");
     cart::EditorHooks hooks;cart::EditorHooks::FrameState state;hooks.frameState=[&](const auto& s) {state=s;};
@@ -2091,9 +2091,9 @@ static int displayWorkflow(const char* data) {
     const auto root=fs::temp_directory_path()/("ta-editor-display-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     const auto profile=root/"TAengine"/"Cartographer";
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ulasem Arena");
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     const char* shots=std::getenv("TA_CARTO_SHOT_DIR");
     cart::EditorHooks hooks;cart::EditorHooks::FrameState state;hooks.frameState=[&](const auto& s) {state=s;};
@@ -2236,7 +2236,7 @@ static int dataFolderWorkflow(const char* data) {
 
     // 1. Saved folder in use: invalid, cancel, then a valid pick and RESTART NOW (clean document).
     picks={bad,"",other};
-    const std::vector<std::string> args={"cartographer","Ulasem Arena","--out",root.string()};
+    const std::vector<std::string> args={"cartographer","Ashap Plateau","--out",root.string()};
     int result=run(args,[&](SDL_Window*,SDL_Renderer* renderer,const Pointer& pointer,Uint64) {
         switch(phase) {
         case 0:check(editor && editor->dataRoot==original,"the saved shared folder is the one mounted");openPreferences(pointer);next();break;
@@ -2266,7 +2266,7 @@ static int dataFolderWorkflow(const char* data) {
         }
     });
     check(result==0,"the first editor exits cleanly");
-    check(relaunches.size()==1 && relaunches.back()==std::vector<std::string>{"--out",root.string(),"Ulasem Arena"},
+    check(relaunches.size()==1 && relaunches.back()==std::vector<std::string>{"--out",root.string(),"Ashap Plateau"},
           "RESTART NOW relaunches with the same output folder and this map");
 
     // 2. The restarted editor mounts the new folder. Unsaved work: RESTART NOW asks; CANCEL
@@ -2298,7 +2298,7 @@ static int dataFolderWorkflow(const char* data) {
 
     // 3. --data overrides the setting: the row is greyed and says so, and never picks.
     picks={bad};picked=0;
-    const std::vector<std::string> cli={"cartographer","Ulasem Arena","--data",original,"--out",root.string()};
+    const std::vector<std::string> cli={"cartographer","Ashap Plateau","--data",original,"--out",root.string()};
     if(failure.empty())result=run(cli,[&](SDL_Window*,SDL_Renderer* renderer,const Pointer& pointer,Uint64) {
         switch(phase) {
         case 0:openPreferences(pointer);next();break;
@@ -2317,7 +2317,7 @@ static int dataFolderWorkflow(const char* data) {
     // saved file, which the new editor opens from disk on the new install; a map the new
     // install lacks still opens the editor (OPEN FAILED over the blank map, not an exit); a
     // SAVE that fails cancels the pending restart, so a later Esc exit is only an exit.
-    const auto saved=root/"Ulasem Arena.kmp";
+    const auto saved=root/"Ashap Plateau.kmp";
     auto edit=[&] {editor->scenario.missionName+=" (edited)";editor->historyPending=editor->dirty=true;};   // a real, undoable change
     picks={other};picked=0;editor=nullptr;
     if(failure.empty())result=run(args,[&](SDL_Window*,SDL_Renderer*,const Pointer& pointer,Uint64) {
@@ -2339,7 +2339,7 @@ static int dataFolderWorkflow(const char* data) {
     editor=nullptr;
     if(failure.empty())result=run(reopened,[&](SDL_Window*,SDL_Renderer*,const Pointer&,Uint64) {
         if(phase!=0)return;
-        check(editor && editor->dataRoot==other && editor->modal!=cart::Editor::M_MESSAGE && editor->mapName=="Ulasem Arena" &&
+        check(editor && editor->dataRoot==other && editor->modal!=cart::Editor::M_MESSAGE && editor->mapName=="Ashap Plateau" &&
               !editor->dirty && fs::equivalent(ta::u8path(editor->documentRequest),saved,same),
               "the restarted editor reopens the saved file on the new folder ("+(editor?editor->mapName+", "+editor->mTitle:std::string())+")");
         if(editor)editor->dirty=false;   // leave without the save prompt, whatever was open
@@ -2359,7 +2359,7 @@ static int dataFolderWorkflow(const char* data) {
     check(result==0,"a missing map is not an exit code");
     const auto notFolder=root/"not-a-folder";{std::ofstream(notFolder)<<"x";}
     picks={original};picked=0;editor=nullptr;
-    if(failure.empty())result=run({"cartographer","Ulasem Arena","--out",text(notFolder)},[&](SDL_Window*,SDL_Renderer*,const Pointer& pointer,Uint64) {
+    if(failure.empty())result=run({"cartographer","Ashap Plateau","--out",text(notFolder)},[&](SDL_Window*,SDL_Renderer*,const Pointer& pointer,Uint64) {
         switch(phase) {
         case 0:edit();openPreferences(pointer);next();break;
         case 1:{const auto c=center(editor->mFolderChange);pointer.click(c.x,c.y);}next();break;
@@ -2503,13 +2503,13 @@ int main(int argc,char** argv) {
     if(argc==3 && std::string(argv[2])=="failed-open")return failedOpenWorkflow(argv[1]);
     if(argc==3 && std::string(argv[2])=="aimod-nomap")return aiModNoMapWorkflow(argv[1],argv[0]);
     if(argc==5 && std::string(argv[2])=="recovery")return recoveryWorkflow(argv[1],argv[3],argv[4]);
-    if((argc==3 || argc==4) && std::string(argv[2])=="validation")return validationWorkflow(argv[1],argc==4?argv[3]:"Ulasem Arena");
+    if((argc==3 || argc==4) && std::string(argv[2])=="validation")return validationWorkflow(argv[1],argc==4?argv[3]:"Ashap Plateau");
     if(argc==2 && std::string(argv[1])=="font")return fontWorkflow();
     if(argc==3 && std::string(argv[1])=="fontsheet")return fontSheet(argv[2]);
     if(argc==3 && std::string(argv[2])=="objects")return objectsWorkflow(argv[1]);
     if(argc==3 && std::string(argv[2])=="model")return modelWorkflow(argv[1]);
     if(argc==3 && std::string(argv[2])=="thumbnails")return thumbnailWorkflow(argv[1]);
-    if((argc==3 || argc==4) && std::string(argv[2])=="minimap")return minimapWorkflow(argv[1],argc==4?argv[3]:"Ulasem Arena");
+    if((argc==3 || argc==4) && std::string(argv[2])=="minimap")return minimapWorkflow(argv[1],argc==4?argv[3]:"Ashap Plateau");
     if(argc==3 && std::string(argv[2])=="features")return featureWorkflow(argv[1]);
     if(argc==3 && std::string(argv[2])=="resize-save")return resizeSaveWorkflow(argv[1]);
     if(argc==3 && std::string(argv[2])=="aiprofile")return aiProfileWorkflow(argv[1]);
@@ -2533,7 +2533,7 @@ int main(int argc,char** argv) {
     const auto root=fs::temp_directory_path()/("ta-editor-ui-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
-    std::vector<std::string> args={"cartographer","Ulasem Arena","--data",argv[1],"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",argv[1],"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;
     auto check=[&](bool value,const char* message){if(!value && failure.empty())failure=message;};
@@ -2552,7 +2552,7 @@ int main(int argc,char** argv) {
         case 3: check(!dirty,"undo restores saved revision");key(SDLK_y,KMOD_CTRL);break;
         case 4: check(dirty,"redo restores edited revision");key(SDLK_s,KMOD_CTRL);break;
         case 5: check(!dirty,"successful save clears dirty marker");key(SDLK_RETURN);key(SDLK_o,KMOD_CTRL);break;
-        case 6: text((root/"Ulasem Arena.kmp").string());key(SDLK_RETURN);break;
+        case 6: text((root/"Ashap Plateau.kmp").string());key(SDLK_RETURN);break;
         case 7: check(!dirty,"reopening saved map is clean");key(SDLK_p);break;
         case 8: text("Do not apply this edit");key(SDLK_ESCAPE);break;
         case 9: check(!dirty,"cancelled properties do not mutate document");key(SDLK_s,KMOD_CTRL|KMOD_SHIFT);break;
@@ -2574,12 +2574,12 @@ int main(int argc,char** argv) {
         case 22: key(SDLK_ESCAPE);key(SDLK_s,KMOD_CTRL);break;
         case 23: check(!dirty,"duplicated script rules saved");key(SDLK_RETURN);break;
         case 24: key(SDLK_o,KMOD_CTRL);break;
-        case 25: text("ulasem");break;
+        case 25: text("ashap");break;
         case 26: {
             float sx,sy;SDL_RenderGetScale(renderer,&sx,&sy);int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);
             click(int(w/sx/2),int(h/sy/2-130));break;
         }
-        case 27: check(std::string(SDL_GetWindowTitle(window)).find("Ulasem Arena")!=std::string::npos,"searchable Open chooses recent map");
+        case 27: check(std::string(SDL_GetWindowTitle(window)).find("Ashap Plateau")!=std::string::npos,"searchable Open chooses recent map");
             key(SDLK_TAB);key(SDLK_TAB);click(500,300);key(SDLK_RETURN);break;
         case 28: text("9");key(SDLK_RETURN);key(SDLK_a,KMOD_CTRL);text("8");
             for(int i=0;i<6;++i)key(SDLK_TAB);
@@ -2594,7 +2594,7 @@ int main(int argc,char** argv) {
     try {
         if(result!=0)throw std::runtime_error("editor returned failure");
         if(!failure.empty())throw std::runtime_error(failure);
-        for(const auto& file:{"Ulasem Arena.kmp","Copied map.kmp"}) {
+        for(const auto& file:{"Ashap Plateau.kmp","Copied map.kmp"}) {
             ta::hpi::Archive archive(root/file);bool found=false;
             for(const auto& entry:archive.entries())if(entry.path.ends_with(".ota")) {
                 const auto bytes=archive.read(entry);const auto metadata=ta::tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
@@ -2602,7 +2602,7 @@ int main(int argc,char** argv) {
                 found=true;
             }
             if(!found)throw std::runtime_error("saved bundle lacks metadata");
-            if(std::string(file)=="Ulasem Arena.kmp") {
+            if(std::string(file)=="Ashap Plateau.kmp") {
                 bool neutral=false;
                 for(const auto& entry:archive.entries())if(entry.path.ends_with(".crt"))
                     for(const auto& unit:cart::toPlaced(ta::crt::parse(archive.read(entry))))

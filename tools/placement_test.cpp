@@ -8,7 +8,7 @@
 // Both were found by looking; neither left anything behind that would notice a
 // recurrence.
 //
-// The one this test was written for: the Monarch was the single spawn in setupMatch
+// The one this test was written for: the commander (the Kingdoms Monarch then) was the single spawn in setupMatch
 // that never consulted the terrain. Every other body was snapped to ground it fits;
 // the Monarch's footprint was merely RESERVED so nothing else snapped onto it, and it
 // was then placed at the raw start spot whatever was there. Invisible on a real map,
@@ -25,12 +25,13 @@
 // stress cases below do exercise at scale (~3800 and ~2800 bodies) -- so the shared path
 // is covered; ticking each benchmark for 1800 ticks would add minutes to buy little.
 //
-// Needs a retail install, so it registers only with -DTAK_TEST_DATA.
+// Needs a retail install, so it registers only with -DTA_TEST_DATA.
 
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
 #include "sim/sim.h"
 #include "sim/footprint.h"
+#include "sim/sides.h"
 #include "client/renderframe.h"
 #include "tnt/tnt.h"
 
@@ -63,15 +64,16 @@ int failures = 0;
 struct Case { const char* name; const char* map; int players; int benchmark; bool stress; };
 
 const Case kCases[] = {
-    {"benchmark Low",         "Ulasem Arena", 8, 1, false},
-    {"benchmark High",        "Ulasem Arena", 8, 3, false},
-    {"benchmark Extra Absurd","Ulasem Arena", 8, 6, false},
-    {"benchmark cramped",     "Inner Circle", 8, 4, false},
-    {"stress Ulasem",         "Ulasem Arena", 8, 0, true},
-    {"stress cramped",        "Inner Circle", 8, 0, true},
-    // More slots than the map has start positions: the shortfall comes from a computed
-    // ring too, and is just as unchecked as the benchmark's.
-    {"overfilled starts",     "Two Castles",  8, 0, false},
+    {"benchmark Low",         "Ashap Plateau", 8, 1, false},
+    {"benchmark High",        "Ashap Plateau", 8, 3, false},
+    {"benchmark Extra Absurd","Ashap Plateau", 8, 6, false},
+    {"benchmark cramped",     "Great Divide",  8, 4, false},
+    {"stress Ashap",          "Ashap Plateau", 8, 0, true},
+    {"stress cramped",        "Great Divide",  8, 0, true},
+    // More slots than the map has start positions (Luschinfloggen has six): the
+    // shortfall comes from a computed ring too, and is just as unchecked as the
+    // benchmark's.
+    {"overfilled starts",     "Luschinfloggen", 8, 0, false},
 };
 
 // A body stands legally when the nav grid for ITS movement class admits its footprint
@@ -89,13 +91,13 @@ void runCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const Case& c) {
     sim::World world;
     sim::MatchConfig cfg;
     cfg.vfs = &vfs;
-    cfg.mapPath = std::string("maps/") + c.map + ".tnt";
+    cfg.mapPath = hpi::findMap(vfs, c.map);
     cfg.benchmark = c.benchmark;
     cfg.stressTest = c.stress;
     cfg.stressImmediate = true;                          // check the bodies, not a plan
     cfg.unitCap = 500;                                   // keep the stress fills quick
     for (int i = 0; i < c.players; ++i) {
-        sim::MatchSlot s; s.used = true; s.faction = i % 5; s.team = i;
+        sim::MatchSlot s; s.used = true; s.faction = i % sides::count(); s.team = i;
         cfg.slots.push_back(s);
     }
     sim::setupMatch(world, reg, cfg);
@@ -125,25 +127,20 @@ void runCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const Case& c) {
         ++total;
         if (standsLegally(world, u)) continue;
         ++bad;
-        if (u.type->id.find("king") != std::string::npos ||
-            u.type->id.find("necro") != std::string::npos ||
-            u.type->id.find("mage") != std::string::npos ||
-            u.type->id.find("hunt") != std::string::npos ||
-            u.type->id.find("sage") != std::string::npos)
-            ++badMonarch;
+        if (u.type->commander || sides::isCommander(u.type->id)) ++badMonarch;
         if (bad <= 3)
             std::printf("      %s at %.0f,%.0f does not fit its cell\n",
                         u.type->id.c_str(), u.x.toFloat(), u.z.toFloat());
     }
     std::printf("  %-24s %4d units, %d unplaceable%s\n", c.name, total, bad,
-                badMonarch ? "  (INCLUDING A MONARCH)" : "");
+                badMonarch ? "  (INCLUDING A COMMANDER)" : "");
     if (bad) ++failures;
 }
 
 // The staged stress fill (MatchConfig::stressImmediate=false, the game default) must
 // place exactly the army the immediate fill places -- same player, type and position for
 // every body -- only spread over ticks 1..kStressStageTicks, and must not turn the run
-// into a benchmark (Monarchs stay mortal, no end tick).
+// into a benchmark (commanders stay mortal, no end tick).
 using Body = std::tuple<int, std::string, float, float>;
 std::vector<Body> bodies(const sim::World& w) {
     std::vector<Body> out;
@@ -157,13 +154,13 @@ void stagedStressCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, int ben
     auto setup = [&](sim::World& w, bool immediate, int bench) {
         sim::MatchConfig cfg;
         cfg.vfs = &vfs;
-        cfg.mapPath = "maps/Ulasem Arena.tnt";
+        cfg.mapPath = hpi::findMap(vfs, "Ashap Plateau");
         cfg.stressTest = true;
         cfg.stressImmediate = immediate;
         cfg.benchmark = bench;
         cfg.unitCap = 500;
         for (int i = 0; i < 8; ++i) {
-            sim::MatchSlot s; s.used = true; s.faction = i % 5; s.team = i;
+            sim::MatchSlot s; s.used = true; s.faction = i % sides::count(); s.team = i;
             cfg.slots.push_back(s);
         }
         sim::setupMatch(w, reg, cfg);
@@ -194,10 +191,9 @@ void stagedStressCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, int ben
         return n;
     }();
     planned -= benchEarly;
-    // Both armies hold fire, so they stand where they were placed. A God's
-    // mission scan on its melee slot reaches its 2500 px sight (4d8370), so
-    // with fire at will a God of the immediate fill walks off after an enemy
-    // the staged fill has not placed yet.
+    // Both armies hold fire, so they stand where they were placed: with fire
+    // at will a unit of the immediate fill could walk off after an enemy the
+    // staged fill has not placed yet.
     auto holdFire = [](sim::World& w) {
         for (const auto& u : w.units())
             if (sim::Unit* m = w.unit(u.id); m && m->alive()) m->fireState = 0;
@@ -221,110 +217,114 @@ void stagedStressCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, int ben
     }
 }
 
-void seafortPlacementCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, bool crusades) {
-    const std::string mapPath=hpi::findMap(vfs,"Varro Passage");
+// A TA shipyard (ARMSY/CORSY: an 8x8 all-water yard, wCCCCCCw...) on a real
+// sea map and on controlled terrain. Retail decodes w/C/Y with the water bit
+// (docs/retail-data.md 2.4); a wholly water yard is placed by water level.
+constexpr const char* kSeaMap = "Coast To Coast";
+
+// The first open-water shipyard site of the map, scanning row-major.
+bool findShipyardSite(const sim::World& w, const sim::UnitType* yard, float& sx, float& sz) {
+    for (int cz = 2; cz + yard->footZ + 2 < w.mapH(); cz += 2)
+        for (int cx = 2; cx + yard->footX + 2 < w.mapW(); cx += 2) {
+            const float x = float(cx * 16 + yard->footX * 8), z = float(cz * 16 + yard->footZ * 8);
+            if (w.canPlace(yard, x, z)) { sx = x; sz = z; return true; }
+        }
+    return false;
+}
+
+void shipyardPlacementCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
+    const std::string mapPath=hpi::findMap(vfs,kSeaMap);
+    if (mapPath.empty()) { std::printf("      %s not found: FAIL\n",kSeaMap); ++failures; return; }
     const auto map=tnt::Map::load(vfs.read(mapPath),mapPath);
-    const auto* seafort=reg.find("verasy");
-    const auto* builder=reg.find("verliege");
-    if (!seafort || !builder) { ++failures; return; }
+    const auto* yard=reg.find("armsy");
+    const auto* builder=reg.find("armcs");   // ARM construction ship (builds armsy, 60 px builddistance)
+    if (!yard || !builder) { std::printf("      armsy/armcs missing: FAIL\n"); ++failures; return; }
 
     sim::World world;
     sim::MatchConfig cfg; cfg.vfs=&vfs; cfg.mapPath=mapPath;
-    cfg.slots={{true,2,0,1.0f,false,false}};
+    cfg.slots={{true,0,0,1.0f,false,false}};
     sim::setupMatch(world,reg,cfg);
 
-    // The reported replay placed its fort at (1600,112). Its four ignored
-    // leading rows hid an off-map yard, which could never open for production.
-    for (float z : {112.f,128.f,144.f}) {
-        if (world.canPlace(seafort,1600,z)) {
-            std::printf("      off-map/border Sea Fort at z=%.0f accepted: FAIL\n",z);
-            ++failures;
-        }
-        std::vector<int> clearable;
-        if (world.clearableForPlacement(seafort,1600,z,clearable)) ++failures;
-    }
-    if (!world.canPlace(seafort,1600,160)) {
-        std::printf("      first valid Sea Fort yard row: FAIL\n"); ++failures;
-    }
-
-    // Map-backed open-water Sea Fort site; center of the 6x18 yard at (1472,464).
-    const float sx=1472, sz=464;
-    const bool placeable=world.canPlace(seafort,sx,sz);
-    std::printf("  Varro Passage Sea Fort (%s) open-water canPlace: %s\n",
-                crusades?"Crusades":"Standard",placeable?"PASS":"FAIL");
+    // Map-backed open-water shipyard site.
+    float sx=0,sz=0;
+    const bool placeable=findShipyardSite(world,yard,sx,sz);
+    std::printf("  %s shipyard open-water canPlace: %s (%.0f,%.0f)\n",kSeaMap,placeable?"PASS":"FAIL",sx,sz);
     if (!placeable) { ++failures; return; }
 
-    // Match the in-game Varro fixture: the Priestess stands 80px away, within its
-    // 200px build distance, then starts the site through the ordinary API.
-    const int bid=world.spawn(builder,1392,464,0,0);
-    const int sid=world.startBuild(bid,seafort,sx,sz,sim::World::Approach::None);
-    const bool started=sid && world.unit(sid) && world.unit(sid)->type==seafort &&
-                       world.unit(sid)->underConstruction && builder->buildDist>=80;
-    std::printf("      Veruna Priestess startBuild at (1392,464): %s\n",started?"PASS":"FAIL");
+    // A construction ship beside the site, within its build distance, starts it
+    // through the ordinary API.
+    const float bx=sx-float(yard->footX*8)-float(builder->footX*8)-8;
+    const int bid=world.spawn(builder,bx,sz,0,0);
+    const int sid=world.startBuild(bid,yard,sx,sz,sim::World::Approach::None);
+    const bool started=sid && world.unit(sid) && world.unit(sid)->type==yard &&
+                       world.unit(sid)->underConstruction;
+    std::printf("      armcs startBuild at (%.0f,%.0f): %s\n",bx,sz,started?"PASS":"FAIL");
     if (!started) ++failures;
 
-    // Controlled terrain checks use the shipped Sea Fort yardmap on an otherwise
-    // empty 64x64 grid, isolating water depth and occupied cells.
+    // Controlled terrain checks use the shipped yardmap on an otherwise empty
+    // 64x64 grid, isolating water depth, the map border and occupied cells.
     const int x0=10,z0=10;
-    const float tx=float(x0*16+seafort->footX*8),tz=float(z0*16+seafort->footZ*8);
+    const float tx=float(x0*16+yard->footX*8),tz=float(z0*16+yard->footZ*8);
     auto flat=[&](sim::World& w,int height) {
         constexpr int kSyntheticW=64,kSyntheticH=64;
-        std::vector<uint8_t> h(size_t(kSyntheticW)*kSyntheticH,uint8_t(height));
+        std::vector<uint8_t> h(size_t(kSyntheticW)*kSyntheticH,uint8_t(std::clamp(height,0,255)));
         w.setTerrain(h,kSyntheticW,kSyntheticH,map.seaLevel);
         w.buildNavClasses(reg);
     };
-    sim::World deep,shallow,dry,land;
-    flat(deep,map.seaLevel-30);
-    flat(shallow,map.seaLevel-1);
-    flat(dry,map.seaLevel);
-    if (!deep.canPlace(seafort,tx,tz) || !shallow.canPlace(seafort,tx,tz) ||
-        dry.canPlace(seafort,tx,tz)) { std::printf("      waterline depths: FAIL\n"); ++failures; }
-    int ci=-1,di=-1;
-    for (size_t i=0;i<seafort->yardMap.size();++i) {
-        if (ci<0 && seafort->yardMap[i]=='C') ci=int(i);
-        if (di<0 && seafort->yardMap[i]=='.') di=int(i);
+    sim::World deep,dry,land;
+    flat(deep,map.seaLevel-40);
+    flat(dry,map.seaLevel+10);
+    if (!deep.canPlace(yard,tx,tz) || dry.canPlace(yard,tx,tz)) {
+        std::printf("      water / dry land: FAIL\n"); ++failures;
     }
-    if (ci<0 || di<0) { ++failures; }
+    // The one-cell map border: a building's footprint never touches row/column 0
+    // (an off-map yard could never open for production).
+    const float edgeX=float(yard->footX*8),edgeZ=float(yard->footZ*8);
+    if (deep.canPlace(yard,tx,edgeZ) || deep.canPlace(yard,edgeX,tz) ||
+        !deep.canPlace(yard,tx,edgeZ+16) || !deep.canPlace(yard,edgeX+16,tz)) {
+        std::printf("      map border rows: FAIL\n"); ++failures;
+    }
+    std::vector<int> clearable;
+    if (world.clearableForPlacement(yard,tx,edgeZ,clearable)) { std::printf("      border clearable: FAIL\n"); ++failures; }
+    int ci=-1;
+    for (size_t i=0;i<yard->yardMap.size();++i)
+        if (ci<0 && yard->yardMap[i]=='C') ci=int(i);
+    if (ci<0) { std::printf("      armsy yardmap has no C cell: FAIL\n"); ++failures; }
     else {
-        deep.blockCells(x0+ci%seafort->footX,z0+ci/seafort->footX,1,1,true);
-        const bool occupiedRejected=!deep.canPlace(seafort,tx,tz);
-        deep.blockCells(x0+ci%seafort->footX,z0+ci/seafort->footX,1,1,false);
-        deep.blockCells(x0+di%seafort->footX,z0+di/seafort->footX,1,1,true);
-        const bool dotIgnored=deep.canPlace(seafort,tx,tz);
-        if (!occupiedRejected || !dotIgnored) { std::printf("      C occupancy / dot exclusion: FAIL\n"); ++failures; }
+        deep.blockCells(x0+ci%yard->footX,z0+ci/yard->footX,1,1,true);
+        const bool occupiedRejected=!deep.canPlace(yard,tx,tz);
+        deep.blockCells(x0+ci%yard->footX,z0+ci/yard->footX,1,1,false);
+        if (!occupiedRejected) { std::printf("      C occupancy: FAIL\n"); ++failures; }
     }
-    if (const auto* keep=reg.find("aracastl")) {
+    if (const auto* lab=reg.find("armlab")) {
         flat(land,map.seaLevel+20);
-        if (!land.canPlace(keep,float(24*16+keep->footX*8),
-                           float(24*16+keep->footZ*8)) ||
-            deep.canPlace(keep,float(24*16+keep->footX*8),
-                          float(24*16+keep->footZ*8))) {
-            std::printf("      ordinary Keep land rule: FAIL\n"); ++failures;
+        const float lx=float(24*16+lab->footX*8),lz=float(24*16+lab->footZ*8);
+        if (!land.canPlace(lab,lx,lz) || deep.canPlace(lab,lx,lz)) {
+            std::printf("      ordinary land factory rule: FAIL\n"); ++failures;
         }
     } else ++failures;
 }
-// Exercise the complete shipped production scripts at the nearest valid yard
-// row to the reported fort. Each ship must finish and make room for the next.
+// Exercise the complete shipped production scripts of both sides' shipyards.
+// Each ship must finish and make room for the next.
 void shipyardProductionCases(const hpi::Vfs& vfs,const sim::TypeRegistry& reg) {
-  for (const auto& [factory,faction]:{std::pair{"verasy",2},std::pair{"crenavy",4}}) {
+  for (const auto& [factory,side]:{std::pair{"armsy",0},std::pair{"corsy",1}}) {
     const auto* fort=reg.find(factory);
     if (!fort) { ++failures;continue; }
     for (const auto& name:reg.buildable(factory)) for (int angle:{-1,0,1}) {
         const auto* ship=reg.find(name);
         if (!ship) { ++failures;continue; }
         sim::World world;
-        sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=hpi::findMap(vfs,"Varro Passage");
-        cfg.slots={{true,faction,0,1.f,false,false}};
+        sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=hpi::findMap(vfs,kSeaMap);
+        cfg.startEnergy=cfg.startMetal=1e9f;   // isolate placement, readiness and launch
+        cfg.slots={{true,side,0,1.f,false,false}};
         sim::setupMatch(world,reg,cfg);
-        // Both ends and the middle of the actual birth-heading range. Creon's
-        // yard does not counter-rotate its output like the Sea Fort does.
+        float sx=0,sz=0;
+        if (!findShipyardSite(world,fort,sx,sz)) { ++failures;continue; }
+        // Both ends and the middle of the actual birth-heading range.
         const auto heading=sim::bamWrap(int(fort->orientation)+angle*int(fort->buildAngle)/2-(angle>0));
-        const int id=world.spawn(fort,1600,160,sim::radiansFromBam(heading),0);
+        const int id=world.spawn(fort,sx,sz,sim::radiansFromBam(heading),0);
         world.train(id,ship,2);
-        for (int tick=0;tick<18000 && !world.unit(id)->buildQueue.empty();++tick) {
-            world.player(0).mana=100000; // isolate placement, readiness and launch
-            world.tick(1.f/30);
-        }
+        for (int tick=0;tick<18000 && !world.unit(id)->buildQueue.empty();++tick) world.tick(1.f/30);
         int completed=0;
         for (const auto& u:world.units())
             completed+=u.alive() && u.type==ship && !u.underConstruction;
@@ -341,14 +341,13 @@ int main(int argc, char** argv) {
     if (argc < 2) { std::printf("usage: placement_test <retail-install>\n"); return 2; }
     std::printf("placement_test -- no unit starts on ground it cannot stand on\n");
     auto vfs = hpi::mountRetailRoot(argv[1]);
-    for (bool crusades:{false,true}) {
+    {
         sim::TypeRegistry reg;
-        sim::setupRegistry(reg, vfs, crusades);
-        std::printf("balance: %s\n",crusades ? "Crusades" : "standard");
+        sim::setupRegistry(reg, vfs, false);
         for (const auto& c : kCases) runCase(vfs, reg, c);
         stagedStressCase(vfs, reg, 0);
         stagedStressCase(vfs, reg, 1);
-        seafortPlacementCase(vfs,reg,crusades);
+        shipyardPlacementCase(vfs,reg);
         shipyardProductionCases(vfs,reg);
     }
     std::printf(failures ? "placement_test: FAILURES (%d case(s))\n"

@@ -19,7 +19,6 @@
 #include "sim/retailairgrid.h"
 #include "sim/retailguided.h"
 #include "sim/retailballistic.h"
-#include "sim/retailstorm.h"
 #include "sim/retailhweffect.h"
 #include "sim/retailhweffectdata.h"
 #include "tdf/tdf.h"
@@ -641,26 +640,6 @@ int main(int argc,char** argv) {
             }
             for(unsigned step=0;step<32;++step) {view.expire(now+step);output();}
             std::puts("");
-        }
-        return 0;
-    }
-    if(argc==2 && std::strcmp(argv[1],"--storm-launch")==0) {
-        int x,y,z,ax,ay,az,variation;unsigned speed,steps;
-        while(std::scanf("%d %d %d %d %d %d %u %u %d",&x,&y,&z,&ax,&ay,&az,&speed,&steps,&variation)==9) {
-            const auto result=ta::sim::retailStormLaunch({x,y,z},{ax,ay,az},speed,steps,variation);
-            for(auto value:result.position)std::printf("%d ",value);
-            for(auto value:result.baseVelocity)std::printf("%d ",value);
-            for(float value:result.variation)std::printf("%u ",std::bit_cast<uint32_t>(value));
-            std::puts("");
-        }
-        return 0;
-    }
-    if(argc==2 && std::strcmp(argv[1],"--wander-random")==0) {
-        unsigned seed,bits;
-        while(std::scanf("%u %u",&seed,&bits)==2) {
-            uint32_t state=seed;
-            const double value=ta::sim::retailWanderRandom(state,std::bit_cast<float>(uint32_t(bits)));
-            std::printf("%u %llu\n",state,static_cast<unsigned long long>(std::bit_cast<uint64_t>(value)));
         }
         return 0;
     }

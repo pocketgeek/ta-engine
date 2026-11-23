@@ -64,7 +64,6 @@ Fight fight(const TypeRegistry& registry,const UnitType& attacker,const UnitType
     steer();
     for (int i=0;i<240;++i) { if (i%30==29) steer(); w.tick(kTick); }
     const int me=w.spawn(&attacker,cx,cz,1.5707963f,0);
-    w.unit(me)->mana=attacker.maxMana;
     w.attack(me,them,false);
     if (mutual) w.attack(them,me,false);
     float hp=w.unit(them)->hp.toFloat();

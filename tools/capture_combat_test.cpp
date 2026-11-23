@@ -64,7 +64,7 @@ void rejectedTargets(const ta::sim::UnitType& caster) {
         if(reason==3)w.unit(b)->stonedFor=1000;
         if(reason==4)w.setUnitCap(1);
         if(reason==6)w.unit(b)->underConstruction=true;
-        w.unit(a)->fireState=2;w.unit(a)->moveState=2;w.unit(a)->mana=1e6;
+        w.unit(a)->fireState=2;w.unit(a)->moveState=2;
         w.attack(a,b,false);
         check(!targets(*w.unit(a),b),"explicit capture rejects an ineligible target");
         bool fired=false,aimed=false;
@@ -94,7 +94,7 @@ void conversionKeepsDamage(const ta::sim::UnitType& caster,const ta::sim::UnitTy
     const int a=w.spawn(&caster,1000,1000,0,0),b=w.spawn(&victim,1000,1100,0,1);
     const auto hp=ta::sim::Fixed::fromFloat(float(victim.maxHp)*0.1f);
     w.unit(b)->hp=hp;w.unit(b)->veteran=5;w.unit(b)->xp=5;
-    w.unit(a)->mana=1e6;w.unit(a)->fireState=0;w.attack(a,b,false);
+    w.unit(a)->fireState=0;w.attack(a,b,false);
     for(int tick=0;tick<600 && w.unit(b)->player!=0;++tick)w.tick(1.f/30);
     check(w.unit(b)->player==0,data?"shipped caster converts a damaged enemy":"caster converts a damaged enemy");
     check(w.unit(b)->hp==hp,"conversion keeps the unit's damage (no half-health floor)");
@@ -179,28 +179,14 @@ int main(int argc,char** argv) {
             auto victim=*registry.find("arasword");victim.maxVel={};
             victim.weapon.damage=0;victim.weapons.clear();victim.healTime=0;
             conversionKeepsDamage(*harpy,victim,true);
-            // No capture by contact: a Harpy with no mana for its charm stays
-            // beside a worn-down enemy without converting it.
-            for(bool automatic:{false,true}) {
-                ta::sim::World w;setup(w);
-                const int a=w.spawn(harpy,1000,1000,0,0),b=w.spawn(&victim,1000,1060,0,1);
-                w.unit(b)->hp=ta::sim::Fixed::fromFloat(float(victim.maxHp)*0.2f);
-                w.unit(a)->fireState=2;w.unit(a)->moveState=2;w.unit(a)->mana=0;
-                if(!automatic)w.attack(a,b,false);
-                for(int tick=0;tick<150;++tick)w.tick(1.f/30);
-                check(w.unit(b)->player==1,automatic?"an idle Harpy without mana does not convert by contact":
-                      "an attacking Harpy without mana does not convert by contact");
-            }
-            // With mana the Harpy converts on its own, by its weapon: the charm
-            // spends the shot's mana.
+            // The Harpy converts on its own, by its weapon.
             {
                 ta::sim::World w;setup(w);
                 const int a=w.spawn(harpy,1000,1000,0,0),b=w.spawn(&victim,1000,1200,0,1);
-                w.unit(a)->fireState=2;w.unit(a)->moveState=2;w.unit(a)->mana=harpy->maxMana;
+                w.unit(a)->fireState=2;w.unit(a)->moveState=2;
                 bool fired=false;
                 for(int tick=0;tick<600 && w.unit(b)->player!=0;++tick) {w.tick(1.f/30);fired|=w.unit(a)->justFired;}
                 check(w.unit(b)->player==0 && fired,"an idle Harpy converts an enemy with its weapon");
-                check(w.unit(a)->mana<double(harpy->maxMana),"the Harpy's conversion spent mana");
             }
         }
     }

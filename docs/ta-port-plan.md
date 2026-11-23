@@ -62,12 +62,16 @@ partial-route handling, [U] in the spec). Legion is unchanged (identical hashes)
 - Battle-music monitor resets each game (retail carries it across games); default
   track table used on GOG installs, where retail plays only building music.
 
-## Known gaps
+## Out of scope (by decision)
 
-- Campaign: no save/load (ENDMSN's Load/Save are greyed), narration WAVs and the
-  glamour picture / ending movie are not played, ENDMSN's statistics table is empty,
-  the briefing's `&X` colour letters beyond Y/R/G/B are unmapped [U].
-- Tests still written against Kingdoms data (ai_behavior, classic_ai, placement,
-  map_transfer, cartographer_ui, retailgap weapons/rules/orders/fireatwill,
-  ai_orders' Crusades roster) compile but fail at runtime; they need TA fixtures.
-- Kingdoms storm rendering and per-unit mana fields remain in the client/sim (inert).
+- Save / load games (in-game and ENDMSN's between-missions save): skipped at the
+  user's request; ENDMSN's Load/Save buttons are greyed.
+
+## Closed in the final pass
+
+- Campaign: briefing narration with SHUTUP, glamour victory pictures and sounds,
+  the side's ending movies (Arm 3.zrb / Core 4.zrb, then 5.zrb; endgame.cpp
+  0x41fc85), the 1.zrb intro; the static FFmpeg now has the Smacker decoders.
+- Kingdoms leftovers removed: per-unit mana and wandering storms. Cloaking is
+  paid from stored energy at the settle (it could not work on TA data before).
+- Pathfinding change list item 17 (map-load plane edge band).

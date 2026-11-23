@@ -382,7 +382,10 @@ void groundPatrol() {
     for (int id:ids) world.patrol(id,1600,1960);
     const auto legs=[&] {
         std::vector<std::pair<Fixed,Fixed>> v;
-        for (const auto& o:world.unit(outlier)->orders) if (!o.formationLevel) v.emplace_back(o.x,o.z);
+        // The patrol's own legs (goal orders): a route the walker is given
+        // to reach the formation's point splices plain waypoints into the
+        // queue (Order::goal false), which are not legs.
+        for (const auto& o:world.unit(outlier)->orders) if (!o.formationLevel && o.goal) v.emplace_back(o.x,o.z);
         return v;
     };
     const auto before=legs();
@@ -393,7 +396,9 @@ void groundPatrol() {
         const auto& o=world.unit(outlier)->orders;
         const bool lead=!o.empty() && o[0].formationLevel!=0;
         if (lead && !pushed) { pushed=true;during=legs();ahead=o.size()>1 && o[1].patrol; }
-        if (pushed && !lead) retired=true;
+        // Retired once no formation order is left: a waypoint spliced ahead
+        // of the formation order does not end it.
+        if (pushed && !formationMission(*world.unit(outlier))) retired=true;
     }
     require(pushed,"a patrolling walker out of its slot got no Move_Ground_Formation");
     require(ahead,"the formation did not go ahead of the ground patrol leg");
@@ -421,9 +426,12 @@ void standbys(bool air) {
     for (int tick=0;tick<3000 && !retired;++tick) {
         world.tick(1.f/30);
         const auto& u=*world.unit(outlier);
-        const bool lead=!u.orders.empty() && u.orders.front().formationLevel!=0;
-        if (lead && !pushed) { pushed=true;flags=u.orders.front().mission.flags;level=u.orders.front().formationLevel; }
-        if (pushed && !lead) retired=true;
+        // Followed by its presence in the queue: a route to its point splices
+        // plain waypoints (Order::goal false) ahead of it.
+        const Order* f=nullptr;
+        for (const auto& q:u.orders) if (q.formationLevel!=0) { f=&q;break; }
+        if (f && !pushed) { pushed=true;flags=f->mission.flags;level=f->formationLevel; }
+        if (pushed && !f) retired=true;
     }
     std::printf("scenario=standby air=%d pushed=%d flags=%#x level=%d retired=%d\n",int(air),int(pushed),flags,level,
                 int(retired));
@@ -470,19 +478,26 @@ void groundGuard() {
     // Back in the slot the formation retires and the guard goes on (to its
     // far ward, so out again: flagged, rand(4) == 0 then drops every order,
     // as in retail).
+    // The formation may already be pushed in the two ticks above, and a route
+    // to its point splices plain waypoints (Order::goal false) ahead of it, so
+    // the formation is followed by its presence in the queue, not by the front.
     bool pushed=false,ahead=false,resumed=false,dropped=false;
+    const auto formation=[&](const std::vector<Order>& o)->const Order* {
+        for (const auto& q:o) if (q.formationLevel!=0) return &q;
+        return nullptr;
+    };
     for (int tick=0;tick<3000 && !resumed;++tick) {
-        const bool led=[&]{const auto& o=world.unit(guard)->orders;return !o.empty() && o[0].formationLevel!=0;}();
-        world.tick(1.f/30);
+        const bool led=formation(world.unit(guard)->orders)!=nullptr;
+        if (tick) world.tick(1.f/30);
         const auto& o=world.unit(guard)->orders;
-        const bool lead=!o.empty() && o[0].formationLevel!=0;
-        if (lead && !led && !pushed) {
+        const Order* f=formation(o);
+        if (f && !pushed) {
             pushed=true;
-            ahead=o[0].formationLevel==-3 && o[0].mission.flags==0x11000000u && o.size()>1 && o.back().guard &&
+            ahead=f->formationLevel==-3 && f->mission.flags==0x11000000u && o.size()>1 && o.back().guard &&
                   o.back().targetId==ward;
         }
-        if (led && !lead) {
-            if (!o.empty() && o.front().guard && o.front().targetId==ward) resumed=true;
+        if (led && !f) {
+            if (!o.empty() && o.back().guard && o.back().targetId==ward) resumed=true;
             else if (o.empty()) dropped=true;
         }
     }
