@@ -459,7 +459,7 @@ namespace {
 // Feature definition fields the sim cares about: is it a mana deposit, and its
 // footprint (for nav blocking). Loaded from the feature TDFs.
 struct FeatDef { bool mana = false; bool glowy = false; int blocking = 0; int fx = 1, fz = 1;
-                 int reclaimable = 0; float energy = 0; float sacredSite = 0;
+                 int reclaimable = 0; float energy = 0, metal = 0; float sacredSite = 0;
                  uint8_t projectileHeight = 0;
                  // Burning chain (see World::tickBurning).
                  bool flamable = false; bool hasBurnAnim = false; uint32_t burnTicks = 0;
@@ -500,7 +500,9 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     d.fz = int(node.numberOr("footprintz", 1));
                     d.reclaimable = int(node.numberOr("reclaimable", 0));
                     d.projectileHeight = uint8_t(int(node.numberOr("height", 0)));
-                    d.energy = float(node.numberOr("energy", 0));   // reclaim mana yield
+                    // TA: metal/energy read as int & 0xffff, then float (0x422e40).
+                    d.energy = float(int32_t(node.numberOr("energy", 0)) & 0xffff);
+                    d.metal = float(int32_t(node.numberOr("metal", 0)) & 0xffff);
                     d.sacredSite = float(node.numberOr("sacredsite",0));
                     d.flamable = node.numberOr("flamable", 0) != 0;
                     d.burnTicks = burnTiming.duration(node);
@@ -550,6 +552,7 @@ struct FeatTypeInterner {
         t.spreadChance = di->second.spreadChance;
         t.sparkTicks = di->second.sparkTicks;
         t.energy = di->second.energy;
+        t.metal = di->second.metal;
         t.fx = di->second.fx; t.fz = di->second.fz;
         t.blocking = di->second.blocking != 0;
         t.projectileHeight = di->second.projectileHeight;
@@ -708,6 +711,18 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
     FeatTypeInterner types(defs);
     std::vector<std::pair<float, float>> rawMana, rawAll;
     scanFeaturePlane(world, map, defs, types, rawMana, rawAll);
+    // Metal patches: every indestructible feature with metal overwrites the cells
+    // under it, in cell order (docs/retail-economy.md section 6).
+    for (int cz = 0; cz < map.height; ++cz)
+        for (int cx = 0; cx < map.width; ++cx) {
+            const uint16_t v = map.features[size_t(cz) * size_t(map.width) + size_t(cx)];
+            if (v >= map.featureNames.size()) continue;
+            std::string name = map.featureNames[v];
+            std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+            const auto it = defs.find(name);
+            if (it == defs.end() || !it->second.indestructible || it->second.metal == 0) continue;
+            world.stampFeatureMetal(cx, cz, it->second.fx, it->second.fz, int(it->second.metal));
+        }
     installManaSpots(world, rawMana, rawAll);
     if (reg)
         for (const auto& [tid, ut] : reg->types()) {
@@ -771,6 +786,33 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             scenarioOn = cfg.loadCrt && !cfg.stressTest && !cfg.benchmark &&
                          (authoredPlaytest || (cfg.mapScenario && declared));
             if (gh) {
+                // TA economy inputs: tidalstrength (default 0.5) and the schema's
+                // SurfaceMetal. Skirmish/MP use the "Network" schema whose start
+                // count best matches the players (docs/retail-ai.md section 1).
+                world.setTidalStrength(float(gh->numberOr("tidalstrength", 0.5)));
+                {
+                    int players = 0;
+                    for (const auto& sl : cfg.slots) if (sl.used) ++players;
+                    const tdf::Node* best = gh->child("Schema 0");
+                    int bestDiff = 1 << 30;
+                    for (int i = 0; i < 16; ++i) {
+                        const tdf::Node* sc = gh->child("Schema " + std::to_string(i));
+                        if (!sc) continue;
+                        std::string type = sc->valueOr("type", "");
+                        for (char& ch : type) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+                        if (type.rfind("network", 0) != 0) continue;
+                        int starts = 0;
+                        if (const tdf::Node* sp = sc->child("specials"))
+                            for (const auto& [n, node] : sp->children) {
+                                std::string what = node.valueOr("specialwhat", "");
+                                for (char& ch : what) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+                                if (what.rfind("startpos", 0) == 0) ++starts;
+                            }
+                        const int diff = std::abs(starts - players);
+                        if (diff < bestDiff) { bestDiff = diff; best = sc; }
+                    }
+                    world.setSurfaceMetal(best ? int(best->numberOr("surfacemetal", 0)) : 0);
+                }
                 windMin = int(gh->numberOr("minwindspeed", 100));
                 windMax = int(gh->numberOr("maxwindspeed", 2000));
                 mapGravity = gh->numberOr("gravity", 112.0);
@@ -1295,7 +1337,8 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         assigned.push_back({mx, mz});
         // 4d3200's 512060 passes 1: the Monarch's mogriumstorage (5000 for all
         // five) is the pool a skirmish or multiplayer game opens with.
-        world.creditCreationStorage(world.spawn(monarch, mx, mz, 0, i));
+        world.setStartResources(i, cfg.startEnergy, cfg.startMetal);
+        world.spawn(monarch, mx, mz, 0, i);
 #ifndef NDEBUG
         // Harness fixture (TA_START_FLYERS=N, at most 16): every player also
         // starts with N finished flying builders of its side (every other one at

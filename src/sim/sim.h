@@ -25,6 +25,7 @@
 #include "sim/retailairtraffic.h"
 #include "sim/retailballistic.h"
 #include "sim/retailwind.h"
+#include "sim/taeconomy.h"
 #include "sim/retailweapon.h"
 #include "sim/retailmission.h"
 #include "sim/retailpark.h"
@@ -1739,6 +1740,12 @@ struct alignas(64) Unit {
     // Actually translating (for the walk animation), vs standing with an
     // attack/queued order.
     bool walking() const { return alive() && speed > Fixed::fromFloat(3.0f / 30.0f); }
+    // Total Annihilation economy books (sim/taeconomy.h) and construction state:
+    // buildRemaining is retail's remaining fraction (1 at placement, 0 complete);
+    // it, not HP, decides completion. Hashed.
+    econ::UnitBooks books;
+    float buildRemaining = 0;
+    bool buildStarted = false;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -1857,6 +1864,7 @@ struct FeatType {
     int  sparkTicks = 0;     // TDF sparktime * 30 (retail stores seconds*30)
     int  burntType = -1;     // TDF featureburnt -> index into the same table
     float energy = 0;        // TDF energy: the reclaim countdown (readFloat in retail too)
+    float metal = 0;         // TDF metal (int & 0xffff): metal paid on reclaim; metal patches
     int  fx = 1, fz = 1;
     bool blocking = false;
     // Corpse defs (features/corpses/*_dead.tdf): how long the body lies there
@@ -2231,6 +2239,8 @@ struct Player {
     // its effect lands in `mana` (which IS hashed), so it need not be hashed itself,
     // but every peer must set it identically or their mana diverges.
     float manaMult = 1.0f;
+    // Total Annihilation metal/energy (sim/taeconomy.h). Hashed.
+    econ::PlayerBooks books;
     // God economy: priests (attractsgods) channel mana into favour; once it fills
     // after the gods' appear time, the faction's god can manifest (once).
     bool  godSummoned = false;
@@ -2844,6 +2854,28 @@ public:
     void setBallisticGravityRaw(int32_t gravity) { ballisticGravityRaw_=gravity; }
     int32_t ballisticGravityRaw() const { return ballisticGravityRaw_; }
     const RetailWind& wind() const { return wind_; }
+    float windFactor() const { return taWindFactor(wind_); }
+    // TA map metal (docs/retail-economy.md section 6): SurfaceMetal everywhere, then
+    // each indestructible feature with metal overwrites the cells under it.
+    void setSurfaceMetal(int metal) { surfaceMetal_ = uint8_t(std::clamp(metal, 0, 255)); cellMetal_.clear(); }
+    void stampFeatureMetal(int cx, int cz, int fx, int fz, int metal);
+    int cellMetal(int cx, int cz) const;
+    void setTidalStrength(float t) { wind_tidal_ = t; }
+    // Start resources (lobby value x100 in MP/skirmish): stored = start, base
+    // storage = max(start, 200).
+    void setStartResources(int player, float energy, float metal);
+    // Construction/repair/weapon economy hooks (sim/taeconomy.h semantics).
+    bool econBuildStep(Unit& builder, Unit& site);
+    float econBuildFraction(Unit& builder, Unit& site);   // < 0: stalled by debt
+    bool taProductionWork(Unit& worker, Unit& producer, Unit& site);
+    bool econRepairStep(Unit& builder, Unit& target);
+    bool econPayShot(Unit& u, const Weapon& w);
+    // A reclaim target's yield (feature or corpse type): metal and energy paid in full
+    // when the reclaim ends (docs/retail-economy.md section 8).
+    bool reclaimYield(int target, float& energy, float& metal) const;
+    // Credit a player's own accumulator (reclaim, gifts), scaled by its multiplier.
+    void econCredit(int player, float energy, float metal);
+    const econ::PlayerBooks& books(int player) const { return players_[size_t(player)].books; }
     struct RngObservation {
         uint32_t tick;
         int32_t bound;
@@ -4547,6 +4579,12 @@ private:
     uint32_t initialGameRng_ = retailSeed(0);
     uint32_t gameRng_ = initialGameRng_;
     RetailWind wind_;
+    float wind_tidal_ = econ::kTidalDefault;
+    uint8_t surfaceMetal_ = 0;
+    std::vector<uint8_t> cellMetal_;   // empty until a feature stamps metal
+    void taEconomyTick();
+    void taSettle(int player);
+    void taShare();
     bool windEnabled_ = false;
     // Wind and restored construction particles share retail's CRT stream.
     // Allocation and render-cadence consumers are not yet fully integrated.

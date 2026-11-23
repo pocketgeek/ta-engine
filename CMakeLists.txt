@@ -160,6 +160,7 @@ add_library(ta-formats
   src/sim/matchsetup.cpp
   src/sim/sides.cpp
   src/sim/taweapons.cpp
+  src/sim/taeconomy.cpp
   src/sim/mission.cpp
   src/sim/scenario.cpp
   src/sim/scenarioinfo.cpp
@@ -4729,3 +4730,6 @@ endif()
 # TA data check: registry_dump <install-dir> [unit...]
 add_executable(registry_dump tools/registry_dump.cpp)
 target_link_libraries(registry_dump PRIVATE ta-formats)
+add_executable(ta_economy_test tools/ta_economy_test.cpp)   # header-only sim arithmetic
+target_include_directories(ta_economy_test PRIVATE src)
+add_test(NAME ta_economy COMMAND ta_economy_test)

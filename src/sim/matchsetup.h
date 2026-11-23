@@ -73,6 +73,10 @@ struct MatchConfig {
     // The pool every player holds before the units a game opens with credit
     // their mogriumstorage (World::creditCreationStorage): 0, as retail.
     float startMana = 0;
+    // Total Annihilation start resources (skirmish/MP: the lobby's values; retail
+    // skirmish defaults 1000 / 1000, docs/retail-gui.md section 5). Base storage is
+    // max(start, 200) (docs/retail-economy.md).
+    float startMetal = 1000, startEnergy = 1000;
     int unitCap = 2000;             // per-player live-unit limit (0 = unlimited)
     bool monarchExpendable = true;  // false = losing your Monarch loses the game
     PathfindingMode pathfindingMode = PathfindingMode::Retail;

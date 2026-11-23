@@ -7172,6 +7172,9 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
         if (!scriptTriggered && u.mana < cost) return false;
         if (double(cost) <= u.mana) u.mana -= cost;
     }
+    // TA: a weapon fires only when storage holds both energypershot and
+    // metalpershot, which are then taken at once (docs/retail-economy.md).
+    if (!econPayShot(u, w)) return false;
     // Every shot keeps the shooter visible for 600 ticks (icd 0x52af41, set just
     // before the release 0x530220).
     blockCloak(u, 600);
@@ -13163,6 +13166,18 @@ bool World::flyerReclaimInReach(const Unit& b,int target) const {
 // 4930d0 resolves the mission cell to its feature's anchor and reads the
 // footprint from the feature definition. A corpse is a feature too: its
 // installed corpse footprint, never the dead unit's own.
+bool World::reclaimYield(int target,float& energy,float& metal) const {
+    int type=-1;
+    if (target<0) {
+        const auto found=corpseFootprints_.find(-target);
+        if (found==corpseFootprints_.end()) return false;
+        type=found->second.type;
+    } else if (const Feature* f=feature(target)) type=f->type;
+    if (type<0 || size_t(type)>=featTypes_.size()) return false;
+    energy=featTypes_[size_t(type)].energy;metal=featTypes_[size_t(type)].metal;
+    return true;
+}
+
 bool World::reclaimTargetFootprint(int target,int& x,int& z,int& fx,int& fz,float& energy) const {
     if (target<0) {
         const auto found=corpseFootprints_.find(-target);
@@ -13345,7 +13360,14 @@ void World::tickReclaim(Unit& b) {
         cancelPath(b);
         if (leg) { b.orders.erase(b.orders.begin(),b.orders.begin()+long(leg));leg=0; }
         auto& work=b.orders.front();
-        work.reclaimCountdown=revive ? 0 : retailReclaimCountdown(energy);
+        // TA: ground reclaim takes 15 + 0.5*(metal + energy) ticks (VTOL 30 + ...),
+        // whatever the WorkerTime (docs/retail-economy.md section 8).
+        {
+            float e=energy,m=0;
+            reclaimYield(target,e,m);
+            const float base=b.type->canFly ? 30.0f : 15.0f;
+            work.reclaimCountdown=revive ? 0 : retailReclaimCountdown(base-15.0f+0.5f*(m+e));
+        }
         const Fixed tx=Fixed::fromInt(ax*16+fw*8),tz=Fixed::fromInt(az*16+fh*8);
         work.reclaimHeading=uint16_t(retailDirection(b.x-tx,b.z-tz).v);
         work.mission.stage=2;
@@ -13395,6 +13417,10 @@ void World::tickReclaim(Unit& b) {
     if (!reclaimTargetValid(target)) { quit(); return; }
     startWorkAnimation(b,tx,tz);
     if (retailReclaimRemoval(work.mission)) {
+        {   // The whole yield is paid at the end, to the reclaimer's player.
+            float e=0,m=0;
+            if (reclaimYield(target,e,m)) econCredit(b.player,e,m);
+        }
         finishReclaim(b,target);
         static const bool kRecLog = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kRecLog)
@@ -14238,15 +14264,10 @@ bool World::moveRateMoving(const Unit& t) const {
 // One tick of repair work, paid from the owner's pool; true once the target
 // is at full health.
 bool World::payRepair(Unit& b, Unit& t, float dt) {
-    float total = t.type->buildTime / std::max(b.type->workerTime, 0.01f);
-    Player& tm = players_[size_t(b.player)];
-    float cost = t.type->buildCost * dt / std::max(total, 0.01f);
-    const double share = tm.constructionShare(cost);
-    if (share <= 0) return false;   // can't afford: pause the repair
-    tm.payMana(std::min(tm.mana, double(cost) * share));
-    float mend = t.type->maxHp * dt / std::max(total, 0.01f);
-    if (share < 1) mend = float(double(mend) * share);
-    t.hp = fxMin(Fixed::fromFloat(t.type->maxHp), t.hp + Fixed::fromFloat(mend));
+    // TotalA.exe repair: 1 energy for 1 HP per tick, whatever the WorkerTime
+    // (both values are capped at 1; docs/retail-economy.md section 4).
+    (void)dt;
+    if (!econRepairStep(b, t)) return false;   // in debt: the repair waits
     // Native RepairUnit 4076d0..4076f0 emits only after successful repair:
     // falling particles at the worker and rising particles at the target.
     emitConstruction(b, false);
@@ -16003,12 +16024,10 @@ bool World::constructionWork(Unit& b, Unit& site, float dt) {
             site.hp=Fixed::fromFloat(site.type->maxHp);
             done=true;
         } else {
-            const double request=std::min({double(ptotal)*65536.0,double(UINT32_MAX),
-                double(ptotal)*65536.0*double(dt)/double(std::max(total,0.01f))});
-            const double cost=double(site.type->buildCost)/double(ptotal)*request/65536.0;
-            const double share=tm.constructionShare(cost);
-            if (share<=0) return false;
-            done=workProduction(*producer,site,site.type,uint32_t(request*std::min(share,1.0)));
+            // TA build step (docs/retail-economy.md): the helper's WorkerTime/30
+            // per tick of BuildTime, paid in metal and energy through its books.
+            (void)ptotal;
+            done=taProductionWork(b,*producer,site);
         }
         emitConstruction(b,false);
         if (!done) return false;
@@ -16043,18 +16062,14 @@ bool World::constructionWork(Unit& b, Unit& site, float dt) {
         }
         site.hp=addCapped(site.hp,Fixed::fromFloat(float(site.type->maxHp*0.95*work)),site.type->maxHp);
     } else {
-        float cost = site.type->buildCost * dt / std::max(total, 0.01f);
-        const double share = tm.constructionShare(cost);
-        if (share <= 0) return false;
-        tm.payMana(std::min(tm.mana, double(cost) * share));
-        float grow = site.type->maxHp * 0.95f * dt / std::max(total, 0.01f);
-        if (share < 1) grow = float(double(grow) * share);
-        site.hp=addCapped(site.hp,Fixed::fromFloat(grow),site.type->maxHp);
+        // TA build step: remaining-fraction progress, costs requested through the
+        // builder's books; a builder in debt stalls until the settle pays it off.
+        if (econBuildFraction(b, site) < 0) return false;
     }
     emitConstruction(b,false);
     emitConstruction(site,true);
     if (site.lodestoneReplacement ? site.lodestoneReplacement->completedWork>=1 :
-        site.hp >= Fixed::fromFloat(site.type->maxHp)) {
+        (site.buildStarted ? site.buildRemaining <= 0 : site.hp >= Fixed::fromFloat(site.type->maxHp))) {
         site.hp = Fixed::fromFloat(site.type->maxHp);
         site.underConstruction = false;
         activateBuilt(site.id);     // 429a8d
@@ -19427,13 +19442,25 @@ void World::tickProduction(Unit& u, float dt) {
         site->hp=Fixed::fromFloat(t->maxHp);
         emitConstruction(*site,true);
     } else {
-        const double cost=double(t->buildCost)/double(total);
-        const double share=tm.constructionShare(cost);
-        // Work in 1/65536 of a tick; a full share is exactly one tick, as before.
-        const uint32_t step=share>=1 ? 65536u : uint32_t(share*65536.0);
-        if (!workProduction(*producer,*site,t,step)) return;
+        if (!taProductionWork(*producer,*producer,*site)) return;
     }
     finishProduction(producerId,*site);
+}
+
+// A factory output's TA build step: `worker` (the factory itself or a helper)
+// does WorkerTime/30 of BuildTime, paid through its books; the factory's
+// buildProgress follows the remaining fraction for its scripts and HUD bar.
+// True when the output is complete.
+bool World::taProductionWork(Unit& worker,Unit& producer,Unit& site) {
+    if (econBuildFraction(worker,site)<0) return false;
+    const int32_t total=productionTotal(producer,site.type);
+    const double done=double(1.0f-site.buildRemaining)*double(total);
+    producer.buildProgress=std::min(total,int32_t(done));
+    producer.buildFraction=uint16_t(int64_t((done-std::floor(done))*65536.0)&0xffff);
+    if (site.buildRemaining>0) return false;
+    producer.buildProgress=total;producer.buildFraction=0;
+    site.hp=Fixed::fromFloat(site.type->maxHp);
+    return true;
 }
 
 int32_t World::productionTotal(const Unit& producer,const UnitType* t) const {
@@ -20475,6 +20502,8 @@ void World::tick(float dt) {
         tm.constructionAllocation=demand>tm.mana ? (tm.mana>0 ? tm.mana/demand : 0.0) : 1.0;
         tm.constructionDemand=0;
     }
+    // Total Annihilation metal/energy: each player settles once a second.
+    taEconomyTick();
     // ...and once it has filled, the god manifests. This has to happen HERE, in the
     // shared sim, and used to happen in the client instead (GameView::simStep polled
     // godReady() and called its own summonGod()). The referee never did it, so from
@@ -21645,8 +21674,8 @@ void World::tick(float dt) {
         }
     }
     if (windEnabled_)
-        retailTickWind(wind_, tickCounter_, [&](int n) { return pathRand(n); },
-                       [&] { return crtRand(0x525248); });
+        taTickWind(wind_, tickCounter_, [&](int n) { return pathRand(n); },
+                   [&] { return crtRand(0x525248); });
 
     // Remote Effect spells channelling toward their landing point. The effect is
     // pinned to the ground where it was aimed, so it lands whether or not the
@@ -22000,6 +22029,10 @@ void World::hashTrace() const {
         hUnitPos  = fnv(hUnitPos, uint64_t(uint32_t(u.heading.v)));
         hUnitHp   = fnv(fnv(hUnitHp, u.id), uint64_t(uint32_t(u.hp.v)));
         if (u.mana != 0) hUnitHp = fnv(hUnitHp, bits64(u.mana));
+        if (u.buildStarted) hUnitHp = fnv(hUnitHp, std::bit_cast<uint32_t>(u.buildRemaining));
+        if (u.books.indebted())
+            hUnitHp = fnv(fnv(hUnitHp, std::bit_cast<uint32_t>(u.books.r[0].debt)),
+                          std::bit_cast<uint32_t>(u.books.r[1].debt));
         hUnitOrd  = fnv(fnv(hUnitOrd, u.id), u.orders.size());
         if (!u.orders.empty()) {
             const Order& o = u.orders.front();
@@ -22062,7 +22095,14 @@ void World::hashTrace() const {
                      uint64_t(s.end));
     uint64_t hPlayers = seed;
     for (const auto& t : players_)
+    {
         hPlayers = fnv(fnv(hPlayers, bits64(t.mana)), uint32_t(t.team));
+        for (int r = 0; r < 2; ++r) {
+            hPlayers = fnv(hPlayers, std::bit_cast<uint32_t>(t.books.stored[r]));
+            hPlayers = fnv(hPlayers, std::bit_cast<uint32_t>(t.books.own[r].debt));
+        }
+        hPlayers = fnv(hPlayers, t.books.nextSettle);
+    }
     uint64_t fAlive = 0, fWork = 0;
     for (const auto& f : features_)
         if (f.alive) { ++fAlive; fWork ^= (uint64_t(f.fadeLeft) << 1) ^ uint64_t(uint32_t(f.id)); }
