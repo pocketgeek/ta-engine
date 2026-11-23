@@ -92,6 +92,8 @@ public:
     // FFmpeg is missing. Video only -- the clip's audio track is not played.
     static void playIntro(SDL_Renderer* ren, const std::string& install,
                           const char* nameLower = "logo.bik");
+    // The movie file for a lowercased name under Movies/ or Data/, or "".
+    static std::string findMovie(const std::string& install, const char* nameLower);
 
 private:
     struct Impl;

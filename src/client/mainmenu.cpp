@@ -2429,23 +2429,30 @@ int MainMenu::chosenBenchmarkLevel() const { return d_->chosenBenchmark_; }
 const std::string& MainMenu::chosenCampaign() const { return d_->chosenCampaign_; }
 const std::string& MainMenu::chosenReplay() const { return d_->chosenReplay_; }
 
+// <install>/Movies/<name> or, for Total Annihilation, <install>/Data/<name> (its
+// Smacker movies, 1.zrb..5.zrb), matched case-insensitively.
+std::string MainMenu::findMovie(const std::string& install, const char* nameLower) {
+    std::error_code ec;
+    for (const char* dir : {"Movies", "Data"}) {
+        const fs::path moviesDir = ciResolve(fs::path(install), {dir});
+        if (moviesDir.empty()) continue;
+        for (auto& e : fs::directory_iterator(moviesDir, ec)) {
+            if (!e.is_regular_file()) continue;
+            std::string low = e.path().filename().string();
+            std::transform(low.begin(), low.end(), low.begin(),
+                           [](unsigned char c) { return char(std::tolower(c)); });
+            if (low == nameLower) return e.path().string();
+        }
+    }
+    return {};
+}
+
 void MainMenu::playIntro(SDL_Renderer* ren, const std::string& install, const char* nameLower) {
     if (!video::BinkVideo::available() || install.empty() || !ren) return;
     // Headless / dummy video: no display to play to (and no input to skip it), so a
     // movie would just block for its full length. Skip it.
     if (const char* drv = SDL_GetCurrentVideoDriver(); drv && !std::strcmp(drv, "dummy")) return;
-    // Locate <install>/Movies/<name> case-insensitively (retail ships LOGO.BIK etc.).
-    std::string path;
-    std::error_code ec;
-    fs::path moviesDir = ciResolve(fs::path(install), {"Movies"});
-    if (moviesDir.empty()) return;
-    for (auto& e : fs::directory_iterator(moviesDir, ec)) {
-        if (!e.is_regular_file()) continue;
-        std::string low = e.path().filename().string();
-        std::transform(low.begin(), low.end(), low.begin(),
-                       [](unsigned char c) { return char(std::tolower(c)); });
-        if (low == nameLower) { path = e.path().string(); break; }
-    }
+    const std::string path = findMovie(install, nameLower);
     if (path.empty()) return;
     std::ifstream f(path, std::ios::binary);
     if (!f) return;

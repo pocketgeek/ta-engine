@@ -93,6 +93,78 @@ TaFrontEnd::TaFrontEnd(SDL_Renderer* ren, SDL_Window* win, const hpi::Vfs& vfs) 
 
 // ---- campaigns (docs/retail-campaign.md) -----------------------------------
 
+namespace {
+// A briefing narration or glamour sound (camps/briefs/*.wav): decoded by SDL and
+// played on its own queue-driven device, so the front end needs no sound bank.
+class WavClip {
+public:
+    ~WavClip() { stop(); }
+    bool play(const hpi::Vfs& vfs, const std::string& path) {
+        stop();
+        std::vector<uint8_t> bytes;
+        try { bytes = vfs.read(path); } catch (...) { return false; }
+        if (bytes.empty() || SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return false;
+        SDL_AudioSpec spec{};
+        Uint8* buf = nullptr; Uint32 len = 0;
+        if (!SDL_LoadWAV_RW(SDL_RWFromConstMem(bytes.data(), int(bytes.size())), 1, &spec, &buf, &len)) return false;
+        spec.callback = nullptr;
+        dev_ = SDL_OpenAudioDevice(nullptr, 0, &spec, nullptr, 0);
+        if (dev_) { SDL_QueueAudio(dev_, buf, len); SDL_PauseAudioDevice(dev_, 0); }
+        SDL_FreeWAV(buf);
+        return dev_ != 0;
+    }
+    void stop() {
+        if (dev_) { SDL_ClearQueuedAudio(dev_); SDL_CloseAudioDevice(dev_); dev_ = 0; }
+    }
+    bool playing() const { return dev_ && SDL_GetQueuedAudioSize(dev_) > 0; }
+private:
+    SDL_AudioDeviceID dev_ = 0;
+};
+}  // namespace
+
+void TaFrontEnd::showGlamour(const std::string& glamour, const std::string& sound) {
+    // 0x41db1b: a won mission's victory picture, bitmaps/glamour/<glamour>.pcx,
+    // with camps/briefs/<glamoursound>.wav; any key or click goes on.
+    const std::string pcx = "bitmaps/glamour/" + glamour + ".pcx";
+    if (glamour.empty() || !vfs_.has(pcx)) return;
+    SDL_Texture* tex = nullptr;
+    int tw = 0, th = 0;
+    try {
+        const auto img = gaf::loadPcx(vfs_.read(pcx), pcx);
+        tw = img.width; th = img.height;
+        tex = SDL_CreateTexture(ren_, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, tw, th);
+        if (tex) SDL_UpdateTexture(tex, nullptr, img.rgba.data(), tw * 4);
+    } catch (...) {}
+    if (!tex) return;
+    WavClip clip;
+    if (!sound.empty()) clip.play(vfs_, "camps/briefs/" + sound + ".wav");
+    const bool headless = [] { const char* d = SDL_GetCurrentVideoDriver(); return d && std::string(d) == "dummy"; }();
+    const Uint32 until = SDL_GetTicks() + (headless ? 0u : 60000u);
+    for (bool done = false; !done;) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e))
+            if (e.type == SDL_QUIT || e.type == SDL_KEYDOWN || e.type == SDL_MOUSEBUTTONDOWN) done = true;
+        int w = 640, h = 480;
+        SDL_GetRendererOutputSize(ren_, &w, &h);
+        const GuiLayout L(w, h);
+        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
+        SDL_RenderClear(ren_);
+        const SDL_FRect dst = L.rect(0, 0, 640, 480);
+        SDL_RenderCopyF(ren_, tex, nullptr, &dst);
+#ifndef NDEBUG
+        if (const char* shot = std::getenv("TA_GLAMOUR_SHOT")) {
+            std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
+            if (SDL_RenderReadPixels(ren_, nullptr, SDL_PIXELFORMAT_ABGR8888, px.data(), w * 4) == 0)
+                png::write(shot, w, h, px);
+        }
+#endif
+        SDL_RenderPresent(ren_);
+        if (SDL_GetTicks() >= until) done = true;
+        SDL_Delay(15);
+    }
+    SDL_DestroyTexture(tex);
+}
+
 std::string TaCampaign::spec() const {
     return active() ? missions[size_t(std::clamp(cur, 0, int(missions.size()) - 1))].file + ":" +
                           std::to_string(difficulty)
@@ -200,6 +272,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     int briefScroll = 0;
     std::unique_ptr<TaFont> briefFont;
     std::string briefGaf;                  // anims/<planet>brief.gaf
+    WavClip narration;                     // camps/briefs/<narration>.wav (SHUTUP mutes)
+    std::string narrationWav;
     std::string seqRotate, seqPan, seqSolar;
     int briefFrames[3] = {1, 1, 1};
     auto fillMissions = [&](TaGuiView& v, const TaCampaign& c, bool marks) {
@@ -233,12 +307,17 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     auto openBrief = [&]() {
         briefLines.clear(); briefScroll = 0;
         std::string brief, planet;
+        narrationWav.clear();
         if (camp.active())
             if (const auto ota = readTdf(vfs_, "maps/" + camp.missions[size_t(camp.cur)].file))
                 if (const tdf::Node* gh = ota->child("GlobalHeader")) {
                     brief = gh->valueOr("brief", "");
                     planet = gh->valueOr("planet", "");
+                    if (const auto n = gh->valueOr("narration", ""); !n.empty())
+                        narrationWav = "camps/briefs/" + n + ".wav";
                 }
+        // The narration plays on entry (0x478dc7) unless SHUTUP is set.
+        if (!narrationWav.empty() && view->stage("SHUTUP") == 0) narration.play(vfs_, narrationWav);
         const std::string pcx = "bitmaps/mbrief" + sides::lowerPrefix(camp.side) + ".pcx";
         view->setBackdrop(pcx);
         briefFont = std::make_unique<TaFont>();
@@ -336,6 +415,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     };
 #ifndef NDEBUG
     // TA_FRONT_ENDMSN=<+1|-1>: open ENDMSN after Arm Campaign mission 1 (front-end checks).
+    static bool glamourOnce = false;   // TA_FRONT_GLAMOUR=<name>: the victory picture once
+    if (const char* g = std::getenv("TA_FRONT_GLAMOUR"); g && !glamourOnce) { glamourOnce = true; showGlamour(g, g); }
     static bool endmsnOnce = false;
     if (const char* e = std::getenv("TA_FRONT_ENDMSN"); e && !endmsnOnce && start_ == Page::Main && loadTaCampaign(vfs_, "Arm Campaign", camp)) {
         endmsnOnce = true;
@@ -455,6 +536,11 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             }
             break;
         case Page::Brief:
+            if (h2 == "SHUTUP") {
+                if (view->stage("SHUTUP") == 0 && !narrationWav.empty()) narration.play(vfs_, narrationWav);
+                else narration.stop();
+            }
+            if (h2 != "SHUTUP") narration.stop();
             if (h2 == "PREVMENU") goPage(Page::Single);   // retail: state 3
             else if (h2 == "START") return Choice::Campaign;
             break;

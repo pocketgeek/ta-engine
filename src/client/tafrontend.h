@@ -64,6 +64,8 @@ public:
     // ENDMSN. Start -> MSNBRIEF -> Choice::Campaign (camp.cur is the pick); MainMenu
     // -> Choice::Menu.
     Choice endMission(SkirmishSetup& setup, TaCampaign& camp, int outcome);
+    // A won mission's glamour picture and sound (docs/retail-campaign.md 4.3).
+    void showGlamour(const std::string& glamour, const std::string& sound);
     // A launch that failed: reopen the screen it was picked from (SELPROV for a
     // multiplayer connect, NEWGAME for a campaign, else the main menu) with the reason.
     void setFailure(int failTo, std::string message);

@@ -1230,7 +1230,11 @@ int main(int argc, char** argv) {
     // LOGO ONLY. intro.bik belongs on the PlayStory door, not here -- retail
     // dispatches on that gadget name and plays it there, once per launch (see
     // MainMenu::run). Playing both back to back at startup was wrong.
-    if (fromMenu && shot.empty()) ta::MainMenu::playIntro(ren, dataRoot);
+    // TotalA.exe plays 1.zrb (its intro) at startup (0x426f0e); a Kingdoms-style
+    // install's logo.bik wins when present.
+    if (fromMenu && shot.empty())
+        ta::MainMenu::playIntro(ren, dataRoot,
+                                ta::MainMenu::findMovie(dataRoot, "logo.bik").empty() ? "1.zrb" : "logo.bik");
     auto streamingOwner = std::make_unique<ta::Streaming>(ren, &settings, [&settings] { ta::saveSettings(settings); });
     auto& streaming = *streamingOwner;
     // Voice chat (client/voice.h). Only for a real interactive window: the headless
@@ -3269,6 +3273,29 @@ int main(int argc, char** argv) {
         const int oc = gameView->missionOutcomePublic();
         localServer.stop(); gameView.reset(); mp.reset();
         ta::TaFrontEnd front(ren, win, vfs);
+        if (oc > 0 && taCampaign.active()) {
+            std::string glamour, glamourSound;
+            bool noMovie = false;
+            const std::string ota = "maps/" + taCampaign.missions[size_t(taCampaign.cur)].file;
+            try {
+                const auto bytes = vfs.read(ota);
+                const auto root = ta::tdf::parseText(std::string(bytes.begin(), bytes.end()), ota);
+                if (const auto* gh = root.child("GlobalHeader")) {
+                    glamour = gh->valueOr("glamour", "");
+                    glamourSound = gh->valueOr("glamoursound", "");
+                    noMovie = gh->numberOr("nomovie", 0) != 0;
+                }
+            } catch (const std::exception&) {}
+            front.showGlamour(glamour, glamourSound);
+            // endgame.cpp 0x41fc85: winning the campaign's last mission plays the
+            // side's ending -- Arm 3.zrb, Core 4.zrb -- then 5.zrb (frontend states 4/5).
+            if (!noMovie && taCampaign.cur + 1 >= int(taCampaign.missions.size())) {
+                menuMusic.setVolume(0, 0);
+                ta::MainMenu::playIntro(ren, dataRoot, taCampaign.side == 0 ? "3.zrb" : "4.zrb");
+                ta::MainMenu::playIntro(ren, dataRoot, "5.zrb");
+                menuMusic.setVolume(settings.masterVol, settings.bgmVol);
+            }
+        }
         const auto tc = front.endMission(skirmishSetup, taCampaign, oc);
         if (tc == ta::TaFrontEnd::Choice::Campaign) { pendingCampaign = taCampaign.spec(); pendingCampaignId = campaignId; }
         else if (tc == ta::TaFrontEnd::Choice::Exit) quitApp = true;

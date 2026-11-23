@@ -70,7 +70,7 @@ fi
   --enable-protocol=file,rtmp,rtmps,tcp,tls \
   "${stream_args[@]}" \
   --enable-demuxer=smacker \
-  --enable-decoder=smackvideo,smackaudio \
+  --enable-decoder=smacker,smackaud \
   ${cross_args[@]+"${cross_args[@]}"}   # 3.2-safe empty-array expansion (macOS ships Bash 3.2)
 
 make -j"$JOBS"
