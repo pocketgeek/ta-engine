@@ -1,0 +1,24 @@
+# taperbridge-100: one bridge of varying width across a 160-cell river -- 12-cell mouths, a 6-cell middle -- that
+# crosses three sector boundaries (x 319, 383, 447); two allied armies of 50 cross it in opposite directions.
+# Each crossing is an opening record of its own, and their strips differ (a record's strip runs while the river's
+# cross-section is no wider than its own width + 2): the passage must still be admitted as one.
+scn 1
+name taperbridge-100
+ticks 15300
+seed 7
+players 2
+team 1 0
+weapons off
+uplink 16
+probe scale
+map flat 768 768
+height 300 0 160 360 20
+height 300 372 160 396 20
+height 330 360 100 3 20
+height 330 369 100 3 20
+type r roster
+group A 0 r 50 rect 16 350 48 382
+group B 1 r 50 rect 720 350 752 382
+gate mid 330 363 430 369
+at 2 move A 736 366
+at 2 move B 32 366

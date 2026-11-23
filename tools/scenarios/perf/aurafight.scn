@@ -1,0 +1,35 @@
+scn 1
+# Aura-heavy whole-tick workload (perf follow-up final measurements, item L): two battles on
+# Ulasem Arena, each two adjacent armies of 800 (300 Aramon bows, 300 Aramon Smiths -- the
+# retail AdjustArmor aura, radius 200 -- and 200 swords) that fight each other at once.
+# 3,200 bodies with 1,200 aura emitters packed into the fights, so most bodies sit under many
+# overlapping auras; above 2048 units the tiled aura pass runs. Data-gated (--data).
+# Timing as a we_timing.sh situation: gzip it as R-aurafight.scn.gz / L-aurafight.scn.gz into a
+# --sitdir (the name picks the mode), --warm 300 --ticks 1000 --catchup 0: the army stays above
+# 2048 bodies through tick 1300 (3200 -> about 2530).
+name aurafight
+ticks 3000
+seed 11
+players 4
+weapons on
+wanderers off
+map named Ulasem Arena
+type bow fbi arabow
+type smith fbi arasmith
+type sword fbi arasword
+group A_bow 0 bow 300 rect 440 284 500 329 pitch=3
+group A_smith 0 smith 300 rect 440 329 500 374 pitch=3
+group A_sword 0 sword 200 rect 440 374 500 404 pitch=3
+group B_bow 1 bow 300 rect 500 284 560 329 pitch=3
+group B_smith 1 smith 300 rect 500 329 560 374 pitch=3
+group B_sword 1 sword 200 rect 500 374 560 404 pitch=3
+group C_bow 2 bow 300 rect 73 289 133 334 pitch=3
+group C_smith 2 smith 300 rect 73 334 133 379 pitch=3
+group C_sword 2 sword 200 rect 73 379 133 409 pitch=3
+group D_bow 3 bow 300 rect 133 289 193 334 pitch=3
+group D_smith 3 smith 300 rect 133 334 193 379 pitch=3
+group D_sword 3 sword 200 rect 133 379 193 409 pitch=3
+at 1 fight A_bow,A_smith,A_sword 530 344
+at 1 fight B_bow,B_smith,B_sword 470 344
+at 1 fight C_bow,C_smith,C_sword 163 349
+at 1 fight D_bow,D_smith,D_sword 103 349

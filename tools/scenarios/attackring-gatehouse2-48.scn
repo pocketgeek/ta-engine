@@ -1,0 +1,36 @@
+scn 1
+# Legion ~100 round 6 (2026-10-21, task-l6-gateB): a second gatehouse, to check that the back-to-front ring fill
+# (ringDeep, ringDeepClaim, spotRoute) is not tuned to attackring-gatehouse-40. The target stands in a yard (1-cell
+# walls, 7-8 cells out) open on the north through a 3-cell gap; round it runs a 4-cell corridor inside an outer wall
+# (11-13 cells out) with two 4-cell gates, one on the west and one on the south-east. 48 2x2 attackers (range 160)
+# come from the south-west, between the gates. A 4-cell corridor passes a 2x2 body beside one standing off the yard
+# wall, but not beside one flush to it (a 2x2 body flush to a 1-cell wall sees the target through it). The in-sight
+# ground is the yard and the north corridor seen through the gap, and the flush origins. The ring is deep (ringDeep)
+# at gate offsets 4, 5 and -2 .. -5.
+name attackring-gatehouse2-48
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 200 160
+# the yard, open on the north (x 99..101)
+wall 93 73 6 1
+wall 102 73 7 1
+wall 93 88 16 1
+wall 93 74 1 14
+wall 108 74 1 14
+# the outer wall: west gate (z 79..82), south-east gate (x 104..107)
+wall 88 68 26 1
+wall 88 93 16 1
+wall 108 93 6 1
+wall 113 69 1 24
+wall 88 69 1 10
+wall 88 83 1 10
+type a mover 2 2500 10 1.8 gun=160,1,1.0
+type tgt mover 2 2500 10 1.8 hp=30000
+group A 0 a 48 rect 30 110 60 140 pitch=3 weapons=on
+group T 1 tgt 1 cells 100,80 weapons=off
+reach ring A T marks=1200,2400
+at 1 attack A @T

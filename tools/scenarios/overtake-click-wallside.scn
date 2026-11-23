@@ -1,0 +1,14 @@
+scn 1
+name overtake-click-wallside
+ticks 5000
+players 1
+weapons off
+map flat 160 200
+type slow mover 2 2500 1 1.15
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+wall 90 20 4 100
+group S1 0 slow 10 rect 50 150 100 154 pitch=5
+group M1 0 mid 10 rect 50 156 100 160 pitch=5
+group F1 0 fast 10 rect 50 162 100 168 pitch=5
+at 5 move S1,M1,F1 86 100

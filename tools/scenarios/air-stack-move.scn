@@ -1,0 +1,14 @@
+scn 1
+# Six Drakes (Crusades) moved together onto one point: VTOL_Move flies each there, and past stage 0 it,
+# and then VTOL_Standby, steps out of the stack the arrivals make (VTOL_StepOut / VTOL_StepOutStandby).
+name air-stack-move
+ticks 1500
+seed 7
+players 2
+crusades on
+weapons on
+map flat 160 160
+type drake fbi zondrake
+group drakes 0 drake 6 cells 20,70 20,74 20,78 20,82 20,86 20,90
+at 2 move drakes 100 80
+pair stack drakes drakes cells=2

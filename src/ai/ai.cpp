@@ -3858,7 +3858,6 @@ void Controller::tick(const ta::sim::World& world, uint32_t simTick,
         // for its Monarch's side.
         for (const auto& u : world.units())
             if (u.alive() && u.player == player_ && u.type && u.type->commander) { side_ = u.type->side; break; }
-        if (const auto* god = world.player(player_).godType; side_.empty() && god) side_ = god->side;
     }
     if (!allyHomesKnown_) {
         allyHomesKnown_=true;

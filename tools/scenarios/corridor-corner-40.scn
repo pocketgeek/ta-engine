@@ -1,0 +1,18 @@
+scn 1
+# Corner lanes (2026-11-06, protocol 313; tools/legion_corner_test.py): 40 2x2 bodies walk south down
+# an 8-cell corridor, turn east into a second one and come out on open ground. Before corner lanes
+# every body cut the inner corner and the second corridor carried about two files; the column now
+# wheels, each file keeping its lane counted from the inner wall. Asset-free.
+name corridor-corner-40
+ticks 4000
+players 1
+map flat 128 128
+wall 0 44 60 84
+wall 68 0 32 64
+wall 68 72 32 56
+type sw mover 2 2500 10 1.8
+group a 0 sw 40 rect 30 8 60 44
+at 5 move a 116 68
+gate leg1 60 56 68 56
+gate leg2 88 64 88 72
+probe lanes

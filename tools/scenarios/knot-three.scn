@@ -1,0 +1,37 @@
+# knot-three: one 3x3 body against two 2x2 bodies abreast, head on in a corridor 4 cells wide with an alcove 4x4 at
+# its middle. Twice: F on attack-move orders both ways, M on move orders both ways.
+# The corridor is too narrow for the big body to pass either small one, and the alcove is taken by the first small
+# body that steps out of the way (a passage's waiter), so the knot has no way out. Before the rules all six stood
+# for good with their orders. Now the big body and the small one before it give way to each other in turn, one
+# cell back each time and the other one cell on, eight times each (kMaxGiveWays), 30 ticks apart: 16 steps that
+# open nothing, since a body steps clear of the other's next step, not of its whole way. Then they stand, and the
+# long stand-down ends all three orders (F at tick 6,536, M at 9,772: its pair waits kStandPairMove first).
+# Bounded, and no body is left standing with an order, but nobody gets through and the shuffle is for nothing
+# (docs/legion-pathfinding.md, "Known weaknesses").
+# Keys: g.FB.complete_n, g.MB.complete_n (1 each), g.FS.complete_n, g.MS.complete_n (2 each; all 0 before),
+# work.give_ways.total (34: 2 x (16 + the waiter's one)).
+scn 1
+name knot-three
+ticks 10400
+seed 7
+players 1
+weapons off
+map flat 96 64
+wall 16 0 64 10
+wall 16 14 30 18
+wall 50 14 30 18
+wall 46 18 4 14
+wall 16 36 64 10
+wall 16 50 30 14
+wall 50 50 30 14
+wall 46 54 4 10
+type big mover 3 2500 10 1.5
+type m mover 2 2500 10 1.79999
+group FB 0 big 1 cells 6,10
+group FS 0 m 2 cells 86,10 86,12
+group MB 0 big 1 cells 6,46
+group MS 0 m 2 cells 86,46 86,48
+at 2 fight FB 90 11
+at 2 fight FS 6 11
+at 2 move MB 90 47
+at 2 move MS 6 47

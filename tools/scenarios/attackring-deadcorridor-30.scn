@@ -1,0 +1,25 @@
+scn 1
+# Legion round 6 review (2026-10-21): a straight dead-end corridor (walls x=91 and x=95, closed at z=49), the target
+# in a pocket behind the corridor's 1-cell east wall, 30 2x2 gun=160 attackers coming in from the south. Each braked
+# body pinches the corridor, so walkOnShot looks at every one. It once walked bodies back and forth between two braked
+# neighbours (its "queue" counted members outside the corridor wall; legion_walkononward).
+name attackring-deadcorridor-30
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 200 160
+wall 91 50 1 51
+wall 95 50 1 51
+wall 96 40 60 37
+wall 96 85 60 30
+wall 102 77 54 8
+wall 91 49 5 1
+type a mover 2 2500 10 1.8 gun=160,1,1.0
+type tgt mover 2 2500 10 1.8 hp=30000
+group A 0 a 30 rect 85 110 100 130 pitch=3 weapons=on
+group T 1 tgt 1 cells 100,80 weapons=off
+reach ring A T marks=1200,2400
+at 1 attack A @T

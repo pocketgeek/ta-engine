@@ -1,0 +1,31 @@
+# siege-gap: an army on ONE attack-move order must pass a gap two cells wide in a wall, and an enemy body (hp 9,000,
+# unarmed) stands in the gap. The bodies with a line to it get an attack ahead of their leg and stand firing; the
+# other fifty wait behind that firing line for some 6,000 ticks. When the target dies the order goes on through the
+# gap to the click 50 cells beyond.
+# A body that combat holds in reach from the first tick of its attack never asks for a route, so it has no Legion
+# member; the stand-down read such a body as dead since its last step and ended the orders of the bodies waiting
+# behind it after 4,800 ticks, and of the bodies behind those 600 ticks later (43, 23, 49 and 56 of 60 arrived at
+# offsets 0, 1, -1, -2; all 60 without the rule). A body on an attack or guard leg is its owner's to end, with a
+# member or without: the firing line is live, and so is everything queued behind it.
+# At start offsets 2..5 fewer bodies find a line to the target, it outlives the run, and the whole army waits to
+# tick 14,000 with its orders (51 to 58 of the 60 were ended).
+# No baselined fixture with weapons on runs past tick 5,400; this one runs the long stand-down under fire.
+# Keys: g.A.arrived (60 at offsets 0, 1, -1, -2), scale.complete_outside_n (0 at every offset: no order ends off the
+# arrival disc), work.stand_downs.total (absent: none).
+scn 1
+name siege-gap
+ticks 14000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 220 160
+wall 128 0 4 79
+wall 128 81 4 79
+type a mover 1 2500 10 1.8 gun=96,1,1.0
+type tgt mover 2 2500 10 1.8 hp=9000
+group A 0 a 60 rect 20 74 40 86 pitch=2 weapons=on
+group T 1 tgt 1 cells 128,79 weapons=off
+reach ring A T marks=1200,2400
+at 1 fight A 180 80

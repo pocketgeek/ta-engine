@@ -1,0 +1,17 @@
+scn 1
+# Six Spirit Wolves fight-moved (attack-move) to a point beside an Aramon Keep (aracastl, 7x14):
+# they pick it up themselves and walk to their own origins on the rectangle round its footprint.
+name melee-castle-fight
+ticks 1500
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 160 120
+type w fbi zonwolf
+type castle fbi aracastl
+group W 0 w 6 rect 100 54 112 66 pitch=4 weapons=on
+group C 1 castle 1 cells 50,60 weapons=off
+reach R W C marks=300,600,900,1200
+at 1 fight W 62 60

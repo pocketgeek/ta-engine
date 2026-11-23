@@ -1,0 +1,13 @@
+scn 1
+name overtake-click-rear-240
+ticks 3000
+players 1
+weapons off
+map flat 128 160
+type slow mover 2 2500 1 1.15
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+group S1 0 slow 8 rect 40 100 88 104 pitch=5
+group S2 0 slow 8 rect 40 106 88 110 pitch=5
+group F1 0 fast 8 rect 38 112 90 118 pitch=6
+at 5 move S1,S2,F1 64 93

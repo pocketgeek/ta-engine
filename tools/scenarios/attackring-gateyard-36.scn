@@ -1,0 +1,39 @@
+scn 1
+# Legion round 6 (2026-10-21): a second gatehouse, not the first's copy. The target stands in a walled yard (1-cell
+# walls, 6-7 cells out) open on the NORTH through a 4-cell gap; round it runs a 4-CELL corridor inside an outer wall
+# entered by two gates, one on the west (group A, 24 attackers with 2x2 footprints) and one on the south (group B,
+# 12 with 3x3 footprints), both with range 160. A 3x3 body is single file in the corridor, a 2x2 one has two lanes
+# when the first stands against a wall and none when it stands in the middle. Bodies get the shot flush with the
+# yard's walls (the sight cast skips the cells beside a big body) and through the north gap; the rest of reach is
+# shadow. Built to check that the walk on past the shot (walkOnShot) fills a corridor deep-first for another width,
+# gate layout and footprint mix than attackring-gatehouse-40.
+name attackring-gateyard-36
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 200 160
+# the yard, open on the north (x 99..102)
+wall 94 74 5 1
+wall 103 74 5 1
+wall 94 87 14 1
+wall 94 75 1 12
+wall 107 75 1 12
+# the outer wall (a 4-cell corridor), gates on the west (z 79..82) and the south (x 99..102)
+wall 89 69 24 1
+wall 89 92 10 1
+wall 103 92 10 1
+wall 89 70 1 9
+wall 89 83 1 9
+wall 112 70 1 22
+type a mover 2 2500 10 1.8 gun=160,1,1.0
+type b mover 3 2500 10 1.8 gun=160,1,1.0
+type tgt mover 2 2500 10 1.8 hp=30000
+group A 0 a 24 rect 20 70 40 92 pitch=3 weapons=on
+group B 0 b 12 rect 88 118 114 140 pitch=4 weapons=on
+group T 1 tgt 1 cells 100,80 weapons=off
+reach ring A,B T marks=1200,2400
+at 1 attack A @T
+at 1 attack B @T

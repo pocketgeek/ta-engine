@@ -1,0 +1,27 @@
+scn 1
+# Legion ~100 round 2 review (2026-10-19): ringBend must not walk a body into a pocket on its lane. 30 attackers
+# ring a stationary target at 300,80; at tick 900 a Move group of 20 sets off from the west toward 360,80, its
+# straight lanes running through the ring and, first, into a U-shaped wall opening west (cells 90-120). On the first
+# round-2 head ringBend aimed every member along its lane however far the ring was: the bend walked it into the
+# pocket, the field walked it back out, for good (0 of 20 arrived in 20,000 ticks, 1034 reversals over 5000).
+# Retail: 19-20 of 20 arrive, t90 about 4500. Source: the round-2 review reproducer (bendpocket).
+name ringbend-pocket
+ticks 7000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 400 160
+wall 120 50 1 61
+wall 90 50 30 1
+wall 90 110 30 1
+type a mover 1 2500 10 1.8 gun=96,1,1.0
+type m mover 2 2500 10 1.8
+type tgt mover 2 2500 10 1.8 hp=300000
+reach ring A T marks=1500
+group A 0 a 30 rect 250 70 270 90 pitch=2 weapons=on
+group T 1 tgt 1 cells 300,80 weapons=off
+group M 0 m 20 rect 20 70 44 90 pitch=3
+at 1 attack A @T
+at 900 move M 360 80

@@ -1,0 +1,26 @@
+# settled-crowd: a body whose way is closed by a settled crowd of its own side, arrived for another destination.
+# Order A (24 bodies) settles in the middle of a corridor 8 cells wide and fills it from wall to wall. At tick 1,500
+# order B (6 bodies) is sent through the corridor to a point beyond it; the corridor is its only way.
+# The settled bodies cannot open a lane (a settled body steps at most one cell from its goal), the local detour is
+# smaller than the crowd, and the settle rule ignores a settled crowd of another destination: B stood in front of
+# A for good, orders kept. Its orders now end beside the crowd (the stand-down: the Legion counterpart of Retail's
+# growing goal circle), and the units are free for the next order.
+# Read at start offset 0 only (legion_settledcrowd). A negative start offset moves order B's spawn to within two
+# cells of the map's edge, where three of its six bodies cannot move in either mode (Retail leaves them standing
+# there as well): they never reach the crowd, hold their orders to the long stand-down, 4,808 ticks after the
+# order, and this file ends before that.
+# Keys: open_still900 (0; 6 before), g.B.complete_n (6; 0 before), work.stand_downs.total.
+scn 1
+name settled-crowd
+ticks 4500
+seed 7
+players 1
+weapons off
+map flat 128 40
+wall 34 0 60 16
+wall 34 24 60 16
+type m mover 2 2500 10 1.79999
+group A 0 m 24 rect 4 8 24 32 pitch=3
+group B 0 m 6 rect 4 4 12 8 pitch=3
+at 2 move A 64 20
+at 1500 move B 112 20

@@ -1,0 +1,54 @@
+scn 1
+# Gap sweep (the audit's `auditgaps`: pinwheelRun for gaps 6/8/10/14/20), five
+# corridors stacked in one 200x700 map, 140 rows each: the pinwheel U-turn's wall
+# (x 98-101, z 48 to the bottom of the corridor) with a second wall above its end
+# (x 98-101, z 0 to 48-gap) leaving a gap of GAP cells. Each corridor holds one
+# group of 48 footprint-2 bodies (8 per row, x 40-61) sent to (150, 110) of its
+# corridor; a 1-cell wall closes each corridor's bottom. Orders are two ticks apart
+# so each selection (48 commands) lands in one tick. Gate gGAP is the 8-cell strip
+# over the gap (x 97-104), side keys are global, so read per-group g.<name>.* for
+# progress and gate.<name>.* for files.
+# Source (main b8a4110, each gap alone in its own world, offset 0):
+#   gap  6: rounded90 1930 done 3346 files 1.15   gap  8: 1930 3346 1.15 (identical to 6)
+#   gap 10: rounded90 1314 done 2610 files 4.14   gap 14: 1332 2934 3.98
+#   gap 20: rounded90 1252 done 2284 files 4.48
+# Stacked (offset 0): gap 6 done 3347 files 1.15 and gap 10 done 2607 reproduce
+# the lone runs; gap 8 3609, gap 14 2666 and gap 20 2649 (lone 2284) do not, the
+# five groups sharing one navigator and field quota. Report-only for those.
+# Gap 8 is as narrow as 6 for 2x2 bodies: the footprint-origin plane holds 7 origins.
+name gapsweep
+ticks 5000
+probe lanes
+seed 7
+map flat 200 700
+type m mover 2 2500 10 1.79999
+wall 98 48 4 91
+wall 98 0 4 42
+wall 0 139 200 1
+wall 98 188 4 91
+wall 98 140 4 40
+wall 0 279 200 1
+wall 98 328 4 91
+wall 98 280 4 38
+wall 0 419 200 1
+wall 98 468 4 91
+wall 98 420 4 34
+wall 0 559 200 1
+wall 98 608 4 91
+wall 98 560 4 28
+wall 0 699 200 1
+group G6 0 m 48 rect 40 96 64 114 pitch=3
+group G8 0 m 48 rect 40 236 64 254 pitch=3
+group G10 0 m 48 rect 40 376 64 394 pitch=3
+group G14 0 m 48 rect 40 516 64 534 pitch=3
+group G20 0 m 48 rect 40 656 64 674 pitch=3
+gate g6 101 0 101 47
+gate g8 101 140 101 187
+gate g10 101 280 101 327
+gate g14 101 420 101 467
+gate g20 101 560 101 607
+at 1 move G6 150 110
+at 3 move G8 150 250
+at 5 move G10 150 390
+at 7 move G14 150 530
+at 9 move G20 150 670

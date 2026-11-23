@@ -1,0 +1,23 @@
+scn 1
+# AR-06 / C18 (PLAN 3.4): a Fight group whose auto-acquired target dies mid-approach. 40 fighters march east to a
+# point past a weak enemy (E, 3 bodies of 60 hp) that stands on their way. Each fighter that auto-acquires an E body
+# leaves its convoy Point for the chase (its area slot is released); when E dies it resumes its Fight leg, re-joins
+# the convoy's Point and claims a slot as a late joiner. PLAN gates: the claims invariant holds (`probe claims`:
+# claims.bad_max == 0 -- overlapping, lost or dangling slot claims), every fighter resumes and settles
+# (g.F.arrived == 40, g.F.done), and no fighter keeps a dead target's chase (reach.E: damage == the E bodies' 180 hp).
+name fight-retarget
+ticks 3600
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 260 120
+type f mover 2 2500 10 1.8 gun=96,10,1.0
+type e mover 2 2500 10 1.8 hp=60
+group F 0 f 40 cells 14,44 17,44 20,44 23,44 26,44 29,44 32,44 35,44 14,48 17,48 20,48 23,48 26,48 29,48 32,48 35,48 14,52 17,52 20,52 23,52 26,52 29,52 32,52 35,52 14,56 17,56 20,56 23,56 26,56 29,56 32,56 35,56 14,60 17,60 20,60 23,60 26,60 29,60 32,60 35,60 weapons=on
+group E 1 e 3 cells 120,52 120,56 120,60 weapons=off
+probe claims
+reach E F E marks=1200
+region goal 200 40 240 80
+at 1 fight F 230 60

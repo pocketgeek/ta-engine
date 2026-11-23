@@ -1,0 +1,24 @@
+scn 1
+# explore-reveal-2048 (perf follow-up D, timing only): the pooled exploration pass (4096+ units) revealing
+# fresh ground every tick on the largest plane. A flat 2048x2048 map (exploration plane 1024x1024 cells),
+# nothing explored, four armies of 1200 marching from the corners to the centre: SIMPHASE explore= is the
+# workers' reveal and block summaries plus, until D, a rebuild of the summaries from the whole plane every
+# tick; since D, the join's exact re-summary of the blocks the workers changed (each once). The pass runs
+# pooled only with SimPool workers: set TAK_SIM_WORKERS=1 (or more) on a debug build.
+# Run with tools/scenarios/perf-explore/run.sh (base vs candidate on the timing cores).
+name explore-reveal-2048
+ticks 600
+seed 7
+players 4
+weapons off
+explored none
+map flat 2048 2048
+type r roster
+group A 0 r 1200 rect 40 40 200 200
+group B 1 r 1200 rect 1848 40 2008 200
+group C 2 r 1200 rect 40 1848 200 2008
+group D 3 r 1200 rect 1848 1848 2008 2008
+at 1 move A 1000 1000
+at 1 move B 1048 1000
+at 1 move C 1000 1048
+at 1 move D 1048 1048

@@ -1,0 +1,36 @@
+# reorder: units that gave their order up are ordered again. Two corridors 8 cells wide, each plugged wall to wall
+# by four of the player's own idle bodies; six bodies are sent through each at tick 2 and give their orders up
+# before the plug (the stand-down, about tick 1,200).
+#   A  the plug is ordered away at tick 2,000 and the six are sent to the same point again at tick 2,600: all six
+#      arrive.
+#   B  the six are sent again at tick 1,600 while the plug still stands (they give up again: no loop, no twitch),
+#      and a third time at tick 3,400 after the plug left at 3,000: all six arrive.
+# At start offset 1 some of the 2x2 bodies begin on origins the static plane rejects and walk off them (the walk
+# off an illegal origin, Member::escapeTo). One of them reached its legal origin in its own update and was moved on
+# by another body's swap in the same tick; the walk's record, cleared only by the body's own next update, then
+# named an origin two cells from the body, and TAK_LEGION_VERIFY aborted at tick 3,507 ("a walk off an illegal
+# origin aims past its neighbours"). The record now ends with the walk, and with any step another rule gives the
+# body. ctest legion_reorder runs this file under the hook.
+# Keys: g.A.arrived, g.B.arrived (6 each), work.escape_steps.total (0, 11, 15 at offsets 0, 1, -1).
+scn 1
+name reorder
+ticks 6000
+seed 7
+players 1
+weapons off
+map flat 128 64
+wall 34 0 60 16
+wall 34 24 60 16
+wall 34 48 60 16
+type m mover 2 2500 10 1.79999
+group P1 0 m 4 cells 61,17 61,19 61,21 61,23
+group P2 0 m 4 cells 61,41 61,43 61,45 61,47
+group A 0 m 6 rect 4 14 12 26 pitch=3
+group B 0 m 6 rect 4 38 12 50 pitch=3
+at 2 move A 112 20
+at 2000 move P1 20 6
+at 2600 move A 112 20
+at 2 move B 112 44
+at 1600 move B 112 44
+at 3000 move P2 20 58
+at 3400 move B 112 44

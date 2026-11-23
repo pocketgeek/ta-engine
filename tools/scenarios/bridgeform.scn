@@ -1,0 +1,18 @@
+scn 1
+# Bridge formation: a 48-body formation along a 64-cell, 6-cell-wide corridor.
+# Geometry is crowdbench's `bridges` lane for 48 units (stride 3, 7 rows x 7 columns, lane z 26-60, map 384x128),
+# but ONE formation: all 48 bodies get one click at (341, 46) (crowdbench gives each its own goal).
+# Source: tools/crowdbench.cpp bridges; lanes2 variants lost 20-31% of arrivals here.
+name bridgeform
+ticks 7000
+seed 7
+map flat 384 128
+wall 0 24 384 2
+wall 0 61 384 2
+wall 160 26 64 14
+wall 160 46 64 15
+type m mover 2 2500 10 1.79999
+group A 0 m 48 cells 50,36 50,39 50,42 50,45 50,48 50,51 50,54 47,36 47,39 47,42 47,45 47,48 47,51 47,54 44,36 44,39 44,42 44,45 44,48 44,51 44,54 41,36 41,39 41,42 41,45 41,48 41,51 41,54 38,36 38,39 38,42 38,45 38,48 38,51 38,54 35,36 35,39 35,42 35,45 35,48 35,51 35,54 32,36 32,39 32,42 32,45 32,48 32,51
+gate bridge 192 26 192 60
+line past 230 0 230 128
+at 1 move A 341 46

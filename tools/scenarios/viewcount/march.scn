@@ -1,0 +1,65 @@
+scn 1
+# View-count workload (perf follow-up item G): four armies of 1,100 (the retail
+# types' sight, sight heights and speeds; 200 dragons each) march on Ulasem Arena
+# from four of its starts to the opposite one and back, weapons off, so that
+# view footprints move every tick across real terrain. 4,400 bodies: the worker
+# path of World::updateViewCounts runs with --workers. Data-gated (--data).
+# Timing as a we_timing.sh situation: gzip it as R-march.scn.gz / L-march.scn.gz
+# into a --sitdir (the name picks the mode).
+name viewcount-march
+ticks 3000
+seed 7
+players 4
+weapons off
+wanderers off
+map named Ulasem Arena
+type bow fbi arabow
+type arch fbi verarch
+type beast fbi crebeas
+type siege fbi arasiege
+type cdrag fbi credrag
+type adrag fbi aradrag
+group A_bow 0 bow 300 rect 470 284 530 344 pitch=3
+group A_arch 0 arch 250 rect 530 284 560 374 pitch=3
+group A_beast 0 beast 250 rect 470 344 530 389 pitch=3
+group A_siege 0 siege 100 rect 440 284 470 344 pitch=4
+group A_cdrag 0 cdrag 100 rect 440 344 470 374 pitch=3
+group A_adrag 0 adrag 100 rect 440 374 470 404 pitch=3
+group B_bow 1 bow 300 rect 280 468 340 528 pitch=3
+group B_arch 1 arch 250 rect 340 468 370 558 pitch=3
+group B_beast 1 beast 250 rect 280 528 340 573 pitch=3
+group B_siege 1 siege 100 rect 250 468 280 528 pitch=4
+group B_cdrag 1 cdrag 100 rect 250 528 280 558 pitch=3
+group B_adrag 1 adrag 100 rect 250 558 280 588 pitch=3
+group C_bow 2 bow 300 rect 103 289 163 349 pitch=3
+group C_arch 2 arch 250 rect 163 289 193 379 pitch=3
+group C_beast 2 beast 250 rect 103 349 163 394 pitch=3
+group C_siege 2 siege 100 rect 73 289 103 349 pitch=4
+group C_cdrag 2 cdrag 100 rect 73 349 103 379 pitch=3
+group C_adrag 2 adrag 100 rect 73 379 103 409 pitch=3
+group D_bow 3 bow 300 rect 288 88 348 148 pitch=3
+group D_arch 3 arch 250 rect 348 88 378 178 pitch=3
+group D_beast 3 beast 250 rect 288 148 348 193 pitch=3
+group D_siege 3 siege 100 rect 258 88 288 148 pitch=4
+group D_cdrag 3 cdrag 100 rect 258 148 288 178 pitch=3
+group D_adrag 3 adrag 100 rect 258 178 288 208 pitch=3
+at 1 move A_bow,A_arch,A_beast,A_siege 133 334
+at 1 move B_bow,B_arch,B_beast,B_siege 318 133
+at 1 move C_bow,C_arch,C_beast,C_siege 516 329
+at 1 move D_bow,D_arch,D_beast,D_siege 310 513
+at 1 move A_cdrag,A_adrag 133 334
+at 1 move A_cdrag,A_adrag 516 329 queue
+at 1 move A_cdrag,A_adrag 133 334 queue
+at 1 move A_cdrag,A_adrag 516 329 queue
+at 1 move B_cdrag,B_adrag 318 133
+at 1 move B_cdrag,B_adrag 310 513 queue
+at 1 move B_cdrag,B_adrag 318 133 queue
+at 1 move B_cdrag,B_adrag 310 513 queue
+at 1 move C_cdrag,C_adrag 516 329
+at 1 move C_cdrag,C_adrag 133 334 queue
+at 1 move C_cdrag,C_adrag 516 329 queue
+at 1 move C_cdrag,C_adrag 133 334 queue
+at 1 move D_cdrag,D_adrag 310 513
+at 1 move D_cdrag,D_adrag 318 133 queue
+at 1 move D_cdrag,D_adrag 310 513 queue
+at 1 move D_cdrag,D_adrag 318 133 queue

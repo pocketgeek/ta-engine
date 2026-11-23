@@ -1,0 +1,14 @@
+scn 1
+# The arrival layout (2026-11-16; tools/legion_overtake_test.py): a row of 4 fast 3x3 bodies (2.9) in front of 6
+# slow 2x2 ones (1.10), one right-click to a point about 500 px ahead. Asset-free, open field.
+name overtake-click-front-500
+ticks 5000
+players 1
+weapons off
+map flat 128 160
+type slow mover 2 2500 1 1.10
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+group F1 0 fast 4 rect 54 60 74 64 pitch=5
+group S1 0 slow 6 rect 54 66 74 72 pitch=4
+at 5 move F1,S1 64 30

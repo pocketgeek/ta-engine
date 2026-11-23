@@ -1,0 +1,45 @@
+# guard-plug: the player's own bodies on guard and attack orders plug a corridor 8 cells wide from wall to wall;
+# six bodies are sent through each on a move order at tick 100.
+#   A  the plug PG guards a still body W of its own behind it
+#   B  the plug PA is on an attack order on an enemy body T it cannot destroy within the run (in reach, firing)
+#   C  the plug PF is on an attack-move order and stands firing at T2 (an attack ahead of its leg)
+# A body on an attack or guard leg is its owner's to end and reads as live, so the bodies waiting behind it keep
+# their orders for as long as it stands there: behind a firing line that is what the player wants (the army goes on
+# when the target is destroyed, siege-gap.scn). Read as bodies without progress (the bodies of PF and PG have no
+# Legion member: combat and the guard hold them where they stand from the first tick), they ended the orders behind
+# them at 4,800 dead ticks: five of C's six and two of A's by tick 9,000. The guards of A are the open case: beside
+# a ward that never moves they will not move again either, and the six behind them wait for good, as before the
+# rules (docs/legion-pathfinding.md, "Known weaknesses"; Retail ends all eighteen orders).
+# Keys: g.B.complete_n, g.C.complete_n (0: the orders behind a firing line are kept), g.A.complete_n (0 as well,
+# reported, not bounded).
+scn 1
+name guard-plug
+ticks 9000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 128 96
+wall 34 0 60 16
+wall 34 24 60 16
+wall 34 48 60 16
+wall 34 72 60 24
+type m mover 2 2500 10 1.79999
+type g mover 2 2500 10 1.79999 gun=64,1,1.0
+type tgt mover 2 2500 10 1.8 hp=900000
+group W 0 m 1 cells 66,19
+group PG 0 m 4 cells 61,17 61,19 61,21 61,23
+group T 1 tgt 1 cells 66,43 weapons=off
+group PA 0 g 4 cells 61,41 61,43 61,45 61,47 weapons=on
+group T2 1 tgt 1 cells 66,67 weapons=off
+group PF 0 g 4 cells 61,65 61,67 61,69 61,71 weapons=on
+group A 0 m 6 rect 4 14 12 26 pitch=3
+group B 0 m 6 rect 4 38 12 50 pitch=3
+group C 0 m 6 rect 4 62 12 74 pitch=3
+at 2 guard PG @W
+at 2 attack PA @T
+at 2 fight PF 112 68
+at 100 move A 112 20
+at 100 move B 112 44
+at 100 move C 112 68

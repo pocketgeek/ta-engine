@@ -1,0 +1,39 @@
+# idle-plug: whose idle bodies end an order. Four corridors 8 cells wide, each plugged wall to wall by four idle
+# bodies that were never ordered; six bodies of player 0 are sent through each to a point beyond it.
+#   A  the player's own idle bodies in the way, a move order
+#   B  an ally's idle bodies (player 1, same team), a move order
+#   C  an enemy's idle bodies (player 2), a move order
+#   D  the player's own idle bodies, an attack-move order
+# Idle bodies packed from wall to wall have no cell to part to, and no rule moves them: A, B and D stood before
+# their plug for good with their orders. They now end them there (the stand-down, 600 dead ticks against bodies
+# that will never move): an ally's body counts as the player's own. C keeps its orders: an enemy's body is never a
+# reason to end one (Legion moves no enemy body; Retail ends C as well).
+# Keys: g.A.complete_n, g.B.complete_n, g.D.complete_n (6 each; 0 before), g.C.complete_n (0).
+scn 1
+name idle-plug
+ticks 4000
+seed 7
+players 3
+team 0 0
+team 1 0
+team 2 1
+weapons off
+map flat 128 120
+wall 34 0 60 16
+wall 34 24 60 16
+wall 34 48 60 8
+wall 34 64 60 16
+wall 34 88 60 32
+type m mover 2 2500 10 1.79999
+group PO 0 m 4 cells 61,17 61,19 61,21 61,23
+group PY 1 m 4 cells 61,41 61,43 61,45 61,47
+group PE 2 m 4 cells 61,57 61,59 61,61 61,63
+group PF 0 m 4 cells 61,81 61,83 61,85 61,87
+group A 0 m 6 rect 4 14 12 26 pitch=3
+group B 0 m 6 rect 4 38 12 50 pitch=3
+group C 0 m 6 rect 4 54 12 66 pitch=3
+group D 0 m 6 rect 4 78 12 90 pitch=3
+at 2 move A 112 20
+at 2 move B 112 44
+at 2 move C 112 60
+at 2 fight D 112 84

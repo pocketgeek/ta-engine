@@ -1,0 +1,16 @@
+scn 1
+# Five Drakes (Crusades) in a line ordered onto an Aramon Barracks (arakeep): the step-out (VTOL_StepOut)
+# spreads the stack on the hover ring.
+name air-stack-barracks-5
+ticks 1800
+seed 7
+players 2
+crusades on
+weapons on
+map flat 160 160
+type drake fbi zondrake
+type keep fbi arakeep
+group drakes 0 drake 5 cells 20,70 20,75 20,80 20,85 20,90
+group keep 1 keep 1 cells 70,80
+at 2 attack drakes @keep
+pair stack drakes drakes cells=2

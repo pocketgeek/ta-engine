@@ -1,0 +1,33 @@
+# passage-starve: a body waiting for a narrow passage must take its turn although a body of the other way stands
+# admitted before the passage and never uses it (the 18-hour audit: three units starved for 14 hours).
+# A wall along the sector line z=64 with an 8-cell gap. North of it a 16-cell room whose far end is plugged by a
+# row of another player's idle bodies (E: they never part); south of it the same room, plugged by a row of the
+# player's own idle bodies (G), which are sent away at tick 900.
+# Body A comes from the north, is admitted to the passage inside its approach zone and stands against E for good.
+# Body B stands south of G from the start with a goal inside the north room, which needs none of A's ground; while
+# G boxes it in, its own admissions lapse, A takes the passage, and B waits for it with a stall clock far past the
+# rest's wake-up. From tick 900 B's way is free, but a body held 60 ticks asks only on every second tick: the
+# passage turned to B and straight back, or was freed and retaken by A (the lower unit number, updated first),
+# every 120 ticks for good.
+# Keys: g.B.arrived, g.B.done (1, by about tick 1,300; before the fix 0 and -1).
+scn 1
+name passage-starve
+ticks 4000
+seed 7
+players 2
+weapons off
+map flat 96 128
+wall 0 62 40 4
+wall 48 62 48 4
+wall 34 36 2 26
+wall 52 36 2 26
+wall 34 66 2 26
+wall 52 66 2 26
+type m mover 2 2500 10 1.79999
+group A 0 m 1 cells 42,16
+group E 1 m 9 cells 36,48 38,48 40,48 42,48 44,48 46,48 48,48 50,48 80,20
+group G 0 m 8 cells 36,70 38,70 40,70 42,70 44,70 46,70 48,70 50,70
+group B 0 m 1 cells 43,74
+at 2 move A 43 110
+at 2 move B 43 56
+at 900 move G 43 118

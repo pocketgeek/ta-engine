@@ -1,0 +1,14 @@
+scn 1
+# Overtaking within one click (2026-11-15): a mixed selection marching as a block -- 16 slow 2x2 bodies (speed 1.15,
+# an Aramon Archer's) in front, 16 fast 3x3 (2.9, an Aramon Knight's) behind -- sent with ONE right-click to a point
+# 130 cells ahead over open ground. Asset-free.
+name overtake-click-blob
+ticks 5000
+players 1
+weapons off
+map flat 128 200
+type slow mover 2 2500 1 1.15
+type fast mover 3 2500 1 2.9
+group S 0 slow 16 rect 50 150 74 160
+group F 0 fast 16 rect 48 162 76 178
+at 5 move S,F 62 20

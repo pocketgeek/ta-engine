@@ -1,0 +1,21 @@
+scn 1
+# Pinwheel gap, 8 cells (W8 step 0, the audit's `auditgaps` gap 8 alone in its own world): the U-turn's wall
+# with a second wall above it (x 98-101, z 0-39), leaving a 8-cell gap (z 40-47). 48 footprint-2 bodies west of the wall are sent to
+# a point beyond it; the files must fold into the gap and take it no slower
+# than single file. gate.top.files_x100 is the files abreast in the gap strip
+# and side.east.t90 the source's rounded90 (90% at x >= 104).
+# Speed 1.79999 builds the source's raw 117964 (see uturn.scn).
+# Source numbers (main b8a4110, offset 0): see gapsweep.scn (gap 8 = gap 6 for 2x2 bodies; 10: 1314 / 2610 / 4.14;
+# 14: 1332 / 2934 / 3.98; 20: 1252 / 2284 / 4.48 as rounded90 / done / files).
+name gap8
+ticks 6000
+seed 7
+map flat 200 140
+wall 98 48 4 92
+wall 98 0 4 40
+type m mover 2 2500 10 1.79999
+group A 0 m 48 rect 40 96 64 114 pitch=3
+gate top 101 0 101 47
+line east 104 0 104 140
+probe lanes
+at 1 move A 150 110

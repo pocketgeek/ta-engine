@@ -1,0 +1,62 @@
+# churn-knot: bodies in each other's way while the map changes beside them. A static change that touches a route
+# has it refreshed, and the stall clock's record is re-based to where the body stands under the new route: a body
+# one step back from its best place then read its next step forward as a gain, and its knot's dead age restarted
+# with every change. With the map changing more often than every 4,800 ticks the knot's orders never ended.
+#  K  a 3x3 body (attack-move east) against a 2x2 body (attack-move west) in a lane 3 cells wide and 60 long, no
+#     pocket: no give-way opens anything, and the long stand-down ends both orders.
+#  P  the same pair in a lane with one pocket 4x4 in its north wall: the give-way lets both through.
+#  M  as P on move orders: the pocket lies too far back for the give-way (see pocket-far), the pair shuffles, and
+#     the long stand-down ends both orders. This is the lane the changes kept alive: both stood for good.
+#  O  a route that opens: the K pair again (the big body's goal 320 cells east); at tick 3,000 the lane is closed
+#     beyond the small body and a door behind the big one opens into a second lane that leads on east. The big body
+#     turns round, walks back to the door and on through the second lane, and arrives near tick 7,000, well past
+#     the tick the long stand-down would have ended its order at with the door shut (5,2xx): headway on a new
+#     route is progress, also where it begins by going back over ground the body remembers.
+# A 1x1 feature on open ground beside lane M's east mouth, closing no way, is placed and lifted every 1,500 ticks.
+# Read at start offset 0 (legion_routeopens: O's two arrive) and at 0, 1, -1 (legion_churnknot: M's orders end,
+# nobody stands stuck). The meets move with the start offset: at +1 lane K's pair pass each other and lane O's
+# meet at the west mouth, before the door (their orders end at the long threshold); at -1 lane M's give-way works.
+# Keys (with --scale): g.MB / g.MS.complete_n (1: the orders end), g.KB / g.KS.complete_n, g.PB / g.PS.arrived,
+# g.OB / g.OS.arrived, scale.stuck_end (0), work.stand_downs.total, work.give_ways.total.
+scn 1
+name churn-knot
+ticks 9000
+seed 7
+players 1
+weapons off
+map flat 400 208
+wall 34 0 60 30
+wall 34 33 60 8
+wall 34 44 28 20
+wall 66 44 28 20
+wall 62 44 4 16
+wall 34 67 60 9
+wall 34 79 28 20
+wall 66 79 28 20
+wall 62 79 4 16
+wall 34 102 60 72
+wall 34 177 10 7
+wall 48 177 46 7
+wall 34 184 4 3
+wall 34 187 60 21
+type m mover 2 2500 10 1.79999
+type big mover 3 2500 10 1.5
+group KB 0 big 1 cells 20,30
+group KS 0 m 1 cells 108,31
+group PB 0 big 1 cells 20,64
+group PS 0 m 1 cells 108,65
+group MB 0 big 1 cells 20,99
+group MS 0 m 1 cells 108,100
+group OB 0 big 1 cells 20,174
+group OS 0 m 1 cells 108,175
+churn 100 105 1 1 every=1500 toggle from=110
+churn 44 177 4 1 every=2999 toggle from=1 until=3001
+churn 80 174 1 3 every=100000 from=3000
+at 2 fight KB 112 31
+at 2 fight KS 8 31
+at 2 fight PB 112 65
+at 2 fight PS 8 65
+at 2 move MB 112 100
+at 2 move MS 8 100
+at 2 fight OB 380 175
+at 2 fight OS 8 175

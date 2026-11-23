@@ -1,0 +1,24 @@
+scn 1
+# Open tangent (the shape of the legion-r9 36060 jam, built clean): two convex
+# ends about 120 cells apart with open ground between them. Block A (x 80-119,
+# z 70 to the bottom) has its top-left corner at (80, 70); wall B (x 200-203,
+# z 0-77) ends at z 77. 48 footprint-2 bodies start south-west, are sent
+# diagonally onto A's corner, along its top, across the open stretch (the
+# tangent between the corner and B's end) and north round B's end to (240, 25).
+# Nothing to hug on the tangent: the fold expected on main is about 2.6 files;
+# the gate is the strip across the middle of the tangent (x 150-157, z 50-89).
+# Speed 1.79999 builds the raw 117964 speed (1.8 rounds to 117965).
+# New fixture, no earlier source. Measured on main (offset 0 / median of 3):
+# files over the tangent 1.63 / 1.92, done 4250 / 4250, reversals 7 / 7, spins 0.
+name opentangent
+ticks 7000
+probe lanes
+seed 7
+map flat 260 170
+wall 80 70 40 100
+wall 200 0 4 78
+type m mover 2 2500 10 1.79999
+group A 0 m 48 rect 14 120 38 138 pitch=3
+gate tangent 154 50 154 89
+line round 206 0 206 170
+at 1 move A 240 25

@@ -1,0 +1,16 @@
+scn 1
+# explore-idle-1024 (perf follow-up D, timing only): the map-sized part of World::updateExplorationPlane.
+# A flat 1024x1024 map (exploration plane 512x512 = 262144 cells) and 16 idle bodies: after the first
+# tick no footprint changes cell, so SIMPHASE explore= is what the pass costs whatever the units do. Until
+# D the pass rebuilt its block summaries from the whole plane every tick; since D it keeps them.
+# Run with tools/scenarios/perf-explore/run.sh or wall.sh (base vs candidate on the timing cores).
+name explore-idle-1024
+ticks 600
+seed 7
+players 2
+weapons off
+explored none
+map flat 1024 1024
+type r roster
+group A 0 r 8 rect 20 20 40 40
+group B 1 r 8 rect 984 984 1004 1004

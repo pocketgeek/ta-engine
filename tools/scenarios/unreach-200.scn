@@ -1,0 +1,19 @@
+scn 1
+# AR-11 unreach-200: 200 movers (one 200-body click, four uplink ticks) ordered across a full-height wall
+# (x 126-129) to a point on the far side. No route exists, so each unit walks to its nearest reachable spot
+# (its approach point) and the order waits there. `probe approach` reports per unit when it ARRIVES at that
+# point and when its order COMPLETES.
+# On the W2 head the wait is the whole kTrappedRetire = 9000 timed from the order, not from arrival, so the
+# orders complete at about tick 9000 whatever the walk was. User decision 2026-10-08 (PLAN section 0, row 11):
+# an approach member's order is dropped as soon as it reaches its spot (kApproachRetire = 0); acceptance:
+# approach.wait.done <= a few ticks and approach.complete.done <= approach.arrive.done + a few ticks.
+# Source: crowdbench `unreachable` 200x1 (which gives each unit its own goal; this file is the one-click twin).
+name unreach-200
+ticks 9600
+seed 7
+map flat 256 96
+wall 126 0 4 96
+probe approach
+type m mover 2 2500 10 1.79999
+group A 0 m 200 cells 20,30 23,30 26,30 29,30 32,30 35,30 38,30 41,30 44,30 47,30 50,30 53,30 56,30 59,30 62,30 65,30 68,30 71,30 74,30 77,30 20,33 23,33 26,33 29,33 32,33 35,33 38,33 41,33 44,33 47,33 50,33 53,33 56,33 59,33 62,33 65,33 68,33 71,33 74,33 77,33 20,36 23,36 26,36 29,36 32,36 35,36 38,36 41,36 44,36 47,36 50,36 53,36 56,36 59,36 62,36 65,36 68,36 71,36 74,36 77,36 20,39 23,39 26,39 29,39 32,39 35,39 38,39 41,39 44,39 47,39 50,39 53,39 56,39 59,39 62,39 65,39 68,39 71,39 74,39 77,39 20,42 23,42 26,42 29,42 32,42 35,42 38,42 41,42 44,42 47,42 50,42 53,42 56,42 59,42 62,42 65,42 68,42 71,42 74,42 77,42 20,45 23,45 26,45 29,45 32,45 35,45 38,45 41,45 44,45 47,45 50,45 53,45 56,45 59,45 62,45 65,45 68,45 71,45 74,45 77,45 20,48 23,48 26,48 29,48 32,48 35,48 38,48 41,48 44,48 47,48 50,48 53,48 56,48 59,48 62,48 65,48 68,48 71,48 74,48 77,48 20,51 23,51 26,51 29,51 32,51 35,51 38,51 41,51 44,51 47,51 50,51 53,51 56,51 59,51 62,51 65,51 68,51 71,51 74,51 77,51 20,54 23,54 26,54 29,54 32,54 35,54 38,54 41,54 44,54 47,54 50,54 53,54 56,54 59,54 62,54 65,54 68,54 71,54 74,54 77,54 20,57 23,57 26,57 29,57 32,57 35,57 38,57 41,57 44,57 47,57 50,57 53,57 56,57 59,57 62,57 65,57 68,57 71,57 74,57 77,57
+at 1 move A 200 48

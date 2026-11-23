@@ -1,0 +1,18 @@
+scn 1
+# Two Spirit Wolves, one behind the other, ordered together onto an Aramon Lodestone (2x2): each
+# walks to its own origin on Attack_Melee's rectangle round the footprint (404690 -> 4d4e80).
+name melee-lode-together
+ticks 900
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 120 100
+type w fbi zonwolf
+type lode fbi aralode
+group W1 0 w 1 cells 40,30 weapons=on
+group W2 0 w 1 cells 40,26 weapons=on
+group L 1 lode 1 cells 40,60 weapons=off
+reach R W1,W2 L marks=300,600
+at 1 attack W1,W2 @L

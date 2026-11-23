@@ -1,0 +1,46 @@
+scn 1
+# perf follow-up J: refreshPlane clustering workload, 6 blobs x 4 toggling churn lines
+# (tools/clusterchurn_scn.py). Movers of footprint 1, 2, 3 keep three Legion planes in use.
+name clusterchurn-mid
+ticks 600
+seed 11
+players 2
+team 0 0
+team 1 1
+map flat 512 512
+type a mover 1 2500 10 1.8
+type b mover 2 2500 10 1.8
+type c mover 3 2500 10 1.6
+group A 0 a 12 rect 20 20 44 32
+group B 0 b 12 rect 20 40 50 52
+group C 0 c 12 rect 20 60 60 76
+churn 118 148 2 2 every=1 toggle from=1
+churn 118 154 2 2 every=1 toggle from=1
+churn 130 124 2 2 every=1 toggle from=1
+churn 133 142 2 2 every=1 toggle from=0
+churn 115 271 2 2 every=1 toggle from=0
+churn 133 274 2 2 every=1 toggle from=0
+churn 136 271 2 2 every=1 toggle from=0
+churn 139 262 2 2 every=1 toggle from=0
+churn 164 454 2 2 every=1 toggle from=0
+churn 164 463 2 2 every=1 toggle from=1
+churn 173 472 2 2 every=1 toggle from=1
+churn 182 472 2 2 every=1 toggle from=1
+churn 429 244 2 2 every=1 toggle from=1
+churn 435 235 2 2 every=1 toggle from=0
+churn 450 247 2 2 every=1 toggle from=1
+churn 450 256 2 2 every=1 toggle from=1
+churn 215 412 2 2 every=1 toggle from=1
+churn 221 403 2 2 every=1 toggle from=1
+churn 221 406 2 2 every=1 toggle from=1
+churn 224 418 2 2 every=1 toggle from=0
+churn 96 396 2 2 every=1 toggle from=1
+churn 102 405 2 2 every=1 toggle from=1
+churn 105 402 2 2 every=1 toggle from=1
+churn 111 381 2 2 every=1 toggle from=0
+at 1 move A 480 470
+at 1 move B 470 480
+at 1 move C 460 460
+at 300 move A 30 30
+at 300 move B 40 30
+at 300 move C 30 40

@@ -1,0 +1,15 @@
+scn 1
+# The runner's smoke case: 48 synthetic movers (footprint 2) cross an open
+# map to one click. One selection under 64 commands, so it lands in one tick
+# and Legion makes one group of it. Used by the legion_scenario_smoke and
+# observer_neutral ctests.
+name smoke-open
+ticks 1200
+seed 7
+map flat 128 96
+type m mover 2 2500 10 1.8
+group A 0 m 48 rect 10 30 34 48
+gate mid 64 20 64 76
+line far 96 0 96 96
+region goal 92 32 116 64
+at 1 move A 104 48

@@ -1,0 +1,32 @@
+scn 1
+# Control of serplong.scn (item 6 of the 2026-10-14 Legion review): the same serpentine with 16 lanes
+# (600 cells long, 14 high, 2-cell baffles, 14-cell gaps at alternating ends), about 9,300 cells of route
+# and a field potential of 46,560 at the head, inside the 16-bit range the potentials had before they were
+# widened to 32 bits: Legion arrived then too (g.A.done 89,507-89,810 over the gate offsets) and every
+# hash is unchanged by the widening. Retail's orders complete 188 cells short of the click.
+name serplong-control
+ticks 100000
+seed 7
+map flat 636 290
+wall 16 16 604 2
+wall 16 272 604 2
+wall 16 16 2 258
+wall 618 16 2 258
+wall 18 32 586 2
+wall 32 48 586 2
+wall 18 64 586 2
+wall 32 80 586 2
+wall 18 96 586 2
+wall 32 112 586 2
+wall 18 128 586 2
+wall 32 144 586 2
+wall 18 160 586 2
+wall 32 176 586 2
+wall 18 192 586 2
+wall 32 208 586 2
+wall 18 224 586 2
+wall 32 240 586 2
+wall 18 256 586 2
+type m mover 2 2500 10 1.79999
+group A 0 m 2 cells 26,25 30,25
+at 1 move A 30 265

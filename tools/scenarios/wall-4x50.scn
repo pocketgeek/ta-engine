@@ -1,0 +1,37 @@
+scn 1
+# The legion-lanes2 `wall` case: a U-turn round the top of a long wall (x 98-101,
+# z 48 to the bottom edge) on a 200x140 map, as the pinwheel `uturn` case but
+# the block starts at x 44 and is centred on z 104. Everything the lanes2 study
+# measured on it is here: wall_touch_near_permille is its 'touch' (moving,
+# ordered samples within 10 cells of the wall whose footprint touches it) and
+# gate.top.files_x100 its 'abreast' (the strip over the wall's end).
+# Its crossing count (lane order over lines at z = 60 either side of the wall)
+# has no gate in the .scn grammar: gate.top.crossings is the runner's pw.py
+# flip count over the strip and is NOT comparable (report-only).
+# Speed 1.79999 builds the raw 117964 speed (1.8 rounds to 117965).
+# One block of 200 (10 per row, z 74-131) sent as FOUR selections of 50 on ticks 1-4
+# (the source's `groups` split of one click).
+# Source (lanes2 base): abreast 4.97, crossings 1223/6821, touch 11.7%, stopped
+# 16.5%, stop-go 2236, back 356, reversals 87, t50 2382, t90 3162, 199 of 200
+# arrived (done never).
+name wall-4x50
+ticks 12000
+seed 7
+map flat 200 140
+wall 98 48 4 92
+type m mover 2 2500 10 1.79999
+group A 0 m 50 rect 44 74 74 89 pitch=3
+group B 0 m 50 rect 44 89 74 104 pitch=3
+group C 0 m 50 rect 44 104 74 119 pitch=3
+group D 0 m 50 rect 44 119 74 134 pitch=3
+gate top 101 0 101 47
+line east 104 0 104 140
+at 1 move A 150 110
+at 2 move B 150 110
+at 3 move C 150 110
+at 4 move D 150 110
+# Audit crossings (lanes2 laneRun wall): lane-order swaps between the first entries of z=60 west of the wall (lateral 98-x)
+# and east of it (lateral x-102) within 300 ticks, >= 2 cells at both (lane.cross.swaps / .pairs); pairs across all four groups, as the audit.
+# Audit abreast = distinct z/2 files over the strip x 97-102, z < 48 (gate.strip.files_x100).
+gate strip 97 0 103 48 lateral=z
+lane cross 0 60 98 60 102 60 200 60 bsign=-1 asign=1 window=300 mincells=2 across=all

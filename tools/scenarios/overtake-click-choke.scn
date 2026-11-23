@@ -1,0 +1,20 @@
+scn 1
+# Overtaking within one click (2026-11-15; tools/legion_overtake_test.py): a mixed block of 40 sent with ONE
+# right-click through a gap 12 cells wide to a point 80 cells past it -- 20 slow 2x2 bodies (1.15) in front, 10 mid
+# 2x2 (1.9), 10 fast 3x3 (2.9) behind. Its passes came past the gap, 30-40 cells short of the point, and a slow body
+# paid for each; clickPass keeps them out of kOvertakeHome cells round the click's area. Asset-free.
+name overtake-click-choke
+ticks 6000
+players 1
+weapons off
+map flat 160 220
+type slow mover 2 2500 1 1.15
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+wall 0 100 74 4
+wall 86 100 74 4
+group S1 0 slow 10 rect 55 150 105 154 pitch=5
+group S2 0 slow 10 rect 55 155 105 159 pitch=5
+group M1 0 mid 10 rect 55 160 105 164 pitch=5
+group F1 0 fast 10 rect 55 166 105 170 pitch=5
+at 5 move S1,S2,M1,F1 80 20

@@ -1,0 +1,17 @@
+scn 1
+# Twenty Aramon Swordsmen (melee, 2x2) in a block ordered onto an Aramon Keep (aracastl, 7x14)
+# from the east: Attack_Melee's rectangle round the footprint gives each its own contact origin.
+name melee-castle-20
+ticks 1500
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 160 120
+type s fbi arasword
+type castle fbi aracastl
+group S 0 s 20 rect 100 50 115 66 pitch=3 weapons=on
+group C 1 castle 1 cells 50,60 weapons=off
+reach R S C marks=300,600,900
+at 1 attack S @C

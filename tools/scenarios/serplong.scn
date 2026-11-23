@@ -1,0 +1,50 @@
+scn 1
+# Long connected route (item 6 of the 2026-10-14 Legion review): 2 movers walk a serpentine of 30 lanes
+# (each 600 cells long and 14 high, 2-cell baffles, 14-cell gaps at alternating ends) to the far end of the
+# last lane, about 17,500 cells of route: a field potential of 87,356 at the head. Legion's 16-bit
+# potentials saturated at 65535, so the field never reached the bodies: both stood trapped from the first
+# ticks (work.trapped.total 2, stopped_permille 1000) and their orders retired after the 9000-tick grace,
+# 459-468 cells from the click. With 32-bit potentials they walk the whole route and arrive (g.A.done
+# 167,852-168,167 over the gate offsets). Retail's orders complete 408 cells short of the click. The
+# control, serplong-control.scn, is the same shape with 16 lanes (potential 46,560), inside the old range:
+# its hashes did not change with the widening.
+name serplong
+ticks 180000
+seed 7
+map flat 636 514
+wall 16 16 604 2
+wall 16 496 604 2
+wall 16 16 2 482
+wall 618 16 2 482
+wall 18 32 586 2
+wall 32 48 586 2
+wall 18 64 586 2
+wall 32 80 586 2
+wall 18 96 586 2
+wall 32 112 586 2
+wall 18 128 586 2
+wall 32 144 586 2
+wall 18 160 586 2
+wall 32 176 586 2
+wall 18 192 586 2
+wall 32 208 586 2
+wall 18 224 586 2
+wall 32 240 586 2
+wall 18 256 586 2
+wall 32 272 586 2
+wall 18 288 586 2
+wall 32 304 586 2
+wall 18 320 586 2
+wall 32 336 586 2
+wall 18 352 586 2
+wall 32 368 586 2
+wall 18 384 586 2
+wall 32 400 586 2
+wall 18 416 586 2
+wall 32 432 586 2
+wall 18 448 586 2
+wall 32 464 586 2
+wall 18 480 586 2
+type m mover 2 2500 10 1.79999
+group A 0 m 2 cells 26,25 30,25
+at 1 move A 30 489

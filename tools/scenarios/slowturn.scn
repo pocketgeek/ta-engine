@@ -1,0 +1,93 @@
+scn 1
+# Slow turners: the retail roster's slow half (53 of 125 ground movers turn at or
+# below 1000 BAM/tick) with turn-in-place 0, so they can only turn while they move.
+# Four regions stacked in one 220x620 map, one group of 48 footprint-2 bodies in each:
+#   z   0-169  ragged corner (corner-1x48's geometry), turn 400
+#   z 170-339  ragged corner, turn 1000
+#   z 340-479  U-turn round a wall's top (uturn's geometry, block at x 44), turn 400
+#   z 480-619  U-turn, turn 1000
+# A 1-cell wall closes each region's bottom. Orders are two ticks apart so each
+# selection (48 commands) lands in one tick. Read per-group g.<name>.* for
+# progress and gate.<name>.* for the files over the obstacle. Fast comparison:
+# corner-1x48.scn and wall-1x48.scn are the same shapes at turn 2500.
+# Speed 1.79999 builds the raw 117964 speed (1.8 rounds to 117965).
+name slowturn
+ticks 6000
+seed 7
+map flat 220 620
+type s400 mover 2 400 10 1.79999 turninplace=0
+type s1000 mover 2 1000 10 1.79999 turninplace=0
+wall 80 60 40 110
+wall 150 0 4 78
+wall 81 58 1 1
+wall 86 57 1 1
+wall 91 59 1 1
+wall 96 58 1 1
+wall 101 57 1 1
+wall 106 59 1 1
+wall 111 58 1 1
+wall 116 57 1 1
+wall 78 59 1 1
+wall 79 57 1 1
+wall 77 61 1 1
+wall 76 64 1 1
+wall 79 66 1 1
+wall 78 73 1 1
+wall 77 80 1 1
+wall 79 87 1 1
+wall 78 94 1 1
+wall 77 101 1 1
+wall 79 108 1 1
+wall 78 115 1 1
+wall 77 122 1 1
+wall 79 129 1 1
+wall 78 136 1 1
+wall 77 143 1 1
+wall 79 150 1 1
+wall 78 157 1 1
+wall 0 169 220 1
+wall 80 230 40 110
+wall 150 170 4 78
+wall 81 228 1 1
+wall 86 227 1 1
+wall 91 229 1 1
+wall 96 228 1 1
+wall 101 227 1 1
+wall 106 229 1 1
+wall 111 228 1 1
+wall 116 227 1 1
+wall 78 229 1 1
+wall 79 227 1 1
+wall 77 231 1 1
+wall 76 234 1 1
+wall 79 236 1 1
+wall 78 243 1 1
+wall 77 250 1 1
+wall 79 257 1 1
+wall 78 264 1 1
+wall 77 271 1 1
+wall 79 278 1 1
+wall 78 285 1 1
+wall 77 292 1 1
+wall 79 299 1 1
+wall 78 306 1 1
+wall 77 313 1 1
+wall 79 320 1 1
+wall 78 327 1 1
+wall 0 339 220 1
+wall 98 388 4 91
+wall 0 479 220 1
+wall 98 528 4 91
+wall 0 619 220 1
+group C400 0 s400 48 rect 14 104 38 122 pitch=3
+group C1000 0 s1000 48 rect 14 274 38 292 pitch=3
+group W400 0 s400 48 rect 44 435 68 453 pitch=3
+group W1000 0 s1000 48 rect 44 575 68 593 pitch=3
+gate topC400 84 30 117 60
+gate topC1000 84 200 117 230
+gate topW400 101 340 101 387
+gate topW1000 101 480 101 527
+at 1 move C400 190 25
+at 3 move C1000 190 195
+at 5 move W400 150 450
+at 7 move W1000 150 590

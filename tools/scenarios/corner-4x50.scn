@@ -1,0 +1,60 @@
+scn 1
+# The ragged corner of the legion-r9 jam (the parked pinwheel2 `pinwheelcorner`
+# case). Wall A is a block (x 80-119, z 60 to the bottom edge) whose top face and
+# west face carry stray rock cells 1-3 cells off the face, like generated
+# cliffs; wall B is a north-south wall (x 150-153, z 0-77) whose south end is
+# lower than A's top. The shortest way meets A's top-left corner diagonally,
+# runs along A's top pinned between A's two top corners, then turns the OTHER
+# way (north) round B's end to the click at (190, 25).
+# Gates: `top` is the strip over A's top (x 84-116, z 30-59: the source's
+# files); `east` is the first column past B's north end (x >= 154).
+# Bodies are footprint 2; speed 1.79999 builds the source's raw 117964 speed
+# (1.8 rounds to 117965).
+# One 200-body block in 10-wide rows, sent as FOUR selections of 50 on ticks 1-4 (the
+# source's `groups` split of one click into several commands to one point).
+# Source numbers (main b8a4110, offset 0, pinwheelcorner 4x50): stopped 35.3%,
+# stop-go 3661, reversals 110.
+name corner-4x50
+ticks 9000
+probe lanes
+seed 7
+map flat 220 170
+wall 80 60 40 110
+wall 150 0 4 78
+wall 81 58 1 1
+wall 86 57 1 1
+wall 91 59 1 1
+wall 96 58 1 1
+wall 101 57 1 1
+wall 106 59 1 1
+wall 111 58 1 1
+wall 116 57 1 1
+wall 78 59 1 1
+wall 79 57 1 1
+wall 77 61 1 1
+wall 76 64 1 1
+wall 79 66 1 1
+wall 78 73 1 1
+wall 77 80 1 1
+wall 79 87 1 1
+wall 78 94 1 1
+wall 77 101 1 1
+wall 79 108 1 1
+wall 78 115 1 1
+wall 77 122 1 1
+wall 79 129 1 1
+wall 78 136 1 1
+wall 77 143 1 1
+wall 79 150 1 1
+wall 78 157 1 1
+type m mover 2 2500 10 1.79999
+group A 0 m 50 rect 14 104 44 119 pitch=3
+group B 0 m 50 rect 14 119 44 134 pitch=3
+group C 0 m 50 rect 14 134 44 149 pitch=3
+group D 0 m 50 rect 14 149 44 164 pitch=3
+gate top 84 30 117 60
+line east 154 0 154 170
+at 1 move A 190 25
+at 2 move B 190 25
+at 3 move C 190 25
+at 4 move D 190 25

@@ -1,0 +1,22 @@
+scn 1
+# Double turn (W8 step 0, the plan's `doubleturn` / `utop`): the flowing-route guard of every lane step. 48
+# footprint-2 bodies east of a 45-cell-wide block (x 80-124, z 60 to the bottom edge) are sent west to a point
+# beyond it. The shortest way runs round the block's top: the first corner (125, 60) and the second (80, 60) turn
+# the SAME way (west-north-west, then west, then south-west: two 90 degree turns in one direction) over a
+# 45-cell top. Nothing ahead of the head narrows the way (the open ground either side of the block's ends is
+# 30+ cells wide). The route flows on main (about 5% of samples stopped); the pinwheel still ranks the
+# members at both corners (`lanes.pivot_calls`), so this is the guard S1 must not disturb: held
+# (stopped_permille), stop-go and done within 10% of the W8 base.
+# Gate `top` is the strip over the block's top (x 100-107, z 20-59): files abreast mid-top, crossings of the lane order.
+# Speed 1.79999 builds the raw 117964 speed (1.8 rounds to 117965).
+# New fixture, no earlier source (the plan's stand-in for the r9 45950 / 61930 / 21100 double turns).
+name doubleturn
+ticks 6000
+seed 7
+map flat 240 180
+wall 80 60 45 120
+type m mover 2 2500 10 1.79999
+group A 0 m 48 rect 150 100 174 118 pitch=3
+gate top 103 20 103 59
+probe lanes
+at 1 move A 30 110

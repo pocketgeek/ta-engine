@@ -1,0 +1,17 @@
+scn 1
+# Passing within a small click (2026-11-16; tools/legion_overtake_test.py): knights at the rear of a block,
+# two rows of 4 slow 2x2 bodies (1.10) ahead of two rows of 3 fast 3x3 ones (2.9), one right-click to a point about
+# 500 px from the click's centre. Asset-free, open field.
+name overtake-click-rear-500
+ticks 4000
+players 1
+weapons off
+map flat 128 160
+type slow mover 2 2500 1 1.10
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+group S1 0 slow 4 rect 54 80 74 84 pitch=4
+group S2 0 slow 4 rect 54 86 74 90 pitch=4
+group F1 0 fast 3 rect 54 92 74 96 pitch=6
+group F2 0 fast 3 rect 54 98 74 102 pitch=6
+at 5 move S1,S2,F1,F2 64 60

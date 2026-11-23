@@ -1,0 +1,24 @@
+# escape-step: bodies on an origin that is illegal for their size (a 2x2 body straddling a wall's edge, as a unit
+# completed on a spot a wreck or a yard covers).
+# A: the straight step at its target leads into the wall, so the mover refuses it. The body used to try that one
+# step again on every update and stand for good with its order; it now walks to the legal origin beside it and
+# goes round the wall.
+# P: the same body, but every legal origin beside it is covered by idle bodies of an ENEMY player (E). An
+# enemy's bodies are never a reason to end an order: P keeps it for the whole run (5,400 ticks, past the long
+# stand-down's 4,800).
+# Keys: g.A.arrived (1; 0 before), g.P.complete_n (0), work.escape_steps.total.
+scn 1
+name escape-step
+ticks 5400
+seed 7
+players 2
+weapons off
+map flat 80 60
+wall 20 10 6 6
+wall 20 34 6 6
+type m mover 2 2500 10 1.79999
+group A 0 m 1 spots 27262976,13631488,0,0
+group P 0 m 1 spots 27262976,38797312,0,0
+group E 1 m 3 spots 29360128,36700160,0,0 29360128,38797312,0,0 29360128,40894464,0,0
+at 2 move A 8 13
+at 2 move P 60 37

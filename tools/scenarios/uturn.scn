@@ -1,0 +1,23 @@
+scn 1
+# Pinwheel U-turn (legion_world_test `pinwheel`, gap 0): 48 footprint-2 bodies
+# in a block west of a long wall (x 98-101, z 48 to the map edge) are sent to a
+# point beyond its top. The shortest ways all touch the wall end, so without
+# the pinwheel the group files over it; gate.top.files_x100 is the files
+# abreast over the end and side.east.t90 the source's rounded90 (90% at
+# x >= 104).
+# Speed 1.79999 builds the source's raw 117964 (1.8 rounds to 117965, which
+# alone moves the whole run by ~3%). The gate is the runner's 8-cell strip
+# (x 97-104, z 0-47) where the source counts x 97-102.
+# Source numbers (main, offset 0): rounded90 1252, done 2284, files 4.48,
+# spread 7.93, reversals 3.
+name uturn
+ticks 6000
+probe lanes
+seed 7
+map flat 200 140
+wall 98 48 4 92
+type m mover 2 2500 10 1.79999
+group A 0 m 48 rect 40 96 64 114 pitch=3
+gate top 101 0 101 47
+line east 104 0 104 140
+at 1 move A 150 110

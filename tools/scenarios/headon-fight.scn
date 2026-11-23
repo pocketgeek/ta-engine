@@ -1,0 +1,20 @@
+# headon-fight: two bodies of one footprint meet head on in a lane one body wide, on attack-move orders.
+# On move legs allies swap places at once; a fight or patrol leg takes no swap (its facing serves its weapons), and
+# the hold has no other way out of this meet, so the two stood for good with their orders. Once both stand dead
+# 600 ticks (nothing either waits on has made progress) the swap serves them too: the late swap.
+# The lane lies inside one routing sector, so no passage admission keeps the two apart.
+# Keys: g.L.arrived, g.R.arrived (1 each; 0 before), work.late_swaps.total.
+scn 1
+name headon-fight
+ticks 2400
+seed 7
+players 1
+weapons off
+map flat 32 32
+wall 0 0 32 14
+wall 0 16 32 16
+type m mover 2 2500 10 1.79999
+group L 0 m 1 cells 2,14
+group R 0 m 1 cells 28,14
+at 2 fight L 27 15
+at 2 fight R 5 15

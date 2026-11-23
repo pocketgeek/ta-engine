@@ -1,0 +1,16 @@
+scn 1
+# W3 step 0 fixture (PLAN 3.1 acceptance B, AR-02, AR-08): the `deadend` probe. 40 bodies (12 per row, pitch 3 x 4, x 14-47,
+# z 32-) ordered to the closed end of a 6-cell wide, 100-cell long
+# dead-end corridor (closed at x 240), as an Alt+1 squad (formed for 600 ticks first).
+# Keys: g.A.complete_n (settled), complete_outside_radius / complete_dist_median / complete_dist_max (AR-08), g.A.done, work.midroute_completions.
+name deadend-w6-n40-closed-squad
+ticks 8000
+seed 7
+map flat 260 100
+wall 100 0 140 48
+wall 100 54 140 46
+wall 240 48 20 6
+type m mover 2 2500 10 1.79999
+group A 0 m 40 cells 14,32 17,32 20,32 23,32 26,32 29,32 32,32 35,32 38,32 41,32 44,32 47,32 14,36 17,36 20,36 23,36 26,36 29,36 32,36 35,36 38,36 41,36 44,36 47,36 14,40 17,40 20,40 23,40 26,40 29,40 32,40 35,40 38,40 41,40 44,40 47,40 14,44 17,44 20,44 23,44 squad=f1
+region goal 230 45 242 57
+at 600 move A 236 51

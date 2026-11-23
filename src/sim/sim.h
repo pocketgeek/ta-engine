@@ -321,29 +321,6 @@ struct Weapon {
     float damageVs(const UnitType* t) const;
 };
 
-// An aura from an [AdjustArmor]/[AdjustAttack]/[AdjustJoy] block under [UNITINFO].
-// Armor/Attack continuously scale nearby units' armour or attack; JOY IS NOT MORALE
-// -- it is a passive repair aura (retail's tag for it routes straight into the shared
-// build/repair routine), which is why it is the most common of the three.
-// Friends (affectsenemy=0) or enemies (affectsenemy=1), never both.
-struct Aura {
-    enum class Kind { Armor, Attack, Joy } kind = Kind::Armor;
-    float amount = 1;        // multiplier (Armor/Attack); build-power/sec (Joy)
-    bool  affectsEnemy = false;
-    int32_t radius = 0;   // Radius (readInt in retail's aura block)
-    // edgeeffectiveness. The name is misleading and the retail opcodes are
-    // unambiguous (KINGDOMS.icd 0x51f636/0x51f730/0x51f858): the strength factor is
-    // `edge + (1 - edge) * dist/radius`, i.e. the aura is WEAKEST at the emitter and
-    // reaches full strength at the rim -- not the other way round. Designers worked
-    // around it by shipping edge=1 (flat) where they wanted no falloff at all.
-    float edge = 1;
-    // The retail falloff factor at `dist` from the emitter.
-    float falloff(float dist) const {
-        float t = radius > 0 ? dist / radius : 0.0f;
-        return edge + (1.0f - edge) * t;
-    }
-};
-
 struct UnitType {
     std::string id;        // lowercase objectname, e.g. "araarch"
     uint16_t orientation=0,buildAngle=0; // original spawn-heading range in BAM
@@ -575,12 +552,6 @@ struct UnitType {
     // takes a badTarget one only when nothing else qualifies (icd 412620).
     std::vector<std::string> noTargetCats;
     std::array<std::vector<std::string>,3> badTargetCats;
-    // attractsgods: bit 3 of the def's +0x268 (4c093d..4c0955; bit 0 is `ghost`,
-    // the bit the drawing code tests at 0x4ecfd3). Retail's god comes to it: the
-    // unit update (51e23c..51e352) makes the player's god beside the first live,
-    // finished attractsgods unit it updates on the god's tick (5195e0). World's
-    // summon is its own (see World::godReady); gods are off in every game.
-    bool  attractsGods = false;
     // weaponswitching: this unit carries ONE active weapon at a time, picked by the
     // player. Without it, a multi-weapon unit fires every weapon independently.
     bool  weaponSwitching = false;
@@ -605,7 +576,6 @@ struct UnitType {
     int   selfDestructCountdown = 2;
     uint8_t blood[3] = {150, 30, 10};   // bloodcolor1 (r,g,b) for hit/death spray
     std::array<uint32_t,3> bloodColors={0xff961e0a,0xff961e0a,0xff961e0a}; // display ARGB
-    std::vector<Aura> auras;   // stat auras projected onto nearby units
     Weapon weapon;            // primary (WEAPON1); damage 0 = unarmed
     std::vector<Weapon> weapons;   // all slots (WEAPON1..3)
     int32_t maxWeaponReloadMs=0; // SetMaxReloadTime: max of all native weapon-slot reload ticks
@@ -1831,7 +1801,6 @@ struct UnitClassLists {
             if (u.type->canFly) flyers.push_back(u.id);
             if (u.type->isStructure()) structures.push_back(u.id);
             if (u.type->gate) gates.push_back(u.id);
-            if (!u.type->auras.empty()) emitters.push_back(u.id);
         }
         listed = units.size(); tail = units.empty() ? 0 : units.back().id;
     }
@@ -2241,14 +2210,6 @@ struct Player {
     float manaMult = 1.0f;
     // Total Annihilation metal/energy (sim/taeconomy.h). Hashed.
     econ::PlayerBooks books;
-    // God economy: priests (attractsgods) channel mana into favour; once it fills
-    // after the gods' appear time, the faction's god can manifest (once).
-    bool  godSummoned = false;
-    // The unit this player's god manifests as, resolved once at setup (matchsetup).
-    // The sim summons it itself and therefore must not need a TypeRegistry to find
-    // it: summoning used to live in the CLIENT, which had one, and that is exactly
-    // why it desynced -- see summonReadyGods().
-    const UnitType* godType = nullptr;
     int32_t score = 0;   // authored kill points; GET40 reads this in campaign scripts
     int   kills = 0;     // enemy units this player has destroyed (F4 overlay)
     // Damage events this player took part in, as attacker or victim (display only,
@@ -2338,8 +2299,6 @@ public:
     // (tickUnitScript); a Deactivate meanwhile cancels it and starts nothing.
     // `hold` false starts it at once (a finished creation).
     void switchScript(Unit& u,bool on,bool hold=true);
-    // Whether an aura emitter's auras reach anyone this pass (51d3e0).
-    static bool retailAuraEmits(const Unit& s);
     // The activation byte's bit 1 (+0x114 & 2): the script's activation,
     // or the unit's own flag when it has no script.
     bool retailActivated(const Unit& u) const {
@@ -2974,16 +2933,6 @@ public:
         return players_[size_t(a)].team == players_[size_t(b)].team;
     }
 
-    // God economy (gamedata/Gods.tdf). Enable it, then a player whose god favour
-    // fills after `appearSec` may manifest its god — the viewer polls godReady().
-    // TICKS. There is no separate wall clock any more: tickCounter_ already counts
-    // them, and clock_ was a second float accumulating dt alongside it for this one
-    // comparison.
-    void enableGods(float appearSec) {
-        godsEnabled_ = true;
-        godAppearTick_ = appearSec >= 1e8f ? INT64_MAX : int64_t(appearSec * 30.0f);
-    }
-    bool godsEnabled() const { return godsEnabled_; }
 
     // Per-player unit limit: production and new builds stall a player once it has
     // this many live units (0 = unlimited). Set at match start (from the lobby).
@@ -3035,21 +2984,6 @@ public:
                 ++n >= t->totalAllowed)
                 return true;
         return false;
-    }
-    // Manifest the god of every player due one. Called from tick(), so the referee
-    // and every client run it on the same step from the same state.
-    void summonReadyGods();
-    // Ours, on time alone. Retail's Gods.tdf routine (0x519420) rolls whether the
-    // game is god-based and when they arrive; then, in the unit update (51e23c),
-    // a player's first live, finished `attractsgods` unit (its priest: Aramon's two,
-    // Taros', Veruna's Lihr, Zhon's shaman, Creon's chieftain) updated on EXACTLY the
-    // tick 30 x the appear seconds (5195e0, emulated) brings the side's god to a
-    // free spot beside itself (509f10); a player with no priest then gets none.
-    // No favour pool (we once required one, filled to 3000 by priest income).
-    // Gods are off in every game (matchsetup); this runs only under TA_GODS.
-    bool godReady(int t) const {
-        return godsEnabled_ && !players_[size_t(t)].godSummoned &&
-               int64_t(tickCounter_) >= godAppearTick_;
     }
 
     // Win/defeat, computed sim-side so every lockstep peer agrees on the same
@@ -3857,10 +3791,6 @@ private:
     void tickReclaimArea(Unit& b);
     void tickManaBuildArea(Unit& b);
     void tickAbilities(float dt);   // reclaim / resurrect on nearby corpses
-    void tickAuras(float dt);       // AdjustArmor/Attack stat auras
-    bool prepareAuraSources();      // tickAuras, big worlds: the sources and tiles,
-    void applyAuraTiles(bool pooled);   // then the folds, tile by tile
-    void tickHealAuras();           // AdjustJoy passive repair aura (1 Hz)
 
     // Connected-component labelling of a nav grid for one footprint, built on first
     // use and reused until the grid's walkability version moves.
@@ -4735,11 +4665,9 @@ private:
     LeftEmptyOnCopy<std::unique_ptr<SimPool>> pool_;
     SimPool& simPool();
     std::vector<uint8_t> hadMonarch_;   // per-player: ever fielded a Monarch (for the loss rule)
-    bool godsEnabled_ = false;
     bool buildRestrictionsEnabled_ = false;
     std::vector<std::string> buildRestrictions_; // lowercase, sorted, unique
     int unitCap_ = 0;                 // per-player live-unit limit (0 = unlimited)
-    int64_t godAppearTick_ = INT64_MAX;
     void startEmote(int player, int unitId, bool disco, bool append);
     uint32_t tickCounter_ = 0;   // ticks elapsed; staggers per-unit auto-acquisition
     uint64_t burnSequence_ = 0;  // display order for active feature burns; not lockstep state
@@ -5028,25 +4956,6 @@ private:
     std::vector<AbilityChunk> abilityChunks_;   // tickAbilities on the SimPool (WE E4.3)
     // The post-loop passes go to the SimPool from this many units.
     static constexpr size_t kPostMinParallel = 2048;
-    // tickAuras in a big world (prepareAuraSources, applyAuraTiles), scratch
-    // rebuilt every pass, never hashed: every Armor/Attack aura of an eligible
-    // emitter, in emitter then aura order, with the grid cells its forEachNear
-    // square covers; per tile of 8x8 grid cells the sources whose square meets
-    // it (CSR, in source order); the tiles that have any; per pool slot, a tile's
-    // row and column masks over its sources.
-    struct AuraSource {
-        Fixed x, z;               // the emitter: the scan centre
-        const Aura* aura;
-        float r2;                 // a.radius * a.radius, as the serial gather computes it
-        int32_t player;           // the emitter's owner
-        uint64_t sides;           // bit p: the aura reaches player p's units (p < 64)
-        int32_t x0, z0, x1, z1;   // the cells scanned, clamped to the grid
-    };
-    std::vector<AuraSource> auraSources_;
-    std::vector<uint32_t> auraTileFirst_, auraTileList_, auraTiles_;
-    std::vector<std::vector<uint64_t>> auraTileMasks_;
-    static constexpr size_t kAuraMinEmitters = 8;   // the tiles go to the SimPool from this many emitters
-    static constexpr int kAuraTileShift = 3;        // tiles of 8x8 grid cells
     // Per player, this tick's retail construction demand (World::tick's economy step).
     std::vector<float> retailDemand_;
     // The economy walk on the SimPool (WE E4.3): per chunk, its units'

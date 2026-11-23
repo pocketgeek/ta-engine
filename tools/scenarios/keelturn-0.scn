@@ -1,0 +1,18 @@
+scn 1
+# MV-18 (PLAN 3.4, optional): a retail-like ship (verharp: maxvelocity 3.5, acceleration 0.35, turnrate 210, no
+# turninplacerate) at (80,45) facing east is ordered to (140,45), straight ahead (the control). Retail turns it on an arc; Legion creeps at
+# 1/8 speed facing away (audit: crawl 99 / sideways 78 of 405 ticks to arrive, vs Retail's arc). Keys: g.S.done, crawl_samples,
+# sideways, backward. Audit probe: legion_world_test mv18.
+name keelturn-0
+ticks 1500
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 160 90
+height 0 0 160 90 20
+type ship boat 2 210 0.35 3.5 depth=13 turninplace=0
+group S 0 ship 1 spots 83886080,47185920,16384,0,117964
+region goal 136 41 144 49
+at 1 move S 140 45

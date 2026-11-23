@@ -282,4 +282,37 @@ std::vector<Sequence> load(const std::vector<uint8_t>& d, const Palette& pal,
     return out;
 }
 
+Image loadPcx(const std::vector<uint8_t>& d, const std::string& origin) {
+    if (d.size() < 128 + 769 || d[0] != 0x0A || d[2] != 1 || d[3] != 8)
+        throw std::runtime_error(origin + ": not an 8-bit RLE PCX");
+    auto u16 = [&](size_t o) { return int(d[o] | (d[o + 1] << 8)); };
+    const int w = u16(8) - u16(4) + 1, h = u16(10) - u16(6) + 1;
+    const int planes = d[65], bpl = u16(66);
+    if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || planes != 1 || bpl < w)
+        throw std::runtime_error(origin + ": unsupported PCX layout");
+    if (d[d.size() - 769] != 0x0C) throw std::runtime_error(origin + ": PCX without VGA palette");
+    const uint8_t* pal = d.data() + d.size() - 768;
+    Image img;
+    img.width = w; img.height = h;
+    img.rgba.assign(size_t(w) * size_t(h) * 4, 0);
+    size_t p = 128;
+    const size_t end = d.size() - 769;
+    std::vector<uint8_t> scan(static_cast<size_t>(bpl), uint8_t{0});
+    for (int y = 0; y < h; ++y) {
+        int x = 0;
+        while (x < bpl && p < end) {
+            uint8_t b = d[p++];
+            int run = 1;
+            if ((b & 0xC0) == 0xC0) { run = b & 0x3F; if (p >= end) break; b = d[p++]; }
+            for (int k = 0; k < run && x < bpl; ++k) scan[size_t(x++)] = b;
+        }
+        for (int xx = 0; xx < w; ++xx) {
+            uint8_t* o = &img.rgba[(size_t(y) * size_t(w) + size_t(xx)) * 4];
+            const uint8_t* c = pal + size_t(scan[size_t(xx)]) * 3;
+            o[0] = c[0]; o[1] = c[1]; o[2] = c[2]; o[3] = 255;
+        }
+    }
+    return img;
+}
+
 } // namespace ta::gaf

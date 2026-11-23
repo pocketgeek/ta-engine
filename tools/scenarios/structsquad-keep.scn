@@ -1,0 +1,14 @@
+scn 1
+# AR-03 structsquad-keep: structsquad with the structure replaced by a Keep-like body (a mover type whose speed
+# is 0: canmove set, maxVel 0). isStructure(type) = maxVel <= 0 is what the exclusion must key on, not canMove.
+# Same freeze as structsquad on the W2 head: 0/20 arrive (Retail 20/20 by 1368). Target: 20/20 by 1350.
+name structsquad-keep
+ticks 1500
+seed 7
+map flat 200 80
+type m mover 2 2500 10 1.79999
+type keep mover 4 2500 10 0
+group A 0 m 20 cells 14,30 17,30 20,30 23,30 26,30 14,34 17,34 20,34 23,34 26,34 14,38 17,38 20,38 23,38 26,38 14,42 17,42 20,42 23,42 26,42 squad=f1
+group H 0 keep 1 cells 40,50 squad=f1
+region goal 140 30 160 52
+at 1 move A 150 40

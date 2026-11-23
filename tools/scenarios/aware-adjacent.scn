@@ -1,0 +1,24 @@
+scn 1
+# Group awareness, adjacent: two moving formations of 16 of the SAME player run
+# east on parallel routes 20 cells apart, ordered 10 ticks apart to points 20
+# cells apart (inside kConvoyTicks = 90 and kConvoyCells = 32). The awareness
+# exemption for one player's neighbouring groups must keep them from planning
+# round each other: no detour, no waiting, no contact between them. Guards the
+# exemption through W3 (plan 3.9 C1); no world-test source (new fixture).
+name aware-adjacent
+ticks 2400
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 220 100
+type m mover 2 2500 10 1.79999
+group A 0 m 16 rect 20 34 32 46 pitch=3
+group B 0 m 16 rect 20 54 32 66 pitch=3
+at 1 move A 190 40
+at 11 move B 190 60
+gate midA 100 28 100 52
+gate midB 100 48 100 72
+line far 170 0 170 100
+region goalA 170 30 200 50
+region goalB 170 50 200 70

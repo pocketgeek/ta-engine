@@ -1,0 +1,21 @@
+# seedlift-40: packedBound's complete-route cache after an opening at a covered seed (ctest
+# legion_verify_seedlift, under TAK_LEGION_VERIFY). seedcorpse-army with 40 bodies: a 1 x 1 feature lands
+# next to the click cell at tick 300, the route built after it holds estimate 0 at that illegal seed
+# (startField does not test a seed's legality) and is never closed; the feature goes at tick 1000, an
+# opening only. A cache dropped on closures alone kept the old bound (verify abort at tick 1069).
+# Kept out of tools/scenarios/*.scn, the baselined gate set.
+scn 1
+name seedlift-40
+ticks 1400
+seed 7
+players 2
+team 1 0
+weapons off
+uplink 16
+probe scale
+map flat 1024 1024
+type m mover 2 2500 10 3.2
+group A 0 m 40 rect 300 500 330 518 pitch=3
+churn 60 60 2 2 every=7 walk=3,0,30 toggle
+churn 650 510 1 1 every=700 from=300 toggle
+at 20 move A 650 511

@@ -1,0 +1,25 @@
+scn 1
+# PLAN 3.4 gate 'ring-crossing' (W5 steps 1; W7 re-runs it): a Move group walks through a firing ring. 48 attackers
+# ring a stationary enemy at the map centre (range 96, Attack order, from tick 1); at tick 1500 a 40-body Move group
+# from the west is ordered to a point past the ring. W5's Engaged bodies never yield or part, so the crossing group must
+# route round or through them; PLAN: the Move group arrives within +10% of the base (g.M.t90 / g.M.done, and the
+# Retail floor), and the ring still fires (reach.ring.ever_end no worse than the base).
+name ringcross
+ticks 5000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 260 160
+type a mover 1 2500 10 1.8 gun=96,1,1.0
+type m mover 2 2500 10 1.8
+type tgt mover 2 2500 10 1.8 hp=30000
+group A 0 a 48 rect 100 70 124 94 pitch=2 weapons=on
+group T 1 tgt 1 cells 160,80 weapons=off
+group M 0 m 40 cells 14,66 17,66 20,66 23,66 26,66 29,66 32,66 35,66 14,70 17,70 20,70 23,70 26,70 29,70 32,70 35,70 14,74 17,74 20,74 23,74 26,74 29,74 32,74 35,74 14,78 17,78 20,78 23,78 26,78 29,78 32,78 35,78 14,82 17,82 20,82 23,82 26,82 29,82 32,82 35,82
+probe claims
+reach ring A T marks=1500
+region goal 220 60 250 100
+at 1 attack A @T
+at 1500 move M 235 80

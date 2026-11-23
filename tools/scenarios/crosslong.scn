@@ -1,0 +1,23 @@
+scn 1
+# W7 step 0 fixture: a long stream (200 bodies, 20 along x = 60 cells, 10 across) crosses a 24-body group at right
+# angles. The later group B (ordered at tick 400, when the stream's head is 75 cells from the crossing) meets the
+# stream's body; under user decision 5 it must route behind the tail and never wait at the stream's edge.
+# Mirrors the legion_world_test case 'crosslong' (one click per stream; unit ids contiguous per group).
+# Keys: behind.wait.* is the route-behind metric (wait_ticks, wait_run_max and waits must be 0 after W7;
+# extra_cells / detour_permille is how far B's path deviates), aware.* the W7 step 0 counters.
+name crosslong
+ticks 6000
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 300 200
+type mv mover 2 2500 10 1.79999 sight=4096
+group A 0 mv 200 rect 10 95 70 125 pitch=3
+group B 0 mv 24 rect 142 180 160 192 pitch=3
+at 0 move A 285 100
+at 400 move B 150 10
+probe aware
+behind wait B A cells=8
+region goalB 140 4 160 16
+region goalA 270 85 295 115

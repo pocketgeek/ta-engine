@@ -1,0 +1,20 @@
+scn 1
+# AR-07 (PLAN 3.4): a blocking feature lands ON the shared goal cell (a Fight click) at tick 300, with the group's field done and its slots claimed.
+# 200 2x2 movers share one click, fight (audit: registrations +1, groups +1, fields +2 -- one refresh of the old
+# group and one bounded field for the ONE re-registered member, because claimSlot re-points every goal to its
+# own slot cell so only the member whose slot IS the blocked cell fails legal(goal)). PLAN: AR-07 `reseat()`
+# re-seeds in place -- the work.registrations / fields_built / field_work totals after tick 300 fall.
+name goalblock-fight-200
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 300 120
+type m mover 2 2500 10 1.79999
+group A 0 m 200 rect 20 40 80 70 pitch=3
+probe claims
+region goal 180 40 215 80
+churn 199 59 2 2 every=1 from=300 until=301
+at 1 fight A 200 60

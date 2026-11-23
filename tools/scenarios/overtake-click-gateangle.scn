@@ -1,0 +1,15 @@
+scn 1
+name overtake-click-gateangle
+ticks 6000
+players 1
+weapons off
+map flat 160 220
+type slow mover 2 2500 1 1.15
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+wall 0 110 74 4
+wall 86 110 74 4
+group M1 0 mid 14 rect 20 150 70 156 pitch=5
+group S1 0 slow 14 rect 20 158 70 164 pitch=5
+group F1 0 fast 12 rect 20 166 70 174 pitch=5
+at 5 move M1,S1,F1 82 104

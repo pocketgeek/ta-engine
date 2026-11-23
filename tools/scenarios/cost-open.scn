@@ -1,0 +1,17 @@
+scn 1
+# legion_cost scaling fixture (tools/legion_cost.py): N movers (footprint 2)
+# cross an open map to one click. tools/legion_cost.py rewrites only the COUNT
+# of group A (100 here; it runs 100/200/400); the spawn rect holds 400 bodies at
+# pitch=3, so no other line changes with N. One selection over 64 commands
+# lands over consecutive ticks and makes several Legion groups, as in play.
+# legion_cost steady 200 1000
+name cost-open
+ticks 2000
+# The gate offsets (W3 round 4, ruling (a)): -5 spawns group A off the map, so +6 in its place.
+gateoffsets 0,1,-1,2,-2,3,-3,4,-4,5,6
+seed 7
+map flat 192 140
+type m mover 2 2500 10 1.8
+group A 0 m 100 rect 4 20 52 120 pitch=3
+at 1 move A 160 70
+region goal 140 50 180 90

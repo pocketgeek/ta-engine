@@ -1,0 +1,18 @@
+scn 1
+# explore-move-2048 (perf follow-up D, timing only): unit-dependent exploration on a map-sized plane. A flat
+# 2048x2048 map (exploration plane 1024x1024 cells), nothing explored, and two armies of 500 marching into
+# unexplored ground, so every tick some footprints change cell and reveal: SIMPHASE explore= is that reveal
+# work plus, until D, a rebuild of the block summaries from the whole plane every tick.
+# Run with tools/scenarios/perf-explore/run.sh or wall.sh (base vs candidate on the timing cores).
+name explore-move-2048
+ticks 600
+seed 7
+players 2
+weapons off
+explored none
+map flat 2048 2048
+type r roster
+group A 0 r 500 rect 40 40 140 240
+group B 1 r 500 rect 1900 1800 2000 2000
+at 1 move A 1000 1000
+at 1 move B 1100 1100

@@ -1,0 +1,1490 @@
+{
+ "version": 1,
+ "frozen": "2026-10-15, stage 1 of the Legion 10,000 program, from the c2c25707 baseline. Change only with a recorded reason.",
+ "targets": [
+  {
+   "scenario": "attack-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "923e21b53997b3c1"
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "bb0d80c7623295e6"
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "a1492f752390c117"
+  },
+  {
+   "scenario": "many-100",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "b8ecea6bacdf78b3"
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "dbc5de9f07bcee83"
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "7c5caca15b168fab"
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "dc471b116c1eab1b"
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "f83642718d7e5d23"
+  },
+  {
+   "scenario": "one-100",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "446bbbf5d3f51499"
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "b758ce6621dc13ea"
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "74a2897c431dde11"
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "retail",
+   "key": "hash",
+   "why": "Retail unchanged from c2c25707",
+   "eq": "496b35bcb7e711f2"
+  },
+  {
+   "scenario": "attack-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "attack-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "attack-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "attack-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "attack-1000",
+   "mode": "legion",
+   "key": "reach.ring.ever_end",
+   "why": "no fewer attackers get a shot than at the start (no regression)",
+   "min": 6
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "reach.ring.ever_end",
+   "why": "no fewer attackers get a shot than at the start (no regression)",
+   "min": 52
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "attack-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 970
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 20
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "gate.bridge0.samples",
+   "why": "traffic uses the alternative bridges, not only the nearest",
+   "min": 1
+  },
+  {
+   "scenario": "bridges-1000",
+   "mode": "legion",
+   "key": "gate.bridge2.samples",
+   "why": "traffic uses the alternative bridges, not only the nearest",
+   "min": 1
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 9700
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 200
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "gate.bridge0.samples",
+   "why": "traffic uses the alternative bridges, not only the nearest",
+   "min": 1
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "gate.bridge2.samples",
+   "why": "traffic uses the alternative bridges, not only the nearest",
+   "min": 1
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "bridges-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 873
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 100
+  },
+  {
+   "scenario": "churn-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 118
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 8730
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 1000
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 1180
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "churn-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 990
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 20
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "idle-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "many-100",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "many-100",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "many-100",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "no regression against c2c25707",
+   "min": 98
+  },
+  {
+   "scenario": "many-100",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "many-100",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 2
+  },
+  {
+   "scenario": "many-100",
+   "mode": "legion",
+   "key": "scale.arrive.t90",
+   "why": "no regression against c2c25707 (5%)",
+   "max": 1696
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 970
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "many-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 20
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 9700
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 200
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "many-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 2425
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "many-2500",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 50
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 4850
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "many-5000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 100
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 922
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 50
+  },
+  {
+   "scenario": "maze-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 69
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 9215
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 500
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 690
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "maze-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 970
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "mixed-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 20
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 97% of the reachable bodies (feasible layout)",
+   "min": 9700
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 200
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "mixed-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "no regression against c2c25707",
+   "min": 100
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 2
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "no regression against c2c25707 (5%)",
+   "max": 2588
+  },
+  {
+   "scenario": "one-100",
+   "mode": "legion",
+   "key": "scale.arrive.t90",
+   "why": "no regression against c2c25707 (5%)",
+   "max": 2346
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 990
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 20
+  },
+  {
+   "scenario": "one-1000",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "t99 within 1.5x the slowest body's straight run (2880 ticks)",
+   "max": 4350
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 9900
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 200
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "t99 within 1.5x the slowest body's straight run (5600 ticks)",
+   "max": 8430
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "one-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 2475
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 50
+  },
+  {
+   "scenario": "one-2500",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "t99 within 1.5x the slowest body's straight run (3600 ticks)",
+   "max": 5430
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 4950
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 100
+  },
+  {
+   "scenario": "one-5000",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "t99 within 1.5x the slowest body's straight run (4440 ticks)",
+   "max": 6690
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 990
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 20
+  },
+  {
+   "scenario": "swap-1000",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "head-on exchange t99 within 2x the straight run (6440 ticks)",
+   "max": 12910
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 9900
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 200
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "head-on exchange t99 within 2x the straight run (4520 ticks)",
+   "max": 9070
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "wall.tick_p99_ms",
+   "why": "report only: within the 30 Hz budget on the reference machine",
+   "max": 33.3
+  },
+  {
+   "scenario": "swap-10000",
+   "mode": "legion",
+   "key": "wall.over_budget",
+   "why": "report only: no tick over 33.3 ms",
+   "max": 0
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 2475
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 50
+  },
+  {
+   "scenario": "swap-2500",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "head-on exchange t99 within 2x the straight run (5920 ticks)",
+   "max": 11870
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.deliver.max",
+   "why": "a whole click lands within 1 s (30 ticks) of the click",
+   "max": 30
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.start.last",
+   "why": "the last member of a click starts moving within 3 s",
+   "max": 90
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.wait.max",
+   "why": "no body waits more than 2 s for usable navigation",
+   "max": 60
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.livelock_end",
+   "why": "no body walks in place at the end",
+   "max": 0
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.arrive.n",
+   "why": "physical arrival of 99% of the reachable bodies (feasible layout)",
+   "min": 4950
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.stuck_end",
+   "why": "no reachable body stuck at the end (unreachable ones hold by design)",
+   "max": 0
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.complete_outside_n",
+   "why": "at most 2% of the reachable orders complete outside the arrival disc (unreachable orders retire outside it by design)",
+   "max": 100
+  },
+  {
+   "scenario": "swap-5000",
+   "mode": "legion",
+   "key": "scale.arrive.t99",
+   "why": "head-on exchange t99 within 2x the straight run (5360 ticks)",
+   "max": 10750
+  }
+ ]
+}

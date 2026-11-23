@@ -1,0 +1,42 @@
+# taperbridge-small: taperbridge-100's bridge (12-cell mouths, a 6-cell middle, 100 cells long, three sector lines)
+# with an army of 50 crossing east as one order and ten separate orders of 5 bodies crossing west, sent 150 ticks
+# apart: groups too small to count as queues (kOpeningMembers is 8) must still wait their turn at the passage, or
+# they walk into the strip the other way holds and meet the army head on in the middle (Legion ~100 round 3).
+scn 1
+name taperbridge-small
+ticks 15300
+seed 7
+players 2
+team 1 0
+weapons off
+uplink 16
+probe scale
+map flat 768 768
+height 300 0 160 360 20
+height 300 372 160 396 20
+height 330 360 100 3 20
+height 330 369 100 3 20
+type r roster
+group A 0 r 50 rect 16 350 48 382
+gate mid 330 363 430 369
+at 2 move A 736 366
+group B0 1 r 5 rect 720 346 736 354
+group B1 1 r 5 rect 736 346 752 354
+group B2 1 r 5 rect 720 354 736 362
+group B3 1 r 5 rect 736 354 752 362
+group B4 1 r 5 rect 720 362 736 370
+group B5 1 r 5 rect 736 362 752 370
+group B6 1 r 5 rect 720 370 736 378
+group B7 1 r 5 rect 736 370 752 378
+group B8 1 r 5 rect 720 378 736 386
+group B9 1 r 5 rect 736 378 752 386
+at 2 move B0 32 346
+at 152 move B1 32 350
+at 302 move B2 32 354
+at 452 move B3 32 358
+at 602 move B4 32 362
+at 752 move B5 32 366
+at 902 move B6 32 370
+at 1052 move B7 32 374
+at 1202 move B8 32 378
+at 1352 move B9 32 382

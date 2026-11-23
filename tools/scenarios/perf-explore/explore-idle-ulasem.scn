@@ -1,0 +1,16 @@
+scn 1
+# explore-idle-ulasem (perf follow-up D, timing only): the map-sized part of World::updateExplorationPlane on
+# the largest shipped map, Ulasem Arena (640x640, exploration plane 320x320 = 102400 cells; the WE timing
+# situations' map), with 16 idle bodies at two start positions: after the first tick no footprint changes
+# cell, so SIMPHASE explore= is what the pass costs whatever the units do. Needs --data.
+# Run with tools/scenarios/perf-explore/run.sh or wall.sh (base vs candidate on the timing cores).
+name explore-idle-ulasem
+ticks 600
+seed 7
+players 2
+weapons off
+explored none
+map named Ulasem Arena
+type r roster
+group A 0 r 8 rect 180 112 196 128
+group B 1 r 8 rect 495 477 511 493

@@ -1,0 +1,37 @@
+scn 1
+# Overtaking on patrol, attack and guard legs (2026-11-19, owner: "try all three"; tools/legion_overtake_test.py):
+# overtake-field's single-file column of 12 bodies, slow 2x2 (1.15) and fast 3x3 (2.9) mixed, each on an order of its
+# own, on guard orders on one ally standing 144 cells ahead: a guard leg passes as a fight leg does.
+name overtake-guard
+ticks 5000
+players 1
+weapons off
+map flat 128 200
+type slow mover 2 2500 1 1.15
+type fast mover 3 2500 1 2.9
+type ward mover 2 2500 1 1.8
+group W 0 ward 1 cells 60,6
+group S0 0 slow 1 cells 60,150
+group F1 0 fast 1 cells 60,152
+group F2 0 fast 1 cells 60,155
+group S3 0 slow 1 cells 60,158
+group F4 0 fast 1 cells 60,160
+group S5 0 slow 1 cells 60,163
+group S6 0 slow 1 cells 60,165
+group F7 0 fast 1 cells 60,167
+group S8 0 slow 1 cells 60,170
+group F9 0 fast 1 cells 60,172
+group S10 0 slow 1 cells 60,175
+group F11 0 fast 1 cells 60,177
+at 5 guard S0 @W
+at 5 guard F1 @W
+at 5 guard F2 @W
+at 5 guard S3 @W
+at 5 guard F4 @W
+at 5 guard S5 @W
+at 5 guard S6 @W
+at 5 guard F7 @W
+at 5 guard S8 @W
+at 5 guard F9 @W
+at 5 guard S10 @W
+at 5 guard F11 @W

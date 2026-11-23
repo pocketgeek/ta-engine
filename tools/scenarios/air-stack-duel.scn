@@ -1,0 +1,18 @@
+scn 1
+# Three Drakes (Crusades) attack a patrolling Aramon Spyhawk (arafast): AirToAir (41ca50) pursues it, and
+# its stage 2 steps out of the stack at the counter's threshold (D = (rand(15) + both footprints) x 16).
+# The owner's 0.9.12 replay: the dogfighting drakes overlapped on 91% of their ticks.
+name air-stack-duel
+ticks 1800
+seed 7
+players 2
+crusades on
+weapons on
+map flat 160 160
+type drake fbi zondrake
+type spy fbi arafast
+group drakes 0 drake 3 cells 20,78 20,80 20,82
+group spy 1 spy 1 cells 80,60 weapons=off
+at 1 patrol spy 80 110
+at 2 attack drakes @spy
+pair stack drakes drakes cells=2

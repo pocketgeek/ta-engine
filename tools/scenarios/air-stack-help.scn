@@ -1,0 +1,16 @@
+scn 1
+# Three Aramon flying builders (arafly) in one cell: the first puts a Keep's site down (air_traffic orders it
+# at tick 2: VTOL_MobileBuild) and the other two help (VTOL_HelpBuild). Both missions wake every tick of their
+# work, and at 8 on the air-traffic counter (41f0a6, 41f981) step the builder out of the stack
+# (VTOL_StepOutNoFormation, StopBuilding) and start again from the approach; a MobileBuild whose site stands
+# goes on as VTOL_HelpBuild (41f2d6). Through protocol 307's first cut the builders hovered as one stack.
+name air-stack-help
+ticks 1800
+seed 7
+players 2
+crusades on
+weapons on
+map flat 160 160
+type flyb fbi arafly
+group builders 0 flyb 3 cells 40,80 40,80 40,80
+pair stack builders builders cells=2

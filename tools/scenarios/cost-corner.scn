@@ -1,0 +1,17 @@
+scn 1
+# legion_cost scaling fixture (tools/legion_cost.py): N movers (footprint 2)
+# must round the end of a wall to reach a click behind it, so the group
+# planner, the pass scans and the formation settle all run. tools/legion_cost.py
+# rewrites only the COUNT of group A (100 here; it runs 100/200/400).
+# legion_cost steady 200 1000
+name cost-corner
+ticks 2400
+# The gate offsets (W3 round 4, ruling (a)): -5 spawns group A off the map, so +6 in its place.
+gateoffsets 0,1,-1,2,-2,3,-3,4,-4,5,6
+seed 7
+map flat 192 140
+wall 70 0 4 76
+type m mover 2 2500 10 1.8
+group A 0 m 100 rect 4 20 52 120 pitch=3
+at 1 move A 120 30
+region goal 100 12 140 48

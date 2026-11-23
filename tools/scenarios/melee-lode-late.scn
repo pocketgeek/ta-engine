@@ -1,0 +1,22 @@
+scn 1
+# Two Spirit Wolves on an Aramon Lodestone (2x2), the second ordered 59 ticks after the first and
+# walking in behind it (the owner's 0.9.12 replay, wolves 37 and 40 at tick 11767). Retail's
+# Attack_Melee (404690) walks each to its own nearest origin on the rectangle round the footprint
+# (4d4e80); through protocol 306 Legion gave both the one north contact cell and the second held
+# behind the first for good.
+name melee-lode-late
+ticks 900
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 120 100
+type w fbi zonwolf
+type lode fbi aralode
+group W1 0 w 1 cells 40,30 weapons=on
+group W2 0 w 1 cells 40,26 weapons=on
+group L 1 lode 1 cells 40,60 weapons=off
+reach R W1,W2 L marks=300,600
+at 1 attack W1 @L
+at 60 attack W2 @L

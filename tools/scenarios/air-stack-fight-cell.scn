@@ -1,0 +1,24 @@
+scn 1
+# Five Drakes (Crusades) standing in one cell fight-moved, one click each, to one far point: each flies
+# VTOL_Move (no spread for a lone unit), and past stage 0 its air-traffic check (417d4e) steps it out of the
+# stack it starts in and of the one it meets at the point (VTOL_StepOut, 4214b0). Without a mission (through
+# protocol 307's first cut) the five flew the whole leg as one stack.
+name air-stack-fight-cell
+ticks 1500
+seed 7
+players 2
+crusades on
+weapons on
+map flat 160 160
+type drake fbi zondrake
+group d1 0 drake 1 cells 20,80
+group d2 0 drake 1 cells 20,80
+group d3 0 drake 1 cells 20,80
+group d4 0 drake 1 cells 20,80
+group d5 0 drake 1 cells 20,80
+at 2 fight d1 1900 1300
+at 2 fight d2 1900 1300
+at 2 fight d3 1900 1300
+at 2 fight d4 1900 1300
+at 2 fight d5 1900 1300
+pair stack d* d* cells=2

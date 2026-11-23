@@ -927,24 +927,6 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
     // GameChance (shipped: 0.1) for whether the game is god-based at all, then draws
     // an appear time uniformly in AppearTimeMin..Max (shipped: 30..60 minutes, stored
     // as a 16-bit second count at 0x64117a). A missing file falls back to the same
-    // 1-in-10 at 0x51953d. It was ported faithfully and then removed on purpose: a
-    // god turning up unannounced in one MP game out of ten, three quarters of an hour
-    // in, decides that game for reasons neither player chose.
-    //
-    // Retail gives a god only to a player with a priest: on the appear tick the
-    // unit update (51e23c..51e352) makes it beside the player's first live,
-    // finished `attractsgods` unit (UnitDef +0x268 bit 3, 4c093d; the 0x4ecfd3
-    // drawing test once read as attractsgods is bit 0, `ghost`). That gate was
-    // misread when this was decided; World::summonReadyGods (debug TA_GODS only)
-    // still summons for every player at the centroid of its forces.
-    float godSec = 1e9f;   // 1e9 => never manifests
-#ifndef NDEBUG
-    // Harness escape hatch: a desync hunt that cannot turn gods on cannot find that
-    // class of bug. Must be set for EVERY peer in the run -- it is a shared input to
-    // a lockstep decision, and setting it on one side only will desync by design.
-    if (std::getenv("TA_GODS")) godSec = 0.0f;
-#endif
-    world.enableGods(godSec);
     world.setUnitCap(cfg.unitCap);
     world.setMonarchExpendable(cfg.monarchExpendable);
     world.setDoubleSight(cfg.doubleSight);
@@ -1380,18 +1362,6 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
             }
             return nullptr;
         };
-        // Resolve this player's god now, while the registry is in hand. The sim
-        // summons it itself (World::summonReadyGods) and has no registry of its own;
-        // the client used to do the lookup AND the summon, which is what desynced it
-        // from the referee. Derived from the monarch's side rather than the slot's
-        // faction index so a side-less or modded monarch simply has no god instead of
-        // summoning another faction's.
-        if (monarch && !monarch->side.empty()) {
-            std::string side = monarch->side;
-            std::transform(side.begin(), side.end(), side.begin(),
-                           [](unsigned char c) { return char(std::tolower(c)); });
-            world.player(i).godType = reg.find(side + "god");
-        }
 
         // Stress test: fill this player to ~95% of the unit cap with its faction's
         // combat units right now, so an all-AI game starts under a heavy sim load.

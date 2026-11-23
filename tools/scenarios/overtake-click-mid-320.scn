@@ -1,0 +1,17 @@
+scn 1
+# Passing within a small click (2026-11-16; tools/legion_overtake_test.py): three speeds,
+# 5 slow 2x2 bodies (1.10), 4 mid 2x2 ones (1.9), 3 slow, then 4 fast 3x3 ones (2.9) at the rear, one right-click
+# to a point about 320 px from the click's centre. Asset-free, open field.
+name overtake-click-mid-320
+ticks 5000
+players 1
+weapons off
+map flat 128 160
+type slow mover 2 2500 1 1.10
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+group S1 0 slow 5 rect 54 70 74 74 pitch=4
+group M1 0 mid 4 rect 54 76 74 80 pitch=4
+group S2 0 slow 3 rect 56 82 72 86 pitch=4
+group F1 0 fast 4 rect 54 88 74 92 pitch=5
+at 5 move S1,M1,S2,F1 64 60

@@ -1,0 +1,18 @@
+scn 1
+# Four Spirit Wolves in a column ordered together onto an Aramon Keep (aracastl, 7x14, yardmap)
+# from the east. Through protocol 306 Legion's radial melee ring stood them 131 px from the centre,
+# out of contact on the short sides (a body must be within 80 px there): no damage ever.
+name melee-castle-4
+ticks 900
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 140 120
+type w fbi zonwolf
+type castle fbi aracastl
+group W 0 w 4 cells 90,58 93,58 96,58 99,58 weapons=on
+group C 1 castle 1 cells 50,60 weapons=off
+reach R W C marks=300,600
+at 1 attack W @C

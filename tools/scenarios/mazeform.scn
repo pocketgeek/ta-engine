@@ -1,0 +1,23 @@
+scn 1
+# Maze formation: a 64-body formation through a serpentine of four baffles (each
+# closes most of the lane, the gaps alternate ends).
+# Geometry is crowdbench's `maze` lane for 64 units (stride 3, 8 rows x 8 columns, lane z 26-63, map 384x128),
+# but ONE formation: all 64 bodies get one click at (340, 48) (crowdbench gives each its own goal).
+# Source: tools/crowdbench.cpp maze (the maze spin regression).
+name mazeform
+ticks 9000
+seed 7
+map flat 384 128
+wall 0 24 384 2
+wall 0 64 384 2
+wall 80 26 4 26
+wall 112 38 4 26
+wall 144 26 4 26
+wall 176 38 4 26
+type m mover 2 2500 10 1.79999
+group A 0 m 64 cells 53,36 53,39 53,42 53,45 53,48 53,51 53,54 53,57 50,36 50,39 50,42 50,45 50,48 50,51 50,54 50,57 47,36 47,39 47,42 47,45 47,48 47,51 47,54 47,57 44,36 44,39 44,42 44,45 44,48 44,51 44,54 44,57 41,36 41,39 41,42 41,45 41,48 41,51 41,54 41,57 38,36 38,39 38,42 38,45 38,48 38,51 38,54 38,57 35,36 35,39 35,42 35,45 35,48 35,51 35,54 35,57 32,36 32,39 32,42 32,45 32,48 32,51 32,54 32,57
+line b1 84 0 84 128
+line b2 116 0 116 128
+line b3 148 0 148 128
+line b4 180 0 180 128
+at 1 move A 340 48

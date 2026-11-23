@@ -1,0 +1,24 @@
+scn 1
+# Mixed-speed spacing probe (W8 step 0, MV-12 `spacing_probe mixed 0.5x`): an 8x8 block of 2x2 bodies three
+# cells apart (a 1-cell gap) on open ground, half of them at full speed and half at 0.5x of it (alternating by
+# index, so every fast body has slow neighbours), all sent to ONE point 300 cells east. The audit's probe
+# counted per unit-tick: held = no speed with orders more than 10 cells from the goal, far = more than 100 cells
+# out. Here the observer counts the same per decision sample: transit_far_held_permille (held among far samples),
+# g.F.stops / g.S.stops (a fast / slow body held right after a moving sample), and arrived at the end of the
+# run (6000 ticks, the probe's horizon; run with --ticks 12000 for the 0.4x second horizon).
+# The audit's numbers (main b8a4110; its harness issued the orders one body at a time, not through
+# issueSelection, so these are re-recorded at the W8 base, not reproduced): mixed 0.7x legion 64/64 @5789;
+# 0.5x legion 49/64 @6000, far held 12.0%, stops fast/slow 4948/1838; 0.4x legion 0/64 @6000, far held 29.9%.
+# W8's target: far held <= 6% at 0.5x and <= 15% at 0.4x, fast stops halved.
+# Speeds: the fast type is the repo's 1.79999 (raw 117964); the slow ones scale it.
+name mixed-spacing-05x
+ticks 6000
+seed 7
+map flat 480 160
+type f mover 2 2500 10 1.79999
+type s mover 2 2500 10 0.9
+group F 0 f 32 cells 20,70 26,70 32,70 38,70 20,73 26,73 32,73 38,73 20,76 26,76 32,76 38,76 20,79 26,79 32,79 38,79 20,82 26,82 32,82 38,82 20,85 26,85 32,85 38,85 20,88 26,88 32,88 38,88 20,91 26,91 32,91 38,91
+group S 0 s 32 cells 23,70 29,70 35,70 41,70 23,73 29,73 35,73 41,73 23,76 29,76 35,76 41,76 23,79 29,79 35,79 41,79 23,82 29,82 35,82 41,82 23,85 29,85 35,85 41,85 23,88 29,88 35,88 41,88 23,91 29,91 35,91 41,91
+region goal 310 60 330 100
+probe lanes
+at 1 move F,S 320 82

@@ -1,0 +1,17 @@
+scn 1
+# W3 step 0 fixture (PLAN 3.1 acceptance A, MV-01): the `pocket` probe's 304 bodies (footprint 2, 26 per row at pitch 3,
+# x 60-135, z 108-141) sent to ONE point far east as one selection of 304: issueSelection lands it as the client
+# does, 64 commands per tick, so Legion makes 5 formations. Wall A (x 138-143, z 60-174) closes the pocket on its east side down to wall B (x 138-427, z 174-185): the way out is past the underside of B.
+# Keys: g.A.arrived / t90 / complete_* and work.midroute_completions (must stay 0). The probe's cap-0 case (every order in
+# one tick) is not expressible in a .scn; `legion_world_test pocket` prints it.
+name pocket-304-wall
+ticks 8000
+seed 7
+map flat 640 300
+wall 138 60 6 115
+wall 138 174 290 12
+type m mover 2 2500 10 1.79999
+group A 0 m 304 rect 60 108 138 144 pitch=3
+region goal 441 186 481 226
+line far 300 0 300 300
+at 1 move A 461 206

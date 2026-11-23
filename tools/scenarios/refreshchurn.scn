@@ -1,0 +1,20 @@
+scn 1
+# Refresh under constant static churn (RB-05): a 1024x1024 map, a long wall, eight movers ordered round its far
+# end. From tick 0 to 899 a 2x2 blocking feature is placed in a fresh cell every tick (cells 300 + 2*(t % 300),
+# 300 + 2*(t / 300), inside the field's component), as corpses and burning features churn the static map in a
+# battle. The audit's probe (legion_world_test refreshchurn, RC_CHURN=1) counts field refresh completions:
+# 11, 85-86 ticks apart on main (1 before b565029; a pre-b565029 emulation gave 0). Key:
+# work.refresh_completed.total (about 10-11 expected). refreshchurn-control.scn is the same file without the churn.
+name refreshchurn
+ticks 900
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 1024 1024
+wall 0 614 921 4
+type m mover 2 2500 10 1.79999
+group M 0 m 8 cells 20,100 24,100 28,100 32,100 20,104 24,104 28,104 32,104
+churn 300 300 2 2 every=1 walk=2,2,300 until=900
+at 1 move M 60 716
+region goal 40 700 90 740

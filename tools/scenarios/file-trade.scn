@@ -1,0 +1,23 @@
+# file-trade: two files of 14 head on, on move orders, in a lane one body wide that spans the map (no rooms at its
+# ends, so no passage admission: the files must trade through each other, swap by swap).
+# A swap's gain is no progress for the liveness clock, so a body that has traded through the other file comes to
+# its own army's settled arrivals at the far end as dead as the trade was long. The short stand-down (600 dead
+# ticks against bodies that will never move) then took it on its first held update, before the yield, the part,
+# the detour or the settle rule had their turn: 11 of the 28 orders ended by stand-down where the settle rule
+# settles all 28 (the same places, but a stood-down body has no anchor and cannot yield). The short stand-down now
+# waits until the body's own route has stood kStandMeet (90) ticks as well (the stall clock counts a swap's gain).
+# Keys: work.arrivals.total (28; 17 before), work.stand_downs.total (absent: none).
+scn 1
+name file-trade
+ticks 3000
+seed 7
+players 1
+weapons off
+map flat 64 32
+wall 0 0 64 14
+wall 0 16 64 16
+type m mover 2 2500 10 1.79999
+group L 0 m 14 cells 2,15 4,15 6,15 8,15 10,15 12,15 14,15 16,15 18,15 20,15 22,15 24,15 26,15 28,15
+group R 0 m 14 cells 36,15 38,15 40,15 42,15 44,15 46,15 48,15 50,15 52,15 54,15 56,15 58,15 60,15 62,15
+at 2 move L 60 15
+at 2 move R 4 15

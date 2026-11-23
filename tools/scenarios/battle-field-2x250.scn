@@ -1,0 +1,24 @@
+scn 1
+# battle-field (250 a side): two roster-quartile armies (sight 256/320/400, turn
+# 1000/2500, footprint 2/3, speed 1.6..2.6, gun 160 px / 25 / 1 s) attack-move
+# (fight) onto each other's start across open ground. The windows
+# (`legion_cost window` lines below; tools/legion_cost.py battle) are start (the
+# first field builds), march (before the armies see each other), contact (they
+# meet and die) and mop-up (the survivors). A window's Legion work is the
+# difference of two runs to its ends (--ticks). Wall time is reported by the
+# runner, never gated.
+# legion_cost window start 0 200
+# legion_cost window march 200 500
+# legion_cost window contact 500 2800
+# legion_cost window mopup 2800 3600
+name battle-field-2x250
+ticks 3600
+seed 7
+players 2
+weapons on
+map flat 320 180
+type r roster
+group A 0 r 250 rect 6 6 70 174 pitch=5
+group B 1 r 250 rect 250 6 314 174 pitch=5
+at 1 fight A @B
+at 1 fight B @A

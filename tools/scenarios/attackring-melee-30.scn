@@ -1,0 +1,18 @@
+scn 1
+# Round 5 review (2026-10-21): 30 melee attackers (araknigh, TDF range 300, fires on footprint contact) ordered
+# to attack one still mover; a held body must press into contact, not re-press to its own origin.
+name attackring-melee-30
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 200 160
+type a fbi araknigh
+type tgt mover 2 2500 10 1.8 hp=300000
+group A 0 a 30 rect 20 70 44 90 pitch=2 weapons=on
+group T 1 tgt 1 cells 130,80 weapons=off
+probe claims
+reach ring A T marks=1200,2400
+at 1 attack A @T

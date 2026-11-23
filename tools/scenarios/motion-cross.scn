@@ -1,0 +1,126 @@
+scn 1
+name motion-cross
+# legion_group_motion's cross case, ported: 48 real ground units (every fifth eligible
+# FBI type in name order, araarch .. tarfire, cycled by unit index), unarmed, one player, a flat
+# 256x256 map. Data-gated (needs --data). Every unit is its own group and its own
+# tick-1 order, spawned and ordered in the tool's unit order. `wanderers off` clears
+# Standby_wander on lifwolf, npchunt and npcshop (12 of the 48 bodies), whose home-pull
+# otherwise re-orders them back across the map every 240 ticks; `wanderers on` is the
+# original tool's confound (override: legion_scenario --wanderers on|off).
+ticks 3000
+seed 1
+players 1
+wanderers off
+map flat 256 256
+type araarch fbi araarch
+type araking fbi araking
+type arasmith fbi arasmith
+type crechie fbi crechie
+type cretort fbi cretort
+type lifwolf fbi lifwolf
+type npcayla fbi npcayla
+type npcduma fbi npcduma
+type npchunt fbi npchunt
+type npcpeas2 fbi npcpeas2
+type npcshop fbi npcshop
+type tarfire fbi tarfire
+group u00 0 araarch 1 cells 56,112
+group u01 0 araking 1 cells 200,112
+group u02 0 arasmith 1 cells 56,116
+group u03 0 crechie 1 cells 200,116
+group u04 0 cretort 1 cells 56,120
+group u05 0 lifwolf 1 cells 200,120
+group u06 0 npcayla 1 cells 56,124
+group u07 0 npcduma 1 cells 200,124
+group u08 0 npchunt 1 cells 56,128
+group u09 0 npcpeas2 1 cells 200,128
+group u10 0 npcshop 1 cells 56,132
+group u11 0 tarfire 1 cells 200,132
+group u12 0 araarch 1 cells 56,136
+group u13 0 araking 1 cells 200,136
+group u14 0 arasmith 1 cells 56,140
+group u15 0 crechie 1 cells 200,140
+group u16 0 cretort 1 cells 52,112
+group u17 0 lifwolf 1 cells 204,112
+group u18 0 npcayla 1 cells 52,116
+group u19 0 npcduma 1 cells 204,116
+group u20 0 npchunt 1 cells 52,120
+group u21 0 npcpeas2 1 cells 204,120
+group u22 0 npcshop 1 cells 52,124
+group u23 0 tarfire 1 cells 204,124
+group u24 0 araarch 1 cells 52,128
+group u25 0 araking 1 cells 204,128
+group u26 0 arasmith 1 cells 52,132
+group u27 0 crechie 1 cells 204,132
+group u28 0 cretort 1 cells 52,136
+group u29 0 lifwolf 1 cells 204,136
+group u30 0 npcayla 1 cells 52,140
+group u31 0 npcduma 1 cells 204,140
+group u32 0 npchunt 1 cells 48,112
+group u33 0 npcpeas2 1 cells 208,112
+group u34 0 npcshop 1 cells 48,116
+group u35 0 tarfire 1 cells 208,116
+group u36 0 araarch 1 cells 48,120
+group u37 0 araking 1 cells 208,120
+group u38 0 arasmith 1 cells 48,124
+group u39 0 crechie 1 cells 208,124
+group u40 0 cretort 1 cells 48,128
+group u41 0 lifwolf 1 cells 208,128
+group u42 0 npcayla 1 cells 48,132
+group u43 0 npcduma 1 cells 208,132
+group u44 0 npchunt 1 cells 48,136
+group u45 0 npcpeas2 1 cells 208,136
+group u46 0 npcshop 1 cells 48,140
+group u47 0 tarfire 1 cells 208,140
+line east 216 0 216 256
+line west 40 0 40 256
+region goal_east 200 112 232 144
+region goal_west 24 112 56 144
+at 1 move u00 216 128
+at 1 move u01 40 128
+at 1 move u02 216 128
+at 1 move u03 40 128
+at 1 move u04 216 128
+at 1 move u05 40 128
+at 1 move u06 216 128
+at 1 move u07 40 128
+at 1 move u08 216 128
+at 1 move u09 40 128
+at 1 move u10 216 128
+at 1 move u11 40 128
+at 1 move u12 216 128
+at 1 move u13 40 128
+at 1 move u14 216 128
+at 1 move u15 40 128
+at 1 move u16 216 128
+at 1 move u17 40 128
+at 1 move u18 216 128
+at 1 move u19 40 128
+at 1 move u20 216 128
+at 1 move u21 40 128
+at 1 move u22 216 128
+at 1 move u23 40 128
+at 1 move u24 216 128
+at 1 move u25 40 128
+at 1 move u26 216 128
+at 1 move u27 40 128
+at 1 move u28 216 128
+at 1 move u29 40 128
+at 1 move u30 216 128
+at 1 move u31 40 128
+at 1 move u32 216 128
+at 1 move u33 40 128
+at 1 move u34 216 128
+at 1 move u35 40 128
+at 1 move u36 216 128
+at 1 move u37 40 128
+at 1 move u38 216 128
+at 1 move u39 40 128
+at 1 move u40 216 128
+at 1 move u41 40 128
+at 1 move u42 216 128
+at 1 move u43 40 128
+at 1 move u44 216 128
+at 1 move u45 40 128
+at 1 move u46 216 128
+at 1 move u47 40 128

@@ -1,0 +1,27 @@
+scn 1
+# Island, boats: one formation of 48 2x2 boats rounds a rock (the base column of the lanes2 island row: t90 1939, abreast 3.02, crossings 33/978).
+# A formation of 48 boats goes round a 24x24 rock (x 88-111, z 58-81) in open sea, from x~30 to (172,70).
+# Source: legion-lanes2 lanes case 'island' (the parked lanes2 patches' laneRun), base column. Metrics: the
+# 'abreast' strip is gate abreast (8 columns round x=100, the observer's segment form; the test counted x 95-105),
+# 'crossings' are gate lane's (end windows at x 69-70 and 130-131).
+name island-1x48
+ticks 12000
+probe lanes
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 200 140
+height 0 0 200 140 20
+wall 88 58 24 24
+type u boat 2 900 10 1.79999 depth=13
+group U 0 u 48 cells 30,61 33,61 36,61 39,61 42,61 45,61 48,61 51,61 30,64 33,64 36,64 39,64 42,64 45,64 48,64 51,64 30,67 33,67 36,67 39,67 42,67 45,67 48,67 51,67 30,70 33,70 36,70 39,70 42,70 45,70 48,70 51,70 30,73 33,73 36,73 39,73 42,73 45,73 48,73 51,73 30,76 33,76 36,76 39,76 42,76 45,76 48,76 51,76
+at 1 move U 172 70
+gate lane 69 39 131 101
+gate abreast 100 20 100 120
+line far 150 0 150 140
+region goal 160 50 190 90
+# Audit definitions (lanes2 laneRun): abreast = distinct z/2 files over the strip x 95-105 (gate.strip.files_x100); crossings = lane-order
+# swaps between the first entries of x=70 and x=130 within 300 ticks, >= 2 cells at both (lane.cross.swaps / .pairs).
+gate strip 95 0 106 140 lateral=z
+lane cross 70 0 70 140 130 0 130 140 window=300 mincells=2

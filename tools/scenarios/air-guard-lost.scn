@@ -1,0 +1,21 @@
+scn 1
+# Three Drakes (Crusades) guard a Goblin that dies (air_traffic kills it at tick 300). VTOL_Follow, the
+# guard's last mission, inserts VTOL_SeekGuard (4191d7) at the Goblin's last point: it circles there at the
+# selected weapon's range + 160 px, steps out of a stack at every wake (4198fd), and guards the first allied
+# unit that cannot fly within its sightdistance (509ac0 / 421910; 4de530 action 7: VTOL_FOLLOW) -- one of the
+# Goblins standing in a ring round the point. Through protocol 307's first cut the guard just ended and the
+# Drakes stood down.
+name air-guard-lost
+ticks 900
+seed 7
+players 2
+crusades on
+weapons on
+map flat 160 160
+type drake fbi zondrake
+type gob fbi zongob
+group drakes 0 drake 3 cells 20,78 20,80 20,82
+group ward 0 gob 1 cells 60,80
+group ring 0 gob 16 cells 60,112 72,110 83,103 90,92 92,80 90,68 83,57 72,50 60,48 48,50 37,57 30,68 28,80 30,92 37,103 48,110
+at 2 guard drakes @ward
+pair stack drakes drakes cells=2

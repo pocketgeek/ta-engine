@@ -1,0 +1,42 @@
+# headon-attack: two bodies of one footprint head on in a lane one body wide, one of them on an attack or guard leg.
+#   lane 1  X1 on a move order east, Y1 on an attack order on an enemy body beyond the lane's west end
+#   lane 2  X2 on a move order east, Y2 on a guard order on a body of its own beyond the west end
+#   lane 3  X3 on an attack-move order east, Y3 on an attack order (as lane 1)
+# A known limit, not a fix: all three pairs stand for good, as before the rules for bodies that stand for good. The
+# swap and the give-way in a knot serve legs that complete at a point; a body on an attack or guard leg is its
+# owner's to end, is never moved by those rules and reads as live (the bodies behind a firing line must keep their
+# orders, siege-gap.scn), so the body it blocks is never dead either and neither gives way nor ends its order
+# (docs/legion-pathfinding.md, "Known weaknesses"). headon-fight.scn is the same meet on two attack-move orders,
+# which the late swap resolves.
+# Keys: g.X1.complete_n, g.X2.complete_n, g.X3.complete_n (0 each), open_still900 (6).
+scn 1
+name headon-attack
+ticks 12000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 96 64
+wall 16 0 64 10
+wall 16 12 64 10
+wall 16 24 64 10
+wall 16 36 64 28
+type m mover 2 2500 10 1.79999
+type g mover 2 2500 10 1.79999 gun=40,1,1.0
+type tgt mover 2 2500 10 1.8 hp=30000
+group X1 0 m 1 cells 6,10
+group Y1 0 g 1 cells 86,10 weapons=on
+group T1 1 tgt 1 cells 2,10 weapons=off
+group X2 0 m 1 cells 6,22
+group Y2 0 m 1 cells 86,22
+group W2 0 m 1 cells 2,22
+group X3 0 m 1 cells 6,34
+group Y3 0 g 1 cells 86,34 weapons=on
+group T3 1 tgt 1 cells 2,34 weapons=off
+at 2 move X1 90 11
+at 2 attack Y1 @T1
+at 2 move X2 90 23
+at 2 guard Y2 @W2
+at 2 fight X3 90 35
+at 2 attack Y3 @T3

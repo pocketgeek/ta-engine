@@ -1,0 +1,36 @@
+scn 1
+# Overtaking (2026-11-15; tools/legion_overtake_test.py): a single-file column of 12 bodies walking north, slow
+# 2x2 bodies (speed 1.15, an Aramon Archer's) and fast 3x3 ones (2.9, an Aramon Knight's) mixed, each on an order
+# of its own to its own point 144 cells ahead (4 cells apart), as the computer player sends its army. Asset-free.
+# Open field, attack-move orders: a fast body held behind a slow one steps aside and passes it.
+name overtake-field
+ticks 5000
+players 1
+weapons off
+map flat 128 200
+type slow mover 2 2500 1 1.15
+type fast mover 3 2500 1 2.9
+group S0 0 slow 1 cells 60,150
+group F1 0 fast 1 cells 60,152
+group F2 0 fast 1 cells 60,155
+group S3 0 slow 1 cells 60,158
+group F4 0 fast 1 cells 60,160
+group S5 0 slow 1 cells 60,163
+group S6 0 slow 1 cells 60,165
+group F7 0 fast 1 cells 60,167
+group S8 0 slow 1 cells 60,170
+group F9 0 fast 1 cells 60,172
+group S10 0 slow 1 cells 60,175
+group F11 0 fast 1 cells 60,177
+at 5 fight S0 38 6
+at 5 fight F1 42 6
+at 5 fight F2 46 6
+at 5 fight S3 50 6
+at 5 fight F4 54 6
+at 5 fight S5 58 6
+at 5 fight S6 62 6
+at 5 fight F7 66 6
+at 5 fight S8 70 6
+at 5 fight F9 74 6
+at 5 fight S10 78 6
+at 5 fight F11 82 6

@@ -1,0 +1,70 @@
+scn 1
+# Group awareness: two own groups of 24 cross paths at right angles on open ground. B is ordered 100 ticks after A.
+# W7 step 0: aware-cross with the route-behind metric (group list b* is the later stream, a* the earlier) and the
+# aware.* counters. Identical world to aware-cross; only shapes and the probe line are added.
+name aware-cross-behind
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 200 140
+type ma mover 2 2500 10 1.79999 sight=4096
+type mb mover 2 2500 10 1.79999 sight=4096
+group a00 0 ma 1 cells 20,62
+group b00 0 mb 1 cells 88,112
+group a01 0 ma 1 cells 23,62
+group b01 0 mb 1 cells 91,112
+group a02 0 ma 1 cells 26,62
+group b02 0 mb 1 cells 94,112
+group a03 0 ma 1 cells 29,62
+group b03 0 mb 1 cells 97,112
+group a04 0 ma 1 cells 32,62
+group b04 0 mb 1 cells 100,112
+group a05 0 ma 1 cells 35,62
+group b05 0 mb 1 cells 103,112
+group a06 0 ma 1 cells 20,65
+group b06 0 mb 1 cells 88,115
+group a07 0 ma 1 cells 23,65
+group b07 0 mb 1 cells 91,115
+group a08 0 ma 1 cells 26,65
+group b08 0 mb 1 cells 94,115
+group a09 0 ma 1 cells 29,65
+group b09 0 mb 1 cells 97,115
+group a10 0 ma 1 cells 32,65
+group b10 0 mb 1 cells 100,115
+group a11 0 ma 1 cells 35,65
+group b11 0 mb 1 cells 103,115
+group a12 0 ma 1 cells 20,68
+group b12 0 mb 1 cells 88,118
+group a13 0 ma 1 cells 23,68
+group b13 0 mb 1 cells 91,118
+group a14 0 ma 1 cells 26,68
+group b14 0 mb 1 cells 94,118
+group a15 0 ma 1 cells 29,68
+group b15 0 mb 1 cells 97,118
+group a16 0 ma 1 cells 32,68
+group b16 0 mb 1 cells 100,118
+group a17 0 ma 1 cells 35,68
+group b17 0 mb 1 cells 103,118
+group a18 0 ma 1 cells 20,71
+group b18 0 mb 1 cells 88,121
+group a19 0 ma 1 cells 23,71
+group b19 0 mb 1 cells 91,121
+group a20 0 ma 1 cells 26,71
+group b20 0 mb 1 cells 94,121
+group a21 0 ma 1 cells 29,71
+group b21 0 mb 1 cells 97,121
+group a22 0 ma 1 cells 32,71
+group b22 0 mb 1 cells 100,121
+group a23 0 ma 1 cells 35,71
+group b23 0 mb 1 cells 103,121
+at 1 move a00,a01,a02,a03,a04,a05,a06,a07,a08,a09,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23 180 70
+at 101 move b00,b01,b02,b03,b04,b05,b06,b07,b08,b09,b10,b11,b12,b13,b14,b15,b16,b17,b18,b19,b20,b21,b22,b23 96 10
+gate cross 90 40 90 100
+line farA 170 0 170 140
+region goalA 170 60 190 80
+region goalB 88 0 106 20
+pair contacts a* b* cells=2
+probe aware
+behind wait b* a* cells=8

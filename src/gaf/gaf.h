@@ -52,4 +52,9 @@ std::vector<Sequence> load(const std::filesystem::path& file, const Palette& pal
 std::vector<Sequence> load(const std::vector<uint8_t>& d, const Palette& pal,
                            int transparentIndex = -1, const std::string& origin = "<memory>");
 
+// An 8-bit RLE PCX image (TA's bitmaps\*.pcx backdrops) decoded through its own
+// trailing VGA palette into RGBA (alpha 255). Throws on anything else.
+struct Image { int width = 0, height = 0; std::vector<uint8_t> rgba; };
+Image loadPcx(const std::vector<uint8_t>& d, const std::string& origin = "<memory>");
+
 } // namespace ta::gaf

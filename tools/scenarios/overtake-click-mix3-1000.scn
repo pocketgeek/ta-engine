@@ -1,0 +1,17 @@
+scn 1
+# The arrival layout (2026-11-16; tools/legion_overtake_test.py): three speeds in one right-click, a loose block of
+# 4 slow 2x2 bodies (1.10), 3 mid 2x2 ones (1.9), 3 fast 3x3 ones (2.9) and 4 more slow ones, front to rear, sent
+# about 1,000 px. Asset-free, open field.
+name overtake-click-mix3-1000
+ticks 6000
+players 1
+weapons off
+map flat 128 220
+type slow mover 2 2500 1 1.10
+type mid mover 2 2500 1 1.9
+type fast mover 3 2500 1 2.9
+group S1 0 slow 4 rect 54 140 70 150 pitch=5
+group M1 0 mid 3 rect 54 152 70 160 pitch=5
+group F1 0 fast 3 rect 54 162 70 172 pitch=6
+group S2 0 slow 4 rect 54 174 70 184 pitch=5
+at 5 move S1,M1,F1,S2 62 100

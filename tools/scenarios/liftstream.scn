@@ -1,0 +1,22 @@
+scn 1
+# A 150-body ground stream walks through 24 idle landed own flyers that stand
+# on its straight way: the flyers should lift for the stream and land again
+# (once each). Scaled-up liftflyers mode 0 (12 flyers, 40 bodies). The order is
+# given at tick 90, after the VTOL-standby flyers have landed (as the world test
+# waits). Observer: g.F.takeoffs_max / relifts / go_arounds / illegal_overlap_ticks,
+# g.G.* arrival.
+name liftstream
+ticks 3600
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 200 100
+type m mover 2 2500 10 1.79999
+type f flyer 2 1200 1 4 cruise=80
+group F 0 f 24 rect 70 42 88 60 pitch=3
+group G 0 m 150 rect 20 28 50 76 pitch=3
+at 90 move G 160 50
+gate mid 100 20 100 80
+line far 140 0 140 100
+region goal 140 30 180 70

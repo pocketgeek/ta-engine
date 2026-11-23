@@ -1,0 +1,20 @@
+scn 1
+# Legion ~100 round 4 (2026-10-20): attackring-r200-64 with a 60 px gun, a member of the weapon-range sweep (not
+# baselined). A shot of 64 px or less needs no line of sight (reachPx), so its ring is planned without the sight test
+# but is not blind: combat brakes its bodies on the reach edge. ctest:legion_ringnosight holds the blind-ring rules
+# (press 4 px into reach, hold in reach, no edge spend) off it: with them, statue ticks rose 611 -> 1,905 over the
+# gate offsets.
+name attackring-r60-64
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 200 160
+type a mover 1 2500 10 1.8 gun=60,1,1.0
+type tgt mover 2 2500 10 1.8 hp=30000
+group A 0 a 64 rect 20 72 36 88 pitch=2 weapons=on
+group T 1 tgt 1 cells 130,80 weapons=off
+reach ring A T marks=1200,2400
+at 1 attack A @T

@@ -1,0 +1,22 @@
+scn 1
+# Pinwheel gap (legion_world_test `pinwheel`, gap 6): the U-turn's wall with a
+# second wall above it (x 98-101, z 0-41), leaving a 6-cell gap (z 42-47) that
+# holds three 2-cell files. 48 footprint-2 bodies west of the wall are sent to
+# a point beyond it; the files must fold into the gap and take it no slower
+# than single file. gate.top.files_x100 is the files abreast in the gap strip
+# and side.east.t90 the source's rounded90 (90% at x >= 104).
+# Speed 1.79999 builds the source's raw 117964 (see uturn.scn).
+# Source numbers (main, offset 0): rounded90 1930, done 3346, files 1.15,
+# spread 0.47.
+name gap6
+ticks 6000
+probe lanes
+seed 7
+map flat 200 140
+wall 98 48 4 92
+wall 98 0 4 42
+type m mover 2 2500 10 1.79999
+group A 0 m 48 rect 40 96 64 114 pitch=3
+gate top 101 0 101 47
+line east 104 0 104 140
+at 1 move A 150 110

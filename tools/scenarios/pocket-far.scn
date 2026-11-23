@@ -1,0 +1,66 @@
+# pocket-far: the give-way's reach. A body gives way to a cell at most 4 origins from where it stands (kGiveReach),
+# clear of the other body and of its next step; it is never carried back to a pocket farther off.
+#  L  a 3x3 body (move east) against a 2x2 body (move west) in a lane 3 cells wide and 60 long with one pocket 4x4
+#     in its north wall, 7 cells behind the small body when the two meet. They give way to each other eight times
+#     each (kMaxGiveWays), a cell back and a cell on, nobody passes, and the long stand-down ends both orders (tick
+#     5,374). Before the rules both stood for good; Retail walks both through (by tick 2,046).
+#  X  two lanes 3 cells wide that cross, twice: a 3x3 and a 2x2 body head on in each lane, all four meeting at the
+#     crossing, on attack-move orders (F) and on move orders (M). The arms of the crossing are the only places to
+#     step clear to: 64 give-ways, 8 a body, nobody passes, and every order ends by tick 5,220. Before the rules
+#     all eight stood for good; Retail ends all eight orders at tick 491, none arriving.
+# Bounded (no body gives way more than kMaxGiveWays times on a leg, nobody is left standing with an order), but
+# where a pocket lies beyond the reach, or the only room is the way the other body is going, the shuffle opens
+# nothing (docs/legion-pathfinding.md, "Known weaknesses"). At start offsets 1 and -1 the meets fall differently
+# (at +1 the pair of L pass each other in the pocket's mouth and arrive).
+# Keys: g.LB / g.LS.complete_n and g.F* / g.M*.complete_n (1 each; all 0 before), scale.stuck_end (0),
+# work.give_ways.total (80: 8 for each of the ten bodies).
+scn 1
+name pocket-far
+ticks 6000
+seed 7
+players 1
+weapons off
+map flat 256 128
+wall 34 0 60 30
+wall 34 33 60 8
+wall 34 44 28 20
+wall 66 44 28 20
+wall 62 44 4 16
+wall 34 67 60 9
+wall 34 79 28 20
+wall 66 79 28 20
+wall 62 79 4 16
+wall 34 102 60 26
+wall 126 0 2 128
+wall 128 0 30 30
+wall 161 0 31 30
+wall 128 33 30 31
+wall 161 33 31 31
+wall 192 64 30 30
+wall 225 64 31 30
+wall 192 97 30 31
+wall 225 97 31 31
+wall 192 0 64 64
+wall 128 64 64 64
+type m mover 2 2500 10 1.79999
+type big mover 3 2500 10 1.5
+group LB 0 big 1 cells 20,99
+group LS 0 m 1 cells 108,100
+group FW 0 big 1 cells 132,30
+group FE 0 m 1 cells 186,31
+group FN 0 m 1 cells 159,4
+group FS 0 big 1 cells 158,58
+group MW 0 big 1 cells 196,94
+group ME 0 m 1 cells 250,95
+group MN 0 m 1 cells 223,68
+group MS 0 big 1 cells 222,122
+at 2 move LB 112 100
+at 2 move LS 8 100
+at 2 fight FW 188 31
+at 2 fight FE 132 31
+at 2 fight FN 159 60
+at 2 fight FS 159 4
+at 2 move MW 252 95
+at 2 move ME 196 95
+at 2 move MN 223 124
+at 2 move MS 223 68

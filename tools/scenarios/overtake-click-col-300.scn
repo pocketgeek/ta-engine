@@ -1,0 +1,26 @@
+scn 1
+# Passing within a small click (2026-11-16; tools/legion_overtake_test.py), the owner's case:
+# a single-file column of 12 at a 2.5-cell pitch, Aramon Knights
+# (fast 3x3, speed 2.9) and Swordsmen (slow 2x2, 1.10) mixed, sent with ONE right-click to one
+# point about 300 px from the click's centre, as a player sends a mixed selection on a short order. Asset-free.
+# Open field, move order.
+name overtake-click-col-300
+ticks 3000
+players 1
+weapons off
+map flat 128 200
+type slow mover 2 2500 1 1.10
+type fast mover 3 2500 1 2.9
+group S0 0 slow 1 cells 60,24
+group F1 0 fast 1 cells 60,26
+group F2 0 fast 1 cells 60,29
+group S3 0 slow 1 cells 60,32
+group F4 0 fast 1 cells 60,34
+group S5 0 slow 1 cells 60,37
+group S6 0 slow 1 cells 60,39
+group F7 0 fast 1 cells 60,41
+group S8 0 slow 1 cells 60,44
+group F9 0 fast 1 cells 60,46
+group S10 0 slow 1 cells 60,49
+group F11 0 fast 1 cells 60,51
+at 5 move S0,F1,F2,S3,F4,S5,S6,F7,S8,F9,S10,F11 60 20

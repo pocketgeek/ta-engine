@@ -1,0 +1,38 @@
+# plug-leaves: a plug of the player's own idle bodies that is ordered away later. Three corridors 8 cells wide,
+# each plugged wall to wall by four idle bodies; six bodies are sent through each at tick 2, and the plug is
+# ordered on beyond the corridor
+#   L1 at tick 450 (before A's bodies have stood 600 dead ticks before it),
+#   L2 at tick 900 (they have: the short stand-down's second clock, the body's own stall clock, is still running),
+#   L3 at tick 2,400 (long after).
+# The stand-down ends an order for good: a unit that gave its order up does not go on when the way opens later.
+# A and B go through behind their plug and arrive, as before the rule. C's six orders end before the plug at ticks
+# 1,143 to 1,278, and the six stand idle there when it leaves: before the rule they waited and all six arrived
+# some 500 ticks after it left. That loss is the rule's price (Retail ends all eighteen orders within 583 ticks:
+# its goal circle grows with each failed search), stated in docs/legion-pathfinding.md, "Bodies that stand for
+# good".
+# Keys: g.A.arrived, g.B.arrived (6 each: a plug that leaves in time costs nothing), g.C.complete_n (6),
+# g.C.arrived (0; 6 before the rule).
+scn 1
+name plug-leaves
+ticks 5000
+seed 7
+players 1
+weapons off
+map flat 128 96
+wall 34 0 60 16
+wall 34 24 60 16
+wall 34 48 60 16
+wall 34 72 60 24
+type m mover 2 2500 10 1.79999
+group L1 0 m 4 cells 61,17 61,19 61,21 61,23
+group L2 0 m 4 cells 61,41 61,43 61,45 61,47
+group L3 0 m 4 cells 61,65 61,67 61,69 61,71
+group A 0 m 6 rect 4 14 12 26 pitch=3
+group B 0 m 6 rect 4 38 12 50 pitch=3
+group C 0 m 6 rect 4 62 12 74 pitch=3
+at 2 move A 112 20
+at 2 move B 112 44
+at 2 move C 112 68
+at 450 move L1 120 20
+at 900 move L2 120 44
+at 2400 move L3 120 68

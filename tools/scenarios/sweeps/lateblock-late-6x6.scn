@@ -1,0 +1,20 @@
+scn 1
+# MV-05 (PLAN 3.4): a group's field is built before a block of idle same-player bodies becomes soft across its
+# route. 40 movers cross a 260x120 map to (230,52); a 6x6-body block (12 cells wide), not yet soft at the order (mode 2); the size sweep.
+# Soft changes never re-plan the field today, so the late block is met by the 12-cell local detour only: past
+# a ~16-cell block the group parks at its face (audit: 27/40 by 9000 ticks, 13 holding, 2 for 17000+).
+# PLAN: lateblock 16x16 27/40 -> >= 39/40 by 4500, 0 permanent.  Audit probe: legion_world_test probe_lateblock.
+name lateblock-late-6x6
+ticks 9000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 260 120
+type m mover 2 2500 10 1.8
+group A 0 m 40 cells 14,44 17,44 20,44 23,44 26,44 29,44 32,44 35,44 14,48 17,48 20,48 23,48 26,48 29,48 32,48 35,48 14,52 17,52 20,52 23,52 26,52 29,52 32,52 35,52 14,56 17,56 20,56 23,56 26,56 29,56 32,56 35,56 14,60 17,60 20,60 23,60 26,60 29,60 32,60 35,60
+group B 0 m 36 cells 120,54 122,54 124,54 126,54 128,54 130,54 120,56 122,56 124,56 126,56 128,56 130,56 120,58 122,58 124,58 126,58 128,58 130,58 120,60 122,60 124,60 126,60 128,60 130,60 120,62 122,62 124,62 126,62 128,62 130,62 120,64 122,64 124,64 126,64 128,64 130,64
+probe claims
+region goal 218 40 240 64
+at 1 move A 230 52

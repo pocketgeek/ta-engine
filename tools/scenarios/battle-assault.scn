@@ -1,0 +1,63 @@
+scn 1
+# battle-assault (the r10 analog): 20 Fight groups x 55 roster-quartile bodies,
+# ten a side, converge through a walled curtain with three gates and fight
+# where they meet, so groups queue at the gates and die in them (death churn).
+# 1100 bodies. The windows the cost tooling reads are start, march, contact and
+# mop-up (tools/legion_cost.py battle); the acceptance is that field work per
+# contact window is at least 4x the march windows (PF-02 bursts). Wall time is
+# reported by the runner, never gated.
+# legion_cost window start 0 100
+# legion_cost window march 100 300
+# legion_cost window contactA 300 2000
+# legion_cost window contactB 2000 4000
+name battle-assault
+ticks 4000
+seed 7
+players 2
+weapons on
+map flat 320 200
+wall 155 0 4 35
+wall 155 45 4 50
+wall 155 105 4 50
+wall 155 165 4 35
+type r roster
+group A0 0 r 55 rect 6 6 61 31 pitch=5
+group A1 0 r 55 rect 6 44 61 69 pitch=5
+group A2 0 r 55 rect 6 82 61 107 pitch=5
+group A3 0 r 55 rect 6 120 61 145 pitch=5
+group A4 0 r 55 rect 6 158 61 183 pitch=5
+group A5 0 r 55 rect 66 6 121 31 pitch=5
+group A6 0 r 55 rect 66 44 121 69 pitch=5
+group A7 0 r 55 rect 66 82 121 107 pitch=5
+group A8 0 r 55 rect 66 120 121 145 pitch=5
+group A9 0 r 55 rect 66 158 121 183 pitch=5
+group B0 1 r 55 rect 194 6 249 31 pitch=5
+group B1 1 r 55 rect 194 44 249 69 pitch=5
+group B2 1 r 55 rect 194 82 249 107 pitch=5
+group B3 1 r 55 rect 194 120 249 145 pitch=5
+group B4 1 r 55 rect 194 158 249 183 pitch=5
+group B5 1 r 55 rect 254 6 309 31 pitch=5
+group B6 1 r 55 rect 254 44 309 69 pitch=5
+group B7 1 r 55 rect 254 82 309 107 pitch=5
+group B8 1 r 55 rect 254 120 309 145 pitch=5
+group B9 1 r 55 rect 254 158 309 183 pitch=5
+at 1 fight A0 @B0
+at 1 fight B0 @A0
+at 1 fight A1 @B1
+at 1 fight B1 @A1
+at 1 fight A2 @B2
+at 1 fight B2 @A2
+at 1 fight A3 @B3
+at 1 fight B3 @A3
+at 1 fight A4 @B4
+at 1 fight B4 @A4
+at 1 fight A5 @B5
+at 1 fight B5 @A5
+at 1 fight A6 @B6
+at 1 fight B6 @A6
+at 1 fight A7 @B7
+at 1 fight B7 @A7
+at 1 fight A8 @B8
+at 1 fight B8 @A8
+at 1 fight A9 @B9
+at 1 fight B9 @A9

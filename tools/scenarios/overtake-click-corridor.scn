@@ -1,0 +1,27 @@
+scn 1
+# Overtaking within one click (2026-11-15; tools/legion_overtake_test.py): the column of overtake-corridor.scn -- 12 bodies
+# single file walking north, slow 2x2 (speed 1.15, an Aramon Archer's) and fast 3x3 (2.9, an Aramon Knight's) mixed --
+# sent with ONE right-click to one point 144 cells ahead, as a player sends a mixed selection. Asset-free.
+# A corridor 4 cells wide for 160 cells, attack-move order: no room to pass; nothing may get worse.
+name overtake-click-corridor
+ticks 5000
+players 1
+weapons off
+map flat 128 200
+wall 0 40 59 160
+wall 63 40 65 160
+type slow mover 2 2500 1 1.15
+type fast mover 3 2500 1 2.9
+group S0 0 slow 1 cells 60,150
+group F1 0 fast 1 cells 60,152
+group F2 0 fast 1 cells 60,155
+group S3 0 slow 1 cells 60,158
+group F4 0 fast 1 cells 60,160
+group S5 0 slow 1 cells 60,163
+group S6 0 slow 1 cells 60,165
+group F7 0 fast 1 cells 60,167
+group S8 0 slow 1 cells 60,170
+group F9 0 fast 1 cells 60,172
+group S10 0 slow 1 cells 60,175
+group F11 0 fast 1 cells 60,177
+at 5 fight S0,F1,F2,S3,F4,S5,S6,F7,S8,F9,S10,F11 60 6

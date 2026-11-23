@@ -1,0 +1,19 @@
+scn 1
+# W3 step 0 fixture (PLAN 3.1 gates, AR-02): the `doorplug` probe. Order A (60 bodies) settles at x=112 beyond an 8-cell door
+# (x 100-103, door z 46-53; its area spills into the door mouth); at tick 3001 order B (60 more) is sent through the door to
+# (200, 50). The probe spawns B on A's start cells after A has left; here B waits 28 cells south of them (z 64-84), spawned at tick 0.
+# Keys: gate.door.crossings (B through the door), g.B.done / complete_*, work.midroute_completions (must stay 0), g.A.complete_n.
+name doorplug-112
+ticks 9000
+seed 7
+map flat 240 100
+wall 100 0 4 46
+wall 100 54 4 46
+type m mover 2 2500 10 1.79999
+group A 0 m 60 cells 14,36 17,36 20,36 23,36 26,36 29,36 32,36 35,36 38,36 41,36 14,40 17,40 20,40 23,40 26,40 29,40 32,40 35,40 38,40 41,40 14,44 17,44 20,44 23,44 26,44 29,44 32,44 35,44 38,44 41,44 14,48 17,48 20,48 23,48 26,48 29,48 32,48 35,48 38,48 41,48 14,52 17,52 20,52 23,52 26,52 29,52 32,52 35,52 38,52 41,52 14,56 17,56 20,56 23,56 26,56 29,56 32,56 35,56 38,56 41,56
+group B 0 m 60 cells 14,64 17,64 20,64 23,64 26,64 29,64 32,64 35,64 38,64 41,64 14,68 17,68 20,68 23,68 26,68 29,68 32,68 35,68 38,68 41,68 14,72 17,72 20,72 23,72 26,72 29,72 32,72 35,72 38,72 41,72 14,76 17,76 20,76 23,76 26,76 29,76 32,76 35,76 38,76 41,76 14,80 17,80 20,80 23,80 26,80 29,80 32,80 35,80 38,80 41,80 14,84 17,84 20,84 23,84 26,84 29,84 32,84 35,84 38,84 41,84
+gate door 102 46 102 54
+line past 104 0 104 100
+region aarea 104 42 120 58
+at 1 move A 112 50
+at 3001 move B 200 50

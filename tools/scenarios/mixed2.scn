@@ -1,0 +1,28 @@
+scn 1
+# Mixed formation, two legs: 48 ground bodies and 16 flyers (one Alt+1 formation)
+# go east round the end of a wall (a 20-cell gap at its south end, the formation
+# turns twice), settle, then the whole formation is sent back west. KNOWN-FAILING
+# on main (IN-06, FL theme): a flyer touches down on a moving ground body in leg 1
+# (illegal footprint, observed as g.F.illegal_overlap_ticks, about 1445 unit-ticks
+# in the world test) and in leg 2 the ground never finishes (g.G.done -1).
+# Source: legion_world_test mixedformationRun with MIXED_GROUND=48 MIXED_FLYERS=16
+# MIXED_SECOND=1 (shipped wall layout). Leg 1 is ordered 300 ticks after the
+# spawn (the test's settle time) and leg 2 at tick 4010 (leg 1 done at 3106 + 600).
+name mixed2
+ticks 9000
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 260 100
+wall 110 8 4 72
+type m mover 2 2500 10 1.79999
+type f flyer 3 1200 1 4 cruise=80
+group G 0 m 48 cells 14,36 17,36 20,36 23,36 26,36 29,36 32,36 35,36 14,40 17,40 20,40 23,40 26,40 29,40 32,40 35,40 14,44 17,44 20,44 23,44 26,44 29,44 32,44 35,44 14,48 17,48 20,48 23,48 26,48 29,48 32,48 35,48 14,52 17,52 20,52 23,52 26,52 29,52 32,52 35,52 14,56 17,56 20,56 23,56 26,56 29,56 32,56 35,56 squad=f1
+group F 0 f 16 cells 16,62 20,62 24,62 28,62 16,66 20,66 24,66 28,66 16,70 20,70 24,70 28,70 16,74 20,74 24,74 28,74 squad=f1
+at 301 move G,F 220 50
+at 4010 move G,F 40 50
+gate mid 100 80 123 100
+line east 150 0 150 100
+region eastgoal 200 30 240 70
+region westgoal 20 30 60 70

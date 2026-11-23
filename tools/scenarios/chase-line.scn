@@ -1,0 +1,23 @@
+scn 1
+# AR-07 (PLAN 3.4): a chase re-seeds its group every ~16 ticks. 1 chaser with a 15-body line of idle friendly bodies across its way (audit: Retail stalls at the line, Legion rounds it with 0 holds).
+# The target (T) walks east at the chasers' own speed (harvested-body `spots` with one speed, no spawn roll), so a
+# chaser never closes in and the Attack order's goal moves all run. Today: one registration and one field per
+# re-seed (audit, 1 chaser, 900 ticks: 54 registrations, 55 fields, 6.0M relaxations, 1.65 ms re-seed ticks).
+# PLAN: registrations 54 -> 1; fields 55 -> <= 15; per-tick field relaxations (work.field_work.max) <= 40% of base.
+name chase-line
+ticks 900
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 400 120
+type c mover 2 2500 10 1.79999 gun=96,1,1.0
+type t mover 2 2500 10 1.79999 hp=30000
+group C 0 c 1 spots 31457280,62914560,16384,0,117964 weapons=on
+group T 1 t 1 spots 73400320,62914560,16384,0,117964 weapons=off
+type w mover 2 2500 10 1.79999
+group W 0 w 15 cells 70,26 70,30 70,34 70,38 70,42 70,46 70,50 70,54 70,58 70,62 70,66 70,70 70,74 70,78 70,82
+at 1 move T 390 60
+at 2 attack C @T
+reach chase C T marks=450

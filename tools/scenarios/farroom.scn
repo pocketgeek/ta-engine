@@ -1,0 +1,21 @@
+scn 1
+# 2026-10-14 Legion review, item 4: a dead-end room entered from its FAR side. doorplug-124's block of 60 (x 14-41,
+# z 36-56) is sent to the middle of a 30x30 room (interior x 150-179, z 35-64; walls 2 cells thick) whose one door is
+# 6 cells wide in its east wall (z 47-52), so the way in runs round the room and turns the formation's order over:
+# the formation gives the front of the block (the first bodies through the door) the slots beside the door, the
+# rest settle outside it. On the parent 22 to 37 bodies never get in, at every gate offset; Retail completes at four
+# of the core five. Keys: g.A.arrived / left_behind / done, region.room.inside, gate.door.crossings.
+name farroom
+ticks 9000
+seed 7
+map flat 240 110
+wall 148 33 34 2
+wall 148 65 34 2
+wall 148 35 2 30
+wall 180 35 2 12
+wall 180 53 2 12
+type m mover 2 2500 10 1.79999
+group A 0 m 60 cells 14,36 17,36 20,36 23,36 26,36 29,36 32,36 35,36 38,36 41,36 14,40 17,40 20,40 23,40 26,40 29,40 32,40 35,40 38,40 41,40 14,44 17,44 20,44 23,44 26,44 29,44 32,44 35,44 38,44 41,44 14,48 17,48 20,48 23,48 26,48 29,48 32,48 35,48 38,48 41,48 14,52 17,52 20,52 23,52 26,52 29,52 32,52 35,52 38,52 41,52 14,56 17,56 20,56 23,56 26,56 29,56 32,56 35,56 38,56 41,56
+gate door 180 47 180 53
+region room 150 35 180 65
+at 1 move A 165 50

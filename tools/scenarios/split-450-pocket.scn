@@ -1,0 +1,19 @@
+scn 1
+# One click of 450 bodies (footprint 2, 26 per row at pitch 3, x 60-135, z 108-159)
+# sent to a point far east, out of a pocket: wall A (x 138-143, z 60-174) closes its east side down to wall B (x 138-427, z 174-185), so the way out is past the underside of B.
+# The click is ONE selection of 450: issueSelection lands it as the client does,
+# 64 commands per tick over ticks 1-8, so Legion makes eight 64-body formations
+# (seven of 64 and one of 2). Analog of the legion-r9 61930 jam and, for the
+# pocket, of the committed `pocket` probe (615 bodies there: 0 arrived by 2000).
+# Position and click are the probe's: click (461, 206).
+name split-450-pocket
+ticks 4000
+seed 7
+map flat 640 300
+wall 138 60 6 115
+wall 138 174 290 12
+type m mover 2 2500 10 1.79999
+group A 0 m 450 rect 60 108 138 165 pitch=3
+region goal 441 186 481 226
+line far 300 0 300 300
+at 1 move A 461 206

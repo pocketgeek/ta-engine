@@ -1,0 +1,24 @@
+scn 1
+# Head-on at scale: two opposing formations of 200 (enemy players, sight 4096 so
+# each sees the other) cross in a 98-cell corridor (z 42-139). Group awareness
+# should have them plan round each other as wholes. Sibling of aware-headon at
+# 8x the size (plan 3.8 'densehead').
+name densehead
+ticks 4000
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 260 180
+wall 0 40 260 2
+wall 0 140 260 2
+type m mover 2 2500 10 1.79999
+group A 0 m 200 rect 10 60 40 120 pitch=3
+group B 1 m 200 rect 220 60 250 120 pitch=3
+at 1 move A 235 90
+at 1 move B 25 90
+gate mid 130 42 130 139
+line farA 200 0 200 180
+line farB 60 0 60 180
+region goalA 215 60 255 120
+region goalB 5 60 45 120

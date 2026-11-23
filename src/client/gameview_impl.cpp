@@ -51,20 +51,6 @@
         if (crusades_)
             std::fprintf(stderr, "balance: Crusades (unitscb roster, standard canbuild)%s\n",
                          vfs_.list("unitscb").empty() ? " -- NOT FOUND" : "");
-        // DEV PATH ONLY -- this is the standalone viewer, which does not call
-        // setupMatch and so never runs retail's god roll (the 10% GameChance and the
-        // random 30-60min draw ported at matchsetup.cpp). It deliberately turns gods
-        // ON every time and uses AppearTimeMin flat, because a dev harness that has
-        // to lose a dice roll nine times out of ten to exercise gods is useless.
-        // TA_GODTIME overrides the appear time in seconds. Not the real mechanic.
-        try {
-            auto g = vtdf("gamedata/gods.tdf");
-            if (const auto* tm = g.child("TIMING")) {
-                float appear = float(tm->numberOr("AppearTimeMin", 30.0)) * 60.0f;
-                if (const char* e = ta::devEnv("TA_GODTIME")) appear = std::stof(e);
-                writableWorld().enableGods(appear);
-            }
-        } catch (const std::exception&) {}
         loadTextures();
         mapView_.setZoom(0.9f);
         loadInterfaceFonts();
@@ -962,19 +948,6 @@
         }
         }
         profSimTicks_ += int64_t(SDL_GetPerformanceCounter()) - _sim0;
-        // God economy: the SIM summons gods now (World::summonReadyGods, called from
-        // tick), so all this does is announce one. It used to do the summoning here,
-        // which meant the spawn happened on every client and never on the referee --
-        // the server's world ran one unit short from the first summon onward and the
-        // hashes split for the rest of the match.
-        if (world_.godsEnabled())
-            for (int t = 0; t < world_.numPlayers(); ++t)
-                if (world_.player(t).godSummoned && !godAnnounced_[size_t(t) & 7]) {
-                    godAnnounced_[size_t(t) & 7] = true;
-                    if (!hudFont_.ok()) continue;
-                    postNotice(t == localPlayer_ ? "YOUR GOD HAS ANSWERED"
-                                                 : "AN ENEMY GOD RISES", 6);
-                }
         // Scenario (.crt) "Display" actions: surface the sim runner's messages as
         // HUD notices for the viewing player. Drained on the sim thread (same as
         // scenario step, so no race on its queue); postNotice defers to main.
@@ -1438,8 +1411,7 @@
             const auto& pl = world_.player(p);
             PlayerR& r = fb.players[size_t(p)];
             r.captureEconomy(pl);
-            if (pl.godType) r.side = pl.godType->side;
-            else {
+            {
                 r.side = pf.players[size_t(p)].side;
                 if (r.side.empty()) for (const auto& unit : world_.units())
                     if (unit.player == p && unit.type && !unit.type->side.empty()) {
@@ -1452,7 +1424,7 @@
             r.built = pl.built; r.losses = pl.losses; r.score = pl.score;
             // sim keeps these in TICKS now; the scoreboard wants seconds.
             r.defeatedAt = pl.defeatedAt < 0 ? -1.0f : float(pl.defeatedAt) / 30.0f;
-            r.team = pl.team; r.defeated = pl.defeated; r.godSummoned = pl.godSummoned;
+            r.team = pl.team; r.defeated = pl.defeated;
             r.emoteSequence = pl.emoteSequence;
             r.emoteDisco = pl.emoteDisco;
         }

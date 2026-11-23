@@ -1,0 +1,24 @@
+scn 1
+# AR-06 (PLAN 3.4, W5 steps 1): Attack/Guard members behind their own front hold out of weapon range for ever.
+# N attackers (an 8-column block) 110 cells west of ONE stationary enemy, all given the same Attack (or Guard /
+# Fight) order; the observer's `reach` shape counts how many ever get a shot (reach.ring.ever_*), how many stand
+# out of range for 600 ticks (out600), the damage dealt (a regeneration is never credited back) and the longest
+# Legion Holding run out of reach (hold_out_max; hold0_max at field potential 0). Mechanism (audit AR-06): the
+# shared field single-files the blob onto one row, only the head of the line is in range, and a shooter's
+# braking is invisible to the settle rule. Source: the audit's attackring probe ($SCR/ar06/attackring.cpp).
+# Row: 60 attackers vs a STRUCTURE (a 4x4 house, reach = range + 8*4 + 24 px). PLAN: in reach by tick 2400 2/60 -> >= 40/60
+# (Retail 50); damage at 80 s (tick 2400) 1565 -> >= 15k with 10-damage shots.
+name attackring-struct-60
+ticks 3000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 200 160
+type a mover 1 2500 10 1.8 gun=96,10,1.0
+type tgt structure 4 4 hp=30000
+group A 0 a 60 rect 20 74 40 86 pitch=2 weapons=on
+group T 1 tgt 1 cells 130,80 weapons=off
+reach ring A T marks=1200,2400
+at 1 attack A @T

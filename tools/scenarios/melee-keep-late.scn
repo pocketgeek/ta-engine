@@ -1,0 +1,23 @@
+scn 1
+# Four Spirit Wolves ordered one at a time, 45 ticks apart, onto an Aramon Barracks (arakeep,
+# 7x12) from the south: each late attacker walks to its own free origin on the rectangle.
+name melee-keep-late
+ticks 1200
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 140 140
+type w fbi zonwolf
+type keep fbi arakeep
+group W1 0 w 1 cells 60,110 weapons=on
+group W2 0 w 1 cells 60,114 weapons=on
+group W3 0 w 1 cells 63,110 weapons=on
+group W4 0 w 1 cells 63,114 weapons=on
+group K 1 keep 1 cells 60,60 weapons=off
+reach R W1,W2,W3,W4 K marks=300,600,900
+at 1 attack W1 @K
+at 46 attack W2 @K
+at 91 attack W3 @K
+at 136 attack W4 @K

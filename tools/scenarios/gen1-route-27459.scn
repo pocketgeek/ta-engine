@@ -1,0 +1,22 @@
+scn 1
+name gen1-route-27459
+# The user's map (the ~gen1~ recipe of the legion-r9 replay) and one of its seven big army orders:
+# the right-click at tick 27459 of that game, 62 real ground units placed where the replay had them one
+# tick earlier (floored to cells), unarmed, Crusades balance, order issued through the client's
+# HUD split. Armies stand idle; the other players' bases and units are not placed. Data-gated.
+# Harvest: legion-r9 replayed on 02aa55a (exact), unit positions dumped at tick 27458.
+# Route start 471,196 .. 539,219 cells; click 318,206.
+ticks 6500
+seed 1
+players 8
+crusades on
+wanderers off
+map gen1 ~gen1~0a0001000000000000000100030003020000ff60800300000000
+type zontroll fbi zontroll
+type zongob fbi zongob
+type zonter fbi zonter
+group g_zontroll 0 zontroll 25 cells 532,203 520,212 530,205 529,207 532,202 528,208 531,209 526,209 525,207 527,206 528,203 527,210 533,209 529,198 529,211 529,196 531,211 534,208 534,211 536,208 537,207 538,206 539,204 537,209 537,200
+group g_zongob 0 zongob 19 cells 482,206 478,209 480,211 476,209 478,211 479,208 482,211 474,210 478,213 475,207 480,213 475,211 483,212 480,206 483,210 482,209 473,212 472,213 471,212
+group g_zonter 0 zonter 18 cells 500,212 507,216 505,200 506,199 505,215 506,214 503,215 505,217 503,217 509,217 500,214 505,219 509,215 507,219 499,216 510,218 501,213 509,219
+region goal 294 182 342 230
+at 1 move g_zontroll,g_zongob,g_zonter 318 206

@@ -1,0 +1,69 @@
+scn 1
+# The ragged corner of the legion-r9 jam (the parked pinwheel2 `pinwheelcorner`
+# case). Wall A is a block (x 80-119, z 60 to the bottom edge) whose top face and
+# west face carry stray rock cells 1-3 cells off the face, like generated
+# cliffs; wall B is a north-south wall (x 150-153, z 0-77) whose south end is
+# lower than A's top. The shortest way meets A's top-left corner diagonally,
+# runs along A's top pinned between A's two top corners, then turns the OTHER
+# way (north) round B's end to the click at (190, 25).
+# Gates: `top` is the strip over A's top (x 84-116, z 30-59: the source's
+# files); `east` is the first column past B's north end (x >= 154).
+# Bodies are footprint 2; speed 1.79999 builds the source's raw 117964 speed
+# (1.8 rounds to 117965).
+# W8 step 0 (the plan's `8x30 multi-group corner`): corner-8x56 with eight selections of 30 (5x6 blocks, 240 bodies)
+# on ticks 1-8, in the same 3x3 layout west of A. Groups of 30 are above the 16 members lanes need, so the
+# corner lanes act on each group on its own (one Point per selection), and a rank per group is what S1 changes.
+name corner-8x30
+ticks 9000
+# The gate offsets (W3 round 4, ruling (a)): -5 / +5 spawn groups A / G off the map, so nine.
+gateoffsets 0,1,-1,2,-2,3,-3,4,-4
+probe lanes
+seed 7
+map flat 220 170
+wall 80 60 40 110
+wall 150 0 4 78
+wall 81 58 1 1
+wall 86 57 1 1
+wall 91 59 1 1
+wall 96 58 1 1
+wall 101 57 1 1
+wall 106 59 1 1
+wall 111 58 1 1
+wall 116 57 1 1
+wall 78 59 1 1
+wall 79 57 1 1
+wall 77 61 1 1
+wall 76 64 1 1
+wall 79 66 1 1
+wall 78 73 1 1
+wall 77 80 1 1
+wall 79 87 1 1
+wall 78 94 1 1
+wall 77 101 1 1
+wall 79 108 1 1
+wall 78 115 1 1
+wall 77 122 1 1
+wall 79 129 1 1
+wall 78 136 1 1
+wall 77 143 1 1
+wall 79 150 1 1
+wall 78 157 1 1
+type m mover 2 2500 10 1.79999
+group A 0 m 30 rect 4 90 19 108 pitch=3
+group B 0 m 30 rect 28 90 43 108 pitch=3
+group C 0 m 30 rect 52 90 67 108 pitch=3
+group D 0 m 30 rect 4 117 19 135 pitch=3
+group E 0 m 30 rect 28 117 43 135 pitch=3
+group F 0 m 30 rect 52 117 67 135 pitch=3
+group G 0 m 30 rect 4 144 19 162 pitch=3
+group H 0 m 30 rect 28 144 43 162 pitch=3
+gate top 84 30 117 60
+line east 154 0 154 170
+at 1 move A 190 25
+at 2 move B 190 25
+at 3 move C 190 25
+at 4 move D 190 25
+at 5 move E 190 25
+at 6 move F 190 25
+at 7 move G 190 25
+at 8 move H 190 25

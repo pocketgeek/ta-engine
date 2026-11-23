@@ -1,0 +1,41 @@
+scn 1
+# S-bend (audit MV-13 `sbend` probe): two opposite turns 12 cells apart. Wall 1
+# (x 98-101, z 48 to the bottom edge) is rounded over its top (a right turn);
+# wall 2 (x 150-153, z 0-81) is then rounded under its bottom end (a left turn)
+# to the click. 48 footprint-2 bodies in one formation start west of wall 1.
+# The pinwheel takes ranks once per order, so the second turn meets stale
+# ranks: lane-order swaps at the second vertex (63/343 pairs, 18.4%) and 10 hug
+# carry-overs on main.
+# Gates: `t1` is the strip over wall 1's end (source files1, x 97-102 z < 48),
+# `t2` the strip under wall 2's end (source files2, x 149-154 z >= 82; here x 149-156); each
+# gate's crossings are the runner's pw.py flips (kept separate from the lane-order swaps below).
+# W8 step 0 probes (the audit's lane-order swaps and hug, now in the observer): `swaps1` / `swaps2` are the
+# probe's lane-order swaps at each vertex, pairs entering within 300 ticks that flip by 2+ cells. The probe
+# read the first time a body satisfied (z < 48 and x >= 97) and (z < 80 and x >= 120) at turn 1, and
+# (z >= 82 and x >= 140) and (z <= 70 and x >= 156) at turn 2; those are first entries of the vertical
+# lines x=97 (z 0-47) and x=120 (z 0-79), and x=140 (z 82-159) and the horizontal line z=70 (x 156-239).
+# Larger lateral = inner at turn 1 and = outer at turn 2, so both lines count the lateral cell as it is (sign
+# 1): a kept order means no swap. `swaps1` is the single-turn control (the audit read 5.6% on a one-turn
+# start). `hug`: a body hugs a vertex when its lateral cell on first entering that vertex's before-line is
+# within 2 cells of the tip (turn 1: z 47; turn 2: z 82); hug.sb.carry is the bodies that hug both. The audit's
+# own hug carry-over (10 of 48 at b8a4110) read the pinwheel's rank (pivotR = -1) at turn 2, state the
+# observer cannot see; this geometric hug is the observable proxy and is re-recorded at the W8 base.
+# Speed 1.79999 builds the source's raw 117964 speed (1.8 rounds to 117965).
+# Source numbers (main b8a4110, offset 0): done 3670, files1 1.44, files2 2.93,
+# reversals 15.
+name sbend
+ticks 6000
+seed 7
+map flat 240 160
+wall 98 48 4 112
+wall 150 0 4 82
+type m mover 2 2500 10 1.79999
+group A 0 m 48 rect 40 96 64 114 pitch=3
+gate t1 101 0 101 47
+gate t2 153 82 153 159
+line east 156 0 156 160
+lane swaps1 97 0 97 48 120 0 120 80
+lane swaps2 140 82 140 160 156 70 240 70
+hug sb 97 0 97 48 140 82 140 160 tip1=47 tip2=82
+probe lanes
+at 1 move A 200 30

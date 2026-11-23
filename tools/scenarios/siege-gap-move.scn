@@ -1,0 +1,27 @@
+# siege-gap-move: siege-gap with a second order behind the first. 36 bodies on an attack-move order fire on the
+# enemy body in the gap (hp 9,000, unarmed); 24 bodies on a plain move order to the same click, unarmed, come up
+# behind them at tick 300 and wait in the queue until the target is dead.
+# The move order's bodies wait on bodies that wait on the firing line: liveness is handed on from blocker to
+# blocked, so they are live as long as the line fires. With the firing line read as dead they stood down with it
+# (at offset 1, 23 of the 24 lost their order; 55, 25 and 58 of 60 arrived at offsets 0, 1, -1; all 60 without the
+# rule).
+# Keys: g.A.arrived (36), g.M.arrived (24), scale.complete_outside_n (0).
+scn 1
+name siege-gap-move
+ticks 14000
+seed 7
+players 2
+team 0 0
+team 1 1
+wanderers off
+map flat 220 160
+wall 128 0 4 79
+wall 128 81 4 79
+type a mover 1 2500 10 1.8 gun=96,1,1.0
+type tgt mover 2 2500 10 1.8 hp=9000
+group A 0 a 36 rect 20 74 32 86 pitch=2 weapons=on
+group M 0 a 24 rect 4 74 12 86 pitch=2 weapons=off
+group T 1 tgt 1 cells 128,79 weapons=off
+reach ring A T marks=1200,2400
+at 1 fight A 180 80
+at 300 move M 180 80

@@ -1,0 +1,16 @@
+scn 1
+# Refresh under constant static churn (RB-05): CONTROL HALF. The same geometry as refreshchurn.scn without the
+# churn: a 1024x1024 map, a long wall, eight movers ordered round its far end. work.refresh_completed.total is
+# absent (0) and one field is built. refreshchurn.scn adds the churn.
+name refreshchurn-control
+ticks 900
+seed 7
+players 2
+team 0 0
+team 1 1
+map flat 1024 1024
+wall 0 614 921 4
+type m mover 2 2500 10 1.79999
+group M 0 m 8 cells 20,100 24,100 28,100 32,100 20,104 24,104 28,104 32,104
+at 1 move M 60 716
+region goal 40 700 90 740
