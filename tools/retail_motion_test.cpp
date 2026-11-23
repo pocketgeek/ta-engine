@@ -743,19 +743,15 @@ int main(int argc, char** argv) {
         world.unit(id)->heading=Bam(0);world.order(id,512,900,false);
         world.updateNavigationExploration();
         world.updateGroundTerrainFlags(*world.unit(id));
+        world.unit(id)->groundSpeedMode=2;world.unit(id)->groundMovementMode=1;
         world.tickNavigationMovement(*world.unit(id),world.unit(id)->baseSpeed);
-        check(world.unit(id)->groundSpeedMode==(shore?2:1) && world.unit(id)->groundScanTick==unsigned(shore?18:12),
-              shore?"boat shoreline scan selects strong slowdown and triple interval":
-                    "boat unexplored-water scan selects moderate slowdown and double interval");
-        if (!shore) {
-            UnitType spotter=boat;spotter.id="spotter";spotter.canFly=true;spotter.sight=256;
-            const int spotterId=world.spawn(&spotter,512,640,{},1);
-            world.unit(spotterId)->flightGroundMode=2;
-            world.updateNavigationExploration();world.unit(id)->groundScanTick=0;
-            world.tickNavigationMovement(*world.unit(id),world.unit(id)->baseSpeed);
-            check(world.unit(id)->groundSpeedMode==0 && world.unit(id)->groundScanTick==6,
-                  "boat uses its owner's exploration and clears slowdown after the route is revealed");
-        }
+        // TotalA.exe has no ground scan (docs/retail-pathfinding.md change 15):
+        // unexplored water or a shoreline never slows a Retail boat, and the
+        // steering threshold stays at 80px (movement mode 0).
+        check(world.unit(id)->groundSpeedMode==0 && world.unit(id)->groundMovementMode==0 &&
+              world.unit(id)->groundScanTick==0,
+              shore?"Retail: a shoreline scan never slows a boat (no ground scan)":
+                    "Retail: unexplored water never slows a boat (no ground scan)");
     }
     {
         World world;
@@ -767,9 +763,11 @@ int main(int argc, char** argv) {
         const int id=world.spawn(&type,512,512);
         world.unit(id)->baseSpeed=Fixed::fromInt(4);world.unit(id)->heading=retailHeadingToPort(0);
         world.order(id,900,512,false);world.tick(1.0f/30.0f);
-        check(portHeadingToRetail(world.unit(id)->heading)==uint16_t(-1500) &&
-              world.unit(id)->speed==Fixed::fromRetailNumber(0.75),
-              "live road movement scales turning and acceleration together");
+        // TotalA.exe 0x43cd20 has no road multiplier: turn rate and
+        // acceleration are the type's own on a road too.
+        check(portHeadingToRetail(world.unit(id)->heading)==uint16_t(-1000) &&
+              world.unit(id)->speed==Fixed::fromRetailNumber(0.5),
+              "Retail: a road scales neither turning nor acceleration");
     }
     {
         World world;UnitType type;type.turnRate=65535;type.roadMult=Fixed::fromInt(2);
@@ -872,8 +870,9 @@ int main(int argc, char** argv) {
         check(u.x.v==120*65536-1 && u.z==Fixed::fromInt(96) && u.speed==Fixed::fromInt(2) && u.bodyBlockStreak==1,
               "first refused rectangular step clamps to its original cell and halves speed");
         world.commitGroundStep(u,Fixed::fromInt(16),Fixed());
-        check(u.x.v==120*65536-1 && u.speed.v==4*65536/5 && u.bodyBlockStreak==2,
-              "repeated refusal retains ownership and caps speed at one fifth");
+        // TotalA.exe 0x43d7ff: every refusal caps at maxvelocity/2 (no /5).
+        check(u.x.v==120*65536-1 && u.speed==Fixed::fromInt(2) && u.bodyBlockStreak==2,
+              "repeated refusal retains ownership and caps speed at one half");
         const auto before=u.x;
         world.commitGroundStep(u,Fixed::fromInt(-1),Fixed());
         check(u.x==before-Fixed::fromInt(1) && u.bodyBlockStreak==2,
@@ -1446,9 +1445,10 @@ int main(int argc, char** argv) {
         u->orders.insert(u->orders.begin(),corner);
         u->groundScanTick=0;
         world.tick(1.0f/30.0f);
-        check(world.unit(id)->orders.size()==size_t(blocked ? 2 : 1),
+        // TotalA.exe has no clear-ground scan (change 15): the corner stays.
+        check(world.unit(id)->orders.size()==2,
               blocked ? "nearby impassable footprint preserves the corner" :
-                        "clear-ground scan removes a nearby corner before steering");
+                        "Retail: no clear-ground scan, a nearby corner is kept");
     }
     const auto hunterStep = retailGroundStep(retailHeadingToPort(5692), Fixed::raw(106521));
     check(hunterStep.s.v == -54769 && hunterStep.c.v == -91372,
@@ -1480,7 +1480,9 @@ int main(int argc, char** argv) {
     }
     {
         World world;
-        world.setTerrain(std::vector<uint8_t>(128 * 64, 100), 128, 64, 20);
+        // Sea level 0: this mover has no ground support, so its groundY stays
+        // 0 and a positive sea level would halve its cap (TA under water).
+        world.setTerrain(std::vector<uint8_t>(128 * 64, 100), 128, 64, 0);
         UnitType mover;
         mover.canMove = true;
         mover.maxVel = mover.brake = Fixed::fromInt(2);

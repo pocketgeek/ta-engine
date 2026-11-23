@@ -1064,15 +1064,31 @@ void World::updateGroundTerrainFlags(Unit& u) const {
 }
 
 Fixed World::groundTerrainMultiplier(const Unit& u) const {
+    // TotalA.exe has no road or water multiplier on speed, brake or turn
+    // (0x43cd20); under water only the speed cap halves (retailUnderwaterCap).
+    if (pathfindingMode_==PathfindingMode::Retail) return Fixed::fromInt(1);
     return u.groundTerrainFlags&0x800?u.type->roadMult:
            u.groundTerrainFlags&0x1000?u.type->waterMult:Fixed::fromInt(1);
+}
+
+// TotalA.exe speed cap 0x43cc20: halved while the unit is below sea level,
+// unless it is canhover or floater (UnitType+0x241 & 0x81000).
+Fixed World::retailUnderwaterCap(const Unit& u,Fixed cap) const {
+    if (pathfindingMode_!=PathfindingMode::Retail || u.type->canHover || u.type->floater ||
+        heights_.empty()) return cap;
+    // The ground under the unit itself: groundY is only kept for supported types.
+    const int ground=retailTerrainHeight(u.x.v,u.z.v,terW_,terH_,[&](int cx,int cz) {
+        return heights_[size_t(cz)*size_t(terW_)+size_t(cx)];
+    });
+    if (ground>=seaLevel_) return cap;
+    return Fixed::raw(cap.v/2);
 }
 
 void World::brakeGround(Unit& u,std::optional<Bam> facing) {
     const Fixed multiplier=groundTerrainMultiplier(u);
     u.turnReqBam=0;
-    u.speed=fxMin(retailGroupMaximum_>Fixed() ? retailGroundPitchCap(retailGroupMaximum_,u.groundPitch)
-                  : retailGroundSpeedCap(u.baseSpeed*multiplier,u.groundPitch,u.groundSpeedMode),
+    u.speed=fxMin(retailUnderwaterCap(u,retailGroupMaximum_>Fixed() ? retailGroundPitchCap(retailGroupMaximum_,u.groundPitch)
+                  : retailGroundSpeedCap(u.baseSpeed*multiplier,u.groundPitch,u.groundSpeedMode)),
         fxMax(Fixed(),u.speed-u.type->brake*multiplier));
     if (facing && u.speed==Fixed()) {
         const int32_t diff=retailTurnRequest(*facing,u.heading);
@@ -1106,8 +1122,8 @@ SinCos World::steerGround(Unit& u,RetailSteeringPoint start,RetailSteeringPoint 
         u.groundMovementMode==0 ? &aim : nullptr,u.groundMovementMode==0 ? direction : -1);
     // 4d95f0: a paced group member's capped maximum replaces the speed-mode
     // scaled one (retail skips the mode factor there); pitch still applies.
-    u.speed=fxMin(retailGroupMaximum_>Fixed() ? retailGroundPitchCap(retailGroupMaximum_,u.groundPitch)
-                  : retailGroundSpeedCap(effectiveMaximum,u.groundPitch,u.groundSpeedMode),
+    u.speed=fxMin(retailUnderwaterCap(u,retailGroupMaximum_>Fixed() ? retailGroundPitchCap(retailGroupMaximum_,u.groundPitch)
+                  : retailGroundSpeedCap(effectiveMaximum,u.groundPitch,u.groundSpeedMode)),
                   fxMax(Fixed(),u.speed+delta));
     return retailGroundStep(u.heading,u.speed);
 }
@@ -1160,12 +1176,19 @@ void World::commitGroundStep(Unit& u,Fixed dx,Fixed dz,bool strictDiagonal) {
         groundStamp(u);
     } else {
         u.bodyBlockStreak=std::min(u.bodyBlockStreak+1,2);
-        const bool repeated=u.bodyBlockStreak>=2;
-        u.x=footprintClamp(u.x,px,fx,repeated);
-        u.z=footprintClamp(u.z,pz,fz,repeated);
+        // TotalA.exe cell entry 0x43d7ff: on refusal, clamp to within half a cell
+        // of the current cell centre, cap speed at maxvelocity/2 and flag the
+        // mover blocked (bodyBlockStreak), which asks the navigator for a path
+        // through the 60-tick gate. Kingdoms tightened both on a repeat.
+        const bool repeated=pathfindingMode_!=PathfindingMode::Retail && u.bodyBlockStreak>=2;
+        const bool halfCell=pathfindingMode_==PathfindingMode::Retail || repeated;   // +-8px about the centre
+        u.x=footprintClamp(u.x,px,fx,halfCell);
+        u.z=footprintClamp(u.z,pz,fz,halfCell);
         Fixed base=u.baseSpeed;
-        if (u.groundTerrainFlags&0x800) base=base*u.type->roadMult;
-        else if (u.groundTerrainFlags&0x1000) base=base*u.type->waterMult;
+        if (pathfindingMode_!=PathfindingMode::Retail) {
+            if (u.groundTerrainFlags&0x800) base=base*u.type->roadMult;
+            else if (u.groundTerrainFlags&0x1000) base=base*u.type->waterMult;
+        }
         u.speed=fxMin(u.speed,Fixed::raw(base.v/(repeated?5:2)));
     }
     updateBodyIndex(u);
@@ -1715,7 +1738,7 @@ void World::dropLeg(Unit& u) {
     if (u.orders[end].groundMission || u.orders[end].buildRectangle) {
         // Detachment keeps a recent admission, otherwise clears it to zero.
         // A -1 sentinel suppresses the next mission's native retry RNG draw.
-        if (u.orders[end].controller && uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+        if (u.orders[end].controller && uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
     } else u.routeStamp=-1;
     u.orders.erase(u.orders.begin(), u.orders.begin() + long(end) + 1);
     noteOrders(u.id);
@@ -1855,7 +1878,7 @@ void World::insertOrderFront(int unitId, bool rally, const std::function<void()>
     {
         const Order& cur = u->orders[currentLeg(u->orders)];
         if (cur.groundMission || cur.buildRectangle) {
-            if (cur.controller && uint32_t(u->routeStamp) <= tickCounter_ - 6u) u->routeStamp = 0;
+            if (cur.controller && uint32_t(u->routeStamp) <= tickCounter_ - 10u) u->routeStamp = 0;
         } else u->routeStamp = -1;
     }
     size_t first = 0;
@@ -2103,7 +2126,7 @@ void World::order(int unitId, float x, float z, bool queue, ConvoyClass cls, std
     if (!queue || u->orders.size() == 1) {
         // Replacing the controller cancels its work, but does not bypass the
         // fifteen-tick admission interval after a very recent search.
-        if (u->routeStamp<0 || uint32_t(u->routeStamp)<=tickCounter_-6u) u->routeStamp=0;
+        if (u->routeStamp<0 || uint32_t(u->routeStamp)<=tickCounter_-10u) u->routeStamp=0;
         requestPath(*u, x, z);
     }
 }
@@ -4062,7 +4085,7 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                         // route endpoint, as 4e2500 does when it rebuilds the circle.
                         resetGroundSegment(u,goal);
                         m.pending&=~0x700u;
-                        if(uint32_t(u.routeStamp)<=w.tickCounter_-6u)u.routeStamp=0;
+                        if(uint32_t(u.routeStamp)<=w.tickCounter_-10u)u.routeStamp=0;
                         w.requestPath(u,goal.x.toFloat(),goal.z.toFloat());
                     });
                 // A blocked transfer resets the combined unload to stage 1.
@@ -4105,7 +4128,7 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                         goal.segmentX=Fixed::fromInt(u.x.floorInt());goal.segmentZ=Fixed::fromInt(u.z.floorInt());
                         goal.hasSegment=true;goal.navigationExhausted=false;goal.navigationConsumed=false;goal.controller=++w.nextMovementController_;
                         m.pending&=~0x3700u;w.cancelPath(u);
-                        if (uint32_t(u.routeStamp)<=w.tickCounter_-6u) u.routeStamp=0;
+                        if (uint32_t(u.routeStamp)<=w.tickCounter_-10u) u.routeStamp=0;
                         w.requestPath(u,goal.x.toFloat(),goal.z.toFloat());
                     });
             }
@@ -4130,7 +4153,7 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 }
                 // Controller reset also invalidates stamps older than six
                 // ticks, with the executable's unsigned comparison.
-                if (uint32_t(u.routeStamp)<=w.tickCounter_-6u) u.routeStamp=0;
+                if (uint32_t(u.routeStamp)<=w.tickCounter_-10u) u.routeStamp=0;
                 // 4e54e0 cancels the old search, then 4e4f50(1) marks
                 // the replacement controller pending. Retaining the stamp
                 // alone loses this request until some later retry happens.
@@ -4273,6 +4296,15 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             // never "arrive" because repeated failures enlarged its circle.
             if(w.legion_&&isLegionPathfinding(w.pathfindingMode_)&&w.legion_->supports(u))
                 events&=~0x2600u;
+            else if (w.pathfindingMode_==PathfindingMode::Retail) {
+                // TotalA.exe: a plain move waits on arrived / failed / replaced
+                // (mask 0xe0, 0x403244). An empty route while unsatisfied (here
+                // 0x200, deliverSearchRoute) ends the move (TA's 0x40); a partial
+                // route is walked and re-asked through the 60-tick gate. No
+                // Kingdoms radius growth (docs/retail-pathfinding.md D16).
+                if (events&0x200) events=(events&~0x2700u)|0x100u;
+                else events&=~0x2600u;
+            }
             const int result=retailGroundMove(m,goal.missionRadius,w.tickCounter_,events,
                 int16_t(u.type->footX),u.embarked(),response.mode,uint8_t(u.moveState),[&](int n) { return random(n); },
                 resetGoal,[&] {
@@ -4416,8 +4448,8 @@ void World::refreshSearchRequest(int id,PathCell& start,int& heading,RetailCostS
 bool World::admitSearchRequest(int id,uint32_t now) {
     Unit* u=unit(id);
     if (!u || !u->alive()) return false;
-    // 4e54a0 stamps a pending request before execution, at least 15 ticks
-    // after the preceding admission. Suspended work bypasses this callback.
+    // TotalA.exe wantsPath 0x44f260: at most one request every 60 ticks; a new
+    // goal clears the stamp when the last request is 10+ ticks old (0x44f2a0).
     uint32_t stamp=u->routeStamp<0 ? 0u : uint32_t(u->routeStamp);
     if (!retailAdmitNavigator(true,now,stamp)) return false;
     u->routeStamp=std::bit_cast<int32_t>(stamp);
@@ -5443,7 +5475,7 @@ bool World::tickTransport(Unit& u, float dt) {
             o.navigationExhausted=false;
             if(!retain)resetGroundSegment(u,o);
             cancelPath(u);
-            if(uint32_t(u.routeStamp)<=tickCounter_-6u)u.routeStamp=0;
+            if(uint32_t(u.routeStamp)<=tickCounter_-10u)u.routeStamp=0;
             if(!retain && pickupLeg)u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg));
             const auto& goal=u.orders[currentLeg(u.orders)];
             requestPath(u,goal.x.toFloat(),goal.z.toFloat());
@@ -5480,7 +5512,7 @@ bool World::tickTransport(Unit& u, float dt) {
             o.navigationExhausted=false;
             if(!retain)resetGroundSegment(u,o);
             cancelPath(u);
-            if(uint32_t(u.routeStamp)<=tickCounter_-6u)u.routeStamp=0;
+            if(uint32_t(u.routeStamp)<=tickCounter_-10u)u.routeStamp=0;
             discardPrefix=!retain;request=true;
         };
         for(unsigned calls=0;calls<100;++calls) {
@@ -7812,7 +7844,7 @@ bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
         if (isLegionPathfinding(pathfindingMode_)) move.setIdentity(stampIdentity(u,ConvoyClass::Move,x,z));
         u.orders.insert(u.orders.begin(),move);
         resetGroundSegment(u,u.orders.front());
-        if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+        if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
         requestPath(u,x.toFloat(),z.toFloat());
         noteOrders(u.id);
         return true;
@@ -9464,7 +9496,7 @@ int World::suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events)
         o.controller=++nextMovementController_;
         o.navigationExhausted=o.navigationConsumed=false;
         m.pending&=~0x3700u;
-        if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+        if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
         cancelPath(u);
         requestPath(u,o.x.toFloat(),o.z.toFloat());
         return 1;
@@ -10719,25 +10751,6 @@ void World::refreshSearchRect(SearchGradePlane& plane,int x,int z,int w,int h) {
 #endif
 }
 
-void World::ageSearchBody(SearchGradePlane& plane,const RetailGradeBody& body,bool stale) {
-    RetailGradeContext c;
-    c.width=plane.nav->width(); c.height=plane.nav->height();
-    c.footX=plane.footX; c.footZ=plane.footZ;
-    // The native routine expects a body overlapping its cache. Imported or
-    // off-map bodies must not turn a clipped-empty border into an array read.
-    if (body.x+body.footX+1<=0 || body.z+body.footZ+1<=0 ||
-        body.x-c.footX>=c.width || body.z-c.footZ>=c.height) return;
-    retailAgeGradeRect(c,body.x,body.z,body.footX,body.footZ,stale,
-        [&](int x,int z) {
-            if (x<0 || z<0 || x>=c.width || z>=c.height) return uint8_t(0);
-            return plane.cells[size_t(z)*c.width+x];
-        },
-        [&](int x,int z,int grade) {
-            if (x<0 || z<0 || x>=c.width || z>=c.height) return;
-            const size_t index=size_t(z)*c.width+x;
-            setSearchCell(plane,index,uint8_t((plane.cells[index]&8)|grade));
-        });
-}
 
 // The first build of a plane, and any rebuild after a whole-grid nav edit.
 // It must equal refreshSearchRect over the whole map, which rates every
@@ -10890,7 +10903,7 @@ void World::prepareSearchGrade(int id,bool lastRetry) {
     if (body!=searchGradeBodies_.end() && body->slot==id) request=*body;
     plane.preparation.prepare(tickCounter_,request,searchGradeBodies_,lastRetry,
         [&](const auto& body) { refreshSearchRect(plane,body.x,body.z,body.footX,body.footZ); },
-        [&](const auto& body,bool stale) { ageSearchBody(plane,body,stale); });
+        [](const auto&,bool) {});
 }
 
 void World::finishSearchGrade(int id) {
@@ -10902,7 +10915,7 @@ void World::finishSearchGrade(int id) {
         footprintOrigin(u->x,u->type->footX),footprintOrigin(u->z,u->type->footZ),
         u->type->footX,u->type->footZ};
     plane.preparation.finish(u ? &body : nullptr,
-        [&](const auto& b,bool stale) { ageSearchBody(plane,b,stale); });
+        [&](const auto& b) { refreshSearchRect(plane,b.x,b.z,b.footX,b.footZ); });
     activeSearchGrade_=-1;
 }
 
@@ -11808,7 +11821,7 @@ bool World::prepareBuildApproach(Unit& u) {
             goal.controller=++nextMovementController_;
             goal.navigationExhausted=goal.navigationConsumed=false;
             goal.mission.pending&=~0x3700u;
-            if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+            if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
         }
         // Replacing the build controller preserves navigator cadence.
         // Its previous search stamp still governs this tick's retry.
@@ -12631,7 +12644,7 @@ void World::prepareReclaimApproach(Unit& u) {
     goal.controller=++nextMovementController_;
     goal.navigationExhausted=goal.navigationConsumed=false;
     goal.mission.pending&=~0x3700u;
-    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
     cancelPath(u);
     requestPath(u,goal.x.toFloat(),goal.z.toFloat());
 }
@@ -13595,7 +13608,7 @@ void World::installRepairApproach(Unit& u, Order& goal, const Unit& t) {
     goal.controller=++nextMovementController_;
     goal.navigationExhausted=goal.navigationConsumed=false;
     goal.mission.pending&=~0x3700u;
-    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
     cancelPath(u);
     requestPath(u,goal.x.toFloat(),goal.z.toFloat());
 }
@@ -13622,7 +13635,7 @@ void World::installMeleeApproach(Unit& u, const Unit& t) {
     goal.controller=++nextMovementController_;
     goal.navigationExhausted=goal.navigationConsumed=false;
     goal.mission.pending&=~0x3700u;
-    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
     cancelPath(u);
     requestPath(u,goal.x.toFloat(),goal.z.toFloat());
 }
@@ -15373,7 +15386,7 @@ void World::prepareHelpApproach(Unit& u) {
     goal.controller=++nextMovementController_;
     goal.navigationExhausted=goal.navigationConsumed=false;
     goal.mission.pending&=~0x3700u;
-    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
     cancelPath(u);
     requestPath(u,goal.x.toFloat(),goal.z.toFloat());
 }
@@ -18932,7 +18945,7 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
                 ? completed->transportMission : completed->mission).pending |= 0x500;
             completed->controller=0;
             completed->navigationExhausted=true;
-            if (uint32_t(u.routeStamp)<=tickCounter_-6u) u.routeStamp=0;
+            if (uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
         }
         const Fixed goalRadius = Fixed::fromInt(std::max(16, std::max(u.type->footX, u.type->footZ) * 8));
         if (!groundMissionOrder(u,true) && legGoal.goal && !legGoal.targetId && !legGoal.buildType &&
@@ -18973,32 +18986,11 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
                                                         // to the ladder's timer
         }
         if (u.routeStamp >= 0 && routeable) {
-            const int32_t elapsed = int32_t(tickCounter_) - u.routeStamp;
-            const uint32_t sc = uint32_t(u.type->halfCellTicks);
-            const bool water = u.type->floater && u.type->minWaterDepth > 0;
-            const bool constrained = u.groundMovementMode!=0 || u.groundSpeedMode!=0;
-            // 0x4e51d4 bypasses the random cadence on repeated
-            // refusal. 0x4e4f50 leaves an already-pending request alone.
-            bool fire = u.bodyBlockStreak >= 2 || u.orders[currentLeg(u.orders)].navigationConsumed;
-            if (fire) {
-                fire = !paths_.pending(u.id);
-            } else if (u.routeCrowded) {
-                const uint32_t dice =
-                    water   ? pathRand(10) + pathRand(10) + 10
-                  : !constrained ? pathRand(10) + pathRand(10) + 20
-                  :            pathRand(8) + pathRand(8) + 10;
-                fire = elapsed >= int32_t(dice * sc);
-            } else if (u.routeTraffic) {
-                const uint32_t dice =
-                    water   ? pathRand(8) + pathRand(8) + 30
-                  : !constrained ? pathRand(8) + pathRand(8) + 60
-                  :            pathRand(8) + pathRand(8) + 30;
-                fire = elapsed >= int32_t(dice * sc);
-            } else {
-                // 4e5454..4e548f: partial routes and long detours
-                // suppress the plain random retry, including its draw.
-                fire = !u.routeFailed && !u.routeDetour && elapsed >= 120 && pathRand(120) == 0;
-            }
+            // TotalA.exe navigator update 0x44f1a0: ask again when fewer than two
+            // route points remain or while the mover is blocked; wantsPath's
+            // 60-tick gate (admitSearchRequest) paces it. No random cadence.
+            const bool blocked = u.bodyBlockStreak > 0;
+            bool fire = (blocked || u.orders[currentLeg(u.orders)].navigationConsumed) && !paths_.pending(u.id);
             if (fire) {
                 const Order& legEnd = u.orders[currentLeg(u.orders)];
                 const float tx = legEnd.x.toFloat(), tz = legEnd.z.toFloat();
@@ -19021,7 +19013,12 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
         // 0x4dc89a / 0x4dba80: a clear eight-neighbor scan can remove
         // a corner before steering. Each removal repeats the scan and only
         // considers points in this leg, never a later queued command.
-        if (tickCounter_ >= u.groundScanTick) {
+        if (pathfindingMode_==PathfindingMode::Retail) {
+            // TotalA.exe has no ground scan (D14): full speed, the 80px carrot,
+            // and no corner pruning.
+            u.groundMovementMode=0;
+            u.groundSpeedMode=0;
+        } else if (tickCounter_ >= u.groundScanTick) {
             const bool boat=u.type->floater && u.type->minWaterDepth>0;
             // All eight ground probes (including repeated corner checks) observe
             // the same positions and yards. Snapshot their union once instead of
@@ -20445,6 +20442,7 @@ void World::tick(float dt) {
     // and admit new searches from the position and occupancy after that step.
     if (pathService_) {
       SearchGradeBatch searchBatch(*this);
+      paths_.setMaxUnits(unitCap_ > 0 ? unitCap_ : 250);
       paths_.tick(
         [&](int unitId, int cx, int cz) {
             const Unit* u = unit(unitId);

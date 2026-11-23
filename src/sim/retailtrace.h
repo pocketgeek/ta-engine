@@ -69,7 +69,7 @@ public:
                     }
         }
         while (phase == 1 && work < budget) {
-            work += 8;
+            ++work;
             if (!best) { directEnd = march; return -1; }
             const int direction = retailSearchDirection(goal.x - march.x, goal.z - march.z);
             const Point next{march.x + dx[direction], march.z + dz[direction]};
@@ -94,7 +94,7 @@ public:
         while (work < budget) {
             /* TA: no visit limit */
             while (phase == 2 && work < budget) {
-                work += 7;
+                ++work;   // TA: 1 per tracer step (0x40e160)
                 if (!best) return 0;
                 int direction = goal.x < origin.x ? 2 : goal.x > origin.x ? 6 : goal.z > origin.z ? 4 : 0;
                 Point next{origin.x + dx[direction], origin.z + dz[direction]};
@@ -109,7 +109,7 @@ public:
                 closer(origin);
             }
             while (phase == 3 && work < budget) {
-                work += 9;
+                ++work;
                 const int endA = (dirA - 3) & 7;
                 dirA = (dirA - 2) & 7;
                 Point next;
@@ -267,14 +267,14 @@ public:
         }
         if (accepts(p.start.x, p.start.z)) {
             phase = 3;
-            return {Result::Complete, 500, 0x1000};
+            return {Result::Complete, 100, 0x1000};
         }
         initialDistance = distance(p.start.x, p.start.z);
         if (p.start.x < 0 || p.start.z < 0 || p.start.x >= p.width || p.start.z >= p.height) {
             phase = 3;
-            return {Result::Complete, 500, 0x2000};
+            return {Result::Complete, 100, 0x2000};
         }
-        return {Result::Searching, 500};
+        return {Result::Searching, 100};
     }
 
     template<class Grade, class Distance>
@@ -297,15 +297,17 @@ public:
             if (currentHeading) heading=currentHeading();
             cost.reset(trace.width, trace.height, startCell, (heading + 4096) >> 13,
                        initialDistance, weight, std::move(trace.cells),std::move(trace.scratch));
-            const int count = trace.width * trace.height;
             nodeLimit = 1<<30; // TA: no node limit
             spread = 4; phase = 2;
             return {Result::Searching, trace.work, notification};
         }
         if (phase == 2) {
             auto slice = cost.runSlice(grade, distance, partialDistance, nodeLimit, budget, retry, spread);
-            if (slice.result == RetailCostSearch::Result::Exhausted)
-                return {Result::Retry, slice.work};
+            // TA: an empty heap ends the search with an empty route (no retries).
+            if (slice.result == RetailCostSearch::Result::Exhausted) {
+                route = {}; phase = 3;
+                return {Result::Complete, slice.work, 0x2000};
+            }
             if (slice.result == RetailCostSearch::Result::Arrived) {
                 route = retailReconstructRoute(cost.cells, trace.width, trace.start,
                         {cost.endpoint % trace.width, cost.endpoint / trace.width},
@@ -336,7 +338,13 @@ public:
             auto parameters = configure(retry);
             parameters.retry = retry;
             initializationPending = false;
-            return attempt.initialize(parameters, prepare, goals, accepts, distance);
+            auto init = attempt.initialize(parameters, prepare, goals, accepts, distance);
+            if (init.result != Result::Searching) return init;
+            // TotalA.exe 0x40e630: the tracer runs to completion inside init,
+            // 100 + 1 per tracer step; A* then runs in later slices.
+            auto traced = attempt.step(grade, distance, INT32_MAX, currentHeading);
+            traced.work += init.work;
+            return traced;
         }
         auto result = attempt.step(grade, distance, budget,currentHeading);
         if (result.result != Result::Retry) return result;

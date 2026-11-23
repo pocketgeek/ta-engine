@@ -7,6 +7,15 @@
 
 using namespace navigation_test;
 namespace {
+// navigation_test::setup with sea level 0. mover() has no model and so no
+// ground support: its groundY stays 0, below setup's sea level 64, and TA
+// halves the speed cap of a ground unit under water (0x43cc20). These
+// scenarios pace units on dry land.
+void dry(World& world,PathfindingMode selected,int cells=256) {
+    setup(world,selected,true,false,cells);
+    world.setTerrain(std::vector<uint8_t>(size_t(cells)*cells,100),cells,cells,0);
+    world.setMapPlacementFeatures(std::vector<uint16_t>(size_t(cells)*cells,0xffff),{});
+}
 bool formationMission(const Unit& u) {
     return std::any_of(u.orders.begin(),u.orders.end(),[](const Order& o){return o.formationLevel!=0;});
 }
@@ -14,7 +23,7 @@ bool formationMission(const Unit& u) {
 // A formation (-N, retail "CreateSquad N f") paces at the slowest member's
 // type speed.
 void slowest() {
-    World world;setup(world,PathfindingMode::Retail);auto slow=mover(1),fast=mover(0);
+    World world;dry(world,PathfindingMode::Retail);auto slow=mover(1),fast=mover(0);
     const int a=world.spawn(&slow,640,2048,std::nullopt,0),b=world.spawn(&fast,640,2096,std::nullopt,0);
     for(int id:{a,b}){world.setSquad(id,-1);world.order(id,3200,2072,false);}
     known(world);Fixed maximum;
@@ -39,7 +48,7 @@ void slowest() {
     require(record&&record->active&&record->groundSpeed==slow.maxVel.v,"group speed is not the slowest type maximum");
     require(maximum>slow.maxVel-Fixed::fromFloat(0.05f)&&maximum<slow.maxVel+Fixed::fromFloat(0.05f),"grouped fast member did not reach the group speed");
     // Ungrouped, the same fast unit keeps its own maximum.
-    World alone;setup(alone,PathfindingMode::Retail);
+    World alone;dry(alone,PathfindingMode::Retail);
     const int c=alone.spawn(&fast,640,2096,std::nullopt,0);alone.order(c,3200,2072,false);known(alone);
     Fixed free;
     for(int tick=0;tick<300;++tick){const auto x=alone.unit(c)->x;alone.tick(1.f/30);free=fxMax(free,alone.unit(c)->x-x);}
@@ -50,7 +59,7 @@ void slowest() {
 // A member far behind slows the group by 0xaa7e/65536 instead of sprinting,
 // then re-forms through a Move_Ground_Formation mission.
 void straggler(PathfindingMode selected) {
-    World world;setup(world,selected);auto type=mover(1);std::vector<int> ids;
+    World world;dry(world,selected);auto type=mover(1);std::vector<int> ids;
     for(int i=0;i<3;++i)ids.push_back(world.spawn(&type,float(1200),float(2000+i*48),std::nullopt,0));
     ids.push_back(world.spawn(&type,600,2048,std::nullopt,0));
     for(int id:ids){world.setSquad(id,-2);world.order(id,3600,2048,false);}
@@ -90,7 +99,7 @@ void straggler(PathfindingMode selected) {
 // and never re-forms. The slow and fast members and the straggler from the
 // scenes above all walk at their own speeds.
 void plain() {
-    World world;setup(world,PathfindingMode::Retail);auto slow=mover(1),fast=mover(0);
+    World world;dry(world,PathfindingMode::Retail);auto slow=mover(1),fast=mover(0);
     std::vector<int> ids{world.spawn(&slow,640,2048,std::nullopt,0),world.spawn(&fast,640,2096,std::nullopt,0),
                          world.spawn(&fast,200,2096,std::nullopt,0)};
     for(int id:ids){world.setSquad(id,1);world.order(id,3200,2072,false);}
@@ -115,7 +124,7 @@ void plain() {
 // kinds 1 and 2; only a remote player, kind 3, is left to its own machine).
 // A human player cannot use it.
 void aiSquads() {
-    World world;setup(world,PathfindingMode::Retail);world.setPlayerCount(2);
+    World world;dry(world,PathfindingMode::Retail);world.setPlayerCount(2);
     world.player(0).automaticGates=true;
     auto slow=mover(1),fast=mover(0);
     const int a=world.spawn(&slow,640,2048,std::nullopt,0),b=world.spawn(&fast,640,2096,std::nullopt,0);
@@ -160,7 +169,7 @@ void aiSquads() {
 // not yet and its hash differs from the first tick.
 void replayReset() {
     const auto fresh=[](World& world) {
-        setup(world,PathfindingMode::Retail);world.setPlayerCount(2);world.player(0).automaticGates=true;
+        dry(world,PathfindingMode::Retail);world.setPlayerCount(2);world.player(0).automaticGates=true;
     };
     World clean;fresh(clean);
     World world;fresh(world);auto t=mover(0);
@@ -311,7 +320,7 @@ UnitType flyer(int kind=0) {
 // 0x3000400 (tools/re/check_air_point_mission.py): no navigator formation
 // bit (0x2000000), so a flyer in a formation is never paced.
 void flyerMove() {
-    World world;setup(world,PathfindingMode::Retail);auto t=flyer();
+    World world;dry(world,PathfindingMode::Retail);auto t=flyer();
     const int a=world.spawn(&t,640,2048,std::nullopt,0);
     world.setSquad(a,-1);world.order(a,1600,2048,false);
     const auto& o=world.unit(a)->orders;
@@ -327,7 +336,7 @@ void flyerMove() {
 // leg, and when it retires the patrol goes on along the same leg, with no
 // second anchor (4d6b80 finds the leg flagged 0x4000).
 void flyerPatrol() {
-    World world;setup(world,PathfindingMode::Retail);auto t=flyer();
+    World world;dry(world,PathfindingMode::Retail);auto t=flyer();
     std::vector<int> ids;
     for (int i=0;i<3;++i) ids.push_back(world.spawn(&t,640,1900+float(i)*48,std::nullopt,0));
     const int outlier=world.spawn(&t,2600,3400,std::nullopt,0);ids.push_back(outlier);
@@ -364,7 +373,7 @@ void flyerPatrol() {
 // patrol): Move_Ground_Formation goes ahead of its leg, and when it retires
 // the patrol goes on along the same leg.
 void groundPatrol() {
-    World world;setup(world,PathfindingMode::Retail);auto t=mover(0);
+    World world;dry(world,PathfindingMode::Retail);auto t=mover(0);
     std::vector<int> ids;
     for (int i=0;i<3;++i) ids.push_back(world.spawn(&t,640,1900+float(i)*48,std::nullopt,0));
     const int outlier=world.spawn(&t,2600,3400,std::nullopt,0);ids.push_back(outlier);
@@ -402,7 +411,7 @@ void groundPatrol() {
 // 0x15000000; VTOL_Move_FormationStandby: 0x5000002) at level -1, goes back
 // to the group, and stands by again once it retires.
 void standbys(bool air) {
-    World world;setup(world,PathfindingMode::Retail);auto t=air ? flyer() : mover(0);
+    World world;dry(world,PathfindingMode::Retail);auto t=air ? flyer() : mover(0);
     std::vector<int> ids;
     for (int i=0;i<3;++i) ids.push_back(world.spawn(&t,640,1900+float(i)*64,std::nullopt,0));
     const int outlier=world.spawn(&t,1800,2700,std::nullopt,0);ids.push_back(outlier);
@@ -433,7 +442,7 @@ void standbys(bool air) {
 // tools/re/check_retail_group.py follow): Move_Ground_Formation at level -3
 // goes ahead of the guard, and the guard goes on when it retires.
 void groundGuard() {
-    World world;setup(world,PathfindingMode::Retail);world.setPlayerCount(2);auto t=mover(0),armed=mover(0);
+    World world;dry(world,PathfindingMode::Retail);world.setPlayerCount(2);auto t=mover(0),armed=mover(0);
     armed.weapon.damage=10;armed.weapon.range=120;armed.weapons={armed.weapon};
     std::vector<int> ids;
     for (int i=0;i<2;++i) ids.push_back(world.spawn(&t,640,1900+float(i)*48,std::nullopt,0));
@@ -450,7 +459,7 @@ void groundGuard() {
     require(record && record->active && record->moving[size_t(RetailGroupClass::Ground)].count==2,
             "a walker's guard and attack are not the group's movers");
     {   // In its slot (the ward beside the group) the guard is paced.
-        World near;setup(near,PathfindingMode::Retail);
+        World near;dry(near,PathfindingMode::Retail);
         const int a=near.spawn(&t,640,1900,std::nullopt,0),b=near.spawn(&t,640,1948,std::nullopt,0);
         const int w=near.spawn(&t,700,1924,std::nullopt,0);
         near.setSquad(a,-1);near.setSquad(b,-1);known(near);near.guard(b,w,false);
@@ -489,7 +498,7 @@ void groundGuard() {
 // it, and a wagon on its way to unload count in the moving aggregate (51b890:
 // 0x1000000). World gave these orders no flags.
 void transports() {
-    World world;setup(world,PathfindingMode::Retail);
+    World world;dry(world,PathfindingMode::Retail);
     auto t=mover(0),wagon=mover(0);
     t.transportLandEligible=true;t.transportSize=1;t.modelTop=100<<16;   // above the 64 sea level from a groundY of 0
     wagon.canTransport=true;wagon.maxTransportSize=4;wagon.transportCap=4;wagon.transportSizeCap=8;
@@ -508,7 +517,7 @@ void transports() {
     require(record && record->active && record->moving[size_t(RetailGroupClass::Ground)].count==2,
             "a passenger's Move_Seek_Pickup and its carrier's Ground_Pickup are not the group's movers");
     // A loaded wagon sent to unload far off moves with its formation too.
-    World drop;setup(drop,PathfindingMode::Retail);
+    World drop;dry(drop,PathfindingMode::Retail);
     const int a=drop.spawn(&t,640,1900,std::nullopt,0),w=drop.spawn(&wagon,700,1900,std::nullopt,0);
     const int b=drop.spawn(&t,640,1948,std::nullopt,0);
     for (int id:{w,b}) drop.setSquad(id,-1);
@@ -528,7 +537,7 @@ void transports() {
 // carrier, as a member that is not moving -- its mission aboard is BeCarried
 // (row flags 0x24), which runs no group check, so it never re-forms.
 void carried() {
-    World world;setup(world,PathfindingMode::Retail);
+    World world;dry(world,PathfindingMode::Retail);
     auto t=mover(0),wagon=mover(0);
     t.transportLandEligible=true;t.transportSize=1;
     wagon.canTransport=true;wagon.maxTransportSize=4;wagon.transportCap=4;wagon.transportSizeCap=8;

@@ -636,7 +636,8 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
         const std::function<void(int,PathCell&,int&,RetailCostSearch::Costs&)>& refresh,
         uint32_t simulationTick, const std::function<bool(int,uint32_t)>& admit) {
     ++tickNo_;
-    if (q_.empty()) return;
+    // TA's scheduler sweeps unit slots even with nothing queued: those sweeps
+    // set the players' heuristic weights.
     // Completed entries leave q_ before their delivery callbacks run. Keep the
     // observer fixed across the whole dispatch, including those outstanding
     // tokens, and restore the guard if a callback throws or ticks recursively.
@@ -650,8 +651,10 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
     std::array<RetailSearchScheduler::Player,10> players{};
     for (size_t i=0;i<players.size();++i) {
         auto& p=players[i];
-        p.enabled=pendingByPlayer_[i]!=0;p.priority=priorityByPlayer_[i]!=0;
-        p.pending=pendingByPlayer_[i];p.slots=p.enabled ? poolCapacity(int(i)) : 0;
+        // TA credits every active player, requests or not (0x40eb70).
+        p.slots=poolCapacity(int(i));
+        p.enabled=p.slots>0;p.priority=false;
+        p.pending=pendingByPlayer_[i];
     }
     auto lookup=[&](RetailSearchScheduler::Request r) {
         const int id=unitAtSlot(r.player,r.slot);
@@ -664,7 +667,7 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
     scheduler_.tick(players,budget_,1,int(now),
         [&](auto r) { return lookup(r)!=q_.end(); },
         [&](auto r) {
-            workSpent_+=7;
+            workSpent_+=1;
             const auto it=lookup(r);
             return it!=q_.end() && (!admit || admit(it->first,now));
         },
@@ -686,10 +689,8 @@ void PathService::tick(const std::function<int(int,int,int)>& score,
                 p.start={e.start.x-e.cellOffset.x,e.start.z-e.cellOffset.z};
                 p.heading=e.heading; p.costs=e.costs; p.trafficRadius=e.tolCells;
                 p.retry=retry;
-                auto& last=scheduler_.lastWrapTick[size_t(scheduler_.playerCursor)];
-                uint32_t wrap=uint32_t(last);
-                p.weight=retailInitialPathWeight(now,wrap,players[size_t(e.player)].pending,retry,e.costs.heavyFloater);
-                last=int(wrap);
+                // TA: the player's weight from its slot sweeps (0x5119e8), fixed for the search.
+                p.weight=scheduler_.weight[size_t(e.player)];
                 return p;
             },[&](bool last) {
                 if (gradeHost_.prepare) {

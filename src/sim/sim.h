@@ -2657,6 +2657,7 @@ public:
     void commitGroundStep(Unit& subject,Fixed dx,Fixed dz,bool strictDiagonal=false);
     void updateGroundTerrainFlags(Unit& subject) const;
     Fixed groundTerrainMultiplier(const Unit& subject) const;
+    Fixed retailUnderwaterCap(const Unit& u,Fixed cap) const;   // TA: speed cap halved under water
     void brakeGround(Unit& subject,std::optional<Bam> facing=std::nullopt);
     void tickNavigationMovement(Unit& subject,Fixed maximum);
     SinCos steerGround(Unit& subject,RetailSteeringPoint start,RetailSteeringPoint end,
@@ -4079,7 +4080,6 @@ private:
     void refreshSearchRectPerCell(SearchGradePlane&,int,int,int,int);
     int searchCellGrade(const NavGrid&,int,int,bool) const;
     void buildSearchPlane(SearchGradePlane&);
-    void ageSearchBody(SearchGradePlane&,const RetailGradeBody&,bool);
     void prepareSearchGrade(int,bool);
     void finishSearchGrade(int);
     int searchGrade(int,int,int,int,PathCell) const;

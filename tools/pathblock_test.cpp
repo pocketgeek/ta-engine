@@ -266,7 +266,10 @@ int main() {
 
     {
         World w;
-        w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
+        // Sea level 0: soldier() has no ground support, so its groundY stays 0
+        // and any positive sea level would put it "under water" (TA halves
+        // the speed cap there). This fixture is about patrol legs, not water.
+        w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,0);
         w.setPathService(true);
         auto s=soldier();
         const int id=w.spawn(&s,320,640,0,0);
@@ -384,7 +387,7 @@ int main() {
         w.spawn(&body,808.f,424.f,0,0);
         w.spawn(&house,808.f,424.f,0,0);
         const int id=w.spawn(&mover,160,160,0,0);
-        for (int tick=0;tick<14;++tick) w.tick(1.f/30.f);
+        for (int tick=0;tick<60;++tick) w.tick(1.f/30.f);   // TA: 60-tick wantsPath gate
         w.order(id,900,900,false);
         for (int tick=0;tick<4;++tick) w.tick(1.f/30.f);
         check(w.pathStats().completions()+w.pathStats().failures()>0 && w.searchGradeBuildMatchesReference(),
@@ -409,7 +412,7 @@ int main() {
         UnitType body=soldier(),mover=soldier();mover.footX=mover.footZ=4;
         w.spawn(&body,float(bx*16+16),float(bz*16+16),0,0);
         const int id=w.spawn(&mover,160,160,0,0);
-        for (int tick=0;tick<14;++tick) w.tick(1.f/30.f);
+        for (int tick=0;tick<60;++tick) w.tick(1.f/30.f);   // TA: 60-tick wantsPath gate
         w.order(id,640,640,false);
         bool consistent=true;
         for (int tick=0;tick<60;++tick) {
@@ -451,7 +454,7 @@ int main() {
         builder.turnInPlaceRate=1000;
         site.maxVel=Fixed(); site.footX=site.footZ=2;
         site.buildTime=10000;
-        for (int tick=0;tick<14;++tick) w.tick(1.0f/30.0f);
+        for (int tick=0;tick<60;++tick) w.tick(1.0f/30.0f);   // TA: 60-tick wantsPath gate
         const int id=w.spawn(&builder,128,128);
         w.queueBuild(id,&site,31*16,9*16,false);
         const Order approach=w.unit(id)->orders.front();
@@ -554,8 +557,9 @@ int main() {
                   u.orders.front().x == Fixed::fromInt(800),
               "blocked movement does not silently advance to queued command");
     }
-    // Captured stage-2 failure must cancel before the search can deliver,
-    // reanchoring the direct navigator segment and retaining the queued goal.
+    // TotalA.exe: a partial notification (0x2000) does not reset the ground
+    // move; there is no Kingdoms radius growth or re-anchoring (D16). The
+    // search, controller and segment stay as they were.
     {
         World w;
         w.setTerrain(std::vector<uint8_t>(64 * 64, 100), 64, 64, 20);
@@ -576,13 +580,13 @@ int main() {
         const auto anchor = Fixed::fromInt(u.x.floorInt());
         w.tick(1.0f / 30.0f);
         check(w.pathStats().pending(id) && w.pathStats().completions() == 0,
-              "ground failure replaces the search while retaining the admission delay");
-        check(u.orders.size() == 2 && u.orders.front().segmentX == anchor &&
-              u.orders.front().controller != controller &&
-              u.orders.front().missionRadius == 64 && u.orders.front().mission.stage == 2 &&
-              u.orders.front().mission.waitMask == 0x2701 &&
-              u.orders.front().mission.deadline >= 6 && u.orders.front().mission.deadline <= 10,
-              "ground reset reanchors direct segment, preserves queue and schedules polling");
+              "a partial notification keeps the pending search");
+        check(u.orders.size() == 2 && u.orders.front().segmentX == Fixed::fromInt(32) &&
+              u.orders.front().segmentX != anchor &&
+              u.orders.front().controller == controller &&
+              u.orders.front().missionRadius == 0 && u.orders.front().mission.stage == 2 &&
+              u.orders.front().mission.waitMask == 0x2701,
+              "Retail: a partial notification neither grows the radius nor reanchors the segment; the queue survives");
         const auto hash = w.stateHash();
         ++u.orders.front().mission.deadline;
         check(hash != w.stateHash(), "ground dispatcher state participates in lockstep hash");
@@ -611,8 +615,8 @@ int main() {
         World w;
         w.setTerrain(std::vector<uint8_t>(20 * 20, 100), 20, 20, 20);
         w.setPathService(true);
-        // The smallest budget that still runs: every Retail player is in the
-        // 5x budget class (0x4f6379), so a budget below 5 has a zero quantum.
+        // A small budget so the A* outlives the init (TA: the tracer, and so
+        // the partial 0x2000, completes inside init; A* runs in later slices).
         w.setPathBudget(5);
         w.blockCells(10, 0, 1, 20, true);
         UnitType s = soldier();
@@ -640,10 +644,10 @@ int main() {
         check(notified && w.pathStats().pending(id) && w.pathStats().failures() == 0,
               "World receives early failure while cost search remains unfinished");
         w.tick(1.0f / 30.0f);
-        check(!u.orders.empty() && u.orders.back().controller != controller &&
-              u.orders.back().missionRadius == 32 && w.pathStats().pending(id) &&
+        check(!u.orders.empty() && u.orders.back().controller == controller &&
+              u.orders.back().missionRadius == 0 && w.pathStats().pending(id) &&
               w.pathStats().failures() == 0,
-              "next World dispatch replaces early-notifying search before stale delivery");
+              "Retail: the next World dispatch keeps the partial search (no Kingdoms restart)");
     }
     // A newly completed route becomes visible after this tick's movement.
     // Compare with the same mover whose background search is disabled.
@@ -653,7 +657,7 @@ int main() {
         for (World* w : {&searched, &direct}) {
             w->setTerrain(std::vector<uint8_t>(64 * 64, 100), 64, 64, 20);
             w->blockCells(20, 0, 2, 32, true);
-            for (int tick=0;tick<14;++tick) w->tick(1.0f/30.0f);
+            for (int tick=0;tick<60;++tick) w->tick(1.0f/30.0f);   // TA: 60-tick wantsPath gate
             const int id = w->spawn(&s, 135.5f, 128);
             w->setPathService(w == &searched);
             w->order(id, 640, 384, false);
@@ -665,8 +669,11 @@ int main() {
         const auto& b = direct.units().front();
         check(searched.pathStats().completions() + searched.pathStats().failures() > 0,
               "timing fixture completes its search on the first eligible tick");
-        check(a.groundScanTick==0 && b.groundScanTick>0,
-              "route delivery invalidates the next local obstacle scan");
+        // TotalA.exe has no local obstacle scan (D15): with or without a
+        // search, Retail keeps speed mode 0 and the 80px steering carrot.
+        check(a.groundSpeedMode==0 && b.groundSpeedMode==0 &&
+              a.groundMovementMode==0 && b.groundMovementMode==0,
+              "Retail runs no local obstacle scan");
         check(a.x == b.x && a.z == b.z && a.heading == b.heading && a.speed == b.speed,
               "route completion does not change movement earlier in the same tick");
         check(footprintCell(a.x, 2) != footprintCell(Fixed::fromFloat(135.5f), 2) &&
@@ -806,7 +813,9 @@ int main() {
     // itself is clear. The route scorer must see that same blocked footprint.
     {
         World w;
-        w.setTerrain(std::vector<uint8_t>(64 * 64, 100), 64, 64, 20);
+        // Sea level 0: soldier() has no ground support, so groundY stays 0 and
+        // a positive sea level would halve its speed cap (TA under water).
+        w.setTerrain(std::vector<uint8_t>(64 * 64, 100), 64, 64, 0);
         UnitType s = soldier();
         s.maxVel = Fixed::fromInt(2);
         w.blockCells(11, 9, 1, 1, true);
@@ -820,9 +829,12 @@ int main() {
         check(w.cellScore(&s, 11, 10, id) < kCellThreshold,
               "the route scorer also sees terrain under the footprint edge");
         w.tick(1.0f / 30.0f);
+        // TotalA.exe 0x43d7ff: every refusal caps the speed at maxvelocity/2
+        // (no Kingdoms /5 on a repeat).
         check(w.unit(id)->bodyBlockStreak == 2 &&
-                  w.unit(id)->speed <= Fixed::fromFloat(w.unit(id)->baseSpeed.toFloat() * 0.2f),
-              "terrain refusals advance the same slowdown state as bodies");
+                  w.unit(id)->speed <= Fixed::raw(w.unit(id)->baseSpeed.v / 2) &&
+                  w.unit(id)->speed > Fixed::raw(w.unit(id)->baseSpeed.v / 5),
+              "terrain refusals advance the same blocked state as bodies, capped at maxvel/2");
     }
 
     for (bool guard : {false, true}) {

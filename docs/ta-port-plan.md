@@ -32,12 +32,29 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 
 ## Pathfinding status (docs/retail-pathfinding.md)
 
-Applied (verified 613/613 against TotalA.exe in emulation): TA's fixed A* costs,
-no weight ramp, no octant march / visit limit, no node limit; navigator holds 20
-points. Pending from the change list: per-player initial heuristic weight (5),
-search grade for unexplored / out-of-plane cells (6), 30-tick body grades (7),
-60-tick re-path gate (9), scheduler credits (10), underwater speed cap (14), ground
-scan (15), cell-entry refusal (16). Goal metrics (11-13) applied.
+Retail mode follows TotalA.exe. The whole change list is applied except item 17
+(the map-load plane's last row/column band, negligible):
+
+- A*: fixed costs, constant weight, no octant march / visit or node limits, no
+  retries (an empty heap is an empty route); 613/613 routes match retail.
+- Scheduler: 1333 work per tick into persistent per-player credits; 1 per slot
+  visit, 100 per init with the tracer run inside it (1 per step), 1 per pop in
+  100-pop slices; weight 9.0 / 4.5 / 1.5 per player from 150-tick slot sweeps.
+- Grades: unexplored clear (6), outside the 32px plane blocked, cached grade only;
+  one 30-tick body threshold with full re-rates.
+- Navigator: 20 points, 60-tick request gate (a new goal reopens it after 10
+  ticks), re-path only when the route is used up or the mover is blocked; an
+  empty route ends a plain move; partial routes are walked.
+- Goals: circle (r/16)^2, ring per 0x44d3b0, rect target the far side's middle.
+- Motion: no ground scan, no road/water multipliers; the speed cap halves below
+  sea level for non-hover, non-floater units; a refused cell entry clamps to half
+  a cell and maxvel/2.
+
+crowdbench (80 movers, 2 players), units reaching the goal before -> after:
+doors 54 -> 79, bridges 43 -> 78, maze 35 -> 44, opposingdoors 0 -> 12, with
+about half the search requests. sharedgoal still lands all 80 in the goal area,
+but 12 keep re-asking for the crowded goal through the 60-tick gate (TA's
+partial-route handling, [U] in the spec). Legion is unchanged (identical hashes).
 
 ## Known deviations from retail (deliberate)
 

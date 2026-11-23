@@ -14,10 +14,10 @@ struct RetailReplayProbe {
         const int id=world.spawn(&type,128,128);auto& u=*world.unit(id);
         Order first;first.goal=first.groundMission=true;first.controller=detached?0:1;
         Order next=first;next.controller=2;next.x=Fixed::fromInt(256);
-        u.orders={first,next};u.routeStamp=recent?195:194;world.tickCounter_=200;
+        u.orders={first,next};u.routeStamp=recent?191:190;world.tickCounter_=200;
         world.dropLeg(u);
         return u.orders.size()==1 && u.orders.front().controller==2 &&
-            u.routeStamp==((detached || recent)?(recent?195:194):0);
+            u.routeStamp==((detached || recent)?(recent?191:190):0);
     }
     static bool completedPointDetaches(bool recent,int shape=0) {
         World world;world.setPathService(true);
@@ -483,13 +483,13 @@ struct RetailReplayProbe {
         return world.entitySlot(extra)==500 && world.entitySlots_.unitAt[0].size()==501 &&
             world.windRng_==crt && world.paths_.poolCapacity(0)==501;
     }
-    // 416430 admits in slot order, paying 7 per scanned slot: at budget 300 a
-    // tick scans 43 slots. Seed 2631 places units 1,2,3 in slots 65,60,248,
-    // so unit 2 is admitted first, on tick 2. ID-addressed pools admitted
-    // unit 1 on tick 1. A cursor restored to slot 249 wraps on its first scan
-    // and stamps the wrap tick that weights the next initialization.
+    // TotalA.exe 0x40eb70 admits in slot order, paying 1 per visited slot: at
+    // budget 50 a lone player visits 50 slots a tick. Seed 2631 places units
+    // 1,2,3 in slots 65,60,248, so unit 2 is admitted first, on tick 2. A
+    // cursor restored to slot 249 wraps on its first visit and stamps the wrap
+    // tick; slot 60 is then visit 61, still tick 2.
     static bool productionPoolAdmission(bool wrap) {
-        World world;world.setPathService(true);world.setPathBudget(300);world.setGameSeed(2631);
+        World world;world.setPathService(true);world.setPathBudget(50);world.setGameSeed(2631);
         world.setTerrain(std::vector<uint8_t>(64*64,0),64,64,0);
         world.setMapPlacementFeatures(std::vector<uint16_t>(64*64,0xffff),{});
         UnitType type;type.maxVel=Fixed::fromInt(1);type.footX=type.footZ=2;
@@ -522,7 +522,7 @@ struct RetailReplayProbe {
             if (wrap && n==0 && (world.paths_.scheduler_.lastWrapTick[0]!=int(now) || world.paths_.requests())) return false;
         }
         if (delivered.size()!=ids.size()) return false;
-        // Slot 60 is scan 60 from slot 0, or scan 61 after wrapping 249 -> 0:
+        // Slot 60 is visit 60 from slot 0, or visit 61 after wrapping 249 -> 0:
         // tick 2 either way, and slot order thereafter.
         return delivered==std::vector<int>{ids[1],ids[0],ids[2]} && admittedAt.front()==2;
     }
@@ -538,8 +538,9 @@ struct RetailReplayProbe {
         return world.paths_.priorityByPlayer_[size_t(player)]!=0;
     }
     // A ground goal in the requester's own footprint cell. Retail 4e54e0 still
-    // submits (4e5540 push 1; call 4e4f50); 415170 accepts the start at once
-    // (500 work, event 0x1000) and 4e4ea0 delivers no points. Native: probe
+    // submits (4e5540 push 1; call 4e4f50); init accepts the start at once
+    // (100 work, event 0x1000) and delivers no points. TotalA.exe's 60-tick
+    // wantsPath gate means a cleared stamp first admits at tick 60. Native: probe
     // fuzz_world_search.py --same-cell. The other modes keep their cancel.
     static bool sameCellRequest(PathfindingMode mode) {
         World world;world.setPathService(true);world.setPlayerCount(2);
@@ -552,13 +553,13 @@ struct RetailReplayProbe {
         const bool submitted=world.requestPath(u,goal.x.toFloat(),goal.z.toFloat());
         if (mode!=PathfindingMode::Retail) return !submitted && !world.paths_.pending(id);
         if (!submitted || !world.paths_.pending(id)) return false;
-        world.tickCounter_=20;
+        world.tickCounter_=60;
         world.paths_.tick([](int,int,int){return 0;},[&](int who,const std::vector<PathCell>& route,
                 Fixed x,Fixed z,bool failed,bool crowded,bool traffic,bool detour) {
             world.deliverSearchRoute(who,route,x,z,failed,crowded,traffic,detour);
         },[&](int who,PathCell& start,int& heading,RetailCostSearch::Costs& costs) {
             world.refreshSearchRequest(who,start,heading,costs);
-        },20,[&](int who,uint32_t now) { return world.admitSearchRequest(who,now); });
+        },60,[&](int who,uint32_t now) { return world.admitSearchRequest(who,now); });
         const auto events=world.paths_.takeNotifications();
         const auto& end=u.orders.front();
         // Completed in the admitting tick: 0x1000 for this controller, no
@@ -567,7 +568,7 @@ struct RetailReplayProbe {
         return !world.paths_.pending(id) && events.size()==1 && events[0].controller==9 &&
                events[0].events==0x1000 && u.orders.size()==1 && end.navigationExhausted &&
                end.x==goal.x && end.z==goal.z && end.controller==9 && !(end.mission.pending&0x200) &&
-               u.routeStamp==20;
+               u.routeStamp==60;
     }
     // Full World::tick: the mover's 4e5150 arrival check runs before the
     // scheduler 416430 (51e1e5..51e21b, then 4f6ca0), detaches the accepting
@@ -713,7 +714,7 @@ static int selfTest() {
     check(RetailReplayProbe::automaticGate(false,false,true,true,true,1,-1,0)==-1,"enemy cannot open gate");
     check(RetailReplayProbe::automaticGate(true,true,true,false,true,1,0,0)==-1,"stopped passage occupant holds gate");
     check(RetailReplayProbe::automaticGate(true,true,true,false,true,1,-1,0)==0,"stopped outside body permits closing");
-    check(RetailReplayProbe::gateOwnerGrade(1,1,0,true,0,false,false,0,0)==4,"capable owner receives traversable gate grade");
+    check(RetailReplayProbe::gateOwnerGrade(1,1,0,true,0,false,false,0,0)==3,"TA has no special-blocker probe: a capable owner keeps the cached gate grade");
     check(RetailReplayProbe::gateOwnerGrade(1,1,0,true,1,false,false,0,0)==3,"other owner retains special gate grade");
     check(RetailReplayProbe::gateOwnerGrade(1,1,0,false,0,false,false,0,0)==3,"manual gate capability does not bypass passage");
     check(RetailReplayProbe::completedPointDetaches(false),"arrival detaches controller but advances stored points without re-requesting");
@@ -725,7 +726,7 @@ static int selfTest() {
     check(RetailReplayProbe::productionPoolReuse(),
           "production pools: retirement frees a record for reuse, a dying unit keeps it");
     check(RetailReplayProbe::productionPoolAdmission(false),
-          "production pools: 416430 admits in slot order and pays for every scanned hole");
+          "production pools: TA admits in slot order and pays 1 for every visited hole");
     check(RetailReplayProbe::productionPoolAdmission(true),
           "production pools: the slot cursor wraps at the pool capacity and stamps the wrap tick");
     for (int drift : {0,1,2,9})
@@ -782,66 +783,74 @@ static int selfTest() {
           "empty route disables navigation and notifies failure without discarding the mission queue");
     check(RetailReplayProbe::emptyDelivery(true),
           "empty route suppresses failure for an accepted goal and a later route reactivates navigation");
+    // TotalA.exe 0x40d7b0 (docs/retail-pathfinding.md 2.4 / change 6): outside
+    // the map or plane 0, unexplored clear at no cost (6), else the cached grade.
     check(RetailReplayProbe::grade(2,6,7,8,25,2,2,5,11,128)==3,
           "World search uses the requesting owner's explored bit");
-    check(RetailReplayProbe::grade(2,6,7,8,25,2,2,5,11,1)==5,
-          "another player's exploration cannot reveal a World search cell");
-    check(RetailReplayProbe::grade(2,6,7,8,25,2,8,5,11,0)==3,
-          "World search preserves the hidden start-column exemption");
+    check(RetailReplayProbe::grade(2,6,7,8,25,2,2,5,11,1)==6,
+          "another player's exploration leaves a World search cell unexplored (clear)");
+    check(RetailReplayProbe::grade(2,6,7,8,25,2,8,5,11,0)==6,
+          "TA has no start-column exemption: unexplored is clear");
     check(RetailReplayProbe::grade(2,6,7,8,25,2,-1,5,11,128)==0,
           "World search rejects out-of-map cells even when explored");
     {
         RetailGradeContext c{64,64,2,2,20,20,3,0,true};
-        int liveCalls=0, cacheCalls=0;
-        auto unseen=[](int,int) { return false; };
+        int liveCalls=0, cacheCalls=0, ownerCalls=0;
+        auto unseen=[](int,int) { return 0; };
         auto cached=[&](int,int) { ++cacheCalls; return 10; };
         auto live=[&](int,int) { ++liveCalls; return 6; };
-        auto noOwner=[](int,int) { return -1; };
-        check(retailSearchGrade(c,40,40,unseen,cached,live,noOwner)==5 && cacheCalls==0,
-              "unseen diagonal bypasses both cached and live grades");
-        check(retailSearchGrade(c,20,40,unseen,cached,live,noOwner)==2 && liveCalls==0,
-              "unseen start-column exemption and live-query margin are crosses");
-        auto seen=[](int,int) { return true; };
-        check(retailSearchGrade(c,40,40,seen,cached,live,noOwner)==6 && liveCalls==1,
-              "distant cached traffic uses live grade on early retry");
-        c.retry=2;
-        check(retailSearchGrade(c,40,40,seen,cached,live,noOwner)==2 && liveCalls==1,
-              "late retry retains cached grade and masks its independent tag bit");
-        c.retry=0;
-        std::vector<std::pair<int,int>> probes;
-        auto owner=[&](int x,int z) {
-            probes.emplace_back(x,z); return x==41 && z==40 ? 3 : -1;
-        };
-        check(retailSearchGrade(c,40,40,seen,[](int,int) { return 3; },live,owner)==4
-              && probes==std::vector<std::pair<int,int>>{{40,40},{41,41},{41,40}},
-              "friendly special blocker follows diagonal and edge probe order");
+        auto owner=[&](int,int) { ++ownerCalls; return 3; };
+        check(retailSearchGrade(c,40,40,unseen,cached,live,owner)==6 && cacheCalls==0,
+              "unexplored cell is clear and skips the cached grade");
+        check(retailSearchGrade(c,20,21,unseen,cached,live,owner)==6,
+              "no near-start exemption: unexplored is clear next to the start too");
+        auto seen=[](int,int) { return 1; };
+        check(retailSearchGrade(c,40,40,seen,cached,live,owner)==2 && liveCalls==0,
+              "explored cell returns cached&7 without a live query");
+        check(retailSearchGrade(c,40,40,seen,[](int,int) { return 3; },live,owner)==3 && ownerCalls==0,
+              "no special-blocker probe on grade 3");
+        auto outside=[](int,int) { return -1; };
+        check(retailSearchGrade(c,40,40,outside,cached,live,owner)==0,
+              "a cell outside the 32px plane is blocked");
+        check(retailSearchGrade(c,64,40,seen,cached,live,owner)==0 &&
+              retailSearchGrade(c,-1,40,seen,cached,live,owner)==0,
+              "a cell outside the class plane is blocked");
+        check(liveCalls==0 && ownerCalls==0, "TA grade never queries live grades or owners");
         c.footX=c.footZ=4;
         std::pair<int,int> queried{-1,-1};
         check(retailSearchVisible(c,64,64,7,9,[&](int x,int z) {
             queried={x,z}; return uint16_t(8);
-        }) && queried==std::pair<int,int>{4,5}, "coarse visibility includes footprint offset");
-        c.width=c.height=8; c.footX=c.footZ=2;
-        std::vector<int> cells(64,15);
-        retailAgeGradeRect(c,0,0,2,2,false,
-            [&](int x,int z) { return cells.at(size_t(z*8+x)); },
-            [&](int x,int z,int grade) { cells.at(size_t(z*8+x))=8|grade; });
-        check(cells[0]==10 && cells[2]==12 && cells[18]==12 && cells[3]==15,
-              "clipped occupancy interior overlaps clipped border and retains tags");
-        RetailGradePreparation state{80,0,0};
+        })==1 && queried==std::pair<int,int>{4,5}, "coarse visibility includes footprint offset");
+        check(retailSearchVisible(c,64,64,7,9,[](int,int) { return uint16_t(1); })==0,
+              "another player's bit is unexplored");
+        check(retailSearchVisible(c,64,64,64,9,[](int,int) { return uint16_t(8); })==-1 &&
+              retailSearchVisible(c,16,16,15,9,[](int,int) { return uint16_t(8); })==-1,
+              "outside the class plane or the 32px plane is -1");
+        // 0x440af0: one threshold max(tick,30)-30; requester refreshed (made
+        // transparent); bodies whose stamp crossed [old,new) re-rated in full.
+        RetailGradePreparation state{60,60,0};
         std::vector<RetailGradeBody> bodies{{1,0x1000001,50,true},
-                                          {2,0x1000001,80,true},
-                                          {3,0x1000001,90,true}};
+                                          {2,0x1000001,65,true},
+                                          {3,0x1000001,70,true},
+                                          {4,0x1000001,90,true},
+                                          {5,0x0000001,62,true},
+                                          {6,0x1000001,61,false}};
         std::vector<int> events;
         auto refresh=[&](const RetailGradeBody& b) { events.push_back(b.slot); };
-        auto age=[&](const RetailGradeBody& b,bool stale) { events.push_back(b.slot+(stale?20:10)); };
+        auto age=[&](const RetailGradeBody&,bool) { events.push_back(-1); };
         state.prepare(100,bodies[0],bodies,false,refresh,age);
-        check(events==std::vector<int>{1,12} && state.recent==90 && state.requestSlot==1,
-              "preparation ages half-open timestamp intervals and excludes requester");
-        state.finish(&bodies[0],age);
-        check(events==std::vector<int>{1,12,11} && state.requestSlot==0,
-              "search cleanup restores requester occupancy");
-        events.clear(); state.prepare(100,bodies[0],bodies,true,refresh,age);
-        check(events==std::vector<int>{1,1,2,3}, "last retry refreshes requester again in slot scan");
+        check(events==std::vector<int>{1,2} && state.recent==70 && state.stale==70 && state.requestSlot==1,
+              "one 30-tick threshold re-rates bodies crossing [old,new) and the requester");
+        state.finish(&bodies[0],refresh);
+        check(events==std::vector<int>{1,2,1} && state.requestSlot==0,
+              "search cleanup re-blocks an old requester");
+        events.clear(); state.prepare(100,bodies[3],bodies,false,refresh,age);
+        check(events==std::vector<int>{4}, "an unchanged threshold refreshes only the requester");
+        state.finish(&bodies[3],refresh);
+        check(events==std::vector<int>{4}, "a recently moved requester stays transparent after the search");
+        events.clear(); RetailGradePreparation early;
+        early.prepare(20,bodies[0],bodies,false,refresh,age);
+        check(early.recent==0 && events==std::vector<int>{1}, "threshold floors at tick 30");
     }
     {
         uint32_t seed=1;
@@ -858,34 +867,43 @@ static int selfTest() {
         check(!rect.accepts(4,5) && rect.distance(4,5)==32 && rect.accepts(2,5),
               "rectangle interior is not an accepted perimeter goal");
         RetailRingGoal ring{0,0,80,120,100};
-        check(ring.accepts(3,4) && !ring.accepts(0,4) && ring.distance(0,4)==16,
-              "ring inner radius uses world distance, including exact boundary");
+        // TotalA.exe 0x44d3b0 / 0x44d840: accept (in/16)^2 <= d^2 <= out^2 (cells);
+        // inside, distance is inner - (18*max + 7*min) = 80 - 72.
+        check(ring.accepts(3,4) && !ring.accepts(0,4) && ring.distance(0,4)==8,
+              "ring inner radius in truncated cells, including exact boundary");
         std::vector<std::pair<int,int>> points;
         RetailRingGoal{}.enumerate([&](int x,int z) { points.emplace_back(x,z); });
         check(points.size()==16 && std::all_of(points.begin(),points.end(),[](auto p) {
             return p==std::pair<int,int>{0,0};
         }), "ring sampling retains all repeated goals");
     }
-    for (int budget : {1, 37, 12000}) {
-        RetailSearchAttempt a;
-        a.trace.width = 40; a.trace.height = 32;
-        a.trace.start = {8, 8}; a.trace.goal = {30, 8};
-        a.trace.trafficRadius = 8; a.trace.cells.resize(40 * 32);
-        a.trace.cells[8 * 40 + 30].flags = 4;
-        a.initialDistance = 22 * 18;
-        int spent = 0, result = 0;
-        for (int n = 0; n < 1000 && result == 0; ++n) {
-            auto slice = a.step([](int x, int z, int) {
-                if (x < 0 || z < 0 || x >= 40 || z >= 32) return 0;
-                return z == 8 && (x == 9 || x == 10) ? 5 : 6;
-            }, [](int x, int z) { return retailGoalDistance(x - 30, z - 8); }, budget);
-            spent += slice.work; result = int(slice.result);
+    // TotalA.exe has no direct route: a tracer that reaches the goal (r == 0)
+    // notifies 0x100 (0x1000 here) and A* still runs with goal radius 0.
+    {
+        std::vector<int> spentByBudget;
+        for (int budget : {1, 37, 12000}) {
+            RetailSearchAttempt a;
+            a.trace.width = 40; a.trace.height = 32;
+            a.trace.start = {8, 8}; a.trace.goal = {30, 8};
+            a.trace.cells.resize(40 * 32);
+            a.trace.cells[8 * 40 + 30].flags = 4;
+            a.initialDistance = 22 * 18;
+            int spent = 0, result = 0, notification = 0;
+            for (int n = 0; n < 1000 && result == 0; ++n) {
+                auto slice = a.step([](int x, int z, int) {
+                    if (x < 0 || z < 0 || x >= 40 || z >= 32) return 0;
+                    return 6;
+                }, [](int x, int z) { return retailGoalDistance(x - 30, z - 8); }, budget);
+                spent += slice.work; result = int(slice.result);
+                if (slice.notification) notification = slice.notification;
+            }
+            spentByBudget.push_back(spent);
+            check(result == 1 && notification == 0x1000, "reachable goal: tracer returns 0 and notifies found");
+            check(!a.cost.cells.empty() && a.cost.processed > 0, "a reachable goal still runs A*");
+            check(a.route.points == std::vector<RetailReachability::Point>{{8,8},{30,8}}, "straight route endpoints");
         }
-        check(result == 1 && spent == 206, "direct route work is independent of suspension");
-        check(a.cost.cells.empty(), "direct arrival never seeds the cost search");
-        check(a.route.points == std::vector<RetailReachability::Point>{{8,8},{30,8}}, "direct route endpoints");
-        check(a.trace.nearTraffic && a.trace.otherTraffic && a.route.flags == 1,
-              "direct route gives nearby traffic precedence");
+        check(spentByBudget[0] == spentByBudget[1] && spentByBudget[1] == spentByBudget[2],
+              "search work is independent of suspension");
     }
     for (int budget : {1, 37, 12000}) {
         RetailSearchAttempt a;
@@ -903,8 +921,8 @@ static int selfTest() {
             result = int(slice.result);
             if (!seeded && a.phase == 2) {
                 seeded = true;
-                check(a.cost.processed == 0 && a.spread == 4 && a.nodeLimit == 384,
-                      "handoff seeds an unprocessed cost search with retry limit");
+                check(a.cost.processed == 0 && a.spread == 4 && a.nodeLimit == (1<<30),
+                      "handoff seeds an unprocessed cost search with no node limit");
                 check(a.cost.cells[17].direction == 6 && (a.cost.cells[17].flags & 0x21) == 0x21,
                       "handoff retains trace flags and replaces start heading");
             }
@@ -933,12 +951,6 @@ static int selfTest() {
     try { (void)retailReconstructRoute(cells,160,{2,8},{3,8},0,8); }
     catch (const std::logic_error&) { rejected = true; }
     check(rejected, "malformed cyclic chain is rejected");
-    uint32_t stamp = 0;
-    check(retailInitialPathWeight(100,stamp,20,0,false) == 98304 && stamp == 100,
-          "initial age starts at the current tick");
-    stamp = 1;
-    check(retailInitialPathWeight(1000,stamp,500,3,true) == 20*65536,
-          "age/load heuristic obeys retail upper bound");
     {
         RetailSearchAttempt a;
         a.trace.cells.resize(64); a.trace.cells[3].flags=0xff; a.trace.cells[3].direction=7;
@@ -948,7 +960,7 @@ static int selfTest() {
             [&] { events.push_back(2); return std::vector<RetailReachability::Point>{{5,3},{3,5}}; },
             [&](int,int) { events.push_back(3); return true; },
             [&](int,int) { events.push_back(4); return 99; });
-        check(result.result==RetailSearchAttempt::Result::Complete && result.work==500
+        check(result.result==RetailSearchAttempt::Result::Complete && result.work==100
               && result.notification==0x1000 && a.route.points.empty(),
               "controller acceptance completes initialization without a route");
         check(events==std::vector<int>{1,2,3}, "acceptance precedes distance evaluation");
@@ -957,9 +969,11 @@ static int selfTest() {
               "initialization clears flags while retaining scratch directions");
     }
     {
+        // TotalA.exe 0x40eec9: an exhausted A* delivers an empty route; no
+        // retries and no 81-cell probe. The tracer runs inside init.
         RetailSearchWorker worker;
         std::vector<int> retries; std::vector<bool> refreshes;
-        int acceptanceQueries=0; bool complete=false;
+        int acceptanceQueries=0; bool complete=false; int notification=-1, dispatches=0;
         for (int n=0;n<100 && !complete;++n) {
             auto result=worker.dispatch(n==0,12000,[&](int retry) {
                 retries.push_back(retry);
@@ -973,15 +987,19 @@ static int selfTest() {
             [](int x,int z,int) {
                 return (z==1 && x>=1 && x<=12) || (x==12 && z>=1 && z<=8) ? 6 : 0;
             });
+            ++dispatches;
+            if (n==0) check(worker.attempt.phase==2 && result.result==RetailSearchAttempt::Result::Searching
+                            && result.work>100, "init runs the tracer to completion and charges 100 + its steps");
             if (worker.attempt.phase==2) worker.attempt.nodeLimit=0;
             complete=result.result==RetailSearchAttempt::Result::Complete;
+            if (complete) notification=result.notification;
         }
-        check(complete && retries==std::vector<int>{0,1,2,3}, "exhaustion performs exactly three retries");
-        check(refreshes==std::vector<bool>{false,false,false,true}, "last retry selects the final grid refresh mode");
-        check(acceptanceQueries==85 && worker.attempt.route.points.empty(),
-              "final failure audits 81 controller cells and clears the route");
+        check(complete && dispatches==2 && retries==std::vector<int>{0}, "exhaustion completes without retries");
+        check(refreshes==std::vector<bool>{false}, "a single grid refresh at init");
+        check(acceptanceQueries==1 && worker.attempt.route.points.empty() && notification==0x2000,
+              "exhaustion delivers an empty route with 0x2000 and no 81-cell probe");
     }
-    if (!failures) std::cout << "PASS: retail trace, handoff, route ring and initial weight regressions\n";
+    if (!failures) std::cout << "PASS: retail trace, handoff, route ring, TA search grade and exhaustion regressions\n";
     return failures ? 1 : 0;
 }
 
@@ -1117,35 +1135,13 @@ int main(int argc, char** argv) {
                 std::cin >> b.flags >> b.stamp >> b.hasMover;
             }
             std::vector<int> events;
-            auto age=[&](const RetailGradeBody& b,bool stale) {
-                events.insert(events.end(),{2,b.slot,int(stale)});
-            };
-            state.prepare(tick,bodies.at(size_t(requester-1)),bodies,last!=0,
-                [&](const RetailGradeBody& b) { events.insert(events.end(),{1,b.slot}); },age);
-            if (finish) state.finish(&bodies.at(size_t(requester-1)),age);
+            auto refresh=[&](const RetailGradeBody& b) { events.insert(events.end(),{1,b.slot}); };
+            state.prepare(tick,bodies.at(size_t(requester-1)),bodies,last!=0,refresh,
+                [](const RetailGradeBody&,bool) {});
+            if (finish) state.finish(&bodies.at(size_t(requester-1)),refresh);
             std::cout << state.recent << ' ' << state.stale << ' ' << state.requestSlot;
             for (int value:events) std::cout << ' ' << value;
             std::cout << '\n';
-        }
-        return 0;
-    }
-    if (argc == 2 && std::string(argv[1]) == "--age-grade") {
-        using namespace ta::sim;
-        RetailGradeContext c;
-        int x,z,fx,fz,stale;
-        while (std::cin >> c.width >> c.height >> c.footX >> c.footZ >> x >> z >> fx >> fz >> stale) {
-            std::vector<int> cells(size_t(c.width*c.height));
-            for (auto& v:cells) std::cin >> v;
-            uint64_t writes=14695981039346656037ull;
-            retailAgeGradeRect(c,x,z,fx,fz,stale!=0,
-                [&](int qx,int qz) { return cells.at(size_t(qz*c.width+qx)); },
-                [&](int qx,int qz,int value) {
-                    auto& cell=cells.at(size_t(qz*c.width+qx)); cell=(cell&8)|value;
-                    word(writes,qx); word(writes,qz); word(writes,value);
-                });
-            uint64_t result=14695981039346656037ull;
-            for (int value:cells) word(result,value);
-            std::cout << result << ' ' << writes << '\n';
         }
         return 0;
     }
@@ -1162,7 +1158,7 @@ int main(int argc, char** argv) {
         int mw,mh,x,z,mask;
         while (std::cin >> c.width >> c.height >> c.footX >> c.footZ >> mw >> mh >> c.player >> x >> z >> mask) {
             std::vector<int> queries;
-            const bool value=retailSearchVisible(c,mw,mh,x,z,[&](int qx,int qz) {
+            const int value=retailSearchVisible(c,mw,mh,x,z,[&](int qx,int qz) {
                 queries.insert(queries.end(),{qx,qz}); return uint16_t(mask);
             });
             std::cout << value;
@@ -1195,7 +1191,7 @@ int main(int argc, char** argv) {
                >> c.player >> c.retry >> probe >> x >> z >> visible >> grade >> live >> bx >> bz >> owner) {
             c.specialBlockerProbe=probe!=0;
             std::vector<int> queries;
-            const int value=retailSearchGrade(c,x,z,[&](int,int) { return visible!=0; },
+            const int value=retailSearchGrade(c,x,z,[&](int,int) { return visible; },
                 [&](int,int) { return grade; },[&](int qx,int qz) {
                     queries.insert(queries.end(),{1,qx,qz}); return live;
                 },[&](int qx,int qz) {

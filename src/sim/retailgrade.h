@@ -62,108 +62,59 @@ struct RetailGradePreparation {
     uint32_t recent=0, stale=0;
     int requestSlot=0;
 
-    // 4e1ee0. Bodies are supplied in ascending retail allocation-slot order.
-    // stamp is mover+28, not the separate local scan timestamp at mover+30.
+    // TotalA.exe 0x440af0 (docs/retail-pathfinding.md 1.6), at every search
+    // init for the requester's class: one threshold, max(tick,30) - 30. A body
+    // that changed cells since then is transparent (7), older bodies and all
+    // structures are walls (0): retailCachedBodyGrade with recent == stale.
+    // The requester is made transparent for its own search, and the rectangle
+    // of every body whose stamp crossed the threshold is fully re-rated
+    // (0x440830). `age` is unused by the TA rule and kept for callers.
     template<class Refresh,class Age>
     void prepare(uint32_t tick,const RetailGradeBody& requester,
-                 std::span<const RetailGradeBody> bodies,bool lastRetry,
-                 Refresh refresh,Age age) {
-        const uint32_t oldRecent=recent, oldStale=stale;
-        recent=std::max(tick,10u)-10; stale=std::max(tick,150u)-150;
+                 std::span<const RetailGradeBody> bodies,bool /*lastRetry*/,
+                 Refresh refresh,Age /*age*/) {
+        const uint32_t old=recent;
+        recent=stale=std::max(tick,30u)-30;
         requestSlot=requester.slot;
-        if (lastRetry || requester.stamp<oldRecent) refresh(requester);
-        if (lastRetry) {
-            for (const auto& b:bodies)
-                if ((b.flags&0x1000000) && b.hasMover) refresh(b);
-            return;
-        }
-        if (recent==oldRecent) return;
+        if (requester.hasMover) refresh(requester);
+        if (recent==old) return;
         for (const auto& b:bodies) {
-            if (!(b.flags&0x1000000) || !b.hasMover || (b.flags&3)!=1) continue;
-            if (((b.stamp>=oldRecent && b.stamp<recent) ||
-                 (b.stamp>=oldStale && b.stamp<stale)) && b.slot!=requester.slot)
-                age(b,b.stamp<stale);
+            if (!(b.flags&0x1000000) || !b.hasMover || b.slot==requester.slot) continue;
+            if (b.stamp>=old && b.stamp<recent) refresh(b);
         }
     }
 
-    // 4e2060: restore the requesting body's occupancy after the search.
-    template<class Age>
-    void finish(const RetailGradeBody* requester,Age age) {
+    // 0x440be0: after the search, re-block the requester if its stamp is old.
+    template<class Refresh>
+    void finish(const RetailGradeBody* requester,Refresh refresh) {
         requestSlot=0;
-        if (requester && (requester->flags&0x1000000) && requester->stamp<recent)
-            age(*requester,requester->stamp<stale);
+        if (requester && (requester->flags&0x1000000) && requester->hasMover && requester->stamp<recent)
+            refresh(*requester);
     }
 };
 
-// 4e0300: age an occupied rectangle in a cached grade plane. The border
-// becomes at most 4; the interior becomes at most 2, or 0 for stale bodies.
-// Bounds for the interior are clipped independently of the border. Callers
-// retain the fourth (tag) bit when writing the three-bit grade.
-template<class Read,class Write>
-void retailAgeGradeRect(const RetailGradeContext& c,int x,int z,int footX,int footZ,
-                        bool stale,Read read,Write write) {
-    const int left=x-c.footX, top=z-c.footZ, right=x+footX+1, bottom=z+footZ+1;
-    if (left>=right || top>=bottom) return;
-    const int x0=std::max(0,left), z0=std::max(0,top);
-    const auto upper=[](int value,int limit) {
-        return uint32_t(value)>uint32_t(limit) ? limit : value;
-    };
-    const int x1=upper(right,c.width), z1=upper(bottom,c.height);
-    const auto lowerGrade=[&](int qx,int qz,int cap) {
-        if ((read(qx,qz)&7)>cap) write(qx,qz,cap);
-    };
-    for (int qx=x0;qx<x1;++qx) {
-        lowerGrade(qx,z0,4); lowerGrade(qx,z1-1,4);
-    }
-    for (int qz=z0+1;qz<z1-1;++qz) {
-        lowerGrade(x0,qz,4); lowerGrade(x1-1,qz,4);
-    }
-    const int ix0=std::max(0,left+1), iz0=std::max(0,top+1);
-    const int ix1=upper(right-1,c.width), iz1=upper(bottom-1,c.height);
-    for (int qz=iz0;qz<iz1;++qz)
-        for (int qx=ix0;qx<ix1;++qx) lowerGrade(qx,qz,stale ? 0 : 2);
-}
-
-// 413c80: visibility is sampled on the coarser 32px plane, offset by
-// one quarter of the footprint. It is not the visibility of the origin cell.
+// 413c80 / TotalA.exe: visibility is sampled on the coarser 32px plane, offset
+// by one quarter of the footprint. 1 seen, 0 unexplored, -1 outside the plane.
 template<class WordAt>
-bool retailSearchVisible(const RetailGradeContext& c, int mapWidth, int mapHeight,
-                         int x,int z,WordAt wordAt) {
-    if (uint32_t(x)>=uint32_t(c.width) || uint32_t(z)>=uint32_t(c.height)) return false;
+int retailSearchVisible(const RetailGradeContext& c, int mapWidth, int mapHeight,
+                        int x,int z,WordAt wordAt) {
+    if (uint32_t(x)>=uint32_t(c.width) || uint32_t(z)>=uint32_t(c.height)) return -1;
     const int vx=x/2+c.footX/4, vz=z/2+c.footZ/4;
-    if (vx>=mapWidth/2 || vz>=mapHeight/2) return false;
-    return (wordAt(vx,vz) & (uint32_t(1)<<(unsigned(c.player)&31)))!=0;
+    if (vx>=mapWidth/2 || vz>=mapHeight/2) return -1;
+    return (wordAt(vx,vz) & (uint32_t(1)<<(unsigned(c.player)&31)))!=0 ? 1 : 0;
 }
 
-// 4139d0. The third direction argument to the retail routine is unused.
-// specialOwner returns -1 unless a map record names an allocated unit with
-// type flag 264:40000000; otherwise it returns that unit's owner byte.
+// TotalA.exe search grade (docs/retail-pathfinding.md D7): out of the map or
+// the 32px plane, blocked; unexplored, clear at no cost (6); otherwise the
+// cached plane's grade. No live query, no gate probe, no start exemption.
 template<class Visible,class Cached,class Live,class SpecialOwner>
 int retailSearchGrade(const RetailGradeContext& c,int x,int z,Visible visible,
-                      Cached cached,Live live,SpecialOwner specialOwner) {
+                      Cached cached,Live /*live*/,SpecialOwner /*specialOwner*/) {
     if (uint32_t(x)>=uint32_t(c.width) || uint32_t(z)>=uint32_t(c.height)) return 0;
-    const auto nearStart=[](int value,int start,int foot,int margin) {
-        return value>=start-margin && value<=start+foot+margin-1;
-    };
-    if (!visible(x,z) && !nearStart(x,c.startX,c.footX,1) && !nearStart(z,c.startZ,c.footZ,1))
-        return 5;
-    const int grade=cached(x,z)&7;
-    if (grade==2 && c.retry<=1 &&
-        !nearStart(x,c.startX,c.footX,9) && !nearStart(z,c.startZ,c.footZ,9))
-        return live(x,z);
-    if (grade==3 && c.retry<=1 && c.specialBlockerProbe && c.footX==c.footZ) {
-        for (int i=0; i<c.footX; ++i) {
-            int owner=specialOwner(x+i,z+i);
-            if (owner>=0) return owner==c.player ? 4 : 3;
-            if (i) {
-                owner=specialOwner(x+i,z);
-                if (owner>=0) return owner==c.player ? 4 : 3;
-                owner=specialOwner(x,z+i);
-                if (owner>=0) return owner==c.player ? 4 : 3;
-            }
-        }
-    }
-    return grade;
+    const int seen=int(visible(x,z));
+    if (seen<0) return 0;
+    if (seen==0) return 6;
+    return cached(x,z)&7;
 }
 
 } // namespace ta::sim

@@ -71,14 +71,18 @@ public:
     Slice runSlice(Grade grade, Distance distance,
                    int goalRadius, int nodeLimit, int budget, int retry, int& spread) {
         if (empty() || processed >= nodeLimit) return {Result::Exhausted, 0};
+        // TotalA.exe 0x40eeaf: 1 work per pop, the budget tested between slices
+        // of 100 pops; arrival costs nothing extra.
         int work = 0;
         while (work < budget && !empty()) {
-            work += 10;
-            const auto result = pop(grade, distance, goalRadius, spread);
-            if (result == Result::Arrived) return {result, work + 50};
-            spread = 2 + int(retry > 0);
+            for (int n = 0; n < 100 && !empty(); ++n) {
+                ++work;
+                const auto result = pop(grade, distance, goalRadius, spread);
+                if (result == Result::Arrived) return {result, work};
+                spread = 2 + int(retry > 0);
+            }
         }
-        return {Result::Searching, work};
+        return {empty() ? Result::Exhausted : Result::Searching, work};
     }
 
     void reset(int width, int height, int startCell, int direction,

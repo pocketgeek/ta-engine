@@ -70,7 +70,8 @@ inline constexpr int kWorkWaypoint = 30;
 
 // Retail's default per-frame budget (icd 0x41617b seeds both +0x221 and
 // +0x225 with 0x2ee0), before the quality percentage scales it.
-inline constexpr int kPathBudgetDefault = 12000;
+// TotalA.exe: 1333 work units per tick for path finding (0x40eb70, +0x48).
+inline constexpr int kPathBudgetDefault = 1333;
 
 // What a COMPLETION costs, charged against the same per-tick budget as the search
 // itself. Finishing is not free: reconstruction walks the breadcrumbs and the caller
@@ -260,6 +261,8 @@ class PathService {
         telemetry_=observer;
     }
     void setBudget(int b) { budget_ = b > 0 ? b : kPathBudgetDefault; }
+    // maxunits (G+0x1434f): one full slot sweep for the weight rule.
+    void setMaxUnits(int n) { scheduler_.maxUnits = n > 0 ? n : 250; }
     int budget() const { return budget_; }
     uint64_t workSpent() const { return workSpent_; }      // observational; see workSpent_
     uint64_t completions() const { return completions_; }

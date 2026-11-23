@@ -264,11 +264,12 @@ int main() {
                   " small-slice ticks=" + std::to_string(tb));
     }
 
-    // Admission may consume the last scan budget before execution starts.
+    // Admission may consume the last credit before execution starts (TA: the
+    // slot visit costs 1, so a 1-unit budget admits and suspends).
     // A suspended request must not call the admission hook again.
     {
         PathService svc;
-        svc.setBudget(7);
+        svc.setBudget(1);
         svc.setEntityPool(0,1,1);
         svc.request(1,{0,0},{7,7},8,8,Fixed::fromInt(112),Fixed::fromInt(112),0,false);
         int admissions=0,stamp=0;
@@ -415,11 +416,15 @@ int main() {
         check(svc.requests()==admissions, "same controller re-request retains the running search");
         request(102);
         const bool retiredNotifications=svc.takeNotifications().empty();
-        // A one-unit budget can expire scanning an empty entity slot before
-        // the replacement is admitted on the following scheduler pass.
-        for (int tick=0; tick<20 && svc.requests()==admissions; ++tick)
+        // A one-unit budget repays the cancelled search's overdrawn credit
+        // (TA credits persist) before the replacement is admitted.
+        for (int tick=0; tick<2000 && svc.requests()==admissions; ++tick)
             svc.tick(score,delivered);
-        check(retiredNotifications && svc.requests()==admissions+1 && svc.takeNotifications().empty(),
+        // TotalA.exe runs the tracer inside init, so the replacement's own
+        // partial (0x2000) arrives with its admission; none may name 101.
+        bool oldNotified=false;
+        for (const auto& n:svc.takeNotifications()) oldNotified |= n.controller==101;
+        check(retiredNotifications && svc.requests()==admissions+1 && !oldNotified,
               "new controller restarts same-goal search without old notifications");
         svc.cancel(1);
         for (int tick=0; tick<10; ++tick) svc.tick(score,delivered);
@@ -591,7 +596,7 @@ int main() {
     // after admission but before initialization has consumed any work.
     {
         PathService svc;
-        svc.setBudget(7);
+        svc.setBudget(1);
         int prepared=0,finished=0,active=-1;
         bool valid=true;
         svc.setGradeHost({
