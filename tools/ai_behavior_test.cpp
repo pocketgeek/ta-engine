@@ -6,6 +6,7 @@
 #include "net/matchconfig.h"
 #include "net/replayhdr.h"
 #include "sim/matchsetup.h"
+#include "sim/sides.h"
 #include "hpi/hpi.h"
 #include <cmath>
 #include <cstdio>
@@ -1472,151 +1473,6 @@ static void lodestoneChoice() {
     }
 }
 
-// Divine Lodestones: an upgrade of an own lodestone in a saturated base that pays
-// back within the level's horizon, never one on a free deposit; its priest
-// trained when there is none; and no Dragon started at an empty store. The ids
-// must be the retail ones: World::lodestoneUpgradeBase pairs tarmana with tarlode.
-static void divineLodestones() {
-    auto files=std::make_shared<hpi::Vfs::Files>();
-    auto file=[&](const std::string& path,const std::string& text) {
-        std::string lines;
-        for (char ch : text) { lines += ch; if (ch == ';' || ch == '{' || ch == '}') lines += '\n'; }
-        (*files)[path]={lines.begin(),lines.end()};
-    };
-    auto type=[&](const char* id,const char* fields) {
-        file(std::string("units/")+id+".fbi",std::string("[UNITINFO]{unitname=")+id+
-            ";objectname="+id+";maxdamage=100;side=TAR;sightdistance=600;"+fields+"}");
-    };
-    type("tarhell","footprintx=4;footprintz=4;builder=1;workertime=30;buildcost=1000;buildtime=100;");
-    type("tarpries","footprintx=2;footprintz=2;builder=1;workertime=10;canmove=1;maxvelocity=1;"
-                    "buildcost=3000;buildtime=300;");
-    type("tarlode","footprintx=2;footprintz=2;yardmap=SSSS;mogriumincome=10;mogriumstorage=1000;"
-                   "buildcost=300;buildtime=85;");
-    type("tarmana","footprintx=3;footprintz=3;yardmap=SSSSSSSSS;mogriumincome=20;mogriumstorage=2000;"
-                   "buildcost=6000;buildtime=1000;");
-    type("tardrag","footprintx=2;footprintz=2;canmove=1;maxvelocity=1;buildcost=20000;buildtime=4000;");
-    type("tarang","footprintx=2;footprintz=2;canmove=1;maxvelocity=1;buildcost=500;buildtime=100;");
-    type("targob","footprintx=2;footprintz=2;canmove=1;maxvelocity=1;buildcost=10;buildtime=30;");
-    const auto archer=fighter();
-    file("canbuild/tarhell/tarpries.tdf","[CANBUILD]{sortbias=0;}");
-    for (const char* id : {"tarmana","tardrag","tarang"})   // the priest's menu: more troops than buildings
-        file(std::string("canbuild/tarpries/")+id+".tdf","[CANBUILD]{sortbias=0;}");
-    hpi::Vfs vfs;vfs.setMapFiles(files);
-    sim::TypeRegistry reg;reg.loadDir(vfs,"units");reg.loadBuildTree(vfs,"canbuild");
-    struct Setup {
-        ai::Difficulty difficulty=ai::Difficulty::Normal;
-        uint32_t tick=11*60*30;
-        float mana=5000,income=100;
-        bool priest=true;
-        int divines=0;            // finished Divine Lodestones already standing
-        bool building=false;      // an unfinished Divine Lodestone standing
-        bool enemy=false;         // an armed enemy 550 px from the lodestone, 1050 from home
-        bool freeDeposit=false;   // a free deposit 1800 px from home
-        int army=12;
-        bool multOne=false;       // the lodestone's deposit pays x1, not x2
-        float storage=10000;
-        int divineLimit=9;        // the profile's tarmana limit
-        bool troops=false;        // the priest's tarang weighted too
-    };
-    // Home is the buildings' centre: the hell (400,800) and lodestone A (1400,800)
-    // -- each finished Divine Lodestone stands on its own deposit in a row at
-    // z 1700. Every deposit within 1600 px of home is taken unless `freeDeposit`.
-    auto run=[&](const Setup& s) {
-        sim::World w;terrain(w);w.buildNavClasses(reg);
-        std::vector<std::pair<float,float>> deposits{{1400,800}};
-        for (int i=0;i<s.divines+(s.building ? 1 : 0);++i) deposits.emplace_back(200+float(i)*250,1700);
-        if (s.freeDeposit) deposits.emplace_back(2700,800);
-        w.setManaSpots(deposits);
-        std::vector<sim::SacredSite> sites;
-        for (size_t i=0;i<deposits.size();++i)
-            sites.push_back({sim::footprintOrigin(deposits[i].first,2),sim::footprintOrigin(deposits[i].second,2),
-                             2,2,i==0 && s.multOne ? 1.0f : 2.0f});
-        w.setSacredSites(sites);
-        w.spawn(reg.find("tarhell"),400,800,0,0);
-        w.spawn(reg.find("tarlode"),1400,800,0,0);
-        for (int i=0;i<s.divines;++i) w.spawn(reg.find("tarmana"),200+float(i)*250,1700,0,0);
-        if (s.building) w.unit(w.spawn(reg.find("tarmana"),200+float(s.divines)*250,1700,0,0))->underConstruction=true;
-        const int priest=s.priest ? w.spawn(reg.find("tarpries"),900,1100,0,0) : 0;
-        for (int i=0;i<s.army;++i) w.spawn(reg.find("targob"),300+float(i%6)*40,1200+float(i/6)*40,0,0);
-        if (s.enemy) w.spawn(&archer,1950,800,0,1);
-        auto& me=w.player(0);
-        me.storage=s.storage;me.mana=s.mana;me.income=s.income;
-        ai::Profile p;
-        p.weight["tarpries"]=10;p.limit["tarpries"]=3;p.weight["tarmana"]=5;p.limit["tarmana"]=s.divineLimit;
-        p.weight["tardrag"]=25;p.limit["tardrag"]=1;p.weight["targob"]=10;p.limit["targob"]=40;
-        if (s.troops) { p.weight["tarang"]=10;p.limit["tarang"]=40; }
-        ai::Controller controller(0,reg,p,1,s.difficulty);
-        const auto cs=seen(controller,w,s.tick);
-        struct Out { bool upgrade=false,freeDivine=false,dragon=false,trains=false,troop=false; } out;
-        for (const auto& c:cs) {
-            const std::string t=c.type;
-            if (c.kind==net::Cmd::Build && t=="tarmana") {
-                if (c.unitId==priest && c.x==1400 && c.z==800) out.upgrade=true;
-                if (c.x==2700) out.freeDivine=true;
-            }
-            if (c.kind==net::Cmd::Build && t=="tardrag") out.dragon=true;
-            if (c.kind==net::Cmd::Build && t=="tarang" && c.unitId==priest) out.troop=true;
-            if (c.kind==net::Cmd::Train && t=="tarpries") out.trains=true;
-        }
-        return out;
-    };
-    {
-        Setup s;s.difficulty=ai::Difficulty::Hard;s.tick=0;s.mana=0;s.freeDeposit=true;
-        check(!run(s).freeDivine,"Hard never starts a Divine Lodestone on a free deposit");
-    }
-    check(run(Setup{}).upgrade,"Normal upgrades its own lodestone in a saturated base after 10 minutes, with the reserve saved");
-    {
-        // The rest would each have upgraded under the old ladder: an income under
-        // 20 made economy the planner's first want.
-        Setup s;s.income=19;s.tick=9*60*30;
-        check(!run(s).upgrade,"Normal does not upgrade before 10 minutes");
-        s=Setup{};s.income=19;s.enemy=true;
-        check(!run(s).upgrade,"no upgrade of a lodestone with an armed enemy within 600 px");
-        s=Setup{};s.income=19;s.building=true;
-        check(!run(s).upgrade,"one upgrade at a time: none while a Divine Lodestone is unfinished");
-        s=Setup{};s.income=19;s.difficulty=ai::Difficulty::Easy;
-        check(!run(s).upgrade,"Easy never upgrades");
-        s=Setup{};s.mana=3000;
-        check(!run(s).upgrade,"no upgrade until the store holds 60% of its cost");
-        // No reserve held for an upgrade weightedPick could never buy: the
-        // priest, with no plan, conjures a troop from that store instead.
-        s=Setup{};s.troops=true;s.mana=3000;s.divines=1;s.divineLimit=1;
-        check(run(s).troop,"no reserve for a Divine Lodestone past the profile's limit");
-        s=Setup{};s.troops=true;s.mana=3600;s.storage=4000;s.income=19;
-        check(run(s).troop,"no reserve a full store plus income over the build cannot turn into the upgrade");
-    }
-    {
-        Setup s;s.priest=false;s.income=30;s.mana=3500;
-        check(run(s).trains,"with no priest, a factory trains one for an upgrade that pays");
-        s.multOne=true;
-        check(!run(s).trains,"no priest for a x1 deposit: priest and upgrade do not pay back in 15 minutes");
-    }
-    {
-        Setup s;s.difficulty=ai::Difficulty::Hard;s.tick=0;s.mana=0;s.army=2;
-        check(!run(s).dragon,"a priest starts no Dragon at an empty store, its early army boost gone");
-        s.mana=9000;s.army=12;
-        check(run(s).dragon,"a priest still starts a Dragon on a store floating half its cost");
-    }
-    // The levels' limits on Divine Lodestones standing: Defensive 5, Normal 2,
-    // Hard 6, Absurd and Absurdly Defensive none; Easy builds none.
-    struct Limit { ai::Difficulty difficulty; int limit; const char* label; };
-    for (const auto& [difficulty,limit,label] : {
-            Limit{ai::Difficulty::Defensive,5,"Defensive stops at five Divine Lodestones"},
-            Limit{ai::Difficulty::Normal,2,"Normal stops at two Divine Lodestones"},
-            Limit{ai::Difficulty::Hard,6,"Hard stops at six Divine Lodestones"},
-            Limit{ai::Difficulty::Absurd,-1,"Absurd keeps upgrading past eight Divine Lodestones"},
-            Limit{ai::Difficulty::AbsurdlyDefensive,-1,"Absurdly Defensive keeps upgrading past eight Divine Lodestones"},
-            Limit{ai::Difficulty::Easy,0,"Easy builds no Divine Lodestone"}}) {
-        Setup s;s.difficulty=difficulty;s.tick=20*60*30;
-        bool ok=true;
-        for (int have : {0,1,2,4,5,6,8}) {
-            s.divines=have;
-            ok=ok && run(s).upgrade==(limit<0 || have<limit);
-        }
-        check(ok,label);
-    }
-}
-
 // Defensive and Absurdly Defensive keep building in step with their income with no
 // AI-imposed ceiling: no cap on factories, builders or towers, no profile limits,
 // every idle producer acting each think, the orders of one think held against the
@@ -2180,7 +2036,6 @@ int main(int argc,char** argv) {
     mobileProducers();
     builderTotals();
     fullStore();
-    divineLodestones();
     lodestoneChoice();
     defensiveResponses(empty,profile,soldier);
     defensiveShooters(empty,profile,soldier);
@@ -2954,8 +2809,11 @@ int main(int argc,char** argv) {
         auto vfs=hpi::mountRetailRoot(argv[1]);
         for (bool crusades : {false,true}) {
             sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,crusades);
-            for (const char* monarch : sim::kMonarchs) {
-                auto builderType=*reg.find(monarch);builderType.canFly=true;
+            for (int side=0;side<sides::count();++side) {
+                const auto* commanderType=reg.find(sides::commander(side));
+                check(commanderType!=nullptr,"every side's commander is registered");
+                if (!commanderType) continue;
+                auto builderType=*commanderType;builderType.canFly=true;
                 for (auto shape : {std::pair{2,2},std::pair{7,12},std::pair{12,7}})
                 for (float offset : {0.f,32.f,64.f}) {
                     sim::World w;terrain(w);w.buildNavClasses(reg);

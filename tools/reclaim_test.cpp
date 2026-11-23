@@ -82,7 +82,9 @@ int main(int argc,char**) {
           sim::retailReclaimCountdown(37.5f)==52,"countdown is trunc(energy + 15)");
     check(sim::retailReclaimCountdown(3e9f)==INT32_MIN && sim::retailReclaimCountdown(-3e9f)==INT32_MIN,
           "an out-of-range countdown is ftol's integer indefinite on every CPU");
-    for (const auto& [energy,end]:std::vector<std::pair<float,int>>{{0,18},{75,92},{250,268},{525,542}}) {
+    // TotalA.exe 0x404bba: timer trunc(15 + 0.5*(M+E)), counted down 2 every 2 ticks
+    // (an odd timer takes one tick more), with 2 ticks from arrival to the first count.
+    for (const auto& [energy,end]:std::vector<std::pair<float,int>>{{0,18},{75,54},{250,142},{525,280}}) {
         const auto t=timeReclaim(energy,1,10);
         check(t.start>=0 && t.end-t.start==end && t.removed-t.end==sim::kReclaimFadeTicks,
               "energy "+std::to_string(int(energy))+": order ends "+std::to_string(end)+
@@ -92,12 +94,12 @@ int main(int argc,char**) {
     }
     {
         const auto slow=timeReclaim(250,1,1),fast=timeReclaim(250,1,5000);
-        check(slow.end-slow.start==268 && fast.end-fast.start==268,"workertime does not change the time");
+        check(slow.end-slow.start==142 && fast.end-fast.start==142,"workertime does not change the time");
         const auto four=timeReclaim(250,4,10);
-        check(four.end-four.start==268 && four.removed-four.end==34,
+        check(four.end-four.start==142 && four.removed-four.end==34,
               "four builders on one feature take as long as one (no shared work)");
         const auto late=timeReclaim(250,3,10,40);
-        check(late.end-late.start==268,"a builder joining late does not speed the first one up");
+        check(late.end-late.start==142,"a builder joining late does not speed the first one up");
     }
     {
         // Every other builder quits on its next wake once the first removes it.
@@ -211,7 +213,7 @@ int main(int argc,char**) {
             }
             if (start>=0 && !leg) end=tick;
         }
-        check(end-start==268 && w.feature(1)->fadeLeft>0,"a builder pushed far away mid-work keeps working");
+        check(end-start==142 && w.feature(1)->fadeLeft>0,"a builder pushed far away mid-work keeps working");
     }
     {
         // Stop mid-work: nothing removed, nothing paid (event 0x2 is a cancel).

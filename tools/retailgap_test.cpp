@@ -1081,58 +1081,7 @@ int main(int argc, char** argv) {
         if (const auto* sw = ut("arasword"))
             check(sw->turnInPlaceRate > 0, "a swordsman can pivot on the spot",
                   std::to_string(sw->turnInPlaceRate));
-        // AdjustJoy is a repair aura; the Acolyte is the headline carrier.
-        if (const auto* pr = ut("arapries")) {
-            int joy = 0;
-            for (const auto& a : pr->auras)
-                if (a.kind == sim::Aura::Kind::Joy && a.radius > 0) ++joy;
-            check(joy == 1, "the Acolyte carries one AdjustJoy aura");
-            for (const auto& a : pr->auras)
-                if (a.kind == sim::Aura::Kind::Joy) {
-                    // Retail's falloff is weakest at the emitter, full at the rim.
-                    check(a.falloff(0.0f) < a.falloff(a.radius),
-                          "the aura is weaker at the centre than at the rim",
-                          std::to_string(a.falloff(0.0f)) + " -> " +
-                              std::to_string(a.falloff(a.radius)));
-                }
-        }
     }
-    // The repair aura, end to end: a damaged unit next to an Acolyte heals, and the
-    // Acolyte's owner pays for it.
-    if (want("rules")) {
-        std::printf("[AdjustJoy repair aura]\n");
-        const sim::UnitType* pri = reg.find("arapries");
-        const sim::UnitType* vic = reg.find("arasword");
-        if (pri && vic) {
-            sim::World w;
-            sim::MatchConfig cfg;
-            cfg.vfs = &vfs;
-            cfg.mapPath = kMap;
-            cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-            sim::setupMatch(w, reg, cfg);
-            // No Monarch here, so the pool starts empty (retail): give it some.
-            w.player(0).mana = 2800;
-            int pid = w.spawn(pri, 600, 600, 0, 0);
-            int vid = w.spawn(vic, 660, 600, 0, 0);   // well inside radius 200
-            (void)pid;
-            sim::Unit* v = w.unit(vid);
-            v->hp = sim::Fixed::fromFloat(v->type->maxHp * 0.25f);
-            float hp0 = v->hp.toFloat();
-            float mana0 = w.player(0).mana;
-            for (int i = 0; i < 60; ++i) w.tick(1.0f / 30.0f);   // 2s = two 1Hz pulses
-            float hp1 = w.unit(vid)->hp.toFloat();
-            check(hp1 > hp0, "a damaged ally next to an Acolyte is repaired",
-                  std::to_string(int(hp0)) + " -> " + std::to_string(int(hp1)));
-            check(w.player(0).mana < mana0, "and the Acolyte's owner pays the mana",
-                  std::to_string(int(mana0)) + " -> " + std::to_string(int(w.player(0).mana)));
-            // An undamaged unit must not be touched (and must still count toward N).
-            int fid = w.spawn(vic, 640, 620, 0, 0);
-            float full0 = w.unit(fid)->hp.toFloat();
-            for (int i = 0; i < 60; ++i) w.tick(1.0f / 30.0f);
-            check(w.unit(fid)->hp.toFloat() <= full0 + 0.01f, "an undamaged ally is left alone");
-        }
-    }
-
     // The turn/brake coupling replaced a flat "big turn -> 30% speed" cliff with
     // retail's arc-distance rule. The risk is a unit that brakes forever and never
     // arrives, so test arrival on a straight run AND on a right-angle dogleg.
@@ -2166,51 +2115,6 @@ int main(int argc, char** argv) {
                 check(!u || !u->alive(), (std::string(c.label) + " (" + c.t->id + ") is DEAD").c_str(),
                       u ? ("hp=" + std::to_string(u->hp.toFloat())) : "gone");
             }
-            // A self-destruct next to a friendly healer must still kill. alive()
-            // reads deadFor, not hp, so a unit sitting at zero hp still looks alive
-            // to every heal path until the death sweep runs -- and the AdjustJoy
-            // aura pulses AFTER that loop, so it used to resurrect the corpse.
-            const sim::UnitType* healer = nullptr;
-            for (const auto& [tid, t] : reg.types())
-                for (const auto& a : t.auras)
-                    if (a.kind == sim::Aura::Kind::Joy && a.radius > 0 && a.amount > 0) {
-                        if (!healer) healer = &t;
-                    }
-            if (!healer) std::printf("  (no AdjustJoy emitter in the data; aura case skipped)\n");
-            else {
-                // The aura pulses at 1 Hz, so the resurrection only bites when the
-                // countdown expires ON a pulse tick. Sweep every phase so one case
-                // is guaranteed to line up -- otherwise this passes by luck and
-                // tests nothing (it did, until the phase sweep was added).
-                int survived = 0;
-                std::string worst;
-                for (int phase = 0; phase < 30; ++phase) {
-                    sim::World w;
-                    sim::MatchConfig cfg;
-                    cfg.vfs = &vfs;
-                    cfg.mapPath = kMap;
-                    cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-                    cfg.slots[0].team = 0; cfg.slots[1].team = 1;
-                    sim::setupMatch(w, reg, cfg);
-                    w.spawn(healer, 500, 500, 0, 0);              // the aura emitter
-                    int vid = w.spawn(regen, 520, 500, 0, 0);     // well inside its radius
-                    if (vid <= 0 || !w.unit(vid)) break;
-                    for (int i = 0; i < phase; ++i) w.tick(1.0f / 30.0f);
-                    w.destroy(vid);
-                    tick(w, 8.0f);
-                    const sim::Unit* v = w.unit(vid);
-                    if (v && v->alive()) {
-                        ++survived;
-                        if (worst.empty())
-                            worst = "phase " + std::to_string(phase) +
-                                    (v ? " hp=" + std::to_string(v->hp.toFloat()) : " gone");
-                    }
-                }
-                check(survived == 0, "self-destruct inside a friendly heal aura still kills",
-                      survived ? (std::to_string(survived) + "/30 survived, first at " + worst)
-                               : (std::string("healer=") + healer->id + ", all 30 phases"));
-            }
-
             // It LEAVES YOUR COMMAND rather than blowing up: no wreck behind it,
             // and nobody is credited with a kill. Retail's self-destruct mission
             // applies damage type 5, which is neither the explosion type (3, the
@@ -2488,65 +2392,6 @@ int main(int argc, char** argv) {
                   diedAt > 0 ? "died at t=" + std::to_string(diedAt) + "s"
                              : "SURVIVED 180s of siege");
         }
-    }
-
-    // ---- gods are summoned BY THE SIM ---------------------------------------
-    //
-    // This was the client's job: GameView::simStep polled godReady() and ran its own
-    // summonGod() after ticking. The headless referee has no GameView, so it never
-    // summoned anything -- from the first god onward the server's world held one
-    // fewer unit than every client's and the hashes split for the rest of the match.
-    // A desync arriving tens of minutes in, with nothing in the command stream to
-    // explain it (observed at tick 39780).
-    //
-    // So the test is deliberately about WHERE the work happens, not whether a god
-    // can appear: tick a bare World, with nobody driving it but tick() itself, and
-    // require the god to show up anyway. Any future move back out of the sim fails
-    // here regardless of how correct the relocated code is.
-    if (want("orders")) {
-        std::printf("\n[gods are summoned by the sim, not the client]\n");
-        sim::World w;
-        sim::MatchConfig cfg;
-        cfg.vfs = &vfs;
-        cfg.mapPath = kMap;
-        cfg.slots = {sim::MatchSlot{}, sim::MatchSlot{}};
-        cfg.slots[0].team = 0; cfg.slots[1].team = 1;
-        cfg.slots[0].faction = 0; cfg.slots[1].faction = 1;
-        cfg.slots[0].used = true; cfg.slots[1].used = true;   // else setupMatch skips them
-        sim::setupMatch(w, reg, cfg);
-        // The roll may or may not have enabled gods for this seed -- that is retail's
-        // 10% GameChance. Force them on so the SUMMON path is what is under test.
-        w.enableGods(0.0f);
-        check(w.godsEnabled(), "gods are enabled");
-        check(w.player(0).godType != nullptr,
-              "setup resolved the player's god type (the sim cannot look it up)");
-
-        const size_t before = w.units().size();
-        // Nothing to prime: retail gates the arrival on the clock alone, and the
-        // appear time above is 0, so the god is already due.
-        check(w.godReady(0), "player 0 is ready for its god");
-
-        tick(w, 0.2f);                       // nothing but World::tick runs here
-
-        check(!w.godReady(0), "the readiness is consumed");
-        check(w.player(0).godSummoned, "and the player is marked summoned");
-        // BOTH players, and that is the retail rule rather than a loose assertion.
-        // The arrival is gated on the clock alone (0x519420 decides IF and WHEN, and
-        // nothing after that decides WHO), so once the time comes every player with a
-        // god type gets one. This used to check `before + 1` and that only player 0
-        // was summoned, which held only because our favour pool gated the other one.
-        check(w.units().size() == before + 2,
-              "ticking the world ALONE summoned a god for BOTH players",
-              std::to_string(before) + " -> " + std::to_string(w.units().size()));
-        auto hasGod = [&](int p) {
-            for (const auto& u : w.units())
-                if (u.alive() && u.player == p && u.type && u.type->id.size() > 3 &&
-                    u.type->id.substr(u.type->id.size() - 3) == "god") return true;
-            return false;
-        };
-        check(hasGod(0), "and the new unit is player 0's god");
-        check(w.player(1).godSummoned && hasGod(1),
-              "and player 1 got one too -- nothing gates WHO, only when");
     }
 
     // ---- canMove is not a structure test ------------------------------------

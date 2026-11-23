@@ -9,12 +9,10 @@
 
 namespace ta::sim {
 
-// 4e2500: constructor stores world tolerance and a separately rounded cell
-// radius. Preserve 32-bit multiply/add and signed truncating division.
+// TotalA.exe circle goal 0x44cf60: accept dx^2+dz^2 <= (r/16)^2, r in px with
+// signed truncating division (docs/retail-pathfinding.md section 2.4).
 constexpr int32_t retailCircleRadiusSquared(int32_t radius) {
-    if (radius <= 30000)
-        return std::bit_cast<int32_t>(uint32_t(radius) * uint32_t(radius) + 128u) / 256;
-    const uint32_t cells = uint32_t(radius / 16);
+    const uint32_t cells = std::bit_cast<uint32_t>(radius / 16);
     return std::bit_cast<int32_t>(cells * cells);
 }
 
@@ -37,14 +35,9 @@ struct RetailRectGoal {
     bool operator==(const RetailRectGoal&) const = default;
     // 4e38e0: clamp to the perimeter. Interior ties prefer left, right,
     // bottom, then top; this ordering affects the initial steering segment.
-    std::pair<int,int> navigationCell(int x, int z) const {
-        const int cx=std::clamp(x,minX,maxX), cz=std::clamp(z,minZ,maxZ);
-        if (x<=minX || x>=maxX || z<=minZ || z>=maxZ) return {cx,cz};
-        const int left=x-minX, right=maxX-x, top=z-minZ, bottom=maxZ-z;
-        if (left<=right && left<=top && left<=bottom) return {minX,z};
-        if (right<=top && right<=bottom) return {maxX,z};
-        return {x,bottom<=top ? maxZ : minZ};
-    }
+    // TotalA.exe 0x44dc60: the rect goal's target is the middle of its far
+    // (max z) side, wherever the unit stands.
+    std::pair<int,int> navigationCell(int, int) const { return {(minX+maxX)/2, maxZ}; }
     bool accepts(int x, int z) const {
         return ((x==minX || x==maxX) && z>=minZ && z<=maxZ)
             || ((z==minZ || z==maxZ) && x>=minX && x<=maxX);
@@ -81,15 +74,19 @@ struct RetailRingGoal {
         const int64_t dx=int64_t(cx)-x, dz=int64_t(cz)-z;
         return uint64_t(dx*dx+dz*dz);
     }
+    // TotalA.exe ring goal 0x44d3b0: (in/16)^2 <= d^2 <= (out/16)^2, truncating.
     bool accepts(int cx, int cz) const {
         const auto s=squared(cx,cz);
-        return int64_t(s)<=outerSquared &&
-            (innerRadius<=0 || s*256>=uint64_t(innerRadius)*uint64_t(innerRadius));
+        const int64_t inner=innerRadius/16;
+        return int64_t(s)<=outerSquared && int64_t(s)>=inner*inner;
     }
+    // 0x44d840: outside, the octile distance past the outer radius; inside,
+    // inner - (18*max + 7*min), floored at 0.
     int distance(int cx, int cz) const {
         const int outside=retailGoalDistance(cx-x,cz-z,outerTolerance);
         if (outside) return outside;
-        return std::max(0,innerRadius-int(isqrt64(squared(cx,cz)*256)));
+        const int ax=std::abs(cx-x), az=std::abs(cz-z);
+        return std::max(0,innerRadius-(18*std::max(ax,az)+7*std::min(ax,az)));
     }
     template<class Emit> void enumerate(Emit emit) const {
         const int32_t radius=((innerRadius+outerTolerance)/2)*65536;

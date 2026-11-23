@@ -394,14 +394,6 @@ static void seatSide() {
               "with its Monarch dead and a captured constructor its lowest-numbered builder, it still does: the side is the seat's");
     }
     {
-        // The Monarch was dead before this AI took the seat: the god the match
-        // setup resolved from it tells the faction.
-        Seat s;seat(s,true,false);
-        s.w.player(0).godType=r("zongod");
-        ai::Controller controller(0,r.reg,r.profile,1,ai::Difficulty::Normal);
-        check(producers(think(controller,s.w,0))>0,"an AI taking a Zhon seat whose Monarch is dead knows the side by the seat's god");
-    }
-    {
         // Controls: no captured builder; and nothing to tell the seat by (no
         // Monarch seen, no god), where the builders' side is read as before.
         Seat s;seat(s,false,true);

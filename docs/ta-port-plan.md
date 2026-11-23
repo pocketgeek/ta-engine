@@ -18,37 +18,17 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 - In-game music by battle status (`docs/retail-music.md`, `client/battlemusic.h`).
 - Headless server+client game runs in lockstep with ARMCOM vs CORCOM.
 
-## Retail specs written (implementation pending)
+## Port steps (all seven landed)
 
-| Spec | Drives |
+| Step | State |
 | --- | --- |
-| `retail-data.md` | FBI / weapon / feature / moveinfo / sound / build-menu parsing |
-| `retail-economy.md` | metal + energy: 1 s settle, debt stalls, extractors, wind/tidal, reclaim, sharing |
-| `retail-ai.md` | RETAIL AI level: profile weights, build pick, nine squads |
-| `retail-gui.md` | .GUI gadget runtime, front-end screen graph, in-game sidebar |
-| `retail-music.md` | done |
-
-## Next, in order
-
-1. **Unit + weapon loading** per `retail-data.md` (TDF syntax rules, FBI keys and
-   scales, weapons by section name with 256 IDs, MovementClass override, yardmap
-   rules, Copyright/Version gate, download/*.tdf + guis/<unit>N.gui build menus).
-2. **Economy**: replace mana (Player mana, lodestones, sacred sites, monarch
-   storage) with the metal/energy settle of `retail-economy.md`; HUD bars from
-   sidedata ENERGYBAR/METALBAR.
-3. **Strip Kingdoms gameplay**: gods, monarchs-as-concept, mana deposits,
-   auras, nimbus, petrify/freeze, crusades balance, conjure/sacred yard,
-   KINGDOMS.icd address comments (re-verify or mark "TAK-derived, unverified").
-4. **GUI runtime** (`retail-gui.md` P0..P4): .GUI loader, gadget art lookup,
-   .FNT fonts, then main menu -> single player -> skirmish -> game, in-game
-   sidebar (<SIDE>MAIN2/GEN, build pages), options incl. MUSICRT.
-5. **AI**: RETAIL level from `retail-ai.md`; keep TAK Engine's own levels,
-   retargeted to metal/energy and TA unit categories.
-6. **Pathfinding**: Retail mode re-verified against TotalA.exe movement code;
-   Legion mode kept (TA footprints / movement classes).
-7. Unit rendering: 3DO textures from textures/*.gaf, team colour, TA effects.
-8. Campaigns (camps/*.tdf, .ota missions, briefings), Cartographer for TA maps,
-   random maps from worlds.hpi sections, multiplayer polish, packaging/branding.
+| 1. Units and weapons (`retail-data.md`) | done: 278 units, weapons by section, build menus from guis/download |
+| 2. Metal / energy economy (`retail-economy.md`) | done: 1 s settle, debt stalls, extractors on ore, wind/tidal, reclaim (`reclaim_test`) |
+| 3. Kingdoms gameplay stripped | done (gods, auras, sacred sites, mana build areas, monarchs); see "Known gaps" |
+| 4. GUI runtime, front end, sidebar (`retail-gui.md`) | done: MAINMENU, SINGLE, SKIRMISH, SELMAP, SELPROV/TCP, NEWGAME, MSNBRIEF, ENDMSN, in-game sidebar and top bar |
+| 5. AI (`retail-ai.md`) | done: every level runs the retail brain (RETAIL EASY/HARD plus the engine's levels) |
+| 6. Pathfinding (`retail-pathfinding.md`) | Retail A* verified 613/613 against TotalA.exe; goals per 0x44cf60/0x44d3b0/0x44dc60; Legion kept |
+| 7. Rendering, campaigns, Cartographer, random maps, MP, packaging | done: 3DO textures; TA campaigns (`retail-campaign.md`); Cartographer stamps .sct and saves missions losslessly; random maps from .sct sections; MP failures return to SELPROV; CPack TGZ builds |
 
 ## Pathfinding status (docs/retail-pathfinding.md)
 
@@ -56,11 +36,21 @@ Applied (verified 613/613 against TotalA.exe in emulation): TA's fixed A* costs,
 no weight ramp, no octant march / visit limit, no node limit; navigator holds 20
 points. Pending from the change list: per-player initial heuristic weight (5),
 search grade for unexplored / out-of-plane cells (6), 30-tick body grades (7),
-60-tick re-path gate (9), scheduler credits (10), goal metrics (11-13), underwater
-speed cap (14), ground scan (15), cell-entry refusal (16).
+60-tick re-path gate (9), scheduler credits (10), underwater speed cap (14), ground
+scan (15), cell-entry refusal (16). Goal metrics (11-13) applied.
 
 ## Known deviations from retail (deliberate)
 
 - All *.hpi are mounted (retail stops after 10, hiding totala3/4 and worlds.hpi on the GOG layout).
 - Battle-music monitor resets each game (retail carries it across games); default
   track table used on GOG installs, where retail plays only building music.
+
+## Known gaps
+
+- Campaign: no save/load (ENDMSN's Load/Save are greyed), narration WAVs and the
+  glamour picture / ending movie are not played, ENDMSN's statistics table is empty,
+  the briefing's `&X` colour letters beyond Y/R/G/B are unmapped [U].
+- Tests still written against Kingdoms data (ai_behavior, classic_ai, placement,
+  map_transfer, cartographer_ui, retailgap weapons/rules/orders/fireatwill,
+  ai_orders' Crusades roster) compile but fail at runtime; they need TA fixtures.
+- Kingdoms storm rendering and per-unit mana fields remain in the client/sim (inert).

@@ -4,6 +4,7 @@
 #include "ai/builtinprofile.h"
 #include "client/modelview.h"
 #include "sim/matchsetup.h"
+#include "sim/sides.h"
 #include "cartographer/document.h"
 #include "cartographer/ruleedit.h"
 #include "cartographer/newmap.h"
@@ -113,10 +114,10 @@ static int modelWorkflow(const char* data) {
     fs::create_directory(root);
     isolateProfile(root.string().c_str());
     const auto vfs=ta::hpi::mountRetailRoot(data);
-    for(const char* id:ta::sim::kMonarchs) {
-        const auto asset=ModelView::loadAsset(vfs,id);
-        if(asset.model.root.vertices.empty() && asset.model.root.children.empty())throw std::runtime_error("empty monarch preview");
-        if(asset.textures.empty())throw std::runtime_error("untextured monarch preview");
+    for(int side=0;side<ta::sides::count();++side) {
+        const auto asset=ModelView::loadAsset(vfs,ta::sides::commander(side));
+        if(asset.model.root.vertices.empty() && asset.model.root.children.empty())throw std::runtime_error("empty commander preview");
+        if(asset.textures.empty())throw std::runtime_error("untextured commander preview");
     }
     bool rejected=false;std::atomic_bool cancelled=true;
     try {ModelView::loadAsset(vfs,"araarch",&cancelled);}catch(const std::exception&){rejected=true;}

@@ -2,6 +2,7 @@
 #include "net/client.h"
 #include "net/netcompat.h"
 #include "sim/matchsetup.h"
+#include "sim/sides.h"
 #include "tnt/mapgen.h"
 #include "tnt/tnt.h"
 #include "tnt/ota.h"
@@ -620,7 +621,7 @@ int main(int argc, char** argv) try {
                 auto starts=sim::parseStartPositions(original,package->mapPath);
                 check(starts.size()>=2,"scenario transfer fixture needs two start positions");
                 for(int p=0;p<2;++p) {
-                    crt::Unit unit;unit.objectName=sim::kMonarchs[p];unit.player=p;
+                    crt::Unit unit;unit.objectName=sides::commander(p);unit.player=p;
                     unit.x=int(starts[size_t(p)].first/16);unit.z=int(starts[size_t(p)].second/16);
                     authored.units.push_back(unit);
                 }

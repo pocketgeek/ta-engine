@@ -307,48 +307,6 @@ static void typeInfoAndPriorities() {
           brain.buildWeight(idx("plain"))==0,"build weight = pref x priority / 100 under the limit");
 }
 
-// 0x411510 with the placement test 0x507400: retail refuses a sacred site any
-// live entity stands on, so the Classic AI's Divine Lodestone never replaces
-// the player's own finished Lodestone, which the World allows a human's order.
-// It takes the next free site in reach, or builds nothing.
-static void classicLodestoneSites() {
-    auto files=std::make_shared<hpi::Vfs::Files>();
-    auto type=[&](const char* id,const char* fields) {
-        std::string text=std::string("[UNITINFO]{unitname=")+id+";objectname="+id+
-                         ";side=TAR;maxdamage=100;footprintx=2;footprintz=2;buildtime=30;"+fields+"}",lines;
-        for (char ch : text) { lines += ch; if (ch == ';' || ch == '{' || ch == '}') lines += '\n'; }
-        (*files)[std::string("units/")+id+".fbi"]={lines.begin(),lines.end()};
-    };
-    type("tarlode","buildcost=299;yardmap=S;mogriumincome=10;");
-    type("tarmana","buildcost=7399;yardmap=S;mogriumincome=40;");
-    hpi::Vfs vfs;vfs.setMapFiles(files);
-    sim::TypeRegistry reg;reg.loadDir(vfs,"units");
-    const auto* lode=reg.find("tarlode");const auto* divine=reg.find("tarmana");
-    // A base centred at (512, 560) px, 800 px reach; site A (cell 31,31, its
-    // deposit at 512,512) holds the player's own finished Lodestone, site B
-    // (cell 31,45) is free and farther.
-    auto pick=[&](bool second,bool& upgradable) {
-        sim::World w;w.setPlayerCount(2);
-        w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-        std::vector<sim::SacredSite> sites;sites.push_back({31,31,2,2,1.0f});
-        std::vector<std::pair<float,float>> spots{{512,512}};
-        if (second) { sites.push_back({31,45,2,2,1.0f});spots.push_back({512,736}); }
-        w.setManaSpots(spots);w.setSacredSites(sites);
-        w.spawn(lode,512,512,std::nullopt,0);
-        upgradable=w.lodestoneUpgradeSource(divine,512,512,0) && w.canPlace(divine,512,512,0);
-        ai::ClassicBrain brain(0,11,reg);
-        const auto t=uint16_t(brain.catalogue().byName.at("tarmana"));
-        return brain.depositSite(w,t,{512<<16,560<<16},800);
-    };
-    bool upgradable=false;
-    const auto only=pick(false,upgradable);
-    check(upgradable,"the World admits a Divine Lodestone over the player's own Lodestone (a human's upgrade)");
-    check(!only,"the Classic AI's deposit search refuses the site its own Lodestone holds: no site in reach, no build");
-    const auto next=pick(true,upgradable);
-    check(next && *next==std::pair<int16_t,int16_t>{31,45},
-          "with a second, free site in reach the Classic AI's deposit search takes that one");
-}
-
 static void shippedData(const char* root) {
     auto vfs=hpi::mountRetailRoot(root);
     sim::TypeRegistry reg;sim::setupRegistry(reg,vfs,false);
@@ -2560,7 +2518,6 @@ int main(int argc,char** argv) {
     profileRules();
     typeFacts();
     typeInfoAndPriorities();
-    classicLodestoneSites();
     squadConstruction();
     squadAssignment();
     strikeWideTargetIds();
