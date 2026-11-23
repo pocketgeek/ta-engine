@@ -76,6 +76,9 @@ public:
     // Feed an SDL event; returns the name of the activated gadget ("" for none).
     // Buttons activate on release over themselves, quickkeys and Enter/Esc at once.
     std::string handle(const SDL_Event& e, const GuiLayout& L);
+    // Press gadget `name` as a click would (stage/radio/latch effects); returns the
+    // name, or "" when it is absent or grayed. For scripted front-end runs.
+    std::string activate(const std::string& name);
     // The gadget under (mx, my) in window coordinates, or nullptr.
     const tagui::Gadget* at(float mx, float my, const GuiLayout& L) const;
     // Help text of the gadget under the mouse (labels follow their link).

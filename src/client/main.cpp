@@ -19,6 +19,7 @@
 
 #include "campaign/campaign.h"
 #include <utility>
+#include "client/tafrontend.h"
 #include "client/streaming.h"
 #include "client/uitext.h"
 #include "client/serveraddress.h"
@@ -1263,6 +1264,8 @@ int main(int argc, char** argv) {
     // main-loop lobby driver: 0 = UI-driven lobby (browse/join/host), 7 = auto SP,
     // 8 = auto campaign mission (create the mission room, seat, start, then play).
     int mpAutoMode = 0;
+    ta::SkirmishSetup skirmishSetup;   // TA SKIRMISH screen (kept between games)
+    bool skirmishLaunch = false;
     bool menuInteractive = false;   // menu single-player -> interactive lobby, not auto-play
     bool tokenLaunch = false;       // GAME SELECT, signing in with the sign-in token
     bool benchmarkLaunch = false;   // menu Benchmark -> auto-host an all-AI watch perf run
@@ -1313,8 +1316,24 @@ int main(int argc, char** argv) {
     if (mode == "menu") {
         if (dataRoot.empty()) { std::fprintf(stderr, "menu: needs --data <retail-install-dir>\n"); return 1; }
         std::string menuServer;
-        ta::MainMenu::Choice choice;
-        {
+        ta::MainMenu::Choice choice = ta::MainMenu::Choice::None;
+        // Total Annihilation's own front end (the retail .GUI screens). SKIRMISH launches
+        // straight from it; the other doors still use the engine menu below for now.
+        skirmishLaunch = false;
+        bool taFrontChose = false;
+        if (afterResult == ta::ResultChoice::Menu && menuFailure.message.empty()) {
+            ta::TaFrontEnd front(ren, win, vfs);
+            const auto tc = front.run(skirmishSetup);
+            if (tc == ta::TaFrontEnd::Choice::Exit) { quitApp = true; break; }
+            if (tc == ta::TaFrontEnd::Choice::Skirmish) {
+                choice = ta::MainMenu::Choice::SinglePlayer;
+                skirmishLaunch = true;
+                taFrontChose = true;
+                args.clear();
+                args.push_back(skirmishSetup.map);
+            }
+        }
+        if (!taFrontChose) {
             ta::MainMenu menu(ren, vfs, dataRoot);
             if (menuFailure) menu.setFailure(std::exchange(menuFailure, {}));   // reopen where it failed
             {   // Options -> GAME DATA FOLDER: greyed when --data or the launch folder chose it.
@@ -1449,7 +1468,7 @@ int main(int argc, char** argv) {
             loginUser.clear();
             ta::crypto::wipe(loginPass);
             playerName = settings.playerName;
-            if (!benchmarkLaunch)
+            if (!benchmarkLaunch && !skirmishLaunch)
                 menuInteractive = true;   // single-player: local server, but stop in the lobby
         }
         // Benchmark: like single-player (local server) but auto-hosts an all-AI watch run
@@ -1791,6 +1810,7 @@ int main(int argc, char** argv) {
                 gameView->setMpMapId(args[0]);
                 if (fromMenu) { gameView->setExternalLobbyMusic();  // front-end owns the lobby BGM
                                 gameView->setCanReturnToMenu(); }   // in-game menu can return to it
+                if (skirmishLaunch) gameView->setSkirmish(skirmishSetup);   // TA SKIRMISH: seat + start
                 if (!campaignStem.empty()) gameView->setMissionStem(campaignStem);   // autoMode 8 hosts this mission
                 // PLAY THE MACHINE: the single-player room, opened straight away.
                 else if (menuInteractive) gameView->openSinglePlayerRoom();

@@ -276,7 +276,7 @@ void TaGuiView::draw(const GuiLayout& L) {
     const auto& c = screen_.container();
     const Rect cr = rectOf(c);
     if (backdrop_) {
-        SDL_FRect r = L.rect(0, 0, float(backW_), float(backH_));
+        SDL_FRect r = L.rect(cr.x, cr.y, float(backW_), float(backH_));
         SDL_RenderCopyF(ren_, backdrop_, nullptr, &r);
     } else if (!c.panel.empty()) {
         const Frames* f = sequence(screen_.name, c.panel);
@@ -462,6 +462,23 @@ std::string TaGuiView::handle(const SDL_Event& e, const GuiLayout& L) {
             if (auto* m = screen_.find(target)) return activate(*m);
     }
     return {};
+}
+
+std::string TaGuiView::activate(const std::string& name) {
+    tagui::Gadget* g = screen_.find(name);
+    if (!g || g->grayedOut) return {};
+    auto& s = st(g->name);
+    if (g->type == tagui::Type::Button) {
+        if (g->stages > 0) s.stage = (s.stage + 1) % std::max(1, g->stages == 1 ? 2 : g->stages);
+        if ((g->attribs & 0xff) == tagui::kAttrRadio && g->assoc) {
+            for (auto& o : screen_.gadgets)
+                if (o.assoc == g->assoc && o.type == tagui::Type::Button) st(o.name).pressed = false;
+            s.pressed = true;
+        } else if (g->attribs & (tagui::kAttrTab | tagui::kAttrLatched)) {
+            s.pressed = !s.pressed;
+        }
+    }
+    return g->name;
 }
 
 void TaGuiView::setText(const std::string& n, const std::string& t) { if (auto* g = screen_.find(n)) g->text = t; }

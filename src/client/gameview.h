@@ -1,6 +1,7 @@
 #pragma once
 #include "sim/sides.h"
 #include "client/battlemusic.h"
+#include "client/tafrontend.h"
 #include "client/areadrag.h"
 #include "client/emotetiming.h"
 #include "client/retailmodellighting.h"
@@ -247,6 +248,12 @@ public:
     // A private single-player room the debug CLI game creates itself (autoMode 7): single
     // player -- no READY, no two-human START rule -- and nothing remembered.
     void setSinglePlayerFlag() { singlePlayer_ = true; }
+    // TA SKIRMISH screen: create the private room with these options, seat the
+    // human and the computers from its rows and start (docs/retail-gui.md 2).
+    void setSkirmish(const ta::SkirmishSetup& s) { skirmish_ = s; singlePlayer_ = true; }
+    std::optional<ta::SkirmishSetup> skirmish_;
+    // SKIRMISH Difficulty -> the computer's wire aiLevel (ai::Difficulty).
+    static int skirmishAiLevel(int difficulty) { return difficulty <= 0 ? 1 : difficulty == 1 ? 2 : 3; }
     // LOCAL SERVER from the CONNECT screen: the host's room opens straight away from the
     // multiplayer remembered settings, named "<name>'s Game" by the server, with the game
     // password typed on CONNECT. LEAVE closes the game and goes back to CONNECT.

@@ -1572,6 +1572,17 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // TA_MAP_SCENARIO=1: create the room with MAP SCENARIO on (the server refuses START when
             // the map has no scenario or a needed seat is empty -- a harness can test both).
             o.mapScenario = autoMode != 8 && ta::devFlag("TA_MAP_SCENARIO") ? 1 : 0;
+            if (autoMode == 7 && skirmish_) {   // TA SKIRMISH options
+                const auto& sk = *skirmish_;
+                o.monarchExpendable = sk.commanderEnds ? 0 : 1;
+                o.randomStarts = sk.fixedStarts ? ta::net::kStartsFixed : ta::net::kStartsRandom;
+                o.fogExplored = sk.lineOfSight == 0 ? 2 : (sk.mapped ? 1 : 0);
+                for (const auto& seat : sk.seats)
+                    if (seat.controller == 1) {
+                        o.startMetal100 = uint8_t(std::clamp(seat.metal / 100, 1, 255));
+                        o.startEnergy100 = uint8_t(std::clamp(seat.energy / 100, 1, 255));
+                    }
+            }
             uint8_t cap = (autoMode == 8 || benchmarkMode_) ? ta::net::kMaxSlots : mpCapacity(o.mapScenario != 0);
             // Exact stem match (findMap): the map file is "ulasem arena.tnt".
             std::string createMap = benchmarkMode_ ? std::string("Ulasem Arena") : mapId;
@@ -1626,9 +1637,32 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                 // up and starts.
                 mp_->setSlot(r.mySlot, 1, facIdx(side_), uint8_t(r.mySlot),
                              uint8_t(r.mySlot), 0);
+                if (skirmish_) {
+                    // TA SKIRMISH rows: the human takes its own seat, the computers
+                    // the next ones, in row order; ally groups become teams.
+                    const auto& sk = *skirmish_;
+                    int slot = 0;
+                    auto team = [&](const ta::SkirmishSeat& s, int sl) { return uint8_t(s.ally < 5 ? 10 + s.ally : sl); };
+                    for (const auto& seat : sk.seats)
+                        if (seat.controller == 1) {
+                            mp_->setSlot(r.mySlot, 1, uint8_t(seat.side), uint8_t(seat.color),
+                                         team(seat, r.mySlot), 1);
+                        }
+                    for (const auto& seat : sk.seats) {
+                        if (seat.controller != 2) continue;
+                        while (slot == r.mySlot) ++slot;
+                        if (slot >= int(ta::net::kMaxSlots)) break;
+                        // Difficulty Easy/Medium/Hard: the computer level (src/ai).
+                        mp_->setSlot(slot, 2, uint8_t(seat.side), uint8_t(seat.color), team(seat, slot), 1,
+                                     uint8_t(skirmishAiLevel(sk.difficulty)));
+                        ++slot;
+                    }
+                    mp_->startGame();
+                    mpStarted_ = true;
+                }
                 // Headless test hook: TA_SP_AIS=N seats N AI opponents and starts
                 // immediately (the interactive path leaves this to the player).
-                if (const char* na = ta::devEnv("TA_SP_AIS")) {
+                else if (const char* na = ta::devEnv("TA_SP_AIS")) {
                     // The auto-start hook must ready-up the host (interactive SP now
                     // seats unready, which would otherwise block startGame()).
                     mp_->setSlot(r.mySlot, 1, facIdx(side_), uint8_t(r.mySlot),

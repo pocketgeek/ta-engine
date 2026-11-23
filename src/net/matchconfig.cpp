@@ -22,6 +22,8 @@ sim::MatchConfig matchConfigFor(const GameOptions& o, const SlotInfo* slots, uin
     cfg.roomMapRevealed = !mission && o.fogExplored >= 1;   // a mission's own .ota decides (setupMission)
     cfg.roomLosOff = !mission && o.fogExplored == 2;
     cfg.startSeed = seed;   // the seed sent in GameStarting
+    cfg.startMetal = float(o.startMetal100) * 100.0f;
+    cfg.startEnergy = float(o.startEnergy100) * 100.0f;
     int maxSlot = 0;
     for (int i = 0; i < kMaxSlots; ++i)
         if (slots[i].type == 1 || slots[i].type == 2) maxSlot = i;

@@ -149,6 +149,7 @@ void put(Writer& w, const GameOptions& o) {
     w.u8(o.allowSpectators);   // room admission
     w.u8(o.mapScenario);       // map scenario
     w.u8(o.powerCodes);        // power codes
+    w.u8(o.startMetal100); w.u8(o.startEnergy100);   // TA start resources
 }
 
 void get(Reader& r, GameOptions& o) {
@@ -162,6 +163,7 @@ void get(Reader& r, GameOptions& o) {
     o.allowSpectators = r.u8();
     o.mapScenario = r.u8();
     o.powerCodes = r.u8();
+    o.startMetal100 = r.u8(); o.startEnergy100 = r.u8();
 }
 
 void put(Writer& w, const SlotInfo& s) {

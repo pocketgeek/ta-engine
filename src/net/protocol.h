@@ -390,6 +390,9 @@ constexpr uint8_t normalizeStartMode(uint8_t v) {
 
 struct GameOptions {
     uint8_t crusades = 0;
+    // Total Annihilation start resources, in hundreds (retail's lobby keeps the value
+    // / 100 and multiplies on start: docs/retail-economy.md section 9). 10 = 1000.
+    uint8_t startMetal100 = 10, startEnergy100 = 10;
     uint8_t forfeitSelfDestruct = 0;   // 0=units go inert on forfeit, 1=self-destruct
     // Game mods for this game: 0=off (no game packs), 1=on (the host's selected
     // mods/game packs are transferred to and mounted by every player). Cosmetic
