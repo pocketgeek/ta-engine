@@ -4,7 +4,7 @@
 Each scenario runs on its own and every failure is reported, so a server without one
 of the checks shows exactly which it lacks:
 
-  refused     ON for a map with no scenario (Inner Circle): START is refused with the
+  refused     ON for a map with no scenario (Ashap Plateau): START is refused with the
               reason, and the server log says so
   seats       ON for King of the Hill: the room forces fixed starts; START is refused
               until every seat the scenario's placements and rules belong to is played
@@ -18,6 +18,10 @@ of the checks shows exactly which it lacks:
               a stress test, a benchmark and a campaign mission, including a room the
               host switches to a stress test after creating it
   off         OFF on King of the Hill is an ordinary skirmish: two players to start
+
+No shipped TA map declares a scenario, so the King of the Hill the host uploads is
+map_transfer_test --export-scenario-package's: the stock map with hasscenario, a Use
+Only list and a .crt placing a Commander for players 1, 2 and 4.
 
 The rooms run on an authenticated server, i.e. a public one, so the option is proved
 allowed there; the stress/benchmark/mission rooms need a local test server.
@@ -37,7 +41,7 @@ from server_net import OPTIONS_BYTES, BufferedPeer as Peer, lobby
 from server_public_test import login, options, server
 
 SCENARIO = OPTIONS_BYTES - 4   # mapScenario, before powerCodes and the start resources
-RANDOM = 13                    # randomStarts
+RANDOM = 12                    # randomStarts (net::put: after benchmark, before doubleSight)
 SEAT_TWO = b'Seat player 2 in the lobby to play this scenario'
 
 
@@ -146,9 +150,9 @@ def log_says(root, text):
 
 def scenario_refused(port, h, packages, root):
     with contextlib.closing(login(port, h, 'Alice')) as host:
-        state = create(host, 'Inner Circle', 1)
+        state = create(host, 'Ashap Plateau', 1)
         assert state[2][SCENARIO] == 1, 'the room did not adopt MAP SCENARIO'
-        upload(host, state[0], 'Inner Circle', packages['Inner Circle'])
+        upload(host, state[0], 'Ashap Plateau', packages['Ashap Plateau'])
         ready_host(host, state)
         seat_ai(host, 1)
         latest(host)
@@ -220,7 +224,7 @@ def local_sanitised(binary, data, root):
     """Stress tests, benchmarks and missions are refused on public servers; a local test
     server accepts them, and must still clear MAP SCENARIO for each."""
     with server(binary, data, root, '--no-auth') as (port, h, process):
-        for kwargs in ({'stress': 2}, {'benchmark': 3}, {'mission': 'camp01'}):
+        for kwargs in ({'stress': 2}, {'benchmark': 3}, {'mission': 'ac01'}):
             with contextlib.closing(Peer(port)) as peer:
                 peer.send('Hello', struct.pack('<I', auth.VERSION) + auth.field('map-scenario-test') +
                           struct.pack('<Q', h) + auth.field('Local'))
@@ -267,13 +271,16 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ta-map-scenario-') as tmp:
         root = Path(tmp)
         packages = {}
-        for name in ('Inner Circle', 'King of the Hill'):
-            out = root / (name.replace(' ', '-') + '.tamap')
-            subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out), name],
-                           check=True)
-            packages[name] = out.read_bytes()
-        out = root / 'King-of-the-Hill-no-tdf.tamap'
+        out = root / 'Ashap-Plateau.tamap'
         subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out),
+                        'Ashap Plateau'], check=True)
+        packages['Ashap Plateau'] = out.read_bytes()
+        out = root / 'King-of-the-Hill.tamap'
+        subprocess.run([str(a.map_tool.resolve()), '--export-scenario-package', str(a.data.resolve()), str(out),
+                        'King of the Hill'], check=True)
+        packages['King of the Hill'] = out.read_bytes()
+        out = root / 'King-of-the-Hill-no-tdf.tamap'
+        subprocess.run([str(a.map_tool.resolve()), '--export-scenario-package', str(a.data.resolve()), str(out),
                         'King of the Hill', '.tdf'], check=True)
         packages['King of the Hill without its .tdf'] = out.read_bytes()
         public = root / 'public'

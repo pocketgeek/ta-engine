@@ -7,7 +7,7 @@ tick when no human is seated: it closes no more ticks, tells whoever is watching
 which ends on that tick. A room with a human still seated plays on exactly as before.
 Each scenario runs on its own and every failure is reported:
 
-  seated     Alice plays one AI and destroys her own Monarch, so the AI has won; she
+  seated     Alice plays one AI and destroys her own Commander, so the AI has won; she
              stays seated. The room goes on ticking and nobody is told the game is over
              (a seated human's room is never ended by the server).
   leave      ... then she leaves. No human is seated now, so the game ends at once:
@@ -206,15 +206,16 @@ def start_refusals(port, h, name):
 
 
 def lose(loser, others):
-    """`loser` destroys its own Monarch (the default rules: that is defeat). Returns the
-    tick the order ran in; the self-destruct lands at most 75 ticks later."""
+    """`loser` destroys its own Commander (the default rules: that is defeat). Returns the
+    tick the order ran in; the self-destruct lands at most 164 ticks later (TA's default
+    selfdestructcountdown of 5 s, docs/retail-data.md section 2, then rand(15))."""
     loser.send('PlayerCommands', struct.pack('<I', 48) + b''.join(command(DESTROY, unit) for unit in range(1, 49)))
 
     def ordered(p):
         return [t for t, (_, cmds, _) in p.bundles.items() if (DESTROY, loser.slot) in cmds]
     assert pump_all([loser] + others, 10, lambda: ordered(loser)), 'the self-destruct order never reached a tick'
     tick = min(ordered(loser))
-    assert pump_all([loser] + others, 20, lambda: loser.last_tick() >= tick + 120), 'the game stopped before the result'
+    assert pump_all([loser] + others, 20, lambda: loser.last_tick() >= tick + 200), 'the game stopped before the result'
     return tick
 
 
@@ -353,7 +354,7 @@ def scenario_unwatched(port, h, root, _packages):
 
 
 def scenario_catchup(port, h, root, packages):
-    room, (alice,), _ = start(port, h, ['Alice'], ais=1, file_map=('Inner Circle', packages['Inner Circle']))
+    room, (alice,), _ = start(port, h, ['Alice'], ais=1, file_map=('Ashap Plateau', packages['Ashap Plateau']))
     wendy = spectate(port, h, 'Wendy', room)
     late = None
     try:
@@ -390,7 +391,7 @@ def scenario_catchup(port, h, root, packages):
 
 
 def scenario_stuck(port, h, root, packages):
-    room, (alice,), _ = start(port, h, ['Alice'], ais=1, file_map=('Inner Circle', packages['Inner Circle']))
+    room, (alice,), _ = start(port, h, ['Alice'], ais=1, file_map=('Ashap Plateau', packages['Ashap Plateau']))
     late = None
     try:
         lose(alice, [])
@@ -433,10 +434,10 @@ def main():
         (root / 'replays').mkdir()
         packages = {}
         if a.map_tool:
-            out = root / 'Inner-Circle.tamap'
-            subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out), 'Inner Circle'],
+            out = root / 'Ashap-Plateau.tamap'
+            subprocess.run([str(a.map_tool.resolve()), '--export-package', str(a.data.resolve()), str(out), 'Ashap Plateau'],
                            check=True)
-            packages['Inner Circle'] = out.read_bytes()
+            packages['Ashap Plateau'] = out.read_bytes()
         # One running game at a time: every scenario's game has ended before the next starts.
         with server(a.server.resolve(), a.data.resolve(), root, '--replaydir', str(root / 'replays'),
                     '--max-running-games', '1') as (port, h, process):

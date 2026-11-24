@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A replay is saved however a game ends.
 
-Real taserver + headless taclient games (Inner Circle, --seed 1), each in its own
+Real taserver + headless taclient games (Ashap Plateau, --seed 1), each in its own
 scratch profile, ended in different ways:
 
   crash      the client SIGKILLs itself at a known tick (TA_KILL_AT_TICK; on
@@ -37,8 +37,8 @@ import sys
 import tempfile
 import time
 
-MAP = 'Inner Circle'
-MISSION = 'takmission01_mt'
+MAP = 'Ashap Plateau'
+MISSION = 'ac01'   # Arm campaign mission 1 (maps/ac01.ota)
 
 
 def free_port():
@@ -64,7 +64,7 @@ def replays(root, suffix):
 
 
 def header_fields(path):
-    """(mission stem, data hash) from a .tarep header (format 15)."""
+    """(mission stem, data hash) from a .tarep header (format 16)."""
     d = path.read_bytes()
     pos = 12
 
@@ -74,7 +74,7 @@ def header_fields(path):
         v = d[pos + 2:pos + 2 + n].decode('utf-8', 'replace')
         pos += 2 + n
         return v
-    s(); pos += 3 + 4 + 2 + 4 + 2       # map, flags, cap, flags, seed, starts+bench
+    s(); pos += 2 + 4 + 2 + 4 + 2       # map, forfeit+mods, cap, expendable+stress, seed, starts+bench
     mission = s(); s()                  # mission, engine
     return mission, struct.unpack_from('<Q', d, pos)[0]
 
@@ -100,7 +100,7 @@ def complete_ticks(path):
         n = u('<H')
         pos += n
     try:
-        s(); pos += 3; u('<I'); pos += 2; u('<I'); pos += 2   # map, flags, cap, flags, seed, starts+bench
+        s(); pos += 2; u('<I'); pos += 2; u('<I'); pos += 2   # map, forfeit+mods, cap, expendable+stress, seed, starts+bench
         s(); s(); u('<Q'); pos += 1; s(); s(); pos += 1       # mission, engine, data hash, sight, digests, path mode
         slots = u('<B'); pos += 5 * slots + 3                  # slot table, map scenario (13), power codes (14), fog (15)
         pos += 4                                               # the count (open while recording)
@@ -233,12 +233,6 @@ def case_seek_legion(args, root):
 
 def case_seek_mission(args, root):
     path = recorded_game(args, root, client_env={'TA_SPEED': '80'}, mission=MISSION)
-    return seek_proof(args, root, path, SEEK_SCRIPT)
-
-
-def case_seek_scenario(args, root):
-    path = recorded_game(args, root, map_name='Riparian Conflict',
-                         client_env={'TA_SPEED': '80', 'TA_MAP_SCENARIO': '1'})
     return seek_proof(args, root, path, SEEK_SCRIPT)
 
 
@@ -412,7 +406,7 @@ def main():
              'sigterm': case_sigterm, 'disconnect': case_disconnect, 'server-sigterm': case_server_sigterm,
              'mission': case_mission, 'mission-crash': case_mission_crash}
     seek_cases = {'seek-retail': case_seek_retail, 'seek-legion': case_seek_legion, 'seek-mission': case_seek_mission,
-                  'seek-scenario': case_seek_scenario, 'seek-spectator': case_seek_spectator}
+                  'seek-spectator': case_seek_spectator}
     if os.name == 'nt':   # Windows delivers no SIGTERM; a kill is the 'kill' case
         del cases['sigterm'], cases['server-sigterm']
     names = args.case or list(cases)

@@ -2,8 +2,9 @@
 """AI levels through a real server's lobby.
 
   classic     the host seats an AI at level 6 (RETAIL, internally Classic): the room's table shows 6
-  every level each of 0..7 round-trips through SlotUpdate -> LobbyState
-  unknown     level 8 or more is stored as Normal (2)
+  every level each of 0..9 round-trips through SlotUpdate -> LobbyState (8 and 9: TA's
+              own AI at retail Easy and Hard)
+  unknown     level 10 or more is stored as Normal (2)
 """
 import argparse
 import contextlib
@@ -15,7 +16,7 @@ import server_net as auth
 from server_net import lobby
 from server_public_test import login, options, server
 
-LEVELS = 8      # ai::kAiLevels
+LEVELS = 10     # ai::kAiLevels
 CLASSIC = 6
 
 
@@ -24,8 +25,8 @@ def recipe():
 
 
 def level(host, value):
-    """Seat slot 2 as an AI (Verdana, colour 1, team 1) at `value`; the level the room shows."""
-    auth.slot_update(host, 1, 2, 2, 1, 1, 1, value)
+    """Seat slot 2 as an AI (Core, colour 1, team 1) at `value`; the level the room shows."""
+    auth.slot_update(host, 1, 2, 1, 1, 1, 1, value)
     slots = lobby(host.receive('LobbyState'))[3]
     assert slots[1][0][0] == 2, ('slot 2 is not an AI', slots[1])
     return slots[1][0][5]
@@ -51,7 +52,7 @@ def main():
                 assert level(host, value) == 2, ('an unknown level was not stored as Normal', value)
             assert level(host, CLASSIC) == CLASSIC
             assert process.poll() is None, 'server exited'
-    print('PASS: AI levels -- RETAIL (6, Classic) and every level round-trip the lobby; 8 and up store Normal')
+    print('PASS: AI levels -- RETAIL (6, Classic) and every level round-trip the lobby; 10 and up store Normal')
 
 
 if __name__ == '__main__':

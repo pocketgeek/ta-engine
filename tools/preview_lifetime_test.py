@@ -27,7 +27,7 @@ import sys
 import tempfile
 import time
 
-MAP = 'Inner Circle'
+MAP = 'Ashap Plateau'
 MODES = ('gen', 'big', 'teardown')
 
 

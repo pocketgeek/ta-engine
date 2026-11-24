@@ -110,7 +110,7 @@ def network(a, root):
 def play_map(a, root):
     data = install(root, a.data, 'player')
     snapshot = root / 'snapshot' / 'Readonly Test.kmp'
-    subprocess.run([str(a.map_tool), '--export-kmp', str(a.data), str(snapshot), 'Ulasem Arena'], check=True)
+    subprocess.run([str(a.map_tool), '--export-kmp', str(a.data), str(snapshot), 'Ashap Plateau'], check=True)
     read_only(data)
     before = tree(data)
     home = root / 'player-home'
@@ -140,7 +140,7 @@ def play_map(a, root):
     assert 'Cannot test map' not in out and 'SAVE FAILED' not in out, out
     # A debug client keeps its profile beside TA_SETTINGS_FILE; a release client reads
     # no TA_* variable, so its profile is the per-user folder under XDG_DATA_HOME.
-    caches = [profile / 'MapCache', home / 'xdg' / 'TAengine' / 'TAKingdoms' / 'MapCache']
+    caches = [profile / 'MapCache', home / 'xdg' / 'TAengine' / 'TAEngine' / 'MapCache']
     found = [c for c in caches if list(c.glob('*.kmp')) and list(c.glob('*.tamap'))]
     assert found, 'no Test Map copy in the player\'s profile (%s): %s' % (', '.join(map(str, caches)), out)
     assert tree(data) == before, 'taclient --play-map wrote into its --data folder'

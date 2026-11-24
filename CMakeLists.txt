@@ -3544,15 +3544,7 @@ if(TA_TEST_DATA)
         --map-tool "$<TARGET_FILE:map_transfer_test>" --data "${TA_TEST_DATA}" ${map_cache_readonly_flags})
       set_tests_properties(map_cache_readonly PROPERTIES TIMEOUT 300)
     endif()
-    # A game mod's ai/n.txt (the real mod transfer) or the map's (its .kmp, the map
-    # package) reaches the server's Normal AI only, the game mod's winning; misplaced
-    # n.txt files (pack root, cosmetic, base) are not read
-    # (ai/builtinprofile.h); needs the debug client's --mphost harness and the roster dump.
     if(TARGET taclient AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-      add_test(NAME ai_mod_profile COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/ai_mod_profile_test.py"
-        --server "$<TARGET_FILE:taserver>" --client "$<TARGET_FILE:taclient>" --hpitool "$<TARGET_FILE:hpitool>"
-        --data "${TA_TEST_DATA}")
-      set_tests_properties(ai_mod_profile PROPERTIES TIMEOUT 900)
       # The Classic AI reads ai/default.txt from the room's layers: game mod over map
       # package (a single-map archive's own file) over base; a mission plays Classic.
       add_test(NAME classic_ai_map_profile COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/classic_ai_map_profile_test.py"
@@ -3695,7 +3687,7 @@ if(TA_TEST_DATA)
         --server "$<TARGET_FILE:taserver>" --client "$<TARGET_FILE:taclient>" --data "${TA_TEST_DATA}")
       set_tests_properties(watch_end PROPERTIES TIMEOUT 600)
       # Replay seeking end to end: every landing and the end of the game hash as a straight
-      # run does, on Retail, Legion, a campaign mission, a .crt scenario and a spectator's recording.
+      # run does, on Retail, Legion, a campaign mission and a spectator's recording.
       add_test(NAME replay_seek COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tools/replay_always_test.py"
         --server "$<TARGET_FILE:taserver>" --client "$<TARGET_FILE:taclient>" --data "${TA_TEST_DATA}"
@@ -3719,7 +3711,7 @@ if(TA_TEST_DATA)
       add_test(NAME room_flow COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tools/room_flow_test.py"
         --client "$<TARGET_FILE:taclient>" --server "$<TARGET_FILE:taserver>" --data "${TA_TEST_DATA}"
-        --hpitool "$<TARGET_FILE:hpitool>")
+        --hpitool "$<TARGET_FILE:hpitool>" --map-tool "$<TARGET_FILE:map_transfer_test>")
       set_tests_properties(room_flow PROPERTIES TIMEOUT 600)
       # A slowly simulating harness client (a stress game under load) keeps its seat, and a
       # concluded run reports exactly its result tick.

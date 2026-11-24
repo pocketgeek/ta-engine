@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The disconnect wait (protocol 289) end to end: real taserver, two headless taclients.
 
-A host (--mphost) and a joiner (--mpjoin) play Inner Circle (--seed 1, 4x speed) on a
+A host (--mphost) and a joiner (--mpjoin) play Ashap Plateau (--seed 1, 4x speed) on a
 server with a short stall threshold and wait (TA_STALL_MS / TA_DROP_WAIT_MS):
 
   takeover   the joiner is frozen (SIGSTOP) past the wait: the server hands its seat to a
@@ -32,7 +32,7 @@ import traceback
 
 from replay_always_test import complete_ticks, replays
 
-MAP = 'Inner Circle'
+MAP = 'Ashap Plateau'
 STALL_MS, WAIT_MS = 1500, 5000   # the budget counts from the last contact: the stall spends 1.5 s
 PASSWORD = 'local synthetic disconnect test password'
 TIME = 30                      # game seconds each client plays
@@ -152,7 +152,7 @@ def case_takeover(args, root):
         m.wait_log('AI (Normal) takes over', 20)
         tick, _hash, err, units = m.finish(m.host, 'host')
         assert err == 'none' and tick == TIME * 30, (tick, err)
-        # Nobody else gives orders in this match: the units past the two Monarchs are the
+        # Nobody else gives orders in this match: the units past the two Commanders are the
         # AI's, built for the seat it took over.
         assert units > 2, ('the AI never built anything for the seat it took over', units)
         assert 'AI takeover at tick' in m.log('host'), 'the host never saw the takeover event'
