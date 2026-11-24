@@ -17,18 +17,21 @@
 // status Line-of-Sight shot kept it, so each was cast at a building up to
 // the pad past its range (Weapon::centreReach now: every class but melee).
 //
-// Checks (flat 128x128 map, shipped units):
-//   - every shipped weapon, by retail class: no pad but for melee;
-//   - a unit of each class on Hold Position half the old pad past its range
-//     from an enemy building never targets it and does it no damage; 20 px
-//     inside its range it does;
+// Checks (flat 128x128 map, shipped TA units, an enemy Vehicle Plant):
+//   - every shipped weapon, by retail class: no pad but for melee (TA ships
+//     no melee weapon);
+//   - a unit of each class 0.9.12 still padded (TA: Line-of-Sight lasers,
+//     Dropped bombs) on Hold Position half the old pad past its range from
+//     an enemy building never targets it and does it no damage; 20 px inside
+//     its range it does;
 //   - a mobile unit of each class ordered to attack an enemy building closes
 //     to its plain range (centre to centre) and damages it (a flyer: damages
-//     it; a Wandering storm, which drifts: casts);
-//   - a Lich (Death Aura, range 60) ordered onto a Barracks damages it only
-//     from within 60 px of its centre and keeps the order (Retail
-//     pathfinding halts it short: no damage);
-//   - an Archer (Ballistic) and a Swordsman (melee) still reach and hit one.
+//     it);
+//   - a Hammer (Ballistic) still reaches and hits one.
+// The Kingdoms cases with no TA counterpart are gone: spell classes (Remote
+// Effect, Hailstorm, Earthquake, Wandering, the status Line-of-Sight shots),
+// melee, and the Lich whose 60 px aura barely passed a Barracks' face (no
+// TA weapon is that short).
 //
 // A dev harness; not shipped in a game.
 
@@ -147,9 +150,12 @@ void survey(const sim::TypeRegistry& reg, const char* roster) {
     }
     std::printf("  %s roster, shipped weapons by retail class (moved: padded before, centre to centre now):\n",
                 roster);
-    for (const auto& [cls, r] : rows)
-        std::printf("    %-24s %3d weapons on %3zu types, %3d moved, %3d instant\n", cls.c_str(), r.weapons,
-                    r.units.size(), r.moved, r.instant);
+    for (const auto& [cls, r] : rows) {
+        std::string some;
+        for (const auto& u : r.units) some += " " + u;
+        std::printf("    %-24s %3d weapons on %3zu types, %3d moved, %3d instant:%s\n", cls.c_str(), r.weapons,
+                    r.units.size(), r.moved, r.instant, some.c_str());
+    }
     check(bad == 0, std::string(roster) + ": every class but melee measures a building centre to centre", badList);
 }
 
@@ -190,6 +196,11 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     const sim::UnitType* st = reg.find(shooterId);
     const sim::UnitType* tt = reg.find(targetId);
     if (!st || !tt) { check(false, std::string("shipped ") + shooterId + " and " + targetId + " load"); return {}; }
+    // A human owner's sweep takes only shootme units (docs/retail-ai.md,
+    // weapon target selection 0x40b7b0); a TA factory is not one, so the
+    // target is a shootme copy: the cases measure range, not the gate.
+    static sim::UnitType shootable;
+    shootable = *tt; shootable.shootMe = true; tt = &shootable;
     const float sx = 1000, sz = 600;
     const int shooter = s.w.spawn(st, sx, sz, {}, 0);
     if (st->isStructure()) s.w.blockFoot(*st, sx, sz, true);
@@ -198,10 +209,10 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     s.w.player(0).mana = 30000;
     const int target = building(s.w, tt, sx + dx, sz + dz);
     // A spotter of the shooter's beside the building: a shooter whose range
-    // outreaches its sight (a Fire Mage: 200 sight, Fire Storm 447) takes only
+    // outreaches its sight (a Slasher: 230 sight, missiles 600) takes only
     // what its player sees (the sweep and Standby's scan draw on list +5), and
     // the cases measure range, not sight.
-    if (const sim::UnitType* sp = reg.find("araarch")) {
+    if (const sim::UnitType* sp = reg.find("armpw")) {
         static sim::UnitType spotter;
         spotter = *sp; spotter.id = "spotter"; spotter.weapons.clear(); spotter.weapon = {};
         s.w.spawn(&spotter, sx + dx + 8.f * float(tt->footX) + 64.f, sz + dz, {}, 0);
@@ -209,6 +220,7 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     Static out;
     for (int i = 0; i < ticks; ++i) {
         s.w.player(0).mana = 30000;
+        s.w.player(0).books.stored[sim::econ::E] = 30000;   // a laser tower's energypershot
         s.w.tick(1.f / 30);
         const sim::Unit* u = s.w.unit(shooter);
         if (holds(u, target)) ++out.held;
@@ -299,13 +311,9 @@ std::string describe(const Static& s) {
 // first (the longest decides for a unit whose weapons all fire).
 struct ClassCase { const char* unit; int slot; const char* what; };
 const ClassCase kClassCases[] = {
-    {"tarbeak", -1, "a Dropped bomber (Taros Iron Beak, Egg Bomb)"},
-    {"tarnecro", 2, "a Remote Effect caster (Taros Lokken, Fire Wave)"},
-    {"tarmage", 2, "a Hailstorm caster (Taros Fire Mage, Fire Storm)"},
-    {"arapries", 0, "an Earthquake caster (Aramon Acolyte, Earthquake)"},
-    {"tarwitch", 0, "a Wandering caster (Taros Weather Witch, Tornado)"},
-    {"cremech", 1, "a freezing Line-of-Sight shot (Creon Mechanic, Freeze Beam)"},
-    {"zonbasil", -1, "a petrifying Line-of-Sight shot (Zhon Basilisk, Turn To Stone)"},
+    {"armthund", -1, "a Dropped bomber (Arm Thunder, Bombs)"},
+    {"corak", -1, "a Line-of-Sight laser kbot (Core A.K.)"},
+    {"armllt", -1, "a Line-of-Sight laser tower (Arm L.L.T.)"},
 };
 }  // namespace
 
@@ -320,9 +328,9 @@ int main(int argc, char** argv) {
 
     survey(standard, "standard");
 
-    // The target: an Aramon Barracks (7x12: the old pad was 120 px, its half
-    // width 56).
-    const char* target = "arakeep";
+    // The target: an Arm Vehicle Plant (8x6: the old pad was 88 px, its half
+    // widths 64 and 48).
+    const char* target = "armvp";
     const sim::UnitType* keep = standard.find(target);
     if (!keep) { check(false, std::string("shipped ") + target + " loads"); return 1; }
     const int oldPad = 8 * std::max(keep->footX, keep->footZ) + 24;
@@ -367,13 +375,13 @@ int main(int argc, char** argv) {
     {
         struct Case { const char* unit; int slot; const char* what; };
         std::vector<Case> cases = {
-            {"verarch", -1, "a line-of-sight shooter (Veruna Crossbowman)"},
-            {"zonsham", -1, "a lightning caster (Zhon Shaman)"},
-            {"tarfire", -1, "a Guided caster (Taros Fire Demon)"},
-            {"crefire", -1, "a flame thrower (Creon Fire Wagon)"},
-            {"zondrake", -1, "a flying flame breather (Zhon Drake)"},
+            {"armpw", -1, "a plain WeaponType shooter (Arm Peewee, E.M.G.)"},
+            {"cormist", -1, "a Guided missile launcher (Core Slasher)"},
+            {"armbrawl", -1, "a hovering gunship (Arm Brawler)"},
         };
-        for (const auto& c : kClassCases) cases.push_back({c.unit, c.slot, c.what});
+        for (const auto& c : kClassCases)
+            if (const sim::UnitType* t = standard.find(c.unit); !t || !t->isStructure())
+                cases.push_back({c.unit, c.slot, c.what});
         for (const auto& c : cases) {
             const sim::UnitType* t = standard.find(c.unit);
             if (!t) { check(false, std::string("shipped ") + c.unit + " loads"); continue; }
@@ -407,36 +415,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    // A footprint the range barely reaches past: a Lich (Death Aura, range
-    // 60) ordered onto an Aramon Barracks, whose nearest face is 56 px from
-    // its centre. Retail's Attack_Chase heads for a 60 px ring round the
-    // centre and casts only once its range test passes, so the Lich hits the
-    // building exactly when it stands within 60 px of the centre. Retail
-    // pathfinding halts it short of that (no damage, the order stays);
-    // Legion's lets its body press closer to the footprint.
+    // A Ballistic Hammer keeps its reach.
     {
-        const sim::UnitType* lich = standard.find("tarlich");
-        const sim::Weapon* w = lich ? reachWeapon(*lich, -1) : nullptr;
-        if (!w || w->melee || w->range >= 8 * std::min(keep->footX, keep->footZ) + 8 * lich->footX) {
-            check(false, "tarlich's reach is shorter than a Barracks' nearest face plus its own half", "fixture");
-        } else {
-            const Approach a = attackBuilding(vfs, standard, "tarlich", target, 1800);
-            std::printf("  tarlich (%s, range %d) vs %s: %s\n", w->name.c_str(), w->range, target,
-                        describe(a).c_str());
-            const bool within = a.dist <= float(a.range) + 0.5f;
-            check(a.ok && a.held && (a.damage > 0) == within && (mode == sim::PathfindingMode::Legion || !within),
-                  "a Lich ordered onto a building damages it only from within its range", describe(a));
-        }
-    }
-
-    // A Ballistic archer and a melee swordsman keep their reach.
-    {
-        const Approach bow = attackBuilding(vfs, standard, "araarch", target, 1800);
-        std::printf("  araarch vs %s: %s\n", target, describe(bow).c_str());
-        check(bow.ok && bow.damage > 0, "a Ballistic archer still reaches and hits a building", describe(bow));
-        const Approach sword = attackBuilding(vfs, standard, "arasword", target, 1800);
-        std::printf("  arasword vs %s: %s\n", target, describe(sword).c_str());
-        check(sword.ok && sword.damage > 0, "a melee swordsman still reaches and hits a building", describe(sword));
+        const Approach cannon = attackBuilding(vfs, standard, "armham", target, 1800);
+        std::printf("  armham vs %s: %s\n", target, describe(cannon).c_str());
+        check(cannon.ok && cannon.damage > 0, "a Ballistic Hammer still reaches and hits a building", describe(cannon));
     }
 
     std::printf("%s\n", failures ? "FAILED" : "all passed");

@@ -16,26 +16,26 @@
 // A flyer gets AIRSTRIKE (a `dropped` weapon), AIRTOGROUNDHOVER (the type's
 // hoverattack) or AIRTOGROUND at the point, each with no target unit.
 //
-// Checks (flat map, shipped units, Cmd::AttackGround through applyCommand):
-//   - an Archer in reach fires at the point without moving, and keeps the
-//     order; its shots carry no target unit and land on the point;
-//   - out of reach it walks into reach and fires; a minimum-range unit too
-//     close backs off past its minimum range and fires;
-//   - a tower in reach fires; out of reach it keeps the order, stands, never
-//     fires, and its slots stay automatic;
+// Checks (flat map, shipped TA units, Cmd::AttackGround through applyCommand):
+//   - a Hammer (armham, Ballistic) in reach fires at the point without
+//     moving, and keeps the order; its shots carry no target unit and land
+//     on the point;
+//   - out of reach it walks into reach and fires;
+//   - a tower (armllt) in reach fires; out of reach it keeps the order,
+//     stands, never fires, and its slots stay automatic;
 //   - two Shift-queued points take turns, one shot each;
-//   - a switcher aims its selected slot only;
-//   - a melee unit gets no order on bare ground; over a tree it walks up,
-//     fells it, and the order ends;
 //   - an anti-air weapon gets no order, on the ground or in the air;
 //   - a flyer without hoverattack flies attack runs over the point and its
 //     shots land there; a hoverattack flyer hovers its distance off the
 //     point and fires; a `dropped` weapon's flyer strikes the point; each
 //     keeps the order and carries no target;
-//   - a switcher flyer whose selected weapon becomes `dropped` takes the
-//     lost-target exit: VTOL_SEEKATTACK at the point;
+//   - a flyer whose selected weapon becomes `dropped` takes the lost-target
+//     exit: VTOL_SEEKATTACK at the point;
+//   - formations (a weapon switcher stands in as a copy: TA ships none);
 //   - the same run twice gives the same state hash; the command round-trips
 //     the wire.
+// TA ships no minimum-range weapon, no weapon switcher and no melee weapon,
+// so the minimum-range, switcher and melee/tree cases are gone.
 //
 // A dev harness; not shipped in a game.
 
@@ -219,19 +219,6 @@ std::string describe(const Run& r) {
     return b;
 }
 
-// Is the order refused (no order queued)?
-bool refused(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const char* id, float x, float z,
-             const char* feature = nullptr, int fx = 0, int fz = 0) {
-    Scene s;
-    build(s, vfs, reg, feature, fx, fz);
-    const sim::UnitType* t = reg.find(id);
-    if (!t) return false;
-    const int u = s.w.spawn(t, 300, 768, 1.5707963f, 0);
-    s.w.tick(kTick);
-    attackGround(s.w, reg, u, x, z);
-    return s.w.unit(u)->orders.empty();
-}
-
 const sim::UnitType* pick(const sim::TypeRegistry& reg, const std::vector<const char*>& prefer,
                           const std::function<bool(const sim::UnitType&)>& ok) {
     for (const char* id : prefer)
@@ -290,7 +277,7 @@ Run flyCopy(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitTy
 }
 
 void flyerGroups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitType& runner,
-                 const sim::UnitType& hover);
+                 const sim::UnitType& hover, const sim::UnitType& bomber);
 
 // A flyer's patrol legs carry VTOL_PATROL's flags (row 0x5ebd50, 0x1000412;
 // tools/re/check_air_point_mission.py): from idle the outbound leg is the
@@ -333,11 +320,16 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
     };
     const sim::UnitType* runner = pick(reg, {}, [&](const sim::UnitType& t) { return armed(t) && !t.hoverAttack; });
     const sim::UnitType* hover = pick(reg, {}, [&](const sim::UnitType& t) { return armed(t) && t.hoverAttack; });
-    std::printf("  flyers: attack runs %s, hover %s\n", runner ? runner->id.c_str() : "-",
-                hover ? hover->id.c_str() : "-");
-    if (!runner || !hover) { check(false, "the shipped data has a flyer of each kind"); return; }
+    // A bomber: TA's bombs are `dropped` (the Thunder's ARMBOMB).
+    const sim::UnitType* bomber = pick(reg, {"armthund"}, [&](const sim::UnitType& t) {
+        return t.canFly && !t.isStructure() && t.canMove && !t.weaponSwitching && !t.weapons.empty() &&
+               t.weapons[0].cursorAirstrike && t.weapons[0].damage > 0;
+    });
+    std::printf("  flyers: attack runs %s, hover %s, bomber %s\n", runner ? runner->id.c_str() : "-",
+                hover ? hover->id.c_str() : "-", bomber ? bomber->id.c_str() : "-");
+    if (!runner || !hover || !bomber) { check(false, "the shipped data has a flyer of each kind"); return; }
     flyerPatrols(vfs, reg, *runner);
-    flyerGroups(vfs, reg, *runner, *hover);
+    flyerGroups(vfs, reg, *runner, *hover, *bomber);
 
     // AIRTOGROUND: attack runs over the point.
     {
@@ -367,13 +359,10 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
         check(r.ringGoals > 0 && !r.ringWithoutFixed,
               "each hover ring point has a fixed heading and the attack altitude (0x48)", describeAir(r));
     }
-    // AIRSTRIKE: no shipped weapon has `dropped`; the attack-run flyer with
-    // its weapon given the key stands in.
+    // AIRSTRIKE: the shipped bomber, whose bomb is `dropped`.
     {
-        sim::UnitType striker = *runner;
-        striker.weapons[0].cursorAirstrike = true;
-        const Run r = flyCopy(vfs, reg, striker, 1500);
-        std::printf("  %s with a dropped weapon at a point 600 px off: %s\n", runner->id.c_str(), describeAir(r).c_str());
+        const Run r = flyCopy(vfs, reg, *bomber, 1500);
+        std::printf("  %s (dropped weapon) at a point 600 px off: %s\n", bomber->id.c_str(), describeAir(r).c_str());
         check(r.airKind == Order::kAirStrike, "a `dropped` weapon gets AIRSTRIKE at the point", describeAir(r));
         check(r.airborne && r.shots >= 1 && r.hits >= 1 && r.hitDist < 96 && !r.targetedShot,
               "it strikes the point, with no target", describeAir(r));
@@ -656,15 +645,19 @@ std::string retireKeepsShot(Run run, bool& ok) {
 }
 
 void flyerGroups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitType& runner,
-                 const sim::UnitType& hover) {
-    sim::UnitType striker = runner;
-    striker.weapons[0].cursorAirstrike = true;
+                 const sim::UnitType& hover, const sim::UnitType& bomber) {
+    const sim::UnitType& striker = bomber;
     const std::pair<const char*, const sim::UnitType*> kinds[] = {
         {"AIRTOGROUND", &runner}, {"AIRTOGROUNDHOVER", &hover}, {"AIRSTRIKE", &striker}};
     // A building that cannot fly to attack, with no weapon of its own.
-    const sim::UnitType* building = pick(reg, {}, [](const sim::UnitType& t) {
+    const sim::UnitType* shipped = pick(reg, {}, [](const sim::UnitType& t) {
         return t.isStructure() && !t.canFly && t.weapons.empty() && t.footX >= 2 && t.footX <= 4;
     });
+    // Sturdy: flyGroup restores its health each tick, but a TA bomb run
+    // (four Thunders' ARMBOMBs) would kill it inside one tick.
+    sim::UnitType sturdy;
+    if (shipped) { sturdy = *shipped; sturdy.maxHp = 1000000; }
+    const sim::UnitType* building = shipped ? &sturdy : nullptr;
     for (const auto& [name, t] : kinds) {
         if (!building) { check(false, "the shipped data has a weaponless building"); break; }
         // At a unit: the same check (the rows' 0x1000200 / 0x1000600, the
@@ -778,11 +771,13 @@ void orphanFormation(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const si
 
 void groups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitType& archer) {
     orphanFormation(vfs, reg, archer);
-    // A turret type (turninplacerate 0: no facing request) and one that has
-    // to face the point to fire (turninplacerate > 0, max(aimtol, 512)).
-    sim::UnitType turret = archer, facing = archer;
+    // A turret type (no facing request). TotalA.exe posts a facing request
+    // only for a non-turret line-of-sight weapon (0x49d9c0,
+    // World::slotNeedsFacing), which TA ships only on submarines, so the
+    // Kingdoms case of an outlier that must face the point (holding fire on
+    // its walk back) has no ground counterpart and is gone.
+    sim::UnitType turret = archer;
     turret.turnInPlaceRate = 0;
-    facing.turnInPlaceRate = std::max(archer.turnInPlaceRate, 400);
     {
         const GroupRun r = groupFire(vfs, reg, turret, archer, 1500);
         std::printf("  turret outlier of a formation: %s\n", describe(r).c_str());
@@ -830,42 +825,6 @@ void groups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitTy
                   "a switch on the walk back raises 0x40; it waits through the walk for SUPPRESS to take it",
                   "raised " + std::to_string(raised) + ", kept " + std::to_string(kept) + ", back " +
                   std::to_string(back) + ", taken " + std::to_string(taken));
-        }
-    }
-    {
-        const GroupRun r = groupFire(vfs, reg, facing, archer, 1500);
-        std::printf("  facing outlier of a formation: %s\n", describe(r).c_str());
-        if (mode == sim::PathfindingMode::Retail) {
-            check(r.formations >= 1 && r.walkHeld == r.walkTicks && r.walkShots == 0,
-                  "one that must face the point holds fire on the walk (it does not turn to it)", describe(r));
-            // Its formation standing with its controller let go (arrived at
-            // the centre, asleep in stage 2): the idle navigator turns to the
-            // request (4d9b6a). Set up on the walk: stopped, no controller, the
-            // formation asleep.
-            int primed = -1, before = 0, face = -1, after = 0;
-            groupFire(vfs, reg, facing, archer, 1500, 0.9f, {}, [&](Scene& s, int id, int walk) {
-                sim::Unit& u = *s.w.unit(id);
-                if (primed >= 0) {
-                    if (int(s.w.tickCount()) == primed + 1) after = u.heading.v;
-                    return;
-                }
-                if (walk < 20 || u.faceRequest < 0 ||
-                    std::abs(sim::bamDiff(sim::Bam(u.faceRequest), u.heading)) <= 2 * facing.turnInPlaceRate) return;
-                auto& f = u.orders[sim::World::currentLeg(u.orders)];
-                f.controller = 0; f.navigationExhausted = true;
-                f.mission.deadline = s.w.tickCount() + 50; f.mission.waitMask = 1;
-                u.speed = sim::Fixed();
-                primed = int(s.w.tickCount()); before = u.heading.v; face = u.faceRequest;
-            });
-            const int was = std::abs(sim::bamDiff(sim::Bam(face), sim::Bam(before)));
-            const int now = std::abs(sim::bamDiff(sim::Bam(face), sim::Bam(after)));
-            check(primed >= 0 && was - now > 0,
-                  "standing at the centre, its formation's controller let go, it turns to the point",
-                  "off by " + std::to_string(was) + ", then " + std::to_string(now));
-            check(r.retired && r.afterShots >= 1 && r.orderAtEnd,
-                  "back in its slot it turns, and fires", describe(r));
-        } else {
-            check(r.formations == 0 && r.orderAtEnd, "Legion: no group check, the order stands", describe(r));
         }
     }
     // Shift on the point while the formation leads: SUPPRESS goes, and the
@@ -935,42 +894,34 @@ int main(int argc, char** argv) {
 
     const auto ground = [](const sim::UnitType& t) { return !t.canFly && !t.isStructure() && t.canMove; };
     const auto ranged = [](const sim::Weapon& w) { return !w.melee && !w.toAir && w.range > 0 && !w.commandFire; };
-    const sim::UnitType* archer = pick(reg, {"araarch"}, [&](const sim::UnitType& t) {
+    // TA's Hammer (a Ballistic plasma cannon, like the Kingdoms Archer's
+    // bow this test began with) and its Light Laser Tower. TA ships no
+    // minimum-range weapon (no weapons/*.tdf sets minrange), no weapon
+    // switcher and no melee weapon, so those cases are gone.
+    const sim::UnitType* archer = pick(reg, {"armham"}, [&](const sim::UnitType& t) {
         return ground(t) && !t.weaponSwitching && t.weapons.size() == 1 && ranged(t.weapons[0]) && !t.weapons[0].minRange;
     });
-    const sim::UnitType* siege = pick(reg, {"aracat", "aratreb", "veriron"}, [&](const sim::UnitType& t) {
-        return ground(t) && !t.weaponSwitching && t.weapons.size() == 1 && ranged(t.weapons[0]) &&
-               t.weapons[0].minRange >= 64 && t.weapons[0].range >= t.weapons[0].minRange + 150;
-    });
-    const sim::UnitType* tower = pick(reg, {"aratower", "aragtwr"}, [&](const sim::UnitType& t) {
+    const sim::UnitType* tower = pick(reg, {"armguard"}, [&](const sim::UnitType& t) {
         return t.isStructure() && !t.weapons.empty() && !t.weaponSwitching && ranged(t.weapons[0]) &&
                !t.weapons[0].minRange && !t.producesUnits();
     });
-    const sim::UnitType* switcher = pick(reg, {}, [&](const sim::UnitType& t) {
-        return ground(t) && t.weaponSwitching && t.weapons.size() >= 2 && ranged(t.weapons[0]) && !t.weapons[0].minRange;
-    });
-    const sim::UnitType* melee = pick(reg, {"arasword"}, [&](const sim::UnitType& t) {
-        return ground(t) && !t.weaponSwitching && t.weapons.size() == 1 && t.weapons[0].melee;
-    });
-    std::printf("  types: archer %s, siege %s, tower %s, switcher %s, melee %s\n",
-                archer ? archer->id.c_str() : "-", siege ? siege->id.c_str() : "-", tower ? tower->id.c_str() : "-",
-                switcher ? switcher->id.c_str() : "-", melee ? melee->id.c_str() : "-");
-    if (!archer || !siege || !tower || !switcher || !melee) {
+    std::printf("  types: archer %s, tower %s\n", archer ? archer->id.c_str() : "-", tower ? tower->id.c_str() : "-");
+    if (!archer || !tower) {
         check(false, "the shipped data has every kind of shooter");
         return 1;
     }
-    // The shipped data has no ground unit with an anti-air weapon: an Archer
-    // whose bow is made a toairweapon stands in.
+    // An anti-air copy of the Hammer (its cannon made a toairweapon) stands
+    // in for a ground anti-air shooter.
     sim::UnitType antiAirType = *archer;
     antiAirType.weapons[0].toAir = true;
     const sim::UnitType* antiAir = &antiAirType;
 
-    // An Archer in reach: fires where it stands, keeps the order.
+    // A Hammer in reach: fires where it stands, keeps the order.
     {
         const float range = float(archer->weapons[0].range);
         const Run r = fireAt(vfs, reg, {archer->id.c_str()}, {{300 + range * 0.6f, 768}}, 450);
         std::printf("  %s, point %.0f px off: %s\n", archer->id.c_str(), range * 0.6f, describe(r).c_str());
-        check(r.shots >= 3 && r.moved < 4 && !r.approach, "an Archer in reach fires at the point where it stands",
+        check(r.shots >= 3 && r.moved < 4 && !r.approach, "a Hammer in reach fires at the point where it stands",
               describe(r));
         check(r.orderAtEnd && r.ordersAtEnd == 1, "a lone point is fired at for ever (the order stays)", describe(r));
         check(!r.targetedShot && r.hits >= 2 && r.hitDist < 48, "its shots carry no target and land on the point",
@@ -986,17 +937,6 @@ int main(int argc, char** argv) {
         std::printf("  %s, point %.0f px off: %s\n", archer->id.c_str(), range + 300, describe(r).c_str());
         check(r.approach && r.moved > 250 && r.endDist <= range + 1, "out of reach it walks into reach", describe(r));
         check(r.shots >= 2 && r.orderAtEnd, "and fires from there", describe(r));
-    }
-
-    // Too close for a minimum-range weapon: backs off onto the ring and fires.
-    {
-        const auto& w = siege->weapons[0];
-        const Run r = fireAt(vfs, reg, {siege->id.c_str()}, {{300 + float(w.minRange) * 0.4f, 768}}, 1500);
-        std::printf("  %s (minrange %d, range %d), point %.0f px off: %s\n", siege->id.c_str(), w.minRange, w.range,
-                    float(w.minRange) * 0.4f, describe(r).c_str());
-        check(r.approach && r.endDist >= float(w.minRange) && r.endDist <= float(w.range) + 1,
-              "inside its minimum range it backs off onto the ring", describe(r));
-        check(r.shots >= 1, "and fires from there", describe(r));
     }
 
     // A tower: in reach it fires; out of reach it keeps the order and waits.
@@ -1026,28 +966,6 @@ int main(int argc, char** argv) {
         std::printf("  %s, two queued points: %s, impacts %s\n", archer->id.c_str(), describe(r).c_str(), seq.c_str());
         check(r.sequence.size() >= 4 && switches + 1 == int(r.sequence.size()) && r.ordersAtEnd == 2,
               "two queued points take turns, one shot each", seq);
-    }
-
-    // A switcher aims its selected slot only.
-    {
-        const float range = float(switcher->weapons[0].range);
-        const Run r = fireAt(vfs, reg, {switcher->id.c_str()}, {{300 + range * 0.5f, 768}}, 300);
-        std::printf("  %s (switcher), point %.0f px off: %s, slots %u\n", switcher->id.c_str(), range * 0.5f,
-                    describe(r).c_str(), unsigned(r.slotPointMax));
-        check(r.slotPointMax == 1 && r.shots >= 1, "a switcher aims and fires its selected slot only", describe(r));
-    }
-
-    // Melee: nothing on bare ground; a tree is walked up to and felled.
-    {
-        check(refused(vfs, reg, melee->id.c_str(), 500, 768), "a melee weapon gets no order on bare ground");
-        // ZonTree201 is blocking and clearable: its cell is (40, 48).
-        const float tx = 40 * 16 + 8, tz = 48 * 16 + 8;
-        const Run r = fireAt(vfs, reg, {melee->id.c_str()}, {{tx, tz}}, 1800, {}, "ZonTree201", 40, 48);
-        std::printf("  %s at a tree: %s, tree %d -> %d\n", melee->id.c_str(), describe(r).c_str(), r.treeAtStart,
-                    r.treeAtEnd);
-        check(r.treeAtStart, "the test tree is on the map");
-        check(r.moved > 100 && r.hits >= 1 && !r.treeAtEnd && !r.orderAtEnd,
-              "over a tree it walks up, fells it, and the order ends", describe(r));
     }
 
     // An anti-air weapon gets no order, flyer or not (4de673).
