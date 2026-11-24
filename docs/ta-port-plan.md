@@ -91,6 +91,20 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 - Weapon scripts: AimX / FireX / QueryX / AimFromX per docs/retail-weapon-scripts.md;
   scripted TA units fire, on the move too.
 - Tests: TMPDIR for every ctest test and a /tmp leftover guard (pref_guard_check).
+- Front end and client (2026-11-23/24): mouse events mapped to renderer pixels
+  (clicks on scaled displays); TA's cursors.gaf drawn with palettes/palette.pal;
+  GUI labels centred on their glyph rows; the menus loop allsound [BGM] (drone2,
+  0x426453) instead of music. Team-colour textures are logos.gaf 10-frame entries
+  only (0x42a182..0x42a298); other multi-frame textures animate per tick
+  (0x4b8b90) and play only on an activated structure or a moving mobile
+  (0x458845). Movement call-ins StartMoving/StopMoving/MoveRate1..3 (0x43da70);
+  ground StartBuilding passes the heading (0x4385a7). Nano spray (0x4720d0,
+  0x473d50) and the nanoframe (0x458dd0) ported; root pieces draw (0x459958).
+- Sim (same pass): ground/naval chase closes to the order's weapon slot
+  (0x4034a0/0x4897e0); Suppress/AirToGround have no group check or step-out
+  (0x4038a0, 0x412710, 0x413470); flying builders never step out of a stack
+  (0x413d80/0x414380/0x414e70); factory door clearing fits TA's centre pads.
+  Release suite 716/716.
 
 ## Resolved retail questions (docs/retail-weapon-scripts.md section 8)
 
@@ -116,11 +130,15 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   step-outs for the other flyer missions (air_traffic) -- unverified for TA.
 
 ## Open
-- The Kingdoms-data tests run on TA units/maps now. Engine gaps they expose (left
-  failing): a
-  battleship stopped just inside its ballistic weapon's origin reach (corbats,
-  COR_BATS at ~1092 px) never fires (naval_combat);
-  a PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
+- Kingdoms behaviour still in place: the other flyer missions (VTOL_Move,
+  Patrol, AirToAir...) keep the air-traffic step-out; flying builders orbit a site
+  instead of re-picking a hover point every 150 ticks (0x414569..0x41461a); the
+  group/formation system still runs for moves, standbys and guards in retail
+  mode; the under-attack alert's trigger and 15 s cooldown are unchecked; the
+  result plate's produced columns stay empty (no lifetime totals); TA wreck
+  resurrection; nanoframe outlines are front-facing only and use painter's order
+  (retail depth-tests per pixel); room_flow's menu-launched cases hang.
+- A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
   units in the field) can still circle in the ring's acceptance gap -- the
   octile distance (0x44d840) is 0 a cell inside the squared inner test
   (0x44d800) -- when parked outputs wall the band; client watch/spectator
