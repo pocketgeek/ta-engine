@@ -100,8 +100,9 @@ int main(int argc,char** argv) {
                 world.tick(1.f/30.f);
                 // A selfprop rocket (armrock, corstorm) flies TotalA.exe's
                 // selfprop motion, which takes precedence over the
-                // line-of-sight one (docs/retail-data.md 3.3, rule 1).
-                for(const auto& shot:world.projectiles())if(shot.fromId==from && (shot.straight || shot.taSelfProp)) {
+                // line-of-sight one (docs/retail-data.md 3.3, rule 1); a
+                // line-of-sight shot flies rule 2 (taLineOfSight).
+                for(const auto& shot:world.projectiles())if(shot.fromId==from && (shot.straight || shot.taSelfProp || shot.taLineOfSight)) {
                     launched=true;moved=moved || shot.age>0;
                 }
                 hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();

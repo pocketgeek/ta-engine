@@ -102,6 +102,31 @@ inline void taBallisticStep(std::array<int32_t,3>& position,std::array<int32_t,3
     velocity[1]=std::bit_cast<int32_t>(uint32_t(velocity[1])-uint32_t(gravity));
 }
 
+// 0x49bb60..0x49bc07, a line-of-sight shot's tick while its expiry (+0x46)
+// is ahead (0x49bb7c; at or past it the shot retires without a burst,
+// 0x49bcd0): the head (+0x04) moves by the velocity, straight, no gravity.
+// A beamweapon also has a tail (+0x10, the muzzle at launch, 0x49c761):
+// once +0x69 bit 0 is set it moves by the same velocity (0x49bbbb); until
+// then the bit is set on the first tick whose counter is past the launch
+// tick (+0x42) plus `duration` (0x49bbe1..0x49bc03), so the tail starts a
+// tick later. The two ends draw the beam (0x49bf8d); only the head is ever
+// tested for a hit (0x49bd86 -> 0x49b090).
+struct TaLineOfSightShot {
+    std::array<int32_t,3> head{},tail{},velocity{};
+    uint32_t launch=0;      // +0x42
+    bool tailMoving=false;  // +0x69 bit 0
+};
+
+inline void taLineOfSightStep(TaLineOfSightShot& shot,bool beam,uint16_t duration,uint32_t now) {
+    for(size_t axis=0;axis<3;++axis)
+        shot.head[axis]=std::bit_cast<int32_t>(uint32_t(shot.head[axis])+uint32_t(shot.velocity[axis]));
+    if(!beam)return;
+    if(shot.tailMoving) {
+        for(size_t axis=0;axis<3;++axis)
+            shot.tail[axis]=std::bit_cast<int32_t>(uint32_t(shot.tail[axis])+uint32_t(shot.velocity[axis]));
+    } else if(now>uint32_t(shot.launch+uint32_t(duration))) shot.tailMoving=true;
+}
+
 // 0x490d05 / 0x490d31: the wind vector from the wind's r sin and r cos.
 inline std::array<int32_t,3> taWindVector(int32_t sine,int32_t cosine) {
     return {std::bit_cast<int32_t>((0u-uint32_t(sine))<<1),0,std::bit_cast<int32_t>((0u-uint32_t(cosine))<<1)};

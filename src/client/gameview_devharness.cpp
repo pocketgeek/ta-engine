@@ -8,6 +8,7 @@
 #include "sim/sides.h"
 #include "util/virtualpath.h"
 #include "client/gameview.h"
+#include "client/tabeamdraw.h"
 #include "client/gamespeed.h"
 #include "client/renderdriver.h"
 #include "client/retailaim.h"
@@ -1439,6 +1440,74 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             // has no TA counterpart.)
             if (settings_) settings_->unitShadows=shadows;
             std::fprintf(stderr,"PASS: air over fx (altitude %.0f)\n",altitude);
+            return;
+        }
+        if (ta::devFlag("TA_BEAM_FX_TEST")) {
+            // TotalA.exe's beam draw (0x49bf3a..0x49c097, client/tabeamdraw.h):
+            // an Arm LLT's laser in flight is a line from its head to its tail
+            // in palette.pal[map[232]] (211,43,0), with a line in map[234]
+            // (155,131,47) a row above it. Through the real draw(), at zoom 1
+            // and 3. TA_BEAM_FX_CAPTURE=<prefix> writes <prefix>-z1/-z3.png.
+            const auto check=[](bool ok,const std::string& what) {
+                if (!ok) throw std::runtime_error("beam fx: "+what);
+                std::fprintf(stderr,"PASS: beam fx: %s\n",what.c_str());
+            };
+            constexpr int W=1024,H=768;
+            noFog_=true;edgeScrollOn_=false;healthBars_=0;
+            const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f;
+            const int llt=spawn("armllt",x0,z0,0,0);
+            const int foe=spawn("corestor",x0+240,z0,0,1);
+            check(llt>=0 && foe>=0,"fixture spawned");
+            writableWorld().attack(llt,foe,false);
+            const ta::sim::Projectile* beam=nullptr;
+            ta::sim::Projectile shot;
+            for (int t=0;t<300 && !beam;++t) {
+                writableWorld().tick(1.f/30);
+                for (const auto& p:world_.projectiles())
+                    if (p.fromId==llt && p.taLineOfSight && p.taTailMoving && p.life>0 &&
+                        p.position[0]-p.taTail[0]>(40<<16)) {shot=p;beam=&shot;}
+            }
+            check(beam!=nullptr,"the LLT's laser is in flight with its tail moving");
+            const char* capture=ta::devEnv("TA_BEAM_FX_CAPTURE");
+            std::vector<uint8_t> px;
+            int ow=0,oh=0;
+            for (const float zoom:{1.0f,3.0f}) {
+                captureFrame();beginFrame();cosmeticStep(0);
+                mapView_.setZoom(zoom);
+                const auto head=ta::taShotScreenPoint(shot.position),tail=ta::taShotScreenPoint(shot.taTail);
+                const float cx=float(head[0]+tail[0])*0.5f,cy=float(head[1]+tail[1])*0.5f;
+                mapView_.setOffset(std::floor(cx-float(W-300)*0.5f/zoom),std::floor(cy-float(H)*0.5f/zoom));
+                prepare(W,H);draw(W,H);
+                SDL_GetRendererOutputSize(ren_,&ow,&oh);
+                px.assign(size_t(ow)*size_t(oh)*4,0);
+                SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
+                if (capture) ta::png::write((std::string(capture)+(zoom>1 ? "-z3.png" : "-z1.png")).c_str(),ow,oh,px);
+                endFrame();
+                // The middle pixel of each line, at the centre of its zoomed cell.
+                const auto& w=*shot.wsrc;
+                const auto lines=ta::taBeamLines(shot.position,shot.taTail,taGuiColourMap_[w.color],w.color2,
+                                                 taGuiColourMap_[w.color2]);
+                check(lines.size()==2,"a laser with a color2 draws two lines");
+                for (const auto& line:lines) {
+                    const int mx=(line.x1+line.x2)/2;
+                    const float t=line.x2==line.x1 ? 0.f : float(mx-line.x1)/float(line.x2-line.x1);
+                    const int my=int(std::lround(float(line.y1)+t*float(line.y2-line.y1)));
+                    const int sx=int((float(mx)-mapView_.offX()+0.5f)*zoom),sy=int((float(my)-mapView_.offY()+0.5f)*zoom);
+                    const uint32_t want=nanoGamePalette_[line.colour];
+                    int found=0;
+                    for (int dy=-1;dy<=1 && !found;++dy) {
+                        const size_t i=(size_t(sy+dy)*size_t(ow)+size_t(sx))*4;
+                        if (px[i]==Uint8(want>>24) && px[i+1]==Uint8(want>>16) && px[i+2]==Uint8(want>>8)) found=1;
+                    }
+                    char what[160];
+                    std::snprintf(what,sizeof what,"zoom %.0f: palette %d (%u,%u,%u) at the line's middle (%d,%d)",
+                                  zoom,line.colour,unsigned(want>>24),unsigned((want>>16)&255),unsigned((want>>8)&255),sx,sy);
+                    check(found,what);
+                }
+            }
+            std::fprintf(stderr,"PASS: beam fx (head %d,%d tail %d,%d)\n",
+                         ta::taShotScreenPoint(shot.position)[0],ta::taShotScreenPoint(shot.position)[1],
+                         ta::taShotScreenPoint(shot.taTail)[0],ta::taShotScreenPoint(shot.taTail)[1]);
             return;
         }
         if (ta::devFlag("TA_DEPTH_FX_TEST")) {

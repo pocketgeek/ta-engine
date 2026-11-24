@@ -2,6 +2,7 @@
 #include "sim/sides.h"
 #include "util/virtualpath.h"
 #include "client/retailaim.h"
+#include "client/tabeamdraw.h"
 #include "gaf/nimbus.h"
 #include "client/gameview.h"
 #include "client/buildline.h"
@@ -3204,6 +3205,12 @@
             nanoGamePalette_[size_t(i)] = uint32_t(e[0]) << 24 | uint32_t(e[1]) << 16 | uint32_t(e[2]) << 8 | 0xffu;
         }
         nanoGamePaletteSet_ = true;
+        try {
+            const auto gui = ta::gaf::Palette::fromBytes(vread("palettes/guipal.pal"), "palettes/guipal.pal");
+            taGuiColourMap_ = ta::taGuiColourMap(gui.rgba, pals.at("ta").rgba);
+        } catch (const std::exception&) {
+            for (int i = 0; i < 256; ++i) taGuiColourMap_[size_t(i)] = uint8_t(i);
+        }
         // Palette lighting banks (workstream M): one palette + shade table per faction
         // bank, shared by every texture of the bank.
         std::map<std::string, uint8_t> bankIndex;

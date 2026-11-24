@@ -266,8 +266,21 @@ Scales use the doubles 0x4fd240 = 65536/30, 0x4fd248 = 65536/900, 0x4fd250 = 30,
      `burnblow` detonates, otherwise gravity (G+0x14263) takes over, and `twophase`
      switches phase and re-arms the timer with `flighttime` (+0xfc). `propeller` spins the
      model (+0x400/tick).
-  2. else `lineofsight`: straight line, no gravity; `beamweapon` also moves the beam
-     tail and uses `duration`.
+  2. else `lineofsight` (0x49bb60): while the expiry +0x46 is ahead, the head +0x04
+     moves by the velocity (straight, no gravity); at or past it the shot dies with
+     no burst and no test (0x49bc8b). `beamweapon` also has a tail +0x10 (the muzzle
+     at launch, 0x49c761): +0x69 bit 0 is set on the first tick with now > +0x42
+     (launch tick) + `duration` (0x49bbe1..0x49bc03), and from the next tick the
+     tail moves by the same velocity (0x49bbbb). Only the head is tested, once a
+     tick (0x49bd86 -> 0x49b090) [S].
+  Drawing (0x49be60, per `rendertype` +0x10c) [S]: 0 = beam, a line from the head
+  to the tail in map[color] with, when color2 ≠ 0, a line in map[color2] one row
+  above (x-major) or from one column left of the upper end to one right of the
+  lower end (y-major), drawn first (0x49bf3a..0x49c097); 3 = the model at the
+  head; 7 = lightning, two strands of floor(L/5) 5 px steps from the tail, each
+  point jittered by rand()·11/32768 − 5 px per axis (0x49c48c..0x49c727).
+  map = game +0xdcb, each guipal.pal entry's nearest palette.pal entry by summed
+  |dR|+|dG|+|dB| (0x4ac7d0). Points project as (x, z − (y >> 1)).
   3. else `ballistic`: position += velocity, then += the wind vector G+0x37ecc
      (-2 r sin, 0, -2 r cos of the wind's speed and direction, 0x490cf7..0x490d35),
      then vy -= gravity, once a tick (0x49bce3..0x49bd41) [S]; with

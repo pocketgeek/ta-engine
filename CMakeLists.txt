@@ -315,6 +315,7 @@ target_link_libraries(authrogue PRIVATE ta-formats)
 add_executable(retailgap_test tools/retailgap_test.cpp)
 add_executable(ta_weapon_script_test tools/ta_weapon_script_test.cpp)
 add_executable(ta_ballistic_test tools/ta_ballistic_test.cpp)
+add_executable(ta_beam_test tools/ta_beam_test.cpp)
 add_executable(death_lifecycle_test tools/death_lifecycle_test.cpp)
 target_link_libraries(death_lifecycle_test PRIVATE ta-formats)
 add_executable(building_death_test tools/building_death_test.cpp)
@@ -1401,6 +1402,7 @@ add_executable(gpuvram_test tools/gpuvram_test.cpp)
     target_link_libraries(retailgap_test PRIVATE ta-formats)
     target_link_libraries(ta_weapon_script_test PRIVATE ta-formats)
     target_link_libraries(ta_ballistic_test PRIVATE ta-formats)
+    target_link_libraries(ta_beam_test PRIVATE ta-formats)
 target_link_libraries(placement_test PRIVATE ta-formats)
 target_link_libraries(cursor_enemy_test PRIVATE ta-formats)
 target_link_libraries(friendly_order_test PRIVATE ta-formats)
@@ -1669,6 +1671,8 @@ if(TA_TEST_DATA)
     # TotalA.exe's ballistic aim solve, launch and shell motion (0x49a890, 0x49cde0, 0x49bce3).
     add_test(NAME ta_ballistic COMMAND ta_ballistic_test "${TA_TEST_DATA}")
     set_tests_properties(ta_ballistic PROPERTIES LABELS quick)
+    add_test(NAME ta_beam COMMAND ta_beam_test "${TA_TEST_DATA}")
+    set_tests_properties(ta_beam PROPERTIES LABELS quick)
     add_test(NAME mission_orders_shipped COMMAND mission_orders_test --data "${TA_TEST_DATA}")
     add_test(NAME death_lifecycle COMMAND death_lifecycle_test "${TA_TEST_DATA}")
     add_test(NAME kill_credit_shipped COMMAND kill_credit_test "${TA_TEST_DATA}")
@@ -2760,6 +2764,16 @@ if(TA_BUILD_CLIENT)
           --testbuild --winsize 1024 768 --shot "${CMAKE_CURRENT_BINARY_DIR}/air-over-fx.png")
       set_tests_properties(air_over_fx PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "PASS: air over fx \\(altitude")
+      # A laser in flight draws as TotalA.exe's beam (0x49bf3a): head to tail, color
+      # and color2 through the guipal map (0x4ac7d0).
+      add_test(NAME beam_fx COMMAND ${CMAKE_COMMAND} -E env
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_BEAM_FX_TEST=1
+          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/beam-fx-profile
+          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/beam-fx-profile
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
+          --testbuild --winsize 1024 768 --shot "${CMAKE_CURRENT_BINARY_DIR}/beam-fx.png")
+      set_tests_properties(beam_fx PROPERTIES TIMEOUT 120
+          PASS_REGULAR_EXPRESSION "PASS: beam fx \\(head")
       # Shots and effects draw in depth order with the ground units and the tall
       # features (the owner's request, not retail): behind a tree covered, in front over it.
       add_test(NAME depth_fx COMMAND ${CMAKE_COMMAND} -E env

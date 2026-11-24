@@ -1976,6 +1976,14 @@ struct Projectile {
     // ballistic3d for drawing. `end` is the expiry tick (+0x46), read only
     // for a ballistic weapon with a weapontimer (0x49bc19).
     bool taBallistic=false;
+    // TotalA.exe line-of-sight motion (0x49bb60, retailtashot.h
+    // taLineOfSightStep): `position` is the head (+0x04), taTail the beam's
+    // tail (+0x10), taLaunch +0x42, taTailMoving +0x69 bit 0. `end` is the
+    // expiry tick (+0x46).
+    bool taLineOfSight=false;
+    bool taTailMoving=false;
+    uint32_t taLaunch=0;
+    std::array<int32_t,3> taTail{};
     uint8_t taPhase=0;          // +0x69 bits 4..5: twophase stage
     uint16_t taHeading=0,taPitch=0;   // +0x36 / +0x38, mover convention
     int32_t taSpeed=0;          // +0x3a
@@ -3204,7 +3212,7 @@ public:
     ProjectileCollisionResult projectileCollision(const std::array<int32_t,3>& point,
         int32_t& verticalSpeed,uint32_t weaponFlags,int owner,std::span<const int> airGrid,
         bool bypassPrimaryGeometry=false,std::optional<std::array<int32_t,3>> targetShot={},
-        uint16_t proximityRadius=0) const;
+        uint16_t proximityRadius=0,bool taPrimaryHeight=false) const;
     uint64_t stateHash() const;
     // A coarse, layout-independent digest for replay verification: FNV over (id, type,
     // owner, x, z, hp, front order kind and target) in unit-id order and nothing else --
@@ -4760,6 +4768,7 @@ private:
     // TotalA.exe 0x49bc19..0x49bd41 plus 0x49b090: one ballistic or dropped
     // shot's tick (move, wind, gravity, then one collision test).
     void tickTaBallistic(Projectile& p,std::span<const int> airGrid);
+    void tickTaLineOfSight(Projectile& p,std::span<const int> airGrid);
     // 0x49e070's per-slot part at creation: the barrel words (Unit::taBarrel).
     void initTaWeaponSlots(Unit& u,uint16_t birthHeading);
     bool taShellLands(Fixed x,Fixed y,Fixed z,const Unit& t,const Weapon& w) const;

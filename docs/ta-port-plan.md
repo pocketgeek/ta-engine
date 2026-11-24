@@ -353,6 +353,26 @@ What these entries describe is ported; what is left of each is under "Open".
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run
   follows 0x411f50 (retailAirStrike).
+- Beams and the other line-of-sight shots (2026-11-24) fly as TotalA.exe's
+  (rule 2 of 0x49b9ae; `World::tickTaLineOfSight`, `taLineOfSightStep`): the
+  head moves one velocity step a tick until the expiry (range << 16) /
+  weaponvelocity (0x49cb17), then the shot is gone without a burst
+  (0x49bc8b); a beamweapon's tail starts at the muzzle (0x49c761) and moves
+  from the second tick after the counter passes launch + `duration`
+  (0x49bbe1..0x49bc07; most lasers' duration truncates to 0, so they fly as a
+  two-step streak; the Zeus's 10 s keeps its bolt joined to the muzzle). Only
+  the head is tested, once a tick (0x49bd86 -> 0x49b090): the enemy body
+  owning its cell, when the point is below that body's y + model height
+  (0x49b1c7..0x49b211, no outline test), a flyer there, or the ground bursts
+  it (damage on contact, 0x499eb0); own bodies and anything below it pass. noexplode (the D-gun)
+  deals its damage every tick it meets something and flies on (0x499ede).
+  A shot moves in its fire tick: retail runs the units (0x4954ed, which fire
+  at 0x48adda -> 0x49e1a0) before the projectiles (0x495513), World gives the
+  shots launched in its unit pass their first step after it. The client draws
+  rendertype 0 as 0x49bf3a..0x49c097 does (color, and color2 a pixel off the
+  major axis, through the guipal -> palette.pal map 0x4ac7d0) and rendertype
+  7 as 0x49c48c's two jittered strands of 5 px steps (`client/tabeamdraw.h`,
+  `GameView::drawTaLineShot`). Evidence: ta_beam, beam_fx (debug).
 
 ## Open
 
@@ -392,10 +412,19 @@ data (cleanup, no gameplay).
 - (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
   the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
   loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
-- (b) Beams (lineofsight + beamweapon) hit instantly: retail flies them as a
-  line-of-sight shot whose tail starts moving after `duration` (0x49bb82..
-  0x49bc07), which needs the client to draw a moving beam. The cruise branch
-  of 0x49b3e0 is ported untested; non-turret LOS weapons compare only the
+- (b) Shot timing: World runs the projectiles before the units, retail after
+  them (0x4954ed, 0x495513). Line-of-sight shots take their first step after
+  the unit pass (above); ballistic, selfprop and dropped shots still take
+  theirs in the next tick's pass, a tick late, and every shot is tested
+  against the bodies as they stood before the units moved. Those classes
+  also still test a body's cell with the Kingdoms outline (52a4d0's
+  selection quad, projectilePointInUnit) where 0x49b090 tests only the
+  height (World::projectileCollision's taPrimaryHeight, used by the
+  line-of-sight shots). The lightning
+  strands draw with the client's own CRT-rand stream (0x4e4870 is the
+  game's shared one; drawing only). The D-gun (rendertype 3) draws its model
+  at the head through the generic model path; 0x49c1f2's own pose words
+  (+0x38 local) are not traced. The cruise branch of 0x49b3e0 is ported untested; non-turret LOS weapons compare only the
   heading with the body (docs/retail-weapon-scripts.md 7.8). The range gate
   0x49aa80 measures the horizontal range to the slot's target point (the
   SweetSpot, 0x49e3c8); World keeps the callers' test to the target's origin

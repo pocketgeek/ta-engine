@@ -2326,6 +2326,11 @@ private:
     std::array<SDL_Color,16> nanoPalette_{};
     std::array<uint32_t,256> nanoGamePalette_{};   // palette.pal, packed RGBA8888
     bool nanoGamePaletteSet_ = false;
+    // TotalA.exe's colour map (game +0xdcb, 0x4ac7d0; client/tabeamdraw.h):
+    // guipal.pal index -> palette.pal index, for the beams' color / color2.
+    std::array<uint8_t,256> taGuiColourMap_{};
+    uint32_t beamDrawFrame_ = 0;   // reseeds the lightning strands' CRT rand per frame
+    void drawTaLineShot(const ta::sim::Projectile& p);
     void buildNanoframe(const UnitR& u, UnitGeom& g, const Visual& visual, const PieceMeta* meta,
                         const Anim* anim, SDL_Texture* atlas, float facing, float zm, float ax, float ay);
     struct NanoCollect {

@@ -7373,10 +7373,11 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // descends or climbs to it. 0x49c9c0 recomputes the angles and never reads
     // the slot's aim angles, so the accuracy spread the fire routine added to
     // them (0x49d6bc) does not move these shots; a burst clone's sprayangle
-    // does (0x49b8f1). Beams stay on the delivery below.
+    // does (0x49b8f1). A beamweapon is one of these shots (0x49c9c0 has no
+    // beam case): its tail starts at the muzzle too (0x49c761).
     const bool taSelfProp=w.hasTaFlag(20);   // selfprop
     if((taSelfProp || (w.hasTaFlag(0) && !w.lightning && w.losStatus==Weapon::LosStatus::None)) &&
-       !w.beam && w.velocityFx>0) {
+       w.velocityFx>0) {
         const auto muzzle=queryUnitScriptPoint(u.id,false,slot);
         const auto target=scriptTriggered && !tweak.free ? u.weaponAimPoints[size_t(slot)] :
             tu ? taTargetPoint(u,t,w) : t.point;
@@ -7415,12 +7416,16 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
             p.angles={0,yaw,pitch};
             p.life=std::numeric_limits<int32_t>::max();
         } else {
-            // Line of sight (0x49bb60): straight, gone without a burst at the
-            // expiry. tickStraightProjectiles adds the body heading to the
-            // drawn yaw on the start tick.
-            p.straight=true;
-            p.angles={0,uint16_t(yaw-portHeadingToRetail(u.heading)),pitch};
-            p.life=1;
+            // Line of sight (0x49bb60, tickTaLineOfSight): straight, gone
+            // without a burst at the expiry. It moves in this tick's
+            // projectile pass (0x495513 after the units' 0x4954ed; World::tick
+            // runs it after the unit pass); +0x42 is this tick (0x49c7ac) and
+            // +0x46 the expiry (0x49cb65).
+            p.taLineOfSight=true;
+            p.taTail=muzzle;p.taLaunch=tickCounter_;p.taTailMoving=false;
+            p.start=tickCounter_;p.end=tickCounter_+lifetime;
+            p.angles={0,yaw,pitch};
+            p.life=std::numeric_limits<int32_t>::max();
         }
         p.taHeading=heading;p.taPitch=pitch;p.taTargetPoint=target;p.taSpeed=speed;   // +0x36/+0x38/+0x28/+0x3a
         if(tweak.capture)*tweak.capture=p;
@@ -18285,6 +18290,42 @@ void World::tickTaBallistic(Projectile& p,std::span<const int> airGrid) {
     }
 }
 
+// TotalA.exe's line-of-sight motion (docs/retail-data.md 3.3 rule 2). At or
+// past its expiry (+0x46, 0x49bb7c) the shot retires without a burst and is
+// not tested (0x49bc8b..0x49bcd4); before it, taLineOfSightStep moves the
+// head (and a beam's tail, 0x49bba3..0x49bc07) and 0x49b090 tests the head
+// alone, once a tick (0x49bd86): the body owning its cell when the point is
+// below that body's top (taPrimaryHeight), a flyer there, or the ground
+// bursts it (0x499eb0); off the map it is gone without one (0x49b0ac). A
+// noexplode shot (the disintegrator) is not retired by its burst (0x499ede
+// jumps past 0x499f32's kill): it deals its damage every tick it meets
+// something and flies on to its expiry.
+void World::tickTaLineOfSight(Projectile& p,std::span<const int> airGrid) {
+    if(p.life<=0 || p.spent || !p.wsrc)return;
+    if(tickCounter_<p.start)return;   // a burst clone joins the pool after the pass's count
+    const Weapon& w=*p.wsrc;
+    if(!(p.end>tickCounter_)) {
+        if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
+        p.spent=true;p.life=0;return;
+    }
+    TaLineOfSightShot shot{p.position,p.taTail,p.velocity,p.taLaunch,p.taTailMoving};
+    taLineOfSightStep(shot,w.hasTaFlag(3),w.durationTicks16,tickCounter_);
+    p.position=shot.head;p.taTail=shot.tail;p.taTailMoving=shot.tailMoving;
+    p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+    p.age=int32_t(tickCounter_-p.start)+1;
+    const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
+    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid,false,{},0,true);
+    if(hit.code==2) {
+        const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
+        applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hit.unitId),p.position,{},p.slot);
+        noteShotImpact(p.fromId,p.targetId,w,p.position,hit.unitId,shotHp);
+        if(!w.hasTaFlag(22)) {p.spent=true;p.life=0;}   // noexplode flies on
+    } else if(hit.code==1) {
+        if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
+        p.spent=true;p.life=0;
+    }
+}
+
 // TotalA.exe's selfprop motion (0x49b9c2..0x49bb5b; docs/retail-data.md 3.3
 // rule 1), then one collision test at the new point (0x49bd86 -> 0x49b090).
 // Powered while the expiry tick (+0x46) is ahead: speed climbs by
@@ -18498,13 +18539,20 @@ std::span<const int> World::updateAirOccupancy() {
 World::ProjectileCollisionResult World::projectileCollision(const std::array<int32_t,3>& point,
         int32_t& verticalSpeed,uint32_t weaponFlags,int owner,std::span<const int> airGrid,
         bool bypassPrimaryGeometry,std::optional<std::array<int32_t,3>> targetShot,
-        uint16_t proximityRadius) const {
+        uint16_t proximityRadius,bool taPrimaryHeight) const {
     const int x=point[0]>>20,z=point[2]>>20;
     if(x<0 || z<0 || x>=hW_ || z>=hH_)return {1,0};
     if(targetShot && retailProjectileProximity(point,*targetShot,proximityRadius))return {2,0};
     const auto primary=searchBodyRect(x,z,1,1);
     const auto* body=primary.cells[0];
-    if(body && body->player!=owner && (bypassPrimaryGeometry || projectilePointInUnit(body->id,point)))return {2,body->id};
+    if(taPrimaryHeight) {
+        // TotalA.exe 0x49b1c7..0x49b211: the cell's body, not the shot's
+        // owner's (0x49b1f4), struck when the point is below its top -- its
+        // y (+0x6e) plus its type's model height (+0x16e); no outline test.
+        if(body && body->player!=owner && body->type &&
+           int64_t(point[1])<int64_t((body->type->canFly ? body->flightY : body->groundY).v)+body->type->modelTop)
+            return {2,body->id};
+    } else if(body && body->player!=owner && (bypassPrimaryGeometry || projectilePointInUnit(body->id,point)))return {2,body->id};
     const size_t cell=size_t(z)*hW_+x;
     const auto* airborne=cell<airGrid.size() && airGrid[cell]>0 ? unit(airGrid[cell]) : nullptr;
     if(airborne && airborne->alive() && !airborne->embarked() && airborne->type && airborne->player!=owner) {
@@ -19203,7 +19251,7 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         b.left=w.burst;b.rate=uint16_t(std::max<int>(1,w.burstRateTicks));b.next=tickCounter_+b.rate;
         // TotalA.exe's emitter is the spawner's own record (0x49cb79 /
         // 0x49cf58): its clones copy it, aimed and sprayed as it stands.
-        const bool taClass=w.velocityFx>0 && !w.beam && !w.lightning && w.losStatus==Weapon::LosStatus::None &&
+        const bool taClass=w.velocityFx>0 && !w.lightning && w.losStatus==Weapon::LosStatus::None &&
             (w.hasTaFlag(20) || w.hasTaFlag(0) || (w.taAim==Aim::Turret && w.hasTaFlag(1)));
         ShotTweak capture=tweak;capture.capture=&b.shot;
         b.copies=taClass && fire(u,t,slot,true,capture) && b.shot.wsrc;
@@ -19271,8 +19319,12 @@ void World::tickWeaponBursts() {
             // A clone joins the pool after the pass's count (0x49b720): it
             // moves from the next tick.
             c.start=tickCounter_+1;
-            c.end=c.taBallistic ? tickCounter_+lifetime : c.start+lifetime;
-            if(c.straight || c.taSelfProp)c.flight=int32_t(lifetime);
+            c.end=c.taBallistic || c.taLineOfSight ? tickCounter_+lifetime : c.start+lifetime;
+            // 0x49b859: its +0x42 is now. A beam clone keeps the emitter's
+            // tail (+0x10, the first shot's muzzle: 0x49b844 copies it and
+            // 0x49b7e1 refreshes only the head).
+            c.taLaunch=tickCounter_;
+            if(c.straight || c.taSelfProp || c.taLineOfSight)c.flight=int32_t(lifetime);
             projectiles_.push_back(c);
             // 0x49b8f1..0x49b94b: sprayangle turns the EMITTER's horizontal
             // velocity for the next clone, from its stored heading and pitch.
@@ -21107,6 +21159,7 @@ void World::tick(float dt) {
     // Projectiles.
     for (auto& p : projectiles_) {
         if(p.straight)continue;
+        if(p.taLineOfSight) {tickTaLineOfSight(p,projectileAircraft);continue;}
         if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
         if(p.taBallistic) {tickTaBallistic(p,projectileAircraft);continue;}
         if(p.guided3d) {
@@ -22013,6 +22066,19 @@ void World::tick(float dt) {
         retailGroupMaximum_=Fixed();
 
     }
+    // TotalA.exe's game tick runs the units (0x4954ed -> 0x48ad30, whose
+    // 0x48adda -> 0x49e1a0 fires the weapons) before the projectiles
+    // (0x495513 -> 0x49b720), so a line-of-sight shot launched this tick
+    // takes its first step and test in this tick. Ours runs the projectiles
+    // first: the shots the units just launched take that pass here.
+    {
+        bool fresh=false;
+        for(auto& p:projectiles_)
+            if(p.taLineOfSight && p.start==tickCounter_ && p.age==0 && p.life>0) {
+                tickTaLineOfSight(p,projectileAircraft);fresh=true;
+            }
+        if(fresh)std::erase_if(projectiles_,[](const Projectile& p){return p.life<=0;});
+    }
 
     // Retail updates missions/movers in 51d3e0 before 4f6c70 runs 416430
     // (5263aa, then 526411). Install completed routes only after movement,
@@ -22535,6 +22601,14 @@ void World::hashTrace() const {
                 hProj=fnv(hProj,p.taPhase);
                 for(int32_t value:p.taTargetPoint)hProj=fnv(hProj,uint32_t(value));
             }
+        }
+        if(p.taLineOfSight) {
+            hProj=fnv(fnv(fnv(hProj,0x54414c4fu),uint32_t(p.fromId)),uint32_t(p.slot));
+            hProj=fnv(fnv(fnv(hProj,uint32_t(p.targetId)),p.start),p.end);
+            hProj=fnv(fnv(fnv(hProj,p.taLaunch),p.taTailMoving),p.spent);
+            hProj=fnv(fnv(hProj,uint32_t(p.life)),uint32_t(p.age));
+            for(const auto* values:{&p.position,&p.velocity,&p.taTail})
+                for(int32_t value:*values)hProj=fnv(hProj,uint32_t(value));
         }
     }
     const uint64_t hEff = fnv(seed, size_t(0));   // Kingdoms' Remote Effect spells are gone
@@ -23204,6 +23278,11 @@ uint64_t World::stateHash() const {
                 mix(0x54415350u);mix(uint32_t(p.taSpeed));mix(uint32_t(p.taHeading)|uint32_t(p.taPitch)<<16);
                 mix(p.taPhase);for(int32_t value:p.taTargetPoint)mix(uint32_t(value));
             }
+        }
+        if(p.taLineOfSight) {
+            mix(0x54414c4fu);mix(p.fromId);mix(p.slot);mix(p.targetId);mix(p.start);mix(p.end);
+            mix(p.taLaunch);mix(p.taTailMoving);mix(p.spent);mix(uint32_t(p.life));mix(uint32_t(p.age));
+            for(const auto* values:{&p.position,&p.velocity,&p.taTail})for(int32_t value:*values)mix(uint32_t(value));
         }
         if(p.straight) {
             mix(0x53545254u);mix(p.fromId);mix(p.slot);mix(p.start);mix(p.end);mix(p.substeps);mix(p.spent);

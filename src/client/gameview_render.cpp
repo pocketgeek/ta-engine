@@ -15,6 +15,7 @@
 #include "client/reclaimfade.h"
 #include "client/featuredie.h"
 #include "client/retaillightningquad.h"
+#include "client/tabeamdraw.h"
 #include "client/retailflame.h"
 #include "client/retaileffectframe.h"
 #include "client/retailviewport.h"
@@ -7298,7 +7299,7 @@
 
     void GameView::collectWorldFx(int mvw, int winH, bool painter) {
         namespace hu = ta::hiddenunits;
-        fxItems_.clear();
+        fxItems_.clear();++beamDrawFrame_;
 #ifndef NDEBUG
         debugFlameDrawCount_=0;
         debugGlowDrawCount_=0;debugNimbusDrawCount_=0;
@@ -7368,7 +7369,17 @@
                 else add(FxKind::Projectile,&p,0,x,z);
                 continue;
             }
-            const bool native3d=p.ballistic3d || p.guided3d;
+            if(p.taLineOfSight && p.wsrc && (p.wsrc->renderType==0 || p.wsrc->renderType==7)) {
+                // A beam or lightning line (0x49be60): shown when its head's
+                // point is (0x49bee8), sorted at its southern end.
+                const float x=whole(p.position[0]),y=whole(p.position[1]),z=whole(p.position[2]);
+                if(!projectedVisibleR(x,z-float(int(y)>>1)))continue;
+                const float tx=whole(p.taTail[0]),tz=whole(p.taTail[2]);
+                if(tz>z) add(FxKind::Projectile,&p,0,tx,tz);
+                else add(FxKind::Projectile,&p,0,x,z);
+                continue;
+            }
+            const bool native3d=p.ballistic3d || p.guided3d || p.taLineOfSight;
             const float x=native3d ? ta::sim::Fixed::raw(p.position[0]).toFloat() : p.x.toFloat();
             const float z=native3d ? ta::sim::Fixed::raw(p.position[2]).toFloat() : p.z.toFloat();
             if(native3d ? !projectedVisibleR(x,z-float(int(whole(p.position[1]))>>1)) : !cellVisibleR(x,z))continue;
@@ -7837,10 +7848,49 @@
         }
     }
 
+    // TotalA.exe's line-drawn shots (0x49be60; client/tabeamdraw.h): a beam
+    // (rendertype 0) or lightning (7) between the head and the tail, opaque
+    // palette colours through the game's colour map. Each 1 px line of the
+    // 640x480 game becomes a zoom-wide band along its major axis.
+    void GameView::drawTaLineShot(const ta::sim::Projectile& p) {
+        const auto& w=*p.wsrc;
+        const auto map=[&](uint8_t index){return taGuiColourMap_[index];};
+        std::vector<ta::TaShotLine> lines;
+        if(w.renderType==0) lines=ta::taBeamLines(p.position,p.taTail,map(w.color),w.color2,map(w.color2));
+        else {
+            ta::TaCrtRand rand;
+            rand.state=beamDrawFrame_*2654435761u ^ uint32_t(p.fromId)*40503u ^ p.taLaunch;
+            lines=ta::taLightningLines(p.position,p.taTail,map(w.color),rand);
+        }
+        if(lines.empty())return;
+        const float zm=mapView_.zoom(),ox=mapView_.offX(),oy=mapView_.offY();
+        std::vector<SDL_Vertex> vertices;vertices.reserve(lines.size()*6);
+        for(const auto& line:lines) {
+            const uint32_t packed=nanoGamePalette_[line.colour];
+            const SDL_Color c{Uint8(packed>>24),Uint8(packed>>16),Uint8(packed>>8),255};
+            const bool xMajor=std::abs(line.x2-line.x1)>=std::abs(line.y2-line.y1);
+            // Pixel (x, y) covers [x, x+1) x [y, y+1): a band one pixel thick
+            // across the major axis, from the first pixel to past the last.
+            float ax=float(line.x1),ay=float(line.y1),bx=float(line.x2),by=float(line.y2);
+            if(xMajor) { if(ax>bx){std::swap(ax,bx);std::swap(ay,by);} bx+=1; }
+            else { if(ay>by){std::swap(ax,bx);std::swap(ay,by);} by+=1; }
+            const float px=xMajor ? 0.f : 1.f,py=xMajor ? 1.f : 0.f;   // across the band
+            const auto at=[&](float x,float y){return SDL_Vertex{{(x-ox)*zm,(y-oy)*zm},c,{0,0}};};
+            const SDL_Vertex q0=at(ax,ay),q1=at(bx,by),q2=at(bx+px,by+py),q3=at(ax+px,ay+py);
+            vertices.insert(vertices.end(),{q0,q1,q2,q0,q2,q3});
+        }
+        SDL_SetRenderDrawBlendMode(ren_,SDL_BLENDMODE_BLEND);
+        SDL_RenderGeometry(ren_,nullptr,vertices.data(),int(vertices.size()),nullptr,0);
+    }
+
     // One projectile, drawn per weapon family.
     void GameView::drawFxProjectile(const ta::sim::Projectile& p) {
         const float zm = mapView_.zoom();
         const int winW = winW_, winH = winH_;
+        if(p.taLineOfSight && p.wsrc && (p.wsrc->renderType==0 || p.wsrc->renderType==7)) {
+            drawTaLineShot(p);
+            return;
+        }
         if(p.straight) {
             if(front().gameTick<p.start || !p.wsrc)return;
             auto whole=[](int32_t v){return int(std::bit_cast<int16_t>(uint16_t(uint32_t(v)>>16)));};
@@ -7908,7 +7958,7 @@
             if(!lightning)sprite(w.weaponArt,float(z-(y>>1)),false);
             return;
         }
-        const bool native3d=p.ballistic3d || p.guided3d;
+        const bool native3d=p.ballistic3d || p.guided3d || p.taLineOfSight;
         const float renderX=native3d ? ta::sim::Fixed::raw(p.position[0]).toFloat() : p.x.toFloat();
         const float renderZ=native3d ? ta::sim::Fixed::raw(p.position[2]).toFloat() : p.z.toFloat();
         // A native 3D shot carries its height: test its own projected cell.
