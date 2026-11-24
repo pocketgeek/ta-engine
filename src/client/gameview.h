@@ -469,6 +469,10 @@ public:
     // A mobile, reclaim-capable builder of ours is selected.
     bool haveReclaimer();
     std::vector<int> reclaimers();   // every selected one, in selection order
+    // "Clear this area": order each of `ids` (every selected reclaimer when empty) to
+    // clear the box (each its own ReclaimArea, retail 5214b0); the rest are left alone.
+    void issueReclaimBox(float x0, float z0, float x1, float z1, uint8_t queue,
+                         const std::vector<int>& ids = {});
 
     // Attach the multiplayer client. The game world is set up later, from the
     // server's GameStarting (startMpGame), not from the constructor.

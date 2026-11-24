@@ -22,8 +22,9 @@ inline bool parsePlayerCommands(const std::vector<uint8_t>& payload, std::vector
         const bool ground=c.kind==ta::net::Cmd::AttackGround;
         // The D-gun (339), RECLAIMUNIT (340) and Land (341) are ordinary verbs too.
         const bool late=c.kind==ta::net::Cmd::DGun || c.kind==ta::net::Cmd::ReclaimUnit || c.kind==ta::net::Cmd::Land;
-        // Kingdoms' area orders are retired (TA has no RECLAIMAREA or area build).
-        const bool retired=c.kind==ta::net::Cmd::ReclaimArea || c.kind==ta::net::Cmd::BuildManaArea;
+        // Kingdoms' lodestone area build is retired; the area reclaim is an
+        // engine feature (TA has no RECLAIMAREA, docs/ta-port-plan.md).
+        const bool retired=c.kind==ta::net::Cmd::BuildManaArea;
         if (retired || (uint8_t(c.kind)>uint8_t(ta::net::Cmd::BuildManaArea) && !power && !resurrect && !ground && !late) ||
             !coordinate(c.x) || !coordinate(c.z) ||
             !coordinate(c.x2) || !coordinate(c.z2)) return false;

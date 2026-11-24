@@ -18,6 +18,7 @@
 //    and passive levels never send an attack in the opening, and a level's game
 //    is the same game every time (lockstep).
 #include "ai/ai.h"
+#include "ai/taretail.h"
 #include "ai/classicprofile.h"
 #include "net/matchconfig.h"
 #include "net/replayhdr.h"
@@ -38,6 +39,30 @@ static void check(bool ok,const std::string& label) {
 // The wire level -> Difficulty, and the per-seat sim config each peer derives from
 // it (income multiplier, defensive stance), through the room and replay records.
 static void levelWiring() {
+    // Every level is a TaRetailBrain: the three RETAIL levels at retail Easy,
+    // Medium (level 6, Difficulty::Classic) and Hard; the engine's levels mapped
+    // onto its plans, the defensive ones and Passive never attacking.
+    {
+        sim::TypeRegistry none;
+        ai::Profile profile;
+        struct Row { ai::Difficulty level; int difficulty; bool aggressive; };
+        const Row rows[] = {
+            {ai::Difficulty::RetailEasy, 0, true}, {ai::Difficulty::Classic, 1, true},
+            {ai::Difficulty::RetailHard, 2, true}, {ai::Difficulty::Easy, 0, true},
+            {ai::Difficulty::Normal, 1, true}, {ai::Difficulty::Hard, 2, true},
+            {ai::Difficulty::Absurd, 2, true}, {ai::Difficulty::Defensive, 1, false},
+            {ai::Difficulty::AbsurdlyDefensive, 1, false}, {ai::Difficulty::Passive, 0, false}};
+        bool all = true;
+        for (const auto& r : rows) {
+            ai::Controller c(1, none, profile, 7, r.level);
+            const auto* brain = c.retailBrain();
+            all = all && brain && brain->difficulty() == r.difficulty && brain->aggressive() == r.aggressive &&
+                  c.difficulty() == r.level;
+        }
+        check(all, "RETAIL EASY / MEDIUM / HARD run TaRetailBrain at 0 / 1 / 2, and every engine level a mapped one");
+        check(int(ai::Difficulty::Classic) == 6 && int(ai::Difficulty::RetailEasy) == 8 &&
+              int(ai::Difficulty::RetailHard) == 9, "the retail levels keep their wire numbers (6 Medium, 8 Easy, 9 Hard)");
+    }
     check(ai::kAiLevels==10 && ai::difficultyFromLevel(5)==ai::Difficulty::AbsurdlyDefensive &&
           ai::difficultyFromLevel(6)==ai::Difficulty::Classic && ai::difficultyFromLevel(7)==ai::Difficulty::Passive &&
           ai::difficultyFromLevel(8)==ai::Difficulty::RetailEasy && ai::difficultyFromLevel(9)==ai::Difficulty::RetailHard &&
@@ -87,7 +112,7 @@ struct Opening { int begun=0, attacks=0, builds=0; uint64_t hash=0; };
 }
 
 // CORE (player 1, the AI) against an idle ARM commander on Ashap Plateau, the AI
-// set up as the server does (the map's aiprofile, its start table), for `ticks`.
+// set up as the server does (the map's aiprofile), for `ticks`.
 static Opening playOpening(const hpi::Vfs& vfs,const sim::TypeRegistry& reg,ai::Difficulty level,uint32_t ticks) {
     sim::World w;
     sim::MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath=hpi::findMap(vfs,"Ashap Plateau");
@@ -99,10 +124,6 @@ static Opening playOpening(const hpi::Vfs& vfs,const sim::TypeRegistry& reg,ai::
     ai::Profile profile;
     ai::Controller controller(1,reg,profile,0x1234,level,{starts.empty() ? std::pair{0.f,0.f} : starts.front()});
     controller.setClassicProfile(ai::classicProfileScript(vfs,ai::classicMapAiProfile(vfs,cfg.mapPath)));
-    if (starts.size()>=2) {
-        controller.setClassicStarts(starts);
-        controller.setClassicStart(1,starts[1].first,starts[1].second);
-    }
     Opening out;
     for (uint32_t tick=0;tick<ticks;++tick) {
         controller.tick(w,tick,[&](const net::Command& c) {

@@ -29,6 +29,9 @@ int main() {
     shooter.turnInPlaceRate=0;
     targetType.maxVel=Fixed::fromInt(1);
     shooter.simulationScript=script;
+    // No model, so the shooter stands at y 0: a 30 px body keeps it above the
+    // sea for the fire gate's surfaced test (TotalA.exe 0x49ab4d).
+    shooter.modelTop=30<<16;
     shooter.maxHp=targetType.maxHp=1000;
     Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
     weapon.projVel=300;weapon.energyPerShot=3;   // paid from the player's store (econPayShot)

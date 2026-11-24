@@ -293,10 +293,11 @@ enum class BoxMode : uint8_t { Right, ArmedAttack, ArmedLoad, ArmedClear };
 //  - Right: step L when the selection's one transport has no weapon and no
 //    selected unit can attack, reclaim or raise -- it picks up every own unit
 //    in the box that fits (selected or not). Otherwise step A, one Attack per
-//    box enemy each attacker can hurt.
+//    box enemy each attacker can hurt; then step C, ReclaimArea over the box
+//    for a reclaimer with no attack order (owner C10b: a unit without a weapon
+//    always clears; retail's one-enemy quirk is dropped).
 //  - ArmedAttack: step A only. ArmedLoad: step L with exactly one transport.
-//    ArmedClear: nothing -- Kingdoms' area clear (RECLAIMAREA) is retired, TA
-//    has no area reclaim (no such row in 0x4fc6e8 / 0x4fca18).
+//    ArmedClear: every reclaimer clears the box (0x527d00 S).
 // Pickup and Attack stand for the per-passenger / per-enemy command lists the
 // view builds.
 inline std::vector<ClickOrder> boxOrders(BoxMode mode, const std::vector<BoxUnit>& units) {
@@ -315,8 +316,9 @@ inline std::vector<ClickOrder> boxOrders(BoxMode mode, const std::vector<BoxUnit
             continue;
         }
         if (mode == BoxMode::ArmedLoad) continue;
-        if (mode == BoxMode::ArmedClear) continue;
+        if (mode == BoxMode::ArmedClear) { if (u.reclaimer) out[i] = ClickOrder::ReclaimArea; continue; }
         if (u.attacker && u.hits > 0) out[i] = ClickOrder::Attack;
+        else if (mode == BoxMode::Right && u.reclaimer) out[i] = ClickOrder::ReclaimArea;
     }
     return out;
 }

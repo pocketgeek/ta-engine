@@ -29,6 +29,8 @@ public:
     void useProfile(const std::string& text);
     // The engine's defensive levels: build and defend, never launch strike groups.
     void setAggressive(bool on) { aggressive_ = on; }
+    int difficulty() const { return difficulty_; }
+    bool aggressive() const { return aggressive_; }
     void tick(const ta::sim::World& world, uint32_t now, const CommandSink& sink);
 
     // Read-only, for tests and the roster dump.

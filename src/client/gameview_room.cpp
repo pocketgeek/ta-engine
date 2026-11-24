@@ -497,12 +497,14 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
             else if (s.type == 2) {
                 cell(s.name.empty() ? "Computer" : s.name, x + kName, y + 8, 1.6f, kLevel - kName - 4 + wide, {210, 200, 150, 255});
                 // AI difficulty (host cycles PASSIVE -> EASY -> NORMAL -> HARD -> ABSURD ->
-                // DEFENSIVE -> ABSURDLY DEFENSIVE -> RETAIL: kCycle, which is not the wire
-                // aiLevel order that diffName and diffCol follow). RETAIL is level 6, internally Classic: the 1999 game's own AI, driven by its
-                // ai/default.txt; a new AI seat still starts NORMAL.
+                // DEFENSIVE -> ABSURDLY DEFENSIVE -> RETAIL EASY -> RETAIL MEDIUM ->
+                // RETAIL HARD: kCycle, which is not the wire aiLevel order that diffName
+                // and diffCol follow). Every level runs TA's own AI (TaRetailBrain);
+                // the three RETAIL levels are its Easy / Medium / Hard exactly (Medium is
+                // level 6, Difficulty::Classic). A new AI seat still starts NORMAL.
                 constexpr int kLevels = ta::ai::kAiLevels;
                 static const char* diffName[kLevels] = {"DEFENSIVE", "EASY", "NORMAL", "HARD", "ABSURD",
-                                                        "ABSURDLY DEFENSIVE", "RETAIL", "PASSIVE",
+                                                        "ABSURDLY DEFENSIVE", "RETAIL MEDIUM", "PASSIVE",
                                                         "RETAIL EASY", "RETAIL HARD"};
                 static const SDL_Color diffCol[kLevels] = {
                     {150, 180, 210, 255},   // defensive (calm blue)
@@ -511,9 +513,12 @@ void seedChosen(ta::net::GameOptions& chosen, bool& set, const ta::net::RoomView
                     {225, 150, 140, 255},   // hard     (red)
                     {230, 120, 220, 255},   // absurd   (magenta)
                     {165, 140, 245, 255},   // absurdly defensive (violet)
-                    {205, 165, 105, 255},   // retail (Classic, bronze): the retail AI's port
-                    {170, 195, 175, 255}};  // passive (pale green): Easy that stays home
-                static constexpr uint8_t kCycle[kLevels] = {7, 1, 2, 3, 4, 0, 5, 6};
+                    {205, 165, 105, 255},   // retail medium (Classic, bronze): TA's own AI
+                    {170, 195, 175, 255},   // passive (pale green): Easy that stays home
+                    {215, 190, 140, 255},   // retail easy (light bronze)
+                    {190, 130, 80, 255}};   // retail hard (dark bronze)
+                static constexpr uint8_t kCycle[kLevels] = {7, 1, 2, 3, 4, 0, 5, 8, 6, 9};
+                static_assert(sizeof kCycle == kLevels, "the cycle offers every level");
                 const uint8_t lvl = uint8_t(s.aiLevel % kLevels);
                 // Two words that overrun the column stack in two smaller lines.
                 constexpr float kLevelW = kSide - kLevel - 2;

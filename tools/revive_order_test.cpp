@@ -1,6 +1,6 @@
 // revive_order_test -- raising the dead is an order.
 //
-// Retail creates a Resurrect or Reclaim task only from an order:
+// Retail creates a Resurrect, Reclaim or ReclaimArea task only from an order:
 // the resolver 0x4de530 (mode 1, a right-click; mode 12, an area reclaim's
 // child or the CLEAR button) tries resurrect, then animate, then reclaim, and
 // nothing idle reaches those modes. Ours raised bodies on its own -- an idle
@@ -227,6 +227,39 @@ static void kinds(const Types& t) {
     }
 }
 
+// A caster's area reclaim (0x406670's child through 0x4de530 mode 12) raises
+// a body it can raise before it would reclaim it; a builder that cannot
+// raise it reclaims it.
+static void areaReclaimRaisesFirst(const Types& t) {
+    std::printf("area reclaim with a caster raises first:\n");
+    {
+        Scene s(t, t.body);
+        const int priest = s.w->spawn(&t.priest, 200, 300, 0, 0);
+        s.tick(200);
+        net::Command c; c.kind = net::Cmd::ReclaimArea; c.player = 0; c.unitId = priest;
+        c.x = 300; c.z = 250; c.x2 = 420; c.z2 = 350;
+        sim::applyCommand(*s.w, s.reg, c);
+        bool reviveLeg = false;
+        for (int i = 0; i < 1200 && !s.w->unit(priest)->orders.empty(); ++i) {
+            s.tick();
+            for (const auto& o : s.w->unit(priest)->orders) reviveLeg |= o.reviveKind != 0;
+        }
+        check(reviveLeg && s.count(&t.victim, 0) == 1 && !s.bodyLies(),
+              "a priest's area reclaim resurrects the body in it");
+    }
+    {
+        Scene s(t, t.body);
+        const int mason = s.w->spawn(&t.mason, 200, 300, 0, 0);
+        s.tick(200);
+        net::Command c; c.kind = net::Cmd::ReclaimArea; c.player = 0; c.unitId = mason;
+        c.x = 300; c.z = 250; c.x2 = 420; c.z2 = 350;
+        sim::applyCommand(*s.w, s.reg, c);
+        for (int i = 0; i < 1200 && !s.w->unit(mason)->orders.empty(); ++i) s.tick();
+        check(s.count(&t.victim, 0) == 0 && s.w->unit(s.dead)->corpseFading,
+              "a mason's area reclaim reclaims it");
+    }
+}
+
 // The channel belongs to its order: a new order ends it, nothing is raised
 // and the body stays.
 static void newOrderEndsChannel(const Types& t) {
@@ -262,6 +295,7 @@ int main() {
     featureResurrect(types);
     idleCastersAndBuildersLeaveBodies(types);
     kinds(types);
+    areaReclaimRaisesFirst(types);
     newOrderEndsChannel(types);
     wire();
     if (g_fail) { std::printf("FAIL: %d\n", g_fail); return 1; }

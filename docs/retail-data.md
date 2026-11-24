@@ -268,7 +268,9 @@ Scales use the doubles 0x4fd240 = 65536/30, 0x4fd248 = 65536/900, 0x4fd250 = 30,
      model (+0x400/tick).
   2. else `lineofsight`: straight line, no gravity; `beamweapon` also moves the beam
      tail and uses `duration`.
-  3. else `ballistic`: gravity each tick plus a global vector G+0x37ecc [U]; with
+  3. else `ballistic`: position += velocity, then += the wind vector G+0x37ecc
+     (-2 r sin, 0, -2 r cos of the wind's speed and direction, 0x490cf7..0x490d35),
+     then vy -= gravity, once a tick (0x49bce3..0x49bd41) [S]; with
      `weapontimer`≠0 it expires (burnblow → detonate).
   4. else `dropped`: gravity (same path).
   5. else `meteor`: straight line with model spin.

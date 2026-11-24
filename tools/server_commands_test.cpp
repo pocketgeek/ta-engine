@@ -11,8 +11,8 @@ int main() {
     auto batch=[](Command c) {Writer w;w.u32(1);w.cmd(c);return w.b;};
     for (unsigned kind=0;kind<=unsigned(Cmd::BuildManaArea);++kind) {
         Command c;c.kind=Cmd(kind);c.x=16384;c.z=-100;c.x2=200;c.z2=300;
-        // Kingdoms' area orders are retired: TA has no RECLAIMAREA or area build.
-        const bool retired=c.kind==Cmd::ReclaimArea || c.kind==Cmd::BuildManaArea;
+        // Kingdoms' lodestone area build is retired; the area reclaim is kept.
+        const bool retired=c.kind==Cmd::BuildManaArea;
         check(ta::srv::validPlayerCommands(batch(c))!=retired,"valid command kind");
     }
     for (float v:{std::numeric_limits<float>::quiet_NaN(),
