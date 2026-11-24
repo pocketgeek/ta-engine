@@ -147,6 +147,7 @@ namespace {
                     f.assist = canAssistSite(u, *hovered);
                     f.pickup = f.transport && !f.attacker && transports == 1 && canLoadPassenger(*hovered, u);
                     f.friendly = friendlyUnitOrder(t, true, u.repeatType != nullptr, false, damaged);
+                    f.land = mode == 0 && t.canFly && hovered->type->isAirBase;
                 }
                 if (mode == 'l' && f.transport) f.loadTarget = canLoadPassenger(*hovered, u);
             }
@@ -177,8 +178,8 @@ namespace {
         // One run per order kind, in selection order within it, so a Legion net game
         // packs each kind as one explicit order (net/orderpack.h).
         static constexpr ClickOrder kRuns[] = {
-            ClickOrder::Attack, ClickOrder::AttackGround, ClickOrder::Assist, ClickOrder::Repair, ClickOrder::Pickup,
-            ClickOrder::Guard, ClickOrder::Resurrect, ClickOrder::Reclaim, ClickOrder::Unload,
+            ClickOrder::Attack, ClickOrder::AttackGround, ClickOrder::Assist, ClickOrder::Repair, ClickOrder::Land,
+            ClickOrder::Pickup, ClickOrder::Guard, ClickOrder::Resurrect, ClickOrder::Reclaim, ClickOrder::Unload,
             ClickOrder::AttackMove, ClickOrder::Patrol, ClickOrder::Move,
         };
         std::vector<int> all, ids;
@@ -212,6 +213,7 @@ namespace {
                 case ClickOrder::Assist: for (int id : ids) send(ta::net::Cmd::Assist, id, plan.target); break;
                 case ClickOrder::Repair: for (int id : ids) send(ta::net::Cmd::Repair, id, plan.target); break;
                 case ClickOrder::Guard:  for (int id : ids) send(ta::net::Cmd::Guard, id, plan.target); break;
+                case ClickOrder::Land:   for (int id : ids) send(ta::net::Cmd::Land, id, plan.target); break;
                 // The transport picks the hovered unit up (its LOAD order).
                 case ClickOrder::Pickup: for (int id : ids) send(ta::net::Cmd::Load, plan.target, id); break;
                 case ClickOrder::Resurrect: for (int id : ids) send(ta::net::Cmd::Resurrect, id, plan.body); break;

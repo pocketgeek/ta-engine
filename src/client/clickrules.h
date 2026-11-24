@@ -31,7 +31,7 @@ namespace ta::client {
 // VTOL_PICKUP (0x43f701 -> 0x43fb61) and nothing else carries a passenger.
 enum class ClickOrder : uint8_t {
     None, Move, Attack, AttackMove, Patrol, Assist, Repair, Pickup, Guard,
-    Resurrect, Reclaim, ReclaimArea, Unload, AttackGround,
+    Resurrect, Reclaim, ReclaimArea, Unload, AttackGround, Land,
 };
 
 // The hovered unit (P1, GameView::hoveredUnit), from the local player's side.
@@ -65,6 +65,7 @@ struct ClickUnit {
     FriendlyOrder friendly = FriendlyOrder::None;   // friendlyUnitOrder on the hovered unit
     bool raise = false;         // it can raise the body at the point (no unit hovered)
     bool reclaim = false;       // a reclaimer, with a reclaimable target at the point
+    bool land = false;          // it can fly and the hovered unit is an air base (isairbase)
 };
 
 // The resolver's friendly branch (0x4de530 mode 1/2 over an own or allied unit,
@@ -103,6 +104,12 @@ inline ClickOrder rightClick(const ClickTarget& t, const ClickUnit& u, bool alt)
             return u.mobile ? ClickOrder::Move : ClickOrder::None;
         case HoverKind::OwnSelectable:
         case HoverKind::Friendly:
+            // TotalA.exe's default order (0x43f0e0 action 1): after HelpBuild
+            // and Repair, a flyer sent onto an own or allied air base (a pad,
+            // a carrier) lands on it -- VTOL_LANDING (0x43faf5..0x43fb26) --
+            // ahead of a pickup and FOLLOW. Armed MOVE (action 2) has no
+            // such branch.
+            if (!u.self && !u.assist && u.friendly != FriendlyOrder::Repair && u.land) return ClickOrder::Land;
             return friendlyClick(u);
         case HoverKind::None:
             if (alt && u.transport && u.loaded) return ClickOrder::Unload;

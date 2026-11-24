@@ -33,6 +33,7 @@ const char* name(ClickOrder o) {
         case ClickOrder::ReclaimArea: return "ReclaimArea";
         case ClickOrder::Unload: return "Unload";
         case ClickOrder::AttackGround: return "AttackGround";
+        case ClickOrder::Land: return "Land";
     }
     return "?";
 }
@@ -89,6 +90,19 @@ void rightClickRows() {
     expect(rightClick(own, pick, false), ClickOrder::Pickup, "2.1 own unit: the single weaponless transport picks it up");
     ClickUnit self = soldier(); self.self = true;
     expect(rightClick(own, self, false), ClickOrder::None, "2.1 the hovered unit is left out (0x521562)");
+
+    // TotalA.exe 0x43faf5..0x43fb26: a flyer sent onto an own or allied air
+    // base lands on it (VTOL_LANDING), after HelpBuild and Repair; anything
+    // else, or armed MOVE, keeps the usual order.
+    ClickUnit plane = soldier(); plane.flies = true; plane.land = true;
+    expect(rightClick(own, plane, false), ClickOrder::Land, "a flyer on an own air base lands (VTOL_LANDING)");
+    expect(rightClick(ally, plane, false), ClickOrder::Land, "a flyer on an allied air base lands");
+    ClickUnit fixPlane = builder(); fixPlane.flies = true; fixPlane.land = true; fixPlane.friendly = FriendlyOrder::Repair;
+    expect(rightClick(own, fixPlane, false), ClickOrder::Repair, "a flying builder repairs a damaged pad first");
+    ClickUnit helpPlane = builder(); helpPlane.flies = true; helpPlane.land = true; helpPlane.assist = true;
+    expect(rightClick(own, helpPlane, false), ClickOrder::Assist, "a flying builder helps build an unfinished pad first");
+    expect(rightClick(enemy, plane, false), ClickOrder::Attack, "an enemy air base is attacked, not landed on");
+    expect(armedClick('m', own, plane, ArmedSelection{}).order, ClickOrder::Guard, "armed MOVE has no landing (action 2)");
 
     // TotalA.exe has no boarding order (only the carrier's LOAD, 0x43f701): a
     // unit clicked onto its transport guards it, a damaged one's builder repairs.
@@ -377,6 +391,7 @@ bool cursorNames(CursorId c, ClickOrder o) {
         case ClickOrder::Move: return c == CursorId::Move;
         case ClickOrder::Patrol: return c == CursorId::Patrol;
         case ClickOrder::Unload: return c == CursorId::Unload;
+        case ClickOrder::Land: return false;   // right-click only: never armed
         case ClickOrder::None: return !isOrderCursor(c) || c == CursorId::TooFar;
     }
     return false;

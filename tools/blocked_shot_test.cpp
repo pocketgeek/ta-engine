@@ -17,8 +17,9 @@
 // ends up; plus the limits (Hold Position stays; an open field is
 // untouched). A Pyro (corpyro, Flame Thrower) burning a Light Laser Tower
 // behind an indestructible urban barrier (Barrier04) counts its flames on
-// the barrier as blocked shots. A Brawler gunship whose E.M.G. stops on a
-// lava spire moves round its hover ring (World::hoverForShot).
+// the barrier as blocked shots. A Brawler gunship behind a lava spire still
+// hits: TotalA.exe's hover (AirToGroundHover 0x4139ad) steps 45 degrees
+// either side of its bearing to the target on every arrival.
 //
 // The Kingdoms cases with no TA counterpart are gone: scenery that is tall
 // but does not block movement (every TA feature with a height blocks), the
@@ -208,8 +209,8 @@ WagonOutcome runWagon(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, Wagon v
 
 // A Brawler gunship (armbrawl, hoverattack) attacks a Peewee that stands
 // just past an indestructible lava spire (LavaSpire006A: 5x4 cells, height
-// 142). From its first hover bearing the E.M.G. rounds stop on the spire
-// (52a4d0); the engine moves it round its ring to a clear bearing.
+// 142). TotalA.exe's hover holds two thirds of its range out, 45 degrees
+// either side of its bearing in turn (0x4139ad), so some rounds get past.
 struct HoverOutcome {
     int stoneBolts = 0;      // impacts that are not on the Hunter
     int hunterHits = 0;
@@ -404,11 +405,9 @@ int main(int argc, char** argv) {
           "Hold Position on an attack-move leaves the blocked spot and burns the tower");
     check(maneuver.damage > 0 && maneuver.stoneFlames <= 2 * writeOff,
           "Maneuver on an attack-move walks to a clear shot and burns the tower");
-    // A Brawler hovering behind a lava spire moves round its ring.
+    // A Brawler hovering behind a lava spire.
     const HoverOutcome hover = runHover(vfs, reg, 1800);
     std::printf("  brawler hover, spire:  %s\n", describe(hover).c_str());
-    check(hover.stoneBolts >= 1 && hover.repositions >= 1,
-          "the Brawler's first rounds stop on the spire, and it moves round its ring");
     check(hover.hunterHits > 0 && hover.damage > 0,
           "the Brawler reaches a clear bearing and hits the Peewee");
     const auto [blockedBefore, hitsAfter] = runWalkOut(vfs, reg);

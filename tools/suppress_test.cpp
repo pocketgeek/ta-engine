@@ -180,7 +180,7 @@ Run fireAt(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const Shooter& sh,
         if (i >= ticks * 2 / 3) { lateSum += d; ++lateN; }
         r.airborne = r.airborne || u->flightGroundMode == 2;
         if (!u->orders.empty() && u->orders.front().airPoint == sim::Order::kAirHover &&
-            u->orders.front().flightGoal && u->orders.front().flightGoal->radius == 4) {
+            u->orders.front().flightGoal && u->orders.front().flightGoal->radius == 0x10) {
             ++r.ringGoals;
             if ((u->orders.front().flightGoal->flags & 0x48) != 0x48) r.ringWithoutFixed = true;
         }
@@ -337,23 +337,25 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
         check(r.orderAtEnd && r.ordersAtEnd == 1, "and keeps the order", describeAir(r));
         check(flyAt(vfs, reg, runner, 1500).hash == r.hash, "the same run gives the same state hash");
     }
-    // AIRTOGROUNDHOVER: hovers its distance off the point and fires.
+    // AIRTOGROUNDHOVER: holds two thirds of slot 0's range off the point,
+    // 45 degrees either side of its bearing in turn (TotalA.exe 0x4139ad;
+    // World runs it on the point), and fires.
     {
         const Run r = flyAt(vfs, reg, hover, 1500);
-        const int d = hover->weapons[0].hoverAttackDistance ? hover->weapons[0].hoverAttackDistance
-                                                            : hover->hoverAttackDistance;
+        const int d = int(hover->weapons[0].range) * 2 / 3;
         std::printf("  %s (hoverattack, distance %d) at a point 600 px off: %s\n", hover->id.c_str(), d,
                     describeAir(r).c_str());
         check(r.airKind == Order::kAirHover, "a hoverattack flyer gets AIRTOGROUNDHOVER at the point", describeAir(r));
-        check(r.airborne && std::abs(r.lateDist - d) < 48, "it hovers its hoverattack distance off the point",
+        // Between two holds a quarter turn apart it passes 0.71 d off the point.
+        check(r.airborne && r.lateDist > 0.65f * d && r.lateDist < d + 24, "it hovers two thirds of its range off the point",
               describeAir(r));
         check(r.shots >= 2 && r.hits >= 2 && r.hitDist < 64 && !r.targetedShot,
               "and its shots land on the point, with no target", describeAir(r));
         check(r.orderAtEnd && r.ordersAtEnd == 1, "and keeps the order", describeAir(r));
-        // 41df8f..41dfd3 / 41e225..41e269: every ring controller without a
-        // target is 4e40e0 + 4e4520 (0x40) + 4e4540 (0x10) + 4e44c0 (0x8).
+        // 0x413a52..0x413a76: the hold is the target controller (0x44e330:
+        // headed, 0x40 here), radius 0x10, at cruisealt (0x44e6c0: 0x8).
         check(r.ringGoals > 0 && !r.ringWithoutFixed,
-              "each hover ring point has a fixed heading and the attack altitude (0x48)", describeAir(r));
+              "each hold has a fixed heading and its own altitude (0x48)", describeAir(r));
     }
     // AIRSTRIKE: the shipped bomber, whose bomb is `dropped`.
     {
@@ -364,10 +366,11 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
               "it strikes the point, with no target", describeAir(r));
         check(r.orderAtEnd, "and keeps the order", describeAir(r));
     }
-    // A selected weapon that has `dropped` when AIRTOGROUND wakes: the lost
-    // exit, VTOL_SEEKATTACK at the point (41c8f6). The order is given on the
-    // plain type; the key appears on the unit's weapon mid-mission, as a
-    // switch to such a slot would give it.
+    // A selected weapon that has `dropped` when AIRTOGROUND wakes: Kingdoms
+    // took the lost exit (41c8f6); TotalA.exe's head (0x41272c) tests only
+    // the events 0x1000a, so the attack goes on and nothing seeks. The order
+    // is given on the plain type; the key appears on the unit's weapon
+    // mid-mission, as a switch to such a slot would give it.
     {
         sim::UnitType plain = *runner;
         sim::UnitType keyed = *runner;
@@ -378,8 +381,7 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
             s.w.unit(id)->missionEvents |= 0x40;   // the switch's event wakes the mission
         }, 120, &seek);
         std::printf("  %s whose weapon turns dropped: %s, seek %d\n", runner->id.c_str(), describeAir(r).c_str(), seek);
-        // Hold Fire skips the seek (41c91c); on Fire At Will it goes in.
-        check(!r.orderAtEnd, "a selected `dropped` weapon ends AIRTOGROUND (Hold Fire: no seek)", describeAir(r));
+        check(r.orderAtEnd, "a selected `dropped` weapon does not end AIRTOGROUND (0x41272c)", describeAir(r));
         bool seekFree = false;
         sim::UnitType plain2 = *runner;
         flyCopy(vfs, reg, plain2, 300, [&](Scene& s, int id) {
@@ -387,7 +389,7 @@ void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
             s.w.unit(id)->type = &keyed;
             s.w.unit(id)->missionEvents |= 0x40;
         }, 120, &seekFree);
-        check(!seek && seekFree, "on Fire At Will it seeks at the point (VTOL_SEEKATTACK, no target)");
+        check(!seek && !seekFree, "nor does it seek, on Hold Fire or Fire At Will");
     }
     // An anti-air weapon in the air: no order.
     {

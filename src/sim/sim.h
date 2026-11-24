@@ -945,7 +945,7 @@ struct alignas(64) Order {
     // wake). A lost target's VTOL_SEEKATTACK circles it
     // (retailAirLostTarget). Zero until first read.
     Fixed attackPointX, attackPointZ;
-    // The attack mission's +0x4e (retailAirToGround, retailAirToGroundHover,
+    // The attack mission's +0x4e (Kingdoms' AirToGround and AirToGroundHover,
     // which run on `mission`): AirToGround's is 1 once a run has brought the
     // flyer within half its range of the target, and its stage 7 counts
     // wakes off the map on it; AirToGroundHover's counts its step-outs. A
@@ -2961,6 +2961,7 @@ public:
         legionBodyWindow_.clear();   // its ticks live here, not in the Unit: ids start again at 1
         retailAllocation_=false;retailEntityPools_.reset();spawnGeneration_=0;
         entitySlots_.unitAt={};entitySlots_.slotOf.clear();
+        taUnitSlots_={};airPadCaches_={};
         nextMovementController_ = 0;
         tickCounter_ = 0;
         winningTeam_ = -1;
@@ -3022,6 +3023,9 @@ public:
     // A unit's offset in its owner's entity pool (the order 416430 admits
     // path searches in), or -1 for a restored-pool fixture or no unit.
     int entitySlot(int unitId) const { return entitySlots_.slot(unitId); }
+    // The player's air pad list as 0x40b530 last saw it (refreshAirPadCaches),
+    // in TotalA.exe's slot order. Read only (tests).
+    const std::vector<int>& airPadList(int player) const { return airPadCaches_[size_t(player)].pads; }
     // An ownership change gives the unit a new record in the new owner's pool,
     // as retail's transfer allocates a new object. Call before setting player.
     void transferEntitySlot(Unit& u,int newPlayer);
@@ -3463,6 +3467,10 @@ public:
     void attack(int unitId, int targetId, bool queue);
     // D-gun (candgun units): AttackSpecial on a unit, one commandfire shot.
     void dgun(int unitId, int targetId, bool queue);
+    // TotalA.exe's default order on an allied air base (0x43f0e0 action 1,
+    // 0x43faf5..0x43fb26): a canfly unit gets VTOL_LANDING on it (Cmd::Land).
+    // False when it does not apply (nothing changes then).
+    bool landOnAirBase(int unitId, int padId, bool queue);
     static bool isDgunSlot(const UnitType& t, int slot);
     // Board/unload through a friendly transport; queue=true appends the paired
     // pickup orders or unload route after current orders instead of replacing them.
@@ -4238,9 +4246,10 @@ private:
     void tickFlightBody(Unit& u);
     // The flyer attack missions take a null target for an attack at a
     // point (Order::airPoint, tickAirPoint): mission +0x16 is 0.
-    void tickAirToGroundHover(Unit& u, const Unit* target, const Weapon* weapon, int slot);
+    // TotalA.exe AirToGround (0x412710) or, with `hover`, AirToGroundHover
+    // (0x413470).
+    void tickTaAirAttack(Unit& u, const Unit* target, bool hover);
     void flyHoverGoal(Unit& u, Order& order, const Unit* target);
-    void tickAirToGround(Unit& u, const Unit* target, const Weapon* weapon);
     void tickAirToAir(Unit& u, const Unit& target, const Weapon* weapon);
     void tickAirStrike(Unit& u, const Unit* target);
     // A flyer's attack at a point at the front (Order::airPoint): its
@@ -4337,7 +4346,6 @@ private:
     bool chordClear(const std::array<int64_t,3>& a,const std::array<int64_t,3>& b,const Weapon& w,
                     int64_t skipFrom,int64_t skipTo,const Unit& to) const;
     bool repositionForShot(Unit& u,const Unit& t,int slot);
-    bool hoverForShot(Unit& u,const Unit& t,int slot,const std::array<int32_t,3>& centre,int distance,int altitude);
     bool sweepKeepsTarget(const Unit& u,int slot,const Unit& t) const;
     void tickFireSweep(int player);
     void tickSlotWeapons(Unit& u);
@@ -4817,6 +4825,22 @@ private:
     // Per-player entity pools for live matches (5121d8 placement, retirement
     // frees). Restored retail fixtures use retailEntityPools_ instead.
     EntitySlotTable entitySlots_;
+    // TotalA.exe's unit slots, per player: a new unit takes the first free
+    // slot of its owner's block (0x485fea..0x486051, a slot with type word
+    // +0xa6 0) and its death frees it (0x4866d0: +0xa6 = 0 at 0x486dc7). The
+    // unit ids in slot order; a slot is free when its unit is gone, dead or
+    // another player's. Not hashed: it follows from the spawns and deaths.
+    std::array<std::vector<int>,kMaxPlayers> taUnitSlots_{};
+    void allocateTaSlot(int unitId,int player);
+    // The AIPlayer record's own active air pads (+0x25), which the shared
+    // cache 0x40aa40 rebuilds once every 30 ticks for every player
+    // (0x40b2c0: now >= +0xed + 30; +0xed starts at 0, 0x4092dc) from the
+    // unit array in index order: the player's finished (+0x104 == 0)
+    // builder air bases (type +0x241 bits 6 and 9) that are activated (+0x10e
+    // bit 0). 0x40b530 walks this list. Not hashed, as above.
+    struct AirPadCache { uint32_t last=0; std::vector<int> pads; };
+    std::array<AirPadCache,kMaxPlayers> airPadCaches_{};
+    void refreshAirPadCaches();
     // 499590's maxunits bounds and 4c7c7a's default (entityPoolCapacity).
     static constexpr int kMinEntityCapacity = 20, kMaxEntityCapacity = 500;
     static constexpr int kDefaultEntityCapacity = 250;
@@ -4916,9 +4940,11 @@ private:
     // The attack a formation leg its group check put ahead of it leads
     // (SUPPRESS, a flyer's attack), or null: the push left its slots as they were.
     static const Order* formationAttack(const std::vector<Order>& orders);
-    // The flyer attacks' group check (retailAirGroupCheck), shared by the
-    // AirToGround, AirStrike and AirToGroundHover hosts: VTOL_Move_Formation
-    // (level -4) goes ahead once the dispatch is done (push).
+    // Kingdoms' flyer attack group check, the base of the AirStrike,
+    // AirToAir and VTOL_SeekAttack hosts: VTOL_Move_Formation (level -4)
+    // would go ahead once the dispatch is done (push). No TotalA.exe flyer
+    // mission has a group check (docs/ta-port-plan.md), so none of them calls
+    // formation() and push() never fires.
     struct AirAttackGroup {
         World& w; Unit& u;
         bool formationTo=false;

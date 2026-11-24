@@ -188,8 +188,11 @@ int main(int argc,char** argv) {
             }
             check(fired,"landed flyer can acquire, Move Fight, and directly attack");
         }
-        // Range alone is not the hover attack destination. Keep targets alive so
-        // these checks cover settling, backing away, altitude and target pursuit.
+        // TotalA.exe's AirToGroundHover (0x413470) holds two thirds of slot 0's
+        // range from the target, 45 degrees either side of the bearing in turn
+        // (0x4139ad), at cruisealt (0x44e6c0). Between two holds a quarter turn
+        // apart it passes 0.71 of that off the target. Keep targets alive so
+        // these checks cover settling, backing away, altitude and pursuit.
         for (const auto& name:flyers) {
             auto type=*registry.find(name);
             if (!type.hoverAttack && !type.weapon.hoverAttack) continue;
@@ -215,31 +218,33 @@ int main(int argc,char** argv) {
                 for (int tick=0;tick<1500;++tick) w.tick(1.f/30.f);
                 const auto* u=w.unit(a);const auto* t=w.unit(b);
                 const auto& weapon=type.weapons.front();
-                const int distance=weapon.hoverAttackDistance?weapon.hoverAttackDistance:type.hoverAttackDistance;
-                const int altitude=weapon.hoverAttackAltitude?weapon.hoverAttackAltitude:type.hoverAttackAltitude;
+                const int distance=int(weapon.range)*2/3;
+                const int altitude=type.cruiseAlt;
+                const auto settled=[&](float r) { return r>0.65f*float(distance) && r<float(distance)+20; };
                 const float radius=ta::sim::fxLen(u->x-t->x,u->z-t->z).toFloat();
                 std::printf("hover unit=%s close=%d distance=%.2f wanted=%d height=%.2f wanted=%d\n",
                     name.c_str(),int(close),radius,distance,u->flightY.toFloat(),std::min(511,ground+altitude));
-                check(std::abs(radius-distance)<20,"hover flyer settles at authored attack distance");
-                check(std::abs(u->flightY.toFloat()-std::min(511,ground+altitude))<2,
-                      "hover flyer uses attack altitude and remains airborne");
+                check(settled(radius),"hover flyer settles two thirds of its range off (0x4139e0)");
+                check(std::abs(u->flightY.toFloat()-std::min(511,ground+altitude))<8,
+                      "hover flyer holds at cruisealt (0x44e6c0) and remains airborne");
                 check(u->flightGroundMode==2 && !u->orders.empty(),"hover arrival preserves attack order");
                 const float previousZ=t->z.toFloat();
                 w.order(b,t->x.toFloat(),previousZ+150,false);
                 for (int tick=0;tick<900;++tick) w.tick(1.f/30.f);
                 u=w.unit(a);t=w.unit(b);
                 check(t->z.toFloat()>previousZ+100,"pursuit fixture target actually moved");
-                check(std::abs(ta::sim::fxLen(u->x-t->x,u->z-t->z).toFloat()-distance)<20,
+                check(settled(ta::sim::fxLen(u->x-t->x,u->z-t->z).toFloat()),
                       "hover flyer follows a moving target");
             }
         }
         // A flyer without hover attack does not stop to shoot a target that
-        // cannot fly: its mission, AirToGround (41bf80), flies attack runs. It
-        // closes to attackrunlength/2 of the target (half its range without
-        // one), then flies on past it, along its own line through the target,
-        // attackrunlength + 128..255 px (3 x its range without one), turns 90
-        // degrees and comes round again. World held it still in range. An
-        // A.K. beside the target shoots at it as it crosses (reported).
+        // cannot fly: its mission, TotalA.exe's AirToGround (0x412710), flies
+        // attack runs. It closes on the target (a controller of radius slot
+        // 0's range on it, stage 2), then flies on past it, along its own line
+        // through the target, 3 x that range, radius 128..255 (stage 3,
+        // 0x412ab4; the stage reads 4 once it is installed), turns 90 degrees
+        // and comes round again. An A.K. beside the target shoots at it as it
+        // crosses (reported).
         for (const auto& name:flyers) {
             auto type=*registry.find(name);
             if (type.hoverAttack || type.weapon.hoverAttack) continue;
@@ -276,14 +281,13 @@ int main(int argc,char** argv) {
                 const auto& order=u->orders.front();
                 const auto& goal=order.flightGoal;
                 const bool installed=goal && (!last || last->point.x!=goal->point.x || last->point.z!=goal->point.z);
-                if (installed && (order.mission.stage==5 || order.mission.stage==6) && goal->radius>=128) {
+                if (installed && order.mission.stage==4 && goal->radius>=128) {
                     // A run point: from where the flyer stood, through the target.
                     ++runs;
                     const double gx=(goal->point.x-g->x.v)/65536.0,gz=(goal->point.z-g->z.v)/65536.0;
                     const double fx=(g->x.v-x)/65536.0,fz=(g->z.v-z)/65536.0;
                     const double past=std::hypot(gx,gz);
-                    const double lo=type.attackRunLength ? type.attackRunLength+128 : 3*range;
-                    const double hi=type.attackRunLength ? type.attackRunLength+255 : 3*range;
+                    const double lo=3*range,hi=3*range;
                     const double turn=std::abs(std::atan2(gx*fz-gz*fx,gx*fx+gz*fz));
                     onLine+=past>=lo-3 && past<=hi+3 && turn<0.035 && goal->radius<=255;
                 }
@@ -296,8 +300,7 @@ int main(int argc,char** argv) {
             check(near,"its runs carry it within half its range of the target");
             // A bomber's slot 0 is Dropped: its run points come from the bomb
             // run (a 960 px goal radius, points 200..970 px past the target),
-            // not the attackrunlength window measured here (Kingdoms 41bf80;
-            // TotalA.exe's bomber run is not yet specified in docs/retail-*).
+            // not the AirToGround run measured here.
             const bool bomber=type.weapons.front().kind==ta::sim::Weapon::Kind::Dropped;
             check(runs>0 && (bomber || onLine==runs),"every run point lies past the target on the flyer's line through it");
             check(fired,"it fires during its runs");
@@ -396,12 +399,13 @@ int main(int argc,char** argv) {
             std::printf("facing balance=%s armrock vs crossing armpeep aiming=%d facing led=%d centre=%d\n","standard",aiming,led,centre);
             check(aiming>100 && led>=aiming-2,"a pivoting shooter faces the led SweetSpot of a moving flyer");
         }
-        // A HOVERATTACK flyer's target controller (4e4140, flags 0xa3) heads it
-        // at the target's SweetSpot, unled (4e4330), and every mission wake
-        // draws the ring around the selected weapon's led SweetSpot (41de3f ->
-        // 51aa50). An Arm Shipyard's (armsy) SweetSpot sits 37 px off its
-        // centre, so the two rings are told apart by radius. The Brawler
-        // (armbrawl) is the hover attacker.
+        // A HOVERATTACK flyer's target controller (TotalA.exe 0x44e330, flags
+        // 0xa3) heads it at the target's position (0x44e530: 0x48a980(unit,
+        // target)), not its SweetSpot, and every stage-3 wake of
+        // AirToGroundHover (0x4139ad) puts the hold two thirds of slot 0's
+        // range from the target's position. An Arm Shipyard's (armsy)
+        // SweetSpot sits 37 px off its centre, so the two are told apart. The
+        // Brawler (armbrawl) is the hover attacker.
         {
             auto hoverer=*registry.find("armbrawl");hoverer.maxHp=30000;hoverer.healTime=0;
             for (auto& weapon:hoverer.weapons) { weapon.damage=1;weapon.dmgVs.clear();weapon.dmgVsIds.clear();weapon.aoe=0; }
@@ -428,19 +432,19 @@ int main(int argc,char** argv) {
                 if (f->orders.empty() || !f->orders.front().flightGoal || !(f->orders.front().flightGoal->flags&1)) continue;
                 const auto& order=f->orders.front();
                 ++ticks;
-                headed+=order.flightGoal->heading==nativeFrom(from,sweetSpot);
+                headed+=order.flightGoal->heading==nativeFrom(from,middle);
                 const auto& point=order.flightGoal->point;
                 if (point.x==last.x && point.z==last.z) continue;
                 last=point;++refreshes;
-                const float radius=std::hypot(float(point.x-sweetSpot[0])/65536.f,float(point.z-sweetSpot[2])/65536.f);
-                // Within 16 px, plus the ring point's fixed-point truncation.
-                ringed+=std::abs(radius-float(hoverer.hoverAttackDistance))<=16.05f;
+                const float radius=std::hypot(float(point.x-middle[0])/65536.f,float(point.z-middle[2])/65536.f);
+                // 2 range / 3 (0x4139e0), plus the point's fixed-point truncation.
+                ringed+=std::abs(radius-float(int(hoverer.weapons.front().range)*2/3))<=0.05f;
             }
             const float offset=std::hypot(float(sweetSpot[0]-middle[0])/65536.f,float(sweetSpot[2]-middle[2])/65536.f);
             std::printf("hover controller balance=%s armbrawl vs armsy (SweetSpot %.1f px off) ticks=%d headed=%d"
                 " refreshes=%d ringed=%d\n","standard",offset,ticks,headed,refreshes,ringed);
-            check(offset>16 && ticks>1000 && headed==ticks,"a hover attacker heads at its target's SweetSpot");
-            check(refreshes>20 && ringed==refreshes,"a hover attacker rings the led SweetSpot at its hover distance");
+            check(offset>16 && ticks>1000 && headed==ticks,"a hover attacker heads at its target's position (0x44e530)");
+            check(refreshes>10 && ringed==refreshes,"a hover attacker holds two thirds of its range from the target (0x4139e0)");
         }
         // World's other flyer holds skip the flight body the same way, and none
         // stopped both. SetMission's wait ("w N") and ambush ("wa") and FlyingBuild waiting out mobile units on
