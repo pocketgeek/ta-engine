@@ -2870,7 +2870,7 @@ bool World::flightLandingFree(const Unit& self,Fixed x,Fixed z) const {
     // every tick and eight or more overlapping flyers leave only 0xffff,
     // both of which 509400 treats as free; an unexplored site skips every
     // test. Legion refuses any footprint that overlaps a landed flyer or one
-    // that has already begun its descent (stage 3), whatever the exploration.
+    // that has already begun its descent (stage 2), whatever the exploration.
     // Both states are the units' own hashed state and the test runs in unit
     // order, so simultaneous descents serialize: the later lander sees the
     // earlier one's descent in the same tick. It refuses a mobile ground
@@ -4097,13 +4097,15 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
         }
         int handle(RetailMissionState& m, uint32_t events) {
             if (u.landing && &m==&u.landing->mission) {
-                // TotalA.exe's VTOL_LandIfCan (0x40f2a0) has no air-traffic
-                // step-out (no VTOL_StepOut row in TA). Kingdoms' group check
-                // (416eda) follows; it finds no group in TA (retailGroupOf).
+                // TotalA.exe's VTOL_LandIfCan (0x40f2a0, retailLanding): no
+                // air-traffic step-out (no VTOL_StepOut row in TA). Kingdoms'
+                // group check (416eda) follows; it finds no group in TA
+                // (retailGroupOf).
                 if (!u.landing->canceled && !(events&0x200))
                     if (const int result=standbyGroupCheck(RetailStandbyCheck::LandIfCan);result>=0) return result;
-                return retailLanding(*u.landing,events,{u.x.v,u.flightY.v,u.z.v},portHeadingToRetail(u.heading),
-                    int16_t(u.type->footX),int16_t(u.type->footZ),true,u.type->canFly,*this);
+                return retailLanding(*u.landing,events,{u.x.v,u.flightY.v,u.z.v},
+                    int16_t(u.type->footX),int16_t(u.type->footZ),true,u.type->canFly,u.flightGroundMode==1,
+                    int16_t(u.type->cruiseAlt),*this);
             }
             // TotalA.exe's VTOL_Standby (0x40f7d0) has no air-traffic
             // step-out (no VTOL_StepOutStandby row in TA); Kingdoms' stepped
@@ -4118,13 +4120,32 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 if (const int result=standbyGroupCheck(u.type->canFly ? RetailStandbyCheck::VtolStandby
                         : RetailStandbyCheck::Standby);result>=0) return result;
             if (&m==&u.standbyState && u.type->canFly)
-                return retailVtolStandby(m,w.tickCounter_,true,true,u.flightGroundMode==2,
-                    [&](int n){return random(n);},[&]{ initialize(); },
+                return retailVtolStandby(m,w.tickCounter_,true,true,u.flightGroundMode==2,!u.cargo.empty(),
+                    [&](int n){return random(n);},[&] {
+                        // 0x40f9ed: the post. (0x40f9d3 also makes every
+                        // slot manual, 0x4898b0(3); not ported: World keeps
+                        // an idle flyer's slots automatic, which the owner's
+                        // Hold Position deviation, tickHoldLift, builds on.)
+                        u.standbyPostX=int16_t(u.x.floorInt());u.standbyPostZ=int16_t(u.z.floorInt());
+                    },
                     [&] {
-                        // 4176bc: 4d8370, then 4d7de0(unit, found, 0, 0, 1, 0).
+                        // 0x40f98d: 0x43b700, then 0x43b1f0(unit, found, 0).
                         const int found=w.retailHostScan(u);
                         return found && w.retailMissionAttack(u,found,MissionAttack::Vtol);
-                    },[&]{u.landing.emplace();return true;});
+                    },[&](uint16_t angle,int32_t distance) {
+                        // 0x40f839..0x40f8cf: the post less sine / cosine of
+                        // the distance, a point controller at cruisealt
+                        // (0x44e6c0: over the ground or the sea, at most
+                        // 511). Nothing waits on it: the standby's timer
+                        // wakes it (World flies it as a retained controller).
+                        RetailFlightGoal goal;
+                        goal.point={satSub32(Fixed::fromInt(u.standbyPostX).v,retailScaledSine(angle,distance<<16)),0,
+                                    satSub32(Fixed::fromInt(u.standbyPostZ).v,retailScaledCosine(angle,distance<<16))};
+                        goal.point.y=Fixed::fromInt(std::min(std::max(groundHeight(goal.point),seaLevel())+
+                                                             u.type->cruiseAlt,511)).v;
+                        goal.flags=0x28;
+                        u.retainedFlightGoal=goal;u.retainedFlightControllerActive=true;
+                    },[&]{u.landing.emplace();});
             if (&m==&u.standbyState && u.type->wanders)
                 return retailStandbyWander(m,w.tickCounter_,true,u.moveState==0,[&](int n) { return random(n); },
                     [&] { w.setSlotsAuto(u); },[&] { return w.retailWanderScan(u); });
@@ -4434,13 +4455,10 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             if (auxiliary) u.orders.insert(u.orders.begin(),*auxiliary);
             return result;
         }
-        void initialize() {} // weapon aim reset has no separate state in this host
-        int velocityPercent() {
-            if (u.baseSpeed<=Fixed()) return 0;
-            const auto& v=u.flightVelocity;
-            const int32_t speed=truncSat32(std::sqrt(double(v.x)*v.x+double(v.z)*v.z));
-            return std::clamp(int(double(speed)*100/u.baseSpeed.v+0.5),0,100);
-        }
+        void initialize() {} // 0x4898b0(3) (every slot manual): not ported, see the standby
+        void activate(bool on) { u.active=on; }
+        void takeOff() { u.flightGroundMode=2;w.groundMove(u); }   // 0x43d210(unit, 2); 51b3b0 unstamps
+        int seaLevel() const { return uint8_t(w.seaLevel_); }
         bool landable(RetailFlightVector point) {
             return w.flightLandingFree(u,Fixed::raw(point.x),Fixed::raw(point.z));
         }
@@ -4451,7 +4469,6 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             return w.heights_[size_t(z)*w.terW_+x];
         }
         void touchdown() { ++u.flightLandingCallbackSerial; }
-        void deactivate() { u.active=false; }
         void finish() {
             if(u.flightGroundMode!=1) {
                 const auto attitude=retailFlightAttitude(u.flightAcceleration,{},portHeadingToRetail(u.heading),
@@ -4465,6 +4482,9 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             u.flightVelocity={};u.speed=Fixed();
         }
         void install(RetailFlightGoal goal) {
+            // 0x4388d0 drops the mission's pending controller events
+            // (0x43890f); World posts the landing's to the unit.
+            u.missionEvents&=~0x3700u;
             std::erase_if(u.orders,[](const Order& o){return o.landing;});
             Order order; order.x=Fixed::raw(goal.point.x); order.z=Fixed::raw(goal.point.z);
             order.flightGoal=goal; order.landing=true; u.orders.insert(u.orders.begin(),order);
@@ -21840,6 +21860,8 @@ uint64_t World::stateHash() const {
         if (u.standbyActive) {
             mix(u.standbyState.stage); mix(u.standbyState.waitMask);
             mix(u.standbyState.deadline); mix(u.standbyState.pending); mix(u.standbyState.flags);
+            // VTOL_Standby's post: read only by a passenger carrier's loiter.
+            if (u.type && u.type->canFly && !u.cargo.empty()) { mix(uint16_t(u.standbyPostX)); mix(uint16_t(u.standbyPostZ)); }
         }
         for (const auto& order : u.orders) {
             if (order.reclaimArea) {

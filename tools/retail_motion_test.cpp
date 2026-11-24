@@ -937,13 +937,13 @@ int main(int argc, char** argv) {
         const int id=world.spawn(&flyer,256,256);
         auto* u=world.unit(id); u->standbyActive=true; u->standbyState={1,0x21,1,0,0};
         world.tick(1.0f/30.0f); u=world.unit(id);
-        check(u->standbyActive && u->standbyState.stage==1 && u->standbyState.deadline>=8 &&
-              u->standbyState.deadline<=14 && u->orders.empty(),
+        check(u->standbyActive && u->standbyState.stage==1 && u->standbyState.deadline>=31 &&
+              u->standbyState.deadline<=60 && u->orders.empty(),   // 0x40f957: 30 + rand(30)
               "grounded VTOL standby owns its scan/retry timer");
         u->flightGroundMode=2; u->flightY=Fixed::fromInt(180);
         u->standbyState={1,0,0xffffffffu,0,0};
         world.tick(1.0f/30.0f); u=world.unit(id);
-        check(u->landing && u->landing->mission.stage==3 && !u->orders.empty() &&
+        check(u->landing && u->landing->mission.stage==2 && !u->orders.empty() &&
               u->orders.front().landing && u->flightY<Fixed::fromInt(180),
               "airborne standby installs the landing mission and starts descent");
         for (int i=0;i<180;++i) world.tick(1.0f/30.0f);
@@ -1009,7 +1009,7 @@ int main(int argc, char** argv) {
         u->standbyActive=true;u->standbyState={1,0,0xffffffffu,0,0};
         world.tick(1.0f/30.0f);
         u=world.unit(id);
-        check(!(u->landing && u->landing->mission.stage==3),
+        check(!(u->landing && u->landing->mission.stage==2),
               "an airborne flyer overhead blocks the explored landing site below it");
         for(int tick=0;tick<1800 && world.unit(id)->flightGroundMode!=1;++tick)world.tick(1.0f/30.0f);
         u=world.unit(id);const auto* a=world.unit(above);
@@ -1025,14 +1025,14 @@ int main(int argc, char** argv) {
         for(int tick=0;tick<600 && stage3<0;++tick) {
             world.tick(1.0f/30.0f);
             u=world.unit(id);
-            if(u->landing && u->landing->mission.stage==3)stage3=tick;
+            if(u->landing && u->landing->mission.stage==2)stage3=tick;
         }
         UnitType ground;ground.canMove=true;ground.maxVel=Fixed::fromInt(1);
         ground.footX=ground.footZ=2;
         world.spawn(&ground,u->x.toFloat(),u->z.toFloat());
         world.tick(1.0f/30.0f);
         u=world.unit(id);
-        check(stage3>=0 && ((u->landing && u->landing->mission.stage==3) || u->flightGroundMode==1),
+        check(stage3>=0 && ((u->landing && u->landing->mission.stage==2) || u->flightGroundMode==1),
               "retail keeps an in-progress descent when a ground unit enters the site");
     }
     {
