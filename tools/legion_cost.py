@@ -95,7 +95,7 @@ class Runner:
     def __init__(self, exe, jobs):
         self.exe = exe
         self.jobs = jobs
-        self.tmp = os.environ.get("TMPDIR", "/tmp")
+        self.tmp = os.environ.get("TMPDIR", os.path.expanduser("~/ta-tmp"))
 
     def run(self, scn, ticks=None, both_exec=False):
         cmd = [self.exe, scn, "--mode", "legion", "--offsets", "0", "--json",
@@ -413,7 +413,7 @@ def main():
     ap.add_argument("--reason", default="")
     ap.add_argument("--since", default="W0")
     ap.add_argument("--jobs", type=int, default=4)
-    ap.add_argument("--tmpdir", default=os.environ.get("TMPDIR", "/tmp"))
+    ap.add_argument("--tmpdir", default=os.environ.get("TMPDIR", os.path.expanduser("~/ta-tmp")))
     args = ap.parse_args()
     if args.update_baseline and len(args.reason.strip()) < 8:
         print("legion_cost: --update-baseline needs --reason TEXT (a baseline entry without a reason is refused)")

@@ -3952,6 +3952,10 @@ endif()
 # are applied at the end of this file (cmake_language DEFER), so a test added or an
 # ENVIRONMENT set anywhere below is covered too.
 set(TA_TEST_PROFILES "${CMAKE_CURRENT_BINARY_DIR}/test-profiles")
+# Every test's scratch goes under the build tree, never /tmp (TMPDIR below;
+# std::filesystem::temp_directory_path and the Python tools honour it).
+set(TA_TEST_TMPDIR "${TA_TEST_PROFILES}/tmp")
+file(MAKE_DIRECTORY "${TA_TEST_TMPDIR}")
 set(TA_PREF_GUARD "${CMAKE_SOURCE_DIR}/tools/pref_guard.cmake")
 add_test(NAME pref_guard_setup COMMAND ${CMAKE_COMMAND} -DMODE=setup "-DPROFILES=${TA_TEST_PROFILES}" -P "${TA_PREF_GUARD}")
 add_test(NAME pref_guard_check COMMAND ${CMAKE_COMMAND} -DMODE=check "-DPROFILES=${TA_TEST_PROFILES}" -P "${TA_PREF_GUARD}")
@@ -3983,7 +3987,8 @@ function(tak_isolate_test_profiles)
     # first cores. A test of the pinning turns the setting ON in its own settings file
     # and sets this to 1 itself.
     set(ta_defaults "XDG_DATA_HOME=${ta_profile}/data" "XDG_CONFIG_HOME=${ta_profile}/config"
-                     "XDG_CACHE_HOME=${TA_TEST_PROFILES}/cache" "TA_SIM_PIN=0")
+                     "XDG_CACHE_HOME=${TA_TEST_PROFILES}/cache" "TA_SIM_PIN=0"
+                     "TMPDIR=${TA_TEST_TMPDIR}")
     if(UNIX AND NOT APPLE)
       list(APPEND ta_defaults "HOME=${ta_profile}/home")
       if(ta_python_userbase)
