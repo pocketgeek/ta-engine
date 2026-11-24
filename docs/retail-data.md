@@ -166,7 +166,20 @@ retail) [C].
 Observed consumers:
 - bit0: cell belongs to the building (0x47ce2d marks map cells) [S].
 - bit1 / bit2: block movement, chosen by the unit's yard state. The mask is 2 when unit+0x10f bit2 is set, else 4 (0x47c804, 0x47cd88) [S]. So `o`/`w`/`f`/`G` always block, `y`/`Y` never block, `c`/`C` block in one yard state only, `O` in the other. Which state is "open" is [U].
-- bit3: cell's terrain height takes part in the min/max used for the placement height. bit4: max only, and a water-level placement path is used when these dominate (0x47d8ce..0x47d948) [S]; exact semantics [U].
+- bit3: cell's terrain height takes part in the min/max used for the placement height. bit4: max only, and a water-level placement path is used when these dominate (0x47d8ce..0x47d948) [S].
+- **Building placement test 0x47d2e0** (x ≥ 1, z ≥ 1, x+fx < W, z+fz < H first) [S]. Over
+  the cells' 2×2 corner max/min heights (map cell +5/+6, retail-pathfinding §1.1): bit3
+  cells give `lo` = min of their min and `hi` = max of their max; bit4 cells give `wHi` =
+  max of their max (0x47d4f9..0x47d52c). With no bit3 cell the base is the u8 `sea −
+  waterline` (0x47d773); otherwise `hi − lo > maxslope` (+0x228) fails and the base is `lo`.
+  Then `wHi > base` fails (0x47d7b6), `lo < sea − maxwaterdepth` (+0x1be) fails (0x47d7ba)
+  and `max(hi, wHi) > sea − minwaterdepth` (+0x1c0) fails (0x47d7df); the base is stored at
+  0x51e684. An all-water yard (`w`/`C`/`Y`: floating structures, shipyards) therefore never
+  meets its FBI maxwaterdepth (lo stays 255): it needs only its highest point at or below
+  both `sea − waterline` and `sea − minwaterdepth`. bit0 cells fail on a map cell with
+  +0xc bit 1, bit1/2 cells on another unit's occupancy, bit5 on a blocking feature, bit6 on
+  a feature with def +0xff bit 1, and a bit7 yard needs some cell on a feature with def
+  +0xfe bit 5 (geothermal) [S].
 - bits 5/6/7: 7 = `G` (geothermal) and 6 = `f` are [U].
 
 ### 2.5 moveinfo.tdf (0x42d2e0 → 0x440340)

@@ -419,7 +419,7 @@ struct UnitType {
     // target a flyer without hoverattack carries an attack run (AirToGround).
     uint16_t attackRunLength = 0;
     enum class Domain { Ground, Water, Hover };
-    Domain domain = Domain::Ground;   // from FBI movementclass prefix
+    Domain domain = Domain::Ground;   // from the final water limits / canhover (sim.cpp loadDir)
     bool canTransport = false;
     int transportCap = 0;     // passenger count (FBI transportcapacity)
     int transportSizeCap = 0; // sum of passenger costs (transportsizecapacity)

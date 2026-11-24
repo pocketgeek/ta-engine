@@ -455,8 +455,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.landMinWaterDepth=int16_t(int(info->numberOr("minwaterdepth",-10000)));
             t.landMaxSlope=uint8_t(int(info->numberOr("maxslope",255)));
             std::string mc = lower(info->valueOr("movementclass", ""));
-            if (mc.rfind("water", 0) == 0) t.domain = UnitType::Domain::Water;
-            else if (mc.rfind("hover", 0) == 0) t.domain = UnitType::Domain::Hover;
             // Inherit terrain limits from the MOVEINFO movement class (the real
             // source of slope/water limits; most FBIs don't carry their own).
             if (auto mci = moveClasses_.find(mc); mci != moveClasses_.end()) {
@@ -475,6 +473,18 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 if (mci->second.footX > 0) t.footX = mci->second.footX;
                 if (mci->second.footZ > 0) t.footZ = mci->second.footZ;
             }
+            // TotalA.exe has no unit "domain": what a mover may cross is the class
+            // grade test 0x47de60 (docs/retail-pathfinding.md §1.3), which blocks
+            // every cell whose highest corner is above sea - minwaterdepth. A mover
+            // whose final minwaterdepth (class, else FBI: docs/retail-data.md §2.2)
+            // is positive can therefore never leave the water -- a ship (BOATS*,
+            // BOATD*). canhover (flagsA bit12, UnitType+0x241 & 0x1000) rides the
+            // surface instead of wading (0x43cd20 water cap, retailSurfaceHeight);
+            // its TANKHOVER* class has no depth limit at all. The engine's three
+            // domains are that split; everything else is a ground unit.
+            if (t.canHover && !t.canFly) t.domain = UnitType::Domain::Hover;
+            else if (!t.canFly && !t.isStructure() && t.landMinWaterDepth > 0)
+                t.domain = UnitType::Domain::Water;
             // 4c0e58: omitted/zero transportedsize uses the final movement footprint.
             if (!t.transportSize) t.transportSize=uint16_t(t.footX*t.footZ);
             // RAW, no divisor. Retail adds cruisealt straight onto the terrain
@@ -11544,12 +11554,12 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
         return walkable(grid,gx,gz);
     };
     int cx = footprintOrigin(x, type->footX), cz = footprintOrigin(z, type->footZ);
-    // Total Annihilation structures honour their FBI water limits: each footprint
-    // cell's depth (sea level - height) must lie in minwaterdepth..maxwaterdepth --
-    // land buildings (maxwaterdepth 0..) stay dry, underwater extractors and sonar
-    // need water. [U: retail's exact test is the yard height scan near 0x47d8ce;
-    // this checks every cell against the FBI limits.]
-    if (type->isStructure() && !heights_.empty() &&
+    // A TA yard map (every character one TotalA.exe decodes, docs/retail-data.md
+    // §2.4) takes retail's building test 0x47d2e0 below instead.
+    const bool taYard = type->isStructure() && !type->yardMap.empty() && !heights_.empty() &&
+        type->yardMap.find_first_not_of(".CGOYcfowy") == std::string::npos;
+    // A structure without one keeps the per-cell FBI depth limits.
+    if (!taYard && type->isStructure() && !heights_.empty() &&
         (type->landMinWaterDepth > -10000 || type->landMaxWaterDepth < 10000)) {
         for (int j = 0; j < type->footZ; ++j)
             for (int i = 0; i < type->footX; ++i) {
@@ -11564,6 +11574,64 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
     // at 507ae0 uses these same bounds and otherwise can never open the factory.
     if (type->isStructure() && (cx < 1 || cz < 1 ||
         cx + type->footX >= terW_ || cz + type->footZ >= terH_)) return false;
+    // TotalA.exe 0x47d2e0 (the building placement test; 0x47d302..0x47d352 is the
+    // same x >= 1, z >= 1, x + fx < W, z + fz < H bound as above). Over the yard
+    // cells' 2x2 corner max/min heights (map cell +5/+6, docs/retail-pathfinding.md
+    // §1.1), the FBI's own limits (a building has no movement class):
+    //   bit3 cells (y O c o f G): lo = min of their min, hi = max of their max;
+    //   bit4 cells (Y C w):       wHi = max of their max   (0x47d4f9..0x47d52c).
+    //   No bit3 cell: base = u8(sea - waterline)           (0x47d773..0x47d787);
+    //   else hi - lo > maxslope (+0x228) fails, base = lo   (0x47d789..0x47d7ac).
+    //   wHi > base fails (0x47d7b6); lo < sea - maxwaterdepth (+0x1be) fails
+    //   (0x47d7ba..0x47d7d5); max(hi, wHi) > sea - minwaterdepth (+0x1c0) fails
+    //   (0x47d7d7..0x47d7f0).
+    // So a floating yard (all 'w': armfmkr, armfdrag, the shipyards) needs only
+    // its highest point at or below both sea - waterline and sea - minwaterdepth;
+    // its FBI maxwaterdepth=0 never applies, as lo stays 255. The per-cell blockers
+    // are tested here too (walkable() less the terrain); bodies follow below.
+    if (taYard) {
+        const int sea = seaLevel_;
+        int lo = 255, hi = 0, wHi = 0;
+        for (int j = 0; j < type->footZ; ++j)
+            for (int i = 0; i < type->footX; ++i) {
+                const char cell = type->yardMap[size_t(j) * type->footX + i];
+                const bool land = cell=='y' || cell=='O' || cell=='c' || cell=='o' || cell=='f' || cell=='G';
+                const bool water = cell=='Y' || cell=='C' || cell=='w';
+                if (!land && !water) continue;   // '.': no bits, no test
+                const int gx = cx + i, gz = cz + j;
+                int cellHi = 0, cellLo = 255;
+                for (int dz = 0; dz < 2; ++dz)
+                    for (int dx = 0; dx < 2; ++dx) {
+                        const int sx = std::min(gx + dx, terW_ - 1), sz = std::min(gz + dz, terH_ - 1);
+                        const int h = heights_[size_t(sz) * terW_ + sx];
+                        cellHi = std::max(cellHi, h); cellLo = std::min(cellLo, h);
+                    }
+                if (land) { lo = std::min(lo, cellLo); hi = std::max(hi, cellHi); }
+                if (water) wHi = std::max(wHi, cellHi);
+                const size_t at = size_t(gz) * terW_ + gx;
+                if (obst_.empty() || !obst_[at]) continue;
+                bool open = false;
+                if (replacing) {
+                    const int ox=footprintOrigin(replacing->x,replacing->type->footX);
+                    const int oz=footprintOrigin(replacing->z,replacing->type->footZ);
+                    if (gx>=ox && gz>=oz && gx<ox+replacing->type->footX && gz<oz+replacing->type->footZ) {
+                        const auto& yard=replacing->type->yardMap;
+                        const char c=yard.empty() ? 'o' : yard[size_t(gz-oz)*replacing->type->footX+gx-ox];
+                        open = retailYardAlwaysBlocks(c) || c=='O';
+                    }
+                }
+                if (!open && !clearObstacle(gx,gz)) return false;
+            }
+        int base;
+        if (hi < lo) base = uint8_t(sea - type->waterline);
+        else {
+            if (hi - lo > int(type->landMaxSlope)) return false;
+            base = lo;
+        }
+        if (wHi > base) return false;
+        if (lo < sea - int(type->landMaxWaterDepth)) return false;
+        if (std::max(hi, wHi) > sea - int(type->landMinWaterDepth)) return false;
+    }
     // Retain the legacy mixed-yard check for custom shoreline structures.
     bool waterYard = false;
     if (!type->yardMap.empty())
@@ -11576,7 +11644,9 @@ bool World::placementCheck(const UnitType* type, float x, float z, int player,
     const bool waterOnlyYard = !type->yardMap.empty() &&
         type->yardMap.find_first_of("wCY") != std::string::npos &&
         type->yardMap.find_first_not_of("wCY. ") == std::string::npos;
-    if (waterOnlyYard) {
+    if (taYard) {
+        // Tested above.
+    } else if (waterOnlyYard) {
         const int ceiling = seaLevel_ - uint8_t(type->waterline);
         for (int j = 0; j < type->footZ; ++j)
             for (int i = 0; i < type->footX; ++i) {

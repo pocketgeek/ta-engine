@@ -61,8 +61,11 @@ int main(int argc, char** argv) {
         };
         std::vector<std::pair<std::string, std::string>> pairs;   // builder, water structure
         for (const auto& [id, t] : registry.types()) {
+            // The fixture's sea is 64 - 10 = 54 deep: a builder whose class wades
+            // that deep (the Commanders' TANKDS2, maxwaterdepth 100; TotalA.exe
+            // grade test 0x47de60) walks the sea floor and reaches every site.
             if (!t.isBuilder || t.isStructure() || t.canFly ||
-                t.domain != ta::sim::UnitType::Domain::Ground) continue;
+                t.domain != ta::sim::UnitType::Domain::Ground || t.landMaxWaterDepth >= 64 - 10) continue;
             std::string pick;
             for (const auto& s : registry.buildable(id))
                 if (const auto* st = registry.find(s); st && needsWater(*st) && (pick.empty() || s < pick)) pick = s;
