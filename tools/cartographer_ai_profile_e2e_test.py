@@ -10,8 +10,9 @@ profiles put a limit on every side's factories (TA's category PLANT): 0 in the f
 ai/taengine.txt collide. Headless --mpai games (seed 1, the AI seat on DEFAULT, 60 s):
 
   stock    Ashap Plateau, with the two maps installed and an unticked game pack: the
-           same state hash as in a plain install, and no factory limit in the AI's
-           profile dump (TA_RETAIL_WEIGHTS: the server's TA retail brains, docs/retail-ai.md section 1)
+           same state hash as in a plain install, and the base ai/default.txt limits (not
+           every factory at 0) in the AI's profile dump (TA_RETAIL_WEIGHTS: the server's TA
+           retail brains, docs/retail-ai.md section 1)
   alpha    the first map: the server log names ai/e2e.txt and ai/taengine.txt from the map
            package, and the dump shows every factory at limit 0
   beta     the second map: its own files, not the first map's (limit 2)
@@ -143,7 +144,7 @@ def play(a, data, work, map_name, settings=''):
     dumps = sorted(work.glob('weights.p*'))
     assert dumps, 'no DEFAULT AI weight dump in %s:\n%s' % (work, log)
     for path in dumps:
-        for limit, unit in re.findall(r"^\s*(n/a|-?\d+)\s+-\s+-?\d+\s+=\s+-?\d+\s+-\s+'(\S+)", path.read_text(), re.M):
+        for limit, unit in re.findall(r"^\s*(n/a|-?\d+)\s+-\s+-?\d+\s+=\s+-?\d+\s+-\s+'([^'\s]+)", path.read_text(), re.M):
             limits.setdefault(unit.lower(), set()).add(limit)
     return re.findall(r'hash=([0-9a-f]+)', out)[-1], limits, log
 
@@ -187,7 +188,10 @@ def main():
             stock_hash, plain_hash)
         assert re.search(r'DEFAULT AI profile ai/default\.txt from the base data', log, re.I), log
         assert not re.search(r'our AI levels play their built-in profiles adjusted', log), log
-        assert all(limits.get(u) != {'0'} for u in units), 'stock map: a factory is limited to 0'
+        # TA's own ai/default.txt limits some factories (even to 0 on a plan); the stock map must
+        # play it, not a map's profile that holds every factory at 0.
+        assert all(u in limits for u in units), 'stock map: factories missing from the profile dump'
+        assert not all(limits.get(u) == {'0'} for u in units), 'stock map: every factory is limited to 0 (a map profile leaked)'
 
         for name, limit in (('E2E Alpha', 0), ('E2E Beta', 2)):
             _, limits, log = play(a, data, root / name.replace(' ', '-'), name)
