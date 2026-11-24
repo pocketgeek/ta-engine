@@ -15314,29 +15314,18 @@ void World::tickSeekGuard(Unit& u) {
 }
 
 
-// The air-traffic check of a flying builder's job (VTOL_MobileBuild 41f0a6,
-// VTOL_HelpBuild 41f981, VTOL_RepairUnit 421066; retailAirTrafficCheck): at
-// every wake of the mission, with the counter at 8 or more, it pushes
-// VTOL_StepOutNoFormation ahead, sleeps a tick, stops building (51e4d0(8, 0):
-// StopBuilding, stopWorkAnimation) and returns 0, so the job starts again
-// from its stage 0 -- its approach to 2 x builddistance -- once the step-out
-// ends. World keeps no retail stage for these jobs: their wakes are the first
-// tick of an approach and every tick of the work (each work stage sleeps one
-// tick), and the caller puts the approach back (restartFlyingHelp for a site)
-// before the step-out goes ahead (StopBuilding, then the push). Returns the
-// step-out's D, or nothing.
-std::optional<int32_t> World::flyingJobTraffic(Unit& b, RetailTrafficMission mission) {
-    if (!b.type || !b.type->canFly) return std::nullopt;
-    struct Host {
-        World& w; RetailStepOut kind=RetailStepOut::None; int32_t distance=0;
-        uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
-        bool stepOut(RetailStepOut k,int32_t d) { kind=k;distance=d;return true; }
-        void stopBuilding() {}
-    } host{*this};
-    RetailMissionState m;   // the job's stage: the caller restarts the job itself
-    if (retailAirTrafficCheck(mission,m,tickCounter_,b.airTraffic,int16_t(b.type->footX),0u,host)<0)
-        return std::nullopt;
-    return host.distance;
+// The air-traffic check of a flying builder's job: none in TA. Kingdoms'
+// VTOL_MobileBuild / VTOL_HelpBuild / VTOL_RepairUnit (41f0a6, 41f981,
+// 421066) pushed VTOL_StepOutNoFormation at 8 on the counter; TotalA.exe's
+// mission table (rows 0x4fca2d..0x4fcc21) has no step-out mission at all, and
+// its three jobs (VTOL_MobileBuild 0x413d80, VTOL_HelpBuild 0x414380,
+// VTOL_RepairUnit 0x414e70) allocate only move controllers (0x4b4f10(0x36))
+// and read no counter. VTOL_HelpBuild picks its hover point from the two
+// positions alone (every 150th game tick, 0x414569..0x41461a: the site minus
+// builddistance along their angle + 0xdb6e), so helpers that fly in together
+// stay stacked, as in retail. Never a step-out.
+std::optional<int32_t> World::flyingJobTraffic(Unit&, RetailTrafficMission) {
+    return std::nullopt;
 }
 
 // A flying builder working on a site (VTOL_HelpBuild, or VTOL_MobileBuild

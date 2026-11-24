@@ -4171,8 +4171,8 @@ private:
     void tickSeekGuard(Unit& u);
     int seekGuardFind(const Unit& u) const;
     // A flying builder's job at a wake of its mission (VTOL_MobileBuild,
-    // VTOL_HelpBuild, VTOL_RepairUnit): the air-traffic check at 8; the
-    // step-out's D when the job steps out of a stack.
+    // VTOL_HelpBuild, VTOL_RepairUnit): Kingdoms' air-traffic check; TA's
+    // jobs have none (TotalA.exe 0x413d80 / 0x414380 / 0x414e70), so never.
     std::optional<int32_t> flyingJobTraffic(Unit& b, RetailTrafficMission mission);
     void restartFlyingHelp(Unit& b, const Unit& site);
     void flyMissionGoal(Unit& u, Order& order);

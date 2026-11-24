@@ -24,7 +24,9 @@
 // also counts the step-outs its mission pushed. air-guard-lost.scn checks
 // VTOL_SeekGuard: fighters whose guarded Peewee dies guard another Peewee.
 // (The fixtures came from Kingdoms -- Drakes, Goblins, a Keep -- and fly TA's
-// Freedom Fighters, Peewees and an Aircraft Plant now.)
+// Freedom Fighters, Peewees and an Aircraft Plant now.) The flying builders'
+// step-out was Kingdoms' only: TA's builders on one job stack, and
+// air-stack-repair/-help now check that they never step out.
 #include "ai/classicbrain.h"
 #include "legion_scn.h"
 
@@ -160,11 +162,19 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
     check(counted>200 && permille<=c.maxStackedPermille,std::string(c.file)+" "+modeName+": "+std::to_string(stacked)+
           " of "+std::to_string(counted)+" airborne flyer-ticks "+what+" stacked ("+std::to_string(permille)+
           " per mille, at most "+std::to_string(c.maxStackedPermille)+")");
-    if(c.minStepOuts)
+    const bool builderCase=c.count==Count::Repair || c.count==Count::Help;
+    // TA's flying builders have no air-traffic check: TotalA.exe's mission
+    // table (0x4fca2d..0x4fcc21) has no VTOL_StepOut* row, and its
+    // VTOL_MobileBuild / VTOL_HelpBuild / VTOL_RepairUnit (0x413d80, 0x414380,
+    // 0x414e70) push no mission. Kingdoms' did (41f0a6, 41f981, 421066).
+    if(builderCase)
+        check(stepOuts==0,std::string(c.file)+" "+modeName+": "+std::to_string(stepOuts)+" step-outs "+what+
+              " (TA has none)");
+    else if(c.minStepOuts)
         check(stepOuts>=c.minStepOuts,std::string(c.file)+" "+modeName+": "+std::to_string(stepOuts)+
               " step-outs "+what+" (at least "+std::to_string(c.minStepOuts)+")");
-    if(c.count==Count::Repair || c.count==Count::Help)
-        check(aiReads>0 && aiStepOuts==aiReads,std::string(c.file)+" "+modeName+": the Retail AI reads the step-out "+
+    if(builderCase && aiReads)
+        check(aiStepOuts==aiReads,std::string(c.file)+" "+modeName+": the Retail AI reads the step-out "+
               "ahead of the job ("+std::to_string(aiStepOuts)+" of "+std::to_string(aiReads)+" flyer-ticks)");
     if(target && c.count!=Count::Repair && c.count!=Count::Help)
         check(damage>0,std::string(c.file)+" "+modeName+": the fighters still hurt the target ("+
@@ -276,8 +286,13 @@ int main(int argc,char** argv) {
         {"air-stack-fight.scn","drakes",nullptr,1600,1280,210},
         {"air-stack-fight-cell.scn","d*",nullptr,0,0,150,Count::Fight,3},
         {"air-stack-patrol.scn","drakes",nullptr,0,0,150,Count::Patrol,3},
-        {"air-stack-repair.scn","builders","keep",0,0,200,Count::Repair,2},
-        {"air-stack-help.scn","builders",nullptr,1280,1280,200,Count::Help,2},
+        // Flying builders on one job stack in TA (no step-out, above): no
+        // bound but the per-mille itself. VTOL_HelpBuild's hover point is the
+        // site minus builddistance along the builder's angle + 0xdb6e, every
+        // 150th tick (0x414569..0x41461a), so helpers that came in together
+        // share it; the Kingdoms bound was 200 for both.
+        {"air-stack-repair.scn","builders","keep",0,0,1000,Count::Repair},
+        {"air-stack-help.scn","builders",nullptr,1280,1280,1000,Count::Help},
     };
     try {
         for(const auto& c:cases)
