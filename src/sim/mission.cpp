@@ -330,8 +330,8 @@ int32_t MissionScript::doCreate(World& w, const std::string& type, const std::ve
 //   p X Y [T]        patrol (the time T is not modelled)
 //   w F [N]          wait F s; with N, a visible enemy within N cells ends it
 //   wa [NAME]        WaitForAttack: hold until NAME (else this unit) is hit
-//   o A / o A B      standing orders: 2 offensive, 1 defensive, 0 passive /
-//                    the move and fire fields themselves
+//   o A [B]          move state A, fire state B (TotalA.exe 0x487c9d; a missing
+//                    value keeps the unit's own)
 //   v F              fixed veterancy multiplier F (rank shows 10)
 //   i NAME           start aboard the transport NAME
 //   g NAME           guard NAME
@@ -538,16 +538,16 @@ void MissionScript::applyOrders(World& w, int unitId, const std::string& orders,
             w.orderWait(unitId, fx, queue, cells * 16);
             break;
         }
-        case 'o': {                                       // 514086
-            // " %d %d": both in 0..2 set the move and fire fields themselves;
-            // else " %d" in 0..2 is the standing order (0x5198a0).
-            ClauseScan pair = scan;
-            int fire = 0;
-            if (pair.integer(n) && pair.integer(fire) && n >= 0 && n <= 2 && fire >= 0 && fire <= 2) {
-                w.scriptStandingFields(unitId, n, fire);
-                break;
-            }
-            if (scan.integer(n) && n >= 0 && n <= 2) w.scriptStandingOrder(unitId, n);
+        case 'o': {                                       // TotalA.exe 0x487c9d
+            // " %d %d" read over the unit's own fields: A is the move state
+            // (unit+0x110 bits 18-19), B the fire state (bits 20-21), each &3; a
+            // value the scan does not reach keeps the current one. No range check
+            // and no standing-order composite (docs/retail-campaign.md section 2.6).
+            const Unit* u = w.unit(unitId);
+            if (!u) break;
+            int move = u->moveState, fire = u->fireState;
+            if (scan.integer(move)) scan.integer(fire);
+            w.scriptStandingFields(unitId, move & 3, fire & 3);
             break;
         }
         case 'v':                                         // 5148e1: v F -> unit +0xf4

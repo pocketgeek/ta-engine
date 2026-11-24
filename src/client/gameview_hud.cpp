@@ -1816,7 +1816,7 @@ namespace {
             const std::string key = seq + std::to_string(colorSlot_[t & 7]);
             auto [it, inserted] = scoreboardLogos_.try_emplace(key, nullptr);
             if (inserted && !seq.empty())
-                it->second = loadGuiFrame("colorlogos2", seq, colorSlot_[t & 7]);
+                it->second = loadGuiFrame(ta::kFactionLogoGaf, seq, colorSlot_[t & 7]);
             SDL_FRect emblem{x + 2 * scale, y + 2 * scale, 28 * scale, 28 * scale};
             if (it->second) SDL_RenderCopyF(ren_, it->second, nullptr, &emblem);
             else {

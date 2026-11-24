@@ -289,7 +289,7 @@ win or lose condition is ever evaluated.
 
 | Cmd | Arguments | Order |
 |---|---|---|
-| `o` | ` %d %d` (a b) | No order. Sets the fire state `(flags>>18)&3 = a` and the move state `(flags>>20)&3 = b`. A missing value keeps the current one. |
+| `o` | ` %d %d` (a b) | No order. Sets the **move state** `(flags>>18)&3 = a&3` and the **fire state** `(flags>>20)&3 = b&3` (0x487c9d: both are pre-loaded from the unit's own bits, scanned, masked `&3` and written back as `((b&3)<<2 \| (a&3))<<18`; bit meanings per retail-weapon-scripts.md §8). A missing value keeps the current one; there is no range check. |
 | `m` | ` %f %f` x z | Action 2 (move). |
 | `p` | ` %f %f %f` x z t | Action 9 (patrol) to x,z. The extra parameter is t×30 [I]. |
 | `a` | ` %f %f` x z | Action 3 (attack ground) when two numbers parse. |
@@ -314,7 +314,7 @@ unselectable. Unless the script contained `a`, `p`, `d` or `s`, a final `MAKESEL
 appended, so the unit returns to player control when its script ends (0x487e5b). Both points
 matter for the conditions: §3.3 requires flag 0x20.
 
-Example (ac01 gate): `o 0 0,w 3600 0,` sets hold fire and hold position, waits one hour,
+Example (ac01 gate): `o 0 0,w 3600 0,` sets hold position and hold fire, waits one hour,
 then makes the unit selectable. The gate stays outside player control and does not count as
 "alive" for `AllUnitsKilled`.
 

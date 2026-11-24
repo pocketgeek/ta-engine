@@ -1503,7 +1503,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             if (const char* be = ta::devEnv("TA_BENCH")) {   // headless: benchmark run
                 int lv = std::atoi(be);                        // TA_BENCH=<level 1..6>, default High
                 benchmarkLevel_ = (lv >= 1 && lv <= ta::sim::kBenchLevels) ? lv : 3;
-                benchmarkMode_ = true;                         // (forces watch + 8 AI + cap 8 + Ulasem below)
+                benchmarkMode_ = true;                         // (forces watch + 8 AI + cap 8 + Painted Desert below)
             }
             // The Benchmark runs with no mod packs at all (a menu run already applied this).
             if (benchmarkMode_) ta::applyBenchmarkMods(mods_, mp_);
@@ -1551,7 +1551,7 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
             // TA_MP_WATCH: host creates the game as a spectator (no slot) so every
             // slot can be an AI -- an all-AI game to watch.
             if (benchmarkMode_) o.benchmark = uint8_t(benchmarkLevel_);   // menu Benchmark: intensity level
-            // Benchmark is an all-AI WATCH run (host takes no slot) on Ulasem Arena, forced
+            // Benchmark is an all-AI WATCH run (host takes no slot) on Painted Desert, forced
             // to 8 slots regardless of the map's start-position count (setupMatch synthesises
             // the extra starts), private (not in the browser).
             bool watch = (autoMode == 1 && ta::devEnv("TA_MP_WATCH")) || benchmarkMode_;
@@ -1576,8 +1576,9 @@ void GameView::autoplayHelpStep(const std::function<uint32_t()>& rnd) {
                     }
             }
             uint8_t cap = (autoMode == 8 || benchmarkMode_) ? ta::net::kMaxSlots : mpCapacity(o.mapScenario != 0);
-            // Exact stem match (findMap): the map file is "ulasem arena.tnt".
-            std::string createMap = benchmarkMode_ ? std::string("Ulasem Arena") : mapId;
+            // Exact stem match (findMap): the map file is "painted desert.tnt" (a 19x19 map
+            // with eight start positions).
+            std::string createMap = benchmarkMode_ ? std::string("Painted Desert") : mapId;
             mp_->createGame(benchmarkMode_ ? "Benchmark" : (priv ? "Single Player" : "headless"),
                             "", createMap, o, cap, watch, priv, mission);
         } else if (st == S::Lobby && autoMode == 6) {

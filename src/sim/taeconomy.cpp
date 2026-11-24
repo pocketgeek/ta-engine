@@ -163,6 +163,9 @@ void World::taSettle(int player) {
     }
     sums.add(P.own);
     if (P.hasBase) { P.cap[E] += P.base[E]; P.cap[M] += P.base[M]; }
+    // A map scenario's resource limit (action 16, applyScenarioResourceAction)
+    // replaces both stores' capacity until action 20 lifts it.
+    if (const float limit = players_[size_t(player)].scenarioResourceLimit; limit > 0) P.cap[E] = P.cap[M] = limit;
     const Fractions f = pay(P, sums);
     for (auto& u : units_)
         if (u.player == player && u.alive() && u.type) roll(u.books.r, f);

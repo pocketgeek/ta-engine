@@ -64,8 +64,8 @@ def main():
            ["group A 0 a 50 rect 100 70 124 94 pitch=2 weapons=on", "group T 1 tgt 1 cells 160,80 weapons=off",
             "group M 0 m 50 rect 12 62 42 98 pitch=3"],
            ["at 1 attack A @T", "at 1500 move M 235 80"], note="50 attackers, 50 movers")
-    types = ["araarch", "araking", "arasmith", "crechie", "cretort", "lifwolf", "npcayla", "npcduma", "npchunt",
-             "npcpeas2", "npcshop", "tarfire"]
+    types = ["armbull", "armflash", "armham", "armpw", "armrock", "armstump", "armzeus", "corak", "corraid",
+             "correap", "corthud", "cortruck"]   # motion-cross.scn's twelve TA types
     groups, orders = [], []
     k = 0
     for row in range(13):

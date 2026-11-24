@@ -2,7 +2,9 @@
 #include <cstdint>
 
 namespace ta {
-// KINGDOMS.icd 50abf0: global AlarmMon, priority 7, 15000 ms cooldown.
+// The local commander-under-attack alert (the sound: GameView, the class's underattack
+// slot). Priority 7 and the 15000 ms cooldown are KINGDOMS.icd 50abf0 (AlarmMon),
+// unverified for TotalA.exe.
 struct MonarchAlert {
     uint64_t nextMs = 0;
     bool admit(uint8_t attackedPlayers, int localPlayer, bool spectator, uint64_t nowMs) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ulasem_counters -- the live 8-AI Ulasem benchmark's Legion counters, per unit-tick.
+"""bench_counters -- the live 8-AI benchmark (Painted Desert)'s Legion counters, per unit-tick.
 
 W4 gates B1/B2/B3 on counters of the live benchmark (PLAN 3.0, 4 W4): relaxations
 (field_work) per unit-tick, refresh_idle, the field-quota peg run, churn per
@@ -8,10 +8,10 @@ environment of taserver and of the headless taclient, debug build) and
 reduces them; the counters are deterministic, so the referee's and the
 client's lines are equal and any platform gives the same numbers.
 
-  ulasem_counters.py LOG [LOG...]              print each log's reduction
-  ulasem_counters.py --save OUT.json LOG...    ... and write {seed-keyed} JSON
+  bench_counters.py LOG [LOG...]              print each log's reduction
+  bench_counters.py --save OUT.json LOG...    ... and write {seed-keyed} JSON
                                                (the file's name stem, e.g. srv-s1-l1.log -> "s1")
-  ulasem_counters.py --base BASE.json LOG...   ... and print the ratio to BASE per seed
+  bench_counters.py --base BASE.json LOG...   ... and print the ratio to BASE per seed
 
 Units: unit-ticks is the integral of the probe's `units` (World unit slots, dead
 ones until compacted) over the run, trapezoid between probes 100 ticks apart.
@@ -21,7 +21,7 @@ bins are field_work and the legion work classes' deltas per 1500 ticks.
 How the run is made (tools/desync-hunt.sh pattern; seeds 0/1/2):
   TA_LPROBE=100 taserver --port P --data D --no-auth --local --seed S &
   TA_HEADLESS=1 SDL_VIDEODRIVER=dummy TA_MP_AIS=7 TA_BENCH=4 TA_LEGION=1 TA_LPROBE=100 \\
-      taclient game "Ulasem Arena" --data D --server 127.0.0.1 --serverport P --mphost --time 240
+      taclient game "Painted Desert" --data D --server 127.0.0.1 --serverport P --mphost --time 240
 """
 import json
 import os

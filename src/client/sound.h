@@ -893,9 +893,8 @@ private:
     }
 
 public:
-    // Begin playing a shuffled playlist of the given track numbers (a
-    // faction's tracks, per sidedata.tdf). Empty = all 20. `dataRoot` is
-    // the extracted data dir; music may live there or in the game install.
+    // Begin playing a shuffled playlist of the given logical tracks (track L is
+    // music/(L+1).mp3, docs/retail-music.md). Empty = all 16.
     // `custom` false plays the originals only (the lobby: CUSTOM MUSIC is for games).
     void startMusic(const ta::hpi::Vfs& vfs, const std::vector<int>& tracks, bool custom = true) {
         vfs_ = &vfs;
@@ -903,11 +902,11 @@ public:
         musicCustom_ = custom;
         std::vector<int> want = tracks;
         if (want.empty())
-            for (int i = 1; i <= 20; ++i) want.push_back(i);
+            for (int i = 1; i <= ta::music::kLogicalTracks; ++i) want.push_back(i);
         for (int n : want)   // an original the install has, or a custom file for it
-            if (vfs.has("music/track" + std::to_string(n) + ".wav") || (custom && !ta::music::customFile(n).empty()))
+            if (vfs.has("music/" + std::to_string(n + 1) + ".mp3") || (custom && !ta::music::customFile(n).empty()))
                 playlist_.push_back(n);
-        std::fprintf(stderr, "music: %zu faction tracks, audio=%s\n", playlist_.size(),
+        std::fprintf(stderr, "music: %zu tracks, audio=%s\n", playlist_.size(),
                      dev_ ? "yes" : "NO DEVICE");
         if (!playlist_.empty() && dev_) {
             std::shuffle(playlist_.begin(), playlist_.end(),
@@ -1025,7 +1024,7 @@ private:
     int voiceLimit_ = kRetailVoices;   // channels_[0, voiceLimit_) take new sounds
     bool evenOut_ = false;             // EVEN OUT SOUND LEVELS
     uint64_t soundSequence_=0;
-    std::vector<int> playlist_;    // original track numbers (music/track<n>.wav)
+    std::vector<int> playlist_;    // logical track numbers (music/(L+1).mp3)
     std::future<std::optional<ta::music::Pcm16>> nextMusic_;   // the next track, decoding
     size_t nextMusicIdx_ = 0;
     Pcm music_;                    // the current track, at its own rate and channels

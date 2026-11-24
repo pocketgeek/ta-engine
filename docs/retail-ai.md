@@ -64,7 +64,8 @@ waves planned against a timeline, and no base-layout planner. It consists of:
   - 0x10000000 exists.
   - 0x20000000 static (bmcode == 0).
   - 0x80000000 armed: the unit type has a weapon (type bit 0x10000, set at 0x42cf0c).
-  - 0x40000/0x80000 fire-state field; 0x100000/0x200000 move-state field (copied from
+  - 0x40000/0x80000 move-state field (bits 18-19); 0x100000/0x200000 fire-state field
+    (bits 20-21; retail-weapon-scripts.md §8, InitialMission `o` 0x487c9d) (copied from
     standingfire/moveorder at 0x485c90). [S]
 
 **Unit type (0x249 bytes).** FBI key to offset, from the loader at 0x42bf40: [C]

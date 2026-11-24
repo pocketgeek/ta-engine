@@ -15,9 +15,13 @@ namespace ta::hpi { class Vfs; }
 
 namespace ta {
 
+// A side's emblem: sequence factionLogoSequence(side) of anims/<kFactionLogoGaf>.gaf,
+// frame = the player's colour slot (TA's logos.gaf: Arm32Lt / Core32Lt, ten colours
+// each). Empty for a side with no emblem there (a mod's own).
+inline constexpr const char* kFactionLogoGaf = "logos";
 std::string factionLogoSequence(std::string side);
-// The same side names as a faction index, 0=ara 1=tar 2=ver 3=zon 4=cre (the result
-// screen's victory<race>.gui plates, ResultStats::faction); -1 for any other name.
+// A side name or prefix (ARM / CORE / COR, any case) as its gamedata/sidedata.tdf
+// index (ta::sides::find; ResultStats::faction); -1 for any other name.
 int factionIndex(const std::string& side);
 
 // Palette for `anims/<gaf>.gaf`: its sibling .pcx if present, else the shared GUI

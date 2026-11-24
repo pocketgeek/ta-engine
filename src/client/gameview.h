@@ -167,8 +167,8 @@ class GameView {
 public:
 #ifndef NDEBUG
     struct FactionKit {
-        const char* monarch;   // hero commander the faction starts with
-        const char* keep;      // production building the monarch builds first
+        const char* monarch;   // the side's commander
+        const char* keep;      // the factory the commander builds first
         const char* lode;
         const char* builder;
         const char* squad[4];
@@ -779,10 +779,6 @@ public:
     void amphibDemo();
 
     void navyDemo();
-
-    void creonDemo();
-
-    void missionTest();
 
     void testBuild();
 
@@ -4041,13 +4037,6 @@ private:
     void loadFeatures();
     // Scatter retail wave sprites along the coast (display only; see the impl).
     void addShorelineWaves();
-
-    // Track numbers for a side from gamedata/sidedata.tdf (falls back to IP).
-    std::vector<int> factionMusicTracks(const std::string& side);
-
-    // Every faction's music tracks (deduped), for a SPECTATOR -- who has no side of their
-    // own, so their in-game music draws from all factions' playlists (startMusic shuffles).
-    std::vector<int> allFactionMusicTracks();
 
     void loadPanel(const std::string& side);
     void loadInterfaceFonts();

@@ -126,7 +126,7 @@ struct Settings {
     std::string audioDevice;       // output device NAME; "" = system default. Falls back
                                    // to system default if the saved name is gone at startup.
     // CUSTOM MUSIC (the AUDIO page): the player's own file for an original track, by its
-    // number (music/track<n>.wav), played wherever that track would be -- title screen,
+    // number (logical track L, music/(L+1).mp3), played wherever that track would be -- title screen,
     // lobby, in game. A track with none plays the original (the default for all).
     std::map<int, std::string> customMusicTracks;
 

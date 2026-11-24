@@ -1,28 +1,25 @@
 #include "client/guiart.h"
+#include <algorithm>
 #include <cctype>
 
 #include "client/gpuvram.h"
 #include "client/artscale.h"
 #include "hpi/hpi.h"
+#include "sim/sides.h"
 
 namespace ta {
 
 std::string factionLogoSequence(std::string side) {
-    std::transform(side.begin(), side.end(), side.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-    if (side == "aramon" || side == "ara") return "AraTeam";
-    if (side == "taros" || side == "tar") return "TarTeam";
-    if (side == "veruna" || side == "ver") return "VerTeam";
-    if (side == "zhon" || side == "zon") return "ZonTeam";
-    if (side == "creon" || side == "cre") return "CreTeam";
+    const int i = sides::find(side);
+    if (i < 0) return {};
+    std::string name = sides::at(i).name;
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
+    if (name == "ARM") return "Arm32Lt";
+    if (name == "CORE") return "Core32Lt";
     return {};
 }
 
-int factionIndex(const std::string& side) {
-    static const char* const kSequences[5] = {"AraTeam", "TarTeam", "VerTeam", "ZonTeam", "CreTeam"};
-    const std::string sequence = factionLogoSequence(side);
-    for (int i = 0; i < 5; ++i) if (sequence == kSequences[i]) return i;
-    return -1;
-}
+int factionIndex(const std::string& side) { return sides::find(side); }
 
 
 gaf::Palette guiPalette(const hpi::Vfs& vfs, const std::string& gafName) {

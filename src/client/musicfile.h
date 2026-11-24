@@ -1,7 +1,7 @@
 #pragma once
 
 // Music: decoding, and CUSTOM MUSIC (the AUDIO page). Every original track the game plays
-// -- music/track<n>.wav: the title screen and lobby's, each side's in game -- is loaded
+// -- logical CD track L, music/(L+1).mp3 (docs/retail-music.md) -- is loaded
 // through loadTrack(), which plays the player's own file for that track when one is
 // chosen, and the original otherwise (or when the file will not play).
 // Display only: nothing here reaches the simulation or another player.
@@ -35,16 +35,19 @@ void setCustom(const std::map<int, std::string>& tracks);
 std::string customFile(int track);
 
 // Original track n, ready to play: the custom file if one is set and decodes (and
-// `custom` allows it), else music/track<n>.wav from the VFS. nullopt when neither plays.
+// `custom` allows it), else music/(n+1).mp3 from the VFS. nullopt when neither plays.
 std::optional<Pcm16> loadTrack(const hpi::Vfs& vfs, int track, int maxRate, bool custom = true);
 
-// Each side's original tracks, as this install lists them (gamedata/sidedata.tdf
-// musictracks), in that file's order: ARAMON, TAROS, ... .
+// The original tracks this install has, by retail's default category (a group's
+// `side` is its name: BATTLE then BUILDING), logical track numbers in order.
 struct SideTracks {
     std::string side;
     std::vector<int> tracks;
 };
 std::vector<SideTracks> sideTracks(const hpi::Vfs& vfs);
+
+// Retail's music library: 16 logical CD tracks (docs/retail-music.md section 1).
+constexpr int kLogicalTracks = 16;
 
 // The track the title screen and the lobby play. They always play the original:
 // a custom file for it plays only in games.

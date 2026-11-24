@@ -34,16 +34,16 @@ struct ResultRow {
     std::string side; // Faction emblem; colorSlot selects its player-color frame.
 };
 
-// The victory plate for a side that is none of the five races, which has none of its
-// own (a mod's side): Aramon's.
-inline constexpr int kPlateFallback = 0;
+// The plate for a side with none of its own: the shared TA plate (bitmaps/outcome0.pcx).
+inline constexpr int kPlateFallback = -1;
 
 // Everything the screen needs beyond the win/lose flag.
 struct ResultStats {
     std::vector<ResultRow> rows;
-    int faction = kPlateFallback;   // local player's faction (0=ara 1=tar 2=ver 3=zon 4=cre)
-                                    // -- picks which victory<race>.gui plate is shown; a
-                                    // watcher's is its winner's (GameView::resultStats)
+    int faction = kPlateFallback;   // local player's side (ta::sides index: 0 ARM, 1 CORE)
+                                    // -- a data set's victory<prefix>.gui plate, if it
+                                    // ships one; a watcher's is its winner's
+                                    // (GameView::resultStats)
     int matchSec = 0;
     // A watcher's plate (GameView::resultStats): the line naming the winner, drawn above
     // the title band where a campaign shows the mission name, and the band's word when

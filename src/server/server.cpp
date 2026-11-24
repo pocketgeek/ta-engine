@@ -330,6 +330,12 @@ struct Room {
     // else from its map package. Classic's stays empty (its brain bakes ai/default.txt
     // itself). Set at start; a Controller holds a reference, so they live with the room.
     std::array<ta::ai::Profile, ta::ai::kAiLevels> aiProfiles;
+    // The TA AI's setup every computer seat gets at the start, kept for a seat the
+    // AI takes over later (takeOver): the map's (or mission's) aiprofile script and
+    // the map's start table. classicMission: the mission's Player<N> lines, by slot.
+    ta::ai::ClassicProfileScript classicProfile;
+    std::vector<std::pair<float, float>> classicStarts;
+    std::vector<std::string> classicMission;
 
     std::string mission;           // campaign mission stem (empty = ordinary skirmish/MP)
     GameOptions opts;
@@ -2443,6 +2449,9 @@ void Server::tryStart(Client& c) {
                     r->ai.back().setClassicCampaign(size_t(slot) < ms.playerDefs.size()
                                                         ? ms.playerDefs[size_t(slot)] : std::string());
                 }
+                r->classicProfile = classicProfile;
+                r->classicStarts = classicStarts;
+                r->classicMission = ms.playerDefs;
                 r->slotPos = ms.slotPos;
                 if (!ms.aiSlots.empty())
                     std::fprintf(stderr, "taserver: mission '%s' -- %zu strategic AI player(s)%s DEFAULT AI (%s)\n",
@@ -2524,6 +2533,18 @@ void Server::tryStart(Client& c) {
                         r->ai.back().setClassicStart(start, slotPos[size_t(i)].first, slotPos[size_t(i)].second);
                     }
                 }
+            // A seat the AI takes over later (takeOver) is set up from the same profile
+            // and start table.
+            if (!classicProfile)
+                classicProfile = classicProfileFor(*r, ta::ai::classicMapAiProfile(*cfg.vfs, mapPath),
+                                                   *cfg.vfs, !r->mapVfs);
+            if (!classicStarts) {
+                classicStarts = ta::sim::parseStartPositions(*cfg.vfs, mapPath);
+                if (classicStarts->empty()) classicStarts = spots;
+            }
+            r->classicProfile = *classicProfile;
+            r->classicStarts = *classicStarts;
+            r->classicMission.clear();
             if (r->ref->hasScenarioOutcomes())
                 std::fprintf(stderr, "game %u: plays its map scenario (%s) -- %zu units at the start\n", r->id,
                              r->opts.mapScenario ? "MAP SCENARIO" : "Test Map copy", r->ref->units().size());
@@ -3537,6 +3558,26 @@ void Server::takeOver(Room& r, int slot) {
                           r.seed + uint32_t(slot),
                           ta::ai::Difficulty::Normal, std::move(enemyStarts));
         r.ai.back().setStartSpots(aiStartSpots(r, slot));
+        // The setup a computer seat gets at the match start (tryStart): the map's (or
+        // mission's) aiprofile script, the start table, and this seat's own start.
+        // Without the profile the TA AI knows no build preferences and builds nothing.
+        auto& ai = r.ai.back();
+        ai.setClassicProfile(r.classicProfile);
+        if (!r.classicMission.empty()) {
+            ai.setClassicStarts(r.classicStarts);
+            ai.setClassicCampaign(size_t(slot) < r.classicMission.size() ? r.classicMission[size_t(slot)]
+                                                                         : std::string());
+        } else {
+            std::vector<std::pair<float, float>> table = r.classicStarts;
+            const std::pair<float, float> own = size_t(slot) < r.slotPos.size() ? r.slotPos[size_t(slot)]
+                                                                                  : std::pair<float, float>{0, 0};
+            int start = -1;
+            for (size_t k = 0; k < table.size() && start < 0; ++k)
+                if (table[k] == own) start = int(k);
+            if (start < 0) { start = int(table.size()); table.push_back(own); }
+            ai.setClassicStarts(table);
+            ai.setClassicStart(start, own.first, own.second);
+        }
     }
     std::fprintf(stderr, "game %u: player %d stopped communicating -- AI (Normal) takes over\n", r.id, slot);
     // The host's seat is gone for good: its powers pass on, and the room is told.

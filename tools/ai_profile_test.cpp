@@ -55,8 +55,8 @@ static std::string firstDifference(const ai::Profile& want, const ai::Profile& g
 
 static void tables() {
     const auto& normal = ai::builtinProfile(ai::Difficulty::Normal);
-    check(normal.weight.size() == 146 && normal.limit.size() == 146, "the built-in table holds 146 units, weight + limit each");
-    check(normal.weight.at("aradrag") == 25 && normal.limit.at("aradrag") == 1, "an entry reads back (aradrag 25 / 1)");
+    check(normal.weight.empty() && normal.limit.empty(),
+          "the built-in table is empty (TA has no per-unit default table; every level runs TA's own AI)");
     // Behaviour must not change yet: every level still plays the profile it was tuned on.
     for (uint8_t level = 0; level < ai::kAiLevels; ++level) {
         const auto d = ai::Difficulty(level);
@@ -83,11 +83,6 @@ static void tables() {
     ai::applyProfileText("// comment\r\nweight ArmPW 3\r\nlimit armpw 0\nlimit armpw 2 trailing\nplan x 1\n/weight armfig 9\nweight armfig\n", p);
     check(p.weight.size() == 1 && p.weight.at("armpw") == 3 && p.limit.size() == 1 && p.limit.at("armpw") == 2,
           "line format: lowercased units, CRLF, later line wins, comments/other keywords/short lines skipped");
-    ai::Profile tower;
-    ai::applyProfileText("weight AraSeige 3\nlimit arasiege 5\n", tower);
-    check(tower.weight.size() == 1 && tower.weight.at("arasiege") == 3 && tower.limit.at("arasiege") == 5 &&
-          ai::builtinProfile(ai::Difficulty::Normal).limit.at("arasiege") == 10,
-          "the Rolling Tower reads under either spelling (the shipped files say araseige); the built-in limit is 10");
 }
 
 static void put(const std::filesystem::path& file, const std::string& text) {

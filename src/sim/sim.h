@@ -2185,7 +2185,7 @@ struct Player {
         if (mana <= 0) return 0.0;
         return std::min(constructionAllocation, mana / cost);
     }
-    float scenarioResourceLimit = 0; // CRT override: positive values also suppress natural income
+    float scenarioResourceLimit = 0; // map scenario action 16: caps both TA stores (taSettle)
     float storage = 0;   // recomputed each tick from alive units
     float income = 0;
     float manaCapacity() const {
@@ -3375,10 +3375,11 @@ public:
     // Drop a unit's queued route search (orders given to a unit still aboard
     // ask for their routes when they come up after the unload).
     void cancelRoute(int unitId) { if (Unit* u = unit(unitId)) cancelPath(*u); }
-    // SetMission "o A" (Standing_UnitOrder 0x5198a0: 2 offensive, 1 defensive,
-    // 0 passive, both fields at once) and "o A B" (move field A and fire field
-    // B directly, the shown order unchanged). Retail checks only that the unit
-    // lives: no unitstandorders gate and no effect on its missions.
+    // SetMission "o A" (Standing_UnitOrder 0x5198a0, KINGDOMS.icd: 2 offensive,
+    // 1 defensive, 0 passive, both fields at once; no TA clause uses it).
+    // scriptStandingFields: InitialMission "o A B" (TotalA.exe 0x487c9d): move
+    // state A (unit+0x110 bits 18-19) and fire state B (bits 20-21), each 0..3,
+    // the shown order unchanged; only that the unit lives is checked.
     void scriptStandingOrder(int unitId, int order);
     void scriptStandingFields(int unitId, int move, int fire);
     // SetMission "v F": the fixed veterancy multiplier (Unit::vetOverride); 0 ends it.

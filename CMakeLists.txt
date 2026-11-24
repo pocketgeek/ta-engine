@@ -1419,6 +1419,9 @@ target_link_libraries(pathsearch_test PRIVATE ta-formats)
 target_link_libraries(pathgeom_test PRIVATE ta-formats)
 target_link_libraries(ambush_test PRIVATE ta-formats)
 target_link_libraries(mission_orders_test PRIVATE ta-formats)
+# The order strings on a synthetic TA fixture (scratch FBIs, weapons/*.tdf, download/*.tdf),
+# no install needed; mission_orders_shipped reads the retail missions.
+add_test(NAME mission_orders COMMAND mission_orders_test)
 target_link_libraries(cadence_test PRIVATE ta-formats)
 target_link_libraries(crowdbench PRIVATE ta-formats)
 target_link_libraries(cobanim_test PRIVATE ta-formats)
@@ -1696,77 +1699,41 @@ if(TA_TEST_DATA)
     # The Release client intentionally strips the local game/dev command path.
     # Keep this headless client integration fixture in Debug configurations.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_test(NAME idle_builders COMMAND taclient game "Ulasem Arena"
+        add_test(NAME idle_builders COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/idle-builders-test.png")
         set_tests_properties(idle_builders PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_IDLE_BUILDERS_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: idle builders strip"
             TIMEOUT 60)
-        add_test(NAME diplomacy_ui COMMAND taclient game "Ulasem Arena"
+        add_test(NAME diplomacy_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/diplomacy-test.png")
         set_tests_properties(diplomacy_ui PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_DIPLOMACY_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: diplomacy hotkey, roster, defaults, checkboxes, voice column, volume sliders"
             TIMEOUT 60)
-        # The result plate's buttons play their .gui clicks (defeat.gui / victory<race>.gui:
-        # MainMenu cancel.wav, Proceed ok.wav) on the press, like the title menu's.
+        # The result plate's buttons (TA's outcome0.pcx plate, which has no .gui) play
+        # retail's big-button click, BIGBUTTON = butmain1 (allsound.tdf), on the press.
         foreach(result_press IN ITEMS menu proceed)
             set(result_env "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_RESULT_PRESS=${result_press};TA_SHOT_RESULT=${CMAKE_CURRENT_BINARY_DIR}/result-click-${result_press}.png;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile/settings.ini")
             if(result_press STREQUAL "menu")
-                set(result_pass "result click: choice=0 sound=cancel.wav queued=1")
+                set(result_pass "result click: choice=0 sound=butmain1.wav queued=1")
             else()
                 list(APPEND result_env "TA_SHOT_RESULT_LOSE=1")   # a lost mission's Proceed is Retry
-                set(result_pass "result click: choice=1 sound=ok.wav queued=1")
+                set(result_pass "result click: choice=1 sound=butmain1.wav queued=1")
             endif()
             add_test(NAME result_click_${result_press} COMMAND taclient --data "${TA_TEST_DATA}")
             set_tests_properties(result_click_${result_press} PROPERTIES ENVIRONMENT "${result_env}"
                 PASS_REGULAR_EXPRESSION "${result_pass}" TIMEOUT 60)
         endforeach()
-        add_test(NAME retirement_ui COMMAND taclient game "Ulasem Arena"
+        add_test(NAME retirement_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/retirement-ui.png")
         set_tests_properties(retirement_ui PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_DIPLOMACY_TEST=1;TA_RETIREMENT_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: diplomacy hotkey, roster, defaults, checkboxes, voice column, volume sliders"
             TIMEOUT 60)
-        add_test(NAME script_transient COMMAND taclient game "ulasem arena"
-            --data "${TA_TEST_DATA}" --firetest --nofog --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/script-transient-test.png")
-        set_tests_properties(script_transient PROPERTIES ENVIRONMENT
-            "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_SCRIPT_TRANSIENT_TEST=1")
-        add_test(NAME script_transient_263 COMMAND taclient game "Lake Lokken"
-            --data "${TA_TEST_DATA}" --firetest --nofog --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/script-transient-263-test.png")
-        set_tests_properties(script_transient_263 PROPERTIES ENVIRONMENT
-            "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_SCRIPT_263_TEST=1")
-        # Killed/Dying sounds as the simulation chose them, through the client's
-        # sound drain: exactly per death, never doubled, fog/class gated, at the
-        # authored cry rates and variants for every Creon caller.
-        add_test(NAME creon_death_sound COMMAND taclient game "Ulasem Arena"
-            --data "${TA_TEST_DATA}" --firetest --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-test.png")
-        set_tests_properties(creon_death_sound PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_CREON_DEATH_SOUND_TEST=1;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-profile/settings.ini"
-            PASS_REGULAR_EXPRESSION "PASS: Creon death sounds are the simulation's"
-            TIMEOUT 120)
-        # The same game again beside a peer that presents every batch late (a
-        # rejoin or spectator catch-up): both must hear the same death sounds.
-        add_test(NAME creon_death_sound_peers COMMAND ${CMAKE_COMMAND} "-DCLIENT=$<TARGET_FILE:taclient>"
-            "-DDATA=${TA_TEST_DATA}" "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers"
-            -P "${CMAKE_SOURCE_DIR}/tools/creon_death_sound.cmake")
-        set_tests_properties(creon_death_sound_peers PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers-profile/settings.ini"
-            PASS_REGULAR_EXPRESSION "PASS: both peers hear the simulation's Creon death sounds"
-            TIMEOUT 240)
-        add_test(NAME weapon_impact_effect_route COMMAND taclient game "Lake Lokken"
-            --data "${TA_TEST_DATA}" --firetest --nofog --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/weapon-impact-effect-test.png")
-        set_tests_properties(weapon_impact_effect_route PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_WEAPON_IMPACT_EFFECT_TEST=1"
-            PASS_REGULAR_EXPRESSION "PASS: Arapult land/water authored impact variants"
-            TIMEOUT 120)
     endif()
 endif()
 # Data-gated Legion scenarios (need the install; label data;nightly). The motion
@@ -2304,17 +2271,9 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_CURSOR_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/ui-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/ui-test-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/build-controls.png")
       set_tests_properties(build_controls PROPERTIES TIMEOUT 90)
-      add_test(NAME gate_pick COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_GATE_PICK_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/gate-pick-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/gate-pick-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/gate-pick.png")
-      set_tests_properties(gate_pick PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: every gate \\(4 types\\)")
       # Cursor picking (perf follow-up C): a unit live before its type's model loads (the
       # registration budget) gets the fallback hit box cached by the cursor pass, as a scan
       # over every unit does, though the pointer is nowhere near it.
@@ -2322,18 +2281,18 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_PICK_LATE_MODEL_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/pick-late-model-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/pick-late-model-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/pick-late-model.png")
       set_tests_properties(pick_late_model PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: late model pick leaves the full scan's hit-box cache")
       # Clear orders fan out to every selected reclaimer (box, right-click, armed
-      # CLEAR; Shift per unit, a soldier untouched), and Inner Circle's one
-      # overlapped map feature (removed at load) is not drawn.
+      # CLEAR; Shift per unit, a soldier untouched), and a map feature removed at load
+      # (an overlapped one) is not drawn.
       add_test(NAME reclaim_fanout COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_RECLAIM_FANOUT_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/reclaim-fanout-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/reclaim-fanout-profile
-          $<TARGET_FILE:taclient> game "Inner Circle" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/reclaim-fanout.png")
       set_tests_properties(reclaim_fanout PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: reclaim fan-out to every selected reclaimer")
@@ -2344,43 +2303,17 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_CLICK_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/click-input-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/click-input-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/click-input.png")
       set_tests_properties(click_input PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: clicks all")
-      add_test(NAME output_stance_hud COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_OUTPUT_STANCE_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/output-stance-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/output-stance-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/output-stance.png")
-      set_tests_properties(output_stance_hud PROPERTIES TIMEOUT 120
-          PASS_REGULAR_EXPRESSION "PASS: output stance: its new unit starts Passive")
-      # Units that die petrified or frozen stand as statues in stone or ice
-      # (the side's stoneanim/frozenanim texture on every face), not their colours.
-      add_test(NAME statue_texture COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_STATUE_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/statue-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/statue-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 900 600 --shot "${CMAKE_CURRENT_BINARY_DIR}/statue.png")
-      set_tests_properties(statue_texture PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: statue: the petrified archer is drawn in stone")
-      add_test(NAME area_build_ghosts COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AREA_GHOST_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-ghost-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-ghost-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/area-ghosts.png")
-      set_tests_properties(area_build_ghosts PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: an area lodestone job ghosts every deposit")
       # Destination markers: every unit of a mixed-speed Legion move shows its own spot,
       # flashed after the order and held under Shift (GameView::drawUnitSpots).
       add_test(NAME unit_spot_markers COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_UNIT_SPOTS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/unit-spots.png")
       set_tests_properties(unit_spot_markers PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: every unit of a mixed Legion move shows its own spot")
@@ -2388,7 +2321,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AREA_DRAG_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-drag-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-drag-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/area-drag.png")
       set_tests_properties(area_drag_input PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: area drag threshold")
@@ -2397,7 +2330,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_SELFDESTRUCT_NOTICE_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/selfdestruct-notice-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/selfdestruct-notice-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/selfdestruct-notice.png")
       set_tests_properties(selfdestruct_notice PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: self-destruct notice follows the countdown")
@@ -2407,12 +2340,12 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_BUILDLINE_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-test-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/buildline.png")
       set_tests_properties(buildline_harness PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "PASS: [0-9]+ shift-drag lines")
-      # Chained shift-drags for one monarch (TA_BUILDLINE_CHAIN=type/gap/builder/drags):
-      # a U with the builder between its arms, a closed box from outside, a tower V,
+      # Chained shift-drags for one construction kbot (TA_BUILDLINE_CHAIN=type/gap/builder/drags):
+      # a U of Dragon's Teeth with the builder between its arms, a closed box from outside, an LLT V,
       # and a line doubling back along the last. Every distinct site gets built.
       foreach(_chain u=0/0/450,40/400,0/0,300/-400,0
                      box=0/0/-60,-80/400,0/0,300/-400,0/0,-300
@@ -2424,18 +2357,18 @@ if(TA_BUILD_CLIENT)
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_BUILDLINE_CHAIN=${_spec}
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-chain-${_name}
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-chain-${_name}
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/buildline-chain-${_name}.png")
         set_tests_properties(buildline_chain_${_name} PROPERTIES TIMEOUT 300
             PASS_REGULAR_EXPRESSION "PASS: build-line chain")
       endforeach()
       add_test(NAME render_texture_reuse COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
-          TA_SHADOW_BENCH=16 TA_SHADOW_BENCH_TYPE=arakeep TA_PROFILE_ZOOM=0.5
+          TA_SHADOW_BENCH=16 TA_SHADOW_BENCH_TYPE=armrad TA_PROFILE_ZOOM=0.5
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=180 TA_GEOMETRY_VERIFY=1 TA_REQUIRE_GEOMETRY_REUSE=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/render-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/render-test-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --novsync)
       set_tests_properties(render_texture_reuse PROPERTIES TIMEOUT 90)
       # Workstream M: every structure type at zoom 0.5 (distant-image bakes), construction
@@ -2450,7 +2383,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=300 TA_REQUIRE_PALETTE=1 TA_GEOMETRY_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/render-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/render-test-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --novsync)
       set_tests_properties(render_palette_indexed PROPERTIES TIMEOUT 120)
       # Workstream N: the same scene with native passes required and every pass's GL
@@ -2465,7 +2398,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=300 TA_REQUIRE_NATIVE_PASS=1 TA_NATIVE_PASS_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/native-pass-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/native-pass-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --novsync)
       set_tests_properties(render_native_pass PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "NATIVE_PASS_OK")
@@ -2478,7 +2411,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=130 TA_RENDER_RESET=45 TA_ATLAS_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/atlas-verify-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/atlas-verify-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --novsync)
       set_tests_properties(render_atlas_verify PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "ATLAS_VERIFY checks=[1-9]")
@@ -2499,7 +2432,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=230 TA_GEOMETRY_VERIFY=1 TA_GEOMETRY_OWNERSHIP_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/geometry-ownership-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/geometry-ownership-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 800 600 --novsync)
       set_tests_properties(render_geometry_ownership PROPERTIES TIMEOUT 180
           PASS_REGULAR_EXPRESSION "OWNERSHIP_VERIFY checks=[1-9][0-9]* acquired=[1-9][0-9]* replaced=[1-9][0-9]* destroyed=[0-9]+ expired=[1-9][0-9]* budget=[0-9]+ trimmed=[1-9]")
@@ -2517,14 +2450,14 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=150 TA_GEOMETRY_VERIFY=1 TA_SHADOW_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/geometry-stages-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/geometry-stages-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 800 600 --novsync)
       set_tests_properties(render_geometry_stages PROPERTIES TIMEOUT 180
           PASS_REGULAR_EXPRESSION "GEOMETRY_STAGES hits=[0-9]+ placement=[1-9][0-9]* material=[1-9][0-9]* single_pass=[1-9]")
       # Shadow silhouette tile reuse in a real scene (workstream E), on SDL's software
       # renderer (TA_SHADOW_ATLAS_SOFTWARE runs the atlas there): a stationary mixed
       # roster with construction, ghosts, flyers and corpses, animated textures with
-      # and without shadow masks (aralode; tarnecro/tarwitch), a veterancy cycle
+      # and without shadow masks (armmex; armcom/corcom), a veterancy cycle
       # (material-only), a whole-pixel pan that pauses (translation and body-only
       # reuse) and render-target resets. Every frame each kept tile must equal a
       # complete re-bake pixel for pixel and every tile the pre-E key kept must be
@@ -2533,12 +2466,12 @@ if(TA_BUILD_CLIENT)
       add_test(NAME render_shadow_cache COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software
           TA_SHADOW_ATLAS_SOFTWARE=1 TA_SHADOW_BENCH=80 TA_PROFILE_ZOOM=1
-          TA_RENDER_ROSTER=araarch,zonter,versword,tarnecro,tarwitch,aralode TA_RENDER_EXTRAS=1
+          TA_RENDER_ROSTER=armpw,corak,armrock,armcom,corcom,armmex TA_RENDER_EXTRAS=1
           TA_RENDER_CAMERA_SNAP=20 TA_RENDER_VETERAN=25 TA_RENDER_RESET=70
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=140 TA_SHADOW_CACHE_VERIFY=1 TA_GEOMETRY_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/shadow-cache-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/shadow-cache-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --novsync)
       set_tests_properties(render_shadow_cache PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "shadow_skipped=[1-9][0-9]*\nSHADOW_CACHE_VERIFY frames=[1-9][0-9]* tiles=[0-9]+ reused=[0-9]+ body=[1-9][0-9]* translated=[1-9]")
@@ -2553,7 +2486,7 @@ if(TA_BUILD_CLIENT)
       add_test(NAME render_schedule COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software
           TA_SHADOW_ATLAS_SOFTWARE=1 TA_SHADOW_BENCH=120 TA_PROFILE_ZOOM=1
-          TA_RENDER_ROSTER=araarch,zonter,versword,tarnecro,tarwitch,aralode TA_RENDER_EXTRAS=1
+          TA_RENDER_ROSTER=armpw,corak,armrock,armcom,corcom,armmex TA_RENDER_EXTRAS=1
           TA_RENDER_MOTION=1 TA_RENDER_CAMERA_SNAP=20 TA_RENDER_VETERAN=25 TA_RENDER_CHURN=30
           TA_RENDER_RESET=70 TA_RENDER_POOL_THREADS=4
           TA_SCHEDULE_GEOMETRY=0,4000,3000 TA_SCHEDULE_SHADOW_CHECK=0,500,100
@@ -2561,7 +2494,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=140 TA_SCHEDULE_VERIFY=1 TA_GEOMETRY_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/schedule-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/schedule-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --novsync)
       set_tests_properties(render_schedule PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "SCHEDULE_VERIFY frames=[1-9][0-9]* geometry_passes=[1-9][0-9]* builds=[1-9][0-9]* parallel_passes=[1-9][0-9]* checks=[1-9][0-9]* prep_passes=[1-9][0-9]* prep_points=[1-9][0-9]* copy_passes=[1-9][0-9]* copy_vertices=[1-9]")
@@ -2580,7 +2513,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=120 TA_DISTANT_VERIFY=1 TA_GEOMETRY_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/distant-lookup-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/distant-lookup-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 800 600 --novsync)
       set_tests_properties(render_distant_lookup PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "DISTANT_VERIFY frames=[1-9][0-9]* deferred=[1-9][0-9]* checked=[1-9][0-9]* catchup=0 late=0")
@@ -2600,18 +2533,21 @@ if(TA_BUILD_CLIENT)
           set(_scene TA_SHADOW_BENCH=300 TA_RENDER_SPACING=120 TA_RENDER_BATTLE=1 TA_RENDER_EXTRAS=1
               TA_RENDER_OVERLAYS=1 TA_PROFILE_FOG=1 TA_RENDER_MOTION=1 TA_RENDER_CAMERA=1
               TA_RENDER_ZOOM=1 TA_RENDER_SHAKE=37 TA_RENDER_CHURN=40 TA_RENDER_EPOCH=90 TA_RENDER_FRAMES=200)
-          set(_expect "health=[1-9][0-9]* selfdestruct=[1-9][0-9]* squads=[1-9][0-9]* ghosts=[1-9]")
+          # selfdestruct= and squads= count the self-destruct and squad-number overlays,
+          # which draw with hudFont_ (fonts/bodfontbody.gaf, a Kingdoms font TA does not
+          # ship): with no font those passes do not run, so they may be 0.
+          set(_expect "health=[1-9][0-9]* selfdestruct=[0-9]+ squads=[0-9]+ ghosts=[1-9]")
         else()
           set(_scene TA_SHADOW_BENCH=3000 TA_RENDER_OVERLAYS=1 TA_PROFILE_ZOOM=1 TA_RENDER_JUMP=15
               TA_RENDER_SHAKE=23 TA_RENDER_FRAMES=120)
-          set(_expect "squads=[1-9]")
+          set(_expect "squads=[0-9]+ ghosts=[1-9]")   # squads: see above
         endif()
         add_test(NAME render_unit_index${_variant} COMMAND ${CMAKE_COMMAND} -E env
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software ${_scene}
             TA_RENDER_STUDY=1 TA_UNIT_INDEX_VERIFY=1
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-index${_variant}-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-index${_variant}-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1024 768 --novsync)
         set_tests_properties(render_unit_index${_variant} PROPERTIES TIMEOUT 300
             PASS_REGULAR_EXPRESSION "UNIT_INDEX_VERIFY frames=[1-9][0-9]* passes=[1-9][0-9]* live=[1-9][0-9]* candidates=[1-9][0-9]* accepted=[1-9][0-9]* .*${_expect}")
@@ -2619,18 +2555,18 @@ if(TA_BUILD_CLIENT)
       # Interactive render cases (perf follow-up measurement B, tools/render_benchmark.py
       # --scenes interactive): one scene with every knob -- the pointer sweeping the
       # view (cursor classified every frame), the army selected, builders with queued
-      # ghosts (half at the far map corner), towers with Archers behind them under
+      # ghosts (half at the far map corner), LLT towers with Peewees behind them under
       # HIDDEN UNITS Fade on the study frame clock, the shadow atlas on the software
       # renderer. Some frame must show all of that work in its telemetry.
       add_test(NAME render_interactive_cases COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software
-          TA_SHADOW_BENCH=400 TA_SHADOW_BENCH_TYPE=araarch TA_RENDER_SPACING=32 TA_PROFILE_ZOOM=1
-          TA_RENDER_COVER=vertower,4 TA_RENDER_FADE_CLOCK=1 TA_HIDDEN_UNITS=fade TA_RENDER_SELECT=all
+          TA_SHADOW_BENCH=400 TA_SHADOW_BENCH_TYPE=armpw TA_RENDER_SPACING=32 TA_PROFILE_ZOOM=1
+          TA_RENDER_COVER=armllt,4 TA_RENDER_FADE_CLOCK=1 TA_HIDDEN_UNITS=fade TA_RENDER_SELECT=all
           TA_RENDER_MOUSE=sweep:0.1,0.1,0.9,0.9 TA_RENDER_GHOSTS=4,6,50 TA_SHADOW_ATLAS_SOFTWARE=1
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=120 TA_PROF=1 TA_PROF_FRAMES=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/interactive-cases-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/interactive-cases-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --novsync)
       set_tests_properties(render_interactive_cases PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "hidden_faded=[1-9][0-9]* cursor_evals=1 cursor_pick_tests=[1-9][0-9]* cursor_pick_hits=[1-9][0-9]* ghosts_queued=[1-9][0-9]* ghost_preps=[1-9][0-9]* hidden_cover_tests=[1-9][0-9]* shadow_demand_px=[1-9]")
@@ -2673,7 +2609,7 @@ if(TA_BUILD_CLIENT)
             TA_RENDER_STUDY=1 TA_RENDER_CURSOR=1 TA_PICK_INDEX_VERIFY=1
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/pick-index${_variant}-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/pick-index${_variant}-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1024 768 --novsync)
         set_tests_properties(render_pick_index${_variant} PROPERTIES TIMEOUT 600
             PASS_REGULAR_EXPRESSION "PICK_INDEX_VERIFY queries=[1-9][0-9]* live=[1-9][0-9]* candidates=[0-9]* hits=[1-9][0-9]* decisions=[1-9][0-9]* ${_bodies}")
@@ -2683,8 +2619,9 @@ if(TA_BUILD_CLIENT)
       # placed-site ghosts of TA_RENDER_EXTRAS and two simulated render-target resets
       # (atlases recreated: the retained ghost geometry must be dropped), plus a ghost
       # of every registry type each frame, on and around the view, half of them
-      # red-washed (TA_GHOST_ALL_TYPES: every model, including those textured from
-      # outside the colour atlas). Every ghost is also collected and sorted afresh:
+      # red-washed (TA_GHOST_ALL_TYPES: every model; TA has none textured from
+      # outside the colour atlas, so no ghost is inexact and none is re-collected for
+      # that, where the Kingdoms data had some). Every ghost is also collected and sorted afresh:
       # retained triangles must equal that reference exactly, and a ghost not drawn
       # must lie wholly outside the clip (TA_GHOST_VERIFY), or draw() throws.
       add_test(NAME render_build_ghosts COMMAND ${CMAKE_COMMAND} -E env
@@ -2694,10 +2631,10 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_GHOST_VERIFY=1 TA_GHOST_ALL_TYPES=1 TA_UNIT_INDEX_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/build-ghosts-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/build-ghosts-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --novsync)
       set_tests_properties(render_build_ghosts PROPERTIES TIMEOUT 300
-          PASS_REGULAR_EXPRESSION "GHOST_VERIFY checked=[1-9][0-9]* hits=[1-9][0-9]* culled=[1-9][0-9]* collected=[1-9][0-9]* inexact=[1-9][0-9]*")
+          PASS_REGULAR_EXPRESSION "GHOST_VERIFY checked=[1-9][0-9]* hits=[1-9][0-9]* culled=[1-9][0-9]* collected=[0-9]+ inexact=[0-9]+")
       # CPU budgets (workstream J) in a real scene: a battle, then a sustained empty
       # view, with short trim windows and tiny terrain budgets. Retained buffers must
       # be trimmed after the demand falls, keep their contents byte for byte, never be
@@ -2713,7 +2650,7 @@ if(TA_BUILD_CLIENT)
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=200 TA_CPU_TRIM_VERIFY=1 TA_GEOMETRY_VERIFY=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/cpu-budget-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/cpu-budget-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
           --testbuild --winsize 800 600 --novsync)
       set_tests_properties(render_cpu_budget PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "CPU_TRIM_VERIFY frames=[1-9][0-9]* trims=[1-9][0-9]* .*content_checks=[1-9][0-9]* .*recovered=[1-9]")
@@ -2722,7 +2659,8 @@ if(TA_BUILD_CLIENT)
       # are drawn by gathering their ranges, so the planner's bookkeeping runs in the
       # real body pass; TA_BODY_ARENA_MIN=1 puts every command in the arena (small
       # segments and distant-image quads by value included). A mixed roster at zoom
-      # 0.5 with a veterancy cycle, deaths/respawns and render-target resets. The base
+      # 0.5 (with the commanders: the four small types alone never drain a rolled-over
+      # storage in _still) with a veterancy cycle, deaths/respawns and render-target resets. The base
       # scene alternates 20 moving / 20 still camera frames (streamed / retained); the
       # _still variant holds the camera on a tight storage (TA_BODY_ARENA_HEADROOM)
       # so it rolls over: commands draw from the draining storage, migrate, and the
@@ -2746,12 +2684,12 @@ if(TA_BUILD_CLIENT)
         add_test(NAME render_body_arena${_variant} COMMAND ${CMAKE_COMMAND} -E env
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software
             TA_BODY_ARENA_SOFTWARE=1 TA_BODY_ARENA_MIN=1 ${_arena_env} TA_DISTANT_SOFTWARE=1
-            TA_SHADOW_BENCH=150 TA_PROFILE_ZOOM=0.5 TA_RENDER_ROSTER=araarch,zonter,versword,aralode
+            TA_SHADOW_BENCH=150 TA_PROFILE_ZOOM=0.5 TA_RENDER_ROSTER=armpw,corak,armrock,armcom,corcom,armmex
             TA_RENDER_VETERAN=25 TA_RENDER_CHURN=40 TA_RENDER_RESET=70
             TA_RENDER_STUDY=1 TA_RENDER_FRAMES=140 TA_BODY_ARENA_VERIFY=1
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/body-arena${_variant}-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/body-arena${_variant}-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
             --testbuild --winsize 800 600 --novsync)
         set_tests_properties(render_body_arena${_variant} PROPERTIES TIMEOUT 300
             PASS_REGULAR_EXPRESSION "BODY_ARENA_VERIFY frames=[1-9][0-9]* commands=[1-9][0-9]* vertices=[0-9]+ retained=[1-9][0-9]* uploaded=[1-9][0-9]* appends=[1-9][0-9]* rebuilds=[1-9][0-9]* .*${_arena_pass}")
@@ -2780,9 +2718,11 @@ if(TA_BUILD_CLIENT)
       # smaller army that the four base pages hold only just: the four-page atlas
       # repacks it when a tile outgrows its cell; with extended pages it adds a
       # page or two instead and keeps its cells (no fallback, no page released).
-      # Its size is tuned to the scene: 52 fitted before units were drawn at
-      # retail's absolute z - (y >> 1) lift (335eb065), after which 52 released an
-      # extended page and repacked twice; 58 holds on both lifts. _off is the
+      # Its size is tuned to the scene: TA's models cast far smaller silhouettes than
+      # the Kingdoms roster these variants were first sized on (80 units then filled
+      # five pages, 58 the _full army), so the army is 240 and _full 210 (190 already
+      # released an extended page). _zoom takes 600: with fewer, every zoomed frame
+      # repacks and nothing is ever evicted. _off is the
       # _extended army with unit shadows switched off at frame 60 (Options SHADOWS):
       # no frame maintains the atlas then, so its extended pages go at once.
       foreach(_variant IN ITEMS "" "_zoom" "_band" "_extended" "_yield" "_full" "_off")
@@ -2791,7 +2731,7 @@ if(TA_BUILD_CLIENT)
               TA_RENDER_SPARSE_OFFSET=5200,5000 TA_RENDER_FRAMES=170)
           set(_expect "kept=[1-9][0-9]* allocs=[1-9][0-9]* compactions=[1-9][0-9]* migrated=[1-9][0-9]* evicted=[0-9]+ page_releases=[1-9].* validated=[1-9]")
         elseif(_variant STREQUAL "_zoom")
-          set(_scene TA_RENDER_ZOOM=1 TA_RENDER_CAMERA=1 TA_RENDER_FRAMES=120)
+          set(_scene TA_SHADOW_BENCH=600 TA_RENDER_ZOOM=1 TA_RENDER_CAMERA=1 TA_RENDER_FRAMES=120)
           set(_expect "kept=[0-9]+ allocs=[1-9][0-9]* compactions=[1-9][0-9]* migrated=[0-9]+ evicted=[1-9][0-9]*.* validated=[1-9]")
         elseif(_variant STREQUAL "_band")
           set(_scene TA_RENDER_SPARSE_AFTER=80 TA_RENDER_SPARSE_OFFSET=5200,5000 TA_RENDER_FRAMES=130
@@ -2802,7 +2742,7 @@ if(TA_BUILD_CLIENT)
               TA_SHADOW_PAGES_MAX=16)
           set(_expect "page_releases=[1-9][0-9]* shrinks=[0-9]+ validated=[1-9][0-9]* page_allocs=[0-9]+ alloc_failures=0 extended_frames=[1-9][0-9]* max_pages=([5-9]|1[0-6]) sheds=0 fallbacks=0 regrow_gap=0 extended_releases=[1-9]")
         elseif(_variant STREQUAL "_full")
-          set(_scene TA_SHADOW_BENCH=58 TA_RENDER_FRAMES=100 TA_RENDER_RESET=0 TA_SHADOW_PAGES_MAX=16)
+          set(_scene TA_SHADOW_BENCH=210 TA_RENDER_FRAMES=100 TA_RENDER_RESET=0 TA_SHADOW_PAGES_MAX=16)
           set(_expect "compactions=[0-1] .* page_releases=0 .* alloc_failures=0 extended_frames=[1-9][0-9]* max_pages=[5-6] sheds=0 fallbacks=0")
         elseif(_variant STREQUAL "_off")
           set(_scene TA_RENDER_FRAMES=80 TA_RENDER_RESET=0 TA_SHADOW_PAGES_MAX=16
@@ -2815,14 +2755,14 @@ if(TA_BUILD_CLIENT)
         endif()
         add_test(NAME render_shadow_atlas${_variant} COMMAND ${CMAKE_COMMAND} -E env
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software
-            TA_SHADOW_ATLAS_SOFTWARE=1 TA_SHADOW_BENCH=80
-            TA_RENDER_ROSTER=araarch,zonter,versword,tarnecro,tarwitch,aralode TA_RENDER_EXTRAS=1
+            TA_SHADOW_ATLAS_SOFTWARE=1 TA_SHADOW_BENCH=240
+            TA_RENDER_ROSTER=armpw,corak,armrock,armcom,corcom,armmex TA_RENDER_EXTRAS=1
             TA_RENDER_VETERAN=25 TA_RENDER_RESET=70 TA_RENDER_CHURN=30 ${_scene}
             TA_SHADOW_PAGE_MAX=288 TA_SHADOW_ATLAS_DELAY_MS=100
             TA_RENDER_STUDY=1 TA_SHADOW_CACHE_VERIFY=1
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/shadow-atlas${_variant}-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/shadow-atlas${_variant}-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Krogoth Encounter" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1024 768 --novsync)
         set_tests_properties(render_shadow_atlas${_variant} PROPERTIES TIMEOUT 300
             PASS_REGULAR_EXPRESSION "SHADOW_CACHE_VERIFY frames=[1-9][0-9]* .* ${_expect}")
@@ -2831,7 +2771,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_TACTICAL_DOTS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/tactical-dots-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/tactical-dots-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/tactical-dots.png")
       set_tests_properties(tactical_dots PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: tactical dots \\(threshold")
@@ -2840,7 +2780,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AIR_OVER_FX_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/air-over-fx-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/air-over-fx-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --shot "${CMAKE_CURRENT_BINARY_DIR}/air-over-fx.png")
       set_tests_properties(air_over_fx PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "PASS: air over fx \\(altitude")
@@ -2850,7 +2790,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_DEPTH_FX_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/depth-fx-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/depth-fx-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/depth-fx.png")
       set_tests_properties(depth_fx PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "PASS: depth fx \\(behind")
@@ -2867,7 +2807,7 @@ if(TA_BUILD_CLIENT)
             TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-settings.ini
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-${_zw}-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-${_zw}-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
             --testbuild --winsize ${_zw} ${_zh} --shot "${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-${_zw}.png")
         set_tests_properties(zoom_floor_${_zw}x${_zh} PROPERTIES TIMEOUT 120
             PASS_REGULAR_EXPRESSION "PASS: zoom floor fits the world view")
@@ -2880,7 +2820,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_HIDDEN_UNITS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/hidden-units-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/hidden-units-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/hidden-units.png")
       set_tests_properties(hidden_units PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: hidden units \\(")
@@ -2891,7 +2831,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_RETAIL_FOG_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/retail-fog-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/retail-fog-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/retail-fog.png")
       set_tests_properties(retail_fog PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: retail fog \\(")
@@ -2899,7 +2839,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_SPECTATOR_BARS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/spectator-bars-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/spectator-bars-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/spectator-bars.png")
       set_tests_properties(spectator_health_bars PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: spectator bars \\(")
@@ -2908,7 +2848,7 @@ if(TA_BUILD_CLIENT)
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_WATCHONLY_TEST=${watch_mode}
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/watch-only-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/watch-only-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/watch-only.png")
         set_tests_properties(watch_only_${watch_mode} PROPERTIES TIMEOUT 90
             PASS_REGULAR_EXPRESSION "PASS: watch only \\(${watch_mode}\\)")
@@ -2925,10 +2865,10 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_GUI_SMOOTH_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game.png")
       set_tests_properties(gui_smoothing_game PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: HUD smoothing applies live")
+          PASS_REGULAR_EXPRESSION "PASS: HUD smoothing (applies|toggles) live")
       # Options > GAME DATA FOLDER through real input and a fake picker (invalid, cancel,
       # valid + restart prompt, LATER, RESTART NOW, the locked form), and the menu's own
       # row greyed by this launch's --data. The test writes the settings file, so it is

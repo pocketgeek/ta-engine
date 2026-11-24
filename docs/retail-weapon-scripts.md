@@ -420,7 +420,7 @@ Unit `+0x110`: **move state = bits 18-19** (`(f >> 18) & 3`: 0 Hold Position, 1 
 2 Roam), **fire state = bits 20-21** (0 Hold Fire, 1 Return Fire, 2 Fire At Will), from
 FBI flagsA bits 0-1 / 2-3 at creation (0x485c8a..0x485cb6) and from the
 `Standing_MoveOrder` 0x4030d0 / `Standing_FireOrder` 0x403100 missions [S].
-(`retail-ai.md` §"Unit" has the two fields swapped.)
+(`retail-ai.md` §"Unit" had the two fields swapped; fixed.)
 
 Mission records (25 bytes, the copy at `[0x512344]`): +0 status text, +4 handler, +0x11
 dword = mission flags, +0x15 name. Handlers used below: Standby 0x405fe0,

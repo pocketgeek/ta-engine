@@ -416,7 +416,7 @@ std::unique_ptr<GameView> makeReplayView(SDL_Renderer* ren, const std::string& p
                      (unsigned long long)rf.dataHash, (unsigned long long)myDataHash);
     }
     auto view = std::make_unique<GameView>(ren, std::move(rvfs), mapPath, dataRoot,
-        ta::hpi::ModUse{}, false, false, true, "ara", "tar");
+        ta::hpi::ModUse{}, false, false, true, "arm", "cor");
     view->applySettings(settings); view->setSettings(&settings);
     // One simulation: it gets them all, or its CCD's (PIN TO CCDS).
     if (const auto ccd = ta::client::planCcds(settings, false); ccd.on && ta::devFlag("TA_SIM_PIN", true)) {
@@ -507,7 +507,7 @@ int main(int argc, char** argv) {
             argStart = 2;
         }
     }
-    std::string shot, cobPath, anim, side = "ara", aiSide = "tar";
+    std::string shot, cobPath, anim, side = "arm", aiSide = "cor";
     // model mode: --statics <bitmask> seeds the VM's static slots (bit i -> static i).
     // Walk/attack scripts gate on an "am I moving" static whose SLOT differs per unit.
     uint32_t staticMask = 1;
@@ -533,8 +533,8 @@ int main(int argc, char** argv) {
     // argv but read only inside the #ifndef NDEBUG blocks below, so they are unused
     // in release builds.
     [[maybe_unused]] float marchX = 0, marchZ = 0;
-    [[maybe_unused]] bool doMarch = false, testbuild = false, misstest = false,
-        creon = false, guardtest = false, lodetest = false,
+    [[maybe_unused]] bool doMarch = false, testbuild = false,
+        guardtest = false, lodetest = false,
         soundtest = false;
     float lookX = 0, lookZ = 0;
     std::vector<std::string> args;
@@ -554,8 +554,6 @@ int main(int argc, char** argv) {
         else if (a == "--navy") navy = true;
         else if (a == "--amphib") amphib = true;
         else if (a == "--mission") missionFlag = true;
-        else if (a == "--misstest") misstest = true;
-        else if (a == "--creon") creon = true;
         else if (a == "--side" && i + 1 < argc) side = argv[++i];
         else if (a == "--aiside" && i + 1 < argc) aiSide = argv[++i];
         else if (a == "--color" && i + 1 < argc) playerColor = std::atoi(argv[++i]);
@@ -650,7 +648,7 @@ int main(int argc, char** argv) {
 #ifndef NDEBUG
     localHarness = demo || scenario || navy || amphib || firetest ||
                    facetest || guardtest || lodetest || keytest ||
-                   soundtest || misstest || creon || testbuild ||
+                   soundtest || testbuild ||
                    (ta::devEnv("TA_FFA") != nullptr) || ta::devFlag("TA_PATROL_PERF");
 #endif
     if (missionFlag && localHarness) {
@@ -1182,7 +1180,7 @@ int main(int argc, char** argv) {
     std::string pendingCampaign, pendingCampaignId;
     ta::MenuMusic menuMusic;   // persists across menu -> lobby so the track doesn't restart
     menuMusic.setVolume(settings.masterVol, settings.bgmVol);
-    // TA_SHOT_RESULT=<png> [TA_SHOT_RESULT_SIDE=0..4] [TA_SHOT_RESULT_LOSE=1]:
+    // TA_SHOT_RESULT=<png> [TA_SHOT_RESULT_SIDE=<sidedata index>] [TA_SHOT_RESULT_LOSE=1]:
     // render the end-of-game plate with a sample table and exit. Playing a whole match
     // out just to look at the screen isn't practical, so this is how its layout gets
     // verified against the retail art. TA_SHOT_RESULT_WATCH=1 renders a watcher's plate
@@ -1196,7 +1194,7 @@ int main(int argc, char** argv) {
             ta::ResultRow r;
             r.name = names[i];
             r.colorSlot = i;
-            r.side = std::array<const char*, 5>{"ara", "tar", "ver", "zon", "cre"}[i];
+            r.side = i % 2 ? "CORE" : "ARM";
             r.built = 120 - i * 23;
             r.kills = 48 - i * 11;
             r.losses = 31 + i * 9;
@@ -1900,8 +1898,6 @@ int main(int argc, char** argv) {
                 if (doMarch) gameView->marchTo(marchX, marchZ);
                 if (testbuild) gameView->testBuild();
                 if (navy) gameView->navyDemo();
-                if (misstest) gameView->missionTest();
-                if (creon) gameView->creonDemo();
                 if (guardtest) gameView->guardTest();
                 if (lodetest) { gameView->lodeUnit = lodeUnitName; gameView->lodeTest(); }
                 if (firetest) gameView->fireTest();

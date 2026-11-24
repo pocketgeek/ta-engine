@@ -141,7 +141,6 @@ legion_motion_cross 9
 legion_scenario_refreshchurn 9
 legion_tail 9
 cartographer_place_terrain_taros 9
-creon_death_sound_peers 9
 legion_motion_open 8
 legion_scenario_goalblock-fight-200 8
 legion_handout 8
