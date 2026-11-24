@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <bit>
+#include <type_traits>
 #include <utility>
 #include "fixed.h"
 #include "retailmission.h"
@@ -64,9 +65,11 @@ inline bool retailTransportInRange(int32_t dx,int32_t dz,uint16_t range) {
 // Code 9 is the dispatcher's (0x43b8e5..0x43b973): with a next order the
 // unload is dropped (8 here), else it calls again in 30 + rand(30) ticks
 // with the count kept.
-template<class Approach,class Random>
+// `inRange` is the call's outcome: a bool, or the call itself (a scripted
+// carrier runs TransportDrop and answers whether it took BUSY).
+template<class InRange,class Approach,class Random>
 int retailTransportUnloadApproach(RetailMissionState& m,uint32_t& attempts,uint32_t now,
-        uint32_t events,bool inRange,bool hasMover,bool hasNext,bool routing,Approach approach,Random random) {
+        uint32_t events,InRange inRange,bool hasMover,bool hasNext,bool routing,Approach approach,Random random) {
     // The stand-in timer below (not an event) while the route still moves
     // the hull: no navigator failure yet, so no call.
     if(m.stage==1 && (m.flags&0x80000000u) && !(events&~1u) && routing) {
@@ -75,7 +78,10 @@ int retailTransportUnloadApproach(RetailMissionState& m,uint32_t& attempts,uint3
     m.flags&=~0x80000000u;
     if(m.stage==1) {
         ++attempts;
-        if(inRange) { m.sleep(now,1);return 1; }
+        bool called;
+        if constexpr(std::is_invocable_v<InRange>) called=inRange();
+        else called=inRange;
+        if(called) { m.sleep(now,1);return 1; }
         m.stage=0;m.sleep(now,15);return 2;
     }
     if(m.stage!=0)return 7;
@@ -133,6 +139,23 @@ int retailSurfaceUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t no
     }
     ticks=0;
     if (placement()) { m.stage=4;return 4; }
+    m.stage=0;m.sleep(now,1);return 2;
+}
+
+// The same stages for a carrier whose TransportDrop runs: the script owns
+// the drop (DROP_UNIT, 0x4813b0, with its own placement test). The call's
+// sleep 15 (0x4069cf), the BUSY wait (0x4069de -> 0x438730), then stage 2
+// (0x4069f0): the passenger no longer aboard is the release (4); still
+// aboard goes on as after any failed call (stage 0 of
+// retailTransportUnloadApproach).
+inline int retailScriptedUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t now,
+        bool busy,bool aboard) {
+    if (m.stage!=2) return 7;
+    // The leg takes over a tick after the call: fourteen more make the 15.
+    if (ticks<14) { ++ticks;m.sleep(now,1);return 2; }
+    if (busy) { m.sleep(now,1);return 2; }
+    ticks=0;
+    if (!aboard) { m.stage=4;return 4; }
     m.stage=0;m.sleep(now,1);return 2;
 }
 

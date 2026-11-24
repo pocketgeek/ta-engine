@@ -4228,8 +4228,24 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 const bool nextOrder=leg+(goal.unload ? 1u : 2u)<u.orders.size();
                 const bool routing=goal.controller && !goal.navigationExhausted && u.speed>Fixed() &&
                     u.bodyBlockStreak<2;
+                // A scripted carrier's call is TransportDrop(the first
+                // passenger, the point) (0x40698c..0x4069bf): BoomCalc decides,
+                // and a drop under way holds BUSY.
+                const bool scripted=w.scriptedTransport(u,true);
+                auto call=[&] {
+                    if (!scripted) return inRange;
+                    // Nobody aboard: the transfer stage ends it (0x406969).
+                    const Unit* c=u.cargo.empty() ? nullptr : w.unit(u.cargo.front());
+                    if (!c || !c->alive() || c->inTransport!=u.id) return true;
+                    if (goal.unload) goal.transportPassenger=c->id;
+                    w.startTransportScript(u,true,uint32_t(c->id),
+                        (uint32_t(target.first.v)&0xffff0000u)+uint32_t(target.second.v>>16));
+                    // Whatever the boom did, the sleep 15, the BUSY wait and
+                    // the aboard test follow (retailScriptedUnloadTransfer).
+                    return true;
+                };
                 const int result=retailTransportUnloadApproach(m,goal.transportApproachAttempts,
-                    w.tickCounter_,events,inRange,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
+                    w.tickCounter_,events,call,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
                     routing,[&] {
                         // TotalA.exe GROUND_UNLOAD installs its drop-point circle
                         // once per failed TransportDrop (0x406a5e, 0x438930: the
@@ -5521,6 +5537,28 @@ bool World::tickTransport(Unit& u, float dt) {
             const bool coasting=u.speed>Fixed();
             removeUnloadLeg();return !coasting;
         }
+        // A scripted drop (retailScriptedUnloadTransfer): the mission's own
+        // passenger (+0x16), whom the script's DROP_UNIT puts down.
+        if (scriptedTransport(u,true) && mission.stage>=2) {
+            if(tickCounter_>=mission.deadline) {
+                mission.deadline=0xffffffffu;mission.pending|=1;
+            }
+            const uint32_t events=(u.missionEvents|mission.pending)&mission.waitMask;
+            if(mission.waitMask && !events)return coast();
+            u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
+            const Unit* c=unit(o.transportPassenger);
+            const bool aboard=c && c->alive() && c->inTransport==u.id;
+            const int result=retailScriptedUnloadTransfer(mission,o.transportTicks,tickCounter_,
+                scriptBusy(u.id),aboard);
+            if (result==7) { removeUnloadLeg();return true; }
+            if (mission.stage!=4) return coast();
+            o.transportPassenger=0;
+            o.transportUnloadReleasePending=true;
+            mission.stage=0;
+            mission.waitMask=1;mission.deadline=tickCounter_+1;
+            mission.pending=0x500u;
+            return coast();
+        }
         // 0x406969..0x40697b: nobody aboard ends it (5).
         if (u.cargo.empty()) {
             brakeGround(u);removeUnloadLeg();return true;
@@ -5586,8 +5624,10 @@ bool World::canAttachCargo(const Unit& carrier,const Unit& passenger) const {
     });
 }
 
-void World::attachCargo(Unit& carrier,Unit& passenger) {
-    // 0x48ab70 re-attaching to the same carrier only changes the piece.
+void World::attachCargo(Unit& carrier,Unit& passenger,int piece) {
+    // 0x48ab70 re-attaching to the same carrier only changes the piece
+    // (+0xf9, 0x48ac68).
+    passenger.attachPiece=int8_t(piece);
     if (passenger.inTransport==carrier.id) return;
     // Off the map (0x47cb00) and at the HEAD of the carrier's list (+0x8a):
     // an unload takes the last one aboard first (0x406960, 0x4115c7).
@@ -5607,13 +5647,72 @@ void World::attachCargo(Unit& carrier,Unit& passenger) {
     noteOrders(passenger.id);
 }
 
+bool World::scriptedTransport(const Unit& carrier,bool drop) const {
+    if (carrier.type->canFly || !unitScript(carrier.id)) return false;
+    const cob::File* file=carrier.type->script();
+    return file && file->scriptIndexExact(drop ? "TransportDrop" : "TransportPickup")>=0;
+}
+
+bool World::scriptBusy(int unitId) const {
+    const auto* script=unitScript(unitId);
+    return script && script->busy;
+}
+
+// ATTACH_UNIT (0x481340): a live unit that rides nothing or this carrier
+// already (+0x86), then 0x48aac0(unit, carrier, piece, flag) -- whose own
+// tests canAttachCargo makes. No distance, size or count test: the script
+// aimed the boom when it was called.
+void World::scriptAttach(Unit& carrier,uint32_t passengerId,int32_t piece) {
+    Unit* p=passengerId ? unit(int(passengerId)) : nullptr;
+    if (!p || !p->alive() || (p->embarked() && p->inTransport!=carrier.id)) return;
+    if (!canAttachCargo(carrier,*p)) return;
+    attachCargo(carrier,*p,int8_t(piece));
+}
+
+// DROP_UNIT (0x4813b0): a live unit aboard this carrier is put down where it
+// rides (its +0x6a; here the attach point now), when 0x47db70 (mode 1)
+// admits its footprint-origin cell (+0x76/+0x78); else it stays aboard.
+void World::scriptDrop(Unit& carrier,uint32_t passengerId) {
+    Unit* c=passengerId ? unit(int(passengerId)) : nullptr;
+    if (!c || !c->alive() || c->inTransport!=carrier.id) return;
+    const auto point=cargoAttachPoint(carrier,*c);
+    const Fixed x=Fixed::raw(point[0]),z=Fixed::raw(point[2]);
+    const int cx=footprintOrigin(x,c->type->footX),cz=footprintOrigin(z,c->type->footZ);
+    bool clear;
+    if (!mapPlacementCells_.empty()) clear=mobilePlacement(*c,cx,cz,false);
+    else {
+        // Terrain-only harnesses have no native feature plane.
+        const int foot=footCells(c->type);
+        clear=navFor(c->type).fits(cx+foot/2,cz+foot/2,foot);
+        if (clear) {
+            const auto bodies=searchBodyRect(cx,cz,c->type->footX,c->type->footZ);
+            for (const Unit* body:bodies.cells) if (body && body->id!=c->id) { clear=false;break; }
+        }
+    }
+    if (!clear) return;
+    transportEffects_.push_back({tickCounter_,{x.v,point[1],z.v},{carrier.x.v,carrier.groundY.v,carrier.z.v}});
+    releaseCargo(carrier,*c,x,z);
+}
+
+// 4dd250: the carrier's +0x68 plus the attach piece's offset (4dd0f0; the
+// carrier's own point for -1 or a piece it lacks).
+std::array<int32_t,3> World::cargoAttachPoint(const Unit& carrier,const Unit& cargo) const {
+    const Fixed hostY=carrier.type->canFly ? carrier.flightY : carrier.groundY;
+    const auto* script=unitScript(carrier.id);
+    if (!script || cargo.attachPiece<0 || size_t(cargo.attachPiece)>=script->peek().pieces.size())
+        return retailAttachPoint({carrier.x.v,hostY.v,carrier.z.v},{},{},-1,0);
+    return retailAttachPoint({carrier.x.v,hostY.v,carrier.z.v},carrier.type->productionModel,
+        script->peek().pieces,cargo.attachPiece,portHeadingToRetail(carrier.heading),
+        carrier.groundPitch,carrier.groundRoll);
+}
+
 void World::releaseCargo(Unit& carrier,Unit& c,Fixed x,Fixed z) {
     // 0x48ab70 with no carrier: back on the map where the link holds it
     // (0x47cb40). Nothing is ordered: BeCarried retires at its next 10-tick
     // wake (0x402fc0: no carrier, 5) and the empty list takes the default
     // mission. Kingdoms gave the passenger a dispersal PARK (409154); TA has
     // none.
-    c.x=x;c.z=z;c.inTransport=0;
+    c.x=x;c.z=z;c.inTransport=0;c.attachPiece=-1;
     c.groundY=surfaceHeight(c,tickCounter_,&c.groundPitch,&c.groundRoll);
     updateBodyIndex(c);refreshMovingSearchBody(c);
     groundStamp(c);
@@ -5650,11 +5749,13 @@ void World::flyTransportGoal(Unit& u,Order& o,RetailMissionState& mission) {
 
 bool World::tickGroundPickup(Unit& u,size_t leg) {
     Order& o=u.orders[leg];
-    // The TransportPickup script's run (engine stand-in for its animation:
-    // BUSY for fifteen ticks, then ATTACH_UNIT and BUSY off, which posts 4).
-    // The script attaches whatever the passenger did meanwhile; it aimed the
-    // boom when it was called.
-    if (o.transportTicks>0) {
+    // A carrier with a TransportPickup script runs it (BoomCalc, ATTACH_UNIT
+    // and BUSY are the script's; it finishes whatever becomes of the order).
+    // Engine stand-in for a script-less carrier: BUSY for fifteen ticks, then
+    // the attach and BUSY off, which posts 4. It attaches whatever the
+    // passenger did meanwhile; it aimed the boom when it was called.
+    const bool scripted=scriptedTransport(u,false);
+    if (!scripted && o.transportTicks>0) {
         if (o.transportTicks>=15) {
             o.transportTicks=0;
             if (Unit* p=unit(o.transportPassenger); p && canAttachCargo(u,*p)) attachCargo(u,*p);
@@ -5697,10 +5798,18 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                 bool canLoad() const { return u.type->canTransport; }
                 // 0x4067d4: the passenger's footprint x against transportsize.
                 bool fits() const { return p->type->footX<=u.type->maxTransportSize; }
-                bool busy() const { return goal.transportTicks>0; }
+                bool scripted;
+                bool busy() const { return scripted ? w.scriptBusy(u.id) : goal.transportTicks>0; }
                 void call() {
                     // TransportPickup(passenger): BoomCalc aims the boom; out of
                     // its reach the script does nothing.
+                    if (scripted) {
+                        w.startTransportScript(u,false,uint32_t(p->id),0);
+                        if (w.scriptBusy(u.id) && p->inTransport!=u.id)
+                            w.transportEffects_.push_back({w.tickCounter_,
+                                {p->x.v,p->groundY.v,p->z.v},{u.x.v,u.groundY.v,u.z.v}});
+                        return;
+                    }
                     if (busy() || !retailTransportInRange((p->x-u.x).v,(p->z-u.z).v,
                             uint16_t(u.type->transportDist))) return;
                     goal.transportTicks=1;goal.transportPassenger=p->id;
@@ -5729,7 +5838,7 @@ bool World::tickGroundPickup(Unit& u,size_t leg) {
                     goal.controller=0;goal.navigationExhausted=true;
                     host.request=false;
                 }
-            } ops{w,u,goal,p,*this};
+            } ops{w,u,goal,p,*this,w.scriptedTransport(u,false)};
             return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,routing,ops);
         }
     } host{*this,u};
@@ -17616,14 +17725,70 @@ constexpr uint32_t kAimCallback=0x100;
 struct World::ScriptHost {
     World& world; Unit& unit; UnitScript& factory;
     uint32_t random(int32_t bound) { return world.gameRand(bound); }
-    uint32_t get(int id,const std::array<uint32_t,4>&) {
+    // TotalA.exe's GET (vtable +0x44, 0x480770; ids 1..20, any other 0). A
+    // packed XZ word is x's high word over z's: (x & 0xffff0000) + (z >> 16);
+    // unpacking adds 0x10000 to x when the z half is negative (0x480965).
+    static std::pair<int32_t,int32_t> unpackXZ(uint32_t value) {
+        uint32_t x=value&0xffff0000u;
+        const int32_t z=std::bit_cast<int32_t>(value<<16);
+        if (z<0) x+=0x10000u;
+        return {std::bit_cast<int32_t>(x),z};
+    }
+    static uint32_t packXZ(int32_t x,int32_t z) {
+        return (uint32_t(x)&0xffff0000u)+uint32_t(z>>16);
+    }
+    // 0x480868..0x48095e: a live unit by its id (0 is none).
+    const Unit* argumentUnit(uint32_t id) const {
+        const Unit* u=id ? world.unit(int(id)) : nullptr;
+        return u && u->type && u->alive() ? u : nullptr;
+    }
+    uint32_t get(int id,const std::array<uint32_t,4>& args) {
         switch (id) {
         case 1: return factory.activated;
         case 2: return uint32_t(unit.moveState);
         case 3: return uint32_t(unit.fireState);
         case 4: return uint32_t(int32_t(int16_t(unit.hp.floorInt()))*100/std::max(unit.maximumHp(),1));
         case 5: return factory.ready;
-        case 8: return unit.productionSiteId!=0;
+        case 6: return factory.busy;                                  // 0x4807ff
+        case 7: case 8: {
+            // PIECE_XZ / PIECE_Y (0x480811 / 0x48083f): the piece's world
+            // point (0x43e060).
+            const auto point=world.unitPiecePoint(unit,std::bit_cast<int32_t>(args[0]),false);
+            return id==7 ? packXZ(point[0],point[2]) : uint32_t(point[1]);
+        }
+        case 9: case 10: case 11: {
+            // UNIT_XZ / UNIT_Y / UNIT_HEIGHT (0x480868 / 0x4808c2 / 0x48090f):
+            // the unit's +0x6a / +0x72, +0x6e, its type's +0x16e.
+            const Unit* other=argumentUnit(args[0]);
+            if (!other) return 0;
+            if (id==9) return packXZ(other->x.v,other->z.v);
+            if (id==10) return uint32_t((other->type->canFly ? other->flightY : other->groundY).v);
+            return uint32_t(other->type->modelTop);
+        }
+        case 12: {
+            // XZ_ATAN (0x480965): 0x4b715a's atan2(x, z) less the heading.
+            const auto [x,z]=unpackXZ(args[0]);
+            return uint16_t(uint16_t(retailDirection(Fixed::raw(x),Fixed::raw(z)).v)-portHeadingToRetail(unit.heading));
+        }
+        case 13: case 15: {
+            // XZ_HYPOT / HYPOT (0x480994 / 0x4809e5): hypot of the two words,
+            // truncated (0x4e43a0).
+            int64_t a,b;
+            if (id==13) { const auto [x,z]=unpackXZ(args[0]);a=x;b=z; }
+            else { a=std::bit_cast<int32_t>(args[0]);b=std::bit_cast<int32_t>(args[1]); }
+            return uint32_t(isqrt64(uint64_t(a*a)+uint64_t(b*b)));
+        }
+        case 14:   // ATAN (0x4809c7): 0x4b715a's atan2(a, b), a BAM word.
+            return uint16_t(retailDirection(Fixed::raw(std::bit_cast<int32_t>(args[0])),
+                                            Fixed::raw(std::bit_cast<int32_t>(args[1]))).v);
+        case 16: {
+            // GROUND_HEIGHT (0x480a0d): the terrain under the point (0x485070,
+            // -1 off the map), in 16.16.
+            const auto [x,z]=unpackXZ(args[0]);
+            const int height=world.heights_.empty() ? 0 : retailTerrainHeight(x,z,world.terW_,world.terH_,
+                [&](int cx,int cz){return int(world.heights_[size_t(cz)*size_t(world.terW_)+size_t(cx)]);});
+            return uint32_t(height)<<16;
+        }
         case 17: return unit.retailSite ? retailConstructionPercent(unit.retailSite->progress.remaining)
                                        : uint32_t(unit.underConstruction);
         case 18: return factory.yardOpen;
@@ -17701,9 +17866,14 @@ struct World::ScriptHost {
             break;
         }
         case 19: factory.buggerOff=value!=0; break;
+        case 6: factory.busy=(value&1)!=0; break;                    // 0x480b84
         default: break;
         }
+        // 0x480b20: every SET posts event 4 (unit +0xba), whatever its id.
+        unit.missionEvents|=4;
     }
+    void attach(uint32_t passenger,int32_t piece,int32_t) { world.scriptAttach(unit,passenger,piece); }
+    void drop(uint32_t passenger) { world.scriptDrop(unit,passenger); }
     // A RETURN with a callback (thread word 8). An AimX thread's (TotalA.exe
     // 0x481490) makes its slot ready when the script returns nonzero; a
     // signal kill reports nothing and leaves the slot waiting.
@@ -18555,6 +18725,20 @@ void World::notifyUnitScript(Unit& u,const char* name,uint32_t argument) {
     ScriptHost host{*this,u,state};
     if (state.state().startArguments(file,file.scriptIndex(name),{argument,0,0,0},1))
         state.state().tick(file,0,host);
+}
+
+// GROUND_PICKUP's TransportPickup(passenger) (TotalA.exe 0x40680f..0x406834)
+// and GROUND_UNLOAD's TransportDrop(passenger, packed point) (0x40698c..
+// 0x4069bf): 0x4b0a70 with no callback, run at once, one argument word
+// exposed (both scripts take the second from local 1).
+void World::startTransportScript(Unit& carrier,bool drop,uint32_t passenger,uint32_t point) {
+    auto* script=unitScript(carrier.id);
+    if (!script) return;
+    const auto& file=*carrier.type->script();
+    ScriptHost host{*this,carrier,*script};
+    if (script->state().startArguments(file,file.scriptIndexExact(drop ? "TransportDrop" : "TransportPickup"),
+                                       {passenger,point,0,0},1))
+        script->state().tick(file,0,host);
 }
 
 // Legion (deliberate, not retail): no walking on the spot. A walker's gait is
@@ -21029,9 +21213,7 @@ void World::tick(float dt) {
                 // 4dad30's attached branch commits the host attach point as the
                 // cargo's own +0x68 every mover tick, height included; the sight
                 // batch then reads it (see updateNavigationExploration).
-                const Fixed hostY=t->type->canFly?t->flightY:t->groundY;
-                const auto point=retailAttachedPosition(
-                    retailAttachPoint({t->x.v,hostY.v,t->z.v},{},{},-1,0),
+                const auto point=retailAttachedPosition(cargoAttachPoint(*t,u),
                     u.type->floater,uint8_t(u.type->waterline),uint8_t(seaLevel_));
                 u.x=Fixed::raw(point[0]);u.groundY=Fixed::raw(point[1]);u.z=Fixed::raw(point[2]);
                 updateBodyIndex(u);
@@ -21884,6 +22066,7 @@ uint64_t World::stateHash() const {
             script(uint32_t(id));
             script(factory.activated); script(factory.ready); script(factory.yardOpen); script(factory.buggerOff);
             if (factory.activateHeld) script(0x484f4c44u);
+            if (factory.busy) script(0x42555359u);
             if (factory.dying) { script(0x44454144u);script(factory.deathStopValue); }
             if (factory.movementRate) { script(0x4d4f5645u);script(factory.movementRate); }
             if (factory.turnDirection) { script(0x5455524eu);script(uint32_t(int32_t(factory.turnDirection))); }
@@ -22253,6 +22436,7 @@ uint64_t World::stateHash() const {
         if (u.vetOverride != 0.0f) { mix(0x5645544f56524445ull); mixf(u.vetOverride); }
         if (!u.selectable) mix(0x554e53454c454354ull);
         if (u.lastHitKind) mix(0x4c41535448495400ull|u.lastHitKind);
+        if (u.attachPiece>=0) mix(0x4154544143485000ull|uint8_t(u.attachPiece));
         if (u.scenarioArmor != 1.0f || u.scenarioWeapon != 1.0f) {
             mix(0x4352545354415453ull);
             mix(std::bit_cast<uint32_t>(u.scenarioArmor));

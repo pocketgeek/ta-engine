@@ -178,6 +178,20 @@ public:
                 t.words[4]=arg(0); t.words[5]=arg(1); t.pc()+=3;
                 t.flags()=op==0x10011000 ? 0x2100000 : 0x2200000; return;
             case 0x10082000: { auto value=t.pop(),id=t.pop(); host.set(signedWord(id),signedWord(value)); ++t.pc(); break; }
+            // TotalA.exe 0x4b1b92 / 0x4b1b7d: ATTACH_UNIT pops (unit, piece,
+            // flag) for the host's +0x38 (0x481340), DROP_UNIT one unit for
+            // its +0x3c (0x4813b0). A host without them ignores both.
+            case 0x10083000: {
+                const auto flag=t.pop(),piece=t.pop(),id=t.pop();
+                if constexpr(requires { host.attach(id,signedWord(piece),signedWord(flag)); })
+                    host.attach(id,signedWord(piece),signedWord(flag));
+                ++t.pc(); break;
+            }
+            case 0x10084000: {
+                const auto id=t.pop();
+                if constexpr(requires { host.drop(id); }) host.drop(id);
+                ++t.pc(); break;
+            }
             case 0x10001000: case 0x10002000: case 0x10003000: case 0x10004000:
             case 0x1000b000: case 0x1000c000: {
                 auto target=t.pop();

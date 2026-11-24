@@ -69,6 +69,12 @@ struct RetailScriptState {
         uint32_t random(int32_t bound) { return host.random(bound); }
         uint32_t get(int id,const std::array<uint32_t,4>& args) { return host.get(id,args); }
         void set(int id,int value) { host.set(id,value); }
+        void attach(uint32_t unit,int32_t piece,int32_t flag) {
+            if constexpr(requires { host.attach(unit,piece,flag); }) host.attach(unit,piece,flag);
+        }
+        void drop(uint32_t unit) {
+            if constexpr(requires { host.drop(unit); }) host.drop(unit);
+        }
         void returned(uint32_t tag,uint32_t value) {
             if constexpr(requires { host.returned(tag,value); }) host.returned(tag,value);
         }

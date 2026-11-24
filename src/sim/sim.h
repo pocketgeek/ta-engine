@@ -1680,6 +1680,11 @@ struct alignas(64) Unit {
     // at 0. The under-attack request reads it, before the hit updates it
     // (0x4071ca). Hashed when set.
     uint8_t lastHitKind = 0;
+    // TotalA.exe's +0xf9: the carrier's script piece a carried unit rides
+    // (0x48ab70 stores ATTACH_UNIT's piece; -1, the carrier's own point, for
+    // a drop and for VTOL_PICKUP's engine attach here). The per-tick commit
+    // (4dad30 -> 4dd250) places the cargo there. Hashed while aboard.
+    int8_t attachPiece = -1;
     const std::string& displayName() const { return scenarioName.empty() ? type->name : scenarioName; }
     bool alive() const { return deadFor < 0; }
     int32_t maximumHp() const { return retailSite ? int32_t(retailSite->type.maxHp) : type->maxHp; }
@@ -3772,7 +3777,18 @@ private:
     // `carrier`, and DROP_UNIT's release (0x4813b0 -> 0x48aac0 with no
     // carrier) at (x, z).
     bool canAttachCargo(const Unit& carrier, const Unit& passenger) const;
-    void attachCargo(Unit& carrier, Unit& passenger);
+    void attachCargo(Unit& carrier, Unit& passenger, int piece = -1);
+    // A surface carrier's TransportPickup / TransportDrop (the call-in runs
+    // at once, TotalA.exe 0x4b0a70 with its immediate flag); false without
+    // such a script.
+    bool scriptedTransport(const Unit& carrier, bool drop) const;
+    void startTransportScript(Unit& carrier, bool drop, uint32_t passenger, uint32_t point);
+    bool scriptBusy(int unitId) const;
+    // ATTACH_UNIT / DROP_UNIT (0x481340 / 0x4813b0) from the carrier's script.
+    void scriptAttach(Unit& carrier, uint32_t passenger, int32_t piece);
+    void scriptDrop(Unit& carrier, uint32_t passenger);
+    // Where a carried unit rides: its carrier's attach piece (4dd250).
+    std::array<int32_t,3> cargoAttachPoint(const Unit& carrier, const Unit& cargo) const;
     void releaseCargo(Unit& carrier, Unit& passenger, Fixed x, Fixed z);
     // An air carrier's transport controller, flown this tick: arrival posts
     // 0x100 to `mission` (and, for a point controller, 0x400 as it lets go).
@@ -4933,6 +4949,10 @@ private:
         uint32_t debt_=0;       // ticks skipped and not yet paid
     public:
         bool activated=false,ready=false,yardOpen=false,buggerOff=false;
+        // BUSY (TotalA.exe unit +0x10f bit 1): GET 6 reads it, SET 6 writes it
+        // (0x480b84) and GROUND_PICKUP / GROUND_UNLOAD wait it out (0x438730).
+        // Hashed while set.
+        bool busy=false;
         // An Activate switchScript holds until Create returns (activated is
         // already set). Hashed while set.
         bool activateHeld=false;

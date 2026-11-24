@@ -1146,7 +1146,10 @@ static void retailRoster(const char* root) {
             // transportcapacity, and transportsize, the largest passenger.
             check(type.transportCap>0 && type.maxTransportSize>0,"retail carrier has nonzero capacity limits");
             World w;setTestPathfinding(w);
-            w.setTerrain(coastHeights(128,128,50),128,128,40);
+            // Ships need the coast. A hover carrier pinned against the
+            // coast's one-cell cliff stops short with its crane astern, out of
+            // the TransportDrop boom's reach (BoomCalc); it unloads on open land.
+            w.setTerrain(type.canHover ? std::vector<uint8_t>(128*128,100) : coastHeights(128,128,50),128,128,40);
             w.buildNavClasses(registry);w.setPathService(true);
             const auto* foot=registry.find("armpw");
             check(foot && foot->transportSize==foot->footX,
@@ -1179,6 +1182,58 @@ static void retailRoster(const char* root) {
         }
         // Atlas, Valkyrie, both transport ships and both Core Contingency hovers.
         check(carriers==6,"all retail carriers covered");
+    }
+}
+
+// The surface carriers' own TransportPickup / TransportDrop scripts (TotalA.exe
+// GROUND_PICKUP 0x40680f, GROUND_UNLOAD 0x4069bf): BoomCalc reads PIECE_XZ /
+// UNIT_XZ / XZ_HYPOT / HYPOT / ATAN (0x480770), the passenger rides the link
+// piece between the two ATTACH_UNITs (0x481340, +0xf9), and a cancelled order
+// does not stop the script: it attaches or drops all the same.
+static void scriptedTransfer(const char* root) {
+    std::printf("scripted surface transfer:\n");
+    auto vfs=ta::hpi::mountRetailRoot(root);
+    ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
+    const auto* ship=registry.find("armtship");
+    const auto* foot=registry.find("armpw");
+    check(ship && foot,"armtship and armpw are available");
+    if(!ship || !foot)return;
+    for(bool cancel:{false,true}) {
+        World w;setTestPathfinding(w);
+        w.setTerrain(coastHeights(128,128,50),128,128,40);
+        w.buildNavClasses(registry);w.setPathService(true);
+        const int tid=w.spawn(ship,720,700),cid=w.spawn(foot,832,700);
+        w.loadInto(cid,tid);
+        bool offPoint=false;int boarded=-1;
+        for(int tick=0;tick<600;++tick) {
+            w.tick(1.f/30);
+            const auto& c=*w.unit(cid);const auto& t=*w.unit(tid);
+            // Stopped once the call has run (the passenger is in reach at
+            // once): the boom still swings out and attaches.
+            if(cancel && tick==2) {
+                check(!c.embarked() && !t.orders.empty(),"the pickup is under way when stopped");
+                w.stop(tid);
+            }
+            if(boarded<0 && c.inTransport==tid)boarded=tick;
+            if(c.inTransport==tid && (c.x!=t.x || c.z!=t.z))offPoint=true;
+            if(boarded>=0 && tick>boarded+200)break;
+        }
+        check(boarded>=0,cancel ? "a stopped pickup still lets TransportPickup board the passenger"
+                                : "TransportPickup boards the passenger");
+        check(offPoint,"the passenger rides the link piece, not the carrier's point");
+        check(w.unit(cid)->inTransport==tid && w.unit(cid)->attachPiece==-1,
+              "the script's last ATTACH_UNIT (piece -1) leaves it on the carrier's point");
+        // Cancel the unload as soon as the boom holds it: the script still drops.
+        w.unloadAt(tid,860,700);
+        int dropped=-1;
+        for(int tick=0;tick<900 && dropped<0;++tick) {
+            w.tick(1.f/30);
+            if(cancel && w.unit(cid)->attachPiece>=0 && !w.unit(tid)->orders.empty())w.stop(tid);
+            if(!w.unit(cid)->embarked())dropped=tick;
+        }
+        check(dropped>=0,cancel ? "a stopped unload still lets TransportDrop's DROP_UNIT release the passenger"
+                                : "TransportDrop releases the passenger");
+        check(w.unit(cid)->x.toFloat()>=800,"the passenger is put down on land at the link");
     }
 }
 
@@ -2226,6 +2281,10 @@ static bool surfaceUnloadMapTravelFixture(const char* retailRoot,const char* map
             pickupTick?"retail passenger boarded through the issued load order":"retail pickup did not board the passenger",
             pickupTick);
         if(!pickupTick) return false;
+        // The passenger is aboard at TransportPickup's first ATTACH_UNIT; the
+        // script still swings the boom home (BoomToPad, BoomReset). An
+        // unload given now would race it for the same pieces, as in retail.
+        for(int tick=0;tick<150;++tick)world.tick(1.0f/30.0f);
     } else board(world,carrierId,passengerId);
     world.unloadAt(carrierId,float(goalX),float(goalZ));
 
@@ -2690,7 +2749,7 @@ int main(int argc,char** argv) {
     passengerMissionSchedule();
     passengerCancellationWait();
     groundPickupApproach();
-    if(argc==2) retailRoster(argv[1]);
+    if(argc==2) { retailRoster(argv[1]);scriptedTransfer(argv[1]); }
     boardingLimits();
     transferLifecycle();
     ordinaryFlightMoves();
