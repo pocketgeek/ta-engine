@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <bit>
+#include <utility>
 #include "fixed.h"
 #include "retailmission.h"
 #include "retailflight.h"
@@ -97,20 +98,69 @@ void retailPickupApproachWait(RetailMissionState& m,uint32_t now,bool flying,Ran
     m.sleep(now,flying ? random(6)+6u : 15u);
 }
 
-// 408d50 stage 1 / 408e3f..408ea1: a surface unload succeeds once the
-// carrier is in transport range. Outside range, a failed navigator or missing
-// mover aborts before installing the 0x700 event mask; otherwise refresh the
-// exact-point circle controller and poll in 15 ticks.
-template<class Approach>
-int retailTransportUnloadApproach(RetailMissionState& m,uint32_t& attempts,
-        uint32_t now,uint32_t events,bool inRange,bool hasMover,Approach approach) {
-    if(m.stage!=1)return 7;
-    if(inRange) { ++attempts;m.sleep(now,1);return 1; }
-    if((events&0x200u) || !hasMover)return 8;
-    m.waitMask=0x700u;
+// TotalA.exe GROUND_UNLOAD (0x406900) up to the transfer. Stage 1 here is the
+// handler's stage 0: one TransportDrop call (0x4069bf), counted at mission
+// +0x36. In the boom's reach the script drops the passenger (the transfer,
+// next stage). Out of reach the call does nothing: the handler sleeps 15
+// (0x4069cf) and waits out BUSY (0x4069de), then -- stage 0 here -- returns
+// 9 after the third call (0x406a13) or installs the drop-point circle
+// (0x438930) and waits on the navigator only (0x406a65: mask 0xe8, no
+// timer), back to the call at the wake (0x406a76 returns 0). A failed route
+// wakes it as an arrival does; it is not an abort. The host's circle is
+// retailUnloadCircleRadius's.
+// Code 9 is the dispatcher's (0x43b8e5..0x43b973): with a next order the
+// unload is dropped (8 here), else it calls again in 30 + rand(30) ticks
+// with the count kept.
+template<class Approach,class Random>
+int retailTransportUnloadApproach(RetailMissionState& m,uint32_t& attempts,uint32_t now,
+        uint32_t events,bool inRange,bool hasMover,bool hasNext,bool routing,Approach approach,Random random) {
+    // The stand-in timer below (not an event) while the route still moves
+    // the hull: no navigator failure yet, so no call.
+    if(m.stage==1 && (m.flags&0x80000000u) && !(events&~1u) && routing) {
+        m.waitMask=0x700u;m.sleep(now,60);return 2;
+    }
+    m.flags&=~0x80000000u;
+    if(m.stage==1) {
+        ++attempts;
+        if(inRange) { m.sleep(now,1);return 1; }
+        m.stage=0;m.sleep(now,15);return 2;
+    }
+    if(m.stage!=0)return 7;
+    if(std::bit_cast<int32_t>(attempts)>=3) {
+        if(hasNext)return 8;
+        m.flags|=0x800000u;m.stage=1;m.sleep(now,random(30)+30);return 2;
+    }
+    if(!hasMover)return 8;
+    m.stage=1;m.waitMask=0x700u;
     approach();
-    m.sleep(now,15);
+    // Engine stand-in, not retail: the wait has no timer there, and a route
+    // that cannot reach the point ends in the navigator's 0x40 once its
+    // 60-tick re-ask comes back empty (docs/retail-pathfinding.md 3.1). The
+    // engine's navigator keeps pressing instead (ibid. D16), so a hull that
+    // has stopped short is called again after those 60 ticks (flag 0x80000000
+    // marks the timer; it is no retail bit).
+    m.flags|=0x80000000u;m.sleep(now,60);
     return 2;
+}
+
+// 0x406a23..0x406a5e: GROUND_UNLOAD's drop-point circle. A hover carrier
+// (flagsA bit 12) circles at ftol(1.5 x its type +0x180, the high word of the
+// footprint-z size: footprintz x 16 px); any other carrier goes to the point.
+constexpr int32_t retailUnloadCircleRadius(bool canHover,int16_t footZ) {
+    return canHover ? int32_t(footZ)*16*3/2 : 0;
+}
+
+// The release point of a scripted drop. TransportDrop sets the boom in the
+// hull's frame (BoomCalc's XZ_ATAN of the turret-to-point offset) and
+// DROP_UNIT releases the passenger where the link piece then is
+// (0x4813b0 -> 0x47db70 mode 1 on the link's cell), so a hull that coasts or
+// turns during the animation carries the point with it: the offset from the
+// carrier at the call (16.16 world units), turned by the hull's heading
+// change since (retail BAM). No turn leaves it exact.
+inline std::pair<int32_t,int32_t> retailHullPoint(int32_t dx,int32_t dz,uint16_t turn) {
+    if (!turn) return {dx,dz};
+    return {retailScaledCosine(turn,dx)+retailScaledSine(turn,dz),
+            retailScaledCosine(turn,dz)-retailScaledSine(turn,dx)};
 }
 
 // 4089fa..408a19: a surface pickup outside transfer range aborts when
@@ -154,6 +204,26 @@ int retailUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t attempts,
         ticks=0;m.sleep(now,10);m.stage=1;return 4;
     }
     return 7;
+}
+
+// GROUND_UNLOAD's transfer (TotalA.exe 0x406900 stages 1-2): the scripted
+// drop runs while BUSY holds (0x4069de; the engine's fifteen-tick beam), and
+// DROP_UNIT tests the link's cell once, at release (0x4813b0 -> 0x47db70
+// mode 1: any other body refuses). A refused drop leaves the passenger
+// aboard, so stage 2 (0x4069f0..0x406a13) goes on as after any failed call:
+// returned here as stage 0 of retailTransportUnloadApproach. 4 = release.
+template<class Placement,class Effects>
+int retailSurfaceUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t now,
+        bool passengerValid,Placement placement,Effects effects) {
+    if (m.stage!=2) return 7;
+    if (!passengerValid) { m.sleep(now,1);return 0; }
+    if (ticks<15) {
+        if (!ticks) effects();
+        ++ticks;m.sleep(now,1);return 2;
+    }
+    ticks=0;
+    if (placement()) { m.stage=4;return 4; }
+    m.stage=0;m.sleep(now,1);return 2;
 }
 
 // 4090b7/41b42c: after unloading, PARK disperses the passenger so

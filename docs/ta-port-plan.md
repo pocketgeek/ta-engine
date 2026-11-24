@@ -135,8 +135,8 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   instead of re-picking a hover point every 150 ticks (0x414569..0x41461a); the
   group/formation system still runs for moves, standbys and guards in retail
   mode; the under-attack alert's trigger and 15 s cooldown are unchecked; the
-  result plate's produced columns stay empty (no lifetime totals); TA wreck
-  resurrection; nanoframe outlines are front-facing only and use painter's order
+  result plate's produced columns stay empty (no lifetime totals); nanoframe
+  outlines are front-facing only and use painter's order
   (retail depth-tests per pixel); room_flow's menu-launched cases hang.
 - A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
   units in the field) can still circle in the ring's acceptance gap -- the
@@ -147,21 +147,40 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   transportsize, count < transportcapacity; an air carrier holds one, 0x41121a).
   TA's transfer reach is scripted (TransportPickup/TransportDrop, BoomCalc), read
   from the COB for surface carriers (cob::transportBoomReach); the air reach is an
-  engine stand-in (TA transfers at the exact point). The unload/pickup missions are
-  still Kingdoms-shaped. TA's GROUND_UNLOAD (0x406900; dispatcher codes 0x43b7c0):
-  stage 0 takes the FIRST passenger only (0x489690; none: 5) and calls TransportDrop
-  (0x4069bf), sleep 15; stage 1 waits while the script holds BUSY (0x438730); stage
-  2 ends the order once that passenger has left (0x4069f0..0x406a09: one passenger
-  per order), else after 3 calls returns 9 (with a next order: dropped; without:
-  stage 0 again in 30+rand(30) ticks, 0x43b8e5..0x43b973), else installs the
-  drop-point circle once (0x438930; radius 1.5 x footprintz x 16 px for canhover,
-  0x406a23..0x406a5e, else 0) and waits on 0xe8 with no timer. The placement test is
-  DROP_UNIT's (0x4813b0 -> 0x47db70 mode 1 on the link's cell: any other body,
-  the carrier's own included, refuses). Ported so far: the approach is no longer
-  re-anchored at the point every 15 ticks while its route is live (the Kingdoms
-  poll made a hover brake onto its own drop point; transport_post_unload armthovr
-  x5 far). Still open: one passenger per order, the hover's 1.5 x footprintz
-  circle, the hull-frame release point (the boom moves with a coasting hull).
+  engine stand-in (TA transfers at the exact point). GROUND_UNLOAD (0x406900) is
+  ported (retailTransportUnloadApproach / retailSurfaceUnloadTransfer): every
+  surface unload starts with its TransportDrop call (counted, mission +0x36); out
+  of reach it sleeps 15 and installs the drop-point circle (0x438930: 1.5 x
+  footprintz x 16 px for a hover, else 0, 0x406a23..0x406a5e), waking on the
+  navigator only; the third failed call returns 9 (next order: dropped; none: a
+  call every 30+rand(30), 0x43b8e5..0x43b973). A refused DROP_UNIT (mode 1 at
+  release) is a failed call, not an abort. One passenger per order (the FIRST,
+  0x489690; 0x4069f0..0x406a09). The release point rides the hull: the call's
+  offset turned by the heading change since (retailHullPoint, Order::
+  transportHeading). Engine stand-ins: the boom animation is the 15-tick beam;
+  the wait also wakes after 60 ticks once the hull has stopped (the engine's
+  navigator never posts retail's 0x40 for a goal it cannot reach, see
+  retail-pathfinding.md D16); the released passenger keeps Kingdoms' dispersal
+  PARK (409154; DROP_UNIT past placement is untraced). Still Kingdoms-shaped:
+  GROUND_PICKUP (0x406780: carrier-only -- the passenger gets no mission; stage
+  0 the size test, then TransportPickup + BUSY, 3 calls, the circle on the
+  passenger's position with radius 0, wait 0xe8; ours keeps the reciprocal
+  passenger Load order and the engine beam), VTOL_PICKUP / VTOL_UNLOAD
+  (0x4111b0 / 0x411560, not re-traced). The dispatcher's code 3 sleeps
+  30+rand(15) and code 9 30+rand(30) with mission flag 0x800000 in TotalA.exe
+  (0x43b890, 0x43b94f); retailDispatchMissions still has Kingdoms' rand(30)+15
+  and 0x400000 (GROUND_UNLOAD handles its own 9).
+- Resurrection follows TotalA.exe RESURRECT (0x404db0): any reclaimable feature
+  (0x440043, flag 0x80) whose name up to its first '_' names a unit type
+  (0x404f36 -> 0x488b10; FeatType::raises: cornecro_dead and cornecro_heap both
+  raise cornecro) -- a body, a map wreck or a heap (Cmd::Resurrect's target
+  -featureId); timer ftol(buildtime x 0.3 / (workertime/30)) counted down one a
+  tick, nothing paid; the unit comes back finished at 1 HP (0x405215) and the
+  caster's REPAIRUNIT on it goes to the head of its queue (0x405243..0x40529f,
+  0x43acb0); a full unit cap retries in 300 ticks (0x405119). The animate
+  channel (cananimate) is still Kingdoms'. The client's right-click raises a
+  feature too (GameView::reviveKindOnFeature); the cursor over a raisable
+  feature still shows reclaim.
 - Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run

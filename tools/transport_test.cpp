@@ -5,11 +5,12 @@
 // the only caller of findPath and resolved its grid with the same navFor() the async
 // boundary tracer uses, so it was removed and unloadAt asks the tracer instead.
 //
-// The native surface-carrier order aims at the exact requested position with a circle
-// radius of transportdistance-34. The navigator chooses a reachable, fitting endpoint
-// in that circle; preselecting a nearby cell and issuing an ordinary move can choose a
-// different point or disconnected water. Destinations already within transport range
-// skip the approach.
+// The native surface-carrier order (TotalA.exe GROUND_UNLOAD 0x406900) calls
+// TransportDrop first; out of reach it aims at the exact requested position with a
+// circle of radius 1.5 x footprintz x 16 px for a hover, else 0 (0x406a23..0x406a5e).
+// The navigator chooses a reachable, fitting endpoint in that circle; preselecting a
+// nearby cell and issuing an ordinary move can choose a different point or
+// disconnected water. Destinations already within reach unload at the first call.
 
 // TWO: the shape of the queue. The tracer installs routes with replaceLeg(), which
 // rebuilds the current leg -- the first order flagged `goal` -- out of route waypoints,
@@ -196,6 +197,11 @@ static void check(bool cond, const char* what) {
 // is the point.
 static constexpr float kRange = 150.0f;
 
+// GROUND_UNLOAD's drop-point circle (retailUnloadCircleRadius).
+static int unloadCircle(const UnitType& t) {
+    return ta::sim::retailUnloadCircleRadius(t.canHover,int16_t(t.footZ));
+}
+
 static UnitType boatType() {
     UnitType t{};
     t.name = "boat";
@@ -207,6 +213,10 @@ static UnitType boatType() {
     t.maxTransportSize = 4;
     t.transportDist = kRange;
     t.maxHp = 100;
+    // A hover carrier (armthovr / corthovr): GROUND_UNLOAD stops it on a circle
+    // round the drop point instead of driving onto the point (0x406a23).
+    t.canHover = true;
+    t.footZ = 4;   // armthovr's: a 96 px drop-point circle (retailUnloadCircleRadius)
     return t;
 }
 
@@ -253,6 +263,7 @@ static void legionLogistics() {
     World w;setTestPathfinding(w);w.setPathService(true);
     w.setTerrain(std::vector<uint8_t>(size_t(128)*128,100),128,128,20);
     UnitType carrier=boatType(),passenger=footType();
+    carrier.footX=carrier.footZ;   // Legion routes square footprints off a placement plane
     const int tid=w.spawn(&carrier,300,600),cid=w.spawn(&passenger,1100,600);
     w.loadInto(cid,tid);
     bool load=false,boarded=false;
@@ -304,8 +315,8 @@ static void openGround() {
         check(leg.groundMission, "surface approach uses the native circle navigator goal");
         check(leg.x.toFloat() == dropX && leg.z.toFloat() == dropZ,
               "the approach circle is centered on the exact selected drop point");
-        check(int(leg.missionRadius) + 4 == boat.transportDist - 34,
-              "the approach circle uses transportdistance minus 34");
+        check(int(leg.missionRadius + 4) == unloadCircle(boat),
+              "the approach circle is GROUND_UNLOAD's drop-point circle");
     } else {
         g_fail += 4;
     }
@@ -348,17 +359,28 @@ static void alreadyInRange() {
     board(w, tid, cid2);
     w.unloadAt(tid, 600, 500);
     const ta::sim::Unit* t = w.unit(tid);
-    check(t->orders.size() == 1 && t->orders[0].unload,
-          "a drop point already in range queues the unload alone, no approach");
+    check(t->orders.size() == 2 && t->orders[0].transportUnloadApproach && t->orders[1].unload,
+          "a drop point already in range still starts with GROUND_UNLOAD's call");
+
+    // One passenger per order (TotalA.exe 0x4069f0..0x406a09): the first
+    // unload ends with the second passenger still aboard.
+    bool first = false;
+    for (int i = 0; i < 120 && !first; ++i) {
+        w.tick(1.0f / 30.0f);
+        first = w.unit(tid)->cargo.size() == 1 && w.unit(tid)->orders.empty();
+    }
+    check(first, "one unload order puts down one passenger");
+    check(w.unit(cid2)->inTransport == tid, "the passenger boarded last stays aboard");
 
     // Each passenger uses the same point. The first must walk clear before
-    // the second passenger's full transfer interval can run.
+    // the second passenger's drop is accepted.
+    w.unloadAt(tid, 600, 500);
     bool quick = false;
-    for (int i = 0; i < 600 && !quick; ++i) {
+    for (int i = 0; i < 900 && !quick; ++i) {
         w.tick(1.0f / 30.0f);
         quick = w.unit(tid)->cargo.empty();
     }
-    check(quick, "it unloads both passengers after their individual transfer delays");
+    check(quick, "a second unload puts down the second passenger at the same point");
     const auto& a = *w.unit(cid);
     const auto& b = *w.unit(cid2);
     check(std::abs(ta::sim::footprintOrigin(a.x, 2) - ta::sim::footprintOrigin(b.x, 2)) >= 2 ||
@@ -407,8 +429,8 @@ static void coastline() {
         const ta::sim::Order& leg = t->orders[0];
         check(leg.groundMission && leg.x.toFloat() == dropX && leg.z.toFloat() == dropZ,
               "the approach circle is centered on the exact land drop point");
-        check(int(leg.missionRadius) + 4 == boat.transportDist - 34,
-              "the circle uses the native transportdistance-minus-34 radius");
+        check(int(leg.missionRadius + 4) == unloadCircle(boat),
+              "the circle uses GROUND_UNLOAD's drop-point radius");
         check(leg.goal && !leg.unload && t->orders[1].unload, "the queue shape still holds");
     } else {
         g_fail += 3;
@@ -452,6 +474,9 @@ static void crowdedCoastlineUnloadRetry() {
         passenger.accel={};
         blockerType.accel=ta::sim::Fixed::fromInt(1);
         blockerType.maxVel=ta::sim::Fixed::fromInt(3);
+        // A surface drop lands where the boom carried the point (retailHullPoint),
+        // a few px off it while the hull brakes: a 2x2 body covers it.
+        if(!air)blockerType.footX=blockerType.footZ=2;
         const int dropX=shoreCell*16+64,dropZ=300;
         const int tid=w.spawn(&carrier,80,700),cid=w.spawn(&passenger,80,700);
         board(w,tid,cid);
@@ -473,7 +498,12 @@ static void crowdedCoastlineUnloadRetry() {
             auto* transport=w.unit(tid);
             auto mission=std::find_if(transport->orders.begin(),transport->orders.end(),
                 [](const auto& order){return order.transportUnloadApproach;});
-            if(mission!=transport->orders.end() && mission->transportMission.stage==3 && !retrySeen) {
+            // GROUND_UNLOAD has no retry stage: a refused DROP_UNIT returns the
+            // order to its TransportDrop call (stage 0/1) with the cargo aboard.
+            const bool surfaceRefused=!air && mission!=transport->orders.end() && mission->unload &&
+                mission->transportMission.stage<=1 && transport->cargo.size()==1;
+            if(mission!=transport->orders.end() && (air ? mission->transportMission.stage==3 : surfaceRefused) &&
+               !retrySeen) {
                 retrySeen=true;retryTick=int(w.tickCount());retryX=transport->x;retryZ=transport->z;
                 heldThroughRetry=transport->cargo.size()==1 && w.unit(cid)->inTransport==tid;
                 w.order(blocker,dropX+256,dropZ,false);
@@ -500,18 +530,19 @@ static void crowdedCoastlineUnloadRetry() {
         if(!released || !heldThroughRetry) {
             const auto* transport=w.unit(tid);const auto* cargo=w.unit(cid);
             const auto* blockerUnit=blocker?w.unit(blocker):nullptr;
-            std::fprintf(stderr,"crowded unload diagnostic air=%d tick=%u retry=%d moved=%d released=%d cargo=%zu attached=%d ship=(%.1f,%.1f) blocker=(%.1f,%.1f) orders=%zu\n",
+            std::fprintf(stderr,"crowded unload diagnostic air=%d tick=%u retry=%d moved=%d released=%d cargo=%zu attached=%d ship=(%.1f,%.1f) blocker=(%.1f,%.1f) orders=%zu pass=(%.1f,%.1f)\n",
                 int(air),w.tickCount(),retryTick,int(carrierMovedDuringRetry),int(released),
                 transport->cargo.size(),cargo->inTransport==tid,transport->x.toFloat(),transport->z.toFloat(),
                 blockerUnit?blockerUnit->x.toFloat():-1,blockerUnit?blockerUnit->z.toFloat():-1,
-                transport->orders.size());
+                transport->orders.size(),cargo->x.toFloat(),cargo->z.toFloat());
         }
         check(blocker!=0,"a crowding unit enters the selected shoreline landing cell");
         check(retrySeen,"a landing-cell arrival interrupts the native unload transfer");
         check(heldThroughRetry,
               "cargo remains attached while the shoreline unload retries");
-        check(carrierMovedDuringRetry,
-              "the carrier keeps moving while the crowded-site retry waits");
+        if(air)
+            check(carrierMovedDuringRetry,
+                  "the carrier keeps moving while the crowded-site retry waits");
         check(passengerFollowedCarrier,
               "the attached passenger follows the carrier during the retry");
         check(released && !w.unit(cid)->embarked(),
@@ -519,9 +550,11 @@ static void crowdedCoastlineUnloadRetry() {
         if(released) {
             check(blockerClearedAtRelease,
                   "the blocker leaves the passenger's footprint before release");
-            check(w.unit(cid)->x==ta::sim::Fixed::fromInt(dropX) &&
-                  w.unit(cid)->z==ta::sim::Fixed::fromInt(dropZ),
-                  "retry retains the exact selected passenger landing point");
+            // A surface hull carries the boom's point as it brakes (retailHullPoint).
+            const float slack=air ? 0.0f : 32.0f;
+            check(std::abs(w.unit(cid)->x.toFloat()-float(dropX))<=slack &&
+                  std::abs(w.unit(cid)->z.toFloat()-float(dropZ))<=slack,
+                  "retry retains the selected passenger landing point");
             if(!air)
                 check(w.unit(tid)->x.toFloat()<shoreCell*16,
                       "the surface carrier stays in navigable water as cargo lands on shore");
@@ -554,7 +587,7 @@ static void farInland() {
           "an unreachable destination still submits the native circle goal before unload");
     if (t->orders.size() == 2)
         check(t->orders[0].x.toFloat() == 1300 && t->orders[0].z.toFloat() == 300 &&
-              int(t->orders[0].missionRadius) + 4 == boat.transportDist - 34,
+              int(t->orders[0].missionRadius + 4) == unloadCircle(boat),
               "far-inland request retains the exact point and native radius");
 
 }
@@ -576,8 +609,11 @@ static void unloadApproachFailure() {
                                 (order.transportMission.pending&0x200));
     }
     check(failure,"boxed ship reports native navigator failure for its unload circle");
+    // TotalA.exe 0x406a13 / 0x43b8e5: each failure is a wake and another
+    // TransportDrop call; the third returns 9, which drops the unload for the
+    // queued move.
     bool preserved=false;
-    for(int tick=0;tick<20 && !preserved;++tick) {
+    for(int tick=0;tick<600 && !preserved;++tick) {
         bool approach=false,unload=false,queuedGoal=false;
         for(const auto& order:w.unit(tid)->orders) {
             approach=approach || order.transportUnloadApproach;
@@ -624,8 +660,8 @@ static void retargetWithPendingRoute() {
     w.unloadAt(tid, 420, 200);
 
     const ta::sim::Unit* t = w.unit(tid);
-    check(t->orders.size() == 1 && t->orders[0].unload,
-          "the new order list is the bare unload");
+    check(t->orders.size() == 2 && t->orders[0].transportUnloadApproach && t->orders[1].unload,
+          "the new order list is GROUND_UNLOAD's call and its unload");
 
     // Let any in-flight search land. If it is allowed to, it rewrites the unload.
     bool stillUnloading = true;
@@ -675,7 +711,7 @@ static void isolatedPond() {
         const ta::sim::Order& leg = t->orders[0];
         check(leg.groundMission && leg.x.toFloat() == dropX && leg.z.toFloat() == dropZ,
               "the approach stays centered on the requested point instead of preselecting water");
-        check(int(leg.missionRadius) + 4 == boat.transportDist - 34,
+        check(int(leg.missionRadius + 4) == unloadCircle(boat),
               "the reachable endpoint set uses the retail approach radius");
     } else {
         g_fail += 2;
@@ -782,8 +818,11 @@ static void transferLifecycle() {
     w.unloadAt(tid,500,400);
     for(int tick=0;tick<15;++tick)w.tick(1.f/30);
     check(w.unit(cid)->embarked(),"unloading waits before releasing its passenger");
-    w.tick(1.f/30);
-    check(!w.unit(cid)->embarked(),"unloading releases passenger after the transfer interval");
+    // GROUND_UNLOAD's call (its approach handler), then the fifteen-tick drop.
+    int releaseTick=15;
+    while(releaseTick<40 && w.unit(cid)->embarked()) { w.tick(1.f/30);++releaseTick; }
+    std::printf("  (released after %d ticks)\n",releaseTick);
+    check(!w.unit(cid)->embarked() && releaseTick<=18,"unloading releases passenger after the transfer interval");
     check(!w.unit(cid)->orders.empty() && w.unit(cid)->orders.front().park.has_value(),
         "sea-unloaded passenger receives retail PARK to clear the landing point");
     w.loadInto(cid,tid);
@@ -833,7 +872,7 @@ static void unloadParkPlace() {
 static void ordinaryFlightMoves() {
     using namespace ta::sim;
     for (int role=0;role<3;++role) {
-        UnitType air=boatType();air.canFly=true;air.cruiseAlt=100;
+        UnitType air=boatType();air.canFly=true;air.cruiseAlt=100;air.footZ=1;
         air.accel=Fixed::raw(20000);air.brake=Fixed::raw(60000);
         air.isBuilder=role==1;
         if(role==2) air.weapons.emplace_back();
@@ -881,7 +920,7 @@ static void ordinaryFlightMoves() {
 static void loadOrderQueueing() {
     World w;setTestPathfinding(w);
     w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-    UnitType carrier=boatType(),passenger=footType();
+    UnitType carrier=boatType(),passenger=footType();carrier.footZ=1;
     const int tid=w.spawn(&carrier,200,440),cid=w.spawn(&passenger,430,400);
     w.order(cid,460,400,false);
     w.order(tid,460,440,false);
@@ -962,7 +1001,7 @@ static void loadOrderQueueing() {
     returning.unloadAt(returningCarrier,240,440,{},true);
     check(returning.unit(returningCarrier)->orders.size()==3 &&
           returning.unit(returningCarrier)->orders[1].transportUnloadApproach &&
-          returning.unit(returningCarrier)->orders[1].missionRadius==112,
+          int(returning.unit(returningCarrier)->orders[1].missionRadius+4)==unloadCircle(carrier),
           "queued unload retains the native circle approach despite being in range at issue time");
     returning.order(returningCarrier,800,700,true);
     bool reachedPriorMove=false,returned=false;
@@ -1735,12 +1774,24 @@ static void postUnloadRoster(const char* root) {
                     const float dropZ=near ? t->z.toFloat()+80 : std::min(t->z.toFloat()+800,1900.f);
                     const bool inRange=ta::sim::retailTransportInRange((Fixed::fromFloat(dropX)-t->x).v,
                         (Fixed::fromFloat(dropZ)-t->z).v,uint16_t(type.transportDist));
-                    w.unloadAt(tid,dropX,dropZ);
-                    const bool released=runUntilUnloaded(w,tid,6000);
+                    // One passenger per GROUND_UNLOAD (TotalA.exe 0x4069f0..0x406a09):
+                    // a full load takes one (shift-)queued unload per passenger.
+                    // An unload whose drop is refused three times while another
+                    // order waits is dropped (0x43b8e5); the player clicks again.
+                    for(int i=0;i<(type.canFly ? 1 : count);++i)w.unloadAt(tid,dropX,dropZ,{},i>0);
+                    bool released=false;
+                    for(int tick=0;tick<6000 && !released;++tick) {
+                        w.tick(1.f/30);
+                        released=w.unit(tid)->cargo.empty();
+                        if(!released && w.unit(tid)->orders.empty())w.unloadAt(tid,dropX,dropZ);
+                    }
                     std::snprintf(what,sizeof what,"%s %s x%d %s: unloads",name.c_str(),mode==PathfindingMode::Retail?"retail":"legion",
                         count,near?"near":"far");
                     check(released,what);
-                    if(!released)continue;
+                    if(!released) {
+                        std::printf("    left aboard %zu, orders %zu\n",w.unit(tid)->cargo.size(),w.unit(tid)->orders.size());
+                        continue;
+                    }
                     t=w.unit(tid);
                     const float x0=t->x.toFloat(),z0=t->z.toFloat(),v0=t->speed.toFloat();
                     const float decel=(type.canFly ? type.accel : type.brake).toFloat();
@@ -1922,14 +1973,27 @@ static void exactLandingSites() {
             const int tid=w.spawn(&carrier,400,520),cid=w.spawn(&passenger,430,520);
             board(w,tid,cid);w.spawn(&building,512.25f,520.5f);
             w.unloadAt(tid,512.25f,520.5f);
+            if (!flying) {
+                // GROUND_UNLOAD: DROP_UNIT refuses the occupied cell, the passenger
+                // stays aboard, and after the third call (0x406a13) the lone order
+                // calls again every 30 + rand(30) ticks (0x43b94f) -- it never ends.
+                for (int tick=0;tick<600;++tick) w.tick(1.f/30);
+                const auto& orders=w.unit(tid)->orders;
+                check(w.unit(cid)->embarked() && !orders.empty() && orders.front().transportApproachAttempts>=3,
+                    "a permanent landing obstruction keeps the unload calling with its cargo aboard");
+            } else {
             for (int tick=0;tick<2;++tick) w.tick(1.f/30); // air controller starts before its placement check
             check(w.unit(cid)->embarked() && w.unit(tid)->orders.empty(),
                 "a permanent landing obstruction ends the order and keeps cargo aboard");
+            }
             w.unloadAt(tid,600.25f,600.5f);
             check(runUntilUnloaded(w,tid),
                 "a fresh clear-site unload succeeds after permanent obstruction failure");
-            check(w.unit(cid)->inTransport==0 && w.unit(cid)->x.toFloat()==600.25f &&
-                  w.unit(cid)->z.toFloat()==600.5f,
+            // A surface hull still braking carries the boom's point with it
+            // (retailHullPoint); an air drop lands on the point.
+            const float slack=flying ? 0.0f : 32.0f;
+            check(w.unit(cid)->inTransport==0 && std::abs(w.unit(cid)->x.toFloat()-600.25f)<=slack &&
+                  std::abs(w.unit(cid)->z.toFloat()-600.5f)<=slack,
                 "failed unload does not poison cargo attachment or the next exact destination");
         }
         {
@@ -1938,6 +2002,25 @@ static void exactLandingSites() {
             board(w,tid,cid);w.unloadAt(tid,512.25f,520.5f);
             for (int tick=0;tick<8;++tick) w.tick(1.f/30);
             const int bid=w.spawn(&blocker,512.25f,520.5f);
+            if (!flying) {
+                // GROUND_UNLOAD: DROP_UNIT tests the cell once, at release; a refusal
+                // leaves the passenger aboard and the order calls TransportDrop again.
+                bool refused=false;
+                for (int tick=0;tick<20 && !refused;++tick) {
+                    w.tick(1.f/30);
+                    const auto& orders=w.unit(tid)->orders;
+                    refused=!orders.empty() && orders.front().transportMission.stage<=1;
+                }
+                check(refused && w.unit(cid)->embarked(),
+                    "an occupied landing cell refuses the drop and the passenger stays aboard");
+                w.order(bid,700,520,false);
+                const bool unloaded=runUntilUnloaded(w,tid);
+                // The boom carries the point with a hull still coasting onto its
+                // circle (retailHullPoint): near the point, not on it.
+                check(unloaded && std::abs(w.unit(cid)->x.toFloat()-512.25f)<32 &&
+                      std::abs(w.unit(cid)->z.toFloat()-520.5f)<32,
+                    "a later call drops the passenger at the point once the blocker leaves");
+            } else {
             w.tick(1.f/30);
             check(w.unit(cid)->embarked() && !w.unit(tid)->orders.empty() &&
                     w.unit(tid)->orders.front().transportMission.stage==3,
@@ -1960,6 +2043,7 @@ static void exactLandingSites() {
                 w.tick(1.f/30);
                 check(!w.unit(cid)->embarked(),"the retried transfer releases its passenger normally");
             }
+            }
         }
         {
             World w;setTestPathfinding(w);terrain(w);w.setPathService(true);
@@ -1967,10 +2051,17 @@ static void exactLandingSites() {
             board(w,tid,cid);w.unloadAt(tid,512.25f,520.5f);
             for (int tick=0;tick<8;++tick) w.tick(1.f/30);
             const int bid=w.spawn(&blocker,512.25f,520.5f);
+            if (!flying) {
+                for (int tick=0;tick<20;++tick) w.tick(1.f/30);
+                check(w.unit(cid)->embarked() && !w.unit(tid)->orders.empty() &&
+                        w.unit(tid)->orders.front().transportMission.stage<=1,
+                    "a refused drop returns the unload to its call before cancellation");
+            } else {
             w.tick(1.f/30);
             check(w.unit(cid)->embarked() && !w.unit(tid)->orders.empty() &&
                     w.unit(tid)->orders.front().transportMission.stage==3,
                 "blocked unload reaches its retry stage before cancellation");
+            }
             w.stop(tid);
             check(w.unit(cid)->inTransport==tid && w.unit(tid)->cargo.size()==1 &&
                     w.unit(tid)->orders.empty(),
@@ -1979,8 +2070,10 @@ static void exactLandingSites() {
             w.unloadAt(tid,440.25f,600.5f);
             check(runUntilUnloaded(w,tid),
                 "a fresh unload succeeds after canceling a blocked retry");
+            const float slack=flying ? 0.0f : 32.0f;
             check(w.unit(cid)->inTransport==0 && w.unit(tid)->cargo.empty() &&
-                    w.unit(cid)->x.toFloat()==440.25f && w.unit(cid)->z.toFloat()==600.5f,
+                    std::abs(w.unit(cid)->x.toFloat()-440.25f)<=slack &&
+                    std::abs(w.unit(cid)->z.toFloat()-600.5f)<=slack,
                 "blocked retry state and old destination do not leak into the replacement unload");
         }
     }
@@ -3296,11 +3389,11 @@ int main(int argc,char** argv) {
         return 0;
     }
     if (argc==2 && !std::strcmp(argv[1],"--unload-approach")) {
-        unsigned stage,attempts,events,inRange,mover;
-        while (std::scanf("%u %u %u %u %u",&stage,&attempts,&events,&inRange,&mover)==5) {
+        unsigned stage,attempts,next,inRange,mover;
+        while (std::scanf("%u %u %u %u %u",&stage,&attempts,&next,&inRange,&mover)==5) {
             ta::sim::RetailMissionState m{uint8_t(stage)};unsigned approaches=0;
-            const int result=ta::sim::retailTransportUnloadApproach(m,attempts,100,events,
-                inRange!=0,mover!=0,[&]{++approaches;});
+            const int result=ta::sim::retailTransportUnloadApproach(m,attempts,100,0,
+                inRange!=0,mover!=0,next!=0,false,[&]{++approaches;},[](int){return 0u;});
             const unsigned delay=(m.waitMask&1u) ? m.deadline-100u : 0u;
             std::printf("%d %u %u %u %u %u\n",result,unsigned(m.stage),attempts,
                 m.waitMask,delay,approaches);
@@ -3314,7 +3407,7 @@ int main(int argc,char** argv) {
             uint32_t now=0,attempts=0,requests=0;
             bool inRange=false,hasMover=true,active=true;
             bool enabled() const { return active; }
-            RetailMissionState* head() { return active && mission.stage==1 ? &mission : nullptr; }
+            RetailMissionState* head() { return active && mission.stage<=1 ? &mission : nullptr; }
             bool hasNext(const RetailMissionState&) const { return false; }
             uint32_t random(uint32_t) { return 0; }
             void idle() { active=false; }
@@ -3322,8 +3415,8 @@ int main(int argc,char** argv) {
             void rotate(RetailMissionState&) { active=false; }
             void clear() { active=false; }
             int handle(RetailMissionState& m,uint32_t events) {
-                return retailTransportUnloadApproach(m,attempts,now,events,inRange,hasMover,
-                    [&]{++requests;});
+                return retailTransportUnloadApproach(m,attempts,now,events,inRange,hasMover,false,false,
+                    [&]{++requests;},[](int){return 0u;});
             }
         } host;
         uint32_t unitEvents=0,tick; unsigned raised,inRange,hasMover;

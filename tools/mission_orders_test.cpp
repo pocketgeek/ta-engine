@@ -139,9 +139,12 @@ struct Fixture {
         // A TA transport: canload, transportcapacity (passengers) and transportsize
         // (the largest passenger footprint) are all its keys (TotalA.exe 0x42c251/
         // 0x42c266, load test 0x489a90); cantransport, transportsizecapacity and
-        // transportdistance were Kingdoms'.
+        // transportdistance were Kingdoms'. TA's only land-going carriers hover
+        // (armthovr, corthovr): GROUND_UNLOAD stops them on a circle round the drop
+        // point (0x406a23) where any other carrier drives onto it.
         fbi("wagon", "canmove=1;\nmaxvelocity=2;\nturnrate=4000;\nturninplacerate=4000;\nfootprintx=3;\n"
-                     "footprintz=3;\nmaxdamage=800;\ncanload=1;\ntransportcapacity=4;\ntransportsize=4;\n");
+                     "footprintz=3;\nmaxdamage=800;\ncanload=1;\ntransportcapacity=4;\ntransportsize=4;\n"
+                     "canhover=1;\n");
         fbi("keep", "footprintx=4;\nfootprintz=4;\nmaxdamage=5000;\nbuilder=1;\nworkertime=300;\n");
         fbi("hut", "footprintx=2;\nfootprintz=2;\nmaxdamage=1000;\n" + cost);
         std::ofstream menus(root / "download" / "fixture.tdf");
