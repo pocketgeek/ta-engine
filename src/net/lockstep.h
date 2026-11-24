@@ -73,13 +73,20 @@ enum class Cmd : uint8_t {
     // once at unit targetId (TotalA.exe AttackSpecial 0x403190; World::dgun).
     // An ordinary PlayerCommands item (base layout); an order verb.
     DGun,
+    // Protocol 340: the reclaimer unitId takes live unit targetId apart
+    // (TotalA.exe RECLAIMUNIT / VTOL_RECLAIMUNIT, 0x404730 / 0x414a80;
+    // World::reclaimUnit): the order resolver 0x43f0e0 gives it for the armed
+    // reclaim on a unit (action 12) and a non-attacker's right-click on an
+    // enemy (action 1). An ordinary PlayerCommands item (base layout); an
+    // order verb (Shift / Ctrl).
+    ReclaimUnit,
 };
 
 struct SelectionOrder;
 
 // Command::queue on an order verb (Move, Attack, AttackMove, Patrol, Build,
 // BuildManaArea, Assist, Guard, Load, Unload, Reclaim, ReclaimArea,
-// Resurrect, Repair): the low two bits place the order -- kQueueReplace
+// Resurrect, Repair, ReclaimUnit): the low two bits place the order -- kQueueReplace
 // clears the queue, kQueueAppend adds it at the end (Shift), kQueueFront puts
 // it at the head without clearing anything (Ctrl; retail 4d7a09 -> 4d7750) --
 // and kQueueToggle marks a player's own click, whose Shift or Ctrl order

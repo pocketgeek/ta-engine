@@ -32,6 +32,8 @@ namespace ta::client {
 enum class ClickOrder : uint8_t {
     None, Move, Attack, AttackMove, Patrol, Assist, Repair, Pickup, Guard,
     Resurrect, Reclaim, ReclaimArea, Unload, AttackGround,
+    // RECLAIMUNIT on the hovered unit (Cmd::ReclaimUnit; TotalA.exe 0x43f0e0).
+    ReclaimUnit,
 };
 
 // The hovered unit (P1, GameView::hoveredUnit), from the local player's side.
@@ -65,6 +67,9 @@ struct ClickUnit {
     FriendlyOrder friendly = FriendlyOrder::None;   // friendlyUnitOrder on the hovered unit
     bool raise = false;         // it can raise the body at the point (no unit hovered)
     bool reclaim = false;       // a reclaimer, with a reclaimable target at the point
+    // A reclaimer (canreclamate) and a live unit hovered: RECLAIMUNIT may
+    // take it apart (0x43f6aa, 0x43fa13; World::reclaimUnit).
+    bool reclaimUnit = false;
 };
 
 // The resolver's friendly branch (0x4de530 mode 1/2 over an own or allied unit,
@@ -87,9 +92,12 @@ inline ClickOrder friendlyClick(const ClickUnit& u) {
 // A right-click with nothing armed (action mode 1, 0x4de530 S), per unit:
 //  - an enemy: Attack when the unit can attack and the target resolves
 //    (cursorCanAttackEnemy); a unit that can attack but cannot hurt it does
-//    nothing (0x4df215); a unit without a weapon moves to the point. Ours: a
-//    rally holder's Attack sends its output, and an immobile tower keeps an
-//    Attack on a target out of range (the sim fires once it comes in).
+//    nothing (0x4df215); a reclaimer that cannot attack takes it apart
+//    (TotalA.exe 0x43f0e0 action 1: canattack and an enemy -> the attack,
+//    0x43fa0d; else canreclamate and an enemy -> RECLAIMUNIT, 0x43fa13); any
+//    other unit without a weapon moves to the point. Ours: a rally holder's
+//    Attack sends its output, and an immobile tower keeps an Attack on a
+//    target out of range (the sim fires once it comes in).
 //  - an own or allied unit: friendlyClick.
 //  - ground: RESURRECT a body it can raise, else RECLAIM what is there, else
 //    Move. A loaded transport just moves (retail: unloading needs UNLOAD
@@ -100,6 +108,7 @@ inline ClickOrder rightClick(const ClickTarget& t, const ClickUnit& u, bool alt)
         case HoverKind::Enemy:
             if (u.rallyHolder) return ClickOrder::Attack;
             if (u.attacker) return u.canHit || !u.mobile ? ClickOrder::Attack : ClickOrder::None;
+            if (u.reclaimUnit) return ClickOrder::ReclaimUnit;
             return u.mobile ? ClickOrder::Move : ClickOrder::None;
         case HoverKind::OwnSelectable:
         case HoverKind::Friendly:
@@ -210,11 +219,15 @@ inline UnitClick armedClick(char cmd, const ClickTarget& t, const ClickUnit& u, 
             return u.transport && (u.loaded || sel.queue) ? UnitClick{ClickOrder::Unload, CursorId::Unload}
                                                           : UnitClick{};
         case 'c':
-            // Mode 12 (0x4decd6..0x4deef6 S): RESURRECT first, else RECLAIM.
+            // TotalA.exe 0x43f0e0 action 12 (0x43f4f7): a canreclamate unit
+            // only; a reclaimable feature seen at the point is RESURRECT for a
+            // canresurrect unit (0x43f5a5), else RECLAIM (0x43f68a); with none,
+            // a unit there -- any owner's -- is RECLAIMUNIT (0x43f6aa).
             // Retail's cursor says Reclaim over a body that is also a reclaimable
             // feature; ours says Revive there, the order the click gives.
             if (u.raise) return {ClickOrder::Resurrect, CursorId::Revive};
             if (u.reclaim) return {ClickOrder::Reclaim, CursorId::Reclaim};
+            if (u.reclaimUnit) return {ClickOrder::ReclaimUnit, CursorId::Reclaim};
             return {};
         default: return {};
     }

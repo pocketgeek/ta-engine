@@ -206,9 +206,8 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   killer and lets it go (0x4867da..0x48681d), the passenger dying at its own
   update through Killed; a self-destruct runs Killed too (severity from the
   death sender 0x4864b0, retailTaDeathSeverity, for kinds 3 / 5 / 6); a change
-  of owner resets +0xf4 / +0xf5 to 10 / 0 (0x485c83). Still open: ReclaimUnit
-  (0x404730, kind 5) is not ported -- World has no unit-reclaim order (the
-  death side is ready: Unit::kDeathReclaim, severity 0, retailTaDeathCountsAsLoss);
+  of owner resets +0xf4 / +0xf5 to 10 / 0 (0x485c83); a reclaim (kind 5,
+  ReclaimUnit, below) pays the reclaimer at the death (0x486c9e). Still open:
   the remote-owner branch of 0x486f10 (0x49b000 + 0x4864b0(3) for +0x73 3)
   is folded into the record; the kind-3 loss's statistics guard (local
   player +0x129[owner], 0x457540) is network-only and not modelled; the
@@ -320,8 +319,12 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   pre-call brake test). An unload given while TransportPickup still swings
   the boom home races it for the same pieces, as in retail. A hover pinned
   by a cliff with its crane astern can stand out of reach (the roster fixture
-  moved hovers to open land). GET ids above 20 (Kingdoms' 27..46: heading,
-  terrain, animation speeds) still answer Kingdoms values. GROUND_PICKUP's
+  moved hovers to open land). GET answers ids 1..20 only, as 0x480770 does
+  (0x480781 -> 0x480abb: 0 for any other id), in the sim host and the display
+  VM alike (client/displayget.h; Kingdoms' 27..46 are gone); GET 20 ARMORED
+  answers 0 (SET 20, 0x48b090(2), is not stored), and the display VM's own
+  1..19 still read its snapshot (ACTIVATION from the build queue, BUSY from
+  motion, UNIT_XZ of the unit itself) rather than the sim's state. GROUND_PICKUP's
   circle and GROUND_UNLOAD's wait also wake 60 ticks after the hull stops
   (the engine's navigator never fails an unreachable point,
   retail-pathfinding.md D16). Air cargo rides the carrier's own point, not
@@ -331,6 +334,32 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   bit 9), VTOL_PICKUP's event 2 / 0x10000 bits and the unit-follow
   controllers' exact altitude rule (0x44e190 / 0x44e250 are taken as the
   passenger's y plus the altitude) are untraced or unmodelled.
+- RECLAIMUNIT (ported 2026-11-24; World::reclaimUnit / tickReclaimUnit,
+  sim/retailreclaimunit.h, Cmd::ReclaimUnit protocol 340): ReclaimUnit
+  0x404730 (ground row 20) and VTOL_ReclaimUnit 0x414a80 (air row 16). The
+  resolver 0x43f0e0 gives it on the armed reclaim over any owner's unit when
+  no reclaimable feature is seen at the point (action 12, 0x43f6aa) and on a
+  right-click on an enemy by a canreclamate unit that cannot attack (action
+  1, 0x43fa13; interface type game +0x37efa == 1 -- the other interface goes
+  through action 12, so a feature under the point wins there; the client
+  follows the first). Stage 0 refuses an airborne flyer or a cancapture type
+  (0x489960, emulated: tools/re/reclaimunit_emu.py); the approach is
+  RepairUnit's rectangle (0x438ad0), re-installed on the target every 15
+  ticks until the arrival; StartBuilding, the stance, then a kind-5 record
+  of 0x438650's rate (emulated) every 16 ticks while within builddistance +
+  the target's +0x184 (else StopBuilding and stage 0 after 15 ticks); the
+  reclaimer stays visible 900 ticks. The flyer: Activate, the take-off, a
+  controller on the target, the record within builddistance (no radius),
+  else stage 0 after 30. The death (severity 0, no Killed, no corpse) pays
+  the last hitter's metal production (1 - remaining) x buildcostmetal, the
+  AI's 0.5 / 0.7 applied (0x486c9e..0x486d1e); no energy. Shift / Ctrl work
+  on it (QueuedKind::ReclaimUnit). TA has no area reclaim (neither mission
+  table has a RECLAIMAREA; World's reclaimArea and the right-drag / CLEAR
+  box are Kingdoms' 406670, features only). Not modelled: the "Reclaiming"
+  status line and the speech lines ("That unit cannot be reclaimed",
+  0x47f780), the work sound (stage 4, 0x47f780(unit, 0xb)), the 0x10000
+  event, and stage 2's failure test (0x40485b: 0x40 -> 9), which retail's
+  dispatcher never reaches with an event set.
 - Mission dispatcher (0x43b7c0, retailDispatchMissions): code 3 sleeps
   30 + rand(15) (0x43b890) and code 9 sets mission flag 0x800000 and, alone,
   sleeps 30 + rand(30) (0x43b8e5..0x43b973); the rest matched already. Not
