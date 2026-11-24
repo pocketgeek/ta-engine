@@ -76,6 +76,26 @@ static Timing timeReclaim(float energy,int builders,float workerTime,int stagger
 
 int main(int argc,char**) {
     (void)argc;
+    // ---- RepairPatrol (TotalA.exe 0x405980) --------------------------------
+    // A Patrol order gives a canreclamate ground builder REPAIRPATROL
+    // (0x43f414), whose look (every 60 ticks) repairs an allied unit drawn
+    // from those in its sightdistance; any other builder patrols (0x4033a0)
+    // and looks for no work.
+    for (const bool canReclaim:{true,false}) {
+        sim::World w;flat(w);
+        auto type=builderType(1,10);type.canReclaim=canReclaim;type.sight=300;type.canPatrol=true;
+        sim::UnitType hurtType;hurtType.id="hurt";hurtType.maxHp=100;hurtType.footX=hurtType.footZ=1;
+        const int b=w.spawn(&type,300,300,0.0f,0),h=w.spawn(&hurtType,360,300,0.0f,0);
+        w.unit(h)->hp=sim::Fixed::fromInt(30);
+        w.patrol(b,900,300);
+        bool job=false;
+        for (int tick=0;tick<90 && !job;++tick) {
+            w.tick(1.f/30);
+            for (const auto& o:w.unit(b)->orders) job|=o.patrolRepair;
+        }
+        check(job==canReclaim,canReclaim ? "a canreclamate builder's RepairPatrol repairs a damaged ally in sight"
+                                         : "a builder without canreclamate patrols without looking for work");
+    }
     // ---- countdown and wake schedule (406250 stage 1, 406529) -------------
     check(sim::retailReclaimCountdown(0)==15 && sim::retailReclaimCountdown(75)==90 &&
           sim::retailReclaimCountdown(250)==265 && sim::retailReclaimCountdown(525)==540 &&

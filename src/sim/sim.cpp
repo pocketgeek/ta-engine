@@ -13930,37 +13930,150 @@ void World::tickPatrolRepair(Unit& b) {
         b.buildSiteId || b.repairId || b.reclaimId || b.repeatType || !b.buildQueue.empty() ||
         hasQueuedWork(b) || b.orders.empty() || !b.orders.front().patrol) return;
     if (b.type->canFly) { tickFlyingPatrolLook(b); return; }
-    if ((uint32_t(b.id)+tickCounter_)%30!=0) return;
-    const float radius=std::max(0,sightDistance(*b.type));
-    const float x=b.x.toFloat(),z=b.z.toFloat();
-    float bestDistance=radius*radius;int target=0;
-    forEachNear(x,z,radius,[&](int index) {
-        const auto& t=units_[size_t(index)];
-        if (!t.alive() || !t.type || t.id==b.id || t.underConstruction || t.embarked() ||
-            !allied(b.player,t.player) || t.hp<=Fixed() || t.hp>=Fixed::fromInt(t.type->maxHp)) return;
-        const float dx=t.x.toFloat()-x,dz=t.z.toFloat()-z,d=dx*dx+dz*dz;
-        if (d>bestDistance || (d==bestDistance && target && t.id>target)) return;
-        if (b.type->canFly ? !repairTopAboveSea(t) : !pathExists(b.type,t.x.toFloat(),t.z.toFloat(),x,z)) return;
-        bestDistance=d;target=t.id;
-    });
-    if (!target) return;
-    // Retain the patrol's canonical point, without its old route corners. The
-    // resumed patrol gets a fresh controller and keeps all following waypoints.
-    const size_t end=currentLeg(b.orders);
-    Order patrol=b.orders[end];
-    if (patrol.missionTarget) {patrol.x=patrol.missionTarget->first;patrol.z=patrol.missionTarget->second;}
-    const uint32_t flags=patrol.mission.flags;
-    patrol.mission={};patrol.mission.flags=flags;patrol.controller=0;
-    patrol.navigationExhausted=patrol.navigationConsumed=false;patrol.hasSegment=false;
-    patrol.flightGoal.reset();
-    cancelPath(b);b.routeStamp=0;
-    b.orders.erase(b.orders.begin(),b.orders.begin()+long(end));b.orders.front()=patrol;
-    const size_t oldSize=b.orders.size();
-    repair(b.id,target,true);
-    if (b.orders.size()>oldSize) {
-        auto& job=b.orders.back();job.patrolRepair=true;job.clickX=b.x;job.clickZ=b.z;
-        std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
+    tickGroundPatrolLook(b);
+}
+
+// TotalA.exe RepairPatrol (0x405980), the ground patrol of a canreclamate
+// type (table 0x4fc6e8 row 15). Its stage 1 heads for the waypoint on a
+// radius-16 circle (0x4059ca) and looks for work at every wake, a sleep of 60
+// ticks (0x4059d3); ours runs the look on a 60-tick timer from here and keeps
+// World's patrol navigation. The look:
+//  - while the energy stored is at least a fifth of the storage (0x4059ea..
+//    0x405a03; 0x4fc950 = 0.2): the units 0x47e890 finds within sightdistance
+//    (type +0x202), one drawn at random (0x405a8c); an allied one (owner
+//    +0x108[its player]) the builder can work on (0x43f0e0(8)) gets 0x43b400:
+//    a repair -- or the help on a nanoframe -- with a return move under it
+//    on Hold Position / Maneuver, the patrol behind (6).
+//  - only while metal or energy stands below a fifth of its storage
+//    (0x405b18..0x405b54): the reclaimable features 0x47ea40 lists on a 48 px
+//    grid 120 px about the builder, three draws per resource keeping the
+//    largest, and RECLAIM (0x405bef) on the metal one when metal is low, else
+//    the energy one when energy is low, else whichever fits its storage,
+//    with the patrol's controller gone (0x4388d0) and the wait cleared.
+// (Kingdoms' patrol repaired the nearest damaged unit in sight every 30
+// ticks, with a path test, and never reclaimed.)
+void World::tickGroundPatrolLook(Unit& b) {
+    if (!b.type->canReclaim || (uint32_t(b.id)+tickCounter_)%60!=0) return;
+    const auto& books=players_[size_t(b.player)].books;
+    if (!(double(books.cap[econ::E])*0.2>double(books.stored[econ::E]))) {
+        const int32_t sight=std::max(0,sightDistance(*b.type));
+        const int64_t reach=(int64_t(sight)<<16)*(int64_t(sight)<<16)>>32;
+        struct Candidate { int32_t sz,sx; int id; };
+        std::vector<Candidate> found;
+        forEachNear(b.x.toFloat(),b.z.toFloat(),float(sight)+16.0f,[&](int index) {
+            const Unit& c=units_[size_t(index)];
+            if (c.id==b.id || !c.alive() || !c.type || c.hp<=Fixed() || c.embarked() ||
+                !allied(b.player,c.player)) return;
+            if (!c.underConstruction && c.hp>=Fixed::fromFloat(c.type->maxHp)) return;
+            const int64_t dx=int64_t(c.x.v)-b.x.v,dz=int64_t(c.z.v)-b.z.v;
+            if (((dx*dx)>>32)+((dz*dz)>>32)>reach) return;
+            found.push_back({c.z.v>>23,c.x.v>>23,c.id});
+        });
+        std::sort(found.begin(),found.end(),[](const Candidate& a,const Candidate& c) {
+            return a.sz!=c.sz ? a.sz<c.sz : a.sx!=c.sx ? a.sx<c.sx : a.id<c.id;
+        });
+        if (!found.empty()) {
+            const Unit& c=*unit(found[size_t(pathRand(uint32_t(found.size())))].id);
+            if (!c.underConstruction && canRepairUnit(b,c)) {
+                const size_t end=currentLeg(b.orders);
+                Order patrol=b.orders[end];
+                if (patrol.missionTarget) {patrol.x=patrol.missionTarget->first;patrol.z=patrol.missionTarget->second;}
+                const uint32_t flags=patrol.mission.flags;
+                patrol.mission={};patrol.mission.flags=flags;patrol.controller=0;
+                patrol.navigationExhausted=patrol.navigationConsumed=false;patrol.hasSegment=false;
+                cancelPath(b);b.routeStamp=0;
+                b.orders.erase(b.orders.begin(),b.orders.begin()+long(end)+1);
+                b.orders.push_back(patrol);
+                if (b.moveState<2) {
+                    // The return move to where the builder looked (a
+                    // response's mode-1 move, as the hit response's).
+                    const RetailGroundPoint pos{int16_t(b.x.floorInt()),int16_t(b.z.floorInt())};
+                    Order back{Fixed::fromInt(pos.x),Fixed::fromInt(pos.z),0};
+                    back.goal=true;back.issuedTick=tickCounter_;back.mission.flags=0x3000400u;
+                    back.groundMission=true;
+                    back.groundResponse.mode=1;back.groundResponse.goal=back.groundResponse.origin=pos;
+                    back.segmentX=Fixed::fromInt(pos.x);back.segmentZ=Fixed::fromInt(pos.z);
+                    back.hasSegment=true;back.controller=++nextMovementController_;
+                    b.orders.insert(b.orders.begin(),back);
+                }
+                const size_t oldSize=b.orders.size();
+                repair(b.id,c.id,true);
+                if (b.orders.size()>oldSize) {
+                    auto& job=b.orders.back();job.patrolRepair=true;
+                    job.clickX=Fixed::fromInt(b.x.floorInt());job.clickZ=Fixed::fromInt(b.z.floorInt());
+                    std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
+                }
+                noteOrders(b.id);
+                return;
+            }
+            if (c.underConstruction && canHelpBuild(b,c)) {
+                guardInsertJob(b,c.id,0);
+                return;
+            }
+        }
     }
+    const bool energyLow=double(books.cap[econ::E])*0.2>double(books.stored[econ::E]);
+    const bool metalLow=double(books.cap[econ::M])*0.2>double(books.stored[econ::M]);
+    if (!energyLow && !metalLow) return;   // 0x405b18..0x405b54
+    struct Pick { int32_t x=0,z=0; float value=0; int target=0; };
+    std::vector<Pick> energy,metal;
+    std::unordered_map<int,int> targets;
+    for (const auto& f:features_) {
+        if (!f.alive || !f.id || f.fadeLeft || f.dieLeft || f.type<0 || size_t(f.type)>=featTypes_.size()) continue;
+        targets.emplace(footprintOrigin(f.z,f.fz)*hW_+footprintOrigin(f.x,f.fx),f.id);
+    }
+    for (const auto& [id,p]:corpseFootprints_) {
+        const Unit* corpse=unit(id);
+        if (!corpse || corpse->alive() || corpse->deadFor>=corpse->corpseUntil || corpse->corpseFading ||
+            p.type<0 || size_t(p.type)>=featTypes_.size()) continue;
+        targets.emplace(p.z*hW_+p.x,-id);
+    }
+    const int32_t half=Fixed::fromInt(120).v;
+    for (int32_t z=b.z.v-half;z<=b.z.v+half;z+=Fixed::fromInt(48).v)
+        for (int32_t x=b.x.v-half;x<=b.x.v+half;x+=Fixed::fromInt(48).v) {
+            const int cx=x>>20,cz=z>>20;
+            if (cx<0 || cz<0 || cx>=hW_ || cz>=hH_) continue;
+            int ax=cx,az=cz;
+            if (!mapPlacementCells_.empty()) {
+                const auto& cell=mapPlacementCells_[size_t(cz)*hW_+cx];
+                if (cell.feature==0xfffe) {ax-=cell.backX;az-=cell.backZ;}
+                else if (cell.feature>=0xfffb) continue;
+            }
+            const auto hit=targets.find(az*hW_+ax);
+            if (hit==targets.end()) continue;
+            int type=-1;
+            if (hit->second<0) type=corpseFootprints_.at(-hit->second).type;
+            else if (const Feature* f=feature(hit->second)) type=f->type;
+            if (type<0) continue;
+            const FeatType& def=featTypes_[size_t(type)];
+            if (!def.reclaimable || !def.autoReclaimable || !reclaimTargetValid(hit->second)) continue;
+            if (def.energy!=0) energy.push_back({x,z,def.energy,hit->second});
+            if (def.metal!=0) metal.push_back({x,z,def.metal,hit->second});
+        }
+    auto choose=[&](const std::vector<Pick>& list) -> const Pick* {
+        if (list.empty()) return nullptr;
+        float best=0;size_t chosen=0;
+        for (int draw=0;draw<3;++draw) {
+            const size_t i=size_t(pathRand(uint32_t(list.size())));
+            if (best<list[i].value) { best=list[i].value;chosen=i; }
+        }
+        return &list[chosen];
+    };
+    const Pick* e=choose(energy);
+    const Pick* m=choose(metal);
+    const Pick* go=nullptr;
+    if (m && metalLow) go=m;
+    else if (e && energyLow) go=e;
+    else if (m && books.stored[econ::M]+m->value<=books.cap[econ::M]) go=m;
+    else if (e && books.stored[econ::E]+e->value<=books.cap[econ::E]) go=e;
+    if (!go) return;
+    const Pick pick=*go;
+    guardStandAside(b);   // 0x4388d0(0): the patrol's controller goes
+    const size_t oldSize=b.orders.size();
+    reclaim(b.id,pick.target,true);
+    if (b.orders.size()>oldSize)
+        std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
+    noteOrders(b.id);
 }
 
 // TotalA.exe VTOL_RepairPatrol (0x4152f0), the patrol of a flyer whose type
