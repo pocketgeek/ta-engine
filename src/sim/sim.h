@@ -4210,6 +4210,8 @@ private:
     bool ballisticInRange(Fixed x,Fixed y,Fixed z,const Unit& t,const Weapon& w) const;
     bool ballisticInRange(const Unit& u,const Unit& t,const Weapon& w) const;
     int approachSlot(const Unit& u) const;
+    // A ground mover's attack (Attack_Chase) approaches on its order slot alone.
+    static bool chasesOnOrderSlot(const Unit& u);
     // tickCombat's reach to a target at centre distance `dist`: the weapon it
     // approaches on (approachSlot), and whether the target is within it.
     // `pad` is the structure footprint pad the non-ballistic reach adds.

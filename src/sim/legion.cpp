@@ -12364,7 +12364,9 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         const bool all=!u.type->weaponSwitching&&u.type->weapons.size()>1;
         const Weapon& sel=u.type->weapons[size_t(slot)];
         if(sel.melee)return {8*(std::max(u.type->footX,u.type->footZ)+std::max(t->type->footX,t->type->footZ))+8,false};
-        const float best=all?u.type->maxRange():sel.range;
+        // A walker chases on its order slot (World::approachSlot, Attack_Chase 0x4034a0).
+        const float best=World::chasesOnOrderSlot(u)?float(u.type->weapons[size_t(w.approachSlot(u))].range)
+            :all?u.type->maxRange():sel.range;
         const float pad=t->type->maxVel<=Fixed()&&!centreReach(u)?8.0f*float(std::max(t->type->footX,t->type->footZ))+24.0f:0.0f;
         const bool los=w.approachNeedsClearLine(u,*t);   // tickCombat's own test
         return {int(best+pad),los};
@@ -12383,7 +12385,8 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         const bool all=!u.type->weaponSwitching&&u.type->weapons.size()>1;
         const Weapon& sel=u.type->weapons[size_t(slot)];
         if(sel.melee)return 0.0f;
-        const float best=all?u.type->maxRange():sel.range;
+        const float best=World::chasesOnOrderSlot(u)?float(u.type->weapons[size_t(w.approachSlot(u))].range)
+            :all?u.type->maxRange():sel.range;
         const float pad=t->type->maxVel<=Fixed()&&!centreReach(u)?8.0f*float(std::max(t->type->footX,t->type->footZ))+24.0f:0.0f;
         return best+pad;
     }
