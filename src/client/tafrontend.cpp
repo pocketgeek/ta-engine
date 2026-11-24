@@ -783,11 +783,42 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             }
         }
         if (page_ != Page::Skirmish && !message.empty() && (view || picker)) {
-            // A failed launch's reason (or a NEWGAME refusal), on a dark band at the foot.
-            const SDL_FRect band = L.rect(0, 462, 640, 18);
+            // A failed launch's reason (or a NEWGAME refusal) on a dark band, wrapped to
+            // the screen's width. On the title screen it sits above the buttons (the
+            // foot holds CAMPAIGN / OPTIONS); elsewhere at the foot, growing upward.
+            std::vector<std::string> lines;
+            {
+                std::string line, word;
+                auto fits = [&](const std::string& t) { return rowFont.width(t) <= 624; };
+                auto push = [&] {
+                    if (word.empty()) return;
+                    const std::string joined = line.empty() ? word : line + " " + word;
+                    if (fits(joined) || line.empty()) line = joined;
+                    else { lines.push_back(line); line = word; }
+                    // A single word wider than the screen (a long path): hard-break it.
+                    while (!fits(line) && line.size() > 1) {
+                        size_t n = line.size();
+                        while (n > 1 && !fits(line.substr(0, n))) --n;
+                        lines.push_back(line.substr(0, n));
+                        line = line.substr(n);
+                    }
+                    word.clear();
+                };
+                for (char c : message) {
+                    if (c == ' ' || c == '\n') { push(); if (c == '\n' && !line.empty()) { lines.push_back(line); line.clear(); } }
+                    else word.push_back(c);
+                }
+                push();
+                if (!line.empty()) lines.push_back(line);
+            }
+            const float lh = float(std::max(12, rowFont.height() + 2));
+            const float bandH = lh * float(lines.size()) + 6;
+            const float top = page_ == Page::Main ? 360 - bandH : 480 - bandH;
+            const SDL_FRect band = L.rect(0, top, 640, bandH);
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 200);
             SDL_RenderFillRectF(ren_, &band);
-            rowFont.draw(ren_, L, 8, 465, message, SDL_Color{255, 220, 120, 255});
+            for (size_t i = 0; i < lines.size(); ++i)
+                rowFont.draw(ren_, L, 8, top + 3 + lh * float(i), lines[i], SDL_Color{255, 220, 120, 255});
         }
         if (page_ == Page::Skirmish && view) {
             for (int r = 0; r < kRows && r < int(setup.seats.size()); ++r) {
