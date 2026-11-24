@@ -3038,103 +3038,6 @@ bool World::tickLegionLift(Unit& u) {
     return true;
 }
 
-// Engine deviation (owner, 2026-11-12): retail's VTOL_Standby gives a
-// landed flyer on Hold Position no attack mission (4d7de0 refuses on Hold
-// Position), so its auto slots fire from the ground. Some scripts release a
-// shot only in flight: the Thirsha's attack animation and its SET 23 run
-// only while BeginFlight's flag is up (BeginLanding and Create clear it), so
-// a landed Thirsha on Hold Position went through FireWeapon for ever and
-// never shot. Here an idle landed flyer on Hold Position whose auto slot
-// holds a target (fire at will or return fire: a Passive one takes none)
-// takes off as VTOL_Move does (416c50: Activate, BeginFlight), holds over
-// the spot it left at cruise altitude, turning to the target through the
-// navigator's controller heading (as the hover ring's 4e4330 does), and
-// does not chase. kHoldLiftQuiet ticks after its last target in range it
-// hands over to the retail landing mission. An order takes over at once.
-static bool slotNeedsFacing(const UnitType& t);
-
-bool World::tickHoldLift(Unit& u) {
-    // Every unit passes here each tick: only a lifted flyer or a landed one
-    // with an auto target goes further.
-    if (!u.holdLift && (u.flightGroundMode!=1 || !u.type || !u.type->canFly ||
-        (!u.slotTarget[0] && !u.slotTarget[1] && !u.slotTarget[2]))) return false;
-    const bool idle=u.type && u.type->canFly && !u.type->isStructure() && u.baseSpeed>Fixed() &&
-        !u.underConstruction && !u.embarked() && u.orders.empty() && !u.buildSiteId && !u.repairId &&
-        !u.reclaimId && u.buildQueue.empty() && !u.repeatType && u.cargo.empty() && !u.retainedFlightGoal &&
-        !u.landing && !u.legionLift && u.moveState==0 && u.fireState!=0;
-    const int n=u.type ? int(std::min<size_t>(3,u.type->weapons.size())) : 0;
-    const Unit* target=nullptr;
-    for (int s=0;s<n && idle;++s) {
-        if (!(u.slotAuto>>s&1) || !u.slotTarget[size_t(s)]) continue;
-        if (u.type->weaponSwitching && s!=u.weaponSlot) continue;
-        const Unit* t=unit(u.slotTarget[size_t(s)]);
-        if (t && t->alive() && t->hp>Fixed() && slotInRange(u,*t,s)) { target=t;break; }
-    }
-    if (!u.holdLift) {
-        if (!target || u.flightGroundMode!=1) return false;
-        // Only a flyer that cannot fight from the ground lifts: its script
-        // started a shot and never released it, it is a hover attacker whose
-        // request it cannot turn to (52fff0 holds its fire), or its shots
-        // from here are written off (noteShotImpact: an Iron Beak's Egg Bomb
-        // dropped from the ground lands at its own feet). One that can fire
-        // from where it stands keeps doing so (a Sea Dragon's Fire Breath
-        // would not reach from cruise altitude).
-        // A start counts as unreleased once kHoldLiftNoRelease ticks have
-        // passed without its SET 23 (a released shot leaves well inside an
-        // attack animation), not only at the next start a reload later.
-        bool cannot=u.unreleasedFires>0 || shotBlockedHere(u,*target) ||
-            (u.fireStartPending && tickCounter_-u.fireStartTick>=kHoldLiftNoRelease);
-        if (!cannot && slotNeedsFacing(*u.type))
-            for (int s=0;s<n && !cannot;++s) {
-                if (u.slotTarget[size_t(s)]!=target->id || (u.type->weaponSwitching && s!=u.weaponSlot)) continue;
-                if (const auto aim=queryWeaponAim(u.id,target->id,s))
-                    cannot=!retailFacingAligned(portHeadingToRetail(u.heading),aim->facing,
-                                                uint16_t(u.type->weapons[size_t(s)].aimTol));
-            }
-        if (!cannot) return false;
-        u.holdLift=true;u.holdLiftX=u.x;u.holdLiftZ=u.z;
-        // From the air it is a new line of fire: the write-off (taken
-        // between two ground spots, blind to height) no longer holds.
-        if (u.blockedTarget) { u.blockedTarget=0;u.blockedShots=0;u.repositions=0;u.searchFailed=0; }
-    }
-    if (!idle) { u.holdLift=false;return false; }
-    if (target) u.holdLiftUntil=tickCounter_+kHoldLiftQuiet;
-    else if (tickCounter_>=u.holdLiftUntil) {
-        u.holdLift=false;
-        if (u.flightGroundMode==2) { u.standbyActive=false;u.landing.emplace(); }
-        return false;
-    }
-    if (u.flightGroundMode!=2) {
-        // 416c50, as VTOL_Move's stage 0.
-        if (auto script=unitScripts_.find(u.id);script!=unitScripts_.end() && !script->second.activated) {
-            script->second.activated=true;notifyUnitScript(u,"Activate");
-        }
-        notifyUnitScript(u,"BeginFlight");
-        u.standbyActive=false;
-        u.flightGroundMode=2;groundMove(u);   // 51b3b0: taking off unstamps
-    }
-    const int cruise=flightGround(u)+u.type->cruiseAlt;
-    RetailFlightGoal goal{{u.holdLiftX.v,Fixed::fromInt(std::min(cruise,511)).v,u.holdLiftZ.v}};
-    if (target) {
-        const auto sweetSpot=queryUnitScriptPoint(target->id,true);
-        goal.flags|=0x40;
-        goal.heading=uint16_t(retailDirection(Fixed::raw(satSub32(u.x.v,sweetSpot[0])),
-                                              Fixed::raw(satSub32(u.z.v,sweetSpot[2]))).v);
-    }
-    const RetailFlightVector position{u.x.v,u.flightY.v,u.z.v};
-    u.flightNavigation=retailFlightNavigation(position,u.flightNavigation.destination,goal.point,
-        u.flightNavigation.heading,Fixed::fromInt(cruise).v,false,(goal.flags&0x40)!=0,goal.heading,false,u.flightNavigation.wraps);
-    tickFlightBody(u);
-    notifyFlightOccupancy(u);
-    // The caller skips the rest of the unit's update, as for the Legion lift;
-    // the weapon timers still count down and the auto slots fire (52ae90).
-    const bool reloadAll=!u.type->weaponSwitching && u.type->weapons.size()>1;
-    for (size_t slot=0;slot<std::min(size_t(3),u.type->weapons.size());++slot)
-        if ((reloadAll || int(slot)==u.weaponSlot) && u.reloads[slot]>0) --u.reloads[slot];
-    tickSlotWeapons(u);
-    return true;
-}
-
 // Cell quad extrema (+6 low, +5 high) from the corner lattice (50ed60).
 std::pair<int,int> World::cellHeightRange(size_t cell) const {
     if (heights_.empty() || hW_<=0) return {0,0};
@@ -4174,9 +4077,8 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 return retailVtolStandby(m,w.tickCounter_,true,true,u.flightGroundMode==2,!u.cargo.empty(),
                     [&](int n){return random(n);},[&] {
                         // 0x40f9ed: the post. (0x40f9d3 also makes every
-                        // slot manual, 0x4898b0(3); not ported: World keeps
-                        // an idle flyer's slots automatic, which the owner's
-                        // Hold Position deviation, tickHoldLift, builds on.)
+                        // slot manual, 0x4898b0(3): syncSlotMode's
+                        // kSlotsStandby for an idle flyer.)
                         u.standbyPostX=int16_t(u.x.floorInt());u.standbyPostZ=int16_t(u.z.floorInt());
                     },
                     [&] {
@@ -7684,8 +7586,18 @@ void World::syncSlotMode(Unit& u) {
     const bool work=u.buildSiteId || u.repairId || u.reclaimId || u.reviveTarget || u.workScriptWorking;
     // A resurrect channel starts only in reach (and from the threaded ability
     // pass, which must not start scripts), so it is recognised here too.
+    // An idle flyer runs VTOL_Standby or VTOL_LandIfCan, and a pad mission
+    // may lead: each one's stage 0 makes every slot manual (0x4898b0(3):
+    // VTOL_Standby 0x40f9d3, VTOL_LandIfCan 0x40f6a3, VTOL_Landing 0x411963,
+    // SelfRepair 0x402617), and none makes them automatic again. Its
+    // weapons then fire only at what an attack mission hands them: the
+    // standby's scan (0x43b700, Fire At Will only) put in by 0x43b1f0, which
+    // refuses on Hold Position (0x43b211).
+    const bool flyerStandby=u.type && u.type->canFly && !u.type->isStructure() &&
+        ((u.orders.empty() && !u.legionLift) || (!u.orders.empty() && (u.orders.front().landing || u.orders.front().airPad)));
     const uint8_t want=status ? kSlotsStatus : attack ? kSlotsAttack :
-        (u.reviveTarget || (u.slotManual==kSlotsWork && work)) ? kSlotsWork : kSlotsAuto;
+        (u.reviveTarget || (u.slotManual==kSlotsWork && work)) ? kSlotsWork :
+        flyerStandby ? kSlotsStandby : kSlotsAuto;
     // AirToGround's and AirToAir's mixed slots last only while their order
     // is at the front; any other attack's own stages make every slot manual.
     const bool mixed=attack && want==kSlotsAttack && front->mixedSlots;
@@ -18410,6 +18322,7 @@ void World::tickAirPad(Unit& u) {
 // pad (0x44e250: 1 its origin, 2 the piece at cruise height, 3 down onto the
 // piece) follows it every tick and reports arrival while it holds (0x100).
 void World::flyAirPadGoal(Unit& u,Order& o) {
+    if (u.embarked()) return;   // on its pad since this tick's dispatch: the pad carries it
     if (u.flightGroundMode!=2) { u.flightGroundMode=2;groundMove(u); }   // 51b3b0: taking off unstamps
     u.retainedFlightGoal.reset();u.retainedFlightControllerActive=false;
     const int cruise=flightGround(u)+u.type->cruiseAlt;
@@ -21097,7 +21010,6 @@ void World::tick(float dt) {
         // not all ground missions before every other unit's activity.
         if (u.constructionHolding && (u.buildSiteId || u.repairId)) continue;
         if (u.legionLift && tickLegionLift(u)) continue;
-        if (tickHoldLift(u)) continue;
         // MobileBuild/FlyingBuild standing (or hovering) at its site, waiting
         // out mobile units on it (405824..405911, 41f301..41f3e5): navigation
         // has stopped (tickNavigationMovement only brakes or holds it); only
@@ -22251,8 +22163,6 @@ uint64_t World::stateHash() const {
         if (u.legionLift) { mix(0x4c494654u); mix(u.legionLiftUntil); mix(uint32_t(u.legionLiftX.v)); mix(uint32_t(u.legionLiftZ.v)); mix(u.legionLiftSince); }
         if (u.legionLiftRest) { mix(0x52455354u); mix(u.legionLiftRest); }
         if (u.outputStance >= 0) { mix(0x4f535443u); mix(uint32_t(u.outputStance)); }
-        if (u.holdLift) { mix(0x484c4654u); mix(u.holdLiftUntil); mix(uint32_t(u.holdLiftX.v)); mix(uint32_t(u.holdLiftZ.v)); }
-        if (u.fireStartPending || u.unreleasedFires) { mix(0x46525354u); mix(uint32_t(u.fireStartPending)|uint32_t(u.unreleasedFires)<<8); mix(u.fireStartTick); }
         if (u.legionWindow || u.legionStill || u.legionShuffle) {
             mix(0x5354494cu); mix(u.legionWindow); mix(u.legionStill); mix(u.legionShuffle);
             const auto& w=legionWindow_[size_t(u.id)];
