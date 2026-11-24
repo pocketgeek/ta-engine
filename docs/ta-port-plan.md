@@ -206,7 +206,10 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   guard (local player +0x129[owner], 0x457540) is network-only and not modelled.
   A change of owner keeps the unit's +0xf4/+0xf5 (TA's new object starts at
   10 / 0). The Kingdoms experience routines (xp, vetMul) are still wired but TA
-  credits no experience, so they stay at level 0 unless a placement sets one.
+  credits no experience, so they stay at level 0 unless a placement sets one
+  (the Legion fixture fight-retarget's killers no longer reach level 1: six
+  legion keys are accepted regressions in tools/scenarios/baseline.json, and 15
+  combat fixtures' hashes were retaken for Unit::lastHitKind).
 - Under-attack: the gate is decided on weapon hits only (World::applyHit); TA
   runs 0x406f80 for every damage record but repair and water (self-destruct,
   change of owner, passengers too), and World's hit response before it is still

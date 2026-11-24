@@ -23,9 +23,13 @@ int main(int argc,char** argv) {
             // Ownership can change between impact and death accounting.
             world.unit(from)->player=1;
             world.tick(1.f/30.f);
-            check(world.player(0).score==(sameOwner || unfinished?0:1234),"score must use victim value, excluding self but not allied owner");
+            // TotalA.exe's death switch (0x4868b3..0x48690e): the hitter player's kill,
+            // an owner test (an ally's unit counts), finished victims only; TA keeps no
+            // per-kill score.
+            check(world.player(0).kills==(sameOwner || unfinished?0:1) && world.player(0).score==0,
+                  "a kill must count for the hitter player, excluding self but not allied owner");
             world.tick(1.f/30.f);
-            check(world.player(0).score==(sameOwner || unfinished?0:1234),"score must award only once per death");
+            check(world.player(0).kills==(sameOwner || unfinished?0:1),"a kill must count only once per death");
         }
         for(uint32_t slot:{0u,1u}) {
             // Real mission VM: SET40(GET40(slot)); native GET uses raw zero-based slot.
