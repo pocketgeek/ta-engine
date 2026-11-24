@@ -3283,8 +3283,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 if (t->footX!=t->footZ && (!oblong || area(t)<area(oblong))) oblong=t;
                 if (t->footX==t->footZ && (!square || std::abs(area(t)-16)<std::abs(area(square)-16))) square=t;
             }
-            if (!small || !oblong || !square) fail("armcom's menu lacks the footprints this test needs");
-            for (const auto* t:{small,oblong,square})
+            if (!small || !oblong || !square) fail("armcom's menu lacks the footprints this test needs");            for (const auto* t:{small,oblong,square})
                 std::fprintf(stderr,"buildline: type %s footprint %dx%d\n",t->id.c_str(),t->footX,t->footZ);
             struct Case {const ta::sim::UnitType* type;int dx,dy;int wheel;int gap;const char* name;};
             // Screen-pixel drags at zoom 1; wheel = notches during the drag; gap = expected.
@@ -3470,6 +3469,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         // Every distinct site must get built: chained lines plan their approach from
         // where the earlier ones leave the builder. Exits 1 on a stranded site.
         if (const char* spec=ta::devEnv("TA_BUILDLINE_CHAIN")) {
+            writableWorld().setPathService(true);   // as a real match's setup (sim/matchsetup.cpp)
             noFog_=true;edgeScrollOn_=false;winW_=1280;winH_=960;mapView_.setZoom(1);
             const auto publish=[&] {captureFrame();beginFrame();cosmeticStep(0);};
             std::vector<std::string> parts;
@@ -3490,7 +3490,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             int lx=500,hx=500,ly=450,hy=450;
             for (const auto& [x,y]:pts) {lx=std::min(lx,x);hx=std::max(hx,x);ly=std::min(ly,y);hy=std::max(hy,y);}
-            // Open ground under the whole chain and round the builder.
+            // Open ground under the whole chain and round the builder, for the chain's own
+            // type too (a Light Laser Tower refuses slopes Dragon's Teeth take).
             const float mw=float(mapView_.map().blocksX)*32.0f,mh=float(mapView_.map().blocksY)*32.0f;
             bool open=false;float wx=0,wz=0;
             for (int i=0;i<40000 && !open;++i) {
@@ -3500,6 +3501,15 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 for (float z=wz+float(ly-450)-96;open && z<=wz+float(hy-450)+96;z+=32)
                     for (float x=wx+float(lx-500)-96;open && x<=wx+float(hx-500)+96;x+=32)
                         if (!world_.canPlace(small,x,z,localPlayer_)) open=false;
+                // The chain's own type along the drags themselves (a Light Laser Tower
+                // refuses slopes over 14 that Dragon's Teeth, maxslope 32, take).
+                for (size_t i=0;open && i+1<pts.size();++i)
+                    for (int s=0;open && s<=64;++s) {
+                        const float f=float(s)/64;
+                        const float x=wx+float(pts[i].first-500)+f*float(pts[i+1].first-pts[i].first);
+                        const float z=wz+float(pts[i].second-450)+f*float(pts[i+1].second-pts[i].second);
+                        if (!world_.canPlace(type,x,z,localPlayer_)) open=false;
+                    }
                 for (float z=wz+bz-64;open && z<=wz+bz+64;z+=32)
                     for (float x=wx+bx-64;open && x<=wx+bx+64;x+=32)
                         if (!world_.canPlace(small,x,z,localPlayer_)) open=false;

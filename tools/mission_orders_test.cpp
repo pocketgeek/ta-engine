@@ -136,9 +136,12 @@ struct Fixture {
         fbi("stubborn", mobile + "unitstandorders=0;\n", "BLADE");
         fbi("plain", mobile + "noveteran=1;\n", "BLADE");
         fbi("builder", mobile + "builder=1;\nworkertime=300;\nbuilddistance=60;\n");
+        // A TA transport: canload, transportcapacity (passengers) and transportsize
+        // (the largest passenger footprint) are all its keys (TotalA.exe 0x42c251/
+        // 0x42c266, load test 0x489a90); cantransport, transportsizecapacity and
+        // transportdistance were Kingdoms'.
         fbi("wagon", "canmove=1;\nmaxvelocity=2;\nturnrate=4000;\nturninplacerate=4000;\nfootprintx=3;\n"
-                     "footprintz=3;\nmaxdamage=800;\ncantransport=1;\ntransportcapacity=4;\ntransportsize=4;\n"
-                     "transportsizecapacity=16;\ntransportdistance=150;\n");
+                     "footprintz=3;\nmaxdamage=800;\ncanload=1;\ntransportcapacity=4;\ntransportsize=4;\n");
         fbi("keep", "footprintx=4;\nfootprintz=4;\nmaxdamage=5000;\nbuilder=1;\nworkertime=300;\n");
         fbi("hut", "footprintx=2;\nfootprintz=2;\nmaxdamage=1000;\n" + cost);
         std::ofstream menus(root / "download" / "fixture.tdf");
@@ -151,6 +154,10 @@ struct Fixture {
         vfs.addLayer(hpi::MountSet(root));
         reg.loadDir(vfs, "units");
         reg.loadBuildTree(vfs, "canbuild");
+        // A surface carrier's transfer reach is its script's BoomCalc limit
+        // (cob::transportBoomReach); the fixture has no scripts, so give the
+        // wagon the reach of a boom.
+        if (auto* wagon = const_cast<sim::UnitType*>(reg.find("wagon"))) wagon->transportDist = 150;
     }
     ~Fixture() { std::error_code ec; std::filesystem::remove_all(root, ec); }
     const sim::UnitType* t(const char* name) const { return reg.find(name); }
