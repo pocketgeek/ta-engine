@@ -83,6 +83,8 @@ public:
     // A launch that failed: reopen the screen it was picked from (SELPROV for a
     // multiplayer connect, NEWGAME for a campaign, else the main menu) with the reason.
     void setFailure(int failTo, std::string message);
+    // --shot: capture the first settled frame of run() to this PNG and return Exit.
+    void setShot(std::string path) { shot_ = std::move(path); }
     // MULTI -> SELPROV -> TCP: the server address typed ("" = search the local network).
     const std::string& chosenServer() const { return server_; }
 
@@ -93,6 +95,7 @@ private:
     Settings cursorSettings_;        // cursorScale / hardwareCursor
     bool cursorsLoaded_ = false;
     std::string failure_;
+    std::string shot_;
     int outcome_ = 0;
     std::string server_;
     Page page_ = Page::Main;

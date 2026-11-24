@@ -2354,8 +2354,10 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             bool tint=false;
             stopAll();publish();
 
-            // 2.1 right-click an enemy: the archer attacks, the mason (no weapon) walks
-            // there; the order waits for the release (P3).
+            // 2.1 right-click an enemy: the archer attacks, the mason (no weapon, a
+            // reclaimer) takes it apart -- TotalA.exe 0x43f0e0 action 1: canattack ->
+            // the attack (0x43fa0d), else canreclamate -> RECLAIMUNIT (0x43fa13); the
+            // order waits for the release (P3).
             selection_={archer,mason};publish();
             {
                 const auto p=at(enemy1);
@@ -2367,7 +2369,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 });
                 check(pressCmds.empty(),"P3 a right press orders nothing until the release");
                 check(count(cmds,archer,ta::net::Cmd::Attack,enemy1)==1,"2.1 right-click an enemy: the archer attacks it");
-                check(count(cmds,mason,ta::net::Cmd::Move)==1 && cmds.size()==2,"2.1 right-click an enemy: the mason moves there");
+                check(count(cmds,mason,ta::net::Cmd::ReclaimUnit,enemy1)==1 && cmds.size()==2,"2.1 right-click an enemy: the mason reclaims it");
             }
             // 2.1 right-click an own unit: the archer guards it.
             selection_={archer,mason};publish();

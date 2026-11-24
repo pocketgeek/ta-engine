@@ -418,11 +418,10 @@ struct MainMenu::Impl {
         try {
             const auto bytes = vfs.read("bitmaps/frontendx.pcx");
             const auto img = gaf::loadPcx(bytes, "bitmaps/frontendx.pcx");
-            bg = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, img.width, img.height);
-            if (bg) {
-                SDL_UpdateTexture(bg, nullptr, img.rgba.data(), img.width * 4);
-                SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
-            }
+            // Through the art path, as MainBG's is: SMOOTH GUI ART applies to it too
+            // (applyArtSettings rebuilds it when that changes).
+            bg = ta::art::makeTexture(ren, img.rgba, img.width, img.height);
+            if (bg) SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
         } catch (...) {}
     }
 

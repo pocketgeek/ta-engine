@@ -1840,7 +1840,10 @@ bool smokeSession(const std::string& data,const std::string& label,std::vector<s
     size_t lastStep=SIZE_MAX;int stalled=0;
     const bool ran=drive(args,[&](Editor& e,const Input& in) {
         if(!std::isfinite(e.mapView.offX()) || !std::isfinite(e.mapView.offY()) || !std::isfinite(e.mapView.zoom()))check(false,label+": view went non-finite");
-        stalled=s.at==lastStep?stalled+1:0;lastStep=s.at;
+        // Frames spent waiting on a background job (an overlay's analysis takes over a
+        // second in Debug, hundreds of frames) are not a stall: drive's deadline bounds them.
+        const bool busy=e.modal==Editor::M_ANALYZING || e.modal==Editor::M_CHECKING || e.modal==Editor::M_MODEL_LOADING || e.modal==Editor::M_GENERATING;
+        stalled=s.at!=lastStep?0:busy?stalled:stalled+1;lastStep=s.at;
         if(stalled>400) {   // a dialog or overlay that does not close
             check(false,label+": stuck at step "+std::to_string(s.at)+" (modal "+std::to_string(int(e.modal))+", menu "+std::to_string(e.menuOpen)+
                   ", script "+std::to_string(e.scriptOpen)+"/"+std::to_string(e.pickOpen)+", useonly "+std::to_string(e.useOnlyOpen)+", regions "+std::to_string(e.regionsOpen)+

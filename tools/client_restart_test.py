@@ -33,8 +33,9 @@ with tempfile.TemporaryDirectory(prefix="ta-client-restart-") as root:
     if run.returncode != 0: fail("exit code %d" % run.returncode)
     if log.count("restart: relaunching") != 1: fail("expected exactly one relaunch")
     first, _, second = log.partition("restart: relaunching")
-    if "from %s/Movies/Gui" % data not in first: fail("the first process did not mount the saved folder")
-    if "from %s/Movies/Gui" % alt not in second: fail("the restarted process did not mount the new folder")
+    if "data: mounted %s\n" % data not in first: fail("the first process did not mount the saved folder")
+    if "data: mounted %s\n" % alt not in second: fail("the restarted process did not mount the new folder")
+    # The new process opens on TA's title screen, which --shot captures.
     if not os.path.exists(shot): fail("the restarted process did not reach the menu")
     if ("dataDir = %s\n" % alt) not in open(settings).read(): fail("the new folder is not the saved setting")
 print("PASS: RESTART NOW relaunches once and the new process mounts the new data folder")

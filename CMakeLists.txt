@@ -2866,8 +2866,9 @@ if(TA_BUILD_CLIENT)
         set_tests_properties(watch_only_${watch_mode} PROPERTIES TIMEOUT 90
             PASS_REGULAR_EXPRESSION "PASS: watch only \\(${watch_mode}\\)")
       endforeach()
+      # The engine menu's art behind SETTINGS, opened from TA's title screen OPTIONS.
       add_test(NAME gui_smoothing_menu COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_GUI_SMOOTH_TEST=1
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_GUI_SMOOTH_TEST=1 TA_FRONT_SCRIPT=OPTIONS
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-menu-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-menu-profile
           $<TARGET_FILE:taclient> --data "${TA_TEST_DATA}" --winsize 1280 960
@@ -2882,12 +2883,12 @@ if(TA_BUILD_CLIENT)
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game.png")
       set_tests_properties(gui_smoothing_game PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: HUD smoothing (applies|toggles) live")
-      # Options > GAME DATA FOLDER through real input and a fake picker (invalid, cancel,
+      # Options (TA's title screen OPTIONS -> the engine SETTINGS) > GAME DATA FOLDER through real input and a fake picker (invalid, cancel,
       # valid + restart prompt, LATER, RESTART NOW, the locked form), and the menu's own
       # row greyed by this launch's --data. The test writes the settings file, so it is
       # named outright: SDL_GetPrefPath ignores XDG_* on Windows and macOS.
       add_test(NAME options_datafolder COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_OPTIONS_DATADIR_TEST=1
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_OPTIONS_DATADIR_TEST=1 TA_FRONT_SCRIPT=OPTIONS
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/options-datafolder-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/options-datafolder-profile
           TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/options-datafolder-settings.ini
@@ -2895,11 +2896,11 @@ if(TA_BUILD_CLIENT)
           --shot "${CMAKE_CURRENT_BINARY_DIR}/options-datafolder.png")
       set_tests_properties(options_datafolder PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: Options data folder")
-      # Options > PIN TO CCDS on two-CCD and one-CCD sysfs fixtures (the test writes them
+      # Options (TA's title screen OPTIONS) > PIN TO CCDS on two-CCD and one-CCD sysfs fixtures (the test writes them
       # and points TA_CPU_SYSFS at them): offered or not, what it greys, each slider's
       # CCD stats, and the session plan. Nothing is saved or pinned.
       add_test(NAME options_ccd COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_OPTIONS_CCD_TEST=1
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_OPTIONS_CCD_TEST=1 TA_FRONT_SCRIPT=OPTIONS
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/options-ccd-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/options-ccd-profile
           TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/options-ccd-settings.ini
@@ -2926,11 +2927,12 @@ if(TA_BUILD_CLIENT)
             "${CMAKE_SOURCE_DIR}/tools/benchmark_save_test.py" "$<TARGET_FILE:taclient>" "${TA_TEST_DATA}")
         set_tests_properties(benchmark_save PROPERTIES TIMEOUT 300)
       endif()
-      # A menu single-player launch whose local server cannot run must come back to
-      # the title screen with the reason (not the multiplayer sign-in dialog, not a
-      # silent exit); the --shot then captures that screen and exits.
+      # TA's title screen SINGLE (the engine single-player game) whose local server
+      # cannot run must come back to TA's title screen with the reason (not the
+      # multiplayer sign-in dialog, not a silent exit); the --shot then captures that
+      # screen and exits.
       add_test(NAME menu_launch_failure COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_MENU_PICK=singleplayer
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_FRONT_SCRIPT=SINGLE
           "TA_LOCAL_SERVER_BIN=${CMAKE_CURRENT_BINARY_DIR}/no-such-taserver"
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/menu-launch-failure-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/menu-launch-failure-profile

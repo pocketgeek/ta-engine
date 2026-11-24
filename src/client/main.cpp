@@ -762,6 +762,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         vfs = ta::hpi::mountRetailRoot(ta::u8path(dataRoot));
+        std::fprintf(stderr, "data: mounted %s\n", dataRoot.c_str());
         gInstallRoot = dataRoot;   // the loading screen reads Movies/Gui from here
     }
     std::shared_ptr<ta::ScenarioTraceLog> playtestTrace;
@@ -1359,6 +1360,7 @@ int main(int argc, char** argv) {
             (!menuFailure || menuFailure.to == ta::FailTo::Notice || menuFailure.to == ta::FailTo::ServerSelect ||
              menuFailure.to == ta::FailTo::CampaignPicker)) {
             ta::TaFrontEnd front(ren, win, vfs);
+            front.setShot(shot);   // a menu --shot captures TA's title screen (or what a failure reopened)
             if (menuFailure) {
                 const auto f = std::exchange(menuFailure, {});
                 front.setFailure(int(f.to), f.message);

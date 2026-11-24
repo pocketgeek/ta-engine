@@ -227,6 +227,10 @@ bool loadTaCampaign(const hpi::Vfs& vfs, const std::string& name, TaCampaign& ou
 
 void TaFrontEnd::setFailure(int failTo, std::string message) {
     // FailTo (sessionfailure.h): 2 ServerSelect, 5 CampaignPicker; the rest open MAINMENU.
+    static constexpr const char* kTo[] = {"exit", "notice", "server select", "replay picker",
+                                          "benchmark menu", "campaign picker"};
+    std::fprintf(stderr, "menu: launch failed -> %s: %s\n", failTo >= 0 && failTo < 6 ? kTo[failTo] : "notice",
+                 message.c_str());
     start_ = failTo == 2 ? Page::SelProv : failTo == 5 ? Page::NewGame : Page::Main;
     failure_ = std::move(message);
 }
@@ -527,11 +531,13 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         goPage(Page::Main);
         return std::nullopt;
     };
+    int shotFrames = 0;   // frames drawn toward a --shot capture (setShot)
     for (;;) {
         int w = 640, h = 480;
         SDL_GetRendererOutputSize(ren_, &w, &h);
         const GuiLayout L(w, h);
         SDL_Event e;
+        bool scriptBusy = false;   // (debug) TA_FRONT_SCRIPT steps still to press
         auto onHit = [&](const std::string& h2) -> std::optional<Choice> {
             message.clear();   // any press dismisses the last message
             if (popup && page_ == Page::SelProv) {   // TCP address
@@ -705,6 +711,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 if (!got.empty()) { const auto r = onHit(upper(got)); if (r) return *r; }
             }
         }
+        scriptBusy = !script.empty() || frame <= 3;
 #endif
         while (SDL_PollEvent(&e)) {
             // SDL reports the pointer in window points; the screens lay out in
@@ -833,6 +840,15 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             shotPath.clear();
         }
 #endif
+        // --shot: the page as drawn (after any scripted presses have run, and a few
+        // frames for the page to settle), then leave the app, as the engine menu does.
+        if (!shot_.empty() && !scriptBusy && ++shotFrames >= 3) {
+            std::vector<uint8_t> px(size_t(w) * size_t(h) * 4);
+            if (SDL_RenderReadPixels(ren_, nullptr, SDL_PIXELFORMAT_ABGR8888, px.data(), w * 4) == 0)
+                png::write(shot_, w, h, px);
+            std::fprintf(stderr, "front end: shot %s\n", shot_.c_str());
+            return Choice::Exit;
+        }
         // TA's animated pointer (anims/cursors.gaf), not the system arrow.
         if (cursors_.ok()) {
             if (cursorSettings_.hardwareCursor && cursors_.applyHardware(CursorId::Normal, cursorSettings_.cursorScale)) {
