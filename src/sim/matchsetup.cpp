@@ -70,8 +70,13 @@ static void applySelectionOrder(World& world, const TypeRegistry& reg, const ta:
         if (spread && n) {
             const Unit* u = owned(id);
             if (!u) continue;
-            if (u->type->canFly) {
-                // Retail's flyer spread (sim/retailflyerspread.h), either shape.
+            // TA's spread (sim/retailflyerspread.h, TotalA.exe 0x48cf30): every
+            // flyer, and in Retail mode every member of a move or patrol (the
+            // rows Move_Ground / Patrol carry the offset flag 0x2 as VTOL_Move /
+            // VTOL_Patrol do), either shape.
+            const bool taSpread = u->type->canFly ||
+                (!legion && (o.tmpl.kind == ta::net::Cmd::Move || o.tmpl.kind == ta::net::Cmd::Patrol));
+            if (taSpread) {
                 int32_t gx = 0, gz = 0;
                 air.goal(u->x.v, u->z.v, cx0.v, cz0.v, gx, gz);
                 m.x = Fixed::raw(gx).toFloat();

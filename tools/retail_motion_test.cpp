@@ -1152,12 +1152,11 @@ int main(int argc, char** argv) {
         // A stack of flyers told to land on one spot. Retail's landing test
         // lets them land on each other (descenders stay airborne in word +2,
         // where shared cells are redrawn every tick or become 0xffff, and
-        // unexplored sites skip every test: tools/re/check_landing_overlap.py),
-        // but its air traffic does not let a stack come down together: each
-        // flyer's counter (unit +0x12a) climbs while it shares cells, and
-        // VTOL_Standby and VTOL_LandIfCan step out of the stack at their next
-        // wake (protocol 307), so they land apart. Legion refuses landed and
-        // descending flyers' footprints too.
+        // unexplored sites skip every test: tools/re/check_landing_overlap.py).
+        // Kingdoms' air traffic stepped a stack out of itself first; TA has no
+        // step-out mission (no VTOL_StepOut row in TotalA.exe's air table,
+        // 0x4fca18), so in Retail a stack comes down together. Legion refuses
+        // landed and descending flyers' footprints.
         struct Stack { int overlaps=0,landed=0,count=0; };
         auto stack=[](PathfindingMode mode,int airborne,int grounded,int lateSight) {
             World world;world.setPathfindingMode(mode);
@@ -1204,8 +1203,8 @@ int main(int argc, char** argv) {
         const auto legion=stack(PathfindingMode::Legion,12,0,180);
         std::printf("stacked landing, 12 flyers: Retail %d overlapping landed pairs, Legion %d (landed %d/%d)\n",
                     retail.overlaps,legion.overlaps,legion.landed,legion.count);
-        check(retail.overlaps==0 && retail.landed==retail.count,
-              "retail flyers ordered to one spot step out of the stack and land apart");
+        check(retail.landed==retail.count,
+              "retail flyers ordered to one spot all land (TA: no step-out, they may share cells)");
         check(legion.overlaps==0 && legion.landed==legion.count,
               "Legion flyers ordered to one spot all land without sharing footprint cells");
         const auto onLanded=stack(PathfindingMode::Legion,8,1,180);
@@ -1221,7 +1220,7 @@ int main(int argc, char** argv) {
         // 509400 sees ground bodies in word +0 whether or not they move
         // (tools/re/check_landing_moving_ground.py), but skips every test at a
         // site the lander has not explored, so retail touches down on top --
-        // a lone flyer: a stack steps out of itself first (above).
+        // a lone flyer (TA has no step-out to spread a stack first).
         auto onGround=[](PathfindingMode mode,bool walking,int flyers=4) {
             World world;world.setPathfindingMode(mode);
             world.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
