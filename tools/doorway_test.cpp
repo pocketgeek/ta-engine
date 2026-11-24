@@ -13,8 +13,8 @@
 //    it helps each output, and between outputs it follows the factory);
 //  * assist: the builder helps the first output only, then stands where it was.
 // Both pathfinding modes. Every output must finish, and once all is done no unit
-// may stand in the factory's rectangle (its door rows included). A Navy Yard
-// guarded by a Flagship is held to the same, and guards of every size must come
+// may stand in the factory's rectangle (its door rows included). A Shipyard
+// guarded by a Battleship is held to the same, and guards of every size must come
 // to rest inside their ring rather than walk in place short of it.
 #include "sim/matchsetup.h"
 #include "hpi/hpi.h"
@@ -123,16 +123,17 @@ bool ringRest(const TypeRegistry& registry,const char* wardId,const char* guardI
     const int inner=(std::max(wardType->footX,wardType->footZ)+guardType->footX+2)*16,outer=inner+48;
     const int squared=(dx*dx+dz*dz)*256;
     const bool pass=squared>=inner*inner && squared<=outer*outer && !stuck && g->orders.size()==1 && g->orders.front().guard;
-    std::printf("%s: ring mode=%s ward=%s guard=%s distance=%.0f band=%d-%d walkingInPlace=%d\n",pass?"PASS":"FAIL",
-        legion?"Legion":"Retail",wardId,guardId,std::sqrt(float(squared)),inner,outer,stuck);
+    std::printf("%s: ring mode=%s ward=%s guard=%s distance=%.0f band=%d-%d walkingInPlace=%d orders=%zu guard=%d\n",pass?"PASS":"FAIL",
+        legion?"Legion":"Retail",wardId,guardId,std::sqrt(float(squared)),inner,outer,stuck,g->orders.size(),
+        int(!g->orders.empty() && g->orders.front().guard));
     return pass;
 }
-// A Navy Yard guarded by a Flagship from in front of its door: every Submersible
-// must leave and the Flagship must not sit in the yard (on main it did, from the
-// first Submersible on).
+// A Shipyard guarded by a Battleship from in front of its door: every Lurker
+// must leave and the Battleship must not sit in the yard (on the Kingdoms data a
+// Flagship did, from the first output on).
 bool navalDoor(const TypeRegistry& registry,bool legion,int side) {
-    auto yardType=*registry.find("crenavy");yardType.storage=1000000;
-    const UnitType* sub=registry.find("cresubm");const UnitType* flag=registry.find("verflag");
+    auto yardType=*registry.find("armsy");yardType.storage=1000000;
+    const UnitType* sub=registry.find("armsub");const UnitType* flag=registry.find("armbats");
     World world;
     if(legion)world.setPathfindingMode(PathfindingMode::Legion);
     world.setTerrain(std::vector<uint8_t>(256*256,0),256,256,20);
@@ -142,7 +143,7 @@ bool navalDoor(const TypeRegistry& registry,bool legion,int side) {
     world.player(0).mana=1000000;world.train(yard,sub,4);
     int site=0;
     for(int t=0;t<600 && !site;++t) {world.tick(1.f/30);site=world.unit(yard)->productionSiteId;}
-    if(!site) {std::printf("FAIL: crenavy never placed its first cresubm\n");return false;}
+    if(!site) {std::printf("FAIL: armsy never placed its first armsub\n");return false;}
     float dx=world.unit(site)->x.toFloat()-1800,dz=world.unit(site)->z.toFloat()-1800;
     const float len=std::max(1.f,std::sqrt(dx*dx+dz*dz));dx/=len;dz/=len;
     const float out=8.f*float(std::max(yardType.footX,yardType.footZ))+64.f;
@@ -184,21 +185,24 @@ int main(int argc,char** argv) {
                 if(b.isBuilder && !b.isStructure() && !b.canFly && b.side==type.side && b.domain==UnitType::Domain::Ground &&
                    (!b.builderLimited || std::find(b.buildMenu.begin(),b.buildMenu.end(),small->id)!=b.buildMenu.end()) &&
                    (!helper || b.buildDist<helper->buildDist))helper=&b;
-            // (Veruna's builders are all builderlimited without soldiers: any side's.)
+            // (A side whose builders are all builderlimited without the output: any side's.)
             if(!helper)for(const auto& [bn,b]:registry.types())
                 if(b.isBuilder && !b.isStructure() && !b.canFly && b.domain==UnitType::Domain::Ground && !b.builderLimited &&
                    (!helper || b.buildDist<helper->buildDist))helper=&b;
             if(!helper){std::printf("FAIL: %s has no helper for %s\n",name.c_str(),small->id.c_str());++failures;continue;}
+            // A Gantry makes only the Krogoth (buildtime 382193): capped so four
+            // can finish inside the case.
+            UnitType quick=*small;quick.buildTime=std::min(quick.buildTime,20000.0f);
             for(bool legion:{false,true})for(Mode mode:{Mode::Guard,Mode::Assist})for(int side:{-1,0,1}) {
-                ++cases;if(!doorCase(registry,type,small,*helper,mode,legion,side))++failures;
+                ++cases;if(!doorCase(registry,type,&quick,*helper,mode,legion,side))++failures;
             }
         }
     }
     if(only.empty()) {
         TypeRegistry registry;setupRegistry(registry,vfs);
         for(bool legion:{false,true}) {
-            for(const char* g:{"arapult","zongiant","arasword"}) {++cases;if(!ringRest(registry,"arakeep",g,false,legion))++failures;}
-            for(const char* g:{"verflag","verscout"}) {++cases;if(!ringRest(registry,"crenavy",g,true,legion))++failures;}
+            for(const char* g:{"armbull","corkrog","armpw"}) {++cases;if(!ringRest(registry,"armlab",g,false,legion))++failures;}
+            for(const char* g:{"armbats","armpt"}) {++cases;if(!ringRest(registry,"armsy",g,true,legion))++failures;}
             for(int side:{-1,0,1}) {++cases;if(!navalDoor(registry,legion,side))++failures;}
         }
     }

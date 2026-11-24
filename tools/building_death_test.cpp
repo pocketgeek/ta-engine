@@ -16,17 +16,23 @@ int main(int argc,char** argv) {
         sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
         sim::World definitions;
         sim::registerMapFeatures(definitions,tnt::Map{},vfs,&registry);
-        check(registry.find("arakeep")->instantCorpse,"Keep has immediate constant corpse handler");
-        check(!registry.find("arasword")->instantCorpse,"animated mobile death remains animated");
+        // TA's Killed scripts pick the corpse from the severity; none is the
+        // constant handler the Kingdoms instant-ruin/explosion-corpse analyzers
+        // (retailinstantcorpse.h) prove, so the cases below take shipped units
+        // whose Killed, run independently, leaves wreck 1 at severity 20.
+        for (const auto& [name,type]:registry.types())
+            check(!type.instantCorpse && !type.explosionCorpse,"no TA script is a constant Kingdoms corpse handler");
+        const std::vector<const char*> wrecked{"armsolar","armllt","armpw","armsub","armpt","armroy"};
         int restored=0,waterStays=0,waterFades=0;uint64_t hash=0;
-        for (const auto& [name,type]:registry.types()) {
-            if (!type.explosionCorpse || type.instantCorpse) continue;
+        for (const char* name:wrecked) {
+            const auto* found=registry.find(name);
+            check(found && found->script(),"shipped wreck unit loads");if (!found || !found->script()) continue;
+            const auto& type=*found;
             ++restored;
-            // Independent execution of the authored handler verifies the analyzer.
             cob::Vm vm(*type.script());vm.enableRetailAnimation();
-            vm.call("Killed",{50,0,3});
-            check(vm.lastLocals().size()>1 && vm.lastLocals()[1]==1,
-                  "authored explosion handler requests corpse 1");
+            vm.call("Killed",{20,0,3});
+            check(vm.lastLocals().size()>1 && (vm.lastLocals()[1]&15)==1,
+                  "Killed at severity 20 requests wreck 1");
             const int ct=definitions.corpseTypeOf(&type);
             check(ct>=0,"restored corpse definition exists");if (ct<0) continue;
             for (bool water:{false,true}) {
@@ -65,13 +71,13 @@ int main(int argc,char** argv) {
                 }
                 hash=(hash*1099511628211ULL)^w.stateHash();
             }
-            std::printf("EXPLOSION_CORPSE %s\n",name.c_str());
+            std::printf("WRECK %s\n",name);
         }
         // 512ee0 (512f8f..512fab, emulated over 3000 layouts): the corpse is a
         // water grave when 511170's interpolated ground height under the body
         // is at or below sea level, whatever its cell's corner says.
-        for (const auto& [name,type]:registry.types()) {
-            if (!type.explosionCorpse || type.instantCorpse) continue;
+        {
+            const auto& type=*registry.find("armsolar");
             const int ct=definitions.corpseTypeOf(&type);
             int decomposeOverride=-1;
             // The corpse's lifetime after its placement and whether it sinks.
@@ -111,16 +117,15 @@ int main(int argc,char** argv) {
             const auto dry=grave(corner,(32*16+15)<<16,(32*16+15)<<16);
             check(!dry.second && dry.first==land,
                   "a body on dry ground over a sunken cell corner became a water grave");
-            break;
         }
         // The sinking (4959c0, emulated: tools/re/check_corpse_sink.py and
         // check_water_grave.py): a grave sinks 0x2ccc a tick from the body's height to 511260's sea
         // bed and lies there; over a bed of 0 it fades as it falls and leaves
         // the plane. Corpses and statues alike (512ee0), each placed at the
-        // body's height at sea level (20), over a bed of 0 or 10.
+        // body's height at sea level (20), over a bed of 0 or 10. (Kingdoms'
+        // stone statues sank the same way; TA has no petrification.)
         {
-            const auto* keep=registry.find("arakeep");
-            const auto* sword=registry.find("arasword");
+            const auto* keep=registry.find("armsolar");
             auto sinking=[&](const sim::UnitType* type,int bed,bool statue,int& gone,int32_t& rest) {
                 sim::World w;w.setTerrain(std::vector<uint8_t>(64*64,uint8_t(bed)),64,64,20);
                 w.setFeatureTypes(definitions.featureTypes());
@@ -147,18 +152,13 @@ int main(int argc,char** argv) {
             check(gone==114,"a wreck over a sea bed of 0 fades out as it reaches the bed (tick 114)");
             sinking(keep,10,false,gone,rest);
             check(gone<0 && rest==(10<<16),"a wreck over a sea bed of 10 lies on it for good");
-            check(sinking(sword,0,true,gone,rest)>=0 && gone==114,"a statue in water sinks and fades as a corpse does");
-            check(sinking(sword,10,true,gone,rest)>=0 && gone<0 && rest==(10<<16),
-                  "a statue in water lies on its sea bed");
         }
-        check(restored==29,"all 29 omitted corpse types restored");
+        check(restored==int(wrecked.size()),"every shipped wreck case ran");
         check(waterStays>0 && waterFades>0,"both a wreck at rest on a bed of 0 and a fading one were seen");
-        check(!registry.find("arasword")->explosionCorpse,"ordinary soldier explosion still gibs");
-        check(!registry.find("arafly")->explosionCorpse,"handler that refuses a corpse stays excluded");
         for(bool unfinished:{false,true}) {
             sim::World w;
             w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const auto* type=registry.find("araat");
+            const auto* type=registry.find("armsolar");
             w.setFeatureTypes(definitions.featureTypes());w.mapCorpse(type,definitions.corpseTypeOf(type));
             const int id=w.spawn(type,512,512,std::nullopt,0);
             sim::UnitType builderType;builderType.maxHp=100;
@@ -173,29 +173,7 @@ int main(int argc,char** argv) {
             check(w.unit(id)->corpseUntil<=w.unit(id)->corpseAnimationTicks(),
                   "unfinished and self-destructed units remain excluded");
         }
-        std::printf("explosion corpses hash=%016llx\n",(unsigned long long)hash);
-        for (const auto& [name,type]:registry.types()) {
-            if (!type.instantCorpse) continue;
-            const int ct=definitions.corpseTypeOf(&type);
-            check(ct>=0,"instant wreck has feature definition");if (ct<0) continue;
-            std::printf("INSTANT %s\n",name.c_str());
-            for (int death:{1,3}) {
-                sim::World w;
-                w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-                w.setFeatureTypes(definitions.featureTypes());w.mapCorpse(&type,ct);
-                const int id=w.spawn(&type,512,512,std::nullopt,0);
-                const auto originX=w.unit(id)->x,originZ=w.unit(id)->z;
-                w.unit(id)->hp={};w.unit(id)->deathType=uint8_t(death);
-                w.tick(1.f/30);
-                const auto& corpse=*w.unit(id);const auto& feature=w.featureTypes()[size_t(ct)];
-                const int cx=sim::footprintOrigin(originX,type.footX)+type.corpseAdjX;
-                const int cz=sim::footprintOrigin(originZ,type.footZ)+type.corpseAdjZ;
-                check(!corpse.alive() && corpse.corpseAnimationTicks()==0 && corpse.corpseUntil>0,
-                      "ordinary and explosion deaths produce immediate ruins");
-                check(corpse.x==originX && corpse.z==originZ,"ruin retains the original model origin despite footprint adjustment");
-                if (feature.blocking) check(!w.nav().walkable(cx,cz),"ruin blocks immediately");
-            }
-        }
+        std::printf("wrecks hash=%016llx\n",(unsigned long long)hash);
     }
     return failures?1:0;
 }

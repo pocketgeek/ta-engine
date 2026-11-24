@@ -371,12 +371,14 @@ int main(int argc,char** argv) try {
               "a carrier changing sides kept its passengers");
     }
     if (argc==2) {
-        // The death weapon at retirement: the Bomb Sprinkler's Dying runs for
-        // a while before 512ae0 fires its [EXPLODEAS].
+        // The death weapon at retirement: the Roach's [EXPLODEAS] goes off
+        // when its Killed retires the body (TA's Killed sleeps no further, so
+        // that is the tick after the death).
         const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         TypeRegistry registry;setupRegistry(registry,vfs);
-        const UnitType* bomb=registry.find("crebomb");
-        check(bomb && bomb->hasExplodeAs,"crebomb has no death weapon");
+        const UnitType* bomb=registry.find("corroach");
+        check(bomb && bomb->hasExplodeAs,"corroach has no death weapon");
+        if (!bomb) return 1;
         World w;w.setPlayerCount(2);w.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
         const int b=w.spawn(bomb,512,512,std::nullopt,0),v=w.spawn(&t,530,512,0,1);
         w.tick(1.f/30);
@@ -387,8 +389,8 @@ int main(int argc,char** argv) try {
             if (w.unit(v)->hp.floorInt()<t.maxHp) at=i;
         }
         const int handoff=w.unit(b)->corpseAnimationTicks();
-        std::printf("crebomb: handoff %d, blast on tick %d after death\n",handoff,at);
-        check(handoff>1 && at==handoff,"the death weapon did not wait for retirement");
+        std::printf("corroach: handoff %d, blast on tick %d after death\n",handoff,at);
+        check(at>=0 && at==handoff,"the death weapon did not wait for retirement");
         // 512ae0 fires the death weapon (512d97) before it places the corpse
         // (512ee0, check_kill_credit.py): the blast never reaches its own
         // corpse. Shipped corpses mostly take no weapon damage (no damage=),

@@ -1,22 +1,23 @@
-// How fast a finished ship gets out of a Navy Yard (crenavy), and whether idle
-// ships at the door hold it in (the 0.9.2 known limit: "ships leave some Navy
-// Yards slowly, and a crowd of Iron Clads can block a yard door").
+// How fast a finished ship gets out of a Shipyard (armsy), and whether idle
+// ships at the door hold it in (a known limit carried over from the Kingdoms
+// engine: "ships leave some Navy Yards slowly, and a crowd of Iron Clads can
+// block a yard door").
 //
-// Each case trains six ships (Submersible 2x2, Iron Clad and Stern Wheeler
-// 3x3) at a yard on open water, and at one whose door opens partly onto a
-// shore (land in front of the door's east two columns), in both pathfinding
-// modes. Measured per output: ticks from completion until it is clear of the
-// yard's rectangle (the pad is free for the next) and until it is clear of the
-// door (the yard grown by kDoorCells); at the end none may stand in the yard
-// or still be on its way out. Then the same with eight idle Iron Clads
-// parked a body's gap apart just off the door, and with one idle Iron Clad on
-// the pad itself. Retail moves no idle body: on origin/main the crowd held the
-// first 3x3 output wedged just out of the yard and the yard built two ships of
-// six; the Iron Clad on the pad stopped the yard outright. Now the yard owner's
-// idle ships in front of the yard move aside (World::clearYardDoor), and the
-// yard builds as fast as with the door clear. Last, the eight Iron Clads guard
-// the yard: they step aside too, at most once per ship, and end back on their
-// guard near it.
+// Each case trains six ships (Lurker 3x3, Skeeter and Crusader 4x4) at a yard
+// on open water, and at one whose door opens partly onto a shore (land in
+// front of the door's east two columns), in both pathfinding modes. Measured
+// per output: ticks from completion until it is clear of the yard's rectangle
+// (the pad is free for the next) and until it is clear of the door (the yard
+// grown by kDoorCells); at the end none may stand in the yard or still be on
+// its way out. Then the same with eight idle Crusaders parked a body's gap
+// apart just off the door, and with one idle Crusader on the pad itself.
+// Retail moves no idle body: on the Kingdoms engine a crowd of Iron Clads held
+// the first 3x3 output wedged just out of the yard and the yard built two
+// ships of six; an Iron Clad on the pad stopped the yard outright. Now the yard
+// owner's idle ships in front of the yard move aside (World::clearYardDoor),
+// and the yard builds as fast as with the door clear. Last, the eight
+// Crusaders guard the yard: they step aside too, at most once per ship, and
+// end back on their guard near it.
 //
 // The remaining time out of a door facing a shore is retail's own: a boat
 // whose forward probe meets a shore cell or a body within 176 px runs at a
@@ -63,7 +64,7 @@ struct Result {
     int max(const std::vector<int>& v) const {return v.empty()?-1:*std::max_element(v.begin(),v.end());}
 };
 
-// Ward: the eight Iron Clads at the door guard the yard.
+// Ward: the eight Crusaders at the door guard the yard.
 enum class Crowd {None,Door,Pad,Ward};
 const char* crowdName(Crowd c) {return c==Crowd::None?"none":c==Crowd::Door?"door":c==Crowd::Pad?"pad":"ward";}
 constexpr int kSimDoorCells=8;   // clearYardDoor's door area
@@ -77,20 +78,20 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
     constexpr float fx=1800,fz=1792;
     std::vector<uint8_t> heights(kCells*kCells,0);
     for(int z=0;z<kCells;++z)for(int x=0;x<kCells;++x) {
-        // The yard covers cells 109..115 x 108..116; its door is row 116.
+        // The yard (8x8) covers cells 108..115 x 108..115; its door is row 116.
         const bool land=z<108 || (layout==Layout::Shore && x>=114 && z>=117 && z<127);
         if(land)heights[size_t(z)*kCells+x]=160;
     }
     w.setTerrain(heights,kCells,kCells,100);
     w.setMapPlacementFeatures(std::vector<uint16_t>(kCells*kCells,0xffff),{});
     w.buildNavClasses(registry);w.setPathService(true);
-    auto yardType=*registry.find("crenavy");yardType.workerTime*=4;yardType.storage=1000000;
+    auto yardType=*registry.find("armsy");yardType.workerTime*=4;yardType.storage=1000000;
     const auto* ship=registry.find(shipName);
-    const auto* iron=registry.find("creiron");
+    const auto* iron=registry.find("armroy");
     const int id=w.spawn(&yardType,fx,fz,0,0);
     const Rect yard=footprint(*w.unit(id));
     const Rect door{yard.x-kDoorCells,yard.z-kDoorCells,yard.w+2*kDoorCells,yard.h+2*kDoorCells};
-    // Idle Iron Clads parked in front of the door, a body's gap apart, or one
+    // Idle Crusaders parked in front of the door, a body's gap apart, or one
     // on the pad.
     const float doorZ=float((yard.z+yard.h)*16);
     std::vector<int> idle;
@@ -220,7 +221,7 @@ int main(int argc,char** argv) {
     constexpr int kShips=6;
     for(auto mode:{sim::PathfindingMode::Retail,sim::PathfindingMode::Legion})
         for(auto layout:{Layout::Open,Layout::Shore})
-            for(const char* ship:{"cresubm","creiron","crester"}) {
+            for(const char* ship:{"armsub","armpt","armroy"}) {
                 const std::string label=std::string(mode==sim::PathfindingMode::Legion?"Legion ":"Retail ")+
                     layoutName(layout)+" "+ship+": ";
                 if(!only.empty() && label.find(only)==std::string::npos)continue;
@@ -230,15 +231,15 @@ int main(int argc,char** argv) {
                       label+"every ship leaves the yard, median "+std::to_string(clear.median(clear.clear))+" ticks");
                 const Result door=run(registry,mode,layout,ship,kShips,Crowd::Door);
                 check(door.produced==kShips && int(door.clear.size())==kShips && door.stuck==0,
-                      label+"eight idle Iron Clads at the door hold no ship in");
+                      label+"eight idle Crusaders at the door hold no ship in");
                 check(door.produced==kShips && door.median(door.clear)<=180 &&
                       door.lastDone<=clear.lastDone+clear.lastDone*15/100,
                       label+"with them the yard builds near its clear-door rate ("+std::to_string(door.lastDone)+
                       " vs "+std::to_string(clear.lastDone)+" ticks)");
-                check(door.inDoor==0,label+"the idle Iron Clads made way");
+                check(door.inDoor==0,label+"the idle Crusaders made way");
                 const Result pad=run(registry,mode,layout,ship,kShips,Crowd::Pad);
                 check(pad.produced==kShips && int(pad.clear.size())==kShips && pad.inDoor==0,
-                      label+"an idle Iron Clad on the pad moves off it and the yard builds");
+                      label+"an idle Crusader on the pad moves off it and the yard builds");
                 // Legion moves the yard's own parked outputs again only off one held
                 // on the pad: none of these cases holds one.
                 if(mode==sim::PathfindingMode::Legion)
@@ -246,14 +247,14 @@ int main(int argc,char** argv) {
                           label+"no parked ship is moved again ("+std::to_string(clear.nudged)+", "+
                           std::to_string(door.nudged)+", "+std::to_string(pad.nudged)+")");
                 const Result ward=run(registry,mode,layout,ship,kShips,Crowd::Ward);
-                // Under Legion an Iron Clad leaving a door onto a shore was held in
-                // the yard by the yard's own outputs, parked where the guards made
+                // Under Legion a ship leaving a door onto a shore was held in the
+                // yard by the yard's own outputs, parked where the guards made
                 // them give up their PARK: they now move off a held one too.
-                // Under the Retail mover one shore Submersible is still edging
-                // to its spot among the guards at the end (out of the yard).
+                // Under the Retail mover a shore output may still be edging to
+                // its spot among the guards at the end (out of the yard).
                 check(ward.produced==kShips && int(ward.clear.size())==kShips &&
                       (mode!=sim::PathfindingMode::Legion || ward.stuck==0),
-                      label+"eight Iron Clads guarding the yard at its door let all six out of the yard ("+
+                      label+"eight Crusaders guarding the yard at its door let all six out of the yard ("+
                       std::to_string(int(ward.clear.size()))+", "+std::to_string(ward.stuck)+" not settled)");
                 check(ward.guarding==8,label+"each guard ends back on its guard near the yard ("+
                       std::to_string(ward.guarding)+" of 8, farthest "+std::to_string(ward.farthest)+" px)");

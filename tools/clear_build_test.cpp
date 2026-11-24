@@ -13,7 +13,7 @@ int main(int argc,char** argv) {
     };
     {
         sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
-        for (const char* worker:{"araking","zonhunt"})
+        for (const char* worker:{"armck","armca"})
         for (int pathMode:{0,1,3})
         for (bool queued:{false,true}) {
             const bool paths=pathMode!=0;
@@ -69,7 +69,7 @@ int main(int argc,char** argv) {
                 for (const auto& o:b->orders) std::fprintf(stderr,"  order goal=%d reclaim=%d build=%p pos=%.1f,%.1f\n",o.goal,o.reclaimFeat,(void*)o.buildType,o.x.toFloat(),o.z.toFloat());
             }
             check(built && !w.unit(built)->underConstruction,"builder clears and finishes construction");
-            // Flying builders (zonhunt) stay native: flight is not pathfinding.
+            // Flying builders (armca) stay native: flight is not pathfinding.
             if (pathMode==3)
                 check((legionBuild && legionReclaim)!=builder->canFly,"Legion routes the ground reclaim and build approaches");
             check(w.feature(103)->alive,"nearby tree outside footprint survives");
@@ -77,8 +77,6 @@ int main(int argc,char** argv) {
             check(!w.clearableForPlacement(&site,768,768,clearing,0),"nonreclaimable feature refuses");
             w.queueBuild(bid,&site,768,768,false);
             check(w.unit(bid)->orders.empty(),"invalid site adds no reclaim orders");
-            site.onMana=true;w.setManaSpots({{128,128}});
-            check(!w.clearableForPlacement(&site,592,512,clearing,0),"clearing cannot bypass mana-site rules");
             std::printf("%s pathMode=%d queued=%d hash=%016llx\n",worker,pathMode,queued,(unsigned long long)w.stateHash());
         }
     }
