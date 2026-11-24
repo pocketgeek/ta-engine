@@ -3141,6 +3141,23 @@ bool World::retailGroundUnitMission(const Unit& u,const Order& o) {
            !o.waitAttack && !o.repairTarget && !o.buildType;
 }
 
+// TotalA.exe's mission definitions (0x4fc490 ground, 0x4fca18 VTOL; flags at
+// +0x11, copied into the mission's +0x42 by its constructor 0x43a0c0 and read
+// back by 0x438be0): flag 0x80 is on Attack_NoMove (0x280, a structure's
+// attack), Attack_Chase (0x280, a walker's) and AttackSpecial (0x680, the
+// D-gun) only. A ground unit's guard (Follow_Ground, 0x200), SUPPRESS (0x410)
+// and every flyer's attack (AirToAir / AirToGround / AirStrike, 0x200 / 0x600)
+// do not carry it.
+bool World::retailTaAttackMission(const Unit& u) {
+    if (!u.type || u.type->canFly || u.orders.empty()) return false;
+    const Order& o=u.orders.front();
+    if (o.dgun) return true;
+    if (o.guard) return false;
+    if (u.type->isStructure())
+        return o.targetId && !o.load && !o.scripted && !o.waitAttack && !o.repairTarget && !o.buildType;
+    return retailGroundUnitMission(u,o);
+}
+
 uint32_t World::retailNextMissionFlags(const Unit& u,size_t index) const {
     return index+1<u.orders.size() ? retailOrderFlags(u,u.orders[index+1]) : 0;
 }
@@ -6396,7 +6413,10 @@ void World::destroy(int unitId) {
 bool World::selfDestructHit(Unit& u) {
     retailHitResponse(u,&u,Unit::kDeathSelfDestruct);
     u.lastHitBy=u.id;u.lastHitPlayer=u.player;
-    u.hp=Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(u.hp.v)-int64_t(30000)*Fixed::kOne,
+    u.lastHitKind=tadeath::kSelfDestruct;   // TotalA.exe 0x402147: 30000 of kind 3
+    // 0x489bf3: the 30000 shrinks with the unit's own kills like any record.
+    const int64_t taken=retailTaVeteranDamage(30000,u.kills);
+    u.hp=Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(u.hp.v)-taken*Fixed::kOne,
                                                 -int64_t(INT32_MAX),INT32_MAX)));
     // 51a3c2: an unfinished site's progress follows its new HP.
     if (u.retailSite && u.underConstruction && u.retailSite->progress.remaining!=0) {
@@ -6807,7 +6827,10 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         const int answer = retailDamageWithSpread(scaledDamage, crtRand(0x52a3ba), uint8_t(damageMode_));
         (e.player == fromPlayer ? ownDamage : enemyDamage) += answer;   // 52a330's answer, before 51a140
         // 51a16e: an activated unit takes the hit through its damagemodifier.
-        const int dealt = retailDamageModifier(answer, uint8_t(w.dmgType), retailActivated(e), e.type->damageModifier);
+        // TotalA.exe 0x489bb0 (0x489bc3..0x489c32): the damagemodifier, then
+        // the victim's veterancy, its kill count (retailTaVeteranDamage).
+        const int dealt = retailTaVeteranDamage(
+            retailDamageModifier(answer, uint8_t(w.dmgType), retailActivated(e), e.type->damageModifier), e.kills);
         // Retail 51a140/51a240: a unit whose HP has reached zero is flagged
         // dying (+0x130 |= 0x1000, 51a639) on the spot, and every later hit
         // that tick returns before touching it -- no HP, no kill credit, no
@@ -6833,12 +6856,11 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             progress.hp=uint16_t(e.hp.floorInt());
             progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,e.maximumHp()));
         }
-        // TotalA.exe's damage record (0x489bb0 -> 0x489ce0) runs the hit response
-        // 0x406f80 for any unit, which ends with the under-attack request (0x4071b0..
-        // 0x4071d8); its owner, on-screen and repeat tests are the viewer's
-        // (client/monarchalert.h). Splash and fatal hits included; presentation
-        // only, no simulation or RNG change.
-        if (dealt > 0 && e.type) hits_[hitIndex].hurtUnits.push_back(e.id);
+        // The hitter player and damage kind of the record before this one
+        // (victim +0xf4 / +0xf5): TotalA.exe's handler 0x489ce0 runs the hit
+        // response 0x406f80 (0x489da2) before it writes them (0x489dac..0x489dc0).
+        const int previousHitPlayer = e.lastHitPlayer;
+        const uint8_t previousHitKind = e.lastHitKind;
         // 52a40a forms the hit bearing from the impact position, relative to
         // the victim's current native heading. 51a140 retains its high byte;
         // 51a4d2 notifies each normal/fire/explosion recipient, including splash.
@@ -6864,12 +6886,26 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
         // 51a35a: +0xf8 and +0xfc change only when the hit names a hitter;
         // otherwise the earlier hitter keeps the credit.
         if (attacker) { e.lastHitBy = fromId; e.lastHitPlayer = fromPlayer; }
+        // 0x489dac: every record keeps its kind, 2 for a paralyzer weapon
+        // (weapon +0x111 bit 7, 0x499e20..0x499e32), else 1.
+        e.lastHitKind = w.hasTaFlag(kWParalyzer) ? tadeath::kParalyze : tadeath::kWeapon;
         if (attacker) {   // battle-music input: one per damage event with an attacker
             if (e.player >= 0 && e.player < numPlayers()) ++players_[size_t(e.player)].combatEvents;
             if (fromPlayer != e.player && fromPlayer >= 0 && fromPlayer < numPlayers())
                 ++players_[size_t(fromPlayer)].combatEvents;
         }
         retailHitResponse(e,attacker,w.dmgType);
+        // The under-attack request that ends 0x406f80 (0x4071b0..0x4071d8), after
+        // the response above may have given the unit an attack: none while its
+        // current mission carries flag 0x80 (0x438be0: a ground attack or the
+        // D-gun, retailTaAttackMission), and only when the previous record came
+        // from another player (+0xf4 != +0xff; a new unit's 10 is "another") or
+        // was an ordinary weapon hit (+0xf5 == 1). The owner, on-screen and
+        // repeat tests are the viewer's (client/monarchalert.h). Splash and fatal
+        // hits included; presentation only, no simulation or RNG change.
+        if (dealt > 0 && e.type && !retailTaAttackMission(e) &&
+            (previousHitPlayer != e.player || previousHitKind == tadeath::kWeapon))
+            hits_[hitIndex].hurtUnits.push_back(e.id);
         // Stone and freeze returned above; the paralyzer is the one status left.
         if (w.status == Weapon::Status::Paralyzed && e.type) {
             e.paralyzedFor = std::max(e.paralyzedFor, int32_t(w.statusDur * kTick + 0.5f));
@@ -9946,12 +9982,10 @@ void World::scenarioDestroy(int unitId,uint8_t deathType) {
     updateBodyIndex(u);
     for (auto& plane:searchGrades_) refreshSearchRect(plane,footprintOrigin(u.x,u.type->footX),
         footprintOrigin(u.z,u.type->footZ),u.type->footX,u.type->footZ);
-    if (validUnitOwner(owner)) {
-        if (retailDeathCountsAsLoss(deathType)) ++players_[size_t(owner)].losses;
-        if (players_[size_t(owner)].unitCount>0) --players_[size_t(owner)].unitCount;
-    }
+    if (validUnitOwner(owner) && players_[size_t(owner)].unitCount>0) --players_[size_t(owner)].unitCount;
     // Retired at once: 512610 with zero severity runs no Dying (512ac8).
     if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy=0;
+    countTaDeath(u,retailTaDeathKind(deathType));
     u.deathPending=true;
     retireDeath(u);
     if (scenario_) scenario_->unitDied(*this,unitId);
@@ -10060,7 +10094,7 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     // while that lives. World runs that at the change, retail at the old
     // object's update (I); 514da0 hands the new object no cargo.
     if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy=0;
-    killPassengers(u);
+    killPassengers(u,tadeath::kChangeOwner);   // TotalA.exe: the old object dies of kind 4 (0x4886a4)
     cancelBuilds(unitId);
     stop(unitId);
     noteOrders(unitId);
@@ -10222,27 +10256,30 @@ void World::setVeteranLevel(Unit& u, int level) {
     u.veteran = u.veteranLevel();
 }
 
-// Native 512ae0 credits the unit its victim's last hit named (+0xf8, set by
-// 51a240 only while the hitter's object lives, and cleared by 512860 at the
-// death when it no longer does): it gains the victim type's experiencepoints
-// and its level follows (getLevel 519310 reads +0xf0 anew). A killer retired
-// or turned since is a freed object, so its credit reaches nobody.
-void World::creditKill(const Unit& victim) {
-    Unit* killer = victim.lastHitBy ? unit(victim.lastHitBy) : nullptr;
-    if (!killer || !retailObjectLives(*killer) || killer->player != victim.lastHitPlayer || !victim.type ||
-        !retailKillCreditsExperience(victim.deathType, !victim.underConstruction, victim.lastHitPlayer, victim.player))
-        return;
-    ++killer->kills;   // 512ccd, a word
-    killer->xp = retailAddExperience(killer->xp, victim.type->experiencePoints);
-    killer->veteran = killer->veteranLevel();
+// TotalA.exe's death packet handler 0x4866d0 counts the death where it
+// happens, before the unit's Killed script has run: the switch at 0x486892 on
+// the TA death kind (retailTaDeathCountsAsLoss / retailTaKillCounts). The
+// owner's losses word (player +0xfe), the hitter player's kills (+0xfc) --
+// the player recorded at the last hit that named an attacker (+0xf4), an
+// owner test and no alliance -- and the killer unit's own count (+0xb8,
+// 0x4869ca): the unit the last such hit named (+0xf0). TA keeps no experience
+// and no score per kill (its plate's score is worked out from the kills at
+// the end, econ::plateScore), so a kill adds neither. World keeps a unit's id
+// across a change of owner where TA makes a new object (0x4886a4 kills the old
+// one), so a killer that has changed sides since is not credited.
+void World::countTaDeath(Unit& u, uint8_t taKind) {
+    if (validUnitOwner(u.player) && retailTaDeathCountsAsLoss(taKind, u.lastHitPlayer, u.player))
+        ++players_[size_t(u.player)].losses;
+    if (!retailTaKillCounts(taKind, !u.underConstruction, u.lastHitPlayer, u.player)) return;
+    if (validUnitOwner(u.lastHitPlayer)) ++players_[size_t(u.lastHitPlayer)].kills;
+    Unit* killer = u.lastHitBy ? unit(u.lastHitBy) : nullptr;
+    if (killer && killer->player == u.lastHitPlayer) ++killer->kills;   // a word
 }
 
 // Retail's retirement 512ae0, once a unit's Killed/Dying is over (at once
-// when it runs none). The death-kind switch (512b71) credits the kill: the
-// hitter player's kill count (the F4 Kills) and score (512bd5..512c63) and
-// the killer's experience (512c9c), all for kinds 1, 2, 3, 7, 8, 14 and 15
-// on a finished unit whose owner differs from the hitter's player. Then,
-// for a positive severity on a finished unit, the death weapon (52ac00):
+// when it runs none). TA counts kills and losses at the death instead
+// (countTaDeath); the retirement keeps the conditions' death event and the
+// death weapon. For a positive severity on a finished unit (52ac00):
 // SELFDESTRUCTAS for kind 5, else EXPLODEAS, from where the unit is now,
 // with no shooter, so it credits nobody, is not scaled by the unit's
 // veterancy and spares nobody (529dc0 skips the shooter); its owner is the
@@ -10259,15 +10296,6 @@ void World::retireDeath(Unit& u) {
     // retirement).
     if (mission_ || scenario_) justDied_.push_back(u.id);
     const bool finished = !u.underConstruction;
-    if (retailKillCountsForPlayer(u.deathType, finished, u.lastHitPlayer, u.player) &&
-        validUnitOwner(u.lastHitPlayer)) {
-        auto& hitter = players_[size_t(u.lastHitPlayer)];
-        ++hitter.kills;
-        if (!scoreAutomaticDisabled_)
-            hitter.score = std::bit_cast<int32_t>(uint32_t(hitter.score) + uint32_t(u.type->experiencePoints));
-        creditKillBounty(u.lastHitPlayer, u.type->bounty);   // 512c6b, whoever owns the score
-    }
-    creditKill(u);
     u.deathPending = false;
     if (u.severity == 0 || !finished) return;
     // 52ac00 selects UnitDef+1ba for type 5 and +1b6 otherwise; a missing
@@ -18783,16 +18811,22 @@ void World::tickCorpseSinks() {
 // carried unit, whoever owns it, gets the carrier's death packet as death
 // kind 8 with severity 0 -- the carrier's hitter while it lives (+0xf8) and
 // its player (+0xfc) whatever -- so it runs no Killed and no Dying, retires at
-// once (512ac8) and is detached there (512b57). Kind 8 credits that hitter at
-// retirement. (E: check_kill_credit.py cargo.)
-void World::killPassengers(Unit& carrier) {
+// once (512ac8) and is detached there (512b57). (E: check_kill_credit.py
+// cargo.) TotalA.exe's death handler does the same with a damage record
+// (0x4867da..0x48680b): 30000 of kind 6 from the carrier's killer (+0xf0) to
+// each passenger, kind 3 when the carrier itself died of 3 (a self-destruct
+// or the commander rule), so the passengers count as kind 6 (a loss, and a
+// kill for that hitter) or 3 (a loss only).
+void World::killPassengers(Unit& carrier, uint8_t carrierTaKind) {
+    const uint8_t kind=carrierTaKind==tadeath::kSelfDestruct ? tadeath::kSelfDestruct : tadeath::kPassenger;
     for (const int id:std::vector<int>(carrier.cargo)) {
         Unit* c=unit(id);
         if (!c || !c->alive() || c->inTransport!=carrier.id) continue;
         c->lastHitBy=carrier.lastHitBy;c->lastHitPlayer=carrier.lastHitPlayer;c->deathType=8;
+        c->lastHitKind=kind;
         c->inTransport=0;
         std::erase(carrier.cargo,id);
-        sweepDeath(*c);
+        sweepDeath(*c,kind);
     }
 }
 
@@ -18801,18 +18835,17 @@ void World::killPassengers(Unit& carrier) {
 // orders and its search body. The per-unit update runs it at its start for
 // a unit hurt since its last update, and deadly water at once (51e36c: the
 // water's own update ends with 512610).
-void World::sweepDeath(Unit& u) {
+void World::sweepDeath(Unit& u, int taKind) {
     cancelPath(u);
     refreshMovingSearchBody(u);
     killProductionOutput(u);
-    // End-of-game "Losses" column: only the kinds 512b71's switch counts
-    // (retailDeathCountsAsLoss).
-    if (u.player >= 0 && u.player < int(players_.size()) && retailDeathCountsAsLoss(uint8_t(u.deathType)))
-        players_[size_t(u.player)].losses++;
-    // 512860 keeps the last hitter only while its object lives; the
-    // kill itself is credited at retirement (retireDeath).
+    const uint8_t kind=taKind>=0 ? uint8_t(taKind) : retailTaDeathKind(uint8_t(u.deathType));
+    // 512860 keeps the last hitter only while its object lives.
     if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy=0;
-    killPassengers(u);
+    // The end-of-game Kills / Losses columns and the killer's kill count, at
+    // the death (TotalA.exe 0x486892, countTaDeath).
+    countTaDeath(u,kind);
+    killPassengers(u,kind);
     // Killed decides corpse admission; Dying controls when the original
     // body retires. Only then does decomposition or water sinking begin.
     {
@@ -18866,7 +18899,7 @@ void World::sweepDeath(Unit& u) {
         bool commander=u.type->commander;
         for (const int id:u.cargo)
             if (const Unit* c=unit(id); c && retailObjectLives(*c) && c->type->commander) commander=true;
-        if (commander) removeScenarioUnits(u.player);
+        if (commander) removeScenarioUnits(u.player,tadeath::kSelfDestruct);   // TotalA.exe 0x4866b3 -> 0x486f10
     }
 }
 
@@ -20650,7 +20683,11 @@ void World::tick(float dt) {
                 waterDamage_ != 0, waterDamage_)) {
             // As hurt: 64-bit, clamped so that -hp is representable; through
             // the damagemodifier of an activated unit (51a16e), as any hit.
-            const int32_t taken = retailDamageModifier(water, 13, retailActivated(u), u.type->damageModifier);
+            // TotalA.exe 0x48af32: a record of kind 11 with no attacker, through
+            // 0x489bb0's damagemodifier and kill-count scaling (0x489bf3).
+            const int32_t taken = retailTaVeteranDamage(
+                retailDamageModifier(water, 13, retailActivated(u), u.type->damageModifier), u.kills);
+            u.lastHitKind = tadeath::kWater;
             u.hp = Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(u.hp.v) - int64_t(taken) * Fixed::kOne,
                                                           -int64_t(INT32_MAX), INT32_MAX)));
             // 51a3c2: an unfinished site's progress follows its new HP.
@@ -22108,6 +22145,7 @@ uint64_t World::stateHash() const {
         if (u.xp) { mix(0x5645545845504552ull); mix(uint32_t(u.xp)); }
         if (u.vetOverride != 0.0f) { mix(0x5645544f56524445ull); mixf(u.vetOverride); }
         if (!u.selectable) mix(0x554e53454c454354ull);
+        if (u.lastHitKind) mix(0x4c41535448495400ull|u.lastHitKind);
         if (u.scenarioArmor != 1.0f || u.scenarioWeapon != 1.0f) {
             mix(0x4352545354415453ull);
             mix(std::bit_cast<uint32_t>(u.scenarioArmor));
@@ -22596,7 +22634,7 @@ void World::forceDefeat(int player) {
     }
 }
 
-void World::removeScenarioUnits(int player) {
+void World::removeScenarioUnits(int player, uint8_t taKind) {
     // 5131b0, under the CRT defeat (4f6be0) and 512610's commander rule: for a
     // player with units (record +0xe8), every unit whose object lives dies
     // with death type 10 and retires at once; one whose Dying runs retires at
@@ -22616,13 +22654,22 @@ void World::removeScenarioUnits(int player) {
         stop(u.id);
         cancelPath(u);
         killProductionOutput(u);
+        // Already at zero: dying (TotalA.exe's +0x4000), its own death counted
+        // or still to come -- 0x486f10 skips such a unit (0x486f6f). A carrier
+        // whose own sweep took the commander down with it is one.
+        const bool dying = u.hp <= Fixed();
         u.hp = Fixed();
         // 512610 (through 512860) keeps the last hitter while its object
         // lives and its player either way, so a CRT game's killed tally
         // credits that player (E: check_kill_credit.py cargo).
         if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy = 0;
         u.deathType = 10; u.severity = 0; u.corpseStatue = -1;
-        killPassengers(u);
+        // TotalA.exe's commander rule (0x486f10) hands each unit a 30000 damage
+        // record of kind 3 from itself (0x486f94), so each one's death is a
+        // loss (0x4869f5) and never a kill; a CRT removal (taKind 0) is neither.
+        if (taKind && !dying) u.lastHitKind = taKind;
+        if (!dying) countTaDeath(u,taKind);
+        killPassengers(u,taKind);
         beginUnitDeath(u);
         if (u.type->isStructure())
             blockFoot(*u.type,u.x.toFloat(),u.z.toFloat(),false);
@@ -22634,7 +22681,6 @@ void World::removeScenarioUnits(int player) {
         for (auto& plane : searchGrades_)
             refreshSearchRect(plane,footprintOrigin(u.x,u.type->footX),
                 footprintOrigin(u.z,u.type->footZ),u.type->footX,u.type->footZ);
-        // Kind 10 is no loss (retailDeathCountsAsLoss).
         // Feed rule counters directly: initial evaluation and end-of-tick rules
         // can both reach here outside the ordinary justDied_ collection window.
         if (scenario_) scenario_->unitDied(*this,u.id);

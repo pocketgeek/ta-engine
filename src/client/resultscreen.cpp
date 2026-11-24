@@ -125,6 +125,24 @@ SDL_Color slotColor(int slot) {
     return kC[size_t(std::clamp(slot, 0, 9))];
 }
 
+// TotalA.exe's PlayerColor%d art (0x41e5b1..0x41e5dc): sequence "32xlogos" of
+// textures\logos.gaf (loaded into game +0x148d7 / +0x148db at 0x4318e4..0x431911),
+// frame = the player's colour, drawn in the game palette (palettes\palette.pal;
+// outcome0.pcx carries the same entries but for 7-9 and 246), not guipal.pal.
+SDL_Texture* playerColorTile(SDL_Renderer* ren, const hpi::Vfs& vfs, int frame) {
+    try {
+        const std::string pal = "palettes/palette.pal", gp = "textures/logos.gaf";
+        for (auto& sq : gaf::load(vfs.read(gp), gaf::Palette::fromBytes(vfs.read(pal), pal), -1, gp)) {
+            if (sq.name != "32xlogos" || sq.frames.empty()) continue;
+            if (frame < 0 || size_t(frame) >= sq.frames.size()) frame = 0;
+            const auto& f = sq.frames[size_t(frame)];
+            if (f.width == 0 || f.height == 0) return nullptr;
+            return art::makeTexture(ren, f.rgba, f.width, f.height);
+        }
+    } catch (...) {}
+    return nullptr;
+}
+
 std::string mmss(int sec) {
     char b[16];
     std::snprintf(b, sizeof b, "%d:%02d", sec / 60, sec % 60);
@@ -163,9 +181,11 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
         okTex[i] = gafTexture(ren, vfs, g.btnGaf, "OKButton", i);
         cancelTex[i] = gafTexture(ren, vfs, g.btnGaf, "CancelButton", i);
     }
-    std::vector<SDL_Texture*> logos;
-    if (stats) for (const auto& row : stats->rows)
+    std::vector<SDL_Texture*> logos, swatches;
+    if (stats) for (const auto& row : stats->rows) {
         logos.push_back(gafTexture(ren, vfs, kFactionLogoGaf, factionLogoSequence(row.side), row.colorSlot));
+        swatches.push_back(g.headersInArt ? playerColorTile(ren, vfs, row.colorSlot) : nullptr);
+    }
     Font head, body, deco;
     try { head = Font(ren, vfs, "fonts/lombardic (cd).gaf", FontRole::Art); } catch (...) {}
     try { deco = Font(ren, vfs, "fonts/decorativesm.gaf", FontRole::Art); } catch (...) {}
@@ -175,6 +195,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     auto freeAll = [&] {
         if (bg) gpuvram::destroy(bg);
         for (auto* logo : logos) if (logo) gpuvram::destroy(logo);
+        for (auto* swatch : swatches) if (swatch) gpuvram::destroy(swatch);
         for (int i = 0; i < 3; ++i) {
             if (okTex[i]) gpuvram::destroy(okTex[i]);
             if (cancelTex[i]) gpuvram::destroy(cancelTex[i]);
@@ -353,40 +374,65 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
 
             if (g.headersInArt) {
                 // TotalA.exe 0x41e420, the outcome0.pcx plate: up to 10 rows from y 93,
-                // 20 apart. PlayerColor (16, y, 91x21) in the player's colour with the
-                // name over it at x 16; then Kills, Losses, EProduced, MProduced,
-                // EWasted, MWasted and Score cells 67x18 at x 112 + 74k: a bevelled frame,
-                // a 2 px inset well, the bar from its left, the number centred on it
-                // (0x4a4660). Bar and well colours are palette indices the plate sets at
-                // run time (game +0xdcf / +0xdd3); these are stand-ins.
+                // 20 apart. PlayerColor (16, y, 91x21) with the name over it at x 16;
+                // then Kills, Losses, EProduced, MProduced, EWasted, MWasted and Score
+                // cells 67x18 at x 112 + 74k (0x4a4660 draws each).
+                //
+                // The colours are the GUI context's map (+0x8b2, game +0xdcb) that
+                // 0x4ac7d0 builds from palettes\guipal.pal -- its 16 EGA colours --
+                // each matched to the nearest entry (summed |dR|+|dG|+|dB|, the first
+                // on a tie) of the game palette (game +0x143a7, palettes\palette.pal;
+                // outcome0.pcx's own palette has the same entries): guipal 20
+                // (183,183,183) -> 84 (187,187,187) fills the cell and 0 / 17 -> 0
+                // (0,0,0) / 82 (219,219,219) draw its 2 px bevel, top-left / bottom-
+                // right (0x4b04b0 -> 0x4b0090); then the 2 px inset well in game
+                // +0xdd3 = guipal 8 (85,85,85) -> 90 (91,91,91) and the bar from its
+                // left in game +0xdcf = guipal 4 (170,0,0) -> 213 (171,23,0), trunc(
+                // shown / column max x (67 - 4)) wide (0x4a4738..0x4a476a); the number
+                // centred on it (0x4a4871).
                 const int frames = countUp ? int((SDL_GetTicks64() - openedMs) * 30 / 1000) : 1 << 20;
                 const int n = std::min<int>(int(stats->rows.size()), 10);
+                auto fill = [&](float fx, float fy, float fw, float fh, SDL_Color c) {
+                    if (fw <= 0 || fh <= 0) return;
+                    SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
+                    const SDL_FRect r = lay.rect(fx, fy, fw, fh);
+                    SDL_RenderFillRectF(ren, &r);
+                };
+                constexpr SDL_Color kCellFill{187, 187, 187, 255}, kBevelDark{0, 0, 0, 255},
+                                    kBevelLight{219, 219, 219, 255}, kWell{91, 91, 91, 255},
+                                    kBar{171, 23, 0, 255};
                 for (int i = 0; i < n; ++i) {
                     const ResultRow& row = stats->rows[size_t(i)];
                     const float y = 93.0f + 20.0f * float(i);
-                    const SDL_Color pc = slotColor(row.colorSlot);
-                    SDL_SetRenderDrawColor(ren, pc.r, pc.g, pc.b, 255);
+                    // 0x4a4a1a: an uncompressed frame is texture-mapped from (1,1) to
+                    // (w-1,h-1) onto the gadget's corners (0x4c7580), so the 32x32
+                    // tile is stretched over 91x21 without its outer row and column.
                     const SDL_FRect sw = lay.rect(16, y, 91, 21);
-                    SDL_RenderFillRectF(ren, &sw);
+                    if (swatches[size_t(i)]) {
+                        const SDL_Rect src{1, 1, 31, 31};
+                        SDL_RenderCopyF(ren, swatches[size_t(i)], &src, &sw);
+                    } else {
+                        const SDL_Color pc = slotColor(row.colorSlot);
+                        SDL_SetRenderDrawColor(ren, pc.r, pc.g, pc.b, 255);
+                        SDL_RenderFillRectF(ren, &sw);
+                    }
+                    const SDL_Color pc = slotColor(row.colorSlot);
                     const SDL_Color ink = (pc.r + pc.g + pc.b) > 500 ? SDL_Color{24, 20, 12, 255} : SDL_Color{250, 246, 230, 255};
-                    text(body, row.name, {18, y, 87, 20}, ink);
+                    text(body, row.name, {16, y, 89, 20}, ink);
                     for (int c = 0; c < kTaCols; ++c) {
                         const int32_t value = std::max<int32_t>(taValue(row, c), 0);
                         const int32_t step = std::max<int32_t>(1, int32_t(float(value) / 15.0f));
                         const int32_t shown = int32_t(std::min<int64_t>(value, int64_t(step) * frames));
                         const float x = 112.0f + 74.0f * float(c);
-                        const SDL_FRect cell = lay.rect(x, y, 67, 18);
-                        SDL_SetRenderDrawColor(ren, 120, 120, 112, 255);
-                        SDL_RenderDrawRectF(ren, &cell);
-                        const SDL_FRect well = lay.rect(x + 2, y + 2, 63, 14);
-                        SDL_SetRenderDrawColor(ren, 6, 22, 8, 255);
-                        SDL_RenderFillRectF(ren, &well);
-                        const float frac = float(double(shown) / double(std::max(colMax[c], 1)));
-                        if (frac > 0) {
-                            const SDL_FRect bar = lay.rect(x + 2, y + 2, 63.0f * std::min(frac, 1.0f), 14);
-                            SDL_SetRenderDrawColor(ren, 52, 104, 44, 255);
-                            SDL_RenderFillRectF(ren, &bar);
-                        }
+                        fill(x, y, 67, 18, kCellFill);
+                        fill(x, y, 67, 2, kBevelDark);           // top, two rows
+                        fill(x, y, 2, 18, kBevelDark);           // left, two columns
+                        fill(x, y + 16, 67, 2, kBevelLight);     // bottom
+                        fill(x + 65, y, 2, 18, kBevelLight);     // right
+                        fill(x + 2, y + 2, 63, 14, kWell);
+                        const double frac = double(shown) / double(std::max(colMax[c], 1));
+                        const int barW = int(std::min(frac, 1.0) * 63.0);
+                        fill(x + 2, y + 2, float(barW), 14, kBar);
                         text(body, std::to_string(shown), {x + 2, y + 1, 63, 16}, gold, false, false, true);
                     }
                 }

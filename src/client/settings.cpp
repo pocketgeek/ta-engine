@@ -233,6 +233,8 @@ Settings loadSettings(bool* fileFound) {
         else if (key == "sfxVol")          s.sfxVol = asInt(0, 256);
         else if (key == "soundVoices")     s.soundVoices = asInt(8, 256);
         else if (key == "evenSoundLevels") s.evenSoundLevels = asBool();
+        else if (key == "unitSpeech")      s.unitSpeech = asInt(0, 2) * 5;
+        else if (key == "unitChatText")    s.unitChatText = asInt(0, 2) * 5;
         else if (key == "mouseZoomSpeed")  s.mouseZoomSpeed = asFloat(0.25f, 4.0f);
         else if (key == "edgeScrollSpeed") s.edgeScrollSpeed = asFloat(0.25f, 4.0f);
         else if (key == "edgeScroll")      s.edgeScroll = asBool();
@@ -347,6 +349,8 @@ std::string serializeSettings(const Settings& s) {
     o << "sfxVol = " << s.sfxVol << "\n";
     o << "soundVoices = " << s.soundVoices << "\n";
     o << "evenSoundLevels = " << (s.evenSoundLevels ? 1 : 0) << "\n";
+    o << "unitSpeech = " << std::clamp(s.unitSpeech / 5, 0, 2) << "\n";
+    o << "unitChatText = " << std::clamp(s.unitChatText / 5, 0, 2) << "\n";
     for (int i = 0; i < 8; ++i) o << "chanGain" << i << " = " << s.chanGain[i] << "\n";
     o << "mouseZoomSpeed = " << s.mouseZoomSpeed << "\n";
     o << "edgeScrollSpeed = " << s.edgeScrollSpeed << "\n";

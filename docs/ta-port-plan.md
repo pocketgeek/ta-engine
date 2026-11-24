@@ -116,6 +116,29 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   passes all 16 cases: a TA_MENU_PICK (debug) and a LAN game's return go to the
   engine menu, not TA's front end; the fallback map is Great Divide; the Test Map
   fixture drops Ashap Plateau's useonlyunits.
+- Death accounting, alert details, plate art (2026-11-24): Kills / Losses and the
+  unit kill count follow TotalA.exe's death packet switch (0x486892, table
+  0x486e64) at the death (0x4866d0), not at retirement: kinds 1 and 6 a loss, 5
+  only when another player hit it last, 3 a loss never a kill; the kill when the
+  victim is finished and +0xf4 names another player (owner test, no alliance);
+  the killer unit's +0xb8 under the same test (0x4869ca). Engine causes mapped
+  to TA kinds (retailTaDeathKind): weapon 1, self-destruct 3, change of owner 4,
+  passenger 6 (3 when the carrier died of 3, 0x4867da), wall-to-feature 7,
+  decay/abort 9, deadly water 11 (no loss now); the commander rule counts 3.
+  TA has no experience/score/bounty per kill. TA's veterancy is the kill count:
+  0x489bf3 scales every record by the victim's kills (4% per 5, max 20%;
+  retailTaVeteranDamage), on hits, self-destruct and water. Under-attack: skipped
+  while the current mission has flag 0x80 (Attack_NoMove / Attack_Chase /
+  AttackSpecial, table 0x4fc490), and only when the previous record came from
+  another player or was a weapon hit (Unit::lastHitKind = +0xf5, hashed); the
+  cooldown starts only when the speech plays (0x47feee); "<unit>: Under Attack"
+  goes to the message area (0x47ff69 -> 0x463ca0); Options UNIT SPEECH / UNIT
+  CHAT TEXT are TA's SPEECH (sounds.gui) and UNITCHAT (speeds.gui), Off|Medium|
+  Full = 0|5|10, defaults 10 / 5 (0x430537..0x430596). Plate: guipal.pal's EGA
+  colours matched into palette.pal (0x4ac7d0): cell 84, bevel 0 / 82, well 90
+  (+0xdd3, guipal 8), bar 213 (+0xdcf, guipal 4); PlayerColor is textures\
+  logos.gaf "32xlogos" frame = colour, mapped from (1,1)-(31,31) onto 91x21
+  (0x41e5b1, 0x4a4a1a).
 
 ## Resolved retail questions (docs/retail-weapon-scripts.md section 8)
 
@@ -171,19 +194,25 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   keeps a 2 x builddistance ring); the air-traffic counter and occupancy lists
   (Kingdoms 51dc4b) still update, unread; nanoframe outlines are front-facing
   only and use painter's order (retail depth-tests per pixel).
-- Result plate: Kills / Losses still count by the Kingdoms death kinds
-  (retailveterancy.h); TA's rule is the death routine's switch at 0x486892 (table
-  0x486e64: kinds 1 and 6 always a loss, 5 only when another player hit it last, 3
-  by alliance; the kill when finished and the hitter is another player), with the
-  TA damage kinds of 0x489bb0's callers (weapon 1/2, self-destruct 3, ...) not yet
-  mapped onto the engine's. The bar and well colours (game +0xdcf / +0xdd3) and
-  the PlayerColor gadget's art are stand-ins.
-- Under-attack alert: 0x406f80 also skips a unit whose current order has flag
-  0x80 and fires only when the previous hit came from another player or was an
-  ordinary weapon hit (victim +0xf4 / +0xf5, read before this hit updates them);
-  neither is modelled (every damaged own unit asks). The speech line "<unit>:
-  Under Attack" (0x47ff69 -> 0x463ca0) and the speech/text level options (game
-  +0x37f17 / +0x37f18) are not ported.
+- Death accounting (countTaDeath, retailveterancy.h): World's death pipeline
+  still runs on Kingdoms death kinds (Unit::deathType: severity, Killed/Dying, the
+  death weapon), mapped onto TA's for counting only. Not yet TA-shaped: the
+  commander rule's sweep (0x486f10) is still Kingdoms' immediate removal (TA
+  sends each unit a kind-3 record, so each runs Killed and leaves its corpse /
+  explosion); a passenger still dies without Killed (TA: a 30000 kind-6/3
+  record, 0x48680b); no engine cause yet for kind 5 (ReclaimUnit 0x404730 is not
+  ported); a unit already at 0 HP but not yet swept when its commander dies
+  counts nothing (TA: its own death packet later). The kind-3 loss's statistics
+  guard (local player +0x129[owner], 0x457540) is network-only and not modelled.
+  A change of owner keeps the unit's +0xf4/+0xf5 (TA's new object starts at
+  10 / 0). The Kingdoms experience routines (xp, vetMul) are still wired but TA
+  credits no experience, so they stay at level 0 unless a placement sets one.
+- Under-attack: the gate is decided on weapon hits only (World::applyHit); TA
+  runs 0x406f80 for every damage record but repair and water (self-destruct,
+  change of owner, passengers too), and World's hit response before it is still
+  Kingdoms' 409a50 (TA's own response, 0x406f80..0x4071aa, is not ported). The
+  speech queue's global spacing (+0x9d/+0xa1, 0x47f6bb) is not modelled: one
+  request per frame, text at once.
 - A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
   units in the field) can still circle in the ring's acceptance gap -- the
   octile distance (0x44d840) is 0 a cell inside the squared inner test

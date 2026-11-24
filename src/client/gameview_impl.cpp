@@ -234,6 +234,8 @@
         sounds_.setSfxVolume(s.sfxVol);
         sounds_.setVoiceLimit(s.soundVoices);
         sounds_.setEvenOut(s.evenSoundLevels);
+        unitSpeech_ = std::clamp(s.unitSpeech, 0, 10);       // Options: UNIT SPEECH
+        unitChatText_ = std::clamp(s.unitChatText, 0, 10);   // Options: UNIT CHAT TEXT
         for (int i = 0; i < sounds_.channelCount(); ++i) sounds_.setChannelGain(i, s.chanGain[i]);
         mapView_.setZoomSpeed(s.mouseZoomSpeed);
         edgeScrollSpeed_ = s.edgeScrollSpeed;
@@ -1768,16 +1770,27 @@
             }
         }
         // TotalA.exe's under-attack alert (client/monarchalert.h): a local unit hit while
-        // off screen, at most once per 20 s of game time; the hit unit's own sound class
-        // speaks it (0x47fd70: the class of [unit+0x92]+0x20e, slot "underattack";
-        // warning1 in every shipped class), with no position, at speech priority.
+        // off screen. The hit unit's own sound class speaks it (0x47fd70: the class of
+        // [unit+0x92]+0x20e, slot "underattack"; warning1 in every shipped class), with
+        // no position, at speech priority, when UNIT SPEECH allows it -- which starts the
+        // 20 s cooldown -- and "<unit>: Under Attack" goes into the message area when
+        // UNIT CHAT TEXT allows it (0x47ff69 -> 0x463ca0). The queue holds one request
+        // of an event at a time (0x47fb0a), so one hit list asks once.
         for (const auto& [tick, id] : hurt) {
             const UnitR* u = frameUnitP(id);
             if (!u || !u->type ||   // a fatal hit too: 0x406f80 runs before the death
                 !monarchAlert_.admit(u->player, localPlayer_, watchOnly(), onScreen(*u), tick)) continue;
-            const std::string* wav = u->type->soundClass.empty()
-                                         ? nullptr : soundClasses_.pick(u->type->soundClass, "underattack", salt_++);
-            sounds_.play(wav ? *wav : std::string("warning1"), 1.f, 1.f, 7, false);
+            if (ta::MonarchAlert::speaks(unitSpeech_)) {
+                const std::string* wav = u->type->soundClass.empty()
+                                             ? nullptr : soundClasses_.pick(u->type->soundClass, "underattack", salt_++);
+                if (wav) {   // 0x47fe03: a class with no variant for the slot says nothing
+                    sounds_.play(*wav, 1.f, 1.f, 7, false);
+                    monarchAlert_.spoken(tick);
+                }
+            }
+            if (ta::MonarchAlert::shows(unitChatText_))
+                gameChat_.push_back({std::string(), ta::MonarchAlert::line(u->type->name), 0, true});
+            break;
         }
         // Total Annihilation firing sounds: each shot launched since the last frame
         // plays its weapon's soundstart (a WAV stem) where it left the barrel.

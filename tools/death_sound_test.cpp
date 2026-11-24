@@ -59,8 +59,16 @@ int main(int argc,char** argv) {
         check(!alert.admit(0,0,true,false,100), "spectators hear no alert");
         check(!alert.admit(0,0,false,true,100), "a unit on screen does not alert");
         check(alert.admit(0,0,false,false,100), "first off-screen hit alerts at once");
-        check(!alert.admit(0,0,false,false,699), "the alert waits 600 game ticks");
+        check(alert.admit(0,0,false,false,101), "an alert not yet heard starts no cooldown");
+        alert.spoken(100);
+        check(!alert.admit(0,0,false,false,699), "the alert waits 600 game ticks once heard");
         check(alert.admit(0,0,false,false,700), "and repeats at the boundary");
+        // 0x47fdf9 / 0x47ff26: priority 9 against 10 - level (Off|Medium|Full = 0|5|10).
+        check(!ta::MonarchAlert::speaks(0) && ta::MonarchAlert::speaks(5) && ta::MonarchAlert::speaks(10),
+              "under attack is spoken at Medium and Full speech only");
+        check(!ta::MonarchAlert::shows(0) && ta::MonarchAlert::shows(5) && ta::MonarchAlert::shows(10),
+              "its line shows at Medium and Full unit chat text only");
+        check(ta::MonarchAlert::line("Commander")=="Commander: Under Attack", "the line is \"%s: %s\"");
     }
     SDL_SetMainReady();
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);

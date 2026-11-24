@@ -1675,6 +1675,12 @@ struct alignas(64) Unit {
     // pushed on it, check_change_owner.py unfinished). Hashed when clear on an
     // unfinished site.
     bool siteGetBuilt = true;
+    // TotalA.exe's +0xf5: the damage kind (sim/retailveterancy.h, tadeath) of
+    // the last damage record that reached the unit, written by every record but
+    // a repair whether or not it names an attacker (0x489dac); a new unit starts
+    // at 0. The under-attack request reads it, before the hit updates it
+    // (0x4071ca). Hashed when set.
+    uint8_t lastHitKind = 0;
     const std::string& displayName() const { return scenarioName.empty() ? type->name : scenarioName; }
     bool alive() const { return deadFor < 0; }
     int32_t maximumHp() const { return retailSite ? int32_t(retailSite->type.maxHp) : type->maxHp; }
@@ -3682,8 +3688,10 @@ private:
     // The experience of the new object retail makes for a unit (512060): none
     // (511990 zeroes +0xf0 and +0xf4), then its type's scenario level (4cd5f4).
     void startObjectStats(Unit& u);
-    // A dead unit's kill credit to the unit that hit it last (512c9c..512ce6).
-    void creditKill(const Unit& victim);
+    // TotalA.exe's death accounting (the death packet's switch 0x486892, at the
+    // death): the owner's loss, the hitter player's kill and the killer unit's
+    // kill count, by TA death kind (retailTaDeathCountsAsLoss / retailTaKillCounts).
+    void countTaDeath(Unit& victim, uint8_t taKind);
     // Retail's retirement 512ae0 for a unit whose death has started.
     void retireDeath(Unit& u);
     // 51a1c0 / 51a281: the hitter a hit names, only while its object lives. A
@@ -4599,7 +4607,9 @@ private:
     void forgetCorpseAt(int cx,int cz);
     bool placeCorpse(Unit& unit,int type);
     void retireCorpse(Unit& unit);
-    void removeScenarioUnits(int player);
+    // taKind: the TA death kind each removal counts as (0: nothing; the
+    // commander rule passes 3, TotalA.exe 0x486f10).
+    void removeScenarioUnits(int player, uint8_t taKind = 0);
     void removeMapFeature(int cx,int cz);
     bool placeMapFeature(const Feature& f,uint8_t owner=kRetailWorldFeatureOwner);
     // A FLYING reclaimer's acceptance (VTOL_RECLAIM 420xxx is not ported):
@@ -4830,6 +4840,10 @@ private:
     // A walker's guard (Follow_Ground) or attack on a unit (Attack_Chase,
     // Attack_Melee): the orders retailOrderFlags gives those rows' flags.
     static bool retailGroundUnitMission(const Unit& u,const Order& o);
+    // Whether the unit's current mission carries TotalA.exe's mission flag 0x80
+    // (definition table 0x4fc490, +0x11): only Attack_NoMove and Attack_Chase
+    // (0x280) and AttackSpecial, the D-gun (0x680); no VTOL mission has it.
+    static bool retailTaAttackMission(const Unit& u);
     // The next mission's flags (+0x66's +0x5a) behind orders[index]; 0 for none.
     uint32_t retailNextMissionFlags(const Unit& u,size_t index) const;
     // 51d1e0(unit, 1, level) for an attack's group check (its flags lack 0x4000000).
@@ -4972,8 +4986,11 @@ private:
     void tickUnitScript(Unit& unit);
     void notifyTurnDirection(Unit& u,UnitScript& script);
     void beginUnitDeath(Unit& unit);
-    void sweepDeath(Unit& unit);
-    void killPassengers(Unit& carrier);
+    // taKind: the TA death kind to count (retailVeterancy.h); -1 takes it from
+    // the unit's deathType (retailTaDeathKind).
+    void sweepDeath(Unit& unit, int taKind = -1);
+    // The carrier's TA death kind decides its passengers' (6, or 3 when 3).
+    void killPassengers(Unit& carrier, uint8_t carrierTaKind);
     void updateCorpseWindow(Unit& unit);
     bool waterGrave(const Unit& unit) const;
     void tickCorpseSinks();

@@ -910,6 +910,9 @@ public:
     // the under-attack alert's input. Guarded by hitQueueMutex_; survives queue overflow.
     std::vector<std::pair<uint32_t, int>> pendingHurt_;
     ta::MonarchAlert monarchAlert_;
+    // TotalA.exe's unit speech / unit chat text levels (game +0x37f17 / +0x37f18,
+    // 0|5|10; Settings::unitSpeech / unitChatText).
+    int unitSpeech_ = 10, unitChatText_ = 5;
     std::deque<ta::sim::World::SoundReq> missionSoundQueue_;
     // Death sounds the simulation's dying unit VMs played (World::ScriptSound), the name
     // resolved at capture. Tick-stamped and released with the displayed tick, like hits.

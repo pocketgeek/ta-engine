@@ -1,9 +1,13 @@
 // Who a hit and a kill credit, as retail's 51a140, 52a330, 512860, 512ae0,
-// 513130 and 51e13f decide (tools/re/check_kill_credit.py runs them natively).
+// 513130 and 51e13f decide (tools/re/check_kill_credit.py runs them natively),
+// and what TotalA.exe's death packet switch (0x486892) counts as a kill or a
+// loss, its kill-count veterancy (0x489bf3) and the under-attack request's
+// gates (0x4071b0..0x4071d8).
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
 #include "sim/mission.h"
 #include "sim/sim.h"
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <stdexcept>
@@ -70,22 +74,21 @@ int main(int argc,char** argv) try {
         check(scaled==whole/2,"an activated unit's hit ignored its damagemodifier");
     }
     {
-        // 512c6b: a credited kill pays the killer's player the victim type's
-        // mogriumbounty into its pool, uncapped; an uncredited one nothing.
+        // TotalA.exe 0x4868b3..0x4869ca: a kill adds the hitter player's kills and
+        // the killer unit's own count -- no bounty, score or experience (Kingdoms'
+        // 512c6b / 512bd5 / 512ce0 have no TA counterpart).
         UnitType prize=fighter("prize");prize.bounty=25.5f;
-        for (const bool credited:{true,false}) {
-            World w;terrain(w);
-            const int k=w.spawn(&t,400,400,0,0),v=w.spawn(&prize,1200,1200,0,1);
-            w.tick(1.f/30);
-            const double before=w.player(0).mana;
-            w.unit(v)->lastHitBy=k;w.unit(v)->lastHitPlayer=credited ? 0 : 1;
-            w.unit(v)->hp=Fixed();w.unit(v)->deathType=1;
-            w.tick(1.f/30);
-            check(!w.unit(v)->alive() && !w.unit(v)->deathPending,"the prize did not retire");
-            const double gained=w.player(0).mana-before;
-            check(credited ? gained>=25.5 && gained<25.6 : gained<0.1,
-                  credited ? "a credited kill did not pay its bounty" : "an uncredited kill paid a bounty");
-        }
+        World w;terrain(w);
+        const int k=w.spawn(&t,400,400,0,0),v=w.spawn(&prize,1200,1200,0,1);
+        w.tick(1.f/30);
+        const double before=w.player(0).mana;
+        w.unit(v)->lastHitBy=k;w.unit(v)->lastHitPlayer=0;
+        w.unit(v)->hp=Fixed();w.unit(v)->deathType=1;
+        w.tick(1.f/30);
+        check(!w.unit(v)->alive() && !w.unit(v)->deathPending,"the prize did not retire");
+        check(w.player(0).kills==1 && w.unit(k)->kills==1 && w.player(1).losses==1,"the kill was not counted");
+        check(w.player(0).mana-before<0.1 && w.player(0).score==0 && w.unit(k)->xp==0,
+              "a TA kill paid a bounty, a score or experience");
     }
     {
         // 51a35a: a hit names its hitter only while the hitter's object lives
@@ -135,10 +138,12 @@ int main(int argc,char** argv) try {
             w.unit(v)->lastHitBy=k;w.unit(v)->lastHitPlayer=0;
             w.scenarioDestroy(v,kind);
         };
+        // World's 5 / 4 / 10 / 13 / 0 are TA's 3 / 2 / none / 11 / none.
         kill(2,5);kill(2,4);kill(2,10);kill(2,13);kill(2,0);
         check(w.player(0).kills==0 && w.player(0).score==0,"a death kind outside the credit branch counted a kill");
+        check(w.player(2).losses==1,"only the self-destruct (TA kind 3) of those is a loss");
         kill(2,1);kill(2,14);
-        check(w.player(0).kills==2 && w.player(0).score==200,"credit kinds did not count kills and score");
+        check(w.player(0).kills==2 && w.player(0).score==0,"weapon deaths did not count kills (or added a score)");
         kill(1,3);
         check(w.player(0).kills==3,"an ally's unit killed was not counted (retail tests owners, not alliance)");
         kill(0,1);
@@ -234,7 +239,9 @@ int main(int argc,char** argv) try {
         check(hits==3,"deadly water did not hurt once a second");
         check(w.unit(h)->hp.floorInt()==hover.maxHp,"deadly water hurt a canhover unit");
         // 51e36c: the update whose water hit is lethal ends with 512610, so
-        // the unit dies (here, with no Dying, retires: a loss) on that tick.
+        // the unit dies (here, with no Dying, retires) on that tick. TotalA.exe's
+        // deadly water is a record of kind 11 (0x48af32), which 0x486892 counts
+        // as nothing: no loss.
         World d;d.setPlayerCount(2);d.setTerrain(std::vector<uint8_t>(64*64,10),64,64,50);
         d.setWaterDamage(100);
         const int v=d.spawn(&ship,400,400,0,0);
@@ -242,8 +249,8 @@ int main(int argc,char** argv) try {
         int tick=0;
         while (d.unit(v)->hp>Fixed() && tick<60) { d.tick(1.f/30);++tick; }
         check(d.unit(v)->hp<=Fixed() && d.unit(v)->deathType==13,"deadly water did not kill");
-        check(d.player(0).losses==1 && !d.unit(v)->deathPending,
-              "a deadly-water death waited for the next tick's sweep");
+        check(d.player(0).losses==0 && !d.unit(v)->deathPending && d.unit(v)->lastHitKind==11,
+              "a deadly-water death waited for the next tick's sweep or counted a loss");
     }
     {
         // Self-destruct (4017e0 in the background list, check_kill_credit.py
@@ -320,10 +327,11 @@ int main(int argc,char** argv) try {
                 check(w.player(0).kills==0 && w.player(1).kills==0,"the commander rule credited a kill");
                 check(w.unit(b)->lastHitBy==e && w.unit(b)->lastHitPlayer==1,
                       "the commander rule cleared a unit's last hitter");
-                // 512ae0 counts no loss for kind 10 (check_kill_credit.py
-                // losses): only the commander killed by kind 1, or its
-                // carrier and, as its passenger, the commander (kind 8).
-                check(w.player(0).losses==(carried ? 2 : 1),"the commander rule's kind-10 deaths counted as losses");
+                // TotalA.exe's commander rule (0x486f10) kills each unit with a
+                // record of kind 3 (0x486f94): every one a loss (0x4869f5) --
+                // the commander (kind 1), a and b, and when carried the carrier
+                // (kind 1) and the commander as its passenger (kind 6).
+                check(w.player(0).losses==(carried ? 4 : 3),"the commander rule's kind-3 deaths were not losses");
             }
             check(w.unit(e)->alive(),"the commander rule took another player's unit");
         }
@@ -349,8 +357,11 @@ int main(int argc,char** argv) try {
                 check(c.lastHitPlayer==1 && c.lastHitBy==(shooterLives ? s : 0),
                       "a passenger did not take its carrier's hitter");
             }
-            check(w.player(1).kills==3 && w.player(1).score==300,"the carrier's killer was not credited for its passengers");
-            if (shooterLives) check(w.unit(s)->xp==300,"the carrier's killer did not earn its passengers' experience");
+            // TotalA.exe 0x48680b: each passenger takes a kind-6 record, counted
+            // as kind 1 (0x4868b3): a kill for the carrier's hitter.
+            check(w.player(1).kills==3 && w.player(1).score==0,"the carrier's killer was not credited for its passengers");
+            check(w.player(0).losses==2 && w.player(2).losses==1,"the carrier and its passengers were not losses");
+            if (shooterLives) check(w.unit(s)->xp==0,"a TA kill earned experience");
             // 512ccd: its own kill count (+0xfe) counts each under the same gate.
             if (shooterLives) check(w.unit(s)->kills==3,"the carrier's killer did not count its kills");
             if (shooterLives) {
@@ -369,6 +380,102 @@ int main(int argc,char** argv) try {
         check(!w.unit(a)->alive() && w.unit(a)->deathType==8 && w.unit(a)->lastHitBy==s &&
               w.unit(ship)->cargo.empty() && w.unit(ship)->alive() && w.unit(ship)->player==1,
               "a carrier changing sides kept its passengers");
+    }
+    {
+        // TotalA.exe's death packet switch (0x486892, table 0x486e64) by TA kind:
+        // 1 and 6 a loss and, finished and hit by another player, a kill; 5 only
+        // when another player hit it last; 3 a loss, never a kill; 2, 4 and
+        // 7..11 (and 0) nothing.
+        for (int kind=0;kind<12;++kind) for (const int hitter:{-1,0,1}) for (const bool finished:{false,true}) {
+            const uint8_t k=uint8_t(kind);
+            const bool loss=retailTaDeathCountsAsLoss(k,hitter,0);
+            const bool kill=retailTaKillCounts(k,finished,hitter,0);
+            const bool wantLoss=kind==1 || kind==6 || kind==3 || (kind==5 && hitter==1);
+            const bool wantKill=(kind==1 || kind==6 || kind==5) && hitter==1 && finished;
+            check(loss==wantLoss,"a TA death kind counted the wrong loss");
+            check(kill==wantKill,"a TA death kind counted the wrong kill");
+        }
+        // 0x489bf3: amount x (25 - min(kills/5, 5)) x 4 / 100, truncated.
+        check(retailTaVeteranDamage(100,0)==100 && retailTaVeteranDamage(100,4)==100,"under five kills scaled a hit");
+        check(retailTaVeteranDamage(100,5)==96 && retailTaVeteranDamage(99,5)==95,"five kills did not take 4%");
+        check(retailTaVeteranDamage(100,24)==84 && retailTaVeteranDamage(100,25)==80 &&
+              retailTaVeteranDamage(100,65535)==80,"the kill-count scaling is not capped at 20%");
+        check(retailTaVeteranDamage(30000,25)==24000,"a self-destruct's 30000 was not scaled");
+    }
+    {
+        // ...in a hit: the same shot (same CRT draw) on a 25-kill victim takes
+        // 80% of what it takes from a fresh one.
+        auto hit=[&](uint16_t kills) {
+            World w;terrain(w);
+            const int s=w.spawn(&t,400,400,0,0),v=w.spawn(&t,440,400,0,1);
+            w.unit(v)->kills=kills;
+            const int before=w.unit(v)->hp.floorInt();
+            RetailReplayProbe::hit(w,t.weapon,440,400,0,s,w.unit(v));
+            return before-w.unit(v)->hp.floorInt();
+        };
+        const int fresh=hit(0),veteran=hit(25);
+        check(veteran==fresh*80/100,"a veteran victim's hit was not scaled by its kills");
+    }
+    {
+        // TotalA.exe counts at the death packet (0x4866d0): an unfinished victim
+        // is a loss but no kill.
+        World w;terrain(w);
+        const int k=w.spawn(&t,400,400,0,0),v=w.spawn(&t,1200,1200,0,1);
+        w.unit(v)->underConstruction=true;
+        w.unit(v)->lastHitBy=k;w.unit(v)->lastHitPlayer=0;
+        w.unit(v)->hp=Fixed();w.unit(v)->deathType=1;
+        w.tick(1.f/30);
+        check(w.player(1).losses==1 && w.player(0).kills==0 && w.unit(k)->kills==0,
+              "an unfinished unit's death counted a kill or no loss");
+    }
+    {
+        // A self-destructing carrier (kind 3) hands its passengers kind 3
+        // (0x4867da..0x4867ec): a loss for their owner, no kill for anyone.
+        auto boat=fighter("boat");boat.canTransport=true;boat.transportCap=4;boat.transportSizeCap=16;
+        boat.selfDestructCountdown=0;
+        World w;terrain(w);
+        const int ship=w.spawn(&boat,400,400,0,0),b=w.spawn(&t,420,400,0,2);
+        check(w.embarkInto(b,ship),"the passenger did not board");
+        w.destroy(ship);w.tick(1.f/30);
+        check(!w.unit(ship)->alive() && !w.unit(b)->alive(),"the carrier's self-destruct left its passenger");
+        check(w.player(0).losses==1 && w.player(2).losses==1 && w.player(0).kills==0,
+              "a self-destructed carrier's passenger was a kill (kind 6) instead of kind 3");
+        check(w.unit(b)->lastHitKind==3,"the passenger did not take kind 3");
+    }
+    {
+        // The under-attack request (0x4071b0..0x4071d8), after the hit response:
+        // none while the current mission is a ground attack (flag 0x80); else only
+        // when the previous record came from another player or was a weapon hit.
+        auto crate=fighter("crate");crate.weapons.clear();   // unarmed: no answer to the hit
+        auto asks=[&](World& w,int s,int v) {
+            RetailReplayProbe::hit(w,t.weapon,440,400,w.unit(s)->player,s,w.unit(v));
+            const auto& hurt=w.hits().back().hurtUnits;
+            return std::find(hurt.begin(),hurt.end(),v)!=hurt.end();
+        };
+        World w;terrain(w);
+        const int e=w.spawn(&t,400,400,0,1),own=w.spawn(&t,400,440,0,0),v=w.spawn(&crate,440,400,0,0);
+        check(asks(w,e,v),"a fresh unit hit by an enemy did not ask");
+        // Its own player's self-destruct record (kind 3) last: an own weapon hit does not ask...
+        w.unit(v)->lastHitPlayer=0;w.unit(v)->lastHitKind=3;
+        check(!asks(w,own,v),"a hit after its own player's non-weapon record asked");
+        // ...and that hit was an ordinary weapon hit, so the next one does.
+        check(w.unit(v)->lastHitKind==1 && asks(w,own,v),"a hit after an own weapon hit did not ask");
+        w.unit(v)->lastHitPlayer=0;w.unit(v)->lastHitKind=11;
+        check(!asks(w,own,v),"an own hit after deadly water asked");
+        // An enemy's previous hit of any kind asks.
+        w.unit(v)->lastHitPlayer=1;w.unit(v)->lastHitKind=3;
+        check(asks(w,own,v),"a hit after another player's record did not ask");
+        // A walker busy with an attack (Attack_Chase, 0x280) does not ask; a guard does.
+        const int g=w.spawn(&crate,440,420,0,0);
+        w.unit(g)->orders.push_back(Order{Fixed(),Fixed(),e});
+        check(!asks(w,e,g),"a unit on a ground attack asked");
+        w.unit(g)->orders.front().guard=true;w.unit(g)->orders.front().targetId=own;
+        check(asks(w,e,g),"a guarding unit did not ask");
+        // A flyer's attack (AirToGround, 0x200) has no flag 0x80.
+        auto plane=fighter("plane");plane.weapons.clear();plane.canFly=true;
+        const int p=w.spawn(&plane,440,440,0,0);
+        w.unit(p)->orders.push_back(Order{Fixed(),Fixed(),e});
+        check(asks(w,e,p),"a flyer on an attack did not ask");
     }
     if (argc==2) {
         // The death weapon at retirement: the Roach's [EXPLODEAS] goes off

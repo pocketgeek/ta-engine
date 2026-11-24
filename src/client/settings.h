@@ -123,6 +123,13 @@ struct Settings {
                                    // 8..256); 32 is retail's voice pool (owner: 128 by default)
     bool  evenSoundLevels = true;  // raise quiet effects (client/soundlevel.h); off = retail
                                    // (owner: on by default)
+    // TotalA.exe's unit speech and unit chat text levels (Options: the sounds page's
+    // SPEECH and the game page's UNITCHAT, Off|Medium|Full = 0|5|10; registry
+    // "unitchat" default 10 and "unitchattext" default 5, 0x430537..0x430596). A
+    // unit event of priority p speaks when p > 10 - unitSpeech (0x47fdf9) and puts
+    // "<unit>: <text>" in the message area when p > 10 - unitChatText (0x47ff26).
+    int   unitSpeech = 10;
+    int   unitChatText = 5;
     std::string audioDevice;       // output device NAME; "" = system default. Falls back
                                    // to system default if the saved name is gone at startup.
     // CUSTOM MUSIC (the AUDIO page): the player's own file for an original track, by its
@@ -304,6 +311,7 @@ struct Settings {
             && a.videoDeblock == b.videoDeblock
             && a.healthBars == b.healthBars && a.statsPanel == b.statsPanel
             && a.masterVol == b.masterVol && a.bgmVol == b.bgmVol && a.sfxVol == b.sfxVol && a.soundVoices == b.soundVoices && a.evenSoundLevels == b.evenSoundLevels
+            && a.unitSpeech == b.unitSpeech && a.unitChatText == b.unitChatText
             && a.mouseZoomSpeed == b.mouseZoomSpeed && a.edgeScrollSpeed == b.edgeScrollSpeed
             && a.edgeScroll == b.edgeScroll && a.mouseZoom == b.mouseZoom && a.cursorScale == b.cursorScale
             && a.hardwareCursor == b.hardwareCursor && a.smoothMotion == b.smoothMotion
@@ -429,6 +437,7 @@ inline Settings preferenceDefaults(const Settings& cur) {
     for (int i = 0; i < 8; ++i) d.chanGain[i] = cur.chanGain[i];
     d.soundVoices = cur.soundVoices;
     d.evenSoundLevels = cur.evenSoundLevels;
+    d.unitSpeech = cur.unitSpeech;
     d.audioDevice = cur.audioDevice;
     d.customMusicTracks = cur.customMusicTracks;
     // Voice chat has its own screen and its own DEFAULTS (voiceDefaults below).
@@ -466,7 +475,7 @@ inline Settings uiDefaults(const Settings& cur) {   // UI: interface, camera (+ 
     d.healthBars = f.healthBars; d.statsPanel = f.statsPanel;
     d.buildBarAlign = f.buildBarAlign; d.buildBarScale = f.buildBarScale;
     d.idleBuilders = f.idleBuilders; d.idleBuildersScale = f.idleBuildersScale;
-    d.chatAlign = f.chatAlign; d.chatScale = f.chatScale;
+    d.chatAlign = f.chatAlign; d.chatScale = f.chatScale; d.unitChatText = f.unitChatText;
     d.hardwareCursor = f.hardwareCursor; d.cursorScale = f.cursorScale;
     d.mouseZoom = f.mouseZoom; d.mouseZoomSpeed = f.mouseZoomSpeed;
     d.edgeScroll = f.edgeScroll; d.edgeScrollSpeed = f.edgeScrollSpeed;
@@ -496,6 +505,7 @@ inline Settings audioDefaults(const Settings& cur) {
     for (int i = 0; i < 8; ++i) d.chanGain[i] = fresh.chanGain[i];
     d.soundVoices = fresh.soundVoices;
     d.evenSoundLevels = fresh.evenSoundLevels;
+    d.unitSpeech = fresh.unitSpeech;
     d.audioDevice = fresh.audioDevice;
     d.customMusicTracks = fresh.customMusicTracks;
     return d;

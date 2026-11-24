@@ -441,6 +441,18 @@ void OptionsScreen::buildAudio() {
             "SOME SOUNDS, SUCH AS THE CREON DEATH CRIES, WERE RECORDED MUCH QUIETER THAN THE REST AND GET LOST IN A FIGHT.",
             "OFF PLAYS EVERY SOUND AT ITS ORIGINAL LEVEL, AS THE ORIGINAL GAME DID."};
     };
+    // TotalA.exe's Options > Sound SPEECH button (sounds.gui, stages Off|Medium|Full,
+    // game +0x37f17 = 0|5|10): a unit's speech plays when its event's priority beats
+    // 10 - level (0x47fdf9); Under Attack (priority 9) is heard at Medium and Full.
+    dropdown("UNIT SPEECH",
+        [] { return std::vector<std::string>{"Off", "Medium", "Full"}; },
+        [this] { return float(std::clamp(s_.unitSpeech / 5, 0, 2)); },
+        [this](float idx) { s_.unitSpeech = std::clamp(int(idx + 0.5f), 0, 2) * 5; });
+    ctls_.back().help = [] {
+        return std::vector<std::string>{
+            "WHICH UNIT REPLIES AND WARNINGS ARE SPOKEN, AS IN THE ORIGINAL GAME'S SPEECH OPTION.",
+            "MEDIUM DROPS THE LESS IMPORTANT ONES; UNDER ATTACK IS SPOKEN AT MEDIUM AND FULL."};
+    };
     for (int i = 0; i < channels && i < 8; ++i) {
         std::string label = std::string("SPEAKER ") + role(channels, i);
         slider(label.c_str(), 0, 1, [this, i] { return s_.chanGain[i]; },
@@ -929,6 +941,13 @@ void OptionsScreen::build(int channels) {
     slider("CHAT SCALE", 0.5f, 3.0f, [&] { return s_.chatScale; },
            [&](float v) { s_.chatScale = std::clamp(std::round(v * 10) / 10, 0.5f, 3.0f); },
            [](float v) { return pctOf(std::round(v * 10) / 10, 1); });
+    // TotalA.exe's Options > Game UNITCHAT button (speeds.gui, Off|Medium|Full, game
+    // +0x37f18 = 0|5|10): a unit event's line ("<unit>: Under Attack") goes into the
+    // message area when its priority beats 10 - level (0x47ff26). Medium by default.
+    dropdown("UNIT CHAT TEXT",
+        [] { return std::vector<std::string>{"Off", "Medium", "Full"}; },
+        [this] { return float(std::clamp(s_.unitChatText / 5, 0, 2)); },
+        [this](float idx) { s_.unitChatText = std::clamp(int(idx + 0.5f), 0, 2) * 5; });
 
     section("CAMERA");
     toggle("MOUSE ZOOM", [&] { return s_.mouseZoom ? 1.0f : 0.0f; }, [&](float v) { s_.mouseZoom = v > 0.5f; });
