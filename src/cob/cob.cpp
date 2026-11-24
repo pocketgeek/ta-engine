@@ -1,6 +1,8 @@
 #include "cob/cob.h"
 
 #include <algorithm>
+#include <bit>
+#include <climits>
 #include <cctype>
 #include <cstring>
 #include <fstream>
@@ -251,6 +253,42 @@ CreateHold createHold(const File& f) {
         pc += 1 + uint32_t(info->args);
     }
     return {};
+}
+
+int32_t transportBoomReach(const File& f) {
+    const int index = f.scriptIndex("BoomCalc");
+    if (index < 0 || f.scripts[size_t(index)].entry >= f.code.size()) return 0;
+    const uint32_t begin = f.scripts[size_t(index)].entry;
+    uint32_t end = uint32_t(f.code.size());
+    for (const auto& script : f.scripts)
+        if (script.entry > begin) end = std::min(end, script.entry);
+    // Decode the straight-line body: [pc, op, arg].
+    struct Word { uint32_t op, arg; };
+    std::vector<Word> body;
+    for (uint32_t pc = begin; pc < end;) {
+        const auto* info = findOp(f.code[pc]);
+        if (!info || pc + 1 + uint32_t(info->args) > end) break;
+        body.push_back({f.code[pc], info->args ? f.code[pc + 1] : 0});
+        pc += 1 + uint32_t(info->args);
+    }
+    constexpr uint32_t pushConst = 0x10021001, pushStatic = 0x10021004, popStatic = 0x10023004,
+                       sub = 0x10032000, less = 0x10051000;
+    // The last `PUSH_STATIC s; PUSH_CONST limit; LESS` is the boom_ok test.
+    for (size_t i = body.size(); i-- > 2;) {
+        if (body[i].op != less || body[i - 1].op != pushConst || body[i - 2].op != pushStatic) continue;
+        const uint32_t boomLen = body[i - 2].arg;
+        const int64_t limit = std::bit_cast<int32_t>(body[i - 1].arg);
+        // ... and the store that set boom_len: `PUSH_CONST off; SUB; POP_STATIC s`.
+        for (size_t j = i - 2; j-- > 2;) {
+            if (body[j].op != popStatic || body[j].arg != boomLen) continue;
+            const int64_t offset = body[j - 1].op == sub && body[j - 2].op == pushConst ?
+                std::bit_cast<int32_t>(body[j - 2].arg) : 0;
+            const int64_t reach = limit + offset;
+            return reach > 0 && reach <= INT32_MAX ? int32_t(reach) : 0;
+        }
+        return 0;
+    }
+    return 0;
 }
 
 std::vector<uint8_t> gaitCode(const File& f) {

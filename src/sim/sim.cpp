@@ -82,6 +82,10 @@ static bool verifyPool() {
 #endif
 
 namespace {
+// The engine's transfer range for an air transport (see the type loader): the
+// 34px the unload approach circle keeps inside it, plus a footprint cell. TA
+// itself transfers at the exact point [U: engine stand-in].
+constexpr int32_t kAirTransportReach = 50;
 // One TA_PHASE bucket: its wall time, and in a debug build with TA_PMU also the PMU
 // deltas over the same span (src/sim/simprobe.h).
 struct PhaseSpan {
@@ -286,14 +290,18 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             }
             t.onMana = false;
             t.sacredIncome = false;
-            // TA marks a transport with canload (flagsB bit 8, docs/retail-data.md);
-            // cantransport is the Kingdoms key.
-            t.canTransport = info->numberOr("cantransport", 0) != 0 ||
-                             (int(info->numberOr("canload", 0)) & 1) != 0;
-            t.transportCap = uint16_t(int(info->numberOr("transportcapacity",0)));
-            t.transportSizeCap = uint16_t(int(info->numberOr("transportsizecapacity",0)));
-            t.maxTransportSize = uint16_t(int(info->numberOr("transportsize",0)));
-            t.transportDist = uint16_t(int(info->numberOr("transportdistance", 0)));
+            // TA marks a transport with canload (flagsB bit 8, docs/retail-data.md).
+            // Its only other transport keys are two bytes (TotalA.exe 0x42c251/
+            // 0x42c266 -> type +0x22a/+0x22b): transportsize, the largest passenger
+            // footprint, and transportcapacity, the passenger count. TotalA.exe has
+            // no cantransport, transportsizecapacity, transportdistance or
+            // transportedsize string: there is no size budget (transportSizeCap 0)
+            // and the transfer reach comes from the script (transportDist below).
+            t.canTransport = (int(info->numberOr("canload", 0)) & 1) != 0;
+            t.transportCap = uint8_t(int32_t(info->numberOr("transportcapacity",0)));
+            t.transportSizeCap = 0;
+            t.maxTransportSize = uint8_t(int32_t(info->numberOr("transportsize",0)));
+            t.transportDist = 0;
             t.buildDist = float(info->numberOr("builddistance", 0));
             t.soundClass = lower(info->valueOr("soundcategory",
                                                info->valueOr("soundclass", "")));
@@ -426,7 +434,6 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             t.cantBeCaptured = info->numberOr("cantbecaptured", 0) != 0;
             t.immuneToParalyzer = info->numberOr("immunetoparalyzer", 0) != 0;
             t.cantBeTransported = info->numberOr("cantbetransported", 0) != 0;
-            t.transportSize = uint16_t(int(info->numberOr("transportedsize",0)));
             {   // bloodcolor1 = "r g b"
                 std::string bc = info->valueOr("bloodcolor1", "");
                 int r = 150, g = 30, b = 10;
@@ -475,8 +482,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 if (mci->second.footX > 0) t.footX = mci->second.footX;
                 if (mci->second.footZ > 0) t.footZ = mci->second.footZ;
             }
-            // 4c0e58: omitted/zero transportedsize uses the final movement footprint.
-            if (!t.transportSize) t.transportSize=uint16_t(t.footX*t.footZ);
+            // A passenger's size is its footprint x (TotalA.exe 0x489b0b: type
+            // +0x14a, the movement class's when it has one, against the carrier's
+            // transportsize; 0x4067d4 / 0x41125f repeat it on the unit's copy).
+            t.transportSize=uint16_t(t.footX);
             // RAW, no divisor. Retail adds cruisealt straight onto the terrain
             // height byte to get the flyer's world Y (icd 0x4e42ee:
             // `eax = groundHeight + cruisealt`, then <<16 into the unit's Y),
@@ -592,6 +601,15 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             if (vfs.has(scriptPath)) {
                 auto script=std::make_shared<cob::File>(cob::load(vfs.read(scriptPath),scriptPath));
                 t.simulationScript=script;
+                // The transfer reach of a surface carrier is its script's boom
+                // (cob::transportBoomReach). An air carrier has none: VTOL_PICKUP
+                // and VTOL_UNLOAD fly onto the passenger / drop point with exact-
+                // point controllers (TotalA.exe 0x41133d -> 0x44e190 and 0x4115e4
+                // -> 0x44e2d0: goal flags without 0x10, so no radius) and attach
+                // or release there. The engine's air transfer still works in a
+                // range; kAirTransportReach is its stand-in [U].
+                if (t.canTransport && !t.transportDist)
+                    t.transportDist=t.canFly ? kAirTransportReach : cob::transportBoomReach(*script)>>16;
                 t.instantCorpse=t.isStructure() && !t.corpse.empty() && retailInstantCorpse(*script);
                 t.explosionCorpse=!t.corpse.empty() && retailExplosionCorpse(*script);
                 const auto modelPath="objects3d/"+(t.objectName.empty()?t.id:t.objectName)+".3do";
@@ -5168,10 +5186,10 @@ bool World::canLoadInto(int unitId,int transportId) const {
     if(u->paralyzedFor>0 || t->paralyzedFor>0)return false;
     if (u->type->isStructure() || u->type->canFly || u->type->cantBeTransported ||
         !t->type->canTransport || u->player!=t->player) return false;
-    // 51a099: a surface carrier cannot board a water-only passenger. A flying
-    // carrier skips this restriction (other type/capacity restrictions still apply).
+    // TotalA.exe 0x489b39: a surface carrier cannot board a passenger whose
+    // minwaterdepth (+0x1c0) is not negative. A flying carrier skips this test.
     if (!t->type->canFly && !u->type->transportLandEligible) return false;
-    // 51a0af: the top of the passenger must protrude above the water.
+    // TotalA.exe 0x489b56: the top of the passenger must protrude above the water.
     if (int64_t(u->groundY.v)+u->type->modelTop<=int64_t(uint8_t(seaLevel_))*65536) return false;
     uint32_t count=0,used=0;
     for (int id:t->cargo) if (const Unit* c=unit(id);c && c->alive() && c->inTransport==t->id) {
@@ -5337,6 +5355,15 @@ bool World::tickTransport(Unit& u, float dt) {
         if((events&8u) || !passenger || !canLoadInto(passenger->id,u.id)) {
             removePickup();return true;
         }
+        // TotalA.exe 0x41121a..0x411226: at every wake VTOL_PICKUP fails while
+        // the carrier holds anyone (its +0x8a list), so an air transport carries
+        // one passenger whatever its transportcapacity. The LOAD order itself
+        // (0x43f70c, 0x489a90) only counts against transportcapacity.
+        if(u.type->canFly && std::any_of(u.cargo.begin(),u.cargo.end(),[&](int id) {
+                const Unit* c=unit(id);return c && c->alive() && c->inTransport==u.id;
+            })) {
+            removePickup();return true;
+        }
         // Both native handlers end the pickup unless the passenger's head
         // mission is the Move_Seek_Pickup on this carrier (4088cf, 41a84f).
         // Retail's order call always gives the passenger that mission as a
@@ -5374,7 +5401,9 @@ bool World::tickTransport(Unit& u, float dt) {
         // Both native carrier handlers initialize, then wait one tick before
         // approach. The passenger's Move_Seek_Pickup never owns this timer.
         if(mission.stage==0) {
-            if(u.type->transportDist<(u.type->canFly ? 16:51)) {
+            // TotalA.exe's GROUND_PICKUP / VTOL_PICKUP stage 0 (0x4067b1 /
+            // 0x411241) test no reach; only a carrier without one cannot load.
+            if(u.type->transportDist<=0) {
                 removePickup();return true;
             }
             mission.stage=1;mission.sleep(tickCounter_,1);
@@ -5586,7 +5615,10 @@ bool World::tickTransport(Unit& u, float dt) {
     if (u.cargo.empty()) {
         if (o.transportUnloadReleasePending) {
             if (tickCounter_ < o.transportMission.deadline) return advanceCarrier();
-            if (o.controller) return advanceCarrier();
+            // The emptied mission retires at this wake whether or not a route
+            // controller is still coasting: TotalA.exe's GROUND_UNLOAD returns 5
+            // (done) as soon as the passenger has left (0x4069f0..0x406a09) and
+            // waits on no navigator. The coast itself is surfaceCoasting below.
             const bool surfaceCoasting=!u.type->canFly && u.speed>Fixed();
             o.transportUnloadReleasePending=false;
             if (u.type->canFly && o.flightGoal && u.cargo.empty() &&
@@ -18461,7 +18493,9 @@ void World::initializeRetailSite(Unit& site,int builderId) {
 bool World::canPlaceProduction(int builderId,const UnitType* t,float x,float z) const {
     const auto* producer=unit(builderId);
     if (!producer || !producer->type || !t || t->isStructure()) return false;
-    if (!producer->type->productionScript || t->canFly) return canPlace(t,x,z);
+    if (!producer->type->productionScript) return canPlace(t,x,z);
+    // TotalA.exe's BUILD stage (0x4027d9..0x4028a0) tests a flyer's pad cell
+    // with the same 0x47db70 as a ground unit's: no exemption for canfly.
     // BUILD stage 2 (401deb) tests the QueryBuildInfo point with 507d10's
     // mobile footprint loop: self 0 and no moving-body exemption, so any
     // ground body on a footprint cell refuses the site, moving or not. The

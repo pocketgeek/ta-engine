@@ -275,6 +275,15 @@ void pickupQueue() {
     }
     std::printf("  boarded at ticks: far %d (its Move ended at %d), near %d (at %d), free %d and %d\n", at[0], turn[0],
                 at[1], turn[1], at[2], at[3]);
+    if (air) {
+        // TotalA.exe 0x41121a..0x411226: VTOL_PICKUP fails while the carrier
+        // holds anyone, so a flying carrier takes the first free passenger and
+        // every other pickup ends.
+        const int aboard = int(at[0] >= 0) + int(at[1] >= 0) + int(at[2] >= 0) + int(at[3] >= 0);
+        check(aboard == 1 && (at[2] >= 0 || at[3] >= 0), "a flying carrier takes one free passenger");
+        check(!r.pickup(c) && r.w.unit(c)->cargo.size() == 1, "the flying carrier ends with one passenger and no pickup");
+        return;
+    }
     check(at[0] >= 0 && at[1] >= 0 && at[2] >= 0 && at[3] >= 0, "every queued passenger boards");
     check(at[2] >= 0 && at[3] >= 0 && turn[0] >= 0 && turn[1] >= 0 && std::max(at[2], at[3]) < std::min(turn[0], turn[1]),
           "the passengers that are free board while the others still walk");

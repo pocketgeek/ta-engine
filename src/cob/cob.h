@@ -73,5 +73,12 @@ std::vector<uint8_t> explosionReachability(const File& f);
 // script. A CALL gives the callee its own thread slot, so a thread's pc names
 // the cycle it is playing. Empty when the script has no such cycle.
 std::vector<uint8_t> gaitCode(const File& f);
+// The reach of a shipped surface transport's boom, 16.16 px; 0 when the script
+// has no such test. TotalA.exe's GROUND_PICKUP / GROUND_UNLOAD (0x406780 /
+// 0x406900) leave the transfer to the TransportPickup / TransportDrop call-ins,
+// and every shipped surface carrier (armtship, cortship, armthovr, corthovr)
+// gates it in BoomCalc: boom_len = HYPOT(..) - off; boom_ok = boom_len < limit.
+// The reach is limit + off: the largest distance from the boom piece that loads.
+int32_t transportBoomReach(const File& f);
 
 } // namespace ta::cob

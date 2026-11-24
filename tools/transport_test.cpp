@@ -1565,6 +1565,27 @@ static void pickupNearbySelection(bool air,bool slowBrake=false) {
     }
 }
 
+// TotalA.exe 0x41121a..0x411226: VTOL_PICKUP fails while the carrier holds
+// anyone, so an air transport takes one passenger whatever its capacity; a
+// surface carrier fills to transportcapacity (0x489aec).
+static void airCarriesOne() {
+    for(bool air:{false,true}) {
+        World w;setTestPathfinding(w);
+        w.setTerrain(std::vector<uint8_t>(96*96,100),96,96,20);
+        UnitType carrier=boatType(),passenger=footType();carrier.canFly=air;carrier.cruiseAlt=100;
+        const int tid=w.spawn(&carrier,400,400),first=w.spawn(&passenger,430,400),
+            second=w.spawn(&passenger,430,430);
+        board(w,tid,first);
+        check(w.canLoadInto(second,tid),"the load order counts only against transportcapacity");
+        w.loadInto(second,tid);
+        for(int tick=0;tick<300 && !w.unit(second)->embarked();++tick)w.tick(1.f/30);
+        check(w.unit(second)->embarked()==!air,
+              air ? "an air carrier with a passenger fails a second pickup" :
+                    "a surface carrier with a passenger takes a second");
+        check(w.unit(first)->inTransport==tid,"the first passenger stays aboard");
+    }
+}
+
 static void retailRoster(const char* root) {
     auto vfs=ta::hpi::mountRetailRoot(root);
     {
@@ -1623,8 +1644,8 @@ static void retailRoster(const char* root) {
             w.setTerrain(coastHeights(128,128,50),128,128,40);
             w.buildNavClasses(registry);w.setPathService(true);
             const auto* foot=registry.find("armpw");
-            check(foot && foot->transportSize==foot->footX*foot->footZ,
-                "passenger cost defaults to final movement footprint area");
+            check(foot && foot->transportSize==foot->footX,
+                "passenger size is its final movement footprint x (TotalA.exe 0x489b0b)");
             if(!foot) continue;
             const int tid=w.spawn(&type,type.domain==UnitType::Domain::Ground && !type.canFly ? 900 : 720,700);
             const int cid=w.spawn(foot,832,700);
@@ -1682,7 +1703,7 @@ static void postUnloadRoster(const char* root) {
             if(!type.canTransport)continue;
             ++carriers;
             const bool landCarrier=type.canFly || type.domain==UnitType::Domain::Ground;
-            const int fits=std::min({type.transportCap,type.transportSizeCap/std::max(1,foot->transportSize),5});
+            const int fits=type.canFly ? 1 : std::min(type.transportCap,5);
             for(PathfindingMode mode:{PathfindingMode::Retail,PathfindingMode::Legion})
             for(int pass=0;pass<2;++pass) {
                 const int count=pass ? fits : 1;   // one passenger, then a full load
@@ -1780,6 +1801,13 @@ static void postUnloadQueued(const char* root) {
                 w.loadInto(a,tid);
                 for(int tick=0;tick<3000 && w.unit(a)->inTransport!=tid;++tick)w.tick(1.f/30);
                 w.unloadAt(tid,880,780);
+                // TotalA.exe 0x489aec: the LOAD order counts the passengers aboard
+                // when it is given, so a full Valkyrie (transportcapacity 1)
+                // refuses a pickup queued behind its unload.
+                if(kind==1 && !w.canLoadInto(b,tid)) {
+                    check(type->transportCap<=1,"only a full carrier refuses the queued pickup");
+                    continue;
+                }
                 if(kind==0)w.order(tid,1500,1500,true);
                 else w.loadInto(b,tid,true);
                 bool done=false;
@@ -3373,7 +3401,7 @@ int main(int argc,char** argv) {
     pickupApproachFailure();
     airPickupArrivalEvent();
     pickupNearbySelection(false);pickupNearbySelection(false,true);
-    pickupNearbySelection(true);
+    airCarriesOne();
     exactLandingSites();
     airAcrossWater();
     legionLogistics();

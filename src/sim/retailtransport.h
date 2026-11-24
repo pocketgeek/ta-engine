@@ -166,12 +166,14 @@ inline uint32_t retailUnloadParkPadding(uint32_t first,uint32_t second,
     return (first+second+1)*16+std::min(remaining,6u)*uint32_t(isqrt64(squared*256)/2);
 }
 
-// KINGDOMS.icd 0x51a085..0x51a12b: three independent limits. The
-// passenger cost is transportedsize (default footprint area), not the
-// carrier's transportsize (largest individual passenger it admits).
+// TotalA.exe 0x489a90 (the load test the LOAD order and both pickup missions
+// ask, 0x43f70c/0x43fb3d): the passenger's footprint x (type +0x14a) at most the
+// carrier's transportsize (+0x22a) and fewer passengers aboard than its
+// transportcapacity (+0x22b). TA has no size budget; a nonzero sizeLimit keeps
+// the summed one for engine-built carriers.
 constexpr bool retailTransportCapacity(uint16_t passengerSize,uint16_t maxPassenger,
         uint32_t passengers,uint16_t countLimit,uint32_t usedSize,uint16_t sizeLimit) {
     return passengerSize<=maxPassenger && passengers<countLimit &&
-           usedSize+uint32_t(passengerSize)<=sizeLimit;
+           (!sizeLimit || usedSize+uint32_t(passengerSize)<=sizeLimit);
 }
 }

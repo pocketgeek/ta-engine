@@ -109,10 +109,16 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 ## Open
 - The Kingdoms-data tests run on TA units/maps now. Engine gaps they expose (left
   failing): TA ships/hovers (BOATS*/BOATD*/TANKHOVER*) are not water/hover units
-  (sim.cpp movement-class prefix test); transports have no TA capacity/distance
-  (transportcapacity/transportsize unread); air plants never start a unit;
-  Retail-mode park orders never retire at their goal; dropped bombs (no
+  (sim.cpp movement-class prefix test); Retail-mode park orders never retire at their goal; dropped bombs (no
   weaponvelocity) hit instantly; hovering gunships' shots fly level and overshoot;
   armmav's Gauss shot flies level; v3 .sct sections do not load and the
   Cartographer still defaults to Kingdoms worlds; client watch/spectator harness
   checks (gameview_devharness.cpp) still spawn Kingdoms units.
+- Transports read TA's keys (TotalA.exe 0x489a90: passenger footprint x <=
+  transportsize, count < transportcapacity; an air carrier holds one, 0x41121a).
+  TA's transfer reach is scripted (TransportPickup/TransportDrop, BoomCalc), read
+  from the COB for surface carriers (cob::transportBoomReach); the air reach is an
+  engine stand-in (TA transfers at the exact point). The unload/pickup missions are
+  still Kingdoms-shaped: TA's GROUND_UNLOAD (0x406900) tests no drop placement, ours
+  does, so a hover that coasts onto its drop point retries (transport_post_unload
+  armthovr x5 far); porting that breaks the synthetic crowd-retry cases.
