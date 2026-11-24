@@ -1,14 +1,9 @@
-#include "client/campaignscreen.h"
-#include "client/uitext.h"
-#include "client/settings.h"
-#include "client/gpuvram.h"
 #include "campaign/campaign.h"
 #include "hpi/hpi.h"
 #include "sim/sim.h"
 #include "sim/mission.h"
 #include <cstring>
 #include "sim/matchsetup.h"
-#include "util/png.h"
 #include <cstdio>
 #include <stdexcept>
 
@@ -62,46 +57,12 @@ int main(int argc,char** argv) {
             world.resetForReplay();check(!world.scoreAutomaticDisabled(),"replay reset must restore automatic scoring");
         }
         if(argc<2) {std::puts("PASS: native score accumulation and one-shot death accounting");return 0;}
+        // With an install: TA's campaigns load (camps/*.tdf, docs/retail-campaign.md
+        // section 1), each with its missions. Kingdoms' book screen (BOD art, chapter
+        // paging) has no TA counterpart: TA picks a campaign on NEWGAME (tafrontend).
         const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         const auto camps=ta::loadCampaigns(vfs);check(camps.size()>=2,"campaign roster absent");
-        {
-            TypeRegistry types;setupRegistry(types,vfs);
-            const auto* archer=types.find("araarch");
-            check(archer && archer->experiencePoints>0,"authored experiencepoints not loaded");
-        }
-        SDL_setenv("SDL_VIDEODRIVER","dummy",1);check(SDL_Init(SDL_INIT_VIDEO)==0,SDL_GetError());
-        auto* surface=SDL_CreateRGBSurfaceWithFormat(0,960,720,32,SDL_PIXELFORMAT_ABGR8888);
-        auto* ren=SDL_CreateSoftwareRenderer(surface);check(ren!=nullptr,SDL_GetError());
-        ta::Settings settings;
-        for(size_t tab=0;tab<2;++tab) {
-            const auto before=gpuvram::count();
-            {
-                std::vector<std::string> sounds;
-                ta::CampaignScreen screen(ren,vfs,settings,int(tab),[&](const auto& sound){sounds.push_back(sound);});
-                screen.render(960,720);
-                check(gpuvram::count()>before+75,"authored book/chapter/font art missing");
-                if(argc>2) {
-                    const std::string name=std::string(argv[2])+"-"+std::to_string(tab)+".png";
-                    std::vector<uint8_t> rgba(960*720*4);
-                    SDL_RenderReadPixels(ren,nullptr,SDL_PIXELFORMAT_ABGR8888,rgba.data(),960*4);
-                    ta::png::write(name,960,720,rgba);
-                }
-                SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_HOME;
-                screen.input(e,960,720);e.key.keysym.sym=SDLK_RIGHT;screen.input(e,960,720);
-                e.key.keysym.sym=SDLK_RETURN;check(screen.input(e,960,720),"Enter did not choose chapter");
-                check(screen.pickedStem()==camps[tab].missions[1].stem,"chapter paging chose wrong mission");
-                check(sounds==std::vector<std::string>{"ok.wav"},"Play must route authored GUI click sound");
-            }
-            ta::releaseUiTextGlyphs();   // the shared interface-font cache, not the screen's
-            check(gpuvram::count()==before,"campaign screen leaked authored textures");
-        }
-        {
-            ta::CampaignScreen screen(ren,vfs,settings,1);
-            SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=SDLK_END;screen.input(e,960,720);
-            e.key.keysym.sym=SDLK_RETURN;screen.input(e,960,720);
-            const auto& c=camps[1];check(screen.pickedStem()==(c.altFinal.empty()?c.missions.back().stem:c.altFinal),"last chapter/alternate inaccessible");
-        }
-        ta::releaseUiTextGlyphs();SDL_DestroyRenderer(ren);SDL_FreeSurface(surface);SDL_Quit();
-        std::puts("PASS: campaign book assets, chapter input, all chapters accessible, texture teardown and score accounting");return 0;
+        for(const auto& c:camps)check(c.count()>0,"a campaign without missions");
+        std::puts("PASS: TA campaign roster and score accounting");return 0;
     }catch(const std::exception& e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
 }

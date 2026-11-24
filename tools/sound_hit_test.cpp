@@ -1,12 +1,15 @@
-// Weapon impact sounds (soundhitclass) resolve to real WAVs.
+// Weapon impact sounds resolve to real WAVs.
 //
-// soundclasses.tdf lists its impact classes as "soundN = FILE.wav", while unit voice
-// classes are weighted "NAME = weight" entries. Reading the impact classes the voice
-// way picked a sound called "sound0" that does not exist, so every sword, arrow,
-// catapult and cannon hit was silent. Without data this checks the layout helpers;
-// with a retail install it resolves every class/material the shipped weapons use.
+// A sound-class table lists its impact classes as "soundN = FILE.wav", while unit
+// voice classes are weighted "NAME = weight" entries. Reading the impact classes the
+// voice way picked a sound called "sound0" that does not exist, so every hit was
+// silent. Without data this checks the layout helpers. TA has no class tables: a
+// weapon's soundhit= (weapons/*.tdf) names the WAV itself, and the client plays it
+// directly (gameview_impl's impact loop). With a retail install every soundhit a
+// shipped unit's weapon names must be in the sound bank.
 #include "client/sound.h"
 #include "hpi/hpi.h"
+#include "sim/matchsetup.h"
 #include <iostream>
 #include <set>
 
@@ -33,23 +36,15 @@ int main(int argc, char** argv) {
     if (argc == 2) {
         auto vfs = ta::hpi::mountRetailRoot(argv[1]);
         SoundBank bank; bank.reload(vfs);
-        SoundClasses classes; classes.load(vfs);
-        // Every impact class a shipped weapon names, with each body material.
-        const std::set<std::string> impact = {"sword", "arrow", "fire", "lightning", "rock",
-                                              "fist", "cannon", "hammer"};
-        for (const auto& cls : impact)
-            for (const char* body : {"default", "flesh", "armor", "wood", "stone"}) {
-                const std::string* wav = classes.pick(cls, body, 7);
-                if (!wav && std::string(body) != "default") wav = classes.pick(cls, "default", 7);
-                check(wav && bank.has(*wav), "impact " + cls + "/" + body + " -> " +
-                      (wav ? *wav : std::string("(none)")));
-            }
-        // The Aramon catapult's ground hit, the case that was reported.
-        const std::string* rock = classes.pick("rock", "default", 0);
-        check(rock && *rock == "rhitfls1" && bank.has(*rock), "catapult ground hit is rhitfls1");
-        // Voice classes keep their weighted layout.
-        const std::string* move = classes.pick("arapult", "move", 0);
-        check(move && bank.has(*move), "unit voice class still resolves");
+        ta::sim::TypeRegistry registry; ta::sim::setupRegistry(registry, vfs);
+        std::set<std::string> hits;
+        for (const auto& [id, type] : registry.types())
+            for (const auto& weapon : type.weapons)
+                if (!weapon.soundHit.empty()) hits.insert(weapon.soundHit);
+        for (const auto& wav : hits) check(bank.has(wav), "impact sound " + wav + " is in the bank");
+        check(hits.size() >= 10, "shipped weapons name their impact sounds (" + std::to_string(hits.size()) + ")");
+        // The commonest soundhit in weapons/*.tdf.
+        check(hits.count("xplomed2") && bank.has("xplomed2"), "xplomed2 resolves");
     }
     if (g_fail) { std::cerr << g_fail << " failure(s)\n"; return 1; }
     std::cout << "PASS: sound hit classes\n";

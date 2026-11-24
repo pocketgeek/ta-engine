@@ -154,13 +154,15 @@ int main(int argc,char**argv) {
         music.stop();
         if(music.playing())throw std::runtime_error("stopped music still owns audio");
         {
-            // A cosmetic mod's 44.1 kHz stereo music/track3.wav replaces the install's
+            // A cosmetic mod's 44.1 kHz stereo music/4.mp3 (logical track 3: TA's
+            // GOG layout, docs/retail-music.md section 4; the decoder sniffs the
+            // content, so a WAV under that name plays) replaces the install's
             // 22050 Hz copy: the device opens at 44100 in the device layout, the tap
             // keeps 15 kHz on the left, and a switch to a 5.1 device keeps its place.
             namespace fs=std::filesystem;
             const fs::path root=fs::temp_directory_path()/("menu_music_mod_"+std::to_string(std::random_device{}()));
             const fs::path pack=root/"mods"/"cosmetic"/"always_enabled"/"hq"/"music";
-            fs::create_directories(root/"Music");fs::create_directories(pack);
+            fs::create_directories(root/"music");fs::create_directories(pack);
             auto put=[](const fs::path& p,const std::vector<uint8_t>& d) {
                 std::ofstream(p,std::ios::binary)
                     .write(reinterpret_cast<const char*>(d.data()),std::streamsize(d.size()));
@@ -169,8 +171,8 @@ int main(int argc,char**argv) {
             for(int i=0;i<22050;++i){retail.push_back(.2);retail.push_back(.2);}
             for(int i=0;i<44100;++i){mod.push_back(.25*std::sin(2*M_PI*15000*i/44100.0));
                                      mod.push_back(.25*std::sin(2*M_PI*1000*i/44100.0));}
-            put(root/"Music"/"track3.wav",wavFile(AUDIO_S16SYS,22050,2,retail));
-            put(pack/"track3.wav",wavFile(AUDIO_S16SYS,44100,2,mod));
+            put(root/"music"/"4.mp3",wavFile(AUDIO_S16SYS,22050,2,retail));
+            put(pack/"4.mp3",wavFile(AUDIO_S16SYS,44100,2,mod));
             {
                 auto vfs=ta::hpi::mountPlayVfs(root,{},{});
                 ta::testOutputChannels=2;
