@@ -3,6 +3,7 @@
 #include "hpi/hpi.h"
 
 #include <algorithm>
+#include <cstring>
 #include <string_view>
 #include <unordered_map>
 #include "util/virtualpath.h"
@@ -48,6 +49,68 @@ const ta::tnt::Map* SectionLibrary::load(const ta::hpi::Vfs& vfs, const std::str
     }
 }
 
+namespace {
+uint64_t tileHash(const uint8_t* p) {   // FNV-1a over the 1024 pixels
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < 1024; ++i) h = (h ^ p[i]) * 1099511628211ull;
+    return h;
+}
+}  // namespace
+
+TileInterner::TileInterner(ta::tnt::Map& map) : map_(map) {
+    map_.tileCount = std::clamp(map_.tileCount, 0, int(map_.tileGfx.size() / 1024));
+    map_.tileGfx.resize(size_t(map_.tileCount) * 1024);
+    index_.reserve(size_t(map_.tileCount) * 2);
+    for (int t = 0; t < map_.tileCount; ++t) index_.emplace(tileHash(map_.tileGfx.data() + size_t(t) * 1024), uint16_t(t));
+}
+
+uint16_t TileInterner::intern(const uint8_t* pixels) {
+    const uint64_t h = tileHash(pixels);
+    const auto [first, last] = index_.equal_range(h);
+    for (auto it = first; it != last; ++it)
+        if (std::memcmp(map_.tileGfx.data() + size_t(it->second) * 1024, pixels, 1024) == 0) return it->second;
+    if (map_.tileCount >= 0xFFFF) return 0;
+    const auto t = uint16_t(map_.tileCount++);
+    map_.tileGfx.resize(size_t(map_.tileCount) * 1024);   // `pixels` may point into another map, never this one's tileGfx
+    std::memcpy(map_.tileGfx.data() + size_t(t) * 1024, pixels, 1024);
+    index_.emplace(h, t);
+    return t;
+}
+
+void setBlockTile(ta::tnt::Map& map, size_t block, uint16_t tile) {
+    map.tileIndex[block] = tile;
+    map.tileKeys[block] = tile;
+    map.tileCols[block] = 0;
+    map.tileRows[block] = 0;
+}
+
+void ensureTilePlane(ta::tnt::Map& map) {
+    const size_t blocks = size_t(map.blocksX) * map.blocksY;
+    if (map.tileIndex.size() != blocks) map.tileIndex.assign(blocks, 0);
+    map.tileKeys.assign(map.tileIndex.begin(), map.tileIndex.end());
+    map.tileCols.assign(blocks, 0);
+    map.tileRows.assign(blocks, 0);
+}
+
+void compactTiles(ta::tnt::Map& map) {
+    if (map.tileCount <= 0) return;
+    std::vector<int> remap(size_t(map.tileCount), -1);
+    std::vector<uint8_t> used(size_t(map.tileCount), 0);
+    for (auto t : map.tileIndex) if (t < used.size()) used[t] = 1;
+    int next = 0;
+    for (size_t t = 0; t < used.size(); ++t)
+        if (used[t]) {
+            if (size_t(next) != t) std::memmove(map.tileGfx.data() + size_t(next) * 1024, map.tileGfx.data() + t * 1024, 1024);
+            remap[t] = next++;
+        }
+    if (next == map.tileCount) return;
+    map.tileCount = std::max(next, 1);
+    if (!next) std::fill_n(map.tileGfx.begin(), 1024, uint8_t(0));   // keep one tile for an all-zero plane
+    map.tileGfx.resize(size_t(map.tileCount) * 1024);
+    for (size_t b = 0; b < map.tileIndex.size(); ++b)
+        setBlockTile(map, b, uint16_t(map.tileIndex[b] < remap.size() && remap[map.tileIndex[b]] >= 0 ? remap[map.tileIndex[b]] : 0));
+}
+
 bool stampSection(ta::tnt::Map& map, const ta::tnt::Map& section, int bx, int by, StampLayers layers) {
     if (bx + section.blocksX <= 0 || by + section.blocksY <= 0 ||
         bx >= map.blocksX || by >= map.blocksY)
@@ -55,36 +118,18 @@ bool stampSection(ta::tnt::Map& map, const ta::tnt::Map& section, int bx, int by
 
     // A TA map carries its own tiles: copy the section's in (once each, by
     // content) and point the blocks at them. tileKeys mirror tileIndex.
-    if (map.tileCount > 0 && section.tileCount > 0) {
-        std::unordered_map<std::string_view, uint16_t> have;
-        auto tileView = [](const std::vector<uint8_t>& gfx, size_t t) {
-            return std::string_view(reinterpret_cast<const char*>(gfx.data()) + t * 1024, 1024);
-        };
-        std::vector<uint16_t> remap(size_t(section.tileCount), 0);
-        std::vector<std::pair<size_t, size_t>> pending;   // (section tile, slot) added this stamp
-        for (size_t t = 0; t < size_t(map.tileCount); ++t) have.emplace(tileView(map.tileGfx, t), uint16_t(t));
-        for (size_t t = 0; t < size_t(section.tileCount); ++t) {
-            const auto sv = tileView(section.tileGfx, t);
-            if (auto it = have.find(sv); it != have.end()) { remap[t] = it->second; continue; }
-            if (map.tileCount + pending.size() >= 0xFFFF) { remap[t] = 0; continue; }
-            remap[t] = uint16_t(map.tileCount + int(pending.size()));
-            pending.push_back({t, remap[t]});
-            have.emplace(tileView(section.tileGfx, t), remap[t]);   // keyed into section memory until copied
-        }
-        for (const auto& [t, slot] : pending)
-            map.tileGfx.insert(map.tileGfx.end(), section.tileGfx.begin() + std::ptrdiff_t(t * 1024),
-                               section.tileGfx.begin() + std::ptrdiff_t(t * 1024 + 1024));
-        map.tileCount += int(pending.size());
+    if (section.tileCount > 0) {
+        ensureTilePlane(map);
+        TileInterner tiles(map);
+        std::vector<int> remap(size_t(section.tileCount), -1);   // section tile -> map tile, on first use
         for (int sy = 0; sy < section.blocksY; ++sy)
             for (int sx = 0; sx < section.blocksX; ++sx) {
                 const int mx = bx + sx, my = by + sy;
                 if (mx < 0 || my < 0 || mx >= map.blocksX || my >= map.blocksY) continue;
                 const size_t si = size_t(sy) * section.blocksX + sx, mi = size_t(my) * map.blocksX + mx;
-                const uint16_t t = remap[section.tileIndex[si]];
-                map.tileIndex[mi] = t;
-                map.tileKeys[mi] = t;
-                map.tileCols[mi] = 0;
-                map.tileRows[mi] = 0;
+                const size_t st = section.tileIndex[si];
+                if (remap[st] < 0) remap[st] = tiles.intern(section.tileGfx.data() + st * 1024);
+                setBlockTile(map, mi, uint16_t(remap[st]));
             }
     } else
     // Tile plane: one entry per 32px block, row-major over blocksX x blocksY.

@@ -12,7 +12,7 @@ std::future<SaveResult> saveInBackground(SaveSnapshot snapshot,std::shared_ptr<S
             if(progress->cancel.load())throw std::runtime_error("Save cancelled");
             if(snapshot.rebuildMinimaps) {
                 progress->phase=SaveProgress::Minimap;
-                auto world=snapshot.metadata.kingdom.empty()?std::string("aramon"):snapshot.metadata.kingdom;
+                auto world=snapshot.metadata.kingdom.empty()?std::string("green planet"):snapshot.metadata.kingdom;
                 std::transform(world.begin(),world.end(),world.begin(),[](unsigned char c){return char(std::tolower(c));});
                 if(!snapshot.vfs)throw std::runtime_error("Save has no terrain asset source");
                 ta::terrain::Compositor compositor(*snapshot.vfs);

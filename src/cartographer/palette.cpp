@@ -230,7 +230,7 @@ void cart::Editor::drawPalette() {
             }
             if(tool==UNITS) {
                 const auto* info=unitInfo(i);
-                const auto portraitPath="anims/buildpic/"+lowerText(unitTypes[size_t(i)])+".jpg";
+                const auto portraitPath=cart::unitPortraitPath(vfs,unitTypes[size_t(i)]);
                 auto* portrait=unitPortraits.get(portraitPath);
                 if(!portrait && !shotPath.empty() && !unitPortraits.resolved(portraitPath))++shotPending;
                 if(portrait) {

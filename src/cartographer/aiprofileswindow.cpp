@@ -924,7 +924,7 @@ void cart::Editor::drawAiProfiles() {
             aiRows.push_back({{aiList.x,y,aiList.w,kRowH-1},row.key});
             if(flagged.count(row.key))cart::drawText(ren,"!",x0+2,y+9,1,255,170,90);
             if(row.type) {
-                if(auto* portrait=unitPortraits.get("anims/buildpic/"+row.type->id+".jpg")) {
+                if(auto* portrait=unitPortraits.get(cart::unitPortraitPath(vfs,row.type->id))) {
                     int pw=0,ph=0;SDL_QueryTexture(portrait,nullptr,nullptr,&pw,&ph);
                     if(pw>0 && ph>0) {
                         const float scale=std::min(32.f/pw,24.f/ph);
@@ -1321,9 +1321,9 @@ void cart::Editor::startAiModWorkspace(const std::string& pack,bool fresh) {
         if(mapHasUnsavedWork()) {   // asked already (requestAiMod): a blank placeholder replaces it
             mapView.quiesce();
             try {
-                cart::SectionLibrary freshSections;freshSections.scan(vfs,"aramon");
-                auto map=buildFreshMap(vfs,freshSections,mapView.compositor(),"aramon",8,8,false);
-                if(map.map.width)adoptFreshMap(std::move(map),"Untitled","aramon");
+                cart::SectionLibrary freshSections;freshSections.scan(vfs,cart::kDefaultWorld);
+                auto map=buildFreshMap(vfs,freshSections,mapView.compositor(),cart::kDefaultWorld,8,8,false);
+                if(map.map.width)adoptFreshMap(std::move(map),"Untitled",cart::kDefaultWorld);
             } catch(const std::exception& error) {openMessage("AI MOD",error.what());return;}
             resetHistory=true;commitHistory();
         }

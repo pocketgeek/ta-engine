@@ -191,6 +191,8 @@ void cart::Editor::stampMirrors(int section,int x,int z) {
         const auto image=cart::transform(xf,placed,map.blocksX,map.blocksY);
         if(intersects(image,placed)) {problem="Stamp touches the symmetry axis; its mirror was not stamped";continue;}
         const auto* twin=matcher.section(matcher.twin(section,xf));
+        std::optional<ta::tnt::Map> flipped;   // TA sections carry their tiles: no twin needed
+        if(!twin && own->tileCount>0) {flipped=cart::mirrorSection(*own,xf);twin=&*flipped;}
         if(!twin) {problem="NO MIRROR TWIN for section "+matcher.name(section)+": stamped at the source only";continue;}
         if(cart::stampSection(map,*twin,image.x0,image.z0,stampLayers))mapView.tilesEdited(image.x0,image.z0,twin->blocksX,twin->blocksY);
     }

@@ -28,7 +28,7 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 | 4. GUI runtime, front end, sidebar (`retail-gui.md`) | done: MAINMENU, SINGLE, SKIRMISH, SELMAP, SELPROV/TCP, NEWGAME, MSNBRIEF, ENDMSN, in-game sidebar and top bar |
 | 5. AI (`retail-ai.md`) | done: every level runs the retail brain (RETAIL EASY/HARD plus the engine's levels) |
 | 6. Pathfinding (`retail-pathfinding.md`) | Retail A* verified 613/613 against TotalA.exe; goals per 0x44cf60/0x44d3b0/0x44dc60; Legion kept |
-| 7. Rendering, campaigns, Cartographer, random maps, MP, packaging | done: 3DO textures; TA campaigns (`retail-campaign.md`); Cartographer stamps .sct and saves missions losslessly; random maps from .sct sections; MP failures return to SELPROV; CPack TGZ builds |
+| 7. Rendering, campaigns, Cartographer, random maps, MP, packaging | done: 3DO textures; TA campaigns (`retail-campaign.md`); Cartographer on TA planets: stamps v2/v3 .sct, pastes, undoes and symmetrizes (pixel-mirrored) the map's own tiles, 252x252 minimaps, cell-granular resize, saves missions losslessly; random maps from .sct sections; MP failures return to SELPROV; CPack TGZ builds |
 
 ## Pathfinding status (docs/retail-pathfinding.md)
 
@@ -114,10 +114,8 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   battleship stopped just inside its ballistic weapon's origin reach (corbats,
   COR_BATS at ~1092 px) never fires (naval_combat); transports have no TA capacity/distance
   (transportcapacity/transportsize unread); air plants never start a unit;
-  Retail-mode park orders never retire at their goal; v3 .sct sections do not
-  load and the Cartographer still defaults to Kingdoms worlds; client
-  watch/spectator harness checks (gameview_devharness.cpp) still spawn Kingdoms
-  units.
+  Client watch/spectator harness checks (gameview_devharness.cpp) still spawn
+  Kingdoms units.
 - Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). Still open: the bomber's

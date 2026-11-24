@@ -24,17 +24,18 @@ using ta::terrain::MinimapPreview;
 using ta::terrain::minimapPreview;
 
 // Build a fresh flat map of wUnits x hUnits (1 Unit = 32 cells = 512px), tiled
-// with a default ground section for `world`, sea level from that side's
-// waterheight, then minimaps generated. Returns an empty (width==0) map if no
+// with the level ground section of `world` (TA: sea level 0, like the random maps;
+// Kingdoms: the side's waterheight), then minimaps generated. Returns an empty (width==0) map if no
 // section is available.
 ta::tnt::Map newBlankMap(const ta::hpi::Vfs& vfs, SectionLibrary& sections,
                           ta::terrain::Compositor& comp, const std::string& world,
                           int wUnits, int hUnits);
 
-// Resize `map` to wUnits x hUnits (1 Unit = 32 cells), keeping the overlapping
-// top-left region and filling any new area with the map's first tile + flat
-// land, then regenerating the minimaps.
+// Resize `map` to wCells x hCells (16px cells, rounded down to whole 32px blocks:
+// TNT dims are cells, its tile plane blocks), keeping the overlapping
+// top-left region and filling any new area with the map's first tile (TA: at its
+// height; Kingdoms: flat land), then regenerating the minimaps.
 void resizeMap(ta::tnt::Map& map, ta::terrain::Compositor& comp,
-               const ta::gaf::Palette& pal, int wUnits, int hUnits);
+               const ta::gaf::Palette& pal, int wCells, int hCells);
 
 } // namespace cart

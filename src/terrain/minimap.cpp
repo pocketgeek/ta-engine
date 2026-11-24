@@ -92,15 +92,70 @@ std::vector<uint8_t> indexedMinimap(const std::vector<uint8_t>& grid, int gw, in
     return out;
 }
 
+// A TA map's own 8-bit tiles: each block's colour is its tile's mean through
+// the game palette (blocksX x blocksY RGB).
+std::vector<uint8_t> taBlockGrid(const ta::tnt::Map& map, const ta::gaf::Palette& pal) {
+    std::vector<std::array<uint8_t,3>> mean(size_t(map.tileCount));
+    for (size_t t = 0; t < mean.size(); ++t) {
+        uint32_t r = 0, g = 0, b = 0;
+        for (size_t i = 0; i < 1024; ++i) {
+            const uint8_t* c = pal.rgba[map.tileGfx[t * 1024 + i]];
+            r += c[0]; g += c[1]; b += c[2];
+        }
+        mean[t] = {uint8_t(r / 1024), uint8_t(g / 1024), uint8_t(b / 1024)};
+    }
+    std::vector<uint8_t> grid(size_t(map.blocksX) * map.blocksY * 3, 0);
+    for (size_t i = 0; i < size_t(map.blocksX) * map.blocksY && i < map.tileIndex.size(); ++i) {
+        const uint16_t t = map.tileIndex[i];
+        if (t < mean.size()) std::copy(mean[t].begin(), mean[t].end(), grid.begin() + std::ptrdiff_t(i * 3));
+    }
+    return grid;
+}
+
+bool hasOwnTiles(const ta::tnt::Map& map) {
+    return map.tileCount > 0 && map.tileGfx.size() >= size_t(map.tileCount) * 1024;
+}
+
+// The kTaMinimap-square indexed picture of a block-colour grid.
+std::vector<uint8_t> taMinimap(const std::vector<uint8_t>& grid, int blocksX, int blocksY, const ta::gaf::Palette& pal) {
+    const auto fit = taMinimapFit(blocksX, blocksY);
+    const auto fitted = indexedMinimap(grid, blocksX, blocksY, fit.width, fit.height, pal);
+    std::vector<uint8_t> out(size_t(kTaMinimap) * kTaMinimap, 0);
+    for (int y = 0; y < fit.height; ++y)
+        std::copy_n(fitted.begin() + std::ptrdiff_t(y) * fit.width, fit.width, out.begin() + std::ptrdiff_t(y) * kTaMinimap);
+    return out;
+}
+
 } // namespace
+
+MinimapFit taMinimapFit(int blocksX, int blocksY) {
+    const int longSide = std::max({1, blocksX, blocksY});
+    return {std::max(1, blocksX * kTaMinimap / longSide), std::max(1, blocksY * kTaMinimap / longSide)};
+}
+
+MinimapFit minimapContent(const ta::tnt::Map& map) {
+    if (map.tileCount > 0 && map.minimapW == kTaMinimap && map.minimapH == kTaMinimap)
+        return taMinimapFit(map.blocksX, map.blocksY);
+    return {map.minimapW, map.minimapH};
+}
 
 MinimapPreview minimapPreview(const ta::tnt::Map& map,ta::terrain::Compositor& comp,
                               const ta::gaf::Palette& palette,std::shared_ptr<const std::atomic_bool> stop) {
     MinimapPreview result;
     if(map.blocksX<=0 || map.blocksY<=0)return result;
-    const auto grid=blockColourGrid(map,comp,stop,result.width,result.height);
-    if(grid.empty())return result;
-    const auto indexed=indexedMinimap(grid,result.width,result.height,result.width,result.height,palette);
+    std::vector<uint8_t> indexed;
+    if(hasOwnTiles(map)) {   // TA: the 252x252 picture generateMinimaps saves
+        const auto grid=taBlockGrid(map,palette);
+        if(stop && stop->load(std::memory_order_relaxed))return result;
+        indexed=taMinimap(grid,map.blocksX,map.blocksY,palette);
+        const auto fit=taMinimapFit(map.blocksX,map.blocksY);
+        result.width=result.height=kTaMinimap;result.contentW=fit.width;result.contentH=fit.height;
+    } else {
+        const auto grid=blockColourGrid(map,comp,stop,result.width,result.height);
+        if(grid.empty())return result;
+        indexed=indexedMinimap(grid,result.width,result.height,result.width,result.height,palette);
+    }
+    if(stop && stop->load(std::memory_order_relaxed))return result;
     result.rgba.resize(indexed.size()*4);
     for(size_t i=0;i<indexed.size();++i)std::copy(palette.rgba[indexed[i]],palette.rgba[indexed[i]]+4,result.rgba.begin()+i*4);
     return result;
@@ -109,42 +164,16 @@ MinimapPreview minimapPreview(const ta::tnt::Map& map,ta::terrain::Compositor& c
 void generateMinimaps(ta::tnt::Map& map, ta::terrain::Compositor& comp,
                       const ta::gaf::Palette& pal, std::shared_ptr<const std::atomic_bool> stop) {
     if (map.blocksX <= 0 || map.blocksY <= 0) return;
-    std::vector<uint8_t> grid;
-    if (map.tileCount > 0 && map.tileGfx.size() >= size_t(map.tileCount) * 1024) {
-        // A TA map's own 8-bit tiles: each block's colour is its tile's mean
-        // through the game palette.
-        std::vector<std::array<uint8_t,3>> mean(size_t(map.tileCount));
-        for (size_t t = 0; t < mean.size(); ++t) {
-            uint32_t r = 0, g = 0, b = 0;
-            for (size_t i = 0; i < 1024; ++i) {
-                const uint8_t* c = pal.rgba[map.tileGfx[t * 1024 + i]];
-                r += c[0]; g += c[1]; b += c[2];
-            }
-            mean[t] = {uint8_t(r / 1024), uint8_t(g / 1024), uint8_t(b / 1024)};
-        }
-        grid.assign(size_t(map.blocksX) * map.blocksY * 3, 0);
-        for (size_t i = 0; i < size_t(map.blocksX) * map.blocksY && i < map.tileIndex.size(); ++i) {
-            const uint16_t t = map.tileIndex[i];
-            if (t < mean.size()) std::copy(mean[t].begin(), mean[t].end(), grid.begin() + std::ptrdiff_t(i * 3));
-        }
-    } else {
-        grid = blockColourGrid(map, comp, stop);
-    }
-    if(stop && stop->load())throw std::runtime_error("Save cancelled");
-
-    if (map.tileCount > 0) {
-        // Total Annihilation (a map carrying its own tiles): a 252x252 picture,
-        // the map aspect-fitted from the top-left and the rest padded, as in
-        // the shipped .tnt files.
-        const int longSide = std::max(map.blocksX, map.blocksY);
-        const int cw = std::max(1, map.blocksX * 252 / longSide), ch = std::max(1, map.blocksY * 252 / longSide);
-        const auto fitted = indexedMinimap(grid, map.blocksX, map.blocksY, cw, ch, pal);
-        map.minimapW = 252; map.minimapH = 252;
-        map.minimap.assign(size_t(252) * 252, 0);
-        for (int y = 0; y < ch; ++y)
-            std::copy_n(fitted.begin() + std::ptrdiff_t(y) * cw, cw, map.minimap.begin() + std::ptrdiff_t(y) * 252);
+    if (hasOwnTiles(map)) {
+        // Total Annihilation (a map carrying its own tiles): one 252x252 picture.
+        const auto grid = taBlockGrid(map, pal);
+        if(stop && stop->load())throw std::runtime_error("Save cancelled");
+        map.minimapW = kTaMinimap; map.minimapH = kTaMinimap;
+        map.minimap = taMinimap(grid, map.blocksX, map.blocksY, pal);
         return;
     }
+    std::vector<uint8_t> grid = blockColourGrid(map, comp, stop);
+    if(stop && stop->load())throw std::runtime_error("Save cancelled");
     // Small minimap: retail's fixed 126x126.
     map.minimapW = 126; map.minimapH = 126;
     map.minimap = indexedMinimap(grid, map.blocksX, map.blocksY, 126, 126, pal);

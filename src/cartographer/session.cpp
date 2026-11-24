@@ -248,7 +248,7 @@ void cart::Editor::restoreHistory(const cart::HistoryState* state) {
     useOnly=state->useOnly;aiFiles=state->aiFiles;mapName=state->name;dirty=history.dirty();edited=true;
     selectedUnits.indices.clear();selectedUnits.dragOrigins.clear();selectedFeatures.clear();
     editRule=nullptr;draggingUnit=draggingStart=-1;scrGroup=-1;
-    const auto nextWorld=scenario.kingdom.empty()?"aramon":scenario.kingdom;
+    const auto nextWorld=scenario.kingdom.empty()?std::string(cart::kDefaultWorld):scenario.kingdom;
     if(nextWorld!=world) {
         world=nextWorld;sections.scan(vfs,world);features.scan(vfs,world);
         for(auto& [key,texture]:featTex)if(texture)SDL_DestroyTexture(texture);

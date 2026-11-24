@@ -10,8 +10,9 @@ profiles put a limit on every side's factories (TA's category PLANT): 0 in the f
 ai/taengine.txt collide. Headless --mpai games (seed 1, the AI seat on DEFAULT, 60 s):
 
   stock    Ashap Plateau, with the two maps installed and an unticked game pack: the
-           same state hash as in a plain install, and no factory limit in the AI's
-           weight dump (TA_CLASSIC_WEIGHTS)
+           same state hash as in a plain install, and the base ai/default.txt limits (not
+           every factory at 0) in the AI's profile dump (TA_RETAIL_WEIGHTS: the server's TA
+           retail brains, docs/retail-ai.md section 1)
   alpha    the first map: the server log names ai/e2e.txt and ai/taengine.txt from the map
            package, and the dump shows every factory at limit 0
   beta     the second map: its own files, not the first map's (limit 2)
@@ -121,7 +122,7 @@ def bundle(a, data, root, name, units, limit):
 def play(a, data, work, map_name, settings=''):
     work.mkdir()
     dump = work / 'weights'
-    os.environ['TA_CLASSIC_WEIGHTS'] = str(dump)   # the server's DEFAULT brains write it at tick 600
+    os.environ['TA_RETAIL_WEIGHTS'] = str(dump)   # each server-side TA retail brain writes <dump>.p<player> once its profile is applied
     try:
         with server(a.server.resolve(), data, work, '--no-auth', '--seed', '1') as (port, _, process):
             settings_file = work / 'settings.ini'
@@ -129,7 +130,7 @@ def play(a, data, work, map_name, settings=''):
             env = dict(os.environ, HOME=str(work), XDG_DATA_HOME=str(work), XDG_CONFIG_HOME=str(work),
                        TA_SETTINGS_FILE=str(settings_file), TA_HEADLESS='1', TA_SPEED='80',
                        SDL_VIDEODRIVER='dummy', SDL_AUDIODRIVER='dummy', TA_AI_LEVEL='6')
-            env.pop('TA_CLASSIC_WEIGHTS')
+            env.pop('TA_RETAIL_WEIGHTS')
             result = subprocess.run([str(a.client), 'game', map_name, '--data', str(data), '--server', '127.0.0.1',
                                      '--serverport', str(port), '--mpai', '--time', SECONDS],
                                     env=env, capture_output=True, text=True, timeout=600)
@@ -138,12 +139,12 @@ def play(a, data, work, map_name, settings=''):
             assert result.returncode == 0 and 'hash=' in out, out + '\n' + log
             assert process.poll() is None, log
     finally:
-        os.environ.pop('TA_CLASSIC_WEIGHTS', None)
+        os.environ.pop('TA_RETAIL_WEIGHTS', None)
     limits = {}
     dumps = sorted(work.glob('weights.p*'))
     assert dumps, 'no DEFAULT AI weight dump in %s:\n%s' % (work, log)
     for path in dumps:
-        for limit, unit in re.findall(r"^\s*(n/a|-?\d+)\s+-\s+-?\d+\s+=\s+-?\d+\s+-\s+'(\S+)", path.read_text(), re.M):
+        for limit, unit in re.findall(r"^\s*(n/a|-?\d+)\s+-\s+-?\d+\s+=\s+-?\d+\s+-\s+'([^'\s]+)", path.read_text(), re.M):
             limits.setdefault(unit.lower(), set()).add(limit)
     return re.findall(r'hash=([0-9a-f]+)', out)[-1], limits, log
 
@@ -187,7 +188,10 @@ def main():
             stock_hash, plain_hash)
         assert re.search(r'DEFAULT AI profile ai/default\.txt from the base data', log, re.I), log
         assert not re.search(r'our AI levels play their built-in profiles adjusted', log), log
-        assert all(limits.get(u) != {'0'} for u in units), 'stock map: a factory is limited to 0'
+        # TA's own ai/default.txt limits some factories (even to 0 on a plan); the stock map must
+        # play it, not a map's profile that holds every factory at 0.
+        assert all(u in limits for u in units), 'stock map: factories missing from the profile dump'
+        assert not all(limits.get(u) == {'0'} for u in units), 'stock map: every factory is limited to 0 (a map profile leaked)'
 
         for name, limit in (('E2E Alpha', 0), ('E2E Beta', 2)):
             _, limits, log = play(a, data, root / name.replace(' ', '-'), name)

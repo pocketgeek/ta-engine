@@ -178,14 +178,21 @@ std::string taSectionFolder(const std::string& planet) {
 }
 
 Map Map::loadSct(const std::vector<uint8_t>& d, const std::string& origin) {
+    // SCT v2: u32 version 2, u32 -> minimap, u32 tile count, u32 -> tiles (count x
+    // 1024), u32 width, u32 height (32px blocks), u32 -> data: u16 tile index per
+    // block, then 8 bytes per 16px cell (byte 0 the height). SCT v3 (worlds.hpi's
+    // Metal sections, among others) is the same but for 4 bytes per cell: the height,
+    // the u16 feature (0xffff none), 0. Sections carry no feature-name table, so the
+    // feature words are not kept.
     auto rd32 = [&](size_t o) {
         return uint32_t(d[o]) | uint32_t(d[o + 1]) << 8 | uint32_t(d[o + 2]) << 16 | uint32_t(d[o + 3]) << 24;
     };
-    if (d.size() < 28 || rd32(0) != 2) throw std::runtime_error(origin + ": not a v2 .sct section");
+    if (d.size() < 28 || (rd32(0) != 2 && rd32(0) != 3)) throw std::runtime_error(origin + ": not a v2/v3 .sct section");
+    const uint64_t stride = rd32(0) == 3 ? 4 : 8;   // bytes per 16px cell
     const uint32_t nt = rd32(8), pt = rd32(12), w = rd32(16), h = rd32(20), pd = rd32(24);
     if (!w || !h || w > 256 || h > 256 || nt > 65535 ||
         uint64_t(pt) + uint64_t(nt) * 1024 > d.size() ||
-        uint64_t(pd) + uint64_t(w) * h * 2 + uint64_t(w) * h * 4 * 8 > d.size())
+        uint64_t(pd) + uint64_t(w) * h * 2 + uint64_t(w) * h * 4 * stride > d.size())
         throw std::runtime_error(origin + ": truncated .sct section");
     Map m;
     m.blocksX = int(w); m.blocksY = int(h);
@@ -202,7 +209,7 @@ Map Map::loadSct(const std::vector<uint8_t>& d, const std::string& origin) {
     m.tileRows.assign(m.tileIndex.size(), 0);
     const size_t cells = size_t(m.width) * m.height, ha = pd + size_t(w) * h * 2;
     m.heights.resize(cells);
-    for (size_t i = 0; i < cells; ++i) m.heights[i] = d[ha + i * 8];   // 8 bytes per cell, height first
+    for (size_t i = 0; i < cells; ++i) m.heights[i] = d[ha + i * stride];   // height first
     m.features.assign(cells, 0xFFFF);
     m.cellExtra.assign(cells, 0);
     return m;

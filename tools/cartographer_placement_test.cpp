@@ -1281,11 +1281,11 @@ bool featureOpsSession(const std::string& data,const std::string& world) {
             ops.placed=want;ops.matches(e,"the terrain clipboard pastes the features with the terrain");
             in.key(SDLK_z,KMOD_CTRL);in.key(SDLK_ESCAPE);return true;
         });
-        // Resize: crop to 4x16 units (features beyond x=128 go), undo; grow to 20x20.
+        // Resize (in 16px cells): crop to 128x512 cells (features beyond x=128 go), undo; grow to 640x640.
         s.then([&](Editor& e,const Input& in) {ops.placed=original;ops.matches(e,"clipboard paste undone");tool(in,Editor::FEATURES);in.key(SDLK_r);return true;});
         s.then([&](Editor& e,const Input& in) {
             if(!ops.expect(e.modal==Editor::M_RESIZE,"R opens Resize"))return true;
-            in.text("4");in.key(SDLK_RETURN);return true;
+            in.text("128");in.key(SDLK_RETURN);return true;
         });
         s.then([&](Editor& e,const Input& in) {
             if(!ops.expect(e.modal==Editor::M_CONFIRM && e.mTitle=="CROP MAP","a crop asks to confirm"))return true;
@@ -1299,7 +1299,7 @@ bool featureOpsSession(const std::string& data,const std::string& world) {
         });
         s.then([&](Editor& e,const Input& in) {
             ops.placed=original;ops.matches(e,"crop undone");
-            in.key(SDLK_r);in.text("20");in.key(SDLK_TAB);in.text("20");in.key(SDLK_RETURN);return true;
+            in.key(SDLK_r);in.text("640");in.key(SDLK_TAB);in.text("640");in.key(SDLK_RETURN);return true;
         });
         s.then([&](Editor& e,const Input& in) {
             ops.expect(e.mapView.map().width==640 && e.mapView.map().height==640,"grown to 640x640 cells");
@@ -1594,7 +1594,8 @@ int blockedWorkflow(const std::string& data) {
     });
     s.then([&](Editor& e,const Input& in) {
         const auto saved=savedTerrain(kmp(e));
-        if(!expect(saved && !saved->minimap.empty() && !saved->overview.empty(),"the map saves before painting"))return true;
+        // A TA .tnt has one radar picture, 252x252 (no Kingdoms overview).
+        if(!expect(saved && !saved->minimap.empty() && saved->minimapW==252 && saved->minimapH==252,"the map saves before painting"))return true;
         beforePaint=*saved;expected=e.mapView.map();states={expected.features};
         tool(in,Editor::BLOCKED);mode(in,Editor::MODE_PLACE);return true;
     });

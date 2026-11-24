@@ -81,9 +81,9 @@ const FeatSprite* FeatureLibrary::requestSprite(const ta::hpi::Vfs& vfs,const Fe
 }
 FeatSprite FeatureLibrary::decodeSprite(const ta::hpi::Vfs& vfs,const FeatureRef& r) {
     FeatSprite fs;
-    // Palette: <world>_features.pcx, else <world>.pcx, else aramon_features.
+    // Palette: <world>_features.pcx, else <world>.pcx, else TA's game palette.
     const std::string palCands[] = {r.world + "_features.pcx", r.world + ".pcx",
-                                     "aramon_features.pcx"};
+                                     "palette.pal"};
     ta::gaf::Palette pal{};
     bool havePal = false;
     for (const std::string& c : palCands) {

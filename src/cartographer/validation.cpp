@@ -29,6 +29,20 @@ std::vector<MapIssue> validateTerrainResources(const ta::tnt::Map& map,const ta:
         issues.push_back({MapIssue::Severity::Error,"Invalid terrain tile dimensions or key/column/row arrays"});return issues;
     }
     struct Use {size_t first=0,count=0;};std::map<uint32_t,Use> used;
+    if(map.tileCount>0 || !map.tileIndex.empty()) {
+        // TA: the map's own tiles. Every block must index one, and the tile map and
+        // the compositor's mirror (tileKeys) must agree.
+        if(map.tileIndex.size()!=count || map.tileGfx.size()<size_t(std::max(0,map.tileCount))*1024) {
+            issues.push_back({MapIssue::Severity::Error,"Invalid terrain tile map or tile graphics"});return issues;
+        }
+        for(size_t i=0;i<count;++i)if(int(map.tileIndex[i])>=map.tileCount || map.tileKeys[i]!=map.tileIndex[i]) {
+            auto& use=used[map.tileIndex[i]];if(use.count++==0)use.first=i;
+        }
+        for(const auto& [tile,use]:used)
+            issues.push_back({MapIssue::Severity::Error,"Missing terrain tile "+std::to_string(tile)+" of "+std::to_string(map.tileCount)+" ("+
+                std::to_string(use.count)+" blocks)",float(use.first%map.blocksX)*32+16,float(use.first/map.blocksX)*32+16});
+        return issues;
+    }
     for(size_t i=0;i<count;++i) {auto& use=used[map.tileKeys[i]];if(use.count++==0)use.first=i;}
     ta::terrain::Compositor compositor(vfs);
     for(const auto& [key,use]:used) {
