@@ -82,6 +82,12 @@ File load(const std::vector<uint8_t>& d, const std::string& origin) {
     return f;
 }
 
+int File::scriptIndexExact(const char* name) const {
+    for (size_t i = 0; i < scripts.size(); ++i)
+        if (scripts[i].name == name) return int(i);
+    return -1;
+}
+
 int File::scriptIndex(const std::string& name) const {
     for (size_t i = 0; i < scripts.size(); ++i)
         if (iequal(scripts[i].name, name)) return int(i);

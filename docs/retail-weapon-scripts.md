@@ -380,3 +380,33 @@ For each slot with a weapon:
 `retailWeaponFireEvent`, `legionAimStall`, the `aim.flags&16` release path, the
 facing-request gate (`slotNeedsFacing`), `AimWeapon`'s third argument, and the
 Kingdoms tolerance/2 pitch test.
+
+### 7.8 State in the engine
+
+Implemented (`World::tickScriptWeapon`, `taAimAngles`, `aimFromPoint`, `taWeaponScript`,
+`tickWeaponBursts`; `cob::RetailVm` word 8; test `tools/ta_weapon_script_test.cpp`):
+7.1-7.7 as written, with these differences:
+
+- The engine runs every unit's COB pass before the weapon update, so an AimX or FireX
+  started in tick N runs in the pass of tick N+1 (retail: the same tick). Order within a
+  unit is unchanged; readiness and the shot come one tick later.
+- The fire gate is reached only from the engine's callers, which test the slot's range
+  first; an aim therefore starts once the target is in range, not as soon as it is held.
+- The projectile launches on the release solve from the QueryX muzzle to the (led) aim
+  point plus the accuracy spread, not on AimX's stored angles plus spread.
+- Burst clones are aimed at the slot's target (its last point once it is gone) rather than
+  along the emitter's stored heading; sprayangle randomises their heading.
+- Non-turret LOS weapons compare only the heading with the body (no body-pitch test);
+  `minbarrelangle` is not passed to the ballistic solver; a stockpile weapon's stock is
+  not checked for vlaunch.
+- Sign check (`ta_weapon_script_test`): with d = P - T the AimPrimary heading plus the body
+  heading points from the turret at targets ahead, behind and to both sides, in the
+  mover's own convention (a body with heading h steps along (-sin h, -cos h)).
+  `queryWeaponAim`'s `retailDirectAim(target - source)` is the launch convention
+  (projectile velocity (+sin, +cos)); it is not used for AimX.
+
+Observed consequence of 2.4: scripts that give two weapons the same aim signal (armwar's
+AimPrimary and AimSecondary both send and mask signal 4; armcom's primary and tertiary
+share 2) lose the lower slot's aim thread when both aims start in one tick; that slot
+then waits until its target is lost (armwar's Light Cannon never fires at a target the
+EMG also aims at). This follows the spec; it is not verified against a running TotalA.exe.

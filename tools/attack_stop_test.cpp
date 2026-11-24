@@ -135,7 +135,7 @@ Run attack(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const char* shoote
         if (u->speed.v) walked = true;
         else if (walked && r.stop < 0) r.stop = now;
         const int slot = u->type->weaponSwitching ? u->weaponSlot : 0;
-        if (r.aim < 0 && (u->weaponAim[size_t(slot)].flags & 0xe0)) r.aim = now;
+        if (r.aim < 0 && (u->weaponAim[size_t(slot)].flags & ta::TaAimState::kRequested)) r.aim = now;
         if (r.turned < 0 && u->heading != start) r.turned = now;
         if (r.fired < 0 && u->firedWeapons) r.fired = now;
         if (turnStatic >= 0) {

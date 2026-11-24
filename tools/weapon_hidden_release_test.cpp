@@ -12,11 +12,13 @@ int main() {
         if (!ok) throw std::runtime_error(message);
     };
 
+    // TotalA.exe call-ins: AimPrimary sleeps 100 ms and returns 1 (ready,
+    // docs/retail-weapon-scripts.md 2.3); FirePrimary and TargetCleared return.
     auto script=std::make_shared<ta::cob::File>();
-    script->scripts={{"AimWeapon",0},{"FireWeapon",9},{"TargetCleared",18}};
-    script->code={0x10021001,100,0x10013000,0x10021001,22,0x10021002,2,0x10082000,0x10065000,
-                  0x10021001,100,0x10013000,0x10021001,23,0x10021002,0,0x10082000,0x10065000,
-                  0x10022000,0x10021001,21,0x10021002,0,0x10082000,0x10065000};
+    script->scripts={{"AimPrimary",0},{"FirePrimary",6},{"TargetCleared",9}};
+    script->code={0x10021001,100,0x10013000,0x10021001,1,0x10065000,
+                  0x10021001,0,0x10065000,
+                  0x10022000,0x10021001,0,0x10065000};
 
     World world;
     world.setPlayerCount(3);
@@ -30,6 +32,7 @@ int main() {
     shooter.maxHp=targetType.maxHp=1000;
     Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
     weapon.projVel=300;weapon.energyPerShot=3;   // paid from the player's store (econPayShot)
+    weapon.straight=true;weapon.taFlags=1u|1u<<19;weapon.taAim=Weapon::TaAim::Turret;   // lineofsight turret
     shooter.weapons.push_back(weapon);shooter.weapon=weapon;
 
     const int shooterId=world.spawn(&shooter,200,200,{},0);
@@ -39,21 +42,24 @@ int main() {
     require(world.playerSees(1,*world.unit(targetId)),"fixture begins with the target visible to its owner");
     world.attack(shooterId,targetId,false);
 
-    bool fireCallback=false,pendingRelease=false;
-    for(int tick=0;tick<20 && !pendingRelease;++tick) {
-        if(fireCallback) {
+    // The aim starts in range; the target steps out before AimPrimary
+    // returns, so the slot is ready (aim requested and returned) but the
+    // range gate holds the shot.
+    bool aimed=false,ready=false;
+    for(int tick=0;tick<20 && !ready;++tick) {
+        if(aimed) {
             const auto* archer=world.unit(shooterId);
             auto* target=world.unit(targetId);
             target->x=archer->x+Fixed::fromInt(401);
             target->z=archer->z;
         }
         world.tick(1.f/30.f);
-        const auto* archer=world.unit(shooterId);
-        fireCallback=fireCallback || archer->fireAnimations!=0;
-        pendingRelease=(archer->weaponAim[0].flags&16)!=0;
+        const auto& aim=world.unit(shooterId)->weaponAim[0];
+        aimed=aimed || aim.requested();
+        ready=aim.requested() && aim.ready();
     }
-    require(fireCallback && pendingRelease,
-            "FireWeapon SET 23 becomes pending while the target is outside weapon range");
+    require(aimed && ready && world.projectiles().empty() && world.books(0).stored[0]==20,
+            "AimPrimary's return readies the slot while the target is outside weapon range");
     require(world.playerSees(1,*world.unit(targetId)),
             "the pending target is still visible to the current viewer before switching views");
 
@@ -66,24 +72,30 @@ int main() {
         target->x=archer->x+Fixed::fromInt(401);
         target->z=archer->z;
         world.tick(1.f/30.f);
-        require((world.unit(shooterId)->weaponAim[0].flags&16) &&
+        require(world.unit(shooterId)->weaponAim[0].ready() &&
                 world.projectiles().empty() && world.books(0).stored[0]==20,
-                "an out-of-range SET 23 remains pending while visibility changes");
+                "an out-of-range ready aim holds its shot while visibility changes");
     }
     require(!world.playerSees(2,*world.unit(targetId)),
             "the pending target is hidden from the selected viewer before re-entering range");
 
-    auto* target=world.unit(targetId);
-    const auto* archer=world.unit(shooterId);
-    target->x=archer->x+Fixed::fromInt(400);
-    target->z=archer->z;
-    world.tick(1.f/30.f);
-    require(!world.playerSees(2,*world.unit(targetId)),
-            "the target remains hidden on the release tick");
-    require(world.unit(shooterId)->justFired && world.projectiles().size()==1 &&
-            world.books(0).stored[0]==17 &&
-            !(world.unit(shooterId)->weaponAim[0].flags&16),
-            "the hidden live target receives exactly one pending projectile release");
+    // Back at the inclusive range boundary. The chase may have turned the
+    // body, which moves AimPrimary's body-relative heading out of tolerance:
+    // then the slot aims again first (0x49d68a). Either way exactly one shot
+    // leaves, paid once, and it consumes the aim.
+    bool fired=false;
+    for(int tick=0;tick<15 && !fired;++tick) {
+        auto* target=world.unit(targetId);
+        const auto* archer=world.unit(shooterId);
+        target->x=archer->x+Fixed::fromInt(400);
+        target->z=archer->z;
+        world.tick(1.f/30.f);
+        require(!world.playerSees(2,*world.unit(targetId)),"the target remains hidden up to the release tick");
+        fired=world.unit(shooterId)->justFired;
+    }
+    require(fired && world.projectiles().size()==1 && world.books(0).stored[0]==17 &&
+            !world.unit(shooterId)->weaponAim[0].requested(),
+            "the hidden live target receives exactly one shot, which consumes the aim");
 
-    std::cout<<"PASS: pending SET 23 releases once when a live target re-enters range while hidden\n";
+    std::cout<<"PASS: a ready aim fires once when a live target re-enters range while hidden\n";
 }

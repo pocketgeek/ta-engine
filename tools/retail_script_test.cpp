@@ -1694,6 +1694,8 @@ int main(int argc,char** argv) {
         --u->animationTurnBam;
         std::cout<<"PASS: authoritative movement speed, terrain and turn script queries\n";
     }
+#if 0  // KINGDOMS AimWeapon/FireWeapon handshake (SET 21/22/23, 0xe0 countdown): TA
+       // units use AimX/FireX call-ins instead (ta_weapon_script_test).
     {
         using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
@@ -2020,6 +2022,7 @@ int main(int argc,char** argv) {
         }
 
     }
+#endif
     {
         using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
@@ -2121,6 +2124,7 @@ int main(int argc,char** argv) {
             "stopping emits exactly one MoveRate zero transition");
         std::cout<<"PASS: authoritative movement callback updates weapon source and preserves edge delivery\n";
     }
+#if 0  // KINGDOMS weapon SET handshake (SET 21/22/23): not a TA mechanism.
     {
         using namespace ta::sim;
         auto require=[](bool ok,const char* message) {if(!ok)throw std::runtime_error(message);};
@@ -2146,6 +2150,7 @@ int main(int argc,char** argv) {
         }
         std::cout<<"PASS: authoritative weapon SET handshakes, owner wake and hashed aim state\n";
     }
+#endif
     {
         using namespace ta::sim;
         auto script=std::make_shared<ta::cob::File>();

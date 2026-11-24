@@ -37,7 +37,20 @@ struct RetailWeaponAnimations {
     }
 };
 
-// Native weapon record's aim handshake (50d450, 52fe30, 52fff0).
+// TotalA.exe weapon slot record (unit+4+0x1c*slot, docs/retail-weapon-scripts.md
+// sections 0 and 2): the angles handed to the last AimX (S+0x16 heading
+// relative to the body, S+0x18 world pitch) and the handshake bits. kRequested
+// is S+0x1b bit 0 (an AimX was started and not yet consumed by a shot or a
+// re-aim); kReady is S+8 (that AimX returned nonzero, callback 0x481490).
+struct TaAimState {
+    static constexpr uint16_t kRequested=1,kReady=2;
+    uint16_t heading=0,pitch=0,flags=0;
+    bool requested() const { return flags&kRequested; }
+    bool ready() const { return flags&kReady; }
+};
+
+// KINGDOMS.icd's aim handshake (50d450, 52fe30, 52fff0), kept for the
+// Kingdoms emulation harnesses only; TA units use TaAimState.
 // The countdown advances only when the requested angles leave tolerance.
 struct RetailAimState {
     uint16_t heading=0,pitch=0,flags=0;

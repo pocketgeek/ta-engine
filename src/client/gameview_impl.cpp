@@ -2187,13 +2187,23 @@
             if (const auto callbacks=weaponAnimations.find(u.id);callbacks!=weaponAnimations.end())
             for (const auto& event:callbacks->second) {
                 switch(event.kind) {
-                case ta::RetailWeaponAnimation::Aim:
-                    a.vm->start("AimWeapon",{event.heading,event.pitch,event.slot});
+                // TotalA.exe's call-ins by FBI slot (docs/retail-weapon-scripts.md
+                // section 1); the events carry that slot.
+                case ta::RetailWeaponAnimation::Aim: {
+                    static constexpr const char* kAim[3]={"AimPrimary","AimSecondary","AimTertiary"};
+                    if(event.slot<3)a.vm->start(kAim[event.slot],{event.heading,event.pitch});
                     break;
-                case ta::RetailWeaponAnimation::Fire:
-                    a.vm->start("FireWeapon",{event.slot}) || a.vm->start("attack1") || a.vm->start("fire");
+                }
+                case ta::RetailWeaponAnimation::Fire: {
+                    static constexpr const char* kFire[3]={"FirePrimary","FireSecondary","FireTertiary"};
+                    if(event.slot<3)a.vm->start(kFire[event.slot],{});
+                    // 0x49cbe6: RockUnit(-800 cos h, -800 sin h), h the shot's
+                    // heading relative to the body.
+                    a.vm->start("RockUnit",{-ta::sim::retailScaledCosine(event.heading,800),
+                                            -ta::sim::retailScaledSine(event.heading,800)});
                     a.firing=true;
                     break;
+                }
                 case ta::RetailWeaponAnimation::Clear:
                     a.vm->start("TargetCleared",{event.slot});
                     break;
@@ -2903,7 +2913,8 @@
                     for(const auto& child:object.children)self(self,child,index);
                 };
                 appendModel(appendModel,visuals_.at(typeId).model.root,-1);
-                cc.hasAim = cc.file->scriptIndex("AimWeapon") >= 0;
+                cc.hasAim = cc.file->scriptIndex("AimPrimary") >= 0 || cc.file->scriptIndex("AimSecondary") >= 0 ||
+                            cc.file->scriptIndex("AimTertiary") >= 0;
                 cc.hasCloakAnim = cc.file->scriptIndex("StartCloaking") >= 0;
                 cc.hasFlinch = cc.file->scriptIndex("HitByWeapon") >= 0;
                 cc.hasWind = cc.file->scriptIndex("WindChange") >= 0;

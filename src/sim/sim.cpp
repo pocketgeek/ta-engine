@@ -286,7 +286,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             }
             t.onMana = false;
             t.sacredIncome = false;
-            t.canTransport = info->numberOr("cantransport", 0) != 0;
+            // TA marks a transport with canload (flagsB bit 8, docs/retail-data.md);
+            // cantransport is the Kingdoms key.
+            t.canTransport = info->numberOr("cantransport", 0) != 0 ||
+                             (int(info->numberOr("canload", 0)) & 1) != 0;
             t.transportCap = uint16_t(int(info->numberOr("transportcapacity",0)));
             t.transportSizeCap = uint16_t(int(info->numberOr("transportsizecapacity",0)));
             t.maxTransportSize = uint16_t(int(info->numberOr("transportsize",0)));
@@ -1002,6 +1005,7 @@ void World::compactRetiredUnits() {
     // few records until every delayed effect finishes.
     std::unordered_set<int> referenced;
     for(const auto& p:projectiles_) {referenced.insert(p.fromId);referenced.insert(p.targetId);}
+    for(const auto& b:bursts_) {referenced.insert(b.fromId);referenced.insert(b.targetId);}
     for(const auto& f:flames_)referenced.insert(f.fromId);
     for(const auto& e:pendingEffects_)referenced.insert(e.fromId);
     for(const auto& blast:deathBlasts_)referenced.insert(blast.fromId);
@@ -6897,11 +6901,20 @@ static void leadAim(const Unit& shooter, const Unit& tgt, const Weapon& w,
     az += tsc.c.toFloat() * tgt.speed.toFloat() * kTick * t;
 }
 
+// The slot's AimX angles as launch angles, for a shot whose release solve
+// found nothing: AimX's heading is measured from P - T (TotalA.exe), the
+// launchers' from T - P, and a direct launcher's pitch is negative upward
+// (a ballistic one's, like AimX's, positive).
+static std::array<uint16_t,2> storedLaunch(const Unit& u,int slot,bool ballistic) {
+    const auto& aim=u.weaponAim[size_t(slot)];
+    return {uint16_t(aim.heading+0x8000u),ballistic ? aim.pitch : uint16_t(0u-aim.pitch)};
+}
+
 // A point target (t.unit null: SUPPRESS) gives every class its aim point in
 // place of the unit's position or led SweetSpot, and a shot that carries no
 // target unit (51a9a0 gives 0): it flies to the point and bursts where it
 // lands or on what it strikes on the way.
-bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) {
+bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,ShotTweak tweak) {
     const Weapon& w = u.type->weapons[size_t(slot)];
     Unit* const tu = t.unit;
     if (w.mindControl && tu && !canCaptureTarget(u.player,*tu)) return false;
@@ -6913,7 +6926,8 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
     // fires the moment it can).
     // TA: a weapon fires only when storage holds both energypershot and
     // metalpershot, which are then taken at once (docs/retail-economy.md).
-    if (!econPayShot(u, w)) return false;
+    // A burst clone was paid for with its emitter.
+    if (!tweak.free && !econPayShot(u, w)) return false;
     // Every shot keeps the shooter visible for 600 ticks (icd 0x52af41, set just
     // before the release 0x530220).
     blockCloak(u, 600);
@@ -6926,19 +6940,11 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
     if(!scriptTriggered) {u.reloads[slot] = int32_t(rl * kTick + 0.5f);u.fireAnimations|=uint32_t(1)<<slot;u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,slot);}   // seconds -> ticks, as retail stores it
     u.justFired = true;
     if (slot < 32) u.firedWeapons |= uint32_t(1) << slot;
-    // Engine deviation (owner's call 2026-11-15): retail launches a
-    // script-timed shot (SET 23) from the heading and pitch its readiness
-    // gate (52fff0) stored when it passed, plus the body's heading at the
-    // release. A flyer on attack runs gets there about 15 ticks after the gate
-    // (the Gryphon), closing and turning all the while, so its shots land
-    // long or wide of the target (docs/retail-engine.md, "Attack runs"). A
-    // flyer that does not hover to attack re-solves its aim at the release
-    // instead, as an unscripted shot does (queryWeaponAim, the led SweetSpot
-    // from the muzzle as it stands), and launches from that; with no solve,
-    // or no arc, it keeps the stored angles. The stored aim record is left
-    // alone (the scripts read it). Readiness, timing and reload are retail's.
-    const bool solveAtRelease=!scriptTriggered ||
-        (u.type->canFly && !u.type->hoverAttack && !w.hoverAttack);
+    // Every class launches on the solve from the QueryX muzzle as it stands
+    // to the target's (led) point; a scripted TA shot adds its accuracy
+    // spread (ShotTweak). The slot's aim record holds AimX's TA angles,
+    // which are not these launch angles.
+    const bool solveAtRelease=true;
     // Remote Effect: nothing travels. The spell materialises at the slot's AIM
     // POINT and lands after builduptime -- so walking aside doesn't dodge an
     // Earthquake, you have to leave its (up to 500px) radius. decaytime is the
@@ -6966,10 +6972,11 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
             std::array<int32_t,3>{tu->x.v,(tu->type->canFly ? tu->flightY : tu->groundY).v,tu->z.v};
         flame.substeps=std::max(1u,(uint32_t(raw)+0xfffffu)>>20);
         flame.speed=uint32_t(raw)/flame.substeps;
-        uint16_t heading=u.weaponAim[size_t(slot)].heading,pitch=u.weaponAim[size_t(slot)].pitch;
+        auto [heading,pitch]=storedLaunch(u,slot,false);
         if(solveAtRelease)if(const auto aim=queryWeaponAim(u,t,slot)) {
             heading=aim->heading;pitch=aim->pitch;flame.aimPoint=aim->target;
         }
+        heading=uint16_t(heading+tweak.heading);pitch=uint16_t(pitch+tweak.pitch);
         heading=uint16_t(heading+portHeadingToRetail(u.heading));
         const int32_t horizontal=retailScaledCosine(pitch,int32_t(flame.speed));
         flame.velocity={retailScaledSine(heading,horizontal),
@@ -6987,10 +6994,11 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
         p.position=queryUnitScriptPoint(u.id,false,slot);p.muzzle=p.position;
         p.substeps=std::max(1u,(uint32_t(raw)+0xfffffu)>>20);
         const int32_t speed=int32_t(uint32_t(raw)/p.substeps);
-        uint16_t heading=u.weaponAim[size_t(slot)].heading,pitch=u.weaponAim[size_t(slot)].pitch;
+        auto [heading,pitch]=storedLaunch(u,slot,false);
         std::optional<WeaponAimSolution> aim;
         if(solveAtRelease)aim=queryWeaponAim(u,t,slot);
         if(aim) {heading=aim->heading;pitch=aim->pitch;}
+        heading=uint16_t(heading+tweak.heading);pitch=uint16_t(pitch+tweak.pitch);
         const auto launch=retailGuidedLaunch(p.position,portHeadingToRetail(u.heading),heading,pitch,speed);
         p.position=launch.position;p.velocity=launch.velocity;p.angles=launch.angles;
         // The native base mover observes this new shot again in the firing tick
@@ -7021,10 +7029,11 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
         if(w.lightningEffect)p.lightningEffect=w.lightningEffect->initial;
         p.substeps=std::max(1u,(uint32_t(raw)+0xfffffu)>>20);
         const int32_t speed=int32_t(uint32_t(raw)/p.substeps);
-        uint16_t heading=u.weaponAim[size_t(slot)].heading,pitch=u.weaponAim[size_t(slot)].pitch;
+        auto [heading,pitch]=storedLaunch(u,slot,false);
         if(solveAtRelease)if(const auto aim=queryWeaponAim(u,t,slot)) {
             heading=aim->heading;pitch=aim->pitch;
         }
+        heading=uint16_t(heading+tweak.heading);pitch=uint16_t(pitch+tweak.pitch);
         p.angles={0,heading,uint16_t(0u-pitch)};
         heading=uint16_t(heading+portHeadingToRetail(u.heading));
         const int32_t horizontal=retailScaledCosine(pitch,speed);
@@ -7116,12 +7125,13 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered) 
             const int32_t raw = int32_t(rawSpeed);
             const uint32_t steps = std::max(1u, (uint32_t(raw) + 0xfffffu) >> 20);
             auto aim = solveAtRelease ? queryWeaponAim(u, t, slot) : std::optional<WeaponAimSolution>{};
-            if (aim && aim->unreachable) {
-                if (!scriptTriggered) return true;   // no arc: no flat shell (queryWeaponAim)
-                aim.reset();                         // a released shot still leaves, on the stored angles
-            }
-            const uint16_t heading = aim ? aim->heading : u.weaponAim[size_t(slot)].heading;
-            const uint16_t pitch = aim ? aim->pitch : u.weaponAim[size_t(slot)].pitch;
+            // No arc from the muzzle: no flat shell (queryWeaponAim). The
+            // TA fire gate already found one from the AimFrom piece, so this
+            // is a muzzle a little off it.
+            if (aim && aim->unreachable) return true;
+            const auto stored = storedLaunch(u, slot, true);
+            const uint16_t heading = uint16_t((aim ? aim->heading : stored[0]) + tweak.heading);
+            const uint16_t pitch = uint16_t((aim ? aim->pitch : stored[1]) + tweak.pitch);
             const auto muzzle = queryUnitScriptPoint(u.id, false, slot);
             const auto native = retailBallisticLaunch(muzzle, portHeadingToRetail(u.heading),
                 heading, pitch, raw / int32_t(steps));
@@ -7261,8 +7271,14 @@ bool World::canAttackTarget(const Unit& from,const Unit& target) const {
 
 // The units whose aim start (52fe30) posts a facing request and whose
 // readiness (52fff0) then waits for the body to face the slot's point.
+// TotalA.exe has no facing request in its weapon update (0x49e1a0): a
+// turret aims by script, and only a non-turret line-of-sight weapon
+// (0x49d9c0) needs the body to face its target. So only a type with such a
+// weapon posts one, and only where the mover could honour it.
 static bool slotNeedsFacing(const UnitType& t) {
-    return retailPostsFacing(!t.isStructure(),t.canFly,t.hoverAttack,uint16_t(t.turnInPlaceRate));
+    if (!retailPostsFacing(!t.isStructure(),t.canFly,t.hoverAttack,uint16_t(t.turnInPlaceRate))) return false;
+    return std::any_of(t.weapons.begin(),t.weapons.end(),
+        [](const Weapon& w) { return w.taAim==Weapon::TaAim::Direct; });
 }
 
 namespace {
@@ -7288,11 +7304,14 @@ void World::dropSlotTarget(Unit& u,int slot) {
     u.slotPoint=uint8_t(u.slotPoint&~(1u<<slot));
     // 51a7f0: TargetCleared(slot) only when a target was set, and for a
     // switcher only on the selected slot.
+    // TotalA.exe 0x49e1ea: no target, no outstanding aim.
+    u.weaponAim[size_t(slot)].flags&=uint16_t(~ta::TaAimState::kRequested);
     if (u.type->weaponSwitching && slot!=u.weaponSlot) return;
     if (const auto it=unitScript(u.id)) {
         const auto& file=*u.type->script();
-        u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,slot);
-        it->state().startArguments(file,file.scriptIndex("TargetCleared"),{uint32_t(slot),0,0,0},1);
+        const int native=u.type->nativeWeaponSlot(slot);
+        u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,native);
+        it->state().startArguments(file,file.scriptIndexExact("TargetCleared"),{uint32_t(native),0,0,0},1);
     }
 }
 
@@ -10049,6 +10068,7 @@ void World::missionKillAll() {
         if (u.corpseStatue<0 && u.deadFor<u.corpseUntil && !placeCorpse(u,corpseTypeOf(u.type))) retireCorpse(u);
     }
     std::erase_if(projectiles_, [&](const Projectile& p) { return killed.contains(p.fromId); });
+    std::erase_if(bursts_, [&](const BurstEmitter& b) { return killed.contains(b.fromId); });
     std::erase_if(flames_, [&](const FlameShot& f) { return killed.contains(f.fromId); });
     std::erase_if(pendingEffects_, [&](const PendingEffect& e) { return killed.contains(e.fromId); });
 }
@@ -17051,6 +17071,12 @@ void World::resolveFlyerPark(Unit& u,Order& leg) {
     leg.flightGoal.reset();
 }
 
+namespace {
+// Thread word 8 tag of an AimX thread: kAimCallback | local slot
+// (ScriptHost::returned, TotalA.exe's weapon callback 0x481490).
+constexpr uint32_t kAimCallback=0x100;
+}
+
 struct World::ScriptHost {
     World& world; Unit& unit; UnitScript& factory;
     uint32_t random(int32_t bound) { return world.gameRand(bound); }
@@ -17139,14 +17165,16 @@ struct World::ScriptHost {
             break;
         }
         case 19: factory.buggerOff=value!=0; break;
-        case 21: case 22: case 23:
-            if(value>=0 && size_t(value)<unit.weaponAim.size()) {
-                unit.weaponAim[size_t(value)].set(id);
-                unit.missionEvents|=4; // 50d450: every weapon SET wakes the owner
-            }
-            break;
         default: break;
         }
+    }
+    // A RETURN with a callback (thread word 8). An AimX thread's (TotalA.exe
+    // 0x481490) makes its slot ready when the script returns nonzero; a
+    // signal kill reports nothing and leaves the slot waiting.
+    void returned(uint32_t tag,uint32_t value) {
+        if((tag&~3u)!=kAimCallback)return;
+        const size_t slot=tag&3u;
+        if(value && slot<unit.weaponAim.size())unit.weaponAim[slot].flags|=ta::TaAimState::kReady;
     }
     void effect(uint32_t opcode,int piece,int32_t code) {
         const bool pointEffect=code>=2 && code<=5;
@@ -17462,41 +17490,87 @@ bool World::projectilePointInUnit(int unitId,const std::array<int32_t,3>& point)
         target->type->modelTop,portHeadingToRetail(target->heading),*target->type->projectileQuad);
 }
 
-std::array<int32_t,3> World::queryUnitScriptPoint(int unitId,bool sweetSpot,int slot) {
-    auto* u=unit(unitId);
-    if(!u || !u->type)return {};
-    std::array<int32_t,3> point{u->x.v,(u->type->canFly ? u->flightY : u->groundY).v,u->z.v};
-    const auto it=unitScript(unitId);
-    if(!it)return point;
-    const auto& file=*u->type->script();
-    std::array<uint32_t,4> args{0,uint32_t(slot),0,0};
-    ScriptHost host{*this,*u,*it};
-    it->state().query(file,file.scriptIndex(sweetSpot ? "SweetSpot" : "QueryWeapon"),args,host);
-    const int32_t piece=std::bit_cast<int32_t>(args[0]);
-    if(piece<0 || size_t(piece)>=it->peek().pieces.size())return point;
+std::array<int32_t,3> World::unitPiecePoint(Unit& u,int32_t piece,bool sweetSpot) {
+    std::array<int32_t,3> point{u.x.v,(u.type->canFly ? u.flightY : u.groundY).v,u.z.v};
+    const auto it=unitScript(u.id);
+    // 0x43df16 -> 0x43e01d: a piece out of range is the unit origin.
+    if(!it || piece<0 || size_t(piece)>=it->peek().pieces.size())return point;
     std::array<int32_t,3> offset{};
     if(sweetSpot) {
         // 4dd2a0 over the drawn vertex buffer: the piece's posed bounds centre
         // (retailPieceDrawnCenter), always from the current simulation pose.
-        if(size_t(piece)>=u->type->scriptPieceVertices.size())return point;
+        if(size_t(piece)>=u.type->scriptPieceVertices.size())return point;
         // The unit's cache answers while the posed chain is unchanged.
         thread_local RetailDrawnChain chain;
-        retailPieceDrawnChain(chain,u->type->productionModel,it->peek().pieces,piece,
-            portHeadingToRetail(u->heading),u->groundPitch,u->groundRoll);
-        offset=it->sweetSpotCache.get(chain,u->type->scriptPieceVertices[size_t(piece)]);
+        retailPieceDrawnChain(chain,u.type->productionModel,it->peek().pieces,piece,
+            portHeadingToRetail(u.heading),u.groundPitch,u.groundRoll);
+        offset=it->sweetSpotCache.get(chain,u.type->scriptPieceVertices[size_t(piece)]);
         // Engine deviation: a SweetSpot outside the body's footprint (the
         // Creon Submersible's lies 20 px off its centre, past its 2x2 cells)
         // is moved over the body's centre, at its own height. 52a4d0 reaches
         // a body only through the cells it owns and its selection quad, so
         // shots aimed past them missed it for good.
-        if(!u->type->canFly && u->type->footX>0 && u->type->footZ>0 &&
-           (std::abs(offset[0])>=(8*u->type->footX)<<16 || std::abs(offset[2])>=(8*u->type->footZ)<<16))
+        if(!u.type->canFly && u.type->footX>0 && u.type->footZ>0 &&
+           (std::abs(offset[0])>=(8*u.type->footX)<<16 || std::abs(offset[2])>=(8*u.type->footZ)<<16))
             offset[0]=offset[2]=0;
-    } else offset=retailPieceOrigin(u->type->productionModel,it->peek().pieces,piece,
-        portHeadingToRetail(u->heading),u->groundPitch,u->groundRoll);
+    } else offset=retailPieceOrigin(u.type->productionModel,it->peek().pieces,piece,
+        portHeadingToRetail(u.heading),u.groundPitch,u.groundRoll);
     for(size_t axis=0;axis<3;++axis)
         point[axis]=satAdd32(point[axis],offset[axis]);
     return point;
+}
+
+// TotalA.exe's per-slot call-in names (docs/retail-weapon-scripts.md 7.1),
+// by the FBI slot (weapon1..3) the local one came from. A synthetic type
+// carries no FBI map: its local slots are its FBI slots.
+int World::taWeaponScript(const UnitType& t,TaWeaponCall call,int slot) const {
+    static constexpr const char* kNames[4][3]={
+        {"AimPrimary","AimSecondary","AimTertiary"},
+        {"FirePrimary","FireSecondary","FireTertiary"},
+        {"QueryPrimary","QuerySecondary","QueryTertiary"},
+        {"AimFromPrimary","AimFromSecondary","AimFromTertiary"}};
+    const cob::File* file=t.script();
+    if(!file || slot<0 || slot>=3)return -1;
+    const int native=t.nativeWeaponSlot(slot);
+    if(native>2)return -1;
+    return file->scriptIndexExact(kNames[size_t(call)][size_t(native)]);
+}
+
+// 0x43e240 (QueryX, slot) and 0x43e3c0 (SweetSpot): a synchronous call with
+// its one in/out argument at 0 (TA passes no slot). A missing script, or no
+// free thread, leaves it 0: piece 0, the base piece (0x4b0c40).
+std::array<int32_t,3> World::queryUnitScriptPoint(int unitId,bool sweetSpot,int slot) {
+    auto* u=unit(unitId);
+    if(!u || !u->type)return {};
+    const auto it=unitScript(unitId);
+    if(!it)return {u->x.v,(u->type->canFly ? u->flightY : u->groundY).v,u->z.v};
+    const auto& file=*u->type->script();
+    std::array<uint32_t,4> args{0,0,0,0};
+    const int script=sweetSpot ? file.scriptIndexExact("SweetSpot") : taWeaponScript(*u->type,TaWeaponCall::Query,slot);
+    if(script>=0) {
+        ScriptHost host{*this,*u,*it};
+        it->state().query(file,script,args,host);
+    }
+    return unitPiecePoint(*u,std::bit_cast<int32_t>(args[0]),sweetSpot);
+}
+
+// 0x43e2e0: AimFromX with its argument at -1; still -1 (or no such script)
+// falls back to QueryX's piece. Only the aim angles use it (aim start and
+// the fire gate's re-check), never the shot's origin.
+std::array<int32_t,3> World::aimFromPoint(int unitId,int slot) {
+    auto* u=unit(unitId);
+    if(!u || !u->type)return {};
+    if(const auto it=unitScript(unitId)) {
+        const auto& file=*u->type->script();
+        const int script=taWeaponScript(*u->type,TaWeaponCall::AimFrom,slot);
+        std::array<uint32_t,4> args{0xffffffffu,0,0,0};
+        if(script>=0) {
+            ScriptHost host{*this,*u,*it};
+            it->state().query(file,script,args,host);
+        }
+        if(args[0]!=0xffffffffu)return unitPiecePoint(*u,std::bit_cast<int32_t>(args[0]),false);
+    }
+    return queryUnitScriptPoint(unitId,false,slot);
 }
 
 // 51aa50 for a unit target: its SweetSpot (4dd4f0) plus 80% of its mover's
@@ -17622,129 +17696,201 @@ void World::clearScriptWeaponTarget(Unit& u,bool fromCommand) {
             // TargetCleared a second time.
             u.slotTarget[slot]=0;
             u.aimWait[slot]=0;
-            if(fromCommand)u.pendingWeaponAnimations.push_back({ta::RetailWeaponAnimation::Clear,uint8_t(slot),0,0});
-            else u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,int(slot));
-            // Native 51a7f0 starts TargetCleared with immediate=0. The callback
-            // thread runs in the next regular COB pass, not inline in target
-            // retirement; its SET 21 remains script-owned and takes effect there.
-            it->state().startArguments(file,file.scriptIndex("TargetCleared"),{uint32_t(slot),0,0,0},1);
+            // TotalA.exe 0x49e1ea: a slot without a target drops its
+            // outstanding aim, so the next target starts a fresh AimX.
+            u.weaponAim[slot].flags&=uint16_t(~ta::TaAimState::kRequested);
+            const int native=u.type->nativeWeaponSlot(int(slot));
+            if(fromCommand)u.pendingWeaponAnimations.push_back({ta::RetailWeaponAnimation::Clear,uint8_t(native),0,0});
+            else u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,native);
+            // TargetCleared(slot), slot 0..2, not immediate (0x489893, 0x401c33):
+            // its thread runs in the next regular COB pass.
+            it->state().startArguments(file,file.scriptIndexExact("TargetCleared"),{uint32_t(native),0,0,0},1);
         }
     }
     u.scriptAimTarget=0;
 }
 
-// Legion (deliberate, not retail): no aim stalled for good on a script race.
-// Kirenna's AimWeapon (VERMAGE) waits for static 7, which her walk controller
-// sets after walk_legs (walking while aiming) or restore_x (stopped, not yet
-// aiming) and clears after a plain walk cycle; stopped and aiming it plays
-// restore_legs and sets it no more, and only TargetCleared or walking again
-// does. When she stops with a walk cycle still playing that began before she
-// aimed (an aim the sweep starts while she walks, the fight-move's scan
-// stopping her soon after: sight 215 inside her 400 range), the cycle's end
-// clears 7 after the stop and she never fires while the target stands. The
-// race is retail's (the same script in the same engine order; retail stalls
-// the same way, see docs/retail-engine.md, "Kirenna on an attack-move"), and
-// which side of it she lands on is the phase of her walk cycle, not the
-// pathfinding mode: over 120 start phases of vermage_fight_test she kept
-// firing in 8 in Retail mode and 13 in Legion. In Legion a loaded ground
-// unit standing still whose started aim (flags 0xe0) its script has not
-// accepted (SET 22) for kLegionAimStall ticks gets TargetCleared on that
-// slot once, as if its target had been retired and taken again: her script
-// sets 7 and fires, and standing, keeps it. The order and the slot keep the
-// target. Once per stall: the count restarts only when an aim is accepted,
-// the body moves or the slot's target is retired, so a script waiting on
-// purpose (activation, burrow, holster) hears it once.
-void World::legionAimStall(Unit& u,int slot,bool available) {
-    auto& wait=u.aimWait[size_t(slot)];
-    const auto& aim=u.weaponAim[size_t(slot)];
-    if((aim.flags&8) || u.speed.v!=0) { wait=0; return; }
-    if(!(aim.flags&0xe0) || !available || wait>kLegionAimStall) return;
-    if(++wait<=kLegionAimStall) return;
-    const auto it=unitScript(u.id);
-    if(!it) return;
-    const auto& file=*u.type->script();
-    u.weaponAnimations.add(ta::RetailWeaponAnimation::Clear,slot);
-    it->state().startArguments(file,file.scriptIndex("TargetCleared"),{uint32_t(slot),0,0,0},1);
+// 0x49d880's angle test: signed 16-bit differences against tolerance and
+// pitchtolerance (or tolerance when that is 0); a weapon with tolerance 0
+// takes 150 for both, or 2000 while the body moves (its move-rate bits,
+// unit+0x110 & 0xc). The full pitch tolerance, not half of it.
+static bool taWithinTolerance(const Weapon& w,bool moving,std::array<uint16_t,2> now,std::array<uint16_t,2> aimed) {
+    int32_t tolH=w.tolerance,tolP=w.pitchTolerance ? w.pitchTolerance : w.tolerance;
+    if(!w.tolerance)tolH=tolP=moving ? 2000 : 150;
+    const auto distance=[](uint16_t a,uint16_t b) { return std::abs(int32_t(std::bit_cast<int16_t>(uint16_t(a-b)))); };
+    return distance(now[0],aimed[0])<=tolH && distance(now[1],aimed[1])<=tolP;
 }
 
-bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,const WeaponAimSolution* given) {
+std::array<int32_t,3> World::taTargetPoint(Unit& u,const WeaponTarget& t,const Weapon& w) {
+    if(!t.unit)return t.point;
+    // 0x48a324..: a shooter with more than 5 kills leads the target's motion
+    // (a cruise weapon never does); everyone else aims at the SweetSpot.
+    if(u.kills>5 && !w.hasTaFlag(25))return retailLeadPoint(u,*t.unit,&w);
+    return queryUnitScriptPoint(t.unit->id,true);
+}
+
+std::optional<std::array<uint16_t,2>> World::taAimAngles(const Unit& u,const Weapon& w,
+        const std::array<int32_t,3>& from,const std::array<int32_t,3>& to) const {
+    // d = P - T (0x49e570, [E]); the heading is atan2(d.x, d.z) in BAM
+    // (0x4b715a) minus the body heading, so heading 0 is straight ahead and
+    // a unit with heading h moves along (-sin h, -cos h).
+    std::array<int32_t,3> d{};
+    for(size_t axis=0;axis<3;++axis)d[axis]=std::bit_cast<int32_t>(uint32_t(from[axis])-uint32_t(to[axis]));
+    const uint16_t heading=uint16_t(retailDirection(Fixed::raw(d[0]),Fixed::raw(d[2])).v-portHeadingToRetail(u.heading));
+    uint16_t pitch=0;
+    if(w.hasTaFlag(1)) {
+        // ballistic: 0x49a890's elevation, 0x8000 = no solution. The shared
+        // solver takes the target-minus-source deltas.
+        pitch=ta::retailBallisticPitch(-float(d[0])/65536.f,-float(d[1])/65536.f,-float(d[2])/65536.f,
+            float(ta::retailAimSpeed(w.projVel))/65536.f,w.gravityAdj,w.lobPreferred,ballisticGravityRaw_);
+        if(pitch==0x8000)return std::nullopt;
+    } else if(w.hasTaFlag(0)) {
+        // lineofsight: 0x49d910, atan2(-(d.y>>16), |d.xz|>>16); positive is
+        // a target above. A world pitch, not relative to the body's.
+        const uint64_t horizontal=isqrt64(uint64_t(int64_t(d[0])*d[0])+uint64_t(int64_t(d[2])*d[2]));
+        const int32_t height=std::bit_cast<int16_t>(uint16_t(uint32_t(d[1])>>16));
+        pitch=uint16_t(retailDirection(Fixed::raw(-height),Fixed::raw(int32_t(horizontal>>16))).v);
+    } else return std::nullopt;
+    return std::array<uint16_t,2>{heading,pitch};
+}
+
+bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,const WeaponAimSolution*) {
     const auto it=unitScript(u.id);
-    if(!it || slot<0 || slot>=3)return false;
+    if(!it || slot<0 || slot>=3 || size_t(slot)>=u.type->weapons.size())return false;
     const auto& file=*u.type->script();
-    const int aimScript=file.scriptIndex("AimWeapon"),fireScript=file.scriptIndex("FireWeapon");
-    // Native callback lookup may fail, but it never substitutes an immediate
-    // shot: readiness/release still require the script's SET 22 / SET 23.
-    // A caller that already solved this slot this tick (for the body's
-    // facing request) hands its solution in.
-    const auto solution=given ? std::optional<WeaponAimSolution>(*given) : queryWeaponAim(u,t,slot);
-    if(!solution)return true;
+    const Weapon& w=u.type->weapons[size_t(slot)];
+    auto& aim=u.weaponAim[size_t(slot)];
+    const int native=u.type->nativeWeaponSlot(slot);
+    using Aim=Weapon::TaAim;
     // A swept (auto-slot) target lives in the slot record, not in the
     // order-driven scriptAimTarget, which tickCombat retires with its order.
     // So does a point (Unit::slotPoint).
     if(!swept && t.unit)u.scriptAimTarget=t.unit->id;
-    u.weaponAimPoints[size_t(slot)]=solution->target;
-    u.weaponMuzzlePoints[size_t(slot)]=solution->source;
-    auto& aim=u.weaponAim[size_t(slot)];const auto& weapon=u.type->weapons[size_t(slot)];
-    // DroppedBallisticWeapon's angle virtual (+0x28, 4d4450) is a bare ret,
-    // so 52fd80 leaves its record's angles as they were: AimWeapon starts with
-    // them and the gate's angle test always passes. 52ae90 still runs aim
-    // start (52fe30) and the gate (52fff0) for the class, so a bomb waits for
-    // the script's SET 22 and, on a hover attacker, for its facing request.
-    const bool dropped=weapon.kind==Weapon::Kind::Dropped;
-    const uint16_t aimHeading=dropped ? aim.heading : solution->heading;
-    const uint16_t aimPitch=dropped ? aim.pitch : solution->pitch;
-    if(aim.start(aimHeading,aimPitch)) {
-        u.weaponAnimations.add(ta::RetailWeaponAnimation::Aim,slot,aimHeading,aimPitch);
-        // Native 52fe30 starts AimWeapon with immediate=0. Starting the VM here
-        // only queues its thread; the following unit-script phase runs its body.
-        it->state().startArguments(file,aimScript,{aimHeading,aimPitch,uint32_t(slot),0},3);
-    }
-    const bool available=u.reloads[slot]==0;
-    if(isLegionPathfinding(pathfindingMode_) && !u.type->canFly && !u.type->isStructure())
-        legionAimStall(u,slot,available);
-    // Native readiness (52fff0) compares the body heading with the mover's
-    // requested heading, which 52fe30 has just posted toward the slot's point:
-    // the led SweetSpot, or a melee target's origin. Only the units 52fe30
-    // posts a request for wait on it: a ground mover with a turninplacerate,
-    // or a HOVERATTACK flyer. Every other flyer, a ground unit that cannot
-    // pivot and a structure fire on COB readiness alone.
-    const bool aligned=!slotNeedsFacing(*u.type) ||
-        retailFacingAligned(portHeadingToRetail(u.heading),solution->facing,uint16_t(weapon.aimTol));
-    // No arc to the aim point: hold the FireWeapon start until there is one.
-    // The release (SET 23) launches on the angles accepted here (fire), so a
-    // shell never leaves on the flat pitch an unreachable solve aims at.
-    const bool ready=aim.ready(aimHeading,aimPitch,uint16_t(weapon.aimTol),available,aligned);
-    if(ready && solution->unreachable) {
-        // Aimed, loaded, and still no arc: a dud for the blocked-shot count
-        // (noteNoArc), one per nominal reload.
-        u.reloads[slot]=uint16_t(int32_t(weapon.reload*kTick+0.5f));
-        if(t.unit)noteNoArc(u,*t.unit);
-    }else if(ready) {
-        const uint16_t nominal=uint16_t(int32_t(weapon.reload*kTick+0.5f));
-        u.reloads[slot]=retailWeaponReload(nominal,uint16_t(crtRand(0x530167)));
-        const bool all=!u.type->weaponSwitching && u.type->weapons.size()>1;
-        // A commandfire shot raises 0x40000 (5301a1), which ends SUPPRESS;
-        // only a point target passes the weapon's flag (no unit-target
-        // reader of the bit is ported).
-        const uint32_t weaponFlags=!t.unit && weapon.commandFire ? 0x20000u : 0u;
-        u.missionEvents|=retailWeaponFireEvent(weaponFlags,0x10000,all ? 0xc0000000u : uint32_t(slot)<<30,aim.flags);
-        u.fireAnimations|=uint32_t(1)<<slot;
-        u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,slot);
-        // Native 530140 also starts FireWeapon with immediate=0. SET 23 can
-        // therefore only be observed by a later common weapon update.
-        it->state().startArguments(file,fireScript,{uint32_t(slot),0,0,0},1);
-        if(u.type->canFly) {
-            if(u.fireStartPending && u.unreleasedFires<255)++u.unreleasedFires;
-            u.fireStartPending=true;u.fireStartTick=tickCounter_;
+    const auto target=taTargetPoint(u,t,w);
+    u.weaponAimPoints[size_t(slot)]=target;
+    // 0x49e213 / 0x49e357: an aim starts only when none is outstanding, and
+    // independently of the reload. Turret: AimX(heading, pitch) from the
+    // AimFrom piece; vlaunch: AimX(0, 0); any other weapon has no Aim call.
+    if(!aim.requested()) {
+        std::optional<std::array<uint16_t,2>> angles;
+        if(w.taAim==Aim::Turret)angles=taAimAngles(u,w,aimFromPoint(u.id,slot),target);
+        else if(w.taAim==Aim::VLaunch)angles=std::array<uint16_t,2>{0,0};
+        if(angles) {
+            aim.heading=(*angles)[0];aim.pitch=(*angles)[1];
+            aim.flags=ta::TaAimState::kRequested;   // ready = 0
+            u.weaponAnimations.add(ta::RetailWeaponAnimation::Aim,native,aim.heading,aim.pitch);
+            // 0x4b0a70: a new thread, two arguments, the return callback in
+            // thread word 8, not immediate: the next COB pass runs it. A
+            // start that fails leaves the slot unready until its target goes.
+            it->state().startArguments(file,taWeaponScript(*u.type,TaWeaponCall::Aim,slot),
+                {aim.heading,aim.pitch,0,0},2,kAimCallback|uint32_t(slot));
         }
     }
-    if(aim.flags&16) {
-        u.fireStartPending=false;u.unreleasedFires=0;
-        fire(u,t,slot,true);
-        aim.projectileCreated();
-        // 52af72: the fallback follows every release, shot or no shot.
+    // The fire gate (0x49e3ae..): loaded; the caller has tested the range.
+    if(u.reloads[size_t(slot)]>0)return true;
+    const bool moving=it->movementRate!=0;
+    switch(w.taAim) {
+    case Aim::Turret: {
+        // 0x49d580: the aim must be outstanding and returned nonzero; the
+        // angles from the AimFrom piece now must still match the ones AimX
+        // was given, or the slot aims again next tick.
+        if(!aim.requested() || !aim.ready())return true;
+        const auto now=taAimAngles(u,w,aimFromPoint(u.id,slot),target);
+        if(!now || !taWithinTolerance(w,moving,*now,{aim.heading,aim.pitch})) {
+            aim.flags&=uint16_t(~ta::TaAimState::kRequested);
+            return true;
+        }
+        break;
     }
+    case Aim::VLaunch:   // 0x49db70: needs AimX(0, 0)'s return
+        if(!aim.requested() || !aim.ready())return true;
+        break;
+    case Aim::Direct: {
+        // 0x49d9c0: no Aim script; the body must face the target. Its world
+        // heading from the QueryX point is compared with the body's (the
+        // relative heading with 0). The body-pitch half of the test is not
+        // ported (docs/retail-weapon-scripts.md 4.2).
+        const auto now=taAimAngles(u,w,queryUnitScriptPoint(u.id,false,slot),target);
+        if(!now || !taWithinTolerance(w,moving,{(*now)[0],0},{0,0}))return true;
+        aim.heading=(*now)[0];aim.pitch=(*now)[1];
+        break;
+    }
+    case Aim::Dropped: break;   // 0x49dd60: no aim test
+    default: return true;       // no fire routine (0x49e010)
+    }
+    // 0x49d6bc..0x49d73e: the shot's spread, accuracy plus up to 2048 for
+    // lost health, divided by kills/6 when that is over 1; heading and pitch
+    // each get rand(spread) - spread/2.
+    const int32_t hp=std::max(0,u.hp.floorInt()),maxHp=std::max(1,u.maximumHp());
+    int32_t spread=int32_t(w.accuracy)+2048-int32_t(int64_t(hp)*2048/maxHp);
+    if(u.kills/6>1)spread/=u.kills/6;
+    ShotTweak tweak;
+    if(spread>0) {
+        tweak.heading=uint16_t(int32_t(gameRand(spread))-spread/2);
+        tweak.pitch=uint16_t(int32_t(gameRand(spread))-spread/2);
+    }
+    // QueryX is read before FireX runs (barrel alternation, 0x49d6af).
+    u.weaponMuzzlePoints[size_t(slot)]=queryUnitScriptPoint(u.id,false,slot);
+    if(w.burst>0) {
+        // 0x49cb79: a burst shot becomes an emitter (tickWeaponBursts) that
+        // releases `burst` shots, the first burstrate ticks from now.
+        if(!econPayShot(u,w))return true;
+        blockCloak(u,600);
+        u.justFired=true;u.firedWeapons|=uint32_t(1)<<slot;
+        BurstEmitter b;
+        b.fromId=u.id;b.slot=slot;b.targetId=t.unit ? t.unit->id : 0;b.point=target;
+        b.left=w.burst;b.rate=uint16_t(std::max<int>(1,w.burstRateTicks));b.next=tickCounter_+b.rate;
+        bursts_.push_back(b);
+    } else if(!fire(u,t,slot,true,tweak)) return true;   // cannot pay: nothing changes
+    // FireX after the projectile exists (0x49cb86), no arguments, not
+    // immediate; RockUnit(-800 cos h, -800 sin h) with h the shot heading
+    // relative to the body (0x49cbe6). A dropped weapon calls neither.
+    if(w.taAim!=Aim::Dropped) {
+        it->state().startArguments(file,taWeaponScript(*u.type,TaWeaponCall::Fire,slot),{0,0,0,0},0);
+        const uint16_t h=uint16_t(aim.heading+tweak.heading);
+        it->state().startArguments(file,file.scriptIndexExact("RockUnit"),
+            {uint32_t(-retailScaledCosine(h,800)),uint32_t(-retailScaledSine(h,800)),0,0},2);
+    }
+    u.fireAnimations|=uint32_t(1)<<slot;
+    u.weaponAnimations.add(ta::RetailWeaponAnimation::Fire,native,uint16_t(aim.heading+tweak.heading));
+    // 0x49d78e: the shot consumes the aim; AimX runs again before the next.
+    aim.flags=0;
+    // 0x49e468..0x49e4ee: no random term. k = min(kills/5, 5), h = 20ths of
+    // health left; reload = (ticks*(100-6k)/100)*(120-h)/100.
+    const int32_t k=std::min<int32_t>(u.kills/5,5);
+    const int32_t h20=int32_t(int64_t(hp)*20/maxHp);
+    const int32_t ticks=w.reloadTicks ? int32_t(w.reloadTicks) : int32_t(w.reload*kTick+0.5f);
+    u.reloads[size_t(slot)]=(ticks*(100-6*k)/100)*(120-h20)/100;
+    // The slot fired (SUPPRESS waits on it); a command-fire shot at a point
+    // raises 0x40000 instead.
+    u.missionEvents|=!t.unit && w.commandFire ? 0x40000u : 0x10000u;
     return true;
+}
+
+// 0x49b75e..0x49b9a9: each burst emitter releases a clone every burstrate
+// ticks until its count is spent, re-reading its piece's point; the clone's
+// heading takes rand(sprayangle) - sprayangle/2. Engine deviation: the clone
+// is aimed at the slot's target (its last point once it is gone) rather than
+// along the emitter's stored heading.
+void World::tickWeaponBursts() {
+    for(size_t i=0;i<bursts_.size();) {
+        auto& b=bursts_[i];
+        Unit* u=unit(b.fromId);
+        if(!u || !u->alive() || !u->type || size_t(b.slot)>=u->type->weapons.size() || !b.left) {
+            bursts_.erase(bursts_.begin()+long(i));
+            continue;
+        }
+        if(tickCounter_<b.next) { ++i;continue; }
+        const Weapon& w=u->type->weapons[size_t(b.slot)];
+        Unit* tu=b.targetId ? unit(b.targetId) : nullptr;
+        if(tu && (!tu->alive() || !tu->type))tu=nullptr;
+        ShotTweak tweak;tweak.free=true;
+        if(w.sprayAngle>0)tweak.heading=uint16_t(int32_t(gameRand(w.sprayAngle))-int32_t(w.sprayAngle)/2);
+        const BurstEmitter shot=b;
+        --b.left;b.next=tickCounter_+b.rate;
+        fire(*u,WeaponTarget{tu,shot.point},shot.slot,true,tweak);
+        ++i;
+    }
 }
 
 void World::startWorkAnimation(Unit& u,Fixed targetX,Fixed targetZ) {
@@ -19496,6 +19642,7 @@ void World::tick(float dt) {
 
     // Native airborne occupancy (persistent) is rebuilt before projectile updates.
     const auto projectileAircraft=updateAirOccupancy();
+    tickWeaponBursts();
     tickFlames(projectileAircraft);
     tickStraightProjectiles(projectileAircraft);
     // Projectiles.
@@ -21554,6 +21701,14 @@ uint64_t World::stateHash() const {
     // Projectiles: count alone hides same-count divergence, so fold owner and
     // position of each in flight (mixf hashes the exact bits -- deterministic
     // across peers and NaN-safe, unlike an int cast).
+    if (!bursts_.empty()) {
+        mix(0x4255525354u);mix(uint64_t(bursts_.size()));
+        for (const auto& b : bursts_) {
+            mix(uint32_t(b.fromId));mix(uint32_t(b.slot));mix(uint32_t(b.targetId));
+            for (int32_t v : b.point) mix(uint32_t(v));
+            mix(uint32_t(b.left)|uint32_t(b.rate)<<16);mix(b.next);
+        }
+    }
     mix(uint64_t(projectiles_.size()));
     for (const auto& p : projectiles_) {
         mix(uint64_t(uint32_t(p.fromPlayer)));

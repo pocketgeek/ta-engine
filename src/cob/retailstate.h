@@ -69,6 +69,9 @@ struct RetailScriptState {
         uint32_t random(int32_t bound) { return host.random(bound); }
         uint32_t get(int id,const std::array<uint32_t,4>& args) { return host.get(id,args); }
         void set(int id,int value) { host.set(id,value); }
+        void returned(uint32_t tag,uint32_t value) {
+            if constexpr(requires { host.returned(tag,value); }) host.returned(tag,value);
+        }
         uint32_t sound(int name,int32_t priority) { return host.sound(name,priority); }
         // Display hosts may track converted poses. Gameplay hosts have no hook;
         // their instantiation keeps the same piece update and callback ordering.
@@ -172,11 +175,17 @@ struct RetailScriptState {
     }
 
     // 56c680 installs four argument words and exposes only count stack slots.
-    bool startArguments(const File& file,int script,const std::array<uint32_t,4>& args,unsigned count) {
+    // A nonzero callback tag goes into thread word 8 (TotalA.exe 0x4b0a70):
+    // the thread's RETURN reports (tag, value) to the host. A start that
+    // fails (no such script, no free thread) returns false; the caller owns
+    // the "callback(0)" consequence (0x4b0b00).
+    bool startArguments(const File& file,int script,const std::array<uint32_t,4>& args,unsigned count,
+                        uint32_t callback=0) {
         if (count>4) throw std::invalid_argument("too many script arguments");
         const int slot=vm.start(file,script,args);
         if (slot<0) return false;
         vm.threads[size_t(slot)].words[2]=count-1u;
+        vm.threads[size_t(slot)].words[8]=callback;
         return true;
     }
 

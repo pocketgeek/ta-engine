@@ -575,6 +575,12 @@ struct UnitType {
     bool hasPrimaryWeaponBlock=false; // native UnitDef+264 bit 0x20 is set by WEAPON1 presence
     std::array<bool,3> weaponAirstrikeCursor{}; // FBI `dropped=` bit on native WeaponType slots
     std::array<uint8_t,3> weaponNativeSlotForLocal{}; // compressed local damage vector -> FBI slot
+    // The FBI slot (0..2: weapon1..3) a local weapon slot came from; a
+    // synthetic type without the map keeps its local slots.
+    int nativeWeaponSlot(int local) const {
+        if (local<0 || local>=3) return local;
+        return std::max(local,int(weaponNativeSlotForLocal[size_t(local)]));
+    }
     // [EXPLODEAS]: a weapon fired at the unit's OWN position the moment it dies
     // (Kamikaze Rat's 320-radius blast, Grenadier/Fire Demon/Balloon death pops).
     Weapon explodeAs;
@@ -1475,7 +1481,7 @@ struct alignas(64) Unit {
     bool fireStartPending=false;
     uint8_t unreleasedFires=0;
     uint32_t fireStartTick=0;   // the tick of the pending start
-    std::array<ta::RetailAimState,3> weaponAim{{{0,0,0},{0,0,1},{0,0,2}}};
+    std::array<ta::TaAimState,3> weaponAim{};   // TotalA.exe slot aim record (tickScriptWeapon)
     std::array<std::array<int32_t,3>,3> weaponMuzzlePoints{}; // display-only captured QueryWeapon geometry
     std::array<std::array<int32_t,3>,3> weaponAimPoints{}; // display-only captured aim geometry
     // Retail's per-slot weapon record layer under the missions (icd 52aae0,
@@ -1494,10 +1500,8 @@ struct alignas(64) Unit {
     std::array<int32_t,3> slotTarget{};
     uint8_t slotAuto = 7;
     uint8_t slotManual = 0;
-    // Legion only (World::kLegionAimStall): per slot, the ticks a loaded,
-    // standing ground unit's started aim has waited for its script's SET 22;
-    // kLegionAimStall + 1 once that aim was cleared for it. Always 0 in
-    // Retail. Hashed with a tag when set.
+    // Formerly Legion's Kingdoms aim-stall count; TA has no SET 22 handshake,
+    // so it stays 0 (kept for the Unit layout). Hashed with a tag when set.
     std::array<uint8_t,3> aimWait{};
     int32_t faceRequest = -1;
     // A slot's point target (record +4/+6 with +6 not 0x8000, set by 51a770:
@@ -2843,7 +2847,7 @@ public:
         // Legion's formation slots (hashed, by unit id) likewise.
         legionFormationSlots_.clear();legionFormationClasses_={};legionSlotDests_.clear();
         groundOwner_.clear();groundLinkSerial_=0;
-        projectiles_.clear();flames_.clear();
+        projectiles_.clear();flames_.clear();bursts_.clear();
         hits_.clear();
         pendingSounds_.clear();soundReq_={};
         transportEffects_.clear();
@@ -3061,6 +3065,9 @@ public:
     // 51aa50 for a unit target: its SweetSpot plus the weapon's lead.
     std::array<int32_t,3> retailLeadPoint(const Unit& u,const Unit& target,const Weapon* weapon);
     std::array<int32_t,3> queryUnitScriptPoint(int unitId,bool sweetSpot,int slot=0);
+    // A script piece's world point (0x43def0; a SweetSpot's drawn centre);
+    // a piece out of range is the unit origin.
+    std::array<int32_t,3> unitPiecePoint(Unit& u,int32_t piece,bool sweetSpot);
     bool projectilePointInUnit(int unitId,const std::array<int32_t,3>& point) const;
     // Native collision result: 0 clear/bounce, 1 outside map, 2 environmental hit.
     int projectileEnvironment(const std::array<int32_t,3>& point,int32_t& verticalSpeed,
@@ -3541,12 +3548,43 @@ private:
     void tickCombat(Unit& u, float dt, bool& groundMovementHandled);
     // False when no shot left (a charm it cannot take, or a non-script shot
     // it cannot pay for).
+    // A scripted TA shot's adjustments (tickScriptWeapon): the accuracy
+    // spread added to the launch heading and pitch (0x49d6bc..0x49d73e), and
+    // a burst clone, which charges nothing (docs/retail-weapon-scripts.md 5).
+    struct ShotTweak { uint16_t heading=0,pitch=0; bool free=false; };
     bool fire(Unit& u, Unit& target, int slot,bool scriptTriggered=false) { return fire(u,WeaponTarget{&target},slot,scriptTriggered); }
-    bool fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered=false);
+    bool fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered=false) { return fire(u,t,slot,scriptTriggered,ShotTweak{}); }
+    bool fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,ShotTweak tweak);
+    // TotalA.exe 0x49e1a0 for one slot of a unit with a COB script: AimX
+    // start, the fire gate, the shot, FireX, RockUnit and the reload
+    // (docs/retail-weapon-scripts.md 7.4). True when the unit has a script
+    // (the caller's unscripted fallback is then skipped). `given` is unused.
     bool tickScriptWeapon(Unit& u,Unit& target,int slot,bool swept=false,const WeaponAimSolution* given=nullptr) {
         return tickScriptWeapon(u,WeaponTarget{&target},slot,swept,given);
     }
     bool tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept=false,const WeaponAimSolution* given=nullptr);
+    // 0x43e2e0: the AimFromX piece's world point (-1: QueryX's instead).
+    std::array<int32_t,3> aimFromPoint(int unitId,int slot);
+    // 0x48a1e0's point for a slot target: a unit's SweetSpot (led by a
+    // veteran of more than 5 kills, unless cruise), or the point as it stands.
+    std::array<int32_t,3> taTargetPoint(Unit& u,const WeaponTarget& t,const Weapon& w);
+    // 0x49e264..0x49e2cc: AimX's heading (relative to the body) and pitch
+    // from `from` to `to`; none when the weapon has no solution.
+    std::optional<std::array<uint16_t,2>> taAimAngles(const Unit& u,const Weapon& w,
+        const std::array<int32_t,3>& from,const std::array<int32_t,3>& to) const;
+    // Start a TA weapon call-in for a local weapon slot: AimX / FireX /
+    // QueryX / AimFromX by the FBI slot the local one came from.
+    enum class TaWeaponCall : uint8_t { Aim, Fire, Query, AimFrom };
+    int taWeaponScript(const UnitType& t,TaWeaponCall call,int slot) const;
+    // Burst emitters (0x49b75e..0x49b9a9): a burst weapon's shot clones
+    // itself every burstrate ticks until its count runs out. Hashed.
+    struct BurstEmitter {
+        int fromId=0,slot=0,targetId=0;
+        std::array<int32_t,3> point{};
+        uint16_t left=0,rate=1;
+        uint32_t next=0;
+    };
+    void tickWeaponBursts();
     // SUPPRESS (0x404d70): the order's five stages on the current leg, run
     // ahead of the unit's combat; true while it owns the body this tick.
     bool tickSuppress(Unit& u,bool& groundMovementHandled);
@@ -3578,7 +3616,6 @@ private:
     void pushSuppressFormation(Unit& u);
     // The approach ring of a SUPPRESS approach leg (Order::suppressInner).
     std::optional<RetailRingGoal> suppressRing(const Unit& u,const Order& goal) const;
-    void legionAimStall(Unit& u,int slot,bool available);
     void clearScriptWeaponTarget(Unit& u,bool fromCommand=false);
     // Convert a unit to another player (contact charm + mind-control weapons).
     void captureUnit(Unit& t, int newPlayer);
@@ -4527,6 +4564,7 @@ private:
     void tickFeatureDeaths();   // seqnamedie playback ends: featuredead (495ef7)
     std::unordered_map<int, size_t> featureIdx_;   // feature id -> index in features_
     std::vector<Projectile> projectiles_;
+    std::vector<BurstEmitter> bursts_;
     std::vector<FlameShot> flames_;
     void tickFlames(std::span<const int> airGrid);
     void tickStraightProjectiles(std::span<const int> airGrid);
@@ -4756,9 +4794,6 @@ private:
     };
     void tickRetailGroups();
     void planLegionFlightStations();
-    // Legion: a standing ground unit's aim its script has not accepted for
-    // this many ticks gets one TargetCleared (tickScriptWeapon).
-    static constexpr uint8_t kLegionAimStall=90;
     // Legion: idle landed flyers make way for allied ground groups.
     static constexpr uint32_t kLegionLiftQuiet=90;   // ticks after the last request
     static constexpr uint32_t kLegionLiftRest=240;   // ticks from the hand-over to landing until it may lift again

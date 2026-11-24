@@ -556,17 +556,24 @@ static void classicMoveVsAttackMove(const char* root) {
         auto enemyHp=[&]{ double hp=0;for (int id:enemies) if (const auto* e=w.unit(id);e && e->alive()) hp+=e->hp.toFloat();return hp; };
         const double hp0=enemyHp();
         double hpWhileWalking=hp0;
-        std::set<int> engaged,arrived;
+        std::set<int> engaged,arrived,moveDone;
         uint32_t lastArrival=0;
         for (uint32_t tick=0;tick<1200;++tick) {
             w.tick(1.f/30.f);
             bool walking=false;
-            for (int id:column) {
+            for (size_t k=0;k<column.size();++k) {
+                const int id=column[k];
                 const auto* u=w.unit(id);
                 if (!u || !u->alive()) continue;
                 // Its own order still pending (the goal leg is in the queue).
+                // Only the Move it was given counts: once it has arrived, its
+                // standby may take an auto target with a return move behind it
+                // (Maneuver), which is not stopping on the way.
                 bool pending=false;
-                for (const auto& o:u->orders) if (o.goal && !o.autoTarget) pending=true;
+                if (!moveDone.count(id)) {
+                    for (const auto& o:u->orders) if (o.goal && !o.autoTarget) pending=true;
+                    if (!pending) moveDone.insert(id);
+                }
                 if (pending) {
                     walking=true;
                     if (!u->orders.empty() && u->orders.front().autoTarget) engaged.insert(id);

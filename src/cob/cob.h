@@ -35,6 +35,9 @@ struct File {
     CreateHold createHold;             // createHold(*this), filled by load()
 
     int scriptIndex(const std::string& name) const;   // -1 if absent
+    // TotalA.exe's engine call-ins (0x4b0a8e, 0x4b0960, 0x4b0bde) compare the
+    // name table byte for byte: case-sensitive. -1 if absent.
+    int scriptIndexExact(const char* name) const;
     // Resolve a name-table index (PLAY_SOUND / MAP_COMMAND operand); "" if out of range.
     const std::string& name(uint32_t idx) const {
         static const std::string empty;

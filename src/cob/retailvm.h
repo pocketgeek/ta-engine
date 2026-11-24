@@ -11,7 +11,12 @@ namespace ta::cob {
 
 // Integer thread interpreter observed at 56c540 / 56c870 / 56c8b0.
 // Piece operations and engine queries belong to the host. Unlike the display
-// VM, a CALL occupies another one of the sixteen slots and suspends its caller.
+// VM, a CALL occupies another thread slot and suspends its caller.
+// TotalA.exe gives a unit 8 threads (0x4b08c0 scans 8): start() refuses once
+// kThreadLimit are busy. The record keeps sixteen for the saved-state layout.
+// Thread word 8 is the return callback (0x4b0b37): a nonzero tag makes RETURN
+// hand (tag, returned value) to the host's returned() before the thread ends
+// (0x4b19d0); a SIGNAL kill or clearThreads never calls it (0x4b1a75).
 class RetailVm {
 public:
     struct Thread {
@@ -30,6 +35,7 @@ public:
     std::vector<uint32_t> statics;
     uint32_t active=0;
     int32_t ticksPerSecond=30;
+    static constexpr uint32_t kThreadLimit=8;
 
     explicit RetailVm(size_t staticCount=0):statics(staticCount) {}
 
@@ -48,7 +54,7 @@ public:
 
     int start(const File& file,int script,std::span<const uint32_t> args={}) {
         if (script<0 || size_t(script)>=file.scripts.size()) return -1;
-        const uint32_t free=~threadMask_&0xffffu;
+        const uint32_t free=~threadMask_&((1u<<kThreadLimit)-1u);
         if(free) {
             const size_t i=std::countr_zero(free);
             auto& t=threads[i];
@@ -147,7 +153,14 @@ public:
                 break;
             }
             case 0x10064000: t.pc()=arg(0); break;
-            case 0x10065000: finish(slot); return;
+            case 0x10065000:
+                // 0x4b19d0: a thread with a callback pops its return value
+                // and reports it before it ends.
+                if (t.words[8]) {
+                    const uint32_t value=t.top()>=0 ? t.pop() : 0u;
+                    if constexpr(requires { host.returned(t.words[8],value); }) host.returned(t.words[8],value);
+                }
+                finish(slot); return;
             case 0x10066000: t.pc()=t.pop() ? pc+2 : arg(0); break;
             case 0x10067000: {
                 const auto mask=t.pop();

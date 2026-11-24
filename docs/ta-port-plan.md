@@ -56,6 +56,14 @@ about half the search requests. sharedgoal still lands all 80 in the goal area,
 but 12 keep re-asking for the crowded goal through the 60-tick gate (TA's
 partial-route handling, [U] in the spec). Legion is unchanged (identical hashes).
 
+## Weapon scripts (docs/retail-weapon-scripts.md)
+
+TA units fire through TotalA.exe's call-ins (AimPrimary.. with the return-value
+handshake, FirePrimary.., QueryPrimary.., AimFromPrimary.., RockUnit, TargetCleared,
+SetMaxReloadTime), with retail's reload formula, accuracy spread, tolerance defaults and
+burst emitters; the Kingdoms AimWeapon/FireWeapon/SET 21-23 handshake is gone. Units on a
+plain Move fire on the move. Differences: section 7.8 of the spec.
+
 ## Known deviations from retail (deliberate)
 
 - All *.hpi are mounted (retail stops after 10, hiding totala3/4 and worlds.hpi on the GOG layout).
