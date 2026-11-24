@@ -34,7 +34,9 @@ struct Types {
     sim::FeatType body;
     sim::UnitType victim, ghoul, priest, animator, mason, soldier;
     Types() {
-        body.name = "victim_dead"; body.resurrectable = true; body.reclaimable = true;
+        // A TA wreck: no resurrectable key; reclaimable, and its name up to
+        // the '_' names the unit it raises (TotalA.exe 0x404f36, FeatType::raises).
+        body.name = "victim_dead"; body.reclaimable = true;
         body.decomposeTicks = 100000; body.energy = 10;
         auto mover = [](const char* id) {
             sim::UnitType t;
@@ -43,15 +45,16 @@ struct Types {
             t.footX = t.footZ = 2; t.buildTime = 1; t.sight = 500; t.upright = true;
             return t;
         };
-        victim = mover("victim"); victim.buildTime = 100;
+        victim = mover("victim"); victim.buildTime = 3000;
         ghoul = mover("ghoul"); ghoul.buildTime = 30;
         soldier = mover("soldier");
         // A caster as the shipped ones are: a mobile builder that can reclaim.
-        priest = mover("priest"); priest.workerTime = 10; priest.isBuilder = true;
+        priest = mover("priest"); priest.workerTime = 300; priest.isBuilder = true;
         priest.canReclaim = true; priest.canResurrect = true;
         animator = priest; animator.id = animator.name = "animator";
         animator.canResurrect = false; animator.canAnimate = true; animator.animateType = &ghoul;
         mason = mover("mason"); mason.workerTime = 10; mason.isBuilder = true; mason.canReclaim = true;
+        body.raises = &victim;
     }
 };
 
@@ -88,8 +91,11 @@ struct Scene {
 }
 
 // A right-click on a body with a priest (the client sends Cmd::Resurrect):
-// the priest walks to it, raises it at a tenth of its health, and the body
-// goes. A unit that cannot raise it keeps the order it had.
+// the priest walks to it and raises it -- TotalA.exe RESURRECT (0x404db0):
+// the timer ftol(buildtime x 0.3 / (workertime / 30)) counts down one a tick
+// (stage 4, 0x405005), the unit comes back finished with 1 HP (0x405215) and
+// the priest repairs it (stage 6: REPAIRUNIT at the head of its queue). A
+// unit that cannot raise it keeps the order it had.
 static void orderedResurrect(const Types& t) {
     std::printf("an ordered resurrect raises the body:\n");
     Scene s(t, t.body);
@@ -103,24 +109,54 @@ static void orderedResurrect(const Types& t) {
           "Cmd::Resurrect gives the priest one RESURRECT leg on the body");
     check(s.w->unit(soldier)->orders.size() == 1 && !s.w->unit(soldier)->orders.front().reviveKind,
           "a unit that cannot raise it keeps its own order");
-    int channel = -1, raisedAt = -1;
+    int channel = -1, raisedAt = -1, raisedHp = -1, raisedId = 0;
     for (int t2 = 0; t2 < 900 && raisedAt < 0; ++t2) {
         s.tick();
         if (channel < 0 && s.w->unit(priest)->reviveTarget) channel = t2;
-        if (s.count(&t.victim, 0)) raisedAt = t2;
+        for (const auto& u : s.w->units())
+            if (u.alive() && u.type == &t.victim && u.id != s.dead) {
+                raisedAt = t2; raisedHp = int(u.hp.toFloat() + 0.5f); raisedId = u.id;
+            }
     }
-    const sim::Unit* raised = nullptr;
-    for (const auto& u : s.w->units()) if (u.alive() && u.type == &t.victim && u.id != s.dead) raised = &u;
-    s.tick(2);
     char detail[160];
     std::snprintf(detail, sizeof detail, "channel from %d, raised at %d (%d ticks), hp %d",
-                  channel, raisedAt, raisedAt - channel + 1, raised ? int(raised->hp.toFloat() + 0.5f) : -1);
+                  channel, raisedAt, raisedAt - channel + 1, raisedHp);
     check(channel > 0 && raisedAt > channel, "the priest walks, then channels", detail);
-    check(raisedAt - channel + 1 == 90 && raised && int(raised->hp.toFloat() + 0.5f) == 10,
-          "...0.3 x buildtime / workertime, the unit back at a tenth of its health", detail);
-    check(!s.bodyLies() && s.w->unit(priest)->orders.empty() && !s.w->unit(priest)->reviveTarget,
-          "the body is gone and the order is over", detail);
+    // 3000 x 0.3 / (300 / 30) = 90: 90 ticks counting down, raised at the 91st.
+    check(raisedAt - channel + 1 == 91 && raisedHp == 1,
+          "...0.3 x buildtime / (workertime/30) ticks, the unit back with 1 HP", detail);
+    const auto& after = s.w->unit(priest)->orders;
+    check(!s.bodyLies() && !s.w->unit(priest)->reviveTarget && after.size() == 1 &&
+          after.front().repairTarget == raisedId,
+          "the body is gone and the priest repairs the raised unit", detail);
+    s.tick(300);
+    const sim::Unit* raised = s.w->unit(raisedId);
+    check(raised && raised->hp > Fixed::fromInt(1), "...which gains health");
     check(s.w->player(0).mana == 100, "raising cost nothing");
+}
+
+// A feature -- a map wreck, or the heap a destroyed wreck leaves -- is raised
+// too: Cmd::Resurrect's target is then -featureId. Its name names the unit
+// (cornecro_heap raises cornecro); one that names none cannot be raised.
+static void featureResurrect(const Types& t) {
+    std::printf("a wreck feature is raised:\n");
+    sim::FeatType heap = t.body; heap.name = "victim_heap";
+    sim::FeatType rock = t.body; rock.name = "rock1"; rock.raises = nullptr;
+    Scene s(t, t.body);
+    s.w->setFeatureTypes({t.body, heap, rock});
+    const int heapId = 22 * 64 + 30, rockId = 10 * 64 + 30;
+    s.w->addFeature(heapId, 496, 368, 10, 2, 2, false, 1);   // anchor cell (30, 22)
+    s.w->addFeature(rockId, 496, 176, 10, 2, 2, false, 2);
+    const int priest = s.w->spawn(&t.priest, 330, 360, 0, 0);
+    check(s.w->reviveKind(priest, -heapId) == 1 && s.w->reviveKind(priest, -rockId) == 0,
+          "a heap naming a unit can be raised, a rock cannot");
+    s.command(net::Cmd::Resurrect, priest, -heapId);
+    const auto& o = s.w->unit(priest)->orders;
+    check(o.size() == 1 && o.front().reviveKind == 1 && o.front().reclaimFeat == heapId,
+          "Cmd::Resurrect on -featureId gives a RESURRECT leg on the feature");
+    for (int i = 0; i < 900 && !s.count(&t.victim, 0); ++i) s.tick();
+    const sim::Feature* f = s.w->feature(heapId);
+    check(s.count(&t.victim, 0) == 1 && (!f || !f->alive), "the heap rises as the priest's unit and is gone");
 }
 
 // Nothing raises a body unordered: an idle priest beside one stands, and an
@@ -154,8 +190,8 @@ static void idleCastersAndBuildersLeaveBodies(const Types& t) {
     }
 }
 
-// The kinds (0x497100, 0x496fd0): resurrect needs canresurrect and the body's
-// resurrectable, animate cananimate and the body's animatable (its own flag,
+// The kinds (0x497100, 0x496fd0; TotalA.exe 0x440043 / 0x404f36): resurrect
+// needs canresurrect and a reclaimable body naming a unit, animate cananimate and the body's animatable (its own flag,
 // 0x1000). Neither looks at the body's owner: the raised unit is the caster's.
 static void kinds(const Types& t) {
     std::printf("the revive kinds:\n");
@@ -256,6 +292,7 @@ static void wire() {
 int main() {
     const Types types;
     orderedResurrect(types);
+    featureResurrect(types);
     idleCastersAndBuildersLeaveBodies(types);
     kinds(types);
     areaReclaimRaisesFirst(types);

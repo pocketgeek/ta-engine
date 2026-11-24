@@ -1690,7 +1690,9 @@ void World::replaceLeg(Unit& u, const std::vector<Order>& path) {
         o.targetId = tmpl.targetId;
         o.guard = tmpl.guard;
         o.load = tmpl.load;
-        o.unload = tmpl.unload;
+        // A GROUND_UNLOAD re-routed after a refused drop (its transfer folded
+        // onto the approach leg) keeps the unload on the goal only.
+        o.unload = tmpl.unload && (!tmpl.transportUnloadApproach || i + 1 == path.size());
         o.transportPickup = tmpl.transportPickup;
         o.transportUnloadReleasePending = tmpl.transportUnloadReleasePending;
         o.transportUnloadTransferDeferred = tmpl.transportUnloadTransferDeferred;
@@ -1711,6 +1713,7 @@ void World::replaceLeg(Unit& u, const std::vector<Order>& path) {
             o.transportPassenger = tmpl.transportPassenger;
             o.transportApproachAttempts = tmpl.transportApproachAttempts;
             o.transportX = tmpl.transportX; o.transportY = tmpl.transportY; o.transportZ = tmpl.transportZ;
+            o.transportHeading = tmpl.transportHeading;
             o.missionRadius = tmpl.missionRadius;
             o.missionTarget = tmpl.missionTarget;
             o.productionExit = tmpl.productionExit;
@@ -4106,14 +4109,20 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 const auto target=goal.missionTarget.value_or(std::pair{goal.x,goal.z});
                 const bool inRange=retailTransportInRange((target.first-u.x).v,
                     (target.second-u.z).v,uint16_t(u.type->transportDist));
+                // The order after this unload: past the paired unload leg
+                // while the approach still stands alone (unloadAt).
+                const size_t leg=currentLeg(u.orders);
+                const bool nextOrder=leg+(goal.unload ? 1u : 2u)<u.orders.size();
+                const bool routing=goal.controller && !goal.navigationExhausted && u.speed>Fixed() &&
+                    u.bodyBlockStreak<2;
                 const int result=retailTransportUnloadApproach(m,goal.transportApproachAttempts,
-                    w.tickCounter_,events,inRange,!u.type->isStructure() && u.type->maxVel>Fixed(),[&] {
+                    w.tickCounter_,events,inRange,!u.type->isStructure() && u.type->maxVel>Fixed(),nextOrder,
+                    routing,[&] {
                         // TotalA.exe GROUND_UNLOAD installs its drop-point circle
-                        // once per failed TransportDrop (0x406a5e, 0x438930) and
-                        // then waits on the navigator's events (0x406a65: mask
-                        // 0xe8, no timer): a live route is never re-anchored at
-                        // the point, so the carrier brakes for the route's end
-                        // on the circle, not for the point itself.
+                        // once per failed TransportDrop (0x406a5e, 0x438930: the
+                        // old controller goes, a new one is made) and then waits
+                        // on the navigator's events (0x406a65: mask 0xe8), so a
+                        // live route is never re-anchored mid-way.
                         if(goal.controller && !goal.navigationExhausted)return;
                         w.cancelPath(u);
                         goal.controller=++w.nextMovementController_;
@@ -4126,12 +4135,19 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                         m.pending&=~0x700u;
                         if(uint32_t(u.routeStamp)<=w.tickCounter_-10u)u.routeStamp=0;
                         w.requestPath(u,goal.x.toFloat(),goal.z.toFloat());
-                    });
-                // A blocked transfer resets the combined unload to stage 1.
+                    },[&](int n){return random(n);});
+                // A refused drop returns the combined unload to stage 0.
                 // It still needs this handler to re-route if the carrier has
                 // drifted out of range, but it must not fold a second unload
                 // into itself (there is no queued unload behind it).
                 if(result==1 && !goal.unload)completeUnloadApproach=true;
+                else if(result==1) {
+                    // A later call: BoomCalc sets the boom from the hull as it
+                    // now stands.
+                    goal.transportX=target.first-u.x;goal.transportZ=target.second-u.z;
+                    goal.transportHeading=portHeadingToRetail(u.heading);
+                    goal.transportTicks=0;
+                }
                 return result;
             }
             if (goal.park) {
@@ -4427,8 +4443,12 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
     if(host.patrolReturn) patrolTo(u.id,host.patrolReturn->first.toFloat(),host.patrolReturn->second.toFloat(),true,
                                    host.patrolReturnIdentity);
     if(host.abortUnloadApproach) {
+        // A lone approach takes its paired unload leg with it; a folded one
+        // (the transfer already on it) is the whole order.
+        const size_t leg=currentLeg(u.orders);
+        const bool folded=leg<u.orders.size() && u.orders[leg].unload;
         dropLeg(u);
-        if(!u.orders.empty() && u.orders.front().unload)
+        if(!folded && !u.orders.empty() && u.orders.front().unload)
             u.orders.erase(u.orders.begin());
     } else if(host.completeUnloadApproach) {
         const size_t approachIndex=currentLeg(u.orders);
@@ -4447,8 +4467,12 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             const Unit* passenger=unit(passengerId);
             if(passenger && passenger->alive() && passenger->inTransport==u.id) {
                 unload.transportPassenger=passengerId;
-                unload.transportX=requested.x;unload.transportZ=requested.z;
-                unload.transportTicks=0;unload.transportApproachAttempts=1;
+                // The drop point against the hull (retailHullPoint): the boom
+                // carries it with the hull until DROP_UNIT.
+                unload.transportX=requested.x-u.x;unload.transportZ=requested.z-u.z;
+                unload.transportHeading=portHeadingToRetail(u.heading);
+                // The TransportDrop count (mission +0x36) runs on.
+                unload.transportTicks=0;
                 unload.transportMission=RetailMissionState{2};
                 unload.transportMission.sleep(tickCounter_,1);
                 unload.transportUnloadTransferDeferred=false;
@@ -5267,8 +5291,8 @@ void World::unloadAt(int transportId, float x, float z, Fixed destinationY, bool
         // re-request nothing -- so it would land on the bare unload and rewrite it.
         cancelPath(*t);
     }
-    // Retail routes surface carriers to a circle centered on the exact drop point,
-    // with radius transportdistance-34 (408e84/408d50). VTOL_UNLOAD installs the
+    // A surface carrier's circle is TotalA.exe GROUND_UNLOAD's (0x406a23..0x406a5e,
+    // retailUnloadCircleRadius). VTOL_UNLOAD (Kingdoms 408e84/408d50) installs the
     // same-radius flight controller before it steps out for transfer. Keep that
     // mission on the active flying order so the carrier does not overshoot to the
     // exact drop point before its unload handler wakes.
@@ -5277,7 +5301,10 @@ void World::unloadAt(int transportId, float x, float z, Fixed destinationY, bool
     // Earlier queued orders can move the carrier out of today's range. Keep
     // the approach mission so its activation checks the then-current position
     // and installs the native circle, rather than moving to the drop point.
-    const bool needsApproach=!inRange || (queue && !t->orders.empty());
+    // A surface carrier always runs GROUND_UNLOAD's own approach handler
+    // (retailTransportUnloadApproach): its first call is the TransportDrop
+    // that decides whether the point is in the boom's reach.
+    const bool needsApproach=!inRange || (queue && !t->orders.empty()) || !t->type->canFly;
     if (needsApproach && t->type->canFly) {
         Order approach;
         approach.x=Fixed::fromFloat(x);approach.z=Fixed::fromFloat(z);
@@ -5300,8 +5327,10 @@ void World::unloadAt(int transportId, float x, float z, Fixed destinationY, bool
             mv.transportUnloadApproach=true;
             mv.transportMission=RetailMissionState{1};
             mv.missionTarget=std::pair{Fixed::fromFloat(x),Fixed::fromFloat(z)};
-            // The shared circle-goal helper adds four to the stored radius.
-            mv.missionRadius=uint32_t(t->type->transportDist-34)-4u;
+            // The shared circle-goal helper adds four to the stored radius
+            // (a radius 0 point wraps back to 0).
+            mv.missionRadius=uint32_t(retailUnloadCircleRadius(t->type->canHover,
+                                                               int16_t(t->type->footZ)))-4u;
         }
         t->orders.push_back(mv);
     }
@@ -5611,7 +5640,11 @@ bool World::tickTransport(Unit& u, float dt) {
     const bool inRange=retailTransportInRange((unloadX-u.x).v,(unloadZ-u.z).v,
                                                uint16_t(u.type->transportDist));
     if (!u.type->canFly) {
-        if (!inRange) { o.transportTicks=0;return false; }
+        // Once TransportDrop runs (stage 2 on) the script finishes whatever
+        // the hull does; before it the call itself is the reach test.
+        if (!inRange && o.transportMission.stage<=1 && !o.transportUnloadReleasePending) {
+            o.transportTicks=0;return false;
+        }
         if (!surfaceRouteActive) u.speed=Fixed();
     }
     auto advanceCarrier=[&] {
@@ -5627,9 +5660,113 @@ bool World::tickTransport(Unit& u, float dt) {
         // unload-circle radius. Let the normal ground mover run during that overlap.
         return !surfaceRouteActive;
     };
+    // The passenger's release at (x, z) and its dispersal PARK (Kingdoms
+    // 409154..409178; TotalA.exe's DROP_UNIT is not traced past placement).
+    auto releasePassenger=[&](Unit& c,Fixed x,Fixed z) {
+        const int id=c.id;
+        c.x=x;c.z=z;c.inTransport=0;
+        c.groundY=surfaceHeight(c,tickCounter_,&c.groundPitch,&c.groundRoll);
+        updateBodyIndex(c);refreshMovingSearchBody(c);
+        groundStamp(c);
+        rebuildOccupancy();
+        std::erase(u.cargo,id);
+        {
+            const Unit* next=nullptr;uint32_t remaining=0;
+            for (int aboard:u.cargo) if (const Unit* passenger=unit(aboard);
+                    passenger && passenger->alive() && passenger->inTransport==u.id) {
+                if (!next) next=passenger;
+                ++remaining;
+            }
+            const uint32_t first=pathRand(3),second=pathRand(3);
+            Order park;park.goal=park.groundMission=true;park.park.emplace();
+            // 409154..409178 (41b3e2.. for VTOL_Unload): never permanent (push
+            // argument 6 is 0), appended behind the passenger's orders, or put in
+            // front of them when the carrier fails the selection predicate taken
+            // before the drop (40901c..40906e): a mission script's transport, one
+            // dying or unfinished (E, check_unload_park_order.py).
+            park.park->permanent=0;
+            park.park->padding=retailUnloadParkPadding(first,second,remaining,
+                int16_t(next ? next->type->footX : 0),int16_t(next ? next->type->footZ : 0));
+            park.mission.flags=0x200u;
+            if (unloadParkAhead(u) && !c.orders.empty()) {
+                cancelPath(c);c.routeStamp=-1;
+                c.orders.insert(c.orders.begin(),park);
+            } else c.orders.push_back(park);
+            noteOrders(c.id);
+        }
+    };
     std::erase_if(u.cargo,[&](int id) {
         const Unit* c=unit(id);return !c || !c->alive() || c->inTransport!=u.id;
     });
+    if (!u.type->canFly && o.transportUnloadApproach) {
+        // TotalA.exe GROUND_UNLOAD (0x406900) past its TransportDrop call:
+        // the calls and the drop-point circle (stages 0-1 here) are the
+        // mission dispatcher's (retailTransportUnloadApproach).
+        auto& mission=o.transportMission;
+        // A live route (a call that failed) keeps the mover going; without
+        // one -- the navigator let go on arrival (docs/retail-pathfinding.md
+        // 3.1: 0x20 and release) -- the hull brakes where it is rather than
+        // steering on to the drop point.
+        auto coast=[&] {
+            if (o.controller && !o.navigationExhausted) return false;
+            brakeGround(u);return true;
+        };
+        if (o.transportUnloadReleasePending) {
+            if (tickCounter_<mission.deadline) return coast();
+            // Stage 2 (0x4069f0..0x406a09): the passenger has left, so the
+            // order is done (5) -- one passenger per order, the others stay
+            // aboard for the next unload. The hull may still coast.
+            o.transportUnloadReleasePending=false;
+            const bool coasting=u.speed>Fixed();
+            removeUnloadLeg();return !coasting;
+        }
+        // 0x406969..0x40697b: nobody aboard ends it (5).
+        if (u.cargo.empty()) {
+            brakeGround(u);removeUnloadLeg();return true;
+        }
+        if (mission.stage<=1) return coast();
+        // The FIRST passenger (0x489690). One that is no longer aboard
+        // (dead) sends the mission back to the call.
+        Unit* c=unit(u.cargo.front());
+        if (o.transportPassenger!=c->id) {
+            o.transportPassenger=c->id;o.transportTicks=0;
+            mission.stage=1;mission.sleep(tickCounter_,1);return coast();
+        }
+        if(tickCounter_>=mission.deadline) {
+            mission.deadline=0xffffffffu;mission.pending|=1;
+        }
+        const uint32_t events=(u.missionEvents|mission.pending)&mission.waitMask;
+        if(mission.waitMask && !events)return coast();
+        u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
+        // The link carries the point with the hull (retailHullPoint).
+        const auto offset=retailHullPoint(o.transportX.v,o.transportZ.v,
+            uint16_t(portHeadingToRetail(u.heading)-o.transportHeading));
+        const Fixed dropX=Fixed::raw(satAdd32(u.x.v,offset.first));
+        const Fixed dropZ=Fixed::raw(satAdd32(u.z.v,offset.second));
+        const int cx=int16_t(uint32_t(dropX.v)>>20),cz=int16_t(uint32_t(dropZ.v)>>20);
+        const int result=retailSurfaceUnloadTransfer(mission,o.transportTicks,tickCounter_,true,[&] {
+            if (!mapPlacementCells_.empty()) return mobilePlacement(*c,cx,cz,false);
+            // Terrain-only harnesses have no native feature plane.
+            const int foot=footCells(c->type);
+            if (!navFor(c->type).fits(cx+foot/2,cz+foot/2,foot)) return false;
+            const auto bodies=searchBodyRect(cx,cz,c->type->footX,c->type->footZ);
+            for (const Unit* body:bodies.cells) if (body && body->id!=c->id) return false;
+            return true;
+        },[&] {
+            transportEffects_.push_back({tickCounter_,{dropX.v,o.transportY.v,dropZ.v},
+                                         {u.x.v,u.groundY.v,u.z.v}});
+        });
+        if (result==7) { removeUnloadLeg();return true; }
+        if (mission.stage!=4) return coast();
+        releasePassenger(*c,dropX,dropZ);
+        o.transportPassenger=0;
+        // The emptied mission stays queued until the next one-tick sleep.
+        o.transportUnloadReleasePending=true;
+        mission.stage=0;
+        mission.waitMask=1;mission.deadline=tickCounter_+1;
+        mission.pending=0x500u;
+        return coast();
+    }
     if (u.cargo.empty()) {
         if (o.transportUnloadReleasePending) {
             if (tickCounter_ < o.transportMission.deadline) return advanceCarrier();
@@ -5722,36 +5859,7 @@ bool World::tickTransport(Unit& u, float dt) {
         return advanceCarrier();
     }
     if (mission.stage!=4) return advanceCarrier();
-    c->x=o.transportX;c->z=o.transportZ;c->inTransport=0;
-    c->groundY=surfaceHeight(*c,tickCounter_,&c->groundPitch,&c->groundRoll);
-    updateBodyIndex(*c);refreshMovingSearchBody(*c);
-    groundStamp(*c);
-    rebuildOccupancy();
-    std::erase(u.cargo,id);
-    {
-        const Unit* next=nullptr;uint32_t remaining=0;
-        for (int aboard:u.cargo) if (const Unit* passenger=unit(aboard);
-                passenger && passenger->alive() && passenger->inTransport==u.id) {
-            if (!next) next=passenger;
-            ++remaining;
-        }
-        const uint32_t first=pathRand(3),second=pathRand(3);
-        Order park;park.goal=park.groundMission=true;park.park.emplace();
-        // 409154..409178 (41b3e2.. for VTOL_Unload): never permanent (push
-        // argument 6 is 0), appended behind the passenger's orders, or put in
-        // front of them when the carrier fails the selection predicate taken
-        // before the drop (40901c..40906e): a mission script's transport, one
-        // dying or unfinished (E, check_unload_park_order.py).
-        park.park->permanent=0;
-        park.park->padding=retailUnloadParkPadding(first,second,remaining,
-            int16_t(next ? next->type->footX : 0),int16_t(next ? next->type->footZ : 0));
-        park.mission.flags=0x200u;
-        if (unloadParkAhead(u) && !c->orders.empty()) {
-            cancelPath(*c);c->routeStamp=-1;
-            c->orders.insert(c->orders.begin(),park);
-        } else c->orders.push_back(park);
-        noteOrders(c->id);
-    }
+    releasePassenger(*c,o.transportX,o.transportZ);
     o.transportPassenger=0;
     if (u.cargo.empty()) {
         // Both GROUND_UNLOAD and VTOL_Unload leave their now-empty mission in
@@ -12727,9 +12835,18 @@ void World::reclaim(int builderId, int featureId, bool queue) {
 
 uint8_t World::reviveKind(int casterId, int corpseId) const {
     const Unit* b = unit(casterId);
+    if (!b || !b->alive() || !b->type || !b->type->canMove || b->type->isStructure()) return 0;
+    if (corpseId < 0) {
+        // A feature (-id): a map wreck, or the heap a destroyed wreck left.
+        // TotalA.exe's RESURRECT takes any feature (0x404de4 finds it at
+        // the point); its type decides (reviveKindFor).
+        const Feature* f = feature(-corpseId);
+        if (!f || !featureReclaimable(*f) || f->burn || f->type < 0 || size_t(f->type) >= featTypes_.size())
+            return 0;
+        return reviveKindFor(*b->type, featTypes_[size_t(f->type)]);
+    }
     const Unit* c = unit(corpseId);
-    if (!b || !b->alive() || !b->type || !b->type->canMove || b->type->isStructure() ||
-        !c || c->id == casterId || !c->type || c->corpseFading || (c->alive() && c->hp > Fixed()) ||
+    if (!c || c->id == casterId || !c->type || c->corpseFading || (c->alive() && c->hp > Fixed()) ||
         (!c->alive() && c->deadFor >= c->corpseUntil))
         return 0;
     const int ct = c->corpseStatue >= 0 ? c->corpseStatue : corpseTypeOf(c->type);
@@ -12750,17 +12867,20 @@ void World::resurrect(int casterId, int corpseId, bool queue) {
     const uint8_t kind = reviveKind(casterId, corpseId);
     if (!kind) return;
     Unit* b = unit(casterId);
-    const Unit* c = unit(corpseId);
+    // A dead unit's body (id > 0) or a feature (-id); either way the leg's
+    // reclaimFeat is -corpseId, RECLAIM's encoding (a body negative).
+    Fixed tx, tz;
+    if (corpseId < 0) { const Feature* f = feature(-corpseId); tx = f->x; tz = f->z; }
+    else { const Unit* c = unit(corpseId); tx = c->x; tz = c->z; }
     static const bool kRvLog = ta::devEnv("TA_BURNLOG") != nullptr;
     if (kRvLog)
-        std::fprintf(stderr, "resurrect ORDER: u%d -> %s (%d) kind %d\n",
-                     casterId, c->type->id.c_str(), corpseId, int(kind));
+        std::fprintf(stderr, "resurrect ORDER: u%d -> %d kind %d\n", casterId, corpseId, int(kind));
     if (!queue) {
         cancelPath(*b);
         b->orders.clear();
     }
     Order o;
-    o.x = c->x; o.z = c->z;
+    o.x = tx; o.z = tz;
     o.goal = true;
     o.issuedTick = tickCounter_;
     o.reclaimFeat = -corpseId;
@@ -12813,6 +12933,19 @@ bool World::reclaimTargetFootprint(int target,int& x,int& z,int& fx,int& fz,floa
 // reclaimable flag and the object's +0x5d bit 0x10). The bit is gone once
 // another builder's reclaim has started its fade, and while the feature burns
 // (4949c0 clears it).
+const UnitType* World::raisedType(int target) const {
+    int type=-1;const UnitType* own=nullptr;
+    if (target<0) {
+        const Unit* c=unit(-target);
+        if (!c) return nullptr;
+        own=c->type;
+        if (const auto found=corpseFootprints_.find(c->id);found!=corpseFootprints_.end()) type=found->second.type;
+    } else if (const Feature* f=feature(target)) type=f->type;
+    if (type>=0 && size_t(type)<featTypes_.size() && featTypes_[size_t(type)].raises)
+        return featTypes_[size_t(type)].raises;
+    return own;
+}
+
 bool World::reclaimTargetValid(int target,bool revive) const {
     if (target<0) {
         const Unit* c=unit(-target);
@@ -12926,6 +13059,16 @@ static int32_t retailReviveWork(float buildTime, float workerTime, bool resurrec
     return int32_t(retailFtol(work / (double(workerTime) * 0.03333333) * 65536.0));
 }
 
+// TotalA.exe RESURRECT stage 3 (0x404f92..0x404fee): the timer is
+// ftol(buildtime x 0.3 / (workertime / 30)), the caster's workertime divided
+// as an integer (0x404fbf..0x404fd8), and stage 4 (0x405005) counts it down
+// one a tick (sleep 1) until a wake finds it 0 -- no resource, no
+// allocation (docs/retail-economy.md section 7).
+static int32_t retailResurrectTicks(float buildTime, float workerTime) {
+    const int32_t rate = int32_t(workerTime) / 30;
+    return int32_t(retailFtol(double(int32_t(buildTime)) * 0.3 / double(rate)));
+}
+
 // Retail RECLAIM (406250) on the current leg. Stage 1 waits for the approach
 // (0x100/0x400 arrival, 0x200 failure); stage 2 is the turn child and the
 // INBUILDSTANCE wait; stages 3 and 4 are the two-tick work wakes (406529);
@@ -13018,10 +13161,12 @@ void World::tickReclaim(Unit& b) {
             // counter; stage 4 runs in the same wake (tickAbilities, later
             // this tick).
             const bool animate=work.reviveKind==2;
-            const UnitType* out=animate ? b.type->animateType : unit(-target)->type;
+            const UnitType* out=animate ? b.type->animateType : raisedType(target);
+            // 0x404f6f: no unit by that name, "Ressurection failed" (8).
             if (!out) { quit(); return; }
             b.reviveMode=int8_t(work.reviveKind);
-            b.reviveWork=retailReviveWork(out->buildTime,b.type->workerTime,!animate);
+            b.reviveWork=animate ? retailReviveWork(out->buildTime,b.type->workerTime,false)
+                                 : retailResurrectTicks(out->buildTime,b.type->workerTime);
             work.mission.stage=4;
         }
         // Stage 4: the channel (re)attaches -- after a leg pushed ahead of
@@ -16023,7 +16168,7 @@ void World::tickAbilities(float) {
         return c.type && !c.alive() && !c.corpseFading && c.deadFor >= from && c.deadFor < c.corpseUntil;
     };
     auto retire = [&](Unit& c) { retireCorpse(c); };
-    struct Revive { const UnitType* type; float x, z; int player; bool animate; };
+    struct Revive { const UnitType* type; float x, z; int player; bool animate; int caster; int leg; };
     std::vector<Revive> revives;
     // Revives finished this tick, per player: they spawn after the loop, so
     // the limits below count them in.
@@ -16104,9 +16249,36 @@ void World::tickAbilities(float) {
         // mission script keeps on) abandons it unraised under allocation 0.7.
         // However it ends, reviveTarget goes to 0, the leg's stage to 5, and
         // tickReclaim retires the leg on its next wake.
-        Unit* c = unit(u.reviveTarget);
         // actor() saw the leg at the front; the end is its stage 5.
         auto ended = [&] { u.reviveTarget = 0; u.orders.front().mission.stage = 5; };
+        if (u.reviveMode == 1) {
+            // TotalA.exe RESURRECT stages 4-5 (0x405005, 0x4050d1): the
+            // timer counts down one a tick, the caster kept visible 300 ticks
+            // (0x4050b7); a wake that finds it 0 raises the unit. Nothing is
+            // paid. The target is a body (id > 0) or a feature (-id).
+            const int leg = u.orders.front().reclaimFeat;
+            Unit* body = u.reviveTarget > 0 ? unit(u.reviveTarget) : nullptr;
+            const Feature* f = u.reviveTarget < 0 ? feature(-u.reviveTarget) : nullptr;
+            if (body ? !isCorpse(*body) : (!f || !featureReclaimable(*f))) { ended(); continue; }
+            const uint32_t left = uint32_t(u.reviveWork);
+            u.reviveWork = int32_t(left - 1u);
+            if (left) { blockCloak(u, 300); continue; }
+            const UnitType* out = raisedType(leg);
+            // 0x405119: "Unable to create any more units" -- the body stays
+            // and the creation is tried again in 300 ticks (0x405126).
+            if (reviveRefused(u.player, out)) { u.reviveWork = 299; continue; }
+            const int featureId = -u.reviveTarget;
+            ended();
+            ++pendingRevives[size_t(u.player)];
+            const float x = body ? body->x.toFloat() : f->x.toFloat();
+            const float z = body ? body->z.toFloat() : f->z.toFloat();
+            revives.push_back({out, x, z, u.player, false, u.id, leg});
+            if (body) retire(*body);
+            else if (auto it = featureIdx_.find(featureId); it != featureIdx_.end())
+                swapFeature(features_[it->second], -1);
+            continue;
+        }
+        Unit* c = unit(u.reviveTarget);
         if (!c || !isCorpse(*c)) { ended(); continue; }
         const bool animate = u.reviveMode == 2;
         const UnitType* out = animate ? u.type->animateType : c->type;
@@ -16124,15 +16296,34 @@ void World::tickAbilities(float) {
         // stays. Earlier revives this tick count as raised (`pending`).
         if (reviveRefused(u.player, out)) continue;
         ++pendingRevives[size_t(u.player)];
-        revives.push_back({out, c->x.toFloat(), c->z.toFloat(), u.player, animate});
+        revives.push_back({out, c->x.toFloat(), c->z.toFloat(), u.player, animate, 0, 0});
         retire(*c);
     }
     for (const auto& r : revives) {
         int id = spawn(r.type, r.x, r.z, 3.14159f, r.player);
-        // Retail HP: resurrect returns the unit at 10% (min 1); an animated
-        // creature rises at FULL health (icd 0x420666-0x4206ba).
-        if (Unit* nu = unit(id))
-            if (!r.animate) nu->hp = Fixed::fromFloat(std::max(nu->type->maxHp * 0.1f, 1.0f));
+        // An animated creature rises at FULL health (icd 0x420666-0x4206ba).
+        // TotalA.exe's resurrected unit is finished with 1 HP (0x405215:
+        // +0x104 = 0, +0x108 = 1), and stage 6 (0x405243..0x40529f) puts the
+        // order a click on it resolves to (0x43f0e0 code 8: REPAIRUNIT on a
+        // finished unit, 0x43f4ab) at the head of the caster's queue
+        // (0x43acb0); the RESURRECT then ends (5).
+        if (Unit* nu = unit(id); nu && !r.animate) {
+            nu->hp = Fixed::fromInt(1);
+            Unit* caster = unit(r.caster);
+            if (caster && caster->alive() && !caster->orders.empty() &&
+                caster->orders.front().reclaimFeat == r.leg && caster->orders.front().reviveKind) {
+                OrdersNote note{*this, caster->id};
+                cancelPath(*caster);
+                stopWorkAnimation(*caster);
+                caster->reclaimId = 0;
+                Order o;
+                o.x = nu->x; o.z = nu->z;
+                o.goal = true;
+                o.issuedTick = tickCounter_;
+                o.repairTarget = id;
+                caster->orders.front() = o;
+            }
+        }
         static const bool kRevLog = ta::devEnv("TA_BURNLOG") != nullptr;
         if (kRevLog)
             std::fprintf(stderr, "%s: %s for p%d at %.0f,%.0f\n",
@@ -21757,7 +21948,7 @@ uint64_t World::stateHash() const {
                 mix(order.transportMission.stage);mix(order.transportMission.waitMask);
                 mix(order.transportMission.deadline);mix(order.transportMission.pending);
                 mix(order.transportMission.flags);mix(order.transportApproachAttempts);
-                mix(uint32_t(order.transportX.v));mix(uint32_t(order.transportZ.v));
+                mix(uint32_t(order.transportX.v));mix(uint32_t(order.transportZ.v));mix(order.transportHeading);
                 if(order.unload)mix(uint32_t(order.transportY.v));
             }
             mix(order.groundMission);mix(order.navigationExhausted);mix(order.navigationConsumed);

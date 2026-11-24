@@ -535,6 +535,15 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
     } catch (const std::exception&) {}
     return defs;
 }
+// TotalA.exe RESURRECT stage 3 (0x404f36..0x404f60): the feature's name
+// (lstrcpyn, 64 chars) up to its first '_' names the unit it raises (0x488b10).
+void linkRaisedUnits(std::vector<ta::sim::FeatType>& table, const TypeRegistry& reg) {
+    for (auto& t : table) {
+        std::string name = t.name.substr(0, std::min<size_t>(t.name.size(), 63));
+        if (const size_t cut = name.find('_'); cut != std::string::npos) name.resize(cut);
+        t.raises = name.empty() ? nullptr : reg.find(name);
+    }
+}
 struct FeatTypeInterner {
     const std::unordered_map<std::string, FeatDef>& defs;
     std::vector<ta::sim::FeatType> table;
@@ -723,6 +732,7 @@ void registerMapFeatures(World& world, const ta::tnt::Map& map, const hpi::Vfs& 
                 world.mapStatue(&ut, types.intern(ut.stoneFeat),
                                 types.intern(ut.frozenFeat));
         }
+    if (reg) linkRaisedUnits(types.table, *reg);
     world.setFeatureTypes(std::move(types.table));
 }
 
@@ -892,6 +902,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
         if (!ut.stoneFeat.empty() || !ut.frozenFeat.empty())
             world.mapStatue(&ut, featTypeIdx(ut.stoneFeat), featTypeIdx(ut.frozenFeat));
     }
+    linkRaisedUnits(types.table, reg);
     world.setFeatureTypes(std::move(types.table));
     installManaSpots(world, rawMana, rawAll);
 

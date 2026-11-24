@@ -853,6 +853,8 @@ public:
     mutable std::vector<uint64_t> bodyQueryBits_;
     mutable std::vector<uint32_t> bodyQuery_, bodyAll_;
     uint8_t reviveKindOn(const UnitR& caster,const UnitR& body) const;
+    // The same for a feature (a map wreck, a heap): its sim id, 0 for none.
+    uint8_t reviveKindOnFeature(const UnitR& caster,int featureId) const;
     bool canAssistSite(const UnitR& builder,const UnitR& site) const;
     bool canLoadPassenger(const UnitR& passenger, const UnitR& carrier) const;
     // Player snapshot accessors (mirror world_.player()/numPlayers() for the HUD).

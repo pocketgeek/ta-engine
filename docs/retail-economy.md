@@ -189,7 +189,7 @@ Order table at `0x4fc840` (record = status, handler, …, name).
   - Every 15 ticks, damage of type 5 = `max(1, trunc(WT·((kills+5)/5)·MaxHP·15 / (max(BCM,10)·300)))` (`0x438650`, `0x404981`).
   - When the target dies from type-5 damage, the killer's M produced += `(1 − remaining)·BuildCostMetal` (`0x486c9e..0x486d1e`). There is no energy refund.
   - So a full reclaim takes about `BCM·10/WT` seconds.
-- **Resurrect** (`0x404db0`): timer = `trunc(BuildTime·0.3 / (WT/30))` (`0x404fb0`). No resource cost was found in the handler **[?]**.
+- **Resurrect** (`0x404db0`): timer = `trunc(BuildTime·0.3 / (WT/30))`, WT/30 an integer division (`0x404fb0`), counted down one per tick (stage 4, `0x405005`, which only sprays nano particles and holds `unit+0xb0`): no resource cost **[S]**. The unit comes back finished at 1 HP (`0x405215`) and the caster gets REPAIRUNIT on it at the head of its queue (`0x405243`).
 - **Capture** (`0x404270`): timer = `min(trunc(15·BCE/1000 + 30·BCM/140 + 150), 1800)` ticks (`0x404359..0x40439b`). No resource transfer.
 - **Death or self-destruct**: no refund. The only payout on death is the type-5 reclaim case **[S]**.
 
@@ -283,4 +283,4 @@ Other rules:
   - Manual: `payNow(r, min(x, stored))` on the giver; the receiver's player accumulator `prod += mult·x`.
   - Auto, every 60 ticks: give to the last eligible ally with less stored, `min((stored − thr)·k, theirCap − theirStored)` with k = 1/3 for metal and 1/2 for energy. In lockstep, run it for every player, not only the local one.
 
-Unconfirmed or open: the registry default for gamespeed; the exact moving-flag bits (0x110 & 0xC); mode 2 start resources; whether resurrect costs anything; how the per-cell metal is shown under the cursor (not traced); `info+0x94` / `info+0x97` bit meanings for auto-share.
+Unconfirmed or open: the registry default for gamespeed; the exact moving-flag bits (0x110 & 0xC); mode 2 start resources; how the per-cell metal is shown under the cursor (not traced); `info+0x94` / `info+0x97` bit meanings for auto-share.

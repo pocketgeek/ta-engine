@@ -364,6 +364,20 @@
         return ta::sim::reviveKindFor(*caster.type, feats[size_t(body.corpseFeat)]);
     }
 
+    // TotalA.exe raises a feature as well (RESURRECT 0x404db0 finds it at the
+    // point): a wreck or heap whose name names a unit (FeatType::raises).
+    uint8_t GameView::reviveKindOnFeature(const UnitR& caster, int featureId) const {
+        if (!caster.alive() || caster.embarked() || caster.underConstruction || !caster.type ||
+            caster.player != localPlayer_ || !caster.type->canMove || caster.type->isStructure())
+            return 0;
+        const auto& feats = worldTables().featureTypes();
+        for (const auto& f : features_)
+            if (f.hasSim && f.simId == featureId && f.aliveVis && f.reclaimable &&
+                f.simType >= 0 && size_t(f.simType) < feats.size())
+                return ta::sim::reviveKindFor(*caster.type, feats[size_t(f.simType)]);
+        return 0;
+    }
+
     // The body under a world point that a selected unit can raise, with the
     // reclaim pick circle (nearest wins); 0 = none.
     int GameView::raiseTargetAt(float wx, float wz) const {

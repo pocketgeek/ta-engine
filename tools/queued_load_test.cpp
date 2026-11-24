@@ -58,6 +58,9 @@ struct Types {
         carrier.canTransport = true; carrier.transportCap = 4; carrier.transportSizeCap = 16;
         carrier.maxTransportSize = 4; carrier.transportDist = 150;
         if (air) { carrier.canFly = true; carrier.cruiseAlt = 100; }
+        // TA's land-going carriers hover (armthovr): GROUND_UNLOAD stops them on
+        // a circle round the drop point (TotalA.exe 0x406a23) instead of on it.
+        else carrier.canHover = true;
         foot.id = foot.name = "foot"; foot.maxVel = Fixed::fromFloat(70.f / 30);
         foot.turnRate = foot.turnInPlaceRate = 10000; foot.maxHp = 300; foot.canMove = true;
         foot.footX = foot.footZ = 2; foot.sight = 4096; foot.upright = true; foot.transportSize = 1;

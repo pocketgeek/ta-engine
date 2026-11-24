@@ -97,8 +97,16 @@ namespace {
         if (pointTargets && (mode == 'c' || (mode == 0 && !hovered))) {
             plan.body = raiseTargetAt(wx, wz);
             if (haveReclaimer()) plan.reclaim = reclaimTargetAt(wx, wz);
+            // No body: a wreck or heap FEATURE a selected caster can raise
+            // (Cmd::Resurrect's target is then -featureId, World::reviveKind).
+            if (!plan.body && plan.reclaim && *plan.reclaim > 0)
+                for (int id : selection_)
+                    if (const auto* caster = frameUnitP(id); caster && reviveKindOnFeature(*caster, *plan.reclaim)) {
+                        plan.body = -*plan.reclaim;
+                        break;
+                    }
         }
-        const UnitR* body = plan.body ? frameUnitP(plan.body) : nullptr;
+        const UnitR* body = plan.body > 0 ? frameUnitP(plan.body) : nullptr;
         // The selection's transports, the hovered unit left out (0x520b60).
         int transports = 0;
         for (const UnitR* u : units)
@@ -144,6 +152,7 @@ namespace {
                 if (mode == 'l' && f.transport) f.loadTarget = canLoadPassenger(*hovered, u);
             }
             if (body) f.raise = reviveKindOn(u, *body) != 0;
+            else if (plan.body < 0) f.raise = reviveKindOnFeature(u, -plan.body) != 0;
             if (plan.reclaim) f.reclaim = canReclaimAsLocal(u, localPlayer_);
         };
         if (mode == 'g' && friendlyTarget)

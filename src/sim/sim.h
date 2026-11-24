@@ -1077,6 +1077,12 @@ struct alignas(64) Order {
     // negated while that help runs ahead of the leg.
     // Cold: read once, when the leg comes back. Hashed with a tag when set.
     int resumeSite = 0;
+
+    // GROUND_UNLOAD's TransportDrop call: the carrier's retail heading when
+    // BoomCalc set the boom. transportX/Z then hold the drop point as an
+    // offset from the carrier at that call; the link carries it with the hull
+    // (retailHullPoint). Hashed with the transport fields.
+    uint16_t transportHeading = 0;
 };
 // Which line each field sits on (WE D2). Moving a field across a line, or
 // growing line 0/1 past 64 bytes, is a compile error here. (offsetof on a type
@@ -1111,6 +1117,7 @@ static_assert(offsetof(Order, mission) == 128, "line 1 ends at byte 127; line 2 
 TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(suppressFeature, 5); TA_ORDER_LINE(suppressSlot, 5);
 TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(suppressInner, 5);
 TA_ORDER_LINE(airPoint, 5); TA_ORDER_LINE(attackFormation, 5); TA_ORDER_LINE(resumeSite, 5);
+TA_ORDER_LINE(transportHeading, 5);
 static_assert(offsetof(Order, suppress) == 320, "lines 0-4 are full; line 5 starts with SUPPRESS");
 static_assert(sizeof(Order) == 384, "Order is six cache lines (line 5 has room left); a new field names its line above");
 #undef TA_ORDER_LINE
@@ -1839,6 +1846,11 @@ struct FeatType {
     uint8_t projectileHeight = 0; // Native feature collision height.
     std::string object;      // TDF object= (3D corpse mesh; client visual)
     bool treeOrRock = false; // see RetailMapFeatureType::treeOrRock
+    // The unit a RESURRECT raises from this feature: TotalA.exe 0x404f36 cuts
+    // the feature's name at its first '_' and looks that up as a unit type
+    // (0x488b10; "cornecro_dead" and "cornecro_heap" both raise cornecro).
+    // Null when no unit has that name. Set by setupMatch / registerMapFeatures.
+    const UnitType* raises = nullptr;
 };
 
 // What a caster does with a body, retail's raise resolver (0x4de530 modes 1
@@ -1847,8 +1859,12 @@ struct FeatType {
 // (and an animatetype) and the body is animatable (0x496fd0). 0 = neither, and
 // a reclaimer reclaims it instead. There is no owner test: a caster raises a
 // body of any side, as its own unit.
+// TA (TotalA.exe): the RESURRECT order takes any reclaimable feature
+// (0x440043: feature flag 0x80, `reclaimable`), and the mission raises the
+// unit its name names (FeatType::raises; none: "Ressurection failed",
+// 0x404f6f) -- there is no resurrectable key in TA's data.
 inline uint8_t reviveKindFor(const UnitType& caster, const FeatType& corpse) {
-    if (caster.canResurrect && corpse.resurrectable) return 1;
+    if (caster.canResurrect && (corpse.resurrectable || (corpse.reclaimable && corpse.raises))) return 1;
     if (caster.canAnimate && caster.animateType && corpse.animatable) return 2;
     return 0;
 }
@@ -4596,6 +4612,10 @@ private:
     // a RESURRECT leg (`revive`) the body need only still lie there: the kind
     // it was ordered as depends on the two types alone, which do not change.
     bool reclaimTargetValid(int target,bool revive=false) const;
+    // The unit a RESURRECT leg on `target` (its reclaimFeat) raises: the
+    // feature's FeatType::raises (TotalA.exe 0x404f36), else -- a body whose
+    // corpse feature names none -- the dead unit's own type.
+    const UnitType* raisedType(int target) const;
     void swapFeature(Feature& f, int newType);   // chain stage swap (burnt/dead)
     void destroyFeature(Feature& f);   // weapon damage reached its `damage` (494ce0 mode 0)
     void tickBurning();
