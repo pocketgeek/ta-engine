@@ -260,6 +260,21 @@ Scales use the doubles 0x4fd240 = 65536/30, 0x4fd248 = 65536/900, 0x4fd250 = 30,
   4. else `dropped`: gravity (same path).
   5. else `meteor`: straight line with model spin.
   `smoketrail` emits smoke every `smokedelay` ticks.
+- **Projectile launch** [S] (record 0x6b bytes, pool of 300; +0x04 position, +0x1c
+  velocity, +0x28 target point, +0x36/+0x38 heading/pitch, +0x3a speed, +0x46 expiry):
+  - LOS/selfprop 0x49c9c0: heading/pitch from the QueryX point straight to the target
+    point (d = P - T, pitch atan2(-(d.y>>16), |d.xz|>>16)); speed = startvelocity, else
+    weaponvelocity when weaponacceleration is 0, else 0; expiry = now +
+    (range<<16)/weaponvelocity (weapontimer if no velocity or noautorange). LOS expiry
+    retires the shot without a burst.
+  - vlaunch 0x49cc20: heading 0, pitch 0x4000, velocity 0.
+  - dropped 0x49dd60: QueryX point, velocity = the unit's mover speed along its body
+    heading, vy = 0; no target point.
+  - Selfprop steering 0x49b520 turns by turnrate toward 0x49b3e0's point: a live
+    target unit's origin, else +0x28 (cruise: 700 px up beyond 1024 px, then the
+    ground/sea there); burnblow detonates on an error over 0x6978.
+  - Burst clones (0x49b87f): expiry weapontimer, else (launch distance + 16 px)/speed.
+  Engine: `sim/retailtashot.h`, `World::fire`, `World::tickTaSelfProp`.
 - **Damage to a unit** (0x499cd0): `map[targetUnitname]` if present, else the u16 default;
   × caller factor; × (100 + 6·min(kills/5, 5))/100 for a veteran owner; then the
   global cheat ×2 / ÷2 flags [S].

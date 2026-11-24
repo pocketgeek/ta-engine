@@ -109,11 +109,10 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 ## Open
 - The Kingdoms-data tests run on TA units/maps now. Engine gaps they expose (left
   failing): TA ships/hovers (BOATS*/BOATD*/TANKHOVER*) are not water/hover units
-  (sim.cpp movement-class prefix test); Retail-mode park orders never retire at their goal; dropped bombs (no
-  weaponvelocity) hit instantly; hovering gunships' shots fly level and overshoot;
-  armmav's Gauss shot flies level; v3 .sct sections do not load and the
-  Cartographer still defaults to Kingdoms worlds; client watch/spectator harness
-  checks (gameview_devharness.cpp) still spawn Kingdoms units.
+  (sim.cpp movement-class prefix test); Retail-mode park orders never retire at their goal; v3 .sct sections do not
+  load and the Cartographer still defaults to Kingdoms worlds; client
+  watch/spectator harness checks (gameview_devharness.cpp) still spawn Kingdoms
+  units.
 - Transports read TA's keys (TotalA.exe 0x489a90: passenger footprint x <=
   transportsize, count < transportcapacity; an air carrier holds one, 0x41121a).
   TA's transfer reach is scripted (TransportPickup/TransportDrop, BoomCalc), read
@@ -122,3 +121,18 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   still Kingdoms-shaped: TA's GROUND_UNLOAD (0x406900) tests no drop placement, ours
   does, so a hover that coasts onto its drop point retries (transport_post_unload
   armthovr x5 far); porting that breaks the synthetic crowd-retry cases.
+- Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
+  TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
+  `sim/retailtashot.h`, `World::tickTaSelfProp`). Still open: the bomber's
+  AIRSTRIKE run is the Kingdoms port (retailAirStrike): it drops on take-off and
+  its release ring does not lead the bomb's forward carry, so a real falling bomb
+  lands ~300 px past the point (suppress "it strikes the point"); TA's own bomber
+  release logic is not yet traced. Ballistic shells still use the release solve
+  and Kingdoms' gravity-before-move order (TotalA.exe 0x49cde0 launches on the
+  slot's AimX angles + spread and moves before gravity, 0x49bce3); beams
+  (lineofsight + beamweapon) still hit instantly; burst clones still re-aim at
+  the target; the cruise branch of 0x49b3e0 is ported untested.
+- corbats at 1110 px: not the shared-aim signal (its aims use signals 2 and 4).
+  Its cannon (cor_bats, 350 px/s) has no arc past ~1094 px on level ground at
+  gravity 112, so the range gate 0x49aa80 (ballistic -> 0x49a890 = 0x8000)
+  refuses it: retail behaviour.

@@ -22,6 +22,7 @@
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
 #include "sim/retailmotion.h"
+#include "sim/retailtashot.h"
 #include "sim/sim.h"
 
 #include <algorithm>
@@ -92,6 +93,28 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: ta_weapon_script_test <retail-install-dir>\n");
         return 2;
+    }
+    // TotalA.exe's projectile helpers (sim/retailtashot.h, 0x49c9c0/0x49b520).
+    {
+        const auto F = [](int px) { return int32_t(uint32_t(px) << 16); };
+        // A shot from 100 px up to a point 300 px along -z: heading 0
+        // (travels along -z), pitch below the horizon, vy < 0.
+        const auto a = sim::taShotAngles({F(0), F(100), F(300)}, {F(0), F(0), F(0)});
+        const auto v = sim::taShotVelocity(a[0], a[1], F(10));
+        check(a[0] == 0 && int16_t(a[1]) < 0 && v[1] < 0 && v[2] < 0 && std::abs(v[0]) < 2,
+              "a LOS shot from a height descends to its point (0x49c9c0)");
+        // vtol_emg: range 370, weaponvelocity 450 -> 24 ticks; noautorange -> weapontimer.
+        check(sim::taShotLifetime(370, int32_t(450 * 65536.0 / 30), false, 30) == 24 &&
+              sim::taShotLifetime(370, int32_t(450 * 65536.0 / 30), true, 30) == 30,
+              "LOS expiry is (range << 16) / weaponvelocity (0x49cb17)");
+        check(sim::taShotStartSpeed(5, 7, 9) == 5 && sim::taShotStartSpeed(0, 7, 9) == 0 &&
+              sim::taShotStartSpeed(0, 0, 9) == 9, "start speed (0x49caa7)");
+        uint16_t h = 0, p = 0;
+        bool alive = sim::taShotSteer(h, p, {0, 0, 0}, {F(-100), 0, 0}, 500, false);
+        check(alive && h == 500 && p == 0, "steering turns by turnrate (0x49b520)");
+        h = 0x7000; p = 0;
+        check(!sim::taShotSteer(h, p, {0, 0, 0}, {0, 0, F(-100)}, 500, true),
+              "burnblow detonates a shot far off its heading (0x49b5aa)");
     }
     hpi::Vfs vfs = hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry reg;
