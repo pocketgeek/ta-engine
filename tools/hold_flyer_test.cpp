@@ -100,7 +100,10 @@ int main(int argc,char** argv) {
             if (air && wp.noAir) continue;
             if (!air && (wp.toAir || wp.hasTaFlag(17))) continue;   // toairweapon
             const float range=float(f->maxRange());
-            const float dist=range>470.f ? 450.f : range*0.8f;
+            // Inside the standby's scan too: TotalA.exe's VTOL_Standby scan (4176bc ->
+            // 4d8370 -> 0x43b700 -> picker 0x40b7b0) gathers enemies within the unit's
+            // own sightdistance, 350 on every TA flyer (Kingdoms' were wider).
+            const float dist=std::min(range>470.f ? 450.f : range*0.8f,0.8f*float(f->sight));
             if (trace) std::printf("%s %s at %.0f (range %.0f, hover %d)\n",f->id.c_str(),air?"air":"ground",
                                    dist,range,int(f->hoverAttack));
             const Result hold=runCase(registry,*f,air,dist,0,trace,450);

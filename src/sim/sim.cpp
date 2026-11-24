@@ -7545,9 +7545,25 @@ bool World::ballisticInRange(const Unit& u,const Unit& t,const Weapon& w) const 
 
 // The weapon an attack order approaches on: the selected one for a switcher,
 // the longest when they all fire (tickCombat's reach). -1: none.
+bool World::chasesOnOrderSlot(const Unit& u) {
+    return u.type && u.type->canMove && !u.type->canFly && !u.type->isStructure();
+}
+
 int World::approachSlot(const Unit& u) const {
     if (u.type->weapons.empty()) return -1;
     int s=std::clamp(u.weaponSlot,0,int(u.type->weapons.size())-1);
+    // TotalA.exe Attack_Chase (0x4034a0, docs/retail-weapon-scripts.md "Attack_Chase"):
+    // stage 0 takes the order's slot (+0x36: 2 for a D-gun order, AttackSpecial
+    // 0x403190), else 0x4897e0's first slot with a weapon; stages 1/3 test THAT
+    // slot's range (0x49abb0) and stage 2 paths on radii from it (0x49adf0). The
+    // other slots stay automatic and pick their own targets: a walker does not
+    // stop at its longest secondary's range (Kingdoms' all-weapons reach).
+    if (chasesOnOrderSlot(u)) {
+        if (!u.orders.empty() && u.orders.front().dgun)
+            for (int d=0;d<int(std::min<size_t>(3,u.type->weapons.size()));++d)
+                if (isDgunSlot(*u.type,d)) return d;
+        return u.type->weaponSwitching ? s : 0;
+    }
     if (!u.type->weaponSwitching && u.type->weapons.size()>1)
         for (int sl=0;sl<int(u.type->weapons.size());++sl)
             if (u.type->weapons[size_t(sl)].range>u.type->weapons[size_t(s)].range) s=sl;
@@ -7560,7 +7576,7 @@ World::CombatReach World::combatReach(const Unit& u,const Unit& t,float dist) co
     r.weapon=r.slot>=0 ? &u.type->weapons[size_t(r.slot)] : nullptr;
     // Approach on the reach this unit actually fights at: the selected weapon for a
     // switcher, the longest of them when they all fire.
-    const bool allWeapons=!u.type->weaponSwitching && u.type->weapons.size()>1;
+    const bool allWeapons=!u.type->weaponSwitching && u.type->weapons.size()>1 && !chasesOnOrderSlot(u);
     r.best=allWeapons ? u.type->maxRange() : (r.weapon ? float(r.weapon->range) : u.type->maxRange());
     // Range is to the target's footprint EDGE, not its centre. A building's centre is
     // deep inside a blocked footprint, so a centre-distance check leaves a short-range
@@ -20806,7 +20822,10 @@ void World::tick(float dt) {
                 // tickCombat does. A longer secondary spell must not stop a
                 // dragon outside its selected breath weapon's range.
                 const bool allWeapons=!u.type->weaponSwitching && u.type->weapons.size()>1;
-                const float range=allWeapons ? u.type->maxRange() : (sel ? float(sel->range) : u.type->maxRange());
+                // A walker chases on its order slot (Attack_Chase 0x4034a0, approachSlot).
+                const Weapon* reach = chasesOnOrderSlot(u) && reachSlot>=0 ? &u.type->weapons[size_t(reachSlot)] : sel;
+                const float range=allWeapons && !chasesOnOrderSlot(u) ? u.type->maxRange()
+                    : (reach ? float(reach->range) : u.type->maxRange());
                 if (std::sqrt(dx * dx + dz * dz) > (range + pad) * 0.95f) return false;
                 // Don't sit still with no shot: a ranged unit whose line to the
                 // target is blocked keeps moving to get around the wall.

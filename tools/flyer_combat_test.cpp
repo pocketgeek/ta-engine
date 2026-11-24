@@ -361,6 +361,11 @@ int main(int argc,char** argv) {
             flyerType.weapons.clear();flyerType.weapon={};
             auto gunner=*registry.find("armrock");
             gunner.turnRate=gunner.turnInPlaceRate=32767;
+            // Only a weapon without turret=1 makes the body face (slotNeedsFacing:
+            // TaAim::Direct). TA ships no such ground weapon that reaches a flyer (the
+            // Rocko's KBOT_ROCKET is turret=1; the only non-turret direct ones are
+            // torpedoes), so this Rocko's rocket is made a fixed, body-aimed one.
+            gunner.weapons.front().taAim=ta::sim::Weapon::TaAim::Direct;
             const auto& gunnerWeapon=gunner.weapons.front();
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);

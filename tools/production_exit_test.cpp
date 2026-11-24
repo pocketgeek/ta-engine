@@ -151,12 +151,14 @@ int main(int argc,char** argv) {
                 if(!small || t->footX*t->footZ<small->footX*small->footZ)small=t;
             }
             if(!large || large->footX*large->footZ==small->footX*small->footZ)continue;
-            ++factories;
+            ++factories;std::printf("ground factory %s: %s %dx%d, %s %dx%d\n",name.c_str(),large->id.c_str(),large->footX,large->footZ,small->id.c_str(),small->footX,small->footZ);
             for(int side:{-1,0,1})for(bool legion:{false,true})for(bool largeFirst:{true,false}) {
                 ++cases;if(!largeOutputCase(registry,type,large,small,side,legion,largeFirst))++failures;
             }
         }
-        if(factories<8){std::printf("FAIL: only %d shipped ground factories found\n",factories);++failures;}
+        // TA ships four factories whose ground outputs come in more than one footprint size
+        // (armvp, armavp, corvp, coralab); Kingdoms had eight.
+        if(factories<4){std::printf("FAIL: only %d shipped ground factories found\n",factories);++failures;}
         {
             const auto check=[&](bool ok,const char* what){std::printf("%s: %s\n",ok?"PASS":"FAIL",what);++cases;if(!ok)++failures;};
             // A factory's output stance (engine addition): none at first, so the
