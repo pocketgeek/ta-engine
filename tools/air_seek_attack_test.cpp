@@ -166,13 +166,22 @@ int main(int argc,char** argv) {
             check(fire.farthest<fire.radius+400 && fire.nearest<fire.radius,"it orbits at range + 160",what);
             check(!fire.landedSeeking,"it keeps flying",what);
             check(fire.attacksNew,"on Fire At Will it attacks a new enemy at the point",what);
-            // Return Fire: it orbits but does not go looking.
-            const Run back=run(registry,type,ground,1,Setup::Explicit,2100,1200);
-            check(back.killed && back.seek && !back.leftSeek && !back.attacksNew,
-                  "on Return Fire it seeks but does not retarget",what);
-            // Hold Fire: the attack just ends.
-            const Run hold=run(registry,type,ground,0,Setup::Explicit,600,-1);
-            check(hold.killed && !hold.seek,"on Hold Fire no seek follows",what);
+            // The attack's own slot (slot 0, as Attack_Chase gives it) must reach a
+            // land target for the Return Fire / Hold Fire kills: a TA seaplane's slots
+            // 0 and 1 are torpedoes (waterweapon=1) and its slot 2 is automatic, which
+            // only Fire At Will lets take the target (armseap: no kill in 1800 ticks).
+            if (type.weapons.front().waterWeapon) {
+                std::printf("[SKIP] %s: its attack slot is a torpedo; the land kill is its automatic slot's\n",
+                            what.c_str());
+            } else {
+                // Return Fire: it orbits but does not go looking.
+                const Run back=run(registry,type,ground,1,Setup::Explicit,2100,1200);
+                check(back.killed && back.seek && !back.leftSeek && !back.attacksNew,
+                      "on Return Fire it seeks but does not retarget",what);
+                // Hold Fire: the attack just ends.
+                const Run hold=run(registry,type,ground,0,Setup::Explicit,600,-1);
+                check(hold.killed && !hold.seek,"on Hold Fire no seek follows",what);
+            }
             // A queued order behind the attack: the attack was not the last mission.
             const Run queued=run(registry,type,ground,2,Setup::Queued,600,-1);
             check(queued.killed && !queued.seek,"behind a queued order no seek follows",what);
