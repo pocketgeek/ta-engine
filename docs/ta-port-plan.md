@@ -121,6 +121,16 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   passes all 16 cases: a TA_MENU_PICK (debug) and a LAN game's return go to the
   engine menu, not TA's front end; the fallback map is Great Divide; the Test Map
   fixture drops Ashap Plateau's useonlyunits.
+- Campaign picker (2026-11-24): the title screen's CAMPAIGN opens the engine's
+  campaign picker (CampaignScreen) inside TA's front end. On TA data it is TA's
+  any-mission screen: NEWGAME.GUI on playanygame4 (retail-gui.md "New campaign"),
+  Arm / Core as the side tabs, Choose Campaign lists camps/*.tdf for the side or
+  ALL (0x476a60), Choose Game the missions with DONE / PLAY and the next-up mission
+  highlighted; Set Difficulty, Previous Menu, Start. A pick goes through MSNBRIEF to
+  the mission (retail-campaign.md 1.3, any mission may start), ENDMSN's Main Menu
+  returns to the picker, and a win is recorded in Settings::campaignCompleted (not
+  retail, 1.4). The TaCampaign in play now outlives the session, so ENDMSN's Start
+  launches the mission picked there.
 - Death accounting, alert details, plate art (2026-11-24): Kills / Losses and the
   unit kill count follow TotalA.exe's death packet switch (0x486892, table
   0x486e64) at the death (0x4866d0), not at retirement: kinds 1 and 6 a loss, 5

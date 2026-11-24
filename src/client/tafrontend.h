@@ -45,6 +45,9 @@ struct TaCampaign {
     std::vector<Mission> missions;
     int side = 0, cur = 0, difficulty = 1;
     std::string results = std::string(25, 'U');
+    // Picked on the title screen's CAMPAIGN picker (CampaignScreen), not NEWGAME: the
+    // briefing's Previous Menu and ENDMSN's Main Menu go back to that picker.
+    bool fromPicker = false;
     bool active() const { return !missions.empty(); }
     // The mission spec setupMission takes ("<missionfile>:<difficulty>") and its map name.
     std::string spec() const;
@@ -59,9 +62,10 @@ class TaFrontEnd {
 public:
     // EngineSingle / EngineMulti: the title screen's SINGLE and MULTI doors open the
     // engine's own screens (the single-player lobby, the CONNECT screen); Options
-    // opens the engine's SETTINGS menu.
-    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu, EngineSingle, EngineMulti,
-                        EngineCampaign };
+    // opens the engine's SETTINGS menu. CAMPAIGN opens the engine's campaign picker
+    // (CampaignScreen, on TA data TA's any-mission screen) here: a picked mission goes
+    // through MSNBRIEF and returns Campaign like NEWGAME's.
+    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu, EngineSingle, EngineMulti };
     TaFrontEnd(SDL_Renderer* ren, SDL_Window* win, const hpi::Vfs& vfs);
     // Runs until a choice is made. `setup` is filled for Skirmish (and kept between
     // calls, like retail's registry-backed skirmish settings). Campaign: NEWGAME ->
@@ -71,6 +75,9 @@ public:
     // ENDMSN. Start -> MSNBRIEF -> Choice::Campaign (camp.cur is the pick); MainMenu
     // -> Choice::Menu.
     Choice endMission(SkirmishSetup& setup, TaCampaign& camp, int outcome);
+    // MSNBRIEF for camp's current mission (one picked outside the front end): Start ->
+    // Choice::Campaign.
+    Choice briefing(SkirmishSetup& setup, TaCampaign& camp);
     // A won mission's glamour picture and sound (docs/retail-campaign.md 4.3).
     void showGlamour(const std::string& glamour, const std::string& sound);
     // A launch that failed: reopen the screen it was picked from (SELPROV for a
@@ -80,7 +87,7 @@ public:
     const std::string& chosenServer() const { return server_; }
 
 private:
-    enum class Page { Main, Single, Skirmish, SelectMap, SelProv, NewGame, Brief, EndMission };
+    enum class Page { Main, Single, Skirmish, SelectMap, SelProv, NewGame, Brief, EndMission, Campaigns };
     Page start_ = Page::Main;
     CursorSet cursors_;              // TA's pointer (anims/cursors.gaf)
     Settings cursorSettings_;        // cursorScale / hardwareCursor

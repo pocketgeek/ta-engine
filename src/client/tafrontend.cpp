@@ -1,5 +1,6 @@
 #include "client/tafrontend.h"
 
+#include "client/campaignscreen.h"
 #include "client/cursors.h"
 #include "client/settings.h"
 #include "client/taguiview.h"
@@ -238,6 +239,11 @@ TaFrontEnd::Choice TaFrontEnd::endMission(SkirmishSetup& setup, TaCampaign& camp
     return run(setup, camp);
 }
 
+TaFrontEnd::Choice TaFrontEnd::briefing(SkirmishSetup& setup, TaCampaign& camp) {
+    start_ = Page::Brief;
+    return run(setup, camp);
+}
+
 TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     if (!cursorsLoaded_) {
         cursorsLoaded_ = true;
@@ -426,10 +432,23 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         view->setSelection("Missions", std::clamp(camp.cur + (won ? 1 : 0), 0, std::max(0, int(camp.missions.size()) - 1)));
         view->setStage("Difficulty", camp.difficulty);
     };
+    // The title screen's CAMPAIGN: the engine's campaign picker (CampaignScreen), which
+    // reads completion from the saved settings each time it opens.
+    std::unique_ptr<CampaignScreen> picker;
+    Settings pickerSettings;
+    // A run that opened on ENDMSN or MSNBRIEF hands the title screen back to main.cpp
+    // (Choice::Menu) rather than drawing it here.
+    const bool nested = start_ == Page::EndMission || start_ == Page::Brief;
     auto goPage = [&](Page p) {
         page_ = p;
         popup.reset();
+        if (p != Page::Campaigns) picker.reset();
         switch (p) {
+        case Page::Campaigns:
+            pickerSettings = loadSettings();
+            picker = std::make_unique<CampaignScreen>(ren_, vfs_, pickerSettings, camp.side);
+            picker->setDifficulty(camp.difficulty);
+            break;
         case Page::NewGame: open("newgame", "newcampaign4x"); syncNewGame(); break;
         case Page::Brief: open("msnbrief", nullptr); openBrief(); break;
         case Page::EndMission: open("endmsn", nullptr); syncEnd(); break;
@@ -446,7 +465,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         }
     };
 #ifndef NDEBUG
-    // TA_FRONT_ENDMSN=<+1|-1>: open ENDMSN after Arm Campaign mission 1 (front-end checks).
+    // TA_FRONT_ENDMSN=<+1|-1>[p]: open ENDMSN after Arm Campaign mission 1 (front-end
+    // checks); a trailing p plays it as picked on the CAMPAIGN picker.
     static bool glamourOnce = false;   // TA_FRONT_GLAMOUR=<name>: the victory picture once
     if (const char* g = std::getenv("TA_FRONT_GLAMOUR"); g && !glamourOnce) { glamourOnce = true; showGlamour(g, g); }
     static bool endmsnOnce = false;
@@ -455,9 +475,12 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         camp.cur = 0;
         outcome_ = std::atoi(e) > 0 ? 1 : -1;
         camp.results[0] = outcome_ > 0 ? 'W' : 'L';
+        camp.fromPicker = std::string(e).find('p') != std::string::npos;
         start_ = Page::EndMission;
     }
 #endif
+    // A campaign launch that failed goes back to where it was picked.
+    if (start_ == Page::NewGame && camp.fromPicker) start_ = Page::Campaigns;
     goPage(start_);
     start_ = Page::Main;
     // Player rows (code-drawn on SKIRMISH with skirmish.gaf).
@@ -479,6 +502,31 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         return 1000;
     };
     std::string message = std::exchange(failure_, {});
+    // The picker's choice: load the campaign and brief its mission (MSNBRIEF, as NEWGAME
+    // Start does; docs/retail-campaign.md 1.3, except that any mission may start).
+    auto takePick = [&]() -> bool {
+        const std::string id = picker->pickedCampaign();
+        TaCampaign next;
+        if (id.rfind("ta:", 0) != 0 || !loadTaCampaign(vfs_, id.substr(3), next)) return false;
+        next.side = std::clamp(picker->pickedSide(), 0, std::max(0, sides::count() - 1));
+        next.cur = std::clamp(picker->pickedMission(), 0, int(next.missions.size()) - 1);
+        next.difficulty = picker->pickedDifficulty();
+        next.results.assign(25, 'U');   // 0x41da30
+        next.fromPicker = true;
+        camp = std::move(next);
+        goPage(Page::Brief);
+        return true;
+    };
+    // The picker closed (input() / press() returned true).
+    auto pickerDone = [&]() -> std::optional<Choice> {
+        if (picker->picked()) {
+            if (!takePick()) message = "That campaign could not be loaded.";
+            return std::nullopt;
+        }
+        if (nested) return Choice::Menu;
+        goPage(Page::Main);
+        return std::nullopt;
+    };
     for (;;) {
         int w = 640, h = 480;
         SDL_GetRendererOutputSize(ren_, &w, &h);
@@ -509,7 +557,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             if (h2 == "SINGLE") return Choice::EngineSingle;
             else if (h2 == "MULTI") return Choice::EngineMulti;
             else if (h2 == "OPTIONS") return Choice::Options;
-            else if (h2 == "CAMPAIGN") return Choice::EngineCampaign;
+            else if (h2 == "CAMPAIGN") goPage(Page::Campaigns);
             else if (h2 == "EXIT") return Choice::Exit;
             break;
         case Page::Single:
@@ -563,6 +611,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 const int side = camp.side;
                 camp = browse;
                 camp.side = side;
+                camp.fromPicker = false;
                 camp.results.assign(25, 'U');
                 camp.cur = 0;
                 camp.difficulty = view->stage("Difficulty");
@@ -575,12 +624,15 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 else narration.stop();
             }
             if (h2 != "SHUTUP") narration.stop();
-            if (h2 == "PREVMENU") goPage(Page::Single);   // retail: state 3
+            if (h2 == "PREVMENU") goPage(camp.fromPicker ? Page::Campaigns : Page::Single);   // retail: state 3
             else if (h2 == "START") return Choice::Campaign;
             break;
         case Page::EndMission:
             camp.difficulty = view->stage("Difficulty");   // applies at the next load
-            if (h2 == "MAINMENU") return Choice::Menu;
+            if (h2 == "MAINMENU") {
+                if (!camp.fromPicker) return Choice::Menu;
+                goPage(Page::Campaigns);   // the engine workflow: back to the picker
+            }
             else if (h2 == "START") {
                 const int sel = view->selection("Missions");
                 if (sel >= 0 && sel < int(camp.missions.size())) { camp.cur = sel; goPage(Page::Brief); }
@@ -599,7 +651,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         };
 #ifndef NDEBUG
         // TA_FRONT_SCRIPT=GADGET,GADGET,...: press each in turn, one per frame after the
-        // first draws (headless front-end runs); a SHOT:<file.png> step saves the page.
+        // first draws (headless front-end runs); a SHOT:<file.png> step saves the page,
+        // CLICK:<gadget> clicks a gadget's centre and CLICK:@<x>:<y> a GUI point.
         static std::vector<std::string> script = [] {
             std::vector<std::string> v;
             if (const char* e = std::getenv("TA_FRONT_SCRIPT")) {
@@ -620,9 +673,11 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             else if (name.rfind("CLICK:", 0) == 0) {
                 // A real click: the gadget's centre, through renderer pixels to window
                 // points, as SDL mouse events the normal event path handles.
-                TaGuiView& active = popup ? *popup : *view;
+                TaGuiView& active = popup ? *popup : picker && picker->taView() ? *picker->taView() : *view;
                 float gx = 0, gy = 0;
-                if (active.gadgetCentre(name.substr(6), gx, gy)) {
+                if (active.gadgetCentre(name.substr(6), gx, gy) ||
+                    // CLICK:@x:y -- a point in 640x480 GUI space (code-drawn rows).
+                    (name.size() > 7 && name[6] == '@' && std::sscanf(name.c_str() + 7, "%f:%f", &gx, &gy) == 2)) {
                     int wx = 0, wy = 0;
                     SDL_RenderLogicalToWindow(ren_, L.px(gx), L.py(gy), &wx, &wy);
                     for (Uint32 type : {Uint32(SDL_MOUSEBUTTONDOWN), Uint32(SDL_MOUSEBUTTONUP)}) {
@@ -638,6 +693,11 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 } else std::fprintf(stderr, "front-end script: no gadget %s to click\n", name.c_str() + 6);
             }
             else if (name == "WAIT") {}                                   // one frame (animations)
+            else if (picker) {
+                const bool done = picker->press(name);
+                std::fprintf(stderr, "front-end script: %s -> campaign picker%s\n", name.c_str(), done ? " (closed)" : "");
+                if (done) { const auto r = pickerDone(); if (r) return *r; }
+            }
             else {
                 TaGuiView& active = popup ? *popup : *view;
                 const std::string got = active.activate(name);
@@ -660,6 +720,10 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 e.motion.x = int(lx); e.motion.y = int(ly);
             }
             if (e.type == SDL_QUIT) return Choice::Exit;
+            if (picker) {
+                if (picker->input(e, w, h)) { const auto r = pickerDone(); if (r) return *r; }
+                continue;
+            }
             if (page_ == Page::Brief && e.type == SDL_MOUSEWHEEL)
                 briefScroll = std::clamp(briefScroll - e.wheel.y * 3, 0, std::max(0, int(briefLines.size()) - 8));
             TaGuiView& active = popup ? *popup : *view;
@@ -693,7 +757,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         }
         SDL_SetRenderDrawColor(ren_, 0, 0, 0, 255);
         SDL_RenderClear(ren_);
-        if (view) view->draw(L);
+        if (picker) picker->render(w, h);
+        else if (view) view->draw(L);
         if (page_ == Page::Brief && view && briefFont) {
             const int frame = int(SDL_GetTicks() / 66);
             if (!seqRotate.empty()) view->drawSequence(briefGaf, seqRotate, frame % briefFrames[0], 0, 0, L);
@@ -710,7 +775,7 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
                 }
             }
         }
-        if (page_ != Page::Skirmish && !message.empty() && view) {
+        if (page_ != Page::Skirmish && !message.empty() && (view || picker)) {
             // A failed launch's reason (or a NEWGAME refusal), on a dark band at the foot.
             const SDL_FRect band = L.rect(0, 462, 640, 18);
             SDL_SetRenderDrawColor(ren_, 0, 0, 0, 200);
