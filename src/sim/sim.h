@@ -1446,11 +1446,6 @@ struct alignas(64) Unit {
     // Retail unit+0x10e: the 1/256-HP remainder self-repair carries between calls
     // (retailSelfRepairPoints). Zero at creation, like retail's (0x511ae2).
     uint8_t healCarry = 0;
-    // Retail unit +0x12a: a flyer's air-traffic counter (retailAirTrafficStep),
-    // stepped from its overlap list after each occupancy rebuild. Every flyer
-    // mission steps out of a stack at 5 or more (8 for a flying builder at
-    // work). Hashed when nonzero.
-    int8_t airTraffic = 0;
     RetailAirOccupant airOccupant; // secondary occupancy list/origin (+0x117..+0x128)
     RetailFlightVector flightVelocity;
     std::array<int32_t,3> flightAcceleration{}; // retained native banking input
@@ -1767,7 +1762,7 @@ inline constexpr size_t kUnitPrefetchHot=9*64;
                   "Unit::" #field " must sit on cache lines " #first "-" #last)
 TA_UNIT_LINE(standbyState, 8); TA_UNIT_LINE(guardNoMoveState, 8); TA_UNIT_LINE(standbyAllowed, 8);
 TA_UNIT_LINES(deathAnimationTicks, 8, 11); TA_UNIT_LINES(corpseUntil, 8, 11); TA_UNIT_LINES(corpseStatue, 8, 11);
-TA_UNIT_LINES(corpseFading, 8, 11); TA_UNIT_LINES(airTraffic, 9, 11); TA_UNIT_LINES(airOccupant, 9, 11);
+TA_UNIT_LINES(corpseFading, 8, 11); TA_UNIT_LINES(airOccupant, 9, 11);
 TA_UNIT_LINES(flightVelocity, 9, 11);
 TA_UNIT_LINES(flightAcceleration, 9, 11); TA_UNIT_LINES(flightNavigation, 9, 11);
 TA_UNIT_LINES(retainedFlightGoal, 9, 11); TA_UNIT_LINES(flightSectorZ, 9, 11);
@@ -4203,10 +4198,6 @@ private:
     bool seekLostWard(Unit& u);
     void tickSeekGuard(Unit& u);
     int seekGuardFind(const Unit& u) const;
-    // A flying builder's job at a wake of its mission (VTOL_MobileBuild,
-    // VTOL_HelpBuild, VTOL_RepairUnit): Kingdoms' air-traffic check; TA's
-    // jobs have none (TotalA.exe 0x413d80 / 0x414380 / 0x414e70), so never.
-    std::optional<int32_t> flyingJobTraffic(Unit& b, RetailTrafficMission mission);
     void restartFlyingHelp(Unit& b, const Unit& site);
     void flyMissionGoal(Unit& u, Order& order);
     // Retail's air traffic (retailairtraffic.h): a step-out order pushed ahead

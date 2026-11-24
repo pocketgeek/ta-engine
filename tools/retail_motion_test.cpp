@@ -56,36 +56,6 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    // tools/re/check_air_traffic.py: the air-traffic counter step
-    // (51dc4b..51dce4), one "counter overlaps" pair per line.
-    if (argc==2 && std::strcmp(argv[1],"--air-traffic")==0) {
-        int counter,overlaps;
-        while (std::scanf("%d %d",&counter,&overlaps)==2)
-            std::printf("%d\n",int(retailAirTrafficStep(int8_t(counter),int8_t(overlaps))));
-        return 0;
-    }
-    // tools/re/check_air_traffic.py: one mission's air-traffic check
-    // (retailAirTrafficCheck) per line: the mission's handler called past its
-    // head's own exits.
-    if (argc==2 && std::strcmp(argv[1],"--traffic-check")==0) {
-        unsigned mission,stage,tick,deadline,pending,flags,seed,built;int traffic,footX;
-        while (std::scanf("%u %u %u %u %u %u %d %d %u %u",&mission,&stage,&tick,&deadline,&pending,&flags,&traffic,
-                          &footX,&seed,&built)==10) {
-            RetailMissionState m;m.stage=uint8_t(stage);m.waitMask=0;m.deadline=deadline;m.pending=pending;m.flags=flags;
-            struct Host {
-                uint32_t& seed;bool built;unsigned calls=0,pushes=0,stops=0;RetailStepOut kind=RetailStepOut::None;
-                int32_t distance=0;
-                uint32_t random(int n) { ++calls;return retailRandom(seed,n); }
-                bool stepOut(RetailStepOut k,int32_t d) { ++pushes;kind=k;distance=d;return built; }
-                void stopBuilding() { ++stops; }
-            } host{seed,built!=0};
-            const int result=retailAirTrafficCheck(RetailTrafficMission(mission),m,tick,int8_t(traffic),int16_t(footX),
-                                                   flags,host);
-            std::printf("%d %u %u %u %u %u %u %u %d %u %u %u\n",result,unsigned(m.stage),m.waitMask,m.deadline,m.pending,
-                        m.flags,host.pushes,unsigned(host.kind),host.distance,host.stops,seed,host.calls);
-        }
-        return 0;
-    }
     // tools/re/check_air_traffic.py: one VTOL_StepOut (4214b0) handler call
     // per line, with up to seven overlapping flyers.
     if (argc==2 && std::strcmp(argv[1],"--step-out")==0) {
