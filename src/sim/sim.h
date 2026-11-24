@@ -430,6 +430,9 @@ struct UnitType {
     // plain 16-bit with no scaling, the same family as sightdistance/builddistance),
     // so a barge reaches ~419px where we used one hardcoded 70 for every transport.
     int32_t transportDist = 0;   // readInt
+    // An air carrier's attach piece: the script piece its QueryTransport names
+    // (cob::queryTransportPiece; TotalA.exe VTOL_PICKUP 0x41138a). -1 for none.
+    int transportPiece = -1;
     std::string soundClass;   // FBI soundcategory, keys gamedata/soundclasses
     std::string bodyType = "default";   // FBI bodytype (flesh/armor/wood/..) = hit-sound material
     bool instantCorpse = false; // proven constant Killed + no Dying callback
@@ -3393,14 +3396,6 @@ public:
     // clear): when it comes up the unit is selectable again and the next
     // order runs.
     void orderMakeSelectable(int unitId);
-    // Ground_Unload / VTOL_Unload's release (40901c..40906e): the passenger's
-    // PARK goes in front of its orders unless the carrier is live, not dying,
-    // selectable, finished and not carried (retail's selection predicate;
-    // +0x104 and the holder bit are never set in lockstep).
-    static bool unloadParkAhead(const Unit& carrier) {
-        return !(carrier.alive() && carrier.hp > Fixed() && carrier.selectable && !carrier.underConstruction &&
-                 !carrier.embarked());
-    }
     // Put `passengerId` straight into `transportId`'s hold (InitialMission
     // "i NAME", retail 51b4f0): no pickup, and its later orders wait aboard.
     bool embarkInto(int passengerId, int transportId);
@@ -3768,6 +3763,23 @@ private:
     // True when it was consumed that way. See the definition.
     static bool setRally(Unit& u, const Order& o, bool queue);
     bool tickTransport(Unit& u, float dt);
+    // The carrier's transport missions (TotalA.exe GROUND_PICKUP 0x406780,
+    // VTOL_PICKUP 0x4111b0, VTOL_UNLOAD 0x411560) on the order at `leg`.
+    bool tickGroundPickup(Unit& u, size_t leg);
+    bool tickVtolPickup(Unit& u, size_t leg);
+    bool tickVtolUnload(Unit& u, size_t leg);
+    // ATTACH_UNIT (0x481340 -> 0x48aac0 -> 0x48ab70) of `passenger` to
+    // `carrier`, and DROP_UNIT's release (0x4813b0 -> 0x48aac0 with no
+    // carrier) at (x, z).
+    bool canAttachCargo(const Unit& carrier, const Unit& passenger) const;
+    void attachCargo(Unit& carrier, Unit& passenger);
+    void releaseCargo(Unit& carrier, Unit& passenger, Fixed x, Fixed z);
+    // An air carrier's transport controller, flown this tick: arrival posts
+    // 0x100 to `mission` (and, for a point controller, 0x400 as it lets go).
+    void flyTransportGoal(Unit& u, Order& o, RetailMissionState& mission);
+    // 0x44e6c0: a point controller's height, `altitude` px over the ground or
+    // the sea at (x, z) (0x485070), at most 511.
+    int32_t transportGoalHeight(Fixed x, Fixed z, int altitude) const;
     // Drop a queued path search whose orders have been replaced. See the definition.
     void cancelPath(Unit& u);
     void tickConstruction(Unit& u, float dt);
@@ -3779,6 +3791,7 @@ private:
     void tickRetailGetBuilt(Unit& u);
     void completeRetailConstruction(Unit& builder,Unit& site);
     void notifyUnitScript(Unit& u,const char* name);
+    void notifyUnitScript(Unit& u,const char* name,uint32_t argument);
     void startWorkAnimation(Unit& u,Fixed targetX,Fixed targetZ);
     void stopWorkAnimation(Unit& u);
     void notifyMovementRate(Unit& u);

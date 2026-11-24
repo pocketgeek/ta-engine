@@ -260,32 +260,51 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   (0x44d800) -- when parked outputs wall the band; client watch/spectator
   harness checks (gameview_devharness.cpp) still spawn Kingdoms units.
 - Transports read TA's keys (TotalA.exe 0x489a90: passenger footprint x <=
-  transportsize, count < transportcapacity; an air carrier holds one, 0x41121a).
-  TA's transfer reach is scripted (TransportPickup/TransportDrop, BoomCalc), read
-  from the COB for surface carriers (cob::transportBoomReach); the air reach is an
-  engine stand-in (TA transfers at the exact point). GROUND_UNLOAD (0x406900) is
-  ported (retailTransportUnloadApproach / retailSurfaceUnloadTransfer): every
-  surface unload starts with its TransportDrop call (counted, mission +0x36); out
-  of reach it sleeps 15 and installs the drop-point circle (0x438930: 1.5 x
-  footprintz x 16 px for a hover, else 0, 0x406a23..0x406a5e), waking on the
-  navigator only; the third failed call returns 9 (next order: dropped; none: a
-  call every 30+rand(30), 0x43b8e5..0x43b973). A refused DROP_UNIT (mode 1 at
-  release) is a failed call, not an abort. One passenger per order (the FIRST,
-  0x489690; 0x4069f0..0x406a09). The release point rides the hull: the call's
-  offset turned by the heading change since (retailHullPoint, Order::
-  transportHeading). Engine stand-ins: the boom animation is the 15-tick beam;
-  the wait also wakes after 60 ticks once the hull has stopped (the engine's
-  navigator never posts retail's 0x40 for a goal it cannot reach, see
-  retail-pathfinding.md D16); the released passenger keeps Kingdoms' dispersal
-  PARK (409154; DROP_UNIT past placement is untraced). Still Kingdoms-shaped:
-  GROUND_PICKUP (0x406780: carrier-only -- the passenger gets no mission; stage
-  0 the size test, then TransportPickup + BUSY, 3 calls, the circle on the
-  passenger's position with radius 0, wait 0xe8; ours keeps the reciprocal
-  passenger Load order and the engine beam), VTOL_PICKUP / VTOL_UNLOAD
-  (0x4111b0 / 0x411560, not re-traced). The dispatcher's code 3 sleeps
-  30+rand(15) and code 9 30+rand(30) with mission flag 0x800000 in TotalA.exe
-  (0x43b890, 0x43b94f); retailDispatchMissions still has Kingdoms' rand(30)+15
-  and 0x400000 (GROUND_UNLOAD handles its own 9).
+  transportsize, count < transportcapacity, asked when LOAD is given). LOAD is
+  the carrier's order (0x43f701 -> 0x43fb61): GROUND_PICKUP / VTOL_PICKUP for
+  the carrier and no mission for the passenger (TA has no Move_Seek_Pickup;
+  World::loadInto, the carrier's list takes Shift / Ctrl / toggle, matchsetup;
+  the client no longer boards a unit clicked onto a transport). GROUND_PICKUP
+  (0x406780; retailGroundPickup): size test, BUSY wait (0x438730), a counted
+  TransportPickup call + sleep 15, BUSY wait, aboard -> 5, third failed call
+  -> 9, else a radius-0 circle on the passenger (wait 0xe8), controller off and
+  round again. VTOL_PICKUP (0x4111b0; retailVtolPickup): fails while the
+  carrier holds anyone (0x41121a) or the passenger is under the sea; take off
+  (half cruisealt), follow the passenger at cruisealt (radius 0x30),
+  QueryTransport, BeginTransport(model height) and down until the link piece
+  meets it, ATTACH_UNIT there, climb back. VTOL_UNLOAD (0x411560;
+  retailVtolUnload): to the point at cruisealt (radius 0x140), DROP_UNIT's
+  placement test (9 when refused), down to the passenger's height, test
+  again, EndTransport and drop where the link holds it, climb back. The attach
+  (attachCargo, 0x48ab70 + 0x4384a0) puts the passenger at the head of the
+  carrier's list (an unload takes the last one aboard), clears its orders and
+  makes its slots automatic (BeCarried 0x402fc0); the release (releaseCargo,
+  DROP_UNIT 0x4813b0) orders nothing -- Kingdoms' dispersal PARK (409154) is
+  gone. GROUND_UNLOAD (0x406900) as before (retailTransportUnloadApproach /
+  retailSurfaceUnloadTransfer). Engine stand-ins: the surface carriers'
+  TransportPickup / TransportDrop scripts are not run (the sim VM has no
+  ATTACH_UNIT / DROP_UNIT host and its GET lacks PIECE_XZ / UNIT_XZ / XZ_HYPOT
+  etc. that BoomCalc reads): the boom reach is the static BoomCalc limit
+  (cob::transportBoomReach) and the animation is fifteen ticks of BUSY, then
+  the attach / drop; a pickup or unload order removed mid-animation cancels it
+  (retail's script would finish). GROUND_PICKUP's circle and GROUND_UNLOAD's
+  wait also wake 60 ticks after the hull stops (the engine's navigator never
+  fails an unreachable point, retail-pathfinding.md D16). Air cargo rides the
+  carrier's own point, not the link piece's; the BeCarried 10-tick poll after
+  the drop (the default mission comes at once here), the flag-4 missions
+  BeCarried keeps, the air base exemption (flagsA bit 9), VTOL_PICKUP's event
+  2 / 0x10000 bits and the unit-follow controllers' exact altitude rule
+  (0x44e190 / 0x44e250 are taken as the passenger's y plus the altitude) are
+  untraced or unmodelled.
+- Mission dispatcher (0x43b7c0, retailDispatchMissions): code 3 sleeps
+  30 + rand(15) (0x43b890) and code 9 sets mission flag 0x800000 and, alone,
+  sleeps 30 + rand(30) (0x43b8e5..0x43b973); the rest matched already. Not
+  modelled: an event 0x10000 drops slots 0..2's targets with TargetCleared
+  (0x43b840 -> 0x48a0f0) -- TA's unit event word is 16 bits, so only a
+  mission's own pending word carries it, while the engine's 0x10000 is
+  Kingdoms' slot-fired event; the second mission list (+0x60, flag 0x40000);
+  the 0x800000 flag's reader (the navigator, 0x44f3e9). TA's loop has no call
+  cap (0x43b99f); the engine keeps 100 as a guard.
 - Resurrection follows TotalA.exe RESURRECT (0x404db0): any reclaimable feature
   (0x440043, flag 0x80) whose name up to its first '_' names a unit type
   (0x404f36 -> 0x488b10; FeatType::raises: cornecro_dead and cornecro_heap both

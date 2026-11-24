@@ -12,10 +12,11 @@ namespace ta::sim {
 
 // 4dd250: an attached unit's world point is the host's +0x68 position plus the
 // 4dd0f0 offset of the attach piece (retailPieceOrigin, which 4dd0f0 also
-// returns as zero for a negative or out-of-range piece). Both transport pickup
-// handlers attach with piece -1 (408d00 ground, 41add7 air, through 51b4f0 to
-// 51b5a0, which stores it at +0x112), and no shipped unit script issues
-// ATTACH_UNIT, so transport cargo sits exactly on its carrier.
+// returns as zero for a negative or out-of-range piece) -- Kingdoms' layout.
+// In TotalA.exe the surface carriers' TransportPickup scripts attach to the
+// boom's link and then to piece -1 (ATTACH_UNIT, 0x481340), and VTOL_PICKUP
+// attaches at QueryTransport's piece (0x4114a6); the engine still keeps cargo
+// on its carrier's own point (the piece offsets are not applied).
 inline std::array<int32_t,3> retailAttachPoint(const std::array<int32_t,3>& host,
         std::span<const RetailModelPiece> model,std::span<const cob::RetailPiece> poses,
         int piece,uint16_t heading,uint16_t pitch=0,uint16_t roll=0) {
@@ -42,60 +43,12 @@ inline std::array<int32_t,3> retailAttachedPosition(const std::array<int32_t,3>&
     }
     return result;
 }
-// 4034ec..4035e7: Move_Seek_Pickup after attachment, eligibility and
-// carrier mission-chain checks. The host copies the carrier position and owns
-// controller installation/removal; the dispatcher interprets the return code.
-template<class Approach,class Detach>
-int retailPassengerPickup(RetailMissionState& m,uint32_t& retries,uint32_t now,
-        uint32_t events,bool surface,Approach approach,Detach detach) {
-    switch(m.stage) {
-    case 0:
-        if(surface) { approach();m.waitMask=0x700; }
-        else detach();
-        m.waitMask|=0x88;m.sleep(now,30);return 1;
-    case 1:
-        if(events&0x80) { detach();retries=0;return 1; }
-        if(events&0x700) { detach();m.waitMask=0x88;m.sleep(now,30);return 2; }
-        m.stage=0;m.sleep(now,5);return 4;
-    case 2:
-        ++retries;
-        if(std::bit_cast<int32_t>(retries)>5)return 8;
-        m.sleep(now,30);return 2;
-    default:return 7;
-    }
-}
-
 // 408992/41a9f8 (pickup), 408df5/41b0cc (unload): compare the sum of the HIGH words of the two fixed-point
 // squares. Flooring each term is observable at the edge of the beam radius.
 inline bool retailTransportInRange(int32_t dx,int32_t dz,uint16_t range) {
     const uint32_t squared=uint32_t((uint64_t(int64_t(dx)*dx)>>32)+
                                     (uint64_t(int64_t(dz)*dz)>>32));
     return std::bit_cast<int32_t>(squared)<=std::bit_cast<int32_t>(uint32_t(range)*range);
-}
-
-// 41aa4b..41aab7 / 41b12f..41b19e: once in pickup/unload transfer range, an air carrier flies away along
-// its current heading while unloading. This is a controller goal, not a
-// different passenger landing position.
-inline RetailFlightGoal retailUnloadStepOut(RetailFlightVector position,uint16_t heading,uint16_t range) {
-    const int32_t distance=std::bit_cast<int32_t>((uint32_t(range)+400u)*131072u);
-    position.x=satSub32(position.x,retailScaledSine(heading,distance));
-    position.z=satSub32(position.z,retailScaledCosine(heading,distance));
-    return {position,0x30,0,16};
-}
-
-// 4e3f70/4e4540/4e41d0: pickup's persistent pursuit follows the
-// non-flying passenger, including its altitude, with a strict horizontal radius.
-inline RetailFlightGoal retailPickupPursuitGoal(RetailFlightVector target,uint16_t range) {
-    target.y=std::min(target.y,511*65536);
-    return {target,0x11,0,int16_t(uint16_t(range-1))};
-}
-
-// 408bdd..408c21 / 41ac91..41acf3: approach polls while the navigator
-// continues independently. Controller arrival/failure can wake the mission early.
-template<class Random>
-void retailPickupApproachWait(RetailMissionState& m,uint32_t now,bool flying,Random random) {
-    m.waitMask=flying ? 0x728u : 0x708u;
-    m.sleep(now,flying ? random(6)+6u : 15u);
 }
 
 // TotalA.exe GROUND_UNLOAD (0x406900) up to the transfer. Stage 1 here is the
@@ -163,49 +116,6 @@ inline std::pair<int32_t,int32_t> retailHullPoint(int32_t dx,int32_t dz,uint16_t
             retailScaledCosine(turn,dz)-retailScaledSine(turn,dx)};
 }
 
-// 4089fa..408a19: a surface pickup outside transfer range aborts when
-// its controller failed (or there is no mover) and the passenger is stationary.
-// A moving passenger may still close the gap. VTOL_PICKUP has no such gate.
-constexpr bool retailPickupApproachAborted(bool flying,bool hasMover,uint32_t events,int32_t passengerSpeed) {
-    return !flying && (!hasMover || (events&0x200u)) && passengerSpeed==0;
-}
-
-// GROUND_PICKUP / VTOL_PICKUP transfer stage (408c3b / 41ad12).
-// A moving passenger restarts the beam delay, with a bounded six-tick retry.
-template<class Effects>
-int retailPickupTransfer(RetailMissionState& m,int32_t& ticks,uint32_t& attempts,
-        uint32_t now,bool flying,int32_t passengerSpeed,Effects effects) {
-    if(std::bit_cast<int32_t>(attempts)>=(flying ? 4:10))return 8;
-    if(passengerSpeed>0) {
-        ++attempts;ticks=0;m.sleep(now,6);return 2;
-    }
-    if(ticks>=15)return 1;
-    if(!ticks)effects();
-    ++ticks;m.sleep(now,1);return 2;
-}
-
-// Shared transfer/retry stages of Unload (408ee1/408fe6) and VTOL_Unload
-// (41b22b/41b362). Approach and attachment remain host operations.
-template<class Placement,class Effects,class Blocked>
-int retailUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t attempts,
-        uint32_t now,bool passengerValid,Placement placement,Effects effects,Blocked blocked) {
-    if (m.stage==2) {
-        if (!passengerValid) { m.sleep(now,1);return 0; }
-        if (placement(false)) {
-            if (ticks>=15) { m.stage=4;return 4; }
-            if (!ticks) effects();
-            ++ticks;m.sleep(now,1);return 2;
-        }
-        if (placement(true)) { m.sleep(now,1);return 1; }
-        blocked();return 8;
-    }
-    if (m.stage==3) {
-        if (std::bit_cast<int32_t>(attempts)>=6) return 9;
-        ticks=0;m.sleep(now,10);m.stage=1;return 4;
-    }
-    return 7;
-}
-
 // GROUND_UNLOAD's transfer (TotalA.exe 0x406900 stages 1-2): the scripted
 // drop runs while BUSY holds (0x4069de; the engine's fifteen-tick beam), and
 // DROP_UNIT tests the link's cell once, at release (0x4813b0 -> 0x47db70
@@ -226,14 +136,129 @@ int retailSurfaceUnloadTransfer(RetailMissionState& m,int32_t& ticks,uint32_t no
     m.stage=0;m.sleep(now,1);return 2;
 }
 
-// 4090b7/41b42c: after unloading, PARK disperses the passenger so
-// the next one can use the same drop point. Two random(3) draws precede
-// the footprint allowance for up to six passengers still aboard.
-inline uint32_t retailUnloadParkPadding(uint32_t first,uint32_t second,
-        uint32_t remaining,int16_t nextFootX,int16_t nextFootZ) {
-    const uint64_t squared=uint64_t(int64_t(nextFootX)*nextFootX+
-                                    int64_t(nextFootZ)*nextFootZ);
-    return (first+second+1)*16+std::min(remaining,6u)*uint32_t(isqrt64(squared*256)/2);
+// Engine event bits for TotalA.exe's mission events: the navigator's arrival,
+// failure and release (TA 0x80 / 0x40 / 0x20) are the engine's 0x100 / 0x200
+// / 0x400 (Kingdoms' numbering, kept engine-wide); 8 (a referenced unit
+// died, 0x406791 / 0x4111c9) and 4 (BUSY changed, 0x438730's wait) are TA's.
+constexpr uint32_t kTransportNavEvents=0x700u;
+
+// TotalA.exe GROUND_PICKUP (0x406780), the carrier's only mission: the
+// passenger is given none. The referenced passenger gone, or event 8, fails
+// it (8, 0x40678b..0x406796). Stage 0 (0x4067b1): canload, then the size test
+// (passenger footprint x > transportsize: 8). Stages 1 and 3 (0x40685d ->
+// 0x438730): while the carrier's BUSY bit holds, wait on 4 | 8. Stage 2
+// (0x40680f): TransportPickup(passenger), counted at mission +0x36, sleep 15.
+// Stage 4 (0x40686f): the passenger aboard this carrier ends it (5); after
+// three calls 9 (the dispatcher drops it when another order follows, else it
+// calls again in 30 + rand(30) ticks, 0x43b8e5); else a radius-0 circle on
+// where the passenger stands (0x438930) and a wait on the navigator and 8
+// (0xe8). Stage 5 (0x4068b1): the controller goes, back to stage 0.
+// The script owns the transfer: call() starts it (the boom reaches or not),
+// busy() is its BUSY, aboard() what its ATTACH_UNIT left. The engine's
+// navigator never fails a point it cannot reach (docs/retail-pathfinding.md
+// D16), and a radius-0 circle on a standing unit is one: the stand-in timer
+// (flag 0x80000000, no retail bit) wakes the circle after 60 ticks once the
+// hull has stopped, as GROUND_UNLOAD's does (retailTransportUnloadApproach).
+template<class Host>
+int retailGroundPickup(RetailMissionState& m,uint32_t& calls,uint32_t now,uint32_t events,
+        bool passenger,bool routing,Host& host) {
+    if(!passenger || (events&8u)) return 8;
+    if(m.stage==5 && (m.flags&0x80000000u) && !(events&~1u) && routing) {
+        m.waitMask=kTransportNavEvents|8u;m.sleep(now,60);return 2;
+    }
+    m.flags&=~0x80000000u;
+    switch(m.stage) {
+    case 0:
+        if(!host.canLoad()) return 7;
+        return host.fits() ? 1 : 8;
+    case 1: case 3:
+        if(host.busy()) { m.waitMask=0xcu;return 2; }
+        return 1;
+    case 2:
+        host.call();++calls;m.sleep(now,15);return 1;
+    case 4:
+        if(host.aboard()) return 5;
+        if(std::bit_cast<int32_t>(calls)>=3) return 9;
+        host.approach();
+        m.waitMask=kTransportNavEvents|8u;
+        m.flags|=0x80000000u;m.sleep(now,60);
+        return 1;
+    case 5:
+        host.release();return 0;
+    default:return 7;
+    }
+}
+
+// TotalA.exe VTOL_PICKUP (0x4111b0). No boom: the carrier flies onto the
+// passenger and attaches it at the piece QueryTransport names. Every wake
+// fails (8) without a passenger, on 8 or the navigator's failure (0x10048;
+// its 0x10000 bit is not modelled), when the passenger's top (y + its type
+// +0x16e, the model height) is not above the sea (0x4111d5..0x4111f9), or --
+// with no message -- while the carrier holds anyone (+0x8a, 0x41121a: one
+// passenger per air carrier). Stage 0 (0x411241): canfly, the size test,
+// every slot automatic (0x4898b0(3)), off any pad (0x48aac0), Activate
+// (0x48b090); a landed carrier takes off to its own point at half its
+// cruisealt (0x43d210, 0x44e2d0, 0x44e6c0) and waits on the navigator (0xe0),
+// one in the air goes on at once. Stage 1 (0x41132f): a controller on the
+// passenger (0x44e190) at cruisealt, radius 0x30 (0x44e730), wait 0x100e8.
+// Stage 2 (0x41138a): QueryTransport into +0x36, the same wait. Stage 3
+// (0x4113cb): BeginTransport(model height) lowers the link, and a controller
+// on the passenger (0x44e250) holds the hull where the piece (0x43def0) meets
+// it, wait 0x100ea. Stage 4 (0x411479): a failed approach (0x42) runs
+// EndTransport and fails; else ATTACH_UNIT at the piece (0x48aac0), and back
+// to its own point at cruisealt (0xe0). Stage 5 (0x4114fe): done.
+template<class Host>
+int retailVtolPickup(RetailMissionState& m,uint32_t events,bool passenger,bool submerged,
+        bool carrying,Host& host) {
+    if(!passenger || (events&0x208u) || submerged || carrying) return 8;
+    switch(m.stage) {
+    case 0:
+        if(!host.canFly()) return 7;
+        if(!host.fits()) return 8;
+        if(host.prepare()) m.waitMask|=kTransportNavEvents;
+        return 1;
+    case 1:
+        host.pursue();m.waitMask=kTransportNavEvents|8u;return 1;
+    case 2:
+        host.query();m.waitMask=kTransportNavEvents|8u;return 1;
+    case 3:
+        host.descend();m.waitMask=kTransportNavEvents|0xau;return 1;
+    case 4:
+        if(events&0x202u) { host.endTransport();return 8; }
+        host.attach();host.climb();m.waitMask|=kTransportNavEvents;return 1;
+    case 5:return 5;
+    default:return 7;
+    }
+}
+
+// TotalA.exe VTOL_UNLOAD (0x411560): nobody aboard ends it (5). Stage 0
+// (0x41159d): canfly; the passenger is the head of the carrier's list (the
+// last one aboard, 0x4115c7 -> 0x489690); a point controller at the drop
+// point (mission +0x22) at cruisealt, radius 0x140 (0x44e730), wait 0xe8.
+// Stage 1 (0x411635): DROP_UNIT's placement test at the point (0x47db70 mode
+// 1 on the footprint's corner cell, rounded, 0x41165a..0x411682); refused,
+// 9 ("Unable to unload unit"); else down to the point at the passenger's
+// model height (type +0x170), wait 0xe8. Stage 2 (0x4116f2): a failed
+// approach is 9; the test again (9); EndTransport, the drop (0x48aac0 with no
+// carrier) where the link holds it, and back up to cruisealt over the
+// carrier's own point (0xe0). Stage 3 (0x4117fe): done.
+template<class Host>
+int retailVtolUnload(RetailMissionState& m,uint32_t events,bool carrying,Host& host) {
+    if(!carrying) return 5;
+    switch(m.stage) {
+    case 0:
+        if(!host.canFly()) return 7;
+        host.approach();m.waitMask=kTransportNavEvents|8u;return 1;
+    case 1:
+        if(!host.placement()) return 9;
+        host.descend();m.waitMask=kTransportNavEvents|8u;return 1;
+    case 2:
+        if(events&0x200u) return 9;
+        if(!host.placement()) return 9;
+        host.drop();host.climb();m.waitMask=kTransportNavEvents;return 1;
+    case 3:return 5;
+    default:return 7;
+    }
 }
 
 // TotalA.exe 0x489a90 (the load test the LOAD order and both pickup missions

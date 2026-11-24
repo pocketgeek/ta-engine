@@ -83,10 +83,6 @@ static bool verifyPool() {
 #endif
 
 namespace {
-// The engine's transfer range for an air transport (see the type loader): the
-// 34px the unload approach circle keeps inside it, plus a footprint cell. TA
-// itself transfers at the exact point [U: engine stand-in].
-constexpr int32_t kAirTransportReach = 50;
 // One TA_PHASE bucket: its wall time, and in a debug build with TA_PMU also the PMU
 // deltas over the same span (src/sim/simprobe.h).
 struct PhaseSpan {
@@ -617,13 +613,12 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 t.simulationScript=script;
                 // The transfer reach of a surface carrier is its script's boom
                 // (cob::transportBoomReach). An air carrier has none: VTOL_PICKUP
-                // and VTOL_UNLOAD fly onto the passenger / drop point with exact-
-                // point controllers (TotalA.exe 0x41133d -> 0x44e190 and 0x4115e4
-                // -> 0x44e2d0: goal flags without 0x10, so no radius) and attach
-                // or release there. The engine's air transfer still works in a
-                // range; kAirTransportReach is its stand-in [U].
-                if (t.canTransport && !t.transportDist)
-                    t.transportDist=t.canFly ? kAirTransportReach : cob::transportBoomReach(*script)>>16;
+                // and VTOL_UNLOAD (TotalA.exe 0x4111b0 / 0x411560) fly the hull
+                // onto the passenger / down to the drop point and attach or
+                // release there, at the piece QueryTransport names.
+                if (t.canTransport && !t.canFly && !t.transportDist)
+                    t.transportDist=cob::transportBoomReach(*script)>>16;
+                if (t.canTransport && t.canFly) t.transportPiece=cob::queryTransportPiece(*script);
                 t.instantCorpse=t.isStructure() && !t.corpse.empty() && retailInstantCorpse(*script);
                 t.explosionCorpse=!t.corpse.empty() && retailExplosionCorpse(*script);
                 const auto modelPath="objects3d/"+(t.objectName.empty()?t.id:t.objectName)+".3do";
@@ -1805,7 +1800,7 @@ bool World::setRally(Unit& u, const Order& o, bool queue) {
 // raise) never match.
 World::QueuedKind World::queuedKind(const Order& o) {
     if (!o.goal || o.scripted || o.stepOut || o.landing || o.formationLevel || o.seekGuard || o.seekAttack ||
-        o.reclaimAreaApproach || o.transportPickup || o.patrolRepair || o.guardRepair || o.wait ||
+        o.reclaimAreaApproach || o.patrolRepair || o.guardRepair || o.wait ||
         o.waitAttack || o.reclaimArea)
         return QueuedKind::None;
     // SUPPRESS and a flyer's attack at a point (+0x22); the approach SUPPRESS
@@ -1951,9 +1946,9 @@ void World::insertOrderFront(int unitId, bool rally, const std::function<void()>
         const uint32_t flags = o.mission.flags;
         o.mission = RetailMissionState{};
         o.mission.flags = flags;
-        // A Load's stage and retries are its transportMission's: stage 0 too,
-        // so that it walks to its carrier again when the head ends.
-        if (o.load && !o.transportPickup) { o.transportMission = RetailMissionState{}; o.transportApproachAttempts = 0; }
+        // A pickup's stage and calls are its transportMission's: stage 0 too,
+        // so that it calls and approaches again when the head ends.
+        if (o.load) { o.transportMission = RetailMissionState{}; o.transportApproachAttempts = 0; o.transportTicks = 0; }
         o.hasSegment = false;
         o.navigationConsumed = o.navigationExhausted = false;
         o.flightGoal.reset();
@@ -2614,9 +2609,9 @@ void World::tickFlightPatrol(Unit& u) {
                 // (stage 0); World has no repair pads.
                 // 0x41106c: 0x43b700, then 0x43b1f0(unit, found, 0); an
                 // attack put in clears the wait mask and returns 3. The
-                // dispatcher's sleep for 3 (0x43b890: 30 + rand(15)) is
-                // taken here, before the insert invalidates m (4: the
-                // dispatcher touches m no more).
+                // dispatcher's sleep is taken here, before the insert
+                // invalidates m (4: the dispatcher touches m no more):
+                // 30 + rand(15) (TotalA.exe 0x43b890).
                 if (const int found=w.retailHostScan(u);found && w.retailIssueAutoAttackAllowed(u,found,true)) {
                     m.waitMask=0;
                     m.sleep(w.tickCounter_,random(15)+30);
@@ -3197,13 +3192,13 @@ uint32_t World::retailOrderFlags(const Unit& u,const Order& o) const {
     // with no target is not established; the group check reads only
     // 0x1000000 and 0x4000000.
     if (o.seekAttack || o.seekGuard) return o.mission.flags|0x1000600u;
-    // The transport missions (rows read statically, +0x11): a passenger's
-    // Move_Seek_Pickup (0x5eb886) and its carrier's Ground_Pickup (0x5eb967)
-    // or VTOL_Pickup (0x5ebd05) are 0x1000200 with the other unit; the
-    // carrier's Ground_Unload (0x5eb980, its circle approach included) or
-    // VTOL_Unload (0x5ebd1e) 0x1000400 at the drop point. Group movers all.
-    if (o.load) return o.mission.flags|0x1000200u;
-    if (o.unload || o.transportUnloadApproach) return o.mission.flags|0x1000400u;
+    // The transport missions (TotalA.exe's rows, +0x11): the carrier's
+    // Ground_Pickup (0x4fc6e8 row 10) or VTOL_Pickup (0x4fca18 row 3) is 0x200
+    // with the passenger; its Ground_Unload (row 11, its circle approach
+    // included) or VTOL_Unload (row 4) 0x400 at the drop point. There is no
+    // passenger mission and no group bit.
+    if (o.load) return o.mission.flags|0x200u;
+    if (o.unload || o.transportUnloadApproach) return o.mission.flags|0x400u;
     // A flyer's attack on a unit that cannot fly (tickCombat's choice):
     // AirStrike on a selected `dropped` weapon, else AirToGround or the hover.
     // On a flyer: AirToAir (row 0x5ebd82), and VTOL_Evade ahead of it (row
@@ -4455,10 +4450,10 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                         return 3;
                     });
                 if (patrolAttack) {
-                    // The dispatcher's sleep for 3 (15 + rand(30)) on the
-                    // patrol, then the attack ahead of it; inserting
-                    // invalidates m, so the dispatcher gets 4 (no access).
-                    m.sleep(w.tickCounter_,random(30)+15);
+                    // The dispatcher's sleep for 3 (30 + rand(15), TotalA.exe
+                    // 0x43b890) on the patrol, then the attack ahead of it;
+                    // inserting invalidates m, so the dispatcher gets 4.
+                    m.sleep(w.tickCounter_,random(15)+30);
                     w.retailMissionAttack(u,patrolAttack,MissionAttack::Patrol);
                     return 4;
                 }
@@ -5358,41 +5353,24 @@ bool World::canLoadInto(int unitId,int transportId) const {
         count,uint16_t(t->type->transportCap),used,uint16_t(t->type->transportSizeCap));
 }
 
+// The LOAD order (TotalA.exe 0x43f701: the carrier's 0x489a90 test on the
+// target, then GROUND_PICKUP or VTOL_PICKUP for the CARRIER, 0x43fb61). The
+// passenger is given nothing: it goes on with its own orders until the
+// carrier's script attaches it (attachCargo). Cmd::Load names the passenger
+// as its unit and the carrier as its target; `queue` is the carrier's.
 void World::loadInto(int unitId, int transportId, bool queue) {
-    OrdersNote note{*this,unitId};
     if (!canLoadInto(unitId,transportId)) return;
     Unit* u=unit(unitId);
-    if (!queue) {
-        // 4d78a0 replaces ordinary construction missions when a fresh
-        // Move_Seek_Pickup is issued. Production lives outside orders here,
-        // so retire that work too instead of resuming it after unloading.
-        if(u->productionSiteId)notifyUnitScript(*u,"StopBuilding");
-        cancelBuilds(unitId);
-        stop(unitId);
-    }
-    Order o;
-    o.targetId = transportId;
-    o.load = true;
-    o.goal = true;
-    o.transportMission={};
-    o.transportProductionAhead=queue ? uint32_t(u->buildQueue.size()) : 0;
-    u->orders.push_back(o);
     Unit* carrier=unit(transportId);
     OrdersNote carrierNote{*this,transportId};
-    {
-        // GROUND_PICKUP and VTOL_PICKUP both own a reciprocal carrier mission.
-        // Only its active passenger may enter the transfer stage.
-        if(!queue && (carrier->orders.empty() || !carrier->orders.front().transportPickup)) {
-            carrier->orders.clear();cancelPath(*carrier);
-        }
-        if(std::none_of(carrier->orders.begin(),carrier->orders.end(),
-                [&](const Order& pending){return pending.transportPickup && pending.targetId==unitId;})) {
-            Order pickup;pickup.load=true;pickup.transportPickup=true;pickup.goal=true;
-            pickup.transportMission={};
-            pickup.targetId=unitId;pickup.x=u->x;pickup.z=u->z;
-            carrier->orders.push_back(pickup);
-        }
+    if (!queue) {
+        carrier->orders.clear();cancelPath(*carrier);
+        carrier->standbyActive=false;carrier->landing.reset();
     }
+    Order pickup;pickup.load=true;pickup.transportPickup=true;pickup.goal=true;
+    pickup.transportMission={};
+    pickup.targetId=unitId;pickup.x=u->x;pickup.z=u->z;
+    carrier->orders.push_back(pickup);
 }
 
 void World::unloadAt(int transportId, float x, float z, Fixed destinationY, bool queue) {
@@ -5408,49 +5386,35 @@ void World::unloadAt(int transportId, float x, float z, Fixed destinationY, bool
         // re-request nothing -- so it would land on the bare unload and rewrite it.
         cancelPath(*t);
     }
-    // A surface carrier's circle is TotalA.exe GROUND_UNLOAD's (0x406a23..0x406a5e,
-    // retailUnloadCircleRadius). VTOL_UNLOAD (Kingdoms 408e84/408d50) installs the
-    // same-radius flight controller before it steps out for transfer. Keep that
-    // mission on the active flying order so the carrier does not overshoot to the
-    // exact drop point before its unload handler wakes.
-    const bool inRange=retailTransportInRange((Fixed::fromFloat(x)-t->x).v,
-        (Fixed::fromFloat(z)-t->z).v,uint16_t(t->type->transportDist));
-    // Earlier queued orders can move the carrier out of today's range. Keep
-    // the approach mission so its activation checks the then-current position
-    // and installs the native circle, rather than moving to the drop point.
-    // A surface carrier always runs GROUND_UNLOAD's own approach handler
-    // (retailTransportUnloadApproach): its first call is the TransportDrop
-    // that decides whether the point is in the boom's reach.
-    const bool needsApproach=!inRange || (queue && !t->orders.empty()) || !t->type->canFly;
-    if (needsApproach && t->type->canFly) {
-        Order approach;
-        approach.x=Fixed::fromFloat(x);approach.z=Fixed::fromFloat(z);
-        approach.goal=true;approach.unload=true;approach.transportUnloadApproach=true;
-        approach.transportMission=RetailMissionState{1};
-        approach.transportY=destinationY;
-        approach.missionTarget=std::pair{approach.x,approach.z};
-        t->orders.push_back(std::move(approach));
+    // VTOL_UNLOAD (TotalA.exe 0x411560) flies to the point itself
+    // (tickVtolUnload): one order, from stage 0.
+    if (t->type->canFly) {
+        Order o;
+        o.x=Fixed::fromFloat(x);o.z=Fixed::fromFloat(z);
+        o.goal=true;o.unload=true;o.transportY=destinationY;
+        o.transportMission=RetailMissionState{};
+        t->orders.push_back(std::move(o));
         return;
     }
-    if (needsApproach) {
-        // Keep the approach as its own order. replaceLeg rebuilds the active route
-        // from waypoints; the unload flag must stay queued behind that routed leg.
-        Order mv;
-        mv.x = Fixed::fromFloat(x);
-        mv.z = Fixed::fromFloat(z);
-        mv.goal = true;
-        if (!t->type->canFly) {
-            mv.groundMission=true;
-            mv.transportUnloadApproach=true;
-            mv.transportMission=RetailMissionState{1};
-            mv.missionTarget=std::pair{Fixed::fromFloat(x),Fixed::fromFloat(z)};
-            // The shared circle-goal helper adds four to the stored radius
-            // (a radius 0 point wraps back to 0).
-            mv.missionRadius=uint32_t(retailUnloadCircleRadius(t->type->canHover,
-                                                               int16_t(t->type->footZ)))-4u;
-        }
-        t->orders.push_back(mv);
-    }
+    // A surface carrier runs GROUND_UNLOAD's own approach handler
+    // (retailTransportUnloadApproach): its first call is the TransportDrop that
+    // decides whether the point is in the boom's reach; its circle is
+    // retailUnloadCircleRadius's (0x406a23..0x406a5e). The approach is its own
+    // order: replaceLeg rebuilds the active route from waypoints, and the
+    // unload flag must stay queued behind that routed leg.
+    Order mv;
+    mv.x = Fixed::fromFloat(x);
+    mv.z = Fixed::fromFloat(z);
+    mv.goal = true;
+    mv.groundMission=true;
+    mv.transportUnloadApproach=true;
+    mv.transportMission=RetailMissionState{1};
+    mv.missionTarget=std::pair{Fixed::fromFloat(x),Fixed::fromFloat(z)};
+    // The shared circle-goal helper adds four to the stored radius (a radius
+    // 0 point wraps back to 0).
+    mv.missionRadius=uint32_t(retailUnloadCircleRadius(t->type->canHover,
+                                                       int16_t(t->type->footZ)))-4u;
+    t->orders.push_back(mv);
     Order o;
     o.x = Fixed::fromFloat(x);
     o.z = Fixed::fromFloat(z);
@@ -5479,260 +5443,18 @@ bool World::tickTransport(Unit& u, float dt) {
         o.transportUnloadTransferDeferred=false;
         return true;
     }
-    if(o.transportPickup) {
-        auto removePickup=[&] {
-            cancelPath(u);
-            u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg)+1);
-        };
-        Unit* passenger=unit(o.targetId);
-        if(passenger && (u.type->canFly || !o.controller)) {o.x=passenger->x;o.z=passenger->z;}
-        auto& mission=o.transportMission;
-        // Native 519a60 invalidates target references at the death edge and
-        // posts event 8 to their owning missions (519a30).
-        if(!passenger || !passenger->alive())mission.pending|=8;
-        auto advancePickup=[&] {
-            if(u.type->canFly) {
-                if(o.flightGoal)tickFlightMovement(u,true);
-                else tickFlightBody(u);
-                notifyFlightOccupancy(u);
-            } else brakeGround(u);
-            return true;
-        };
-        auto advanceApproach=[&] {
-            if(!u.type->canFly)return false; // the ground navigator keeps moving
-            if(!passenger)return advancePickup();
-            o.flightGoal=retailPickupPursuitGoal({passenger->x.v,passenger->groundY.v,passenger->z.v},
-                uint16_t(u.type->transportDist));
-            tickFlightMovement(u,true);notifyFlightOccupancy(u);
-            return true;
-        };
-        if(tickCounter_>=mission.deadline) {
-            mission.deadline=0xffffffffu;mission.pending|=1;
-        }
-        const uint32_t events=(u.missionEvents|mission.pending)&mission.waitMask;
-        if(mission.waitMask && !events)
-            return mission.stage==1 && (mission.waitMask&0x700u) ? advanceApproach() : advancePickup();
-        u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
-        // 4d8450 only enters the carrier handler after an admitted wake.
-        // A passenger order change must not bypass this sleep, and event 8
-        // explicitly aborts both native pickup handlers before stage dispatch.
-        if((events&8u) || !passenger || !canLoadInto(passenger->id,u.id)) {
-            removePickup();return true;
-        }
-        // TotalA.exe 0x41121a..0x411226: at every wake VTOL_PICKUP fails while
-        // the carrier holds anyone (its +0x8a list), so an air transport carries
-        // one passenger whatever its transportcapacity. The LOAD order itself
-        // (0x43f70c, 0x489a90) only counts against transportcapacity.
-        if(u.type->canFly && std::any_of(u.cargo.begin(),u.cargo.end(),[&](int id) {
-                const Unit* c=unit(id);return c && c->alive() && c->inTransport==u.id;
-            })) {
-            removePickup();return true;
-        }
-        // Both native handlers end the pickup unless the passenger's head
-        // mission is the Move_Seek_Pickup on this carrier (4088cf, 41a84f).
-        // Retail's order call always gives the passenger that mission as a
-        // replacement (4d7c62: queue 0), so there it leads from the start.
-        // Ours, not retail: the passenger's Load may wait behind its other
-        // orders (Shift), behind an order put ahead of it (Ctrl) or behind
-        // its production. While the Load is still in the passenger's list
-        // the pickup waits for it, back at stage 0 and polling: the pickup
-        // next in line whose passenger is ready goes first, and the poll
-        // that finds the Load gone (the list replaced or stopped; a dead or
-        // embarked passenger fails the test above) ends the pickup.
-        if(passenger->orders.empty() || !passenger->orders.front().load ||
-            passenger->orders.front().transportProductionAhead ||
-            passenger->orders.front().targetId!=u.id) {
-            if(std::none_of(passenger->orders.begin(),passenger->orders.end(),
-                    [&](const Order& p){return p.load && !p.transportPickup && p.targetId==u.id;})) {
-                removePickup();return true;
-            }
-            mission.stage=0;o.controller=0;o.navigationExhausted=true;
-            mission.waitMask=8;mission.sleep(tickCounter_,15);
-            const bool handled=advancePickup();
-            cancelPath(u);
-            if(pickupLeg)u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg));
-            for(size_t i=1;i<u.orders.size() && u.orders[i].transportPickup;++i) {
-                const Unit* candidate=unit(u.orders[i].targetId);
-                if(!candidate || !canLoadInto(candidate->id,u.id) || candidate->orders.empty())continue;
-                const auto& request=candidate->orders.front();
-                if(!request.load || request.transportProductionAhead || request.targetId!=u.id)continue;
-                u.orders.front().transportMission.waitMask=0;
-                std::rotate(u.orders.begin(),u.orders.begin()+long(i),u.orders.begin()+long(i)+1);
-                break;
-            }
-            return handled;
-        }
-        // Both native carrier handlers initialize, then wait one tick before
-        // approach. The passenger's Move_Seek_Pickup never owns this timer.
-        if(mission.stage==0) {
-            // TotalA.exe's GROUND_PICKUP / VTOL_PICKUP stage 0 (0x4067b1 /
-            // 0x411241) test no reach; only a carrier without one cannot load.
-            if(u.type->transportDist<=0) {
-                removePickup();return true;
-            }
-            mission.stage=1;mission.sleep(tickCounter_,1);
-            if(u.type->canFly)notifyUnitScript(u,"BeginFlight");
-            return advancePickup();
-        }
-        if(mission.stage==2) {
-            const int result=retailPickupTransfer(mission,o.transportTicks,o.transportApproachAttempts,
-                tickCounter_,u.type->canFly,passenger->speed.v,[&] {
-                    transportEffects_.push_back({tickCounter_,
-                        {passenger->x.v,(passenger->type->canFly ? passenger->flightY : passenger->groundY).v,passenger->z.v},
-                        {u.x.v,(u.type->canFly ? u.flightY : u.groundY).v,u.z.v}});
-                });
-            if(result==8) {
-                removePickup();return true;
-            }
-            if(result!=1)return advancePickup();
-            // Stage 3 attaches immediately when the fifteenth effect wait ends.
-            // The carrier owns completion even when it updates before its cargo.
-            cancelPath(*passenger);
-            // Native BeCarried (4024e2) retires weapon targets on boarding.
-            // Pickup bypasses tickCombat, so its usual target-clear path has
-            // not run. Publish the same callback to the display as well.
-            if(passenger->scriptAimTarget)clearScriptWeaponTarget(*passenger);
-            groundRemove(*passenger);   // World keeps cargo off the ground word
-            passenger->inTransport=u.id;
-            u.cargo.push_back(passenger->id);
-            passenger->orders.clear();passenger->speed=Fixed();
-            advancePickup();
-            passenger->x=u.x;passenger->z=u.z;
-            updateBodyIndex(*passenger);refreshMovingSearchBody(*passenger);
-            removePickup();
-            return true;
-        }
-        // No air-traffic step-out: TotalA.exe has no VTOL_StepOut mission (no
-        // row or name in its mission tables, 0x4fc6e8 / 0x4fca18), so its
-        // VTOL_Pickup (0x4111b0) never pushes one; Kingdoms' did at stage 1.
-        if(retailTransportInRange((passenger->x-u.x).v,(passenger->z-u.z).v,uint16_t(u.type->transportDist))) {
-            mission.stage=2;mission.sleep(tickCounter_,1);
-            o.transportTicks=0;o.transportApproachAttempts=0;
-            o.transportPassenger=passenger->id;
-            o.transportX=passenger->x;o.transportZ=passenger->z;
-            passenger->missionEvents|=0x80;cancelPath(u);
-            o.controller=0;o.navigationExhausted=true;
-            if(u.type->canFly) {
-                mission.pending&=~0x3700u;
-                o.flightGoal=retailUnloadStepOut({u.x.v,u.flightY.v,u.z.v},
-                    portHeadingToRetail(u.heading),uint16_t(u.type->transportDist));
-            }
-            const bool handled=advancePickup();
-            if(pickupLeg)u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg));
-            return handled;
-        }
-        if(retailPickupApproachAborted(u.type->canFly,!u.type->isStructure(),events,passenger->speed.v)) {
-            removePickup();return true;
-        }
-        // Native 408a50/41ab16 scans the owner's unit array for other
-        // reciprocal passengers already in range, then draws random(count).
-        // Put that pickup ahead of the distant mission, which resumes afterward.
-        std::vector<std::pair<int,size_t>> nearby;
-        for(size_t i=pickupLeg+1;i<u.orders.size();++i) {
-            const auto& pending=u.orders[i];
-            if(!pending.transportPickup)continue;
-            const Unit* candidate=unit(pending.targetId);
-            if(!candidate || !canLoadInto(candidate->id,u.id) || candidate->orders.empty())continue;
-            const auto& request=candidate->orders.front();
-            if(!request.load || request.transportProductionAhead || request.targetId!=u.id)continue;
-            if(retailTransportInRange((candidate->x-u.x).v,(candidate->z-u.z).v,
-                    uint16_t(u.type->transportDist)))nearby.emplace_back(candidate->id,i);
-        }
-        if(!nearby.empty()) {
-            // Unit ids preserve the native unit-array order, independent of
-            // the order in which the player issued the boarding commands.
-            std::sort(nearby.begin(),nearby.end());
-            const size_t index=nearby[pathRand(uint32_t(nearby.size()))].second;
-            o.transportMission.stage=0;o.transportMission.waitMask=0;
-            o.controller=0;o.navigationExhausted=true;
-            Order pickup=std::move(u.orders[index]);
-            u.orders.erase(u.orders.begin()+index);
-            if(pickupLeg)u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg));
-            u.orders.insert(u.orders.begin(),std::move(pickup));
-            cancelPath(u);
-            return true;
-        }
-        retailPickupApproachWait(mission,tickCounter_,u.type->canFly,
-            [&](uint32_t n){return pathRand(n);});
-        if(!u.type->canFly) {
-            o.missionTarget=std::pair{passenger->x,passenger->z};
-            // Circle setup adds four to the stored mission radius. Pickup
-            // passes transportdistance-16 to the native circle constructor.
-            o.missionRadius=uint32_t(u.type->transportDist-16)-4u;
-            o.controller=++nextMovementController_;
-            mission.pending&=~0x3700u;
-            const bool retain=pickupLeg && retainGroundRoute(u,o);
-            o.navigationExhausted=false;
-            if(!retain)resetGroundSegment(u,o);
-            cancelPath(u);
-            if(uint32_t(u.routeStamp)<=tickCounter_-10u)u.routeStamp=0;
-            if(!retain && pickupLeg)u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg));
-            const auto& goal=u.orders[currentLeg(u.orders)];
-            requestPath(u,goal.x.toFloat(),goal.z.toFloat());
-            return false;
-        }
-        // Native controller installation clears stale movement events. Do this
-        // at the mission poll, not during the pursuit's per-tick target refresh.
-        mission.pending&=~0x3700u;
-        return advanceApproach();
-    }
-    if (o.load) {
-        // Mobile production is stored separately from movement orders. An
-        // appended pickup is not the current retail mission until that work
-        // finishes or is canceled; do not dispatch it ahead of production.
-        if(o.transportProductionAhead) {brakeGround(u);return true;}
-        Unit* t=unit(o.targetId);
-        auto remove=[&] {
-            cancelPath(u);
-            u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg)+1);
-        };
-        auto& mission=o.transportMission;
-        if(!t || !t->alive())mission.pending|=8;
-        bool discardPrefix=false,request=false;
-        auto detach=[&] {
-            cancelPath(u);o.controller=0;o.navigationExhausted=true;
-            discardPrefix=true;request=false;
-        };
-        auto approach=[&] {
-            o.missionTarget=std::pair{t->x,t->z};
-            o.missionRadius=uint32_t(t->type->transportDist-16)-4u;
-            o.controller=++nextMovementController_;
-            mission.pending&=~0x3700u;
-            const bool retain=pickupLeg && retainGroundRoute(u,o);
-            o.navigationExhausted=false;
-            if(!retain)resetGroundSegment(u,o);
-            cancelPath(u);
-            if(uint32_t(u.routeStamp)<=tickCounter_-10u)u.routeStamp=0;
-            discardPrefix=!retain;request=true;
-        };
-        for(unsigned calls=0;calls<100;++calls) {
-            if(tickCounter_>=mission.deadline) {
-                mission.deadline=0xffffffffu;mission.pending|=1;
-            }
-            const uint32_t events=(u.missionEvents|mission.pending)&mission.waitMask;
-            if(mission.waitMask && !events)break;
-            u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
-            // Native eligibility and reciprocal-queue checks run in the
-            // handler, after dispatch wakes it. Retiring a carrier mission
-            // does not directly erase another unit's sleeping passenger order.
-            if(!canLoadInto(u.id,o.targetId)) {remove();return false;}
-            if(std::none_of(t->orders.begin(),t->orders.end(),
-                    [](const Order& p){return p.transportPickup;})) {remove();return false;}
-            const int result=retailPassengerPickup(mission,o.transportApproachAttempts,
-                tickCounter_,events,!t->type->canFly,approach,detach);
-            if(result==1)++mission.stage;
-            else if(result!=2 && result!=4) {remove();return false;}
-        }
-        const bool moving=o.controller!=0;
-        if(discardPrefix && pickupLeg)
-            u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg));
-        if(request) {
-            const auto& goal=u.orders[currentLeg(u.orders)];
-            requestPath(u,goal.x.toFloat(),goal.z.toFloat());
-        }
-        if(!moving) {brakeGround(u);return true;}
+    // The carrier's pickup (TotalA.exe GROUND_PICKUP 0x406780 / VTOL_PICKUP
+    // 0x4111b0) and VTOL_UNLOAD (0x411560) run their own dispatch.
+    if(o.transportPickup)
+        return u.type->canFly ? tickVtolPickup(u,pickupLeg) : tickGroundPickup(u,pickupLeg);
+    if(o.load) {
+        // A passenger's boarding order (Kingdoms' Move_Seek_Pickup): TotalA.exe
+        // has none (no such row in 0x4fc477 / 0x4fc6e8 / 0x4fca18), and no
+        // order makes one; drop any left.
+        u.orders.erase(u.orders.begin(),u.orders.begin()+long(pickupLeg)+1);
         return false;
     }
+    if(u.type->canFly) return tickVtolUnload(u,pickupLeg);
     // Check the chosen point, as 408f16/41b292 do. A blocked point does
     // not authorize a different landing cell; passengers disperse after release.
     const Fixed unloadX=o.transportUnloadApproach && o.missionTarget ?
@@ -5771,41 +5493,9 @@ bool World::tickTransport(Unit& u, float dt) {
         // unload-circle radius. Let the normal ground mover run during that overlap.
         return !surfaceRouteActive;
     };
-    // The passenger's release at (x, z) and its dispersal PARK (Kingdoms
-    // 409154..409178; TotalA.exe's DROP_UNIT is not traced past placement).
-    auto releasePassenger=[&](Unit& c,Fixed x,Fixed z) {
-        const int id=c.id;
-        c.x=x;c.z=z;c.inTransport=0;
-        c.groundY=surfaceHeight(c,tickCounter_,&c.groundPitch,&c.groundRoll);
-        updateBodyIndex(c);refreshMovingSearchBody(c);
-        groundStamp(c);
-        rebuildOccupancy();
-        std::erase(u.cargo,id);
-        {
-            const Unit* next=nullptr;uint32_t remaining=0;
-            for (int aboard:u.cargo) if (const Unit* passenger=unit(aboard);
-                    passenger && passenger->alive() && passenger->inTransport==u.id) {
-                if (!next) next=passenger;
-                ++remaining;
-            }
-            const uint32_t first=pathRand(3),second=pathRand(3);
-            Order park;park.goal=park.groundMission=true;park.park.emplace();
-            // 409154..409178 (41b3e2.. for VTOL_Unload): never permanent (push
-            // argument 6 is 0), appended behind the passenger's orders, or put in
-            // front of them when the carrier fails the selection predicate taken
-            // before the drop (40901c..40906e): a mission script's transport, one
-            // dying or unfinished (E, check_unload_park_order.py).
-            park.park->permanent=0;
-            park.park->padding=retailUnloadParkPadding(first,second,remaining,
-                int16_t(next ? next->type->footX : 0),int16_t(next ? next->type->footZ : 0));
-            park.mission.flags=0x200u;
-            if (unloadParkAhead(u) && !c.orders.empty()) {
-                cancelPath(c);c.routeStamp=-1;
-                c.orders.insert(c.orders.begin(),park);
-            } else c.orders.push_back(park);
-            noteOrders(c.id);
-        }
-    };
+    // DROP_UNIT's release (TotalA.exe 0x4813b0 -> 0x48aac0 with no carrier):
+    // the passenger is put down where the link holds it and given nothing.
+    auto releasePassenger=[&](Unit& c,Fixed x,Fixed z) { releaseCargo(u,c,x,z); };
     std::erase_if(u.cargo,[&](int id) {
         const Unit* c=unit(id);return !c || !c->alive() || c->inTransport!=u.id;
     });
@@ -5878,104 +5568,353 @@ bool World::tickTransport(Unit& u, float dt) {
         mission.pending=0x500u;
         return coast();
     }
-    if (u.cargo.empty()) {
-        if (o.transportUnloadReleasePending) {
-            if (tickCounter_ < o.transportMission.deadline) return advanceCarrier();
-            // The emptied mission retires at this wake whether or not a route
-            // controller is still coasting: TotalA.exe's GROUND_UNLOAD returns 5
-            // (done) as soon as the passenger has left (0x4069f0..0x406a09) and
-            // waits on no navigator. The coast itself is surfaceCoasting below.
-            const bool surfaceCoasting=!u.type->canFly && u.speed>Fixed();
-            o.transportUnloadReleasePending=false;
-            if (u.type->canFly && o.flightGoal && u.cargo.empty() &&
-                pickupLeg+1==u.orders.size()) {
-                u.retainedFlightGoal=o.flightGoal;
-                u.retainedFlightControllerActive=true;
-                removeUnloadLeg();
-                // Retail retires VTOL_UNLOAD, then still calls the mover with
-                // its independent step-out controller on this same tick.
-                return false;
-            }
-            removeUnloadLeg();return !surfaceCoasting;
+    // Every surface unload runs GROUND_UNLOAD's approach (unloadAt) and every
+    // air one VTOL_UNLOAD (tickVtolUnload): nothing else unloads.
+    removeUnloadLeg();
+    return true;
+}
+
+// ATTACH_UNIT (TotalA.exe 0x481340): a live unit, not aboard another carrier;
+// 0x48aac0 adds one that carries nobody (+0x8a), onto a live carrier that is
+// not itself aboard anything (+0x86). No distance, size or count test: the
+// script aimed the boom when it was called.
+bool World::canAttachCargo(const Unit& carrier,const Unit& passenger) const {
+    if (&carrier==&passenger || !carrier.alive() || !passenger.alive() || carrier.embarked() ||
+        (passenger.embarked() && passenger.inTransport!=carrier.id)) return false;
+    return std::none_of(passenger.cargo.begin(),passenger.cargo.end(),[&](int id) {
+        const Unit* c=unit(id);return c && c->alive() && c->inTransport==passenger.id;
+    });
+}
+
+void World::attachCargo(Unit& carrier,Unit& passenger) {
+    // 0x48ab70 re-attaching to the same carrier only changes the piece.
+    if (passenger.inTransport==carrier.id) return;
+    // Off the map (0x47cb00) and at the HEAD of the carrier's list (+0x8a):
+    // an unload takes the last one aboard first (0x406960, 0x4115c7).
+    cancelPath(passenger);
+    if (passenger.scriptAimTarget) clearScriptWeaponTarget(passenger);
+    groundRemove(passenger);
+    passenger.inTransport=carrier.id;
+    carrier.cargo.insert(carrier.cargo.begin(),passenger.id);
+    // 0x4384a0 (any carrier but an air base, flagsA bit 9): every mission goes
+    // but the descriptor-flag-4 ones, and BeCarried (0x402fc0) holds the unit;
+    // its stage 0 makes every slot automatic (0x4898b0(3)).
+    passenger.orders.clear();passenger.speed=Fixed();
+    passenger.standbyActive=false;
+    setSlotsAuto(passenger);
+    passenger.x=carrier.x;passenger.z=carrier.z;
+    updateBodyIndex(passenger);refreshMovingSearchBody(passenger);
+    noteOrders(passenger.id);
+}
+
+void World::releaseCargo(Unit& carrier,Unit& c,Fixed x,Fixed z) {
+    // 0x48ab70 with no carrier: back on the map where the link holds it
+    // (0x47cb40). Nothing is ordered: BeCarried retires at its next 10-tick
+    // wake (0x402fc0: no carrier, 5) and the empty list takes the default
+    // mission. Kingdoms gave the passenger a dispersal PARK (409154); TA has
+    // none.
+    c.x=x;c.z=z;c.inTransport=0;
+    c.groundY=surfaceHeight(c,tickCounter_,&c.groundPitch,&c.groundRoll);
+    updateBodyIndex(c);refreshMovingSearchBody(c);
+    groundStamp(c);
+    rebuildOccupancy();
+    std::erase(carrier.cargo,c.id);
+}
+
+int32_t World::transportGoalHeight(Fixed x,Fixed z,int altitude) const {
+    int ground=heights_.empty() ? 0 : retailTerrainHeight(x.v,z.v,terW_,terH_,[&](int cx,int cz) {
+        return int(heights_[size_t(cz)*size_t(terW_)+size_t(cx)]);
+    });
+    ground=std::max(ground,int(uint8_t(seaLevel_)));
+    return std::min((ground+altitude)*65536,0x1ff0000);
+}
+
+void World::flyTransportGoal(Unit& u,Order& o,RetailMissionState& mission) {
+    if (u.flightGroundMode!=2) { u.flightGroundMode=2;groundMove(u); }   // 51b3b0: taking off unstamps
+    const int cruise=flightGround(u)+u.type->cruiseAlt;
+    const RetailFlightVector position{u.x.v,u.flightY.v,u.z.v};
+    if (o.flightGoal) {
+        auto& goal=*o.flightGoal;
+        u.flightNavigation=retailFlightNavigation(position,u.flightNavigation.destination,goal.point,
+            u.flightNavigation.heading,Fixed::fromInt(cruise).v,false,false,0,false,u.flightNavigation.wraps);
+        if (goal.accepts(position)) {
+            // A controller on a unit (0x44e190 / 0x44e250) stays and reports
+            // arrival while it holds; a point controller lets go.
+            if (o.transportTicks) mission.pending|=0x100;
+            else { mission.pending|=0x500;o.flightGoal.reset(); }
         }
-        if (surfaceRouteActive) return advanceCarrier();
-        removeUnloadLeg();return true;
     }
-    Unit* c=unit(u.cargo.front());const int id=c->id;
-    if (o.transportPassenger!=id) {
-        o.transportPassenger=id;o.transportX=unloadX;o.transportZ=unloadZ;o.transportTicks=0;
-        o.transportMission=RetailMissionState{uint8_t(u.type->canFly ? 1 : 2)};
-        o.transportApproachAttempts=u.type->canFly ? 0 : 1;
-        if (u.type->canFly && !o.flightGoal) notifyUnitScript(u,"BeginFlight");
+    tickFlightBody(u);
+    notifyFlightOccupancy(u);
+}
+
+bool World::tickGroundPickup(Unit& u,size_t leg) {
+    Order& o=u.orders[leg];
+    // The TransportPickup script's run (engine stand-in for its animation:
+    // BUSY for fifteen ticks, then ATTACH_UNIT and BUSY off, which posts 4).
+    // The script attaches whatever the passenger did meanwhile; it aimed the
+    // boom when it was called.
+    if (o.transportTicks>0) {
+        if (o.transportTicks>=15) {
+            o.transportTicks=0;
+            if (Unit* p=unit(o.transportPassenger); p && canAttachCargo(u,*p)) attachCargo(u,*p);
+            o.transportPassenger=0;
+            u.missionEvents|=4;
+        } else ++o.transportTicks;
     }
-    auto& mission=o.transportMission;
-    if(tickCounter_>=mission.deadline) {
-        mission.deadline=0xffffffffu;mission.pending|=1;
-    }
-    const uint32_t events=(u.missionEvents|mission.pending)&mission.waitMask;
-    if(mission.waitMask && !events)return advanceCarrier();
-    u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
-    if (mission.stage==1) {
-        // No air-traffic step-out: TotalA.exe's VTOL_Unload (0x411560) has no
-        // VTOL_StepOut to push (no such row in its mission tables).
-        if (u.type->canFly) {
-            // Both approach and departure install a new native controller.
-            mission.pending&=~0x3700u;
-            if (!inRange) {
-                o.flightGoal=RetailFlightGoal{{o.x.v,u.flightY.v,o.z.v},0x30,0,
-                    int16_t(u.type->transportDist-34)};
-                mission.waitMask=0x700;mission.sleep(tickCounter_,pathRand(6)+6);
-                return advanceCarrier();
-            }
-            o.flightGoal=retailUnloadStepOut({u.x.v,u.flightY.v,u.z.v},
-                portHeadingToRetail(u.heading),uint16_t(u.type->transportDist));
+    if (const Unit* p=unit(o.targetId); !p || !p->alive()) o.transportMission.pending|=8;
+    struct Host {
+        World& w; Unit& u;
+        bool request=false;
+        Order* order() {
+            if (u.orders.empty() || !u.orders.front().transportPickup) return nullptr;
+            Order& goal=u.orders[currentLeg(u.orders)];
+            return goal.transportPickup ? &goal : nullptr;
         }
-        ++o.transportApproachAttempts;mission.stage=2;
-        mission.sleep(tickCounter_,1);return advanceCarrier();
-    }
-    const int cx=int16_t(uint32_t(unloadX.v)>>20),cz=int16_t(uint32_t(unloadZ.v)>>20);
-    auto placement=[&](bool allowMoving) {
-        if (!mapPlacementCells_.empty()) return mobilePlacement(*c,cx,cz,allowMoving);
-        // Terrain-only harnesses have no native feature plane. Keep their
-        // terrain grid, but distinguish movable bodies for the second query.
-        const int foot=footCells(c->type);
-        if (!navFor(c->type).fits(cx+foot/2,cz+foot/2,foot)) return false;
-        const auto bodies=searchBodyRect(cx,cz,c->type->footX,c->type->footZ);
-        for (const Unit* body:bodies.cells) if (body && body->id!=id &&
-                (!allowMoving || body->type->isStructure())) return false;
-        return true;
-    };
-    const int result=retailUnloadTransfer(mission,o.transportTicks,o.transportApproachAttempts,
-        tickCounter_,true,placement,[&] {
-            transportEffects_.push_back({tickCounter_,
-                {o.transportX.v,o.transportY.v,o.transportZ.v},
-                {u.x.v,(u.type->canFly ? u.flightY : u.groundY).v,u.z.v}});
-        },[] {});
-    if (result==1) { ++mission.stage;return advanceCarrier(); }
-    if (result==8 || result==7) { removeUnloadLeg();return true; }
-    if (result==9) {
-        if (pickupLeg+1<u.orders.size()) removeUnloadLeg();
-        else {
-            mission=RetailMissionState{uint8_t(u.type->canFly ? 1 : 2)};
-            mission.flags|=0x400000u;mission.sleep(tickCounter_,pathRand(30)+15);
-            o.transportTicks=0;o.transportApproachAttempts=u.type->canFly ? 0 : 1;
+        bool enabled() const { return u.alive() && !u.embarked() && !u.underConstruction; }
+        RetailMissionState* head() { Order* goal=order(); return goal ? &goal->transportMission : nullptr; }
+        bool hasNext(const RetailMissionState&) const { return currentLeg(u.orders)+1<u.orders.size(); }
+        void idle() { w.beginStandby(u); }
+        uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
+        void remove(RetailMissionState&) {
+            w.cancelPath(u);
+            u.orders.erase(u.orders.begin(),u.orders.begin()+long(currentLeg(u.orders))+1);
+            request=false;
         }
-        return advanceCarrier();
+        void rotate(RetailMissionState& m) { remove(m); }
+        void clear() { w.cancelPath(u);u.orders.clear(); }
+        int handle(RetailMissionState& m,uint32_t events) {
+            Order& goal=*order();
+            Unit* p=w.unit(goal.targetId);
+            const bool live=p && p->alive();
+            // The stand-in timer's test: the hull has made headway since the
+            // last wake (transportX/Z hold where it stood then).
+            const bool routing=goal.controller && !goal.navigationExhausted &&
+                (std::abs(int64_t((u.x-goal.transportX).v))>65536 || std::abs(int64_t((u.z-goal.transportZ).v))>65536);
+            goal.transportX=u.x;goal.transportZ=u.z;
+            struct Ops {
+                World& w; Unit& u; Order& goal; Unit* p; Host& host;
+                bool canLoad() const { return u.type->canTransport; }
+                // 0x4067d4: the passenger's footprint x against transportsize.
+                bool fits() const { return p->type->footX<=u.type->maxTransportSize; }
+                bool busy() const { return goal.transportTicks>0; }
+                void call() {
+                    // TransportPickup(passenger): BoomCalc aims the boom; out of
+                    // its reach the script does nothing.
+                    if (busy() || !retailTransportInRange((p->x-u.x).v,(p->z-u.z).v,
+                            uint16_t(u.type->transportDist))) return;
+                    goal.transportTicks=1;goal.transportPassenger=p->id;
+                    w.transportEffects_.push_back({w.tickCounter_,
+                        {p->x.v,p->groundY.v,p->z.v},{u.x.v,u.groundY.v,u.z.v}});
+                }
+                bool aboard() const { return p->inTransport==u.id; }
+                void approach() {
+                    // 0x438930(mission, passenger +0x6a, 0): a circle of radius
+                    // 0 on where the passenger stands now (the shared circle
+                    // goal adds four to the stored radius).
+                    goal.x=p->x;goal.z=p->z;
+                    goal.missionTarget=std::pair{p->x,p->z};
+                    goal.missionRadius=uint32_t(0)-4u;
+                    goal.controller=++w.nextMovementController_;
+                    goal.transportMission.pending&=~0x3700u;
+                    goal.navigationExhausted=false;goal.navigationConsumed=false;
+                    resetGroundSegment(u,goal);
+                    w.cancelPath(u);
+                    if (uint32_t(u.routeStamp)<=w.tickCounter_-10u) u.routeStamp=0;
+                    host.request=true;
+                }
+                void release() {
+                    // 0x4388d0(0): the controller goes.
+                    w.cancelPath(u);
+                    goal.controller=0;goal.navigationExhausted=true;
+                    host.request=false;
+                }
+            } ops{w,u,goal,p,*this};
+            return retailGroundPickup(m,goal.transportApproachAttempts,w.tickCounter_,events,live,routing,ops);
+        }
+    } host{*this,u};
+    retailDispatchMissions(tickCounter_,u.missionEvents,host);
+    Order* goal=host.order();
+    if (!goal) return u.orders.empty();
+    if (host.request) {
+        // The route corners queued ahead of the leg belong to its old route.
+        const size_t current=currentLeg(u.orders);
+        if (current) u.orders.erase(u.orders.begin(),u.orders.begin()+long(current));
+        Order& leg0=u.orders.front();
+        requestPath(u,leg0.x.toFloat(),leg0.z.toFloat());
+        return false;
     }
-    if (mission.stage!=4) return advanceCarrier();
-    releasePassenger(*c,o.transportX,o.transportZ);
-    o.transportPassenger=0;
-    if (u.cargo.empty()) {
-        // Both GROUND_UNLOAD and VTOL_Unload leave their now-empty mission in
-        // the queue until the following one-tick sleep expires.
-        o.transportUnloadReleasePending=true;
-        mission.stage=0;
-        mission.waitMask=1;mission.deadline=tickCounter_+1;
-        mission.pending=0x500u;
-    } else {
-        o.transportTicks=0;
+    if (goal->controller && !goal->navigationExhausted) return false;
+    brakeGround(u);
+    return true;
+}
+
+bool World::tickVtolPickup(Unit& u,size_t leg) {
+    {
+        Order& o=u.orders[leg];
+        if (const Unit* p=unit(o.targetId); !p || !p->alive()) o.transportMission.pending|=8;
     }
-    return advanceCarrier();
+    struct Host {
+        World& w; Unit& u;
+        Order* order() {
+            if (u.orders.empty() || !u.orders.front().transportPickup) return nullptr;
+            Order& goal=u.orders[currentLeg(u.orders)];
+            return goal.transportPickup ? &goal : nullptr;
+        }
+        bool enabled() const { return u.alive() && !u.embarked() && !u.underConstruction; }
+        RetailMissionState* head() { Order* goal=order(); return goal ? &goal->transportMission : nullptr; }
+        bool hasNext(const RetailMissionState&) const { return currentLeg(u.orders)+1<u.orders.size(); }
+        void idle() { w.beginStandby(u); }
+        uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
+        void remove(RetailMissionState&) {
+            u.orders.erase(u.orders.begin(),u.orders.begin()+long(currentLeg(u.orders))+1);
+        }
+        void rotate(RetailMissionState& m) { remove(m); }
+        void clear() { u.orders.clear(); }
+        int handle(RetailMissionState& m,uint32_t events) {
+            Order& goal=*order();
+            Unit* p=w.unit(goal.targetId);
+            const bool live=p && p->alive();
+            // 0x4111d5..0x4111f9: the passenger's top (y + type +0x16e) not
+            // above the sea.
+            const bool submerged=live && int64_t(p->groundY.v)+p->type->modelTop<=
+                int64_t(uint8_t(w.seaLevel_))*65536;
+            const bool carrying=std::any_of(u.cargo.begin(),u.cargo.end(),[&](int id) {
+                const Unit* c=w.unit(id);return c && c->alive() && c->inTransport==u.id;
+            });
+            struct Ops {
+                World& w; Unit& u; Order& goal; Unit* p;
+                bool canFly() const { return u.type->canFly; }
+                bool fits() const { return p->type->footX<=u.type->maxTransportSize; }
+                void point(int altitude) {
+                    goal.transportTicks=0;
+                    goal.flightGoal=RetailFlightGoal{{u.x.v,w.transportGoalHeight(u.x,u.z,altitude),u.z.v},0x28,0,0};
+                }
+                bool prepare() {
+                    w.setSlotsAuto(u);
+                    if (auto* script=w.unitScript(u.id); script && !script->activated) {
+                        script->activated=true;w.notifyUnitScript(u,"Activate");
+                    }
+                    // A landed carrier (object state 1) takes off to its own
+                    // point at half its cruisealt.
+                    if (u.flightGroundMode==2) return false;
+                    point(u.type->cruiseAlt/2);
+                    return true;
+                }
+                void pursue() {
+                    // 0x44e190 at cruisealt, radius 0x30: arrival while within
+                    // 48 px of the passenger (it follows it).
+                    goal.transportTicks=1;
+                    goal.flightGoal=RetailFlightGoal{{p->x.v,w.transportGoalHeight(p->x,p->z,u.type->cruiseAlt),p->z.v},
+                        0x18,0,0x30};
+                }
+                void query() {
+                    // QueryTransport's local 0 into +0x36 (-1 first).
+                    goal.transportApproachAttempts=uint32_t(u.type->transportPiece);
+                }
+                void descend() {
+                    // BeginTransport(model height) lowers the link by the
+                    // passenger's height (MOVE_NOW, every shipped script); the
+                    // hull holds where the link (0x43def0's offset, its high
+                    // word negated) meets the passenger.
+                    const int height=p->type->modelTop>>16;
+                    int32_t linkY=-height*65536;
+                    w.notifyUnitScript(u,"BeginTransport",uint32_t(p->type->modelTop));
+                    if (auto* script=w.unitScript(u.id);
+                            script && u.type->transportPiece>=0 && !u.type->productionModel.empty())
+                        linkY=retailPieceOrigin(u.type->productionModel,script->peek().pieces,
+                            u.type->transportPiece,portHeadingToRetail(u.heading))[1];
+                    const int altitude=-int(int16_t(uint32_t(linkY)>>16));
+                    goal.transportY=Fixed::fromInt(altitude);
+                    goal.transportTicks=2;
+                    goal.flightGoal=RetailFlightGoal{{p->x.v,satAdd32(p->groundY.v,altitude*65536),p->z.v},0x28,0,0};
+                }
+                void endTransport() { w.notifyUnitScript(u,"EndTransport"); }
+                void attach() { if (w.canAttachCargo(u,*p)) w.attachCargo(u,*p); }
+                void climb() { point(u.type->cruiseAlt); }
+            } ops{w,u,goal,p};
+            return retailVtolPickup(m,events,live,submerged,carrying,ops);
+        }
+    } host{*this,u};
+    retailDispatchMissions(tickCounter_,u.missionEvents,host);
+    Order* goal=host.order();
+    if (!goal) return false;
+    // The unit controllers follow the passenger.
+    if (goal->transportTicks && goal->flightGoal) {
+        if (const Unit* p=unit(goal->targetId); p && p->alive()) {
+            goal->flightGoal->point.x=p->x.v;goal->flightGoal->point.z=p->z.v;
+            goal->flightGoal->point.y=goal->transportTicks==1 ?
+                transportGoalHeight(p->x,p->z,u.type->cruiseAlt) : satAdd32(p->groundY.v,goal->transportY.v);
+        }
+    }
+    flyTransportGoal(u,*goal,goal->transportMission);
+    return true;
+}
+
+bool World::tickVtolUnload(Unit& u,size_t leg) {
+    (void)leg;
+    std::erase_if(u.cargo,[&](int id) {
+        const Unit* c=unit(id);return !c || !c->alive() || c->inTransport!=u.id;
+    });
+    struct Host {
+        World& w; Unit& u;
+        Order* order() {
+            if (u.orders.empty() || !u.orders.front().unload) return nullptr;
+            Order& goal=u.orders[currentLeg(u.orders)];
+            return goal.unload ? &goal : nullptr;
+        }
+        bool enabled() const { return u.alive() && !u.embarked() && !u.underConstruction; }
+        RetailMissionState* head() { Order* goal=order(); return goal ? &goal->transportMission : nullptr; }
+        bool hasNext(const RetailMissionState&) const { return currentLeg(u.orders)+1<u.orders.size(); }
+        void idle() { w.beginStandby(u); }
+        uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
+        void remove(RetailMissionState&) {
+            u.orders.erase(u.orders.begin(),u.orders.begin()+long(currentLeg(u.orders))+1);
+        }
+        void rotate(RetailMissionState& m) { remove(m); }
+        void clear() { u.orders.clear(); }
+        int handle(RetailMissionState& m,uint32_t events) {
+            Order& goal=*order();
+            Unit* c=u.cargo.empty() ? nullptr : w.unit(u.cargo.front());
+            struct Ops {
+                World& w; Unit& u; Order& goal; Unit* c;
+                bool canFly() const { return u.type->canFly; }
+                void point(Fixed x,Fixed z,int altitude,int radius) {
+                    goal.transportTicks=0;
+                    goal.flightGoal=RetailFlightGoal{{x.v,w.transportGoalHeight(x,z,altitude),z.v},
+                        uint16_t(radius ? 0x38 : 0x28),0,int16_t(radius)};
+                }
+                void approach() { point(goal.x,goal.z,u.type->cruiseAlt,0x140); }
+                bool placement() const {
+                    // DROP_UNIT's test at the footprint's corner cell
+                    // (0x41165a..0x411682: (point - foot x 8 px + 8 px) / 16).
+                    const int cx=int16_t((satAdd32(satSub32(goal.x.v,int32_t(uint32_t(c->type->footX)<<19)),0x80000))>>20);
+                    const int cz=int16_t((satAdd32(satSub32(goal.z.v,int32_t(uint32_t(c->type->footZ)<<19)),0x80000))>>20);
+                    if (!w.mapPlacementCells_.empty()) return w.mobilePlacement(*c,cx,cz,false);
+                    // Terrain-only harnesses have no native feature plane.
+                    const int foot=footCells(c->type);
+                    if (!w.navFor(c->type).fits(cx+foot/2,cz+foot/2,foot)) return false;
+                    const auto bodies=w.searchBodyRect(cx,cz,c->type->footX,c->type->footZ);
+                    for (const Unit* body:bodies.cells) if (body && body->id!=c->id) return false;
+                    return true;
+                }
+                // Down to the point at the passenger's height (type +0x170).
+                void descend() { point(goal.x,goal.z,c->type->modelTop>>16,0); }
+                void drop() {
+                    w.notifyUnitScript(u,"EndTransport");
+                    w.releaseCargo(u,*c,u.x,u.z);
+                }
+                void climb() { point(u.x,u.z,u.type->cruiseAlt,0); }
+            } ops{w,u,goal,c};
+            const bool carrying=c && c->alive() && c->inTransport==u.id;
+            return retailVtolUnload(m,events,carrying,ops);
+        }
+    } host{*this,u};
+    retailDispatchMissions(tickCounter_,u.missionEvents,host);
+    Order* goal=host.order();
+    if (!goal) return false;
+    flyTransportGoal(u,*goal,goal->transportMission);
+    return true;
 }
 
 // Retail's fight-move order (UnitCommand MoveFight, 4b0e40: game+0x17633 |=
@@ -9919,7 +9858,7 @@ int World::suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events)
         if (events&0x40) { m.sleep(tickCounter_,1); return 0; }   // a weapon switch
         // 0x100000: the aim start refused the point (inside the minimum range
         // or out of reach). Every slot automatic (519b10(3)); no mover (a
-        // structure) looks again after rand(30)+15 ticks when alone (9).
+        // structure) looks again after 30 + rand(30) ticks when alone (9, 0x43b94f).
         setSlotsAuto(u);
         if (!u.type->canMove || u.type->isStructure()) return 9;
         const int32_t range=w.range,minimum=w.minRange,span=range-minimum;
@@ -18604,6 +18543,18 @@ void World::notifyUnitScript(Unit& u,const char* name) {
     const auto& file=*u.type->script();
     ScriptHost host{*this,u,state};
     state.state().notify(file,file.scriptIndex(name),host);
+}
+
+// A call-in with one argument, run at once as notify runs one (TotalA.exe
+// 0x4b0a70 with its immediate flag: VTOL_PICKUP's BeginTransport, 0x4113ea).
+void World::notifyUnitScript(Unit& u,const char* name,uint32_t argument) {
+    auto it=unitScript(u.id);
+    if (!it) return;
+    auto& state=*it;
+    const auto& file=*u.type->script();
+    ScriptHost host{*this,u,state};
+    if (state.state().startArguments(file,file.scriptIndex(name),{argument,0,0,0},1))
+        state.state().tick(file,0,host);
 }
 
 // Legion (deliberate, not retail): no walking on the spot. A walker's gait is

@@ -2660,13 +2660,14 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                       "C2 a minimap click places the building there; the camera stays");
                 placing_=nullptr;
             }
-            // C4: a passenger right-clicking its own transport boards it (when it fits: 2.2 step L).
+            // C4: TotalA.exe has no boarding order (LOAD is the carrier's,
+            // 0x43f701): a unit right-clicking its own transport does not board it.
             selection_={sword};publish();
             if (fits) {
                 const auto p=at(carrier);
                 const auto cmds=capture([&] {clickAt(p.x,p.y,SDL_BUTTON_RIGHT);});
-                check(cmds.size()==1 && cmds[0].kind==ta::net::Cmd::Load && cmds[0].unitId==sword &&
-                      cmds[0].targetId==carrier,"C4 a passenger that fits boards its own transport");
+                check(std::none_of(cmds.begin(),cmds.end(),[](const ta::net::Command& c){return c.kind==ta::net::Cmd::Load;}),
+                      "C4 a passenger right-clicking its own transport does not board it");
             }
             // P1 / 2.11: the click picks the smallest unit under the pointer, here a
             // swordsman standing in the middle of a keep.
@@ -4767,7 +4768,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             int id = spawn(t, bax + float(i % 2) * 24 - 12, baz + float(i / 2) * 24 - 12,
                            0, 0);
             if (id >= 0) {
-                writableWorld().loadInto(id, transportId_);
+                writableWorld().loadInto(id, transportId_, amphibSquad_ > 0);   // the carrier's list: the rest queue
                 ++amphibSquad_;
             }
             ++i;

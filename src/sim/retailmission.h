@@ -316,9 +316,26 @@ int retailGroundPatrol(RetailMissionState& m,uint32_t& radius,uint32_t tick,
     }
 }
 
-// Host: enabled(), head(), hasNext(state), handle(state, events), random(bound),
-// remove(state), rotate(state), clear(), idle(). Re-fetch the head and enabled
-// state after every handler: handlers can replace the queue or disable a unit.
+// TotalA.exe's mission dispatcher (0x43b7c0). Host: enabled(), head(),
+// hasNext(state), handle(state, events), random(bound), remove(state),
+// rotate(state), clear(), idle(). Re-fetch the head and enabled state after
+// every handler: handlers can replace the queue or disable a unit.
+// Per head mission: a due timer (now >= +0xa, unsigned) posts 1 (0x43b7ed);
+// events = (unit word +0xba | pending +0x4e) & mask +6; a mask with none of
+// them waits (0x43b81d), else the taken bits leave both words and the mask
+// clears (0x43b823..0x43b846). Return codes (jump table 0x43baa4): 0 stage 0,
+// 1 next stage, 2/4 nothing, 3 a 30 + rand(15) sleep (0x43b890), 5/8 remove,
+// 6 to the list's back (0x43b975), 7 clear (0x43ba3d), 9 flag 0x800000 then
+// remove with a next mission, else stage 0 and a 30 + rand(30) sleep
+// (0x43b8e5..0x43b973); any other value 0x439eb0 (clear here). An empty list
+// asks for the default mission (0x43b9ad; idle()).
+// Not modelled: an event 0x10000 drops slots 0..2's targets with TargetCleared
+// (0x43b840 -> 0x48a0f0) -- TA's unit event word is 16 bits, so only a
+// mission's own pending word can carry it, and the engine's 0x10000 is the
+// Kingdoms slot-fired event; and the second (+0x60, mission flag 0x40000)
+// list. TotalA.exe loops for as long as handlers return without waiting
+// (0x43b99f); the 100-call cap is an engine guard against a handler that
+// never waits.
 template<class Host>
 void retailDispatchMissions(uint32_t tick, uint32_t& unitEvents, Host& host) {
     unsigned calls = 0;
@@ -335,20 +352,18 @@ void retailDispatchMissions(uint32_t tick, uint32_t& unitEvents, Host& host) {
         unitEvents &= ~events;
         m.pending &= ~events;
         m.waitMask = 0;
-        // Retail consumes events and clears the mask on the 101st attempt,
-        // then clears the queue without invoking another handler.
         if (++calls > 100) { host.clear(); return; }
         switch (host.handle(m, events)) {
         case 0: m.stage = 0; break;
         case 1: ++m.stage; break;
         case 2: case 4: break;
-        case 3: m.sleep(tick, host.random(30) + 15); break;
+        case 3: m.sleep(tick, host.random(15) + 30); break;
         case 5: case 8: host.remove(m); break;
         case 6: host.rotate(m); break;
         case 9:
-            m.flags |= 0x400000;
+            m.flags |= 0x800000;
             if (host.hasNext(m)) host.remove(m);
-            else { m.stage = 0; m.sleep(tick, host.random(30) + 15); }
+            else { m.stage = 0; m.sleep(tick, host.random(30) + 30); }
             break;
         default: host.clear(); return;
         }

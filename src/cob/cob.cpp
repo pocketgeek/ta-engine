@@ -291,6 +291,27 @@ int32_t transportBoomReach(const File& f) {
     return 0;
 }
 
+int queryTransportPiece(const File& f) {
+    const int index = f.scriptIndex("QueryTransport");
+    if (index < 0 || f.scripts[size_t(index)].entry >= f.code.size()) return -1;
+    const uint32_t begin = f.scripts[size_t(index)].entry;
+    uint32_t end = uint32_t(f.code.size());
+    for (const auto& script : f.scripts)
+        if (script.entry > begin) end = std::min(end, script.entry);
+    constexpr uint32_t pushConst = 0x10021001, popLocal = 0x10023002;
+    uint32_t previousOp = 0, previousArg = 0;
+    for (uint32_t pc = begin; pc < end;) {
+        const auto* info = findOp(f.code[pc]);
+        if (!info || pc + 1 + uint32_t(info->args) > end) break;
+        const uint32_t op = f.code[pc], arg = info->args ? f.code[pc + 1] : 0;
+        if (op == popLocal && arg == 0 && previousOp == pushConst)
+            return std::bit_cast<int32_t>(previousArg);
+        previousOp = op; previousArg = arg;
+        pc += 1 + uint32_t(info->args);
+    }
+    return -1;
+}
+
 std::vector<uint8_t> gaitCode(const File& f) {
     const auto gait=[](std::string name) {
         std::transform(name.begin(),name.end(),name.begin(),[](char c){return char(std::tolower(uint8_t(c)));});
