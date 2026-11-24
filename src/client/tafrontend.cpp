@@ -1,5 +1,7 @@
 #include "client/tafrontend.h"
 
+#include "client/cursors.h"
+#include "client/settings.h"
 #include "client/taguiview.h"
 #include "gaf/gaf.h"
 #include "gui/tagui.h"
@@ -237,6 +239,11 @@ TaFrontEnd::Choice TaFrontEnd::endMission(SkirmishSetup& setup, TaCampaign& camp
 }
 
 TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
+    if (!cursorsLoaded_) {
+        cursorsLoaded_ = true;
+        cursorSettings_ = loadSettings();
+        cursors_.load(ren_, vfs_, &cursorSettings_);
+    }
     SDL_StartTextInput();
     if (setup.seats.empty()) setup = defaultSkirmish(vfs_);
     std::unique_ptr<TaGuiView> view, popup;
@@ -583,6 +590,26 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             const std::string name = script.front();
             script.erase(script.begin());
             if (name.rfind("SHOT:", 0) == 0) shotPath = name.substr(5);   // saved after this frame draws
+            else if (name.rfind("CLICK:", 0) == 0) {
+                // A real click: the gadget's centre, through renderer pixels to window
+                // points, as SDL mouse events the normal event path handles.
+                TaGuiView& active = popup ? *popup : *view;
+                float gx = 0, gy = 0;
+                if (active.gadgetCentre(name.substr(6), gx, gy)) {
+                    int wx = 0, wy = 0;
+                    SDL_RenderLogicalToWindow(ren_, L.px(gx), L.py(gy), &wx, &wy);
+                    for (Uint32 type : {Uint32(SDL_MOUSEBUTTONDOWN), Uint32(SDL_MOUSEBUTTONUP)}) {
+                        SDL_Event ev{};
+                        ev.type = type;
+                        ev.button.button = SDL_BUTTON_LEFT;
+                        ev.button.state = type == SDL_MOUSEBUTTONDOWN ? SDL_PRESSED : SDL_RELEASED;
+                        ev.button.x = wx; ev.button.y = wy;
+                        ev.button.windowID = SDL_GetWindowID(win_);
+                        SDL_PushEvent(&ev);
+                    }
+                    std::fprintf(stderr, "front-end script: click %s at window %d,%d\n", name.c_str() + 6, wx, wy);
+                } else std::fprintf(stderr, "front-end script: no gadget %s to click\n", name.c_str() + 6);
+            }
             else if (name == "WAIT") {}                                   // one frame (animations)
             else {
                 TaGuiView& active = popup ? *popup : *view;
@@ -593,6 +620,18 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         }
 #endif
         while (SDL_PollEvent(&e)) {
+            // SDL reports the pointer in window points; the screens lay out in
+            // renderer pixels (GuiLayout from SDL_GetRendererOutputSize). On a
+            // scaled display those differ, so map first, as the game loop does.
+            if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
+                float lx = 0, ly = 0;
+                SDL_RenderWindowToLogical(ren_, e.button.x, e.button.y, &lx, &ly);
+                e.button.x = int(lx); e.button.y = int(ly);
+            } else if (e.type == SDL_MOUSEMOTION) {
+                float lx = 0, ly = 0;
+                SDL_RenderWindowToLogical(ren_, e.motion.x, e.motion.y, &lx, &ly);
+                e.motion.x = int(lx); e.motion.y = int(ly);
+            }
             if (e.type == SDL_QUIT) return Choice::Exit;
             if (page_ == Page::Brief && e.type == SDL_MOUSEWHEEL)
                 briefScroll = std::clamp(briefScroll - e.wheel.y * 3, 0, std::max(0, int(briefLines.size()) - 8));
@@ -702,6 +741,19 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
             shotPath.clear();
         }
 #endif
+        // TA's animated pointer (anims/cursors.gaf), not the system arrow.
+        if (cursors_.ok()) {
+            if (cursorSettings_.hardwareCursor && cursors_.applyHardware(CursorId::Normal, cursorSettings_.cursorScale)) {
+                SDL_ShowCursor(SDL_ENABLE);
+            } else {
+                SDL_ShowCursor(SDL_DISABLE);
+                int mx = 0, my = 0;
+                SDL_GetMouseState(&mx, &my);
+                float lmx = 0, lmy = 0;
+                SDL_RenderWindowToLogical(ren_, mx, my, &lmx, &lmy);
+                cursors_.draw(ren_, CursorId::Normal, int(lmx), int(lmy), cursorSettings_.cursorScale);
+            }
+        }
         SDL_RenderPresent(ren_);
         SDL_Delay(10);
     }

@@ -49,6 +49,8 @@ public:
 
     tagui::Screen& screen() { return screen_; }
     const tagui::Screen& screen() const { return screen_; }
+    // A gadget's centre in 640x480 screen space (false if there is no such gadget).
+    bool gadgetCentre(const std::string& name, float& x, float& y) const;
     // Full-screen backdrop (e.g. bitmaps/frontendx.pcx) drawn instead of the panel.
     void setBackdrop(const std::string& pcxPath);
     // Place the container: per section 1.2, -1 centres; negative y anchors to the

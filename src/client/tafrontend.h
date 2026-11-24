@@ -8,6 +8,9 @@
 
 #include <SDL.h>
 
+#include "client/cursors.h"
+#include "client/settings.h"
+
 #include <string>
 #include <vector>
 
@@ -75,6 +78,9 @@ public:
 private:
     enum class Page { Main, Single, Skirmish, SelectMap, SelProv, NewGame, Brief, EndMission };
     Page start_ = Page::Main;
+    CursorSet cursors_;              // TA's pointer (anims/cursors.gaf)
+    Settings cursorSettings_;        // cursorScale / hardwareCursor
+    bool cursorsLoaded_ = false;
     std::string failure_;
     int outcome_ = 0;
     std::string server_;

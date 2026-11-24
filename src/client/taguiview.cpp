@@ -247,6 +247,16 @@ const TaGuiView::Frames* TaGuiView::buttonArt(const tagui::Gadget& g, int& base)
     return f;
 }
 
+bool TaGuiView::gadgetCentre(const std::string& name, float& x, float& y) const {
+    for (const auto& g : screen_.gadgets)
+        if (up(g.name) == up(name)) {
+            const Rect r = rectOf(g);
+            x = r.x + r.w / 2; y = r.y + r.h / 2;
+            return true;
+        }
+    return false;
+}
+
 TaGuiView::Rect TaGuiView::rectOf(const tagui::Gadget& g) const {
     if (g.index == 0) return {float(ox_), float(oy_), float(g.w), float(g.h)};
     return {float(ox_ + g.x), float(oy_ + g.y), float(g.w), float(g.h)};
