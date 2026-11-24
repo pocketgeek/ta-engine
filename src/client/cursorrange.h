@@ -14,20 +14,11 @@ namespace ta::client {
 enum class CursorWeaponRange { InRange, OutOfRange, Unknown };
 
 // Native 0x4dd780's mode-3 Airstrike gate requires a WEAPON1 pointer, then
-// checks the `dropped` bit on the active native slot selected by 0x519ac0.
-// Local damage weapons are compressed, so translate a switchable local index
-// back to its original FBI slot before testing the per-slot flag.
-inline bool unitHasAirstrikeCursor(const sim::UnitType& type,int localWeaponSlot) {
+// checks the `dropped` bit on the native slot selected by 0x519ac0: TA has no
+// weaponswitching, so always the first.
+inline bool unitHasAirstrikeCursor(const sim::UnitType& type,int /*localWeaponSlot*/) {
     if(!type.hasPrimaryWeaponBlock)return false;
-    int nativeSlot=0;
-    if(type.weaponSwitching) {
-        if(type.weapons.empty()) nativeSlot=std::clamp(localWeaponSlot,0,2);
-        else {
-            const int local=std::clamp(localWeaponSlot,0,int(type.weapons.size())-1);
-            nativeSlot=type.weaponNativeSlotForLocal[size_t(local)];
-        }
-    }
-    return nativeSlot>=0 && nativeSlot<3 && type.weaponAirstrikeCursor[size_t(nativeSlot)];
+    return type.weaponAirstrikeCursor[0];
 }
 
 // Cursor eligibility uses the same native DamageCategory lookup as combat.
@@ -57,34 +48,16 @@ inline uint64_t cursorDistanceSquaredPixels(const std::array<int32_t, 3>& a,
 // cursor callbacks have not been mapped; leave those inconclusive so they never
 // produce a false TooFar glyph.
 inline CursorWeaponRange cursorWeaponRange(const sim::Weapon& weapon,
-        const sim::UnitType& attacker, const std::array<int32_t, 3>& attackerPosition,
-        const sim::UnitType& target, const std::array<int32_t, 3>& targetPosition,
-        uint8_t targetFlightGroundMode) {
+        const sim::UnitType& /*attacker*/, const std::array<int32_t, 3>& attackerPosition,
+        const sim::UnitType& /*target*/, const std::array<int32_t, 3>& targetPosition,
+        uint8_t /*targetFlightGroundMode*/) {
     const uint64_t distance2 = cursorDistanceSquaredPixels(attackerPosition, targetPosition);
     if (weapon.minRange > 0 &&
         distance2 < uint64_t(weapon.minRange) * uint64_t(weapon.minRange))
         return CursorWeaponRange::OutOfRange;
 
-    if (weapon.kind == sim::Weapon::Kind::Remote ||
-        weapon.kind == sim::Weapon::Kind::Dropped)
+    if (weapon.kind == sim::Weapon::Kind::Dropped)
         return CursorWeaponRange::Unknown;
-
-    if (weapon.melee) {
-        // MeleeWeapon::inRange ignores the authored `range`; its two footprint
-        // boxes must be closer than half a 16px cell on both axes. A melee unit
-        // cannot connect while the target is in retail's airborne mode 2.
-        if (targetFlightGroundMode == 2) return CursorWeaponRange::OutOfRange;
-        const auto absDelta = [](int32_t av, int32_t bv) {
-            const int64_t d = int64_t(av) - int64_t(bv);
-            return uint64_t(d < 0 ? -d : d);
-        };
-        constexpr uint64_t halfCell = 0x80000; // 8 px in 16.16
-        const uint64_t xReach = uint64_t(attacker.footX + target.footX) * halfCell + halfCell;
-        const uint64_t zReach = uint64_t(attacker.footZ + target.footZ) * halfCell + halfCell;
-        return absDelta(attackerPosition[0], targetPosition[0]) < xReach &&
-               absDelta(attackerPosition[2], targetPosition[2]) < zReach
-                   ? CursorWeaponRange::InRange : CursorWeaponRange::OutOfRange;
-    }
 
     if (weapon.ballistic) {
         const int32_t speed = retailAimSpeed(weapon.projVel);
@@ -125,19 +98,14 @@ inline bool cursorCanAttackEnemy(const sim::UnitType& attacker, int weaponSlot,
     if (attacker.weapons.empty()) return false;
     if (ignoreAirstrikeWeapons && unitHasAirstrikeCursor(attacker, weaponSlot))
         return false;
-    const int slot = attacker.weaponSwitching
-        ? std::clamp(weaponSlot, 0, int(attacker.weapons.size()) - 1) : 0;
-    const auto& weapon = attacker.weapons[size_t(slot)];
+    const auto& weapon = attacker.weapons[0];
     const auto listed = [&](const std::vector<std::string>& cats) {
         for (const auto& c : cats)
             if (std::find(target.categories.begin(), target.categories.end(), c) !=
                 target.categories.end()) return true;
         return false;
     };
-    if (listed(attacker.noTargetCats) ||
-        (weapon.status == sim::Weapon::Status::Stoned && target.cantBeStoned) ||
-        (weapon.status == sim::Weapon::Status::Frozen && target.cantBeFrozen))
-        return false;
+    if (listed(attacker.noTargetCats)) return false;
     const bool airborne = targetFlightGroundMode == 2;
     if (!attacker.isStructure())
         return cursorDamageVs(weapon, target) > 0.0f &&

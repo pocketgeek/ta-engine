@@ -22,9 +22,9 @@
 
 namespace {
 using ta::ai::Difficulty;
-constexpr const char* kSideCodes[]={"","ARA","TAR","VER","ZON","CRE"};
-constexpr const char* kSideNames[]={"ALL SIDES","ARAMON","TAROS","VERUNA","ZHON","CREON"};
-constexpr const char* kGroups[]={"ALL GROUPS","AIR","BUILDERS","BUILDINGS","GROUND","MANA","NAVAL","OTHER"};
+constexpr const char* kSideCodes[]={"","ARM","CORE"};
+constexpr const char* kSideNames[]={"ALL SIDES","ARM","CORE"};
+constexpr const char* kGroups[]={"ALL GROUPS","AIR","BUILDERS","BUILDINGS","GROUND","NAVAL","OTHER"};
 constexpr int kGroupCount=8,kRowH=26,kLeftW=168;
 constexpr const char* kPresetNames[]={"NO FLYERS","NO SHIPS","CLEAR ALL"};
 
@@ -778,7 +778,7 @@ void cart::Editor::handleAiProfiles(SDL_Event& e) {
         return;
     }
     if(cart::pointIn(mx,my,aiSearchBox)) {if(aiFocus!=AI_SEARCH) {aiFocus=AI_SEARCH;aiSearchEdit.focus(aiSearch);}return;}
-    if(cart::pointIn(mx,my,aiSideBox)) {aiSide=(aiSide+1)%6;aiScroll=0;return;}
+    if(cart::pointIn(mx,my,aiSideBox)) {aiSide=(aiSide+1)%int(std::size(kSideCodes));aiScroll=0;return;}
     if(cart::pointIn(mx,my,aiGroupBox)) {aiGroup=(aiGroup+1)%kGroupCount;aiScroll=0;return;}
     if(cart::pointIn(mx,my,aiSetOnlyBox)) {aiSetOnly=!aiSetOnly;aiScroll=0;return;}
     if(cart::pointIn(mx,my,aiUnbuildableBox)) {aiShowUnbuildable=!aiShowUnbuildable;aiScroll=0;return;}

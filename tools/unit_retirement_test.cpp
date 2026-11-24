@@ -28,7 +28,7 @@ int main(int argc,char** argv)try {
   for(int i=0;i<8;++i)w->spawn(&t,float(64+i*32),64,0,i);
   for(int i=0;i<240;++i){int id=w->spawn(&t,1200,1200,0,i%8);w->scenarioDestroy(id);}
   const int corpse=w->spawn(&t,1300,1300,0,0);auto*u=w->unit(corpse);
-  u->hp={};u->deadFor=0;u->corpseStatue=0;u->corpseUntil=600;
+  u->hp={};u->deadFor=0;u->corpseUntil=600;
  }
  for(int tick=0;tick<60;++tick){a.tick(1.f/30);b.tick(1.f/30);check(a.stateHash()==b.stateHash(),"compaction desynchronized peers");}
  check(a.units().size()==9,"final records not removed or active corpse removed");

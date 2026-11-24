@@ -45,10 +45,10 @@ UnitType soldier(const char* id) {
     t.footX = t.footZ = 2; t.sight = 4096; t.buildTime = 60; t.buildCost = 60; t.upright = true;
     return t;
 }
-Weapon weapon(bool melee) {
-    Weapon w; w.name = melee ? "queued-test-sword" : "queued-test-bolt";
-    w.range = melee ? 40 : 200; w.damage = 60; w.reload = 0.2f; w.aimTol = 32767; w.melee = melee;
-    if (!melee) w.projVel = 900;
+Weapon weapon(bool shortReach) {
+    Weapon w; w.name = shortReach ? "queued-test-sword" : "queued-test-bolt";
+    w.range = shortReach ? 40 : 200; w.damage = 60; w.reload = 0.2f; w.aimTol = 32767;
+    if (!shortReach) w.projVel = 900;   // the sword: an instant short-reach shot (TA has no melee)
     return w;
 }
 
@@ -63,7 +63,7 @@ struct Types {
         smith = archer; smith.id = smith.name = "smith";
         smith.isBuilder = smith.canReclaim = true; smith.workerTime = 100; smith.buildDist = 60;
         smith.storage = 100000;
-        // Mobile (a structure takes the melee perimeter approach instead), but
+        // Mobile, but
         // given no orders: they stand where they are spawned.
         weak.maxHp = 400; post.maxHp = 100000;
         friendly.maxVel = {}; friendly.canMove = false; friendly.maxHp = 10000;
@@ -92,10 +92,10 @@ struct Rig {
 };
 
 // The order queued behind (and the reference walk's order): on target b, 900 px east.
-enum class Kind { AttackMelee, AttackRanged, AttackFlyer, Guard, Repair, Assist };
+enum class Kind { AttackShort, AttackRanged, AttackFlyer, Guard, Repair, Assist };
 const char* name(Kind k) {
     switch (k) {
-    case Kind::AttackMelee: return "melee Attack";
+    case Kind::AttackShort: return "short-reach Attack";
     case Kind::AttackRanged: return "ranged Attack";
     case Kind::AttackFlyer: return "flyer Attack";
     case Kind::Guard: return "Guard";
@@ -122,7 +122,7 @@ struct Run { int promoted = -1; float startDist = 0, worst = 0, minX = 1e9f, min
 Run run(Kind kind, First first, bool direct) {
     Types t; Rig r;
     const float ax = 2000, az = 2000, bx = 2900, bz = 2000;
-    const UnitType* self = kind == Kind::AttackMelee ? &t.sword : kind == Kind::AttackFlyer ? &t.flyer
+    const UnitType* self = kind == Kind::AttackShort ? &t.sword : kind == Kind::AttackFlyer ? &t.flyer
                          : kind == Kind::AttackRanged && first == First::Attack ? &t.archer : &t.smith;
     const int a = r.w.spawn(self, ax, az, 0, 0);
     int e1 = 0;
@@ -138,7 +138,7 @@ Run run(Kind kind, First first, bool direct) {
     int b = 0;
     net::Cmd cmd = net::Cmd::Attack;
     switch (kind) {
-    case Kind::AttackMelee: case Kind::AttackRanged: case Kind::AttackFlyer:
+    case Kind::AttackShort: case Kind::AttackRanged: case Kind::AttackFlyer:
         b = r.w.spawn(&t.post, bx, bz, 0, 1); break;
     case Kind::Guard: b = r.w.spawn(&t.friendly, bx, bz, 0, 0); cmd = net::Cmd::Guard; break;
     case Kind::Repair:
@@ -206,7 +206,7 @@ void queued(Kind kind, First first) {
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i)
         if (!std::strcmp(argv[i], "--legion")) mode = PathfindingMode::Legion;
-    for (Kind k : {Kind::AttackMelee, Kind::AttackRanged, Kind::AttackFlyer, Kind::Guard, Kind::Repair, Kind::Assist})
+    for (Kind k : {Kind::AttackShort, Kind::AttackRanged, Kind::AttackFlyer, Kind::Guard, Kind::Repair, Kind::Assist})
         queued(k, First::Attack);
     for (First f : {First::Guard, First::Repair, First::Move}) queued(Kind::AttackRanged, f);
     if (failures) std::printf("%d FAILED\n", failures);

@@ -54,7 +54,7 @@ void unpaced() {
             fastest=fxMax(fastest,world.unit(b)->speed);
             for (int id:{a,b}) {
                 require(!formationMission(*world.unit(id)),"a group member re-formed (TA has no formation mission)");
-                require(!world.retailGroupRecord(id) && !world.retailGroupPaced(id),"TA has no group record");
+                require(!world.retailGroupRecord(id),"TA has no group record");
             }
         }
         require(fastest>slow.maxVel+Fixed::fromFloat(0.5f),"a group was paced at its slowest member");
@@ -147,9 +147,6 @@ void geometry() {
     require(!retailGroupOutOfSlot(g,u,true,4,false),"member inside its slot");
     g.moving[0].count=0;   // empty moving subset relaxes the level by one
     require(!retailGroupOutOfSlot(g,u,true,5,false),"level 5 relaxed to 6 is never out of slot");
-    require(retailGroupSpeedCap(65536,117964,117964,117964)==65536,"cap at group speed");
-    require(retailGroupSpeedCap(10000,117964,117964,117964)==int32_t((int64_t(65536)*29491)>>16),"25% floor");
-    require(retailGroupSpeedCap(200000,117964,117964,117964)==0,"no cap above own maximum");
 }
 
 // The attacks' group check (retailAttackGroupCheck: SUPPRESS 404e12, the

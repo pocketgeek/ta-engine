@@ -1,9 +1,10 @@
 // The fire-at-will sweep's companions: deterministic per-player vision (icd
-// 4f7210 / 4c6800 / 411700), AI weapon switching (40f411..40fb92) and the
-// idle retaliation mission (409a50 part a, 4d7de0), the target score's
-// terrain-scaled turn rate (412a77..412ae2), and enemies with construction
-// left (411700, 412620, 40f330). One ctest per part:
-//   fire_sweep_test vision | switch | retaliation | turnrate | sites
+// 4f7210 / 4c6800 / 411700), the idle retaliation mission (409a50 part a,
+// 4d7de0), the target score's terrain-scaled turn rate (412a77..412ae2), and
+// enemies with construction left (411700, 412620, 40f330). One ctest per part:
+//   fire_sweep_test vision | retaliation | turnrate | sites
+// (Kingdoms' AI weapon switching, 40f411..40fb92, is gone: TA has no
+// weaponswitching.)
 // `fire_sweep_test --picker` is the oracle tools/re/check_fire_sweep_picker.py
 // compares with retail's target picker 412620; `--scan` is
 // tools/re/check_mission_scan.py's (the mission scan 4d8370) and `--gate`
@@ -126,7 +127,7 @@ void shootMe() {
 }
 } // namespace
 
-void weaponSwitch();
+
 void retaliation();
 void turnRate();
 void sites();
@@ -143,70 +144,11 @@ int main(int argc,char** argv) {
     if(part=="--guard")return guardOracle();
     if(part=="vision" || part=="all")vision();
     if(part=="vision" || part=="all")shootMe();
-    if(part=="switch" || part=="all")weaponSwitch();
+
     if(part=="retaliation" || part=="all")retaliation();
     if(part=="turnrate" || part=="all")turnRate();
     if(part=="sites" || part=="all")sites();
     return failures?1:0;
-}
-void weaponSwitch() {
-    using sim::RetailWeaponSwitchInput;
-    auto row=[](int e,int f,int rnd,int* draws){
-        return std::tuple{[e](int){return e;},[f](int){return f;},[rnd,draws](int){++*draws;return rnd;}};
-    };
-    auto run=[&](const RetailWeaponSwitchInput& in,int e,int f,int rnd=5,int* drawsOut=nullptr){
-        int draws=0;auto [E,F,R]=row(e,f,rnd,&draws);
-        const int c=sim::retailWeaponSwitchChoice(in,E,F,R);
-        if(drawsOut)*drawsOut=draws;
-        return c;
-    };
-    RetailWeaponSwitchInput base;base.target=true;base.selected=0;base.targetHp=500;
-    base.slots[0]={true,true,true,0,false,false,60};
-    {   auto in=base;in.slots[1]={true,true,true,40,false,false,30};
-        check(run(in,1,1)==1,"switch: an affordable aoe<=50 slot is taken outright");
-        in.targetHp=121;check(run(in,1,1)==-1,"switch: the primary is kept when it does half the target's HP");
-        in.targetHp=122;check(run(in,1,1)==1,"switch: ...and dropped just above that");
-        in.slots[1].affordable=false;in.targetHp=500;check(run(in,1,1)==-1,"switch: an unaffordable slot is skipped");
-    }
-    {   auto in=base;in.slots[2]={true,true,true,250,false,true,0};
-        check(run(in,2,0)==-1,"switch: aoe>=200 needs more than two enemies");
-        check(run(in,3,0)==2,"switch: aoe>=200 with three enemies and no allies");
-        check(run(in,3,1)==-1,"switch: aoe>=200 refuses unless allies are outnumbered 3:1");
-        in.lowMonarch=true;check(run(in,3,1)==2,"switch: a low Monarch ignores its allies");
-    }
-    {   auto in=base;in.slots[1]={true,true,true,100,false,false,0};
-        check(run(in,5,1)==-1 && run(in,6,1)==1,"switch: medium aoe needs allies outnumbered 5:1");
-        in.slots[1].mindControl=true;in.slots[1].aoe=40;in.targetHp=10;
-        check(run(in,1,1)==1,"switch: a mind-control slot overrides the primary-finishes-it rule");
-    }
-    {   auto in=base;in.selected=1;in.slots[1]={true,true,false,40,false,false,0};
-        check(run(in,1,1)==0,"switch: from slot 1 it returns straight to the primary");
-    }
-    {   auto in=base;in.target=false;in.selected=2;in.slots[2]={true,true,true,250,false,true,0};
-        int draws=0;
-        check(run(in,0,0,0,&draws)==0 && draws==1,"switch: no target, costly slot: back to 0 on rand(10)==0");
-        check(run(in,0,0,3,&draws)==-1 && draws==1,"switch: ...and kept otherwise (one draw)");
-        in.slots[2].costlyOrSpecial=false;
-        check(run(in,0,0,0,&draws)==-1 && draws==0,"switch: no draw for a cheap ordinary slot");
-    }
-    // World: an AI switcher facing a clump switches to its splash slot; a
-    // human-owned one keeps the primary.
-    auto caster=[]{
-        auto t=gunner(400);t.id="caster";t.weaponSwitching=true;
-        sim::Weapon a=t.weapons[0],b=a,c=a;
-        b.name="ball";b.aoe=150;c.name="wave";c.aoe=250;
-        t.weapons={a,b,c};t.weapon=a;return t;
-    }();
-    const auto d=dummy();
-    for(bool ai:{true,false}) {
-        sim::World w;setup(w,2);w.player(0).automaticGates=ai;
-        const int id=w.spawn(&caster,400,1000,0,0);
-        for(int i=0;i<4;++i)w.spawn(&d,600+40*(i%2),960+40*(i/2),0,1);
-        int slot=0;
-        for(int t=0;t<90 && !slot;++t){ticks(w,1);slot=w.unit(id)->weaponSlot;}
-        if(ai)check(slot==2,"switch: an AI switcher next to an enemy clump takes its splash weapon");
-        else check(slot==0,"switch: a human-owned switcher never auto-switches");
-    }
 }
 void retaliation() {
     auto victimType=[]{auto t=gunner(160);t.id="victim";t.leash=300;return t;}();
@@ -411,22 +353,7 @@ void sites() {
         std::printf("  paralyzed %d healthy %d of 400\n",stillN,foeN);
         check(stillN>=140 && foeN>=140 && stillN+foeN==400,"sites: a paralyzed target is scored like a healthy one");
     }
-    {   // Stone, freeze and charm classes never take one (4127eb..4128db).
-        for (int c=0;c<3;++c) {
-            auto g=gunner(400);
-            g.weapons[0].status=c==0 ? sim::Weapon::Status::Stoned : c==1 ? sim::Weapon::Status::Frozen :
-                                                                            sim::Weapon::Status::None;
-            g.weapons[0].mindControl=c==2;g.weapon=g.weapons[0];
-            sim::World w;setup(w,2);
-            const int shooter=w.spawn(&g,400,1000,0,0);
-            site(w,600,1000);
-            w.unit(shooter)->fireState=0;
-            ticks(w,8);
-            check(w.retailSelectTarget(*w.unit(shooter),0,true)==0,
-                  c==0 ? "sites: a stone class does not pick a site" : c==1 ? "sites: a freeze class does not pick a site"
-                                                                         : "sites: a charm class does not pick a site");
-        }
-    }
+
     {   // Idle (Standby's scan, 4d8370, through the engine's acquisition): an
         // idle armed unit beside an enemy site attacks it.
         const auto g=gunner(300);
@@ -489,14 +416,7 @@ void sites() {
         }
         check(!left && hit,"sites: a guard keeps its ward and its auto slots shoot the site");
     }
-    {   // A stone-class unit does not go for one either (its scanning slot).
-        auto g=gunner(300);g.weapons[0].status=sim::Weapon::Status::Stoned;g.weapon=g.weapons[0];
-        sim::World w;setup(w,2);
-        const int u=w.spawn(&g,400,1000,0,0);
-        site(w,650,1000);
-        ticks(w,120);
-        check(w.unit(u)->orders.empty(),"sites: an idle stone-class unit does not attack a site");
-    }
+
     {   // The sweep's budget (40f3a1..40f3c9): with a cap of 30 it is two units
         // a call; an own unit with construction left costs nothing, a paralyzed
         // one costs one.
@@ -515,29 +435,13 @@ void sites() {
         check(first==b,"sites: the sweep passes own sites at no cost");
         check(second==c,"sites: a paralyzed unit costs the sweep one");
     }
-    {   // The AI weapon switch takes no stone slot against a site (an AI
-        // switcher ordered onto one keeps its primary).
-        auto caster=gunner(400);caster.id="caster";caster.weaponSwitching=true;
-        sim::Weapon stone=caster.weapons[0];stone.name="stone";stone.status=sim::Weapon::Status::Stoned;
-        caster.weapons={caster.weapons[0],stone};caster.weapon=caster.weapons[0];
-        sim::World w;setup(w,2);w.player(0).automaticGates=true;
-        const int u=w.spawn(&caster,400,1000,0,0);
-        const int s=site(w,600,1000);
-        w.attack(u,s,false);
-        int slot=0;bool hit=false;
-        for (int t=0;t<150;++t) {
-            ticks(w,1);
-            slot=std::max(slot,w.unit(u)->weaponSlot);
-            hit=hit || (w.unit(s) && w.unit(s)->lastHitBy==u);
-        }
-        check(slot==0 && hit,"sites: an AI switcher on a site keeps its primary, no stone slot");
-    }
 }
 
 // The oracle for tools/re/check_fire_sweep_picker.py. One case per stdin line:
 //   seed sweep fawr melee cls ai sight range damage sx sz k para
 //   {x z unfinished paralyzed bad immune pimmune}*k
-// cls 0 plain, 1 stone, 2 freeze, 3 charm; para: the paralyzer damage type;
+// melee and cls (Kingdoms' melee and stone / freeze / charm classes) are
+// read and ignored: the generator must keep them 0; para: the paralyzer damage type;
 // pimmune: immunetoparalyzer. The shooter is a structure of
 // player 0 (no turn penalty) and every candidate an enemy unit, listed on
 // player 0's visible-enemy list in id order, in range of the shooter.
@@ -552,19 +456,19 @@ int pickerOracle() {
         sim::UnitType shooter;shooter.id="shooter";shooter.maxHp=500;shooter.footX=shooter.footZ=2;
         shooter.sight=sight;shooter.sightHeight=24;shooter.fireAtWillRandom=fawr!=0;
         shooter.badTargetCats[0]={"BAD"};
-        sim::Weapon wp;wp.name="w";wp.range=range;wp.damage=damage;wp.reload=1;wp.melee=melee!=0;
-        wp.status=cls==1 ? sim::Weapon::Status::Stoned : cls==2 ? sim::Weapon::Status::Frozen : sim::Weapon::Status::None;
-        wp.mindControl=cls==3;wp.dmgType=para ? 4 : 1;
+        (void)melee;(void)cls;
+        sim::Weapon wp;wp.name="w";wp.range=range;wp.damage=damage;wp.reload=1;wp.dmgType=para ? 4 : 1;
         shooter.weapon=wp;shooter.weapons={wp};
         // The eight candidate kinds: bad target or not, immune to the class
-        // or not, immune to paralyzers or not.
+        // or not (no TA class has an immunity: ignored), immune to paralyzers
+        // or not.
         std::array<sim::UnitType,8> kinds;
         for (int b=0;b<8;++b) {
             // Mobile: a structure would block the engine's 2D clear-shot line
             // to the candidates behind it (retail has no such test).
             auto& t=kinds[size_t(b)];t=dummy();t.id="cand"+std::to_string(b);
             if (b&1) t.categories={"BAD"};
-            t.cantBeStoned=t.cantBeFrozen=t.cantBeCaptured=(b&2)!=0;
+
             t.immuneToParalyzer=(b&4)!=0;
         }
         sim::World w;setup(w,2);w.player(0).automaticGates=ai!=0;
@@ -598,6 +502,7 @@ int pickerOracle() {
 // The oracle for tools/re/check_mission_scan.py. One case per stdin line:
 //   seed fire armed switcher sel fawr ai kamikaze sight damage para sx sz
 //   nslots {range melee}*nslots k {x z listed flyer shootme paralyzed pimmune}*k
+// (switcher, sel and melee were Kingdoms' and are read and ignored.)
 // The shooter is a structure of player 0 (no turn penalty) with `nslots`
 // weapons (none when unarmed); every candidate an enemy unit of player 1,
 // on player 0's visible-enemy list when `listed`. Prints the picked
@@ -613,11 +518,12 @@ int scanOracle() {
         sim::UnitType shooter;shooter.id="shooter";shooter.maxHp=500;shooter.footX=shooter.footZ=2;
         shooter.canMove=false;shooter.maxVel=sim::Fixed();
         shooter.sight=sight;shooter.sightHeight=24;shooter.fireAtWillRandom=fawr!=0;
-        shooter.kamikaze=kamikaze!=0;shooter.weaponSwitching=switcher!=0;
+        shooter.kamikaze=kamikaze!=0;
+        (void)switcher;(void)sel;
         for (int s=0;s<nslots;++s) {
             int range=0,melee=0;in>>range>>melee;
             sim::Weapon wp;wp.name="w"+std::to_string(s);wp.range=range;wp.damage=uint16_t(damage);wp.reload=1;
-            wp.melee=melee!=0;wp.dmgType=para ? 4 : 1;
+            wp.dmgType=para ? 4 : 1;
             if (armed) shooter.weapons.push_back(wp);
         }
         if (!shooter.weapons.empty()) shooter.weapon=shooter.weapons[0];
@@ -640,7 +546,7 @@ int scanOracle() {
         ticks(w,1);   // the spatial grid
         auto& u=*w.unit(shooterId);
         u.fireState=fire;
-        if (switcher) u.weaponSlot=sel;
+
         std::vector<int> listed;
         for (int i=0;i<k;++i) {
             auto& c=*w.unit(ids[size_t(i)]);
@@ -715,7 +621,7 @@ int guardOracle() {
         in>>slots>>switcher>>selected>>bits>>draw;
         sim::UnitType tower;tower.id="tower";tower.maxHp=500;tower.footX=tower.footZ=2;
         tower.canMove=false;tower.maxVel=sim::Fixed();tower.sight=400;tower.sightHeight=24;
-        tower.weaponSwitching=switcher!=0;
+        (void)switcher;   // Kingdoms' weaponswitching: read and ignored
         for (int s=0;s<slots;++s) {
             sim::Weapon wp;wp.name="w"+std::to_string(s);wp.range=300;wp.minRange=100;wp.damage=10;wp.reload=1;
             tower.weapons.push_back(wp);
@@ -737,7 +643,7 @@ int guardOracle() {
             } else w.unit(id)->slotTarget[size_t(s)]=0;
         }
         auto& u=*w.unit(id);
-        u.weaponSlot=selected;u.missionEvents=bits;
+        (void)selected;u.missionEvents=bits;
         w.retailGuardNoMoveSlots(u,draw);
         std::string out;
         for (int s=0;s<slots;++s)

@@ -17,9 +17,7 @@
 namespace {
 // One unit `id` at the centre of a flat field and an enemy structure 20 px
 // inside its weapon range (a structure is measured centre to centre, as
-// retail's 530580, for every weapon but melee: Weapon::centreReach); for a
-// melee reach weapon, past the range, in reach only by tickCombat's
-// footprint pad. With
+// retail's 530580, for every TA weapon: no footprint pad). With
 // `decoy`, a mobile enemy also stands nearer, but past the reach: before the
 // fix, findTarget took the nearer decoy on every acquisition turn,
 // tickCombat dropped it at once, and each acquisition wiped the sweep's slot
@@ -35,13 +33,8 @@ long reachCase(const ta::sim::TypeRegistry& registry,const char* id,bool hold,in
     mobile.maxHp=30000;mobile.healTime=0;mobile.weapons.clear();mobile.weapon.damage=0;
     auto building=*registry.find("corrad");   // ShootMe=1: the sweep takes an unarmed building only with it
     building.maxHp=30000;building.healTime=0;building.weapons.clear();building.weapon.damage=0;
-    // The reach weapon (World::approachSlot): the selected one, the longest
-    // when every weapon fires.
-    int reachSlot=std::max(slot,0);
-    if(!type.weaponSwitching && type.weapons.size()>1)
-        for(int s=0;s<int(type.weapons.size());++s)
-            if(type.weapons[size_t(s)].range>type.weapons[size_t(reachSlot)].range)reachSlot=s;
-    const float pad=float(type.weapons[size_t(reachSlot)].structurePad(std::max(building.footX,building.footZ)));
+    (void)slot;
+    const float pad=0.0f;   // every TA weapon class reaches a structure centre to centre
     const int a=w.spawn(&type,4096,4096,0,0);
     // Past the range, inside range+pad: a centre distance of reach+pad/2;
     // with no pad, 20 px inside the range.
@@ -54,7 +47,6 @@ long reachCase(const ta::sim::TypeRegistry& registry,const char* id,bool hold,in
     w.spawn(&mobile,4096-8.0f*float(building.footX)-64.0f,innerZ,0,0);
     w.setStartResources(0,1e6f,1e6f);   // energypershot (L.L.T. 10, Sentinel 75)
     if(hold)w.unit(a)->moveState=0;
-    if(slot>=0)w.setWeapon(a,slot);
     long damage=0;
     for(int tick=0;tick<ticks;++tick) {
         if(outer)w.unit(outer)->hp=ta::sim::Fixed::fromInt(30000);
@@ -76,10 +68,10 @@ int reachPair(const ta::sim::TypeRegistry& registry,const char* id,bool hold,int
                 ok?"PASS":"FAIL",id,hold?" (hold)":"",slot,reach,alone,decoyed);
     return ok?0:1;
 }
-// tickCombat's reach without a structure pad: the selected weapon's range,
-// the longest when every weapon fires.
+// tickCombat's reach without a structure pad: the longest weapon's range
+// when every weapon fires.
 float reachOf(const ta::sim::UnitType& t,int slot) {
-    if(!t.weaponSwitching && t.weapons.size()>1)return t.maxRange();
+    if(t.weapons.size()>1)return t.maxRange();
     return float(t.weapons[size_t(std::max(slot,0))].range);
 }
 int reachCases(const char* data) {
@@ -91,7 +83,7 @@ int reachCases(const char* data) {
     // Non-ballistic towers: the Light Laser and the two High Energy Lasers.
     for(const char* id:{"armllt","armhlt","corhlt"}) {
         const auto& t=*registry.find(id);
-        if(t.weapons.empty() || t.weapons[0].ballisticClass() || t.weapons[0].melee) {
+        if(t.weapons.empty() || t.weapons[0].ballisticClass()) {
             std::printf("FAIL %s: expected a non-ballistic ranged weapon\n",id);++failures;continue;
         }
         failures+=reachPair(registry,id,false,-1,reachOf(t,-1));
@@ -172,7 +164,7 @@ int main(int argc,char** argv) {
     {
         ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         for(const auto& [id,type]:registry.types()) {
-            if(!type.isStructure() || type.weapon.damage<=0 || type.weapon.melee)continue;
+            if(!type.isStructure() || type.weapon.damage<=0)continue;
             // Weapons that never take a ground unit on an Attack order: an
             // anti-air gun (toairweapon, bit 17), a stockpiled missile with no
             // stock (bit 28: Retaliator, Silencer, Annihilator...) and an

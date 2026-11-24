@@ -153,24 +153,6 @@ constexpr bool retailGroupOutOfSlot(const RetailGroupRecord& g,const RetailGroup
     return distance*distance/4>radius;
 }
 
-// 51b890's straggler pass: each paced member out of slot at level 4 whose
-// terrain-scaled type maximum is below 1.5x the group speed slows the whole
-// group to 0xaa7e/65536 of it. Several stragglers compound.
-constexpr int32_t retailGroupStragglerSpeed(int32_t speed,int32_t typeMaximum) {
-    const int32_t limit=int32_t((int64_t(speed)*0x18000)>>16);
-    return typeMaximum<limit ? int32_t((int64_t(speed)*0xaa7e)>>16) : speed;
-}
-
-// One unit as 51b890 sees it. eligible = alive, completed, with a mover;
-// typeMaximum is the terrain-scaled type maximum (type+0x162 x road/water).
-struct RetailGroupUnit {
-    int group=0;
-    bool eligible=false;
-    RetailGroupMember member;
-    uint32_t missionFlags=0;   // 0 when there is no current mission
-    int32_t typeMaximum=0;
-};
-
 // The record a unit belongs to (unit+0xc8) and whether that record is a
 // formation (record +8). Retail has one record per number, written by the
 // console's CreateSquad (48e170 -> 522170 -> 50b4f0 for the members, 50b700
@@ -189,106 +171,6 @@ constexpr RetailGroupSlot retailGroupSlot(int squad,int aiGroup=0,bool aiFormati
     if (squad>0) return {squad,false};
     if (squad<0) return {-squad,true};
     return {};
-}
-
-// 51b890 for one player: formation groups (record +8) are rebuilt from
-// their eligible units in unit order (a record without +8 goes inactive),
-// then paced members out of slot at level 4 apply the straggler slowdown. paced receives each unit's
-// navigator formation bit (vt+0x30). Returns whether any record's active
-// flag or speed changed (the record+0xb0 "changed" flag, 50b7a0/50bbc0/50bfe0).
-template<class Units,class Formations>
-bool retailGroupTick(const Units& units,const Formations& formation,
-                     std::array<RetailGroupRecord,100>& records,std::vector<uint8_t>& paced) {
-    struct Sum { int64_t x=0,y=0,z=0; int32_t count=0,area=0; };
-    std::array<std::array<Sum,3>,100> all{},moving{};
-    std::array<int32_t,100> ground{},boat{};
-    paced.assign(units.size(),0);
-    bool any=false;
-    for (size_t g=1;g<100;++g) any|=bool(formation[g]);
-    if (any) for (size_t i=0;i<units.size();++i) {
-        const auto& u=units[i];
-        if (!u.eligible || u.group<1 || u.group>=100 || !formation[size_t(u.group)]) continue;
-        const size_t g=size_t(u.group);const auto& m=u.member;
-        paced[i]=(u.missionFlags&0x2000000u)!=0;
-        const auto add=[&](Sum& s) { ++s.count;s.area+=m.area;s.x+=m.position.x;s.y+=m.position.y;s.z+=m.position.z; };
-        add(all[g][size_t(m.kind)]);
-        if (!(u.missionFlags&0x1000000u)) continue;
-        if (!(u.missionFlags&0x4000000u)) add(moving[g][size_t(m.kind)]);
-        if (m.kind==RetailGroupClass::Flyer) continue;
-        auto& speed=m.kind==RetailGroupClass::Boat ? boat[g] : ground[g];
-        if (speed==0 || u.typeMaximum<speed) speed=u.typeMaximum;
-    }
-    bool changed=false;
-    for (size_t g=1;g<100;++g) {
-        auto& record=records[g];
-        bool active=false;
-        if (formation[g]) {
-            for (size_t c=0;c<3;++c) {
-                const auto write=[](RetailGroupAggregate& a,const Sum& s) {
-                    a.count=s.count;a.area=s.area;
-                    // 16.16 words: the integer means are stored as their low 16 bits.
-                    if (s.count>0) a.centre={int32_t(int16_t(s.x/s.count)),int32_t(int16_t(s.y/s.count)),
-                                             int32_t(int16_t(s.z/s.count))};
-                };
-                write(record.all[c],all[g][c]);write(record.moving[c],moving[g][c]);
-                active|=all[g][c].count>0;
-            }
-        }
-        if (record.active!=active) record.changed=changed=true;
-        record.active=active;
-        if (active) {
-            if (record.groundSpeed!=ground[g]||record.boatSpeed!=boat[g]) record.changed=changed=true;
-            record.groundSpeed=ground[g];record.boatSpeed=boat[g];
-        }
-    }
-    if (any) for (size_t i=0;i<units.size();++i) {
-        const auto& u=units[i];
-        if (!u.eligible || !paced[i] || u.member.kind==RetailGroupClass::Flyer ||
-            u.group<1 || u.group>=100 || !formation[size_t(u.group)]) continue;
-        auto& record=records[size_t(u.group)];
-        if (!record.active) continue;
-        if (!retailGroupOutOfSlot(record,u.member,true,4,(u.missionFlags&0x4000000u)!=0)) continue;
-        auto& speed=u.member.kind==RetailGroupClass::Boat ? record.boatSpeed : record.groundSpeed;
-        const int32_t slowed=retailGroupStragglerSpeed(speed,u.typeMaximum);
-        if (slowed!=speed) record.changed=changed=true;
-        speed=slowed;
-    }
-    return changed;
-}
-
-// 51c612..51c6e1: when any record is flagged changed, every eligible unit
-// in a changed group is notified (navigator vt+0x38) and all flags clear.
-// Retail runs this only when game+0x3070 bit 0 is set, for owner kinds 1/2.
-template<class Units>
-std::vector<size_t> retailGroupNotify(const Units& units,std::array<RetailGroupRecord,100>& records) {
-    std::vector<size_t> notified;
-    if (std::none_of(records.begin()+1,records.end(),[](const RetailGroupRecord& r){return r.changed;}))
-        return notified;
-    for (size_t i=0;i<units.size();++i) {
-        const auto& u=units[i];
-        if (u.eligible && u.group>=1 && u.group<100 && records[size_t(u.group)].changed) notified.push_back(i);
-    }
-    for (size_t g=1;g<100;++g) records[g].changed=false;
-    return notified;
-}
-
-// 50c480: take a member out of its group's moving aggregate for the rest of
-// the tick. With fewer than two moving members only a flyer subset clears.
-inline void retailGroupLeave(RetailGroupRecord& record,const RetailGroupMember& m) {
-    if (!m.mover || !record.active) return;
-    auto& part=record.moving[size_t(m.kind)];
-    const int32_t n=part.count;
-    if (n<2) {
-        if (m.kind==RetailGroupClass::Flyer) part.count=part.area=0,part.centre={};
-        return;
-    }
-    const int32_t area=part.area-m.area;
-    if (area<=0) return;
-    const auto word=[](int32_t v){return detail::retailGroupWord(v);};
-    part.centre={int32_t(int16_t((word(part.centre.x)*n-m.position.x)/(n-1))),
-                 int32_t(int16_t((word(part.centre.y)*n-m.position.y)/(n-1))),
-                 int32_t(int16_t((word(part.centre.z)*n-m.position.z)/(n-1)))};
-    part.count=n-1;part.area=area;
 }
 
 // 402b00..402cd8: Move_Ground's two group checks before its own stages.
@@ -403,20 +285,6 @@ inline bool retailGroupMoving(const RetailGroupRecord& g) {
     return g.active && (g.moving[size_t(RetailGroupClass::Ground)].count!=0 ||
                         g.moving[size_t(RetailGroupClass::Boat)].count!=0 ||
                         g.moving[size_t(RetailGroupClass::Flyer)].count!=0);
-}
-
-// 4d95f0 (4d976a..4d9a2a): the maximum for a paced member. own is the
-// terrain-scaled unit maximum (unit+0x12b), typeMaximum the terrain-scaled
-// type maximum (type+0x162), modeTypeMaximum that value after the speed-mode
-// factor. Returns 0 when the group leaves the member at its own maximum.
-// The capped value skips the speed-mode factor; the pitch limit still applies.
-inline int32_t retailGroupSpeedCap(int32_t group,int32_t own,int32_t typeMaximum,int32_t modeTypeMaximum) {
-    if (group<=0) return 0;
-    const int32_t floor=int32_t(0.25*double(typeMaximum));
-    if (group<floor) group=floor;
-    if (group>=modeTypeMaximum || typeMaximum<=0) return 0;
-    const int32_t ratio=int32_t(double(own)/65536.0/(double(typeMaximum)/65536.0)*65536.0);
-    return int32_t((int64_t(ratio)*group)>>16);
 }
 
 } // namespace ta::sim

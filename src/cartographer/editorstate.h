@@ -90,7 +90,7 @@ inline void fillRect(SDL_Renderer* r, int x, int y, int w, int h, Uint8 cr, Uint
 // The browser's unit groups (the Units palette and the AI Profiles window).
 inline std::string unitGroupOf(const ta::sim::UnitType* type) {
     if(!type)return "OTHER";
-    if(type->onMana)return "MANA";
+
     if(type->isBuilder)return "BUILDERS";
     if(type->isStructure())return "BUILDINGS";
     if(type->canFly)return "AIR";

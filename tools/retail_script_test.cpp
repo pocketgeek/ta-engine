@@ -46,7 +46,7 @@ struct RetailReplayProbe {
     static void clearScriptEvents(World& world) {world.scriptEmissions_.clear();}
 
     static void shoot(World& world,int from,int target) {world.fire(*world.unit(from),*world.unit(target),0);}
-    static bool switchWeapon(World& world,Unit& u,int slot) {return world.switchWeaponSlot(u,slot,false);}
+
     static void flameTick(World& world,uint32_t tick) {
         world.tickCounter_=tick;const auto aircraft=world.updateAirOccupancy();world.tickFlames(aircraft);
     }
@@ -394,37 +394,6 @@ int main(int argc,char** argv) {
         }
         return 0;
     }
-    // tools/re/check_veterancy.py: one row per case, answered in its order.
-    //   c kind finished hitter victim killer points xp scoreoff count
-    //                                  -> the killer's xp, the hitter player's kills and score, and the
-    //                                     killer's own kill count (a word) after a death
-    //   l xp points noveteran multiplier                 -> level, vetMul's float bits
-    //   s xp level points noveteran multiplier           -> xp after setLevel
-    if (argc==2 && std::string(argv[1])=="--veterancy") {
-        std::string row;
-        while (std::cin>>row) {
-            if (row=="c") {
-                int kind,finished,hitter,victim,killer,scoreOff;int32_t points,xp;unsigned count;
-                std::cin>>kind>>finished>>hitter>>victim>>killer>>points>>xp>>scoreOff>>count;
-                if (killer && ta::sim::retailKillCreditsExperience(uint8_t(kind),finished!=0,hitter,victim)) {
-                    xp=ta::sim::retailAddExperience(xp,points);
-                    count=uint16_t(count+1u);   // World::creditKill's ++kills
-                }
-                const bool counted=ta::sim::retailKillCountsForPlayer(uint8_t(kind),finished!=0,hitter,victim);
-                std::cout<<xp<<' '<<(counted ? 1 : 0)<<' '<<(counted && !scoreOff ? points : 0)<<' '<<count<<'\n';
-            } else if (row=="l") {
-                ta::sim::UnitType type;ta::sim::Unit unit;int noVeteran;
-                std::cin>>unit.xp>>type.experiencePoints>>noVeteran>>unit.vetOverride;
-                type.noVeteran=noVeteran!=0;unit.type=&type;unit.veteran=unit.veteranLevel();
-                std::cout<<unit.veteran<<' '<<std::bit_cast<uint32_t>(unit.vetMul())<<'\n';
-            } else {
-                int32_t xp,points;int level,noVeteran;float multiplier;
-                std::cin>>xp>>level>>points>>noVeteran>>multiplier;
-                std::cout<<ta::sim::retailExperienceForLevel(xp,level,points,noVeteran!=0,multiplier)<<'\n';
-            }
-        }
-        return 0;
-    }
     if ((argc==5 && std::string(argv[1])=="--state") ||
         ((argc==6 || argc==7) && std::string(argv[1])=="--state-start")) {
         auto file=ta::cob::load(std::filesystem::path(argv[2]));
@@ -666,7 +635,7 @@ int main(int argc,char** argv) {
             type.maxHp=victim.maxHp=1000;type.hasNimbusArt=available;
             ta::sim::Weapon weapon;weapon.range=400;weapon.reload=10;weapon.damage=1;
             weapon.projVel=300;weapon.straight=!lightning;weapon.lightning=lightning;
-            weapon.nimbus=flag;weapon.buildUp=0.25f;weapon.buildUpTicks=11;weapon.nimbusTicks=7;
+            weapon.nimbus=flag;weapon.nimbusTicks=7;
             type.weapon=weapon;type.weapons={weapon};
             ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
@@ -676,7 +645,7 @@ int main(int argc,char** argv) {
             if(world.projectiles().empty())continue;
             const auto shot=world.projectiles().front();
             require(shot.start==world.tickCount()+1+uint32_t(flag && available ? 7 : 0),
-                  "nimbustime (not builduptime) delays launch, given both nimbus flag and faction art");
+                  "nimbustime delays launch, given both nimbus flag and faction art");
             while(world.tickCount()<shot.start) {
                 RetailReplayProbe::straightTick(world,world.tickCount()+1);
                 require(!world.projectiles().empty() && world.projectiles().front().position==shot.position,
@@ -1455,9 +1424,9 @@ int main(int argc,char** argv) {
             "Stop command retires the reclaim controller once");
 
         FeatType body;body.name="work-corpse";body.reclaimable=true;
-        FeatType stone=body;stone.name="work-stone";
-        FeatType frozen=body;frozen.name="work-frozen";
-        repairWorld.setFeatureTypes({body,stone,frozen});
+        FeatType heap=body;heap.name="work-heap";
+        FeatType wreck=body;wreck.name="work-wreck";
+        repairWorld.setFeatureTypes({body,heap,wreck});
         damaged.corpse=body.name;
         repairWorld.mapCorpse(&damaged,0);
         for(int mode=0;mode<3;++mode) {
@@ -1465,13 +1434,13 @@ int main(int argc,char** argv) {
             const int corpse=repairWorld.spawn(&damaged,220,200,0);
             // Reclaim works on the installed corpse feature.
             require(RetailReplayProbe::corpse(repairWorld,corpse,mode),"the body installs its corpse feature");
-            repairWorld.unit(corpse)->corpseStatue=mode ? mode : -1;
+
             workCommand.kind=ta::net::Cmd::Reclaim;workCommand.targetId=-corpse;
             applyCommand(repairWorld,workRegistry,workCommand);
             for(int tick=0;tick<2;++tick)repairWorld.tick(1.f/30);
             require(repairWorld.unit(worker)->workScriptWorking &&
                 RetailReplayProbe::scriptStatics(repairWorld,worker)[2]==beforeCorpse[2]+1,
-                "corpse/stone/frozen Reclaim command starts the authored work controller");
+                "corpse Reclaim command starts the authored work controller (three corpse features)");
             if(mode==1) {
                 workCommand.kind=ta::net::Cmd::Stop;
                 applyCommand(repairWorld,workRegistry,workCommand);
@@ -1774,31 +1743,9 @@ int main(int argc,char** argv) {
                 "a missing TargetCleared callback preserves the pending shot for the next admitted target");
         }
         {
-            UnitType type=shooter;type.weaponSwitching=true;type.weapons.assign(3,weapon);
-            World switching;
-            switching.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-            const int from=switching.spawn(&type,200,200,{},0);
-            switching.setStartResources(0,20,0);
-            auto* unit=switching.unit(from);
-            switching.setStance(from,2);
-            unit->scriptAimTarget=123;unit->weaponAim[0].set(23);
-            switching.setWeapon(from,1);
-            require(unit->scriptAimTarget==0 && (unit->weaponAim[0].flags&16),
-                "weapon switch retires the target but queues its script callback without running inline");
-            for(int i=0;i<20;++i)switching.setWeapon(from,(i+2)%3);
-            switching.tick(1.f/30);
-            require(!(unit->weaponAim[0].flags&16),"next script update executes the old slot's TargetCleared");
-            const auto& callbacks=unit->weaponAnimations;
-            require(callbacks.count==22 && callbacks.at(0).kind==ta::RetailWeaponAnimation::Clear &&
-                callbacks.at(0).slot==0,"command target-clear survives the tick boundary before switch callbacks");
-            for(size_t i=1;i<callbacks.count;++i)
-                require(callbacks.at(i).kind==ta::RetailWeaponAnimation::Switch && callbacks.at(i).slot==i%3,
-                    "repeated weapon selections retain every display callback in order");
-            switching.tick(1.f/30);
-            require(unit->weaponAnimations.count==0,"command callbacks are published once");
-        }
-        for(int interruption=0;interruption<3;++interruption) {
-            UnitType type=shooter;type.weaponSwitching=true;type.weapons.assign(2,weapon);
+            // A late acknowledgement held over a Stop (Kingdoms' weapon
+            // switch interruptions are gone with weaponswitching).
+            UnitType type=shooter;type.weapons.assign(2,weapon);
             World delayed;
             delayed.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=delayed.spawn(&type,200,200,{},0),target=delayed.spawn(&targetType,300,200,{},1);
@@ -1810,89 +1757,53 @@ int main(int argc,char** argv) {
                 delayed.tick(1.f/30);callback=delayed.unit(from)->fireAnimations!=0;
             }
             require(callback && !delayed.unit(from)->justFired,"interruption fixture reaches delayed FireWeapon callback");
-            if(interruption==0)delayed.stop(from);else delayed.setWeapon(from,1);
+            delayed.stop(from);
             for(int tick=0;tick<12;++tick) {
                 delayed.tick(1.f/30);
                 require(!delayed.unit(from)->justFired && delayed.projectiles().empty(),
-                    "late acknowledgement cannot release while targetless or deselected");
+                    "late acknowledgement cannot release while targetless");
             }
             require(delayed.unit(from)->weaponAim[0].flags&16,"late script acknowledgement remains pending during interruption");
             require(delayed.books(0).stored[0]==20,"pending acknowledgement spends no shot energy");
-            delayed.setWeapon(from,0);
-            if(interruption==2) {
-                delayed.stop(from);delayed.tick(1.f/30);
-                require(delayed.unit(from)->weaponAim[0].flags&16,
-                    "Stop after switching back has no newly assigned target to retire");
-                delayed.tick(1.f/30);
-                require(delayed.unit(from)->weaponAim[0].flags&16,
-                    "an already-retired target does not queue a second TargetCleared for a late acknowledgement");
-            }
-            if(interruption!=1)delayed.attack(from,target,false);
+            delayed.attack(from,target,false);
             delayed.tick(1.f/30);
             require(delayed.unit(from)->justFired,
-                "retargeting or reselection releases SET 23 that arrived after the target-clear callback");
+                "retargeting releases SET 23 that arrived after the target-clear callback");
             require(delayed.unit(from)->fireAnimations==0,"resuming a pending release does not start another FireWeapon callback");
             require(delayed.books(0).stored[0]==17,"resumed acknowledgement charges energy exactly once");
             require(!(delayed.unit(from)->weaponAim[0].flags&16),"pending release is retired or canceled");
             delayed.tick(1.f/30);
             require(!delayed.unit(from)->justFired,"resumed release is not repeated on the next update");
         }
-        for(bool switching:{false,true}) {
-            UnitType type=shooter;type.weaponSwitching=switching;type.weapons.assign(3,weapon);
+        {
+            UnitType type=shooter;type.weapons.assign(3,weapon);
             World clearing;
             clearing.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int from=clearing.spawn(&type,200,200,{},0),first=clearing.spawn(&targetType,300,200,{},1),
                 next=clearing.spawn(&targetType,320,240,{},1);
                 clearing.setStartResources(0,20,0);
-            clearing.setWeapon(from,1);clearing.attack(from,first,false);clearing.tick(1.f/30);
-            if(switching) {
-                clearing.unit(from)->weaponAim[0].flags=0xe8;
-                clearing.unit(from)->weaponAim[2].flags=0xc8;
-            }
+            clearing.attack(from,first,false);clearing.tick(1.f/30);
             clearing.attack(from,next,false);clearing.tick(1.f/30);
             std::vector<int> cleared;
             const auto& events=clearing.unit(from)->weaponAnimations;
             for(unsigned i=0;i<events.count;++i)
                 if(events.at(i).kind==ta::RetailWeaponAnimation::Clear)cleared.push_back(events.at(i).slot);
-            require(cleared==(switching?std::vector<int>{1}:std::vector<int>{0,1,2}),
-                "target-clear callback respects selected versus independent weapon slots");
-            if(switching)require(clearing.unit(from)->weaponAim[0].flags==0xe8 &&
-                clearing.unit(from)->weaponAim[2].flags==0xc8,
-                "retargeting the selected weapon does not reset inactive aim acknowledgements");
+            require(cleared==std::vector<int>{0,1,2},
+                "target-clear callback runs on every independent weapon slot");
         }
-        for(bool switching:{false,true}) {
-            UnitType type;type.maxHp=100;type.weaponSwitching=switching;
-            Weapon gun;gun.range=400;gun.damage=1;gun.switchReloadTicks=13;
+        {
+            UnitType type;type.maxHp=100;
+            Weapon gun;gun.range=400;gun.damage=1;
             type.weapons.assign(3,gun);type.weapon=gun;
             World timers;
             timers.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
             const int id=timers.spawn(&type,200,200);auto* unit=timers.unit(id);
             unit->reloads[0]=4;unit->reloads[1]=5;unit->reloads[2]=6;
-            timers.setWeapon(id,1);timers.tick(1.f/30);
-            require(unit->reloads[0]==(switching?4:3) && unit->reloads[1]==(switching?12:4) &&
-                unit->reloads[2]==(switching?6:5),"only selected reload advances unless all slots are independent");
-            timers.setWeapon(id,2);timers.tick(1.f/30);
-            require(unit->reloads[0]==(switching?4:2) && unit->reloads[1]==(switching?12:3) &&
-                unit->reloads[2]==(switching?12:4),"switching starts the new weapon's switch reload clock");
-            timers.setWeapon(id,0);timers.tick(1.f/30);
-            require(unit->reloads[0]==(switching?12:1) && unit->reloads[1]==(switching?12:2) &&
-                unit->reloads[2]==(switching?12:3),"returning to a weapon replaces its saved countdown with switch reload");
-        }
-        {
-            // The 0x40 event reaches a flyer's unit attack (AirToGround's
-            // and the other air heads' readers).
-            {
-                UnitType type=shooter;type.weaponSwitching=true;type.canFly=true;type.canMove=true;
-                type.maxVel=Fixed::fromInt(2);type.weapons.assign(3,weapon);
-                World air;
-                air.setTerrain(std::vector<uint8_t>(64*64,100),64,64,20);
-                const int from=air.spawn(&type,200,200,{},0),target=air.spawn(&targetType,300,200,{},1);
-                air.attack(from,target,false);
-                auto* unit=air.unit(from);unit->missionEvents=0;
-                require(RetailReplayProbe::switchWeapon(air,*unit,1) && (unit->missionEvents&0x40u),
-                    "a flyer's unit attack hears the switch");
+            for(int tick=1;tick<=3;++tick) {
+                timers.tick(1.f/30);
+                require(unit->reloads[0]==4-tick && unit->reloads[1]==5-tick && unit->reloads[2]==6-tick,
+                        "every independent weapon slot's reload advances");
             }
-            std::cout<<"PASS: a flyer's unit attack hears a weapon switch\n";
         }
 
     }

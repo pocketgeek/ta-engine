@@ -2,7 +2,7 @@
 //
 // Retail creates a Resurrect, Reclaim or ReclaimArea task only from an order:
 // the resolver 0x4de530 (mode 1, a right-click; mode 12, an area reclaim's
-// child or the CLEAR button) tries resurrect, then animate, then reclaim, and
+// child or the CLEAR button) tries resurrect, then reclaim (Kingdoms' animate is gone), and
 // nothing idle reaches those modes. Ours raised bodies on its own -- an idle
 // caster took up any body within 56 px -- and an idle reclaimer cleared every
 // body around it; and it had no order to raise one at all, so a right-click on
@@ -32,7 +32,7 @@ static void check(bool ok, const char* what, const std::string& detail = {}) {
 namespace {
 struct Types {
     sim::FeatType body;
-    sim::UnitType victim, ghoul, priest, animator, mason, soldier;
+    sim::UnitType victim, priest, mason, soldier;
     Types() {
         // A TA wreck: no resurrectable key; reclaimable, and its name up to
         // the '_' names the unit it raises (TotalA.exe 0x404f36, FeatType::raises).
@@ -46,13 +46,10 @@ struct Types {
             return t;
         };
         victim = mover("victim"); victim.buildTime = 3000;
-        ghoul = mover("ghoul"); ghoul.buildTime = 30;
         soldier = mover("soldier");
         // A caster as the shipped ones are: a mobile builder that can reclaim.
         priest = mover("priest"); priest.workerTime = 300; priest.isBuilder = true;
         priest.canReclaim = true; priest.canResurrect = true;
-        animator = priest; animator.id = animator.name = "animator";
-        animator.canResurrect = false; animator.canAnimate = true; animator.animateType = &ghoul;
         mason = mover("mason"); mason.workerTime = 10; mason.isBuilder = true; mason.canReclaim = true;
         body.raises = &victim;
     }
@@ -172,16 +169,6 @@ static void idleCastersAndBuildersLeaveBodies(const Types& t) {
               "an idle priest beside a body does not raise it");
     }
     {
-        Scene s(t, t.body, 360, 1);
-        const int priest = s.w->spawn(&t.animator, 330, 300, 0, 0);
-        sim::FeatType animatable = t.body; animatable.animatable = true;
-        s.w->setFeatureTypes({animatable});
-        bool channelled = false;
-        for (int i = 0; i < 900; ++i) { s.tick(); channelled |= s.w->unit(priest)->reviveTarget != 0; }
-        check(!channelled && s.bodyLies() && s.count(&t.ghoul, 0) == 0,
-              "an idle animator beside an enemy body does not animate it");
-    }
-    {
         Scene s(t, t.body);
         const int mason = s.w->spawn(&t.mason, 330, 300, 0, 0);
         for (int i = 0; i < 900; ++i) s.tick();
@@ -190,9 +177,9 @@ static void idleCastersAndBuildersLeaveBodies(const Types& t) {
     }
 }
 
-// The kinds (0x497100, 0x496fd0; TotalA.exe 0x440043 / 0x404f36): resurrect
-// needs canresurrect and a reclaimable body naming a unit, animate cananimate and the body's animatable (its own flag,
-// 0x1000). Neither looks at the body's owner: the raised unit is the caster's.
+// The kinds (0x497100; TotalA.exe 0x440043 / 0x404f36): resurrect needs
+// canresurrect and a reclaimable body naming a unit; it does not look at the
+// body's owner: the raised unit is the caster's.
 static void kinds(const Types& t) {
     std::printf("the revive kinds:\n");
     {
@@ -206,24 +193,11 @@ static void kinds(const Types& t) {
     }
     {
         Scene s(t, t.body);
-        const int animator = s.w->spawn(&t.animator, 200, 300, 0, 0);
+        const int mason = s.w->spawn(&t.mason, 200, 300, 0, 0);
         s.tick(200);
-        check(s.w->reviveKind(animator, s.dead) == 0, "a body that is not animatable cannot be animated");
-        s.command(net::Cmd::Resurrect, animator, s.dead);
-        check(s.w->unit(animator)->orders.empty(), "...and Cmd::Resurrect on it does nothing");
-    }
-    {
-        sim::FeatType animatable = t.body; animatable.animatable = true;
-        Scene s(t, animatable, 360, 1);
-        const int animator = s.w->spawn(&t.animator, 200, 300, 0, 0);
-        s.tick(200);
-        check(s.w->reviveKind(animator, s.dead) == 2, "an animatable body is animated");
-        s.command(net::Cmd::Resurrect, animator, s.dead);
-        for (int i = 0; i < 900 && !s.count(&t.ghoul, 0); ++i) s.tick();
-        const sim::Unit* ghoul = nullptr;
-        for (const auto& u : s.w->units()) if (u.alive() && u.type == &t.ghoul) ghoul = &u;
-        check(ghoul && ghoul->player == 0 && ghoul->hp == Fixed::fromInt(100) && !s.bodyLies(),
-              "...rising as the caster's animatetype at full health");
+        check(s.w->reviveKind(mason, s.dead) == 0, "a reclaimer without canresurrect cannot raise a body");
+        s.command(net::Cmd::Resurrect, mason, s.dead);
+        check(s.w->unit(mason)->orders.empty(), "...and Cmd::Resurrect on it does nothing");
     }
 }
 

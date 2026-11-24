@@ -679,7 +679,7 @@ static void lodestoneUpgradeFinishesUnderShortShare() {
     std::printf("a lodestone upgrade finishes while income is short:\n");
     auto ownedWorld = makeWorld(128, 128);
     World& w = *ownedWorld;
-    w.setManaSpots({{512, 512}});
+    w.setDepositSpots({{512, 512}});
     UnitType lode{}, upgrade{};
     lode.name = lode.id = "zonlode"; lode.side = "ZON"; lode.maxHp = 1000;
     lode.footX = lode.footZ = 2; lode.onMana = true; lode.buildTime = 1; lode.buildCost = 1;

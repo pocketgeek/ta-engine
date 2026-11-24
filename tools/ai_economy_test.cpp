@@ -146,7 +146,7 @@ static void factoryTarget(const Roster& r) {
 static void shortOfManaLodestone(const Roster& r) {
     auto lodes=[&](ai::Difficulty difficulty,float mana,bool underWay) {
         sim::World w;terrain(w);w.buildNavClasses(r.reg);
-        w.setManaSpots({{1216,816},{1616,816}});
+        w.setDepositSpots({{1216,816},{1616,816}});
         w.player(0).storage=5000;w.player(0).income=100;
         shortOfMana(w,0,mana);
         w.spawn(r("arakeep"),800,800,0,0);
@@ -173,7 +173,7 @@ static void shortOfManaLodestone(const Roster& r) {
 static void fullStore(const Roster& r) {
     auto buildsLode=[&](ai::Difficulty difficulty,float mana) {
         sim::World w;terrain(w);w.buildNavClasses(r.reg);
-        w.setManaSpots({{1216,816}});
+        w.setDepositSpots({{1216,816}});
         w.player(0).storage=10000;w.player(0).mana=mana;w.player(0).income=300;
         for (int i=0;i<6;++i) busy(w,w.spawn(r("arakeep"),400+float(i)*200,400,0,0),r("arasword"));
         w.spawn(r("araminer"),1000,1000,0,0);
@@ -192,7 +192,7 @@ static void fullStore(const Roster& r) {
 static void normalIncomeTarget(const Roster& r) {
     auto buildsLode=[&](float income,int keeps) {
         sim::World w;terrain(w);w.buildNavClasses(r.reg);
-        w.setManaSpots({{1216,816}});
+        w.setDepositSpots({{1216,816}});
         w.player(0).storage=10000;w.player(0).mana=4000;w.player(0).income=income;
         for (int i=0;i<keeps;++i) busy(w,w.spawn(r("arakeep"),400+float(i)*200,400,0,0),r("arasword"));
         w.spawn(r("araminer"),1000,1000,0,0);
@@ -213,7 +213,7 @@ static void unitCap(const Roster& r) {
         sim::World w;terrain(w);w.buildNavClasses(r.reg);
         std::vector<std::pair<float,float>> spots{{1216,1408}};
         for (int i=0;i<lodes;++i) spots.emplace_back(400+float(i%10)*128,3008+float(i/10)*128);
-        w.setManaSpots(spots);
+        w.setDepositSpots(spots);
         w.setUnitCap(cap);
         w.player(0).storage=40000;w.player(0).mana=8000;w.player(0).income=300;
         w.spawn(r("araminer"),1000,1400,0,0);
@@ -254,7 +254,7 @@ static void safeDeposits(const Roster& r) {
     const float ax=2208,az=1008,bx=1408,bz=1008;
     auto world=[&](sim::World& w,int& miner,float income=300) {
         terrain(w);w.buildNavClasses(r.reg);
-        w.setManaSpots({{ax,az},{bx,bz}});
+        w.setDepositSpots({{ax,az},{bx,bz}});
         w.player(0).storage=10000;w.player(0).mana=3000;w.player(0).income=income;
         w.spawn(r("arakeep"),1800,1800,0,0);
         miner=w.spawn(r("araminer"),2000,1000,0,0);
@@ -327,7 +327,7 @@ static void safeDeposits(const Roster& r) {
                               Killed{600,600,false,"a builder killed where it stood when it was sent leaves the deposit free"}}) {
             const float westX=2000-k.trip,eastX=3600;
             sim::World w;int miner=0;world(w,miner);
-            w.setManaSpots({{westX,az},{eastX,az}});
+            w.setDepositSpots({{westX,az},{eastX,az}});
             const int second=w.spawn(r("araminer"),2000,1100,0,0);
             busy(w,second,r("arasword"));
             sight(w);
@@ -399,7 +399,7 @@ static void zhonProducers(const Roster& r) {
         sim::World w;terrain(w);w.buildNavClasses(r.reg);
         std::vector<std::pair<float,float>> spots;
         for (int i=0;i<20;++i) spots.emplace_back((nearHome ? 416.f : 2816.f)+float(i%5)*160,(nearHome ? 1616.f : 2416.f)+float(i/5)*160);
-        w.setManaSpots(spots);
+        w.setDepositSpots(spots);
         w.player(0).storage=40000;w.player(0).mana=8000;w.player(0).income=2000;
         for (int i=0;i<handlers;++i) w.spawn(r(builder),600+float(i%8)*60,600+float(i/8)*60,0,0);
         if (std::string(builder)!="zonhand") busy(w,w.spawn(r("arakeep"),400,400,0,0),r("arasword"));

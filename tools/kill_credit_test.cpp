@@ -19,8 +19,8 @@ namespace ta::sim { struct RetailReplayProbe {
 }; }
 static void check(bool ok,const char* what) {if(!ok)throw std::runtime_error(what);}
 static UnitType fighter(const char* id="fighter") {
-    UnitType t;t.id=id;t.maxHp=2000;t.healTime=0;t.sight=600;t.experiencePoints=100;
-    t.weapon.damage=100;t.weapon.range=100;t.weapon.melee=true;
+    UnitType t;t.id=id;t.maxHp=2000;t.healTime=0;t.sight=600;
+    t.weapon.damage=100;t.weapon.range=100;
     t.weapon.reload=1;t.weapon.aimTol=65536;t.weapons={t.weapon};return t;
 }
 static void terrain(World& w,int players=3) {
@@ -77,7 +77,7 @@ int main(int argc,char** argv) try {
         // TotalA.exe 0x4868b3..0x4869ca: a kill adds the hitter player's kills and
         // the killer unit's own count -- no bounty, score or experience (Kingdoms'
         // 512c6b / 512bd5 / 512ce0 have no TA counterpart).
-        UnitType prize=fighter("prize");prize.bounty=25.5f;
+        UnitType prize=fighter("prize");
         World w;terrain(w);
         const int k=w.spawn(&t,400,400,0,0),v=w.spawn(&prize,1200,1200,0,1);
         w.tick(1.f/30);
@@ -87,7 +87,7 @@ int main(int argc,char** argv) try {
         w.tick(1.f/30);
         check(!w.unit(v)->alive() && !w.unit(v)->deathPending,"the prize did not retire");
         check(w.player(0).kills==1 && w.unit(k)->kills==1 && w.player(1).losses==1,"the kill was not counted");
-        check(w.player(0).mana-before<0.1 && w.player(0).score==0 && w.unit(k)->xp==0,
+        check(w.player(0).mana-before<0.1 && w.player(0).score==0 && w.unit(k)->veteran==0,
               "a TA kill paid a bounty, a score or experience");
     }
     {
@@ -115,7 +115,7 @@ int main(int argc,char** argv) try {
         auto hit=[&](bool dead) {
             World w;terrain(w);
             const int s=w.spawn(&t,400,400,0,0),v=w.spawn(&t,440,400,0,1);
-            w.unit(s)->xp=10*t.experiencePoints;w.unit(s)->veteran=w.unit(s)->veteranLevel();
+            w.unit(s)->rank=10;w.unit(s)->veteran=w.unit(s)->veteranLevel();
             check(w.unit(s)->vetMul()==2.0f,"synthetic veteran is not level 10");
             if (dead) killNow(w,s);
             const int before=w.unit(v)->hp.floorInt();
@@ -173,7 +173,7 @@ int main(int argc,char** argv) try {
         for (bool unfinished:{false,true}) {
             World w;terrain(w);
             const int b=w.spawn(&bomb,400,400,0,0),old=w.spawn(&t,400,900,0,2),v=w.spawn(&t,420,400,0,1);
-            w.unit(b)->xp=10*bomb.experiencePoints;w.unit(b)->veteran=w.unit(b)->veteranLevel();
+            w.unit(b)->rank=10;w.unit(b)->veteran=w.unit(b)->veteranLevel();
             w.unit(b)->underConstruction=unfinished;
             w.unit(v)->lastHitBy=old;w.unit(v)->lastHitPlayer=2;
             w.unit(b)->hp=Fixed();w.unit(b)->deathType=1;
@@ -400,7 +400,7 @@ int main(int argc,char** argv) try {
             // as kind 1 (0x4868b3): a kill for the carrier's hitter.
             check(w.player(1).kills==3 && w.player(1).score==0,"the carrier's killer was not credited for its passengers");
             check(w.player(0).losses==2 && w.player(2).losses==1,"the carrier and its passengers were not losses");
-            if (shooterLives) check(w.unit(s)->xp==0,"a TA kill earned experience");
+            if (shooterLives) check(w.unit(s)->veteran==0,"a TA kill earned a rank");
             // 512ccd: its own kill count (+0xfe) counts each under the same gate.
             if (shooterLives) check(w.unit(s)->kills==3,"the carrier's killer did not count its kills");
             if (shooterLives) {

@@ -417,7 +417,7 @@ static void rules() {
     using ta::Act;
     using ta::client::watchAllows;
     for (const Act act : {Act::Move, Act::Attack, Act::FightMove, Act::Patrol, Act::Guard, Act::Stop, Act::Heal,
-                          Act::Load, Act::Unload, Act::ClearOrders, Act::CycleWeapon, Act::ToggleCloak,
+                          Act::Load, Act::Unload, Act::ClearOrders, Act::ToggleCloak,
                           Act::ToggleGate, Act::SelfDestruct, Act::GiveUnits, Act::Disco, Act::Headbang,
                           Act::MakePoster})
         check(!watchAllows(act), "an order or an order's input is blocked: " + std::to_string(int(act)));

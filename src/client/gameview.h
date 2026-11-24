@@ -456,13 +456,7 @@ public:
         std::vector<RenderOrder> orders;
     };
     std::array<OrderTrailCache,kTrailUnits> orderTrailCache_;
-    // Per builder: the predicted stops of its area lodestone jobs, for their
-    // ghosts (drawn for every own builder, selected or not).
-    std::unordered_map<int,OrderTrailCache> areaGhostCache_;
-    uint32_t areaGhostTargetsTick_=UINT32_MAX;   // the tick the shared targets were last refreshed for
-    const std::vector<RenderOrder>& areaBuildPlan(const UnitR& u);
     std::vector<ta::OrderTrailTarget> orderTrailTargets_;
-    std::vector<ta::OrderTrailSite> orderTrailSites_;
     uint64_t orderTrailSceneSignature_=0;
     void refreshOrderTrailTargets();
 
@@ -1262,8 +1256,7 @@ private:
     }
     // Precompute the whole tree for a model (once, at registration).
     void buildPieceMeta(const ta::tdo::Object& o, PieceMeta& m, bool isRoot = true);
-    // `meta` with every primitive on one texture (a statue's stone or ice).
-    void buildStatueMeta(const PieceMeta& meta, PieceMeta& statue, const std::string& texture);
+
     // `meta` with each animated texture swapped for its first-frame entry.
     void buildStillMeta(const PieceMeta& meta, PieceMeta& still);
     static void linkStillMeta(PieceMeta& meta, const PieceMeta& still) {
@@ -1272,12 +1265,7 @@ private:
             linkStillMeta(meta.children[i], still.children[i]);
     }
     static constexpr const char* kStillTextureSuffix = "#still";
-    // The stone or ice texture of the side whose nameprefix starts `model`
-    // (retail matches a feature to its side by the first three letters,
-    // 493b5d..493bf0); the first side's when none does.
-    std::string statueTexture(const std::string& model, bool frozen);
-    std::vector<std::array<std::string,3>> statueSides_;   // nameprefix, stoneanim, frozenanim
-    bool statueSidesLoaded_ = false;
+
 
     // Per-worker scratch: evaluate each piece and unique vertex once, then
     // share the exact rotated coordinates between the body and shadow passes.
@@ -1323,11 +1311,7 @@ private:
     struct Visual {
         ta::tdo::Model model;
         PieceMeta meta;   // precomputed once; see collect()
-        // The statue a petrified [0] or frozen [1] death leaves: retail draws every
-        // face, untextured ones too, with its side's stone or ice texture (sidedata
-        // stoneanim/frozenanim, frame 0) in place of the face's own (feature draw
-        // 4fd862..4fd8bc, model draw 4ed934..4ed992). Built with `meta`.
-        PieceMeta statue[2];
+
         // Every animated texture held at its first frame (buildStillMeta): drawn for a
         // unit whose textures do not play (TotalA.exe 0x458845). Built with `meta`.
         PieceMeta still;
@@ -1348,13 +1332,12 @@ private:
     ta::tdo::Model* loadVisual(const std::string& key, bool rootIsGround = true) {
         auto it = visuals_.find(key);
         if (it != visuals_.end()) return &it->second.model;
-        Visual v{ta::tdo::load(vread("objects3d/" + key + ".3do")), {}, {}, {}};
+        Visual v{ta::tdo::load(vread("objects3d/" + key + ".3do")), {}, {}};
         // Layout is built once and survives GPU target recreation. Rect pointers
         // remain valid for this view's lifetime, including unordered-map rehashes.
         if (!atlasLaidOut_) buildAtlasLayout();
         buildPieceMeta(v.model.root, v.meta, rootIsGround);   // fixed for the model's life
-        for (int frozen = 0; frozen < 2; ++frozen)
-            buildStatueMeta(v.meta, v.statue[frozen], statueTexture(key, frozen != 0));
+
         buildStillMeta(v.meta, v.still);
         Visual& placed = visuals_.emplace(key, std::move(v)).first->second;
         linkStillMeta(placed.meta, placed.still);   // node-stable from here on
@@ -2252,7 +2235,7 @@ private:
     // stage keys: what the stages compute from.
     struct UnitGeomInputs {
         const Visual* visual=nullptr;
-        const PieceMeta* meta=nullptr;   // visual->meta, or its statue's
+        const PieceMeta* meta=nullptr;   // visual->meta
         const Anim* anim=nullptr;
         SDL_Texture* atlas=nullptr;
         float facing=0;
@@ -2572,9 +2555,7 @@ private:
     int lastClickHit_ = -1;     // unit the previous plain click selected (double-click needs the same)
     int lastClickCount_ = 0;    // SDL click count of that plain click (the chain must be unbroken)
     bool buildDrag_ = false;          // shift-drag placing a line of buildings
-    bool manaBuildDrag_ = false;      // plain left-drag places lodestones in a box
     float bdX0_ = 0, bdZ0_ = 0;       // build-drag start (world)
-    ta::client::areadrag::Anchor bdAnchor_;   // lodestone-box start on the map plane
     // Empty cells between the sites of a shift-drag line: 0 = footprints touching.
     // The wheel changes it mid-drag; it holds for the rest of the game (any building
     // type) and startMpGame resets it, so it never outlives a game or reaches settings.
@@ -2592,7 +2573,7 @@ private:
         uint32_t tick = 0;
         std::vector<Site> sites;
     } buildLineTrail_;
-    bool bdQueue_ = false;
+
     // A right press in the main view: the order waits for the release (retail acts
     // on release, 0x5281ad), a click at the press or a box (clickrules.h boxOrders).
     bool rightDrag_ = false;
@@ -3227,10 +3208,9 @@ private:
     static bool isStructure(const ta::sim::UnitType* t) { return !t || t->maxVel <= ta::sim::Fixed(); }
     // Retail Glide skips both `noshadow` and `floater` types (KINGDOMS.icd
     // 0x4ec8d8 / 0x4ecac6). We deliberately allow floating units to cast the
-    // same animated silhouettes as land units. Lodestones also deliberately cast
-    // shadows despite authored exclusions. The global Shadows option still applies.
+    // same animated silhouettes as land units. The global Shadows option still applies.
     static bool castsShadow(const ta::sim::UnitType* t) {
-        return t && (!t->noShadow || (t->onMana && isStructure(t)));
+        return t && !t->noShadow;
     }
     // EVERY unit that casts at all casts a projected silhouette -- there is no
     // second kind of shadow in the Glide renderer we target. The shadow is emitted
@@ -3535,7 +3515,7 @@ private:
         return LiveWorld(simWorld_, std::move(lk));
     }
     // No lock, so ONLY for what match setup fixes and the sim never changes afterwards:
-    // featureTypes(), numPlayers(), allied() (teams), pathfindingMode(), manaSpots(),
+    // featureTypes(), numPlayers(), allied() (teams), pathfindingMode(), depositSpots(),
     // buildAllowed(), isWater() (terrain), benchmarkMode(), and the atomic
     // featGeneration().
     // Units, features, players' economy, nav and fog are live: snapshot or liveWorld().
@@ -4007,10 +3987,7 @@ private:
         int treeType = -1;   // the sim type a tree sways as; a burnt stage does not
         int simId = -1;      // cell-derived sim feature id (matches World's ids)
         bool tree = false;   // category=trees (eligible for the wind-sway option)
-        bool mana = false;   // category=mana (deposit cluster: kept walkable/buildable)
-        bool glowy = false;  // the animated "Sacred Stone" centre -- the actual
-                             // buildable spot; category=mana + animating=1. The
-                             // static "Standing Stones" (animating=0) are decoration.
+
         // TDF height below 10 (ta::hiddenunits::lowFeature): drawn under every unit,
         // as retail draws such features before any unit. Follows the burnt swap.
         bool low = false;
@@ -4050,7 +4027,7 @@ private:
 #endif
     std::unordered_set<int> featInstIds_;   // sim ids with a visual inst (dynamic adds)
     size_t featuresAtLoad_ = 0;             // features_ from the map; the rest the game added
-    std::vector<std::pair<float, float>> manaSpots_;   // Sacred Stone deposits
+
 
     struct FeatArt {
         SDL_Texture* tex = nullptr;
@@ -4141,18 +4118,6 @@ private:
 
     void drawOrderColumn(int winW, int winH);
 
-    // The front selected unit, if it has more than one weapon (worth a picker).
-    const UnitR* multiWeaponSel();
-
-    std::vector<SDL_FRect> weaponRects_;
-    // A small row of weapon-select buttons under the order column: retail fires
-    // only the active weapon; click (or press W to cycle) to pick another.
-    void drawWeaponButtons(int winW, int winH);
-
-    // Issue SetWeapon(slot) for every selected unit that has that slot.
-    void selectWeapon(int slot);
-
-    bool weaponButtonClick(float mx, float my);
 
     // ---- Retail GUI-driven HUD ----------------------------------------------
     // The command panel (right strip) and its order buttons are laid out from the
@@ -4265,12 +4230,6 @@ private:
     // Returns true if the click hit (and was handled by) the order column.
     bool orderColumnClick(float mx, float my, int winW);
 
-    std::map<std::string, SDL_Texture*> weaponIcons_;
-    // Weapon-slot icon: anims/weaponpic/<name>{sb,sbh}.jpg (name lowercased, spaces
-    // stripped; sb = normal, sbh = selected/gold), falling back to the default_* pics
-    // for weapons that ship no icon. These 32x32 JPGs are the full button (icon +
-    // recessed frame), so they replace the empty WPrimaryButton recess.
-    SDL_Texture* weaponIcon(const std::string& wname, bool selected);
 
     SDL_Texture* iconFor(const std::string& typeId);
 
@@ -4850,7 +4809,7 @@ private:
 
     // Queue a whole line of the current building from a shift-drag.
     bool placeBuildLine(float x0, float z0, float x1, float z1);
-    bool placeManaBuildBox(float x0,float z0,float x1,float z1,bool queue);
+
 
     void drawGhost();
 

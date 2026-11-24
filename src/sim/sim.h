@@ -19,7 +19,7 @@
 #include "sim/retailheight.h"
 #include "sim/retailfeaturesink.h"
 #include "sim/retailexploration.h"
-#include "sim/retailweaponswitch.h"
+
 #include "sim/retailflight.h"
 #include "sim/retailairpad.h"
 #include "sim/retailairseek.h"
@@ -91,10 +91,9 @@ struct Weapon {
     std::string name;
     int32_t range = 0;       // px (readInt)
     float reload = 1;        // seconds
-    uint16_t switchReloadTicks = 30; // native switchreloadtime, defaulting to reloadtime
+
     int32_t damage = 0;      // DAMAGE.default (readInt; the dump prints it %i) (base, used when no category matches)
-    float projVel = 0;       // px/s; 0 = instant (melee)
-    bool melee = false;
+    float projVel = 0;       // px/s; 0 = instant
     bool cursorAirstrike = false; // FBI `dropped=` -> WeaponType+0xc8 bit 0x20
     int32_t aoe = 0;         // areaofeffect radius px (readInt); >0 = splash
     float edge = 1;          // edgeeffectiveness: damage fraction at the aoe edge
@@ -108,13 +107,10 @@ struct Weapon {
     bool beam = false;
     bool straight = false; // Ordinary LOS class: any subtype the classes below do not claim.
     bool lightning = false;
-    // The Line-of-Sight status classes (subtype mindcontrol, turntostone,
-    // turntofrozen: LineOfSightMindControl / TurnToStone / TurnToFrozen,
-    // vtables 5f3a90 / 5f3a5c / 5f3a28). They launch and draw as the ordinary
-    // straight shot (52c540 / 52c8c0) but fly with their own update (52d8d0 /
-    // 52db40 / 52dda0), and the unit a shot strikes goes to the class's impact
-    // callback (52da10 / 52dca0 / 52df00) instead of the damage. Retail's
-    // parser (530935..530b16) gives every other subtype the plain class.
+    // Kingdoms' Line-of-Sight status classes (mind control, stone, freeze).
+    // TA data never sets them (taweapons.cpp) and their effects are gone; the
+    // field stays only for the line-of-sight shot path's untouched branches
+    // (docs/ta-port-plan.md Open (d)).
     enum class LosStatus : uint8_t { None, MindControl, Stone, Frozen };
     LosStatus losStatus = LosStatus::None;
     std::string hwEffectName;
@@ -123,33 +119,16 @@ struct Weapon {
     int8_t flameKind = -1; // -1: other class; 0 fire, 1 bluefire, 2 dieselflame.
     bool groundBounce = false,waterWeapon = false;
     int32_t emitTime = 0;    // emittime (readInt): ticks the flame/beam is emitted
-    // The rest of the retail weapon-class model (FBI `type=`), beyond
-    // melee/ballistic/line-of-sight:
-    //   Guided       -- a homing projectile that steers at `turnRate` (20 weapons:
-    //                   Tracking Arrow, Ball Lightning, dragon fireballs).
-    //   Remote Effect-- the effect materialises AT THE TARGET POINT after
-    //                   `buildUp`, then fades over `decay` (23: Earthquakes,
-    //                   monarch waves, god spells, Area Mind Control).
-    //   Wandering    -- a roaming storm entity that drifts for `duration`
-    //                   (4: Tornado, Fire/Water Vortex, Hurricane).
-    //   Dropped    -- a bomb RELEASED from a flyer: retail starts at its scripted
-    //                 QueryWeapon muzzle with zero vertical speed, then divides the
-    //                 aim-point X/Z delta by the gravity-derived fall ticks.
-    enum class Kind { Normal, Guided, Remote, Wandering, Dropped } kind = Kind::Normal;
-    // Remote Effect splits further by subtype, and the split changes the damage
-    // CADENCE completely (retail has a C++ subclass per variant):
-    //   Plain      -- one area hit when the channel completes.
-    //   Earthquake -- pulses every `shakeduration`, through buildup AND decay.
-    //   Hailstorm  -- ignores buildup/decay; pulses `particlespersecond` times a
-    //                 second for `duration` (the rain).
-    //   MindCtl /  -- one conversion/freeze sweep at the end of the channel, and
-    //   Freeze        the whole spell ABORTS if its caster dies mid-channel.
-    enum class RemoteKind { Plain, Earthquake, Hailstorm, MindCtl, Freeze };
-    RemoteKind remote = RemoteKind::Plain;
+    // The weapon's class beyond ballistic / line-of-sight (taweapons.cpp):
+    //   Guided  -- a homing projectile (guidance or tracks) that steers at `turnRate`.
+    //   Dropped -- a bomb RELEASED from a flyer: retail starts at its scripted
+    //              QueryWeapon muzzle with zero vertical speed, then divides the
+    //              aim-point X/Z delta by the gravity-derived fall ticks.
+    enum class Kind { Normal, Guided, Dropped } kind = Kind::Normal;
     // Retail's BallisticWeapon class: a plain Ballistic shell (not Dropped, a
     // flame or a beam). Its inRange (52bc60) solves the launch arc first.
     bool ballisticClass() const {
-        return ballistic && kind == Kind::Normal && !melee && !beam && flameKind < 0;
+        return ballistic && kind == Kind::Normal && !beam && flameKind < 0;
     }
     // Does a shot from this weapon need the engine's 2D clear-line test? That
     // test is a deviation (retail has none: its weapon update admits a shot on
@@ -159,29 +138,11 @@ struct Weapon {
     // as in retail, and World::noteShotImpact catches a shell that keeps
     // landing short. Decided per weapon -- the firing slot's, or the approach
     // slot's for the unit as a whole -- never by "any weapon of the unit".
-    bool needsClearLine() const { return !melee && range > 64 && !ballisticClass(); }
-    // Is this weapon's reach to a structure measured centre to centre, with no
-    // allowance for the structure's size? Retail's unit-target range test is a
-    // virtual of the weapon class (vtable +0xc), and 16 of its 17 classes
-    // answer centre to centre (530580, inclusive): WeaponType, every Line-of-
-    // Sight subclass (plain, lightning, fire, mind control, stone, freeze),
-    // Guided, every Remote Effect subclass (plain, hailstorm, earthquake, both
-    // area spells), Wandering, DroppedBallistic (532290, a bare call of
-    // 530580) and Ballistic (52bc60: its arc, then 530580). Only MeleeWeapon
-    // (52b980) does not, testing footprint boxes instead (meleeInRange).
-    // tools/re/check_inrange_classes.py runs all 17 natively against a 7x12
-    // building. With our old pad a Crusades Death Totem (range 550) took a
-    // lodestone 584 px off and its bolts died ~540 px out, and a Dropped
-    // bomb, a Remote or Wandering spell or a freeze, stone or mind-control
-    // beam was cast at a building up to 8*foot+24 px past its range, where
-    // retail's never is.
-    bool centreReach() const { return !melee; }
-    // The engine's range allowance for a structure target of `foot` cells
-    // (its larger side): the half extent plus a margin for where navigation
-    // halts at its edge. It stands in for melee's box contact when an attack
-    // approaches; every other class gets none (centreReach).
-    int32_t structurePad(int32_t foot) const { return centreReach() ? 0 : 8*foot+24; }
-    int32_t particlesPerSec = 0; // particlespersecond (readInt): hailstorm pulse rate
+    // A weapon's reach to a structure is measured centre to centre, with no
+    // allowance for the structure's size: retail's unit-target range test
+    // (530580, inclusive) for every TA class (tools/re/check_inrange_classes.py).
+    bool needsClearLine() const { return range > 64 && !ballisticClass(); }
+
     float turnRate = 0;      // guided: steering rate, radians/sec (FBI deg/s)
     // Retail splits a projectile's per-tick travel into sub-steps so no sub-step is
     // longer than one 16px cell, which is how its swept collision stays honest
@@ -190,22 +151,8 @@ struct Weapon {
     // velocity from the per-sub-step speed and then has that vector applied once per
     // sub-step -- so a correcting homer really does fly subSteps x nominal.
     int subSteps = 1;
-    float buildUp = 0;       // builduptime: channel before the effect lands
-    int32_t buildUpTicks = 0; // native truncation of seconds * 30
-    float decay = 0;         // decaytime: fade after it lands
-    int32_t decayTicks = 0;  // native truncation of seconds * 30 (52e780)
-    float duration = 0;      // wandering: seconds the storm roams
-    int32_t durationTicks = 0, variationTicks = 0;
-    int32_t maxVariation = 0;// maxvariation (readInt): wander half-width, px/tick
-    float variationTime = 0; // wandering: seconds between heading changes
     bool  unitsOnly = false; // unitsonly: the effect skips features (trees/props)
-    // subtype=mindcontrol: converts targets to the firer's side instead of damaging
-    // them, on a veterancy-scaled probability roll. The [DAMAGE] table is the
-    // ACQUISITION filter -- retail zeroes the categories you may not TARGET
-    // (monarch/god/dragon/fort/factory/naval/lodestone) -- while what actually
-    // protects a unit caught inside an AREA charm is the commander / cantbecaptured
-    // / in-transport gate at the impact itself.
-    bool  mindControl = false;
+
     int32_t minRange = 0;    // minrange (readInt): can't hit targets closer than this
     bool noAir = false;
     // WeaponType+0xc8 flags the fire-at-will sweep (icd 40f330/412620) reads:
@@ -233,8 +180,8 @@ struct Weapon {
     // EXPLODEs every piece and leaves no corpse), 4 paralyzer (retail icd
     // 0x531bbd; "monster" and friends map to non-gib codes).
     int dmgType = 1;
-    // Status effect this weapon inflicts (freeze/petrify/paralyze), 0 = none.
-    enum class Status { None, Frozen, Stoned, Paralyzed } status = Status::None;
+    // Status effect this weapon inflicts (TA: paralyzer), None = none.
+    enum class Status { None, Paralyzed } status = Status::None;
     float statusDur = 0;     // seconds the inflicted status lasts
     std::string soundHit;    // soundhitclass: impact-sound class (arrow/sword/cannon..)
     // Projectile ART (display only -- never hashed, like explosionClass below).
@@ -251,9 +198,7 @@ struct Weapon {
     }
     bool  nimbus = false;     // nimbus: faction caster effect and conditional launch delay
     // nimbustime (WeaponType+0x7c, seconds * 30 truncated): the launch delay a
-    // nimbus caster with nimbus art adds to the shot's start tick. No shipped
-    // weapon defines it, so retail's delay is always 0 -- builduptime is a
-    // Remote Effect timer only (pushed once, by 52e780).
+    // nimbus caster with nimbus art adds to the shot's start tick.
     int32_t nimbusTicks = 0;
     bool  hasBoltColor = false;
     uint8_t inner[3] = {255, 255, 255};    // innercolor: lightning bolt core
@@ -261,12 +206,7 @@ struct Weapon {
     uint8_t outer[3] = {120, 170, 255};    // outercolor
     int32_t spinRate = 0;     // spinheading (readInt): shot spins as it flies
     std::string shadowArt;    // shadowart: sequence in shadowgaf (always "shadows")
-    // shotart: a Remote Effect that is DELIVERED rather than conjured in place --
-    // a visible shot flies to the aim point at weaponvelocity and only starts the
-    // spell's channel when it lands. Exactly one shipped weapon (the Acolyte's
-    // Earthquake) uses it, which is also the only reason its weaponvelocity is
-    // read at all; for the other 22 Remote Effects it is dead data.
-    std::string shotArt;
+
     int lightMap = 0;         // lightmap: ground light pool, 1 small 2 medium 3 large
     std::string explosionClass;       // explosionclass: impact effect (gamedata/explosions)
     std::string waterExplosionClass;  // waterexplosionclass: impact effect over water
@@ -278,7 +218,7 @@ struct Weapon {
     int   spriteCount = 24;     // spritecount: sprites arranged around each ring
     int32_t shakeMag = 0;       // shakemagnitude (readInt): camera-shake intensity
     float shakeDur = 0;         // shakeduration: seconds the shake lasts
-    int32_t shakeTicks = 0;     // the same, ticks truncated (WeaponType+0x84): Earthquake pulse period
+    int32_t shakeTicks = 0;     // the same, ticks truncated (WeaponType+0x84)
     bool  fireStarter = false;  // firestarter: leaves ground fire at the impact
     // Precomputed integer damage (default * multiplier, truncated at load),
     // keyed by lowercased category token (e.g. "monarch", "dragon", "fort").
@@ -321,7 +261,7 @@ struct UnitType {
     std::string id;        // lowercase objectname, e.g. "araarch"
     uint16_t orientation=0,buildAngle=0; // original spawn-heading range in BAM
     std::string name;      // display name, e.g. "Archer"
-    std::string side;      // ARA/TAR/VER/ZON/CRE
+    std::string side;      // FBI side= (ARM / CORE)
     bool hasNimbusArt = false;
     Fixed maxVel = Fixed::fromInt(1);                 // px/tick  (= 30 px/s)
     Fixed animationMoveRate1=Fixed::fromInt(2),animationMoveRate2=Fixed::fromInt(2);
@@ -338,7 +278,6 @@ struct UnitType {
     // uses while moving (KINGDOMS.icd 0x4d91b0 picks between the two on an in-place
     // flag). An omitted key has rate zero, including when a facing target is set.
     int32_t turnInPlaceRate = 0;   // unsigned 16-bit BAM/tick in retail
-    int32_t experiencePoints = 666; // native Type+1c2, awarded to player score on a kill
     int32_t maxHp = 100;        // maxdamage: readInt at +0x1be in retail
     bool canMove = false;
     bool canGuard = false, canPatrol = false; // authored command capability flags
@@ -365,8 +304,7 @@ struct UnitType {
     // canMove building would otherwise be mistaken for a mobile builder.
     bool isStructure() const { return maxVel <= Fixed(); }
     int32_t buildDist = 0;  // FBI builddistance (readInt): how far a builder reaches to build
-    bool onMana = false;    // must be built on a mana deposit (yardmap 'S'), e.g. lodestones
-    bool sacredIncome = false; // retail yardmap S: income requires sacred-site coverage
+
     bool gate = false; // FBI gate low bit: closed passage cells use search grade 3
     float buildCost = 0;    // legacy single-resource cost (= buildCostMetal for TA data)
     // Total Annihilation economy (FBI; TotalA.exe 0x42bf40, docs/retail-data.md 2.2).
@@ -383,11 +321,11 @@ struct UnitType {
     bool isAirBase = false, antiWeapons = false, targetingUpgrade = false;
     float buildTime = 0;    // work units; seconds = buildTime / builder workerTime
     float workerTime = 1;
-    float income = 0;       // mana/sec (mogriumincome)
-    float storage = 0;      // mana cap contribution (mogriumstorage)
-    // mogriumbounty (UnitDef +0x222): on a credited kill (512c6b) the killer's
-    // player gains it in its pool and lifetime total. No shipped type sets it.
-    float bounty = 0;
+    // The engine's single-resource pool (Player::mana): per-second income and
+    // capacity. Zero for every TA type (its economy is Player::books); only
+    // synthetic test types set them.
+    float income = 0;
+    float storage = 0;
     int footX = 1, footZ = 1;
     std::string yardMap;      // footX*footZ chars; 'o' blocks, '.'/'c' passable
     // Lowercased general category tokens (FBI category/damagecategory/tedclass).
@@ -439,12 +377,9 @@ struct UnitType {
     bool instantCorpse = false; // proven constant Killed + no Dying callback
     bool explosionCorpse = false; // Killed explicitly requests a corpse for death type 3
     std::string corpse;       // FBI corpse feature name
-    std::string stoneFeat;    // FBI stone= statue feature (death while petrified)
-    std::string frozenFeat;   // FBI frozen= statue feature (death while frozen)
+
     int corpseAdjX = 0, corpseAdjZ = 0;   // corpseadjustx/z: wreck offset in cells
-    bool canAnimate = false;              // cananimate: raises animateType from corpses
-    const UnitType* animateType = nullptr;   // animatetype=<unit>, resolved post-load
-    std::string animName_;                   // raw animatetype value (loadDir fixup)
+
     std::string shadowArt;    // FBI shadowart: shadow sprite name in shadows.gaf
     bool upright=false;
     std::optional<RetailGroundSupport> groundSupport;
@@ -516,7 +451,6 @@ struct UnitType {
     int16_t landMaxWaterDepth=10000,landMinWaterDepth=-10000;
     uint8_t landMaxSlope=255;
     int32_t radar = 0;        // radardistance (readInt): fog-reveal radius (separate from sight)
-    bool  noVeteran = false;  // noveteran: this unit can never gain veterancy
     bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
     bool  canResurrect = false;   // canresurrect: can revive nearby corpses
     // cancapture (flagsB +0x245 bit 12): TotalA.exe's hit response reads it
@@ -553,9 +487,7 @@ struct UnitType {
     std::vector<std::string> noTargetCats;
     std::vector<std::string> noChaseCats;   // nochasecategory, TotalA.exe type +0x23d
     std::array<std::vector<std::string>,3> badTargetCats;
-    // weaponswitching: this unit carries ONE active weapon at a time, picked by the
-    // player. Without it, a multi-weapon unit fires every weapon independently.
-    bool  weaponSwitching = false;
+
     bool  onOffable = false;      // onoffable: can be toggled active/inactive
     // Display only (never read by the simulation). digger: UnitDef +0x241 bit 30
     // (TotalA.exe 0x42c885), the object bitmap's height bias 125 instead of 50
@@ -571,8 +503,7 @@ struct UnitType {
     // 4bfd6f): 51a16e scales a hit on an ACTIVATED unit (+0x114 bit 1) by it,
     // heals and hits of 30000 or more excepted. No shipped type sets it.
     int32_t damageModifier = 0x10000;
-    bool  cantBeStoned = false, cantBeFrozen = false;
-    bool  cantBeCaptured = false, cantBeTransported = false;
+    bool  cantBeTransported = false;
     // immunetoparalyzer (UnitDef+0x260 bit 26): paralyzer weapons (damage
     // type 4) are useless against it; read by AI weapon switching.
     bool  immuneToParalyzer = false;
@@ -957,11 +888,7 @@ struct alignas(64) Order {
     // which run on `mission`): AirToGround's is 1 once a run has brought the
     // flyer within half its range of the target, and its stage 7 counts
     // wakes off the map on it; AirToGroundHover's counts its step-outs. A
-    // step-out order's D. On a ground walker's automatic melee attack
-    // (Attack_Melee 404690, which a flyer never runs) it is the tick of the
-    // next stage-2 timer wake instead (stage 1's 4 + rand(5) + rand(5)
-    // sleep), where the walker may take another target (4049a0); 0 until
-    // the approach starts (retailMeleeRetarget). Hashed with a tag then.
+    // step-out order's D. Hashed with a tag then.
     int32_t airRunCount = 0;
     // A ground attack (Attack_Chase, 403bb0; tickCombat): whether the unit
     // has walked toward its target under this order (`attackChased`, beside
@@ -1023,8 +950,8 @@ struct alignas(64) Order {
     bool mixedSlots = false;
     // A RESURRECT leg (retail 0x4068b0, VTOL_Resurrect 0x41fe70): the leg's
     // reclaimFeat is the corpse (negative id), and this is the kind the order
-    // was issued as -- 1 resurrect, 2 animate (retail mission +0x56 = 0 / 1);
-    // 0 = an ordinary RECLAIM. Its walk, turn and stance wait are RECLAIM's
+    // was issued as -- 1 resurrect (retail mission +0x56 = 0; Kingdoms' 2,
+    // animate, is gone); 0 = an ordinary RECLAIM. Its walk, turn and stance wait are RECLAIM's
     // (tickReclaim), then the revive channel (tickAbilities). In the pad
     // beside mixedSlots. Hashed on reclaim legs when set.
     uint8_t reviveKind = 0;
@@ -1264,8 +1191,7 @@ struct alignas(64) Unit {
     HeapOptional<RetailLandingState> landing;
     // TICKS, all four -- see the note on `reloads`. Retail counts a timer in
     // 30Hz ticks and scales by 1/30 only to display it (tools/re/emufields.py).
-    int32_t frozenFor = 0;   // >0 = frozen solid (can't act); counts down
-    int32_t stonedFor = 0;   // >0 = petrified (can't act, immune to damage while stone)
+    int32_t padFrozen_ = 0, padStoned_ = 0;   // were Kingdoms' freeze / stone timers; kept for the layout asserts
     int32_t paralyzedFor = 0;// >0 = paralyzed (can't act, still takes damage)
     // Self-destruct (the SelfDestruct mission 4017e0): -1 not armed; >= 0 the
     // countdown's ticks left, its last run drawing rand(15); <= -2 that
@@ -1381,9 +1307,10 @@ struct alignas(64) Unit {
     // floating point (the affordability check at 0x46e85f subtracts one with `fsubl`).
     double layoutPadMana_ = 0;   // was Kingdoms' per-unit mana; kept for the Unit layout asserts
     uint32_t missionEvents = 0; // read by every unit's mission dispatch each tick
-    // Experience (+0xf0): the experiencepoints of every unit it killed (512ce0),
-    // or an authored level's worth (setLevel 519370). `veteran` is its level.
-    int32_t xp = 0;
+    // An authored veteran rank (a scenario placement or a type's scenario
+    // stats, World::setVeteranLevel): 0..10. TA credits no experience; its
+    // veterancy is `kills`. `veteran` is the rank in effect (veteranLevel).
+    int32_t rank = 0;
     float scenarioArmor = 1.0f, scenarioWeapon = 1.0f; // permanent authored multipliers, separate from auras
     int   veteran = 0;     // veteranLevel(): up to 10; scales attack/armor/mana per shot
     float atkBuff = 1;     // live attack multiplier from auras (decays to 1)
@@ -1392,15 +1319,7 @@ struct alignas(64) Unit {
     // translate/unitmissions.tdf carries CLOAK and DECLOAK as separate mission
     // codes, and the drain itself lives in the mission-handler block (icd
     // 0x4011b0, picking cloakcostmoving over cloakcost by speed) alongside Build
-    // and SelfDestruct.
-    //
-    // Defaulting this ON quietly cost Taros its whole economy. tarnecro is the
-    // Taros MONARCH -- a starting unit -- with cancloak=1 and cloakcost=25, so it
-    // burned 25 mana/sec against an income of ~21 from the first second of every
-    // match: income 21 vs everyone else's 43, one lodestone to their four, and a
-    // treasury pinned at 0 that could never reach the ~121 needed to start
-    // another. The AI looked broken; it was solvent code starving on a drain it
-    // never asked for.
+    // and SelfDestruct (TotalA.exe: init_cloaked, below, sets it at creation).
     bool  cloakOn = false;  // canCloak units: player wants to cloak (CLOAK order)
     int   stance = 1;      // combat stance: 0=offensive (chase freely), 1=defensive
                            // (leashed, the default/legacy behaviour), 2=passive
@@ -1438,7 +1357,7 @@ struct alignas(64) Unit {
     // resolve the handoff; no Dying callback retires immediately.
     int32_t deathAnimationTicks = 0;
     bool deathHasCorpse = false;
-    int corpseAnimationTicks() const { return corpseStatue>=0 ? 0 : deathAnimationTicks; }
+    int corpseAnimationTicks() const { return deathAnimationTicks; }
     int32_t corpseUntil = 0;  // handoff plus authored decomposition/sinking lifetime
     // Fixed: this is hp that went past zero, in the same units hp is now kept in.
     Fixed overkill = Fixed();  // damage past the killing blow (retail severity input)
@@ -1462,13 +1381,13 @@ struct alignas(64) Unit {
     bool deathPending = false;
     uint8_t hpPct1s = 100;   // HP% sampled every 30 ticks (previous sample -- the
     uint8_t hpPctCur = 100;  //  retail unit+0x111/+0x110 pair severity reads)
-    int corpseStatue = -1;   // FeatType override chosen at death (stone/frozen), -1 = corpse=
+    int padCorpseStatue_ = -1;   // was Kingdoms' statue corpse override; kept for the layout asserts
     // A reclaim finished this body: it fades out (corpseUntil is the end of the
     // fade) and can no longer be reclaimed or raised. Hashed.
     bool corpseFading = false;
     // The revive channel of the current RESURRECT leg (Order::reviveKind):
     // the dead unit being raised (0 = none) and its kind, 1 resurrect (the
-    // body's own unit) or 2 animate (the caster's animatetype).
+    // body's own unit).
     int reviveTarget = 0;
     int8_t reviveMode = 0;
     // Retail mission +0x52: the channel's work left, 16.16. Each tick takes the
@@ -1719,24 +1638,23 @@ struct alignas(64) Unit {
     bool alive() const { return deadFor < 0; }
     int32_t maximumHp() const { return retailSite ? int32_t(retailSite->type.maxHp) : type->maxHp; }
     bool embarked() const { return inTransport != 0; }
-    // Frozen/petrified/paralyzed units can't move, turn, or fire.
-    bool incapacitated() const { return frozenFor > 0 || stonedFor > 0 || paralyzedFor > 0; }
-    // Veterancy stat multiplier (retail: base 1.0, +10% per level, level capped
-    // at 10 => up to 2.0x). Scales attack up, armor up (less damage taken) and
-    // divides mana per shot; not the reload (530140 reads the weapon's own),
-    // except in World's script-less fallback (fire). Verified against
-    // KINGDOMS.icd. See retail-engine-internals.
-    // A mission's `v F` (vetOverride) replaces it, as getMult 0x5193c0 does.
+    // Paralyzed units can't move, turn, or fire.
+    bool incapacitated() const { return paralyzedFor > 0; }
+    // The authored rank's stat multiplier (the engine's scenario rank: base
+    // 1.0, +10% per level, up to 2.0x at 10). Scales attack up and armor up
+    // (less damage taken); not the reload, except in World's script-less
+    // fallback (fire). 1.0 for every unit TA data makes. A mission's `v F`
+    // (vetOverride) replaces it.
     float vetMul() const {
-        if (vetOverride != 0.0f && type && !type->noVeteran) return vetOverride;
+        if (vetOverride != 0.0f && type) return vetOverride;
         // getMult's fild/fmul 0.1f/fadd 1.0f run at the x87's 53 bits: one
         // rounding to float, not two (tools/re/check_veterancy.py).
         return float(1.0 + double(0.10f) * double(veteran));
     }
-    // getLevel (0x519310), from xp, the unit's own experiencepoints and `v F`.
-    // Retail works it out on every read; World keeps `veteran` equal to it.
+    // The rank in effect: 10 under a mission's `v F`, else the authored rank.
+    // World keeps `veteran` equal to it.
     int veteranLevel() const {
-        return type ? retailVeteranLevel(xp, type->experiencePoints, type->noVeteran, vetOverride) : 0;
+        return type ? (vetOverride != 0.0f ? 10 : std::clamp<int>(rank, 0, 10)) : 0;
     }
     bool moving() const { return alive() && (speed > Fixed::fromFloat(1.0f / 30.0f) || !orders.empty()); }
     // Actually translating (for the walk animation), vs standing with an
@@ -1785,7 +1703,7 @@ TA_UNIT_LINE(guardNoMoveActive, 0); TA_UNIT_LINE(constructionHolding, 0); TA_UNI
 TA_UNIT_LINE(weaponAuto, 0);
 TA_UNIT_LINE(retailSite, 1); TA_UNIT_LINE(retailBuild, 1); TA_UNIT_LINE(constructionEmitter, 1);
 TA_UNIT_LINE(cosmeticConstructionEmitter, 1); TA_UNIT_LINE(landing, 1);
-TA_UNIT_LINE(frozenFor, 1); TA_UNIT_LINE(stonedFor, 1); TA_UNIT_LINE(paralyzedFor, 1);
+TA_UNIT_LINE(padFrozen_, 1); TA_UNIT_LINE(padStoned_, 1); TA_UNIT_LINE(paralyzedFor, 1);
 TA_UNIT_LINE(selfDestructT, 1); TA_UNIT_LINE(turnReqBam, 1); TA_UNIT_LINE(animationTurnBam, 1);
 TA_UNIT_LINE(tickStartHeadingBam, 1);
 TA_UNIT_LINE(orders, 2); TA_UNIT_LINE(buildQueue, 2); TA_UNIT_LINE(repeatType, 2);
@@ -1815,7 +1733,7 @@ inline constexpr size_t kUnitPrefetchHot=9*64;
                   (offsetof(Unit, field) + sizeof(Unit::field) - 1) / 64 <= (last), \
                   "Unit::" #field " must sit on cache lines " #first "-" #last)
 TA_UNIT_LINE(standbyState, 8); TA_UNIT_LINE(guardNoMoveState, 8); TA_UNIT_LINE(standbyAllowed, 8);
-TA_UNIT_LINES(deathAnimationTicks, 8, 11); TA_UNIT_LINES(corpseUntil, 8, 11); TA_UNIT_LINES(corpseStatue, 8, 11);
+TA_UNIT_LINES(deathAnimationTicks, 8, 11); TA_UNIT_LINES(corpseUntil, 8, 11); TA_UNIT_LINES(padCorpseStatue_, 8, 11);
 TA_UNIT_LINES(corpseFading, 8, 11); TA_UNIT_LINES(airOccupant, 9, 11);
 TA_UNIT_LINES(flightVelocity, 9, 11);
 TA_UNIT_LINES(flightAcceleration, 9, 11); TA_UNIT_LINES(flightNavigation, 9, 11);
@@ -1886,17 +1804,12 @@ struct FeatType {
     // and whether a priest can raise it (retail decomposetime / resurrectable).
     int  decomposeTicks = 0; // TDF decomposetime * 30 (0 = never rots)
     bool resurrectable = false;
-    // TDF animatable=1: a cananimate caster may raise it as its animatetype.
-    // Retail's feature flag 0x1000 (loader 0x494223; tested by 0x496fd0), apart
-    // from resurrectable's 0x800 (0x497100). Every shipped animatable corpse is
-    // also resurrectable, not the other way round.
-    bool animatable = false;
+
     bool reclaimable = false;
     // TDF autoreclaimable (feature flags +0xfe bit 8, default 1; 0x422baf):
     // VTOL_RepairPatrol's feature look (0x47ea40) takes only these.
     bool autoReclaimable = true;
-    bool isStone = false;    // TDF isstone=1 (statue: client tints it stone-gray)
-    bool isFrozen = false;   // TDF isfrozen=1 (client tints it ice-blue)
+
     bool indestructible = false;
     int32_t hp = 0;          // TDF damage= -- readInt in retail, so an int here too
     int  deadType = -1;      // TDF featuredead -> destroyed-replacement (placed neutral)
@@ -1912,17 +1825,15 @@ struct FeatType {
 
 // What a caster does with a body, retail's raise resolver (0x4de530 modes 1
 // and 12, and 0x4068b0 stage 0): resurrect when its type has canresurrect and
-// the body is resurrectable (0x497100), else animate when it has cananimate
-// (and an animatetype) and the body is animatable (0x496fd0). 0 = neither, and
-// a reclaimer reclaims it instead. There is no owner test: a caster raises a
-// body of any side, as its own unit.
+// the body is resurrectable (0x497100). 0 = not, and a reclaimer reclaims it
+// instead. There is no owner test: a caster raises a body of any side, as its
+// own unit. (Kingdoms' animate, kind 2, is gone: TA has no cananimate.)
 // TA (TotalA.exe): the RESURRECT order takes any reclaimable feature
 // (0x440043: feature flag 0x80, `reclaimable`), and the mission raises the
 // unit its name names (FeatType::raises; none: "Ressurection failed",
 // 0x404f6f) -- there is no resurrectable key in TA's data.
 inline uint8_t reviveKindFor(const UnitType& caster, const FeatType& corpse) {
     if (caster.canResurrect && (corpse.resurrectable || (corpse.reclaimable && corpse.raises))) return 1;
-    if (caster.canAnimate && caster.animateType && corpse.animatable) return 2;
     return 0;
 }
 
@@ -2387,9 +2298,7 @@ public:
     // A creation that credits its storage (512060's last argument): the unit's
     // mogriumstorage joins its owner's pool and capacity at once.
     void creditCreationStorage(int unitId);
-    // A credited kill's bounty (512c6b..512c99): the victim type's
-    // mogriumbounty to the killer player's pool and lifetime total, uncapped.
-    void creditKillBounty(int player, float bounty);
+
     // A finished creation or completion of an isfeature type (the walls):
     // it dies with kind 9 and leaves its feature.
     void finishAsFeature(int unitId);
@@ -2472,12 +2381,7 @@ public:
     const RetailGroupRecord* retailGroupRecord(int unitId) const {
         const Unit* u=unit(unitId);return u?retailGroupOf(*u):nullptr;
     }
-    // Whether the last group tick paced the unit (its mission's 0x2000000).
-    bool retailGroupPaced(int unitId) const {
-        const Unit* u=unit(unitId);if(!u)return false;
-        const size_t index=size_t(u-units_.data());
-        return index<retailGroupPaced_.size() && retailGroupPaced_[index];
-    }
+
     // Legion mode's formation slot for a member of a formation -- an Alt+N
     // formation or a classic AI squad flagged as one (legionFormationGroup) --
     // for the standby re-form (legionStandbyCheck): null when it has none.
@@ -2647,10 +2551,7 @@ public:
     // Observational whole-map query at cell centers. Returns empty on cancellation.
     // Reuses placementCheck with spatially bounded occupant candidates.
     std::vector<uint8_t> placementCells(const UnitType* type,const std::atomic_bool* cancel=nullptr);
-    const Unit* lodestoneUpgradeSource(const UnitType* type, float x, float z, int player) const;
-    // The plain lodestone `type` upgrades in place (retail's explicit faction
-    // pairs, "tarmana" -> "tarlode"), else empty: `type` is no upgrade.
-    static std::string lodestoneUpgradeBase(const UnitType& type);
+
     // Would the site be placeable if the clearable doodads on it were gone? Fills
     // `out` with their feature ids, nearest-first is the caller's job. Returns false
     // when anything ELSE blocks -- terrain, a unit, a building, an unreclaimable
@@ -2659,15 +2560,15 @@ public:
     // this is a query for the UI, and it changes no sim state.
     bool clearableForPlacement(const UnitType* type, float x, float z,
                                std::vector<int>& out, int player = -1) const;
-    // Mana deposit ("Sacred Stone") spots, in world px. Lodestones (onMana)
-    // can only be built on one, but only when the map actually has any.
-    void setManaSpots(std::vector<std::pair<float, float>> spots) {
-        manaSpots_ = std::move(spots);
+    // Metal deposit spots, in world px: TA's ore patches (indestructible
+    // features carrying metal), clustered (matchsetup). Display, the editor's
+    // checks and the AI tools read them; the simulation does not.
+    void setDepositSpots(std::vector<std::pair<float, float>> spots) {
+        depositSpots_ = std::move(spots);
     }
-    bool hasManaSpots() const { return !manaSpots_.empty(); }
-    const std::vector<std::pair<float, float>>& manaSpots() const { return manaSpots_; }
-    // The map's sacred-site features (each anchor, in map scan order); read-only,
-    // for the server-side Classic AI's deposit search.
+    bool hasDepositSpots() const { return !depositSpots_.empty(); }
+    const std::vector<std::pair<float, float>>& depositSpots() const { return depositSpots_; }
+
     // Reclaimable features (trees/rocks/houses). Populated only by setupMatch (the
     // one deterministic per-peer walk); never from the viewer. See struct Feature.
     void addFeature(int id, float x, float z, float energy,
@@ -2770,20 +2671,11 @@ public:
     void clearFeatureTypes() {
         featTypes_.clear();
         // Registry rebuilds can reuse an old UnitType address for a different
-        // unit. Types without a corpse/statue must not inherit that old mapping.
-        corpseType_.clear(); stoneType_.clear(); frozenType_.clear();
+        // unit. Types without a corpse must not inherit that old mapping.
+        corpseType_.clear();
     }
     // Unit type -> its corpse feature def (index into featTypes_, -1 = none).
     void mapCorpse(const UnitType* t, int featType) { corpseType_[t] = featType; }
-    void mapStatue(const UnitType* t, int stoneIdx, int frozenIdx) {
-        if (stoneIdx >= 0) stoneType_[t] = stoneIdx;
-        if (frozenIdx >= 0) frozenType_[t] = frozenIdx;
-    }
-    int statueTypeOf(const UnitType* t, bool frozen) const {
-        const auto& m = frozen ? frozenType_ : stoneType_;
-        auto it = m.find(t);
-        return it == m.end() ? -1 : it->second;
-    }
     int corpseTypeOf(const UnitType* t) const {
         auto it = corpseType_.find(t);
         return it == corpseType_.end() ? -1 : it->second;
@@ -2824,7 +2716,7 @@ public:
     void reclaimArea(int builderId, float x0, float z0, float x1, float z1, bool queue);
     // Order `casterId` to raise the body of dead unit `corpseId` (retail
     // RESURRECT 0x4068b0, or VTOL_RESURRECT 0x41fe70 for a flyer): walk to it,
-    // then channel a resurrect or an animate (reviveKind). A no-op when the
+    // then channel a resurrect (reviveKind). A no-op when the
     // caster cannot raise that body (reviveKind is 0).
     void resurrect(int casterId, int corpseId, bool queue);
     // The kind a resurrect order from `casterId` on dead unit `corpseId` would
@@ -2964,9 +2856,9 @@ public:
         searchGrades_.clear(); activeSearchGrade_=-1;
         units_.clear();unitSlotById_.clear();retiredOwners_.clear();retiredHash_=0;
         replacedObjects_.clear();justDied_.clear();
-        // The retail group records and the AI squads' formation flags
-        // (hashed) live across ticks: a replay from tick 0 starts with none.
-        retailGroups_={};retailGroupPaced_.clear();aiFormation_={};
+        // The AI squads' formation flags (hashed) live across ticks: a
+        // replay from tick 0 starts with none.
+        aiFormation_={};
         // Legion's formation slots (hashed, by unit id) likewise.
         legionFormationSlots_.clear();legionFormationClasses_={};legionSlotDests_.clear();
         groundOwner_.clear();groundLinkSerial_=0;
@@ -3491,7 +3383,7 @@ public:
     void stop(int unitId);
     // Self-destruct a living unit (Ctrl+D via the command path; no kill credit).
     void destroy(int unitId);
-    void setWeapon(int unitId, int slot);   // choose the active weapon (0=primary)
+
     void setStance(int unitId, int stance); // combat stance 0=offensive/1=defensive/2=passive
     static constexpr int kStanceNone=3;     // setStance on a producer: no stance for its output
     void setCloak(int unitId, bool on);     // canCloak unit: enable/disable cloaking
@@ -3945,9 +3837,7 @@ private:
     void prepareHelpApproach(Unit& u);
     void prepareRepairApproach(Unit& u);
     void installRepairApproach(Unit& u, Order& leg, const Unit& target);
-    // Attack_Melee (404690) stage 0 for a target with no mover: the same
-    // rectangle controller round the target's footprint (4d4e80).
-    void installMeleeApproach(Unit& u, const Unit& target);
+
     void tickGroundHelp(Unit& b, Unit& site, size_t leg, float dt);
     void tickGroundRepair(Unit& b, Unit& target, float dt);
     bool constructionWork(Unit& b, Unit& site, float dt);
@@ -4145,12 +4035,8 @@ private:
     // (PackedWhenKept, here and on the other per-cell state maps -- occupancy, ground owners, sight counts, the
     // placement cells, the search grades: arrays as ever in a world that runs, runs in a keyframe; World::keyframe.)
     PackedWhenKept<uint8_t> obst_;   // shared obstacle overlay (see NavGrid::setObstacles)
-    // A sacred yard (S) may stand on fixed obstacles (placementCheck): footprint
-    // origin cell -> the overlay cells already blocked when it was stamped, so its
-    // removal (blockFoot) leaves those obstacles blocked. Not hashed: derived from
-    // the same placements on every peer, and only the overlay reads it.
-    // A blocker the sim can remove later (a registered feature, or a wreck).
-    bool removableBlockerAt(int gx,int gz) const;
+    std::vector<std::pair<float, float>> depositSpots_;   // setDepositSpots; not hashed (no sim reader)
+
     // The map placement cell still holds a blocking feature or a 0xFFFC cell.
     bool fixedBlockerAt(int gx,int gz) const;
     std::vector<NavGrid> navClasses_;
@@ -4355,7 +4241,7 @@ private:
     // with the leg's point as its goal (retail's MoveFight order, 5214b0).
     static void markFightLeg(Order& o);
     bool combatLineOfSight(const Unit& from, const Unit& to) const;
-    bool canCaptureTarget(int player, const Unit& target) const;
+
     bool canAttackTarget(const Unit& from, const Unit& target) const;
     // --- retail weapon-slot layer (fire-at-will sweep, icd 40f330) ----------
     void setSlotsAuto(Unit& u);                    // 519b10(3)
@@ -4388,16 +4274,19 @@ private:
     // Called after the shot's applyHit, with the target's hit points from before it.
     void noteShotImpact(int fromId,int targetId,const Weapon& w,const std::array<int32_t,3>& impact,int hitUnit,Fixed targetHp,
                         bool refused=false);
-    bool statusShotRefused(const Weapon& w,int player,int targetId,int struckId) const;
+    // Kingdoms' status shots (mind control, stone, freeze) are gone and TA sets
+    // no Weapon::losStatus; the straight-shot update's status branch still asks
+    // this until the line-of-sight shot path drops that branch.
+    bool statusShotRefused(const Weapon&,int,int,int) const { return false; }
     void noteNoArc(Unit& u,const Unit& t);
     bool impactIndestructible(const Weapon& w,int cx,int cz) const;
     bool shotBlockedHere(const Unit& u,const Unit& t) const;
     // Engine deviation: a shot of `w` would strike the water before `t`'s aim
     // point (its SweetSpot is below the surface: a wading unit swimming).
     bool aimPointSubmerged(const Weapon& w,const Unit& t) const;
-    bool statusCanTake(const Weapon& w,const Unit& t) const;
+
     bool weaponServes(const Unit& from,const Weapon& w,const Unit& target) const;
-    bool aiSlotServes(const Unit& u,const Weapon& w,const Unit& t,int slot,bool fromHere) const;
+
     bool shotChordClear(const Unit& u,Fixed fromX,Fixed fromZ,const Unit& t,int slot);
     bool chordClear(const std::array<int64_t,3>& a,const std::array<int64_t,3>& b,const Weapon& w,
                     int64_t skipFrom,int64_t skipTo,const Unit& to) const;
@@ -4410,14 +4299,7 @@ private:
     // 0x4081fa, VTOL_Follow 0x418c60): 409a50 part (b) without the attacker's
     // reach test; a flyer's keeps a current target inside its minimum range.
     void guardSlotRetarget(Unit& u,const Unit& attacker);
-    // 51a8b0 (SwitchWeapon): the command and AI paths share it. fromCommand
-    // routes the clear/switch animations through pendingWeaponAnimations.
-    bool switchWeaponSlot(Unit& u,int slot,bool fromCommand);
-    // 531ea0: a slot's manapershot over the veteran multiplier (5193c0).
-    // 52af72..52af9a: after a release, a switcher that cannot pay for its
-    // weapon again drops to a cheaper slot.
-    // 40f411..40fb92: a computer-owned switcher's per-visit weapon choice.
-    void retailAiWeaponSwitch(Unit& u);
+
     // 409a50: the victim's response to a hit -- the AI Monarch block, the
     // idle retaliation mission (part a) and, failing that, the per-slot
     // retarget (part b).
@@ -4426,13 +4308,7 @@ private:
     // answers whether the unit is now dying.
     bool selfDestructHit(Unit& u);
     bool tickSelfDestruct(Unit& u);
-    // The status callbacks' roll (52da10 charm, 52dca0 stone, 52df00 freeze):
-    // chance min(99, (veteran level + 16) * 5), so a green unit falls 80 times
-    // in 100 and a level-4 veteran 99; one CRT rand() scaled to 0..99
-    // (rand()*100/32768: _allmul 5d3c60, _alldiv 5d4470) must fall below the
-    // chance times the area falloff, truncated (x87 product, _ftol). `origin`
-    // is the rand() call site, for the RNG observer.
-    bool retailStatusRoll(const Unit& victim,float scale,uint32_t origin);
+
     // 4d7de0 with explicit=0, auto=1: insert an auto attack, leashed with a
     // return move on the Maneuver/patrol path. Whether orders were inserted.
     // forced (explicit=1, auto=0, the guards' call): neither the Hold
@@ -4514,10 +4390,7 @@ public:
     // no target, back to the sweep. `draw` >= 0 stands in for the rand(3)
     // (the oracle's); otherwise pathRand, Guard_NoMove's own stream.
     void retailGuardNoMoveSlots(Unit& u,int draw=-1);
-    // Attack_Melee's retarget (4049a0) for a ground melee walker closing on
-    // an automatic attack's target: at each stage-2 timer wake. True when the
-    // front order took another target (the caller returns).
-    bool retailMeleeRetarget(Unit& u);
+
     // Port of 4f7210 (LosOn): `player` sees `u` when it owns it; otherwise
     // never when u is cloaked, carried or dead, else when any of the four
     // projected bounding-box corners lies on a cell `player`'s current-view
@@ -4656,7 +4529,7 @@ private:
     // player. Consumed with justDied_; one made after that waits a tick.
     struct ReplacedObject { int id; const UnitType* type; int owner, lastHitPlayer; };
     std::vector<ReplacedObject> replacedObjects_;
-    std::vector<std::pair<float, float>> manaSpots_;
+
     std::vector<Feature> features_;             // reclaimable map features
     PackedWhenKept<RetailMapFeatureCell> mapPlacementCells_;
     SharedArray<uint16_t> installedMapFeatures_;   // load-time survivors (installedMapFeatures)
@@ -4671,7 +4544,7 @@ private:
     std::map<int,CorpseSink> corpseSinks_;
     std::vector<FeatType> featTypes_;           // per-type burn data (setup-time, static)
     std::unordered_map<const UnitType*, int> corpseType_;   // unit -> corpse FeatType
-    std::unordered_map<const UnitType*, int> stoneType_, frozenType_;   // statue defs
+
     // Retail's game stream (0x535cc0 / 0x64186c). Consumers below share it;
     // matching the full retail call order and match seed remains a parity task.
     uint32_t initialGameRng_ = retailSeed(0);
@@ -4802,9 +4675,7 @@ private:
     struct DeathBlast { const Weapon* w; std::array<int32_t,3> position; int player, fromId, source=0; };
     std::vector<DeathBlast> deathBlasts_;
     int sparedCorpse_=0;
-    // Wandering (FBI type=wandering): a storm entity that roams for `duration`,
-    // drifting at weaponvelocity and wobbling its heading every `variationtime`.
-    // Damages everything it passes on a fixed cadence. Hashed.
+
     // Per unit id: the tick and the pace (raw Fixed px a tick) the mover was
     // given, for its Legion headway window. Scratch, rewritten every tick.
     std::vector<std::pair<uint32_t,int32_t>> legionPace_;
@@ -4924,14 +4795,9 @@ private:
         if(placementDirty_.size()>=1024) {placementDirtyAll_=true;placementDirty_.clear();return;}
         placementDirty_.push_back({x,z,w,h});
     }
-    // Retail mode only: the native group records (51b890), rebuilt before
-    // missions and movers each tick. Centres persist when a class empties,
-    // as retail's setters leave them. groupPaced_ is the per-unit navigator
-    // formation bit (vt+0x30): the current mission has 0x2000000.
-    std::array<std::array<RetailGroupRecord,100>,kMaxPlayers> retailGroups_{};
-    std::vector<uint8_t> retailGroupPaced_;
+    // (Kingdoms' group records and their pacing, 51b890 / 4d95f0, are gone:
+    // TotalA.exe keeps none, World::retailGroupOf.)
     std::array<std::bitset<100>,kMaxPlayers> aiFormation_{};   // retail AI records' +8 (setAiGroup)
-    Fixed retailGroupMaximum_;   // 4d95f0 cap for the unit being moved; 0 = none
     // Legion: where a flyer in a mixed formation (squad < 0 with ground
     // members) keeps station this tick, by unit index. Rebuilt each tick from
     // hashed state before the unit loop; not persistent, so not hashed.
@@ -4997,16 +4863,16 @@ private:
         bool formationTo=false;
         bool outOfSlot() const { return w.retailAttackOutOfSlot(u,5); }
         // 50c480 then 4d6a50(unit, 0): a guard's group check lets it go.
-        void cancel() const { w.leaveRetailGroupCentre(u);w.cancelPath(u);u.orders.clear();u.routeStamp=-1; }
+        void cancel() const { w.cancelPath(u);u.orders.clear();u.routeStamp=-1; }
         uint32_t nextFlags() const { return w.retailNextMissionFlags(u,0); }
-        void leave() const { w.leaveRetailGroupCentre(u); }
+        void leave() const {}   // 50c480: no TA group record to leave
         bool formation() { formationTo=true;return true; }
         // Puts the formation ahead (level -4) and runs it at once, as the
         // dispatcher goes on to the head it was handed: true when it did
         // (the caller's mover is done for the tick).
         bool push();
     };
-    void tickRetailGroups();
+
     void planLegionFlightStations();
     // Legion: idle landed flyers make way for allied ground groups.
     static constexpr uint32_t kLegionLiftQuiet=90;   // ticks after the last request
@@ -5023,8 +4889,7 @@ private:
     bool tickHoldLift(Unit& u);
     static constexpr uint32_t kHoldLiftQuiet=90;     // ticks hovering after its last target in range
     static constexpr uint32_t kHoldLiftNoRelease=45; // ticks a started shot may go unreleased before a lift
-    void leaveRetailGroupCentre(const Unit& u);
-    Fixed retailGroupLimit(const Unit& u) const;
+
     // A finished output joins its maker's group (human owners): a factory's
     // as GetBuilt releases it (40238a), a mobile builder's when it is done.
     void joinFactoryGroup(const Unit& factory,Unit& output);
@@ -5170,7 +5035,7 @@ private:
     std::vector<float> retailDemand_;
     // The economy walk on the SimPool (WE E4.3): per chunk, its units'
     // nonzero contributions and its sites, in unit order.
-    enum class EconomyKind : uint8_t { Site, Income, SacredIncome, Storage, Demand };
+    enum class EconomyKind : uint8_t { Site, Income, Storage, Demand };
     struct EconomyItem { uint32_t index; int16_t player; EconomyKind kind; float f; double d; };
     std::vector<std::vector<EconomyItem>> economyChunks_;
     // The tick prologue's passes go to the SimPool from this many units.

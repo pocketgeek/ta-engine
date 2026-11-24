@@ -69,8 +69,7 @@ inline const char* unitStatusLabel(const UnitR& u) {
     // UNITMISSIONCODE_SELFDESTRUCT. First, because it is what the unit is
     // doing -- it has stopped taking orders and is walking out on you.
     if (u.selfDestructT >= 0.0f) return "LEAVING YOUR COMMAND";
-    if (u.stonedFor > 0) return "PETRIFIED";
-    if (u.frozenFor > 0) return "FROZEN";
+
     if (u.paralyzedFor > 0) return "PARALYZED";
     if (u.underConstruction) return "INTANGIBLE MASS";
     // Only a unit that can be switched off is ever "off": every type without

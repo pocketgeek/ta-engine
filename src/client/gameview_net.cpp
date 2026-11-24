@@ -1083,7 +1083,7 @@ void GameView::buildlineNetProbe() {
             if (monarch < 0) { netLinesDone_ = true; std::fprintf(stderr, "BUILDLINE_NET no monarch\n"); return; }
             for (const auto& id : registry_.buildable(live->unit(monarch)->type->id)) {
                 const auto* t = registry_.find(id);
-                if (t && t->isStructure() && !t->onMana && t->yardMap.find_first_of("wWCY") == std::string::npos &&
+                if (t && t->isStructure() && t->yardMap.find_first_of("wWCY") == std::string::npos &&
                     (!small || t->footX * t->footZ < small->footX * small->footZ)) small = t;
             }
             if (!small) { netLinesDone_ = true; std::fprintf(stderr, "BUILDLINE_NET no building\n"); return; }

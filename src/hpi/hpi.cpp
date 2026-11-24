@@ -1057,10 +1057,10 @@ uint64_t gameplayHash(const Vfs& input) {
         };
         gaf::FeatureBurnTiming burnTiming(vfs);
         static const char* kSimKeys[] = {
-            "animatable", "animating", "blocking", "category", "damage",
+            "animating", "blocking", "category", "damage",
             "decomposetime", "energy", "featureburnt", "featuredead", "flamable",
-            "footprintx", "footprintz", "height", "indestructible", "isfrozen",
-            "isstone", "reclaimable", "resurrectable", "sacredsite", "sparktime",
+            "footprintx", "footprintz", "height", "indestructible",
+            "reclaimable", "resurrectable", "sparktime",
             "spreadchance",
         };
         std::map<std::string, std::string> featFiles;   // sorted mount keys

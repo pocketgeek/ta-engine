@@ -7,13 +7,6 @@
 #include <fstream>
 #include <iostream>
 using namespace ta;
-namespace ta::sim { struct RetailReplayProbe {
-    // A charm shot's impact on the victim, as World's weapon code makes it.
-    static void impact(World& w,const Weapon& weapon,int from,int target) {
-        const auto* source=w.unit(from);auto* victim=w.unit(target);
-        w.applyHit(weapon,victim->x.toFloat(),victim->z.toFloat(),source->player,from,victim);
-    }
-}; }
 int main(int argc,char** argv) {
     if(argc==2 && std::string(argv[1])=="--native") {
         char mode;
@@ -37,12 +30,11 @@ int main(int argc,char** argv) {
         ("ta-campaign-conditions-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     struct Cleanup {std::filesystem::path path;~Cleanup(){std::error_code ec;std::filesystem::remove_all(path,ec);}} cleanup{root};
     std::filesystem::create_directories(root/"units");
-    for(const char* name:{"soldier","monarch","pretender","building","thrall","dyer","wide"}) {
+    for(const char* name:{"soldier","monarch","pretender","building","dyer","wide"}) {
         std::ofstream f(root/"units"/(std::string(name)+".fbi"));
         const bool wide=std::string(name)=="wide";   // a 3x2 footprint (GET 35 / 36)
         f<<"[UNITINFO]{\nunitname="<<name<<";\nobjectname="<<name<<";\nmaxdamage=100;\nfootprintx="<<(wide?3:1)
          <<";\nfootprintz="<<(wide?2:1)<<";\n";
-        if(std::string(name)=="thrall")f<<"bmcode=1;\nupright=1;\n";   // a body the charm can take (52da10)
         if(std::string(name)!="building")f<<"canmove=1;\nmaxvelocity=1;\n";
         if(std::string(name)=="monarch" || std::string(name)=="pretender")f<<"commander=1;\n";
         f<<"}";
@@ -201,27 +193,6 @@ int main(int argc,char** argv) {
         for(int i=0;i<3;++i)v.tick(1.f/30);
         check(event->outcome()==1 && v.unit(other)->player==(cap?1:0),
             cap?"the capture event waited for the new object (523570 comes first)":"capture objective after a change of owner");
-    }
-    for(int cap:{0,1}) {
-        // The charm (52da10) hands a unit its roll took to 514da0 with no
-        // check of the new owner's room (S; E: probe_los_status.py at the
-        // unit cap), and 514da0 sends the capture event (523570) before the
-        // cap refuses the new object (check_change_owner.py). So a charm at
-        // the unit cap meets CaptureUnitType though the unit stays.
-        const auto* thrall=registry.find("thrall");
-        sim::UnitType caster=*soldier;caster.id="caster";
-        sim::Weapon charm;charm.damage=1;charm.range=400;charm.reload=0.1f;charm.mindControl=true;
-        charm.kind=sim::Weapon::Kind::Remote;charm.remote=sim::Weapon::RemoteKind::MindCtl;charm.unitsOnly=true;charm.aoe=32;
-        caster.weapon=charm;caster.weapons={charm};
-        sim::World w;w.setTerrain(std::vector<uint8_t>(64*64,50),64,64,0);
-        const int a=w.spawn(&caster,300,300,0,0),b=w.spawn(thrall,340,300,0,1);
-        if(cap)w.setUnitCap(1);
-        auto m=make("CaptureUnitType=thrall;");auto* event=m.get();w.setMission(std::move(m));
-        for(int i=0;i<20 && w.unit(b)->player==1;++i)sim::RetailReplayProbe::impact(w,charm,a,b);
-        for(int i=0;i<3;++i)w.tick(1.f/30);
-        check(event->outcome()==1 && w.unit(b)->player==(cap?1:0),
-            cap?"a charm at the unit cap sent no capture event (52da10 calls 514da0 regardless)"
-               :"a charm did not meet CaptureUnitType");
     }
     {
         // Retail's Kill sends death kind 10 (513130 -> 512610): no kill credit.

@@ -842,7 +842,7 @@
                 check(outbox_.empty() && !click_,what+": nothing left the client");
                 check(world_.stateHash()==before,what+": the world is unchanged");
                 check(sounded==0,what+": no sound");
-                check(!pendingCmd_ && !placing_ && !rightDrag_ && !buildDrag_ && !manaBuildDrag_,what+": nothing armed");
+                check(!pendingCmd_ && !placing_ && !rightDrag_ && !buildDrag_,what+": nothing armed");
                 check(notice_.empty(),what+": no notice");
                 check(!giveUnitsMenu_,what+": no diplomacy");
                 check(!guiPressed_,what+": no press flash");
@@ -2713,7 +2713,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 // C2b placement: the mason places a building at a valid minimap point.
                 const ta::sim::UnitType* site=nullptr;
                 for (const auto& id:registry_.buildable(masonType->id))
-                    if (const auto* t=registry_.find(id); t && t->isStructure() && !t->onMana) {site=t;break;}
+                    if (const auto* t=registry_.find(id); t && t->isStructure()) {site=t;break;}
                 check(site!=nullptr,"fixture: the mason builds a structure");
                 selection_={mason};pendingCmd_=0;placing_=site;publish();
                 float px=-1,py=-1;
@@ -3349,7 +3349,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             const auto area=[](const ta::sim::UnitType* t) {return t->footX*t->footZ;};
             for (const auto& id:registry_.buildable("armcom")) {
                 const auto* t=registry_.find(id);
-                if (!t || !t->isStructure() || t->onMana || t->footX<1 || t->footZ<1) continue;
+                if (!t || !t->isStructure() || t->footX<1 || t->footZ<1) continue;
                 if (!t->yardMap.empty() && t->yardMap.find_first_of("wWCY")!=std::string::npos) continue;
                 if (!small || area(t)<area(small)) small=t;
                 if (t->footX!=t->footZ && (!oblong || area(t)<area(oblong))) oblong=t;
@@ -3981,7 +3981,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 std::vector<const ta::sim::UnitType*> options;
                 for(const auto& option:registry_.buildable(builderName)) {
                     const auto* site=registry_.find(option);
-                    if(site && isStructure(site) && !site->onMana && site->footX<=4 && site->footZ<=4)options.push_back(site);
+                    if(site && isStructure(site) && site->footX<=4 && site->footZ<=4)options.push_back(site);
                     if(options.size()==3)break;
                 }
                 if(options.empty())throw std::runtime_error(std::string("TA_RENDER_GHOSTS: no plain structure option for ")+builderName);
@@ -4370,7 +4370,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         if(ta::devEnv("TA_FEATURE_CACHE_TEST")) {
             auto definition = featureDefs_.at("tree1");
             definition.values["animating"] = "0";
-            definition.values["animatable"] = "0";
+
             const auto* standing = featureArtFor(definition);
             definition.values["seqnameburn"] = definition.valueOr("seqname", "");
             definition.values["seqnameburnshad"] = definition.valueOr("seqnameshad", "");

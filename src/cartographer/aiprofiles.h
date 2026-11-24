@@ -147,7 +147,7 @@ struct AiLine {
 std::vector<AiLine> attributeAiLines(std::string_view text, AiKind, const ta::ai::ClassicCatalogue&);
 
 // The units an AI may name: the DEFAULT catalogue (FBI unitnames, variants and
-// category words) and, for sides, builders and lodestones, the registry (null skips
+// category words) and, for sides, builders, the registry (null skips
 // those checks).
 struct AiRoster {
     const ta::ai::ClassicCatalogue* catalogue = nullptr;

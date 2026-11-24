@@ -26,14 +26,6 @@ namespace ta::sim { struct RetailReplayProbe {
     }
 }; }
 
-// A switcher takes an order only when its selected weapon can serve it:
-// select the first weapon that hurts the target, as a player would.
-static void selectWeaponFor(ta::sim::World& w,int unit,int target) {
-    auto* u=w.unit(unit);const auto* t=w.unit(target);
-    if (!u || !t || !u->type->weaponSwitching) return;
-    for (size_t s=0;s<u->type->weapons.size() && s<3;++s)
-        if (u->type->weapons[s].damageVs(t->type)>0) { u->weaponSlot=int(s);return; }
-}
 
 int main(int argc,char** argv) {
     if (argc!=2) return 2;
@@ -137,7 +129,7 @@ int main(int argc,char** argv) {
             world.setStartResources(0,100000,100000);
             int target=world.spawn(&victim,x+distance,z,0,1);
             if (order==1) world.attackMove(flyer,x+distance,z,false);
-            if (order==2) selectWeaponFor(world,flyer,target);
+
             if (order==2) world.attack(flyer,target,false);
             bool fired=false,attacked=false,seen=false;
             for (int tick=0;tick<1200 && !fired;++tick) {
@@ -207,7 +199,7 @@ int main(int argc,char** argv) {
                 auto victim=*registry.find("corak");victim.maxHp=30000;   // Fixed is 16.16: anything above 32767 overflows (UB; wraps on Linux, saturates to a corpse on MinGW)
                 victim.healTime=0;
                 victim.weapon.damage=0;victim.weapons.clear();
-                for (auto& weapon:type.weapons) { weapon.mindControl=false;weapon.damage=1; }
+                for (auto& weapon:type.weapons) weapon.damage=1;
                 if (overrides) {
                     type.weapons.front().hoverAttackDistance=88;
                     type.weapons.front().hoverAttackAltitude=300;
@@ -249,7 +241,7 @@ int main(int argc,char** argv) {
         for (const auto& name:flyers) {
             auto type=*registry.find(name);
             if (type.hoverAttack || type.weapon.hoverAttack) continue;
-            for (auto& weapon:type.weapons) { weapon.mindControl=false;weapon.damage=1;weapon.aoe=0; }
+            for (auto& weapon:type.weapons) { weapon.damage=1;weapon.aoe=0; }
             type.weapon=type.weapons.front();
             type.maxHp=30000;type.healTime=0;   // Fixed is 16.16: keep hp below 32768
             auto dummy=*registry.find("corak");dummy.maxHp=30000;dummy.healTime=0;
@@ -260,7 +252,7 @@ int main(int argc,char** argv) {
             w.buildNavClasses(registry);
             const int ground=w.spawn(&dummy,2300,2000,0,0),flyer=w.spawn(&type,2300,2600,0,1);
             const int gunner=w.spawn(&shooter,2150,2000,0,0);
-            selectWeaponFor(w,flyer,ground);
+
             w.attack(flyer,ground,false);
             const float range=type.weapons.front().range;
             const auto* g=w.unit(ground);
@@ -324,7 +316,7 @@ int main(int argc,char** argv) {
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int ground=w.spawn(&dummy,2300,2000,0,0),flyer=w.spawn(&type,2300,2600,0,1);
-            selectWeaponFor(w,flyer,ground);
+
             w.attack(flyer,ground,false);
             const auto* hp=w.unit(ground);
             int shots=0,hits=0;double damage=0;

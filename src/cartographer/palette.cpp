@@ -89,7 +89,7 @@ void cart::Editor::refreshPalette() {
     paletteCategories={"ALL"};paletteCategories.insert(paletteCategories.end(),categories.begin(),categories.end());
     if(toolChanged || categoryIndex>=int(paletteCategories.size()))categoryIndex=0;
     paletteItems.clear();const auto query=lowerText(paletteSearch);
-    static const char* sides[]={"","ara","tar","ver","zon","cre"};
+    static const char* sides[]={"","arm","cor"};
     for(int i=0;i<count;++i) {
         if(categoryIndex && category(i)!=paletteCategories[size_t(categoryIndex)])continue;
         if(tool==UNITS && factionIndex && !lowerText(unitTypes[size_t(i)]).starts_with(sides[factionIndex]))continue;
@@ -146,7 +146,7 @@ bool cart::Editor::handlePaletteFocus(SDL_Event& e) {
                 for(size_t i=0;i<groups.size();++i)if(groups[i].id==sectionGroup)sectionMenuScroll=std::clamp(int(i)-4,0,last)*kSectionRowH;
             }
             else if(e.button.y<kMenuH+53) {categoryIndex=(categoryIndex+1)%int(paletteCategories.size());refreshPalette();}
-            else if(tool==UNITS) {factionIndex=(factionIndex+1)%6;refreshPalette();}
+            else if(tool==UNITS) {factionIndex=(factionIndex+1)%3;refreshPalette();}
             return true;
         }
         if(paletteFocus) {paletteFocus=false;SDL_StopTextInput();}
@@ -293,7 +293,7 @@ void cart::Editor::drawPalette() {
         size_t count=0;for(const auto& variants:paletteVariants)count+=variants.size();
         cart::drawText(ren,std::to_string(paletteItems.size())+" PIECES \xc2\xb7 "+std::to_string(count)+" SECTIONS",6,kMenuH+59,1,180,190,200);
     } else if(tool==UNITS) {
-        static const char* factionNames[]={"ALL FACTIONS","ARAMON","TAROS","VERUNA","ZHON","CREON"};
+        static const char* factionNames[]={"ALL FACTIONS","ARM","CORE"};
         cart::drawButton(ren,4,kMenuH+54,kPaletteW-8,18,factionNames[factionIndex],false);
     } else if(tool==BLOCKED)cart::drawText(ren,"BLOCKED CELLS: "+std::to_string(blockedCount),6,kMenuH+59,1,180,190,200);
     else cart::drawText(ren,std::to_string(paletteItems.size())+" MATCHES",6,kMenuH+59,1,180,190,200);

@@ -18,7 +18,7 @@ inline bool watchAllows(Act act) {
     switch (act) {
         case Act::NextUnit: case Act::TrackSelection:
         case Act::SelectAll: case Act::SelectSameType: case Act::SelectOnScreen: case Act::SelectMonarch:
-        case Act::SelectBuilders: case Act::SelectFactory: case Act::SelectMelee: case Act::SelectMagic:
+        case Act::SelectBuilders: case Act::SelectFactory:
         case Act::SelectBoats: case Act::SelectBallistic: case Act::SelectTroops: case Act::SelectArmed:
         case Act::SelectOnScreenType: case Act::SelectFlying:
         case Act::ToggleCounts: case Act::UnitInfo: case Act::FullScreenRadar: case Act::RetailZoom:

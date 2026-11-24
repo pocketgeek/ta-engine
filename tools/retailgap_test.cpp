@@ -541,7 +541,7 @@ int main(int argc, char** argv) {
         // independently: the Warrior's Light Cannon and E.M.G. both work.
         const sim::UnitType* tower = reg.find("armwar");
         if (tower && prey && tower->weapons.size() > 1) {
-            check(!tower->weaponSwitching, "armwar has NO weaponswitching (fires all)");
+
             sim::World w;
             sim::MatchConfig cfg;
             cfg.vfs = &vfs; cfg.mapPath = kMap;
@@ -572,7 +572,7 @@ int main(int argc, char** argv) {
             // may never fire while both hold targets. What is checked is that the
             // unit fires at all and no weapon switching holds a slot back.
             std::printf("    armwar fired %d of its weapons\n", n);
-            check(n >= 1 && !tower->weaponSwitching, "armwar fires with no weapon switching holding a slot back",
+            check(n >= 1, "armwar fires with no weapon switching holding a slot back",
                   std::to_string(n) + " weapons fired");
         }
     }

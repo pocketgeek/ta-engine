@@ -10,11 +10,6 @@ namespace ta {
 namespace {
 using sim::Fixed;
 constexpr int64_t step=16*int64_t(Fixed::kOne);
-// Exact squared 16.16 distance, as the sim ranks build clearing and deposits.
-uint64_t exact(Fixed x,Fixed z,Fixed qx,Fixed qz) {
-    const int64_t dx=int64_t(x.v)-qx.v,dz=int64_t(z.v)-qz.v;
-    return uint64_t(dx*dx)+uint64_t(dz*dz);
-}
 int64_t distance(int64_t x,int64_t z,int64_t qx,int64_t qz) {
     const int64_t dx=x-qx,dz=z-qz;
     // Same high-half scoring and ties as ReclaimArea within the map's normal
@@ -119,14 +114,6 @@ public:
         return n.target;
     }
 };
-bool upgrade(const OrderTrailSite& site,const sim::UnitType* type,int player) {
-    if(!type || type->id.size()!=7)return false;
-    const auto faction=type->id.substr(0,3);
-    if(faction!="ara" && faction!="tar" && faction!="ver" && faction!="zon" && faction!="cre")return false;
-    return site.occupant && type && !site.underConstruction && site.player==player &&
-        type->id.size()==7 && type->id.ends_with("mana") &&
-        site.occupant->id==type->id.substr(0,3)+"lode" && site.occupant->side==type->side;
-}
 } // namespace
 
 uint64_t orderTrailSignature(std::span<const RenderOrder> orders) {
@@ -135,22 +122,19 @@ uint64_t orderTrailSignature(std::span<const RenderOrder> orders) {
     for(const auto& o:orders)if(o.goal) {
         for(auto v:{o.x.v,o.z.v,o.clickX.v,o.clickZ.v,o.buildX.v,o.buildZ.v,
                     o.targetId,o.reclaimFeat,o.repairTarget})add(uint32_t(v));
-        add(reinterpret_cast<uintptr_t>(o.buildType));add(o.issuedTick);add(o.areaNextSpot);
+        add(reinterpret_cast<uintptr_t>(o.buildType));add(o.issuedTick);
         add(o.load | o.unload<<1 | o.attackMove<<2 | o.patrol<<3 | o.guard<<4 |
-            o.reclaimArea<<5 | o.buildRectangle<<6 | o.manaBuildArea<<7 |
-            o.areaExploring<<8 | o.areaApproached<<9 | o.revive<<10);
+            o.reclaimArea<<5 | o.buildRectangle<<6 |
+            o.areaApproached<<9 | o.revive<<10);
     }
     return h;
 }
 
-void expandOrderTrail(std::span<const RenderOrder> orders,const sim::UnitType& builder,
-    int player,Fixed x,Fixed z,std::span<const OrderTrailTarget> targets,
-    std::span<const OrderTrailSite> sites,std::span<const uint32_t> areaVisited,
+void expandOrderTrail(std::span<const RenderOrder> orders,const sim::UnitType&,
+    int,Fixed x,Fixed z,std::span<const OrderTrailTarget> targets,
     std::vector<RenderOrder>& output) {
     output.clear();
-    bool visitedUsed=false;
     std::unordered_set<int> claimed;
-    std::set<std::pair<int32_t,int32_t>> plannedSites;
     const auto append=[&](RenderOrder o){output.push_back(o);x=o.x;z=o.z;};
     const auto reclaim=[&](const OrderTrailTarget& t,uint32_t tick) {
         RenderOrder o;o.goal=true;o.x=t.x;o.z=t.z;o.reclaimFeat=t.id;o.issuedTick=tick;
@@ -172,68 +156,9 @@ void expandOrderTrail(std::span<const RenderOrder> orders,const sim::UnitType& b
                 if(!next)break;
                 reclaim(*next,o.issuedTick);approach=true;
             }
-        } else if(o.manaBuildArea && o.buildType) {
-            // Same greedy nearest-first choice as World::tickManaBuildArea:
-            // from the previous stop, exact squared distance, then spot index.
-            // Only the first area job has progress (`areaVisited`); later ones
-            // have not started. Reachability ranking and other builders'
-            // claims are sim-only, so the prediction can differ there.
-            std::vector<size_t> pending;
-            for(size_t i=0;i<sites.size();++i) {
-                const auto& s=sites[i];
-                if(!s.known || s.x<o.x || s.x>o.buildX || s.z<o.z || s.z>o.buildZ ||
-                    (s.occupant && !upgrade(s,o.buildType,player)) ||
-                    (!visitedUsed && std::binary_search(areaVisited.begin(),areaVisited.end(),uint32_t(i))) ||
-                    plannedSites.contains({s.x.v,s.z.v}))continue;
-                pending.push_back(i);
-            }
-            visitedUsed=true;
-            while(!pending.empty()) {
-                const auto next=std::min_element(pending.begin(),pending.end(),[&](size_t a,size_t b) {
-                    const auto da=exact(x,z,sites[a].x,sites[a].z),db=exact(x,z,sites[b].x,sites[b].z);
-                    return da!=db ? da<db : a<b;
-                });
-                const auto& s=sites[*next];pending.erase(next);
-                if(!plannedSites.emplace(s.x.v,s.z.v).second)continue;
-                const auto bx=sim::footprintWaypoint(sim::footprintCell(s.x,o.buildType->footX),o.buildType->footX);
-                const auto bz=sim::footprintWaypoint(sim::footprintCell(s.z,o.buildType->footZ),o.buildType->footZ);
-                const int ox=sim::footprintOrigin(bx,o.buildType->footX),oz=sim::footprintOrigin(bz,o.buildType->footZ);
-                const Bounds site{ox*step,oz*step,(int64_t(ox)+o.buildType->footX)*step-1,
-                    (int64_t(oz)+o.buildType->footZ)*step-1};
-                std::vector<const OrderTrailTarget*> clearing;
-                for(const auto& t:targets) {
-                    if(!t.blocks || claimed.contains(t.id) || !footprint(t).intersects(site))continue;
-                    // Ignore the building's '.' yard cells, like placement does.
-                    bool hit=o.buildType->yardMap.empty();
-                    for(int cz=std::max(oz,t.cellZ);!hit && cz<std::min(oz+o.buildType->footZ,t.cellZ+t.footZ);++cz)
-                        for(int cx=std::max(ox,t.cellX);cx<std::min(ox+o.buildType->footX,t.cellX+t.footX);++cx)
-                            if(o.buildType->yardMap[size_t(cz-oz)*o.buildType->footX+cx-ox]!='.') {hit=true;break;}
-                    if(hit)clearing.push_back(&t);
-                }
-                // World::queueBuild's clearing order: exact squared distance
-                // from where the builder stands, then feature id.
-                const auto fromX=x,fromZ=z;
-                std::sort(clearing.begin(),clearing.end(),[&](const auto* a,const auto* b) {
-                    const auto da=exact(fromX,fromZ,a->x,a->z),db=exact(fromX,fromZ,b->x,b->z);
-                    return da!=db ? da<db : a->id<b->id;
-                });
-                for(const auto* t:clearing)reclaim(*t,o.issuedTick);
-                RenderOrder build;build.goal=true;build.buildType=o.buildType;build.buildRectangle=true;
-                build.buildX=bx;build.buildZ=bz;build.clickX=bx;build.clickZ=bz;
-                build.issuedTick=o.issuedTick;build.trailPreview=true;
-                if(builder.canFly) {build.x=bx;build.z=bz;}
-                else {
-                    const sim::RetailRectGoal rect{ox-builder.footX,ox+o.buildType->footX,
-                        oz-builder.footZ,oz+o.buildType->footZ};
-                    const auto [cx,cz]=rect.navigationCell(sim::footprintOrigin(x,builder.footX),sim::footprintOrigin(z,builder.footZ));
-                    build.x=Fixed::fromInt(cx*16+builder.footX*8);build.z=Fixed::fromInt(cz*16+builder.footZ*8);
-                }
-                append(build);
-            }
         } else {
             append(o);
             if(o.reclaimFeat)claimed.insert(o.reclaimFeat);
-            if(o.buildType)plannedSites.emplace(o.buildX.v,o.buildZ.v);
         }
     }
 }

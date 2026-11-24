@@ -2420,16 +2420,6 @@
                         o.buildRectangle ? o.buildX.toFloat() : o.x.toFloat(),
                         o.buildRectangle ? o.buildZ.toFloat() : o.z.toFloat() - float(o.buildType->footZ) * 8 - 24);
                 }
-            // An area lodestone job builds one deposit at a time: ghost every
-            // deposit it is predicted to build (the order trail's plan, which
-            // follows World::tickManaBuildArea's choice), not only the next.
-            if (std::any_of(u.orders.begin(), u.orders.end(), [](const RenderOrder& o) { return o.manaBuildArea; }))
-                for (const auto& o : areaBuildPlan(u))
-                    if (o.trailPreview && o.buildType && o.buildRectangle) {
-                        any = true;
-                        if (draw) renderStats_.add(RS::GhostsQueued);
-                        if (draw) drawGhostAt(o.buildType, o.buildX.toFloat(), o.buildZ.toFloat());
-                    }
             return any;
         };
         {
@@ -2527,22 +2517,6 @@
         // would repeat at the same screen spot in every tile.
         if (posterFrame_) {
             // nothing at the cursor
-        } else if (manaBuildDrag_ && placing_ && areaBoxAt(bdAnchor_,mouseX_,mouseY_)) {
-            // Drawn from where the press's ground is now, so a pan mid-drag keeps the
-            // box on the map (see client/areadrag.h).
-            SDL_SetRenderDrawBlendMode(ren_,SDL_BLENDMODE_BLEND);
-            const auto a=dragStartOnScreen(bdAnchor_);
-            SDL_FRect box{std::min(a.x,mouseX_),std::min(a.y,mouseY_),
-                std::abs(mouseX_-a.x),std::abs(mouseY_-a.y)};
-            SDL_SetRenderDrawColor(ren_,100,220,255,40);SDL_RenderFillRectF(ren_,&box);
-            SDL_SetRenderDrawColor(ren_,130,230,255,220);SDL_RenderDrawRectF(ren_,&box);
-            float mx,mz;pickWorld(mouseX_,mouseY_,mx,mz);
-            // The map's deposit list is immutable during play. Preview only
-            // currently visible sites; hidden ones are discovered by the builder.
-            for (const auto& [x,z]:worldTables().manaSpots())
-                if (x>=std::min(bdX0_,mx) && x<=std::max(bdX0_,mx) &&
-                    z>=std::min(bdZ0_,mz) && z<=std::max(bdZ0_,mz) && (noFog_ || cellVisibleR(x,z)))
-                    drawGhostAt(placing_,x,z,!canPlacePreview(placing_,x,z));
         } else if (buildDrag_ && placing_) {
             float mx, mz;
             pickWorld(mouseX_, mouseY_, mx, mz);
@@ -2939,7 +2913,7 @@
             drawPanel(winW, winH);
             renderTaHud(winW, winH);   // TA sidebar page + top bar (client/gameview_tahud.cpp)
         } else {   // nothing on screen to click
-            guiBtnRects_.clear();weaponRects_.clear();iconRects_.clear();selPortraitRects_.clear();
+            guiBtnRects_.clear();iconRects_.clear();selPortraitRects_.clear();
             buildMenuRect_={};buildRowTop_=0;
         }
         // After the command panel: the readout fills the strip BETWEEN the two, and it
@@ -4559,8 +4533,7 @@
         icons_.clear();
         for (auto& [n, t] : modelIcons_) if (t) gpuvram::destroy(t);
         modelIcons_.clear();
-        for (auto& [n, t] : weaponIcons_) if (t) gpuvram::destroy(t);
-        weaponIcons_.clear();
+
         kill(unitInfoBg_);
         for (auto& tex : unitInfoOk_) kill(tex);
         unitInfoLabelFont_.destroyGlyphs(); unitInfoValueFont_.destroyGlyphs();
@@ -4939,17 +4912,7 @@
             discoMix = bang * 0.5f;                                  // flash on the bang
             disco = true;                                            // reuse the tint path
         }
-        // Statue corpses: a petrified body is drawn in its side's stone texture, a
-        // frozen one in its ice (the isstone/isfrozen statue defs; Visual::statue).
-        // A vertex tint only scales the body's own texture, which kept a statue
-        // looking like the living unit.
         const PieceMeta* meta = &vt->second.meta;
-        if (u.corpsePhase && u.corpseFeat >= 0 &&
-            size_t(u.corpseFeat) < worldTables().featureTypes().size()) {
-            const auto& cf = worldTables().featureTypes()[size_t(u.corpseFeat)];
-            if (cf.isStone) meta = &vt->second.statue[0];
-            else if (cf.isFrozen) meta = &vt->second.statue[1];
-        }
         // Animated textures play only on dont-cache pieces (a cached one keeps its
         // first frame: collect(), 0x459b67). Those are redrawn every frame with
         // the playing frame by a zbuffer=1 type (its height-buffered bitmap,
@@ -5393,10 +5356,9 @@
         // Lodestones are skipped: they cast their visible geometry including pieces
         // their scripts mark DONT_CACHE / RENDER_OFF (a deliberate retail deviation in
         // buildUnitShadow), which the reference collector does not model.
-        const bool lodestone=u.type && u.type->onMana && isStructure(u.type);
         if (verifyShadow && (stages & kStageLocal) && shadowsOnFrame_ &&
-            !u.underConstruction && castsBlobShadow(u.type) && !lodestone) {
-            const bool corpseCull = u.corpsePhase && !u.corpseStatue;
+            !u.underConstruction && castsBlobShadow(u.type)) {
+            const bool corpseCull = u.corpsePhase;
             const float sx=in.shadow.sx,sy=in.shadow.sy,zm=in.shadow.zoom;
             scratch.clear();
             collect(scratch,nullptr,visual.model.root,base,in.anim,in.facing,
@@ -5530,16 +5492,11 @@
         // collect() for why this must not widen: the cull tears UPRIGHT single-sided
         // geometry, which is why living units keep both faces.
         //
-        // "Dead" alone was too broad, and wrongly covered two upright cases:
-        //   * the death ANIMATION (before the scripted handoff) -- still standing or mid-fall;
-        //   * STATUES -- a petrified or frozen body stays upright, and its corpsePhase
-        //     starts at deadFor >= 0, so "dead" caught it from the very first frame.
-        // corpsePhase && !corpseStatue is exactly "finished falling, lying on the
-        // ground", which is the only case the flat-face artifact arises in.
-        const bool corpseCull = u.corpsePhase && !u.corpseStatue;
-        // Deliberate retail deviation: lodestones cast their visible geometry,
-        // including pieces marked DONT_CACHE or RENDER_OFF by the retail scripts.
-        const bool lodestone = u.type && u.type->onMana && isStructure(u.type);
+        // "Dead" alone was too broad: it covered the death ANIMATION (before the
+        // scripted handoff), still standing or mid-fall. corpsePhase is exactly
+        // "finished falling, lying on the ground", which is the only case the
+        // flat-face artifact arises in.
+        const bool corpseCull = u.corpsePhase;
         const float cy=std::cos(facing),sn=std::sin(facing);
         // This traversal emits opaque positions directly. The body collector's
         // texture/atlas lookup, UVs, colours, depth and full Tri staging are not
@@ -5553,8 +5510,7 @@
             const Xform transform=pose ? pose->transform : scriptTransform(parent,object.x,object.y,object.z,piece);
             PieceMeta local;
             if (!cached) { pieceMetaFor(object,isRoot,local);cached=&local; }
-            const bool visible = pose ? !pose->hidden : !piece || piece->visible;
-            const bool casts = lodestone ? visible : (pose ? pose->castsShadow : !piece || piece->castsShadow());
+            const bool casts = pose ? pose->castsShadow : !piece || piece->castsShadow();
             if (!cached->skip && casts) {
                 for (size_t primitiveIndex=0;primitiveIndex<object.primitives.size();++primitiveIndex) {
                     if (int32_t(primitiveIndex)==object.selectionPrimitive) continue;
@@ -6286,8 +6242,7 @@
         const bool burn = std::string_view(seqKey) == "seqnameburn";
         // seqnamedie and seqnamedieshad load nonlooping (493eff, 493f4f).
         const bool die = std::string_view(seqKey) == "seqnamedie";
-        const bool animate = burn || die || def.numberOr("animating", 0) != 0 ||
-                             def.numberOr("animatable", 0) != 0;
+        const bool animate = burn || die || def.numberOr("animating", 0) != 0;
         const std::array<std::string, 6> key{file, seq, seqShad, world,
                                            animate ? "1" : "0", burn ? "1" : die ? "2" : "0"};
         auto it = featureArt_.find(key);
@@ -6405,16 +6360,9 @@
         inst.name = key;
         inst.simId = cz * mapView_.map().width + cx;
         featInstIds_.insert(inst.simId);
-        // Mana deposits ("Sacred Stone", category=Mana) are the spots you build
-        // lodestones ON, so they must stay buildable (walkable) — never block
-        // the nav grid for them, or canPlace rejects the deposit itself.
         std::string cat = di->second.valueOr("category", "");
         std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
-        inst.mana = (cat == "mana");
         inst.tree = (cat == "trees");
-        // The buildable spot is the animated Sacred Stone centre; the static
-        // Standing Stones sharing the category are just ruins around it.
-        inst.glowy = inst.mana && di->second.numberOr("animating", 0) != 0;
         inst.low = ta::hiddenunits::lowFeature(int(di->second.numberOr("height", 0)));
         features_.push_back(inst);
         featureIndexDirty_=true;
@@ -6598,47 +6546,6 @@
                     ++placed;
             }
         std::printf("features: %d placed\n", placed);
-        // Register the Sacred Stone deposits so lodestones can only build on
-        // them (and the AI knows where to put them). The buildable spot is the
-        // GLOWING centre (animated Sacred Stone) -- NOT the ring of static
-        // Standing Stones around it, which share category=mana but are just
-        // ruins; including them pulled the spot off-centre. One deposit can have
-        // a couple of adjacent glowy stones, so still cluster (union-find, 60px
-        // link) and keep ONE spot per cluster. Fallback: a deposit with no glowy
-        // centre at all (odd data) uses its category=mana features instead.
-        std::vector<std::pair<float, float>> raw;
-        for (const auto& f : features_)
-            if (f.glowy) raw.push_back({f.x, f.z});
-        if (raw.empty())
-            for (const auto& f : features_)
-                if (f.mana) raw.push_back({f.x, f.z});
-        std::vector<int> par(raw.size());
-        for (size_t i = 0; i < par.size(); ++i) par[i] = int(i);
-        std::function<int(int)> find = [&](int a) {
-            while (par[size_t(a)] != a) { par[size_t(a)] = par[size_t(par[size_t(a)])]; a = par[size_t(a)]; }
-            return a;
-        };
-        const float link2 = 60.0f * 60.0f;
-        for (size_t i = 0; i < raw.size(); ++i)
-            for (size_t j = i + 1; j < raw.size(); ++j) {
-                float dx = raw[i].first - raw[j].first, dz = raw[i].second - raw[j].second;
-                if (dx * dx + dz * dz < link2) par[size_t(find(int(i)))] = find(int(j));
-            }
-        std::map<int, std::pair<std::pair<double, double>, int>> acc;   // root -> (sum, count)
-        for (size_t i = 0; i < raw.size(); ++i) {
-            auto& a = acc[find(int(i))];
-            a.first.first += raw[i].first; a.first.second += raw[i].second; ++a.second;
-        }
-        manaSpots_.clear();
-        for (auto& [root, a] : acc)
-            manaSpots_.push_back({float(a.first.first / a.second),
-                                  float(a.first.second / a.second)});
-        writableWorld().setManaSpots(manaSpots_);
-        // The 2x2 lodestone carve at each deposit is likewise the SIM's job and is
-        // already done there (matchsetup, same geometry, into obst_). Repeating it
-        // against nav_ desynced the client from the referee -- see addFeature above.
-        std::printf("mana deposits: %zu (from %zu features)\n",
-                    manaSpots_.size(), raw.size());
         addShorelineWaves();
         featuresAtLoad_ = features_.size();
     }
@@ -8055,10 +7962,7 @@
         // sequence (weaponart -> anims/<name>_4444.taf): cannonballs, fireballs,
         // iceballs, meteors, lightning balls. Ours drew every one of them as the
         // same yellow streak. Same loader the explosion/flame effects use.
-        const std::string& shotSprite = p.wsrc ? (p.wsrc->weaponArt.empty()
-                                                      ? p.wsrc->shotArt
-                                                      : p.wsrc->weaponArt)
-                                               : std::string();
+        const std::string& shotSprite = p.wsrc ? p.wsrc->weaponArt : std::string();
         if (p.wsrc && !shotSprite.empty()) {
             if (const EffectAnim* ea = effectFor(shotSprite)) {
                 // Ballistic shots arc; flat shots ride just above the ground.
@@ -8218,7 +8122,7 @@
     // trails for anything but our own units would hand the player a readout of
     // enemy intent.
     void GameView::refreshOrderTrailTargets() {
-        orderTrailTargets_.clear();orderTrailSites_.clear();
+        orderTrailTargets_.clear();
         for(const auto& f:features_) {
             if(!f.aliveVis || !f.hasSim || !f.reclaimable || !canPickPoint(f.x,f.z))continue;
             orderTrailTargets_.push_back({f.simId,ta::sim::Fixed::fromFloat(f.x),ta::sim::Fixed::fromFloat(f.z),
@@ -8229,18 +8133,6 @@
             orderTrailTargets_.push_back({-u->id,ta::sim::Fixed::fromFloat(u->x),ta::sim::Fixed::fromFloat(u->z),
                 u->corpseCellX,u->corpseCellZ,u->corpseFootX,u->corpseFootZ,false});
         }
-        const auto& frame=front();
-        for(const auto& [x,z]:manaSpots_) {
-            const bool known=fogCellR(x,z)!=ta::retailfog::kUnexplored;
-            ta::OrderTrailSite site{ta::sim::Fixed::fromFloat(x),ta::sim::Fixed::fromFloat(z),known};
-            if(known)for(const auto* u:frame.live) {
-                if(!u->alive() || !u->type || !u->type->onMana || !canPickUnit(*u))continue;
-                const float dx=u->x-x,dz=u->z-z;
-                if(dx*dx+dz*dz>=44.f*44.f)continue;
-                site.occupant=u->type;site.player=u->player;site.underConstruction=u->underConstruction;break;
-            }
-            orderTrailSites_.push_back(site);
-        }
         // Fog generations can advance even if none of this area's known
         // targets changed. Reuse the planned chain across those recomputes.
         uint64_t h=14695981039346656037ull;
@@ -8249,35 +8141,10 @@
             for(auto v:{t.id,t.x.v,t.z.v,t.cellX,t.cellZ,t.footX,t.footZ})add(uint32_t(v));
             add(t.blocks);
         }
-        for(const auto& s:orderTrailSites_) {
-            add(uint32_t(s.x.v));add(uint32_t(s.z.v));add(s.known);
-            add(reinterpret_cast<uintptr_t>(s.occupant));add(uint32_t(s.player));add(s.underConstruction);
-        }
+
         orderTrailSceneSignature_=h;
     }
 
-    // The predicted stops of `u`'s area jobs (ta::expandOrderTrail), cached per
-    // builder and replanned when its orders, the features, the fog or the
-    // visible deposits change, or a second has passed.
-    const std::vector<RenderOrder>& GameView::areaBuildPlan(const UnitR& u) {
-        if(areaGhostCache_.size()>256 && !areaGhostCache_.contains(u.id))areaGhostCache_.clear();
-        auto& cache=areaGhostCache_[u.id];
-        const uint32_t tick=front().gameTick;
-        uint64_t signature=ta::orderTrailSignature(u.displayedOrders())^reinterpret_cast<uintptr_t>(u.type);
-        for(uint32_t i:u.areaVisited)signature=(signature^i)*1099511628211ull;
-        if(cache.unitId!=u.id || cache.signature!=signature || cache.featGen!=lastFeatGen_ ||
-           cache.fogGen!=front().fogGen || cache.noFog!=noFog_ || tick-cache.tick>=30u) {
-            // Several builders replanning in one tick share one scan.
-            if(areaGhostTargetsTick_!=tick) {refreshOrderTrailTargets();areaGhostTargetsTick_=tick;}
-            ta::expandOrderTrail(u.displayedOrders(),*u.type,u.player,
-                ta::sim::Fixed::fromFloat(u.x),ta::sim::Fixed::fromFloat(u.z),
-                orderTrailTargets_,orderTrailSites_,u.areaVisited,cache.orders);
-            cache.unitId=u.id;cache.signature=signature;cache.featGen=lastFeatGen_;
-            cache.fogGen=front().fogGen;cache.noFog=noFog_;cache.tick=tick;
-            cache.sceneSignature=orderTrailSceneSignature_;
-        }
-        return cache.orders;
-    }
 
     void GameView::drawOrderTrails(int mvw, int winH) {
         if (selection_.empty() || !cursors_.ok()) return;
@@ -8316,7 +8183,7 @@
             // and expand its remaining known work, followed by the queued tail.
             // Cache only the few beaded units; ordinary queues need no planning.
             bool areas=false;
-            for(const auto& o:actual)if(o.goal && (o.manaBuildArea || o.reclaimArea)) {
+            for(const auto& o:actual)if(o.goal && o.reclaimArea) {
                 areas=true;
                 // The corners are ground points the drag picked through the terrain
                 // lift (pickWorld), so each is drawn lifted back onto the raised tile
@@ -8336,7 +8203,7 @@
             if(areas && beads) {
                 auto& cache=orderTrailCache_[size_t(drawn)];
                 auto signature=ta::orderTrailSignature(actual)^reinterpret_cast<uintptr_t>(up->type);
-                for(uint32_t i:up->areaVisited)signature=(signature^i)*1099511628211ull;
+
                 if(cache.unitId!=selId || cache.signature!=signature || cache.featGen!=lastFeatGen_ ||
                    cache.fogGen!=front().fogGen || cache.noFog!=noFog_ || tick-cache.tick>=30u) {
                     if(!targetsRefreshed) {refreshOrderTrailTargets();targetsRefreshed=true;}
@@ -8344,7 +8211,7 @@
                        cache.sceneSignature!=orderTrailSceneSignature_ || tick-cache.tick>=30u)
                         ta::expandOrderTrail(actual,*up->type,up->player,
                             ta::sim::Fixed::fromFloat(up->x),ta::sim::Fixed::fromFloat(up->z),
-                            orderTrailTargets_,orderTrailSites_,up->areaVisited,cache.orders);
+                            orderTrailTargets_,cache.orders);
                     cache.unitId=selId;cache.signature=signature;cache.featGen=lastFeatGen_;
                     cache.fogGen=front().fogGen;cache.noFog=noFog_;cache.tick=tick;
                     cache.sceneSignature=orderTrailSceneSignature_;
@@ -8364,7 +8231,7 @@
                 if (!o.goal) continue;
                 const bool atSpot = spot && firstGoal;
                 firstGoal = false;
-                if (o.manaBuildArea || o.reclaimArea) continue;
+                if (o.reclaimArea) continue;
                 float qx = o.x.toFloat(), qz = o.z.toFloat();
                 if (o.targetId && !o.guard && !o.load) {
                     // An attack step marks its target where the player can see it.
@@ -8484,7 +8351,7 @@
         for (const auto& o : u.orders) {
             if (!o.goal) continue;
             return o.issuedTick >= minIssued && !o.targetId && !o.buildType && !o.reclaimFeat &&
-                   !o.repairTarget && !o.load && !o.unload && !o.guard && !o.reclaimArea && !o.manaBuildArea;
+                   !o.repairTarget && !o.load && !o.unload && !o.guard && !o.reclaimArea;
         }
         return false;
     }

@@ -122,7 +122,7 @@ int main() {
         UnitType type;type.id="old-building";type.maxHp=100;
         FeatType corpse;corpse.name="old-corpse";corpse.decomposeTicks=0;
         reused.setFeatureTypes({corpse});
-        reused.mapCorpse(&type,0);reused.mapStatue(&type,0,0);
+        reused.mapCorpse(&type,0);
         type=UnitType{};type.id="corpse-less-flyer";type.maxHp=100;type.canFly=true;
         if (reset==0) reused.clearFeatures();
         else if (reset==1) reused.resetForReplay();
@@ -131,8 +131,7 @@ int main() {
             ta::tnt::Map map;
             registerMapFeatures(reused,map,vfs);
         }
-        check(reused.corpseTypeOf(&type)==-1 && reused.statueTypeOf(&type,false)==-1 &&
-              reused.statueTypeOf(&type,true)==-1,
+        check(reused.corpseTypeOf(&type)==-1,
               "feature rebuild/replay reset discards all old unit-type mappings");
         // Keep an unrelated permanent feature at index zero, as on a real map.
         reused.setFeatureTypes({corpse});fresh.setFeatureTypes({corpse});
@@ -311,34 +310,40 @@ int main() {
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
         UnitType mover;mover.footX=mover.footZ=1;mover.maxHp=100;
         mover.maxVel=Fixed::fromInt(1);mover.canMove=true;
-        FeatType statue;statue.name="frozen";statue.fx=2;statue.fz=3;statue.blocking=true;
-        statue.reclaimable=true;
+        auto death=std::make_shared<ta::cob::File>();   // Killed asks for corpse 1
+        death->scripts={{"Killed",0}};
+        death->code={0x10022000,0x10022000,0x10022000,
+            0x10021001,1,0x10023002,1,0x10021001,0,0x10065000};
+        mover.simulationScript=death;
+        // Killed asks for the corpse and runs no Dying: the wreck lands at once.
+        FeatType wreck;wreck.name="wreck";wreck.fx=2;wreck.fz=3;wreck.blocking=true;
+        wreck.reclaimable=true;
         FeatType wall;wall.name="wall";wall.blocking=true;wall.indestructible=true;
-        map.setFeatureTypes({statue,wall});map.mapStatue(&mover,-1,0);
+        map.setFeatureTypes({wreck,wall});map.mapCorpse(&mover,0);
         const int id=map.spawn(&mover,168,168,0,0);
-        map.unit(id)->frozenFor=100;map.unit(id)->hp=Fixed();map.tick(1.0f/30);
+        map.unit(id)->hp=Fixed();map.tick(1.0f/30);
         check(map.unit(id)->corpseBlocks && RetailReplayProbe::grade(map,11,12)==1,
-              "a frozen mobile unit immediately places the statue's full footprint");
+              "a mobile unit with no Dying immediately places the wreck's full footprint");
         map.addFeature(10*32+10,168,168,0,1,1,true,1);
         check(!map.unit(id)->corpseBlocks && RetailReplayProbe::grade(map,11,12)==7,
-              "overwriting a statue retires its owner and frees the old footprint");
+              "overwriting a wreck retires its owner and frees the old footprint");
         RetailReplayProbe::retire(map,id);
         check(RetailReplayProbe::grade(map,10,10)==0,
               "retiring an old corpse cannot remove its replacement");
         const int refused=map.spawn(&mover,168,168,0,0);
-        map.unit(refused)->frozenFor=100;map.unit(refused)->hp=Fixed();map.tick(1.0f/30);
+        map.unit(refused)->hp=Fixed();map.tick(1.0f/30);
         check(!map.unit(refused)->corpseBlocks && RetailReplayProbe::grade(map,10,10)==0,
-              "an indestructible obstacle refuses statue placement without being cleared");
+              "an indestructible obstacle refuses wreck placement without being cleared");
         const int reclaimable=map.spawn(&mover,248,168,0,0);
-        map.unit(reclaimable)->frozenFor=100;map.unit(reclaimable)->hp=Fixed();map.tick(1.0f/30);
+        map.unit(reclaimable)->hp=Fixed();map.tick(1.0f/30);
         // A mobile builder (World::reclaim's caster test): the clear is its
         // order, walk, work and fade, not the idle clear this used to ride on.
-        UnitType builder=mover;builder.canReclaim=true;builder.isBuilder=true;
+        UnitType builder=mover;builder.canReclaim=true;builder.isBuilder=true;builder.simulationScript=nullptr;
         const int worker=map.spawn(&builder,216,168,0,0);
         map.reclaim(worker,-reclaimable,false);
         for (int i=0;i<600 && map.unit(reclaimable)->corpseBlocks;++i) map.tick(1.0f/30);
         check(!map.unit(reclaimable)->corpseBlocks && RetailReplayProbe::grade(map,16,12)==7,
-              "ordered corpse reclaim clears the actual statue footprint");
+              "ordered corpse reclaim clears the actual wreck footprint");
     }
 
     {
@@ -348,17 +353,22 @@ int main() {
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
         UnitType mover;mover.footX=mover.footZ=1;mover.maxHp=100;
         mover.maxVel=Fixed::fromInt(1);mover.canMove=true;
+        auto death=std::make_shared<ta::cob::File>();   // Killed asks for corpse 1
+        death->scripts={{"Killed",0}};
+        death->code={0x10022000,0x10022000,0x10022000,
+            0x10021001,1,0x10023002,1,0x10021001,0,0x10065000};
+        mover.simulationScript=death;
         UnitType victim=mover;victim.corpseAdjZ=6;
-        FeatType statue;statue.name="offset statue";statue.blocking=true;
-        map.setFeatureTypes({statue});map.mapStatue(&victim,-1,0);
+        FeatType wreck;wreck.name="offset wreck";wreck.blocking=true;
+        map.setFeatureTypes({wreck});map.mapCorpse(&victim,0);
         const int observer=map.spawn(&mover,72,72,0,0);
         const int id=map.spawn(&victim,168,168,0,0);
         RetailReplayProbe::cache(map,observer);
         const int clear=RetailReplayProbe::cached(map,20,10);
-        map.unit(id)->frozenFor=100;map.unit(id)->hp=Fixed();map.tick(1.0f/30);
+        map.unit(id)->hp=Fixed();map.tick(1.0f/30);
         check(RetailReplayProbe::cached(map,10,10)==clear &&
               RetailReplayProbe::cached(map,10,16)==1,
-              "an offset statue clears the old cached body and blocks its new anchor");
+              "an offset wreck clears the old cached body and blocks its new anchor");
     }
 
     // Burning and fading walk marked feature indices instead of every feature.

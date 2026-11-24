@@ -18,22 +18,21 @@ int main(int argc, char** argv) {
             ta::sim::TypeRegistry registry;
             ta::sim::setupRegistry(registry,vfs);
             for(const auto& [id,type]:registry.types())for(const auto& weapon:type.weapons) {
-                const bool renderedShot=!weapon.melee && weapon.kind==ta::sim::Weapon::Kind::Normal &&
+                const bool renderedShot=weapon.kind==ta::sim::Weapon::Kind::Normal &&
                     weapon.flameKind<0 && !weapon.lightning &&
                     (weapon.projVel>0.0f || weapon.beam);
                 if(!renderedShot)continue;
                 ++moving;
-                if(!weapon.weaponArt.empty() || !weapon.shotArt.empty() ||
+                if(!weapon.weaponArt.empty() ||
                    weapon.spinRate!=0 || weapon.shotSpin[0]!=0 || weapon.shotSpin[2]!=0)
                     std::cout << "WEAPON_ART " << "standard" << ' '
                               << id << " / " << weapon.name << " art=" << weapon.weaponArt
-                              << " shotart=" << weapon.shotArt << " model=" << weapon.shotModel
+                              << " model=" << weapon.shotModel
                               << " straight=" << weapon.straight << " beam=" << weapon.beam
                               << " ballistic=" << weapon.ballistic << " spin=" << weapon.spinRate << '\n';
                 const bool noModel=weapon.shotModel.empty();
                 const bool noSprite=weapon.weaponArt.empty();
-                const bool noShotArt=weapon.shotArt.empty();
-                if(noModel && noSprite && noShotArt) {
+                if(noModel && noSprite) {
                     ++artless;
                     std::cout << "ARTLESS " << "standard" << ' '
                               << id << " / " << weapon.name << " vel=" << weapon.projVel
@@ -96,7 +95,7 @@ int main(int argc, char** argv) {
         ta::sim::setupRegistry(registry,vfs);
         for (const auto& [name, type] : registry.types()) {
             for (const auto& weapon : type.weapons) {
-                for (const auto& art : {weapon.weaponArt, weapon.shotArt,
+                for (const auto& art : {weapon.weaponArt,
                         weapon.radiusArt[0], weapon.radiusArt[1], weapon.radiusArt[2]})
                     if (!art.empty()) names.insert(art);
                 if (!weapon.shadowArt.empty()) names.insert("shadows:" + weapon.shadowArt);

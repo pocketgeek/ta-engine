@@ -12,7 +12,7 @@ int main(int argc,char** argv) {
     try {
         using namespace ta::sim;
         for(bool sameOwner:{false,true})for(bool allied:{false,true})for(bool unfinished:{false,true}) {
-            UnitType attacker,victim;attacker.maxHp=victim.maxHp=100;victim.experiencePoints=1234;
+            UnitType attacker,victim;attacker.maxHp=victim.maxHp=100;
             World world;world.setTerrain(std::vector<uint8_t>(64*64,0),64,64,0);
             world.setMapPlacementFeatures(std::vector<uint16_t>(64*64,0xffff),{});
             const int from=world.spawn(&attacker,200,200,0,0);
@@ -50,7 +50,7 @@ int main(int argc,char** argv) {
             check(world.scoreAutomaticDisabled(),"mission SET40 must disable automatic accrual");
             auto hash=world.stateHash();++world.player(1).score;
             check(world.stateHash()!=hash,"campaign score must be authoritative hash input");
-            UnitType type;type.maxHp=100;type.experiencePoints=1234;
+            UnitType type;type.maxHp=100;
             const int victim=world.spawn(&type,0,0,0,1);
             world.unit(victim)->lastHitPlayer=0;world.unit(victim)->hp=Fixed();
             hash=world.stateHash();world.unit(victim)->lastHitPlayer=1;
