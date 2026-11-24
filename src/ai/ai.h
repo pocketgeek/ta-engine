@@ -624,7 +624,7 @@ private:
         const auto first=u.orders.begin();
         return std::all_of(first,u.orders.end(),[](const ta::sim::Order& o) {
             return o.park || o.landing || (!o.goal && !o.groundMission && !o.buildType && !o.targetId && !o.reclaimFeat &&
-                !bool(o.reclaimArea) && !o.repairTarget && !o.load && !o.unload && !o.patrol &&
+                !o.repairTarget && !o.load && !o.unload && !o.patrol &&
                 !o.attackMove && !o.guard);
         }) && (first==u.orders.end() || std::any_of(first,u.orders.end(),
             [](const ta::sim::Order& o){return o.park || o.landing;}));

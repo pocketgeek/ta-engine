@@ -1,5 +1,4 @@
 #pragma once
-#include "sim/retailreclaimarea.h"
 #include "sim/retailreclaim.h"
 #include "sim/retailreclaimunit.h"
 #include "sim/heapoptional.h"
@@ -801,7 +800,9 @@ struct alignas(64) Order {
     // The order sits at the builder's working position; the site is footZ*8+24
     // north of it.
     const UnitType* buildType = nullptr;
-    HeapOptional<RetailReclaimArea> reclaimArea;
+    // Layout pad: once Kingdoms' RECLAIMAREA order (406670; TA has no area
+    // reclaim, neither mission table 0x4fc6e8 / 0x4fca18 has the row).
+    alignas(8) uint8_t layoutPadArea_[8] = {};
     // Layout pad: Order's cache-line plan (TA_ORDER_LINE below) was laid out with an
     // 8-byte slot here (once Kingdoms' area-build order); keep the plan intact.
     // A D-gun order (TotalA.exe AttackSpecial 0x403190): fires only the
@@ -988,11 +989,7 @@ struct alignas(64) Order {
     void setIdentity(const OrderIdentity& id) { convoyTick = id.convoyTick; orderSerial = id.serial; }
     uint32_t placementRetryTick = 0;
     uint8_t placementFailures = 0;
-    // RECLAIMAREA's own approach (406670 stage 1): a radius-4 circle on the
-    // builder's position clamped into the area, pushed ahead of the area order.
-    // It ends on arrival OR failure (wait mask 0x700), never widening like a
-    // Move_Ground. Hashed with a tag when set.
-    bool reclaimAreaApproach = false;
+    bool layoutPadArea1_ = false;   // was Kingdoms' RECLAIMAREA approach; kept for Order's layout
     // An auto attack issued with a return (4d7de0's leash path: the idle
     // retaliation mission, Maneuver or a patrol hit): mission +0x56 is the
     // leash (maneuverleashlength) and +0x2e/+0x30 the origin; the attack
@@ -1057,25 +1054,21 @@ struct alignas(64) Order {
     bool aheadOfDefault = false;
 
     // ---- line 5: SUPPRESS ----------------------------------------------------
-    // Retail SUPPRESS (UNITMISSIONCODE_SUPPRESS, 0x404d70; World::tickSuppress):
-    // fire at a point. Armed ATTACK on the ground (Cmd::AttackGround) gives it
-    // to a ground unit or a structure whose selected weapon is not melee, and
-    // to a melee one only over a blocking, clearable feature (World::suppress).
-    // Its point is the mission's +0x22, kept in attackPointX/Z (the melee
-    // stage 2 walks it toward the unit); x/z are where the order line points
-    // and, on a melee approach, the rectangle's steering cell. targetId stays
+    // TotalA.exe Suppress (ground row 4, 0x4038a0; World::tickSuppress): fire
+    // at a point. Armed ATTACK on the ground (Cmd::AttackGround) gives it to a
+    // non-flyer whose slot 0 weapon is not toairweapon (0x43f17e..0x43f1a9).
+    // Its point is the mission's +0x22, kept in attackPointX/Z; targetId stays
     // 0. Its stages run on `mission`. Hashed with a tag when set.
     bool suppress = false;
-    bool suppressFeature = false;   // +0x56: a clearable blocking feature is the target
-    uint8_t suppressSlot = 0;       // +0x4e: the slot it fires (519ac0 at the order)
-    int32_t suppressReach = 0;      // +0x52: reach left for the approach rings (range - minrange at stage 0)
-    // The approach stage 4 puts ahead of the order (4d4e10's ring with a
-    // minimum range, else 4d4da0's circle; wait 0x700): a ground move to the
-    // point that ends on arrival or failure, like RECLAIMAREA's. Its outer
-    // radius is missionRadius + 4 (the circle's), suppressInner the ring's
-    // inner one (0: the circle). Hashed with a tag when set.
+    bool padSuppress0_ = false;     // was Kingdoms' feature target; kept for Order's layout
+    uint8_t suppressSlot = 0;       // +0x36: the slot it fires (2 alone, else 0 and 1)
+    int32_t suppressReach = 0;      // +0x3a: reach left for the approach circles (the range at stage 0)
+    // The approach stage 2 puts ahead of the order (0x438930's circle, wait
+    // 0xe0): a ground move to the point that ends on arrival or failure, like
+    // RECLAIMAREA's. Its radius is missionRadius + 4 (the circle's). Hashed
+    // with a tag when set.
     bool suppressApproach = false;
-    int32_t suppressInner = 0;
+    int32_t padSuppress1_ = 0;      // was Kingdoms' approach ring; kept for Order's layout
     // A flyer's attack at a point (the same 4de530 kind 3 resolver, by the
     // selected slot's weapon): AIRSTRIKE (`dropped`), AIRTOGROUNDHOVER (the
     // type's hoverattack) or AIRTOGROUND, each with no target unit (mission
@@ -1133,7 +1126,7 @@ TA_ORDER_LINE(x, 0); TA_ORDER_LINE(z, 0); TA_ORDER_LINE(targetId, 0);
 TA_ORDER_LINE(load, 0); TA_ORDER_LINE(unload, 0); TA_ORDER_LINE(attackMove, 0);
 TA_ORDER_LINE(patrol, 0); TA_ORDER_LINE(guard, 0); TA_ORDER_LINE(waitAttack, 0);
 TA_ORDER_LINE(goal, 0); TA_ORDER_LINE(groundMission, 0); TA_ORDER_LINE(wait, 0);
-TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(reclaimArea, 0);
+TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(layoutPadArea_, 0);
 TA_ORDER_LINE(reclaimFeat, 0); TA_ORDER_LINE(repairTarget, 0);
 TA_ORDER_LINE(transportUnloadApproach, 0); TA_ORDER_LINE(navigationConsumed, 0);
 TA_ORDER_LINE(autoTarget, 0); TA_ORDER_LINE(flightMoveMission, 0); TA_ORDER_LINE(landing, 0);
@@ -1147,8 +1140,8 @@ TA_ORDER_LINE(transportUnloadReleasePending, 1); TA_ORDER_LINE(transportUnloadTr
 TA_ORDER_LINE(formationLevel, 1); TA_ORDER_LINE(stationFree, 1); TA_ORDER_LINE(missionRadius, 1);
 TA_ORDER_LINE(orderSerial, 4);
 static_assert(offsetof(Order, mission) == 128, "line 1 ends at byte 127; line 2 starts with mission");
-TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(suppressFeature, 5); TA_ORDER_LINE(suppressSlot, 5);
-TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(suppressInner, 5);
+TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(padSuppress0_, 5); TA_ORDER_LINE(suppressSlot, 5);
+TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(padSuppress1_, 5);
 TA_ORDER_LINE(airPoint, 5); TA_ORDER_LINE(attackFormation, 5); TA_ORDER_LINE(resumeSite, 5);
 TA_ORDER_LINE(transportHeading, 5); TA_ORDER_LINE(airPadId, 5);
 TA_ORDER_LINE(reclaimUnit, 5); TA_ORDER_LINE(reclaimUnitRate, 5);
@@ -2808,7 +2801,6 @@ public:
     // 0x489960: whether `b` may reclaim unit `t` -- b canreclamate (flagsB
     // bit 10), t not flying (+0x110 & 3 != 2) and not cancapture (bit 12).
     bool reclaimUnitAllowed(const Unit& b, const Unit& t) const;
-    void reclaimArea(int builderId, float x0, float z0, float x1, float z1, bool queue);
     // Order `casterId` to raise the body of dead unit `corpseId` (retail
     // RESURRECT 0x4068b0, or VTOL_RESURRECT 0x41fe70 for a flyer): walk to it,
     // then channel a resurrect or an animate (reviveKind). A no-op when the
@@ -2991,7 +2983,7 @@ public:
         legionBodyWindow_.clear();   // its ticks live here, not in the Unit: ids start again at 1
         retailAllocation_=false;retailEntityPools_.reset();spawnGeneration_=0;
         entitySlots_.unitAt={};entitySlots_.slotOf.clear();
-        taUnitSlots_={};airPadCaches_={};
+        airPadCaches_={};
         nextMovementController_ = 0;
         tickCounter_ = 0;
         winningTeam_ = -1;
@@ -3360,7 +3352,7 @@ public:
     // test that several places need.
     static bool hasQueuedWork(const Unit& u) {
         for (const Order& o : u.orders)
-            if (o.buildType || o.reclaimFeat || o.reclaimArea || o.repairTarget) return true;
+            if (o.buildType || o.reclaimFeat || o.repairTarget) return true;
         return false;
     }
     void attackMove(int unitId, float x, float z, bool queue);
@@ -3372,11 +3364,9 @@ public:
     // (Order::airPoint). Whether an order was given.
     bool suppress(int unitId, float x, float z, bool queue);
     bool suppressAccepts(int unitId, float x, float z) const;
-    // The resolver's rule by the type and the selected slot alone (519ac0: a
-    // switcher's selected slot, else the first), shared with the client's
-    // click (clickrules.h): Fire gives the order anywhere, OverBlocker (a melee
-    // weapon) only where clearableBlockerAtPoint holds.
-    enum class SuppressRule : uint8_t { None, Fire, OverBlocker };
+    // The resolver's rule by the type alone (slot 0's weapon, 0x43f177),
+    // shared with the client's click (clickrules.h): Fire gives the order.
+    enum class SuppressRule : uint8_t { None, Fire };
     static SuppressRule suppressRule(const UnitType& t, int weaponSlot);
     // 4c18d7..4c18ff (and the reload path 4c1f6c..4c1f7c): a type with a
     // weapon, bmcode 0 and a canbuild menu loses canattack (+0x264 0x20) at
@@ -3731,9 +3721,7 @@ private:
     // `footprint`: the feature's anchor cell and size (4930d0).
     bool clearableBlockerAt(Fixed x,Fixed z,std::array<int,4>* footprint=nullptr) const;
     int suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events);
-    void pushSuppressApproach(Unit& u,Fixed x,Fixed z,int32_t outer,int32_t inner);
-    // The approach ring of a SUPPRESS approach leg (Order::suppressInner).
-    std::optional<RetailRingGoal> suppressRing(const Unit& u,const Order& goal) const;
+    void pushSuppressApproach(Unit& u,Fixed x,Fixed z,int32_t outer);
     void clearScriptWeaponTarget(Unit& u,bool fromCommand=false);
     // Convert a unit to another player (contact charm + mind-control weapons).
     void captureUnit(Unit& t, int newPlayer);
@@ -3938,7 +3926,6 @@ private:
     bool moveRateMoving(const Unit& t) const;
     void finishReclaim(Unit& b,int target);
     void tickFeatureFades();
-    void tickReclaimArea(Unit& b);
     void tickAbilities(float dt);   // reclaim / resurrect on nearby corpses
 
     // Connected-component labelling of a nav grid for one footprint, built on first
@@ -4860,16 +4847,11 @@ private:
     bool benchmark_ = false;              // a benchmark run
     bool benchEnded_ = false;             // its 60 real seconds are over (Cmd::BenchClock)
     PathService paths_;          // retail's request queue + budget scheduler
-    // Per-player entity pools for live matches (5121d8 placement, retirement
-    // frees). Restored retail fixtures use retailEntityPools_ instead.
+    // Per-player unit slots for live matches: TotalA.exe's first free slot of
+    // the owner's block (0x485fea..0x486051), freed at the death (0x486dc7);
+    // the path scheduler and the pad list walk them. Restored Kingdoms replay
+    // fixtures (retail_replay_probe) use retailEntityPools_ instead.
     EntitySlotTable entitySlots_;
-    // TotalA.exe's unit slots, per player: a new unit takes the first free
-    // slot of its owner's block (0x485fea..0x486051, a slot with type word
-    // +0xa6 0) and its death frees it (0x4866d0: +0xa6 = 0 at 0x486dc7). The
-    // unit ids in slot order; a slot is free when its unit is gone, dead or
-    // another player's. Not hashed: it follows from the spawns and deaths.
-    std::array<std::vector<int>,kMaxPlayers> taUnitSlots_{};
-    void allocateTaSlot(int unitId,int player);
     // The AIPlayer record's own active air pads (+0x25), which the shared
     // cache 0x40aa40 rebuilds once every 30 ticks for every player
     // (0x40b2c0: now >= +0xed + 30; +0xed starts at 0, 0x4092dc) from the

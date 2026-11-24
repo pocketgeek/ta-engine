@@ -329,11 +329,14 @@ int retailGroundPatrol(RetailMissionState& m,uint32_t& radius,uint32_t tick,
 // remove with a next mission, else stage 0 and a 30 + rand(30) sleep
 // (0x43b8e5..0x43b973); any other value 0x439eb0 (clear here). An empty list
 // asks for the default mission (0x43b9ad; idle()).
-// Not modelled: an event 0x10000 drops slots 0..2's targets with TargetCleared
-// (0x43b840 -> 0x48a0f0) -- TA's unit event word is 16 bits, so only a
-// mission's own pending word can carry it, and the engine's 0x10000 is the
-// Kingdoms slot-fired event; and the second (+0x60, mission flag 0x40000)
-// list. TotalA.exe loops for as long as handlers return without waiting
+// The dispatcher's event 0x10000 test (0x43b840: TargetCleared on slots 0..2
+// through 0x48a0f0) is dead in TotalA.exe: the unit's event word +0xba is 16
+// bits, the navigator posts only 0x20..0x200 into a mission's +0x4e (0x44ced0
+// and its nine callers), the dispatcher only sets bit 0 there (0x43b7f9), and
+// every other write masks it (0x438915, 0x4389b1, 0x438a8a, 0x438b4c,
+// 0x4110b1) or copies a mission record (0x43a64d); so World posts no 0x10000
+// mission event either (its 0x10000 is a slot's shot, TA's 0x400). Not
+// modelled: the second (+0x60, mission flag 0x40000) list. TotalA.exe loops for as long as handlers return without waiting
 // (0x43b99f); the 100-call cap is an engine guard against a handler that
 // never waits.
 template<class Host>

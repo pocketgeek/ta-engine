@@ -131,9 +131,9 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
     auto admits = [&] {
         switch (c.kind) {
             case Cmd::Load: return world.canLoadInto(c.unitId, c.targetId);
-            case Cmd::Train: case Cmd::RepeatTrain: case Cmd::Build: case Cmd::BuildManaArea:
+            case Cmd::Train: case Cmd::RepeatTrain: case Cmd::Build:
                 return producer && world.canProduce(*producer, reg.find(c.type),
-                                                    c.kind == Cmd::Build || c.kind == Cmd::BuildManaArea);
+                                                    c.kind == Cmd::Build);
             case Cmd::Assist: {
                 // HelpBuild's own eligibility (World::canHelpBuild -- same owner,
                 // a mobile builder, the build menu when builderlimited).
@@ -165,9 +165,9 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         const bool toggle = (c.queue & kQueueToggle) && (c.queue & kQueuePlace);
         const bool rallyVerb = c.kind == Cmd::Move || c.kind == Cmd::AttackMove || c.kind == Cmd::Patrol ||
                                c.kind == Cmd::Attack;
-        const bool orderVerb = rallyVerb || c.kind == Cmd::Build || c.kind == Cmd::BuildManaArea ||
+        const bool orderVerb = rallyVerb || c.kind == Cmd::Build ||
             c.kind == Cmd::Assist || c.kind == Cmd::Guard || c.kind == Cmd::Load || c.kind == Cmd::Unload ||
-            c.kind == Cmd::Reclaim || c.kind == Cmd::ReclaimArea || c.kind == Cmd::Resurrect || c.kind == Cmd::Repair ||
+            c.kind == Cmd::Reclaim || c.kind == Cmd::Resurrect || c.kind == Cmd::Repair ||
             c.kind == Cmd::AttackGround || c.kind == Cmd::ReclaimUnit;
         // A Load is the carrier's order (TotalA.exe's LOAD gives the carrier
         // GROUND_PICKUP / VTOL_PICKUP, 0x43f701; World::loadInto): its list is
@@ -336,9 +336,6 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
             // Checked before anything is cancelled: a unit that cannot take
             // the order keeps its work.
             if (owns(c.unitId) && admits()) { redirect(); world.reclaimUnit(c.unitId, c.targetId, c.queue); }
-            break;
-        case Cmd::ReclaimArea:
-            if (owns(c.unitId)) { redirect(); world.reclaimArea(c.unitId, c.x, c.z, c.x2, c.z2, c.queue); }
             break;
         case Cmd::Resurrect:
             // Checked before anything is cancelled, so a caster that cannot

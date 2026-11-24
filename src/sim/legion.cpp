@@ -3642,11 +3642,11 @@ struct LegionNavigator::Impl : LegionWorldBinding {
 
     // ---- groups and fields -------------------------------------------
     // A SUPPRESS approach (Order::suppressApproach) is not one: it ends on
-    // its native circle or ring round the point, which a Legion move does not
+    // its native circle round the point, which a Legion move does not
     // stop at, so the native navigator drives it.
     static bool plainMove(const Order& front) {
         return !front.targetId&&!front.load&&!front.unload&&!front.buildType&&!front.reclaimFeat&&
-            !front.reclaimArea&&!front.repairTarget&&!front.wait&&!front.waitAttack&&
+            !front.repairTarget&&!front.wait&&!front.waitAttack&&
             !front.attackMove&&!front.patrol&&!front.guard&&!front.autoTarget&&!front.landing&&!front.park&&
             !front.buildRectangle&&!front.flightGoal&&!front.transportPickup&&!front.transportUnloadApproach&&
             !front.transportUnloadReleasePending&&!front.transportUnloadTransferDeferred&&!front.transportPassenger&&
@@ -3658,7 +3658,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         if(!chase&&(o.targetId||o.guard||o.autoTarget))return false;
         if(!combat&&(o.attackMove||o.patrol))return false;
         return !o.load&&!o.unload&&!o.buildType&&!o.reclaimFeat&&
-            !o.reclaimArea&&!o.repairTarget&&!o.wait&&!o.waitAttack&&
+            !o.repairTarget&&!o.wait&&!o.waitAttack&&
             !o.landing&&!o.park&&!o.buildRectangle&&!o.flightGoal&&!o.transportPickup&&
             !o.transportUnloadApproach&&!o.transportUnloadReleasePending&&
             !o.transportUnloadTransferDeferred&&!o.transportPassenger&&!o.productionExit;
@@ -3673,7 +3673,7 @@ struct LegionNavigator::Impl : LegionWorldBinding {
         if(o.transportUnloadApproach!=bool(own&WUnloadApproach)||bool(o.park)!=bool(own&WPark))return false;
         if(bool(o.productionExit)!=bool(own&WExit))return false;
         if(o.targetId&&!(own&(WLoad|WPickup)))return false;
-        return !o.unload&&!o.attackMove&&!o.patrol&&!o.guard&&!o.autoTarget&&!o.reclaimArea&&
+        return !o.unload&&!o.attackMove&&!o.patrol&&!o.guard&&!o.autoTarget&&
             !o.wait&&!o.waitAttack&&!o.landing&&!o.flightGoal&&!o.transportUnloadReleasePending&&
             !o.transportUnloadTransferDeferred&&!o.transportPassenger;
     }

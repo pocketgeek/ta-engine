@@ -88,7 +88,7 @@ FirstMission firstMission(const ta::sim::World& world, const ta::sim::Unit& u) {
     m.goalX = o.x.v; m.goalZ = o.z.v;
     if (o.buildType) { m.cls = 0; m.flags = 0x80508; m.builds = o.buildType; m.goalX = o.buildX.v; m.goalZ = o.buildZ.v; }
     else if (o.repairTarget) { m.cls = 6; m.flags = 0x80200; m.target = o.repairTarget; }
-    else if (o.reclaimFeat || o.reclaimArea) { m.cls = 11; m.flags = 0x800; }
+    else if (o.reclaimFeat) { m.cls = 11; m.flags = 0x800; }
     else if (o.load) { m.cls = 12; m.flags = 0x1000200; m.target = o.targetId; }
     else if (o.unload) { m.cls = 13; m.flags = 0x1000400; }
     // Follow_Ground (0x5eb89f: 0x3000200); a flyer's is VTOL_Follow (0x5ebd37:

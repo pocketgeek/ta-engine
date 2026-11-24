@@ -68,18 +68,6 @@ namespace {
         return ids[size_t(ackRng_ >> 8) % ids.size()];
     }
 
-    bool GameView::pointBlocker(float wx, float wz) {
-        PointBlocker& b = pointBlocker_;
-        const uint32_t tick = front().gameTick;
-        const bool same = b.tick != ~0u && b.x == wx && b.z == wz;
-        if (same && b.tick == tick) return b.v;
-        if (const auto live = tryLiveWorld()) {
-            b = {wx, wz, tick, (*live)->clearableBlockerAtPoint(wx, wz)};
-            return b.v;
-        }
-        return same && b.v;
-    }
-
     GameView::ClickPlan GameView::planClick(char mode, float wx, float wz, const UnitR* hovered, uint8_t queue,
                                             bool alt, bool pointTargets) {
         using namespace ta::client;
@@ -137,7 +125,7 @@ namespace {
             if (mode == 'a' && f.attacker && target.kind != HoverKind::Enemy) {
                 using Rule = ta::sim::World::SuppressRule;
                 const Rule r = ta::sim::World::suppressRule(t, u.weaponSlot);
-                f.pointFire = r == Rule::Fire || (r == Rule::OverBlocker && pointBlocker(wx, wz));
+                f.pointFire = r == Rule::Fire;
             }
             if (hovered && hovered->type) {
                 if (f.attacker && target.kind == HoverKind::Enemy && (mode == 0 || mode == 'a'))
@@ -477,7 +465,7 @@ namespace {
 
     bool GameView::issueBoxPlan(const BoxPlan& plan, float x0, float z0, float x1, float z1, uint8_t queue) {
         ClickScope click(*this);
-        std::vector<int> ordered, clearers;
+        std::vector<int> ordered;
         // Step L: the transport fetches each passenger in turn. A Load is the
         // carrier's order (World::loadInto: its GROUND_PICKUP / VTOL_PICKUP), so
         // the first goes with the click's own queue flag and the rest queue
@@ -518,15 +506,11 @@ namespace {
                 started[i] = 1;
             }
         }
-        // Step C: the units with no attack order that can reclaim clear the box.
-        for (size_t i = 0; i < plan.units.size(); ++i)
-            if (plan.orders[i] == ClickOrder::ReclaimArea) clearers.push_back(plan.units[i]);
-        if (!clearers.empty()) issueReclaimBox(x0, z0, x1, z1, queue, clearers);
-        if (!ordered.empty() && clearers.empty()) {   // issueReclaimBox acknowledges a clear
+        if (!ordered.empty()) {
             const bool attacked = std::any_of(started.begin(), started.end(), [](char s) { return s != 0; });
             voice(ackUnit(ordered), attacked ? "attack" : "move");
         }
-        return !ordered.empty() || !clearers.empty();
+        return !ordered.empty();
     }
 
     bool GameView::armedRelease(float ex, float ey) {

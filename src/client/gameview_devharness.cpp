@@ -518,19 +518,15 @@
             }
             // TA_SELPORTRAITS_ORDERS: the order overlay's still life (shoot it with
             // TA_SHOT_SHIFT=1). Cloakers cloak on a full pool, the first unit that
-            // cannot cloak attacks an enemy A.K. to the south-east, and a reclaimer is
-            // given an area clear round the tree to the north-east.
+            // cannot cloak attacks an enemy A.K. to the south-east.
             if (ta::devFlag("TA_SELPORTRAITS_ORDERS")) {
                 const int enemy=spawn("corak",x0+100,z0+120,0,localPlayer_==0?1:0);
-                bool attacker=false,clearer=false;
+                bool attacker=false;
                 for (int id:selection_) {
                     auto* su=writableWorld().unit(id);
                     if (!su || !su->type) continue;
                     if (su->type->canCloak) {su->cloakOn=true;continue;}
                     if (!attacker && enemy>=0) {writableWorld().attack(id,enemy,false);attacker=true;continue;}
-                    if (!clearer && su->type->canReclaim) {
-                        writableWorld().reclaimArea(id,x0-140,z0-180,x0+20,z0-20,false);clearer=true;
-                    }
                 }
             }
             // TA_SELPORTRAITS_CONJURE=type: the front unit (a builder) lays that site at
@@ -2399,7 +2395,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                     }
                 check(first==enemy1 && second==enemy2 && firstQueue==0 && secondQueue==1,
                       "2.2 the archer attacks both enemies, nearest first, the second queued");
-                check(count(cmds,mason,ta::net::Cmd::ReclaimArea)==1,"2.2 the mason (no attack order) clears the box");
+                check(count(cmds,mason,ta::net::Cmd::ReclaimArea)==0,"2.2 the mason gets no area clear (TA has no RECLAIMAREA)");
                 // An empty box with only an attacker: Normal, and nothing.
                 selection_={archer};publish();
                 const auto p=at(sword);
@@ -2762,7 +2758,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             };
             const auto soldierKept=[&] {
                 const auto& o=world_.unit(soldier)->orders;
-                return o.size()==1 && o.front().goal && !o.front().reclaimArea;
+                return o.size()==1 && o.front().goal;
             };
             // Every builder got exactly one command of `kind`; the soldier got none.
             const auto fanned=[&](const std::vector<ta::net::Command>& cmds,ta::net::Cmd kind) {
@@ -2792,12 +2788,8 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 cmds=click_->cmds;
             }
             std::fprintf(stderr,"reclaim fan-out: box issued %zu commands\n",cmds.size());
-            check(fanned(cmds,ta::net::Cmd::ReclaimArea),"a box gives each of 3 reclaimers one ReclaimArea, the soldier none");
-            check(cmds[0].x==cmds[1].x && cmds[0].z2==cmds[2].z2 && !cmds[0].queue,"every builder clears the same box, unqueued");
-            for (int id:builders) {
-                const auto& o=world_.unit(id)->orders;
-                check(!o.empty() && o.front().reclaimArea,"builder "+std::to_string(id)+" holds the area order");
-            }
+            check(std::none_of(cmds.begin(),cmds.end(),[](const ta::net::Command& c){return c.kind==ta::net::Cmd::ReclaimArea;}),
+                  "a box gives the reclaimers no area clear (TA has no RECLAIMAREA)");
             check(soldierKept(),"the soldier's own order is untouched");
             // Shift queues per unit.
             reset();
@@ -2815,12 +2807,10 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 cmds=click_->cmds;
             }
             SDL_SetModState(KMOD_NONE);
-            check(fanned(cmds,ta::net::Cmd::ReclaimArea) && cmds[0].queue && cmds[2].queue,"Shift-box queues one ReclaimArea per builder");
-            for (int id:builders) {
-                const auto& o=world_.unit(id)->orders;
-                check(o.size()>=2 && !o.front().reclaimArea && o.back().reclaimArea,
-                      "builder "+std::to_string(id)+" keeps its move and queues the clear");
-            }
+            check(std::none_of(cmds.begin(),cmds.end(),[](const ta::net::Command& c){return c.kind==ta::net::Cmd::ReclaimArea;}),
+                  "Shift-box queues no area clear");
+            for (int id:builders)
+                check(world_.unit(id)->orders.size()==1,"builder "+std::to_string(id)+" keeps its move only");
             check(soldierKept(),"Shift-box leaves the soldier's order alone");
             // Single feature: the nearest reclaimable, pickable map feature on the map.
             const FeatureInst* target=nullptr;float best=1e30f;
@@ -3065,9 +3055,9 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
         }
         if (ta::devFlag("TA_AREA_DRAG_TEST")) {
             // Map drags through the real input() and draw(): a small right-drag with a
-            // reclaimer is the ordinary order, only a deliberate box clears an area,
-            // and a pan mid-drag keeps the box (drawn and commanded) on the ground the
-            // press was on. See client/areadrag.h.
+            // reclaimer is the ordinary order, a deliberate box is a box (no area clear
+            // in TA), and a pan mid-drag keeps the drawn box on the ground the press
+            // was on. See client/areadrag.h.
             const auto check=[](bool ok,const std::string& what) {
                 if (!ok) throw std::runtime_error("area drag: "+what);
                 std::fprintf(stderr,"PASS: area drag: %s\n",what.c_str());
@@ -3094,14 +3084,10 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                 writableWorld().stop(builder);writableWorld().unit(builder)->orders.clear();
                 selection_={builder};publish();
             };
-            const auto areaOrder=[&]()->const ta::sim::RetailReclaimArea* {
-                const auto& orders=world_.unit(builder)->orders;
-                return !orders.empty() && orders.front().reclaimArea ? &*orders.front().reclaimArea : nullptr;
-            };
-            const auto plainOrder=[&] {
-                const auto& orders=world_.unit(builder)->orders;
-                return !orders.empty() && !orders.front().reclaimArea;
-            };
+            // TA has no area clear (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18): a box
+            // over bare ground gives a reclaimer no order at all.
+            const auto noOrder=[&] { return world_.unit(builder)->orders.empty(); };
+            const auto plainOrder=[&] { return !world_.unit(builder)->orders.empty(); };
             // Right-press at P, optional camera move, pointer to Q, release at Q.
             const auto rightDrag=[&](float px,float py,float qx,float qy,float panX=0,float panZ=0) {
                 event(SDL_MOUSEBUTTONDOWN,SDL_BUTTON_RIGHT,px,py);
@@ -3135,18 +3121,11 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             reset();
             float wx0,wz0,wx1,wz1;pickWorld(px,py,wx0,wz0);pickWorld(px+60,py+50,wx1,wz1);
             rightDrag(px,py,px+60,py+50);
-            {
-                const auto* area=areaOrder();
-                check(area!=nullptr,"a 60x50 px box is an area clear");
-                const auto closeTo=[](int32_t v,float f) {return std::fabs(ta::sim::Fixed::raw(v).toFloat()-f)<1.0f;};
-                check(closeTo(area->minX,std::min(wx0,wx1)) && closeTo(area->maxX,std::max(wx0,wx1)) &&
-                      closeTo(area->minZ,std::min(wz0,wz1)) && closeTo(area->maxZ,std::max(wz0,wz1)),
-                      "the clear covers press to release on the ground");
-            }
+            check(noOrder(),"a 60x50 px box is a box: no order for a reclaimer");
             uiScale_=2.0f;reset();rightDrag(px,py,px+50,py+50);
             check(plainOrder(),"at 200% UI a 50 px box is under the (64 px) threshold");
             reset();rightDrag(px,py,px+70,py+70);
-            check(areaOrder()!=nullptr,"at 200% UI a 70 px box clears");
+            check(noOrder(),"at 200% UI a 70 px box is a box");
             uiScale_=1.0f;
             // Pan alone (the pointer never moves) is still a click.
             reset();rightDrag(px,py,px,py,120,90);
@@ -3186,13 +3165,7 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             }
             event(SDL_MOUSEBUTTONUP,SDL_BUTTON_RIGHT,px+50,py+40);
             {
-                pickWorld(px+50,py+40,wx1,wz1);
-                const auto* area=areaOrder();
-                check(area!=nullptr,"the panned drag clears");
-                const auto closeTo=[](int32_t v,float f) {return std::fabs(ta::sim::Fixed::raw(v).toFloat()-f)<1.0f;};
-                check(closeTo(area->minX,std::min(wx0,wx1)) && closeTo(area->minZ,std::min(wz0,wz1)) &&
-                      closeTo(area->maxX,std::max(wx0,wx1)) && closeTo(area->maxZ,std::max(wz0,wz1)),
-                      "the panned clear covers what the box showed");
+                check(noOrder(),"the panned box gives no order");
             }
             // A zoom mid-drag keeps the corner on its ground as well.
             reset();

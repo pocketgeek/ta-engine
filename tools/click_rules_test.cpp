@@ -325,16 +325,16 @@ void boxRows() {
     BoxUnit lone; lone.transport = true; lone.loadable = 3;
 
     auto o = orders(BoxMode::Right, {pureBuilder});
-    expect(o[0], ClickOrder::ReclaimArea, "2.2 pure builder over empty ground: ReclaimArea");
+    expect(o[0], ClickOrder::None, "2.2 pure builder over empty ground: nothing (TA has no area reclaim)");
     BoxUnit armedHits = armedBuilder; armedHits.hits = 1;
     o = orders(BoxMode::Right, {armedHits});
     expect(o[0], ClickOrder::Attack, "2.2 armed builder, enemies in the box: Attack only");
     o = orders(BoxMode::Right, {armedBuilder});
-    expect(o[0], ClickOrder::ReclaimArea, "2.2 armed builder, no enemies: ReclaimArea");
+    expect(o[0], ClickOrder::None, "2.2 armed builder, no enemies: nothing");
     BoxUnit builderWithEnemy = pureBuilder;   // no weapon: hits stays 0, even with one enemy (C10b)
     o = orders(BoxMode::Right, {soldierHits, builderWithEnemy});
     expect(o[0], ClickOrder::Attack, "2.2 soldier + builder: the soldier attacks");
-    expect(o[1], ClickOrder::ReclaimArea, "2.2 soldier + builder: the builder clears (C10b)");
+    expect(o[1], ClickOrder::None, "2.2 soldier + builder: the builder does nothing");
     o = orders(BoxMode::Right, {lone});
     expect(o[0], ClickOrder::Pickup, "2.2 a lone weaponless transport loads the box's units");
     o = orders(BoxMode::Right, {lone, soldierNone});
@@ -358,7 +358,7 @@ void boxRows() {
     u = {air, soldierHits};
     expectCursor(boxCursor(u, orders(BoxMode::Right, u)), CursorId::Attack, "2.2 cursor: mixed attackers, Attack");
     u = {pureBuilder};
-    expectCursor(boxCursor(u, orders(BoxMode::Right, u)), CursorId::Reclaim, "2.2 cursor: only clearing, Reclaim");
+    expectCursor(boxCursor(u, orders(BoxMode::Right, u)), CursorId::Normal, "2.2 cursor: a builder alone, Normal");
     u = {soldierNone};
     expectCursor(boxCursor(u, orders(BoxMode::Right, u)), CursorId::Normal,
                  "2.2 cursor: attackers over an empty box, Normal (retail shows Attack, its release does nothing)");
@@ -373,7 +373,7 @@ void boxRows() {
     o = orders(BoxMode::ArmedLoad, {lone, lone});
     expect(o[0], ClickOrder::None, "2.9 armed L box: two transports, nothing");
     o = orders(BoxMode::ArmedClear, {pureBuilder, soldierHits});
-    expect(o[0], ClickOrder::ReclaimArea, "2.9 armed C box: reclaimers clear");
+    expect(o[0], ClickOrder::None, "2.9 armed C box: retired, nothing");
     expect(o[1], ClickOrder::None, "2.9 armed C box: ignores units");
 }
 

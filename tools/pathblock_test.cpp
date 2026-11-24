@@ -696,12 +696,25 @@ int main() {
                 group.push_back(w.spawn(&s, 128 + 48 * i, 272 + 48 * j));
         bool overlap = false, terrain = false;
         std::vector<uint32_t> radii(group.size(), 0);
+        // The last order of each member ended on the navigator's failure (World's
+        // 0x200, TA's 0x40: an empty route while the goal is unsatisfied).
+        std::vector<char> failedEnd(group.size(), 0);
+        std::vector<uint32_t> pending(group.size(), 0);
         for (int tick = 0; tick < 3600; ++tick) {
             if (tick == 0 || tick == 300 || tick == 600)
                 for (size_t i = 0; i < group.size(); ++i)
                     w.order(group[i], 800 + 48 * int(i % 4),
                             (tick == 300 ? 720 : 320) + 48 * int(i / 4), false);
+            for (size_t a = 0; a < group.size(); ++a) {
+                const Unit& u = *w.unit(group[a]);
+                pending[a] = u.orders.empty() ? 0 : u.orders.front().mission.pending | 0x80000000u;
+            }
             w.tick(1.0f / 30.0f);
+            for (size_t a = 0; a < group.size(); ++a) {
+                const Unit& u = *w.unit(group[a]);
+                if (pending[a] && u.orders.empty()) failedEnd[a] = (pending[a] & 0x200) != 0;
+                else if (!u.orders.empty()) failedEnd[a] = 0;
+            }
             for (size_t a = 0; a < group.size(); ++a) {
                 const Unit& u = *w.unit(group[a]);
                 for (const auto& goal : u.orders)
@@ -723,8 +736,13 @@ int main() {
             // Mission failure grows the accepted cell circle. Include one
             // cell for the difference between cell origin and subcell position.
             const float accepted = float(radii[i] + 4) + 23.0f;
-            arrived += u.orders.empty() && dx * dx + dz * dz <= accepted * accepted;
-            if (!u.orders.empty() || dx * dx + dz * dz > accepted * accepted) {
+            // TotalA.exe: an empty route while the goal is unsatisfied ends a
+            // plain move (navigator 0x44f080 notifies 0x40, docs/retail-
+            // pathfinding.md 3.1, D16), so a member boxed in by the others
+            // may stop short; that is a completion too.
+            const bool ended = u.orders.empty() && (dx * dx + dz * dz <= accepted * accepted || failedEnd[i]);
+            arrived += ended;
+            if (!ended) {
                 std::printf("    unfinished id=%d pos=(%.3f,%.3f) speed=%.3f mode=%u orders=%zu\n",
                             u.id, u.x.toFloat(), u.z.toFloat(), u.speed.toFloat(),
                             unsigned(u.groundMovementMode), u.orders.size());
@@ -734,7 +752,7 @@ int main() {
             }
         }
         check(!overlap && !terrain, "repeated group orders never overlap bodies or terrain");
-        check(arrived == 16, "all 16 units complete within their mission radius after repeated clicks",
+        check(arrived == 16, "all 16 units complete within their mission radius, or end on a failed route, after repeated clicks",
               std::to_string(arrived) + "/16");
     }
     // A nearby goal still needs a route when the intervening cell is blocked.

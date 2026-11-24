@@ -239,11 +239,10 @@ private:
 inline constexpr size_t kRawRouteCap = 256;
 inline constexpr int kMaxActiveSearches = 1;
 
-// Each player's allocated entity slots, as 416430 traverses them. Retail
-// (511570) gives every player a contiguous pool of maxunits records at game
-// start; 5121d8 places each new unit in a CRT-ranked free slot, and a record
-// stays allocated until it is retired, so a pool has holes wherever units
-// died. World owns this table (its unit IDs stay global and are never reused);
+// Each player's unit slots, as TotalA.exe's scheduler 0x40eb70 walks them
+// (0x40ed0c: the player's block, maxunits records, wrapping at its last).
+// A new unit takes the first free slot of the block (0x485fea..0x486051) and
+// its death frees it (0x486dc7), so a pool has holes wherever units died. World owns this table (its unit IDs stay global and are never reused);
 // the scheduler reads it to walk slots, holes included, in retail order.
 struct EntitySlotTable {
     std::array<std::vector<int32_t>,10> unitAt; // slot -> unit ID, -1 = hole

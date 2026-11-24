@@ -773,35 +773,38 @@ std::vector<const UnitType*> TypeRegistry::combatUnits(const std::string& side) 
     return out;
 }
 
-// 5121d8: a new record takes a uniformly ranked FREE slot of its owner's pool,
-// one CRT draw (none when the pool is full). Retirement 512ae0 frees the
-// record (512e23 clears +0x130 bit 24, 512e52 drops the allocated count)
-// right after it places the corpse feature (512ee0): a dying unit keeps its
-// slot through the death animation, not through the corpse window, which is
-// a map feature in retail. Here that is deadFor reaching corpseAnimationTicks,
-// where the corpse is placed. Freed slots are reclaimed when the pool is next
-// searched, which no other state observes in between.
+// TotalA.exe 0x485fea..0x486051: a new unit takes the FIRST slot of its
+// owner's block (player +0x1bca..+0x1bce, maxunits records) whose type word
+// +0xa6 is 0; the death clears that word (0x4866d0 -> 0x486dc7), so the slot
+// is free again as soon as the unit dies. The path scheduler walks the same
+// block from +0x67 to +0x6b (0x40ed0c, the player record's +0x1bca / +0x1bce
+// seen from 0x1b63), skipping records whose +0xa6 is 0 (0x40ed33). No draw:
+// Kingdoms' CRT-ranked free slot (KINGDOMS.icd 5121d8) is gone. Freed slots
+// are reclaimed when the pool is next searched, which nothing observes in
+// between.
 void World::allocateEntitySlot(int unitId,int player) {
     auto& table=entitySlots_;
     auto& pool=table.unitAt[size_t(player)];
     if (pool.empty()) pool.assign(size_t(entityPoolCapacity(unitCap_)),-1);
-    int allocated=0;
-    for (auto& id:pool) {
-        if (id<0) continue;
-        const Unit* member=unit(id);
-        if (member && member->deadFor<std::min(member->corpseAnimationTicks(),kRetiredTicks)) {
-            ++allocated;continue;
+    int slot=-1;
+    for (size_t i=0;i<pool.size();++i) {
+        int& id=pool[i];
+        if (id>=0) {
+            const Unit* member=unit(id);
+            if (member && member->alive() && member->player==player) continue;
+            // A request left by the dead holder would resolve to the new unit.
+            paths_.cancel(id,NavigationTelemetry::Cancel::Replaced);
+            if (size_t(id)<table.slotOf.size() && table.slotOf[size_t(id)]==int(i)) table.slotOf[size_t(id)]=-1;
+            id=-1;
         }
-        if (size_t(id)<table.slotOf.size()) table.slotOf[size_t(id)]=-1;
-        id=-1;
+        slot=int(i);
+        break;
     }
-    int slot=retailAllocateSlot(int(pool.size()),allocated,[&](int index){return pool[size_t(index)]>=0;},
-        [&]{return crtRand(0x5121dd);});
     // Retail refuses the creation instead. Engine caps count live units only,
     // may exceed retail's 500 and an uncapped world has none, so a full pool
-    // grows by the one slot this unit needs (no draw): a pool is only ever as
-    // large as its player's most records held at once demands, so normal
-    // games scan exactly retail's pool.
+    // grows by the one slot this unit needs: a pool is only ever as large as
+    // its player's most units alive at once demands, so normal games scan
+    // exactly retail's block.
     if (slot<0) { slot=int(pool.size());pool.push_back(-1); }
     pool[size_t(slot)]=unitId;
     if (table.slotOf.size()<=size_t(unitId)) table.slotOf.resize(size_t(unitId)+1,-1);
@@ -824,24 +827,10 @@ void World::transferEntitySlot(Unit& u,int newPlayer) {
     allocateEntitySlot(u.id,newPlayer);
 }
 
-// TotalA.exe 0x485fea..0x486051: the first slot of the owner's block whose
-// type word (+0xa6) is 0. The death clears it (0x486dc7), so a slot is free
-// here once its unit is gone, dead, or (a change of owner, whose old object
-// dies, 0x4886a4) another player's.
-void World::allocateTaSlot(int unitId,int player) {
-    auto& slots=taUnitSlots_[size_t(player)];
-    for (int& id:slots) {
-        const Unit* holder=id ? unit(id) : nullptr;
-        if (!holder || !holder->alive() || holder->player!=player) { id=unitId;return; }
-    }
-    slots.push_back(unitId);
-}
-
 // TotalA.exe 0x40b2c0 -> 0x40aa40 for every player, once every 30 ticks: the
 // own active air pads (AIPlayer +0x25) in unit-array order, which within one
-// player is its slot order (allocateTaSlot). Retail runs it in the player loop
-// (0x464f80, 0x465037) after the units' missions; World runs it before them,
-// with the economy settle, which retail runs from the same loop.
+// player is its slot order (allocateEntitySlot). Retail runs it in the player loop
+// (0x464f80, 0x465037) after the units' missions; so does World.
 void World::refreshAirPadCaches() {
     for (int p=0;p<numPlayers() && p<kMaxPlayers;++p) {
         auto& cache=airPadCaches_[size_t(p)];
@@ -857,8 +846,8 @@ void World::refreshAirPadCaches() {
             for (const Unit& pad:units_) take(pad);
             continue;
         }
-        for (const int id:taUnitSlots_[size_t(p)])
-            if (const Unit* pad=id ? unit(id) : nullptr) take(*pad);
+        for (const int id:entitySlots_.unitAt[size_t(p)])
+            if (const Unit* pad=id>=0 ? unit(id) : nullptr) take(*pad);
     }
 }
 
@@ -891,7 +880,6 @@ int World::spawn(const UnitType* type, float x, float z, std::optional<float> he
     } else {
         u.id=nextId_++;
         allocateEntitySlot(u.id,player);
-        allocateTaSlot(u.id,player);
     }
     players_[size_t(player)].unitCount++;   // keep the cap count exact within a tick
     players_[size_t(player)].built++;        // end-of-game "Units" column
@@ -1761,10 +1749,9 @@ void World::replaceLeg(Unit& u, const std::vector<Order>& path) {
             o.productionExit = tmpl.productionExit;
             o.groundResponse = tmpl.groundResponse;
             o.formationLevel = tmpl.formationLevel; o.attackFormation = tmpl.attackFormation;
-            o.reclaimAreaApproach = tmpl.reclaimAreaApproach;
-            o.suppress = tmpl.suppress; o.suppressFeature = tmpl.suppressFeature;
+            o.suppress = tmpl.suppress;
             o.suppressSlot = tmpl.suppressSlot; o.suppressReach = tmpl.suppressReach;
-            o.suppressApproach = tmpl.suppressApproach; o.suppressInner = tmpl.suppressInner;
+            o.suppressApproach = tmpl.suppressApproach;
             if (tmpl.suppress || tmpl.suppressApproach) { o.attackPointX = tmpl.attackPointX; o.attackPointZ = tmpl.attackPointZ; }
             o.controller = tmpl.controller;
             o.park = tmpl.park;
@@ -1845,8 +1832,7 @@ bool World::setRally(Unit& u, const Order& o, bool queue) {
 // raise) never match.
 World::QueuedKind World::queuedKind(const Order& o) {
     if (!o.goal || o.scripted || o.airPad || o.landing || o.formationLevel || o.seekGuard || o.seekAttack ||
-        o.reclaimAreaApproach || o.patrolRepair || o.guardRepair || o.wait ||
-        o.waitAttack || o.reclaimArea)
+        o.patrolRepair || o.guardRepair || o.wait || o.waitAttack)
         return QueuedKind::None;
     // SUPPRESS and a flyer's attack at a point (+0x22); the approach SUPPRESS
     // puts ahead of itself is part of that order, never matched on its own.
@@ -1969,7 +1955,7 @@ void World::insertOrderFront(int unitId, bool rally, const std::function<void()>
             continue;
         }
         // SUPPRESS's approach goes: the order's stage 4 puts it back if needed.
-        if (o.goal && !o.airPad && !o.landing && !o.formationLevel && !o.reclaimAreaApproach && !o.guardRepair &&
+        if (o.goal && !o.airPad && !o.landing && !o.formationLevel && !o.guardRepair &&
             !o.suppressApproach)
             break;
         ++first;
@@ -2240,7 +2226,7 @@ Order* World::groundMissionOrder(Unit& u, bool includeCombatMoves) {
     const auto plain = [includeCombatMoves](const Order& o) {
         return !o.targetId && (includeCombatMoves || (!o.attackMove && !o.patrol)) && !o.guard && !o.load &&
                (!o.unload || o.transportUnloadApproach) &&
-               !o.buildType && !o.reclaimFeat && !o.reclaimArea && !o.repairTarget && !o.wait && !o.waitAttack && !o.scripted && !o.suppress;
+               !o.buildType && !o.reclaimFeat && !o.repairTarget && !o.wait && !o.waitAttack && !o.scripted && !o.suppress;
     };
     if (!plain(u.orders.front())) return nullptr;
     Order& goal = u.orders[currentLeg(u.orders)];
@@ -2252,21 +2238,6 @@ Order* World::navigationMissionOrder(Unit& u) {
     if (!u.type || u.type->canFly || u.orders.empty()) return nullptr;
     auto& goal=u.orders[currentLeg(u.orders)];
     return goal.buildRectangle || goal.load ? &goal : nullptr;
-}
-
-// SUPPRESS's ring approach (4d4e10, the 4e28f0 ring controller PARK uses):
-// round the point's footprint origin for this unit (the approach keeps the
-// point in attackPointX/Z; x/z steer to the ring), from the inner radius out
-// to the order's circle radius (missionRadius + 4).
-static RetailRingGoal suppressRingGoal(const Unit& u,const Order& goal) {
-    const int outer=std::bit_cast<int32_t>(goal.missionRadius+4u);
-    return {footprintOrigin(goal.attackPointX,u.type->footX),footprintOrigin(goal.attackPointZ,u.type->footZ),
-            goal.suppressInner,outer,retailCircleRadiusSquared(outer)};
-}
-
-std::optional<RetailRingGoal> World::suppressRing(const Unit& u,const Order& goal) const {
-    if (!goal.suppressApproach || goal.suppressInner<=0) return std::nullopt;
-    return suppressRingGoal(u,goal);
 }
 
 bool World::groundMissionAccepts(const Unit& u,const Order& goal) {
@@ -2292,9 +2263,6 @@ bool World::groundMissionAccepts(const Unit& u,const Order& goal) {
         const int dz=footprintOrigin(u.z,u.type->footZ)-goal.park->spot->second;
         return std::abs(dx)<=1 && std::abs(dz)<=1;
     }
-    // SUPPRESS's ring approach (4d4e10) arrives inside its band only.
-    if (goal.suppressApproach && goal.suppressInner>0)
-        return suppressRingGoal(u,goal).accepts(footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
     return goal.park && goal.park->ring
         ? goal.park->ring->accepts(footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ))
         : circle.accepts(footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
@@ -3448,7 +3416,7 @@ static bool legionStationOrder(const Unit& u) {
     if (u.orders.empty() || u.retailBuild) return false;
     const Order& o=u.orders.front();
     if (o.targetId || o.load || o.unload || o.guard || o.wait>0 || o.waitAttack || o.buildType ||
-        o.reclaimFeat || o.reclaimArea || o.repairTarget || o.patrolRepair ||
+        o.reclaimFeat || o.repairTarget || o.patrolRepair ||
         o.landing || o.transportPickup || o.buildRectangle || o.formationLevel) return false;
     return o.flightMoveMission || o.attackMove || o.patrol;
 }
@@ -4382,13 +4350,6 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 // alone loses this request until some later retry happens.
                 w.requestPath(u,goal.x.toFloat(),goal.z.toFloat());
             };
-            // 4067ae: RECLAIMAREA's approach installs 4d4da0(point,4) with wait
-            // mask 0x700, and its next stage runs on arrival (0x500), failure
-            // (0x200) or detachment alike. No radius growth, no group pacing.
-            if (goal.reclaimAreaApproach) {
-                if (m.stage==0) { resetGoal(4); m.waitMask=0x700; return 1; }
-                return 5;
-            }
             // SUPPRESS's approach (its stage 4: 4d4e10 / 4d4da0, wait 0x700):
             // the order behind it takes over on arrival or failure alike.
             if (goal.suppressApproach) {
@@ -4759,8 +4720,7 @@ bool World::requestPath(Unit& u, float x, float z) {
                    tolerance, mission ? mission->controller : 0,
                    mission ? retailCircleRadiusSquared(tolerance) : 0,
                    u.orders.empty() ? std::nullopt : u.orders[currentLeg(u.orders)].buildRectangle,
-                   mission && mission->park ? mission->park->ring :
-                   mission ? suppressRing(u,*mission) : std::nullopt);
+                   mission && mission->park ? mission->park->ring : std::nullopt);
     // 4e4f50 clears prior outcome bits only when first marking a request pending.
     if (newlyPending) u.routeCrowded=u.routeTraffic=u.routeFailed=u.routeDetour=false;
     return true;
@@ -8247,7 +8207,7 @@ static bool movementQueued(const Unit& u) {
     if (u.orders.size()<2) return false;
     const Order& o=u.orders[1];
     return !o.targetId && !o.guard && !o.load && !o.unload && !o.buildType && !o.reclaimFeat &&
-        !o.reclaimArea && !o.repairTarget && !o.wait && !o.waitAttack;
+        !o.repairTarget && !o.wait && !o.waitAttack;
 }
 
 bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
@@ -9794,28 +9754,25 @@ bool World::tickAttackWalk(Unit& u) {
     return true;
 }
 
-World::SuppressRule World::suppressRule(const UnitType& t, int weaponSlot) {
+// TotalA.exe's resolver 0x43f0e0, an ATTACK at a point (no target): slot
+// 0's weapon (unit +0x10) decides. toairweapon (weapon +0x111 bit 17) gives
+// no order (0x43f17e -> 0x4401dc); a flyer (type +0x241 bit 11) takes the
+// air branch (0x43f1b7: AirStrike / AirToGroundHover / AirToGround), any
+// other unit SUPPRESS (0x43f1a3).
+World::SuppressRule World::suppressRule(const UnitType& t, int) {
     if (t.weapons.empty()) return SuppressRule::None;
-    // 4c18d7..4c18ff: an armed type with bmcode 0 (+0x24a) and a canbuild menu
-    // (+0x12e > 0) loses canattack at load, and 4de62d then gives no order.
     if (attackStrippedAtLoad(t)) return SuppressRule::None;
-    // 4de530 kind 3 with a point, by the selected slot's weapon (519ac0: a
-    // switcher's selected slot, else the first).
-    const int n=int(std::min<size_t>(3,t.weapons.size()));
-    const int slot=t.weaponSwitching ? std::clamp(weaponSlot,0,n-1) : 0;
-    const Weapon& w=t.weapons[size_t(slot)];
-    if (w.toAir) return SuppressRule::None;       // 4de673: no order
-    if (t.canFly) return t.isStructure() ? SuppressRule::None : SuppressRule::Fire;   // 4de684: the airstrike branch (Order::airPoint)
-    // 4de68a..4de6eb: a melee weapon only over a clearable blocker.
-    return w.melee ? SuppressRule::OverBlocker : SuppressRule::Fire;
+    const Weapon& w=t.weapons.front();
+    if (w.toAir) return SuppressRule::None;
+    if (t.canFly) return t.isStructure() ? SuppressRule::None : SuppressRule::Fire;
+    return SuppressRule::Fire;
 }
 
-bool World::suppressAccepts(int unitId, float x, float z) const {
+bool World::suppressAccepts(int unitId, float, float) const {
     const Unit* u=unit(unitId);
     if (!u || !u->alive() || !u->type) return false;
     switch (suppressRule(*u->type,u->weaponSlot)) {
     case SuppressRule::Fire: return true;
-    case SuppressRule::OverBlocker: return clearableBlockerAt(Fixed::fromFloat(x),Fixed::fromFloat(z));
     default: return false;
     }
 }
@@ -9824,8 +9781,7 @@ bool World::suppress(int unitId, float x, float z, bool queue) {
     OrdersNote note{*this,unitId};
     if (!suppressAccepts(unitId,x,z)) return false;
     Unit* u=unit(unitId);
-    const int n=int(std::min<size_t>(3,u->type->weapons.size()));
-    const int slot=u->type->weaponSwitching ? std::clamp(u->weaponSlot,0,n-1) : 0;
+    const int slot=0;   // the click's mission parameter +0x36 (AttackSpecial is the D-gun)
     const Fixed px=Fixed::fromFloat(x),pz=Fixed::fromFloat(z);
     if (!queue) {
         u->orders.clear();
@@ -9871,149 +9827,76 @@ void World::seekLostPoint(Unit& u,Fixed x,Fixed z) {
     tickSeekAttack(u,false);
 }
 
-// 4d4e10 (a minimum range: the ring from `inner` out to `outer`) or 4d4da0
-// (the circle of radius `outer`) round the point, as a ground move ahead of
-// the SUPPRESS order (tickGroundMission runs it, wait 0x700).
-void World::pushSuppressApproach(Unit& u,Fixed x,Fixed z,int32_t outer,int32_t inner) {
+// Suppress's approach (0x438930: a circle of radius `outer` on the point,
+// wait 0xe0), as a ground move ahead of the order (tickGroundMission runs it,
+// on World's navigator events 0x700); the order behind it runs its stage 1
+// on arrival or failure alike.
+void World::pushSuppressApproach(Unit& u,Fixed x,Fixed z,int32_t outer) {
     Order a{x,z,0};
     a.goal=a.groundMission=a.suppressApproach=true;
     a.issuedTick=tickCounter_;
     a.missionRadius=uint32_t(outer)-4u;
-    a.suppressInner=std::max(0,inner);
     a.attackPointX=x;a.attackPointZ=z;
-    if (a.suppressInner>0) {
-        const auto point=suppressRingGoal(u,a).navigationPoint(u.x,u.z,u.type->footX,u.type->footZ);
-        a.x=point.x;a.z=point.z;
-    }
     a.controller=++nextMovementController_;
     cancelPath(u);
     u.orders.insert(u.orders.begin(),a);
     resetGroundSegment(u,u.orders.front());
 }
 
+// TotalA.exe Suppress (0x4038a0, ground row 4; handler args unit, mission,
+// events). TA's unit event word carries a slot's shot as 0x400 (0x800 for a
+// commandfire weapon) and a refused aim as 0x1000 (0x49e4f2..0x49e50b,
+// 0x49d664); World posts them as 0x10000 / 0x40000 / 0x100000.
+//   head:    0x800 (a commandfire shot) ends the order (0x4038a7).
+//   stage 0: a flyer -> 8 (type +0x241 bit 11, 0x4039e3); the reach
+//            (+0x3a) is the slot's range (0x49adf0: weapon +0xdc). 1.
+//   stage 1: slot 2: every slot manual (0x4898b0(3)) and slot 2 on the
+//            point (0x48a0a0); else slots 0 and 1 manual and both on the
+//            point (0x40399c..0x4039c2), slot 2 left as it was. Wait 0x1c00.
+//   stage 2: every slot automatic (0x489800(3)); a shot -> stage 1 and to
+//            the back of the list (6, 0x4038eb); else no mover or no reach
+//            left -> 9; else a circle of radius reach on the point
+//            (0x438930, wait 0xe0), reach -= rand(range / 3) (0x40392e..
+//            0x403957), stage 1, 4.
+// No feature, melee, minimum-range or weapon-switch branch: those were
+// Kingdoms' SUPPRESS (KINGDOMS.icd 4040b0).
 int World::suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events) {
     const int n=int(std::min<size_t>(3,u.type->weapons.size()));
     if (!n) return 5;
-    // Head: a switcher fires its selected slot (519ac0), any other unit the
-    // order's (+0x4e). Event 0x40000 (a commandfire shot) ends the order.
-    const int slot=u.type->weaponSwitching ? std::clamp(u.weaponSlot,0,n-1) : std::min(int(o.suppressSlot),n-1);
+    const int slot=std::min(int(o.suppressSlot),n-1);
     const Weapon& w=u.type->weapons[size_t(slot)];
-    const bool melee=w.melee;
     if (events&0x40000u) return 5;
-    // No group check: TotalA.exe's Suppress (0x4038a0, registry row flags
-    // 0x410) goes from its event exit straight to its stages, and TA has no
-    // formation missions at all (no Move_Ground_Formation / VTOL_Move_Formation
-    // row or name in TotalA.exe). Kingdoms' SUPPRESS walked an outlier back to
-    // its group ahead of the order (its 404e12 group check); TA's never does.
     switch (m.stage) {
     case 0:
         if (u.type->canFly) return 8;
-        o.suppressReach=w.range-w.minRange;   // 52aba0 - 52abd0
+        o.suppressReach=w.range;
         return 1;
     case 1: {
-        std::array<int,4> foot{};
-        const bool feature=clearableBlockerAt(o.attackPointX,o.attackPointZ,&foot);
-        if (!melee) {
-            // A ranged unit fires at a clearable blocker there until it is
-            // gone, or at bare ground for ever.
-            if (feature) { o.suppressFeature=true; return 1; }
-            return o.suppressFeature ? 5 : 1;
+        const RetailGroundPoint p{int16_t(o.attackPointX.v>>16),int16_t(o.attackPointZ.v>>16)};
+        u.slotManual=kSlotsAttack;
+        o.mixedSlots=true;
+        if (slot==2) {
+            for (int s=0;s<3;++s) setSlotMode(u,s,false);
+            setSlotPoint(u,2,p);
+        } else {
+            for (int s=0;s<std::min(n,2);++s) setSlotMode(u,s,false);
+            for (int s=0;s<std::min(n,2);++s) setSlotPoint(u,s,p);
         }
-        if (!feature) return 5;
-        // 4930d0 + 4d4e80: RECLAIM's rectangle round the feature, on this
-        // order (as prepareReclaimApproach); wait 0x740.
-        o.suppressFeature=true;
-        m.waitMask=0x740;
-        if (!u.type->canMove || u.type->isStructure() || u.type->canFly) { m.pending|=0x200; return 1; }
-        o.buildRectangle=retailReclaimRectangle(foot[0],foot[1],foot[2],foot[3],u.type->footX,u.type->footZ);
-        const auto [cx,cz]=o.buildRectangle->navigationCell(
-            footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
-        o.x=Fixed::fromInt(cx*16+u.type->footX*8);
-        o.z=Fixed::fromInt(cz*16+u.type->footZ*8);
-        o.segmentX=Fixed::fromInt(u.x.floorInt());
-        o.segmentZ=Fixed::fromInt(u.z.floorInt());
-        o.hasSegment=true;
-        o.controller=++nextMovementController_;
-        o.navigationExhausted=o.navigationConsumed=false;
-        m.pending&=~0x3700u;
-        if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
-        cancelPath(u);
-        requestPath(u,o.x.toFloat(),o.z.toFloat());
+        m.waitMask=0x150000;
         return 1;
     }
     case 2: {
-        if (!melee) return 1;
-        if (events&0x40) { m.sleep(tickCounter_,1); return 0; }
-        if (!(events&0x100)) return 9;    // the approach failed
-        // Arrived: the rectangle is spent. Then the point is walked toward
-        // the unit 8 px at a time (51b340, 5360bf / 5360f3) until the slot
-        // reaches it, at most 100 steps.
-        o.buildRectangle.reset();o.controller=0;o.navigationExhausted=o.navigationConsumed=false;
-        cancelPath(u);
-        auto reaches=[&] { return slotReachesPoint(u,{o.attackPointX.v,0,o.attackPointZ.v},slot); };
-        if (reaches()) return 1;
-        int steps=0;
-        for (;;) {
-            if (steps>=100) return 8;
-            const uint16_t h=uint16_t(retailDirection(o.attackPointX-u.x,o.attackPointZ-u.z).v);
-            o.attackPointX=Fixed::raw(satSub32(o.attackPointX.v,retailScaledSine(h,0x80000)));
-            o.attackPointZ=Fixed::raw(satSub32(o.attackPointZ.v,retailScaledCosine(h,0x80000)));
-            ++steps;
-            if (reaches()) return steps<100 ? 1 : 8;
-        }
-    }
-    case 3: {
-        // Every slot manual (519b70(3)); the selected slot aimed at the point
-        // (51a770, whole px), and a non-switcher's other slots too -- a
-        // melee one only when the selected weapon is melee.
-        setSlotsManual(u,kSlotsAttack);
-        const RetailGroundPoint p{int16_t(o.attackPointX.v>>16),int16_t(o.attackPointZ.v>>16)};
-        setSlotPoint(u,slot,p);
-        if (!u.type->weaponSwitching)
-            for (int s=0;s<n;++s)
-                if (s!=slot && (melee || !u.type->weapons[size_t(s)].melee)) setSlotPoint(u,s,p);
-        m.waitMask=0x150040;
-        return 1;
-    }
-    case 4: {
-        if (events&0x10000u) {
-            // The selected (or first) slot fired (530140). On a feature
-            // until it is gone; at the ground, to the back of the queue: alone
-            // it fires again, Shift-queued points take turns.
-            if (o.suppressFeature) {
-                if (!clearableBlockerAt(o.attackPointX,o.attackPointZ)) return 5;
-                m.stage=3;m.sleep(tickCounter_,1);
-                return 4;
-            }
-            m.stage=3;
-            return 6;
-        }
-        if (events&0x40) { m.sleep(tickCounter_,1); return 0; }   // a weapon switch
-        // 0x100000: the aim start refused the point (inside the minimum range
-        // or out of reach). Every slot automatic (519b10(3)); no mover (a
-        // structure) looks again after 30 + rand(30) ticks when alone (9, 0x43b94f).
-        setSlotsAuto(u);
+        for (int s=0;s<3;++s) setSlotMode(u,s,true);
+        if (events&0x10000u) { m.stage=1; return 6; }
         if (!u.type->canMove || u.type->isStructure()) return 9;
-        const int32_t range=w.range,minimum=w.minRange,span=range-minimum;
-        // Retail compares the reach left with the REMAINDER of span / 3.
-        if (!(o.suppressReach>span%3)) return 9;
+        if (o.suppressReach<=0) return 9;
         const Fixed px=o.attackPointX,pz=o.attackPointZ;
-        int32_t outer=0,inner=0;
-        if (minimum>0) {
-            inner=int32_t(gameRand(span/6))+minimum;
-            outer=o.suppressReach+minimum;
-            // 4054ee..405505: reach left -= span / 3 (0x55555555 multiply).
-            int32_t d=(int32_t((int64_t(0x55555555)*span)>>32)-span)>>1;
-            d+=int32_t(uint32_t(d)>>31);
-            o.suppressReach+=d;
-        } else {
-            outer=o.suppressReach;
-            o.suppressReach-=int32_t(gameRand(range/3));
-        }
-        m.stage=3;
+        const int32_t outer=o.suppressReach;
+        o.suppressReach-=int32_t(gameRand(w.range/3));
+        m.stage=1;
         // Inserting invalidates o and m: the stage is set first, and the
         // dispatcher touches m no more on 4.
-        pushSuppressApproach(u,px,pz,outer,inner);
+        pushSuppressApproach(u,px,pz,outer);
         return 4;
     }
     default:
@@ -10054,7 +9937,6 @@ bool World::tickSuppress(Unit& u,bool& groundMovementHandled) {
     if (u.orders.empty()) return false;
     const size_t leg=currentLeg(u.orders);
     if (!u.orders[leg].suppress) return false;
-    if (u.orders[leg].buildRectangle) return false;   // a melee walk to its feature
     // Arrived: the route corners of the walk go, the order is the leg.
     if (leg) { u.orders.erase(u.orders.begin(),u.orders.begin()+long(leg)); noteOrders(u.id); }
     // The order holds the body: a mover stands and pivots to the facing
@@ -10287,7 +10169,6 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     ++players_[size_t(newPlayer)].unitCount;
     // The new object (512060 -> 511f60 -> 511990), in its draw order.
     transferEntitySlot(u,newPlayer);
-    if (!retailAllocation_ && validUnitOwner(newPlayer)) allocateTaSlot(u.id,newPlayer);
     u.player = newPlayer;
     gPlayersValid_ = false;
     gameRand(int32_t(u.type->buildAngle));            // 511baa: the birth heading, overwritten (+0x7e)
@@ -12383,7 +12264,7 @@ void World::cancelBuilds(int builderId) {
     const bool groundHelp=b->type && !b->type->canFly;
     b->orders.erase(std::remove_if(b->orders.begin(), b->orders.end(),
                                    [groundHelp](const Order& o) {
-                                       return o.buildType != nullptr || o.reclaimFeat != 0 || o.reclaimArea ||
+                                       return o.buildType != nullptr || o.reclaimFeat != 0 ||
                                               o.repairTarget != 0 || (groundHelp && o.helpSite != 0);
                                    }),
                     b->orders.end());
@@ -12828,147 +12709,6 @@ void World::tickBurning() {
     });
 }
 
-void World::reclaimArea(int builderId,float x0,float z0,float x1,float z1,bool queue) {
-    OrdersNote note{*this,builderId};
-    Unit* b=unit(builderId);
-    if (!b || !b->alive() || !b->type || !b->type->isBuilder ||
-        !b->type->canMove || !b->type->canReclaim ||
-        !std::isfinite(x0) || !std::isfinite(z0) || !std::isfinite(x1) || !std::isfinite(z1)) return;
-    const float limitX=float(std::max(0,hW_-1)*16),limitZ=float(std::max(0,hH_-1)*16);
-    RetailReclaimArea area;
-    area.minX=Fixed::fromFloat(std::clamp(std::min(x0,x1),0.0f,limitX)).v;
-    area.maxX=Fixed::fromFloat(std::clamp(std::max(x0,x1),0.0f,limitX)).v;
-    area.minZ=Fixed::fromFloat(std::clamp(std::min(z0,z1),0.0f,limitZ)).v;
-    area.maxZ=Fixed::fromFloat(std::clamp(std::max(z0,z1),0.0f,limitZ)).v;
-    if (!queue) { cancelPath(*b); b->orders.clear(); }
-    Order o;
-    o.x=Fixed::raw(area.minX);o.z=Fixed::raw(area.minZ);
-    o.goal=true;o.issuedTick=tickCounter_;o.reclaimArea=area;
-    b->orders.push_back(o);
-}
-
-void World::tickReclaimArea(Unit& b) {
-    if (b.orders.empty() || !b.orders.front().reclaimArea) return;
-    auto& area=*b.orders.front().reclaimArea;
-    // 40681b: stage 0 records where the builder stands when the order first
-    // runs (not when it was issued) as the last target, then sleeps a tick.
-    if (area.stage==0) {
-        area.lastX=b.x.v;area.lastZ=b.z.v;area.stage=1;
-        return;
-    }
-    // 4067ae: stage 1 approaches the builder's position clamped into the box,
-    // even from inside it (that circle is satisfied on the next navigator
-    // pass), and stage 2 runs when the approach arrives or fails.
-    if (area.stage==1) {
-        area.stage=2;
-        const Fixed x=Fixed::raw(std::clamp(b.x.v,area.minX,area.maxX));
-        const Fixed z=Fixed::raw(std::clamp(b.z.v,area.minZ,area.maxZ));
-        if (b.type->canFly) {
-            // VTOL_RECLAIMAREA (420c10) is not ported: flyers keep a plain move.
-            if (x==b.x && z==b.z) return;
-            auto pending=std::move(b.orders);
-            b.orders.clear();
-            order(b.id,x.toFloat(),z.toFloat(),true);
-            b.orders.insert(b.orders.end(),std::make_move_iterator(pending.begin()),
-                            std::make_move_iterator(pending.end()));
-            return;
-        }
-        Order approach{x,z,0};
-        approach.goal=approach.groundMission=approach.reclaimAreaApproach=true;
-        approach.issuedTick=tickCounter_;
-        approach.controller=++nextMovementController_;
-        cancelPath(b);
-        b.orders.insert(b.orders.begin(),approach);
-        resetGroundSegment(b,b.orders.front());
-        return;
-    }
-    // 509cc0's fog test (509d9f..509e6d), for the builder's own player so it
-    // is the same on every peer. Current view: the allied sight footprints,
-    // re-evaluated on demand (never the client's async display fog). Explored:
-    // the simulation's Mapping plane, or the whole map when the room (or a
-    // power code) revealed it. Without line of sight only explored counts.
-    const int width=hW_/2,height=hH_/2;
-    const bool losOn=!roomLosOff_ && !powerLosOff(b.player);
-    const bool allExplored=(roomMapRevealed_ && !powerCodes_) || powerMappingOff(b.player);
-    const bool planeExplored=navigationExplored_.size()==size_t(width)*height;
-    std::vector<uint8_t> visible;
-    if (losOn) {
-        visible.assign(size_t(width)*height,0);
-        TA_PASS();
-        for (const auto& u:units_) {
-            // Cargo footprints are live too (4f6a60 has no attachment test).
-            if (!u.alive() || !u.type || u.underConstruction || !allied(u.player,b.player)) continue;
-            RetailSightFootprint sight=u.sightFootprint;
-            sight.active=false;
-            // Before the first exploration pass, initialize the same authored sight.
-            if (sight.x<0 || sight.z<0) {
-                sight.distance=int16_t(sightDistance(*u.type));sight.sightHeight=u.type->sightHeight;
-                sight.x=int16_t(u.x.floorInt()/32);sight.z=int16_t(u.z.floorInt()/32);
-                const Fixed y=u.type->canFly?u.flightY:u.groundY;
-                sight.eyeHeight=std::max(y.floorInt(),seaLevel_+1)+sight.sightHeight;
-            }
-            retailSightFootprint(sight,true,false,width,height,uint8_t(b.player),
-                [&](int x,int z){return explorationHeights_[size_t(z)*width+x];},
-                [&](int x,int z,int,uint16_t){visible[size_t(z)*width+x]=1;},
-                [&](int x,int z,bool){return !visible[size_t(z)*width+x];});
-        }
-    }
-    const auto seen=[&](int cx,int cz) {
-        const int vx=cx/2,vz=cz/2;
-        if (vx>=width || vz>=height) return false;
-        const size_t cell=size_t(vz)*width+vx;
-        const bool explored=allExplored || (planeExplored && (navigationExplored_[cell]>>b.player & 1));
-        // The owner byte of the SAMPLED cell, before any tail resolves.
-        const uint8_t owner=mapPlacementCells_.empty() ? kRetailWorldFeatureOwner
-            : mapPlacementCells_[size_t(cz)*hW_+cx].owner;
-        return retailReclaimAreaSeen(losOn,losOn && visible[cell],explored,owner);
-    };
-    // Resolve footprint cells to their actual anchor. Selecting only centres
-    // misses multi-cell trees and rubble intersecting the selection rectangle.
-    std::unordered_map<int,int> targets;
-    for (const auto& f:features_) {
-        if (!f.alive || !f.id || f.fadeLeft || f.dieLeft) continue;
-        if (f.type>=0 && (size_t(f.type)>=featTypes_.size() || !featTypes_[size_t(f.type)].reclaimable)) continue;
-        const int x=footprintOrigin(f.x,f.fx),z=footprintOrigin(f.z,f.fz);
-        targets.emplace(z*hW_+x,f.id);
-    }
-    for (const auto& [id,p]:corpseFootprints_) {
-        const Unit* corpse=unit(id);
-        if (!corpse || corpse->alive() || corpse->deadFor>=corpse->corpseUntil || corpse->corpseFading ||
-            p.type<0 || size_t(p.type)>=featTypes_.size() || !featTypes_[size_t(p.type)].reclaimable) continue;
-        targets.emplace(p.z*hW_+p.x,-id);
-    }
-    auto targetAt=[&](int32_t x,int32_t z) {
-        const int cx=x>>20,cz=z>>20;
-        if (cx<0 || cz<0 || cx>=hW_ || cz>=hH_ || !seen(cx,cz)) return 0;
-        int ax=cx,az=cz;
-        if (!mapPlacementCells_.empty()) {
-            const auto& cell=mapPlacementCells_[size_t(cz)*hW_+cx];
-            if (cell.feature==0xfffe) {ax-=cell.backX;az-=cell.backZ;}
-            else if (cell.feature>=mapPlacementTypes_.size()) return 0;
-        }
-        const auto found=targets.find(az*hW_+ax);
-        return found==targets.end()?0:found->second;
-    };
-    const auto pick=retailReclaimAreaPick(area,b.x.v,b.z.v,hW_,hH_,
-        [&](int32_t x,int32_t z){return targetAt(x,z)!=0;});
-    // 5: nothing left to clear. 8: the pick is the last target's cell again
-    // (its child just ended without clearing it, say it was unreachable).
-    if (pick.step!=RetailReclaimAreaStep::Child) { b.orders.erase(b.orders.begin());return; }
-    const int target=targetAt(pick.x,pick.z);
-    area.stage=1;
-    // Keep the area behind one ordinary reclaim child. When the child ends
-    // (cleared, failed, or another builder removed the feature) stage 1
-    // approaches again and picks from the NEW position.
-    // 4de530 mode 12 resolves the child as a right-click does: a body the
-    // builder can raise is RESURRECT (resurrect, else animate), anything
-    // else RECLAIM.
-    const size_t oldSize=b.orders.size();
-    if (target<0 && reviveKind(b.id,-target)) resurrect(b.id,-target,true);
-    else reclaim(b.id,target,true);
-    if (b.orders.size()>oldSize) std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
-    else b.orders.erase(b.orders.begin());   // 4de530 found no mission: 8
-}
 
 void World::reclaim(int builderId, int featureId, bool queue) {
     OrdersNote note{*this,builderId};
@@ -16637,9 +16377,9 @@ void World::tickAbilities(float) {
     };
 
     // Nothing raises or clears a body on its own. Retail creates a
-    // Resurrect, Reclaim or ReclaimArea task only from an order (the resolver
-    // 0x4de530, modes 1 and 12, reached from the player's command path, a
-    // scripted initial mission or a ReclaimArea's own child); its idle Standby
+    // Resurrect or Reclaim task only from an order (the resolver 0x43f0e0,
+    // reached from the player's command path or a scripted initial
+    // mission); its idle Standby
     // never does, and neither does ours. What is left is the channel of a RESURRECT leg, which
     // tickReclaim starts once the caster has walked, turned and taken its
     // stance (Unit::reviveTarget).
@@ -19655,18 +19395,15 @@ void World::sweepDeath(Unit& u, int taKind) {
     // Killed decides corpse admission; Dying controls when the original
     // body retires. Only then does decomposition or water sinking begin.
     {
-        // Retail severity (icd 0x512610): ((overkill% + HP% one second
-        // before death) / 2), clamped 1..100, in whole numbers
-        // (retailDeathSeverity); 1 for self-destruct and 0 for the kinds no
-        // attack causes. Passed to the COB Killed.
-        // TotalA.exe's death sender (0x4864b0, retailTaDeathSeverity) for
-        // the TA-shaped kinds: a self-destruct or the commander rule (3), a
-        // carrier's passenger (6) and a reclaim (5).
-        const bool taShaped=u.deathType==Unit::kDeathSelfDestruct || u.deathType==Unit::kDeathPassenger ||
-                            u.deathType==Unit::kDeathReclaim;
-        u.severity = taShaped
-            ? retailTaDeathSeverity(kind, retailHpWord(-u.overkill.floorInt()), u.maximumHp(), u.hpPct1s)
-            : retailDeathSeverity(u.deathType, retailHpWord(-u.overkill.floorInt()), u.maximumHp(), u.hpPct1s);
+        // TotalA.exe's death sender (0x4864b0, retailTaDeathSeverity) on
+        // the TA kind: 0 for a change of owner, a reclaim, a feature
+        // conversion and a decay (0x48653d..0x48654d), else the overkill
+        // (-HP x 100 over maxdamage) plus the sample of a second before,
+        // halved, in 1..100 (0x486552..0x4865a4), passed to the COB Killed
+        // (0x4865c3). An engine cause with no TA kind (a scripted removal)
+        // runs no Killed.
+        u.severity = kind==tadeath::kNone ? 0
+            : retailTaDeathSeverity(kind, retailHpWord(-u.overkill.floorInt()), u.maximumHp(), u.hpPct1s);
         // Dying while petrified/frozen leaves the FBI stone=/frozen=
         // STATUE feature instead of the corpse (retail deathType 0xE/0xF
         // path, 0x512d2a) -- blocking, permanent, and resurrectable
@@ -20350,10 +20087,6 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
         // They have no movement controller: even a zero-speed navigator turns
         // the body while steering. Keep script-driven turrets independent.
         if (u.type->isStructure()) return;
-        // RECLAIMAREA moves only through its own approach leg and its child
-        // reclaims. The area order is no destination (its x/z are the box's
-        // corner): never route to it, steer at it or retire it on arrival.
-        if (u.orders.front().reclaimArea && !u.type->canFly) { brakeGround(u); return; }
         // Goal satisfaction belongs to the mission, independently of the
         // navigator's next intermediate point (retail 0x4e5150). A stale
         // waypoint can be occupied even after we have reached the goal area.
@@ -20939,8 +20672,6 @@ void World::tick(float dt) {
         tm.constructionAllocation=demand>tm.mana ? (tm.mana>0 ? tm.mana/demand : 0.0) : 1.0;
         tm.constructionDemand=0;
     }
-    // The AIPlayer records' air pad lists (0x40b2c0, the same player loop).
-    refreshAirPadCaches();
     // Total Annihilation metal/energy: each player settles once a second.
     taEconomyTick();
 
@@ -21783,7 +21514,6 @@ void World::tick(float dt) {
         if (!u.orders.empty() && u.orders.front().buildType && !u.orders.front().buildRectangle && u.buildSiteId == 0 &&
             !u.orders.front().placementFailures)
             buildDue_.push_back(u.id);
-        tickReclaimArea(u);
         // Reclaim needs no deferral: consuming a feature spawns nothing, so
         // nothing can reallocate units_ underneath us. Its stage 0 runs as
         // soon as the leg is current, before the mover (406250, 4d4e80).
@@ -21965,6 +21695,11 @@ void World::tick(float dt) {
     buildDue_.clear();
 
     // Retail runs player bookkeeping after unit updates and before wind.
+    // The AIPlayer records' air pad lists: TotalA.exe's tick 0x495490 runs the
+    // units (0x48ad30, 0x4954ed) and then the scheduler and player loop
+    // (0x464f80, 0x49555f), whose 0x40b2c0 (0x465037) rebuilds them; the
+    // missions of the tick a list is rebuilt still read the old one.
+    refreshAirPadCaches();
     // Restored priority caches use the current World economy and unit lifecycle.
     // Other availability queries continue to read live World state.
     if (!retailAllocation_) {
@@ -22743,13 +22478,6 @@ uint64_t World::stateHash() const {
         // The pad piece an air-base passenger sits on (0x48ab70's +0xf9).
         if (u.padPiece>=0) { mix(0x50414450u); mix(uint8_t(u.padPiece)); }
         for (const auto& order : u.orders) {
-            if (order.reclaimArea) {
-                mix(0x41524541u);
-                const auto& a=*order.reclaimArea;
-                mix(uint32_t(a.minX));mix(uint32_t(a.minZ));mix(uint32_t(a.maxX));mix(uint32_t(a.maxZ));
-                mix(a.stage);mix(uint32_t(a.lastX));mix(uint32_t(a.lastZ));
-            }
-            if (order.reclaimAreaApproach) mix(0x52434c4d41505052ull);
             if (order.helpSite) { mix(0x48454c50u); mix(uint32_t(order.helpSite)); }
             if (order.resumeSite) { mix(0x52534d45u); mix(uint32_t(order.resumeSite)); }
             if (order.guardRepair) { mix(0x47524550u); mix(uint32_t(order.repairTarget)); }
@@ -22916,7 +22644,7 @@ uint64_t World::stateHash() const {
             if (order.suppress) {
                 mix(0x5355505052455353ull);
                 mix(uint32_t(order.attackPointX.v));mix(uint32_t(order.attackPointZ.v));
-                mix(order.suppressFeature);mix(order.suppressSlot);mix(uint32_t(order.suppressReach));
+                mix(order.suppressSlot);mix(uint32_t(order.suppressReach));
                 mix(order.mission.stage);mix(order.mission.waitMask);mix(order.mission.deadline);
                 mix(order.mission.pending);mix(order.mission.flags);mix(order.controller);
                 mix(order.buildRectangle.has_value());
@@ -22926,7 +22654,7 @@ uint64_t World::stateHash() const {
                 }
             }
             if (order.suppressApproach) {
-                mix(0x5355505041505052ull);mix(uint32_t(order.suppressInner));
+                mix(0x5355505041505052ull);
                 mix(uint32_t(order.attackPointX.v));mix(uint32_t(order.attackPointZ.v));
             }
             if (!order.groundMission && !(u.type && u.type->canFly && (order.patrol || order.flightMoveMission))) continue;

@@ -24,7 +24,7 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 | --- | --- |
 | 1. Units and weapons (`retail-data.md`) | done: 278 units, weapons by section, build menus from guis/download |
 | 2. Metal / energy economy (`retail-economy.md`) | done: 1 s settle, debt stalls, extractors on ore, wind/tidal, reclaim (`reclaim_test`) |
-| 3. Kingdoms gameplay stripped | done (gods, auras, sacred sites, mana build areas, monarchs); see "Known gaps" |
+| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, a kept engine feature, or dead code listed under Open (d)); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. One Kingdoms rule is left, the ballistic shell motion (Open (a)). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands; legion baselines retaken for the slot order (tools/scenarios/baseline.json) |
 | 4. GUI runtime, front end, sidebar (`retail-gui.md`) | done: MAINMENU, SINGLE, SKIRMISH, SELMAP, SELPROV/TCP, NEWGAME, MSNBRIEF, ENDMSN, in-game sidebar and top bar |
 | 5. AI (`retail-ai.md`) | done: every level runs the retail brain (RETAIL EASY/HARD plus the engine's levels) |
 | 6. Pathfinding (`retail-pathfinding.md`) | Retail A* verified 613/613 against TotalA.exe; goals per 0x44cf60/0x44d3b0/0x44dc60; Legion kept |
@@ -200,271 +200,277 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   hold where they arrived. VTOL_RepairUnit (0x414e70) hovers over the target's
   position from its stage 1 (0x415048) and repairs under it (0x415098).
 
-## Open
-- Nanoframe (ported 2026-11-24, client/nanoraster.h): drawn as retail's
-  height-buffered object bitmap, one texel per game pixel -- whole-pixel
-  vertices, retail's polygon walk (0x4c0820 / 0x4c8760: left chain backward,
-  rows [ymin, ymax), the walk is the cull), byte heights compared `buffer <=
-  own` and written (0x4c0acf, 0x4c7b53), so they wrap past 205; bias 50, 125
-  for an FBI `digger` (UnitDef +0x241 bit 30, 0x42c885, 0x459a2f); outlines
-  are each row's two end pixels of every primitive, depth-tested and
-  writing (0x4c0a90). Still open: retail skips primitive 0, not the selection
-  primitive, whenever a piece has one (0x459aa5, 0x45908a, 0x458568; 3DO
-  pieces are not reordered at load, 0x4cb4c0) -- 24 unit models (armca,
-  corlab, cortitan...) carry it elsewhere, so retail draws their selection
-  quad (coloured, index 0) and drops a textured face; the client keeps
-  skipping the selection primitive until what colour 0 draws as in the object
-  bitmap is traced. Retail also draws a textured primitive only as a quad (0x459b1a,
-  0x4585e2); the nanoframe follows that, the finished-unit draw does not.
-- Animated textures (2026-11-24): only dont-cache pieces play (cached ones
-  are drawn with frame 0 into the cached layer, 0x4586a0(obj, 0, 1) ->
-  0x459830 arg 1 -> 0x459b67); a `zbuffer=1` type (UnitDef +0x241 bit 7,
-  0x42c5bb -> unit +0x114 bit 0, 0x485ad1) redraws them every frame with the
-  playing frame (0x4586d6 -> 0x459641 arg 0); others only while active /
-  moving (0x458845, 0x458635). Under construction a mobile unit plays all,
-  a structure none (0x45960d).
-- Repair pads (client): a rider's heading is the pad's plus its pad piece's
-  own y turn (0x43d78e -> 0x43e180; the piece's x/z turns go to +0x64/+0x68
-  but which entry word is which axis is not traced, and World's sim does not
-  set the rider's own heading); the pad sprays from its QueryNanoPiece to
-  the rider's box on each tick SelfRepair mends it (0x402518 -> 0x40252e ->
+## Ported details (formerly listed as Open)
+
+What these entries describe is ported; what is left of each is under "Open".
+
+- Nanoframe (client/nanoraster.h): drawn as retail's height-buffered object
+  bitmap, one texel per game pixel -- whole-pixel vertices, retail's polygon
+  walk (0x4c0820 / 0x4c8760: left chain backward, rows [ymin, ymax), the walk
+  is the cull), byte heights compared `buffer <= own` and written (0x4c0acf,
+  0x4c7b53), so they wrap past 205; bias 50, 125 for an FBI `digger` (UnitDef
+  +0x241 bit 30, 0x42c885, 0x459a2f); outlines are each row's two end pixels
+  of every primitive, depth-tested and writing (0x4c0a90).
+- Animated textures: only dont-cache pieces play (cached ones are drawn with
+  frame 0 into the cached layer, 0x4586a0(obj, 0, 1) -> 0x459830 arg 1 ->
+  0x459b67); a `zbuffer=1` type (UnitDef +0x241 bit 7, 0x42c5bb -> unit +0x114
+  bit 0, 0x485ad1) redraws them every frame with the playing frame (0x4586d6 ->
+  0x459641 arg 0); others only while active / moving (0x458845, 0x458635).
+  Under construction a mobile unit plays all, a structure none (0x45960d).
+- Repair pads (client): a rider's heading is the pad's plus its pad piece's own
+  y turn (0x43d78e -> 0x43e180); the pad sprays from its QueryNanoPiece to the
+  rider's box on each tick SelfRepair mends it (0x402518 -> 0x40252e ->
   0x4025ae, the builder repair's emitter).
-- Death accounting (countTaDeath, retailveterancy.h): World's death pipeline
-  still keys most deaths on Kingdoms death kinds (Unit::deathType: severity,
-  Killed/Dying, the death weapon), mapped onto TA's for counting. TA-shaped
-  since 2026-11-24: non-weapon damage goes through taDamageRecord (TotalA.exe
-  0x489bb0 -> 0x489ce0: the damagemodifier under 30000, kill scaling, +0xf5 /
-  +0xf0 / +0xf4); the commander rule (only the commander's own death,
-  0x48667e) sweeps with commanderSweep (0x486f10: a 30000 kind-3 record from
-  itself to each unit not already dying, 0x486f6f), so each dies at its own
-  update, runs Killed, leaves its corpse and SELFDESTRUCTAS; a dying carrier
-  gives each passenger a 30000 kind-6 (3 when it died of 3) record from its
-  killer and lets it go (0x4867da..0x48681d), the passenger dying at its own
-  update through Killed; a self-destruct runs Killed too (severity from the
-  death sender 0x4864b0, retailTaDeathSeverity, for kinds 3 / 5 / 6); a change
-  of owner resets +0xf4 / +0xf5 to 10 / 0 (0x485c83); a reclaim (kind 5,
-  ReclaimUnit, below) pays the reclaimer at the death (0x486c9e). Still open:
-  the remote-owner branch of 0x486f10 (0x49b000 + 0x4864b0(3) for +0x73 3)
-  is folded into the record; the kind-3 loss's statistics guard (local
-  player +0x129[owner], 0x457540) is network-only and not modelled; the
-  other Kingdoms kinds (weapon, water, mission Kill, feature) keep 512610's
-  severity and Dying. The Kingdoms experience routines (xp, vetMul) are still
-  wired but TA credits no experience, so they stay at level 0 unless a
-  placement sets one (the Legion fixture fight-retarget's killers no longer
-  reach level 1: six legion keys are accepted regressions in
-  tools/scenarios/baseline.json, and 15 combat fixtures' hashes were retaken
-  for Unit::lastHitKind).
-- Hit response: TotalA.exe 0x406f80..0x4071aa (taHitResponse) replaces
-  Kingdoms' 409a50 for weapon hits and every taDamageRecord but water (the
-  self-destruct and commander records, passengers' records): event 0x10; a
-  cancapture type of a computer player rolls its AI's threat deadline
-  (now + 30 + rand(300)) and drops its missions (0x439eb0(0)); retaliation
-  only from no mission or a Standby (descriptor flag 0x20000; a patrol no
-  longer answers), then the auto slots. Approximations: the retaliation's
-  category / reach tests are World's retailAnswersAttacker / slotHitResponse
-  (0x49abb0's underwater tests and the +0x23d / +0x231 category sets are not
-  traced one by one); the old object of a change of owner (kind 4,
-  0x4886a4) runs no response; the weapon path still lowers the HP before the
-  response (0x489ce0 responds first). The under-attack request rides
-  World::recordHurt for records (HitFx::hurtUnits for weapon hits). The
-  speech queue's global spacing (+0x9d/+0xa1, 0x47f6bb) is not modelled: one
-  request per frame, text at once.
-- Air missions (ported 2026-11-24 from TotalA.exe, air table 0x4fca18):
-  VTOL_Move 0x40fa20 (take-off over the spot to cruisealt/2 when landed, a
-  radius-0 controller at the footprint-snapped goal, done), VTOL_Patrol
-  0x410e70 (320 px past the leg, radius 0x150, sleep 30), VTOL_RepairPatrol
-  0x4152f0 (legs at cruisealt, radius 0, sleep 45; job search
-  tickFlyingPatrolLook), VTOL_Standby 0x40f7d0 / VTOL_LandIfCan 0x40f2a0,
-  VTOL_Follow 0x40fbe0, VTOL_SeekGuard 0x410850, AirToAir 0x412d40 (with
-  VTOL_Evade 0x413bc0), VTOL_SeekAttack 0x4103e0, VTOL_RepairUnit 0x414e70
-  (radius 0 over the target, no range test), VTOL_Reclaim 0x414770,
-  AirToGround 0x412710 (half-way approach, a controller on the target of
-  radius slot 0's range, the run 3 x range past it, the 90-degree turn, back to
-  stage 2) and AirToGroundHover 0x413470 (the hold two thirds of the range out
-  on the near side, 45 degrees either side of the bearing in turn; two misses
-  of 0x49abb0 build a controller that is never installed, 0x41391e, so only
-  its rand(0x10000) remains), both on slot 0's range (retailairground.h,
-  World::tickTaAirAttack; their Kingdoms templates, the dead step-out hook and
-  the Kingdoms hover's ring hop hoverForShot are gone). The
-  air-traffic counter is gone (TA has no step-out); the occupancy grid and its
-  overlap lists stay (TA's landing test 0x47e2d0 reads cell word +2; projectiles
-  read the grid; how TA maintains word +2 is untraced). Still open:
-  - Repair pads (retailairpad.h): VTOL_Landing 0x4118e0 and SelfRepair
-    0x402430 run, with the under-3/4-health detours of VTOL_Patrol
-    (0x410f3e), VTOL_RepairPatrol (0x415397), VTOL_SeekAttack (0x410518),
-    VTOL_SeekGuard (0x410972), AirStrike (0x4125c2), AirToGround (0x412b3f)
-    and AirToGroundHover (0x413a8a). Landing by order: the default order on
-    an own or allied air base (0x43f0e0 action 1, 0x43faf5..0x43fb26: a canfly
-    unit, the target's type isairbase) is VTOL_LANDING -- Cmd::Land (protocol
-    340, World::landOnAirBase), the client's right-click after HelpBuild and
-    Repair (retail has it only in that action; its LEFTCLICK interface,
-    game +0x37efa, 0x45eb3e, takes this branch). VTOL_GetRepaired 0x415250
-    is dead in retail: no code refers to its row (0x4fcc0c) or handler, no
-    "VTOL_GETREPAIRED" string exists for the name lookup 0x438760, and no
-    index path (0x438b90: AttackSpecial and VTOL_MOVE) reaches it; only a
-    name from data could -- an FBI defaultmissiontype (0x42bffa; the shipped
-    units name Standby, VTOL_Standby and GUARD_NOMOVE only) or the debug
-    command "Assign" (0x416310, command table 0x502030). It would just wait,
-    sleeping 30, until whole ("Unit repaired"). Not ported.
-  - The pad pick (0x40b530) walks the AIPlayer record's pad list (+0x25),
-    which 0x40aa40 rebuilds every 30 ticks per player (0x40b2c0, from
-    +0xed = 0) in unit-array order; within a player that is its slot order,
-    a new unit taking the first free slot of its block (0x485fea..0x486051)
-    and the death freeing it (0x486dc7). World keeps those slots
-    (World::allocateTaSlot) and the list (refreshAirPadCaches). Approximations:
-    the refresh runs before the units' missions with the economy settle
-    (retail: the player loop 0x464f80 after them); its rand(30) for the type
-    tables (0x40b301) is the AI's, not drawn from the sim's generator; a pad
-    that died since the refresh is skipped (retail: the null type fails the
-    test, 0x486df6). The path scheduler's entity pools (allocateEntitySlot)
-    still take Kingdoms' random free slot (5121d8) rather than TA's first
-    free one.
-  - AirToGroundHover at a point is ours (TotalA.exe's stages read the target,
-    +0x16; World runs them on the point). TA's event 0x1000 in the hover's
-    wait mask (0x413996) is not posted by World.
-  - Every TA flyer mission's stage 0 makes the slots manual (0x4898b0(3));
-    World keeps an idle flyer's (VTOL_Standby 0x40f9d3, LandIfCan 0x40f6a3)
-    automatic because the Hold Position exception (tickHoldLift, hold_flyer)
-    relies on it; VTOL_Move clears and restores them at once.
-  - The take-off climb of VTOL_RepairUnit / VTOL_Reclaim / VTOL_RepairPatrol's
-    jobs (0x414fe1, 0x41485e) and AirToAir / SeekAttack (0x4133fa, 0x4107c6)
-    is not modelled; LandIfCan's off-map return (0x40f2e3) is not ported.
-  - VTOL_RepairPatrol's job search runs on a 45-tick timer from
-    tickPatrolRepair, not from its stage-1 wake. The ground RepairPatrol
-    (0x405980, tickGroundPatrolLook) looks on a 60-tick timer the same way
-    (its sleep 60), keeping World's patrol navigation (its radius-16 circle
-    on the waypoint is not modelled). A fight-move leg (ours; TA has none) keeps
-    a scan on VTOL_Move.
-- Nanoframe outlines are front-facing only and use painter's order (retail
-  depth-tests per pixel).
-- Result plate: Kills / Losses still count by the Kingdoms death kinds
-  (retailveterancy.h); TA's rule is the death routine's switch at 0x486892 (table
-  0x486e64: kinds 1 and 6 always a loss, 5 only when another player hit it last, 3
-  by alliance; the kill when finished and the hitter is another player), with the
-  TA damage kinds of 0x489bb0's callers (weapon 1/2, self-destruct 3, ...) not yet
-  mapped onto the engine's. The bar and well colours (game +0xdcf / +0xdd3) and
-  the PlayerColor gadget's art are stand-ins.
-- Under-attack alert: the speech line "<unit>:
-  Under Attack" (0x47ff69 -> 0x463ca0) and the speech/text level options (game
-  +0x37f17 / +0x37f18) are not ported.
-- A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
-  units in the field) can still circle in the ring's acceptance gap -- the
-  octile distance (0x44d840) is 0 a cell inside the squared inner test
-  (0x44d800) -- when parked outputs wall the band; client watch/spectator
-  harness checks (gameview_devharness.cpp) still spawn Kingdoms units.
-- Transports read TA's keys (TotalA.exe 0x489a90: passenger footprint x <=
-  transportsize, count < transportcapacity, asked when LOAD is given). LOAD is
-  the carrier's order (0x43f701 -> 0x43fb61): GROUND_PICKUP / VTOL_PICKUP for
-  the carrier and no mission for the passenger (TA has no Move_Seek_Pickup;
-  World::loadInto, the carrier's list takes Shift / Ctrl / toggle, matchsetup;
-  the client no longer boards a unit clicked onto a transport). GROUND_PICKUP
-  (0x406780; retailGroundPickup): size test, BUSY wait (0x438730), a counted
-  TransportPickup call + sleep 15, BUSY wait, aboard -> 5, third failed call
-  -> 9, else a radius-0 circle on the passenger (wait 0xe8), controller off and
-  round again. VTOL_PICKUP (0x4111b0; retailVtolPickup): fails while the
-  carrier holds anyone (0x41121a) or the passenger is under the sea; take off
-  (half cruisealt), follow the passenger at cruisealt (radius 0x30),
-  QueryTransport, BeginTransport(model height) and down until the link piece
-  meets it, ATTACH_UNIT there, climb back. VTOL_UNLOAD (0x411560;
-  retailVtolUnload): to the point at cruisealt (radius 0x140), DROP_UNIT's
-  placement test (9 when refused), down to the passenger's height, test
-  again, EndTransport and drop where the link holds it, climb back. The attach
-  (attachCargo, 0x48ab70 + 0x4384a0) puts the passenger at the head of the
-  carrier's list (an unload takes the last one aboard), clears its orders and
-  makes its slots automatic (BeCarried 0x402fc0); the release (releaseCargo,
-  DROP_UNIT 0x4813b0) orders nothing -- Kingdoms' dispersal PARK (409154) is
-  gone. GROUND_UNLOAD (0x406900) as before (retailTransportUnloadApproach /
-  retailSurfaceUnloadTransfer). The surface carriers' own scripts
-  run (2026-11-24): the sim VM has ATTACH_UNIT / DROP_UNIT (0x4b1b92 / 0x4b1b7d
-  -> 0x481340 / 0x4813b0) and TA's GET 6..16 (0x480770: BUSY, PIECE_XZ,
-  PIECE_Y, UNIT_XZ, UNIT_Y, UNIT_HEIGHT, XZ_ATAN, XZ_HYPOT, ATAN, HYPOT,
-  GROUND_HEIGHT; deterministic: retailDirection, isqrt64), SET 6 writes BUSY
-  and every SET posts event 4 (0x480b20). GROUND_PICKUP's call runs
-  TransportPickup(passenger) and waits BUSY; GROUND_UNLOAD's runs
-  TransportDrop(passenger, packed point), then sleeps 15, waits BUSY and
-  tests the passenger aboard (retailScriptedUnloadTransfer). The passenger
-  rides the ATTACH_UNIT piece (Unit::attachPiece, +0xf9; cargoAttachPoint,
-  4dd250) and DROP_UNIT puts it down at the link after 0x47db70 on its
-  footprint cell. A cancelled order no longer stops the animation. A
-  script-less (test) carrier keeps the old stand-in (fifteen ticks of BUSY,
-  the static BoomCalc reach cob::transportBoomReach, still the engine's
-  pre-call brake test). An unload given while TransportPickup still swings
-  the boom home races it for the same pieces, as in retail. A hover pinned
-  by a cliff with its crane astern can stand out of reach (the roster fixture
-  moved hovers to open land). GET answers ids 1..20 only, as 0x480770 does
-  (0x480781 -> 0x480abb: 0 for any other id), in the sim host and the display
-  VM alike (client/displayget.h; Kingdoms' 27..46 are gone); GET 20 ARMORED
-  answers 0 (SET 20, 0x48b090(2), is not stored), and the display VM's own
-  1..19 still read its snapshot (ACTIVATION from the build queue, BUSY from
-  motion, UNIT_XZ of the unit itself) rather than the sim's state. GROUND_PICKUP's
-  circle and GROUND_UNLOAD's wait also wake 60 ticks after the hull stops
-  (the engine's navigator never fails an unreachable point,
-  retail-pathfinding.md D16). Air cargo rides the carrier's own point, not
-  the link piece's (VTOL_PICKUP's engine attach passes piece -1); the
-  BeCarried 10-tick poll after the drop (the default mission comes at once
-  here), the flag-4 missions BeCarried keeps, the air base exemption (flagsA
-  bit 9), VTOL_PICKUP's event 2 / 0x10000 bits and the unit-follow
-  controllers' exact altitude rule (0x44e190 / 0x44e250 are taken as the
-  passenger's y plus the altitude) are untraced or unmodelled.
-- RECLAIMUNIT (ported 2026-11-24; World::reclaimUnit / tickReclaimUnit,
-  sim/retailreclaimunit.h, Cmd::ReclaimUnit protocol 340): ReclaimUnit
-  0x404730 (ground row 20) and VTOL_ReclaimUnit 0x414a80 (air row 16). The
-  resolver 0x43f0e0 gives it on the armed reclaim over any owner's unit when
-  no reclaimable feature is seen at the point (action 12, 0x43f6aa) and on a
-  right-click on an enemy by a canreclamate unit that cannot attack (action
-  1, 0x43fa13; interface type game +0x37efa == 1 -- the other interface goes
-  through action 12, so a feature under the point wins there; the client
-  follows the first). Stage 0 refuses an airborne flyer or a cancapture type
-  (0x489960, emulated: tools/re/reclaimunit_emu.py); the approach is
-  RepairUnit's rectangle (0x438ad0), re-installed on the target every 15
-  ticks until the arrival; StartBuilding, the stance, then a kind-5 record
-  of 0x438650's rate (emulated) every 16 ticks while within builddistance +
-  the target's +0x184 (else StopBuilding and stage 0 after 15 ticks); the
-  reclaimer stays visible 900 ticks. The flyer: Activate, the take-off, a
-  controller on the target, the record within builddistance (no radius),
-  else stage 0 after 30. The death (severity 0, no Killed, no corpse) pays
-  the last hitter's metal production (1 - remaining) x buildcostmetal, the
-  AI's 0.5 / 0.7 applied (0x486c9e..0x486d1e); no energy. Shift / Ctrl work
-  on it (QueuedKind::ReclaimUnit). TA has no area reclaim (neither mission
-  table has a RECLAIMAREA; World's reclaimArea and the right-drag / CLEAR
-  box are Kingdoms' 406670, features only). Not modelled: the "Reclaiming"
-  status line and the speech lines ("That unit cannot be reclaimed",
-  0x47f780), the work sound (stage 4, 0x47f780(unit, 0xb)), the 0x10000
-  event, and stage 2's failure test (0x40485b: 0x40 -> 9), which retail's
-  dispatcher never reaches with an event set.
+- Death accounting (countTaDeath, retailveterancy.h, retaildeath.h): non-weapon
+  damage goes through taDamageRecord (0x489bb0 -> 0x489ce0: the damagemodifier
+  under 30000, kill scaling, +0xf5 / +0xf0 / +0xf4); the commander rule (only
+  the commander's own death, 0x48667e) sweeps with commanderSweep (0x486f10: a
+  30000 kind-3 record from itself to each unit not already dying, 0x486f6f); a
+  dying carrier gives each passenger a 30000 kind-6 (3 when it died of 3)
+  record from its killer and lets it go (0x4867da..0x48681d); a change of owner
+  resets +0xf4 / +0xf5 to 10 / 0 (0x485c83); a reclaim (kind 5) pays the
+  reclaimer at the death (0x486c9e). The death severity is TotalA.exe's death
+  sender's for every kind (2026-11-24 audit; 0x4864b0, retailTaDeathSeverity:
+  0 for a change of owner, a reclaim, a feature conversion and a decay,
+  0x48653d..0x48654d; else the overkill plus the sample of a second before,
+  halved, 1..100, 0x486552..0x4865a4; Killed only when it is not 0, 0x4865c3)
+  -- Kingdoms' 512610 severity is no longer called. Unit::deathType keeps the
+  engine's cause numbers, mapped onto TA's kinds by retailTaDeathKind.
+- Hit response: TotalA.exe 0x406f80..0x4071aa (taHitResponse) for weapon hits
+  and every taDamageRecord but water: event 0x10; a cancapture type of a
+  computer player rolls its AI's threat deadline (now + 30 + rand(300)) and
+  drops its missions (0x439eb0(0)); retaliation only from no mission or a
+  Standby (descriptor flag 0x20000; a patrol does not answer), then the auto
+  slots. The under-attack request rides World::recordHurt for records
+  (HitFx::hurtUnits for weapon hits).
+- Air missions (air table 0x4fca18): VTOL_Move 0x40fa20 (take-off over the spot
+  to cruisealt/2 when landed, a radius-0 controller at the footprint-snapped
+  goal, done), VTOL_Patrol 0x410e70 (320 px past the leg, radius 0x150, sleep
+  30), VTOL_RepairPatrol 0x4152f0 (legs at cruisealt, radius 0, sleep 45; job
+  search tickFlyingPatrolLook), VTOL_Standby 0x40f7d0 / VTOL_LandIfCan
+  0x40f2a0, VTOL_Follow 0x40fbe0, VTOL_SeekGuard 0x410850, AirToAir 0x412d40
+  (with VTOL_Evade 0x413bc0), VTOL_SeekAttack 0x4103e0, VTOL_RepairUnit
+  0x414e70 (radius 0 over the target, no range test), VTOL_Reclaim 0x414770,
+  AirToGround 0x412710 (stage 0's take-off climb, half-way approach, a
+  controller on the target of radius slot 0's range, the run 3 x range past
+  it, the 90-degree turn, back to stage 2) and AirToGroundHover 0x413470 (the
+  hold two thirds of the range out on the near side, 45 degrees either side of
+  the bearing in turn), both on slot 0's range (retailairground.h,
+  World::tickTaAirAttack). No air-traffic counter (TA has no step-out); the
+  occupancy grid and its overlap lists stay (TA's landing test 0x47e2d0 reads
+  cell word +2; projectiles read the grid).
+- Repair pads (retailairpad.h): VTOL_Landing 0x4118e0 and SelfRepair 0x402430
+  run, with the under-3/4-health detours of VTOL_Patrol (0x410f3e),
+  VTOL_RepairPatrol (0x415397), VTOL_SeekAttack (0x410518), VTOL_SeekGuard
+  (0x410972), AirStrike (0x4125c2), AirToGround (0x412b3f) and
+  AirToGroundHover (0x413a8a). Landing by order: the default order on an own
+  or allied air base (0x43f0e0 action 1, 0x43faf5..0x43fb26) is VTOL_LANDING
+  -- Cmd::Land (protocol 340, World::landOnAirBase). VTOL_GetRepaired 0x415250
+  is dead in retail (no code refers to its row 0x4fcc0c or handler, no
+  "VTOL_GETREPAIRED" string for 0x438760, no index path through 0x438b90; the
+  shipped FBIs name only Standby, VTOL_Standby and GUARD_NOMOVE) and is not
+  ported. The pad pick (0x40b530) walks the AIPlayer record's pad list (+0x25),
+  which 0x40aa40 rebuilds every 30 ticks per player (0x40b2c0, +0xed from 0) in
+  slot order (World::refreshAirPadCaches), now in the player loop after the
+  units (0x495490: units 0x48ad30 at 0x4954ed, then 0x464f80 at 0x49555f ->
+  0x40b2c0 at 0x465037), from the unit slots (below).
+- Unit slots (2026-11-24 audit): a new unit takes the first free record of its
+  owner's block (0x485fea..0x486051, a record whose type word +0xa6 is 0), the
+  death frees it (0x486dc7); the path scheduler walks the block, holes
+  included, at 1 a visit and skips free records (0x40eb70: 0x40ed0c ..
+  0x40ed33). World::allocateEntitySlot does exactly that, with no random draw
+  (Kingdoms' 5121d8 CRT-ranked free slot, freed at retirement, is gone; the
+  air pad list reads the same table). The restored Kingdoms replay fixtures
+  (tools/retail_replay_probe) keep their own fixed pools.
+- SUPPRESS (2026-11-24 audit; World::suppressStage): TotalA.exe's ground row 4
+  (0x4038a0). The head ends it on a commandfire shot (0x800); stage 0 refuses
+  a flyer (8) and takes slot +0x36's range as the reach; stage 1 makes slots
+  0 and 1 manual and points both at the ground (slot 2 alone when +0x36 is 2,
+  0x40396b..0x4039c2), wait 0x1c00 (TA's shot 0x400, commandfire shot 0x800,
+  no aim 0x1000 -- 0x49e4f2..0x49e50b, 0x49d664; World's 0x10000 / 0x40000 /
+  0x100000); stage 2 makes every slot automatic, goes to the back of the list
+  after a shot (6), else ends with no mover or no reach left (9), else walks
+  a circle of radius reach on the point (0x438930) and takes rand(range / 3)
+  off the reach (0x40392e..0x403957). The resolver (0x43f17e..0x43f1a9) reads
+  slot 0's weapon only: toairweapon gives no order, a flyer the air branch.
+  Kingdoms' SUPPRESS (melee walk to a feature, the feature target, the
+  minimum-range ring, the weapon-switch event) is gone with its click rule.
+- No area orders (2026-11-24 audit): neither mission table (0x4fc6e8,
+  0x4fca18) has a RECLAIMAREA (or any area build), so Kingdoms' RECLAIMAREA
+  (406670: World::reclaimArea / tickReclaimArea, the right-drag box's step C
+  and the armed CLEAR box) is removed; Cmd::ReclaimArea and Cmd::BuildManaArea
+  keep their numbers but the server refuses them and the sim no longer applies
+  them.
+- Transports read TA's keys (0x489a90: passenger footprint x <= transportsize,
+  count < transportcapacity, asked when LOAD is given). LOAD is the carrier's
+  order (0x43f701 -> 0x43fb61): GROUND_PICKUP / VTOL_PICKUP for the carrier and
+  no mission for the passenger (TA has no Move_Seek_Pickup; World::loadInto).
+  GROUND_PICKUP (0x406780; retailGroundPickup): size test, BUSY wait
+  (0x438730), a counted TransportPickup call + sleep 15, BUSY wait, aboard ->
+  5, third failed call -> 9, else a radius-0 circle on the passenger (wait
+  0xe8), controller off and round again. VTOL_PICKUP (0x4111b0;
+  retailVtolPickup), VTOL_UNLOAD (0x411560; retailVtolUnload), GROUND_UNLOAD
+  (0x406900; retailTransportUnloadApproach / retailSurfaceUnloadTransfer). The
+  attach (attachCargo, 0x48ab70 + 0x4384a0) puts the passenger at the head of
+  the carrier's list, clears its orders and makes its slots automatic
+  (BeCarried 0x402fc0); the release (releaseCargo, DROP_UNIT 0x4813b0) orders
+  nothing. The carriers' own scripts run: ATTACH_UNIT / DROP_UNIT (0x4b1b92 /
+  0x4b1b7d -> 0x481340 / 0x4813b0) and TA's GET 6..16 (0x480770); SET 6 writes
+  BUSY and every SET posts event 4 (0x480b20); GET answers ids 1..20 only
+  (0x480781 -> 0x480abb).
+- RECLAIMUNIT (World::reclaimUnit / tickReclaimUnit, sim/retailreclaimunit.h,
+  Cmd::ReclaimUnit protocol 340): ReclaimUnit 0x404730 (ground row 20) and
+  VTOL_ReclaimUnit 0x414a80 (air row 16), from the resolver 0x43f0e0 (action
+  12, 0x43f6aa; action 1, 0x43fa13); stage 0 refuses an airborne flyer or a
+  cancapture type (0x489960); RepairUnit's rectangle (0x438ad0); a kind-5
+  record of 0x438650's rate every 16 ticks within builddistance + the
+  target's +0x184; the death pays (1 - remaining) x buildcostmetal
+  (0x486c9e..0x486d1e).
 - Mission dispatcher (0x43b7c0, retailDispatchMissions): code 3 sleeps
   30 + rand(15) (0x43b890) and code 9 sets mission flag 0x800000 and, alone,
-  sleeps 30 + rand(30) (0x43b8e5..0x43b973); the rest matched already. Not
-  modelled: an event 0x10000 drops slots 0..2's targets with TargetCleared
-  (0x43b840 -> 0x48a0f0) -- TA's unit event word is 16 bits, so only a
-  mission's own pending word carries it, while the engine's 0x10000 is
-  Kingdoms' slot-fired event; the second mission list (+0x60, flag 0x40000);
-  the 0x800000 flag's reader (the navigator, 0x44f3e9). TA's loop has no call
-  cap (0x43b99f); the engine keeps 100 as a guard.
+  sleeps 30 + rand(30) (0x43b8e5..0x43b973). Its event 0x10000 test (0x43b840:
+  TargetCleared on slots 0..2) is dead in TotalA.exe: the unit event word
+  +0xba is 16 bits, the navigator posts only 0x20..0x200 into a mission's
+  +0x4e (0x44ced0, nine callers), the dispatcher sets only bit 0 (0x43b7f9),
+  and every other write masks it (0x438915, 0x4389b1, 0x438a8a, 0x438b4c,
+  0x4110b1) or copies a mission record (0x43a64d). World posts none either.
 - Resurrection follows TotalA.exe RESURRECT (0x404db0): any reclaimable feature
   (0x440043, flag 0x80) whose name up to its first '_' names a unit type
-  (0x404f36 -> 0x488b10; FeatType::raises: cornecro_dead and cornecro_heap both
-  raise cornecro) -- a body, a map wreck or a heap (Cmd::Resurrect's target
-  -featureId); timer ftol(buildtime x 0.3 / (workertime/30)) counted down one a
-  tick, nothing paid; the unit comes back finished at 1 HP (0x405215) and the
-  caster's REPAIRUNIT on it goes to the head of its queue (0x405243..0x40529f,
-  0x43acb0); a full unit cap retries in 300 ticks (0x405119). The animate
-  channel (cananimate) is still Kingdoms'. The client's right-click raises a
-  feature too (GameView::reviveKindOnFeature); the cursor over a raisable
-  feature still shows reclaim.
-- Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
+  (0x404f36 -> 0x488b10); timer ftol(buildtime x 0.3 / (workertime/30)); the
+  unit comes back finished at 1 HP (0x405215) and the caster's REPAIRUNIT on it
+  goes to the head of its queue (0x405243..0x40529f, 0x43acb0); a full unit
+  cap retries in 300 ticks (0x405119).
+- Projectiles: line-of-sight, selfprop/vlaunch and dropped shots follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run
-  follows TotalA.exe's 0x411f50 (retailAirStrike): its slot holds the target only
-  from the release stage to the turn after it, and the release ring leads the
-  bomb's carry (sqrt(2 cruisealt / OTA gravity) x 30 x speed + attackrunlength + 1);
-  no group check or air-traffic step-out; the stage-6 repair-pad detour is not
-  ported, nor the stage-0 wait for take-off altitude. Ballistic shells still use the release solve
-  and Kingdoms' gravity-before-move order (TotalA.exe 0x49cde0 launches on the
-  slot's AimX angles + spread and moves before gravity, 0x49bce3); beams
-  (lineofsight + beamweapon) still hit instantly; burst clones still re-aim at
-  the target; the cruise branch of 0x49b3e0 is ported untested.
+  follows 0x411f50 (retailAirStrike).
+
+## Open
+
+Classes: (a) Kingdoms gameplay still running in a TA game; (b) a retail detail
+approximated (marked "cosmetic" when it changes no simulation state); (c) a
+test or fixture note; (d) Kingdoms code still compiled but unreachable from TA
+data (cleanup, no gameplay).
+
+- (a) Ballistic shells move the Kingdoms way (BallisticWeapon::update 52bf90:
+  one sub-step per 16 px of speed, gravity before the move, launched on a
+  release solve from the QueryX muzzle). TotalA.exe moves a ballistic shot once
+  a tick, position first (plus the global vector at G+0x37ecc, untraced), then
+  gravity (0x49bce3..0x49bd41), and launches on AimX's stored heading and pitch
+  plus the spread (0x49cde0 reads S+0x16 / S+0x18). Not ported in this pass:
+  the integrator change needs the AimX pitch solve (0x49a890) checked against
+  the new motion first, or every shell lands off its aim point.
+- (b) GROUND_PICKUP's circle and GROUND_UNLOAD's wait also wake 60 ticks after
+  the hull stops (flag 0x80000000, retailtransport.h). Retail's wait has no
+  timer: the navigator's failure (0x40) after its empty 60-tick re-ask wakes
+  it. Tried removing the stand-in (2026-11-24): the engine's navigator then
+  never fails a radius-0 circle on a standing passenger, and transport,
+  transport_roster, transport_post_unload, transport_map_roundtrip and
+  legion_transport stop boarding. The difference is in that re-ask's result,
+  not in the missions.
+- (b) Ground RepairPatrol (0x405980): stage 1 re-installs a radius-16 circle
+  on the waypoint at every 60-tick wake (0x4059c5..0x4059e1) and moves on at
+  any navigator event (0xe0 -> 6); World keeps its patrol navigation and runs
+  the look (tickGroundPatrolLook) on a 60-tick timer. VTOL_RepairPatrol's job
+  search runs on a 45-tick timer from tickPatrolRepair, not its stage-1 wake.
+- (b) Flyer take-off climbs not modelled: VTOL_RepairUnit / VTOL_Reclaim /
+  VTOL_RepairPatrol's jobs (0x414fe1, 0x41485e), AirToAir / SeekAttack
+  (0x4133fa, 0x4107c6), AIRSTRIKE's stage-0 wait for take-off altitude; nor
+  LandIfCan's off-map return (0x40f2e3) or AIRSTRIKE's stage-6 pad detour.
+- (b) AirToGroundHover at a point is ours (TotalA.exe's stages read the target,
+  +0x16; World runs them on the point); its wait mask's event 0x1000
+  (0x413996) is not posted. Two misses of 0x49abb0 build a controller that is
+  never installed (0x41391e), so only its rand(0x10000) remains.
+- (b) Hit response approximations: the retaliation's category / reach tests are
+  World's retailAnswersAttacker / slotHitResponse (0x49abb0's underwater tests
+  and the +0x23d / +0x231 category sets are not traced one by one); the old
+  object of a change of owner (kind 4, 0x4886a4) runs no response; the weapon
+  path lowers the HP before the response (0x489ce0 responds first).
+- (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
+  the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
+  loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
+- (b) Beams (lineofsight + beamweapon) hit instantly; burst clones re-aim at
+  the target (retail: along the emitter's stored heading); the cruise branch
+  of 0x49b3e0 is ported untested; non-turret LOS weapons compare only the
+  heading with the body; `minbarrelangle` is not passed to the ballistic
+  solver (docs/retail-weapon-scripts.md 7.8).
+- (b) Transports: air cargo rides the carrier's own point, not the link
+  piece's (VTOL_PICKUP's engine attach passes piece -1); BeCarried's 10-tick
+  poll after the drop (the default mission comes at once here), the flag-4
+  missions BeCarried keeps, the air base exemption (flagsA bit 9),
+  VTOL_PICKUP's event 2 / 0x10000 bits and the unit-follow controllers' exact
+  altitude rule (0x44e190 / 0x44e250) are untraced. GET 20 ARMORED answers 0
+  (SET 20, 0x48b090(2), is not stored). An unload given while
+  TransportPickup still swings the boom races it for the same pieces, as in
+  retail.
+- (b) Death accounting, network only: the remote-owner branch of 0x486f10
+  (0x49b000 + 0x4864b0(3) for +0x73 3) is folded into the record, and the
+  kind-3 loss's statistics guard (player +0x129[owner], 0x457540) is not
+  modelled -- a lockstep game has no remote owner.
+- (b) The pad list's rand(30) (0x40b301: 0 rebuilds the AI's type tables,
+  0x409730) is drawn from the AI's own stream (TaRetailBrain::random), not the
+  sim's: retail draws the whole AI on one host, so its interleaving with the
+  sim stream cannot be reproduced (docs/retail-ai.md "RNG in lockstep").
+- (b, cosmetic) Nanoframe: retail skips primitive 0, not the selection
+  primitive, whenever a piece has one (0x459aa5, 0x45908a, 0x458568; pieces are
+  not reordered at load, 0x4cb4c0), so 24 unit models (armca, corlab,
+  cortitan...) draw their selection quad and drop a textured face in retail;
+  the client keeps skipping the selection primitive. Retail draws a textured
+  primitive only as a quad (0x459b1a, 0x4585e2); the nanoframe does, the
+  finished-unit draw does not.
+- (b, cosmetic) Repair pads: the pad piece's x/z turns go to +0x64 / +0x68 but
+  which entry word is which axis is not traced, and the sim does not set the
+  rider's own heading.
+- (b, cosmetic) Unit speech: the queue's global spacing (+0x9d / +0xa1,
+  0x47f6bb) is not modelled (one request per frame, text at once);
+  RECLAIMUNIT's "Reclaiming" status line, its speech lines (0x47f780) and work
+  sound (0x47f780(unit, 0xb)); the cursor over a raisable feature shows
+  reclaim. The display VM's own GET 1..19 read its snapshot (ACTIVATION from
+  the build queue, BUSY from motion) rather than the sim's state.
+- (c) A PARK round a *mobile* producer (a test fixture; no TA unit builds
+  mobile units in the field) can still circle in the ring's acceptance gap --
+  the octile distance (0x44d840) is 0 a cell inside the squared inner test
+  (0x44d800) -- when parked outputs wall the band. The client watch/spectator
+  harness checks (gameview_devharness.cpp) still spawn Kingdoms units. A
+  script-less (test) carrier keeps the old transport stand-in (fifteen ticks
+  of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
+  astern can stand out of reach (the roster fixture moved hovers to open land).
+- (d) Kingdoms code compiled but unreachable from TA data: the Kingdoms AI
+  (ai/classic*.h, classicbrain.cpp and the legacy Controller levels in
+  ai.cpp past its TaRetailBrain return -- ai.cpp constructs only
+  TaRetailBrain, line 86, and Controller::tick returns into it, line 3836);
+  the stone / freeze statues and Area Mind Control (Weapon::status and
+  mindControl are never set by taweapons.cpp), Remote Effect spells
+  (pendingEffects_ has no producer), the animate channel (no TA FBI has
+  cananimate), weaponswitching and melee weapons (no TA key), lodestones and
+  the mana-area build box (onMana is never set; Cmd::BuildManaArea is
+  refused), the group records' pacing (World::retailGroupOf is always null;
+  Legion reads retailMissionFlags for its own formations), the experience
+  routines (xp / vetMul; TA credits none and its data places no veteran), the
+  client's area-order preview (client/ordertrail.cpp: no area order can
+  exist now) and retailreclaimarea.h (order_trail_test only).
+
+## Resolved (2026-11-24 audit)
+
 - corbats at 1110 px: not the shared-aim signal (its aims use signals 2 and 4).
   Its cannon (cor_bats, 350 px/s) has no arc past ~1094 px on level ground at
   gravity 112, so the range gate 0x49aa80 (ballistic -> 0x49a890 = 0x8000)
   refuses it: retail behaviour.
+- Legion-mode air attacks (air-stack-barracks / -5): waiting_no_progress
+  135 / 225 is the landed Drakes' (armfig) take-off climb, not a Legion
+  conflict. AirToGround's stage 0 (0x4128b5 -> 0x43d210(2)) climbs over the
+  spot to cruisealt / 2 before stage 1 moves off, so each Drake stands at its
+  spawn x/z from the order (tick 2) to tick 57-58 (dump: every still run of
+  the five is 0..57), i.e. 45 unit-ticks counted as waiting (stillRun 10..150)
+  x 3 / x 5. Retail and Legion modes give identical keys and hashes (flyers do
+  not use Legion's ground mover or stacking), and VTOL_Move's identical
+  take-off already shows in air-stack-move (498). The movement keys
+  (sideways, backward, back, reversals) are the run and the 90-degree turn
+  passing over the target.
+- The AI's group orders (0x480460) give every member the same point: the
+  retail brain issues one Move / Patrol / Attack per unit to the group's
+  point (ai/taretail.cpp), with no spread shape.
+- Stale entries removed: the nanoframe outlines (client/nanoraster.h
+  rasterises per pixel), the result plate's Kills / Losses (countTaDeath
+  follows 0x486892), the under-attack speech line and options (ported, see
+  "Closed in the final pass").
