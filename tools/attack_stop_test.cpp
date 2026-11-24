@@ -1,36 +1,28 @@
-// attack_stop_test: an attack order aims only once the walk to the target has
-// stopped, and the mover's TurnDirection reaches the unit's own script.
+// attack_stop_test: an attack order on a unit aims by the time the walk to
+// the target has stopped, and fires from there.
 //
 //   attack_stop_test <retail-install-dir> [--legion]
 //
-// Retail's ground attack mission (Attack_Chase, 403bb0) gives the selected
-// weapon slot its target in its stage 1, which runs at the order's first
-// dispatch when it starts in reach and two ticks after the arrival stopped the
-// body when it had to walk. The weapon update starts AimWeapon the tick after
-// (it runs before the missions), the unit's COB pass runs it, and only then
-// does the mover pivot the body to the facing request it posted. In World,
-// whose COB pass comes before the weapons, that is: aim on the stage 1 tick,
-// face from the tick after (tickCombat). The mover reports every requested
-// turn to the unit's script through TurnDirection (4d91b0 -> 4d9593), the
-// idle navigator as a zero request then the pivot's (notifyTurnDirection).
+// The Kingdoms rule this test was written for (Attack_Chase, KINGDOMS.icd
+// 403bb0, gave the slot its target only two ticks after the arrival stopped
+// the body) is unverified for TA: TotalA.exe's weapon update aims a slot as
+// soon as it holds a target (docs/retail-weapon-scripts.md section 2).
 //
-// Kirenna (VERMAGE) is why this matters: her AimWeapon waits for static 7,
-// which her Create-started walk controller sets only when it finds her
-// stopped (restore_x) and not yet aiming, or moving (walk_legs) while aiming;
-// her MoveWatcher counts her as moving while GET 29 > 5 or her last
-// TurnDirection (static 5) is not zero. World aimed on the tick she stopped,
-// the controller then saw her aiming and still (restore_legs), and static 7
-// stayed 0: ordered onto a target 664 px off she parked 399 px from it and
-// never fired. Retail can stall the same way when its walk controller looks
-// late (docs/retail-engine.md, "Attack_Chase: the stop comes before the aim").
-//
-// Checks (flat map, shipped units, a passive Swordsman target):
-//   - Kirenna ordered from 664 px walks in, aims two ticks after she stops,
-//     turns no earlier, and fires (before: 0 shots in a minute);
-//   - an Aramon Archer ordered from 600 px aims two ticks after it stops too;
-//   - Kirenna ordered in reach while facing away aims at once and pivots
-//     from the next tick; while she pivots her script's TurnDirection static
-//     holds the turn, it is 0 once she faces the target, and she fires.
+// Checks (flat map, shipped TA units, a passive Peewee target):
+//   - a Hammer (armham, range 320) ordered from 600 px walks in, aims no
+//     later than two ticks after it stops, and fires within 5 s of stopping;
+//   - an A.K. (corak, a line-of-sight laser) ordered from 600 px does too.
+//     TotalA.exe's weapon update starts AimX as soon as the slot holds a
+//     target and no aim is outstanding (docs/retail-weapon-scripts.md
+//     section 2), so a TA walker may aim while it brakes in reach: the bound
+//     is the stop, not the Kingdoms rule that the aim waits for it;
+//   - a Hammer ordered in reach while facing away aims on the order's tick
+//     (stage 1 runs at its first dispatch) and fires: its turret aims, so
+//     the body need not pivot.
+// The Kingdoms case this began with (Kirenna, whose walk controller and
+// TurnDirection static stalled her aim) has no TA counterpart: TA's
+// scripts have no walk controller waiting on the stop, and only a
+// non-turret line-of-sight weapon (0x49d9c0) needs the body to face.
 //
 // A dev harness; not shipped in a game.
 
@@ -99,7 +91,7 @@ std::string describe(const Run& r) {
     return b;
 }
 
-// A shooter of player 0 `dist` px from a passive Swordsman of player 1 along
+// A shooter of player 0 `dist` px from a passive Peewee of player 1 along
 // +x, heading `heading` (radians; pi/2 faces the target), is ordered to attack
 // it and watched for `ticks`. `fireState` 2 is fire at will; 0 (hold fire)
 // keeps it from turning to a target in reach before the order. `turnStatic`
@@ -110,8 +102,8 @@ Run attack(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const char* shoote
     build(s, vfs, reg);
     Run r;
     const sim::UnitType* st = reg.find(shooterId);
-    const sim::UnitType* tt = reg.find("arasword");
-    if (!st || !tt) { check(false, std::string("shipped ") + shooterId + " and arasword load"); return r; }
+    const sim::UnitType* tt = reg.find("armpw");
+    if (!st || !tt) { check(false, std::string("shipped ") + shooterId + " and armpw load"); return r; }
     const float sx = 300, sz = 768;
     const int target = s.w.spawn(tt, sx + dist, sz, 0.f, 1);
     s.w.setStance(target, 2);
@@ -160,40 +152,23 @@ int main(int argc, char** argv) {
     std::printf("[%s pathfinding]\n", mode == sim::PathfindingMode::Legion ? "Legion" : "Retail");
     constexpr float kFacing = 1.5707963f;
 
-    // Kirenna (Water Ball, range 400) walks 264 px in, stops, aims two ticks
-    // later and fires: her walk controller sees her stop before she aims.
-    {
-        const Run r = attack(vfs, reg, "vermage", 664, kFacing, 600);
-        std::printf("  vermage from 664 px: %s\n", describe(r).c_str());
-        check(r.stop > r.order && r.aim == r.stop + 2, "Kirenna aims two ticks after her walk stops", describe(r));
-        check(r.turned < 0 || r.turned > r.aim, "she turns to her facing request no earlier than the tick after",
-              describe(r));
-        check(r.fired > r.aim && r.fired <= r.order + 300 && r.dist <= 400.5f,
-              "she fires within 10 s from where she stopped (before: never, parked 399 px off)", describe(r));
+    // A walker aims by the time it stops, and fires from there.
+    for (const char* id : {"armham", "corak"}) {
+        const Run r = attack(vfs, reg, id, 600, kFacing, 600);
+        std::printf("  %s from 600 px: %s\n", id, describe(r).c_str());
+        check(r.stop > r.order && r.aim > r.order && r.aim <= r.stop + 2 && r.fired > r.aim,
+              std::string(id) + " aims no later than two ticks after its walk stops, and fires", describe(r));
+        check(r.fired <= r.stop + 150 && r.dist <= float(reg.find(id)->weapons[0].range) + 0.5f,
+              std::string(id) + " fires within 5 s of stopping, from within its range", describe(r));
     }
 
-    // The stop comes before the aim for every walker, not only Kirenna.
+    // In reach from the start, facing away: stage 1 runs at once, so it aims
+    // on the order's tick, and its turret lets it fire.
     {
-        const Run r = attack(vfs, reg, "araarch", 600, kFacing, 600);
-        std::printf("  araarch from 600 px: %s\n", describe(r).c_str());
-        check(r.stop > r.order && r.aim == r.stop + 2 && r.fired > r.aim,
-              "an Archer also aims two ticks after its walk stops, and fires", describe(r));
-    }
-
-    // In reach from the start, facing away: stage 1 runs at once, so she aims
-    // on the order's tick and pivots from the next. Her MoveWatcher reads her
-    // TurnDirection static (5): the mover reports the pivot's turn every tick
-    // it lasts (the idle navigator's zero request comes first, so each tick's
-    // smaller turn is reported again) and 0 once she faces the target.
-    {
-        const Run r = attack(vfs, reg, "vermage", 300, -kFacing, 300, 0, 5);
-        std::printf("  vermage in reach, facing away: %s; TurnDirection static set %d ticks (%d values), %d at the end\n",
-                    describe(r).c_str(), r.turnHeld, r.turnValues, r.turnAfter);
-        check(r.aim == r.order && r.turned == r.order + 1, "ordered in reach she aims at once and turns the tick after",
-              describe(r));
-        check(r.turnHeld >= 8 && r.turnValues >= r.turnHeld - 1 && r.turnAfter == 0,
-              "her script hears the pivot through TurnDirection every tick it lasts, and its end", describe(r));
-        check(r.fired > r.aim, "and she fires", describe(r));
+        const Run r = attack(vfs, reg, "armham", 200, -kFacing, 300, 0);
+        std::printf("  armham in reach, facing away: %s\n", describe(r).c_str());
+        check(r.aim == r.order, "ordered in reach it aims at once", describe(r));
+        check(r.fired > r.aim, "and it fires", describe(r));
     }
 
     std::printf("%s\n", failures ? "FAILED" : "all passed");
