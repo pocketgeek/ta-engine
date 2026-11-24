@@ -191,8 +191,34 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   position from its stage 1 (0x415048) and repairs under it (0x415098).
 
 ## Open
-- Nanoframe outlines are front-facing only and use painter's order (retail
-  depth-tests per pixel).
+- Nanoframe (ported 2026-11-24, client/nanoraster.h): drawn as retail's
+  height-buffered object bitmap, one texel per game pixel -- whole-pixel
+  vertices, retail's polygon walk (0x4c0820 / 0x4c8760: left chain backward,
+  rows [ymin, ymax), the walk is the cull), byte heights compared `buffer <=
+  own` and written (0x4c0acf, 0x4c7b53), so they wrap past 205; bias 50, 125
+  for an FBI `digger` (UnitDef +0x241 bit 30, 0x42c885, 0x459a2f); outlines
+  are each row's two end pixels of every primitive, depth-tested and
+  writing (0x4c0a90). Still open: retail skips primitive 0, not the selection
+  primitive, whenever a piece has one (0x459aa5, 0x45908a, 0x458568; 3DO
+  pieces are not reordered at load, 0x4cb4c0) -- 24 unit models (armca,
+  corlab, cortitan...) carry it elsewhere, so retail draws their selection
+  quad (coloured, index 0) and drops a textured face; the client keeps
+  skipping the selection primitive until what colour 0 draws as in the object
+  bitmap is traced. Retail also draws a textured primitive only as a quad (0x459b1a,
+  0x4585e2); the nanoframe follows that, the finished-unit draw does not.
+- Animated textures (2026-11-24): only dont-cache pieces play (cached ones
+  are drawn with frame 0 into the cached layer, 0x4586a0(obj, 0, 1) ->
+  0x459830 arg 1 -> 0x459b67); a `zbuffer=1` type (UnitDef +0x241 bit 7,
+  0x42c5bb -> unit +0x114 bit 0, 0x485ad1) redraws them every frame with the
+  playing frame (0x4586d6 -> 0x459641 arg 0); others only while active /
+  moving (0x458845, 0x458635). Under construction a mobile unit plays all,
+  a structure none (0x45960d).
+- Repair pads (client): a rider's heading is the pad's plus its pad piece's
+  own y turn (0x43d78e -> 0x43e180; the piece's x/z turns go to +0x64/+0x68
+  but which entry word is which axis is not traced, and World's sim does not
+  set the rider's own heading); the pad sprays from its QueryNanoPiece to
+  the rider's box on each tick SelfRepair mends it (0x402518 -> 0x40252e ->
+  0x4025ae, the builder repair's emitter).
 - Death accounting (countTaDeath, retailveterancy.h): World's death pipeline
   still keys most deaths on Kingdoms death kinds (Unit::deathType: severity,
   Killed/Dying, the death weapon), mapped onto TA's for counting. TA-shaped
