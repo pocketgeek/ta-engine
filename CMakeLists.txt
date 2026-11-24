@@ -2362,9 +2362,11 @@ if(TA_BUILD_CLIENT)
         set_tests_properties(buildline_chain_${_name} PROPERTIES TIMEOUT 300
             PASS_REGULAR_EXPRESSION "PASS: build-line chain")
       endforeach()
+      # armmakr: an activatewhenbuilt structure with animated textures (TotalA.exe
+      # 0x458845 plays them only while it is activated; armrad's are team colours).
       add_test(NAME render_texture_reuse COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
-          TA_SHADOW_BENCH=16 TA_SHADOW_BENCH_TYPE=armrad TA_PROFILE_ZOOM=0.5
+          TA_SHADOW_BENCH=16 TA_SHADOW_BENCH_TYPE=armmakr TA_PROFILE_ZOOM=0.5
           TA_RENDER_STUDY=1 TA_RENDER_FRAMES=180 TA_GEOMETRY_VERIFY=1 TA_REQUIRE_GEOMETRY_REUSE=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/render-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/render-test-profile
