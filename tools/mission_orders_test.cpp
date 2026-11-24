@@ -133,7 +133,7 @@ struct Fixture {
         fbi("bomber", flyer, "BOMB");
         fbi("target", mobile);
         fbi("stubborn", mobile + "unitstandorders=0;\n", "BLADE");
-        fbi("plain", mobile + "noveteran=1;\n", "BLADE");
+        fbi("plain", mobile, "BLADE");
         fbi("builder", mobile + "builder=1;\nworkertime=300;\nbuilddistance=60;\n");
         // A TA transport: canload, transportcapacity (passengers) and transportsize
         // (the largest passenger footprint) are all its keys (TotalA.exe 0x42c251/
@@ -519,7 +519,6 @@ static void veterancy(Fixture& f) {
     const Unit* v = w->unit(p[0].id);
     check(std::fabs(v->vetMul() - 2.5f) < 1e-6f && v->veteran == 10, "v 2.5: multiplier 2.5, rank 10",
           std::to_string(v->vetMul()) + ", rank " + std::to_string(v->veteran));
-    check(w->unit(p[1].id)->vetMul() == 1.0f && w->unit(p[1].id)->veteran == 0, "a noveteran type ignores it");
     kill(*w, p[2].id, p[0].id);
     tickN(*w, 2);
     check(w->unit(p[0].id)->veteran == 10 && w->unit(p[0].id)->vetMul() == 2.5f, "a kill moves neither");

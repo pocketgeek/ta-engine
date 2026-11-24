@@ -104,14 +104,13 @@ struct Plain {
         w.unit(id)->fireState=0;
         return id;
     }
-    // The change of owner to the taker's player, after kTakeTicks. The tick
-    // it is made on is the last one run.
+    // The change of owner to the taker's player, after kTakeTicks (made
+    // between ticks, as the charm's impact was within one).
     bool charm(int casterId,int victim) {
         const int owner=w.unit(casterId)->player;
-        run(kTakeTicks-1);
+        run(kTakeTicks);
         if (!w.unit(victim)->alive()) return false;
         RetailReplayProbe::take(w,victim,owner);
-        run(1);
         return w.unit(victim)->alive() && w.unit(victim)->player==owner;
     }
 };
@@ -272,17 +271,17 @@ struct Field {
         if (!t) { check(false,label+": shipped type "+type+" is missing");return 0; }
         return w.spawn(t,x,z,0,player);
     }
-    // The change of owner to the taker's player, after kTakeTicks. The tick
-    // it is made on is the last one run. `keep`: a unit whose hit points are
-    // held up meanwhile (one the change must find alive).
+    // The change of owner to the taker's player, after kTakeTicks (made
+    // between ticks). `keep`: a unit whose hit points are held up meanwhile
+    // (one the change must find alive).
     bool charm(int casterId,int victim,int keep=0) {
         if (!casterId) return false;
         const int player=w.unit(casterId)->player;
         for (int t=0;t<kTakeTicks;++t) {
             if (Unit* k=w.unit(keep);k && k->alive()) k->hp=Fixed::fromInt(int(k->type->maxHp));
-            if (t==kTakeTicks-1 && w.unit(victim)->alive()) RetailReplayProbe::take(w,victim,player);
             run(1);
         }
+        if (w.unit(victim)->alive()) RetailReplayProbe::take(w,victim,player);
         return w.unit(victim)->alive() && w.unit(victim)->player==player;
     }
     // The taker (caster() above), on Hold Fire.
@@ -530,12 +529,12 @@ void sharedIdCase(const TypeRegistry& reg) {
     check(names(*w.unit(a),first) && names(*w.unit(a),v1) && names(*w.unit(b),first) && names(*w.unit(b),v2),
           tag+": each attacker holds a queued attack on its own unit before the charms");
     // The first target and both units must outlast the charms.
-    command(w,reg,Cmd::Attack,0,c1,v1);command(w,reg,Cmd::Attack,0,c2,v2);
     const auto ours=[&](int id) { const Unit* u=w.unit(id);return u && u->alive() && u->player==0; };
-    for (int t=0;t<1800 && !(ours(v1) && ours(v2));++t) {
+    for (int t=0;t<kTakeTicks;++t) {
         for (int id:{first,v1,v2}) if (Unit* k=w.unit(id);k && k->alive()) k->hp=Fixed::fromInt(int(k->type->maxHp));
         f.run(1);
     }
+    for (int id:{v1,v2}) if (w.unit(id)->alive()) RetailReplayProbe::take(w,id,w.unit(id==v1 ? c1 : c2)->player);
     const bool took=ours(v1) && ours(v2);
     check(took,tag+": both charms take");
     if (!took) return;

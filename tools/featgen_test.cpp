@@ -310,7 +310,12 @@ int main() {
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
         UnitType mover;mover.footX=mover.footZ=1;mover.maxHp=100;
         mover.maxVel=Fixed::fromInt(1);mover.canMove=true;
-        // A script-less body has no Dying to run: its wreck lands at once.
+        auto death=std::make_shared<ta::cob::File>();   // Killed asks for corpse 1
+        death->scripts={{"Killed",0}};
+        death->code={0x10022000,0x10022000,0x10022000,
+            0x10021001,1,0x10023002,1,0x10021001,0,0x10065000};
+        mover.simulationScript=death;
+        // Killed asks for the corpse and runs no Dying: the wreck lands at once.
         FeatType wreck;wreck.name="wreck";wreck.fx=2;wreck.fz=3;wreck.blocking=true;
         wreck.reclaimable=true;
         FeatType wall;wall.name="wall";wall.blocking=true;wall.indestructible=true;
@@ -318,7 +323,7 @@ int main() {
         const int id=map.spawn(&mover,168,168,0,0);
         map.unit(id)->hp=Fixed();map.tick(1.0f/30);
         check(map.unit(id)->corpseBlocks && RetailReplayProbe::grade(map,11,12)==1,
-              "a script-less mobile unit immediately places the wreck's full footprint");
+              "a mobile unit with no Dying immediately places the wreck's full footprint");
         map.addFeature(10*32+10,168,168,0,1,1,true,1);
         check(!map.unit(id)->corpseBlocks && RetailReplayProbe::grade(map,11,12)==7,
               "overwriting a wreck retires its owner and frees the old footprint");
@@ -333,7 +338,7 @@ int main() {
         map.unit(reclaimable)->hp=Fixed();map.tick(1.0f/30);
         // A mobile builder (World::reclaim's caster test): the clear is its
         // order, walk, work and fade, not the idle clear this used to ride on.
-        UnitType builder=mover;builder.canReclaim=true;builder.isBuilder=true;
+        UnitType builder=mover;builder.canReclaim=true;builder.isBuilder=true;builder.simulationScript=nullptr;
         const int worker=map.spawn(&builder,216,168,0,0);
         map.reclaim(worker,-reclaimable,false);
         for (int i=0;i<600 && map.unit(reclaimable)->corpseBlocks;++i) map.tick(1.0f/30);
@@ -348,6 +353,11 @@ int main() {
         map.setMapPlacementFeatures(std::vector<uint16_t>(32*32,0xffff),{});
         UnitType mover;mover.footX=mover.footZ=1;mover.maxHp=100;
         mover.maxVel=Fixed::fromInt(1);mover.canMove=true;
+        auto death=std::make_shared<ta::cob::File>();   // Killed asks for corpse 1
+        death->scripts={{"Killed",0}};
+        death->code={0x10022000,0x10022000,0x10022000,
+            0x10021001,1,0x10023002,1,0x10021001,0,0x10065000};
+        mover.simulationScript=death;
         UnitType victim=mover;victim.corpseAdjZ=6;
         FeatType wreck;wreck.name="offset wreck";wreck.blocking=true;
         map.setFeatureTypes({wreck});map.mapCorpse(&victim,0);
