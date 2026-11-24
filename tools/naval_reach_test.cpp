@@ -1,7 +1,8 @@
 // A mobile builder may only place a site it can get within its build distance of
 // (World::buildSiteReachable, the client's placement verdict). Every walking
-// ground builder whose menu holds something that must stand in water (a yard with
-// water cells, a ship, a Zhon water creature) stands on island A of a test map:
+// ground builder whose menu holds something that must stand in water (a shipyard,
+// sonar or floating structure: a yard map with water cells) stands on island A
+// of a test map:
 //
 //   x cells  0..40   island A (the builder)
 //           40..100  sea
@@ -51,8 +52,8 @@ int main(int argc, char** argv) {
         const ta::sim::UnitType* flyer = nullptr;
         for (const auto& [id, t] : registry.types())
             if (t.isBuilder && t.canFly && !t.isStructure() && (!flyer || id < flyer->id)) flyer = &t;
-        // Shipyards are ground-domain structures whose yard map wants water ('w');
-        // a Zhon producer's water creature is a water-domain unit.
+        // Shipyards and floating structures are ground-domain structures whose
+        // yard map wants water ('w'); a ship is a water-domain unit.
         auto needsWater = [](const ta::sim::UnitType& t) {
             if (t.domain == ta::sim::UnitType::Domain::Water) return true;
             return t.isStructure() && std::any_of(t.yardMap.begin(), t.yardMap.end(),

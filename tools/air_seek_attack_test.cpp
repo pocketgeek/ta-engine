@@ -60,14 +60,14 @@ Run run(const TypeRegistry& registry,const UnitType& attacker,const UnitType& vi
     w.buildNavClasses(registry);
     w.player(0).mana=1e6;w.player(1).mana=1e6;
     const auto weak=fragile(victim);
-    const auto bystander=sturdy(*registry.find("tarzom"));
+    const auto bystander=sturdy(*registry.find("armpw"));
     const float vx=2000,vz=2000;
     const int them=w.spawn(&weak,vx,vz,0.f,1);
     w.unit(them)->standbyAllowed=false;
     w.setStance(them,2);w.unit(them)->moveState=0;w.unit(them)->fireState=0;
-    // An idle flyer stands inside its first weapon's range: the Fallen
-    // Angel's Death Sword reaches 140 px, and from 150 px it never took the
-    // target (unseen while its attack runs never killed and it was skipped,
+    // An idle flyer stands inside its first weapon's range (at most 150 px
+    // off: a Kingdoms flyer with a 140 px weapon never took a target from
+    // 150, unseen while its attack runs never killed and it was skipped,
     // before flyers re-aimed at the release).
     const auto& weapons=attacker.weapons;
     const float idleGap=std::min(150.f,0.75f*float(weapons.front().range));
@@ -133,7 +133,7 @@ int main(int argc,char** argv) {
                 std::none_of(type.weapons.begin(),type.weapons.end(),[](const Weapon& x){return x.mindControl;}))
                 flyers.push_back(id);
         std::sort(flyers.begin(),flyers.end());
-        const auto& ground=*registry.find("tarzom");
+        const auto& ground=*registry.find("armpw");
         int tested=0;
         for (const auto& name:flyers) {
             const auto& type=*registry.find(name);
@@ -170,8 +170,8 @@ int main(int argc,char** argv) {
         int airTested=0;
         for (const auto& name:flyers) {
             const auto& type=*registry.find(name);
-            const std::string what=balance+" "+name+" vs zongryp";
-            const Run air=run(registry,type,*registry.find("zongryp"),2,Setup::Explicit,600,-1);
+            const std::string what=balance+" "+name+" vs armpeep";
+            const Run air=run(registry,type,*registry.find("armpeep"),2,Setup::Explicit,600,-1);
             if (!air.killed) continue;
             ++airTested;
             std::printf("%s air-to-air: kill=%d point error=%.1f hops=%d\n",what.c_str(),air.killTick,air.pointError,

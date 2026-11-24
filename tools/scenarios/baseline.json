@@ -63518,22 +63518,6 @@
      "since": "P307-air2",
      "value": 0
     },
-    "g.ring.away_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.away_mean": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ring.complete_dist_max": {
      "band": 1.1,
      "dir": "lower",
@@ -63582,53 +63566,6 @@
      "since": "P307-air2",
      "value": -1
     },
-    "g.ring.flyers": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 16
-    },
-    "g.ring.flyers_landed": {
-     "band": 1.1,
-     "dir": "higher",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 16
-    },
-    "g.ring.go_arounds": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.hover_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.illegal_overlap_ticks": {
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "eq",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.land_delay_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ring.left_behind": {
      "band": 1.1,
      "dir": "lower",
@@ -63661,22 +63598,6 @@
      "since": "P307-air2",
      "value": 135
     },
-    "g.ring.relifts": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.relifts_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ring.stops": {
      "band": 1.1,
      "dir": "lower",
@@ -63701,22 +63622,6 @@
      "since": "P307-air2",
      "value": -1
     },
-    "g.ring.takeoffs": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.takeoffs_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ward.arrived": {
      "band": 1.1,
      "dir": "higher",
@@ -63724,22 +63629,6 @@
      "rule": "band",
      "since": "P307-air2",
      "value": 1
-    },
-    "g.ward.away_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.away_mean": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
     },
     "g.ward.complete_dist_max": {
      "band": 1.1,
@@ -63789,53 +63678,6 @@
      "since": "P307-air2",
      "value": 0
     },
-    "g.ward.flyers": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 1
-    },
-    "g.ward.flyers_landed": {
-     "band": 1.1,
-     "dir": "higher",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 1
-    },
-    "g.ward.go_arounds": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.hover_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.illegal_overlap_ticks": {
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "eq",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.land_delay_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ward.left_behind": {
      "band": 1.1,
      "dir": "lower",
@@ -63868,22 +63710,6 @@
      "since": "P307-air2",
      "value": 33
     },
-    "g.ward.relifts": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.relifts_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ward.stops": {
      "band": 1.1,
      "dir": "lower",
@@ -63906,22 +63732,6 @@
      "reason": "flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "band",
      "since": "P307-air2",
-     "value": 0
-    },
-    "g.ward.takeoffs": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.takeoffs_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
      "value": 0
     },
     "gauge.engaged_max": {
@@ -63953,77 +63763,77 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was a0404c153a3c5328). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 520fc4fbd4cec33e). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was f535679ab8f0267a). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "656620bfcc7054d4"
+     "value": "cc90686cf69d9523"
     },
     "hash@-2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 0401538780c370ba). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 861f8cd8ff045439). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was be2c286f4504e49f). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "18fb676f92cbcaaa"
+     "value": "f2646772aa80fbbe"
     },
     "hash@-3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 092f4b161047e980). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was a7f5a6dada73cc51). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was c86705ce7536fa6a). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "4038ad2b235f9162"
+     "value": "29b53d0f3f2a62a2"
     },
     "hash@-4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 5241e699c598a3d3). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 426a1a93ab21459e). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was e04ebd39c89484ff). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "b23c070e956938d7"
+     "value": "8e4049e01a699ac7"
     },
     "hash@-5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was c72be33cd6a532df). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 6109ff46d174bf30). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 4c617fdcfe19e2e4). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "5bbf1aa70cc30382"
+     "value": "96dfcc0d608fffa0"
     },
     "hash@0": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 1e3448cc6be443f3). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was af9411f6b661dcb7). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 2ba1f53518b8f3da). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "6acd535fcc87bee1"
+     "value": "2bd80d757e9203bc"
     },
     "hash@1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 1577d3a0d46f7374). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 7b980a749ecd0121). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was ab6605291fe048a8). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "dc3a6c03fbeea45a"
+     "value": "2aa08296e6707283"
     },
     "hash@2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was abcea5bce9b1cc28). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 98e84373c8a531cf). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was d71e5675a47b602d). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "dad479b0a345b3a1"
+     "value": "516cc801ce626fa0"
     },
     "hash@3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 76b11d1611475095). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 45aea2ee333d1210). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 303f23cb7ddda2f8). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "96d790cbff94de00"
+     "value": "8b38f53a0a3b6eac"
     },
     "hash@4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was c62bf63bfc31e2bb). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 9ac7b47a4078d52a). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 81e07aabf82b4a1e). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "e56e432b59adac30"
+     "value": "bdd24a4648e85fc0"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 1db01c481c3b28db). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was f5d953f58acf127f). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was fc0662b0b9e7d988). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "e377664fa67c8967"
+     "value": "8e913c9abee652fa"
     },
     "legion_groups": {
      "band": 1.1,
@@ -64792,22 +64602,6 @@
      "since": "P307-air2",
      "value": 0
     },
-    "g.ring.away_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.away_mean": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ring.complete_dist_max": {
      "band": 1.1,
      "dir": "lower",
@@ -64856,53 +64650,6 @@
      "since": "P307-air2",
      "value": -1
     },
-    "g.ring.flyers": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 16
-    },
-    "g.ring.flyers_landed": {
-     "band": 1.1,
-     "dir": "higher",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 16
-    },
-    "g.ring.go_arounds": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.hover_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.illegal_overlap_ticks": {
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "eq",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.land_delay_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ring.left_behind": {
      "band": 1.1,
      "dir": "lower",
@@ -64935,22 +64682,6 @@
      "since": "P307-air2",
      "value": 135
     },
-    "g.ring.relifts": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.relifts_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ring.stops": {
      "band": 1.1,
      "dir": "lower",
@@ -64975,22 +64706,6 @@
      "since": "P307-air2",
      "value": -1
     },
-    "g.ring.takeoffs": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ring.takeoffs_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ward.arrived": {
      "band": 1.1,
      "dir": "higher",
@@ -64998,22 +64713,6 @@
      "rule": "band",
      "since": "P307-air2",
      "value": 1
-    },
-    "g.ward.away_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.away_mean": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
     },
     "g.ward.complete_dist_max": {
      "band": 1.1,
@@ -65063,53 +64762,6 @@
      "since": "P307-air2",
      "value": 0
     },
-    "g.ward.flyers": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 1
-    },
-    "g.ward.flyers_landed": {
-     "band": 1.1,
-     "dir": "higher",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 1
-    },
-    "g.ward.go_arounds": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.hover_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.illegal_overlap_ticks": {
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "eq",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.land_delay_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ward.left_behind": {
      "band": 1.1,
      "dir": "lower",
@@ -65142,22 +64794,6 @@
      "since": "P307-air2",
      "value": 33
     },
-    "g.ward.relifts": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.relifts_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "g.ward.stops": {
      "band": 1.1,
      "dir": "lower",
@@ -65182,98 +64818,82 @@
      "since": "P307-air2",
      "value": 0
     },
-    "g.ward.takeoffs": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
-    "g.ward.takeoffs_max": {
-     "band": 1.1,
-     "dir": "lower",
-     "reason": "TA port: Retail mode follows TotalA.exe's pathfinding (docs/retail-pathfinding.md section 5: 30-tick body threshold, 60-tick re-path gate, no ground scan) and TA weapon scripts; Kingdoms storm/mana left the state hash; air-stack fixtures ported to TA aircraft. Retail crowds jam more by design (user decision 2026-11-23); Legion is the smooth mode.",
-     "rule": "band",
-     "since": "W0",
-     "value": 0
-    },
     "hash@-1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 244f67c866de0478). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was e31f5da9a0f67f40). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 74935dcb1f63cb06). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "e4d2fcb67d62e966"
+     "value": "2a4e3b0211707db4"
     },
     "hash@-2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 4a54b475ed525fbc). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 95218bcb7de03070). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 7a4a0cbbf4faa2ed). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "b57f10fb4caf95ae"
+     "value": "f72b861c6c28a767"
     },
     "hash@-3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was b785a21ed22933fc). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was adab4a26fa6cbf44). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 1decbe367a65cae5). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "ec1a0a3b9e7ad9b4"
+     "value": "a610f998aec7c277"
     },
     "hash@-4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was f38eaa666ebfd546). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 2631f4b18c9285a6). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was db2c9a85f4709247). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "32e44d054b3e9a48"
+     "value": "2d71ae6053d40759"
     },
     "hash@-5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d6550b745af8ce77). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 0c35a9ac6e2b51ce). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 47550496c15b12a2). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "93220dee4cee1701"
+     "value": "e285a4fbfa8dcfc6"
     },
     "hash@0": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 5db59fece1cbd75b). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 51b839c57d10bb43). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 6fabf016f37bdd39). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "50d6e97bd0276764"
+     "value": "d1ca083ac20c6a86"
     },
     "hash@1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was ded113b320da904d). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 842adda056fc2450). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 55a6ee395fcec191). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "150eaefa2f117cf9"
+     "value": "52099adef2302d0e"
     },
     "hash@2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d5720bd6f6351d6d). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 83c2882243077073). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 58a1382494c398b6). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "e74e8b65e190c216"
+     "value": "126f6eb603c3745a"
     },
     "hash@3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 72e0a0e37827cbc4). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was fc17f49b1008d4fd). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 0152cf21500a9ab5). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "dc44c5638ccd5a87"
+     "value": "42664dc686266ff1"
     },
     "hash@4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 31fd2e3e1b204135). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 8ca6ce661cf4772c). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was 02c8bb3a0de62e65). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "39f0b76dde7e2a25"
+     "value": "38162d955e51201a"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 2a7bc23c0ab390d4). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was ff5f10886e65267b). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): new hashed state in both modes (Unit::viewPlanes, RetailDeathSight::planes, the Attack_Melee retarget wake tick, Legion's Unit::aimWait) and the mission scan's RNG draws; every non-hash key of this fixture is identical to the branch base 2f04e112 (full gate-offset run of both modes) (was f397344082720c56). Before: flyers on fight-move legs and patrols, flying builders at work and a lost ward (VTOL_SeekGuard) step out of a stack (retail's air traffic, the rest of the port), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "c079f9aba478f748"
+     "value": "aad5b17161966e4c"
     },
     "open_still900": {
      "band": 1.1,

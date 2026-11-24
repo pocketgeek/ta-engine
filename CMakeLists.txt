@@ -1602,13 +1602,6 @@ add_test(NAME owner_orders COMMAND owner_orders_test)
 add_executable(los_status_flight_test tools/los_status_flight_test.cpp)
 target_link_libraries(los_status_flight_test PRIVATE ta-formats)
 add_test(NAME los_status_flight COMMAND los_status_flight_test)
-# Melee attackers on a building walk to Attack_Melee's rectangle round its footprint (the
-# melee-*.scn fixtures, both pathfinding modes; data-gated below).
-add_executable(melee_building_test tools/melee_building_test.cpp)
-target_link_libraries(melee_building_test PRIVATE ta-formats)
-# A melee weapon never reaches a flyer in the air (52b980, 412620, 404690; data-gated below).
-add_executable(melee_air_test tools/melee_air_test.cpp)
-target_link_libraries(melee_air_test PRIVATE ta-formats)
 # Flyers step out of a stack (retail's air traffic, the air-stack-*.scn fixtures, both pathfinding modes;
 # data-gated below).
 add_executable(air_traffic_test tools/air_traffic_test.cpp ${TA_AI_SOURCES})
@@ -1665,8 +1658,6 @@ if(TA_TEST_DATA)
     add_test(NAME air_seek_attack COMMAND air_seek_attack_test "${TA_TEST_DATA}")
     add_test(NAME map_edge_gryphons COMMAND map_edge_test "${TA_TEST_DATA}")
     add_test(NAME owner_orders_roster COMMAND owner_orders_test "${TA_TEST_DATA}")
-    add_test(NAME melee_building COMMAND melee_building_test "${TA_TEST_DATA}" "${CMAKE_SOURCE_DIR}/tools/scenarios")
-    add_test(NAME melee_air COMMAND melee_air_test "${TA_TEST_DATA}")
     add_test(NAME air_traffic COMMAND air_traffic_test "${TA_TEST_DATA}" "${CMAKE_SOURCE_DIR}/tools/scenarios")
     add_test(NAME gate_scripts COMMAND retail_script_test --gates "${TA_TEST_DATA}")
     add_test(NAME scenery_damage COMMAND retail_script_test --features "${TA_TEST_DATA}")

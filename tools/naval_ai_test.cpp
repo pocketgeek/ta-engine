@@ -30,14 +30,14 @@ int main(int argc,char** argv) {
             sim::World world;
             world.setTerrain(std::vector<uint8_t>(256*256,0),256,256,32);
             world.buildNavClasses(registry);world.setPathService(true);
-            const auto* ship=registry.find("cresubm");
-            const int yard=world.spawn(registry.find("crenavy"),2000,2000,0,0);
+            const auto* ship=registry.find("armpt");
+            const int yard=world.spawn(registry.find("armsy"),2000,2000,0,0);
             world.tick(1.f/30.f);
             sim::Fixed x,y,z;world.productionPosition(yard,ship,x,y,z);
             // An ally's ship: the yard's door clearing moves only its owner's
             // idle ships (World::clearYardDoor), so this one stays put.
             world.setTeam(1,0);
-            const int blocker=world.spawn(registry.find("arawar"),x.toFloat(),z.toFloat(),0,1);
+            const int blocker=world.spawn(registry.find("corpt"),x.toFloat(),z.toFloat(),0,1);
             world.train(yard,ship,1);
             for (int tick=0;tick<300;++tick) {world.player(0).mana=100000;world.tick(1.f/30.f);}
             check(world.unit(yard)->productionSiteId==0,"another player's ship occupying the open pad still blocks production");
@@ -55,11 +55,11 @@ int main(int argc,char** argv) {
             sim::World world;
             world.setTerrain(std::vector<uint8_t>(256*256,0),256,256,32);
             world.buildNavClasses(registry);world.setPathService(true);
-            const auto* ship=registry.find("cresubm");
-            const int yard=world.spawn(registry.find("crenavy"),2000,2000,0,0);
+            const auto* ship=registry.find("armpt");
+            const int yard=world.spawn(registry.find("armsy"),2000,2000,0,0);
             world.tick(1.f/30.f);
             sim::Fixed x,y,z;world.productionPosition(yard,ship,x,y,z);
-            world.spawn(registry.find("arawar"),x.toFloat(),z.toFloat(),0,0);
+            world.spawn(registry.find("armpt"),x.toFloat(),z.toFloat(),0,0);
             world.train(yard,ship,1);
             for (int tick=0;tick<9000 && !world.unit(yard)->buildQueue.empty();++tick) {
                 world.player(0).mana=100000;world.tick(1.f/30.f);
@@ -68,16 +68,17 @@ int main(int argc,char** argv) {
                 return u.alive() && u.type==ship && !u.underConstruction;
             }),"the owner's idle ship on the pad makes way and the yard completes its ship");
         }
-        // Every AI-enabled water unit and its actual producer. This includes
-        // the mobile Aramon/Zhon chains, not just Veruna's conventional yard.
+        // Every shipyard that makes water units, alone on a coast and run by
+        // TA's own AI (ai/taretail.h, which picks from the yard's menu by its
+        // own profile tables): it must finish a water unit through normal
+        // commands.
         for (const auto& [parentId,parent]:registry.types()) {
-            for (const auto& child:registry.buildable(parentId)) {
-                const auto* ship=registry.find(child);
-                const auto weight=retailProfile.weight.find(child),limit=retailProfile.limit.find(child);
-                if (!ship || ship->isStructure() || ship->canFly || ship->domain==sim::UnitType::Domain::Ground ||
-                    (ship->domain==sim::UnitType::Domain::Hover && ship->isBuilder) ||
-                    weight==retailProfile.weight.end() || weight->second<=0 ||
-                    (limit!=retailProfile.limit.end() && limit->second==0)) continue;
+            if (!parent.isStructure()) continue;
+            std::set<const sim::UnitType*> water;
+            for (const auto& child:registry.buildable(parentId))
+                if (const auto* t=registry.find(child); t && !t->isStructure() && !t->canFly &&
+                    t->domain==sim::UnitType::Domain::Water) water.insert(t);
+            if (water.empty()) continue;
               for (bool defensive:{false,true}) {
                 sim::World world;
                 std::vector<uint8_t> heights(256*256,40);
@@ -89,63 +90,58 @@ int main(int argc,char** argv) {
                 world.setTerrain(std::move(heights),256,256,32);
                 world.buildNavClasses(registry);world.setPathService(true);
                 world.player(0).defensiveAi=defensive;
-                const float px=parent.isStructure() ?
-                    (ship->domain==sim::UnitType::Domain::Water ? 2000.f : 1200.f) : 1400.f;
-                world.spawn(&parent,px,800,std::nullopt,0);
-                ai::Profile profile;profile.weight[child]=100;
-                ai::Controller controller(0,registry,profile,1,
+                world.spawn(&parent,2000.f,800,std::nullopt,0);
+                world.setStartResources(0,100000.f,100000.f);   // TA's books: the AI scores by them
+                ai::Controller controller(0,registry,retailProfile,1,
                     defensive?ai::Difficulty::Defensive:ai::Difficulty::Normal,{{3280,800}});
                 int completed=0,attackOrders=0;
+                const sim::UnitType* ship=nullptr;
                 for (uint32_t tick=0;tick<18000 && !completed;++tick) {
-                    world.player(0).mana=100000;world.player(0).income=100;
+                    // A going economy: the build score (taretail score) wants
+                    // metal or energy first while income is short.
+                    auto& books=world.player(0).books;
+                    books.income[0]=1000;books.income[1]=50;
                     controller.tick(world,tick,[&](const auto& c) {
                         if (c.kind==net::Cmd::AttackMove) ++attackOrders;
                         sim::applyCommand(world,registry,c);
                     });
                     world.tick(1.f/30.f);
                     for (const auto& u:world.units())
-                        if (u.alive() && u.type==ship && !u.underConstruction) completed=u.id;
+                        if (u.alive() && water.count(u.type) && !u.underConstruction) { completed=u.id;ship=u.type; }
                 }
-                std::printf("defensive=%d %s -> %s: ",defensive,parentId.c_str(),child.c_str());
-                check(completed!=0,"AI finishes its water-unit build through normal commands");
-                if (completed && !ship->isBuilder) {
-                    for (uint32_t tick=18000;tick<18120 && !attackOrders;++tick) {
-                        controller.tick(world,tick,[&](const auto& c) {
-                            if (c.unitId==completed && c.kind==net::Cmd::AttackMove) ++attackOrders;
-                            sim::applyCommand(world,registry,c);
-                        });
-                        world.tick(1.f/30.f);
-                    }
-                    check(defensive ? attackOrders==0 : attackOrders>0,
-                        "naval fighters deploy for Normal and remain defensive for Defensive AI");
-                }
+                std::printf("defensive=%d %s -> %s: ",defensive,parentId.c_str(),ship?ship->id.c_str():"-");
+                check(completed!=0,"AI finishes a water unit from its yard through normal commands");
+                // A lone fighter is not sent out: retail's naval strike group
+                // (task F, 0x4077e0) launches at six (docs/retail-ai.md, the
+                // squad table), which the natural opening below reaches. A
+                // Defensive AI never launches one.
+                if (defensive) check(attackOrders==0,"a Defensive AI keeps its ships home");
               }
-            }
         }
 
-        // Natural opening: no free builders, factories, income, mana or altered
-        // profile. All factions use the same inland Varro Passage starting seat.
-        for (int faction=0;faction<5;++faction) {
+        // Natural opening: no free builders, factories, income or altered
+        // profile. Both sides take the same Seven Islands seat, where TA's AI
+        // goes to sea; in 30 minutes it has gathered and launched a naval
+        // strike group (six ships, docs/retail-ai.md).
+        for (int faction=0;faction<2;++faction) {
             sim::World world;
-            sim::MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,"Varro Passage");
+            sim::MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,"Seven Islands");
             config.roomMapRevealed=true;   // FOG OF WAR: EXPLORED, the room's default
             config.slots={{true,0,0,1.f},{true,faction,1,1.f,true,false}};
             const auto starts=sim::setupMatch(world,registry,config);
             ai::Controller controller(1,registry,retailProfile,0x1234,ai::Difficulty::Normal,{starts[0]});
             std::set<int> completed;int attacks=0;
-            for (uint32_t tick=0;tick<36000;++tick) {
+            for (uint32_t tick=0;tick<54000;++tick) {
                 controller.tick(world,tick,[&](const auto& c) {
                     const auto* u=world.unit(c.unitId);
-                    const bool water=u && u->type && (faction==1 ?
-                        (!u->type->canFly && u->type->domain==sim::UnitType::Domain::Hover) : waterFighter(u->type));
+                    const bool water=u && waterFighter(u->type);
                     if (water && (c.kind==net::Cmd::AttackMove || c.kind==net::Cmd::Attack)) ++attacks;
                     sim::applyCommand(world,registry,c);
                 });
                 world.tick(1.f/30.f);
                 if (tick%30==0) for (const auto& u:world.units()) {
                     if (u.player!=1 || !u.alive() || u.underConstruction || !u.type || u.type->isBuilder) continue;
-                    if (faction==1 ? (!u.type->canFly && u.type->domain==sim::UnitType::Domain::Hover) : waterFighter(u.type))
-                        completed.insert(u.id);
+                    if (waterFighter(u.type)) completed.insert(u.id);
                 }
             }
             std::printf("faction=%d completed=%zu attacks=%d: ",faction,completed.size(),attacks);
