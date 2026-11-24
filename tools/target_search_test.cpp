@@ -23,9 +23,9 @@
 //                   one past its range is not taken
 //                   (ranged_seen_out_of_range_ignored); Hold Position gets no
 //                   Standby attack, and its patrol's scan a forced leashed
-//                   attack with a return move (hold_position_patrol, 403600);
-//                   an armed wanderer's Standby_Wander scan (4078e0) leashes
-//                   its attack to its post on Maneuver and not on Roam.
+//                   attack with a return move (hold_position_patrol, 403600).
+//                   (TA ships no wanderer, so Standby_Wander's scan is not
+//                   exercised here.)
 //
 //   attack_move     A fight-move leg is retail's MoveFight order (D1, AM-1): a
 //                   Move with response mode -1 (World::markFightLeg), whose
@@ -40,7 +40,7 @@
 //   shared_sight    Shared sight (4f6770 / 4c66b0), widened by the owner's D2
 //                   decision to every ally, human or computer: a player's plane
 //                   holds every ally's units' sight and its explored bits their
-//                   exploration, so an idle archer takes an enemy only its
+//                   exploration, so an idle Hammer takes an enemy only its
 //                   ally's scout sees -- human+human, human+computer either way
 //                   and computer+computer (human_human, human_ai, ai_human,
 //                   ai_ai); a player on another team shares nothing
@@ -55,14 +55,18 @@
 //                   (death_revealer_lone_ai_none). A passive neutral
 //                   (villagers, wildlife) shares nothing with anyone, allied
 //                   or not, nor keeps a revealer: in a skirmish
-//                   (skirmish_passive_no_share, death_revealer_passive_none) and, as
-//                   retail's 4f6770 leaves a mission computer out, in a
-//                   shipped campaign mission (campaign_passive_*). Throughout, the counts
+//                   (skirmish_passive_no_share, death_revealer_passive_none).
+//                   (TA's campaign missions carry no passive neutral player,
+//                   so the Kingdoms campaign case is gone.) Throughout, the counts
 //                   equal the sum of the footprints over their planes and the
 //                   client's display plane (client/retailfog.h) shows in view
 //                   exactly the cells the player's own plane counts.
 //
 // The other scenarios of the plan join as their steps land.
+//
+// Shooters and targets are TA's: a Hammer (armham, ballistic Plasma Cannon,
+// range 320); the idle-coverage foes an A.K., a Peewee and a Stumpy. The
+// addresses quoted are KINGDOMS.icd's unless marked TotalA.exe.
 //
 // A dev harness; not shipped in a game.
 
@@ -204,14 +208,13 @@ Engagement idleEngage(const sim::UnitType& type, const sim::UnitType& foeType, c
 }
 
 void idleCoverage(const sim::TypeRegistry& reg) {
-    // The foe: land units with shootme, capturable and with no status
-    // immunity; the first one the type's scanning weapon damages (a Human,
-    // else an Undead, else a Siege body: Ayla's charm spares Humans).
+    // The foe: land units with shootme; the first one the type's scanning
+    // weapon damages (a Core Kbot, an Arm Kbot, an Arm vehicle).
     std::vector<const sim::UnitType*> foes;
-    for (const char* id : {"araarch", "tararch", "aracan"})
+    for (const char* id : {"corak", "armpw", "armstump"})
         if (const auto* f = reg.find(id)) foes.push_back(f);
-    const sim::UnitType* spare = reg.find("araarch");
-    if (foes.size() != 3 || !spare) { check(false, "shipped araarch, tararch and aracan load"); return; }
+    const sim::UnitType* spare = reg.find("armpw");
+    if (foes.size() != 3 || !spare) { check(false, "shipped corak, armpw and armstump load"); return; }
     // Types the World leaves without an engagement today, each with its
     // reason. Empty: a type the mission hosts miss must be fixed there, not
     // listed here.
@@ -296,11 +299,10 @@ Idle idleNear(const sim::UnitType& type, const sim::UnitType& foeType, float d, 
 }
 
 void missionPorts(const sim::TypeRegistry& reg) {
-    const sim::UnitType* archer = reg.find("araarch");
-    const sim::UnitType* boar = reg.find("monboar");
-    if (!archer || !boar || archer->weapons.empty()) { check(false, "shipped araarch and monboar load"); return; }
-    // A short-sighted gunner: the Archer's bow (range R) with sight 60, so an
-    // enemy at 0.8 R is in range and out of its own sight.
+    const sim::UnitType* archer = reg.find("armham");
+    if (!archer || archer->weapons.empty()) { check(false, "shipped armham loads"); return; }
+    // A short-sighted gunner: the Hammer's cannon (range R) with sight 60, so
+    // an enemy at 0.8 R is in range and out of its own sight.
     sim::UnitType gunner = *archer;
     gunner.id = "gunner";
     gunner.sight = 60;
@@ -316,8 +318,8 @@ void missionPorts(const sim::TypeRegistry& reg) {
               "Roam's Standby attack is plain (4d7de0: no leash)");
     }
     {
-        // Sight 500 past the bow's range: a seen enemy beyond the range is
-        // not taken by a ranged slot (52ad60).
+        // Sight 200 past the cannon's range: a seen enemy beyond the range
+        // is not taken by a ranged slot (52ad60).
         sim::UnitType sighted = *archer;
         sighted.id = "sighted";
         sighted.sight = int32_t(range) + 200;
@@ -332,19 +334,6 @@ void missionPorts(const sim::TypeRegistry& reg) {
               "hold_position_patrol: the patrol's scan puts a forced leashed attack and a return move in",
               "attacked " + std::to_string(patrol.attacked) + " leashed " + std::to_string(patrol.leashed) +
                   " return " + std::to_string(patrol.returnMove) + " auto " + std::to_string(patrol.automatic));
-    }
-    {
-        // Standby_Wander (4078e0): Maneuver keeps a pick inside the leash of
-        // the post and leashes the attack there; Roam's attack is plain.
-        const float d = std::min(0.7f * float(boar->sight), 0.7f * float(std::max<int32_t>(boar->leash, 1)));
-        const Idle maneuver = idleNear(*boar, *archer, std::max(d, 40.f), true, 1, false, 120);
-        check(maneuver.attacked && maneuver.automatic && maneuver.leashed && !maneuver.returnMove &&
-              maneuver.origin.x == 250 && maneuver.origin.z == 400,
-              "Standby_Wander on Maneuver: an automatic attack leashed to the post, no return move");
-        const Idle roam = idleNear(*boar, *archer, std::max(d, 40.f), true, 2, false, 120);
-        check(roam.attacked && !roam.automatic && !roam.leashed, "Standby_Wander on Roam: a plain attack (mode 0)");
-        const Idle hold = idleNear(*boar, *archer, std::max(d, 40.f), true, 0, false, 120);
-        check(!hold.attacked, "Standby_Wander on Hold Position: no scan");
     }
 }
 struct Fight {
@@ -404,8 +393,8 @@ Fight fightMove(const sim::UnitType& type, const sim::UnitType& foeType, float o
 }
 
 void attackMoves(const sim::TypeRegistry& reg) {
-    const sim::UnitType* archer = reg.find("araarch");
-    if (!archer || archer->weapons.empty()) { check(false, "shipped araarch loads"); return; }
+    const sim::UnitType* archer = reg.find("armham");
+    if (!archer || archer->weapons.empty()) { check(false, "shipped armham loads"); return; }
     const float range = float(archer->weapons[0].range);
     auto describe = [](const Fight& f) {
         return "picked " + std::to_string(f.picked) + " auto " + std::to_string(f.automatic) + " leashed " +
@@ -413,7 +402,7 @@ void attackMoves(const sim::TypeRegistry& reg) {
                std::to_string(f.legBehind) + " killed " + std::to_string(f.killed) + " from goal " +
                std::to_string(int(f.endFromGoal));
     };
-    // Sight 60: it never sees the foe, which stays inside the bow's range
+    // Sight 60: it never sees the foe, which stays inside the cannon's range
     // as it walks past 0.6 R off the path.
     sim::UnitType blind = *archer;
     blind.id = "blind";
@@ -642,73 +631,9 @@ Cap deathCapPerOwner(const sim::UnitType& archer) {
     return out;
 }
 
-// A shipped campaign mission with wildlife on the human's team:
-// takmission06_ph's Player10=passive neutral (a deer, a sabertooth, wolves)
-// and Player3=strategic ally. Retail makes both kind-2 computers, which 4f6770
-// pairs with nobody; ours keeps the strategic ally sharing (D2) and gives the
-// passive neutral retail's result: its units count in its own plane only, the
-// human's never in its, and neither explores for the other.
-void campaignPassive(const sim::TypeRegistry& reg, const hpi::Vfs& vfs) {
-    sim::World w;
-    const WorldHash hashed{w};
-    int human = 0;
-    sim::MissionSetup ms;
-    if (!sim::setupMission(w, reg, vfs, "takmission06_ph", human, &ms)) { check(false, "takmission06_ph loads"); return; }
-    int neutral = -1, ally = -1;
-    for (size_t p = 0; p < ms.playerDefs.size(); ++p) {
-        std::string def = ms.playerDefs[p];
-        std::transform(def.begin(), def.end(), def.begin(), ::tolower);
-        if (def.find("passive neutral") != std::string::npos) neutral = int(p);
-        if (def.find("strategic ally") != std::string::npos) ally = int(p);
-    }
-    if (neutral < 0 || ally < 0) { check(false, "takmission06_ph has a passive neutral and a strategic ally"); return; }
-    const auto bit = [](int p) { return uint16_t(1u << p); };
-    check(w.player(neutral).passiveNeutral && !w.player(ally).passiveNeutral && !w.player(human).passiveNeutral &&
-              w.allied(human, neutral),
-          "campaign_passive_flag: setupMission marks the passive neutral, on the human's team, and no one else");
-    check(!(w.viewShareMask(human) & bit(neutral)) && (w.viewShareMask(human) & bit(ally)) &&
-              w.viewShareMask(neutral) == bit(neutral),
-          "campaign_passive_masks: the human shares with the strategic ally, the passive neutral with nobody");
-    w.tick(kTick);
-    // After one pass the explored bits are exactly the cells in view.
-    const int width = w.viewPlaneW(), height = w.viewPlaneH();
-    const size_t cells = size_t(width) * height;
-    const auto& explored = w.navigationExploration();
-    int onlyNeutral = 0, onlyHuman = 0, leaked = 0;
-    for (int z = 0; z < height; ++z)
-        for (int x = 0; x < width; ++x) {
-            const size_t i = size_t(z) * width + x;
-            const bool n = w.viewCount(neutral, x, z) > 0, h = w.viewCount(human, x, z) > 0;
-            if (n && !h) { ++onlyNeutral; if (explored[i] >> human & 1) ++leaked; }
-            if (h && !n) { ++onlyHuman; if (explored[i] >> neutral & 1) ++leaked; }
-        }
-    check(cells && onlyNeutral > 0 && onlyHuman > 0 && leaked == 0,
-          "campaign_passive_explored: the wildlife's sight neither shows nor explores for the human, nor the "
-          "human's for it", "only neutral " + std::to_string(onlyNeutral) + " only human " +
-              std::to_string(onlyHuman) + " leaked " + std::to_string(leaked));
-    bool planes = true, display = true, unseenWildlife = false;
-    int wildlife = 0;
-    for (int i = 0; i < 90; ++i) {
-        w.tick(kTick);
-        display = display && displayMatchesPlane(w, human);
-        for (const auto& u : w.units()) {
-            if (!u.viewSight.active) continue;
-            if (u.player == neutral) planes = planes && u.viewPlanes == bit(neutral);
-            else if (u.viewPlanes & bit(neutral)) planes = false;
-        }
-    }
-    for (const auto& u : w.units())
-        if (u.alive() && u.player == neutral) { ++wildlife; unseenWildlife = unseenWildlife || !w.playerSees(human, u); }
-    check(planes && display && wildlife > 0 && unseenWildlife,
-          "campaign_passive_planes: every footprint keeps out of the other's plane for 90 ticks, the human's "
-          "fog is its own plane, and wildlife out of its sight stays unseen",
-          "planes " + std::to_string(planes) + " display " + std::to_string(display) + " wildlife " +
-              std::to_string(wildlife) + " unseen " + std::to_string(unseenWildlife));
-}
-
-void sharedSights(const sim::TypeRegistry& reg, const hpi::Vfs& vfs) {
-    const sim::UnitType* archer = reg.find("araarch");
-    if (!archer || archer->weapons.empty()) { check(false, "shipped araarch loads"); return; }
+void sharedSights(const sim::TypeRegistry& reg) {
+    const sim::UnitType* archer = reg.find("armham");
+    if (!archer || archer->weapons.empty()) { check(false, "shipped armham loads"); return; }
     auto describe = [](const Share& s) {
         return "sees0 " + std::to_string(s.sees0) + " sees1 " + std::to_string(s.sees1) + " engaged " +
                std::to_string(s.engaged) + " explored0 " + std::to_string(s.explored0) + " consistent " +
@@ -793,7 +718,6 @@ void sharedSights(const sim::TypeRegistry& reg, const hpi::Vfs& vfs) {
     check(passiveDies.lost1After >= 0 && passiveDies.lost1After <= 1 && passiveDies.consistent && passiveDies.display,
           "death_revealer_passive_none: a passive neutral's dying scout keeps no revealer, allied or not",
           "lost after " + std::to_string(passiveDies.lost1After));
-    campaignPassive(reg, vfs);
 }
 }  // namespace
 
@@ -812,7 +736,7 @@ int main(int argc, char** argv) {
     if (part == "idle_coverage") idleCoverage(reg);
     else if (part == "mission_ports") missionPorts(reg);
     else if (part == "attack_move") attackMoves(reg);
-    else if (part == "shared_sight") sharedSights(reg, vfs);
+    else if (part == "shared_sight") sharedSights(reg);
     else { std::fprintf(stderr, "unknown part %s\n", part.c_str()); return 2; }
     std::printf("state hash: %d worlds, combined %016llx\n", hashedWorlds, (unsigned long long)combinedHash);
     std::printf("%s\n", failures ? "FAILED" : "all passed");
