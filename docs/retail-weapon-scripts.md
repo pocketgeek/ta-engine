@@ -410,3 +410,207 @@ AimPrimary and AimSecondary both send and mask signal 4; armcom's primary and te
 share 2) lose the lower slot's aim thread when both aims start in one tick; that slot
 then waits until its target is lost (armwar's Light Cannon never fires at a target the
 EMG also aims at). This follows the spec; it is not verified against a running TotalA.exe.
+
+## 8. Maneuver chase, D-gun and shared aim signals
+
+Answers §6's open [U] (idle units and the standing move order) and two slot questions.
+Unit `+0x110`: **move state = bits 18-19** (`(f >> 18) & 3`: 0 Hold Position, 1 Maneuver,
+2 Roam), **fire state = bits 20-21** (0 Hold Fire, 1 Return Fire, 2 Fire At Will), from
+FBI flagsA bits 0-1 / 2-3 at creation (0x485c8a..0x485cb6) and from the
+`Standing_MoveOrder` 0x4030d0 / `Standing_FireOrder` 0x403100 missions [S].
+(`retail-ai.md` §"Unit" has the two fields swapped.)
+
+Mission records (25 bytes, the copy at `[0x512344]`): +0 status text, +4 handler, +0x11
+dword = mission flags, +0x15 name. Handlers used below: Standby 0x405fe0,
+Attack_NoMove 0x402160, Attack_Chase 0x4034a0, AttackSpecial 0x403190, Suppress
+0x4038a0, Move_Ground 0x4031d0 [S]. Dispatcher 0x43b7c0: handler result 1 = next state,
+2/4 = stay, 5/8 = order finished (unlinked, the loop runs the new head at once), 7 =
+clear the queue; when the queue is empty a type-1/2 owner's unit gets a fresh order of
+its `defaultmissiontype` (0x43b9ad..0x43ba30) [S].
+
+### 8.1 Idle Maneuver chase [S]
+
+**Standby** (0x405fe0), a ground unit's default mission:
+- stage 0: all slots automatic (0x489800(3)), wake next tick;
+- stage 1: scan 0x43b700; a hit goes to 0x43b1f0(unit, hit, 0) and, if that inserted
+  orders, Standby returns 5 (retires). Otherwise it sleeps **30 + rand(30)** ticks
+  (0x4b6c30, 0x439e80; it also wakes on order event 0x10000, source [U]).
+
+**Scan 0x43b700**: only with fire state 2; then the picker 0x40b7b0(unit, slot 0,
+mode 0). Mode 0 gathers the owner's known-enemy list (0x40ad80, list player+5, fallback
++0x19) within the unit's own **sightdistance** (type+0x202) of its **current position**,
+then up to 50 random draws keeping min `rand(d²)` (non-bad-category first, §6). Every
+candidate must pass **0x49abb0(unit, cand, 0) = slot 0's range gate** (horizontal
+centre distance² ≤ range², plus the waterweapon/submerged/toairweapon/ballistic gates;
+skipped only for kamikaze types, flagsA bit28) and must not be in `noChaseCategory`
+(+0x23d, mode 0 only). **So Standby only ever takes an enemy already inside the scanning
+weapon's range.** There is no leash test in the scan.
+
+**0x43b1f0(unit, target, force)** (also Patrol 0x4033eb, the hit response 0x4070dd,
+guard 0x4063f5):
+- target == unit → 0. Hold Position and `!force` → 0. Hold Fire and `!force` → 0.
+- mission = 0x43f0e0(action 3, unit, target): mobile (unit+0 ≠ 0) → ATTACK_CHASE,
+  armed static → ATTACK_NOMOVE, flyers → AIRSTRIKE/AIRTOAIR/... ; none → 0.
+- **Maneuver and !force**: insert at the head `Move_Ground(unit's 16.16 position now)`,
+  then ahead of it `Attack_Chase(target, leash = maneuverleashlength (type+0x214),
+  post +0x2e/+0x30 = the unit's integer x/z now)` (order ctor 0x43a0c0, leash at order
+  +0x3e). Both inherit the head order's 0x4000 flag.
+- **Roam, or force**: insert `Attack(target)` with leash 0; no return move.
+- returns 1.
+
+**Attack_Chase** (0x4034a0), on every run (each wake: 30-tick timers in stages 3, path
+events 0xe0/0x40e0, fire/target events): first, if `leash ≠ 0` and
+`trunc(hypot(unit.x_int − post.x, unit.z_int − post.z)) ≥ leash` (0x4fb440 → _ftol)
+→ **5** (finished). It also finishes on event 0x800 (a commandfire shot, §8.2), on
+0x10008, or with no target. The leash is measured from the **post to the unit itself**,
+not to the target. Stages: 0 setup (slot = order +0x36, else 0x4897e0 = first slot with a
+weapon); 1/3 target in range of that slot (0x49abb0) → slots 0 and 2 manual, the slot
+gets the target (0x48a060), wait; out of range → all slots automatic again
+(0x489800(3)) and stage 2 paths toward the target (0x438930/0x438a00 with radii from the
+slot's range 0x49adf0, substates at order +0x3a).
+
+When the chase finishes the Move_Ground walks back to the post; the empty queue then
+gets a new Standby at the post.
+
+**Answer.** An idle human unit on Maneuver does **not** advance on a visible enemy
+that is inside its leash but outside its weapon range: Standby's scan only takes
+targets inside slot 0's range (and inside its sightdistance). The leash bounds only
+how far it **follows** a target it already engaged (one that walks out of range): it
+chases until it is `maneuverleashlength` px from where it stood, then walks back and
+resumes Standby. Same situation:
+- **Hold Position (0)**: 0x43b1f0 refuses; no order ever, the unit never moves. Its
+  automatic slots still fire at anything in range (sweep 0x4089a0).
+- **Roam (2)**: the same in-range-only pick; the chase has no leash and no return
+  move, so it follows the target anywhere; Standby restarts wherever the chase ended.
+- Being hit (0x406f80, owner type 1/2, armed, finished, head order absent or with mission
+  flag 0x20000 such as Standby) also calls 0x43b1f0(unit, attacker, 0) only when the
+  attacker is in **slot 0's range** and not in noChase/slot-0 badTarget; otherwise, with
+  fire state ≠ 0, each automatic non-commandfire slot whose current target is none, out
+  of range or bad takes the attacker if the attacker is in that slot's range
+  (0x407102..0x40718d). Return Fire units on Maneuver thus chase (leashed) an in-range
+  attacker. A shooter out of range is never answered by movement.
+- AI owners: squad assignment 0x408830 sets new units to Fire At Will and to Maneuver
+  if the type has flagsB bit12 (cancapture: the commanders), Roam otherwise.
+
+**Engine spec (World).** The ported pieces already match: `retailHostScan` /
+`retailSelectTarget(sweep=false)` require `slotInRange` (= 0x49abb0), and
+`retailIssueAutoAttack` is 0x43b1f0 (Hold → none, Maneuver → leashed attack + return
+Move, Roam → plain). Keep that. Changes for TA:
+1. Mission-scan radius = `sightdistance` only (0x40b81f..: type+0x202), not
+   `max(sight, range)`; scanning slot = 0x4897e0 (first slot with a weapon).
+2. TA has no Standby_Wander: `retailWanderScan`'s "drop a hit at/after the leash from the
+   post" is Kingdoms; a TA ground unit always uses Standby. Standby period: 30 + rand(30).
+3. Chase end: retire the attack when `trunc(hypot(int dx, int dz)) ≥ leash` between the
+   unit's whole-pixel position and the post (already `chaseLeash`), then the return Move.
+4. **`tools/retailgap_test.cpp` "a leashed unit advances on an enemy inside its leash"
+   expects non-retail behaviour** (its enemy is at `maxRange()+60`, outside armpw's EMG
+   range): retail stays put. A retail test: put the enemy in range, then move it away
+   (e.g. order it to walk off): the armpw follows, stops following once it is 640 px
+   from its start, walks back, and is idle there again; on Hold Position it never moves;
+   on Roam it follows without limit and does not return.
+
+### 8.2 D-gun and commandfire [S]
+
+- **Sweep** 0x4089a0(arg): per automatic slot (bit4) with a weapon, not `dropped`;
+  **if arg == 0 (any non-AI owner) a commandfire weapon (+0x111 bit26) is skipped**
+  (0x408a88..0x408a96). The controller tick passes arg 1 for AI owners (type 2), so their
+  commandfire slots are swept like any other. Guard target picks (0x406445, 0x40fdeb) and
+  the hit response's return fire (0x407137) also skip commandfire slots for everyone.
+- **Plain Attack on a unit** (Attack_Chase): slots **0 and 2** are made manual (0x4898b0:
+  bit4 off; a held target is cleared with `TargetCleared(slot)`), the order slot (slot 0
+  for armcom) gets the target, **slot 1 stays automatic** (fed by the sweep, so only on
+  Fire At Will, with its own pick in its own range). armcom: the laser fires, the D-gun
+  (slot 2) has no target and never fires. Static attackers (Attack_NoMove 0x402160):
+  slot 0 manual + target, slots 1 and 2 stay automatic.
+- **Ground attack** (action 3 without target → SUPPRESS 0x4038a0): slots 0 and 1 manual,
+  both get the point (0x48a0a0); slot 2 stays automatic (a human's commandfire slot is
+  then idle; an AI's sweeps).
+- **D-gun order** = mission **AttackSpecial** (picker action 4, 0x43f7e8, requires
+  `candgun`, flagsB bit14). Handler 0x403190 turns the order into the action-3 mission for
+  the same target (0x438b90) and sets order **+0x36 = 2**:
+  - unit target → Attack_Chase with slot 2: slots 0 and 2 manual, **slot 2** gets the
+    target, slot 1 automatic; chase range = slot 2's range (240 for ARM_DISINTEGRATOR).
+    A commandfire shot posts fired bit **0x800** (0x49e4f2; others 0x400) and
+    Attack_Chase finishes on 0x800 (0x4034af): **one D-gun shot per order**.
+  - ground → Suppress with slot 2: **all** slots manual, only slot 2 gets the point
+    (0x40396b..0x40398a). Suppress does not finish on 0x800; it walks its counter
+    (order +0x3a = range, minus rand(range/3) per shot event, 0x40392e..) [shot count U].
+  - the fire itself is the normal weapon update (§2-4): reload, 400 energy per shot.
+- **AI owners** never issue AttackSpecial (the AI controller's 0x43f0e0 calls use
+  actions 2, 3, 9, 0xe: 0x40804c, 0x408299, 0x408403, 0x408435, 0x408589). Their D-gun
+  fires only through the sweep: whenever slot 2 is automatic (Standby, Move, Patrol,
+  ground Suppress, Attack_NoMove) the commander auto-targets enemies within 240 and
+  fires when stores allow. During an Attack_Chase slot 2 is manual and silent.
+
+**Engine spec.** Order gets a `slot` (+0x36). Attack-on-unit: `setSlotMode` manual for
+slots 0 and 2 only (with TargetCleared when one held a target), target into `slot`,
+slot 1 untouched; Attack_NoMove: slot 0 only. Ground attack: slots 0 and 1 manual with
+the point; D-gun ground: all three manual, point in slot 2. The sweep skips commandfire
+slots unless the owner is AI. D-gun command available only with `candgun`; the unit
+D-gun order ends after its first commandfire shot (track "this unit fired a commandfire
+weapon this tick" as the 0x800 event).
+
+### 8.3 Two aims, one signal [E for the VM, S for the rest]
+
+**armwar.cob** (cobtool disasm): Weapon1 = ARMWAR_LCANNON (slot 0, range 240, reload 2.13 s),
+Weapon2 = ARMWAR_EMG (slot 1, range 180, reload 0.4 s). AimPrimary and AimSecondary are
+identical except the arm piece:
+`signal 4; set-signal-mask 4; static1=1; while(!static2) sleep 100; turn torso y to
+heading; turn arm x to -pitch; wait-for-turn torso y; wait-for-turn arm x;
+start-script RestoreAfterDelay(); return 1` (RestoreAfterDelay inherits mask 4).
+
+(a) **Start order.** 0x49e1a0 loops slots 0,1,2 in one call per unit per tick and starts
+`AimX` (not immediate) for every slot that has a target and no outstanding aim
+(0x49e213/0x49e357 → 0x4b0a70). The unit's VM pass 0x4b0d60 runs right after, in the
+same tick. So two slots that become targetable in the same tick start their aims in
+the same tick; a slot that gets its target later starts later. No one-slot-per-tick
+rule and no wait for the other slot.
+
+(b) **VM** (0x4b08c0, 0x4b0d60, 0x4b0da0, SIGNAL 0x4b1a75; emulated with
+`tools/re/cob_signal_emu.py`, 0x4b0a70 + 0x4b0da0 under unicorn):
+- 8 threads; a new thread takes the **lowest free index**, status 0x1000000, mask 1.
+- A pass runs threads **in index order**; each runs until it blocks or ends.
+- **WAIT_TURN always yields** (status 0x2100000) and is re-tested at the thread's
+  next pass (turn speed of that piece/axis 0 → continue), even if the piece is already
+  there [E].
+- **SIGNAL s** kills every thread with status ≠ 0 and `mask & s` ≠ 0: running, blocked,
+  sleeping, or **created this tick but not yet run** (whose mask is still 1), and itself
+  if its own mask matches. No callback. Killing a thread wakes a parent waiting on it
+  (status 0x28xxxxx with word6 == index). [E: case 3, SIGNAL 1 killed an unrun thread,
+  SIGNAL 4 did not.]
+- Same-tick starts [E, case 1]: AimPrimary is allocated first, so it has the lower index,
+  runs first, sets mask 4 and blocks at WAIT_TURN; AimSecondary then runs in the same pass
+  and its `signal 4` kills it. Result: slot 0 never gets a callback, slot 1 ready.
+- Staggered starts [E, case 2]: an aim started while the other slot's aim thread is
+  still alive (blocked turning) kills it, whichever slot it is.
+
+(c) **No re-arm.** Aim requested (S+0x1b bit0) is cleared only at 0x49e1ea (the slot has
+no target at the weapon update), 0x49d65e/0x49d68d (no solution / out of tolerance, both
+only after ready), 0x49d795 (shot) and 0x49dd36 (vlaunch shot). No timeout, nothing on
+reload, and retargeting (0x48a060/0x48a0a0) keeps the bit. A killed aim therefore stays
+pending until the slot's target becomes "none" at an update: the target dies (0x48a1e0),
+Stop, Hold/Return Fire, or a mission toggling the slot's auto bit while it holds a
+target (0x489800/0x4898b0 clear it with TargetCleared, e.g. Attack_Chase going out of
+range → 0x489800(3), or a new Attack order's 0x4898b0(0)). The sweep keeps a living
+enemy target with no range test, so an idle unit's stuck slot stays stuck for the whole
+life of that target.
+
+**Conclusion.** In retail armwar does **not** reliably fire both weapons at one target.
+If both slots acquire it at the same sweep visit (an enemy that appears inside both
+ranges), the Light Cannon's first aim is killed in the first VM pass and the cannon is
+silent until that target is gone; only the EMG fires. If the cannon acquires first (an
+enemy walking in from 240 px), both fire until one slot starts an aim while the other's
+aim thread is still turning; the killed slot is then silent for that target. The same
+holds for armcom slots 0 and 2 (signal 2). This is the retail behaviour; it is not a
+port artefact. (Not observed in a running TotalA.exe.)
+
+**Engine spec.** To reproduce retail exactly:
+1. `cob::RetailVm`: 8 threads, lowest-free allocation, index-order pass, SIGNAL as
+   above (any non-free thread, including unrun ones and the caller), no callback on kill,
+   WAIT_TURN/WAIT_MOVE always yield one pass.
+2. Per unit per tick: weapon update (slots 0,1,2) **then** the unit's VM pass (§7.8
+   currently runs the VM first; with that order a same-tick pair still kills slot 0, but
+   staggered collisions happen one tick later than retail).
+3. Clear `aimRequested` only at the sites in (c). Keep `aimRequested` across
+   `setSlotTarget` to a new live target. Any timed re-arm would be an engine
+   deviation, not retail.

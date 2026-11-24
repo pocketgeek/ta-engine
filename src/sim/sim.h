@@ -789,7 +789,10 @@ struct alignas(64) Order {
     HeapOptional<RetailReclaimArea> reclaimArea;
     // Layout pad: Order's cache-line plan (TA_ORDER_LINE below) was laid out with an
     // 8-byte slot here (once Kingdoms' area-build order); keep the plan intact.
-    uint64_t layoutPad0_ = 0;
+    // A D-gun order (TotalA.exe AttackSpecial 0x403190): fires only the
+    // commandfire slot and ends after its shot (World::dgun).
+    bool dgun = false;
+    uint8_t layoutPad0_[7] = {};
     // This order is a RECLAIM: consume feature `reclaimFeat` (negative = a corpse
     // record). Reclaims used to live in Unit::reclaimQueue, a THIRD parallel list
     // with the same defect the build list had -- nothing drained it unless a
@@ -3388,6 +3391,9 @@ public:
     }
     // Attack order on an enemy unit.
     void attack(int unitId, int targetId, bool queue);
+    // D-gun (candgun units): AttackSpecial on a unit, one commandfire shot.
+    void dgun(int unitId, int targetId, bool queue);
+    static bool isDgunSlot(const UnitType& t, int slot);
     // Board/unload through a friendly transport; queue=true appends the paired
     // pickup orders or unload route after current orders instead of replacing them.
     bool canLoadInto(int unitId, int transportId) const;

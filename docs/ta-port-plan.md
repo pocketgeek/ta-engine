@@ -92,15 +92,21 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   scripted TA units fire, on the move too.
 - Tests: TMPDIR for every ctest test and a /tmp leftover guard (pref_guard_check).
 
-## Open retail questions
+## Resolved retail questions (docs/retail-weapon-scripts.md section 8)
 
-- Idle Maneuver (standingmoveorder 1) chase: the engine's scan cites Kingdoms
-  addresses only; TotalA.exe's rule is not traced (retailgap_orders' leash case).
-- armwar / armcom fire only one of their weapons per target: both aims signal the
-  same mask, so the later AimX kills the earlier one, which never reports
-  (spec 2.3-2.4). Faithful to the static reading; not confirmed in a running game.
-- The Commander uses its D-gun on a plain Attack order; retail has a separate
-  D-gun order (not traced).
+- Idle Maneuver: the Standby scan (0x43b700) takes only enemies in sight AND in
+  slot 0's range; Maneuver chases them at most maneuverleashlength from its post
+  (unit-to-post), then walks back. Retail does not advance on an enemy beyond
+  weapon range -- the engine already matched; the scan radius is now sight only
+  and the picker has no line-of-fire test.
+- D-gun: a plain Attack never fires the Commander's slot-2 commandfire weapon; the
+  new D-gun order (Cmd::DGun, the BLAST button; AttackSpecial 0x403190) fires it
+  once and ends. A bomber's slot-0 commandfire bombs still fire on Attack.
+- armwar / armcom sharing one aim signal: confirmed by emulating TotalA.exe's COB
+  VM (tools/re/cob_signal_emu.py) -- the later AimX kills the earlier one, which
+  never reports, so retail itself often fires only one of the two. Kept.
+
+## Open
 - The Kingdoms-data tests run on TA units/maps now. Engine gaps they expose (left
   failing): TA ships/hovers (BOATS*/BOATD*/TANKHOVER*) are not water/hover units
   (sim.cpp movement-class prefix test); transports have no TA capacity/distance

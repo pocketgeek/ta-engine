@@ -292,6 +292,23 @@ namespace {
 
     bool GameView::armedClickAt(char cmd, float wx, float wz, const UnitR* hovered, uint8_t queue, bool pointTargets) {
         ClickScope click(*this);
+        if (cmd == 'd') {
+            // TA's D-gun (the Commander's BLAST button; AttackSpecial 0x403190):
+            // a unit target only, one commandfire shot per order.
+            if (!hovered || !hovered->alive()) return false;
+            for (int id : selection_) {
+                const UnitR* u = frameUnitP(id);
+                if (!u || !u->type || !u->type->canDgun || id == hovered->id) continue;
+                ta::net::Command c;
+                c.kind = ta::net::Cmd::DGun;
+                c.unitId = id;
+                c.targetId = hovered->id;
+                c.queue = queue & 3;
+                issue(c);
+            }
+            pendingCmd_ = 0;
+            return true;
+        }
         const ClickPlan plan = planClick(cmd, wx, wz, hovered, queue, false, pointTargets);
         // P4 (0x527dd0 S): only an order cursor issues; Normal leaves it armed.
         if (!ta::client::isOrderCursor(plan.cursor)) return false;
