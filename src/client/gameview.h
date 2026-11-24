@@ -780,10 +780,6 @@ public:
 
     void navyDemo();
 
-    void creonDemo();
-
-    void missionTest();
-
     void testBuild();
 
     std::string lodeUnit;

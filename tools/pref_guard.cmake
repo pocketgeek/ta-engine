@@ -109,7 +109,7 @@ elseif(MODE STREQUAL "selftest")
     unset(ENV{TA_SETTINGS_FILE})
     set(ENV{SDL_VIDEODRIVER} dummy)
     set(ENV{SDL_AUDIODRIVER} dummy)
-    execute_process(COMMAND "${CLIENT}" game "Ulasem Arena" --data "${DATA}" --testbuild --time 0
+    execute_process(COMMAND "${CLIENT}" game "Ashap Plateau" --data "${DATA}" --testbuild --time 0
                             --shot "${ROOT}/diplomacy-test.png"
                     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out TIMEOUT 50)
     set(written "${home}/.local/share/TAengine/TAEngine/settings.ini")

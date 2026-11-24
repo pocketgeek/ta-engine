@@ -1699,77 +1699,41 @@ if(TA_TEST_DATA)
     # The Release client intentionally strips the local game/dev command path.
     # Keep this headless client integration fixture in Debug configurations.
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        add_test(NAME idle_builders COMMAND taclient game "Ulasem Arena"
+        add_test(NAME idle_builders COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/idle-builders-test.png")
         set_tests_properties(idle_builders PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_IDLE_BUILDERS_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: idle builders strip"
             TIMEOUT 60)
-        add_test(NAME diplomacy_ui COMMAND taclient game "Ulasem Arena"
+        add_test(NAME diplomacy_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/diplomacy-test.png")
         set_tests_properties(diplomacy_ui PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_DIPLOMACY_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: diplomacy hotkey, roster, defaults, checkboxes, voice column, volume sliders"
             TIMEOUT 60)
-        # The result plate's buttons play their .gui clicks (defeat.gui / victory<race>.gui:
-        # MainMenu cancel.wav, Proceed ok.wav) on the press, like the title menu's.
+        # The result plate's buttons (TA's outcome0.pcx plate, which has no .gui) play
+        # retail's big-button click, BIGBUTTON = butmain1 (allsound.tdf), on the press.
         foreach(result_press IN ITEMS menu proceed)
             set(result_env "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_RESULT_PRESS=${result_press};TA_SHOT_RESULT=${CMAKE_CURRENT_BINARY_DIR}/result-click-${result_press}.png;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/result-click-profile/settings.ini")
             if(result_press STREQUAL "menu")
-                set(result_pass "result click: choice=0 sound=cancel.wav queued=1")
+                set(result_pass "result click: choice=0 sound=butmain1.wav queued=1")
             else()
                 list(APPEND result_env "TA_SHOT_RESULT_LOSE=1")   # a lost mission's Proceed is Retry
-                set(result_pass "result click: choice=1 sound=ok.wav queued=1")
+                set(result_pass "result click: choice=1 sound=butmain1.wav queued=1")
             endif()
             add_test(NAME result_click_${result_press} COMMAND taclient --data "${TA_TEST_DATA}")
             set_tests_properties(result_click_${result_press} PROPERTIES ENVIRONMENT "${result_env}"
                 PASS_REGULAR_EXPRESSION "${result_pass}" TIMEOUT 60)
         endforeach()
-        add_test(NAME retirement_ui COMMAND taclient game "Ulasem Arena"
+        add_test(NAME retirement_ui COMMAND taclient game "Ashap Plateau"
             --data "${TA_TEST_DATA}" --testbuild --time 0
             --shot "${CMAKE_CURRENT_BINARY_DIR}/retirement-ui.png")
         set_tests_properties(retirement_ui PROPERTIES
             ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_DIPLOMACY_TEST=1;TA_RETIREMENT_TEST=1"
             PASS_REGULAR_EXPRESSION "PASS: diplomacy hotkey, roster, defaults, checkboxes, voice column, volume sliders"
             TIMEOUT 60)
-        add_test(NAME script_transient COMMAND taclient game "ulasem arena"
-            --data "${TA_TEST_DATA}" --firetest --nofog --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/script-transient-test.png")
-        set_tests_properties(script_transient PROPERTIES ENVIRONMENT
-            "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_SCRIPT_TRANSIENT_TEST=1")
-        add_test(NAME script_transient_263 COMMAND taclient game "Lake Lokken"
-            --data "${TA_TEST_DATA}" --firetest --nofog --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/script-transient-263-test.png")
-        set_tests_properties(script_transient_263 PROPERTIES ENVIRONMENT
-            "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_SCRIPT_263_TEST=1")
-        # Killed/Dying sounds as the simulation chose them, through the client's
-        # sound drain: exactly per death, never doubled, fog/class gated, at the
-        # authored cry rates and variants for every Creon caller.
-        add_test(NAME creon_death_sound COMMAND taclient game "Ulasem Arena"
-            --data "${TA_TEST_DATA}" --firetest --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-test.png")
-        set_tests_properties(creon_death_sound PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_CREON_DEATH_SOUND_TEST=1;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-profile/settings.ini"
-            PASS_REGULAR_EXPRESSION "PASS: Creon death sounds are the simulation's"
-            TIMEOUT 120)
-        # The same game again beside a peer that presents every batch late (a
-        # rejoin or spectator catch-up): both must hear the same death sounds.
-        add_test(NAME creon_death_sound_peers COMMAND ${CMAKE_COMMAND} "-DCLIENT=$<TARGET_FILE:taclient>"
-            "-DDATA=${TA_TEST_DATA}" "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers"
-            -P "${CMAKE_SOURCE_DIR}/tools/creon_death_sound.cmake")
-        set_tests_properties(creon_death_sound_peers PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers-profile;XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers-profile;TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/creon-death-sound-peers-profile/settings.ini"
-            PASS_REGULAR_EXPRESSION "PASS: both peers hear the simulation's Creon death sounds"
-            TIMEOUT 240)
-        add_test(NAME weapon_impact_effect_route COMMAND taclient game "Lake Lokken"
-            --data "${TA_TEST_DATA}" --firetest --nofog --time 0.1
-            --shot "${CMAKE_CURRENT_BINARY_DIR}/weapon-impact-effect-test.png")
-        set_tests_properties(weapon_impact_effect_route PROPERTIES
-            ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;TA_WEAPON_IMPACT_EFFECT_TEST=1"
-            PASS_REGULAR_EXPRESSION "PASS: Arapult land/water authored impact variants"
-            TIMEOUT 120)
     endif()
 endif()
 # Data-gated Legion scenarios (need the install; label data;nightly). The motion
@@ -2307,17 +2271,9 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_CURSOR_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/ui-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/ui-test-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/build-controls.png")
       set_tests_properties(build_controls PROPERTIES TIMEOUT 90)
-      add_test(NAME gate_pick COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_GATE_PICK_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/gate-pick-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/gate-pick-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/gate-pick.png")
-      set_tests_properties(gate_pick PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: every gate \\(4 types\\)")
       # Cursor picking (perf follow-up C): a unit live before its type's model loads (the
       # registration budget) gets the fallback hit box cached by the cursor pass, as a scan
       # over every unit does, though the pointer is nowhere near it.
@@ -2325,18 +2281,18 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_PICK_LATE_MODEL_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/pick-late-model-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/pick-late-model-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/pick-late-model.png")
       set_tests_properties(pick_late_model PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: late model pick leaves the full scan's hit-box cache")
       # Clear orders fan out to every selected reclaimer (box, right-click, armed
-      # CLEAR; Shift per unit, a soldier untouched), and Inner Circle's one
-      # overlapped map feature (removed at load) is not drawn.
+      # CLEAR; Shift per unit, a soldier untouched), and a map feature removed at load
+      # (an overlapped one) is not drawn.
       add_test(NAME reclaim_fanout COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_RECLAIM_FANOUT_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/reclaim-fanout-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/reclaim-fanout-profile
-          $<TARGET_FILE:taclient> game "Inner Circle" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/reclaim-fanout.png")
       set_tests_properties(reclaim_fanout PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: reclaim fan-out to every selected reclaimer")
@@ -2347,43 +2303,17 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_CLICK_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/click-input-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/click-input-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/click-input.png")
       set_tests_properties(click_input PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: clicks all")
-      add_test(NAME output_stance_hud COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_OUTPUT_STANCE_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/output-stance-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/output-stance-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/output-stance.png")
-      set_tests_properties(output_stance_hud PROPERTIES TIMEOUT 120
-          PASS_REGULAR_EXPRESSION "PASS: output stance: its new unit starts Passive")
-      # Units that die petrified or frozen stand as statues in stone or ice
-      # (the side's stoneanim/frozenanim texture on every face), not their colours.
-      add_test(NAME statue_texture COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_STATUE_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/statue-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/statue-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 900 600 --shot "${CMAKE_CURRENT_BINARY_DIR}/statue.png")
-      set_tests_properties(statue_texture PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: statue: the petrified archer is drawn in stone")
-      add_test(NAME area_build_ghosts COMMAND ${CMAKE_COMMAND} -E env
-          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AREA_GHOST_TEST=1
-          XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-ghost-profile
-          XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-ghost-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
-          --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/area-ghosts.png")
-      set_tests_properties(area_build_ghosts PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: an area lodestone job ghosts every deposit")
       # Destination markers: every unit of a mixed-speed Legion move shows its own spot,
       # flashed after the order and held under Shift (GameView::drawUnitSpots).
       add_test(NAME unit_spot_markers COMMAND ${CMAKE_COMMAND} -E env
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_UNIT_SPOTS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/unit-spots-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1200 800 --shot "${CMAKE_CURRENT_BINARY_DIR}/unit-spots.png")
       set_tests_properties(unit_spot_markers PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: every unit of a mixed Legion move shows its own spot")
@@ -2391,7 +2321,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AREA_DRAG_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-drag-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/area-drag-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/area-drag.png")
       set_tests_properties(area_drag_input PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: area drag threshold")
@@ -2400,7 +2330,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_SELFDESTRUCT_NOTICE_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/selfdestruct-notice-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/selfdestruct-notice-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1000 700 --shot "${CMAKE_CURRENT_BINARY_DIR}/selfdestruct-notice.png")
       set_tests_properties(selfdestruct_notice PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: self-destruct notice follows the countdown")
@@ -2410,12 +2340,12 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_BUILDLINE_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-test-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-test-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/buildline.png")
       set_tests_properties(buildline_harness PROPERTIES TIMEOUT 300
           PASS_REGULAR_EXPRESSION "PASS: [0-9]+ shift-drag lines")
-      # Chained shift-drags for one monarch (TA_BUILDLINE_CHAIN=type/gap/builder/drags):
-      # a U with the builder between its arms, a closed box from outside, a tower V,
+      # Chained shift-drags for one construction kbot (TA_BUILDLINE_CHAIN=type/gap/builder/drags):
+      # a U of Dragon's Teeth with the builder between its arms, a closed box from outside, an LLT V,
       # and a line doubling back along the last. Every distinct site gets built.
       foreach(_chain u=0/0/450,40/400,0/0,300/-400,0
                      box=0/0/-60,-80/400,0/0,300/-400,0/0,-300
@@ -2427,7 +2357,7 @@ if(TA_BUILD_CLIENT)
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_BUILDLINE_CHAIN=${_spec}
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-chain-${_name}
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/buildline-chain-${_name}
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/buildline-chain-${_name}.png")
         set_tests_properties(buildline_chain_${_name} PROPERTIES TIMEOUT 300
             PASS_REGULAR_EXPRESSION "PASS: build-line chain")

@@ -62,8 +62,10 @@ struct Geom {
     bool headersInArt = true;   // outcome0.pcx paints its own column headers
     std::string bgPcx = "bitmaps/outcome0.pcx";
     std::string bgGaf, bgSeq, btnGaf;
-    // Each button's click, bound in its gui states like every retail menu button's.
-    std::string menuSound = "cancel.wav", proceedSound = "ok.wav";
+    // Each button's click: a plate .gui binds its own in its states. TA's plate has no
+    // .gui; retail plays BIGBUTTON for its big buttons (gamedata/allsound.tdf:
+    // butmain1; docs/retail-gui.md section 1.6).
+    std::string menuSound = "butmain1.wav", proceedSound = "butmain1.wav";
 };
 
 Geom loadGeom(const hpi::Vfs& vfs, bool victory, int faction) {

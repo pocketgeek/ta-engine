@@ -533,8 +533,8 @@ int main(int argc, char** argv) {
     // argv but read only inside the #ifndef NDEBUG blocks below, so they are unused
     // in release builds.
     [[maybe_unused]] float marchX = 0, marchZ = 0;
-    [[maybe_unused]] bool doMarch = false, testbuild = false, misstest = false,
-        creon = false, guardtest = false, lodetest = false,
+    [[maybe_unused]] bool doMarch = false, testbuild = false,
+        guardtest = false, lodetest = false,
         soundtest = false;
     float lookX = 0, lookZ = 0;
     std::vector<std::string> args;
@@ -554,8 +554,6 @@ int main(int argc, char** argv) {
         else if (a == "--navy") navy = true;
         else if (a == "--amphib") amphib = true;
         else if (a == "--mission") missionFlag = true;
-        else if (a == "--misstest") misstest = true;
-        else if (a == "--creon") creon = true;
         else if (a == "--side" && i + 1 < argc) side = argv[++i];
         else if (a == "--aiside" && i + 1 < argc) aiSide = argv[++i];
         else if (a == "--color" && i + 1 < argc) playerColor = std::atoi(argv[++i]);
@@ -650,7 +648,7 @@ int main(int argc, char** argv) {
 #ifndef NDEBUG
     localHarness = demo || scenario || navy || amphib || firetest ||
                    facetest || guardtest || lodetest || keytest ||
-                   soundtest || misstest || creon || testbuild ||
+                   soundtest || testbuild ||
                    (ta::devEnv("TA_FFA") != nullptr) || ta::devFlag("TA_PATROL_PERF");
 #endif
     if (missionFlag && localHarness) {
@@ -1891,8 +1889,6 @@ int main(int argc, char** argv) {
                 if (doMarch) gameView->marchTo(marchX, marchZ);
                 if (testbuild) gameView->testBuild();
                 if (navy) gameView->navyDemo();
-                if (misstest) gameView->missionTest();
-                if (creon) gameView->creonDemo();
                 if (guardtest) gameView->guardTest();
                 if (lodetest) { gameView->lodeUnit = lodeUnitName; gameView->lodeTest(); }
                 if (firetest) gameView->fireTest();
