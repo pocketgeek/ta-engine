@@ -544,6 +544,7 @@ struct UnitType {
     // `categories`. The sweep's selector never picks a noTarget candidate and
     // takes a badTarget one only when nothing else qualifies (icd 412620).
     std::vector<std::string> noTargetCats;
+    std::vector<std::string> noChaseCats;   // nochasecategory, TotalA.exe type +0x23d
     std::array<std::vector<std::string>,3> badTargetCats;
     // weaponswitching: this unit carries ONE active weapon at a time, picked by the
     // player. Without it, a multi-weapon unit fires every weapon independently.
@@ -914,11 +915,11 @@ struct alignas(64) Order {
     // x/z and its controller in flightGoal. 0 on every other order. Hashed
     // with a tag when set.
     uint8_t stepOut = 0;
-    // VTOL_SeekGuard (4197d0, tickSeekGuard): what a flyer's guard becomes when
-    // its guarded unit is lost and the guard was its last order (VTOL_Follow's
-    // 4191d7, seekLostWard). It circles x/z, the guarded unit's position at
-    // the guard's last look (mission +0x22, kept in attackPointX/Z on the
-    // guard), on `mission`, its orbit angle in guardOrbitAngle (+0x4e), and
+    // VTOL_SeekGuard (TotalA.exe 0x410850, tickSeekGuard): what a flyer's guard
+    // becomes when its guarded unit is lost and the guard was its last order
+    // (VTOL_Follow's 0x410341, seekLostWard). It circles x/z, the guarded unit's
+    // position at the guard's last look (mission +0x22, kept in attackPointX/Z
+    // on the guard), on `mission`, its orbit angle in guardOrbitAngle (+0x36), and
     // guards the first allied ground unit it finds. targetId stays 0. In the
     // pad after stepOut. Hashed with a tag.
     bool seekGuard = false;
@@ -1014,8 +1015,8 @@ struct alignas(64) Order {
     // a flyer's is only its approach. The leg goes when that job ends, however
     // it ends. Hashed with a tag when set.
     int helpSite = 0;
-    // A flyer's guard (VTOL_Follow 0x418860, World::tickFlyingGuard): its
-    // orbit angle around the guarded unit (mission +0x4e, read as a word).
+    // A flyer's guard (VTOL_Follow, TotalA.exe 0x40fbe0, World::tickFlyingGuard):
+    // its orbit angle around the guarded unit (mission +0x36, read as a word).
     // Drawn once (rand(0x10000)) when the guard starts, stepped back by
     // 0x4000 + rand(0x2000) each time the orbit point is reached. The guard
     // runs on `mission` (stage 2 once started; its deadline is the next look).
@@ -4190,7 +4191,7 @@ private:
     void seekLostPoint(Unit& u, Fixed x, Fixed z);
     bool seekLostTarget(Unit& u, const Unit* target, bool targetLive);
     void tickSeekAttack(Unit& u, bool carriesTarget = false);
-    // VTOL_Follow's lost ward (4191d7) and VTOL_SeekGuard (4197d0).
+    // VTOL_Follow's lost ward (TotalA.exe 0x410341) and VTOL_SeekGuard (0x410850).
     bool seekLostWard(Unit& u);
     void tickSeekGuard(Unit& u);
     int seekGuardFind(const Unit& u) const;

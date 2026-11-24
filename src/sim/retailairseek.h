@@ -132,86 +132,103 @@ int retailVtolSeekAttack(RetailMissionState& m,RetailFlightVector& point,uint16_
     }
 }
 
-// VTOL_SeekGuard (registry row 5ebe95, class 19, flags 0x1000600; handler
-// 4197d0): a flyer whose guarded unit was lost circles where that unit last
-// stood, looking for another to guard. VTOL_Follow (418860) inserts it
-// (4d77b0, 4191d7) when its ward is gone, dead or dying or events 0x208 wake
-// it, and the guard is the last mission (+0x66 is 0); it carries the point
-// the guard last read (+0x22, the ward's position, refreshed each look) and
-// the ward when it is alive and not dying (a seek never reads it).
-//   head:    event 0x200 (the controller failed) ends it (5); off the map,
-//            800 px toward the playable area, radius 128 (as AirToGround's
-//            stage 7); then the air-traffic check at every wake, stage 0
-//            included (4198fd, retailAirTrafficCheck SeekGuard); then the
-//            group check (4199b2, retailGuardGroupCheck: 51d1e0(unit, 1, 4),
-//            VTOL_Move_Formation at level -3 ahead) and its flag's rand(10).
-//   stage 0: no mover or not canfly ends the list (7); a zero point becomes
-//            the flyer's own; the orbit angle (+0x4e) is rand(0x10000)
-//            (+0x52 its low bit, which no stage reads); on to stage 1.
-//   stage 1: the units 509ac0 finds within the type's sightdistance (+0x226)
-//            of the flyer that 421910 keeps (alive, not dying, allied to the
-//            flyer's owner, not a flyer, not itself), in its sector walk's
-//            order. Any found: the controller goes (4d4d40(0)) and the first
-//            is offered a guard (4de530 action 7: VTOL_FOLLOW for a type
-//            with canguard, +0x264 0x40; else no mission). A guard put ahead
-//            (4d7750) clears the wait mask and returns 3 (the dispatcher's
-//            15 + rand(30) sleep: the seek waits behind it); none ends the
-//            seek (8). Nothing found: woken by its controller (0x700) the
-//            angle steps back 0x4000 + rand(0x2000); a point controller
-//            (flags 0x30, radius 128) at the point less (sin, cos)(angle) x
-//            (the selected weapon's range + 160 when armed, unit +0x130
-//            0x8000000, else 160), a sleep of 7 + rand(7) and a wait on
-//            0x718.
-// Every draw is 535cc0.
+// TotalA.exe's off-map return of VTOL_Follow (0x40fc07..0x40fcda) and
+// VTOL_SeekGuard (0x41086f..0x41094a): when the flyer's sector (unit +0x82)
+// is the off-map cell (game +0x142b7), a point 800 px (0x3200000) from the
+// flyer toward the centre of the playable map, (game +0x1422b / 2, game
+// +0x1422f / 2) = ((W - 32) / 2, (H - 128) / 2) px (docs/retail-ai.md): the
+// flyer less (sin, cos)(0x48a980(unit, centre), 0x4b715a's atan2 of unit -
+// centre) x 800 (0x4103a0, added by 0x40f790); a point controller (0x44e2d0)
+// of radius 128 (0x44e730(0x80): flag 0x10). `width` / `height` are the
+// playable size, W - 32 / H - 128 px. (Kingdoms aimed at the nearest point
+// 192 px inside the edge instead.)
+inline RetailFlightGoal retailTaAirReturnToCentre(RetailFlightVector position,int32_t width,int32_t height) {
+    const int32_t cx=std::bit_cast<int32_t>(uint32_t(width/2)<<16);
+    const int32_t cz=std::bit_cast<int32_t>(uint32_t(height/2)<<16);
+    const uint16_t heading=uint16_t(retailDirection(Fixed::raw(satSub32(position.x,cx)),
+                                                    Fixed::raw(satSub32(position.z,cz))).v);
+    return RetailFlightGoal{retailAirRunPoint(position,position.y,heading,800),0x30,0,128};
+}
+
+// VTOL_SeekGuard (TotalA.exe air mission row 19 of 0x4fca18, flags 0x600;
+// handler 0x410850): a flyer whose guarded unit was lost circles where that
+// unit last stood, looking for another to guard. VTOL_Follow appends it
+// (0x43ad10, 0x410341..0x410384) when its ward is gone or its events 0x48
+// woke it, and the guard is the last mission (+0x4a, the queue's next link,
+// is 0); it carries the ward and the point the guard last read (+0x22, the
+// ward's position, refreshed each look).
+//   head:    event 0x40 (TA's controller failure; ours 0x200) ends it (5,
+//            0x41085a); off the map, the return toward the map's centre
+//            (retailTaAirReturnToCentre), a wait on the controller (TA 0xe0,
+//            ours 0x700) and 2 (0x41086f..0x410956). No air-traffic or group
+//            check: TA has neither (no VTOL_StepOut or formation row in
+//            0x4fca18). (Kingdoms' 4197d0 had both.)
+//   stage 0: no mover or not canfly ends the list (7, 0x410bfb); a zero
+//            point becomes the flyer's own (0x410c11); the orbit angle
+//            (+0x36) is rand(0x10000) (+0x3a its low bit, which no stage
+//            reads); on to stage 1 (0x410c3a).
+//   stage 1: (0x410972..0x410a4b, not ported: under 3/4 of maxdamage --
+//            unit +0x108 < (type +0x1fa >> 2) x 3 -- a repair pad within
+//            0xf00 px (0x40b530), a random one, takes it to VTOL_LANDING
+//            pushed ahead and the stage back to 0.) The units 0x47e890 finds
+//            within the type's sightdistance (+0x202) of the flyer that
+//            0x410c70 keeps (allied to the flyer's owner, not canfly, not
+//            itself), in its 128 px sector walk's order. Any found: the
+//            controller goes (0x4388d0(0)) and the first is offered a guard
+//            (0x43f0e0 action 7, 0x43f4c7: VTOL_FOLLOW for a canguard type,
+//            +0x245 0x20); it goes ahead (0x43acb0), the wait mask is cleared
+//            and 3 returns (the dispatcher's 30 + rand(15) sleep, 0x43b890:
+//            the seek waits behind it) (0x410abf..0x410b2e). Nothing found:
+//            woken by its controller (0xe0) the angle steps back 0x4000 +
+//            rand(0x2000) (0x410b31); a point controller of radius 128
+//            (0x44e730(0x80)) at the point less (sin, cos)(angle) x (slot
+//            0's weapon range, unit +0x10 -> +0xdc, + 160) (0x410b4f..
+//            0x410bc8), a sleep of 30 (0x439e80(0x1e); Kingdoms 7 + rand(7))
+//            and a wait on 0xf8 (ours 0x718) (0x410bcd..0x410bdc); 2.
+// Every draw is 0x4b6c30, the shared game random number generator.
 struct RetailAirSeekGuard {
-    RetailFlightVector position;   // unit +0x68
-    int32_t range=0;               // the selected slot's WeaponType +0x90 (519ac0)
-    bool armed=false;              // unit +0x130 0x8000000
-    bool flies=true;               // a mover (unit +8) and canfly (type +0x260 0x800)
-    bool onMap=true;               // unit +0xa4 is a sector, not the off-map cell
-    int32_t width=0,height=0;      // game +0x19e90 / +0x19e94
-    int8_t traffic=0;              // unit +0x12a, the air-traffic counter
-    int16_t footX=1;               // unit +0x78
+    RetailFlightVector position;   // unit +0x6a
+    int32_t range=0;               // slot 0's weapon range (unit +0x10 -> +0xdc)
+    bool armed=false;              // unit +0x110 0x80000000; unarmed: range 0
+    bool flies=true;               // a mover (unit +0) and canfly (type +0x241 0x800)
+    bool onMap=true;               // unit +0x82 is a sector, not the off-map cell
+    int32_t width=0,height=0;      // game +0x1422b / +0x1422f: W - 32 / H - 128 px
 };
 
-// Host: random(bound); stepOut(kind, D) and stopBuilding() for the air-traffic
-// check (retailAirTrafficCheck); found() (509ac0 with 421910: true when it
-// found any); release() (4d4d40(0): the mission's controller goes, its
-// pending controller events 0x3700 cleared); guard() (4de530 action 7 on the
-// first found, then the mission built and pushed ahead: false when there was
-// no mission for the pair or it could not be built); install(point goal)
-// (4d4d40, which also clears the pending controller events); the group
-// check's outOfSlot() (51d1e0(unit, 1, 4)), cancel() (50c480, 4d6a50(unit,
-// 0)) and formation() (VTOL_Move_Formation, level -3, pushed ahead: false
-// when it could not be built). `point` is mission +0x22, `angle` the low
-// word of +0x4e.
+// Host: random(bound); found() (0x47e890 with 0x410c70: true when it found
+// any); release() (0x4388d0(0): the mission's controller goes, its pending
+// controller events 0x3700 cleared); guard() (0x43f0e0 action 7 on the first
+// found, then the mission built and pushed ahead: false when there was no
+// mission for the pair, see World::tickSeekGuard); install(point goal)
+// (0x4388d0, which also clears the pending controller events). `point` is
+// mission +0x22, `angle` the low word of +0x36.
 template<class Host>
 int retailVtolSeekGuard(RetailMissionState& m,RetailFlightVector& point,uint16_t& angle,uint32_t tick,
                         uint32_t events,const RetailAirSeekGuard& in,Host& host) {
-    if (events&0x200) return 5;                                      // 4197dc
-    if (!in.onMap) return detail::retailAirReturnToMap(m,in.position,in.width,in.height,host);   // 4197f8
-    if (const int result=retailAirTrafficCheck(RetailTrafficMission::SeekGuard,m,tick,in.traffic,in.footX,
-            m.flags,host);result>=0) return result;                  // 4198fd
-    if (const int result=retailGuardGroupCheck(m.flags,host.outOfSlot(),[&](int n) { return host.random(n); },
-            [&] { host.cancel(); },[&] { return host.formation(); });result>=0) return result;   // 4199b2..419aac
+    if (events&0x200) return 5;                                      // 0x41085a
+    if (!in.onMap) {                                                 // 0x41086f
+        host.install(retailTaAirReturnToCentre(in.position,in.width,in.height));
+        m.waitMask|=0x700;
+        return 2;
+    }
     switch (m.stage) {
-    case 0:                                                          // 419d3f
+    case 0:                                                          // 0x410bfb
         if (!in.flies) return 7;
-        if (!point.x && !point.z && !point.y) point=in.position;     // 419d5d
-        angle=uint16_t(host.random(0x10000));                        // 419d80
+        if (!point.x && !point.z && !point.y) point=in.position;     // 0x410c11
+        angle=uint16_t(host.random(0x10000));                        // 0x410c3a
         return 1;
-    case 1:                                                          // 419abe
-        if (host.found()) {
-            host.release();                                          // 419b23
-            if (!host.guard()) return 8;                             // 419b37
-            m.waitMask=0;                                            // 419bab
+    case 1:                                                          // 0x410972
+        if (host.found()) {                                          // 0x410a9a
+            host.release();                                          // 0x410ac3
+            if (!host.guard()) return 8;                             // 0x410ad9
+            m.waitMask=0;                                            // 0x410b16
             return 3;
         }
-        if (events&0x700) angle=uint16_t(angle-0x4000u-host.random(0x2000));   // 419c0f
+        if (events&0x700) angle=uint16_t(angle-0x4000u-host.random(0x2000));   // 0x410b31
         host.install(RetailFlightGoal{retailAirRunPoint(point,point.y,angle,
-            uint32_t(in.armed ? in.range+0xa0 : 0xa0)),0x30,0,128}); // 419c30
-        m.sleep(tick,host.random(7)+7);                              // 419d07
-        m.waitMask|=0x718;
+            uint32_t(in.armed ? in.range+0xa0 : 0xa0)),0x30,0,128}); // 0x410b4f..0x410bc8
+        m.sleep(tick,30);                                            // 0x410bcd
+        m.waitMask|=0x718;                                           // 0x410bd6
         return 2;
     default:
         return 7;

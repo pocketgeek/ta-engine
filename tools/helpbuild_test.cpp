@@ -608,7 +608,7 @@ static void flyingGuardHelps() {
         check(guardUnder(w, g), "...with its guard order kept under the help");
         const uint32_t wait = flyLook(w, g) - w.tickCount();
         std::snprintf(d, sizeof d, "next look in %u ticks", wait);
-        check(wait >= 14 && wait < 45, "...and the guard sleeps 15 + rand(30) after the insert", d);
+        check(wait >= 29 && wait < 45, "...and the guard sleeps 30 + rand(15) after the insert (TotalA.exe 0x43b890)", d);
         const int start = int(w.tickCount());
         const float wd = firstWorkDistance(w, g, site, 900);
         const int flown = int(w.tickCount()) - start;
@@ -703,17 +703,17 @@ static void flyingGuardHelps() {
             const bool arrived = (w.unit(g)->orders.front().mission.pending & 0x100) != 0;
             w.tick(1.0f / 30.0f);
             if (flyLook(w, g) != prev) {
-                // Every look re-arms 15 ticks out; one woken by the orbit
+                // Every look re-arms 30 ticks out (TotalA.exe 0x410225); one woken by the orbit
                 // point's arrival comes before its deadline.
-                fixed = fixed && flyLook(w, g) == w.tickCount() + 15 &&
-                        (flyLook(w, g) - prev == 15 || arrived);
-                early += flyLook(w, g) - prev != 15;
+                fixed = fixed && flyLook(w, g) == w.tickCount() + 30 &&
+                        (flyLook(w, g) - prev == 30 || arrived);
+                early += flyLook(w, g) - prev != 30;
                 prev = flyLook(w, g);
                 ++looks;
             }
         }
         std::snprintf(d, sizeof d, "%d looks, %d woken early by an arrival", looks, early);
-        check(fixed && looks >= 12, "...re-looking 15 ticks after each look, or on reaching its orbit point", d);
+        check(fixed && looks >= 6, "...re-looking 30 ticks after each look, or on reaching its orbit point", d);
         const int fac = w.spawn(&ty.factory, 400, 400, 0.0f, 0);
         w.train(fac, &ty.sol, 1);
         const int lim = w.spawn(&ty.flylimited, 500, 600, 0.0f, 0);
