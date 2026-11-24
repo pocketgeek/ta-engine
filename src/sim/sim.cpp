@@ -2673,10 +2673,11 @@ void World::tickFlightMovement(Unit& u, bool persistent) {
         order.flightGoal=goal;
     }
     auto& goal=*order.flightGoal;
-    // VTOL_Move's take-off controller (retailTaTakeOffGoal) stands over the
-    // flyer, not at the move's point. (A carrier's VTOL_PICKUP / VTOL_UNLOAD
+    // A take-off controller (retailTaTakeOffGoal: VTOL_Move's, and
+    // flyerTakeOff's for VTOL_RepairUnit / VTOL_Reclaim) stands over the
+    // flyer, not at the order's point. (A carrier's VTOL_PICKUP / VTOL_UNLOAD
     // fly their own controllers: flyTransportGoal.)
-    const bool takeOff=order.flightMoveMission && (goal.flags&8);
+    const bool takeOff=(goal.flags&0x48)==8;
     if (!order.patrol && !orbit && !takeOff) {
         goal.point.x=order.x.v; goal.point.z=order.z.v;
     }
@@ -4519,6 +4520,17 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
             return w.heights_[size_t(z)*w.terW_+x];
         }
         void touchdown() { ++u.flightLandingCallbackSerial; }
+        // VTOL_LandIfCan's off-map return (0x40f2e3): off the map when the
+        // footprint does not fit the cell grid (as the seeks' test); the
+        // playable map is 32 px narrower and 128 px shorter (game +0x1422b /
+        // +0x1422f).
+        bool offMap() const {
+            const int ox=footprintOrigin(u.x,u.type->footX),oz=footprintOrigin(u.z,u.type->footZ);
+            return !(ox>=0 && oz>=0 && ox+u.type->footX<w.hW_ && oz+u.type->footZ<w.hH_);
+        }
+        void returnToMap() {
+            install(retailTaAirReturnToCentre({u.x.v,u.flightY.v,u.z.v},w.hW_*16-32,w.hH_*16-128));
+        }
         void finish() {
             if(u.flightGroundMode!=1) {
                 const auto attitude=retailFlightAttitude(u.flightAcceleration,{},portHeadingToRetail(u.heading),
@@ -12964,7 +12976,14 @@ void World::prepareReclaimApproach(Unit& u) {
     }
     goal.mission.stage=1;
     goal.reclaimCountdown=0;
-    if (u.type->canFly) { goal.mission.waitMask=0; return; }   // flyerReclaimInReach
+    if (u.type->canFly) {
+        // TotalA.exe VTOL_Reclaim stage 0 (0x41485e): a landed flyer climbs
+        // to cruisealt / 2 over itself first; stage 1's point controller
+        // follows that controller's arrival (tickReclaim).
+        goal.mission.waitMask=0;
+        flyerTakeOff(u,goal,false);
+        return;   // flyerReclaimInReach
+    }
     goal.buildRectangle=retailReclaimRectangle(ax,az,fw,fh,u.type->footX,u.type->footZ);
     const auto [x,z]=goal.buildRectangle->navigationCell(
         footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
@@ -13085,6 +13104,11 @@ void World::tickReclaim(Unit& b) {
         auto& goal=b.orders[leg];
         if (b.type->canFly) {
             if (!reclaimTargetValid(target,revive)) { quit(); return; }
+            // The take-off (0x41485e) first: stage 1 runs on its arrival.
+            if (goal.flightGoal && (goal.flightGoal->flags&0x48)==8) {
+                if (!goal.flightGoal->accepts({b.x.v,b.flightY.v,b.z.v})) return;
+                goal.flightGoal.reset();
+            }
             if (!flyerReclaimInReach(b,goal)) return;
         } else {
             const uint32_t events=(b.missionEvents | goal.mission.pending) & goal.mission.waitMask;
@@ -14139,13 +14163,22 @@ void World::installMeleeApproach(Unit& u, const Unit& t) {
 }
 
 // RepairUnit stage 0 (0x407289) once the leg is current: the give-up count
-// starts at 0, and stage 1 installs the approach on the same dispatch.
+// starts at 0, and stage 1 installs the approach on the same dispatch. A
+// flyer's VTOL_RepairUnit stage 0 takes a landed repairer off here, before
+// the mover as the dispatch is (0x414fe1, flyerTakeOff); tickFlyingRepair
+// does the rest.
 void World::prepareRepairApproach(Unit& u) {
-    if (u.orders.empty() || !u.type || u.type->canFly || !u.repairId) return;
+    if (u.orders.empty() || !u.type || !u.repairId) return;
     Order& goal=u.orders[currentLeg(u.orders)];
     if (goal.repairTarget!=u.repairId || goal.mission.stage!=0) return;
     const Unit* t=unit(goal.repairTarget);
     if (!t || !t->type) return;   // tickRepair ends the job
+    if (u.type->canFly) {
+        if (!u.orders.front().repairTarget && !goal.patrolRepair) return;
+        if (goal.mission.deadline!=0xffffffffu && tickCounter_<goal.mission.deadline) return;
+        if (repairTopAboveSea(*t)) flyerTakeOff(u,goal,false);   // 0x414f7d refuses first
+        return;
+    }
     goal.repairLooks=0;
     installRepairApproach(u,goal,*t);
 }
@@ -14185,11 +14218,10 @@ bool World::payRepair(Unit& b, Unit& t, float dt) {
 // No stage measures the distance to the target: the repair goes on wherever
 // the target or the repairer drifts. Ours keeps the hover on the stage-1
 // point (tickConjureHover). The job's Order::mission holds our stage: 0
-// (install, after its deadline), 1 (flying to the point), and the admitted
-// work (conjureHoverTarget) is stage 2. The take-off controller of stage 0
-// (cruisealt / 2 over the repairer, local players only, 0x414fe1) is not
-// modelled: the flight body climbs on the way. Kingdoms' 420e60 accepted
-// inside 2 x builddistance and re-flew the approach beyond it.
+// (install, after its deadline, and a landed repairer's climb to cruisealt /
+// 2 over itself first, 0x414fe1), 1 (flying to the point), and the admitted
+// work (conjureHoverTarget) is stage 2. Kingdoms' 420e60 accepted inside 2 x
+// builddistance and re-flew the approach beyond it.
 void World::tickFlyingRepair(Unit& b, Unit& t, float dt) {
     auto endRepair = [&] {
         stopWorkAnimation(b);
@@ -14225,10 +14257,18 @@ void World::tickFlyingRepair(Unit& b, Unit& t, float dt) {
     if (job.repairTarget!=t.id) return;   // another order is current
     auto& m=job.mission;
     if (m.stage==0) {
-        if (m.deadline!=0xffffffffu && tickCounter_<m.deadline) return;   // 0x4150d4's sleep
-        m.deadline=0xffffffffu;
-        // 0x414f7d: 0x4899b0 refuses a target under the sea (8).
-        if (!repairTopAboveSea(t)) { endRepair(); return; }
+        // 0x414fe1: a landed repairer climbs first (flyerTakeOff); stage 1
+        // runs on that controller's arrival (0xe0).
+        if (job.flightGoal && (job.flightGoal->flags&0x48)==8) {
+            if (!job.flightGoal->accepts({b.x.v,b.flightY.v,b.z.v})) return;
+            job.flightGoal.reset();
+        } else {
+            if (m.deadline!=0xffffffffu && tickCounter_<m.deadline) return;   // 0x4150d4's sleep
+            m.deadline=0xffffffffu;
+            // 0x414f7d: 0x4899b0 refuses a target under the sea (8).
+            if (!repairTopAboveSea(t)) { endRepair(); return; }
+            if (flyerTakeOff(b,job,false)) return;
+        }
         // 0x414f2c + 0x415048: radius 0 over where the target stands now.
         job.x=t.x;job.z=t.z;
         job.flightGoal=RetailFlightGoal{{t.x.v,0,t.z.v}};
@@ -14923,14 +14963,16 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
         }
         int slot() const { return u.type->weaponSwitching ? std::clamp(u.weaponSlot,0,2) : 0; }
         void beginFlight() {
-            // 416c50: Activate, BeginFlight, take-off, every slot manual
-            // (as AirToGround's stage 0, tickAirToGround).
+            // TotalA.exe AirStrike stage 0 (0x412114..0x4121b7): every slot
+            // manual, off any carrier, Activate, and a landed bomber's
+            // take-off (0x41215c, flyerTakeOff), the mission waiting on it.
             if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
                 script->second.activated=true;w.notifyUnitScript(u,"Activate");
             }
             w.notifyUnitScript(u,"BeginFlight");
             u.missionEvents&=~0x3700u;
             for (int s=0;s<3;++s) w.setSlotMode(u,s,false);
+            w.flyerTakeOff(u,u.orders.front());
         }
         void slotsAuto() {
             for (int s=0;s<3;++s) w.setSlotMode(u,s,true);
@@ -15025,6 +15067,25 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
 // controller (Order::flightGoal) is the navigator's destination, let go on
 // arrival (524c10 posts 0x100, the navigator's release 0x400); the body flies
 // on to the destination it left until the mission installs the next one.
+// The take-off of TotalA.exe's flyer missions' stage 0 (VTOL_RepairUnit
+// 0x414fe1, VTOL_Reclaim 0x41485e, AirToAir 0x4133fa, VTOL_SeekAttack
+// 0x4107c6, AirStrike 0x41215c; VTOL_Move / VTOL_Patrol's startFlight and
+// VTOL_Landing's prepare do the same): a landed flyer (mover +0x2e & 3 == 1)
+// takes off (0x43d210(unit, 2)) to a point controller over itself at
+// cruisealt / 2 above the ground or the sea (0x44e2d0, 0x44e6c0;
+// retailTaTakeOffGoal), which drops the pending controller events (0x4388d0),
+// and, with `wait`, the mission waits on it (0xe0). True when it took off.
+bool World::flyerTakeOff(Unit& u,Order& o,bool wait) {
+    if (!u.type || !u.type->canFly || u.flightGroundMode!=1) return false;
+    u.flightGroundMode=2;groundMove(u);
+    const int terrain=heights_.empty() ? -1 : retailTerrainHeight(u.x.v,u.z.v,terW_,terH_,
+        [&](int cx,int cz) { return int(heights_[size_t(cz)*terW_+cx]); });
+    o.flightGoal=retailTaTakeOffGoal({u.x.v,u.flightY.v,u.z.v},terrain,seaLevel_,u.type->cruiseAlt);
+    o.mission.pending&=~0x3700u;
+    if (wait) o.mission.waitMask|=0x700;
+    return true;
+}
+
 void World::flyMissionGoal(Unit& u,Order& order) {
     if (u.flightGroundMode!=2) { u.flightGroundMode=2;groundMove(u); }   // 51b3b0: taking off unstamps
     // The mission's controllers are the navigator's destination now; a move's
@@ -15035,8 +15096,10 @@ void World::flyMissionGoal(Unit& u,Order& order) {
     if (order.flightGoal) {
         const auto& goal=*order.flightGoal;
         // 4e41d0: a point controller without an altitude answers the
-        // flyer's cruise height over the ground under it.
-        auto destination=goal.point;destination.y=Fixed::fromInt(std::min(cruise,511)).v;
+        // flyer's cruise height over the ground under it; the take-off's
+        // (flyerTakeOff, 0x44e6c0) has its own.
+        auto destination=goal.point;
+        if ((goal.flags&0x48)!=8) destination.y=Fixed::fromInt(std::min(cruise,511)).v;
         u.flightNavigation=retailFlightNavigation(position,u.flightNavigation.destination,destination,
             u.flightNavigation.heading,Fixed::fromInt(cruise).v,false,(goal.flags&0x40)!=0,goal.heading,false,u.flightNavigation.wraps);
         if (goal.accepts(position)) { order.mission.pending|=0x500; order.flightGoal.reset(); }
@@ -15093,13 +15156,16 @@ void World::tickAirToAir(Unit& u,const Unit& target,const Weapon*) {
         void clear() { w.cancelPath(u);u.orders.clear();u.routeStamp=-1; }
         void beginFlight() {
             // 0x4133b4..0x41343c: every slot manual (0x4898b0(3)), Activate
-            // (0x48b090(1, 1)) and, landed, the take-off (0x43d210(2)).
+            // (0x48b090(1, 1)) and, landed, the take-off (0x43d210(2),
+            // 0x4133fa: the climb controller, the mission waiting on it as
+            // well as on stage 0's tick).
             for (int s=0;s<3;++s) w.setSlotMode(u,s,false);
             if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
                 script->second.activated=true;w.notifyUnitScript(u,"Activate");
             }
             w.notifyUnitScript(u,"BeginFlight");
             u.missionEvents&=~0x3700u;
+            w.flyerTakeOff(u,*order());
         }
         void aim() {
             // 0x412fb2..0x412fc9: every slot automatic (0x489800(3)), then
@@ -15192,8 +15258,10 @@ void World::tickAirToAir(Unit& u,const Unit& target,const Weapon*) {
     } else if (order.flightGoal) {
         const auto& goal=*order.flightGoal;
         // 4e41d0: a point controller without an altitude answers the
-        // flyer's cruise height over the ground under it.
-        auto destination=goal.point;destination.y=Fixed::fromInt(std::min(cruise,511)).v;
+        // flyer's cruise height over the ground under it; the take-off's
+        // (flyerTakeOff, 0x4133fa) has its own.
+        auto destination=goal.point;
+        if ((goal.flags&0x48)!=8) destination.y=Fixed::fromInt(std::min(cruise,511)).v;
         u.flightNavigation=retailFlightNavigation(position,u.flightNavigation.destination,destination,
             u.flightNavigation.heading,Fixed::fromInt(cruise).v,false,(goal.flags&0x40)!=0,goal.heading,a.evadeController,u.flightNavigation.wraps);
         if (goal.accepts(position)) { owner.pending|=0x500;order.flightGoal.reset();a.evadeController=false; }
@@ -15284,13 +15352,15 @@ void World::tickSeekAttack(Unit& u,bool carriesTarget) {
         bool attack() { return false; }
         void beginFlight() {
             // 0x410784..0x41080d: every slot manual (0x4898b0(3)), Activate
-            // (0x48b090(1, 1)) and, landed, the take-off (0x43d210(2)).
+            // (0x48b090(1, 1)) and, landed, the take-off (0x43d210(2),
+            // 0x4107c6: stage 1 waits on the climb controller).
             for (int s=0;s<3;++s) w.setSlotMode(u,s,false);
             if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
                 script->second.activated=true;w.notifyUnitScript(u,"Activate");
             }
             w.notifyUnitScript(u,"BeginFlight");
             u.missionEvents&=~0x3700u;
+            w.flyerTakeOff(u,u.orders.front());
         }
         void slotsAuto() { w.setSlotsAuto(u); }
         bool retarget() {

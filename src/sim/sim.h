@@ -4234,6 +4234,7 @@ private:
     int seekGuardFind(const Unit& u) const;
     void restartFlyingHelp(Unit& b, const Unit& site);
     void flyMissionGoal(Unit& u, Order& order);
+    bool flyerTakeOff(Unit& u, Order& o, bool wait = true);
     // The repair pads (TotalA.exe VTOL_Landing 0x4118e0, SelfRepair 0x402430):
     // a pad mission at the head (Order::airPad), the detour that pushes one
     // (0x40b530's pads under 3/4 health), and the pad's attach list.

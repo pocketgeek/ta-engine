@@ -187,6 +187,42 @@ int main(int argc,char** argv) {
         check(a.repaired && b.repaired,"both are mended on the carrier");
     }
 
+    // The take-off of VTOL_RepairUnit's stage 0 (0x414fe1): a landed
+    // construction aircraft sent to mend a unit 400 px off climbs straight
+    // up over its spot to cruisealt / 2 before it heads there.
+    {
+        Field f;setup(f,registry,nullptr,0,0,0);
+        World& w=f.w;
+        const UnitType* ca=registry.find("armca");
+        const UnitType* pw=registry.find("armpw");
+        if (!ca || !pw) { check(false,"armca and armpw load"); }
+        else {
+            const int b=w.spawn(ca,1800,1800,0.f,0);
+            for (int t=0;t<120;++t) w.tick(kTick);
+            const bool landed=w.unit(b)->flightGroundMode==1;
+            const float x0=w.unit(b)->x.toFloat(),z0=w.unit(b)->z.toFloat(),y0=w.unit(b)->flightY.toFloat();
+            UnitType sturdy=*pw;sturdy.maxVel={};
+            const int t=w.spawn(&sturdy,x0+400,z0,0.f,0);
+            w.unit(t)->hp=Fixed::fromInt(sturdy.maxHp/2);
+            w.repair(b,t,false);
+            float drift=0,climbed=0;bool reached=false,mended=false;
+            for (int k=0;k<900;++k) {
+                w.tick(kTick);
+                const Unit& u=*w.unit(b);
+                if (!reached) {
+                    drift=std::max(drift,std::hypot(u.x.toFloat()-x0,u.z.toFloat()-z0));
+                    climbed=u.flightY.toFloat()-y0;
+                    if (climbed>=float(ca->cruiseAlt/2)-1.f) reached=true;
+                }
+                if (w.unit(t)->hp>=Fixed::fromInt(sturdy.maxHp)) mended=true;
+            }
+            std::printf("  armca take-off: landed %d, climbed %.1f of %d with %.1f px drift, mended %d\n",
+                        int(landed),climbed,ca->cruiseAlt/2,drift,int(mended));
+            check(landed && reached && drift<=2.f,"a landed repairer climbs to cruisealt / 2 over its spot first");
+            check(mended,"and then flies over and mends the unit");
+        }
+    }
+
     std::printf("air_pad: %d failures\n",failures);
     return failures?1:0;
 }
