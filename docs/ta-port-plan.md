@@ -114,8 +114,11 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   battleship stopped just inside its ballistic weapon's origin reach (corbats,
   COR_BATS at ~1092 px) never fires (naval_combat); transports have no TA capacity/distance
   (transportcapacity/transportsize unread); air plants never start a unit;
-  Client watch/spectator harness checks (gameview_devharness.cpp) still spawn
-  Kingdoms units.
+  a PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
+  units in the field) can still circle in the ring's acceptance gap -- the
+  octile distance (0x44d840) is 0 a cell inside the squared inner test
+  (0x44d800) -- when parked outputs wall the band; client watch/spectator
+  harness checks (gameview_devharness.cpp) still spawn Kingdoms units.
 - Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). Still open: the bomber's

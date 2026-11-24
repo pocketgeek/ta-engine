@@ -55,7 +55,12 @@ public:
         auto closer = [&](Point p) { best = std::min(best, distance(p.x, p.z)); };
         if (phase == 0) {
             best = distance(start.x, start.z);
-            if (!best) { directEnd = start; return -1; }
+            // TotalA.exe 0x40e160 has no direct route: a start at distance 0
+            // that its controller does not accept (an octile distance of 0 inside
+            // a ring or circle the squared test still refuses) returns 0, and
+            // A* runs with goal radius 0 (docs/retail-pathfinding.md 2.3, 2.4;
+            // tools/re/path_model.py). The Kingdoms [start, start] route here
+            // left such a unit parked one cell short of its goal for good.
             if (grade(start.x, start.z, 0) < 4) return best;
             march = start;
             slopes = ground = roads = visited = 0;

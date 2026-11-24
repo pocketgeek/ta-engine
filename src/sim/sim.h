@@ -2455,6 +2455,11 @@ public:
         if (t) {
             auto it = navIdx_.find(t);
             if (it != navIdx_.end()) return navClasses_[size_t(it->second)];
+            // A type outside the registry (a modified copy) shares the grid of
+            // its movement limits: the mover's cell-entry test (0x43d7ff) reads
+            // the type's own limits, and a search on looser legacy limits sent
+            // it into cells it is refused, re-asking the same route for ever.
+            if (const int index=navClassIndex(*t);index>=0) return navClasses_[size_t(index)];
         }
         // No class table (a bare test world, or a type registered after the map):
         // fall back to the three legacy domain grids.
@@ -3995,6 +4000,9 @@ private:
     bool fixedBlockerAt(int gx,int gz) const;
     std::vector<NavGrid> navClasses_;
     std::unordered_map<const UnitType*, int> navIdx_;
+    // The same grids by limit tuple (World::navLimits): navFor's fallback.
+    std::map<std::tuple<int,int,int,int,int,int,int,int>,int> navKeyIdx_;
+    int navClassIndex(const UnitType& t) const;
     struct SearchGradePlane {
         const NavGrid* nav=nullptr;
         int footX=1,footZ=1;
