@@ -1817,10 +1817,12 @@ if(TA_TEST_DATA)
     endif()
 endif()
 # Data-gated Legion scenarios (need the install; label data;nightly). The motion
-# cases are tools/legion_group_motion's open/wall/cross with 12 real unit types,
-# wanderers off (motion-wall-wanderers-on reproduces the old tool's confound);
-# the gen1 routes are the seven big army orders of the legion-r9 replay on the
-# user's generated map.
+# cases are tools/legion_group_motion's open/wall/cross with 12 real TA unit types
+# (TA has no wandering units, so the old wanderers-on confound case is gone); the
+# gen1 routes are the seven big army orders of the legion-r9 replay, on the map
+# TA's generator now builds from that recipe. (The harvested Kingdoms situations,
+# tools/scenarios/situations, were removed: recorded Kingdoms games on a map the
+# removed Kingdoms generator built, with no TA counterpart.)
 if(TA_TEST_DATA)
     foreach(legion_motion open wall cross)
         add_test(NAME legion_motion_${legion_motion}
@@ -1829,11 +1831,6 @@ if(TA_TEST_DATA)
         set_tests_properties(legion_motion_${legion_motion} PROPERTIES
                              SKIP_RETURN_CODE 77 LABELS "data;nightly" TIMEOUT 600)
     endforeach()
-    add_test(NAME legion_motion_wall_wanderers_on
-             COMMAND legion_scenario ${CMAKE_SOURCE_DIR}/tools/scenarios/motion-wall.scn
-                     --data "${TA_TEST_DATA}" --wanderers on --json)
-    set_tests_properties(legion_motion_wall_wanderers_on PROPERTIES
-                         SKIP_RETURN_CODE 77 LABELS "data;nightly" TIMEOUT 600)
     # Flyers stepping out of a stack (protocol 307, retail's air traffic): the same, for the air-stack-*.scn
     # fixtures and air-guard-lost.scn (VTOL_SeekGuard). air_traffic gates the outcome per commit.
     foreach(legion_scn air-stack-barracks air-stack-barracks-5 air-stack-duel air-stack-move air-stack-fight
@@ -1845,20 +1842,6 @@ if(TA_TEST_DATA)
           set_tests_properties(legion_check_${legion_scn} PROPERTIES
                                SKIP_RETURN_CODE 77 LABELS "legion;data;nightly" TIMEOUT 600)
         endif()
-    endforeach()
-    # Harvested situations (tools/scenarios/situations/README.txt): not faithful enough to gate on, so these only
-    # check that each file loads and runs deterministically, serial == workers, in both modes.
-    # Each of these is one of the longest tests in the suite (50-150 s), so it is split into independent
-    # parts that run in parallel: legion_scenario checks serial == workers per (mode, offset) and gates
-    # nothing across them, so the union of the parts is exactly the unsplit run.
-    foreach(legion_situation r9-36060 r9-65850 r9-61930 r10-46292 r10-87332 r10-104540)
-        foreach(legion_part legion retail)
-            add_test(NAME legion_situation_${legion_situation}_${legion_part}
-                     COMMAND legion_scenario ${CMAKE_SOURCE_DIR}/tools/scenarios/situations/situation-${legion_situation}.scn
-                             --data "${TA_TEST_DATA}" --offsets 0 --mode ${legion_part} --json)
-            set_tests_properties(legion_situation_${legion_situation}_${legion_part} PROPERTIES
-                                 SKIP_RETURN_CODE 77 LABELS "data;nightly" TIMEOUT 1800)
-        endforeach()
     endforeach()
     foreach(legion_route 21096 27459 36057 45941 54772 61923 65845)
         foreach(legion_part 0 1 -1)

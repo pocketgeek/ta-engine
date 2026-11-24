@@ -8,7 +8,6 @@ harness_seat_load 62
 cartographer_ai_profile_e2e 60
 legion_choke 60
 mapgen_themes 85
-legion_situation_r10-104540_legion 83
 legion_gen1_route_65845_o0 73
 mapgen_naval 72
 render_shadow_atlas_band 70
@@ -22,12 +21,9 @@ render_pick_index 60
 render_pick_index_orders 57
 render_shadow_atlas_full 55
 render_unit_index 52
-legion_situation_r10-104540_retail 50
 mapgen_roster 50
 disconnect_client 71
 legion_gen1_route_61923_om1 49
-legion_situation_r10-87332_legion 48
-legion_situation_r10-87332_retail 48
 render_shadow_atlas 48
 legion_gen1_route_61923_o1 46
 legion_movement_orders_trolls_maze 46
@@ -55,7 +51,6 @@ mapgen_mana 35
 legion_scenario_densehead 34
 render_palette_indexed 33
 render_native_pass 33
-legion_situation_r9-65850_retail 32
 legion_sched_load 32
 cartographer_place_terrain_zhon 31
 legion_refreshfirst 31
@@ -81,10 +76,8 @@ mapgen 25
 legion_gen1_route_36057_o1 24
 legion_pocket 24
 legion_scenario_corner-4x50 22
-legion_situation_r9-61930_retail 22
 legion_gen1_route_45941_om1 21
 legion_scenario_wall-4x50 21
-legion_situation_r9-65850_legion 21
 replay_seek 45
 watch_end 58
 replay_always 26
@@ -98,7 +91,6 @@ legion_scenario_strait-2x150 19
 voice_uplink 49
 retailgap_weapons 19
 legion_check_unreach-200 18
-legion_situation_r9-61930_legion 18
 movement_orders_maze 18
 server_voice_slow 18
 cartographer_feature_ops_veruna 17
@@ -109,7 +101,6 @@ render_body_arena 16
 render_body_arena_still 16
 render_body_arena_fail 16
 render_cpu_budget 18
-legion_situation_r10-46292_retail 15
 mod_transfer 15
 cartographer_feature_ops_zhon 15
 server_voice_cpu 15
@@ -125,7 +116,6 @@ cartographer_feature_ops_taros 13
 retailgap_fireatwill 13
 legion_scenario_gapsweep 12
 legion_scenario_strait-3x80 12
-legion_situation_r10-46292_legion 12
 cartographer_place_terrain_veruna 12
 cartographer_feature_ops_creon 12
 legion_routeindex 12
@@ -141,10 +131,8 @@ server_voice 11
 terrain_schedule 10
 room_flow 131
 legion_gen1_route_21096_o1 10
-legion_motion_wall_wanderers_on 10
 legion_scenario_mixed2 10
 legion_scenario_unreach-200 10
-legion_situation_r9-36060_retail 10
 server_status 10
 retailgap_orders 10
 legion_cutoff 10
@@ -156,7 +144,6 @@ legion_tail 9
 cartographer_place_terrain_taros 9
 creon_death_sound_peers 9
 legion_motion_open 8
-legion_situation_r9-36060_legion 8
 legion_scenario_goalblock-fight-200 8
 legion_handout 8
 ai_behavior_data 7

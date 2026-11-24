@@ -1,77 +1,75 @@
 scn 1
 name motion-cross
-# legion_group_motion's cross case, ported: 48 real ground units (every fifth eligible
-# FBI type in name order, araarch .. tarfire, cycled by unit index), unarmed, one player, a flat
+# legion_group_motion's cross case, ported to Total Annihilation: 48 real ground units (twelve
+# TA kbots and vehicles of mixed size and speed, armbull .. cortruck in name order, cycled by
+# unit index), unarmed, one player, a flat
 # 256x256 map. Data-gated (needs --data). Every unit is its own group and its own
-# tick-1 order, spawned and ordered in the tool's unit order. `wanderers off` clears
-# Standby_wander on lifwolf, npchunt and npcshop (12 of the 48 bodies), whose home-pull
-# otherwise re-orders them back across the map every 240 ticks; `wanderers on` is the
-# original tool's confound (override: legion_scenario --wanderers on|off).
+# tick-1 order, spawned and ordered in the tool's unit order. TA has no Standby_wander unit, so
+# the old wanderer confound (Kingdoms animals and peasants pulled home every 240 ticks) is gone.
 ticks 3000
 seed 1
 players 1
-wanderers off
 map flat 256 256
-type araarch fbi araarch
-type araking fbi araking
-type arasmith fbi arasmith
-type crechie fbi crechie
-type cretort fbi cretort
-type lifwolf fbi lifwolf
-type npcayla fbi npcayla
-type npcduma fbi npcduma
-type npchunt fbi npchunt
-type npcpeas2 fbi npcpeas2
-type npcshop fbi npcshop
-type tarfire fbi tarfire
-group u00 0 araarch 1 cells 56,112
-group u01 0 araking 1 cells 200,112
-group u02 0 arasmith 1 cells 56,116
-group u03 0 crechie 1 cells 200,116
-group u04 0 cretort 1 cells 56,120
-group u05 0 lifwolf 1 cells 200,120
-group u06 0 npcayla 1 cells 56,124
-group u07 0 npcduma 1 cells 200,124
-group u08 0 npchunt 1 cells 56,128
-group u09 0 npcpeas2 1 cells 200,128
-group u10 0 npcshop 1 cells 56,132
-group u11 0 tarfire 1 cells 200,132
-group u12 0 araarch 1 cells 56,136
-group u13 0 araking 1 cells 200,136
-group u14 0 arasmith 1 cells 56,140
-group u15 0 crechie 1 cells 200,140
-group u16 0 cretort 1 cells 52,112
-group u17 0 lifwolf 1 cells 204,112
-group u18 0 npcayla 1 cells 52,116
-group u19 0 npcduma 1 cells 204,116
-group u20 0 npchunt 1 cells 52,120
-group u21 0 npcpeas2 1 cells 204,120
-group u22 0 npcshop 1 cells 52,124
-group u23 0 tarfire 1 cells 204,124
-group u24 0 araarch 1 cells 52,128
-group u25 0 araking 1 cells 204,128
-group u26 0 arasmith 1 cells 52,132
-group u27 0 crechie 1 cells 204,132
-group u28 0 cretort 1 cells 52,136
-group u29 0 lifwolf 1 cells 204,136
-group u30 0 npcayla 1 cells 52,140
-group u31 0 npcduma 1 cells 204,140
-group u32 0 npchunt 1 cells 48,112
-group u33 0 npcpeas2 1 cells 208,112
-group u34 0 npcshop 1 cells 48,116
-group u35 0 tarfire 1 cells 208,116
-group u36 0 araarch 1 cells 48,120
-group u37 0 araking 1 cells 208,120
-group u38 0 arasmith 1 cells 48,124
-group u39 0 crechie 1 cells 208,124
-group u40 0 cretort 1 cells 48,128
-group u41 0 lifwolf 1 cells 208,128
-group u42 0 npcayla 1 cells 48,132
-group u43 0 npcduma 1 cells 208,132
-group u44 0 npchunt 1 cells 48,136
-group u45 0 npcpeas2 1 cells 208,136
-group u46 0 npcshop 1 cells 48,140
-group u47 0 tarfire 1 cells 208,140
+type armbull fbi armbull
+type armflash fbi armflash
+type armham fbi armham
+type armpw fbi armpw
+type armrock fbi armrock
+type armstump fbi armstump
+type armzeus fbi armzeus
+type corak fbi corak
+type corraid fbi corraid
+type correap fbi correap
+type corthud fbi corthud
+type cortruck fbi cortruck
+group u00 0 armbull 1 cells 56,112
+group u01 0 armflash 1 cells 200,112
+group u02 0 armham 1 cells 56,116
+group u03 0 armpw 1 cells 200,116
+group u04 0 armrock 1 cells 56,120
+group u05 0 armstump 1 cells 200,120
+group u06 0 armzeus 1 cells 56,124
+group u07 0 corak 1 cells 200,124
+group u08 0 corraid 1 cells 56,128
+group u09 0 correap 1 cells 200,128
+group u10 0 corthud 1 cells 56,132
+group u11 0 cortruck 1 cells 200,132
+group u12 0 armbull 1 cells 56,136
+group u13 0 armflash 1 cells 200,136
+group u14 0 armham 1 cells 56,140
+group u15 0 armpw 1 cells 200,140
+group u16 0 armrock 1 cells 52,112
+group u17 0 armstump 1 cells 204,112
+group u18 0 armzeus 1 cells 52,116
+group u19 0 corak 1 cells 204,116
+group u20 0 corraid 1 cells 52,120
+group u21 0 correap 1 cells 204,120
+group u22 0 corthud 1 cells 52,124
+group u23 0 cortruck 1 cells 204,124
+group u24 0 armbull 1 cells 52,128
+group u25 0 armflash 1 cells 204,128
+group u26 0 armham 1 cells 52,132
+group u27 0 armpw 1 cells 204,132
+group u28 0 armrock 1 cells 52,136
+group u29 0 armstump 1 cells 204,136
+group u30 0 armzeus 1 cells 52,140
+group u31 0 corak 1 cells 204,140
+group u32 0 corraid 1 cells 48,112
+group u33 0 correap 1 cells 208,112
+group u34 0 corthud 1 cells 48,116
+group u35 0 cortruck 1 cells 208,116
+group u36 0 armbull 1 cells 48,120
+group u37 0 armflash 1 cells 208,120
+group u38 0 armham 1 cells 48,124
+group u39 0 armpw 1 cells 208,124
+group u40 0 armrock 1 cells 48,128
+group u41 0 armstump 1 cells 208,128
+group u42 0 armzeus 1 cells 48,132
+group u43 0 corak 1 cells 208,132
+group u44 0 corraid 1 cells 48,136
+group u45 0 correap 1 cells 208,136
+group u46 0 corthud 1 cells 48,140
+group u47 0 cortruck 1 cells 208,140
 line east 216 0 216 256
 line west 40 0 40 256
 region goal_east 200 112 232 144

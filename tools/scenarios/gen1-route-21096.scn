@@ -4,6 +4,9 @@ name gen1-route-21096
 # the right-click at tick 21096 of that game, 56 real ground units placed where the replay had them one
 # tick earlier (floored to cells), unarmed, order issued through the client's
 # HUD split. Armies stand idle; the other players' bases and units are not placed. Data-gated.
+# Ported to Total Annihilation: the recipe now builds TA's generated map (the Kingdoms generator is gone,
+# 5ce2ccc), so the terrain under these cells is no longer the replay's; the Zhon goblins, terrors and
+# trolls of the replay are TA's armpw, armham and armwar. It stays a long multi-army route on a generated map.
 # Harvest: legion-r9 replayed on 02aa55a (exact), unit positions dumped at tick 21095.
 # Route start 472,198 .. 536,219 cells; click 340,206.
 ticks 6000
@@ -11,11 +14,11 @@ seed 1
 players 8
 wanderers off
 map gen1 ~gen1~0a0001000000000000000100030003020000ff60800300000000
-type zongob fbi zongob
-type zonter fbi zonter
-type zontroll fbi zontroll
-group g_zongob 0 zongob 20 cells 480,210 478,209 476,210 479,208 477,207 477,211 481,210 474,211 473,212 474,209 478,213 481,208 480,213 483,212 484,210 482,213 475,214 473,211 478,215 472,209
-group g_zonter 0 zonter 17 cells 507,217 505,214 502,216 507,215 504,213 505,217 508,216 501,217 499,216 501,214 505,219 502,218 507,218 508,214 511,218 509,219 502,219
-group g_zontroll 0 zontroll 19 cells 531,209 529,208 528,206 527,207 526,206 531,208 529,210 524,207 532,209 527,210 535,209 533,208 535,205 525,210 524,203 523,211 535,201 524,212 536,198
+type armpw fbi armpw
+type armham fbi armham
+type armwar fbi armwar
+group g_armpw 0 armpw 20 cells 480,210 478,209 476,210 479,208 477,207 477,211 481,210 474,211 473,212 474,209 478,213 481,208 480,213 483,212 484,210 482,213 475,214 473,211 478,215 472,209
+group g_armham 0 armham 17 cells 507,217 505,214 502,216 507,215 504,213 505,217 508,216 501,217 499,216 501,214 505,219 502,218 507,218 508,214 511,218 509,219 502,219
+group g_armwar 0 armwar 19 cells 531,209 529,208 528,206 527,207 526,206 531,208 529,210 524,207 532,209 527,210 535,209 533,208 535,205 525,210 524,203 523,211 535,201 524,212 536,198
 region goal 316 182 364 230
-at 1 move g_zongob,g_zonter,g_zontroll 340 206
+at 1 move g_armpw,g_armham,g_armwar 340 206
