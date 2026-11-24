@@ -296,8 +296,8 @@ int main() {
         check(!has(connectivity,"rejects lodestone footprint"),"flat mana deposit accepts lodestone footprint");
         ta::sim::World deposits;deposits.setTerrain(disconnected.heights,32,32,0,&disconnected.features);deposits.buildNavClasses(diagnostics);
         ta::sim::registerMapFeatures(deposits,disconnected,vfs,&diagnostics);
-        check(!deposits.manaSpots().empty(),"occupancy fixture has mana spot");
-        const auto [mx,mz]=deposits.manaSpots().front();
+        check(!deposits.depositSpots().empty(),"occupancy fixture has mana spot");
+        const auto [mx,mz]=deposits.depositSpots().front();
         occupants={{"TEST",0,mx,mz}};
         check(has(cart::validateMap(disconnected,metadata,{},occupants,{},diagnostics,vfs),"preplaced units currently block"),"preplaced units blocking lodestones diagnosed");
         auto atStart=occupants;atStart[0].x=metadata.starts[0].xpos*16.f;atStart[0].z=metadata.starts[0].zpos*16.f;

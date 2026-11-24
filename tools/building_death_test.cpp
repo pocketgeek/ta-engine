@@ -121,19 +121,16 @@ int main(int argc,char** argv) {
         // The sinking (4959c0, emulated: tools/re/check_corpse_sink.py and
         // check_water_grave.py): a grave sinks 0x2ccc a tick from the body's height to 511260's sea
         // bed and lies there; over a bed of 0 it fades as it falls and leaves
-        // the plane. Corpses and statues alike (512ee0), each placed at the
-        // body's height at sea level (20), over a bed of 0 or 10. (Kingdoms'
-        // stone statues sank the same way; TA has no petrification.)
+        // the plane. Each corpse is placed at the body's height at sea level
+        // (20), over a bed of 0 or 10.
         {
             const auto* keep=registry.find("armsolar");
-            auto sinking=[&](const sim::UnitType* type,int bed,bool statue,int& gone,int32_t& rest) {
+            auto sinking=[&](const sim::UnitType* type,int bed,int& gone,int32_t& rest) {
                 sim::World w;w.setTerrain(std::vector<uint8_t>(64*64,uint8_t(bed)),64,64,20);
                 w.setFeatureTypes(definitions.featureTypes());
                 w.mapCorpse(type,definitions.corpseTypeOf(type));
-                w.mapStatue(type,definitions.statueTypeOf(type,false),definitions.statueTypeOf(type,true));
                 const int id=w.spawn(type,512,512,std::nullopt,0);
                 w.unit(id)->groundY=sim::Fixed::fromInt(20);
-                if (statue) w.unit(id)->stonedFor=100;
                 w.unit(id)->hp={};w.unit(id)->deathType=1;
                 gone=-1;rest=-1;
                 for (int t=0;t<1200 && gone<0;++t) {
@@ -142,15 +139,14 @@ int main(int argc,char** argv) {
                     if (c->corpseUntil==0) gone=t;
                     else if (const auto* sink=w.corpseSink(id);sink && !sink->vy) rest=sink->y;
                 }
-                return w.unit(id)->corpseStatue;
             };
             int gone;int32_t rest;
             // 1310720 - 11468 = 1299252 after the placing tick's pass; the
             // fade's step is 11468 / 1299252, so the 114th pass after it ends
             // the alpha (113.3 steps of fall) and the wreck leaves the plane.
-            sinking(keep,0,false,gone,rest);
+            sinking(keep,0,gone,rest);
             check(gone==114,"a wreck over a sea bed of 0 fades out as it reaches the bed (tick 114)");
-            sinking(keep,10,false,gone,rest);
+            sinking(keep,10,gone,rest);
             check(gone<0 && rest==(10<<16),"a wreck over a sea bed of 10 lies on it for good");
         }
         check(restored==int(wrecked.size()),"every shipped wreck case ran");

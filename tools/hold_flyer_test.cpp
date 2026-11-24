@@ -96,7 +96,7 @@ int main(int argc,char** argv) {
     for (const auto* f:flyers) {
         for (bool air:{false,true}) {
             const sim::Weapon& wp=f->weapons.front();
-            if (wp.melee) continue;
+
             if (air && wp.noAir) continue;
             if (!air && (wp.toAir || wp.hasTaFlag(17))) continue;   // toairweapon
             const float range=float(f->maxRange());

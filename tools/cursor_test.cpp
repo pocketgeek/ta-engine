@@ -149,17 +149,14 @@ int main(int argc, char** argv) {
     Weapon ranged;
     UnitType cursorAirstrike;
     cursorAirstrike.hasPrimaryWeaponBlock=true;
-    cursorAirstrike.weaponSwitching=true;
     cursorAirstrike.weapons.resize(2);
     cursorAirstrike.weaponNativeSlotForLocal={0,2,0};
     cursorAirstrike.weaponAirstrikeCursor[2]=true;
-    if(!unitHasAirstrikeCursor(cursorAirstrike,1) ||
-        unitHasAirstrikeCursor(cursorAirstrike,0))
-        return fail("Airstrike flag follows the selected native slot through the local compressed weapon list");
-    cursorAirstrike.weaponSwitching=false;
+    if(unitHasAirstrikeCursor(cursorAirstrike,1))
+        return fail("Airstrike selection ignores a later native slot (TA has no weapon switching)");
     cursorAirstrike.weaponAirstrikeCursor[0]=true;
     if(!unitHasAirstrikeCursor(cursorAirstrike,1))
-        return fail("non-switching Airstrike selection always uses native slot zero");
+        return fail("Airstrike selection always uses native slot zero");
     cursorAirstrike.hasPrimaryWeaponBlock=false;
     if(unitHasAirstrikeCursor(cursorAirstrike,0))
         return fail("Airstrike cursor requires the native WEAPON1 UnitDef gate");
@@ -194,17 +191,6 @@ int main(int argc, char** argv) {
     if (ta::client::cursorDistanceSquaredPixels(maxCorner, minCorner) != 8589934588ULL)
         return fail("range arithmetic remains exact across full signed 16.16 coordinates");
 
-    Weapon melee;
-    melee.melee = true;
-    const std::array<int32_t, 3> at23{23 * 65536, 0, 0};
-    const std::array<int32_t, 3> at24{24 * 65536, 0, 0};
-    if (cursorWeaponRange(melee, attacker, origin, target, at23, 1) !=
-            CursorWeaponRange::InRange ||
-        cursorWeaponRange(melee, attacker, origin, target, at24, 1) !=
-            CursorWeaponRange::OutOfRange ||
-        cursorWeaponRange(melee, attacker, origin, target, at23, 2) !=
-            CursorWeaponRange::OutOfRange)
-        return fail("melee cursor uses footprint contact and airborne target gate");
 
     Weapon ballistic;
     ballistic.ballistic = true;

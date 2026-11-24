@@ -143,8 +143,7 @@ int main(int argc,char** argv) {
         std::vector<std::string> flyers;
         for (const auto& [id,type]:registry.types())
             if (type.canFly && !type.onOffable && type.weapon.damage>0 && !type.hoverAttack &&
-                !type.weapon.hoverAttack && !type.weapons.empty() &&
-                std::none_of(type.weapons.begin(),type.weapons.end(),[](const Weapon& x){return x.mindControl;}))
+                !type.weapon.hoverAttack && !type.weapons.empty())
                 flyers.push_back(id);
         std::sort(flyers.begin(),flyers.end());
         const auto& ground=*registry.find("armpw");

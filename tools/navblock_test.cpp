@@ -169,30 +169,17 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ---- 3. mana deposits stay buildable -------------------------------------
-    // Standing Stones block, but the 2x2 lodestone footprint at each deposit centre is
-    // carved back out so a lodestone can still be placed. Losing that carve is a quiet
-    // failure -- the map simply stops being playable as designed.
-    std::printf("[mana deposits stay buildable]\n");
-    const auto& spots = wReg.manaSpots();
+    // ---- 3. metal deposits ---------------------------------------------------
+    // Both feature-registration paths cluster the same ore patches. (Kingdoms'
+    // lodestone carve at each mana deposit is gone with the lodestones.)
+    std::printf("[metal deposits]\n");
+    const auto& spots = wReg.depositSpots();
     if (spots.empty()) {
-        std::printf("  (this map has no mana deposits; skipped)\n");
+        std::printf("  (this map has no metal deposits; skipped)\n");
     } else {
-        int clear = 0;
-        for (const auto& [sx, sz] : spots) {
-            int cx = int(sx) / 16 - 1, cz = int(sz) / 16 - 1;
-            bool all = true;
-            for (int j = 0; j < 2; ++j)
-                for (int i = 0; i < 2; ++i)
-                    if (!wReg.nav().walkable(cx + i, cz + j)) all = false;
-            if (all) ++clear;
-        }
-        check(clear == int(spots.size()),
-              "every deposit's 2x2 lodestone footprint is carved clear",
-              std::to_string(clear) + "/" + std::to_string(spots.size()));
-        check(spots.size() == wMatch.manaSpots().size(),
-              "and both paths find the same deposits",
-              std::to_string(spots.size()) + " vs " + std::to_string(wMatch.manaSpots().size()));
+        check(spots.size() == wMatch.depositSpots().size(),
+              "both paths find the same deposits",
+              std::to_string(spots.size()) + " vs " + std::to_string(wMatch.depositSpots().size()));
     }
 
     // Isolate the 2x2 tree that exposed the shifted factory-exit blocker.

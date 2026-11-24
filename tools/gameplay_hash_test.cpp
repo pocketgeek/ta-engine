@@ -43,7 +43,7 @@ int main() {
         {"objects3d/rock1.3do", "corpse-a"},
         {"sounds/knight.wav", "sound-a"},
         {"gamedata/sound.tdf", "[KNIGHT]\n{\nselect=a;\n}\n"},
-        {"features/stones.tdf", stones("height=20;\nsacredsite=1;\nanimatable=1;\nfilename=stones;\n")},
+        {"features/stones.tdf", stones("height=20;\nreclaimable=1;\nenergy=5;\nfilename=stones;\n")},
     };
     // One install per variant: <root>/<name>/data.hpi (plus any extra archive or pack).
     auto install = [&](const std::string& name, Entries entries) {
@@ -95,16 +95,16 @@ int main() {
         // Feature definitions: every key the sim's feature loader reads is covered,
         // while art keys stay free for reskins.
         check(hashOf(install("height", with(base, "features/stones.tdf",
-                                            stones("height=30;\nsacredsite=1;\nanimatable=1;\nfilename=stones;\n")))) != want,
+                                            stones("height=30;\nreclaimable=1;\nenergy=5;\nfilename=stones;\n")))) != want,
               "a feature's projectile height changes the hash");
-        check(hashOf(install("sacred", with(base, "features/stones.tdf",
-                                            stones("height=20;\nsacredsite=2;\nanimatable=1;\nfilename=stones;\n")))) != want,
-              "a feature's sacred-site rate changes the hash");
-        check(hashOf(install("animatable", with(base, "features/stones.tdf",
-                                                stones("height=20;\nsacredsite=1;\nanimatable=0;\nfilename=stones;\n")))) != want,
-              "a feature's animatable flag changes the hash");
+        check(hashOf(install("energy", with(base, "features/stones.tdf",
+                                            stones("height=20;\nreclaimable=1;\nenergy=9;\nfilename=stones;\n")))) != want,
+              "a feature's reclaim energy changes the hash");
+        check(hashOf(install("reclaimable", with(base, "features/stones.tdf",
+                                                 stones("height=20;\nreclaimable=0;\nenergy=5;\nfilename=stones;\n")))) != want,
+              "a feature's reclaimable flag changes the hash");
         check(hashOf(install("reskin", with(base, "features/stones.tdf",
-                                            stones("height=20;\nsacredsite=1;\nanimatable=1;\nfilename=other;\n")))) == want,
+                                            stones("height=20;\nreclaimable=1;\nenergy=5;\nfilename=other;\n")))) == want,
               "a feature's art keys do not change the hash");
 
         // Canonical: archive order, names' case and separators, and how the files are

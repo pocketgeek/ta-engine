@@ -70,12 +70,12 @@ int main(int argc, char** argv) {
     // How many mana deposits exist, and how many are near the AI's start (a rough
     // proxy for how much economy it can build).
     int nearAi = 0;
-    for (const auto& [sx, sz] : w.manaSpots()) {
+    for (const auto& [sx, sz] : w.depositSpots()) {
         float dx = sx - spots[1].first, dz = sz - spots[1].second;
         if (dx * dx + dz * dz < 900.f * 900.f) ++nearAi;
     }
     std::printf("map mana spots: %zu total, %d within 900px of the AI start\n",
-                w.manaSpots().size(), nearAi);
+                w.depositSpots().size(), nearAi);
     // Is the enemy base reachable by ground from the AI base? (a common attack blocker)
     const sim::UnitType* ground = reg.find("tarknigh");
     if (ground)
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
         if(!u.alive() || u.player!=1 || !u.type || u.underConstruction)continue;
         const float dx=u.x.toFloat()-spots[1].first,dz=u.z.toFloat()-spots[1].second;
         const float distance=std::sqrt(dx*dx+dz*dz);
-        if(u.type->onMana) {++deposits;if(distance>900)++remoteDeposits;furthest=std::max(furthest,distance);}
+        if(u.type->extractsMetal>0) {++deposits;if(distance>900)++remoteDeposits;furthest=std::max(furthest,distance);}
         if(distance>900 && u.type->isStructure() && u.type->weapon.damage>0)++remoteDefenses;
     }
     std::printf("expansion: completed_deposits=%d remote_deposits=%d furthest=%.0f remote_defenses=%d\n",

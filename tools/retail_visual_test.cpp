@@ -133,14 +133,10 @@ static bool testDeathSfxLifecycle() {
         std::fprintf(stderr,"death COB VM did not honor its native SET26/SET31 stop boundary\n");
         return false;
     }
-    if(ta::retailAttachedSfxOwnerRemoved(true,200,-1,120) ||
-       ta::retailAttachedSfxOwnerRemoved(false,119,-1,120) ||
-       !ta::retailAttachedSfxOwnerRemoved(false,120,-1,120) ||
-       !ta::retailAttachedSfxOwnerRemoved(false,0,0,120) ||
-       ta::retailAttachedSfxOwnerRemovedSnapshot(true,200,false,120) ||
-       ta::retailAttachedSfxOwnerRemovedSnapshot(false,119,false,120) ||
-       !ta::retailAttachedSfxOwnerRemovedSnapshot(false,120,false,120) ||
-       !ta::retailAttachedSfxOwnerRemovedSnapshot(false,0,true,120)) {
+    if(ta::retailAttachedSfxOwnerRemoved(true,200,120) ||
+       ta::retailAttachedSfxOwnerRemoved(false,119,120) ||
+       !ta::retailAttachedSfxOwnerRemoved(false,120,120) ||
+       !ta::retailAttachedSfxOwnerRemoved(false,0,0)) {
         std::fprintf(stderr,"attached death SFX owner retirement boundary is incorrect\n");
         return false;
     }
@@ -1031,7 +1027,7 @@ int main(int argc,char** argv) {
                 &request,&moverFlags,&heading,&tolerance,&flags,&angleHeading,&anglePitch)==18) {
             const bool posted=ta::sim::retailPostsFacing(mover!=0,canFly!=0,hover!=0,uint16_t(pivot));
             if(posted) {
-                request=ta::sim::retailSlotFacing(origin,targetOrigin,led,melee!=0);
+                request=ta::sim::retailSlotFacing(origin,melee ? targetOrigin : led);
                 moverFlags|=0x10;
             }
             ta::RetailAimState state{uint16_t(angleHeading),uint16_t(anglePitch),uint16_t(flags)};

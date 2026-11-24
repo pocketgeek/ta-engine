@@ -35,7 +35,7 @@ int main(int argc,char**argv) {
         std::vector<std::string> ships;
         for (const auto& [id,t]:registry.types())
             if (t.domain==ta::sim::UnitType::Domain::Water && !t.isStructure() &&
-                t.weapon.damage>0 && !t.weapon.melee) ships.push_back(id);
+                t.weapon.damage>0) ships.push_back(id);
         std::sort(ships.begin(),ships.end());
         for (const auto& name:ships) for (bool shore:{false,true}) for (int order=0;order<3;++order) {
             const auto* type=registry.find(name);

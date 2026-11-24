@@ -1,25 +1,23 @@
-// shot_range_test: every weapon but melee measures a building centre to
-// centre, as retail: none is aimed at a building past its range, and an
-// attacker closes to the range itself.
+// shot_range_test: every TA weapon measures a building centre to centre, as
+// retail: none is aimed at a building past its range, and an attacker closes
+// to the range itself.
 //
 //   shot_range_test <retail-install-dir> [--legion]
 //
 // Retail's unit-target range test is a virtual of the weapon class (vtable
-// +0xc). 16 of its 17 classes answer centre to centre with no allowance for
-// the target's size (530580, inclusive): WeaponType, every Line-of-Sight
-// subclass, Guided, every Remote Effect subclass, Wandering, Dropped (532290,
-// a bare call of 530580) and Ballistic (52bc60: its arc, then 530580). Only
-// MeleeWeapon (52b980) tests footprint boxes. tools/re/check_inrange_classes.py
-// runs all 17 natively. Retail's Attack_Chase (403bb0) approaches a ring of
-// the weapon's range round the target's centre.
+// +0xc). Every TA class answers centre to centre with no allowance for the
+// target's size (530580, inclusive): WeaponType, Line-of-Sight, Guided,
+// Dropped (532290, a bare call of 530580) and Ballistic (52bc60: its arc,
+// then 530580). tools/re/check_inrange_classes.py runs them natively.
+// Retail's Attack_Chase (403bb0) approaches a ring of the weapon's range
+// round the target's centre.
 // The engine padded a structure target's range by its footprint (8 * larger
-// side + 24 px). 0.9.12 dropped the pad for a shot that dies at its range; a Dropped bomb, a Remote or Wandering spell and an instant or
-// status Line-of-Sight shot kept it, so each was cast at a building up to
-// the pad past its range (Weapon::centreReach now: every class but melee).
+// side + 24 px). 0.9.12 dropped the pad for a shot that dies at its range; a
+// Dropped bomb and an instant Line-of-Sight shot kept it, so each was cast at
+// a building up to the pad past its range.
 //
 // Checks (flat 128x128 map, shipped TA units, an enemy Vehicle Plant):
-//   - every shipped weapon, by retail class: no pad but for melee (TA ships
-//     no melee weapon);
+//   - every shipped weapon, by retail class;
 //   - a unit of each class 0.9.12 still padded (TA: Line-of-Sight lasers,
 //     Dropped bombs) on Hold Position half the old pad past its range from
 //     an enemy building never targets it and does it no damage; 20 px inside
@@ -28,10 +26,8 @@
 //     to its plain range (centre to centre) and damages it (a flyer: damages
 //     it);
 //   - a Hammer (Ballistic) still reaches and hits one.
-// The Kingdoms cases with no TA counterpart are gone: spell classes (Remote
-// Effect, Hailstorm, Earthquake, Wandering, the status Line-of-Sight shots),
-// melee, and the Lich whose 60 px aura barely passed a Barracks' face (no
-// TA weapon is that short).
+// The Kingdoms cases with no TA counterpart are gone with their classes
+// (Remote Effect, Wandering, the status Line-of-Sight shots, melee).
 //
 // A dev harness; not shipped in a game.
 
@@ -96,26 +92,12 @@ bool holds(const sim::Unit* u, int target) {
 // Retail's weapon class (the handler vtable each shipped weapon gets).
 std::string retailClass(const sim::Weapon& w) {
     using K = sim::Weapon::Kind;
-    if (w.melee) return "Melee";
     if (w.kind == K::Dropped) return "DroppedBallistic";
     if (w.ballisticClass()) return "Ballistic";
     if (w.kind == K::Guided) return "Guided";
-    if (w.kind == K::Wandering) return "Wandering";
-    if (w.kind == K::Remote) {
-        switch (w.remote) {
-        case sim::Weapon::RemoteKind::Earthquake: return "Earthquake";
-        case sim::Weapon::RemoteKind::Hailstorm: return "Hailstorm";
-        case sim::Weapon::RemoteKind::MindCtl: return "AreaMindControl";
-        case sim::Weapon::RemoteKind::Freeze: return "AreaTurnToFrozen";
-        default: return "RemoteEffect";
-        }
-    }
     if (w.beam) {
         if (w.flameKind >= 0) return "LineOfSightFire";
         if (w.lightning) return "LineOfSightLightning";
-        if (w.mindControl) return "LineOfSightMindControl";
-        if (w.status == sim::Weapon::Status::Stoned) return "LineOfSightTurnToStone";
-        if (w.status == sim::Weapon::Status::Frozen) return "LineOfSightTurnToFrozen";
         return "LineOfSight";
     }
     return "WeaponType";
@@ -124,28 +106,22 @@ std::string retailClass(const sim::Weapon& w) {
 // 0.9.12's rule, kept here to name what this change moves: only a shot that
 // dies at its range went without the pad.
 bool oldNoPad(const sim::Weapon& w) {
-    return !w.melee && w.projVel > 0 && (w.straight || w.lightning || w.flameKind >= 0 ||
+    return w.projVel > 0 && (w.straight || w.lightning || w.flameKind >= 0 ||
                                          w.kind == sim::Weapon::Kind::Guided);
 }
 
-// Every shipped weapon by retail class: no structure pad but for melee.
+// Every shipped weapon by retail class.
 void survey(const sim::TypeRegistry& reg, const char* roster) {
     struct Row { int weapons = 0, moved = 0, instant = 0; std::set<std::string> units; };
     std::map<std::string, Row> rows;
-    int bad = 0;
-    std::string badList;
+
     for (const auto& [id, t] : reg.types()) {
         for (const auto& w : t.weapons) {
             Row& r = rows[retailClass(w)];
             ++r.weapons;
             r.units.insert(id);
-            if (!w.melee && !w.ballisticClass() && !oldNoPad(w)) ++r.moved;
-            if (!w.melee && w.projVel <= 0) ++r.instant;
-            const int32_t want = w.melee ? 8 * 4 + 24 : 0;
-            if (w.centreReach() == w.melee || w.structurePad(4) != want) {
-                ++bad;
-                badList += " " + id + "/" + w.name;
-            }
+            if (!w.ballisticClass() && !oldNoPad(w)) ++r.moved;
+            if (w.projVel <= 0) ++r.instant;
         }
     }
     std::printf("  %s roster, shipped weapons by retail class (moved: padded before, centre to centre now):\n",
@@ -156,15 +132,15 @@ void survey(const sim::TypeRegistry& reg, const char* roster) {
         std::printf("    %-24s %3d weapons on %3zu types, %3d moved, %3d instant:%s\n", cls.c_str(), r.weapons,
                     r.units.size(), r.moved, r.instant, some.c_str());
     }
-    check(bad == 0, std::string(roster) + ": every class but melee measures a building centre to centre", badList);
+    check(!rows.empty(), std::string(roster) + ": the shipped weapons are classed", "");
 }
 
-// The weapon an attack approaches on (World::approachSlot): the selected one
-// for a switcher, the longest when they all fire.
+// The weapon an attack approaches on (World::approachSlot): the longest
+// when they all fire.
 const sim::Weapon* reachWeapon(const sim::UnitType& t, int slot) {
     if (t.weapons.empty()) return nullptr;
     int s = std::max(slot, 0);
-    if (!t.weaponSwitching && t.weapons.size() > 1)
+    if (t.weapons.size() > 1)
         for (int i = 0; i < int(t.weapons.size()); ++i)
             if (t.weapons[size_t(i)].range > t.weapons[size_t(s)].range) s = i;
     return &t.weapons[size_t(s)];
@@ -177,10 +153,6 @@ struct Static {
     int struck = 0;     // ticks a shot struck the target
 };
 
-// A stone or freeze shot never damages a building: retail's callbacks
-// (52dca0 / 52df00) refuse a body without a mover and replace the damage.
-// Its reach shows in the shots that strike the building instead.
-bool statusShot(const sim::Weapon& w) { return w.losStatus != sim::Weapon::LosStatus::None; }
 
 int strikes(const sim::World& w, int target) {
     return std::any_of(w.hits().begin(), w.hits().end(),
@@ -188,7 +160,7 @@ int strikes(const sim::World& w, int target) {
 }
 
 // A shooter (player 0, fire at will; a mobile one on Hold Position) and an
-// enemy building at (dx, dz) from it. `slot` >= 0 selects a weapon.
+// enemy building at (dx, dz) from it.
 Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const char* shooterId,
                      const char* targetId, float dx, float dz, int ticks, int slot = -1) {
     Scene s;
@@ -205,7 +177,7 @@ Static staticShooter(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const ch
     const int shooter = s.w.spawn(st, sx, sz, {}, 0);
     if (st->isStructure()) s.w.blockFoot(*st, sx, sz, true);
     else s.w.unit(shooter)->moveState = 0;
-    if (slot >= 0) s.w.setWeapon(shooter, slot);
+    (void)slot;   // TA has no weapon switching: every slot fires
     s.w.player(0).mana = 30000;
     const int target = building(s.w, tt, sx + dx, sz + dz);
     // A spotter of the shooter's beside the building: a shooter whose range
@@ -258,7 +230,7 @@ Approach attackBuilding(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const
     if (!st || !tt) { check(false, "shipped " + shooterId + " and " + targetId + " load"); return {}; }
     const float tx = 1600, tz = 1024;
     const int shooter = s.w.spawn(st, tx - 1100, tz, {}, 0);
-    if (slot >= 0) s.w.setWeapon(shooter, slot);
+    (void)slot;   // TA has no weapon switching: every slot fires
     s.w.player(0).mana = 30000;
     const int target = building(s.w, tt, tx, tz);
     for (int i = 0; i < 30; ++i) s.w.tick(1.f / 30);
@@ -341,7 +313,7 @@ int main(int argc, char** argv) {
         const sim::UnitType* t = standard.find(c.unit);
         if (t && t->canFly) continue;   // a flyer does not hold a post
         const sim::Weapon* w = t ? reachWeapon(*t, c.slot) : nullptr;
-        if (!w || w->melee || w->ballisticClass() || oldNoPad(*w)) {
+        if (!w || w->ballisticClass() || oldNoPad(*w)) {
             check(false, std::string(c.unit) + ": a weapon 0.9.12 still padded", "fixture");
             continue;
         }
@@ -353,18 +325,7 @@ int main(int argc, char** argv) {
               std::string(c.what) + " on hold never targets a building past its range", describe(band));
         const Static in = staticShooter(vfs, standard, c.unit, target, 0, float(w->range) - 20, 900, c.slot);
         std::printf("  %s on hold %d px off: %s\n", c.unit, w->range - 20, describe(in).c_str());
-        // A stone or freeze class never takes the Keep on its own: it is
-        // cantbestoned and cantbefrozen, and the picker (412620, the sweep's
-        // and the scan's) skips a type immune to the slot's status. Its reach
-        // shows in the explicit attacks below.
-        if (statusShot(*w)) {
-            check(in.held == 0 && in.struck == 0,
-                  std::string(c.what) + " on hold never takes a building immune to its status", describe(in));
-            continue;
-        }
-        check(in.held > 0 && (statusShot(*w) ? in.struck > 0 && in.damage == 0 : in.damage > 0),
-              std::string(c.what) + (statusShot(*w) ? " on hold strikes one inside its range, harmlessly"
-                                                    : " on hold hits one inside its range"),
+        check(in.held > 0 && in.damage > 0, std::string(c.what) + " on hold hits one inside its range",
               describe(in));
     }
 
@@ -386,31 +347,16 @@ int main(int argc, char** argv) {
             const sim::UnitType* t = standard.find(c.unit);
             if (!t) { check(false, std::string("shipped ") + c.unit + " loads"); continue; }
             const sim::Weapon* w = reachWeapon(*t, c.slot);
-            if (!w || w->melee || w->ballisticClass()) {
+            if (!w || w->ballisticClass()) {
                 check(false, std::string(c.unit) + "'s reach weapon is ranged and not Ballistic", "fixture");
                 continue;
             }
             const Approach a = attackBuilding(vfs, standard, c.unit, target, 1800, c.slot);
             std::printf("  %s (%s) vs %s: %s\n", c.unit, retailClass(*w).c_str(), target, describe(a).c_str());
-            // A flyer passes over on its runs; only a ground unit stands. A
-            // Wandering storm is born in front of its caster and drifts at the
-            // target, weaving: whether one crosses the building is chance, so
-            // the caster need only cast.
-            const bool storm = w->kind == sim::Weapon::Kind::Wandering;
-            const bool status = statusShot(*w);
-            // A stone or freeze class refuses the order: its callback refuses
-            // a building, so retail spent shots on it for good (engine
-            // deviation, World::statusCanTake).
-            if (status) {
-                check(!a.held && a.shots == 0 && a.damage == 0,
-                      std::string(c.what) + " ordered to attack a building refuses the order", describe(a));
-                continue;
-            }
-            check(a.ok && (t->canFly || a.dist <= float(a.range) + 0.5f) &&
-                      (storm ? a.shots > 0 : a.damage > 0),
+            // A flyer passes over on its runs; only a ground unit stands.
+            check(a.ok && (t->canFly || a.dist <= float(a.range) + 0.5f) && a.damage > 0,
                   std::string(c.what) + " ordered to attack a building " +
-                      (t->canFly ? "damages it" : storm ? "closes to its plain range and casts"
-                                            : "closes to its plain range and damages it"),
+                      (t->canFly ? "damages it" : "closes to its plain range and damages it"),
                   describe(a));
         }
     }

@@ -334,10 +334,8 @@ void world() {
                     u.x=Fixed::fromInt(m.range(-100,kMap*16+100));u.z=Fixed::fromInt(m.range(-100,kMap*16+100));
                 } else if (what<19) {
                     u.underConstruction=!u.underConstruction;
-                } else if (what<20) {
-                    u.stonedFor=m.below(2) ? m.range(1,4) : 0;
                 } else if (what<21) {
-                    u.frozenFor=m.below(2) ? m.range(1,4) : 0;
+                    // (was Kingdoms' stone / freeze timers)
                 } else if (what==21 && step%3==0 && step<70) {
                     u.hp=Fixed();   // the death sweep takes it next tick
                     kills+=&run==&runs[0];

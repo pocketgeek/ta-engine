@@ -310,15 +310,15 @@ void flyerPatrols(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::
 void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
     using sim::Order;
     const auto armed = [](const sim::UnitType& t) {
-        if (!t.canFly || t.isStructure() || !t.canMove || t.weapons.empty() || t.weaponSwitching) return false;
+        if (!t.canFly || t.isStructure() || !t.canMove || t.weapons.empty()) return false;
         const auto& w = t.weapons[0];
-        return !w.toAir && !w.melee && !w.commandFire && !w.cursorAirstrike && w.range > 0 && w.damage > 0;
+        return !w.toAir && !w.commandFire && !w.cursorAirstrike && w.range > 0 && w.damage > 0;
     };
     const sim::UnitType* runner = pick(reg, {}, [&](const sim::UnitType& t) { return armed(t) && !t.hoverAttack; });
     const sim::UnitType* hover = pick(reg, {}, [&](const sim::UnitType& t) { return armed(t) && t.hoverAttack; });
     // A bomber: TA's bombs are `dropped` (the Thunder's ARMBOMB).
     const sim::UnitType* bomber = pick(reg, {"armthund"}, [&](const sim::UnitType& t) {
-        return t.canFly && !t.isStructure() && t.canMove && !t.weaponSwitching && !t.weapons.empty() &&
+        return t.canFly && !t.isStructure() && t.canMove && !t.weapons.empty() &&
                t.weapons[0].cursorAirstrike && t.weapons[0].damage > 0;
     });
     std::printf("  flyers: attack runs %s, hover %s, bomber %s\n", runner ? runner->id.c_str() : "-",
@@ -755,16 +755,16 @@ int main(int argc, char** argv) {
     std::printf("[%s pathfinding]\n", mode == sim::PathfindingMode::Legion ? "Legion" : "Retail");
 
     const auto ground = [](const sim::UnitType& t) { return !t.canFly && !t.isStructure() && t.canMove; };
-    const auto ranged = [](const sim::Weapon& w) { return !w.melee && !w.toAir && w.range > 0 && !w.commandFire; };
+    const auto ranged = [](const sim::Weapon& w) { return !w.toAir && w.range > 0 && !w.commandFire; };
     // TA's Hammer (a Ballistic plasma cannon, like the Kingdoms Archer's
     // bow this test began with) and its Light Laser Tower. TA ships no
     // minimum-range weapon (no weapons/*.tdf sets minrange), no weapon
     // switcher and no melee weapon, so those cases are gone.
     const sim::UnitType* archer = pick(reg, {"armham"}, [&](const sim::UnitType& t) {
-        return ground(t) && !t.weaponSwitching && t.weapons.size() == 1 && ranged(t.weapons[0]) && !t.weapons[0].minRange;
+        return ground(t) && t.weapons.size() == 1 && ranged(t.weapons[0]) && !t.weapons[0].minRange;
     });
     const sim::UnitType* tower = pick(reg, {"armguard"}, [&](const sim::UnitType& t) {
-        return t.isStructure() && !t.weapons.empty() && !t.weaponSwitching && ranged(t.weapons[0]) &&
+        return t.isStructure() && !t.weapons.empty() && ranged(t.weapons[0]) &&
                !t.weapons[0].minRange && !t.producesUnits();
     });
     std::printf("  types: archer %s, tower %s\n", archer ? archer->id.c_str() : "-", tower ? tower->id.c_str() : "-");

@@ -374,7 +374,8 @@ struct RetailReplayProbe {
         auto* unit=world.unit(id);
         if (!unit || mode<0 || mode>3) throw std::runtime_error("invalid corpse event");
         if (mode==3) { world.retireCorpse(*unit);return false; }
-        const int type=mode ? world.statueTypeOf(unit->type,mode==2) : world.corpseTypeOf(unit->type);
+        // Modes 1 and 2 were Kingdoms' stone and frozen statues: TA places the corpse.
+        const int type=world.corpseTypeOf(unit->type);
         unit->deadFor=0;
         if (unit->type->isStructure()) world.blockFoot(*unit->type,unit->x.toFloat(),unit->z.toFloat(),false);
         return world.placeCorpse(*unit,type);

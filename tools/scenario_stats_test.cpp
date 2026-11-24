@@ -6,7 +6,7 @@ using namespace ta::sim;
 static void check(bool ok,const char* what) {if(!ok)throw std::runtime_error(what);}
 static UnitType fighter() {
     UnitType t;t.id="fighter";t.maxHp=2000;t.healTime=0;t.sight=600;
-    t.weapon.damage=40;t.weapon.range=100;t.weapon.melee=true;
+    t.weapon.damage=40;t.weapon.range=100;
     t.weapon.reload=1;t.weapon.aimTol=65536;t.weapons={t.weapon};return t;
 }
 static void terrain(World& w) {
@@ -40,17 +40,7 @@ int main() try {
         w.attack(a,n,false);for(int i=0;i<120 && w.unit(n)->hp.floorInt()==t.maxHp;++i)w.tick(1.f/30);
         check(w.unit(n)->hp.floorInt()<t.maxHp,"explicit attack on a neutral unit failed");
     }
-    {
-        auto t=fighter(),victim=t;t.weapon.mindControl=true;t.weapons={t.weapon};
-        victim.id="victim";victim.weapon.damage=0;victim.weapons.clear();
-        victim.buildMovementCode=1;   // a mobile body: the charm (52da10) refuses one without a mover
-        World w;terrain(w);w.enableScenarioNeutralPlayer();
-        int a=w.spawn(&t,400,400,0,0),n=w.spawn(&victim,440,400,0,8);
-        w.attack(a,n,false);
-        for(int i=0;i<600 && w.unit(n)->player==8;++i)w.tick(1.f/30);
-        check(w.unit(n)->player==0 && w.player(8).unitCount==0 && w.player(0).unitCount==2,
-              "neutral capture failed or left stale ownership counts");
-    }
+
     {
         auto t=fighter();World a,b;terrain(a);terrain(b);
         a.setScenarioTypeStats(t.id,200,150,7);b.setScenarioTypeStats(t.id,200,150,7);
@@ -87,7 +77,7 @@ int main() try {
         auto t=fighter(),victim=fighter(),tower=fighter();t.experiencePoints=10;t.canMove=true;
         victim.id="victim";victim.weapon.damage=0;victim.weapons.clear();victim.maxHp=40;victim.experiencePoints=25;
         tower.id="tower";tower.experiencePoints=10;tower.canMove=false;tower.maxVel=Fixed();
-        tower.weapon.melee=false;tower.weapon.range=200;tower.weapons={tower.weapon};
+        tower.weapon.range=200;tower.weapons={tower.weapon};
         for (const UnitType* killerType:{&t,&tower}) {
             World w;terrain(w);
             const int a=w.spawn(killerType,400,400,0,0),b=w.spawn(&victim,440,400,0,1);

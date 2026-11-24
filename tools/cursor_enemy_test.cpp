@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
     }
     int immune = 0;
     for (const auto& [aid, a] : reg.types()) {
-        if (!a.hasPrimaryWeaponBlock || a.weapons.empty() || a.weaponSwitching) continue;
+        if (!a.hasPrimaryWeaponBlock || a.weapons.empty()) continue;
         for (const auto& [tid, t] : reg.types()) {
             if (client::cursorDamageVs(a.weapons.front(), t) > 0.0f) continue;
             ++immune;

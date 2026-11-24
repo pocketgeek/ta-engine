@@ -140,9 +140,8 @@ const char* worldHost(const sim::UnitType& t) {
     return t.canFly ? "VTOL_Standby" : "Standby";
 }
 
-// 519ac0: a switcher's selected slot, else the first.
-int scanSlot(const sim::Unit& u) {
-    if (u.type->weaponSwitching && u.weaponSlot >= 0 && u.weaponSlot < 3) return u.weaponSlot;
+// 519ac0: the first slot (TA has no weaponswitching).
+int scanSlot(const sim::Unit&) {
     return 0;
 }
 
@@ -566,10 +565,8 @@ Share sharedSight(const sim::UnitType& archer, int team1, bool ai0, bool ai1, Af
         out.afterSees0 = sees(0); out.afterSees1 = sees(1);
     }
     if (after == After::Realign) {
-        // The ally leaves the team mid-game with its scout frozen: the
-        // footprint stays where it stands and moves to its owner's plane
-        // alone; back on the team it is shared again.
-        w.unit(spot)->frozenFor = 200;
+        // The ally leaves the team mid-game: its scout's footprint moves to
+        // its owner's plane alone; back on the team it is shared again.
         w.setTeam(1, 1);
         w.tick(kTick); audit();
         out.afterSees0 = sees(0); out.afterSees1 = sees(1);
@@ -686,7 +683,7 @@ void sharedSights(const sim::TypeRegistry& reg) {
           "takeover_keeps_sharing: a computer taking over the ally mid-game keeps its sight in player 0's plane");
     const Share realign = sharedSight(*archer, 0, false, false, After::Realign);
     check(!realign.afterSees0 && realign.afterSees1 && realign.rejoinSees0 && realign.consistent && realign.display,
-          "alliance_change: a frozen scout's footprint leaves player 0's plane with the alliance, stays in its "
+          "alliance_change: a scout's footprint leaves player 0's plane with the alliance, stays in its "
           "owner's, and comes back with it",
           "after0 " + std::to_string(realign.afterSees0) + " after1 " + std::to_string(realign.afterSees1) +
               " rejoin0 " + std::to_string(realign.rejoinSees0) + " consistent " + std::to_string(realign.consistent));

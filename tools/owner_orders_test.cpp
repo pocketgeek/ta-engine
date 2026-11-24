@@ -6,23 +6,23 @@
 // missions included; a weapon record's target goes at its next lookup
 // (51a9a0). World keeps the unit's id, so World::changeOwner points every
 // other unit's reference at no unit (World::retireReferences) and each holder
-// loses it as it loses a target that died. Before, only automatic and
-// mind-control attacks ended: an explicit Attack stayed on a unit the
-// attacker's own side had just charmed (melee units killed it, flyers made
-// runs over it for the rest of its life), a producer's Attack rally kept
-// sending new units at it, a queued Attack leg came up later, and a guard
-// went on escorting a ward an enemy had charmed.
+// loses it as it loses a target that died. Before, only automatic attacks
+// ended: an explicit Attack stayed on a unit the attacker's own side had just
+// taken (flyers made runs over it for the rest of its life), a producer's
+// Attack rally kept sending new units at it, a queued Attack leg came up
+// later, and a guard went on escorting a ward an enemy had taken.
 //
-// Without an argument this runs on synthetic types (a real charm from a
-// synthetic mind-control caster, a gift, a scenario transfer); with a retail
-// data root it also runs the shipped roster as holders and targets: Peewee,
-// Hammer, A.K., Storm, Thunder and Shadow attackers, a Kbot Lab's rally, a
-// walking and a flying guard, a third player's attacker, in both pathfinding
-// modes; and under Legion, two attackers whose queued targets are both
-// charmed (the references let go share one id, which must not join them in
-// one group). The change of owner itself is still the synthetic caster's
-// charm: no Total Annihilation weapon carries mind control, and TA's own
-// change of owner (the Commander's Capture) is not modelled yet.
+// Without an argument this runs on synthetic types (a change of owner, a
+// gift, a scenario transfer); with a retail data root it also runs the
+// shipped roster as holders and targets: Peewee, Hammer, A.K., Storm, Thunder
+// and Shadow attackers, a Kbot Lab's rally, a walking and a flying guard, a
+// third player's attacker, in both pathfinding modes; and under Legion, two
+// attackers whose queued targets both change owner (the references let go
+// share one id, which must not join them in one group). The change of owner
+// is retail's 514da0 (World::changeOwner, as the mission Capture and the
+// CRT transfer run it), made for the "taker" unit's player after a short
+// wait: Kingdoms' mind-control caster that used to make it is gone with its
+// weapon class. ("Charm" below names that change of owner.)
 #include "hpi/hpi.h"
 #include "net/lockstep.h"
 #include "sim/matchsetup.h"
@@ -31,6 +31,10 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+
+namespace ta::sim { struct RetailReplayProbe {
+    static bool take(World& w,int id,int player) { return w.changeOwner(*w.unit(id),player,nullptr); }
+}; }
 
 namespace {
 using namespace ta::sim;
@@ -71,41 +75,43 @@ float distance(const Unit& u,float x,float z) {
 // ---- synthetic types -------------------------------------------------------
 
 UnitType body() {
-    // bmcode 1: the charm refuses a body without a mover. Upright, so it
-    // stands on the terrain and is seen (capture_combat_test's victim).
+    // Upright, so it stands on the terrain and is seen.
     UnitType t;t.id="body";t.maxHp=10000;t.healTime=0;t.canMove=true;t.buildMovementCode=1;t.upright=true;
     return t;
 }
+// The taker: an unarmed unit whose player the charmed unit goes to.
 UnitType caster() {
     auto t=body();t.id="caster";
-    Weapon w;w.damage=1;w.range=400;w.reload=0.1f;w.aimTol=65536;   // it fires on any bearing
-    w.mindControl=true;w.kind=Weapon::Kind::Remote;
-    w.remote=Weapon::RemoteKind::MindCtl;w.unitsOnly=true;w.aoe=32;w.buildUpTicks=8;w.decayTicks=8;
-    t.weapon=w;t.weapons={w};return t;
+    return t;
 }
 UnitType fighter() {
-    auto t=caster();t.id="fighter";
-    t.weapons[0].mindControl=false;t.weapons[0].remote=Weapon::RemoteKind::Plain;
-    t.weapons[0].damage=20;t.weapons[0].range=200;t.weapons[0].reload=0.5f;
-    t.weapon=t.weapons[0];return t;
+    auto t=body();t.id="fighter";
+    Weapon w;w.damage=20;w.range=200;w.reload=0.5f;w.aimTol=65536;   // it fires on any bearing
+    w.unitsOnly=true;w.aoe=32;
+    t.weapon=w;t.weapons={w};return t;
 }
+// How long the old mind-control cast took before it landed (buildup 8 ticks
+// plus the flight of its order): the holders run this long first.
+constexpr int kTakeTicks=20;
 
 struct Plain {
     World w;
     Plain() { sides(w);w.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20); }
     void run(int ticks) { for (int i=0;i<ticks;++i) w.tick(1.f/30); }
-    // A caster on Hold Fire: it charms what it is ordered onto and nothing else.
+    // A taker on Hold Fire.
     int spawnCaster(const UnitType& type,float x,float z,int player) {
         const int id=w.spawn(&type,x,z,0,player);
         w.unit(id)->fireState=0;
         return id;
     }
-    // A real charm: the caster is ordered onto the unit and casts until it is
-    // its player's. The tick the charm takes is the last one run.
-    bool charm(int casterId,int victim,int limit=900) {
+    // The change of owner to the taker's player, after kTakeTicks. The tick
+    // it is made on is the last one run.
+    bool charm(int casterId,int victim) {
         const int owner=w.unit(casterId)->player;
-        w.attack(casterId,victim,false);
-        for (int t=0;t<limit && w.unit(victim)->alive() && w.unit(victim)->player!=owner;++t) run(1);
+        run(kTakeTicks-1);
+        if (!w.unit(victim)->alive()) return false;
+        RetailReplayProbe::take(w,victim,owner);
+        run(1);
         return w.unit(victim)->alive() && w.unit(victim)->player==owner;
     }
 };
@@ -266,21 +272,20 @@ struct Field {
         if (!t) { check(false,label+": shipped type "+type+" is missing");return 0; }
         return w.spawn(t,x,z,0,player);
     }
-    // A real charm by the synthetic caster with its Attack click on the unit.
-    // The tick the charm takes is the last one run. `keep`: a unit whose hit
-    // points are held up meanwhile (one the charm must find alive).
-    bool charm(int casterId,int victim,int keep=0,int limit=1800) {
+    // The change of owner to the taker's player, after kTakeTicks. The tick
+    // it is made on is the last one run. `keep`: a unit whose hit points are
+    // held up meanwhile (one the change must find alive).
+    bool charm(int casterId,int victim,int keep=0) {
         if (!casterId) return false;
         const int player=w.unit(casterId)->player;
-        command(w,reg,Cmd::Attack,player,casterId,victim);
-        for (int t=0;t<limit && w.unit(victim)->alive() && w.unit(victim)->player!=player;++t) {
+        for (int t=0;t<kTakeTicks;++t) {
             if (Unit* k=w.unit(keep);k && k->alive()) k->hp=Fixed::fromInt(int(k->type->maxHp));
+            if (t==kTakeTicks-1 && w.unit(victim)->alive()) RetailReplayProbe::take(w,victim,player);
             run(1);
         }
         return w.unit(victim)->alive() && w.unit(victim)->player==player;
     }
-    // The synthetic mind-control caster (caster() above), on Hold Fire: it
-    // charms what it is ordered onto and nothing else.
+    // The taker (caster() above), on Hold Fire.
     UnitType casterType=caster();
     int spawnCaster(float x,float z,int player) {
         const int id=w.spawn(&casterType,x,z,0,player);
