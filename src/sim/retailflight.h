@@ -119,6 +119,36 @@ inline RetailFlightGoal retailTaBuildHoverGoal(RetailFlightVector position,Retai
 }
 constexpr uint32_t kRetailTaBuildHoverPeriod=150;   // 0x414570 / 0x414150: tick % 0x96
 
+// TotalA.exe's take-off, stage 0 of VTOL_Move (0x40fb58..0x40fbb2) and
+// VTOL_Patrol (0x411122..0x41117e): a landed flyer (mover +0x2e & 3 == 1) is
+// set flying (0x43d210(2)) and given a point controller (0x44e2d0) at its own
+// position whose altitude offset is cruisealt / 2 (type +0x21c, halved toward
+// zero; 0x44e6c0: flag 8, y = (the larger of the terrain under the point,
+// 0x485070, and the sea level) + offset, at most 0x1ff px). The mission waits
+// on its events (0xe0): the flyer climbs straight up to half its cruise height
+// before it heads anywhere. `terrain` is 0x485070's (-1 off the map).
+inline RetailFlightGoal retailTaTakeOffGoal(RetailFlightVector position,int terrain,int sea,int cruiseAlt) {
+    RetailFlightGoal goal;
+    const int32_t y=(std::max(terrain,sea)+cruiseAlt/2)*65536;
+    goal.point={position.x,std::min(y,int32_t(0x1ff0000)),position.z};
+    goal.flags=0x28;goal.radius=0;
+    return goal;
+}
+
+// TotalA.exe VTOL_Patrol stage 2 (0x410ead..0x410f3b): a point controller
+// 320 px beyond the leg's point along the line from the flyer (0x48a980: the
+// angle of flyer - point; 0x4b70ef / 0x4b7123 at 0x1400000), accepting
+// within 0x150 px (0x44e730: flag 0x10). No draw.
+inline RetailFlightGoal retailTaPatrolGoal(RetailFlightVector position,RetailFlightVector point) {
+    const uint16_t angle=uint16_t(retailDirection(Fixed::raw(satSub32(position.x,point.x)),
+                                                  Fixed::raw(satSub32(position.z,point.z))).v);
+    RetailFlightGoal goal;
+    goal.point={satSub32(point.x,retailScaledSine(angle,0x1400000)),point.y,
+                satSub32(point.z,retailScaledCosine(angle,0x1400000))};
+    goal.flags=0x30;goal.radius=0x150;
+    return goal;
+}
+
 struct RetailLandingState {
     RetailMissionState mission;
     RetailFlightVector anchor;

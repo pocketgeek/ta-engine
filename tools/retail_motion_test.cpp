@@ -986,11 +986,23 @@ int main(int argc, char** argv) {
         patrol.patrol=patrol.goal=true;patrol.mission.flags=0x1001413;
         world.unit(id)->orders={move,patrol};
         world.tick(1.0f/30.0f);
+        {
+            // TotalA.exe VTOL_Move stage 0 (0x40fb4d..0x40fbb2): a landed
+            // flyer takes off straight up to half its cruise height.
+            const auto& active=world.unit(id)->orders.front();
+            check(active.flightMoveMission && active.mission.stage==1 && active.mission.waitMask==0x700 &&
+                  active.flightGoal && active.flightGoal->flags==0x28 && active.flightGoal->radius==0 &&
+                  active.flightGoal->point.x==Fixed::fromInt(128).v && active.flightGoal->point.z==Fixed::fromInt(128).v &&
+                  active.flightGoal->point.y==50*65536 && world.unit(id)->flightGroundMode==2,
+                  "a landed flyer's move first climbs over its spot to half its cruise height");
+        }
+        for (int i=0;i<300 && world.unit(id)->orders.front().mission.stage<2;++i) world.tick(1.0f/30.0f);
         const auto& active=world.unit(id)->orders.front();
         check(active.flightMoveMission && active.x==Fixed::fromInt(304) && active.z==Fixed::fromInt(704) &&
-              active.mission.stage==2 && active.mission.waitMask==0x701 && active.flightGoal &&
-              active.flightGoal->radius>=80 && active.flightGoal->radius<=144,
-              "initial flight move snaps to the body center and waits on its randomized radius");
+              active.mission.stage==2 && active.mission.waitMask==0x700 && active.flightGoal &&
+              active.flightGoal->radius==0 && active.flightGoal->flags==0x20 &&
+              world.unit(id)->flightY>=Fixed::fromInt(49),
+              "after the climb the move's point controller sits on the snapped body centre, radius 0");
         check(world.unit(id)->flightBeginCallbackSerial==1,
               "flight move dispatch exposes BeginFlight even without an authoritative script VM");
         const auto hash=world.stateHash();
@@ -1014,6 +1026,7 @@ int main(int argc, char** argv) {
         flyer.maxVel=Fixed::fromInt(4);flyer.accel=flyer.brake=Fixed::fromInt(1);
         flyer.turnRate=1200;flyer.cruiseAlt=80;
         const int id=world.spawn(&flyer,128,128);
+        world.unit(id)->flightGroundMode=2;   // airborne: no take-off controller
         world.order(id,800,800,false);
         world.tick(1.0f/30.0f);
         check(world.unit(id)->flightNavigation.destination.y==280*65536,
@@ -1330,6 +1343,7 @@ int main(int argc, char** argv) {
         flyer.turnRate = 1200;
         flyer.cruiseAlt = 80;
         const int id = world.spawn(&flyer,256,256);
+        world.unit(id)->flightGroundMode = 2;   // airborne: no take-off controller
         world.order(id,768,256,false);
         auto* unit = world.unit(id);
         check(unit->flightY == Fixed::fromInt(100), "flight spawn uses absolute terrain height");
@@ -1358,7 +1372,7 @@ int main(int argc, char** argv) {
         check(unit->orders.size() == 1 && unit->orders.front().mission.stage == 2 &&
               !(unit->orders.front().mission.pending & 0x100) &&
               unit->orders.front().flightGoal->point.x != before.v,
-              "patrol dispatcher consumes arrival and installs the next randomized goal");
+              "patrol dispatcher consumes arrival and re-aims past the next leg");
     }
     {
         const auto climbing = retailFlightVelocity({}, {}, {10*65536,10*65536,0}, {},

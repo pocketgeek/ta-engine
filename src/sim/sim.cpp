@@ -2270,10 +2270,10 @@ int World::flightGround(const Unit& u) const {
 
 // A flyer's move, fight-move or patrol leg: VTOL_Move (VTOL_Move_Formation
 // for a formation leg) or VTOL_Patrol, run by tickFlightPatrol. A fight-move
-// leg (attackMove) flies VTOL_Move with response mode -1 (markFightLeg), as
-// retail's MoveFight order does: its stage-2 scan puts the attacks ahead of
-// it. Every flyer's patrol is VTOL_Patrol, armed or a builder: its stage-2
-// scan (41a24d) and job search (tickPatrolRepair).
+// leg (attackMove, ours: TA has no fight-move) flies VTOL_Move with response
+// mode -1 (markFightLeg): its stage-2 scan puts the attacks ahead of it.
+// Every flyer's patrol is VTOL_Patrol, armed or a builder: its stage-2 scan
+// (TotalA.exe 0x41106c) and job search (tickPatrolRepair).
 static bool plainFlightPatrol(const Unit& u) {
     if (!u.type || !u.type->canFly || u.orders.empty()) return false;
     const auto& order=u.orders.front();
@@ -2415,61 +2415,99 @@ void World::tickFlightPatrol(Unit& u) {
                     return 4;
                 }
             }
-            if ((m.flags&0x8000000u) && random(10)==0) m.flags&=~0x8000000u;
+            // TotalA.exe's stage 0 of VTOL_Move (0x40fb0c) and VTOL_Patrol
+            // (0x4110c3): no mover or no canfly (type +0x241 0x800) ends it
+            // (7); every slot's held target is let go and the slots are made
+            // automatic again (0x4898b0(3), 0x489800(3): VTOL_Move does the
+            // second in its stage 1, World both at once -- nothing would make
+            // the slots automatic again were the move dropped in between);
+            // Activate (0x48b090(1, 1)); a landed flyer takes off
+            // (retailTaTakeOffGoal) and the mission waits on its events.
+            auto startFlight=[&](Order& order) {
+                if (!u.type->canMove || !u.type->canFly) return false;
+                w.setSlotsManual(u,World::kSlotsAuto);w.setSlotsAuto(u);
+                if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
+                    script->second.activated=true;w.notifyUnitScript(u,"Activate");
+                }
+                w.notifyUnitScript(u,"BeginFlight");   // the client's flight animation (display only)
+                if (u.flightGroundMode==1) {
+                    u.flightGroundMode=2;w.groundMove(u);   // 0x43d210(2)
+                    const int terrain=w.heights_.empty() ? -1 : retailTerrainHeight(u.x.v,u.z.v,w.terW_,w.terH_,
+                        [&](int cx,int cz) { return int(w.heights_[size_t(cz)*w.terW_+cx]); });
+                    order.flightGoal=retailTaTakeOffGoal({u.x.v,u.flightY.v,u.z.v},terrain,w.seaLevel_,u.type->cruiseAlt);
+                    m.pending&=~0x700u;
+                    m.waitMask|=0x700;
+                }
+                return true;
+            };
             if (u.orders.front().flightMoveMission) {
+                // TotalA.exe VTOL_Move (0x40fa20) has three stages: the
+                // take-off (stage 0), a point controller at the goal snapped
+                // to the footprint grid (stage 1), done on its first event
+                // (stage 2). No target scan, no coarse arrival before a
+                // precise one, no return move.
                 auto& order=u.orders.front();
+                // Ours, not TotalA.exe's: a fight-move leg (response mode -1,
+                // markFightLeg; TA has no fight-move order) also wakes on a
+                // timer at stage 2 and scans, putting a leashed attack ahead
+                // of itself, then returns to where it was (stage 5).
+                const bool fight=order.groundResponse.mode<0;
                 if (m.stage==0) {
                     if (order.park && !order.park->attempts) w.resolveFlyerPark(u,order);
-                    if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
-                        script->second.activated=true;w.notifyUnitScript(u,"Activate");
-                    }
-                    w.notifyUnitScript(u,"BeginFlight");
-                    m.pending&=~0x700u; return 1;
+                    if (!startFlight(order)) return 7;
+                    return 1;
                 }
                 if (m.stage==1) {
+                    // 0x40fa67..0x40faf6: the point (mission +0x22) snapped
+                    // to the footprint (unit +0x7e); a point controller there
+                    // (0x44e2d0: flags 0x20, radius 0), waiting on 0xe0.
                     order.x=footprintWaypoint(footprintCell(order.x,u.type->footX),u.type->footX);
                     order.z=footprintWaypoint(footprintCell(order.z,u.type->footZ),u.type->footZ);
-                    order.flightGoal=RetailFlightGoal{{order.x.v,u.flightY.v,order.z.v},0x30,0,int16_t((random(5)+5)*16)};
-                    m.waitMask=0x700;m.sleep(w.tickCounter_,random(10)+5);return 1;
+                    order.flightGoal=RetailFlightGoal{{order.x.v,u.flightY.v,order.z.v}};
+                    m.pending&=~0x700u;
+                    m.waitMask=0x700;
+                    if (fight) m.sleep(w.tickCounter_,random(10)+5);
+                    return 1;
                 }
                 if (m.stage==2) {
-                    if (events&0x700) return 1;
-                    // 418193..4185fe: Move_Ground's response (402e2e) on a
-                    // flyer: the scan when the response mode is below 0, or
-                    // above 0 off Hold Position; the +0xf8 fallback; mode > 0
-                    // on Maneuver drops a hit at or beyond the leash from the
-                    // goal (+0x24/+0x2c). The attack (mode 1, leash
-                    // maneuverleashlength) has its origin where the flyer is
-                    // (mode < 0: the move keeps it, stage 5) or the goal
-                    // (mode > 0: stage 0). 4d4d40(0) drops the controller.
-                    auto& response=order.groundResponse;
-                    if (response.mode<0 || (response.mode>0 && u.moveState)) {
+                    if (fight && !(events&0x700)) {
+                        // The fight leg's scan (Kingdoms 418193..4185fe, kept
+                        // for the engine's fight-move): the scan, the +0xf8
+                        // fallback, an attack leashed at maneuverleashlength
+                        // with its origin where the flyer is.
+                        auto& response=order.groundResponse;
                         int found=w.retailHostScan(u);
                         if (!found) found=w.retailMoveFallback(u);
-                        const Unit* enemy=found ? w.unit(found) : nullptr;
                         const uint16_t leash=uint16_t(std::clamp(u.type->leash,0,65535));
                         const RetailGroundPoint position{int16_t(u.x.floorInt()),int16_t(u.z.floorInt())};
                         const RetailGroundPoint goalPoint{int16_t(order.x.floorInt()),int16_t(order.z.floorInt())};
-                        if (enemy && !(response.mode>0 && u.moveState==1 &&
-                                retailGroundDistance({int16_t(enemy->x.floorInt()),int16_t(enemy->z.floorInt())},
-                                                     goalPoint)>=leash)) {
-                            if (auto attack=w.retailBuiltAttack(u,found,true,leash,
-                                    response.mode<0 ? position : goalPoint)) {
-                                if (response.mode<0) { response.origin=position; response.goal=goalPoint; m.stage=5; }
-                                else m.stage=0;
+                        if (found) {
+                            if (auto attack=w.retailBuiltAttack(u,found,true,leash,position)) {
+                                response.origin=position;response.goal=goalPoint;m.stage=5;
                                 order.flightGoal.reset();order.mission.pending&=~0x3700u;
                                 u.orders.insert(u.orders.begin(),*attack);
                                 return 4;
                             }
                         }
+                        m.waitMask=0x700;m.sleep(w.tickCounter_,random(10)+5);return 2;
                     }
-                    m.waitMask=0x700;m.sleep(w.tickCounter_,random(10)+5);return 2;
+                    // 0x40fa43..0x40fa58: the last mission of the queue
+                    // (mission +0x4a, the next one, empty) tells its owner's
+                    // player it arrived (0x47f780(unit, 6, 0): the unit's
+                    // speech/sound event, client side). Done (5). Ours: the
+                    // last one leaves the mover coasting onto the point it
+                    // accepted (tickRetainedFlightMovement).
+                    if (u.orders.size()==1) {
+                        u.retainedFlightGoal=order.flightGoal;
+                        u.retainedFlightControllerActive=false;
+                    }
+                    return 5;
                 }
                 if (m.stage==5) {
-                    // 4186f5: after the attack, a return move to the origin
-                    // when the flyer is past it by more than a third of the
-                    // leash (retailGroundReturnNeeded, as Move_Ground's
-                    // stage 3); then the move again from stage 0.
+                    // After the fight leg's attack, a return move to the
+                    // origin when the flyer is past it by more than a third
+                    // of the leash (retailGroundReturnNeeded); then the leg
+                    // again from stage 0.
                     const auto response=order.groundResponse;
                     const uint16_t leash=uint16_t(std::clamp(u.type->leash,0,65535));
                     const RetailGroundPoint position{int16_t(u.x.floorInt()),int16_t(u.z.floorInt())};
@@ -2477,66 +2515,66 @@ void World::tickFlightPatrol(Unit& u) {
                     if (retailGroundReturnNeeded(position,response,leash)) {
                         Order back{Fixed::fromInt(response.origin.x),Fixed::fromInt(response.origin.z),0};
                         back.goal=back.flightMoveMission=true;back.mission.flags=kVtolMoveFlags;
-                        back.groundResponse.mode=1;back.groundResponse.goal=response.origin;
                         back.issuedTick=w.tickCounter_;
                         u.orders.insert(u.orders.begin(),back);
                     }
                     return 4;
                 }
-                if (m.stage==3) {
-                    if (u.orders.size()>1) return 5;
-                    // 41865c: the final move refines its coarse arrival with
-                    // an ordinary precise point controller before retiring.
-                    order.flightGoal=RetailFlightGoal{{order.x.v,u.flightY.v,order.z.v}};
-                    m.pending&=~0x700u;
-                    m.waitMask=0x700;
-                    return 1;
-                }
-                if (m.stage==4) {
-                    u.retainedFlightGoal=order.flightGoal;
-                    u.retainedFlightControllerActive=false;
-                    return 5;
-                }
                 return 7;
             }
+            // TotalA.exe VTOL_Patrol (0x410e70).
             if (m.stage==0) {
+                auto& order=u.orders.front();
+                if (!u.type->canMove || !u.type->canFly) return 7;
+                // 0x43a020: unless a mission of the queue already carries the
+                // anchor flag (TotalA.exe 0x8000; ours 0x4000), a patrol
+                // mission at the flyer's position goes on the end of the
+                // queue; this one takes the flag.
                 const bool anchored=std::any_of(u.orders.begin(),u.orders.end(),[](const Order& o) {return (o.mission.flags&0x4000u)!=0;});
                 if (!anchored) {
                     Order anchor;anchor.x=u.x;anchor.z=u.z;anchor.goal=anchor.patrol=true;
                     anchor.mission.flags=kVtolPatrolFlags;anchor.issuedTick=w.tickCounter_;
                     // A return leg: it belongs to the outbound leg's convoy (and order).
-                    anchor.setIdentity(u.orders.front().identity());
+                    anchor.setIdentity(order.identity());
                     u.orders.push_back(anchor);
                 }
+                auto& leg=u.orders.front();
                 m.flags|=0x4000u;
-                if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
-                    script->second.activated=true;w.notifyUnitScript(u,"Activate");
-                }
-                w.notifyUnitScript(u,"BeginFlight");
-                m.pending&=~0x700u; return 1;
+                startFlight(leg);
+                return 1;
             }
             if (m.stage==1) {
-                auto& order=u.orders.front();
-                const RetailFlightVector waypoint{order.x.v,u.flightY.v,order.z.v};
-                order.flightGoal=retailFlightPatrolGoal({u.x.v,u.flightY.v,u.z.v},waypoint,
-                    u.type->maxVel.v,[&](int n) { return random(n); });
-                m.sleep(w.tickCounter_,1);
+                // 0x4110ac: the take-off's events are let go.
+                m.pending&=~0x700u;
                 return 1;
             }
             if (m.stage==2) {
-                if (events&0x700) { m.stage=1; return 6; }
-                // 41a24d: 4d8370, then 4d7de0(unit, found, 0, 0, 1, 1); an
+                // 0x410e97: the controller's event moves on to the next leg
+                // (6: this one goes to the end of the queue, at stage 2).
+                if (events&0x700) return 6;
+                // 0x410ead..0x410f3b: a point controller past the leg's
+                // point (retailTaPatrolGoal), re-aimed at every wake.
+                auto& order=u.orders.front();
+                order.flightGoal=retailTaPatrolGoal({u.x.v,u.flightY.v,u.z.v},{order.x.v,u.flightY.v,order.z.v});
+                m.pending&=~0x700u;
+                m.waitMask|=0x700;
+                // Not ported: 0x410f3e..0x41104f, under 3/4 of its hit points
+                // (unit +0x108 < (type +0x1fa >> 2) x 3) a random repair pad
+                // of 0x40b530's gets a VTOL_LANDING ahead of the patrol
+                // (stage 0); World has no repair pads.
+                // 0x41106c: 0x43b700, then 0x43b1f0(unit, found, 0); an
                 // attack put in clears the wait mask and returns 3. The
-                // dispatcher's sleep is taken here, before the insert
-                // invalidates m (4: the dispatcher touches m no more).
+                // dispatcher's sleep for 3 (0x43b890: 30 + rand(15)) is
+                // taken here, before the insert invalidates m (4: the
+                // dispatcher touches m no more).
                 if (const int found=w.retailHostScan(u);found && w.retailIssueAutoAttackAllowed(u,found,true)) {
                     m.waitMask=0;
-                    m.sleep(w.tickCounter_,random(30)+15);
+                    m.sleep(w.tickCounter_,random(15)+30);
                     w.retailMissionAttack(u,found,MissionAttack::VtolPatrol);
                     return 4;
                 }
-                m.waitMask|=0x700;
-                m.sleep(w.tickCounter_,random(10)+5);
+                // 0x411094: a sleep of 30 (0x439e80).
+                m.sleep(w.tickCounter_,30);
                 return 2;
             }
             return 7;
@@ -2583,7 +2621,10 @@ void World::tickFlightMovement(Unit& u, bool persistent) {
     // Pickup pursues the passenger during approach, then uses a separate
     // departure point during transfer, just like unloading.
     const bool pickupDeparture=order.transportPickup && order.transportMission.stage==2;
-    if (!order.patrol && !order.unload && !pickupDeparture && !orbit) {
+    // VTOL_Move's take-off controller (retailTaTakeOffGoal) stands over the
+    // flyer, not at the move's point.
+    const bool takeOff=order.flightMoveMission && (goal.flags&8);
+    if (!order.patrol && !order.unload && !pickupDeparture && !orbit && !takeOff) {
         goal.point.x=order.x.v; goal.point.z=order.z.v;
     }
     // Legion: travel with a mixed formation's ground members.
