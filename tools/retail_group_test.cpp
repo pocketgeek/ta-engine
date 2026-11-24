@@ -190,10 +190,7 @@ void attackHead() {
              (f&0x8000000u),"an unbuilt formation: 7");}
 }
 // The flyer missions' single group check, at their head (tools/re:
-// check_air_to_air.py, check_air_seek_attack.py, check_air_traffic.py):
-// AirToAir (41ccde), VTOL_Evade (41e55a) and VTOL_SeekAttack (4194f9) as
-// AirToGround's (51d1e0(unit, 1, 5), VTOL_Move_Formation at level -4), and
-// VTOL_SeekGuard (4199b2) as VTOL_Follow's (51d1e0(unit, 1, 4), level -3).
+// check_air_traffic.py): VTOL_SeekGuard (4199b2) as VTOL_Follow's (51d1e0(unit, 1, 4), level -3).
 // Out of the slot, not yet flagged: the flag set, the formation pushed, 0.
 void airHeads() {
     struct Group {
@@ -226,21 +223,23 @@ void airHeads() {
             require(false,"a flyer mission's group check out of the slot: formation, flag, 0");
         }
     };
+    // TotalA.exe's AirToAir (0x412d40), VTOL_Evade (0x413bc0) and
+    // VTOL_SeekAttack (0x4103e0) have no group check: out of the slot they
+    // run their stages and never ask.
     {Group g;RetailMissionState m;m.flags=0x1000200u;int32_t count=0;RetailAirDuel duel;duel.maxSpeed=65536;
-     const int result=retailAirToAir(m,count,0,0,duel,g);expect("AirToAir",result,m.flags,g,0x1000200u);}
-    {Group g;RetailAirEvade e;e.mission.flags=0x1000200u;RetailAirEscape in;in.typeSpeed=in.targetTypeSpeed=65536;
-     const int result=retailAirEvade(e,0,0,in,g);expect("VTOL_Evade",result,e.mission.flags,g,0x1000200u);}
+     const int result=retailAirToAir(m,count,0,0,duel,g);
+     require(result==1 && !g.outCalls && !g.formations && m.flags==0x1000200u,"AirToAir: no group check");}
+    {Group g;RetailAirEvade e;e.mission.flags=0x1000200u;RetailAirEscape in;
+     const int result=retailAirEvade(e,0,0,in,g);
+     require(result==1 && !g.outCalls && !g.formations,"VTOL_Evade: no group check");}
     {Group g;RetailMissionState m;m.flags=0x1000600u;RetailFlightVector point{};uint16_t angle=0;RetailAirSeek in;
      const int result=retailVtolSeekAttack(m,point,angle,0,0,in,g);
-     expect("VTOL_SeekAttack",result,m.flags,g,0x1000600u);}
+     require(result==1 && !g.outCalls && !g.formations,"VTOL_SeekAttack: no group check");}
     {Group g;RetailMissionState m;m.flags=0x1000600u;RetailFlightVector point{};uint16_t angle=0;RetailAirSeekGuard in;
      const int result=retailVtolSeekGuard(m,point,angle,0,0,in,g);
      expect("VTOL_SeekGuard",result,m.flags,g,0x1000600u);}
     // In the slot every one runs its stages; a guard flagged and out of the
     // slot again lets the member go on rand(4) == 0 (2).
-    {Group g;g.out=false;RetailMissionState m;m.flags=0x1000200u;int32_t count=0;RetailAirDuel duel;
-     retailAirToAir(m,count,0,0,duel,g);
-     require(g.outCalls==1 && !g.formations && m.flags==0x1000200u,"AirToAir in the slot runs its stages");}
     {bool let=false;
      for (uint32_t seed=1;seed<64 && !let;++seed) {
          Group g;g.seed=seed;RetailMissionState m;m.flags=0x9000600u;RetailFlightVector point{};uint16_t angle=0;
