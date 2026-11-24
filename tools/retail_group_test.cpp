@@ -235,20 +235,14 @@ void airHeads() {
     {Group g;RetailMissionState m;m.flags=0x1000600u;RetailFlightVector point{};uint16_t angle=0;RetailAirSeek in;
      const int result=retailVtolSeekAttack(m,point,angle,0,0,in,g);
      require(result==1 && !g.outCalls && !g.formations,"VTOL_SeekAttack: no group check");}
-    {Group g;RetailMissionState m;m.flags=0x1000600u;RetailFlightVector point{};uint16_t angle=0;RetailAirSeekGuard in;
-     const int result=retailVtolSeekGuard(m,point,angle,0,0,in,g);
-     expect("VTOL_SeekGuard",result,m.flags,g,0x1000600u);}
-    // In the slot every one runs its stages; a guard flagged and out of the
-    // slot again lets the member go on rand(4) == 0 (2).
-    {bool let=false;
-     for (uint32_t seed=1;seed<64 && !let;++seed) {
-         Group g;g.seed=seed;RetailMissionState m;m.flags=0x9000600u;RetailFlightVector point{};uint16_t angle=0;
-         RetailAirSeekGuard in;
-         const int result=retailVtolSeekGuard(m,point,angle,0,0,in,g);
-         if (result==2) { require(g.cancels==1 && !g.formations,"a guard let go: 50c480 and 4d6a50, no formation");let=true; }
-         else require(result==0 && g.formations==1,"a flagged guard out of the slot: formation again");
-     }
-     require(let,"a flagged guard out of the slot is let go on rand(4) == 0");}
+    // TotalA.exe's VTOL_SeekGuard (0x410850) has no group check: out of the
+    // slot, flagged or not, it runs its stages.
+    for (const uint32_t flags:{0x1000600u,0x9000600u}) {
+        Group g;RetailMissionState m;m.flags=flags;RetailFlightVector point{};uint16_t angle=0;RetailAirSeekGuard in;
+        const int result=retailVtolSeekGuard(m,point,angle,0,0,in,g);
+        require(result==1 && !g.outCalls && !g.formations && !g.cancels && m.flags==flags,
+                "TA's VTOL_SeekGuard has no group check");
+    }
 }
 
 }

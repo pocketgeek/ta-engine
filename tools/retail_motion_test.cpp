@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
                           &in.position.z,&range,&armed,&flies,&onMap,&width,&height,&seed,&found,&guards,&traffic,
                           &footX,&out)==25) {
             in.range=range;in.armed=armed!=0;in.flies=flies!=0;in.onMap=onMap!=0;in.width=width;in.height=height;
-            in.traffic=int8_t(traffic);in.footX=int16_t(footX);
+            (void)traffic;(void)footX;   // TA's VTOL_SeekGuard has no air-traffic check (0x410850)
             RetailMissionState m;m.stage=uint8_t(stage);m.waitMask=0;m.deadline=deadline;m.pending=pending;m.flags=flags;
             uint16_t heading=uint16_t(angle);
             struct Host {
