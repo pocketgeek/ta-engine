@@ -1537,10 +1537,14 @@ int main(int argc,char** argv) {
         require(RetailReplayProbe::scriptStatics(cloakWorld,spy)[0]==2,
             "StopCloaking reaches the script when the requested mode is disabled");
 
+        // TotalA.exe's GET (0x480770) answers ids 1..20 (0x480781: id - 1
+        // above 0x13 goes to 0x480abb, 0); Kingdoms' terrain (28/34), speed
+        // (29/30), turn (33), heading (27), veteran (32) and standing-order
+        // (46) ids answer 0 however the unit moves.
         auto file=std::make_shared<ta::cob::File>();
-        file->numStatics=5;file->scripts={{"ReadMovement",0}};
-        const int ids[]={28,29,30,33,34};
-        for(unsigned i=0;i<5;++i) {
+        file->numStatics=8;file->scripts={{"ReadMovement",0}};
+        const int ids[]={4,28,29,30,33,34,27,32};
+        for(unsigned i=0;i<8;++i) {
             file->code.insert(file->code.end(),{0x10021001,uint32_t(ids[i]),0x10042000,0x10023004,i});
         }
         file->code.push_back(0x10065000);
@@ -1550,44 +1554,19 @@ int main(int argc,char** argv) {
         World world;
         world.setTerrain(std::vector<uint8_t>(32*32,100),32,32,20);
         const int id=world.spawn(&type,200,200);auto* u=world.unit(id);
-        u->baseSpeed=Fixed::fromInt(4);u->speed=Fixed::fromInt(2);u->heading=Bam(0);
-        u->animationTurnBam=1200;
-        require(RetailReplayProbe::movementQueries(world,id)==std::vector<uint32_t>{0,50,0,40,0},
-            "simulation scripts read native horizontal speed and signed turn percentage");
+        u->baseSpeed=Fixed::fromInt(4);u->speed=Fixed::fromInt(2);u->heading=Bam(0x2000);
+        u->animationTurnBam=1200;u->veteran=2;
+        const std::vector<uint32_t> none{100,0,0,0,0,0,0,0};
+        require(RetailReplayProbe::movementQueries(world,id)==none,
+            "a moving, turning veteran: HEALTH answers, GET 27..34 answer 0");
         u->groundTerrainFlags=0x800;
-        u->animationTurnBam=-1800;
-        require(RetailReplayProbe::movementQueries(world,id)==std::vector<uint32_t>{0,25,0,uint32_t(-30),1},
-            "road query and terrain-adjusted turn and speed reach the script host");
+        require(RetailReplayProbe::movementQueries(world,id)==none,"on a road: GET 34 answers 0");
         u->groundTerrainFlags=0x1000;
-        u->animationTurnBam=1200;
-        require(RetailReplayProbe::movementQueries(world,id)==std::vector<uint32_t>{1,100,0,80,0},
-            "water query and terrain-adjusted turn and speed reach the script host");
-        u->bodyBlockStreak=2;
-        require(RetailReplayProbe::movementQueries(world,id)[1]==0,"blocked mover reports stopped despite retained speed");
+        require(RetailReplayProbe::movementQueries(world,id)==none,"in water: GET 28 answers 0");
         type.canFly=true;u->groundTerrainFlags=0;u->flightVelocity={3*65536,-65536,0};
-        u->animationTurnBam=-1500;
-        require(RetailReplayProbe::movementQueries(world,id)==std::vector<uint32_t>{0,75,uint32_t(-50),uint32_t(-50),0},
-            "flying scripts read horizontal, vertical and turn percentages");
-        u->inTransport=99;
-        require(RetailReplayProbe::movementQueries(world,id)==std::vector<uint32_t>{0,0,0,0,0},
-            "transported scripts report no movement");
-        u->inTransport=0;u->bodyBlockStreak=0;type.canFly=false;
-        u->groundTerrainFlags=0;u->heading=Bam(0);u->animationTurnBam=0;
-        const Bam before=u->heading;world.order(id,100,200,false);world.tick(1.f/30);
-        const auto applied=std::bit_cast<int16_t>(uint16_t(u->heading.v-before.v));
-        require(applied!=0 && u->animationTurnBam==applied,
-            "world publishes the completed mover turn for next-tick GET 33");
-        const auto turnMultiplier=u->groundTerrainFlags&0x800 ? type.roadMult :
-            u->groundTerrainFlags&0x1000 ? type.waterMult : Fixed::fromInt(1);
-        const auto afterTurn=RetailReplayProbe::movementQueries(world,id);
-        const auto expectedTurn=uint32_t(retailTurnAnimationPercent(applied,
-            uint16_t(type.turnRate),uint16_t(type.turnInPlaceRate),turnMultiplier.v,false));
-        require(afterTurn[3]==expectedTurn,
-            "the following COB update reads the same signed applied turn");
-        const auto turnHash=world.stateHash();++u->animationTurnBam;
-        require(world.stateHash()!=turnHash,"the sampled GET 33 input is lockstep state");
-        --u->animationTurnBam;
-        std::cout<<"PASS: authoritative movement speed, terrain and turn script queries\n";
+        require(RetailReplayProbe::movementQueries(world,id)==none,"flying: GET 29 / 30 answer 0");
+        type.canFly=false;
+        std::cout<<"PASS: GET ids past 20 answer 0, as TotalA.exe's table does\n";
     }
 #if 0  // KINGDOMS AimWeapon/FireWeapon handshake (SET 21/22/23, 0xe0 countdown): TA
        // units use AimX/FireX call-ins instead (ta_weapon_script_test).

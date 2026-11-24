@@ -33,6 +33,7 @@ const char* name(ClickOrder o) {
         case ClickOrder::ReclaimArea: return "ReclaimArea";
         case ClickOrder::Unload: return "Unload";
         case ClickOrder::AttackGround: return "AttackGround";
+        case ClickOrder::ReclaimUnit: return "ReclaimUnit";
     }
     return "?";
 }
@@ -71,6 +72,15 @@ void rightClickRows() {
     ClickUnit immune = soldier(); immune.canHit = false;
     expect(rightClick(enemy, immune, false), ClickOrder::None, "2.1 enemy: an attacker that cannot hurt it does nothing (0x4df215)");
     expect(rightClick(enemy, builder(), false), ClickOrder::Move, "2.1 enemy: a unit without a weapon moves to the point");
+    // TotalA.exe 0x43f0e0 action 1: an enemy right-clicked by a canreclamate
+    // unit that cannot attack is RECLAIMUNIT (0x43fa13); one that can attack
+    // attacks (0x43fa0d); an ally's or our own unit never (0x43fa18 needs an enemy).
+    ClickUnit conUnit = builder(); conUnit.reclaimUnit = true;
+    expect(rightClick(enemy, conUnit, false), ClickOrder::ReclaimUnit, "TA enemy: a reclaimer without a weapon takes it apart");
+    ClickUnit armedCon = soldier(); armedCon.reclaimUnit = true;
+    expect(rightClick(enemy, armedCon, false), ClickOrder::Attack, "TA enemy: a reclaimer that can attack attacks");
+    expect(rightClick(target(HoverKind::Friendly), conUnit, false), ClickOrder::Guard,
+           "TA ally: a reclaimer never reclaims it on a right-click (FOLLOW)");
     ClickUnit towerOut = tower();
     expect(rightClick(enemy, towerOut, false), ClickOrder::Attack, "2.1 enemy: a tower keeps its Attack out of range (ours)");
     expect(rightClick(enemy, factory(), false), ClickOrder::Attack, "2.1 enemy: a rally holder sends its output (ours)");
@@ -198,6 +208,19 @@ void armedRows() {
     ClickUnit raiser = builder(); raiser.raise = true;
     expectCursor(armed('c', HoverKind::None, raiser).cursor, CursorId::Revive, "2.5 a non-reclaimable body: Revive (ours)");
     expectCursor(armed('c', HoverKind::None, soldier()).cursor, CursorId::Normal, "2.5 nothing there: Normal");
+    // TotalA.exe 0x43f0e0 action 12 over a unit: a reclaimable feature under
+    // the point first (0x43f68a), else RECLAIMUNIT on the unit, any owner's (0x43f6aa).
+    ClickUnit con = builder(); con.reclaimUnit = true;
+    for (HoverKind k : {HoverKind::Enemy, HoverKind::Friendly, HoverKind::OwnSelectable}) {
+        c = armed('c', k, con);
+        expect(c.order, ClickOrder::ReclaimUnit, "TA armed CLEAR over a unit: ReclaimUnit");
+        expectCursor(c.cursor, CursorId::Reclaim, "TA armed CLEAR over a unit: Reclaim cursor");
+    }
+    ClickUnit conOverWreck = con; conOverWreck.reclaim = true;
+    expect(armed('c', HoverKind::Enemy, conOverWreck).order, ClickOrder::Reclaim,
+           "TA armed CLEAR: a reclaimable feature under the point comes first");
+    ClickUnit selfCon = con; selfCon.self = true;
+    expect(armed('c', HoverKind::OwnSelectable, selfCon).order, ClickOrder::None, "TA armed CLEAR: the hovered unit is left out");
 
     // 2.6 / C1: armed ATTACK over ground or a friendly fires at the point
     // (0x4de65f..0x4de7e3), the cursor Attack where the unit acts (ours) and
@@ -369,7 +392,8 @@ bool cursorNames(CursorId c, ClickOrder o) {
         case ClickOrder::Attack: return c == CursorId::Attack || c == CursorId::Airstrike || c == CursorId::TooFar;
         case ClickOrder::AttackGround: return c == CursorId::Attack || c == CursorId::Airstrike;
         case ClickOrder::AttackMove: return c == CursorId::Attack || c == CursorId::Airstrike || c == CursorId::Move;
-        case ClickOrder::Reclaim: case ClickOrder::ReclaimArea: return c == CursorId::Reclaim;
+        case ClickOrder::Reclaim: case ClickOrder::ReclaimArea: case ClickOrder::ReclaimUnit:
+            return c == CursorId::Reclaim;
         case ClickOrder::Resurrect: return c == CursorId::Revive;
         case ClickOrder::Pickup: return c == CursorId::Load;
         case ClickOrder::Assist: case ClickOrder::Repair: return c == CursorId::Repair;
@@ -393,8 +417,8 @@ void parity() {
         u.loaded = u.transport && (bits & 256); u.assist = bits & 512;
         u.pickup = bits & 2048; u.loadTarget = u.transport && (bits & 2048); u.raise = bits & 4096;
         u.reclaim = bits & 8192; u.friendly = friendlies[(bits >> 14) & 3];
-        for (bool pointFire : {false, true}) {
-        u.pointFire = pointFire;
+        for (int extra = 0; extra < 4; ++extra) {
+        u.pointFire = extra & 1; u.reclaimUnit = extra & 2;
         for (char cmd : {'a', 'm', 'f', 'p', 'g', 'r', 'l', 'u', 'c'})
             for (HoverKind k : {HoverKind::None, HoverKind::OwnSelectable, HoverKind::Friendly, HoverKind::Enemy})
                 for (int s = 0; s < 8; ++s) {

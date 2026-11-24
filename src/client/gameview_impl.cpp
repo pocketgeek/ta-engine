@@ -16,6 +16,7 @@
 #include "client/runtimesettings.h"
 #include "client/chatbox.h"
 #include "client/unitstatus.h"
+#include "client/displayget.h"
 #include "net/crypto.h"
 #include "sim/retailmotion.h"
 #include <cmath>
@@ -3061,40 +3062,8 @@
                 // never live world_, which the sim thread mutates concurrently under Stage B.
                 const auto* su = frameUnitP(unitId);
                 if (!su || !su->type) return 0;
-                // TA's GET_UNIT_VALUE numbering (icd getter table @0x50d394) --
-                // NOT TA-1997's. The old TA-numbered cases here answered ids no
-                // shipped TA script asks for, while id 4 (HEALTH%) returned 0 --
-                // making every building COB's SmokeControl/DamageFlameControl
-                // believe it was at 0 HP and belch damage smoke from spawn.
-                switch (valId) {
-                    case 1:  return su->buildQueue.empty() ? 0 : 1;   // ACTIVATION
-                    case 4:  return su->scriptHealthPercent;  // HEALTH %
-                    case 6:  return su->moving() ? 1 : 0;             // BUSY
-                    case 9:  {                                        // UNIT_XZ
-                        int32_t x = int32_t(su->x) & 0xFFFF;
-                        int32_t z = int32_t(su->z) & 0xFFFF;
-                        return (x << 16) | z;
-                    }
-                    case 17: return su->constructionPercentLeft;
-                    case 27:                                           // HEADING (16-bit angle)
-                        return ta::sim::portHeadingToRetail(ta::sim::bamFromRadians(su->heading));
-                    // Native GET 28/34 report mover flags. Recomputing from
-                    // the display map disagrees at shore/road transitions and
-                    // for bodies whose support height differs from one cell.
-                    case 28: return (su->movementTerrainFlags&0x1000)!=0;
-                    case 34: return (su->movementTerrainFlags&0x800)!=0;
-                    case 29:                                           // CURRENT_SPEED (% of max:
-                        return su->animationSpeedPercent();           // repeated refusal reports zero
-                    case 32: return su->veteran;                       // VETERAN LEVEL (StatusControl
-                                                                       // swaps golden weapon pieces)
-                    // Reflect the authoritative yard handshake, including a
-                    // blocked transition and a successful close (zero).
-                    case 18: return su->yardOpen;
-                    case 30: return su->verticalSpeedPercent;
-                    case 33: return su->turnSpeedPercent; // native signed percentage
-                    case 46: return su->standingOrder; // native standing unit order (holstering)
-                    default: return 0;
-                }
+                // TotalA.exe's ids 1..20 only (0x480770; client/displayget.h).
+                return ta::client::displayScriptGet(*su, valId);
             };
             a.flying = type && type->canFly;
         } catch (const std::exception&) { /* unit stays unanimated */ }

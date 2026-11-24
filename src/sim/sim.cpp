@@ -1732,6 +1732,7 @@ void World::replaceLeg(Unit& u, const std::vector<Order>& path) {
             o.reclaimFeat = tmpl.reclaimFeat;
             o.reclaimCountdown = tmpl.reclaimCountdown; o.reclaimHeading = tmpl.reclaimHeading;
             o.reviveKind = tmpl.reviveKind;
+            o.reclaimUnit = tmpl.reclaimUnit; o.reclaimUnitRate = tmpl.reclaimUnitRate;
             o.repairTarget = tmpl.repairTarget;
             o.repairLooks = tmpl.repairLooks;
             o.helpSite = tmpl.helpSite;
@@ -1811,6 +1812,7 @@ World::QueuedKind World::queuedKind(const Order& o) {
     if (o.buildType) return QueuedKind::Build;
     if (o.helpSite) return QueuedKind::Assist;
     if (o.repairTarget) return QueuedKind::Repair;
+    if (o.reclaimUnit) return QueuedKind::ReclaimUnit;
     if (o.reclaimFeat) return o.reviveKind ? QueuedKind::None : QueuedKind::Reclaim;
     if (o.load) return QueuedKind::Load;
     if (o.unload) return QueuedKind::Unload;
@@ -1854,6 +1856,7 @@ bool World::removeQueuedMatch(int unitId, bool rally, const QueuedMatch& m) {
             return near(px, mx) && near(pz, mz);
         }
         const int t = m.kind == QueuedKind::Reclaim ? o.reclaimFeat
+                    : m.kind == QueuedKind::ReclaimUnit ? o.reclaimUnit
                     : m.kind == QueuedKind::Repair  ? o.repairTarget
                     : m.kind == QueuedKind::Assist  ? o.helpSite : o.targetId;
         return t == m.target;
@@ -10367,6 +10370,7 @@ void World::retireReferences(int unitId) {
             for (Order& o:legs) {
                 if (o.targetId==unitId) { o.targetId=kGoneUnit;any=true; }
                 if (o.repairTarget==unitId) { o.repairTarget=kGoneUnit;any=true; }
+                if (o.reclaimUnit==unitId) { o.reclaimUnit=kGoneUnit;any=true; }
                 if (o.scripted && o.scripted<=scriptedOrders_.size())
                     if (ScriptedOrder& s=scriptedOrders_[o.scripted-1u];s.watched==unitId) s.watched=kGoneUnit;
             }
@@ -12991,6 +12995,37 @@ void World::reclaim(int builderId, int featureId, bool queue) {
     b->orders.push_back(o);
 }
 
+bool World::reclaimUnitAllowed(const Unit& b, const Unit& t) const {
+    return b.type && t.type && b.type->canReclaim &&
+           !(t.type->canFly && t.flightGroundMode==2 && !t.embarked()) && !t.type->canCapture;
+}
+
+// RECLAIMUNIT / VTOL_RECLAIMUNIT as the resolver 0x43f0e0 builds it (0x43fa33
+// / 0x4401c7 with the target unit): no test of the target at the order --
+// the mission's stage 0 refuses one it may not take ("That unit cannot be
+// reclaimed", 8). A reclaimer with no mover never gets here (0x43f4f7 needs
+// canreclamate; stage 0's [unit] test, 7). Any owner's unit: the player may
+// take its own apart.
+void World::reclaimUnit(int builderId, int targetId, bool queue) {
+    OrdersNote note{*this,builderId};
+    Unit* b = unit(builderId);
+    const Unit* t = unit(targetId);
+    if (!b || !b->alive() || !b->type || !b->type->canMove || b->type->isStructure() ||
+        !b->type->canReclaim || !t || !t->alive() || !t->type || t->id == builderId)
+        return;
+    if (!queue) {
+        cancelPath(*b);
+        b->orders.clear();
+    }
+    Order o;
+    o.x = t->x; o.z = t->z;
+    o.goal = true;
+    o.issuedTick = tickCounter_;
+    o.reclaimFeat = -targetId;
+    o.reclaimUnit = targetId;
+    b->orders.push_back(o);
+}
+
 uint8_t World::reviveKind(int casterId, int corpseId) const {
     const Unit* b = unit(casterId);
     if (!b || !b->alive() || !b->type || !b->type->canMove || b->type->isStructure()) return 0;
@@ -13122,6 +13157,9 @@ void World::prepareReclaimApproach(Unit& u) {
     if (u.orders.empty()) return;
     auto& goal=u.orders[currentLeg(u.orders)];
     if (!goal.reclaimFeat || goal.mission.stage!=0) return;
+    // RECLAIMUNIT's stage 0 (and the stage 1 it runs on at once) before the
+    // mover, as RECLAIM's is.
+    if (goal.reclaimUnit) { tickReclaimUnit(u); return; }
     int ax=0,az=0,fw=1,fh=1;float energy=0;
     if (!reclaimTargetFootprint(goal.reclaimFeat,ax,az,fw,fh,energy) ||
         !reclaimTargetValid(goal.reclaimFeat,goal.reviveKind!=0)) {
@@ -13250,6 +13288,12 @@ void World::tickReclaim(Unit& b) {
         // job resumes when its leg is current again.
         stopWorkAnimation(b);
         b.reclaimId=0;
+        return;
+    }
+    // RECLAIMUNIT's later stages; its stage 0 waits for the hook before the
+    // mover (prepareReclaimApproach).
+    if (b.orders[currentLeg(b.orders)].reclaimUnit) {
+        if (b.orders[currentLeg(b.orders)].mission.stage) tickReclaimUnit(b);
         return;
     }
     const int target=b.reclaimId;
@@ -13386,6 +13430,208 @@ void World::tickReclaim(Unit& b) {
             c->corpseUntil=left<0 ? INT32_MAX : int32_t(std::min(int64_t(INT32_MAX),int64_t(c->deadFor)+left));
         }
     }
+}
+
+// ReclaimUnit stage 1 (0x40480e): 0x438ad0 with the target's cell (+0x76)
+// and footprint (+0x7e) -- the rectangle controller round its footprint
+// (0x44d8a0: cell - the reclaimer's footprint .. cell + the target's), the
+// one RepairUnit's 0x405518 installs too -- then mask 0x100e8 and a sleep
+// of 15 (0x40482d). World's controller posts 0x100 / 0x400 on arrival and
+// 0x200 on failure.
+void World::installReclaimUnitApproach(Unit& u, Order& goal, const Unit& t) {
+    goal.buildX=t.x;goal.buildZ=t.z;
+    goal.buildRectangle=retailReclaimRectangle(footprintOrigin(t.x,t.type->footX),footprintOrigin(t.z,t.type->footZ),
+                                               t.type->footX,t.type->footZ,u.type->footX,u.type->footZ);
+    const auto [x,z]=goal.buildRectangle->navigationCell(
+        footprintOrigin(u.x,u.type->footX),footprintOrigin(u.z,u.type->footZ));
+    goal.x=Fixed::fromInt(x*16+u.type->footX*8);
+    goal.z=Fixed::fromInt(z*16+u.type->footZ*8);
+    goal.segmentX=Fixed::fromInt(u.x.floorInt());
+    goal.segmentZ=Fixed::fromInt(u.z.floorInt());
+    goal.hasSegment=true;
+    goal.mission.waitMask=0x700;
+    goal.mission.sleep(tickCounter_,15);
+    goal.controller=++nextMovementController_;
+    goal.navigationExhausted=goal.navigationConsumed=false;
+    goal.mission.pending&=~0x3700u;
+    if (u.routeStamp<0 || uint32_t(u.routeStamp)<=tickCounter_-10u) u.routeStamp=0;
+    cancelPath(u);
+    requestPath(u,goal.x.toFloat(),goal.z.toFloat());
+}
+
+// TotalA.exe RECLAIMUNIT on the current leg, one dispatch (a "return 1"
+// runs the next stage in the same call, as 0x43b7c0 does).
+//
+// ReclaimUnit (0x404730), a ground reclaimer:
+//   head    no target, or event 8 / 0x10000 (its object gone): 5, the leg goes;
+//   stage 0 (0x40476b) a mover with canreclamate (else 7) and 0x489960 on
+//           the target (reclaimUnitAllowed; else "That unit cannot be
+//           reclaimed", 8); "Reclaiming", every slot manual (0x4898b0(3));
+//   stage 1 (0x4047fa) an arrival (0x20) goes on to stage 2; anything else
+//           (the first run, the 15-tick timer, a failure) installs the
+//           approach where the target stands now (installReclaimUnitApproach)
+//           and the work rate 0x438650 (retailReclaimUnitRate) into +0x36, the
+//           damage clock +0x3a at 0 -- so the approach follows the target;
+//   stage 2 (0x40485b) StartBuilding with the heading to the target less the
+//           unit's own (0x438590; no turn child);
+//   stage 3 (0x40489b) 0x438700: waits for INBUILDSTANCE (SET 5, event 4);
+//   stage 4 (0x4048b5) the work sound (0x47f780(unit, 0xb), not modelled);
+//   stage 5 (0x4048d2) every 2 ticks: out of reach (retailReclaimUnitInReach,
+//           builddistance + the target's +0x184) or no longer allowed, it
+//           stops (StopBuilding, 0x4385f0) and starts over at stage 0 after
+//           15 ticks; else a kind-5 record of the rate once the clock reached
+//           15 (0x404981, taDamageRecord; clock back to 0), the reclaimer
+//           visible for 900 ticks (0x4049a3), the nano stream (0x472200), and
+//           the clock + 2. So a record every 16 ticks, the first 16 ticks
+//           after the work starts.
+// VTOL_ReclaimUnit (0x414a80), a flyer (World's stages 2 and 3 are retail's
+// stage 2 before and after its first wake):
+//   stage 0 (0x414d34) canfly and canreclamate (else 7), 0x489960 (8); slots
+//           manual; a landed flyer climbs to cruisealt / 2 first (0x414de6,
+//           flyerTakeOff), stage 1 on that climb's arrival (0xe0);
+//   stage 1 (0x414c7e) the rate and the clock; a point controller on the
+//           target's own position (0x44e2d0 with +0x6a: it follows the unit;
+//           here the leg's x/z, set every tick), radius 0;
+//   stage 2 the first wake, on the controller's arrival (mask 0x100e8);
+//   stage 3 (0x414ae1) every 2 ticks: within builddistance of the target
+//           (no target radius) and allowed, the record as on the ground (no
+//           900-tick visibility), the stream, the clock + 2; else a sleep of
+//           30 (0x414c69) and stage 0.
+// Neither re-checks the order's owner or alliance: a player's own units can
+// be reclaimed. The death pays the reclaimer (creditReclaimDeath).
+void World::tickReclaimUnit(Unit& b) {
+    if (b.orders.empty()) return;
+    size_t index=currentLeg(b.orders);
+    Order* leg=&b.orders[index];
+    auto& m=leg->mission;
+    const auto end=[&] {
+        stopWorkAnimation(b);
+        dropLeg(b);
+        b.reclaimId=0;
+    };
+    Unit* t=leg->reclaimUnit>0 ? unit(leg->reclaimUnit) : nullptr;
+    if (!t || !t->alive() || !t->type || t->hp<=Fixed()) { end(); return; }
+    const bool fly=b.type->canFly;
+    // The flyer's controller tracks the target's position (0x44e2d0 is
+    // handed the object's +0x6a, not a copy of it).
+    if (fly && m.stage>=2) { leg->x=t->x;leg->z=t->z; }
+    if (tickCounter_>=m.deadline) { m.deadline=0xffffffffu;m.pending|=1; }
+    if (m.waitMask) {
+        const uint32_t events=(b.missionEvents|m.pending)&m.waitMask;
+        if (!events) return;
+        b.missionEvents&=~events;m.pending&=~events;m.waitMask=0;
+        if (m.stage==1 && !fly && (events&0x500)) m.stage=2;   // 0x4047fa: the arrival
+    }
+    const auto workWake=[&](bool inReach) {
+        if (!inReach || !reclaimUnitAllowed(b,*t)) {
+            // 0x404a74 / 0x414c69: stop, and stage 0 after the sleep.
+            stopWorkAnimation(b);
+            m.stage=0;
+            m.sleep(tickCounter_,fly ? 30 : 15);
+            return;
+        }
+        if (leg->reclaimCountdown>=15) {
+            taDamageRecord(&b,*t,leg->reclaimUnitRate,tadeath::kReclaim);
+            leg->reclaimCountdown=0;
+        }
+        if (!fly) { blockCloak(b,900);startWorkAnimation(b,t->x,t->z); }
+        emitConstruction(b,false);
+        m.sleep(tickCounter_,2);
+        leg->reclaimCountdown=int32_t(uint32_t(leg->reclaimCountdown)+2u);
+    };
+    for (int pass=0;pass<8;++pass) {
+        switch (m.stage) {
+        case 0:
+            if (!b.type->canMove || !b.type->canReclaim) { end(); return; }
+            if (!reclaimUnitAllowed(b,*t)) { end(); return; }
+            setSlotsManual(b,kSlotsWork);
+            m.stage=1;
+            if (fly) {
+                // 0x414dd0: Activate (0x48b090(1, 1)) -- VTOL_ReclaimUnit
+                // never calls StartBuilding.
+                if (auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.activated) {
+                    script->second.activated=true;notifyUnitScript(b,"Activate");
+                }
+                leg->x=t->x;leg->z=t->z;
+                if (flyerTakeOff(b,*leg,false)) return;
+            }
+            continue;
+        case 1:
+            if (fly) {
+                // The climb first (0xe0): stage 1 runs on its arrival.
+                if (leg->flightGoal && (leg->flightGoal->flags&0x48)==8) {
+                    if (!leg->flightGoal->accepts({b.x.v,b.flightY.v,b.z.v})) return;
+                    leg->flightGoal.reset();
+                }
+                leg->reclaimUnitRate=retailReclaimUnitRate(uint16_t(int32_t(b.type->workerTime)),b.kills,
+                    t->type->maxHp,t->type->buildCostMetal);
+                leg->reclaimCountdown=0;
+                leg->x=t->x;leg->z=t->z;
+                m.stage=2;
+                return;
+            }
+            leg->reclaimUnitRate=retailReclaimUnitRate(uint16_t(int32_t(b.type->workerTime)),b.kills,
+                t->type->maxHp,t->type->buildCostMetal);
+            leg->reclaimCountdown=0;
+            installReclaimUnitApproach(b,*leg,*t);
+            return;
+        case 2:
+            if (fly) {
+                if (!RetailFlightGoal{{leg->x.v,0,leg->z.v}}.accepts({b.x.v,b.flightY.v,b.z.v})) return;
+                m.stage=3;
+                continue;
+            }
+            // The arrival: the approach's corners go, the leg is the job.
+            cancelPath(b);
+            if (index) {
+                b.orders.erase(b.orders.begin(),b.orders.begin()+long(index));
+                index=0;leg=&b.orders.front();
+            }
+            leg->controller=0;leg->navigationExhausted=true;
+            b.speed=Fixed();
+            startWorkAnimation(b,t->x,t->z);
+            leg->mission.stage=3;
+            continue;
+        case 3:
+            if (fly) {
+                const int32_t reach=int32_t(uint16_t(b.type->buildDist));
+                workWake(retailReclaimUnitInReach(b.x.v-t->x.v,b.z.v-t->z.v,reach));
+                return;
+            }
+            if (const auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.ready) {
+                m.waitMask=4;   // 0x438700: wait for the stance's SET (event 4)
+                return;
+            }
+            m.stage=4;
+            continue;
+        case 4:
+            m.stage=5;
+            continue;
+        case 5: {
+            const int32_t reach=int32_t(uint16_t(b.type->buildDist))+retailReclaimUnitRadius(t->type->footX,t->type->footZ);
+            workWake(retailReclaimUnitInReach(b.x.v-t->x.v,b.z.v-t->z.v,reach));
+            return;
+        }
+        default:
+            end();
+            return;
+        }
+    }
+}
+
+// 0x486c9e..0x486d1e, in the death routine: a death record of kind 5 with a
+// hitter (+0xf0) credits that unit's metal production (+0xd4) with
+// (1.0 - remaining) x buildcostmetal (retailReclaimCredit). No energy.
+void World::creditReclaimDeath(const Unit& dead) {
+    Unit* reclaimer=dead.lastHitBy ? unit(dead.lastHitBy) : nullptr;
+    if (!reclaimer || !reclaimer->type || !dead.type) return;
+    const float remaining=!dead.underConstruction ? 0.0f
+        : dead.buildStarted ? dead.buildRemaining
+        : dead.retailSite ? dead.retailSite->progress.remaining : 1.0f;
+    const float mult=reclaimer->player>=0 && reclaimer->player<numPlayers()
+        ? players_[size_t(reclaimer->player)].books.mult : 1.0f;
+    auto& production=reclaimer->books.r[econ::M].prod;
+    production=retailReclaimCredit(production,remaining,dead.type->buildCostMetal,mult);
 }
 
 // A mobile builder's guard (Follow_Ground 0x407f90, stage 1; emulated). First
@@ -17924,31 +18170,11 @@ struct World::ScriptHost {
                                        : uint32_t(unit.underConstruction);
         case 18: return factory.yardOpen;
         case 19: return factory.buggerOff;
-        case 27: return portHeadingToRetail(unit.heading);
-        case 28: return (unit.groundTerrainFlags&0x1000)!=0;
-        case 34: return (unit.groundTerrainFlags&0x800)!=0;
-        case 29: case 30: {
-            const auto multiplier=unit.groundTerrainFlags&0x800 ? unit.type->roadMult :
-                unit.groundTerrainFlags&0x1000 ? unit.type->waterMult : Fixed::fromInt(1);
-            const auto maximum=unit.baseSpeed*multiplier;
-            const bool refused=!unit.type->canFly && (unit.bodyBlockStreak>=2 || unit.legionStill);
-            if(id==30) return unit.type->canFly ? uint32_t(retailFlightVerticalPercent(
-                unit.flightVelocity.y,maximum.v,false,unit.embarked())) : 0;
-            const auto step=retailGroundStep(unit.heading,unit.speed);
-            return uint32_t(retailHorizontalAnimationPercent(
-                unit.type->canFly ? unit.flightVelocity.x : step.s.v,
-                unit.type->canFly ? unit.flightVelocity.z : step.c.v,
-                maximum.v,refused,unit.embarked()));
-        }
-        case 33: {
-            const auto multiplier=unit.groundTerrainFlags&0x800 ? unit.type->roadMult :
-                unit.groundTerrainFlags&0x1000 ? unit.type->waterMult : Fixed::fromInt(1);
-            return uint32_t(retailTurnAnimationPercent(unit.animationTurnBam,
-                uint16_t(unit.type->turnRate),uint16_t(unit.type->turnInPlaceRate),
-                multiplier.v,unit.embarked()));
-        }
-        case 32: return uint32_t(unit.veteran);
-        case 46: return unit.standingOrder;
+        // 20 ARMORED (0x480aa9: +0x10e bit 1, which SET 20 writes through
+        // 0x48b090(2)): not stored here, so 0. TotalA.exe's table stops at 20
+        // (0x480781: id - 1 above 0x13 -> 0x480abb): 0, a negative id and
+        // every id past 20 -- Kingdoms' 27..46 (heading, terrain, animation
+        // speeds, veteran level, standing order) -- answer 0.
         default: return 0;
         }
     }
@@ -19558,6 +19784,8 @@ void World::sweepDeath(Unit& u, int taKind) {
     // The end-of-game Kills / Losses columns and the killer's kill count, at
     // the death (TotalA.exe 0x486892, countTaDeath).
     countTaDeath(u,kind);
+    // A reclaimed unit pays its reclaimer (0x486c9e).
+    if (kind==tadeath::kReclaim) creditReclaimDeath(u);
     killPassengers(u,kind);
     // Killed decides corpse admission; Dying controls when the original
     // body retires. Only then does decomposition or water sinking begin.
@@ -22681,6 +22909,11 @@ uint64_t World::stateHash() const {
                 mix(order.mission.stage);mix(order.mission.waitMask);mix(order.mission.deadline);
                 mix(uint32_t(order.reclaimCountdown));mix(order.reclaimHeading);mix(order.controller);
                 if (order.reviveKind) { mix(0x52455652u); mix(order.reviveKind); }
+            }
+            if (order.reclaimUnit) {
+                mix(0x52434c4d554e4954ull);mix(uint32_t(order.reclaimUnit));mix(uint32_t(order.reclaimUnitRate));
+                mix(uint32_t(order.reclaimCountdown));mix(order.mission.stage);mix(order.mission.waitMask);
+                mix(order.mission.deadline);mix(order.mission.pending);
             }
             if (order.patrolOpen) mix(0x5041544f50454eull);
             if (order.patrolRepair) {

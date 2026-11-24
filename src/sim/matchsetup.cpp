@@ -141,6 +141,14 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
                 return producer && site && !producer->underConstruction && world.canHelpBuild(*producer, *site);
             }
             case Cmd::Resurrect: return world.reviveKind(c.unitId, c.targetId) != 0;
+            case Cmd::ReclaimUnit: {
+                // What World::reclaimUnit takes: a mobile reclaimer and a live
+                // unit other than itself (0x489960 is the mission's stage 0).
+                const Unit* target = world.unit(c.targetId);
+                return producer && producer->alive() && producer->type && producer->type->canMove &&
+                       !producer->type->isStructure() && producer->type->canReclaim &&
+                       target && target->alive() && target->type && target->id != producer->id;
+            }
             default: return true;
         }
     };
@@ -160,7 +168,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         const bool orderVerb = rallyVerb || c.kind == Cmd::Build || c.kind == Cmd::BuildManaArea ||
             c.kind == Cmd::Assist || c.kind == Cmd::Guard || c.kind == Cmd::Load || c.kind == Cmd::Unload ||
             c.kind == Cmd::Reclaim || c.kind == Cmd::ReclaimArea || c.kind == Cmd::Resurrect || c.kind == Cmd::Repair ||
-            c.kind == Cmd::AttackGround;
+            c.kind == Cmd::AttackGround || c.kind == Cmd::ReclaimUnit;
         // A Load is the carrier's order (TotalA.exe's LOAD gives the carrier
         // GROUND_PICKUP / VTOL_PICKUP, 0x43f701; World::loadInto): its list is
         // the one Shift and Ctrl work on, the passenger its target.
@@ -184,6 +192,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
                     case Cmd::Unload:     m.kind = World::QueuedKind::Unload; break;
                     case Cmd::Build:      m.kind = World::QueuedKind::Build; m.type = reg.find(c.type); break;
                     case Cmd::Reclaim:    m.kind = World::QueuedKind::Reclaim; break;
+                    case Cmd::ReclaimUnit: m.kind = World::QueuedKind::ReclaimUnit; break;
                     case Cmd::Repair:     m.kind = World::QueuedKind::Repair; break;
                     case Cmd::Assist:     m.kind = World::QueuedKind::Assist; break;
                     case Cmd::AttackGround: m.kind = World::QueuedKind::AttackGround; break;
@@ -314,6 +323,11 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         }
         case Cmd::Reclaim:
             if (owns(c.unitId)) { redirect(); world.reclaim(c.unitId, c.targetId, c.queue); }
+            break;
+        case Cmd::ReclaimUnit:
+            // Checked before anything is cancelled: a unit that cannot take
+            // the order keeps its work.
+            if (owns(c.unitId) && admits()) { redirect(); world.reclaimUnit(c.unitId, c.targetId, c.queue); }
             break;
         case Cmd::ReclaimArea:
             if (owns(c.unitId)) { redirect(); world.reclaimArea(c.unitId, c.x, c.z, c.x2, c.z2, c.queue); }

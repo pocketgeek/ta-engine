@@ -153,6 +153,10 @@ namespace {
             if (body) f.raise = reviveKindOn(u, *body) != 0;
             else if (plan.body < 0) f.raise = reviveKindOnFeature(u, -plan.body) != 0;
             if (plan.reclaim) f.reclaim = canReclaimAsLocal(u, localPlayer_);
+            // RECLAIMUNIT: the armed reclaim on any unit, a right-click on an
+            // enemy (clickrules.h; World::reclaimUnit's caster test).
+            if (hovered && hovered->type && hovered->alive() && (mode == 'c' || mode == 0))
+                f.reclaimUnit = canReclaimAsLocal(u, localPlayer_);
         };
         if (mode == 'g' && friendlyTarget)
             for (const UnitR* u : units)
@@ -178,7 +182,7 @@ namespace {
         // packs each kind as one explicit order (net/orderpack.h).
         static constexpr ClickOrder kRuns[] = {
             ClickOrder::Attack, ClickOrder::AttackGround, ClickOrder::Assist, ClickOrder::Repair, ClickOrder::Pickup,
-            ClickOrder::Guard, ClickOrder::Resurrect, ClickOrder::Reclaim, ClickOrder::Unload,
+            ClickOrder::Guard, ClickOrder::Resurrect, ClickOrder::Reclaim, ClickOrder::ReclaimUnit, ClickOrder::Unload,
             ClickOrder::AttackMove, ClickOrder::Patrol, ClickOrder::Move,
         };
         std::vector<int> all, ids;
@@ -217,6 +221,9 @@ namespace {
                 case ClickOrder::Resurrect: for (int id : ids) send(ta::net::Cmd::Resurrect, id, plan.body); break;
                 case ClickOrder::Reclaim:
                     if (plan.reclaim) for (int id : ids) send(ta::net::Cmd::Reclaim, id, *plan.reclaim);
+                    break;
+                case ClickOrder::ReclaimUnit:
+                    for (int id : ids) send(ta::net::Cmd::ReclaimUnit, id, plan.target);
                     break;
                 case ClickOrder::Unload:
                     for (int id : ids) {

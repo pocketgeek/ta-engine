@@ -1,6 +1,7 @@
 #pragma once
 #include "sim/retailreclaimarea.h"
 #include "sim/retailreclaim.h"
+#include "sim/retailreclaimunit.h"
 #include "sim/heapoptional.h"
 
 #include "sim/fixed.h"
@@ -1098,6 +1099,16 @@ struct alignas(64) Order {
     // A repair-pad mission's pad (Order::airPad; VTOL_Landing / SelfRepair
     // mission +0x16). Hashed with airPad.
     int airPadId = 0;
+    // A RECLAIMUNIT leg (TotalA.exe ReclaimUnit 0x404730, VTOL_ReclaimUnit
+    // 0x414a80; World::reclaimUnit): the live unit it takes apart (mission
+    // +0x16; kGoneUnit once the object went, retireReferences). Its
+    // reclaimFeat is -target, so every test that treats a reclaim leg as
+    // work treats this one so too; its own stages run on `mission`
+    // (tickReclaimUnit), its 15-tick damage clock (+0x3a) in
+    // reclaimCountdown. reclaimUnitRate is the damage each record deals
+    // (+0x36, 0x438650). Hashed with a tag when set.
+    int reclaimUnit = 0;
+    int32_t reclaimUnitRate = 0;
 };
 // Which line each field sits on (WE D2). Moving a field across a line, or
 // growing line 0/1 past 64 bytes, is a compile error here. (offsetof on a type
@@ -1133,6 +1144,7 @@ TA_ORDER_LINE(suppress, 5); TA_ORDER_LINE(suppressFeature, 5); TA_ORDER_LINE(sup
 TA_ORDER_LINE(suppressReach, 5); TA_ORDER_LINE(suppressApproach, 5); TA_ORDER_LINE(suppressInner, 5);
 TA_ORDER_LINE(airPoint, 5); TA_ORDER_LINE(attackFormation, 5); TA_ORDER_LINE(resumeSite, 5);
 TA_ORDER_LINE(transportHeading, 5); TA_ORDER_LINE(airPadId, 5);
+TA_ORDER_LINE(reclaimUnit, 5); TA_ORDER_LINE(reclaimUnitRate, 5);
 static_assert(offsetof(Order, suppress) == 320, "lines 0-4 are full; line 5 starts with SUPPRESS");
 static_assert(sizeof(Order) == 384, "Order is six cache lines (line 5 has room left); a new field names its line above");
 #undef TA_ORDER_LINE
@@ -2778,6 +2790,17 @@ public:
     // Order a mobile builder to reclaim feature `featureId` (negative = a corpse;
     // queue = append to its orders, for an area drag). Retail Reclaim (406250).
     void reclaim(int builderId, int featureId, bool queue);
+    // Order a reclaimer to take live unit `targetId` apart: TotalA.exe's
+    // RECLAIMUNIT (ReclaimUnit 0x404730), VTOL_RECLAIMUNIT (0x414a80) for a
+    // flyer -- what the order resolver 0x43f0e0 gives a canreclamate unit on a
+    // unit (action 12, the armed reclaim, with no reclaimable feature under
+    // the point, 0x43f6aa; action 1, a right-click on an enemy by one that
+    // cannot attack, 0x43fa13). Any owner's unit; the mission's stage 0
+    // refuses an airborne flyer or a cancapture type (0x489960).
+    void reclaimUnit(int builderId, int targetId, bool queue);
+    // 0x489960: whether `b` may reclaim unit `t` -- b canreclamate (flagsB
+    // bit 10), t not flying (+0x110 & 3 != 2) and not cancapture (bit 12).
+    bool reclaimUnitAllowed(const Unit& b, const Unit& t) const;
     void reclaimArea(int builderId, float x0, float z0, float x1, float z1, bool queue);
     // Order `casterId` to raise the body of dead unit `corpseId` (retail
     // RESURRECT 0x4068b0, or VTOL_RESURRECT 0x41fe70 for a flyer): walk to it,
@@ -3475,11 +3498,11 @@ public:
     // toggle; applyCommand reads them from Command::queue). The kind a queued
     // order is matched by, from its own fields (queuedKind).
     enum class QueuedKind : uint8_t { None, Move, AttackMove, Patrol, Attack, Guard, Load, Unload,
-                                      Build, Reclaim, Repair, Assist, AttackGround };
+                                      Build, Reclaim, Repair, Assist, AttackGround, ReclaimUnit };
     struct QueuedMatch {
         QueuedKind kind = QueuedKind::None;
         Fixed x, z;                         // the point kinds' click (Build: the site)
-        int target = 0;                     // the unit kinds' target (Reclaim: the feature)
+        int target = 0;                     // the unit kinds' target (Reclaim: the feature; ReclaimUnit: the unit)
         const UnitType* type = nullptr;     // Build
     };
     static QueuedKind queuedKind(const Order& o);
@@ -3871,6 +3894,14 @@ private:
     // Retail Reclaim (406250) once its leg is current: the approach events,
     // the stance wait and the two-tick work countdown, then the removal.
     void tickReclaim(Unit& b);
+    // ReclaimUnit (0x404730) / VTOL_ReclaimUnit (0x414a80) on the current
+    // leg: one dispatch of its stages (prepareReclaimApproach runs stage 0
+    // before the mover, tickReclaim the rest).
+    void tickReclaimUnit(Unit& b);
+    void installReclaimUnitApproach(Unit& b, Order& leg, const Unit& t);
+    // 0x486c9e..0x486d1e: a unit dying of a reclaim record pays its
+    // reclaimer back (1 - build remaining) x buildcostmetal.
+    void creditReclaimDeath(const Unit& dead);
     // 406250 stage 0: install the reclaim leg's rectangle controller.
     void prepareReclaimApproach(Unit& u);
     // Ground HelpBuild (405cf0) and RepairUnit (407190) on their legs: stage 0

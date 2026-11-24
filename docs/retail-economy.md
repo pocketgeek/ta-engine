@@ -187,7 +187,8 @@ Order table at `0x4fc840` (record = status, handler, …, name).
   - Wrecks are ordinary features; their metal comes from the corpse TDF (e.g. armlab_dead metal=564), not from the unit.
 - **Unit reclaim** (`0x404730`):
   - Every 15 ticks, damage of type 5 = `max(1, trunc(WT·((kills+5)/5)·MaxHP·15 / (max(BCM,10)·300)))` (`0x438650`, `0x404981`).
-  - When the target dies from type-5 damage, the killer's M produced += `(1 − remaining)·BuildCostMetal` (`0x486c9e..0x486d1e`). There is no energy refund.
+  - When the target dies from type-5 damage, the killer's M produced (unit `+0xd4`) += `(1 − remaining)·BuildCostMetal` (`0x486c9e..0x486d1e`), `remaining` the target's build fraction left (`+0x104`). A computer killer takes ×0.5 on difficulty 0 and ×0.7 on 1 (game `+0x37eee`). There is no energy refund.
+  - The work wakes every 2 ticks; the record is dealt when the clock (+2 a wake) has reached 15, so one every 16 ticks. Ground reach: builddistance + the target type's `+0x184` (`(sx + sz)/3`, whole px); VTOL: builddistance alone (`0x414af0`).
   - So a full reclaim takes about `BCM·10/WT` seconds.
 - **Resurrect** (`0x404db0`): timer = `trunc(BuildTime·0.3 / (WT/30))`, WT/30 an integer division (`0x404fb0`), counted down one per tick (stage 4, `0x405005`, which only sprays nano particles and holds `unit+0xb0`): no resource cost **[S]**. The unit comes back finished at 1 HP (`0x405215`) and the caster gets REPAIRUNIT on it at the head of its queue (`0x405243`).
 - **Capture** (`0x404270`): timer = `min(trunc(15·BCE/1000 + 30·BCM/140 + 150), 1800)` ticks (`0x404359..0x40439b`). No resource transfer.
