@@ -56,7 +56,7 @@ def run(args, scene, leg, mode):
     count, kind, zoom, extra = SCENES[scene]
     name = f"{scene}-{leg}-{mode}"
     profile = args.output / name / "profile"
-    pref = profile / "TAengine" / "TAKingdoms"
+    pref = profile / "TAengine" / "TAEngine"
     pref.mkdir(parents=True, exist_ok=True)
     # SDL_GetPrefPath uses XDG_DATA_HOME on this backend. Set both directories
     # so existing user preferences never affect the comparison.

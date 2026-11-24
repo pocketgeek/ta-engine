@@ -16,6 +16,8 @@
 #include "client/dev.h"
 #include "client/gpuvram.h"
 #include "client/guiart.h"
+#include "client/artscale.h"
+#include "sim/sides.h"
 #include "client/font.h"
 #include "client/menumusic.h"
 #include "client/menuclick.h"
@@ -34,38 +36,42 @@ bool inRect(const SDL_FRect& r, float x, float y) {
 
 struct Rect { float x = 0, y = 0, w = 0, h = 0; };
 
-// The victory/defeat plates are one layout with a different background per faction.
-// These are the shipped rects (victoryara.gui / defeat.gui); the .gui is still parsed
-// at runtime so an override that moves a column moves ours too.
+// The result plate. A data set may ship victory<side>.gui / defeat.gui plates (a
+// mod's); retail TA has none: its skirmish and multiplayer end is the statistics
+// backdrop bitmaps/outcome0.pcx (ENDMSN's non-campaign backdrop, 0x41f0a0,
+// docs/retail-campaign.md section 4.3; ENDMULTI.GUI's OK at 479,414), whose column
+// headers (Name, Kills, Losses, Energy/Metal Produced, Excess Energy/Metal, Score)
+// are painted in the art. These defaults are that layout, measured off the bitmap;
+// a .gui that parses overrides them.
 struct Geom {
-    Rect menuBtn{69, 407, 39, 51};
-    Rect okBtn{534, 407, 39, 51};
-    Rect title{149, 398, 342, 56};
-    Rect help{209, 454, 221, 25};
+    Rect menuBtn{359, 414, 100, 40};
+    Rect okBtn{479, 414, 115, 40};
+    Rect title{20, 360, 322, 50};
+    Rect help{20, 412, 322, 22};
     // Column rects come from the FIRST row's gadgets; later rows just step by `pitch`.
-    Rect logo{81, 72, 17, 17};
-    Rect name{106, 70, 131, 20};
-    Rect units{239, 70, 73, 20};
-    Rect kills{314, 70, 60, 20};
-    Rect losses{376, 70, 60, 20};
-    Rect time{438, 70, 60, 20};
-    Rect score{500, 70, 60, 20};
-    float headY = 40, pitch = 22;
-    int maxRows = 8;
+    // A zero-width column has no place on the plate and is not drawn.
+    Rect logo{16, 96, 16, 16};
+    Rect name{34, 94, 72, 20};
+    Rect units{0, 94, 0, 20};
+    Rect kills{110, 94, 70, 20};
+    Rect losses{185, 94, 69, 20};
+    Rect time{0, 94, 0, 20};
+    Rect score{556, 94, 70, 20};
+    float headY = 64, pitch = 22;
+    int maxRows = 9;
+    bool headersInArt = true;   // outcome0.pcx paints its own column headers
+    std::string bgPcx = "bitmaps/outcome0.pcx";
     std::string bgGaf, bgSeq, btnGaf;
     // Each button's click, bound in its gui states like every retail menu button's.
     std::string menuSound = "cancel.wav", proceedSound = "ok.wav";
 };
 
-// The per-faction victory plate, then the shared defeat plate.
-const char* kVictoryGui[5] = {"victoryara", "victorytar", "victoryver",
-                              "victoryzon", "victorycre"};
-
 Geom loadGeom(const hpi::Vfs& vfs, bool victory, int faction) {
     Geom g;
-    std::string path = "guis/" +
-                       std::string(victory ? kVictoryGui[std::clamp(faction, 0, 4)] : "defeat") +
-                       ".gui";
+    const std::string path = "guis/" +
+                             (victory && faction >= 0 ? "victory" + sides::lowerPrefix(faction) : std::string("defeat")) +
+                             ".gui";
+    if (!vfs.has(path)) return g;
     try {
         gui::Gui ui = gui::parse(vfs.read(path), path);
         auto take = [&](const char* n, Rect& r) {
@@ -95,18 +101,14 @@ Geom loadGeom(const hpi::Vfs& vfs, bool victory, int faction) {
             const gui::ImgRef& im = ui.gadgets[0].imgs[0];
             g.bgGaf = im.gaf;
             g.bgSeq = im.seq;
+            g.bgPcx.clear();
+            g.headersInArt = false;
         }
         if (const gui::Gadget* b = ui.find("Proceed"); b && !b->imgs.empty())
             g.btnGaf = b->imgs[0].gaf;
         if (const gui::Gadget* b = ui.find("MainMenu")) g.menuSound = menuclick::soundOf(*b);
         if (const gui::Gadget* b = ui.find("Proceed")) g.proceedSound = menuclick::soundOf(*b);
     } catch (...) {}
-    if (g.bgGaf.empty()) {
-        static const char* kPlate[5] = {"TAKVAramonScreen", "TAKVTarosScreen", "TAKVVerunaScreen",
-                                        "TAKVZhonScreen", "TAKVCreonScreen"};
-        g.bgGaf = victory ? kPlate[std::clamp(faction, 0, 4)] : "takdefeatscreen";
-        g.bgSeq = victory ? "VictoryBG" : "DefeatBG";
-    }
     if (g.btnGaf.empty()) g.btnGaf = g.bgGaf;
     return g;
 }
@@ -144,7 +146,15 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
 
     int faction = stats ? stats->faction : 0;
     Geom g = loadGeom(vfs, victory, faction);
-    SDL_Texture* bg = gafTexture(ren, vfs, g.bgGaf, g.bgSeq, 0);
+    SDL_Texture* bg = nullptr;
+    if (!g.bgPcx.empty()) {
+        try {
+            const auto img = gaf::loadPcx(vfs.read(g.bgPcx), g.bgPcx);
+            bg = art::makeTexture(ren, img.rgba, img.width, img.height);
+        } catch (...) {}
+    } else {
+        bg = gafTexture(ren, vfs, g.bgGaf, g.bgSeq, 0);
+    }
     SDL_Texture* okTex[3] = {};
     SDL_Texture* cancelTex[3] = {};
     for (int i = 0; i < 3; ++i) {
@@ -153,7 +163,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
     }
     std::vector<SDL_Texture*> logos;
     if (stats) for (const auto& row : stats->rows)
-        logos.push_back(gafTexture(ren, vfs, "colorlogos2", factionLogoSequence(row.side), row.colorSlot));
+        logos.push_back(gafTexture(ren, vfs, kFactionLogoGaf, factionLogoSequence(row.side), row.colorSlot));
     Font head, body, deco;
     try { head = Font(ren, vfs, "fonts/lombardic (cd).gaf", FontRole::Art); } catch (...) {}
     try { deco = Font(ren, vfs, "fonts/decorativesm.gaf", FontRole::Art); } catch (...) {}
@@ -278,7 +288,7 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
         const SDL_Color dim{196, 178, 138, 255};
         auto text = [&](const Font& f, const std::string& s, const Rect& r, SDL_Color c,
                         bool rightAlign = false, bool overArt = false, bool centred = false) {
-            if (s.empty()) return;
+            if (s.empty() || r.w <= 0) return;
             float sc = lay.scale * (r.h / 20.0f);
             if (!f.ok()) sc = lay.scale * 1.6f;
             float tw = f.ok() ? float(f.width(s, sc)) : uiTextWidth(s, sc);
@@ -307,12 +317,14 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
         // Column headers, then one row per player.
         auto col = [&](Rect base, float y) { Rect r = base; r.y = y; return r; };
         if (stats && !stats->rows.empty()) {
+            if (!g.headersInArt) {
             text(heading, "Player", col(g.name, g.headY), gold);
             text(heading, "Units", col(g.units, g.headY), gold);
             text(heading, "Kills", col(g.kills, g.headY), gold);
             text(heading, "Losses", col(g.losses, g.headY), gold);
             text(heading, "Time", col(g.time, g.headY), gold);
             text(heading, "Score", col(g.score, g.headY), gold);
+            }
 
             int n = std::min<int>(int(stats->rows.size()), g.maxRows);
             for (int i = 0; i < n; ++i) {

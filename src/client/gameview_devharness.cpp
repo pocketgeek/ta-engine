@@ -22,6 +22,7 @@
 #include "client/cursortiming.h"
 #include "client/vfsreadgate.h"
 #include "sim/retailmotion.h"
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -30,21 +31,21 @@
 
 #ifndef NDEBUG
 
+    // The local harness's kits, keyed by sidedata.tdf nameprefix (ta::sides::lowerPrefix):
+    // the side's commander, its first factory, a metal extractor, a construction kbot
+    // and a mixed kbot squad.
     const GameView::FactionKit& GameView::kit(const std::string& side) {
         static const std::map<std::string, FactionKit> kits = {
-            {"ara", {"araking", "arakeep", "aralode", "arabuild",
-                     {"araarch", "araarch", "arasword", "arasword"}}},
-            {"tar", {"tarnecro", "tardung", "tarlode", "tarnecro",
-                     {"tararch", "tararch", "tardemon", "tartb"}}},
-            {"ver", {"vermage", "verkeep", "verlode", "verliege",
-                     {"verarch", "verarch", "versword", "versword"}}},
-            {"zon", {"zonhunt", "", "zonlode", "zonhand",
-                     {"zongob", "zonter", "zontroll", "zonbat"}}},
-            {"cre", {"cresage", "creacad", "crelode", "cremech",
-                     {"creauto", "creauto", "crebeas", "creshoc"}}},
+            {"arm", {"armcom", "armlab", "armmex", "armck",
+                     {"armpw", "armpw", "armrock", "armham"}}},
+            {"cor", {"corcom", "corlab", "cormex", "corck",
+                     {"corak", "corak", "corstorm", "corthud"}}},
         };
-        auto it = kits.find(side);
-        return it != kits.end() ? it->second : kits.at("ara");
+        std::string key = side;
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        if (key == "core") key = "cor";
+        auto it = kits.find(key);
+        return it != kits.end() ? it->second : kits.at("arm");
     }
 
     void GameView::debugFogDisc(float x, float z, float radius) {

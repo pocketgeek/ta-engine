@@ -6052,7 +6052,7 @@ void World::scriptStandingOrder(int unitId, int order) {
 
 void World::scriptStandingFields(int unitId, int move, int fire) {
     Unit* u = unit(unitId);
-    if (!u || !u->alive() || move < 0 || move > 2 || fire < 0 || fire > 2) return;
+    if (!u || !u->alive() || move < 0 || move > 3 || fire < 0 || fire > 3) return;
     u->moveState = uint8_t(move);
     u->fireState = uint8_t(fire);
 }
@@ -22077,27 +22077,28 @@ int World::missionOutcome() const { return mission_ ? mission_->outcome() : 0; }
 void World::applyScenarioResourceAction(int player, int opcode, int32_t value) {
     if (player < 0 || player >= numPlayers()) return;
     auto& p=players_[size_t(player)];
-    // Native 4cb593..4cb68a writes the override separately from capacity.
-    // Pool writes round to float; subtraction may remain negative until tick-end.
+    // A map scenario's one "resources" figure is TA's metal and energy alike
+    // (sim/taeconomy.h): 16 caps both stores (taSettle), 20 lifts the cap, 17 sets
+    // both, 18 adds to both, 19 takes from both. TA itself has no scenario rules, so
+    // there is no TotalA.exe routine to follow. The stores are float32 as the settle
+    // keeps them; one may sit above its cap until the next settle wastes the
+    // overflow (taeconomy pay()), but never below zero, which the settle's pay
+    // fractions cannot take. The legacy pool mirrors the metal, as taEconomyTick does.
+    auto& b=p.books;
     switch (opcode) {
         case 16: case 20:
             p.scenarioResourceLimit=opcode==16 ? float(value) : 0.f;
-            if (p.retailResources) p.retailResources->capacityOverride=p.scenarioResourceLimit;
             return;
-        case 17: p.mana=float(value); break;
-        case 18:
-            p.mana=float(double(float(p.mana))+double(value));
-            if (p.retailResources) p.retailResources->totalProduced+=double(value);
-            break;
-        case 19: p.mana=float(double(float(p.mana))-double(value)); break;
-        default:return;
+        case 17: for (float& r : b.stored) r=std::max(float(value),0.f); break;
+        case 18: for (float& r : b.stored) r=std::max(r+float(value),0.f); break;
+        case 19: for (float& r : b.stored) r=std::max(r-float(value),0.f); break;
+        default: return;
     }
-    if (p.retailResources) p.retailResources->stored=float(p.mana);
+    p.mana=double(b.stored[1]);
 }
 
 void World::clearScenarioState() {
     for (auto& p:players_) {
-        if (p.scenarioResourceLimit != 0 && p.retailResources) p.retailResources->capacityOverride=0;
         p.scenarioResourceLimit=0;
     }
     scenario_.reset();

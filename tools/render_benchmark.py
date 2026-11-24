@@ -585,7 +585,7 @@ def run_one(args, client, label, scene, size_key, leg, capture=False):
     if root.exists():
         shutil.rmtree(root)
     profile = root / "profile"
-    pref = profile / "TAengine" / "TAKingdoms"
+    pref = profile / "TAengine" / "TAEngine"
     pref.mkdir(parents=True, exist_ok=True)
     settings = dict(SETTINGS, **SCENES[scene].get("settings", {}))
     (pref / "settings.ini").write_text("".join(f"{k} = {v}\n" for k, v in settings.items()))

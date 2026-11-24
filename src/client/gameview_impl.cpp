@@ -854,9 +854,9 @@
     // length is the tick the result landed (a game its players played on past the
     // result is not timed at the moment the watcher left). With no winner the band
     // reads "Game Over". The plate is that winner's whatever its side: one that is
-    // none of the five races (a mod's own) has no plate and gets Aramon's
-    // (kPlateFallback), said in the log -- never the side_ the watcher's interface
-    // opened with, which is only the first seat's.
+    // not in gamedata/sidedata.tdf gets the shared plate (kPlateFallback), said in
+    // the log -- never the side_ the watcher's interface opened with, which is only
+    // the first seat's.
     ta::ResultStats GameView::resultStats() const {
         ta::ResultStats st;
         const Frame& f = front();
@@ -897,7 +897,8 @@
         if (plate) {
             st.faction = ta::factionIndex(plate->side);
             if (st.faction < 0) {
-                std::fprintf(stderr, "result: the winner's side '%s' has no victory plate: showing Aramon's\n", plate->side.c_str());
+                std::fprintf(stderr, "result: the winner's side '%s' is not in sidedata.tdf: showing the shared plate\n",
+                             plate->side.c_str());
                 st.faction = ta::kPlateFallback;
             }
         }
@@ -1743,8 +1744,16 @@
                 hitQueue_.pop_front();
             }
         }
-        if (monarchAlert_.admit(monarchAlerts, localPlayer_, watchOnly(), SDL_GetTicks64()))
-            sounds_.play("alarmmon", 1.f, 1.f, 7, false);
+        if (monarchAlert_.admit(monarchAlerts, localPlayer_, watchOnly(), SDL_GetTicks64())) {
+            // TA's alert is the commander's sound class "underattack" slot
+            // (gamedata/sound.tdf; slot 1 of TotalA.exe's class table 0x5086fc, read
+            // at 0x42f580, text "Under Attack"): warning1 in every shipped class.
+            const std::string* wav = nullptr;
+            if (const auto* t = registry_.find(ta::sides::commander(std::max(0, ta::sides::find(side_))));
+                t && !t->soundClass.empty())
+                wav = soundClasses_.pick(t->soundClass, "underattack", salt_++);
+            sounds_.play(wav ? *wav : std::string("warning1"), 1.f, 1.f, 7, false);
+        }
         // Total Annihilation firing sounds: each shot launched since the last frame
         // plays its weapon's soundstart (a WAV stem) where it left the barrel.
         {
@@ -3849,48 +3858,6 @@
             if (!miniTex_) std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     }
-
-    std::vector<int> GameView::factionMusicTracks(const std::string& side) {
-        std::string want = side;   // "ara" -> match "ARAMON" etc.
-        std::transform(want.begin(), want.end(), want.begin(), ::toupper);
-        const std::string prefixes[] = {
-            std::string("ARA=ARAMON"), "TAR=TAROS", "VER=VERUNA", "ZON=ZHON",
-            "CRE=CREON"};
-        std::string full;
-        for (const auto& m : prefixes)
-            if (m.substr(0, 3) == want) full = m.substr(4);
-        std::vector<int> out;
-        try {
-            auto sd = vtdf("gamedata/sidedata.tdf");
-            for (const auto& key : sd.childOrder) {
-                const auto& sec = sd.children.at(key);
-                std::string nm = sec.valueOr("name", "");
-                std::transform(nm.begin(), nm.end(), nm.begin(), ::toupper);
-                if (nm != full) continue;
-                std::istringstream ts(sec.valueOr("musictracks", ""));
-                int t;
-                while (ts >> t) out.push_back(t);
-                if (!out.empty()) return out;
-            }
-        } catch (const std::exception&) {}
-        return out;
-    }
-
-    std::vector<int> GameView::allFactionMusicTracks() {
-        std::vector<int> out;
-        try {
-            auto sd = vtdf("gamedata/sidedata.tdf");
-            for (const auto& key : sd.childOrder) {
-                std::istringstream ts(sd.children.at(key).valueOr("musictracks", ""));
-                int t;
-                while (ts >> t) out.push_back(t);
-            }
-        } catch (const std::exception&) {}
-        std::sort(out.begin(), out.end());
-        out.erase(std::unique(out.begin(), out.end()), out.end());
-        return out;   // empty -> startMusic falls back to all 20
-    }
-
 
     void GameView::issuePerUnit(ta::net::Cmd kind, int value) {
         ClickScope click(*this);   // one click: a Legion net game sends it as explicit orders

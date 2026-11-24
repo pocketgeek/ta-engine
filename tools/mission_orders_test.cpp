@@ -3,7 +3,7 @@
 //
 // Each clause is cut at a comma and scanned on its own, so no clause reads into
 // the next; and the letters mean what they mean in retail:
-//   o A       2 offensive / 1 defensive / 0 passive (0x5198a0); o A B the fields
+//   o A [B]   move state A, fire state B, each &3, a missing one kept (0x487c9d)
 //   b TYPE N  a factory builds N (BuildingBuild); b TYPE N X Y a mobile builder
 //             builds TYPE at X,Y (MobileBuild) -- neither spawns anything free
 //   i NAME    start aboard the transport whose Ident= is NAME (51b4f0)
@@ -98,7 +98,8 @@ struct Fixture {
         std::filesystem::create_directories(root / "canbuild" / "gunner");
         auto fbi = [&](const char* name, const std::string& body, const std::string& weapon = {}) {
             std::ofstream f(root / "units" / (std::string(name) + ".fbi"));
-            f << "[UNITINFO]\n{\nunitname=" << name << ";\nobjectname=" << name << ";\n" << body << "}\n" << weapon;
+            f << "[UNITINFO]\n{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=" << name
+              << ";\nobjectname=" << name << ";\n" << body << "}\n" << weapon;
         };
         const std::string mobile = "canmove=1;\nmaxvelocity=1.5;\nturnrate=2000;\nturninplacerate=2000;\n"
                                    "footprintx=2;\nfootprintz=2;\nsightdistance=200;\nmaxdamage=500;\n";
@@ -239,32 +240,32 @@ static void clauses(Fixture& f) {
 // ---- 2. o: the standing orders ------------------------------------------------
 
 static void standing(Fixture& f) {
-    std::printf("o A / o A B:\n");
+    std::printf("o A [B] (TotalA.exe 0x487c9d):\n");
     auto w = makeWorld();
     std::vector<Placed> p = {
         {"soldier", 10, 10, 0, "", "o 2"},
         {"soldier", 14, 10, 0, "", "o 1"},
-        {"soldier", 18, 10, 0, "", "o 0"},
+        {"soldier", 18, 10, 0, "", "o 0 0"},
         {"soldier", 22, 10, 0, "", "o 1 2"},
-        {"stubborn", 26, 10, 0, "", "o 0"},
-        {"soldier", 30, 10, 0, "", "o 3"},
+        {"stubborn", 26, 10, 0, "", "o 0 1"},
+        {"soldier", 30, 10, 0, "", "o 6 5"},
+        {"soldier", 34, 10, 0, "", "o"},
     };
     auto m = startMission(f, *w, p);
     auto fields = [&](int i) {
         const Unit* u = w->unit(p[size_t(i)].id);
         return std::to_string(u->standingOrder) + "/" + std::to_string(u->moveState) + "/" + std::to_string(u->fireState);
     };
-    check(fields(0) == "2/1/2", "o 2 is Offensive: maneuver, fire at will (it was Passive)", fields(0));
-    check(fields(1) == "1/0/2", "o 1 is Defensive: hold position, fire at will", fields(1));
-    check(fields(2) == "0/0/0", "o 0 is Passive: hold position, hold fire (it was Offensive)", fields(2));
-    const std::string spawned = fields(5);
-    check(fields(3) == spawned.substr(0, 1) + "/1/2", "o 1 2 sets the move and fire fields, not the shown order",
-          fields(3));
-    check(fields(4) == "0/0/0", "a type without stance buttons still takes a script's o", fields(4));
-    // The soldier type sets no standingunitorder: retail's parser stores its
-    // composite as 2 (4c00a7), and o 3 leaves it there.
-    check(w->unit(p[5].id)->standingOrder == w->unit(p[5].id)->type->defaultStandingOrder &&
-          w->unit(p[5].id)->standingOrder == 2, "o 3 is out of range and does nothing", fields(5));
+    // The unit as created: "o" alone scans nothing and keeps every field.
+    const Unit* base = w->unit(p[6].id);
+    const std::string order = std::to_string(base->standingOrder), fire = std::to_string(base->fireState);
+    check(fields(0) == order + "/2/" + fire, "o 2 sets the move state (bits 18-19) only", fields(0));
+    check(fields(1) == order + "/1/" + fire, "o 1 sets the move state only", fields(1));
+    check(fields(2) == order + "/0/0", "o 0 0 is hold position, hold fire", fields(2));
+    check(fields(3) == order + "/1/2", "o 1 2: move state 1, fire state 2 (bits 20-21)", fields(3));
+    check(fields(4).substr(fields(4).find('/')) == "/0/1", "a type without stance buttons still takes a script's o",
+          fields(4));
+    check(fields(5) == order + "/2/1", "o 6 5 stores each value &3, unchecked", fields(5));
 }
 
 // ---- 3. b: real build orders ----------------------------------------------------

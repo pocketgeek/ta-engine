@@ -83,7 +83,7 @@ def run(args, client, label, scene, leg):
     if root.exists():
         shutil.rmtree(root)
     profile = root / "profile"
-    pref = profile / "TAengine" / "TAKingdoms"
+    pref = profile / "TAengine" / "TAEngine"
     pref.mkdir(parents=True, exist_ok=True)
     (pref / "settings.ini").write_text("".join(f"{k} = {v}\n" for k, v in SETTINGS.items()))
     env = {k: v for k, v in os.environ.items() if not k.startswith("TA_") and k != "DISPLAY"}

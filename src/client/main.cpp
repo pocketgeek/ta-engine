@@ -416,7 +416,7 @@ std::unique_ptr<GameView> makeReplayView(SDL_Renderer* ren, const std::string& p
                      (unsigned long long)rf.dataHash, (unsigned long long)myDataHash);
     }
     auto view = std::make_unique<GameView>(ren, std::move(rvfs), mapPath, dataRoot,
-        ta::hpi::ModUse{}, false, false, true, "ara", "tar");
+        ta::hpi::ModUse{}, false, false, true, "arm", "cor");
     view->applySettings(settings); view->setSettings(&settings);
     // One simulation: it gets them all, or its CCD's (PIN TO CCDS).
     if (const auto ccd = ta::client::planCcds(settings, false); ccd.on && ta::devFlag("TA_SIM_PIN", true)) {
@@ -507,7 +507,7 @@ int main(int argc, char** argv) {
             argStart = 2;
         }
     }
-    std::string shot, cobPath, anim, side = "ara", aiSide = "tar";
+    std::string shot, cobPath, anim, side = "arm", aiSide = "cor";
     // model mode: --statics <bitmask> seeds the VM's static slots (bit i -> static i).
     // Walk/attack scripts gate on an "am I moving" static whose SLOT differs per unit.
     uint32_t staticMask = 1;
@@ -1182,7 +1182,7 @@ int main(int argc, char** argv) {
     std::string pendingCampaign, pendingCampaignId;
     ta::MenuMusic menuMusic;   // persists across menu -> lobby so the track doesn't restart
     menuMusic.setVolume(settings.masterVol, settings.bgmVol);
-    // TA_SHOT_RESULT=<png> [TA_SHOT_RESULT_SIDE=0..4] [TA_SHOT_RESULT_LOSE=1]:
+    // TA_SHOT_RESULT=<png> [TA_SHOT_RESULT_SIDE=<sidedata index>] [TA_SHOT_RESULT_LOSE=1]:
     // render the end-of-game plate with a sample table and exit. Playing a whole match
     // out just to look at the screen isn't practical, so this is how its layout gets
     // verified against the retail art. TA_SHOT_RESULT_WATCH=1 renders a watcher's plate
@@ -1196,7 +1196,7 @@ int main(int argc, char** argv) {
             ta::ResultRow r;
             r.name = names[i];
             r.colorSlot = i;
-            r.side = std::array<const char*, 5>{"ara", "tar", "ver", "zon", "cre"}[i];
+            r.side = i % 2 ? "CORE" : "ARM";
             r.built = 120 - i * 23;
             r.kills = 48 - i * 11;
             r.losses = 31 + i * 9;

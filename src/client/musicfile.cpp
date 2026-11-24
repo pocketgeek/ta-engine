@@ -202,21 +202,12 @@ std::optional<Pcm16> loadTrack(const hpi::Vfs& vfs, int track, int maxRate, bool
 }
 
 std::vector<SideTracks> sideTracks(const hpi::Vfs& vfs) {
-    std::vector<SideTracks> out;
-    try {
-        const auto bytes = vfs.read("gamedata/sidedata.tdf");
-        const auto root = ta::tdf::parseText(std::string(bytes.begin(), bytes.end()), "gamedata/sidedata.tdf");
-        for (const auto& key : root.childOrder) {
-            const ta::tdf::Node* side = root.child(key);
-            if (!side) continue;
-            SideTracks st;
-            st.side = side->valueOr("name", "");
-            std::transform(st.side.begin(), st.side.end(), st.side.begin(), [](unsigned char c) { return char(std::toupper(c)); });
-            std::istringstream list(side->valueOr("musictracks", ""));
-            for (int t; list >> t;) if (t >= 1 && t <= 99) st.tracks.push_back(t);
-            if (!st.side.empty() && !st.tracks.empty()) out.push_back(std::move(st));
-        }
-    } catch (const std::exception&) {}
+    // Retail's built-in category table (0x490fe0, docs/retail-music.md section 1):
+    // logical tracks 1-7 Battle, 8-16 Building; track L is music/(L+1).mp3.
+    std::vector<SideTracks> out{{"BATTLE", {}}, {"BUILDING", {}}};
+    for (int L = 1; L <= kLogicalTracks; ++L)
+        if (vfs.has("music/" + std::to_string(L + 1) + ".mp3")) out[L <= 7 ? 0 : 1].tracks.push_back(L);
+    std::erase_if(out, [](const SideTracks& g) { return g.tracks.empty(); });
     return out;
 }
 
