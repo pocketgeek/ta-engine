@@ -1838,6 +1838,9 @@ struct FeatType {
     // also resurrectable, not the other way round.
     bool animatable = false;
     bool reclaimable = false;
+    // TDF autoreclaimable (feature flags +0xfe bit 8, default 1; 0x422baf):
+    // VTOL_RepairPatrol's feature look (0x47ea40) takes only these.
+    bool autoReclaimable = true;
     bool isStone = false;    // TDF isstone=1 (statue: client tints it stone-gray)
     bool isFrozen = false;   // TDF isfrozen=1 (client tints it ice-blue)
     bool indestructible = false;
@@ -2756,6 +2759,7 @@ public:
     void repair(int builderId, int targetId, bool queue);
     void tickRepair(Unit& b, float dt);
     void tickPatrolRepair(Unit& b);
+    void tickFlyingPatrolLook(Unit& b);
     void setPatrolRepairs(bool enabled) { patrolRepairs_=enabled; }
     // True if (x,z) lies over water (for choosing the water impact effect).
     // Retail (icd 0x509760): a unit is "on road" only when EVERY cell under its
@@ -4604,7 +4608,7 @@ private:
     bool placeMapFeature(const Feature& f,uint8_t owner=kRetailWorldFeatureOwner);
     // A FLYING reclaimer's acceptance (VTOL_RECLAIM 420xxx is not ported):
     // within 24 px plus half the target plus builddistance of its centre.
-    bool flyerReclaimInReach(const Unit& b,int target) const;
+    bool flyerReclaimInReach(const Unit& b,const Order& leg) const;
     // Resolve a reclaim target to its installed plane anchor and footprint
     // (a corpse: its corpse feature). False when it is gone.
     bool reclaimTargetFootprint(int target,int& x,int& z,int& fx,int& fz,float& energy) const;

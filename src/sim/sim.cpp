@@ -12867,15 +12867,13 @@ void World::resurrect(int casterId, int corpseId, bool queue) {
     b->orders.push_back(o);
 }
 
-// VTOL_RECLAIM (420xxx) is not ported, so a flying reclaimer keeps our old
-// acceptance: within 24 px plus half the target plus builddistance of its
-// centre. Ground reclaimers use retail's rectangle (prepareReclaimApproach).
-bool World::flyerReclaimInReach(const Unit& b,int target) const {
-    int ax=0,az=0,fw=1,fh=1;float energy=0;
-    if (!reclaimTargetFootprint(target,ax,az,fw,fh,energy)) return false;
-    const float dx=float(ax*16+fw*8)-b.x.toFloat(),dz=float(az*16+fh*8)-b.z.toFloat();
-    const float reach=24.0f+8.0f*float(std::max(fw,fh))+(b.type->buildDist>0 ? b.type->buildDist : 0.0f);
-    return dx*dx+dz*dz<=reach*reach;
+// TotalA.exe VTOL_Reclaim (0x414770) stage 1 (0x4148cc): a point controller
+// (0x44e2d0, radius 0) at the mission point, waiting on 0xe0; stage 2 runs on
+// its arrival (a failure, 0x40, ends the mission: 8). No builddistance and no
+// footprint: the flyer works from right over the point (the leg's x/z, which
+// tickFlightMovement flies to and holds at).
+bool World::flyerReclaimInReach(const Unit& b,const Order& leg) const {
+    return RetailFlightGoal{{leg.x.v,0,leg.z.v}}.accepts({b.x.v,b.flightY.v,b.z.v});
 }
 
 // 4930d0 resolves the mission cell to its feature's anchor and reads the
@@ -13084,7 +13082,7 @@ void World::tickReclaim(Unit& b) {
         auto& goal=b.orders[leg];
         if (b.type->canFly) {
             if (!reclaimTargetValid(target,revive)) { quit(); return; }
-            if (!flyerReclaimInReach(b,target)) return;
+            if (!flyerReclaimInReach(b,goal)) return;
         } else {
             const uint32_t events=(b.missionEvents | goal.mission.pending) & goal.mission.waitMask;
             if (!events) return;
@@ -13098,8 +13096,9 @@ void World::tickReclaim(Unit& b) {
         cancelPath(b);
         if (leg) { b.orders.erase(b.orders.begin(),b.orders.begin()+long(leg));leg=0; }
         auto& work=b.orders.front();
-        // TA: ground reclaim takes 15 + 0.5*(metal + energy) ticks (VTOL 30 + ...),
-        // whatever the WorkerTime (docs/retail-economy.md section 8).
+        // TA: ground reclaim takes 15 + 0.5*(metal + energy) ticks (VTOL 30 + ...,
+        // 0x414919: ftol(30 - (metal + energy) x -0.5)), whatever the
+        // WorkerTime (docs/retail-economy.md section 8).
         {
             float e=energy,m=0;
             reclaimYield(target,e,m);
@@ -13125,7 +13124,10 @@ void World::tickReclaim(Unit& b) {
             b.turnReqBam=diff;b.speed=Fixed();
             return;
         }
-        if (const auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.ready) return;
+        // VTOL_Reclaim has neither: its stage 2 (0x414904) sets the timer and
+        // returns 1, and stage 3's first work wake runs in the same dispatch.
+        if (!b.type->canFly)
+            if (const auto script=unitScripts_.find(b.id);script!=unitScripts_.end() && !script->second.ready) return;
         work.mission.stage=3;
         work.mission.waitMask=0;
         work.mission.deadline=tickCounter_;
@@ -13168,8 +13170,15 @@ void World::tickReclaim(Unit& b) {
         quit();
         return;
     }
-    if (retailReclaimWork(work.mission,work.reclaimCountdown,tickCounter_).particle)
-        emitConstruction(b,false);
+    const bool particle=retailReclaimWork(work.mission,work.reclaimCountdown,tickCounter_).particle;
+    if (b.type->canFly) {
+        // VTOL_Reclaim stage 3 (0x414955): sleep 2, count down 2; at 0 or
+        // below stage 4 is the removal (0x414a44) on the next wake -- one
+        // wake sooner than RECLAIM's -- and while above 30 a particle
+        // (0x41499a).
+        if (work.mission.stage==4) work.mission.stage=5;
+        if (work.reclaimCountdown>30) emitConstruction(b,false);
+    } else if (particle) emitConstruction(b,false);
     // A wake with countdown left keeps the reclaimer visible for 300 ticks
     // (Reclaim 0x406576, VTOL_Reclaim 0x420b02).
     if (work.reclaimCountdown>0) blockCloak(b,300);
@@ -13698,8 +13707,9 @@ void World::tickPatrolRepair(Unit& b) {
     if (!patrolRepairs_ || !b.type || !b.type->isBuilder || !b.type->canMove || b.type->isStructure() ||
         b.type->workerTime<=0 || b.underConstruction || b.embarked() || b.incapacitated() ||
         b.buildSiteId || b.repairId || b.reclaimId || b.repeatType || !b.buildQueue.empty() ||
-        hasQueuedWork(b) || b.orders.empty() || !b.orders.front().patrol ||
-        (uint32_t(b.id)+tickCounter_)%30!=0) return;
+        hasQueuedWork(b) || b.orders.empty() || !b.orders.front().patrol) return;
+    if (b.type->canFly) { tickFlyingPatrolLook(b); return; }
+    if ((uint32_t(b.id)+tickCounter_)%30!=0) return;
     const float radius=std::max(0,sightDistance(*b.type));
     const float x=b.x.toFloat(),z=b.z.toFloat();
     float bestDistance=radius*radius;int target=0;
@@ -13730,6 +13740,158 @@ void World::tickPatrolRepair(Unit& b) {
         auto& job=b.orders.back();job.patrolRepair=true;job.clickX=b.x;job.clickZ=b.z;
         std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
     }
+}
+
+// TotalA.exe VTOL_RepairPatrol (0x4152f0), the patrol of a flyer whose type
+// has canreclamate (flagsB +0x245 bit 9; the order's mission is picked at
+// 0x43f3e6..0x43f404 -- any other flyer flies VTOL_Patrol, which looks for no
+// work). Its stage 1 (0x415345) flies to the waypoint on a point controller
+// and looks for work at every wake, a sleep of 45 ticks (0x415386); ours
+// looks every 45th tick of the patrol. A look:
+//  - below 3/4 health (0x415397) it would land on a random repair pad of its
+//    own within 3840 px (0x40b530, VTOL_LANDING); not modelled: the engine has
+//    no pad repair;
+//  - with energy stored at least 0.2 x the energy storage (0x41547d..0x41549c)
+//    it takes ONE random unit (0x4b6c30) of the allied, live units within its
+//    sightdistance, centre to centre in whole pixels (0x47e890, sector rows
+//    z-major), that are damaged or unfinished (0x4158d0). A finished one it
+//    can repair (0x4899b0) gets VTOL_RepairUnit through 0x43b400 -- on Hold
+//    Position and Maneuver with a VTOL_Move back to where the flyer is under
+//    it and a leash from there (tickRepair) -- and the patrol goes to the end
+//    of the queue (6, 0x415564; the dispatcher 0x43b975). An unfinished one
+//    gets VTOL_HelpBuild ahead of the patrol (0x4155ae..0x415603);
+//  - else the feature look (0x47ea40): the 6 x 6 points 48 px apart round the
+//    flyer (+-120 px), each resolving its cell's feature; reclaimable and
+//    autoreclaimable ones go on an energy list and a metal list (a feature
+//    once per point it covers, with that point). From each list three random
+//    picks keep the largest value (energy's three first). Then VTOL_Reclaim
+//    at the metal point when metal is below 0.2 x its storage, else at the
+//    energy point when energy is, else at the metal point if its metal fits
+//    the storage, else at the energy point if its energy does (0x415621..
+//    0x4157bd), ahead of the patrol.
+// Not modelled: the candidate filter's skip of a unit last hit by the
+// repairer's player with damage kind 5 (+0xf4 / +0xf5, 0x415943); the order
+// within one sector is ours (by id), not retail's insertion order.
+void World::tickFlyingPatrolLook(Unit& b) {
+    if (!b.type->canReclaim || (uint32_t(b.id)+tickCounter_)%45!=0) return;
+    const auto& books=players_[size_t(b.player)].books;
+    if (!(double(books.cap[econ::E])*0.2>double(books.stored[econ::E]))) {
+        const int32_t sight=std::max(0,sightDistance(*b.type));
+        const int64_t reach=(int64_t(sight)<<16)*(int64_t(sight)<<16)>>32;
+        struct Candidate { int32_t sz,sx; int id; };
+        std::vector<Candidate> found;
+        forEachNear(b.x.toFloat(),b.z.toFloat(),float(sight)+16.0f,[&](int index) {
+            const Unit& c=units_[size_t(index)];
+            if (c.id==b.id || !c.alive() || !c.type || c.hp<=Fixed() || c.embarked() ||
+                !allied(b.player,c.player)) return;
+            if (!c.underConstruction && c.hp>=Fixed::fromFloat(c.type->maxHp)) return;
+            const int64_t dx=int64_t(c.x.v)-b.x.v,dz=int64_t(c.z.v)-b.z.v;
+            if (((dx*dx)>>32)+((dz*dz)>>32)>reach) return;
+            found.push_back({c.z.v>>23,c.x.v>>23,c.id});
+        });
+        std::sort(found.begin(),found.end(),[](const Candidate& a,const Candidate& c) {
+            return a.sz!=c.sz ? a.sz<c.sz : a.sx!=c.sx ? a.sx<c.sx : a.id<c.id;
+        });
+        if (!found.empty()) {
+            const Unit& c=*unit(found[size_t(pathRand(uint32_t(found.size())))].id);
+            if (!c.underConstruction && canRepairUnit(b,c)) {
+                // 0x43b400: the repair, with a return move under it on Hold
+                // Position / Maneuver, then the patrol to the end (6).
+                const size_t end=currentLeg(b.orders);
+                Order patrol=b.orders[end];
+                if (patrol.missionTarget) {patrol.x=patrol.missionTarget->first;patrol.z=patrol.missionTarget->second;}
+                const uint32_t flags=patrol.mission.flags;
+                patrol.mission={};patrol.mission.flags=flags;patrol.controller=0;
+                patrol.navigationExhausted=patrol.navigationConsumed=false;patrol.hasSegment=false;
+                patrol.flightGoal.reset();
+                cancelPath(b);b.routeStamp=0;
+                b.orders.erase(b.orders.begin(),b.orders.begin()+long(end)+1);
+                b.orders.push_back(patrol);
+                if (b.moveState<2) {
+                    Order back{b.x,b.z,0};
+                    back.goal=back.flightMoveMission=true;back.mission.flags=kVtolMoveFlags;
+                    back.issuedTick=tickCounter_;
+                    b.orders.insert(b.orders.begin(),back);
+                }
+                const size_t oldSize=b.orders.size();
+                repair(b.id,c.id,true);
+                if (b.orders.size()>oldSize) {
+                    auto& job=b.orders.back();job.patrolRepair=true;
+                    job.clickX=Fixed::fromInt(b.x.floorInt());job.clickZ=Fixed::fromInt(b.z.floorInt());
+                    std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
+                }
+                noteOrders(b.id);
+                return;
+            }
+            if (c.underConstruction && repairTopAboveSea(c) && canHelpBuild(b,c)) {
+                guardInsertJob(b,c.id,0);
+                return;
+            }
+        }
+    }
+    // 0x47ea40's points and lists.
+    struct Pick { int32_t x=0,z=0; float value=0; int target=0; };
+    std::vector<Pick> energy,metal;
+    std::unordered_map<int,int> targets;
+    for (const auto& f:features_) {
+        if (!f.alive || !f.id || f.fadeLeft || f.dieLeft || f.type<0 || size_t(f.type)>=featTypes_.size()) continue;
+        targets.emplace(footprintOrigin(f.z,f.fz)*hW_+footprintOrigin(f.x,f.fx),f.id);
+    }
+    for (const auto& [id,p]:corpseFootprints_) {
+        const Unit* corpse=unit(id);
+        if (!corpse || corpse->alive() || corpse->deadFor>=corpse->corpseUntil || corpse->corpseFading ||
+            p.type<0 || size_t(p.type)>=featTypes_.size()) continue;
+        targets.emplace(p.z*hW_+p.x,-id);
+    }
+    const int32_t half=Fixed::fromInt(120).v;
+    for (int32_t z=b.z.v-half;z<=b.z.v+half;z+=Fixed::fromInt(48).v)
+        for (int32_t x=b.x.v-half;x<=b.x.v+half;x+=Fixed::fromInt(48).v) {
+            const int cx=x>>20,cz=z>>20;
+            if (cx<0 || cz<0 || cx>=hW_ || cz>=hH_) continue;
+            int ax=cx,az=cz;
+            if (!mapPlacementCells_.empty()) {
+                const auto& cell=mapPlacementCells_[size_t(cz)*hW_+cx];
+                if (cell.feature==0xfffe) {ax-=cell.backX;az-=cell.backZ;}
+                else if (cell.feature>=0xfffb) continue;
+            }
+            const auto hit=targets.find(az*hW_+ax);
+            if (hit==targets.end()) continue;
+            int type=-1;
+            if (hit->second<0) type=corpseFootprints_.at(-hit->second).type;
+            else if (const Feature* f=feature(hit->second)) type=f->type;
+            if (type<0) continue;
+            const FeatType& def=featTypes_[size_t(type)];
+            if (!def.reclaimable || !def.autoReclaimable || !reclaimTargetValid(hit->second)) continue;
+            if (def.energy!=0) energy.push_back({x,z,def.energy,hit->second});
+            if (def.metal!=0) metal.push_back({x,z,def.metal,hit->second});
+        }
+    auto choose=[&](const std::vector<Pick>& list) -> const Pick* {
+        if (list.empty()) return nullptr;
+        float best=0;size_t chosen=0;
+        for (int draw=0;draw<3;++draw) {
+            const size_t i=size_t(pathRand(uint32_t(list.size())));
+            if (best<list[i].value) { best=list[i].value;chosen=i; }
+        }
+        return &list[chosen];
+    };
+    const Pick* e=choose(energy);
+    const Pick* m=choose(metal);
+    const Pick* go=nullptr;
+    if (m && double(books.cap[econ::M])*0.2>double(books.stored[econ::M])) go=m;
+    else if (e && double(books.cap[econ::E])*0.2>double(books.stored[econ::E])) go=e;
+    else if (m && books.stored[econ::M]+m->value<=books.cap[econ::M]) go=m;
+    else if (e && books.stored[econ::E]+e->value<=books.cap[econ::E]) go=e;
+    if (!go) return;
+    const Pick pick=*go;
+    guardStandAside(b);   // 0x4388d0(0): the patrol's controller goes
+    const size_t oldSize=b.orders.size();
+    reclaim(b.id,pick.target,true);
+    if (b.orders.size()>oldSize) {
+        // VTOL_Reclaim's mission point is the look's point (0x415778).
+        b.orders.back().x=Fixed::raw(pick.x);b.orders.back().z=Fixed::raw(pick.z);
+        std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
+    }
+    noteOrders(b.id);
 }
 
 void World::repair(int builderId, int targetId, bool queue) {
@@ -13793,10 +13955,18 @@ void World::tickRepair(Unit& b, float dt) {
     if (!b.type->canFly) { tickGroundRepair(b,*t,dt); return; }
     if (!b.orders.empty()) {
         const auto& job=b.orders[currentLeg(b.orders)];
-        if (job.patrolRepair) {
-            const float lx=(t->x-job.clickX).toFloat(),lz=(t->z-job.clickZ).toFloat();
-            const float leash=std::max(0,sightDistance(*b.type));
-            if (lx*lx+lz*lz>leash*leash) {endRepair();return;}
+        // TotalA.exe VTOL_RepairUnit's head (0x414ea2..0x414eee): a repair
+        // with a leash (mission +0x3e) ends silently (5) once the REPAIRER's
+        // whole-pixel position (+0x6c / +0x74) is that far from the origin
+        // (+0x2e / +0x30), a truncated double sqrt. VTOL_RepairPatrol's push
+        // (0x43b400) sets both: the origin is where the repairer was, the
+        // leash sightdistance on Hold Position (0x43b4db), maneuverleashlength
+        // on Maneuver (0x43b60f), none on Roam (0x43b67c).
+        if (job.patrolRepair && b.moveState<2) {
+            const int32_t leash=b.moveState==0 ? sightDistance(*b.type) : b.type->leash;
+            const RetailGroundPoint here{int16_t(b.x.floorInt()),int16_t(b.z.floorInt())};
+            const RetailGroundPoint origin{int16_t(job.clickX.floorInt()),int16_t(job.clickZ.floorInt())};
+            if (leash>0 && retailGroundDistance(here,origin)>=uint32_t(leash)) {endRepair();return;}
         }
     }
     tickFlyingRepair(b,*t,dt);
@@ -14001,14 +14171,27 @@ bool World::payRepair(Unit& b, Unit& t, float dt) {
     return t.hp >= Fixed::fromFloat(t.type->maxHp);
 }
 
-// VTOL_RepairUnit (0x420e60; emulated). Stage 1 flies one point goal at the
-// target that accepts strictly inside 2 x builddistance, centre to centre
-// (no footprint half, no floor); arrival drops the weapon targets, faces the
-// target and starts the build animation, then the flyer orbits it at
-// builddistance -/+ 7 like VTOL_HelpBuild (tickConjureHover, with the repair
-// re-pick rule). It works while the integer pixel distance is at most
-// 2 x builddistance; beyond that the mission restarts and flies back in. No
-// cloak block (that is the ground RepairUnit's).
+// TotalA.exe VTOL_RepairUnit (0x414e70; table row 0x4fcb76). Every wake its
+// head (0x414f2c) copies the target's position into the mission point; then
+//   stage 0 (0x414f59): 0x4899b0 (repairTopAboveSea: never under the sea)
+//            or the mission fails (8); slots, activate, the take-off;
+//   stage 1 (0x415048): a point controller (0x44e2d0) at that point, radius
+//            0, at cruisealt (0x44e6c0), waiting on 0xe8 -- the flyer goes to
+//            right over where the target stood and the controller is not
+//            re-aimed while it flies;
+//   stage 2 (0x415098), on the arrival: a target whose move-rate bits
+//            (+0x110 & 0xc) say it is moving sends the mission back to stage
+//            0 after a sleep of 15 (0x4150d4); a whole one ends it (stage 3,
+//            "Unit repaired"); else one repair step (0x41bd10) and a sleep of
+//            a tick, staying in stage 2.
+// No stage measures the distance to the target: the repair goes on wherever
+// the target or the repairer drifts. Ours keeps the hover on the stage-1
+// point (tickConjureHover). The job's Order::mission holds our stage: 0
+// (install, after its deadline), 1 (flying to the point), and the admitted
+// work (conjureHoverTarget) is stage 2. The take-off controller of stage 0
+// (cruisealt / 2 over the repairer, local players only, 0x414fe1) is not
+// modelled: the flight body climbs on the way. Kingdoms' 420e60 accepted
+// inside 2 x builddistance and re-flew the approach beyond it.
 void World::tickFlyingRepair(Unit& b, Unit& t, float dt) {
     auto endRepair = [&] {
         stopWorkAnimation(b);
@@ -14018,67 +14201,57 @@ void World::tickFlyingRepair(Unit& b, Unit& t, float dt) {
         }
         b.repairId = 0;
     };
-    const int reach=2*std::max(0,int(b.type->buildDist));
-    const Fixed ddx=t.x-b.x,ddz=t.z-b.z;
-    const bool admitted=b.conjureHoverTarget==t.id;
-    const double fdx=double(ddx.v)/65536.0,fdz=double(ddz.v)/65536.0;
-    // Stage 5 (0x42139b) measures whole pixels: the integer parts of both
-    // positions (+0x6a, +0x72), a square root truncated to an integer.
-    const int64_t px=int64_t(t.x.floorInt())-b.x.floorInt(),pz=int64_t(t.z.floorInt())-b.z.floorInt();
-    const bool inReach=admitted ? isqrt64(uint64_t(px*px+pz*pz))<=uint64_t(reach)
-                                : fdx*fdx+fdz*fdz<double(reach)*reach;
-    if (!inReach) {
-        if (admitted) {
-            stopWorkAnimation(b);
-            b.conjureHoverTarget=0;b.conjureHoverGoal.reset();
-        }
-        // Out of reach the mission restarts at stage 0, which checks 0x519d40
-        // again: a target now under the sea ends the job.
-        if (!repairTopAboveSea(t)) { endRepair(); return; }
-        // The approach: the repair entry itself, re-aimed at the target.
-        if (b.orders.empty()) { repair(b.id,t.id,false); if (b.orders.empty()) { b.repairId=0; return; } }
-        const size_t end=currentLeg(b.orders);
-        Order& job=b.orders[end];
-        job.x=t.x;job.z=t.z;
-        if (!job.flightGoal || job.flightGoal->flags!=0x30 || job.flightGoal->radius!=reach) {
-            // Its first tick (stage 0, then the approach's install) is a wake
-            // of the mission, and runs the air-traffic check; the approach
-            // waits on its controller alone after it.
-            if (const auto d=flyingJobTraffic(b,RetailTrafficMission::RepairUnit)) {
-                pushStepOut(b,RetailStepOut::NoFormation,*d);
-                return;
-            }
-            Order& leg=b.orders[currentLeg(b.orders)];
-            leg.flightGoal=RetailFlightGoal{{t.x.v,0,t.z.v},0x30,0,int16_t(reach)};
-        }
-        return;
-    }
-    // Every tick of the work is a wake (stage 5 sleeps one tick), the
-    // arrival's too: at 8 on the air-traffic counter the flyer steps out of
-    // the stack (StopBuilding) and the repair starts again from its approach.
-    if (const auto d=flyingJobTraffic(b,RetailTrafficMission::RepairUnit)) {
+    if (b.orders.empty()) { repair(b.id,t.id,false); if (b.orders.empty()) { b.repairId=0; return; } }
+    auto unadmit=[&] {
         stopWorkAnimation(b);
         b.conjureHoverTarget=0;b.conjureHoverGoal.reset();
-        if (!b.orders.empty()) {
+    };
+    const bool admitted=b.conjureHoverTarget==t.id;
+    if (admitted) {
+        // Stage 2's wakes, one a tick (0x4151f1: sleep 1).
+        if (moveRateMoving(t)) {
+            // 0x4150d0: back to stage 0 after 15 ticks.
+            unadmit();
             Order& job=b.orders[currentLeg(b.orders)];
-            if (job.repairTarget==t.id) job.flightGoal.reset();
+            if (job.repairTarget==t.id) { job.mission.stage=0;job.mission.deadline=tickCounter_+15; }
+            return;
         }
-        pushStepOut(b,RetailStepOut::NoFormation,*d);
+        if (!b.orders.empty() && b.orders.front().repairTarget==t.id) b.orders.front().flightGoal.reset();
+        startWorkAnimation(b,t.x,t.z);
+        b.constructionHolding=true;
+        tickConjureHover(b,t,true);
+        if (payRepair(b,t,dt)) endRepair();
         return;
     }
-    // 421218: 519b70(3) drops every weapon target, then the work stance
-    // (startWorkAnimation does both).
-    startWorkAnimation(b,t.x,t.z);
-    if (!admitted) {
-        // A patrol detour or a guard's repair keeps its own entry as the job.
-        if (!b.orders.empty() && (b.orders[currentLeg(b.orders)].patrolRepair ||
-                                  b.orders[currentLeg(b.orders)].guardRepair)) {
-            const size_t end=currentLeg(b.orders);
-            if (b.orders[end].repairTarget==b.repairId)
-                b.orders.erase(b.orders.begin(),b.orders.begin()+long(end));
-        }
+    Order& job=b.orders[currentLeg(b.orders)];
+    if (job.repairTarget!=t.id) return;   // another order is current
+    auto& m=job.mission;
+    if (m.stage==0) {
+        if (m.deadline!=0xffffffffu && tickCounter_<m.deadline) return;   // 0x4150d4's sleep
+        m.deadline=0xffffffffu;
+        // 0x414f7d: 0x4899b0 refuses a target under the sea (8).
+        if (!repairTopAboveSea(t)) { endRepair(); return; }
+        // 0x414f2c + 0x415048: radius 0 over where the target stands now.
+        job.x=t.x;job.z=t.z;
+        job.flightGoal=RetailFlightGoal{{t.x.v,0,t.z.v}};
+        m.stage=1;
+        return;
     }
-    if (!b.orders.empty() && b.orders.front().repairTarget==t.id) b.orders.front().flightGoal.reset();
+    // Stage 1 waits for the controller's arrival (0x20 in mask 0xe8).
+    if (!job.flightGoal) job.flightGoal=RetailFlightGoal{{job.x.v,0,job.z.v}};
+    if (!RetailFlightGoal{{job.x.v,0,job.z.v}}.accepts({b.x.v,b.flightY.v,b.z.v})) return;
+    if (moveRateMoving(t)) { m.stage=0;m.deadline=tickCounter_+15; return; }   // 0x4150d0
+    // A patrol detour or a guard's repair keeps its own entry as the job.
+    if (job.patrolRepair || job.guardRepair) {
+        const size_t end=currentLeg(b.orders);
+        if (b.orders[end].repairTarget==b.repairId)
+            b.orders.erase(b.orders.begin(),b.orders.begin()+long(end));
+    }
+    // The work holds over the stage-1 point.
+    const RetailFlightGoal hover{{b.orders.front().x.v,0,b.orders.front().z.v}};
+    if (b.orders.front().repairTarget==t.id) b.orders.front().flightGoal.reset();
+    b.conjureHoverTarget=t.id;b.conjureHoverGoal=hover;
+    startWorkAnimation(b,t.x,t.z);
     b.constructionHolding=true;
     tickConjureHover(b,t,true);
     if (payRepair(b,t,dt)) endRepair();
