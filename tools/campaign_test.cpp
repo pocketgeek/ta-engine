@@ -4,6 +4,7 @@
 #include "sim/sim.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 int main(int argc,char** argv) {
@@ -22,6 +23,28 @@ int main(int argc,char** argv) {
     check(alternate && alternate->alternate && alternate->index==2 && alternate->title=="Alternate title" && alternate->nextStem.empty(),
           "alternate finale has authored title and no next chapter");
     check(!ta::campaignChapter(campaign,"") && !ta::campaignChapter(campaign,"unknown"),"unknown chapter cannot advance progress");
+    {
+        // TA_FORCE_WIN / TA_FORCE_LOSE's rewrite: the forced rule heads [GlobalHeader];
+        // the replaced rules are renamed out of the parser's sight; nothing else moves.
+        const std::string ota="[GlobalHeader]\n\t{\n\tmissionname=1: A Hero Returns;\n"
+            "\tMoveUnitToRadius=ANYTYPE, 992, 656, 64;\n\tAllUnitsKilled=1;\n\tkillenemycommander = 1;\n"
+            "\tDeathTimerRunsOut=600;\n\t[Schema 0]\n\t\t{\n\t\tType=Easy;\n\t\t}\n\t}\n";
+        const std::string won=ta::forceMissionOutcome(ota,true,5);
+        check(won=="[GlobalHeader]\n\t{\n\tVictoryTimerRunsOut=5;\n\tmissionname=1: A Hero Returns;\n"
+              "\tForcedMoveUnitToRadius=ANYTYPE, 992, 656, 64;\n\tAllUnitsKilled=1;\n\tForcedkillenemycommander = 1;\n"
+              "\tDeathTimerRunsOut=600;\n\t[Schema 0]\n\t\t{\n\t\tType=Easy;\n\t\t}\n\t}\n",
+              "a forced win's only victory rule is its timer");
+        const std::string lost=ta::forceMissionOutcome(ota,false,7);
+        check(lost=="[GlobalHeader]\n\t{\n\tDeathTimerRunsOut=7;\n\tmissionname=1: A Hero Returns;\n"
+              "\tMoveUnitToRadius=ANYTYPE, 992, 656, 64;\n\tAllUnitsKilled=1;\n\tkillenemycommander = 1;\n"
+              "\tForcedDeathTimerRunsOut=600;\n\t[Schema 0]\n\t\t{\n\t\tType=Easy;\n\t\t}\n\t}\n",
+              "a forced loss adds its death timer and keeps the victory rules");
+        check(ta::forceMissionOutcome("[Other]\n{\nMoveUnitToRadius=1;\n}\n",true,5)=="[Other]\n{\nMoveUnitToRadius=1;\n}\n",
+              "no [GlobalHeader]: unchanged");
+        // Without TA_FORCE_WIN / TA_FORCE_LOSE (and in every release build) no view is made.
+        if(!std::getenv("TA_FORCE_WIN") && !std::getenv("TA_FORCE_LOSE"))
+            check(!ta::forcedOutcomeMission(ta::hpi::Vfs{},"AC01.ota:1"),"no forced mission unless asked");
+    }
     if(argc>1) {
         const auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         const auto campaigns=ta::loadCampaigns(vfs);

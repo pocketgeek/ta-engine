@@ -238,6 +238,8 @@ void TaFrontEnd::setFailure(int failTo, std::string message) {
 TaFrontEnd::Choice TaFrontEnd::endMission(SkirmishSetup& setup, TaCampaign& camp, int outcome) {
     // 0x41dc20: results[cur] = W / L.
     if (camp.cur >= 0 && camp.cur < int(camp.results.size())) camp.results[size_t(camp.cur)] = outcome > 0 ? 'W' : 'L';
+    std::fprintf(stderr, "front end: ENDMSN -- %s mission %d %s\n", camp.name.c_str(), camp.cur + 1,
+                 outcome > 0 ? "won" : "lost");
     outcome_ = outcome;
     start_ = Page::EndMission;
     return run(setup, camp);

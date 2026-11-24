@@ -261,7 +261,10 @@
             mapView_.reload(vfs_, mapPath_);
             int human = 0;
             ta::sim::MissionSetup ms;
-            ta::sim::setupMission(writableWorld(), registry_, vfs_, room.mission, human, &ms);
+            // (Debug) TA_FORCE_WIN / TA_FORCE_LOSE: the outcome forced by the mission's
+            // own scenario rules; the local server this client started reads the same.
+            const auto forced = ta::forcedOutcomeMission(vfs_, room.mission);
+            ta::sim::setupMission(writableWorld(), registry_, forced ? *forced : vfs_, room.mission, human, &ms);
             missionFullVision_ = ms.fullVision;
             missionPreMapped_ = ms.preMapped;
             loadFeatures();
@@ -467,6 +470,12 @@
             const uint64_t now = SDL_GetTicks64();
             if (!resultStartedMs_) resultStartedMs_ = now;
             if (now - resultStartedMs_ >= 3000) menuRequested_ = true;
+        } else if (outcome_ != 0 && !spectating_ && !replayMode_ && ta::sim::isTaMission(vfs_, missionStem_)) {
+            // A TA campaign mission ends itself: the outcome lands at the end of the
+            // condition manager's countdown, which sets the game-over flag, and the
+            // front end goes straight on to the end-of-game processing (glamour, ENDMSN;
+            // docs/retail-campaign.md 3.4 and 4.1). Kingdoms missions wait for Esc.
+            menuRequested_ = true;
         }
 
         pumpReplayRecording();

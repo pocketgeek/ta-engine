@@ -6,6 +6,7 @@
 // mission run happens elsewhere (setupMission + the server); this just picks which
 // mission and tracks how far the player has got. See docs/campaign-design.md.
 
+#include <memory>
 #include <string>
 #include <optional>
 #include <vector>
@@ -58,5 +59,21 @@ std::optional<CampaignChapter> campaignChapter(const Campaign& campaign, const s
 // bullet glyph and surrounding whitespace stripped, blank lines dropped. Empty if the
 // file is absent. Shared by the briefing screen and the in-game objectives panel.
 std::vector<std::string> loadObjectives(const hpi::Vfs& vfs, const std::string& stem);
+
+// Development only (debug builds; always nullptr under NDEBUG): TA_FORCE_WIN=<seconds>
+// or TA_FORCE_LOSE=<seconds> ends a campaign mission through its own scenario
+// conditions. The mission `spec` (a room's mission: TA's "<file>.ota[:difficulty]" or a
+// Kingdoms stem) is read through the returned view of `base`, whose .ota differs in its
+// [GlobalHeader] rules alone: TA_FORCE_WIN takes the victory rules out and puts
+// VictoryTimerRunsOut=<seconds> in their place, TA_FORCE_LOSE adds
+// DeathTimerRunsOut=<seconds> (the victory rules stay, so whichever comes first ends
+// it). The sim's condition manager then ends the mission as it ends any (the condition
+// cue, TA's countdown, the outcome the server broadcasts, ENDMSN). The client and the
+// local server it starts read the same environment, so both build the same world.
+// nullptr when neither is set (or not a positive number), or the .ota is not in `base`.
+std::unique_ptr<hpi::Vfs> forcedOutcomeMission(const hpi::Vfs& base, const std::string& spec);
+// The rewrite itself (tests): `ota` with its outcome forced as above, `win` choosing
+// which; `seconds` > 0. Unchanged when it has no [GlobalHeader] block.
+std::string forceMissionOutcome(const std::string& ota, bool win, int seconds);
 
 }  // namespace ta
