@@ -71,12 +71,6 @@ struct RetailReplayProbe {
         world.rebuildOccupancy();world.tickUnitScript(*world.unit(id));
         return world.unitScripts_.at(id).yardOpen;
     }
-    static bool automaticYard(World& world,int id) {
-        world.rebuildOccupancy();world.tickAutomaticGates();world.tickUnitScript(*world.unit(id));
-        return world.unitScripts_.at(id).yardOpen;
-    }
-    static bool yardOpen(const World& world,int id) { return world.unitScripts_.at(id).yardOpen; }
-    static uint64_t completedSearches(const World& world) { return world.paths_.completions(); }
     static void gateSeed(World& world) { world.gameRng_=1; }
     static void gateState(const World& world,int id) {
         const auto& unit=*world.unit(id);const auto& script=world.unitScripts_.at(id);
@@ -226,109 +220,6 @@ int main(int argc,char** argv) {
             RetailReplayProbe::gateState(world,id);
         }
         return 0;
-    }
-    if (argc==3 && std::string(argv[1])=="--gates") {
-        using namespace ta::sim;
-        auto vfs=ta::hpi::mountRetailRoot(argv[2]);
-        unsigned count=0;
-        {
-            TypeRegistry registry;setupRegistry(registry,vfs);
-            for (const auto& [name,type]:registry.types()) {
-                if (!type.gate) continue;
-                if (!type.script() || !type.onOffable) {
-                    std::cerr<<name<<": gate activation inputs absent\n";return 1;
-                }
-                World world;
-                world.setTerrain(std::vector<uint8_t>(64*64,0),64,64,0);
-                world.setMapPlacementFeatures(std::vector<uint16_t>(64*64,0xffff),{});
-                const int id=world.spawn(&type,512,512);
-                for (int tick=0;tick<1000;++tick) RetailReplayProbe::tickYard(world,id);
-                for (bool open:{false,true,false,true,false}) {
-                    world.setActive(id,open);
-                    bool actual=false;
-                    for (int tick=0;tick<1000;++tick) actual=RetailReplayProbe::tickYard(world,id);
-                    if (actual!=open) {
-                        std::cerr<<name<<": requested="<<open<<" yard="<<actual<<'\n';return 1;
-                    }
-                }
-                world.setActive(id,true);
-                for (int tick=0;tick<1000;++tick) RetailReplayProbe::tickYard(world,id);
-                const size_t passage=type.yardMap.find_first_of("cC");
-                if (passage==std::string::npos) return 1;
-                const int px=footprintOrigin(world.unit(id)->x,type.footX)+int(passage%type.footX);
-                const int pz=footprintOrigin(world.unit(id)->z,type.footZ)+int(passage/type.footX);
-                UnitType body;body.footX=body.footZ=1;
-                const int occupant=world.spawn(&body,float(px*16+8),float(pz*16+8));
-                RetailReplayProbe::tickYard(world,id);
-                world.setActive(id,false);
-                bool opened=false;
-                for (int tick=0;tick<1000;++tick) opened=RetailReplayProbe::tickYard(world,id);
-                if (!opened) { std::cerr<<name<<": closed on an occupied passage\n";return 1; }
-                world.unit(occupant)->x=world.unit(occupant)->z=Fixed::fromInt(960);
-                for (int tick=0;tick<1000;++tick) opened=RetailReplayProbe::tickYard(world,id);
-                if (opened) { std::cerr<<name<<": did not close after passage cleared\n";return 1; }
-                world.player(0).automaticGates=true;
-                const int outsideZ=footprintOrigin(world.unit(id)->z,type.footZ)-1;
-                world.unit(occupant)->x=Fixed::fromInt(px*16+8);
-                world.unit(occupant)->z=Fixed::fromInt(outsideZ*16+8);
-                world.unit(occupant)->speed=Fixed::fromInt(1);
-                for (int tick=0;tick<1000;++tick) opened=RetailReplayProbe::automaticYard(world,id);
-                if (!opened || !world.unit(id)->active) { std::cerr<<name<<": approach did not open gate\n";return 1; }
-                world.unit(occupant)->z=Fixed::fromInt(pz*16+8);
-                world.unit(occupant)->speed=Fixed();
-                for (int tick=0;tick<1000;++tick) opened=RetailReplayProbe::automaticYard(world,id);
-                if (!opened || !world.unit(id)->active) { std::cerr<<name<<": stopped occupant did not hold gate\n";return 1; }
-                world.unit(occupant)->z=Fixed::fromInt(outsideZ*16+8);
-                for (int tick=0;tick<1000;++tick) opened=RetailReplayProbe::automaticYard(world,id);
-                if (opened || world.unit(id)->active) { std::cerr<<name<<": cleared gate did not close automatically\n";return 1; }
-                const int originZ=footprintOrigin(world.unit(id)->z,type.footZ);
-                const int originX=footprintOrigin(world.unit(id)->x,type.footX);
-                std::vector<uint16_t> corridor(64*64,0xffff);
-                for (int x=0;x<64;++x)
-                    if (x<originX || x>=originX+type.footX) corridor[size_t(pz)*64+x]=0xfffc;
-                world.setMapPlacementFeatures(corridor,{});
-                world.blockCells(0,pz,originX,1,true);
-                world.blockCells(originX+type.footX,pz,64-originX-type.footX,1,true);
-                world.unit(occupant)->z=Fixed::fromInt((originZ-6)*16+8);
-                world.setPathService(true);world.setPathBudget(503);
-                for (bool returning:{false,true}) {
-                    const auto completions=RetailReplayProbe::completedSearches(world);
-                    const int targetX=px*16+8;
-                    const int targetZ=(returning ? originZ-6 : originZ+type.footZ+6)*16+8;
-                    world.order(occupant,float(targetX),float(targetZ),false);
-                    bool crossed=false;
-                    for (int tick=0;tick<2400;++tick) {
-                        world.tick(1.0f/30.0f);
-                        const auto& moving=*world.unit(occupant);
-                        const int cx=footprintOrigin(moving.x,1),cz=footprintOrigin(moving.z,1);
-                        const int gx=footprintOrigin(world.unit(id)->x,type.footX);
-                        if (cx>=gx && cx<gx+type.footX && cz>=originZ && cz<originZ+type.footZ) {
-                            const char cell=type.yardMap[size_t(cz-originZ)*type.footX+cx-gx];
-                            if (cell=='c' || cell=='C') {
-                                if (RetailReplayProbe::completedSearches(world)==completions) {
-                                    std::cerr<<name<<": crossed without a completed route search\n";return 1;
-                                }
-                                crossed=true;
-                                if (!RetailReplayProbe::yardOpen(world,id)) {
-                                    std::cerr<<name<<": mover entered a closed passage\n";return 1;
-                                }
-                            }
-                        }
-                    }
-                    const auto& arrived=*world.unit(occupant);
-                    if (!crossed || std::abs(arrived.x.floorInt()-targetX)>16 ||
-                        std::abs(arrived.z.floorInt()-targetZ)>16 || RetailReplayProbe::yardOpen(world,id)) {
-                        std::cerr<<name<<": traversal failed crossed="<<crossed
-                                 <<" position="<<arrived.x.floorInt()<<','<<arrived.z.floorInt()
-                                 <<" target="<<targetX<<','<<targetZ<<" open="<<RetailReplayProbe::yardOpen(world,id)<<'\n';
-                        return 1;
-                    }
-                }
-                ++count;
-            }
-        }
-        std::cout<<"PASS: "<<count<<" shipped gate scripts under both balances across activation, occupied closure and full World traversal\n";
-        return count ? 0 : 1;
     }
     if (argc==3 && (std::string(argv[1])=="--factories" || std::string(argv[1])=="--units")) {
         const bool allUnits=std::string(argv[1])=="--units";

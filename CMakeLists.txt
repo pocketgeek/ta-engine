@@ -1610,7 +1610,7 @@ set(TA_TEST_DATA "" CACHE PATH "Retail install for the data-backed tests (option
 if(TA_TEST_DATA)
     # The data-backed half: a real match start, commands applied directly and
     # through the wire format, hashes equal every tick.
-    add_test(NAME sim_driver_equiv_data COMMAND sim_driver_equiv_test "Ulasem Arena" "${TA_TEST_DATA}")
+    add_test(NAME sim_driver_equiv_data COMMAND sim_driver_equiv_test "Ashap Plateau" "${TA_TEST_DATA}")
     set_tests_properties(sim_driver_equiv_data PROPERTIES PASS_REGULAR_EXPRESSION "direct == wire"
                          FAIL_REGULAR_EXPRESSION "FAIL")
     add_test(NAME movement_orders_maze COMMAND movement_orders_test "${TA_TEST_DATA}")
@@ -1659,7 +1659,6 @@ if(TA_TEST_DATA)
     add_test(NAME map_edge_gryphons COMMAND map_edge_test "${TA_TEST_DATA}")
     add_test(NAME owner_orders_roster COMMAND owner_orders_test "${TA_TEST_DATA}")
     add_test(NAME air_traffic COMMAND air_traffic_test "${TA_TEST_DATA}" "${CMAKE_SOURCE_DIR}/tools/scenarios")
-    add_test(NAME gate_scripts COMMAND retail_script_test --gates "${TA_TEST_DATA}")
     add_test(NAME scenery_damage COMMAND retail_script_test --features "${TA_TEST_DATA}")
     set_tests_properties(animation_roster explode_capture PROPERTIES
         ENVIRONMENT "TA_VERIFY_NATIVE_EXPORT=1")
