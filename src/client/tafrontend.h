@@ -57,7 +57,11 @@ bool loadTaCampaign(const hpi::Vfs& vfs, const std::string& name, TaCampaign& ou
 
 class TaFrontEnd {
 public:
-    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu };
+    // EngineSingle / EngineMulti: the title screen's SINGLE and MULTI doors open the
+    // engine's own screens (the single-player lobby, the CONNECT screen); Options
+    // opens the engine's SETTINGS menu.
+    enum class Choice { Exit, Skirmish, Multiplayer, Campaign, Options, Menu, EngineSingle, EngineMulti,
+                        EngineCampaign };
     TaFrontEnd(SDL_Renderer* ren, SDL_Window* win, const hpi::Vfs& vfs);
     // Runs until a choice is made. `setup` is filled for Skirmish (and kept between
     // calls, like retail's registry-backed skirmish settings). Campaign: NEWGAME ->

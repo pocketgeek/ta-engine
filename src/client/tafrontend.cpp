@@ -250,7 +250,31 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     std::unique_ptr<TaGuiView> view, popup;
     std::unique_ptr<TaGuiView> skirmArt;   // skirmish.gaf rows
     auto open = [&](const char* screen, const char* backdrop) {
-        view = std::make_unique<TaGuiView>(ren_, vfs_, tagui::load(vfs_, screen), true);
+        tagui::Screen s = tagui::load(vfs_, screen);
+        // The title screen gets an OPTIONS button (the engine's SETTINGS menu): a
+        // copy of SINGLE's button, centred between the two columns under the art.
+        if (std::string(screen) == "mainmenu") {
+            const tagui::Gadget* single = nullptr;
+            int last = 0;
+            for (const auto& g : s.gadgets) {
+                last = std::max(last, g.index);
+                if (upper(g.name) == "SINGLE") single = &g;
+            }
+            if (single) {
+                // CAMPAIGN (the engine's campaign picker) above OPTIONS.
+                tagui::Gadget c = *single;
+                c.index = last + 1;
+                c.name = "CAMPAIGN"; c.text = "CAMPAIGN"; c.quickKey = 'C';
+                c.x = (640 - c.w) / 2; c.y = 426;
+                tagui::Gadget o = *single;
+                o.index = last + 2;
+                o.name = "OPTIONS"; o.text = "OPTIONS"; o.quickKey = 'O';
+                o.x = (640 - o.w) / 2; o.y = 452;
+                s.gadgets.push_back(c);
+                s.gadgets.push_back(o);
+            }
+        }
+        view = std::make_unique<TaGuiView>(ren_, vfs_, std::move(s), true);
         if (backdrop) view->setBackdrop(std::string("bitmaps/") + backdrop + ".pcx");
     };
     const auto maps = skirmishMaps(vfs_);
@@ -482,8 +506,10 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
         }
         switch (page_) {
         case Page::Main:
-            if (h2 == "SINGLE") goPage(Page::Single);
-            else if (h2 == "MULTI") goPage(Page::SelProv);
+            if (h2 == "SINGLE") return Choice::EngineSingle;
+            else if (h2 == "MULTI") return Choice::EngineMulti;
+            else if (h2 == "OPTIONS") return Choice::Options;
+            else if (h2 == "CAMPAIGN") return Choice::EngineCampaign;
             else if (h2 == "EXIT") return Choice::Exit;
             break;
         case Page::Single:

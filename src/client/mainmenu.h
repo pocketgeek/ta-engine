@@ -52,6 +52,11 @@ public:
     void setFailure(const SessionFailure& failure);
     // Open on the CONNECT screen with `server` picked, at the top of run().
     void reopenConnect(const std::string& server);
+    // TA's title screen hands a door to this menu (MULTI -> the CONNECT screen,
+    // OPTIONS -> the SETTINGS menu): run() opens on that screen, and once the player
+    // backs out of it to the bare menu, run() returns Choice::None so the caller goes
+    // back to TA's title screen instead of showing this menu's own doors.
+    void openOnly(Choice door);
 
     // The Options screen's GAME DATA FOLDER row: the folder this launch mounted, and why
     // it cannot be changed (a --data or launch-folder override), if it cannot.

@@ -411,6 +411,21 @@ struct MainMenu::Impl {
 
     // ---- setup ----------------------------------------------------------------
 
+    // Total Annihilation has no Kingdoms MainScreen art: the menu sits on TA's own
+    // title backdrop (bitmaps/frontendx.pcx), the one TA's title screen shows.
+    void taBackdrop() {
+        if (bg) return;
+        try {
+            const auto bytes = vfs.read("bitmaps/frontendx.pcx");
+            const auto img = gaf::loadPcx(bytes, "bitmaps/frontendx.pcx");
+            bg = gpuvram::create(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, img.width, img.height);
+            if (bg) {
+                SDL_UpdateTexture(bg, nullptr, img.rgba.data(), img.width * 4);
+                SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
+            }
+        } catch (...) {}
+    }
+
     void load() {
         try { gui = gui::parse(vfs.read("guis/mainmenu.gui"), "guis/mainmenu.gui"); }
         catch (...) {}
@@ -424,6 +439,7 @@ struct MainMenu::Impl {
             // "transparency" in the map art so it doesn't punch through to black.
             if (bg) SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
         }
+        taBackdrop();
 
         struct DoorSpec { const char* gadget; const char* vbase; Choice act; };
         const DoorSpec specs[] = {
@@ -489,6 +505,7 @@ struct MainMenu::Impl {
             bg = gafTex(im.gaf, im.seq, im.frame, nullptr, true);
             if (bg) SDL_SetTextureBlendMode(bg, SDL_BLENDMODE_NONE);
         }
+        taBackdrop();
         for (auto& d : doors) {
             if (d.gaf) { gpuvram::destroy(d.gaf); d.gaf = nullptr; }
             if (const auto* g = gui.find(d.name); g && !g->imgs.empty()) {
@@ -1007,6 +1024,7 @@ struct MainMenu::Impl {
     std::string notice_;
     std::string reopenConnect_;     // MainMenu::reopenConnect
     bool reopenPending_ = false;
+    Choice openOnly_ = Choice::None;   // MainMenu::openOnly
 
     // Reopen the screen a failed launch came from and put its message there. The
     // CONNECT dropdown and the replay picker have their own red error line; the
@@ -1765,6 +1783,7 @@ MainMenu::~MainMenu() { delete d_; }
 
 void MainMenu::setFailure(const SessionFailure& failure) { d_->pendingFailure = failure; }
 void MainMenu::reopenConnect(const std::string& server) { d_->reopenConnect_ = server; d_->reopenPending_ = true; }
+void MainMenu::openOnly(Choice door) { d_->openOnly_ = door; }
 void MainMenu::setDataFolder(DataFolderRow row) { d_->dataFolder_ = std::move(row); }
 void MainMenu::setVoice(VoiceEngine* voice) { d_->voice_ = voice; }
 
@@ -1846,11 +1865,19 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
         }
     }
 
+    const Choice only = std::exchange(d_->openOnly_, Choice::None);
+    if (only == Choice::Multiplayer && !d_->serverSelect) d_->openServerSelect(settings);
+    else if (only == Choice::Options && settings) d_->settingsMenu_ = true;
+    else if (only == Choice::Campaign && settings)   // the campaign door's picker
+        d_->campaign_ = std::make_unique<CampaignScreen>(d_->ren, d_->vfs, *settings, 0,
+            [this](const std::string& sound) { d_->sfx_.play(sound); }, ta::u8path(d_->install));
+
     if (!shotPath.empty()) {
         for (auto& dr : d_->doors) d_->updateDoor(dr, 0.0);
         d_->render(w, h);
         // A failure handed to this visit: capture the screen it reopened.
         if (d_->serverSelect) d_->renderServerSelect(w, h);
+        if (d_->settingsMenu_) d_->renderSettingsMenu(w, h);
         if (d_->replayMenu_) d_->renderReplayMenu(w, h);
         if (d_->benchMenu_) d_->renderBenchMenu(w, h, settings);
         if (d_->campaign_) d_->campaign_->render(w, h);
@@ -2003,6 +2030,11 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
     const double freq = double(SDL_GetPerformanceFrequency());
     for (;;) {
         if (ta::termRequested()) return Choice::Exit;   // SIGTERM/SIGINT -> quit the app
+        // openOnly(): the screen TA's title handed over has been closed -> back to it.
+        if (only != Choice::None && !d_->serverSelect && !d_->settingsMenu_ && !d_->replayMenu_ &&
+            !d_->benchMenu_ && !d_->options_ && !d_->hotkeys_ && !d_->campaign_ && d_->notice_.empty() &&
+            !(streaming && streaming->shown()))
+            return Choice::None;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) continue;   // ignore the WM close button; use the Exit door

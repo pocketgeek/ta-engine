@@ -1336,6 +1336,9 @@ int main(int argc, char** argv) {
         // straight from it; the other doors still use the engine menu below for now.
         skirmishLaunch = false;
         bool taFrontChose = false;
+        // TA's title screen MULTI / OPTIONS: the engine menu opens on just that screen
+        // and hands back to TA's title screen when the player backs out of it.
+        ta::MainMenu::Choice engineOnly = ta::MainMenu::Choice::None;
         // The engine menu still owns the doors TA's front end does not have: a LAN game
         // that ended goes back to its CONNECT screen, and (debug) a TA_MENU_PICK picks one
         // of its doors on its first visit -- TA's menus would wait for input there.
@@ -1367,6 +1370,15 @@ int main(int argc, char** argv) {
             }
             if (tc == ta::TaFrontEnd::Choice::Exit) { quitApp = true; break; }
             if (tc == ta::TaFrontEnd::Choice::Menu) continue;   // back to the TA main menu
+            // SINGLE: the engine's single-player game (a local server, stopping in its
+            // lobby), as the engine menu's single-player door does.
+            if (tc == ta::TaFrontEnd::Choice::EngineSingle) {
+                choice = ta::MainMenu::Choice::SinglePlayer;
+                taFrontChose = true;
+            }
+            if (tc == ta::TaFrontEnd::Choice::EngineMulti) engineOnly = ta::MainMenu::Choice::Multiplayer;
+            if (tc == ta::TaFrontEnd::Choice::Options) engineOnly = ta::MainMenu::Choice::Options;
+            if (tc == ta::TaFrontEnd::Choice::EngineCampaign) engineOnly = ta::MainMenu::Choice::Campaign;
             if (tc == ta::TaFrontEnd::Choice::Multiplayer) {
                 // SELPROV -> TCP: the engine server at the typed address (blank: this
                 // machine), signed in as the player's name.
@@ -1405,6 +1417,12 @@ int main(int argc, char** argv) {
                 menu.setDataFolder(std::move(row));
             }
             menu.setVoice(voiceOwner.get());
+            if (engineOnly != ta::MainMenu::Choice::None) {
+                menu.openOnly(engineOnly);
+                std::fprintf(stderr, "menu: %s from TA's title screen\n",
+                             engineOnly == ta::MainMenu::Choice::Options ? "SETTINGS"
+                             : engineOnly == ta::MainMenu::Choice::Campaign ? "CAMPAIGN" : "CONNECT");
+            }
             // NEW GAME is the single-player door. GAME SELECT goes straight back to the
             // same server's game list on the sign-in token. With no token for it (a
             // plaintext server, or one refused), it is the CONNECT screen: the password
@@ -1454,6 +1472,9 @@ int main(int argc, char** argv) {
                 benchmarkLevel = menu.chosenBenchmarkLevel();
                 if (benchmarkLevel < 1 || benchmarkLevel > ta::sim::kBenchLevels) benchmarkLevel = 3;   // safety default = High
             }
+            // A screen TA's title screen opened was closed: back to TA's title screen.
+            if (engineOnly != ta::MainMenu::Choice::None && choice == ta::MainMenu::Choice::None && shot.empty())
+                continue;
             // The credits door rolls the credits and returns to the menu, rather
             // than being a way out of the app.
             if (choice == ta::MainMenu::Choice::Credits) {
