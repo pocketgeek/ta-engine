@@ -74,7 +74,9 @@ bool check(bool ok,const std::string& what) {
     return ok;
 }
 
-const std::vector<std::string> kWorlds={"aramon","veruna","taros","zhon","creon"};
+// TA's planets that ship terrain sections (sections/<folder>), by the name a
+// map's .ota gives (planet=, lowercased). --world takes either spelling.
+const std::vector<std::string> kWorlds={"green planet","red planet","archipelago","lunar","metal","lava"};
 
 // Synthetic input in the editor's logical coordinates (scaled like the real
 // window: the loop divides event positions by kUIScale).
@@ -626,7 +628,8 @@ int featuresWorkflow(const std::string& data,std::vector<std::string> worlds) {
     return 0;
 }
 
-// Every unit type on one 8x8-unit map whose right half is first stamped with the
+// Every unit type on one 12x12-unit map (TA ships 278 unit types: an 8x8
+// map's left half has slots for about 200) whose right half is first stamped with the
 // world's deepest water section through the terrain browser. Each type goes
 // where the game accepts it -- land, then water, then the shoreline -- and
 // owners cycle through players 1-8: pick, Place click, undo, redo, Erase
@@ -640,7 +643,7 @@ bool unitSession(const std::string& data,const std::string& world,Tally& tally) 
     std::vector<SDL_Point> land,sea,shore;size_t usedLand=0,usedSea=0,usedShore=0;
     std::unique_ptr<ta::sim::World> game;int cellX=0,cellZ=0,player=0;
     const std::string label=world+" units";bool finished=false;
-    drive({"cartographer","--new","8x8","--world",world,"--data",data,"--out",root},[&](Editor& e,const Input& in) {
+    drive({"cartographer","--new","12x12","--world",world,"--data",data,"--out",root},[&](Editor& e,const Input& in) {
         const auto& types=e.unitTypes;const auto& map=e.mapView.map();
         auto fail=[&](const std::string& what) {check(false,label+" '"+types[item]+"': "+what);};
         auto unitPoint=[&](const cart::PlacedUnit& u) {return focus(e,u.x,u.z);};
@@ -672,7 +675,7 @@ bool unitSession(const std::string& data,const std::string& world,Tally& tally) 
             if(!check(clicked>0,label+": water section listed by the terrain browser"))return false;
             // The whole map in view: every stamp of the right half in one frame.
             const auto* m=e.sections.load(e.vfs,e.sections.list()[size_t(water)].path);
-            e.mapView.setZoom(0.125f);e.mapView.setOffset(0,0);
+            e.mapView.setZoom(0.0625f);e.mapView.setOffset(0,0);
             for(int bz=0;bz+m->blocksY<=map.blocksY;bz+=m->blocksY)for(int bx=map.blocksX/2;bx+m->blocksX<=map.blocksX;bx+=m->blocksX) {
                 const auto p=cellScreen(e,(bx+m->blocksX/2)*32+16.f,(bz+m->blocksY/2)*32+16.f);in.click(p.x,p.y);
                 cart::stampSection(expectedMap,*m,bx,bz,e.stampLayers);
@@ -883,12 +886,12 @@ std::optional<std::string> packInstall(const std::string& data,const std::string
         if(ec)fs::create_hard_link(entry.path(),install/entry.path().filename(),ec);
         if(ec)return std::nullopt;
     }
-    cart::FeatureLibrary library;library.scan(ta::hpi::mountRetailRoot(ta::u8path(data)),"aramon");
+    cart::FeatureLibrary library;library.scan(ta::hpi::mountRetailRoot(ta::u8path(data)),"red planet");
     if(library.list().empty())return std::nullopt;
     const auto& art=library.list().front();   // borrowed sprite
     std::string tdf;
-    for(int i=1;i<=3;++i)tdf+="[CartoTestStone"+std::to_string(i)+"]\r\n{\r\nworld=Aramon;\r\ncategory=rocks;\r\nfootprintx=2;\r\nfootprintz=2;\r\nfilename="+art.filename+";\r\nseqname="+art.seqname+";\r\n}\r\n";
-    const auto packed=ta::hpi::pack({{"features/aramon/cartotest.tdf",{tdf.begin(),tdf.end()}}});
+    for(int i=1;i<=3;++i)tdf+="[CartoTestStone"+std::to_string(i)+"]\r\n{\r\nworld=Red Planet;\r\ncategory=rocks;\r\nfootprintx=2;\r\nfootprintz=2;\r\nfilename="+art.filename+";\r\nseqname="+art.seqname+";\r\n}\r\n";
+    const auto packed=ta::hpi::pack({{"features/mars/cartotest.tdf",{tdf.begin(),tdf.end()}}});
     std::ofstream(install/"Maps"/"Carto Test Pack.kmp",std::ios::binary).write(reinterpret_cast<const char*>(packed.data()),std::streamsize(packed.size()));
     return install.string();
 }
@@ -899,7 +902,7 @@ int rescanWorkflow(const std::string& data) {
     if(!install) {std::cout<<"SKIP: cannot link the install's archives\n";return 77;}
     int stage=0;size_t listed=0,cell=0;const std::string label="rescan";
     auto expect=[&](bool value,const std::string& what){return check(value,label+": "+what);};
-    drive({"cartographer","--new","8x8","--world","aramon","--data",*install,"--out",root},[&](Editor& e,const Input& in) {
+    drive({"cartographer","--new","8x8","--world","red planet","--data",*install,"--out",root},[&](Editor& e,const Input& in) {
         const auto& map=e.mapView.map();
         switch(stage++) {
         case 0:   // the downloaded map's features are listed; place one
@@ -1467,7 +1470,7 @@ bool manyFeaturesSession(const std::string& data,const std::string& world,int si
     return ran;
 }
 
-// Random scatter: a generated map's trees, rocks and mana, all selected,
+// Random scatter: a generated map's trees, rocks and wreckage, all selected,
 // deleted, restored, symmetrized, checked, saved and reopened.
 bool generatedFeaturesSession(const std::string& data,const std::string& world) {
     const auto root=tempRoot("generated");isolateProfile(root);
@@ -1537,7 +1540,7 @@ std::optional<ta::tnt::Map> savedTerrain(const fs::path& kmp) {
     return std::nullopt;
 }
 
-// A flat Aramon map from the New Map dialog with one feature, then the BLOCKED
+// A flat Red Planet map from the New Map dialog with one feature, then the BLOCKED
 // tool through the real input path: the overlay, a Place click, a 4x4 brush from
 // its browser row dragged across the feature in two motion events, a Shift+drag
 // rectangle, an Erase stroke, undo and redo of each, save/reopen (minimaps kept),
@@ -1561,17 +1564,17 @@ int blockedWorkflow(const std::string& data) {
         expect(e.modal==Editor::M_NONE && e.noDocument,"a bare launch opens with no document");
         in.key(SDLK_n,KMOD_CTRL);return true;
     });
-    s.then([&](Editor& e,const Input& in) {   // New Map: CREATE a flat Aramon map
+    s.then([&](Editor& e,const Input& in) {   // New Map: CREATE a flat Red Planet map
         if(!expect(e.modal==Editor::M_NEW,"New Map dialog opens"))return true;
         const auto& worlds=e.kWorldOpts;
         const int from=int(std::find(worlds.begin(),worlds.end(),e.mf[3])-worlds.begin());
-        const int to=int(std::find(worlds.begin(),worlds.end(),std::string("aramon"))-worlds.begin());
+        const int to=int(std::find(worlds.begin(),worlds.end(),std::string("red planet"))-worlds.begin());
         for(int i=0;i<3;++i)in.key(SDLK_TAB);
         for(int i=0;i<(to-from+int(worlds.size()))%int(worlds.size());++i)in.key(SDLK_RIGHT);
         in.key(SDLK_RETURN);return true;
     });
     s.then([&](Editor& e,const Input& in) {   // one feature, by a browser pick and a click
-        if(!expect(e.modal==Editor::M_NONE && e.world=="aramon" && !e.features.list().empty(),"a new flat Aramon map with features"))return true;
+        if(!expect(e.modal==Editor::M_NONE && e.world=="red planet" && !e.features.list().empty(),"a new flat Red Planet map with features"))return true;
         const auto& plane=e.mapView.map().features;
         expect(std::all_of(plane.begin(),plane.end(),[](uint16_t v){return v==0xFFFF;}),"a new flat map has no blocked cells");
         featureName=e.features.list().front().name;tool(in,Editor::FEATURES);pick.search(in,0,featureName);return true;
