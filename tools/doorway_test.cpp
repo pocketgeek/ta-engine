@@ -122,7 +122,10 @@ bool ringRest(const TypeRegistry& registry,const char* wardId,const char* guardI
     const int dz=footprintOrigin(g->z,guardType->footZ)-footprintOrigin(w->z,guardType->footZ);
     const int inner=(std::max(wardType->footX,wardType->footZ)+guardType->footX+2)*16,outer=inner+48;
     const int squared=(dx*dx+dz*dz)*256;
-    const bool pass=squared>=inner*inner && squared<=outer*outer && !stuck && g->orders.size()==1 && g->orders.front().guard;
+    // One issued order: the guard. A route corner the navigator still holds ahead of it
+    // (a non-goal leg, Order::goal false) is not a second order; the guard stands in its band.
+    size_t goals=0;for(const auto& o:g->orders)goals+=o.goal;
+    const bool pass=squared>=inner*inner && squared<=outer*outer && !stuck && goals==1 && g->orders.back().goal && g->orders.back().guard;
     std::printf("%s: ring mode=%s ward=%s guard=%s distance=%.0f band=%d-%d walkingInPlace=%d orders=%zu guard=%d\n",pass?"PASS":"FAIL",
         legion?"Legion":"Retail",wardId,guardId,std::sqrt(float(squared)),inner,outer,stuck,g->orders.size(),
         int(!g->orders.empty() && g->orders.front().guard));
@@ -145,6 +148,9 @@ bool navalDoor(const TypeRegistry& registry,bool legion,int side) {
     for(int t=0;t<600 && !site;++t) {world.tick(1.f/30);site=world.unit(yard)->productionSiteId;}
     if(!site) {std::printf("FAIL: armsy never placed its first armsub\n");return false;}
     float dx=world.unit(site)->x.toFloat()-1800,dz=world.unit(site)->z.toFloat()-1800;
+    // A TA Shipyard builds at its centre (armsy: an open 8x8 yard, no door): then the
+    // guard starts south of it, outside its footprint, instead of on the pad.
+    if (dx*dx+dz*dz<1.f) dz=1.f;
     const float len=std::max(1.f,std::sqrt(dx*dx+dz*dz));dx/=len;dz/=len;
     const float out=8.f*float(std::max(yardType.footX,yardType.footZ))+64.f;
     const int guard=world.spawn(flag,1800+dx*out-dz*float(side)*out*0.75f,1800+dz*out+dx*float(side)*out*0.75f,0.f,0);
