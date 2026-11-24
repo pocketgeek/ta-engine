@@ -19,6 +19,7 @@ void cart::Editor::refreshMinimap() {
     for(size_t i=0;i<map.minimap.size();++i) {const auto& color=palette.rgba[map.minimap[i]];std::copy(color,color+4,rgba.begin()+i*4);}
     minimapTexture.reset(SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,map.minimapW,map.minimapH));
     if(minimapTexture) {SDL_UpdateTexture(minimapTexture.get(),nullptr,rgba.data(),map.minimapW*4);SDL_SetTextureScaleMode(minimapTexture.get(),SDL_ScaleModeLinear);}
+    {const auto fit=ta::terrain::minimapContent(map);minimapContent={0,0,fit.width,fit.height};}
     minimapSource=map.minimap.data();minimapRefreshNeeded=false;
 }
 
@@ -29,6 +30,7 @@ void cart::Editor::updateLiveMinimap() {
             if(minimapJobRevision==minimapRevision && !preview.rgba.empty()) {
                 minimapTexture.reset(SDL_CreateTexture(ren,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_STATIC,preview.width,preview.height));
                 if(minimapTexture) {SDL_UpdateTexture(minimapTexture.get(),nullptr,preview.rgba.data(),preview.width*4);SDL_SetTextureScaleMode(minimapTexture.get(),SDL_ScaleModeLinear);}
+                minimapContent={0,0,preview.contentW,preview.contentH};
                 minimapError.clear();if(hooks.minimapUpdated)hooks.minimapUpdated(preview.rgba);
             }
         } catch(const std::exception& error) {minimapError=std::string("Minimap: ")+error.what();}
@@ -40,6 +42,7 @@ void cart::Editor::updateLiveMinimap() {
         const auto& source=mapView.map();ta::tnt::Map snapshot;
         snapshot.blocksX=source.blocksX;snapshot.blocksY=source.blocksY;snapshot.stockTerrain=source.stockTerrain;
         snapshot.tileKeys=source.tileKeys;snapshot.tileCols=source.tileCols;snapshot.tileRows=source.tileRows;
+        snapshot.tileIndex=source.tileIndex;snapshot.tileGfx=source.tileGfx;snapshot.tileCount=source.tileCount;   // TA: the map's own tiles
         minimapJobRevision=minimapRevision;minimapPreviewPending=false;minimapCancel=std::make_shared<std::atomic_bool>(false);
         minimapJob=std::async(std::launch::async,[map=std::move(snapshot),&assets=vfs,kingdom=world,stop=minimapCancel]() {
             ta::terrain::Compositor compositor(assets);
@@ -62,7 +65,7 @@ bool cart::Editor::handleMinimapInput(SDL_Event& e) {
 
 void cart::Editor::drawMinimap() {
     if(minimapTexture) {
-        SDL_RenderCopy(ren,minimapTexture.get(),nullptr,&miniRect);
+        SDL_RenderCopy(ren,minimapTexture.get(),minimapContent.w>0 && minimapContent.h>0?&minimapContent:nullptr,&miniRect);
         SDL_SetRenderDrawColor(ren,235,225,195,255);SDL_RenderDrawRect(ren,&miniRect);
         SDL_RenderSetClipRect(ren,&miniRect);
         const float sx=float(miniRect.w)/(mapView.map().width*16),sz=float(miniRect.h)/(mapView.map().height*16);

@@ -7,7 +7,8 @@
 // u32 tile count, u32 -> tiles (count x 1024), u32 width, u32 height (32px blocks),
 // u32 -> data: u16 tile index per block, then 8 bytes per 16px cell (byte 0 the
 // height). SCT v3 (worlds.hpi's Metal sections) is the same but for 4 bytes per
-// cell: the height, the u16 feature (0xffff none), 0. A section family that shares
+// cell: the height, the u16 feature (0xffff none), 0. Both are parsed by
+// tnt::Map::loadSct. A section family that shares
 // one border height tiles seamlessly.
 #include "tnt/mapgen.h"
 
@@ -34,26 +35,15 @@ struct Sct {
     int ground = 0;                   // mean colour index of the corner tile / 16 (ground texture)
 };
 
-uint32_t rd32(const std::vector<uint8_t>& d, size_t o) { return d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (uint32_t(d[o + 3]) << 24); }
-
 bool parseSct(const std::vector<uint8_t>& d, Sct& s, const std::vector<uint8_t>& pal) {
-    if (d.size() < 28 || (rd32(d, 0) != 2 && rd32(d, 0) != 3)) return false;
-    const size_t stride = rd32(d, 0) == 3 ? 4 : 8;   // bytes per 16px cell
-    const uint32_t nt = rd32(d, 8), pt = rd32(d, 12), w = rd32(d, 16), h = rd32(d, 20), pd = rd32(d, 24);
-    if (!w || !h || w > 64 || h > 64 || nt > 4096) return false;
-    if (uint64_t(pt) + uint64_t(nt) * 1024 > d.size()) return false;
-    const uint64_t cells = uint64_t(w) * h * 4;
-    if (uint64_t(pd) + uint64_t(w) * h * 2 + cells * stride > d.size()) return false;
-    s.w = int(w); s.h = int(h);
-    s.tiles.assign(d.begin() + pt, d.begin() + pt + size_t(nt) * 1024);
-    s.tileMap.resize(size_t(w) * h);
-    for (size_t i = 0; i < s.tileMap.size(); ++i) {
-        uint16_t t = uint16_t(d[pd + i * 2] | (d[pd + i * 2 + 1] << 8));
-        s.tileMap[i] = t < nt ? t : 0;
-    }
-    const size_t ha = pd + size_t(w) * h * 2;
-    s.heights.resize(size_t(cells));
-    for (size_t i = 0; i < cells; ++i) s.heights[i] = d[ha + i * stride];
+    tnt::Map m;
+    try { m = tnt::Map::loadSct(d); } catch (const std::exception&) { return false; }   // v2 and v3
+    if (m.blocksX > 64 || m.blocksY > 64 || m.tileCount > 4096) return false;
+    const uint32_t w = uint32_t(m.blocksX), h = uint32_t(m.blocksY);
+    s.w = m.blocksX; s.h = m.blocksY;
+    s.tiles = std::move(m.tileGfx);
+    s.tileMap = std::move(m.tileIndex);
+    s.heights = std::move(m.heights);
     // Border height: the edge's most common height when every edge cell is within
     // 3 of it (sections are authored to join at one level, give or take a step).
     const int cw = int(w) * 2, ch = int(h) * 2;
@@ -206,6 +196,20 @@ Result generateTa(const Params& p, const hpi::Vfs& vfs) {
             }
         } catch (...) {}
     }
+    // Metal has no ore deposits (its metal is the map's surfacemetal): scatter the
+    // world's reclaimable metal features (towers, pipes) instead.
+    if (ores.empty())
+        for (const auto& path : vfs.list(std::string("features/") + W.features)) {
+            if (ta::vpath::extension(path) != ".tdf") continue;
+            try {
+                auto b = vfs.read(path);
+                auto root = tdf::parseText(std::string(b.begin(), b.end()), path);
+                for (const auto& name : root.childOrder) {
+                    const tdf::Node* f = root.child(name);
+                    if (f && f->numberOr("metal", 0) > 0) ores.push_back(name);
+                }
+            } catch (...) {}
+        }
     if (!ores.empty()) {
         auto place = [&](int cx, int cz) {
             if (cx < 2 || cz < 2 || cx + 4 >= m.width || cz + 4 >= m.height) return;

@@ -73,6 +73,11 @@ extern float kUIScale;
 // the renderer output divides by renderScale(). Updated every frame.
 extern float kBacking;
 inline float renderScale() { return kUIScale * kBacking; }
+// The world a bare launch, a blank AI-mod placeholder and an untagged map use: a TA
+// planet (OTA planet=, lowercased) with terrain sections.
+inline constexpr const char* kDefaultWorld = "green planet";
+// Resize dialog bounds, in 16px cells (whole 32px blocks: even counts only).
+inline constexpr int kResizeMinCells = 16, kResizeMaxCells = 2048;
 
 inline std::string pathText(const std::filesystem::path& path) {const auto text=path.u8string();return {text.begin(),text.end()};}
 inline std::string lowerText(std::string value) {std::transform(value.begin(),value.end(),value.begin(),[](unsigned char c){return char(std::tolower(c));});return value;}
@@ -115,7 +120,7 @@ struct Session {
     Session(int argc,char** argv,const FrameHook& frameHook,const EditorHooks& hooks);
 
     // Command line (headless.cpp).
-    std::string dataRoot, mapName, outDir = ".", exportPath, bundlePath, stampName, newWorld = "aramon", shotPath, shotTool;   // --shot / --shot-tool terrain|features|units|starts|blocked
+    std::string dataRoot, mapName, outDir = ".", exportPath, bundlePath, stampName, newWorld = kDefaultWorld, shotPath, shotTool;   // --shot / --shot-tool terrain|features|units|starts|blocked
     int stampBX = 0, stampBY = 0, newW = 0, newH = 0;
     bool explicitOutput=false;
     bool randomTerrain = false;   // --random: generate procedural terrain for --new
@@ -201,7 +206,7 @@ struct Session {
     // editor opens a map by name: what opening it and pressing Test Map would send.
     DocumentFiles installedMapFiles(const std::string& mapPath,const std::string& name) const;
 
-    // Section-prefab palette for this map's world (falls back to aramon).
+    // Section-prefab palette for this map's world (falls back to kDefaultWorld).
     SectionLibrary sections;
     std::string world;
     FeatureLibrary features;
@@ -341,6 +346,7 @@ struct Editor : Session {
     // --- Minimap (chrome.cpp) -------------------------------------------------
     std::unique_ptr<SDL_Texture,decltype(&SDL_DestroyTexture)> minimapTexture{nullptr,SDL_DestroyTexture};
     const uint8_t* minimapSource=nullptr;
+    SDL_Rect minimapContent{};   // the texture part showing the map (a TA minimap is padded)
     bool minimapDrag=false;
     void refreshMinimap();
     std::future<MinimapPreview> minimapJob;
@@ -385,9 +391,9 @@ struct Editor : Session {
     SDL_Rect mRandom{};                       // New Map: the RANDOM button rect
     SDL_Rect mRegenerate{};
     SDL_Rect mAiProfiles{};                   // Scenario Properties: EDIT AI PROFILES...
-    // Dropdown option lists (New Map): map sizes in units, and the four worlds.
+    // Dropdown option lists (New Map): map sizes, and the TA planets with terrain sections.
     const std::vector<std::string> kSizeOpts = {"8", "16", "24", "32", "48", "64"};
-    const std::vector<std::string> kWorldOpts = {"aramon", "veruna", "taros", "zhon", "creon", "volcano"};
+    const std::vector<std::string> kWorldOpts = {"green planet", "red planet", "archipelago", "lunar", "metal", "lava"};
     const std::vector<std::string> kDisplayOpts={"WINDOWED","BORDERLESS FULLSCREEN"},kOnOffOpts={"OFF","ON"},
         kScaleOpts={"50%","75%","100%","125%","150%","175%","200%"};
     ta::mapgen::Params generatorParams;

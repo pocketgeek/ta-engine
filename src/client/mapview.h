@@ -105,11 +105,13 @@ public:
     const ta::tnt::Map& map() const { return map_; }
 
     // --- Editing (Cartographer) ------------------------------------------------
-    // Mutable terrain access: edit map().tileKeys/tileCols/tileRows/heights/
-    // features, then call tilesEdited() so any newly-referenced section textures
-    // decode+upload and the tile-quad batch rebuilds next frame.
+    // Mutable terrain access: edit map().tileIndex/tileGfx (TA; keep tileKeys the
+    // mirror) or tileKeys/tileCols/tileRows, heights and features, then call
+    // tilesEdited() so any newly-referenced tiles decode+upload and the tile-quad
+    // batch rebuilds next frame. Changed TA tile art (not just appended tiles)
+    // drops every decoded tile.
     ta::tnt::Map& editMap() { return map_; }
-    void tilesEdited() { chunks_.clear(); queueAllSections(); tileBatchDirty_ = true; }
+    void tilesEdited() { refreshMapTiles(); chunks_.clear(); queueAllSections(); tileBatchDirty_ = true; }
     void tilesEdited(int bx,int by,int width,int height);
     ta::TerrainChunks::Stats chunkStats() const { return chunks_.stats(); }
     bool chunkCovers(int blockX, int blockY) const { return chunks_.covers(blockX, blockY); }   // tests
@@ -204,7 +206,13 @@ private:
     uint64_t clockMs_ = 0;
     bool clockSet_ = false;
     uint64_t nowMs() const;
-    static constexpr int kSectionUploadsPerFrame = 32;   // 32 MiB: a 4K jump in one frame
+    // Fallback uploads per frame, by size: 32 MiB, a 4K jump in one frame. That was
+    // 32 Kingdoms sections (1 MiB each); a TA tile is 4 KiB, and a 610x450 view alone
+    // needs about 300 of them, so a count cap left most of the view a hole.
+    static constexpr size_t kSectionUploadBytesPerFrame = size_t(32) << 20;
+    // Bring the compositor up to the map's own tiles (TA) after an edit: appended
+    // tiles keep every decoded one; changed art drops them, and their textures.
+    void refreshMapTiles();
     // pool: keep the texture for the next section of its size (while the idle budget
     // has room), rather than destroying it; GPU pressure passes false.
     void evictSection(std::map<uint32_t, Section>::iterator, bool pool = true);

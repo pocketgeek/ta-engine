@@ -45,9 +45,11 @@ public:
 
     // Total Annihilation maps carry their own 32x32 8-bit tiles: a tile index is the
     // "section key" (tnt::Map::load mirrors tileIndex into tileKeys) and its image is
-    // built from the map's tile graphics through palettes/palette.pal. Swapping maps
-    // clears the cache. Thread-safe.
-    void setMapTiles(const tnt::Map& map);
+    // built from the map's tile graphics through palettes/palette.pal. Swapping maps,
+    // or changing tiles the cache may hold, clears the cache; the same map with its
+    // tiles only appended (an editor stamp) keeps it. Returns true when every image
+    // decoded before stays valid. Thread-safe.
+    bool setMapTiles(const tnt::Map& map);
 
     // Render the whole map at full resolution (width*16 x height*16 px).
     jpeg::Image renderMap(const tnt::Map& map);

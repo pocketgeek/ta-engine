@@ -128,6 +128,27 @@ void TaRetailBrain::useProfile(const std::string& text) {
         bool on = true;
         applyProfileLine(tok, on, true);
     }
+#ifndef NDEBUG
+    // Debug-only harness hook (tools/cartographer_ai_profile_e2e_test.py): TA_RETAIL_WEIGHTS
+    // names an output path; each brain writes <path>.p<player> once its profile is applied,
+    // one row per type in retail's PrintWeights column layout,
+    //     <limit, or n/a> - <weight> = <weight> - '<unit>'
+    // (retail's tables are static: the profile's weight is the priority). It only writes a
+    // file, so --mpai hashes are the same with it on; a release build reads no variable.
+    if (const char* path = std::getenv("TA_RETAIL_WEIGHTS"); path && *path) {
+        const std::string out = std::string(path) + ".p" + std::to_string(player_);
+        if (std::FILE* f = std::fopen(out.c_str(), "w")) {
+            std::fprintf(f, "player %d: TA retail brain, difficulty %d\n<limit> - <weight> = <weight> - <unit>\n", player_, difficulty_);
+            for (size_t i = 0; i < types_.size(); ++i) {
+                char limit[16];
+                if (limit_[i] < 0) std::snprintf(limit, sizeof limit, "n/a ");
+                else std::snprintf(limit, sizeof limit, "%4d", limit_[i]);
+                std::fprintf(f, "%s - %3d = %3d - '%s'\n", limit, weight_[i], weight_[i], types_[i]->id.c_str());
+            }
+            std::fclose(f);
+        } else std::fprintf(stderr, "TA_RETAIL_WEIGHTS: cannot write %s\n", out.c_str());
+    }
+#endif
 }
 
 void TaRetailBrain::buildLattice(const sim::World&) {

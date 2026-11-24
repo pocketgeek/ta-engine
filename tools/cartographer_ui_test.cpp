@@ -1058,15 +1058,15 @@ static int resizeSaveWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-resize-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    // The Resize dialog counts whole 32-cell units. TA maps come in any size
-    // (Ashap Plateau is 258x264 cells, which its Enter would crop), so this
-    // runs on Red Triangle, a Red Planet map of 18x18 units.
-    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Red Triangle");
+    // The Resize dialog counts 16px cells in whole 32px blocks (even counts), as
+    // the TNT header does: Ashap Plateau's 258x264 cells (not whole 32-cell units)
+    // keep their size on Enter and grow by one block.
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
-    if(map.width%32 || map.height%32) {std::cerr<<"Red Triangle is not whole units\n";return 2;}
+    if(map.width%2 || map.height%2) {std::cerr<<"Ashap Plateau is not whole blocks\n";return 2;}
     ta::crt::Scenario scenario;scenario.regions.push_back({"Edge region",map.width-10,map.height-10,map.width-5,map.height-5});
-    const auto width=std::to_string(map.width/32),height=std::to_string(map.height/32);
-    const auto wider=std::to_string(map.width/32+1),higher=std::to_string(map.height/32+1);
+    const auto width=std::to_string(map.width),height=std::to_string(map.height);
+    const auto wider=std::to_string(map.width+2),higher=std::to_string(map.height+2);
     std::string error;
     const auto files=cart::documentFiles(map,metadata,scenario,{}, {},{},"Resize");
     if(!cart::writeDocumentBundle(root/"Resize.kmp",files,error) || !cart::writeDocumentBundle(root/"Existing.kmp",files,error))throw std::runtime_error(error);
@@ -1082,9 +1082,9 @@ static int resizeSaveWorkflow(const char* data) {
         case 0:key(SDLK_o,KMOD_CTRL);break;
         case 1:text((root/"Resize.kmp").string());key(SDLK_RETURN);break;
         case 2:key(SDLK_r);break;
-        case 3:text("0");key(SDLK_RETURN);break;
+        case 3:text(std::to_string(map.width-1));key(SDLK_RETURN);break;
         case 4:check(!dirty,"invalid resize changed map");key(SDLK_ESCAPE);key(SDLK_r);break;
-        case 5:text(std::to_string(map.width/32-1));key(SDLK_RETURN);break;
+        case 5:text(std::to_string(map.width-6));key(SDLK_RETURN);break;
         case 6:check(!dirty,"resize cropped a region");key(SDLK_ESCAPE);key(SDLK_r);break;
         case 7:key(SDLK_RETURN);break;
         case 8:check(!dirty,"same-size resize marked map dirty");key(SDLK_r);break;
@@ -1111,7 +1111,7 @@ static int resizeSaveWorkflow(const char* data) {
     {
         ta::hpi::Archive archive(root/"Existing.kmp");bool found=false;
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
-            const auto saved=ta::tnt::Map::load(archive.read(entry),entry.path);found=saved.width==map.width+32 && saved.height==map.height+32;
+            const auto saved=ta::tnt::Map::load(archive.read(entry),entry.path);found=saved.width==map.width+2 && saved.height==map.height+2;
             for(int y=0;y<map.height;++y)for(int x=0;x<map.width;++x)
                 check(saved.heights[y*saved.width+x]==map.heights[y*map.width+x] && saved.features[y*saved.width+x]==map.features[y*map.width+x],"resize/undo changed retained terrain or features");
         }
@@ -1433,7 +1433,10 @@ static int thumbnailWorkflow(const char* data) {
                 return texture;
             };
             try {
-                const auto& path=sections.list().front().path;
+                // A section that fits the surface unshrunk (Red Planet's first, Big/Mars-01, is 48x50 blocks).
+                std::string path;
+                for(const auto& s:sections.list())if(const auto* m=sections.load(assets,s.path);m && m->blocksX<=16 && m->blocksY<=16) {path=s.path;break;}
+                if(path.empty())throw std::runtime_error("no 16x16-block section");
                 const auto* source=sections.load(assets,path);ta::terrain::Compositor compositor(assets);
                 const auto reference=compositor.renderMap(*source);
                 auto* texture=awaitTexture(path);int w=0,h=0;SDL_QueryTexture(texture,nullptr,nullptr,&w,&h);
@@ -1457,6 +1460,13 @@ static int thumbnailWorkflow(const char* data) {
                 rgba.resize(size_t(w)*h*4);
                 if(SDL_RenderReadPixels(renderer,&dst,SDL_PIXELFORMAT_RGBA32,rgba.data(),w*4)!=0 || rgba!=portrait.rgba)
                     throw std::runtime_error("unit portrait colors differ from its retail PCX");
+                // A big section is shrunk; a TA map shows its own radar picture (the fitted part).
+                auto* big=awaitTexture(sections.list().front().path);SDL_QueryTexture(big,nullptr,nullptr,&w,&h);
+                if(std::max(w,h)>cart::Thumbnails::kMaxSide || w<=0 || h<=0)throw std::runtime_error("large section thumbnail not shrunk");
+                const auto mapPath=ta::hpi::findMap(assets,"Ashap Plateau");
+                const auto mapFile=ta::tnt::Map::load(assets.read(mapPath),mapPath);const auto fit=ta::terrain::minimapContent(mapFile);
+                auto* radar=awaitTexture(mapPath);SDL_QueryTexture(radar,nullptr,nullptr,&w,&h);
+                if(mapFile.minimapW!=252 || w!=fit.width || h!=fit.height)throw std::runtime_error("map thumbnail is not its 252x252 radar picture");
             } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';result=1;}
         }
         SDL_DestroyRenderer(renderer);SDL_FreeSurface(surface);
@@ -1678,8 +1688,7 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
 // reopen the remembered group (its first thumbnail is that folder's piece).
 // TA's section names rarely carry variants: Red Planet's (mars049...) have
 // none, so this runs on a Lava map, whose mtn folder holds l-mtn, l-mtn2,
-// l-mtn3 (one piece, numbered variants). Those are version-3 .sct files,
-// which Map::loadSct does not read yet (engine gap), so the stamp fails.
+// l-mtn3 (one piece, numbered variants), version-3 .sct files.
 static int sectionsWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-sections-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -1694,7 +1703,7 @@ static int sectionsWorkflow(const char* data) {
     if(piece.variants.size()<2 || firstOfAll.folder==piece.folder)return 2;
     const std::string mapName="Lava Highground";
     // Block positions where the saved map carries exactly this prefab's tile art
-    // (keys/cols/rows) and heights. Cliff sets share heights, so art decides.
+    // (its tiles' pixels) and heights. Cliff sets share heights, so art decides.
     auto stampedAt=[&](int section) {
         const auto* prefab=sections.load(vfs,sections.list()[size_t(section)].path);
         if(!prefab || prefab->blocksX<=0 || prefab->blocksY<=0)return -1;
@@ -1706,7 +1715,9 @@ static int sectionsWorkflow(const char* data) {
                 bool same=true;
                 for(int y=0;y<ph && same;++y)for(int x=0;x<pw && same;++x) {
                     const size_t m=size_t(by+y)*map.blocksX+bx+x,p=size_t(y)*pw+x;
-                    same=map.tileKeys[m]==prefab->tileKeys[p] && map.tileCols[m]==prefab->tileCols[p] && map.tileRows[m]==prefab->tileRows[p];
+                    // TA maps and sections carry their own tiles: compare the art itself.
+                    same=std::equal(map.tileGfx.begin()+std::ptrdiff_t(map.tileIndex[m])*1024,map.tileGfx.begin()+std::ptrdiff_t(map.tileIndex[m]+1)*1024,
+                                    prefab->tileGfx.begin()+std::ptrdiff_t(prefab->tileIndex[p])*1024);
                 }
                 for(int y=0;y<ph*2 && same;++y)same=std::equal(prefab->heights.begin()+size_t(y)*prefab->width,prefab->heights.begin()+size_t(y)*prefab->width+pw*2,map.heights.begin()+size_t(by*2+y)*map.width+bx*2);
                 found+=same;
@@ -1873,17 +1884,25 @@ static int symmetryWorkflow(const char* data) {
     cart::SymmetryRequest request;request.kind=cart::Mirror::Vertical;request.source=0;
     const auto report=cart::symmetrize(expected,expectedStarts,expectedScenario,expectedUnits,request,
         [&](const std::string& name){const auto* ref=features.byName(name);return ref?std::pair{ref->footX,ref->footZ}:std::pair{1,1};},&matcher);
-    // The source half's blocks (64 columns of Ashap Plateau's 129) should all
-    // carry mirrored tile art. TA maps carry their own tiles, which symmetrize
-    // does not flip (engine gap: it reports nearly the whole half unmirrored),
-    // so that is checked here and the editor workflow still runs.
+    // The source half's blocks (64 columns of Ashap Plateau's 129) all carry
+    // mirrored tile art: TA maps carry their own tiles, which symmetrize flips
+    // pixel by pixel (the image of block x is block blocksX-1-x, each row reversed).
     if(expectedUnits.size()!=2)throw std::runtime_error("fixture symmetrize did not mirror the unit");
     const int half=map.blocksX/2*map.blocksY;
+    int flipped=0;
+    for(int z=0;z<expected.blocksY;++z)for(int x=0;x<expected.blocksX/2;++x) {
+        const uint8_t* a=expected.tileGfx.data()+size_t(expected.tileIndex[size_t(z)*expected.blocksX+x])*1024;
+        const uint8_t* b=expected.tileGfx.data()+size_t(expected.tileIndex[size_t(z)*expected.blocksX+expected.blocksX-1-x])*1024;
+        bool mirror=true;
+        for(int py=0;py<32 && mirror;++py)for(int px=0;px<32 && mirror;++px)mirror=a[py*32+px]==b[py*32+31-px];
+        flipped+=mirror;
+    }
     std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;
     auto fail=[&](const std::string& why){if(failure.empty())failure=why;};
-    if(report.blocks*10<half*9)fail("symmetrize mirrored the tile art of "+std::to_string(report.blocks)+" of "+std::to_string(half)+" blocks ("+std::to_string(report.unmirroredBlocks)+" unmirrored)");
+    if(report.blocks!=half || report.unmirroredBlocks)fail("symmetrize mirrored the tile art of "+std::to_string(report.blocks)+" of "+std::to_string(half)+" blocks ("+std::to_string(report.unmirroredBlocks)+" unmirrored)");
+    if(flipped!=half)fail("mirrored blocks carry flipped pixels in "+std::to_string(flipped)+" of "+std::to_string(half));
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
         lastFrame=frame;float sx,sy;SDL_RenderGetScale(renderer,&sx,&sy);
         auto click=[&](int x,int y) {
@@ -1910,7 +1929,7 @@ static int symmetryWorkflow(const char* data) {
                 const auto name=[](const ta::tnt::Map& m,size_t c){const auto v=m.features[c];return v<0xFFFA && v<m.featureNames.size()?m.featureNames[v]:std::to_string(v);};
                 if(name(file.map,i)!=name(expected,i)) {fail("saved features differ from the expected mirror");break;}
             }
-            if(file.metadata.starts.size()!=2 || file.metadata.starts[1].number!=2 || file.metadata.starts[1].xpos!=600)fail("mirrored start missing");
+            if(file.metadata.starts.size()!=2 || expectedStarts.size()!=2 || file.metadata.starts[1].number!=2 || file.metadata.starts[1].xpos!=expectedStarts[1].xpos)fail("mirrored start missing");
             if(file.units.size()!=2 || file.units[1].x!=expectedUnits[1].x || file.units[1].z!=expectedUnits[1].z ||
                file.units[1].angle!=270 || file.units[1].player!=1 || !file.units[1].name.empty() || file.units[0].name!="Left guard")fail("mirrored unit wrong");
             key(SDLK_m);key(SDLK_TAB);key(SDLK_TAB);key(SDLK_1);break;   // live symmetry, Units tool, 100%
@@ -1920,7 +1939,7 @@ static int symmetryWorkflow(const char* data) {
         case 12:{
             key(SDLK_RETURN);const auto file=readSaved(saved,&registry);
             if(file.units.size()!=4)fail("live symmetry did not add the mirror");
-            else if(std::abs(file.units[2].x+file.units[3].x-640*16)>.01f || file.units[2].z!=file.units[3].z)fail("live mirror is not symmetric");
+            else if(std::abs(file.units[2].x+file.units[3].x-map.width*16.f)>.01f || file.units[2].z!=file.units[3].z)fail("live mirror is not symmetric");
             key(SDLK_z,KMOD_CTRL);key(SDLK_s,KMOD_CTRL);break;
         }
         case 13:{
@@ -1955,7 +1974,8 @@ static int terrainClipboardWorkflow(const char* data) {
         if(kingdom=="green planet" && cart::validDocumentName(name)) {const auto m=ta::tnt::Map::load(vfs.read(mapPath),mapPath);if(m.blocksX>=16 && m.blocksY>=12) {other=name;break;}}
     }
     if(other.empty()) {std::cerr<<"no green planet map\n";return 1;}
-    auto block=[&](const ta::tnt::Map& m,int x,int z){const size_t i=size_t(z)*m.blocksX+x;return std::tuple{m.tileKeys[i],m.tileCols[i],m.tileRows[i]};};
+    // A block's art: TA maps carry their own tiles, so another map indexes the same art differently.
+    auto block=[&](const ta::tnt::Map& m,int x,int z){const size_t t=m.tileIndex[size_t(z)*m.blocksX+x];return std::string(m.tileGfx.begin()+std::ptrdiff_t(t)*1024,m.tileGfx.begin()+std::ptrdiff_t(t+1)*1024);};
     std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;

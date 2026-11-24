@@ -130,6 +130,7 @@ void MapView::reload(const ta::hpi::Vfs& vfs, const std::string& mapPath) {
     tileBatchDirty_ = true;
     builtZoom_ = -1;   // force a rebuild against the new map
     map_ = genOrLoad(vfs, mapPath);
+    comp_.setMapTiles(map_);   // the new map's own tile art (TA)
     queueAllSections();
 }
 
@@ -157,7 +158,28 @@ void MapView::queueAllSections() {
     secCv_.notify_all();
 }
 
+void MapView::refreshMapTiles() {
+    if (comp_.setMapTiles(map_)) {
+        // Appended tiles: a key recorded absent (no texture) may name one of them now.
+        for (auto it = sections_.begin(); it != sections_.end();) it = it->second.tex ? std::next(it) : sections_.erase(it);
+        return;
+    }
+    // Changed art under existing indices (an undo, a symmetrize): no decoded tile
+    // or texture of the old art may stay. The workers stop first, so none of their
+    // in-flight decodes lands after the compositor drops its images.
+    quiesce();
+    comp_.clear();
+    for (auto it = sections_.begin(); it != sections_.end();) {
+        if (it->second.tex) { evictSection(it++); continue; }
+        it = sections_.erase(it);
+    }
+    wanted_.clear();
+    batchKeys_.clear();
+    tileBatchDirty_ = true;
+}
+
 void MapView::tilesEdited(int bx,int by,int width,int height) {
+    refreshMapTiles();
     const int x0=std::clamp(bx,0,map_.blocksX),y0=std::clamp(by,0,map_.blocksY);
     const int x1=std::clamp(bx+width,0,map_.blocksX),y1=std::clamp(by+height,0,map_.blocksY);
     if(x0>=x1 || y0>=y1)return;
@@ -473,9 +495,9 @@ void MapView::uploadReadySections() {
 bool MapView::uploadWantedSections() {
     // Chunks off: the fallback IS the terrain, so only the GPU cap bounds it.
     const size_t budget = chunksEnabled_ ? kSectionBudget : SIZE_MAX;
-    const int perFrame = pinning_ ? INT_MAX : kSectionUploadsPerFrame;
+    const size_t perFrame = pinning_ ? SIZE_MAX : kSectionUploadBytesPerFrame;
     const uint64_t now = nowMs();
-    int n = 0;
+    size_t n = 0;   // bytes uploaded this frame
     std::vector<uint32_t> decode;
     for (uint32_t key : wanted_) {
         if (sections_.count(key)) continue;
@@ -533,7 +555,7 @@ bool MapView::uploadWantedSections() {
         ta::render::countTextureUpload(size);
         sections_[key] = {t, img->width, img->height, frame_, now};
         sectionBytes_ += size;
-        ++n;
+        n += size;
         if (ta::devFlag("TA_TERRAINLOG"))
             std::fprintf(stderr, "terrain: section %08x %dx%d uploaded; %zu resident (%zu MiB), gpu=%zuMiB\n",
                          key, img->width, img->height, sections_.size(), sectionBytes_ >> 20,

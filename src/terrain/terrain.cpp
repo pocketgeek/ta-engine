@@ -22,10 +22,23 @@ std::string sectionPath(uint32_t key) {
 
 Compositor::Compositor(const hpi::Vfs& vfs) : vfs_(&vfs) {}
 
-void Compositor::setMapTiles(const tnt::Map& map) {
+bool Compositor::setMapTiles(const tnt::Map& map) {
     {
+        // tileGfx_ is immutable once published, so it is compared outside any copy.
         std::lock_guard<std::mutex> lk(mu_);
-        if (tileSource_ == &map.tileGfx && tileGfx_ && tileGfx_->size() == map.tileGfx.size()) return;
+        if (tileSource_ == &map.tileGfx && tileGfx_ && tileGfx_->size() <= map.tileGfx.size() &&
+            std::equal(tileGfx_->begin(), tileGfx_->end(), map.tileGfx.begin())) {
+            // The same map, its tiles unchanged or only appended (an editor stamp or
+            // paste): every decoded tile stays valid; keys past the old count that
+            // were recorded absent exist now.
+            if (tileGfx_->size() == map.tileGfx.size() && tileCount_ == map.tileCount) return true;
+            const uint32_t oldCount = uint32_t(tileCount_);
+            for (auto it = absent_.begin(); it != absent_.end();)
+                it = it->first >= oldCount ? absent_.erase(it) : std::next(it);
+            tileGfx_ = std::make_shared<const std::vector<uint8_t>>(map.tileGfx);
+            tileCount_ = map.tileCount;
+            return true;
+        }
     }
     auto gfx = std::make_shared<const std::vector<uint8_t>>(map.tileGfx);
     std::array<uint8_t, 1024> pal{};
@@ -43,6 +56,7 @@ void Compositor::setMapTiles(const tnt::Map& map) {
     tileSource_ = &map.tileGfx;
     palette_ = pal;
     paletteLoaded_ = true;
+    return false;
 }
 
 void Compositor::clear() {

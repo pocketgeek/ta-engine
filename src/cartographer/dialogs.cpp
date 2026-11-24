@@ -112,8 +112,8 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
         mLabel[0]="GAME MOD PACK NAME (MODS/GAME/<NAME>)";mf[0]=name;mfNumeric[0]=false;
     } else if (m == M_RESIZE) {
         mTitle = "RESIZE MAP"; mN = 2;
-        mLabel[0] = "WIDTH (UNITS)";  mf[0] = std::to_string(mapView.map().width / 32);  mfNumeric[0] = true;
-        mLabel[1] = "HEIGHT (UNITS)"; mf[1] = std::to_string(mapView.map().height / 32); mfNumeric[1] = true;
+        mLabel[0] = "WIDTH (CELLS, EVEN)";  mf[0] = std::to_string(mapView.map().width);  mfNumeric[0] = true;
+        mLabel[1] = "HEIGHT (CELLS, EVEN)"; mf[1] = std::to_string(mapView.map().height); mfNumeric[1] = true;
     } else if (m == M_NEW) {
         // Name is typed; size + world are dropdowns. RANDOM is a separate
         // button (drawn in the render pass) that generates procedural terrain
@@ -126,7 +126,7 @@ void cart::Editor::openModal(Modal m, int unitIdx) {
         std::string w0 = world;
         std::transform(w0.begin(), w0.end(), w0.begin(), [](unsigned char c){return char(std::tolower(c));});
         if (std::find(kWorldOpts.begin(), kWorldOpts.end(), w0) == kWorldOpts.end())
-            w0 = "aramon";
+            w0 = kDefaultWorld;
         mLabel[3] = "WORLD";     mf[3] = w0;   mfChoices[3] = &kWorldOpts;
     } else if (m == M_UNIT && unitIdx >= 0 && unitIdx < int(units.size())) {
         const auto& u = units[size_t(unitIdx)];
@@ -297,36 +297,39 @@ void cart::Editor::applyModal() {
         scenario.missionName = mf[0];
         scenario.missionDescription = mf[1]; dirty = true; historyPending=true;
     } else if (modal == M_RESIZE) {
-        int wu=0,hu=0;
-        const auto widthResult=std::from_chars(mf[0].data(),mf[0].data()+mf[0].size(),wu);
-        const auto heightResult=std::from_chars(mf[1].data(),mf[1].data()+mf[1].size(),hu);
+        // Cells (16px), as the TNT header counts them: any even count from 16 to
+        // 2048 (whole 32px blocks; TA maps come in any such size, Ashap Plateau is 258x264).
+        int wc=0,hc=0;
+        const auto widthResult=std::from_chars(mf[0].data(),mf[0].data()+mf[0].size(),wc);
+        const auto heightResult=std::from_chars(mf[1].data(),mf[1].data()+mf[1].size(),hc);
         if(widthResult.ec!=std::errc{} || widthResult.ptr!=mf[0].data()+mf[0].size() ||
-           heightResult.ec!=std::errc{} || heightResult.ptr!=mf[1].data()+mf[1].size() || wu<1 || wu>64 || hu<1 || hu>64) {
-            modalError="Width and height must be whole numbers from 1 to 64.";return;
+           heightResult.ec!=std::errc{} || heightResult.ptr!=mf[1].data()+mf[1].size() ||
+           wc<kResizeMinCells || wc>kResizeMaxCells || hc<kResizeMinCells || hc>kResizeMaxCells || wc%2 || hc%2) {
+            modalError="Width and height must be even numbers of cells from "+std::to_string(kResizeMinCells)+" to "+std::to_string(kResizeMaxCells)+" (a block is 2 cells).";return;
         }
-        for(const auto& start:scenario.starts) if(start.xpos>=wu*32 || start.zpos>=hu*32) {
+        for(const auto& start:scenario.starts) if(start.xpos>=wc || start.zpos>=hc) {
             modalError="Move or remove start positions outside the new map first.";return;
         }
-        for(const auto& unit:units) if(unit.x>=wu*512 || unit.z>=hu*512) {
+        for(const auto& unit:units) if(unit.x>=wc*16 || unit.z>=hc*16) {
             modalError="Move or remove units outside the new map first.";return;
         }
-        for(const auto& region:scen.regions) if(std::max(region.x1,region.x2)>=wu*32 || std::max(region.z1,region.z2)>=hu*32) {
+        for(const auto& region:scen.regions) if(std::max(region.x1,region.x2)>=wc || std::max(region.z1,region.z2)>=hc) {
             modalError="Resize or remove regions outside the new map first.";return;
         }
-        if(wu*32==mapView.map().width && hu*32==mapView.map().height) {modal=M_NONE;SDL_StopTextInput();return;}
-        auto performResize=[&,wu,hu] {
+        if(wc==mapView.map().width && hc==mapView.map().height) {modal=M_NONE;SDL_StopTextInput();return;}
+        auto performResize=[&,wc,hc] {
             try {
                 mapView.quiesce();
                 auto resized=mapView.map();
-                const auto wld=scenario.kingdom.empty()?"aramon":scenario.kingdom;
-                cart::resizeMap(resized,mapView.compositor(),cart::loadWorldPalette(vfs,wld),wu,hu);
+                const auto wld=scenario.kingdom.empty()?std::string(cart::kDefaultWorld):scenario.kingdom;
+                cart::resizeMap(resized,mapView.compositor(),cart::loadWorldPalette(vfs,wld),wc,hc);
                 mapView.editMap()=std::move(resized);minimapSource=nullptr;
-                selectedFeatures.clear();invalidateMinimap();scenario.sizeW=wu;scenario.sizeH=hu;
+                selectedFeatures.clear();invalidateMinimap();scenario.sizeW=wc/32;scenario.sizeH=hc/32;
                 mapView.tilesEdited();edited=dirty=historyPending=true;
                 modal=M_NONE;SDL_StopTextInput();
             } catch(const std::exception& error) {openMessage("RESIZE FAILED",error.what());}
         };
-        if(wu*32<mapView.map().width || hu*32<mapView.map().height) {
+        if(wc<mapView.map().width || hc<mapView.map().height) {
             openConfirm("CROP MAP","Terrain and features beyond the new right or bottom edge will be removed. Undo can restore them. Continue?",performResize);return;
         }
         performResize();return;

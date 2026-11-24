@@ -9,8 +9,12 @@
 // centre. Facing angles use the engine convention: CRT angle a faces
 // (sin a, cos a) in map x/z, so 0 faces south (+z) and 90 faces east (+x).
 //
-// Terrain is never pixel-flipped: its art has baked lighting and relief.
-// A block is attributed to the section placement that best explains its tile
+// TA maps carry their own tiles: a mirrored block takes its source tile with
+// the pixels transformed (a new tile, shared by content), its cells' heights and
+// terrain markers moved with it. TA sections ship no mirror twins, and the lit
+// relief in a flipped tile reads well enough at map scale.
+// Kingdoms terrain is never pixel-flipped (shared section art with baked lighting):
+// a block is attributed to the section placement that best explains its tile
 // (tile triples are nearly unique per section), and the mirrored block takes
 // the section's MIRROR TWIN, found by name (ne<->nw, lft<->rgt, ...), at the
 // mirrored placement. Blocks without a known section or twin are left alone
@@ -111,6 +115,15 @@ struct TerrainMirror {int mirrored=0;std::vector<std::pair<int,int>> failed;std:
 TerrainMirror mirrorTerrain(const SectionMatcher&,const ta::tnt::Map& source,Box blocks,
                             const std::vector<SectionMatcher::Source>& attribution,Xf,ta::tnt::Map& out,
                             const std::function<bool(int,int)>& include={});
+
+// The TA counterpart: the source blocks' own tiles, pixel-transformed and interned
+// into `out` (ownTiles), with their heights and terrain markers. `source` may be
+// `out`'s snapshot. Blocks whose tile is missing are returned as failed.
+TerrainMirror mirrorOwnTiles(const ta::tnt::Map& source,Box blocks,Xf,ta::tnt::Map& out,
+                             const std::function<bool(int,int)>& include={});
+// A TA section (own tiles) seen through a transform: the live-symmetry stamp of a
+// world whose sections have no named twin.
+ta::tnt::Map mirrorSection(const ta::tnt::Map& section,Xf);
 
 // Symmetrize: the document parts are edited in place.
 struct SymmetryRequest {

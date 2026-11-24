@@ -29,7 +29,19 @@ ta::gaf::Palette loadWorldPalette(const ta::hpi::Vfs& vfs, const std::string& wo
 void generateMinimaps(ta::tnt::Map& map, ta::terrain::Compositor& comp,
                       const ta::gaf::Palette& pal, std::shared_ptr<const std::atomic_bool> stop={});
 
-struct MinimapPreview {int width=126,height=126;std::vector<uint8_t> rgba;};
+// A TA map's radar picture: kTaMinimap square, the map aspect-fitted from the
+// top-left (taMinimapFit gives the fitted part) and the rest padded, as in the
+// shipped .tnt files.
+constexpr int kTaMinimap = 252;
+struct MinimapFit {int width=0,height=0;};
+MinimapFit taMinimapFit(int blocksX, int blocksY);
+// The part of `map`'s minimap that shows the map: the fitted corner of a TA
+// minimap, else the whole picture.
+MinimapFit minimapContent(const ta::tnt::Map& map);
+
+// The live preview matches what generateMinimaps saves: 252x252 for a map with its
+// own tiles (TA), Kingdoms' 126x126 otherwise. contentW/H: the part showing the map.
+struct MinimapPreview {int width=126,height=126,contentW=126,contentH=126;std::vector<uint8_t> rgba;};
 // Display-only preview; does not alter document minimap bytes or undo history.
 MinimapPreview minimapPreview(const ta::tnt::Map& map,ta::terrain::Compositor& comp,
                               const ta::gaf::Palette& palette,std::shared_ptr<const std::atomic_bool> stop={});

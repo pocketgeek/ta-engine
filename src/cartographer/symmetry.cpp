@@ -436,6 +436,65 @@ TerrainMirror mirrorTerrain(const SectionMatcher& matcher,const ta::tnt::Map& so
     return result;
 }
 
+namespace {
+// Where each pixel of a 32x32 tile lands under a transform (row-major indices).
+const std::array<uint16_t,1024>& tilePermutation(Xf xf) {
+    static const auto tables=[] {
+        std::array<std::array<uint16_t,1024>,8> t{};
+        for(int k=0;k<8;++k)for(int y=0;y<32;++y)for(int x=0;x<32;++x) {
+            const auto image=transform(Xf(k),Box{x,y,x+1,y+1},32,32);
+            t[size_t(k)][size_t(y*32+x)]=uint16_t(image.z0*32+image.x0);
+        }
+        return t;
+    }();
+    return tables[size_t(xf)];
+}
+}  // namespace
+
+TerrainMirror mirrorOwnTiles(const ta::tnt::Map& source,Box b,Xf xf,ta::tnt::Map& out,const std::function<bool(int,int)>& include) {
+    TerrainMirror result;
+    ensureTilePlane(out);
+    TileInterner tiles(out);
+    const auto& permutation=tilePermutation(xf);
+    std::map<uint16_t,uint16_t> mirrored;   // source tile -> its mirrored tile in `out`
+    std::array<uint8_t,1024> pixels{};
+    b={std::max(0,b.x0),std::max(0,b.z0),std::min(source.blocksX,b.x1),std::min(source.blocksY,b.z1)};
+    for(int z=b.z0;z<b.z1;++z)for(int x=b.x0;x<b.x1;++x) {
+        if(include && !include(x,z))continue;
+        const auto image=transform(xf,Box{x,z,x+1,z+1},source.blocksX,source.blocksY);
+        if(image.x0<0 || image.z0<0 || image.x0>=out.blocksX || image.z0>=out.blocksY)continue;
+        const size_t si=size_t(z)*source.blocksX+x,mi=size_t(image.z0)*out.blocksX+image.x0;
+        const uint16_t st=si<source.tileIndex.size()?source.tileIndex[si]:0xFFFF;
+        if(int(st)>=source.tileCount || size_t(st+1)*1024>source.tileGfx.size()) {result.failed.push_back({image.x0,image.z0});result.failedSection.push_back(-1);continue;}
+        auto found=mirrored.find(st);
+        if(found==mirrored.end()) {
+            const uint8_t* src=source.tileGfx.data()+size_t(st)*1024;   // copied first: `source` may be `out`
+            for(size_t i=0;i<1024;++i)pixels[permutation[i]]=src[i];
+            found=mirrored.emplace(st,tiles.intern(pixels.data())).first;
+        }
+        setBlockTile(out,mi,found->second);
+        for(int dz=0;dz<2;++dz)for(int dx=0;dx<2;++dx) {
+            const int cx=x*2+dx,cz=z*2+dz;
+            const auto cell=transform(xf,Box{cx,cz,cx+1,cz+1},source.width,source.height);
+            const size_t sc=size_t(cz)*source.width+cx,mc=size_t(cell.z0)*out.width+cell.x0;
+            if(cell.x0<0 || cell.z0<0 || cell.x0>=out.width || cell.z0>=out.height || sc>=source.heights.size())continue;
+            out.heights[mc]=source.heights[sc];
+            if(sc<source.features.size() && !named(out,mc)) {const uint16_t v=source.features[sc];out.features[mc]=v>=0xFFFA?v:0xFFFF;}
+        }
+        ++result.mirrored;
+    }
+    return result;
+}
+
+ta::tnt::Map mirrorSection(const ta::tnt::Map& section,Xf xf) {
+    ta::tnt::Map m;
+    m.blocksX=swapsAxes(xf)?section.blocksY:section.blocksX;m.blocksY=swapsAxes(xf)?section.blocksX:section.blocksY;
+    m.width=m.blocksX*2;m.height=m.blocksY*2;m.seaLevel=section.seaLevel;m.stockTerrain=section.stockTerrain;
+    m.heights.assign(size_t(m.width)*m.height,0);m.features.assign(m.heights.size(),0xFFFF);m.cellExtra.assign(m.heights.size(),0);
+    mirrorOwnTiles(section,{0,0,section.blocksX,section.blocksY},xf,m);
+    return m;
+}
+
 std::string SymmetryReport::summary() const {
     auto count=[](int n,const char* what){return std::to_string(n)+" "+what+(n==1?"":"s");};
     std::string text="Copies: "+count(units,"unit")+", "+count(features,"feature")+", "+count(starts,"start")+", "+count(regions,"region")+", "+count(blocks,"terrain block")+", "+count(blocked,"blocked cell")+".";
@@ -547,11 +606,14 @@ SymmetryReport symmetrize(ta::tnt::Map& map,std::vector<ta::tnt::StartPos>& star
         if(from)sources.push_back({x,z,std::max(1,fx),std::max(1,fz),name});
         else if(!selection) {map.features[i]=0xFFFF;++report.removedFeatures;}
     }
-    if(request.terrain && matcher && matcher->built() && (!selection || request.blocks)) {
+    // TA maps carry their own tiles: the art is mirrored pixel by pixel. Kingdoms
+    // maps key shared section art, so a block takes its section's mirror twin.
+    const bool ownArt=ownTiles(map);
+    if(request.terrain && (ownArt || (matcher && matcher->built())) && (!selection || request.blocks)) {
         const auto snapshot=map;
         Box box=selection?*request.blocks:Box{0,0,map.blocksX,map.blocksY};
         box={std::max(0,box.x0),std::max(0,box.z0),std::min(map.blocksX,box.x1),std::min(map.blocksY,box.z1)};
-        const auto attribution=matcher->attribute(snapshot,box);
+        const auto attribution=ownArt?std::vector<SectionMatcher::Source>{}:matcher->attribute(snapshot,box);
         std::map<std::pair<int,int>,std::pair<int,MapIssue>> areas;
         std::set<std::pair<int,int>> failedBlocks;
         for(Xf xf:images) {
@@ -563,20 +625,21 @@ SymmetryReport symmetrize(ta::tnt::Map& map,std::vector<ta::tnt::StartPos>& star
                 if(selection)return image.x0<box.x0 || image.x0>=box.x1 || image.z0<box.z0 || image.z0>=box.z1;
                 return inSource(request.kind,request.source,{x+.5,z+.5},map.blocksX,map.blocksY);
             };
-            const auto result=mirrorTerrain(*matcher,snapshot,box,attribution,xf,map,include);
+            const auto result=ownArt?mirrorOwnTiles(snapshot,box,xf,map,include):mirrorTerrain(*matcher,snapshot,box,attribution,xf,map,include);
             report.blocks+=result.mirrored;
             for(size_t i=0;i<result.failed.size();++i) {
                 const auto [bx,bz]=result.failed[i];if(!failedBlocks.insert({bx,bz}).second)continue;
                 auto& area=areas[{bx/16,bz/16}];
                 if(!area.first) {
                     const int s=result.failedSection[i];
-                    area.second.message=s<0?"Terrain not mirrored: tiles here match no section of this world":"Terrain not mirrored: section '"+matcher->name(s)+"' has no mirror twin";
+                    area.second.message=ownArt?"Terrain not mirrored: the block has no tile art":s<0?"Terrain not mirrored: tiles here match no section of this world":"Terrain not mirrored: section '"+matcher->name(s)+"' has no mirror twin";
                     area.second.x=bx*32.f+16;area.second.z=bz*32.f+16;
                 }
                 ++area.first;
             }
         }
         report.unmirroredBlocks=int(failedBlocks.size());
+        if(ownArt)compactTiles(map);   // the replaced half's art is unused now
         for(auto& [cell,area]:areas) {
             area.second.message+=" ("+std::to_string(area.first)+" block"+(area.first==1?"":"s")+" near this point)";
             report.terrainIssues.push_back(std::move(area.second));
@@ -803,6 +866,17 @@ TerrainClip copyTerrain(const ta::tnt::Map& map,Box b,const std::vector<PlacedUn
     c.seaLevel=map.seaLevel;c.stockTerrain=map.stockTerrain;
     c.heights.resize(size_t(c.width)*c.height);c.features.resize(c.heights.size(),0xFFFF);
     c.tileKeys.resize(size_t(c.blocksX)*c.blocksY);c.tileCols.resize(c.tileKeys.size());c.tileRows.resize(c.tileKeys.size());
+    if(ownTiles(map)) {   // TA: the clip carries the tiles it uses, so it pastes into any map
+        ensureTilePlane(c);TileInterner tiles(c);std::map<uint16_t,uint16_t> copied;
+        for(int z=0;z<c.blocksY;++z)for(int x=0;x<c.blocksX;++x) {
+            const size_t i=size_t(z)*c.blocksX+x,j=size_t(z+b.z0)*map.blocksX+x+b.x0;
+            const uint16_t t=map.tileIndex[j];
+            if(int(t)>=map.tileCount)continue;
+            auto found=copied.find(t);
+            if(found==copied.end())found=copied.emplace(t,tiles.intern(map.tileGfx.data()+size_t(t)*1024)).first;
+            setBlockTile(c,i,found->second);
+        }
+    } else
     for(int z=0;z<c.blocksY;++z)for(int x=0;x<c.blocksX;++x) {
         const size_t i=size_t(z)*c.blocksX+x,j=size_t(z+b.z0)*map.blocksX+x+b.x0;
         c.tileKeys[i]=map.tileKeys[j];c.tileCols[i]=map.tileCols[j];c.tileRows[i]=map.tileRows[j];
@@ -836,10 +910,11 @@ PasteResult pasteTerrain(ta::tnt::Map& map,std::vector<PlacedUnit>& units,const 
 }
 std::optional<TerrainClip> mirrorClip(const TerrainClip& clip,Xf xf,const SectionMatcher& matcher,const FootprintLookup& footprint,std::string& why) {
     if(clip.empty()) {why="The terrain clipboard is empty.";return std::nullopt;}
-    if(!matcher.built() || clip.matcherKey!=matcher.key() || clip.attribution.size()!=size_t(clip.map.blocksX)*clip.map.blocksY) {
+    const bool ownArt=ownTiles(clip.map);   // TA: its own tiles, mirrored pixel by pixel
+    if(!ownArt && (!matcher.built() || clip.matcherKey!=matcher.key() || clip.attribution.size()!=size_t(clip.map.blocksX)*clip.map.blocksY)) {
         why="the clipboard came from another world, so its sections are unknown here";return std::nullopt;
     }
-    for(size_t i=0;i<clip.attribution.size();++i) {
+    for(size_t i=0;i<clip.attribution.size() && !ownArt;++i) {
         const int s=clip.attribution[i].section;
         if(s<0) {why="block ("+std::to_string(i%size_t(clip.map.blocksX))+", "+std::to_string(i/size_t(clip.map.blocksX))+") of the clipboard is not a known section";return std::nullopt;}
         if(matcher.twin(s,xf)<0) {why="section '"+matcher.name(s)+"' has no mirror twin";return std::nullopt;}
@@ -850,8 +925,8 @@ std::optional<TerrainClip> mirrorClip(const TerrainClip& clip,Xf xf,const Sectio
     m.seaLevel=c.seaLevel;m.stockTerrain=c.stockTerrain;
     m.heights.resize(size_t(m.width)*m.height);m.features.resize(m.heights.size(),0xFFFF);
     m.tileKeys.resize(size_t(m.blocksX)*m.blocksY);m.tileCols.resize(m.tileKeys.size());m.tileRows.resize(m.tileKeys.size());
-    const auto result=mirrorTerrain(matcher,c,{0,0,c.blocksX,c.blocksY},clip.attribution,xf,m);
-    if(!result.failed.empty()) {why="a clipboard section does not fit its mirror twin";return std::nullopt;}
+    const auto result=ownArt?mirrorOwnTiles(c,{0,0,c.blocksX,c.blocksY},xf,m):mirrorTerrain(matcher,c,{0,0,c.blocksX,c.blocksY},clip.attribution,xf,m);
+    if(!result.failed.empty()) {why=ownArt?"a clipboard block has no tile art":"a clipboard section does not fit its mirror twin";return std::nullopt;}
     for(size_t i=0;i<c.features.size();++i)if(named(c,i)) {
         const auto& name=c.featureNames[c.features[i]];const auto [fx,fz]=footprint?footprint(name):std::pair{1,1};
         if(const auto image=mirrorFeature(int(i%size_t(c.width)),int(i/size_t(c.width)),fx,fz,xf,c.width,c.height)) {
