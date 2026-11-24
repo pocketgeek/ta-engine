@@ -42,5 +42,5 @@ with tempfile.TemporaryDirectory(prefix='ta-editor-recovery-') as folder:
     shutil.copy2(snapshot, str(snapshot) + '.bak')
     snapshot.write_bytes(b'HAPI')  # Simulate a damaged latest generation.
     subprocess.run(command('restore'), env=env, check=True, timeout=30)
-    assert (root / 'original-destination' / 'Ulasem Arena.kmp').is_file()
+    assert (root / 'original-destination' / 'Ashap Plateau.kmp').is_file()
 print('PASS: live-session exclusion, killed editor recovery with corrupt-primary fallback, original save destination, cleanup')

@@ -27,7 +27,9 @@
 #include "tnt/mapgen.h"
 #include "cartographer/font5x7.h"
 #include "util/png.h"
+#include "gaf/gaf.h"
 #include <iostream>
+#include <thread>
 #include <set>
 #include <stdexcept>
 #include <vector>
@@ -235,7 +237,8 @@ static int generationWorkflow(const char* data) {
             float sx,sy;SDL_RenderGetScale(renderer,&sx,&sy);int w,h;SDL_GetRendererOutputSize(renderer,&w,&h);
             click(int(w/sx/2-166),int(h/sy/2+212));++stage;
         }break;
-        case 24: text("789012");for(int i=0;i<8;++i)key(SDLK_TAB);text("16");key(SDLK_TAB);text("0");key(SDLK_RETURN);++stage;break;
+        // RANDOM MAP SETTINGS: seed, players, hills, width, height, world.
+        case 24: text("789012");for(int i=0;i<3;++i)key(SDLK_TAB);text("16");key(SDLK_TAB);text("0");key(SDLK_RETURN);++stage;break;
         case 25:
             if(!correctedSize) {
                 if(const char* path=SDL_getenv("TA_EDITOR_TEST_CAPTURE")) {
@@ -879,8 +882,9 @@ static int aiExtrasWorkflow(const char* data) {
     for(const auto& entry:fs::directory_iterator(data))
         if(ta::hpi::MountSet::key(entry.path().filename().string())!="mods")linkOrCopy(fs::absolute(entry.path()),install/entry.path().filename());
     const auto pack=install/"mods"/"game"/"Extra";fs::create_directories(pack/"units");
-    // A synthetic unit: no retail text.
-    std::ofstream(pack/"units"/"zzpack.fbi",std::ios::binary)<<"[UNITINFO]\n{\n\tUnitName=zzpack;\n\tName=Pack Test Unit;\n\tSide=ARM;\n\tCategory=ARM LAND;\n\tMaxVelocity=1;\n}\n";
+    // A synthetic unit: no retail text but the copyright line, without which
+    // TotalA.exe's pre-pass (0x42a8d0) does not load an FBI at all.
+    std::ofstream(pack/"units"/"zzpack.fbi",std::ios::binary)<<"[UNITINFO]\n{\n\tCopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\n\tUnitName=zzpack;\n\tName=Pack Test Unit;\n\tSide=ARM;\n\tCategory=ARM LAND;\n\tMaxVelocity=1;\n}\n";
     std::vector<std::string> args={"cartographer","Ashap Plateau","--data",install.string(),"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     cart::Editor* editor=nullptr;cart::EditorHooks hooks;hooks.attached=[&](cart::Editor& e){editor=&e;};
@@ -1054,8 +1058,12 @@ static int resizeSaveWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-resize-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    // The Resize dialog counts whole 32-cell units. TA maps come in any size
+    // (Ashap Plateau is 258x264 cells, which its Enter would crop), so this
+    // runs on Red Triangle, a Red Planet map of 18x18 units.
+    auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Red Triangle");
     auto map=ta::tnt::Map::load(vfs.read(path),path);ta::tnt::Scenario metadata;metadata.kingdom="red planet";
+    if(map.width%32 || map.height%32) {std::cerr<<"Red Triangle is not whole units\n";return 2;}
     ta::crt::Scenario scenario;scenario.regions.push_back({"Edge region",map.width-10,map.height-10,map.width-5,map.height-5});
     const auto width=std::to_string(map.width/32),height=std::to_string(map.height/32);
     const auto wider=std::to_string(map.width/32+1),higher=std::to_string(map.height/32+1);
@@ -1275,6 +1283,7 @@ static int regionWorkflow(const char* data) {
         case 12: failed|=dirty;key(SDLK_RETURN);break;
         case 13: {SDL_Event quit{};quit.type=SDL_QUIT;SDL_PushEvent(&quit);break;}
         default: if(frame>20) {failed=true;key(SDLK_ESCAPE);key(SDLK_RETURN);}
+            if(frame>60) {std::cerr<<"region workflow: the editor did not exit\n";std::_Exit(3);}   // a quit prompt nobody answers
         }
     });
     try {
@@ -1439,14 +1448,15 @@ static int thumbnailWorkflow(const char* data) {
                 thumbnails.get(sections.list()[4].path);thumbnails.reset();
                 if(thumbnails.loading() || thumbnails.entries())throw std::runtime_error("thumbnail reset retained work");
                 awaitTexture(path);
-                const std::string portraitPath="anims/buildpic/araarch.jpg";
-                const auto portrait=ta::jpeg::load(assets.read(portraitPath));
+                // TA's build pictures are unitpics/<id>.pcx (an 8-bit PCX with its own palette).
+                const std::string portraitPath="unitpics/armpw.pcx";
+                const auto portrait=ta::gaf::loadPcx(assets.read(portraitPath),portraitPath);
                 auto* icon=awaitTexture(portraitPath);SDL_QueryTexture(icon,nullptr,nullptr,&w,&h);
                 if(w!=portrait.width || h!=portrait.height)throw std::runtime_error("unit portrait aspect/resolution changed");
                 dst={0,0,w,h};SDL_RenderCopy(renderer,icon,nullptr,&dst);SDL_RenderPresent(renderer);
                 rgba.resize(size_t(w)*h*4);
                 if(SDL_RenderReadPixels(renderer,&dst,SDL_PIXELFORMAT_RGBA32,rgba.data(),w*4)!=0 || rgba!=portrait.rgba)
-                    throw std::runtime_error("unit portrait colors differ from its retail JPEG");
+                    throw std::runtime_error("unit portrait colors differ from its retail PCX");
             } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';result=1;}
         }
         SDL_DestroyRenderer(renderer);SDL_FreeSurface(surface);
@@ -1666,39 +1676,45 @@ static int recoveryWorkflow(const char* data,const char* folder,const std::strin
 // Section browser: open the group list, pick a folder, select its first piece,
 // click it again for the next variant, stamp and save. A second session must
 // reopen the remembered group (its first thumbnail is that folder's piece).
+// TA's section names rarely carry variants: Red Planet's (mars049...) have
+// none, so this runs on a Lava map, whose mtn folder holds l-mtn, l-mtn2,
+// l-mtn3 (one piece, numbered variants). Those are version-3 .sct files,
+// which Map::loadSct does not read yet (engine gap), so the stamp fails.
 static int sectionsWorkflow(const char* data) {
     namespace fs=std::filesystem;
     const auto root=fs::temp_directory_path()/("ta-editor-sections-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
-    auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"red planet");
+    auto vfs=ta::hpi::mountRetailRoot(data);cart::SectionLibrary sections;sections.scan(vfs,"lava");
     cart::SectionCatalog catalog;catalog.build(sections.list());
-    const std::string groupId="folder:coast cliffs sandy";int groupRow=-1;
+    const std::string groupId="folder:mtn";int groupRow=-1;
     for(size_t i=0;i<catalog.groups().size();++i)if(catalog.groups()[i].id==groupId)groupRow=int(i);
     if(groupRow<0 || groupRow>8) {std::cerr<<"group row "<<groupRow<<'\n';return 2;}
     const auto& piece=catalog.pieces()[size_t(catalog.groups()[size_t(groupRow)].pieces.front())];
     const auto& firstOfAll=catalog.pieces()[size_t(catalog.groups().front().pieces.front())];
     if(piece.variants.size()<2 || firstOfAll.folder==piece.folder)return 2;
+    const std::string mapName="Lava Highground";
     // Block positions where the saved map carries exactly this prefab's tile art
     // (keys/cols/rows) and heights. Cliff sets share heights, so art decides.
     auto stampedAt=[&](int section) {
         const auto* prefab=sections.load(vfs,sections.list()[size_t(section)].path);
-        if(!prefab || prefab->blocksX!=16 || prefab->blocksY!=16)return -1;
-        int found=0;ta::hpi::Archive archive(root/"Ashap Plateau.kmp");
+        if(!prefab || prefab->blocksX<=0 || prefab->blocksY<=0)return -1;
+        const int pw=prefab->blocksX,ph=prefab->blocksY;
+        int found=0;ta::hpi::Archive archive(root/(mapName+".kmp"));
         for(const auto& entry:archive.entries())if(entry.path.ends_with(".tnt")) {
             const auto map=ta::tnt::Map::load(archive.read(entry),entry.path);
-            for(int by=0;by+16<=map.blocksY;++by)for(int bx=0;bx+16<=map.blocksX;++bx) {
+            for(int by=0;by+ph<=map.blocksY;++by)for(int bx=0;bx+pw<=map.blocksX;++bx) {
                 bool same=true;
-                for(int y=0;y<16 && same;++y)for(int x=0;x<16 && same;++x) {
-                    const size_t m=size_t(by+y)*map.blocksX+bx+x,p=size_t(y)*16+x;
+                for(int y=0;y<ph && same;++y)for(int x=0;x<pw && same;++x) {
+                    const size_t m=size_t(by+y)*map.blocksX+bx+x,p=size_t(y)*pw+x;
                     same=map.tileKeys[m]==prefab->tileKeys[p] && map.tileCols[m]==prefab->tileCols[p] && map.tileRows[m]==prefab->tileRows[p];
                 }
-                for(int y=0;y<32 && same;++y)same=std::equal(prefab->heights.begin()+y*32,prefab->heights.begin()+y*32+32,map.heights.begin()+size_t(by*2+y)*map.width+bx*2);
+                for(int y=0;y<ph*2 && same;++y)same=std::equal(prefab->heights.begin()+size_t(y)*prefab->width,prefab->heights.begin()+size_t(y)*prefab->width+pw*2,map.heights.begin()+size_t(by*2+y)*map.width+bx*2);
                 found+=same;
             }
         }
         return found;
     };
-    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer",mapName,"--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;auto check=[&](bool value,const char* message){if(!value && failure.empty())failure=message;};
     auto session=[&](std::vector<std::function<void(SDL_Renderer*,bool)>> steps) {
@@ -1727,7 +1743,7 @@ static int sectionsWorkflow(const char* data) {
     const int groupButtonY=44+40,firstCellX=48,firstCellY=44+76+4+44,menuRowY=44+53+2+groupRow*16+8;
     session({
         [&](SDL_Renderer* r,bool){click(r,100,groupButtonY);},             // open the group list
-        [&](SDL_Renderer* r,bool){pressDrag(r,260,menuRowY);},             // Coast Cliffs Sandy, over the canvas
+        [&](SDL_Renderer* r,bool){pressDrag(r,260,menuRowY);},             // mtn, over the canvas
         [&](SDL_Renderer* r,bool){click(r,firstCellX,firstCellY);},       // select its first piece
         [&](SDL_Renderer* r,bool){click(r,firstCellX,firstCellY);},       // again: next variant
         [&](SDL_Renderer* r,bool dirty){check(!dirty,"browser clicks must not edit");click(r,560,400);},
@@ -1738,7 +1754,7 @@ static int sectionsWorkflow(const char* data) {
         check(stampedAt(piece.variants[1])>0,"second click stamps the piece's second variant");
         check(stampedAt(piece.variants[0])==0,"first variant was not left selected");
         const auto preferences=cart::loadEditorPreferences(root/"TAengine"/"Cartographer");
-        const auto remembered=preferences.sectionGroups.find("red planet");   // Ulasem says "Zhon"; new maps "red planet"
+        const auto remembered=preferences.sectionGroups.find("lava");   // the map's planet, lowercased
         check(remembered!=preferences.sectionGroups.end() && remembered->second==groupId,"chosen group remembered for the world");
     }
     if(failure.empty()) session({
@@ -1755,9 +1771,10 @@ static int sectionsWorkflow(const char* data) {
         [&](SDL_Renderer*,bool){key(SDLK_RETURN);},
     });
     if(failure.empty())check(stampedAt(piece.variants[0])>0 && stampedAt(firstOfAll.variants[0])==0,"reopened editor restores the remembered group");
-    // Search looks past the remembered folder: another folder's variant, found by
+    // Search looks past the remembered folder: another folder's section, found by
     // its raw name, is the first thumbnail and is what stamps.
-    const auto& wanted=sections.list()[size_t(firstOfAll.variants[1])].name;
+    const int wantedSection=firstOfAll.variants.back();
+    const auto& wanted=sections.list()[size_t(wantedSection)].name;
     if(failure.empty()) session({
         [&](SDL_Renderer*,bool){key(SDLK_f,KMOD_CTRL);text(wanted);},
         [&](SDL_Renderer*,bool){key(SDLK_RETURN);},
@@ -1766,7 +1783,7 @@ static int sectionsWorkflow(const char* data) {
         [&](SDL_Renderer*,bool dirty){check(dirty,"searched stamp marks the map dirty");key(SDLK_s,KMOD_CTRL);},
         [&](SDL_Renderer*,bool){key(SDLK_RETURN);},
     });
-    if(failure.empty())check(stampedAt(firstOfAll.variants[1])>0,"search finds a variant outside the remembered group");
+    if(failure.empty())check(stampedAt(wantedSection)>0,"search finds a section outside the remembered group");
     if(!failure.empty()) {std::cerr<<"FAIL: "<<failure<<"; files: "<<root<<'\n';return 1;}
     fs::remove_all(root);
     std::cout<<"PASS: section group list, folder selection, variant cycling, stamp, remembered group and search across groups\n";return 0;
@@ -1856,11 +1873,17 @@ static int symmetryWorkflow(const char* data) {
     cart::SymmetryRequest request;request.kind=cart::Mirror::Vertical;request.source=0;
     const auto report=cart::symmetrize(expected,expectedStarts,expectedScenario,expectedUnits,request,
         [&](const std::string& name){const auto* ref=features.byName(name);return ref?std::pair{ref->footX,ref->footZ}:std::pair{1,1};},&matcher);
-    if(report.blocks<40000 || expectedUnits.size()!=2)throw std::runtime_error("fixture symmetrize did not mirror the map");
+    // The source half's blocks (64 columns of Ashap Plateau's 129) should all
+    // carry mirrored tile art. TA maps carry their own tiles, which symmetrize
+    // does not flip (engine gap: it reports nearly the whole half unmirrored),
+    // so that is checked here and the editor workflow still runs.
+    if(expectedUnits.size()!=2)throw std::runtime_error("fixture symmetrize did not mirror the unit");
+    const int half=map.blocksX/2*map.blocksY;
     std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     std::string failure;int lastFrame=0;
     auto fail=[&](const std::string& why){if(failure.empty())failure=why;};
+    if(report.blocks*10<half*9)fail("symmetrize mirrored the tile art of "+std::to_string(report.blocks)+" of "+std::to_string(half)+" blocks ("+std::to_string(report.unmirroredBlocks)+" unmirrored)");
     const int result=cart::runEditor(int(raw.size()),raw.data(),[&](SDL_Window* window,SDL_Renderer* renderer,int frame) {
         lastFrame=frame;float sx,sy;SDL_RenderGetScale(renderer,&sx,&sy);
         auto click=[&](int x,int y) {
@@ -2009,7 +2032,10 @@ static int paletteScrollWorkflow(const char* data) {
     const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
     ta::tnt::Scenario metadata;metadata.kingdom="red planet";
-    for(int i=0;i<30;++i)metadata.starts.push_back({i+1,40+(i%6)*60,40+(i/6)*60});   // 30 rows overflow the STARTS list
+    // 30 rows overflow the STARTS list. Each start lies far enough inside
+    // Ashap Plateau (258x264 cells) that the view centred on it is not
+    // clamped to the map edge.
+    for(int i=0;i<30;++i)metadata.starts.push_back({i+1,72+(i%6)*20,72+(i/6)*25});
     std::string error;
     if(!cart::writeDocumentBundle(root/"Scroll.kmp",cart::documentFiles(map,metadata,{},{},{},{},"Scroll"),error))throw std::runtime_error(error);
     std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
@@ -2091,9 +2117,12 @@ static int displayWorkflow(const char* data) {
     const auto root=fs::temp_directory_path()/("ta-editor-display-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directory(root);isolateProfile(root.string().c_str());
     const auto profile=root/"TAengine"/"Cartographer";
-    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Ashap Plateau");
+    // A wide map: at 12.5% the canvas must still be narrower than the map, so
+    // the view can scroll back from the right edge (Ashap Plateau, 4128 px
+    // across, fits the fullscreen canvas whole).
+    const auto vfs=ta::hpi::mountRetailRoot(data);const auto path=ta::hpi::findMap(vfs,"Yerrot Mountains");
     const auto map=ta::tnt::Map::load(vfs.read(path),path);
-    std::vector<std::string> args={"cartographer","Ashap Plateau","--data",data,"--out",root.string()};
+    std::vector<std::string> args={"cartographer","Yerrot Mountains","--data",data,"--out",root.string()};
     std::vector<char*> raw;for(auto& arg:args)raw.push_back(arg.data());
     const char* shots=std::getenv("TA_CARTO_SHOT_DIR");
     cart::EditorHooks hooks;cart::EditorHooks::FrameState state;hooks.frameState=[&](const auto& s) {state=s;};
@@ -2498,6 +2527,20 @@ static int failedOpenWorkflow(const char* data) {
 }
 
 int main(int argc,char** argv) {
+    // Watchdog. The editor turns SDL_QUIT -- and SIGTERM, which SDL delivers as
+    // SDL_QUIT -- into a close request that an unsaved document or an open
+    // dialog can hold up, and a workflow whose script loses its place keeps
+    // re-sending keys every frame. Under SDL_VIDEODRIVER=dummy nothing answers,
+    // so a stuck mode spins at full CPU and a plain `timeout` cannot stop it.
+    // TA_CARTO_TEST_WATCHDOG=<seconds> (0 = off; default 280, past ctest
+    // TIMEOUTs, for manual runs) ends the process instead.
+    {
+        const char* env=std::getenv("TA_CARTO_TEST_WATCHDOG");const int seconds=env?std::atoi(env):280;
+        if(seconds>0)std::thread([seconds] {
+            std::this_thread::sleep_for(std::chrono::seconds(seconds));
+            std::fprintf(stderr,"cartographer_ui_test: watchdog: still running after %d s\n",seconds);std::_Exit(3);
+        }).detach();
+    }
     if(argc>1 && std::string(argv[1])=="--data")return recordTestClient(argc,argv);   // TEST IN GAME's client
     if(argc==3 && std::string(argv[2])=="blank-launch")return blankLaunchWorkflow(argv[1]);
     if(argc==3 && std::string(argv[2])=="failed-open")return failedOpenWorkflow(argv[1]);

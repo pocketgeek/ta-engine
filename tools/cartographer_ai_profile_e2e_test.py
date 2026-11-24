@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """A map's AI profiles, made into a .kmp by the Cartographer, play in a real game.
 
-Headless Cartographer --bundle writes two maps from Inner Circle's terrain, each with
+Headless Cartographer --bundle writes two maps from Ashap Plateau's terrain, each with
 the DEFAULT AI profile named by its .ota (aiprofile=e2e, so ai/e2e.txt) and the file
 all our levels read, ai/taengine.txt, both in the editor's canonical form and kept at
 the .kmp root. The
-profiles put a limit on every side's factories (category FACTORY): 0 in the first map,
+profiles put a limit on every side's factories (TA's category PLANT): 0 in the first map,
 2 in the second. Both maps sit in one scratch Maps/ folder, so their ai/e2e.txt and
 ai/taengine.txt collide. Headless --mpai games (seed 1, the AI seat on DEFAULT, 60 s):
 
-  stock    Inner Circle, with the two maps installed and an unticked game pack: the
+  stock    Ashap Plateau, with the two maps installed and an unticked game pack: the
            same state hash as in a plain install, and no factory limit in the AI's
            weight dump (TA_CLASSIC_WEIGHTS)
   alpha    the first map: the server log names ai/e2e.txt and ai/taengine.txt from the map
@@ -40,10 +40,10 @@ def hpi_read(hpitool, data, path):
 
 
 def factories(hpitool, data):
-    """FBI unit names whose category has FACTORY, from the install's root archives."""
+    """FBI unit names whose category has PLANT (TA's factories), from the install's root archives."""
     names = set()
     for archive in sorted(data.iterdir()):
-        if archive.suffix.lower() not in ('.hpi', '.ufo') or not archive.is_file():
+        if archive.suffix.lower() not in ('.hpi', '.ufo', '.ccx', '.gp3') or not archive.is_file():
             continue
         listing = subprocess.run([str(hpitool), 'list', str(archive)], capture_output=True, text=True).stdout
         for entry in re.findall(r'^\s*\d+\s+(units/[^/\s]+\.fbi)\s*$', listing, re.I | re.M):
@@ -51,7 +51,7 @@ def factories(hpitool, data):
             fbi = fbi.decode('latin-1')
             category = re.search(r'^\s*category\s*=\s*([^;]*);', fbi, re.I | re.M)
             unit = re.search(r'^\s*unitname\s*=\s*([^;\s]*)\s*;', fbi, re.I | re.M)
-            if category and unit and 'FACTORY' in category[1].upper().split():
+            if category and unit and 'PLANT' in category[1].upper().split():
                 names.add(unit[1].lower())
     return sorted(names)
 
@@ -85,11 +85,11 @@ def bundle(a, data, root, name, units, limit):
     kit = root / ('kit-' + name.replace(' ', '-'))
     (kit / 'kmap').mkdir(parents=True)
     (kit / 'ai').mkdir()
-    ota = hpi_read(a.hpitool, data, 'maps/Inner Circle.ota').decode('latin-1')
+    ota = hpi_read(a.hpitool, data, 'maps/Ashap Plateau.ota').decode('latin-1')
     ota, n = re.subn(r'aiprofile\s*=\s*[^;]*;', 'aiprofile=%s;' % PROFILE, ota, flags=re.I)
     assert n == 1, ota
     (kit / 'kmap' / 'E2E Source.ota').write_bytes(ota.encode('latin-1'))
-    (kit / 'kmap' / 'E2E Source.tnt').write_bytes(hpi_read(a.hpitool, data, 'maps/Inner Circle.tnt'))
+    (kit / 'kmap' / 'E2E Source.tnt').write_bytes(hpi_read(a.hpitool, data, 'maps/Ashap Plateau.tnt'))
     (kit / 'ai' / (PROFILE + '.txt')).write_bytes(profile('default', units, limit))
     (kit / 'ai' / 'taengine.txt').write_bytes(profile('level', units, limit))
     subprocess.run([str(a.hpitool), 'pack', str(kit), str(author / 'Maps' / 'E2E Source.kmp')],
@@ -172,7 +172,7 @@ def main():
         alpha = bundle(a, a.data, root, 'E2E Alpha', units, 0)
         beta = bundle(a, a.data, root, 'E2E Beta', units, 2)
 
-        plain_hash, _, _ = play(a, install(root, a.data, 'plain-data'), root / 'plain', 'Inner Circle')
+        plain_hash, _, _ = play(a, install(root, a.data, 'plain-data'), root / 'plain', 'Ashap Plateau')
 
         data = install(root, a.data, 'play-data')
         shutil.copy(alpha, data / 'Maps' / alpha.name)
@@ -182,8 +182,8 @@ def main():
         (pack / (PROFILE + '.txt')).write_bytes(profile('default', units, 1))
         (pack / 'taengine.txt').write_bytes(profile('level', units, 1))
 
-        stock_hash, limits, log = play(a, data, root / 'stock', 'Inner Circle')
-        assert stock_hash == plain_hash, 'Inner Circle hash %s with the AI maps installed, %s without' % (
+        stock_hash, limits, log = play(a, data, root / 'stock', 'Ashap Plateau')
+        assert stock_hash == plain_hash, 'Ashap Plateau hash %s with the AI maps installed, %s without' % (
             stock_hash, plain_hash)
         assert re.search(r'DEFAULT AI profile ai/default\.txt from the base data', log, re.I), log
         assert not re.search(r'our AI levels play their built-in profiles adjusted', log), log
