@@ -1,3 +1,4 @@
+#include "client/nanoframe.h"
 #include "client/shadowcomposite.h"
 #include "util/virtualpath.h"
 #include "client/streaming.h"
@@ -4870,6 +4871,7 @@
             g.shadowVerts.clear();g.maskedShadowVerts.clear();g.maskedShadowRuns.clear();
             g.localPos.clear();g.baseColor.clear();g.shadowLocal.clear();g.maskedShadowLocal.clear();
             g.shadowAtlasPage=nullptr;
+            g.nano=false;g.nanoVerts.clear();g.nanoRuns.clear();
         };
         if (u.underConstruction && !u.buildBegun) {clear();return;}
         auto ut=unitType_.find(u.id);
@@ -4943,12 +4945,21 @@
             if (cf.isStone) meta = &vt->second.statue[0];
             else if (cf.isFrozen) meta = &vt->second.statue[1];
         }
+        // TotalA.exe 0x458845..0x45886c: a unit's animated textures play only while
+        // a structure is activated (unit+0x10e bit 0) or a mobile unit's mover has
+        // speed (mover+0x20); otherwise every one shows its first frame.
+        if (meta == &vt->second.meta && meta->animated && u.type && !u.corpsePhase &&
+            !(isStructure(u.type) ? u.active : u.moverMoving))
+            meta = &vt->second.still;
         SDL_Texture* atlas = (slot >= 0 && size_t(slot) < atlasTex_.size())
                                  ? atlasTex_[size_t(slot)] : nullptr;
         const float occlusion=wallOcclusionY(u.x,u.z);
         const float altitude=anim ? anim->altitude : 0.0f;
         const float birthP=birthProgress(u.id);
-        const bool conjuring=u.type && (u.underConstruction || birthP<1.0f);
+        // TA's own under-construction look replaces the conjure tint (nanoframe.h).
+        const bool nano=u.type && u.underConstruction && u.buildBegun && !u.replacementModel &&
+                        u.replacementOpacity<0 && !ta::devFlag("TA_NO_NANOFRAME");
+        const bool conjuring=u.type && ((u.underConstruction && !nano) || birthP<1.0f);
         const float p=u.replacementOpacity>=0 ? u.replacementOpacity : !u.type ? 1.0f : u.underConstruction
             ? std::clamp(u.hp/u.type->maxHp,0.0f,1.0f) : birthP;
         const bool ghost=u.type && u.type->ghost;
@@ -5040,6 +5051,10 @@
             g.nextCost=CM::pack(CM::estimateNs(stages,bodyStages,key.size(),g.verts.size(),
                                                g.shadowLocal.size()+g.maskedShadowLocal.size()));
         };
+        // The nanoframe follows the build fraction and the game tick: rebuilt every frame.
+        g.nano=nano;
+        if (nano) buildNanoframe(u,g,vt->second,meta,anim,atlas,facing,zm,ax,ay-discoBob);
+        else if (!g.nanoVerts.empty()) {g.nanoVerts.clear();g.nanoRuns.clear();}
         if(cacheHit && !bodyStages && !verify) {
             g.nextCost=CM::pack(CM::estimateNs(0,0,key.size(),0,0));
             return;
@@ -5079,7 +5094,7 @@
             } else g.missCause=uint8_t(MC::Changed);
         }
         // Capacity before the update, to count reallocations (telemetry).
-        std::array<size_t,10> capacityBefore{};
+        std::array<size_t,12> capacityBefore{};
         if(timed) {size_t k=0;g.forEachVector([&](const auto& v){capacityBefore[k++]=v.capacity();});}
         // A cold entry's shadow revision belongs to whatever held it before.
         const bool cold=g.localKey.empty();
@@ -5611,6 +5626,116 @@
         return !same;
     }
 
+    // TotalA.exe 0x458dd0 in our triangle pipeline (client/nanoframe.h). Retail
+    // recolours the drawn object bitmap per pixel by its z-buffer height; heights
+    // interpolate linearly over a face, so clipping each depth-sorted face at the
+    // two cut heights gives the same bands. Each primitive's outline follows its
+    // last face in the painter order, standing in for the outline's depth test.
+    void GameView::buildNanoframe(const UnitR& u, UnitGeom& g, const Visual& visual, const PieceMeta* meta,
+                                  const Anim* anim, SDL_Texture* atlas, float facing, float zm,
+                                  float ax, float ay) {
+        using namespace ta::nanoframe;
+        thread_local std::vector<Tri> tris;
+        thread_local NanoCollect nc;
+        thread_local std::vector<size_t> order;
+        thread_local std::vector<int> pending;
+        tris.clear();nc.clear();
+        collect(tris,atlas,visual.model.root,modelBodyTransform(u.bodyPitch,u.bodyRoll),anim,facing,
+                u.player,false,true,false,nullptr,meta,false,nullptr,isStructure(u.type),&nc);
+        order.resize(tris.size());
+        for (size_t i=0;i<order.size();++i) order[i]=i;
+        std::stable_sort(order.begin(),order.end(),
+            [&](size_t a,size_t b) { return tris[a].depth>tris[b].depth; });
+        pending.assign(nc.outlines.size(),0);
+        for (int32_t outline:nc.primitive) if (outline>=0) ++pending[size_t(outline)];
+
+        int first=0,second=0;
+        shimmer(uint32_t(u.id),front().gameTick,first,second);
+        const Bands bands=ta::nanoframe::bands(u.buildRemaining,first,second);
+        const float lower=float(lowerCut(bands)),upper=float(bands.level);
+#ifndef NDEBUG
+        static const bool log=ta::devFlag("TA_NANOFRAME_LOG");
+        if (log) std::fprintf(stderr,"nanoframe: unit %d tick %u remaining %.4f level %d bands %d/%d/%d\n",
+                              u.id,front().gameTick,u.buildRemaining,bands.level,bands.below,bands.band,bands.above);
+#endif
+        const auto green=[&](int index) {
+            return nanoPalette_[size_t(std::clamp(index-0xa0,0,15))];
+        };
+
+        g.nanoVerts.clear();g.nanoRuns.clear();
+        const auto push=[&](SDL_Texture* texture,const SDL_Vertex& vertex) {
+            if (g.nanoRuns.empty() || g.nanoRuns.back().first!=texture) g.nanoRuns.push_back({texture,0});
+            ++g.nanoRuns.back().second;
+            g.nanoVerts.push_back(vertex);
+        };
+        struct V { SDL_Vertex v; float h; };
+        const auto lerp=[](const V& a,const V& b,float t) {
+            V o;
+            o.v.position={a.v.position.x+(b.v.position.x-a.v.position.x)*t,
+                          a.v.position.y+(b.v.position.y-a.v.position.y)*t};
+            o.v.tex_coord={a.v.tex_coord.x+(b.v.tex_coord.x-a.v.tex_coord.x)*t,
+                           a.v.tex_coord.y+(b.v.tex_coord.y-a.v.tex_coord.y)*t};
+            const auto mix=[&](Uint8 x,Uint8 y) { return Uint8(std::lround(float(x)+(float(y)-float(x))*t)); };
+            o.v.color={mix(a.v.color.r,b.v.color.r),mix(a.v.color.g,b.v.color.g),
+                       mix(a.v.color.b,b.v.color.b),mix(a.v.color.a,b.v.color.a)};
+            o.h=a.h+(b.h-a.h)*t;
+            return o;
+        };
+        // Keep the part with h < cut (below) or h >= cut (!below): Sutherland-Hodgman.
+        const auto clip=[&](const std::vector<V>& in,float cut,bool below,std::vector<V>& out) {
+            out.clear();
+            for (size_t i=0;i<in.size();++i) {
+                const V& a=in[i];const V& b=in[(i+1)%in.size()];
+                const bool ain=below ? a.h<cut : a.h>=cut;
+                const bool bin=below ? b.h<cut : b.h>=cut;
+                if (ain) out.push_back(a);
+                if (ain!=bin) out.push_back(lerp(a,b,(cut-a.h)/(b.h-a.h)));
+            }
+        };
+        const auto emit=[&](const std::vector<V>& polygon,int code,SDL_Texture* texture) {
+            if (polygon.size()<3 || code==kTransparent) return;
+            for (size_t i=1;i+1<polygon.size();++i)
+                for (size_t k:{size_t(0),i,i+1}) {
+                    SDL_Vertex vertex=polygon[k].v;
+                    vertex.position={vertex.position.x*zm+ax,vertex.position.y*zm+ay};
+                    if (code==kKeep) push(texture,vertex);
+                    else {vertex.color=green(code);vertex.tex_coord={0,0};push(nullptr,vertex);}
+                }
+        };
+        thread_local std::vector<V> poly,lowerPart,rest,band,upperPart;
+        const float edge=std::max(1.0f,zm);   // one game pixel
+        const SDL_Color outlineColour=green(second);
+        for (size_t index:order) {
+            const Tri& tri=tris[index];
+            poly.clear();
+            for (int k=0;k<3;++k) poly.push_back({tri.v[k],nc.heights[index][size_t(k)]+float(kHeightBias)});
+            clip(poly,lower,true,lowerPart);
+            emit(lowerPart,bands.below,tri.tex);
+            clip(poly,lower,false,rest);
+            clip(rest,upper,true,band);
+            emit(band,bands.band,tri.tex);
+            clip(poly,upper,false,upperPart);
+            emit(upperPart,bands.above,tri.tex);
+            const int32_t outline=nc.primitive[index];
+            if (outline<0 || --pending[size_t(outline)]>0) continue;
+            const auto [start,count]=nc.outlines[size_t(outline)];
+            for (uint32_t i=0;i<count;++i) {
+                const SDL_FPoint a0=nc.points[start+i],b0=nc.points[start+(i+1)%count];
+                const SDL_FPoint a{a0.x*zm+ax,a0.y*zm+ay},b{b0.x*zm+ax,b0.y*zm+ay};
+                float dx=b.x-a.x,dy=b.y-a.y;
+                const float length=std::sqrt(dx*dx+dy*dy);
+                if (length<1e-4f) continue;
+                dx/=length;dy/=length;
+                const float nx=-dy*edge*0.5f,ny=dx*edge*0.5f;
+                // Extend half a pixel past each end so corners close.
+                const float ex=dx*edge*0.5f,ey=dy*edge*0.5f;
+                const SDL_FPoint q[4]={{a.x-ex+nx,a.y-ey+ny},{b.x+ex+nx,b.y+ey+ny},
+                                       {b.x+ex-nx,b.y+ey-ny},{a.x-ex-nx,a.y-ey-ny}};
+                for (int k:{0,1,2,0,2,3}) push(nullptr,SDL_Vertex{q[k],outlineColour,{0,0}});
+            }
+        }
+    }
+
     void GameView::drawUnit(const UnitR& u, uint8_t bodyAlpha) {
         // A placed-but-not-yet-started site shows as a faint ghost until the
         // builder arrives and it begins conjuring for real.
@@ -5741,6 +5866,14 @@
         // native pass when every run texture can join (one priming, not one per run).
         if (!topShows) {
             // Nothing above the wall top: only the silhouette below.
+        } else if (g.nano) {
+            SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+            int off = 0;
+            for (const auto& r : g.nanoRuns) {
+                if (r.first) drawModelRun(r.first, g.nanoVerts.data() + off, r.second, false);
+                else SDL_RenderGeometry(ren_, nullptr, g.nanoVerts.data() + off, r.second, nullptr, 0);
+                off += r.second;
+            }
         } else if (bodyAlpha != 255) {
             drawFadedBody(gslot, bodyAlpha);
         } else if (!drawRunsNative(g.runs, g.verts.data())) {
@@ -8578,7 +8711,7 @@
                  bool mirror, bool isRoot, bool shadow,
                  RadialExtent* ext, const PieceMeta* meta,
                  bool shadowCull, const PreparedPiece* prepared,
-                 bool paletteLighting) {
+                 bool paletteLighting, NanoCollect* nano) {
         if (mirror || ext) prepared=nullptr; // special preview/extent paths use the reference transform
         const ta::cob::PieceState* ps = prepared ? nullptr : pieceFor(anim, o.name);
         // Retail tests visibility per piece; hidden parents still transform
@@ -8702,6 +8835,7 @@
                     vo.pos = {rx, -ry};
                 }
             }
+            int32_t nanoOutline = -1;   // this primitive's outline, once a face is drawn
             for (size_t i = 1; i + 1 < p.indices.size(); ++i) {
                 size_t idx[3] = {0, i, i + 1};
                 Tri tri{};
@@ -8865,12 +8999,30 @@
                 }
                 tri.depth = depth / 3;
                 out.push_back(tri);
+                if (nano) {
+                    if (nanoOutline < 0) {
+                        // Retail outlines every primitive (0x458fa0); a culled one
+                        // stands in for its depth-tested hidden edges here.
+                        bool whole = true;
+                        for (const auto& vo : vcache) whole = whole && vo.ok;
+                        if (whole) {
+                            nanoOutline = int32_t(nano->outlines.size());
+                            nano->outlines.push_back({uint32_t(nano->points.size()),uint32_t(vcache.size())});
+                            for (const auto& vo : vcache) {
+                                nano->points.push_back(vo.pos);
+                                nano->pointHeights.push_back(vo.py);
+                            }
+                        }
+                    }
+                    nano->heights.push_back({py[0], py[1], py[2]});
+                    nano->primitive.push_back(nanoOutline);
+                }
             }
         }
         for (size_t ci = 0; ci < o.children.size(); ++ci) {
             const PieceMeta* cm = (ci < meta->children.size()) ? &meta->children[ci] : nullptr;
             collect(out, atlas, o.children[ci], xf, anim, heading, player, mirror, false,
-                    shadow, ext, cm, shadowCull, prepared ? &prepared->children[ci] : nullptr,paletteLighting);
+                    shadow, ext, cm, shadowCull, prepared ? &prepared->children[ci] : nullptr,paletteLighting,nano);
         }
     }
 

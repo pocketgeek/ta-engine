@@ -96,6 +96,9 @@ struct UnitR {
     std::vector<ta::sim::RetailConstructionParticle> constructionParticles;
     float buildProgress = 0;
     int constructionPercentLeft = 0;
+    float buildRemaining = 0;       // retail unit+0x104: 1 at placement, 0 complete
+    bool moverMoving = false;       // retail mover+0x20 (speed) nonzero
+
     const ta::sim::UnitType* replacementModel = nullptr;
     float replacementX=0,replacementZ=0,replacementHeading=0;
     float replacementOpacity=-1; // negative: ordinary construction presentation
