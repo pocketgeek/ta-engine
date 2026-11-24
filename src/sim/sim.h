@@ -3637,7 +3637,6 @@ private:
     bool clearableBlockerAt(Fixed x,Fixed z,std::array<int,4>* footprint=nullptr) const;
     int suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events);
     void pushSuppressApproach(Unit& u,Fixed x,Fixed z,int32_t outer,int32_t inner);
-    void pushSuppressFormation(Unit& u);
     // The approach ring of a SUPPRESS approach leg (Order::suppressInner).
     std::optional<RetailRingGoal> suppressRing(const Unit& u,const Order& goal) const;
     void clearScriptWeaponTarget(Unit& u,bool fromCommand=false);

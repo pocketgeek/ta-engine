@@ -9581,25 +9581,6 @@ void World::pushSuppressApproach(Unit& u,Fixed x,Fixed z,int32_t outer,int32_t i
     resetGroundSegment(u,u.orders.front());
 }
 
-// 404e69..404ed3: Move_Ground_Formation (handler 402880), level -3, response
-// mode 0 (no target scan), ahead of the order: the moving members' centre
-// until back within level 3 (tickGroundMission, called from tickCombat).
-// The order's own walk (a melee rectangle and its route) goes; stage 0 makes
-// it again. Its slots are left as they are (syncSlotMode).
-void World::pushSuppressFormation(Unit& u) {
-    const size_t leg=currentLeg(u.orders);
-    Order& o=u.orders[leg];
-    o.buildRectangle.reset();o.controller=0;o.hasSegment=false;
-    o.navigationExhausted=o.navigationConsumed=false;
-    cancelPath(u);
-    if (leg) u.orders.erase(u.orders.begin(),u.orders.begin()+long(leg));
-    Order formation;
-    formation.x=u.x;formation.z=u.z;formation.goal=formation.groundMission=true;
-    formation.formationLevel=-3;formation.mission.flags=0x11000000u;
-    formation.attackFormation=true;formation.issuedTick=tickCounter_;
-    u.orders.insert(u.orders.begin(),formation);
-}
-
 int World::suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events) {
     const int n=int(std::min<size_t>(3,u.type->weapons.size()));
     if (!n) return 5;
@@ -9609,22 +9590,11 @@ int World::suppressStage(Unit& u,Order& o,RetailMissionState& m,uint32_t events)
     const Weapon& w=u.type->weapons[size_t(slot)];
     const bool melee=w.melee;
     if (events&0x40000u) return 5;
-    // 404e12..404f1b, on every call: the group check (retailAttackGroupCheck,
-    // level 4). A member out of its slot walks back to the group ahead of the
-    // order and the order starts again at stage 0 when it is back; a flagged
-    // one may leave instead (8).
-    bool formation=false;
-    const int head=retailAttackGroupCheck(m.flags,retailAttackOutOfSlot(u,4),
-        retailNextMissionFlags(u,currentLeg(u.orders)),3,15,[&](int n) { return int(gameRand(n)); },
-        [&] { leaveRetailGroupCentre(u); },[&] { return formation=true; });
-    if (formation) {
-        // Inserting invalidates o and m: the stage first, and the dispatcher
-        // touches m no more on 4 (its 0).
-        m.stage=0;
-        pushSuppressFormation(u);
-        return 4;
-    }
-    if (head>=0) return head;
+    // No group check: TotalA.exe's Suppress (0x4038a0, registry row flags
+    // 0x410) goes from its event exit straight to its stages, and TA has no
+    // formation missions at all (no Move_Ground_Formation / VTOL_Move_Formation
+    // row or name in TotalA.exe). Kingdoms' SUPPRESS walked an outlier back to
+    // its group ahead of the order (its 404e12 group check); TA's never does.
     switch (m.stage) {
     case 0:
         if (u.type->canFly) return 8;
@@ -14296,6 +14266,10 @@ void World::tickAirToGroundHover(Unit& u,const Unit* target,const Weapon* select
         bool owns(const Order& o) const {
             return target ? o.targetId==target->id : (o.airPoint==Order::kAirHover && !o.targetId);
         }
+        // TA has no group check here: TotalA.exe's AirToGroundHover (0x413470)
+        // has no formation to push (no VTOL_Move_Formation row or name in
+        // TotalA.exe), so the shared check never finds it out of a slot.
+        bool outOfSlot() const { return false; }
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
             return !stepOutTo && !retargetTo && !formationTo && !u.orders.empty() &&
@@ -14407,7 +14381,10 @@ void World::tickAirToGroundHover(Unit& u,const Unit* target,const Weapon* select
                     (script ? script->movementRate==0 : target->speed.v==0);
             }
             in.automatic=order.autoTarget;
-            in.traffic=u.airTraffic;
+            // No air-traffic step-out: TotalA.exe has no VTOL_StepOut mission
+            // (no row or name in its mission tables), so TA's hover (0x413470)
+            // never steps out nor gives the attack up after step-outs.
+            in.traffic=0;
             in.footX=int16_t(u.type->footX);
             // 5066f0: off the map when the footprint does not fit the cell grid.
             const int ox=footprintOrigin(u.x,u.type->footX),oz=footprintOrigin(u.z,u.type->footZ);
@@ -14498,6 +14475,9 @@ void World::tickAirToGround(Unit& u,const Unit* target,const Weapon* selected) {
         bool owns(const Order& o) const {
             return target ? o.targetId==target->id : (o.airPoint==Order::kAirRun && !o.targetId);
         }
+        // No group check in TA: TotalA.exe's AirToGround (0x412710) pushes no
+        // formation (TA has no VTOL_Move_Formation row or name).
+        bool outOfSlot() const { return false; }
         bool enabled() const { return u.alive() && !u.incapacitated() && !u.underConstruction && !u.embarked(); }
         RetailMissionState* head() {
             return !stepOutTo && !retargetTo && !formationTo && !u.orders.empty() && owns(u.orders.front())
@@ -14573,7 +14553,8 @@ void World::tickAirToGround(Unit& u,const Unit* target,const Weapon* selected) {
                 return 5;
             }
             RetailAirRun run;
-            run.traffic=u.airTraffic;run.footX=int16_t(u.type->footX);
+            // No air-traffic step-out (TotalA.exe has no VTOL_StepOut mission).
+            run.traffic=0;run.footX=int16_t(u.type->footX);
             run.automatic=order.autoTarget;run.hasTarget=target!=nullptr;
             run.position={u.x.v,u.flightY.v,u.z.v};
             if (target) {

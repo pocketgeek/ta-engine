@@ -105,6 +105,15 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 - armwar / armcom sharing one aim signal: confirmed by emulating TotalA.exe's COB
   VM (tools/re/cob_signal_emu.py) -- the later AimX kills the earlier one, which
   never reports, so retail itself often fires only one of the two. Kept.
+- Attack group checks: TotalA.exe has no formation or step-out missions (no
+  Move_Ground_Formation, VTOL_Move_Formation or VTOL_StepOut row or name; its
+  ground table runs Standby .. RepairUnitNoMove). Suppress (0x4038a0: the 0x800
+  event exit, then stages 0-2), AirToGround (0x412710) and AirToGroundHover
+  (0x413470) therefore never call an outlier back to its group, leave the order
+  for it, or step out of an air stack; World skips Kingdoms' check and step-out
+  for them (AirStrike already had neither). The Kingdoms group/formation
+  machinery still runs for moves, standbys and guards in Retail mode, and the
+  step-outs for the other flyer missions (air_traffic) -- unverified for TA.
 
 ## Open
 - The Kingdoms-data tests run on TA units/maps now. Engine gaps they expose (left
