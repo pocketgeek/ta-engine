@@ -45,105 +45,28 @@ int main(int argc,char** argv) {
     };
     {
         ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
-        // A different converter can turn the target while this Harpy is still
-        // aiming. Both explicit AI orders and automatic attack-move targets
-        // must release it and preserve the queued destination.
-        for(bool automatic:{false,true}) for(int newOwner:{0,2}) {
-            const auto* harpy=registry.find("zonharp");
-            auto victim=*registry.find("arasword");victim.maxHp=25000;
-            victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            ta::sim::World world;world.setPlayerCount(3);world.setTeam(2,0);
-            world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
-            const int from=world.spawn(harpy,1000,1000,0,0),target=world.spawn(&victim,1180,1000,0,1);
-            world.attack(from,target,false);world.unit(from)->orders.front().autoTarget=automatic;
-            world.order(from,1800,1800,true);
-            world.tick(1.f/30);
-            ta::sim::RetailReplayProbe::capture(world,target,newOwner);
-            world.tick(1.f/30);
-            const auto* unit=world.unit(from);
-            check(std::none_of(unit->orders.begin(),unit->orders.end(),[&](const auto& o){return o.targetId==target;}),
-                  "Harpy releases a target converted to its owner or ally");
-            check(!unit->scriptAimTarget && !unit->firedWeapons,
-                  "conversion cancels Harpy aim and further weapon releases");
-            check(!unit->orders.empty(),"conversion preserves the Harpy's queued move");
-            const auto& charm=registry.find("tarmind")->weapons.front();
-            for(int i=0;i<20;++i)ta::sim::RetailReplayProbe::impact(world,charm,from,target);
-            // 52da10 spares only the caster's own player: a late charm that
-            // strikes a unit turned to an ally takes it.
-            check(world.unit(target)->player==0,newOwner==0 ? "late charm impacts leave the caster's own unit alone" :
-                  "a late charm impact takes a unit turned to an ally");
-            world.stop(from);
-            const int next=world.spawn(&victim,world.unit(from)->x.toFloat(),world.unit(from)->z.toFloat()+48,0,1);
-            world.unit(from)->fireState=2;world.unit(from)->moveState=2;
-            bool acquired=false;
-            for(int i=0;i<300 && !acquired;++i) {world.tick(1.f/30);acquired=world.unit(from)->scriptAimTarget==next;}
-            check(acquired,"Harpy can acquire another enemy after conversion");
-        }
-        int namedLightning=0;
-        for(const auto& [name,type]:registry.types())for(const auto& weapon:type.weapons) {
-            if(!weapon.lightning || weapon.hwEffectName.empty())continue;
-            ++namedLightning;
-            check(bool(weapon.lightningEffect),"named lightning resolves its authored effect");
-            if(weapon.lightningEffect)
-                check(!weapon.lightningEffect->initial.sources.empty(),"named lightning retains its emitters");
-        }
-        check(namedLightning>0,"shipped named lightning roster is covered");
-        check(registry.find("zonhunt")->hasNimbusArt,"Zhon faction nimbus is available to the simulation");
+        // A Roach (corroach: kamikaze, no weapon) keeps its authored death
+        // explosion (explodeas CRAWL_BLASTSML): killed beside an enemy, it
+        // hurts it once Dying ends. (Its ATTACK_KAMIKAZE run is not ported.)
         {
-            const auto* rat=registry.find("tarkam");
-            auto victim=*registry.find("tarzom");victim.maxHp=25000;victim.healTime=0;
+            const auto* rat=registry.find("corroach");
+            auto victim=*registry.find("armpw");victim.maxHp=25000;victim.healTime=0;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
             ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);world.buildNavClasses(registry);
             const int from=world.spawn(rat,1000,1000,0,0),target=world.spawn(&victim,1040,1000,0,1);
-            world.attack(from,target,false);
-            for(int tick=0;tick<180;++tick)world.tick(1.f/30);
-            check(world.unit(target)->hp==ta::sim::Fixed::fromInt(victim.maxHp),
-                  "Kamikaze Rat's absent weapon callbacks do not invent bite damage");
-            // The death weapon fires at retirement (512ae0), once Dying ends.
+            world.tick(1.f/30);
             world.unit(from)->hp={};world.tick(1.f/30);
             for(int tick=0;tick<600 && world.unit(from)->deathPending;++tick)world.tick(1.f/30);
             check(world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp),
-                  "Kamikaze Rat retains its authored death explosion without weapon callbacks");
+                  "a weaponless Roach retains its authored death explosion");
         }
 
-        // A bolt leaves the muzzle on the heading from the shooter's origin to
-        // the led SweetSpot, so a muzzle set off to one side passes a narrow
-        // target by that offset: the Mage Tower's misses a Zombie due east and
-        // due south, and hits one to the north-west. Each slot must reach the
-        // Zombie from one of the two sides.
-        for(const auto& [name,definition]:registry.types())for(size_t slot=0;slot<definition.weapons.size();++slot)
-            for(const float side:{0.f,1.f}) {
-            if(!definition.weapons[slot].lightning)continue;
-            auto type=definition;
-            auto victim=*registry.find("tarzom");victim.maxHp=25000;victim.healTime=0;
-            victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            ta::sim::World world;
-            world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
-            world.buildNavClasses(registry);
-            const int from=world.spawn(&type,1000,1000,0,0),
-                target=world.spawn(&victim,side ? 870.f : 1180.f,side ? 870.f : 1000.f,0,1);
-            world.player(0).mana=100000;world.setWeapon(from,int(slot));world.attack(from,target,false);
-            bool emitted=false,hit=false;
-            for(int tick=0;tick<900 && !hit;++tick) {
-                world.tick(1.f/30.f);
-                for(const auto& shot:world.projectiles())if(shot.fromId==from && shot.slot==int(slot) && shot.wsrc==&type.weapons[slot] && shot.lightningEffect &&
-                    !shot.lightningEffect->particles.empty())emitted=true;
-                hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
-            }
-            std::printf("lightning balance=%s unit=%s slot=%zu side=%s emitted=%d hit=%d hash=%016llx\n","standard",name.c_str(),slot,side ? "north-west" : "east",int(emitted),int(hit),
-                static_cast<unsigned long long>(world.stateHash()));
-            if(!side && emitted && hit)break;
-            if(side)check(emitted && hit,"selected shipped lightning slot emits and reaches the enemy through live combat");
-        }
-
-        check(ta::hpi::affectsGameplay("gamedata/effects/effects.tdf"),
-              "named effect definitions are protected multiplayer data");
         {
             ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             world.buildNavClasses(registry);
-            const auto* type=registry.find("zonhunt");
+            const auto* type=registry.find("armfig");
             const int id=world.spawn(type,1000,1000,0,0);
             world.order(id,1800,1600,false);
             bool leaned=false,retained=false;
@@ -153,47 +76,24 @@ int main(int argc,char** argv) {
                 leaned=leaned || unit.groundRoll!=0 || unit.groundPitch!=0;
                 retained=retained || unit.flightAcceleration!=std::array<int32_t,3>{};
             }
-            check(leaned && retained,"flying monarch gets authoritative acceleration-driven attitude");
+            check(leaned && retained,"a flying fighter gets authoritative acceleration-driven attitude");
         }
-        for(const char* name:{"aradrag","credrag","crefire","cresage","tardrag","tarknigh",
-                             "tarmage","tarspout","verdrag","zondrag","zondrake"}) {
+        // TA's ordinary line-of-sight shots (Kbots, vehicles, a hovercraft):
+        // a slot 0 the engine classes as plain straight.
+        for(const char* name:{"armpw","armflash","armrock","corstorm","armmav","armanac"}) {
             const auto* definition=registry.find(name);
-            if(!definition) {check(false,"flame roster definition exists");continue;}
-            auto type=*definition;
-            check(!type.weapons.empty() && type.weapons[0].flameKind>=0,"flame subclass loads independently of hit-effect art");
-            auto victim=*registry.find("tarzom");victim.maxHp=25000;victim.healTime=0;
-            victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
-            ta::sim::World world;
-            world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
-            world.buildNavClasses(registry);
-            const int from=world.spawn(&type,1000,1000,0,0),target=world.spawn(&victim,1180,1000,0,1);
-            world.player(0).mana=100000;world.attack(from,target,false);
-            bool emitted=false,hit=false;int kind=-1;
-            for(int tick=0;tick<900 && !hit;++tick) {
-                world.tick(1.f/30.f);
-                for(const auto& flame:world.flames())if(flame.fromId==from && !flame.particles.empty()) {
-                    emitted=true;kind=int(flame.particles.back().kind);
-                }
-                hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp);
+            if(!definition || definition->weapons.empty() || !definition->weapons[0].straight) {
+                check(false,"straight roster definition exists with a straight slot 0");continue;
             }
-            std::printf("flame balance=%s unit=%s emitted=%d hit=%d kind=%d hash=%016llx\n","standard",name,int(emitted),int(hit),kind,
-                static_cast<unsigned long long>(world.stateHash()));
-            check(emitted && hit && kind==type.weapons[0].flameKind,
-                "shipped flame weapon emits its subclass and reaches the enemy through live combat");
-        }
-        for(const char* name:{"arassh","tarhel","tarnecro","verarch","vercen","verharp",
-                             "vermage","vertower","zonspide"}) {
-            const auto* definition=registry.find(name);
-            if(!definition || definition->weapons.empty() || !definition->weapons[0].straight)continue;
             auto type=*definition;
             const bool naval=type.minWaterDepth>0;
-            auto victim=*registry.find(naval ? "verharp" : "tarzom");victim.maxHp=25000;victim.healTime=0;
+            auto victim=*registry.find(naval ? "corpt" : "corak");victim.maxHp=25000;victim.healTime=0;
             victim.maxVel={};victim.weapon.damage=0;victim.weapons.clear();
             ta::sim::World world;
             world.setTerrain(std::vector<uint8_t>(128*128,naval ? 20 : 100),128,128,naval ? 100 : 20);
             world.buildNavClasses(registry);
             const int from=world.spawn(&type,1000,1000,0,0),target=world.spawn(&victim,1180,1000,0,1);
-            world.player(0).mana=100000;world.attack(from,target,false);
+            world.setStartResources(0,100000,100000);world.attack(from,target,false);
             bool launched=false,hit=false,moved=false;
             for(int tick=0;tick<900 && !hit;++tick) {
                 world.tick(1.f/30.f);
@@ -219,17 +119,17 @@ int main(int argc,char** argv) {
             int flyer=world.spawn(type,1000,1000,0,0);
             world.order(flyer,1200,1000,false);
             // Exercise the actual VTOL standby/landing controller, not a manually
-            // cleared active flag: this is what made already-landed drakes fail.
+            // cleared active flag: this is what made already-landed flyers fail.
             for (int tick=0;tick<1800 && world.unit(flyer)->active;++tick)
                 world.tick(1.f/30.f);
             if (type->vtolStandby)
                 check(!world.unit(flyer)->active,"landing runs the retail deactivation callback");
             for (int tick=0;tick<300;++tick) world.tick(1.f/30.f);
-            auto victim=*registry.find("tarzom");victim.maxHp=30000;victim.healTime=0;victim.weapon.damage=0;victim.weapons.clear();
+            auto victim=*registry.find("corak");victim.maxHp=30000;victim.healTime=0;victim.weapon.damage=0;victim.weapons.clear();
             const float x=world.unit(flyer)->x.toFloat(),z=world.unit(flyer)->z.toFloat();
             const float distance=order==0 ? std::min(200.f,float(type->weapon.range)*0.5f) : 1000.f;
             victim.maxVel={};
-            world.player(0).mana=100000;
+            world.setStartResources(0,100000,100000);
             int target=world.spawn(&victim,x+distance,z,0,1);
             if (order==1) world.attackMove(flyer,x+distance,z,false);
             if (order==2) selectWeaponFor(world,flyer,target);
@@ -242,8 +142,18 @@ int main(int argc,char** argv) {
                 attacked=attacked || (!o.empty() && o.front().targetId==target);
                 seen=seen || world.playerSees(0,*world.unit(target));
             }
-            std::printf("balance=%s unit=%s order=%d fired=%d seen=%d\n","standard",
-                        name.c_str(),order,int(fired),int(seen));
+            std::printf("balance=%s unit=%s order=%d fired=%d attacked=%d seen=%d\n","standard",
+                        name.c_str(),order,int(fired),int(attacked),int(seen));
+            // TA's bombs are commandfire (never swept or picked; only an
+            // explicit order fires them) and its torpedoes waterweapon: a
+            // flyer with no other weapon leaves a ground enemy alone unless
+            // ordered to attack it (the Thunder, Shadow, Lancet, Titan).
+            bool autoWeapon=false;
+            for (const auto& weapon:type->weapons) autoWeapon|=!weapon.commandFire && !weapon.waterWeapon && !weapon.toAir;
+            if (order<2 && !autoWeapon) {
+                check(!attacked && !fired,"a flyer with only command-fire or water weapons leaves a ground enemy alone");
+                continue;
+            }
             // Idle on Hold Position (standingunitorder 1), VTOL_Standby's
             // 4d7de0(unit, found, 0, 0, 1, 0) refuses: the flyer stays landed
             // and only its sweep slots may take the target.
@@ -257,16 +167,16 @@ int main(int argc,char** argv) {
                 check(!attacked && !fired,"an idle flyer leaves an enemy its player cannot see");
                 continue;
             }
-            // A very short authored maneuver leash (e.g. the Crusades Angel)
-            // intentionally refuses this idle target. Explicit orders override it.
+            // A very short authored maneuver leash intentionally refuses this
+            // idle target. Explicit orders override it.
             if (order==0 && world.unit(flyer)->moveState==1 && type->leash>0 && distance>type->leash) {
                 check(!fired,"automatic attack respects the authored maneuver leash");
                 continue;
             }
             // A fight-move's pick is the move's own scan (4d8370), which runs
             // the picker on the scanning slot alone (519ac0: a switcher's
-            // selected one): the Crusades Angel's Soul Stealer (slot 0) does
-            // nothing to Undead, so it leaves the zombie, as retail's would.
+            // selected one): a scanning slot that does nothing to the target
+            // leaves it, as retail's would.
             // The stride scan it used to rely on weighed every weapon.
             if (order==1 && !type->weapons.empty() && type->weapons[0].damageVs(&victim)<=0) {
                 check(!attacked,"a fight-move leaves a target its scanning slot cannot hurt");
@@ -281,10 +191,12 @@ int main(int argc,char** argv) {
             if (!type.hoverAttack && !type.weapon.hoverAttack) continue;
             for (bool close:{false,true}) {
                 ta::sim::World w;
-                const bool overrides=name=="zondrake" && close;
+                // (Kingdoms' weapon-level hoverattackdistance/altitude override
+                // case is gone: no TA weapon carries those keys.)
+                const bool overrides=false;
                 const int ground=overrides?240:100;
                 w.setTerrain(std::vector<uint8_t>(256*256,overrides?230:100),256,256,overrides?240:20);
-                auto victim=*registry.find("tarzom");victim.maxHp=30000;   // Fixed is 16.16: anything above 32767 overflows (UB; wraps on Linux, saturates to a corpse on MinGW)
+                auto victim=*registry.find("corak");victim.maxHp=30000;   // Fixed is 16.16: anything above 32767 overflows (UB; wraps on Linux, saturates to a corpse on MinGW)
                 victim.healTime=0;
                 victim.weapon.damage=0;victim.weapons.clear();
                 for (auto& weapon:type.weapons) { weapon.mindControl=false;weapon.damage=1; }
@@ -295,7 +207,7 @@ int main(int argc,char** argv) {
                 type.weapon=type.weapons.front();
                 const int a=w.spawn(&type,1500,1500,0,0);
                 const int b=w.spawn(&victim,close?1520:2500,1500,0,1);
-                w.player(0).mana=1000000;w.attack(a,b,false);
+                w.setStartResources(0,100000,100000);w.attack(a,b,false);
                 for (int tick=0;tick<1500;++tick) w.tick(1.f/30.f);
                 const auto* u=w.unit(a);const auto* t=w.unit(b);
                 const auto& weapon=type.weapons.front();
@@ -322,22 +234,22 @@ int main(int argc,char** argv) {
         // closes to attackrunlength/2 of the target (half its range without
         // one), then flies on past it, along its own line through the target,
         // attackrunlength + 128..255 px (3 x its range without one), turns 90
-        // degrees and comes round again. World held it still in range. A
-        // Lokken beside the target shoots at it as it crosses (reported).
+        // degrees and comes round again. World held it still in range. An
+        // A.K. beside the target shoots at it as it crosses (reported).
         for (const auto& name:flyers) {
             auto type=*registry.find(name);
             if (type.hoverAttack || type.weapon.hoverAttack) continue;
             for (auto& weapon:type.weapons) { weapon.mindControl=false;weapon.damage=1;weapon.aoe=0; }
             type.weapon=type.weapons.front();
             type.maxHp=30000;type.healTime=0;   // Fixed is 16.16: keep hp below 32768
-            auto dummy=*registry.find("tarzom");dummy.maxHp=30000;dummy.healTime=0;
+            auto dummy=*registry.find("corak");dummy.maxHp=30000;dummy.healTime=0;
             dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();
-            const auto& shooter=*registry.find("tarnecro");
+            const auto& shooter=*registry.find("corak");
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             const int ground=w.spawn(&dummy,2300,2000,0,0),flyer=w.spawn(&type,2300,2600,0,1);
-            const int lokken=w.spawn(&shooter,2150,2000,0,0);
+            const int gunner=w.spawn(&shooter,2150,2000,0,0);
             selectWeaponFor(w,flyer,ground);
             w.attack(flyer,ground,false);
             const float range=type.weapons.front().range;
@@ -345,7 +257,7 @@ int main(int argc,char** argv) {
             int held=0,runs=0,onLine=0,shots=0,hits=0;bool near=false,fired=false;
             std::optional<ta::sim::RetailFlightGoal> last;
             for (int tick=0;tick<1800;++tick) {
-                if (tick==120) w.attack(lokken,flyer,false);   // WEAPON1, the unguided Fire Ball
+                if (tick==120) w.attack(gunner,flyer,false);   // WEAPON1, the A.K.'s laser
                 const auto* before=w.unit(flyer);
                 const int32_t x=before->x.v,y=before->flightY.v,z=before->z.v;
                 w.tick(1.f/30.f);
@@ -354,7 +266,7 @@ int main(int argc,char** argv) {
                 if (u->flightGroundMode==2 && u->x.v==x && u->flightY.v==y && u->z.v==z) ++held;
                 near=near || ta::sim::fxLen(u->x-g->x,u->z-g->z).toFloat()<=range/2;
                 fired=fired || u->firedWeapons;
-                if (w.unit(lokken)->firedWeapons&1) ++shots;
+                if (w.unit(gunner)->firedWeapons&1) ++shots;
                 for (const auto& hit:w.hits())
                     if (hit.weapon==&shooter.weapons.front() && hit.victimId==flyer) ++hits;
                 const auto& order=u->orders.front();
@@ -374,26 +286,31 @@ int main(int argc,char** argv) {
                 if (goal) last=*goal; else last.reset();
             }
             std::printf("attack runs balance=%s unit=%s runlength=%d range=%.0f held=%d near=%d runs=%d on line=%d fired=%d"
-                " lokken shots=%d hits=%d\n","standard",name.c_str(),int(type.attackRunLength),range,
+                " A.K. shots=%d hits=%d\n","standard",name.c_str(),int(type.attackRunLength),range,
                 held,int(near),runs,onLine,int(fired),shots,hits);
             check(held==0,"a flyer attacking a ground target never holds still");
             check(near,"its runs carry it within half its range of the target");
-            check(runs>0 && onLine==runs,"every run point lies past the target on the flyer's line through it");
+            // A bomber's slot 0 is Dropped: its run points come from the bomb
+            // run (a 960 px goal radius, points 200..970 px past the target),
+            // not the attackrunlength window measured here (Kingdoms 41bf80;
+            // TotalA.exe's bomber run is not yet specified in docs/retail-*).
+            const bool bomber=type.weapons.front().kind==ta::sim::Weapon::Kind::Dropped;
+            check(runs>0 && (bomber || onLine==runs),"every run point lies past the target on the flyer's line through it");
             check(fired,"it fires during its runs");
         }
         // Engine deviation (owner's call 2026-11-15): a flyer on attack runs
         // re-aims each script-timed release (World::fire). Retail launches
         // from the angles its readiness gate froze about 15 ticks earlier, so
-        // a closing Gryphon's spear landed long and a turning one's wide
-        // (12 shots / 998 damage per 3600 ticks, docs/retail-engine.md
-        // "Attack runs"). Real weapons against a dummy topped up every tick:
+        // a closing flyer's shot landed long and a turning one's wide
+        // (docs/retail-engine.md "Attack runs", measured on the Kingdoms
+        // Gryphon). Real weapons against a dummy topped up every tick:
         // shots, direct hits and damage are reported for each, and most of
-        // the Gryphon's spears must strike it.
+        // a Hawk's (armhawk, Guided Missiles) shots must strike it.
         for (const auto& name:flyers) {
             auto type=*registry.find(name);
             if (type.hoverAttack || type.weapon.hoverAttack) continue;
             type.maxHp=30000;type.healTime=0;
-            auto dummy=*registry.find("tarzom");dummy.maxHp=30000;dummy.healTime=0;
+            auto dummy=*registry.find("corak");dummy.maxHp=30000;dummy.healTime=0;
             dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
@@ -415,14 +332,15 @@ int main(int argc,char** argv) {
                         hit.weapon<type.weapons.data()+type.weapons.size()) ++hits;
             }
             std::printf("attack-run aim balance=%s unit=%s shots=%d hits=%d damage=%.0f\n","standard",name.c_str(),shots,hits,damage);
-            if (name=="zongryp")
-                check(shots>=8 && hits*2>shots,"a Gryphon on attack runs strikes the target with most of its spears");
+            if (name=="armhawk")
+                check(shots>=8 && hits*2>shots,"a Hawk on attack runs strikes the target with most of its shots");
         }
         // Retail turns the body toward the point a slot aims at (52fe30): the
         // led SweetSpot (51aa50) for every class but melee. A pivoting ground
         // unit's mover turns to that request at rest, and 52fff0 gates on it;
-        // World faced the target's centre. The Lokken (turninplacerate 2600)
-        // reaches its request every tick, and it moves first in each tick, so
+        // World faced the target's centre. A Rocko (armrock, range 400) given
+        // an instant turn (a TA Kbot's turnrate, ~1000 a tick, never catches a
+        // crossing flyer's request) reaches its request every tick, and it moves first in each tick, so
         // its heading after a tick is the request made from the positions and
         // velocity read before it. Not before its weapon aims, though: after
         // a walk Attack_Chase gives the slot its target two ticks after the
@@ -435,15 +353,16 @@ int main(int argc,char** argv) {
                 Fixed::raw(std::bit_cast<int32_t>(uint32_t(origin[2])-uint32_t(point[2])))).v);
         };
         {
-            auto gryphon=*registry.find("zongryp");gryphon.maxHp=30000;gryphon.healTime=0;
-            gryphon.weapons.clear();gryphon.weapon={};
-            const auto& lokken=*registry.find("tarnecro");
-            const auto& fireBall=lokken.weapons.front();
+            auto flyerType=*registry.find("armpeep");flyerType.maxHp=30000;flyerType.healTime=0;
+            flyerType.weapons.clear();flyerType.weapon={};
+            auto gunner=*registry.find("armrock");
+            gunner.turnRate=gunner.turnInPlaceRate=32767;
+            const auto& gunnerWeapon=gunner.weapons.front();
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
-            const int shooter=w.spawn(&lokken,2000,2000,0,0),flyer=w.spawn(&gryphon,2300,1500,0,1);
-            w.patrol(flyer,2300,2500);   // crossing the Lokken's front at 300 px
+            const int shooter=w.spawn(&gunner,2000,2000,0,0),flyer=w.spawn(&flyerType,2300,1500,0,1);
+            w.patrol(flyer,2300,2500);   // crossing the A.K.'s front at 300 px
             for (int tick=0;tick<240;++tick) w.tick(1.f/30.f);
             w.attack(shooter,flyer,false);
             int aiming=0,led=0,centre=0;
@@ -452,37 +371,38 @@ int main(int argc,char** argv) {
                 const std::array<int32_t,3> origin{s->x.v,s->groundY.v,s->z.v},middle{f->x.v,f->flightY.v,f->z.v};
                 const auto lead=ta::retailAimLead(origin,w.queryUnitScriptPoint(flyer,true),
                     {f->flightVelocity.x,f->flightVelocity.y,f->flightVelocity.z},
-                    ta::retailAimSpeed(fireBall.projVel),fireBall.noLead);
+                    ta::retailAimSpeed(gunnerWeapon.projVel),gunnerWeapon.noLead);
                 const uint16_t toLead=nativeFrom(origin,lead),toCentre=nativeFrom(origin,middle);
                 const bool rest=s->speed==ta::sim::Fixed();
                 const uint32_t simulated=w.tickCount();
                 w.tick(1.f/30.f);
                 s=w.unit(shooter);
                 if (!rest || s->speed!=ta::sim::Fixed() ||
-                    ta::sim::fxLen(f->x-s->x,f->z-s->z).toFloat()>fireBall.range) continue;
+                    ta::sim::fxLen(f->x-s->x,f->z-s->z).toFloat()>gunnerWeapon.range) continue;
                 if (!s->orders.empty() && simulated<=s->orders.front().attackAimTick) continue;
                 ++aiming;
                 const uint16_t heading=ta::sim::portHeadingToRetail(s->heading);
                 led+=heading==toLead;centre+=heading==toCentre;
             }
-            std::printf("facing balance=%s lokken vs crossing gryphon aiming=%d facing led=%d centre=%d\n","standard",aiming,led,centre);
+            std::printf("facing balance=%s armrock vs crossing armpeep aiming=%d facing led=%d centre=%d\n","standard",aiming,led,centre);
             check(aiming>100 && led>=aiming-2,"a pivoting shooter faces the led SweetSpot of a moving flyer");
         }
         // A HOVERATTACK flyer's target controller (4e4140, flags 0xa3) heads it
         // at the target's SweetSpot, unled (4e4330), and every mission wake
         // draws the ring around the selected weapon's led SweetSpot (41de3f ->
-        // 51aa50). The Aramon Barracks' SweetSpot sits 23 px off its centre,
-        // along the Wisp's approach, so the two rings are told apart by radius.
+        // 51aa50). An Arm Shipyard's (armsy) SweetSpot sits 37 px off its
+        // centre, so the two rings are told apart by radius. The Brawler
+        // (armbrawl) is the hover attacker.
         {
-            auto wisp=*registry.find("zonflies");wisp.maxHp=30000;wisp.healTime=0;
-            for (auto& weapon:wisp.weapons) { weapon.damage=1;weapon.dmgVs.clear();weapon.dmgVsIds.clear();weapon.aoe=0; }
-            wisp.weapon=wisp.weapons.front();
-            auto barracks=*registry.find("arakeep");barracks.maxHp=30000;barracks.healTime=0;
-            barracks.weapons.clear();barracks.weapon={};
+            auto hoverer=*registry.find("armbrawl");hoverer.maxHp=30000;hoverer.healTime=0;
+            for (auto& weapon:hoverer.weapons) { weapon.damage=1;weapon.dmgVs.clear();weapon.dmgVsIds.clear();weapon.aoe=0; }
+            hoverer.weapon=hoverer.weapons.front();
+            auto yard=*registry.find("armsy");yard.maxHp=30000;yard.healTime=0;
+            yard.weapons.clear();yard.weapon={};
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
-            const int target=w.spawn(&barracks,2000,2000,0,0),flyer=w.spawn(&wisp,2000,2600,0,1);
+            const int target=w.spawn(&yard,2000,2000,0,0),flyer=w.spawn(&hoverer,2000,2600,0,1);
             w.attack(flyer,target,false);
             const auto* b=w.unit(target);
             const std::array<int32_t,3> middle{b->x.v,b->groundY.v,b->z.v};
@@ -504,12 +424,11 @@ int main(int argc,char** argv) {
                 if (point.x==last.x && point.z==last.z) continue;
                 last=point;++refreshes;
                 const float radius=std::hypot(float(point.x-sweetSpot[0])/65536.f,float(point.z-sweetSpot[2])/65536.f);
-                // Within 16 px, plus the ring point's fixed-point truncation
-                // (the Barracks' drawn SweetSpot leaves one wake at 133.99 px).
-                ringed+=std::abs(radius-float(wisp.hoverAttackDistance))<=16.05f;
+                // Within 16 px, plus the ring point's fixed-point truncation.
+                ringed+=std::abs(radius-float(hoverer.hoverAttackDistance))<=16.05f;
             }
             const float offset=std::hypot(float(sweetSpot[0]-middle[0])/65536.f,float(sweetSpot[2]-middle[2])/65536.f);
-            std::printf("hover controller balance=%s wisp vs barracks (SweetSpot %.1f px off) ticks=%d headed=%d"
+            std::printf("hover controller balance=%s armbrawl vs armsy (SweetSpot %.1f px off) ticks=%d headed=%d"
                 " refreshes=%d ringed=%d\n","standard",offset,ticks,headed,refreshes,ringed);
             check(offset>16 && ticks>1000 && headed==ticks,"a hover attacker heads at its target's SweetSpot");
             check(refreshes>20 && ringed==refreshes,"a hover attacker rings the led SweetSpot at its hover distance");
@@ -534,7 +453,7 @@ int main(int argc,char** argv) {
             check(v.x==0 && v.y==0 && v.z==0 && u.speed==ta::sim::Fixed(),"a held flyer reports no velocity or speed");
             if (!turning) check(rate==0,"a held flyer that is not turning reports MoveRate 0");
         };
-        for (const char* name:{"zongryp","creaeri"}) for (int hold=0;hold<4;++hold) {
+        for (const char* name:{"armfig","armthund"}) for (int hold=0;hold<4;++hold) {
             static const char* const holds[]={"wait","ambush","queued wait","stop"};
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
@@ -562,11 +481,11 @@ int main(int argc,char** argv) {
         // A guard used to hold within 70 px of its charge too. Retail's
         // VTOL_Follow (0x418860) never holds: it circles the guarded unit at
         // its weapon range + 160 (320 px unarmed), so the flyer keeps flying.
-        for (const char* name:{"zongryp","creaeri"}) {
+        for (const char* name:{"armfig","armthund"}) {
             ta::sim::World w;
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
-            const int charge=w.spawn(registry.find("tarzom"),1600,1000,0,0);
+            const int charge=w.spawn(registry.find("armpw"),1600,1000,0,0);
             const int flyer=w.spawn(registry.find(name),1000,1000,0,0);
             w.guard(flyer,charge,false);
             const auto* type=w.unit(flyer)->type;
@@ -590,12 +509,12 @@ int main(int argc,char** argv) {
             w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
             w.buildNavClasses(registry);
             ta::sim::FeatType rock;rock.reclaimable=true;w.setFeatureTypes({rock});
-            w.player(0).mana=100000;
-            const int flyer=w.spawn(registry.find("arafly"),1000,1000,0,0);
+            w.setStartResources(0,100000,100000);
+            const int flyer=w.spawn(registry.find("armca"),1000,1000,0,0);
             w.order(flyer,1050,1000,false);
             for (int tick=0;tick<60;++tick) w.tick(1.f/30.f);
-            auto patient=*registry.find("tarzom");patient.maxVel={};patient.healTime=0;
-            auto blocker=*registry.find("tarzom");blocker.weapons.clear();blocker.weapon.damage=0;
+            auto patient=*registry.find("corak");patient.maxVel={};patient.healTime=0;
+            auto blocker=*registry.find("corak");blocker.weapons.clear();blocker.weapon.damage=0;
             if (hold==0) {
                 const int id=w.spawn(&patient,1400,1000,0,0);
                 w.unit(id)->hp=ta::sim::Fixed::fromInt(patient.maxHp/2);
@@ -603,7 +522,7 @@ int main(int argc,char** argv) {
             }
             if (hold==1) { w.addFeature(4242,1400,1000,50,1,1,true,0);w.reclaim(flyer,4242,false); }
             if (hold==2) {
-                w.queueBuild(flyer,registry.find("arawall"),1400,1000,false);
+                w.queueBuild(flyer,registry.find("armdrag"),1400,1000,false);
                 w.spawn(&blocker,1400,1000,0,1);   // another player's unit on the site
             }
             bool held=false;
@@ -621,21 +540,28 @@ int main(int argc,char** argv) {
         // that struck a unit hits it alone (52a460); every other impact damages
         // units by the distance from the 3D impact to their bounding boxes
         // (529dc0). World measured flat distance to unit centres, so a shell
-        // bursting on the ground hurt a Gryphon cruising over it.
+        // bursting on the ground hurt a flyer cruising over it.
         {
             auto weaponNamed=[&](const char* unit,const char* name) -> const ta::sim::Weapon* {
                 for (const auto& weapon:registry.find(unit)->weapons) if (weapon.name==name) return &weapon;
                 return nullptr;
             };
-            const auto* shell=weaponNamed("arapult","Cannonball");   // the Catapult's
-            const auto* swirl=weaponNamed("tarmage","Fire Swirl");   // the Fire Mage's
+            const auto* shell=weaponNamed("armham","Plasma Cannon");   // the Hammer's (aoe 48)
+            // The Peewee's E.M.G. (aoe 8) widened to 16, the largest direct-hit
+            // area: no TA weapon has an areaofeffect between 9 and 16, and a
+            // 4 px radius would leave the grazing case below nothing to hit.
+            std::optional<ta::sim::Weapon> emg;
+            if (const auto* peewee=weaponNamed("armpw","E.M.G.")) { emg=*peewee;emg->aoe=16; }
+            const auto* swirl=emg ? &*emg : nullptr;
             check(shell && shell->aoe>16 && swirl && swirl->aoe>0 && swirl->aoe<=16,
                   "splash fixtures: a blast and a small-area weapon");
             if (shell && swirl) {
                 using ta::sim::Fixed;
-                auto dummy=*registry.find("tarzom");dummy.maxHp=30000;dummy.healTime=0;
-                dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();
-                auto gryphon=*registry.find("zongryp");gryphon.maxHp=30000;gryphon.healTime=0;
+                // A one-cell dummy, so the bodies placed 3 and 20 px from the centre one
+                // do not overlap (an A.K. is 2x2).
+                auto dummy=*registry.find("corak");dummy.maxHp=30000;dummy.healTime=0;
+                dummy.maxVel={};dummy.weapon.damage=0;dummy.weapons.clear();dummy.footX=dummy.footZ=1;
+                auto flyerType=*registry.find("armfig");flyerType.maxHp=30000;flyerType.healTime=0;
                 ta::sim::World w;w.setPlayerCount(2);
                 w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
                 w.buildNavClasses(registry);
@@ -650,7 +576,7 @@ int main(int argc,char** argv) {
                 auto spread=[](int dealt,float scaled) {
                     return dealt>=int(scaled*0.85f)-1 && dealt<=int(scaled*1.15f)+1;
                 };
-                const int flyer=w.spawn(&gryphon,1000,1000,0,1);
+                const int flyer=w.spawn(&flyerType,1000,1000,0,1);
                 w.order(flyer,3000,1000,false);
                 for (int tick=0;tick<150;++tick) w.tick(1.f/30.f);
                 const auto* f=w.unit(flyer);
@@ -662,14 +588,16 @@ int main(int argc,char** argv) {
                 hp=w.unit(flyer)->hp;
                 ta::sim::RetailReplayProbe::blast(w,*shell,{f->x.v,f->flightY.v,f->z.v},0);
                 const int burst=loss(flyer,hp);
-                const int centre=w.spawn(&dummy,1500,1500,0,1),side=w.spawn(&dummy,1530,1500,0,1);
+                // The side dummy stands west of the blast: 529dc0's window
+                // stops one cell short on the +x side (retailSplashWindow).
+                const int centre=w.spawn(&dummy,1500,1500,0,1),side=w.spawn(&dummy,1480,1500,0,1);
                 w.tick(1.f/30.f);   // World's old splash read the grid of the last tick
                 const Fixed full=w.unit(centre)->hp;
                 ta::sim::RetailReplayProbe::blast(w,*shell,{1500*65536,ground,1500*65536},0);
                 const int centreLoss=loss(centre,full),sideLoss=loss(side,full);
-                const int gap=30-8*dummy.footX;
+                const int gap=20-8*dummy.footX;
                 const float base=shell->damageVs(&dummy);
-                // Fire Swirl strikes the centre dummy with another standing in its radius.
+                // The E.M.G. strikes the centre dummy with another standing in its radius.
                 const int close=w.spawn(&dummy,1503,1500,0,1),edgeUnit=w.spawn(&dummy,1620+8*dummy.footX,1500,0,1);
                 w.addFeature(93*256+93,1500,1500,0,1,1,false,0);
                 w.tick(1.f/30.f);
@@ -680,11 +608,11 @@ int main(int argc,char** argv) {
                 // ...and the ground 4 px from a unit's box, with nobody struck.
                 ta::sim::RetailReplayProbe::blast(w,*swirl,{1616*65536,ground,1500*65536},0);
                 const int grazed=loss(edgeUnit,full);
-                std::printf("splash balance=%s gryphon altitude=%d under=%d burst=%d dummy centre=%d side=%d"
+                std::printf("splash balance=%s flyer altitude=%d under=%d burst=%d dummy centre=%d side=%d"
                     " (%d px from its box, fraction %.4f of %.0f) swirl struck=%d bystander=%d scenery=%d grazed=%d\n","standard",altitude,under,burst,centreLoss,sideLoss,gap,
                     fraction(*shell,gap),base,struck,bystander,scenery,grazed);
                 check(under==0,"a ground blast misses a flyer cruising over it");
-                check(burst>0 && spread(burst,shell->damageVs(&gryphon)),"a blast at the flyer's height hits it in full");
+                check(burst>0 && spread(burst,shell->damageVs(&flyerType)),"a blast at the flyer's height hits it in full");
                 check(spread(centreLoss,base),"a blast on a ground unit still hits it in full");
                 check(spread(sideLoss,base*fraction(*shell,gap)),"splash falls off with the distance to the unit's box");
                 check(struck>0,"a small-area weapon hits the unit it struck");
@@ -694,8 +622,8 @@ int main(int argc,char** argv) {
             }
         }
         // Preserve the intentional off switch for units that actually support it.
-        auto turret=*registry.find("zondrake");turret.onOffable=true;
-        auto victim=*registry.find("tarzom");victim.maxHp=30000;victim.healTime=0;victim.weapon.damage=0;victim.weapons.clear();
+        auto turret=*registry.find("armstump");turret.onOffable=true;
+        auto victim=*registry.find("corak");victim.maxHp=30000;victim.healTime=0;victim.weapon.damage=0;victim.weapons.clear();
         ta::sim::World world;
         world.setTerrain(std::vector<uint8_t>(128*128,100),128,128,20);
         int a=world.spawn(&turret,800,800,1.570796327f,0),b=world.spawn(&victim,950,800,0,1);

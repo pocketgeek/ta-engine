@@ -7,8 +7,8 @@
 // weapon, so a builder guards a healthy unit as a soldier does. Our right-click
 // used to guard only with armed units, so a builder did nothing.
 //
-// The synthetic cases always run; given a retail install (-DTAK_TEST_DATA) it
-// also checks every shipped mobile builder guards a healthy unit and repairs a
+// The synthetic cases always run; given a retail install (-DTA_TEST_DATA) it
+// also checks every shipped mobile builder guards (canguard) a healthy unit and repairs a
 // damaged one.
 
 #include "client/friendlyorder.h"
@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     soldier.id = "soldier";
     soldier.weapon.damage = 10;
     soldier.canGuard = true;
-    sim::UnitType avatar = soldier;   // armed, no canguard (the shipped gods)
+    sim::UnitType avatar = soldier;   // armed, no canguard (no canguard)
     avatar.canGuard = false;
     sim::UnitType factory = builder;  // a structure that builds
     factory.maxVel = sim::Fixed();
@@ -73,13 +73,16 @@ int main(int argc, char** argv) {
         for (const auto& [id, t] : reg.types()) {
             if (!t.isBuilder || t.isStructure()) continue;
             ++builders;
-            check(order(t, false) == FriendlyOrder::Guard, "shipped builder " + id + " guards a healthy unit");
+            // A builder without canguard (the Minelayers armmlv/cormlv ship
+            // canguard=0) falls through to the move, as the resolver does.
+            check(order(t, false) == (t.canGuard ? FriendlyOrder::Guard : FriendlyOrder::Move),
+                  "shipped builder " + id + (t.canGuard ? " guards" : " (no canguard) moves to") + " a healthy unit");
             check(order(t, true) == FriendlyOrder::Repair, "shipped builder " + id + " repairs a damaged unit");
         }
         check(builders >= 20, "shipped mobile builders found (" + std::to_string(builders) + ")");
-        if (const auto* sword = reg.find("arasword"))
-            check(order(*sword, false) == FriendlyOrder::Guard, "shipped swordsman guards");
-        else check(false, "shipped type arasword missing");
+        if (const auto* peewee = reg.find("armpw"))
+            check(order(*peewee, false) == FriendlyOrder::Guard, "shipped Peewee (armpw) guards");
+        else check(false, "shipped type armpw missing");
     }
 
     if (failures) { std::fprintf(stderr, "%d failure(s)\n", failures); return 1; }

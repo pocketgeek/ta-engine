@@ -9,7 +9,7 @@
 // an edge is a point on it.
 //
 //   map_edge_test              the arithmetic and constructed 2048-cell worlds, synthetic units
-//   map_edge_test <data dir>   Gryphons on attack runs at targets on the east and south edges
+//   map_edge_test <data dir>   Thunder bombers (armthund) on attack runs at targets on the east and south edges
 #include "hpi/hpi.h"
 #include "net/lockstep.h"
 #include "sim/legion.h"
@@ -286,13 +286,13 @@ void legionGoalOffTheMap() {
     }
 }
 
-// ---- Gryphons on attack runs at the east and south edges (shipped units) ------------------
+// ---- Thunder bombers on attack runs at the east and south edges (shipped units) -----------
 int gryphons(const char* data) {
     auto vfs=ta::hpi::mountRetailRoot(data);
     TypeRegistry registry;setupRegistry(registry,vfs);
-    const UnitType* gryphon=registry.find("zongryp");
-    const UnitType* soldier=registry.find("arasword");
-    if(!gryphon || !soldier) { std::printf("FAIL: the Gryphon or the Swordsman is missing from %s\n",data);return 1; }
+    const UnitType* gryphon=registry.find("armthund");
+    const UnitType* soldier=registry.find("corak");
+    if(!gryphon || !soldier) { std::printf("FAIL: the Thunder (armthund) or the A.K. (corak) is missing from %s\n",data);return 1; }
     uint64_t hashes[2]={0,0};
     for(int run=0;run<2;++run) {
         World w;flat(w);w.buildNavClasses(registry);
@@ -311,35 +311,40 @@ int gryphons(const char* data) {
         }
         std::vector<Track> tracks(flyers.size());
         for(size_t i=0;i<flyers.size();++i)tracks[i].start(w,flyers[i]);
-        std::vector<Fixed> half(targets.size());
+        // Damage per target in ticks 0-1499 and 1500-2999. A Thunder's bombs
+        // would kill even a 30000 hp target, so each is healed every tick.
+        std::vector<double> early(targets.size(),0.0),late(targets.size(),0.0);
         int gridW=0,gridH=0;
         for(int tick=0;tick<3000;++tick) {
             w.tick(1.f/30);
             for(auto& t:tracks)t.tick(w);
             gridW=std::max(gridW,RetailReplayProbe::gridW(w));gridH=std::max(gridH,RetailReplayProbe::gridH(w));
-            if(tick==1499)for(size_t i=0;i<targets.size();++i)half[i]=w.unit(targets[i])->hp;
+            for(size_t i=0;i<targets.size();++i) {
+                Unit* t=w.unit(targets[i]);
+                if(!t || !t->alive())continue;
+                (tick<1500 ? early : late)[i]+=double(victim.maxHp)-px(t->hp);
+                t->hp=Fixed::fromInt(victim.maxHp);
+            }
         }
         hashes[run]=w.stateHash();
         if(run)break;
         double step=0,low=1e9;
         for(const auto& t:tracks) {step=std::max(step,t.step);low=std::min(low,t.low);}
-        std::printf("  Gryphons: largest step %.2f px (speed %.2f), lowest coordinate %.1f, grid at most %d x %d\n",
+        std::printf("  Thunders: largest step %.2f px (speed %.2f), lowest coordinate %.1f, grid at most %d x %d\n",
                     step,px(gryphon->maxVel),low,gridW,gridH);
-        check(step<=px(gryphon->maxVel)+1.0,"a Gryphon on attack runs at the edge never moves more than its speed in a tick");
-        check(low>-double(kMarginPx),"a Gryphon on attack runs at the edge never appears on the far side of the map");
+        check(step<=px(gryphon->maxVel)+1.0,"a Thunder on attack runs at the edge never moves more than its speed in a tick");
+        check(low>-double(kMarginPx),"a Thunder on attack runs at the edge never appears on the far side of the map");
         check(gridW<=kGridMax && gridH<=kGridMax,"the spatial grid stays within the map plus its margin");
         int hurtEarly=0,hurtLate=0;
         for(size_t i=0;i<targets.size();++i) {
-            const Unit* t=w.unit(targets[i]);
-            const Fixed full=Fixed::fromInt(victim.maxHp);
-            hurtEarly+=half[i]<full;
-            hurtLate+=t && t->hp<half[i];
+            hurtEarly+=early[i]>0;
+            hurtLate+=late[i]>0;
             std::printf("  target %zu (%s edge): %.0f damage in ticks 0-1499, %.0f in 1500-2999\n",i,i<4 ? "east" : "south",
-                        px(full)-px(half[i]),t ? px(half[i])-px(t->hp) : 0.0);
+                        early[i],late[i]);
         }
         // The run turns back at the edge and comes round again: every target is hit in both halves.
         check(hurtEarly==int(targets.size()) && hurtLate==int(targets.size()),
-              "every Gryphon keeps hitting its target at the edge (both halves of the run)");
+              "every Thunder keeps hitting its target at the edge (both halves of the run)");
     }
     check(hashes[0]==hashes[1],"the run is reproducible (state hash equal run to run)");
     return 0;

@@ -1,29 +1,29 @@
-// vermage_fight_test: Kirenna (VERMAGE) on an attack-move with Maneuver
-// fires and keeps firing (kirenna_attack_move_fires). Until the retail target
-// search (fx-tsearch step 6) she dealt no damage (0.9.3 notes, Known limits;
-// docs/retail-engine.md, "Kirenna on an attack-move"):
+// vermage_fight_test: a Peewee (armpw) on an attack-move with Maneuver fires
+// and keeps firing at a Hold Position A.K. (corak). The test began as the
+// Kingdoms Kirenna (VERMAGE) attack-move check -- before the retail target
+// search (fx-tsearch step 6) she dealt no damage (docs/retail-engine.md,
+// "Kirenna on an attack-move") -- and keeps its scenes on TA's front-line
+// Kbots:
 //
 //   vermage_fight_test <retail-install-dir> [--legion] [--trace] [--pre N] [--dx PX]
 //
 // A fight-move leg is retail's MoveFight order, a Move with response mode -1
-// (World::markFightLeg): its scan (4d8370) takes only an enemy her player
-// sees, within her selected slot's range, so she stops on sight and the
-// attack fires. Whether she then keeps firing is her script's race (her
-// AimWeapon waits for static 7, which a walk cycle that began before she
-// aimed clears once she has stopped): the phase of her walk cycle at the
-// stop decides it, in either pathfinding mode. Legion clears such a stalled
-// aim (World::legionAimStall); Retail mode keeps retail's race.
+// (World::markFightLeg): its scan takes only an enemy the player sees,
+// within the selected slot's range, so the unit stops on sight and the
+// attack fires. Whether it then keeps firing depends on its script's aim
+// handshake with its walk cycle at the stop; Legion clears a stalled aim
+// (World::legionAimStall), Retail mode keeps retail's race. (The addresses
+// these mechanisms were first mapped at are KINGDOMS.icd's.)
 //
-// Checks (flat map, shipped units, a hold-position Archer of player 1):
-//   - on the attack-move she takes the Archer only once her player sees it;
-//   - she fires and the Archer loses hit points, and the Archer hits her;
-//   - Legion: she keeps firing, at least kSustained shots in the 60 s, here
-//     and from every one of kPhases start phases (the order tick and her
-//     start point varied). Retail mode is not checked for continued fire:
-//     there it is the race's side at the start phase (8 of 120 phases);
-//   - on a plain move past it she fires (the sweep aims her automatic slot
-//     as she walks, as in retail).
-// --trace prints her script state per tick of the attack-move; --pre and
+// Checks (flat map, shipped units, a hold-position A.K. of player 1):
+//   - on the attack-move the Peewee takes the A.K. only once its player sees it;
+//   - it fires and the A.K. loses hit points, and the A.K. hits it;
+//   - Legion: it keeps firing, at least kSustained shots in the 60 s, here
+//     and from every one of kPhases start phases (the order tick and its
+//     start point varied). Retail mode is not checked for continued fire;
+//   - on a plain move past it the Peewee fires (the sweep aims its automatic
+//     slot as it walks).
+// --trace prints its script state per tick of the attack-move; --pre and
 // --dx move the start phase (ticks before the order, px further back).
 //
 // A dev harness; not shipped in a game.
@@ -65,7 +65,7 @@ using namespace ta;
 namespace {
 int failures = 0;
 sim::PathfindingMode mode = sim::PathfindingMode::Retail;
-bool trace = false;      // --trace: her script state per tick of the attack-move
+bool trace = false;      // --trace: its script state per tick of the attack-move
 constexpr float kTick = 1.f / 30;
 constexpr int kSustained = 8;   // shots in 60 s that count as continued fire
 
@@ -75,14 +75,14 @@ void check(bool ok, const std::string& what, const std::string& detail = "") {
 }
 
 struct Run {
-    int acquired = -1;      // first tick the front order was an auto attack on the Archer
+    int acquired = -1;      // first tick the front order was an auto attack on the A.K.
     bool seenAtAcquire = false;
-    int shots = 0;          // ticks Kirenna fired
-    long dealt = 0;         // hit points the Archer lost
-    int hits = 0;           // ticks she lost hit points
+    int shots = 0;          // ticks the Peewee fired
+    long dealt = 0;         // hit points the A.K. lost
+    int hits = 0;           // ticks the Peewee lost hit points
     float dist = 0;         // centre distance at the end
     bool standing = false;  // speed 0 at the end
-    bool aiming = false;    // her selected slot's aim started (flags 0xe0) at the end
+    bool aiming = false;    // its selected slot's aim started (flags 0xe0) at the end
 };
 
 struct Phase {
@@ -109,19 +109,19 @@ Run fight(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, bool attackMove, Ph
     sim::registerMapFeatures(w, map, vfs, &reg);
     w.setPathService(true);
     Run r;
-    const sim::UnitType* kirenna = reg.find("vermage");
-    const sim::UnitType* archer = reg.find("araarch");
-    const sim::UnitType* peasant = reg.find("verman");
-    if (!kirenna || !archer || !peasant) { check(false, "shipped vermage, araarch and verman load"); return r; }
+    const sim::UnitType* shooterType = reg.find("armpw");
+    const sim::UnitType* foeType = reg.find("corak");
+    const sim::UnitType* spotterType = reg.find("armck");
+    if (!shooterType || !foeType || !spotterType) { check(false, "shipped armpw, corak and armck load"); return r; }
     const float sx = 300, sz = 1000;
-    const int foe = w.spawn(archer, sx + 1100, sz, -1.5707963f, 1);
+    const int foe = w.spawn(foeType, sx + 1100, sz, -1.5707963f, 1);
     w.unit(foe)->moveState = 0;
     w.unit(foe)->hp = sim::Fixed::fromInt(30000);
-    const int me = w.spawn(kirenna, sx - phase.dx, sz, 1.5707963f, 0);
+    const int me = w.spawn(shooterType, sx - phase.dx, sz, 1.5707963f, 0);
     w.unit(me)->moveState = 1;   // Maneuver
-    // A second unit of hers, far off and passive: the sweep (40f330) skips
-    // a player's only unit.
-    const int other = w.spawn(peasant, 150, 1900, 0.f, 0);
+    // A second unit of the shooter's player, far off and passive: the sweep
+    // skips a player's only unit.
+    const int other = w.spawn(spotterType, 150, 1900, 0.f, 0);
     w.unit(other)->fireState = 0;
     w.unit(other)->moveState = 0;
     for (int i = 0; i < phase.pre; ++i) w.tick(kTick);
@@ -140,7 +140,8 @@ Run fight(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, bool attackMove, Ph
         }
         r.shots += u->firedWeapons != 0;
         r.hits += u->hp < hp;
-        hp = u->hp;
+        // Both sides are kept alive: a Peewee (250 hp) would fall to the A.K.
+        w.unit(me)->hp = hp = sim::Fixed::fromInt(u->type->maxHp);
         r.dealt += 30000 - t->hp.floorInt();
         w.unit(foe)->hp = sim::Fixed::fromInt(30000);
         r.dist = std::hypot((t->x - u->x).toFloat(), (t->z - u->z).toFloat());
@@ -196,23 +197,20 @@ int main(int argc, char** argv) {
     const Run am = fight(vfs, reg, true, base);
     std::printf("  attack-move: %s\n", describe(am).c_str());
     if (one) return 0;
-    check(am.acquired >= 0 && am.seenAtAcquire, "the attack-move takes the Archer only once her player sees it",
+    check(am.acquired >= 0 && am.seenAtAcquire, "the attack-move takes the A.K. only once its player sees it",
           describe(am));
-    check(am.shots > 0 && am.dealt > 0, "kirenna_attack_move_fires: she fires and the Archer loses hit points",
+    check(am.shots > 0 && am.dealt > 0, "attack_move_fires: the Peewee fires and the A.K. loses hit points",
           describe(am));
-    // She stands about 200 px off, inside the hold-position Archer's sight:
-    // its sweep takes her.
-    check(am.hits > 0, "the Archer hits Kirenna", describe(am));
+    // It stands inside the hold-position A.K.'s range: its sweep takes it.
+    check(am.hits > 0, "the A.K. hits the Peewee", describe(am));
     if (legion) {
         // Continued fire is checked under Legion only. In Retail mode it is
-        // the race's side at this start phase (11 shots here, but 8 of 120
-        // phases keep firing), which any change to the random draw order can
-        // move without a Kirenna regression.
-        check(am.shots >= kSustained && am.dealt >= 10000, "Legion: she keeps firing (here: 10 shots, 14958 damage)",
+        // the script race's side at the start phase, which any change to the
+        // random draw order can move without a regression.
+        check(am.shots >= kSustained && am.dealt >= 1000, "Legion: it keeps firing (here: 419 shots, 1605 damage)",
               describe(am));
-        // The race's side is the phase of her walk cycle at the stop. Over
-        // 120 phases (pre 30-32, dx 0-117) Retail mode keeps firing in 8 and
-        // fires once in 95; Legion clears the stalled aim in every one.
+        // The race's side is the phase of the walk cycle at the stop; Legion
+        // clears a stalled aim in every one.
         constexpr int kPhases = 9;
         int sustained = 0;
         std::string worst;
@@ -222,13 +220,13 @@ int main(int argc, char** argv) {
             if (r.shots >= kSustained) ++sustained;
             else if (worst.empty()) worst = "pre " + std::to_string(ph.pre) + " dx " + std::to_string(int(ph.dx)) + ": " + describe(r);
         }
-        check(sustained == kPhases, "Legion: she keeps firing from every start phase (" + std::to_string(sustained) + " of " +
+        check(sustained == kPhases, "Legion: it keeps firing from every start phase (" + std::to_string(sustained) + " of " +
               std::to_string(kPhases) + ")", worst);
     }
 
     const Run mv = fight(vfs, reg, false);
     std::printf("  plain move: %s\n", describe(mv).c_str());
-    check(mv.shots > 0, "on a plain move past it the sweep aims her automatic slot as she walks, and she fires",
+    check(mv.shots > 0, "on a plain move past it the sweep aims its automatic slot as it walks, and it fires",
           describe(mv));
 
     std::printf("%s\n", failures ? "FAILED" : "all passed");
