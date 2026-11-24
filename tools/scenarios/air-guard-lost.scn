@@ -1,5 +1,5 @@
 scn 1
-# (Ported to TA aircraft: armfig for the Drake, armpeep for the Spyhawk, corveng for the Gob, armca for the Fly, armap for the Keep.)
+# (Ported to TA: armfig for the Drake, armpw for the Goblin -- the guard settles on a unit that cannot fly.)
 # Three Drakes guard a Goblin that dies (air_traffic kills it at tick 300). VTOL_Follow, the
 # guard's last mission, inserts VTOL_SeekGuard (4191d7) at the Goblin's last point: it circles there at the
 # selected weapon's range + 160 px, steps out of a stack at every wake (4198fd), and guards the first allied
@@ -13,7 +13,7 @@ players 2
 weapons on
 map flat 160 160
 type drake fbi armfig
-type gob fbi corveng
+type gob fbi armpw
 group drakes 0 drake 3 cells 20,78 20,80 20,82
 group ward 0 gob 1 cells 60,80
 group ring 0 gob 16 cells 60,112 72,110 83,103 90,92 92,80 90,68 83,57 72,50 60,48 48,50 37,57 30,68 28,80 30,92 37,103 48,110

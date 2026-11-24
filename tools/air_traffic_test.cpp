@@ -22,7 +22,9 @@
 // or while it flies the case's own leg -- a fight-move or a patrol, or a
 // flying builder's repair -- step-outs that leg pushed included. A leg's case
 // also counts the step-outs its mission pushed. air-guard-lost.scn checks
-// VTOL_SeekGuard: Drakes whose guarded Goblin dies guard the other Goblin.
+// VTOL_SeekGuard: fighters whose guarded Peewee dies guard another Peewee.
+// (The fixtures came from Kingdoms -- Drakes, Goblins, a Keep -- and fly TA's
+// Freedom Fighters, Peewees and an Aircraft Plant now.)
 #include "ai/classicbrain.h"
 #include "legion_scn.h"
 
@@ -97,22 +99,22 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
         if(target && c.count!=Count::Repair && c.count!=Count::Help) {
             auto* u=w.unit(target);
             if(!u || !u->alive()) { check(false,std::string(c.file)+" "+modeName+": the target died (topped up)"); return; }
-            // Far above any type's maximum: three Fire Breaths in one tick
-            // never kill it.
+            // Far above any type's maximum: three volleys in one tick never
+            // kill it.
             full=ta::sim::Fixed::fromInt(30000);
             u->hp=full;
             fx=u->x.toFloat();fz=u->z.toFloat();
         }
         if(c.count==Count::Repair && t==2) {
-            // A fifth of the Keep's hit points, and every builder sent to mend it.
+            // A fifth of the plant's hit points, and every builder sent to mend it.
             auto* keep=w.unit(target);
             keep->hp=ta::sim::Fixed::fromInt(keep->type->maxHp/5);
             for(int id:flyers) w.repair(id,target,false);
         }
         if(c.count==Count::Help && t==2) {
-            // The first builder puts a Keep's site down at the point (its
-            // flying MobileBuild approaches it), the others help it.
-            site=w.startBuild(flyers.front(),b->registry.find("arakeep"),c.x,c.z);
+            // The first builder puts an Aircraft Plant's site down at the
+            // point (its flying MobileBuild approaches it), the others help it.
+            site=w.startBuild(flyers.front(),b->registry.find("armap"),c.x,c.z);
             for(size_t k=1;k<flyers.size();++k) w.assist(flyers[k],site,false);
         }
         const int mendedUnit=c.count==Count::Help ? site : target;
@@ -165,16 +167,16 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
         check(aiReads>0 && aiStepOuts==aiReads,std::string(c.file)+" "+modeName+": the Retail AI reads the step-out "+
               "ahead of the job ("+std::to_string(aiStepOuts)+" of "+std::to_string(aiReads)+" flyer-ticks)");
     if(target && c.count!=Count::Repair && c.count!=Count::Help)
-        check(damage>0,std::string(c.file)+" "+modeName+": the Drakes still hurt the target ("+
+        check(damage>0,std::string(c.file)+" "+modeName+": the fighters still hurt the target ("+
               std::to_string(damage)+" hit points)");
     if(c.count==Count::Repair || c.count==Count::Help)
         check(mended>0,std::string(c.file)+" "+modeName+": the builders still "+(c.count==Count::Help ? "build" : "mend")+
-              " the Keep ("+std::to_string(mended)+" hit points)");
+              " the Aircraft Plant ("+std::to_string(mended)+" hit points)");
 }
 
-// VTOL_SeekGuard: the Drakes' guarded Goblin dies at tick 300; each Drake's
-// guard, its last mission, goes on as VTOL_SeekGuard round where the Goblin
-// stood and guards a Goblin of the ring round that point once one is within
+// VTOL_SeekGuard: the fighters' guarded Peewee dies at tick 300; each
+// fighter's guard, its last mission, goes on as VTOL_SeekGuard round where the
+// Peewee stood and guards a Peewee of the ring round that point once one is within
 // its sightdistance.
 void guardLost(const std::string& dir,const char* data,ta::sim::PathfindingMode mode) {
     const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
@@ -207,16 +209,16 @@ void guardLost(const std::string& dir,const char* data,ta::sim::PathfindingMode 
         }
     }
     check(guardingBefore==3,std::string("air-guard-lost.scn ")+modeName+": "+std::to_string(guardingBefore)+
-          " of 3 Drakes guard the Goblin before it dies");
+          " of 3 fighters guard the Peewee before it dies");
     check(guardingRing==3 && idleAfter==0,std::string("air-guard-lost.scn ")+modeName+": "+
-          std::to_string(guardingRing)+" of 3 Drakes guard a Goblin of the ring at the end ("+std::to_string(idleAfter)+
+          std::to_string(guardingRing)+" of 3 fighters guard a Peewee of the ring at the end ("+std::to_string(idleAfter)+
           " idle)");
 }
-// AirStrike (41b5e0): the Drakes of air-stack-barracks.scn with the `dropped`
+// AirStrike (41b5e0): the fighters of air-stack-barracks.scn with the `dropped`
 // key on their weapon (WeaponType +0xc8 bit 0x20; no shipped weapon has it).
 // Their attack is the strike, not the hover: it makes its passes (stage 6, the
 // turn after the release, comes round again and again), and its stage-4
-// air-traffic check steps a Drake out of the stack the three start in.
+// air-traffic check steps a fighter out of the stack the three start in.
 void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode mode) {
     const char* modeName=mode==ta::sim::PathfindingMode::Legion ? "legion" : "retail";
     const auto s=ta::scn::load(dir+"/air-stack-barracks.scn");
@@ -253,7 +255,7 @@ void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode 
             }
         }
     }
-    check(turns>=6,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: the Drakes strike ("+
+    check(turns>=6,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: the fighters strike ("+
           std::to_string(turns)+" passes turned, at least 6)");
     check(stepOuts>=1,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: "+std::to_string(stepOuts)+
           " step-outs ahead of the strike (at least 1)");

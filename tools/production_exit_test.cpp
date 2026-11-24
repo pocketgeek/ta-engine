@@ -1,11 +1,11 @@
 // Exercise shipped movement/footprints/scripts: synthetic units with no retail
 // goal-crowding tolerance did not expose output parking over the next birthplace.
 //
-// Large outputs (reported: an Aramon Barracks Catapult "got stuck in the entrance and
-// I had to kill it so other stuff could build"): every shipped factory makes its
-// largest ground unit and three of its smallest, the large one first or last. The
-// next site used to be admitted by a centre-radius test sized for the NEW unit only,
-// so a 3x3 Knight was born 38 px behind a departing 4x4 Catapult with their
+// Large outputs (first reported with a Kingdoms catapult that "got stuck in the
+// entrance and I had to kill it so other stuff could build"): every shipped factory
+// makes its largest ground unit and three of its smallest, the large one first or
+// last. The next site used to be admitted by a centre-radius test sized for the NEW
+// unit only, so a small unit was born behind a departing large one with their
 // footprints overlapping. Movement commits are footprint-strict on a loaded map, so
 // neither could ever take a step again. Retail's BUILD stage 2 (401deb) admits a
 // site with the footprint-strict mobile test (507d10, no moving-body exemption) and
@@ -97,14 +97,21 @@ int main(int argc,char** argv) {
     {
         ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
         struct Case {const char* producer;const char* output;bool infinite;int count;};
-        std::array<Case,5> roster{{{"arakeep","arasword",false,24},
-            {"zonhunt","zonhand",true,8},{"zonhand","zonter",true,8},{"verasy",nullptr,false,6},{"zonlord",nullptr,true,8}}};
-        for(const auto& c:roster)for(int direction:{0,1,2,3}) {
+        // A Kbot Lab's Peewees; a Vehicle Plant on repeat (TA's factory
+        // "repeat build"); a Shipyard's first ship; a Core Kbot Lab on repeat
+        // with its first ground output.
+        std::array<Case,4> roster{{{"armlab","armpw",false,24},
+            {"armvp","armflash",true,8},{"armsy",nullptr,false,6},{"corlab",nullptr,true,8}}};
+        // Each factory stands at its retail birth heading (spawn's
+        // orientation +- buildangle/2, 511ba2): TA places no structure turned
+        // a quarter round, so the Kingdoms version's four 90-degree turns are
+        // gone.
+        for(const auto& c:roster) {
             auto producer=*registry.find(c.producer);producer.storage=1000000;
             const auto* output=c.output ? registry.find(c.output) : nullptr;
             if(!c.output)for(const auto& id:registry.buildable(c.producer)) {
                 const auto* t=registry.find(id);
-                if(t && !t->isStructure() && t->domain==(std::string(c.producer)=="verasy" ? ta::sim::UnitType::Domain::Water : ta::sim::UnitType::Domain::Ground)) {output=t;break;}
+                if(t && !t->isStructure() && t->domain==(std::string(c.producer)=="armsy" ? ta::sim::UnitType::Domain::Water : ta::sim::UnitType::Domain::Ground)) {output=t;break;}
             }
             if(!output){std::puts("FAIL: production fixture output missing");++failures;continue;}
             const auto& menu=registry.buildable(c.producer);
@@ -115,7 +122,7 @@ int main(int argc,char** argv) {
             const bool water=output->domain==ta::sim::UnitType::Domain::Water;
             world.setTerrain(std::vector<uint8_t>(256*256,water?0:100),256,256,water?100:20);
             world.buildNavClasses(registry);world.setPathService(true);
-            const int id=world.spawn(&producer,1800,1800,float(direction)*1.57079632679f,0);
+            const int id=world.spawn(&producer,1800,1800,std::nullopt,0);
             world.player(0).mana=1000000;
             if(c.infinite)world.setRepeat(id,output);else world.train(id,output,c.count);
             int complete=0,tick=0;
@@ -125,13 +132,14 @@ int main(int argc,char** argv) {
             }
             const bool pass=complete>=c.count && world.unit(id)->rally.empty() &&
                 (!c.infinite || world.unit(id)->repeatType==output);
-            std::printf("%s: producer=%s output=%s direction=%d repeat=%d completed=%d ticks=%d hash=%016llx\n",
-                pass?"PASS":"FAIL",c.producer,output->id.c_str(),direction,
+            std::printf("%s: producer=%s output=%s repeat=%d completed=%d ticks=%d hash=%016llx\n",
+                pass?"PASS":"FAIL",c.producer,output->id.c_str(),
                 c.infinite,complete,tick,(unsigned long long)world.stateHash());
             ++cases;if(!pass)++failures;
         }
         // Every shipped ground factory: its largest ground output and its smallest.
-        // The reported pair (Barracks Catapult, then Knights) is pinned explicitly.
+        // One pair (a Vehicle Plant's Construction Vehicle, then Flashes) is
+        // pinned explicitly.
         int factories=0;
         for(const auto& [name,type]:registry.types()) {
             if(!type.producesUnits() || !type.productionScript)continue;
@@ -155,15 +163,15 @@ int main(int argc,char** argv) {
             // output keeps its own default; set, every new unit takes it; the lit
             // one clicked again (kStanceNone) clears it. A computer's factory
             // never takes one from its own stance orders.
-            const auto* keep=registry.find("arakeep");const auto* sword=registry.find("arasword");
+            const auto* lab=registry.find("armlab");const auto* peewee=registry.find("armpw");
             auto made=[&](ta::sim::World& world,int factory) {
                 const size_t before=world.units().size();
-                world.train(factory,sword,1);
+                world.train(factory,peewee,1);
                 for(int tick=0;tick<9000;++tick) {
                     world.tick(1.f/30);
                     for(size_t i=before;i<world.units().size();++i) {
                         const auto& u=world.units()[i];
-                        if(u.alive() && !u.underConstruction && u.type==sword) return u.stance;
+                        if(u.alive() && !u.underConstruction && u.type==peewee) return u.stance;
                     }
                 }
                 return -9;
@@ -171,8 +179,8 @@ int main(int argc,char** argv) {
             {
                 ta::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
                 world.buildNavClasses(registry);world.player(0).mana=1000000;
-                const int factory=world.spawn(keep,1800,1800,0,0);
-                const int base=world.spawn(sword,600,600,0,0);
+                const int factory=world.spawn(lab,1800,1800,0,0);
+                const int base=world.spawn(peewee,600,600,0,0);
                 const int fallback=world.unit(base)->stance;
                 check(world.unit(factory)->outputStance==-1 && made(world,factory)==fallback,
                       "a factory with no output stance makes units with their own default");
@@ -184,40 +192,11 @@ int main(int argc,char** argv) {
                 world.player(0).automaticGates=true;world.setStance(factory,0);
                 check(world.unit(factory)->outputStance==-1,"a computer's factory takes no output stance");
             }
-            // A mobile builder on an infinite queue parks its output on the
-            // factory's ring round it (engine deviation), not one step south.
-            {
-                const auto* tamer=registry.find("zontrain");const auto* wolf=registry.find("zonwolf");
-                ta::sim::World world;world.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
-                world.buildNavClasses(registry);world.player(0).mana=1000000;
-                const int id=world.spawn(tamer,1800,1800,0,0);
-                world.setRepeat(id,wolf);
-                // Its stance buttons go through the command path, which keeps
-                // a repeating builder on its job and must let Stance through.
-                ta::net::Command stance;stance.kind=ta::net::Cmd::Stance;stance.player=0;
-                stance.unitId=id;stance.targetId=2;
-                ta::sim::applyCommand(world,registry,stance);
-                check(world.unit(id)->outputStance==2 && world.unit(id)->repeatType==wolf,
-                      "a repeating Beast Tamer takes a stance for its output and keeps producing");
-                for(int tick=0;tick<30*120;++tick) {
-                    world.player(0).mana=1000000;   // no storage here: the cap would empty it
-                    world.tick(1.f/30);
-                }
-                int parked=0;bool clear=true;
-                for(const auto& u:world.units()) {
-                    if(u.id==id || !u.alive() || u.underConstruction || u.type!=wolf || !u.orders.empty())continue;
-                    ++parked;
-                    clear=clear && u.stance==2;
-                    const float dx=u.x.toFloat()-world.unit(id)->x.toFloat(),dz=u.z.toFloat()-world.unit(id)->z.toFloat();
-                    clear=clear && dx*dx+dz*dz>=96.f*96.f;
-                }
-                check(parked>=2 && clear,"a repeating Beast Tamer's wolves park on a ring round it, with its output stance");
-            }
         }
-        const auto *barracks=registry.find("arakeep"),*catapult=registry.find("arapult"),*knight=registry.find("araknigh");
-        if(!barracks || !catapult || !knight){std::puts("FAIL: Barracks/Catapult/Knight missing");++failures;}
+        const auto *plant=registry.find("armvp"),*builder=registry.find("armcv"),*flash=registry.find("armflash");
+        if(!plant || !builder || !flash){std::puts("FAIL: Vehicle Plant/Construction Vehicle/Flash missing");++failures;}
         else for(int side:{-1,0,1})for(bool legion:{false,true}) {
-            ++cases;if(!largeOutputCase(registry,*barracks,catapult,knight,side,legion,true))++failures;
+            ++cases;if(!largeOutputCase(registry,*plant,builder,flash,side,legion,true))++failures;
         }
     }
     std::printf("production exits: %d cases, %d failures\n",cases,failures);
