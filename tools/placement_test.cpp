@@ -160,7 +160,10 @@ void stagedStressCase(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, int ben
         cfg.benchmark = bench;
         cfg.unitCap = 500;
         for (int i = 0; i < 8; ++i) {
-            sim::MatchSlot s; s.used = true; s.faction = i % sides::count(); s.team = i;
+            // One team: with no enemy nothing scans or chases, so both fills stand
+            // where they were placed (a unit the staged fill adds mid-tick would
+            // otherwise be at Fire At Will for that tick before holdFire runs).
+            sim::MatchSlot s; s.used = true; s.faction = i % sides::count(); s.team = 0;
             cfg.slots.push_back(s);
         }
         sim::setupMatch(w, reg, cfg);

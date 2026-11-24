@@ -31,6 +31,7 @@ ta::sim::UnitType victimType() {
 }
 ta::sim::UnitType casterType() {
     auto t=victimType();t.id="caster";
+    t.sight=500;   // TA's Standby scan gathers within the unit's own sight (retail-weapon-scripts 8.1)
     ta::sim::Weapon w;w.damage=1;w.range=400;w.reload=0.1f;
     w.mindControl=true;w.kind=ta::sim::Weapon::Kind::Remote;
     w.remote=ta::sim::Weapon::RemoteKind::MindCtl;w.unitsOnly=true;w.aoe=32;w.buildUpTicks=8;w.decayTicks=8;

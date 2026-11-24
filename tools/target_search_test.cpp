@@ -310,10 +310,19 @@ void missionPorts(const sim::TypeRegistry& reg) {
     {
         const Idle unseen = idleNear(gunner, *archer, 0.8f * range, false, 1, false, 120);
         check(!unseen.attacked && !unseen.swept, "unseen_in_range_not_picked: Standby and the sweep leave it");
-        const Idle seen = idleNear(gunner, *archer, 0.8f * range, true, 1, false, 120);
+        // TotalA.exe's Standby scan (0x43b700 -> picker 0x40b7b0) gathers known
+        // enemies within the unit's OWN sightdistance only (docs/retail-weapon-
+        // scripts.md 8.1): a scout's sighting does not widen it. (Kingdoms took
+        // max(sight, range) and picked here.)
+        const Idle scouted = idleNear(gunner, *archer, 0.8f * range, true, 1, false, 120);
+        check(!scouted.attacked, "seen_by_own_scout_not_picked: TA's scan stays inside the unit's own sight");
+        sim::UnitType seer = gunner;
+        seer.id = "seer";
+        seer.sight = int32_t(range) + 200;
+        const Idle seen = idleNear(seer, *archer, 0.8f * range, true, 1, false, 120);
         check(seen.attacked && seen.automatic && seen.leashed && seen.returnMove,
-              "seen_by_own_scout_picked: Maneuver's Standby attack, leashed, with a return move");
-        const Idle roam = idleNear(gunner, *archer, 0.8f * range, true, 2, false, 120);
+              "seen_in_own_sight_picked: Maneuver's Standby attack, leashed, with a return move");
+        const Idle roam = idleNear(seer, *archer, 0.8f * range, true, 2, false, 120);
         check(roam.attacked && roam.automatic && !roam.leashed && !roam.returnMove,
               "Roam's Standby attack is plain (4d7de0: no leash)");
     }
@@ -329,7 +338,12 @@ void missionPorts(const sim::TypeRegistry& reg) {
     {
         const Idle hold = idleNear(gunner, *archer, 0.8f * range, true, 0, false, 120);
         check(!hold.attacked && hold.swept, "hold_position: no Standby attack, the sweep takes it");
-        const Idle patrol = idleNear(gunner, *archer, 0.8f * range, true, 0, true, 240);
+        // TA scans within the unit's own sight (docs/retail-weapon-scripts.md 8.1):
+        // the patrol case uses a gunner that sees the foe itself.
+        sim::UnitType patroller = gunner;
+        patroller.id = "patroller";
+        patroller.sight = int32_t(range) + 200;
+        const Idle patrol = idleNear(patroller, *archer, 0.8f * range, true, 0, true, 240);
         check(patrol.attacked && patrol.leashed && patrol.returnMove,
               "hold_position_patrol: the patrol's scan puts a forced leashed attack and a return move in",
               "attacked " + std::to_string(patrol.attacked) + " leashed " + std::to_string(patrol.leashed) +
@@ -404,9 +418,11 @@ void attackMoves(const sim::TypeRegistry& reg) {
     };
     // Sight 60: it never sees the foe, which stays inside the cannon's range
     // as it walks past 0.6 R off the path.
+    // TA's scans gather within the unit's own sight (docs/retail-weapon-scripts.md
+    // 8.1), so the fight-move gunner sees the foe itself.
     sim::UnitType blind = *archer;
     blind.id = "blind";
-    blind.sight = 60;
+    blind.sight = int32_t(range) + 200;
     for (int stance : {1, 2, 0}) {
         const Fight seen = fightMove(blind, *archer, 0.6f * range, stance, true, false, 600);
         check(seen.picked >= 0 && seen.automatic && seen.leashed && seen.leashIsType && seen.legBehind,
@@ -414,7 +430,10 @@ void attackMoves(const sim::TypeRegistry& reg) {
                   "): an automatic chase leashed by maneuverleashlength, the mode -1 leg behind it with its origin",
               describe(seen));
     }
-    const Fight unseen = fightMove(blind, *archer, 0.6f * range, 1, false, false, 900);
+    sim::UnitType myopic = *archer;   // sight 60: the foe at 0.6 R stays unseen
+    myopic.id = "myopic";
+    myopic.sight = 60;
+    const Fight unseen = fightMove(myopic, *archer, 0.6f * range, 1, false, false, 900);
     check(unseen.picked < 0 && unseen.endFromGoal < 64.f,
           "fight_move_unseen_walked_past: no attack on an enemy its player cannot see; it reaches the goal",
           describe(unseen));
