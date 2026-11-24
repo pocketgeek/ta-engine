@@ -70,7 +70,7 @@ Command wireRoundTrip(const Command& c) {
 
 int testCommandRoundTrip() {
     int fails = 0, n = 0;
-    const char* types[] = {"", "ARCHER", "keep", "aramonpriest01", "0123456789abcde"};
+    const char* types[] = {"", "ARMPW", "armlab", "corkrogoth01xy", "0123456789abcde"};
     float coords[] = {0.0f, 1.0f, -1.0f, 0.5f, -1234.5f, 65535.75f, 1e-6f, -3.14159f};
     for (int k = 0; k <= int(Cmd::Destroy); ++k)
         for (int ti = 0; ti < 5; ++ti)
@@ -198,8 +198,8 @@ int testLeaveEvents() {
 
 // ---- Part 2: real-world sim equivalence (needs game data) -----------------
 
-// The monarch (first alive unit) of each player, in player order.
-std::vector<int> monarchs(const ta::sim::World& w, int players) {
+// The Commander (first alive unit) of each player, in player order.
+std::vector<int> commanders(const ta::sim::World& w, int players) {
     std::vector<int> ids(size_t(players), 0);
     for (const auto& u : w.units())
         if (u.alive() && u.type && u.player >= 0 && u.player < players && ids[size_t(u.player)] == 0)
@@ -236,9 +236,9 @@ int testSimEquivalence(const std::string& mapArg, const std::string& dataRoot) {
         std::printf("sim-equivalence: FAIL -- setupMatch not deterministic (hash differs at tick 0)\n");
         return 1;
     }
-    auto mon = monarchs(A, 2);
+    auto mon = commanders(A, 2);
     if (!mon[0] || !mon[1]) {
-        std::printf("sim-equivalence: SKIP (no monarch spawned)\n");
+        std::printf("sim-equivalence: SKIP (no Commander spawned)\n");
         return 0;
     }
 

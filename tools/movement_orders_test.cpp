@@ -543,8 +543,8 @@ void mazeProduction(const char* data) {
         World w;w.setSerialThreads(true);
         MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath="maps/orders-maze.tnt";cfg.loadCrt=false;
         cfg.pathfindingMode=selectedMode;cfg.slots.resize(1);setupMatch(w,registry,cfg);
-        auto hunter=*registry.find("zonter");hunter.weapons.clear();hunter.weapon.damage=0;
-        // Keep authored Hunter movement/footprints/scripts; accelerate production
+        auto hunter=*registry.find("armpw");hunter.weapons.clear();hunter.weapon.damage=0;
+        // Keep the authored Peewee's movement/footprint/scripts; accelerate production
         // so this fixture measures exit/rally behavior rather than the economy.
         hunter.buildTime=1;hunter.buildCost=0;
         UnitType producer{};producer.id="maze-producer";producer.footX=6;producer.footZ=8;
@@ -565,7 +565,7 @@ void mazeProduction(const char* data) {
         }
         std::printf("maze mobile=%d rally=%d tick=%u built=%d idle=%d hash=%016llx\n",
             mobile,rally,w.tickCount(),built,idle,(unsigned long long)w.stateHash());
-        check(stopped&&built==16&&idle==built,"all Hunters finish production exit/rally moves on the actual 64x64 maze");
+        check(stopped&&built==16&&idle==built,"all Peewees finish production exit/rally moves on the actual 64x64 maze");
     }
 }
 uint64_t trollRally(const TypeRegistry& registry,bool serial,const ta::hpi::Vfs* maze=nullptr,int count=100) {
@@ -578,7 +578,9 @@ uint64_t trollRally(const TypeRegistry& registry,bool serial,const ta::hpi::Vfs*
         w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
         w.buildNavClasses(registry);w.setPathService(true);
     }
-    auto producer=*registry.find("zonhand"),troll=*registry.find("zontroll");
+    // A mobile producer (a Construction KBot) repeat-building Peewees: no
+    // factory yard, so every output's first order is the shared rally.
+    auto producer=*registry.find("armck"),troll=*registry.find("armpw");
     // Preserve authored movement, footprint and scripts. Speed up only the
     // economy to expose continued arrivals beyond the earlier 16-unit tests.
     producer.workerTime=1000;producer.storage=10000000;
@@ -596,17 +598,17 @@ uint64_t trollRally(const TypeRegistry& registry,bool serial,const ta::hpi::Vfs*
         if(!stopped&&built>=count){w.stop(id);stopped=true;}
         if(stopped&&built==idle)break;
     }
-    std::printf("Troll rally maze=%d serial=%d tick=%u built=%d idle=%d hash=%016llx\n",
+    std::printf("Peewee rally maze=%d serial=%d tick=%u built=%d idle=%d hash=%016llx\n",
         maze!=nullptr,serial,w.tickCount(),built,idle,(unsigned long long)w.stateHash());
     for(const auto& u:w.units())if(u.id!=id&&u.alive()&&!u.underConstruction&&!u.orders.empty())
-        std::printf("unsettled Troll id=%d at=%.1f,%.1f orders=%zu legion=%d\n",u.id,u.x.toFloat(),u.z.toFloat(),u.orders.size(),
+        std::printf("unsettled Peewee id=%d at=%.1f,%.1f orders=%zu legion=%d\n",u.id,u.x.toFloat(),u.z.toFloat(),u.orders.size(),
             w.legionNavigator()?int(w.legionNavigator()->mission(u)):-1);
-    check(stopped&&built==count&&idle==built,"all Beast Handler Trolls finish their shared rally orders");
-    if(selectedMode==PathfindingMode::Legion)check(!legionExit,"no Troll takes a production exit ahead of its rally");
+    check(stopped&&built==count&&idle==built,"all of a mobile producer's Peewees finish their shared rally orders");
+    if(selectedMode==PathfindingMode::Legion)check(!legionExit,"no Peewee takes a production exit ahead of its rally");
     if(!maze)for(const auto& u:w.units())if(u.id!=id&&u.alive()&&!u.underConstruction) {
         const int64_t dx=u.x.floorInt()-1600,dz=u.z.floorInt()-640;
         const int64_t radius=int64_t(count)*48+32;
-        check(dx*dx+dz*dz<=radius*radius,"Troll stopped outside its shared rally formation");
+        check(dx*dx+dz*dz<=radius*radius,"Peewee stopped outside its shared rally formation");
     }
     return w.stateHash();
 }
@@ -618,9 +620,9 @@ void trollProduction(const char* data,bool open=false,bool mazeOnly=false) {
         TypeRegistry registry;setupRegistry(registry,vfs);
         if(!mazeOnly) {
             const auto serial=trollRally(registry,true);
-            check(serial==trollRally(registry,false),"authored Troll arrivals match serial and threaded preparation");
+            check(serial==trollRally(registry,false),"authored Peewee arrivals match serial and threaded preparation");
             const auto large=trollRally(registry,true,nullptr,256);
-            check(large==trollRally(registry,false,nullptr,256),"256-Troll arrivals match serial and threaded preparation");
+            check(large==trollRally(registry,false,nullptr,256),"256-Peewee arrivals match serial and threaded preparation");
         }
         {
             constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
@@ -629,7 +631,7 @@ void trollProduction(const char* data,bool open=false,bool mazeOnly=false) {
             if(!open) {
                 vfs.setMapFiles(files);
                 const auto serial=trollRally(registry,true,&vfs);
-                if(mazeOnly)check(serial==trollRally(registry,false,&vfs),"maze Troll arrivals match serial and threaded preparation");
+                if(mazeOnly)check(serial==trollRally(registry,false,&vfs),"maze Peewee arrivals match serial and threaded preparation");
             }
         }
     }
@@ -639,7 +641,7 @@ void trollProduction(const char* data,bool open=false,bool mazeOnly=false) {
 // steadily: its headway window measures against that pace, so its scripts see
 // it walking (legionStill false, GET 29 above 0). Measured against its own top
 // speed, a member held to under a quarter of it read still and slid along with
-// its legs standing (an Aramon Horseman with a Rolling Tower).
+// its legs standing (a fast walker paired with a slow siege unit).
 void formationGait(PathfindingMode mode) {
     World w;setup(w,mode);
     auto fast=soldier(),slow=soldier();fast.id="fast";slow.id="slow";
