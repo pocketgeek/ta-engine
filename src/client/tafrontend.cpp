@@ -242,7 +242,8 @@ TaFrontEnd::Choice TaFrontEnd::run(SkirmishSetup& setup, TaCampaign& camp) {
     if (!cursorsLoaded_) {
         cursorsLoaded_ = true;
         cursorSettings_ = loadSettings();
-        cursors_.load(ren_, vfs_, &cursorSettings_);
+        const bool ok = cursors_.load(ren_, vfs_, &cursorSettings_);
+        std::fprintf(stderr, "front end: TA cursors %s\n", ok ? "loaded" : "unavailable (system pointer)");
     }
     SDL_StartTextInput();
     if (setup.seats.empty()) setup = defaultSkirmish(vfs_);

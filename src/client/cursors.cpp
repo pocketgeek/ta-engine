@@ -72,13 +72,16 @@ bool CursorSet::load(SDL_Renderer* ren, const hpi::Vfs& vfs, const Settings* set
     std::vector<uint8_t> gafBytes, palBytes;
     try {
         gafBytes = vfs.read("anims/cursors.gaf");
-        palBytes = vfs.read("palettes/cursors.pcx");
     } catch (...) { return false; }
+    // Kingdoms shipped palettes/cursors.pcx; Total Annihilation draws its cursors
+    // with the game palette, palettes/palette.pal.
+    std::string palName = vfs.has("palettes/cursors.pcx") ? "palettes/cursors.pcx" : "palettes/palette.pal";
+    try { palBytes = vfs.read(palName); } catch (...) { return false; }
 
     gaf::Palette pal;
     std::vector<gaf::Sequence> seqs;
     try {
-        pal = gaf::Palette::fromBytes(palBytes, "palettes/cursors.pcx");
+        pal = gaf::Palette::fromBytes(palBytes, palName);
         // -1: honour each frame's own transparency index (the cursor art is authored
         // that way, so backgrounds decode straight to alpha=0 -- verified on export).
         seqs = gaf::load(gafBytes, pal, -1, "anims/cursors.gaf");

@@ -100,6 +100,19 @@ bool TaFont::loadGaf(SDL_Renderer* ren, const hpi::Vfs& vfs, const std::string& 
     } catch (...) { return false; }
 }
 
+void TaFont::inkSpan(const std::string& s, int& top, int& bottom) const {
+    // The rows the string's glyphs actually cover, relative to draw()'s y.
+    top = height_; bottom = 0;
+    for (unsigned char c : s) {
+        const Glyph& g = glyphs_[c];
+        if (!g.tex || c == ' ') continue;
+        const int gy = gafFont_ ? height_ - g.yoff - 1 : 0;
+        top = std::min(top, gy);
+        bottom = std::max(bottom, gy + g.h);
+    }
+    if (bottom <= top) { top = 0; bottom = height_; }
+}
+
 int TaFont::width(const std::string& s) const {
     int w = 0;
     for (unsigned char c : s) w += glyphs_[c].advance + (gafFont_ ? 0 : 1);
@@ -278,7 +291,11 @@ void TaGuiView::drawText(const tagui::Gadget& g, const std::string& s, float x, 
     const TaFont& f = (g.fontNumber == 1 && font11_->height()) ? *font11_ : *font_;
     float tx = x;
     if (centre) tx = x + (float(g.w) - float(f.width(s))) / 2;
-    const float ty = y + (float(g.h) - float(f.height())) / 2;
+    // Centre the glyphs' own rows in the gadget: the font height is its tallest
+    // glyph, so centring that box sat capital-only labels low on their buttons.
+    int top = 0, bottom = 0;
+    f.inkSpan(s, top, bottom);
+    const float ty = y + std::floor((float(g.h) - float(bottom - top)) / 2) - float(top);
     SDL_Color c{255, 255, 255, 255};
     if (g.colorf > 0 && g.colorf < 256) c = SDL_Color{pal_.rgba[g.colorf][0], pal_.rgba[g.colorf][1], pal_.rgba[g.colorf][2], 255};
     f.draw(ren_, L, tx, ty, s, c);

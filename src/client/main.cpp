@@ -1258,7 +1258,16 @@ int main(int argc, char** argv) {
     if (ta::termRequested()) { quitApp = true; break; }   // SIGTERM/SIGINT between sessions
     if (fromMenu || !pendingCampaign.empty()) { serverHost = launchServerHost;
                     serverPort = launchServerPort; args = launchArgs;
-                    menuMusic.start(vfs, 15);   // front-end BGM (idempotent; loops into the lobby)
+                    {   // Front-end BGM: TA loops allsound's [BGM] sound (drone2), no music.
+                        std::string bgm = "drone2";
+                        try {
+                            const auto b = vfs.read("gamedata/allsound.tdf");
+                            const auto root = ta::tdf::parseText(std::string(b.begin(), b.end()), "allsound.tdf");
+                            if (const auto* n = root.child("BGM")) bgm = n->valueOr("sound", bgm);
+                        } catch (...) {}
+                        if (vfs.has("sounds/" + bgm + ".wav")) menuMusic.startLoop(vfs, "sounds/" + bgm + ".wav");
+                        else menuMusic.start(vfs, 15);   // idempotent; loops into the lobby
+                    }
                     // A pending Next/Retry re-enters the game directly, skipping the menu.
                     mode = pendingCampaign.empty() ? launchMode : std::string("game"); }
 

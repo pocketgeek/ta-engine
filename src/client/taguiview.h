@@ -31,6 +31,8 @@ public:
     ~TaFont();
     int height() const { return height_; }
     int width(const std::string& s) const;
+    // The rows a string's glyphs cover, relative to draw()'s y (top inclusive, bottom exclusive).
+    void inkSpan(const std::string& s, int& top, int& bottom) const;
     void draw(SDL_Renderer* ren, const GuiLayout& L, float x, float y, const std::string& s, SDL_Color tint) const;
 private:
     struct Glyph { SDL_Texture* tex = nullptr; int w = 0, h = 0, xoff = 0, yoff = 0, advance = 0; };

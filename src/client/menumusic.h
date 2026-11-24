@@ -62,6 +62,44 @@ public:
         SDL_PauseAudioDevice(dev_, 0);   // the callback starts pulling
     }
 
+    // Total Annihilation's front end plays no music: it loops the GUI sound BGM
+    // (gamedata/allsound.tdf [BGM] sound=drone2; TotalA.exe 0x426453 via 0x47f210,
+    // docs/retail-gui.md 1). Loops the WAV `path` (a VFS path) through the same
+    // device and volume as the menu music. Idempotent for the same path.
+    void startLoop(const hpi::Vfs& vfs, const std::string& path) {
+        if (dev_ && file_ == path && track_ == kLoopTrack) return;
+        stop();
+        vfs_ = &vfs;
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return;
+        std::vector<uint8_t> bytes;
+        try { bytes = vfs.read(path); } catch (...) { return; }
+        SDL_AudioSpec spec{};
+        Uint8* buf = nullptr; Uint32 len = 0;
+        if (!SDL_LoadWAV_RW(SDL_RWFromConstMem(bytes.data(), int(bytes.size())), 1, &spec, &buf, &len)) return;
+        SDL_AudioCVT cvt;
+        const int ch = std::clamp<int>(spec.channels, 1, 2);
+        if (SDL_BuildAudioCVT(&cvt, spec.format, spec.channels, spec.freq, AUDIO_S16SYS, Uint8(ch), spec.freq) < 0) {
+            SDL_FreeWAV(buf); return;
+        }
+        std::vector<uint8_t> work(size_t(len) * size_t(std::max(1, cvt.len_mult)));
+        std::memcpy(work.data(), buf, len);
+        SDL_FreeWAV(buf);
+        cvt.buf = work.data(); cvt.len = int(len);
+        if (cvt.needed && SDL_ConvertAudio(&cvt) < 0) return;
+        const size_t outBytes = cvt.needed ? size_t(cvt.len_cvt) : size_t(len);
+        src_.assign(reinterpret_cast<const int16_t*>(work.data()),
+                    reinterpret_cast<const int16_t*>(work.data()) + outBytes / 2);
+        if (src_.empty()) return;
+        rate_ = spec.freq;
+        srcChannels_ = ch;
+        file_ = path;
+        pos_ = 0;
+        if (!openDevice()) { src_.clear(); return; }
+        track_ = kLoopTrack;
+        SDL_PauseAudioDevice(dev_, 0);
+    }
+    static constexpr int kLoopTrack = -2;
+
     // Re-open the current track on the now-current output device (Options device switch),
     // continuing from the same play position so the music doesn't restart. No-op if nothing
     // is playing -- the next start() then simply opens on the new device.
