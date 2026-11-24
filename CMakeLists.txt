@@ -2771,7 +2771,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_TACTICAL_DOTS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/tactical-dots-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/tactical-dots-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/tactical-dots.png")
       set_tests_properties(tactical_dots PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: tactical dots \\(threshold")
@@ -2780,7 +2780,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_AIR_OVER_FX_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/air-over-fx-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/air-over-fx-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1024 768 --shot "${CMAKE_CURRENT_BINARY_DIR}/air-over-fx.png")
       set_tests_properties(air_over_fx PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "PASS: air over fx \\(altitude")
@@ -2790,7 +2790,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_DEPTH_FX_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/depth-fx-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/depth-fx-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/depth-fx.png")
       set_tests_properties(depth_fx PROPERTIES TIMEOUT 120
           PASS_REGULAR_EXPRESSION "PASS: depth fx \\(behind")
@@ -2807,7 +2807,7 @@ if(TA_BUILD_CLIENT)
             TA_SETTINGS_FILE=${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-settings.ini
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-${_zw}-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-${_zw}-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
             --testbuild --winsize ${_zw} ${_zh} --shot "${CMAKE_CURRENT_BINARY_DIR}/zoom-floor-${_zw}.png")
         set_tests_properties(zoom_floor_${_zw}x${_zh} PROPERTIES TIMEOUT 120
             PASS_REGULAR_EXPRESSION "PASS: zoom floor fits the world view")
@@ -2820,7 +2820,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_HIDDEN_UNITS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/hidden-units-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/hidden-units-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/hidden-units.png")
       set_tests_properties(hidden_units PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: hidden units \\(")
@@ -2831,7 +2831,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_RETAIL_FOG_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/retail-fog-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/retail-fog-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/retail-fog.png")
       set_tests_properties(retail_fog PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: retail fog \\(")
@@ -2839,7 +2839,7 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_SPECTATOR_BARS_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/spectator-bars-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/spectator-bars-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/spectator-bars.png")
       set_tests_properties(spectator_health_bars PROPERTIES TIMEOUT 90
           PASS_REGULAR_EXPRESSION "PASS: spectator bars \\(")
@@ -2848,7 +2848,7 @@ if(TA_BUILD_CLIENT)
             SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_WATCHONLY_TEST=${watch_mode}
             XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/watch-only-profile
             XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/watch-only-profile
-            $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+            $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
             --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/watch-only.png")
         set_tests_properties(watch_only_${watch_mode} PROPERTIES TIMEOUT 90
             PASS_REGULAR_EXPRESSION "PASS: watch only \\(${watch_mode}\\)")
@@ -2865,10 +2865,10 @@ if(TA_BUILD_CLIENT)
           SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy TA_GUI_SMOOTH_TEST=1
           XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game-profile
           XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game-profile
-          $<TARGET_FILE:taclient> game "Ulasem Arena" --data "${TA_TEST_DATA}"
+          $<TARGET_FILE:taclient> game "Ashap Plateau" --data "${TA_TEST_DATA}"
           --testbuild --winsize 1280 960 --shot "${CMAKE_CURRENT_BINARY_DIR}/gui-smooth-game.png")
       set_tests_properties(gui_smoothing_game PROPERTIES TIMEOUT 90
-          PASS_REGULAR_EXPRESSION "PASS: HUD smoothing applies live")
+          PASS_REGULAR_EXPRESSION "PASS: HUD smoothing (applies|toggles) live")
       # Options > GAME DATA FOLDER through real input and a fake picker (invalid, cancel,
       # valid + restart prompt, LATER, RESTART NOW, the locked form), and the menu's own
       # row greyed by this launch's --data. The test writes the settings file, so it is

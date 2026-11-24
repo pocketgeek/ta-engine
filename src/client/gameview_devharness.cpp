@@ -21,6 +21,7 @@
 #include "client/buildline.h"
 #include "client/cursortiming.h"
 #include "client/vfsreadgate.h"
+#include "client/taguiview.h"
 #include "sim/retailmotion.h"
 #include <algorithm>
 #include <cctype>
@@ -141,8 +142,11 @@
             picker_ = panel;
             if (!bigMap_) fail("the full-window view did not open");
             bigMap_->draw({0, 0, 640, 480});
-            waitHeld(*gate, 1);   // its section worker, at least
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));   // time for the chunk worker's
+            // A Kingdoms map's view decoded shared terrain sections off the data set on its
+            // section worker. A TA map carries its own tiles, so the view's workers bake from
+            // memory and may read nothing: hold whatever they do read, and the view itself
+            // (a Vfs over vfs_) must still be gone or re-pointed before the data set goes.
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
         if (gen) {
             const size_t before = gate->held();
@@ -155,6 +159,7 @@
         }
         std::fprintf(stderr, "preview lifetime (%s): %zu preview reads held (%zu rolls listed, full-window view %s)\n",
                      mode, gate->held(), genJobs_.size(), bigMap_ ? "open" : "closed");
+        if (gate->held() == 0) { gate->release(); return; }   // nothing read (big, TA tiles): nothing to hold
         std::thread([gate] {
             std::this_thread::sleep_for(std::chrono::seconds(2));
             while (gate->held() > 1 && gate->releaseLatest())
@@ -178,13 +183,20 @@
         auto check = [](bool ok, const char* message) {
             if (!ok) throw std::runtime_error(message);
         };
+        // A data set with a Kingdoms-style panel (anims/<side>ingame.gaf) reloads it
+        // smoothed. TA's sidebar is a .gui page (TaGuiView, gameview_tahud.cpp) drawn
+        // from intgaf art that SMOOTH ART does not touch, so with TA data there is no
+        // panel to check; the toggle must still keep layout and state and leak nothing.
+        const bool panel = panelTex_ != nullptr;
         for (int i = 0; i < 3; ++i) for (bool on : {true, false}) {
             s.smoothArt = on; applySettings(s);
             int w = 0, h = 0;
-            check(panelTex_ && SDL_QueryTexture(panelTex_, nullptr, nullptr, &w, &h) == 0,
-                  "HUD panel missing during live smoothing toggle");
-            check(w == panelW_ * (on ? 2 : 1) && h == panelH_ * (on ? 2 : 1),
-                  "HUD smoothing did not apply live");
+            if (panel) {
+                check(panelTex_ && SDL_QueryTexture(panelTex_, nullptr, nullptr, &w, &h) == 0,
+                      "HUD panel missing during live smoothing toggle");
+                check(w == panelW_ * (on ? 2 : 1) && h == panelH_ * (on ? 2 : 1),
+                      "HUD smoothing did not apply live");
+            }
             check(orderBtns_.size() == buttons && hudFont_.width("Smoothing test") == width && hudFont_.height() == height,
                   "live smoothing changed interface layout");
             check(world_.stateHash() == hash, "interface smoothing changed simulation state");
@@ -211,7 +223,11 @@
             gpuvram::destroy(rt);
             return px;
         };
+        // The HUD's glyph-art face is Kingdoms' fonts/bodfontbody.gaf; a data set without
+        // it (retail TA) has no glyph art to check.
+        const bool glyphArt = hudFont_.ok();
         for (bool on : {false, true}) {
+            if (!glyphArt) break;
             s.smoothArt = on; applySettings(s);
             for (float scale : {1.0f, 1.7f}) {
                 const auto solid = render(true, scale), tinted = render(false, scale);
@@ -234,8 +250,10 @@
         }
         s.smoothArt = initial; applySettings(s);
         ta::setUiFontStyle(initialFont);
-        std::puts("PASS: HUD smoothing applies live, keeps layout/state and releases textures");
-        std::puts("PASS: solid HUD text is one flat colour in the glyph shapes");
+        std::puts(panel ? "PASS: HUD smoothing applies live, keeps layout/state and releases textures"
+                      : "PASS: HUD smoothing toggles live (no smoothed panel art in this data set), keeps layout/state and releases textures");
+        std::puts(glyphArt ? "PASS: solid HUD text is one flat colour in the glyph shapes"
+                           : "PASS: no HUD glyph-art face in this data set (fonts/bodfontbody.gaf): solid text not checked");
     }
 
     void GameView::setupScenario() {
@@ -548,12 +566,11 @@
             noFog_=false;edgeScrollOn_=false;tacticalDotsOpt_=false;healthBars_=0;
             fogStill_=true;
             writableWorld().setPlayerCount(2);
-            // DOUBLE SIGHT (270 px for a swordsman): at the plain 135 the unit's
-            // bounding box and the 32 px cells keep an enemy in view out to ~1.2x.
-            writableWorld().setDoubleSight(true);
-            const auto* sword=registry_.find("arasword");
-            const auto* keep=registry_.find("arakeep");
-            check(sword && keep && keep->radar>0,"fixture types (a swordsman, a keep with radar)");
+            // A Peewee sees 280 px (armpw.fbi), far enough that its bounding box and the
+            // 32 px cells do not keep an enemy in view past 1.1x; the radar tower is armrad.
+            const auto* sword=registry_.find("armpw");
+            const auto* keep=registry_.find("armrad");
+            check(sword && keep && keep->radar>0,"fixture types (a Peewee, a radar tower)");
             const auto& m=mapView_.map();
             const int sea=world_.mapSea();
             const auto h16=[&](int x,int z) {
@@ -621,18 +638,23 @@
                     if (ox+rd>float(m.width*16-64) || std::hypot(ox-fx,oz-fz)<rd+4*S || std::hypot(ox-hx,oz-hz)<rd+4*S ||
                         std::hypot(ox+rd-fx,oz-fz)<4*S || std::hypot(ox+rd-hx,oz-hz)<4*S) continue;
                     if (!world_.canPlace(keep,ox,oz) || h16(int(ox+rd)/16,z)<=sea+2) continue;
+                    // Nor in sight of the units the local match opened with (the commanders).
+                    bool seen=false;
+                    for (const auto& u:world_.units())
+                        if (u.alive() && u.player==0 && std::hypot(ox+rd-u.x.toFloat(),oz-u.z.toFloat())<4*S) seen=true;
+                    if (seen) continue;
                     kx=ox;kz=oz;
                 }
             check(kx>0,"found room for the radar fixture");
             std::fprintf(stderr,"retail fog: sight %.0f radar %.0f flat %.0f,%.0f hill %.0f,%.0f (h %d -> %d) keep %.0f,%.0f\n",
                 S,R,fx,fz,hx,hz,h16(int(hx)/16,int(hz)/16),h16(int(hx+hdx*1.5f*S)/16,int(hz)/16),kx,kz);
-            const int own=spawn("arasword",fx,fz,0,0);
-            const int inside=spawn("arasword",fx+0.9f*S,fz,0,1);
-            const int outside=spawn("arasword",fx-1.1f*S,fz,0,1);
-            const int high=spawn("arasword",hx,hz,0,0);
-            const int below=spawn("arasword",hx+hdx*1.5f*S,hz,0,1);
-            const int tower=spawn("arakeep",kx,kz,0,0);
-            const int blip=spawn("arasword",kx+rd,kz,0,1);
+            const int own=spawn("armpw",fx,fz,0,0);
+            const int inside=spawn("armpw",fx+0.9f*S,fz,0,1);
+            const int outside=spawn("armpw",fx-1.1f*S,fz,0,1);
+            const int high=spawn("armpw",hx,hz,0,0);
+            const int below=spawn("armpw",hx+hdx*1.5f*S,hz,0,1);
+            const int tower=spawn("armrad",kx,kz,0,0);
+            const int blip=spawn("armpw",kx+rd,kz,0,1);
             check(own>0 && inside>0 && outside>0 && high>0 && below>0 && tower>0 && blip>0,"fixture spawned");
             for (int i=0;i<30;++i) writableWorld().tick(1.f/30);
             const char* capture=ta::devEnv("TA_RETAIL_FOG_CAPTURE");
@@ -685,13 +707,13 @@
             noFog_=false;edgeScrollOn_=false;tacticalDotsOpt_=false;healthBars_=1;
             writableWorld().setPlayerCount(3);
             const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f;
-            const int own=spawn("arasword",x0,z0,0,0);
+            const int own=spawn("armpw",x0,z0,0,0);
             // In sight to the south: retail centres a sight footprint on the unit's
             // world cell, but tests units by their projected corners (z - y/2), so on
             // this raised ground the view reaches further south than north.
-            const int foeSeen=spawn("arasword",x0+60,z0+60,0,1);
-            const int foeHidden=spawn("arasword",x0+700,z0+200,0,1);
-            const int thirdHidden=spawn("arasword",x0-700,z0-200,0,2);
+            const int foeSeen=spawn("armpw",x0+60,z0+60,0,1);
+            const int foeHidden=spawn("armpw",x0+700,z0+200,0,1);
+            const int thirdHidden=spawn("armpw",x0-700,z0-200,0,2);
             check(own>=0 && foeSeen>=0 && foeHidden>=0 && thirdHidden>=0,"fixture spawned");
             check(!world_.allied(0,1) && !world_.allied(0,2) && !world_.allied(1,2),"three separate sides");
             // A third of a second of sim builds the seat's fog the way a game's opening does.
@@ -726,9 +748,9 @@
             noFog_=true;edgeScrollOn_=false;
             writableWorld().setPlayerCount(2);
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
-            const int a=spawn("arasword",cx,cz,0,0);
-            const int b=spawn("tarknigh",cx+60,cz+30,0,1);
-            const int builder=spawn("araking",cx-60,cz+60,0,0);
+            const int a=spawn("armpw",cx,cz,0,0);
+            const int b=spawn("corak",cx+60,cz+30,0,1);
+            const int builder=spawn("armcom",cx-60,cz+60,0,0);
             for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
             replayMode_=true;
             replayBundles_.resize(23*60*30+2*30);
@@ -770,9 +792,9 @@
                 }
             ta::setUiFontStyle(initialFont);uiScale_=1;
             selection_={b};mouseX_=1;mouseY_=400;
-            shot(1024,768,"1024-ui1-taros");
+            shot(1024,768,"1024-ui1-core");
             selection_={a};
-            shot(1024,768,"1024-ui1-aramon");
+            shot(1024,768,"1024-ui1-arm");
             replayMode_=false;replayBundles_.clear();replayTick_=0;selection_.clear();
             std::fprintf(stderr,"PASS: replay bar shots\n");
             return;
@@ -790,11 +812,14 @@
             noFog_=true;edgeScrollOn_=false;
             writableWorld().setPlayerCount(3);
             const float cx=float(mapView_.map().blocksX)*16.0f,cz=float(mapView_.map().blocksY)*16.0f;
-            const int a1=spawn("arasword",cx-80,cz,0,0),a2=spawn("arasword",cx-50,cz,0,0);
-            const int b1=spawn("tarknigh",cx+40,cz,0,1),b2=spawn("tarknigh",cx+70,cz,0,1),b3=spawn("tarknigh",cx+100,cz,0,1);
-            const int builder=spawn("araking",cx-80,cz+90,0,0);
-            const int factory=spawn("tarcastl",cx+70,cz+130,0,1);
+            const int a1=spawn("armpw",cx-80,cz,0,0),a2=spawn("armpw",cx-50,cz,0,0);
+            const int b1=spawn("corak",cx+40,cz,0,1),b2=spawn("corak",cx+70,cz,0,1),b3=spawn("corak",cx+100,cz,0,1);
+            const int builder=spawn("armcom",cx-80,cz+90,0,0);
+            const int factory=spawn("corlab",cx+70,cz+130,0,1);
             check(a1>=0 && a2>=0 && b1>=0 && b2>=0 && b3>=0 && builder>=0 && factory>=0,"fixture spawned");
+            // Hold fire: TA's Peewees and A.K.s 120 px apart would shoot it out, and the
+            // replay part below needs the fixture alive until it kills b3 itself.
+            for (const int id:{a1,a2,b1,b2,b3,builder,factory}) writableWorld().unit(id)->fireState=0;
             for (int i=0;i<3;++i) writableWorld().tick(1.f/30);
             if (replay) replayMode_=true; else beginSpectating();
             const auto frame=[&] {
@@ -837,6 +862,20 @@
                 frame();
             };
             const auto at=[&](int id) { const auto* u=frameUnitP(id);return unitScreen(frameUnit(u->id)); };
+            // The TA sidebar page's buttons on show (gameview_tahud.cpp), each with a
+            // point inside it: the panel scanned through the page's own hit test.
+            const auto taButtons=[&] {
+                std::vector<std::pair<std::string,SDL_FPoint>> out;
+                ta::TaGuiView* page=taHudPage_.empty() ? nullptr : taPage(taHudPage_);
+                if (!page) return out;
+                std::set<std::string> seen;
+                for (float y=0;y<float(H);y+=3)
+                    for (float x=float(mapViewW(W));x<float(W);x+=3)
+                        if (const auto* g=page->at(x,y,taHudLayout_);
+                            g && g->type==ta::tagui::Type::Button && !g->grayedOut && seen.insert(g->name).second)
+                            out.push_back({g->name,{x+2,y+2}});
+                return out;
+            };
             const auto clickUnit=[&](int id,Uint8 button=SDL_BUTTON_LEFT) { const auto p=at(id);clickAt(p.x,p.y,button); };
             check(hudPlayer()==-1 && !hudShown(),"nothing selected: no interface");
             mouseX_=vw*0.5f;mouseY_=30;
@@ -849,37 +888,17 @@
             clickUnit(b1);
             check(selection_==std::vector<int>{b1},"a click selects any player's unit");
             check(hudPlayer()==1 && hudShown(),"the interface is that unit's player's");
-            check(framePlayer(hudPlayer()).side=="TAR" || framePlayer(hudPlayer()).side=="tar","fixture: player 1 is Taros");
+            check(ta::sides::find(framePlayer(hudPlayer()).side)==ta::sides::find("CORE"),"fixture: player 1 is Core");
             {
                 const SDL_Color shown=factionColor(),seat=playerColor(localPlayer_),owner=playerColor(1);
                 check(shown.r==owner.r && shown.g==owner.g && shown.b==owner.b &&
                       (seat.r!=owner.r || seat.g!=owner.g || seat.b!=owner.b),"the fallback panel wears the owner's colour");
             }
             untouched("selecting");
-            check(artSide_=="tar","the panel art follows the selected side");
-            {
-                // The panel's KillCount: the watcher sees the panel as the owner, so the
-                // owner's unit shows its kills (not hashed, so the world stays unchanged).
-                const auto shot=[&] {
-                    // At the renderer's own size: the dummy driver reads back less than W x H.
-                    int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
-                    captureFrame();beginFrame();cosmeticStep(0);
-                    prepare(ow,oh);draw(ow,oh);
-                    std::vector<uint8_t> px(size_t(ow)*size_t(oh)*4);
-                    SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
-                    endFrame();
-                    // Only the panel strip at the bottom: the map above animates.
-                    px.erase(px.begin(),px.begin()+std::ptrdiff_t(size_t(oh-oh/10)*size_t(ow)*4));
-                    return px;
-                };
-                shot();   // settle
-                const auto none=shot();
-                writableWorld().unit(b1)->kills=7;
-                const auto seven=shot();
-                writableWorld().unit(b1)->kills=0;
-                const auto again=shot();
-                check(none==again && none!=seven,"the selected unit's kills show on its owner's panel");
-            }
+            // (TA's sidebar and top bar are the seat's side's art -- gameview_tahud.cpp
+            // draws side_'s -- so unlike the Kingdoms panel nothing here swaps side art.)
+            // (The Kingdoms panel's KillCount -- the owner's unit showing its kills to a
+            // watcher -- has no gadget in TA's interface, gameview_tahud.cpp.)
             // Right clicks: on the ground, on an enemy, on a friend, on the minimap.
             clickAt(vw*0.5f,H*0.25f,SDL_BUTTON_RIGHT);
             clickUnit(a1,SDL_BUTTON_RIGHT);
@@ -924,12 +943,14 @@
             // The panel: a button draws the true state and a click on it does nothing.
             clickUnit(a1);
             check(selection_==std::vector<int>{a1} && hudPlayer()==0,"another owner replaces the selection");
-            check(artSide_=="ara","the panel art follows back");
             frame();
-            check(!guiBtnRects_.empty(),"the order buttons are on show");
-            for (auto [r,cmd]:std::vector<std::pair<SDL_FRect,char>>(guiBtnRects_)) {
-                clickAt(r.x+r.w/2,r.y+r.h/2);
-                check(selection_==std::vector<int>{a1},"a button press does not reach the map");
+            {
+                const auto buttons=taButtons();
+                check(!buttons.empty(),"the order buttons are on show");
+                for (const auto& [name,p]:buttons) {
+                    clickAt(p.x,p.y);
+                    check(selection_==std::vector<int>{a1},"a button press ("+name+") does not reach the map");
+                }
             }
             untouched("order buttons");
             selection_={builder};frame();frame();
@@ -1013,15 +1034,21 @@
                 replayBundles_.resize(3000);
                 replayKeyBudget_=uint64_t(1)<<30;
                 std::map<size_t,uint64_t> straight;
-                // Dead before the keyframe at 900: one long enough to be a body, one mid-fall.
-                const int body=spawn("arasword",cx-260,cz-260,0,0),falling=spawn("arasword",cx-200,cz-260,0,0);
+                // Dead before the keyframe at 900, long enough to be a body. (Kingdoms' second
+                // fixture, a unit still in its death fall at the keyframe, has no TA subject:
+                // a TA unit's Killed script leaves its wreck at once.)
+                const int body=spawn("armpw",cx-260,cz-260,0,0);
                 replayStep(0);
                 check(replayKeys_.size()==1 && replayKeys_[0].tick==0,"tick 0 is kept before the first tick runs");
                 const auto base=world_.tickCount()-replayTick_;
                 straight[replayTick_]=world_.stateHash();
                 while (replayTick_<1800) {
-                    if (replayTick_==500) writableWorld().unit(body)->hp=ta::sim::Fixed();
-                    if (replayTick_==895) writableWorld().unit(falling)->hp=ta::sim::Fixed();
+                    // It dies on a sliver of HP (HP% a second before = 1): severity 1, so
+                    // TA's Killed script leaves a wreck (corpse type 1), not a heap or nothing.
+                    if (replayTick_==500) {
+                        auto* u=writableWorld().unit(body);
+                        u->hpPct1s=u->hpPctCur=1;u->hp=ta::sim::Fixed();
+                    }
                     replayTickOnce();straight[replayTick_]=world_.stateHash();
                 }
                 check(replayKeys_.size()==3 && replayKeys_[2].tick==1800,"a keyframe every 30 s of game");
@@ -1064,14 +1091,14 @@
                 check(replayTick_==target,"a jump back lands on its tick, paused or not");
                 check(world_.stateHash()==straight.at(target),"a jump back lands on the recorded state");
                 check(world_.tickCount()==base+target,"the sim clock went back too");
-                check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's display is gone");
+check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's display is gone");
                 cameraFrame(0);
                 check(selection_==std::vector<int>{keeper},"the selection survives the jump");
                 check(trackSel_,"so does T");
                 check(hudPlayer()==int(frameUnitP(keeper)->player),"and the interface");
                 // A jump's frames can lack a unit its landing has: nothing is decided on them.
                 {
-                    const int late=spawn("arasword",cx-260,cz-200,0,0);
+                    const int late=spawn("armpw",cx-260,cz-200,0,0);
                     selection_={late};trackSel_=true;
                     frame();
                     check(hudPlayer()==0,"fixture: a unit that exists only here");
@@ -1090,9 +1117,6 @@
                     check(dead && !dead->alive() && dead->corpsePhase,"fixture: a body lies on the field");
                     check(unitType_.registered(body) && unitType_.at(body)!=dead->type->id,"a restored body draws, as its corpse");
                     check(anims_.count(body) && anims_.at(body).dying && anims_.at(body).ownerVmStopRequested,"and does not die again");
-                    const auto* mid=frameUnitP(falling);
-                    check(mid && !mid->alive() && !mid->corpsePhase,"fixture: a unit in its death fall");
-                    check(unitType_.registered(falling) && anims_.count(falling) && anims_.at(falling).dying,"it still falls");
                     check(pickRegistered_.complete,"and picking has every record again");
                 }
                 selection_={keeper};frame();
@@ -1107,11 +1131,11 @@
                 check(unitType_.registered(keeper),"and the landing has them");
                 // Silent, and no effects, up to and including the frame that shows the landing.
                 {
-                    ta::sim::UnitType fleshy=*registry_.find("arasword");
+                    ta::sim::UnitType fleshy=*registry_.find("armpw");
                     fleshy.bodyType="flesh";
                     const auto queueEffects=[&] {
                         std::lock_guard<std::mutex> lock(hitQueueMutex_);
-                        ta::sim::World::SoundReq sound;sound.name="alarmmon";sound.tick=world_.tickCount();
+                        ta::sim::World::SoundReq sound;sound.name="warning1";sound.tick=world_.tickCount();
                         missionSoundQueue_.push_back(sound);
                         ta::sim::World::HitFx hit;hit.x=cx;hit.z=cz;
                         hit.target=&fleshy;
@@ -1298,11 +1322,26 @@
             }
             // The rule is one predicate: as a seated player the same fixture acknowledges.
             spectating_=false;replayMode_=false;
-            selection_={spawn("arasword",cx-300,cz-200,0,0)};   // the replay's fighting may have left nobody
+            const int seated=spawn("armpw",cx-300,cz-200,0,0);   // the replay's fighting may have left nobody
+            selection_={seated};
             frame();
-            const auto button=guiBtnRects_.front().first;
-            clickAt(button.x+button.w/2,button.y+button.h/2);
-            check(sounded>0,"a seated player's button press is heard: the sound check can fail");
+            {
+                const auto buttons=taButtons();
+                check(!buttons.empty(),"a seated player's order buttons are on show");
+                // One TA's sidebar acts on as an order (taHudEvent): MOVE.
+                const auto move=std::find_if(buttons.begin(),buttons.end(),[](const auto& b) {
+                    return b.first.size()>=4 && b.first.compare(b.first.size()-4,4,"MOVE")==0;});
+                check(move!=buttons.end(),"fixture: the sidebar has a MOVE button");
+                clickAt(move->second.x,move->second.y);
+                check(pendingCmd_=='m',"a seated player's MOVE button arms: the button check can fail");
+                pendingCmd_=0;
+            }
+            // TA's sidebar presses play the side's click tone (tone<side>), which retail
+            // TA data does not ship; a selection is acknowledged by the unit's sound
+            // class (sound.tdf select), so that is what proves the sound check can fail.
+            selection_.clear();frame();
+            clickUnit(seated);
+            check(sounded>0,"a seated player's selection is heard: the sound check can fail");
             pendingCmd_=0;
             press(ta::Act::Move);
             check(pendingCmd_=='m',"a seated player's order key still arms");
@@ -1328,7 +1367,12 @@
             const bool shadows=!settings_ || settings_->unitShadows;
             if (settings_) settings_->unitShadows=false;
             const float x0=float(mapView_.map().blocksX)*16.0f,z0=float(mapView_.map().blocksY)*16.0f;
-            const int flyer=spawn("aradrag",x0,z0,0,0);
+            // A Vamp: its fuselage is solid at its body centre (a Thunder's or an
+            // Atlas's centre is a gap between parts). Zoom 2 puts the 7x7 probe well
+            // inside it. TA_AIR_OVER_FX_TYPE=<unit> tries another flyer.
+            const char* flyerType=ta::devEnv("TA_AIR_OVER_FX_TYPE");
+            const int flyer=spawn(flyerType ? flyerType : "corvamp",x0,z0,0,0);
+            constexpr float viewZoom=2.0f;
             check(flyer>=0,"fixture spawned");
             writableWorld().order(flyer,x0+3000,z0,false);
             float offX=0,offY=0;
@@ -1336,9 +1380,9 @@
             int ow=0,oh=0;
             const auto frame=[&](bool follow,const char* capture) {
                 captureFrame();beginFrame();cosmeticStep(0);
-                mapView_.setZoom(1.0f);
+                mapView_.setZoom(viewZoom);
                 if (const auto* r=frameUnitP(flyer); r && follow) {
-                    offX=r->x-float(W-300)*0.5f;offY=r->z-float(H)*0.5f;
+                    offX=r->x-float(W-300)*0.5f/viewZoom;offY=r->z-float(H)*0.5f/viewZoom;
                 }
                 mapView_.setOffset(offX,offY);
                 prepare(W,H);draw(W,H);
@@ -1366,11 +1410,11 @@
             const SDL_FPoint p=unitScreen(*r);
             check(p.x>32 && p.y>32 && p.x<float(W-332) && p.y<float(H-32),"the flyer is on screen");
             // A large explosion glow centred on the flyer's body (unitScreen) and
-            // a control glow over bare ground 200 px to its left.
+            // a control glow over bare ground 100 px to its left.
             const float zm=mapView_.zoom();
             const float alt=r->z-mapView_.offY()-terrainLift(r->x,r->z)-p.y/zm;
             explosionGlows_.push_back({r->x,r->z,alt,front().gameTick,2,std::nullopt});
-            explosionGlows_.push_back({r->x-200,r->z,alt,front().gameTick,2,std::nullopt});
+            explosionGlows_.push_back({r->x-100,r->z,alt,front().gameTick,2,std::nullopt});
             frame(false,capture ? (base+"-glow.png").c_str() : nullptr);
             check(debugGlowDrawCount_==2,"both glows drew");
             check(debugPaintOrder_=="gea" && debugAirOps_>0,
@@ -1387,22 +1431,12 @@
                     }
                 return n;
             };
-            const int control=changed(p.x-200*zm,p.y,3),body=changed(p.x,p.y,3);
+            const int control=changed(p.x-100*zm,p.y,3),body=changed(p.x,p.y,3);
             check(control>=40,"the control glow changes the bare ground ("+std::to_string(control)+" of 49 px)");
             check(body==0,"the glow under the flyer leaves its body untouched ("+std::to_string(body)+" of 49 px)");
             explosionGlows_.clear();
-            {   // An airborne flyer's own effects go up with it: its nimbus is an
-                // air-layer item, drawn in the air replay after its body.
-                const auto* art=effectFor("bigsmoke");
-                check(art && !art->frames.empty(),"fixture effect art");
-                nimbusEffects_[flyer]={art,front().gameTick};
-                frame(false,nullptr);
-                bool air=false;
-                for (const auto& it:paintItems_)
-                    if (it.fx>=0 && fxItems_[size_t(it.fx)].kind==FxKind::Nimbus) air=it.layer==hu::kLayerAir;
-                check(air && debugNimbusDrawCount_==1,"the flyer's nimbus is an air-layer item and draws");
-                nimbusEffects_.erase(flyer);
-            }
+            // (Kingdoms' nimbus -- a spell aura drawn with its flyer in the air replay --
+            // has no TA counterpart.)
             if (settings_) settings_->unitShadows=shadows;
             std::fprintf(stderr,"PASS: air over fx (altitude %.0f)\n",altitude);
             return;
@@ -1429,7 +1463,7 @@
             const int cx0=mapView_.map().blocksX/2,cz0=mapView_.map().blocksY/2;
             for (auto& f:features_)   // a clear stage
                 if (std::fabs(f.x-float(cx0*16))<700 && std::fabs(f.z-float(cz0*16))<600) f.tex=nullptr;
-            check(addFeature("aratree01",cx0,cz0),"placed a tree");
+            check(addFeature("tree1",cx0,cz0),"placed a tree");
             const size_t tree=features_.size()-1;
             check(!features_[tree].low,"the tree is tall scenery (sorts by depth)");
             const float x0=features_[tree].x,z0=features_[tree].z;
@@ -1439,7 +1473,7 @@
                 captureFrame();beginFrame();cosmeticStep(0);
                 mapView_.setZoom(zoom);
                 mapView_.setOffset(x0-float(W-300)*0.5f/zoom,z0-float(H)*0.5f/zoom);
-                prepare(W,H);draw(W,H);
+                prepare(W,H);mapView_.finishChunks();prepare(W,H);draw(W,H);   // the whole terrain: frames compare pixels
                 SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.assign(size_t(ow)*size_t(oh)*4,0);
                 SDL_RenderReadPixels(ren_,nullptr,SDL_PIXELFORMAT_RGBA32,px.data(),ow*4);
@@ -1449,6 +1483,19 @@
             const char* capture=ta::devEnv("TA_DEPTH_FX_CAPTURE");
             const auto shot=[&](const char* name) {return capture ? std::string(capture)+"-"+name+".png" : std::string();};
             explosionGlows_.clear();beams_.clear();effects_.clear();particles_.clear();rings_.clear();
+            // Frames are compared pixel for pixel: draw until the terrain chunks under
+            // the view have all baked and two frames in a row are the same.
+            {
+                std::vector<uint8_t> last;
+                int same=0;
+                for (int i=0;i<400 && same<3;++i) {
+                    frame("");
+                    same=px==last && mapView_.chunkStats().pending==0 ? same+1 : 0;
+                    last=px;
+                    SDL_Delay(5);
+                }
+                check(same>=3,"the terrain under the view settles");
+            }
             frame(shot("plain"));
             const std::vector<uint8_t> plain=px;
             // The crown's middle, on screen: the opaque run up the anchor column.
@@ -1476,7 +1523,7 @@
             };
             const auto spearAt=[&](float z) {
                 BeamFx b;b.x1=b.x2=x0+6;b.z1=b.z2=z;b.alt1=b.alt2=altFor(z)-8;
-                b.model="zonterspear";b.life=1000;b.age=0;
+                b.model="missile";b.life=1000;b.age=0;
                 beams_.push_back(b);
             };
             const auto changed=[&] {
@@ -1507,7 +1554,7 @@
                 for (const auto& [z,up]:{std::pair{zBehind,-10.0f},std::pair{zFront,10.0f}}) {
                     BeamFx b;b.x1=x0-60;b.x2=x0+60;b.z1=b.z2=z;   // flying east, head over the trunk
                     b.alt1=b.alt2=altFor(z)+up-8;
-                    b.model="zonterspear";b.life=1000;b.age=500;
+                    b.model="missile";b.life=1000;b.age=500;
                     beams_.push_back(b);
                 }
                 frame(shot("scene-spears"),2.0f);
@@ -1585,11 +1632,11 @@
             const ta::sim::UnitType* flyerType=nullptr;
             for (const auto& [name,type]:registry_.types())
                 if (type.canFly && !type.isStructure() && !type.commander) {flyerType=&type;break;}
-            const int infantry=spawn("arasword",x0,z0,0,0);
-            const int keep=spawn("arakeep",x0+160,z0+40,0,0);
+            const int infantry=spawn("armpw",x0,z0,0,0);
+            const int keep=spawn("armllt",x0+160,z0+40,0,0);
             const int flyer=flyerType ? spawn(flyerType->id,x0-120,z0,0,0) : -1;
-            const int foeSeen=spawn("arasword",x0+60,z0-80,0,1);
-            const int foeHidden=spawn("arasword",x0+900,z0+300,0,1);
+            const int foeSeen=spawn("armpw",x0+60,z0-80,0,1);
+            const int foeHidden=spawn("armpw",x0+900,z0+300,0,1);
             check(infantry>=0 && keep>=0 && flyer>=0 && foeSeen>=0 && foeHidden>=0,"fixture spawned");
             check(!world_.allied(0,1),"fixture enemy is not allied");
             selection_={keep};
@@ -1688,7 +1735,7 @@
             tacticalDotsOpt_=false;frame(zIn);
             check(!dotsFrame_ && !visUnits_.empty(),"turning the option off restores models at once");
             {   // The slider, as on a 7680x2160 window where the map-fills-window
-                // floor (0.75 on Ulasem) sits far above any fixed zoom threshold.
+                // floor (0.75, say) sits far above any fixed zoom threshold.
                 const float floor=0.75f,notch=td::kNotch;
                 td::Switch s;
                 check(!s.update(true,0,floor*notch*notch,floor),"0%: two notches above the floor: models");
@@ -1805,7 +1852,7 @@
                 const auto it=featureDefs_.find(name);
                 return it==featureDefs_.end() ? -1 : int(it->second.numberOr("height",0));
             };
-            check(heightOf("aratree01")>=hu::kLowFeatureHeight && heightOf("arasmudge01")==0,
+            check(heightOf("tree1")>=hu::kLowFeatureHeight && heightOf("smudge01")==0,
                   "fixture features: a tall tree and a flat smudge");
             const int cx0=mapView_.map().blocksX/2,cz0=mapView_.map().blocksY/2;
             // A clear stage: the map's own scenery around the fixture is not drawn.
@@ -1815,10 +1862,10 @@
                 check(addFeature(name,cx,cz),std::string("placed ")+name);
                 return features_.size()-1;
             };
-            const size_t treeA=place("aratree01",cx0,cz0);
-            const size_t treeB=place("aratree01",cx0+8,cz0);
-            const size_t treeFog=place("aratree01",cx0+40,cz0+20);
-            const size_t smudge=place("arasmudge01",cx0-9,cz0+1);
+            const size_t treeA=place("tree1",cx0,cz0);
+            const size_t treeB=place("tree1",cx0+8,cz0);
+            const size_t treeFog=place("tree1",cx0+40,cz0+20);
+            const size_t smudge=place("smudge01",cx0-9,cz0+1);
             const float x0=features_[treeA].x,z0=features_[treeA].z;
             // The tree's crown: the opaque texel run up the sprite's anchor column; a
             // unit whose dot centre sits in the middle of it is covered.
@@ -1839,7 +1886,7 @@
                     if (r.id==particlesOn && r.type) r.constructionParticles.assign(1,{});
                 mapView_.setZoom(zoom);
                 mapView_.setOffset(x0+300-float(W-300)*0.5f/zoom,z0+100-float(H)*0.5f/zoom);
-                prepare(W,H);draw(W,H);
+                prepare(W,H);mapView_.finishChunks();prepare(W,H);draw(W,H);   // the whole terrain: frames compare pixels
                 std::vector<uint8_t> px;
                 int ow=0,oh=0;SDL_GetRendererOutputSize(ren_,&ow,&oh);
                 px.resize(size_t(ow)*size_t(oh)*4);
@@ -1848,23 +1895,23 @@
                 endFrame();
                 return std::pair{px,ow};
             };
-            const int behind=spawn("arasword",x0,z0-behindDz,0,0);
-            const int open=spawn("arasword",x0-70,z0-behindDz,0,0);
-            const int front=spawn("arasword",x0,z0+28,0,0);
-            const int foeSeen=spawn("arasword",features_[treeB].x,features_[treeB].z-behindDz,0,1);
-            const int foeFog=spawn("arasword",features_[treeFog].x,features_[treeFog].z-behindDz,0,1);
+            const int behind=spawn("armpw",x0,z0-behindDz,0,0);
+            const int open=spawn("armpw",x0-70,z0-behindDz,0,0);
+            const int front=spawn("armpw",x0,z0+28,0,0);
+            const int foeSeen=spawn("armpw",features_[treeB].x,features_[treeB].z-behindDz,0,1);
+            const int foeFog=spawn("armpw",features_[treeFog].x,features_[treeFog].z-behindDz,0,1);
             // On the smudge, a little north of its anchor: the smudge sorts after it by
             // depth, but flat scenery is drawn before every unit.
-            const int onSmudge=spawn("arasword",features_[smudge].x,features_[smudge].z-6,0,0);
-            const int keep=spawn("arakeep",x0+320,z0+40,0,0);
-            const int behindKeep=spawn("arasword",x0+320,z0+10,0,0);
-            // Behind two overlapping trees, and behind a lodestone (a building with a
-            // translucent glow over its own faces).
-            const size_t treeC=place("aratree01",cx0+10,cz0-12);
-            place("aratree01",cx0+11,cz0-11);
-            const int behindTwo=spawn("arasword",features_[treeC].x+8,features_[treeC].z-behindDz,0,0);
-            const int lode=spawn("tarlode",x0+120,z0+300,0,0);
-            const int behindLode=spawn("arasword",x0+120,z0+270,0,0);
+            const int onSmudge=spawn("armpw",features_[smudge].x,features_[smudge].z-6,0,0);
+            const int keep=spawn("armlab",x0+320,z0+40,0,0);
+            const int behindKeep=spawn("armpw",x0+320,z0+10,0,0);
+            // Behind two overlapping trees, and behind a second kind of building (a vehicle
+            // plant, open at the front).
+            const size_t treeC=place("tree1",cx0+10,cz0-12);
+            place("tree1",cx0+11,cz0-11);
+            const int behindTwo=spawn("armpw",features_[treeC].x+8,features_[treeC].z-behindDz,0,0);
+            const int lode=spawn("armvp",x0+120,z0+300,0,0);
+            const int behindLode=spawn("armpw",x0+120,z0+270,0,0);
             check(behind>=0 && open>=0 && front>=0 && foeSeen>=0 && foeFog>=0 && onSmudge>=0 && keep>=0 &&
                   behindKeep>=0 && behindTwo>=0 && lode>=0 && behindLode>=0,"fixture spawned");
             const char* capture=ta::devEnv("TA_HIDDEN_UNITS_CAPTURE");
@@ -1951,12 +1998,12 @@
                     return frame(at(capture));
                 };
                 std::vector<size_t> forest;
-                for (int j=0;j<3;++j) for (int i=0;i<4;++i) forest.push_back(place("aratree01",cx0-8+3*i,cz0+12+3*j));
-                const size_t treeLone=place("aratree01",cx0+22,cz0+16);
+                for (int j=0;j<3;++j) for (int i=0;i<4;++i) forest.push_back(place("tree1",cx0-8+3*i,cz0+12+3*j));
+                const size_t treeLone=place("tree1",cx0+22,cz0+16);
                 std::vector<int> underForest;
                 for (const auto& [i,j]:{std::pair{0,0},std::pair{1,1},std::pair{2,0},std::pair{3,2},std::pair{0,2}}) {
                     const auto& t=features_[forest[size_t(j*4+i)]];
-                    underForest.push_back(spawn("arasword",t.x,t.z-behindDz,0,0));
+                    underForest.push_back(spawn("armpw",t.x,t.z-behindDz,0,0));
                 }
                 check(std::all_of(underForest.begin(),underForest.end(),[](int id) { return id>=0; }),"forest units spawned");
                 const auto alphaOf=[&](size_t t) { return hiddenFeatureAlpha(features_[t]); };
@@ -1997,7 +2044,7 @@
                 check(alphaOf(treeA)==faded && alphaOf(treeB)==faded && alphaOf(treeC)==faded,
                       "FADE: trees over units faded to 50% after the fade-out time");
                 check(keepAlpha()==faded,"FADE: the keep over a unit faded to 50%");
-                check(hiddenStructureAlpha(frameUnit(lode))==faded,"FADE: the lodestone over a unit faded to 50%");
+                check(hiddenStructureAlpha(frameUnit(lode))==faded,"FADE: the vehicle plant over a unit faded to 50%");
                 size_t forestFaded=0;
                 for (size_t t:forest) forestFaded+=alphaOf(t)==faded;
                 std::fprintf(stderr,"  FADE: %zu of %zu forest trees faded, %zu fading covers\n",forestFaded,
@@ -2008,7 +2055,7 @@
                 check(alphaOf(treeFog)==255,"FADE: an enemy in fog under a tree does not fade it");
                 check(changedIn(p0,p1,w0,boxOf(behind))>20,"FADE: the unit behind the tree shows");
                 check(changedIn(p0,p1,w0,boxOf(behindKeep))>20,"FADE: the unit behind the keep shows");
-                check(changedIn(p0,p1,w0,boxOf(behindLode))>20,"FADE: the unit behind the lodestone shows");
+                check(changedIn(p0,p1,w0,boxOf(behindLode))>20,"FADE: the unit behind the vehicle plant shows");
                 // 100%: the covers stay whole -- the frame is OFF's.
                 hiddenFadeOpacity_=hu::fadeOpacity(100);
                 const auto [p100,w100]=fadeFrame(16);
