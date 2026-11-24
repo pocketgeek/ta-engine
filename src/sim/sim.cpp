@@ -2427,7 +2427,7 @@ void World::tickFlightPatrol(Unit& u) {
             // Activate (0x48b090(1, 1)); a landed flyer takes off
             // (retailTaTakeOffGoal) and the mission waits on its events.
             auto startFlight=[&](Order& order) {
-                if (!u.type->canMove || !u.type->canFly) return false;
+                if (u.type->isStructure() || !u.type->canFly) return false;
                 w.setSlotsManual(u,World::kSlotsAuto);w.setSlotsAuto(u);
                 if (auto script=w.unitScripts_.find(u.id);script!=w.unitScripts_.end() && !script->second.activated) {
                     script->second.activated=true;w.notifyUnitScript(u,"Activate");
@@ -2536,7 +2536,7 @@ void World::tickFlightPatrol(Unit& u) {
                     // 0x4157cc: no mover, canfly or canreclamate ends it;
                     // then as VTOL_Patrol's stage 0 (0x43a020 anchor, slots,
                     // Activate, the take-off).
-                    if (!u.type->canMove || !u.type->canFly) return 7;
+                    if (u.type->isStructure() || !u.type->canFly) return 7;
                     const bool anchored=std::any_of(u.orders.begin(),u.orders.end(),[](const Order& o) {return (o.mission.flags&0x4000u)!=0;});
                     if (!anchored) {
                         Order anchor;anchor.x=u.x;anchor.z=u.z;anchor.goal=anchor.patrol=true;
@@ -2575,7 +2575,7 @@ void World::tickFlightPatrol(Unit& u) {
             // TotalA.exe VTOL_Patrol (0x410e70).
             if (m.stage==0) {
                 auto& order=u.orders.front();
-                if (!u.type->canMove || !u.type->canFly) return 7;
+                if (u.type->isStructure() || !u.type->canFly) return 7;
                 // 0x43a020: unless a mission of the queue already carries the
                 // anchor flag (TotalA.exe 0x8000; ours 0x4000), a patrol
                 // mission at the flyer's position goes on the end of the
