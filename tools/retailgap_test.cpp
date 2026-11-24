@@ -404,8 +404,11 @@ int main(int argc, char** argv) {
             bool lostTargetContinues=false;
             if(auto* u=w.unit(target)) {u->hp=sim::Fixed();u->deadFor=0;}
             if(auto* u=peer.unit(peerTarget)) {u->hp=sim::Fixed();u->deadFor=0;}
+            // TotalA.exe 0x49b3e0: a target that is no longer alive is no
+            // longer chased; the shot steers for its launch point (+0x28)
+            // and flies on, powered, until its expiry.
             if(!w.projectiles().empty()) {
-                const auto velocity=w.projectiles().front().velocity;
+                const auto point=w.projectiles().front().taTargetPoint;
                 const auto position=w.projectiles().front().position;
                 for(int i=0;i<3;++i) {
                     w.tick(1.0f/30.0f);peer.tick(1.0f/30.0f);
@@ -413,11 +416,11 @@ int main(int argc, char** argv) {
                 }
                 if(!w.projectiles().empty()) {
                     const auto& shot=w.projectiles().front();
-                    lostTargetContinues=shot.guided3d && shot.targetId==target && shot.velocity==velocity &&
-                        shot.position!=position;
+                    lostTargetContinues=shot.guided3d && shot.taSelfProp && shot.targetId==target &&
+                        shot.taTargetPoint==point && shot.position!=position;
                 }
             }
-            check(lostTargetContinues,"losing the target leaves a Guided shot on its existing XYZ trajectory");
+            check(lostTargetContinues,"losing the target leaves a Guided shot flying for its launch point");
             check(paired && w.stateHash()==peer.stateHash(),
                   "flying-target guidance and loss remain lockstep across paired Worlds");
         }

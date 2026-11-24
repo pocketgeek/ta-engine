@@ -1895,6 +1895,14 @@ struct Projectile {
     bool guided3d=false;    // GuidedWeapon's simulation-owned XYZ state.
     bool ballistic3d=false; // BallisticWeapon XYZ motion and collision, also used to pose the authored shot.
     bool projectileUsesVeteranModel=false; // model variant selected once at launch by source rank.
+    // TotalA.exe selfprop/vlaunch motion (0x49b9c2..0x49bb5b, retailtashot.h):
+    // also guided3d for drawing. `end` is the expiry tick (+0x46): powered
+    // while end > now, then burnblow detonates or gravity takes over.
+    bool taSelfProp=false;
+    uint8_t taPhase=0;          // +0x69 bits 4..5: twophase stage
+    uint16_t taHeading=0,taPitch=0;   // +0x36 / +0x38, mover convention
+    int32_t taSpeed=0;          // +0x3a
+    std::array<int32_t,3> taTargetPoint{}; // +0x28
     std::array<int32_t,3> muzzle{};
     std::optional<RetailLightningEffect> lightningEffect;
     // Position in the same 16.16 as a unit's: retail's world is 0x100000 per 16px
@@ -3557,6 +3565,7 @@ private:
     // A scripted TA shot's adjustments (tickScriptWeapon): the accuracy
     // spread added to the launch heading and pitch (0x49d6bc..0x49d73e), and
     // a burst clone, which charges nothing (docs/retail-weapon-scripts.md 5).
+    // free: a burst clone (already paid with its emitter, 0x49b75e).
     struct ShotTweak { uint16_t heading=0,pitch=0; bool free=false; };
     bool fire(Unit& u, Unit& target, int slot,bool scriptTriggered=false) { return fire(u,WeaponTarget{&target},slot,scriptTriggered); }
     bool fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered=false) { return fire(u,t,slot,scriptTriggered,ShotTweak{}); }
@@ -4574,6 +4583,9 @@ private:
     std::vector<FlameShot> flames_;
     void tickFlames(std::span<const int> airGrid);
     void tickStraightProjectiles(std::span<const int> airGrid);
+    // TotalA.exe 0x49b9c2..0x49bb5b plus the collision test 0x49b090: one
+    // selfprop/vlaunch shot's tick.
+    void tickTaSelfProp(Projectile& p,std::span<const int> airGrid);
     std::vector<HitFx> hits_;
     std::vector<TransportFx> transportEffects_;
     std::vector<ScriptEmission> scriptEmissions_;

@@ -6,6 +6,7 @@
 #include "sim/retailaim.h"
 #include "sim/retailhweffectdata.h"
 #include "sim/retailguided.h"
+#include "sim/retailtashot.h"
 #include "sim/retailinstantcorpse.h"
 #include "sim/retailsplash.h"
 #include "sim/retailairattack.h"
@@ -7018,6 +7019,66 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         flames_.push_back(std::move(flame));
         return true;
     }
+    // TotalA.exe's line-of-sight / self-propelled spawner 0x49c9c0 (from the
+    // turret routine at 0x49d775 and the non-turret one 0x49d9c0) and the
+    // vlaunch spawner 0x49cc20 (retailtashot.h). The shot starts at the QueryX
+    // point aimed straight at the slot's target point (+0x28): heading and
+    // pitch from the two points, so a shot from a height or at a height
+    // descends or climbs to it. 0x49c9c0 recomputes the angles and never reads
+    // the slot's aim angles, so the accuracy spread the fire routine added to
+    // them (0x49d6bc) does not move these shots; a burst clone's sprayangle
+    // does (0x49b8f1). Beams stay on the delivery below.
+    const bool taSelfProp=w.hasTaFlag(20);   // selfprop
+    if((taSelfProp || (w.hasTaFlag(0) && !w.lightning && w.losStatus==Weapon::LosStatus::None)) &&
+       !w.beam && w.velocityFx>0) {
+        const auto muzzle=queryUnitScriptPoint(u.id,false,slot);
+        const auto target=scriptTriggered && !tweak.free ? u.weaponAimPoints[size_t(slot)] :
+            tu ? taTargetPoint(u,t,w) : t.point;
+        const bool vlaunch=w.taAim==Weapon::TaAim::VLaunch;
+        // 0x49cc95: a vertical launch leaves straight up with no velocity;
+        // the selfprop update gives it one on its first tick.
+        uint16_t heading=0,pitch=0x4000;
+        if(!vlaunch) {
+            const auto angles=taShotAngles(muzzle,target);
+            heading=angles[0];pitch=angles[1];
+            if(tweak.free)heading=uint16_t(heading+tweak.heading);
+        }
+        const int32_t speed=taShotStartSpeed(w.startVelocityFx,w.accelerationFx,w.velocityFx);
+        const auto velocity=vlaunch ? std::array<int32_t,3>{} : taShotVelocity(heading,pitch,speed);
+        uint32_t lifetime=taShotLifetime(w.range,w.velocityFx,w.hasTaFlag(27),w.weaponTimerTicks);
+        if(tweak.free) {
+            // 0x49b87f..0x49b8bc: a burst clone lives weapontimer, or its
+            // launch distance plus 16 px at its speed.
+            const int64_t dx=int64_t(target[0])-muzzle[0],dz=int64_t(target[2])-muzzle[2];
+            const uint32_t distance=uint32_t(isqrt64(uint64_t(dx*dx)+uint64_t(dz*dz)));
+            lifetime=w.weaponTimerTicks ? w.weaponTimerTicks :
+                speed>0 ? (distance+0x100000u)/uint32_t(speed) : 0;
+        }
+        Projectile p;p.wsrc=&w;p.fromId=u.id;p.fromPlayer=u.player;
+        p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
+        p.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
+        p.position=muzzle;p.muzzle=muzzle;p.velocity=velocity;
+        p.substeps=1;p.start=tickCounter_+1;p.end=p.start+lifetime;
+        p.flight=int32_t(lifetime);
+        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+        // Drawn yaw in the launch convention (velocity along +sin, +cos).
+        const uint16_t yaw=uint16_t(heading+0x8000u);
+        if(taSelfProp) {
+            p.guided3d=true;p.taSelfProp=true;
+            p.taHeading=heading;p.taPitch=pitch;p.taSpeed=speed;p.taTargetPoint=target;
+            p.angles={0,yaw,pitch};
+            p.life=std::numeric_limits<int32_t>::max();
+        } else {
+            // Line of sight (0x49bb60): straight, gone without a burst at the
+            // expiry. tickStraightProjectiles adds the body heading to the
+            // drawn yaw on the start tick.
+            p.straight=true;
+            p.angles={0,uint16_t(yaw-portHeadingToRetail(u.heading)),pitch};
+            p.life=1;
+        }
+        projectiles_.push_back(p);
+        return true;
+    }
     if(w.kind==Weapon::Kind::Guided && w.projVel>0) {
         const int32_t raw=int32_t(double(w.projVel)*2184.5333333333333);
         if(raw<=0)return true;
@@ -7082,6 +7143,33 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         projectiles_.push_back(p);
         return true;
     }
+    // Dropped: the bomb is RELEASED, not fired, and has no weaponvelocity, so
+    // this comes before the zero-velocity delivery below. TotalA.exe 0x49dd60:
+    // the bomb starts at the QueryX point with the bomber's own motion -- its
+    // body heading (unit+0x66) and its mover's speed (mover+0x20) along it,
+    // (-sin h, -cos h) -- and no vertical speed (0x49dde5..0x49de19); no aim
+    // point is solved or stored. It then falls under gravity like a ballistic
+    // shell (0x49bce3) and bursts on whatever it meets: a far release misses.
+    if (w.kind == Weapon::Kind::Dropped || w.taAim == Weapon::TaAim::Dropped) {
+        const auto muzzle=queryUnitScriptPoint(u.id,false,slot);
+        const auto step=retailGroundStep(u.heading,u.speed);
+        Projectile b;b.ballistic3d=true;b.wsrc=&w;
+        b.position=muzzle;b.velocity={step.s.v,0,step.c.v};
+        b.angles={0,uint16_t(u.heading.v),0xc000};
+        b.x=Fixed::raw(b.position[0]);b.z=Fixed::raw(b.position[2]);
+        b.targetId=tu ? tu->id : 0;b.slot=slot;b.fromPlayer=u.player;b.fromId=u.id;b.fx=w.fx;
+        b.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
+        b.substeps=1;
+        b.start=tickCounter_+1;
+        // The drawn arc's length only: the fall from the release height.
+        const int ground=heights_.empty() ? 0 : retailTerrainHeight(muzzle[0],muzzle[2],terW_,terH_,
+            [&](int x,int z){return heights_[size_t(z)*size_t(terW_)+size_t(x)];});
+        b.flight=int32_t(retailDroppedFallTicks(muzzle[1],int32_t(uint32_t(ground)<<16),ballisticGravityRaw_));
+        // No expiry: terrain, a feature or a unit retires it.
+        b.life=std::numeric_limits<int32_t>::max();
+        projectiles_.push_back(b);
+        return true;
+    }
     if (w.melee || w.beam || w.projVel <= 0) {
         // Legacy delivery: melee, and a Line-of-Sight weapon with no
         // weaponvelocity (none shipped: every shipped Line-of-Sight class flies
@@ -7102,31 +7190,6 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
             hits_[event].fromPosition=muzzle;
             hits_[event].position=aimPoint;
         }
-        return true;
-    }
-    // Dropped: the bomb is RELEASED, not fired. Native
-    // DroppedBallistic::initShot uses the QueryWeapon muzzle, solves horizontal
-    // travel to the selected aim point over the gravity-derived fall time, then
-    // the common ballistic updater advances and collides the full XYZ shot.
-    if (w.kind == Weapon::Kind::Dropped) {
-        const auto aim=queryWeaponAim(u,t,slot);
-        const auto targetPoint=aim ? aim->target : !tu ? t.point :
-            std::array<int32_t,3>{tu->x.v,(tu->type->canFly ? tu->flightY : tu->groundY).v,tu->z.v};
-        const auto muzzle=queryUnitScriptPoint(u.id,false,slot);
-        uint32_t fallTicks=1;
-        const auto launch=retailDroppedBallisticLaunch(muzzle,targetPoint,ballisticGravityRaw_,&fallTicks);
-        Projectile b;b.ballistic3d=true;b.wsrc=&w;
-        b.position=launch.position;b.velocity=launch.velocity;b.angles=launch.angles;
-        b.x=Fixed::raw(b.position[0]);b.z=Fixed::raw(b.position[2]);
-        b.targetId=tu ? tu->id : 0;b.slot=slot;b.fromPlayer=u.player;b.fromId=u.id;b.fx=w.fx;
-        b.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
-        b.substeps=uint32_t(std::max(1,w.subSteps));
-        b.start=tickCounter_+1;b.flight=int32_t(fallTicks);
-        // BallisticWeapon has no range-derived expiry. Collision with terrain,
-        // a feature or a unit retires the shot; retain a large failsafe countdown
-        // for malformed terrain that prevents all impacts.
-        b.life=std::numeric_limits<int32_t>::max();
-        projectiles_.push_back(b);
         return true;
     }
     Projectile p;
@@ -17429,6 +17492,95 @@ void World::tickStraightProjectiles(std::span<const int> airGrid) {
     }
 }
 
+// TotalA.exe's selfprop motion (0x49b9c2..0x49bb5b; docs/retail-data.md 3.3
+// rule 1), then one collision test at the new point (0x49bd86 -> 0x49b090).
+// Powered while the expiry tick (+0x46) is ahead: speed climbs by
+// weaponacceleration to weaponvelocity, a guided shot (twophase: from its
+// second stage) steers by turnrate, and the velocity is rebuilt from
+// heading, pitch and speed. At expiry a burnblow shot bursts where it is;
+// any other coasts and falls under gravity until it strikes something, and a
+// twophase shot starts its second stage for flighttime ticks (dropping its
+// target unit unless it tracks).
+void World::tickTaSelfProp(Projectile& p,std::span<const int> airGrid) {
+    if(p.life<=0 || !p.wsrc)return;
+    const Weapon& w=*p.wsrc;
+    if(tickCounter_<=p.start) {
+        const Unit* owner=unit(p.fromId);
+        if(!owner || !owner->alive() || owner->hp<=Fixed())p.life=0;
+        return;
+    }
+    const auto burst=[&](int hitUnit) {   // 0x499eb0
+        const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
+        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+        applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),p.position,{},p.slot);
+        noteShotImpact(p.fromId,p.targetId,w,p.position,hitUnit,shotHp);
+        p.spent=true;p.life=0;
+    };
+    // 0x49b3e0: what a steering shot turns toward.
+    const auto aimPoint=[&]()->std::array<int32_t,3> {
+        if(w.hasTaFlag(25)) {
+            // cruise: over 1024 px out it heads for the point at a height of
+            // 700 px (the word at +0x16); nearer, for the ground or sea there.
+            auto aim=p.taTargetPoint;
+            const int64_t dx=int64_t(p.position[0])-aim[0],dy=int64_t(p.position[1])-aim[1],
+                          dz=int64_t(p.position[2])-aim[2];
+            const uint64_t length=isqrt64(uint64_t(dx*dx)+uint64_t(dy*dy)+uint64_t(dz*dz));
+            if(int16_t(uint16_t(uint32_t(length)>>16))>0x400) {
+                aim[1]=int32_t((uint32_t(aim[1])&0xffffu)|(0x2bcu<<16));
+                return aim;
+            }
+            const int ground=heights_.empty() ? 0 : retailTerrainHeight(aim[0],aim[2],terW_,terH_,
+                [&](int x,int z){return heights_[size_t(z)*size_t(terW_)+size_t(x)];});
+            aim[1]=int32_t(uint32_t(std::max(ground,int(uint8_t(seaLevel_))))<<16);
+            return aim;
+        }
+        // A live target unit is chased at its origin (unit+0x6a).
+        if(const Unit* t=unit(p.targetId);t && t->alive() && t->hp>Fixed() && t->type)
+            return {t->x.v,(t->type->canFly ? t->flightY : t->groundY).v,t->z.v};
+        return p.taTargetPoint;
+    };
+    const int32_t gravity=ballisticGravityRaw_;   // G+0x14263
+    const auto fall=[&]{p.velocity[1]=std::bit_cast<int32_t>(uint32_t(p.velocity[1])-uint32_t(gravity));};
+    if(p.end>tickCounter_) {
+        const int height=std::bit_cast<int16_t>(uint16_t(uint32_t(p.position[1])>>16));
+        if(w.hasTaFlag(16) && height>=int(uint8_t(seaLevel_))) {
+            // A torpedo above the water drops, level (0x49b9eb).
+            fall();p.taPitch=0;
+        } else {
+            if(uint32_t(p.taSpeed)<uint32_t(w.velocityFx)) {
+                p.taSpeed=std::bit_cast<int32_t>(uint32_t(p.taSpeed)+uint32_t(w.accelerationFx));
+                if(uint32_t(p.taSpeed)>uint32_t(w.velocityFx))p.taSpeed=w.velocityFx;
+            }
+            const bool steer=w.hasTaFlag(24) ? p.taPhase!=0 : w.hasTaFlag(12);
+            if(steer && !taShotSteer(p.taHeading,p.taPitch,p.position,aimPoint(),
+                                     w.turnRatePerTick,w.hasTaFlag(23))) {
+                burst(0);return;
+            }
+            p.velocity=taShotVelocity(p.taHeading,p.taPitch,p.taSpeed);
+        }
+    } else if(w.hasTaFlag(23)) {   // burnblow
+        burst(0);return;
+    } else {
+        fall();
+        if(w.hasTaFlag(24) && p.taPhase==0) {   // twophase: the second stage
+            p.end=tickCounter_+w.flightTimeTicks;p.taPhase=1;
+            if(!w.hasTaFlag(13))p.targetId=0;   // tracks keeps the target
+        }
+    }
+    for(size_t axis=0;axis<3;++axis)
+        p.position[axis]=std::bit_cast<int32_t>(uint32_t(p.position[axis])+uint32_t(p.velocity[axis]));
+    p.angles={0,uint16_t(p.taHeading+0x8000u),p.taPitch};
+    p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+    p.age=int32_t(tickCounter_-p.start);
+    const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
+    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
+    if(hit.code==2)burst(hit.unitId);
+    else if(hit.code==1) {   // off the map: gone, a miss
+        if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
+        p.life=0;
+    }
+}
+
 void World::tickFlames(std::span<const int> airGrid) {
     for(auto& flame:flames_) {
         const auto& w=*flame.weapon;
@@ -19765,6 +19917,7 @@ void World::tick(float dt) {
     // Projectiles.
     for (auto& p : projectiles_) {
         if(p.straight)continue;
+        if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
         if(p.guided3d) {
             if(p.life<=0)continue;
             if(tickCounter_<=p.start) {
@@ -21192,6 +21345,11 @@ void World::hashTrace() const {
             for(const auto* values:{&p.position,&p.velocity})
                 for(int32_t value:*values)hProj=fnv(hProj,uint32_t(value));
             for(auto angle:p.angles)hProj=fnv(hProj,angle);
+            if(p.taSelfProp) {
+                hProj=fnv(fnv(fnv(hProj,0x54415350u),uint32_t(p.taSpeed)),uint32_t(p.taHeading)|uint32_t(p.taPitch)<<16);
+                hProj=fnv(hProj,p.taPhase);
+                for(int32_t value:p.taTargetPoint)hProj=fnv(hProj,uint32_t(value));
+            }
         }
     }
     uint64_t hEff = fnv(seed, pendingEffects_.size());
@@ -21839,6 +21997,10 @@ uint64_t World::stateHash() const {
             for(const auto* values:{&p.position,&p.velocity})
                 for(int32_t value:*values)mix(uint32_t(value));
             for(auto angle:p.angles)mix(angle);
+            if(p.taSelfProp) {
+                mix(0x54415350u);mix(uint32_t(p.taSpeed));mix(uint32_t(p.taHeading)|uint32_t(p.taPitch)<<16);
+                mix(p.taPhase);for(int32_t value:p.taTargetPoint)mix(uint32_t(value));
+            }
         }
         if(p.straight) {
             mix(0x53545254u);mix(p.fromId);mix(p.slot);mix(p.start);mix(p.end);mix(p.substeps);mix(p.spent);

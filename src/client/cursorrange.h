@@ -142,7 +142,11 @@ inline bool cursorCanAttackEnemy(const sim::UnitType& attacker, int weaponSlot,
     if (!attacker.isStructure())
         return cursorDamageVs(weapon, target) > 0.0f &&
                !(weapon.toAir && !airborne) && !(weapon.noAir && airborne);
-    if (cursorDamageVs(weapon, target) <= 0.0f || (weapon.noAir && airborne))
+    // TA's slot range gate refuses a toairweapon against a target that is not
+    // airborne (TotalA.exe 0x49ad07: weapon flag 0x20000, target unit+0x110&3 != 2),
+    // so an immobile toairweapon (armflak) shows TooFar over a ground unit too.
+    if (cursorDamageVs(weapon, target) <= 0.0f || (weapon.noAir && airborne) ||
+        (weapon.toAir && !airborne))
         return false;
     return cursorWeaponRange(weapon, attacker, attackerPosition, target, targetPosition,
                              targetFlightGroundMode) != CursorWeaponRange::OutOfRange;

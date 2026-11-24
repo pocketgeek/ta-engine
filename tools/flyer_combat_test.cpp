@@ -82,7 +82,8 @@ int main(int argc,char** argv) {
         // a slot 0 the engine classes as plain straight.
         for(const char* name:{"armpw","armflash","armrock","corstorm","armmav","armanac"}) {
             const auto* definition=registry.find(name);
-            if(!definition || definition->weapons.empty() || !definition->weapons[0].straight) {
+            if(!definition || definition->weapons.empty() ||
+               !(definition->weapons[0].straight || definition->weapons[0].hasTaFlag(20))) {
                 check(false,"straight roster definition exists with a straight slot 0");continue;
             }
             auto type=*definition;
@@ -97,7 +98,10 @@ int main(int argc,char** argv) {
             bool launched=false,hit=false,moved=false;
             for(int tick=0;tick<900 && !hit;++tick) {
                 world.tick(1.f/30.f);
-                for(const auto& shot:world.projectiles())if(shot.fromId==from && shot.straight) {
+                // A selfprop rocket (armrock, corstorm) flies TotalA.exe's
+                // selfprop motion, which takes precedence over the
+                // line-of-sight one (docs/retail-data.md 3.3, rule 1).
+                for(const auto& shot:world.projectiles())if(shot.fromId==from && (shot.straight || shot.taSelfProp)) {
                     launched=true;moved=moved || shot.age>0;
                 }
                 hit=world.unit(target)->hp<ta::sim::Fixed::fromInt(victim.maxHp) || world.unit(target)->incapacitated();
