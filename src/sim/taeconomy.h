@@ -39,7 +39,12 @@ struct PlayerBooks {
     Acc own[2];                    // the player accumulator (gifts, reclaim credits)
     float income[2] = {0, 0};      // last second: sum of prod
     float expense[2] = {0, 0};     // last second: sum of req
-    float wasted[2] = {0, 0};      // lifetime overflow
+    // Lifetime totals (the result plate's columns), retail's qwords: produced
+    // (player +0xac E / +0xb4 M) gains the settle's sum of production
+    // (0x4019ce / 0x401a0d), wasted (+0xcc / +0xd4) the overflow above the cap
+    // (0x401ae4 / 0x401b21). Double, as retail keeps them; hashed.
+    double produced[2] = {0, 0};
+    double wasted[2] = {0, 0};
     float mult = 1.0f;             // AI difficulty production multiplier (0.5/0.7/1.0)
     uint32_t nextSettle = 0;
     float shareThreshold[2] = {0, 0};
@@ -84,13 +89,14 @@ struct Sums {
 struct Fractions { float fD[2] = {1, 1}, fN[2] = {1, 1}; };
 inline Fractions pay(PlayerBooks& p, const Sums& s) {
     Fractions f;
+    for (int r = 0; r < 2; ++r) p.produced[r] += double(s.prod[r]);
     for (int r = 0; r < 2; ++r) {
         float avail = p.stored[r] + s.prod[r];
         f.fD[r] = s.debt[r] <= avail ? 1.0f : avail / s.debt[r];
         avail -= std::min(s.debt[r], avail);
         f.fN[r] = s.newReq[r] <= avail ? 1.0f : avail / s.newReq[r];
         avail -= std::min(s.newReq[r], avail);
-        if (avail > p.cap[r]) { p.wasted[r] += avail - p.cap[r]; avail = p.cap[r]; }
+        if (avail > p.cap[r]) { p.wasted[r] += double(avail) - double(p.cap[r]); avail = p.cap[r]; }
         p.stored[r] = avail;
         p.income[r] = s.prod[r];
         p.expense[r] = s.req[r];
@@ -105,6 +111,18 @@ inline void roll(Acc* a, const Fractions& f) {
         a[r].debt = a[r].newReq * (1.0f - f.fN[r]) + a[r].debt * (1.0f - f.fD[r]);
         a[r].prod = a[r].req = a[r].newReq = 0;
     }
+}
+
+// The result plate's Score (TotalA.exe 0x41ddbe..0x41de10, filled at the game's
+// end by 0x41dc20): trunc((tick / 60) * timemul) + trunc(kills * killmul), never
+// below 0. killmul / timemul are the map's [GlobalHeader] floats (read at
+// 0x4365e6 / 0x4365fe, default 0); the tick count divides as an unsigned integer
+// first (0x41ddc4: * 0x88888889 >> 37).
+inline int32_t plateScore(uint32_t tick, int32_t kills, float killMul, float timeMul) {
+    const double t = double(tick / 60u) * double(timeMul);
+    const double k = double(kills) * double(killMul);
+    const int32_t score = int32_t(uint32_t(int64_t(t)) + uint32_t(int64_t(k)));   // _ftol's low dwords
+    return std::max(score, 0);
 }
 
 // The MSVC rand LCG retail uses (unsynced in retail) for the wind-change interval;

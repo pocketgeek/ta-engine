@@ -24,10 +24,13 @@ enum class ResultChoice { Menu, Retry, Next, NewGame, GameSelect };
 struct ResultRow {
     std::string name;
     int colorSlot = 0;    // team-colour frame for the row's faction emblem
-    int32_t score = 0;    // accumulated authored victim experiencepoints
+    int32_t score = 0;    // TA: econ::plateScore (the map's killmul / timemul)
     int built = 0;        // units put into the field
     int kills = 0;        // enemy units destroyed
     int losses = 0;       // own units destroyed
+    // TA's plate columns (TotalA.exe 0x41dc20): lifetime energy / metal produced and
+    // wasted, each _ftol'd from the player's qword total.
+    int32_t energyProduced = 0, metalProduced = 0, energyWasted = 0, metalWasted = 0;
     int timeSec = 0;      // seconds survived (match length for a survivor)
     bool defeated = false;
     bool isLocal = false;

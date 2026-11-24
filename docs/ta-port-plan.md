@@ -105,6 +105,17 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   (0x4038a0, 0x412710, 0x413470); flying builders never step out of a stack
   (0x413d80/0x414380/0x414e70); factory door clearing fits TA's centre pads.
   Release suite 716/716.
+- Result plate and alerts (2026-11-24): the sim keeps TA's lifetime totals
+  (produced / wasted energy and metal as doubles, 0x4019ce..0x401b27, hashed) and
+  the map's killmul / timemul; the outcome0.pcx plate fills Name, Kills, Losses,
+  Energy / Metal Produced, Excess Energy / Metal and Score as 0x41e420 lays them out
+  (count-up bars, docs/retail-campaign.md 4.3). The under-attack alert is TA's
+  (client/monarchalert.h): any own unit hit while off screen (0x4071d8 ->
+  0x47f850), its own sound class's underattack slot, once per 600 game ticks
+  from the last one heard (event table 0x5086dc: 20 s, 0x47feee). room_flow
+  passes all 16 cases: a TA_MENU_PICK (debug) and a LAN game's return go to the
+  engine menu, not TA's front end; the fallback map is Great Divide; the Test Map
+  fixture drops Ashap Plateau's useonlyunits.
 
 ## Resolved retail questions (docs/retail-weapon-scripts.md section 8)
 
@@ -134,10 +145,21 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   Patrol, AirToAir...) keep the air-traffic step-out; flying builders orbit a site
   instead of re-picking a hover point every 150 ticks (0x414569..0x41461a); the
   group/formation system still runs for moves, standbys and guards in retail
-  mode; the under-attack alert's trigger and 15 s cooldown are unchecked; the
-  result plate's produced columns stay empty (no lifetime totals); TA wreck
-  resurrection; nanoframe outlines are front-facing only and use painter's order
-  (retail depth-tests per pixel); room_flow's menu-launched cases hang.
+  mode; TA wreck resurrection; nanoframe outlines are front-facing only and use
+  painter's order (retail depth-tests per pixel).
+- Result plate: Kills / Losses still count by the Kingdoms death kinds
+  (retailveterancy.h); TA's rule is the death routine's switch at 0x486892 (table
+  0x486e64: kinds 1 and 6 always a loss, 5 only when another player hit it last, 3
+  by alliance; the kill when finished and the hitter is another player), with the
+  TA damage kinds of 0x489bb0's callers (weapon 1/2, self-destruct 3, ...) not yet
+  mapped onto the engine's. The bar and well colours (game +0xdcf / +0xdd3) and
+  the PlayerColor gadget's art are stand-ins.
+- Under-attack alert: 0x406f80 also skips a unit whose current order has flag
+  0x80 and fires only when the previous hit came from another player or was an
+  ordinary weapon hit (victim +0xf4 / +0xf5, read before this hit updates them);
+  neither is modelled (every damaged own unit asks). The speech line "<unit>:
+  Under Attack" (0x47ff69 -> 0x463ca0) and the speech/text level options (game
+  +0x37f17 / +0x37f18) are not ported.
 - A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
   units in the field) can still circle in the ring's acceptance gap -- the
   octile distance (0x44d840) is 0 a cell inside the squared inner test

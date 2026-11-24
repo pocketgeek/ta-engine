@@ -500,6 +500,18 @@ ENDMSN --MainMenu--> main menu ; LoadGame / SaveGame --> LOADGAME.GUI
    - Otherwise (won the last mission, or not a campaign): the backdrop is
      `bitmaps\outcome0.pcx` and focus goes to `MainMenu`. Start, LoadGame, SaveGame, KNOB,
      Missions, Difficulty and AdjustDiff are hidden (0x41f400).
+   - **Statistics table** (0x41e420, data from 0x41dc20 at the game's end). Up to 10
+     rows of the players that took part (kind 1-3, not watchers), from y 93, 20 px apart:
+     `PlayerColor%d` (16, y, 91x21) in the player's colour with the name over it, then
+     seven count-up bar cells 67x18 at x 112 + 74k: `Kills%d` (player +0xfc),
+     `Losses%d` (+0xfe), `EProduced%d` / `MProduced%d` (qwords +0xac / +0xb4, the
+     settle's summed production, 0x4019ce / 0x401a0d), `EWasted%d` / `MWasted%d` (+0xcc /
+     +0xd4, overflow above the cap, 0x401ae4 / 0x401b21) and `Score%d` =
+     trunc((tick / 60) x timemul) + trunc(kills x killmul), floored at 0 (0x41ddbe; the
+     map's [GlobalHeader] floats, read at 0x4365e6 / 0x4365fe, default 0). Totals are
+     `_ftol`ed. A bar is value / column max (at least 10 for Kills and Losses, 100 for
+     the rest) of the cell less 4 px; the number is centred on it; it counts up by
+     trunc(max(1, value / 15)) per tick (0x4a4890).
 5. **Buttons.**
    - Start: CD check, then `0x435c00(selectedRow)`.
    - Difficulty: cycles Easy → Medium → Hard → Easy (`G+0x37eee` and lobby `+0x228`). It

@@ -258,8 +258,12 @@ def playtest_snapshot(root, data, hpitool):
     """A Cartographer snapshot: one map (Ashap Plateau's terrain and header, renamed) in a .kmp."""
     src = Path(root) / 'playtest-src'
     (src / 'kmap').mkdir(parents=True)
-    for ext in ('tnt', 'ota'):
-        (src / 'kmap' / ('Playtest Map.' + ext)).write_bytes(hpi_read(hpitool, data, 'maps/Ashap Plateau.' + ext))
+    (src / 'kmap' / 'Playtest Map.tnt').write_bytes(hpi_read(hpitool, data, 'maps/Ashap Plateau.tnt'))
+    # TA's header names its own unit list (useonlyunits=Ashap Plateau.tdf), which a
+    # renamed copy must not keep: the Test Map's authored list has to match its name.
+    ota = hpi_read(hpitool, data, 'maps/Ashap Plateau.ota')
+    ota = re.sub(rb'(?im)^[ \t]*useonlyunits[ \t]*=[^\n]*\n', b'', ota)
+    (src / 'kmap' / 'Playtest Map.ota').write_bytes(ota)
     kmp = Path(root) / 'Playtest Map.kmp'
     subprocess.run([hpitool, 'pack', str(src), str(kmp)], check=True, stdout=subprocess.DEVNULL)
     return str(kmp)

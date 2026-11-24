@@ -798,7 +798,7 @@
         hitQueue_.clear();missionSoundQueue_.clear();unitSoundQueue_.clear();
         transportEffectQueue_.clear();smokeTickQueue_.clear();
         flightAnimationQueue_.clear();weaponAnimationQueue_.clear();
-        pendingMonarchAlerts_ = 0;
+        pendingHurt_.clear();
     }
 
     void GameView::replayResetDisplay() {
@@ -876,7 +876,13 @@
             row.colorSlot = colorSlot_[p & 7];
             row.side = pr.side;
             row.built = pr.built;
-            row.score = pr.score;
+            // TotalA.exe 0x41dd86..0x41de10: the totals _ftol'd, the Score from the
+            // kills and the clock at the end (econ::plateScore).
+            auto ftol = [](double v) { return int32_t(uint32_t(int64_t(v))); };
+            row.energyProduced = ftol(pr.produced[0]); row.metalProduced = ftol(pr.produced[1]);
+            row.energyWasted = ftol(pr.wasted[0]); row.metalWasted = ftol(pr.wasted[1]);
+            row.score = ta::sim::econ::plateScore(f.gameTick, int32_t(int16_t(pr.kills)), world_.scoreKillMul(),
+                                                  world_.scoreTimeMul());
             row.kills = pr.kills;
             row.losses = pr.losses;
             row.defeated = pr.defeated;
@@ -1422,7 +1428,8 @@
         if (!fb.hits.empty()) {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
             for (const auto& h : fb.hits) {
-                pendingMonarchAlerts_ |= h.attackedMonarchPlayers;
+                for (int id : h.hurtUnits)
+                    if (pendingHurt_.size() < 256) pendingHurt_.push_back({world_.tickCount(), id});
                 if (hitQueue_.size() >= kMaxPendingHits) hitQueue_.pop_front();
                 hitQueue_.push_back({world_.tickCount(), h});
             }
@@ -1737,23 +1744,25 @@
         // from ticks whose snapshots the render never saw.
         // Released by the displayed tick, like the other tick-stamped queues below.
         std::vector<ta::sim::World::HitFx> hitsToShow;
-        uint8_t monarchAlerts = 0;
+        std::vector<std::pair<uint32_t, int>> hurt;
         {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
-            monarchAlerts = std::exchange(pendingMonarchAlerts_, uint8_t(0));
+            hurt.swap(pendingHurt_);
             while (!hitQueue_.empty() && int32_t(front().gameTick - hitQueue_.front().tick) >= 0) {
                 hitsToShow.push_back(std::move(hitQueue_.front().hit));
                 hitQueue_.pop_front();
             }
         }
-        if (monarchAlert_.admit(monarchAlerts, localPlayer_, watchOnly(), SDL_GetTicks64())) {
-            // TA's alert is the commander's sound class "underattack" slot
-            // (gamedata/sound.tdf; slot 1 of TotalA.exe's class table 0x5086fc, read
-            // at 0x42f580, text "Under Attack"): warning1 in every shipped class.
-            const std::string* wav = nullptr;
-            if (const auto* t = registry_.find(ta::sides::commander(std::max(0, ta::sides::find(side_))));
-                t && !t->soundClass.empty())
-                wav = soundClasses_.pick(t->soundClass, "underattack", salt_++);
+        // TotalA.exe's under-attack alert (client/monarchalert.h): a local unit hit while
+        // off screen, at most once per 20 s of game time; the hit unit's own sound class
+        // speaks it (0x47fd70: the class of [unit+0x92]+0x20e, slot "underattack";
+        // warning1 in every shipped class), with no position, at speech priority.
+        for (const auto& [tick, id] : hurt) {
+            const UnitR* u = frameUnitP(id);
+            if (!u || !u->type ||   // a fatal hit too: 0x406f80 runs before the death
+                !monarchAlert_.admit(u->player, localPlayer_, watchOnly(), onScreen(*u), tick)) continue;
+            const std::string* wav = u->type->soundClass.empty()
+                                         ? nullptr : soundClasses_.pick(u->type->soundClass, "underattack", salt_++);
             sounds_.play(wav ? *wav : std::string("warning1"), 1.f, 1.f, 7, false);
         }
         // Total Annihilation firing sounds: each shot launched since the last frame

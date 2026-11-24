@@ -779,6 +779,7 @@ std::vector<std::pair<float, float>> setupMatch(World& world, const TypeRegistry
                 // SurfaceMetal. Skirmish/MP use the "Network" schema whose start
                 // count best matches the players (docs/retail-ai.md section 1).
                 world.setTidalStrength(float(gh->numberOr("tidalstrength", 0.5)));
+                world.setScoreWeights(float(gh->numberOr("killmul", 0)), float(gh->numberOr("timemul", 0)));
                 {
                     int players = 0;
                     for (const auto& sl : cfg.slots) if (sl.used) ++players;

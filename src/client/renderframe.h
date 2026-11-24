@@ -257,11 +257,13 @@ struct PlayerR {
     // second's income/expense, the figures the top bar shows.
     float metal = 0, energy = 0, metalCap = 0, energyCap = 0;
     float metalIncome = 0, metalExpense = 0, energyIncome = 0, energyExpense = 0;
+    double produced[2] = {0, 0}, wasted[2] = {0, 0};   // lifetime, [0] energy [1] metal (the result plate)
     void captureEconomy(const ta::sim::Player& player) {
         metal = player.books.stored[1]; energy = player.books.stored[0];
         metalCap = player.books.cap[1]; energyCap = player.books.cap[0];
         metalIncome = player.books.income[1]; metalExpense = player.books.expense[1];
         energyIncome = player.books.income[0]; energyExpense = player.books.expense[0];
+        for (int r = 0; r < 2; ++r) { produced[r] = player.books.produced[r]; wasted[r] = player.books.wasted[r]; }
         mana=float(player.mana);
         storage=player.manaCapacity();
         // Retail HUD calls 401330/401350: the oldest 29 tick samples of

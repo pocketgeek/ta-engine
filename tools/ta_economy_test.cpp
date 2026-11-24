@@ -53,7 +53,20 @@ int main() {
         PlayerBooks p; p.stored[M] = 990; p.cap[M] = 1000;
         Sums s; s.prod[M] = 25;
         pay(p, s);
-        CHECK(near(p.stored[M], 1000) && near(p.wasted[M], 15));
+        CHECK(near(p.stored[M], 1000) && near(float(p.wasted[M]), 15));
+        // The lifetime totals (the result plate): produced gains the second's whole
+        // production (0x401a0d), wasted only the overflow (0x401b21).
+        CHECK(p.produced[M] == 25.0 && p.produced[E] == 0.0);
+        Sums s2; s2.prod[M] = 7;
+        pay(p, s2);
+        CHECK(p.produced[M] == 32.0 && near(float(p.wasted[M]), 22));
+    }
+    // The plate's Score (0x41ddbe): trunc(tick/60 * timemul) + trunc(kills * killmul), >= 0.
+    {
+        CHECK(plateScore(9000, 12, 50, 0) == 600);
+        CHECK(plateScore(9059, 0, 50, 1) == 150);    // 9059/60 = 150, an integer division first
+        CHECK(plateScore(36000, 3, 10, -1) == 0);    // -600 + 30 is floored at 0
+        CHECK(plateScore(600, 3, 10, -1) == 20);
     }
     // payNow takes from storage at once, or refuses without touching it.
     {

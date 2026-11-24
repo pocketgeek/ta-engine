@@ -54,13 +54,13 @@ int main(int argc,char** argv) {
     int failures=0;
     const auto check=[&](bool ok,const char* message) {if(!ok){++failures;std::cerr<<"FAIL "<<message<<'\n';}};
     {
-        ta::MonarchAlert alert;
-        check(!alert.admit(2,0,false,100), "other player's monarch does not alert");
-        check(!alert.admit(1,0,true,100), "spectators do not hear a local monarch alarm");
-        check(alert.admit(1,0,false,100), "first local monarch hit alerts immediately");
-        check(!alert.admit(1,0,false,15099), "monarch alarm cooldown is 15 real seconds");
-        check(alert.admit(1,0,false,15100), "monarch alarm repeats at cooldown boundary");
-        check(!alert.admit(0,0,false,40000), "cooldown expiry alone does not play an alarm");
+        ta::MonarchAlert alert;   // TotalA.exe 0x47f850 / 0x47fad0 / 0x47feee
+        check(!alert.admit(1,0,false,false,100), "another player's unit does not alert");
+        check(!alert.admit(0,0,true,false,100), "spectators hear no alert");
+        check(!alert.admit(0,0,false,true,100), "a unit on screen does not alert");
+        check(alert.admit(0,0,false,false,100), "first off-screen hit alerts at once");
+        check(!alert.admit(0,0,false,false,699), "the alert waits 600 game ticks");
+        check(alert.admit(0,0,false,false,700), "and repeats at the boundary");
     }
     SDL_SetMainReady();
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);

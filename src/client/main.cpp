@@ -1198,6 +1198,11 @@ int main(int argc, char** argv) {
             r.built = 120 - i * 23;
             r.kills = 48 - i * 11;
             r.losses = 31 + i * 9;
+            r.energyProduced = 184230 - i * 31007;
+            r.metalProduced = 9120 - i * 1490;
+            r.energyWasted = 22104 - i * 3911;
+            r.metalWasted = 310 + i * 47;
+            r.score = std::max(0, r.kills * 50);   // killmul 50, timemul 0: retail's usual header
             r.isLocal = (i == 0);
             r.defeated = (i >= 2);
             r.timeSec = r.defeated ? 600 + i * 90 : st.matchSec;
@@ -1300,13 +1305,13 @@ int main(int argc, char** argv) {
         campaignStem = pendingCampaign; campaignId = pendingCampaignId;
         pendingCampaign.clear(); pendingCampaignId.clear();
         if (campaignId.rfind("ta:", 0) == 0) { args.clear(); args.push_back(taCampaign.mapName()); }
-        if (args.empty()) args.push_back("athri cay");
+        if (args.empty()) args.push_back("great divide");
     }
     // Direct launch into a mission (`--campaign <stem>`): same host path as a menu
     // pick, resolving the campaign id so a win still advances persisted progress.
     if (!cliCampaign.empty()) {
         campaignStem = std::exchange(cliCampaign, {});
-        if (args.empty()) args.push_back("athri cay");   // GameView needs a map; the mission overrides it
+        if (args.empty()) args.push_back("great divide");   // GameView needs a map; the mission overrides it
         for (const auto& c : ta::loadCampaigns(vfs)) {
             if (ta::campaignChapter(c, campaignStem)) campaignId = c.id;
             if (!campaignId.empty()) break;
@@ -1331,7 +1336,18 @@ int main(int argc, char** argv) {
         // straight from it; the other doors still use the engine menu below for now.
         skirmishLaunch = false;
         bool taFrontChose = false;
-        if (afterResult == ta::ResultChoice::Menu &&
+        // The engine menu still owns the doors TA's front end does not have: a LAN game
+        // that ended goes back to its CONNECT screen, and (debug) a TA_MENU_PICK picks one
+        // of its doors on its first visit -- TA's menus would wait for input there.
+        bool engineMenu = lanReturnToConnect;
+#ifndef NDEBUG
+        static bool menuPickPending = [] {
+            const char* p = ta::devEnv("TA_MENU_PICK");
+            return p && *p;
+        }();
+        engineMenu = engineMenu || std::exchange(menuPickPending, false);
+#endif
+        if (!engineMenu && afterResult == ta::ResultChoice::Menu &&
             (!menuFailure || menuFailure.to == ta::FailTo::Notice || menuFailure.to == ta::FailTo::ServerSelect ||
              menuFailure.to == ta::FailTo::CampaignPicker)) {
             ta::TaFrontEnd front(ren, win, vfs);
@@ -1463,7 +1479,7 @@ int main(int argc, char** argv) {
         // A replay picked from the menu already set mode/args above, and must not be
         // overwritten with "game" here.
         if (choice != ta::MainMenu::Choice::Replay) mode = "game";
-        if (args.empty()) args.push_back("athri cay");   // fallback map; the lobby has its own map list
+        if (args.empty()) args.push_back("great divide");   // fallback map (a TA map); the lobby has its own map list
         lanHosting = choice == ta::MainMenu::Choice::Multiplayer && !tokenLaunch &&
                      connectKind == ta::MainMenu::Connect::LanHost;
         if (choice == ta::MainMenu::Choice::Multiplayer && !tokenLaunch &&

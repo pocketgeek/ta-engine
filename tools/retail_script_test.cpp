@@ -1248,15 +1248,19 @@ int main(int argc,char** argv) {
             int ruler=alerts.spawn(&monarch,216,200,0,1);
             alerts.tick(1.f/30); // build the spatial index before testing splash
             Weapon blast;blast.damage=100;blast.aoe=64;blast.dmgType=3;
+            // TotalA.exe 0x489da2 -> 0x406f80: every unit a damage record reaches asks
+            // for the alert, commander or not; the viewer tests the owner.
             RetailReplayProbe::hit(alerts,blast,200,200,0,primary);
-            require(alerts.hits().back().attackedMonarchPlayers==2,
-                "splash monarch damage records owner even when primary is not a monarch");
+            const auto& splash=alerts.hits().back().hurtUnits;
+            require(splash.size()==2 && std::count(splash.begin(),splash.end(),primary)==1 &&
+                    std::count(splash.begin(),splash.end(),ruler)==1,
+                "splash damage records every unit it hurt");
             alerts.clearHits();blast.aoe=0;blast.damage=0;
             RetailReplayProbe::hit(alerts,blast,216,200,0,ruler);
-            require(alerts.hits().back().attackedMonarchPlayers==0,"zero damage does not alert");
+            require(alerts.hits().back().hurtUnits.empty(),"zero damage does not alert");
             blast.damage=2000;
             RetailReplayProbe::hit(alerts,blast,216,200,0,ruler);
-            require(alerts.hits().back().attackedMonarchPlayers==2,"fatal monarch hit retains alarm");
+            require(alerts.hits().back().hurtUnits==std::vector<int>{ruler},"a fatal hit still alerts");
             alerts.tick(1.f/30);
             require(alerts.hits().empty(),"monarch events clear with tick impacts");
         }

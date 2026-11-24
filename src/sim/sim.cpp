@@ -6749,12 +6749,12 @@ void World::applyHit(const Weapon& w, float hx, float hz, int fromPlayer, int fr
             progress.hp=uint16_t(e.hp.floorInt());
             progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,e.maximumHp()));
         }
-        // Retail 409f7a..409fb2 routes the local monarch's hit to AlarmMon.
-        // Keep ownership at impact, including splash and fatal hits; no visibility
-        // gate and no simulation/RNG changes for this presentation event.
-        if (dealt > 0 && e.type && e.type->commander && e.player >= 0 && e.player < 8 &&
-            (fromPlayer != e.player || w.dmgType == 1))
-            hits_[hitIndex].attackedMonarchPlayers |= uint8_t(1u << e.player);
+        // TotalA.exe's damage record (0x489bb0 -> 0x489ce0) runs the hit response
+        // 0x406f80 for any unit, which ends with the under-attack request (0x4071b0..
+        // 0x4071d8); its owner, on-screen and repeat tests are the viewer's
+        // (client/monarchalert.h). Splash and fatal hits included; presentation
+        // only, no simulation or RNG change.
+        if (dealt > 0 && e.type) hits_[hitIndex].hurtUnits.push_back(e.id);
         // 52a40a forms the hit bearing from the impact position, relative to
         // the victim's current native heading. 51a140 retains its high byte;
         // 51a4d2 notifies each normal/fire/explosion recipient, including splash.
@@ -21431,6 +21431,7 @@ void World::hashTrace() const {
         for (int r = 0; r < 2; ++r) {
             hPlayers = fnv(hPlayers, std::bit_cast<uint32_t>(t.books.stored[r]));
             hPlayers = fnv(hPlayers, std::bit_cast<uint32_t>(t.books.own[r].debt));
+            hPlayers = fnv(fnv(hPlayers, bits64(t.books.produced[r])), bits64(t.books.wasted[r]));
         }
         hPlayers = fnv(hPlayers, t.books.nextSettle);
     }

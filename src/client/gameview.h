@@ -904,7 +904,9 @@ public:
     // belongs to rather than up to lagTarget ticks early.
     struct QueuedHit { uint32_t tick = 0; ta::sim::World::HitFx hit; };
     std::deque<QueuedHit> hitQueue_;
-    uint8_t pendingMonarchAlerts_ = 0; // guarded by hitQueueMutex_; survives queue overflow
+    // Units damaged since the render last looked (World::HitFx::hurtUnits), with the tick:
+    // the under-attack alert's input. Guarded by hitQueueMutex_; survives queue overflow.
+    std::vector<std::pair<uint32_t, int>> pendingHurt_;
     ta::MonarchAlert monarchAlert_;
     std::deque<ta::sim::World::SoundReq> missionSoundQueue_;
     // Death sounds the simulation's dying unit VMs played (World::ScriptSound), the name

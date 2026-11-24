@@ -224,6 +224,29 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
                          sound.c_str(), int(sfx.busy()));
     };
 
+    // TA's table (TotalA.exe 0x41e420): per row a bar cell for each column, counting up
+    // from 0 (0x4a4890: every game tick, +trunc(max(1, value/15)), so ~half a second),
+    // its length the value over the column's largest (0x41dc20: at least 10 for Kills
+    // and Losses, 100 for the rest). A screenshot (TA_SHOT_RESULT) shows the totals.
+    const uint64_t openedMs = SDL_GetTicks64();
+    const bool countUp = !devEnv("TA_SHOT_RESULT");
+    constexpr int kTaCols = 7;
+    int32_t colMax[kTaCols] = {10, 10, 100, 100, 100, 100, 100};
+    auto taValue = [](const ResultRow& r, int c) -> int32_t {
+        switch (c) {
+            case 0: return r.kills;
+            case 1: return r.losses;
+            case 2: return r.energyProduced;
+            case 3: return r.metalProduced;
+            case 4: return r.energyWasted;
+            case 5: return r.metalWasted;
+            default: return r.score;
+        }
+    };
+    if (stats)
+        for (const auto& r : stats->rows)
+            for (int c = 0; c < kTaCols; ++c) colMax[c] = std::max(colMax[c], taValue(r, c));
+
     for (;;) {
         if (termRequested()) { freeAll(); return ResultChoice::Menu; }
         if (chosen && (!sfx.busy() || ++leaving > 30)) { freeAll(); return *chosen; }
@@ -328,7 +351,47 @@ ResultChoice ResultScreen::run(SDL_Renderer* ren, const hpi::Vfs& vfs, bool vict
             text(heading, "Score", col(g.score, g.headY), gold);
             }
 
-            int n = std::min<int>(int(stats->rows.size()), g.maxRows);
+            if (g.headersInArt) {
+                // TotalA.exe 0x41e420, the outcome0.pcx plate: up to 10 rows from y 93,
+                // 20 apart. PlayerColor (16, y, 91x21) in the player's colour with the
+                // name over it at x 16; then Kills, Losses, EProduced, MProduced,
+                // EWasted, MWasted and Score cells 67x18 at x 112 + 74k: a bevelled frame,
+                // a 2 px inset well, the bar from its left, the number centred on it
+                // (0x4a4660). Bar and well colours are palette indices the plate sets at
+                // run time (game +0xdcf / +0xdd3); these are stand-ins.
+                const int frames = countUp ? int((SDL_GetTicks64() - openedMs) * 30 / 1000) : 1 << 20;
+                const int n = std::min<int>(int(stats->rows.size()), 10);
+                for (int i = 0; i < n; ++i) {
+                    const ResultRow& row = stats->rows[size_t(i)];
+                    const float y = 93.0f + 20.0f * float(i);
+                    const SDL_Color pc = slotColor(row.colorSlot);
+                    SDL_SetRenderDrawColor(ren, pc.r, pc.g, pc.b, 255);
+                    const SDL_FRect sw = lay.rect(16, y, 91, 21);
+                    SDL_RenderFillRectF(ren, &sw);
+                    const SDL_Color ink = (pc.r + pc.g + pc.b) > 500 ? SDL_Color{24, 20, 12, 255} : SDL_Color{250, 246, 230, 255};
+                    text(body, row.name, {18, y, 87, 20}, ink);
+                    for (int c = 0; c < kTaCols; ++c) {
+                        const int32_t value = std::max<int32_t>(taValue(row, c), 0);
+                        const int32_t step = std::max<int32_t>(1, int32_t(float(value) / 15.0f));
+                        const int32_t shown = int32_t(std::min<int64_t>(value, int64_t(step) * frames));
+                        const float x = 112.0f + 74.0f * float(c);
+                        const SDL_FRect cell = lay.rect(x, y, 67, 18);
+                        SDL_SetRenderDrawColor(ren, 120, 120, 112, 255);
+                        SDL_RenderDrawRectF(ren, &cell);
+                        const SDL_FRect well = lay.rect(x + 2, y + 2, 63, 14);
+                        SDL_SetRenderDrawColor(ren, 6, 22, 8, 255);
+                        SDL_RenderFillRectF(ren, &well);
+                        const float frac = float(double(shown) / double(std::max(colMax[c], 1)));
+                        if (frac > 0) {
+                            const SDL_FRect bar = lay.rect(x + 2, y + 2, 63.0f * std::min(frac, 1.0f), 14);
+                            SDL_SetRenderDrawColor(ren, 52, 104, 44, 255);
+                            SDL_RenderFillRectF(ren, &bar);
+                        }
+                        text(body, std::to_string(shown), {x + 2, y + 1, 63, 16}, gold, false, false, true);
+                    }
+                }
+            }
+            int n = g.headersInArt ? 0 : std::min<int>(int(stats->rows.size()), g.maxRows);
             for (int i = 0; i < n; ++i) {
                 const ResultRow& row = stats->rows[size_t(i)];
                 float y = g.name.y + g.pitch * float(i);

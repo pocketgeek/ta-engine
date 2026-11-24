@@ -2818,6 +2818,12 @@ public:
     int cellMetal(int cx, int cz) const;
     int surfaceMetal() const { return surfaceMetal_; }
     void setTidalStrength(float t) { wind_tidal_ = t; }
+    // The map's [GlobalHeader] killmul / timemul (TotalA.exe 0x4365e6 / 0x4365fe,
+    // default 0): the result plate's Score weights (econ::plateScore). Set at
+    // setup, the same on every peer; display only.
+    void setScoreWeights(float killMul, float timeMul) { scoreKillMul_ = killMul; scoreTimeMul_ = timeMul; }
+    float scoreKillMul() const { return scoreKillMul_; }
+    float scoreTimeMul() const { return scoreTimeMul_; }
     // Start resources (lobby value x100 in MP/skirmish): stored = start, base
     // storage = max(start, 200).
     void setStartResources(int player, float energy, float metal);
@@ -3465,7 +3471,10 @@ public:
     // for the material-specific hit sound). Cleared at the start of each tick.
     struct HitFx { float x = 0, z = 0; const Weapon* weapon = nullptr;
                    const UnitType* target = nullptr;
-                   uint8_t attackedMonarchPlayers = 0; // cosmetic, includes splash recipients
+                   // Every unit this impact damaged, splash recipients included: the
+                   // under-attack alert's input (TotalA.exe 0x489da2 -> 0x406f80 per
+                   // damage record). Cosmetic, not hashed.
+                   std::vector<int> hurtUnits;
                    int victimId = 0;            // primary struck unit (0 = ground hit)
                    float fromX = 0, fromZ = 0;  // attacker pos for hitscan presentation
                    int fromPlayer = 0;         // display colour for hitscan projectile models
@@ -4519,6 +4528,7 @@ private:
     uint32_t gameRng_ = initialGameRng_;
     RetailWind wind_;
     float wind_tidal_ = econ::kTidalDefault;
+    float scoreKillMul_ = 0, scoreTimeMul_ = 0;
     uint8_t surfaceMetal_ = 0;
     std::vector<uint8_t> cellMetal_;   // empty until a feature stamps metal
     int cellMetalW_ = 0, cellMetalH_ = 0;
