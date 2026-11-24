@@ -33,7 +33,8 @@ struct Digest {
     }
 };
 
-// This digest was captured from the pre-optimization, full-plane-reset worker.
+// This digest was captured from the full-plane-reset worker, retaken when the
+// search adopted TotalA.exe's rules (docs/retail-pathfinding.md section 5).
 // It includes every callback, slice work charge/notification, raw scratch cell,
 // heap entry and route across repeated requests sharing one worker allocation.
 uint64_t transcript() {
@@ -149,7 +150,7 @@ int main() {
     try {
         const auto digest=transcript();
         std::cout<<"retail search transcript "<<digest<<'\n';
-        constexpr uint64_t expected=11705273632564964854ull;
+        constexpr uint64_t expected=17666014887103652560ull;   // TotalA.exe search rules (docs/retail-pathfinding.md section 5)
         if (digest!=expected) throw std::runtime_error("retail search behavior changed");
         scratchChecks<RetailSearchAttempt>();
     } catch (const std::exception& e) {

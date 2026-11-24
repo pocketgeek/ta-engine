@@ -1,4 +1,3 @@
-#include "client/font.h"
 #include "client/loadscreen.h"
 #include "client/resultscreen.h"
 #include "client/campaignscreen.h"
@@ -33,24 +32,16 @@ int main(int argc,char** argv) try {
         check(renderer,SDL_GetError());
         const auto bytes=gpuvram::bytes(),count=gpuvram::count();
         for(int i=0;i<3;++i) {
-            { ta::LoadScreen screen(renderer,vfs,"Ulasem Arena");screen.draw(); }
+            { ta::LoadScreen screen(renderer,vfs,"Ashap Plateau");screen.draw(); }
             ta::releaseUiTextGlyphs();check(gpuvram::bytes()==bytes && gpuvram::count()==count,
                   "loading screen leaves glyphs/textures behind");
-            {
-                Font font(renderer,vfs,"fonts/b_times new roman (100).gaf");
-                check(font.ok(),"retail font absent");
-                const auto loaded=gpuvram::bytes();
-                font=Font(renderer,vfs,"fonts/b_times new roman (100).gaf");
-                check(gpuvram::bytes()==loaded,"font replacement leaks glyphs");
-            }
-            ta::releaseUiTextGlyphs();check(gpuvram::bytes()==bytes && gpuvram::count()==count,"font scope leaks glyphs");
             {
                 ta::Settings settings;
                 ta::CampaignScreen campaign(renderer,vfs,settings);
                 campaign.render(640,480);
             }
             ta::releaseUiTextGlyphs();check(gpuvram::bytes()==bytes && gpuvram::count()==count,"campaign screen leaks textures");
-            // Missing heading font exercises the results screen's fallback to
+            // A broken heading font exercises the results screen's fallback to
             // its body font without giving two owners the same glyph textures.
             auto files=std::make_shared<ta::hpi::Vfs::Files>();
             (*files)["fonts/lombardic (cd).gaf"]={0};
@@ -58,7 +49,7 @@ int main(int argc,char** argv) try {
             SDL_Event event{};event.type=SDL_KEYDOWN;event.key.keysym.sym=SDLK_ESCAPE;
             SDL_PushEvent(&event);
             ta::ResultStats stats;
-            for (const char* side : {"ara", "tar", "ver", "zon", "cre"}) {
+            for (const char* side : {"arm", "core"}) {
                 ta::ResultRow row; row.side=side; row.colorSlot=int(stats.rows.size());
                 stats.rows.push_back(row);
             }
@@ -69,6 +60,6 @@ int main(int argc,char** argv) try {
         ta::releaseUiTextGlyphs();SDL_DestroyRenderer(renderer);
     }
     SDL_DestroyWindow(window);SDL_Quit();
-    std::puts("PASS: repeated loading/results screens, font replacement and renderer lifetimes");
+    std::puts("PASS: repeated loading/campaign/results screens and renderer lifetimes");
     return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}

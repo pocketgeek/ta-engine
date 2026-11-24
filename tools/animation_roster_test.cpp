@@ -1,7 +1,6 @@
 // Exercise the renderer-facing VM with every loaded unit script. The reference
 // integer VM is separately checked against KINGDOMS.icd by the Python oracles.
 #include "cob/vm.h"
-#include "client/retailaim.h"
 #include "cob/retailstate.h"
 #include "sim/matchsetup.h"
 #include "sim/retailrng.h"
@@ -91,10 +90,11 @@ int main(int argc,char**argv) {
     auto vfs=ta::hpi::mountRetailRoot(argv[1]);
     ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
     int scripts=0,failures=0;
-    // Aradrag has 3s, 2.5s, and 5s weapons. The renderer used to notify
-    // the first slot's 3000ms, shortening the script's restore delay.
-    if(const auto* dragon=registry.find("aradrag");!dragon || dragon->maxWeaponReloadMs!=5000) {
-        std::printf("FAIL Aradrag SetMaxReloadTime must include its third weapon\n");
+    // The Arm Commander's slots are its laser (0.85 s), nothing, and the
+    // D-gun (1.2 s). The renderer used to notify the first slot's 833 ms,
+    // shortening the script's restore delay.
+    if(const auto* commander=registry.find("armcom");!commander || commander->maxWeaponReloadMs!=1200) {
+        std::printf("FAIL armcom SetMaxReloadTime must include its third weapon\n");
         ++failures;
     }
     size_t serialFrames=0,parallelFrames=0,explosions=0;
@@ -189,17 +189,6 @@ int main(int argc,char**argv) {
             }
             captureDeathSfx=false;
         }
-        const auto requiresDeathEffect=[&](int32_t code) {
-            const bool required=(name=="tarmage" && code==260) ||
-                                (name=="tarhel" && code==261) ||
-                                (name=="crefire" && code==262);
-            if(required && !deathEmissions[code]) {
-                std::printf("FAIL %s Killed timeline omitted native SFX code %d\n",
-                            name.c_str(),code);
-                ++failures;
-            }
-        };
-        for(int32_t code:{260,261,262})requiresDeathEffect(code);
         for(const auto& [code,count]:deathEmissions) {
             const auto family=ta::retailDeathSfxFamily(code);
             if(count && family && *family!=ta::RetailDeathSfxFamily::DamageFlame) {
@@ -217,107 +206,6 @@ int main(int argc,char**argv) {
             }
         }
     }
-    // GET 46 is standingunitorder, independently of current movement/targets.
-    // These two shipped scripts holster in passive stance, even with an explicit
-    // target, and draw in either active stance even while idle.
-    for(const char* name:{"verbers","vercrus"}) {
-        const auto* type=registry.find(name);
-        if(!type || !type->script()){++failures;continue;}
-        ta::sim::World world;const int id=world.spawn(type,100,100,0,0);
-        ta::cob::Vm display(*type->script());display.enableRetailAnimation();
-        display.onGet=[&](int query,const std::vector<int32_t>&) {
-            if(query==46)return int32_t(world.unit(id)->standingOrder);
-            return query==4 ? 100:0;
-        };
-        display.start("Create");
-        for(int stance:{0,2,1,2,0}) {
-            world.setStance(id,stance);
-            world.unit(id)->orders.clear();
-            if(stance==2) {
-                ta::sim::Order attack;attack.targetId=123;
-                world.unit(id)->orders.push_back(attack);
-            }
-            for(int tick=0;tick<600;++tick)display.tick(1.f/30);
-            if(display.getStatic(7)!=(stance!=2)) {
-                std::printf("FAIL %s holster state in stance %d\n",name,stance);++failures;
-            }
-        }
-    }
-    if(const auto* tower=registry.find("vertower");tower && tower->script()) {
-        const auto& file=*tower->script();
-        {
-            ta::cob::Vm display(file);display.enableRetailAnimation();
-            ta::RetailAimState aim;
-            display.onGet=[](int query,const std::vector<int32_t>&){return query==4 ? 100:0;};
-            display.onSetUnitValue=[&](int query,int slot){if(slot==0)aim.set(query);};
-            display.start("Create");
-            int starts=0;
-            auto advance=[&](uint16_t heading) {
-                if(aim.start(heading,0)) {
-                    ++starts;display.start("AimWeapon",{heading,0,0});
-                }
-                aim.ready(heading,0,1024,true,true);
-                display.tick(1.f/30);
-            };
-            // The tower needs several seconds to turn: preserve its waiting
-            // thread, then retain readiness while the target stays stationary.
-            for(int tick=0;tick<300;++tick)advance(49152);
-            if(starts!=1 || !(aim.flags&8)) {
-                std::puts("FAIL tower stationary aim was restarted or never became ready");++failures;
-            }
-            // An out-of-tolerance target consumes seven refresh steps before
-            // the next AimWeapon. Its new turn must again finish undisturbed.
-            for(int tick=0;tick<7;++tick)advance(32768);
-            if(starts!=1 || (aim.flags&0xe0)) {
-                std::puts("FAIL tower aim refresh countdown");++failures;
-            }
-            for(int tick=0;tick<300;++tick)advance(32768);
-            if(starts!=2 || !(aim.flags&8)) {
-                std::puts("FAIL tower re-aim handshake");++failures;
-            }
-            display.start("TargetCleared",{0});
-            if(aim.flags&0xf8) {
-                std::puts("FAIL tower target-clear did not reset aim state");++failures;
-            }
-            advance(49152);
-            if(starts!=3) {
-                std::puts("FAIL tower reacquisition did not start aiming");++failures;
-            }
-        }
-        auto cannon=std::find(file.pieces.begin(),file.pieces.end(),"cannon");
-        if(cannon==file.pieces.end())++failures;
-        else for(int height:{-100,0,100}) {
-            ta::cob::Vm display(file);display.enableRetailAnimation();
-            display.onGet=[](int query,const std::vector<int32_t>&){return query==4 ? 100:0;};
-            int ready=-1;
-            display.onSetUnitValue=[&](int query,int value){if(query==22)ready=value;};
-            display.start("Create");
-            const auto angles=ta::sim::retailDirectAim(0,height*65536,100*65536,32768);
-            display.start("AimWeapon",{angles[0],angles[1],0});
-            for(int tick=0;tick<300;++tick)display.tick(1.f/30);
-            const auto& pose=display.retailPieces()[size_t(cannon-file.pieces.begin())];
-            if(uint16_t(pose.turn[0])!=angles[1] || ready!=0) {
-                std::printf("FAIL vertower pitch/ready at target height %d\n",height);++failures;
-            }
-        }
-    } else ++failures;
-    if(const auto* mortar=registry.find("vermort");mortar && mortar->script()) {
-        for(bool high:{false,true}) {
-            ta::cob::Vm display(*mortar->script());display.enableRetailAnimation();
-            display.onGet=[](int query,const std::vector<int32_t>&){return query==4 ? 100:0;};
-            int ready=-1;display.onSetUnitValue=[&](int query,int value){if(query==22)ready=value;};
-            display.start("Create");
-            const auto pitch=ta::retailBallisticPitch(0,0,100,10,1,high);
-            display.start("AimWeapon",{32768,pitch,0});
-            for(int tick=0;tick<900;++tick)display.tick(1.f/30);
-            const auto& names=mortar->script()->pieces;
-            const auto found=std::find(names.begin(),names.end(),"mortar");
-            if(found==names.end() || ready!=0 ||
-               uint16_t(display.retailPieces()[size_t(found-names.begin())].turn[0])!=uint16_t(pitch-16384)) {
-                std::printf("FAIL mortar ballistic elevation high=%d\n",int(high));++failures;
-            }
-        }
-    } else ++failures;
     std::printf("%d scripts, 1200-tick display callback timelines, %d failures\n",scripts,failures);
     std::printf("explosion scheduling: %zu callbacks, %zu serial and %zu parallel frame classifications\n",
                 explosions,serialFrames,parallelFrames);

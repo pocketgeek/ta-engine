@@ -13,7 +13,7 @@
 // bring into play (World::prebuildComponents), before tick 0.
 //
 // Two sides on a shipped map. Each side's first factory makes its first ground
-// unit, and every ground or sea type each Monarch's build tree reaches answers a
+// unit, and every ground or sea type each Commander's build tree reaches answers a
 // pathExists query, without World::compStats().relabels moving after setup.
 //
 // A dev harness; not shipped in a game.
@@ -68,9 +68,9 @@ int main(int argc, char** argv) {
     w.setSerialThreads(true);
     sim::MatchConfig cfg;
     cfg.vfs = &vfs;
-    cfg.mapPath = "maps/Two Castles.tnt";
+    cfg.mapPath = "maps/Ashap Plateau.tnt";
     cfg.slots.resize(2);                 // the map's two starts
-    const int factions[2] = {0, 4};      // Aramon and Creon: each has a ground factory
+    const int factions[2] = {0, 1};      // Arm and Core (sidedata.tdf): each has a ground factory
     for (int i = 0; i < 2; ++i) { cfg.slots[size_t(i)].used = true; cfg.slots[size_t(i)].faction = factions[i]; cfg.slots[size_t(i)].team = i; }
     const auto spots = sim::setupMatch(w, reg, cfg);
     const uint64_t built = w.compStats().relabels;
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
     std::vector<int> monarchs;
     for (const auto& u : w.units()) if (u.alive() && u.type && u.type->commander) monarchs.push_back(u.id);
-    check(monarchs.size() == 2, "two Monarchs");
+    check(monarchs.size() == 2, "two Commanders");
 
     // Each side's first factory releases its first ground unit: the parking ring
     // asks for its class's labelling (the audited game's four freezes).
@@ -98,13 +98,18 @@ int main(int argc, char** argv) {
             if (factory) break;
         }
         if (!factory) { check(false, king->type->id + " has a ground factory"); continue; }
-        // On the side of the Monarch facing the middle of the map, clear of the edge.
+        // On the side of the Commander facing the middle of the map, clear of the edge.
+        // The first spot from 320 px out where the lab may stand (canPlace): TA's
+        // maps are hilly, and a lab spawned on a slope steeper than its MaxSlope
+        // has a yard whose footprint test refuses every site, so it rightly
+        // never builds.
         const float kx = king->x.toFloat(), kz = king->z.toFloat();
         const int player = king->player;   // `king` does not outlive the spawn
         const float mx = float(w.nav().width()) * 8, mz = float(w.nav().height()) * 8;
         const float len = std::max(1.f, std::hypot(mx - kx, mz - kz));
-        const int id = w.spawn(factory, kx + (mx - kx) / len * 320, kz + (mz - kz) / len * 320, 0, player);
-        w.player(player).mana = 1000000;
+        float d = 320;
+        while (d < 1600 && !w.canPlace(factory, kx + (mx - kx) / len * d, kz + (mz - kz) / len * d, player)) d += 32;
+        const int id = w.spawn(factory, kx + (mx - kx) / len * d, kz + (mz - kz) / len * d, 0, player);
         w.train(id, output, 1);
         factories.push_back(id);
         outputs.push_back(output);

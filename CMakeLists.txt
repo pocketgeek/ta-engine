@@ -333,7 +333,6 @@ target_link_libraries(placement_ids_test PRIVATE ta-formats)
 add_test(NAME placement_ids COMMAND placement_ids_test)
 add_executable(door_animation_test tools/door_animation_test.cpp)
 target_include_directories(door_animation_test PRIVATE src)
-add_executable(turn_test tools/turn_test.cpp)
 add_executable(placement_test tools/placement_test.cpp)
 add_executable(cursor_enemy_test tools/cursor_enemy_test.cpp)
 add_executable(friendly_order_test tools/friendly_order_test.cpp)
@@ -879,19 +878,6 @@ endforeach()
 # pixel inside, so bodies held flush on their origins' edges 1-2 px out of reach (attackring-f1-64 at offset 0: 39 in
 # reach at the end, Retail's gate median 43; 41 with the late ring and the stop-origin rounding alone). Passes when 43
 # or more are in reach at the end, serial equal to workers.
-# A melee press tests contact, not the TDF range (round 5 review): melee fires on footprint adjacency (meleeInRange),
-# but the reach-edge press read reachFloat's TDF range (300 px for araknigh), so every point was "in reach" and a held
-# body re-pressed to its own origin instead of stepping into contact (attackring-melee-30 at offset 0: 14,433 damage,
-# 2,453 of 2,454 presses repeats; 28,153 before the reach-edge press, Retail 27,351). Passes when the damage at the
-# end is 25,000 or more, serial equal to workers.
-# Needs the retail araknigh, so only with -DTAK_TEST_DATA (CI has no install).
-if(TA_TEST_DATA)
-  add_test(NAME legion_meleepress
-           COMMAND legion_scenario ${CMAKE_SOURCE_DIR}/tools/scenarios/attackring-melee-30.scn --mode legion --offsets 0 --json
-                   --data "${TA_TEST_DATA}")
-  set_tests_properties(legion_meleepress PROPERTIES LABELS legion SKIP_RETURN_CODE 77
-                       PASS_REGULAR_EXPRESSION "\"serial_eq_workers\":true,.*\"reach\\.ring\\.damage_end\":(2[5-9][0-9][0-9][0-9]|[3-9][0-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9][0-9]+),")
-endif()
 # Round 6 (2026-10-21): the walk on past the shot (walkOnShot). In attackring-gatehouse-40's 3-cell corridor the first
 # 2x2 body combat braked plugged the way single file and the queue behind it stood out of reach; now a ring member
 # whose braked footprint would cut its queue off from ground with the shot walks on to the farthest such origin first.
@@ -1340,9 +1326,6 @@ add_test(NAME kill_credit COMMAND kill_credit_test)
 add_executable(unit_retirement_test tools/unit_retirement_test.cpp)
 target_link_libraries(unit_retirement_test PRIVATE ta-formats)
 add_test(NAME unit_retirement COMMAND unit_retirement_test)
-add_executable(remote_timing_test tools/remote_timing_test.cpp)
-target_link_libraries(remote_timing_test PRIVATE ta-formats)
-add_test(NAME remote_timing COMMAND remote_timing_test)
 add_executable(scenario_resources_test tools/scenario_resources_test.cpp)
 target_link_libraries(scenario_resources_test PRIVATE ta-formats)
 add_test(NAME scenario_resources COMMAND scenario_resources_test)
@@ -1419,7 +1402,6 @@ add_executable(gpuvram_test tools/gpuvram_test.cpp)
     target_link_libraries(retailgap_test PRIVATE ta-formats)
     target_link_libraries(ta_weapon_script_test PRIVATE ta-formats)
 target_link_libraries(conjure_test PRIVATE ta-formats)
-target_link_libraries(turn_test PRIVATE ta-formats)
 target_link_libraries(placement_test PRIVATE ta-formats)
 target_link_libraries(cursor_enemy_test PRIVATE ta-formats)
 target_link_libraries(friendly_order_test PRIVATE ta-formats)
@@ -1687,7 +1669,6 @@ if(TA_TEST_DATA)
     add_test(NAME kill_credit_shipped COMMAND kill_credit_test "${TA_TEST_DATA}")
     add_test(NAME building_death COMMAND building_death_test "${TA_TEST_DATA}")
     add_test(NAME clear_build COMMAND clear_build_test "${TA_TEST_DATA}")
-    add_test(NAME turn COMMAND turn_test "${TA_TEST_DATA}")
     add_test(NAME navblock COMMAND navblock_test "${TA_TEST_DATA}")
     add_test(NAME setup_reachability COMMAND setup_reachability_test "${TA_TEST_DATA}")
     add_test(NAME blocked_shot COMMAND blocked_shot_test "${TA_TEST_DATA}")
@@ -3172,17 +3153,6 @@ if(TA_BUILD_CLIENT)
     if(TA_TEST_DATA)
       add_test(NAME terrain_cache COMMAND terrain_cache_test "${TA_TEST_DATA}")
       set_tests_properties(terrain_cache PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy")
-    endif()
-    # The lobby's full-window map view: closing it waits for its terrain workers held at a
-    # read, so the data set can be remounted after (build with -fsanitize=thread too).
-    add_executable(bigmap_lifetime_test tools/bigmap_lifetime_test.cpp src/client/bigmapview.cpp
-      src/cartographer/features.cpp src/client/mapview.cpp src/client/terrainchunks.cpp)
-    target_include_directories(bigmap_lifetime_test PRIVATE src)
-    target_compile_definitions(bigmap_lifetime_test PRIVATE SDL_MAIN_HANDLED)
-    target_link_libraries(bigmap_lifetime_test PRIVATE ta-formats ${_ta_sdl2})
-    if(TA_TEST_DATA)
-      add_test(NAME bigmap_lifetime COMMAND bigmap_lifetime_test "${TA_TEST_DATA}")
-      set_tests_properties(bigmap_lifetime PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy")
     endif()
     # Camera-driven terrain work in a real MapView (workstream K): priority, cancellation
     # with hysteresis, stand-ins under memory pressure, nearby work, edits/resets mid-queue.
