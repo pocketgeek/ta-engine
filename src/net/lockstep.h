@@ -80,6 +80,11 @@ enum class Cmd : uint8_t {
     // enemy (action 1). An ordinary PlayerCommands item (base layout); an
     // order verb (Shift / Ctrl).
     ReclaimUnit,
+    // Protocol 341: the flyer unitId lands on the own or allied air base
+    // targetId, a repair pad or a carrier (TotalA.exe's default order on it,
+    // 0x43f0e0 action 1 -> VTOL_LANDING, 0x43fb26; World::landOnAirBase). An
+    // ordinary PlayerCommands item (base layout).
+    Land,
 };
 
 struct SelectionOrder;

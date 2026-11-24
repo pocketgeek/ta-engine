@@ -14,8 +14,17 @@
 // lands; both end whole. A Coral Carrier (corcarry) names two pieces and
 // takes both at once.
 //
+// Landing by order (Cmd::Land; TotalA.exe's default order on an allied air
+// base, 0x43f0e0 action 1 -> VTOL_LANDING, 0x43faf5..0x43fb26): a whole
+// fighter lands and stays on the piece, a damaged one is mended there; an
+// enemy pad, a unit that cannot fly and a target that is no air base refuse
+// it. The attacks' detours: a damaged flyer on AirToGround (0x412b3f) and on
+// AirToGroundHover (0x413a8a) goes to the pad. The pad list (0x40b530's,
+// AIPlayer +0x25) is in slot order: a pad in a freed lower slot comes first.
+//
 //   air_pad_test <retail-install-dir>
 #include "hpi/hpi.h"
+#include "net/lockstep.h"
 #include "sim/matchsetup.h"
 #include "sim/sim.h"
 
@@ -221,6 +230,106 @@ int main(int argc,char** argv) {
             check(landed && reached && drift<=2.f,"a landed repairer climbs to cruisealt / 2 over its spot first");
             check(mended,"and then flies over and mends the unit");
         }
+    }
+
+    // Landing by order.
+    {
+        Field f;setup(f,registry,"armasp",1400,1400,0);
+        World& w=f.w;
+        const UnitType* fig=registry.find("armfig");
+        const int whole=w.spawn(fig,1800,1800,0.f,0);w.unit(whole)->fireState=0;
+        for (int t=0;t<30;++t) w.tick(kTick);
+        auto land=[&](int unit,int pad,int player) {
+            ta::net::Command c;c.kind=ta::net::Cmd::Land;c.player=uint8_t(player);c.unitId=unit;c.targetId=pad;
+            applyCommand(w,registry,c);
+        };
+        land(whole,f.pad,0);
+        const Unit* u=w.unit(whole);
+        check(u && !u->orders.empty() && u->orders.front().airPad==Order::kAirPadLanding &&
+              u->orders.front().airPadId==f.pad,"Cmd::Land gives the flyer VTOL_LANDING on its own pad");
+        Fighter a;a.id=whole;
+        for (int t=0;t<900;++t) { w.tick(kTick);watch(w,a,f.pad,t); }
+        u=w.unit(whole);
+        check(a.landed && a.piece==1,"the whole fighter lands on the pad's piece");
+        check(u && u->inTransport==f.pad && u->orders.empty(),"and stays there once the landing is done");
+        // A damaged one is mended there.
+        const int hurt=damagedFighter(w,registry,2000,1700,0.4f);
+        for (int t=0;t<30;++t) w.tick(kTick);
+        // armasp has one piece: the whole fighter makes room first.
+        w.order(whole,2400,2400,false);
+        land(hurt,f.pad,0);
+        Fighter b;b.id=hurt;
+        for (int t=0;t<3000;++t) { w.tick(kTick);watch(w,b,f.pad,t); }
+        check(b.landed && b.repaired,"a damaged fighter sent to the pad lands and is mended");
+        // Refused: the enemy's pad, a unit that cannot fly, a target that is no air base.
+        const int enemyPad=w.spawn(registry.find("armasp"),2400,1400,0.f,1);
+        const int other=w.spawn(fig,1700,2000,0.f,0);w.unit(other)->fireState=0;
+        const UnitType* pw=registry.find("armpw");
+        const int walker=pw ? w.spawn(pw,1500,1700,0.f,0) : 0;
+        for (int t=0;t<30;++t) w.tick(kTick);
+        land(other,enemyPad,0);
+        check(w.unit(other)->orders.empty() || !w.unit(other)->orders.front().airPad,"the enemy's pad is refused");
+        if (walker) {
+            land(walker,f.pad,0);
+            check(w.unit(walker)->orders.empty() || !w.unit(walker)->orders.front().airPad,
+                  "a unit that cannot fly does not land");
+            land(other,walker,0);
+            check(w.unit(other)->orders.empty() || !w.unit(other)->orders.front().airPad,
+                  "a unit that is no air base is no pad");
+        }
+        land(other,f.pad,1);
+        check(w.unit(other)->orders.empty() || !w.unit(other)->orders.front().airPad,"another player's unit is not ordered");
+    }
+
+    // The attacks' detours: AirToGround (0x412b3f) and AirToGroundHover (0x413a8a).
+    for (const bool hover:{false,true}) {
+        Field f;setup(f,registry,"armasp",1400,1400,0);
+        World& w=f.w;
+        // A fighter whose missile may hit the ground: AirToGround, or with
+        // hoverattack AirToGroundHover.
+        UnitType gun=*registry.find("armfig");
+        for (auto& wp:gun.weapons) { wp.toAir=false;wp.cursorAirstrike=false; }
+        gun.hoverAttack=hover;
+        const UnitType* pw=registry.find("armpw");
+        UnitType post=*pw;post.maxVel={};post.maxHp=100000;post.weapons.clear();
+        const int target=w.spawn(&post,2200,1800,0.f,1);
+        const int id=w.spawn(&gun,1800,1800,0.f,0);
+        w.unit(id)->hp=Fixed::fromInt(gun.maxHp*4/10);
+        for (int t=0;t<30;++t) w.tick(kTick);
+        w.attack(id,target,false);
+        bool attacking=false,landing=false;Fighter a;a.id=id;
+        for (int t=0;t<1500;++t) {
+            const Unit* u=w.unit(id);
+            if (u && !u->orders.empty() && u->orders.front().targetId==target && u->orders.front().mission.stage) attacking=true;
+            w.tick(kTick);
+            u=w.unit(id);
+            if (u && !u->orders.empty() && u->orders.front().airPad==Order::kAirPadLanding) landing=true;
+            watch(w,a,f.pad,t);
+        }
+        const std::string kind=hover ? "AirToGroundHover" : "AirToGround";
+        check(attacking,kind+": the damaged flyer starts its attack");
+        check(landing && a.landed,kind+": under 3/4 health it puts VTOL_LANDING ahead and lands on the pad");
+        check(a.repaired,kind+": it is mended there");
+    }
+
+    // The pad list's order (0x40aa40: the unit array in index order; a new
+    // unit takes its owner's first free slot, 0x485fea): a pad built in a
+    // slot freed by a death comes before one in a later slot.
+    {
+        Field f;setup(f,registry,nullptr,0,0,0);
+        World& w=f.w;
+        const UnitType* pw=registry.find("armpw");
+        const int doomed=w.spawn(pw,1000,1000,0.f,0);           // slot 0
+        const int first=w.spawn(registry.find("armasp"),1400,1400,0.f,0);   // slot 1
+        w.unit(doomed)->hp=Fixed();
+        for (int t=0;t<5;++t) w.tick(kTick);
+        const bool dead=!w.unit(doomed) || !w.unit(doomed)->alive();
+        const int second=w.spawn(registry.find("armasp"),1700,1400,0.f,0); // slot 0 again
+        for (int t=0;t<90;++t) w.tick(kTick);
+        const auto& list=w.airPadList(0);
+        std::printf("  pad list:");for (int id:list) std::printf(" %d",id);std::printf(" (first %d, second %d)\n",first,second);
+        check(dead && list.size()==2 && list[0]==second && list[1]==first,
+              "the pad in the freed lower slot leads the list, not the lower id");
     }
 
     std::printf("air_pad: %d failures\n",failures);

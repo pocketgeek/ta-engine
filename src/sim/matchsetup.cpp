@@ -241,6 +241,14 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
         case Cmd::DGun:
             if (owns(c.unitId)) { redirect(); world.dgun(c.unitId, c.targetId, c.queue); }
             break;
+        case Cmd::Land:
+            // Shift (append) and Ctrl (front) both queue it behind the work.
+            if (owns(c.unitId)) {
+                const bool queued = (c.queue & ta::net::kQueuePlace) != ta::net::kQueueReplace;
+                if (!queued) redirect();
+                world.landOnAirBase(c.unitId, c.targetId, queued);
+            }
+            break;
         case Cmd::AttackMove:
             if (owns(c.unitId)) { redirect(); world.attackMove(c.unitId, c.x, c.z, c.queue); }
             break;

@@ -250,8 +250,8 @@ static void bundles() {
     auto mutated = [&](auto edit) { std::vector<Command> c = cmds; std::vector<Event> e = events; edit(c, e);
                                     Writer m; putBundle(m, 1234, c, e); return m.b; };
     Bundle x;
-    check(decode(mutated([](auto& c, auto&) { c[0].kind = Cmd::BenchClock; }), x), "the last command kind refused");
-    check(!decode(mutated([](auto& c, auto&) { c[0].kind = Cmd(uint8_t(Cmd::BenchClock) + 1); }), x = {}), "unknown command kind accepted");
+    check(decode(mutated([](auto& c, auto&) { c[0].kind = Cmd::Land; }), x), "the last command kind refused");
+    check(!decode(mutated([](auto& c, auto&) { c[0].kind = Cmd(uint8_t(Cmd::Land) + 1); }), x = {}), "unknown command kind accepted");
     check(!decode(mutated([](auto& c, auto&) { c[0].player = kMaxSlots; }), x = {}), "command player out of range accepted");
     check(!decode(mutated([](auto& c, auto&) { c[1].x2 = std::numeric_limits<float>::quiet_NaN(); }), x = {}), "non-finite coordinate accepted");
     check(!decode(mutated([](auto&, auto& e) { e[0].kind = Event::Kind(0); }), x = {}), "event kind 0 accepted");

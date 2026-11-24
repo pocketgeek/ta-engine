@@ -241,15 +241,51 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   tickFlyingPatrolLook), VTOL_Standby 0x40f7d0 / VTOL_LandIfCan 0x40f2a0,
   VTOL_Follow 0x40fbe0, VTOL_SeekGuard 0x410850, AirToAir 0x412d40 (with
   VTOL_Evade 0x413bc0), VTOL_SeekAttack 0x4103e0, VTOL_RepairUnit 0x414e70
-  (radius 0 over the target, no range test), VTOL_Reclaim 0x414770. The
+  (radius 0 over the target, no range test), VTOL_Reclaim 0x414770,
+  AirToGround 0x412710 (half-way approach, a controller on the target of
+  radius slot 0's range, the run 3 x range past it, the 90-degree turn, back to
+  stage 2) and AirToGroundHover 0x413470 (the hold two thirds of the range out
+  on the near side, 45 degrees either side of the bearing in turn; two misses
+  of 0x49abb0 build a controller that is never installed, 0x41391e, so only
+  its rand(0x10000) remains), both on slot 0's range (retailairground.h,
+  World::tickTaAirAttack; their Kingdoms templates, the dead step-out hook and
+  the Kingdoms hover's ring hop hoverForShot are gone). The
   air-traffic counter is gone (TA has no step-out); the occupancy grid and its
   overlap lists stay (TA's landing test 0x47e2d0 reads cell word +2; projectiles
   read the grid; how TA maintains word +2 is untraced). Still open:
-  - No repair pads: VTOL_Landing 0x4118e0 (QueryLandingPad, SELFREPAIR) and
-    VTOL_GetRepaired 0x415250 are not ported, so the under-3/4-health pad
-    detours of VTOL_Patrol (0x410f3e), VTOL_RepairPatrol (0x415397),
-    VTOL_SeekAttack (0x410518), VTOL_SeekGuard (0x410972) and AirStrike are
-    skipped.
+  - Repair pads (retailairpad.h): VTOL_Landing 0x4118e0 and SelfRepair
+    0x402430 run, with the under-3/4-health detours of VTOL_Patrol
+    (0x410f3e), VTOL_RepairPatrol (0x415397), VTOL_SeekAttack (0x410518),
+    VTOL_SeekGuard (0x410972), AirStrike (0x4125c2), AirToGround (0x412b3f)
+    and AirToGroundHover (0x413a8a). Landing by order: the default order on
+    an own or allied air base (0x43f0e0 action 1, 0x43faf5..0x43fb26: a canfly
+    unit, the target's type isairbase) is VTOL_LANDING -- Cmd::Land (protocol
+    340, World::landOnAirBase), the client's right-click after HelpBuild and
+    Repair (retail has it only in that action; its LEFTCLICK interface,
+    game +0x37efa, 0x45eb3e, takes this branch). VTOL_GetRepaired 0x415250
+    is dead in retail: no code refers to its row (0x4fcc0c) or handler, no
+    "VTOL_GETREPAIRED" string exists for the name lookup 0x438760, and no
+    index path (0x438b90: AttackSpecial and VTOL_MOVE) reaches it; only a
+    name from data could -- an FBI defaultmissiontype (0x42bffa; the shipped
+    units name Standby, VTOL_Standby and GUARD_NOMOVE only) or the debug
+    command "Assign" (0x416310, command table 0x502030). It would just wait,
+    sleeping 30, until whole ("Unit repaired"). Not ported.
+  - The pad pick (0x40b530) walks the AIPlayer record's pad list (+0x25),
+    which 0x40aa40 rebuilds every 30 ticks per player (0x40b2c0, from
+    +0xed = 0) in unit-array order; within a player that is its slot order,
+    a new unit taking the first free slot of its block (0x485fea..0x486051)
+    and the death freeing it (0x486dc7). World keeps those slots
+    (World::allocateTaSlot) and the list (refreshAirPadCaches). Approximations:
+    the refresh runs before the units' missions with the economy settle
+    (retail: the player loop 0x464f80 after them); its rand(30) for the type
+    tables (0x40b301) is the AI's, not drawn from the sim's generator; a pad
+    that died since the refresh is skipped (retail: the null type fails the
+    test, 0x486df6). The path scheduler's entity pools (allocateEntitySlot)
+    still take Kingdoms' random free slot (5121d8) rather than TA's first
+    free one.
+  - AirToGroundHover at a point is ours (TotalA.exe's stages read the target,
+    +0x16; World runs them on the point). TA's event 0x1000 in the hover's
+    wait mask (0x413996) is not posted by World.
   - Every TA flyer mission's stage 0 makes the slots manual (0x4898b0(3));
     World keeps an idle flyer's (VTOL_Standby 0x40f9d3, LandIfCan 0x40f6a3)
     automatic because the Hold Position exception (tickHoldLift, hold_flyer)

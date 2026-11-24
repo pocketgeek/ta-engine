@@ -20,8 +20,8 @@ inline bool parsePlayerCommands(const std::vector<uint8_t>& payload, std::vector
         const bool power=c.kind==ta::net::Cmd::PowerCode;
         const bool resurrect=c.kind==ta::net::Cmd::Resurrect;
         const bool ground=c.kind==ta::net::Cmd::AttackGround;
-        // The D-gun (339) and RECLAIMUNIT (340) are ordinary verbs too.
-        const bool late=c.kind==ta::net::Cmd::DGun || c.kind==ta::net::Cmd::ReclaimUnit;
+        // The D-gun (339), RECLAIMUNIT (340) and Land (341) are ordinary verbs too.
+        const bool late=c.kind==ta::net::Cmd::DGun || c.kind==ta::net::Cmd::ReclaimUnit || c.kind==ta::net::Cmd::Land;
         if ((uint8_t(c.kind)>uint8_t(ta::net::Cmd::BuildManaArea) && !power && !resurrect && !ground && !late) ||
             !coordinate(c.x) || !coordinate(c.z) ||
             !coordinate(c.x2) || !coordinate(c.z2)) return false;

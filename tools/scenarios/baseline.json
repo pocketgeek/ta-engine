@@ -63403,6 +63403,286 @@
    "mode": "legion",
    "reason": "TA death accounting (TotalA.exe 0x486892, 2026-11-24): a kill no longer adds Kingdoms experience (512ce0; TA keeps none, its veterancy is the kill count, 0x489bf3), so the three killers of E stay at veteran level 0 instead of level 1 (vetMul 1.1 on damage and the script-less reload). The column takes longer to finish the targets and re-forms around them.",
    "scenario": "fight-retarget"
+  },
+  {
+   "key": "back",
+   "max": 22,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "backward",
+   "max": 64,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "engagement_on_flowing",
+   "max": 2,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "flip_rate_per30_permille",
+   "max": 17,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "flips",
+   "max": 3,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "g.drakes.hover_max",
+   "max": 1,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "reversals",
+   "max": 7,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "sideways",
+   "max": 154,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "waiting_held",
+   "max": 3,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "waiting_no_progress",
+   "max": 135,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "back",
+   "max": 22,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "backward",
+   "max": 64,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "engagement_on_flowing",
+   "max": 2,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "flip_rate_per30_permille",
+   "max": 17,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "flips",
+   "max": 3,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "g.drakes.hover_max",
+   "max": 1,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "reversals",
+   "max": 7,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "sideways",
+   "max": 154,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "waiting_held",
+   "max": 3,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "waiting_no_progress",
+   "max": 135,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "key": "back",
+   "max": 40,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "backward",
+   "max": 125,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "engagement_on_flowing",
+   "max": 4,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "flip_rate_per30_permille",
+   "max": 17,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "flips",
+   "max": 5,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "g.drakes.hover_max",
+   "max": 1,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "reversals",
+   "max": 15,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "sideways",
+   "max": 339,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "waiting_held",
+   "max": 5,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "waiting_no_progress",
+   "max": 225,
+   "mode": "legion",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "back",
+   "max": 40,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "backward",
+   "max": 125,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "engagement_on_flowing",
+   "max": 4,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "flip_rate_per30_permille",
+   "max": 17,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "flips",
+   "max": 5,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "g.drakes.hover_max",
+   "max": 1,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "reversals",
+   "max": 15,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "sideways",
+   "max": 339,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "waiting_held",
+   "max": 5,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
+  },
+  {
+   "key": "waiting_no_progress",
+   "max": 225,
+   "mode": "retail",
+   "reason": "TotalA.exe AirToGround 0x412710 ported (2026-11-24): the Drakes (armfig) fly retail's attack runs -- half-way approach at +-45 degrees (0x412977), a controller on the target of slot 0's range (0x412a4b), the run 3 x range past it (0x412ab4), a 90-degree turn of range px (0x412c55), back to stage 2 -- in place of the Kingdoms run template; the turns and passes over the target are retail's.",
+   "scenario": "air-stack-barracks-5"
   }
  ],
  "entries": {
@@ -66006,77 +66286,77 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 7ffc1938669a6b93). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was ebd3a4730810cc58). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was f67432addd8b4140). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "e46c0e1665565a69"
+     "value": "28526568f5152fe8"
     },
     "hash@-2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d818074882b68852). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was aa8c72ba3ca8f564). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 5448d35adb33d28e). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "f1a862dd8b88ce0e"
+     "value": "b66e1caf8b83f82e"
     },
     "hash@-3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 58efeeb5ddac566f). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 574d9488769b7e1c). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 6064265828fc763e). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "82e4469172135353"
+     "value": "13aa82c673d4ac26"
     },
     "hash@-4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 964e8ceb498336ae). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 3bd58988f62f2f14). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was df384b13f140f3bd). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "69283db93e97bb31"
+     "value": "494a6d535c0be42e"
     },
     "hash@-5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was dd930c72bc369603). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was d80cf9ae7cd207d2). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was d9fc3acd62b84eef). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "8a0478be2925ee2f"
+     "value": "28fe69ade0c5584d"
     },
     "hash@0": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was a91b2a9b58f47a1c). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 8f50fd0f9c8c91ca). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 05c96a99095359df). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "be2d04ebdd5a50d1"
+     "value": "c8d078203305884d"
     },
     "hash@1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 338f9d9f5a08f85a). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 8d028be6649841c8). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 87b75037594a9720). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "7b227a1d54768bfd"
+     "value": "2f14133ce8be54c6"
     },
     "hash@2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was ad478bbed9667daf). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was f6813e64ce40d257). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 5ab205364978edb3). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "9f971da3aedf66b5"
+     "value": "5eb92593261c99c7"
     },
     "hash@3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was f83c2473a61f2f7a). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was f67f4777b09c38e6). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was fc36ff1e8912bb34). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "eab90ef00d645d1d"
+     "value": "dee9393b8c32d7ef"
     },
     "hash@4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was ed88b1dea5437e47). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 4487edb98679eeae). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 72794b2297bd86c1). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "8ff49dfd700cb864"
+     "value": "5c8babd34981809b"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was bbfc1a9044389fb8). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 8706bd4546f77221). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 6ddac3c388e7e76b). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "c14b929f7de26e20"
+     "value": "c658beef4d4b3c67"
     },
     "legion_groups": {
      "band": 1.1,
@@ -66931,77 +67211,77 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 79cc855067a1d256). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 1fa97c4b754df4d2). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 3f621533d89450cf). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "9e7a5ff7d074070f"
+     "value": "a6dd32991222108f"
     },
     "hash@-2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was b6b78f7dc28adf1a). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was db98626d339d2acf). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was e6950e2a8b8b1d35). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "5187fdc63c17071f"
+     "value": "947eae0c0b6d2de3"
     },
     "hash@-3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 965161e6d2aa5e9c). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 733143d881819129). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was a36951928a2769bd). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "075eb8d996221d9f"
+     "value": "d47ea256a0eb1270"
     },
     "hash@-4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was ade7e87d4e4fda89). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 6bf9ecff1188db57). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 488e0a19dbd95f84). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "bdb58d3b89a263b0"
+     "value": "81f89da5d6d04480"
     },
     "hash@-5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d77589843345efc4). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was c9224ae1283bb3a7). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was ae380c665dbaefc2). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "76d784764838864c"
+     "value": "23f8c80054dd687c"
     },
     "hash@0": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 42bc0b794cd21187). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 8847c7f8a8a23f69). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 4959a1258176acac). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "77440e9aa4b1c04a"
+     "value": "a43522a5d06bb623"
     },
     "hash@1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 9a42abe676bfda14). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 0e801de20c119b09). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was 472315938e8b53f4). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "6447bd0c3bef7a7c"
+     "value": "f39901b816b078b6"
     },
     "hash@2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 82205bd3f662fd07). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 7515a261cb515f82). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was e9c271a900696b71). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "625f98f5fae6e10e"
+     "value": "b18007622c0e262a"
     },
     "hash@3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 6f64a27d3e17fda9). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 82df1ee14fdd3bdc). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was d0d4cfb84ca5af3c). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "c395ea452da79724"
+     "value": "5c15d88be18a9abd"
     },
     "hash@4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 1955fe5a1bee1084). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was dc7eb913175b3030). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was e1e1e48d1c84cfaa). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "9d5ae2f784bd7af7"
+     "value": "b8e653059041000e"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 2449e00bbd103839). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was b1861308884a858b). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): the stride scan and findTarget are gone (D3): after the Keep dies the Drakes' VTOL_SeekAttack circles its last point and never lands, as retail's 4192f0 does (the seek never ends by itself); before, findTarget re-picked the dying Keep and they landed (g.drakes.flyers_landed 3 -> 0) (was e821f934334a175e). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "4e685cc52b5426e0"
+     "value": "8f20482e170161cf"
     },
     "open_still900": {
      "band": 1.1,
@@ -67842,77 +68122,77 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was e28e8e6cae34f6a6). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 0008bc49e7140f3c). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 458c0fc1d42c119b). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "f836f3bb3606593c"
+     "value": "2fa8926c6d738419"
     },
     "hash@-2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 60b1f864c8974dc6). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was fda4755204aad241). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was fe139c2684aeed9d). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "2436c15424e0650b"
+     "value": "86ef9c5a7dba2d0d"
     },
     "hash@-3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was bf7958286f9f942a). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was a106f56a69739eca). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 7a3b4da498586b1b). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "50cc01de751d8608"
+     "value": "277369bd648680e2"
     },
     "hash@-4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d1b8d3153eb36ab9). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 046771d643167771). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 9f6b9fbd57bd054c). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "e3a861ca4e0fd1be"
+     "value": "0246d43aa2903aeb"
     },
     "hash@-5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was c0e1ac34ff2a71a6). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 4fda0f5bf2df931d). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was fff79f0ed0f84c33). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "dd3492a157be5cc9"
+     "value": "cbb7e76438f1bfea"
     },
     "hash@0": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 4d5f8923b58a9ff1). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was f4df17f7ea2bbf9e). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was d9634b01054d541d). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "d3faf1266485a6d9"
+     "value": "4f0a72dea39d8b07"
     },
     "hash@1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 460d689e8a4303e5). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 746b93ac755212fc). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was d7b51f476c17e471). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "6bc0730ee2556a29"
+     "value": "9646bddf52c542d5"
     },
     "hash@2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was c93ccb3f6e700ed9). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 54253d53e7bc2295). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 33b95c9ba4030bf1). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "c4e63bbe7bacf2db"
+     "value": "70fc3a82178596ad"
     },
     "hash@3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 3ae0f8ed7f281bf3). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was c562c76e6ac40ca6). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was e3cf4e8ee17cf284). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "303ebaea14284519"
+     "value": "cf56b7a3375706fc"
     },
     "hash@4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 7193631696aa1d25). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was d81a9426865700e0). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was e109e738ffbae8d5). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "c62b3044e7bc6c3f"
+     "value": "ec3c5886491e5451"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 2d6d22c6034e93c6). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was ac905ca2761e0724). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was e188d64b44942ab8). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "2ae9b9b3ad12dd42"
+     "value": "a0802cd310593d81"
     },
     "legion_groups": {
      "band": 1.1,
@@ -68766,77 +69046,77 @@
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was fd293fa870144612). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was a218938b8c9d189c). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was e1b65129a4df8a9a). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "4f92a9340aeeb626"
+     "value": "eb2e3d4fe5dd91ee"
     },
     "hash@-2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 488b43e596e0ab51). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was a1d0533d8c74a885). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was c87bc23c8dd49a26). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "bedf37a77f3c5850"
+     "value": "10fb02ffdf20f326"
     },
     "hash@-3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 538557032ef9c304). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 6cf104cd345c6df7). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 4e97bc68075c938b). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "9bc1f4074f977331"
+     "value": "5ff5c39a18ac8533"
     },
     "hash@-4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 9f305d77e5defc1d). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 0c284a71b18ff2b2). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was cb1f479d26ec26f6). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "1e4525f334ddca7c"
+     "value": "e30d325388110f61"
     },
     "hash@-5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 929f041e4190e159). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 0b1018ffd4330780). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 941a6b653feadcfe). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "38fa25fc8f0f01fe"
+     "value": "e287c9851eadd278"
     },
     "hash@0": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 8ed7d9fe1d2de073). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 6f842262bc3bdae0). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 7170911bb58ebef9). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "aa0548098342ec18"
+     "value": "195a9a538a6bbd6c"
     },
     "hash@1": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 44aa7e99f7401f91). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 7fc98d4cd1e8972c). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 0a1de1535034c926). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "ddaa897fe4f6d3f8"
+     "value": "7402fd0d1c69153a"
     },
     "hash@2": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was c16b65efb243f688). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 6e577eb4a9afee2b). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 2b7260bc4ea714d8). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "c40e842ba37e4d73"
+     "value": "2095f261833b45db"
     },
     "hash@3": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 2324c8c485eb36e3). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was b122629d3d329181). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 012a6bd018dc6363). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "3e7d9d07c2471e74"
+     "value": "71c140e6cc206c22"
     },
     "hash@4": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was 09895f625e9854ff). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 3653b2e51514826e). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was cc22ef8cab039115). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "7f02e4f24204ca81"
+     "value": "3ac7024bffe22d39"
     },
     "hash@5": {
      "dir": "lower",
      "reason": "An abandoned site decays at retail's pace and refunds, in every game (fx-sitedecay, protocol 312, 2026-11-05; docs/retail-engine.md \"The pace of that decay, ported for every game\"): Unit::conjureRate is gone from the hash and an unfinished site's GetBuilt timer (Unit::siteTimer, siteWorkLate) is hashed; every non-hash key of this fixture is identical to the base b6316fee (full gate-offset run of all 161 fixtures, both modes) (was d1a0f9db0ba0c89f). Before: Every new unit starts inactive unless its type sets activatewhenbuilt, as retail's parser default 0 (fx-gap2, protocol 312, 2026-11-05; docs/retail-engine.md \"A change of owner is a new object\"): the hashed activation bit of units with no other reader of it changed; every non-hash key of this fixture is unchanged (full gate-offset run of all 161 fixtures, both modes, on land-0920c) (was 473208e88390698d). Before: Retail target search (fx-tsearch, protocol 312, 2026-11-03; docs/retail-engine.md \"Mission target scan\"): as air-stack-barracks: the Drakes' VTOL_SeekAttack circles after the kill (retail 4192f0) instead of re-picking the dying target through the removed findTarget, so they no longer land (was 9002ec72c3dd1e0f). Before: flyers stepping out of a stack (retail's air traffic: the counter at unit +0x12a, VTOL_StepOut 4214b0, AirToGroundHover 41d820), protocol 307",
      "rule": "eq",
      "since": "SD312",
-     "value": "95bc1908869e2c08"
+     "value": "6ef4a556758f2419"
     },
     "open_still900": {
      "band": 1.1,
@@ -464791,6 +465071,22 @@
    "mode": "retail",
    "reason": "3-offset spread 1..3 exceeds the band at TAGRP; gated on median-of-5 offsets",
    "scenario": "unreach-200"
+  },
+  {
+   "cluster": "offset-spread",
+   "key": "backward",
+   "median5": true,
+   "mode": "legion",
+   "reason": "3-offset spread 64..72 exceeds the band at W0; gated on median-of-5 offsets",
+   "scenario": "air-stack-barracks"
+  },
+  {
+   "cluster": "offset-spread",
+   "key": "backward",
+   "median5": true,
+   "mode": "retail",
+   "reason": "3-offset spread 64..72 exceeds the band at W0; gated on median-of-5 offsets",
+   "scenario": "air-stack-barracks"
   }
  ],
  "history": [
