@@ -1,3 +1,4 @@
+#include "campaign/campaign.h"
 #include "sim/sides.h"
 #include "util/virtualpath.h"
 #include "client/retailaim.h"
@@ -484,7 +485,9 @@
             missionStem_ = mission;
             int human = 0;
             ta::sim::MissionSetup ms;
-            if (ta::sim::setupMission(writableWorld(), registry_, vfs_, mission, human, &ms))
+            // (Debug) a recording of a TA_FORCE_WIN / TA_FORCE_LOSE game replays under the same.
+            const auto forced = ta::forcedOutcomeMission(vfs_, mission);
+            if (ta::sim::setupMission(writableWorld(), registry_, forced ? *forced : vfs_, mission, human, &ms))
                 spots = ms.slotPos;
             else
                 std::fprintf(stderr, "replay: mission '%s' not in this data\n",

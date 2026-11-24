@@ -2933,6 +2933,14 @@ if(TA_BUILD_CLIENT)
         add_test(NAME benchmark_save COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/tools/benchmark_save_test.py" "$<TARGET_FILE:taclient>" "${TA_TEST_DATA}")
         set_tests_properties(benchmark_save PROPERTIES TIMEOUT 300)
+        # A real campaign mission won and lost end to end: TA's title CAMPAIGN -> the
+        # picker -> MSNBRIEF -> Arm Campaign mission 1 on the local server, ended by its
+        # own scenario rules (TA_FORCE_WIN / TA_FORCE_LOSE) -> ENDMSN -> the picker. The
+        # win is saved in settings.ini and the picker marks it DONE; the loss saves nothing.
+        add_test(NAME campaign_win COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tools/campaign_win_test.py" "$<TARGET_FILE:taclient>" "${TA_TEST_DATA}"
+            "${CMAKE_CURRENT_BINARY_DIR}/campaign-win")
+        set_tests_properties(campaign_win PROPERTIES TIMEOUT 600)
       endif()
       # TA's title screen SINGLE (the engine single-player game) whose local server
       # cannot run must come back to TA's title screen with the reason (not the

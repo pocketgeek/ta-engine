@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <array>
+#include <cstdio>
 #include <map>
 #include <sstream>
 #include <vector>
@@ -262,6 +263,16 @@ struct CampaignScreen::TaPicker {
                 if (!done(*cp, i)) { nextUp = i; break; }
         // The next-up mission is selected; with every mission done, the first.
         sel = nextUp >= 0 ? nextUp : 0;
+#ifndef NDEBUG
+        // Scripted runs (TA_FRONT_SCRIPT) read the rows' marks here.
+        if (const auto* cp = current()) {
+            std::string marks;
+            for (int i = 0; i < cp->count(); ++i)
+                if (done(*cp, i)) marks += (marks.empty() ? "" : ",") + std::to_string(i);
+            std::fprintf(stderr, "campaign picker: %s: DONE [%s], PLAY %d\n", trimmed(cp->id).c_str(),
+                         marks.c_str(), nextUp);
+        }
+#endif
         scroll = 0;
         reveal();
     }

@@ -3,9 +3,14 @@
 #include <algorithm>
 #include <unordered_map>
 #include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include "hpi/hpi.h"
 #include "tdf/tdf.h"
+#include "util/devenv.h"
+#include "util/virtualpath.h"
 
 namespace ta {
 namespace {
@@ -184,6 +189,74 @@ std::optional<CampaignChapter> campaignChapter(const Campaign& campaign, const s
         return chapter;
     }
     return {};
+}
+
+std::string forceMissionOutcome(const std::string& ota, bool win, int seconds) {
+    // The scenario keys a forced outcome replaces (MissionScript::parseConditions):
+    // every victory rule for a win, the death timer for a loss. A replaced key is
+    // renamed, so the parser no longer knows it and the rest of the file is as it was.
+    static const char* const kVictory[] = {"killenemycommander", "destroyallunits", "killallmobileunits",
+        "buildunittype", "captureunittype", "killalloftype", "killunittype", "moveunittoradius",
+        "unittypepassesx", "unittypepassesz", "victorytimerrunsout"};
+    static const char* const kDefeat[] = {"deathtimerrunsout"};
+    std::string low = ota;
+    for (char& c : low) c = char(std::tolower(static_cast<unsigned char>(c)));
+    // The rule goes first in [GlobalHeader]'s block.
+    const size_t header = low.find("[globalheader]");
+    const size_t open = header == std::string::npos ? std::string::npos : low.find('{', header);
+    if (open == std::string::npos) return ota;
+    const std::string rule = std::string(win ? "VictoryTimerRunsOut" : "DeathTimerRunsOut") + "=" +
+                             std::to_string(seconds) + ";";
+    auto listed = [&](const std::string& key) {
+        if (win) { for (const char* k : kVictory) if (key == k) return true; }
+        else { for (const char* k : kDefeat) if (key == k) return true; }
+        return false;
+    };
+    std::string out;
+    out.reserve(ota.size() + 64);
+    size_t i = 0;
+    while (i < ota.size()) {
+        if (i == open + 1) out += "\n\t" + rule;
+        // A key is the first word of a statement (after blanks, '{' or ';').
+        if ((i == 0 || std::strchr(" \t\r\n{;", ota[i - 1])) && std::isalpha(static_cast<unsigned char>(ota[i]))) {
+            size_t end = i;
+            while (end < ota.size() && (std::isalnum(static_cast<unsigned char>(ota[end])) || ota[end] == '_')) ++end;
+            size_t eq = end;
+            while (eq < ota.size() && (ota[eq] == ' ' || ota[eq] == '\t')) ++eq;
+            if (eq < ota.size() && ota[eq] == '=' && listed(low.substr(i, end - i))) {
+                out += "Forced";   // "ForcedMoveUnitToRadius=...": no rule has that name
+                out.append(ota, i, end - i);
+                i = end;
+                continue;
+            }
+        }
+        out.push_back(ota[i++]);
+    }
+    if (open + 1 >= ota.size()) out += "\n\t" + rule;   // a file that ends at the brace
+    return out;
+}
+
+std::unique_ptr<hpi::Vfs> forcedOutcomeMission(const hpi::Vfs& base, const std::string& spec) {
+    int seconds = 0;
+    bool win = true;
+    if (const char* w = devEnv("TA_FORCE_WIN"); w && std::atoi(w) > 0) seconds = std::atoi(w);
+    else if (const char* l = devEnv("TA_FORCE_LOSE"); l && std::atoi(l) > 0) { seconds = std::atoi(l); win = false; }
+    if (seconds <= 0 || spec.empty()) return nullptr;
+    // Where setupMission reads it: TA's maps/<file>.ota, unless Kingdoms' missions/ has it.
+    std::string file = spec.substr(0, spec.rfind(':'));
+    if (vpath::extension(file) == ".ota") file.resize(file.size() - 4);
+    std::string path = "missions/" + spec + ".ota";
+    if (!base.has("missions/" + file + ".ota") && base.has("maps/" + file + ".ota")) path = "maps/" + file + ".ota";
+    const auto bytes = base.tryRead(path);
+    if (!bytes) return nullptr;
+    const std::string forced = forceMissionOutcome(std::string(bytes->begin(), bytes->end()), win, seconds);
+    auto files = std::make_shared<hpi::Vfs::Files>();
+    (*files)[hpi::MountSet::key(path)] = std::vector<uint8_t>(forced.begin(), forced.end());
+    auto view = std::make_unique<hpi::Vfs>(&base);
+    view->setModFiles(std::move(files));
+    std::fprintf(stderr, "mission %s: TA_FORCE_%s=%d -- %s\n", spec.c_str(), win ? "WIN" : "LOSE", seconds,
+                 win ? "VictoryTimerRunsOut is its only victory rule" : "DeathTimerRunsOut added");
+    return view;
 }
 
 }  // namespace ta

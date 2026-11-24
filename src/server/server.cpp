@@ -11,6 +11,7 @@
 // referee's own state hash is the canonical one clients are checked against (with
 // a suspicion rule that blames the referee if every client agrees against it).
 
+#include "campaign/campaign.h"
 #include "sim/sides.h"
 #include "net/mappackage.h"
 #include "util/u8path.h"
@@ -2404,7 +2405,10 @@ void Server::tryStart(Client& c) {
             // referee and every peer stay in lockstep.
             int human = 0;
             ta::sim::MissionSetup ms;
-            if (!ta::sim::setupMission(*r->ref, *r->reg, ds->vfs, r->mission, human, &ms)) {
+            // (Debug) TA_FORCE_WIN / TA_FORCE_LOSE: the mission with its outcome forced
+            // by its own scenario rules, as the client that started this server reads it.
+            const auto forced = ta::forcedOutcomeMission(ds->vfs, r->mission);
+            if (!ta::sim::setupMission(*r->ref, *r->reg, forced ? *forced : ds->vfs, r->mission, human, &ms)) {
                 // Same rule as a missing map: no referee, no game.
                 char msg[192];
                 std::snprintf(msg, sizeof msg,
