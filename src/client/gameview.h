@@ -1258,6 +1258,9 @@ private:
     void buildPieceMeta(const ta::tdo::Object& o, PieceMeta& m, bool isRoot = true);
     // `meta` with every primitive on one texture (a statue's stone or ice).
     void buildStatueMeta(const PieceMeta& meta, PieceMeta& statue, const std::string& texture);
+    // `meta` with each animated texture swapped for its first-frame entry.
+    void buildStillMeta(const PieceMeta& meta, PieceMeta& still);
+    static constexpr const char* kStillTextureSuffix = "#still";
     // The stone or ice texture of the side whose nameprefix starts `model`
     // (retail matches a feature to its side by the first three letters,
     // 493b5d..493bf0); the first side's when none does.
@@ -1314,11 +1317,15 @@ private:
         // stoneanim/frozenanim, frame 0) in place of the face's own (feature draw
         // 4fd862..4fd8bc, model draw 4ed934..4ed992). Built with `meta`.
         PieceMeta statue[2];
+        // Every animated texture held at its first frame (buildStillMeta): drawn for a
+        // unit whose textures do not play (TotalA.exe 0x458845). Built with `meta`.
+        PieceMeta still;
     };
     // THE ONLY WAY TO CREATE A visuals_ ENTRY. An entry whose PieceMeta was left
     // default-constructed reports skip=false for every piece, and skip is what hides
-    // the flat ground plate every TA model carries at its root (AraGP, zonnull,
-    // targround...). Draw a unit through such an entry and that plate is emitted --
+    // the flat ground plate a Kingdoms model carries at its root (AraGP, zonnull,
+    // targround...; a TA root is drawn, see client/modelpiece.h). Draw a unit through
+    // such an entry and that plate is emitted --
     // invisible in the body pass, where it lies flat on the terrain it coincides with,
     // and a solid dark rectangle in the SHADOW pass, which composites it with MOD.
     //
@@ -1330,13 +1337,14 @@ private:
     ta::tdo::Model* loadVisual(const std::string& key, bool rootIsGround = true) {
         auto it = visuals_.find(key);
         if (it != visuals_.end()) return &it->second.model;
-        Visual v{ta::tdo::load(vread("objects3d/" + key + ".3do")), {}, {}};
+        Visual v{ta::tdo::load(vread("objects3d/" + key + ".3do")), {}, {}, {}};
         // Layout is built once and survives GPU target recreation. Rect pointers
         // remain valid for this view's lifetime, including unordered-map rehashes.
         if (!atlasLaidOut_) buildAtlasLayout();
         buildPieceMeta(v.model.root, v.meta, rootIsGround);   // fixed for the model's life
         for (int frozen = 0; frozen < 2; ++frozen)
             buildStatueMeta(v.meta, v.statue[frozen], statueTexture(key, frozen != 0));
+        buildStillMeta(v.meta, v.still);
         return &visuals_.emplace(key, std::move(v)).first->second.model;
     }
     struct EffectAnim;   // defined below; Anim only needs the pointer type
@@ -1584,6 +1592,12 @@ private:
 #ifndef NDEBUG
         uint32_t verifiedTick=~0u;
 #endif
+        // Under construction (client/nanoframe.h): the body as retail's nanoframe,
+        // placed screen vertices and runs (null texture = flat colour), rebuilt every
+        // frame while `nano` is set; drawUnit draws these instead of verts/runs.
+        bool nano=false;
+        std::vector<SDL_Vertex> nanoVerts;
+        std::vector<std::pair<SDL_Texture*,int>> nanoRuns;
         // geomEntries_ payload contract (client/geometryowners.h). Cold = no key,
         // so the next build cannot reuse anything; capacity stays for reuse.
         // Revisions are kept: they come from one GameView-wide counter, so a value
@@ -1595,10 +1609,11 @@ private:
             verts.clear();runs.clear();shadowVerts.clear();
             maskedShadowVerts.clear();maskedShadowRuns.clear();shadowAtlasPage=nullptr;
             localPos.clear();baseColor.clear();shadowLocal.clear();maskedShadowLocal.clear();
+            nano=false;nanoVerts.clear();nanoRuns.clear();
         }
         template <class F> void forEachVector(F&& f) const {
             f(localKey);f(verts);f(runs);f(shadowVerts);f(maskedShadowVerts);f(maskedShadowRuns);
-            f(localPos);f(baseColor);f(shadowLocal);f(maskedShadowLocal);
+            f(localPos);f(baseColor);f(shadowLocal);f(maskedShadowLocal);f(nanoVerts);f(nanoRuns);
         }
         size_t retainedBytes() const {
             size_t bytes=sizeof(*this);
@@ -1613,6 +1628,7 @@ private:
             std::vector<std::pair<SDL_Texture*,int>>().swap(maskedShadowRuns);
             std::vector<SDL_FPoint>().swap(localPos);std::vector<SDL_Color>().swap(baseColor);
             std::vector<SDL_FPoint>().swap(shadowLocal);std::vector<SDL_FPoint>().swap(maskedShadowLocal);
+            std::vector<SDL_Vertex>().swap(nanoVerts);std::vector<std::pair<SDL_Texture*,int>>().swap(nanoRuns);
         }
     };
     ta::OpaqueShadowSubmit shadowOpaqueSubmit_;
@@ -2282,12 +2298,28 @@ private:
         float minY = 1e30f, maxY = -1e30f;   // screen y, over all headings
         bool any = false;
     };
+    // Body collection extras for the under-construction draw (client/nanoframe.h):
+    // per emitted triangle its three model-up heights and the primitive it came
+    // from, and per drawn (front-facing) primitive its outline in local screen
+    // positions with heights.
+    // Palette 160..175 (the nanoframe's greens), set with the model textures.
+    std::array<SDL_Color,16> nanoPalette_{};
+    void buildNanoframe(const UnitR& u, UnitGeom& g, const Visual& visual, const PieceMeta* meta,
+                        const Anim* anim, SDL_Texture* atlas, float facing, float zm, float ax, float ay);
+    struct NanoCollect {
+        std::vector<std::array<float,3>> heights;   // parallel to collect()'s output
+        std::vector<int32_t> primitive;              // outline index, parallel too
+        std::vector<SDL_FPoint> points;              // outline vertices
+        std::vector<float> pointHeights;
+        std::vector<std::pair<uint32_t,uint32_t>> outlines;   // (first point, count)
+        void clear() {heights.clear();primitive.clear();points.clear();pointHeights.clear();outlines.clear();}
+    };
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const ta::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
                  bool mirror = false, bool isRoot = true, bool shadow = false,
                  RadialExtent* ext = nullptr, const PieceMeta* meta = nullptr,
                  bool shadowCull = false, const PreparedPiece* prepared = nullptr,
-                 bool paletteLighting = false);
+                 bool paletteLighting = false, NanoCollect* nano = nullptr);
 
     // Walk the piece tree (exactly as collect(), but transform-only) to the named
     // piece and return its model-space origin M = the composed translation. Used to

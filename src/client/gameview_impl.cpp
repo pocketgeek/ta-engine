@@ -1181,6 +1181,8 @@
         s.constructionPercentLeft = u.retailSite
             ? int(ta::sim::retailConstructionPercent(u.retailSite->progress.remaining))
             : int(u.underConstruction);
+        s.moverMoving = u.speed.v != 0;
+        s.buildRemaining = u.underConstruction ? 1.0f - u.constructionFraction() : 0.0f;
         s.buildProgress = (float(u.buildProgress) + float(u.buildFraction) / 65536.0f) / 30.0f;   // ticks -> seconds
         // Orders/rally/areaVisited are read for the VIEWED player's units only (the order
         // trails, queued-build ghosts and the HUD all gate on hudPlayer()); a watcher can
@@ -3155,6 +3157,11 @@
         try { pals["ta"] = ta::gaf::Palette::fromBytes(vread("palettes/palette.pal"), "palettes/palette.pal"); }
         catch (const std::exception&) {}
         if (!pals.count("ta")) return;   // no palette available
+        // The nanoframe's shimmer ramp (TotalA.exe 0x458e56: palette 160..175).
+        for (int i = 0; i < 16; ++i) {
+            const auto* e = pals.at("ta").rgba[160 + i];
+            nanoPalette_[size_t(i)] = SDL_Color{e[0], e[1], e[2], 255};
+        }
         // Palette lighting banks (workstream M): one palette + shade table per faction
         // bank, shared by every texture of the bank.
         std::map<std::string, uint8_t> bankIndex;
@@ -3301,6 +3308,28 @@
                     }
                     if (hasMask) shadowMasks_[name]=std::move(masks);
                     if (!frames.empty()) textures_[name] = std::move(frames);
+                    // A unit whose animated textures are held (TotalA.exe 0x458845:
+                    // a structure not activated, a mobile unit not moving) draws
+                    // the sequence's first frame (0x458635..0x458646, 0x4b7f30(seq,0)).
+                    // It gets its own single-frame entry, so the atlas keeps both.
+                    if (animatedTex_.count(name) && seq.frames[0].width && seq.frames[0].height) {
+                        const auto& f = seq.frames[0];
+                        const std::string still = name + kStillTextureSuffix;
+                        SDL_Texture* t = gpuvram::create(ren_, SDL_PIXELFORMAT_RGBA32,
+                                                           SDL_TEXTUREACCESS_STATIC, f.width, f.height);
+                        if (t) {
+                            SDL_UpdateTexture(t, nullptr, f.rgba.data(), f.width * 4);
+                            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+                            textures_[still] = {t};
+                        }
+                        if (auto source = paletteTextureSources_.find(name);
+                            source != paletteTextureSources_.end() && !source->second.frames.empty()) {
+                            PaletteTextureSource first;
+                            first.bank = source->second.bank;
+                            first.frames.push_back(source->second.frames[0]);
+                            paletteTextureSources_.emplace(still, std::move(first));
+                        }
+                    }
                 }
             } catch (const std::exception&) {}
         }
@@ -4522,6 +4551,38 @@
             m.animated |= m.children[i].animated;
             for(size_t f=0;f<m.children[i].animationFrames.size();++f)
                 addAnimationFrame(m,m.children[i].animationFrames[f],m.children[i].animationFrameMasks[f]!=0);
+        }
+    }
+
+    void GameView::buildStillMeta(const PieceMeta& meta, PieceMeta& still) {
+        still=meta;
+        still.animated=false;still.animationFrames.clear();still.animationFrameMasks.clear();
+        for (size_t i=0;i<still.primTex.size();++i) {
+            if (i>=still.primAnimated.size() || !still.primAnimated[i]) continue;
+            const std::string name=still.primTex[i]+kStillTextureSuffix;
+            const auto rect=atlasRect_.find(name);
+            if (rect==atlasRect_.end()) continue;   // keep the animated face
+            still.primTex[i]=name;
+            if (i<still.primAtlas.size()) still.primAtlas[i]=&rect->second;
+            if (i<still.primShadowMasks.size()) still.primShadowMasks[i]=nullptr;
+            still.primAnimated[i]=false;
+        }
+        const auto addFrame=[&](const size_t* frame,uint8_t masked) {
+            still.animated=true;
+            const auto at=std::find(still.animationFrames.begin(),still.animationFrames.end(),frame);
+            if (at==still.animationFrames.end()) {
+                still.animationFrames.push_back(frame);still.animationFrameMasks.push_back(masked);
+            } else still.animationFrameMasks[size_t(at-still.animationFrames.begin())]|=masked;
+        };
+        // Faces left animated (no still entry) keep their own clock words.
+        for (size_t i=0;i<still.primTex.size();++i)
+            if (i<still.primAnimated.size() && still.primAnimated[i])
+                addFrame(&modelTextureAnimations_.at(still.primTex[i]).frame,
+                         uint8_t(i<still.primShadowMasks.size() && still.primShadowMasks[i]));
+        for (size_t i=0;i<meta.children.size();++i) {
+            buildStillMeta(meta.children[i],still.children[i]);
+            for (size_t f=0;f<still.children[i].animationFrames.size();++f)
+                addFrame(still.children[i].animationFrames[f],still.children[i].animationFrameMasks[f]);
         }
     }
 
