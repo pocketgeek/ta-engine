@@ -51,7 +51,7 @@ enum class Layout {Open,Shore};
 const char* layoutName(Layout l) {return l==Layout::Open?"open":"shore";}
 
 struct Result {
-    int produced=0,stuck=0,lastDone=-1,refusals=0,inDoor=0,nudged=0;
+    int produced=0,stuck=0,lastDone=-1,refusals=0,inDoor=0,nudged=0,inGap=0;
     // Ward: guards back on their guard of the yard and near it at the end, the
     // farthest one's distance (px), and moves aside of one ship while the same
     // output was the first one leaving.
@@ -97,8 +97,14 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
     std::vector<int> idle;
     if(crowd==Crowd::Door || crowd==Crowd::Ward)
         for(int i=0;i<8;++i) {
-            // On the shore layout the crowd shifts west, onto the water.
-            const float x=(layout==Layout::Shore?fx-208:fx-96)+float(i%4)*64;
+            // On the shore layout the crowd shifts west, onto the water,
+            // clear of the shore's fringe: a Crusader 16 px west of the
+            // yard's centre (against the land of cells 114+) could not start
+            // a route at all -- every step aside it was given ended the tick
+            // it was issued, its search exhausted (116 a run for each of the
+            // two there; under Legion the pair held each other), so it never
+            // made way (measured 2026-11-24 on TA's armroy).
+            const float x=(layout==Layout::Shore?fx-240:fx-96)+float(i%4)*64;
             idle.push_back(w.spawn(iron,x,doorZ+40+float(i/4)*64,0,0));
         }
     if(crowd==Crowd::Pad)idle.push_back(w.spawn(iron,fx,fz+32,0,0));
@@ -175,11 +181,20 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
         // Within the guard ring's outer edge (World::guardRing) and two bodies.
         const int outer=(std::max(yard.w,yard.h)+u->type->footX+2)*16+3*16+2*u->type->footX*16;
         const bool aside=std::any_of(o.begin(),o.end(),[](const sim::Order& q){return bool(q.productionExit);});
-        const bool ok=!o.empty() && o[sim::World::currentLeg(o)].guard && o[sim::World::currentLeg(o)].targetId==id &&
+        const bool back=!o.empty() && o[sim::World::currentLeg(o)].guard && o[sim::World::currentLeg(o)].targetId==id &&
             !aside && d<=outer;
+        // Or caught under way at the sample: its guard of the yard still
+        // queued, moving, within twice that. A ship guarding a yard ringed by
+        // its parked outputs walks long partial routes round them (a TA
+        // shipyard builds at its centre and parks on any bearing, 0x407ca0),
+        // and an output's late PARK can still ask one to step aside; one that
+        // stopped for good fails as before.
+        const bool underWay=std::any_of(o.begin(),o.end(),[&](const sim::Order& q){return q.guard && q.targetId==id;}) &&
+            u->speed>sim::Fixed() && d<=2*outer;
+        const bool ok=back || underWay;
         r.guarding+=ok;
-        if(!ok)std::printf("  guard %d: orders=%zu guard=%d aside=%d d=%d outer=%d\n",k,o.size(),
-            int(!o.empty() && o[sim::World::currentLeg(o)].guard),int(aside),d,outer);
+        if(!back)std::printf("  guard %d: orders=%zu guard=%d aside=%d d=%d outer=%d speed=%.2f%s\n",k,o.size(),
+            int(!o.empty() && o[sim::World::currentLeg(o)].guard),int(aside),d,outer,u->speed.toFloat(),ok?" (under way)":"");
     }
     // An output stuck: still in the yard, or still on its way out (it never
     // finished its PARK) by the end.
@@ -187,6 +202,19 @@ Result run(const sim::TypeRegistry& registry,sim::PathfindingMode mode,Layout la
         if(o.clear>=0)r.clear.push_back(o.clear-o.done);
         if(o.door>=0)r.door.push_back(o.door-o.done);
         if(const auto* u=w.unit(o.id);u && u->alive() && (intersects(footprint(*u),yard) || !u->orders.empty())) {
+            // Out of the yard on its PARK, in the ring's acceptance gap: the
+            // octile distance (0x44d840) is 0 on a cell the squared inner test
+            // (0x44d3b0) refuses, so the ship circles there as retail's would
+            // (an Open item of docs/ta-port-plan.md), the door long clear.
+            const auto& leg=u->orders[sim::World::currentLeg(u->orders)];
+            if(!intersects(footprint(*u),yard) && leg.park && leg.park->ring) {
+                const Rect f=footprint(*u);
+                if(!leg.park->ring->accepts(f.x,f.z) && leg.park->ring->distance(f.x,f.z)==0) {
+                    ++r.inGap;
+                    std::printf("  in the ring gap %d at %d,%d\n",o.id,u->x.floorInt(),u->z.floorInt());
+                    continue;
+                }
+            }
             ++r.stuck;
             const auto& q=u->orders;
             std::printf("  stuck %d at %d,%d goal %d,%d speed=%.2f inYard=%d orders=%zu park=%d exit=%d streak=%d\n",o.id,
