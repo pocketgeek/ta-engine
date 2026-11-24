@@ -130,9 +130,20 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   TA's transfer reach is scripted (TransportPickup/TransportDrop, BoomCalc), read
   from the COB for surface carriers (cob::transportBoomReach); the air reach is an
   engine stand-in (TA transfers at the exact point). The unload/pickup missions are
-  still Kingdoms-shaped: TA's GROUND_UNLOAD (0x406900) tests no drop placement, ours
-  does, so a hover that coasts onto its drop point retries (transport_post_unload
-  armthovr x5 far); porting that breaks the synthetic crowd-retry cases.
+  still Kingdoms-shaped. TA's GROUND_UNLOAD (0x406900; dispatcher codes 0x43b7c0):
+  stage 0 takes the FIRST passenger only (0x489690; none: 5) and calls TransportDrop
+  (0x4069bf), sleep 15; stage 1 waits while the script holds BUSY (0x438730); stage
+  2 ends the order once that passenger has left (0x4069f0..0x406a09: one passenger
+  per order), else after 3 calls returns 9 (with a next order: dropped; without:
+  stage 0 again in 30+rand(30) ticks, 0x43b8e5..0x43b973), else installs the
+  drop-point circle once (0x438930; radius 1.5 x footprintz x 16 px for canhover,
+  0x406a23..0x406a5e, else 0) and waits on 0xe8 with no timer. The placement test is
+  DROP_UNIT's (0x4813b0 -> 0x47db70 mode 1 on the link's cell: any other body,
+  the carrier's own included, refuses). Ported so far: the approach is no longer
+  re-anchored at the point every 15 ticks while its route is live (the Kingdoms
+  poll made a hover brake onto its own drop point; transport_post_unload armthovr
+  x5 far). Still open: one passenger per order, the hover's 1.5 x footprintz
+  circle, the hull-frame release point (the boom moves with a coasting hull).
 - Projectiles: line-of-sight, selfprop/vlaunch and dropped shots now follow
   TotalA.exe (spawners 0x49c9c0 / 0x49cc20 / 0x49dd60, motion 0x49b9ae;
   `sim/retailtashot.h`, `World::tickTaSelfProp`). The bomber's AIRSTRIKE run

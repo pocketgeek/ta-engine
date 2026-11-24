@@ -4108,6 +4108,13 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                     (target.second-u.z).v,uint16_t(u.type->transportDist));
                 const int result=retailTransportUnloadApproach(m,goal.transportApproachAttempts,
                     w.tickCounter_,events,inRange,!u.type->isStructure() && u.type->maxVel>Fixed(),[&] {
+                        // TotalA.exe GROUND_UNLOAD installs its drop-point circle
+                        // once per failed TransportDrop (0x406a5e, 0x438930) and
+                        // then waits on the navigator's events (0x406a65: mask
+                        // 0xe8, no timer): a live route is never re-anchored at
+                        // the point, so the carrier brakes for the route's end
+                        // on the circle, not for the point itself.
+                        if(goal.controller && !goal.navigationExhausted)return;
                         w.cancelPath(u);
                         goal.controller=++w.nextMovementController_;
                         goal.navigationExhausted=false;goal.navigationConsumed=false;
