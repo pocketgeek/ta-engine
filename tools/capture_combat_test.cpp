@@ -1,8 +1,9 @@
 // Capture attacks must reject targets their charm impact cannot take, and a
 // conversion keeps the unit's damage. Retail converts only with the
 // mind-control weapon (52d8d0/52da10): cancapture is read by nothing in the
-// simulation, so there is no capture by contact.
-#include "hpi/hpi.h"
+// simulation, so there is no capture by contact. The casters are synthetic:
+// no Total Annihilation weapon carries mind control (the Kingdoms roster of
+// Harpy, Mind Mage and campaign caster is gone with its data).
 #include "sim/matchsetup.h"
 #include <algorithm>
 #include <cstdio>
@@ -89,24 +90,24 @@ void rejectedTargets(const ta::sim::UnitType& caster) {
 
 // A converted unit keeps its damage (514f8a copies HP raw) and, as retail's
 // new object, starts without experience (511990 zeroes +0xf4).
-void conversionKeepsDamage(const ta::sim::UnitType& caster,const ta::sim::UnitType& victim,bool data) {
+void conversionKeepsDamage(const ta::sim::UnitType& caster,const ta::sim::UnitType& victim) {
     ta::sim::World w;setup(w);
     const int a=w.spawn(&caster,1000,1000,0,0),b=w.spawn(&victim,1000,1100,0,1);
     const auto hp=ta::sim::Fixed::fromFloat(float(victim.maxHp)*0.1f);
     w.unit(b)->hp=hp;w.unit(b)->veteran=5;w.unit(b)->xp=5;
     w.unit(a)->fireState=0;w.attack(a,b,false);
     for(int tick=0;tick<600 && w.unit(b)->player!=0;++tick)w.tick(1.f/30);
-    check(w.unit(b)->player==0,data?"shipped caster converts a damaged enemy":"caster converts a damaged enemy");
+    check(w.unit(b)->player==0,"caster converts a damaged enemy");
     check(w.unit(b)->hp==hp,"conversion keeps the unit's damage (no half-health floor)");
     check(w.unit(b)->veteran==0 && w.unit(b)->xp==0,"a converted unit starts without experience");
 }
 }
 
-int main(int argc,char** argv) {
-    if(argc>2)return 2;
+int main(int argc,char**) {
+    if(argc>1)return 2;
     {
         auto caster=casterType();rejectedTargets(caster);
-        conversionKeepsDamage(caster,victimType(),false);
+        conversionKeepsDamage(caster,victimType());
         // A nearer immune enemy must not starve a farther eligible target.
         {
             auto immune=victimType(),eligible=victimType();immune.commander=true;
@@ -124,12 +125,20 @@ int main(int argc,char** argv) {
         }
         // Eligibility changes after an attack was accepted. Preserve its queued
         // destination while clearing aim/channel state before another release.
+        // The charm here is a slow Line-of-Sight shot (the status class's
+        // flight, 52d8d0): with the Remote Effect channel gone, the instant
+        // charm of casterType() takes on the first tick and leaves nothing
+        // active to retire.
+        auto slow=caster;
+        slow.weapons[0].kind=ta::sim::Weapon::Kind::Normal;slow.weapons[0].beam=true;
+        slow.weapons[0].losStatus=ta::sim::Weapon::LosStatus::MindControl;slow.weapons[0].projVel=30;
+        slow.weapon=slow.weapons[0];
         for(bool capacity:{false,true}) {
             auto victim=victimType();ta::sim::World w;setup(w);
-            const int a=w.spawn(&caster,1000,1000,0,0);
+            const int a=w.spawn(&slow,1000,1000,0,0);
             const int b=w.spawn(&victim,1000,1100,0,1);
             w.unit(a)->fireState=0;w.attack(a,b,false);w.tick(1.f/30);
-            check(targets(*w.unit(a),b),"eligible attack remains active before eligibility changes");
+            check(targets(*w.unit(a),b) && w.unit(b)->player==1,"eligible attack remains active before eligibility changes");
             w.order(a,1500,1500,true);
             if(capacity)w.setUnitCap(1);else victim.cantBeCaptured=true;
             w.tick(1.f/30);
@@ -161,34 +170,6 @@ int main(int argc,char** argv) {
         const int a=w.spawn(&caster,1000,1000,0,0),b=w.spawn(&victim,1000,1100,0,0);
         w.unit(a)->fireState=0;w.attack(a,b,false);w.tick(1.f/30);
         check(w.unit(a)->justFired,"ordinary explicit attacks still allow friendly fire");
-    }
-    if(argc==2) {
-        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        {
-            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
-            int count=0;
-            for(const auto& [name,type]:registry.types()) {
-                if(!charmOf(type))continue;
-                std::printf("capture roster unit=%s\n",name.c_str());
-                rejectedTargets(type);++count;
-            }
-            check(count>=3,"shipped capture roster includes Harpy, Mind Mage and campaign caster");
-            const auto* harpy=registry.find("zonharp");
-            check(harpy && charmOf(*harpy),"the Harpy carries a mind-control weapon");
-            if(!harpy || !charmOf(*harpy))return 1;
-            auto victim=*registry.find("arasword");victim.maxVel={};
-            victim.weapon.damage=0;victim.weapons.clear();victim.healTime=0;
-            conversionKeepsDamage(*harpy,victim,true);
-            // The Harpy converts on its own, by its weapon.
-            {
-                ta::sim::World w;setup(w);
-                const int a=w.spawn(harpy,1000,1000,0,0),b=w.spawn(&victim,1000,1200,0,1);
-                w.unit(a)->fireState=2;w.unit(a)->moveState=2;
-                bool fired=false;
-                for(int tick=0;tick<600 && w.unit(b)->player!=0;++tick) {w.tick(1.f/30);fired|=w.unit(a)->justFired;}
-                check(w.unit(b)->player==0 && fired,"an idle Harpy converts an enemy with its weapon");
-            }
-        }
     }
     return failures?1:0;
 }

@@ -7,8 +7,8 @@
 // runs the updates and callbacks natively.
 //
 //   los_status_flight_test             the callbacks, on synthetic units
-//   los_status_flight_test <data dir>  the shipped casters, in flight
-#include "hpi/hpi.h"
+// No Total Annihilation weapon carries a status class, so the shipped-caster
+// flight cases (Kingdoms' Mind Mage and Basilisk) went with their data.
 #include "sim/matchsetup.h"
 #include <algorithm>
 #include <cmath>
@@ -164,207 +164,15 @@ void callbackCasterSwitched(LosStatus kind) {
           name+" from a caster that changed sides lands and credits no hitter (51a140)");
 }
 
-// ---- The shipped casters, in flight ------------------------------------------
-struct Caster { const UnitType* type; int slot; LosStatus kind; };
-
-std::vector<Caster> roster(const ta::sim::TypeRegistry& registry) {
-    std::vector<Caster> out;
-    for(const auto& [id,type]:registry.types())
-        for(size_t s=0;s<type.weapons.size() && s<3;++s)
-            if(type.weapons[s].losStatus!=LosStatus::None)out.push_back({&type,int(s),type.weapons[s].losStatus});
-    return out;
 }
 
-// A still enemy the weapon may target and take: mobile, on the ground, with a
-// collision quad, not a Monarch, not immune.
-const UnitType* victimFor(const ta::sim::TypeRegistry& registry,const Weapon& weapon) {
-    for(const char* id:{"araarch","tararch","verarch","zonhunt"}) {
-        const UnitType* t=registry.find(id);
-        if(t && t->projectileQuad && !t->canFly && !t->commander && t->buildMovementCode==1 &&
-           !t->cantBeCaptured && !t->cantBeStoned && !t->cantBeFrozen && weapon.damageVs(t)>0)return t;
-    }
-    return nullptr;
-}
-
-UnitType still(const UnitType& t) {
-    UnitType v=t;v.maxVel={};v.weapons.clear();v.weapon=Weapon{};v.healTime=0;
-    return v;
-}
-
-float distance3(const Unit& a,const Unit& b) {
-    const float dx=(a.x-b.x).toFloat(),dz=(a.z-b.z).toFloat();
-    const float dy=((a.type->canFly ? a.flightY : a.groundY)-(b.type->canFly ? b.flightY : b.groundY)).toFloat();
-    return std::sqrt(dx*dx+dy*dy+dz*dz);
-}
-
-bool inFlight(const World& w,int from,const Weapon& weapon) {
-    return std::any_of(w.projectiles().begin(),w.projectiles().end(),[&](const auto& p) {
-        return p.fromId==from && p.wsrc==&weapon && p.straight && p.life>0;
-    });
-}
-
-// The caster fires at a still enemy; the effect must land on the tick its
-// shot strikes, one flight after the release, never on the release tick.
-void shotLandsOnArrival(const Caster& c,const UnitType& victimType) {
-    const Weapon& weapon=c.type->weapons[size_t(c.slot)];
-    const std::string label=c.type->id+" "+weapon.name;
-    World w;setup(w);
-    const int a=w.spawn(c.type,1000,1000,0,0);
-    const float d=std::min(220.f,float(weapon.range)-60.f);
-    const int b=w.spawn(&victimType,1000,1000+d,0,1);
-    w.unit(b)->veteran=10;   // 99 in 100
-    if(c.type->weaponSwitching)w.setWeapon(a,c.slot);
-    w.attack(a,b,false);
-    int fired=-1,landed=-1;float fireDistance=0;bool flew=false,struckThen=false;
-    for(int tick=0;tick<900 && landed<0;++tick) {
-        w.tick(1.f/30);
-        const int now=int(w.tickCount());
-        const Unit* victim=w.unit(b);
-        if(w.unit(a)->justFired && victim && victim->alive() && !taken(w,b,c.kind)) {
-            fired=now;fireDistance=distance3(*w.unit(a),*w.unit(b));
-        }
-        flew|=inFlight(w,a,weapon);
-        if(taken(w,b,c.kind)) {
-            landed=now;
-            struckThen=std::any_of(w.hits().begin(),w.hits().end(),[&](const auto& h) {
-                return h.weapon==&weapon && h.victimId==b && h.sound;
-            });
-        }
-    }
-    const float perTick=weapon.projVel/30.f;
-    const int earliest=std::max(2,int((fireDistance-64.f)/perTick));
-    const int latest=int(std::ceil((fireDistance+64.f)/perTick))+3;
-    std::printf("  %s: released tick %d at %.0f px, landed tick %d (window %d..%d)\n",label.c_str(),
-                fired,fireDistance,landed,fired+earliest,fired+latest);
-    check(fired>=0 && landed>=0,label+": the shot is released and lands");
-    check(flew,label+": a real shot flies between release and impact");
-    check(fired>=0 && landed-fired>=earliest && landed-fired<=latest,
-          label+": the effect lands one flight after the release");
-    check(struckThen,label+": the effect lands on the tick the shot strikes the unit");
-}
-
-// Mind Mage (charm) and Basilisk (stone): what happens to a shot in flight.
-void flightCases(const ta::sim::TypeRegistry& registry) {
-    const UnitType* mage=registry.find("tarmind");
-    const UnitType* basilisk=registry.find("zonbasil");
-    check(mage && basilisk,"the Mind Mage and the Basilisk exist");
-    if(!mage || !basilisk)return;
-    const auto slotOf=[](const UnitType& t) {
-        for(size_t s=0;s<t.weapons.size();++s)if(t.weapons[s].losStatus!=LosStatus::None)return int(s);
-        return -1;
-    };
-    for(const UnitType* casterType:{mage,basilisk}) {
-        const int slot=slotOf(*casterType);
-        const Weapon& weapon=casterType->weapons[size_t(slot)];
-        const LosStatus kind=weapon.losStatus;
-        const UnitType* pick=victimFor(registry,weapon);
-        check(pick!=nullptr,"an eligible victim for "+casterType->id);
-        if(!pick)return;
-        const UnitType victimType=still(*pick);
-        const std::string name=casterType->id;
-        enum Event { TargetDies, TargetTurned, CasterDies };
-        for(Event event:{TargetDies,TargetTurned,CasterDies}) {
-            if(event==TargetTurned && kind!=LosStatus::MindControl)continue;
-            World w;setup(w);
-            const int a=w.spawn(casterType,1000,1000,0,0);
-            const int first=w.spawn(&victimType,1000,1160,0,1);
-            const int behind=w.spawn(&victimType,1000,1250,0,1);
-            w.unit(first)->veteran=w.unit(behind)->veteran=10;
-            if(casterType->weaponSwitching)w.setWeapon(a,slot);
-            w.attack(a,first,false);
-            int fired=-1,released=0;bool firstTaken=false,behindTaken=false;
-            for(int tick=0;tick<240;++tick) {
-                w.tick(1.f/30);
-                const int now=int(w.tickCount());
-                const Unit* shooter=w.unit(a);
-                if(fired<0 && shooter && shooter->justFired) {
-                    fired=now;++released;
-                    firstTaken=taken(w,first,kind);   // the old engine's instant effect
-                    if(event==TargetDies)w.scenarioDestroy(first);
-                    if(event==TargetTurned)ta::sim::RetailReplayProbe::capture(w,first,0);
-                    // One shot only: no second one may take the unit behind.
-                    w.stop(a);w.unit(a)->fireState=0;
-                } else if(fired>=0 && w.unit(a) && w.unit(a)->justFired)++released;
-                if(event==CasterDies && fired>=0 && now==fired+3)w.scenarioDestroy(a);
-                if(event==TargetTurned)firstTaken|=w.unit(first) && w.unit(first)->player!=0 && taken(w,first,kind);
-                behindTaken|=taken(w,behind,kind);
-                if(event==CasterDies)firstTaken|=taken(w,first,kind);
-            }
-            check(fired>=0 && released==1,name+": one shot is released");
-            if(event==TargetDies) {
-                check(!firstTaken,name+": nothing lands at the release on a target that dies in flight");
-                check(behindTaken,name+": its shot flies on and the unit behind takes it");
-            } else if(event==TargetTurned) {
-                check(w.unit(first) && w.unit(first)->player==0,
-                      name+": a target turned to the caster's side mid-flight stays turned");
-                check(behindTaken,name+": the shot passes the caster's own unit and takes the one behind");
-            } else if(kind==LosStatus::MindControl) {
-                check(!firstTaken,name+": a charm in flight dies with its caster (52d8d0)");
-            } else {
-                check(firstTaken,name+": a stone shot in flight still lands after its caster dies (52db40)");
-            }
-        }
-        if(kind!=LosStatus::Stone)continue;
-        // A Monarch and a building: the stone would do nothing (the commander
-        // and mover gates of 52dca0), so the Basilisk refuses the order
-        // (engine deviation, World::statusCanTake; retail spends its shots).
-        // Every shipped Monarch is cantbestoned as well; the copy here is
-        // not, so only the commander gate stands between it and the stone.
-        const UnitType* monarch=nullptr;const UnitType* building=nullptr;
-        for(const auto& [id,t]:registry.types()) {
-            if(!monarch && t.commander && t.projectileQuad && !t.canFly && weapon.damageVs(&t)>0)monarch=&t;
-            if(!building && t.isStructure() && t.buildMovementCode!=1 && t.projectileQuad && !t.cantBeStoned &&
-               t.footX<=3 && t.footZ<=3 && weapon.damageVs(&t)>0 && t.weapons.empty())building=&t;
-        }
-        check(monarch && building,"a Monarch and a building to petrify");
-        for(const UnitType* target:{monarch,building}) {
-            if(!target)continue;
-            UnitType targetType=target->isStructure() ? *target : still(*target);
-            targetType.cantBeStoned=targetType.cantBeFrozen=false;
-            World w;setup(w);
-            const int a=w.spawn(casterType,1000,1000,0,0);
-            const int b=w.spawn(&targetType,1000,1200,0,1);
-            const Fixed hp=w.unit(b)->hp;
-            w.attack(a,b,false);
-            bool fired=false,struck=false;
-            for(int tick=0;tick<240;++tick) {
-                w.tick(1.f/30);
-                fired|=w.unit(a)->justFired;
-                struck|=std::any_of(w.hits().begin(),w.hits().end(),[&](const auto& h){return h.weapon==&weapon && h.victimId==b;});
-            }
-            check(!fired && !struck,name+" refuses "+target->id);
-            const Unit* struckUnit=w.unit(b);
-            check(struckUnit && struckUnit->alive() && struckUnit->hp==hp,
-                  name+": "+target->id+" is not petrified and takes no damage");
-        }
-    }
-}
-}
-
-int main(int argc,char** argv) {
-    if(argc>2)return 2;
+int main(int argc,char**) {
+    if(argc>1)return 2;
     for(LosStatus kind:{LosStatus::MindControl,LosStatus::Stone,LosStatus::Frozen}) {
         callbackGates(kind);
         callbackRoll(kind);
         callbackPresentation(kind);
         callbackCasterSwitched(kind);
-    }
-    if(argc==2) {
-        auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        {
-            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
-            const auto casters=roster(registry);
-            std::printf("%zu status casters\n",casters.size());
-            check(casters.size()==7,"seven casters carry a Line-of-Sight status weapon");
-            for(const auto& c:casters) {
-                const Weapon& weapon=c.type->weapons[size_t(c.slot)];
-                const UnitType* pick=victimFor(registry,weapon);
-                check(pick!=nullptr,std::string("an eligible victim for ")+c.type->id);
-                if(!pick)continue;
-                shotLandsOnArrival(c,still(*pick));
-            }
-            flightCases(registry);
-        }
     }
     return failures?1:0;
 }

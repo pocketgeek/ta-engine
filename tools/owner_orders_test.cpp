@@ -8,18 +8,21 @@
 // other unit's reference at no unit (World::retireReferences) and each holder
 // loses it as it loses a target that died. Before, only automatic and
 // mind-control attacks ended: an explicit Attack stayed on a unit the
-// attacker's own side had just charmed (melee units killed it, Gryphons made
+// attacker's own side had just charmed (melee units killed it, flyers made
 // runs over it for the rest of its life), a producer's Attack rally kept
 // sending new units at it, a queued Attack leg came up later, and a guard
 // went on escorting a ward an enemy had charmed.
 //
 // Without an argument this runs on synthetic types (a real charm from a
 // synthetic mind-control caster, a gift, a scenario transfer); with a retail
-// data root it also runs the shipped roster: a Harpy's and a Mind Mage's
-// charm against Swordsman, Archer, Gryphon, Troll and Hunter holders, a Keep's
-// rally, a guard, a third player's attacker, in both pathfinding modes; and
-// under Legion, two attackers whose queued targets are both charmed (the
-// references let go share one id, which must not join them in one group).
+// data root it also runs the shipped roster as holders and targets: Peewee,
+// Hammer, A.K., Storm, Thunder and Shadow attackers, a Kbot Lab's rally, a
+// walking and a flying guard, a third player's attacker, in both pathfinding
+// modes; and under Legion, two attackers whose queued targets are both
+// charmed (the references let go share one id, which must not join them in
+// one group). The change of owner itself is still the synthetic caster's
+// charm: no Total Annihilation weapon carries mind control, and TA's own
+// change of owner (the Commander's Capture) is not modelled yet.
 #include "hpi/hpi.h"
 #include "net/lockstep.h"
 #include "sim/matchsetup.h"
@@ -263,7 +266,7 @@ struct Field {
         if (!t) { check(false,label+": shipped type "+type+" is missing");return 0; }
         return w.spawn(t,x,z,0,player);
     }
-    // A real charm by a Harpy or Mind Mage with its Attack click on the unit.
+    // A real charm by the synthetic caster with its Attack click on the unit.
     // The tick the charm takes is the last one run. `keep`: a unit whose hit
     // points are held up meanwhile (one the charm must find alive).
     bool charm(int casterId,int victim,int keep=0,int limit=1800) {
@@ -276,10 +279,18 @@ struct Field {
         }
         return w.unit(victim)->alive() && w.unit(victim)->player==player;
     }
+    // The synthetic mind-control caster (caster() above), on Hold Fire: it
+    // charms what it is ordered onto and nothing else.
+    UnitType casterType=caster();
+    int spawnCaster(float x,float z,int player) {
+        const int id=w.spawn(&casterType,x,z,0,player);
+        w.unit(id)->fireState=0;
+        return id;
+    }
     // ...by a caster that arrives beside the unit.
-    bool charm(const char* casterType,int player,int victim) {
+    bool charmBeside(int player,int victim) {
         const Unit& v=*w.unit(victim);
-        return charm(spawn(casterType,v.x.toFloat()-220,v.z.toFloat()+60,player),victim);
+        return charm(spawnCaster(v.x.toFloat()-220,v.z.toFloat()+60,player),victim);
     }
 };
 
@@ -287,13 +298,13 @@ struct Field {
 // unit; each unit also has a move queued behind the attack. `casterOwner` 0:
 // the player's own caster, 2: an ally's.
 void selectionCase(const TypeRegistry& reg,PathfindingMode mode,const std::vector<const char*>& holders,
-                   const char* victimType,const char* casterType,int casterOwner) {
+                   const char* victimType,int casterOwner) {
     Field f(reg,mode);World& w=f.w;
-    const std::string tag=f.label+", "+(casterOwner==0 ? "own " : "ally's ")+casterType+" on "+victimType;
+    const std::string tag=f.label+", "+(casterOwner==0 ? "own" : "ally's")+" charm on "+victimType;
     const int v=f.spawn(victimType,2600,2000,1);
     std::vector<int> ids;
     for (size_t i=0;i<holders.size();++i) ids.push_back(f.spawn(holders[i],1900,1800+80*float(i),0));
-    const int lone=f.spawn("zongryp",1900,1700,0);   // its attack is its last order
+    const int lone=f.spawn("armfig",1900,1700,0);   // its attack is its last order
     if (!v || !lone || std::find(ids.begin(),ids.end(),0)!=ids.end()) return;
     const float restX=2000,restZ=2150;   // a short walk from where the charm finds them
     for (int id:ids) {
@@ -301,7 +312,7 @@ void selectionCase(const TypeRegistry& reg,PathfindingMode mode,const std::vecto
         command(w,reg,Cmd::Move,0,id,0,ta::net::kQueueAppend,restX,restZ);
     }
     command(w,reg,Cmd::Attack,0,lone,v);
-    const bool took=f.charm(casterType,casterOwner,v);
+    const bool took=f.charmBeside(casterOwner,v);
     check(took,tag+": the charm takes");
     if (!took) return;
     check(!anyoneNames(w,v),tag+": nobody holds an order, rally step or slot on the unit once it has changed owner");
@@ -334,22 +345,22 @@ void selectionCase(const TypeRegistry& reg,PathfindingMode mode,const std::vecto
         arrived&=there;
     }
     check(arrived,tag+": each holder went on with the move queued behind its attack");
-    check(seek,tag+": a Gryphon whose attack was its last order goes on as VTOL_SeekAttack (seekLostTarget)");
+    check(seek,tag+": a Freedom Fighter whose attack was its last order goes on as VTOL_SeekAttack (seekLostTarget)");
 }
 
 // Attack on one enemy, a queued Attack on a second; the second is charmed
 // while the unit is still on the first.
-void queuedCase(const TypeRegistry& reg,PathfindingMode mode,const char* holder,const char* casterType) {
+void queuedCase(const TypeRegistry& reg,PathfindingMode mode,const char* holder) {
     Field f(reg,mode);World& w=f.w;
-    const std::string tag=f.label+", queued attack ("+holder+", "+casterType+")";
-    const int a=f.spawn(holder,2000,2000,0),first=f.spawn("zontrain",2000,2200,1),second=f.spawn("zontrain",2420,2000,1);
+    const std::string tag=f.label+", queued attack ("+holder+")";
+    const int a=f.spawn(holder,2000,2000,0),first=f.spawn("corak",2000,2200,1),second=f.spawn("corak",2420,2000,1);
     if (!a || !first || !second) return;
     command(w,reg,Cmd::Attack,0,a,first,ta::net::kQueueReplace);
     command(w,reg,Cmd::Attack,0,a,second,ta::net::kQueueAppend);
     f.run(30);
     check(names(*w.unit(a),first) && names(*w.unit(a),second),tag+": both legs are held before the charm");
     // The first target must outlast the charm.
-    const bool took=f.charm(f.spawn(casterType,2620,2060,0),second,first);
+    const bool took=f.charm(f.spawnCaster(2620,2060,0),second,first);
     check(took,tag+": the charm takes the second target");
     if (!took) return;
     check(!anyoneNames(w,second) && names(*w.unit(a),first),
@@ -369,33 +380,33 @@ void queuedCase(const TypeRegistry& reg,PathfindingMode mode,const char* holder,
           tag+": the queue ends there, with no walk for the leg that let go");
 }
 
-// A Keep's Attack rally on an enemy unit that the Keep's player then charms:
-// the Swordsman it trains afterwards is not sent at it.
+// A Kbot Lab's Attack rally on an enemy unit that the Lab's player then
+// charms: the Peewee it builds afterwards is not sent at it.
 void rallyCase(const TypeRegistry& reg,PathfindingMode mode) {
-    const UnitType* keepType=reg.find("arakeep");
-    if (!keepType) { check(false,"rally: shipped type arakeep is missing");return; }
-    auto keep=*keepType;keep.storage=1000000;   // economy only: the pool can hold the price
+    const UnitType* keepType=reg.find("armlab");
+    if (!keepType) { check(false,"rally: shipped type armlab is missing");return; }
+    const UnitType& keep=*keepType;
     Field f(reg,mode);World& w=f.w;
-    const std::string tag=f.label+", rally (arakeep, arasword)";
+    const std::string tag=f.label+", rally (armlab, armpw)";
     const float kx=float(112*16+keep.footX%2*8),kz=float(112*16+keep.footZ%2*8);
-    const int k=w.spawn(&keep,kx,kz,0,0),v=f.spawn("zontrain",kx+500,kz+350,1);
+    const int k=w.spawn(&keep,kx,kz,0,0),v=f.spawn("corak",kx+500,kz+350,1);
     if (!v) return;
-    w.player(0).mana=1000000;
+    w.setStartResources(0,1e6f,1e6f);   // the economy can pay for the Peewee
     command(w,reg,Cmd::Attack,0,k,v);   // a producer selected, right-click on the enemy unit
-    check(w.unit(k)->rally.size()==1 && w.unit(k)->rally.front().targetId==v,tag+": the click is the Keep's rally step");
+    check(w.unit(k)->rally.size()==1 && w.unit(k)->rally.front().targetId==v,tag+": the click is the Lab's rally step");
     f.run(30);
-    const bool took=f.charm("zonharp",0,v);
+    const bool took=f.charmBeside(0,v);
     check(took,tag+": the charm takes");
     if (!took) return;
     check(!names(*w.unit(k),v),tag+": the rally step lets go of the charmed unit");
-    command(w,reg,Cmd::Train,0,k,1,0,0,0,"arasword");
+    command(w,reg,Cmd::Train,0,k,1,0,0,0,"armpw");
     int out=0;
     for (int t=0;t<3000 && !out;++t) {
         f.run(1);
         for (const Unit& u:w.units())
-            if (u.alive() && u.player==0 && !u.underConstruction && u.type && u.type->id=="arasword") out=u.id;
+            if (u.alive() && u.player==0 && !u.underConstruction && u.type && u.type->id=="armpw") out=u.id;
     }
-    check(out!=0,tag+": the Keep trains a Swordsman after the charm");
+    check(out!=0,tag+": the Lab builds a Peewee after the charm");
     if (!out) return;
     check(!names(*w.unit(out),v) && !targeted(*w.unit(out)),tag+": the new unit is not handed an attack on the charmed unit");
     const Fixed hp=w.unit(v)->hp;
@@ -408,14 +419,14 @@ void rallyCase(const TypeRegistry& reg,PathfindingMode mode) {
 void guardCase(const TypeRegistry& reg,PathfindingMode mode) {
     Field f(reg,mode);World& w=f.w;
     const std::string tag=f.label+", guard";
-    const int v=f.spawn("zontrain",2400,2000,1),walker=f.spawn("zonter",2300,2100,1),flyer=f.spawn("zongryp",2500,2100,1);
+    const int v=f.spawn("corak",2400,2000,1),walker=f.spawn("corthud",2300,2100,1),flyer=f.spawn("corveng",2500,2100,1);
     if (!v || !walker || !flyer) return;
     // Passive: after the guard ends they must not hunt the new enemy, so the
     // check below sees the guard order alone.
     for (int id:{walker,flyer}) { command(w,reg,Cmd::Stance,1,id,2);command(w,reg,Cmd::Guard,1,id,v); }
     f.run(60);
     check(names(*w.unit(walker),v) && names(*w.unit(flyer),v),tag+": both guards hold before the charm");
-    const bool took=f.charm("zonharp",0,v);
+    const bool took=f.charmBeside(0,v);
     check(took,tag+": an enemy's charm takes the ward");
     if (!took) return;
     check(!anyoneNames(w,v),tag+": the guards let go of a ward an enemy charmed");
@@ -423,7 +434,10 @@ void guardCase(const TypeRegistry& reg,PathfindingMode mode) {
     for (int t=0;t<120;++t) {
         f.run(1);
         held|=names(*w.unit(walker),v) || names(*w.unit(flyer),v);
-        if (const Unit* u=w.unit(flyer);u && u->alive()) seekGuard|=!u->orders.empty() && u->orders.front().seekGuard;
+        // The seek stays in the queue under a guard it pushes on an ally it
+        // finds in sight (VTOL_SeekGuard, 421910): here the walking guard.
+        if (const Unit* u=w.unit(flyer);u && u->alive())
+            seekGuard|=std::any_of(u->orders.begin(),u->orders.end(),[](const Order& o) { return o.seekGuard; });
     }
     const Unit* g=w.unit(walker);
     check(!held && g && g->alive() && std::none_of(g->orders.begin(),g->orders.end(),[](const Order& o) { return o.guard; }),
@@ -435,21 +449,21 @@ void guardCase(const TypeRegistry& reg,PathfindingMode mode) {
 // order ends, and its unit takes the new owner's unit again by itself.
 void thirdPlayerCase(const TypeRegistry& reg,PathfindingMode mode) {
     Field f(reg,mode);World& w=f.w;
-    const std::string tag=f.label+", third player (araarch)";
-    // Well inside the Archer's sight: automatic targeting takes only what its
+    const std::string tag=f.label+", third player (armpw)";
+    // Well inside the Peewee's sight: automatic targeting takes only what its
     // player sees, where an order needs no sight.
-    const int v=f.spawn("zontrain",2400,2000,1),h=f.spawn("araarch",2400,1880,3);
+    const int v=f.spawn("corak",2400,2000,1),h=f.spawn("armpw",2400,1880,3);
     if (!v || !h) return;
     command(w,reg,Cmd::Attack,3,h,v);
     f.run(30);
-    check(names(*w.unit(h),v),tag+": its Archer holds an explicit attack before the charm");
-    // The beast must outlast the Archer's arrows until the charm takes.
-    const int casterId=f.spawn("zonharp",2180,1900,0);
+    check(names(*w.unit(h),v),tag+": its Peewee holds an explicit attack before the charm");
+    // The A.K. must outlast the Peewee's fire until the charm takes.
+    const int casterId=f.spawnCaster(2180,1900,0);
     const bool took=f.charm(casterId,v,v);
     check(took,tag+": the charm takes");
     if (!took) return;
     check(!anyoneNames(w,v),tag+": its explicit attack lets go at the charm");
-    // Leave the charmed unit as the only enemy the Archer can see.
+    // Leave the charmed unit as the only enemy the Peewee can see.
     w.scenarioDestroy(casterId);
     const Fixed hp=w.unit(v)->hp;
     bool again=false,automatic=false,hit=false;
@@ -470,10 +484,10 @@ void thirdPlayerCase(const TypeRegistry& reg,PathfindingMode mode) {
 void friendlyFireCase(const TypeRegistry& reg,PathfindingMode mode) {
     Field f(reg,mode);World& w=f.w;
     const std::string tag=f.label+", explicit attack on an own unit";
-    const int v=f.spawn("zontrain",2400,2000,1),a=f.spawn("araarch",2400,2150,0);
+    const int v=f.spawn("corak",2400,2000,1),a=f.spawn("armpw",2400,2150,0);
     if (!v || !a) return;
     command(w,reg,Cmd::Stance,0,a,2);   // Passive: only an order makes it shoot
-    const bool took=f.charm("zonharp",0,v);
+    const bool took=f.charmBeside(0,v);
     check(took,tag+": the charm takes");
     if (!took) return;
     command(w,reg,Cmd::Attack,0,a,v);
@@ -489,20 +503,21 @@ void friendlyFireCase(const TypeRegistry& reg,PathfindingMode mode) {
 // turn comes it must not read the two holders as chasing one unit.
 void sharedIdCase(const TypeRegistry& reg) {
     Field f(reg,PathfindingMode::Legion);World& w=f.w;
-    const std::string tag=f.label+", two charmed units (arasword, zonharp)";
-    const int a=f.spawn("arasword",2000,2000,0),b=f.spawn("arasword",2000,2060,0),first=f.spawn("zontrain",2000,2200,1);
-    const int v1=f.spawn("zontrain",2420,1960,1),v2=f.spawn("zontrain",2420,2060,1);
-    const int c1=f.spawn("zonharp",2620,1960,0),c2=f.spawn("zonharp",2620,2060,0);
+    const std::string tag=f.label+", two charmed units (armpw)";
+    const int a=f.spawn("armpw",2000,2000,0),b=f.spawn("armpw",2000,2060,0),first=f.spawn("corak",2000,2200,1);
+    const int v1=f.spawn("corak",2420,1960,1),v2=f.spawn("corak",2420,2060,1);
+    const int c1=f.spawnCaster(2620,1960,0),c2=f.spawnCaster(2620,2060,0);
     if (!a || !b || !first || !v1 || !v2 || !c1 || !c2) return;
     for (int id:{a,b}) command(w,reg,Cmd::Attack,0,id,first,ta::net::kQueueReplace);
     command(w,reg,Cmd::Attack,0,a,v1,ta::net::kQueueAppend);
     command(w,reg,Cmd::Attack,0,b,v2,ta::net::kQueueAppend);
-    f.run(30);
+    for (int t=0;t<30;++t) {   // an A.K. (265 hp) must outlast two Peewees
+        if (Unit* k=w.unit(first);k && k->alive()) k->hp=Fixed::fromInt(int(k->type->maxHp));
+        f.run(1);
+    }
     check(names(*w.unit(a),first) && names(*w.unit(a),v1) && names(*w.unit(b),first) && names(*w.unit(b),v2),
           tag+": each attacker holds a queued attack on its own unit before the charms");
-    // Hold Fire: each Harpy charms the unit it is ordered onto and nothing
-    // else. The first target and both units must outlast the charms.
-    w.unit(c1)->fireState=0;w.unit(c2)->fireState=0;
+    // The first target and both units must outlast the charms.
     command(w,reg,Cmd::Attack,0,c1,v1);command(w,reg,Cmd::Attack,0,c2,v2);
     const auto ours=[&](int id) { const Unit* u=w.unit(id);return u && u->alive() && u->player==0; };
     for (int t=0;t<1800 && !(ours(v1) && ours(v2));++t) {
@@ -539,11 +554,11 @@ void sharedIdCase(const TypeRegistry& reg) {
 
 void rosterCases(const TypeRegistry& reg) {
     for (PathfindingMode mode:{PathfindingMode::Retail,PathfindingMode::Legion}) {
-        selectionCase(reg,mode,{"arasword","araarch","zongryp"},"zontrain","zonharp",0);
-        selectionCase(reg,mode,{"arasword","araarch"},"araknigh","zonharp",2);
-        selectionCase(reg,mode,{"zontroll","zonter","zongryp"},"araknigh","zonharp",0);   // one click on a Zhon army
-        queuedCase(reg,mode,"arasword","tarmind");
-        queuedCase(reg,mode,"zontroll","zonharp");
+        selectionCase(reg,mode,{"armpw","armham","armthund"},"corthud",0);
+        selectionCase(reg,mode,{"armpw","armham"},"cormort",2);
+        selectionCase(reg,mode,{"corak","corstorm","corshad"},"armwar",0);   // one click on a Core army
+        queuedCase(reg,mode,"armpw");
+        queuedCase(reg,mode,"armham");
         rallyCase(reg,mode);
         guardCase(reg,mode);
         thirdPlayerCase(reg,mode);

@@ -41,7 +41,7 @@ Result runCase(const sim::TypeRegistry& registry,const sim::UnitType& flyer,bool
     w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,64);
     w.buildNavClasses(registry);
     w.setPathService(true);
-    w.player(0).mana=1e6;w.player(1).mana=1e6;
+    w.setStartResources(0,1e6f,1e6f);w.setStartResources(1,1e6f,1e6f);   // energypershot
     // The sweep takes only enemies its player sees (Player::visibleEnemies).
     w.setPowerCodes(true);
     w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
@@ -51,7 +51,7 @@ Result runCase(const sim::TypeRegistry& registry,const sim::UnitType& flyer,bool
     // cannot land) before the enemy shows up.
     for (int i=0;i<90;++i) w.tick(1.f/30);
     const float postX=w.unit(a)->x.toFloat(),postZ=w.unit(a)->z.toFloat();
-    sim::UnitType target=*registry.find(airTarget ? "zongryp" : "araarch");
+    sim::UnitType target=*registry.find(airTarget ? "armpeep" : "armpw");
     target.maxHp=30000;target.healTime=0;target.weapons.clear();target.weapon.damage=0;
     const int t=w.spawn(&target,postX+dist,postZ,0,1);
     w.setStance(t,2);w.unit(t)->moveState=0;w.unit(t)->fireState=0;
@@ -86,7 +86,7 @@ int main(int argc,char** argv) {
     const bool trace=argc>2 && std::strcmp(argv[2],"trace")==0;
     auto vfs=hpi::mountRetailRoot(argv[1]);
     sim::TypeRegistry registry;sim::setupRegistry(registry,vfs);
-    for (const char* id:{"zongryp","araarch"})
+    for (const char* id:{"armpeep","armpw"})
         if (!registry.find(id)) { std::printf("FAIL missing type %s\n",id);return 1; }
     std::vector<const sim::UnitType*> flyers;
     for (const auto& [id,type]:registry.types())
@@ -98,7 +98,7 @@ int main(int argc,char** argv) {
             const sim::Weapon& wp=f->weapons.front();
             if (wp.melee) continue;
             if (air && wp.noAir) continue;
-            if (!air && wp.toAir) continue;
+            if (!air && (wp.toAir || wp.hasTaFlag(17))) continue;   // toairweapon
             const float range=float(f->maxRange());
             const float dist=range>470.f ? 450.f : range*0.8f;
             if (trace) std::printf("%s %s at %.0f (range %.0f, hover %d)\n",f->id.c_str(),air?"air":"ground",
@@ -127,49 +127,51 @@ int main(int argc,char** argv) {
     // seen enemy in range from where the flyer stands by.
     check(firedFromPost*2>=cases,"on Hold Position most flyers fire from their post");
     // Engine deviation (owner, 2026-11-12, World::tickHoldLift): a landed
-    // Thirsha on Hold Position with an enemy behind it takes off, turns to
-    // it and hits it from over its post, without chasing, and lands again
-    // once the enemy is gone. Its script releases a shot only in flight, and
-    // a landed hover attacker cannot turn to a request. A Passive one (Hold
-    // Fire) takes no target and stays down.
-    // Straight ahead, facing it, the Thirsha has no facing reason to lift: it
-    // lifts once a shot it started has gone unreleased for kHoldLiftNoRelease
-    // ticks, not a whole reload later at its next start.
+    // hover attacker (here the Brawler gunship, HoverAttack=1) on Hold
+    // Position with an enemy behind it takes off, turns to it and hits it
+    // from over its post, without chasing, and lands again once the enemy is
+    // gone: a landed hover attacker cannot turn to a request. A Passive one
+    // (Hold Fire) takes no target and stays down.
+    // Straight ahead, facing it, it has no facing reason to lift: it hits
+    // the enemy within 200 ticks, from the ground or once a shot it started
+    // has gone unreleased for kHoldLiftNoRelease ticks.
+    // (The TAK case of a hovering dropped-bomb flyer has no TA counterpart:
+    // TA's bombers do not hover.)
     {
-        const sim::UnitType* thirsha=registry.find("zonhunt");
+        const sim::UnitType* brawler=registry.find("armbrawl");
         sim::World w;
         w.setSerialThreads(true);w.setPlayerCount(2);
         w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,64);
         w.buildNavClasses(registry);w.setPathService(true);
         w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
-        const int a=thirsha ? w.spawn(thirsha,4096,4096,0,0) : 0;
+        const int a=brawler ? w.spawn(brawler,4096,4096,0,0) : 0;
         if (a) {
             w.unit(a)->moveState=0;w.unit(a)->fireState=2;
             for (int i=0;i<90;++i) w.tick(1.f/30);
-            sim::UnitType target=*registry.find("araarch");
+            sim::UnitType target=*registry.find("armpw");
             target.maxHp=30000;target.healTime=0;target.weapons.clear();target.weapon.damage=0;target.maxVel={};
             const int t=w.spawn(&target,w.unit(a)->x.toFloat(),w.unit(a)->z.toFloat()+192,0,1);
             const auto hp=w.unit(t)->hp;
             int first=-1;
             for (int i=0;i<600 && first<0;++i) { w.tick(1.f/30);if (w.unit(t)->hp<hp) first=i; }
-            std::printf("  zonhunt Hold, enemy straight ahead: first hit at tick %d\n",first);
-            check(first>=0 && first<200,"a landed Thirsha facing an enemy lifts and hits it within 200 ticks");
+            std::printf("  armbrawl Hold, enemy straight ahead: first hit at tick %d\n",first);
+            check(first>=0 && first<200,"a landed Brawler facing an enemy hits it within 200 ticks");
         }
     }
     for (const uint8_t fireState:{uint8_t(2),uint8_t(0)}) {
-        const sim::UnitType* thirsha=registry.find("zonhunt");
-        if (!thirsha) { check(false,"zonhunt loads");break; }
+        const sim::UnitType* brawler=registry.find("armbrawl");
+        if (!brawler) { check(false,"armbrawl loads");break; }
         sim::World w;
         w.setSerialThreads(true);w.setPlayerCount(2);
         w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,64);
         w.buildNavClasses(registry);w.setPathService(true);
         w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
-        const int a=w.spawn(thirsha,4096,4096,0,0);
+        const int a=w.spawn(brawler,4096,4096,0,0);
         w.unit(a)->moveState=0;w.unit(a)->fireState=fireState;
         for (int i=0;i<90;++i) w.tick(1.f/30);
         const bool landed=w.unit(a)->flightGroundMode==1;
         const float postX=w.unit(a)->x.toFloat(),postZ=w.unit(a)->z.toFloat();
-        sim::UnitType target=*registry.find("araarch");
+        sim::UnitType target=*registry.find("armpw");
         target.maxHp=30000;target.healTime=0;target.weapons.clear();target.weapon.damage=0;target.maxVel={};
         const int t=w.spawn(&target,postX,postZ-200,0,1);   // behind it
         const auto hp=w.unit(t)->hp;
@@ -179,46 +181,21 @@ int main(int argc,char** argv) {
             const auto& u=*w.unit(a);
             flew|=u.flightGroundMode==2;
             drift=std::max(drift,std::hypot(u.x.toFloat()-postX,u.z.toFloat()-postZ));
+            if (trace && i%30==0)
+                std::printf("  t=%3d heading=%d mode=%d y=%.1f slot=%d aim=%d fired=%x reload=%d\n",i,int(u.heading.v),
+                            int(u.flightGroundMode),u.flightY.toFloat(),u.slotTarget[0],u.scriptAimTarget,
+                            u.firedWeapons,u.reloads[0]);
         }
         const bool hurt=w.unit(t)->hp<hp;
         if (fireState==2) {
-            std::printf("  zonhunt Hold, enemy behind: took off %d, hurt %d, drift %.1f\n",int(flew),int(hurt),drift);
-            check(landed && flew && hurt,"a landed Thirsha on Hold Position takes off and hits an enemy behind it");
+            std::printf("  armbrawl Hold, enemy behind: took off %d, hurt %d, drift %.1f\n",int(flew),int(hurt),drift);
+            check(landed && flew && hurt,"a landed Brawler on Hold Position takes off and hits an enemy behind it");
             check(drift<=24.f && w.unit(a)->orders.empty(),"it does not chase: it stays over its post with no order");
             w.unit(t)->hp=sim::Fixed();
             for (int i=0;i<900;++i) w.tick(1.f/30);
             check(w.unit(a)->flightGroundMode==1,"it lands again once the enemy is gone");
         } else {
-            check(landed && !flew && !hurt,"a Passive (Hold Fire) Thirsha stays landed");
-        }
-    }
-    // An Iron Beak's Egg Bomb is dropped: from the ground it lands at its
-    // own feet. Facing the enemy straight ahead it has no facing reason to
-    // lift, so it lifts once its ground shots are written off, and from the
-    // air it hits without leaving its post.
-    {
-        const sim::UnitType* beak=registry.find("tarbeak");
-        if (!beak) check(false,"tarbeak loads");
-        else {
-            sim::World w;
-            w.setSerialThreads(true);w.setPlayerCount(2);
-            w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,64);
-            w.buildNavClasses(registry);w.setPathService(true);
-            w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
-            const int a=w.spawn(beak,4096,4096,0,0);
-            w.unit(a)->moveState=0;w.unit(a)->fireState=2;
-            for (int i=0;i<90;++i) w.tick(1.f/30);
-            const float postX=w.unit(a)->x.toFloat(),postZ=w.unit(a)->z.toFloat();
-            sim::UnitType target=*registry.find("araarch");
-            target.maxHp=30000;target.healTime=0;target.weapons.clear();target.weapon.damage=0;target.maxVel={};
-            const int t=w.spawn(&target,postX,postZ+140,0,1);   // straight ahead
-            const auto hp=w.unit(t)->hp;
-            float drift=0;
-            for (int i=0;i<1200;++i) {
-                w.tick(1.f/30);
-                drift=std::max(drift,std::hypot(w.unit(a)->x.toFloat()-postX,w.unit(a)->z.toFloat()-postZ));
-            }
-            check(w.unit(t)->hp<hp && drift<=24.f,"a landed Iron Beak on Hold Position lifts and bombs an enemy ahead from its post");
+            check(landed && !flew && !hurt,"a Passive (Hold Fire) Brawler stays landed");
         }
     }
     std::printf("hold_flyer: %d failures\n",failures);
