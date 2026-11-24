@@ -1,6 +1,7 @@
 #include "client/campaignscreen.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <map>
 #include <sstream>
@@ -15,8 +16,12 @@
 #include "client/gpuvram.h"
 #include "client/settings.h"
 #include "client/artscale.h"
+#include "client/taguiview.h"
+#include "gaf/gaf.h"
 #include "gui/gui.h"
+#include "gui/tagui.h"
 #include "hpi/hpi.h"
+#include "sim/sides.h"
 
 namespace ta {
 struct CampaignScreen::Impl {
@@ -156,18 +161,291 @@ struct CampaignScreen::Impl {
         campaign=c.id;picked=true;
     }
 };
+// ---- Total Annihilation: the any-mission NEWGAME screen ------------------------
+namespace {
+std::string upperOf(std::string s) {
+    for (char& c : s) c = char(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+std::string trimmed(const std::string& s) {
+    const auto a = s.find_first_not_of(" \t"), b = s.find_last_not_of(" \t");
+    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+}
+// "camps/Arm Campaign.tdf" -> "Arm Campaign": the name TaCampaign / loadTaCampaign take.
+std::string campsStem(const std::string& file) {
+    std::string n = file.substr(file.find_last_of('/') + 1);
+    if (const auto dot = n.rfind('.'); dot != std::string::npos) n.resize(dot);
+    return n;
+}
+}  // namespace
+
+struct CampaignScreen::TaPicker {
+    SDL_Renderer* ren;
+    const Settings& settings;
+    std::vector<Campaign> all;             // every camps/*.tdf
+    std::vector<std::string> sideNames;    // sidedata order (ARM, CORE)
+    std::vector<size_t> shown;             // the side's campaigns (indices into all)
+    std::unique_ptr<TaGuiView> view;
+    TaFont rows;                           // the mission rows (a .FNT takes a tint)
+    int side = 0, camp = 0, campScroll = 0, sel = 0, scroll = 0, nextUp = -1, difficulty = 1;
+    std::vector<std::string> campNames;    // the Choose Campaign rows
+    bool picked = false;
+    std::string stem, campaign;
+    // The plates of playanygame4 (measured on the backdrop, 640x480): Choose Campaign
+    // and Choose Game. NEWGAME.GUI's own Campaign list spans both (it is laid out for
+    // newcampaign4x, where the one plate is the campaign list), and its GAF font fits
+    // two rows in the small plate: both lists are drawn here, with the .FNT font.
+    static constexpr float kCampX = 34, kCampY = 307, kCampW = 318, kCampH = 46;
+    static constexpr float kMisX = 34, kMisY = 387, kMisW = 318, kMisH = 62;
+    static constexpr float kStatusW = 40;   // DONE / PLAY column
+
+    TaPicker(SDL_Renderer* r, const hpi::Vfs& vfs, const Settings& s, int initialSide)
+        : ren(r), settings(s), all(loadCampaigns(vfs)) {
+        for (int i = 0; i < sides::count(); ++i) sideNames.push_back(sides::at(i).name);
+        if (sideNames.empty()) sideNames = {"ARM", "CORE"};
+        view = std::make_unique<TaGuiView>(ren, vfs, tagui::load(vfs, "newgame"), true);
+        // docs/retail-gui.md "New campaign": playanygame4 is NEWGAME's any-mission backdrop.
+        view->setBackdrop("bitmaps/playanygame4.pcx");
+        view->setStage("Difficulty", difficulty);
+        for (const char* g : {"Campaign", "Missions", "MissionsKnob", "CampaignKnob"}) view->setVisible(g, false);
+        try {
+            if (vfs.has("fonts/hatt12.fnt")) rows.loadFnt(ren, vfs.read("fonts/hatt12.fnt"), SDL_Color{255, 255, 255, 255});
+        } catch (...) {}
+        if (!rows.height())
+            try {
+                rows.loadGaf(ren, vfs, "hattfont12",
+                             gaf::Palette::fromBytes(vfs.read("bitmaps/playanygame4.pcx"), "playanygame4.pcx"));
+            } catch (...) {}
+        selectSide(std::clamp(initialSide, 0, int(sideNames.size()) - 1));
+    }
+    // Completion is keyed by the campaign id trimmed: settings.ini drops a key's
+    // trailing blank ("core campaign - core contingency ").
+    bool done(const Campaign& c, int mission) const { return settings.missionCompleted(trimmed(c.id), mission); }
+    int rowH() const { return std::max(10, rows.height() + 1); }
+    int visibleRows() const { return std::max(1, int(kMisH) / rowH()); }
+    int campRows() const { return std::max(1, int(kCampH) / rowH()); }
+    const Campaign* current() const {
+        return camp >= 0 && camp < int(shown.size()) ? &all[shown[size_t(camp)]] : nullptr;
+    }
+    void selectSide(int s) {
+        side = s;
+        shown.clear();
+        const std::string want = upperOf(sideNames[size_t(side)]);
+        for (size_t i = 0; i < all.size(); ++i) {
+            const std::string cs = upperOf(trimmed(all[i].side));
+            if (cs == want || cs == "ALL") shown.push_back(i);   // 0x476a60
+        }
+        // 0x476a60 lists the side's campaigns sorted by name.
+        std::sort(shown.begin(), shown.end(), [&](size_t a, size_t b) { return all[a].id < all[b].id; });
+        campNames.clear();
+        for (size_t i : shown) campNames.push_back(trimmed(campsStem(all[i].file)));
+        campScroll = 0;
+        view->setPressed("Arm", side == 0);
+        view->setPressed("Core", side == 1);
+        view->setText("SIDENAME", sideNames[size_t(side)]);
+        // Not retail: open on the side's own campaign ("Core Campaign" sorts after
+        // "Battle Tactics - Core ...").
+        int first = 0;
+        for (size_t i = 0; i < shown.size(); ++i)
+            if (upperOf(all[shown[i]].id) == want + " CAMPAIGN") first = int(i);
+        selectCampaign(first);
+    }
+    void selectCampaign(int c) {
+        camp = shown.empty() ? -1 : std::clamp(c, 0, int(shown.size()) - 1);
+        if (camp >= 0) {
+            if (camp < campScroll) campScroll = camp;
+            if (camp >= campScroll + campRows()) campScroll = camp - campRows() + 1;
+        }
+        nextUp = -1;
+        if (const auto* cp = current())
+            for (int i = 0; i < cp->count(); ++i)
+                if (!done(*cp, i)) { nextUp = i; break; }
+        // The next-up mission is selected; with every mission done, the first.
+        sel = nextUp >= 0 ? nextUp : 0;
+        scroll = 0;
+        reveal();
+    }
+    int count() const { const auto* c = current(); return c ? c->count() : 0; }
+    void reveal() {
+        const int n = visibleRows();
+        if (sel < scroll) scroll = sel;
+        if (sel >= scroll + n) scroll = sel - n + 1;
+        scroll = std::clamp(scroll, 0, std::max(0, count() - n));
+    }
+    bool choose() {
+        const auto* c = current();
+        if (!c || sel < 0 || sel >= c->count()) return false;
+        campaign = "ta:" + campsStem(c->file);
+        stem = c->missions[size_t(sel)].otaFile + ":" + std::to_string(difficulty);
+        picked = true;
+        return true;
+    }
+    // A gadget the view fired (or a scripted press); true when the picker is done.
+    bool hit(const std::string& name) {
+        const std::string h = upperOf(name);
+        if (h == "PREVMENU") return true;
+        if (h == "START") return choose();
+        if (h == "ARM" || h == "SIDE0") selectSide(0);
+        else if ((h == "CORE" || h == "SIDE1") && sideNames.size() > 1) selectSide(1);
+        else if (h == "DIFFICULTY") difficulty = view->stage("Difficulty");
+        return false;
+    }
+    bool input(const SDL_Event& e, int w, int h) {
+        const GuiLayout L(w, h);
+        auto overRows = [&](float x, float y) { return L.hit(kMisX, kMisY, kMisW, kMisH, x, y); };
+        auto overCamps = [&](float x, float y) { return L.hit(kCampX, kCampY, kCampW, kCampH, x, y); };
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
+            overCamps(float(e.button.x), float(e.button.y))) {
+            const int row = campScroll + int((float(e.button.y) - L.py(kCampY)) / L.scale) / rowH();
+            if (row >= 0 && row < int(shown.size()) && row != camp) selectCampaign(row);
+            return false;
+        }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
+            overRows(float(e.button.x), float(e.button.y))) {
+            const int row = scroll + int((float(e.button.y) - L.py(kMisY)) / L.scale) / rowH();
+            if (row >= 0 && row < count()) {
+                sel = row;
+                if (e.button.clicks >= 2) return choose();   // a double-click plays it
+            }
+            return false;
+        }
+        if (e.type == SDL_MOUSEWHEEL) {
+            int mx = 0, my = 0;
+            hidpi::mousePixels(ren, mx, my);
+            if (overRows(float(mx), float(my))) {
+                scroll = std::clamp(scroll - e.wheel.y, 0, std::max(0, count() - visibleRows()));
+                return false;
+            }
+            if (overCamps(float(mx), float(my))) {
+                campScroll = std::clamp(campScroll - e.wheel.y, 0, std::max(0, int(shown.size()) - campRows()));
+                return false;
+            }
+        }
+        if (e.type == SDL_KEYDOWN) {
+            const auto k = e.key.keysym.sym;
+            if (k == SDLK_UP || k == SDLK_DOWN || k == SDLK_PAGEUP || k == SDLK_PAGEDOWN || k == SDLK_HOME || k == SDLK_END) {
+                const int n = count();
+                if (k == SDLK_UP) sel = std::max(0, sel - 1);
+                if (k == SDLK_DOWN) sel = std::min(std::max(0, n - 1), sel + 1);
+                if (k == SDLK_PAGEUP) sel = std::max(0, sel - visibleRows());
+                if (k == SDLK_PAGEDOWN) sel = std::min(std::max(0, n - 1), sel + visibleRows());
+                if (k == SDLK_HOME) sel = 0;
+                if (k == SDLK_END) sel = std::max(0, n - 1);
+                reveal();
+                return false;
+            }
+            if (k == SDLK_TAB && !shown.empty()) { selectCampaign((camp + 1) % int(shown.size())); return false; }
+        }
+        const std::string fired = view->handle(e, L);
+        return !fired.empty() && hit(fired);
+    }
+    void render(int w, int h) {
+        const GuiLayout L(w, h);
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        view->draw(L);
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        const SDL_Color plain{220, 220, 220, 255}, doneInk{120, 220, 120, 255}, nextInk{255, 232, 64, 255};
+        const int ih = rowH();
+        // A thin bar at a plate's right edge when its list runs past it.
+        auto scrollBar = [&](float x, float y, float h, int first, int rows, int total) {
+            if (total <= rows) return;
+            const SDL_FRect track = L.rect(x - 4, y, 3, h);
+            SDL_SetRenderDrawColor(ren, 60, 70, 50, 200);
+            SDL_RenderFillRectF(ren, &track);
+            const SDL_FRect knob = L.rect(x - 4, y + h * float(first) / float(total), 3, h * float(rows) / float(total));
+            SDL_SetRenderDrawColor(ren, 170, 190, 150, 230);
+            SDL_RenderFillRectF(ren, &knob);
+        };
+        for (int r = 0; r < campRows() && campScroll + r < int(campNames.size()); ++r) {
+            const int i = campScroll + r;
+            const float y = kCampY + float(r * ih);
+            if (i == camp) {
+                const SDL_FRect hl = L.rect(kCampX, y, kCampW - 6, float(ih));
+                SDL_SetRenderDrawColor(ren, 60, 60, 160, 160);
+                SDL_RenderFillRectF(ren, &hl);
+            }
+            // A campaign with every mission done reads DONE, like its missions.
+            const Campaign& cp = all[shown[size_t(i)]];
+            int won = 0;
+            for (int m = 0; m < cp.count(); ++m) won += done(cp, m);
+            rows.draw(ren, L, kCampX + 3, y + 1, campNames[size_t(i)], plain);
+            if (won == cp.count() && won > 0)
+                rows.draw(ren, L, kCampX + kCampW - 10 - float(rows.width("DONE")), y + 1, "DONE", doneInk);
+        }
+        scrollBar(kCampX + kCampW, kCampY + 1, kCampH - 2, campScroll, campRows(), int(campNames.size()));
+        if (campNames.size() > size_t(campRows())) {
+            const std::string where = std::to_string(camp + 1) + " of " + std::to_string(campNames.size());
+            rows.draw(ren, L, kCampX + kCampW - 10 - float(rows.width(where)), 290, where, plain);
+        }
+        const auto* c = current();
+        if (!c) {
+            rows.draw(ren, L, kMisX + 4, kMisY + 2, "No campaign for this side.", SDL_Color{255, 220, 120, 255});
+            return;
+        }
+        const int n = visibleRows();
+        for (int r = 0; r < n && scroll + r < c->count(); ++r) {
+            const int i = scroll + r;
+            const float y = kMisY + float(r * ih);
+            const bool won = done(*c, i);
+            if (i == sel) {   // the selected row: TaGuiView's list highlight
+                const SDL_FRect hl = L.rect(kMisX, y, kMisW - 6, float(ih));
+                SDL_SetRenderDrawColor(ren, 60, 60, 160, 160);
+                SDL_RenderFillRectF(ren, &hl);
+            } else if (i == nextUp) {   // the next-up mission, when not selected
+                const SDL_FRect hl = L.rect(kMisX, y, kMisW - 6, float(ih));
+                SDL_SetRenderDrawColor(ren, 120, 100, 20, 110);
+                SDL_RenderFillRectF(ren, &hl);
+            }
+            const auto& m = c->missions[size_t(i)];
+            std::string title = m.title.empty() ? trimmed(m.stem) : m.title;
+            const float room = kMisW - kStatusW - 14;
+            if (float(rows.width(title)) > room) {
+                while (title.size() > 1 && float(rows.width(title + "...")) > room) title.pop_back();
+                title += "...";
+            }
+            rows.draw(ren, L, kMisX + 3, y + 1, title, i == nextUp ? nextInk : plain);
+            const char* tag = won ? "DONE" : i == nextUp ? "PLAY" : "";
+            if (*tag) rows.draw(ren, L, kMisX + kMisW - 10 - float(rows.width(tag)), y + 1, tag, won ? doneInk : nextInk);
+        }
+        // How far the campaign is: beside the Choose Game caption.
+        int doneCount = 0;
+        for (int i = 0; i < c->count(); ++i) doneCount += done(*c, i);
+        const std::string tally = std::to_string(doneCount) + " of " + std::to_string(c->count()) + " done";
+        rows.draw(ren, L, kMisX + kMisW - 10 - float(rows.width(tally)), 368, tally, doneCount ? doneInk : plain);
+        scrollBar(kMisX + kMisW, kMisY + 1, kMisH - 2, scroll, n, c->count());
+    }
+};
+
 CampaignScreen::CampaignScreen(SDL_Renderer* r,const hpi::Vfs& v,const Settings& s,int tab,
                                std::function<void(const std::string&)> sound,
                                const std::filesystem::path& install)
-    :d_(std::make_unique<Impl>(r,v,s,tab,install)){
-    d_->playSound=std::move(sound);
+{
+    // Total Annihilation data: TA's own screen (no Kingdoms book art to draw).
+    if(!v.has("guis/bod.gui") && v.has("guis/newgame.gui"))ta_=std::make_unique<TaPicker>(r,v,s,tab);
+    else {d_=std::make_unique<Impl>(r,v,s,tab,install);d_->playSound=std::move(sound);}
 }
 CampaignScreen::~CampaignScreen()=default;
-bool CampaignScreen::picked()const{return d_->picked;}
-const std::string& CampaignScreen::pickedStem()const{return d_->stem;}
-const std::string& CampaignScreen::pickedCampaign()const{return d_->campaign;}
+bool CampaignScreen::picked()const{return ta_?ta_->picked:d_->picked;}
+const std::string& CampaignScreen::pickedStem()const{return ta_?ta_->stem:d_->stem;}
+const std::string& CampaignScreen::pickedCampaign()const{return ta_?ta_->campaign:d_->campaign;}
+int CampaignScreen::pickedMission()const{return ta_?ta_->sel:0;}
+int CampaignScreen::pickedSide()const{return ta_?ta_->side:0;}
+int CampaignScreen::pickedDifficulty()const{return ta_?ta_->difficulty:1;}
+void CampaignScreen::setDifficulty(int stage) {
+    if(!ta_)return;
+    ta_->difficulty=std::clamp(stage,0,2);ta_->view->setStage("Difficulty",ta_->difficulty);
+}
+TaGuiView* CampaignScreen::taView(){return ta_?ta_->view.get():nullptr;}
+bool CampaignScreen::press(const std::string& gadget) {
+    if(!ta_)return false;
+    const std::string fired=ta_->view->activate(gadget);
+    return !fired.empty() && ta_->hit(fired);
+}
 
 bool CampaignScreen::input(const SDL_Event& e,int w,int h) {
+    if(ta_)return ta_->input(e,w,h);
     auto& d=*d_;const GuiLayout lay(w,h);
     if(e.type==SDL_KEYDOWN) {
         const auto key=e.key.keysym.sym;
@@ -199,6 +477,7 @@ bool CampaignScreen::input(const SDL_Event& e,int w,int h) {
     return false;
 }
 void CampaignScreen::render(int w,int h) {
+    if(ta_){ta_->render(w,h);return;}
     auto& d=*d_;const GuiLayout lay(w,h);
     SDL_SetRenderDrawBlendMode(d.ren,SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(d.ren,0,0,0,255);SDL_RenderClear(d.ren);

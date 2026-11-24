@@ -1890,6 +1890,12 @@ MainMenu::Choice MainMenu::run(const std::string& shotPath, std::string* serverO
             // rows and the next-up highlight (nothing is locked either way).
             if (tab == 1)
                 for (int i = 0; i < 12; ++i) tmp.campaignCompleted["the iron plague"].insert(i);
+            // TA data (the any-mission screen, tab = side): Arm Campaign's first six
+            // missions done (0), Core Campaign's first three (1).
+            if (tab == 0)
+                for (int i = 0; i < 6; ++i) tmp.campaignCompleted["arm campaign"].insert(i);
+            if (tab == 1)
+                for (int i = 0; i < 3; ++i) tmp.campaignCompleted["core campaign"].insert(i);
             CampaignScreen cs(d_->ren, d_->vfs, tmp, tab, {}, ta::u8path(d_->install));
             cs.render(w, h);
         }

@@ -3114,12 +3114,12 @@ if(TA_BUILD_CLIENT)
     add_test(NAME distant_models COMMAND distant_models_test)
     set_tests_properties(distant_models PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_SHUTDOWN_DBUS_ON_QUIT=1")
     add_executable(campaign_presentation_test tools/campaign_presentation_test.cpp
-        src/client/campaignscreen.cpp src/client/guiart.cpp)
+        src/client/campaignscreen.cpp src/client/taguiview.cpp src/client/guiart.cpp)
     target_compile_definitions(campaign_presentation_test PRIVATE SDL_MAIN_HANDLED)
     target_link_libraries(campaign_presentation_test PRIVATE ta-uifont ta-formats ${_ta_sdl2})
     add_test(NAME campaign_presentation COMMAND campaign_presentation_test)
     add_executable(screen_lifecycle_test tools/screen_lifecycle_test.cpp
-        src/client/loadscreen.cpp src/client/resultscreen.cpp src/client/campaignscreen.cpp
+        src/client/loadscreen.cpp src/client/resultscreen.cpp src/client/campaignscreen.cpp src/client/taguiview.cpp
         src/client/guiart.cpp src/client/cursors.cpp src/video/bink.cpp
         src/client/hotkeys.cpp src/client/settings.cpp)
     target_compile_definitions(screen_lifecycle_test PRIVATE SDL_MAIN_HANDLED)

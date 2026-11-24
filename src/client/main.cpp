@@ -18,6 +18,8 @@
 #include "util/winargv.h"
 
 #include "campaign/campaign.h"
+#include "sim/sides.h"
+#include <cctype>
 #include <utility>
 #include "client/tafrontend.h"
 #include "client/streaming.h"
@@ -1257,6 +1259,10 @@ int main(int argc, char** argv) {
     // to the game list. In memory only, and revoked when the app quits.
     ta::net::SessionToken sessionToken;
     uint64_t retailHash = 0;                                   // see the Hello below
+    // The TA campaign in play (NEWGAME or the CAMPAIGN picker): campaign, mission,
+    // difficulty, W/L/U results. It outlives a session, so ENDMSN's Start (a pending
+    // campaign) launches the mission picked there.
+    ta::TaCampaign taCampaign;
     for (;;) {
     if (ta::termRequested()) { quitApp = true; break; }   // SIGTERM/SIGINT between sessions
     if (fromMenu || !pendingCampaign.empty()) { serverHost = launchServerHost;
@@ -1278,7 +1284,6 @@ int main(int argc, char** argv) {
     // 8 = auto campaign mission (create the mission room, seat, start, then play).
     int mpAutoMode = 0;
     ta::SkirmishSetup skirmishSetup;   // TA SKIRMISH screen (kept between games)
-    ta::TaCampaign taCampaign;         // TA NEWGAME pick: campaign, mission, difficulty, W/L/U results
     bool skirmishLaunch = false;
     bool menuInteractive = false;   // menu single-player -> interactive lobby, not auto-play
     bool tokenLaunch = false;       // GAME SELECT, signing in with the sign-in token
@@ -1378,7 +1383,6 @@ int main(int argc, char** argv) {
             }
             if (tc == ta::TaFrontEnd::Choice::EngineMulti) engineOnly = ta::MainMenu::Choice::Multiplayer;
             if (tc == ta::TaFrontEnd::Choice::Options) engineOnly = ta::MainMenu::Choice::Options;
-            if (tc == ta::TaFrontEnd::Choice::EngineCampaign) engineOnly = ta::MainMenu::Choice::Campaign;
             if (tc == ta::TaFrontEnd::Choice::Multiplayer) {
                 // SELPROV -> TCP: the engine server at the typed address (blank: this
                 // machine), signed in as the player's name.
@@ -1444,6 +1448,40 @@ int main(int argc, char** argv) {
             if (choice == ta::MainMenu::Choice::Campaign) {
                 campaignStem = menu.chosenMission();
                 campaignId = menu.chosenCampaign();
+            }
+            // The engine menu's campaign picker on TA data picks a TA campaign mission
+            // ("ta:<camps stem>", "<missionfile>:<difficulty>"): it is briefed and
+            // launched through TA's campaign path, as the title screen's CAMPAIGN does.
+            if (choice == ta::MainMenu::Choice::Campaign && campaignId.rfind("ta:", 0) == 0) {
+                auto lowerAscii = [](std::string v) {
+                    for (char& ch : v) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+                    return v;
+                };
+                ta::TaCampaign picked;
+                const auto colon = campaignStem.rfind(':');
+                const std::string file = campaignStem.substr(0, colon);
+                if (ta::loadTaCampaign(vfs, campaignId.substr(3), picked)) {
+                    for (size_t i = 0; i < picked.missions.size(); ++i)
+                        if (lowerAscii(picked.missions[i].file) == lowerAscii(file)) picked.cur = int(i);
+                    if (colon != std::string::npos) picked.difficulty = std::clamp(std::atoi(campaignStem.c_str() + colon + 1), 0, 2);
+                    for (const auto& c : ta::loadCampaigns(vfs))   // [HEADER] campaignside -> sidedata index
+                        if (c.id == lowerAscii(picked.name))
+                            for (int i = 0; i < ta::sides::count(); ++i)
+                                if (lowerAscii(ta::sides::at(i).name) == lowerAscii(c.side)) picked.side = i;
+                    picked.fromPicker = true;
+                    taCampaign = std::move(picked);
+                }
+                campaignStem.clear(); campaignId.clear();
+                if (taCampaign.fromPicker && taCampaign.active()) {
+                    ta::TaFrontEnd front(ren, win, vfs);
+                    const auto tc = front.briefing(skirmishSetup, taCampaign);
+                    if (tc == ta::TaFrontEnd::Choice::Exit) { quitApp = true; break; }
+                    if (tc != ta::TaFrontEnd::Choice::Campaign) continue;
+                    campaignStem = taCampaign.spec();
+                    campaignId = "ta:" + taCampaign.name;
+                    args.clear();
+                    args.push_back(taCampaign.mapName());
+                }
             }
             if (tokenLaunch) {
                 menuServer = lastServer;
@@ -3311,6 +3349,15 @@ int main(int argc, char** argv) {
         // ENDMSN; Start goes through MSNBRIEF to the picked mission.
         const int oc = gameView->missionOutcomePublic();
         localServer.stop(); gameView.reset(); mp.reset();
+        // Not retail (docs/retail-campaign.md 1.4 keeps no unlock): the engine's
+        // campaign picker marks a won mission DONE, keyed like Campaign::id (the
+        // lowercased camps stem), whichever screen started the campaign.
+        std::string doneId = taCampaign.name;   // Campaign::id, trimmed as settings.ini keys are
+        for (char& ch : doneId) ch = char(std::tolower(static_cast<unsigned char>(ch)));
+        while (!doneId.empty() && (doneId.back() == ' ' || doneId.back() == '\t')) doneId.pop_back();
+        while (!doneId.empty() && (doneId.front() == ' ' || doneId.front() == '\t')) doneId.erase(doneId.begin());
+        if (oc > 0 && taCampaign.active() && settings.campaignCompleted[doneId].insert(taCampaign.cur).second)
+            ta::saveSettings(settings);
         ta::TaFrontEnd front(ren, win, vfs);
         if (oc > 0 && taCampaign.active()) {
             std::string glamour, glamourSound;
