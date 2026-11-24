@@ -94,11 +94,27 @@ int retailStandbyWander(RetailMissionState& m,uint32_t tick,bool hasMover,bool h
     }
 }
 
-// 4175c8..417741: ordinary VTOL_Standby after boundary recovery/diversion.
-// Landing and target-order installation remain explicit host operations.
-template<class Random,class Initialize,class TryOrder,class TryLand>
+// TotalA.exe VTOL_Standby (0x40f7d0; air mission table 0x4fca18 row 0).
+// Wakes are the engine's: 0x20 is the order event (TA's 0x10000).
+//   stage 0 (0x40f9b8): no mover or not a flyer ends it (7); every slot
+//            manual (0x4898b0(3)) and the post (+0x2e / +0x30) where the
+//            flyer is (initialize); a tick's sleep, waking on orders too.
+//   stage 1 (0x40f988): the target scan (0x43b700) and 0x43b1f0(unit, hit,
+//            0): an attack put in clears the wait mask and the stage (3).
+//            Otherwise straight on to stage 2 (1).
+//   stage 2 (0x40f7f8): an airborne flyer (unit +0x110 & 3 == 2) carrying a
+//            passenger (+0x8a) loiters: a point controller at the post plus
+//            rand(32) + 8 px along rand(0x10000), at cruisealt
+//            (0x40f82f..0x40f8cf), a sleep of 30 + rand(15), stage 1 (2).
+//            One with none puts VTOL_LandIfCan at the head of its queue
+//            (0x43acb0) and the standby ends (5; 0x40f8f9..0x40f930). On the
+//            ground: a sleep of 30 + rand(30) that orders also wake, stage 1
+//            (0x40f957..0x40f979).
+// Kingdoms' stage 2 slept 7 + rand(7) and had no loiter.
+template<class Random,class Initialize,class TryOrder,class Loiter,class Land>
 int retailVtolStandby(RetailMissionState& m,uint32_t tick,bool hasMover,bool canFly,
-                      bool airborne,Random random,Initialize initialize,TryOrder tryOrder,TryLand tryLand) {
+        bool airborne,bool carrying,Random random,Initialize initialize,TryOrder tryOrder,
+        Loiter loiter,Land land) {
     switch (m.stage) {
     case 0:
         if (!hasMover || !canFly) return 7;
@@ -107,8 +123,14 @@ int retailVtolStandby(RetailMissionState& m,uint32_t tick,bool hasMover,bool can
         if (tryOrder()) { m.waitMask=0; m.stage=0; return 3; }
         return 1;
     case 2:
-        if (canFly && airborne && tryLand()) return 5;
-        m.waitMask|=0x20; m.sleep(tick,random(7)+7); m.stage=1; return 2;
+        if (canFly && airborne) {
+            if (!carrying) { land(); return 5; }
+            const uint16_t angle=uint16_t(random(0x10000));
+            const int32_t distance=int32_t(random(0x20))+8;
+            loiter(angle,distance);
+            m.sleep(tick,random(15)+30); m.stage=1; return 2;
+        }
+        m.waitMask|=0x20; m.sleep(tick,random(30)+30); m.stage=1; return 2;
     default: return 7;
     }
 }

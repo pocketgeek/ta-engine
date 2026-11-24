@@ -544,6 +544,7 @@ struct UnitType {
     // `categories`. The sweep's selector never picks a noTarget candidate and
     // takes a badTarget one only when nothing else qualifies (icd 412620).
     std::vector<std::string> noTargetCats;
+    std::vector<std::string> noChaseCats;   // nochasecategory, TotalA.exe type +0x23d
     std::array<std::vector<std::string>,3> badTargetCats;
     // weaponswitching: this unit carries ONE active weapon at a time, picked by the
     // player. Without it, a multi-weapon unit fires every weapon independently.
@@ -914,11 +915,11 @@ struct alignas(64) Order {
     // x/z and its controller in flightGoal. 0 on every other order. Hashed
     // with a tag when set.
     uint8_t stepOut = 0;
-    // VTOL_SeekGuard (4197d0, tickSeekGuard): what a flyer's guard becomes when
-    // its guarded unit is lost and the guard was its last order (VTOL_Follow's
-    // 4191d7, seekLostWard). It circles x/z, the guarded unit's position at
-    // the guard's last look (mission +0x22, kept in attackPointX/Z on the
-    // guard), on `mission`, its orbit angle in guardOrbitAngle (+0x4e), and
+    // VTOL_SeekGuard (TotalA.exe 0x410850, tickSeekGuard): what a flyer's guard
+    // becomes when its guarded unit is lost and the guard was its last order
+    // (VTOL_Follow's 0x410341, seekLostWard). It circles x/z, the guarded unit's
+    // position at the guard's last look (mission +0x22, kept in attackPointX/Z
+    // on the guard), on `mission`, its orbit angle in guardOrbitAngle (+0x36), and
     // guards the first allied ground unit it finds. targetId stays 0. In the
     // pad after stepOut. Hashed with a tag.
     bool seekGuard = false;
@@ -1014,8 +1015,8 @@ struct alignas(64) Order {
     // a flyer's is only its approach. The leg goes when that job ends, however
     // it ends. Hashed with a tag when set.
     int helpSite = 0;
-    // A flyer's guard (VTOL_Follow 0x418860, World::tickFlyingGuard): its
-    // orbit angle around the guarded unit (mission +0x4e, read as a word).
+    // A flyer's guard (VTOL_Follow, TotalA.exe 0x40fbe0, World::tickFlyingGuard):
+    // its orbit angle around the guarded unit (mission +0x36, read as a word).
     // Drawn once (rand(0x10000)) when the guard starts, stepped back by
     // 0x4000 + rand(0x2000) each time the orbit point is reached. The guard
     // runs on `mission` (stage 2 once started; its deadline is the next look).
@@ -1445,11 +1446,6 @@ struct alignas(64) Unit {
     // Retail unit+0x10e: the 1/256-HP remainder self-repair carries between calls
     // (retailSelfRepairPoints). Zero at creation, like retail's (0x511ae2).
     uint8_t healCarry = 0;
-    // Retail unit +0x12a: a flyer's air-traffic counter (retailAirTrafficStep),
-    // stepped from its overlap list after each occupancy rebuild. Every flyer
-    // mission steps out of a stack at 5 or more (8 for a flying builder at
-    // work). Hashed when nonzero.
-    int8_t airTraffic = 0;
     RetailAirOccupant airOccupant; // secondary occupancy list/origin (+0x117..+0x128)
     RetailFlightVector flightVelocity;
     std::array<int32_t,3> flightAcceleration{}; // retained native banking input
@@ -1714,6 +1710,10 @@ struct alignas(64) Unit {
     econ::UnitBooks books;
     float buildRemaining = 0;
     bool buildStarted = false;
+    // TotalA.exe VTOL_Standby's post (mission +0x2e / +0x30, set at stage 0,
+    // 0x40f9ed..0x40f9fc): the integer position a passenger-carrying flyer
+    // loiters round (0x40f839..0x40f853). Hashed while it carries one.
+    int16_t standbyPostX = 0, standbyPostZ = 0;
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -1768,7 +1768,7 @@ inline constexpr size_t kUnitPrefetchHot=9*64;
                   "Unit::" #field " must sit on cache lines " #first "-" #last)
 TA_UNIT_LINE(standbyState, 8); TA_UNIT_LINE(guardNoMoveState, 8); TA_UNIT_LINE(standbyAllowed, 8);
 TA_UNIT_LINES(deathAnimationTicks, 8, 11); TA_UNIT_LINES(corpseUntil, 8, 11); TA_UNIT_LINES(corpseStatue, 8, 11);
-TA_UNIT_LINES(corpseFading, 8, 11); TA_UNIT_LINES(airTraffic, 9, 11); TA_UNIT_LINES(airOccupant, 9, 11);
+TA_UNIT_LINES(corpseFading, 8, 11); TA_UNIT_LINES(airOccupant, 9, 11);
 TA_UNIT_LINES(flightVelocity, 9, 11);
 TA_UNIT_LINES(flightAcceleration, 9, 11); TA_UNIT_LINES(flightNavigation, 9, 11);
 TA_UNIT_LINES(retainedFlightGoal, 9, 11); TA_UNIT_LINES(flightSectorZ, 9, 11);
@@ -1844,6 +1844,9 @@ struct FeatType {
     // also resurrectable, not the other way round.
     bool animatable = false;
     bool reclaimable = false;
+    // TDF autoreclaimable (feature flags +0xfe bit 8, default 1; 0x422baf):
+    // VTOL_RepairPatrol's feature look (0x47ea40) takes only these.
+    bool autoReclaimable = true;
     bool isStone = false;    // TDF isstone=1 (statue: client tints it stone-gray)
     bool isFrozen = false;   // TDF isfrozen=1 (client tints it ice-blue)
     bool indestructible = false;
@@ -2762,6 +2765,7 @@ public:
     void repair(int builderId, int targetId, bool queue);
     void tickRepair(Unit& b, float dt);
     void tickPatrolRepair(Unit& b);
+    void tickFlyingPatrolLook(Unit& b);
     void setPatrolRepairs(bool enabled) { patrolRepairs_=enabled; }
     // True if (x,z) lies over water (for choosing the water impact effect).
     // Retail (icd 0x509760): a unit is "on road" only when EVERY cell under its
@@ -4198,14 +4202,10 @@ private:
     void seekLostPoint(Unit& u, Fixed x, Fixed z);
     bool seekLostTarget(Unit& u, const Unit* target, bool targetLive);
     void tickSeekAttack(Unit& u, bool carriesTarget = false);
-    // VTOL_Follow's lost ward (4191d7) and VTOL_SeekGuard (4197d0).
+    // VTOL_Follow's lost ward (TotalA.exe 0x410341) and VTOL_SeekGuard (0x410850).
     bool seekLostWard(Unit& u);
     void tickSeekGuard(Unit& u);
     int seekGuardFind(const Unit& u) const;
-    // A flying builder's job at a wake of its mission (VTOL_MobileBuild,
-    // VTOL_HelpBuild, VTOL_RepairUnit): Kingdoms' air-traffic check; TA's
-    // jobs have none (TotalA.exe 0x413d80 / 0x414380 / 0x414e70), so never.
-    std::optional<int32_t> flyingJobTraffic(Unit& b, RetailTrafficMission mission);
     void restartFlyingHelp(Unit& b, const Unit& site);
     void flyMissionGoal(Unit& u, Order& order);
     // Retail's air traffic (retailairtraffic.h): a step-out order pushed ahead
@@ -4219,9 +4219,10 @@ private:
     bool flightLandingFree(const Unit& u, Fixed x, Fixed z) const;
     bool flyerLandingOccupied(const Unit& self, int x0, int z0, int fx, int fz) const;
     // A flyer standing on the ground for Legion's purposes (W6, PLAN 3.6):
-    // landed (mode 1), or descending in the landing mission's stage 3.
+    // landed (mode 1), or descending in the landing mission's stage 2 (TotalA.exe
+    // VTOL_LandIfCan 0x40f3e4).
     static bool flyerGrounded(const Unit& f) {
-        return f.flightGroundMode==1 || (f.landing && f.landing->mission.stage==3);
+        return f.flightGroundMode==1 || (f.landing && f.landing->mission.stage==2);
     }
     std::pair<int,int> cellHeightRange(size_t cell) const;
     // A fight-move leg: attackMove, and off a patrol Move response mode -1
@@ -4614,7 +4615,7 @@ private:
     bool placeMapFeature(const Feature& f,uint8_t owner=kRetailWorldFeatureOwner);
     // A FLYING reclaimer's acceptance (VTOL_RECLAIM 420xxx is not ported):
     // within 24 px plus half the target plus builddistance of its centre.
-    bool flyerReclaimInReach(const Unit& b,int target) const;
+    bool flyerReclaimInReach(const Unit& b,const Order& leg) const;
     // Resolve a reclaim target to its installed plane anchor and footprint
     // (a corpse: its corpse feature). False when it is gone.
     bool reclaimTargetFootprint(int target,int& x,int& z,int& fx,int& fz,float& energy) const;

@@ -1,7 +1,6 @@
-// AirToAir (41ca50) and VTOL_Evade (41e3d0): a flyer attacking a unit whose
-// type can fly dogfights it. tools/re/check_air_to_air.py compares the
-// handlers, their facing test and their moving controller with the original
-// executable; this checks World runs them: which attacks get the mission,
+// AirToAir (TotalA.exe 0x412d40) and VTOL_Evade (0x413bc0): a flyer
+// attacking a unit whose type can fly dogfights it (retail_motion_test holds
+// the handlers' fixed answers); this checks World runs them: which attacks get the mission,
 // that the attacker keeps flying, that its weapons reach a flying target (the
 // Phoenix's air-to-air laser, the Thunder's bombs) and that a break-off is
 // flown and handed back to the attack.

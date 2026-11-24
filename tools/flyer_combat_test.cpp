@@ -545,6 +545,43 @@ int main(int argc,char** argv) {
             // A working builder pivots toward its job, so MoveRate may be 1.
             reportHold(w,flyer,holds[hold],held,true);
         }
+        // TotalA.exe VTOL_RepairPatrol (0x4152f0): a Construction Aircraft
+        // (canreclamate) on patrol looks every 45 ticks -- with energy to
+        // spare, a random damaged ally within sightdistance gets VTOL_RepairUnit
+        // (0x43b400) and the patrol goes to the end of the queue; with metal
+        // short, a reclaimable feature round it gets VTOL_Reclaim (0x47ea40).
+        for (int look=0;look<2;++look) {
+            ta::sim::World w;w.setPlayerCount(2);
+            w.setTerrain(std::vector<uint8_t>(256*256,100),256,256,20);
+            w.buildNavClasses(registry);
+            ta::sim::FeatType rock;rock.reclaimable=true;rock.metal=40;rock.energy=0;
+            w.setFeatureTypes({rock});
+            w.setStartResources(0,look==0 ? 100000.f : 0.f,look==0 ? 100000.f : 0.f);
+            const int flyer=w.spawn(registry.find("armca"),1000,1000,0,0);
+            int patient=0;
+            auto still=*registry.find("corak");still.maxVel={};still.healTime=0;
+            if (look==0) {
+                patient=w.spawn(&still,1150,1000,0,0);
+                w.unit(patient)->hp=ta::sim::Fixed::fromInt(still.maxHp/2);
+            } else {
+                int id=5000;
+                for (int z=880;z<=1120;z+=16) for (int x=1100;x<=1300;x+=16) w.addFeature(id++,float(x),float(z),0,1,1,false,0);
+            }
+            w.patrol(flyer,1600,1000);
+            bool repaired=false,rotated=false,reclaimed=false;
+            for (int tick=0;tick<1500 && !(look==0 ? repaired : reclaimed);++tick) {
+                w.tick(1.f/30.f);
+                const auto* u=w.unit(flyer);
+                if (look==0 && u->repairId==patient && !u->orders.empty() && u->orders.front().patrolRepair)
+                    rotated=u->orders.back().patrol;
+                if (look==0) repaired=w.unit(patient)->hp>=ta::sim::Fixed::fromInt(still.maxHp);
+                if (look==1 && u->reclaimId) reclaimed=true;
+            }
+            if (look==0) {
+                check(repaired,"a patrolling Construction Aircraft repairs a damaged ally it passes (VTOL_RepairPatrol)");
+                check(rotated,"...its patrol leg goes to the end of the queue behind the repair (0x415564)");
+            } else check(reclaimed,"a patrolling Construction Aircraft short of metal reclaims a feature it passes");
+        }
         // Retail's impact dispatch (529c10): a weapon with areaofeffect <= 16
         // that struck a unit hits it alone (52a460); every other impact damages
         // units by the distance from the 3D impact to their bounding boxes

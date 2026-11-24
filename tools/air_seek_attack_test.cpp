@@ -1,9 +1,9 @@
-// VTOL_SeekAttack (4192f0): an attack flyer whose target is lost circles the
+// VTOL_SeekAttack (TotalA.exe 0x4103e0): an attack flyer whose target is lost circles the
 // target's last point and, on Fire At Will, attacks the next enemy that comes
 // near. tools/re/check_air_seek_attack.py compares the handler and the
 // lost-target exits (41c8f6, 41d654) with the original executable; this
 // checks World runs them: AirToGround's and AirToAir's kills push the seek,
-// the flyer orbits at the selected weapon's range + 160 px and keeps flying,
+// the flyer orbits at slot 0's weapon range + 160 px and keeps flying,
 // a new enemy at the point is attacked on Fire At Will and not on Return
 // Fire, and no seek follows on Hold Fire, behind a queued order or after an
 // idle flyer's own auto attack (which sits on its default mission).
@@ -76,8 +76,7 @@ Run run(const TypeRegistry& registry,const UnitType& attacker,const UnitType& vi
     w.unit(me)->moveState=2;   // Roam: some flyers' FBI holds position, and 4d7de0 refuses those
     if (setup!=Setup::Idle) w.attack(me,them,false);
     if (setup==Setup::Queued) w.order(me,vx+900,vz+900,true);
-    const int slot=attacker.weaponSwitching ? std::clamp(w.unit(me)->weaponSlot,0,int(weapons.size())-1) : 0;
-    r.radius=float(weapons[size_t(slot)].range+160);
+    r.radius=float(weapons.front().range+160);   // slot 0's range (0x41063e)
     float lastX=vx,lastZ=vz;
     int fresh=0;
     for (int tick=0;tick<1800 && !r.killed;++tick) {
@@ -190,7 +189,8 @@ int main(int argc,char** argv) {
             check(idle.killed && !idle.seek,"an idle flyer's auto attack ends without a seek",what);
         }
         check(tested>=3,"enough flyers made a kill",balance);
-        // AirToAir: a flyer killing a flyer seeks round its last led point.
+        // AirToAir: a flyer killing a flyer seeks round the target's last point
+        // (TotalA.exe's AirToAir never writes mission +0x22).
         int airTested=0;
         for (const auto& name:flyers) {
             const auto& type=*registry.find(name);
@@ -200,7 +200,7 @@ int main(int argc,char** argv) {
             ++airTested;
             std::printf("%s air-to-air: kill=%d point error=%.1f hops=%d\n",what.c_str(),air.killTick,air.pointError,
                         air.hops);
-            check(air.seek && air.pointError<64,"an AirToAir kill pushes the seek at the led point",what);
+            check(air.seek && air.pointError<64,"an AirToAir kill pushes the seek at the target's last point",what);
         }
         check(airTested>=3,"enough flyers made an air kill",balance);
     }

@@ -186,14 +186,8 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   position from its stage 1 (0x415048) and repairs under it (0x415098).
 
 ## Open
-- Kingdoms behaviour still in place: the flyer missions' stages beyond the
-  step-out and group checks are still Kingdoms' (VTOL_Move 0x40fa20 is three
-  stages -- take-off, a point controller at the footprint-snapped goal, done --
-  with no Maneuver scan or coarse-then-precise arrival; VTOL_RepairUnit's
-  approach is radius 0 over the target and its work has no range test, World
-  keeps a 2 x builddistance ring); the air-traffic counter and occupancy lists
-  (Kingdoms 51dc4b) still update, unread; nanoframe outlines are front-facing
-  only and use painter's order (retail depth-tests per pixel).
+- Nanoframe outlines are front-facing only and use painter's order (retail
+  depth-tests per pixel).
 - Death accounting (countTaDeath, retailveterancy.h): World's death pipeline
   still runs on Kingdoms death kinds (Unit::deathType: severity, Killed/Dying, the
   death weapon), mapped onto TA's for counting only. Not yet TA-shaped: the
@@ -216,6 +210,50 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   Kingdoms' 409a50 (TA's own response, 0x406f80..0x4071aa, is not ported). The
   speech queue's global spacing (+0x9d/+0xa1, 0x47f6bb) is not modelled: one
   request per frame, text at once.
+- Air missions (ported 2026-11-24 from TotalA.exe, air table 0x4fca18):
+  VTOL_Move 0x40fa20 (take-off over the spot to cruisealt/2 when landed, a
+  radius-0 controller at the footprint-snapped goal, done), VTOL_Patrol
+  0x410e70 (320 px past the leg, radius 0x150, sleep 30), VTOL_RepairPatrol
+  0x4152f0 (legs at cruisealt, radius 0, sleep 45; job search
+  tickFlyingPatrolLook), VTOL_Standby 0x40f7d0 / VTOL_LandIfCan 0x40f2a0,
+  VTOL_Follow 0x40fbe0, VTOL_SeekGuard 0x410850, AirToAir 0x412d40 (with
+  VTOL_Evade 0x413bc0), VTOL_SeekAttack 0x4103e0, VTOL_RepairUnit 0x414e70
+  (radius 0 over the target, no range test), VTOL_Reclaim 0x414770. The
+  air-traffic counter is gone (TA has no step-out); the occupancy grid and its
+  overlap lists stay (TA's landing test 0x47e2d0 reads cell word +2; projectiles
+  read the grid; how TA maintains word +2 is untraced). Still open:
+  - No repair pads: VTOL_Landing 0x4118e0 (QueryLandingPad, SELFREPAIR) and
+    VTOL_GetRepaired 0x415250 are not ported, so the under-3/4-health pad
+    detours of VTOL_Patrol (0x410f3e), VTOL_RepairPatrol (0x415397),
+    VTOL_SeekAttack (0x410518), VTOL_SeekGuard (0x410972) and AirStrike are
+    skipped.
+  - Every TA flyer mission's stage 0 makes the slots manual (0x4898b0(3));
+    World keeps an idle flyer's (VTOL_Standby 0x40f9d3, LandIfCan 0x40f6a3)
+    automatic because the Hold Position exception (tickHoldLift, hold_flyer)
+    relies on it; VTOL_Move clears and restores them at once.
+  - The take-off climb of VTOL_RepairUnit / VTOL_Reclaim / VTOL_RepairPatrol's
+    jobs (0x414fe1, 0x41485e) and AirToAir / SeekAttack (0x4133fa, 0x4107c6)
+    is not modelled; LandIfCan's off-map return (0x40f2e3) is not ported.
+  - VTOL_RepairPatrol's job search runs on a 45-tick timer from
+    tickPatrolRepair, not from its stage-1 wake; the ground RepairPatrol
+    (0x405980) is still Kingdoms'. A fight-move leg (ours; TA has none) keeps
+    a scan on VTOL_Move. The step-out mission (retailVtolStepOut,
+    Order::stepOut) is now never pushed and could be deleted.
+- Nanoframe outlines are front-facing only and use painter's order (retail
+  depth-tests per pixel).
+- Result plate: Kills / Losses still count by the Kingdoms death kinds
+  (retailveterancy.h); TA's rule is the death routine's switch at 0x486892 (table
+  0x486e64: kinds 1 and 6 always a loss, 5 only when another player hit it last, 3
+  by alliance; the kill when finished and the hitter is another player), with the
+  TA damage kinds of 0x489bb0's callers (weapon 1/2, self-destruct 3, ...) not yet
+  mapped onto the engine's. The bar and well colours (game +0xdcf / +0xdd3) and
+  the PlayerColor gadget's art are stand-ins.
+- Under-attack alert: 0x406f80 also skips a unit whose current order has flag
+  0x80 and fires only when the previous hit came from another player or was an
+  ordinary weapon hit (victim +0xf4 / +0xf5, read before this hit updates them);
+  neither is modelled (every damaged own unit asks). The speech line "<unit>:
+  Under Attack" (0x47ff69 -> 0x463ca0) and the speech/text level options (game
+  +0x37f17 / +0x37f18) are not ported.
 - A PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
   units in the field) can still circle in the ring's acceptance gap -- the
   octile distance (0x44d840) is 0 a cell inside the squared inner test

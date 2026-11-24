@@ -463,7 +463,7 @@ namespace {
 // Feature definition fields the sim cares about: is it a mana deposit, and its
 // footprint (for nav blocking). Loaded from the feature TDFs.
 struct FeatDef { bool mana = false; bool glowy = false; int blocking = 0; int fx = 1, fz = 1;
-                 int reclaimable = 0; float energy = 0, metal = 0; float sacredSite = 0;
+                 int reclaimable = 0; bool autoReclaimable = true; float energy = 0, metal = 0; float sacredSite = 0;
                  uint8_t projectileHeight = 0;
                  // Burning chain (see World::tickBurning).
                  bool flamable = false; bool hasBurnAnim = false; uint32_t burnTicks = 0;
@@ -506,6 +506,7 @@ std::unordered_map<std::string, FeatDef> loadFeatureDefs(const hpi::Vfs& vfs) {
                     d.fx = int(node.numberOr("footprintx", 1));
                     d.fz = int(node.numberOr("footprintz", 1));
                     d.reclaimable = int(node.numberOr("reclaimable", 0));
+                    d.autoReclaimable = (int32_t(node.numberOr("autoreclaimable", 1)) & 1) != 0;
                     d.projectileHeight = uint8_t(int(node.numberOr("height", 0)));
                     // TA: metal/energy read as int & 0xffff, then float (0x422e40).
                     d.energy = float(int32_t(node.numberOr("energy", 0)) & 0xffff);
@@ -579,6 +580,7 @@ struct FeatTypeInterner {
         t.resurrectable = di->second.resurrectable;
         t.animatable = di->second.animatable;
         t.reclaimable = di->second.reclaimable != 0;
+        t.autoReclaimable = di->second.autoReclaimable;
         t.isStone = di->second.isStone;
         t.isFrozen = di->second.isFrozen;
         t.indestructible = di->second.indestructible;

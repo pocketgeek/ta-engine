@@ -13,46 +13,42 @@
 
 namespace ta::sim {
 
-// AirToAir (mission registry row 5ebd82, handler 41ca50): the attack mission
-// 4de530 gives a flyer whose target's type can fly, unless the selected
-// weapon has `dropped` (WeaponType +0xc8 bit 0x20, no shipped weapon sets it:
-// a `subtype=Dropped` bomb does not count). hoverattack plays no part: a Tarbeak
-// or a dragon dogfights a flyer too. The mission flies the attacker and never
-// fires: the weapon update (52ae90) fires the selected slot whenever its
-// target is in range, a Dropped bomb included (its in-range virtual is the
-// base 2D test 530580, noairweapon/toairweapon apart).
+// AirToAir (TotalA.exe air mission table 0x4fca18 row 8, handler 0x412d40,
+// flags 0x200): the mission of a flyer attacking a flyer. It flies the
+// attacker; slot 0 fires on its own (the weapon update).
 //
-//   stage 0: 416c50 (Activate, BeginFlight, take-off), sleep 1.
-//   stage 1: every slot automatic, the selected one manual and aimed at the
-//            target (519b10(3), 519b70, 51a700), sleep 1.
-//   stage 2: every 7 + rand(15) ticks: with the selected slot's led
-//            SweetSpot P (51aa50) and R = airtoairdistance (the selected
-//            weapon's +0xc6, else the type's +0x25a; default
-//            sqrt(hoverattackdistance^2 + hoverattackaltitude^2) with a
-//            hoverattackdistance, else 100), it either pursues -- a point R
-//            px short of P on the line from the flyer -- or, threatened,
-//            repositions to a random point R +- R/2 px from P on its own
-//            side, or breaks off into VTOL_Evade (41e3d0). Both points are
-//            flown with the moving controller below, whose velocity starts as
-//            the target's and turns toward the line from the flyer to P.
+//   head:    the lost-target events 0x10008 (0x412d4a; the engine's 0x28) end
+//            it (5), first appending VTOL_SEEKATTACK when it is the last
+//            mission (+0x4a) -- World's seekLostTarget; off the map, 800 px
+//            toward the playable map's centre, radius 128 (0x412e54..0x412f44,
+//            retailTaAirReturnToMap); the leash (+0x3e, 0x412f47) is the host's.
+//   stage 0: (0x413397) no mover or not canfly ends the list (7); every slot
+//            manual (0x4898b0(3)), out of a transport, Activate; landed, the
+//            take-off (0x43d210(2), a point controller on the spot at half
+//            cruisealt); a tick's sleep, the counter (+0x36) 0.
+//   stage 1: (0x412fb2) every slot automatic, slot 0 manual and aimed at the
+//            target (0x489800(3), 0x4898b0(0), 0x48a060(unit, target, 0)).
+//            Woken by the controller (0xe0) with the target ahead (a 20 px
+//            dot product, 0x412fda..0x413054): the attack run, a moving
+//            controller one second of top speed ahead along the heading,
+//            moving at top speed, a sleep of 60 + rand(30), the counter 0
+//            (0x41305a..0x413156). Woken by the controller with the target
+//            behind, or by the sleep with the counter at 90 or more: VTOL_EVADE
+//            ahead of it (0x43acb0), the controller dropped, the counter and
+//            wait mask 0, back to stage 0 (0x41332f..0x413394). Otherwise
+//            (0x41316d): the counter 0 with the target ahead, else +45; more
+//            than 160 px from the target, a moving controller at the target
+//            led by 45 ticks of its velocity, moving at that velocity plus
+//            half the target's top speed along its heading (0x413237..0x413307);
+//            a sleep of 45 waiting on 0x100e8 (0x41330c..0x41331d).
 //
-// Every draw is 535cc0, the shared game random number generator. The host has
-// made the head's checks (the unit may attack, a live target, the leash at
-// mission +0x56). Past the restart (0x40) comes the group check (41ccde,
-// retailAirGroupCheck: 51d1e0(unit, 1, 5), VTOL_Move_Formation at level -4
-// ahead), as AirToGround's; VTOL_Evade has the same one past its off-map
-// return (41e55a), its next mission being the AirToAir behind it.
-// Stage 2's air-traffic check (41ce48): with unit +0x12a at 5 or more, an auto
-// attack first rescans on rand(2) == 0 (4d8370, 4d7de0) and ends if it put a
-// new attack ahead; then VTOL_StepOut goes ahead with D = (rand(15) + the
-// target's footX + its own) x 16, and the attack starts again at stage 0 a
-// tick after it ends. Every abort returns 5; the VTOL_SEEKATTACK a lost
-// target pushes first (41d654) is the host's (retailAirLostTarget,
-// retailairseek.h).
+// No group check, rescan or air-traffic step-out: TotalA.exe's mission tables
+// hold none (docs/ta-port-plan.md). The only draw is the attack run's rand(30)
+// (0x4b6c30), the shared game random number generator.
 
-// 41d780: whether `a` lies in the half plane ahead of `b` once b's facing is
-// turned by octant x 45 degrees. Both directions are 20 px vectors (5360bf /
-// 5360f3); the test multiplies their whole-pixel words in 16 bits.
+// 41d780 (Kingdoms): whether `a` lies in the half plane ahead of `b` once b's
+// facing is turned by octant x 45 degrees. Both directions are 20 px vectors;
+// the test multiplies their whole-pixel words in 16 bits.
 inline bool retailAirAhead(RetailFlightVector a,RetailFlightVector b,uint16_t heading,int octant) {
     const uint16_t toB=uint16_t(retailDirection(
         Fixed::raw(satSub32(b.x,a.x)),
@@ -65,21 +61,37 @@ inline bool retailAirAhead(RetailFlightVector a,RetailFlightVector b,uint16_t he
     return int16_t(dot)>=0;
 }
 
-// The controller AirToAir and VTOL_Evade fly (vtable 5f29a8, 0x2c bytes,
-// built by 4e4560): a point that moves on by its own velocity each time the
-// navigator asks for it. Its type (vtable +0x08 answers 3) makes the
-// navigator fly it at cruise height at any distance (524b84), and it is never
-// let go on arrival (+0x2c answers 1): the navigator posts 0x100 to its
-// mission while the flyer is within 48 px.
+// TotalA.exe AirToAir's facing test (0x412fda..0x413054, again at
+// 0x41316d..0x4131e7): the 20 px vector toward the target (0x48a980(unit,
+// target), 0x4b70ef / 0x4b7123, negated) against the 20 px heading vector
+// (0x4103a0 on unit +0x66); the whole-pixel words multiplied, the sum's low
+// 16 bits strictly positive.
+inline bool retailTaAirAhead(RetailFlightVector unit,RetailFlightVector target,uint16_t heading) {
+    const uint16_t toward=uint16_t(retailDirection(
+        Fixed::raw(satSub32(unit.x,target.x)),
+        Fixed::raw(satSub32(unit.z,target.z))).v);
+    constexpr int32_t length=20*65536;
+    auto whole=[](int32_t value) { return int(int16_t(uint32_t(-value)>>16)); };
+    const int dot=whole(retailScaledSine(toward,length))*whole(retailScaledSine(heading,length))+
+                  whole(retailScaledCosine(toward,length))*whole(retailScaledCosine(heading,length));
+    return int16_t(dot)>0;
+}
+
+// TotalA.exe's moving controller (vtable 0x4fd3f8, 0x2c bytes, ctor
+// 0x44e740: point +0xa, velocity +0x16, flags +8 = 0): a point that moves on
+// by its own velocity each time the navigator asks for it (0x44ea60, x and z
+// only). Its type (+0x08, 0x44e7a0) answers 3: the navigator flies it at
+// cruise height at any distance (0x44ec10, its altitude setter, does
+// nothing). Within 48 px (0x44eb60) the navigator posts arrival and, as
+// +0x2c (0x44ea50) answers 0, lets it go (0x44f1a0..0x44f1d4). The turning
+// flag (+8 bit 0, toward +0x24) is never set in TotalA.exe; the turn below is
+// Kingdoms' (4e48d0), kept for `turns`.
 struct RetailInterceptGoal {
     RetailFlightVector point;      // +0x0a
-    RetailFlightVector velocity;   // +0x16, the target mover's velocity (+8) when built
-    uint16_t heading=0;            // +0x24, from 4e4c60
-    bool turns=false;              // +0x08 & 1, set with the heading
+    RetailFlightVector velocity;   // +0x16
+    uint16_t heading=0;            // +0x24
+    bool turns=false;              // +0x08 & 1
 
-    // 4e48d0: answer the point, then move it on by the velocity (x and z
-    // only) and, with a heading, turn the velocity toward that heading by
-    // at most turnrate / 8 (536143), dropping its vertical part.
     RetailFlightVector target(uint16_t turnRate) {
         const RetailFlightVector answer=point;
         point.x=satAdd32(point.x,velocity.x);
@@ -96,16 +108,17 @@ struct RetailInterceptGoal {
         }
         return answer;
     }
-    // 4e4be0: within 48 px in 2D (x87 at double precision, times 1/65536).
+    // 0x44eb60: within 48 px in 2D (x87 at double precision, times 1/65536).
     bool accepts(RetailFlightVector position) const {
         const double dx=double(satSub32(position.x,point.x));
         const double dz=double(satSub32(position.z,point.z));
         return std::sqrt(dz*dz+dx*dx)<48.0*65536;
     }
-    // 4e4b70: the navigator's heading. Inside 48 px the stored heading (the
-    // body's own without one); farther out, toward the point.
-    uint16_t headingFor(RetailFlightVector position,uint16_t body) const {
-        if (accepts(position)) return turns ? heading : body;
+    // 0x44eb40: the navigator's heading, toward the point (0x48a980). A
+    // turning controller (Kingdoms 4e4b70) keeps its stored heading inside
+    // 48 px.
+    uint16_t headingFor(RetailFlightVector position,uint16_t) const {
+        if (turns && accepts(position)) return heading;
         return uint16_t(retailDirection(
             Fixed::raw(satSub32(position.x,point.x)),
             Fixed::raw(satSub32(position.z,point.z))).v);
@@ -114,25 +127,22 @@ struct RetailInterceptGoal {
 
 // What AirToAir reads at one wake.
 struct RetailAirDuel {
-    RetailFlightVector position;        // unit +0x68
-    uint16_t heading=0;                 // unit +0x7e
-    RetailFlightVector target;          // the target's +0x68
-    uint16_t targetHeading=0;           // the target's +0x7e
+    RetailFlightVector position;        // unit +0x6a
+    uint16_t heading=0;                 // unit +0x66
+    RetailFlightVector target;          // the target's +0x6a
+    uint16_t targetHeading=0;           // the target's +0x66
     RetailFlightVector targetVelocity;  // the target mover's +8
-    int32_t speed=0;                    // mover +0x20
-    int32_t maxSpeed=0;                 // unit +0x12b (421ae0)
-    uint16_t distance=0;                // airtoairdistance
-    bool automatic=false;               // mission +0x52: an auto attack, which may retarget
-    bool flies=true;                    // a mover and canfly (type +0x260 bit 0x800)
-    bool onMap=true;                    // unit +0xa4 is a sector, not the off-map cell
-    int32_t width=0,height=0;           // game +0x19e90 / +0x19e94
-    int8_t traffic=0;                   // unit +0x12a, the air-traffic counter
-    int16_t footX=1,targetFootX=1;      // unit +0x78, the target's +0x78
+    int32_t maxSpeed=0;                 // type +0x192, maxvelocity
+    int32_t targetMaxSpeed=0;           // the target type's
+    bool flies=true;                    // a mover (unit +0) and canfly (type +0x241 bit 0x800)
+    bool onMap=true;                    // unit +0x82 is not the off-map sector (game +0x142b7)
+    int32_t width=0,height=0;           // game +0x1422b / +0x1422f: the playable map, in pixels
 };
 
 namespace detail {
-// 41cb80..41cc6d, 41e45a..41e54c: off the map, 800 px toward the playable
-// area (192 px inside its edge), radius 128, waiting on the controller.
+// Kingdoms' off-map return (41cb80..41cc6d): 800 px toward a point 192 px
+// inside the playable area's edge, radius 128, waiting on the controller.
+// Still VTOL_SeekGuard's (retailairseek.h).
 template<class Host>
 int retailAirReturnToMap(RetailMissionState& m,RetailFlightVector position,int32_t width,int32_t height,Host& host) {
     RetailFlightVector inside=position;
@@ -150,261 +160,145 @@ int retailAirReturnToMap(RetailMissionState& m,RetailFlightVector position,int32
 }
 }
 
-// Host: random(bound); beginFlight() (416c50); aim() (stage 1's slot calls);
-// lead() (51aa50: the selected slot's led SweetSpot, mission +0x22);
-// retarget() (4d8370 then 4d7de0(unit, found, 0, 0, 1, 0): true when it put a
-// new attack ahead); install(point goal) and install(intercept goal) (4d4d40,
-// which also clears the mission's pending controller events 0x3700);
-// release() (4d4d40 with no controller); evade() (pushes VTOL_Evade on the
-// target, true when inserted); stepOut(D) (VTOL_StepOut pushed ahead, 4d7750:
-// false when it could not be built); the group check's outOfSlot(),
-// nextFlags(), leave() and formation(), as AirToGround's. `count` is mission
-// +0x4e.
+// TotalA.exe's off-map return (AirToAir 0x412e54..0x412f44, VTOL_SeekAttack
+// 0x4103ff..0x4104ec): 800 px from the flyer toward the playable map's centre
+// (0x48a980, 0x4b70ef / 0x4b7123, 0x40f790), a point controller of radius
+// 128 (0x44e730(0x80)), waiting on it (0xe0).
 template<class Host>
-int retailAirToAir(RetailMissionState& m,int32_t& count,uint32_t tick,uint32_t events,
-                   const RetailAirDuel& duel,Host& host) {
-    if (events&0x28) return 5;                                       // 41ca7e -> 41d654
-    if (!duel.onMap) return detail::retailAirReturnToMap(m,duel.position,duel.width,duel.height,host);
-    if (events&0x40) { m.sleep(tick,1); return 0; }                  // 41ccc4
-    if (const int result=retailAirGroupCheck(m,host);result>=0) return result;   // 41ccde..41cdfe
-    const uint32_t wake=host.random(15)+7;                           // 41cdfe
-    switch (m.stage) {
-    case 0:                                                          // 41d60b
-        if (!duel.flies) return 7;
-        host.beginFlight();
-        m.sleep(tick,1);
-        count=0;
-        return 1;
-    case 1:                                                          // 41d5ae
-        host.aim();
-        m.sleep(tick,1);
-        return 1;
-    case 2: break;                                                   // 41ce31
-    default: return 7;
-    }
-    const RetailFlightVector lead=host.lead();                       // 41ce43
-    if (duel.traffic>=5) {                                           // 41ce48
-        if (duel.automatic && host.random(2)==0 && host.retarget()) return 5;
-        const int32_t distance=(int32_t(host.random(15))+duel.targetFootX+duel.footX)*16;
-        if (!host.stepOut(distance)) return 8;
-        m.sleep(tick,1);
-        return 0;
-    }
-    const RetailFlightVector& me=duel.position;
-    const RetailFlightVector& them=duel.target;
-    // 41cf43..41cffe: who is in front of whom.
-    const bool ahead=retailAirAhead(them,me,duel.heading,0);
-    const bool aheadLeft=retailAirAhead(them,me,duel.heading,2);
-    const bool aheadRight=retailAirAhead(them,me,duel.heading,6);
-    const bool sights=ahead && retailAirAhead(them,me,duel.heading,7) && retailAirAhead(them,me,duel.heading,1);
-    const bool seen=retailAirAhead(me,them,duel.targetHeading,0);
-    const bool seenLeft=retailAirAhead(me,them,duel.targetHeading,2);
-    const bool seenRight=retailAirAhead(me,them,duel.targetHeading,6);
-    const bool sighted=seen && retailAirAhead(me,them,duel.targetHeading,7) && retailAirAhead(me,them,duel.targetHeading,1);
-    const bool tailed=!ahead && seen, hunted=!ahead && sighted, apart=!ahead && !seen;
-    // 41d042..41d0f8: the whole-pixel distance to P (_ftol's low word) against R.
-    const double dx=double(satSub32(me.x,lead.x));
-    const double dz=double(satSub32(me.z,lead.z));
-    // (Retail's signed word turns negative at 32768 px, farther than any retail
-    // map is wide. Ours: the whole word.)
-    const int span=int(retailFtol(std::sqrt(dz*dz+dx*dx))>>16);
-    const int reach=duel.distance;
-    const bool inHalf=span<reach/2, inQuarter=span<reach/4, beyond=span>3*reach/2;
-    if (span>5*reach && duel.automatic && host.random(2)==0 && host.retarget()) return 5;   // 41d0fa
-    // 41d132..41d176
-    bool threatened;
-    if (tailed) threatened=true;
-    else if (sights) threatened=sighted;
-    else threatened=inQuarter || (seen && inHalf) ||
-                    (!beyond && ((aheadRight && seenRight) || (aheadLeft && seenLeft)));
-    bool reposition=false;
-    if (!threatened) {
-        if (apart || ahead) count=0;                                 // 41d178
-    } else {
-        // 41d19f: a flyer in the target's sights, on its tail, or now and then
-        // any other: count the wait and maybe break off.
-        if ((hunted && host.random(2)==0) || (tailed && host.random(3)==0) || host.random(30)==0) {
-            count+=int32_t(wake);                                    // 41d1d2
-            const uint32_t first=host.random(60);
-            const uint32_t limit=first+host.random(60);
-            if (count>=int32_t(limit)) {
-                host.release();
-                if (!host.evade()) return 8;
-                count=0;
-                m.waitMask=0;
-                return 0;
-            }
-        } else {
-            if (!(sights && sighted) || host.random(5)==0) count+=int32_t(wake);   // 41d27a
-            const uint32_t first=host.random(60);
-            const uint32_t limit=first+host.random(60);
-            reposition=count>=int32_t(limit);                         // 41d2c8
-        }
-    }
-    // 41d2c8 / 41d435: P, 32 px further along the flyer's heading when it is
-    // above half its top speed.
-    RetailFlightVector point=lead;
-    if (int32_t(int64_t(duel.speed)*2)>duel.maxSpeed) {
-        point.x=satSub32(point.x,retailScaledSine(duel.heading,32*65536));
-        point.z=satSub32(point.z,retailScaledCosine(duel.heading,32*65536));
-    }
-    uint32_t length=uint32_t(reach);
-    if (reposition) {
-        const uint32_t closer=host.random(reach/2);
-        length=uint32_t(reach)-closer+host.random(reach/2);
-    }
-    // 51b340: the heading of P as seen from the flyer; the point is then
-    // `length` px back toward the flyer, within 90 degrees either side of
-    // that line when repositioning.
-    uint16_t angle=uint16_t(retailDirection(
-        Fixed::raw(satSub32(point.x,me.x)),
-        Fixed::raw(satSub32(point.z,me.z))).v);
-    if (reposition) angle=uint16_t(angle+host.random(0x8000)-0x4000);
-    const int32_t magnitude=std::bit_cast<int32_t>(length<<16);
-    point.x=satSub32(point.x,retailScaledSine(angle,magnitude));
-    point.z=satSub32(point.z,retailScaledCosine(angle,magnitude));
-    // 41d570: the controller turns toward the line from the flyer to P.
-    RetailInterceptGoal goal{point,duel.targetVelocity,uint16_t(retailDirection(
-        Fixed::raw(satSub32(me.x,lead.x)),
-        Fixed::raw(satSub32(me.z,lead.z))).v),true};
-    host.install(goal);
-    m.sleep(tick,wake);
-    m.waitMask|=0x68;
+int retailTaAirReturnToMap(RetailMissionState& m,RetailFlightVector position,int32_t width,int32_t height,Host& host) {
+    const int32_t cx=std::bit_cast<int32_t>(uint32_t(width/2)<<16);
+    const int32_t cz=std::bit_cast<int32_t>(uint32_t(height/2)<<16);
+    const uint16_t heading=uint16_t(retailDirection(
+        Fixed::raw(satSub32(position.x,cx)),
+        Fixed::raw(satSub32(position.z,cz))).v);
+    host.install(RetailFlightGoal{retailAirRunPoint(position,position.y,heading,800),0x30,0,128});
+    m.waitMask|=0x700;
     return 2;
 }
 
-// VTOL_Evade (registry row 5ebe63, handler 41e3d0): pushed ahead of AirToAir
-// when it breaks off, on the same target, with mission +0x4e (the maneuver)
-// and +0x52 (its remaining ticks) zero. Stage 0 picks a maneuver, more often
-// a hard turn on the spot (4..6) when the flyer is no faster or nimbler than
-// its target, and 33..88 ticks less 15..43 when the flyer is twice as fast:
-//   1..3: fly a straight line within 45 degrees of the heading (1), or 45 to
-//         165 degrees to one side (2) or the other (3): a point controller
-//         far out along it, radius 16.
-//   4..6: the same three arcs as a heading for the moving controller held 32
-//         px ahead with no velocity: brake and turn to it.
-// Stage 1 repeats them, 5..33 ticks at a time (5..19 for 4..6), until the
-// ticks run out (then rand(2) restarts or ends it) or the target is far
-// enough: the sum of three rand(distance) draws above 3 x airtoairdistance.
+// Host: random(bound); beginFlight() (stage 0's slots, Activate and take-off);
+// aim() (stage 1's slot calls); install(intercept goal) (0x4388d0, which also
+// clears the mission's pending controller events); install(point goal) (the
+// off-map return); release() (0x4388d0(0)); evade() (VTOL_EVADE pushed ahead
+// on the target, 0x43acb0). `count` is mission +0x36.
+template<class Host>
+int retailAirToAir(RetailMissionState& m,int32_t& count,uint32_t tick,uint32_t events,
+                   const RetailAirDuel& duel,Host& host) {
+    if (events&0x28) return 5;                                       // 0x412d4a
+    if (!duel.onMap) return retailTaAirReturnToMap(m,duel.position,duel.width,duel.height,host);
+    switch (m.stage) {
+    case 0:                                                          // 0x413397
+        if (!duel.flies) return 7;
+        host.beginFlight();
+        m.sleep(tick,1);                                             // 0x413444
+        count=0;
+        return 1;
+    case 1: break;                                                   // 0x412fb2
+    default: return 7;
+    }
+    host.aim();
+    const bool ahead=retailTaAirAhead(duel.position,duel.target,duel.heading);
+    const bool controller=(events&0x700)!=0;                         // 0x412fce: TA 0xe0
+    if (controller && ahead) {
+        // 0x41305a..0x413156: one second (x 30) of top speed ahead, moving at
+        // top speed along the heading.
+        const int32_t run=std::bit_cast<int32_t>(uint32_t(duel.maxSpeed)*30u);
+        const RetailFlightVector point{
+            satSub32(duel.position.x,retailScaledSine(duel.heading,run)),duel.position.y,
+            satSub32(duel.position.z,retailScaledCosine(duel.heading,run))};
+        const RetailFlightVector velocity{-retailScaledSine(duel.heading,duel.maxSpeed),0,
+                                          -retailScaledCosine(duel.heading,duel.maxSpeed)};
+        host.install(RetailInterceptGoal{point,velocity,0,false});
+        m.sleep(tick,host.random(30)+60);                            // 0x413131
+        count=0;
+        return 2;
+    }
+    if (!controller && count<90) {                                   // 0x413163
+        if (ahead) count=0; else count+=45;                          // 0x4131e4..0x4131f2
+        // 0x4131f6..0x41323e: the whole-pixel word of the distance to the target.
+        const double dz=double(satSub32(duel.position.z,duel.target.z));
+        const double dx=double(satSub32(duel.position.x,duel.target.x));
+        const int span=int(int16_t(retailFtol(std::sqrt(dz*dz+dx*dx))>>16));
+        if (span>160) {
+            // 0x413244..0x413307: the target 45 ticks on by its velocity,
+            // moving at that velocity plus half its top speed along its heading.
+            const RetailFlightVector& v=duel.targetVelocity;
+            const RetailFlightVector point{
+                std::bit_cast<int32_t>(uint32_t(duel.target.x)+uint32_t(v.x)*45u),duel.target.y,
+                std::bit_cast<int32_t>(uint32_t(duel.target.z)+uint32_t(v.z)*45u)};
+            const int32_t half=duel.targetMaxSpeed/2;
+            const RetailFlightVector velocity{
+                std::bit_cast<int32_t>(uint32_t(v.x)-uint32_t(retailScaledSine(duel.targetHeading,half))),v.y,
+                std::bit_cast<int32_t>(uint32_t(v.z)-uint32_t(retailScaledCosine(duel.targetHeading,half)))};
+            host.install(RetailInterceptGoal{point,velocity,0,false});
+        }
+        m.sleep(tick,45);                                            // 0x41330c
+        m.waitMask|=0x28|0x700;                                      // 0x100e8
+        return 2;
+    }
+    // 0x41332f..0x413394: break off.
+    host.release();
+    host.evade();
+    count=0;
+    m.waitMask=0;
+    return 0;
+}
+
+// VTOL_Evade (TotalA.exe air mission table row 17, handler 0x413bc0): pushed
+// ahead of AirToAir when it breaks off, on the same target. D is slot 0's
+// weapon range (unit +0x10 -> +0xdc).
+//   head:    no target (+0x16) or the lost-target events 0x10008 end it (5).
+//   stage 0: (0x413c9a) no mover or not canfly ends the list (7); a side
+//            (+0x36) of rand(2); a point controller D px out at 90 degrees
+//            from the heading (unit +0x66 - 0x4000 for side 1, + 0x4000 for
+//            side 0), radius 128, waiting on 0x100e8 (no sleep).
+//   stage 1: (0x413c18) the same on the same side, 2 x D px out.
+//   stage 2: it ends (5).
 struct RetailAirEvade {
     RetailMissionState mission;
-    int32_t maneuver=0;            // mission +0x4e
-    int32_t budget=0;              // mission +0x52
+    int32_t side=0;                // mission +0x36
 };
 
 // What VTOL_Evade reads.
 struct RetailAirEscape {
-    RetailFlightVector position;   // unit +0x68
-    uint16_t heading=0;            // unit +0x7e
-    RetailFlightVector target;     // the target's +0x68
-    int32_t maxSpeed=0;            // unit +0x12b (421ae0)
-    int32_t typeSpeed=0;           // UnitType +0x162, maxvelocity
-    int32_t targetTypeSpeed=0;     // the target's
-    uint16_t turnRate=0;           // UnitType +0x18e
-    uint16_t targetTurnRate=0;     // the target's
-    uint16_t distance=0;           // airtoairdistance
+    RetailFlightVector position;   // unit +0x6a
+    uint16_t heading=0;            // unit +0x66
+    int32_t distance=0;            // slot 0's range, WeaponType +0xdc
     bool flies=true;               // a mover and canfly
-    bool onMap=true;
-    int32_t width=0,height=0;
+    bool target=true;              // mission +0x16 is set
 };
 
 // World's AirToAir state on an attack order, beside the order's `mission`
 // (AirToAir's own) and `flightGoal` (a point controller: off the map, or one
-// of VTOL_Evade's lines).
+// of VTOL_Evade's).
 struct RetailAirToAirState {
-    int32_t count=0;                              // AirToAir's mission +0x4e
+    int32_t count=0;                              // AirToAir's mission +0x36
     std::optional<RetailInterceptGoal> intercept; // the moving controller installed
     std::optional<RetailAirEvade> evade;          // VTOL_Evade, pushed ahead of AirToAir
     bool evadeController=false;                   // the controller is the evade's
 };
 
-// Host: random(bound); install(point goal) and install(intercept goal); the
-// group check's outOfSlot(), nextFlags() (the AirToAir behind it), leave()
-// and formation(). A flyer's mover never carries the road or water bits (mover +0x36 0x800 /
-// 0x1000) that would scale the speeds and turn rates read here.
+// Host: random(bound); install(point goal).
 template<class Host>
-int retailAirEvade(RetailAirEvade& e,uint32_t tick,uint32_t events,const RetailAirEscape& in,Host& host) {
+int retailAirEvade(RetailAirEvade& e,uint32_t,uint32_t events,const RetailAirEscape& in,Host& host) {
     auto& m=e.mission;
-    if (events&0x28) return 5;                                       // 41e404
-    if (!in.onMap) return detail::retailAirReturnToMap(m,in.position,in.width,in.height,host);
-    if (const int result=retailAirGroupCheck(m,host);result>=0) return result;   // 41e55a..41e67a
-    auto any=[&] { return int32_t(host.random(6))+1; };
-    auto straight=[&] { return int32_t(host.random(3))+1; };
+    if (!in.target || (events&0x28)) return 5;                       // 0x413bd8..0x413beb
+    uint32_t distance=uint32_t(in.distance);
     switch (m.stage) {
-    case 0: {                                                        // 41eb12
+    case 0:                                                          // 0x413c9a
         if (!in.flies) return 7;
-        if (e.maneuver>=4) {                                         // 41ed7f
-            if (host.random(4)!=0) e.maneuver=straight();
-            else if (e.maneuver==4) e.maneuver=any();
-        } else if (int32_t((int64_t(in.typeSpeed)*0xcccc)>>16)>in.targetTypeSpeed) {
-            e.maneuver=host.random(5)==0 ? any() : straight();       // 41ec2d
-        } else if (int32_t((int64_t(in.turnRate)*0xcccc)>>16)>int32_t(in.targetTurnRate)) {
-            e.maneuver=any();                                        // 41ed56
-            if (e.maneuver%3==1) e.maneuver=any();
-        } else {
-            e.maneuver=host.random(2)==0 ? any() : straight();       // 41ed70
-        }
-        int32_t budget=int32_t(host.random(30));                     // 41ed9d
-        budget+=int32_t(host.random(30));
-        budget+=int32_t(host.random(15));
-        budget+=int32_t(host.random(15))+5;
-        if (int32_t((int64_t(in.typeSpeed)*0x8000)>>16)>in.targetTypeSpeed) {
-            int32_t less=int32_t(host.random(30));
-            less+=int32_t(host.random(15));
-            budget-=less;
-        }
-        if (budget<10) budget=int32_t(host.random(10))+3;
-        e.budget=budget;
-        return 1;
-    }
-    case 1: break;                                                   // 41e699
+        e.side=int32_t(host.random(2));
+        break;
+    case 1:                                                          // 0x413c18
+        distance*=2;
+        break;
+    case 2: return 5;                                                // 0x413c03
     default: return 7;
     }
-    const double dz=double(satSub32(in.position.z,in.target.z));
-    const double dx=double(satSub32(in.position.x,in.target.x));
-    const int span=int(retailFtol(std::sqrt(dx*dx+dz*dz))>>16);   // the whole word, as AirToAir's
-    int32_t gap=int32_t(host.random(span));
-    gap+=int32_t(host.random(span));
-    gap+=int32_t(host.random(span));
-    if (gap>3*int32_t(in.distance)) return 5;
-    if (e.budget<=0) return host.random(2)!=0 ? 0 : 5;              // 41e740
-    int32_t sleep=e.budget;
-    if (e.maneuver<4) {
-        const uint32_t first=host.random(15);
-        if (e.budget>=int32_t(first+host.random(15)+5)) {
-            const uint32_t again=host.random(15);
-            sleep=int32_t(again+host.random(15)+5);
-        }
-        // 41e7a8: budget x 100 px per unit of top speed, wrapping as retail's
-        // 32-bit product does; only its direction matters.
-        const int32_t scaled=std::bit_cast<int32_t>(uint32_t(e.budget*25)<<18);
-        const int32_t length=int32_t(uint32_t(uint64_t((int64_t(scaled)*in.maxSpeed)>>16)));
-        uint16_t angle;
-        if (e.maneuver==1) angle=uint16_t(host.random(0x4000)+in.heading-0x2000);
-        else if (e.maneuver==2) angle=uint16_t(in.heading-host.random(0x5555)-0x2000);
-        else angle=uint16_t(host.random(0x5555)+in.heading+0x2000);
-        // The one point here that is a direction and not a place: the line ends
-        // tens of thousands of pixels out, past the end of the range on any map,
-        // so it keeps retail's wrapped subtraction, and the navigator subtracts
-        // it the same way (RetailFlightNavigation::wraps): the wrapped point
-        // less the position is the line again.
-        const RetailFlightVector point{
-            std::bit_cast<int32_t>(uint32_t(in.position.x)-uint32_t(retailScaledSine(angle,length))),in.position.y,
-            std::bit_cast<int32_t>(uint32_t(in.position.z)-uint32_t(retailScaledCosine(angle,length)))};
-        host.install(RetailFlightGoal{point,0x30,0,16});
-    } else {
-        if (e.budget>=int32_t(host.random(15)+5)) sleep=int32_t(host.random(15)+5);   // 41e9eb
-        uint16_t angle;
-        if (e.maneuver==4) angle=uint16_t(host.random(0x4000)+in.heading-0x2000);
-        else if (e.maneuver==5) angle=uint16_t(in.heading-host.random(0x5555)-0x2000);
-        else angle=uint16_t(host.random(0x5555)+in.heading+0x2000);
-        const RetailFlightVector point{retailAirRunPoint(in.position,in.position.y,in.heading,32)};
-        host.install(RetailInterceptGoal{point,{},angle,true});
-    }
-    e.budget-=sleep;                                                 // 41eaea
-    m.waitMask=0x28;
-    m.sleep(tick,uint32_t(sleep));
-    return 2;
+    const uint16_t angle=uint16_t(in.heading+(e.side ? -0x4000 : 0x4000));
+    host.install(RetailFlightGoal{retailAirRunPoint(in.position,in.position.y,angle,distance),0x30,0,128});
+    m.waitMask=0x28|0x700;                                           // 0x413d54: 0x100e8
+    return 1;
 }
 
 } // namespace ta::sim

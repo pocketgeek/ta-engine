@@ -55,7 +55,7 @@ static int native() {
         if (capped) { w.spawn(&t0,800,600,0,1); w.setUnitCap(1); }
         Unit& u=*w.unit(id);
         u.hp=Fixed::fromInt(77);u.mana=40;u.healCarry=5;u.hpPct1s=u.hpPctCur=50;u.cloakBlockedUntil=9;
-        u.lastHitBy=3;u.lastHitPlayer=2;u.airTraffic=2;u.cloaked=(act&4)!=0;u.scenarioName="Ragnar";
+        u.lastHitBy=3;u.lastHitPlayer=2;u.cloaked=(act&4)!=0;u.scenarioName="Ragnar";
         if (auto* script=RetailReplayProbe::script(w,id)) script->activated=(act&1)!=0;
         if (dying) u.hp=Fixed();
         std::vector<int32_t> draws;   // the CRT's as -1
@@ -69,7 +69,7 @@ static int native() {
         if (changed) {
             const auto* script=RetailReplayProbe::script(w,id);
             const bool fresh=n.mana==0 && n.healCarry==0 && n.hpPct1s==0 && n.hpPctCur==0 && n.cloakBlockedUntil==0 &&
-                n.lastHitBy==0 && n.lastHitPlayer==-1 && n.airTraffic==0 && n.hp==Fixed::fromInt(77) &&
+                n.lastHitBy==0 && n.lastHitPlayer==-1 && n.hp==Fixed::fromInt(77) &&
                 n.scenarioName.empty();
             std::cout<<" | "<<((script && script->activated) ? 1 : 0)+(n.cloaked ? 4 : 0)<<' '<<(fresh ? 1 : 0);
         }
@@ -118,7 +118,7 @@ int main(int argc,char** argv) try {
         Unit& u=*w.unit(id);
         u.hp=Fixed::fromInt(321);u.mana=80;u.paralyzedFor=200;u.cloakOn=true;u.cloakBlockedUntil=999;
         u.standingOrder=0;u.moveState=0;u.fireState=0;u.stance=2;u.reloads[0]=17;u.healCarry=9;
-        u.hpPct1s=40;u.hpPctCur=60;u.airTraffic=3;u.lastHitBy=77;u.lastHitPlayer=2;u.squad=4;
+        u.hpPct1s=40;u.hpPctCur=60;u.lastHitBy=77;u.lastHitPlayer=2;u.squad=4;
         u.xp=5000;u.veteran=u.veteranLevel();u.selfDestructT=40;
         u.homeX=Fixed::fromInt(10);u.homeZ=Fixed::fromInt(10);
         const Bam heading=u.heading;const Fixed speed=u.baseSpeed;
@@ -146,7 +146,7 @@ int main(int argc,char** argv) try {
         check(!n.cloakOn && n.cloakBlockedUntil==0,"the new object kept the cloak order or its delay");
         check(n.standingOrder==t.defaultStandingOrder && n.moveState==t.defaultMove && n.fireState==t.defaultFire,
               "the new object kept the old one's standing orders");
-        check(n.reloads[0]==0 && n.healCarry==0 && n.airTraffic==0 && n.hpPct1s==0 && n.hpPctCur==0,
+        check(n.reloads[0]==0 && n.healCarry==0 && n.hpPct1s==0 && n.hpPctCur==0,
               "the new object kept reload, self-repair carry, air traffic or HP samples");
         check(n.lastHitBy==0 && n.lastHitPlayer==-1 && n.squad==0 && n.xp==0 && n.selfDestructT<0,
               "the new object kept its hitter, squad, experience or self-destruct");

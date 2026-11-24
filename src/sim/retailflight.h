@@ -29,9 +29,12 @@ inline int32_t retailWrappedSub(int32_t a, int32_t b) {
     return std::bit_cast<int32_t>(uint32_t(a) - uint32_t(b));
 }
 
-// 417188..4172ff: candidate selection after the current point failed landing.
-// Each draw includes both endpoints; candidates snap to the rectangular body.
-// The final orbit is anchored to the mission origin, not the current position.
+// TotalA.exe VTOL_LandIfCan stage 1 (0x40f4db..0x40f59d): candidate selection
+// after the current point failed the landing test (0x47e2d0). Eleven tries,
+// x then z drawn in [-half, half] (rand(r) - half, r = 0x81 + 32k, half =
+// 0x40 + 16k, 0x40f4e9..0x40f59d); each candidate snaps to the footprint
+// grid (0x40f528..0x40f573). The orbit when none is free (0x40f5a3..0x40f624)
+// is anchored to the mission point, not the current position.
 template<class Random,class Landable>
 std::optional<RetailFlightVector> retailLandingCandidates(RetailFlightVector position,
         int16_t footX,int16_t footZ,Random random,Landable landable) {
@@ -119,6 +122,36 @@ inline RetailFlightGoal retailTaBuildHoverGoal(RetailFlightVector position,Retai
 }
 constexpr uint32_t kRetailTaBuildHoverPeriod=150;   // 0x414570 / 0x414150: tick % 0x96
 
+// TotalA.exe's take-off, stage 0 of VTOL_Move (0x40fb58..0x40fbb2) and
+// VTOL_Patrol (0x411122..0x41117e): a landed flyer (mover +0x2e & 3 == 1) is
+// set flying (0x43d210(2)) and given a point controller (0x44e2d0) at its own
+// position whose altitude offset is cruisealt / 2 (type +0x21c, halved toward
+// zero; 0x44e6c0: flag 8, y = (the larger of the terrain under the point,
+// 0x485070, and the sea level) + offset, at most 0x1ff px). The mission waits
+// on its events (0xe0): the flyer climbs straight up to half its cruise height
+// before it heads anywhere. `terrain` is 0x485070's (-1 off the map).
+inline RetailFlightGoal retailTaTakeOffGoal(RetailFlightVector position,int terrain,int sea,int cruiseAlt) {
+    RetailFlightGoal goal;
+    const int32_t y=(std::max(terrain,sea)+cruiseAlt/2)*65536;
+    goal.point={position.x,std::min(y,int32_t(0x1ff0000)),position.z};
+    goal.flags=0x28;goal.radius=0;
+    return goal;
+}
+
+// TotalA.exe VTOL_Patrol stage 2 (0x410ead..0x410f3b): a point controller
+// 320 px beyond the leg's point along the line from the flyer (0x48a980: the
+// angle of flyer - point; 0x4b70ef / 0x4b7123 at 0x1400000), accepting
+// within 0x150 px (0x44e730: flag 0x10). No draw.
+inline RetailFlightGoal retailTaPatrolGoal(RetailFlightVector position,RetailFlightVector point) {
+    const uint16_t angle=uint16_t(retailDirection(Fixed::raw(satSub32(position.x,point.x)),
+                                                  Fixed::raw(satSub32(position.z,point.z))).v);
+    RetailFlightGoal goal;
+    goal.point={satSub32(point.x,retailScaledSine(angle,0x1400000)),point.y,
+                satSub32(point.z,retailScaledCosine(angle,0x1400000))};
+    goal.flags=0x30;goal.radius=0x150;
+    return goal;
+}
+
 struct RetailLandingState {
     RetailMissionState mission;
     RetailFlightVector anchor;
@@ -126,11 +159,41 @@ struct RetailLandingState {
     bool canceled=false;
 };
 
-// Ordinary 416cd0 landing path, after boundary recovery/diversion. Host owns
-// weapon/script notifications, terrain feasibility and controller installation.
+// TotalA.exe VTOL_LandIfCan (0x40f2a0; air mission table 0x4fca18 row 21),
+// after World's own exits. Host: random(bound) (0x4b6c30), initialize()
+// (0x4898b0(3): every slot manual), activate(on) (0x48b090(1, on)),
+// landable(point) (0x47e2d0), groundHeight(point) (0x485070), seaLevel()
+// (game +0x1427f), takeOff() (0x43d210(unit, 2)), touchdown()
+// (the landing call-in), finish() (0x43d210(unit, 1): landed), install(goal)
+// (0x4388d0, which drops the mission's pending controller events, 0x43890f).
+// Events are the engine's: 0x100 arrived, 0x200 failed, 0x400 replaced (TA's
+// 0x20 / 0x40 / 0x80; the mask 0xe0 is 0x700 here).
+//   head:    a next mission (+0x4a) ends it (5, 0x40f2ab: `canceled`), as
+//            does a failed controller (0x40f2c5).
+//   stage 0: no mover or not a flyer ends it (7); the point (+0x22) is where
+//            the flyer is when it has none (0x40f662..0x40f689); the orbit
+//            angle +0x36 = rand(0x10000) and +0x3a its low bit (0x40f68c);
+//            slots manual, activate; a landed flyer (mover +0x2e & 3 == 1)
+//            lifts off first (0x43d210(unit, 2), a point controller over
+//            itself at cruisealt / 2 above the ground or the sea (0x44e6c0),
+//            waiting on 0xe0, 0x40f6d7..0x40f726).
+//            No brake point: Kingdoms' stage 1 (a point 32 px ahead while
+//            above 10% speed) has no counterpart in TA.
+//   stage 1: landable where it is (0x40f417): the touchdown call-in, a point
+//            controller on the ground there (altitude offset 0 on land, down
+//            to the ground under water: y = the ground, 0x40f455..0x40f4ad),
+//            waiting on 0xe0, deactivate (0x48b090(1, 0)), next stage. Else
+//            the first free candidate (retailLandingCandidates) as a plain
+//            point controller (0x40f747..0x40f776, mask 0xe0), or the orbit
+//            point 160 px off the mission point, its angle stepped back a
+//            third of a turn when a controller event woke it (flags 0x30,
+//            radius 64, 0x40f5b4..0x40f631); both stay at stage 1 (2).
+//   stage 2: arrived (0x40f3e4): landed (finish), done (5); otherwise 8.
+// Not ported: the off-map return (0x40f2e3..0x40f3c9: 800 px toward the map
+// centre, radius 128), which World never needs (flyers stay on the map).
 template<class Host>
 int retailLanding(RetailLandingState& state,uint32_t events,RetailFlightVector position,
-        uint16_t heading,int16_t footX,int16_t footZ,bool hasMover,bool canFly,Host& host) {
+        int16_t footX,int16_t footZ,bool hasMover,bool canFly,bool landed,int16_t cruiseAlt,Host& host) {
     auto& m=state.mission;
     if (state.canceled || (events&0x200)) return 5;
     switch (m.stage) {
@@ -138,21 +201,22 @@ int retailLanding(RetailLandingState& state,uint32_t events,RetailFlightVector p
         if (!hasMover || !canFly) return 7;
         if (!state.anchor.x && !state.anchor.y && !state.anchor.z) state.anchor=position;
         state.angle=host.random(65536); state.parity=state.angle&1;
-        host.initialize(); return 1;
-    case 1:
-        if (host.velocityPercent()>10) {
+        host.initialize();
+        host.activate(true);
+        if (landed) {
+            host.takeOff();
             auto point=position;
-            point.x=satSub32(point.x,retailScaledSine(heading,32*65536));
-            point.z=satSub32(point.z,retailScaledCosine(heading,32*65536));
-            host.install(RetailFlightGoal{point}); m.waitMask=0x700;
+            point.y=Fixed::fromInt(std::min(std::max(host.groundHeight(position),host.seaLevel())+cruiseAlt/2,511)).v;
+            host.install(RetailFlightGoal{point,0x28,0,0});
+            m.waitMask|=0x700;
         }
         return 1;
-    case 2:
+    case 1:
         if (host.landable(position)) {
             host.touchdown();
             auto point=position; point.y=Fixed::fromInt(std::min(host.groundHeight(position),511)).v;
             host.install(RetailFlightGoal{point,0x28,0,0});
-            m.waitMask=0x700; host.deactivate(); return 1;
+            m.waitMask=0x700; host.activate(false); return 1;
         } else {
             bool orbit=false;
             const auto point=retailLandingSearch(position,state.anchor,footX,footZ,events,state.angle,orbit,
@@ -161,7 +225,7 @@ int retailLanding(RetailLandingState& state,uint32_t events,RetailFlightVector p
             if (orbit) m.waitMask|=0x700; else m.waitMask=0x700;
             return 2;
         }
-    case 3:
+    case 2:
         if (events&0x100) { host.finish(); return 5; }
         return 8;
     default: return 7;

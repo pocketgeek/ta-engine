@@ -868,7 +868,9 @@ static void unloadParkPlace() {
 }
 
 // Ordinary moves use the same VTOL mission for transports, builders and armed
-// flyers: queued work starts at the coarse circle; the final move refines it.
+// flyers: TotalA.exe's VTOL_Move (0x40fa20) has one point controller, radius 0
+// at the snapped goal (0x40fa67..0x40faf6), and ends on its event -- no coarse
+// circle first, so queued work starts at the point too.
 static void ordinaryFlightMoves() {
     using namespace ta::sim;
     for (int role=0;role<3;++role) {
@@ -890,20 +892,18 @@ static void ordinaryFlightMoves() {
                 const auto& u=*w.unit(id);
                 if(!u.orders.empty() && u.orders.front().flightMoveMission) {
                     const auto& o=u.orders.front();
-                    coarse|=o.flightGoal && (o.flightGoal->flags&0x10) &&
-                        o.flightGoal->radius>=80 && o.flightGoal->radius<=144;
-                    precise|=o.mission.stage==4 && o.flightGoal &&
+                    coarse|=o.flightGoal && (o.flightGoal->flags&0x10);
+                    precise|=o.mission.stage==2 && o.flightGoal &&
                         o.flightGoal->flags==0x20 && o.flightGoal->radius==0;
                     continue;
                 }
                 const double distance=std::hypot(u.x.toFloat()-808,u.z.toFloat()-808);
-                check(queued ? distance>16 && distance<160 : distance<4,
-                      queued ? "queued flight hands off inside coarse arrival circle" :
-                               "terminal flight reaches precise destination");
+                check(distance<4,queued ? "queued flight hands off at the precise point" :
+                                          "terminal flight reaches precise destination");
                 completed=true;break;
             }
-            check(coarse && completed && (queued ? !precise : precise),
-                  "all flying roles execute coarse move and terminal refinement");
+            check(!coarse && completed && precise,
+                  "all flying roles fly one radius-0 controller to the point");
         }
         // Retail has no fight-move: a flyer's fight-move leg flies VTOL_Move
         // (its air-traffic check included) and keeps its engage-en-route flag.

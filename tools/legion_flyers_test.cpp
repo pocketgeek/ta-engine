@@ -760,7 +760,7 @@ DescentRun descentRun(int who,int column,int foot,int start,bool legion=true,boo
     for(int t=0;t<1500;++t) {
         f.world.tick(1.f/30);
         const auto& a=*f.world.unit(fid);
-        if(stage3<0&&a.landing&&a.landing->mission.stage==3)stage3=t;
+        if(stage3<0&&a.landing&&a.landing->mission.stage==2)stage3=t;
         const int fx=a.type->footX,fz=a.type->footZ,ax=footprintOrigin(a.x,fx),az=footprintOrigin(a.z,fz);
         bool over=false,enter=false;
         for(int id:ids) {
@@ -1452,8 +1452,8 @@ void predicates() {
         f.tick();
         const auto& u=*f.world.unit(fid);
         if(u.flightGroundMode==2&&airborne<0)airborne=t;
-        if(airborne>=0&&u.flightGroundMode==2&&!(u.landing&&u.landing->mission.stage==3))check(!RetailReplayProbe::grounded(u),"predicates: an airborne flyer is grounded");
-        if(u.landing&&u.landing->mission.stage==3&&stage3<0) {stage3=t;check(RetailReplayProbe::grounded(u),"predicates: a stage-3 descender is not grounded");}
+        if(airborne>=0&&u.flightGroundMode==2&&!(u.landing&&u.landing->mission.stage==2))check(!RetailReplayProbe::grounded(u),"predicates: an airborne flyer is grounded");
+        if(u.landing&&u.landing->mission.stage==2&&stage3<0) {stage3=t;check(RetailReplayProbe::grounded(u),"predicates: a stage-3 descender is not grounded");}
         if(u.flightGroundMode==1&&airborne>=0) {landed=t;check(RetailReplayProbe::grounded(u),"predicates: a landed flyer is not grounded");}
     }
     std::printf("predicates flyer airborne=%d stage3=%d landed=%d\n",airborne,stage3,landed);

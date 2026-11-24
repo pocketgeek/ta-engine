@@ -10,21 +10,12 @@
 
 namespace ta::sim {
 
-// Retail's air traffic. After the occupancy rebuild (51da6a..51dbbe) each
-// tick, every live, not dying flyer of a player of type 1 or 2 updates its
-// counter at unit +0x12a, a signed byte (51dc4b..51dce4): capped at 10, it
-// rises by the overlap count of its secondary occupancy list (+0x117, see
-// RetailAirOccupant), by 14 when the list overflowed (-1), or falls by 2
-// with no overlap, and a negative result becomes 0. Every flyer mission
-// reads it at its wake: at 5 or more (8 for a flying builder at work) it
-// pushes a step-out ahead of itself.
-inline int8_t retailAirTrafficStep(int8_t counter,int8_t overlaps) {
-    int value=counter>10 ? 10 : counter;
-    value+=overlaps==-1 ? 14 : overlaps==0 ? -2 : overlaps;
-    const int8_t wrapped=int8_t(uint8_t(value));
-    return wrapped<0 ? int8_t(0) : wrapped;
-}
-
+// Kingdoms' air traffic: a per-flyer counter (unit +0x12a, 51dc4b..51dce4)
+// stepped from the secondary occupancy lists, read by every flyer mission at
+// its wake to push a step-out ahead of itself. TotalA.exe has neither (no
+// VTOL_StepOut row in its air mission table 0x4fca18, no mission reading a
+// counter): the counter and the missions' check are gone. What is left here
+// is the step-out mission itself, which nothing in TA pushes.
 // The three step-out missions share handler 4214b0 and differ only in their
 // registry flags (+0x5a): VTOL_StepOut (row 5ebee0, 0x1000000, the moving
 // group member), VTOL_StepOutStandby (5ebef9, 0x5000000, also counted with
@@ -108,79 +99,6 @@ int retailVtolStepOut(RetailMissionState& m,RetailFlightVector& point,const Reta
     default:
         return 7;
     }
-}
-
-// The air-traffic check of the missions, each at its wake: with the counter
-// at the threshold (5; 8 for VTOL_MobileBuild, VTOL_HelpBuild and
-// VTOL_RepairUnit) the mission pushes a step-out of distance D ahead of
-// itself (4d7750), sleeps a tick, and runs again from the state it set once
-// the step-out ends. D is (rand(15) + footX) x 16 unless noted:
-//   VTOL_Standby (417472)          every wake: StepOutStandby; stage 0
-//   VTOL_LandIfCan (416e23)        every wake: StepOut; stage 0
-//   VTOL_Move_Formation (41787e)   past stage 0: StepOut, or StepOutStandby under 0x4000000; stage 0
-//   VTOL_Move (417d4e)             past stage 0: StepOut; stage 0
-//   VTOL_Follow (4189c7), VTOL_SeekAttack (41943a): past stage 0: StepOut; stage 0
-//   VTOL_SeekGuard (4198fd)        every wake: StepOut; stage 0
-//   VTOL_Patrol (419ee0)           past stage 0: StepOut; stage 1 (return 2)
-//   VTOL_Pickup (41a909), VTOL_Unload (41afc5): at stage 1: StepOut; stage 1 (return 2)
-//   AirToGround (41c401), AirToGroundHover (41e007), AirStrike (41bac9): stage 4,
-//                                  D = (rand(10) x 3 + footX) x 16
-//   AirToAir (41ce48): stage 2, D = (rand(15) + target footX + footX) x 16
-//   VTOL_MobileBuild (41f0a6), VTOL_HelpBuild (41f981), VTOL_RepairUnit
-//   (421066): every wake, at 8: StepOutNoFormation, StopBuilding (51e4d0(8, 0)); stage 0.
-// The draw of D is the only one; it comes after the counter test.
-template<class Random>
-int32_t retailStepOutDistance(int16_t footX,Random random) {
-    return (int32_t(random(15))+footX)*16;
-}
-
-// The missions whose check is those same lines at their wake, after their
-// head's own exits and the off-map return. (The attacks', with a rescan and
-// their own D, and VTOL_SeekAttack's are in their ports: retailAirToGround,
-// retailAirToAir, retailAirToGroundHover, retailAirStrike,
-// retailVtolSeekAttack; VTOL_Pickup's and VTOL_Unload's sit in their stage 1.)
-enum class RetailTrafficMission : uint8_t {
-    Standby,         // VTOL_Standby 417350
-    LandIfCan,       // VTOL_LandIfCan 416cd0
-    MoveFormation,   // VTOL_Move_Formation 417750
-    Move,            // VTOL_Move 417c20
-    Follow,          // VTOL_Follow 418860
-    SeekGuard,       // VTOL_SeekGuard 4197d0
-    Patrol,          // VTOL_Patrol 419db0
-    MobileBuild,     // VTOL_MobileBuild 41ef00
-    HelpBuild,       // VTOL_HelpBuild 41f7f0
-    RepairUnit,      // VTOL_RepairUnit 420e60
-};
-
-constexpr bool retailTrafficBuilder(RetailTrafficMission mission) {
-    return mission==RetailTrafficMission::MobileBuild || mission==RetailTrafficMission::HelpBuild ||
-           mission==RetailTrafficMission::RepairUnit;
-}
-
-// The check itself. -1: no step-out, the wake goes on. Otherwise the result
-// the mission hands the dispatcher, the step-out pushed through
-// host.stepOut(kind, D) (4d7750; false when it could not be built: retail
-// frees it and ends the mission, 8), the mission's state as retail leaves it
-// (a sleep of one tick; VTOL_Patrol's stage 1), and a flying builder's
-// host.stopBuilding() (51e4d0(8, 0), after the push and the sleep).
-// Host: random(bound) (535cc0), stepOut(kind, D), stopBuilding().
-template<class Host>
-int retailAirTrafficCheck(RetailTrafficMission mission,RetailMissionState& m,uint32_t tick,int8_t traffic,
-                          int16_t footX,uint32_t flags,Host& host) {
-    using M=RetailTrafficMission;
-    const bool builder=retailTrafficBuilder(mission);
-    const bool everyWake=builder || mission==M::Standby || mission==M::LandIfCan || mission==M::SeekGuard;
-    if (!everyWake && m.stage==0) return -1;
-    if (traffic<(builder ? 8 : 5)) return -1;
-    const int32_t distance=retailStepOutDistance(footX,[&](int n) { return host.random(n); });
-    const RetailStepOut kind=builder ? RetailStepOut::NoFormation
-        : mission==M::Standby || (mission==M::MoveFormation && (flags&0x4000000u)) ? RetailStepOut::Standby
-        : RetailStepOut::StepOut;
-    if (!host.stepOut(kind,distance)) return 8;
-    if (mission==M::Patrol) m.stage=1;
-    m.sleep(tick,1);
-    if (builder) host.stopBuilding();
-    return mission==M::Patrol ? 2 : 0;
 }
 
 } // namespace ta::sim

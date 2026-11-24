@@ -575,10 +575,13 @@ static void flyingRepairShape(World& w, int repairer, int target, const char* le
     std::snprintf(d, sizeof d, "first work %.1f px, worst %.1f px, nearest once settled %.1f px, moved %.0f px, mended t=%d",
                   firstWork, worst, nearest, travel, mended);
     const std::string l(lead);
-    check(firstWork >= 0 && firstWork < 201.0f, (l + "work starts once inside 2 x builddistance").c_str(), d);
-    check(worst <= 201.0f, (l + "and is only paid within 2 x builddistance").c_str(), d);
-    check(travel > 50.0f && nearest >= 60.0f && nearest < 1e9f,
-          (l + "while the flyer orbits at about builddistance, not parked over it").c_str(), d);
+    // TotalA.exe VTOL_RepairUnit: a radius-0 point controller over where the
+    // target stood (0x415048); the work starts on its arrival (0x415098) and
+    // measures no distance, hovering on that point.
+    check(firstWork >= 0 && firstWork < 2.0f, (l + "work starts on arriving right over the target").c_str(), d);
+    check(worst < 2.0f, (l + "and is paid hovering over it").c_str(), d);
+    check(travel < 8.0f && nearest < 2.0f,
+          (l + "the flyer holding its point, not orbiting at builddistance").c_str(), d);
     check(mended >= 0, (l + "to full health").c_str(), d);
 }
 
@@ -608,7 +611,7 @@ static void flyingGuardHelps() {
         check(guardUnder(w, g), "...with its guard order kept under the help");
         const uint32_t wait = flyLook(w, g) - w.tickCount();
         std::snprintf(d, sizeof d, "next look in %u ticks", wait);
-        check(wait >= 14 && wait < 45, "...and the guard sleeps 15 + rand(30) after the insert", d);
+        check(wait >= 29 && wait < 45, "...and the guard sleeps 30 + rand(15) after the insert (TotalA.exe 0x43b890)", d);
         const int start = int(w.tickCount());
         const float wd = firstWorkDistance(w, g, site, 900);
         const int flown = int(w.tickCount()) - start;
@@ -671,7 +674,7 @@ static void flyingGuardHelps() {
         check(guardLatch(w, gg, 60, ally2, true) < 0,
               "a ground guard does not join a flyer's VTOL_RepairUnit");
     }
-    {   // the guarded unit itself damaged: flown in, orbited, mended; the repair holds 2 x builddistance
+    {   // the guarded unit itself damaged: flown in, hovered over, mended
         auto ownedWorld = makeWorld();
         World& w = *ownedWorld;
         w.spawn(&ty.factory, 300, 300, 0.0f, 0);
@@ -703,17 +706,17 @@ static void flyingGuardHelps() {
             const bool arrived = (w.unit(g)->orders.front().mission.pending & 0x100) != 0;
             w.tick(1.0f / 30.0f);
             if (flyLook(w, g) != prev) {
-                // Every look re-arms 15 ticks out; one woken by the orbit
+                // Every look re-arms 30 ticks out (TotalA.exe 0x410225); one woken by the orbit
                 // point's arrival comes before its deadline.
-                fixed = fixed && flyLook(w, g) == w.tickCount() + 15 &&
-                        (flyLook(w, g) - prev == 15 || arrived);
-                early += flyLook(w, g) - prev != 15;
+                fixed = fixed && flyLook(w, g) == w.tickCount() + 30 &&
+                        (flyLook(w, g) - prev == 30 || arrived);
+                early += flyLook(w, g) - prev != 30;
                 prev = flyLook(w, g);
                 ++looks;
             }
         }
         std::snprintf(d, sizeof d, "%d looks, %d woken early by an arrival", looks, early);
-        check(fixed && looks >= 12, "...re-looking 15 ticks after each look, or on reaching its orbit point", d);
+        check(fixed && looks >= 6, "...re-looking 30 ticks after each look, or on reaching its orbit point", d);
         const int fac = w.spawn(&ty.factory, 400, 400, 0.0f, 0);
         w.train(fac, &ty.sol, 1);
         const int lim = w.spawn(&ty.flylimited, 500, 600, 0.0f, 0);
@@ -773,7 +776,7 @@ static void flyingGuardHelps() {
         check(w.unit(diver)->repairId == hurtFlyer2 && guardLatch(w, g3, 3, hurtFlyer2, true) >= 0,
               "a damaged guarded unit under the sea: the flying guard joins its repair instead", d);
     }
-    {   // a plain Repair order to a flyer (VTOL_RepairUnit): flown in, orbited
+    {   // a plain Repair order to a flyer (VTOL_RepairUnit): flown in, hovered over
         auto ownedWorld = makeWorld();
         World& w = *ownedWorld;
         w.spawn(&ty.factory, 300, 300, 0.0f, 0);
