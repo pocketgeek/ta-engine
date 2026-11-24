@@ -4,7 +4,11 @@
 //
 // Retail draws the unit as usual (textured, into an off-screen object bitmap
 // whose byte z-buffer holds each pixel's HEIGHT: model-up y >> 16, plus 50 --
-// 125 for a digger -- see the vertex set-up at 0x458fff..0x459051), then:
+// 125 for a digger, FBI `digger` -- see the vertex set-up at
+// 0x458fff..0x459051; the byte wraps, so model heights past 205 (130 for a
+// digger) come round under the low ones), every pixel kept where its byte is
+// not below the buffer's (client/nanoraster.h, which GameView::buildNanoframe
+// rasterises with), then:
 //
 //  1. 0x458d30 recolours every covered pixel by that height n against a cut
 //     level L (one byte), in three bands:
@@ -13,9 +17,11 @@
 //        n >= L          -> `above`
 //     where each band is either keep the textured pixel (-1), make it
 //     transparent (-2), or a flat palette index.
-//  2. 0x458fa0 outlines every primitive of every visible piece (the selection
-//     primitive excepted) in the second shimmer green, depth-tested against
-//     the same height buffer (span edges only, 0x4c0820 / 0x4c0a90).
+//  2. 0x458fa0 outlines every primitive of every visible piece (primitive 0
+//     excepted when the piece has a selection primitive, 0x45908a) in the
+//     second shimmer green, depth-tested against the same height buffer and
+//     writing it (span edges only, 0x4c0820 / 0x4c0a90: the left and right
+//     pixel of each row, a polygon facing away drawing none).
 //
 // The stage and L come from v = ftol(unit+0x104 build-remaining * 255.0)
 // (0x458e8e..0x458f6e); the two shimmer greens are triangle waves over the
@@ -29,7 +35,8 @@ namespace ta::nanoframe {
 
 constexpr int kKeep = -1;          // keep the textured pixel
 constexpr int kTransparent = -2;   // clear the pixel to the bitmap's transparent key
-constexpr int kHeightBias = 50;    // z-buffer height offset (125 for digger units)
+constexpr int kHeightBias = 50;    // z-buffer height offset (0x459a3c: 0x32)
+constexpr int kDiggerHeightBias = 125;   // a digger type's (0x459a39: 0x32 + 0x4b)
 
 struct Bands {
     int level = 0;                 // L, 0..255

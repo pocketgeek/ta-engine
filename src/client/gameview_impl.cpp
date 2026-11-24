@@ -1488,14 +1488,36 @@
 
     void GameView::interpPose(const UnitR& s, float& x, float& z, float& heading) const {
         x = s.x + s.swap.ox; z = s.z + s.swap.oz; heading = s.heading;
-        if (!settings_ || !settings_->smoothMotion || !s.seeded) return;
-        float a = interpAlpha_;
-        x = s.px + s.pox + (x - s.px - s.pox) * a;
-        z = s.pz + s.poz + (z - s.pz - s.poz) * a;
-        float dh = s.heading - s.ph;
-        while (dh >  3.14159265f) dh -= 6.28318531f;   // shortest-path turn
-        while (dh < -3.14159265f) dh += 6.28318531f;
-        heading = s.ph + dh * a;
+        if (settings_ && settings_->smoothMotion && s.seeded) {
+            float a = interpAlpha_;
+            x = s.px + s.pox + (x - s.px - s.pox) * a;
+            z = s.pz + s.poz + (z - s.pz - s.poz) * a;
+            float dh = s.heading - s.ph;
+            while (dh >  3.14159265f) dh -= 6.28318531f;   // shortest-path turn
+            while (dh < -3.14159265f) dh += 6.28318531f;
+            heading = s.ph + dh * a;
+        }
+        // A flyer on a repair pad rides its pad piece: every mover tick the
+        // attached branch (0x43d6d0) copies the piece's position (0x43e060, the
+        // sim's unitPiecePoint) and sets its own orientation to the pad's plus
+        // that piece's own turn angles (0x43d78e -> 0x43e180: unit +0x64/+0x66/
+        // +0x68 = the carrier's + the piece's). The heading is the visible part
+        // (a building has no pitch or roll; pad pieces turn about y).
+        if (s.padPiece >= 0 && s.inTransport) {
+            const UnitR* pad = frameUnitP(s.inTransport);
+            if (pad && pad->padPiece < 0) {
+                float px, pz, ph;
+                interpPose(*pad, px, pz, ph);
+                float turn = 0;
+                if (const auto at = anims_.find(pad->id); at != anims_.end() && at->second.vm) {
+                    const auto& pieces = at->second.vm->pieces();
+                    if (size_t(s.padPiece) < pieces.size()) turn = pieces[size_t(s.padPiece)].rot[1];
+                }
+                // The piece turn enters the model as -rot (scriptRot) under the
+                // body's -heading, so the rider's heading is the pad's plus rot.
+                heading = ph + turn;
+            }
+        }
     }
 
     const UnitR& GameView::frameUnit(int id) const {
@@ -3173,6 +3195,12 @@
             const auto* e = pals.at("ta").rgba[160 + i];
             nanoPalette_[size_t(i)] = SDL_Color{e[0], e[1], e[2], 255};
         }
+        // A coloured primitive's index in the nanoframe bitmap (read by the workers).
+        for (int i = 0; i < 256; ++i) {
+            const auto* e = pals.at("ta").rgba[i];
+            nanoGamePalette_[size_t(i)] = uint32_t(e[0]) << 24 | uint32_t(e[1]) << 16 | uint32_t(e[2]) << 8 | 0xffu;
+        }
+        nanoGamePaletteSet_ = true;
         // Palette lighting banks (workstream M): one palette + shade table per faction
         // bank, shared by every texture of the bank.
         std::map<std::string, uint8_t> bankIndex;
@@ -4699,14 +4727,10 @@
         const uint32_t ticks = std::min<uint32_t>(now - nanoTick_, 4);
         nanoTick_ = now;
         if (!ticks) return;
-        const auto* pal = featurePalette("");
-        auto colour = [&](int i) {
-            SDL_Color c{75, 171, 43, 255};
-            if (pal) { const auto* e = pal->rgba[161 + i % 7]; c = {e[0], e[1], e[2], 255}; }
-            return c;
+        using Box = NanoBox;
+        const auto spray = [&](const UnitR& source, Anim& a, const Box& box, bool reclaim) {
+            nanoSpray(source, a, box, reclaim, ticks);
         };
-        auto rnd = [&] { salt_ = salt_ * 1103515245u + 12345u; return float((salt_ >> 16) & 0x7fff) / 32768.0f; };
-        struct Box { float x, z, alt, w, d, h; };   // centre x/z, base alt (projected), extents
         for (auto& [id, a] : anims_) {
             const UnitR* u = frameUnitP(id);
             if (!u || !u->type || !a.vm || !a.pieceNames || u->underConstruction || u->deadFor >= 0) continue;
@@ -4737,6 +4761,48 @@
                 box = {f->x, f->z, terrainLift(f->x, f->z), 16.0f, 16.0f, 16.0f};
             }
             if (!unitShownR(*u) || (!noFog_ && !cellVisibleR(u->x, u->z) && !cellVisibleR(box.x, box.z))) continue;
+            spray(*u, a, box, reclaim);
+        }
+        // A repair pad's spray: SelfRepair (0x402430) runs on the flyer, and each
+        // tick its repair step from the pad succeeds (0x41bd10(pad, flyer) at
+        // 0x402518) it sprays exactly as a builder's repair does: the pad's
+        // QueryNanoPiece point (0x43e400(pad) at 0x40252e) to the flyer's model
+        // box (its position + type bounds, 0x402533..0x4025a5), 0x4720d0(.., 6).
+        for (const UnitR& f : front().units) {
+            if (f.padPiece < 0 || !f.inTransport || !f.type || f.deadFor >= 0) {
+                if (f.padPiece < 0) padRepairHp_.erase(f.id);
+                continue;
+            }
+            const auto last = padRepairHp_.find(f.id);
+            const bool advanced = last != padRepairHp_.end() && f.hp > last->second;
+            padRepairHp_[f.id] = f.hp;
+            if (!advanced) continue;
+            const UnitR* pad = frameUnitP(f.inTransport);
+            if (!pad || !pad->type || pad->deadFor >= 0) continue;
+            const auto at = anims_.find(pad->id);
+            if (at == anims_.end() || !at->second.vm || !at->second.pieceNames) continue;
+            const Box box{f.x, f.z, unitAltById(f.id) * kProjY + terrainLift(f.x, f.z),
+                          float(f.type->footX) * 16.0f, float(f.type->footZ) * 16.0f,
+                          std::max(8.0f, float(f.type->modelTop) / 65536.0f)};
+            if (!unitShownR(*pad) || (!noFog_ && !cellVisibleR(pad->x, pad->z))) continue;
+            spray(*pad, at->second, box, false);
+        }
+        for (auto it = padRepairHp_.begin(); it != padRepairHp_.end();)
+            it = frameUnitP(it->first) ? std::next(it) : padRepairHp_.erase(it);
+    }
+
+    void GameView::nanoSpray(const UnitR& source, Anim& a, const NanoBox& box, bool reclaim, uint32_t ticks) {
+        [[maybe_unused]] const uint32_t now = front().gameTick;
+        const auto* pal = featurePalette("");
+        auto colour = [&](int i) {
+            SDL_Color c{75, 171, 43, 255};
+            if (pal) { const auto* e = pal->rgba[161 + i % 7]; c = {e[0], e[1], e[2], 255}; }
+            return c;
+        };
+        auto rnd = [&] { salt_ = salt_ * 1103515245u + 12345u; return float((salt_ >> 16) & 0x7fff) / 32768.0f; };
+        const UnitR* u = &source;
+        [[maybe_unused]] const int id = source.id;
+        {
             const int32_t piece = (a.vm->call("QueryNanoPiece", {0}), a.vm->lastLocals().empty()
                                    ? -1 : a.vm->lastLocals()[0]);
             float nx, nz, nalt;

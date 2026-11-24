@@ -3979,6 +3979,24 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
             std::fprintf(stderr,"reclaim capture: no suitable feature/site\n");
             return;
         }
+        // TA_AIRPAD_CAPTURE=<pad type>: a repair pad and a fighter at 40% health on
+        // patrol past it; the fighter lands on the pad and is mended (SelfRepair):
+        // the rider's pose and the pad's nano spray (--shot while it sits there).
+        if (const char* padType=ta::devEnv("TA_AIRPAD_CAPTURE")) {
+            const auto* pad=registry_.find(padType);
+            const auto* fig=registry_.find("armfig");
+            if (!pad || !fig) { std::fprintf(stderr,"airpad capture: unknown %s\n",padType); return; }
+            const float px=1920,pz=1616;
+            const int padId=spawn(pad->id,px,pz,0,localPlayer_);
+            const int figId=spawn(fig->id,px+200,pz+120,0,localPlayer_);
+            if (auto* u=writableWorld().unit(figId)) u->hp=ta::sim::Fixed::fromFloat(float(fig->maxHp)*0.4f);
+            writableWorld().patrolTo(figId,px+600,pz+120,false);
+            std::printf("airpad capture: pad #%d (%s), fighter #%d\n",padId,padType,figId);
+            noFog_=true;edgeScrollOn_=false;
+            mapView_.setZoom(3.0f);
+            mapView_.setOffset(px-500/3.0f,pz-terrainLift(px,pz)-400/3.0f);
+            return;
+        }
         if (ta::devFlag("TA_CONJURE_TEST")) {
             const char* builder=ta::devEnv("TA_CONJURE_BUILDER");
             const char* target=ta::devEnv("TA_CONJURE_TARGET");

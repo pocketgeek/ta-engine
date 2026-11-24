@@ -557,6 +557,13 @@ struct UnitType {
     // player. Without it, a multi-weapon unit fires every weapon independently.
     bool  weaponSwitching = false;
     bool  onOffable = false;      // onoffable: can be toggled active/inactive
+    // Display only (never read by the simulation). digger: UnitDef +0x241 bit 30
+    // (TotalA.exe 0x42c885), the object bitmap's height bias 125 instead of 50
+    // (0x459a2f). zbuffer: +0x241 bit 7 (0x42c5bb), copied to unit +0x114 bit 0
+    // (0x485ad1): the unit draws through a height-buffered object bitmap, its
+    // dont-cache pieces redrawn every frame with playing textures (0x4586d6,
+    // 0x459641).
+    bool  digger = false, zbuffer = false;
     // activatewhenbuilt (the parser's default is retail's, off; a type built
     // in code keeps this on)
     bool  activateWhenBuilt = true;

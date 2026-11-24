@@ -422,6 +422,9 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
                 for (size_t i = 0; i < 3; ++i) t.badTargetCats[i] = tokens(info->valueOr(bad[i], ""));
             }
             t.onOffable = info->numberOr("onoffable", 0) != 0;
+            // Display only; the parser keeps bit 0 (`and eax, 1`, 0x42c88b / 0x42c5bb).
+            t.digger = (int64_t(info->numberOr("digger", 0)) & 1) != 0;
+            t.zbuffer = (int64_t(info->numberOr("zbuffer", 0)) & 1) != 0;
             // 4c033e: UnitDef +0x260 & 0x40000, default 0. A unit is created
             // inactive (511990 zeroes +0x114) and only this activates it, at
             // a finished creation (512301) or completion (429990): the four

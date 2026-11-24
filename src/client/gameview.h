@@ -1244,6 +1244,9 @@ private:
         std::vector<const std::vector<ShadowMaskFrame>*> primShadowMasks;
         std::vector<bool> primAnimated;
         std::vector<PieceMeta> children;    // 1:1 with Object::children
+        // The same piece in Visual::still (linkStillMeta), set on Visual::meta only:
+        // a cached piece is drawn through it (collect(), TotalA.exe 0x459b67).
+        const PieceMeta* stillTwin = nullptr;
     };
     // The rules themselves, in ONE place, used both to precompute the tree and to
     // answer for a model that has no cached tree (ghosts, portraits). A second copy
@@ -1267,6 +1270,11 @@ private:
     void buildStatueMeta(const PieceMeta& meta, PieceMeta& statue, const std::string& texture);
     // `meta` with each animated texture swapped for its first-frame entry.
     void buildStillMeta(const PieceMeta& meta, PieceMeta& still);
+    static void linkStillMeta(PieceMeta& meta, const PieceMeta& still) {
+        meta.stillTwin = &still;
+        for (size_t i = 0; i < meta.children.size() && i < still.children.size(); ++i)
+            linkStillMeta(meta.children[i], still.children[i]);
+    }
     static constexpr const char* kStillTextureSuffix = "#still";
     // The stone or ice texture of the side whose nameprefix starts `model`
     // (retail matches a feature to its side by the first three letters,
@@ -1279,7 +1287,7 @@ private:
     // share the exact rotated coordinates between the body and shadow passes.
     struct PreparedPiece {
         Xform transform;
-        bool hidden=false, castsShadow=true, shaded=true;
+        bool hidden=false, castsShadow=true, shaded=true, cached=true;
         std::vector<std::array<float,3>> rotated;
         std::vector<PreparedPiece> children;
     };
@@ -1352,7 +1360,9 @@ private:
         for (int frozen = 0; frozen < 2; ++frozen)
             buildStatueMeta(v.meta, v.statue[frozen], statueTexture(key, frozen != 0));
         buildStillMeta(v.meta, v.still);
-        return &visuals_.emplace(key, std::move(v)).first->second.model;
+        Visual& placed = visuals_.emplace(key, std::move(v)).first->second;
+        linkStillMeta(placed.meta, placed.still);   // node-stable from here on
+        return &placed.model;
     }
     struct EffectAnim;   // defined below; Anim only needs the pointer type
     struct Anim {
@@ -1417,7 +1427,12 @@ private:
     // work advances, 5 particles from its QueryNanoPiece piece to the middle of
     // the target (reclaim: the reverse). Cosmetic, client-only.
     void nanoStep();
+    struct NanoBox { float x, z, alt, w, d, h; };   // centre x/z, base alt (projected), extents
+    // One builder's (or repair pad's) emits for `ticks` ticks: 0x4720d0 / 0x472200.
+    void nanoSpray(const UnitR& source, Anim& a, const NanoBox& box, bool reclaim, uint32_t ticks);
     uint32_t nanoTick_ = 0;
+    // Each pad rider's hp last tick: a pad sprays on a tick its repair took.
+    std::unordered_map<int, float> padRepairHp_;
 
     // Refresh a cosmetic flame/smoke effect attached to its animated COB piece.
     // Effect classes and lifetimes still need a full native particle comparison.
@@ -1599,12 +1614,14 @@ private:
 #ifndef NDEBUG
         uint32_t verifiedTick=~0u;
 #endif
-        // Under construction (client/nanoframe.h): the body as retail's nanoframe,
-        // placed screen vertices and runs (null texture = flat colour), rebuilt every
-        // frame while `nano` is set; drawUnit draws these instead of verts/runs.
+        // Under construction (client/nanoframe.h): the body as retail's nanoframe
+        // object bitmap (nanoraster.h), RGBA, one texel per game pixel, rebuilt
+        // every frame while `nano` is set; drawUnit draws it at nanoDst instead of
+        // verts/runs.
         bool nano=false;
-        std::vector<SDL_Vertex> nanoVerts;
-        std::vector<std::pair<SDL_Texture*,int>> nanoRuns;
+        std::vector<uint32_t> nanoPixels;
+        int nanoW=0, nanoH=0;
+        SDL_FRect nanoDst{};
         // geomEntries_ payload contract (client/geometryowners.h). Cold = no key,
         // so the next build cannot reuse anything; capacity stays for reuse.
         // Revisions are kept: they come from one GameView-wide counter, so a value
@@ -1616,11 +1633,11 @@ private:
             verts.clear();runs.clear();shadowVerts.clear();
             maskedShadowVerts.clear();maskedShadowRuns.clear();shadowAtlasPage=nullptr;
             localPos.clear();baseColor.clear();shadowLocal.clear();maskedShadowLocal.clear();
-            nano=false;nanoVerts.clear();nanoRuns.clear();
+            nano=false;nanoPixels.clear();
         }
         template <class F> void forEachVector(F&& f) const {
             f(localKey);f(verts);f(runs);f(shadowVerts);f(maskedShadowVerts);f(maskedShadowRuns);
-            f(localPos);f(baseColor);f(shadowLocal);f(maskedShadowLocal);f(nanoVerts);f(nanoRuns);
+            f(localPos);f(baseColor);f(shadowLocal);f(maskedShadowLocal);f(nanoPixels);
         }
         size_t retainedBytes() const {
             size_t bytes=sizeof(*this);
@@ -1635,7 +1652,7 @@ private:
             std::vector<std::pair<SDL_Texture*,int>>().swap(maskedShadowRuns);
             std::vector<SDL_FPoint>().swap(localPos);std::vector<SDL_Color>().swap(baseColor);
             std::vector<SDL_FPoint>().swap(shadowLocal);std::vector<SDL_FPoint>().swap(maskedShadowLocal);
-            std::vector<SDL_Vertex>().swap(nanoVerts);std::vector<std::pair<SDL_Texture*,int>>().swap(nanoRuns);
+            std::vector<uint32_t>().swap(nanoPixels);
         }
     };
     ta::OpaqueShadowSubmit shadowOpaqueSubmit_;
@@ -2305,22 +2322,35 @@ private:
         float minY = 1e30f, maxY = -1e30f;   // screen y, over all headings
         bool any = false;
     };
-    // Body collection extras for the under-construction draw (client/nanoframe.h):
-    // per emitted triangle its three model-up heights and the primitive it came
-    // from, and per drawn (front-facing) primitive its outline in local screen
-    // positions with heights.
+    // Body collection for the under-construction draw (client/nanoframe.h,
+    // nanoraster.h): every primitive of every visible piece but the selection
+    // primitive, unculled (retail's walk culls), in rotated model space with its
+    // texture source frame, in piece order.
     // Palette 160..175 (the nanoframe's greens), set with the model textures.
     std::array<SDL_Color,16> nanoPalette_{};
+    std::array<uint32_t,256> nanoGamePalette_{};   // palette.pal, packed RGBA8888
+    bool nanoGamePaletteSet_ = false;
     void buildNanoframe(const UnitR& u, UnitGeom& g, const Visual& visual, const PieceMeta* meta,
                         const Anim* anim, SDL_Texture* atlas, float facing, float zm, float ax, float ay);
     struct NanoCollect {
-        std::vector<std::array<float,3>> heights;   // parallel to collect()'s output
-        std::vector<int32_t> primitive;              // outline index, parallel too
-        std::vector<SDL_FPoint> points;              // outline vertices
-        std::vector<float> pointHeights;
-        std::vector<std::pair<uint32_t,uint32_t>> outlines;   // (first point, count)
-        void clear() {heights.clear();primitive.clear();points.clear();pointHeights.clear();outlines.clear();}
+        struct Prim {
+            uint32_t first = 0, count = 0;   // into points
+            int32_t piece = 0;               // collect() call order (pre-order)
+            const ta::render::palette::Frame* frame = nullptr;   // indexed texels; null: flat
+            int32_t bank = -1;               // paletteBanks_ index (frame's palette)
+            int32_t level = -1;              // shade level 5..24, -1 unshaded
+            int32_t colorIndex = -1;         // an untextured primitive's palette index
+        };
+        std::vector<std::array<float,3>> points;   // (x, y up, z) rotated model space
+        std::vector<Prim> prims;
+        int32_t pieces = 0;
+        void clear() {points.clear();prims.clear();pieces=0;}
     };
+    // The nanoframe bitmaps, by unit id (render thread): uploaded by drawUnit.
+    struct NanoTexture { SDL_Texture* texture = nullptr; int w = 0, h = 0; uint64_t used = 0; };
+    std::unordered_map<int, NanoTexture> nanoTextures_;
+    uint64_t nanoTextureFrame_ = 0, nanoTexturePruned_ = 0;
+    void drawNanoframe(int unitId, const UnitGeom& g);
     void collect(std::vector<Tri>& out, SDL_Texture* atlas, const ta::tdo::Object& o,
                  const Xform& parent, const Anim* anim, float heading, int player,
                  bool mirror = false, bool isRoot = true, bool shadow = false,
