@@ -24,7 +24,7 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 | --- | --- |
 | 1. Units and weapons (`retail-data.md`) | done: 278 units, weapons by section, build menus from guis/download |
 | 2. Metal / energy economy (`retail-economy.md`) | done: 1 s settle, debt stalls, extractors on ore, wind/tidal, reclaim (`reclaim_test`) |
-| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, a kept engine feature, or dead code listed under Open (d)); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. The ballistic shell, the last Kingdoms rule, is TotalA.exe's since the second pass (2026-11-24): AimX's pitch solve 0x49a890 (equal to the binary on 63 emulated cases, tools/re/ballistic_emu.py), the range gate 0x49aa80 in the fire path, the launch 0x49cde0 on the slot's AimX angles plus the spread with the barrel word (0x49e11b, 0x49ce6a), and the motion 0x49bce3 (move, the wind vector G+0x37ecc = 0x490cf7's, then gravity; once a tick); burst clones copy the emitter (0x49b83b). Kingdoms code left unreachable: the Classic brain and the engine's old Controller levels are deleted; the rest is listed under Open (d). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands, ta_ballistic, ta_weapon_script; legion baselines retaken for the slot order and the shell motion (tools/scenarios/baseline.json) |
+| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, a kept engine feature, or dead code listed under Open (d)); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. The ballistic shell, the last Kingdoms rule, is TotalA.exe's since the second pass (2026-11-24): AimX's pitch solve 0x49a890 (equal to the binary on 63 emulated cases, tools/re/ballistic_emu.py), the range gate 0x49aa80 in the fire path, the launch 0x49cde0 on the slot's AimX angles plus the spread with the barrel word (0x49e11b, 0x49ce6a), and the motion 0x49bce3 (move, the wind vector G+0x37ecc = 0x490cf7's, then gravity; once a tick); burst clones copy the emitter (0x49b83b). Kingdoms code left unreachable: the Classic brain and the engine's old Controller levels are deleted; the third pass (2026-11-24) removed the rest that TA data cannot reach: the stone / freeze / mind-control statuses (Unit freeze and stone timers and statue corpses, the charm and its capture gates, cantbestoned / cantbefrozen / cantbecaptured, the client's statue meshes and PETRIFIED / FROZEN labels), the Remote Effect and Wandering weapon kinds and their fields, cananimate / animatetype (Resurrect raises only the body's own unit), weaponswitching (World::setWeapon, the AI weapon switch, switchreloadtime, the HUD weapon buttons and Cycle Weapon / Select Melee / Select Magic keys; Cmd::SetWeapon is refused, its number kept) and melee weapons (footprint contact, Attack_Melee's approach and retarget, the cursor's melee range), the lodestones (onMana, the in-place upgrade, the sacred-site yards and income, mogriumbounty, the lodestone box and the order trail's deposit sites; the ore-patch list is World::depositSpots), the group records' pacing (51b890 / 4d95f0), Kingdoms' experience routines (experiencepoints, getLevel / setLevel, noveteran: TA's veterancy is the kill count) and the Kingdoms side filters in Cartographer. Removed fields that sat in the Unit layout are pads; stateHash folds a constant where a folded field went. What is left is justified under Open (d). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands, ta_ballistic, ta_weapon_script; legion baselines retaken for the slot order and the shell motion (tools/scenarios/baseline.json) |
 | 4. GUI runtime, front end, sidebar (`retail-gui.md`) | done: MAINMENU, SINGLE, SKIRMISH, SELMAP, SELPROV/TCP, NEWGAME, MSNBRIEF, ENDMSN, in-game sidebar and top bar |
 | 5. AI (`retail-ai.md`) | done: every level runs the retail brain (RETAIL EASY/HARD plus the engine's levels) |
 | 6. Pathfinding (`retail-pathfinding.md`) | Retail A* verified 613/613 against TotalA.exe; goals per 0x44cf60/0x44d3b0/0x44dc60; Legion kept |
@@ -443,23 +443,32 @@ data (cleanup, no gameplay).
   script-less (test) carrier keeps the old transport stand-in (fifteen ticks
   of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
   astern can stand out of reach (the roster fixture moved hovers to open land).
-- (d) Kingdoms code compiled but unreachable from TA data, still present (each
-  is woven through World and through synthetic-unit tests that build Kingdoms
-  types, so its removal is a change of those tests too): the stone / freeze
-  statues and Area Mind Control (Weapon::status Frozen / Stoned and mindControl
-  are never set by taweapons.cpp; Unit::frozenFor / stonedFor), the Weapon
-  Remote Effect / Wandering kinds the client and shot_range_test still name, the
-  animate channel (no TA FBI has cananimate), weaponswitching and melee weapons
-  (no TA key), lodestones and the mana-area build box (onMana is never set;
-  Cmd::BuildManaArea is refused), the group records' pacing
-  (World::retailGroupOf is always null; Legion reads retailMissionFlags for its
-  own formations), the experience routines (xp / vetMul; TA credits none and
-  its data places no veteran). Removed 2026-11-24: the Classic brain
-  (ai/classic*), the engine's old Controller levels (ai.cpp: every level runs
-  TaRetailBrain), the Remote Effect runtime (World::pendingEffects_, which had
-  no producer; its hash fold keeps its shape). The client's area-order preview
-  (client/ordertrail.cpp, retailreclaimarea.h) is live again with the area
-  reclaim (Known deviations).
+- (d) Kingdoms code compiled but unreachable from TA data: removed 2026-11-24
+  (step 3), with these leftovers kept on purpose:
+  - The line-of-sight status branch (Weapon::losStatus, never set by
+    taweapons.cpp; tickStraightProjectiles' status update, the launch and
+    burst-emitter tests on it, World::statusShotRefused now a constant
+    `false`): it sits in the line-of-sight shot path another change was
+    rewriting at the time; drop it with that path. Likewise the faction
+    nimbus (Weapon::nimbus / nimbusTicks, UnitType::hasNimbusArt, the client's
+    factionNimbus), which no TA weapon sets.
+  - The group checks' structure (World::retailGroupOf, always null; the
+    formation-level legs and retailgroup.h's check helpers that Legion's own
+    formations and retailMissionFlags still call): only the pacing (51b890 /
+    4d95f0) went.
+  - Player::mana / income / storage, UnitType::income / storage: the engine's
+    single-resource pool, mirrored from TA's stored metal (taeconomy.cpp),
+    hashed, read by the scenario resource conditions and the HUD, and the
+    economy the synthetic-type tests run on; not Kingdoms gameplay on TA data
+    (every TA type's income and storage are 0).
+  - The authored veteran rank (Unit::rank / veteran / vetOverride, vetMul):
+    the engine's scenarios (CRT placements, type stats, a mission's `v F`)
+    and Cartographer author it; TA data and TA kills never set it (TA's
+    veterancy is `kills`). Unit::weaponSlot stays (hashed, always 0).
+  - Kingdoms names in the client's old HUD (gameview_hud.cpp order column, the
+    Kingdoms side conjure/wave art names in gameview_render.cpp) and unbuilt
+    tools/ sources not in CMakeLists.txt (scenario_stats_test, owner_change_test
+    and others): display-only or dead files, not reached by a TA game.
 
 ## Resolved (2026-11-24 audit)
 
