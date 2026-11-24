@@ -3785,17 +3785,38 @@ check(anims_.count(b3) && !anims_.at(b3).dying,"what the future did to a unit's 
                         writableWorld().train(factory,product,50);++factories;
                     }
                 }
-                // Builders with queued (shift) build orders: the queued-build ghosts.
-                for(int k=0;k<3;++k) {
-                    const float bx=centerX+float(k-1)*600,bz=centerZ+300;
-                    const int builder=spawn("armcom",bx,bz,0,localPlayer_);
-                    if(builder<=0)continue;
-                    for(const auto& option:registry_.buildable("armcom")) {
-                        const auto* site=registry_.find(option);
-                        if(!site || !isStructure(site) || site->footX>4 || site->footZ>4)continue;
-                        for(int q=0;q<3;++q)writableWorld().queueBuild(builder,site,bx+float(q)*96,bz+160,true);
-                        ++ghostQueues;break;
-                    }
+                // Builders with queued (shift) build orders: the queued-build ghosts. A
+                // queued build the map refuses is dropped (World::queueBuild ->
+                // canPlaceOrder), and the Kingdoms-era spots (300 px south of the centre,
+                // 600 px apart) are water and broken ground on Krogoth Encounter, and
+                // inside TA's denser grids: each builder takes the nearest open row of
+                // three sites to its spot instead (rings 128 px apart, clear of the other
+                // builders' rows), so the scene holds three ghost queues on any map.
+                const ta::sim::UnitType* queueSite=nullptr;
+                for(const auto& option:registry_.buildable("armcom"))
+                    if(const auto* t=registry_.find(option);t && isStructure(t) && t->footX<=4 && t->footZ<=4) {queueSite=t;break;}
+                std::vector<std::pair<float,float>> queueRows;
+                for(int k=0;k<3 && queueSite;++k) {
+                    const float wantX=centerX+float(k-1)*600,wantZ=centerZ+300;
+                    bool placed=false;
+                    for(int ring=0;ring<=40 && !placed;++ring)
+                        for(int step=0;step<std::max(1,ring*8) && !placed;++step) {
+                            const float angle=float(step)*6.2831853f/float(std::max(1,ring*8));
+                            const float bx=wantX+std::cos(angle)*float(ring)*128,bz=wantZ+std::sin(angle)*float(ring)*128;
+                            if(std::any_of(queueRows.begin(),queueRows.end(),[&](const auto& r) {
+                                return std::abs(r.first-bx)<480 && std::abs(r.second-bz)<320;
+                            }))continue;
+                            bool open=true;
+                            for(int q=0;q<3 && open;++q)
+                                open=world_.canPlaceOrder(queueSite,bx+float(q)*96,bz+160,localPlayer_);
+                            if(!open || !world_.canPlace(registry_.find("armcom"),bx,bz,localPlayer_))continue;
+                            const int builder=spawn("armcom",bx,bz,0,localPlayer_);
+                            if(builder<=0)continue;
+                            for(int q=0;q<3;++q)writableWorld().queueBuild(builder,queueSite,bx+float(q)*96,bz+160,true);
+                            ghostQueues+=!world_.unit(builder)->orders.empty();
+                            queueRows.emplace_back(bx,bz);
+                            placed=true;
+                        }
                 }
             }
             int queueBuilders=0,queueOrders=0,queueTypes=0;
