@@ -539,7 +539,9 @@ void mazeProduction(const char* data) {
     constexpr auto recipe="~gen1~0a00f0a981b8b476a2cb010008000808ffffff67ff03000000004a616e6b204d617a65207631";
     auto generated=ta::mapgen::generate(ta::mapgen::decodeMapId(recipe),vfs);
     auto files=std::make_shared<ta::hpi::Vfs::Files>();(*files)["maps/orders-maze.tnt"]=generated.map.save();vfs.setMapFiles(files);
-    for(bool mobile:{false,true})for(bool rally:{false,true}) {
+    // A building producer only: no TA mobile unit has a mobile unit on its build menu
+    // (FBIs, guis/*.gui, download/*.tdf), so the mobile producer was Kingdoms-only.
+    for(bool mobile:{false})for(bool rally:{false,true}) {
         World w;w.setSerialThreads(true);
         MatchConfig cfg;cfg.vfs=&vfs;cfg.mapPath="maps/orders-maze.tnt";cfg.loadCrt=false;
         cfg.pathfindingMode=selectedMode;cfg.slots.resize(1);setupMatch(w,registry,cfg);
@@ -689,7 +691,8 @@ int main(int argc,char** argv) {
     }
     const auto serial=group(selectedMode,false,true);
     check(serial==group(selectedMode,false,false),"shared-navigation group hashes match serial and threaded preparation");
-    for(bool mobile:{false,true})for(bool rally:{false,true}) {
+    // A building producer only (see mazeProduction): TA has no mobile factory.
+    for(bool mobile:{false})for(bool rally:{false,true}) {
         const auto hash=production(mobile,rally,true);
         check(hash==production(mobile,rally,false),"production hashes match serial and threaded preparation");
     }
