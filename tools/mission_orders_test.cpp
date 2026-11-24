@@ -25,10 +25,11 @@
 //   UnitCreated once per unit that enters play, with its owner byte (4d33a0)
 //
 // Synthetic types from a scratch FBI tree, on a flat map. With a retail install
-// (`mission_orders_test --data <dir>`) it checks shipped missions instead: takx04's
-// Flying Builder builds its shipyard when the lodestone JIM is attacked rather than
-// conjuring it at start, its keeps queue their waves, and takx07's soldiers start
-// aboard their transports.
+// (`mission_orders_test --data <dir>`) it checks shipped TA missions instead
+// (docs/retail-campaign.md section 2.6): ac01's gate holds (o 0 0) and waits an
+// hour unselectable, ac02's Core lab queues its waves rather than spawning them,
+// ac13's units start aboard their transports, and Com Pattern Five's squad waits
+// on raid1 until it is hit, then moves out.
 
 #include "ai/classicbrain.h"
 #include "sim/mission.h"
@@ -1250,111 +1251,108 @@ static void shipped(const char* data) {
     hpi::Vfs vfs = hpi::mountRetailRoot(data);
     sim::TypeRegistry reg;
     sim::setupRegistry(reg,vfs);
-    const auto* arafly = reg.find("arafly"), *arassh = reg.find("arassh"), *aralode = reg.find("aralode");
-    const auto* arakeep = reg.find("arakeep"), *araat = reg.find("araat");
     {
         // 4c18d7..4c18ff strips canattack from a type with a weapon, bmcode 0
-        // and a canbuild menu: none shipped is one (merged units and unitscb).
+        // and a canbuild menu: none shipped is one.
         std::string stripped;
         for (const auto& [name, t] : reg.types()) if (World::attackStrippedAtLoad(t)) stripped += " " + name;
         check(stripped.empty(), "no shipped type loses canattack at load", stripped);
     }
-    std::printf("takx04 (Flying Builder, keeps, towers):\n");
+    // TA campaign missions (maps/<missionfile>, docs/retail-campaign.md section 2.6):
+    // points are pixels (no [Map Data]: scale 1), times seconds x30.
+    auto load = [&](World& w, const char* stem) {
+        int human = 0;
+        const bool ok = sim::setupMission(w, reg, vfs, stem, human);
+        check(ok, std::string(stem) + " loads");
+        if (ok) tickN(w, 2);
+        return ok;
+    };
+    std::printf("ac01 (the gate's o 0 0, w 3600 0):\n");
     {
         World w;
-        int human = 0;
-        if (!sim::setupMission(w, reg, vfs, "takx04_ph", human)) { check(false, "takx04_ph loads"); return; }
-        tickN(w, 2);
-        int flyer = 0, jim = 0, keep = 0;
-        std::vector<int> towers;
-        for (const auto& u : w.units()) {
-            if (u.type == arafly) flyer = u.id;
-            if (u.type == aralode && u.x.toFloat() == 231 * 16 && u.z.toFloat() == 222 * 16) jim = u.id;
-            if (u.type == arakeep) keep = u.id;
-            if (u.type == araat) towers.push_back(u.id);
+        if (load(w, "ac01")) {
+            const auto* gate = reg.find("armgate");
+            const Unit* g = nullptr;
+            for (const auto& u : w.units()) if (u.type == gate && u.alive()) g = &u;
+            check(g != nullptr, "finds the placed ARMGATE");
+            if (g) {
+                check(g->fireState == 0 && g->moveState == 0, "o 0 0 sets both standing fields to 0",
+                      std::to_string(g->fireState) + "/" + std::to_string(g->moveState));
+                check(!g->orders.empty() && g->orders.front().wait > 3590 * 30,
+                      "w 3600 0 waits an hour (3600 x 30 ticks)",
+                      g->orders.empty() ? "no order" : std::to_string(g->orders.front().wait));
+                check(!g->selectable && !g->orders.empty() && isKind(w, g->orders.back(), ScriptedOrder::Kind::MakeSelectable),
+                      "it is unselectable until its script ends (MAKESELECTABLE appended)");
+            }
         }
-        check(flyer && jim && keep && towers.size() >= 2, "finds the flyer, the lodestone JIM, the keep and the towers");
-        if (!flyer || !jim || !keep) return;
-        // [units] records: unit71 arafly 14,60 (2x2 mobile), unit109 aralode JIM
-        // 231,222 (2x2 building), unit110 arassh JOE 176,243 (4x4), all Angle 180.
-        auto standsAt = [&](const sim::UnitType* t, int x, int z) {
+    }
+    std::printf("ac02 (the Core lab's waves: w 700, b CORAK, w 300, b CORAK 1, ...):\n");
+    {
+        World w;
+        if (load(w, "ac02")) {
+            const auto* lab = reg.find("corlab");
+            const auto* corak = reg.find("corak");
+            const Unit* l = nullptr;
+            for (const auto& u : w.units()) if (u.type == lab && u.alive() && u.player == 1) l = &u;
+            check(l != nullptr, "finds the Core lab");
+            if (l) {
+                const ScriptedOrder* first = l->orders.size() > 3 ? w.scriptedOrder(l->orders[1]) : nullptr;
+                const ScriptedOrder* third = l->orders.size() > 5 ? w.scriptedOrder(l->orders[5]) : nullptr;
+                check(!l->orders.empty() && l->orders.front().wait > 0, "it waits first (w N)");
+                check(first && first->kind == ScriptedOrder::Kind::Train && first->type == corak && first->count >= 1 &&
+                          third && third->kind == ScriptedOrder::Kind::Train && third->count >= 2,
+                      "then BUILDINGBUILD CORAK x N, wave after wave", std::to_string(l->orders.size()) + " order(s)");
+                check(l->buildQueue.empty() && !l->selectable, "nothing is built yet, and the lab is not selectable");
+            }
+        }
+    }
+    std::printf("ac13 (Reapers aboard Valkyries: i TRANSPORTn):\n");
+    {
+        World w;
+        if (load(w, "ac13")) {
+            int aboard = 0, carriers = 0;
+            for (const auto& u : w.units()) {
+                if (u.embarked()) ++aboard;
+                if (u.type && u.type->canTransport && !u.cargo.empty()) ++carriers;
+            }
+            check(aboard >= 3 && carriers >= 3, "the i clauses put the units in their transports",
+                  std::to_string(aboard) + " aboard " + std::to_string(carriers) + " carriers");
+            tickN(w, 300);
+            check(true, "and the mission runs on");
+        }
+    }
+    std::printf("com pattern five (wa raid1, m 4544 480, a armcrus, ...):\n");
+    {
+        World w;
+        if (load(w, "com pattern five")) {
+            const auto* raid = reg.find("corraid");
+            int raid1 = 0;
             for (const auto& u : w.units())
-                if (u.type == t && u.x == Fixed::fromInt(x) && u.z == Fixed::fromInt(z)) return u.heading.v == 0;
-            return false;
-        };
-        check(standsAt(arafly, 14 * 16, 60 * 16), "a placed Flying Builder (mobile) stands at XPos*16, facing Angle 180");
-        check(standsAt(aralode, 231 * 16, 222 * 16), "the 2x2 lodestone JIM at 231*16 (it was +8)");
-        check(standsAt(arassh, 176 * 16, 243 * 16), "the 4x4 shipyard JOE at 176*16");
-        const Unit* fl = w.unit(flyer);
-        const ScriptedOrder* wa = fl->orders.empty() ? nullptr : w.scriptedOrder(fl->orders.front());
-        check(wa && wa->kind == ScriptedOrder::Kind::WaitAttack && wa->watched == jim,
-              "the Flying Builder waits on JIM (wa JIM)");
-        tickN(w, 300);
-        int shipyards = 0;   // (two more are placed elsewhere: JOE and ZAP)
-        for (const auto& u : w.units())
-            if (u.type == arassh && u.alive() &&
-                std::hypot(u.x.toFloat() - 370 * 16.0f, u.z.toFloat() - 225 * 16.0f) < 160) ++shipyards;
-        check(shipyards == 0, "no shipyard appears at 370,225 at the start (it was conjured free)");
-        check(!w.unit(flyer)->orders.empty() && w.unit(flyer)->orders.front().waitAttack, "it is still waiting");
-        w.unit(jim)->attackedTick = w.tickCount() + 1;     // JIM is attacked
-        tickN(w, 3);
-        fl = w.unit(flyer);
-        const Order* build = fl->orders.empty() ? nullptr : &fl->orders.front();
-        check(build && build->buildType == arassh, "once JIM is attacked it sets off to build the shipyard");
-        if (build && arassh)
-            check(sim::footprintOrigin(build->buildX, arassh->footX) == 370 - arassh->footX / 2 &&
-                  sim::footprintOrigin(build->buildZ, arassh->footZ) == 225 - arassh->footZ / 2,
-                  "at 370,225", std::to_string(sim::footprintOrigin(build->buildX, arassh->footX)) + "," +
-                                std::to_string(sim::footprintOrigin(build->buildZ, arassh->footZ)));
-        const Unit* k = w.unit(keep);
-        // Its last order is the parse's MakeSelectable (514a7d): the keep is
-        // not selectable until it has built them.
-        const ScriptedOrder* first = k->orders.size() == 4 ? w.scriptedOrder(k->orders[0]) : nullptr;
-        check(first && first->kind == ScriptedOrder::Kind::WaitNear && first->radius == 80 &&
-              w.scriptedOrder(k->orders[1]) && w.scriptedOrder(k->orders[1])->kind == ScriptedOrder::Kind::Train &&
-              w.scriptedOrder(k->orders[1])->count == 15 && k->buildQueue.empty() && !k->selectable &&
-              isKind(w, k->orders[3], ScriptedOrder::Kind::MakeSelectable),
-              "the keep waits (5 cells) before it builds 15 swordsmen, then 20 archers",
-              std::to_string(k->orders.size()) + " order(s)");
-        const Unit* tower = w.unit(towers.front());
-        check(tower->standingOrder == 0 && tower->fireState == 0, "the towers' o 0 is Passive",
-              std::to_string(tower->standingOrder) + "/" + std::to_string(tower->fireState));
-    }
-    std::printf("takx07 (troops aboard):\n");
-    {
-        World w;
-        int human = 0;
-        if (!sim::setupMission(w, reg, vfs, "takx07_ph", human)) { check(false, "takx07_ph loads"); return; }
-        tickN(w, 2);
-        int aboard = 0, carriers = 0;
-        for (const auto& u : w.units()) {
-            if (u.embarked()) ++aboard;
-            if (u.type && u.type->canTransport && !u.cargo.empty()) ++carriers;
+                if (u.type == raid && u.x.toFloat() == 2704 && u.z.toFloat() == 224) raid1 = u.id;
+            check(raid1 != 0, "finds raid1 (CORRAID at 2704,224 px)");
+            std::vector<int> waiters;
+            for (const auto& u : w.units()) {
+                if (u.id == raid1 || u.orders.empty()) continue;
+                const ScriptedOrder* wa = w.scriptedOrder(u.orders.front());
+                if (wa && wa->kind == ScriptedOrder::Kind::WaitAttack && wa->watched == raid1) waiters.push_back(u.id);
+            }
+            check(waiters.size() >= 3, "its squad waits on raid1 (wa raid1)", std::to_string(waiters.size()) + " waiting");
+            tickN(w, 300);
+            bool still = !waiters.empty();
+            for (int id : waiters) still = still && !w.unit(id)->orders.empty() && w.unit(id)->orders.front().waitAttack;
+            check(still, "they are still waiting 10 s on");
+            if (raid1 && !waiters.empty()) {
+                w.unit(raid1)->attackedTick = w.tickCount() + 1;   // raid1 is attacked
+                tickN(w, 3);
+                const Unit* u = w.unit(waiters.front());
+                bool moving = false;
+                for (const auto& o : u->orders)
+                    if (!w.scriptedOrder(o) && !o.waitAttack && std::abs(o.x.toFloat() - 4544) < 32 &&
+                        std::abs(o.z.toFloat() - 480) < 32) { moving = true; break; }
+                const bool released = !u->orders.empty() && !u->orders.front().waitAttack;
+                check(released && moving, "once raid1 is hit they set off for 4544,480 px");
+            }
         }
-        check(aboard >= 95 && carriers >= 2, "the i clauses put the troops in their transports",
-              std::to_string(aboard) + " aboard " + std::to_string(carriers) + " carriers");
-        tickN(w, 300);
-        check(true, "and the mission runs on");
-    }
-    std::printf("takmission41 (mortars bombard a point):\n");
-    {
-        World w;
-        int human = 0;
-        if (!sim::setupMission(w, reg, vfs, "takmission41_dh", human)) { check(false, "takmission41_dh loads"); return; }
-        tickN(w, 2);
-        const auto* vermort = reg.find("vermort");
-        std::vector<int> mortars;
-        for (const auto& u : w.units())
-            if (u.type == vermort && !u.orders.empty() && u.orders.front().suppress) mortars.push_back(u.id);
-        check(mortars.size() == 3, "the three Mortars' a X Y is SUPPRESS (they did nothing)",
-              std::to_string(mortars.size()) + " on SUPPRESS");
-        int fired = 0;
-        for (int t = 0; t < 900 && !fired; ++t) {
-            tickN(w, 1);
-            for (int id : mortars)
-                if (const Unit* u = w.unit(id); u && u->firedWeapons) ++fired;
-        }
-        check(fired > 0, "and they fire at it");
     }
 }
 

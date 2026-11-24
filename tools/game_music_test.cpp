@@ -1,4 +1,5 @@
 #include "client/sound.h"
+#include "client/musicfile.h"
 #include "hpi/hpi.h"
 #include <cmath>
 #include <filesystem>
@@ -10,7 +11,7 @@
 // their own rate and channels (stepped through the windowed-sinc interpolator, which
 // stops the images above a source's Nyquist and bypasses 1:1 bit for bit), stereo effects
 // keep their image and still pan, multichannel sources map channel for channel onto
-// the output and fold down only what it lacks, a mod's music/track<n>.wav replacement
+// the output and fold down only what it lacks, a mod's music/<n+1>.mp3 replacement
 // plays at its own 44.1 kHz stereo, and the stream tap receives the 44100 Hz mix
 // unchanged. No device: mix()/mixThunk are driven directly.
 struct SoundBankTestAccess {
@@ -403,28 +404,30 @@ int main(int argc,char** argv) {
         bank.setAudioTap(nullptr,nullptr);
     }
     {
-        // A cosmetic mod pack replacing music/track3.wav with a 44.1 kHz stereo file
-        // wins the VFS over the install's Music/ copy and plays at its own quality.
+        // A cosmetic mod pack replacing music/4.mp3 (logical track 3: the GOG shim
+        // plays CD track L+1, docs/retail-music.md section 4) with a 44.1 kHz stereo
+        // file wins the VFS over the install's copy and plays at its own quality.
+        // The decoder sniffs the content, so WAVs under the .mp3 names play.
         namespace fs=std::filesystem;
         const fs::path root=fs::temp_directory_path()/("game_music_mod_"+std::to_string(std::random_device{}()));
         const fs::path pack=root/"mods"/"cosmetic"/"always_enabled"/"hq"/"music";
-        fs::create_directories(root/"Music");fs::create_directories(pack);
+        fs::create_directories(root/"music");fs::create_directories(pack);
         auto put=[](const fs::path& p,const std::vector<uint8_t>& d) {
             std::ofstream(p,std::ios::binary)
                 .write(reinterpret_cast<const char*>(d.data()),std::streamsize(d.size()));
         };
         constexpr int N=R/4;
-        put(root/"Music"/"track3.wav",wavFile(22050,2,16,tones(22050,N/2,{440,440})));
-        put(pack/"track3.wav",wavFile(R,2,16,tones(R,N,{15000,1000})));
+        put(root/"music"/"4.mp3",wavFile(22050,2,16,tones(22050,N/2,{440,440})));
+        put(pack/"4.mp3",wavFile(R,2,16,tones(R,N,{15000,1000})));
         {
             auto vfs=ta::hpi::mountPlayVfs(root,{},{});
             SoundBank bank;
             if(!SoundBankTestAccess::openPaused(bank))return 2;
             SoundBankTestAccess::layout(bank,2);
-            bank.startMusic(vfs,{3});
+            bank.playTrack(vfs,3);   // the battle-music path (battlemusic.h)
             const auto& m=SoundBankTestAccess::music(bank);
             check(m.rate==R && m.channels==2 && m.frames()==size_t(N),
-                  "mod track replaces the install's track3 at 44.1 kHz stereo");
+                  "mod track replaces the install's track 3 at 44.1 kHz stereo");
             auto out=SoundBankTestAccess::mix(bank,N);
             const double l15=tone(out,2,0,15000,R),r15=tone(out,2,1,15000,R),r1=tone(out,2,1,1000,R);
             std::cerr<<"mod track: L15k="<<l15<<" R15k="<<r15<<" R1k="<<r1<<'\n';
@@ -436,25 +439,19 @@ int main(int argc,char** argv) {
         std::error_code ec;fs::remove_all(root,ec);
     }
     if(argc==2) {
-        // Retail tracks are 22050 Hz stereo: cached as they are, frame for frame.
+        // The GOG install's tracks are music/1.mp3..17.mp3 (logical 0..16), 44.1 kHz
+        // stereo: decoded at their own rate and channels.
         auto vfs=ta::hpi::mountRetailRoot(argv[1]);
         int tracks=0;
-        for(int t=1;t<=20;++t) {
-            const std::string path="music/track"+std::to_string(t)+".wav";
+        for(int t=0;t<=16;++t) {
+            const std::string path="music/"+std::to_string(t+1)+".mp3";
             if(!vfs.has(path))continue;
-            auto raw=vfs.read(path);
-            SDL_AudioSpec spec{};Uint8* buf=nullptr;Uint32 len=0;
-            if(!SDL_LoadWAV_RW(SDL_RWFromConstMem(raw.data(),int(raw.size())),1,&spec,&buf,&len)) {
-                check(false,path+" loads");continue;
-            }
-            SDL_FreeWAV(buf);
-            check(spec.freq==22050 && spec.channels==2,path+" is 22050 Hz stereo");
-            auto pcm=SoundBankTestAccess::convert(raw);
-            check(pcm && pcm->samples.size()==size_t(len/2) && pcm->rate==22050,
-                  path+" keeps its own rate and channels");
+            auto pcm=ta::music::loadTrack(vfs,t,R,false);
+            check(pcm && pcm->rate==R && pcm->channels==2 && !pcm->samples.empty(),
+                  path+" decodes as 44.1 kHz stereo");
             ++tracks;
         }
-        check(tracks>0,"retail music tracks found");
+        check(tracks>=16,"retail music tracks found ("+std::to_string(tracks)+")");
     }
     SDL_Quit();
     if(failures)return 1;

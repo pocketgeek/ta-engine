@@ -181,70 +181,23 @@ int main(int argc,char** argv) {
     }
     if(argc==2) {
         auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        std::set<std::string> checkedSounds;
         SoundBank decoder;
-        check(vfs.has("sounds/alarmmon.wav"), "retail monarch alarm exists");
-        check(SoundBankTestAccess::decodes(decoder,vfs.read("sounds/alarmmon.wav")),
-              "retail monarch alarm decodes to PCM");
-        // The Creon cries the option exists for: mastered -19 to -20 dBFS, raised +3.4 to
-        // +5.1 dB (gains 1.48 / 1.78 / 1.80); a cannon (-8) is not.
-        for(const char* cry:{"sounds/creautodie1.wav","sounds/creautodie2.wav","sounds/creautodie3.wav"}) {
-            const float g=SoundBankTestAccess::evenGain(decoder,vfs.read(cry));
-            std::cout<<cry<<" even-out gain "<<g<<'\n';
-            check(g>1.4f && g<2.2f,"an Automaton death cry is raised by EVEN OUT SOUND LEVELS");
+        // TA's under-attack alert is each unit's sound class underattack= (gamedata/
+        // sound.tdf): warning1 for the Commander.
+        check(vfs.has("sounds/warning1.wav"), "retail under-attack alert exists");
+        check(SoundBankTestAccess::decodes(decoder,vfs.read("sounds/warning1.wav")),
+              "retail under-attack alert decodes to PCM");
+        // Quietly mastered unit servos (gains 1.56 / 1.91 / 1.91 measured) are what the
+        // option is for; a cannon is not raised.
+        for(const char* quiet:{"sounds/servsml3.wav","sounds/servsml4.wav","sounds/servsml5.wav"}) {
+            const float g=SoundBankTestAccess::evenGain(decoder,vfs.read(quiet));
+            std::cout<<quiet<<" even-out gain "<<g<<'\n';
+            check(g>1.4f && g<2.2f,"a quiet servo is raised by EVEN OUT SOUND LEVELS");
         }
-        check(SoundBankTestAccess::evenGain(decoder,vfs.read("sounds/cannon8.wav"))==1.f,"a loud cannon is left alone");
-        int decoded=0,missingShipped=0;
-        const auto auditSound=[&](std::string sound) {
-            std::transform(sound.begin(),sound.end(),sound.begin(),::tolower);
-            check(!sound.empty(),"death callback resolves a sound name");
-            if(!checkedSounds.insert(sound).second)return;
-            const auto path="sounds/"+sound+".wav";
-            if(!vfs.has(path)) {
-                // Shipped Gatling Crossbow/Giant Barracuda scripts reference absent WAVs.
-                // Retail's failed lookup is silent; do not substitute another unit.
-                if(sound=="cregatldie1" || sound=="zonbardie1") {++missingShipped;return;}
-                ++failures;std::cerr<<"Missing death sound "<<path<<'\n';return;
-            }
-            check(SoundBankTestAccess::decodes(decoder,vfs.read(path)),"authored death sound decodes to PCM");
-            ++decoded;
-        };
-        {
-            ta::sim::TypeRegistry registry;ta::sim::setupRegistry(registry,vfs);
-            int scripts=0,events=0;
-            for(const auto& [name,type]:registry.types()) {
-                const auto* file=type.script();if(!file)continue;
-                ++scripts;
-                // Check every authored death-cry variant, including branches not
-                // selected by this deterministic callback timeline's random draws.
-                for(auto sound:file->names) {
-                    std::transform(sound.begin(),sound.end(),sound.begin(),::tolower);
-                    if(sound.find("die")!=std::string::npos)auditSound(sound);
-                }
-                for(int deathType:{0,1,2,3,5,7,8,14,15}) {
-                    ta::cob::Vm vm(*file);vm.enableRetailAnimation();
-                    bool stop=false,capture=false;
-                    vm.onGet=[&](int query,const std::vector<int32_t>&){return query==4 && !capture ? 100:0;};
-                    vm.onSetUnitValue=[&](int32_t id,int32_t){if(ta::retailOwnerVmStopsOnSetUnitValue(id))stop=true;};
-                    vm.onPlaySound=[&](int32_t index,int32_t flags) {
-                        if(!capture)return;
-                        ++events;
-                        check(flags==4 || flags==7,"death cry uses an authored combat/global class");
-                        auditSound(file->name(uint32_t(index)));
-                    };
-                    vm.start("Create");for(int t=0;t<30;++t)vm.tick(1.f/30);
-                    stop=false;capture=true;
-                    const bool callbacks=(deathType>=1 && deathType<=5);
-                    if(callbacks) {
-                        if(deathType!=5)vm.call("Killed",{100,0,deathType});
-                        if(!vm.start("Dying",{deathType}))stop=true;
-                    }
-                    for(int t=0;t<600 && !stop && callbacks;++t)vm.tick(1.f/30);
-                }
-            }
-            std::cout<<"Standard"<<": "<<scripts<<" scripts, "<<events<<" death sound events\n";
-        }
-        std::cout<<decoded<<" distinct death WAVs decoded; "<<missingShipped<<" known absent shipped WAVs remain silent\n";
+        check(SoundBankTestAccess::evenGain(decoder,vfs.read("sounds/cannon3.wav"))==1.f,"a loud cannon is left alone");
+        // Kingdoms' Dying scripts played authored death cries (PLAY_SOUND). TA's
+        // scripts play no sounds: a death is heard as its explosion weapon's soundhit
+        // (sound_hit_data covers those).
     }
     SDL_Quit();
     std::cout<<(failures?"FAIL":"PASS")<<": death sound delivery and mixer admission ("<<failures<<" failures)\n";

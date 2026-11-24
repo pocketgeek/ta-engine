@@ -3,9 +3,7 @@
 //
 //   ai_profile_test           the tables, the line format, and which mod layers may
 //                             supply ai/taengine.txt (scratch mod folders, no data)
-//   ai_profile_test <data>    also: the built-in Normal table still equals the
-//                             retail default profile (the base install's winning
-//                             ai/default.txt) the levels were tuned on; and the
+//   ai_profile_test <data>    also: the
 //                             AI files (ai/default.txt, ai/taengine.txt) travel
 //                             in a map's package when the map's own archive
 //                             carries them, and a game mod's copy wins over the
@@ -62,24 +60,28 @@ static void tables() {
     // Behaviour must not change yet: every level still plays the profile it was tuned on.
     for (uint8_t level = 0; level < ai::kAiLevels; ++level) {
         const auto d = ai::Difficulty(level);
-        if (d == ai::Difficulty::Classic) continue;
+        if (ai::retailLevel(d)) continue;
         check(same(ai::builtinProfile(d), normal), "level " + std::to_string(level) + "'s table equals Normal's (no level diverges yet)");
     }
     const auto& classic = ai::builtinProfile(ai::Difficulty::Classic);
-    check(classic.weight.empty() && classic.limit.empty() && !ai::levelProfileFile(ai::Difficulty::Classic),
-          "Classic has no built-in table and no mod file");
+    bool retail = true;
+    for (const auto d : {ai::Difficulty::Classic, ai::Difficulty::RetailEasy, ai::Difficulty::RetailHard})
+        retail = retail && ai::builtinProfile(d).weight.empty() && ai::builtinProfile(d).limit.empty() &&
+                 !ai::levelProfileFile(d);
+    check(classic.weight.empty() && classic.limit.empty() && retail,
+          "Classic and the other RETAIL levels (TA's own brain) have no built-in table and no mod file");
     bool ok = true;
     for (uint8_t level = 0; level < ai::kAiLevels; ++level) {
         const auto d = ai::Difficulty(level);
-        if (d == ai::Difficulty::Classic) continue;
+        if (ai::retailLevel(d)) continue;
         ok = ok && ai::levelProfileFile(d) && std::string(ai::levelProfileFile(d)) == "ai/taengine.txt";
     }
     check(ok && std::string(ai::kEngineProfileFile) == "ai/taengine.txt",
           "every one of our levels reads the one file ai/taengine.txt");
 
     ai::Profile p;
-    ai::applyProfileText("// comment\r\nweight AraBow 3\r\nlimit arabow 0\nlimit arabow 2 trailing\nplan x 1\n/weight arafly 9\nweight arafly\n", p);
-    check(p.weight.size() == 1 && p.weight.at("arabow") == 3 && p.limit.size() == 1 && p.limit.at("arabow") == 2,
+    ai::applyProfileText("// comment\r\nweight ArmPW 3\r\nlimit armpw 0\nlimit armpw 2 trailing\nplan x 1\n/weight armfig 9\nweight armfig\n", p);
+    check(p.weight.size() == 1 && p.weight.at("armpw") == 3 && p.limit.size() == 1 && p.limit.at("armpw") == 2,
           "line format: lowercased units, CRLF, later line wins, comments/other keywords/short lines skipped");
     ai::Profile tower;
     ai::applyProfileText("weight AraSeige 3\nlimit arasiege 5\n", tower);
@@ -110,37 +112,38 @@ static ai::Profile over(ai::Difficulty d, const std::vector<std::tuple<const cha
     return p;
 }
 
-// Each of our levels (Classic excluded) passes `test`.
+// Each of our levels (the RETAIL levels -- Classic, RetailEasy, RetailHard -- excluded)
+// passes `test`.
 template <class F> static bool everyLevel(F test) {
     bool ok = true;
     for (uint8_t level = 0; level < ai::kAiLevels; ++level)
-        if (ai::Difficulty(level) != ai::Difficulty::Classic) ok = ok && test(ai::Difficulty(level));
+        if (!ai::retailLevel(ai::Difficulty(level))) ok = ok && test(ai::Difficulty(level));
     return ok;
 }
 
 static void modLayers() {
     namespace fs = std::filesystem;
     const auto root = fs::temp_directory_path() / ("ta-ai-profiles-" + crypto::toHex(crypto::randomVec(8)));
-    const std::string engineFile = "// a game mod's profile for our levels\nlimit arabow 0\nweight AraBow 2\nweight modunit 7\n";
+    const std::string engineFile = "// a game mod's profile for our levels\nlimit armpw 0\nweight ArmPW 2\nweight modunit 7\n";
     // A loose file in a game pack's ai/ folder, and ai/ inside an archive in another.
-    put(root / "mods/game/my_ai/AI/TAKENGINE.TXT", engineFile);
-    archive(root / "mods/game/archived/ai.hpi", {{"ai/taengine.txt", "limit arafly 0\n"}});
+    put(root / "mods/game/my_ai/AI/TAENGINE.TXT", engineFile);
+    archive(root / "mods/game/archived/ai.hpi", {{"ai/taengine.txt", "limit armfig 0\n"}});
     // Other file names in ai/ are not read, in a game pack's ai/ or an archive's.
-    put(root / "mods/game/old/ai/n.txt", "limit arabow 0\n");
-    archive(root / "mods/game/old/ai.hpi", {{"ai/h.txt", "limit arabow 0\n"}, {"ai/ad.txt", "limit arabow 0\n"}});
+    put(root / "mods/game/old/ai/n.txt", "limit armpw 0\n");
+    archive(root / "mods/game/old/ai.hpi", {{"ai/h.txt", "limit armpw 0\n"}, {"ai/ad.txt", "limit armpw 0\n"}});
     // Not the file: at a pack's root (loose or an archive's), or in another folder.
-    put(root / "mods/game/rooted/taengine.txt", "limit arabow 0\n");
-    archive(root / "mods/game/rooted/root.hpi", {{"taengine.txt", "limit arabow 0\n"}});
-    put(root / "mods/game/nested/sub/taengine.txt", "limit arabow 0\n");
-    put(root / "mods/game/nested/sub/ai/taengine.txt", "limit arabow 0\n");
+    put(root / "mods/game/rooted/taengine.txt", "limit armpw 0\n");
+    archive(root / "mods/game/rooted/root.hpi", {{"taengine.txt", "limit armpw 0\n"}});
+    put(root / "mods/game/nested/sub/taengine.txt", "limit armpw 0\n");
+    put(root / "mods/game/nested/sub/ai/taengine.txt", "limit armpw 0\n");
     // Cosmetic packs, ticked or always-enabled, can never supply one.
-    put(root / "mods/cosmetic/skin/ai/taengine.txt", "limit arabow 0\n");
+    put(root / "mods/cosmetic/skin/ai/taengine.txt", "limit armpw 0\n");
     put(root / "mods/cosmetic/skin/sounds/x.wav", "x");
-    archive(root / "mods/cosmetic/always_enabled/always/always.hpi", {{"ai/taengine.txt", "limit araking 0\n"}, {"sounds/y.wav", "y"}});
+    archive(root / "mods/cosmetic/always_enabled/always/always.hpi", {{"ai/taengine.txt", "limit armcom 0\n"}, {"sounds/y.wav", "y"}});
     // An always-enabled GAME pack can: it travels in the host's package like a ticked one.
-    put(root / "mods/game/always_enabled/house_ai/ai/taengine.txt", "limit arafly 0\n");
+    put(root / "mods/game/always_enabled/house_ai/ai/taengine.txt", "limit armfig 0\n");
     // The base install's own ai/ folder (in a root archive) is not a game mod.
-    archive(root / "data.hpi", {{"ai/taengine.txt", "limit arabow 0\n"}, {"gamedata/x.tdf", "x"}});
+    archive(root / "data.hpi", {{"ai/taengine.txt", "limit armpw 0\n"}, {"gamedata/x.tdf", "x"}});
     const auto builtinAll = [](const hpi::Vfs::Files* files) {
         return everyLevel([&](ai::Difficulty d) {
             std::string s;
@@ -150,21 +153,21 @@ static void modLayers() {
     try {
         const auto loose = hpi::modFiles(root, hpi::ModKind::Game, {"my_ai"});
         check(loose.count("ai/taengine.txt") == 1, "a game pack's loose ai/taengine.txt is in its files (case-insensitive name)");
-        const std::vector<std::tuple<const char*, int, int>> changes{{"arabow", 2, 0}, {"modunit", 7, -1}};
+        const std::vector<std::tuple<const char*, int, int>> changes{{"armpw", 2, 0}, {"modunit", 7, -1}};
         check(everyLevel([&](ai::Difficulty d) {
                   std::string source;
                   const auto p = ai::levelProfile(d, &loose, nullptr, &source);
-                  return source == "ai/taengine.txt" && p.limit.at("arabow") == 0 && p.weight.at("arabow") == 2 &&
+                  return source == "ai/taengine.txt" && p.limit.at("armpw") == 0 && p.weight.at("armpw") == 2 &&
                          p.weight.at("modunit") == 7;
               }),
-              "ai/taengine.txt adjusts every one of our levels (limit arabow 0: no level builds it)");
+              "ai/taengine.txt adjusts every one of our levels (limit armpw 0: no level builds it)");
         check(everyLevel([&](ai::Difficulty d) { return same(ai::levelProfile(d, &loose), over(d, changes)); }),
               "each level applies it over its OWN built-in table; units it does not name keep that level's values");
         check(same(ai::levelProfile(ai::Difficulty::Classic, &loose), ai::builtinProfile(ai::Difficulty::Classic)),
               "Classic (RETAIL) never reads ai/taengine.txt");
 
         const auto archived = hpi::modFiles(root, hpi::ModKind::Game, {"archived"});
-        check(everyLevel([&](ai::Difficulty d) { return same(ai::levelProfile(d, &archived), over(d, {{"arafly", -1, 0}})); }),
+        check(everyLevel([&](ai::Difficulty d) { return same(ai::levelProfile(d, &archived), over(d, {{"armfig", -1, 0}})); }),
               "an ai/taengine.txt inside an archive in a game pack adjusts every level");
 
         const auto old = hpi::modFiles(root, hpi::ModKind::Game, {"old"});
@@ -182,10 +185,10 @@ static void modLayers() {
         {
             const auto played = hpi::mountPlayVfs(root, {}, {});
             const auto file = played.read("ai/taengine.txt");
-            check(played.has("sounds/y.wav") && std::string(file.begin(), file.end()) == "limit arabow 0\n",
+            check(played.has("sounds/y.wav") && std::string(file.begin(), file.end()) == "limit armpw 0\n",
                   "an always-enabled cosmetic pack loads in play, its ai/ filtered out (the base install's file stays)");
             const auto house = hpi::modFiles(root, hpi::ModKind::Game, {"house_ai"});
-            check(everyLevel([&](ai::Difficulty d) { return same(ai::levelProfile(d, &house), over(d, {{"arafly", -1, 0}})); }),
+            check(everyLevel([&](ai::Difficulty d) { return same(ai::levelProfile(d, &house), over(d, {{"armfig", -1, 0}})); }),
                   "an always-enabled game pack's ai/taengine.txt adjusts every level");
         }
 
@@ -224,15 +227,6 @@ static void linkOrCopy(const std::filesystem::path& target, const std::filesyste
 
 static bool isHpi(const std::filesystem::path& p) { return hpi::MountSet::key(p.extension().string()) == ".hpi"; }
 
-static void retailDefault(const char* data) {
-    const auto vfs = hpi::mountRetailRoot(data);
-    check(vfs.has("ai/default.txt"), "the install has ai/default.txt");
-    const auto file = ai::loadProfile(vfs);
-    const auto& builtin = ai::builtinProfile(ai::Difficulty::Normal);
-    check(same(file, builtin), "the built-in Normal table equals the base install's ai/default.txt (first difference: " +
-                               firstDifference(file, builtin) + ")");
-}
-
 // A single-map archive under Maps/ that carries its own ai/default.txt: the map's
 // package carries the file (and only that map's package does), the server's view of
 // the room (base + package) gives it to the Classic AI, and a package naming an AI
@@ -245,14 +239,14 @@ static void mapPackages(const char* data) {
         for (const auto& e : fs::directory_iterator(data))
             if (e.is_regular_file() && isHpi(e.path())) linkOrCopy(fs::absolute(e.path()), root / e.path().filename());
         const auto base = hpi::mountRetailRoot(data);
-        const std::string own = "// the map's own profile\nlimit tarcage 0\n";
+        const std::string own = "// the map's own profile\nlimit corllt 0\n";
         // The map archive also carries ai/taengine.txt, and other files in ai/.
         std::vector<std::pair<std::string, std::string>> entries{{"ai/default.txt", own},
-                                                                 {"ai/taengine.txt", "limit tarcage 0\n"}};
+                                                                 {"ai/taengine.txt", "limit corllt 0\n"}};
         for (const char* f : {"ai/d.txt", "ai/e.txt", "ai/n.txt", "ai/h.txt", "ai/a.txt", "ai/ad.txt"})
-            entries.push_back({f, "limit tarcage 1\n"});
+            entries.push_back({f, "limit corllt 1\n"});
         for (const char* ext : {".tnt", ".ota", ".crt", ".txt"})
-            if (auto b = base.tryRead(std::string("maps/Inner Circle") + ext))
+            if (auto b = base.tryRead(std::string("maps/Ashap Plateau") + ext))
                 entries.push_back({std::string("kmap/AI Circle") + ext, std::string(b->begin(), b->end())});
         archive(root / "Maps/AI Circle.kmp", entries);
         const auto vfs = hpi::mountRetailRoot(root);
@@ -272,14 +266,14 @@ static void mapPackages(const char* data) {
             bool fromMap = false;
             check(everyLevel([&](ai::Difficulty d) {
                       const auto p = ai::levelProfile(d, nullptr, mapFiles, &source, &fromMap);
-                      return same(p, over(d, {{"tarcage", -1, 0}})) && source == "ai/taengine.txt" && fromMap;
+                      return same(p, over(d, {{"corllt", -1, 0}})) && source == "ai/taengine.txt" && fromMap;
                   }),
-                  "the map package's ai/taengine.txt adjusts every level (none builds tarcage)");
-            const hpi::Vfs::Files mods{{"ai/taengine.txt", {'l', 'i', 'm', 'i', 't', ' ', 't', 'a', 'r', 'c', 'a', 'g', 'e', ' ', '5'}},
+                  "the map package's ai/taengine.txt adjusts every level (none builds corllt)");
+            const hpi::Vfs::Files mods{{"ai/taengine.txt", {'l', 'i', 'm', 'i', 't', ' ', 'c', 'o', 'r', 'l', 'l', 't', ' ', '5'}},
                                        {"ai/default.txt", {'/', '/', 'm', 'o', 'd'}}};
             check(everyLevel([&](ai::Difficulty d) {
                       const auto p = ai::levelProfile(d, &mods, mapFiles, &source, &fromMap);
-                      return same(p, over(d, {{"tarcage", -1, 5}})) && !fromMap;
+                      return same(p, over(d, {{"corllt", -1, 5}})) && !fromMap;
                   }),
                   "a game mod's ai/taengine.txt wins over the map's, for every level");
             hpi::Vfs roomView(&base);
@@ -295,7 +289,7 @@ static void mapPackages(const char* data) {
             check(!script.text.empty() && script.text != own && layer == ai::ClassicProfileLayer::Base,
                   "DEFAULT: else the base install's");
         }
-        const auto stock = net::maps::build(vfs, "Inner Circle");
+        const auto stock = net::maps::build(vfs, "Ashap Plateau");
         bool noAi = true;
         for (const auto& [name, bytes] : *stock->files) noAi = noAi && !name.starts_with("ai/");
         check(noAi, "another map's package carries no AI file (nor the base's)");
@@ -338,22 +332,22 @@ static void mapClash(const char* data) {
         for (const auto& e : fs::directory_iterator(data))
             if (e.is_regular_file() && isHpi(e.path())) linkOrCopy(fs::absolute(e.path()), root / e.path().filename());
         const auto base = hpi::mountRetailRoot(data);
-        const auto ota = base.read("maps/Inner Circle.ota");
+        const auto ota = base.read("maps/Ashap Plateau.ota");
         auto scenario = tnt::Scenario::parse(std::string(ota.begin(), ota.end()));
         scenario.aiProfile = "islands";
         const auto otaText = scenario.write();
         auto text = [](const std::vector<uint8_t>& b) { return std::string(b.begin(), b.end()); };
         for (const char* name : {"Clash A", "Clash B"}) {
             std::vector<std::pair<std::string, std::string>> entries{
-                {"ai/taengine.txt", std::string("// ") + name + "'s levels\nlimit tarcage 0\n"},
-                {"ai/islands.txt", std::string("// ") + name + "'s DEFAULT\nlimit tarcage 0\n"},
+                {"ai/taengine.txt", std::string("// ") + name + "'s levels\nlimit corllt 0\n"},
+                {"ai/islands.txt", std::string("// ") + name + "'s DEFAULT\nlimit corllt 0\n"},
                 {std::string("kmap/") + name + ".ota", otaText}};
             for (const char* ext : {".tnt", ".crt", ".txt"})
-                if (auto b = base.tryRead(std::string("maps/Inner Circle") + ext))
+                if (auto b = base.tryRead(std::string("maps/Ashap Plateau") + ext))
                     entries.push_back({std::string("kmap/") + name + ext, text(*b)});
             archive(root / "Maps" / (std::string(name) + ".kmp"), entries);
         }
-        put(root / "mods/game/aimod/ai/taengine.txt", "// the mod's levels\nlimit tarcage 5\n");
+        put(root / "mods/game/aimod/ai/taengine.txt", "// the mod's levels\nlimit corllt 5\n");
         for (const bool modded : {false, true}) {
             const auto vfs = modded ? hpi::mountRetailRoot(root, {"aimod"}) : hpi::mountRetailRoot(root);
             const std::string how = modded ? " (with a game mod's ai/taengine.txt ticked)" : "";
@@ -361,20 +355,20 @@ static void mapClash(const char* data) {
                 const auto pkg = net::maps::build(vfs, name);
                 const auto& files = *pkg->files;
                 const auto own = [&](const char* path, const char* what) {
-                    return files.count(path) && text(files.at(path)) == std::string("// ") + name + "'s " + what + "\nlimit tarcage 0\n";
+                    return files.count(path) && text(files.at(path)) == std::string("// ") + name + "'s " + what + "\nlimit corllt 0\n";
                 };
                 check(own("ai/taengine.txt", "levels"), std::string(name) + "'s package carries its own ai/taengine.txt" + how);
                 check(own("ai/islands.txt", "DEFAULT"), std::string(name) + "'s package carries its own ai/islands.txt" + how);
                 if (modded) {
                     const auto received = net::maps::decode(pkg->bytes, pkg->digest);
-                    const hpi::Vfs::Files mods{{"ai/taengine.txt", {'l', 'i', 'm', 'i', 't', ' ', 't', 'a', 'r', 'c', 'a', 'g', 'e', ' ', '5'}}};
+                    const hpi::Vfs::Files mods{{"ai/taengine.txt", {'l', 'i', 'm', 'i', 't', ' ', 'c', 'o', 'r', 'l', 'l', 't', ' ', '5'}}};
                     check(everyLevel([&](ai::Difficulty d) {
-                              return ai::levelProfile(d, &mods, received->files.get()).limit.at("tarcage") == 5;
+                              return ai::levelProfile(d, &mods, received->files.get()).limit.at("corllt") == 5;
                           }),
                           std::string(name) + ": the game mod's ai/taengine.txt still wins in the room");
                 }
             }
-            const auto stock = net::maps::build(vfs, "Inner Circle");
+            const auto stock = net::maps::build(vfs, "Ashap Plateau");
             bool noAi = true;
             for (const auto& [path, bytes] : *stock->files) noAi = noAi && !path.starts_with("ai/");
             check(noAi, "a stock map's package carries no AI file" + how);
@@ -389,7 +383,7 @@ static void mapClash(const char* data) {
 int main(int argc, char** argv) {
     tables();
     modLayers();
-    if (argc > 1) { retailDefault(argv[1]); mapPackages(argv[1]); mapClash(argv[1]); }
+    if (argc > 1) { mapPackages(argv[1]); mapClash(argv[1]); }
     std::printf("%s\n", failures ? "FAILED" : "all passed");
     return failures ? 1 : 0;
 }
