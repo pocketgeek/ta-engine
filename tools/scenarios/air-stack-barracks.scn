@@ -1,4 +1,5 @@
 scn 1
+# (Ported to TA aircraft: armfig for the Drake, armpeep for the Spyhawk, corveng for the Gob, armca for the Fly, armap for the Keep.)
 # Three Drakes ordered together onto an Aramon Barracks (arakeep, 7x12): AirToGroundHover
 # (41d820) rings the target, and with the air-traffic counter at 5 or more its stage 4 steps out of the
 # stack (VTOL_StepOut, 4214b0). Through protocol 306 World kept no counter: the three settled 3-13 px apart
@@ -9,8 +10,8 @@ seed 7
 players 2
 weapons on
 map flat 160 160
-type drake fbi zondrake
-type keep fbi arakeep
+type drake fbi armfig
+type keep fbi armap
 group drakes 0 drake 3 cells 20,78 20,80 20,82
 group keep 1 keep 1 cells 70,80
 at 2 attack drakes @keep

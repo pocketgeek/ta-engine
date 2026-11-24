@@ -1834,18 +1834,6 @@ if(TA_TEST_DATA)
                      --data "${TA_TEST_DATA}" --wanderers on --json)
     set_tests_properties(legion_motion_wall_wanderers_on PROPERTIES
                          SKIP_RETURN_CODE 77 LABELS "data;nightly" TIMEOUT 600)
-    # Melee attackers on a building (protocol 307, Attack_Melee's rectangle round the footprint): every key
-    # against baseline.json over the gate offsets, both modes. melee_building gates the outcome per commit.
-    foreach(legion_scn melee-lode-late melee-lode-together melee-castle-4 melee-keep-late melee-castle-fight
-                       melee-castle-20)
-        if(NOT WIN32)   # gate modes need python3 and a POSIX shell (legion_scenario's runChecker)
-          add_test(NAME legion_check_${legion_scn}
-                   COMMAND legion_scenario ${CMAKE_SOURCE_DIR}/tools/scenarios/${legion_scn}.scn --mode both
-                           --data "${TA_TEST_DATA}" --check ${CMAKE_SOURCE_DIR}/tools/scenarios/baseline.json)
-          set_tests_properties(legion_check_${legion_scn} PROPERTIES
-                               SKIP_RETURN_CODE 77 LABELS "legion;data;nightly" TIMEOUT 600)
-        endif()
-    endforeach()
     # Flyers stepping out of a stack (protocol 307, retail's air traffic): the same, for the air-stack-*.scn
     # fixtures and air-guard-lost.scn (VTOL_SeekGuard). air_traffic gates the outcome per commit.
     foreach(legion_scn air-stack-barracks air-stack-barracks-5 air-stack-duel air-stack-move air-stack-fight

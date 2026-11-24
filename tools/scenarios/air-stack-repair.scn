@@ -1,4 +1,5 @@
 scn 1
+# (Ported to TA aircraft: armfig for the Drake, armpeep for the Spyhawk, corveng for the Gob, armca for the Fly, armap for the Keep.)
 # Three Aramon flying builders (arafly) in one cell repair one damaged Keep (air_traffic hurts it and gives
 # the order at tick 2). VTOL_RepairUnit wakes every tick of its work, and at 8 on the air-traffic counter
 # (421066) steps the builder out of the stack (VTOL_StepOutNoFormation, StopBuilding) and starts again from
@@ -9,8 +10,8 @@ seed 7
 players 2
 weapons on
 map flat 160 160
-type flyb fbi arafly
-type keep fbi arakeep
+type flyb fbi armca
+type keep fbi armap
 group builders 0 flyb 3 cells 40,80 40,80 40,80
 group keep 0 keep 1 cells 70,80
 pair stack builders builders cells=2

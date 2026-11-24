@@ -83,3 +83,26 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 - Kingdoms leftovers removed: per-unit mana and wandering storms. Cloaking is
   paid from stored energy at the settle (it could not work on TA data before).
 - Pathfinding change list item 17 (map-load plane edge band).
+- Crusades (Kingdoms' alternate balance) and the Kingdoms random-map generator
+  removed; random maps are TA-only (worlds Green, Mars, Archipelago, Metal, Moon,
+  Lava) and save a 252x252 minimap.
+- FBI keys: canreclamate, mobilestandorders / firestandorders; yardmap codes per
+  retail-data.md 2.4 (walls block); TA mission condition units (pixels).
+- Weapon scripts: AimX / FireX / QueryX / AimFromX per docs/retail-weapon-scripts.md;
+  scripted TA units fire, on the move too.
+- Tests: TMPDIR for every ctest test and a /tmp leftover guard (pref_guard_check).
+
+## Open retail questions
+
+- Idle Maneuver (standingmoveorder 1) chase: the engine's scan cites Kingdoms
+  addresses only; TotalA.exe's rule is not traced (retailgap_orders' leash case).
+- armwar / armcom fire only one of their weapons per target: both aims signal the
+  same mask, so the later AimX kills the earlier one, which never reports
+  (spec 2.3-2.4). Faithful to the static reading; not confirmed in a running game.
+- The Commander uses its D-gun on a plain Attack order; retail has a separate
+  D-gun order (not traced).
+- Tests still written against Kingdoms data (blocked_shot, shot_range,
+  attack_stop, structure_combat, naval_*, production_exit, air_*, hold_flyer,
+  capture_combat, owner_orders, los_status_flight, suppress, gate_scripts,
+  classic_ai_map_profile, replay_* on Kingdoms maps, room_flow) fail at runtime
+  on missing Kingdoms units/maps; they need TA fixtures.

@@ -1,4 +1,5 @@
 scn 1
+# (Ported to TA aircraft: armfig for the Drake, armpeep for the Spyhawk, corveng for the Gob, armca for the Fly, armap for the Keep.)
 # Three Drakes attack a patrolling Aramon Spyhawk (arafast): AirToAir (41ca50) pursues it, and
 # its stage 2 steps out of the stack at the counter's threshold (D = (rand(15) + both footprints) x 16).
 # The owner's 0.9.12 replay: the dogfighting drakes overlapped on 91% of their ticks.
@@ -8,8 +9,8 @@ seed 7
 players 2
 weapons on
 map flat 160 160
-type drake fbi zondrake
-type spy fbi arafast
+type drake fbi armfig
+type spy fbi armpeep
 group drakes 0 drake 3 cells 20,78 20,80 20,82
 group spy 1 spy 1 cells 80,60 weapons=off
 at 1 patrol spy 80 110

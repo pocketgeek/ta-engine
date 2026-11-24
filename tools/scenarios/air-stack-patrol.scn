@@ -1,4 +1,5 @@
 scn 1
+# (Ported to TA aircraft: armfig for the Drake, armpeep for the Spyhawk, corveng for the Gob, armca for the Fly, armap for the Keep.)
 # Five armed Drakes standing in one cell sent on one patrol: every flyer's patrol is VTOL_Patrol,
 # armed or not, and past stage 0 its air-traffic check (419ee0) steps it out of the stack (VTOL_StepOut) and
 # picks the patrol up again at stage 1. Through protocol 307's first cut an armed flyer patrolled without a
@@ -9,7 +10,7 @@ seed 7
 players 2
 weapons on
 map flat 160 160
-type drake fbi zondrake
+type drake fbi armfig
 group drakes 0 drake 5 cells 20,80 20,80 20,80 20,80 20,80
 at 2 patrol drakes 1800 1280
 pair stack drakes drakes cells=2

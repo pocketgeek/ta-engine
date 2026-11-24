@@ -1,4 +1,5 @@
 scn 1
+# (Ported to TA aircraft: armfig for the Drake, armpeep for the Spyhawk, corveng for the Gob, armca for the Fly, armap for the Keep.)
 # Three Aramon flying builders (arafly) in one cell: the first puts a Keep's site down (air_traffic orders it
 # at tick 2: VTOL_MobileBuild) and the other two help (VTOL_HelpBuild). Both missions wake every tick of their
 # work, and at 8 on the air-traffic counter (41f0a6, 41f981) step the builder out of the stack
@@ -10,6 +11,6 @@ seed 7
 players 2
 weapons on
 map flat 160 160
-type flyb fbi arafly
+type flyb fbi armca
 group builders 0 flyb 3 cells 40,80 40,80 40,80
 pair stack builders builders cells=2
