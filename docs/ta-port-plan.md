@@ -24,7 +24,7 @@ venv `~/venvs/ta-re`). The retail specs live in `docs/retail-*.md`.
 | --- | --- |
 | 1. Units and weapons (`retail-data.md`) | done: 278 units, weapons by section, build menus from guis/download |
 | 2. Metal / energy economy (`retail-economy.md`) | done: 1 s settle, debt stalls, extractors on ore, wind/tidal, reclaim (`reclaim_test`) |
-| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, a kept engine feature, or dead code listed under Open (d)); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. One Kingdoms rule is left, the ballistic shell motion (Open (a)). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands; legion baselines retaken for the slot order (tools/scenarios/baseline.json) |
+| 3. Kingdoms gameplay stripped | done, audited 2026-11-24: every `Kingdoms` / `KINGDOMS.icd` / monarch / mana / Crusade hit in src/sim and src/ai checked (TA-correct, a kept engine feature, or dead code listed under Open (d)); the Kingdoms rules still running in TA games replaced from TotalA.exe -- unit slots (first free record 0x485fea, freed at the death 0x486dc7; was 5121d8's CRT-ranked slot), SUPPRESS (0x4038a0; was 4040b0's melee / feature / minimum-range ring), the area clear order (no RECLAIMAREA row in 0x4fc6e8 / 0x4fca18: removed), death severity (0x4864b0 for every kind; was 512610's), the air pad list's rebuild after the units (0x495490 -> 0x464f80 -> 0x40b2c0); gods, auras, sacred sites, mana and monarchs went earlier. The ballistic shell, the last Kingdoms rule, is TotalA.exe's since the second pass (2026-11-24): AimX's pitch solve 0x49a890 (equal to the binary on 63 emulated cases, tools/re/ballistic_emu.py), the range gate 0x49aa80 in the fire path, the launch 0x49cde0 on the slot's AimX angles plus the spread with the barrel word (0x49e11b, 0x49ce6a), and the motion 0x49bce3 (move, the wind vector G+0x37ecc = 0x490cf7's, then gravity; once a tick); burst clones copy the emitter (0x49b83b). Kingdoms code left unreachable: the Classic brain and the engine's old Controller levels are deleted; the rest is listed under Open (d). Evidence: suppress / legion_suppress, retail_trace (slot pools), pathblock, transport*, click_rules, revive_order, server_commands, ta_ballistic, ta_weapon_script; legion baselines retaken for the slot order and the shell motion (tools/scenarios/baseline.json) |
 | 4. GUI runtime, front end, sidebar (`retail-gui.md`) | done: MAINMENU, SINGLE, SKIRMISH, SELMAP, SELPROV/TCP, NEWGAME, MSNBRIEF, ENDMSN, in-game sidebar and top bar |
 | 5. AI (`retail-ai.md`) | done: every level runs the retail brain (RETAIL EASY/HARD plus the engine's levels) |
 | 6. Pathfinding (`retail-pathfinding.md`) | Retail A* verified 613/613 against TotalA.exe; goals per 0x44cf60/0x44d3b0/0x44dc60; Legion kept |
@@ -74,6 +74,15 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   Retail stays down: VTOL_Standby 0x40f9d3 / LandIfCan 0x40f6a3 make the slots
   manual and 0x43b1f0 refuses an attack on Hold (0x43b211), so idle flyers keep
   automatic slots here.
+- Area reclaim (owner's choice, kept 2026-11-24): a right-drag box over the map,
+  or the armed CLEAR box, gives each selected reclaimer one area order that
+  reclaims (or raises) every wreck and feature in the box in turn
+  (World::reclaimArea / tickReclaimArea, Cmd::ReclaimArea; reclaimarea_test,
+  click_rules, the client's TA_AREA_DRAG_TEST). Retail TA has no RECLAIMAREA:
+  neither mission table (0x4fc6e8 / 0x4fca18) has the row. The stages follow
+  Kingdoms' RECLAIMAREA (KINGDOMS.icd 406670 and its cell walk 509cc0); each
+  child is TA's own feature reclaim. Not dead code; Cmd::BuildManaArea stays
+  refused.
 
 ## Out of scope (by decision)
 
@@ -352,14 +361,8 @@ approximated (marked "cosmetic" when it changes no simulation state); (c) a
 test or fixture note; (d) Kingdoms code still compiled but unreachable from TA
 data (cleanup, no gameplay).
 
-- (a) Ballistic shells move the Kingdoms way (BallisticWeapon::update 52bf90:
-  one sub-step per 16 px of speed, gravity before the move, launched on a
-  release solve from the QueryX muzzle). TotalA.exe moves a ballistic shot once
-  a tick, position first (plus the global vector at G+0x37ecc, untraced), then
-  gravity (0x49bce3..0x49bd41), and launches on AimX's stored heading and pitch
-  plus the spread (0x49cde0 reads S+0x16 / S+0x18). Not ported in this pass:
-  the integrator change needs the AimX pitch solve (0x49a890) checked against
-  the new motion first, or every shell lands off its aim point.
+- (a) None left in the shot paths. The fire gate's out-of-range bit (unit+0xbb
+  0x10, set by 0x49aa80's refusal at 0x49e53a and by 0x49d664) is not kept.
 - (b) GROUND_PICKUP's circle and GROUND_UNLOAD's wait also wake 60 ticks after
   the hull stops (flag 0x80000000, retailtransport.h). Retail's wait has no
   timer: the navigator's failure (0x40) after its empty 60-tick re-ask wakes
@@ -389,11 +392,16 @@ data (cleanup, no gameplay).
 - (b) Mission dispatcher: the second mission list (+0x60, flag 0x40000) and
   the 0x800000 flag's reader (the navigator, 0x44f3e9) are not modelled; TA's
   loop has no call cap (0x43b99f), the engine keeps 100 as a guard.
-- (b) Beams (lineofsight + beamweapon) hit instantly; burst clones re-aim at
-  the target (retail: along the emitter's stored heading); the cruise branch
+- (b) Beams (lineofsight + beamweapon) hit instantly: retail flies them as a
+  line-of-sight shot whose tail starts moving after `duration` (0x49bb82..
+  0x49bc07), which needs the client to draw a moving beam. The cruise branch
   of 0x49b3e0 is ported untested; non-turret LOS weapons compare only the
-  heading with the body; `minbarrelangle` is not passed to the ballistic
-  solver (docs/retail-weapon-scripts.md 7.8).
+  heading with the body (docs/retail-weapon-scripts.md 7.8). The range gate
+  0x49aa80 measures the horizontal range to the slot's target point (the
+  SweetSpot, 0x49e3c8); World keeps the callers' test to the target's origin
+  for that part and runs the surfaced and arc tests in the fire path.
+  A target below a ballistic weapon at short range is aimed with acos's
+  unsigned angle (0x49a9ce): the shell goes up and long, as in retail.
 - (b) Transports: air cargo rides the carrier's own point, not the link
   piece's (VTOL_PICKUP's engine attach passes piece -1); BeCarried's 10-tick
   poll after the drop (the default mission comes at once here), the flag-4
@@ -435,20 +443,23 @@ data (cleanup, no gameplay).
   script-less (test) carrier keeps the old transport stand-in (fifteen ticks
   of BUSY, the static BoomCalc reach). A hover pinned by a cliff with its crane
   astern can stand out of reach (the roster fixture moved hovers to open land).
-- (d) Kingdoms code compiled but unreachable from TA data: the Kingdoms AI
-  (ai/classic*.h, classicbrain.cpp and the legacy Controller levels in
-  ai.cpp past its TaRetailBrain return -- ai.cpp constructs only
-  TaRetailBrain, line 86, and Controller::tick returns into it, line 3836);
-  the stone / freeze statues and Area Mind Control (Weapon::status and
-  mindControl are never set by taweapons.cpp), Remote Effect spells
-  (pendingEffects_ has no producer), the animate channel (no TA FBI has
-  cananimate), weaponswitching and melee weapons (no TA key), lodestones and
-  the mana-area build box (onMana is never set; Cmd::BuildManaArea is
-  refused), the group records' pacing (World::retailGroupOf is always null;
-  Legion reads retailMissionFlags for its own formations), the experience
-  routines (xp / vetMul; TA credits none and its data places no veteran), the
-  client's area-order preview (client/ordertrail.cpp: no area order can
-  exist now) and retailreclaimarea.h (order_trail_test only).
+- (d) Kingdoms code compiled but unreachable from TA data, still present (each
+  is woven through World and through synthetic-unit tests that build Kingdoms
+  types, so its removal is a change of those tests too): the stone / freeze
+  statues and Area Mind Control (Weapon::status Frozen / Stoned and mindControl
+  are never set by taweapons.cpp; Unit::frozenFor / stonedFor), the Weapon
+  Remote Effect / Wandering kinds the client and shot_range_test still name, the
+  animate channel (no TA FBI has cananimate), weaponswitching and melee weapons
+  (no TA key), lodestones and the mana-area build box (onMana is never set;
+  Cmd::BuildManaArea is refused), the group records' pacing
+  (World::retailGroupOf is always null; Legion reads retailMissionFlags for its
+  own formations), the experience routines (xp / vetMul; TA credits none and
+  its data places no veteran). Removed 2026-11-24: the Classic brain
+  (ai/classic*), the engine's old Controller levels (ai.cpp: every level runs
+  TaRetailBrain), the Remote Effect runtime (World::pendingEffects_, which had
+  no producer; its hash fold keeps its shape). The client's area-order preview
+  (client/ordertrail.cpp, retailreclaimarea.h) is live again with the area
+  reclaim (Known deviations).
 
 ## Resolved (2026-11-24 audit)
 

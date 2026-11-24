@@ -216,9 +216,15 @@ void idleCoverage(const sim::TypeRegistry& reg) {
     const sim::UnitType* spare = reg.find("armpw");
     if (foes.size() != 3 || !spare) { check(false, "shipped corak, armpw and armstump load"); return; }
     // Types the World leaves without an engagement today, each with its
-    // reason. Empty: a type the mission hosts miss must be fixed there, not
+    // reason. A type the mission hosts miss must be fixed there, not
     // listed here.
-    const std::map<std::string, std::string> knownGaps = {};
+    // The sea serpents float at the fixture's sea level and their FLAMETHROWER
+    // (ballistic, 188 px/s) has no arc of 45 degrees or less to a land foe
+    // 73 px above them: TotalA.exe's solve caps both arcs at pi/4 (0x49a890,
+    // 0x49aa20..0x49aa53), so the range gate refuses (0x49aa80).
+    const std::map<std::string, std::string> knownGaps = {
+        {"armss", "no arc of 45 degrees or less to a foe 73 px above"},
+        {"corss", "no arc of 45 degrees or less to a foe 73 px above"}};
     std::map<std::string, int> byHost;
     int armed = 0, engaged = 0, skipped = 0;
     std::printf("  %-10s %-15s %-20s %-9s %-13s %5s %-6s %-5s %s\n", "type", "FBI mission", "World host", "fire/move",

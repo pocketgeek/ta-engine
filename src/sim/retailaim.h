@@ -54,6 +54,52 @@ inline uint16_t retailBallisticPitch(float dx,float dy,float dz,float speed,
     return uint16_t(int32_t(angle));
 }
 
+// TotalA.exe 0x49a890(d.x, d.y, d.z, weaponvelocity, minbarrelangle), the
+// ballistic elevation AimX (0x49e28e), the fire gate (0x49d614) and the range
+// gate (0x49ab87) ask for. d = P - T in 16.16, the velocity 16.16 per tick
+// (weapon +0x68), the minimum barrel angle a float in radians (+0xc8), gravity
+// G+0x14263 (16.16 per tick^2). All in x87 doubles at 53 bits (the CRT's
+// _PC_53): h = _hypot(dx, dz) (0x4fb440), then the squared cosines of the two
+// launch angles, Q = h^2 (v^2 + g dy +- sqrt(D)) / (2 (dy^2 + h^2)) with
+// D = h^4 ((v^2 + 2 g dy) v^2 + g^2 dy^2) - g^2 h^4 (dy^2 + h^2), and each
+// angle acos(sqrt(Q) / v) (0x4e67f0; pi/2 when Q <= 0). acos drops the sign:
+// a target below at short range is aimed at with the positive angle of the
+// same magnitude. The low arc is taken when it is above minbarrelangle and
+// at most pi/4; else the high one when it is above minbarrelangle and at most
+// pi/4; else 0x8000. The BAM is _ftol(angle * 32768 * (1/pi)) (0x49aa55).
+// Checked against the binary by tools/re/ballistic_emu.py (63 cases, equal).
+inline uint16_t taBallisticPitch(int32_t dx,int32_t dy,int32_t dz,int32_t velocity,float minAngle,
+                                 int32_t gravity) {
+    constexpr double kHalfPi=std::bit_cast<double>(0x3ff921fb54442d11ull);     // 0x49a9d9 / 0x4fda78
+    constexpr double kQuarterPi=std::bit_cast<double>(0x3fe921fb54442d11ull);  // 0x4fda80
+    constexpr double kInvPi=std::bit_cast<double>(0x3fd45f306dc9c889ull);      // 0x4fda90
+    const double x=double(dx),z=double(dz),y=double(dy),v=double(velocity),g=double(gravity);
+    const double h=std::sqrt(x*x+z*z);
+    const double gdy=g*y,v2=v*v,h2=h*h,dy2=y*y,h4=h2*h2;
+    const double g2=double(int32_t(uint32_t(gravity)*uint32_t(gravity)));   // imul, fild
+    const double r2=dy2+h2;
+    const double b=(v2-gdy*-2.0)*v2+dy2*g2;
+    const double discriminant=b*h4-h4*g2*r2;
+    if(!(discriminant>=0.0))return 0x8000;
+    const double root=std::sqrt(discriminant);
+    const double n=(v2+gdy)*h2,twoR2=r2+r2;
+    const double q1=(root+n)/twoR2,q2=(n-root)/twoR2;
+    // acos(c) for c = sqrt(Q)/v in [0, 1]: atan(sqrt((1-c)(1+c)) / c),
+    // exact in its subtraction, through detmath.
+    const auto arccos=[](double c) {
+        if(c>=1.0)return 0.0;
+        return detmath::atan(std::sqrt((1.0-c)*(1.0+c))/c);
+    };
+    const double low=q1>0.0 ? arccos(std::sqrt(q1)/v) : kHalfPi;
+    const double high=q2>0.0 ? arccos(std::sqrt(q2)/v) : kHalfPi;
+    const double minimum=double(minAngle);
+    double angle;
+    if(minimum<low && !(low>kQuarterPi))angle=low;
+    else if(high>minimum && !(high>kQuarterPi))angle=high;
+    else return 0x8000;
+    return uint16_t(int32_t(angle*32768.0*kInvPi));
+}
+
 // 52bc60, BallisticWeapon::inRange: the deltas are target minus shooter
 // ORIGIN (+0x68/+0x6c/+0x70, 16.16), the speed the weapon's per-substep
 // velocity times its substep count (retailAimSpeed). No arc (52bd10 returns

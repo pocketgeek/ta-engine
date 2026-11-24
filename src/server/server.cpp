@@ -332,11 +332,8 @@ struct Room {
     // itself). Set at start; a Controller holds a reference, so they live with the room.
     std::array<ta::ai::Profile, ta::ai::kAiLevels> aiProfiles;
     // The TA AI's setup every computer seat gets at the start, kept for a seat the
-    // AI takes over later (takeOver): the map's (or mission's) aiprofile script and
-    // the map's start table. classicMission: the mission's Player<N> lines, by slot.
+    // AI takes over later (takeOver): the map's (or mission's) aiprofile script.
     ta::ai::ClassicProfileScript classicProfile;
-    std::vector<std::pair<float, float>> classicStarts;
-    std::vector<std::string> classicMission;
 
     std::string mission;           // campaign mission stem (empty = ordinary skirmish/MP)
     GameOptions opts;
@@ -428,12 +425,8 @@ struct Room {
     uint64_t holdSeen[kMaxSlots] = {};
     // The token a seat had when an AI took it over, so a late reconnect is told why.
     uint64_t takenToken[kMaxSlots] = {};
-    // Where each slot started (for an AI that takes a seat over mid-game: the enemy
-    // starts it marches on, as a seated AI is given at the start), and, for a
-    // skirmish under RANDOM start locations, every spot a seat could have opened at
-    // (aiStartSpots).
+    // Where each slot started.
     std::vector<std::pair<float, float>> slotPos;
-    std::vector<std::pair<float, float>> randomStartTable;
     bool paused = false;                        // the host paused the game (Msg::SetPause)
     std::shared_ptr<ta::net::mods::Package> modPackage;
     std::future<TickResult> tickJob;
@@ -473,15 +466,6 @@ struct Room {
         return n;
     }
 };
-
-// The start spots an AI in `slot` knows an enemy may have opened at (ai::enemyStartSpots).
-static std::vector<ta::ai::StartSpot> aiStartSpots(const Room& r, int slot) {
-    std::vector<uint8_t> seated(r.slotPos.size(), 0);
-    for (size_t j = 0; j < seated.size() && j < size_t(kMaxSlots); ++j)
-        seated[j] = r.slots[j].type == 1 || r.slots[j].type == 2;
-    return ta::ai::enemyStartSpots(slot, r.slotPos, seated, [&](int a, int b) { return r.ref->allied(a, b); },
-                                    r.randomStartTable);
-}
 
 class Server {
 public:
@@ -2437,25 +2421,11 @@ void Server::tryStart(Client& c) {
                 constexpr auto missionDiff = ta::ai::Difficulty::Classic;
                 const ta::ai::Profile& prof = r->aiProfiles[size_t(missionDiff)];
                 const auto classicProfile = classicProfileFor(*r, ms.aiProfile, ds->vfs, true);
-                const auto classicStarts =
-                    ta::sim::parseStartPositions(ds->vfs, ta::sim::missionMapPath(ds->vfs, r->mission));
                 for (int slot : ms.aiSlots) {
-                    std::vector<std::pair<float, float>> enemyStarts;
-                    for (size_t j = 0; j < ms.slotPos.size(); ++j) {
-                        if (int(j) == slot || r->ref->allied(slot, int(j))) continue;
-                        if (ms.slotPos[j].first == 0.0f && ms.slotPos[j].second == 0.0f) continue;
-                        enemyStarts.push_back(ms.slotPos[j]);
-                    }
-                    r->ai.emplace_back(slot, *r->reg, prof, r->seed + uint32_t(slot),
-                                       missionDiff, std::move(enemyStarts));
+                    r->ai.emplace_back(slot, *r->reg, prof, r->seed + uint32_t(slot), missionDiff);
                     r->ai.back().setClassicProfile(classicProfile);
-                    r->ai.back().setClassicStarts(classicStarts);
-                    r->ai.back().setClassicCampaign(size_t(slot) < ms.playerDefs.size()
-                                                        ? ms.playerDefs[size_t(slot)] : std::string());
                 }
                 r->classicProfile = classicProfile;
-                r->classicStarts = classicStarts;
-                r->classicMission = ms.playerDefs;
                 r->slotPos = ms.slotPos;
                 if (!ms.aiSlots.empty())
                     std::fprintf(stderr, "taserver: mission '%s' -- %zu strategic AI player(s)%s DEFAULT AI (%s)\n",
@@ -2471,8 +2441,8 @@ void Server::tryStart(Client& c) {
             cfg.vfs = r->mapVfs ? r->mapVfs.get() : &ds->vfs;
             cfg.mapPath = mapPath;
             const int maxSlot = int(cfg.slots.size()) - 1;
-            std::vector<std::pair<float,float>> spots, startTable;
-            try { spots = ta::sim::setupMatch(*r->ref, *r->reg, cfg, &startTable); }
+            std::vector<std::pair<float,float>> spots;
+            try { spots = ta::sim::setupMatch(*r->ref, *r->reg, cfg); }
             catch (const ta::sim::ScenarioTypeMissing& e) {
                 // Named for the player.
                 r->ref.reset(); r->running = false; r->ai.clear();
@@ -2494,61 +2464,20 @@ void Server::tryStart(Client& c) {
                     ++k;
                 }
             r->slotPos = slotPos;
-            r->randomStartTable.clear();
-            if (cfg.startMode == ta::sim::StartMode::Random && !cfg.benchmark && startTable.size() > 1)
-                r->randomStartTable = startTable;
             r->ai.reserve(size_t(maxSlot + 1));
             // The Classic level bakes retail's profile from the map's own aiprofile
             // file (every shipped skirmish map names DEFAULT); read once per game.
-            std::optional<ta::ai::ClassicProfileScript> classicProfile;
-            std::optional<std::vector<std::pair<float, float>>> classicStarts;
+            // Every level runs the TA brain and reads the map's profile; a seat the
+            // AI takes over later (takeOver) is set up from the same one.
+            const auto classicProfile = classicProfileFor(*r, ta::ai::classicMapAiProfile(*cfg.vfs, mapPath),
+                                                          *cfg.vfs, !r->mapVfs);
             for (int i = 0; i <= maxSlot; ++i)
                 if (r->slots[i].type == 2) {
-                    // The enemy start positions this AI marches on before it has spotted
-                    // any units (fog): every used, non-allied slot's start.
-                    std::vector<std::pair<float, float>> enemyStarts;
-                    for (int j = 0; j <= maxSlot; ++j) {
-                        if (j == i || (r->slots[j].type != 1 && r->slots[j].type != 2)) continue;
-                        if (r->ref->allied(i, j)) continue;
-                        enemyStarts.push_back(slotPos[size_t(j)]);
-                    }
                     auto diff = ta::ai::difficultyFromLevel(r->slots[i].aiLevel);
-                    r->ai.emplace_back(i, *r->reg, r->aiProfiles[size_t(diff)], r->seed,
-                                       diff, std::move(enemyStarts));
-                    r->ai.back().setStartSpots(aiStartSpots(*r, i));
-                    if (true) {   // every level runs the TA brain and reads the map's profile
-                        if (!classicProfile)
-                            classicProfile = classicProfileFor(*r, ta::ai::classicMapAiProfile(*cfg.vfs, mapPath),
-                                                               *cfg.vfs, !r->mapVfs);
-                        r->ai.back().setClassicProfile(*classicProfile);
-                        // The map's start table (its authored starts in StartPos order,
-                        // else -- a generated map -- the spots setupMatch used), and
-                        // this seat's record in it: the one it opened at.
-                        if (!classicStarts) {
-                            classicStarts = ta::sim::parseStartPositions(*cfg.vfs, mapPath);
-                            if (classicStarts->empty()) classicStarts = spots;
-                        }
-                        int start = -1;
-                        for (size_t k = 0; k < classicStarts->size() && start < 0; ++k)
-                            if ((*classicStarts)[k] == slotPos[size_t(i)]) start = int(k);
-                        std::vector<std::pair<float, float>> table = *classicStarts;
-                        if (start < 0) { start = int(table.size()); table.push_back(slotPos[size_t(i)]); }
-                        r->ai.back().setClassicStarts(table);
-                        r->ai.back().setClassicStart(start, slotPos[size_t(i)].first, slotPos[size_t(i)].second);
-                    }
+                    r->ai.emplace_back(i, *r->reg, r->aiProfiles[size_t(diff)], r->seed, diff);
+                    r->ai.back().setClassicProfile(classicProfile);
                 }
-            // A seat the AI takes over later (takeOver) is set up from the same profile
-            // and start table.
-            if (!classicProfile)
-                classicProfile = classicProfileFor(*r, ta::ai::classicMapAiProfile(*cfg.vfs, mapPath),
-                                                   *cfg.vfs, !r->mapVfs);
-            if (!classicStarts) {
-                classicStarts = ta::sim::parseStartPositions(*cfg.vfs, mapPath);
-                if (classicStarts->empty()) classicStarts = spots;
-            }
-            r->classicProfile = *classicProfile;
-            r->classicStarts = *classicStarts;
-            r->classicMission.clear();
+            r->classicProfile = classicProfile;
             if (r->ref->hasScenarioOutcomes())
                 std::fprintf(stderr, "game %u: plays its map scenario (%s) -- %zu units at the start\n", r->id,
                              r->opts.mapScenario ? "MAP SCENARIO" : "Test Map copy", r->ref->units().size());
@@ -3551,37 +3480,12 @@ void Server::takeOver(Room& r, int slot) {
     r.slots[slot].aiLevel = uint8_t(ta::ai::Difficulty::Normal);
     r.pendingEvents.push_back({ta::net::Event::Kind::AiTakeover, uint8_t(slot)});
     if (r.ref) {
-        std::vector<std::pair<float, float>> enemyStarts;
-        for (int j = 0; j < int(r.slotPos.size()); ++j) {
-            if (j == slot || (r.slots[j].type != 1 && r.slots[j].type != 2)) continue;
-            if (r.ref->allied(slot, j)) continue;
-            if (r.slotPos[size_t(j)].first == 0.0f && r.slotPos[size_t(j)].second == 0.0f) continue;
-            enemyStarts.push_back(r.slotPos[size_t(j)]);
-        }
         r.ai.emplace_back(slot, *r.reg, r.aiProfiles[size_t(ta::ai::Difficulty::Normal)],
-                          r.seed + uint32_t(slot),
-                          ta::ai::Difficulty::Normal, std::move(enemyStarts));
-        r.ai.back().setStartSpots(aiStartSpots(r, slot));
+                          r.seed + uint32_t(slot), ta::ai::Difficulty::Normal);
         // The setup a computer seat gets at the match start (tryStart): the map's (or
-        // mission's) aiprofile script, the start table, and this seat's own start.
-        // Without the profile the TA AI knows no build preferences and builds nothing.
-        auto& ai = r.ai.back();
-        ai.setClassicProfile(r.classicProfile);
-        if (!r.classicMission.empty()) {
-            ai.setClassicStarts(r.classicStarts);
-            ai.setClassicCampaign(size_t(slot) < r.classicMission.size() ? r.classicMission[size_t(slot)]
-                                                                         : std::string());
-        } else {
-            std::vector<std::pair<float, float>> table = r.classicStarts;
-            const std::pair<float, float> own = size_t(slot) < r.slotPos.size() ? r.slotPos[size_t(slot)]
-                                                                                  : std::pair<float, float>{0, 0};
-            int start = -1;
-            for (size_t k = 0; k < table.size() && start < 0; ++k)
-                if (table[k] == own) start = int(k);
-            if (start < 0) { start = int(table.size()); table.push_back(own); }
-            ai.setClassicStarts(table);
-            ai.setClassicStart(start, own.first, own.second);
-        }
+        // mission's) aiprofile script. Without it the TA AI knows no build
+        // preferences and builds nothing.
+        r.ai.back().setClassicProfile(r.classicProfile);
     }
     std::fprintf(stderr, "game %u: player %d stopped communicating -- AI (Normal) takes over\n", r.id, slot);
     // The host's seat is gone for good: its powers pass on, and the room is told.

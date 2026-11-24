@@ -941,6 +941,7 @@ int World::spawn(const UnitType* type, float x, float z, std::optional<float> he
         it->second.state().vm.start(*type->script(),type->script()->scriptIndex("Create"));
         it->second.state().startArguments(*type->script(),type->script()->scriptIndex("SetMaxReloadTime"),
                                        {uint32_t(type->maxWeaponReloadMs),0,0,0},1);
+        initTaWeaponSlots(*unit(u.id),birthHeading);
     }
     groundStamp(*unit(u.id));   // 5122d9: creation places the body
     if (finished) activateBuilt(u.id,false);   // 512301, after the script, weapons and stamp
@@ -1066,7 +1067,6 @@ void World::compactRetiredUnits() {
     for(const auto& p:projectiles_) {referenced.insert(p.fromId);referenced.insert(p.targetId);}
     for(const auto& b:bursts_) {referenced.insert(b.fromId);referenced.insert(b.targetId);}
     for(const auto& f:flames_)referenced.insert(f.fromId);
-    for(const auto& e:pendingEffects_)referenced.insert(e.fromId);
     for(const auto& blast:deathBlasts_)referenced.insert(blast.fromId);
     size_t write=0;
     TA_PASS();
@@ -1749,6 +1749,7 @@ void World::replaceLeg(Unit& u, const std::vector<Order>& path) {
             o.productionExit = tmpl.productionExit;
             o.groundResponse = tmpl.groundResponse;
             o.formationLevel = tmpl.formationLevel; o.attackFormation = tmpl.attackFormation;
+            o.reclaimAreaApproach = tmpl.reclaimAreaApproach;
             o.suppress = tmpl.suppress;
             o.suppressSlot = tmpl.suppressSlot; o.suppressReach = tmpl.suppressReach;
             o.suppressApproach = tmpl.suppressApproach;
@@ -1832,7 +1833,8 @@ bool World::setRally(Unit& u, const Order& o, bool queue) {
 // raise) never match.
 World::QueuedKind World::queuedKind(const Order& o) {
     if (!o.goal || o.scripted || o.airPad || o.landing || o.formationLevel || o.seekGuard || o.seekAttack ||
-        o.patrolRepair || o.guardRepair || o.wait || o.waitAttack)
+        o.reclaimAreaApproach || o.patrolRepair || o.guardRepair || o.wait ||
+        o.waitAttack || o.reclaimArea)
         return QueuedKind::None;
     // SUPPRESS and a flyer's attack at a point (+0x22); the approach SUPPRESS
     // puts ahead of itself is part of that order, never matched on its own.
@@ -1955,7 +1957,7 @@ void World::insertOrderFront(int unitId, bool rally, const std::function<void()>
             continue;
         }
         // SUPPRESS's approach goes: the order's stage 4 puts it back if needed.
-        if (o.goal && !o.airPad && !o.landing && !o.formationLevel && !o.guardRepair &&
+        if (o.goal && !o.airPad && !o.landing && !o.formationLevel && !o.reclaimAreaApproach && !o.guardRepair &&
             !o.suppressApproach)
             break;
         ++first;
@@ -2226,7 +2228,7 @@ Order* World::groundMissionOrder(Unit& u, bool includeCombatMoves) {
     const auto plain = [includeCombatMoves](const Order& o) {
         return !o.targetId && (includeCombatMoves || (!o.attackMove && !o.patrol)) && !o.guard && !o.load &&
                (!o.unload || o.transportUnloadApproach) &&
-               !o.buildType && !o.reclaimFeat && !o.repairTarget && !o.wait && !o.waitAttack && !o.scripted && !o.suppress;
+               !o.buildType && !o.reclaimFeat && !o.reclaimArea && !o.repairTarget && !o.wait && !o.waitAttack && !o.scripted && !o.suppress;
     };
     if (!plain(u.orders.front())) return nullptr;
     Order& goal = u.orders[currentLeg(u.orders)];
@@ -3416,7 +3418,7 @@ static bool legionStationOrder(const Unit& u) {
     if (u.orders.empty() || u.retailBuild) return false;
     const Order& o=u.orders.front();
     if (o.targetId || o.load || o.unload || o.guard || o.wait>0 || o.waitAttack || o.buildType ||
-        o.reclaimFeat || o.repairTarget || o.patrolRepair ||
+        o.reclaimFeat || o.reclaimArea || o.repairTarget || o.patrolRepair ||
         o.landing || o.transportPickup || o.buildRectangle || o.formationLevel) return false;
     return o.flightMoveMission || o.attackMove || o.patrol;
 }
@@ -4350,6 +4352,13 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
                 // alone loses this request until some later retry happens.
                 w.requestPath(u,goal.x.toFloat(),goal.z.toFloat());
             };
+            // 4067ae: RECLAIMAREA's approach installs 4d4da0(point,4) with wait
+            // mask 0x700, and its next stage runs on arrival (0x500), failure
+            // (0x200) or detachment alike. No radius growth, no group pacing.
+            if (goal.reclaimAreaApproach) {
+                if (m.stage==0) { resetGoal(4); m.waitMask=0x700; return 1; }
+                return 5;
+            }
             // SUPPRESS's approach (its stage 4: 4d4e10 / 4d4da0, wait 0x700):
             // the order behind it takes over on arrival or failure alike.
             if (goal.suppressApproach) {
@@ -7297,7 +7306,7 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
     // TA: a weapon fires only when storage holds both energypershot and
     // metalpershot, which are then taken at once (docs/retail-economy.md).
     // A burst clone was paid for with its emitter.
-    if (!tweak.free && !econPayShot(u, w)) return false;
+    if (!tweak.free && !tweak.capture && !econPayShot(u, w)) return false;
     // Every shot keeps the shooter visible for 600 ticks (icd 0x52af41, set just
     // before the release 0x530220).
     blockCloak(u, 600);
@@ -7413,7 +7422,48 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
             p.angles={0,uint16_t(yaw-portHeadingToRetail(u.heading)),pitch};
             p.life=1;
         }
-        projectiles_.push_back(p);
+        p.taHeading=heading;p.taPitch=pitch;p.taTargetPoint=target;p.taSpeed=speed;   // +0x36/+0x38/+0x28/+0x3a
+        if(tweak.capture)*tweak.capture=p;
+        else projectiles_.push_back(p);
+        return true;
+    }
+    // TotalA.exe's ballistic spawner 0x49cde0, from the turret routine when
+    // the weapon is neither lineofsight nor selfprop (0x49d74b..0x49d76e).
+    // Nothing is solved at the release: the shell starts at the QueryX point
+    // (0x49d6af) along the slot's AimX heading and pitch (S+0x16 / S+0x18,
+    // 0x49ce4f), the heading made absolute with the body's (0x49d6b8), plus
+    // the accuracy spread (0x49d72f, 0x49d73e). taBallisticVelocity has the
+    // launch velocity, taBallisticLifetime the expiry; tickTaBallistic flies it.
+    if(w.taAim==Weapon::TaAim::Turret && w.hasTaFlag(1)) {
+        if(w.velocityFx<=0)return true;
+        const auto& stored=u.weaponAim[size_t(slot)];
+        const uint16_t heading=uint16_t(stored.heading+portHeadingToRetail(u.heading)+tweak.heading);
+        const uint16_t pitch=uint16_t(stored.pitch+tweak.pitch);
+        const auto muzzle=scriptTriggered && !tweak.free ? u.weaponMuzzlePoints[size_t(slot)] :
+            queryUnitScriptPoint(u.id,false,slot);
+        const auto target=scriptTriggered && !tweak.free ? u.weaponAimPoints[size_t(slot)] :
+            tu ? taTargetPoint(u,t,w) : t.point;
+        Projectile p;p.wsrc=&w;p.fromId=u.id;p.fromPlayer=u.player;
+        p.targetId=tu ? tu->id : 0;p.slot=slot;p.fx=w.fx;
+        p.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
+        p.position=muzzle;p.muzzle=muzzle;
+        p.velocity=taBallisticVelocity(heading,pitch,w.velocityFx,u.taBarrel[size_t(slot)],ballisticGravityRaw_);
+        p.taHeading=heading;p.taPitch=pitch;p.taSpeed=w.velocityFx;p.taTargetPoint=target;
+        p.substeps=1;p.ballistic3d=true;p.taBallistic=true;
+        // It moves in this tick's projectile pass (0x495513 after the units'
+        // 0x4954ed); `end` is +0x46.
+        p.start=tickCounter_;
+        p.end=tickCounter_+taBallisticLifetime(muzzle,target,pitch,w.velocityFx,w.hasTaFlag(23),w.weaponTimerTicks);
+        // Drawn yaw in the launch convention (velocity along +sin, +cos).
+        p.angles={0,uint16_t(heading+0x8000u),pitch};
+        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+        p.life=std::numeric_limits<int32_t>::max();
+        // The drawn arc's length: the horizontal distance at the horizontal speed.
+        const int64_t dx=int64_t(target[0])-muzzle[0],dz=int64_t(target[2])-muzzle[2];
+        const int32_t horizontal=std::max(1,std::abs(retailScaledCosine(pitch,w.velocityFx)));
+        p.flight=int32_t(std::max<uint64_t>(1,isqrt64(uint64_t(dx*dx)+uint64_t(dz*dz))/uint64_t(horizontal)));
+        if(tweak.capture)*tweak.capture=p;
+        else projectiles_.push_back(p);
         return true;
     }
     if(w.kind==Weapon::Kind::Guided && w.projVel>0) {
@@ -7491,13 +7541,14 @@ bool World::fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,S
         const auto muzzle=queryUnitScriptPoint(u.id,false,slot);
         const auto step=retailGroundStep(u.heading,u.speed);
         Projectile b;b.ballistic3d=true;b.wsrc=&w;
+        b.taBallistic=w.taAim!=Weapon::TaAim::None;b.start=tickCounter_;
         b.position=muzzle;b.velocity={step.s.v,0,step.c.v};
         b.angles={0,uint16_t(u.heading.v),0xc000};
         b.x=Fixed::raw(b.position[0]);b.z=Fixed::raw(b.position[2]);
         b.targetId=tu ? tu->id : 0;b.slot=slot;b.fromPlayer=u.player;b.fromId=u.id;b.fx=w.fx;
         b.projectileUsesVeteranModel=w.usesVeteranShotModel(u.veteran);
         b.substeps=1;
-        b.start=tickCounter_+1;
+        if(!b.taBallistic)b.start=tickCounter_+1;
         // The drawn arc's length only: the fall from the release height.
         const int ground=heights_.empty() ? 0 : retailTerrainHeight(muzzle[0],muzzle[2],terW_,terH_,
             [&](int x,int z){return heights_[size_t(z)*size_t(terW_)+size_t(x)];});
@@ -7840,12 +7891,64 @@ bool World::slotInsideMinRange(const Unit& u,const Unit& t,int slot) const {
 bool World::ballisticInRange(Fixed x,Fixed y,Fixed z,const Unit& t,const Weapon& w) const {
     const Fixed ty=t.type->canFly ? t.flightY : t.groundY;
     auto delta=[](Fixed to,Fixed from) { return satSub32(to.v,from.v); };
+    if(w.taAim!=Weapon::TaAim::None) {
+        // A TotalA.exe weapon: 0x49aa80's range and arc tests (taRangeGate)
+        // to the target's origin. The fire gate itself measures to the
+        // slot's target point (the SweetSpot); this is the approach's test.
+        const int64_t dx=delta(t.x,x),dz=delta(t.z,z);
+        if(int32_t(uint32_t((dx*dx)>>32)+uint32_t((dz*dz)>>32))>int32_t(uint32_t(w.range)*uint32_t(w.range)))
+            return false;
+        return ta::taBallisticPitch(delta(x,t.x),delta(y,ty),delta(z,t.z),w.velocityFx,w.minBarrelAngle,
+                                    ballisticGravityRaw_)!=0x8000;
+    }
     return ta::retailBallisticInRange(delta(t.x,x),delta(ty,y),delta(t.z,z),ta::retailAimSpeed(w.projVel),
         w.gravityAdj,w.lobPreferred,ballisticGravityRaw_,w.range);
 }
 
 bool World::ballisticInRange(const Unit& u,const Unit& t,const Weapon& w) const {
     return ballisticInRange(u.x,u.type->canFly ? u.flightY : u.groundY,u.z,t,w);
+}
+
+// TotalA.exe 0x49aa80(unit, unit origin +0x6a, T, slot): the squared
+// horizontal deltas' high dwords (0x4e4400, 0x4e43d0), summed, against
+// range squared (0x49ab08, inclusive); a weapon that is not a waterweapon
+// fires only while the unit's origin height plus its model height (type
+// +0x170, the high word of +0x16e) is above the sea (0x49ab4d); a ballistic
+// one needs an arc from the origin (0x49ab87, 0x49a890).
+bool World::taRangeGate(const Unit& u,const std::array<int32_t,3>& target,const Weapon& w,bool horizontal) const {
+    const std::array<int32_t,3> origin{u.x.v,(u.type->canFly ? u.flightY : u.groundY).v,u.z.v};
+    const auto sub=[](int32_t a,int32_t b) { return std::bit_cast<int32_t>(uint32_t(a)-uint32_t(b)); };
+    const int64_t dx=sub(target[0],origin[0]),dz=sub(target[2],origin[2]);
+    if(horizontal && int32_t(uint32_t((dx*dx)>>32)+uint32_t((dz*dz)>>32))>int32_t(uint32_t(w.range)*uint32_t(w.range)))
+        return false;
+    if(!w.waterWeapon && int32_t(int16_t(uint32_t(origin[1])>>16))+int32_t(int16_t(uint32_t(u.type->modelTop)>>16))<=
+       int32_t(uint8_t(seaLevel_)))
+        return false;
+    if(w.hasTaFlag(1) && ta::taBallisticPitch(sub(origin[0],target[0]),sub(origin[1],target[1]),sub(origin[2],target[2]),
+                                               w.velocityFx,w.minBarrelAngle,ballisticGravityRaw_)==0x8000)
+        return false;
+    return true;
+}
+
+// 0x49e070's slot loop at the unit's creation (0x485f04, 0x4860ac, 0x4862c4):
+// each slot's QueryX and AimFromX points in the new pose give its barrel word
+// S+0x10 (0x49e0ea..0x49e11b), which a ballistic launch reads (0x49ce62).
+// That pose has the birth heading, 0x8000 - buildangle/2 + rand(buildangle)
+// (0x485bd6..0x485c06): the body faces +z, so a barrel ahead of its aim piece
+// gives a positive word. A caller's own heading (a scenario placement, a
+// factory's exit, 0x485f41) is set only after the slots are made.
+void World::initTaWeaponSlots(Unit& u,uint16_t birthHeading) {
+    u.taBarrel={};
+    if(!u.type || !unitScript(u.id))return;
+    const Bam heading=u.heading;
+    u.heading=retailHeadingToPort(birthHeading);
+    for(size_t slot=0;slot<std::min<size_t>(3,u.type->weapons.size());++slot) {
+        if(u.type->weapons[slot].taAim==Weapon::TaAim::None)continue;
+        const auto query=queryUnitScriptPoint(u.id,false,int(slot));
+        const auto from=aimFromPoint(u.id,int(slot));
+        u.taBarrel[slot]=taBallisticBarrel(query[2],from[2]);
+    }
+    u.heading=heading;
 }
 
 // The weapon an attack order approaches on: the selected one for a switcher,
@@ -8207,7 +8310,27 @@ static bool movementQueued(const Unit& u) {
     if (u.orders.size()<2) return false;
     const Order& o=u.orders[1];
     return !o.targetId && !o.guard && !o.load && !o.unload && !o.buildType && !o.reclaimFeat &&
-        !o.repairTarget && !o.wait && !o.waitAttack;
+        !o.reclaimArea && !o.repairTarget && !o.wait && !o.waitAttack;
+}
+
+// Engine (the reposition's spot choice): does a shell solved by 0x49a890
+// from (x,y,z) and flown by 0x49bce3's motion (no wind) pass within 24 px of
+// the target's origin height at its horizontal distance? Integer motion only.
+bool World::taShellLands(Fixed x,Fixed y,Fixed z,const Unit& t,const Weapon& w) const {
+    const Fixed ty=t.type->canFly ? t.flightY : t.groundY;
+    const int32_t dx=satSub32(x.v,t.x.v),dy=satSub32(y.v,ty.v),dz=satSub32(z.v,t.z.v);
+    const uint16_t pitch=ta::taBallisticPitch(dx,dy,dz,w.velocityFx,w.minBarrelAngle,ballisticGravityRaw_);
+    if (pitch==0x8000) return false;
+    const int64_t distance=int64_t(isqrt64(uint64_t(int64_t(dx)*dx)+uint64_t(int64_t(dz)*dz)));
+    const int32_t speed=retailScaledCosine(pitch,w.velocityFx);
+    if (speed<=0) return false;
+    std::array<int32_t,3> position{},velocity{0,retailScaledSine(pitch,w.velocityFx),-speed};
+    for (int tick=0;tick<4096;++tick) {
+        taBallisticStep(position,velocity,{},ballisticGravityRaw_);
+        if (-int64_t(position[2])>=distance)
+            return std::abs(int64_t(position[1])+dy)<=(int64_t(24)<<16)+int64_t(std::abs(velocity[1]));
+    }
+    return false;
 }
 
 bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
@@ -8251,6 +8374,12 @@ bool World::repositionForShot(Unit& u,const Unit& t,int slot) {
             if (std::abs(px-u.blockedX)<=2*kBlockedSpot && std::abs(pz-u.blockedZ)<=2*kBlockedSpot) continue;
             if (!grid.fits(cx,cz,foot) || !passable(u.type,cx,cz)) continue;
             if (arc && !ballisticInRange(footprintWaypoint(cx,foot),spotY(cx,cz),footprintWaypoint(cz,foot),t,w))
+                continue;
+            // A TA shell must also come down on the target from there: 0x49a890
+            // answers a target below at short range with acos's unsigned angle
+            // (retail), and that shell flies long. Our spot choice skips those.
+            if (arc && w.taAim!=Weapon::TaAim::None &&
+                !taShellLands(footprintWaypoint(cx,foot),spotY(cx,cz),footprintWaypoint(cz,foot),t,w))
                 continue;
             spots.push_back({(px-ux)*(px-ux)+(pz-uz)*(pz-uz),cz*terW_+cx});
         }
@@ -9664,6 +9793,7 @@ bool World::slotReachesPoint(const Unit& u,const std::array<int32_t,3>& aim,int 
         return axis(u.x,u.type->footX,aim[0]) && axis(u.z,u.type->footZ,aim[2]);
     }
     auto delta=[](int32_t to,int32_t from) { return satSub32(to,from); };
+    if (w.taAim!=Weapon::TaAim::None) return taRangeGate(u,aim,w);   // TotalA.exe 0x49aa80
     if (w.ballisticClass())   // 52bbb0: the arc from the origin first, then 530500
         return ta::retailBallisticInRange(delta(aim[0],u.x.v),delta(aim[1],(u.type->canFly ? u.flightY : u.groundY).v),
             delta(aim[2],u.z.v),ta::retailAimSpeed(w.projVel),w.gravityAdj,w.lobPreferred,ballisticGravityRaw_,w.range);
@@ -10171,7 +10301,8 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     transferEntitySlot(u,newPlayer);
     u.player = newPlayer;
     gPlayersValid_ = false;
-    gameRand(int32_t(u.type->buildAngle));            // 511baa: the birth heading, overwritten (+0x7e)
+    const uint16_t birthSpread=u.type->buildAngle;     // 511baa: the birth heading, overwritten (+0x7e)
+    const uint16_t birthHeading=uint16_t(32768u+u.type->orientation-birthSpread/2u+gameRand(int32_t(birthSpread)));
     u.variationPhase = uint16_t(gameRand(65536));     // 511cae: +0x82
     if (u.type->maxVel > Fixed()) gameRand(201);      // 512430: the speed, overwritten (+0x12b)
     startObjectOrders(u);
@@ -10222,6 +10353,7 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
         it->second.state().vm.start(*file,file->scriptIndex("Create"));
         it->second.state().startArguments(*file,file->scriptIndex("SetMaxReloadTime"),
                                           {uint32_t(u.type->maxWeaponReloadMs),0,0,0},1);
+        initTaWeaponSlots(u,birthHeading);   // 0x49e070 for the new object
         // 512301: an activatewhenbuilt type is activated at its creation;
         // then 514fd2 / 514fe4 give it the old object's activation bit.
         if (u.type->activateWhenBuilt) { it->second.activated = true; notifyUnitScript(u,"Activate"); }
@@ -10403,7 +10535,6 @@ void World::missionKillAll() {
     std::erase_if(projectiles_, [&](const Projectile& p) { return killed.contains(p.fromId); });
     std::erase_if(bursts_, [&](const BurstEmitter& b) { return killed.contains(b.fromId); });
     std::erase_if(flames_, [&](const FlameShot& f) { return killed.contains(f.fromId); });
-    std::erase_if(pendingEffects_, [&](const PendingEffect& e) { return killed.contains(e.fromId); });
 }
 
 // Stamp every PARKED ground unit into the occupancy layer. O(n), one cell each:
@@ -12264,7 +12395,7 @@ void World::cancelBuilds(int builderId) {
     const bool groundHelp=b->type && !b->type->canFly;
     b->orders.erase(std::remove_if(b->orders.begin(), b->orders.end(),
                                    [groundHelp](const Order& o) {
-                                       return o.buildType != nullptr || o.reclaimFeat != 0 ||
+                                       return o.buildType != nullptr || o.reclaimFeat != 0 || o.reclaimArea ||
                                               o.repairTarget != 0 || (groundHelp && o.helpSite != 0);
                                    }),
                     b->orders.end());
@@ -12709,6 +12840,152 @@ void World::tickBurning() {
     });
 }
 
+// Area reclaim: a kept engine feature, not retail TA (neither TotalA.exe
+// mission table, 0x4fc6e8 / 0x4fca18, has a RECLAIMAREA row; see "Known
+// deviations from retail" in docs/ta-port-plan.md). The stages follow
+// Kingdoms' RECLAIMAREA (KINGDOMS.icd 406670, the cell walk 509cc0); each
+// child is TA's own feature reclaim (reclaim / resurrect).
+void World::reclaimArea(int builderId,float x0,float z0,float x1,float z1,bool queue) {
+    OrdersNote note{*this,builderId};
+    Unit* b=unit(builderId);
+    if (!b || !b->alive() || !b->type || !b->type->isBuilder ||
+        !b->type->canMove || !b->type->canReclaim ||
+        !std::isfinite(x0) || !std::isfinite(z0) || !std::isfinite(x1) || !std::isfinite(z1)) return;
+    const float limitX=float(std::max(0,hW_-1)*16),limitZ=float(std::max(0,hH_-1)*16);
+    RetailReclaimArea area;
+    area.minX=Fixed::fromFloat(std::clamp(std::min(x0,x1),0.0f,limitX)).v;
+    area.maxX=Fixed::fromFloat(std::clamp(std::max(x0,x1),0.0f,limitX)).v;
+    area.minZ=Fixed::fromFloat(std::clamp(std::min(z0,z1),0.0f,limitZ)).v;
+    area.maxZ=Fixed::fromFloat(std::clamp(std::max(z0,z1),0.0f,limitZ)).v;
+    if (!queue) { cancelPath(*b); b->orders.clear(); }
+    Order o;
+    o.x=Fixed::raw(area.minX);o.z=Fixed::raw(area.minZ);
+    o.goal=true;o.issuedTick=tickCounter_;o.reclaimArea=area;
+    b->orders.push_back(o);
+}
+
+void World::tickReclaimArea(Unit& b) {
+    if (b.orders.empty() || !b.orders.front().reclaimArea) return;
+    auto& area=*b.orders.front().reclaimArea;
+    // 40681b: stage 0 records where the builder stands when the order first
+    // runs (not when it was issued) as the last target, then sleeps a tick.
+    if (area.stage==0) {
+        area.lastX=b.x.v;area.lastZ=b.z.v;area.stage=1;
+        return;
+    }
+    // 4067ae: stage 1 approaches the builder's position clamped into the box,
+    // even from inside it (that circle is satisfied on the next navigator
+    // pass), and stage 2 runs when the approach arrives or fails.
+    if (area.stage==1) {
+        area.stage=2;
+        const Fixed x=Fixed::raw(std::clamp(b.x.v,area.minX,area.maxX));
+        const Fixed z=Fixed::raw(std::clamp(b.z.v,area.minZ,area.maxZ));
+        if (b.type->canFly) {
+            // VTOL_RECLAIMAREA (420c10) is not ported: flyers keep a plain move.
+            if (x==b.x && z==b.z) return;
+            auto pending=std::move(b.orders);
+            b.orders.clear();
+            order(b.id,x.toFloat(),z.toFloat(),true);
+            b.orders.insert(b.orders.end(),std::make_move_iterator(pending.begin()),
+                            std::make_move_iterator(pending.end()));
+            return;
+        }
+        Order approach{x,z,0};
+        approach.goal=approach.groundMission=approach.reclaimAreaApproach=true;
+        approach.issuedTick=tickCounter_;
+        approach.controller=++nextMovementController_;
+        cancelPath(b);
+        b.orders.insert(b.orders.begin(),approach);
+        resetGroundSegment(b,b.orders.front());
+        return;
+    }
+    // 509cc0's fog test (509d9f..509e6d), for the builder's own player so it
+    // is the same on every peer. Current view: the allied sight footprints,
+    // re-evaluated on demand (never the client's async display fog). Explored:
+    // the simulation's Mapping plane, or the whole map when the room (or a
+    // power code) revealed it. Without line of sight only explored counts.
+    const int width=hW_/2,height=hH_/2;
+    const bool losOn=!roomLosOff_ && !powerLosOff(b.player);
+    const bool allExplored=(roomMapRevealed_ && !powerCodes_) || powerMappingOff(b.player);
+    const bool planeExplored=navigationExplored_.size()==size_t(width)*height;
+    std::vector<uint8_t> visible;
+    if (losOn) {
+        visible.assign(size_t(width)*height,0);
+        TA_PASS();
+        for (const auto& u:units_) {
+            // Cargo footprints are live too (4f6a60 has no attachment test).
+            if (!u.alive() || !u.type || u.underConstruction || !allied(u.player,b.player)) continue;
+            RetailSightFootprint sight=u.sightFootprint;
+            sight.active=false;
+            // Before the first exploration pass, initialize the same authored sight.
+            if (sight.x<0 || sight.z<0) {
+                sight.distance=int16_t(sightDistance(*u.type));sight.sightHeight=u.type->sightHeight;
+                sight.x=int16_t(u.x.floorInt()/32);sight.z=int16_t(u.z.floorInt()/32);
+                const Fixed y=u.type->canFly?u.flightY:u.groundY;
+                sight.eyeHeight=std::max(y.floorInt(),seaLevel_+1)+sight.sightHeight;
+            }
+            retailSightFootprint(sight,true,false,width,height,uint8_t(b.player),
+                [&](int x,int z){return explorationHeights_[size_t(z)*width+x];},
+                [&](int x,int z,int,uint16_t){visible[size_t(z)*width+x]=1;},
+                [&](int x,int z,bool){return !visible[size_t(z)*width+x];});
+        }
+    }
+    const auto seen=[&](int cx,int cz) {
+        const int vx=cx/2,vz=cz/2;
+        if (vx>=width || vz>=height) return false;
+        const size_t cell=size_t(vz)*width+vx;
+        const bool explored=allExplored || (planeExplored && (navigationExplored_[cell]>>b.player & 1));
+        // The owner byte of the SAMPLED cell, before any tail resolves.
+        const uint8_t owner=mapPlacementCells_.empty() ? kRetailWorldFeatureOwner
+            : mapPlacementCells_[size_t(cz)*hW_+cx].owner;
+        return retailReclaimAreaSeen(losOn,losOn && visible[cell],explored,owner);
+    };
+    // Resolve footprint cells to their actual anchor. Selecting only centres
+    // misses multi-cell trees and rubble intersecting the selection rectangle.
+    std::unordered_map<int,int> targets;
+    for (const auto& f:features_) {
+        if (!f.alive || !f.id || f.fadeLeft || f.dieLeft) continue;
+        if (f.type>=0 && (size_t(f.type)>=featTypes_.size() || !featTypes_[size_t(f.type)].reclaimable)) continue;
+        const int x=footprintOrigin(f.x,f.fx),z=footprintOrigin(f.z,f.fz);
+        targets.emplace(z*hW_+x,f.id);
+    }
+    for (const auto& [id,p]:corpseFootprints_) {
+        const Unit* corpse=unit(id);
+        if (!corpse || corpse->alive() || corpse->deadFor>=corpse->corpseUntil || corpse->corpseFading ||
+            p.type<0 || size_t(p.type)>=featTypes_.size() || !featTypes_[size_t(p.type)].reclaimable) continue;
+        targets.emplace(p.z*hW_+p.x,-id);
+    }
+    auto targetAt=[&](int32_t x,int32_t z) {
+        const int cx=x>>20,cz=z>>20;
+        if (cx<0 || cz<0 || cx>=hW_ || cz>=hH_ || !seen(cx,cz)) return 0;
+        int ax=cx,az=cz;
+        if (!mapPlacementCells_.empty()) {
+            const auto& cell=mapPlacementCells_[size_t(cz)*hW_+cx];
+            if (cell.feature==0xfffe) {ax-=cell.backX;az-=cell.backZ;}
+            else if (cell.feature>=mapPlacementTypes_.size()) return 0;
+        }
+        const auto found=targets.find(az*hW_+ax);
+        return found==targets.end()?0:found->second;
+    };
+    const auto pick=retailReclaimAreaPick(area,b.x.v,b.z.v,hW_,hH_,
+        [&](int32_t x,int32_t z){return targetAt(x,z)!=0;});
+    // 5: nothing left to clear. 8: the pick is the last target's cell again
+    // (its child just ended without clearing it, say it was unreachable).
+    if (pick.step!=RetailReclaimAreaStep::Child) { b.orders.erase(b.orders.begin());return; }
+    const int target=targetAt(pick.x,pick.z);
+    area.stage=1;
+    // Keep the area behind one ordinary reclaim child. When the child ends
+    // (cleared, failed, or another builder removed the feature) stage 1
+    // approaches again and picks from the NEW position.
+    // 4de530 mode 12 resolves the child as a right-click does: a body the
+    // builder can raise is RESURRECT (resurrect, else animate), anything
+    // else RECLAIM.
+    const size_t oldSize=b.orders.size();
+    if (target<0 && reviveKind(b.id,-target)) resurrect(b.id,-target,true);
+    else reclaim(b.id,target,true);
+    if (b.orders.size()>oldSize) std::rotate(b.orders.begin(),b.orders.end()-1,b.orders.end());
+    else b.orders.erase(b.orders.begin());   // 4de530 found no mission: 8
+}
 
 void World::reclaim(int builderId, int featureId, bool queue) {
     OrdersNote note{*this,builderId};
@@ -16377,9 +16654,9 @@ void World::tickAbilities(float) {
     };
 
     // Nothing raises or clears a body on its own. Retail creates a
-    // Resurrect or Reclaim task only from an order (the resolver 0x43f0e0,
-    // reached from the player's command path or a scripted initial
-    // mission); its idle Standby
+    // Resurrect, Reclaim or ReclaimArea task only from an order (the resolver
+    // 0x4de530, modes 1 and 12, reached from the player's command path, a
+    // scripted initial mission or a ReclaimArea's own child); its idle Standby
     // never does, and neither does ours. What is left is the channel of a RESURRECT leg, which
     // tickReclaim starts once the caster has walked, turned and taken its
     // stance (Unit::reviveTarget).
@@ -17972,6 +18249,42 @@ void World::tickStraightProjectiles(std::span<const int> airGrid) {
     }
 }
 
+// TotalA.exe's ballistic and dropped motion (docs/retail-data.md 3.3 rules 3
+// and 4): a ballistic weapon with a weapontimer checks its expiry first
+// (0x49bc19..0x49bc35) -- burnblow bursts where it is (0x49bc70 -> 0x499eb0),
+// anything else goes with a puff and no damage (0x49bc7a..0x49bcd0); then the
+// shell moves, drifts with the wind and falls (taBallisticStep, 0x49bce3) and
+// is tested once at the new point (0x49bd86 -> 0x49b090). No sub-steps.
+void World::tickTaBallistic(Projectile& p,std::span<const int> airGrid) {
+    if(p.life<=0 || p.spent || !p.wsrc)return;
+    if(tickCounter_<p.start)return;   // a burst clone joins the pool after the pass's count
+    const Weapon& w=*p.wsrc;
+    const auto burst=[&](int hitUnit) {   // 0x499eb0
+        const Fixed shotHp=unit(p.targetId) ? unit(p.targetId)->hp : Fixed();
+        p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+        applyHit(w,p.x.toFloat(),p.z.toFloat(),p.fromPlayer,p.fromId,unit(hitUnit),p.position,{},p.slot);
+        noteShotImpact(p.fromId,p.targetId,w,p.position,hitUnit,shotHp);
+        p.spent=true;p.life=0;
+    };
+    if(w.hasTaFlag(1) && w.weaponTimerTicks && !(p.end>tickCounter_)) {
+        if(w.hasTaFlag(23)) {burst(0);return;}
+        if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
+        p.spent=true;p.life=0;return;
+    }
+    taBallisticStep(p.position,p.velocity,taWindVector(wind_.x,wind_.z),ballisticGravityRaw_);
+    // Drawn only: the model's pitch follows the velocity (retail keeps +0x38).
+    p.angles[2]=retailBallisticPitchFromVelocity(p.velocity);
+    p.x=Fixed::raw(p.position[0]);p.z=Fixed::raw(p.position[2]);
+    p.age=int32_t(tickCounter_-p.start)+1;
+    const uint32_t flags=(w.unitsOnly?0x800u:0u)|(w.groundBounce?0x1000u:0u)|(w.waterWeapon?0x2000u:0u);
+    const auto hit=projectileCollision(p.position,p.velocity[1],flags,p.fromPlayer,airGrid);
+    if(hit.code==2)burst(hit.unitId);
+    else if(hit.code==1) {   // off the map: gone, a miss
+        if(const Unit* t=unit(p.targetId))noteShotImpact(p.fromId,p.targetId,w,p.position,0,t->hp);
+        p.spent=true;p.life=0;
+    }
+}
+
 // TotalA.exe's selfprop motion (0x49b9c2..0x49bb5b; docs/retail-data.md 3.3
 // rule 1), then one collision test at the new point (0x49bd86 -> 0x49b090).
 // Powered while the expiry tick (+0x46) is ahead: speed climbs by
@@ -18289,8 +18602,14 @@ int World::taWeaponScript(const UnitType& t,TaWeaponCall call,int slot) const {
 std::array<int32_t,3> World::queryUnitScriptPoint(int unitId,bool sweetSpot,int slot) {
     auto* u=unit(unitId);
     if(!u || !u->type)return {};
-    const auto it=unitScript(unitId);
-    if(!it)return {u->x.v,(u->type->canFly ? u->flightY : u->groundY).v,u->z.v};
+    if(!unitScript(unitId))return {u->x.v,(u->type->canFly ? u->flightY : u->groundY).v,u->z.v};
+    return unitPiecePoint(*u,queryUnitScriptPiece(unitId,sweetSpot,slot),sweetSpot);
+}
+
+int32_t World::queryUnitScriptPiece(int unitId,bool sweetSpot,int slot) {
+    auto* u=unit(unitId);
+    const auto it=u && u->type ? unitScript(unitId) : nullptr;
+    if(!it)return 0;
     const auto& file=*u->type->script();
     std::array<uint32_t,4> args{0,0,0,0};
     const int script=sweetSpot ? file.scriptIndexExact("SweetSpot") : taWeaponScript(*u->type,TaWeaponCall::Query,slot);
@@ -18298,7 +18617,7 @@ std::array<int32_t,3> World::queryUnitScriptPoint(int unitId,bool sweetSpot,int 
         ScriptHost host{*this,*u,*it};
         it->state().query(file,script,args,host);
     }
-    return unitPiecePoint(*u,std::bit_cast<int32_t>(args[0]),sweetSpot);
+    return std::bit_cast<int32_t>(args[0]);
 }
 
 // 0x43e2e0: AimFromX with its argument at -1; still -1 (or no such script)
@@ -18647,7 +18966,10 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(int unitId,int tar
         const auto angles=retailDirectAim(delta[0],delta[1],delta[2],heading);
         result.heading=angles[0];result.pitch=angles[1];
         if(weapon.ballistic) {
-            result.pitch=ta::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
+            result.pitch=weapon.taAim!=Weapon::TaAim::None ?
+                ta::taBallisticPitch(-delta[0],-delta[1],-delta[2],weapon.velocityFx,weapon.minBarrelAngle,
+                                     ballisticGravityRaw_) :
+                ta::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
                 float(delta[2])/65536.f,float(speed)/65536.f,weapon.gravityAdj,weapon.lobPreferred,
                 ballisticGravityRaw_);
             // 52bdf0 aims at pitch 0 when the arc cannot reach. Retail never
@@ -18699,7 +19021,10 @@ std::optional<World::WeaponAimSolution> World::queryWeaponAim(Unit& u,const Weap
         const auto angles=retailDirectAim(delta[0],delta[1],delta[2],heading);
         result.heading=angles[0];result.pitch=angles[1];
         if(weapon.ballistic) {
-            result.pitch=ta::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
+            result.pitch=weapon.taAim!=Weapon::TaAim::None ?
+                ta::taBallisticPitch(-delta[0],-delta[1],-delta[2],weapon.velocityFx,weapon.minBarrelAngle,
+                                     ballisticGravityRaw_) :
+                ta::retailBallisticPitch(float(delta[0])/65536.f,float(delta[1])/65536.f,
                 float(delta[2])/65536.f,float(speed)/65536.f,weapon.gravityAdj,weapon.lobPreferred,
                 ballisticGravityRaw_);
             if(result.pitch==0x8000) {
@@ -18771,10 +19096,9 @@ std::optional<std::array<uint16_t,2>> World::taAimAngles(const Unit& u,const Wea
     const uint16_t heading=uint16_t(retailDirection(Fixed::raw(d[0]),Fixed::raw(d[2])).v-portHeadingToRetail(u.heading));
     uint16_t pitch=0;
     if(w.hasTaFlag(1)) {
-        // ballistic: 0x49a890's elevation, 0x8000 = no solution. The shared
-        // solver takes the target-minus-source deltas.
-        pitch=ta::retailBallisticPitch(-float(d[0])/65536.f,-float(d[1])/65536.f,-float(d[2])/65536.f,
-            float(ta::retailAimSpeed(w.projVel))/65536.f,w.gravityAdj,w.lobPreferred,ballisticGravityRaw_);
+        // ballistic: 0x49a890(d, weaponvelocity, minbarrelangle)'s elevation,
+        // 0x8000 = no solution (0x49e28e, 0x49d614).
+        pitch=ta::taBallisticPitch(d[0],d[1],d[2],w.velocityFx,w.minBarrelAngle,ballisticGravityRaw_);
         if(pitch==0x8000)return std::nullopt;
     } else if(w.hasTaFlag(0)) {
         // lineofsight: 0x49d910, atan2(-(d.y>>16), |d.xz|>>16); positive is
@@ -18818,8 +19142,13 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
                 {aim.heading,aim.pitch,0,0},2,kAimCallback|uint32_t(slot));
         }
     }
-    // The fire gate (0x49e3ae..): loaded; the caller has tested the range.
+    // The fire gate (0x49e3ae..): loaded, then the range gate 0x49aa80 from
+    // the unit's origin to the target point (0x49e3c8; a refusal raises
+    // unit+0xbb bit 0x10, 0x49e53a, which World does not keep).
     if(u.reloads[size_t(slot)]>0)return true;
+    // The horizontal range is the caller's test (to the target's origin,
+    // docs/retail-weapon-scripts.md 7.8); the surfaced and arc tests are here.
+    if(!taRangeGate(u,target,w,false))return true;
     const bool moving=it->movementRate!=0;
     switch(w.taAim) {
     case Aim::Turret: {
@@ -18872,6 +19201,13 @@ bool World::tickScriptWeapon(Unit& u,const WeaponTarget& t,int slot,bool swept,c
         BurstEmitter b;
         b.fromId=u.id;b.slot=slot;b.targetId=t.unit ? t.unit->id : 0;b.point=target;
         b.left=w.burst;b.rate=uint16_t(std::max<int>(1,w.burstRateTicks));b.next=tickCounter_+b.rate;
+        // TotalA.exe's emitter is the spawner's own record (0x49cb79 /
+        // 0x49cf58): its clones copy it, aimed and sprayed as it stands.
+        const bool taClass=w.velocityFx>0 && !w.beam && !w.lightning && w.losStatus==Weapon::LosStatus::None &&
+            (w.hasTaFlag(20) || w.hasTaFlag(0) || (w.taAim==Aim::Turret && w.hasTaFlag(1)));
+        ShotTweak capture=tweak;capture.capture=&b.shot;
+        b.copies=taClass && fire(u,t,slot,true,capture) && b.shot.wsrc;
+        if(b.copies)b.piece=queryUnitScriptPiece(u.id,false,slot);   // +0x62 (0x49c82e)
         bursts_.push_back(b);
     } else if(!fire(u,t,slot,true,tweak)) return true;   // cannot pay: nothing changes
     // FireX after the projectile exists (0x49cb86), no arguments, not
@@ -18914,6 +19250,42 @@ void World::tickWeaponBursts() {
         }
         if(tickCounter_<b.next) { ++i;continue; }
         const Weapon& w=u->type->weapons[size_t(b.slot)];
+        if(b.copies) {
+            // 0x49b79c..0x49b7e1: the emitter re-reads its stored piece's
+            // point (no QueryX call) when burstrate >= 5 or the count is odd.
+            Projectile& e=b.shot;
+            if(b.rate>=5 || (b.left&1u))e.position=unitPiecePoint(*u,b.piece,false);
+            --b.left;b.next=tickCounter_+b.rate;
+            // 0x49b83b: the clone is a copy of the emitter, launched now; its
+            // expiry is weapontimer, else its launch distance (+0x3e) plus
+            // 16 px at its speed (+0x3a), jittered by randomdecay (0x49b8bf).
+            Projectile c=e;
+            c.muzzle=c.position;
+            c.x=Fixed::raw(c.position[0]);c.z=Fixed::raw(c.position[2]);
+            const int64_t dx=int64_t(e.muzzle[0])-e.taTargetPoint[0],dz=int64_t(e.muzzle[2])-e.taTargetPoint[2];
+            const uint32_t distance=uint32_t(isqrt64(uint64_t(dx*dx)+uint64_t(dz*dz)));
+            uint32_t lifetime=w.weaponTimerTicks ? w.weaponTimerTicks :
+                e.taSpeed>0 ? (distance+0x100000u)/uint32_t(e.taSpeed) : 0;
+            if(w.randomDecayTicks)
+                lifetime+=uint32_t(int32_t(gameRand(w.randomDecayTicks))-int32_t(w.randomDecayTicks/2));
+            // A clone joins the pool after the pass's count (0x49b720): it
+            // moves from the next tick.
+            c.start=tickCounter_+1;
+            c.end=c.taBallistic ? tickCounter_+lifetime : c.start+lifetime;
+            if(c.straight || c.taSelfProp)c.flight=int32_t(lifetime);
+            projectiles_.push_back(c);
+            // 0x49b8f1..0x49b94b: sprayangle turns the EMITTER's horizontal
+            // velocity for the next clone, from its stored heading and pitch.
+            if(w.sprayAngle) {
+                const int32_t r=int32_t(gameRand(w.sprayAngle));
+                const uint16_t heading=uint16_t(e.taHeading-(w.sprayAngle>>1)+r);
+                const int32_t horizontal=retailScaledCosine(e.taPitch,w.velocityFx);
+                e.velocity[0]=-retailScaledSine(heading,horizontal);
+                e.velocity[2]=-retailScaledCosine(heading,horizontal);
+            }
+            ++i;
+            continue;
+        }
         Unit* tu=b.targetId ? unit(b.targetId) : nullptr;
         if(tu && (!tu->alive() || !tu->type))tu=nullptr;
         ShotTweak tweak;tweak.free=true;
@@ -20087,6 +20459,10 @@ void World::tickNavigationMovement(Unit& u,Fixed maximum) {
         // They have no movement controller: even a zero-speed navigator turns
         // the body while steering. Keep script-driven turrets independent.
         if (u.type->isStructure()) return;
+        // RECLAIMAREA moves only through its own approach leg and its child
+        // reclaims. The area order is no destination (its x/z are the box's
+        // corner): never route to it, steer at it or retire it on arrival.
+        if (u.orders.front().reclaimArea && !u.type->canFly) { brakeGround(u); return; }
         // Goal satisfaction belongs to the mission, independently of the
         // navigator's next intermediate point (retail 0x4e5150). A stale
         // waypoint can be occupied even after we have reached the goal area.
@@ -20732,6 +21108,7 @@ void World::tick(float dt) {
     for (auto& p : projectiles_) {
         if(p.straight)continue;
         if(p.taSelfProp) {tickTaSelfProp(p,projectileAircraft);continue;}
+        if(p.taBallistic) {tickTaBallistic(p,projectileAircraft);continue;}
         if(p.guided3d) {
             if(p.life<=0)continue;
             if(tickCounter_<=p.start) {
@@ -21514,6 +21891,7 @@ void World::tick(float dt) {
         if (!u.orders.empty() && u.orders.front().buildType && !u.orders.front().buildRectangle && u.buildSiteId == 0 &&
             !u.orders.front().placementFailures)
             buildDue_.push_back(u.id);
+        tickReclaimArea(u);
         // Reclaim needs no deferral: consuming a feature spawns nothing, so
         // nothing can reallocate units_ underneath us. Its stage 0 runs as
         // soon as the leg is current, before the mover (406250, 4d4e80).
@@ -21847,40 +22225,6 @@ void World::tick(float dt) {
         taTickWind(wind_, tickCounter_, [&](int n) { return pathRand(n); },
                    [&] { return crtRand(0x525248); });
 
-    // Remote Effect spells channelling toward their landing point. The effect is
-    // pinned to the ground where it was aimed, so it lands whether or not the
-    // original target moved -- you dodge an Earthquake by leaving its radius, not
-    // by taking a step. Ticked before the death-blast drain so a kill it causes is
-    // swept next tick like any other.
-    for (size_t i = 0; i < pendingEffects_.size();) {
-        PendingEffect& e = pendingEffects_[i];
-        // A charm/freeze channel dies with its caster: kill the Mind Mage during
-        // its wind-up and nothing is converted.
-        if (e.casterGated) {
-            const Unit* c = e.fromId ? unit(e.fromId) : nullptr;
-            if (!c || !c->alive()) {
-                pendingEffects_.erase(pendingEffects_.begin() + std::ptrdiff_t(i));
-                continue;
-            }
-        }
-        --e.at;
-        --e.endAt;
-        bool done = e.endAt <= 0;
-        // Retail destroys an expired shot before its per-tick hook runs, so a
-        // pulse due on the expiry tick is lost -- except the Hailstorm's, whose
-        // last stone landing is what ends it.
-        const bool hail = e.w && e.w->remote == Weapon::RemoteKind::Hailstorm;
-        bool pulse = e.at <= 0 && (!done || hail);
-        if (e.at <= 0) {
-            if (e.period > 0) e.at += e.period;
-            else e.at = INT32_MAX;     // single-pulse: never again
-        }
-        const PendingEffect cur = e;   // applyHit walks/kills units_; copy first
-        if (done) pendingEffects_.erase(pendingEffects_.begin() + std::ptrdiff_t(i));
-        else ++i;
-        if (pulse && cur.w) applyHit(*cur.w, cur.x.toFloat(), cur.z.toFloat(), cur.player, cur.fromId, nullptr,
-                                     {}, std::array<int32_t,3>{cur.x.v, cur.y.v, cur.z.v});
-    }
     // Drain the [EXPLODEAS] death blasts queued by the sweep above. Done here, after
     // the loop, because applyHit can kill further units (chain-detonating a pack of
     // Kamikaze Rats) and must not mutate units_ while it is being walked. A blast may
@@ -22193,11 +22537,7 @@ void World::hashTrace() const {
             }
         }
     }
-    uint64_t hEff = fnv(seed, pendingEffects_.size());
-    for (const auto& e : pendingEffects_)
-        hEff = fnv(fnv(fnv(fnv(hEff, uint32_t(e.player)),
-                           uint64_t(uint32_t(e.x.v))), uint64_t(uint32_t(e.z.v))),
-                   uint64_t(uint32_t(e.at)));
+    const uint64_t hEff = fnv(seed, size_t(0));   // Kingdoms' Remote Effect spells are gone
     const uint64_t hStorm = seed;   // Kingdoms wandering storms are gone
     uint64_t hPlayers = seed;
     for (const auto& t : players_)
@@ -22478,6 +22818,13 @@ uint64_t World::stateHash() const {
         // The pad piece an air-base passenger sits on (0x48ab70's +0xf9).
         if (u.padPiece>=0) { mix(0x50414450u); mix(uint8_t(u.padPiece)); }
         for (const auto& order : u.orders) {
+            if (order.reclaimArea) {
+                mix(0x41524541u);
+                const auto& a=*order.reclaimArea;
+                mix(uint32_t(a.minX));mix(uint32_t(a.minZ));mix(uint32_t(a.maxX));mix(uint32_t(a.maxZ));
+                mix(a.stage);mix(uint32_t(a.lastX));mix(uint32_t(a.lastZ));
+            }
+            if (order.reclaimAreaApproach) mix(0x52434c4d41505052ull);
             if (order.helpSite) { mix(0x48454c50u); mix(uint32_t(order.helpSite)); }
             if (order.resumeSite) { mix(0x52534d45u); mix(uint32_t(order.resumeSite)); }
             if (order.guardRepair) { mix(0x47524550u); mix(uint32_t(order.repairTarget)); }
@@ -22834,6 +23181,11 @@ uint64_t World::stateHash() const {
             mix(uint32_t(b.fromId));mix(uint32_t(b.slot));mix(uint32_t(b.targetId));
             for (int32_t v : b.point) mix(uint32_t(v));
             mix(uint32_t(b.left)|uint32_t(b.rate)<<16);mix(b.next);
+            if (b.copies) {
+                mix(0x434f5059u);mix(uint32_t(b.piece));
+                for (int32_t v : b.shot.position) mix(uint32_t(v));
+                for (int32_t v : b.shot.velocity) mix(uint32_t(v));
+            }
         }
     }
     mix(uint64_t(projectiles_.size()));
@@ -22886,15 +23238,9 @@ uint64_t World::stateHash() const {
         }
     }
     checkpoint("flames");
-    // Remote Effect spells mid-channel and wandering storms mid-roam are live sim
-    // state that outlives a tick, so a divergence in either must show up here.
-    mix(uint64_t(pendingEffects_.size()));
-    for (const auto& e : pendingEffects_) {
-        mix(uint64_t(uint32_t(e.player)));
-        mix(uint64_t(uint32_t(e.x.v))); mix(uint64_t(uint32_t(e.z.v)));
-        mix(uint64_t(uint32_t(e.at)));   // ticks
-        mix(uint64_t(uint32_t(e.y.v)));  // the 3D area pass reads it
-    }
+    // Kingdoms' Remote Effect spells are gone: the count they folded stays 0,
+    // so the hash keeps its shape.
+    mix(uint64_t(0));
     for (const auto& t : players_) {
         mix(uint32_t(t.automaticGates) | (uint32_t(t.defensiveAi)<<1) | (uint32_t(t.passiveNeutral)<<2));
         if (t.manaShareMask != 0xff) { mix(0x53484152454d414eull); mix(t.manaShareMask); }

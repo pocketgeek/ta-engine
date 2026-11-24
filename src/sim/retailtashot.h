@@ -13,6 +13,7 @@
 
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 
@@ -50,6 +51,60 @@ inline std::array<int32_t,3> taShotVelocity(uint16_t heading,uint16_t pitch,int3
 inline uint32_t taShotLifetime(int32_t range,int32_t velocity,bool noAutoRange,uint16_t weaponTimer) {
     if(velocity && !noAutoRange)return (uint32_t(range)<<16)/uint32_t(velocity);
     return weaponTimer;
+}
+
+// 0x49e0ea..0x49e11b (unit creation, 0x49e070): a slot's barrel word S+0x10,
+// _ftol((QueryX.z - AimFromX.z) * 1.25) of the two points the new unit's pose
+// gives (heading 0x8000 - buildangle/2 + rand(buildangle), 0x485bd6).
+inline int32_t taBallisticBarrel(int32_t queryZ,int32_t aimFromZ) {
+    return int32_t(double(std::bit_cast<int32_t>(uint32_t(queryZ)-uint32_t(aimFromZ)))*1.25);
+}
+
+// 0x49ce4f..0x49cec3: a ballistic shell leaves along the slot's stored
+// heading and pitch (S+0x16 made absolute and spread by the fire routine,
+// S+0x18 spread), the horizontal part v cos(pitch) along (-sin h, -cos h),
+// and its vertical speed v sin(pitch) less gravity times the barrel word over
+// the velocity (unsigned division, 0x49ce6a; imul, 0x49ce79).
+inline std::array<int32_t,3> taBallisticVelocity(uint16_t heading,uint16_t pitch,int32_t velocity,
+                                                 int32_t barrel,int32_t gravity) {
+    auto v=taShotVelocity(heading,pitch,velocity);
+    const uint32_t ticks=velocity ? uint32_t(barrel)/uint32_t(velocity) : 0u;
+    v[1]=std::bit_cast<int32_t>(uint32_t(v[1])-ticks*uint32_t(gravity));
+    return v;
+}
+
+// 0x49cecc..0x49cf42: a burnblow shell expires when it has flown the
+// horizontal distance from the muzzle to the target point at its horizontal
+// speed (_hypot, _ftol, idiv); any other at weapontimer. The expiry is only
+// read when weapontimer is set (0x49bc19).
+inline uint32_t taBallisticLifetime(const std::array<int32_t,3>& muzzle,const std::array<int32_t,3>& target,
+                                    uint16_t pitch,int32_t velocity,bool burnBlow,uint16_t weaponTimer) {
+    if(!burnBlow)return weaponTimer;
+    const int32_t horizontal=retailScaledCosine(pitch,velocity);
+    const double dz=double(std::bit_cast<int32_t>(uint32_t(muzzle[2])-uint32_t(target[2])));
+    const double dx=double(std::bit_cast<int32_t>(uint32_t(muzzle[0])-uint32_t(target[0])));
+    const double distance=std::sqrt(dx*dx+dz*dz);
+    const int32_t whole=distance<2147483648.0 ? int32_t(distance) : INT32_MIN;
+    if(!horizontal)return 0;
+    return uint32_t(whole/horizontal);
+}
+
+// 0x49bce3..0x49bd41 (ballistic and dropped shots): the position moves by the
+// velocity, then by the wind vector G+0x37ecc (-2 r sin, 0, -2 r cos of the
+// wind's speed and direction, 0x490cf7..0x490d35), then gravity comes off the
+// vertical speed. Once a tick, no sub-steps.
+inline void taBallisticStep(std::array<int32_t,3>& position,std::array<int32_t,3>& velocity,
+                            const std::array<int32_t,3>& wind,int32_t gravity) {
+    for(size_t axis=0;axis<3;++axis)
+        position[axis]=std::bit_cast<int32_t>(uint32_t(position[axis])+uint32_t(velocity[axis]));
+    for(size_t axis=0;axis<3;++axis)
+        position[axis]=std::bit_cast<int32_t>(uint32_t(position[axis])+uint32_t(wind[axis]));
+    velocity[1]=std::bit_cast<int32_t>(uint32_t(velocity[1])-uint32_t(gravity));
+}
+
+// 0x490d05 / 0x490d31: the wind vector from the wind's r sin and r cos.
+inline std::array<int32_t,3> taWindVector(int32_t sine,int32_t cosine) {
+    return {std::bit_cast<int32_t>((0u-uint32_t(sine))<<1),0,std::bit_cast<int32_t>((0u-uint32_t(cosine))<<1)};
 }
 
 // 0x49b520: turn heading and pitch toward `target` by at most `turnRate`

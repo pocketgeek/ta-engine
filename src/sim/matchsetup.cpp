@@ -167,7 +167,7 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
                                c.kind == Cmd::Attack;
         const bool orderVerb = rallyVerb || c.kind == Cmd::Build ||
             c.kind == Cmd::Assist || c.kind == Cmd::Guard || c.kind == Cmd::Load || c.kind == Cmd::Unload ||
-            c.kind == Cmd::Reclaim || c.kind == Cmd::Resurrect || c.kind == Cmd::Repair ||
+            c.kind == Cmd::Reclaim || c.kind == Cmd::ReclaimArea || c.kind == Cmd::Resurrect || c.kind == Cmd::Repair ||
             c.kind == Cmd::AttackGround || c.kind == Cmd::ReclaimUnit;
         // A Load is the carrier's order (TotalA.exe's LOAD gives the carrier
         // GROUND_PICKUP / VTOL_PICKUP, 0x43f701; World::loadInto): its list is
@@ -336,6 +336,9 @@ void applyCommand(World& world, const TypeRegistry& reg, const ta::net::Command&
             // Checked before anything is cancelled: a unit that cannot take
             // the order keeps its work.
             if (owns(c.unitId) && admits()) { redirect(); world.reclaimUnit(c.unitId, c.targetId, c.queue); }
+            break;
+        case Cmd::ReclaimArea:
+            if (owns(c.unitId)) { redirect(); world.reclaimArea(c.unitId, c.x, c.z, c.x2, c.z2, c.queue); }
             break;
         case Cmd::Resurrect:
             // Checked before anything is cancelled, so a caster that cannot

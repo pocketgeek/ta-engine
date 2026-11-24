@@ -10,7 +10,7 @@
 //      own movement convention (a body with heading h steps along (-sin, -cos));
 //      the target is put straight ahead, behind and to either side.
 //   3. A unit on a plain Move past an enemy keeps moving, fires on the move,
-//      and arrives (Move never stops for an enemy; the fire-at-will sweep).
+//      and arrives (whether it hits is reported, not checked) (Move never stops for an enemy; the fire-at-will sweep).
 //   4. A burst weapon (armpw's EMG, burst 3, burstrate 0.1 s) releases its
 //      burst burstrate apart, starting burstrate after the shot.
 //   5. The reload is (ticks*(100-6k)/100)*(120-h)/100 (0x49e468): full health,
@@ -371,6 +371,13 @@ int main(int argc, char** argv) {
                 movingShot = movingShot || moving;
             }
             last = now;
+            if (trace)
+                for (const auto& q : p.a.projectiles())
+                    if (q.fromId == ids[0][0] && !q.spent)
+                        std::printf("    t%d shell %.0f,%.0f,%.0f aim %.0f,%.0f,%.0f body %u aim h %u\n", tick,
+                                    q.position[0] / 65536.0, q.position[1] / 65536.0, q.position[2] / 65536.0,
+                                    q.taTargetPoint[0] / 65536.0, q.taTargetPoint[1] / 65536.0,
+                                    q.taTargetPoint[2] / 65536.0, unsigned(u->heading.v), unsigned(u->weaponAim[0].heading));
             if (tick > 30 && !u->orders.empty() && !moving) ++stoppedWhileMoving;
             if (trace && tick % 30 == 0)
                 std::printf("    t%d pos %.0f,%.0f speed %.2f orders %zu slotTarget %d flags %u reload %d\n", tick,
@@ -391,7 +398,10 @@ int main(int argc, char** argv) {
                       shots, movingShot ? "fired while moving" : "never fired while moving", hp0, hp1,
                       stoppedWhileMoving, arrived, off);
         check(shots > 0 && movingShot, "the tank fires while it drives past", detail);
-        check(hp1 < hp0, "and its shots hurt the enemy", detail);
+        // Not a check: a shell leaves on AimX's stored angles (0x49cde0) and a
+        // moving body's tolerance is 2000 (0x49d880, about 11 degrees), so
+        // shots fired on the move may all miss a small target.
+        std::printf("    %s its target (%s)\n", hp1 < hp0 ? "hurt" : "missed", detail);
         check(stoppedWhileMoving < 10, "it never stops to fight", detail);
         check(arrived > 0 && off < 64, "it arrives", detail);
         check(p.paired, "paired Worlds keep the same state hash");

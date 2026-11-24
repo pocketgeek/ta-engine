@@ -411,6 +411,23 @@
         return out;
     }
 
+    void GameView::issueReclaimBox(float x0, float z0, float x1, float z1, uint8_t queue,
+                                   const std::vector<int>& only) {
+        ClickScope click(*this);
+        const auto ids = only.empty() ? reclaimers() : only;
+        if (ids.empty()) return;
+        for (int id : ids) {   // each its own RECLAIMAREA (4d78a0), Shift queues per unit
+            ta::net::Command c;
+            c.kind = ta::net::Cmd::ReclaimArea;
+            c.unitId = id;
+            c.x = x0; c.z = z0; c.x2 = x1; c.z2 = z1;
+            c.queue = uint8_t(queue);
+            issue(c);
+        }
+        notice_ = "CLEAR AREA";
+        noticeTimer_ = 2;
+        voice(ackUnit(ids), "move");
+    }
 
     std::pair<int, size_t> GameView::keytestPickOwnUnit() const {
         int pick = -1, any = -1;

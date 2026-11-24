@@ -1,4 +1,5 @@
 #pragma once
+#include "sim/retailreclaimarea.h"
 #include "sim/retailreclaim.h"
 #include "sim/retailreclaimunit.h"
 #include "sim/heapoptional.h"
@@ -800,9 +801,7 @@ struct alignas(64) Order {
     // The order sits at the builder's working position; the site is footZ*8+24
     // north of it.
     const UnitType* buildType = nullptr;
-    // Layout pad: once Kingdoms' RECLAIMAREA order (406670; TA has no area
-    // reclaim, neither mission table 0x4fc6e8 / 0x4fca18 has the row).
-    alignas(8) uint8_t layoutPadArea_[8] = {};
+    HeapOptional<RetailReclaimArea> reclaimArea;
     // Layout pad: Order's cache-line plan (TA_ORDER_LINE below) was laid out with an
     // 8-byte slot here (once Kingdoms' area-build order); keep the plan intact.
     // A D-gun order (TotalA.exe AttackSpecial 0x403190): fires only the
@@ -989,7 +988,11 @@ struct alignas(64) Order {
     void setIdentity(const OrderIdentity& id) { convoyTick = id.convoyTick; orderSerial = id.serial; }
     uint32_t placementRetryTick = 0;
     uint8_t placementFailures = 0;
-    bool layoutPadArea1_ = false;   // was Kingdoms' RECLAIMAREA approach; kept for Order's layout
+    // RECLAIMAREA's own approach (406670 stage 1): a radius-4 circle on the
+    // builder's position clamped into the area, pushed ahead of the area order.
+    // It ends on arrival OR failure (wait mask 0x700), never widening like a
+    // Move_Ground. Hashed with a tag when set.
+    bool reclaimAreaApproach = false;
     // An auto attack issued with a return (4d7de0's leash path: the idle
     // retaliation mission, Maneuver or a patrol hit): mission +0x56 is the
     // leash (maneuverleashlength) and +0x2e/+0x30 the origin; the attack
@@ -1126,7 +1129,7 @@ TA_ORDER_LINE(x, 0); TA_ORDER_LINE(z, 0); TA_ORDER_LINE(targetId, 0);
 TA_ORDER_LINE(load, 0); TA_ORDER_LINE(unload, 0); TA_ORDER_LINE(attackMove, 0);
 TA_ORDER_LINE(patrol, 0); TA_ORDER_LINE(guard, 0); TA_ORDER_LINE(waitAttack, 0);
 TA_ORDER_LINE(goal, 0); TA_ORDER_LINE(groundMission, 0); TA_ORDER_LINE(wait, 0);
-TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(layoutPadArea_, 0);
+TA_ORDER_LINE(buildType, 0); TA_ORDER_LINE(reclaimArea, 0);
 TA_ORDER_LINE(reclaimFeat, 0); TA_ORDER_LINE(repairTarget, 0);
 TA_ORDER_LINE(transportUnloadApproach, 0); TA_ORDER_LINE(navigationConsumed, 0);
 TA_ORDER_LINE(autoTarget, 0); TA_ORDER_LINE(flightMoveMission, 0); TA_ORDER_LINE(landing, 0);
@@ -1754,6 +1757,11 @@ struct alignas(64) Unit {
     // type isairbase), -1 otherwise. VTOL_Landing's free-pad test (0x47e570)
     // reads it on the pad's other passengers. Hashed while it rides one.
     int8_t padPiece = -1;
+    // TotalA.exe's slot barrel words (S+0x10, 0x49e11b): QueryX's z less
+    // AimFromX's, times 1.25, in the pose the unit was created in. A
+    // ballistic shell's launch takes gravity times this over the velocity
+    // off its vertical speed (0x49ce6a). Set at creation (initTaWeaponSlots).
+    std::array<int32_t,3> taBarrel{};
 };
 // Which line each hot field sits on (WE D1); see the layout note above Unit.
 // Moving a field across a line, or growing lines 0-4 past their bytes, is a
@@ -1964,6 +1972,10 @@ struct Projectile {
     // also guided3d for drawing. `end` is the expiry tick (+0x46): powered
     // while end > now, then burnblow detonates or gravity takes over.
     bool taSelfProp=false;
+    // TotalA.exe ballistic / dropped motion (0x49bce3, retailtashot.h): also
+    // ballistic3d for drawing. `end` is the expiry tick (+0x46), read only
+    // for a ballistic weapon with a weapontimer (0x49bc19).
+    bool taBallistic=false;
     uint8_t taPhase=0;          // +0x69 bits 4..5: twophase stage
     uint16_t taHeading=0,taPitch=0;   // +0x36 / +0x38, mover convention
     int32_t taSpeed=0;          // +0x3a
@@ -2801,6 +2813,7 @@ public:
     // 0x489960: whether `b` may reclaim unit `t` -- b canreclamate (flagsB
     // bit 10), t not flying (+0x110 & 3 != 2) and not cancapture (bit 12).
     bool reclaimUnitAllowed(const Unit& b, const Unit& t) const;
+    void reclaimArea(int builderId, float x0, float z0, float x1, float z1, bool queue);
     // Order `casterId` to raise the body of dead unit `corpseId` (retail
     // RESURRECT 0x4068b0, or VTOL_RESURRECT 0x41fe70 for a flyer): walk to it,
     // then channel a resurrect or an animate (reviveKind). A no-op when the
@@ -2972,7 +2985,6 @@ public:
         // AND advance the shared RNG on this peer alone -- an instant desync. The
         // RNG itself is re-seeded for the same reason: replaying from a mid-match
         // stream position diverges from a referee that started fresh.
-        pendingEffects_.clear();
         deathBlasts_.clear();
         gameRng_ = initialGameRng_;
         windRng_ = initialWindRng_;
@@ -3171,6 +3183,8 @@ public:
     // 51aa50 for a unit target: its SweetSpot plus the weapon's lead.
     std::array<int32_t,3> retailLeadPoint(const Unit& u,const Unit& target,const Weapon* weapon);
     std::array<int32_t,3> queryUnitScriptPoint(int unitId,bool sweetSpot,int slot=0);
+    // The piece that query answers (0x43e1e0): 0 with no script.
+    int32_t queryUnitScriptPiece(int unitId,bool sweetSpot,int slot=0);
     // A script piece's world point (0x43def0; a SweetSpot's drawn centre);
     // a piece out of range is the unit origin.
     std::array<int32_t,3> unitPiecePoint(Unit& u,int32_t piece,bool sweetSpot);
@@ -3352,7 +3366,7 @@ public:
     // test that several places need.
     static bool hasQueuedWork(const Unit& u) {
         for (const Order& o : u.orders)
-            if (o.buildType || o.reclaimFeat || o.repairTarget) return true;
+            if (o.buildType || o.reclaimFeat || o.reclaimArea || o.repairTarget) return true;
         return false;
     }
     void attackMove(int unitId, float x, float z, bool queue);
@@ -3660,7 +3674,9 @@ private:
     // spread added to the launch heading and pitch (0x49d6bc..0x49d73e), and
     // a burst clone, which charges nothing (docs/retail-weapon-scripts.md 5).
     // free: a burst clone (already paid with its emitter, 0x49b75e).
-    struct ShotTweak { uint16_t heading=0,pitch=0; bool free=false; };
+    // free: a burst clone (no cost). capture: build the shot into *capture
+    // (the burst emitter's record) instead of the projectile list; paid.
+    struct ShotTweak { uint16_t heading=0,pitch=0; bool free=false; Projectile* capture=nullptr; };
     bool fire(Unit& u, Unit& target, int slot,bool scriptTriggered=false) { return fire(u,WeaponTarget{&target},slot,scriptTriggered); }
     bool fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered=false) { return fire(u,t,slot,scriptTriggered,ShotTweak{}); }
     bool fire(Unit& u, const WeaponTarget& t, int slot,bool scriptTriggered,ShotTweak tweak);
@@ -3692,6 +3708,12 @@ private:
         std::array<int32_t,3> point{};
         uint16_t left=0,rate=1;
         uint32_t next=0;
+        // A TotalA.exe shot class (line of sight, selfprop, ballistic): the
+        // emitter's own record, which every clone copies, and its stored
+        // QueryX piece (+0x62).
+        bool copies=false;
+        int32_t piece=0;
+        Projectile shot;
     };
     void tickWeaponBursts();
     // SUPPRESS (0x404d70): the order's five stages on the current leg, run
@@ -3926,6 +3948,7 @@ private:
     bool moveRateMoving(const Unit& t) const;
     void finishReclaim(Unit& b,int target);
     void tickFeatureFades();
+    void tickReclaimArea(Unit& b);
     void tickAbilities(float dt);   // reclaim / resurrect on nearby corpses
 
     // Connected-component labelling of a nav grid for one footprint, built on first
@@ -4734,6 +4757,17 @@ private:
     // TotalA.exe 0x49b9c2..0x49bb5b plus the collision test 0x49b090: one
     // selfprop/vlaunch shot's tick.
     void tickTaSelfProp(Projectile& p,std::span<const int> airGrid);
+    // TotalA.exe 0x49bc19..0x49bd41 plus 0x49b090: one ballistic or dropped
+    // shot's tick (move, wind, gravity, then one collision test).
+    void tickTaBallistic(Projectile& p,std::span<const int> airGrid);
+    // 0x49e070's per-slot part at creation: the barrel words (Unit::taBarrel).
+    void initTaWeaponSlots(Unit& u,uint16_t birthHeading);
+    bool taShellLands(Fixed x,Fixed y,Fixed z,const Unit& t,const Weapon& w) const;
+    // 0x49aa80, the TA fire path's range gate from the unit origin to the
+    // slot's target point: the horizontal range (unless `horizontal` is
+    // false), the surfaced test for a weapon that is not a waterweapon, and an
+    // arc for a ballistic one.
+    bool taRangeGate(const Unit& u,const std::array<int32_t,3>& target,const Weapon& w,bool horizontal=true) const;
     std::vector<HitFx> hits_;
     // Units a damage record other than a weapon hit's asked the under-attack
     // alert for this tick (0x4071d8, taHitResponse). Cosmetic, not hashed.
@@ -4759,22 +4793,6 @@ private:
     struct DeathBlast { const Weapon* w; std::array<int32_t,3> position; int player, fromId, source=0; };
     std::vector<DeathBlast> deathBlasts_;
     int sparedCorpse_=0;
-    // Remote Effect (FBI type=Remote Effect): the effect materialises at the AIMED
-    // GROUND POINT after `builduptime`, then applies its damage/status/conversion
-    // once over areaofeffect. Earthquakes, monarch waves, god spells, Area Mind
-    // Control. Lives across ticks, so it IS hashed.
-    struct PendingEffect {
-        const Weapon* w = nullptr;
-        Fixed x = Fixed(), z = Fixed();   // 16.16, the same world units as a unit
-        Fixed y = Fixed();                // the aimed point's height: the area pass is 3D
-        int player = 0, fromId = 0;
-        // TICKS, like every other retail timer (tools/re/emufields.py).
-        int32_t at = 0;      // ticks until the next pulse
-        int32_t endAt = 0;   // ticks until the effect expires
-        int32_t period = 0;  // ticks between pulses (<=0 = a single pulse)
-        bool casterGated = false;   // dies with its caster (mind control / freeze)
-    };
-    std::vector<PendingEffect> pendingEffects_;
     // Wandering (FBI type=wandering): a storm entity that roams for `duration`,
     // drifting at weaponvelocity and wobbling its heading every `variationtime`.
     // Damages everything it passes on a fixed cadence. Hashed.

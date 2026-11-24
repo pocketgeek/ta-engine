@@ -32,7 +32,6 @@
 // ac13's units start aboard their transports, and Com Pattern Five's squad waits
 // on raid1 until it is hit, then moves out.
 
-#include "ai/classicbrain.h"
 #include "sim/mission.h"
 #include "sim/sim.h"
 #include "sim/matchsetup.h"
@@ -157,6 +156,10 @@ struct Fixture {
         vfs.addLayer(hpi::MountSet(root));
         reg.loadDir(vfs, "units");
         reg.loadBuildTree(vfs, "canbuild");
+        // The fixture's units have no model and stand at y 0: give each a 32 px
+        // body, or the fire gate's surfaced test (TotalA.exe 0x49ab4d: origin
+        // height plus model height above the sea) would hold every shot.
+        for (const auto& [id, t] : reg.types()) const_cast<sim::UnitType&>(t).modelTop = 32 << 16;
         // A surface carrier's transfer reach is its script's BoomCalc limit
         // (cob::transportBoomReach); the fixture has no scripts, so give the
         // wagon the reach of a boom.
@@ -632,10 +635,6 @@ static void attackPoint(Fixture& f) {
         check(World::suppressRule(*f.t("tower"), 0) == World::SuppressRule::Fire,
               "an armed building with no build menu still fires at a point");
     }
-    const auto seen = ai::ClassicBrain::firstMissionOf(*w, *gun);
-    check(seen == std::pair<uint8_t, uint32_t>{1, 0x1000410},
-          "the Retail AI reads it as SUPPRESS (row 0x5eb8b8: class 1, 0x1000410; it read a move)",
-          std::to_string(seen.first) + " " + std::to_string(seen.second));
 }
 
 // ---- 8b'. m / p / u take X*16, Y*16 --------------------------------------------------------
@@ -690,47 +689,9 @@ static void airPoint(Fixture& f) {
     };
     for (const auto& r : rows) {
         const Unit* u = w->unit(p[size_t(r.i)].id);
-        const auto seen = ai::ClassicBrain::firstMissionOf(*w, *u);
         check(u->orders.size() == 1 && u->orders.front().airPoint == r.kind &&
-              u->orders.front().attackPointX.toFloat() == 640.0f && seen == r.mission, r.what,
-              std::to_string(u->orders.size()) + " order(s), " + std::to_string(seen.first) + " " +
-              std::to_string(seen.second));
-    }
-}
-
-// ---- 8d. a flyer's attack on a unit and its patrol, as the Retail AI reads them -------------
-// The resolver's unit branch (4de8b0..4de9ea) gives a flyer AIRTOAIR at a
-// flyer, AIRSTRIKE on a `dropped` weapon, else AIRTOGROUNDHOVER / AIRTOGROUND;
-// each keeps the target bit (0x1000200), AIRSTRIKE its 0x400 with the order's
-// point (2, 0x1000600). A flyer's patrol is VTOL_PATROL (0x1000412, 0x4000 on
-// the anchored leg). E, tools/re/check_air_point_mission.py.
-
-static void airUnit(Fixture& f) {
-    std::printf("a flyer at a unit, a flyer's patrol (the Retail AI's reading):\n");
-    auto w = makeWorld();
-    const int bomber = w->spawn(f.t("bomber"), 300, 300, 0, 0);
-    const int hoverer = w->spawn(f.t("hoverer"), 340, 300, 0, 0);
-    const int hawk = w->spawn(f.t("hawk"), 380, 300, 0, 0);
-    const int dogfighter = w->spawn(f.t("hawk"), 420, 300, 0, 0);
-    const int patroller = w->spawn(f.t("hawk"), 460, 300, 0, 0);
-    const int walker = w->spawn(f.t("archer"), 500, 300, 0, 0);
-    const int target = w->spawn(f.t("target"), 1200, 1200, 0, 1);
-    const int enemyFlyer = w->spawn(f.t("hawk"), 1300, 1200, 0, 1);
-    for (int id : {bomber, hoverer, hawk, walker}) w->attack(id, target, false);
-    w->attack(dogfighter, enemyFlyer, false);
-    w->patrol(patroller, 900, 300);
-    const struct { int id; std::pair<uint8_t, uint32_t> mission; const char* what; } rows[] = {
-        {bomber, {2, 0x1000600}, "a dropped weapon on a unit: AIRSTRIKE, class 2, 0x1000600 (it read 1, 0x1000280)"},
-        {hoverer, {1, 0x1000200}, "a hoverattack type on a unit: AIRTOGROUNDHOVER, class 1, 0x1000200"},
-        {hawk, {1, 0x1000200}, "else on a unit: AIRTOGROUND, class 1, 0x1000200"},
-        {dogfighter, {1, 0x1000200}, "on a flyer: AIRTOAIR, class 1, 0x1000200"},
-        {patroller, {7, 0x1004412}, "a flyer's patrol: VTOL_PATROL, class 7, 0x1004412 (it read Patrol's 0x3000410)"},
-        {walker, {1, 0x1000280}, "a walker on a unit stays Attack_Chase, class 1, 0x1000280"},
-    };
-    for (const auto& r : rows) {
-        const auto seen = ai::ClassicBrain::firstMissionOf(*w, *w->unit(r.id));
-        char got[32]; std::snprintf(got, sizeof got, "%u %#x", unsigned(seen.first), unsigned(seen.second));
-        check(seen == r.mission, r.what, got);
+              u->orders.front().attackPointX.toFloat() == 640.0f, r.what,
+              std::to_string(u->orders.size()) + " order(s)");
     }
 }
 
@@ -892,18 +853,6 @@ static void selectable(Fixture& f) {
     check(w->unit(p[0].id)->selectable && w->unit(p[0].id)->orders.empty(),
           "the waited move done, MakeSelectable comes up: selectable again");
     check(!w->unit(p[1].id)->selectable, "the patroller never is");
-    // The retail AI reads the bit (its assignment 40f262, member loops 40b3fd,
-    // 40bc75, 40bd38, ready counts 40a7f7): the patroller is no candidate.
-    {
-        ai::ClassicBrain brain(0, 1);
-        const auto units = brain.squadUnits(*w);
-        auto flags = [&](int id) {
-            for (const auto& c : units) if (c.id == id) return c.flags;
-            return 0u;
-        };
-        check(!(flags(p[1].id) & ai::ClassicSquadUnit::kSelectable) && (flags(p[0].id) & ai::ClassicSquadUnit::kSelectable),
-              "the retail AI sees the patroller unselectable, the mover selectable again");
-    }
     // A change of owner makes a new object: selectable again (511b21).
     check(w->scenarioTransfer(p[1].id, 1) && w->unit(p[1].id)->selectable, "a unit that changes sides is selectable");
     // Move_Ground's fallback (402ece): an unselectable unit on a move does not
@@ -1458,7 +1407,6 @@ int main(int argc, char** argv) {
         attackPoint(f);
         clausePoints(f);
         airPoint(f);
-        airUnit(f);
         strippedAttack(f);
         selectAndDestruct(f);
         selectable(f);

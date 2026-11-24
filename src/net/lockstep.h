@@ -34,7 +34,8 @@ enum class Cmd : uint8_t {
     SetSquad,      // assign unitId to a control squad: targetId = 0 none, +N group N,
                    // -N formation N (N=1..10). A unit is in exactly one squad; formations
                    // move at their slowest member's speed and their stragglers rejoin.
-    ReclaimArea,   // retired (Kingdoms' RECLAIMAREA; TA has none): kept for the numbering, never applied
+    ReclaimArea,   // persistent area clear: x/z through x2/z2, chooses each next target in sim
+                   // (an engine feature: TA has no RECLAIMAREA, docs/ta-port-plan.md)
     GiveUnit,      // unitId = owned eligible unit, targetId = allied recipient player
     ShareMana,     // targetId = allied recipient, queue = enabled; no unit required
     BuildManaArea, // retired (Kingdoms' lodestone area build): kept for the numbering, never applied
@@ -90,7 +91,7 @@ enum class Cmd : uint8_t {
 struct SelectionOrder;
 
 // Command::queue on an order verb (Move, Attack, AttackMove, Patrol, Build,
-// Assist, Guard, Load, Unload, Reclaim,
+// Assist, Guard, Load, Unload, Reclaim, ReclaimArea,
 // Resurrect, Repair, ReclaimUnit): the low two bits place the order -- kQueueReplace
 // clears the queue, kQueueAppend adds it at the end (Shift), kQueueFront puts
 // it at the head without clearing anything (Ctrl; retail 4d7a09 -> 4d7750) --

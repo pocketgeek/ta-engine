@@ -465,7 +465,7 @@ namespace {
 
     bool GameView::issueBoxPlan(const BoxPlan& plan, float x0, float z0, float x1, float z1, uint8_t queue) {
         ClickScope click(*this);
-        std::vector<int> ordered;
+        std::vector<int> ordered, clearers;
         // Step L: the transport fetches each passenger in turn. A Load is the
         // carrier's order (World::loadInto: its GROUND_PICKUP / VTOL_PICKUP), so
         // the first goes with the click's own queue flag and the rest queue
@@ -506,11 +506,15 @@ namespace {
                 started[i] = 1;
             }
         }
-        if (!ordered.empty()) {
+        // Step C: the units with no attack order that can reclaim clear the box.
+        for (size_t i = 0; i < plan.units.size(); ++i)
+            if (plan.orders[i] == ClickOrder::ReclaimArea) clearers.push_back(plan.units[i]);
+        if (!clearers.empty()) issueReclaimBox(x0, z0, x1, z1, queue, clearers);
+        if (!ordered.empty() && clearers.empty()) {   // issueReclaimBox acknowledges a clear
             const bool attacked = std::any_of(started.begin(), started.end(), [](char s) { return s != 0; });
             voice(ackUnit(ordered), attacked ? "attack" : "move");
         }
-        return !ordered.empty();
+        return !ordered.empty() || !clearers.empty();
     }
 
     bool GameView::armedRelease(float ex, float ey) {

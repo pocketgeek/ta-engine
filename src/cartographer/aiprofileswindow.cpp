@@ -1076,10 +1076,10 @@ void cart::Editor::drawAiProfiles() {
         if(aiTab)plays=has?"Plays: with "+pack+" ticked, all six levels read this pack's "+key+" over their own built-in tables, on every map; "
             "a game mod wins over a map's own copy (the install never supplies this file). Without the pack nothing changes.":
             "Plays: this pack has no "+key+" yet, so with "+pack+" ticked our levels read the map's copy, else their built-in tables.";
-        else if(key=="ai/default.txt")plays=has?"Plays: with "+pack+" ticked, RETAIL reads this pack's ai/default.txt on every map using the standard profile, "
+        else if(key=="ai/default.txt")plays=has?"Plays: with "+pack+" ticked, RETAIL MEDIUM reads this pack's ai/default.txt on every map using the standard profile, "
             "over the map's and the install's. A map with its own profile name reads ai/<name>.txt instead.":
-            "Plays: this pack has no ai/default.txt yet, so with "+pack+" ticked RETAIL reads the map's or the install's.";
-        else plays="Plays: with "+pack+" ticked, RETAIL reads this pack's "+key+" on maps whose profile name asks for it, over the map's own copy"+
+            "Plays: this pack has no ai/default.txt yet, so with "+pack+" ticked RETAIL MEDIUM reads the map's or the install's.";
+        else plays="Plays: with "+pack+" ticked, RETAIL MEDIUM reads this pack's "+key+" on maps whose profile name asks for it, over the map's own copy"+
             (has?".":" (the pack has no such file yet).");
     } else {
         const auto* modFiles=aiMod?&aiMod->files:aiPackFiles?&*aiPackFiles:nullptr;
@@ -1089,9 +1089,9 @@ void cart::Editor::drawAiProfiles() {
         else if(aiPack)plays+=" (with pack "+aiPacks[size_t(aiPack-1)]+" ticked)";
     }
     drawWrapped(ren,plays,ct.x,footY+2,ct.w,2,180,220,190);
-    cart::drawText(ren,aiModOnly?"TEST IN GAME: pick a map; its room ticks this pack. RETAIL plays the DEFAULT AI, other levels ai/taengine.txt.":
+    cart::drawText(ren,aiModOnly?"TEST IN GAME: pick a map; its room ticks this pack. RETAIL MEDIUM plays the DEFAULT AI, other levels ai/taengine.txt.":
         aiTab?"Test Map: every level you pick in the room reads ai/taengine.txt. Game-mod files are tested by ticking that pack.":
-        "Test Map: pick RETAIL for the DEFAULT AI in the room. Game-mod files are tested by ticking that pack.",ct.x,footY+28,1,150,160,175);
+        "Test Map: pick RETAIL MEDIUM for the DEFAULT AI in the room. Game-mod files are tested by ticking that pack.",ct.x,footY+28,1,150,160,175);
     const int by=ct.y+ct.h-18;
     aiStartButton=aiEditableButton=aiInsertButton={};
     int bx=ct.x;
@@ -1334,7 +1334,7 @@ void cart::Editor::startAiModWorkspace(const std::string& pack,bool fresh) {
     aiModOnly=true;aiModPickWorkspace=false;aiTab=1;aiPreviewLevel=Difficulty::Normal;
     if(fresh) {
         AiModSet set;set.pack=pack;aiMod=std::move(set);
-        aiNote="New AI mod "+pack+": edit TA ENGINE AI (all six levels) and DEFAULT AI (RETAIL), then SAVE TO PACK makes mods/game/"+pack+"/ai/.";
+        aiNote="New AI mod "+pack+": edit TA ENGINE AI (all six levels) and DEFAULT AI (RETAIL MEDIUM), then SAVE TO PACK makes mods/game/"+pack+"/ai/.";
     } else {
         aiOpenPack(pack);
         if(!aiMod) {const auto why=aiNote;finishAiModWorkspace();openMessage("OPEN AI MOD FAILED",why);return;}
@@ -1398,7 +1398,7 @@ void cart::Editor::aiLaunchTest(const std::string& mapPath) {
         if(!playtest.start(client,ta::u8path(dataRoot),files,error,aiMod->pack))throw std::runtime_error(error);
         playtestAiMod=true;
         openMessage("TEST IN GAME","Opened a private game lobby on a test copy of "+label+" with game mod "+aiMod->pack+
-            " ticked for that room only (your own ticks are kept). Seat AIs at the levels to test (RETAIL for the DEFAULT AI), then start. Close the game to return here."+
+            " ticked for that room only (your own ticks are kept). Seat AIs at the levels to test (RETAIL MEDIUM for the DEFAULT AI), then start. Close the game to return here."+
             cart::alwaysEnabledGameNote(ta::u8path(dataRoot)));
     } catch(const std::exception& e) {openMessage("TEST IN GAME FAILED",e.what());}
 }

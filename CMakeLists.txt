@@ -314,6 +314,7 @@ target_link_libraries(authrogue PRIVATE ta-formats)
 
 add_executable(retailgap_test tools/retailgap_test.cpp)
 add_executable(ta_weapon_script_test tools/ta_weapon_script_test.cpp)
+add_executable(ta_ballistic_test tools/ta_ballistic_test.cpp)
 add_executable(death_lifecycle_test tools/death_lifecycle_test.cpp)
 target_link_libraries(death_lifecycle_test PRIVATE ta-formats)
 add_executable(building_death_test tools/building_death_test.cpp)
@@ -347,6 +348,7 @@ add_executable(suppress_test tools/suppress_test.cpp)
 add_executable(vermage_fight_test tools/vermage_fight_test.cpp)
 add_executable(target_search_test tools/target_search_test.cpp)
 add_executable(sweetspot_test tools/sweetspot_test.cpp)
+add_executable(reclaimarea_test tools/reclaimarea_test.cpp)
 add_executable(revive_order_test tools/revive_order_test.cpp)
 add_executable(reclaim_unit_test tools/reclaim_unit_test.cpp)
 add_executable(ta_get_range_test tools/ta_get_range_test.cpp)
@@ -1250,9 +1252,7 @@ add_test(NAME benchmark_mods COMMAND benchmark_mods_test)
 add_test(NAME no_game_mods_toggle COMMAND "${CMAKE_COMMAND}" -DLOBBY=${CMAKE_SOURCE_DIR}/src/client/gameview_lobby.cpp
          -DROOM=${CMAKE_SOURCE_DIR}/src/client/gameview_room.cpp -P "${CMAKE_SOURCE_DIR}/tools/no_game_mods_toggle.cmake")
 # The server-side AI (src/ai): every executable that runs a Controller links these.
-set(TA_AI_SOURCES src/ai/ai.cpp src/ai/taretail.cpp src/ai/builtinprofile.cpp src/ai/classicbrain.cpp src/ai/classicprofile.cpp src/ai/classictypes.cpp)
-# mission_orders_test reads a scripted order as the Retail AI does (firstMissionOf).
-target_sources(mission_orders_test PRIVATE ${TA_AI_SOURCES})
+set(TA_AI_SOURCES src/ai/ai.cpp src/ai/taretail.cpp src/ai/builtinprofile.cpp src/ai/classicprofile.cpp)
 add_executable(room_worker_test tools/room_worker_test.cpp src/server/roomtick.cpp src/server/rosterdump.cpp ${TA_AI_SOURCES})
 target_link_libraries(room_worker_test PRIVATE ta-formats)
 add_test(NAME room_worker COMMAND room_worker_test)
@@ -1400,6 +1400,7 @@ add_executable(reclaim_fade_test tools/reclaim_fade_test.cpp)
 add_executable(gpuvram_test tools/gpuvram_test.cpp)
     target_link_libraries(retailgap_test PRIVATE ta-formats)
     target_link_libraries(ta_weapon_script_test PRIVATE ta-formats)
+    target_link_libraries(ta_ballistic_test PRIVATE ta-formats)
 target_link_libraries(placement_test PRIVATE ta-formats)
 target_link_libraries(cursor_enemy_test PRIVATE ta-formats)
 target_link_libraries(friendly_order_test PRIVATE ta-formats)
@@ -1413,6 +1414,7 @@ target_link_libraries(suppress_test PRIVATE ta-formats)
 target_link_libraries(vermage_fight_test PRIVATE ta-formats)
 target_link_libraries(target_search_test PRIVATE ta-formats)
 target_link_libraries(sweetspot_test PRIVATE ta-formats)
+target_link_libraries(reclaimarea_test PRIVATE ta-formats)
 target_link_libraries(revive_order_test PRIVATE ta-formats)
 target_link_libraries(reclaim_unit_test PRIVATE ta-formats)
 target_link_libraries(ta_get_range_test PRIVATE ta-formats)
@@ -1468,6 +1470,7 @@ add_test(NAME retail_motion COMMAND retail_motion_test)
 add_test(NAME auth COMMAND authtest)
 add_test(NAME unit_gift COMMAND unit_gift_test)
 add_test(NAME cmdflow COMMAND cmdflow_test)
+add_test(NAME reclaimarea COMMAND reclaimarea_test)
 # Raising the dead is an order (Cmd::Resurrect, area-reclaim children); nothing
 # raises or clears a body unordered (0.9.12).
 add_test(NAME revive_order COMMAND revive_order_test)
@@ -1663,6 +1666,9 @@ if(TA_TEST_DATA)
     # TotalA.exe's weapon call-ins on real units (docs/retail-weapon-scripts.md).
     add_test(NAME ta_weapon_script COMMAND ta_weapon_script_test "${TA_TEST_DATA}")
     set_tests_properties(ta_weapon_script PROPERTIES LABELS quick)
+    # TotalA.exe's ballistic aim solve, launch and shell motion (0x49a890, 0x49cde0, 0x49bce3).
+    add_test(NAME ta_ballistic COMMAND ta_ballistic_test "${TA_TEST_DATA}")
+    set_tests_properties(ta_ballistic PROPERTIES LABELS quick)
     add_test(NAME mission_orders_shipped COMMAND mission_orders_test --data "${TA_TEST_DATA}")
     add_test(NAME death_lifecycle COMMAND death_lifecycle_test "${TA_TEST_DATA}")
     add_test(NAME kill_credit_shipped COMMAND kill_credit_test "${TA_TEST_DATA}")
@@ -1789,59 +1795,12 @@ target_link_libraries(ai_behavior_test PRIVATE ta-formats)
 if(TA_TEST_DATA)
     add_test(NAME ai_behavior_data COMMAND ai_behavior_test "${TA_TEST_DATA}")
 endif()
-# Our levels' old army orders, as a real Controller's commands on constructed worlds.
-# Every level now runs TA's own AI (TaRetailBrain), so the cases test a dead path
-# and the binary is not registered.
-add_executable(ai_orders_test tools/ai_orders_test.cpp ${TA_AI_SOURCES})
-target_link_libraries(ai_orders_test PRIVATE ta-formats)
-
-# The Classic level's pieces (profile baker, type info, priority clock); with
-# --profile it is the native side of tools/re/check_ai_profile.py, with
-# --printweights that of tools/re/check_ai_printweights.py.
-add_executable(classic_ai_test tools/classic_ai_test.cpp ${TA_AI_SOURCES})
-target_link_libraries(classic_ai_test PRIVATE ta-formats)
-if(TA_TEST_DATA)
-    add_test(NAME classic_ai_data COMMAND classic_ai_test "${TA_TEST_DATA}")
-    # The Kingdoms ClassicBrain games (--bases/--raid/--waves/--duels/--expansion) are
-    # gone: no TA level runs ClassicBrain.
-    # U13: what a Move and an AttackMove do to a column walking through enemies.
-    add_test(NAME classic_ai_u13 COMMAND classic_ai_test --u13 "${TA_TEST_DATA}")
-endif()
-# Opt-in (it needs the retail binary for emulation, Python's unicorn, and a
-# directory of captured retail PrintWeights dumps, none of which CI has):
-# -DTAK_CLASSIC_PRINTWEIGHTS=<dumps dir with index.json>.
-set(TA_CLASSIC_PRINTWEIGHTS "" CACHE PATH "captured retail PrintWeights dumps for classic_ai_printweights")
-if(TA_TEST_DATA AND TA_CLASSIC_PRINTWEIGHTS AND Python3_Interpreter_FOUND)
-    add_test(NAME classic_ai_printweights
-             COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/tools/re/check_ai_printweights.py
-                     --binary $<TARGET_FILE:classic_ai_test> --data "${TA_TEST_DATA}"
-                     --dumps "${TA_CLASSIC_PRINTWEIGHTS}")
-endif()
 # Opt-in (it needs the retail binary at assets/game and Python's unicorn, which
-# CI has neither of): -DTAK_CLASSIC_ORACLES=ON runs the Classic brain's squad
-# and production layers against retail's routines in emulation -- the manager
-# constructor, the assignment pass, the base think's factory path (with the
-# economy step's allocation), the block grids and site search, the
-# constructor planner and the static grade its reachability reads, the threat
-# test and enemy query, the combat-member planner and the Monarch's retreat,
-# the base think's wave launch, the strike, backup and VTOL thinks and the
-# target picker, the zone labels, the transfers and the expansion through
-# classic_ai_test; the scheduler, squad clocks, nearest-base selection,
-# factory planner, menu draw, entry weight and patrol points through the shared
-# templates in retail_ai_test.
+# CI has neither of): -DTA_CLASSIC_ORACLES=ON runs the scheduler, squad clocks,
+# nearest-base selection, factory planner, menu draw, entry weight and patrol
+# points of the shared templates in retail_ai_test against Kingdoms' routines.
 option(TA_CLASSIC_ORACLES "run the Classic AI emulation oracles (needs KINGDOMS.icd and unicorn)" OFF)
 if(TA_CLASSIC_ORACLES AND Python3_Interpreter_FOUND)
-    foreach(oracle squad_ctor assignment factory_think placement constructor static_grade threat defence retreat
-            launch target_pick zone_labels transfer expand)
-        add_test(NAME classic_ai_${oracle}
-                 COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/tools/re/check_ai_${oracle}.py
-                         --binary $<TARGET_FILE:classic_ai_test>)
-    endforeach()
-    foreach(routine strike backup vtol)
-        add_test(NAME classic_ai_${routine}
-                 COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/tools/re/check_ai_strike.py
-                         --binary $<TARGET_FILE:classic_ai_test> --routine ${routine})
-    endforeach()
     foreach(oracle scheduler squads base_selection base_radius factory_plan build_choice build_weight patrol_points)
         add_test(NAME classic_ai_${oracle}
                  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/tools/re/check_ai_${oracle}.py

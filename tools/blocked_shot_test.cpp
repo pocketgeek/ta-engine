@@ -380,7 +380,9 @@ int main(int argc, char** argv) {
         // An ordered attack walks to a clear shot on Hold Position (Defensive) too.
         check(held.shortShots >= 3 && held.repositions >= 1 && held.damage > 0,
               "ridge: the shot is blocked, and an ordered Hold Position Hammer walks to a clear shot");
-        check(free.repositions >= 1 && free.damage > 0 && free.shortShots <= 4,
+        // TotalA.exe's shells (0x49cde0 on AimX's angles, 0x49bce3) take a second
+        // walk here: up to two blocked spots' worth of short shots.
+        check(free.repositions >= 1 && free.damage > 0 && free.shortShots <= 2 * 4,
               "ridge: the Hammer walks to a clear shot and hurts the target");
         if (mode == sim::PathfindingMode::Legion)
             check(free.legionMoves > 0 && held.legionMoves > 0, "the walks are Legion's",

@@ -392,15 +392,21 @@ Implemented (`World::tickScriptWeapon`, `taAimAngles`, `aimFromPoint`, `taWeapon
   unit is unchanged; readiness and the shot come one tick later.
 - The fire gate is reached only from the engine's callers, which test the slot's range
   first; an aim therefore starts once the target is in range, not as soon as it is held.
-- A ballistic projectile launches on the release solve from the QueryX muzzle to the
-  (led) aim point plus the accuracy spread, not on AimX's stored angles plus spread
-  (0x49cde0 reads S+0x16/S+0x18). Line-of-sight and selfprop shots match retail: 0x49c9c0
-  aims from the QueryX point straight at the target point and ignores the spread.
-- Burst clones are aimed at the slot's target (its last point once it is gone) rather than
-  along the emitter's stored heading; sprayangle randomises their heading.
-- Non-turret LOS weapons compare only the heading with the body (no body-pitch test);
-  `minbarrelangle` is not passed to the ballistic solver; a stockpile weapon's stock is
-  not checked for vlaunch.
+- A ballistic shell launches as 0x49cde0 does: on AimX's stored angles plus the spread,
+  from the QueryX point, with vy less gravity x (barrel word S+0x10 / velocity), the barrel
+  word being 1.25 x (QueryX.z - AimFromX.z) in the creation pose (0x49e0ea..0x49e11b); it
+  moves, drifts with the wind vector and falls once a tick (0x49bce3; `taBallisticStep`).
+  The pitch is 0x49a890 with minbarrelangle (`ta::taBallisticPitch`, checked by
+  tools/re/ballistic_emu.py); the range gate 0x49aa80's surfaced and arc tests
+  run in the fire path (`World::taRangeGate`); its horizontal range stays the callers' test,
+  to the target's origin rather than the target point. Line-of-sight and selfprop shots match retail: 0x49c9c0 aims from
+  the QueryX point straight at the target point and ignores the spread.
+- Burst clones copy the emitter (0x49b83b): its position (re-read from the stored QueryX
+  piece when burstrate >= 5 or the count is odd), velocity and angles; sprayangle turns the
+  emitter's horizontal velocity for the next clone (0x49b8f1); randomdecay jitters a clone's
+  expiry. The emitter is the spawner's own record.
+- Non-turret LOS weapons compare only the heading with the body (no body-pitch test); a
+  stockpile weapon's stock is not checked for vlaunch.
 - Sign check (`ta_weapon_script_test`): with d = P - T the AimPrimary heading plus the body
   heading points from the turret at targets ahead, behind and to both sides, in the
   mover's own convention (a body with heading h steps along (-sin h, -cos h)).

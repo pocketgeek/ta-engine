@@ -39,9 +39,14 @@ struct RenderOrder {
         :x(o.x),z(o.z),clickX(o.clickX),clickZ(o.clickZ),buildX(o.buildX),buildZ(o.buildZ),
          buildType(o.buildType),targetId(o.targetId),reclaimFeat(o.reclaimFeat),repairTarget(o.repairTarget),
          issuedTick(o.issuedTick),load(o.load),unload(o.unload),attackMove(o.attackMove),patrol(o.patrol),
-         guard(o.guard),goal(o.goal),buildRectangle(bool(o.buildRectangle)) {
+         guard(o.guard),goal(o.goal),reclaimArea(bool(o.reclaimArea)),buildRectangle(bool(o.buildRectangle)) {
         revive=o.reviveKind!=0;
         park=bool(o.park);landing=o.landing;
+        if (o.reclaimArea) {
+            x=ta::sim::Fixed::raw(o.reclaimArea->minX);z=ta::sim::Fixed::raw(o.reclaimArea->minZ);
+            buildX=ta::sim::Fixed::raw(o.reclaimArea->maxX);buildZ=ta::sim::Fixed::raw(o.reclaimArea->maxZ);
+            areaApproached=o.reclaimArea->stage>=2;   // its approach leg is queued (or done)
+        }
     }
 };
 

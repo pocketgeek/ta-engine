@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.." || exit 2
 
 # Files that run inside World::tick / setupMatch / the AI controller (i.e. feed
 # the state hash). detmath.{h,cpp} is the one place that may name these.
-FILES="src/sim/retailaim.h src/sim/sim.cpp src/sim/sim.h src/sim/matchsetup.cpp src/sim/matchsetup.h src/ai/ai.cpp src/ai/ai.h src/ai/classicbrain.cpp src/ai/classicbrain.h src/ai/classicprofile.cpp src/ai/classicprofile.h src/ai/classictypes.cpp src/ai/classictypes.h src/ai/classicsquads.h src/ai/classicproduction.h src/ai/classicplacement.h"
+FILES="src/sim/retailaim.h src/sim/sim.cpp src/sim/sim.h src/sim/matchsetup.cpp src/sim/matchsetup.h src/ai/ai.cpp src/ai/ai.h src/ai/classicprofile.cpp src/ai/classicprofile.h"
 
 # Match a call to one of the banned functions (bare or std::-qualified), but not
 # a longer identifier that merely ends in the name (e.g. myLog(), ::detmath::sin).
