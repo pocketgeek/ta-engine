@@ -236,9 +236,8 @@ void flyerFactory(const sim::TypeRegistry& registry,sim::PathfindingMode mode,co
             if(!u.alive() || u.type!=flyer || u.underConstruction)continue;
             auto it=std::find_if(out.begin(),out.end(),[&](const Out& o){return o.id==u.id;});
             if(it==out.end()) {out.push_back({u.id});it=out.end()-1;}
-            // The order it was released with, once its park (if any) has its point (not a step-out of the
-            // newborns' stack, which leads its own order for a while: retail's air traffic).
-            if(!it->resolved && !u.orders.empty() && !u.orders.front().stepOut &&
+            // The order it was released with, once its park (if any) has its point.
+            if(!it->resolved && !u.orders.empty() &&
                (!u.orders.front().park || u.orders.front().park->attempts)) {
                 it->resolved=true;it->legs=u.orders.size();
                 it->x=u.orders.front().x.toFloat();it->z=u.orders.front().z.toFloat();
@@ -308,7 +307,7 @@ void flyerMobileRally(const sim::TypeRegistry& registry,sim::PathfindingMode mod
             if(!u.alive() || u.type!=&flyer || u.underConstruction)continue;
             auto it=std::find_if(out.begin(),out.end(),[&](const Out& o){return o.id==u.id;});
             if(it==out.end()) {out.push_back({u.id});it=out.end()-1;}
-            if(!it->resolved && !u.orders.empty() && !u.orders.front().stepOut) {
+            if(!it->resolved && !u.orders.empty()) {
                 it->resolved=true;it->legs=u.orders.size();
                 it->x=u.orders.front().x.toFloat();it->z=u.orders.front().z.toFloat();
             }

@@ -11,11 +11,11 @@
 // flyer (its overlap list is not empty): near the fight or the move's point (a
 // target's hit points topped up to 30000 every tick), or while it flies the
 // case's own leg -- a fight-move or a patrol, or a flying builder's job --
-// and checks that no leg pushes a step-out. air-guard-lost.scn checks
+// (World has no step-out order any more: TA has none to push).
+// air-guard-lost.scn checks
 // VTOL_SeekGuard: fighters whose guarded Peewee dies guard another Peewee.
 // (The fixtures came from Kingdoms -- Drakes, Goblins, a Keep -- and fly TA's
 // Freedom Fighters, Peewees and an Aircraft Plant now.)
-#include "ai/classicbrain.h"
 #include "legion_scn.h"
 
 #include <algorithm>
@@ -36,11 +36,9 @@ void check(bool ok,const std::string& message) {
 using ta::sim::Order;
 using ta::sim::Unit;
 
-// What a flyer of the case is doing: its front order, or the one a step-out
-// at the front was pushed by.
+// What a flyer of the case is doing: its front order.
 const Order* leg(const Unit& u) {
     if(u.orders.empty())return nullptr;
-    if(u.orders.front().stepOut)return u.orders.size()>1?&u.orders[1]:nullptr;
     return &u.orders.front();
 }
 bool fightLeg(const Order& o) { return o.attackMove && !o.patrol && !o.targetId; }
@@ -75,12 +73,8 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
             flyers.insert(flyers.end(),ids.begin(),ids.end());
     const int target=c.target ? b->groups.at(c.target).front() : 0;
     ta::scn::OrderFeed feed(s,*b);
-    int counted=0,stacked=0,stepOuts=0,site=0;
-    // The Retail AI's read of a builder stepping out (ClassicBrain's first
-    // mission): VTOL_StepOutNoFormation (class 14, flags 0), not its job.
-    int aiReads=0,aiStepOuts=0;
+    int counted=0,stacked=0,site=0;
     long damage=0,mended=0;
-    std::map<int,uint32_t> stepped;   // a flyer's last step-out (its issue tick)
     for(uint32_t t=0;t<s.ticks;++t) {
         feed.apply(t);
         float fx=c.x,fz=c.z;
@@ -128,18 +122,6 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
             if(!counts) continue;
             ++counted;
             stacked+=u->airOccupant.count!=0;
-            // The leg's own step-outs: VTOL_StepOut ahead of a fight-move or
-            // patrol leg, VTOL_StepOutNoFormation ahead of a builder's job.
-            const bool builder=c.count==Count::Repair || c.count==Count::Help;
-            if(!u->orders.empty() && u->orders.front().stepOut==(builder ? 3 : 1) &&
-               stepped[id]!=u->orders.front().issuedTick+1) {
-                stepped[id]=u->orders.front().issuedTick+1;
-                ++stepOuts;
-            }
-            if(builder && !u->orders.empty() && u->orders.front().stepOut==3) {
-                ++aiReads;
-                aiStepOuts+=ta::ai::ClassicBrain::firstMissionOf(w,*u)==std::pair<uint8_t,uint32_t>{14,0};
-            }
         }
     }
     const char* what=c.count==Count::Near ? (target ? "near the fight" : "near the point")
@@ -149,17 +131,12 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
     check(counted>200 && permille<=c.maxStackedPermille,std::string(c.file)+" "+modeName+": "+std::to_string(stacked)+
           " of "+std::to_string(counted)+" airborne flyer-ticks "+what+" stacked ("+std::to_string(permille)+
           " per mille, at most "+std::to_string(c.maxStackedPermille)+")");
-    const bool builderCase=c.count==Count::Repair || c.count==Count::Help;
     // TA has no air-traffic check at all: TotalA.exe's air mission table
     // (0x4fca18) has no VTOL_StepOut* row, so none of its missions --
     // VTOL_Move 0x40fa20, VTOL_Patrol 0x410e70, AirToAir 0x412d40, the
-    // builders' 0x413d80 / 0x414380 / 0x414e70 -- can push one. Kingdoms'
-    // did (417d4e, 419ee0, 41ce48, 41f0a6, 41f981, 421066).
-    check(stepOuts==0,std::string(c.file)+" "+modeName+": "+std::to_string(stepOuts)+" step-outs "+what+
-          " (TA has none)");
-    if(builderCase && aiReads)
-        check(aiStepOuts==aiReads,std::string(c.file)+" "+modeName+": the Retail AI reads the step-out "+
-              "ahead of the job ("+std::to_string(aiStepOuts)+" of "+std::to_string(aiReads)+" flyer-ticks)");
+    // builders' 0x413d80 / 0x414380 / 0x414e70 -- can push one (Kingdoms'
+    // did: 417d4e, 419ee0, 41ce48, 41f0a6, 41f981, 421066); World has no
+    // step-out order.
     if(target && c.count!=Count::Repair && c.count!=Count::Help)
         check(damage>0,std::string(c.file)+" "+modeName+": the fighters still hurt the target ("+
               std::to_string(damage)+" hit points)");
@@ -227,8 +204,7 @@ void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode 
     for(auto& weapon:const_cast<ta::sim::UnitType*>(w.unit(drakes.front())->type)->weapons) weapon.cursorAirstrike=true;
     ta::scn::OrderFeed feed(s,*b);
     std::map<int,uint8_t> stage;
-    std::map<int,uint32_t> stepped;
-    int turns=0,stepOuts=0;
+    int turns=0;
     for(uint32_t t=0;t<s.ticks;++t) {
         feed.apply(t);
         if(auto* u=w.unit(keep)) u->hp=ta::sim::Fixed::fromInt(30000);
@@ -241,11 +217,6 @@ void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode 
                 if(front.mission.stage==6 && stage[id]!=6) ++turns;
                 stage[id]=front.mission.stage;
             }
-            if(front.stepOut==1 && u->orders.size()>1 && u->orders[1].targetId==keep &&
-               stepped[id]!=front.issuedTick+1) {
-                stepped[id]=front.issuedTick+1;
-                ++stepOuts;
-            }
         }
     }
     check(turns>=6,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: the fighters strike ("+
@@ -253,8 +224,6 @@ void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode 
     // TotalA.exe's AirStrike (0x411f50) has no air-traffic check: its stage 4
     // (0x412394) only waits for the release ring. A stacked bomber strikes
     // from where it is.
-    check(stepOuts==0,std::string("air-stack-barracks.scn ")+modeName+" with `dropped`: "+std::to_string(stepOuts)+
-          " step-outs ahead of the strike (TA has none)");
 }
 } // namespace
 

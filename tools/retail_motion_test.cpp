@@ -3,7 +3,6 @@
 #include "sim/retailairattack.h"
 #include "sim/retailairseek.h"
 #include "sim/retailairtoair.h"
-#include "sim/retailairtraffic.h"
 #include "sim/retailrng.h"
 #include "sim/retailheight.h"
 #include "sim/retailexploration.h"
@@ -53,31 +52,6 @@ int main(int argc, char** argv) {
                         m.waitMask,m.deadline,m.pending,m.flags,count,host.installs,host.goal.point.x,host.goal.point.y,
                         host.goal.point.z,int(host.goal.radius),host.begin,host.autoSlots,host.aim,seed,host.calls,
                         host.retargetCalls,host.stepOuts,host.stepOutD,host.outCalls,host.leaves,host.formations);
-        }
-        return 0;
-    }
-    // tools/re/check_air_traffic.py: one VTOL_StepOut (4214b0) handler call
-    // per line, with up to seven overlapping flyers.
-    if (argc==2 && std::strcmp(argv[1],"--step-out")==0) {
-        unsigned stage,events,tick,deadline,pending,flags,heading,flies,onMap,seed,n;int distance,width,height;
-        RetailStepOutInput in;RetailFlightVector point;
-        while (std::scanf("%u %u %u %u %u %u %d %d %d %d %d %d %u %d %u %u %d %d %u %u",&stage,&events,&tick,&deadline,
-                          &pending,&flags,&point.x,&point.y,&point.z,&in.position.x,&in.position.y,&in.position.z,
-                          &heading,&distance,&flies,&onMap,&width,&height,&seed,&n)==20) {
-            std::vector<RetailFlightVector> others(n);
-            for (auto& o:others) if (std::scanf("%d %d %d",&o.x,&o.y,&o.z)!=3) return 2;
-            in.heading=uint16_t(heading);in.distance=distance;in.flies=flies!=0;in.onMap=onMap!=0;
-            in.width=width;in.height=height;
-            RetailMissionState m;m.stage=uint8_t(stage);m.waitMask=0;m.deadline=deadline;m.pending=pending;m.flags=flags;
-            struct Host {
-                uint32_t& seed;RetailMissionState& m;unsigned calls=0,installs=0;RetailFlightGoal goal;
-                uint32_t random(int n) { ++calls;return retailRandom(seed,n); }
-                void install(const RetailFlightGoal& g) { ++installs;goal=g;m.pending&=~0x3700u; }
-            } host{seed,m};
-            const int result=retailVtolStepOut(m,point,in,others,host);
-            std::printf("%d %u %u %u %u %u %d %d %d %u %d %d %d %d %u %u %u\n",result,unsigned(m.stage),m.waitMask,
-                        m.deadline,m.pending,m.flags,point.x,point.y,point.z,host.installs,host.goal.point.x,
-                        host.goal.point.y,host.goal.point.z,int(host.goal.radius),unsigned(host.goal.flags),seed,host.calls);
         }
         return 0;
     }
@@ -198,9 +172,8 @@ int main(int argc, char** argv) {
                 uint32_t& seed;RetailMissionState& m;bool finds,guards,out;
                 unsigned calls=0,foundCalls=0,releases=0,guardCalls=0,installs=0,stepOuts=0,stops=0;
                 unsigned outCalls=0,cancels=0,formations=0;
-                RetailStepOut kind=RetailStepOut::None;int32_t stepOutD=0;RetailFlightGoal goal;
+                unsigned kind=0;int32_t stepOutD=0;RetailFlightGoal goal;   // TA's seek has no step-out: both stay 0
                 uint32_t random(int n) { ++calls;return retailRandom(seed,n); }
-                bool stepOut(RetailStepOut k,int32_t d) { ++stepOuts;kind=k;stepOutD=d;return true; }
                 void stopBuilding() { ++stops; }
                 bool found() { ++foundCalls;return finds; }
                 void release() { ++releases;m.pending&=~0x3700u; }

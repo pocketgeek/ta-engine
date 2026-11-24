@@ -78,6 +78,9 @@ struct UnitR {
     int kills = 0;                     // its own kill count (Unit::kills, the KillCount gadget)
     float deadFor = -1;
     int inTransport = 0;
+    // The pad piece a flyer sits on (sim Unit::padPiece): one on a repair
+    // pad is on show and can be picked, unlike a transport's passenger.
+    int8_t padPiece = -1;
     int8_t squad = 0;
     int stance = 1;
     int8_t outputStance = -1;   // a producer's stance for its output (-1: none chosen)
@@ -242,7 +245,7 @@ struct UnitR {
     std::string scenarioName;
     const std::string& displayName() const { return scenarioName.empty() ? type->name : scenarioName; }
     bool alive() const { return deadFor < 0; }
-    bool embarked() const { return inTransport != 0; }
+    bool embarked() const { return inTransport != 0 && padPiece < 0; }
     bool moving() const { return moving_; }
     bool walking() const { return walking_ && animationSpeed() > 0.0f; }
 };

@@ -58,10 +58,7 @@ FirstMission firstMission(const ta::sim::World& world, const ta::sim::Unit& u) {
         if (!u.buildQueue.empty()) { m.any = true; m.cls = 19; m.kind = otherKind(19); m.flags = 0x8010c; m.buildingBuild = true; m.builds = u.buildQueue.front(); }
         return m;
     }
-    // A flying builder's step-out (VTOL_StepOutNoFormation, its job's air
-    // traffic) leads the list ahead of the job it stopped: it keeps its site
-    // (buildSiteId) but its first mission is the step-out, read below.
-    if (u.buildSiteId && !(!u.orders.empty() && u.orders.front().stepOut)) {
+    if (u.buildSiteId) {
         const auto* site = world.unit(u.buildSiteId);
         m.any = true; m.cls = 0; m.kind = otherKind(0); m.flags = 0x80508; m.builds = site ? site->type : nullptr;
         if (site) { m.goalX = site->x.v; m.goalZ = site->z.v; }
@@ -129,10 +126,10 @@ FirstMission firstMission(const ta::sim::World& world, const ta::sim::Unit& u) {
     else if (o.patrol) { m.cls = 7; m.flags = u.type->canFly ? ta::sim::kVtolPatrolFlags | (o.mission.flags & 0x4000u) : 0x3000410; }
     // A factory output's GetBuilt PARK: definition class 14, flags 0x200.
     else if (o.park) { m.cls = 14; m.flags = o.mission.flags; }
-    // A flyer's step-out (retail's air traffic) ahead of its mission: VTOL_StepOut,
-    // VTOL_StepOutStandby or VTOL_StepOutNoFormation (rows 0x5ebee0 / 0x5ebef9 /
-    // 0x5ebf12: class 14, flags 0x1000000 / 0x5000000 / 0), not a move's 0x3000400.
-    else if (o.stepOut) { m.cls = 14; m.flags = o.mission.flags; }
+    // A flyer's repair-pad mission ahead of its own (TotalA.exe air table
+    // 0x4fca18): VTOL_Landing (row 0x4fca4a, class 0x0e) or SelfRepair (row
+    // 0x4fc684, class 0x13).
+    else if (o.airPad) { m.cls = o.airPad == ta::sim::Order::kAirPadLanding ? 14 : 19; m.flags = o.mission.flags; }
     // SUPPRESS, fire at a point (row 0x5eb8b8: class 1, 0x1000410). Its stage-4
     // approach is retail's controller on that mission, a leg ahead of it in ours.
     else if (o.suppress || o.suppressApproach) {

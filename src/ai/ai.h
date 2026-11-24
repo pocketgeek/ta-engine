@@ -616,14 +616,12 @@ private:
     // Idle, or only holding a factory's PARK release: retail parks every factory
     // output with no rally (GetBuilt 0x402220) and that PARK lasts until the next
     // order, so a parked newborn is as free to command as one with no orders.
-    // A flyer's step-out (retail's air traffic) leading the queue is read past:
-    // an idle flyer stepping out of a stack is still idle. So is a
-    // flyer only LANDING (VTOL_LandIfCan, which every flyer runs when its job ends --
+    // So is a flyer only LANDING (VTOL_LandIfCan, which every flyer runs when its job ends --
     // a flying builder after each building): it is on its standby, and a new order
     // replaces the landing. Waiting for the touchdown cost a flying builder (the Zhon
     // Monarch) about four seconds after every building.
     static bool idle(const ta::sim::Unit& u) {
-        const auto first=u.orders.begin()+(!u.orders.empty() && u.orders.front().stepOut ? 1 : 0);
+        const auto first=u.orders.begin();
         return std::all_of(first,u.orders.end(),[](const ta::sim::Order& o) {
             return o.park || o.landing || (!o.goal && !o.groundMission && !o.buildType && !o.targetId && !o.reclaimFeat &&
                 !bool(o.reclaimArea) && !o.repairTarget && !o.load && !o.unload && !o.patrol &&
