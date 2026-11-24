@@ -5,9 +5,6 @@
 #include <stdexcept>
 #include <string>
 using namespace ta::sim;
-namespace ta::sim { struct RetailReplayProbe {
- static void shoot(World& w,int from,int target){w.fire(*w.unit(from),*w.unit(target),0);}
-}; }
 static void check(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 static void setup(World& w){w.setPlayerCount(8);w.setTerrain(std::vector<uint8_t>(128*128,40),128,128,0);}
 static UnitType type(){UnitType t;t.id="retirement";t.maxHp=100;t.footX=t.footZ=1;return t;}
@@ -42,29 +39,6 @@ int main(int argc,char** argv)try {
  auto* victim=a.unit(2);victim->hp={};victim->lastHitBy=9;victim->lastHitPlayer=0;
  const auto kills=a.player(0).kills;a.tick(1.f/30);
  check(a.player(0).kills==kills+1,"late kill lost retired attacker attribution");
- {
-  World delayed,retained;setup(delayed);setup(retained);auto caster=t;
-  Weapon spell;spell.kind=Weapon::Kind::Remote;spell.buildUp=4;spell.buildUpTicks=120;spell.decayTicks=15;spell.damage=10;spell.aoe=32;spell.range=1000;
-  caster.weapons.push_back(spell);
-  const int from=delayed.spawn(&caster,128,128,0,0),target=delayed.spawn(&t,512,512,0,1);
-  delayed.unit(from)->scenarioWeapon=2;
-  RetailReplayProbe::shoot(delayed,from,target);
-  delayed.scenarioDestroy(from);
-  const int retainedFrom=retained.spawn(&caster,128,128,0,0),retainedTarget=retained.spawn(&t,512,512,0,1);
-  retained.unit(retainedFrom)->scenarioWeapon=2;
-  RetailReplayProbe::shoot(retained,retainedFrom,retainedTarget);
-  retained.scenarioDestroy(retainedFrom);
-  retained.unit(retainedFrom)->deadFor=0;retained.unit(retainedFrom)->corpseUntil=600;
-  for(int i=0;i<90;++i)delayed.tick(1.f/30);
-  check(delayed.unit(from),"pending effect lost its retired attacker's modifiers");
-  for(int i=0;i<90;++i)delayed.tick(1.f/30);
-  check(!delayed.unit(from),"completed effect retained its retired source forever");
-  for(int i=0;i<180;++i)retained.tick(1.f/30);
-  // 52a35c: a dead source's effect lands without its weapon multiplier (x2
-  // here), whether or not its record was compacted.
-  check(delayed.unit(target)->hp==retained.unit(retainedTarget)->hp && delayed.unit(target)->hp.floorInt()>=88 &&
-        delayed.unit(target)->hp.floorInt()<100,"delayed effect changed source damage after death");
- }
  Frame frame;frame.gen=3;frame.units.resize(2);frame.unitSlots.resize(251,-1);frame.unitSlots[1]=0;frame.unitSlots[250]=1;
  for(size_t i=0;i<2;++i){frame.units[i].id=i?250:1;frame.units[i].gen=3;frame.units[i].type=&t;}
  check(frame.unit(250)==&frame.units[1]&&!frame.unit(9),"sparse render ID lookup failed");

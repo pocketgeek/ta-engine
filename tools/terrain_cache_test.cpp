@@ -19,7 +19,7 @@ int main(int argc,char** argv) try {
     const auto baseline=gpuvram::bytes();
     {
         auto vfs=ta::hpi::mountRetailRoot(argv[1]);
-        MapView map(renderer,vfs,ta::hpi::findMap(vfs,argc==3 ? argv[2] : "Ulasem Arena"));map.finishChunks();
+        MapView map(renderer,vfs,ta::hpi::findMap(vfs,argc==3 ? argv[2] : "Yerrot Mountains"));map.finishChunks();
         auto* target=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_RGBA32,SDL_TEXTUREACCESS_TARGET,1280,960);
         check(target,SDL_GetError());SDL_SetRenderTarget(renderer,target);
         auto draw=[&] {
@@ -83,25 +83,31 @@ int main(int argc,char** argv) try {
             for(int c=0;c<4;++c)check(full[to+c]==block[from+c],"full-resolution terrain texel or chunk seam mismatch");
         }
         auto& edited=map.editMap();
+        // A TA map carries its own tiles: a block's tile index is also its
+        // compositor section key (tileCols/tileRows stay 0), so an edit retiles it.
+        auto retile=[&](size_t at,int by) {
+            const auto tile=uint16_t((edited.tileKeys[at]+uint32_t(by))%uint32_t(edited.tileCount));
+            edited.tileKeys[at]=tile;edited.tileIndex[at]=tile;
+        };
         map.invalidateRenderTargets();warm();
         const auto resident=map.chunkStats().images;
         check(resident>=4,"fixture spans four terrain chunks");
-        edited.tileCols[size_t(25)*edited.blocksX+25]^=1;
+        retile(size_t(25)*edited.blocksX+25,1);
         map.tilesEdited(25,25,1,1);
         check(map.chunkStats().images==resident-1,"interior stamp retains unaffected terrain images");
         warm();const auto partial=read();
         map.invalidateRenderTargets();warm();
         check(read()==partial,"partial terrain rebuild matches full rebuild");
-        edited.tileCols[size_t(32)*edited.blocksX+32]^=1;
+        retile(size_t(32)*edited.blocksX+32,1);
         map.tilesEdited(32,32,1,1);
         check(map.chunkStats().images==0,"corner edit invalidates neighbouring filtering gutters");
         draw(); // allow a worker snapshot to start, then change the same tile
-        edited.tileCols[size_t(32)*edited.blocksX+32]^=3;
+        retile(size_t(32)*edited.blocksX+32,2);
         map.tilesEdited(32,32,1,1);warm();const auto raced=read();
         map.invalidateRenderTargets();warm();
         check(read()==raced,"old in-flight tile snapshots cannot overwrite new edits");
         const auto before=read();
-        for(auto& col:edited.tileCols)col^=1;
+        for(size_t at=0;at<edited.tileKeys.size();++at)retile(at,1);
         map.tilesEdited();check(map.chunkStats().images==0,"terrain edits invalidate images");warm();
         check(read()!=before,"edited terrain appears in rebuilt chunks");
         check(map.chunkStats().bytes<=(size_t(256)<<20),"chunk memory budget");
@@ -109,7 +115,7 @@ int main(int argc,char** argv) try {
         // The section decoder and chunk worker must both relinquish its images.
         for(int i=0;i<4;++i) {
             map.invalidateRenderTargets();map.setZoom(.1f);draw();
-            map.reload(vfs,ta::hpi::findMap(vfs,i%2 ? "Ulasem Arena" : "Cairbray Coast Landing"));
+            map.reload(vfs,ta::hpi::findMap(vfs,i%2 ? "Yerrot Mountains" : "Coast To Coast"));
             check(map.chunkStats().bytes==0,"reload frees old chunk images");
         }
         warm();
@@ -118,7 +124,7 @@ int main(int argc,char** argv) try {
         // sections the same frame, and once chunks cover the view the duplicate sections
         // are released. Magenta clear = a hole (no underlay is set here).
         {
-            MapView fresh(renderer,vfs,ta::hpi::findMap(vfs,argc==3 ? argv[2] : "Ulasem Arena"));
+            MapView fresh(renderer,vfs,ta::hpi::findMap(vfs,argc==3 ? argv[2] : "Yerrot Mountains"));
             SDL_RenderSetScale(renderer,1,1);SDL_RenderSetViewport(renderer,nullptr);SDL_RenderSetClipRect(renderer,&terrainClip);
             const auto start=SDL_GetTicks();
             while(!fresh.sectionsDecoded()) {fresh.ensureChunks(610,450);check(SDL_GetTicks()-start<60000,"sections failed to decode");SDL_Delay(1);}
@@ -227,11 +233,11 @@ int main(int argc,char** argv) try {
             gpuvram::setLimit(gpuvram::kDefaultLimit);gpuvram::removeBuffer(pretend);
         }
         // Workstream J: a decoded-section budget far below what the map decodes to
-        // (Ulasem Arena ~64 MiB) evicts and re-decodes, yet every finished frame is
+        // (Yerrot Mountains: 10656 tiles, ~42 MiB) evicts and re-decodes, yet every finished frame is
         // texel-identical to the unbudgeted one, nothing stays pinned between jobs,
         // and the cache settles inside the budget.
         {
-            const std::string name=argc==3 ? argv[2] : "Ulasem Arena";
+            const std::string name=argc==3 ? argv[2] : "Yerrot Mountains";
             MapView reference(renderer,vfs,ta::hpi::findMap(vfs,name));
             MapView budgeted(renderer,vfs,ta::hpi::findMap(vfs,name));
             reference.compositor().setBudget(SIZE_MAX,SIZE_MAX);

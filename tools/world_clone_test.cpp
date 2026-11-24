@@ -401,11 +401,13 @@ void poolAndObserversStay() {
 void missionData(const std::string& data) {
     auto vfs=ta::hpi::mountPlayVfs(data,{},{},true,nullptr);
     TypeRegistry registry;setupRegistry(registry,vfs);
-    const char* stem="takmission22_ph";
+    const char* stem="ac01";   // Arm campaign mission 1 (camps/arm campaign.tdf)
     World world,other;int human=0,otherHuman=0;
     require(setupMission(world,registry,vfs,stem,human)&&setupMission(other,registry,vfs,stem,otherHuman),
             "no campaign mission in the test data");
-    require(world.mission()&&world.mission()->ok(),"this mission has no script to copy");
+    // A TA mission carries no script VM: its state is the .ota's victory and
+    // defeat conditions (TotalA.exe 0x435da0, docs/retail-campaign.md section 2).
+    require(world.mission(),"this mission has no mission state to copy");
     world.setSerialThreads(true);other.setSerialThreads(true);
     lockstep(world,other,300,"two loads of the mission");
     auto copy=world.clone();

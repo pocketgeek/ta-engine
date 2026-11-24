@@ -3,8 +3,8 @@
 // sprite branch, 495ef7; docs/retail-engine.md "Not a fade").
 //
 //   * The playback lasts the sequence's frames at max(1, delay) ticks each
-//     (5373d0), read from the feature's own GAF; the shipped trees are 10
-//     frames of 2 ticks.
+//     (5373d0), read from the feature's own GAF; the Green Tree1's treeboom
+//     is 20 frames of 3 ticks, the Archipelago palm's PalmBoom 19 of 2.
 //   * Meanwhile the feature keeps its cells and blocking, takes no damage,
 //     cannot catch fire (494b6d, 49515d) and is not a reclaim target (496ea0:
 //     the object's +0x5d bit 0x10 is clear).
@@ -144,12 +144,12 @@ int main(int argc, char** argv) {
                 if (ta::hpi::MountSet::key(name) == section) return child;
             return {};
         };
-        check(timing.dieDuration(node("features/aramon/aratree.tdf", "aratree01")) == 20,
-              "AraTree01's AraTreeKill01: 10 frames of 2 ticks");
-        check(timing.dieDuration(node("features/veruna/vertree.tdf", "vertree01")) == 20,
-              "VerTree01's VerTreeKill01: 20 ticks");
-        check(timing.dieDuration(node("features/zhon/zonrock.tdf", "zonrock01")) == 0,
-              "a Zhon rock has no seqnamedie");
+        check(timing.dieDuration(node("features/green/trees.tdf", "tree1")) == 60,
+              "Green Tree1's treeboom: 20 frames of 3 ticks");
+        check(timing.dieDuration(node("features/archi/trees.tdf", "architree01")) == 38,
+              "ArchiTree01's PalmBoom: 19 frames of 2 ticks");
+        check(timing.dieDuration(node("features/green/trees.tdf", "tree1dead")) == 0,
+              "Tree1Dead has an empty seqnamedie");
     }
     std::printf("%s\n", g_fail ? "FAILED" : "all passed");
     return g_fail ? 1 : 0;

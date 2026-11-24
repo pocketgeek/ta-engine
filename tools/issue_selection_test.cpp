@@ -926,8 +926,8 @@ const char* kData = R"(scn 1
 name sample-data
 players 2
 map flat 96 96
-type hunter fbi zonter
-type knight fbi arasword
+type hunter fbi armpw
+type knight fbi corak
 group H 0 hunter 8 rect 10 10 30 30
 group K 1 knight 8 rect 60 60 80 80 weapons=on
 at 0 fight H @K
@@ -1072,41 +1072,31 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
     }
     determinism(flat, "flat", 60);
 
-    // gen1 and snapshot maps take their features from an install: without
-    // one they report a skip; with mapgen_test's synthetic Aramon features
-    // they build asset-free (no coast or relief prefabs).
-    std::filesystem::create_directories(scratch / "features" / "aramon");
-    {
-        std::ofstream out(scratch / "features" / "aramon" / "fixture.tdf");
-        for (const auto& [kind, count] : std::array<std::pair<const char*, int>, 4>{
-                 {{"Tree", 10}, {"Rock", 7}, {"Henge", 9}, {"Mana", 3}}})
-            for (int i = 1; i <= count; ++i) {
-                char name[32];
-                std::snprintf(name, sizeof name, "Ara%s%02d", kind, i);
-                const bool mana = std::string(kind) == "Mana";
-                out << "[" << name << "] {\nfootprintx=" << (mana ? 2 : 3) << ";\nfootprintz=" << (mana ? 2 : 4)
-                    << ";\nblocking=" << (!mana) << "; }\n";
-            }
-    }
-    ta::hpi::Vfs synthetic;
-    synthetic.addLayer(ta::hpi::MountSet(scratch));
+    // gen1 and snapshot maps take their terrain sections and features from an
+    // install (TA's generator assembles TotalA.exe's sections/*.sct): without
+    // one they report a skip; with one they build and run deterministically.
     const auto genText = gen1Text();
     roundTrip(genText, "gen1");
     const auto gen = ta::scn::parse(genText, "gen1");
     check(ta::scn::build(gen, {})->skipped == "needs --data: gen1 map", "gen1: skipped without an install");
-    determinism(gen, "gen1", 200, nullptr, &synthetic);
+    if (data) determinism(gen, "gen1", 200, data);
 
     // Snapshot: a .tnt beside the file.
+    std::filesystem::create_directories(scratch);
+    roundTrip(kSnapshot, "snapshot", scratch.string());
     {
-        const auto g = ta::mapgen::generate(ta::mapgen::decodeMapId(gen.map.recipe), synthetic);
-        const auto bytes = g.map.save();
-        std::ofstream(scratch / "sample.tnt", std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
-                                                                     std::streamsize(bytes.size()));
-        roundTrip(kSnapshot, "snapshot", scratch.string());
         const auto snap = ta::scn::parse(kSnapshot, "snapshot", scratch.string());
         check(ta::scn::build(snap, {})->skipped == "needs --data: snapshot sample.tnt",
               "snapshot: skipped without an install");
-        determinism(snap, "snapshot", 100, nullptr, &synthetic);
+    }
+    if (data) {
+        const auto install = ta::hpi::mountRetailRoot(data);
+        const auto g = ta::mapgen::generate(ta::mapgen::decodeMapId(gen.map.recipe), install);
+        const auto bytes = g.map.save();
+        std::ofstream(scratch / "sample.tnt", std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()),
+                                                                     std::streamsize(bytes.size()));
+        const auto snap = ta::scn::parse(kSnapshot, "snapshot", scratch.string());
+        determinism(snap, "snapshot", 100, data);
     }
 
     // Data-gated: skipped with a status without an install, built with one.
@@ -1114,7 +1104,7 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
     const auto gated = ta::scn::parse(kData, "data");
     {
         auto b = ta::scn::build(gated, {});
-        check(b->skipped == "needs --data: fbi type 'zonter'", "data: skipped without --data ('" + b->skipped + "')");
+        check(b->skipped == "needs --data: fbi type 'armpw'", "data: skipped without --data ('" + b->skipped + "')");
         std::printf("data sample without --data: %s\n", b->skipped.c_str());
     }
     if (data) {
@@ -1149,10 +1139,10 @@ void scenarios(const char* data, const std::filesystem::path& scratch) {
             const auto at = sc.locateBody(2);
             check(at.first == 0 && at.second == 2 && sc.locateBody(3).first == 1 && sc.locateBody(3).second == 0,
                   "situation: a body number locates its group and its index inside it");
-            const std::string named = "scn 1\nname n\nplayers 2\nmap named Ulasem Arena\ntype m fbi aracommander\ngroup a 0 m 1 cells 5,5\n";
+            const std::string named = "scn 1\nname n\nplayers 2\nmap named Ashap Plateau\ntype m fbi armcom\ngroup a 0 m 1 cells 5,5\n";
             roundTrip(named, "named map");
             const auto nm = ta::scn::parse(named, "named map");
-            check(nm.map.kind == ta::scn::MapSpec::Named && nm.map.recipe == "Ulasem Arena" && !nm.needsData().empty(),
+            check(nm.map.kind == ta::scn::MapSpec::Named && nm.map.recipe == "Ashap Plateau" && !nm.needsData().empty(),
                   "situation: `map named` keeps a multi-word name and needs the install");
         }
         ta::scn::BuildOptions opt;

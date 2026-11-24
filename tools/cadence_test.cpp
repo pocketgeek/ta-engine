@@ -1,14 +1,16 @@
-// cadence_test -- retail's repath cadence ladder (icd 0x4e51f3-0x4e5491).
+// cadence_test -- the navigator's repath cadence.
 //
-// Two behaviours the ladder defines, each porting a traced branch:
+// The ladder was traced in KINGDOMS.icd (0x4e51f3-0x4e5491); TotalA.exe
+// replaces it (docs/retail-pathfinding.md, D4/D10):
 //
-//   1. Repeated refusal bypasses the random cadence (0x4e51d4 -> 0x4e5486).
-//      A blocked mover immediately asks again after a search finishes. Admission
-//      still enforces the navigator's 15-tick minimum interval (4e54a0). The old
-//      gentle-probing expectation overlooked that branch and was incorrect.
+//   1. Repeated refusal re-asks through the navigator's admission gate
+//      (TotalA.exe wantsPath 0x44f260: at most one request every 60 ticks),
+//      with no random delay: a unit walled off by parked bodies asks once
+//      every two seconds and stands its ground in between.
 //
-//   2. A healthy route on a long march re-asks on the same tail, which is how a
-//      trip longer than one search's visit limit chains route by route.
+//   2. A long healthy march takes one unlimited search (A* has no node limit
+//      in TotalA.exe) and throws no re-ask dice: Kingdoms' 1-in-120 tail,
+//      which chained a trip route by route, does not exist.
 //
 // Synthetic world, synthetic types: the ladder reads halfCellTicks (default 6,
 // a standard walker), floater and minwaterdepth.
@@ -162,9 +164,10 @@ int main(int argc,char** argv) {
         for (int i = 0; i < 30 * 60; ++i) w.tick(1.0f / 30.0f);   // a minute at the wall
         const uint64_t probes = w.pathStats().requests() - asksAtRest;
         // This small failed search completes in one frame. A retained repeat
-        // flag requests again without consuming a random-tail draw, while
-        // the admission gate limits actual searches to two per second.
-        check(probes == 120 && randomRetries == 0,
+        // flag requests again without consuming a random draw, while the
+        // admission gate (0x44f260, 60 ticks) limits searches to one every
+        // two seconds.
+        check(probes == 30 && randomRetries == 0,
               "repeated refusal respects admission spacing without random delay",
               std::to_string(probes) + " asks in 60s");
         check(p && !p->orders.empty(),
@@ -178,19 +181,28 @@ int main(int argc,char** argv) {
         delete &w;
     }
 
-    // ---- 2. a long healthy march re-anchors on the same tail ----
+    // ---- 2. a long healthy march: one search, no re-ask dice ----
     {
         World& w = *makeWorld(160, 160);
         UnitType wt = walkerType();
         const int u = w.spawn(&wt, 300, 300, 0, 0);
         for (int i = 0; i < 60; ++i) w.tick(1.0f / 30.0f);
         const uint64_t asks0 = w.pathStats().requests();
+        unsigned dice = 0;
+        w.setRngObserver([&](const World::RngObservation& draw) {
+            if (draw.bound == 120) ++dice;
+        });
         w.order(u, 2300, 2300, false);   // ~2800px, ~58s at this speed
         for (int i = 0; i < 30 * 40; ++i) w.tick(1.0f / 30.0f);
         const uint64_t asks = w.pathStats().requests() - asks0;
-        check(asks >= 3,
-              "a long healthy march re-asks on the 1-in-120 tail",
-              std::to_string(asks) + " asks in 40s");
+        const Unit* p = w.unit(u);
+        const float covered = p ? std::hypot(p->x.toFloat() - 300.0f, p->z.toFloat() - 300.0f) : 0.0f;
+        check(asks == 1 && dice == 0,
+              "a long healthy march takes one search and no re-ask dice",
+              std::to_string(asks) + " asks, " + std::to_string(dice) + " draws in 40s");
+        check(covered > 1500.0f,
+              "...and marches on along that one route",
+              std::to_string(int(covered)) + "px in 40s");
         delete &w;
     }
 
