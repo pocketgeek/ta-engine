@@ -125,16 +125,40 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   event exit, then stages 0-2), AirToGround (0x412710) and AirToGroundHover
   (0x413470) therefore never call an outlier back to its group, leave the order
   for it, or step out of an air stack; World skips Kingdoms' check and step-out
-  for them (AirStrike already had neither). The Kingdoms group/formation
-  machinery still runs for moves, standbys and guards in Retail mode, and the
-  step-outs for the other flyer missions (air_traffic) -- unverified for TA.
+  for them (AirStrike already had neither).
+- Groups and air traffic: TotalA.exe's mission tables (ground 0x4fc6e8, air
+  0x4fca18; 0x19-byte rows: description, handler, ..., flags dword +0x11, name
+  +0x15) hold no group bits, no formation and no step-out mission. So in TA no
+  flyer mission steps out of a stack (VTOL_Move 0x40fa20, VTOL_Patrol 0x410e70,
+  VTOL_Standby 0x40f7d0, VTOL_LandIfCan 0x40f2a0, VTOL_Follow 0x40fbe0,
+  AirToAir 0x412d40, VTOL_SeekAttack 0x4103e0, VTOL_SeekGuard 0x410850,
+  VTOL_Pickup 0x4111b0, VTOL_Unload 0x411560), and there are no group records:
+  World::retailGroupOf is always null, so Kingdoms' group checks, formations,
+  standby re-forms and pacing never run (Legion keeps its own formations).
+  A multi-unit order spreads its goals once, at issue (the selection order
+  0x48cf30): every selected unit but the target counts in the centre; a unit
+  whose mission row has flag 0x2 (Move_Ground, VTOL_Move 0x402; Patrol,
+  VTOL_Patrol, the repair patrols 0x412) takes the click plus its offset from
+  the centre when within sqrt(3000 n) px, else the click -- ground units too.
+  Retail mode now does that for every unit on a move or patrol (client and
+  sim); Legion keeps its own ground spread. The AI's group orders (0x480460)
+  give every member the same point.
+- Flying builders' hover: VTOL_MobileBuild (0x413d80) and VTOL_HelpBuild
+  (0x414380) approach the site with radius builddistance (0x413f60, 0x4144ed),
+  then on every 150th game tick re-pick a point builddistance from the site at
+  the builder's bearing + 0xdb6e, facing it (0x414149..0x4141f9,
+  0x414569..0x41461a; retailTaBuildHoverGoal); until the first such tick they
+  hold where they arrived. VTOL_RepairUnit (0x414e70) hovers over the target's
+  position from its stage 1 (0x415048) and repairs under it (0x415098).
 
 ## Open
-- Kingdoms behaviour still in place: the other flyer missions (VTOL_Move,
-  Patrol, AirToAir...) keep the air-traffic step-out; flying builders orbit a site
-  instead of re-picking a hover point every 150 ticks (0x414569..0x41461a); the
-  group/formation system still runs for moves, standbys and guards in retail
-  mode; the under-attack alert's trigger and 15 s cooldown are unchecked; the
+- Kingdoms behaviour still in place: the flyer missions' stages beyond the
+  step-out and group checks are still Kingdoms' (VTOL_Move 0x40fa20 is three
+  stages -- take-off, a point controller at the footprint-snapped goal, done --
+  with no Maneuver scan or coarse-then-precise arrival; VTOL_RepairUnit's
+  approach is radius 0 over the target and its work has no range test, World
+  keeps a 2 x builddistance ring); the air-traffic counter and occupancy lists
+  (Kingdoms 51dc4b) still update, unread; the under-attack alert's trigger and 15 s cooldown are unchecked; the
   result plate's produced columns stay empty (no lifetime totals); TA wreck
   resurrection; nanoframe outlines are front-facing only and use painter's order
   (retail depth-tests per pixel); room_flow's menu-launched cases hang.

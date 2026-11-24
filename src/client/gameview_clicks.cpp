@@ -236,10 +236,11 @@ namespace {
                         // activation.
                         setClickMove(plan.wx, plan.wz);
                     } else {
-                        // An armed MOVE, PATROL or fight-move gives flyers retail's spread
-                        // (their legs are VTOL_Move and VTOL_Patrol, which carry the offset
-                        // flag; sim/retailflyerspread.h) and every other unit the point
-                        // itself, as retail's Move_Ground / Patrol do.
+                        // An armed MOVE, PATROL or fight-move gives flyers TA's spread
+                        // (VTOL_Move and VTOL_Patrol carry the offset flag;
+                        // sim/retailflyerspread.h), and in Retail mode the ground units of
+                        // a MOVE or PATROL too (Move_Ground / Patrol carry it as well);
+                        // every other unit the point itself.
                         setFlyerSpread(plan.wx, plan.wz);
                     }
                     const bool legion = ta::sim::isLegionPathfinding(worldTables().pathfindingMode());
@@ -250,14 +251,18 @@ namespace {
                         c.kind = cmd;
                         c.unitId = id;
                         c.x = plan.wx; c.z = plan.wz;
-                        // Flyers take retail's spread (0x5214b0): the click plus their
-                        // unclamped offset from the group's centre within sqrt(3000 n) px,
-                        // else the click. On the right-click move ground units keep OUR
-                        // +-60 px per-axis spread (retail sends them all to the click; a
-                        // deliberate difference), except that Legion owns footprint-aware
-                        // group spreading on the shared point for the surface movers it
-                        // plans; a Shift-queued leg shares the point too.
-                        if (u->type && u->type->canFly) flyerSpreadGoal(air, *u, plan.wx, plan.wz, c.x, c.z);
+                        // TA's spread (TotalA.exe 0x48cf30, sim/retailflyerspread.h): the
+                        // click plus the unit's unclamped offset from the group's centre
+                        // within sqrt(3000 n) px, else the click. Flyers always; in Retail
+                        // mode every unit on a move or patrol (Move_Ground and Patrol carry
+                        // the offset flag as VTOL_Move and VTOL_Patrol do), Shift-queued or
+                        // not. Legion mode keeps OUR rule for ground units on the
+                        // right-click move: +-60 px per axis, except that Legion owns
+                        // footprint-aware group spreading on the shared point for the
+                        // surface movers it plans; a Shift-queued leg shares the point too.
+                        const bool taSpread = u->type && (u->type->canFly ||
+                            (!legion && kind != ClickOrder::AttackMove));
+                        if (taSpread) flyerSpreadGoal(air, *u, plan.wx, plan.wz, c.x, c.z);
                         else if (mode == 0 && kind == ClickOrder::Move) {
                             const bool shared = u->type && legion &&
                                 ta::sim::legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ);

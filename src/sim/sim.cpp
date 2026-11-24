@@ -2338,21 +2338,10 @@ void World::tickFlightPatrol(Unit& u) {
         bool stepOut(RetailStepOut kind,int32_t distance) { stepOutKind=kind;stepOutTo=distance;return true; }
         void stopBuilding() {}
         int handle(RetailMissionState& m,uint32_t events) {
-            // The air-traffic check past stage 0 (VTOL_Move 417d4e,
-            // VTOL_Move_Formation 41787e, VTOL_Patrol 419ee0): a step-out
-            // ahead -- VTOL_StepOutStandby under VTOL_Move_FormationStandby's
-            // 0x4000000 -- then the move again from stage 0, the patrol from
-            // stage 1, a tick after it ends. Legion (by design, not retail):
-            // a flyer its flight station holds over a mixed formation's
-            // ground is placed by the station, in its lane, and is not
-            // stepped out of it.
-            if (!w.legionFlightStation(u)) {
-                const auto& front=u.orders.front();
-                const RetailTrafficMission mission=!front.flightMoveMission ? RetailTrafficMission::Patrol
-                    : front.formationLevel ? RetailTrafficMission::MoveFormation : RetailTrafficMission::Move;
-                if (const int result=retailAirTrafficCheck(mission,m,w.tickCounter_,u.airTraffic,
-                        int16_t(u.type->footX),m.flags,*this);result>=0) return result;
-            }
+            // No air-traffic check: TotalA.exe's VTOL_Move (0x40fa20) and
+            // VTOL_Patrol (0x410e70) push no step-out (TA has no VTOL_StepOut
+            // row or name; mission tables 0x4fc6e8 / 0x4fca18). Kingdoms'
+            // stepped out of a stack past stage 0.
             const RetailGroupRecord* group=w.retailGroupOf(u);
             if (u.orders.front().flightMoveMission && u.orders.front().formationLevel) {
                 // 417750 VTOL_Move_Formation: fly to the group centre until
@@ -3087,11 +3076,20 @@ RetailGroupMember World::retailGroupMember(const Unit& u) const {
     return m;
 }
 
-const RetailGroupRecord* World::retailGroupOf(const Unit& u) const {
-    const int group=retailGroupIndex(u);
-    if (pathfindingMode_!=PathfindingMode::Retail || group<1 || group>=100 ||
-        u.player<0 || u.player>=kMaxPlayers) return nullptr;
-    return &retailGroups_[size_t(u.player)][size_t(group)];
+// TotalA.exe keeps no group records: none of its mission rows (0x4fc6e8,
+// 0x4fca18) carries Kingdoms' group bits (0x1000000 moving member, 0x2000000
+// paced, 0x4000000 whole membership), it has no formation or step-out mission
+// (no Move_Ground_Formation / VTOL_Move_Formation / VTOL_StepOut row or name),
+// and its Move_Ground (0x4031d0), VTOL_Move (0x40fa20), Patrol (0x4033a0),
+// VTOL_Patrol (0x410e70), Standby (0x405fe0), VTOL_Standby (0x40f7d0),
+// Follow_Ground (0x406300) and VTOL_Follow (0x40fbe0) run their stages with
+// no group check. A multi-unit order only spreads the goals once, when it is
+// issued (0x48cf30, sim/retailflyerspread.h). So no unit has a group record:
+// every Kingdoms group check (walk or fly back to the group, leave it on a
+// draw, the standbys' re-form) finds none, and nothing is paced. Ctrl groups
+// stay selection groups; Legion keeps its own formations (legionFormationGroup).
+const RetailGroupRecord* World::retailGroupOf(const Unit&) const {
+    return nullptr;
 }
 
 uint32_t World::retailOrderFlags(const Unit& u,const Order& o) const {
@@ -4052,26 +4050,17 @@ void World::tickGroundMission(Unit& u,bool attackWalk) {
         }
         int handle(RetailMissionState& m, uint32_t events) {
             if (u.landing && &m==&u.landing->mission) {
-                // VTOL_LandIfCan's air-traffic check (416e23), after its exits
-                // (+0x66, event 0x200): VTOL_StepOut ahead, then stage 0 a
-                // tick after it ends. Then its group check (416eda:
-                // 51d1e0(unit, 1, 3)): out of the slot a
-                // VTOL_Move_FormationStandby at level -2 goes ahead and the
-                // landing retires (5); the default standby follows the
-                // formation.
-                if (!u.landing->canceled && !(events&0x200)) {
-                    if (const int result=retailAirTrafficCheck(RetailTrafficMission::LandIfCan,m,w.tickCounter_,
-                            u.airTraffic,int16_t(u.type->footX),m.flags,*this);result>=0) return result;
+                // TotalA.exe's VTOL_LandIfCan (0x40f2a0) has no air-traffic
+                // step-out (no VTOL_StepOut row in TA). Kingdoms' group check
+                // (416eda) follows; it finds no group in TA (retailGroupOf).
+                if (!u.landing->canceled && !(events&0x200))
                     if (const int result=standbyGroupCheck(RetailStandbyCheck::LandIfCan);result>=0) return result;
-                }
                 return retailLanding(*u.landing,events,{u.x.v,u.flightY.v,u.z.v},portHeadingToRetail(u.heading),
                     int16_t(u.type->footX),int16_t(u.type->footZ),true,u.type->canFly,*this);
             }
-            // VTOL_Standby's air-traffic check (417472), at every wake:
-            // VTOL_StepOutStandby ahead, then stage 0 a tick after it ends.
-            if (&m==&u.standbyState && u.type->canFly)
-                if (const int result=retailAirTrafficCheck(RetailTrafficMission::Standby,m,w.tickCounter_,
-                        u.airTraffic,int16_t(u.type->footX),m.flags,*this);result>=0) return result;
+            // TotalA.exe's VTOL_Standby (0x40f7d0) has no air-traffic
+            // step-out (no VTOL_StepOutStandby row in TA); Kingdoms' stepped
+            // out at every wake.
             // The standbys' group check (VTOL_Standby 417527, Standby
             // 407779: 51d1e0(unit, 1, 2)), at every wake: out of the slot
             // VTOL_Move_FormationStandby, or Move_Ground_FormationStandby
@@ -5456,15 +5445,9 @@ bool World::tickTransport(Unit& u, float dt) {
             removePickup();
             return true;
         }
-        // VTOL_Pickup's air-traffic check, at its stage 1 (41a909): VTOL_StepOut
-        // ahead, then stage 1 again a tick after it ends.
-        if(mission.stage==1 && u.type->canFly && u.airTraffic>=5) {
-            const int32_t distance=retailStepOutDistance(int16_t(u.type->footX),[&](int n) { return pathRand(uint32_t(n)); });
-            mission.sleep(tickCounter_,1);
-            pushStepOut(u,RetailStepOut::StepOut,distance);   // `o` is not read past this point
-            flyMissionGoal(u,u.orders.front());
-            return true;
-        }
+        // No air-traffic step-out: TotalA.exe has no VTOL_StepOut mission (no
+        // row or name in its mission tables, 0x4fc6e8 / 0x4fca18), so its
+        // VTOL_Pickup (0x4111b0) never pushes one; Kingdoms' did at stage 1.
         if(retailTransportInRange((passenger->x-u.x).v,(passenger->z-u.z).v,uint16_t(u.type->transportDist))) {
             mission.stage=2;mission.sleep(tickCounter_,1);
             o.transportTicks=0;o.transportApproachAttempts=0;
@@ -5668,15 +5651,8 @@ bool World::tickTransport(Unit& u, float dt) {
     if(mission.waitMask && !events)return advanceCarrier();
     u.missionEvents&=~events;mission.pending&=~events;mission.waitMask=0;
     if (mission.stage==1) {
-        // VTOL_Unload's air-traffic check, at its stage 1 (41afc5):
-        // VTOL_StepOut ahead, then stage 1 again a tick after it ends.
-        if (u.type->canFly && u.airTraffic>=5) {
-            const int32_t distance=retailStepOutDistance(int16_t(u.type->footX),[&](int n) { return pathRand(uint32_t(n)); });
-            mission.sleep(tickCounter_,1);
-            pushStepOut(u,RetailStepOut::StepOut,distance);   // `o` is not read past this point
-            flyMissionGoal(u,u.orders.front());
-            return true;
-        }
+        // No air-traffic step-out: TotalA.exe's VTOL_Unload (0x411560) has no
+        // VTOL_StepOut to push (no such row in its mission tables).
         if (u.type->canFly) {
             // Both approach and departure install a new native controller.
             mission.pending&=~0x3700u;
@@ -12016,9 +11992,10 @@ bool World::prepareBuildApproach(Unit& u) {
         goal.x=Fixed::fromInt(x*16+u.type->footX*8);
         goal.z=Fixed::fromInt(z*16+u.type->footZ*8);
         if (u.type->canFly) {
-            // 41ef00 takes off before approaching an unplaced site. Its first
-            // controller targets the snapped site with radius 2*builddistance;
-            // the tighter, facing orbit belongs to the later working stages.
+            // VTOL_MobileBuild (TotalA.exe 0x413d80) takes off before
+            // approaching an unplaced site. Its stage-1 controller targets the
+            // snapped site with radius builddistance (0x413f60: 0x44e730 with
+            // type +0x212); the hover belongs to the work stage.
             if (auto script=unitScripts_.find(u.id);script!=unitScripts_.end() && !script->second.activated) {
                 script->second.activated=true;notifyUnitScript(u,"Activate");
             }
@@ -12026,7 +12003,7 @@ bool World::prepareBuildApproach(Unit& u) {
             if (u.flightGroundMode!=2) { u.flightGroundMode=2;groundMove(u); }   // 51b3b0: taking off unstamps
             goal.x=goal.buildX;goal.z=goal.buildZ;
             goal.flightGoal=RetailFlightGoal{{goal.x.v,0,goal.z.v},0x30,0,
-                int16_t(uint16_t(u.type->buildDist)*2)};
+                int16_t(uint16_t(u.type->buildDist))};
         }
         goal.segmentX=Fixed::fromInt(u.x.floorInt());
         goal.segmentZ=Fixed::fromInt(u.z.floorInt());
@@ -12186,7 +12163,9 @@ void World::helpApproach(Unit& b, const Unit& site, bool queue) {
         o.x=site.x; o.z=site.z;
         o.goal=true;
         o.issuedTick=tickCounter_;
-        o.flightGoal=RetailFlightGoal{{site.x.v,0,site.z.v},0x30,0,int16_t(2*std::max(0,int(b.type->buildDist)))};
+        // VTOL_HelpBuild stage 1 (TotalA.exe 0x4144b1..0x4144f2): the site,
+        // radius builddistance (0x44e730 with type +0x212).
+        o.flightGoal=RetailFlightGoal{{site.x.v,0,site.z.v},0x30,0,int16_t(std::max(0,int(b.type->buildDist)))};
         b.orders.push_back(o);
         noteOrders(builderId);
     }
@@ -13513,22 +13492,8 @@ void World::tickFlyingGuard(Unit& u) {
         o.mission.deadline=0xffffffffu;
         return;
     }
-    // The air-traffic check past stage 0 (4189c7): VTOL_StepOut ahead, and
-    // the guard starts again at stage 0 a tick after it ends.
-    {
-        struct Host {
-            World& w; RetailStepOut kind=RetailStepOut::None; int32_t distance=0;
-            uint32_t random(int n) { return w.pathRand(uint32_t(n)); }
-            bool stepOut(RetailStepOut k,int32_t d) { kind=k;distance=d;return true; }
-            void stopBuilding() {}
-        } host{*this};
-        if (const int result=retailAirTrafficCheck(RetailTrafficMission::Follow,o.mission,tickCounter_,u.airTraffic,
-                int16_t(u.type->footX),o.mission.flags,host);result>=0) {
-            if (result==0) o.mission.stage=0;   // the dispatcher's result 0
-            pushStepOut(u,host.kind,host.distance);   // `o` is not read past this point
-            return;
-        }
-    }
+    // No air-traffic check: TotalA.exe's VTOL_Follow (0x40fbe0) pushes no
+    // step-out (TA has no VTOL_StepOut row); Kingdoms' did past stage 0.
     // The group check (418a7b..418b72, retailGuardGroupCheck: 51d1e0(unit,
     // 1, 4)): out of the slot VTOL_Move_Formation at level -3 goes ahead
     // and the guard starts again at stage 0 when it retires (the formation
@@ -14195,14 +14160,17 @@ void World::tickRetailConstruction(Unit& builder) {
             auto* site=w.unit(job.target);
             if (events&2) return 5;
             if ((events&8) || !site || !site->alive()) return 8;
+            // TotalA.exe's VTOL_MobileBuild work stage (0x414145): a new
+            // hover point on every 150th game tick only, no draw
+            // (retailTaBuildHoverGoal); Kingdoms' 41ef00 re-picked on
+            // random(50) with a random point.
             if (job.flying && m.stage==5) {
-                if ((job.flyingOwnerFlags&0xcu) && random(50)!=0) return 1;
+                if (w.tickCounter_%kRetailTaBuildHoverPeriod!=0) return 1;
                 m.stage=4;return 4;
             }
             if (job.flying && m.stage==4) {
-                const RetailFlightGoal goal=retailConstructionHoverGoal(
-                    {b.x.v,0,b.z.v},{site->x.v,0,site->z.v},job.flyingBuildDistance,
-                    [&](int n) {return int(random(n));});
+                const RetailFlightGoal goal=retailTaBuildHoverGoal(
+                    {b.x.v,0,b.z.v},{site->x.v,0,site->z.v},job.flyingBuildDistance);
                 if (b.orders.empty()) throw std::runtime_error("flying construction order missing");
                 auto& order=b.orders.front();order.flightGoal=goal;
                 order.x=Fixed::raw(goal.point.x);order.z=Fixed::raw(goal.point.z);
@@ -14703,7 +14671,7 @@ void World::tickAirStrike(Unit& u,const Unit* target) {
             in.gravity=w.mapGravity_;
             // Mover +0x22: the whole pixels of its scalar speed (+0x20, 0x43cc2d).
             in.speed=int16_t(uint32_t(u.speed.v)>>16);
-            in.traffic=u.airTraffic;in.footX=int16_t(u.type->footX);
+            in.traffic=0;in.footX=int16_t(u.type->footX);   // TA: no VTOL_StepOut (mission tables 0x4fc6e8 / 0x4fca18)
             RetailFlightVector point{order.attackPointX.v,0,order.attackPointZ.v};
             const int result=retailAirStrike(m,point,w.tickCounter_,events,in,*this);
             // Mission +0x22, the point a lost target's seek circles.
@@ -14901,7 +14869,8 @@ void World::tickAirToAir(Unit& u,const Unit& target,const Weapon* selected) {
             duel.speed=u.speed.v;duel.maxSpeed=u.baseSpeed.v;duel.distance=distance;
             duel.automatic=o.autoTarget;   // mission +0x52, 4d7de0's auto argument
             duel.onMap=onMap;duel.width=w.hW_*16-32;duel.height=w.hH_*16-128;
-            duel.traffic=u.airTraffic;duel.footX=int16_t(u.type->footX);duel.targetFootX=int16_t(target.type->footX);
+            duel.traffic=0;   // AirToAir 0x412d40: TA has no VTOL_StepOut
+            duel.footX=int16_t(u.type->footX);duel.targetFootX=int16_t(target.type->footX);
             return retailAirToAir(m,a.count,w.tickCounter_,events,duel,*this);
         }
     } host{{*this,u},target,weapon};
@@ -15124,7 +15093,7 @@ void World::tickSeekAttack(Unit& u,bool carriesTarget) {
         int handle(RetailMissionState& m,uint32_t events) {
             auto& order=u.orders.front();
             RetailAirSeek in;
-            in.traffic=u.airTraffic;in.footX=int16_t(u.type->footX);
+            in.traffic=0;in.footX=int16_t(u.type->footX);   // TA: no VTOL_StepOut (mission tables 0x4fc6e8 / 0x4fca18)
             in.position={u.x.v,u.flightY.v,u.z.v};
             // 519ac0: a switcher's selected slot, otherwise the first slot.
             const auto& weapons=u.type->weapons;
@@ -15245,7 +15214,7 @@ void World::tickSeekGuard(Unit& u) {
         int handle(RetailMissionState& m,uint32_t events) {
             auto& order=u.orders.front();
             RetailAirSeekGuard in;
-            in.traffic=u.airTraffic;in.footX=int16_t(u.type->footX);
+            in.traffic=0;in.footX=int16_t(u.type->footX);   // TA: no VTOL_StepOut (mission tables 0x4fc6e8 / 0x4fca18)
             in.position={u.x.v,u.flightY.v,u.z.v};
             // 519ac0: a switcher's selected slot, otherwise the first slot.
             const auto& weapons=u.type->weapons;
@@ -15324,7 +15293,8 @@ std::optional<int32_t> World::flyingJobTraffic(Unit&, RetailTrafficMission) {
 void World::restartFlyingHelp(Unit& b, const Unit& site) {
     b.conjureHoverTarget=0;b.conjureHoverGoal.reset();
     b.buildStuckT=0;b.buildStuckD=INT32_MAX;   // the approach starts afresh
-    const RetailFlightGoal approach{{site.x.v,0,site.z.v},0x30,0,int16_t(2*std::max(0,int(b.type->buildDist)))};
+    // VTOL_HelpBuild stage 1 (0x4144b1): the site, radius builddistance.
+    const RetailFlightGoal approach{{site.x.v,0,site.z.v},0x30,0,int16_t(std::max(0,int(b.type->buildDist)))};
     if (!b.orders.empty() && b.orders.front().helpSite==site.id) {
         Order& leg=b.orders.front();
         leg.x=site.x;leg.z=site.z;leg.flightGoal=approach;
@@ -15340,23 +15310,34 @@ void World::restartFlyingHelp(Unit& b, const Unit& site) {
     noteOrders(b.id);
 }
 
-// Flying construction (retail 41ef00, stages 4--6) wanders near builddistance
-// while facing the site. Use the same flight controller as ordinary flight;
-// this is construction mission behavior, independent of ground navigation.
-// VTOL_RepairUnit (0x420e60) orbits the same way; its stage 4 re-picks when
-// the flyer is still, else -- with the target still -- on rand(5)==0, else
-// on rand(50)==0 (0x421302..0x42133d).
+// A flying builder at work (TotalA.exe VTOL_MobileBuild 0x413d80 stage 4,
+// VTOL_HelpBuild 0x414380 stage 3, VTOL_RepairUnit 0x414e70 stage 2). The
+// build jobs re-pick their hover point on every 150th game tick only
+// (0x414569..0x41461a / 0x414149..0x4141f9, retailTaBuildHoverGoal): one
+// builddistance from the site, a seventh of a turn on from the builder's own
+// bearing, facing the site, with no draw. Until the first such tick the
+// approach's arrival holds: the builder stays where it came in, facing the
+// site. The repair re-picks nothing: its stage-1 controller (0x415048) is the
+// target's position when it was installed, and stage 2 (0x415098) repairs
+// under it. (Kingdoms' 41ef00 / 420e60 wandered at builddistance -/+ 7 with
+// random re-picks.) The flight controller's path is ordinary flight,
+// independent of ground navigation.
 void World::tickConjureHover(Unit& b, const Unit& site, bool repair) {
     if (b.conjureHoverTarget!=site.id) {
         b.conjureHoverTarget=site.id;
         b.conjureHoverGoal.reset();
     }
-    const auto moving=[](const Unit& x) { return x.speed.v || x.turnReqBam; };
-    if (!b.conjureHoverGoal || !moving(b) ||
-        (repair && !moving(site) && pathRand(5)==0) || pathRand(50)==0) {
-        b.conjureHoverGoal=retailConstructionHoverGoal(
-            {b.x.v,0,b.z.v},{site.x.v,0,site.z.v},std::max(8,int(b.type->buildDist)),
-            [&](int n) {return int(pathRand(uint32_t(n)));});
+    if (repair) {
+        if (!b.conjureHoverGoal) b.conjureHoverGoal=RetailFlightGoal{{site.x.v,0,site.z.v}};
+    } else if (tickCounter_%kRetailTaBuildHoverPeriod==0) {
+        b.conjureHoverGoal=retailTaBuildHoverGoal({b.x.v,0,b.z.v},{site.x.v,0,site.z.v},
+                                                  std::max(0,int(b.type->buildDist)));
+    } else if (!b.conjureHoverGoal) {
+        RetailFlightGoal hold{{b.x.v,0,b.z.v}};
+        hold.flags=0x60;
+        hold.heading=uint16_t(retailDirection(Fixed::raw(satSub32(b.x.v,site.x.v)),
+                                              Fixed::raw(satSub32(b.z.v,site.z.v))).v);
+        b.conjureHoverGoal=hold;
     }
     // Keep the player's construction/production queue intact. This temporary
     // controller belongs solely to the active conjure job.
@@ -15431,12 +15412,13 @@ void World::tickConstruction(Unit& b, float dt) {
     float reach = std::max(half + 40.0f,
                            b.type->buildDist > 0 ? b.type->buildDist + half : 0.0f);
     float gd = dx * dx + dz * dz;
-    // Flying construction admits the site at 2*builddistance (the approach
-    // goal accepts strictly inside it), then works while entering its tighter
-    // orbit and never measures again (VTOL_HelpBuild 0x41f7f0 stage 5 works
-    // from any distance; emulated). Admission is the hover latched on this
-    // site: a flyer helping a site someone else began must fly there first.
-    const float flyingReach=2.0f*b.type->buildDist;
+    // Flying construction admits the site at builddistance (the stage-1
+    // controller's radius, TotalA.exe 0x4144ed / 0x413f60; the approach goal
+    // accepts strictly inside it), then works from wherever its hover takes
+    // it and never measures again (VTOL_HelpBuild's stage 3, 0x414569, makes
+    // no range test of its own). Admission is the hover latched on this site: a flyer
+    // helping a site someone else began must fly there first.
+    const float flyingReach=b.type->buildDist;
     const bool outOfReach=b.type->canFly
         ? b.conjureHoverTarget!=site->id && gd>=flyingReach*flyingReach
         : gd>reach*reach;
@@ -17755,7 +17737,9 @@ std::span<const int> World::updateAirOccupancy() {
     for (auto* u:flyers) airOccupancy_.insert(u->id,host,[&](unsigned n){return gameRand(int32_t(n));});
     // 51dc4b..51dce4: then every live flyer that is not dying (+0x130 0x1000,
     // hit points gone) steps its air-traffic counter from its fresh overlap
-    // list, landed ones too (an empty list: down by 2).
+    // list, landed ones too (an empty list: down by 2). Kingdoms' step-outs
+    // read it; TotalA.exe has no step-out mission (no VTOL_StepOut row in
+    // 0x4fca18's table), so no TA mission does -- kept for the hash only.
     for (auto* u:flyers)
         if (u->hp>Fixed()) u->airTraffic=retailAirTrafficStep(u->airTraffic,u->airOccupant.count);
     return airOccupancy_.cells();
@@ -20223,8 +20207,8 @@ void World::tick(float dt) {
                     f->garea += u.type->footX * u.type->footZ;
                 }
             }
-    if (pathfindingMode_==PathfindingMode::Retail) tickRetailGroups();
-    else updateLegionFormationSlots();
+    // No group records in TA (retailGroupOf): Kingdoms' aggregation (51b890) and pacing do not run.
+    if (pathfindingMode_!=PathfindingMode::Retail) updateLegionFormationSlots();
     planLegionFlightStations();
     // An idle member standing against an idle same-player body that is nearer
     // the centre is at the crowd's face already: walking in cannot bring it

@@ -1566,20 +1566,22 @@ int main(int argc, char** argv) {
                   std::to_string(w.unit(id)->orders.size()) + " entries");
 
             bool built = false, sawSite = false;
+            float furthest = 0;   // after the build: an idle flyer may then land a little way off
             for (int i = 0; i < 30 * 60; ++i) {
                 w.tick(1.0f / 30.0f);
                 const sim::Unit* u = w.unit(id);
                 if (!u) break;
                 if (u->buildSiteId != 0) sawSite = true;
+                else if (sawSite) furthest = std::max(furthest, u->x.toFloat());
             }
             for (const auto& un : w.units())
                 if (un.alive() && un.type == bt && !un.underConstruction) built = true;
             check(sawSite, "the queued build actually starts");
             check(built, "and finishes");
             const sim::Unit* u = w.unit(id);
-            check(u && u->x.toFloat() > ox + 550.0f,
+            check(u && furthest > ox + 550.0f,
                   "and THEN the builder goes on to the move queued behind it",
-                  u ? "ended at x=" + std::to_string(int(u->x.toFloat())) : "gone");
+                  u ? "reached x=" + std::to_string(int(furthest)) : "gone");
             check(u && u->orders.empty(),
                   "with nothing left stuck in the queue");
 

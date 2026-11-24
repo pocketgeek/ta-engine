@@ -302,13 +302,9 @@ void flyerPatrols(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::
           "a flyer's patrol legs carry VTOL_PATROL's flags: outbound 0x1004412, anchor and a Shift leg 0x1000412",
           flags);
     for (int i = 0; i < 3; ++i) s.w.tick(kTick);
-    if (mode == sim::PathfindingMode::Retail) {
-        const auto* g = s.w.retailGroupRecord(ids[0]);
-        const int moving = g ? g->moving[size_t(sim::RetailGroupClass::Flyer)].count : -1;
-        const int all = g ? g->all[size_t(sim::RetailGroupClass::Flyer)].count : -1;
-        check(moving == 3 && all == 3, "a formation of patrolling flyers is moving with its group",
-              std::to_string(moving) + " moving of " + std::to_string(all));
-    }
+    // TotalA.exe keeps no group records (World::retailGroupOf): a formation
+    // of patrolling flyers has no moving aggregate to be counted in.
+    check(!s.w.retailGroupRecord(ids[0]), "a formation of patrolling flyers has no group record (TA)", "");
 }
 
 void flyers(const hpi::Vfs& vfs, const sim::TypeRegistry& reg) {
@@ -694,10 +690,11 @@ void orphanFormation(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const si
             }
         } else if (!o.empty() && o.front().targetId == target) { attacked = true; break; }
     }
-    if (mode == sim::PathfindingMode::Retail)
-        check(taken && seen == "FA" && attacked,
-              "a Move's formation left ahead of an attack when the Move is taken back retires, and the attack runs",
-              "taken at " + std::to_string(at) + ", orders " + seen);
+    // TotalA.exe's Move_Ground (0x4031d0) has no group check and TA has no
+    // Move_Ground_Formation: no formation ever goes ahead of the Move.
+    check(!taken, "no formation goes ahead of a formation's Move (TA)",
+          "taken at " + std::to_string(at) + ", orders " + seen);
+    (void)attacked;
 }
 
 void groups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitType& archer) {
@@ -716,11 +713,10 @@ void groups(const hpi::Vfs& vfs, const sim::TypeRegistry& reg, const sim::UnitTy
         check(r.formations == 0 && r.orderAtEnd, "no group check in TA: the order stands", describe(r));
         check(r.hits >= 1 && r.hitDist < 48, "its shots land on the point", describe(r));
         check(groupFire(vfs, reg, turret, archer, 1500).hash == r.hash, "the same run gives the same state hash");
-        // SUPPRESS's row 0x1000410: the outlier on it is one of the moving
-        // members whose centre the others pace to.
-        if (mode == sim::PathfindingMode::Retail)
-            check(r.members == 5 && r.movers == 5, "on SUPPRESS it counts as a moving member of its group",
-                  std::to_string(r.movers) + " moving of " + std::to_string(r.members));
+        // TA's Suppress row is 0x410 (0x4fc74c): no group bits, and no
+        // group record to count it in (World::retailGroupOf).
+        check(r.members == -1 && r.movers == -1, "on SUPPRESS it is in no group record (TA)",
+              std::to_string(r.movers) + " moving of " + std::to_string(r.members));
     }
     // The group patrols there and back, leaving the outlier behind again and
     // again: Kingdoms' group check let a flagged outlier leave the order on

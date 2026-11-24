@@ -105,7 +105,8 @@ struct ClientRef {
             c.unitId = id;
             const bool shared = u->type && legion &&
                 legionSharedClick(u->type->canFly, u->type->footX, u->type->footZ);
-            if (u->type && u->type->canFly) ta::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
+            // TA's spread (0x48cf30): flyers, and every unit in Retail mode.
+            if (u->type && (u->type->canFly || !legion)) ta::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
             else {
                 c.x = shared ? wx : wx + std::clamp(u->x.toFloat() - cx, -60.0f, 60.0f);
                 c.z = shared ? wz : wz + std::clamp(u->z.toFloat() - cz, -60.0f, 60.0f);
@@ -154,7 +155,9 @@ struct ClientRef {
             c.x = wx;
             c.z = wz;
             const auto* u = spread ? frameUnitP(id) : nullptr;
-            if (u && u->type && u->type->canFly) ta::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
+            // Flyers, and in Retail every unit on a move or patrol (0x48cf30).
+            const bool retailAll = !isLegionPathfinding(world_.pathfindingMode()) && (cmd == 'm' || cmd == 'p');
+            if (u && u->type && (u->type->canFly || retailAll)) ta::scn::flyerSpreadGoal(air, *u, wx, wz, c.x, c.z);
             c.unitId = id;
             c.queue = queue ? 1 : 0;
             issue(c);
@@ -555,7 +558,7 @@ void flyerSpread() {
             cx /= float(sel.size()); cz /= float(sel.size());
             for (int id : sel) {
                 const auto* u = f.world.unit(id);
-                if (u->type->canFly) want[id] = retailFlyerGoal(f.world, sel, id, o.x, o.z);
+                if (u->type->canFly || (!legion && verb != Verb::Fight)) want[id] = retailFlyerGoal(f.world, sel, id, o.x, o.z);
                 else if (legion || verb != Verb::Move) want[id] = {o.x, o.z};
                 else want[id] = {o.x + std::clamp(u->x.toFloat() - cx, -60.0f, 60.0f), o.z + std::clamp(u->z.toFloat() - cz, -60.0f, 60.0f)};
             }
@@ -576,7 +579,7 @@ void flyerSpread() {
                     far |= gx == o.x && gz == o.z;
                 }
             }
-            check(ok, what + ": flyers take retail's spread, ground our rule");
+            check(ok, what + ": flyers take TA's spread; ground too in Retail (move, patrol), Legion its rule");
             check(kept && far, what + ": a flyer keeps an offset past 60 px and the straggler takes the click");
         }
     }
@@ -602,13 +605,17 @@ void selections() {
             } else {
                 shape(b, split(n), what);
                 check(unitsOf(b) == ids, what + ": every unit once, in selection order");
-                bool shared = true, offset = true;
+                // TA's spread (0x48cf30): each unit its offset from the
+                // selection's centre within sqrt(3000 n) px, else the click.
+                auto near = [](double a, double b) { return std::abs(a - b) < 1e-3; };
+                bool shared = true, spread = true;
                 for (const auto& x : b)
                     for (const auto& c : x.cmds) {
                         shared &= c.x == o.x && c.z == o.z;
-                        offset &= std::abs(c.x - o.x) <= 60 && std::abs(c.z - o.z) <= 60;
+                        const auto [gx, gz] = retailFlyerGoal(f.world, ids, c.unitId, o.x, o.z);
+                        spread &= near(c.x, gx) && near(c.z, gz);
                     }
-                check(offset && (n == 1 || !shared), what + ": Retail keeps per-axis offsets within 60 px");
+                check(spread && (n == 1 || !shared), what + ": Retail gives every unit TA's spread");
             }
             // Applied in the sim, every body takes the order (Legion: its goal is the click).
             if (n == 200) {

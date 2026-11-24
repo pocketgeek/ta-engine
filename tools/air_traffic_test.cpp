@@ -1,32 +1,20 @@
-// Retail's air traffic: flyers step out of a stack. After every occupancy
-// rebuild a flyer's counter (unit +0x12a, retailAirTrafficStep) rises by the
-// flyers its secondary occupancy list holds and falls by 2 when it holds
-// none; each flyer mission, at its wake, pushes a step-out ahead of itself
-// once the counter reaches 5 (8 for a flying builder at work: VTOL_StepOut
-// 4214b0: the least crowded octant round the flyer's heading, D +- D/4 px
-// out). Through protocol 306 World kept no counter and no step-out: Drakes
-// hovering on one target or dogfighting one flyer piled onto a spot and
-// stayed there (the owner's 0.9.12 replay: 42% of the hover ticks and 91% of
-// the dogfight ticks stacked). Protocol 307's first cut left out the missions
-// World did not fly as retail does: a flyer's fight-move legs and an armed
-// flyer's patrol (no mission at all), the flying builders' jobs, and the
-// guard's VTOL_SeekGuard (not ported); the owner's drakes on fight-move and
-// guard still stacked.
+// Air traffic: Kingdoms' flyers stepped out of a stack (a per-flyer counter,
+// unit +0x12a, read by every flyer mission at its wake, pushing VTOL_StepOut
+// at 5, or 8 for a flying builder at work). TotalA.exe has no step-out
+// mission at all (no VTOL_StepOut* row or name in its mission tables,
+// 0x4fc6e8 / 0x4fca18), so in TA no flyer ever steps out.
 //
 //   air_traffic_test <data dir> <scenario dir>
 //
 // Runs the air-stack-*.scn fixtures in both pathfinding modes and counts the
 // ticks an airborne flyer of the case shares its footprint cells with another
-// flyer (its overlap list, the counter's input, is not empty): near the fight
-// or the move's point (a target's hit points topped up to 30000 every tick),
-// or while it flies the case's own leg -- a fight-move or a patrol, or a
-// flying builder's repair -- step-outs that leg pushed included. A leg's case
-// also counts the step-outs its mission pushed. air-guard-lost.scn checks
+// flyer (its overlap list is not empty): near the fight or the move's point (a
+// target's hit points topped up to 30000 every tick), or while it flies the
+// case's own leg -- a fight-move or a patrol, or a flying builder's job --
+// and checks that no leg pushes a step-out. air-guard-lost.scn checks
 // VTOL_SeekGuard: fighters whose guarded Peewee dies guard another Peewee.
 // (The fixtures came from Kingdoms -- Drakes, Goblins, a Keep -- and fly TA's
-// Freedom Fighters, Peewees and an Aircraft Plant now.) The flying builders'
-// step-out was Kingdoms' only: TA's builders on one job stack, and
-// air-stack-repair/-help now check that they never step out.
+// Freedom Fighters, Peewees and an Aircraft Plant now.)
 #include "ai/classicbrain.h"
 #include "legion_scn.h"
 
@@ -66,7 +54,6 @@ struct Case {
     float x,z;                // the move's point (px), without a target
     int maxStackedPermille;   // the most stacked counted flyer-ticks, per mille, the case may show
     Count count=Count::Near;
-    int minStepOuts=0;        // the least step-outs the counted leg's mission must push
 };
 
 void run(const std::string& dir,const char* data,const Case& c,ta::sim::PathfindingMode mode) {
@@ -163,16 +150,13 @@ void run(const std::string& dir,const char* data,const Case& c,ta::sim::Pathfind
           " of "+std::to_string(counted)+" airborne flyer-ticks "+what+" stacked ("+std::to_string(permille)+
           " per mille, at most "+std::to_string(c.maxStackedPermille)+")");
     const bool builderCase=c.count==Count::Repair || c.count==Count::Help;
-    // TA's flying builders have no air-traffic check: TotalA.exe's mission
-    // table (0x4fca2d..0x4fcc21) has no VTOL_StepOut* row, and its
-    // VTOL_MobileBuild / VTOL_HelpBuild / VTOL_RepairUnit (0x413d80, 0x414380,
-    // 0x414e70) push no mission. Kingdoms' did (41f0a6, 41f981, 421066).
-    if(builderCase)
-        check(stepOuts==0,std::string(c.file)+" "+modeName+": "+std::to_string(stepOuts)+" step-outs "+what+
-              " (TA has none)");
-    else if(c.minStepOuts)
-        check(stepOuts>=c.minStepOuts,std::string(c.file)+" "+modeName+": "+std::to_string(stepOuts)+
-              " step-outs "+what+" (at least "+std::to_string(c.minStepOuts)+")");
+    // TA has no air-traffic check at all: TotalA.exe's air mission table
+    // (0x4fca18) has no VTOL_StepOut* row, so none of its missions --
+    // VTOL_Move 0x40fa20, VTOL_Patrol 0x410e70, AirToAir 0x412d40, the
+    // builders' 0x413d80 / 0x414380 / 0x414e70 -- can push one. Kingdoms'
+    // did (417d4e, 419ee0, 41ce48, 41f0a6, 41f981, 421066).
+    check(stepOuts==0,std::string(c.file)+" "+modeName+": "+std::to_string(stepOuts)+" step-outs "+what+
+          " (TA has none)");
     if(builderCase && aiReads)
         check(aiStepOuts==aiReads,std::string(c.file)+" "+modeName+": the Retail AI reads the step-out "+
               "ahead of the job ("+std::to_string(aiStepOuts)+" of "+std::to_string(aiReads)+" flyer-ticks)");
@@ -276,21 +260,23 @@ void airStrike(const std::string& dir,const char* data,ta::sim::PathfindingMode 
 
 int main(int argc,char** argv) {
     if(argc!=3) { std::fprintf(stderr,"usage: air_traffic_test <data dir> <scenario dir>\n"); return 2; }
-    // Per mille stacked on protocol 306 (both modes): 992, 980, 282, 277;
-    // with the step-out: 44, 58, 86, 141.
+    // TA has no step-out (above), so a stack only breaks up as the missions
+    // fly it apart: no bound but the per-mille itself, reported. With the
+    // Kingdoms step-out these were bounded at 300, 300, 180, 210, 210, 150,
+    // 150 (protocol 306, before any step-out: 992, 980, 282, 277); now (both
+    // modes) 87, 83, 219, 227, 227, 136, 111. Flying builders on one job stack
+    // too: VTOL_HelpBuild's hover point is builddistance from the site at the
+    // builder's own bearing + 0xdb6e, every 150th tick (0x414569..0x41461a),
+    // so helpers that came in together share it; the repair hovers over its
+    // target (0x415048).
     const std::vector<Case> cases{
-        {"air-stack-barracks.scn","drakes","keep",0,0,300},
-        {"air-stack-barracks-5.scn","drakes","keep",0,0,300},
-        {"air-stack-duel.scn","drakes","spy",0,0,180},
-        {"air-stack-move.scn","drakes",nullptr,1600,1280,210},
-        {"air-stack-fight.scn","drakes",nullptr,1600,1280,210},
-        {"air-stack-fight-cell.scn","d*",nullptr,0,0,150,Count::Fight,3},
-        {"air-stack-patrol.scn","drakes",nullptr,0,0,150,Count::Patrol,3},
-        // Flying builders on one job stack in TA (no step-out, above): no
-        // bound but the per-mille itself. VTOL_HelpBuild's hover point is the
-        // site minus builddistance along the builder's angle + 0xdb6e, every
-        // 150th tick (0x414569..0x41461a), so helpers that came in together
-        // share it; the Kingdoms bound was 200 for both.
+        {"air-stack-barracks.scn","drakes","keep",0,0,1000},
+        {"air-stack-barracks-5.scn","drakes","keep",0,0,1000},
+        {"air-stack-duel.scn","drakes","spy",0,0,1000},
+        {"air-stack-move.scn","drakes",nullptr,1600,1280,1000},
+        {"air-stack-fight.scn","drakes",nullptr,1600,1280,1000},
+        {"air-stack-fight-cell.scn","d*",nullptr,0,0,1000,Count::Fight},
+        {"air-stack-patrol.scn","drakes",nullptr,0,0,1000,Count::Patrol},
         {"air-stack-repair.scn","builders","keep",0,0,1000,Count::Repair},
         {"air-stack-help.scn","builders",nullptr,1280,1280,1000,Count::Help},
     };

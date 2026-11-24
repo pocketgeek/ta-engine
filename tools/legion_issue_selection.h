@@ -8,15 +8,16 @@
 //  1. hudCommands -- the commands the HUD builds for one click, in selection
 //     order. Each verb copies one client path:
 //       Move    right-click on open ground   gameview_hud.cpp:258-303
-//               (flyers take retail's spread, sim/retailflyerspread.h: their
-//               unclamped offset from the selection's centre within
-//               sqrt(3000 n) px, else the point; Legion shares the point for
-//               surface movers with footprints 1..8; oversize bodies and every
-//               ground unit outside Legion keep their offset from the
-//               selection centroid, clamped to +-60 px per axis)
+//               (TA's spread, sim/retailflyerspread.h, TotalA.exe 0x48cf30:
+//               the unclamped offset from the selection's centre within
+//               sqrt(3000 n) px, else the point -- every unit in Retail mode,
+//               flyers in Legion; Legion shares the point for surface movers
+//               with footprints 1..8, and its oversize bodies keep their
+//               offset from the selection centroid, clamped to +-60 px per axis)
 //       Attack  right-click on an enemy      gameview_hud.cpp:230-237
 //       Fight / Patrol  armed order (F / P)  gameview_hud.cpp:1062-1090
-//               (flyers take retail's spread, everyone else the point)
+//               (flyers take TA's spread, and in Retail every unit on a
+//               Patrol; everyone else the point)
 //       Guard   armed order (G)              gameview_hud.cpp:994-1013
 //       Stop    Act::Stop                    gameview_impl.cpp:4707-4714
 //       Squad   Ctrl/Alt+N (assignSquad)     gameview_impl.cpp:4748-4767
@@ -119,7 +120,8 @@ inline std::vector<ta::net::Command> hudCommands(const ta::sim::World& world,
             auto c = make(Cmd::Move, id);
             const auto* t = u->type;
             const bool shared = t && legion && ta::sim::legionSharedClick(t->canFly, t->footX, t->footZ);
-            if (t && t->canFly) flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
+            // TA's spread (TotalA.exe 0x48cf30): flyers, and every unit in Retail.
+            if (t && (t->canFly || !legion)) flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
             else {
                 c.x = shared ? order.x : order.x + std::clamp(u->x.toFloat() - cx, -60.0f, 60.0f);
                 c.z = shared ? order.z : order.z + std::clamp(u->z.toFloat() - cz, -60.0f, 60.0f);
@@ -139,6 +141,7 @@ inline std::vector<ta::net::Command> hudCommands(const ta::sim::World& world,
         break;
     case Verb::Fight:
     case Verb::Patrol: {
+        const bool legion = ta::sim::isLegionPathfinding(world.pathfindingMode());
         ta::sim::FlyerGroupCentre air;
         for (int id : selection)
             if (const auto* u = live(id))
@@ -148,7 +151,10 @@ inline std::vector<ta::net::Command> hudCommands(const ta::sim::World& world,
             c.x = order.x;
             c.z = order.z;
             const auto* u = live(id);
-            if (u && u->type && u->type->canFly) flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
+            // TA's spread: flyers, and in Retail every unit on a patrol (Patrol's
+            // row carries the offset flag as VTOL_Patrol's does, 0x48cf30).
+            if (u && u->type && (u->type->canFly || (!legion && order.verb == Verb::Patrol)))
+                flyerSpreadGoal(air, *u, order.x, order.z, c.x, c.z);
             c.queue = order.queue ? 1 : 0;
             out.push_back(c);
         }

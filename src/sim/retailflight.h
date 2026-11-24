@@ -98,28 +98,26 @@ RetailFlightGoal retailHoverAttackGoal(RetailFlightVector position,
              satAdd32(target.z,retailScaledCosine(angle,Fixed::fromInt(radius).v))},0x68,angle,0};
 }
 
-// 41ef00 stages 4--6: construction hover point around the placed site. Retail
-// subtracts the first radius draw and adds the second; keeping the helper shared
-// prevents queued and placed flying builders from drifting apart.
-template<class Random>
-RetailFlightGoal retailConstructionHoverGoal(RetailFlightVector position,
-        RetailFlightVector site, int buildDistance, Random random) {
-    uint16_t angle=uint16_t(retailDirection(Fixed::raw(satSub32(position.x,site.x)),
-                                           Fixed::raw(satSub32(position.z,site.z))).v);
-    const int subtractAngle=int(random(0x2492));
-    const int addAngle=int(random(0x2492));
-    angle=uint16_t(int(angle)-subtractAngle+addAngle);
-    const int inward=int(random(8));
-    const int outward=int(random(8));
-    const int radius=buildDistance-inward+outward;
-    const int32_t fixedRadius=Fixed::fromInt(radius).v;
+// TotalA.exe's flying construction hover (VTOL_HelpBuild 0x414569..0x41461a,
+// VTOL_MobileBuild 0x414149..0x4141f9): on every 150th game tick of the work
+// stage, a point controller (0x44e2d0) at the site plus builddistance along
+// the angle 0x48a980(unit, site) + 0xdb6e -- 0x4b715a's atan2 of unit - site,
+// 0x4b70ef / 0x4b7123 its sine and cosine -- facing that angle (0x44e720,
+// flag 0x40: the site), radius 0. No draw: helpers that come in together share
+// the point, and a hovering builder steps round the site by 0xdb6e (about a
+// seventh of a turn, clockwise) every 150 ticks.
+inline RetailFlightGoal retailTaBuildHoverGoal(RetailFlightVector position,RetailFlightVector site,
+                                               int buildDistance) {
+    const uint16_t angle=uint16_t(retailDirection(Fixed::raw(satSub32(position.x,site.x)),
+                                                  Fixed::raw(satSub32(position.z,site.z))).v+0xdb6e);
+    const int32_t radius=std::bit_cast<int32_t>(uint32_t(uint16_t(buildDistance))<<16);
     RetailFlightGoal goal;
-    goal.point={satAdd32(site.x,retailScaledSine(angle,fixedRadius)),
-                0,
-                satAdd32(site.z,retailScaledCosine(angle,fixedRadius))};
+    goal.point={satAdd32(site.x,retailScaledSine(angle,radius)),0,
+                satAdd32(site.z,retailScaledCosine(angle,radius))};
     goal.flags=0x60;goal.heading=angle;goal.radius=0;
     return goal;
 }
+constexpr uint32_t kRetailTaBuildHoverPeriod=150;   // 0x414570 / 0x414150: tick % 0x96
 
 struct RetailLandingState {
     RetailMissionState mission;
