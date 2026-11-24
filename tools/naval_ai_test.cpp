@@ -133,13 +133,16 @@ int main(int argc,char** argv) {
         // sea on Varro Passage; TA's yard-on-a-coast cases above cover the
         // naval side.) So: the opening fields an army and launches it, tries
         // a shipyard, and no builder stays held on a yard site it cannot reach.
+        // Whether a yard is tried at all is a draw (seed 0x1234 stopped trying
+        // one for Core once the ground RepairPatrol look took its patrolling
+        // builders); 0x1235 tries one for both sides.
         for (int faction=0;faction<2;++faction) {
             sim::World world;
             sim::MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,"Seven Islands");
             config.roomMapRevealed=true;   // FOG OF WAR: EXPLORED, the room's default
             config.slots={{true,0,0,1.f},{true,faction,1,1.f,true,false}};
             const auto starts=sim::setupMatch(world,registry,config);
-            ai::Controller controller(1,registry,retailProfile,0x1234,ai::Difficulty::Normal,{starts[0]});
+            ai::Controller controller(1,registry,retailProfile,0x1235,ai::Difficulty::Normal,{starts[0]});
             auto isYard=[&](const sim::UnitType* t) {
                 if (!t || !t->isStructure()) return false;
                 for (const auto& child:registry.buildable(t->id))
