@@ -6,6 +6,7 @@
 #include "sim/matchsetup.h"
 #include <algorithm>
 #include <cstdio>
+#include <map>
 #include <set>
 
 using namespace ta;
@@ -120,9 +121,18 @@ int main(int argc,char** argv) {
         }
 
         // Natural opening: no free builders, factories, income or altered
-        // profile. Both sides take the same Seven Islands seat, where TA's AI
-        // goes to sea; in 30 minutes it has gathered and launched a naval
-        // strike group (six ships, docs/retail-ai.md).
+        // profile, both sides on the same Seven Islands seat (aiprofile= empty).
+        // Retail's AI has no notion of going to sea: a shipyard is one more
+        // build-menu entry scored like any other (Score 0x40bb00), and its site
+        // is the generic water lattice round a random point up to R px from the
+        // base (0x40bfe0 -> 0x40a5d0), placement-checked only (0x47db70), not
+        // for reach -- so the yard often lands out at sea. A land builder that
+        // cannot get within builddistance of it says CANNOTREACHCONSTRUCTION
+        // and ends the order (MobileBuild 0x403a20, 0x403b45..0x403c56), then
+        // takes new work. (The Kingdoms test this came from had its AI go to
+        // sea on Varro Passage; TA's yard-on-a-coast cases above cover the
+        // naval side.) So: the opening fields an army and launches it, tries
+        // a shipyard, and no builder stays held on a yard site it cannot reach.
         for (int faction=0;faction<2;++faction) {
             sim::World world;
             sim::MatchConfig config;config.vfs=&vfs;config.mapPath=hpi::findMap(vfs,"Seven Islands");
@@ -130,22 +140,42 @@ int main(int argc,char** argv) {
             config.slots={{true,0,0,1.f},{true,faction,1,1.f,true,false}};
             const auto starts=sim::setupMatch(world,registry,config);
             ai::Controller controller(1,registry,retailProfile,0x1234,ai::Difficulty::Normal,{starts[0]});
-            std::set<int> completed;int attacks=0;
+            auto isYard=[&](const sim::UnitType* t) {
+                if (!t || !t->isStructure()) return false;
+                for (const auto& child:registry.buildable(t->id))
+                    if (const auto* c=registry.find(child); c && !c->isStructure() && !c->canFly &&
+                        c->domain==sim::UnitType::Domain::Water) return true;
+                return false;
+            };
+            std::set<int> army;int attacks=0,yardOrders=0;
+            std::map<int,uint32_t> heldSince;   // builder -> first tick seen on an unstarted yard order
+            uint32_t longestHold=0;
             for (uint32_t tick=0;tick<54000;++tick) {
                 controller.tick(world,tick,[&](const auto& c) {
                     const auto* u=world.unit(c.unitId);
-                    const bool water=u && waterFighter(u->type);
-                    if (water && (c.kind==net::Cmd::AttackMove || c.kind==net::Cmd::Attack)) ++attacks;
+                    if (u && u->type && !u->type->isBuilder && (c.kind==net::Cmd::AttackMove || c.kind==net::Cmd::Attack)) ++attacks;
+                    if (c.kind==net::Cmd::Build && isYard(registry.find(c.type))) ++yardOrders;
                     sim::applyCommand(world,registry,c);
                 });
                 world.tick(1.f/30.f);
-                if (tick%30==0) for (const auto& u:world.units()) {
-                    if (u.player!=1 || !u.alive() || u.underConstruction || !u.type || u.type->isBuilder) continue;
-                    if (waterFighter(u.type)) completed.insert(u.id);
+                if (tick%30) continue;
+                std::map<int,uint32_t> now;
+                for (const auto& u:world.units()) {
+                    if (u.player!=1 || !u.alive() || u.underConstruction || !u.type) continue;
+                    if (!u.type->isBuilder && !u.type->isStructure() && !u.type->weapons.empty()) army.insert(u.id);
+                    if (std::any_of(u.orders.begin(),u.orders.end(),[&](const auto& o) { return isYard(o.buildType); })) {
+                        if (const auto* site=world.unit(u.buildSiteId); site && site->buildBegun) continue;   // building it
+                        const auto it=heldSince.find(u.id);
+                        now[u.id]=it==heldSince.end()?tick:it->second;
+                        longestHold=std::max(longestHold,tick-now[u.id]);
+                    }
                 }
+                heldSince=std::move(now);
             }
-            std::printf("faction=%d completed=%zu attacks=%d: ",faction,completed.size(),attacks);
-            check(!completed.empty() && attacks>0,"natural AI opening produces and deploys its faction's water-capable force");
+            std::printf("faction=%d army=%zu attacks=%d yard orders=%d longest unstarted yard hold %u ticks: ",
+                        faction,army.size(),attacks,yardOrders,longestHold);
+            check(!army.empty() && attacks>0 && yardOrders>0 && longestHold<9000,
+                  "natural AI opening fields and launches an army, tries a shipyard, and no builder stays held on a yard site");
         }
     }
     std::printf("naval AI: %d cases, %d failures\n",cases,failures);

@@ -108,9 +108,7 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 
 ## Open
 - The Kingdoms-data tests run on TA units/maps now. Engine gaps they expose (left
-  failing): a ground builder ordered onto a site it cannot reach (a lake behind
-  the sea) walks the shore for ever instead of failing (0x200) and dropping the
-  order, which also stalls the AI's shipyard (naval_reach, naval_ai); a
+  failing): a
   battleship stopped just inside its ballistic weapon's origin reach (corbats,
   COR_BATS at ~1092 px) never fires (naval_combat);
   a PARK round a *mobile* producer (a test fixture; no TA unit builds mobile
