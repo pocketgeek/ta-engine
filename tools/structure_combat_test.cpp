@@ -197,7 +197,11 @@ int main(int argc,char** argv) {
                 const auto initial=w.unit(a)->heading;
                 w.attack(a,b,false);
                 bool fired=false,turned=false;
-                for(int tick=0;tick<600;++tick) {
+                // 42 s: the long-range guns' scripts turn the turret at <5>
+                // degrees a second (armbrtha.bos, corint.bos AimPrimary), so
+                // a target straight behind takes 36 s of turning before AimX
+                // returns and the first shell leaves.
+                for(int tick=0;tick<1260 && !fired;++tick) {
                     w.unit(b)->hp=ta::sim::Fixed::fromInt(30000);
                     w.tick(1.f/30.f);
                     fired|=w.unit(a)->justFired;

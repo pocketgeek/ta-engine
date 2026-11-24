@@ -392,8 +392,10 @@ Implemented (`World::tickScriptWeapon`, `taAimAngles`, `aimFromPoint`, `taWeapon
   unit is unchanged; readiness and the shot come one tick later.
 - The fire gate is reached only from the engine's callers, which test the slot's range
   first; an aim therefore starts once the target is in range, not as soon as it is held.
-- The projectile launches on the release solve from the QueryX muzzle to the (led) aim
-  point plus the accuracy spread, not on AimX's stored angles plus spread.
+- A ballistic projectile launches on the release solve from the QueryX muzzle to the
+  (led) aim point plus the accuracy spread, not on AimX's stored angles plus spread
+  (0x49cde0 reads S+0x16/S+0x18). Line-of-sight and selfprop shots match retail: 0x49c9c0
+  aims from the QueryX point straight at the target point and ignores the spread.
 - Burst clones are aimed at the slot's target (its last point once it is gone) rather than
   along the emitter's stored heading; sprayangle randomises their heading.
 - Non-turret LOS weapons compare only the heading with the body (no body-pitch test);
