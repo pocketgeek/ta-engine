@@ -382,9 +382,10 @@ void TypeRegistry::loadDir(const hpi::Vfs& vfs, const std::string& prefix) {
             // TA's key is CanReclamate (flagsB bit 10, docs/retail-data.md 2.2).
             t.canReclaim = (int32_t(info->numberOr("canreclamate", 0)) & 1) != 0;
             t.canResurrect = info->numberOr("canresurrect", 0) != 0;
-            // cancapture is not read: retail parses it into a UnitDef bit (0x4c07de)
-            // that no simulation code reads -- only a "CAPTURE" button no shipped
-            // .gui has. A Harpy converts with its mind-control weapon alone.
+            // cancapture: Kingdoms' UnitDef bit (0x4c07de) no simulation code
+            // read; TotalA.exe's flagsB bit 12, which its hit response reads
+            // (0x406fb4).
+            t.canCapture = (int32_t(info->numberOr("cancapture", 0)) & 1) != 0;
             t.canCloak = info->numberOr("cancloak", 0) != 0;
             // init_cloaked's low bit is UnitDef +0x260 & 0x40 (4c0100); 511990
             // copies it to the new unit's cloak order bit (+0x130 & 0x200, 511c77).
@@ -6570,22 +6571,11 @@ void World::destroy(int unitId) {
 // rolls its threat deadline). Kind 5 credits nobody at retirement. A unit
 // with more than 30000 hit points lives on, the mission done.
 bool World::selfDestructHit(Unit& u) {
-    retailHitResponse(u,&u,Unit::kDeathSelfDestruct);
-    u.lastHitBy=u.id;u.lastHitPlayer=u.player;
-    u.lastHitKind=tadeath::kSelfDestruct;   // TotalA.exe 0x402147: 30000 of kind 3
-    // 0x489bf3: the 30000 shrinks with the unit's own kills like any record.
-    const int64_t taken=retailTaVeteranDamage(30000,u.kills);
-    u.hp=Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(u.hp.v)-taken*Fixed::kOne,
-                                                -int64_t(INT32_MAX),INT32_MAX)));
-    // 51a3c2: an unfinished site's progress follows its new HP.
-    if (u.retailSite && u.underConstruction && u.retailSite->progress.remaining!=0) {
-        auto& progress=u.retailSite->progress;
-        progress.hp=uint16_t(u.hp.floorInt());
-        progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,u.maximumHp()));
-    }
-    if (u.hp>Fixed()) return false;
-    u.overkill=fxMax(u.overkill,-u.hp);u.deathType=Unit::kDeathSelfDestruct;
-    return true;
+    // TotalA.exe 0x402147: a record of 30000 of kind 3, the unit its own
+    // attacker (taDamageRecord: the hit response and the under-attack
+    // request included, the 30000 shrunk by the unit's own kills).
+    taDamageRecord(&u,u,30000,tadeath::kSelfDestruct);
+    return u.hp<=Fixed();
 }
 
 // The SelfDestruct mission's runs (4017e0, in the background list 4d85e0):
@@ -8961,50 +8951,110 @@ bool World::retailIssueAutoAttack(Unit& u,int targetId,bool forceReturn,bool for
     return true;
 }
 
+// The weapon hit's response: TotalA.exe's 0x406f80, which 0x489ce0 runs for
+// every damage record but a repair (10, returned before it) and deadly water
+// (11, 0x489d93). Kingdoms' 409a50 is gone.
 void World::retailHitResponse(Unit& e,const Unit* a,int dmgType) {
-    if (dmgType==12 || dmgType==13) return;   // 51a2f2/51a333 never call 409a50
-    // 409a59: event 0x10 to the victim's listeners (519a90) before any gate,
-    // attacker or not; a guard hears it through attackedTick (guardAlarm).
+    if (dmgType==12 || dmgType==13) return;   // no TA record: the CRT's and deadly water
+    taHitResponse(e,a);
+}
+
+// TotalA.exe 0x406f80..0x4071aa:
+//  - event 0x10 to the victim's listeners (0x406f8c -> 0x4897b0) before any
+//    gate, attacker or not; a guard hears it through attackedTick.
+//  - an attacker whose +0xa6 word is 0 is none (0x406f9b): here one gone.
+//  - a cancapture type (flagsB bit 12) of a computer player (+0x73 == 2):
+//    its AI's threat deadline is now + 30 + rand(300) (0x406fc9..0x406fee) and
+//    its missions go but the descriptor-flag-4 ones (0x439eb0(unit, 0)).
+//  - with an attacker, for a unit of a player this machine runs, armed or
+//    kamikaze (flagsA 0x10010000), finished (+0x104 == 0) and not allied to
+//    the attacker's player (owner +0x108[attacker's]): (a) with no mission or
+//    a Standby (descriptor flag 0x20000 -- not a patrol, unlike Kingdoms'
+//    409a50), an attacker its categories admit and in slot 0's reach
+//    (0x49abb0), the retaliation attack (0x43b1f0); else (b), on fire orders
+//    other than Hold Fire (+0x110 & 0x300000), each auto slot that reaches the
+//    attacker and whose own target is gone or no longer good takes it
+//    (0x48a060). No paralysis gate: a paralysed unit is a Paralyze mission.
+void World::taHitResponse(Unit& e,const Unit* a) {
     e.attackedTick=tickCounter_+1;
-    if (!e.alive() || !e.type || e.hp<=Fixed()) return;
-    if (a && (!a->alive() || !a->type || a->hp<=Fixed())) a=nullptr;
-    // 409a8a: an AI Monarch hit, attacker or not, rolls the threat deadline;
-    // one hit while it builds cancels the build so it can answer.
-    if (e.type->commander && computerOwned(e.player)) {
-        uint32_t until=tickCounter_+30;
-        for (int i=0;i<3;++i) until+=gameRand(300);
-        players_[size_t(e.player)].aiThreatUntil=until;
-        const bool building=e.buildSiteId || (!e.orders.empty() &&
-            (e.orders.front().buildType || e.orders.front().repairTarget));
-        if (building && a!=&e) stop(e.id);
+    if (!e.alive() || !e.type) return;
+    if (a && (!a->alive() || !a->type)) a=nullptr;
+    if (e.type->canCapture && computerOwned(e.player)) {
+        players_[size_t(e.player)].aiThreatUntil=tickCounter_+uint32_t(gameRand(300))+30;
+        stop(e.id);
     }
-    if (!a || a==&e) return;
-    if (isNeutralPlayer(e.player) || !validUnitOwner(e.player)) return;
+    if (!a || a==&e || !validUnitOwner(e.player) || isNeutralPlayer(e.player)) return;
     if (e.type->weapons.empty() && !e.type->kamikaze) return;
-    // 409b56..409b67: a unit with construction left (+0x108 != 0) skips both
-    // the retaliation mission and the slot handoff. An unfinished site under
-    // fire never takes the attacker as its target, so it starts from its own
-    // choice once finished.
     if (e.underConstruction) return;
-    if (e.incapacitated()) return;
     if (allied(e.player,a->player)) return;
-    // (a) 409ba8..409e4b: the retaliation mission's gates.
     const bool mobile=e.type->canMove && !e.type->isStructure();
-    const size_t leg=e.orders.empty() ? 0 : currentLeg(e.orders);
-    const bool patrolling=!e.orders.empty() && leg<e.orders.size() && e.orders[leg].patrol &&
-        !e.orders.front().targetId;
     const bool idle=e.orders.empty() && !e.retailBuild && e.buildQueue.empty();
     bool mission=false;
-    if (!e.type->weapons.empty() && (idle || (mobile && patrolling))) {
-        const int s=e.type->weaponSwitching ? std::clamp(e.weaponSlot,0,int(std::min<size_t>(3,e.type->weapons.size()))-1) : 0;
-        if (retailAnswersAttacker(e,*a,s,mobile)) {
-            const bool flag=e.fireState==2 && mobile && patrolling;
-            mission=retailIssueAutoAttack(e,a->id,flag);
-            // An idle flyer's answer goes in ahead of its default mission.
-            if (mission && idle && e.type->canFly) e.orders.front().aheadOfDefault=true;
-        }
+    if (!e.type->weapons.empty() && idle && retailAnswersAttacker(e,*a,0,mobile)) {
+        mission=retailIssueAutoAttack(e,a->id,false);
+        // An idle flyer's answer goes in ahead of its default mission.
+        if (mission && e.type->canFly) e.orders.front().aheadOfDefault=true;
     }
-    if (!mission) slotHitResponse(e,*a);   // (b)
+    if (!mission) slotHitResponse(e,*a);
+}
+
+// 0x489bb0 -> 0x489ce0 for a record no weapon hit makes (taDamageRecord).
+void World::taDamageRecord(Unit* attacker,Unit& victim,int32_t amount,uint8_t kind) {
+    // 0x489d3f..0x489d53: a victim that lives and is not dying (+0x4000:
+    // its HP word already at 0).
+    if (!victim.alive() || !victim.type || (victim.hp<=Fixed() && !(victim.retailSite && victim.underConstruction)))
+        return;
+    // 0x489bc3..0x489c32: an activated unit takes a record under 30000
+    // through its damagemodifier, then every record shrinks with the
+    // victim's kills.
+    if (amount<30000 && retailActivated(victim))
+        amount=retailDamageModifier(amount,0,true,victim.type->damageModifier);
+    const int32_t dealt=retailTaVeteranDamage(amount,victim.kills);
+    // 0x489d93..0x489da2: the hit response, deadly water excepted, before the
+    // record's kind and hitter are written; its under-attack request reads
+    // the previous ones (0x4071ba..0x4071d1).
+    const int previousHitPlayer=victim.lastHitPlayer;
+    const uint8_t previousHitKind=victim.lastHitKind;
+    if (kind!=tadeath::kWater) {
+        taHitResponse(victim,attacker);
+        if (dealt>0 && !retailTaAttackMission(victim) &&
+            (previousHitPlayer!=victim.player || previousHitKind==tadeath::kWeapon))
+            recordHurt_.push_back(victim.id);
+    }
+    victim.lastHitKind=kind;
+    if (attacker) { victim.lastHitBy=attacker->id;victim.lastHitPlayer=attacker->player; }
+    victim.hp=Fixed::raw(int32_t(std::clamp<int64_t>(int64_t(victim.hp.v)-int64_t(dealt)*Fixed::kOne,
+                                                     -int64_t(INT32_MAX),INT32_MAX)));
+    if (victim.retailSite && victim.underConstruction && victim.retailSite->progress.remaining!=0) {
+        auto& progress=victim.retailSite->progress;
+        progress.hp=uint16_t(victim.hp.floorInt());
+        progress.remaining=float(1.0-double(int16_t(progress.hp))/std::max(1,victim.maximumHp()));
+    }
+    if (victim.hp>Fixed()) return;
+    victim.overkill=fxMax(victim.overkill,-victim.hp);
+    switch (kind) {
+        case tadeath::kSelfDestruct: victim.deathType=Unit::kDeathSelfDestruct;break;
+        case tadeath::kPassenger: victim.deathType=Unit::kDeathPassenger;break;
+        case tadeath::kReclaim: victim.deathType=Unit::kDeathReclaim;break;
+        case tadeath::kChangeOwner: victim.deathType=6;break;
+        case tadeath::kWater: victim.deathType=13;break;
+        default: victim.deathType=1;break;
+    }
+}
+
+// TotalA.exe 0x486f10, the commander rule's sweep (0x4866b3): every unit of
+// the player whose object lives (+0x110 & 0x10000000) and is not dying
+// (+0x4000) gets a record of 30000 of kind 3 from itself (0x486f94), so each
+// dies at its own next update -- Killed, its corpse and its SELFDESTRUCTAS
+// -- and counts as a loss (0x4869f5), never a kill. One already at 0 HP is
+// left to its own death and kind. (For a remote owner, +0x73 3, the sweep
+// kills it directly with 0x49b000 + 0x4864b0(3); lockstep runs every unit
+// as its owner does.) Kingdoms' 5131b0 removed every unit at once.
+void World::commanderSweep(int player) {
+    for (auto& u:units_) {
+        if (u.player!=player || !u.type || !u.alive() || u.hp<=Fixed()) continue;
+        taDamageRecord(&u,u,30000,tadeath::kSelfDestruct);
+    }
 }
 
 // A step-out at the head (retail's air traffic, tickStepOutMission): the
@@ -10270,7 +10320,8 @@ bool World::changeOwner(Unit& u, int newPlayer, MissionScript* notify) {
     if (u.type->maxVel > Fixed()) gameRand(201);      // 512430: the speed, overwritten (+0x12b)
     startObjectOrders(u);
     startObjectStats(u);
-    u.lastHitBy = 0; u.lastHitPlayer = -1;
+    // The new object's +0xf4 / +0xf5 start at 10 / 0 (0x485c83).
+    u.lastHitBy = 0; u.lastHitPlayer = -1; u.lastHitKind = 0;
     u.kills = 0;   // 511c16
     u.squad = 0;
     u.aiGroup = 0;
@@ -10458,7 +10509,11 @@ void World::retireDeath(Unit& u) {
     if (u.severity == 0 || !finished) return;
     // 52ac00 selects UnitDef+1ba for type 5 and +1b6 otherwise; a missing
     // SELFDESTRUCTAS does not fall back to EXPLODEAS.
-    const Weapon* deathWeapon = u.deathType == Unit::kDeathSelfDestruct
+    // TotalA.exe 0x486d42..0x486d50: SELFDESTRUCTAS for a death of kind 3,
+    // a carrier's passenger of a self-destruct included.
+    const bool selfDestructAs = u.deathType == Unit::kDeathSelfDestruct ||
+        (u.deathType == Unit::kDeathPassenger && u.lastHitKind == tadeath::kSelfDestruct);
+    const Weapon* deathWeapon = selfDestructAs
         ? (u.type->hasSelfDestructAs ? &u.type->selfDestructAs : nullptr)
         : (u.type->hasExplodeAs ? &u.type->explodeAs : nullptr);
     if (deathWeapon)
@@ -19097,26 +19152,30 @@ void World::tickCorpseSinks() {
     }
 }
 
-// 512860's passengers (51291d..512990), before the carrier's Killed: each
-// carried unit, whoever owns it, gets the carrier's death packet as death
-// kind 8 with severity 0 -- the carrier's hitter while it lives (+0xf8) and
-// its player (+0xfc) whatever -- so it runs no Killed and no Dying, retires at
-// once (512ac8) and is detached there (512b57). (E: check_kill_credit.py
-// cargo.) TotalA.exe's death handler does the same with a damage record
-// (0x4867da..0x48680b): 30000 of kind 6 from the carrier's killer (+0xf0) to
-// each passenger, kind 3 when the carrier itself died of 3 (a self-destruct
-// or the commander rule), so the passengers count as kind 6 (a loss, and a
-// kill for that hitter) or 3 (a loss only).
+// TotalA.exe's death handler (0x4867da..0x48681d): each passenger at the head
+// of the carrier's list gets a damage record of 30000 from the carrier's
+// killer (+0xf0) -- kind 6, or 3 when the carrier itself died of 3 (a
+// self-destruct or the commander rule) -- and is then let go where it rides
+// (0x48aac0 with no carrier). Its death is its own, at its next update: it
+// runs Killed and leaves its corpse and explosion (retailTaDeathSeverity), and
+// counts as kind 6 (a loss, and a kill for that hitter) or 3 (a loss only).
+// One with more than the 30000 (after its kill scaling) lives on, put down.
+// (Kingdoms' 512860 retired its passengers at once, with no Killed.)
 void World::killPassengers(Unit& carrier, uint8_t carrierTaKind) {
     const uint8_t kind=carrierTaKind==tadeath::kSelfDestruct ? tadeath::kSelfDestruct : tadeath::kPassenger;
+    Unit* killer=carrier.lastHitBy ? unit(carrier.lastHitBy) : nullptr;
     for (const int id:std::vector<int>(carrier.cargo)) {
         Unit* c=unit(id);
         if (!c || !c->alive() || c->inTransport!=carrier.id) continue;
-        c->lastHitBy=carrier.lastHitBy;c->lastHitPlayer=carrier.lastHitPlayer;c->deathType=8;
-        c->lastHitKind=kind;
-        c->inTransport=0;
-        std::erase(carrier.cargo,id);
-        sweepDeath(*c,kind);
+        taDamageRecord(killer && killer->type ? killer : nullptr,*c,30000,kind);
+        // A killer World no longer names (sweepDeath drops a dead one) is
+        // still the record's, +0xf4 its player.
+        if (!(killer && killer->type) && carrier.lastHitPlayer>=0) c->lastHitPlayer=carrier.lastHitPlayer;
+        if (c->hp<=Fixed()) c->deathType=Unit::kDeathPassenger;
+        // 0x48681d: off the carrier, back on the map where it rides.
+        const auto point=cargoAttachPoint(carrier,*c);
+        releaseCargo(carrier,*c,Fixed::raw(point[0]),Fixed::raw(point[2]));
+        if (carrier.type->canFly && c->hp<=Fixed()) c->groundY=Fixed::raw(point[1]);
     }
 }
 
@@ -19126,10 +19185,21 @@ void World::killPassengers(Unit& carrier, uint8_t carrierTaKind) {
 // a unit hurt since its last update, and deadly water at once (51e36c: the
 // water's own update ends with 512610).
 void World::sweepDeath(Unit& u, int taKind) {
+    // 0x4867ba..0x4867cb: a carried unit dying is let go first.
+    if (u.embarked()) {
+        if (Unit* carrier=unit(u.inTransport)) {
+            const auto point=cargoAttachPoint(*carrier,u);
+            releaseCargo(*carrier,u,Fixed::raw(point[0]),Fixed::raw(point[2]));
+        } else { u.inTransport=0;u.attachPiece=-1; }
+    }
     cancelPath(u);
     refreshMovingSearchBody(u);
     killProductionOutput(u);
-    const uint8_t kind=taKind>=0 ? uint8_t(taKind) : retailTaDeathKind(uint8_t(u.deathType));
+    // TotalA.exe's death kind is the killing record's (+0xf5, 0x48afd1): a
+    // passenger dies of 6, or of 3 when its carrier did.
+    const uint8_t kind=taKind>=0 ? uint8_t(taKind) :
+        u.deathType==Unit::kDeathPassenger && u.lastHitKind==tadeath::kSelfDestruct ? tadeath::kSelfDestruct :
+        retailTaDeathKind(uint8_t(u.deathType));
     // 512860 keeps the last hitter only while its object lives.
     if (!retailHitter(u.lastHitBy,u.lastHitPlayer)) u.lastHitBy=0;
     // The end-of-game Kills / Losses columns and the killer's kill count, at
@@ -19143,8 +19213,14 @@ void World::sweepDeath(Unit& u, int taKind) {
         // before death) / 2), clamped 1..100, in whole numbers
         // (retailDeathSeverity); 1 for self-destruct and 0 for the kinds no
         // attack causes. Passed to the COB Killed.
-        u.severity = retailDeathSeverity(u.deathType, retailHpWord(-u.overkill.floorInt()), u.maximumHp(),
-                                         u.hpPct1s);
+        // TotalA.exe's death sender (0x4864b0, retailTaDeathSeverity) for
+        // the TA-shaped kinds: a self-destruct or the commander rule (3), a
+        // carrier's passenger (6) and a reclaim (5).
+        const bool taShaped=u.deathType==Unit::kDeathSelfDestruct || u.deathType==Unit::kDeathPassenger ||
+                            u.deathType==Unit::kDeathReclaim;
+        u.severity = taShaped
+            ? retailTaDeathSeverity(kind, retailHpWord(-u.overkill.floorInt()), u.maximumHp(), u.hpPct1s)
+            : retailDeathSeverity(u.deathType, retailHpWord(-u.overkill.floorInt()), u.maximumHp(), u.hpPct1s);
         // Dying while petrified/frozen leaves the FBI stone=/frozen=
         // STATUE feature instead of the corpse (retail deathType 0xE/0xF
         // path, 0x512d2a) -- blocking, permanent, and resurrectable
@@ -19179,18 +19255,15 @@ void World::sweepDeath(Unit& u, int taKind) {
         const int corpse=u.corpseStatue>=0 ? u.corpseStatue : corpseTypeOf(u.type);
         if (corpse>=0 && (u.corpseStatue>=0 || !u.underConstruction) && !placeCorpse(u,corpse)) retireCorpse(u);
     }
-    // 512610's commander rule (51280d..512852): with CommanderDeath on (our
-    // Monarch Expendable off) outside a campaign mission (map mode 1), the
-    // death of a commander, or of a unit carrying a live one, ends with
-    // 5131b0 for the dying unit's player: every unit of that player dies at
-    // once (E: check_kill_credit.py commander). Our scenario rooms keep their
-    // own rules (Monarch Expendable does not apply there).
-    if (!monarchExpendable_ && !mission_ && !scenario_ && validUnitOwner(u.player)) {
-        bool commander=u.type->commander;
-        for (const int id:u.cargo)
-            if (const Unit* c=unit(id); c && retailObjectLives(*c) && c->type->commander) commander=true;
-        if (commander) removeScenarioUnits(u.player,tadeath::kSelfDestruct);   // TotalA.exe 0x4866b3 -> 0x486f10
-    }
+    // TotalA.exe's commander rule (0x48667e..0x4866b3): with "commander dies:
+    // game ends" on (our Monarch Expendable off) outside a campaign mission,
+    // the death of the side's commander sweeps its player (0x486f10,
+    // commanderSweep). Only the commander's own death: a carried one dies of
+    // its carrier's record first (killPassengers) and sweeps at its own death
+    // (Kingdoms' 512610 also swept for a carrier holding one). Our scenario
+    // rooms keep their own rules (Monarch Expendable does not apply there).
+    if (!monarchExpendable_ && !mission_ && !scenario_ && validUnitOwner(u.player) && u.type->commander)
+        commanderSweep(u.player);
 }
 
 void World::beginUnitDeath(Unit& u) {
@@ -19203,8 +19276,9 @@ void World::beginUnitDeath(Unit& u) {
         script->dying=true;script->deathStopValue=0;
         u.deathAnimationTicks=INT32_MAX;
         std::array<uint32_t,4> args{u.severity,0,u.deathType,0};
-        // 512610 skips Killed for self destruction and zero-severity packets.
-        if (u.severity && u.deathType!=Unit::kDeathSelfDestruct)
+        // A zero severity runs no Killed (0x48654d..0x4865c3); TotalA.exe
+        // makes no exception for a self-destruct (Kingdoms' 512610 did).
+        if (u.severity)
             script->state().query(file,file.scriptIndex("Killed"),args,host);
         u.deathHasCorpse=(args[1]&15)==1 && !u.underConstruction && corpseTypeOf(u.type)>=0;
         const bool dying=u.severity && script->state().startArguments(
@@ -20283,6 +20357,7 @@ void World::tick(float dt) {
     scriptEmissions_.clear();
     scriptSounds_.clear();
     hits_.clear();   // per-tick weapon impacts (drained by the viewer for sounds/fx)
+    recordHurt_.clear();
     // Economy: recompute income/storage, apply income.
     for (auto& tm : players_) { tm.income = 0; tm.storage = 0; }
     const size_t unitsAtEconomy = units_.size();

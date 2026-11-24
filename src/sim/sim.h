@@ -518,6 +518,9 @@ struct UnitType {
     bool  noVeteran = false;  // noveteran: this unit can never gain veterancy
     bool  canReclaim = false; // canreclaim: builder can reclaim corpses/features for mana
     bool  canResurrect = false;   // canresurrect: can revive nearby corpses
+    // cancapture (flagsB +0x245 bit 12): TotalA.exe's hit response reads it
+    // (0x406fb4) for a computer's unit under fire.
+    bool  canCapture = false;
     bool  canCloak = false;       // cancloak
     bool  initCloaked = false;    // init_cloaked: a new unit's cloak order starts on
     float cloakCost = 0;          // cloakcost: energy per second while cloaked and idle (taSettle)
@@ -1423,6 +1426,10 @@ struct alignas(64) Unit {
     // weapon can carry -- nothing in the shipped data uses 5 -- it is the engine
     // marking "this unit quit" rather than "this unit was killed".
     static constexpr uint8_t kDeathSelfDestruct = 5;
+    static constexpr uint8_t kDeathPassenger = 8;    // a dying carrier's cargo
+    // World's own number (no Kingdoms kind): a unit reclaimed to nothing,
+    // TotalA.exe's damage kind 5 (ReclaimUnit 0x404981).
+    static constexpr uint8_t kDeathReclaim = 16;
     static constexpr uint8_t kDeathBecomeFeature = 9;   // a finished wall (isfeature)
     uint8_t severity = 0;    // retail Killed severity ((overkill% + 1s-ago HP%)/2)
     // Dead but not yet retired (512ae0): its Killed/Dying still runs and its
@@ -3510,6 +3517,7 @@ public:
                    // a silent event with the explosion on the victim (492c80).
                    bool sound = true, explosion = true; };
     const std::vector<HitFx>& hits() const { return hits_; }
+    const std::vector<int>& recordHurt() const { return recordHurt_; }
     // Cosmetic events captured at the mission callback, before mover updates.
     struct TransportFx {
         uint32_t tick = 0;
@@ -4670,6 +4678,9 @@ private:
     // selfprop/vlaunch shot's tick.
     void tickTaSelfProp(Projectile& p,std::span<const int> airGrid);
     std::vector<HitFx> hits_;
+    // Units a damage record other than a weapon hit's asked the under-attack
+    // alert for this tick (0x4071d8, taHitResponse). Cosmetic, not hashed.
+    std::vector<int> recordHurt_;
     std::vector<TransportFx> transportEffects_;
     std::vector<ScriptEmission> scriptEmissions_;
     std::vector<ScriptSound> scriptSounds_;
@@ -5025,6 +5036,17 @@ private:
     void sweepDeath(Unit& unit, int taKind = -1);
     // The carrier's TA death kind decides its passengers' (6, or 3 when 3).
     void killPassengers(Unit& carrier, uint8_t carrierTaKind);
+    // TotalA.exe's damage record 0x489bb0 -> 0x489ce0 for a cause other than
+    // a weapon's hit (applyHit): the damagemodifier below 30000, the victim's
+    // kill scaling, the hit response 0x406f80 (not for water, 11), +0xf5 /
+    // +0xf0 / +0xf4, and the HP. Nothing for a dead or dying victim.
+    void taDamageRecord(Unit* attacker, Unit& victim, int32_t amount, uint8_t kind);
+    // TotalA.exe's hit response 0x406f80..0x4071aa (every record but a repair
+    // and deadly water).
+    void taHitResponse(Unit& victim, const Unit* attacker);
+    // The commander rule's sweep 0x486f10: a 30000 record of kind 3 for each
+    // unit of the player not already dying.
+    void commanderSweep(int player);
     void updateCorpseWindow(Unit& unit);
     bool waterGrave(const Unit& unit) const;
     void tickCorpseSinks();

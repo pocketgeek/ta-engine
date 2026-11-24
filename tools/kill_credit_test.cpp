@@ -301,10 +301,13 @@ int main(int argc,char** argv) try {
         check(s.unit(f)->lastHitBy==f && s.unit(f)->lastHitPlayer==0,"a scripted self-destruct named no hitter");
     }
     {
-        // 512610's commander rule (check_kill_credit.py commander): with the
-        // Monarch not expendable, its death, or the death of a unit carrying
-        // it, ends with 5131b0 for that unit's player: every unit of that
-        // player dies at once, kind 10. Another player's units are untouched.
+        // TotalA.exe's commander rule (0x48667e..0x4866b3 -> 0x486f10): with
+        // the commander not expendable, its own death gives every unit of its
+        // player not already dying a record of 30000 of kind 3 from itself
+        // (0x486f94), so each dies at its own update -- this tick for a unit
+        // in a later slot -- as a self-destruct does. A carried commander dies
+        // of its carrier's kind-6 record first (0x48680b), and its own death
+        // a tick later sweeps. Another player's units are untouched.
         auto monarch=fighter("monarch");monarch.commander=true;
         auto boat=fighter("boat");boat.canTransport=true;boat.transportCap=4;boat.transportSizeCap=16;
         for (const int carried:{0,1}) for (const int expendable:{0,1}) {
@@ -318,15 +321,22 @@ int main(int argc,char** argv) try {
             w.unit(b)->lastHitBy=e;w.unit(b)->lastHitPlayer=1;
             w.unit(victim)->hp=Fixed();w.unit(victim)->deathType=1;
             w.tick(1.f/30);
+            if (carried) {
+                check(w.unit(a)->alive() && !w.unit(m)->embarked() && w.unit(m)->hp<=Fixed(),
+                      "the carried commander was not let go with its kind-6 record");
+                w.tick(1.f/30);
+            }
             const bool swept=!w.unit(a)->alive() && !w.unit(b)->alive();
             if (expendable) check(!swept,"an expendable monarch's death took its player's units");
             else {
-                check(swept && w.unit(a)->deathType==10 && !w.unit(a)->deathPending,
+                check(swept && w.unit(a)->deathType==Unit::kDeathSelfDestruct &&
+                      w.unit(a)->lastHitKind==3 && !w.unit(a)->deathPending,
                       carried ? "a carrier's death with the monarch aboard did not end its player's units"
                               : "the monarch's death did not end its player's units at once");
                 check(w.player(0).kills==0 && w.player(1).kills==0,"the commander rule credited a kill");
-                check(w.unit(b)->lastHitBy==e && w.unit(b)->lastHitPlayer==1,
-                      "the commander rule cleared a unit's last hitter");
+                // The record names the unit itself (+0xf0 / +0xf4).
+                check(w.unit(b)->lastHitBy==b && w.unit(b)->lastHitPlayer==0,
+                      "the commander rule's record did not name the unit itself");
                 // TotalA.exe's commander rule (0x486f10) kills each unit with a
                 // record of kind 3 (0x486f94): every one a loss (0x4869f5) --
                 // the commander (kind 1), a and b, and when carried the carrier
@@ -337,9 +347,38 @@ int main(int argc,char** argv) try {
         }
     }
     {
-        // 512860 (check_kill_credit.py cargo): a carrier's death takes its
-        // passengers, whoever owns them, at once with death kind 8 and the
-        // carrier's hitter, who is credited for each at retirement.
+        // 0x486f6f: a unit already at 0 HP when its commander dies is dying
+        // (+0x4000) and the sweep passes it by: it dies of its own record at
+        // its own update, a kill for the player that hit it.
+        auto monarch=fighter("monarch");monarch.commander=true;
+        World w;terrain(w);
+        const int m=w.spawn(&monarch,400,400,0,0),e=w.spawn(&t,900,900,0,1);
+        const int a=w.spawn(&t,500,400,0,0);
+        Unit& hurt=*w.unit(a);
+        hurt.hp=Fixed();hurt.deathType=1;hurt.lastHitBy=e;hurt.lastHitPlayer=1;hurt.lastHitKind=1;
+        w.unit(m)->hp=Fixed();w.unit(m)->deathType=1;
+        w.tick(1.f/30);
+        check(!w.unit(a)->alive() && w.unit(a)->deathType==1 && w.unit(a)->lastHitBy==e,
+              "the commander rule's sweep took a unit already dying");
+        check(w.player(1).kills==1 && w.player(0).losses==2,"the dying unit's own death was not counted");
+        // The self-destruct record runs the hit response and asks the
+        // under-attack alert (0x489da2 -> 0x406f80 -> 0x4071d8).
+        World s;terrain(s);
+        const int d=s.spawn(&t,400,400,0,0);
+        Unit& sd=*s.unit(d);
+        sd.selfDestructT=1;
+        bool asked=false;
+        for(int tick=0;tick<120 && s.unit(d)->alive();++tick) {
+            s.tick(1.f/30);
+            for(int id:s.recordHurt()) asked|=id==d;
+        }
+        check(asked,"a self-destruct's record did not ask the under-attack alert");
+    }
+    {
+        // TotalA.exe 0x4867da..0x48681d: a carrier's death gives each
+        // passenger, whoever owns it, a record of 30000 of kind 6 from the
+        // carrier's killer and lets it go; each dies at its own update (this
+        // tick, in a later slot), credited to that killer's player.
         auto boat=fighter("boat");boat.canTransport=true;boat.transportCap=4;boat.transportSizeCap=16;
         for (const bool shooterLives:{true,false}) {
             World w;terrain(w);
@@ -352,8 +391,8 @@ int main(int argc,char** argv) try {
             w.tick(1.f/30);
             for (const int p:{a,b}) {
                 const Unit& c=*w.unit(p);
-                check(!c.alive() && !c.deathPending && c.deathType==8 && !c.embarked(),
-                      "a passenger did not die at once with its carrier");
+                check(!c.alive() && !c.deathPending && c.deathType==8 && c.lastHitKind==6 && !c.embarked(),
+                      "a passenger did not die of its kind-6 record");
                 check(c.lastHitPlayer==1 && c.lastHitBy==(shooterLives ? s : 0),
                       "a passenger did not take its carrier's hitter");
             }
@@ -377,6 +416,7 @@ int main(int argc,char** argv) try {
         check(w.embarkInto(a,ship),"the passenger did not board");
         w.unit(ship)->lastHitBy=s;w.unit(ship)->lastHitPlayer=1;
         check(w.scenarioTransfer(ship,1),"the transfer was refused");
+        w.tick(1.f/30);
         check(!w.unit(a)->alive() && w.unit(a)->deathType==8 && w.unit(a)->lastHitBy==s &&
               w.unit(ship)->cargo.empty() && w.unit(ship)->alive() && w.unit(ship)->player==1,
               "a carrier changing sides kept its passengers");

@@ -170,8 +170,13 @@ int main(int argc,char** argv) {
             unit->hp={};unit->deathType=unfinished?3:sim::Unit::kDeathSelfDestruct;
             w.tick(1.f/30);
             check(w.unit(id)->deadFor==0,"actual death rather than abandoned-site removal");
-            check(w.unit(id)->corpseUntil<=w.unit(id)->corpseAnimationTicks(),
-                  "unfinished and self-destructed units remain excluded");
+            // An unfinished unit leaves nothing (0x4865d2..0x4865e5). A
+            // self-destruct is no exception in TotalA.exe: its Killed runs and
+            // names the corpse (0x4865c3) -- a 1 here, at a severity of 1.
+            if(unfinished)check(w.unit(id)->corpseUntil<=w.unit(id)->corpseAnimationTicks(),
+                  "unfinished units remain excluded");
+            else check(w.unit(id)->severity>0 && w.unit(id)->deathHasCorpse,
+                  "a self-destructed unit runs Killed and keeps its corpse");
         }
         std::printf("wrecks hash=%016llx\n",(unsigned long long)hash);
     }

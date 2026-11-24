@@ -90,6 +90,7 @@ inline uint8_t retailTaDeathKind(uint8_t deathType) {
         case 9: return tadeath::kBecomeFeature;
         case 11: return tadeath::kDecay;
         case 13: return tadeath::kWater;
+        case 16: return tadeath::kReclaim;   // World's Unit::kDeathReclaim
         default: return tadeath::kNone;
     }
 }

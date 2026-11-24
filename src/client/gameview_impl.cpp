@@ -1441,6 +1441,11 @@
         // ...and queue them for the render as well, so impacts survive a skipped
         // snapshot (see hitQueue_). Oldest out first when the renderer is so far
         // behind that the queue fills.
+        if (!world_.recordHurt().empty()) {
+            std::lock_guard<std::mutex> hq(hitQueueMutex_);
+            for (int id : world_.recordHurt())
+                if (pendingHurt_.size() < 256) pendingHurt_.push_back({world_.tickCount(), id});
+        }
         if (!fb.hits.empty()) {
             std::lock_guard<std::mutex> hq(hitQueueMutex_);
             for (const auto& h : fb.hits) {
@@ -2141,8 +2146,9 @@
                     } else {
                         // Keep the existing pose/statics and let the authored
                         // callbacks stop their own threads, as in the simulation.
-                        if (dtype!=ta::sim::Unit::kDeathSelfDestruct)
-                            a.vm->call("Killed", {int32_t(u.severity), 0, dtype});
+                        // TotalA.exe runs Killed whenever the severity is
+                        // positive (0x4865c3), a self-destruct included.
+                        a.vm->call("Killed", {int32_t(u.severity), 0, dtype});
                         if (!a.vm->start("Dying", {dtype})) a.ownerVmStopRequested=true;
                     }
                     // Death audio belongs to Killed/Dying, including deliberately

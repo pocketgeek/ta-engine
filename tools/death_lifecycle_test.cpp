@@ -44,7 +44,9 @@ int main(int argc,char** argv) {
             };
             check(!u->alive() && u->deadFor==0,"actual death dispatcher ran (not abandoned construction)");
             bool expectedCorpse=false;
-            if(!unfinished && death!=sim::Unit::kDeathSelfDestruct && type.script()) {
+            // TotalA.exe runs Killed for any positive severity (0x4865c3), a
+            // self-destruct's included.
+            if(!unfinished && u->severity && type.script()) {
                 cob::Vm vm(*type.script());vm.enableRetailAnimation();
                 vm.onGet=[](int32_t value,const std::vector<int32_t>&){return value==18?1:0;};
                 vm.call("Killed",{u->severity,0,death});

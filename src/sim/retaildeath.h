@@ -66,6 +66,18 @@ inline uint8_t retailDeathSeverity(uint8_t kind, int16_t hp, int32_t maxDamage, 
     return uint8_t(severity < 1 ? 1 : severity > 100 ? 100 : severity);
 }
 
+// TotalA.exe's death sender 0x4864b0 (0x486521..0x4865a4) on the TA death
+// kind (sim/retailveterancy.h, tadeath): 0 for a change of owner (4), a
+// reclaim (5), a nanoframe's decay (9) and a feature conversion (7, which
+// keeps its corpse); for every other kind 0 while the HP word is above 0,
+// else the same overkill formula as 512610's, which runs Killed (0x4865c3).
+// A self-destruct or the commander rule (3) and a dying carrier's passengers
+// (6) are no exception, as they are in 512610.
+inline uint8_t retailTaDeathSeverity(uint8_t taKind, int16_t hp, int32_t maxDamage, uint8_t previousSample) {
+    if (taKind == 4 || taKind == 5 || taKind == 7 || taKind == 9) return 0;
+    return retailDeathSeverity(1, hp, maxDamage, previousSample);
+}
+
 // A corpse on land, as the feature update 4959c0 (495aaf..495af1) runs it
 // after 513027..513034 loaded its decomposition +0x3c (the feature type's
 // +0x130: decomposetime x 30, truncated, low 16 bits): each update counts

@@ -258,7 +258,10 @@ void retaliation() {
         firstHit(w,h,300);
         check(h.hit && w.unit(h.victim)->orders.empty(),"retaliation: an idle Defensive unit gets no mission");
     }
-    {   // 3: patrolling Defensive with fire at will: attack + return, then the patrol resumes.
+    {   // 3: TotalA.exe 0x407069: the retaliation mission comes only with no
+        // mission or a Standby (descriptor flag 0x20000); Patrol's flags are
+        // 0x412. A patrolling unit keeps its patrol (Kingdoms' 409a50 put a
+        // leashed attack and a return move ahead of it).
         sim::World w;setup(w,2);Hit h;
         h.victim=w.spawn(&victimType,400,1000,0,0);h.attacker=w.spawn(&r1,880,1000,0,1);
         auto& v=*w.unit(h.victim);v.moveState=0;v.fireState=2;
@@ -267,10 +270,8 @@ void retaliation() {
         firstHit(w,h,300);
         const auto& o=w.unit(h.victim)->orders;
         const bool attack=!o.empty() && o[0].targetId==h.attacker && o[0].chaseLeashed;
-        const auto ret=std::find_if(o.begin(),o.end(),[](const sim::Order& x){return !x.targetId;});
-        const bool back=ret!=o.end() && ret->groundMission && ret->groundResponse.mode==1 && !ret->patrol;
         const bool patrolKept=std::any_of(o.begin(),o.end(),[](const sim::Order& x){return x.patrol;});
-        check(h.hit && attack && back && patrolKept,"retaliation: a patrolling Defensive unit attacks with a return and keeps its patrol");
+        check(h.hit && !attack && patrolKept,"retaliation: a patrolling unit takes no retaliation mission and keeps its patrol");
     }
     {   // 4: attacker beyond 0.9 leash + range: no mission.
         sim::World w;setup(w,2);Hit h;
