@@ -1419,6 +1419,9 @@ target_link_libraries(pathsearch_test PRIVATE ta-formats)
 target_link_libraries(pathgeom_test PRIVATE ta-formats)
 target_link_libraries(ambush_test PRIVATE ta-formats)
 target_link_libraries(mission_orders_test PRIVATE ta-formats)
+# The order strings on a synthetic TA fixture (scratch FBIs, weapons/*.tdf, download/*.tdf),
+# no install needed; mission_orders_shipped reads the retail missions.
+add_test(NAME mission_orders COMMAND mission_orders_test)
 target_link_libraries(cadence_test PRIVATE ta-formats)
 target_link_libraries(crowdbench PRIVATE ta-formats)
 target_link_libraries(cobanim_test PRIVATE ta-formats)

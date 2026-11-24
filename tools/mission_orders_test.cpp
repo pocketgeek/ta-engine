@@ -24,7 +24,8 @@
 //             once per unit per region; an armed slot is not re-armed (4d33a0)
 //   UnitCreated once per unit that enters play, with its owner byte (4d33a0)
 //
-// Synthetic types from a scratch FBI tree, on a flat map. With a retail install
+// Synthetic types from a scratch TA data tree (FBIs, weapons/*.tdf, download/*.tdf
+// build menus), on a flat map; ctest mission_orders. With a retail install
 // (`mission_orders_test --data <dir>`) it checks shipped TA missions instead
 // (docs/retail-campaign.md section 2.6): ac01's gate holds (o 0 0) and waits an
 // hour unselectable, ac02's Core lab queues its waves rather than spawning them,
@@ -93,48 +94,60 @@ struct Fixture {
         root = std::filesystem::temp_directory_path() /
                ("ta-mission-orders-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root / "units");
-        std::filesystem::create_directories(root / "canbuild" / "builder");
-        std::filesystem::create_directories(root / "canbuild" / "fort");
-        std::filesystem::create_directories(root / "canbuild" / "gunner");
-        auto fbi = [&](const char* name, const std::string& body, const std::string& weapon = {}) {
+        std::filesystem::create_directories(root / "weapons");
+        std::filesystem::create_directories(root / "download");
+        // TA data: FBIs name their weapons (weapon1=) from weapons/*.tdf (TaWeaponTable),
+        // build menus are download/*.tdf [MENUENTRYn] entries (TypeRegistry::loadBuildTree).
+        auto fbi = [&](const char* name, const std::string& body, const char* weapon = nullptr) {
             std::ofstream f(root / "units" / (std::string(name) + ".fbi"));
             f << "[UNITINFO]\n{\ncopyright=Copyright 1997 Humongous Entertainment. All rights reserved.;\nunitname=" << name
-              << ";\nobjectname=" << name << ";\n" << body << "}\n" << weapon;
+              << ";\nobjectname=" << name << ";\n" << body << (weapon ? std::string("weapon1=") + weapon + ";\n" : "")
+              << "}\n";
         };
+        // A short-reach weapon (TA has no melee: Kingdoms' Blade was range 30) and a
+        // ranged one, plus its anti-air and dropped (bomb) variants.
+        std::ofstream(root / "weapons" / "fixture.tdf")
+            << "[BLADE]\n{\nID=1;\nname=Blade;\nrange=30;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\n"
+               "[DAMAGE]\n{\ndefault=100;\n}\n}\n"
+               "[BOW]\n{\nID=2;\nname=Bow;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\n"
+               "[DAMAGE]\n{\ndefault=50;\n}\n}\n"
+               "[FLAKBOW]\n{\nID=3;\nname=Flak;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\nturret=1;\n"
+               "toairweapon=1;\n[DAMAGE]\n{\ndefault=50;\n}\n}\n"
+               "[BOMB]\n{\nID=4;\nname=Bomb;\nrange=400;\nreloadtime=1;\nweaponvelocity=400;\ndropped=1;\n"
+               "[DAMAGE]\n{\ndefault=50;\n}\n}\n";
         const std::string mobile = "canmove=1;\nmaxvelocity=1.5;\nturnrate=2000;\nturninplacerate=2000;\n"
                                    "footprintx=2;\nfootprintz=2;\nsightdistance=200;\nmaxdamage=500;\n";
-        const std::string melee = "[WEAPON1]\n{\nname=Blade;\ntype=Melee;\nrange=30;\nreloadtime=1;\n"
-                                  "[DAMAGE]\n{\ndefault=100;\n}\n}\n";
-        const auto ranged = [](const char* extra) {
-            return std::string("[WEAPON1]\n{\nname=Bow;\nrange=400;\nreloadtime=1;\nvelocity=400;\n") + extra +
-                   "[DAMAGE]\n{\ndefault=50;\n}\n}\n";
-        };
-        fbi("soldier", mobile + "buildtime=60;\nbuildcost=10;\n", melee);
-        fbi("archer", mobile, ranged(""));
-        fbi("flak", mobile, ranged("toairweapon=1;\n"));
-        fbi("tower", "footprintx=2;\nfootprintz=2;\nmaxdamage=2000;\nsightdistance=400;\n", ranged(""));
-        // An armed factory (no shipped one has a [WEAPON1]; a mod's could).
-        fbi("fort", "footprintx=4;\nfootprintz=4;\nmaxdamage=5000;\nsightdistance=400;\nbuilder=1;\nworkertime=10;\n",
-            ranged(""));
+        const std::string cost = "buildtime=60;\nbuildcostmetal=10;\nbuildcostenergy=10;\n";
+        fbi("soldier", mobile + cost, "BLADE");
+        fbi("archer", mobile, "BOW");
+        fbi("flak", mobile, "FLAKBOW");
+        fbi("tower", "footprintx=2;\nfootprintz=2;\nmaxdamage=2000;\nsightdistance=400;\n", "BOW");
+        // An armed factory (no shipped one has a weapon; a mod's could).
+        fbi("fort", "footprintx=4;\nfootprintz=4;\nmaxdamage=5000;\nsightdistance=400;\nbuilder=1;\nworkertime=300;\n",
+            "BOW");
         // A mobile one with a build menu and no bmcode (0, a building's): the
         // load strips its canattack as a factory's (4c18d7..4c18ff).
-        fbi("gunner", mobile + "sightdistance=600;\nbuilder=1;\nworkertime=10;\n", ranged(""));
+        fbi("gunner", mobile + "sightdistance=600;\nbuilder=1;\nworkertime=300;\n", "BOW");
         const std::string flyer = mobile + "canfly=1;\ncruisealt=80;\nacceleration=0.2;\nbrakerate=0.2;\n";
-        fbi("hawk", flyer, ranged(""));
-        fbi("hoverer", flyer + "hoverattack=1;\n", ranged(""));
-        fbi("bomber", flyer, ranged("dropped=1;\n"));
+        fbi("hawk", flyer, "BOW");
+        fbi("hoverer", flyer + "hoverattack=1;\n", "BOW");
+        fbi("bomber", flyer, "BOMB");
         fbi("target", mobile);
-        fbi("stubborn", mobile + "unitstandorders=0;\n", melee);
-        fbi("plain", mobile + "noveteran=1;\n", melee);
-        fbi("builder", mobile + "builder=1;\nworkertime=10;\nbuilddistance=60;\n");
+        fbi("stubborn", mobile + "unitstandorders=0;\n", "BLADE");
+        fbi("plain", mobile + "noveteran=1;\n", "BLADE");
+        fbi("builder", mobile + "builder=1;\nworkertime=300;\nbuilddistance=60;\n");
         fbi("wagon", "canmove=1;\nmaxvelocity=2;\nturnrate=4000;\nturninplacerate=4000;\nfootprintx=3;\n"
                      "footprintz=3;\nmaxdamage=800;\ncantransport=1;\ntransportcapacity=4;\ntransportsize=4;\n"
                      "transportsizecapacity=16;\ntransportdistance=150;\n");
-        fbi("keep", "footprintx=4;\nfootprintz=4;\nmaxdamage=5000;\nbuilder=1;\nworkertime=10;\n");
-        fbi("hut", "footprintx=2;\nfootprintz=2;\nmaxdamage=1000;\nbuildtime=60;\nbuildcost=10;\n");
-        std::ofstream(root / "canbuild" / "builder" / "hut.tdf") << "[Menu]\n{\nPriority=1;\n}\n";
-        std::ofstream(root / "canbuild" / "fort" / "soldier.tdf") << "[Menu]\n{\nPriority=1;\n}\n";
-        std::ofstream(root / "canbuild" / "gunner" / "hut.tdf") << "[Menu]\n{\nPriority=1;\n}\n";
+        fbi("keep", "footprintx=4;\nfootprintz=4;\nmaxdamage=5000;\nbuilder=1;\nworkertime=300;\n");
+        fbi("hut", "footprintx=2;\nfootprintz=2;\nmaxdamage=1000;\n" + cost);
+        std::ofstream menus(root / "download" / "fixture.tdf");
+        int entry = 0;
+        for (const auto& [builder, unit] : {std::pair{"builder", "hut"}, {"fort", "soldier"}, {"gunner", "hut"},
+                                             {"keep", "soldier"}})
+            menus << "[MENUENTRY" << ++entry << "]\n{\nUNITMENU=" << builder << ";\nMENU=2;\nBUTTON=0;\nUNITNAME="
+                  << unit << ";\n}\n";
+        menus.close();
         vfs.addLayer(hpi::MountSet(root));
         reg.loadDir(vfs, "units");
         reg.loadBuildTree(vfs, "canbuild");
@@ -149,6 +162,8 @@ static std::unique_ptr<World> makeWorld() {
     w->setPathService(true);
     w->player(0).team = 0; w->player(1).team = 1;
     w->player(0).mana = 1e6; w->player(1).mana = 1e6;
+    // TA economy (sim/taeconomy.h): plenty of metal and energy in store, so builds never stall.
+    w->setStartResources(0, 1e6f, 1e6f); w->setStartResources(1, 1e6f, 1e6f);
     return w;
 }
 
@@ -313,7 +328,10 @@ static void builds(Fixture& f) {
           "two at tick " + std::to_string(first) + ", three at " + std::to_string(third));
     check(w->unit(p[0].id)->orders.empty() && w->unit(p[0].id)->buildQueue.empty(), "and its script is spent");
     bool hut = false;
-    for (const auto& u : w->units()) hut = hut || (u.type == f.t("hut") && u.alive());
+    for (int t = 0; t < 1500 && !hut; ++t) {
+        tickN(*w, 1);
+        for (const auto& u : w->units()) hut = hut || (u.type == f.t("hut") && u.alive() && !u.underConstruction);
+    }
     check(hut, "the builder walks there and builds the hut");
 }
 
@@ -564,7 +582,10 @@ static void attackPoint(Fixture& f) {
           std::to_string(flak->orders.size()) + " order(s), the first at " +
           (flak->orders.empty() ? std::string("-") : std::to_string(flak->orders.front().x.toFloat()) + "," +
                                                      std::to_string(flak->orders.front().z.toFloat())));
-    check(w->unit(p[2].id)->orders.empty(), "a melee weapon off a blocker gets no order");
+    // Kingdoms refused a melee weapon off a blocker here; TA has no melee: a short-reach
+    // weapon (the fixture's BLADE, range 30) gets the SUPPRESS any ranged one does.
+    check(w->unit(p[2].id)->orders.size() == 1 && w->unit(p[2].id)->orders.front().suppress,
+          "a short-reach weapon gets SUPPRESS too (TA has no melee)");
     const Unit* both = w->unit(p[3].id);
     check(both->orders.size() == 2 && isKind(*w, both->orders[0], ScriptedOrder::Kind::AttackType) &&
           both->orders[1].suppress && both->orders[1].attackPointZ.toFloat() == 1360.0f,
@@ -901,7 +922,7 @@ static void holds(Fixture& f) {
     std::vector<Placed> p = {
         {"builder", 20, 20, 0, "", "w 10, b hut 0 60 60"},
         {"builder", 20, 40, 0, "", "wa, b hut 0 60 80"},
-        {"soldier", 20, 50, 0, "", "o 0, a target, m 90 50"},
+        {"soldier", 20, 50, 0, "", "o 0 0, a target, m 90 50"},
         {"target", 120, 120, 1, "", ""},
     };
     auto m = startMission(f, *w, p);
@@ -912,9 +933,12 @@ static void holds(Fixture& f) {
     check(front(1) && front(1)->waitAttack && w->unit(p[1].id)->orders.size() == 2,
           "nor its wa");
     const Unit* s = w->unit(p[2].id);
-    check(s->orders.size() == 3 && isKind(*w, s->orders[1], ScriptedOrder::Kind::AttackType) && s->orders[0].targetId == p[3].id,
+    // The attack's route may take more than one leg (replaceLeg), each on the target.
+    size_t legs = 0;
+    while (legs < s->orders.size() && s->orders[legs].targetId == p[3].id && !scripted(*w, s->orders[legs])) ++legs;
+    check(legs >= 1 && s->orders.size() == legs + 2 && isKind(*w, s->orders[legs], ScriptedOrder::Kind::AttackType),
           "a target puts its attack in front and stays behind it, the move last",
-          std::to_string(s->orders.size()) + " order(s)");
+          std::to_string(s->orders.size()) + " order(s), " + std::to_string(legs) + " attack leg(s)");
 }
 
 // ---- 11. SetMission ---------------------------------------------------------------------------
