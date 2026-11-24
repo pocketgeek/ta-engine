@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The headless harness keeps its seat, and reports the exact end tick, when it simulates slowly.
 
-Real taserver + headless taclient games (Inner Circle, --seed 1) with every client tick
+Real taserver + headless taclient games (Ashap Plateau, --seed 1) with every client tick
 slowed by TA_SIM_SLOW_US, standing in for a stress game on a loaded machine (the 0.9.4
 sweeps measured 200-500 ms per tick):
 
@@ -9,7 +9,7 @@ sweeps measured 200-500 ms per tick):
           simulated inline, and 64 such ticks are about 19 s of silence: the server dropped
           the seat after its 15 s timeout ("peer closed"). The game must now run to its time
           limit with no error.
-  result  150 ms per tick with the server far ahead; the player destroys its own Monarch
+  result  150 ms per tick with the server far ahead; the player destroys its own Commander
           (TA_DEFEAT_TEST=2). The client used to drain every buffered bundle past the
           result, so the reported end tick (and hash) depended on how far behind it was.
           The run must now end at exactly the tick its result landed (tick == result).
@@ -28,7 +28,7 @@ import sys
 import tempfile
 import time
 
-MAP = 'Inner Circle'
+MAP = 'Ashap Plateau'
 DONE = re.compile(r'mp-headless done: tick=(\d+) hash=(\w+) units=\d+ err=(.+?) end=(\w+)(?: result=(\d+))?')
 
 

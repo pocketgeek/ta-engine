@@ -74,19 +74,19 @@ def main():
             assert joined(host) == 0
             room = lobby(host.receive('LobbyState'))[0]
 
-            # host move: take slot 3 with a chosen side (Zhon) and colour 0.
-            auth.slot_update(host, 0, 1, 3, 0, 0, 0, 2)
+            # host move: take slot 3 with a chosen side (Core) and colour 0.
+            auth.slot_update(host, 0, 1, 1, 0, 0, 0, 2)
             table(host)
             move(host, 2)
             assert joined(host) == 2, 'the host was not told its new seat'
             slots = table(host)
-            assert slots[2][0][:3] == (1, 3, 0) and slots[2][1] == b'Alice', ('the host is not in slot 3', slots[2])
+            assert slots[2][0][:3] == (1, 1, 0) and slots[2][1] == b'Alice', ('the host is not in slot 3', slots[2])
             assert slots[0][0][0] == 0 and slots[0][1] == b'', ('slot 1 did not open', slots[0])
             assert slots[0][0][2] == 2 and slots[0][0][3] == 2, 'the opened seat did not take the old colour/team'
 
             # stale host edit: READY on the row it just left, sent before the move
             # reached it, must not make that open seat a clientless HUMAN.
-            auth.slot_update(host, 0, 1, 3, 0, 0, 1, 2)
+            auth.slot_update(host, 0, 1, 1, 0, 0, 1, 2)
             quiet(host, 'a stale edit of the left seat')
 
             # joiner: the first open seat is the one the host left.

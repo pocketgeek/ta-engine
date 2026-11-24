@@ -95,10 +95,10 @@ def main():
         assert stock.stat().st_size>1000
         with server(a.server.resolve(),a.data.resolve(),root,'--map-memory-mib','1') as (port,h,process):
             with contextlib.closing(login(port,h,'Alice')) as p:
-                create(p,map_id='Ulasem Arena');rid=room(p)
+                create(p,map_id='Ashap Plateau');rid=room(p)
                 # Installed map with the correct hash but a forged smaller size:
                 # cache miss must request bounded upload, never build/accept local.
-                p.send('MapOffer',struct.pack('<I',rid)+auth.field('Ulasem Arena')+auth.field(digest)+struct.pack('<I',1000))
+                p.send('MapOffer',struct.pack('<I',rid)+auth.field('Ashap Plateau')+auth.field(digest)+struct.pack('<I',1000))
                 request=p.receive('MapRequest');assert request.num('<I')==rid and request.field()==digest.encode()
                 xfer=request.num('<I')
                 p.send('MapChunk',struct.pack('<III',rid,xfer,0)+bytes(1001))
@@ -110,7 +110,7 @@ def main():
                 # Game mods off (only a debug --mods launch sends it; the lobby always
                 # sends on): even the host's game packs are refused.
                 offer(p);error=p.receive('ModError');assert error.num('<I')==rid;assert b'off' in error.field()
-                mods=bytearray(options());mods[2]=1
+                mods=bytearray(options());mods[1]=1   # gameMods
                 p.send('SetGameOptions',mods)
                 cache=root/'maps'/'ModCache'/('1'*64+'.tamods')
                 cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(bytes(600000))
@@ -175,13 +175,13 @@ def main():
             with contextlib.closing(Peer(port)) as p:
                 p.send('Hello',struct.pack('<I',auth.VERSION)+auth.field('mods-test')+struct.pack('<Q',h)+auth.field('Local'))
                 p.receive('Welcome')
-                mods=bytearray(options());mods[2]=1
-                p.send('CreateGame',auth.field('test')+auth.field('')+auth.field('King of the Hill')+auth.field('camp01')+bytes(mods)+bytes([8,0,0]))
+                mods=bytearray(options());mods[1]=1   # gameMods
+                p.send('CreateGame',auth.field('test')+auth.field('')+auth.field('King of the Hill')+auth.field('ac01')+bytes(mods)+bytes([8,0,0]))
                 r=p.receive('JoinResult');assert r.num('<B')==1;r.num('<B');r.field()
                 state=lobby(p.receive('LobbyState'));rid=state[0]
-                assert state[2][2]==0,'a campaign room adopted GAME MODS at creation'
+                assert state[2][1]==0,'a campaign room adopted GAME MODS at creation'
                 p.send('SetGameOptions',bytes(mods))
-                state=lobby(p.receive('LobbyState'));assert state[2][2]==0,'a campaign room adopted GAME MODS later'
+                state=lobby(p.receive('LobbyState'));assert state[2][1]==0,'a campaign room adopted GAME MODS later'
                 p.send('ModOffer',struct.pack('<I',rid)+auth.field('mods')+auth.field('1'*64)+struct.pack('<I',1000))
                 error=p.receive('ModError');assert error.num('<I')==rid;assert b'campaigns' in error.field()
                 p.send('Ping');p.receive('Pong');assert process.poll() is None

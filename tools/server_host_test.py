@@ -41,7 +41,7 @@ from server_public_test import server
 STALL_MS, WAIT_MS = 1500, 5000
 MAX_GAMES = 2
 AI_TAKEOVER = 4      # net::Event::Kind
-SPEED = 3            # GameOptions byte: speed in tenths
+SPEED = 2            # GameOptions byte: speed in tenths (net::put: after forfeit, gameMods)
 
 
 def options(speed=10):

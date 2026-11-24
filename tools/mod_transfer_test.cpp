@@ -18,25 +18,25 @@ static void archive(const std::filesystem::path& root,const std::string& p,const
 int main(int argc,char** argv){try{
  check(argc>=4 && argc<=6,"port host-root peer-root [server-host] [--bad-loaded] required");
  const std::string serverHost=argc>=5?argv[4]:"127.0.0.1";const bool badLoaded=argc==6 && std::string(argv[5])=="--bad-loaded";auto hostRoot=std::filesystem::path(argv[2]),peerRoot=std::filesystem::path(argv[3]);
- auto base=hpi::mountRetailRoot(hostRoot);const auto original=base.read("units/araking.fbi");std::string text(original.begin(),original.end());
- const std::regex hp("maxdamage\\s*=\\s*[0-9]+",std::regex::icase);check(std::regex_search(text,hp),"monarch HP fixture missing");
- put(hostRoot,"mods/game/Alpha/units/araking.fbi",std::regex_replace(text,hp,"MaxDamage=12345"));
- put(hostRoot,"mods/game/Beta/units/araking.fbi",std::regex_replace(text,hp,"MaxDamage=23456"));
+ auto base=hpi::mountRetailRoot(hostRoot);const auto original=base.read("units/armcom.fbi");std::string text(original.begin(),original.end());
+ const std::regex hp("maxdamage\\s*=\\s*[0-9]+",std::regex::icase);check(std::regex_search(text,hp),"commander HP fixture missing");
+ put(hostRoot,"mods/game/Alpha/units/armcom.fbi",std::regex_replace(text,hp,"MaxDamage=12345"));
+ put(hostRoot,"mods/game/Beta/units/armcom.fbi",std::regex_replace(text,hp,"MaxDamage=23456"));
  put(hostRoot,"mods/game/Alpha/sounds/pack-test.wav",std::string(80000,'a'));
  put(hostRoot,"mods/cosmetic/HostArt/sounds/host-art.wav","host"); // the host's own cosmetic pack: mounted locally, never sent
- put(peerRoot,"mods/cosmetic/Local/units/araking.fbi",std::regex_replace(text,hp,"MaxDamage=99999"));
+ put(peerRoot,"mods/cosmetic/Local/units/armcom.fbi",std::regex_replace(text,hp,"MaxDamage=99999"));
  put(peerRoot,"mods/cosmetic/Local/sounds/pack-test.wav","local");
- put(peerRoot,"mods/game/PeerGame/units/araking.fbi",std::regex_replace(text,hp,"MaxDamage=4242")); // a guest's game pack is never used
+ put(peerRoot,"mods/game/PeerGame/units/armcom.fbi",std::regex_replace(text,hp,"MaxDamage=4242")); // a guest's game pack is never used
  // Always-enabled cosmetic packs (mods/cosmetic/always_enabled/<pack>/): each player's
  // own, in every room, never sent; a gameplay file inside one is filtered out like a
  // cosmetic pack's. An archive directly in mods/cosmetic/ never loads.
  archive(hostRoot,"mods/cosmetic/always_enabled/HostAlways/host-always.hpi",{{"sounds/host-always.wav","h"}});
- archive(peerRoot,"mods/cosmetic/always_enabled/PeerAlways/peer-always.hpi",{{"sounds/peer-always.wav","p"},{"sounds/pack-test.wav","always"},{"units/araking.fbi",std::regex_replace(text,hp,"MaxDamage=31337")}});
+ archive(peerRoot,"mods/cosmetic/always_enabled/PeerAlways/peer-always.hpi",{{"sounds/peer-always.wav","p"},{"sounds/pack-test.wav","always"},{"units/armcom.fbi",std::regex_replace(text,hp,"MaxDamage=31337")}});
  archive(peerRoot,"mods/cosmetic/root.hpi",{{"sounds/peer-root.wav","r"}});
  // Always-enabled game packs (mods/game/always_enabled/<pack>/): applied in every
  // non-campaign room the player HOSTS and sent like ticked packs. A guest's own never apply.
  put(hostRoot,"mods/game/always_enabled/HostRules/sounds/host-rules.wav","rules");
- put(peerRoot,"mods/game/always_enabled/PeerRules/units/araking.fbi",std::regex_replace(text,hp,"MaxDamage=5151"));
+ put(peerRoot,"mods/game/always_enabled/PeerRules/units/armcom.fbi",std::regex_replace(text,hp,"MaxDamage=5151"));
  put(peerRoot,"mods/game/always_enabled/PeerRules/sounds/peer-rules.wav","peer rules");
  // Downloads go to each player's own folder, never the data folder (hpi::userMapRoot).
  const auto hostCache=hostRoot.parent_path()/(hostRoot.filename().string()+"-cache"),peerCache=peerRoot.parent_path()/(peerRoot.filename().string()+"-cache");
@@ -48,7 +48,7 @@ int main(int argc,char** argv){try{
  bool created=false,joined=false,ready=false,started=false,loaded=false,saveFailed=false;int transition=0,campaign=0;uint32_t readyRev=0;uint8_t benchSpeed=0;std::chrono::steady_clock::time_point benchAt;std::string initialDigest,alphaDigest;uint32_t ht=0,pt=0;std::map<uint32_t,uint64_t> hashes;
  // Loading builds both worlds on a worker while the main loop keeps polling both
  // clients, as a player's loading screen keeps its connection alive: the server drops
- // a seat silent for 15 s, and two Ulasem Arena loads in a row under a loaded test
+ // a seat silent for 15 s, and two Ashap Plateau loads in a row under a loaded test
  // machine took the peer past that ("peer closed" right after "starting", 0.9.4).
  // Everything a load reads from its client is taken on this thread first.
  struct Load{net::MpClient* c;hpi::Vfs* data;sim::World* world;std::shared_ptr<net::mods::Package> mod;std::shared_ptr<net::maps::Package> map;uint32_t seed;uint8_t fog;uint64_t hash=0;};
@@ -59,7 +59,7 @@ int main(int argc,char** argv){try{
  auto setup=[&](Load& l){
   auto& data=*l.data;auto& world=*l.world;const bool isHost=l.c==&host;
   check(hpi::gameplayHash(data)!=stockHash,"game pack did not change gameplay");
-  if(isHost) {sim::setupRegistry(registry,data);check(registry.find("araking")->maxHp==23456,"alphabetical pack precedence lost");check(data.has("sounds/host-art.wav"),"host cosmetic pack not loaded");
+  if(isHost) {sim::setupRegistry(registry,data);check(registry.find("armcom")->maxHp==23456,"alphabetical pack precedence lost");check(data.has("sounds/host-art.wav"),"host cosmetic pack not loaded");
    check(data.has("sounds/host-always.wav") && !data.has("sounds/peer-always.wav"),"host always-enabled cosmetic pack not loaded (or a guest's was sent)");
    check(data.has("sounds/host-rules.wav") && !data.has("sounds/peer-rules.wav"),"host always-enabled game pack not applied (or a guest's was)");}
   else {check(hpi::gameplayHash(data)==hpi::gameplayHash(hostData),"peer cosmetics changed gameplay");check(data.read("sounds/pack-test.wav")==std::vector<uint8_t>({'l','o','c','a','l'}),"peer cosmetic pack not loaded over its always-on archive");check(!data.has("sounds/host-art.wav"),"host cosmetic pack was transferred");
@@ -67,7 +67,7 @@ int main(int argc,char** argv){try{
    check(!data.has("sounds/peer-root.wav"),"an archive directly in mods/cosmetic/ was loaded");
    check(data.has("sounds/host-rules.wav") && l.mod->mapPath.find("HostRules")!=std::string::npos,"the host's always-enabled game pack was not sent");
    check(!data.has("sounds/peer-rules.wav") && l.mod->mapPath.find("PeerRules")==std::string::npos,"a guest's own always-enabled game pack applied in the host's room");
-   {sim::TypeRegistry mine;sim::setupRegistry(mine,data);check(mine.find("araking")->maxHp==23456,"the guest's always-enabled game pack changed the host's units");}
+   {sim::TypeRegistry mine;sim::setupRegistry(mine,data);check(mine.find("armcom")->maxHp==23456,"the guest's always-enabled game pack changed the host's units");}
    check(!l.mod->files->count("sounds/host-always.wav") && !l.mod->files->count("sounds/host-art.wav"),"the game-mod package carried cosmetic files");}
   data.setMapFiles(l.map->files);sim::MatchConfig cfg;cfg.vfs=&data;cfg.mapPath=l.map->mapPath;cfg.startSeed=l.seed;cfg.slots={{true,0,0,1,false,false},{true,1,1,1,false,false}};cfg.unitCap=2000;
   cfg.roomMapRevealed=l.fog>=1;cfg.roomLosOff=l.fog==2;   // hashed room vision, as net::matchConfigFor sets it
@@ -81,7 +81,7 @@ int main(int argc,char** argv){try{
   }
   check(hostOk,host.error().c_str());check(peer.poll(),peer.error().c_str());
   saveFailed|=peer.modStatus().find("SAVE FAILED")!=std::string::npos;
-  if(!created && host.state()==net::MpClient::State::Lobby){net::GameOptions o;o.gameMods=1;for(int duplicate=0;duplicate<16;++duplicate)host.createGame("packs","","Ulasem Arena",o,2);created=true;}
+  if(!created && host.state()==net::MpClient::State::Lobby){net::GameOptions o;o.gameMods=1;for(int duplicate=0;duplicate<16;++duplicate)host.createGame("packs","","Ashap Plateau",o,2);created=true;}
   if(!joined && host.room().id && peer.state()==net::MpClient::State::Lobby){for(int duplicate=0;duplicate<160;++duplicate)peer.joinGame(host.room().id,"");joined=true;}
   if(!ready && peer.room().id && peer.room().mySlot>=0){host.setSlot(0,1,0,0,0,1);peer.setSlot(1,1,1,1,1,1);ready=true;}
   if(ready && !started) {
@@ -129,7 +129,7 @@ int main(int argc,char** argv){try{
   // A campaign mission room: GAME MODS is forced off (even when asked for), the
   // ticked cosmetic pack folders and every game pack (always-enabled ones too) stay
   // out, and only the always-enabled cosmetic packs load.
-  if(campaign==1 && host.state()==net::MpClient::State::Lobby){net::GameOptions o;o.gameMods=1;host.createGame("campaign","","King of the Hill",o,8,false,true,"camp01");campaign=2;}
+  if(campaign==1 && host.state()==net::MpClient::State::Lobby){net::GameOptions o;o.gameMods=1;host.createGame("campaign","","King of the Hill",o,8,false,true,"ac01");campaign=2;}
   if(campaign==2 && host.state()==net::MpClient::State::InRoom && !host.room().mission.empty()){
    check(host.room().opts.gameMods==0,"a campaign room adopted GAME MODS");
    const auto data=host.modVfs({"HostArt"});
@@ -140,7 +140,7 @@ int main(int argc,char** argv){try{
    host.leaveGame();campaign=3;
   }
   // A private (single-player) room: the host's always-enabled game pack applies there too.
-  if(campaign==3 && host.state()==net::MpClient::State::Lobby){net::GameOptions o;o.gameMods=1;host.setGameModPacks({});host.createGame("solo","","Ulasem Arena",o,2,false,true);campaign=4;}
+  if(campaign==3 && host.state()==net::MpClient::State::Lobby){net::GameOptions o;o.gameMods=1;host.setGameModPacks({});host.createGame("solo","","Ashap Plateau",o,2,false,true);campaign=4;}
   if(campaign==4 && host.state()==net::MpClient::State::InRoom && host.room().mapsReady && host.modPackage() && !host.modPending()){
    check(host.room().opts.gameMods==1,"a single-player room had game mods off");
    check(host.modPackage()->mapPath=="HostRules" && host.modPackage()->files->count("sounds/host-rules.wav"),"the single-player room's package lacks the always-enabled game pack");
@@ -152,7 +152,7 @@ int main(int argc,char** argv){try{
   // offers its ticked and always-enabled game packs).
   // (After a pause: the solo room's last frames are still in flight, and the lobby
   // request budget is per second.)
-  if(campaign==5 && host.state()==net::MpClient::State::Lobby && std::chrono::steady_clock::now()>=benchAt){host.setGameModPacks({"Alpha"});net::GameOptions o;o.gameMods=1;o.benchmark=1;host.createGame("Benchmark","","Ulasem Arena",o,8,false,true);campaign=6;}
+  if(campaign==5 && host.state()==net::MpClient::State::Lobby && std::chrono::steady_clock::now()>=benchAt){host.setGameModPacks({"Alpha"});net::GameOptions o;o.gameMods=1;o.benchmark=1;host.createGame("Benchmark","","Full Moon",o,8,false,true);campaign=6;}
   if(campaign==6 && host.state()==net::MpClient::State::InRoom && host.room().opts.benchmark){
    check(host.room().opts.gameMods==0,"a Benchmark room adopted GAME MODS");
    check(!host.hostGameModPacks().empty(),"fixture: the host no longer offers its game packs");

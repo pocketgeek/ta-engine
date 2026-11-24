@@ -93,10 +93,10 @@ def scenario_start(port, h):
         # The room is still there, not started, and still its host's: it answers an edit.
         assert dave.games() == {first: 1, second: 0}, "Carol's room is gone, or runs"
         seen = len(carol.other.get(auth.MSG['LobbyState'], []))
-        auth.slot_update(carol, 0, 1, 2, 0, 0, 1, 2)
+        auth.slot_update(carol, 0, 1, 1, 0, 0, 1, 2)   # Core
         assert carol.pump(5, lambda p: len(p.other.get(auth.MSG['LobbyState'], [])) > seen), 'the room no longer answers its host'
         state = lobby(auth.Reader(carol.other[auth.MSG['LobbyState']][-1]))
-        assert state[0] == second and state[3][0][0][0] == 1 and state[3][0][0][1] == 2 and state[3][1][0][0] == 2, \
+        assert state[0] == second and state[3][0][0][0] == 1 and state[3][0][0][1] == 1 and state[3][1][0][0] == 2, \
             ('the room after the refused START', state)
         # Alice's game ends; the same START now starts Carol's.
         alice.send('LeaveGame')

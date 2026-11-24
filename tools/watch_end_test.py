@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A watched game ends for its watcher when the server ends it, on the winner's plate.
 
-Real taserver (--seed 1, --replaydir) and headless taclients on Inner Circle, each in
+Real taserver (--seed 1, --replaydir) and headless taclients on Ashap Plateau, each in
 its own scratch profile. The watcher runs the watch probe (TA_WATCH_END_TEST): it plays
 on past the result until the server ends the game (Msg::GameOver), then through the
 three-second results transition, and reports the result plate it would show.
@@ -11,8 +11,8 @@ three-second results transition, and reports the result plate it would show.
           match is decided within minutes of game time. Nobody is seated, so the server
           ends the game on the very tick the result lands, instead of simulating the
           winner for as long as the watcher stays.
-  leaver  A player (slot 1, Aramon) against one server AI (slot 2, Taros), and a
-          watcher that joined as a spectator. The player destroys its own Monarch and
+  leaver  A player (slot 1, Arm) against one server AI (slot 2, Core), and a
+          watcher that joined as a spectator. The player destroys its own Commander and
           its client leaves at the result, as a player's does; with no human seated any
           more the server ends the game moments later.
 
@@ -182,7 +182,7 @@ def case_leaver(args, base):
         # The watcher first: it polls the game list and watches the game from its start.
         watcher = session.client('watcher', '--mpspectate', {'TA_WATCH_END_TEST': '1'}, 600)
         wait_for(session.roots['server'] / 'server.log', 'joined lobby', session.server, 90)   # listed before the game exists
-        # TA_DEFEAT_TEST=2: the player self-destroys its Monarch and the run ends at its result.
+        # TA_DEFEAT_TEST=2: the player self-destroys its Commander and the run ends at its result.
         player = session.client('player', '--mpai', {'TA_DEFEAT_TEST': '2'}, 120)
         assert player.wait(150) == 0, 'the player did not finish:\n' + text(session.roots['player'])
         out = watched(session, watcher, 60)
@@ -194,7 +194,7 @@ def case_leaver(args, base):
     assert out['result'] == result, ('player and watcher saw the result at different ticks', result, out)
     # The server ends the game as the last human leaves, moments after the result.
     assert result <= out['ticks'] <= result + 150, ('the server did not end the game when the player left', result, out)
-    assert out['team'] == 2 and out['faction'] == 1, ('the watcher\'s plate is not the winner\'s (Taros, slot 2)', out)
+    assert out['team'] == 2 and out['faction'] == 1, ('the watcher\'s plate is not the winner\'s (Core, slot 2)', out)
     replays_end(session, out)
     return ('result at tick %(result)d, ended by the server after %(ticks)d ticks; plate: victory for %(gold)s '
             '(faction %(faction)d), %(seconds)d s; both replays end at tick %(ticks)d, hash %(hash)s' % out)

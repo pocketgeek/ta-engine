@@ -47,7 +47,6 @@ cartographer_ui_smoke 40
 render_shadow_atlas_zoom 40
 legion_sched_mix 40
 legion_seedrestore 39
-ai_mod_profile 38
 legion_scenario_battle-assault 36
 render_pick_index_jump 41
 render_unit_index_jump 36

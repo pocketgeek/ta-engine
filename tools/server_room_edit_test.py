@@ -176,11 +176,11 @@ def quiet(peer, what):
 
 def ready(peer, slot, faction=None, team=None, rev=None):
     s = slot if faction is None else faction
-    auth.slot_update(peer, slot, 1, s % 5, slot, slot if team is None else team, 1, 2, rev=rev)
+    auth.slot_update(peer, slot, 1, s % 2, slot, slot if team is None else team, 1, 2, rev=rev)
 
 
 def seat_ai(host, slot, team=None):
-    auth.slot_update(host, slot, 2, slot % 5, slot, slot if team is None else team, 1, 2)
+    auth.slot_update(host, slot, 2, slot % 2, slot, slot if team is None else team, 1, 2)
 
 
 def set_room_map(peer, serial, map_id, cap, scenario=0, starts=0):
@@ -268,7 +268,7 @@ def case_options(env):
         assert room['opts'][SCENARIO] == 0, 'MAP SCENARIO changed through SetGameOptions'
     # A campaign mission's rules are its own: only the speed and ALLOW SPECTATORS change.
     with contextlib.closing(local_peer(env.local_port, env.local_h, 'Mission')) as host:
-        _, room = create(host, KOTH, 8, mission='camp01')
+        _, room = create(host, KOTH, 8, mission='ac01')
         host.send('SetGameOptions', opts(double=1, speed=14, spectators=0, codes=1, unit_cap=500, fog=2))
         room = latest(host)
         o = room['opts']
@@ -336,13 +336,13 @@ def case_slots(env):
         assert latest(host)['slots'][1][0][4] == 0, "the host readied the guest's seat"
         sync(guest, host)
         rev = host.rev
-        auth.slot_update(guest, 1, 1, 3, 1, 1, 0)   # the guest's own side
+        auth.slot_update(guest, 1, 1, 0, 1, 1, 0)   # the guest's own side (CORE to ARM: TA has two)
         for _ in range(50):   # the guest's edit travels on its own connection
             room = latest(host, required=False)
             if room:
                 break
             time.sleep(.02)
-        assert room and room['rev'] == rev and room['slots'][1][0][1] == 3, "a guest's own change bumped the room"
+        assert room and room['rev'] == rev and room['slots'][1][0][1] == 0, "a guest's own change bumped the room"
         host.send('Kick', bytes([2]))
         room = latest(host)
         assert room['rev'] == rev + 1 and room['bits'] == CHANGE_PLAYERS and room['slots'][2][0][0] == 0, \
@@ -505,7 +505,7 @@ def case_refusals(env):
         assert room['serial'] == 5 and room['rev'] == rev, 'an unchanged map bumped the room'
         quiet(guest, 'an unchanged map')
     with contextlib.closing(local_peer(env.local_port, env.local_h, 'Bench')) as host:
-        _, room = create(host, 'Ulasem Arena', 8, options=opts(bench=1), watch=True)
+        _, room = create(host, 'Full Moon', 8, options=opts(bench=1), watch=True)
         sync(host)
         set_room_map(host, 1, recipe(2), 2)
         quiet(host, 'a Benchmark room')
@@ -547,7 +547,7 @@ def case_watch(env):
         set_room_map(host, 99, recipe(2), 2)
         quiet(host, 'a running room')
     with contextlib.closing(local_peer(env.local_port, env.local_h, 'Mission')) as host:
-        create(host, KOTH, 8, mission='camp01')
+        create(host, KOTH, 8, mission='ac01')
         sync(host)
         host.send('MoveSeat', bytes([WATCH]))
         quiet(host, 'a watch in a mission room')
@@ -560,7 +560,7 @@ def case_mods_map(env):
     mods = struct.pack('<III', 0x32564f54, 0, 0)   # an empty game-mod package (no packs)
     mods_digest = hashlib.sha256(mods).hexdigest()
     with contextlib.closing(login(env.port, env.h, 'Modder')) as host:
-        _, room = create(host, 'Inner Circle', 4, options=opts(mods=1))
+        _, room = create(host, 'Ashap Plateau', 4, options=opts(mods=1))
         rid = room['id']
         host.send('ModOffer', struct.pack('<I', rid) + auth.field('mods') + auth.field(mods_digest) + struct.pack('<I', len(mods)))
         set_room_map(host, 1, KOTH, 4)

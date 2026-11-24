@@ -8,7 +8,7 @@ own test within its limit -- and reads the log: the client prints "room script: 
 done" per step and "room script: finished", and the server its room lines. A script that
 cannot finish prints why and ends the client. TA_QUIT_TICK ends a game that started.
 
-  1  single player (CLI game room): an AI seated, CHANGE MAP to Inner Circle, START; the
+  1  single player (CLI game room): an AI seated, CHANGE MAP to Ashap Plateau, START; the
      game plays to the quit tick.
   2  single player WATCH: the host leaves its seat, AIs fill the room, START; the host plays
      the game as a spectator.
@@ -21,7 +21,7 @@ cannot finish prints why and ends the client. TA_QUIT_TICK ends a game that star
      and the next launch's room opens on that map with those rules.
   6  --play-map: the room opens on the Test Map copy and keeps it (CHANGE MAP is refused
      here), starts with one AI and no second human, and writes no remembered map.
-  7  a remembered map that is not installed: the room opens on the launch's map (athri cay)
+  7  a remembered map that is not installed: the room opens on the launch's map (great divide)
      instead, and says why.
   8  LOCAL SERVER host: the room opens at once as "<name>'s Game" with the CONNECT password,
      which its line shows on SHOW; LEAVE closes the game and goes back to CONNECT TO SERVER.
@@ -62,7 +62,7 @@ cannot finish prints why and ends the client. TA_QUIT_TICK ends a game that star
 Debug builds only (TA_ROOM_SCRIPT, TA_QUIT_TICK and the CLI game are debug hooks).
 
 usage: room_flow_test.py --client <taclient> --server <taserver> --data <retail-install>
-                         --hpitool <hpitool> [--case N ...]
+                         --hpitool <hpitool> --map-tool <map_transfer_test> [--case N ...]
 """
 import argparse
 import os
@@ -134,13 +134,13 @@ def played_to_quit(log, code):
 
 def case_single_player(args, root):
     """CLI game room: seat an AI, CHANGE MAP, START, play to the quit tick."""
-    home, env = profile(root, 'case1', 'ai:1;map:Inner Circle;start')
-    code, log = run_client(args.client, ['game', 'Athri Cay', '--data', args.data], env, home)
+    home, env = profile(root, 'case1', 'ai:1;map:Ashap Plateau;start')
+    code, log = run_client(args.client, ['game', 'Great Divide', '--data', args.data], env, home)
     try:
         assert re.search(r"client \d+ created game \d+ ", log), 'no room was created'
-        script_ran(log, ['ai:1', 'map:Inner Circle', 'start'])
+        script_ran(log, ['ai:1', 'map:Ashap Plateau', 'start'])
         # The panel's PICK: the server changed the map (an AI seated on a 4-start map stays).
-        assert re.search(r"game \d+: host changed the map to 'inner circle' \(capacity \d, scenario 0, 0 AI removed",
+        assert re.search(r"game \d+: host changed the map to 'ashap plateau' \(capacity \d, scenario 0, 0 AI removed",
                          log, re.I), 'the server did not change the map'
         assert re.search(r'game \d+ starting with 2 players', log), 'the game did not start with the AI'
         played_to_quit(log, code)
@@ -153,7 +153,7 @@ def case_capacity(args, root):
     six, two = recipe(6), recipe(2)
     steps = ['map:' + six, 'ai:1', 'ai:2', 'ai:3', 'ai:4', 'map:' + two, 'start']
     home, env = profile(root, 'case3', ';'.join(steps))
-    code, log = run_client(args.client, ['game', 'Athri Cay', '--data', args.data], env, home)
+    code, log = run_client(args.client, ['game', 'Great Divide', '--data', args.data], env, home)
     try:
         script_ran(log, steps)
         assert re.search(r"game \d+: host changed the map to '%s' \(capacity 6, scenario 0, 0 AI removed" % six, log), \
@@ -170,7 +170,7 @@ def case_capacity(args, root):
 def case_watch(args, root):
     """Single player WATCH: the host watches, AIs fill the room, START as a spectator."""
     home, env = profile(root, 'case2', 'watch;start')
-    code, log = run_client(args.client, ['game', 'Athri Cay', '--data', args.data], env, home)
+    code, log = run_client(args.client, ['game', 'Great Divide', '--data', args.data], env, home)
     try:
         script_ran(log, ['watch', 'start'])
         assert re.search(r'client \d+ now watches game \d+', log), 'the server never had the host watching'
@@ -226,16 +226,16 @@ def settings_of(home):
 
 def case_door(args, root):
     """PLAY THE MACHINE opens its room at once; the room's changes go to spRoom.*."""
-    steps = ['ai:1', 'map:Inner Circle', 'opt:doubleSight=1', 'start']
+    steps = ['ai:1', 'map:Ashap Plateau', 'opt:doubleSight=1', 'start']
     home, env = profile(root, 'case5', ';'.join(steps), {'TA_MENU_PICK': 'singleplayer'})
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
-        assert re.search(r"client \d+ created game \d+ 'Single Player' on 'athri cay'", log, re.I), \
+        assert re.search(r"client \d+ created game \d+ 'Single Player' on 'great divide'", log, re.I), \
             'the door did not open its room on the launch map'
         script_ran(log, steps)
         played_to_quit(log, code)
         saved = settings_of(home)
-        assert saved.get('spRoom.map', '').lower() == 'inner circle', 'the picked map was not remembered: %r' % saved
+        assert saved.get('spRoom.map', '').lower() == 'ashap plateau', 'the picked map was not remembered: %r' % saved
         assert saved.get('spRoom.doubleSight') == '1' and saved.get('spRoom.generated') == '0', \
             'DOUBLE SIGHT was not remembered: %r' % saved
         assert saved.get('mpRoom.map') == '' and saved.get('mpRoom.doubleSight') == '0', \
@@ -246,7 +246,7 @@ def case_door(args, root):
     env['TA_ROOM_SCRIPT'] = 'ai:1;start'
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
-        assert re.search(r"client \d+ created game \d+ 'Single Player' on 'inner circle' \(sight=1 ", log, re.I), \
+        assert re.search(r"client \d+ created game \d+ 'Single Player' on 'ashap plateau' \(sight=1 ", log, re.I), \
             'the next room did not open on the remembered map and rules'
         script_ran(log, ['ai:1', 'start'])
         played_to_quit(log, code)
@@ -255,11 +255,11 @@ def case_door(args, root):
 
 
 def playtest_snapshot(root, data, hpitool):
-    """A Cartographer snapshot: one map (Inner Circle's terrain and header, renamed) in a .kmp."""
+    """A Cartographer snapshot: one map (Ashap Plateau's terrain and header, renamed) in a .kmp."""
     src = Path(root) / 'playtest-src'
     (src / 'kmap').mkdir(parents=True)
     for ext in ('tnt', 'ota'):
-        (src / 'kmap' / ('Playtest Map.' + ext)).write_bytes(hpi_read(hpitool, data, 'maps/Inner Circle.' + ext))
+        (src / 'kmap' / ('Playtest Map.' + ext)).write_bytes(hpi_read(hpitool, data, 'maps/Ashap Plateau.' + ext))
     kmp = Path(root) / 'Playtest Map.kmp'
     subprocess.run([hpitool, 'pack', str(src), str(kmp)], check=True, stdout=subprocess.DEVNULL)
     return str(kmp)
@@ -268,13 +268,13 @@ def playtest_snapshot(root, data, hpitool):
 def case_play_map(args, root):
     """--play-map: its room plays the Test Map copy only, starts solo with an AI, remembers nothing."""
     kmp = playtest_snapshot(root, args.data, args.hpitool)
-    steps = ['map!:Inner Circle', 'ai:1', 'start']
+    steps = ['map!:Ashap Plateau', 'ai:1', 'start']
     home, env = profile(root, 'case6', ';'.join(steps))
     code, log = run_client(args.client, ['--play-map', kmp, '--data', args.data], env, home)
     try:
         assert re.search(r"client \d+ created game \d+ 'Single Player' on 'playtest map \[[0-9a-f]{16}\]'", log, re.I), \
             'the room did not open on the Test Map copy'
-        assert "room script: map!:Inner Circle: refused here: a test map's room keeps its map" in log, \
+        assert "room script: map!:Ashap Plateau: refused here: a test map's room keeps its map" in log, \
             'CHANGE MAP was not refused in the room'
         script_ran(log, steps)
         assert re.search(r'game \d+ starting with 2 players', log), 'the game did not start with the AI'
@@ -293,7 +293,7 @@ def case_fallback(args, root):
     code, log = run_client(args.client, ['menu', '--data', args.data], env, home)
     try:
         opened = re.search(r"client \d+ created game \d+ 'Single Player' on '([^']*)'", log)
-        assert opened and (opened[1].lower() == 'athri cay' or opened[1].startswith('~gen1~')), \
+        assert opened and (opened[1].lower() == 'great divide' or opened[1].startswith('~gen1~')), \
             'the room did not open on the fallback map'
         assert re.search(r'room note: THE REMEMBERED MAP COULD NOT BE USED \(IT IS NOT INSTALLED\): .+ WAS CHOSEN', log), \
             'the room did not say why'
@@ -309,7 +309,7 @@ def case_lan_host(args, root):
     home, env = profile(root, 'case8', 'showpass:1;leave', {'TA_MENU_PICK': 'lanhost:alice:pw'})
     log = run_until(args.client, ['menu', '--data', args.data], env, home, 'menu: back to CONNECT TO SERVER')
     try:
-        assert re.search(r"client \d+ created game \d+ 'alice's Game' on 'athri cay'", log, re.I), \
+        assert re.search(r"client \d+ created game \d+ 'alice's Game' on 'great divide'", log, re.I), \
             'the LOCAL SERVER room was not opened at once'
         assert re.search(r"room: game \d+ 'alice's Game' \(password set\)", log), 'the room has no password'
         script_ran(log, ['showpass:1', 'leave'])
@@ -550,7 +550,7 @@ def case_running_limit(args, root):
         home, env = profile(root, 'case14', ';'.join(steps), {'TA_MPAUTO': '1', 'TA_MP_WAIT': '9'})
         path = home / 'client.log'
         with open(path, 'w') as out:
-            proc = subprocess.Popen([args.client, 'game', 'Athri Cay', '--data', args.data, '--server', '127.0.0.1',
+            proc = subprocess.Popen([args.client, 'game', 'Great Divide', '--data', args.data, '--server', '127.0.0.1',
                                      '--serverport', str(port), '--winsize', '960', '540'], cwd=home, env=env,
                                     stdout=out, stderr=subprocess.STDOUT)
         try:
@@ -757,10 +757,11 @@ def hpi_read(hpitool, data, path):
     return subprocess.run([hpitool, 'cat', str(Path(data) / archive), entry], capture_output=True, check=True).stdout
 
 
-def seats_install(root, data, hpitool):
-    """The retail install plus "Scenario Seats": King of the Hill with only its first two
-    start positions, so its scenario (placements for players 1-4) needs four seats and the
-    map alone gives two."""
+def seats_install(root, data, map_tool):
+    """The retail install plus "Scenario Seats": Great Divide with only its first two
+    start positions and a scenario (map_transfer_test --export-scenario-kmp: no shipped TA
+    map has one) placing a Commander for players 1-4, so it needs four seats and the map
+    alone gives two."""
     install = Path(root) / 'seats-install'
     install.mkdir()
     for entry in Path(data).iterdir():
@@ -768,24 +769,16 @@ def seats_install(root, data, hpitool):
             os.symlink(entry.resolve(), install / entry.name)
     maps = install / 'Maps'
     maps.mkdir()
-    for entry in (Path(data) / 'Maps').iterdir():
+    for entry in (Path(data) / 'Maps').iterdir() if (Path(data) / 'Maps').is_dir() else ():
         os.symlink(entry.resolve(), maps / entry.name)
-    src = Path(root) / 'seats-src'
-    (src / 'kmap').mkdir(parents=True)
-    for ext in ('tnt', 'crt', 'tdf'):
-        (src / 'kmap' / ('Scenario Seats.' + ext)).write_bytes(hpi_read(hpitool, data, 'maps/King of the Hill.' + ext))
-    ota = hpi_read(hpitool, data, 'maps/King of the Hill.ota').decode('latin-1')
-    ota, dropped = re.subn(r'\[special[23]\]\s*\{[^{}]*\}\s*', '', ota)
-    assert dropped == 2, 'King of the Hill no longer has the start positions this case drops'
-    ota = ota.replace('King of the Hill', 'Scenario Seats').replace('numplayers=4', 'numplayers=2')
-    (src / 'kmap' / 'Scenario Seats.ota').write_bytes(ota.encode('latin-1'))
-    subprocess.run([hpitool, 'pack', str(src), str(maps / 'Scenario Seats.kmp')], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run([map_tool, '--export-scenario-kmp', str(data), str(maps / 'Scenario Seats.kmp'), 'Great Divide',
+                    'Scenario Seats', '4', '2'], check=True, stdout=subprocess.DEVNULL)
     return str(install)
 
 
 def case_scenario_confirm(args, root):
     """Single player MAP SCENARIO off with AIs in the scenario's extra seats: arm, confirm."""
-    data = seats_install(root, args.data, args.hpitool)
+    data = seats_install(root, args.data, args.map_tool)
     # The room opens with the scenario on (four seats); three AIs fill them.
     home, env = profile(root, 'case10', 'ai:1;ai:2;ai:3;scenario:0;start', {'TA_MAP_SCENARIO': '1'})
     code, log = run_client(args.client, ['game', 'Scenario Seats', '--data', data], env, home)
@@ -828,7 +821,7 @@ def case_unready(args, root):
             assert time.monotonic() < deadline and server.poll() is None, \
                 'the server never listened:\n' + slog_path.read_text(errors='replace')[-3000:]
             time.sleep(0.1)
-        net = ['game', 'Athri Cay', '--data', args.data, '--server', '127.0.0.1', '--serverport', str(port)]
+        net = ['game', 'Great Divide', '--data', args.data, '--server', '127.0.0.1', '--serverport', str(port)]
         # Windowed clients (the room draws, and tells), driven by the harness modes: the host
         # (1) waits for nine READY (never) instead of starting itself, so its script STARTs;
         # the guest (2) joins, readies, and readies again when its READY is cleared.
@@ -886,9 +879,10 @@ def main():
     ap.add_argument('--server', required=True)    # the multiplayer cases' own server
     ap.add_argument('--data', required=True)
     ap.add_argument('--hpitool', required=True)   # packs the --play-map case's snapshot
+    ap.add_argument('--map-tool', required=True)  # map_transfer_test: the Scenario Seats map
     ap.add_argument('--case', type=int, action='append', choices=sorted(CASES))
     args = ap.parse_args()
-    for name in ('client', 'server', 'data', 'hpitool'):
+    for name in ('client', 'server', 'data', 'hpitool', 'map_tool'):
         setattr(args, name, os.path.abspath(getattr(args, name)))
     failed = 0
     with tempfile.TemporaryDirectory(prefix='ta-room-flow-') as root:

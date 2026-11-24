@@ -49,17 +49,17 @@ def broken_install(root, data, hpitool):
             os.symlink(entry.resolve(), install / entry.name)
     maps = install / 'Maps'
     maps.mkdir()
-    for entry in (Path(data) / 'Maps').iterdir():
+    for entry in (Path(data) / 'Maps').iterdir() if (Path(data) / 'Maps').is_dir() else ():
         os.symlink(entry.resolve(), maps / entry.name)
     src = root / 'broken-src'
     (src / 'kmap').mkdir(parents=True)
-    # Inner Circle with its first terrain tile pointed at art that does not exist: the map parses,
-    # so it is found by name, but the package cannot be built ("missing art is an error").
-    tnt = bytearray(hpi_read(hpitool, Path(data), 'maps/Inner Circle.tnt'))
-    keys = int.from_bytes(tnt[32:36], 'little')   # the tile-key table's offset
-    tnt[keys:keys + 4] = b'\xef\xbe\xad\xde'
+    # Ashap Plateau with its tile count (TNT header +0x18) zeroed: the map parses, so it is
+    # found by name, but with no tiles of its own it names section art (terrain/*.jpg) that
+    # does not exist, and the package cannot be built ("missing art is an error").
+    tnt = bytearray(hpi_read(hpitool, Path(data), 'maps/Ashap Plateau.tnt'))
+    tnt[0x18:0x1c] = bytes(4)
     (src / 'kmap' / 'Broken Map.tnt').write_bytes(bytes(tnt))
-    (src / 'kmap' / 'Broken Map.ota').write_bytes(hpi_read(hpitool, Path(data), 'maps/Inner Circle.ota'))
+    (src / 'kmap' / 'Broken Map.ota').write_bytes(hpi_read(hpitool, Path(data), 'maps/Ashap Plateau.ota'))
     subprocess.run([hpitool, 'pack', str(src), str(maps / 'Broken Map.kmp')], check=True)
     return str(install)
 

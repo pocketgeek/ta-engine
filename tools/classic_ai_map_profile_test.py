@@ -3,13 +3,13 @@
 
 Retail's file choice (ai/<aiprofile>.txt, else ai/default.txt) is looked up in the
 room's layers, for ai/ files: a game mod's file wins over the map package's, which
-wins over the base install's. Headless --mpai games on Inner Circle, seed 1, the AI
+wins over the base install's. Headless --mpai games on Ashap Plateau, seed 1, the AI
 seat on Classic (shown to players as RETAIL):
 
   control   the base install's ai/default.txt; the AI builds the watched units
   game mod  a game pack carrying ai/default.txt that starts `limit <unit> 0` for them
             (the profile's first writer wins, so the lines go first): never built
-  map       the same file inside a single-map archive under Maps/ (Inner Circle's
+  map       the same file inside a single-map archive under Maps/ (Ashap Plateau's
             map under another name): it travels in the room's map package, and the
             watched units are never built
   both      that map archive, and a game pack whose ai/default.txt is the base
@@ -109,7 +109,7 @@ def main():
         root = Path(tmp)
         base_profile = hpi_read(a.hpitool, a.data, 'ai/default.txt')
 
-        a.map = 'Inner Circle'
+        a.map = 'Ashap Plateau'
         control, levels, log = play(a, install(root, a.data, 'control-data'), root / 'control')
         ai = [v for v in levels.values() if v >= 0]
         assert ai and all(v == 6 for v in ai), levels
@@ -133,7 +133,7 @@ def main():
         (kmp / 'ai').mkdir()
         (kmp / 'ai' / 'default.txt').write_bytes(profile)
         for ext in ('.tnt', '.ota'):
-            (kmp / 'kmap' / (MAP + ext)).write_bytes(hpi_read(a.hpitool, a.data, 'maps/Inner Circle' + ext))
+            (kmp / 'kmap' / (MAP + ext)).write_bytes(hpi_read(a.hpitool, a.data, 'maps/Ashap Plateau' + ext))
         subprocess.run([str(a.hpitool), 'pack', str(kmp), str(data / 'Maps' / (MAP + '.kmp'))],
                        check=True, capture_output=True)
         a.map = MAP
@@ -151,8 +151,8 @@ def main():
             'the Classic AI built none of %s: the map\'s ai/default.txt won over the game mod\'s (built: %s)' % (
                 watched, sorted(both))
 
-        _, _, log = play(a, install(root, a.data, 'mission-data'), root / 'mission', mission='takmission08_dh')
-        assert re.search(r"mission 'takmission08_dh' -- \d+ strategic AI player\(s\) profile=\S+ DEFAULT AI \(ai/\S+\.txt\)",
+        _, _, log = play(a, install(root, a.data, 'mission-data'), root / 'mission', mission='ac01')
+        assert re.search(r"mission 'ac01' -- \d+ strategic AI player\(s\) profile=\S+ DEFAULT AI \(ai/\S+\.txt\)",
                          log, re.I), log
         print('PASS: Classic reads the room\'s ai/default.txt (base, game mod, map package; %s never built '
               'from the mod or map file; a game mod\'s file wins over the map\'s); a campaign mission plays Classic '

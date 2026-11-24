@@ -1,6 +1,7 @@
 #include "net/mappackage.h"
 #include "net/client.h"
 #include "net/netcompat.h"
+#include "net/matchconfig.h"
 #include "sim/matchsetup.h"
 #include "sim/sides.h"
 #include "tnt/mapgen.h"
@@ -44,25 +45,25 @@ static void readOnly(const std::filesystem::path& dir) {
 }
 static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) {
     auto original=hpi::mountRetailRoot(hostRoot);
-    const auto stock=net::maps::build(original,"Ulasem Arena");
+    const auto stock=net::maps::build(original,"Ashap Plateau");
     const auto starts=sim::parseStartPositions(original,stock->mapPath);
     check(!starts.empty(),"solo fixture needs a start");
     crt::Scenario scenario;scenario.players.resize(9);
-    crt::Unit monarch;monarch.objectName="araking";monarch.player=0;
+    crt::Unit monarch;monarch.objectName="armcom";monarch.player=0;
     monarch.x=int(starts[0].first/16);monarch.z=int(starts[0].second/16);
     monarch.health=75;monarch.armor=150;monarch.weapon=175;monarch.veteran=3;
-    monarch.uniqueName="Network monarch with a deliberately long display name";
+    monarch.uniqueName="Network commander with a deliberately long display name";
     monarch.y=999;
     scenario.units.push_back(monarch);
-    auto neutral=monarch;neutral.player=8;neutral.x+=10;neutral.uniqueName="Neutral monarch";
+    auto neutral=monarch;neutral.player=8;neutral.x+=10;neutral.uniqueName="Neutral commander";
     scenario.units.push_back(neutral);
-    scenario.customTypes.push_back({"araking",{100,200,200,2}});
+    scenario.customTypes.push_back({"armcom",{100,200,200,2}});
     scenario.regions.push_back({"Reinforcements",monarch.x-6,monarch.z-6,monarch.x+6,monarch.z+6});
     scenario.regions.push_back({"Rally",monarch.x+4,monarch.z+4,monarch.x+6,monarch.z+6});
     scenario.players[1].push_back({{{0,{}}},{{13,{"Player 1","Solo authored network"}},
-        {16,{"500"}},{17,{"123"}},{7,{"ARAARCH","Reinforcements"}},
-        {11,{"ARAARCH","7","Anywhere"}},
-        {15,{"ARAARCH","Anywhere","Rally"}},{14,{}}}});
+        {16,{"500"}},{17,{"123"}},{7,{"ARMPW","Reinforcements"}},
+        {11,{"ARMPW","7","Anywhere"}},
+        {15,{"ARMPW","Anywhere","Rally"}},{14,{}}}});
     scenario.players[1].push_back({{{1,{"3"}}},{{20,{}},{14,{}}}});
     scenario.players[1].push_back({{{1,{"8"}}},{{5,{}},{14,{}}}});
     std::vector<hpi::PackFile> entries;
@@ -78,7 +79,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
         } else entries.push_back({path,data});
     }
     entries.push_back({"kmap/solo authored.crt",crt::write(scenario)});
-    const std::string restriction="[ARAKING]{}\n";
+    const std::string restriction="[ARMCOM]{}\n";
     entries.push_back({"kmap/solo authored.tdf",{restriction.begin(),restriction.end()}});
     write(std::filesystem::path(hostRoot)/"Maps"/"solo-authored.kmp",hpi::pack(entries));
     auto hostData=hpi::mountRetailRoot(hostRoot);
@@ -93,20 +94,21 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
     auto setup=[&](net::MpClient& client,hpi::Vfs& base,sim::World& world) {
         check(client.mapPackage() && net::maps::authoredScenario(*client.mapPackage()),"verified authored package missing");
         hpi::Vfs view(&base);view.setMapFiles(client.mapPackage()->files);
-        sim::MatchConfig cfg;cfg.vfs=&view;cfg.mapPath=client.mapPackage()->mapPath;
-        cfg.startSeed=client.startSeed();cfg.startMode=sim::StartMode(net::normalizeStartMode(client.startRoom().opts.randomStarts));
-        cfg.unitCap=client.startRoom().opts.unitCap;cfg.slots={{true,0,0,1,false,false}};
+        // The referee's own builder (net/matchconfig.h): its start resources and
+        // room options are hashed state.
+        sim::MatchConfig cfg=net::matchConfigFor(client.startRoom().opts,client.startRoom().slots,client.startSeed());
+        cfg.vfs=&view;cfg.mapPath=client.mapPackage()->mapPath;
         sim::setupMatch(world,registry,cfg);
         check(world.numPlayers()==1 && world.units().size()==3,"scripted reinforcement missing or neutral became a lobby player");
         check(world.unit(1)->scenarioArmor>2.99f && world.unit(1)->scenarioArmor<3.01f &&
               world.unit(1)->scenarioWeapon>3.49f && world.unit(1)->scenarioWeapon<3.51f,
               "authored stat multipliers lost on network participant");
-        check(!world.buildAllowed(registry.find("tarnecro")) && !world.buildAllowed(registry.find("araarch")) &&
-              world.buildAllowed(registry.find("araking")),"transferred Use Only not installed");
+        check(!world.buildAllowed(registry.find("corak")) && !world.buildAllowed(registry.find("armpw")) &&
+              world.buildAllowed(registry.find("armcom")),"transferred Use Only not installed");
         check(world.unit(1)->scenarioName==monarch.uniqueName.substr(0,31),"named placement lost on network participant");
         check(world.player(0).scenarioResourceLimit==500 && world.player(0).mana==123,"startup resource actions lost on network participant");
         const auto* reinforcement=world.unit(3);
-        check(reinforcement && reinforcement->type==registry.find("araarch") &&
+        check(reinforcement && reinforcement->type==registry.find("armpw") &&
               reinforcement->hp.floorInt()==reinforcement->type->maxHp-7,
               "scripted create bypass or raw HP damage failed on network participant");
         check(!reinforcement->orders.empty(),"scripted reinforcement move was not queued");
@@ -133,7 +135,7 @@ static int soloNetwork(uint16_t port,const char* hostRoot,const char* peerRoot) 
         }
         if(loaded && ht>30 && !sent) {
             net::Command command;command.player=7;command.unitId=1;command.kind=net::Cmd::Train;
-            std::strcpy(command.type,"tarnecro");
+            std::strcpy(command.type,"corak");
             auto repeat=command;repeat.kind=net::Cmd::RepeatTrain;
             auto build=command;build.kind=net::Cmd::Build;build.x=400;build.z=400;
             host.sendCommands({command,repeat,build});sent=true;
@@ -368,10 +370,10 @@ static int roomEdit(uint16_t port, const std::filesystem::path& hostRoot, const 
     using S = net::MpClient::State;
     using Answer = net::MpClient::RoomMapAnswer;
     auto base = hpi::mountRetailRoot(peerRoot);
-    const std::string A = "Room Edit A", B = "Room Edit B", C = "Room Edit C", KOTH = "King of the Hill", INNER = "Inner Circle";
-    hostOnlyMap(hostRoot, base, INNER, "room edit a");    // ~6 MB: the server must take an upload
-    hostOnlyMap(hostRoot, base, KOTH, "room edit b");     // small: guests download it
-    hostOnlyMap(hostRoot, base, "Ulasem Arena", "room edit c");
+    const std::string A = "Room Edit A", B = "Room Edit B", C = "Room Edit C", KOTH = "King of the Hill", INNER = "Ashap Plateau";
+    hostOnlyMap(hostRoot, base, "Brain Coral", "room edit a");    // 20x20, ~6 MB: the server must take an upload
+    hostOnlyMap(hostRoot, base, INNER, "room edit b");             // 9x9, small: guests download it
+    hostOnlyMap(hostRoot, base, "Polar Range", "room edit c");    // 20x20, up to 10 starts
     const auto cacheBase = std::filesystem::temp_directory_path() / ("ta-room-edit-" + crypto::toHex(crypto::randomVec(8)));
     struct CleanCache { std::filesystem::path p; ~CleanCache() { std::error_code ec; std::filesystem::remove_all(p, ec); } } clean{cacheBase};
     sim::TypeRegistry reg; sim::setupRegistry(reg,base);
@@ -581,6 +583,78 @@ int main(int argc, char** argv) try {
         }
         write(argv[3],package->bytes);return 0;
     }
+    if(argc>=5 && argc<=6 && std::string(argv[1])=="--export-scenario-package") {
+        // No shipped TA map declares a scenario (Kingdoms' King of the Hill did): this is
+        // an installed map's package given one, for server_map_scenario_test. Its .ota
+        // declares hasscenario and a Use Only list (<map>.tdf); its .crt places a
+        // Commander for players 1, 2 and 4 (so START wants those seats). argv[5], when
+        // given, is a companion suffix to leave out (".tdf": the Use Only list).
+        auto data=hpi::mountRetailRoot(argv[2]);
+        const auto package=net::maps::build(data,argv[4]);
+        const auto stem=package->mapPath.substr(0,package->mapPath.size()-4);
+        const auto starts=sim::parseStartPositions(data,package->mapPath);
+        check(starts.size()>=4,"--export-scenario-package: the map needs four start positions");
+        crt::Scenario authored;authored.players.resize(9);
+        for(const int p:{0,1,3}) {
+            crt::Unit unit;unit.objectName=sides::commander(0);unit.player=p;
+            unit.x=int(starts[size_t(p)].first/16);unit.z=int(starts[size_t(p)].second/16);
+            authored.units.push_back(unit);
+        }
+        std::map<std::string,std::vector<uint8_t>> files(package->files->begin(),package->files->end());
+        {
+            auto& ota=files.at(stem+".ota");
+            auto metadata=tnt::Scenario::parse(std::string(ota.begin(),ota.end()));
+            metadata.hasScenario=true;metadata.useOnlyUnits=std::string(vpath::filename(stem))+".tdf";
+            const auto text=metadata.write();ota.assign(text.begin(),text.end());
+        }
+        files[stem+".crt"]=crt::write(authored);
+        const std::string restriction="[ARMCOM]{}\n[ARMPW]{}\n";
+        files[stem+".tdf"]={restriction.begin(),restriction.end()};
+        if(argc==6)check(files.erase(stem+argv[5])==1,"--export-scenario-package: no such companion to leave out");
+        net::Writer w;w.u32(2);w.str(package->mapPath);w.u32(uint32_t(files.size()));
+        for(const auto& [name,bytes]:files){w.str(name);w.u32(uint32_t(bytes.size()));w.b.insert(w.b.end(),bytes.begin(),bytes.end());}
+        const auto digest=crypto::toHex(crypto::sha256(w.b.data(),w.b.size()));
+        check(bool(net::maps::decode(w.b,digest)),"--export-scenario-package: the package does not decode");
+        write(argv[3],w.b);return 0;
+    }
+    if(argc==8 && std::string(argv[1])=="--export-scenario-kmp") {
+        // A Cartographer snapshot (kmap/<argv[5]>.*) of an installed map given a scenario
+        // its starts cannot seat: only its first argv[7] start positions (and Schema 0),
+        // hasscenario, a Use Only list, and a .crt placing a Commander for each of players
+        // 1..argv[6] (room_flow_test's "Scenario Seats").
+        auto data=hpi::mountRetailRoot(argv[2]);
+        const auto package=net::maps::build(data,argv[4]);
+        const auto from=package->mapPath.substr(0,package->mapPath.size()-4);
+        const std::string name=argv[5],stem="kmap/"+name;
+        auto starts=sim::parseStartPositions(data,package->mapPath);
+        const size_t keep=size_t(std::stoi(argv[7]));
+        check(keep>0 && starts.size()>=keep,"--export-scenario-kmp: the map has too few start positions");
+        starts.resize(keep);
+        crt::Scenario authored;authored.players.resize(9);
+        for(int p=0;p<std::stoi(argv[6]);++p) {
+            const auto& at=starts[size_t(p)%starts.size()];
+            crt::Unit unit;unit.objectName=sides::commander(0);unit.player=p;
+            unit.x=int(at.first/16)+6*(p/int(starts.size()));unit.z=int(at.second/16);
+            authored.units.push_back(unit);
+        }
+        std::vector<hpi::PackFile> files;
+        for(const auto& [path,bytes]:*package->files) {
+            if(!path.starts_with(from+"."))continue;
+            const auto suffix=path.substr(from.size());
+            if(suffix==".ota") {
+                auto metadata=tnt::Scenario::parse(std::string(bytes.begin(),bytes.end()));
+                metadata.missionName=name;metadata.hasScenario=true;metadata.useOnlyUnits=name+".tdf";
+                std::erase_if(metadata.starts,[&](const tnt::StartPos& p){return p.number>int(keep);});
+                metadata.numPlayers=int(keep);metadata.otherSchemas.clear();
+                const auto text=metadata.write();
+                files.push_back({stem+suffix,{text.begin(),text.end()}});
+            } else if(suffix==".tnt") files.push_back({stem+suffix,bytes});
+        }
+        files.push_back({stem+".crt",crt::write(authored)});
+        const std::string restriction="[ARMCOM]{}\n[ARMPW]{}\n";
+        files.push_back({stem+".tdf",{restriction.begin(),restriction.end()}});
+        write(argv[3],hpi::pack(files));return 0;
+    }
     if(argc==5 && std::string(argv[1])=="--export-kmp") {
         // A Cartographer-style one-map snapshot of an installed map, for --play-map.
         const auto package=net::maps::build(hpi::mountRetailRoot(argv[2]),argv[4]);
@@ -595,7 +669,7 @@ int main(int argc, char** argv) try {
         const bool diplomacy=std::getenv("TA_DIPLOMACY_NETWORK")!=nullptr;
         if (argc == 5) {
             auto original = hpi::mountRetailRoot(argv[3]);
-            auto package = net::maps::build(original, "Ulasem Arena");
+            auto package = net::maps::build(original, "Ashap Plateau");
             std::vector<hpi::PackFile> entries;
             for (const auto& [name,data] : *package->files) {
                 std::string path = name;
