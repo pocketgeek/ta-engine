@@ -407,10 +407,7 @@ int main(int argc, char** argv) {
     // A Brawler hovering behind a lava spire moves round its ring.
     const HoverOutcome hover = runHover(vfs, reg, 1800);
     std::printf("  brawler hover, spire:  %s\n", describe(hover).c_str());
-    // It moves round its ring by the hover ring's own redraws or by the
-    // write-off's reposition, as the draws fall (an idle flyer's slots are
-    // manual since VTOL_Standby 0x40f9d3: no sweep draws before the attack).
-    check(hover.stoneBolts >= 1 && (hover.repositions >= 1 || hover.moved >= 64),
+    check(hover.stoneBolts >= 1 && hover.repositions >= 1,
           "the Brawler's first rounds stop on the spire, and it moves round its ring");
     check(hover.hunterHits > 0 && hover.damage > 0,
           "the Brawler reaches a clear bearing and hits the Peewee");

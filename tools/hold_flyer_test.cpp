@@ -1,24 +1,22 @@
-// A flyer on Hold Position does not leave its post to attack what it finds,
-// and an idle one does not fire from it either.
+// A flyer on Hold Position does not leave its post to attack what it finds.
 //   hold_flyer_test <data> [trace]
 //
-// TotalA.exe's VTOL_Standby (0x40f7d0) makes every weapon slot manual at its
-// stage 0 (0x40f9d3: 0x4898b0(3) clears each slot record's automatic bit
-// 0x10, 0x4898f4) and never makes them automatic again: an idle flyer's
-// weapons fire only at what an attack mission hands them. Its stage 1 scans
-// (0x43b700, on Fire At Will only: unit +0x110 & 0x300000 == 0x200000,
-// 0x43b70a) and offers what it finds to 0x43b1f0(unit, found, 0), the call
-// that puts the attack in; it refuses on Hold Position (+0x110 & 0xc0000 ==
-// 0 without its force argument, 0x43b211), so no attack mission is pushed
-// and nothing fires. (Kingdoms' standby left the slots automatic, so its
-// flyers shot from their posts; World's Hold Position lift built on that.)
+// Retail's VTOL_Standby scans (4d8370, 4176bc) and offers what it finds to
+// 4d7de0(unit, found, 0, 0, 1, 0) (4176cc), the call that inserts the auto
+// attack. 4d7de0 refuses it on Hold Position: (+0x130 & 0x30000) == 0 with
+// neither explicit (arg 3) nor the forced return (arg 6) set returns 0
+// (4d7e0a..4d7e19), so no attack mission is pushed and the standby goes on
+// (417736). What is left is the fire-at-will sweep (40f330): the auto slots
+// take a target in the weapon's own range and fire from where the flyer is.
 //
 // Every armed flyer in the shipped data, on Hold Position, fire at will,
 // with a seen enemy inside its weapon range (450 px when the weapon reaches
-// it): no attack order, the flyer stays at its post and fires no shot. On
-// Maneuver the same flyer takes the attack (the case that shows the test can
-// fail). A flyer whose weapon reaches the air is also tried against a
-// hovering enemy, which is AirToAir's (0x412d40) attack when ordered.
+// it): no attack order and the flyer stays at its post, and most fire at it
+// from there through their auto slots (before the fix every one of them
+// that acquired it flew off 190-960 px after it). On Maneuver the same
+// flyer takes the attack (the case that shows the test can fail). A flyer
+// whose weapon reaches the air is also tried against a hovering enemy, which
+// is AirToAir's (41ca50) attack when ordered.
 #include "hpi/hpi.h"
 #include "sim/matchsetup.h"
 #include "sim/powercodes.h"
@@ -118,9 +116,8 @@ int main(int argc,char** argv) {
                         f->id.c_str(),air?"air":"ground",dist,int(hold.attacked),hold.drift,hold.shots,
                         int(hold.slotTook),int(maneuver.attacked),maneuver.drift);
             const std::string label=f->id+(air?" (air target)":" (ground target)");
-            check(!hold.attacked,label+": no attack order on Hold Position (0x43b1f0 refuses the standby's call)");
+            check(!hold.attacked,label+": no attack order on Hold Position (4d7de0 refuses the standby's call)");
             check(hold.drift<=24.f,label+": stays at its post on Hold Position");
-            check(hold.shots==0 && !hold.slotTook,label+": fires nothing from its post (VTOL_Standby's slots are manual)");
         }
     }
     std::printf("hold_flyer: %d cases, %d held, %d fired from their post, %d took the attack on Maneuver\n",
@@ -129,11 +126,42 @@ int main(int argc,char** argv) {
     // attack the Hold case must not get is there to be got.
     check(cases>=8,"enough armed flyers in the shipped data");
     check(maneuverTook*2>=cases,"on Maneuver most flyers take the attack (the test can fail)");
-    // A landed hover attacker (the Brawler gunship, HoverAttack=1) with an
-    // enemy 200 px behind it: on Hold Position it stays down and fires
-    // nothing; on Maneuver the standby's scan sends it after the enemy, and
-    // the attack's take-off lifts it.
-    for (const uint8_t moveState:{uint8_t(0),uint8_t(1)}) {
+    // Hold Position is not Hold Fire: the sweep's auto slots still shoot a
+    // seen enemy in range from where the flyer stands by.
+    check(firedFromPost*2>=cases,"on Hold Position most flyers fire from their post");
+    // Engine deviation (owner, 2026-11-12, World::tickHoldLift): a landed
+    // hover attacker (here the Brawler gunship, HoverAttack=1) on Hold
+    // Position with an enemy behind it takes off, turns to it and hits it
+    // from over its post, without chasing, and lands again once the enemy is
+    // gone: a landed hover attacker cannot turn to a request. A Passive one
+    // (Hold Fire) takes no target and stays down.
+    // Straight ahead, facing it, it has no facing reason to lift: it hits
+    // the enemy within 200 ticks, from the ground or once a shot it started
+    // has gone unreleased for kHoldLiftNoRelease ticks.
+    // (The TAK case of a hovering dropped-bomb flyer has no TA counterpart:
+    // TA's bombers do not hover.)
+    {
+        const sim::UnitType* brawler=registry.find("armbrawl");
+        sim::World w;
+        w.setSerialThreads(true);w.setPlayerCount(2);
+        w.setTerrain(std::vector<uint8_t>(512*512,70),512,512,64);
+        w.buildNavClasses(registry);w.setPathService(true);
+        w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
+        const int a=brawler ? w.spawn(brawler,4096,4096,0,0) : 0;
+        if (a) {
+            w.unit(a)->moveState=0;w.unit(a)->fireState=2;
+            for (int i=0;i<90;++i) w.tick(1.f/30);
+            sim::UnitType target=*registry.find("armpw");
+            target.maxHp=30000;target.healTime=0;target.weapons.clear();target.weapon.damage=0;target.maxVel={};
+            const int t=w.spawn(&target,w.unit(a)->x.toFloat(),w.unit(a)->z.toFloat()+192,0,1);
+            const auto hp=w.unit(t)->hp;
+            int first=-1;
+            for (int i=0;i<600 && first<0;++i) { w.tick(1.f/30);if (w.unit(t)->hp<hp) first=i; }
+            std::printf("  armbrawl Hold, enemy straight ahead: first hit at tick %d\n",first);
+            check(first>=0 && first<200,"a landed Brawler facing an enemy hits it within 200 ticks");
+        }
+    }
+    for (const uint8_t fireState:{uint8_t(2),uint8_t(0)}) {
         const sim::UnitType* brawler=registry.find("armbrawl");
         if (!brawler) { check(false,"armbrawl loads");break; }
         sim::World w;
@@ -142,7 +170,7 @@ int main(int argc,char** argv) {
         w.buildNavClasses(registry);w.setPathService(true);
         w.setPowerCodes(true);w.applyPowerCode(0,sim::PowerCode::NowISee,sim::PowerArg::None,0);
         const int a=w.spawn(brawler,4096,4096,0,0);
-        w.unit(a)->moveState=moveState;w.unit(a)->fireState=2;
+        w.unit(a)->moveState=0;w.unit(a)->fireState=fireState;
         for (int i=0;i<90;++i) w.tick(1.f/30);
         const bool landed=w.unit(a)->flightGroundMode==1;
         const float postX=w.unit(a)->x.toFloat(),postZ=w.unit(a)->z.toFloat();
@@ -162,13 +190,16 @@ int main(int argc,char** argv) {
                             u.firedWeapons,u.reloads[0]);
         }
         const bool hurt=w.unit(t)->hp<hp;
-        std::printf("  armbrawl %s, enemy behind: took off %d, hurt %d, drift %.1f\n",moveState ? "Maneuver" : "Hold",
-                    int(flew),int(hurt),drift);
-        if (moveState==0)
-            check(landed && !flew && !hurt && w.unit(a)->orders.empty(),
-                  "a landed Brawler on Hold Position stays down and fires nothing");
-        else
-            check(landed && flew && hurt,"on Maneuver it takes off and hits the enemy (the test can fail)");
+        if (fireState==2) {
+            std::printf("  armbrawl Hold, enemy behind: took off %d, hurt %d, drift %.1f\n",int(flew),int(hurt),drift);
+            check(landed && flew && hurt,"a landed Brawler on Hold Position takes off and hits an enemy behind it");
+            check(drift<=24.f && w.unit(a)->orders.empty(),"it does not chase: it stays over its post with no order");
+            w.unit(t)->hp=sim::Fixed();
+            for (int i=0;i<900;++i) w.tick(1.f/30);
+            check(w.unit(a)->flightGroundMode==1,"it lands again once the enemy is gone");
+        } else {
+            check(landed && !flew && !hurt,"a Passive (Hold Fire) Brawler stays landed");
+        }
     }
     std::printf("hold_flyer: %d failures\n",failures);
     return failures?1:0;

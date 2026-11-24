@@ -69,6 +69,11 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
 - All *.hpi are mounted (retail stops after 10, hiding totala3/4 and worlds.hpi on the GOG layout).
 - Battle-music monitor resets each game (retail carries it across games); default
   track table used on GOG installs, where retail plays only building music.
+- Hold Position lift (owner's choice, kept 2026-11-24): a landed flyer on Hold
+  Position lifts off to fight a target in range (tickHoldLift, hold_flyer).
+  Retail stays down: VTOL_Standby 0x40f9d3 / LandIfCan 0x40f6a3 make the slots
+  manual and 0x43b1f0 refuses an attack on Hold (0x43b211), so idle flyers keep
+  automatic slots here.
 
 ## Out of scope (by decision)
 
@@ -237,36 +242,22 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   tickFlyingPatrolLook), VTOL_Standby 0x40f7d0 / VTOL_LandIfCan 0x40f2a0,
   VTOL_Follow 0x40fbe0, VTOL_SeekGuard 0x410850, AirToAir 0x412d40 (with
   VTOL_Evade 0x413bc0), VTOL_SeekAttack 0x4103e0, VTOL_RepairUnit 0x414e70
-  (radius 0 over the target, no range test), VTOL_Reclaim 0x414770, and the
-  repair pads (retailairpad.h, World::tickAirPad): under 3/4 health
-  VTOL_Patrol (0x410f3e), VTOL_RepairPatrol (0x415397), VTOL_SeekAttack
-  (0x410518), VTOL_SeekGuard (0x410972) and AirStrike (0x4125c2) put
-  VTOL_Landing 0x4118e0 on a random own builder air base within 3840 px
-  (0x40b530); it lands on a free QueryLandingPad piece (0x47e570), attaches
-  there (the flyer is the pad's passenger, Unit::padPiece) and a damaged flyer
-  gets SelfRepair 0x402430 (one 0x41bd10 step a tick: 1 HP for 1 E); any
-  later mission's stage 0 lets go of the pad. Idle flyers' slots are manual
-  (VTOL_Standby 0x40f9d3, LandIfCan 0x40f6a3: kSlotsStandby), so a landed
-  flyer on Hold Position fires nothing (0x43b1f0 refuses at 0x43b211); the
-  Hold Position lift deviation (tickHoldLift) had nothing left to do and is
-  gone. The stage-0 take-off climb (cruisealt / 2 over the spot) of
-  VTOL_RepairUnit 0x414fe1, VTOL_Reclaim 0x41485e, AirToAir 0x4133fa,
-  VTOL_SeekAttack 0x4107c6 and AirStrike 0x41215c is World::flyerTakeOff;
-  LandIfCan returns toward the map's centre when off it (0x40f2e3). The
-  air-traffic counter and the step-out mission are gone (TA has neither); the
-  occupancy grid and its overlap lists stay (TA's landing test 0x47e2d0 reads
-  cell word +2; projectiles read the grid; how TA maintains word +2 is
-  untraced). Still open:
-  - Repair pads: AirToGround (0x412b3f) and AirToGroundHover (0x413a8a) have
-    the same pad detour, but their TA stages are not ported (World still runs
-    Kingdoms' templates, with their dead air-traffic step-out branch);
-    VTOL_GetRepaired 0x415250 (a waiter on its target's health, "Repair
-    aborted." / "Unit repaired") has no pusher found and is not ported; the
-    order resolver's VTOL_LANDING for a flyer sent onto its own air base
-    (0x43fb0a..0x43fb26) is not wired to a click; 0x40b530 walks its player's list, World the units in id
-    order (the random pick may differ); the pad's nano spray is the
-    construction emitter's, not 0x4720d0's piece-to-box particles; a pad's
-    passenger is placed at the piece origin, not the script's attach pose.
+  (radius 0 over the target, no range test), VTOL_Reclaim 0x414770. The
+  air-traffic counter is gone (TA has no step-out); the occupancy grid and its
+  overlap lists stay (TA's landing test 0x47e2d0 reads cell word +2; projectiles
+  read the grid; how TA maintains word +2 is untraced). Still open:
+  - No repair pads: VTOL_Landing 0x4118e0 (QueryLandingPad, SELFREPAIR) and
+    VTOL_GetRepaired 0x415250 are not ported, so the under-3/4-health pad
+    detours of VTOL_Patrol (0x410f3e), VTOL_RepairPatrol (0x415397),
+    VTOL_SeekAttack (0x410518), VTOL_SeekGuard (0x410972) and AirStrike are
+    skipped.
+  - Every TA flyer mission's stage 0 makes the slots manual (0x4898b0(3));
+    World keeps an idle flyer's (VTOL_Standby 0x40f9d3, LandIfCan 0x40f6a3)
+    automatic because the Hold Position exception (tickHoldLift, hold_flyer)
+    relies on it; VTOL_Move clears and restores them at once.
+  - The take-off climb of VTOL_RepairUnit / VTOL_Reclaim / VTOL_RepairPatrol's
+    jobs (0x414fe1, 0x41485e) and AirToAir / SeekAttack (0x4133fa, 0x4107c6)
+    is not modelled; LandIfCan's off-map return (0x40f2e3) is not ported.
   - VTOL_RepairPatrol's job search runs on a 45-tick timer from
     tickPatrolRepair, not from its stage-1 wake. The ground RepairPatrol
     (0x405980, tickGroundPatrolLook) looks on a 60-tick timer the same way
@@ -366,8 +357,8 @@ plain Move fire on the move. Differences: section 7.8 of the spec.
   follows TotalA.exe's 0x411f50 (retailAirStrike): its slot holds the target only
   from the release stage to the turn after it, and the release ring leads the
   bomb's carry (sqrt(2 cruisealt / OTA gravity) x 30 x speed + attackrunlength + 1);
-  no group check or air-traffic step-out; its stage-6 repair-pad detour and
-  stage-0 take-off are ported. Ballistic shells still use the release solve
+  no group check or air-traffic step-out; the stage-6 repair-pad detour is not
+  ported, nor the stage-0 wait for take-off altitude. Ballistic shells still use the release solve
   and Kingdoms' gravity-before-move order (TotalA.exe 0x49cde0 launches on the
   slot's AimX angles + spread and moves before gravity, 0x49bce3); beams
   (lineofsight + beamweapon) still hit instantly; burst clones still re-aim at
